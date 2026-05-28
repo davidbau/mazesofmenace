@@ -9050,10 +9050,22 @@ function breakChestSourceSpot() {
     };
 }
 
+function breakChestShopCharges() {
+    if (!(game._break_chest_shop_charges instanceof Map))
+        game._break_chest_shop_charges = new Map();
+    return game._break_chest_shop_charges;
+}
+
 function recordBreakChestShopLoss(obj, options = {}) {
     const shkp = game._break_chest_shopkeeper;
     if (!obj || !shopkeeperInHisShop(shkp)) return 0;
-    const value = lostShopMerchandiseValueForObject(breakChestSourceSpot(), obj, shkp, new Set(), options);
+    const charges = lostShopMerchandiseChargesForObject(breakChestSourceSpot(), obj, shkp, new Set(), options);
+    let value = 0;
+    const aggregate = breakChestShopCharges();
+    for (const [owner, charge] of charges) {
+        value += charge;
+        addLostShopMerchandiseCharge(aggregate, owner, charge);
+    }
     game._break_chest_shop_loss = Math.max(0, Math.trunc(Number(game._break_chest_shop_loss || 0))) + value;
     return value;
 }
@@ -9062,14 +9074,20 @@ function finishBreakChestShopDebtMessage() {
     const shkp = game._break_chest_shopkeeper;
     const box = game._break_chest_destroyed_box;
     if (box) recordBreakChestShopLoss(box);
-    const loss = Math.max(0, Math.trunc(Number(game._break_chest_shop_loss || 0)));
+    const charges = game._break_chest_shop_charges instanceof Map
+        ? game._break_chest_shop_charges
+        : new Map();
     game._break_chest_shopkeeper = null;
     game._break_chest_destroyed_box = null;
+    game._break_chest_shop_charges = null;
     game._break_chest_shop_loss = 0;
     game._break_chest_x = null;
     game._break_chest_y = null;
-    if (!shopkeeperInHisShop(shkp) || !(loss > 0)) return '';
-    const charged = chargeShopkeeperForLostMerchandise(shkp, loss, { peaceful: shopkeeperPeacefulForDebt(shkp) });
+    if (!shopkeeperInHisShop(shkp) || !charges.size) return '';
+    let charged = 0;
+    const peaceful = shopkeeperPeacefulForDebt(shkp);
+    for (const [owner, value] of charges)
+        charged += chargeShopkeeperForLostMerchandise(owner, value, { peaceful });
     if (!(charged > 0)) return '';
     return `You owe ${charged} ${shopCurrency(charged)} for objects destroyed.`;
 }
@@ -9085,7 +9103,63 @@ function brokenChestContentDestroyedMessage(content, messages) {
     const name = content.otyp === 11 || content.cls === 'spellbook' || String(content.kind || '').startsWith('spellbook')
         ? 'spellbook'
         : pickupObjectName(content);
-    return `${/^[aeiou]/i.test(name) ? 'An' : 'A'} ${name} is torn to shreds!`;
+    const disposition = brokenChestContentShatterDisposition(content);
+    return `${/^[aeiou]/i.test(name) ? 'An' : 'A'} ${name} ${disposition}!`;
+}
+
+function brokenChestContentMaterial(content) {
+    const explicit = String(content?.material || content?.oc_material || '')
+        .toLowerCase()
+        .replace(/^hi[_-]?/, '')
+        .replace(/[\s_-]+/g, '');
+    const explicitMaterials = {
+        paper: 'paper',
+        wax: 'wax',
+        veggie: 'veggy',
+        vegetable: 'veggy',
+        flesh: 'flesh',
+        glass: 'glass',
+        wood: 'wood',
+        wooden: 'wood',
+    };
+    if (explicitMaterials[explicit]) return explicitMaterials[explicit];
+
+    const kind = objectKindKey(content);
+    if (content?.otyp === SCR_BLANK_PAPER || content?.cls === 'scroll'
+        || content?.cls === 'spellbook' || String(content?.kind || '').startsWith('spellbook'))
+        return 'paper';
+    if (content?.otyp === TALLOW_CANDLE || content?.otyp === WAX_CANDLE || /\bcandle$/.test(kind))
+        return 'wax';
+    if (content?.otyp === CREAM_PIE || /\b(?:cream pie|fruit|vegetable|veggie|ration|pancake|wafer|cookie|carrot|apple|orange|pear|melon|banana|kelp|garlic|wolfsbane|eucalyptus|slime mold)\b/.test(kind))
+        return 'veggy';
+    if (content?.otyp === MEAT_RING || content?.otyp === CORPSE || content?.otyp === EGG
+        || /\b(?:meat|corpse|egg)\b/.test(kind))
+        return 'flesh';
+    if (content?.otyp === MIRROR || content?.otyp === CRYSTAL_BALL
+        || /\b(?:glass|mirror|looking glass|crystal ball)\b/.test(kind))
+        return 'glass';
+    if (/\b(?:wood|wooden|quarterstaff|staff|club|bow|arrow|crossbow|aklys|sling|harp|flute|drum)\b/.test(kind))
+        return 'wood';
+    return '';
+}
+
+function brokenChestContentShatterDisposition(content) {
+    switch (brokenChestContentMaterial(content)) {
+    case 'paper':
+        return 'is torn to shreds';
+    case 'wax':
+        return 'is crushed';
+    case 'veggy':
+        return 'is pulped';
+    case 'flesh':
+        return 'is mashed';
+    case 'glass':
+        return 'shatters';
+    case 'wood':
+        return 'splinters to fragments';
+    default:
+        return 'is destroyed';
+    }
 }
 
 function placeBrokenChestContentAtHero(content) {
@@ -9169,6 +9243,7 @@ export function finishForceLock(force) {
     game._break_chest_shopkeeper = shopkeeperForCostlySpot(game.u?.ux, game.u?.uy);
     if (!shopkeeperInHisShop(game._break_chest_shopkeeper)) game._break_chest_shopkeeper = null;
     game._break_chest_destroyed_box = chest;
+    game._break_chest_shop_charges = new Map();
     game._break_chest_shop_loss = 0;
     game._break_chest_x = game.u?.ux ?? chest.ox ?? 0;
     game._break_chest_y = game.u?.uy ?? chest.oy ?? 0;
@@ -12501,7 +12576,9 @@ function supportsHeroThrownPotionHit(potion) {
     const kind = thrownPotionEffectKind(potion);
     return kind === 'confusion' || kind === 'booze' || kind === 'paralysis'
         || kind === 'sleeping' || kind === 'blindness' || kind === 'speed'
-        || kind === 'invisibility';
+        || kind === 'invisibility' || kind === 'hallucination'
+        || kind === 'healing' || kind === 'extra healing' || kind === 'full healing'
+        || kind === 'restore ability' || kind === 'gain ability';
 }
 
 function thrownPotionEffectKind(potion) {
@@ -12624,6 +12701,49 @@ function invisibilityPotionHitMonster(potion, mon, messages) {
     return angerMon;
 }
 
+function monsterIsPestilence(mon) {
+    return String(mon?.data?.name || mon?.name || '').toLowerCase() === 'pestilence';
+}
+
+function kindIsHealingFamilyPotion(kind) {
+    return kind === 'healing' || kind === 'extra healing' || kind === 'full healing';
+}
+
+function healingPotionCuresMonsterBlindness(kind, potion) {
+    if (kind === 'full healing') return true;
+    if (kind === 'extra healing') return !potion.cursed;
+    return kind === 'healing' && !!potion.blessed;
+}
+
+function cureMonsterBlindnessFromPotion(mon, messages) {
+    if (mon?.mcansee !== false && mon?.mcansee !== 0) return;
+    mon.mcansee = true;
+    mon.mblinded = 0;
+    if (monsterCanBeSeenForPotionEffect(mon) && monsterHasEyesForPotionBlindness(mon))
+        messages.push(`${potionHitMonsterName(mon)} can see again.`);
+}
+
+function healingPotionHitMonster(potion, mon, kind, messages) {
+    if (kindIsHealingFamilyPotion(kind) && monsterIsPestilence(mon)) {
+        if ((mon.mhp || 0) > 2) {
+            mon.mhp = Math.trunc(mon.mhp / 2);
+            if (monsterCanBeSeenForPotionEffect(mon))
+                messages.push(`${potionHitMonsterName(mon)} looks rather ill.`);
+        }
+        return true;
+    }
+
+    const maxHp = Math.max(1, mon.mhpmax || mon.mhp || 1);
+    if ((mon.mhp || 0) < maxHp) {
+        mon.mhp = maxHp;
+        if (monsterCanBeSeenForPotionEffect(mon))
+            messages.push(`${potionHitMonsterName(mon)} looks sound and hale again.`);
+    }
+    if (healingPotionCuresMonsterBlindness(kind, potion))
+        cureMonsterBlindnessFromPotion(mon, messages);
+    return false;
+}
+
 function heroThrownPotionHitMonster(potion, mon) {
     const messages = [];
     const bottle = chestShatterBottleName();
@@ -12653,6 +12773,9 @@ function heroThrownPotionHitMonster(potion, mon) {
         }
     } else if (kind === 'invisibility') {
         angerMon = invisibilityPotionHitMonster(potion, mon, messages);
+    } else if (kind === 'healing' || kind === 'extra healing' || kind === 'full healing'
+        || kind === 'restore ability' || kind === 'gain ability') {
+        angerMon = healingPotionHitMonster(potion, mon, kind, messages);
     }
 
     if ((mon.mhp || 1) > 0) {
@@ -14559,31 +14682,37 @@ function statueShatterShopDebtMessage(statue, x, y, mon) {
     if (!statue || statue.no_charge || game._monster_moving) return '';
     const shkp = shopkeeperForCostlySpot(x, y);
     if (!shkp || !shopkeeperInHisShop(shkp) || mon === shkp) return '';
-    const beforeCredit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
     const wasUnpaid = !!statue.unpaid;
     const contentCount = countStatueShopContentsForMessage(statue, x, y, true);
     const unpaidContentCount = countStatueShopContentsForMessage(statue, x, y, false);
-    const value = lostShopMerchandiseValueForObject({ ox: x, oy: y }, statue, shkp);
-    if (!(value > 0)) return '';
+    const charges = lostShopMerchandiseChargesForObject({ ox: x, oy: y }, statue, shkp);
+    if (!charges.size) return '';
+    const chargeEntries = [...charges.entries()];
+    const displayShkp = chargeEntries.length === 1
+        ? chargeEntries[0][0]
+        : charges.has(shkp) ? shkp : chargeEntries[0][0];
+    const beforeCredit = Math.max(0, Math.trunc(Number(displayShkp.credit || 0)));
 
     const peaceful = shkp.mpeaceful !== 0;
-    const remaining = chargeShopkeeperForLostMerchandise(shkp, value, { peaceful });
+    let remaining = 0;
+    for (const [owner, value] of chargeEntries)
+        remaining += chargeShopkeeperForLostMerchandise(owner, value, { peaceful });
     if (!peaceful) {
-        if (!game.u?.blind && couldsee(shkp.mx, shkp.my))
-            return `${shopkeeperDisplayName(shkp)} booms: "${game.plname || 'Hero'}, you are a thief!"`;
+        if (!game.u?.blind && couldsee(displayShkp.mx, displayShkp.my))
+            return `${shopkeeperDisplayName(displayShkp)} booms: "${game.plname || 'Hero'}, you are a thief!"`;
         if (!heroIsDeaf()) return 'You hear a scream, "Thief!"';
         return '';
     }
 
     if (beforeCredit > 0 && !remaining) {
-        const credit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+        const credit = Math.max(0, Math.trunc(Number(displayShkp.credit || 0)));
         return credit > 0
             ? `You have ${credit} ${shopCurrency(credit)} credit remaining.`
             : 'You have no credit remaining.';
     }
 
     if (!(remaining > 0)) return '';
-    let message = `You ${beforeCredit > 0 ? 'still ' : ''}owe ${shopkeeperDisplayName(shkp)} ${remaining} ${shopCurrency(remaining)}`;
+    let message = `You ${beforeCredit > 0 ? 'still ' : ''}owe ${shopkeeperDisplayName(displayShkp)} ${remaining} ${shopCurrency(remaining)}`;
     if (unpaidContentCount > 0) {
         message += ` for ${wasUnpaid ? 'it and ' : ''}${contentCount > unpaidContentCount ? 'some of ' : ''}its contents`;
     } else if (!shopBillableGold(statue)) {
@@ -19322,6 +19451,7 @@ function projectileContainerImpactDmg(obj, fromX, fromY, options = {}) {
     const shkp = shopkeeperForCostlySpot(fromX, fromY);
     const costly = shopkeeperInHisShop(shkp);
     const insider = costly && sameShopkeeper(shkp, shopkeeperForShopRoom(game.u?.ux, game.u?.uy));
+    const fromInventory = options.fromInventory !== false;
     let loss = 0;
     let broke = false;
     for (const child of [...globContents(obj)]) {
@@ -19329,9 +19459,16 @@ function projectileContainerImpactDmg(obj, fromX, fromY, options = {}) {
         if (!breakKind) continue;
         const brokenChild = splitImpactBrokenStackItem(obj, child, shkp);
         if (costly) {
-            if (!brokenChild.unpaid) brokenChild.no_charge = true;
-            const charged = convertUnpaidObjectToShopDebt(brokenChild, { silent: true, broken: true });
-            loss += charged.value || 0;
+            if (fromInventory) {
+                if (!brokenChild.unpaid) brokenChild.no_charge = true;
+                const charged = convertUnpaidObjectToShopDebt(brokenChild, { silent: true, broken: true });
+                loss += charged.value || 0;
+            } else {
+                const charges = lostShopMerchandiseChargesForObject({ ox: fromX, oy: fromY }, brokenChild, shkp);
+                const peaceful = shopkeeperPeacefulForDebt(shkp);
+                for (const [owner, value] of charges)
+                    loss += chargeShopkeeperForLostMerchandise(owner, value, { peaceful });
+            }
         }
         if (brokenChild === child) removeContainedObject(obj, child);
         brokenChild.contained = false;
