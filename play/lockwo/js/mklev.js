@@ -10,6 +10,8 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
+import { filler_region, lspo_map, fill_special_room } from './sp_lev.js';
+import { somex, somey, somexyspace, occupied } from './mkroom.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -502,7 +504,8 @@ async function makelevel() {
             g.level.flags.has_vault = true;
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
             if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
-            if (!is_branchlev()) rn2(3);
+            fill_special_room(vaultRoom);       // C ref: mklev.c:1330
+            if (!is_branchlev()) rn2(3);        // mk_knox_portal rn2(3)
             if (!rn2(3)) await makeniche(TELEP_TRAP);
         } else if (rnd_rect()) {
             // Fallback vault attempt — simplified
@@ -512,6 +515,21 @@ async function makelevel() {
     // Place dungeon branch
     if (branchp) {
         place_branch(branchp);
+    }
+
+    // C ref: mklev.c:1392-1402 — choose which fillable room gets bonus items
+    // This rn2(fillable_room_count) call must happen here regardless of whether
+    // fill_ordinary_room is called immediately or deferred to fastforward.
+    {
+        let fillable_room_count = 0;
+        for (let i = 0; i < (g.level.rooms?.length ?? 0); i++) {
+            const croom = g.level.rooms[i];
+            if (!croom || croom.hx <= 0) break;
+            if ((croom.rtype === OROOM || croom.rtype === THEMEROOM)
+                && croom.needfill === FILL_NORMAL)
+                fillable_room_count++;
+        }
+        if (fillable_room_count > 0) rn2(fillable_room_count);
     }
 
     // Fill rooms + mineralize: consumed by fastforward_fill_mineralize
@@ -580,6 +598,241 @@ const THEMEROOM_META = [
     { name: 'Twin businesses', frequency: 1, mindiff: 4 },
 ];
 
+const THEMEROOM_MAPS = {
+    'L-shaped': {
+        filler: [1, 1],
+        map: `-----xxx
+|...|xxx
+|...|xxx
+|...----
+|......|
+|......|
+|......|
+--------`,
+    },
+    'L-shaped, rot 1': {
+        filler: [5, 1],
+        map: `xxx-----
+xxx|...|
+xxx|...|
+----...|
+|......|
+|......|
+|......|
+--------`,
+    },
+    'L-shaped, rot 2': {
+        filler: [1, 1],
+        map: `--------
+|......|
+|......|
+|......|
+----...|
+xxx|...|
+xxx|...|
+xxx-----`,
+    },
+    'L-shaped, rot 3': {
+        filler: [1, 1],
+        map: `--------
+|......|
+|......|
+|......|
+|...----
+|...|xxx
+|...|xxx
+-----xxx`,
+    },
+    'Blocked center': {
+        filler: [1, 1],
+        map: `-----------
+|.........|
+|.........|
+|.........|
+|...LLL...|
+|...LLL...|
+|...LLL...|
+|.........|
+|.........|
+|.........|
+-----------`,
+    },
+    'Circular, small': {
+        filler: [3, 3],
+        map: `xx---xx
+x--.--x
+--...--
+|.....|
+--...--
+x--.--x
+xx---xx`,
+    },
+    'Circular, medium': {
+        filler: [4, 4],
+        map: `xx-----xx
+x--...--x
+--.....--
+|.......|
+|.......|
+|.......|
+--.....--
+x--...--x
+xx-----xx`,
+    },
+    'Circular, big': {
+        filler: [5, 5],
+        map: `xxx-----xxx
+x---...---x
+x-.......-x
+--.......--
+|.........|
+|.........|
+|.........|
+--.......--
+x-.......-x
+x---...---x
+xxx-----xxx`,
+    },
+    'T-shaped': {
+        filler: [5, 5],
+        map: `xxx-----xxx
+xxx|...|xxx
+xxx|...|xxx
+----...----
+|.........|
+|.........|
+|.........|
+-----------`,
+    },
+    'T-shaped, rot 1': {
+        filler: [2, 2],
+        map: `-----xxx
+|...|xxx
+|...|xxx
+|...----
+|......|
+|......|
+|......|
+|......|
+|...----
+|...|xxx
+|...|xxx
+-----xxx`,
+    },
+    'T-shaped, rot 2': {
+        filler: [2, 2],
+        map: `-----------
+|.........|
+|.........|
+|.........|
+----...----
+xxx|...|xxx
+xxx|...|xxx
+xxx-----xxx`,
+    },
+    'T-shaped, rot 3': {
+        filler: [5, 5],
+        map: `xxx-----
+xxx|...|
+xxx|...|
+----...|
+|......|
+|......|
+|......|
+----...|
+xxx|...|
+xxx|...|
+xxx-----`,
+    },
+    'S-shaped': {
+        filler: [2, 2],
+        map: `-----xxx
+|...|xxx
+|...|xxx
+|...----
+|......|
+|......|
+|......|
+----...|
+xxx|...|
+xxx|...|
+xxx-----`,
+    },
+    'S-shaped, rot 1': {
+        filler: [5, 5],
+        map: `xxx--------
+xxx|......|
+xxx|......|
+----......|
+|......----
+|......|xxx
+|......|xxx
+--------xxx`,
+    },
+    'Z-shaped': {
+        filler: [5, 5],
+        map: `xxx-----
+xxx|...|
+xxx|...|
+----...|
+|......|
+|......|
+|......|
+|...----
+|...|xxx
+|...|xxx
+-----xxx`,
+    },
+    'Z-shaped, rot 1': {
+        filler: [2, 2],
+        map: `--------xxx
+|......|xxx
+|......|xxx
+|......----
+----......|
+xxx|......|
+xxx|......|
+xxx--------`,
+    },
+    'Cross': {
+        filler: [6, 6],
+        map: `xxx-----xxx
+xxx|...|xxx
+xxx|...|xxx
+----...----
+|.........|
+|.........|
+|.........|
+----...----
+xxx|...|xxx
+xxx|...|xxx
+xxx-----xxx`,
+    },
+    'Four-leaf clover': {
+        filler: [6, 6],
+        map: `-----x-----
+|...|x|...|
+|...---...|
+|.........|
+---.....---
+xx|.....|xx
+---.....---
+|.........|
+|...---...|
+|...|x|...|
+-----x-----`,
+    },
+    'Water-surrounded vault': {
+        filler: null,
+        map: `}}}}}}
+}----}
+}|..|}
+}|..|}
+}----}
+}}}}}}`,
+    },
+};
+
 function is_themeroom_eligible(room, difficulty) {
     if (room.mindiff != null && difficulty < room.mindiff) return false;
     if (room.maxdiff != null && difficulty > room.maxdiff) return false;
@@ -601,6 +854,16 @@ async function themerooms_generate(difficulty) {
         }
     }
     if (!pick) return false;
+    const mapSpec = THEMEROOM_MAPS[pick.name];
+    if (mapSpec) {
+        const placed = lspo_map({
+            map: mapSpec.map,
+            contents: mapSpec.filler
+                ? () => filler_region(mapSpec.filler[0], mapSpec.filler[1])
+                : null,
+        });
+        return !!placed && !game.themeroom_failed;
+    }
     // For 'ordinary' rooms, create a standard room
     // For themed rooms with dynamic dimensions, consume those rn2 calls first
     const chance = 100;
@@ -1163,49 +1426,6 @@ function makecorridors() {
             join(a, b, true);
         }
     }
-}
-
-// ============================================================
-// Room helper functions
-// ============================================================
-
-function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
-function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
-
-function somexy(croom, c) {
-    if (!croom.nsubrooms) {
-        c.x = somex(croom);
-        c.y = somey(croom);
-        return true;
-    }
-    let try_cnt = 0;
-    while (try_cnt++ < 100) {
-        c.x = somex(croom);
-        c.y = somey(croom);
-        const loc = game.level.at(c.x, c.y);
-        if (loc && IS_WALL(loc.typ)) continue;
-        return true;
-    }
-    return false;
-}
-
-function occupied(x, y) {
-    const loc = game.level.at(x, y);
-    if (!loc) return false;
-    return !!(IS_FURNITURE(loc.typ) || loc.typ === LAVAPOOL || IS_POOL(loc.typ));
-}
-
-function somexyspace(croom, c) {
-    let trycnt = 0;
-    let okay;
-    do {
-        okay = somexy(croom, c) && isok(c.x, c.y) && !occupied(c.x, c.y);
-        if (okay) {
-            const loc = game.level.at(c.x, c.y);
-            okay = loc && (loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
-        }
-    } while (trycnt++ < 100 && !okay);
-    return okay;
 }
 
 // ============================================================
