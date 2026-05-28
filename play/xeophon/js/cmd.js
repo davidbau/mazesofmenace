@@ -8936,6 +8936,24 @@ function forceWeaponName(item) {
 }
 
 const FORCE_BLADE_NAME_RE = /\b(?:athame|axe|battle-axe|crysknife|dagger|knife|katana|saber|sabre|scalpel|short sword|broadsword|long sword|two-handed sword|tsurugi|wakizashi)\b/;
+const FORCE_WEAPON_LDAM_BY_NAME = new Map([
+    ['two-handed sword', 6], ['silver saber', 8], ['dwarvish spear', 8],
+    ['elven short sword', 8], ['orcish short sword', 8], ['dwarvish short sword', 8],
+    ['elven broadsword', 6], ['bill-guisarme', 10], ['lucern hammer', 6],
+    ['bec de corbin', 6], ['war hammer', 4], ['morning star', 6],
+    ['silver mace', 6], ['quarterstaff', 6], ['rubber hose', 3],
+    ['crysknife', 10], ['short sword', 8], ['broadsword', 6],
+    ['long sword', 12], ['runesword', 6], ['scimitar', 8],
+    ['wakizashi', 8], ['athame', 3], ['scalpel', 3], ['stiletto', 2],
+    ['worm tooth', 2], ['battle-axe', 6], ['partisan', 6],
+    ['ranseur', 4], ['spetum', 6], ['glaive', 10], ['halberd', 6],
+    ['bardiche', 4], ['voulge', 4], ['fauchard', 8], ['guisarme', 8],
+    ['mattock', 12], ['trident', 6], ['javelin', 6], ['spear', 8],
+    ['dagger', 3], ['knife', 2], ['katana', 12], ['tsurugi', 8],
+    ['saber', 8], ['sabre', 8], ['mace', 6], ['club', 3],
+    ['aklys', 3], ['flail', 4], ['axe', 4], ['lance', 10],
+    ['mjollnir', 4],
+]);
 
 function forceWeaponIsPick(item) {
     return PICK_DIG_NAME_RE.test(forceWeaponName(item).toLowerCase());
@@ -8947,11 +8965,15 @@ function forceWeaponIsBlade(item) {
 }
 
 function forceLockChance(item) {
-    const name = forceWeaponName(item).toLowerCase();
-    if (name.includes('dwarvish spear')) return 16;
-    if (name.includes('spear')) return 12;
-    if (name.includes('war hammer') || name.includes('mjollnir')) return 8;
-    if (name.includes('mace') || name.includes('club')) return 12;
+    const explicit = Number(item?.oc_wldam ?? item?.wldam ?? item?.ldam);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.trunc(explicit) * 2;
+    const name = forceWeaponName(item).toLowerCase()
+        .replace(/\b(?:very|thoroughly|rusty|corroded|burnt|rotted|greased|fixed|fireproof|rustproof)\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    for (const [weaponName, ldam] of FORCE_WEAPON_LDAM_BY_NAME) {
+        if (name === weaponName || name.endsWith(` ${weaponName}`)) return ldam * 2;
+    }
     return 8;
 }
 
@@ -8975,6 +8997,29 @@ function forceBladeBreakMessage(item) {
     return quantity > 1 ? `One of your ${name} broke!` : `Your ${name} broke!`;
 }
 
+function disturbBuriedZombieCorpseTimersAt(x, y) {
+    const level = game.level;
+    if (!level) return;
+    const moves = game.moves || 0;
+    const seen = new Set();
+    const scan = (obj, fromBuriedList = false) => {
+        if (!obj || seen.has(obj)) return;
+        seen.add(obj);
+        if (!fromBuriedList && !obj.buried) return;
+        if (!isCorpseItem(obj)) return;
+        if (obj.ox == null || obj.oy == null) return;
+        const ox = Number(obj.ox);
+        const oy = Number(obj.oy);
+        if (!Number.isFinite(ox) || !Number.isFinite(oy)) return;
+        if (Math.abs(ox - x) > 1 || Math.abs(oy - y) > 1) return;
+        if (typeof obj.zombifyTurn !== 'number' || obj.zombifyTurn <= moves) return;
+        const remaining = obj.zombifyTurn - moves;
+        obj.zombifyTurn = moves + Math.max(1, Math.trunc((remaining * 2) / 3));
+    };
+    for (const obj of level.buriedobjlist || []) scan(obj, true);
+    for (const obj of level.objects || []) scan(obj, false);
+}
+
 function wakeNearbyFromForceLock(messages) {
     const ux = game.u?.ux || 0;
     const uy = game.u?.uy || 0;
@@ -8993,16 +9038,17 @@ function wakeNearbyFromForceLock(messages) {
             mon.waiting = false;
         }
     }
+    disturbBuriedZombieCorpseTimersAt(ux, uy);
 }
 
 export function processForceLockOccupationTick(force) {
     const messages = [];
     if (!force) return { stop: false, messages };
-    const weapon = force.weapon;
-    if (!weapon || !(game.inventory || []).includes(weapon)) {
+    if (forceLockOccupationShouldGiveUp(force)) {
         messages.push('You give up your attempt to force the lock.');
         return { stop: true, messages };
     }
+    const weapon = force.weapon;
     if (!force.picktyp) {
         wakeNearbyFromForceLock(messages);
         return { stop: false, messages };
@@ -9019,6 +9065,11 @@ export function processForceLockOccupationTick(force) {
     messages.push('You give up your attempt to force the lock.');
     exerciseAttribute(A_DEX, true);
     return { stop: true, messages };
+}
+
+export function forceLockOccupationShouldGiveUp(force) {
+    const weapon = force?.weapon;
+    return !weapon || !(game.inventory || []).includes(weapon) || !itemIsWielded(weapon) || polyselfNoHands();
 }
 
 function isForceableBoxObject(obj) {
@@ -9295,7 +9346,7 @@ export function finishForceLock(force) {
     const chest = force?.chest;
     if (!chest) return false;
 
-    rn2(19);
+    exerciseAttribute(force.picktyp ? A_DEX : A_STR, true);
     const destroyed = !force.picktyp && !rn2(3);
     if (!destroyed) {
         billDummyAlteredShopObject(chest);
@@ -12111,11 +12162,19 @@ function polymorphReplacementForDipTarget(target) {
     return replacement;
 }
 
-function replaceInventoryObjectWithPolymorphResult(target, replacement) {
+function replaceInventoryObjectWithPolymorphResult(target, replacement, options = {}) {
     const preservedLetter = target.letter;
+    const preservedEquipment = options.preserveEquipment ? {
+        wielded: !!target.wielded,
+        alternate: !!target.alternate,
+        quivered: !!target.quivered,
+        worn: target.worn,
+        owornmask: target.owornmask,
+    } : null;
     for (const key of Object.keys(target)) delete target[key];
     Object.assign(target, replacement);
     target.letter = preservedLetter;
+    if (preservedEquipment) options.preserveEquipment(target, preservedEquipment);
     syncCarriedFigurineTransformTimer(target);
     refreshInventoryObjectLine(target);
     if (target.unpaid) syncUnpaidBillLine(target);
@@ -12247,6 +12306,7 @@ const STONE_TO_FLESH_MINERAL_GEM_NAMES = new Set([
 ]);
 
 function stoneToFleshObjectMaterial(item) {
+    if (item?.otyp === STATUE || isFigurineObject(item)) return 'mineral';
     const explicit = normalizeStoneToFleshMaterial(item?.oc_material || item?.material);
     if (explicit) return explicit;
     if (isBoulderObject(item)) return 'mineral';
@@ -12328,16 +12388,75 @@ function stoneToFleshObjectResists(item) {
     return rn2(100) < (item?.artifact || item?.oartifact ? 98 : 2);
 }
 
+function stoneToFleshCorpstatMonsterIsGolem(data = {}) {
+    const name = String(data.name || '').toLowerCase();
+    const mlet = data.mlet ?? data.glyph ?? '';
+    return name.endsWith(' golem') || mlet === "'";
+}
+
+function stoneToFleshCorpstatMonsterIsVegetarian(data = {}) {
+    if (!data || stoneToFleshCorpstatMonsterIsGolem(data)) return false;
+    if (data.noncorporeal) return true;
+    const name = String(data.name || '').toLowerCase();
+    const mlet = data.mlet ?? data.glyph ?? '';
+    const lowerMlet = String(mlet).toLowerCase();
+    if (['b', 'j', 'f', 'v', 'y', 'blob', 'jelly', 'fungus', 'vortex', 'light'].includes(lowerMlet))
+        return true;
+    if ((mlet === 'E' || lowerMlet === 'elemental') && name !== 'stalker')
+        return true;
+    if ((mlet === 'P' || lowerMlet === 'pudding') && name !== 'black pudding')
+        return true;
+    return false;
+}
+
+function isStoneToFleshVegetarianCorpstatObject(item) {
+    if (!(item?.otyp === STATUE || isFigurineObject(item))) return false;
+    const material = stoneToFleshObjectMaterial(item);
+    return (material === 'mineral' || material === 'gemstone')
+        && stoneToFleshCorpstatMonsterIsVegetarian(item.corpsenm);
+}
+
 function stoneToFleshReplacementForObject(item) {
     if (isStoneToFleshMarbleWandObject(item))
         return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatStickReplacement(item);
     if (isStoneToFleshMineralRingObject(item))
         return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatRingReplacement(item);
-    if (isBoulderObject(item))
-        return stoneToFleshObjectResists(item) ? null : stoneToFleshEnormousMeatballReplacement(item);
+    if (isBoulderObject(item)) {
+        if (stoneToFleshObjectResists(item)) return null;
+        applySokobanGuilt();
+        return stoneToFleshEnormousMeatballReplacement(item);
+    }
+    if (isStoneToFleshVegetarianCorpstatObject(item))
+        return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatballReplacement(item);
     if (isStoneToFleshGemObject(item))
         return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatballReplacement(item);
     return null;
+}
+
+function isMeatRingObject(item) {
+    return item?.otyp === MEAT_RING || objectKindKey(item) === 'meat ring';
+}
+
+function preserveStoneToFleshEquipmentState(target, state) {
+    if (state.wielded) target.wielded = true;
+    if (state.alternate) target.alternate = true;
+    if (state.quivered) target.quivered = true;
+    if (!isMeatRingObject(target)) return;
+    if (state.worn === 'left' || state.worn === 'right') target.worn = state.worn;
+    if (state.owornmask != null) target.owornmask = state.owornmask;
+}
+
+function heroPolyselfCarnivorous() {
+    const form = polyselfForm() || {};
+    return !!(form.carnivorous || form.carnivore);
+}
+
+function stoneToFleshSmellMessage() {
+    const role = String(game.urole?.name?.m || game._startup_role || '').toLowerCase();
+    const brokeVegetarian = (game.u?.uconduct?.unvegetarian || 0) > 0;
+    return role !== 'monk' && brokeVegetarian && heroPolyselfCarnivorous()
+        ? 'You smell a delicious smell.'
+        : 'You smell the odor of meat.';
 }
 
 function stoneToFleshMergeSkipItem(item) {
@@ -12395,12 +12514,14 @@ function stoneToFleshInventoryEffect(messages = []) {
         const replacement = stoneToFleshReplacementForObject(item);
         if (!replacement) continue;
         markObjectShopBillUsedUp(item);
-        replaceInventoryObjectWithPolymorphResult(item, replacement);
+        replaceInventoryObjectWithPolymorphResult(item, replacement, {
+            preserveEquipment: preserveStoneToFleshEquipmentState,
+        });
         transformed = true;
     }
     if (transformed) {
         mergeStoneToFleshInventoryResults();
-        messages.push('You smell the odor of meat.');
+        messages.push(stoneToFleshSmellMessage());
     }
     return { transformed: transformed || rescued, messages };
 }
@@ -12425,7 +12546,7 @@ function stoneToFleshFloorEffect(x = game.u?.ux || 0, y = game.u?.uy || 0) {
     });
     if (transformed) {
         newsym(x, y);
-        messages.push('You smell the odor of meat.');
+        messages.push(stoneToFleshSmellMessage());
         messages.push(...alterationMessages);
     }
     return { transformed, messages };
@@ -13289,8 +13410,71 @@ function wakeNearbyMonstersFromPotionHit(mon) {
     }
 }
 
+function vampshifterRevivalBaseName(mon) {
+    const data = mon?.data || {};
+    const rawBase = mon?.vampBase || data.vampBase || mon?.chamName || data.chamName
+        || mon?.cham || data.cham || '';
+    const base = String(rawBase || '').toLowerCase();
+    if (base.includes('vlad')) return 'Vlad the Impaler';
+    if (base === 'vampire lord' || base === 'vampire leader' || base === 'vampire lady')
+        return base === 'vampire lady' ? 'vampire leader' : base;
+    if (base === 'vampire') return 'vampire';
+    if ((mon?.vampshifter || data.vampshifter) && String(data.name || mon?.name || '').toLowerCase() !== 'vampire')
+        return 'vampire';
+    return '';
+}
+
+function reviveVampshifterFromPotionKill(mon, messages) {
+    const baseName = vampshifterRevivalBaseName(mon);
+    if (!baseName) return false;
+    const currentName = String(mon?.data?.name || mon?.name || '').toLowerCase();
+    if (currentName === String(baseName).toLowerCase()) return false;
+    if ((game._genocided_monsters || []).includes(baseName)) return false;
+
+    const oldData = mon.data || {};
+    const targetName = mon.givenName || `the ${oldData.name || mon.name || 'monster'}`;
+    const nonliving = oldData.nonliving || oldData.mlet === 'Z' || oldData.glyph === 'Z'
+        || String(oldData.name || '').includes('zombie') || String(oldData.name || '').endsWith(' golem');
+    messages.push(`You ${nonliving ? 'destroy' : 'kill'} ${targetName}!`);
+
+    const baseData = monsterByRndName(baseName) || RANDOM_MONSTER_BY_NAME.get(baseName);
+    if (!baseData) return false;
+    const oldVisible = monsterCanBeSeenForPotionEffect(mon);
+    const oldDisplayName = potionHitMonsterName(mon);
+    const specialDeath = oldData.nonliving || oldData.noncorporeal || oldData.amorphous
+        || oldData.name === 'fog cloud' || oldData.mlet === 'ghost';
+    const level = adjustedMonsterLevel(baseData);
+    const maxHp = Math.max(10, monster_hp(baseData, level));
+    mon.dead = false;
+    mon.data = { ...baseData, hpLevel: level };
+    mon.name = baseData.name;
+    mon.mlet = baseData.mlet;
+    mon.glyph = baseData.glyph;
+    mon.color = baseData.color;
+    mon.m_lev = level;
+    mon.mlevel = level;
+    mon.mhpmax = maxHp;
+    mon.mhp = maxHp;
+    mon.mcanmove = true;
+    mon.mfrozen = 0;
+    mon.msleeping = 0;
+    mon.vampshifter = false;
+    delete mon.vampBase;
+    delete mon.chamName;
+    delete mon.cham;
+    if (oldVisible && monsterCanBeSeenForPotionEffect(mon) && !heroIsHallucinating()) {
+        const before = specialDeath ? oldDisplayName : oldDisplayName.replace(/^The /, 'The seemingly dead ');
+        const action = specialDeath ? 'suddenly reconstitutes' : 'suddenly transforms';
+        messages.push(`${before} ${action} and rises as ${indefiniteArticle(baseData.name)} ${baseData.name}!`);
+    }
+    set_malign(mon);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
 function killMonsterFromPotionHit(mon, messages) {
     if (!mon || mon.dead) return;
+    if (reviveVampshifterFromPotionKill(mon, messages)) return;
     mon.dead = true;
     const data = mon.data || {};
     const targetName = mon.givenName || `the ${data.name || mon.name || 'monster'}`;
@@ -13643,6 +13827,7 @@ function damageHeroFromBurningOilExplosion(damage, messages) {
     const ux = game.u?.ux ?? -99;
     const uy = game.u?.uy ?? -99;
     messages.push('You are caught in the burning oil!');
+    burnAwayHeroSlime(messages);
     const fireInventory = fireDamageInventory(damage, true);
     messages.push(...fireInventory.messages);
     const totalDamage = (game.u?.fireResistance ? 0 : damage) + (fireInventory.damage || 0);
@@ -13656,6 +13841,42 @@ function damageHeroFromBurningOilExplosion(damage, messages) {
     newsym(ux, uy);
 }
 
+function heroIsSliming() {
+    return !!(game.u?._slimingTimeout || game.u?.sliming || game.u?.slimed
+        || /\bSlime(?:d)?\b/.test(game.u?._statusSuffix || ''));
+}
+
+function burnAwayHeroSlime(messages = []) {
+    if (!heroIsSliming()) return false;
+    game.u._slimingTimeout = 0;
+    game.u.sliming = false;
+    game.u.slimed = false;
+    removeHeroStatusSuffix('Slime');
+    removeHeroStatusSuffix('Slimed');
+    messages.push('The slime that covers you is burned away!');
+    return true;
+}
+
+function burnFloorObjectsFromBurningOilExplosion(x, y, messages) {
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            const sx = x + dx;
+            const sy = y + dy;
+            const webMessages = burnFireRayWebTrap(sx, sy, {
+                previousMessage: messages[messages.length - 1] || '',
+            });
+            if (webMessages.length) messages.push(...webMessages);
+            const floorFire = burnFloorObjectsByFire(sx, sy, {
+                heroCaused: true,
+                igniteFeedback: false,
+            });
+            if (floorFire.messages.length) messages.push(...floorFire.messages);
+            if (floorFire.count && couldsee(sx, sy))
+                messages.push(`You ${game.u?.blind ? 'smell a whiff' : 'see a puff'} of smoke.`);
+        }
+    }
+}
+
 function explodeBurningOilPotion(potion, x, y, messages) {
     const damage = d(potion?.odiluted ? 3 : 4, 4);
     potion.lamplit = false;
@@ -13665,6 +13886,8 @@ function explodeBurningOilPotion(potion, x, y, messages) {
 
     if (!heroIsDeaf())
         messages.push(burningOilExplosionVisible(x, y) ? 'Boom!' : 'You hear a blast.');
+
+    burnFloorObjectsFromBurningOilExplosion(x, y, messages);
 
     for (const target of [...(game.level?.monsters || [])]) {
         if (!target || target.dead || (target.mhp ?? 1) <= 0) continue;
@@ -20566,8 +20789,7 @@ function isProjectileImpactContainer(obj) {
 function projectileLandingIsSoft(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false;
-    return IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT
-        || loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
+    return IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT;
 }
 
 function projectileImpactGlassCandidate(obj) {
@@ -20685,6 +20907,20 @@ function placeUnstackedFloorObject(obj) {
     return obj;
 }
 
+function prepareProjectileFloorObject(obj, x, y) {
+    if (!obj) return obj;
+    obj.contained = false;
+    obj.container = null;
+    obj.ox = x;
+    obj.oy = y;
+    obj.hidden = false;
+    obj.buried = false;
+    obj.transientProjectile = false;
+    delete obj.nobj;
+    delete obj.nexthere;
+    return obj;
+}
+
 function stackPlacedProjectileObject(obj) {
     const objects = game.level?.objects || [];
     if (!objects.includes(obj)) return obj;
@@ -20731,6 +20967,7 @@ function autoSellProjectileLandingObject(obj, x, y, options = {}) {
 
 function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
     const messages = [];
+    prepareProjectileFloorObject(obj, x, y);
     const hardLanding = !projectileLandingIsSoft(x, y);
     if (hardLanding) {
         const breakKind = projectileTopLevelBreakKind(obj, options);
@@ -20750,6 +20987,17 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
             };
         }
     }
+    if (earthFloorEffects(obj, x, y, messages, 'fall', { usedUpShopBillOnDestroy: true })) {
+        return {
+            object: null,
+            impact: { loss: 0, broke: false, messages },
+            topBreak: { broke: false, breakKind: '', value: 0 },
+            floorEffects: { consumed: true },
+            shopLanding: { handled: false, shkp: null, message: '', messages: [], returned: false, charged: false },
+            shopSale: { handled: false, shkp: null, message: '', messages: [] },
+            messages,
+        };
+    }
     const placed = placeUnstackedFloorObject(obj);
     const impact = !hardLanding
         ? { loss: 0, broke: false, messages }
@@ -20760,7 +21008,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
         : autoSellProjectileLandingObject(placed, x, y, options);
     if (shopSale.message) messages.push(shopSale.message);
     const stacked = stackPlacedProjectileObject(placed);
-    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, shopLanding, shopSale, messages };
+    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, floorEffects: { consumed: false }, shopLanding, shopSale, messages };
 }
 
 function markNoChargeRecursively(obj) {
@@ -30808,6 +31056,10 @@ function identifiedInventoryLine(item) {
             name = `homemade tin of ${meat}`;
         }
         phrase = `${buc} ${name}`;
+        if (isMeatRingObject(item)) {
+            if (item.worn === 'right' || item.line?.includes('(on right hand)')) suffix = ' (on right hand)';
+            else if (item.worn === 'left' || item.line?.includes('(on left hand)')) suffix = ' (on left hand)';
+        } else if (item.quivered) suffix = quiverSuffix(item);
     } else if (cls === 'gem') {
         const gem = item.actualKind || (item.gemRoll
             ? IDENTIFIED_GEM_NAMES.find(([upper]) => item.gemRoll <= upper)?.[1]
@@ -30948,10 +31200,13 @@ function normalInventoryLine(item) {
     } else {
         const namedWater = cls === 'potion' && kind === 'water' && (item.blessed || item.cursed);
         phrase = kind === 'sack' || kind === 'holy water' || kind === 'unholy water' || namedWater ? name : `${knownState}${name}`;
-        if (item.quivered) suffix = quiverSuffix(item);
+        if (isMeatRingObject(item)) {
+            if (item.worn === 'right' || item.line?.includes('(on right hand)')) suffix = ' (on right hand)';
+            else if (item.worn === 'left' || item.line?.includes('(on left hand)')) suffix = ' (on left hand)';
+        } else if (item.quivered) suffix = quiverSuffix(item);
     }
 
-    if (quan > 1 && cls !== 'weapon') phrase = `${quan} ${phrase}`;
+    if (quan > 1 && cls !== 'weapon' && !item.wielded && !item.alternate) phrase = `${quan} ${phrase}`;
     else if (quan === 1) phrase = `${/^[aeiou]/i.test(phrase) ? 'an' : 'a'} ${phrase}`;
     return `${letter} - ${phrase}${suffix}`;
 }

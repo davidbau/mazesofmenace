@@ -23,7 +23,7 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
-import { clearBuriedOrganicRotTimer, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, startCorpseTimeout } from './ice.js';
+import { clearBuriedOrganicRotTimer, clearCorpseTimeout, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, startCorpseTimeout } from './ice.js';
 import { applySlimeMoldFruitFields } from './fruit.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
@@ -19160,30 +19160,51 @@ function themeroom_ghost_adventurer_rng(rows, startX, startY) {
     if (rn2(100) < 20) mkobj_at(SCROLL_CLASS, 0, 0, true);
 }
 
-function themeroom_buried_zombies(croom) {
+function themeroomBuriedZombieSpecies() {
     const zombifiable = ['kobold', 'gnome', 'orc', 'dwarf'];
+    const difficulty = level_difficulty();
+    if (difficulty > 3) {
+        zombifiable.push('elf', 'human');
+        if (difficulty > 6) zombifiable.push('ettin', 'giant');
+    }
+    return zombifiable;
+}
+
+function shuffleThemeroomSpecies(zombifiable) {
+    for (let n = zombifiable.length; n > 1; n--) {
+        const j = rn2(n);
+        [zombifiable[n - 1], zombifiable[j]] = [zombifiable[j], zombifiable[n - 1]];
+    }
+}
+
+function themeroom_buried_zombies(croom) {
+    const zombifiable = themeroomBuriedZombieSpecies();
     const count = Math.trunc(((croom.hx - croom.lx + 1) * (croom.hy - croom.ly + 1)) / 2);
     for (let i = 0; i < count; i++) {
-        for (let n = zombifiable.length; n > 1; n--) {
-            const j = rn2(n);
-            [zombifiable[n - 1], zombifiable[j]] = [zombifiable[j], zombifiable[n - 1]];
-        }
+        shuffleThemeroomSpecies(zombifiable);
         const pos = { x: 0, y: 0 };
         somexyspace(croom, pos);
         const x = pos.x;
         const y = pos.y;
         const corpse = mksobj(CORPSE, true, false);
-        rnz(25);
-        rn2(100);
-        rn2(21);
         const corpseName = zombifiable[0];
         corpse.corpsenm = RANDOM_MONSTER_BY_NAME.get(corpseName) || { name: corpseName, neuter: false };
+        startCorpseTimeout(corpse, { zombify: false });
+        clearCorpseTimeout(corpse);
+        rn2(100);
+        corpse.zombifyTurn = Math.max(game.moves || 0, 1) + rn1(21, 990);
         corpse.buried = true;
         corpse.hidden = true;
         Object.assign(corpse, object_display(corpse), { ox: x, oy: y });
-        game.level.objects.push(corpse);
+        game.level.buriedobjlist ??= [];
+        game.level.buriedobjlist.push(corpse);
     }
 }
+
+export const __mklevTestHooks = {
+    themeroomBuriedZombieSpecies,
+    themeroom_buried_zombies,
+};
 
 async function apply_themeroom_fill(fill, croom, rows = null, startX = 0, startY = 0) {
     if (fill?.name) croom.themeFillName = fill.name;
