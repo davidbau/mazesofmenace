@@ -69,6 +69,51 @@ function polyselfForm() {
     return game.u?._polyself_form || null;
 }
 
+function addPolyselfDietOverlay(map, names, diet) {
+    for (const name of names) map.set(String(name).toLowerCase(), diet);
+}
+
+const POLYSELF_DIET_OVERLAY = new Map();
+addPolyselfDietOverlay(POLYSELF_DIET_OVERLAY, [
+    'little dog', 'dog', 'large dog',
+    'kitten', 'housecat', 'large cat',
+    'wolf', 'winter wolf cub', 'winter wolf', 'warg',
+    'hell hound pup', 'hell hound',
+    'baby gray dragon', 'baby gold dragon', 'baby silver dragon',
+    'baby shimmering dragon', 'baby red dragon', 'baby white dragon',
+    'baby orange dragon', 'baby black dragon', 'baby blue dragon',
+    'baby green dragon', 'baby yellow dragon',
+    'gray dragon', 'gold dragon', 'silver dragon', 'shimmering dragon',
+    'red dragon', 'white dragon', 'orange dragon', 'black dragon',
+    'blue dragon', 'green dragon', 'yellow dragon',
+    'carnivorous ape',
+    'piranha', 'shark', 'giant eel', 'electric eel', 'kraken',
+    'wererat', 'werejackal', 'werewolf',
+], { carnivorous: true, humanoid: false });
+addPolyselfDietOverlay(POLYSELF_DIET_OVERLAY, [
+    'dwarf', 'dwarf lord', 'dwarf king',
+    'goblin', 'hobgoblin', 'hill orc', 'Mordor orc', 'Uruk-hai', 'orc shaman', 'orc-captain',
+], { carnivorous: true, herbivorous: true, humanoid: true });
+addPolyselfDietOverlay(POLYSELF_DIET_OVERLAY, [
+    'pony', 'horse', 'warhorse',
+], { herbivorous: true, humanoid: false });
+addPolyselfDietOverlay(POLYSELF_DIET_OVERLAY, [
+    'rock mole', 'rust monster', 'xorn',
+], { metallivorous: true, humanoid: false });
+
+function polyselfFormWithDiet() {
+    const form = polyselfForm();
+    if (!form) return null;
+    const name = String(form.name || '').toLowerCase();
+    const overlay = POLYSELF_DIET_OVERLAY.get(name);
+    if (!overlay) return form;
+    const result = { ...overlay, ...form };
+    if (!Object.prototype.hasOwnProperty.call(result, 'carnivorous')
+        && Object.prototype.hasOwnProperty.call(form, 'carnivore'))
+        result.carnivorous = form.carnivore;
+    return result;
+}
+
 function polyselfNoHands() {
     return !!polyselfForm()?.nohands;
 }
@@ -3333,6 +3378,16 @@ function queueImpactDroppedObjects(targetLevel, objects) {
     game._impact_drop_migrations.set(key, queued);
 }
 
+function emptyImpactDropResult(overrides = {}) {
+    return {
+        message: '',
+        objects: [],
+        objectCount: 0,
+        fallenCount: 0,
+        ...overrides,
+    };
+}
+
 function impactDropRandomLandingSpot() {
     const candidates = [];
     for (let x = 1; x < COLNO; x++)
@@ -3362,13 +3417,21 @@ function deliverQueuedImpactDroppedObjects(targetLevel) {
     }
 }
 
+function impactDropCandidatePile(x, y, { missile = null } = {}) {
+    return (game.level?.objects || []).filter(obj =>
+        obj !== missile && !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
+}
+
+function impactDropPileQuantity(pile) {
+    return pile.reduce((sum, obj) => sum + (obj.quan || 1), 0);
+}
+
 function impactDropFloorObjects(x, y, trap, options = {}) {
     const gateText = impactDropGateText(trap);
-    if (!gateText || !game.level?.objects?.length) return { message: '', objects: [] };
-    if (!options.withHero && !options.targetLevel) return { message: '', objects: [] };
-    const pile = (game.level.objects || []).filter(obj =>
-        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
-    if (!pile.length) return { message: '', objects: [] };
+    if (!gateText || !game.level?.objects?.length) return emptyImpactDropResult();
+    if (!options.withHero && !options.targetLevel) return emptyImpactDropResult();
+    const pile = impactDropCandidatePile(x, y, { missile: options.missile });
+    if (!pile.length) return emptyImpactDropResult();
 
     let objectCount = 0;
     let fallenCount = 0;
@@ -3377,22 +3440,28 @@ function impactDropFloorObjects(x, y, trap, options = {}) {
         const quantity = obj.quan || 1;
         objectCount += quantity;
         if (obj === game.u?.uball || obj === game.u?.uchain) continue;
+        if (options.missileImpact && options.missile?.otyp === ROCK && obj.otyp === BOULDER) continue;
         if (rn2(obj.otyp === BOULDER ? 30 : 3)) continue;
         fallen.push(obj);
         fallenCount += quantity;
     }
-    if (!fallen.length) return { message: '', objects: [] };
+    if (!fallen.length) return emptyImpactDropResult({ objectCount });
 
     game.level.objects = (game.level.objects || []).filter(obj => !fallen.includes(obj));
     newsym(x, y);
 
     let message = '';
-    if (!game.u?.blind && couldsee(x, y)) {
+    const visible = !game.u?.blind && (options.missileImpact ? cansee(x, y) : couldsee(x, y));
+    if (visible) {
         const what = fallenCount === 1 ? 'object falls' : 'objects fall';
-        if (fallenCount === objectCount)
+        if (options.missileImpact) {
+            const qualifier = fallenCount === objectCount ? 'the ' : fallenCount === 1 ? 'an' : '';
+            message = `From the impact, ${qualifier}other ${what}.`;
+        } else if (fallenCount === objectCount) {
             message = `${fallenCount === 1 ? 'The' : 'All the'} adjacent ${what} ${gateText}.`;
-        else
+        } else {
             message = `${fallenCount === 1 ? 'One of the' : 'Some of the'} adjacent ${fallenCount === 1 ? 'objects falls' : what} ${gateText}.`;
+        }
     }
     let debitDelta = 0;
     let robbedDelta = 0;
@@ -3412,9 +3481,9 @@ function impactDropFloorObjects(x, y, trap, options = {}) {
 
     if (!options.withHero) {
         queueImpactDroppedObjects(options.targetLevel, fallen);
-        return { message, objects: [] };
+        return emptyImpactDropResult({ message, objectCount, fallenCount });
     }
-    return { message, objects: fallen };
+    return emptyImpactDropResult({ message, objects: fallen, objectCount, fallenCount });
 }
 
 function impactDropObjectClass(obj) {
@@ -3440,12 +3509,11 @@ function impactDropBreakKind(obj) {
 }
 
 function impactDropObjectBreaks(obj) {
-    const kind = impactDropBreakKind(obj);
-    if (!kind) return '';
+    if (!obj) return '';
     const ordinaryResistChance = 1;
     const artifactResistChance = 99;
     if (rn2(100) < (obj?.artifact ? artifactResistChance : ordinaryResistChance)) return '';
-    return kind;
+    return impactDropBreakKind(obj);
 }
 
 function shipObjectMuffledBreakResult(breakKind) {
@@ -12447,7 +12515,7 @@ function preserveStoneToFleshEquipmentState(target, state) {
 }
 
 function heroPolyselfCarnivorous() {
-    const form = polyselfForm() || {};
+    const form = polyselfFormWithDiet() || {};
     return !!(form.carnivorous || form.carnivore);
 }
 
@@ -13858,6 +13926,7 @@ function burnAwayHeroSlime(messages = []) {
 }
 
 function burnFloorObjectsFromBurningOilExplosion(x, y, messages) {
+    let heardGas = false;
     for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
             const sx = x + dx;
@@ -13866,6 +13935,21 @@ function burnFloorObjectsFromBurningOilExplosion(x, y, messages) {
                 previousMessage: messages[messages.length - 1] || '',
             });
             if (webMessages.length) messages.push(...webMessages);
+            const ice = applyFireRayIceTerrain(sx, sy, {
+                heroRay: true,
+                recordKill: recordVanquished,
+                buriedMerchandiseDebtMessage,
+            });
+            if (ice.messages.length) messages.push(...ice.messages);
+            if (!ice.handled) {
+                const terrain = applyFireRayWaterTerrain(sx, sy, {
+                    previousMessage: messages[messages.length - 1] || '',
+                    heardGas,
+                    heroRay: true,
+                });
+                if (terrain.messages.length) messages.push(...terrain.messages);
+                heardGas = terrain.heardGas;
+            }
             const floorFire = burnFloorObjectsByFire(sx, sy, {
                 heroCaused: true,
                 igniteFeedback: false,
@@ -14211,6 +14295,55 @@ function heroThrownPotionHitMonster(potion, mon) {
     const shopDebt = convertUnpaidObjectToShopDebt(potion, { silent: true, broken: true });
     if (!shopDebt.charged) potion.no_charge = true;
     return messages;
+}
+
+const DEFERRED_SPECIAL_UPWARD_POTION_KINDS = new Set(['oil', 'acid', 'polymorph']);
+
+function supportsHeroThrownPotionUpwardHit(potion) {
+    if (!isPotionObject(potion)) return false;
+    const kind = thrownPotionEffectKind(potion);
+    return !!kind && kind !== 'potion' && !kind.endsWith(' potion')
+        && !DEFERRED_SPECIAL_UPWARD_POTION_KINDS.has(kind);
+}
+
+function heroThrownPotionSelfHitMessages(potion, action) {
+    const messages = [];
+    messages.push(`${floorObjectSubject({ ...potion, quan: 1 })} ${action} the ceiling, then falls back on top of your head.`);
+    const bottle = chestShatterBottleName();
+    messages.push(`The ${bottle} crashes on your head and breaks into shards.`);
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - rnd(2));
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'killed by a thrown potion';
+            messages.push('You die...');
+        }
+    } else {
+        rnd(2);
+    }
+    if (!isPotionOfOil(potion))
+        messages.push(`The ${pickupObjectName({ ...potion, quan: 1 })} evaporates.`);
+    potionBreathe(potion, messages);
+    const shopDebt = convertUnpaidObjectToShopDebt(potion, { silent: true, broken: true });
+    if (!shopDebt.charged) potion.no_charge = true;
+    return messages;
+}
+
+function heroThrownPotionCeilingBreakMessages(potion, breakKind) {
+    const messages = [`${floorObjectSubject({ ...potion, quan: 1 })} hits the ceiling.`];
+    projectileTopLevelBreakMessage(potion, breakKind, messages);
+    brokenPotionBreathe(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
+    const shopDebt = convertUnpaidObjectToShopDebt(potion, { silent: true, broken: true });
+    if (!shopDebt.charged) potion.no_charge = true;
+    return messages;
+}
+
+function heroThrownPotionUpwardMessages(potion) {
+    if (rn2(5)) {
+        const breakKind = projectileTopLevelBreakKind(potion);
+        if (breakKind) return heroThrownPotionCeilingBreakMessages(potion, breakKind);
+        return heroThrownPotionSelfHitMessages(potion, 'hits');
+    }
+    return heroThrownPotionSelfHitMessages(potion, 'almost hits');
 }
 
 function dipPotionAlchemyExplosion(target, amount, messages) {
@@ -15274,7 +15407,7 @@ function heroFoodIsWereForm() {
 }
 
 function heroFoodIsCarnivorousNonHumanoid() {
-    const form = polyselfForm() || {};
+    const form = polyselfFormWithDiet() || {};
     return !!(form.carnivorous || form.carnivore) && form.humanoid === false;
 }
 
@@ -17205,7 +17338,7 @@ function tinVariety(item, display = false) {
 }
 
 function heroIsMetallivorous() {
-    return !!(polyselfForm()?.metallivorous || game.u?.metallivorous);
+    return !!(polyselfFormWithDiet()?.metallivorous || game.u?.metallivorous);
 }
 
 function wieldedItem() {
@@ -20965,6 +21098,76 @@ function autoSellProjectileLandingObject(obj, x, y, options = {}) {
     return { ...sale, sold: true, prompt: false, message, messages: message ? [message] : [] };
 }
 
+function projectileShipObjectResult(overrides = {}) {
+    return {
+        handled: false,
+        broke: false,
+        breakKind: '',
+        noDrop: false,
+        target: null,
+        debt: null,
+        impact: emptyImpactDropResult(),
+        ...overrides,
+    };
+}
+
+function remoteProjectileShaftTrapAt(obj, x, y, { allowGold = false } = {}) {
+    if (!obj || (!allowGold && shopBillableGold(obj))) return null;
+    if (obj === game.u?.uball || obj === game.u?.uchain) return null;
+    if (game.u?.ux === x && game.u?.uy === y) return null;
+    const mon = (game.level?.monsters || []).find(candidate =>
+        candidate.mx === x && candidate.my === y && !candidate.dead
+        && (candidate.mhp == null || candidate.mhp > 0));
+    if (mon) return null;
+    const trap = boulderFillTrapAt(x, y);
+    if (!trap?.tseen || (trap.ttyp !== HOLE && trap.ttyp !== TRAPDOOR)) return null;
+    if (!canFallThroughLevel(game.u?.uz)) return null;
+    return trap;
+}
+
+function maybeShipRemoteProjectileObject(obj, x, y, messages, options = {}) {
+    const trap = remoteProjectileShaftTrapAt(obj, x, y, options);
+    if (!trap) return projectileShipObjectResult();
+    const target = sitFallTargetLevel(trap);
+    if (!target) return projectileShipObjectResult();
+    const gateText = impactDropGateText(trap);
+    const impactQuantity = impactDropPileQuantity(impactDropCandidatePile(x, y, { missile: obj }));
+    const noDrop = !!rn2(3);
+    if (gateText && !game.u?.blind && cansee(x, y)) {
+        const subject = floorObjectSubject(obj);
+        if (impactQuantity) {
+            const other = impactQuantity === 1 ? 'another object' : 'other objects';
+            const hit = floorEffectsObjectVerb(obj, 'hits', 'hit');
+            const suffix = noDrop ? '' : ` and ${floorEffectsObjectVerb(obj, 'falls', 'fall')} ${gateText}`;
+            messages.push(`${subject} ${hit} ${other}${suffix}.`);
+        } else if (!noDrop) {
+            messages.push(`${subject} ${floorEffectsObjectVerb(obj, 'falls', 'fall')} ${gateText}.`);
+        }
+    }
+    if (noDrop) {
+        const impact = impactQuantity
+            ? impactDropFloorObjects(x, y, trap, { targetLevel: target, missile: obj, missileImpact: true })
+            : emptyImpactDropResult();
+        if (impact.message) messages.push(impact.message);
+        return projectileShipObjectResult({ noDrop: true, target, impact });
+    }
+    const debt = shipObjectShopDebt(obj, x, y);
+    if (debt.message) messages.push(debt.message);
+    const breakKind = impactDropObjectBreaks(obj);
+    if (breakKind) {
+        messages.push(`You hear a muffled ${shipObjectMuffledBreakResult(breakKind)}.`);
+        newsym(x, y);
+        return projectileShipObjectResult({ handled: true, broke: true, breakKind, target, debt });
+    }
+    queueImpactDroppedObjects(target, [obj]);
+    const impact = impactQuantity
+        ? impactDropFloorObjects(x, y, trap, { targetLevel: target, missile: obj, missileImpact: true })
+        : emptyImpactDropResult();
+    if (impact.message) messages.push(impact.message);
+    newsym(x, y);
+    return projectileShipObjectResult({ handled: true, target, debt, impact });
+}
+
 function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
     const messages = [];
     prepareProjectileFloorObject(obj, x, y);
@@ -20981,7 +21184,24 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
                 object: null,
                 impact: { loss: 0, broke: false, messages },
                 topBreak: { broke: true, breakKind, value: shopLanding.value || 0 },
+                shipObject: projectileShipObjectResult(),
                 shopLanding: { ...shopLanding, handled: shopLanding.charged, returned: false },
+                shopSale: { handled: false, shkp: null, message: '', messages: [] },
+                messages,
+            };
+        }
+    }
+    let shipObject = projectileShipObjectResult();
+    if (shopBillableGold(obj)) {
+        shipObject = maybeShipRemoteProjectileObject(obj, x, y, messages, { allowGold: true });
+        if (shipObject.handled) {
+            return {
+                object: null,
+                impact: { loss: 0, broke: false, messages },
+                topBreak: { broke: false, breakKind: '', value: 0 },
+                floorEffects: { consumed: false },
+                shipObject,
+                shopLanding: { handled: false, shkp: null, message: '', messages: [], returned: false, charged: false },
                 shopSale: { handled: false, shkp: null, message: '', messages: [] },
                 messages,
             };
@@ -20993,6 +21213,22 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
             impact: { loss: 0, broke: false, messages },
             topBreak: { broke: false, breakKind: '', value: 0 },
             floorEffects: { consumed: true },
+            shipObject,
+            shopLanding: { handled: false, shkp: null, message: '', messages: [], returned: false, charged: false },
+            shopSale: { handled: false, shkp: null, message: '', messages: [] },
+            messages,
+        };
+    }
+    if (!shopBillableGold(obj)) {
+        shipObject = maybeShipRemoteProjectileObject(obj, x, y, messages);
+    }
+    if (shipObject.handled) {
+        return {
+            object: null,
+            impact: { loss: 0, broke: false, messages },
+            topBreak: { broke: false, breakKind: '', value: 0 },
+            floorEffects: { consumed: false },
+            shipObject,
             shopLanding: { handled: false, shkp: null, message: '', messages: [], returned: false, charged: false },
             shopSale: { handled: false, shkp: null, message: '', messages: [] },
             messages,
@@ -21008,7 +21244,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
         : autoSellProjectileLandingObject(placed, x, y, options);
     if (shopSale.message) messages.push(shopSale.message);
     const stacked = stackPlacedProjectileObject(placed);
-    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, floorEffects: { consumed: false }, shopLanding, shopSale, messages };
+    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, floorEffects: { consumed: false }, shipObject, shopLanding, shopSale, messages };
 }
 
 function markNoChargeRecursively(obj) {
@@ -50390,7 +50626,7 @@ export async function rhack(_cmd) {
         return;
     }
 
-    if (ch === 'r') {
+    if (ch === 'r' && game._command_mode !== 'throwObject' && game._command_mode !== 'throwInventory') {
         if ((game.u?._statusSuffix || '').includes('Overloaded')) {
             await setMessage("You can't do that while carrying so much stuff.");
             return;
@@ -50401,7 +50637,7 @@ export async function rhack(_cmd) {
         return;
     }
 
-    if (ch === 'c') {
+    if (ch === 'c' && game._command_mode !== 'throwObject' && game._command_mode !== 'throwInventory') {
         if (polyselfNoHands()) {
             await setMessage("You can't close anything -- you have no hands!");
             return;
@@ -50512,6 +50748,37 @@ export async function rhack(_cmd) {
             game._throw_item_letter = null;
             return;
         }
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._throw_item_letter);
+        if (ch === '<' && item && supportsHeroThrownPotionUpwardHit(item)) {
+            let thrownId = null;
+            if ((item.quan || 1) > 1) thrownId = next_ident();
+            const thrownObject = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                wielded: false,
+                worn: false,
+                quivered: false,
+                ox: game.u?.ux || 0,
+                oy: game.u?.uy || 0,
+                id: thrownId ?? item.id,
+                quan: 1,
+                glyph: item.glyph || '!',
+                color: item.color || CLR_MAGENTA,
+            };
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            const messages = heroThrownPotionUpwardMessages(thrownObject);
+            removeInventoryItem(item, 1);
+            newsym(game.u?.ux || 0, game.u?.uy || 0);
+            const keepPotionCallPrompt = game._command_mode === 'callPotionAfterMore';
+            await setMessage(messages.join('  '), keepPotionCallPrompt);
+            if (!keepPotionCallPrompt) game._command_mode = null;
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
         const dir = movementDirection(ch);
         if (!dir) {
             game._throw_item_letter = null;
@@ -50519,7 +50786,6 @@ export async function rhack(_cmd) {
             game._command_mode = 'cmdassistMore';
             return;
         }
-        const item = (game.inventory || []).find(invItem => invItem.letter === game._throw_item_letter);
         if (!item) {
             game._command_mode = null;
             game._throw_item_letter = null;
