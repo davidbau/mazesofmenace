@@ -48,7 +48,8 @@ const DEATH_CORPSE_BY_RACE = {
 };
 const CORPSE_WEIGHTS = new Map([
     ['jackal', 300], ['coyote', 300], ['kobold', 400], ['lichen', 20],
-    ['lizard', 10], ['newt', 10], ['bugbear', 1250],
+    ['lizard', 10], ['newt', 10], ['chickatrice', 10], ['cockatrice', 30],
+    ['bugbear', 1250],
 ]);
 const CORPSE_NUTRITION = new Map([
     ['lichen', 200], ['jackal', 250], ['coyote', 250], ['bugbear', 250],
@@ -14340,7 +14341,6 @@ function heroThrownPotionHitMonster(potion, mon) {
 function supportsHeroThrownPotionUpwardHit(potion) {
     if (!isPotionObject(potion)) return false;
     const kind = thrownPotionEffectKind(potion);
-    if (isLitOilPotionHit(potion, kind)) return false;
     return !!kind && kind !== 'potion' && !kind.endsWith(' potion');
 }
 
@@ -14354,6 +14354,154 @@ function isMelonObject(obj) {
     if (!obj) return false;
     return objectKindKey(obj) === 'melon'
         || String(obj.kind || obj.actualKind || pickupObjectName(obj)).toLowerCase() === 'melon';
+}
+
+const HERO_THROWN_HARMLESS_UPWARD_KINDS = new Set([
+    'sling',
+    'eucalyptus leaf',
+    'kelp frond',
+    'sprig of wolfsbane',
+    'fortune cookie',
+    'pancake',
+]);
+
+function isHeroThrownHarmlessUpwardObject(obj) {
+    if (!obj) return false;
+    const kind = objectKindKey(obj).replace(/^partly eaten\s+/, '');
+    if (obj.otyp === SCROLL_CLASS || obj.cls === 'scroll' || obj.glyph === '?') return true;
+    if (obj.otyp === EUCALYPTUS_LEAF || obj.otyp === KELP_FROND
+        || obj.otyp === FORTUNE_COOKIE || obj.otyp === PANCAKE
+        || HERO_THROWN_HARMLESS_UPWARD_KINDS.has(kind))
+        return true;
+    if (kind === 'rubber hose') return (obj.spe ?? 0) < 1;
+    if (isBagOfTricksObject(obj)) return (obj.spe ?? 0) < 1;
+    if (BAG_OBJECT_TYPES.has(obj.otyp) || kind === 'sack' || kind === 'oilskin sack' || kind === 'bag of holding')
+        return globContents(obj).length === 0;
+    const material = String(obj.material || obj.oc_material || '').toLowerCase().replace(/^hi_/, '');
+    return material === 'cloth';
+}
+
+const CRACKABLE_ARMOR_THROW_WEIGHTS = new Map([
+    ['crystal plate mail', 450],
+    ['helm of brilliance', 50],
+    ['crystal helmet', 50],
+]);
+
+function isHeroThrownCrackableArmorObject(obj) {
+    if (!obj || !(obj.cls === 'armor' || obj.glyph === '[' || obj.otyp === ARMOR_CLASS)) return false;
+    const profile = wishedDamageProfile(obj);
+    if (profile.primaryWord === 'cracked') return true;
+    const material = String(obj.material || obj.oc_material || '').toLowerCase().replace(/^hi_/, '');
+    return material === 'glass';
+}
+
+function crackableArmorSimpleName(obj) {
+    const kind = armorKind(obj);
+    switch (armorSlot(obj)) {
+    case 'body':
+        if (/\bmail\b/.test(kind)) return 'mail';
+        if (/\bjacket\b/.test(kind)) return 'jacket';
+        return 'suit';
+    case 'cloak': return 'cloak';
+    case 'helm': return 'helm';
+    case 'gloves': return 'gloves';
+    case 'boots': return 'boots';
+    case 'shield': return 'shield';
+    case 'shirt': return 'shirt';
+    default: return armorMessageName(obj);
+    }
+}
+
+function crackableArmorBreaktest(obj) {
+    const roll = rn2(100);
+    return !(obj?.artifact || obj?.oartifact) && roll >= 90;
+}
+
+function erodeCrackableArmorImpact(obj, messages) {
+    const simple = crackableArmorSimpleName(obj);
+    if (obj.oerodeproof && obj.rknown) return { broke: true, destroyed: false };
+    if (obj.oerodeproof || (obj.blessed && !rnl(4))) {
+        messages.push(`Somehow, the ${simple} ${armorNameIsPlural(simple) ? 'are' : 'is'} not affected by the impact.`);
+        if (obj.oerodeproof) obj.rknown = true;
+        return { broke: true, destroyed: false };
+    }
+    const current = Math.min(3, obj.oeroded || 0);
+    if (current < 3) {
+        const adverb = current + 1 === 3 ? ' completely' : current ? ' further' : '';
+        messages.push(`The ${simple} ${armorNameIsPlural(simple) ? 'crack' : 'cracks'}${adverb}!`);
+        obj.oeroded = current + 1;
+        return { broke: true, destroyed: false };
+    }
+    messages.push(`The ${simple} ${armorNameIsPlural(simple) ? 'shatter' : 'shatters'}!`);
+    markObjectShopBillUsedUp(obj);
+    return { broke: true, destroyed: true };
+}
+
+function crackableArmorImpact(obj, messages) {
+    if (!crackableArmorBreaktest(obj)) return { broke: false, destroyed: false };
+    return erodeCrackableArmorImpact(obj, messages);
+}
+
+function crackableArmorThrowWeight(obj) {
+    const explicit = Math.trunc(Number(obj?.owt || obj?.weight || 0));
+    if (explicit > 0) return explicit;
+    return CRACKABLE_ARMOR_THROW_WEIGHTS.get(armorKind(obj)) || 50;
+}
+
+function damageHeroFromFallingCrackableArmor(obj, messages) {
+    const weightDamage = Math.max(1, Math.ceil(crackableArmorThrowWeight(obj) / 100));
+    const damage = Math.min(6, weightDamage <= 1 ? 1 : rnd(weightDamage));
+    if (!game.u || damage <= 0) return;
+    game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+    if ((game.u.uhp || 0) <= 0) {
+        game._death_cause = 'killed by a falling object';
+        messages.push('You die...');
+        messages.fatal = true;
+        messages.more = true;
+    }
+}
+
+function landCrackableArmorObjectWithShopHandling(obj, messages, { verboseFloor = false } = {}) {
+    const x = game.u?.ux || obj.ox || 0;
+    const y = game.u?.uy || obj.oy || 0;
+    if (verboseFloor && !projectileLandingIsSoft(x, y))
+        messages.push(`${floorObjectSubject({ ...obj, quan: 1 })} hits the floor.`);
+    if (!projectileLandingIsSoft(x, y)) {
+        const impact = crackableArmorImpact(obj, messages);
+        if (impact.destroyed) return null;
+    }
+    const landing = landProjectileObjectWithShopHandling(obj, x, y, { skipTopBreak: true });
+    messages.push(...landing.messages);
+    return landing.object;
+}
+
+function heroThrownCrackableArmorSelfHitMessages(obj, action, ceilingName = heroThrowCeilingName()) {
+    const messages = [`${floorObjectSubject({ ...obj, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`];
+    const impact = crackableArmorImpact(obj, messages);
+    if (impact.destroyed) return messages;
+    if (!impact.broke) damageHeroFromFallingCrackableArmor(obj, messages);
+    landCrackableArmorObjectWithShopHandling(obj, messages, { verboseFloor: !impact.broke });
+    return messages;
+}
+
+function heroThrownCrackableArmorCeilingBreakMessages(obj, ceilingName = heroThrowCeilingName()) {
+    const messages = [`${floorObjectSubject({ ...obj, quan: 1 })} hits the ${ceilingName}.`];
+    const impact = erodeCrackableArmorImpact(obj, messages);
+    if (!impact.destroyed) landCrackableArmorObjectWithShopHandling(obj, messages);
+    return messages;
+}
+
+function heroThrownCrackableArmorUpwardMessages(obj) {
+    const ceilingName = heroThrowCeilingName();
+    const hasCeiling = heroHasThrowCeiling();
+    const hitsRoof = !!(rn2(5) && !heroIsUnderwaterForThrow());
+    if (!hasCeiling)
+        return heroThrownCrackableArmorSelfHitMessages(obj, 'flies up into', ceilingName);
+    if (hitsRoof) {
+        if (crackableArmorBreaktest(obj)) return heroThrownCrackableArmorCeilingBreakMessages(obj, ceilingName);
+        return heroThrownCrackableArmorSelfHitMessages(obj, 'hits', ceilingName);
+    }
+    return heroThrownCrackableArmorSelfHitMessages(obj, 'almost hits', ceilingName);
 }
 
 function heroCanBeBlindedByCreamPie() {
@@ -14461,6 +14609,8 @@ function heroThrownPotionSelfHitMessages(potion, action, ceilingName = heroThrow
         messages.push(`The ${pickupObjectName({ ...potion, quan: 1 })} evaporates.`);
     if (kind === 'acid') heroAcidPotionSelfHitMessages(potion, messages);
     if (kind === 'polymorph') heroPolymorphPotionSelfHitMessages(messages);
+    if (isLitOilPotionHit(potion, kind))
+        explodeBurningOilPotion(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
     potionBreathe(potion, messages);
     const shopDebt = convertUnpaidObjectToShopDebt(potion, { silent: true, broken: true });
     if (!shopDebt.charged) potion.no_charge = true;
@@ -14470,7 +14620,10 @@ function heroThrownPotionSelfHitMessages(potion, action, ceilingName = heroThrow
 function heroThrownPotionCeilingBreakMessages(potion, breakKind, ceilingName = heroThrowCeilingName()) {
     const messages = [`${floorObjectSubject({ ...potion, quan: 1 })} hits the ${ceilingName}.`];
     projectileTopLevelBreakMessage(potion, breakKind, messages);
-    if (isPotionObject(potion)) brokenPotionBreathe(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
+    if (isLitOilPotionHit(potion))
+        explodeBurningOilPotion(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
+    else if (isPotionObject(potion))
+        brokenPotionBreathe(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
     markThrownBrokenObjectDebt(potion);
     return messages;
 }
@@ -14569,6 +14722,34 @@ function heroThrownVenomUpwardMessages(venom) {
     return heroThrownVenomSelfHitMessages(venom, 'almost hits', ceilingName);
 }
 
+function heroThrownHarmlessObjectSelfHitMessages(obj, action, ceilingName = heroThrowCeilingName()) {
+    const messages = [`${floorObjectSubject({ ...obj, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`];
+    const breakKind = projectileTopLevelBreakKind(obj);
+    if (breakKind) {
+        projectileTopLevelBreakMessage(obj, breakKind, messages);
+        markThrownBrokenObjectDebt(obj);
+        return messages;
+    }
+    messages.push("It doesn't hurt.");
+    const landing = landProjectileObjectWithShopHandling(obj, game.u?.ux || obj.ox || 0, game.u?.uy || obj.oy || 0, {});
+    messages.push(...landing.messages);
+    return messages;
+}
+
+function heroThrownHarmlessObjectUpwardMessages(obj) {
+    const ceilingName = heroThrowCeilingName();
+    const hasCeiling = heroHasThrowCeiling();
+    const hitsRoof = !!(rn2(5) && !heroIsUnderwaterForThrow());
+    if (!hasCeiling)
+        return heroThrownHarmlessObjectSelfHitMessages(obj, 'flies up into', ceilingName);
+    if (hitsRoof) {
+        const breakKind = projectileTopLevelBreakKind(obj);
+        if (breakKind) return heroThrownPotionCeilingBreakMessages(obj, breakKind, ceilingName);
+        return heroThrownHarmlessObjectSelfHitMessages(obj, 'hits', ceilingName);
+    }
+    return heroThrownHarmlessObjectSelfHitMessages(obj, 'almost hits', ceilingName);
+}
+
 function heroThrownMelonSelfHitMessages(melon, action, ceilingName = heroThrowCeilingName()) {
     const messages = [`${floorObjectSubject({ ...melon, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`];
     const breakKind = projectileTopLevelBreakKind(melon);
@@ -14624,6 +14805,248 @@ function heroThrownEggSelfHitMessages(egg, action, ceilingName = heroThrowCeilin
     const landing = landProjectileObjectWithShopHandling(egg, game.u?.ux || egg.ox || 0, game.u?.uy || egg.oy || 0, {});
     messages.push(...landing.messages);
     return messages;
+}
+
+function wornTossUpHelmet() {
+    return wornEarthHelmet();
+}
+
+function simpleTossUpHelmetName(helmet) {
+    return hardEarthHelmet(helmet) ? 'helm' : 'hat';
+}
+
+function heroPetrifyingEggPolyselfRescueMessage() {
+    if (game.u?.stoneResistance || heroPolyselfResistsStoning()) return '';
+    return maybeTurnPolyselfIntoStoneGolem();
+}
+
+function finishHeroPetrifiedByTossUpObject(messages, obj = null) {
+    if (obj) {
+        prepareProjectileFloorObject(obj, game.u?.ux || obj.ox || 0, game.u?.uy || obj.oy || 0);
+        placeUnstackedFloorObject(obj);
+        newsym(obj.ox, obj.oy);
+    }
+    messages.push('You turn to stone.');
+    if (game.u) game.u.uhp = 0;
+    game._death_cause = 'petrified by elementary physics';
+    game._death_bones_body = 'statue';
+    if (consumeLifeSavingAmulet({ clearStoning: true })) {
+        messages.push('You die...  But wait...  Your medallion begins to glow!');
+        messages.lifeSaving = true;
+    } else {
+        messages.fatal = true;
+    }
+    messages.more = true;
+    return messages;
+}
+
+function breakHeroThrownTouchPetrifyingEgg(egg, messages, { selfHit = false } = {}) {
+    projectileTopLevelBreakMessage(egg, 'splat', messages);
+    markThrownBrokenObjectDebt(egg);
+    if (!selfHit) return messages;
+
+    const rescue = heroPetrifyingEggPolyselfRescueMessage();
+    if (rescue) {
+        messages.push(rescue);
+    } else if (!game.u?.stoneResistance && !heroPolyselfResistsStoning()) {
+        const helmet = wornTossUpHelmet();
+        if (helmet) messages.push(`Your ${simpleTossUpHelmetName(helmet)} fails to protect you.`);
+        return finishHeroPetrifiedByTossUpObject(messages);
+    }
+
+    messages.push("You've got it all over your face!");
+    return messages;
+}
+
+function heroThrownTouchPetrifyingEggSelfHitMessages(egg, action, ceilingName = heroThrowCeilingName()) {
+    const messages = [`${floorObjectSubject({ ...egg, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`];
+    const breakKind = projectileTopLevelBreakKind(egg);
+    if (breakKind) return breakHeroThrownTouchPetrifyingEgg(egg, messages, { selfHit: true });
+
+    const rescue = heroPetrifyingEggPolyselfRescueMessage();
+    if (rescue) messages.push(rescue);
+    else if (!wornTossUpHelmet() && !game.u?.stoneResistance && !heroPolyselfResistsStoning())
+        return finishHeroPetrifiedByTossUpObject(messages, egg);
+
+    const helmet = wornTossUpHelmet();
+    if (helmet && hardEarthHelmet(helmet))
+        messages.push('Fortunately, you are wearing a hard helmet.');
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - 1);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'killed by a falling object';
+            messages.push('You die...');
+        }
+    }
+    const landing = landProjectileObjectWithShopHandling(egg, game.u?.ux || egg.ox || 0, game.u?.uy || egg.oy || 0, {});
+    messages.push(...landing.messages);
+    return messages;
+}
+
+function petrifyingCorpseMonsterName(obj) {
+    return corpseMonsterName(obj) || 'cockatrice';
+}
+
+function petrifyingCorpseTheName(obj) {
+    return `the ${petrifyingCorpseMonsterName(obj)} corpse`;
+}
+
+function petrifyingCorpseArticleName(obj) {
+    return `${/^[aeiou]/i.test(petrifyingCorpseMonsterName(obj)) ? 'an' : 'a'} ${petrifyingCorpseMonsterName(obj)} corpse`;
+}
+
+function finishHeroPetrifiedByBareHandCorpseThrow(messages, corpse) {
+    messages.push('You turn to stone...');
+    if (game.u) game.u.uhp = 0;
+    game._death_cause = `petrified by throwing ${petrifyingCorpseArticleName(corpse)} bare-handed`;
+    game._death_bones_body = 'statue';
+    if (consumeLifeSavingAmulet({ clearStoning: true })) {
+        messages.push('You die...  But wait...  Your medallion begins to glow!');
+        messages.lifeSaving = true;
+    } else {
+        messages.fatal = true;
+    }
+    messages.more = true;
+    return messages;
+}
+
+function heroThrowPetrifyingCorpseBareHandPrecheck(corpse) {
+    if (!isPetrifyingCorpseObject(corpse) || wornGlovesItem()
+        || game.u?.stoneResistance || heroPolyselfResistsStoning())
+        return { ok: true, messages: [] };
+
+    const messages = [`You throw ${petrifyingCorpseTheName(corpse)} with your bare hands.`];
+    const rescue = maybeTurnPolyselfIntoStoneGolem();
+    if (rescue) {
+        messages.push(rescue);
+        return { ok: true, messages };
+    }
+    return { ok: false, messages: finishHeroPetrifiedByBareHandCorpseThrow(messages, corpse) };
+}
+
+function heroThrownCorpseWeight(corpse) {
+    const explicit = Math.trunc(Number(corpse?.owt || corpse?.weight || 0));
+    if (explicit > 0) return explicit;
+    const corpseName = petrifyingCorpseMonsterName(corpse);
+    return CORPSE_WEIGHTS.get(corpseName) || Math.max(1, Math.trunc(Number(corpse?.corpsenm?.cwt || 20)));
+}
+
+function heroThrownCorpseFallingDamage(corpse, helmet = null) {
+    const weightDamage = Math.max(1, Math.ceil(heroThrownCorpseWeight(corpse) / 100));
+    let damage = weightDamage <= 1 ? 1 : rnd(weightDamage);
+    if (damage > 6) damage = 6;
+    if (helmet && hardEarthHelmet(helmet) && damage > 1) damage = 1;
+    damage += Math.trunc(Number(game.u?.udaminc || 0));
+    return Math.max(0, damage);
+}
+
+function applyHeroThrownCorpseFallingDamage(damage, messages) {
+    if (!game.u || damage <= 0) return;
+    game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+    if ((game.u.uhp || 0) <= 0) {
+        game._death_cause = 'killed by a falling object';
+        messages.push('You die...');
+        messages.fatal = true;
+        messages.more = true;
+    }
+}
+
+function heroThrownTouchPetrifyingCorpseSelfHitMessages(corpse, action, ceilingName = heroThrowCeilingName(), prefixMessages = []) {
+    const messages = [...prefixMessages,
+        `${floorObjectSubject({ ...corpse, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`];
+    projectileTopLevelBreakKind(corpse); // C breaktest consumes obj_resists() even though corpses do not break.
+
+    const helmet = wornTossUpHelmet();
+    const damage = heroThrownCorpseFallingDamage(corpse, helmet);
+    if (!helmet && !game.u?.stoneResistance && !heroPolyselfResistsStoning()) {
+        const rescue = maybeTurnPolyselfIntoStoneGolem();
+        if (rescue) messages.push(rescue);
+        else return finishHeroPetrifiedByTossUpObject(messages, corpse);
+    }
+    if (helmet && hardEarthHelmet(helmet) && damage < (game.u?.uhp || 0))
+        messages.push('Fortunately, you are wearing a hard helmet.');
+
+    const landing = landProjectileObjectWithShopHandling(corpse, game.u?.ux || corpse.ox || 0, game.u?.uy || corpse.oy || 0, {});
+    messages.push(...landing.messages);
+    applyHeroThrownCorpseFallingDamage(damage, messages);
+    return messages;
+}
+
+function heroThrownTouchPetrifyingCorpseUpwardMessages(corpse, prefixMessages = []) {
+    const ceilingName = heroThrowCeilingName();
+    const hasCeiling = heroHasThrowCeiling();
+    const hitsRoof = !!(rn2(5) && !heroIsUnderwaterForThrow());
+    if (!hasCeiling)
+        return heroThrownTouchPetrifyingCorpseSelfHitMessages(corpse, 'flies up into', ceilingName, prefixMessages);
+    if (hitsRoof) {
+        projectileTopLevelBreakKind(corpse); // C tests for ceiling breakage before choosing the "hits" wording.
+        return heroThrownTouchPetrifyingCorpseSelfHitMessages(corpse, 'hits', ceilingName, prefixMessages);
+    }
+    return heroThrownTouchPetrifyingCorpseSelfHitMessages(corpse, 'almost hits', ceilingName, prefixMessages);
+}
+
+function heroThrownTouchPetrifyingEggCeilingBreakMessages(egg, ceilingName = heroThrowCeilingName()) {
+    return breakHeroThrownTouchPetrifyingEgg(egg, [`${floorObjectSubject({ ...egg, quan: 1 })} hits the ${ceilingName}.`]);
+}
+
+function heroThrownTouchPetrifyingEggUpwardMessages(egg) {
+    const ceilingName = heroThrowCeilingName();
+    const hasCeiling = heroHasThrowCeiling();
+    const hitsRoof = !!(rn2(5) && !heroIsUnderwaterForThrow());
+    if (!hasCeiling)
+        return heroThrownTouchPetrifyingEggSelfHitMessages(egg, 'flies up into', ceilingName);
+    if (hitsRoof) {
+        const breakKind = projectileTopLevelBreakKind(egg);
+        if (breakKind) return heroThrownTouchPetrifyingEggCeilingBreakMessages(egg, ceilingName);
+        return heroThrownTouchPetrifyingEggSelfHitMessages(egg, 'hits', ceilingName);
+    }
+    return heroThrownTouchPetrifyingEggSelfHitMessages(egg, 'almost hits', ceilingName);
+}
+
+function breakHeroThrownPyroliskEgg(egg, messages, { selfHit = false } = {}) {
+    projectileTopLevelBreakMessage(egg, 'splat', messages);
+    markThrownBrokenObjectDebt(egg);
+    const explosion = resolvePyroliskEggExplosion(game.u?.ux || egg.ox || 0, game.u?.uy || egg.oy || 0, d(3, 6));
+    messages.push(...explosion.messages);
+    if (selfHit && (game.u?.uhp || 0) > 0)
+        messages.push("You've got it all over your face!");
+    messages.more = explosion.more;
+    return messages;
+}
+
+function heroThrownPyroliskEggSelfHitMessages(egg, action, ceilingName = heroThrowCeilingName()) {
+    const messages = [`${floorObjectSubject({ ...egg, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`];
+    const breakKind = projectileTopLevelBreakKind(egg);
+    if (breakKind) return breakHeroThrownPyroliskEgg(egg, messages, { selfHit: true });
+
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - 1);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'killed by a falling object';
+            messages.push('You die...');
+        }
+    }
+    const landing = landProjectileObjectWithShopHandling(egg, game.u?.ux || egg.ox || 0, game.u?.uy || egg.oy || 0, {});
+    messages.push(...landing.messages);
+    return messages;
+}
+
+function heroThrownPyroliskEggCeilingBreakMessages(egg, ceilingName = heroThrowCeilingName()) {
+    return breakHeroThrownPyroliskEgg(egg, [`${floorObjectSubject({ ...egg, quan: 1 })} hits the ${ceilingName}.`]);
+}
+
+function heroThrownPyroliskEggUpwardMessages(egg) {
+    const ceilingName = heroThrowCeilingName();
+    const hasCeiling = heroHasThrowCeiling();
+    const hitsRoof = !!(rn2(5) && !heroIsUnderwaterForThrow());
+    if (!hasCeiling)
+        return heroThrownPyroliskEggSelfHitMessages(egg, 'flies up into', ceilingName);
+    if (hitsRoof) {
+        const breakKind = projectileTopLevelBreakKind(egg);
+        if (breakKind) return heroThrownPyroliskEggCeilingBreakMessages(egg, ceilingName);
+        return heroThrownPyroliskEggSelfHitMessages(egg, 'hits', ceilingName);
+    }
+    return heroThrownPyroliskEggSelfHitMessages(egg, 'almost hits', ceilingName);
 }
 
 function heroThrownEggUpwardMessages(egg) {
@@ -21562,7 +21985,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
     const messages = [];
     prepareProjectileFloorObject(obj, x, y);
     const hardLanding = !projectileLandingIsSoft(x, y);
-    if (hardLanding) {
+    if (hardLanding && !options.skipTopBreak) {
         const breakKind = projectileTopLevelBreakKind(obj, options);
         if (breakKind) {
             if (!options.silent) projectileTopLevelBreakMessage(obj, breakKind, messages);
@@ -51169,8 +51592,10 @@ export async function rhack(_cmd) {
                 color: item.color || CLR_MAGENTA,
             };
             if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            const removeBeforeImpact = isLitOilPotionHit(thrownObject);
+            if (removeBeforeImpact) removeInventoryItem(item, 1);
             const messages = heroThrownPotionUpwardMessages(thrownObject);
-            removeInventoryItem(item, 1);
+            if (!removeBeforeImpact) removeInventoryItem(item, 1);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             const keepPotionCallPrompt = game._command_mode === 'callPotionAfterMore';
             await setMessage(messages.join('  '), keepPotionCallPrompt || !!messages.more);
@@ -51297,6 +51722,168 @@ export async function rhack(_cmd) {
             game.context.move = 0;
             return;
         }
+        if (ch === '<' && isTouchPetrifyingEgg(item)) {
+            let thrownId = null;
+            if ((item.quan || 1) > 1) thrownId = next_ident();
+            const thrownObject = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                wielded: false,
+                worn: false,
+                quivered: false,
+                ox: game.u?.ux || 0,
+                oy: game.u?.uy || 0,
+                id: thrownId ?? item.id,
+                quan: 1,
+                glyph: '%',
+                color: item.color || CLR_WHITE,
+            };
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            removeInventoryItem(item, 1);
+            const messages = heroThrownTouchPetrifyingEggUpwardMessages(thrownObject);
+            newsym(game.u?.ux || 0, game.u?.uy || 0);
+            await setMessage(messages.join('  '), !!messages.more);
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
+            if (messages.fatal) {
+                game._command_mode = 'deathDieMore';
+                game._pending_time_passed = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                prepareDeathBones();
+                return;
+            }
+            game._command_mode = null;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            return;
+        }
+        if (ch === '<' && isPetrifyingCorpseObject(item)) {
+            const precheck = heroThrowPetrifyingCorpseBareHandPrecheck(item);
+            if (!precheck.ok) {
+                const messages = precheck.messages;
+                await setMessage(messages.join('  '), !!messages.more);
+                game._throw_item_letter = null;
+                game._resume_time_after_more = 0;
+                game.context.move = 0;
+                if (messages.lifeSaving) {
+                    game._command_mode = 'lifeSavingMore';
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                    return;
+                }
+                game._command_mode = 'deathDieMore';
+                game._pending_time_passed = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                prepareDeathBones();
+                return;
+            }
+
+            let thrownId = null;
+            if ((item.quan || 1) > 1) thrownId = next_ident();
+            const thrownObject = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                wielded: false,
+                worn: false,
+                quivered: false,
+                ox: game.u?.ux || 0,
+                oy: game.u?.uy || 0,
+                id: thrownId ?? item.id,
+                quan: 1,
+                glyph: '%',
+                color: item.color || CLR_BROWN,
+            };
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            removeInventoryItem(item, 1);
+            const messages = heroThrownTouchPetrifyingCorpseUpwardMessages(thrownObject, precheck.messages);
+            newsym(game.u?.ux || 0, game.u?.uy || 0);
+            await setMessage(messages.join('  '), !!messages.more);
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
+            if (messages.fatal) {
+                game._command_mode = 'deathDieMore';
+                game._pending_time_passed = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                prepareDeathBones();
+                return;
+            }
+            game._command_mode = null;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            return;
+        }
+        if (ch === '<' && isPyroliskEgg(item)) {
+            let thrownId = null;
+            if ((item.quan || 1) > 1) thrownId = next_ident();
+            const thrownObject = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                wielded: false,
+                worn: false,
+                quivered: false,
+                ox: game.u?.ux || 0,
+                oy: game.u?.uy || 0,
+                id: thrownId ?? item.id,
+                quan: 1,
+                glyph: '%',
+                color: item.color || CLR_WHITE,
+            };
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            removeInventoryItem(item, 1);
+            const messages = heroThrownPyroliskEggUpwardMessages(thrownObject);
+            newsym(game.u?.ux || 0, game.u?.uy || 0);
+            await setMessage(messages.join('  '), !!messages.more);
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
+        if (ch === '<' && isHeroThrownCrackableArmorObject(item)) {
+            let thrownId = null;
+            if ((item.quan || 1) > 1) thrownId = next_ident();
+            const thrownObject = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                wielded: false,
+                worn: false,
+                quivered: false,
+                ox: game.u?.ux || 0,
+                oy: game.u?.uy || 0,
+                id: thrownId ?? item.id,
+                quan: 1,
+                glyph: item.glyph || '[',
+                color: item.color || CLR_WHITE,
+            };
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            const messages = heroThrownCrackableArmorUpwardMessages(thrownObject);
+            removeInventoryItem(item, 1);
+            newsym(game.u?.ux || 0, game.u?.uy || 0);
+            await setMessage(messages.join('  '));
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
         if (ch === '<' && supportsHeroThrownFragileObjectUpwardHit(item)) {
             let thrownId = null;
             if ((item.quan || 1) > 1) thrownId = next_ident();
@@ -51316,6 +51903,35 @@ export async function rhack(_cmd) {
             };
             if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
             const messages = await heroThrownFragileObjectUpwardMessages(thrownObject);
+            removeInventoryItem(item, 1);
+            newsym(game.u?.ux || 0, game.u?.uy || 0);
+            await setMessage(messages.join('  '));
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
+        if (ch === '<' && isHeroThrownHarmlessUpwardObject(item)) {
+            let thrownId = null;
+            if ((item.quan || 1) > 1) thrownId = next_ident();
+            const thrownObject = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                wielded: false,
+                worn: false,
+                quivered: false,
+                ox: game.u?.ux || 0,
+                oy: game.u?.uy || 0,
+                id: thrownId ?? item.id,
+                quan: 1,
+                glyph: item.cls === 'food' ? '%' : item.glyph || (item.cls === 'scroll' ? '?' : item.cls === 'gem' ? '*' : ')'),
+                color: item.cls === 'food' ? CLR_ORANGE : item.color || (item.cls === 'gem' ? CLR_GRAY : CLR_WHITE),
+            };
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            const messages = heroThrownHarmlessObjectUpwardMessages(thrownObject);
             removeInventoryItem(item, 1);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             await setMessage(messages.join('  '));
