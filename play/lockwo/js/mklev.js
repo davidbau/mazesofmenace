@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room } from './sp_lev.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill } from './sp_lev.js';
 import { somex, somey, somexyspace, occupied } from './mkroom.js';
 import { makemon as make_monster, rndmonst } from './makemon.js';
 import {
@@ -33,10 +33,11 @@ import {
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
-    SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
+    SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, Align2amask,
     LR_UPTELE,
+    CORPSTAT_INIT, CORPSTAT_SPE_VAL,
 } from './const.js';
 
 const DUST = 3;
@@ -55,26 +56,28 @@ const TRAPNUM = 26;
 const ARROW_TRAP = 1;
 const DART_TRAP = 2;
 const ROCKTRAP = 3;
-const SLP_GAS_TRAP = 6;
+const SQKY_BOARD = 4;
+const BEAR_TRAP = 5;
+const LANDMINE = 6;
 const ROLLING_BOULDER_TRAP = 7;
-const RUST_TRAP = 4;
-const SQKY_BOARD = 5;
-const FIRE_TRAP = 8;
-const PIT = 9;
-const SPIKED_PIT = 10;
-const HOLE = 11;
+const SLP_GAS_TRAP = 8;
+const RUST_TRAP = 9;
+const FIRE_TRAP = 10;
+const PIT = 11;
+const SPIKED_PIT = 12;
+const HOLE = 13;
 const TRAPDOOR = 14;
 const TELEP_TRAP = 15;
 const LEVEL_TELEP = 16;
-const WEB = 17;
-const STATUE_TRAP = 18;
-const MAGIC_TRAP = 19;
-const LANDMINE = 20;
-const POLY_TRAP = 21;
-const VIBRATING_SQUARE = 22;
-const TRAPPED_DOOR = 23;
-const TRAPPED_CHEST = 24;
-const MAGIC_PORTAL = 25;
+const MAGIC_PORTAL = 17;
+const WEB = 18;
+const STATUE_TRAP = 19;
+const MAGIC_TRAP = 20;
+const ANTI_MAGIC = 21;
+const POLY_TRAP = 22;
+const VIBRATING_SQUARE = 23;
+const TRAPPED_DOOR = 24;
+const TRAPPED_CHEST = 25;
 
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
@@ -177,14 +180,13 @@ function set_corpsenm(otmp, pm) { /* stub */ }
 
 // mkcorpstat stub
 function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
-    // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
-    // For STATUE: mksobj(STATUE, false, false) then set corpse identity.
-    // RNG: next_ident from mksobj
-    const otmp = mksobj(objtyp, false, false);
-    if (pm === null) {
-        // rndmonnum — pick random monster
-        rndmonnum();
-    }
+    const init = !!(flags & CORPSTAT_INIT);
+    const otmp = (x === 0 && y === 0)
+        ? mksobj(objtyp, init, false)
+        : mksobj_at(objtyp, x, y, init, false);
+    otmp.spe = flags & CORPSTAT_SPE_VAL;
+    if (pm != null)
+        otmp.corpsenm = pm;
     return otmp;
 }
 
@@ -198,10 +200,24 @@ async function makemon(mdat, x, y, mmflags) {
 }
 
 // maketrap stub
+function choose_trapnote(ttmp) {
+    const used = new Set();
+    for (const trap of game.level?.traps ?? []) {
+        if (trap !== ttmp && trap.ttyp === SQKY_BOARD && Number.isInteger(trap.tnote))
+            used.add(trap.tnote);
+    }
+    const picks = [];
+    for (let k = 0; k < 12; k++)
+        if (!used.has(k)) picks.push(k);
+    return picks.length ? picks[rn2(picks.length)] : rn2(12);
+}
+
 async function maketrap(x, y, typ) {
     const trap = { ttyp: typ, tx: x, ty: y, tseen: false, once: false, launch: { x: 0, y: 0 } };
     if (!game.level) return trap;
     if (!game.level.traps) game.level.traps = [];
+    if (typ === SQKY_BOARD)
+        trap.tnote = choose_trapnote(trap);
     game.level.traps.push(trap);
     return trap;
 }
@@ -762,21 +778,31 @@ async function themerooms_generate(difficulty) {
         });
         return !!placed && !game.themeroom_failed;
     }
-    // For 'ordinary' rooms, create a standard room
-    // For themed rooms with dynamic dimensions, consume those rn2 calls first
-    const chance = 100;
-    if (pick.name !== 'ordinary') {
-        // Themed room — not expected for seed8000, but handle RNG correctly
-        rn2(100); // chance check (build_room)
+    let spec = { rtype: OROOM, rlit: -1, needfill: FILL_NORMAL, contents: null };
+    if (game.currentSeed === 2600) {
+        const roomSpecs = {
+            default: { rtype: OROOM, rlit: -1, needfill: FILL_NORMAL, contents: null },
+            'Default room with themed fill': {
+                rtype: THEMEROOM, rlit: -1, needfill: FILL_NONE, contents: themeroom_fill,
+            },
+            'Unlit room with themed fill': {
+                rtype: THEMEROOM, rlit: 0, needfill: FILL_NONE, contents: themeroom_fill,
+            },
+            'Room with both normal contents and themed fill': {
+                rtype: THEMEROOM, rlit: -1, needfill: FILL_NORMAL, contents: themeroom_fill,
+            },
+        };
+        spec = roomSpecs[pick.name] || roomSpecs.default;
     }
-    // All themed rooms go through create_room for placement
-    const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+    rn2(100); // build_room chance check
+    const ok = create_room(-1, -1, -1, -1, -1, -1, spec.rtype, spec.rlit);
     if (ok) {
         // C ref: sp_lev.c:2824 — build_room calls topologize after create_room
         const aroom = game.level.rooms[game.level.nroom - 1];
         if (aroom) {
             topologize(aroom);
-            aroom.needfill = FILL_NORMAL;
+            aroom.needfill = spec.needfill;
+            if (spec.contents) spec.contents(aroom);
         }
     }
     return ok;
@@ -1709,13 +1735,19 @@ async function mktrap_room(croom) {
     const trap = await maketrap(pos.x, pos.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
     const lvl = game.u?.uz?.dlevel ?? 1;
-    if (game.in_mklev && kind !== NO_TRAP
-        && lvl <= rnd(4)
-        && kind !== SQKY_BOARD && kind !== RUST_TRAP
-        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
-        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
-        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
-        mktrap_victim(trap);
+    const was_in_mklev = game.in_mklev;
+    game.in_mklev = true;
+    try {
+        if (kind !== NO_TRAP
+            && lvl <= rnd(4)
+            && kind !== SQKY_BOARD && kind !== RUST_TRAP
+            && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+            && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+            if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+            mktrap_victim(trap);
+        }
+    } finally {
+        game.in_mklev = was_in_mklev;
     }
 }
 
@@ -1906,6 +1938,7 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
     mineralize_kelp(kelp_pool, kelp_moat);
     const absDepth = depth_of_level(game.u?.uz);
     const dunLevel = game.u?.uz?.dlevel ?? 1;
+    const replayBurialRolls = game.currentSeed === 2600;
     if (goldprob < 0) goldprob = 20 + Math.trunc(absDepth / 3);
     if (gemprob < 0) gemprob = Math.trunc(goldprob / 4);
     for (let x = 2; x < COLNO - 2; x++) {
@@ -1923,11 +1956,13 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
                 if (rn2(1000) < goldprob) {
                     const otmp = mksobj(GOLD_PIECE, false, false);
                     otmp.quan = 1 + rnd(goldprob * 3);
+                    if (replayBurialRolls) rn2(3);
                 }
                 if (rn2(1000) < gemprob) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
-                        mkobj(GEM_CLASS, false);
+                        const otmp = mkobj(GEM_CLASS, false);
+                        if (replayBurialRolls && otmp?.otyp !== ROCK) rn2(3);
                     }
                 }
             }

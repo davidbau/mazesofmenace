@@ -4,8 +4,11 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { Is_rogue_level, GEHENNOM } from './const.js';
-import { rndmonst_adj } from './makemon.js';
+import {
+    Is_rogue_level, GEHENNOM,
+    CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER,
+} from './const.js';
+import { rndmonst_adj, monster_by_pmidx } from './makemon.js';
 
 export const RANDOM_CLASS = 0;
 export const ILLOBJ_CLASS = 1;
@@ -31,6 +34,7 @@ export const SPBOOK_no_NOVEL = -SPBOOK_CLASS;
 export const STRANGE_OBJECT = 0;
 export const ARROW = 18;
 export const DART = 24;
+export const WORM_TOOTH = 42;
 export const CORPSE = 265;
 export const EGG = 266;
 export const TIN = 296;
@@ -787,7 +791,7 @@ function may_generate_eroded(otmp) {
     const moves = game.moves ?? 1;
     if (moves <= 1 && !game.in_mklev) return false;
     if (otmp.oerodeproof || !erosion_matters(otmp) || !is_damageable(otmp)) return false;
-    if (otmp.otyp === UNICORN_HORN) return false;
+    if (otmp.otyp === WORM_TOOTH || otmp.otyp === UNICORN_HORN) return false;
     if (otmp.oartifact) return false;
     return true;
 }
@@ -834,6 +838,14 @@ function rndmonnum() {
 
 function rndmonnum_adj(minadj = 0, maxadj = 0) {
     return rndmonst_adj(minadj, maxadj)?.pmidx ?? 0;
+}
+
+function mkcorpstat_spe(corpsenm) {
+    const ptr = monster_by_pmidx(corpsenm);
+    if (ptr?.gender === 'neuter') return CORPSTAT_NEUTER;
+    if (ptr?.gender === 'female') return CORPSTAT_FEMALE;
+    if (ptr?.gender === 'male') return CORPSTAT_MALE;
+    return rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE;
 }
 
 export function weight(otmp) {
@@ -1086,7 +1098,9 @@ function mksobj_init(otmp, artif) {
     case ROCK_CLASS:
         if (otmp.otyp === STATUE) {
             otmp.corpsenm = rndmonnum();
-            if (rn2(Math.trunc(level_difficulty() / 2) + 10) > 10)
+            const ptr = monster_by_pmidx(otmp.corpsenm);
+            if (ptr?.verysmall !== true
+                && rn2(Math.trunc(level_difficulty() / 2) + 10) > 10)
                 add_to_container(otmp, mkobj(SPBOOK_no_NOVEL, false));
         }
         break;
@@ -1106,11 +1120,20 @@ export function mksobj(otyp, init = true, artif = false) {
     const otmp = {
         otyp, oclass: obj.oclass, ox: 0, oy: 0, quan: 1, owt: 1, cursed: false,
         blessed: false, olocked: false, otrapped: false, spe: 0, age: Math.max(game.moves ?? 1, 1),
+        corpsenm: null,
     };
     otmp.o_id = next_ident();
     if (init) mksobj_init(otmp, artif);
 
     switch ((otmp.oclass === POTION_CLASS && otmp.otyp !== POT_OIL) ? POT_WATER : otmp.otyp) {
+    case CORPSE:
+    case STATUE:
+    case FIGURINE:
+        if (otmp.corpsenm == null)
+            otmp.corpsenm = rndmonnum();
+        if (otmp.corpsenm != null)
+            otmp.spe = mkcorpstat_spe(otmp.corpsenm);
+        break;
     case POT_OIL:
         otmp.age = 400;
         break;
