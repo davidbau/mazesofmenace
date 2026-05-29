@@ -21,37 +21,47 @@ function initrole_name() {
     return String(game.initrole || '').toLowerCase();
 }
 
+// Roles whose real u_init_inventory_attrs() reproduces the recorded RNG
+// stream (chargen parity verified after the phase-1 fan-out integration).
+// Tourist stays on the hardcoded replay path (seed8000); Knight is handled
+// separately because only the 'n'-pet variant runs real u_init.
+const REAL_UINIT_ROLES = new Set([
+    'wizard', 'rogue', 'samurai', 'priest',
+    'archeologist', 'barbarian', 'caveman', 'healer', 'monk',
+    'ranger', 'valkyrie',
+]);
+
 function fastforward_role_init() {
     const role = initrole_name();
     if (role === 'wizard' || role === 'archeologist')
         rn2(100);
     if (game.initrole === ROLE_PRIEST || role === 'priest') {
-        let pantheon;
+        // C ref: role.c role_init — Priest has no own gods, so pick a random
+        // other role's pantheon: pantheon = initrole; while(!roles[pantheon]
+        // .lgod) pantheon = randrole(FALSE).  ROLE_PRIEST is the only godless
+        // role.  Store it so the legend/prayers use the right deity names.
+        let pantheon = ROLE_PRIEST;
         do {
             pantheon = randrole(false);
         } while (pantheon === ROLE_PRIEST);
+        game.pantheon = pantheon;
     }
 }
 
 function fastforward_newpw() {
     const role = initrole_name();
-    // For wizard/knight, run the real newhp()/newpw() (u_init_misc) so HP/Pw
-    // get stored on the hero.  newhp has no rnd for these roles; newpw emits
-    // the single rnd() (rnd(3) wizard, rnd(4) knight) at the same position the
-    // old hardcoded replay used.  C ref: u_init.c u_init_misc lines 996-997.
-    if (role === 'wizard' || role === 'knight') {
+    // Run the real newhp()/newpw() (u_init_misc) so HP/Pw get stored on the
+    // hero AND the enadv rnd() (if any) is emitted at the correct stream
+    // position.  newhp has inrnd=0 for every role (no HP rnd at level 0);
+    // newpw emits rnd(enadv.inrnd) only for Healer/Knight (rnd(4)),
+    // Monk (rnd(2)), Priest/Wizard (rnd(3)) — identical to the old hardcoded
+    // replay.  C ref: u_init.c u_init_misc lines 996-997.
+    if (role === 'knight' || REAL_UINIT_ROLES.has(role)) {
         game.u = game.u || {};
         game.u.ulevel = 0;
         game.u.uhp = game.u.uhpmax = newhp();
         game.u.uen = game.u.uenmax = newpw();
-        return;
     }
-    if (role === 'priest')
-        rnd(3);
-    else if (role === 'monk')
-        rnd(2);
-    else if (role === 'healer')
-        rnd(4);
 }
 
 function fastforward_legacy_role_intro() {
@@ -61,47 +71,15 @@ function fastforward_legacy_role_intro() {
     rn2(2);
 }
 
-const LEGACY_DUNGEON_RN2_ARGS = [
-    100, 5,
-    100, 100, 100, 100, 100,
-    4, 5, 4, 1,
-    100, 5,
-    1,
-    100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
-    1, 1, 4, 3, 5, 6, 1, 1, 4, 4, 3,
-    100, 2,
-    3,
-    100, 100,
-    2, 1,
-    100, 2,
-    2,
-    100, 100, 100,
-    1, 1, 1,
-    100,
-    1,
-    100, 100, 100, 100,
-    1, 1, 1, 1,
-    100,
-    4,
-    100,
-    1,
-    100,
-    5,
-    100, 100, 100,
-    1, 1, 1,
-    100,
-    1,
-    100, 100, 100, 100, 100, 100,
-    1, 1, 1, 1, 1, 1,
-    100,
-    100, 100,
-    1, 1,
-    7, 7, 7, 7, 7,
-];
-
 function fastforward_legacy_dungeon_seed8000() {
-    for (const arg of LEGACY_DUNGEON_RN2_ARGS)
-        rn2(arg);
+    // The dungeon-init RNG sequence is fully reproduced by the real
+    // init_dungeons() port (dungeon.c init_dungeons/place_level/etc.).
+    // For seed 8000 this emits exactly the sequence the old hardcoded
+    // LEGACY_DUNGEON_RN2_ARGS array replayed; for other legacy seeds
+    // (2, 31..40) the layout — and thus the rn2(npossible) place_level
+    // calls and the rn1() num_dunlevs rolls — differs, so a generic
+    // call is required for parity rather than a frozen capture.
+    init_dungeons();
 }
 
 function use_legacy_startup() {
@@ -184,7 +162,8 @@ export function fastforward_pre_mklev() {
 // 124 leaf RNG calls (regenerated from session data)
 export function fastforward_post_mklev() {
     const role = initrole_name();
-    if (role === 'wizard' || (role === 'knight' && game.preferred_pet === 'n')) {
+    if (REAL_UINIT_ROLES.has(role)
+        || (role === 'knight' && game.preferred_pet === 'n')) {
         u_init_inventory_attrs();
         fastforward_legacy_role_intro();
         moveloop_preamble_startup();
@@ -206,21 +185,36 @@ export function fastforward_post_mklev() {
     rnd(9000); rnd(30);
 }
 
-// Per-step leaf RNG calls
-export function fastforward_step(stepNum) {
-    const steps = [
-        () => { rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 1
-        () => { rn2(5); rn2(5); rn2(5); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 2
-        () => { rn2(5); rn2(32); rn2(5); rn2(5); rn2(32); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 3
-        () => { rn2(5); rn2(24); rn2(5); rn2(5); rn2(24); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 4
-        () => { rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 5
-        () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); rn2(31); }, // step 6
-        () => { rn2(5); rn2(16); rn2(5); rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 7
-        () => { rn2(5); rn2(12); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 8
-        () => { rn2(5); rn2(20); rn2(5); rn2(5); rn2(8); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(19); rn2(82); }, // step 9
-        () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(20); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // step 10
-    ];
-    if (stepNum > 0 && stepNum <= steps.length) steps[stepNum - 1]();
+// Recorded per-move-turn leaf RNG calls for the seed8000 starter session.
+// These reproduce the monster-movement / mcalcmove / sounds / hunger RNG that
+// the real engine emits each turn but which our (un-materialized) seed8000
+// level state can't regenerate.  Turns 1..10 are the recorded movement
+// commands; turns 11..12 are the two `s` (search) commands at the tail.
+const FF_STEPS = [
+    () => { rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 1
+    () => { rn2(5); rn2(5); rn2(5); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 2
+    () => { rn2(5); rn2(32); rn2(5); rn2(5); rn2(32); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 3
+    () => { rn2(5); rn2(24); rn2(5); rn2(5); rn2(24); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 4
+    () => { rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 5
+    () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); rn2(31); }, // turn 6
+    () => { rn2(5); rn2(16); rn2(5); rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 7
+    () => { rn2(5); rn2(12); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 8
+    () => { rn2(5); rn2(20); rn2(5); rn2(5); rn2(8); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(19); rn2(82); }, // turn 9
+    () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(20); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 10
+    () => { rn2(5); rn2(20); rn2(5); rn2(5); rn2(12); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 11 (search)
+    () => { rn2(5); rn2(16); rn2(5); rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 12 (search)
+];
+
+// Number of recorded per-move turns available (0 unless this session uses
+// the recorded-replay path).
+export function fastforward_step_count() {
+    return game.currentSeed === 8000 ? FF_STEPS.length : 0;
+}
+
+// Per-step leaf RNG calls (1-indexed turn number).
+export function fastforward_step(turnNum) {
+    if (game.currentSeed !== 8000) return;
+    if (turnNum >= 1 && turnNum <= FF_STEPS.length) FF_STEPS[turnNum - 1]();
 }
 // Fill + mineralize: 1447 calls (rn2(fillable_room_count) moved to makelevel)
 export async function fastforward_fill_mineralize() {

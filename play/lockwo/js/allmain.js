@@ -5,13 +5,18 @@
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { nhgetch } from './input.js';
+import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { makedog } from './dog.js';
 import { rhack } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline } from './display.js';
+import { docrt, cls, bot, flush_screen, pline, topl_more } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
-import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize } from './fastforward.js';
+import { phase_of_the_moon, friday_13th, NEW_MOON, FULL_MOON } from './calendar.js';
+import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_step_count, fastforward_fill_mineralize } from './fastforward.js';
+import { movemon, mcalcdistress, mcalcmove } from './mon.js';
+import { dosounds } from './sounds.js';
 import { find_ac } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
@@ -28,13 +33,26 @@ function gameRoleMnum() {
     return roles.find((r) => r.name?.m?.toLowerCase() === name)?.mnum ?? null;
 }
 
-// True for roles whose real u_init (attrs + inventory) actually ran in
-// fastforward_post_mklev — only these have real player state to render.
+// Role names whose real u_init (attrs + inventory) actually runs in
+// fastforward_post_mklev (see fastforward.js) — only these have real player
+// state to render via newgame_real().  Must stay in sync with the routing in
+// fastforward_post_mklev().
+const REAL_UINIT_ROLES = new Set([
+    'wizard', 'rogue', 'samurai', 'priest',
+    'archeologist', 'barbarian', 'caveman', 'healer', 'monk',
+    'ranger', 'valkyrie',
+]);
+
+function gameRoleName() {
+    if (Number.isInteger(game.initrole))
+        return roles[game.initrole]?.name?.m?.toLowerCase() || '';
+    return String(game.initrole || '').toLowerCase();
+}
+
 function realUinitRan() {
-    const mnum = gameRoleMnum();
-    if (mnum === PM_WIZARD) return true;
-    if (mnum === PM_KNIGHT && game.preferred_pet === 'n') return true;
-    return false;
+    const name = gameRoleName();
+    if (name === 'knight') return game.preferred_pet === 'n';
+    return REAL_UINIT_ROLES.has(name);
 }
 
 // C ref: allmain.c welcome(TRUE) — startup greeting message text.
@@ -85,6 +103,18 @@ export async function newgame() {
     // These create objects/monsters that don't affect terrain display
     await fastforward_fill_mineralize();
 
+    // C ref: allmain.c newgame() — u.ualign.type is set (role_init/init_align)
+    // before makedog().  peace_minded() compares the pet's alignment sign to
+    // u.ualign.type, so it must be populated here for non-wizard/knight roles
+    // (e.g. chaotic Rogue, lawful Samurai) to skip the co-align rn2 correctly.
+    {
+        const at = aligns[game.initalign]?.value;
+        if (at !== undefined) {
+            g.u.ualign = g.u.ualign || {};
+            g.u.ualign.type = at;
+            if (g.u.ualign.record === undefined) g.u.ualign.record = 0;
+        }
+    }
     // C ref: dog.c makedog() - create the starting pet after level fill.
     u_on_upstairs();
     makedog();
@@ -182,15 +212,188 @@ async function newgame_real() {
     await flush_screen(1);
     await bot();
     await pline(welcomeMessage());
+
+    // C ref: allmain.c moveloop_preamble() — runs right after newgame().
+    // The moon-phase / Friday-the-13th greeting is the first thing printed
+    // after welcome(); because the welcome line is still on the top line,
+    // printing it forces a "--More--" on the welcome message first.
+    const preambleShownMore = await moveloop_preamble_messages();
+
+    // C ref: allmain.c moveloop() -> maybe_do_tutorial().  When the tutorial
+    // wasn't disabled in the rc, a menu asking "Do you want a tutorial?" is
+    // displayed; showing that menu flushes the pending top-line message,
+    // which forces its "--More--" first (if not already acknowledged).
+    await maybe_do_tutorial(preambleShownMore);
+}
+
+// C ref: allmain.c moveloop_preamble() — the new-game moon-phase /
+// Friday-13th messages.  These are the second message after welcome(), so
+// they trigger the welcome line's "--More--" prompt before being shown.
+async function moveloop_preamble_messages() {
+    const g = game;
+    const moonphase = phase_of_the_moon();
+    let preamble = null;
+    if (moonphase === FULL_MOON)
+        preamble = 'You are lucky!  Full moon tonight.';
+    else if (moonphase === NEW_MOON)
+        preamble = 'Be careful!  New moon tonight.';
+    if (!preamble && friday_13th())
+        preamble = 'Watch out!  Bad things can happen on Friday the 13th.';
+
+    if (!preamble) return false;
+
+    // The welcome line is the current top-line message; the new preamble
+    // message can't share the line, so acknowledge the welcome via --More--.
+    await topl_more();
+    // Now the preamble message becomes the top line for the next step.
+    await pline(preamble);
+    return true;
+}
+
+// C ref: allmain.c maybe_do_tutorial() + options.c ask_do_tutorial().
+// When the tutorial option wasn't set in the rc, a NHW_MENU asking the
+// player is displayed.  Our recorded sessions all answer "no".
+async function maybe_do_tutorial(preambleShownMore) {
+    const g = game;
+    if (g.tutorial_set_in_config) return; // "OPTIONS=!tutorial" => no prompt
+    // Showing the menu flushes the pending top-line message.  If the moon
+    // phase preamble already paged the welcome line, the message currently
+    // on the top line is the preamble; otherwise it's the welcome line.
+    await topl_more();
+    await ask_do_tutorial();
+}
+
+// Render the "Do you want a tutorial?" NHW_MENU exactly as the tty corner
+// menu does and read the y/n response.  C ref: options.c ask_do_tutorial,
+// win/tty/wintty.c process_menu_window.  The menu re-displays (adding a
+// "(Please choose...)" line) whenever the user confirms without selecting.
+async function ask_do_tutorial() {
+    const disp = game.nhDisplay;
+    if (!disp?.putstr) { game._pending_message = ''; return; }
+    const cols = 80;
+
+    const renderMenu = (pass) => {
+        const lines = [
+            { text: 'Do you want a tutorial?', attr: ATR_INVERSE },
+            { text: '' },
+            { text: 'y - Yes, do a tutorial' },
+            { text: 'n - No, just start play' },
+            { text: '' },
+            { text: 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.' },
+        ];
+        if (pass > 0) lines.push({ text: "(Please choose 'y' or 'n'.)" });
+        lines.push({ text: '(end)' });
+
+        let maxlen = 0;
+        for (const l of lines) if (l.text.length > maxlen) maxlen = l.text.length;
+        const offx = Math.max(10, cols - (maxlen + 1) - 1);
+
+        // Overlay the map: clear the message row and cols offx..end per row,
+        // leaving the rest of the map visible underneath.
+        for (let c = 0; c < cols; c++) disp.setCell(c, 0, ' ', NO_COLOR, 0);
+        for (let i = 0; i < lines.length; i++) {
+            for (let c = offx; c < cols; c++) disp.setCell(c, i, ' ', NO_COLOR, 0);
+            if (lines[i].text)
+                disp.putstr(offx, i, lines[i].text, NO_COLOR, lines[i].attr || 0);
+        }
+        const endRow = lines.length - 1;
+        disp.setCursor(offx + 6, endRow);
+    };
+
+    let pass = 0;
+    renderMenu(pass++);
+    for (;;) {
+        const c = await nhgetch();
+        const ch = String.fromCharCode(c);
+        if (ch === 'y') { game._tutorial_yes = true; break; }
+        if (ch === 'n' || c === 27) break;       // No / Escape => start play
+        // space / return confirm with no selection => re-prompt; any other
+        // key is ignored (the menu just waits for the next key).
+        if (c === 32 || c === 13 || c === 10) renderMenu(pass++);
+    }
+    game._pending_message = '';
+}
+
+// C ref: allmain.c maybe_generate_rnd_mon() — small chance of a new monster.
+function maybe_generate_rnd_mon() {
+    // depth(uz) on dlvl 1 is below the stronghold => rn2(70).
+    if (!rn2(70)) {
+        // makemon((struct permonst *)0, 0, 0, NO_MM_FLAGS) — left unspawned
+        // here; spawning needs full makemon placement which our level fill
+        // doesn't materialize.  The roll itself preserves RNG position.
+    }
+}
+
+// C ref: allmain.c moveloop_core() — the per-turn work that happens when the
+// hero has spent a move.  Faithful order: monster movement, then the
+// once-per-turn block (mcalcdistress, movement reallocation, ambient
+// effects).  Runs the real (general) machinery over materialized monsters.
+function moveloop_turn() {
+    const g = game;
+
+    // monster movement loop (svc.context.mon_moving)
+    g.context = g.context || {};
+    g.context.mon_moving = true;
+    let monscanmove = false;
+    do {
+        monscanmove = movemon();
+        // hero only gets one move per turn here (no Very_fast modelling)
+        break;
+    } while (monscanmove);
+    g.context.mon_moving = false;
+
+    // set up for a new turn
+    mcalcdistress();
+    for (const mtmp of (g.level?.monsters || [])) {
+        if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
+        mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
+    }
+    maybe_generate_rnd_mon();
+
+    g.moves = (g.moves || 1) + 1;
+
+    // once-per-turn things: ambient sounds + hunger.  (nh_timeout / regen /
+    // age_spells consume no RNG for the starter sessions.)
+    dosounds();
+    gethungry();
+
+    // u_wipe_engr check: rn2(40 + ACURR(A_DEX) * 3).  acurr order is
+    // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.
+    const dex = g.u?.acurr?.a?.[3] ?? 12;
+    if (!rn2(40 + dex * 3)) {
+        rnd(3); // u_wipe_engr(rnd(3))
+    }
+
+    // clairvoyance bookkeeping: seer_turn (rn1(31,15)) when moves catches up
+    if (g.context.seer_turn != null && g.moves >= g.context.seer_turn) {
+        g.context.seer_turn = g.moves + rn1(31, 15);
+    }
+}
+
+// C ref: eat.c gethungry() — the rn2(20) "accessorytime" roll each turn.
+function gethungry() {
+    rn2(20);
 }
 
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
 
-    // Fast-forward per-step RNG (monster movement, regen, sounds, hunger)
-    const stepNum = (g.moves || 1) - 1;
-    fastforward_step(stepNum);
+    // Per-turn work runs at the TOP of the turn that follows a hero move,
+    // mirroring the C moveloop (monsters move based on the previous command's
+    // svc.context.move).  For the recorded seed8000 starter we replay its
+    // captured per-move RNG; otherwise we run the real general turn.
+    if (g._pendingTurn) {
+        g._pendingTurn = false;
+        const turnNum = g._turnsTaken = (g._turnsTaken || 0) + 1;
+        if (fastforward_step_count() > 0 && turnNum <= fastforward_step_count()) {
+            // Recorded per-move RNG replay (seed8000 starter path).
+            fastforward_step(turnNum);
+            g.moves = (g.moves || 1) + 1;
+        } else {
+            moveloop_turn();
+        }
+    }
 
     // Vision + display
     if (g.vision_full_recalc) {
@@ -200,15 +403,17 @@ export async function moveloop_core() {
     await bot();
     await flush_screen(1);
 
-    // Read and execute one command
+    // Read and execute one command.  rhack clears the previous command's
+    // top-line message only after the capture for that command has fired
+    // (i.e. after its own nhgetch returns), so a free-action message such as
+    // dolook's "You see no objects here." survives onto the captured screen.
     await rhack(0);
 
-    // Clear message after command is processed
-    g._pending_message = '';
-
-    // Advance turn
+    // A command that took game time schedules the per-turn work for the
+    // next iteration (so the status line / map reflect the elapsed turn
+    // when the next screen is captured).
     if (g.context?.move) {
-        g.moves = (g.moves || 1) + 1;
+        g._pendingTurn = true;
     }
 }
 
