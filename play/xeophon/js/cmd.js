@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -957,7 +957,15 @@ const ORCISH_DAGGER = 10020;
 const DAGGER = 10023;
 const KNIFE = 10026;
 const SHORT_SWORD = 10031;
+const ELVEN_SHORT_SWORD = 10186;
+const ORCISH_SHORT_SWORD = 10187;
+const DWARVISH_SHORT_SWORD = 10103;
+const SCIMITAR = 10021;
 const BROADSWORD = 10032;
+const ELVEN_BROADSWORD = 10122;
+const LONG_SWORD = 10033;
+const TWO_HANDED_SWORD = 10059;
+const KATANA = 10125;
 const PICK_AXE = 10025;
 const GLAIVE = 10057;
 const FLAIL = 10060;
@@ -1220,10 +1228,12 @@ const SPEED_BOOTS = 10087;
 const SHIELD_OF_REFLECTION = 10074;
 const PLATE_MAIL = 10037;
 const HELMET = 10044;
+const LOW_BOOTS = 10048;
 const RING_MAIL = 10041;
 const STUDDED_LEATHER_ARMOR = 10042;
 const LEATHER_ARMOR = 10043;
 const ELVEN_MITHRIL_COAT = 10079;
+const IRON_SHOES = 10105;
 const GOLD_DRAGON_SCALE_MAIL = 10140;
 const RED_DRAGON_SCALE_MAIL = 10141;
 const WHITE_DRAGON_SCALE_MAIL = 10142;
@@ -1377,8 +1387,16 @@ const WISH_BASE_OBJECTS = new Map([
     ['dagger', { otyp: DAGGER, cls: 'weapon', glyph: ')', kind: 'dagger', plural: 'daggers' }],
     ['daggers', { otyp: DAGGER, cls: 'weapon', glyph: ')', kind: 'dagger', plural: 'daggers' }],
     ['knife', { otyp: KNIFE, cls: 'weapon', glyph: ')', kind: 'knife', actualKind: 'knife' }],
-    ['short sword', { otyp: SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'short sword', actualKind: 'short sword' }],
-    ['broadsword', { otyp: BROADSWORD, cls: 'weapon', glyph: ')', kind: 'broadsword', actualKind: 'broadsword' }],
+    ['short sword', { otyp: SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'short sword', actualKind: 'short sword', owt: 30 }],
+    ['elven short sword', { otyp: ELVEN_SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'runed short sword', actualKind: 'elven short sword', known: false, owt: 30 }],
+    ['orcish short sword', { otyp: ORCISH_SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'crude short sword', actualKind: 'orcish short sword', known: false, owt: 30 }],
+    ['dwarvish short sword', { otyp: DWARVISH_SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'broad short sword', actualKind: 'dwarvish short sword', known: false, owt: 30 }],
+    ['scimitar', { otyp: SCIMITAR, cls: 'weapon', glyph: ')', kind: 'curved sword', actualKind: 'scimitar', known: false, owt: 40 }],
+    ['broadsword', { otyp: BROADSWORD, cls: 'weapon', glyph: ')', kind: 'broadsword', actualKind: 'broadsword', owt: 70 }],
+    ['elven broadsword', { otyp: ELVEN_BROADSWORD, cls: 'weapon', glyph: ')', kind: 'runed broadsword', actualKind: 'elven broadsword', known: false, owt: 70 }],
+    ['long sword', { otyp: LONG_SWORD, cls: 'weapon', glyph: ')', kind: 'long sword', actualKind: 'long sword', owt: 40 }],
+    ['two-handed sword', { otyp: TWO_HANDED_SWORD, cls: 'weapon', glyph: ')', kind: 'two-handed sword', actualKind: 'two-handed sword', owt: 150 }],
+    ['katana', { otyp: KATANA, cls: 'weapon', glyph: ')', kind: 'samurai sword', actualKind: 'katana', known: false, owt: 40 }],
     ['flail', { otyp: FLAIL, cls: 'weapon', glyph: ')', kind: 'flail', actualKind: 'flail' }],
     ['glaive', { otyp: GLAIVE, cls: 'weapon', glyph: ')', kind: 'glaive', actualKind: 'glaive' }],
     ['bullwhip', { otyp: BULLWHIP, cls: 'weapon', glyph: ')', kind: 'bullwhip', actualKind: 'bullwhip' }],
@@ -1469,6 +1487,8 @@ const WISH_BASE_OBJECTS = new Map([
     ['leather gloves', { otyp: LEATHER_GLOVES, cls: 'armor', glyph: '[', kind: 'leather gloves', actualKind: 'leather gloves', known: false }],
     ['gauntlets of power', { otyp: GAUNTLETS_OF_POWER, cls: 'armor', glyph: '[', kind: 'gauntlets of power', actualKind: 'gauntlets of power', known: false }],
     ['cloak of displacement', { otyp: CLOAK_OF_DISPLACEMENT, cls: 'armor', glyph: '[', kind: 'cloak of displacement', actualKind: 'cloak of displacement', known: false }],
+    ['low boots', { otyp: LOW_BOOTS, cls: 'armor', glyph: '[', kind: 'low boots', actualKind: 'low boots', appearance: 'walking shoes', known: false, owt: 10 }],
+    ['iron shoes', { otyp: IRON_SHOES, cls: 'armor', glyph: '[', kind: 'iron shoes', actualKind: 'iron shoes', appearance: 'hard shoes', known: false, owt: 50 }],
     ['speed boots', { otyp: SPEED_BOOTS, cls: 'armor', glyph: '[', kind: 'speed boots', actualKind: 'speed boots', known: false }],
 ]);
 const WIZARD_ONLY_WISH_NAMEDESC_BOUNDS = new Map([
@@ -1480,7 +1500,10 @@ const WIZARD_ONLY_WISH_NAMEDESC_BOUNDS = new Map([
 ]);
 const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['dart', 61], ['darts', 61], ['dagger', 31], ['daggers', 31],
-    ['knife', 21], ['short sword', 9], ['broadsword', 9],
+    ['knife', 21], ['short sword', 9], ['elven short sword', 3],
+    ['orcish short sword', 4], ['dwarvish short sword', 3],
+    ['scimitar', 16], ['broadsword', 9], ['elven broadsword', 5],
+    ['long sword', 51], ['two-handed sword', 23], ['katana', 5],
     ['flail', 41], ['glaive', 9],
     ['bullwhip', 3], ['silver saber', 7], ['dwarvish mattock', 14],
     ['pick-axe', 21], ['pick axe', 21], ['pickaxe', 21], ['pickax', 21], ['pick-ax', 21],
@@ -1511,6 +1534,7 @@ const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['leather armor', 76], ['elven mithril-coat', 16],
     ['shield of reflection', 8],
     ['gauntlets of power', 9], ['cloak of displacement', 13],
+    ['low boots', 24], ['iron shoes', 8],
     ['speed boots', 13],
     ['crystal ball', 495], ['glass orb', 495],
 ]);
@@ -1603,6 +1627,45 @@ const WISH_TOOL_OTYPES = new Map([
 ]);
 const WISH_TOOL_NAMEDESC_BOUNDS = new Map([
     ['magic harp', 3], ['leash', 66], ['lenses', 6],
+]);
+const WISH_OBJECT_RANGES = new Map([
+    ['bag', [
+        ['sack', 35],
+        ['oilskin sack', 5],
+        ['bag of holding', 20],
+        ['bag of tricks', 20],
+    ]],
+    ['lamp', [
+        ['oil lamp', 45],
+        ['magic lamp', 15],
+    ]],
+    ['candle', [
+        ['tallow candle', 20],
+        ['wax candle', 5],
+    ]],
+    ['horn', [
+        ['tooled horn', 5],
+        ['frost horn', 2],
+        ['fire horn', 2],
+        ['horn of plenty', 2],
+    ]],
+    ['shoes', [
+        ['low boots', 23],
+        ['iron shoes', 7],
+    ]],
+    ['sword', [
+        ['short sword', 8],
+        ['elven short sword', 2],
+        ['orcish short sword', 3],
+        ['dwarvish short sword', 2],
+        ['scimitar', 15],
+        ['silver saber', 6],
+        ['broadsword', 8],
+        ['elven broadsword', 4],
+        ['long sword', 50],
+        ['two-handed sword', 22],
+        ['katana', 4],
+    ]],
 ]);
 const WISH_AMULET_NAMEDESC_BOUNDS = new Map([
     ['amulet of esp', 121],
@@ -3437,6 +3500,11 @@ function impactDropMigrationLandingSpot(migration) {
     return null;
 }
 
+function impactDropDeliveryLandingIsSoft(x, y) {
+    const loc = game.level?.at?.(x, y);
+    return !!(loc && IS_SOFT(loc.typ));
+}
+
 function deliverQueuedImpactDroppedObjects(targetLevel) {
     const key = impactDropLevelKey(targetLevel);
     const queued = game._impact_drop_migrations?.get?.(key) || [];
@@ -3444,14 +3512,23 @@ function deliverQueuedImpactDroppedObjects(targetLevel) {
     game._impact_drop_migrations.delete(key);
     game.level.objects ??= [];
     for (const obj of queued) {
-        const spot = impactDropMigrationLandingSpot(obj._impactDropMigration)
-            || impactDropRandomLandingSpot();
+        const exactSpot = impactDropMigrationLandingSpot(obj._impactDropMigration);
+        const spot = exactSpot || impactDropRandomLandingSpot();
         delete obj._impactDropMigration;
         obj.ox = spot.x;
         obj.oy = spot.y;
         obj.hidden = false;
         obj.transientProjectile = false;
-        game.level.objects.push(obj);
+        if (!impactDropDeliveryLandingIsSoft(spot.x, spot.y) && impactDropObjectBreaks(obj)) {
+            newsym(spot.x, spot.y);
+            continue;
+        }
+        if (exactSpot) {
+            game.level.objects.push(obj);
+            stackDroppedFloorObject(obj);
+        } else {
+            game.level.objects.push(obj);
+        }
         newsym(spot.x, spot.y);
     }
 }
@@ -9108,7 +9185,7 @@ function useUpFloorObject(obj, count, { heroCaused = false } = {}) {
 function floorEffectRemoveObject(removeObject, usedUpShopBillOnDestroy = false) {
     if (!usedUpShopBillOnDestroy) return removeObject;
     return obj => {
-        markObjectShopBillUsedUp(obj);
+        markObjectTreeShopBillsUsedUp(obj);
         removeObject(obj);
     };
 }
@@ -9391,7 +9468,6 @@ function fireDamageFloorContainer(obj, messages, visible, {
     const contents = [...liquidFlowContainerContents(obj)];
     if (visible) messages.push(`${floorObjectSubject(obj)} catches fire and burns.`);
     if (contents.length && visible) messages.push('Its contents fall out.');
-    removeObject(obj);
     for (const content of contents) {
         removeContainedObject(obj, content);
         placeLiquidFlowFloorObject(content, x, y);
@@ -9399,6 +9475,7 @@ function fireDamageFloorContainer(obj, messages, visible, {
         else spillQueue.push({ obj: content, mode: 'flooreffects' });
     }
     clearLiquidFlowContainerContents(obj);
+    removeObject(obj);
     return true;
 }
 
@@ -18785,6 +18862,7 @@ function parseWishedDragonArmorName(lowerName) {
         type: match[2] === 'scales' ? 'scales' : 'mail',
         spec: DRAGON_ARMOR_BY_COLOR.get(match[1]),
         armorAlias: match[2] === 'scale armor',
+        alternateSpelling: match[1] === 'grey',
     };
 }
 
@@ -18794,8 +18872,8 @@ function makeWishedDragonArmorObject(dragonWish = {}) {
         : dragonWish.spec;
     if (!spec) return null;
     const mail = dragonWish.type === 'mail';
-    if (mail && !dragonWish.random)
-        rn2(dragonWish.armorAlias ? 1 : 67);
+    if (mail && !dragonWish.random && !dragonWish.alternateSpelling)
+        rn2(67);
     const kind = `${spec.colorName} dragon ${mail ? 'scale mail' : 'scales'}`;
     const otmp = mksobj(mail ? spec.mailOtyp : spec.scalesOtyp, true, false);
     return Object.assign(otmp, {
@@ -19107,11 +19185,14 @@ function makeWishedVenomObject(lowerName) {
         kind: venom.kind,
         actualKind: venom.kind,
         singular: venom.kind,
+        plural: venom.kind.replace(/^splash\b/, 'splashes'),
         known: true,
         dknown: true,
         quan: 1,
         spe: 1,
         owt: 1,
+        ocMerge: true,
+        _wish_ignore_requested_spe: true,
         wishedfor: true,
     };
 }
@@ -23842,15 +23923,15 @@ function remoteProjectileDownGateAt(obj, x, y, { allowGold = false } = {}) {
     return downGateAt(x, y);
 }
 
-function carriedDropDownGateAt(obj, x, y) {
-    if (!obj || shopBillableGold(obj)) return null;
+function carriedDropDownGateAt(obj, x, y, { allowGold = false } = {}) {
+    if (!obj || (!allowGold && shopBillableGold(obj))) return null;
     if (obj === game.u?.uball || obj === game.u?.uchain) return null;
     if (game.u?.uswallow) return null;
     return downGateAt(x, y);
 }
 
-function maybeShipCarriedDropObject(obj, x, y, messages) {
-    const gate = carriedDropDownGateAt(obj, x, y);
+function maybeShipCarriedDropObject(obj, x, y, messages, options = {}) {
+    const gate = carriedDropDownGateAt(obj, x, y, options);
     if (!gate) return projectileShipObjectResult();
     if (isBoulderObject(obj) && gate.where === MIGR_RANDOM && gate.trap) {
         const boulderImpact = impactDropFloorObjects(x, y, gate, { targetLevel: gate.targetLevel, route: gate });
@@ -28971,6 +29052,7 @@ function wishQuantityMergeable(item) {
     if (cls === 'scroll' || cls === 'potion' || cls === 'gem') return true;
     if (cls === 'food' && objectKindKey(item) !== 'meat ring') return true;
     if (cls === 'weapon') return true;
+    if (cls === 'venom') return true;
     if (isCandleObject(item)) return true;
     return false;
 }
@@ -29082,6 +29164,8 @@ const WISH_NAME_ALIASES = new Map([
     ['royal jelly', 'lump of royal jelly'],
     ['can', 'tin'],
     ['gloves of power', 'gauntlets of power'],
+    ['walking shoes', 'low boots'],
+    ['hard shoes', 'iron shoes'],
     ['ring of protection from shape shifters', 'ring of protection from shape changers'],
     ['flint stone', 'flint'],
 ]);
@@ -29168,6 +29252,10 @@ function resolveWishedSpellingAlias(lowerName) {
 }
 
 function singularizeWishedPluralName(normalized) {
+    if (normalized === 'venoms') return 'venom';
+    if (normalized === 'splashes of venom') return 'splash of venom';
+    if (normalized === 'splashes of blinding venom') return 'splash of blinding venom';
+    if (normalized === 'splashes of acid venom') return 'splash of acid venom';
     for (const [name, baseObject] of WISH_BASE_OBJECTS.entries()) {
         if (String(baseObject?.plural || '').toLowerCase() === normalized) return name;
     }
@@ -29320,7 +29408,7 @@ function normalizeWishedGroupPhrase(name, quantity) {
     const match = String(name || '').match(/^(pair|pairs|set|sets)\s+of\s+/i);
     if (!match) return { name, quantity, matched: false };
     const objectName = String(name).slice(match[0].length);
-    const nonStackingPairObject = /\b(?:boots|gloves|lenses)\b/i.test(objectName);
+    const nonStackingPairObject = /\b(?:boots|shoes|gloves|lenses)\b/i.test(objectName);
     let wishedQuantity = quantity;
     const group = match[1].toLowerCase();
     if (nonStackingPairObject) wishedQuantity = 1;
@@ -29336,6 +29424,9 @@ function normalizeWishedGroupPhrase(name, quantity) {
 function applyWishedPluralQuantity(name, quantity) {
     if (quantity !== 1) return quantity;
     const rawLowerName = String(name || '').trim().toLowerCase();
+    if (rawLowerName === 'venoms' || rawLowerName === 'splashes of venom'
+        || rawLowerName === 'splashes of blinding venom' || rawLowerName === 'splashes of acid venom')
+        return 2;
     const rawFruit = fruitWishMatch(rawLowerName);
     if (rawFruit?.plural) return 2;
     const rawBaseObject = WISH_BASE_OBJECTS.get(rawLowerName);
@@ -29366,6 +29457,33 @@ function makeWishedBaseObject(baseObject, metadata) {
     } finally {
         if (forceBagOfTricksTool) game._mkobj_force_bag_of_tricks = false;
     }
+}
+
+function wishedObjectRangeName(lowerName) {
+    const range = WISH_OBJECT_RANGES.get(lowerName);
+    if (!range) return '';
+    const total = range.reduce((sum, [, prob]) => sum + prob, 0);
+    if (total <= 0) return range[rn2(range.length)]?.[0] || '';
+    let roll = rnd(total);
+    for (const [name, prob] of range) {
+        roll -= prob;
+        if (roll <= 0) return name;
+    }
+    return range[0]?.[0] || '';
+}
+
+function makeWishedObjectRangeObject(lowerName) {
+    const rangeName = wishedObjectRangeName(lowerName);
+    if (!rangeName) return null;
+    if (rangeName === 'magic lamp' && !game.flags?.debug)
+        return makeOilLampFromMagicLampWishObject();
+    const baseObject = WISH_BASE_OBJECTS.get(rangeName);
+    if (!baseObject) return null;
+    const baseFields = { ...baseObject };
+    delete baseFields.wishSpeRn1;
+    const metadata = wishObjectMetadataForName(rangeName) ?? wishObjectMetadataForItem(baseFields);
+    const otmp = makeWishedBaseObject(baseObject, metadata);
+    return Object.assign(otmp, baseFields, { wishedfor: true });
 }
 
 function makeWishedFruitObject(lowerName) {
@@ -29446,6 +29564,9 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
     if (specialSubstitution) return specialSubstitution;
     const localWishMetadata = wishObjectMetadataForName(lowerName);
     if (localWishMetadata?.ocNowish && !game.flags?.debug) return noFittingWishObject();
+
+    const rangeWish = makeWishedObjectRangeObject(lowerName);
+    if (rangeWish) return rangeWish;
 
     const dragonArmorWish = parseWishedDragonArmorName(lowerName);
     if (dragonArmorWish) return makeWishedDragonArmorObject(dragonArmorWish);
@@ -49629,6 +49750,7 @@ export async function rhack(_cmd) {
             const amount = game._goldCount || (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin')?.quan || 0;
             game._goldCount = 0;
             game.inventory = (game.inventory || []).filter(item => item.letter !== '$' && item.cls !== 'coin');
+            const goldMessages = [];
             const floorGold = {
                 otyp: GOLD_PIECE,
                 cls: 'coin',
@@ -49638,13 +49760,22 @@ export async function rhack(_cmd) {
                 oy: game.u?.uy || 0,
                 quan: amount,
             };
-            placeStackableFloorObject(floorGold);
-            const shopGold = sellobjDroppedGoldAt(floorGold.ox, floorGold.oy, amount);
+            const shipObject = maybeShipCarriedDropObject(floorGold, floorGold.ox, floorGold.oy, goldMessages, { allowGold: true });
+            let consumedByFloor = false;
+            if (!shipObject.handled) {
+                consumedByFloor = earthFloorEffects(floorGold, floorGold.ox, floorGold.oy, goldMessages, 'drop');
+            }
+            let shopGold = { messages: [] };
+            if (!shipObject.handled && !consumedByFloor) {
+                placeStackableFloorObject(floorGold);
+                shopGold = sellobjDroppedGoldAt(floorGold.ox, floorGold.oy, amount);
+            }
             const guard = (game.level?.monsters || []).find(mon => mon.isgd || mon.data?.name === 'guard');
             if (guard) prepareVaultGuardEscort(guard);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             const messages = [
                 ...(game.flags?.verbose === false ? [] : [`You drop ${amount} gold piece${amount === 1 ? '' : 's'}.`]),
+                ...goldMessages,
                 ...(shopGold.messages || []),
             ];
             if (messages.length) {
@@ -53848,6 +53979,13 @@ export async function rhack(_cmd) {
         if (ch === '\x1b' || ch === ' ') {
             await setMessage('Never mind.');
             game._command_mode = null;
+            game._throw_count_text = '';
+            game._throw_count = null;
+            return;
+        }
+        if (/^\d$/.test(ch)) {
+            game._throw_count_text = `${game._throw_count_text || ''}${ch}`;
+            if (game._throw_count_text.length > 1) await setMessage(`Count: ${game._throw_count_text}`);
             return;
         }
         if (ch === '*') {
@@ -53855,6 +53993,8 @@ export async function rhack(_cmd) {
             showInventoryOverlay();
             game._throw_inventory_filter = null;
             game._command_mode = 'throwInventory';
+            game._throw_count_text = '';
+            game._throw_count = null;
             return;
         }
         if (ch === '?') {
@@ -53862,15 +54002,43 @@ export async function rhack(_cmd) {
             showInventoryOverlay(0, false, isThrowSuggestItem);
             game._throw_inventory_filter = 'suggest';
             game._command_mode = 'throwInventory';
+            game._throw_count_text = '';
+            game._throw_count = null;
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        const throwCount = Math.trunc(Number(game._throw_count_text || 0));
+        const countGiven = throwCount > 0;
         if (!item) {
+            if (countGiven) {
+                game._command_mode = null;
+                game._throw_count_text = '';
+                game._throw_count = null;
+                game._pending_message = '';
+                game._message_more = 0;
+                return;
+            }
             await setMessage("You don't have that object.", true);
             game._command_mode = 'throwInvalidMore';
             return;
         }
+        if (countGiven && throwCount > 1) {
+            const available = Math.max(0, Math.trunc(Number(item.quan || 1)));
+            const coins = shopBillableGold(item);
+            if (!coins || throwCount > available) {
+                const onlyOne = 'can only throw one at a time';
+                const message = throwCount > available
+                    ? `You only have ${available}${!coins && available > 1 ? ` and ${onlyOne}` : ''}.`
+                    : `You ${onlyOne}.`;
+                game._throw_count_text = '';
+                game._throw_count = null;
+                await setMessage(message);
+                return;
+            }
+        }
         game._throw_item_letter = ch;
+        game._throw_count = countGiven && shopBillableGold(item) ? throwCount : null;
+        game._throw_count_text = '';
         await setMessage('In what direction?');
         game._command_mode = 'throwDirection';
         return;
@@ -53916,6 +54084,8 @@ export async function rhack(_cmd) {
             game._overlay_hide_status = 0;
             await setMessage('Never mind.');
             game._command_mode = null;
+            game._throw_count_text = '';
+            game._throw_count = null;
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch);
@@ -53926,6 +54096,8 @@ export async function rhack(_cmd) {
             game._overlay_hide_status = 0;
             await setMessage("You don't have that object.");
             game._command_mode = null;
+            game._throw_count_text = '';
+            game._throw_count = null;
             return;
         }
         game._throw_inventory_page = 0;
@@ -53933,16 +54105,28 @@ export async function rhack(_cmd) {
         game._overlay_lines = null;
         game._overlay_hide_status = 0;
         game._throw_item_letter = ch;
+        game._throw_count_text = '';
+        game._throw_count = null;
         await setMessage('In what direction?');
         game._command_mode = 'throwDirection';
         return;
     }
 
     if (game._command_mode === 'throwDirection') {
+        if (ch === '\x1b' || ch === ' ') {
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            game._throw_count = null;
+            game._throw_count_text = '';
+            return;
+        }
         if (ch === '.') {
             await setMessage('You cannot throw an object at yourself.');
             game._command_mode = null;
             game._throw_item_letter = null;
+            game._throw_count = null;
+            game._throw_count_text = '';
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === game._throw_item_letter);
@@ -54354,6 +54538,8 @@ export async function rhack(_cmd) {
         const dir = movementDirection(ch);
         if (!dir) {
             game._throw_item_letter = null;
+            game._throw_count = null;
+            game._throw_count_text = '';
             setOverlay(CMDASSIST_DIRECTION_LINES, 24, true);
             game._command_mode = 'cmdassistMore';
             return;
@@ -54361,12 +54547,16 @@ export async function rhack(_cmd) {
         if (!item) {
             game._command_mode = null;
             game._throw_item_letter = null;
+            game._throw_count = null;
+            game._throw_count_text = '';
             return;
         }
         if (isLoadstoneObject(item) && item.cursed) {
             await setMessage(cursedLoadstoneLetGoMessage(item, 'throw'));
             game._command_mode = null;
             game._throw_item_letter = null;
+            game._throw_count = null;
+            game._throw_count_text = '';
             game.context.move = 0;
             return;
         }
@@ -54388,7 +54578,7 @@ export async function rhack(_cmd) {
 	            if (targetMon) break;
 	        }
         if (shopBillableGold(item)) {
-            const amount = Math.max(1, Math.trunc(Number(game._goldCount || item.quan || 1)));
+            const amount = Math.max(1, Math.trunc(Number(game._throw_count || game._goldCount || item.quan || 1)));
             const thrownGold = {
                 ...item,
                 letter: undefined,
@@ -54410,6 +54600,8 @@ export async function rhack(_cmd) {
             }
             game._command_mode = null;
             game._throw_item_letter = null;
+            game._throw_count = null;
+            game._throw_count_text = '';
             game._resume_time_after_more = 0;
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game.context.move = 0;
@@ -54546,6 +54738,8 @@ export async function rhack(_cmd) {
         }
         game._command_mode = null;
         game._throw_item_letter = null;
+        game._throw_count = null;
+        game._throw_count_text = '';
         game._resume_time_after_more = 0;
         game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
         game.context.move = 0;
@@ -54566,6 +54760,9 @@ export async function rhack(_cmd) {
         game._throw_prompt = letters
             ? `What do you want to throw? [${promptLetters} or ?*]`
             : 'What do you want to throw? [*]';
+        game._count_prefix = '';
+        game._throw_count_text = '';
+        game._throw_count = null;
         await setMessage(game._throw_prompt);
         game._command_mode = 'throwObject';
         return;
