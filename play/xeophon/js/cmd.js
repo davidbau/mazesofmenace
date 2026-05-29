@@ -1226,9 +1226,37 @@ const GRAY_DRAGON_SCALE_MAIL = 10085;
 const SILVER_DRAGON_SCALE_MAIL = 10086;
 const SPEED_BOOTS = 10087;
 const SHIELD_OF_REFLECTION = 10074;
+const SMALL_SHIELD = 10046;
+const SHIELD_OF_DRAIN_RESISTANCE = 10206;
+const SHIELD_OF_SHOCK_RESISTANCE = 10207;
+const ELVEN_SHIELD = 10208;
+const URUK_HAI_SHIELD = 10209;
+const ORCISH_SHIELD = 10210;
+const FEDORA = 10078;
+const CORNUTHAUM = 10211;
+const DUNCE_CAP = 10212;
+const ELVEN_LEATHER_HELM = 10213;
+const ORCISH_HELM = 10022;
+const DWARVISH_IRON_HELM = 10107;
+const DENTED_POT = 10045;
+const HELM_OF_BRILLIANCE = 10131;
+const HELM_OF_CAUTION = 10214;
+const HELM_OF_OPPOSITE_ALIGNMENT = 10215;
+const HELM_OF_TELEPATHY = 10216;
+const LARGE_SHIELD = 10047;
+const DWARVISH_ROUNDSHIELD = 10106;
 const PLATE_MAIL = 10037;
 const HELMET = 10044;
 const LOW_BOOTS = 10048;
+const HIGH_BOOTS = 10049;
+const WATER_WALKING_BOOTS = 10132;
+const JUMPING_BOOTS = 10133;
+const ELVEN_BOOTS = 10134;
+const KICKING_BOOTS = 10135;
+const FUMBLE_BOOTS = 10136;
+const LEVITATION_BOOTS = 10137;
+const HAWAIIAN_SHIRT = 10188;
+const T_SHIRT = 10189;
 const RING_MAIL = 10041;
 const STUDDED_LEATHER_ARMOR = 10042;
 const LEATHER_ARMOR = 10043;
@@ -1254,8 +1282,21 @@ const GREEN_DRAGON_SCALES = 10156;
 const YELLOW_DRAGON_SCALES = 10157;
 const FOOD_RATION = 143;
 const LEATHER_GLOVES = 10050;
+const LEATHER_CLOAK = 10051;
+const ROBE = 10063;
+const CLOAK_OF_PROTECTION = 10064;
+const CLOAK_OF_MAGIC_RESISTANCE = 10065;
+const DWARVISH_CLOAK = 10080;
+const ELVEN_CLOAK = 10110;
 const CLOAK_OF_DISPLACEMENT = 10111;
 const GAUNTLETS_OF_POWER = 10112;
+const GAUNTLETS_OF_FUMBLING = 10114;
+const GAUNTLETS_OF_DEXTERITY = 10115;
+const CLOAK_OF_INVISIBILITY = 10201;
+const MUMMY_WRAPPING = 10202;
+const ORCISH_CLOAK = 10203;
+const OILSKIN_CLOAK = 10204;
+const ALCHEMY_SMOCK = 10205;
 const BAG_OBJECT_TYPES = new Set([SACK, OILSKIN_SACK, BAG_OF_HOLDING]);
 const PICKUP_SECTION_ORDER = [
     'Coins', 'Amulets', 'Weapons', 'Armor', 'Comestibles', 'Scrolls',
@@ -1478,18 +1519,59 @@ const WISH_BASE_OBJECTS = new Map([
     ['tooled horn', { otyp: TOOLED_HORN, cls: 'tool', glyph: '(', kind: 'horn', actualKind: 'tooled horn', known: false }],
     ['grappling hook', { otyp: GRAPPLING_HOOK, cls: 'tool', glyph: '(', kind: 'grappling hook', actualKind: 'grappling hook' }],
     ['plate mail', { otyp: PLATE_MAIL, cls: 'armor', glyph: '[', kind: 'plate mail', actualKind: 'plate mail' }],
-    ['helmet', { otyp: HELMET, cls: 'armor', glyph: '[', kind: 'helmet', actualKind: 'helmet', appearance: 'plumed helmet', known: false }],
+    ['helmet', { otyp: HELMET, cls: 'armor', glyph: '[', kind: 'helmet', actualKind: 'helmet', appearance: 'plumed helmet', known: false, owt: 30 }],
+    ['elven leather helm', { otyp: ELVEN_LEATHER_HELM, cls: 'armor', glyph: '[', kind: 'elven leather helm', actualKind: 'elven leather helm', appearance: 'leather hat', known: false, owt: 3 }],
+    ['orcish helm', { otyp: ORCISH_HELM, cls: 'armor', glyph: '[', kind: 'orcish helm', actualKind: 'orcish helm', appearance: 'iron skull cap', known: false, owt: 30 }],
+    ['dwarvish iron helm', { otyp: DWARVISH_IRON_HELM, cls: 'armor', glyph: '[', kind: 'dwarvish iron helm', actualKind: 'dwarvish iron helm', appearance: 'hard hat', known: false, owt: 40 }],
+    ['fedora', { otyp: FEDORA, cls: 'armor', glyph: '[', kind: 'fedora', actualKind: 'fedora', owt: 3 }],
+    ['cornuthaum', { otyp: CORNUTHAUM, cls: 'armor', glyph: '[', kind: 'cornuthaum', actualKind: 'cornuthaum', appearance: 'conical hat', known: false, owt: 4 }],
+    ['dunce cap', { otyp: DUNCE_CAP, cls: 'armor', glyph: '[', kind: 'dunce cap', actualKind: 'dunce cap', appearance: 'conical hat', known: false, owt: 4 }],
+    ['dented pot', { otyp: DENTED_POT, cls: 'armor', glyph: '[', kind: 'dented pot', actualKind: 'dented pot', owt: 10 }],
+    ['helm of brilliance', { otyp: HELM_OF_BRILLIANCE, cls: 'armor', glyph: '[', kind: 'helm of brilliance', actualKind: 'helm of brilliance', appearance: 'crystal helmet', known: false, owt: 40 }],
+    ['helm of caution', { otyp: HELM_OF_CAUTION, cls: 'armor', glyph: '[', kind: 'helm of caution', actualKind: 'helm of caution', appearance: 'etched helmet', known: false, owt: 50 }],
+    ['helm of opposite alignment', { otyp: HELM_OF_OPPOSITE_ALIGNMENT, cls: 'armor', glyph: '[', kind: 'helm of opposite alignment', actualKind: 'helm of opposite alignment', appearance: 'crested helmet', known: false, owt: 50 }],
+    ['helm of telepathy', { otyp: HELM_OF_TELEPATHY, cls: 'armor', glyph: '[', kind: 'helm of telepathy', actualKind: 'helm of telepathy', appearance: 'visored helmet', known: false, owt: 50 }],
     ['ring mail', { otyp: RING_MAIL, cls: 'armor', glyph: '[', kind: 'ring mail', actualKind: 'ring mail' }],
     ['studded leather armor', { otyp: STUDDED_LEATHER_ARMOR, cls: 'armor', glyph: '[', kind: 'studded leather armor', actualKind: 'studded leather armor' }],
     ['leather armor', { otyp: LEATHER_ARMOR, cls: 'armor', glyph: '[', kind: 'leather armor', actualKind: 'leather armor' }],
     ['elven mithril-coat', { otyp: ELVEN_MITHRIL_COAT, cls: 'armor', glyph: '[', kind: 'elven mithril-coat', actualKind: 'elven mithril-coat' }],
-    ['shield of reflection', { otyp: SHIELD_OF_REFLECTION, cls: 'armor', glyph: '[', kind: 'shield of reflection', actualKind: 'shield of reflection', appearance: 'polished silver shield', known: false }],
+    ['small shield', { otyp: SMALL_SHIELD, cls: 'armor', glyph: '[', kind: 'small shield', actualKind: 'small shield', appearance: 'wooden shield', known: false, owt: 30 }],
+    ['shield of drain resistance', { otyp: SHIELD_OF_DRAIN_RESISTANCE, cls: 'armor', glyph: '[', kind: 'shield of drain resistance', actualKind: 'shield of drain resistance', appearance: 'wooden shield', known: false, owt: 30 }],
+    ['shield of shock resistance', { otyp: SHIELD_OF_SHOCK_RESISTANCE, cls: 'armor', glyph: '[', kind: 'shield of shock resistance', actualKind: 'shield of shock resistance', appearance: 'wooden shield', known: false, owt: 30 }],
+    ['elven shield', { otyp: ELVEN_SHIELD, cls: 'armor', glyph: '[', kind: 'elven shield', actualKind: 'elven shield', appearance: 'blue and green shield', known: false, owt: 40 }],
+    ['uruk-hai shield', { otyp: URUK_HAI_SHIELD, cls: 'armor', glyph: '[', kind: 'uruk-hai shield', actualKind: 'uruk-hai shield', appearance: 'white-handed shield', known: false, owt: 50 }],
+    ['orcish shield', { otyp: ORCISH_SHIELD, cls: 'armor', glyph: '[', kind: 'orcish shield', actualKind: 'orcish shield', appearance: 'red-eyed shield', known: false, owt: 50 }],
+    ['large shield', { otyp: LARGE_SHIELD, cls: 'armor', glyph: '[', kind: 'large shield', actualKind: 'large shield', owt: 100 }],
+    ['dwarvish roundshield', { otyp: DWARVISH_ROUNDSHIELD, cls: 'armor', glyph: '[', kind: 'dwarvish roundshield', actualKind: 'dwarvish roundshield', appearance: 'large round shield', known: false, owt: 100 }],
+    ['shield of reflection', { otyp: SHIELD_OF_REFLECTION, cls: 'armor', glyph: '[', kind: 'shield of reflection', actualKind: 'shield of reflection', appearance: 'polished silver shield', known: false, owt: 50 }],
     ['leather gloves', { otyp: LEATHER_GLOVES, cls: 'armor', glyph: '[', kind: 'leather gloves', actualKind: 'leather gloves', known: false }],
+    ['gauntlets of fumbling', { otyp: GAUNTLETS_OF_FUMBLING, cls: 'armor', glyph: '[', kind: 'gauntlets of fumbling', actualKind: 'gauntlets of fumbling', known: false, owt: 10 }],
     ['gauntlets of power', { otyp: GAUNTLETS_OF_POWER, cls: 'armor', glyph: '[', kind: 'gauntlets of power', actualKind: 'gauntlets of power', known: false }],
+    ['gauntlets of dexterity', { otyp: GAUNTLETS_OF_DEXTERITY, cls: 'armor', glyph: '[', kind: 'gauntlets of dexterity', actualKind: 'gauntlets of dexterity', known: false, owt: 10 }],
+    ['mummy wrapping', { otyp: MUMMY_WRAPPING, cls: 'armor', glyph: '[', kind: 'mummy wrapping', actualKind: 'mummy wrapping', known: false, owt: 3 }],
+    ['elven cloak', { otyp: ELVEN_CLOAK, cls: 'armor', glyph: '[', kind: 'elven cloak', actualKind: 'elven cloak', known: false, owt: 10 }],
+    ['orcish cloak', { otyp: ORCISH_CLOAK, cls: 'armor', glyph: '[', kind: 'orcish cloak', actualKind: 'orcish cloak', known: false, owt: 10 }],
+    ['dwarvish cloak', { otyp: DWARVISH_CLOAK, cls: 'armor', glyph: '[', kind: 'dwarvish cloak', actualKind: 'dwarvish cloak', known: false, owt: 10 }],
+    ['oilskin cloak', { otyp: OILSKIN_CLOAK, cls: 'armor', glyph: '[', kind: 'oilskin cloak', actualKind: 'oilskin cloak', known: false, owt: 10 }],
+    ['robe', { otyp: ROBE, cls: 'armor', glyph: '[', kind: 'robe', actualKind: 'robe', known: false, owt: 15 }],
+    ['alchemy smock', { otyp: ALCHEMY_SMOCK, cls: 'armor', glyph: '[', kind: 'alchemy smock', actualKind: 'alchemy smock', known: false, owt: 10 }],
+    ['leather cloak', { otyp: LEATHER_CLOAK, cls: 'armor', glyph: '[', kind: 'leather cloak', actualKind: 'leather cloak', known: false, owt: 15 }],
+    ['cloak of protection', { otyp: CLOAK_OF_PROTECTION, cls: 'armor', glyph: '[', kind: 'cloak of protection', actualKind: 'cloak of protection', known: false, owt: 10 }],
+    ['cloak of invisibility', { otyp: CLOAK_OF_INVISIBILITY, cls: 'armor', glyph: '[', kind: 'cloak of invisibility', actualKind: 'cloak of invisibility', known: false, owt: 10 }],
+    ['cloak of magic resistance', { otyp: CLOAK_OF_MAGIC_RESISTANCE, cls: 'armor', glyph: '[', kind: 'cloak of magic resistance', actualKind: 'cloak of magic resistance', known: false, owt: 10 }],
     ['cloak of displacement', { otyp: CLOAK_OF_DISPLACEMENT, cls: 'armor', glyph: '[', kind: 'cloak of displacement', actualKind: 'cloak of displacement', known: false }],
     ['low boots', { otyp: LOW_BOOTS, cls: 'armor', glyph: '[', kind: 'low boots', actualKind: 'low boots', appearance: 'walking shoes', known: false, owt: 10 }],
     ['iron shoes', { otyp: IRON_SHOES, cls: 'armor', glyph: '[', kind: 'iron shoes', actualKind: 'iron shoes', appearance: 'hard shoes', known: false, owt: 50 }],
-    ['speed boots', { otyp: SPEED_BOOTS, cls: 'armor', glyph: '[', kind: 'speed boots', actualKind: 'speed boots', known: false }],
+    ['high boots', { otyp: HIGH_BOOTS, cls: 'armor', glyph: '[', kind: 'high boots', actualKind: 'high boots', appearance: 'jackboots', known: false, owt: 20 }],
+    ['hawaiian shirt', { otyp: HAWAIIAN_SHIRT, cls: 'armor', glyph: '[', kind: 'Hawaiian shirt', actualKind: 'Hawaiian shirt', plural: 'Hawaiian shirts', owt: 5 }],
+    ['t-shirt', { otyp: T_SHIRT, cls: 'armor', glyph: '[', kind: 'T-shirt', actualKind: 'T-shirt', plural: 'T-shirts', owt: 5 }],
+    ['speed boots', { otyp: SPEED_BOOTS, cls: 'armor', glyph: '[', kind: 'speed boots', actualKind: 'speed boots', known: false, owt: 20 }],
+    ['water walking boots', { otyp: WATER_WALKING_BOOTS, cls: 'armor', glyph: '[', kind: 'water walking boots', actualKind: 'water walking boots', known: false, owt: 15 }],
+    ['jumping boots', { otyp: JUMPING_BOOTS, cls: 'armor', glyph: '[', kind: 'jumping boots', actualKind: 'jumping boots', known: false, owt: 20 }],
+    ['elven boots', { otyp: ELVEN_BOOTS, cls: 'armor', glyph: '[', kind: 'elven boots', actualKind: 'elven boots', known: false, owt: 15 }],
+    ['kicking boots', { otyp: KICKING_BOOTS, cls: 'armor', glyph: '[', kind: 'kicking boots', actualKind: 'kicking boots', known: false, owt: 50 }],
+    ['fumble boots', { otyp: FUMBLE_BOOTS, cls: 'armor', glyph: '[', kind: 'fumble boots', actualKind: 'fumble boots', known: false, owt: 20 }],
+    ['levitation boots', { otyp: LEVITATION_BOOTS, cls: 'armor', glyph: '[', kind: 'levitation boots', actualKind: 'levitation boots', known: false, owt: 15 }],
 ]);
 const WIZARD_ONLY_WISH_NAMEDESC_BOUNDS = new Map([
     ['bell of opening', 1],
@@ -1529,13 +1611,34 @@ const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['meat ring', 1], ['tin opener', 36], ['beartrap', 1],
     ['land mine', 1], ['bag of tricks', 21], ['tooled horn', 6],
     ['grappling hook', 6],
-    ['plate mail', 41], ['helmet', 11], ['helm of telepathy', 5],
+    ['plate mail', 41], ['helmet', 11],
+    ['elven leather helm', 7], ['orcish helm', 7],
+    ['dwarvish iron helm', 7],
+    ['fedora', 1], ['cornuthaum', 6], ['dunce cap', 6],
+    ['dented pot', 3], ['helm of brilliance', 7],
+    ['helm of caution', 7], ['helm of opposite alignment', 11],
+    ['helm of telepathy', 5],
     ['ring mail', 67], ['studded leather armor', 67],
     ['leather armor', 76], ['elven mithril-coat', 16],
+    ['small shield', 7], ['shield of drain resistance', 13],
+    ['shield of shock resistance', 13], ['elven shield', 3],
+    ['uruk-hai shield', 3], ['orcish shield', 3],
+    ['large shield', 5], ['dwarvish roundshield', 4],
     ['shield of reflection', 8],
-    ['gauntlets of power', 9], ['cloak of displacement', 13],
-    ['low boots', 24], ['iron shoes', 8],
-    ['speed boots', 13],
+    ['gauntlets of fumbling', 9], ['gauntlets of power', 9],
+    ['gauntlets of dexterity', 9],
+    ['mummy wrapping', 1], ['elven cloak', 9],
+    ['orcish cloak', 9], ['dwarvish cloak', 9],
+    ['oilskin cloak', 9], ['robe', 7],
+    ['alchemy smock', 12], ['leather cloak', 9],
+    ['cloak of protection', 12], ['cloak of invisibility', 13],
+    ['cloak of magic resistance', 7], ['cloak of displacement', 13],
+    ['low boots', 24], ['iron shoes', 8], ['high boots', 15],
+    ['hawaiian shirt', 9], ['t-shirt', 3],
+    ['speed boots', 13], ['water walking boots', 13],
+    ['jumping boots', 13], ['elven boots', 13],
+    ['kicking boots', 13], ['fumble boots', 13],
+    ['levitation boots', 13],
     ['crystal ball', 495], ['glass orb', 495],
 ]);
 const WISH_OBJECT_METADATA = new Map([
@@ -1649,9 +1752,81 @@ const WISH_OBJECT_RANGES = new Map([
         ['fire horn', 2],
         ['horn of plenty', 2],
     ]],
+    ['shield', [
+        ['small shield', 6],
+        ['shield of drain resistance', 12],
+        ['shield of shock resistance', 12],
+        ['elven shield', 2],
+        ['uruk-hai shield', 2],
+        ['orcish shield', 2],
+        ['large shield', 4],
+        ['dwarvish roundshield', 3],
+        ['shield of reflection', 7],
+    ]],
+    ['hat', [
+        ['fedora', 0],
+        ['cornuthaum', 5],
+        ['dunce cap', 5],
+    ]],
+    ['helm', [
+        ['elven leather helm', 6],
+        ['orcish helm', 6],
+        ['dwarvish iron helm', 6],
+        ['fedora', 0],
+        ['cornuthaum', 5],
+        ['dunce cap', 5],
+        ['dented pot', 2],
+        ['helm of brilliance', 6],
+        ['helmet', 10],
+        ['helm of caution', 6],
+        ['helm of opposite alignment', 10],
+        ['helm of telepathy', 4],
+    ]],
+    ['gloves', [
+        ['leather gloves', 15],
+        ['gauntlets of fumbling', 8],
+        ['gauntlets of power', 8],
+        ['gauntlets of dexterity', 8],
+    ]],
+    ['gauntlets', [
+        ['leather gloves', 15],
+        ['gauntlets of fumbling', 8],
+        ['gauntlets of power', 8],
+        ['gauntlets of dexterity', 8],
+    ]],
+    ['cloak', [
+        ['mummy wrapping', 0],
+        ['elven cloak', 8],
+        ['orcish cloak', 8],
+        ['dwarvish cloak', 8],
+        ['oilskin cloak', 8],
+        ['robe', 6],
+        ['alchemy smock', 11],
+        ['leather cloak', 8],
+        ['cloak of protection', 11],
+        ['cloak of invisibility', 12],
+        ['cloak of magic resistance', 6],
+        ['cloak of displacement', 12],
+    ]],
     ['shoes', [
         ['low boots', 23],
         ['iron shoes', 7],
+    ]],
+    ['boots', [
+        ['low boots', 23],
+        ['iron shoes', 7],
+        ['high boots', 14],
+        ['speed boots', 12],
+        ['water walking boots', 12],
+        ['jumping boots', 12],
+        ['elven boots', 12],
+        ['kicking boots', 12],
+        ['fumble boots', 12],
+        ['levitation boots', 12],
+    ]],
+    ['shirt', [
+        ['hawaiian shirt', 8],
+        ['t-shirt', 2],
     ]],
     ['sword', [
         ['short sword', 8],
@@ -4767,10 +4942,10 @@ const ARMOR_AC_BONUS = {
     'cloak of displacement': 1,
     'cloak of invisibility': 1,
     'cloak of protection': 3,
-    'mummy wrapping': 1,
+    'mummy wrapping': 0,
     'elven cloak': 1,
-    'orcish cloak': 1,
-    'dwarvish cloak': 1,
+    'orcish cloak': 0,
+    'dwarvish cloak': 0,
     'alchemy smock': 1,
     'leather cloak': 1,
     'oilskin cloak': 1,
@@ -4811,6 +4986,13 @@ const ARMOR_AC_BONUS = {
     'elven leather helm': 1,
     'dwarvish iron helm': 2,
     fedora: 0,
+    cornuthaum: 0,
+    'dunce cap': 0,
+    'dented pot': 1,
+    'helm of brilliance': 1,
+    'helm of caution': 1,
+    'helm of opposite alignment': 1,
+    'helm of telepathy': 1,
     'small shield': 1,
     'large shield': 2,
     'elven shield': 2,
@@ -4822,10 +5004,12 @@ const ARMOR_AC_BONUS = {
     'dwarvish roundshield': 2,
     'shield of reflection': 2,
     'leather gloves': 1,
+    'gauntlets of fumbling': 1,
     'gauntlets of power': 1,
+    'gauntlets of dexterity': 1,
     'low boots': 1,
-    'iron shoes': 1,
-    'high boots': 1,
+    'iron shoes': 2,
+    'high boots': 2,
     'speed boots': 1,
     'water walking boots': 1,
     'jumping boots': 1,
@@ -4927,8 +5111,14 @@ const ARMOR_WEAR_DELAY = {
     'orcish helm': 1,
     'elven leather helm': 1,
     'dwarvish iron helm': 1,
+    'helm of brilliance': 1,
+    'helm of caution': 1,
+    'helm of opposite alignment': 1,
+    'helm of telepathy': 1,
     'leather gloves': 1,
+    'gauntlets of fumbling': 1,
     'gauntlets of power': 1,
+    'gauntlets of dexterity': 1,
     'low boots': 2,
     'iron shoes': 2,
     'high boots': 2,
@@ -4957,6 +5147,7 @@ const ARMOR_WISH_APPEARANCES = {
     'orcish cloak': ['', 0, 'coarse mantelet'],
     'dwarvish cloak': ['', 0, 'hooded cloak'],
     'oilskin cloak': ['', 0, 'slippery cloak'],
+    'alchemy smock': ['', 0, 'apron'],
     'leather gloves': ['gloves', 0, 'old gloves'],
     'gauntlets of fumbling': ['gloves', 1, 'padded gloves'],
     'gauntlets of power': ['gloves', 2, 'riding gloves'],
@@ -4966,6 +5157,8 @@ const ARMOR_WISH_APPEARANCES = {
     'cloak of magic resistance': ['cloaks', 2, 'ornamental cope'],
     'cloak of displacement': ['cloaks', 3, 'piece of cloth'],
     'small shield': ['', 0, 'wooden shield'],
+    'shield of drain resistance': ['', 0, 'wooden shield'],
+    'shield of shock resistance': ['', 0, 'wooden shield'],
     'elven shield': ['', 0, 'blue and green shield'],
     'uruk-hai shield': ['', 0, 'white-handed shield'],
     'orcish shield': ['', 0, 'red-eyed shield'],
@@ -5040,10 +5233,11 @@ function recordKnownRingDiscovery(kind, item = null) {
 const MAGICAL_ARMOR_KINDS = new Set([
     'cloak of displacement', 'cloak of invisibility', 'cloak of magic resistance',
     'cloak of protection', 'helm of brilliance', 'helm of caution',
-    'helm of opposite alignment', 'helm of telepathy', 'dunce cap',
+    'helm of opposite alignment', 'helm of telepathy', 'cornuthaum', 'dunce cap',
     'gauntlets of dexterity', 'gauntlets of fumbling', 'gauntlets of power',
     'jumping boots', 'fumble boots', 'levitation boots', 'speed boots',
-    'water walking boots', 'shield of reflection',
+    'water walking boots', 'shield of drain resistance',
+    'shield of shock resistance', 'shield of reflection',
     'gray dragon scale mail', 'gold dragon scale mail', 'silver dragon scale mail',
     'red dragon scale mail', 'white dragon scale mail', 'orange dragon scale mail',
     'black dragon scale mail', 'blue dragon scale mail', 'green dragon scale mail',
@@ -5114,14 +5308,26 @@ const OBJECT_WEIGHTS = {
     'yumi': 30,
     'banded mail': 350,
     'chain mail': 300,
+    'mummy wrapping': 3,
+    'elven cloak': 10,
+    'orcish cloak': 10,
+    'dwarvish cloak': 10,
     'cloak of displacement': 10,
     'cloak of invisibility': 10,
     'cloak of magic resistance': 10,
+    'cloak of protection': 10,
     'dwarvish iron helm': 40,
     'dwarvish roundshield': 100,
     'elven leather helm': 3,
     'elven shield': 40,
     'fedora': 3,
+    'cornuthaum': 4,
+    'dunce cap': 4,
+    'dented pot': 10,
+    'helm of brilliance': 40,
+    'helm of caution': 50,
+    'helm of opposite alignment': 50,
+    'helm of telepathy': 50,
     'gray dragon scale mail': 40,
     'gold dragon scale mail': 40,
     'silver dragon scale mail': 40,
@@ -5142,15 +5348,21 @@ const OBJECT_WEIGHTS = {
     'blue dragon scales': 40,
     'green dragon scales': 40,
     'yellow dragon scales': 40,
+    'hawaiian shirt': 5,
+    't-shirt': 5,
     'helmet': 30,
+    'gauntlets of fumbling': 10,
     'gauntlets of power': 30,
+    'gauntlets of dexterity': 10,
     'high boots': 20,
     'iron shoes': 50,
     'large shield': 100,
     'leather armor': 150,
+    'leather cloak': 15,
     'leather gloves': 10,
     'leather jacket': 30,
     'low boots': 10,
+    'alchemy smock': 10,
     'oilskin cloak': 10,
     'orcish helm': 30,
     'orcish ring mail': 250,
@@ -5167,7 +5379,12 @@ const OBJECT_WEIGHTS = {
     'splint mail': 400,
     'uruk-hai shield': 50,
     'studded leather armor': 200,
-    'water walking boots': 20,
+    'water walking boots': 15,
+    'jumping boots': 20,
+    'elven boots': 15,
+    'kicking boots': 50,
+    'fumble boots': 20,
+    'levitation boots': 15,
     'brass lantern': 30,
     'can of grease': 15,
     'credit card': 1,
@@ -29106,6 +29323,41 @@ function wishedLabelKey(text) {
     return unquoteWishedText(text).toLowerCase().replace(/\s+/g, ' ');
 }
 
+function calledWishymatch(userText, objectText) {
+    return wishedFuzzyObjectKey(userText) === wishedFuzzyObjectKey(objectText);
+}
+
+function calledTailMatchesObjectName(called, objectName) {
+    if (calledWishymatch(called, objectName)) return true;
+    const of = String(objectName || '').toLowerCase().indexOf(' of ');
+    return of >= 0 && calledWishymatch(called, String(objectName).slice(of + 4));
+}
+
+function calledRangeNamedescName(base, called) {
+    const range = WISH_OBJECT_RANGES.get(base);
+    if (!range) return '';
+    const rangeNames = new Set(range.map(([name]) => name));
+    for (const [namedesc, candidates] of WISH_NAMEDESC_RANGES) {
+        if (!calledWishymatch(called, namedesc)) continue;
+        if (candidates.every(([name]) => rangeNames.has(name))) return namedesc;
+    }
+    for (const [name] of range) {
+        if (calledTailMatchesObjectName(called, name)) return name;
+        const baseObject = WISH_BASE_OBJECTS.get(name);
+        if (baseObject?.actualKind && calledTailMatchesObjectName(called, baseObject.actualKind))
+            return name;
+        const armorAppearance = ARMOR_WISH_APPEARANCES[name];
+        if (armorAppearance) {
+            const [group, index, fallback] = armorAppearance;
+            const appearance = group ? game._object_descriptions?.[group]?.[index] || fallback : fallback;
+            if (appearance && calledTailMatchesObjectName(called, appearance)) return name;
+        }
+        const toolAppearance = WISH_TOOL_APPEARANCES.get(name);
+        if (toolAppearance && calledTailMatchesObjectName(called, toolAppearance)) return name;
+    }
+    return '';
+}
+
 function parseWishedScrollLabel(name) {
     const match = String(name || '').trim().match(/^scrolls?\s+labell?ed\s+(.+)$/i);
     return match ? unquoteWishedText(match[1]) : '';
@@ -29117,7 +29369,6 @@ function resolveCalledWishName(baseName, calledName) {
     const explicit = new Map([
         ['shield:reflection', 'shield of reflection'],
         ['helm:telepathy', 'helm of telepathy'],
-        ['helmet:telepathy', 'helm of telepathy'],
         ['amulet:life saving', 'amulet of life saving'],
         ['amulet:esp', 'amulet of esp'],
         ['amulet:guarding', 'amulet of guarding'],
@@ -29127,9 +29378,10 @@ function resolveCalledWishName(baseName, calledName) {
         ['ring:protection from shape shifters', 'ring of protection from shape changers'],
     ]).get(`${base}:${called}`);
     if (explicit) return explicit;
-    if (base === 'shield' || base === 'helm' || base === 'helmet'
-        || base === 'amulet' || base === 'ring') {
-        const candidate = `${base === 'helmet' ? 'helm' : base} of ${called}`;
+    const rangeCalled = calledRangeNamedescName(base, called);
+    if (rangeCalled) return rangeCalled;
+    if (base === 'amulet' || base === 'ring') {
+        const candidate = `${base} of ${called}`;
         return WISH_BASE_OBJECTS.has(candidate)
             || WISH_NAME_ALIASES.has(candidate)
             || IDENTIFIED_AMULET_NAMES.includes(candidate)
@@ -29143,6 +29395,22 @@ function resolveCalledWishName(baseName, calledName) {
 const WISH_NAME_ALIASES = new Map([
     ['speedboots', 'speed boots'],
     ['boots of speed', 'speed boots'],
+    ['boots of water walking', 'water walking boots'],
+    ['boots of jumping', 'jumping boots'],
+    ['boots of kicking', 'kicking boots'],
+    ['boots of levitation', 'levitation boots'],
+    ['water-walking boots', 'water walking boots'],
+    ['waterwalking boots', 'water walking boots'],
+    ['jackboots', 'high boots'],
+    ['combat boots', 'speed boots'],
+    ['jungle boots', 'water walking boots'],
+    ['hiking boots', 'jumping boots'],
+    ['mud boots', 'elven boots'],
+    ['buckled boots', 'kicking boots'],
+    ['riding boots', 'fumble boots'],
+    ['snow boots', 'levitation boots'],
+    ['elvish boots', 'elven boots'],
+    ['elfin boots', 'elven boots'],
     ['plate armor', 'plate mail'],
     ['scroll of detect food', 'scroll of food detection'],
     ['detect food scroll', 'scroll of food detection'],
@@ -29163,9 +29431,41 @@ const WISH_NAME_ALIASES = new Map([
     ['garlic', 'clove of garlic'],
     ['royal jelly', 'lump of royal jelly'],
     ['can', 'tin'],
+    ['gloves of fumbling', 'gauntlets of fumbling'],
     ['gloves of power', 'gauntlets of power'],
+    ['gloves of dexterity', 'gauntlets of dexterity'],
+    ['elvish cloak', 'elven cloak'],
+    ['elfin cloak', 'elven cloak'],
+    ['dwarven cloak', 'dwarvish cloak'],
+    ['cloaks', 'cloak'],
+    ['protection cloak', 'cloak of protection'],
+    ['invisibility cloak', 'cloak of invisibility'],
+    ['magic resistance cloak', 'cloak of magic resistance'],
+    ['displacement cloak', 'cloak of displacement'],
+    ['shields', 'shield'],
+    ['reflection shield', 'shield of reflection'],
+    ['drain resistance shield', 'shield of drain resistance'],
+    ['shock resistance shield', 'shield of shock resistance'],
+    ['hats', 'hat'],
+    ['helms', 'helm'],
+    ['helmets', 'helmet'],
+    ['helmet of brilliance', 'helm of brilliance'],
+    ['helmet of caution', 'helm of caution'],
+    ['helmet of opposite alignment', 'helm of opposite alignment'],
+    ['helmet of telepathy', 'helm of telepathy'],
+    ['elvish shield', 'elven shield'],
+    ['elfin shield', 'elven shield'],
+    ['dwarven roundshield', 'dwarvish roundshield'],
+    ['dwarvish round shield', 'dwarvish roundshield'],
+    ['dwarven round shield', 'dwarvish roundshield'],
+    ['uruk hai shield', 'uruk-hai shield'],
+    ['uruk-hai shields', 'uruk-hai shield'],
+    ['uruk hai shields', 'uruk-hai shield'],
     ['walking shoes', 'low boots'],
     ['hard shoes', 'iron shoes'],
+    ['shirts', 'shirt'],
+    ['t shirt', 't-shirt'],
+    ['t shirts', 't-shirt'],
     ['ring of protection from shape shifters', 'ring of protection from shape changers'],
     ['flint stone', 'flint'],
 ]);
@@ -29192,12 +29492,13 @@ const WISH_EXPLICIT_SPELLING_ALIASES = new Map([
     ['amulet of protection', 'amulet of guarding'],
     ['amulet of telepathy', 'amulet of esp'],
     ['helm of esp', 'helm of telepathy'],
+    ['helmet of esp', 'helm of telepathy'],
     ['potion of sleep', 'potion of sleeping'],
     ['scroll of recharging', 'scroll of charging'],
     ['recharging', 'scroll of charging'],
     ['stone', 'rock'],
     ['tee shirt', 't-shirt'],
-    ['t shirt', 't-shirt'],
+    ['tee shirts', 't-shirt'],
     ['kelp', 'kelp frond'],
     ['eucalyptus', 'eucalyptus leaf'],
     ['lembas', 'lembas wafer'],
@@ -29238,14 +29539,46 @@ const WISH_EXPLICIT_SPELLING_ALIASES = new Map([
     ['flintstone', 'flint'],
 ]);
 
+const WISH_NAMEDESC_RANGES = new Map([
+    ['wooden shield', [
+        ['small shield', 7],
+        ['shield of drain resistance', 13],
+        ['shield of shock resistance', 13],
+    ]],
+    ['conical hat', [
+        ['cornuthaum', 6],
+        ['dunce cap', 6],
+    ]],
+]);
+
 function normalizeWishedSpelling(name) {
     return String(name || '').replace(/armour/ig, match => match[0] === 'A' ? 'Armor' : 'armor');
+}
+
+function wishedFuzzyObjectKey(text) {
+    return wishedLabelKey(text).replace(/[\s-]+/g, '');
+}
+
+function resolveWishedArmorAppearanceAlias(normalized) {
+    const key = wishedFuzzyObjectKey(normalized);
+    if (!key) return '';
+    for (const name of WISH_NAMEDESC_RANGES.keys()) {
+        if (wishedFuzzyObjectKey(name) === key) return name;
+    }
+    for (const [kind, armorAppearance] of Object.entries(ARMOR_WISH_APPEARANCES)) {
+        const [group, index, fallback] = armorAppearance;
+        const appearance = group ? game._object_descriptions?.[group]?.[index] || fallback : fallback;
+        if (appearance && wishedFuzzyObjectKey(appearance) === key) return kind;
+    }
+    return '';
 }
 
 function resolveWishedSpellingAlias(lowerName) {
     const normalized = String(lowerName || '').trim().replace(/\s+/g, ' ');
     const explicit = WISH_EXPLICIT_SPELLING_ALIASES.get(normalized);
     if (explicit) return { name: explicit, skipNamedesc: true };
+    const appearance = resolveWishedArmorAppearanceAlias(normalized);
+    if (appearance) return { name: appearance, skipNamedesc: false };
     const alias = WISH_NAME_ALIASES.get(normalized);
     if (alias) return { name: alias, skipNamedesc: false };
     return { name: singularizeWishedPluralName(normalized), skipNamedesc: false };
@@ -29288,6 +29621,30 @@ function makeWishedGrayStoneObject(lowerName) {
         _display_color: CLR_GRAY,
         wishedfor: true,
     });
+}
+
+function wishedNamedescRangeName(lowerName) {
+    const range = WISH_NAMEDESC_RANGES.get(lowerName);
+    if (!range) return '';
+    const total = range.reduce((sum, [, prob]) => sum + prob, 0);
+    let roll = rn2(total);
+    for (const [name, prob] of range) {
+        roll -= prob;
+        if (roll < 0) return name;
+    }
+    return range[0]?.[0] || '';
+}
+
+function makeWishedNamedescRangeObject(lowerName) {
+    const rangeName = wishedNamedescRangeName(lowerName);
+    if (!rangeName) return null;
+    const baseObject = WISH_BASE_OBJECTS.get(rangeName);
+    if (!baseObject) return null;
+    const baseFields = { ...baseObject };
+    delete baseFields.wishSpeRn1;
+    const metadata = wishObjectMetadataForName(rangeName) ?? wishObjectMetadataForItem(baseFields);
+    const otmp = makeWishedBaseObject(baseObject, metadata);
+    return Object.assign(otmp, baseFields, { wishedfor: true });
 }
 
 const WISH_GEM_COLORS = new Map([
@@ -29408,7 +29765,7 @@ function normalizeWishedGroupPhrase(name, quantity) {
     const match = String(name || '').match(/^(pair|pairs|set|sets)\s+of\s+/i);
     if (!match) return { name, quantity, matched: false };
     const objectName = String(name).slice(match[0].length);
-    const nonStackingPairObject = /\b(?:boots|shoes|gloves|lenses)\b/i.test(objectName);
+    const nonStackingPairObject = /\b(?:boots|shoes|gloves|gauntlets|lenses)\b/i.test(objectName);
     let wishedQuantity = quantity;
     const group = match[1].toLowerCase();
     if (nonStackingPairObject) wishedQuantity = 1;
@@ -29567,6 +29924,9 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
 
     const rangeWish = makeWishedObjectRangeObject(lowerName);
     if (rangeWish) return rangeWish;
+
+    const namedescRangeWish = makeWishedNamedescRangeObject(lowerName);
+    if (namedescRangeWish) return namedescRangeWish;
 
     const dragonArmorWish = parseWishedDragonArmorName(lowerName);
     if (dragonArmorWish) return makeWishedDragonArmorObject(dragonArmorWish);
