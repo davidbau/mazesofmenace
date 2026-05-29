@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -29,6 +29,7 @@ import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAtt
 import { applyMonsterLiquidEffectsAt } from './monster_liquid.js';
 import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, currentFruitName, fruitWishMatch, setCurrentFruitName, slimeMoldNameForObject } from './fruit.js';
 import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers, killEggHatchTimer } from './egg_timers.js';
+import { METALLIC_MATERIALS, metallivoreObjectAlwaysResists, objectIsAmuletLike, objectIsRingLike, objectIsSlowDigestionRing, objectMaterialForMetallivore } from './metallivore.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -7452,7 +7453,7 @@ const CMDASSIST_DIRECTION_LINES = [
 ];
 
 function eatingPrompt() {
-    const letters = inventoryLetters(item => item.cls === 'food' || item.otyp === FOOD_CLASS || item.otyp === 'corpse' || item.otyp === CORPSE);
+    const letters = inventoryLetters(heroInventoryEatCandidate);
     const contiguous = [...letters].every((ch, i) => !i || ch.charCodeAt(0) === letters.charCodeAt(i - 1) + 1);
     const display = contiguous && letters.length > 5 ? `${letters[0]}-${letters[letters.length - 1]}` : letters;
     return `What do you want to eat? [${display || '-'} or ?*]`;
@@ -12778,10 +12779,13 @@ function stoneToFleshChristenAnimatedStatueMonster(item, mon) {
     mon.givenName = name;
 }
 
-function stoneToFleshHistoricStatueGoneMessage(item) {
+function stoneToFleshHistoricStatueGoneMessage(item, x, y) {
     const role = game.urole?.name?.m || game._startup_role;
     if (role !== 'Archeologist') return '';
     if (!(((item?.spe || 0) & CORPSTAT_HISTORIC) || item?.historic)) return '';
+    if (game._monster_moving) {
+        return cansee(x, y) ? 'You feel regret that the historic statue is now gone.' : '';
+    }
     if (game.u?.ualign) {
         const record = game.u.ualign.record || 0;
         const newRecord = record - 1;
@@ -12804,7 +12808,7 @@ async function stoneToFleshAnimateFloorStatue(item, x, y) {
     messages.push(`${upstartText(`the ${pickupObjectName(item)}`)} ${verb}!`);
     const chargeMessage = statueShatterShopDebtMessage(item, x, y, mon);
     if (chargeMessage) messages.push(chargeMessage);
-    const historicMessage = stoneToFleshHistoricStatueGoneMessage(item);
+    const historicMessage = stoneToFleshHistoricStatueGoneMessage(item, x, y);
     if (historicMessage) messages.push(historicMessage);
     moveStatueContentsToMonster(item, mon);
     newsym(x, y);
@@ -14304,6 +14308,7 @@ function applyBurningOilDoorTerrain(x, y, messages) {
         if (visible) messages.push('The blast reveals a secret door.');
     }
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) {
+        addShopTerrainDamage(x, y, SHOP_DOOR_COST);
         loc.doormask = D_NODOOR;
         loc.flags = 0;
         newsym(x, y);
@@ -14378,6 +14383,7 @@ function explodeBurningOilPotion(potion, x, y, messages) {
     if (Math.abs((game.u?.ux ?? -99) - x) <= 1 && Math.abs((game.u?.uy ?? -99) - y) <= 1)
         damageHeroFromBurningOilExplosion(damage, messages);
 
+    payForCurrentShopTerrainDamage('burn away', messages);
     wakeNearbyMonstersFromExplosion(x, y, damage);
 }
 
@@ -15285,13 +15291,27 @@ function heroThrownCorpseWeight(corpse) {
     return CORPSE_WEIGHTS.get(corpseName) || Math.max(1, Math.trunc(Number(corpse?.corpsenm?.cwt || 20)));
 }
 
+function heroHasHalfPhysicalDamage() {
+    return !!(game.u?.halfPhysicalDamage
+        || game.u?.half_physical_damage
+        || game.u?.halfPhysical
+        || game.u?.halfPhysicalDamageTimeout
+        || game.u?.extrinsics?.halfPhysicalDamage
+        || game.u?.intrinsics?.halfPhysicalDamage);
+}
+
+function maybeHalfPhysicalDamage(damage) {
+    return heroHasHalfPhysicalDamage() ? Math.trunc((damage + 1) / 2) : damage;
+}
+
 function heroThrownCorpseFallingDamage(corpse, helmet = null) {
-    const weightDamage = Math.max(1, Math.ceil(heroThrownCorpseWeight(corpse) / 100));
+    const weightDamage = Math.max(1, Math.ceil(heroThrownCorpseWeight(corpse) / WT_TO_DMG));
     let damage = weightDamage <= 1 ? 1 : rnd(weightDamage);
     if (damage > 6) damage = 6;
     if (helmet && hardEarthHelmet(helmet) && damage > 1) damage = 1;
-    damage += Math.trunc(Number(game.u?.udaminc || 0));
-    return Math.max(0, damage);
+    if (damage > 0) damage += Math.trunc(Number(game.u?.udaminc || 0));
+    if (damage < 0) damage = 0;
+    return maybeHalfPhysicalDamage(damage);
 }
 
 function applyHeroThrownCorpseFallingDamage(damage, messages) {
@@ -15337,6 +15357,36 @@ function heroThrownTouchPetrifyingCorpseUpwardMessages(corpse, prefixMessages = 
         return heroThrownTouchPetrifyingCorpseSelfHitMessages(corpse, 'hits', ceilingName, prefixMessages);
     }
     return heroThrownTouchPetrifyingCorpseSelfHitMessages(corpse, 'almost hits', ceilingName, prefixMessages);
+}
+
+function heroThrownOrdinaryCorpseSelfHitMessages(corpse, action, ceilingName = heroThrowCeilingName()) {
+    const messages = [
+        `${floorObjectSubject({ ...corpse, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`,
+    ];
+    projectileTopLevelBreakKind(corpse); // C breaktest consumes obj_resists() even though corpses do not break.
+
+    const helmet = wornTossUpHelmet();
+    const damage = heroThrownCorpseFallingDamage(corpse, helmet);
+    if (helmet && hardEarthHelmet(helmet) && damage < (game.u?.uhp || 0))
+        messages.push('Fortunately, you are wearing a hard helmet.');
+
+    const landing = landProjectileObjectWithShopHandling(corpse, game.u?.ux || corpse.ox || 0, game.u?.uy || corpse.oy || 0, {});
+    messages.push(...landing.messages);
+    applyHeroThrownCorpseFallingDamage(damage, messages);
+    return messages;
+}
+
+function heroThrownOrdinaryCorpseUpwardMessages(corpse) {
+    const ceilingName = heroThrowCeilingName();
+    const hasCeiling = heroHasThrowCeiling();
+    const hitsRoof = !!(rn2(5) && !heroIsUnderwaterForThrow());
+    if (!hasCeiling)
+        return heroThrownOrdinaryCorpseSelfHitMessages(corpse, 'flies up into', ceilingName);
+    if (hitsRoof) {
+        projectileTopLevelBreakKind(corpse); // C tests for ceiling breakage before choosing the "hits" wording.
+        return heroThrownOrdinaryCorpseSelfHitMessages(corpse, 'hits', ceilingName);
+    }
+    return heroThrownOrdinaryCorpseSelfHitMessages(corpse, 'almost hits', ceilingName);
 }
 
 function heroThrownTouchPetrifyingEggCeilingBreakMessages(egg, ceilingName = heroThrowCeilingName()) {
@@ -18665,6 +18715,161 @@ function heroIsMetallivorous() {
     return !!(polyselfFormWithDiet()?.metallivorous || game.u?.metallivorous);
 }
 
+function heroIsRustMonsterPolyself() {
+    const form = polyselfFormWithDiet();
+    return String(form?.name || game.u?.umonster || '').toLowerCase() === 'rust monster';
+}
+
+function isFoodOrCorpseObject(item) {
+    return item?.cls === 'food' || item?.otyp === FOOD_CLASS || item?.otyp === 'corpse' || item?.otyp === CORPSE;
+}
+
+function heroInventoryEatCandidate(item) {
+    return isFoodOrCorpseObject(item) || heroCanEatNonFoodMetal(item);
+}
+
+function heroCanEatNonFoodMetal(item) {
+    if (!heroIsMetallivorous() || !item || isFoodOrCorpseObject(item) || isTinObject(item)) return false;
+    if (metallivoreObjectAlwaysResists(item)) return false;
+    const material = objectMaterialForMetallivore(item);
+    if (!METALLIC_MATERIALS.has(material)) return false;
+    return !(heroIsRustMonsterPolyself() && material !== 'iron');
+}
+
+function heroMetalEatingWornBlock(item) {
+    if (!isWornInventoryItem(item) || objectIsRingLike(item)) return false;
+    return item.cls === 'armor' || item.otyp === ARMOR_CLASS || item.glyph === '['
+        || item.cls === 'tool' || item.otyp === TOOL_CLASS || item.glyph === '('
+        || objectIsAmuletLike(item)
+        || item.otyp === W_SADDLE || item.kind === 'saddle';
+}
+
+function refreshInventoryLineAfterMetalSplit(item) {
+    if (!item || !game.inventory?.includes(item)) return;
+    delete item.line;
+    item.line = normalInventoryLine(item);
+}
+
+function splitCarriedMetalUnit(item) {
+    const quantity = item?.quan || 1;
+    if (quantity <= 1) return item;
+    const split = { ...item, id: next_ident(), quan: 1 };
+    item.quan = quantity - 1;
+    refreshInventoryLineAfterMetalSplit(item);
+    return split;
+}
+
+function splitFloorMetalUnit(item) {
+    const quantity = item?.quan || 1;
+    if (quantity <= 1 || !game.level?.objects?.includes(item)) return item;
+    const rest = { ...item, id: next_ident(), quan: quantity - 1 };
+    item.quan = 1;
+    game.level.objects.push(rest);
+    return item;
+}
+
+function removeEatenFloorMetalObject(item) {
+    if (!game.level || !item) return;
+    removeFloorObject(item);
+    newsym(item.ox ?? game.u?.ux ?? 0, item.oy ?? game.u?.uy ?? 0);
+}
+
+function dropMetalObjectAtHero(item) {
+    if (!item || !game.level) return;
+    Object.assign(item, {
+        ox: game.u?.ux ?? 0,
+        oy: game.u?.uy ?? 0,
+        hidden: false,
+        buried: false,
+        contained: false,
+        transientProjectile: false,
+    });
+    delete item.letter;
+    delete item.line;
+    placeStackableFloorObject(item);
+    newsym(item.ox, item.oy);
+}
+
+function heroMetalNonFoodNutrition(item) {
+    if (!item) return 0;
+    if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$')
+        return Math.min(2000, Math.trunc((item.quan || 1) / 100));
+    if (item.cls === 'ball' || item.cls === 'chain' || item.otyp === BC_BALL || item.otyp === BC_CHAIN)
+        return globObjectWeight(item);
+    const explicit = item.oc_nutrition ?? item.nutrition;
+    if (explicit != null) return Math.max(0, Math.trunc(Number(explicit) || 0));
+    return globObjectWeight({ ...item, quan: 1 });
+}
+
+async function eatHeroNonFoodMetal(item, { floorObject = false } = {}) {
+    if (!item) return false;
+    if (!floorObject && heroMetalEatingWornBlock(item)) {
+        await setMessage("You can't eat something you're wearing.");
+        game._command_mode = null;
+        return true;
+    }
+
+    if (heroIsRustMonsterPolyself() && (item.oerodeproof || item.rustproof)) {
+        const spat = floorObject ? splitFloorMetalUnit(item) : splitCarriedMetalUnit(item);
+        spat.rknown = true;
+        spat.oerodeproof = false;
+        spat.rustproof = false;
+        const stunTurns = rn2(10);
+        if (stunTurns > 0) addHeroStun(stunTurns);
+        const name = pickupObjectName({ ...spat, quan: 1 });
+        if (!floorObject && !(spat.cursed && objectIsRingLike(spat))) {
+            if ((game.inventory || []).includes(spat)) removeInventoryItem(spat, spat.quan || 1);
+            dropMetalObjectAtHero(spat);
+            await setMessage(`Ulch - that ${name} was rustproofed!  You spit the ${name} out onto the floor.`);
+        } else {
+            if (!floorObject && (game.inventory || []).includes(spat)) refreshInventoryLineAfterMetalSplit(spat);
+            await setMessage(`Ulch - that ${name} was rustproofed!  You spit out the ${name}.`);
+        }
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+
+    if (objectIsSlowDigestionRing(item)) {
+        await setMessage('This ring is indigestible!');
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+
+    const name = pickupObjectName({ ...item, quan: 1 });
+    const messages = [];
+    if (item.opoisoned && isPoisonableWeaponObject(item)) {
+        messages.push('Ecch - that must have been poisonous!');
+        if (heroHasPoisonResistance()) {
+            messages.push('You seem unaffected by the poison.');
+        } else {
+            const strengthDamage = rnd(4);
+            const hpDamage = rnd(15);
+            if (game.u?.acurr?.a) {
+                game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - strengthDamage);
+                exerciseAttribute(A_STR, false);
+            }
+            if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - hpDamage);
+            if ((game.u?.uhp || 0) <= 0) {
+                game._death_cause = `killed by a poisonous ${name}`;
+                messages.push('You die...');
+            }
+        }
+    } else if (!item.cursed) {
+        messages.push(`This ${name} is delicious!`);
+    }
+
+    addHeroNutrition(heroMetalNonFoodNutrition(item));
+    if (floorObject) removeEatenFloorMetalObject(item);
+    else removeInventoryItem(item, item.quan || 1);
+    game._pet_food_scan_inventory = game.inventory || [];
+    await setMessage(messages.join('  ') || `This ${name} is delicious!`, messages.length > 1);
+    game._command_mode = null;
+    game.context.move = 1;
+    return true;
+}
+
 function wieldedItem() {
     return (game.inventory || []).find(item =>
         item.wielded || item.line?.includes('weapon in') || item.line?.includes('(wielded)')) || null;
@@ -21545,6 +21750,159 @@ function liveShopkeeper(mon) {
     return !!mon?.isshk && !mon.dead && (mon.mhp == null || mon.mhp > 0);
 }
 
+function shopDamageList() {
+    if (!game.level) game.level = {};
+    if (!Array.isArray(game.level.damagelist)) game.level.damagelist = [];
+    return game.level.damagelist;
+}
+
+function shopkeeperForShopDoorAt(x, y) {
+    for (const roomno of shopRoomnosAt(x, y, SHOPBASE)) {
+        const shkp = shopkeeperForRoomno(roomno);
+        if (!liveShopkeeper(shkp)) continue;
+        if ((shkp.shd?.x ?? null) === x && (shkp.shd?.y ?? null) === y) return shkp;
+    }
+    return null;
+}
+
+function addShopTerrainDamage(x, y, cost) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || loc.typ !== DOOR) return false;
+    const shkp = shopkeeperForShopDoorAt(x, y);
+    if (!shkp) return false;
+
+    const damage = shopDamageList();
+    const when = Math.max(0, Math.trunc(Number(game.moves || 0)));
+    const entry = damage.find(dam => dam.x === x && dam.y === y);
+    if (entry) {
+        entry.cost = Math.max(0, Math.trunc(Number(entry.cost || 0))) + Math.max(0, Math.trunc(Number(cost || 0)));
+        entry.when = when;
+        entry.shoproom = shkp.shoproom;
+        entry.shopkeeperId = shopkeeperIdentity(shkp);
+        return true;
+    }
+
+    damage.push({
+        x,
+        y,
+        cost: Math.max(0, Math.trunc(Number(cost || 0))),
+        when,
+        typ: loc.typ,
+        flags: loc.doormask ?? D_CLOSED,
+        shoproom: shkp.shoproom,
+        shopkeeperId: shopkeeperIdentity(shkp),
+    });
+    return true;
+}
+
+function shopkeeperForDamageEntry(dam) {
+    if (!dam) return null;
+    if (dam.shoproom != null) {
+        const byRoom = shopkeeperForRoomno(dam.shoproom);
+        if (liveShopkeeper(byRoom)) return byRoom;
+    }
+    if (dam.shopkeeperId != null) {
+        const found = (game.level?.monsters || []).find(mon =>
+            liveShopkeeper(mon) && String(shopkeeperIdentity(mon)) === String(dam.shopkeeperId));
+        if (found) return found;
+    }
+    return shopkeeperForShopDoorAt(dam.x, dam.y);
+}
+
+function currentShopTerrainDamageEntries() {
+    const when = Math.max(0, Math.trunc(Number(game.moves || 0)));
+    return shopDamageList().filter(dam => dam.when === when && Math.max(0, Math.trunc(Number(dam.cost || 0))) > 0 && !dam.paid);
+}
+
+function payForCurrentShopTerrainDamage(dmgstr, messages = []) {
+    const totals = new Map();
+    for (const dam of currentShopTerrainDamageEntries()) {
+        const shkp = shopkeeperForDamageEntry(dam);
+        if (!shopkeeperInHisShop(shkp)) continue;
+        totals.set(shkp, (totals.get(shkp) || 0) + Math.max(0, Math.trunc(Number(dam.cost || 0))));
+        dam.paid = true;
+        dam.damageVerb = dmgstr;
+    }
+
+    for (const [shkp, amount] of totals) {
+        const beforeDebit = Math.max(0, Math.trunc(Number(shkp.debit || 0)));
+        const beforeRobbed = Math.max(0, Math.trunc(Number(shkp.robbed || 0)));
+        const peaceful = heroInShopOwnedBy(shkp);
+        const charged = chargeShopkeeperForLostMerchandise(shkp, amount, { peaceful });
+        if (!charged) continue;
+        const deltas = shopDebtDeltas(shkp, beforeDebit, beforeRobbed);
+        if (deltas.debitDelta > 0)
+            messages.push(`You did ${deltas.debitDelta} ${shopCurrency(deltas.debitDelta)} worth of damage!`);
+        else if (deltas.robbedDelta > 0)
+            messages.push(`You caused ${deltas.robbedDelta} ${shopCurrency(deltas.robbedDelta)} worth of damage!`);
+    }
+    return totals.size > 0;
+}
+
+function monsterPassesWallsForRepair(mon) {
+    const data = mon?.data || {};
+    return !!(mon?.passesWalls || mon?.passes_walls || mon?.wallwalk
+        || data.passesWalls || data.passes_walls || data.wallwalk || data.noncorporeal || data.whirly);
+}
+
+function repairableShopDamage(dam, shkp) {
+    if (!dam || !shopkeeperInHisShop(shkp)) return false;
+    const moves = Math.max(0, Math.trunc(Number(game.moves || 0)));
+    if (moves - Math.max(0, Math.trunc(Number(dam.when || 0))) < REPAIR_DELAY) return false;
+    if (!shopRoomnosAt(dam.x, dam.y, SHOPBASE).includes(shkp.shoproom)) return false;
+
+    if (!IS_ROOM(dam.typ)) {
+        if (game.u?.ux === dam.x && game.u?.uy === dam.y && !game.u?.passesWalls && !game.u?.passes_walls)
+            return false;
+        if ((shkp.mx ?? null) === dam.x && (shkp.my ?? null) === dam.y) return false;
+        const blocker = (game.level?.monsters || []).find(mon =>
+            mon !== shkp && !mon.dead && (mon.mhp == null || mon.mhp > 0)
+            && mon.mx === dam.x && mon.my === dam.y && !monsterPassesWallsForRepair(mon));
+        if (blocker) return false;
+    }
+    return true;
+}
+
+export function repairShopDamageForShopkeeper(shkp, messages = []) {
+    const damage = shopDamageList();
+    const dam = damage.find(entry => repairableShopDamage(entry, shkp));
+    if (!dam) return false;
+
+    const loc = game.level?.at?.(dam.x, dam.y);
+    if (!loc) return false;
+    const visibleShopkeeper = !game.u?.blind && cansee(shkp.mx, shkp.my);
+    const closeToHero = ((shkp.mx ?? 0) - (game.u?.ux ?? 0)) ** 2 + ((shkp.my ?? 0) - (game.u?.uy ?? 0)) ** 2
+        <= (BOLT_LIM / 2) * (BOLT_LIM / 2);
+    if (visibleShopkeeper) {
+        messages.push(`${shopkeeperDisplayName(shkp)} whispers ${closeToHero ? 'an incantation' : 'something'}.`);
+    } else if (!heroIsDeaf() && closeToHero) {
+        messages.push('You hear someone muttering an incantation.');
+    }
+
+    const wasAlreadyRepaired = dam.typ === loc.typ && (dam.typ !== DOOR || (loc.doormask & (D_CLOSED | D_LOCKED)));
+    if (!wasAlreadyRepaired) {
+        loc.typ = dam.typ;
+        if (dam.typ === DOOR) {
+            loc.doormask = D_CLOSED;
+            loc.flags = D_CLOSED;
+        } else {
+            loc.flags = dam.flags ?? loc.flags ?? 0;
+        }
+        if (!game.u?.blind && cansee(dam.x, dam.y)) {
+            messages.push(dam.typ === DOOR
+                ? 'Suddenly, the shop door reappears!'
+                : 'Suddenly, a section of the wall closes up!');
+        }
+        vision_reset();
+        vision_recalc(0);
+        newsym(dam.x, dam.y);
+    }
+
+    const idx = damage.indexOf(dam);
+    if (idx >= 0) damage.splice(idx, 1);
+    return true;
+}
+
 function shopkeeperNextToHero(shkp, ux = game.u?.ux || 0, uy = game.u?.uy || 0) {
     if (!shkp) return false;
     return Math.max(Math.abs((shkp.mx ?? 0) - ux), Math.abs((shkp.my ?? 0) - uy)) <= 1;
@@ -24177,6 +24535,9 @@ export const __shopBillingTestHooks = {
     shopBillEntryForObject,
     shopBillEntryQuantity,
     shopBillEntryTotal,
+    addShopTerrainDamage,
+    payForCurrentShopTerrainDamage,
+    repairShopDamageForShopkeeper,
     shopkeeperDebitPayment,
     shopkeeperCash,
     shopBaseCost,
@@ -25435,6 +25796,12 @@ function isPetrifyingCorpseObject(obj) {
     return name === 'cockatrice' || name === 'chickatrice' || !!obj?.corpsenm?.touchPetrifies;
 }
 
+function isRiderCorpseObject(obj) {
+    if (!(obj?.otyp === CORPSE || obj?.otyp === 'corpse')) return false;
+    const name = corpseMonsterName(obj).toLowerCase();
+    return name === 'death' || name === 'famine' || name === 'pestilence';
+}
+
 function containerTakeoutFatalCorpseMessage(obj) {
     if (!isPetrifyingCorpseObject(obj) || wornGlovesItem() || game.u?.stoneResistance)
         return '';
@@ -26250,10 +26617,26 @@ export function landMonsterThrownObject(missile, x, y, {
     messages = null,
     verb = 'fall',
     quan = 1,
+    ohit = false,
 } = {}) {
     if (!missile || !game.level) return { consumed: false, object: null, messages: [] };
     game.level.objects ??= [];
     const floorMessages = Array.isArray(messages) ? messages : [];
+    const dropThrow = {
+        broken: isCreamPieObject(missile) || isVenomObject(missile) || (!!ohit && isEggItem(missile)),
+        ohit: !!ohit,
+    };
+    if (dropThrow.broken) {
+        newsym(x, y);
+        return {
+            consumed: true,
+            object: null,
+            messages: floorMessages,
+            shipObject: projectileShipObjectResult(),
+            floorEffects: { consumed: false },
+            dropThrow,
+        };
+    }
     const landing = {
         ...missile,
         ox: x,
@@ -26277,6 +26660,7 @@ export function landMonsterThrownObject(missile, x, y, {
             messages: floorMessages,
             shipObject,
             floorEffects: { consumed: false },
+            dropThrow,
         };
     }
     const consumed = monsterThrownFloorEffects(landing, x, y, floorMessages, verb);
@@ -26288,6 +26672,7 @@ export function landMonsterThrownObject(missile, x, y, {
             messages: floorMessages,
             shipObject,
             floorEffects: { consumed: true },
+            dropThrow,
         };
     }
     const stacked = stackMonsterThrownObject(landing);
@@ -26299,6 +26684,7 @@ export function landMonsterThrownObject(missile, x, y, {
         messages: floorMessages,
         shipObject,
         floorEffects: { consumed: false },
+        dropThrow,
     };
 }
 
@@ -51377,6 +51763,10 @@ export async function rhack(_cmd) {
             game._command_mode = null;
             return;
         }
+        if (heroCanEatNonFoodMetal(item)) {
+            await eatHeroNonFoodMetal(item);
+            return;
+        }
         if (item?.cls === 'food' || item?.otyp === FOOD_CLASS || item?.otyp === 'corpse' || item?.otyp === CORPSE) {
             const name = item.singular || pickupObjectName({ ...item, quan: 1 });
             const fortuneCookie = isFortuneCookieFood(item);
@@ -51471,6 +51861,10 @@ export async function rhack(_cmd) {
             game._eating_floor_object_direct_useup = 0;
             if (isTinObject(food)) {
                 await startTinOpening(food, true);
+                return;
+            }
+            if (heroCanEatNonFoodMetal(food)) {
+                await eatHeroNonFoodMetal(food, { floorObject: true });
                 return;
             }
             if ((food?.otyp === 'corpse' || food?.otyp === CORPSE) && food?.corpsenm?.name === 'lichen') {
@@ -52424,6 +52818,43 @@ export async function rhack(_cmd) {
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             return;
         }
+        if (ch === '<' && isCorpseItem(item) && !isRiderCorpseObject(item)) {
+            let thrownId = null;
+            if ((item.quan || 1) > 1) thrownId = next_ident();
+            const thrownObject = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                wielded: false,
+                worn: false,
+                quivered: false,
+                ox: game.u?.ux || 0,
+                oy: game.u?.uy || 0,
+                id: thrownId ?? item.id,
+                quan: 1,
+                glyph: '%',
+                color: item.color || CLR_BROWN,
+            };
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            removeInventoryItem(item, 1);
+            const messages = heroThrownOrdinaryCorpseUpwardMessages(thrownObject);
+            newsym(game.u?.ux || 0, game.u?.uy || 0);
+            await setMessage(messages.join('  '), !!messages.more);
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game.context.move = 0;
+            if (messages.fatal) {
+                game._command_mode = 'deathDieMore';
+                game._pending_time_passed = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                prepareDeathBones();
+                return;
+            }
+            game._command_mode = null;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            return;
+        }
         if (ch === '<' && isPyroliskEgg(item)) {
             let thrownId = null;
             if ((item.quan || 1) > 1) thrownId = next_ident();
@@ -53067,7 +53498,7 @@ export async function rhack(_cmd) {
             !obj.hidden
             && obj.ox === game.u?.ux
             && obj.oy === game.u?.uy
-            && (obj.cls === 'food' || obj.otyp === FOOD_CLASS || obj.otyp === 'corpse' || obj.otyp === CORPSE));
+            && (isFoodOrCorpseObject(obj) || heroCanEatNonFoodMetal(obj)));
         if (floorFood) {
             const name = pickupObjectName(floorFood);
             const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
@@ -53079,7 +53510,7 @@ export async function rhack(_cmd) {
             game._command_mode = 'eatFloorObject';
             return;
         }
-        const letters = inventoryLetters(item => item.cls === 'food' || item.otyp === FOOD_CLASS || item.otyp === 'corpse' || item.otyp === CORPSE);
+        const letters = inventoryLetters(heroInventoryEatCandidate);
         if (!letters) {
             await setMessage("You don't have anything to eat.");
             return;
