@@ -1842,6 +1842,32 @@ const WISH_OBJECT_RANGES = new Map([
         ['katana', 4],
     ]],
 ]);
+const WISH_OBJECT_RANGE_CLASSES = new Map([
+    ['bag', TOOL_CLASS],
+    ['lamp', TOOL_CLASS],
+    ['candle', TOOL_CLASS],
+    ['horn', TOOL_CLASS],
+    ['shield', ARMOR_CLASS],
+    ['hat', ARMOR_CLASS],
+    ['helm', ARMOR_CLASS],
+    ['gloves', ARMOR_CLASS],
+    ['gauntlets', ARMOR_CLASS],
+    ['cloak', ARMOR_CLASS],
+    ['shoes', ARMOR_CLASS],
+    ['boots', ARMOR_CLASS],
+    ['shirt', ARMOR_CLASS],
+    ['sword', WEAPON_CLASS],
+]);
+const WISH_RANGE_BASE_DESCRIPTIONS = new Map([
+    ['sack', 'bag'],
+    ['oilskin sack', 'bag'],
+    ['bag of holding', 'bag'],
+    ['bag of tricks', 'bag'],
+    ['oil lamp', 'lamp'],
+    ['magic lamp', 'lamp'],
+    ['tallow candle', 'candle'],
+    ['wax candle', 'candle'],
+]);
 const WISH_AMULET_NAMEDESC_BOUNDS = new Map([
     ['amulet of esp', 121],
     ['amulet of life saving', 76],
@@ -8785,6 +8811,54 @@ function isThrowSuggestItem(item) {
     if (item.wielded || item.line?.includes('weapon in')) return false;
     return item.cls === 'coin' || item.cls === 'weapon' || item.cls === 'gem'
         || item.cls === 'venom' || item.otyp === FLINT_STONE;
+}
+
+function isThrowDownplayItem(item) {
+    return !!item?.letter && !isThrowSuggestItem(item);
+}
+
+function throwInventoryFilterMatch() {
+    if (game._throw_inventory_filter === 'suggest') return isThrowSuggestItem;
+    if (game._throw_inventory_filter === 'downplay') return isThrowDownplayItem;
+    return null;
+}
+
+function throwCountTextValue(text) {
+    return Math.trunc(Number(text || 0));
+}
+
+function clearThrowMenuCountState() {
+    game._throw_menu_count_text = '';
+    game._throw_menu_count_backspaced = false;
+}
+
+function clearThrowCountState() {
+    game._throw_count_text = '';
+    game._throw_count_backspaced = false;
+    game._throw_count = null;
+    clearThrowMenuCountState();
+}
+
+function throwSelectionCount() {
+    const menuCount = throwCountTextValue(game._throw_menu_count_text);
+    if (menuCount > 0) return menuCount;
+    return throwCountTextValue(game._throw_count_text);
+}
+
+function throwCountRejectionMessage(item, throwCount) {
+    if (throwCount <= 1) return '';
+    const available = Math.max(0, Math.trunc(Number(item?.quan || 1)));
+    const coins = shopBillableGold(item);
+    if (coins && throwCount <= available) return '';
+    const onlyOne = 'can only throw one at a time';
+    return throwCount > available
+        ? `You only have ${available}${!coins && available > 1 ? ` and ${onlyOne}` : ''}.`
+        : `You ${onlyOne}.`;
+}
+
+function echoThrowMenuCount(text) {
+    game._pending_message = `Count: ${text}`;
+    game._message_more = 0;
 }
 
 function updateWornDisplacement() {
@@ -29358,6 +29432,36 @@ function calledRangeNamedescName(base, called) {
     return '';
 }
 
+function calledRangeBaseNamedescName(base) {
+    const range = WISH_OBJECT_RANGES.get(base);
+    if (!range) return '';
+    const matches = [];
+    for (const [name, prob] of range) {
+        let matched = calledTailMatchesObjectName(base, name);
+        const baseObject = WISH_BASE_OBJECTS.get(name);
+        if (!matched && baseObject?.actualKind)
+            matched = calledTailMatchesObjectName(base, baseObject.actualKind);
+        const armorAppearance = ARMOR_WISH_APPEARANCES[name];
+        if (!matched && armorAppearance) {
+            const [group, index, fallback] = armorAppearance;
+            const appearance = group ? game._object_descriptions?.[group]?.[index] || fallback : fallback;
+            matched = appearance && calledTailMatchesObjectName(base, appearance);
+        }
+        const toolAppearance = WISH_TOOL_APPEARANCES.get(name) || WISH_RANGE_BASE_DESCRIPTIONS.get(name);
+        if (!matched && toolAppearance)
+            matched = calledTailMatchesObjectName(base, toolAppearance);
+        if (matched) matches.push([name, prob + 1]);
+    }
+    const total = matches.reduce((sum, [, prob]) => sum + prob, 0);
+    if (total <= 0) return '';
+    let roll = rn2(total);
+    for (const [name, prob] of matches) {
+        roll -= prob;
+        if (roll < 0) return name;
+    }
+    return matches[0]?.[0] || '';
+}
+
 function parseWishedScrollLabel(name) {
     const match = String(name || '').trim().match(/^scrolls?\s+labell?ed\s+(.+)$/i);
     return match ? unquoteWishedText(match[1]) : '';
@@ -29832,6 +29936,10 @@ function wishedObjectRangeName(lowerName) {
 function makeWishedObjectRangeObject(lowerName) {
     const rangeName = wishedObjectRangeName(lowerName);
     if (!rangeName) return null;
+    return makeWishedRangeObjectByName(rangeName);
+}
+
+function makeWishedRangeObjectByName(rangeName) {
     if (rangeName === 'magic lamp' && !game.flags?.debug)
         return makeOilLampFromMagicLampWishObject();
     const baseObject = WISH_BASE_OBJECTS.get(rangeName);
@@ -29841,6 +29949,15 @@ function makeWishedObjectRangeObject(lowerName) {
     const metadata = wishObjectMetadataForName(rangeName) ?? wishObjectMetadataForItem(baseFields);
     const otmp = makeWishedBaseObject(baseObject, metadata);
     return Object.assign(otmp, baseFields, { wishedfor: true });
+}
+
+function makeWishedObjectClassObject(oclass) {
+    if (!oclass) return null;
+    const otmp = mkobj(oclass, false);
+    const classFields = {};
+    if (oclass === SCROLL_CLASS) classFields.cls = 'scroll';
+    else if (oclass === SPBOOK_CLASS) classFields.cls = 'spellbook';
+    return Object.assign(otmp, object_display(otmp), classFields, { wishedfor: true });
 }
 
 function makeWishedFruitObject(lowerName) {
@@ -29882,6 +29999,10 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
         const calledWish = resolveCalledWishName(lowerName, qualifiers.wishCalledName);
         if (calledWish)
             return wishedBaseObjectFromName(calledWish, { ...qualifiers, wishCalledName: '' }, calledWish);
+        const rangeBaseWish = calledRangeBaseNamedescName(lowerName);
+        if (rangeBaseWish) return makeWishedRangeObjectByName(rangeBaseWish);
+        const rangeClass = WISH_OBJECT_RANGE_CLASSES.get(lowerName);
+        if (rangeClass) return makeWishedObjectClassObject(rangeClass);
     }
     if (lowerName === 'spell') return noFittingWishObject();
     if (lowerName === 'paperback' || lowerName === 'paperback book') return makeNovelWishObject();
@@ -30075,16 +30196,9 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
                 return makeWishedKnownScrollObject(scrollIndex, wishedLabel);
             }
             if (scrollIndex >= IDENTIFIED_SCROLL_NAMES.length) {
-                const otmp = mksobj(SCROLL_CLASS, true, false);
-                const label = game._object_descriptions?.scrolls?.[scrollIndex] || wishedLabel;
-                return Object.assign(otmp, {
-                    cls: 'scroll',
-                    glyph: '?',
-                    kind: `scroll labeled ${label}`,
-                    known: false,
-                    wishedfor: true,
-                });
+                return makeWishedObjectClassObject(SCROLL_CLASS);
             }
+            if (/^scrolls?$/.test(lowerName)) return makeWishedObjectClassObject(SCROLL_CLASS);
         }
         const scrollName = lowerName.replace(/^scrolls?(?: of)?\s+/, '');
         if ((qualifiers.unlabeled && /^scrolls?$/.test(lowerName)) || scrollName === 'blank paper')
@@ -30132,6 +30246,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
                     wishedfor: true,
                 });
             }
+            if (/^spell\s*books?$/.test(lowerName)) return makeWishedObjectClassObject(SPBOOK_CLASS);
         }
         const spellbookIndex = spellbookNames.indexOf(spellName);
         const namedescBound = WISH_SPELLBOOK_NAMEDESC_BOUNDS.get(spellName);
@@ -54339,13 +54454,23 @@ export async function rhack(_cmd) {
         if (ch === '\x1b' || ch === ' ') {
             await setMessage('Never mind.');
             game._command_mode = null;
-            game._throw_count_text = '';
-            game._throw_count = null;
+            clearThrowCountState();
+            return;
+        }
+        const throwCountValue = throwCountTextValue(game._throw_count_text);
+        if ((ch === '\b' || ch === '\x7f') && throwCountValue > 0) {
+            const newCount = Math.trunc(throwCountValue / 10);
+            game._throw_count_text = newCount > 0 ? String(newCount) : '';
+            game._throw_count_backspaced = true;
+            await setMessage(`Count: ${game._throw_count_text}`);
             return;
         }
         if (/^\d$/.test(ch)) {
+            const backspaced = !!game._throw_count_backspaced;
             game._throw_count_text = `${game._throw_count_text || ''}${ch}`;
-            if (game._throw_count_text.length > 1) await setMessage(`Count: ${game._throw_count_text}`);
+            const typedCount = throwCountTextValue(game._throw_count_text);
+            if (typedCount > 9 || backspaced) await setMessage(`Count: ${typedCount}`);
+            game._throw_count_backspaced = false;
             return;
         }
         if (ch === '*') {
@@ -54353,45 +54478,40 @@ export async function rhack(_cmd) {
             showInventoryOverlay();
             game._throw_inventory_filter = null;
             game._command_mode = 'throwInventory';
-            game._throw_count_text = '';
             game._throw_count = null;
+            clearThrowMenuCountState();
             return;
         }
         if (ch === '?') {
             game._throw_inventory_page = 0;
-            showInventoryOverlay(0, false, isThrowSuggestItem);
-            game._throw_inventory_filter = 'suggest';
+            const suggestLetters = inventoryLetters(isThrowSuggestItem);
+            game._throw_inventory_filter = suggestLetters ? 'suggest' : 'downplay';
+            showInventoryOverlay(0, false, throwInventoryFilterMatch());
             game._command_mode = 'throwInventory';
-            game._throw_count_text = '';
             game._throw_count = null;
+            clearThrowMenuCountState();
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch);
-        const throwCount = Math.trunc(Number(game._throw_count_text || 0));
+        const throwCount = throwSelectionCount();
         const countGiven = throwCount > 0;
         if (!item) {
             if (countGiven) {
                 game._command_mode = null;
-                game._throw_count_text = '';
-                game._throw_count = null;
+                clearThrowCountState();
                 game._pending_message = '';
                 game._message_more = 0;
                 return;
             }
             await setMessage("You don't have that object.", true);
             game._command_mode = 'throwInvalidMore';
+            clearThrowCountState();
             return;
         }
         if (countGiven && throwCount > 1) {
-            const available = Math.max(0, Math.trunc(Number(item.quan || 1)));
-            const coins = shopBillableGold(item);
-            if (!coins || throwCount > available) {
-                const onlyOne = 'can only throw one at a time';
-                const message = throwCount > available
-                    ? `You only have ${available}${!coins && available > 1 ? ` and ${onlyOne}` : ''}.`
-                    : `You ${onlyOne}.`;
-                game._throw_count_text = '';
-                game._throw_count = null;
+            const message = throwCountRejectionMessage(item, throwCount);
+            if (message) {
+                clearThrowCountState();
                 await setMessage(message);
                 return;
             }
@@ -54399,6 +54519,8 @@ export async function rhack(_cmd) {
         game._throw_item_letter = ch;
         game._throw_count = countGiven && shopBillableGold(item) ? throwCount : null;
         game._throw_count_text = '';
+        game._throw_count_backspaced = false;
+        clearThrowMenuCountState();
         await setMessage('In what direction?');
         game._command_mode = 'throwDirection';
         return;
@@ -54408,6 +54530,7 @@ export async function rhack(_cmd) {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             await setMessage(game._throw_prompt || 'What do you want to throw? [*]');
             game._command_mode = 'throwObject';
+            clearThrowCountState();
             return;
         }
         game._keep_pending_message = 1;
@@ -54415,13 +54538,28 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'throwInventory') {
-        if (ch === '*' && game._throw_inventory_filter === 'suggest') return;
+        if (ch === '*' && game._throw_inventory_filter) return;
+        const menuCountValue = throwCountTextValue(game._throw_menu_count_text);
+        if ((ch === '\b' || ch === '\x7f') && menuCountValue > 0) {
+            const newCount = Math.trunc(menuCountValue / 10);
+            game._throw_menu_count_text = newCount > 0 ? String(newCount) : '';
+            game._throw_menu_count_backspaced = true;
+            echoThrowMenuCount(game._throw_menu_count_text);
+            return;
+        }
+        if (/^\d$/.test(ch)) {
+            const backspaced = !!game._throw_menu_count_backspaced;
+            game._throw_menu_count_text = `${game._throw_menu_count_text || ''}${ch}`;
+            const typedCount = throwCountTextValue(game._throw_menu_count_text);
+            echoThrowMenuCount(String(typedCount));
+            game._throw_menu_count_backspaced = false;
+            return;
+        }
         if (ch === ' ') {
             const page = (game._throw_inventory_page || 0) + 1;
             if (page < (game._inventory_overlay_total_pages || 1)) {
                 game._throw_inventory_page = page;
-                const match = game._throw_inventory_filter === 'suggest' ? isThrowSuggestItem : null;
-                showInventoryOverlay(page, false, match);
+                showInventoryOverlay(page, false, throwInventoryFilterMatch());
                 return;
             }
             game._throw_inventory_page = 0;
@@ -54433,8 +54571,15 @@ export async function rhack(_cmd) {
             game._throw_prompt = letters
                 ? `What do you want to throw? [${promptLetters} or ?*]`
                 : 'What do you want to throw? [*]';
+            clearThrowCountState();
             await setMessage(game._throw_prompt);
             game._command_mode = 'throwObject';
+            return;
+        }
+        if (ch === '\x1b' && game._throw_menu_count_text) {
+            clearThrowMenuCountState();
+            game._pending_message = '';
+            game._message_more = 0;
             return;
         }
         if (ch === '\x1b') {
@@ -54444,8 +54589,7 @@ export async function rhack(_cmd) {
             game._overlay_hide_status = 0;
             await setMessage('Never mind.');
             game._command_mode = null;
-            game._throw_count_text = '';
-            game._throw_count = null;
+            clearThrowCountState();
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch);
@@ -54456,8 +54600,20 @@ export async function rhack(_cmd) {
             game._overlay_hide_status = 0;
             await setMessage("You don't have that object.");
             game._command_mode = null;
-            game._throw_count_text = '';
-            game._throw_count = null;
+            clearThrowCountState();
+            return;
+        }
+        const throwCount = throwSelectionCount();
+        const countGiven = throwCount > 0;
+        const rejection = countGiven ? throwCountRejectionMessage(item, throwCount) : '';
+        if (rejection) {
+            game._throw_inventory_page = 0;
+            game._throw_inventory_filter = null;
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            clearThrowCountState();
+            await setMessage(rejection);
+            game._command_mode = 'throwObject';
             return;
         }
         game._throw_inventory_page = 0;
@@ -54465,8 +54621,10 @@ export async function rhack(_cmd) {
         game._overlay_lines = null;
         game._overlay_hide_status = 0;
         game._throw_item_letter = ch;
+        game._throw_count = countGiven && shopBillableGold(item) ? throwCount : null;
         game._throw_count_text = '';
-        game._throw_count = null;
+        game._throw_count_backspaced = false;
+        clearThrowMenuCountState();
         await setMessage('In what direction?');
         game._command_mode = 'throwDirection';
         return;
@@ -54477,16 +54635,14 @@ export async function rhack(_cmd) {
             await setMessage('Never mind.');
             game._command_mode = null;
             game._throw_item_letter = null;
-            game._throw_count = null;
-            game._throw_count_text = '';
+            clearThrowCountState();
             return;
         }
         if (ch === '.') {
             await setMessage('You cannot throw an object at yourself.');
             game._command_mode = null;
             game._throw_item_letter = null;
-            game._throw_count = null;
-            game._throw_count_text = '';
+            clearThrowCountState();
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === game._throw_item_letter);
@@ -54898,8 +55054,7 @@ export async function rhack(_cmd) {
         const dir = movementDirection(ch);
         if (!dir) {
             game._throw_item_letter = null;
-            game._throw_count = null;
-            game._throw_count_text = '';
+            clearThrowCountState();
             setOverlay(CMDASSIST_DIRECTION_LINES, 24, true);
             game._command_mode = 'cmdassistMore';
             return;
@@ -54907,16 +55062,14 @@ export async function rhack(_cmd) {
         if (!item) {
             game._command_mode = null;
             game._throw_item_letter = null;
-            game._throw_count = null;
-            game._throw_count_text = '';
+            clearThrowCountState();
             return;
         }
         if (isLoadstoneObject(item) && item.cursed) {
             await setMessage(cursedLoadstoneLetGoMessage(item, 'throw'));
             game._command_mode = null;
             game._throw_item_letter = null;
-            game._throw_count = null;
-            game._throw_count_text = '';
+            clearThrowCountState();
             game.context.move = 0;
             return;
         }
@@ -54960,8 +55113,7 @@ export async function rhack(_cmd) {
             }
             game._command_mode = null;
             game._throw_item_letter = null;
-            game._throw_count = null;
-            game._throw_count_text = '';
+            clearThrowCountState();
             game._resume_time_after_more = 0;
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game.context.move = 0;
@@ -55098,8 +55250,7 @@ export async function rhack(_cmd) {
         }
         game._command_mode = null;
         game._throw_item_letter = null;
-        game._throw_count = null;
-        game._throw_count_text = '';
+        clearThrowCountState();
         game._resume_time_after_more = 0;
         game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
         game.context.move = 0;
@@ -55121,8 +55272,7 @@ export async function rhack(_cmd) {
             ? `What do you want to throw? [${promptLetters} or ?*]`
             : 'What do you want to throw? [*]';
         game._count_prefix = '';
-        game._throw_count_text = '';
-        game._throw_count = null;
+        clearThrowCountState();
         await setMessage(game._throw_prompt);
         game._command_mode = 'throwObject';
         return;
