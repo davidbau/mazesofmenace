@@ -6,9 +6,9 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
-import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
+import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
 import { encodeBonesLevel, encodeSaveState } from './save.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
@@ -386,9 +386,12 @@ function dropCarriedObjectAtHero(item, messages = []) {
     if (Array.isArray(dropped.cobj)) dropped.cobj = [...dropped.cobj];
     normalizeContainedObjectParents(dropped);
     removeInventoryItem(item, item.quan || 1);
-    const placed = placeObjectOnFloorWithEffects(dropped, dropped.ox, dropped.oy, messages, 'drop', {
-        usedUpShopBillOnDestroy: true,
-    });
+    const shipObject = maybeShipCarriedDropObject(dropped, dropped.ox, dropped.oy, messages);
+    const placed = shipObject.handled
+        ? false
+        : placeObjectOnFloorWithEffects(dropped, dropped.ox, dropped.oy, messages, 'drop', {
+            usedUpShopBillOnDestroy: true,
+        });
     if (!placed) clearObjectShopBillState(item);
     let shopSale = null;
     if (placed && !sellobjReturnUnpaidToShop(dropped, dropped.ox, dropped.oy)) {
@@ -3362,6 +3365,7 @@ function removeCarriedPunishmentObjects(objects) {
 }
 
 function impactDropGateText(trap) {
+    if (trap?.gateText) return trap.gateText;
     if (!trap?.tseen || (trap.ttyp !== HOLE && trap.ttyp !== TRAPDOOR))
         return '';
     return trap.ttyp === TRAPDOOR ? 'through the trap door' : 'through the hole';
@@ -3371,11 +3375,29 @@ function impactDropLevelKey(level) {
     return level ? `${level.dnum}:${level.dlevel}` : '';
 }
 
-function queueImpactDroppedObjects(targetLevel, objects) {
+function currentMigrationSourceLevel() {
+    return {
+        dnum: game.u?.uz?.dnum ?? 0,
+        dlevel: game.u?.uz?.dlevel ?? 1,
+    };
+}
+
+function markImpactDropMigration(obj, route = {}) {
+    if (!obj || !route.where || route.where === MIGR_RANDOM) return;
+    obj._impactDropMigration = {
+        where: route.where,
+        fromLevel: { ...(route.fromLevel || currentMigrationSourceLevel()) },
+        targetLevel: route.targetLevel ? { ...route.targetLevel } : null,
+        isLadder: !!route.isLadder,
+    };
+}
+
+function queueImpactDroppedObjects(targetLevel, objects, route = {}) {
     if (!targetLevel || !objects?.length) return;
     game._impact_drop_migrations ??= new Map();
     const key = impactDropLevelKey(targetLevel);
     const queued = game._impact_drop_migrations.get(key) || [];
+    for (const obj of objects) markImpactDropMigration(obj, { ...route, targetLevel });
     queued.push(...objects);
     game._impact_drop_migrations.set(key, queued);
 }
@@ -3402,6 +3424,19 @@ function impactDropRandomLandingSpot() {
         : { x: game.u?.ux || 0, y: game.u?.uy || 0 };
 }
 
+function impactDropMigrationLandingSpot(migration) {
+    if (!migration || migration.where === MIGR_RANDOM) return null;
+    const from = migration.fromLevel;
+    if (!from) return null;
+    const needLadder = migration.where === MIGR_LADDER_UP || migration.isLadder;
+    for (let stair = game.stairs; stair; stair = stair.next) {
+        if (!!stair.isladder !== !!needLadder) continue;
+        if (stair.tolev?.dnum === from.dnum && stair.tolev?.dlevel === from.dlevel)
+            return { x: stair.sx, y: stair.sy };
+    }
+    return null;
+}
+
 function deliverQueuedImpactDroppedObjects(targetLevel) {
     const key = impactDropLevelKey(targetLevel);
     const queued = game._impact_drop_migrations?.get?.(key) || [];
@@ -3409,7 +3444,9 @@ function deliverQueuedImpactDroppedObjects(targetLevel) {
     game._impact_drop_migrations.delete(key);
     game.level.objects ??= [];
     for (const obj of queued) {
-        const spot = impactDropRandomLandingSpot();
+        const spot = impactDropMigrationLandingSpot(obj._impactDropMigration)
+            || impactDropRandomLandingSpot();
+        delete obj._impactDropMigration;
         obj.ox = spot.x;
         obj.oy = spot.y;
         obj.hidden = false;
@@ -3482,7 +3519,7 @@ function impactDropFloorObjects(x, y, trap, options = {}) {
             .filter(Boolean).join('  ');
 
     if (!options.withHero) {
-        queueImpactDroppedObjects(options.targetLevel, fallen);
+        queueImpactDroppedObjects(options.targetLevel, fallen, options.route || {});
         return emptyImpactDropResult({ message, objectCount, fallenCount });
     }
     return emptyImpactDropResult({ message, objects: fallen, objectCount, fallenCount });
@@ -7725,6 +7762,68 @@ function potionIdentityKnownForApply(item, identity) {
         || (item?.known !== false && visibleKind === identity);
 }
 
+const GRAY_STONE_APPLY_NAMES = new Set(['luckstone', 'loadstone', 'touchstone', 'flint', 'flint stone']);
+
+function grayStoneNameForApply(item) {
+    const values = [
+        item?.actualKind,
+        item?.kind,
+        objectKindKey(item),
+        item?.gemDescription,
+        item?.displayName,
+    ].map(value => String(value || '').toLowerCase().trim()).filter(Boolean);
+    if (item?.otyp === LUCKSTONE) return 'luckstone';
+    if (item?.otyp === LOADSTONE) return 'loadstone';
+    if (item?.otyp === TOUCHSTONE) return 'touchstone';
+    if (item?.otyp === FLINT) return 'flint';
+    for (const value of values) {
+        if (GRAY_STONE_APPLY_NAMES.has(value)) return value === 'flint stone' ? 'flint' : value;
+    }
+    if (values.some(value => value === 'gray stone' || value === 'grey stone'))
+        return String(item?.actualKind || item?.kind || '').toLowerCase().trim();
+    return '';
+}
+
+function isGrayStoneApplyItem(item) {
+    if (!item) return false;
+    if ([LUCKSTONE, LOADSTONE, TOUCHSTONE, FLINT].includes(item.otyp)) return true;
+    if (GRAY_STONE_APPLY_NAMES.has(grayStoneNameForApply(item))) return true;
+    const description = String(item.gemDescription || '').toLowerCase();
+    return (itemClassKey(item) === 'gem' || item.glyph === '*')
+        && (description === 'gray stone' || description === 'grey stone');
+}
+
+function gemStoneDiscoveryKnown(name) {
+    const key = String(name || '').toLowerCase().trim();
+    if (!key) return false;
+    return (game._discoveries || []).some(entry =>
+        ['Gems/Stones', 'Gems'].includes(entry.section)
+        && String(entry.name || '').toLowerCase() === key
+        && entry.known !== false);
+}
+
+function isTouchstoneApplyItem(item) {
+    return !!item && (item.otyp === TOUCHSTONE || grayStoneNameForApply(item) === 'touchstone');
+}
+
+function touchstoneKnownForApply(item) {
+    return isTouchstoneApplyItem(item)
+        && item?.dknown !== false
+        && (item?.known === true
+            || gemStoneDiscoveryKnown('touchstone')
+            || (String(item?.kind || '').toLowerCase() === 'touchstone' && item?.known !== false));
+}
+
+function grayStoneSelectionKind(item) {
+    if (!isGrayStoneApplyItem(item)) return '';
+    if (item?.dknown === false) return 'suggest';
+    if (isTouchstoneApplyItem(item)) return 'suggest';
+    const name = grayStoneNameForApply(item);
+    if (item?.known === true || gemStoneDiscoveryKnown('touchstone') || gemStoneDiscoveryKnown(name))
+        return 'selectableInvalid';
+    return 'suggest';
+}
+
 function applySelectionKind(item) {
     if (!item) return 'exclude';
     if (isApplyCoinObject(item)) return 'downplay';
@@ -7743,6 +7842,8 @@ function applySelectionKind(item) {
         if (!identity || !potionIdentityKnownForApply(item, identity)) return 'downplay';
         return 'selectableInvalid';
     }
+    const grayStoneKind = grayStoneSelectionKind(item);
+    if (grayStoneKind) return grayStoneKind;
     if (heroIsHallucinating() && /banana/.test(name)) return 'downplay';
     return 'selectableInvalid';
 }
@@ -7801,6 +7902,403 @@ function setApplyObjectMenu(items) {
 
 function findApplyInventoryItem(letter) {
     return applyInventoryItems().find(invItem => invItem.letter === letter);
+}
+
+function useStonePromptAction(stone) {
+    const count = Math.max(1, Math.trunc(Number(stone?.quan || 1)));
+    return `rub on the stone${count > 1 ? 's' : ''}`;
+}
+
+function useStoneTargetSelectionKind(item, stone) {
+    if (!item) return 'exclude';
+    if (!touchstoneKnownForApply(stone)) return 'suggest';
+    if (isApplyCoinObject(item)) return 'suggest';
+    const cls = itemClassKey(item);
+    const gemKnown = item?.dknown !== false
+        && (item?.known === true || gemStoneDiscoveryKnown(grayStoneNameForApply(item) || item?.actualKind || item?.kind));
+    if ((cls === 'gem' || item.glyph === '*') && !gemKnown) return 'suggest';
+    return 'downplay';
+}
+
+function useStoneTargetItemsBySelectionKind(kind, stone) {
+    return applyInventoryItems().filter(item => useStoneTargetSelectionKind(item, stone) === kind && item.letter);
+}
+
+function useStonePromptMessage(stone) {
+    const action = useStonePromptAction(stone);
+    const suggested = useStoneTargetItemsBySelectionKind('suggest', stone).map(item => item.letter).join('');
+    if (suggested) return `What do you want to ${action}? [${getobjPromptLetters(suggested)} or ?*]`;
+    if (useStoneTargetItemsBySelectionKind('downplay', stone).length) return `What do you want to ${action}? [*]`;
+    return `What do you want to ${action}?`;
+}
+
+function useStoneMenuItems(ch, stone) {
+    if (ch === '*') return applyInventoryItems().filter(item => item.letter);
+    const suggested = useStoneTargetItemsBySelectionKind('suggest', stone);
+    return suggested.length ? suggested : useStoneTargetItemsBySelectionKind('downplay', stone);
+}
+
+function setUseStoneObjectMenu(items) {
+    setApplyObjectMenu(items);
+}
+
+function theUseStoneObjectName(item) {
+    return `the ${pickupObjectName(item)}`;
+}
+
+function observeUseStoneSource(stone) {
+    if (!stone || game.u?.blind) return;
+    stone.dknown = true;
+    const name = grayStoneNameForApply(stone);
+    if (stone.known === true || gemStoneDiscoveryKnown(name)) return;
+    game._discoveries ??= [];
+    if (!(game._discoveries || []).some(entry =>
+        entry.section === 'Gems/Stones' && entry.name === 'gray stone')) {
+        game._discoveries.push({
+            section: 'Gems/Stones',
+            name: 'gray stone',
+            text: 'gray stone',
+            starred: false,
+            known: false,
+        });
+    }
+}
+
+const USE_STONE_COLOR_NAMES = new Map([
+    [CLR_BLACK, 'black'], [CLR_RED, 'red'], [CLR_GREEN, 'green'], [CLR_BROWN, 'brown'],
+    [CLR_BLUE, 'blue'], [CLR_MAGENTA, 'magenta'], [CLR_CYAN, 'cyan'], [CLR_GRAY, 'gray'],
+    [NO_COLOR, 'transparent'], [CLR_ORANGE, 'orange'], [CLR_BRIGHT_GREEN, 'bright green'],
+    [CLR_YELLOW, 'yellow'], [CLR_BRIGHT_BLUE, 'bright blue'],
+    [CLR_BRIGHT_MAGENTA, 'bright magenta'], [CLR_BRIGHT_CYAN, 'bright cyan'],
+    [CLR_WHITE, 'white'],
+]);
+const USE_STONE_GEM_COLORS = new Map([
+    ['dilithium crystal', 'white'], ['diamond', 'white'], ['ruby', 'red'],
+    ['jacinth', 'orange'], ['jacinth stone', 'orange'], ['sapphire', 'blue'],
+    ['black opal', 'black'], ['emerald', 'green'], ['turquoise', 'green'],
+    ['turquoise stone', 'green'], ['citrine', 'yellow'], ['citrine stone', 'yellow'],
+    ['aquamarine', 'green'], ['aquamarine stone', 'green'], ['amber', 'brown'],
+    ['amber stone', 'brown'], ['topaz', 'brown'],
+    ['topaz stone', 'brown'], ['jet', 'black'], ['jet stone', 'black'],
+    ['opal', 'white'], ['chrysoberyl', 'yellow'], ['chrysoberyl stone', 'yellow'],
+    ['garnet', 'red'], ['garnet stone', 'red'], ['amethyst', 'magenta'],
+    ['amethyst stone', 'magenta'], ['jasper', 'red'], ['jasper stone', 'red'],
+    ['fluorite', 'magenta'], ['fluorite stone', 'magenta'], ['obsidian', 'black'],
+    ['obsidian stone', 'black'], ['agate', 'orange'], ['agate stone', 'orange'],
+    ['jade', 'green'], ['jade stone', 'green'],
+    ['worthless piece of white glass', 'white'], ['worthless piece of blue glass', 'blue'],
+    ['worthless piece of red glass', 'red'],
+    ['worthless piece of yellowish brown glass', 'brown'],
+    ['worthless piece of orange glass', 'orange'], ['worthless piece of yellow glass', 'yellow'],
+    ['worthless piece of black glass', 'black'], ['worthless piece of green glass', 'green'],
+    ['worthless piece of violet glass', 'magenta'],
+]);
+const USE_STONE_DESCRIPTION_COLORS = new Map([
+    ['yellowish brown', 'brown'],
+    ['violet', 'magenta'],
+]);
+const USE_STONE_GEM_DISPLAY_NAMES = new Map([
+    ['jacinth', 'jacinth stone'], ['turquoise', 'turquoise stone'],
+    ['citrine', 'citrine stone'], ['aquamarine', 'aquamarine stone'],
+    ['amber', 'amber stone'], ['topaz', 'topaz stone'], ['jet', 'jet stone'],
+    ['chrysoberyl', 'chrysoberyl stone'], ['garnet', 'garnet stone'],
+    ['amethyst', 'amethyst stone'], ['jasper', 'jasper stone'],
+    ['fluorite', 'fluorite stone'], ['obsidian', 'obsidian stone'],
+    ['agate', 'agate stone'], ['jade', 'jade stone'],
+]);
+const USE_STONE_RING_APPEARANCE_COLORS = new Map([
+    ['wooden', 'brown'], ['granite', 'gray'], ['opal', 'gray'], ['clay', 'red'],
+    ['coral', 'orange'], ['black onyx', 'black'], ['moonstone', 'gray'],
+    ['tiger eye', 'brown'], ['jade', 'green'], ['bronze', 'yellow'],
+    ['agate', 'red'], ['topaz', 'cyan'], ['sapphire', 'blue'], ['ruby', 'red'],
+    ['diamond', 'white'], ['pearl', 'white'], ['iron', 'cyan'], ['brass', 'yellow'],
+    ['copper', 'yellow'], ['twisted', 'cyan'], ['steel', 'cyan'], ['silver', 'gray'],
+    ['gold', 'yellow'], ['ivory', 'white'], ['emerald', 'green'], ['wire', 'cyan'],
+    ['engagement', 'cyan'], ['shiny', 'cyan'],
+]);
+const USE_STONE_FLIMSY_MATERIALS = new Set([
+    'liquid', 'wax', 'veggy', 'flesh', 'paper', 'cloth', 'leather', 'rubber',
+]);
+const USE_STONE_MATERIAL_COLORS = new Map([
+    ['paper', 'white'], ['leather', 'brown'], ['veggy', 'brown'],
+    ['flesh', 'brown'], ['rubber', 'brown'],
+]);
+const USE_STONE_OTYP_MATERIALS = new Map([
+    [SACK, 'cloth'], [OILSKIN_SACK, 'cloth'], [BAG_OF_HOLDING, 'cloth'],
+    [BLINDFOLD, 'cloth'], [TALLOW_CANDLE, 'wax'], [WAX_CANDLE, 'wax'],
+    [MAGIC_FLUTE, 'wood'], [MAGIC_HARP, 'wood'], [CHEST, 'wood'],
+    [BELL, 'silver'], [CANDELABRUM_OF_INVOCATION, 'gold'],
+]);
+const USE_STONE_KIND_MATERIALS = new Map([
+    ['sack', 'cloth'], ['oilskin sack', 'cloth'], ['bag of holding', 'cloth'],
+    ['bag', 'cloth'], ['towel', 'cloth'], ['blindfold', 'cloth'],
+    ['tallow candle', 'wax'], ['wax candle', 'wax'], ['magic flute', 'wood'],
+    ['wooden flute', 'wood'], ['magic harp', 'wood'], ['wooden harp', 'wood'],
+    ['chest', 'wood'], ['large box', 'wood'], ['leather drum', 'leather'],
+    ['drum', 'leather'], ['drum of earthquake', 'leather'],
+    ['bell of opening', 'silver'], ['candelabrum of invocation', 'gold'],
+]);
+
+function useStoneSurfaceName(stone) {
+    return `stone${Math.max(1, Math.trunc(Number(stone?.quan || 1))) > 1 ? 's' : ''}`;
+}
+
+function useStoneSubjectName(stone) {
+    return pickupObjectName(stone) || useStoneSurfaceName(stone);
+}
+
+function useStoneSurfaceVerb(stone, singular, plural = singular) {
+    return Math.max(1, Math.trunc(Number(stone?.quan || 1))) > 1 ? plural : singular;
+}
+
+function useStoneHeroCanIdentify(stone) {
+    if (!isTouchstoneApplyItem(stone)) return false;
+    if (stone?.blessed) return true;
+    if (stone?.cursed) return false;
+    const role = String(game.urole?.name?.m || game._startup_role || '').toLowerCase();
+    const race = String(game.urace?.noun || game.urace?.adj || game._startup_race || '').toLowerCase();
+    return role === 'archeologist' || race === 'gnome';
+}
+
+function useStoneObjectClass(item) {
+    const cls = itemClassKey(item);
+    if (cls) return cls;
+    if (item?.otyp === RING_CLASS || item?.glyph === '=') return 'ring';
+    if (item?.otyp === GEM_CLASS || item?.glyph === '*') return 'gem';
+    if (isApplyCoinObject(item)) return 'coin';
+    return '';
+}
+
+function useStoneObjectMaterial(item) {
+    const cls = useStoneObjectClass(item);
+    if (cls === 'ring') return stoneToFleshRingMaterial(item);
+    if (cls === 'gem') return stoneToFleshObjectMaterial(item);
+    const explicit = normalizeStoneToFleshMaterial(item?.oc_material || item?.material);
+    if (explicit) return explicit;
+    if (isApplyCoinObject(item)) return 'gold';
+    if (USE_STONE_OTYP_MATERIALS.has(item?.otyp)) return USE_STONE_OTYP_MATERIALS.get(item.otyp);
+    if (item?.otyp === BLINDING_VENOM || item?.otyp === ACID_VENOM || cls === 'venom') return 'liquid';
+    if (item?.otyp === POTION_CLASS || cls === 'potion' || item?.glyph === '!') return 'glass';
+    if (item?.otyp === SCROLL_CLASS || cls === 'scroll' || item?.glyph === '?') return 'paper';
+    if (item?.otyp === SPBOOK_CLASS || cls === 'spellbook' || item?.glyph === '+') return 'paper';
+    const kind = objectKindKey(item);
+    if (USE_STONE_KIND_MATERIALS.has(kind)) return USE_STONE_KIND_MATERIALS.get(kind);
+    if (/\bvenom\b/.test(kind)) return 'liquid';
+    if (/\bgold(?:en)?\b/.test(kind)) return 'gold';
+    if (/\bsilver\b/.test(kind)) return 'silver';
+    if (/\bwax\b/.test(kind)) return 'wax';
+    if (/\bwood(?:en)?\b/.test(kind)) return 'wood';
+    if (/\bcloth\b/.test(kind)) return 'cloth';
+    if (/\bpaper\b|\bscroll\b|\bspellbook\b/.test(kind)) return 'paper';
+    if (/\bleather\b/.test(kind)) return 'leather';
+    if (/\brubber hose\b/.test(kind)) return 'rubber';
+    return '';
+}
+
+function useStoneColorName(item) {
+    const numeric = item?._display_color ?? item?.color;
+    if (typeof numeric === 'string') {
+        const normalized = numeric.toLowerCase().replace(/^hi_/, '').trim();
+        if (USE_STONE_DESCRIPTION_COLORS.has(normalized))
+            return USE_STONE_DESCRIPTION_COLORS.get(normalized);
+        if ([...USE_STONE_COLOR_NAMES.values()].includes(normalized)) return normalized;
+    }
+    if (USE_STONE_COLOR_NAMES.has(numeric)) return USE_STONE_COLOR_NAMES.get(numeric);
+    const cls = useStoneObjectClass(item);
+    if (cls === 'ring') {
+        const appearance = String(item?.appearance || (
+            typeof item?.kind === 'string' && /\bring$/.test(item.kind) && !/^ring of /.test(item.kind)
+                ? item.kind.replace(/\s+ring$/, '')
+                : ''
+        ) || (item?.ringRoll ? game._object_descriptions?.rings?.[item.ringRoll - 1] : '') || '').toLowerCase();
+        if (USE_STONE_RING_APPEARANCE_COLORS.has(appearance))
+            return USE_STONE_RING_APPEARANCE_COLORS.get(appearance);
+    }
+    const values = [
+        item?.actualKind,
+        item?.kind,
+        item?.gemDescription,
+        item?.displayName,
+    ].map(value => String(value || '').toLowerCase().trim()).filter(Boolean);
+    for (const value of values) {
+        if (USE_STONE_GEM_COLORS.has(value)) return USE_STONE_GEM_COLORS.get(value);
+        const gemDescription = value.match(/^(.+) gem$/)?.[1];
+        if (gemDescription) return USE_STONE_DESCRIPTION_COLORS.get(gemDescription) || gemDescription;
+    }
+    const material = useStoneObjectMaterial(item);
+    if (USE_STONE_MATERIAL_COLORS.has(material)) return USE_STONE_MATERIAL_COLORS.get(material);
+    const displayColor = item ? object_display(item)?.color : undefined;
+    if (USE_STONE_COLOR_NAMES.has(displayColor)) return USE_STONE_COLOR_NAMES.get(displayColor);
+    return '';
+}
+
+function useStoneGemIdentityName(item) {
+    const values = [
+        item?.actualKind,
+        item?.kind,
+        item?.displayName,
+        item?.gemDescription,
+    ].map(value => String(value || '').toLowerCase().trim()
+        .replace(/^an? /, '')
+        .replace(/^uncursed |^blessed |^cursed /, ''))
+        .filter(Boolean);
+    for (const value of values) {
+        if (value === 'gray stone' || value === 'grey stone') continue;
+        if (USE_STONE_GEM_DISPLAY_NAMES.has(value)) return USE_STONE_GEM_DISPLAY_NAMES.get(value);
+        if (USE_STONE_GEM_COLORS.has(value) || GRAY_STONE_APPLY_NAMES.has(value)) return value;
+    }
+    return '';
+}
+
+function recordKnownGemStoneDiscovery(name, appearance = '') {
+    const discoveryName = String(name || '').toLowerCase().trim();
+    if (!discoveryName) return;
+    const suffix = appearance ? ` (${appearance})` : '';
+    game._discoveries ??= [];
+    const existing = game._discoveries.find(entry =>
+        entry.section === 'Gems/Stones' && String(entry.name || '').toLowerCase() === discoveryName);
+    if (existing) {
+        existing.name = discoveryName;
+        existing.text = `${discoveryName}${suffix}`;
+        existing.starred = false;
+        existing.known = true;
+    } else {
+        game._discoveries.push({
+            section: 'Gems/Stones',
+            name: discoveryName,
+            text: `${discoveryName}${suffix}`,
+            starred: false,
+            known: true,
+        });
+    }
+    learnObjectScore('Gems/Stones', discoveryName);
+}
+
+function identifyUseStoneSource(stone) {
+    if (!stone) return;
+    stone.known = true;
+    stone.dknown = true;
+    stone.kind = 'touchstone';
+    stone.actualKind = 'touchstone';
+    recordKnownGemStoneDiscovery('touchstone', 'gray');
+    refreshInventoryObjectLine(stone);
+}
+
+function identifyUseStoneGem(target) {
+    const name = useStoneGemIdentityName(target);
+    if (!target || !name) return;
+    const appearance = useStoneColorName(target);
+    target.known = true;
+    target.dknown = true;
+    target.kind = name;
+    target.actualKind = name;
+    target.gemDescription = name;
+    recordKnownGemStoneDiscovery(name, appearance);
+    refreshInventoryObjectLine(target);
+    if (target.unpaid) syncUnpaidBillLine(target);
+}
+
+async function beginUseStone(stone) {
+    game._apply_stone_letter = stone?.letter || null;
+    observeUseStoneSource(stone);
+    await setMessage(useStonePromptMessage(stone));
+    game._command_mode = 'applyStoneObject';
+}
+
+function useStoneGemShatterTarget(item) {
+    return !!item && (itemClassKey(item) === 'gem' || item.glyph === '*') && !isGrayStoneApplyItem(item);
+}
+
+function useStoneTargetResistsShatter(item) {
+    const chance = item?.artifact || item?.oartifact ? 100 : 80;
+    return rn2(100) < chance;
+}
+
+async function shatterUseStoneTarget(stone, target) {
+    if (!isTouchstoneApplyItem(stone) || !stone?.cursed || !useStoneGemShatterTarget(target))
+        return false;
+    if (useStoneTargetResistsShatter(target)) return false;
+
+    if (game.u?.blind) {
+        await setMessage('You feel something shatter.');
+    } else if (heroIsHallucinating()) {
+        await setMessage('Oh, wow, look at the pretty shards.');
+    } else {
+        const oneOf = Math.max(1, Math.trunc(Number(target?.quan || 1))) > 1 ? 'one of ' : '';
+        await setMessage(`A sharp crack shatters ${oneOf}${theUseStoneObjectName(target)}.`);
+    }
+    useUpInventoryItem(target, 1);
+    game.context.move = 1;
+    return true;
+}
+
+function useStoneEffectMessage(stone, target) {
+    const stoneIsTouchstone = isTouchstoneApplyItem(stone);
+    let cls = useStoneObjectClass(target);
+    const material = useStoneObjectMaterial(target);
+    let doScratch = false;
+    let streakColor = '';
+
+    if (cls === 'ring' && material !== 'gemstone' && material !== 'mineral') cls = '';
+
+    if (cls === 'gem' || cls === 'ring') {
+        if (!stoneIsTouchstone) {
+            doScratch = true;
+        } else if (cls === 'gem' && useStoneHeroCanIdentify(stone)) {
+            identifyUseStoneSource(stone);
+            identifyUseStoneGem(target);
+            return normalInventoryLine(target);
+        } else if (material === 'glass') {
+            doScratch = true;
+        }
+        streakColor = useStoneColorName(target);
+    } else {
+        if (material === 'cloth')
+            return `The ${useStoneSubjectName(stone)} ${useStoneSurfaceVerb(stone, 'looks', 'look')} a little more polished now.`;
+        if (material === 'liquid') {
+            if (!target?.known) return 'You must think this is a wetstone, do you?';
+            return `The ${useStoneSubjectName(stone)} ${useStoneSurfaceVerb(stone, 'is', 'are')} a little wetter now.`;
+        }
+        if (material === 'wax') streakColor = 'waxy';
+        else if (material === 'wood') streakColor = 'wooden';
+        else if (material === 'gold') {
+            doScratch = true;
+            streakColor = 'golden';
+        } else if (material === 'silver') {
+            doScratch = true;
+            streakColor = 'silvery';
+        } else {
+            if (USE_STONE_FLIMSY_MATERIALS.has(material)) streakColor = useStoneColorName(target);
+            else doScratch = !stoneIsTouchstone;
+        }
+    }
+
+    const surface = useStoneSurfaceName(stone);
+    if (doScratch) return `You make ${streakColor ? `${streakColor} ` : ''}scratch marks on the ${surface}.`;
+    if (streakColor) return `You see ${streakColor} streaks on the ${surface}.`;
+    return '"scritch, scritch"';
+}
+
+async function finishUseStone(stone, target) {
+    game._apply_stone_letter = null;
+    game._command_mode = null;
+    if (target === stone && Math.max(1, Math.trunc(Number(target?.quan || 1))) === 1) {
+        await setMessage(`You can't rub ${theUseStoneObjectName(target)} on itself.`);
+        return;
+    }
+    if (await shatterUseStoneTarget(stone, target)) return;
+    if (game.u?.blind) {
+        await setMessage('"scritch, scritch"');
+        game.context.move = 1;
+        return;
+    }
+    if (heroIsHallucinating()) {
+        await setMessage('Oh wow, man: Fractals!');
+        game.context.move = 1;
+        return;
+    }
+    await setMessage(useStoneEffectMessage(stone, target));
+    game.context.move = 1;
 }
 
 function dropFlippedCoinAtHero(item) {
@@ -12483,7 +12981,8 @@ function polymorphObjectTypeKey(item) {
 }
 
 function polymorphReplacementDisallowed(item) {
-    return isPotionOfPolymorph(item) || isWandOfPolymorphObject(item) || isSpellbookOfPolymorphObject(item);
+    return isPotionOfPolymorph(item) || isWandOfPolymorphObject(item)
+        || isSpellbookOfPolymorphObject(item) || isAmuletOfUnchangingObject(item);
 }
 
 function polymorphReplacementForDipTarget(target) {
@@ -23292,13 +23791,47 @@ function projectileShipObjectResult(overrides = {}) {
         breakKind: '',
         noDrop: false,
         target: null,
+        where: MIGR_RANDOM,
+        gateText: '',
         debt: null,
         impact: emptyImpactDropResult(),
         ...overrides,
     };
 }
 
-function remoteProjectileShaftTrapAt(obj, x, y, { allowGold = false } = {}) {
+function downGateAt(x, y) {
+    const fromLevel = currentMigrationSourceLevel();
+    for (let stair = game.stairs; stair; stair = stair.next) {
+        if (stair.sx !== x || stair.sy !== y || stair.up) continue;
+        const targetLevel = stair.tolev ? { ...stair.tolev } : null;
+        if (!targetLevel) return null;
+        const isLadder = !!stair.isladder;
+        return {
+            where: isLadder ? MIGR_LADDER_UP
+                : targetLevel.dnum === fromLevel.dnum ? MIGR_STAIRS_UP : MIGR_SSTAIRS,
+            targetLevel,
+            fromLevel,
+            gateText: isLadder ? 'down the ladder' : 'down the stairs',
+            isLadder,
+            stair,
+        };
+    }
+    const trap = boulderFillTrapAt(x, y);
+    if (!trap?.tseen || (trap.ttyp !== HOLE && trap.ttyp !== TRAPDOOR)) return null;
+    if (!canFallThroughLevel(game.u?.uz)) return null;
+    const targetLevel = sitFallTargetLevel(trap);
+    if (!targetLevel) return null;
+    return {
+        where: MIGR_RANDOM,
+        targetLevel,
+        fromLevel,
+        gateText: impactDropGateText(trap),
+        isLadder: false,
+        trap,
+    };
+}
+
+function remoteProjectileDownGateAt(obj, x, y, { allowGold = false } = {}) {
     if (!obj || (!allowGold && shopBillableGold(obj))) return null;
     if (obj === game.u?.uball || obj === game.u?.uchain) return null;
     if (game.u?.ux === x && game.u?.uy === y) return null;
@@ -23306,20 +23839,28 @@ function remoteProjectileShaftTrapAt(obj, x, y, { allowGold = false } = {}) {
         candidate.mx === x && candidate.my === y && !candidate.dead
         && (candidate.mhp == null || candidate.mhp > 0));
     if (mon) return null;
-    const trap = boulderFillTrapAt(x, y);
-    if (!trap?.tseen || (trap.ttyp !== HOLE && trap.ttyp !== TRAPDOOR)) return null;
-    if (!canFallThroughLevel(game.u?.uz)) return null;
-    return trap;
+    return downGateAt(x, y);
 }
 
-function maybeShipRemoteProjectileObject(obj, x, y, messages, options = {}) {
-    const trap = remoteProjectileShaftTrapAt(obj, x, y, options);
-    if (!trap) return projectileShipObjectResult();
-    const target = sitFallTargetLevel(trap);
-    if (!target) return projectileShipObjectResult();
-    const gateText = impactDropGateText(trap);
+function carriedDropDownGateAt(obj, x, y) {
+    if (!obj || shopBillableGold(obj)) return null;
+    if (obj === game.u?.uball || obj === game.u?.uchain) return null;
+    if (game.u?.uswallow) return null;
+    return downGateAt(x, y);
+}
+
+function maybeShipCarriedDropObject(obj, x, y, messages) {
+    const gate = carriedDropDownGateAt(obj, x, y);
+    if (!gate) return projectileShipObjectResult();
+    if (isBoulderObject(obj) && gate.where === MIGR_RANDOM && gate.trap) {
+        const boulderImpact = impactDropFloorObjects(x, y, gate, { targetLevel: gate.targetLevel, route: gate });
+        if (boulderImpact.message) messages.push(boulderImpact.message);
+        return projectileShipObjectResult({ impact: boulderImpact });
+    }
+    const target = gate.targetLevel;
+    const gateText = impactDropGateText(gate);
     const impactQuantity = impactDropPileQuantity(impactDropCandidatePile(x, y, { missile: obj }));
-    const noDrop = !!rn2(3);
+    const noDrop = gate.where !== MIGR_LADDER_UP && !!rn2(3);
     if (gateText && !game.u?.blind && cansee(x, y)) {
         const subject = floorObjectSubject(obj);
         if (impactQuantity) {
@@ -23333,10 +23874,10 @@ function maybeShipRemoteProjectileObject(obj, x, y, messages, options = {}) {
     }
     if (noDrop) {
         const impact = impactQuantity
-            ? impactDropFloorObjects(x, y, trap, { targetLevel: target, missile: obj, missileImpact: true })
+            ? impactDropFloorObjects(x, y, gate, { targetLevel: target, route: gate })
             : emptyImpactDropResult();
         if (impact.message) messages.push(impact.message);
-        return projectileShipObjectResult({ noDrop: true, target, impact });
+        return projectileShipObjectResult({ noDrop: true, target, where: gate.where, gateText, impact });
     }
     const debt = shipObjectShopDebt(obj, x, y);
     if (debt.message) messages.push(debt.message);
@@ -23344,15 +23885,59 @@ function maybeShipRemoteProjectileObject(obj, x, y, messages, options = {}) {
     if (breakKind) {
         messages.push(`You hear a muffled ${shipObjectMuffledBreakResult(breakKind)}.`);
         newsym(x, y);
-        return projectileShipObjectResult({ handled: true, broke: true, breakKind, target, debt });
+        return projectileShipObjectResult({ handled: true, broke: true, breakKind, target, where: gate.where, gateText, debt });
     }
-    queueImpactDroppedObjects(target, [obj]);
+    queueImpactDroppedObjects(target, [obj], gate);
     const impact = impactQuantity
-        ? impactDropFloorObjects(x, y, trap, { targetLevel: target, missile: obj, missileImpact: true })
+        ? impactDropFloorObjects(x, y, gate, { targetLevel: target, route: gate })
         : emptyImpactDropResult();
     if (impact.message) messages.push(impact.message);
     newsym(x, y);
-    return projectileShipObjectResult({ handled: true, target, debt, impact });
+    return projectileShipObjectResult({ handled: true, target, where: gate.where, gateText, debt, impact });
+}
+
+function maybeShipRemoteProjectileObject(obj, x, y, messages, options = {}) {
+    const gate = remoteProjectileDownGateAt(obj, x, y, options);
+    if (!gate) return projectileShipObjectResult();
+    if (isBoulderObject(obj) && gate.where === MIGR_RANDOM && gate.trap)
+        return projectileShipObjectResult();
+    const target = gate.targetLevel;
+    const gateText = impactDropGateText(gate);
+    const impactQuantity = impactDropPileQuantity(impactDropCandidatePile(x, y, { missile: obj }));
+    const noDrop = gate.where !== MIGR_LADDER_UP && !!rn2(3);
+    if (gateText && !game.u?.blind && cansee(x, y)) {
+        const subject = floorObjectSubject(obj);
+        if (impactQuantity) {
+            const other = impactQuantity === 1 ? 'another object' : 'other objects';
+            const hit = floorEffectsObjectVerb(obj, 'hits', 'hit');
+            const suffix = noDrop ? '' : ` and ${floorEffectsObjectVerb(obj, 'falls', 'fall')} ${gateText}`;
+            messages.push(`${subject} ${hit} ${other}${suffix}.`);
+        } else if (!noDrop) {
+            messages.push(`${subject} ${floorEffectsObjectVerb(obj, 'falls', 'fall')} ${gateText}.`);
+        }
+    }
+    if (noDrop) {
+        const impact = impactQuantity
+            ? impactDropFloorObjects(x, y, gate, { targetLevel: target, missile: obj, missileImpact: true, route: gate })
+            : emptyImpactDropResult();
+        if (impact.message) messages.push(impact.message);
+        return projectileShipObjectResult({ noDrop: true, target, where: gate.where, gateText, impact });
+    }
+    const debt = shipObjectShopDebt(obj, x, y);
+    if (debt.message) messages.push(debt.message);
+    const breakKind = impactDropObjectBreaks(obj);
+    if (breakKind) {
+        messages.push(`You hear a muffled ${shipObjectMuffledBreakResult(breakKind)}.`);
+        newsym(x, y);
+        return projectileShipObjectResult({ handled: true, broke: true, breakKind, target, where: gate.where, gateText, debt });
+    }
+    queueImpactDroppedObjects(target, [obj], gate);
+    const impact = impactQuantity
+        ? impactDropFloorObjects(x, y, gate, { targetLevel: target, missile: obj, missileImpact: true, route: gate })
+        : emptyImpactDropResult();
+    if (impact.message) messages.push(impact.message);
+    newsym(x, y);
+    return projectileShipObjectResult({ handled: true, target, where: gate.where, gateText, debt, impact });
 }
 
 function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
@@ -24592,6 +25177,7 @@ async function polymorphFloorPileAt(x, y, { consumeRangeRoll = false } = {}) {
     if (!targetObjects.length) {
         game._pending_message = '';
         game._message_more = 0;
+        game.context ??= {};
         game.context.move = 1;
         return false;
     }
@@ -24599,6 +25185,7 @@ async function polymorphFloorPileAt(x, y, { consumeRangeRoll = false } = {}) {
     const replacements = [];
     const alterationMessages = [];
     let didObjectShudder = false;
+    let affected = false;
     for (const obj of [...targetObjects].reverse()) {
         if (polymorphReplacementDisallowed(obj)) continue;
         if (rn2(100) < (obj.artifact ? 95 : 5)) {
@@ -24616,6 +25203,7 @@ async function polymorphFloorPileAt(x, y, { consumeRangeRoll = false } = {}) {
             }
             useUpPolymorphShudderFloorObject(obj, x, y);
             didObjectShudder = true;
+            affected = true;
             continue;
         }
         const roll = rnd(1000);
@@ -24641,16 +25229,20 @@ async function polymorphFloorPileAt(x, y, { consumeRangeRoll = false } = {}) {
             alterationMessages.push(angerMessage);
         removeTargets.add(obj);
         replacements.unshift(newObj);
+        affected = true;
         rn2(100);
     }
-    game.level.objects = (game.level?.objects || []).filter(obj => !removeTargets.has(obj));
-    game.level.objects.push(...replacements);
-    newsym(x, y);
+    if (affected) {
+        game.level.objects = (game.level?.objects || []).filter(obj => !removeTargets.has(obj));
+        game.level.objects.push(...replacements);
+        newsym(x, y);
+    }
     const messages = didObjectShudder ? ['You feel shuddering vibrations.'] : [];
     messages.push(...alterationMessages);
     await setMessage(messages.join('  '));
+    game.context ??= {};
     game.context.move = 1;
-    return true;
+    return affected;
 }
 
 function billHeldMagicBagLostItem(obj) {
@@ -25053,6 +25645,7 @@ export const __shopBillingTestHooks = {
     finishShopFloorContainerPutSale,
     impactDropFloorObjects,
     deliverImpactDroppedObjects,
+    deliverQueuedImpactDroppedObjectsForTest: deliverQueuedImpactDroppedObjects,
     mergePickedObjectIntoInventory,
     mergePickedObjectIntoShopBill,
     containerTakeoutBillMergeCompatible,
@@ -25062,6 +25655,7 @@ export const __shopBillingTestHooks = {
     projectileContainerImpactDmg,
     pickUpFloorGoldObject,
     prepareContainerTakeoutObject,
+    polymorphFloorPileAtForTest: polymorphFloorPileAt,
     hasRobbedOnlyShopPayment,
     putInventoryObjectIntoBag,
     putInventoryObjectIntoContainer,
@@ -30416,6 +31010,11 @@ function isHornOfPlentyObject(obj) {
         || pickupObjectName({ ...obj, quan: 1 }).toLowerCase() === 'horn of plenty');
 }
 
+function isKnownHornOfPlentyObject(obj) {
+    return isHornOfPlentyObject(obj) && obj.dknown === true
+        && (obj.known === true || toolDiscoveryKnown('horn of plenty'));
+}
+
 function isTipSourceObject(obj) {
     return isTipContainerObject(obj) || isBagOfTricksObject(obj) || isHornOfPlentyObject(obj);
 }
@@ -30448,10 +31047,49 @@ function isTipCommandObject(obj) {
     return isTipSourceObject(obj) || isTipSpillageObject(obj);
 }
 
-function tipSpillageSurfacePhrase() {
+function isTipCoinObject(obj) {
+    return !!obj && (obj.otyp === GOLD_PIECE || obj.cls === 'coin' || obj.glyph === '$');
+}
+
+function tipSelectionKind(obj) {
+    if (!obj || isTipCoinObject(obj)) return 'exclude';
+    if (isTipContainerObject(obj) || isBagOfTricksObject(obj)) return 'suggest';
+    if (isKnownHornOfPlentyObject(obj)) return 'suggest';
+    return 'downplay';
+}
+
+function tipInventoryItemsBySelectionKind(kind) {
+    return (game.inventory || []).filter(item => tipSelectionKind(item) === kind && item.letter);
+}
+
+function tipSelectableInventoryItems() {
+    return (game.inventory || []).filter(item => tipSelectionKind(item) !== 'exclude' && item.letter);
+}
+
+function tipSuggestedLetters() {
+    return tipInventoryItemsBySelectionKind('suggest').map(item => item.letter).join('');
+}
+
+function tipPromptMessage() {
+    const suggested = tipSuggestedLetters();
+    if (suggested) return `What do you want to tip? [${getobjPromptLetters(suggested)} or ?*]`;
+    if (tipInventoryItemsBySelectionKind('downplay').length) return 'What do you want to tip? [*]';
+    return "You don't have anything to tip.";
+}
+
+function tipMenuItems(ch) {
+    if (ch === '*') return tipSelectableInventoryItems();
+    const suggested = tipInventoryItemsBySelectionKind('suggest');
+    return suggested.length ? suggested : tipInventoryItemsBySelectionKind('downplay');
+}
+
+function tipSpillageSurfacePhrase(spillage) {
+    const plural = spillage === 'crumbs';
     const loc = game.level?.at?.(game.u?.ux, game.u?.uy);
-    if (loc?.typ === LAVAPOOL || loc?.typ === LAVAWALL) return { surface: 'lava', suffix: ' and immediately burns away' };
-    if (loc && (IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT)) return { surface: 'water', suffix: ' and gradually dissipates' };
+    if (loc?.typ === LAVAPOOL || loc?.typ === LAVAWALL)
+        return { surface: 'lava', suffix: ` and immediately ${plural ? 'burn' : 'burns'} away` };
+    if (loc && (IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT))
+        return { surface: 'water', suffix: ` and gradually ${plural ? 'dissipate' : 'dissipates'}` };
     return { surface: 'floor', suffix: '' };
 }
 
@@ -30459,11 +31097,184 @@ function tipSpillageObject(obj) {
     const spillage = tipSpillageKind(obj);
     if (!spillage) return ['Nothing happens.'];
     const plural = spillage === 'crumbs';
-    const { surface, suffix } = tipSpillageSurfacePhrase();
+    const { surface, suffix } = tipSpillageSurfacePhrase(spillage);
     const messages = [`Some ${spillage} ${plural ? 'spill' : 'spills'} onto the ${surface}${suffix}.`];
     if ((toolChargeKind(obj) === 'can of grease' || objectKindKey(obj) === 'can of grease') && (obj?.spe ?? 0) > 0)
         spendChargedToolUse(obj, messages);
     return messages;
+}
+
+function tipOrdinaryObjectMessages(obj) {
+    if (obj?.cls === 'potion' || obj?.glyph === '!') {
+        const name = pickupObjectName(obj);
+        const plural = Math.max(1, Math.trunc(Number(obj?.quan || 1))) > 1;
+        return [`The ${name} ${plural ? 'are' : 'is'} securely sealed.`];
+    }
+    if (obj?.otyp === STATUE || objectKindKey(obj) === 'statue') return ['Nothing interesting happens.'];
+    return ['Nothing happens.'];
+}
+
+function tipWornHelmet() {
+    return wornArmorInSlot('helm');
+}
+
+function isTipWornHelmet(obj) {
+    return !!obj && obj === tipWornHelmet();
+}
+
+function tipHatSimpleName(helmet) {
+    return hardEarthHelmet(helmet) ? 'helm' : 'hat';
+}
+
+function tipHatDirectionPrompt() {
+    return 'At whom? (in what direction)';
+}
+
+async function beginTipHat(helmet) {
+    const cancelMove = helmet?.bknown ? 0 : 1;
+    if (helmet?.cursed) {
+        helmet.bknown = true;
+        refreshInventoryObjectLine(helmet);
+        await setMessage("You can't.  It is cursed.");
+        game.context.move = cancelMove;
+        game._command_mode = null;
+        return;
+    }
+    game._tip_hat_letter = helmet?.letter || '';
+    game._tip_hat_cancel_move = cancelMove;
+    await setMessage(tipHatDirectionPrompt());
+    game._command_mode = 'tipHatDirection';
+}
+
+function tipHatDirectionFromKey(ch) {
+    if (ch === '.') return { dx: 0, dy: 0, dz: 0 };
+    if (ch === '<') return { dx: 0, dy: 0, dz: -1 };
+    if (ch === '>') return { dx: 0, dy: 0, dz: 1 };
+    const dir = movementDirection(ch);
+    return dir ? { ...dir, dz: 0 } : null;
+}
+
+function tipHatMonsterVisible(mon) {
+    return !!mon && !game.u?.blind && !mon.minvis && !mon.mundetected && couldsee(mon.mx, mon.my);
+}
+
+function tipHatMonsterResponsive(mon) {
+    if (!mon || mon.dead) return false;
+    if (mon.helpless || mon.mcanmove === false || mon.mcansee === false || mon.blind) return false;
+    return true;
+}
+
+function tipHatMonsterHumanoid(mon) {
+    const data = mon?.data || {};
+    const mlet = data.mlet || mon?.mlet || '';
+    return !!(data.humanoid || data.human || mlet === 'humanoid' || mlet === 'human' || mlet === '@'
+        || data.name === 'human');
+}
+
+function tipHatMonsterPossessive(mon) {
+    const data = mon?.data || {};
+    if (mon?.female || data.female) return 'her';
+    if (mon?.male || data.male) return 'his';
+    return 'its';
+}
+
+function heroHasConflict() {
+    const u = game.u || {};
+    if (u.conflict || u.HConflict || u.EConflict || u._intrinsicConflict || u._extrinsicConflict)
+        return true;
+    const intrinsics = u.intrinsics || {};
+    const extrinsics = u.extrinsics || {};
+    const uprops = u.uprops || {};
+    if (intrinsics.conflict || intrinsics.Conflict || extrinsics.conflict || extrinsics.Conflict)
+        return true;
+    if (uprops.conflict?.intrinsic || uprops.conflict?.extrinsic
+        || uprops.CONFLICT?.intrinsic || uprops.CONFLICT?.extrinsic)
+        return true;
+    return (game.inventory || []).some(item => wornRingItem(item)
+        && (Number(item.ringRoll ?? item.roll ?? 0) === 14
+            || /\bring of conflict\b/i.test(String(item.actualKind || item.kind || item.line || ''))));
+}
+
+function tipHatRudeHumanoidResponse(name) {
+    const reaction = ['curses', 'gestures rudely', 'gestures offensively'];
+    const deaf = heroIsDeaf();
+    const which = deaf ? rn1(2, 1) : rn2(3);
+    let twice = 0;
+    if (!deaf && which === 0 && !rn2(3))
+        twice = rn1(2, 1);
+    return `${name} ${reaction[which]}${twice ? ` and ${reaction[twice]}` : ''} at you...`;
+}
+
+function tipHatDirectedResponse(dir) {
+    if (!dir.dx && !dir.dy) {
+        if (dir.dz) return `There's no one ${dir.dz < 0 ? 'up' : 'down'} there.`;
+        return "The lout here doesn't acknowledge you...";
+    }
+
+    let x = game.u?.ux || 0;
+    let y = game.u?.uy || 0;
+    let target = null;
+    for (let range = 1; range <= BOLT_LIM + 1; range++) {
+        x += dir.dx;
+        y += dir.dy;
+        if (!isok(x, y) || (range > 1 && !couldsee(x, y))) break;
+        target = (game.level?.monsters || []).find(mon => mon.mx === x && mon.my === y && !mon.dead);
+        if (target) break;
+        const loc = game.level?.at?.(x, y);
+        if (!loc || (!(ACCESSIBLE(loc.typ) || loc.typ === IRONBARS))) break;
+    }
+    if (!target || !tipHatMonsterResponsive(target)) return 'Nothing happens.';
+
+    if (Number.isInteger(target.mstrategy)) target.mstrategy &= ~STRAT_WAITMASK;
+    else if (target.mstrategy === 'waitforu') target.mstrategy = 0;
+    const visible = tipHatMonsterVisible(target);
+    const name = fireScrollMonsterName(target);
+    if (visible && tipHatMonsterHumanoid(target) && target.mpeaceful && !heroHasConflict()) {
+        const helmet = monsterEarthHelmet(target);
+        if (!helmet) return `${name} waves.`;
+        const simple = tipHatSimpleName(helmet);
+        const poss = tipHatMonsterPossessive(target);
+        if (helmet.cursed) {
+            helmet.bknown = true;
+            return `${name} grasps ${poss} ${simple} but can't remove it.`;
+        }
+        return `${name} tips ${poss} ${simple} in response.`;
+    }
+    if (visible && tipHatMonsterHumanoid(target))
+        return tipHatRudeHumanoidResponse(name);
+    if (visible) return `${name} doesn't respond.`;
+    return 'Nothing happens.';
+}
+
+async function finishTipHatDirection(ch) {
+    const helmet = (game.inventory || []).find(item => item.letter === game._tip_hat_letter);
+    const cancelMove = game._tip_hat_cancel_move || 0;
+    if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n' || ch === 'q') {
+        game._tip_hat_letter = '';
+        game._tip_hat_cancel_move = 0;
+        game._command_mode = null;
+        game.context.move = cancelMove;
+        await setMessage('Never mind.');
+        return;
+    }
+    const dir = tipHatDirectionFromKey(ch);
+    if (!dir) {
+        await setMessage(tipHatDirectionPrompt());
+        return;
+    }
+    game._tip_hat_letter = '';
+    game._tip_hat_cancel_move = 0;
+    game._command_mode = null;
+    if (!helmet || !isTipWornHelmet(helmet)) {
+        await setMessage('Nothing happens.');
+        return;
+    }
+    const messages = [
+        `You briefly doff your ${tipHatSimpleName(helmet)}.`,
+        tipHatDirectedResponse(dir),
+    ];
+    await setMessage(messages.filter(Boolean).join('  '), messages.length > 1);
+    game.context.move = 1;
 }
 
 function isTipTargetContainer(obj) {
@@ -31416,6 +32227,32 @@ async function tipContainerContents(source, targetBox = null) {
         if (targetError) return [targetError];
     }
     return targetBox ? tipContainerIntoContainer(source, targetBox) : tipContainerToFloor(source);
+}
+
+async function finishCarriedTipSelection(tipTarget) {
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+    if (isTipWornHelmet(tipTarget)) {
+        await beginTipHat(tipTarget);
+        return;
+    }
+    if (isTipSourceObject(tipTarget)) {
+        game._tip_container_object = tipTarget;
+        if (beginTipDestinationSelection(tipTarget)) return;
+        game._tip_container_object = null;
+        const messages = await tipContainerContents(tipTarget);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        game._command_mode = null;
+        return;
+    }
+    game._tip_container_object = null;
+    const messages = isTipSpillageObject(tipTarget)
+        ? tipSpillageObject(tipTarget)
+        : tipOrdinaryObjectMessages(tipTarget);
+    await setMessage(messages.join('  '), messages.length > 1);
+    if (isTipSpillageObject(tipTarget)) game.context.move = 1;
+    game._command_mode = null;
 }
 
 function tipContainerObjectPhrase(obj) {
@@ -34468,16 +35305,24 @@ function royalJellyRubPrompt() {
     return `What do you want to rub the royal jelly on? [${getobjPromptLetters(letters)} or ?*]`;
 }
 
+function isRubObjectCandidate(item) {
+    return isLampObject(item) || isRoyalJelly(item) || isGrayStoneApplyItem(item);
+}
+
 function rubObjectLetters() {
-    return inventoryLetters(item => {
-        return isLampObject(item) || isRoyalJelly(item);
-    });
+    return inventoryLetters(isRubObjectCandidate);
 }
 
 function rubObjectPrompt() {
     const letters = rubObjectLetters();
     if (!letters) return 'What do you want to rub? [*]';
     return `What do you want to rub? [${getobjPromptLetters(letters)} or ?*]`;
+}
+
+function rubObjectMenuItems(ch) {
+    const inventory = game.inventory || [];
+    if (ch === '*') return inventory;
+    return inventory.filter(isRubObjectCandidate);
 }
 
 async function beginRoyalJellyRub(item) {
@@ -47186,6 +48031,35 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'applyStoneObject') {
+        const stone = findApplyInventoryItem(game._apply_stone_letter);
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._apply_stone_letter = null;
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        if (!stone || !isGrayStoneApplyItem(stone)) {
+            game._apply_stone_letter = null;
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            setUseStoneObjectMenu(useStoneMenuItems(ch, stone));
+            game._command_mode = 'applyStoneObject';
+            return;
+        }
+        const target = findApplyInventoryItem(ch);
+        if (!target) {
+            game._topline_after_more = useStonePromptMessage(stone);
+            await setMessage("You don't have that object.", true);
+            return;
+        }
+        await finishUseStone(stone, target);
+        return;
+    }
+
     if (game._command_mode === 'applyObject') {
         if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
             await setMessage('Never mind.');
@@ -47213,6 +48087,10 @@ export async function rhack(_cmd) {
         }
         if (isPotionObject(item) && !isPotionOfOil(item)) {
             await setMessage("Sorry, I don't know how to use that.");
+            return;
+        }
+        if (isGrayStoneApplyItem(item)) {
+            await beginUseStone(item);
             return;
         }
         if (applySelectionKind(item) === 'selectableInvalid' && !isPotionOfOil(item)) {
@@ -48816,11 +49694,17 @@ export async function rhack(_cmd) {
             normalizeContainedObjectParents(dropped);
             const floorMessages = [];
             let shopSale = null;
-            const consumedByFloor = earthFloorEffects(dropped, dropped.ox, dropped.oy, floorMessages, 'drop', {
-                usedUpShopBillOnDestroy: true,
-            });
-            if (consumedByFloor) clearObjectShopBillState(item);
-            if (!consumedByFloor) {
+            const shipObject = maybeShipCarriedDropObject(dropped, dropped.ox, dropped.oy, floorMessages);
+            let consumedByFloor = false;
+            if (shipObject.handled) {
+                clearObjectShopBillState(item);
+            } else {
+                consumedByFloor = earthFloorEffects(dropped, dropped.ox, dropped.oy, floorMessages, 'drop', {
+                    usedUpShopBillOnDestroy: true,
+                });
+                if (consumedByFloor) clearObjectShopBillState(item);
+            }
+            if (!shipObject.handled && !consumedByFloor) {
                 game.level.objects.push(dropped);
                 if (!sellobjReturnUnpaidToShop(dropped, dropped.ox, dropped.oy))
                     shopSale = beginDroppedPaidObjectSale(dropped, dropped.ox, dropped.oy);
@@ -48898,9 +49782,7 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === '?' || ch === '*') {
-            const rubItems = (game.inventory || []).filter(item => {
-                return isLampObject(item) || isRoyalJelly(item);
-            });
+            const rubItems = rubObjectMenuItems(ch);
             const rows = rubItems.map((item, index) => [index, 40, ` ${normalInventoryLine(item)}`.padEnd(40, ' ')]);
             rows.push([rows.length, 40, ' (end)'.padEnd(40, ' ')]);
             setOverlay(rows, 2, false, 0);
@@ -48913,6 +49795,15 @@ export async function rhack(_cmd) {
         }
         if (item && isLampObject(item)) {
             await rubLampObject(item);
+            return;
+        }
+        if (item && isGrayStoneApplyItem(item)) {
+            await beginUseStone(item);
+            return;
+        }
+        if (item) {
+            game._command_mode = null;
+            await setMessage('That is a silly thing to rub.');
             return;
         }
         await setMessage(rubObjectPrompt());
@@ -50132,9 +51023,12 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'tipHatDirection') {
+        await finishTipHatDirection(ch);
+        return;
+    }
+
     if (game._command_mode === 'tipContainerObject') {
-        const tipObjects = (game.inventory || []).filter(isTipCommandObject);
-        const letters = tipObjects.map(item => item.letter).filter(Boolean).join('');
         if (ch === '\x1b' || ch === 'q' || ch === ' ' || ch === '\r' || ch === '\n') {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
@@ -50142,6 +51036,7 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === '?' || ch === '*') {
+            const tipObjects = tipMenuItems(ch);
             const rows = [[0, 40, 'Tip what?', 1]];
             let row = 2;
             for (const item of tipObjects) {
@@ -50152,16 +51047,21 @@ export async function rhack(_cmd) {
             setOverlay(rows, Math.max(4, row + 1), false, 40);
             return;
         }
-        const tipTarget = tipObjects.find(item => item.letter === ch);
-        if (!tipTarget) {
-            await setMessage(`What do you want to tip? [${getobjPromptLetters(letters)} or ?*]`);
+        const inventoryTarget = (game.inventory || []).find(item => item.letter === ch);
+        if (isTipCoinObject(inventoryTarget) || ch === '$') {
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._command_mode = null;
+            await setMessage('You cannot tip gold.');
             return;
         }
-        game._overlay_lines = null;
-        game._overlay_hide_status = 0;
-        game._tip_container_object = tipTarget;
-        await setMessage(`Tip ${inventoryItemName(tipTarget)}? [ynq] (q)`);
-        game._command_mode = 'tipConfirm';
+        const tipTarget = tipSelectableInventoryItems().find(item => item.letter === ch);
+        if (!tipTarget) {
+            game._topline_after_more = tipPromptMessage();
+            await setMessage("You don't have that object.", true);
+            return;
+        }
+        await finishCarriedTipSelection(tipTarget);
         return;
     }
 
@@ -50183,6 +51083,7 @@ export async function rhack(_cmd) {
         if (ch === '\x1b' || ch === 'q') {
             clearTipState();
             game._command_mode = null;
+            game.context.move = 1;
             return;
         }
         if (ch === '-' || ch === ' ' || ch === '\r' || ch === '\n') {
@@ -51014,21 +51915,13 @@ export async function rhack(_cmd) {
                     game._command_mode = 'tipConfirm';
                     return;
                 }
-                const carriedTipObjects = (game.inventory || []).filter(isTipCommandObject);
-                if (carriedTipObjects.length === 1) {
-                    game._tip_container_object = carriedTipObjects[0];
-                    await setMessage(`Tip ${inventoryItemName(carriedTipObjects[0])}? [ynq] (q)`);
-                    game._command_mode = 'tipConfirm';
-                    return;
-                }
-                if (carriedTipObjects.length > 1) {
-                    const letters = carriedTipObjects.map(item => item.letter).filter(Boolean).join('');
-                    await setMessage(`What do you want to tip? [${getobjPromptLetters(letters)} or ?*]`);
+                if (tipSelectableInventoryItems().length) {
+                    await setMessage(tipPromptMessage());
                     game._command_mode = 'tipContainerObject';
                     return;
                 }
-                await setMessage('There is a broken chest here, tip it? [ynq] (q)');
-                game._command_mode = 'tipConfirm';
+                await setMessage(tipPromptMessage());
+                game._command_mode = null;
                 return;
             }
             if (command === 'annotate') {
@@ -51043,7 +51936,10 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'rub') {
-                if (!rubObjectLetters()) {
+                if (polyselfNoHands()) {
+                    game._command_mode = null;
+                    await setMessage("You aren't able to rub anything without hands.");
+                } else if (!rubObjectLetters()) {
                     game._command_mode = null;
                     await setMessage("You don't have anything to rub.");
                 } else {
@@ -54351,6 +55247,7 @@ export async function rhack(_cmd) {
                 if (game.u?.uchain) game.level.objects.push(game.u.uchain);
             }
             placeFollowerAfterLevelChange(carriedPet);
+            deliverQueuedImpactDroppedObjects(game.u?.uz);
             vision_reset();
             game._redraw_level_after_more = 1;
             await setMessage(fallDownStairs ? 'You fall down the stairs.' : 'You descend the stairs.', true);
@@ -54390,6 +55287,7 @@ export async function rhack(_cmd) {
             if (game.u?.uchain) game.level.objects.push(game.u.uchain);
         }
         placeFollowerAfterLevelChange(carriedPet);
+        deliverQueuedImpactDroppedObjects(game.u?.uz);
         game._utrack = [];
         vision_reset();
         game._redraw_level_after_more = 1;
@@ -54467,6 +55365,7 @@ export async function rhack(_cmd) {
             placeFollowerAfterLevelChange(follower);
             follower.movement = Math.max(follower.movement || 0, 12);
         }
+        deliverQueuedImpactDroppedObjects(game.u?.uz);
         vision_reset();
         game._redraw_level_after_more = 1;
         game._stairs_arrival_after_more = { fromLevel, silent: !ballAndChain.length };
