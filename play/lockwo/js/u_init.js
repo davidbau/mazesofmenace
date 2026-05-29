@@ -4,11 +4,13 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { addinv as invent_addinv } from './invent.js';
+import { initialspell } from './spell.js';
 import {
     ARMOR_CLASS,
     COIN_CLASS,
     FOOD_CLASS,
     GEM_CLASS,
+    GOLD_PIECE,
     MAGIC_MARKER,
     POTION_CLASS,
     RING_CLASS,
@@ -353,6 +355,16 @@ const Lamp = [
     { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 },
 ];
 
+// C ref: u_init.c Money[] = { { GOLD_PIECE, 0, COIN_CLASS, 1, 1, 0 }, ... }.
+// u_init_inventory_attrs() runs ini_inv(Money) whenever u.umoney0 > 0 (e.g.
+// the Tourist's rnd(1000) starting gold).  ini_inv_adjust_obj sets the coin
+// quantity to u.umoney0 directly, but the trobj still emits trquan() (rn2(1))
+// plus the GOLD_PIECE mksobj's next_ident rnd(2), so it must run for parity.
+const Money = [
+    { trotyp: GOLD_PIECE, trspe: 0, trclass: COIN_CLASS, trquan_min: 1, trquan_max: 1, trbless: 0 },
+    { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 },
+];
+
 // C ref: u_init.c Xtra_food[] — 2 random FOOD_CLASS items (orc compensation).
 const Xtra_food = [
     { trotyp: UNDEF_TYP, trspe: UNDEF_SPE, trclass: FOOD_CLASS, trquan_min: XTRA_FOOD_TRQUAN, trquan_max: XTRA_FOOD_TRQUAN, trbless: 0 },
@@ -432,6 +444,10 @@ const W_ARMS = 0x08;
 const W_ARMG = 0x10;
 const W_ARMF = 0x20;
 const W_ARMU = 0x40;
+// C ref: prop.h — wielded/quiver/secondary weapon slot masks.
+const W_WEP = 0x100;
+const W_QUIVER = 0x200;
+const W_SWAPWEP = 0x400;
 
 // C ref: objclass.h armor-category predicates (is_cloak/is_helmet/...).
 const CLOAK_OTYPS = new Set([CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT, ROBE]);
@@ -460,16 +476,36 @@ function setworn(obj, mask) {
     else if (mask === W_ARMU) game.uarmu = obj;
 }
 
-// C ref: u_init.c ini_inv_use_obj — auto-wear starting armor.
+// C ref: u_init.c ini_inv_use_obj — auto-wear starting armor and wield
+// starting weapon(s).  Ammo/missiles fill the quiver; the first wieldable
+// weapon becomes the primary (uwep) and the next the secondary (uswapwep),
+// matching the C order so e.g. the Samurai starts katana/short-sword ready
+// to two-weapon and the inventory display marks them correctly.
 function ini_inv_wear_armor(obj) {
-    if (obj.oclass !== ARMOR_CLASS) return;
-    if (is_shield(obj) && !game.uarms) setworn(obj, W_ARMS);
-    else if (is_helmet(obj) && !game.uarmh) setworn(obj, W_ARMH);
-    else if (is_gloves(obj) && !game.uarmg) setworn(obj, W_ARMG);
-    else if (is_shirt(obj) && !game.uarmu) setworn(obj, W_ARMU);
-    else if (is_cloak(obj) && !game.uarmc) setworn(obj, W_ARMC);
-    else if (is_suit(obj) && !game.uarm) setworn(obj, W_ARM);
+    if (obj.oclass === ARMOR_CLASS) {
+        if (is_shield(obj) && !game.uarms) setworn(obj, W_ARMS);
+        else if (is_helmet(obj) && !game.uarmh) setworn(obj, W_ARMH);
+        else if (is_gloves(obj) && !game.uarmg) setworn(obj, W_ARMG);
+        else if (is_shirt(obj) && !game.uarmu) setworn(obj, W_ARMU);
+        else if (is_cloak(obj) && !game.uarmc) setworn(obj, W_ARMC);
+        else if (is_suit(obj) && !game.uarm) setworn(obj, W_ARM);
+    }
+
+    // C ref: u_init.c ini_inv_use_obj — wield the starting weapon(s).
+    if (obj.oclass === WEAPON_CLASS) {
+        if (ini_is_ammo(obj)) {
+            if (!game.uquiver) { obj.owornmask = (obj.owornmask || 0) | W_QUIVER; game.uquiver = obj; }
+        } else if (!game.uwep) {
+            obj.owornmask = (obj.owornmask || 0) | W_WEP; game.uwep = obj;
+        } else if (!game.uswapwep) {
+            obj.owornmask = (obj.owornmask || 0) | W_SWAPWEP; game.uswapwep = obj;
+        }
+    }
 }
+
+// C ref: objclass.h is_ammo — a stacked (quan>1) weapon is treated as ammo
+// for the starting-quiver decision (matches invent.js is_ammo).
+function ini_is_ammo(obj) { return obj.oclass === WEAPON_CLASS && (obj.quan || 1) > 1; }
 
 // C ref: hack.h ARM_BONUS — a_ac + spe (no erosion at game start).
 function ARM_BONUS(obj) {
@@ -606,7 +642,7 @@ const P_NONE = 0;
 // spell's skill discipline (oc_skill) and spell level (oc_level), keyed by
 // otyp.  spell_skilltype(otyp)==objects[otyp].oc_skill (spell.c:856); the JS
 // objects table doesn't carry oc_skill/oc_level, so they live here.
-const SPELL_META = new Map([
+export const SPELL_META = new Map([
     [365, { skill: 34, level: 5 }], // SPE_DIG
     [366, { skill: 28, level: 2 }], // SPE_MAGIC_MISSILE
     [367, { skill: 28, level: 4 }], // SPE_FIREBALL
@@ -813,6 +849,10 @@ export function ini_inv(tropList) {
             quan = 1;
         addinv(obj);
         ini_inv_wear_armor(obj);
+        // C ref: u_init.c ini_inv_use_obj — a starting (non-blank) spellbook
+        // is memorized into spl_book with full retention.
+        if (obj.oclass === SPBOOK_CLASS && obj.otyp !== SPE_BLANK_PAPER)
+            initialspell(obj);
         if (obj.oclass === SPBOOK_CLASS && spell_level(obj.otyp) === 1)
             got_sp1 = true;
 
@@ -1044,6 +1084,14 @@ export function u_init_inventory_attrs() {
     try {
         u_init_role();
         u_init_race();
+        // C ref: u_init.c u_init_inventory_attrs — `if (discover)
+        // ini_inv(Wishing);` (wizard-mode only, not exercised by these
+        // sessions) then `if (u.umoney0) ini_inv(Money);`.  The Tourist
+        // (and Healer) start with rnd()-rolled gold, so the Money trobj
+        // must run: it emits trquan() (rn2(1)) plus the GOLD_PIECE
+        // next_ident rnd(2) at exactly this stream position.
+        if (game.u?.umoney0)
+            ini_inv(Money);
         init_attr(75);
         vary_init_attr();
         u_init_carry_attr_boost();
