@@ -566,7 +566,7 @@ export function vision_recalc(control = 0) {
             const dy = Math.sign(uy - row);
             for (let col = start; col <= stop; col++) {
                 const nv = next_row[col];
-                const ov = old_row[col];
+                const ov = old_row?.[col] || 0;
                 const loc = game.level.at(col, row);
                 if (!loc) continue;
 

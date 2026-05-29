@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -12503,6 +12503,24 @@ function stoneToFleshCorpstatMonsterIsGolem(data = {}) {
     return name.endsWith(' golem') || mlet === "'";
 }
 
+function stoneToFleshFleshGolemData() {
+    return monsterByRndName('flesh golem')
+        || RANDOM_MONSTER_BY_NAME.get('flesh golem')
+        || { name: 'flesh golem', mlet: "'", glyph: "'", mlevel: 9, hpLevel: 9, mmove: 8, neuter: true };
+}
+
+function stoneToFleshCorpstatIsFleshGolem(data = {}) {
+    return String(data.name || '').toLowerCase() === 'flesh golem';
+}
+
+function stoneToFleshCorpstatGolemAnimationInfo(data = {}) {
+    if (!stoneToFleshCorpstatMonsterIsGolem(data)) return null;
+    return {
+        data: stoneToFleshCorpstatIsFleshGolem(data) ? data : stoneToFleshFleshGolemData(),
+        golemXform: !stoneToFleshCorpstatIsFleshGolem(data),
+    };
+}
+
 function stoneToFleshCorpstatMonsterIsVegetarian(data = {}) {
     if (!data || stoneToFleshCorpstatMonsterIsGolem(data)) return false;
     if (data.noncorporeal) return true;
@@ -12540,6 +12558,214 @@ function stoneToFleshReplacementForObject(item) {
     if (isStoneToFleshGemObject(item))
         return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatballReplacement(item);
     return null;
+}
+
+function stoneToFleshCorpstatAnimationInfo(data = {}) {
+    const golemInfo = stoneToFleshCorpstatGolemAnimationInfo(data);
+    if (golemInfo) return golemInfo;
+    if (stoneToFleshCorpstatMonsterIsVegetarian(data))
+        return null;
+    return { data, golemXform: false };
+}
+
+function stoneToFleshFloorStatueDeferredCorpstat(data = {}) {
+    return !stoneToFleshCorpstatMonsterIsGolem(data)
+        && !!(data.unique || data.noCorpse || data.cantRevive || data.noCorpstat);
+}
+
+function stoneToFleshFigurineAnimationInfo(item) {
+    if (!isFigurineObject(item) || !item?.corpsenm) return null;
+    const material = stoneToFleshObjectMaterial(item);
+    if (material !== 'mineral' && material !== 'gemstone') return null;
+    return stoneToFleshCorpstatAnimationInfo(item.corpsenm);
+}
+
+function stoneToFleshCarriedFigurineHasUnpaidContents(item, seen = new Set()) {
+    if (!item || seen.has(item)) return false;
+    seen.add(item);
+    return globContents(item).some(child => shopObjectOrContentsUnpaid(child));
+}
+
+function stoneToFleshCarriedFigurineShopkeeper(item) {
+    const shkp = shopkeeperForCostlySpot(game.u?.ux, game.u?.uy);
+    if (!shopkeeperInHisShop(shkp)) return null;
+    return item?.unpaid || shopBillEntryForObject(shkp, item) ? shkp : null;
+}
+
+function stoneToFleshAnimatableCarriedFigurineInfo(item) {
+    if (stoneToFleshCarriedFigurineHasUnpaidContents(item)) return null;
+    return stoneToFleshFigurineAnimationInfo(item);
+}
+
+function stoneToFleshAnimatableFloorFigurineInfo(item) {
+    return stoneToFleshFigurineAnimationInfo(item);
+}
+
+function stoneToFleshAnimationFailure(info) {
+    return { stoneToFleshAnimationFailed: true, info };
+}
+
+function isStoneToFleshAnimationFailure(result) {
+    return !!result?.stoneToFleshAnimationFailed;
+}
+
+function stoneToFleshFailedAnimationPreservesOriginal(info) {
+    const data = info?.data || {};
+    return !!(data.unique || data.noCorpse);
+}
+
+function stoneToFleshFailedAnimationCorpse(item) {
+    const corpse = mkcorpstat(CORPSE, null, item?.corpsenm, 0, 0, 8);
+    corpse.quan = Math.max(1, Math.trunc(Number(item?.quan || 1)));
+    corpse.blessed = !!item?.blessed;
+    corpse.cursed = !!item?.cursed;
+    if (item?.no_charge) corpse.no_charge = true;
+    startCorpseTimeout(corpse);
+    Object.assign(corpse, object_display(corpse));
+    return corpse;
+}
+
+function moveStoneToFleshFailedAnimationContentsToFloor(item, x, y, floorObjects = game.level?.objects || []) {
+    const contents = globContents(item);
+    const dropped = [];
+    while (contents.length) {
+        const child = contents.shift();
+        child.contained = false;
+        delete child.container;
+        child.ox = x;
+        child.oy = y;
+        child.hidden = false;
+        child.transientProjectile = false;
+        delete child.line;
+        Object.assign(child, object_display(child));
+        floorObjects.push(child);
+        dropped.push(child);
+    }
+    if (Array.isArray(item?.contents)) item.contents = [];
+    if (Array.isArray(item?.cobj)) item.cobj = [];
+    return dropped;
+}
+
+function stoneToFleshApplyCarriedAnimationFailure(item, failure) {
+    if (stoneToFleshFailedAnimationPreservesOriginal(failure?.info)) return false;
+    const corpse = stoneToFleshFailedAnimationCorpse(item);
+    corpse.letter = item.letter;
+    moveStoneToFleshFailedAnimationContentsToFloor(item, game.u?.ux || 0, game.u?.uy || 0);
+    markObjectShopBillUsedUp(item);
+    stopFigurineTransformTimeout(item);
+    replaceInventoryObjectWithPolymorphResult(item, corpse);
+    return true;
+}
+
+function stoneToFleshFloorAnimationFailureResult(item, x, y, failure) {
+    if (stoneToFleshFailedAnimationPreservesOriginal(failure?.info))
+        return { transformed: false, floorObjects: [item] };
+    const corpse = stoneToFleshFailedAnimationCorpse(item);
+    corpse.ox = x;
+    corpse.oy = y;
+    const floorObjects = [];
+    moveStoneToFleshFailedAnimationContentsToFloor(item, x, y, floorObjects);
+    prepareFloorPolymorphReplacement(item, corpse);
+    floorObjects.push(corpse);
+    return {
+        transformed: true,
+        floorObjects,
+        angerMessage: floorPolymorphShopkeeperAngerMessage(item, x, y),
+    };
+}
+
+async function stoneToFleshAnimateCarriedFigurine(item) {
+    const info = stoneToFleshAnimatableCarriedFigurineInfo(item);
+    if (!info || stoneToFleshObjectResists(item)) return null;
+    const mon = await makemon(info.data, game.u?.ux || 0, game.u?.uy || 0, NO_MINVENT | MM_NOMSG);
+    if (!mon) return stoneToFleshAnimationFailure(info);
+    const messages = [];
+    const chargeMessage = stoneToFleshChargeCarriedFigurineAnimation(item);
+    if (chargeMessage) messages.push(chargeMessage);
+    stopFigurineTransformTimeout(item);
+    useUpInventoryItem(item, 1);
+    if (cansee(mon.mx, mon.my))
+        messages.push(`The figurine ${info.golemXform ? 'turns to flesh and ' : ''}animates!`);
+    return messages;
+}
+
+function stoneToFleshChargeFigurineAnimation(item, x, y, shkp, { carried = false } = {}) {
+    if (!item || shopBillableGold(item) || (!carried && item.no_charge)) return '';
+    if (!shopkeeperInHisShop(shkp)) return '';
+    if (carried && !(item.unpaid || shopBillEntryForObject(shkp, item))) return '';
+    const beforeCredit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+    const value = lostShopMerchandiseValueForObject({ ox: x, oy: y }, item, shkp);
+    if (!(value > 0)) return '';
+    const peaceful = shopkeeperPeacefulForDebt(shkp);
+    const remaining = chargeShopkeeperForLostMerchandise(shkp, value, { peaceful });
+    if (!peaceful) {
+        if (!game.u?.blind && cansee(shkp.mx, shkp.my))
+            return `${shopkeeperDisplayName(shkp)} booms: "${game.plname || 'Hero'}, you are a thief!"`;
+        return heroIsDeaf() ? '' : 'You hear a scream, "Thief!"';
+    }
+    const usedCredit = beforeCredit > Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+    if (usedCredit && shkp.credit > 0)
+        return `You have ${shkp.credit} ${shopCurrency(shkp.credit)} credit remaining.`;
+    if (usedCredit && !remaining)
+        return 'You have no credit remaining.';
+    const still = usedCredit ? 'still ' : '';
+    return `You ${still}owe ${shopkeeperDisplayName(shkp)} ${remaining} ${shopCurrency(remaining)} for ${shopDebtObjectPronoun(item)}!`;
+}
+
+function stoneToFleshChargeCarriedFigurineAnimation(item) {
+    const shkp = stoneToFleshCarriedFigurineShopkeeper(item);
+    return stoneToFleshChargeFigurineAnimation(item, game.u?.ux, game.u?.uy, shkp, { carried: true });
+}
+
+function stoneToFleshChargeFloorFigurineAnimation(item, x, y) {
+    return stoneToFleshChargeFigurineAnimation(item, x, y, shopkeeperForCostlySpot(x, y));
+}
+
+async function stoneToFleshAnimateFloorFigurine(item, x, y) {
+    const info = stoneToFleshAnimatableFloorFigurineInfo(item);
+    if (!info || stoneToFleshObjectResists(item)) return null;
+    const mon = await makemon(info.data, x, y, NO_MINVENT | MM_NOMSG);
+    if (!mon) return stoneToFleshAnimationFailure(info);
+    const messages = [];
+    const chargeMessage = stoneToFleshChargeFloorFigurineAnimation(item, x, y);
+    if (chargeMessage) messages.push(chargeMessage);
+    stopFigurineTransformTimeout(item);
+    newsym(x, y);
+    if (cansee(mon.mx, mon.my))
+        messages.push(`The figurine ${info.golemXform ? 'turns to flesh and ' : ''}animates!`);
+    return messages;
+}
+
+function stoneToFleshFloorStatueAnimationInfo(item, x, y) {
+    if (!(item?.otyp === STATUE || item?.kind === 'statue') || !item?.corpsenm) return null;
+    const material = stoneToFleshObjectMaterial(item);
+    if (material !== 'mineral' && material !== 'gemstone') return null;
+    if (stoneToFleshFloorStatueDeferredCorpstat(item.corpsenm)) return null;
+    return stoneToFleshCorpstatAnimationInfo(item.corpsenm);
+}
+
+function stoneToFleshGolemStatueVerb(info, mon) {
+    if (info?.golemXform) return 'turns into flesh';
+    if (stoneToFleshCorpstatMonsterIsGolem(mon?.data || {})) return 'moves';
+    return statueAnimationVerb(mon);
+}
+
+async function stoneToFleshAnimateFloorStatue(item, x, y) {
+    const info = stoneToFleshFloorStatueAnimationInfo(item, x, y);
+    if (!info || stoneToFleshObjectResists(item)) return null;
+    const mon = await makemon(info.data, x, y, NO_MINVENT | MM_NOMSG | MM_ADJACENTOK);
+    if (!mon) return stoneToFleshAnimationFailure(info);
+    mon.msleeping = 0;
+    mon.mundetected = false;
+    const messages = [];
+    const verb = cansee(mon.mx, mon.my) ? stoneToFleshGolemStatueVerb(info, mon) : 'disappears';
+    messages.push(`${upstartText(`the ${pickupObjectName(item)}`)} ${verb}!`);
+    const chargeMessage = statueShatterShopDebtMessage(item, x, y, mon);
+    if (chargeMessage) messages.push(chargeMessage);
+    moveStatueContentsToMonster(item, mon);
+    newsym(x, y);
+    newsym(mon.mx, mon.my);
+    return messages;
 }
 
 function isMeatRingObject(item) {
@@ -12604,7 +12830,7 @@ function fixHeroPetrification(message = null) {
     return rescueMessage;
 }
 
-function stoneToFleshInventoryEffect(messages = []) {
+async function stoneToFleshInventoryEffect(messages = []) {
     let rescued = false;
     const form = game.u?._polyself_form;
     if (form?.name === 'stone golem') {
@@ -12619,43 +12845,97 @@ function stoneToFleshInventoryEffect(messages = []) {
     }
 
     let transformed = false;
+    let meatTransformed = false;
     for (const item of [...(game.inventory || [])]) {
         const replacement = stoneToFleshReplacementForObject(item);
-        if (!replacement) continue;
-        markObjectShopBillUsedUp(item);
-        replaceInventoryObjectWithPolymorphResult(item, replacement, {
-            preserveEquipment: preserveStoneToFleshEquipmentState,
-        });
-        transformed = true;
+        if (replacement) {
+            markObjectShopBillUsedUp(item);
+            replaceInventoryObjectWithPolymorphResult(item, replacement, {
+                preserveEquipment: preserveStoneToFleshEquipmentState,
+            });
+            transformed = true;
+            meatTransformed = true;
+            continue;
+        }
+        const animationMessage = await stoneToFleshAnimateCarriedFigurine(item);
+        if (animationMessage != null) {
+            if (isStoneToFleshAnimationFailure(animationMessage)) {
+                if (stoneToFleshApplyCarriedAnimationFailure(item, animationMessage))
+                    transformed = true;
+                continue;
+            }
+            if (Array.isArray(animationMessage)) messages.push(...animationMessage);
+            else if (animationMessage) messages.push(animationMessage);
+            transformed = true;
+        }
     }
-    if (transformed) {
+    if (meatTransformed) {
         mergeStoneToFleshInventoryResults();
         messages.push(stoneToFleshSmellMessage());
     }
     return { transformed: transformed || rescued, messages };
 }
 
-function stoneToFleshFloorEffect(x = game.u?.ux || 0, y = game.u?.uy || 0) {
+async function stoneToFleshFloorEffect(x = game.u?.ux || 0, y = game.u?.uy || 0) {
     const messages = [];
     const alterationMessages = [];
     let transformed = false;
-    game.level.objects = (game.level?.objects || []).map(obj => {
-        if (!obj || obj.hidden || obj.transientProjectile || obj.ox !== x || obj.oy !== y)
-            return obj;
+    let meatTransformed = false;
+    const floorObjects = [];
+    for (const obj of (game.level?.objects || [])) {
+        if (!obj || obj.hidden || obj.transientProjectile || obj.ox !== x || obj.oy !== y) {
+            floorObjects.push(obj);
+            continue;
+        }
         const replacement = stoneToFleshReplacementForObject(obj);
-        if (!replacement) return obj;
-        replacement.ox = x;
-        replacement.oy = y;
-        prepareFloorPolymorphReplacement(obj, replacement);
-        const angerMessage = floorPolymorphShopkeeperAngerMessage(obj, x, y);
-        if (angerMessage && !alterationMessages.includes(angerMessage))
-            alterationMessages.push(angerMessage);
-        transformed = true;
-        return replacement;
-    });
+        if (replacement) {
+            replacement.ox = x;
+            replacement.oy = y;
+            prepareFloorPolymorphReplacement(obj, replacement);
+            const angerMessage = floorPolymorphShopkeeperAngerMessage(obj, x, y);
+            if (angerMessage && !alterationMessages.includes(angerMessage))
+                alterationMessages.push(angerMessage);
+            transformed = true;
+            meatTransformed = true;
+            floorObjects.push(replacement);
+            continue;
+        }
+        const animationMessage = await stoneToFleshAnimateFloorFigurine(obj, x, y);
+        if (animationMessage != null) {
+            if (isStoneToFleshAnimationFailure(animationMessage)) {
+                const fallback = stoneToFleshFloorAnimationFailureResult(obj, x, y, animationMessage);
+                floorObjects.push(...fallback.floorObjects);
+                if (fallback.transformed) transformed = true;
+                if (fallback.angerMessage && !alterationMessages.includes(fallback.angerMessage))
+                    alterationMessages.push(fallback.angerMessage);
+                continue;
+            }
+            if (Array.isArray(animationMessage)) messages.push(...animationMessage);
+            else if (animationMessage) messages.push(animationMessage);
+            transformed = true;
+            continue;
+        }
+        const statueAnimationMessage = await stoneToFleshAnimateFloorStatue(obj, x, y);
+        if (statueAnimationMessage != null) {
+            if (isStoneToFleshAnimationFailure(statueAnimationMessage)) {
+                const fallback = stoneToFleshFloorAnimationFailureResult(obj, x, y, statueAnimationMessage);
+                floorObjects.push(...fallback.floorObjects);
+                if (fallback.transformed) transformed = true;
+                if (fallback.angerMessage && !alterationMessages.includes(fallback.angerMessage))
+                    alterationMessages.push(fallback.angerMessage);
+                continue;
+            }
+            if (Array.isArray(statueAnimationMessage)) messages.push(...statueAnimationMessage);
+            else if (statueAnimationMessage) messages.push(statueAnimationMessage);
+            transformed = true;
+            continue;
+        }
+        floorObjects.push(obj);
+    }
+    game.level.objects = floorObjects;
     if (transformed) {
         newsym(x, y);
-        messages.push(stoneToFleshSmellMessage());
+        if (meatTransformed) messages.push(stoneToFleshSmellMessage());
         messages.push(...alterationMessages);
     }
     return { transformed, messages };
@@ -13966,6 +14246,33 @@ function burnAwayHeroSlime(messages = []) {
     return true;
 }
 
+function applyBurningOilDoorTerrain(x, y, messages) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const visible = !game.u?.blind && cansee(x, y);
+    let changed = false;
+
+    if (loc.typ === SDOOR) {
+        loc.typ = DOOR;
+        newsym(x, y);
+        changed = true;
+        if (visible) messages.push('The blast reveals a secret door.');
+    }
+    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) {
+        loc.doormask = D_NODOOR;
+        loc.flags = 0;
+        newsym(x, y);
+        changed = true;
+        messages.push(visible ? 'The door is consumed in flames!' : 'You smell smoke.');
+    }
+    if (changed) {
+        vision_reset();
+        vision_recalc(0);
+    }
+    return changed;
+}
+
 function burnFloorObjectsFromBurningOilExplosion(x, y, messages) {
     let heardGas = false;
     for (let dx = -1; dx <= 1; dx++) {
@@ -13990,7 +14297,10 @@ function burnFloorObjectsFromBurningOilExplosion(x, y, messages) {
                 });
                 if (terrain.messages.length) messages.push(...terrain.messages);
                 heardGas = terrain.heardGas;
+                const fountain = applyFireRayFountainTerrain(sx, sy, { heroRay: true });
+                if (fountain.messages.length) messages.push(...fountain.messages);
             }
+            applyBurningOilDoorTerrain(sx, sy, messages);
             const floorFire = burnFloorObjectsByFire(sx, sy, {
                 heroCaused: true,
                 igniteFeedback: false,
@@ -25709,15 +26019,39 @@ export function landMonsterThrownObject(missile, x, y, {
         transientProjectile: false,
     };
     delete landing.line;
+    const shipObject = landing.otyp === BOULDER
+        ? projectileShipObjectResult()
+        : maybeShipRemoteProjectileObject(landing, x, y, floorMessages);
+    if (shipObject.handled) {
+        return {
+            consumed: true,
+            object: null,
+            messages: floorMessages,
+            shipObject,
+            floorEffects: { consumed: false },
+        };
+    }
     const consumed = monsterThrownFloorEffects(landing, x, y, floorMessages, verb);
     if (consumed) {
         newsym(x, y);
-        return { consumed: true, object: null, messages: floorMessages };
+        return {
+            consumed: true,
+            object: null,
+            messages: floorMessages,
+            shipObject,
+            floorEffects: { consumed: true },
+        };
     }
     const stacked = stackMonsterThrownObject(landing);
     if (stacked === landing) game.level.objects.push(landing);
     newsym(x, y);
-    return { consumed: false, object: stacked, messages: floorMessages };
+    return {
+        consumed: false,
+        object: stacked,
+        messages: floorMessages,
+        shipObject,
+        floorEffects: { consumed: false },
+    };
 }
 
 function appendToplineAfterMoreMessages(messages) {
@@ -43180,7 +43514,7 @@ export async function rhack(_cmd) {
         game._casting_spell = null;
         if (spell?.name === 'stone to flesh') {
             if (ch === '.') {
-                const result = stoneToFleshInventoryEffect();
+                const result = await stoneToFleshInventoryEffect();
                 if (result.messages.length) await setMessage(result.messages.join('  '));
                 else {
                     game._pending_message = '';
@@ -43188,7 +43522,7 @@ export async function rhack(_cmd) {
                     game._keep_pending_message = 1;
                 }
             } else if (ch === '>') {
-                const result = stoneToFleshFloorEffect();
+                const result = await stoneToFleshFloorEffect();
                 if (result.messages.length) await setMessage(result.messages.join('  '));
                 else await setMessage(`You cast ${spell?.name || 'a spell'}.`);
             } else {

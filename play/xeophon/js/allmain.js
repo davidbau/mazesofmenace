@@ -53,6 +53,10 @@ const ALIGN_CANONICAL = new Map(Object.keys(ALIGN_TYPE).map(name => [name.toLowe
 const GENDER_CANONICAL = new Map(['male', 'female'].map(name => [name, name]));
 const EGG = 10001;
 const LUMP_OF_ROYAL_JELLY = 10089;
+const MEAT_RING = 10164;
+const MEATBALL = 11012;
+const ENORMOUS_MEATBALL = 11013;
+const MEAT_STICK = 11014;
 const STONED_TEXTS = [
     'You are slowing down.',
     'Your limbs are stiffening.',
@@ -1839,6 +1843,75 @@ const INNATE_RANGED_ATTACK_MONSTERS = new Set([
 const MONSTER_BREATH_ATTACKS = new Map([
     ['red dragon', { element: 'fire', dice: 6 }],
 ]);
+const CARNIVOROUS_PET_NAMES = new Set([
+    'jackal', 'fox', 'coyote', 'little dog', 'dingo', 'dog', 'large dog',
+    'wolf', 'winter wolf cub', 'warg', 'winter wolf', 'hell hound pup',
+    'hell hound', 'kitten', 'housecat', 'jaguar', 'lynx', 'panther',
+    'large cat', 'tiger', 'displacer beast', 'baby gray dragon',
+    'baby gold dragon', 'baby silver dragon', 'baby shimmering dragon',
+    'baby red dragon', 'baby white dragon', 'baby orange dragon',
+    'baby black dragon', 'baby blue dragon', 'baby green dragon',
+    'baby yellow dragon', 'gray dragon', 'gold dragon', 'silver dragon',
+    'shimmering dragon', 'red dragon', 'white dragon', 'orange dragon',
+    'black dragon', 'blue dragon', 'green dragon', 'yellow dragon',
+    'carnivorous ape', 'piranha', 'shark', 'giant eel', 'electric eel',
+    'kraken', 'wererat', 'werejackal', 'werewolf',
+]);
+const HERBIVOROUS_PET_NAMES = new Set(['pony', 'horse', 'warhorse']);
+const CARNIVORE_DOGFOOD_KINDS = new Set([
+    'tripe',
+    'tripe ration',
+    'meatball',
+    'meat ring',
+    'meat stick',
+    'enormous meatball',
+]);
+const CARNIVORE_DOGFOOD_OTYPS = new Set([
+    MEATBALL,
+    MEAT_RING,
+    MEAT_STICK,
+    ENORMOUS_MEATBALL,
+]);
+
+function monsterDietName(mon) {
+    return String(mon?.data?.name || '').toLowerCase();
+}
+
+function monsterCarnivorous(mon, name = monsterDietName(mon)) {
+    const data = mon?.data || {};
+    return !!(data.carnivorous || data.carnivore) || CARNIVOROUS_PET_NAMES.has(name);
+}
+
+function monsterHerbivorous(mon, name = monsterDietName(mon)) {
+    const data = mon?.data || {};
+    return !!(data.herbivorous || data.herbivore) || HERBIVOROUS_PET_NAMES.has(name);
+}
+
+function dogFoodCorpseIsOld(obj) {
+    if (obj?.oldCorpse) return true;
+    if (obj?.age == null) return false;
+    return (game.moves || 1) - Number(obj.age || 0) >= 50;
+}
+
+function dogFoodEggIsStale(obj) {
+    if (obj?.staleEgg || obj?.oldEgg) return true;
+    if (obj?.age == null) return false;
+    return (game.moves || 1) - Number(obj.age || 0) > 400;
+}
+
+function dogFoodCorpseIsVegan(data = {}) {
+    const name = String(data?.name || '').toLowerCase();
+    const mlet = data?.mlet ?? data?.glyph ?? '';
+    const lowerMlet = String(mlet).toLowerCase();
+    if (data?.vegan || data?.noncorporeal) return true;
+    if (['b', 'j', 'f', 'v', 'y', 'blob', 'jelly', 'fungus', 'vortex', 'light'].includes(lowerMlet))
+        return true;
+    if ((mlet === 'E' || lowerMlet === 'elemental') && name !== 'stalker')
+        return true;
+    if ((mlet === '\'' || lowerMlet === 'golem') && name !== 'flesh golem' && name !== 'leather golem')
+        return true;
+    return false;
+}
 
 function dogFood(mon, obj) {
     const objectName = String(obj.actualKind || obj.kind || obj.spellName || obj.spell?.name || '').toLowerCase();
@@ -1846,12 +1919,26 @@ function dogFood(mon, obj) {
         || objectName === 'candelabrum of invocation' || objectName === 'amulet of yendor')
         return obj.cursed ? TABU : APPORT;
     rn2(100);
-    const petName = mon.data?.name || '';
-    const herbivore = petName === 'pony' || petName === 'horse';
-    const carnivore = petName === 'kitten' || petName.includes('cat') || petName.includes('dog');
+    const petName = monsterDietName(mon);
+    const herbivore = monsterHerbivorous(mon, petName);
+    const carnivore = monsterCarnivorous(mon, petName);
+    const starving = !!(mon?.mtame && !mon?.isminion && mon?.mextra?.edog?.mhpmax_penalty);
     const foodRoll = obj.foodRoll || 1000;
 
     if (obj.otyp === BOULDER || obj.otyp === STATUE) return UNDEF;
+    if (petName === 'ghoul') {
+        const kind = String(obj.kind || obj.actualKind || '').toLowerCase();
+        if (obj.otyp === 'corpse' || obj.otyp === CORPSE) {
+            const corpseName = String(obj.corpsenm?.name || '').toLowerCase();
+            if (dogFoodCorpseIsOld(obj) && corpseName !== 'lizard' && corpseName !== 'lichen')
+                return DOGFOOD;
+            return starving && !dogFoodCorpseIsVegan(obj.corpsenm) ? ACCFOOD : POISON;
+        }
+        if (obj.otyp === EGG || kind === 'egg')
+            return dogFoodEggIsStale(obj) ? CADAVER : starving ? ACCFOOD : POISON;
+        if (obj.otyp === FOOD_CLASS || obj.cls === 'food' || obj.foodRoll)
+            return TABU;
+    }
     if (obj.otyp === 'corpse' || obj.otyp === CORPSE) {
         const corpseName = obj.corpsenm?.name || '';
         if (obj.oldCorpse && corpseName !== 'lichen' && corpseName !== 'lizard') return POISON;
@@ -1860,12 +1947,12 @@ function dogFood(mon, obj) {
         return carnivore ? CADAVER : MANFOOD;
     }
     if (obj.otyp === FOOD_CLASS || obj.cls === 'food' || obj.foodRoll) {
-        const kind = String(obj.kind || '');
+        const kind = String(obj.kind || obj.actualKind || '').toLowerCase();
         if ((obj.otyp === LUMP_OF_ROYAL_JELLY || kind === 'lump of royal jelly')
             && petName === 'killer bee')
             return levelHasQueenBee() ? TABU : DOGFOOD;
         if (obj.kind === 'tin' || String(obj.kind || '').startsWith('tin:')) return MANFOOD;
-        if (foodRoll <= 140 || kind === 'tripe' || kind === 'tripe ration') return carnivore ? DOGFOOD : MANFOOD;
+        if (foodRoll <= 140 || CARNIVORE_DOGFOOD_KINDS.has(kind) || CARNIVORE_DOGFOOD_OTYPS.has(obj.otyp)) return carnivore ? DOGFOOD : MANFOOD;
         if (obj.kind === 'egg') return carnivore ? CADAVER : MANFOOD;
         if (obj.kind === 'apple') return herbivore ? DOGFOOD : MANFOOD;
         if (obj.kind === 'carrot') return herbivore ? DOGFOOD : MANFOOD;
@@ -9646,8 +9733,8 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         && hereCandidate.oldCorpse
         && hereCandidate.corpsenm?.name !== 'lichen'
         && hereCandidate.corpsenm?.name !== 'lizard';
-    if (staleHereCorpse) dogFood(mon, hereCandidate);
-    const hereObj = staleHereCorpse ? null : hereCandidate;
+    if (staleHereCorpse && monsterDietName(mon) !== 'ghoul') dogFood(mon, hereCandidate);
+    const hereObj = staleHereCorpse && monsterDietName(mon) !== 'ghoul' ? null : hereCandidate;
     if (hereObj) {
         const pickupVisible = !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
         const hereFood = dogFood(mon, hereObj);

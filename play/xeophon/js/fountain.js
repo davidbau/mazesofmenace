@@ -19,6 +19,7 @@ export function dryupFountainResultAt(x = game.u?.ux || 0, y = game.u?.uy || 0, 
     loc.typ = ROOM;
     loc.flags = 0;
     loc.blessed = 0;
+    loc.blessedftn = 0;
     if (game.level?.flags?.nfountains) game.level.flags.nfountains--;
     newsym(x, y);
     return { dried: true };
