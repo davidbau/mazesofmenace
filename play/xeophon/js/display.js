@@ -551,6 +551,11 @@ export function recordObservedObjectDiscovery(obj) {
         if (appearance) addObservedDiscovery('Amulets', 'amulet', `amulet (${appearance})`);
         return;
     }
+    if (obj.cls === 'ring' || obj.glyph === '=') {
+        const appearance = String(obj.appearance || game._object_descriptions?.rings?.[(obj.ringRoll || 0) - 1] || '').trim();
+        if (appearance) addObservedDiscovery('Rings', 'ring', `ring (${appearance})`);
+        return;
+    }
     if (obj.cls === 'armor' || obj.glyph === '[') {
         const description = String(obj.appearance || '').trim();
         if (!description) return;

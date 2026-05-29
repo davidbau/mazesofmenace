@@ -3798,6 +3798,40 @@ function drawbridgeUnder(loc) {
     return (loc?.flags || 0) & DB_UNDER;
 }
 
+function movementSurfaceTerrain(loc) {
+    if (!loc) return undefined;
+    if (loc.typ !== DRAWBRIDGE_UP) return loc.typ;
+    switch (drawbridgeUnder(loc)) {
+    case DB_LAVA:
+        return LAVAPOOL;
+    case DB_ICE:
+        return ICE;
+    case DB_FLOOR:
+        return ROOM;
+    case DB_MOAT:
+    default:
+        return MOAT;
+    }
+}
+
+function movementIsPoolAt(x, y, loc = game.level?.at(x, y)) {
+    if (!loc) return false;
+    if (loc.typ === POOL || loc.typ === MOAT || loc.typ === WATER) return true;
+    return loc.typ === DRAWBRIDGE_UP
+        && drawbridgeUnder(loc) === DB_MOAT
+        && currentSpecialLevelName() !== 'juiblex';
+}
+
+function movementIsLavaAt(x, y, loc = game.level?.at(x, y)) {
+    if (!loc) return false;
+    return loc.typ === LAVAPOOL || loc.typ === LAVAWALL
+        || (loc.typ === DRAWBRIDGE_UP && drawbridgeUnder(loc) === DB_LAVA);
+}
+
+function movementIsLiquidAt(x, y, loc = game.level?.at(x, y)) {
+    return movementIsPoolAt(x, y, loc) || movementIsLavaAt(x, y, loc);
+}
+
 function earthquakeIsMoatAt(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc || currentSpecialLevelName() === 'juiblex') return false;
@@ -4866,9 +4900,28 @@ function recordKnownAmuletDiscovery(kind, item = null) {
     if (existing) {
         existing.text = text;
         existing.starred = false;
+        existing.known = true;
         return;
     }
     game._discoveries.push({ section: 'Amulets', name, text, starred: false, known: true });
+}
+
+function recordKnownRingDiscovery(kind, item = null) {
+    const raw = String(kind || '').toLowerCase().replace(/^ring of /, '');
+    if (!raw) return;
+    const ringIndex = item?.ringRoll != null ? item.ringRoll - 1 : IDENTIFIED_RING_NAMES.indexOf(raw);
+    const appearance = item?.appearance || game._object_descriptions?.rings?.[ringIndex] || '';
+    const name = `ring of ${raw}`;
+    const text = appearance ? `${name} (${appearance})` : name;
+    game._discoveries ??= [];
+    const existing = game._discoveries.find(entry => entry.section === 'Rings' && entry.name === name);
+    if (existing) {
+        existing.text = text;
+        existing.starred = false;
+        existing.known = true;
+        return;
+    }
+    game._discoveries.push({ section: 'Rings', name, text, starred: false, known: true });
 }
 const MAGICAL_ARMOR_KINDS = new Set([
     'cloak of displacement', 'cloak of invisibility', 'cloak of magic resistance',
@@ -7644,6 +7697,165 @@ function getobjPromptLetters(letters) {
     return text.length > 5 ? compactInventoryLetters(text) : text;
 }
 
+function isApplyCoinObject(item) {
+    return shopBillableGold(item);
+}
+
+function applyInventoryItems() {
+    const items = [...(game.inventory || [])];
+    const goldCount = Math.max(0, Math.trunc(Number(game._goldCount || 0)));
+    if (goldCount > 0 && !items.some(isApplyCoinObject)) {
+        items.unshift({
+            letter: '$',
+            cls: 'coin',
+            otyp: GOLD_PIECE,
+            glyph: '$',
+            quan: goldCount,
+        });
+    }
+    return items;
+}
+
+function potionIdentityKnownForApply(item, identity) {
+    const name = inventoryItemName(item).toLowerCase();
+    const visibleKind = String(item?.kind || '').toLowerCase().replace(/^potion of /, '');
+    return item?.known === true
+        || potionDiscoveryKnown(identity)
+        || name.includes(`potion of ${identity}`)
+        || (item?.known !== false && visibleKind === identity);
+}
+
+function applySelectionKind(item) {
+    if (!item) return 'exclude';
+    if (isApplyCoinObject(item)) return 'downplay';
+
+    const name = inventoryItemName(item).toLowerCase();
+    const cls = itemClassKey(item);
+    if (cls === 'tool' || item.section === 'Tools' || isIceBoxObject(item)) return 'suggest';
+    if (isWandItem(item) || cls === 'wand' || item.kind === 'wand of sleep' || item.otyp === WAND_CLASS) return 'suggest';
+    if (cls === 'spellbook') return 'suggest';
+    if (cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name)) return 'suggest';
+    if (/lamp|camera|card|bag|sack|cream pie/.test(name)) return 'suggest';
+    if (isRoyalJelly(item)) return 'suggest';
+    if (isPotionObject(item)) {
+        const identity = potionIdentityName(item) || objectKindKey(item).replace(/^potion of /, '');
+        if (isPotionOfOil(item) && potionIdentityKnownForApply(item, 'oil')) return 'suggest';
+        if (!identity || !potionIdentityKnownForApply(item, identity)) return 'downplay';
+        return 'selectableInvalid';
+    }
+    if (heroIsHallucinating() && /banana/.test(name)) return 'downplay';
+    return 'selectableInvalid';
+}
+
+function applyItemsBySelectionKind(kind) {
+    return applyInventoryItems().filter(item => applySelectionKind(item) === kind && item.letter);
+}
+
+function applyPromptMessage() {
+    const suggested = applyItemsBySelectionKind('suggest').map(item => item.letter).join('');
+    if (suggested) return `What do you want to use or apply? [${getobjPromptLetters(suggested)} or ?*]`;
+    if (applyItemsBySelectionKind('downplay').length) return 'What do you want to use or apply? [*]';
+    return '';
+}
+
+function applyMenuItems(ch) {
+    if (ch === '*') return applyInventoryItems().filter(item => item.letter);
+    const suggested = applyItemsBySelectionKind('suggest');
+    return suggested.length ? suggested : applyItemsBySelectionKind('downplay');
+}
+
+function applyMenuSection(item) {
+    const cls = itemClassKey(item);
+    if (isApplyCoinObject(item)) return 'Coins';
+    if (cls === 'spellbook') return 'Spellbooks';
+    if (isWandItem(item) || cls === 'wand' || item.kind === 'wand of sleep' || item.otyp === WAND_CLASS) return 'Wands';
+    if (cls === 'tool' || item.section === 'Tools' || isIceBoxObject(item)) return 'Tools';
+    if (cls === 'weapon') return 'Weapons';
+    if (isPotionObject(item)) return 'Potions';
+    if (cls === 'scroll') return 'Scrolls';
+    if (cls === 'armor') return 'Armor';
+    if (cls === 'food') return 'Comestibles';
+    return 'Other Items';
+}
+
+function setApplyObjectMenu(items) {
+    const order = ['Spellbooks', 'Wands', 'Tools', 'Weapons', 'Potions', 'Scrolls', 'Armor', 'Comestibles', 'Coins', 'Other Items'];
+    const sorted = [...items].sort((a, b) => {
+        const sectionDiff = order.indexOf(applyMenuSection(a)) - order.indexOf(applyMenuSection(b));
+        return sectionDiff || String(a.letter || '').localeCompare(String(b.letter || ''));
+    });
+    const rows = [];
+    let row = 0, lastSection = '';
+    for (const item of sorted) {
+        const section = applyMenuSection(item);
+        if (section !== lastSection) {
+            rows.push([row, 40, ' ']);
+            rows.push([row++, 41, section, 1]);
+            lastSection = section;
+        }
+        rows.push([row++, 40, ` ${normalInventoryLine(item)}`.padEnd(40, ' ')]);
+    }
+    rows.push([row, 40, ' (end)'.padEnd(40, ' ')]);
+    setOverlay(rows, 2, false, 0);
+}
+
+function findApplyInventoryItem(letter) {
+    return applyInventoryItems().find(invItem => invItem.letter === letter);
+}
+
+function dropFlippedCoinAtHero(item) {
+    if (!removeGoldFromHero(1)) return false;
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    game.level ??= {};
+    game.level.objects ??= [];
+    const pile = game.level.objects.find(obj => isApplyCoinObject(obj)
+        && !obj.hidden && !obj.buried && obj.ox === x && obj.oy === y);
+    if (pile) {
+        pile.quan = Math.max(0, Math.trunc(Number(pile.quan || 0))) + 1;
+        Object.assign(pile, object_display(pile), { ox: x, oy: y });
+    } else {
+        const coin = {
+            id: next_ident(),
+            cls: 'coin',
+            otyp: GOLD_PIECE,
+            glyph: '$',
+            quan: 1,
+            ox: x,
+            oy: y,
+            color: item?.color,
+        };
+        Object.assign(coin, object_display(coin), { ox: x, oy: y });
+        game.level.objects.push(coin);
+    }
+    newsym(x, y);
+    return true;
+}
+
+function applyCoinFlip(item) {
+    const messages = ['You flip a gold piece.'];
+    if (game.u?.underwater || game.u?.uunderwater) {
+        messages.push('It tumbles away.');
+        dropFlippedCoinAtHero(item);
+        return messages;
+    }
+    const dex = Math.max(1, Math.trunc(Number(game.u?.acurr?.a?.[A_DEX] ?? game.u?.dex ?? 10)));
+    const cursedGloves = !!wornGlovesItem()?.cursed;
+    const slips = cursedGloves || heroHasSlipperyFingers() || heroIsFumbling()
+        || (dex < 10 && !rn2(dex));
+    if (slips) {
+        messages.push(`It slips between your ${fingersOrGloves()}.`);
+        dropFlippedCoinAtHero(item);
+        return messages;
+    }
+    if (heroIsHallucinating()) {
+        messages.push(rn2(100) ? 'Wow, a double header!' : 'The coin miraculously lands on its edge!');
+        return messages;
+    }
+    messages.push(`It comes up ${rn2(2) ? 'heads' : 'tails'}.`);
+    return messages;
+}
+
 export function inventoryLetterRank(item) {
     const letter = typeof item === 'string' ? item : item?.letter || '';
     return letter ? letter.charCodeAt(0) ^ 0x20 : 200;
@@ -7854,10 +8066,7 @@ function useUpInventoryItem(item, amount = 1) {
     if (!item) return false;
     const usedCount = Math.max(1, Math.trunc(Number(amount || 1)));
     const quantity = Math.max(1, Math.trunc(Number(item.quan || 1)));
-    if (usedCount >= quantity) {
-        const { shkp } = shopkeeperOwningBillEntry(item);
-        markObjectShopBillUsedUp(item, shkp || heroShopkeeper());
-    }
+    if (usedCount >= quantity) markObjectTreeShopBillsUsedUp(item);
     removeInventoryItem(item, usedCount);
     return true;
 }
@@ -12034,9 +12243,21 @@ function recordKnownToolDiscovery(toolName) {
     const name = String(toolName || '').trim();
     if (!name) return;
     game._discoveries ??= [];
-    if (!game._discoveries.some(entry => entry.section === 'Tools' && entry.name === name))
+    const existing = game._discoveries.find(entry => entry.section === 'Tools' && entry.name === name);
+    if (existing) {
+        existing.text = name;
+        existing.starred = false;
+        existing.known = true;
+    } else {
         game._discoveries.push({ section: 'Tools', name, text: name, starred: false, known: true });
+    }
     learnObjectScore('Tools', name);
+}
+
+function toolDiscoveryKnown(toolName) {
+    const name = String(toolName || '').trim();
+    return !!name && (game._discoveries || []).some(entry =>
+        entry.section === 'Tools' && entry.name === name && entry.known !== false);
 }
 
 async function applyPotionOfOil(item) {
@@ -16423,6 +16644,7 @@ function wornItemKindIncludes(text) {
 function heroIsBreathlessForChoke() {
     const form = polyselfForm() || {};
     return !!(game.u?.breathless || game.u?.Breathless
+        || game.u?.magicalBreathing || game.u?.Magical_breathing
         || form.breathless
         || wornItemKindIncludes('amulet of magical breathing'));
 }
@@ -18798,7 +19020,240 @@ function heroMetalNonFoodNutrition(item) {
         return globObjectWeight(item);
     const explicit = item.oc_nutrition ?? item.nutrition;
     if (explicit != null) return Math.max(0, Math.trunc(Number(explicit) || 0));
+    if (objectIsRingLike(item)) return 15;
     return globObjectWeight({ ...item, quan: 1 });
+}
+
+function metallivoreFoodWord(item) {
+    const material = objectMaterialForMetallivore(item);
+    if (['silver', 'gold', 'platinum', 'mithril'].includes(material)) return material;
+    return 'metal';
+}
+
+function eatenRingName(item) {
+    if (!objectIsRingLike(item)) return '';
+    const raw = item?.ringRoll ? IDENTIFIED_RING_NAMES[item.ringRoll - 1] || ''
+        : String(item?.actualKind || item?.kind || '').toLowerCase().replace(/^ring of /, '');
+    return raw.replace(/^ring of /, '');
+}
+
+function eatenAmuletName(item) {
+    if (!objectIsAmuletLike(item)) return '';
+    return String(item?.actualKind
+        || (item?.amuletIndex != null ? IDENTIFIED_AMULET_NAMES[item.amuletIndex] : '')
+        || item?.kind || '').toLowerCase();
+}
+
+function eatenAccessoryHasEffect(item, messages) {
+    messages.push(`Magic spreads through your body as you digest the ${objectIsRingLike(item) ? 'ring' : 'amulet'}.`);
+}
+
+function adjustHeroAttribute(attr, delta) {
+    if (!game.u?.acurr?.a || !delta) return false;
+    const before = game.u.acurr.a[attr] ?? 10;
+    const after = Math.max(3, Math.min(125, before + delta));
+    game.u.acurr.a[attr] = after;
+    if (delta > 0 && game.u.amax?.a) game.u.amax.a[attr] = Math.max(game.u.amax.a[attr] || after, after);
+    return after !== before;
+}
+
+function boundedAccessoryIncrease(oldValue, inc) {
+    const old = Math.trunc(Number(oldValue || 0));
+    let amount = Math.trunc(Number(inc || 0));
+    const absOld = Math.abs(old);
+    let absInc = Math.abs(amount);
+    const sameSign = Math.sign(old) === Math.sign(amount);
+    if (absInc !== 0 && sameSign && absOld + absInc >= 10) {
+        if (absOld + absInc < 20) {
+            absInc = rnd(absInc);
+            if (absOld + absInc < 10) absInc = 10 - absOld;
+            amount = Math.sign(amount) * absInc;
+        } else if (absOld + absInc < 40) {
+            absInc = rn2(absInc) ? 1 : 0;
+            if (absOld + absInc < 20) absInc = rnd(20 - absOld);
+            amount = Math.sign(amount) * absInc;
+        } else amount = 0;
+    }
+    return old + amount;
+}
+
+const EATEN_RING_PROPERTY_FIELDS = new Map([
+    ['regeneration', 'regeneration'],
+    ['searching', 'searching'],
+    ['stealth', 'stealth'],
+    ['hunger', 'hunger'],
+    ['aggravate monster', 'aggravateMonster'],
+    ['conflict', 'conflict'],
+    ['warning', 'warning'],
+    ['poison resistance', 'poisonResistance'],
+    ['fire resistance', 'fireResistance'],
+    ['cold resistance', 'coldResistance'],
+    ['shock resistance', 'shockResistance'],
+    ['teleportation', 'teleportation'],
+    ['teleport control', 'teleportControl'],
+    ['polymorph', 'polymorph'],
+    ['polymorph control', 'polymorphControl'],
+    ['see invisible', 'seeInvisible'],
+    ['invisibility', 'invisible'],
+    ['protection from shape changers', 'protectionFromShapeChangers'],
+]);
+
+function applyEatenRingEffect(item, messages) {
+    const name = eatenRingName(item);
+    const spe = Math.trunc(Number(item?.spe ?? 0));
+    switch (name) {
+    case 'adornment':
+        eatenAccessoryHasEffect(item, messages);
+        if (adjustHeroAttribute(A_CHA, spe)) recordKnownRingDiscovery(name, item);
+        return true;
+    case 'gain strength':
+        eatenAccessoryHasEffect(item, messages);
+        if (adjustHeroAttribute(A_STR, spe)) recordKnownRingDiscovery(name, item);
+        return true;
+    case 'gain constitution':
+        eatenAccessoryHasEffect(item, messages);
+        if (adjustHeroAttribute(A_CON, spe)) recordKnownRingDiscovery(name, item);
+        return true;
+    case 'increase accuracy':
+        eatenAccessoryHasEffect(item, messages);
+        if (game.u) game.u.uhitinc = boundedAccessoryIncrease(game.u.uhitinc, spe);
+        return true;
+    case 'increase damage':
+        eatenAccessoryHasEffect(item, messages);
+        if (game.u) game.u.udaminc = boundedAccessoryIncrease(game.u.udaminc, spe);
+        return true;
+    case 'protection':
+        eatenAccessoryHasEffect(item, messages);
+        if (game.u) {
+            game.u.protection = true;
+            game.u.ublessed = boundedAccessoryIncrease(game.u.ublessed, spe);
+        }
+        return true;
+    case 'free action':
+        if (!game.u?.sleepResistance) eatenAccessoryHasEffect(item, messages);
+        if (game.u) {
+            if (!game.u.sleepResistance) messages.push('You feel wide awake.');
+            game.u.sleepResistance = true;
+        }
+        return true;
+    case 'levitation':
+        if (game.u && !game.u.levitation && !game.u.Levitation) {
+            eatenAccessoryHasEffect(item, messages);
+            game.u.levitation = true;
+            game.u._levitationTimeout = (game.u._levitationTimeout || 0) + d(10, 20);
+            recordKnownRingDiscovery(name, item);
+        }
+        return true;
+    case 'sustain ability':
+        return false;
+    default: {
+        const field = EATEN_RING_PROPERTY_FIELDS.get(name);
+        if (!field || !game.u) return false;
+        if (!game.u[field]) eatenAccessoryHasEffect(item, messages);
+        const oldInvisible = !!game.u.invisible;
+        const oldSeeInvisible = !!game.u.seeInvisible;
+        game.u[field] = true;
+        if (name === 'invisibility' && !oldInvisible && !game.u.blind) {
+            messages.push(`Your body takes on a ${heroIsHallucinating() ? 'normal' : 'strange'} transparency...`);
+            recordKnownRingDiscovery(name, item);
+        }
+        if (name === 'see invisible' && game.u.invisible && !oldSeeInvisible && !game.u.blind) {
+            messages.push('Suddenly you can see yourself.');
+            recordKnownRingDiscovery(name, item);
+        }
+        return true;
+    }
+    }
+}
+
+const EATEN_AMULET_PROPERTY_FIELDS = new Map([
+    ['amulet of esp', 'telepathy'],
+    ['amulet versus poison', 'poisonResistance'],
+    ['amulet of magical breathing', 'magicalBreathing'],
+]);
+
+function applyEatenAmuletEffect(item, messages) {
+    const name = eatenAmuletName(item);
+    switch (name) {
+    case 'amulet of guarding':
+        eatenAccessoryHasEffect(item, messages);
+        if (game.u) {
+            game.u.protection = true;
+            game.u.ublessed = boundedAccessoryIncrease(game.u.ublessed, 2);
+        }
+        return true;
+    case 'amulet of restful sleep': {
+        if (!game.u) return false;
+        if (!game.u.sleepy) eatenAccessoryHasEffect(item, messages);
+        game.u.sleepy = true;
+        const newNap = rnd(100);
+        const oldNap = game.u.sleepyTimeout || 0;
+        if (!oldNap || newNap < oldNap) game.u.sleepyTimeout = newNap;
+        return true;
+    }
+    case 'amulet of change':
+        eatenAccessoryHasEffect(item, messages);
+        recordKnownAmuletDiscovery(name, item);
+        if (game.u) {
+            game.u.female = !game.u.female;
+            messages.push(`You are suddenly very ${game.u.female ? 'feminine' : 'masculine'}!`);
+        }
+        return true;
+    case 'amulet of unchanging':
+        if (game.u?._polyself_form || game.u?.Upolyd || game.u?.polymorphed) {
+            eatenAccessoryHasEffect(item, messages);
+            recordKnownAmuletDiscovery(name, item);
+            game.u._polyself_form = null;
+            game.u.Upolyd = false;
+            game.u.polymorphed = false;
+        }
+        return true;
+    case 'amulet of strangulation':
+        if (game.u) {
+            game.u.uhp = 0;
+            game.u.strangled = true;
+            game._death_cause = 'killed by strangulation';
+            messages.push('You choke over your food.');
+            messages.push('You die...');
+        }
+        return true;
+    case 'amulet of life saving':
+    case 'amulet of flying':
+    case 'amulet of reflection':
+        return false;
+    default: {
+        const field = EATEN_AMULET_PROPERTY_FIELDS.get(name);
+        if (!field || !game.u) return false;
+        if (!game.u[field]) eatenAccessoryHasEffect(item, messages);
+        game.u[field] = true;
+        if (field === 'magicalBreathing') game.u.Magical_breathing = true;
+        return true;
+    }
+    }
+}
+
+function markEatenAccessoryTasted(item) {
+    item.known = true;
+    item.dknown = true;
+    recordObservedObjectDiscovery(item);
+}
+
+function applyEatenMetalAccessoryEffects(item, messages) {
+    if (objectIsRingLike(item)) {
+        const name = eatenRingName(item);
+        if (!name) return false;
+        markEatenAccessoryTasted(item);
+        if (rn2(3)) return false;
+        return applyEatenRingEffect(item, messages);
+    }
+    if (objectIsAmuletLike(item)) {
+        const name = eatenAmuletName(item);
+        if (!name) return false;
+        markEatenAccessoryTasted(item);
+        if (rn2(5)) return false;
+        return applyEatenAmuletEffect(item, messages);
+    }
+    return false;
 }
 
 async function eatHeroNonFoodMetal(item, { floorObject = false } = {}) {
@@ -18831,9 +19286,11 @@ async function eatHeroNonFoodMetal(item, { floorObject = false } = {}) {
     }
 
     if (objectIsSlowDigestionRing(item)) {
-        await setMessage('This ring is indigestible!');
+        const rotten = rottenFoodEffect({ adjective: 'Awful', foodWord: metallivoreFoodWord(item) });
+        await setMessage(`This ring is indigestible!  ${rotten.message}`, true);
         game._command_mode = null;
-        game.context.move = 1;
+        game._process_time_with_more = 1;
+        game.context.move = rotten.rottenSleepDuration ? rotten.rottenSleepDuration + 1 : 1;
         return true;
     }
 
@@ -18861,6 +19318,7 @@ async function eatHeroNonFoodMetal(item, { floorObject = false } = {}) {
     }
 
     addHeroNutrition(heroMetalNonFoodNutrition(item));
+    applyEatenMetalAccessoryEffects(item, messages);
     if (floorObject) removeEatenFloorMetalObject(item);
     else removeInventoryItem(item, item.quan || 1);
     game._pet_food_scan_inventory = game.inventory || [];
@@ -23913,21 +24371,44 @@ function shipObjectShopDebt(obj, x, y, { shopFloorObj = false, silent = false } 
 
     const shkp = shopkeeperForCostlySpot(x, y);
     if (!shopkeeperInHisShop(shkp)) return { charged: false, value: 0, shkp: null, message: '', debitDelta: 0, robbedDelta: 0 };
-    const beforeDebit = Math.max(0, Math.trunc(Number(shkp.debit || 0)));
-    const beforeRobbed = Math.max(0, Math.trunc(Number(shkp.robbed || 0)));
-    const value = lostShopMerchandiseValueForObject({ ox: x, oy: y }, obj, shkp);
+    const charges = lostShopMerchandiseChargesForObject({ ox: x, oy: y }, obj, shkp);
+    const beforeDebt = new Map();
+    const trackShopkeeperDebt = target => {
+        if (!target || beforeDebt.has(target)) return;
+        beforeDebt.set(target, {
+            debit: Math.max(0, Math.trunc(Number(target.debit || 0))),
+            robbed: Math.max(0, Math.trunc(Number(target.robbed || 0))),
+        });
+    };
+    trackShopkeeperDebt(shkp);
+    for (const chargedShkp of charges.keys()) trackShopkeeperDebt(chargedShkp);
     clearNoChargeRecursively(obj);
     const peaceful = heroInShopOwnedBy(shkp);
-    const remaining = chargeShopkeeperForLostMerchandise(shkp, value, { peaceful });
-    const deltas = shopDebtDeltas(shkp, beforeDebit, beforeRobbed);
+    let value = 0;
+    let remaining = 0;
+    for (const [chargedShkp, charge] of charges) {
+        value += Math.max(0, Math.trunc(Number(charge || 0)));
+        remaining += chargeShopkeeperForLostMerchandise(chargedShkp, charge, { peaceful });
+    }
+    let debitDelta = 0;
+    let robbedDelta = 0;
+    let messageShkp = null;
+    for (const [chargedShkp, before] of beforeDebt) {
+        const deltas = shopDebtDeltas(chargedShkp, before.debit, before.robbed);
+        debitDelta += deltas.debitDelta;
+        robbedDelta += deltas.robbedDelta;
+        if (!messageShkp && (deltas.debitDelta > 0 || deltas.robbedDelta > 0))
+            messageShkp = chargedShkp;
+    }
+    messageShkp ||= charges.keys().next().value || shkp;
     let message = '';
     if (!silent && remaining > 0) {
-        if (deltas.robbedDelta > 0)
-            message = `You removed ${deltas.robbedDelta} ${shopCurrency(deltas.robbedDelta)} worth of goods!`;
-        else if (deltas.debitDelta > 0)
-            message = `You owe ${shopkeeperDisplayName(shkp)} ${deltas.debitDelta} ${shopCurrency(deltas.debitDelta)} for goods lost.`;
+        if (robbedDelta > 0)
+            message = `You removed ${robbedDelta} ${shopCurrency(robbedDelta)} worth of goods!`;
+        else if (debitDelta > 0)
+            message = `You owe ${shopkeeperDisplayName(messageShkp)} ${debitDelta} ${shopCurrency(debitDelta)} for goods lost.`;
     }
-    return { charged: value > 0, value, shkp, message, ...deltas };
+    return { charged: value > 0, value, shkp: messageShkp, message, debitDelta, robbedDelta };
 }
 
 function addLostShopMerchandiseCharge(charges, shkp, value) {
@@ -24027,6 +24508,13 @@ function markObjectTreeShopBillsUsedUp(obj, seen = new Set()) {
     return markObjectShopBillUsedUp(obj) || marked;
 }
 
+function polymorphShudderOdds(obj) {
+    let odds = obj?.cls === 'wand' || obj?.cursed ? 3 : obj?.blessed ? 12 : 8;
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    if (quantity > 4) odds = Math.trunc(odds / 2);
+    return Math.max(1, odds);
+}
+
 function useUpPolymorphShudderFloorObject(obj, x, y) {
     if (!obj) return null;
     const usedObj = splitFloorObjectForUseUp(obj, 1);
@@ -24094,6 +24582,75 @@ function prepareFloorPolymorphReplacement(oldObj, newObj) {
     if (typeof newObj.line === 'string')
         newObj.line = newObj.line.replace(/ \(unpaid, \d+ zorkmids?\)/, '');
     return newObj;
+}
+
+async function polymorphFloorPileAt(x, y, { consumeRangeRoll = false } = {}) {
+    const targetObjects = (game.level?.objects || [])
+        .filter(obj => !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp !== BOULDER);
+    rn2(19);
+    if (consumeRangeRoll) rn2(8);
+    if (!targetObjects.length) {
+        game._pending_message = '';
+        game._message_more = 0;
+        game.context.move = 1;
+        return false;
+    }
+    const removeTargets = new Set();
+    const replacements = [];
+    const alterationMessages = [];
+    let didObjectShudder = false;
+    for (const obj of [...targetObjects].reverse()) {
+        if (polymorphReplacementDisallowed(obj)) continue;
+        if (rn2(100) < (obj.artifact ? 95 : 5)) {
+            continue;
+        }
+        game.u.uconduct ??= {};
+        game.u.uconduct.polypiles = Math.max(0, Math.trunc(Number(game.u.uconduct.polypiles || 0))) + 1;
+        const shudderOdds = polymorphShudderOdds(obj);
+        if (!rn2(shudderOdds)) {
+            rn2(45 + (game.u?.uluck || 0));
+            rn2(100);
+            if (!game._polymorph_wand_learned) {
+                rn2(19);
+                game._polymorph_wand_learned = 1;
+            }
+            useUpPolymorphShudderFloorObject(obj, x, y);
+            didObjectShudder = true;
+            continue;
+        }
+        const roll = rnd(1000);
+        const newObjId = next_ident();
+        if (obj.cls === 'potion' || obj.cls === 'scroll') {
+            if (!rn2(4)) rn2(2);
+        }
+        const newObj = { ...obj, id: newObjId, ox: x, oy: y, quan: obj.quan || 1, cursed: obj.cursed, blessed: obj.blessed };
+        if (obj.cls === 'potion') {
+            Object.assign(newObj, { cls: 'potion', glyph: '!', otyp: 'potion', color: NO_COLOR });
+            const appearance = game._object_descriptions?.potions?.[potionIndexForRoll(roll)]?.description || 'clear';
+            newObj.kind = `${appearance} potion`;
+        } else if (obj.cls === 'scroll') {
+            Object.assign(newObj, { cls: 'scroll', glyph: '?', otyp: 'scroll', color: CLR_WHITE });
+            const label = game._object_descriptions?.scrolls?.[scrollIndexForRoll(roll)] || 'ELBIB YLOH';
+            newObj.kind = `scroll labeled ${label}`;
+        } else {
+            newObj.kind = obj.kind || obj.cls;
+        }
+        prepareFloorPolymorphReplacement(obj, newObj);
+        const angerMessage = floorPolymorphShopkeeperAngerMessage(obj, x, y);
+        if (angerMessage && !alterationMessages.includes(angerMessage))
+            alterationMessages.push(angerMessage);
+        removeTargets.add(obj);
+        replacements.unshift(newObj);
+        rn2(100);
+    }
+    game.level.objects = (game.level?.objects || []).filter(obj => !removeTargets.has(obj));
+    game.level.objects.push(...replacements);
+    newsym(x, y);
+    const messages = didObjectShudder ? ['You feel shuddering vibrations.'] : [];
+    messages.push(...alterationMessages);
+    await setMessage(messages.join('  '));
+    game.context.move = 1;
+    return true;
 }
 
 function billHeldMagicBagLostItem(obj) {
@@ -24514,6 +25071,7 @@ export const __shopBillingTestHooks = {
     removeInventoryItem,
     resolveUnpaidProjectileShopLanding,
     returnUnpaidObjectToShopBillOwnerAt,
+    useUpInventoryItemForTest: useUpInventoryItem,
     costlyShopGoldAtSpot,
     containerTakeoutPreflight,
     sellobjReturnUnpaidToShop,
@@ -29844,9 +30402,13 @@ function isBagOfTricksObject(obj) {
         || pickupObjectName({ ...obj, quan: 1 }).toLowerCase() === 'bag of tricks');
 }
 
+function isKnownBagOfTricksObject(obj) {
+    return isBagOfTricksObject(obj) && obj.dknown === true
+        && (obj.known === true || toolDiscoveryKnown('bag of tricks'));
+}
+
 function isUnknownBagOfTricksObject(obj) {
-    return isBagOfTricksObject(obj) && obj.known !== true
-        && String(obj.kind || '').toLowerCase() === 'bag';
+    return isBagOfTricksObject(obj) && !isKnownBagOfTricksObject(obj);
 }
 
 function isHornOfPlentyObject(obj) {
@@ -29950,6 +30512,7 @@ function identifyChargedToolKind(item, knownKind) {
     item.known = true;
     item.actualKind = knownKind;
     item.kind = knownKind;
+    recordKnownToolDiscovery(knownKind);
     updateChargedItemLine(item);
 }
 
@@ -30581,7 +31144,7 @@ function beginFloorSpecialSourceUsageBill(source) {
 async function applyBagOfTricksOnce(bag, { tipping = false } = {}) {
     if (tipChargeCount(bag) < 1) {
         if (tipping && bag.cknown) return ["It's empty."];
-        if (bag.dknown || bag.known) bag.cknown = true;
+        if (isKnownBagOfTricksObject(bag)) bag.cknown = true;
         return ['Nothing happens.'];
     }
 
@@ -33531,9 +34094,9 @@ function shouldUseGenericRottenFoodPath(item) {
     return (game.moves || 1) - item.age > ageLimit && (item.orotten || !rn2(7));
 }
 
-function rottenFoodEffect() {
+function rottenFoodEffect({ adjective = 'Rotten', foodWord = 'food' } = {}) {
     let rottenSleepDuration = 0;
-    let message = 'Blecch!  Rotten food!';
+    let message = `Blecch!  ${adjective} ${foodWord}!`;
     if (!rn2(4)) {
         const confusionDuration = d(2, 4);
         if (game.u) game.u._confusionTimeout = (game.u._confusionTimeout || 0) + confusionDuration;
@@ -36423,6 +36986,8 @@ async function moveHero(dx, dy) {
     game._move_nopick_prefix = 0;
     game._request_menu_prefix = 0;
     const targetTyp = target?.typ;
+    const targetMoveTyp = movementSurfaceTerrain(target);
+    const oldMoveTyp = movementSurfaceTerrain(oldLoc);
     const doorlessTarget = targetTyp === DOOR && (target.doormask === D_NODOOR || target.doormask === D_BROKEN);
     const afterDoor = doorlessTarget ? game.level?.at(newx + dx, newy + dy) : null;
     if (game._doorway_message_run && game._running_continuation && doorlessTarget && oldLoc?.typ === CORR && afterDoor?.typ === ROOM) {
@@ -36432,7 +36997,7 @@ async function moveHero(dx, dy) {
         game.context.move = 0;
         return;
     }
-    const liquidTarget = IS_POOL(targetTyp) || targetTyp === LAVAPOOL || targetTyp === LAVAWALL;
+    const liquidTarget = movementIsLiquidAt(newx, newy, target);
     const targetBoulder = game.level?.objects?.find(obj =>
         !obj.transientProjectile && obj.ox === newx && obj.oy === newy && obj.otyp === BOULDER);
 
@@ -37315,8 +37880,8 @@ async function moveHero(dx, dy) {
     }
     game._suppress_obstructed_message_once = 0;
 
-    if (liquidTarget && oldLoc?.typ !== targetTyp && !nopick) {
-        const liquidDefault = targetTyp === LAVAPOOL || targetTyp === LAVAWALL ? 'lava' : 'water';
+    if (liquidTarget && oldMoveTyp !== targetMoveTyp && !nopick) {
+        const liquidDefault = targetMoveTyp === LAVAPOOL || targetMoveTyp === LAVAWALL ? 'lava' : 'water';
         const liquid = (game.u?._statusSuffix || '').includes('Hallu')
             ? HALLUCINATED_LIQUIDS[rn2_on_display_rng(HALLUCINATED_LIQUIDS.length + 1)] || liquidDefault
             : liquidDefault;
@@ -37325,16 +37890,16 @@ async function moveHero(dx, dy) {
         const juiblex = game.specialLevels?.find(level => level.name === 'juiblex');
         const onJuiblexLevel = juiblex && game.u?.uz?.dnum === juiblex.dnum && game.u?.uz?.dlevel === juiblex.dlevel;
         const moatName = onMedusaLevel ? 'shallow sea' : onJuiblexLevel ? 'swamp' : 'moat';
-        const msg = targetTyp === WATER
+        const msg = targetMoveTyp === WATER
             ? `You avoid stepping into the wall of ${liquid}.`
-            : targetTyp === LAVAWALL
+            : targetMoveTyp === LAVAWALL
                 ? `You avoid stepping into the wall of ${liquid}.`
-                : targetTyp === LAVAPOOL
+                : targetMoveTyp === LAVAPOOL
                     ? `You avoid stepping into the molten ${liquid}.`
-                    : targetTyp === MOAT
+                    : targetMoveTyp === MOAT
                         ? `You avoid stepping into the ${moatName}.`
                         : `You avoid stepping into the pool of ${liquid}.`;
-        const showSwimTip = targetTyp !== WATER && targetTyp !== LAVAWALL && targetTyp !== MOAT && !game._swim_tip_shown;
+        const showSwimTip = targetMoveTyp !== WATER && targetMoveTyp !== LAVAWALL && targetMoveTyp !== MOAT && !game._swim_tip_shown;
         await setMessage(msg, showSwimTip);
         if (showSwimTip) {
             game._topline_after_more = "(Tip: use 'm' prefix to step in if you really want to.)";
@@ -37504,9 +38069,9 @@ async function moveHero(dx, dy) {
     for (const guard of (game.level?.monsters || []).filter(mon => mon.isgd && mon._vault_escort_active && mon.mx))
         newsym(guard.mx, guard.my);
     const steppedTrap = game.level?.traps?.find(trap => trap.tx === newx && trap.ty === newy);
-    if (liquidTarget && nopick && (targetTyp === LAVAPOOL || targetTyp === LAVAWALL)) {
+    if (liquidTarget && nopick && (targetMoveTyp === LAVAPOOL || targetMoveTyp === LAVAWALL)) {
         d(6, 6);
-        await setMessage(targetTyp === LAVAWALL
+        await setMessage(targetMoveTyp === LAVAWALL
             ? 'You fall into the wall of lava!  You burn to a crisp...'
             : 'You fall into the molten lava!  You burn to a crisp...', true);
         game._death_cause = 'burned by molten lava';
@@ -37515,7 +38080,7 @@ async function moveHero(dx, dy) {
         game._pending_time_passed = 0;
         return;
     }
-    if (liquidTarget && nopick && targetTyp !== LAVAPOOL && targetTyp !== LAVAWALL) {
+    if (liquidTarget && nopick && targetMoveTyp !== LAVAPOOL && targetMoveTyp !== LAVAWALL) {
         const dirs = LANDING_DIRS.map((_, i) => i);
         for (let i = dirs.length; i > 0; i--) {
             const j = rn2(i);
@@ -37527,15 +38092,16 @@ async function moveHero(dx, dy) {
             const x = newx + LANDING_DIRS[idx].dx;
             const y = newy + LANDING_DIRS[idx].dy;
             const loc = game.level?.at(x, y);
-            if (!loc || IS_OBSTRUCTED(loc.typ) || IS_POOL(loc.typ)) continue;
+            const locMoveTyp = movementSurfaceTerrain(loc);
+            if (!loc || IS_OBSTRUCTED(locMoveTyp) || movementIsLiquidAt(x, y, loc)) continue;
             if ((game.level?.monsters || []).some(mon => mon.mx === x && mon.my === y)) continue;
             game._relocate_after_more = { fromX: newx, fromY: newy, x, y };
-            game._topline_after_more = targetTyp === WATER
+            game._topline_after_more = targetMoveTyp === WATER
                 ? 'Pheew!  That was close.'
                 : 'You try to crawl out of the water.  Pheew!  That was close.';
             break;
         }
-        const msg = targetTyp === WATER
+        const msg = targetMoveTyp === WATER
             ? 'You plunge into the wall of water!  You try to crawl out of the water.'
             : 'You fall into the pool of water!  You sink like a rock.';
         await setMessage(msg, true);
@@ -44008,6 +44574,8 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'zapPolymorphDirection') {
         const dir = movementDirection(ch);
+        const verticalDir = !dir && ch === '<' ? { dx: 0, dy: 0, dz: -1 }
+            : !dir && ch === '>' ? { dx: 0, dy: 0, dz: 1 } : null;
         const selfZap = ch === '.';
         const item = game._zap_item;
         game._zap_item = null;
@@ -44033,72 +44601,17 @@ export async function rhack(_cmd) {
             await setMessage(result?.message || 'Nothing happens.', !!result?.more);
             return;
         }
-        if (!dir) return;
-        const x = (game.u?.ux || 0) + dir.dx;
-        const y = (game.u?.uy || 0) + dir.dy;
-        const targetObjects = (game.level?.objects || [])
-            .filter(obj => !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp !== BOULDER);
-        rn2(19);
-        rn2(8);
-        if (!targetObjects.length) {
+        if (!dir && !verticalDir) return;
+        if (verticalDir?.dz < 0) {
+            rn2(19);
             game._pending_message = '';
             game._message_more = 0;
             game.context.move = 1;
             return;
         }
-        const removeTargets = new Set();
-        const replacements = [];
-        const alterationMessages = [];
-        for (const obj of [...targetObjects].reverse()) {
-            if ((obj.cls === 'wand' || obj.cls === 'potion' || obj.cls === 'spellbook') && obj.kind === 'polymorph') {
-                continue;
-            }
-            if (rn2(100) < (obj.artifact ? 95 : 5)) {
-                continue;
-            }
-            game.u.uconduct ??= {};
-            game.u.uconduct.polypiles = Math.max(0, Math.trunc(Number(game.u.uconduct.polypiles || 0))) + 1;
-            const shudderOdds = obj.cls === 'wand' || obj.cursed ? 3 : obj.blessed ? 12 : 8;
-            if (!rn2(shudderOdds)) {
-                rn2(45 + (game.u?.uluck || 0));
-                rn2(100);
-                if (!game._polymorph_wand_learned) {
-                    rn2(19);
-                    game._polymorph_wand_learned = 1;
-                }
-                useUpPolymorphShudderFloorObject(obj, x, y);
-                continue;
-            }
-            const roll = rnd(1000);
-            const newObjId = next_ident();
-            if (obj.cls === 'potion' || obj.cls === 'scroll') {
-                if (!rn2(4)) rn2(2);
-            }
-            const newObj = { ...obj, id: newObjId, ox: x, oy: y, quan: obj.quan || 1, cursed: obj.cursed, blessed: obj.blessed };
-            if (obj.cls === 'potion') {
-                Object.assign(newObj, { cls: 'potion', glyph: '!', otyp: 'potion', color: NO_COLOR });
-                const appearance = game._object_descriptions?.potions?.[potionIndexForRoll(roll)]?.description || 'clear';
-                newObj.kind = `${appearance} potion`;
-            } else if (obj.cls === 'scroll') {
-                Object.assign(newObj, { cls: 'scroll', glyph: '?', otyp: 'scroll', color: CLR_WHITE });
-                const label = game._object_descriptions?.scrolls?.[scrollIndexForRoll(roll)] || 'ELBIB YLOH';
-                newObj.kind = `scroll labeled ${label}`;
-            } else {
-                newObj.kind = obj.kind || obj.cls;
-            }
-            prepareFloorPolymorphReplacement(obj, newObj);
-            const angerMessage = floorPolymorphShopkeeperAngerMessage(obj, x, y);
-            if (angerMessage && !alterationMessages.includes(angerMessage))
-                alterationMessages.push(angerMessage);
-            removeTargets.add(obj);
-            replacements.unshift(newObj);
-            rn2(100);
-        }
-        game.level.objects = (game.level?.objects || []).filter(obj => !removeTargets.has(obj));
-        game.level.objects.push(...replacements);
-        newsym(x, y);
-        await setMessage(['You feel shuddering vibrations.', ...alterationMessages].join('  '));
-        game.context.move = 1;
+        const x = verticalDir ? (game.u?.ux || 0) : (game.u?.ux || 0) + dir.dx;
+        const y = verticalDir ? (game.u?.uy || 0) : (game.u?.uy || 0) + dir.dy;
+        await polymorphFloorPileAt(x, y, { consumeRangeRoll: !verticalDir });
         return;
     }
 
@@ -46680,61 +47193,32 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === '?' || ch === '*') {
-            const applyItems = (game.inventory || []).filter(invItem => {
-                const name = inventoryItemName(invItem).toLowerCase();
-                return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
-                    || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
-                    || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
-                    || isPotionOfOil(invItem)
-                    || isIceBoxObject(invItem)
-                    || isRoyalJelly(invItem)
-                    || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
-            }).sort((a, b) => {
-                const section = item => item.cls === 'spellbook' ? 'Spellbooks'
-                    : item.cls === 'tool' || item.section === 'Tools' ? 'Tools'
-                    : item.cls === 'wand' || item.kind === 'wand of sleep' || item.otyp === WAND_CLASS ? 'Wands'
-                    : 'Other Items';
-                const order = ['Spellbooks', 'Wands', 'Tools', 'Other Items'];
-                return order.indexOf(section(a)) - order.indexOf(section(b))
-                    || String(a.letter || '').localeCompare(String(b.letter || ''));
-            });
-            const rows = [];
-            let row = 0, lastSection = '';
-            for (const item of applyItems) {
-                const section = item.cls === 'spellbook' ? 'Spellbooks'
-                    : item.cls === 'tool' || item.section === 'Tools' ? 'Tools'
-                    : item.cls === 'wand' || item.kind === 'wand of sleep' || item.otyp === WAND_CLASS ? 'Wands'
-                    : 'Other Items';
-                if (section !== lastSection) {
-                    rows.push([row, 40, ' ']);
-                    rows.push([row++, 41, section, 1]);
-                    lastSection = section;
-                }
-                rows.push([row++, 40, ` ${normalInventoryLine(item)}`.padEnd(40, ' ')]);
-            }
-            rows.push([row, 40, ' (end)'.padEnd(40, ' ')]);
-            setOverlay(rows, 2, false, 0);
+            setApplyObjectMenu(applyMenuItems(ch));
             game._command_mode = 'applyObject';
             return;
         }
-        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        const item = findApplyInventoryItem(ch);
         if (!item) {
-            const applyLetters = inventoryLetters(invItem => {
-                const name = inventoryItemName(invItem).toLowerCase();
-                return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
-                    || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
-                    || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
-                    || isPotionOfOil(invItem)
-                    || isIceBoxObject(invItem)
-                    || isRoyalJelly(invItem)
-                    || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
-            });
-            game._topline_after_more = `What do you want to use or apply? [${getobjPromptLetters(applyLetters)} or ?*]`;
+            game._topline_after_more = applyPromptMessage();
             await setMessage("You don't have that object.", true);
             return;
         }
         const name = inventoryItemName(item).toLowerCase();
         game._command_mode = null;
+        if (isApplyCoinObject(item)) {
+            const messages = applyCoinFlip(item);
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            return;
+        }
+        if (isPotionObject(item) && !isPotionOfOil(item)) {
+            await setMessage("Sorry, I don't know how to use that.");
+            return;
+        }
+        if (applySelectionKind(item) === 'selectableInvalid' && !isPotionOfOil(item)) {
+            await setMessage("Sorry, I don't know how to use that.");
+            return;
+        }
         if (isFigurineObject(item)) {
             game._apply_figurine_letter = item.letter;
             await setMessage('In what direction?');
@@ -53471,20 +53955,12 @@ export async function rhack(_cmd) {
             await setMessage("You aren't able to use or apply tools in your current form.");
             return;
         }
-        const letters = inventoryLetters(item => {
-            const name = inventoryItemName(item).toLowerCase();
-            return item.cls === 'tool' || item.cls === 'wand' || item.kind === 'wand of sleep'
-                || item.otyp === WAND_CLASS || item.cls === 'spellbook'
-                || item.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
-                || isPotionOfOil(item)
-                || isRoyalJelly(item)
-                || (item.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
-        });
-        if (!letters) {
+        const prompt = applyPromptMessage();
+        if (!prompt) {
             await setMessage("You don't have anything to use or apply.");
             return;
         }
-        await setMessage(`What do you want to use or apply? [${getobjPromptLetters(letters)} or ?*]`);
+        await setMessage(prompt);
         game._command_mode = 'applyObject';
         return;
     }
