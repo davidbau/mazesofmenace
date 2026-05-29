@@ -28,7 +28,7 @@ import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
 import { applyMonsterLiquidEffectsAt } from './monster_liquid.js';
 import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, currentFruitName, fruitWishMatch, setCurrentFruitName, slimeMoldNameForObject } from './fruit.js';
-import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers } from './egg_timers.js';
+import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers, killEggHatchTimer } from './egg_timers.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -9183,6 +9183,7 @@ function forceableLockedBoxAtHero() {
 
 function forceBoxSimpleName(box) {
     const kind = objectKindKey(box);
+    if (box?.otyp === ICE_BOX || kind === 'ice box') return 'ice box';
     if (box?.otyp === LARGE_BOX || kind === 'large box') return 'large box';
     return 'chest';
 }
@@ -9377,6 +9378,24 @@ function brokenChestContentShatterDisposition(content) {
     }
 }
 
+function brokenChestSourceIsIceBox() {
+    const box = game._break_chest_destroyed_box;
+    const kind = objectKindKey(box);
+    return !!box && (box.otyp === ICE_BOX || kind === 'ice box');
+}
+
+function thawBrokenIceBoxCorpseSurvivor(content) {
+    if (!brokenChestSourceIsIceBox() || !isCorpseItem(content)) return;
+    const moves = Math.max(game.moves || 0, 1);
+    const frozenAge = Math.max(0, Math.trunc(Number(content.age ?? 0)));
+    content.age = moves - frozenAge;
+    content.inIceBox = false;
+    content.fromIceBox = false;
+    content.onIce = false;
+    content.on_ice = 0;
+    startCorpseTimeout(content);
+}
+
 function placeBrokenChestContentAtHero(content) {
     if (!content || !game.level) return;
     content.ox = game.u?.ux || 0;
@@ -9384,11 +9403,14 @@ function placeBrokenChestContentAtHero(content) {
     content.contained = false;
     content.container = null;
     content.line = undefined;
+    thawBrokenIceBoxCorpseSurvivor(content);
     syncBrokenBoxContentDisplay(content);
     content.owt = globObjectWeight(content);
     const placed = placeStackableFloorObject(content);
     if (placed && placed !== content) syncBrokenBoxContentDisplay(placed);
-    newsym(placed?.ox ?? content.ox, placed?.oy ?? content.oy);
+    const finalContent = placed || content;
+    objectIceEffect(finalContent, finalContent.ox ?? content.ox, finalContent.oy ?? content.oy);
+    newsym(finalContent.ox ?? content.ox, finalContent.oy ?? content.oy);
 }
 
 function consumeOneBrokenChestContent(content) {
@@ -12750,11 +12772,31 @@ function stoneToFleshGolemStatueVerb(info, mon) {
     return statueAnimationVerb(mon);
 }
 
+function stoneToFleshChristenAnimatedStatueMonster(item, mon) {
+    const name = objectInstanceNameKey(item);
+    if (!name || !mon || mon.data?.unique || mon.data?.nemesis || mon.data?.rider) return;
+    mon.givenName = name;
+}
+
+function stoneToFleshHistoricStatueGoneMessage(item) {
+    const role = game.urole?.name?.m || game._startup_role;
+    if (role !== 'Archeologist') return '';
+    if (!(((item?.spe || 0) & CORPSTAT_HISTORIC) || item?.historic)) return '';
+    if (game.u?.ualign) {
+        const record = game.u.ualign.record || 0;
+        const newRecord = record - 1;
+        if (newRecord < record) game.u.ualign.record = newRecord;
+        game.u.ualign.abuse = (game.u.ualign.abuse || 0) + 1;
+    }
+    return 'You feel guilty that the historic statue is now gone.';
+}
+
 async function stoneToFleshAnimateFloorStatue(item, x, y) {
     const info = stoneToFleshFloorStatueAnimationInfo(item, x, y);
     if (!info || stoneToFleshObjectResists(item)) return null;
     const mon = await makemon(info.data, x, y, NO_MINVENT | MM_NOMSG | MM_ADJACENTOK);
     if (!mon) return stoneToFleshAnimationFailure(info);
+    stoneToFleshChristenAnimatedStatueMonster(item, mon);
     mon.msleeping = 0;
     mon.mundetected = false;
     const messages = [];
@@ -12762,6 +12804,8 @@ async function stoneToFleshAnimateFloorStatue(item, x, y) {
     messages.push(`${upstartText(`the ${pickupObjectName(item)}`)} ${verb}!`);
     const chargeMessage = statueShatterShopDebtMessage(item, x, y, mon);
     if (chargeMessage) messages.push(chargeMessage);
+    const historicMessage = stoneToFleshHistoricStatueGoneMessage(item);
+    if (historicMessage) messages.push(historicMessage);
     moveStatueContentsToMonster(item, mon);
     newsym(x, y);
     newsym(mon.mx, mon.my);
@@ -15371,6 +15415,167 @@ function heroThrownEggUpwardMessages(egg) {
         return heroThrownEggSelfHitMessages(egg, 'hits', ceilingName);
     }
     return heroThrownEggSelfHitMessages(egg, 'almost hits', ceilingName);
+}
+
+function monsterTouchPetrifies(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return !!(data.touchPetrifies || mon?.touchPetrifies || name === 'cockatrice' || name === 'chickatrice');
+}
+
+function thrownEggHitArticle(egg) {
+    const count = Math.max(1, Math.trunc(Number(egg?.quan || 1)));
+    if (egg?.known && egg?.corpsenm?.name) return `the ${egg.corpsenm.name}`;
+    return count > 1 ? 'some' : 'an';
+}
+
+function thrownPetrifyingEggHitArticle(egg) {
+    const count = Math.max(1, Math.trunc(Number(egg?.quan || 1)));
+    if (egg?.known && egg?.corpsenm?.name) return `the ${egg.corpsenm.name}`;
+    return count > 1 ? 'some petrifying' : 'a petrifying';
+}
+
+function thrownEggTargetName(mon) {
+    return mon?.data?.name || mon?.name || 'creature';
+}
+
+function thrownEggTargetTheName(mon) {
+    const name = thrownEggTargetName(mon);
+    return /^the\b/i.test(name) ? name : `the ${name}`;
+}
+
+function placeThrownEggPetrifiedRock(egg, mon) {
+    killEggHatchTimer(egg);
+    Object.assign(egg, {
+        otyp: ROCK,
+        cls: 'gem',
+        glyph: '*',
+        kind: 'rock',
+        actualKind: 'rock',
+        singular: 'rock',
+        plural: 'rocks',
+        quan: 1,
+        spe: 0,
+        known: false,
+        dknown: false,
+        bknown: false,
+        ox: mon.mx,
+        oy: mon.my,
+        color: CLR_GRAY,
+    });
+    delete egg.corpsenm;
+    delete egg.eggKnown;
+    delete egg.line;
+    Object.assign(egg, object_display(egg));
+    placeStackableFloorObject(egg);
+    newsym(mon.mx, mon.my);
+}
+
+function applyThrownEggNominalDamage(mon, messages) {
+    if (!mon || mon.dead) return;
+    mon.msleeping = 0;
+    if (!mon.pet) mon.mpeaceful = false;
+    mon.mhp = (mon.mhp || 1) - 1;
+    if ((mon.mhp || 0) <= 0) killMonsterFromPotionHit(mon, messages);
+}
+
+function applyThrownEggLuckPenalty(egg) {
+    if (!egg?.spe || !egg?.corpsenm?.name || !game.u) return;
+    const count = Math.max(1, Math.trunc(Number(egg?.quan || 1)));
+    game.u.uluck = (game.u.uluck || 0) - Math.min(count, 5);
+}
+
+function monsterResistsStoning(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return !!(mon?.stoneResistance || mon?.resistsStoning || mon?.resistsStone
+        || data.stoneResistance || data.resistsStoning || data.resistsStone
+        || name === 'stone golem');
+}
+
+function monsterPolyWhenStoned(mon) {
+    const data = mon?.data || {};
+    return !monsterResistsStoning(mon)
+        && data.name !== 'stone golem'
+        && (data.mlet === '\'' || data.glyph === '\'')
+        && !(game._genocided_monsters || []).includes('stone golem');
+}
+
+function polymorphMonsterIntoStoneGolem(mon, messages) {
+    const stoneData = monsterByRndName('stone golem');
+    if (!mon || !stoneData) return false;
+    messages.push(`${fireScrollMonsterName(mon)} solidifies...`);
+    const oldHp = mon.mhp || 1;
+    const oldMax = mon.mhpmax || oldHp;
+    const shiftedLevel = adjustedMonsterLevel(stoneData);
+    const shiftedHp = monster_hp(stoneData, shiftedLevel);
+    Object.assign(mon, {
+        data: { ...stoneData, hpLevel: shiftedLevel },
+        m_lev: shiftedLevel,
+        mlevel: shiftedLevel,
+        mhp: Math.max(1, Math.min(shiftedHp, Math.trunc((oldHp * shiftedHp) / oldMax))),
+        mhpmax: shiftedHp,
+        msleeping: 0,
+    });
+    messages.push(`Now it's a stone golem.`);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function petrifyMonsterFromThrownEgg(mon, messages) {
+    if (!mon || mon.dead || monsterResistsStoning(mon)) return false;
+    if (monsterPolyWhenStoned(mon) && polymorphMonsterIntoStoneGolem(mon, messages)) return false;
+    messages.push(`${fireScrollMonsterName(mon)} turns to stone.`);
+    stoneMonster(mon, messages, { awardExperience: true });
+    return true;
+}
+
+function heroThrownPetrifyingEggHitMonster(egg, mon) {
+    const messages = [];
+    const count = Math.max(1, Math.trunc(Number(egg?.quan || 1)));
+    const plural = count === 1 ? '' : 's';
+    messages.push(`Splat!  You hit ${thrownEggTargetTheName(mon)} with ${thrownPetrifyingEggHitArticle(egg)} egg${plural}!`);
+    egg.known = true;
+    markObjectShopBillUsedUp(egg);
+    if (!petrifyMonsterFromThrownEgg(mon, messages))
+        applyThrownEggNominalDamage(mon, messages);
+    return messages;
+}
+
+function heroThrownPyroliskEggHitMonster(egg, mon) {
+    const messages = [];
+    const count = Math.max(1, Math.trunc(Number(egg?.quan || 1)));
+    const plural = count === 1 ? '' : 's';
+    messages.push(`You hit ${thrownEggTargetTheName(mon)} with ${thrownEggHitArticle(egg)} egg${plural}.`);
+    markObjectShopBillUsedUp(egg);
+    const explosion = resolvePyroliskEggExplosion(mon.mx, mon.my, d(3, 6));
+    messages.push(...explosion.messages);
+    messages.more = explosion.more;
+    return messages;
+}
+
+function heroThrownEggHitMonster(egg, mon) {
+    applyThrownEggLuckPenalty(egg);
+    if (isTouchPetrifyingEgg(egg)) return heroThrownPetrifyingEggHitMonster(egg, mon);
+    if (isPyroliskEgg(egg)) return heroThrownPyroliskEggHitMonster(egg, mon);
+    return heroThrownOrdinaryEggHitMonster(egg, mon);
+}
+
+function heroThrownOrdinaryEggHitMonster(egg, mon) {
+    const messages = [];
+    const targetName = thrownEggTargetName(mon);
+    const count = Math.max(1, Math.trunc(Number(egg?.quan || 1)));
+    const plural = count === 1 ? '' : 's';
+    messages.push(`You hit the ${targetName} with ${thrownEggHitArticle(egg)} egg${plural}.`);
+    if (monsterTouchPetrifies(mon) && !isStaleEggItem(egg)) {
+        messages.push(`The egg${plural} ${count === 1 ? "isn't" : "aren't"} alive any more...`);
+        placeThrownEggPetrifiedRock(egg, mon);
+    } else {
+        messages.push('Splat!');
+        markObjectShopBillUsedUp(egg);
+    }
+    applyThrownEggNominalDamage(mon, messages);
+    return messages;
 }
 
 function isExpensiveCameraObject(obj) {
@@ -20899,6 +21104,49 @@ function fireScrollTargetDescription(x, y) {
 
 function heroIsDeaf() {
     return (game.u?._statusSuffix || '').includes('Deaf') || (game.u?._deafTimeout || 0) > 0;
+}
+
+const ANIMAL_MSOUND_NAMES = new Set([
+    'silent', 'ms_silent',
+    'bark', 'ms_bark',
+    'mew', 'ms_mew',
+    'roar', 'ms_roar',
+    'bellow', 'ms_bellow',
+    'growl', 'ms_growl',
+    'sqeek', 'ms_sqeek',
+    'squeak', 'ms_squeak',
+    'sqawk', 'ms_sqawk',
+    'squawk', 'ms_squawk',
+    'chirp', 'ms_chirp',
+    'hiss', 'ms_hiss',
+    'buzz', 'ms_buzz',
+    'grunt', 'ms_grunt',
+    'neigh', 'ms_neigh',
+    'moo', 'ms_moo',
+    'wail', 'ms_wail',
+    'gurgle', 'ms_gurgle',
+    'burble', 'ms_burble',
+    'trumpet', 'ms_trumpet',
+    'animal', 'ms_animal',
+]);
+
+function shopkeeperMuteForSpeech(shkp) {
+    if (!shkp) return false;
+    const data = shkp.data || shkp.mdata || {};
+    if (shkp.mute || shkp.silent || shkp.helpless || data.mute || data.silent || data.helpless) return true;
+    const msound = shkp.msound ?? shkp.sound ?? data.msound ?? data.sound;
+    if (typeof msound === 'number') return msound <= 17;
+    return ANIMAL_MSOUND_NAMES.has(String(msound || '').toLowerCase());
+}
+
+function shopkeeperCanSpeakToHero(shkp) {
+    return !heroIsDeaf() && !shopkeeperMuteForSpeech(shkp);
+}
+
+function shopkeeperNoLimbsForSpeech(shkp) {
+    const data = shkp?.data || shkp?.mdata || {};
+    return !!(shkp?.nolimbs || shkp?.noLimbs || shkp?.nohands || shkp?.noHands
+        || data.nolimbs || data.noLimbs || data.nohands || data.noHands);
 }
 
 function fireDestroyableInventoryClass(item) {
@@ -29901,7 +30149,7 @@ function checkUnpaidUsage(obj, messages, { altusage = false, chargeCount = null 
     if (!(fee > 0)) return 0;
     const message = chargedToolUsageFeeMessage(obj, fee, altusage, shkp);
     shkp.debit = Math.max(0, Math.trunc(Number(shkp.debit || 0))) + fee;
-    if (!heroIsDeaf()) messages?.push(message);
+    if (shopkeeperCanSpeakToHero(shkp)) messages?.push(message);
     return fee;
 }
 
@@ -30920,16 +31168,29 @@ function shopPaymentEntryBlocked(entry, selected) {
     return !!blockedShopPaymentBillItem(entry, selected);
 }
 
-function blockedShopPaymentMessage(entry, selected) {
+function blockedShopPaymentMessage(entry, selected, shkp = null) {
     const blocker = blockedShopPaymentBillItem(entry, selected);
     if (!blocker?.item || !blocker.billEntry) return "You can't buy that yet.";
     const liveQuantity = Math.max(1, Math.trunc(Number(blocker.item.quan || 1)));
     const usedQuantity = Math.max(1, shopBillEntryQuantity(blocker.billEntry) - liveQuantity);
     const usedName = pickupObjectName({ ...blocker.item, quan: usedQuantity, line: '' });
-    const container = entry?.item || blocker.item.container;
-    const containerName = pickupObjectName({ ...(container || {}), quan: 1, line: '' }).replace(/^empty /, '');
-    const liveWord = liveQuantity > 1 ? 'ones' : 'one';
-    return `Please pay for the other ${usedName} before buying the ${liveWord} in the ${containerName}.`;
+    if (!shopkeeperCanSpeakToHero(shkp)) {
+        const name = shopkeeperDisplayName(shkp);
+        const angry = shopkeeperAngryForSellobj(shkp) ? ' angrily' : '';
+        const action = shopkeeperNoLimbsForSpeech(shkp) ? 'motions to' : 'points out';
+        return `${name}${angry} ${action} your bill for the other ${usedName} first.`;
+    }
+    const prefix = shopkeeperAngryForSellobj(shkp) ? 'Pay' : 'Please pay';
+    const container = entry?.containerPayment || entry?.billPortion === 'containerContents'
+        ? entry?.item || blocker.item.container
+        : blocker.item.container;
+    if (container) {
+        const containerName = pickupObjectName({ ...(container || {}), quan: 1, line: '' }).replace(/^empty /, '');
+        const liveWord = liveQuantity > 1 ? 'ones' : 'one';
+        return `${prefix} for the other ${usedName} before buying the ${liveWord} in the ${containerName}.`;
+    }
+    const liveWord = liveQuantity > 1 ? 'these' : 'this one';
+    return `${prefix} for the other ${usedName} before buying ${liveWord}.`;
 }
 
 function payableShopPaymentEntries(selected) {
@@ -31092,7 +31353,7 @@ function payContainerShopBillEntry(shkp, entry) {
         removedLedger: false,
         legacy: false,
         blocked: true,
-        message: blockedShopPaymentMessage(entry, [entry]),
+        message: blockedShopPaymentMessage(entry, [entry], shkp),
     };
     applyShopPaymentValue(shkp, entry.price);
     const container = entry.item;
@@ -31149,7 +31410,7 @@ function finishShopPaymentSelection(shkp, selected) {
             blocked: true,
             cashTotal: 0,
             payableEntries,
-            message: blockedShopPaymentMessage(blockedEntry, selected || []),
+            message: blockedShopPaymentMessage(blockedEntry, selected || [], shkp),
         };
         return { paid: false, skipped: true, cashTotal: 0, payableEntries, message: '' };
     }
@@ -31186,7 +31447,7 @@ function finishShopPaymentSelection(shkp, selected) {
         if (result.blocked) {
             if (paidEntries.length) {
                 stoppedShort = true;
-                stopMessage = result.message || blockedShopPaymentMessage(entry, selected || []);
+                stopMessage = result.message || blockedShopPaymentMessage(entry, selected || [], paymentShopkeeper);
                 break;
             }
             return {
@@ -31194,7 +31455,7 @@ function finishShopPaymentSelection(shkp, selected) {
                 blocked: true,
                 cashTotal: 0,
                 payableEntries,
-                message: result.message || blockedShopPaymentMessage(entry, selected || []),
+                message: result.message || blockedShopPaymentMessage(entry, selected || [], paymentShopkeeper),
             };
         }
         remainingGold -= cashDue;
@@ -31285,10 +31546,13 @@ function clearShopPaymentPromptState({ clearShopkeeper = true } = {}) {
 }
 
 function shopPaymentThankYouMessage(shkp) {
+    if (shopkeeperAngryForSellobj(shkp)) return '';
     const shopIndex = (shkp?.shoptype || 0) - SHOPBASE;
     const shopName = SHOP_TYPES[shopIndex]?.name || 'shop';
     const shopkeeperName = shkp?.shknam || 'shopkeeper';
     const possessive = shopkeeperName.endsWith('s') ? `${shopkeeperName}'` : `${shopkeeperName}'s`;
+    if (!shopkeeperCanSpeakToHero(shkp))
+        return `${shopkeeperDisplayName(shkp)} nods appreciatively at you for shopping in ${possessive} ${shopName}!`;
     return `"Thank you for shopping in ${possessive} ${shopName}!"`;
 }
 
@@ -52379,6 +52643,25 @@ export async function rhack(_cmd) {
 	                return;
 	            }
 	            impactMessage = `The cream pie misses the ${targetMon.data?.name || 'creature'}.`;
+	        } else if (targetMon && isEggItem(item)) {
+	            rnd(20);
+	            const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+	            if (dex > rnd(25)) {
+	                if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+	                const messages = heroThrownEggHitMonster(thrownObject, targetMon);
+	                removeInventoryItem(item, 1);
+	                newsym(targetMon.mx, targetMon.my);
+	                await setMessage(messages.join('  '), !!messages.more);
+	                game._command_mode = null;
+	                game._throw_item_letter = null;
+	                game._resume_time_after_more = 0;
+	                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+	                game.context.move = 0;
+	                return;
+	            }
+	            const thrownName = pickupObjectName({ ...item, quan: 1 });
+	            impactMessage = `The ${thrownName} misses the ${targetMon.data?.name || 'creature'}.`;
+	            if (!rn2(3)) targetMon.msleeping = 0;
 	        } else if (targetMon && supportsHeroThrownPotionHit(item, targetMon)) {
 	            rnd(20);
 	            const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
