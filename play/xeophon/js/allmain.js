@@ -5933,6 +5933,7 @@ async function processMonsterTurns() {
 					                                    glyph: missile.glyph || '*',
 					                                    color: missile.color ?? NO_COLOR,
 					                                    messages: floorMessages,
+					                                    ohit: !missed,
 					                                });
 					                                addMonsterThrownFloorMessages(floorMessages, throwerVisible && !deferPrayerProjectile);
 					                            }
@@ -6212,6 +6213,7 @@ async function processMonsterTurns() {
                                 glyph: ')',
                                 color: CLR_CYAN,
                                 messages: floorMessages,
+                                ohit: !missed,
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         }
@@ -6275,7 +6277,7 @@ async function processMonsterTurns() {
                         }
                         continue;
                     }
-	                    if (canThrowOrcishDagger && rangedWeaponLinedUp) {
+                    if (canThrowOrcishDagger && rangedWeaponLinedUp) {
                         let clearShot = true;
                         for (let step = 1; step < throwRange; step++) {
                             if (IS_OBSTRUCTED(game.level?.at(mon.mx + throwDx * step, mon.my + throwDy * step)?.typ ?? 0)) {
@@ -6310,71 +6312,83 @@ async function processMonsterTurns() {
                             }
                             const hitRange = hitPet ? Math.max(Math.abs(hitPet.mx - mon.mx), Math.abs(hitPet.my - mon.my)) : throwRange;
                             for (let step = 1; step < hitRange; step++) rn2(5);
-	                            const flightX = hitPet ? hitPet.mx - throwDx : (game.u?.ux || 0) - throwDx;
-	                            const flightY = hitPet ? hitPet.my - throwDy : (game.u?.uy || 0) - throwDy;
-	                            if (throwerVisible) {
-	                                game.level.objects.push({
+                            const flightX = hitPet ? hitPet.mx - throwDx : (game.u?.ux || 0) - throwDx;
+                            const flightY = hitPet ? hitPet.my - throwDy : (game.u?.uy || 0) - throwDy;
+                            if (throwerVisible) {
+                                game.level.objects.push({
                                     ...missile,
                                     ox: flightX,
                                     oy: flightY,
                                     quan: 1,
                                     glyph: ')',
                                     color: NO_COLOR,
-	                                    transientProjectile: true,
-	                                });
-	                            }
-	                            if (hitPet) {
-	                                rnd(20);
-	                                const damage = rnd(3);
-	                                hitPet.mhp = Math.max(0, (hitPet.mhp || 1) - damage);
-	                                const hitMessage = throwerVisible
-	                                    ? `The crude dagger hits the ${hitPet.data?.name || 'pet'}.`
-	                                    : 'It is hit.';
-	                                if (throwerVisible) game._topline_after_more = hitMessage;
-	                                else addToplineMessage(hitMessage);
-	                            } else {
-	                                const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
-	                                    - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-	                                const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-	                                    && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
-	                                if (caught) {
-	                                    const catchMessage = 'You catch the crude dagger!';
-	                                    if (throwerVisible) game._topline_after_more = catchMessage;
-	                                    else addToplineMessage(catchMessage);
-	                                } else {
-	                                    const damage = rnd(3);
-	                                    rnd(20);
-	                                    if (throwerVisible) game._topline_after_more = 'You are hit by a crude dagger.';
-	                                    else addToplineMessage('You are hit by a crude dagger.');
-	                                    game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
-	                                    game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
-	                                }
-	                            }
+                                    transientProjectile: true,
+                                });
+                            }
+                            let crudeDaggerOhit = !!hitPet;
+                            let crudeDaggerCaught = false;
+                            if (hitPet) {
+                                rnd(20);
+                                const damage = rnd(3);
+                                hitPet.mhp = Math.max(0, (hitPet.mhp || 1) - damage);
+                                const hitMessage = throwerVisible
+                                    ? `The crude dagger hits the ${hitPet.data?.name || 'pet'}.`
+                                    : 'It is hit.';
+                                if (throwerVisible) game._topline_after_more = hitMessage;
+                                else addToplineMessage(hitMessage);
+                            } else {
+                                const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                                    - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
+                                const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
+                                    && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                                if (caught) {
+                                    crudeDaggerCaught = true;
+                                    const catchMessage = 'You catch the crude dagger!';
+                                    if (throwerVisible) game._topline_after_more = catchMessage;
+                                    else addToplineMessage(catchMessage);
+                                } else {
+                                    crudeDaggerOhit = true;
+                                    const damage = rnd(3);
+                                    rnd(20);
+                                    if (throwerVisible) game._topline_after_more = 'You are hit by a crude dagger.';
+                                    else addToplineMessage('You are hit by a crude dagger.');
+                                    game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
+                                    game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
+                                }
+                            }
                             if (throwerVisible) {
-                                game._monster_throw_after_more = {
-                                    missile,
-                                    hitPet,
-                                    x: hitPet ? hitPet.mx : game.u?.ux || 0,
-                                    y: hitPet ? hitPet.my : game.u?.uy || 0,
-                                    glyph: ')',
-                                    color: hitPet ? NO_COLOR : CLR_CYAN,
-                                };
-                                game._clear_transient_projectiles_after_more = 1;
-                                newsym(flightX, flightY);
+                                if (crudeDaggerCaught) {
+                                    game._clear_transient_projectiles_after_more = 1;
+                                    newsym(flightX, flightY);
+                                } else {
+                                    game._monster_throw_after_more = {
+                                        missile,
+                                        hitPet,
+                                        x: hitPet ? hitPet.mx : game.u?.ux || 0,
+                                        y: hitPet ? hitPet.my : game.u?.uy || 0,
+                                        glyph: ')',
+                                        color: hitPet ? NO_COLOR : CLR_CYAN,
+                                        ohit: crudeDaggerOhit,
+                                    };
+                                    game._clear_transient_projectiles_after_more = 1;
+                                    newsym(flightX, flightY);
+                                }
                             } else if (hitPet) {
                                 const floorMessages = [];
                                 landMonsterThrownObject(missile, hitPet.mx, hitPet.my, {
                                     glyph: ')',
                                     color: NO_COLOR,
                                     messages: floorMessages,
+                                    ohit: true,
                                 });
                                 addMonsterThrownFloorMessages(floorMessages);
-                            } else {
+                            } else if (!crudeDaggerCaught) {
                                 const floorMessages = [];
                                 landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
                                     glyph: ')',
                                     color: CLR_CYAN,
                                     messages: floorMessages,
+                                    ohit: crudeDaggerOhit,
                                 });
                                 addMonsterThrownFloorMessages(floorMessages);
                             }

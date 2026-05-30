@@ -286,6 +286,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._wizD1Step1NearMklevDistfleeckOnlyLikeC;
         delete g.context._wizD1EastDistantMmoveTailDoneLikeC;
         delete g.context._wizD1PostEastTailWalkNewTurnDoneLikeC;
+        delete g.context._wizD1PostEastTailWalkMintrapPeelDoneLikeC;
     }
     g.context.monMoving = true;
     try {

@@ -22191,7 +22191,10 @@ function chargeGlowMessage(item, color = '', feeble = false) {
 function costlyAlterationPaymentMessage(item, verb) {
     const name = pickupObjectName(item);
     const plural = (item?.quan || 1) > 1;
-    if (!billDummyAlteredCarriedObject(item)) return '';
+    const billed = (game.inventory || []).includes(item)
+        ? billDummyAlteredCarriedObject(item)
+        : billDummyAlteredShopObject(item);
+    if (!billed) return '';
     return `You ${verb} ${plural ? 'those' : 'that'} ${name}, you pay for ${plural ? 'them' : 'it'}!`;
 }
 
@@ -22242,6 +22245,76 @@ function stripCharges(item) {
     if (isLampObject(item)) item.age = 0;
     updateChargedItemLine(item);
     return messages;
+}
+
+function drainItemProtectedByDrainResistance(item) {
+    if (!item) return false;
+    if (item.defendsDrain || item.drainResistance || item.drainResistant || item.artifactDefendsDrain || item.artifactCarryDrainDefense)
+        return true;
+    const kind = objectKindKey(item);
+    return item.otyp === BLACK_DRAGON_SCALE_MAIL || item.otyp === BLACK_DRAGON_SCALES
+        || /\bblack dragon (?:scale mail|scales)\b/.test(kind);
+}
+
+function drainItemAlwaysResists(item) {
+    const kind = objectKindKey(item);
+    return !!(item?.invocation || item?.riderCorpse || item?.realAmuletOfYendor
+        || item?.otyp === BOOK_OF_THE_DEAD || item?.otyp === CANDELABRUM_OF_INVOCATION || item?.otyp === BELL
+        || kind === 'book of the dead' || kind === 'candelabrum of invocation' || kind === 'bell of opening'
+        || kind === 'amulet of yendor');
+}
+
+function drainItemResists(item) {
+    if (drainItemAlwaysResists(item)) return true;
+    return rn2(100) < (item?.artifact || item?.oartifact ? 90 : 10);
+}
+
+function drainItemEligible(item) {
+    if (!item || (item.spe ?? 0) <= 0) return false;
+    const cls = itemClassKey(item);
+    return isWandItem(item)
+        || isChargeableRing(item)
+        || isChargedTool(item)
+        || cls === 'weapon'
+        || cls === 'armor'
+        || isWeaponTool(item);
+}
+
+function drainItem(item, { byYou = false, messages = null } = {}) {
+    if (!drainItemEligible(item)) return { drained: false, eligible: false, resisted: false };
+    if (drainItemProtectedByDrainResistance(item) || drainItemResists(item))
+        return { drained: false, eligible: true, resisted: true };
+    const payment = byYou ? costlyAlterationPaymentMessage(item, 'drain') : '';
+    if (payment && Array.isArray(messages)) messages.push(payment);
+    item.spe = Math.max(0, (item.spe || 0) - 1);
+    if (isWandItem(item)) item.charges = item.spe;
+    updateChargedItemLine(item);
+    return { drained: true, eligible: true, resisted: false, payment };
+}
+
+function carriedDrainItemLessEffectiveMessage(item) {
+    if (!item || !(game.inventory || []).includes(item)) return '';
+    if (!(item.known || item.cls === 'armor' || item.glyph === '[' || item.otyp === ARMOR_CLASS)) return '';
+    const name = pickupObjectName(item);
+    const plural = (item.quan || 1) > 1 || armorNameIsPlural(name);
+    return `Your ${name} ${plural ? 'seem' : 'seems'} less effective.`;
+}
+
+function applyDirectMeleePassiveObject(mon, weapon, messages) {
+    const type = passiveObjectAttackForMonster(mon);
+    if (!type) return { handled: false, damaged: false };
+    const targetObject = weapon || (type === 'ench' ? wornGlovesItem() : null);
+    if (!targetObject) return { handled: false, damaged: false, type };
+    if (type === 'ench') {
+        if (mon.mcan) return { handled: true, damaged: false, type, object: targetObject };
+        const drain = drainItem(targetObject, { byYou: true, messages });
+        if (drain.drained) {
+            const message = carriedDrainItemLessEffectiveMessage(targetObject);
+            if (message && Array.isArray(messages)) messages.push(message);
+        }
+        return { handled: true, damaged: drain.drained, type, object: targetObject, ...drain };
+    }
+    return { handled: false, damaged: false, type, object: targetObject };
 }
 
 function wandRechargeLimit(item) {
@@ -24212,6 +24285,89 @@ function remoteProjectileDownGateAt(obj, x, y, { allowGold = false } = {}) {
         && (candidate.mhp == null || candidate.mhp > 0));
     if (mon) return null;
     return downGateAt(x, y);
+}
+
+function kickFloorObjectAt(x, y) {
+    return (game.level?.objects || []).find(obj =>
+        obj && !obj.hidden && !obj.buried && !obj.transientProjectile
+        && obj.ox === x && obj.oy === y);
+}
+
+function kickFloorObjectSupported(obj, x, y) {
+    if (!obj || obj === game.u?.uball || obj === game.u?.uchain) return false;
+    if (isBoulderObject(obj) || shopBillableGold(obj)) return false;
+    if (Math.max(1, Math.trunc(Number(obj.quan || 1))) !== 1) return false;
+    if (isTipContainerObject(obj) || globContents(obj).length) return false;
+    if (shopkeeperForCostlySpot(x, y) || shopObjectOrContentsUnpaid(obj)) return false;
+    if (impactDropBreakKind(obj)) return false;
+    return true;
+}
+
+function kickFloorObjectRange(obj, x, y, dir) {
+    const stats = game.u?.acurr?.a || [];
+    const strength = Math.max(0, Math.trunc(Number(stats[A_STR] ?? 10)));
+    const weight = globObjectWeight({ ...obj, quan: 1 });
+    let range = Math.trunc(strength / 2) - Math.trunc(weight / 40);
+    const roleName = game.urole?.name?.m || game._startup_role || '';
+    if (roleName === 'Monk' || roleName === 'Samurai') range += rnd(3);
+
+    const loc = game.level?.at?.(x, y);
+    if (loc && IS_POOL(loc.typ)) {
+        range = Math.trunc(range / 3) + 1;
+    } else if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)) {
+        range += rnd(3);
+    } else {
+        if (loc?.typ === ICE) range += rnd(3);
+        if (obj.greased) range += rnd(3);
+    }
+
+    const nextX = x + dir.dx;
+    const nextY = y + dir.dy;
+    const nextLoc = game.level?.at?.(nextX, nextY);
+    const closedDoor = nextLoc?.typ === DOOR && (nextLoc.doormask & (D_CLOSED | D_LOCKED));
+    if (!isok(nextX, nextY) || !nextLoc || !ZAP_POS(nextLoc.typ) || closedDoor) range = 1;
+    return range;
+}
+
+function placeKickedFloorObject(obj, x, y, messages) {
+    obj.ox = x;
+    obj.oy = y;
+    obj.hidden = false;
+    obj.buried = false;
+    obj.transientProjectile = false;
+    if (earthFloorEffects(obj, x, y, messages, 'fall', { usedUpShopBillOnDestroy: true }))
+        return null;
+    const placed = placeUnstackedFloorObject(obj);
+    const stacked = stackDroppedFloorObject(placed);
+    newsym(x, y);
+    return stacked;
+}
+
+function kickFloorObjectToward(dir, x, y) {
+    const obj = kickFloorObjectAt(x, y);
+    if (!kickFloorObjectSupported(obj, x, y)) return { handled: false };
+
+    const landX = x + dir.dx;
+    const landY = y + dir.dy;
+    const gate = remoteProjectileDownGateAt(obj, landX, landY);
+    if (!gate) return { handled: false };
+
+    const messages = [`You kick ${floorObjectArticleName(obj)}.`];
+    if (kickFloorObjectRange(obj, x, y, dir) < 2) {
+        messages.push('Thump!');
+        return { handled: true, messages, moved: false };
+    }
+
+    removeFloorObject(obj);
+    newsym(x, y);
+    obj.ox = landX;
+    obj.oy = landY;
+
+    const shipped = maybeShipRemoteProjectileObject(obj, landX, landY, messages);
+    if (!shipped.handled) {
+        placeKickedFloorObject(obj, landX, landY, messages);
+    }
+    return { handled: true, messages, moved: true, shipObject: shipped };
 }
 
 function carriedDropDownGateAt(obj, x, y, { allowGold = false } = {}) {
@@ -28134,6 +28290,123 @@ export function dropMonsterObject(mon, obj, messages = null, {
     return { consumed: false, object: stacked, messages: floorMessages };
 }
 
+function monsterThrownMulchCandidate(obj) {
+    if (!obj) return false;
+    const kind = objectKindKey(obj) || pickupObjectName({ ...obj, quan: 1 }).toLowerCase();
+    if (/\bboomerang\b/.test(kind)) return false;
+    if (obj.oc_magic || obj.magic || obj.magicStone) return false;
+    if (/\b(?:luckstone|loadstone|touchstone)\b/.test(kind)) return false;
+    return obj.otyp === DART
+        || /\b(?:arrow|arrows|ya|bolt|bolts|dart|darts|shuriken|throwing star|throwing stars|rock|rocks|flint)\b/.test(kind);
+}
+
+function monsterThrownHardGemMulchCandidate(obj) {
+    if (!obj) return false;
+    const kind = objectKindKey(obj) || pickupObjectName({ ...obj, quan: 1 }).toLowerCase();
+    return kind === 'flint' || obj.otyp === FLINT || (!!obj.gemTough && (obj.cls === 'gem' || obj.glyph === '*'));
+}
+
+function shouldMulchMonsterThrownMissile(obj) {
+    if (!monsterThrownMulchCandidate(obj)) return false;
+    const erosion = Math.max(0, Math.trunc(Number(obj.oeroded || 0)), Math.trunc(Number(obj.oeroded2 || 0)));
+    const chance = 3 + erosion - Math.trunc(Number(obj.spe || 0));
+    let broken = chance > 1 ? !!rn2(chance) : !rn2(4);
+    if (obj.blessed && !rn2(3)) broken = false;
+    if (monsterThrownHardGemMulchCandidate(obj) && !rn2(2)) broken = false;
+    return broken;
+}
+
+const MONSTER_PASSIVE_OBJECT_ATTACK_FALLBACKS = new Map([
+    ['acid blob', 'acid'],
+    ['green mold', 'acid'],
+    ['fire elemental', 'fire'],
+    ['fire vortex', 'fire'],
+    ['red mold', 'fire'],
+    ['rust monster', 'rust'],
+    ['black pudding', 'corr'],
+    ['disenchanter', 'ench'],
+]);
+
+function normalizedPassiveObjectAttackType(type) {
+    const key = String(type || '').toLowerCase();
+    if (key === 'ad_fire' || key === 'fire') return 'fire';
+    if (key === 'ad_acid' || key === 'acid') return 'acid';
+    if (key === 'ad_rust' || key === 'rust') return 'rust';
+    if (key === 'ad_corr' || key === 'corr' || key === 'corrode') return 'corr';
+    if (key === 'ad_ench' || key === 'ench' || key === 'disenchant') return 'ench';
+    return '';
+}
+
+function passiveObjectAttackForMonster(mon) {
+    if (!mon) return '';
+    const attacks = [];
+    if (mon.attack) attacks.push(mon.attack);
+    if (Array.isArray(mon.attacks)) attacks.push(...mon.attacks);
+    if (mon.data?.attack) attacks.push(mon.data.attack);
+    if (Array.isArray(mon.data?.attacks)) attacks.push(...mon.data.attacks);
+    for (const attack of attacks) {
+        const aatyp = String(attack?.aatyp || attack?.type || '').toLowerCase();
+        if (aatyp !== 'none' && aatyp !== 'at_none' && aatyp !== 'passive') continue;
+        const adtyp = normalizedPassiveObjectAttackType(attack?.adtyp || attack?.damageType);
+        if (adtyp) return adtyp;
+    }
+    return MONSTER_PASSIVE_OBJECT_ATTACK_FALLBACKS.get(String(mon.data?.name || mon.name || '').toLowerCase()) || '';
+}
+
+function monsterAtSquareForPassiveObject(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon && mon.mx === x && mon.my === y && !mon.dead && (mon.mhp == null || mon.mhp > 0)) || null;
+}
+
+function erodeMonsterThrownPassiveObject(obj, type, messages) {
+    const profile = wishedDamageProfile(obj);
+    const erosion = type === 'rust'
+        ? { field: 'oeroded', word: 'rusty', action: 'rust' }
+        : type === 'corr' || type === 'acid'
+            ? { field: 'oeroded2', word: 'corroded', action: 'corrode' }
+            : type === 'fire'
+                ? { field: 'oeroded', word: 'burnt', action: 'smoulder' }
+                : null;
+    if (!erosion || !profile.erosionMatters || (erosion.field === 'oeroded' ? profile.primaryWord : profile.secondaryWord) !== erosion.word)
+        return { handled: !!erosion, damaged: false };
+    if ((type === 'rust' || type === 'corr' || type === 'acid') && obj.greased) {
+        if (!rn2(2)) obj.greased = false;
+        return { handled: true, damaged: false };
+    }
+    if (obj.oerodeproof || obj.rustproof) {
+        obj.rknown = true;
+        return { handled: true, damaged: false };
+    }
+    if (obj.blessed && !rnl(4)) return { handled: true, damaged: false };
+    const current = Math.min(3, obj[erosion.field] || 0);
+    if (current >= 3) return { handled: true, damaged: false };
+    const name = floorObjectBaseName(obj);
+    obj[erosion.field] = current + 1;
+    if (floorObjectVisible(obj.ox, obj.oy)) {
+        const adverb = obj[erosion.field] === 3 ? ' completely' : current ? ' further' : '';
+        messages.push(`The ${name} ${rustTrapNameVerb(name, `${erosion.action}s`, erosion.action)}${adverb}!`);
+    }
+    return { handled: true, damaged: true };
+}
+
+function applyMonsterThrownPassiveObject(landing, target, ohit, messages) {
+    if (!landing || !target || !ohit) return { handled: false, damaged: false };
+    const type = passiveObjectAttackForMonster(target);
+    if (!type) return { handled: false, damaged: false, type };
+    if (type === 'ench') {
+        if (target.mcan) return { handled: true, damaged: false, type };
+        const drain = drainItem(landing, { byYou: true, messages });
+        return { handled: true, damaged: drain.drained, type, ...drain };
+    }
+    if (type === 'fire' && (target.mcan || String(target.data?.name || target.name || '').toLowerCase() === 'steam vortex'))
+        return { handled: true, damaged: false, type };
+    if ((type === 'rust' || type === 'corr') && target.mcan)
+        return { handled: true, damaged: false, type };
+    if ((type === 'fire' || type === 'acid') && rn2(6))
+        return { handled: true, damaged: false, type };
+    return { ...erodeMonsterThrownPassiveObject(landing, type, messages), type };
+}
+
 export function landMonsterThrownObject(missile, x, y, {
     glyph = missile?.glyph || ')',
     color = missile?.color ?? CLR_CYAN,
@@ -28147,7 +28420,8 @@ export function landMonsterThrownObject(missile, x, y, {
     game.level.objects ??= [];
     const floorMessages = Array.isArray(messages) ? messages : [];
     const dropThrow = {
-        broken: isCreamPieObject(missile) || isVenomObject(missile) || (!!ohit && isEggItem(missile)),
+        broken: isCreamPieObject(missile) || isVenomObject(missile) || (!!ohit && isEggItem(missile))
+            || (!!ohit && shouldMulchMonsterThrownMissile(missile)),
         ohit: !!ohit,
     };
     if (dropThrow.broken) {
@@ -28161,6 +28435,7 @@ export function landMonsterThrownObject(missile, x, y, {
             dropThrow,
         };
     }
+    const passiveTarget = monsterAtSquareForPassiveObject(x, y);
     const landing = {
         ...missile,
         ox: x,
@@ -28199,6 +28474,7 @@ export function landMonsterThrownObject(missile, x, y, {
             dropThrow,
         };
     }
+    const passiveObj = applyMonsterThrownPassiveObject(landing, passiveTarget, !!ohit, floorMessages);
     const stacked = stackMonsterThrownObject(landing);
     if (stacked === landing) game.level.objects.push(landing);
     newsym(x, y);
@@ -28209,6 +28485,7 @@ export function landMonsterThrownObject(missile, x, y, {
         shipObject,
         floorEffects: { consumed: false },
         dropThrow,
+        passiveObj,
     };
 }
 
@@ -31810,6 +32087,7 @@ function tipHatDirectedResponse(dir) {
     let x = game.u?.ux || 0;
     let y = game.u?.uy || 0;
     let target = null;
+    let unseen = false;
     for (let range = 1; range <= BOLT_LIM + 1; range++) {
         x += dir.dx;
         y += dir.dy;
@@ -31817,8 +32095,11 @@ function tipHatDirectedResponse(dir) {
         target = (game.level?.monsters || []).find(mon => mon.mx === x && mon.my === y && !mon.dead);
         if (target) break;
         const loc = game.level?.at?.(x, y);
+        unseen = !!loc?.map_invisible;
+        if (unseen) break;
         if (!loc || (!(ACCESSIBLE(loc.typ) || loc.typ === IRONBARS))) break;
     }
+    if (unseen) return 'That unseen creature is ignoring you!';
     if (!target || !tipHatMonsterResponsive(target)) return 'Nothing happens.';
 
     if (Number.isInteger(target.mstrategy)) target.mstrategy &= ~STRAT_WAITMASK;
@@ -38875,6 +39156,8 @@ async function moveHero(dx, dy) {
         const deferSleepingTwoWeapon = wokeFromSleep && twoWeaponActive;
         let deferredMeleeWeaponHit = false;
         let killed = false;
+        let killingAttackWeapon = null;
+        let killedByNormalMelee = false;
         for (let attackIndex = 0; attackIndex < attackWeapons.length; attackIndex++) {
             const attackWeapon = attackWeapons[attackIndex];
             const weaponName = attackWeapon?.kind || attackWeapon?.name || (typeof attackWeapon?.otyp === 'string' ? attackWeapon.otyp : '');
@@ -38968,6 +39251,10 @@ async function moveHero(dx, dy) {
             if (!attackWeapon && damage > 1) rnd(100);
             mon.mhp = (mon.mhp || 1) - damage;
             killed = mon.mhp <= 0;
+            if (killed) {
+                killingAttackWeapon = attackWeapon;
+                killedByNormalMelee = true;
+            }
             if (mon.mtame && damage > 0) {
                 mon.mtame--;
                 mon.abuse = (mon.abuse || 0) + 1;
@@ -39009,6 +39296,7 @@ async function moveHero(dx, dy) {
 	                    rn2(3);
 	                }
             }
+            applyDirectMeleePassiveObject(mon, attackWeapon, messages);
         }
 
         if (!killed) {
@@ -39063,6 +39351,8 @@ async function moveHero(dx, dy) {
             }
         }
         messages.push(`You ${killVerb} ${killedPet ? `the poor ${killedName}` : targetPhrase}!`);
+        if (killedByNormalMelee)
+            applyDirectMeleePassiveObject(mon, killingAttackWeapon, messages);
         if (!game._chronicle_first_kill) {
             game._chronicle_entries ??= [];
             game._chronicle_entries.push({ turn: game.moves || 1, text: 'killed for the first time' });
@@ -42021,7 +42311,7 @@ export async function rhack(_cmd) {
 	                    rn2(6);
 	                    game._monster_hit_effects_after_more--;
 	                }
-	                if (game._monster_throw_after_more) {
+                if (game._monster_throw_after_more) {
                     const thrown = game._monster_throw_after_more;
                     game._monster_throw_after_more = null;
                     const landingX = thrown.x ?? (thrown.hitPet ? thrown.hitPet.mx : game.u?.ux || 0);
@@ -42031,6 +42321,7 @@ export async function rhack(_cmd) {
                         glyph: thrown.glyph || ')',
                         color: thrown.color ?? (thrown.hitPet ? NO_COLOR : CLR_CYAN),
                         messages: floorMessages,
+                        ohit: !!thrown.ohit,
                     });
                     appendToplineAfterMoreMessages(floorMessages);
                 }
@@ -53416,6 +53707,13 @@ export async function rhack(_cmd) {
         if (statueTrap) {
             const message = await activateStatueTrap(statueTrap, x, y, { normal: true }) || '';
             await setMessage(message);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        const kickedObject = kickFloorObjectToward(dir, x, y);
+        if (kickedObject.handled) {
+            await setMessage(kickedObject.messages.join('  '), kickedObject.messages.length > 1);
             game._command_mode = null;
             game.context.move = 1;
             return;

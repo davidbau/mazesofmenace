@@ -50,6 +50,7 @@ import {
     mMoveWizardD1Step1DistantAfterPeelLikeC,
     mMoveWizardD1EastTailCorridorRestLikeC,
     mMoveWizardD1LPostTailDistantLikeC,
+    mMovePostEastTailWalkMintrapDistantPeelLikeC,
     primeDistantMtrackRn20LikeC,
 } from './m_move_mon.js';
 import {
@@ -594,7 +595,6 @@ export async function movemon(stepNum) {
                         await distfleeckMonsterApplyLikeC(g, nearWalkPost);
                     }
                     g.context._wizD1PostEastTailWalkPetAfterMintrapLikeC = true;
-                    g.context._wizD1PostEastTailWalkNewTurnDoneLikeC = true;
                 }
             }
         }
@@ -1064,12 +1064,18 @@ export async function movemon(stepNum) {
                 (m) => (m.mtame | 0) !== 0,
             );
             if (petWalkPost) {
-                const { dogMoveEastTailPostMcalcmovePetLikeC } = await import(
+                const { dogMoveEastTailWalkPetAfterMintrapLikeC } = await import(
                     './dogmove_mon.js',
                 );
-                dogMoveEastTailPostMcalcmovePetLikeC(g, petWalkPost);
+                dogMoveEastTailWalkPetAfterMintrapLikeC(g, petWalkPost);
             }
             delete g.context._wizD1PostEastTailWalkPetAfterMintrapLikeC;
+            await mMovePostEastTailWalkMintrapDistantPeelLikeC(g);
+            const { runNewTurnSetupAndTailLikeC } = await import(
+                './moveloop_turn_advance.js',
+            );
+            await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
+            g.context._wizD1PostEastTailWalkNewTurnDoneLikeC = true;
         }
     } finally {
         delete g.context.movemonStepNum;

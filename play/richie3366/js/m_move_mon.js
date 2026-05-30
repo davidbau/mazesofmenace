@@ -1682,6 +1682,45 @@ export async function mMoveWizardD1Step1DistantAfterPeelLikeC(g, mtmp) {
 }
 
 /**
+ * C: post-east-tail walk — after mintrap pet **`mfndpos`**, second **`movemon`** pass:
+ * near + distant **`distfleeck`**, distant **`m_move`** **`rn2(20)`**, distant **`distfleeck`**
+ * (**`seed0006`** step 57 **`l`** ~2800–2803).
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function mMovePostEastTailWalkMintrapDistantPeelLikeC(g) {
+    if (g.context?._wizD1PostEastTailWalkMintrapPeelDoneLikeC) return;
+    const peelDistant =
+        wizD1PeelDistantMklevMonLikeC(g)
+        ?? findDistantMklevMonLikeC(g);
+    const nearWalk =
+        wizD1EastDoorMklevMonLikeC(g)
+        ?? (g.level?.monsters ?? []).find(
+            (m) =>
+                !(m.mtame | 0)
+                && (m.mgenmklev | 0)
+                && m !== peelDistant,
+        );
+    if (nearWalk) {
+        setApparxyMonsterLikeC(g, nearWalk);
+        await distfleeckMonsterApplyLikeC(g, nearWalk);
+    }
+    if (peelDistant) {
+        const u = g.u;
+        if (u) {
+            peelDistant.mux = u.ux | 0;
+            peelDistant.muy = u.uy | 0;
+        }
+        setApparxyMonsterLikeC(g, peelDistant);
+        await distfleeckMonsterApplyLikeC(g, peelDistant);
+        primeDistantMtrackRn20LikeC(peelDistant);
+        rn2(20);
+        await distfleeckMonsterApplyLikeC(g, peelDistant);
+    }
+    g.context._wizD1PostEastTailWalkMintrapPeelDoneLikeC = true;
+}
+
+/**
  * C: wizard D:1 **`L`** post-peel — pinned distant ~915 **`distfleeck`** + **`m_move`** (~2622–2623).
  *
  * @param {import('./gstate.js').game} g
@@ -2045,6 +2084,7 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                         mtmp === pin
                         && !ctxDist._wizD1Step1DistantMmoveDoneLikeC
                         && !g.context?._wizD1PostCorridorDistantPeelDoneLikeC
+                        && !g.context?._wizD1PostEastTailWalkMintrapPeelDoneLikeC
                     ) {
                         if (!ctxDist._wizD1Step1DistantPass2Rn20DoneLikeC) {
                             setApparxyMonsterLikeC(g, mtmp);
@@ -2106,6 +2146,13 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 }
                 /* C: wizard D:1 peel — **`set_apparxy`** then **`distfleeck`**; gate **`rn2(4)`** when
                  * **`nearby`**; no second **`distfleeck`** after blind nearby **`m_move`** (~2531). */
+                if (
+                    g.context?._wizD1PostEastTailWalkMintrapPeelDoneLikeC
+                    && (mtmp.mgenmklev | 0)
+                    && !(mtmp.mtame | 0)
+                ) {
+                    return;
+                }
                 setApparxyMonsterLikeC(g, mtmp);
                 const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
                 const distantPeelOnly =
