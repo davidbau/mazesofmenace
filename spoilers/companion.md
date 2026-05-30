@@ -17,41 +17,50 @@ players.
 
 ## Before You Read Further
 
-You are holding (or more likely scrolling through) a guide to the
-Mazes of Menace, the vast and ever-shifting dungeon complex that sits
-beneath a place the locals just call "the dungeon entrance." What lies
-below is one of the oldest and most treacherous adventure destinations
-in existence: dozens of levels of corridors, vaults, and special
-chambers, stretching from the relatively tame upper mines all the way
-down to the molten depths of Gehennom and beyond.
+The dungeon is old. No one remembers who built it, only that
+its entrance has stood open for more than forty years to anyone
+bold enough to descend. They come from every land, drawn by
+tales of an artifact hidden in its depths: Knights, Wizards,
+Valkyries, Samurai, Archeologists with their picks, even
+Tourists with their cameras. No two of them have found the same
+mazes. Rooms shift between visits, stairwells move, and a
+route that worked for years can turn deadly today. The
+one constant is that the dungeon is trying to kill you.
 
-People have been descending into these depths for more than four decades.
-Most of them died. The ones who made it back brought stories, and some
-of those stories eventually got written down. You're reading the latest
-edition of that accumulated lore.
+Most adventurers who go down there never come back. The ones
+who do have taken time to prepare: they have read the myths,
+learned the lore, and listened to the warnings of those who
+went before. The pages that follow gather the wisdom of many
+adventurers and seers, paid for by the lives of those who did
+not return and by the careful observations of those who did.
 
 **A word of caution.** This guide will change how you experience
-the Mazes. Once you know that a floating eye can paralyze you with
-a glance, you can never un-know it. Some adventurers prefer the
-thrill of discovery over the comfort of preparation. If that's
-you, close this guide now and go learn things the hard way. There
-is real joy in that.
+the Mazes. Once you know that a floating eye can paralyze you
+with a glance, you can never un-know it. Some adventurers prefer
+the thrill of discovery to the comfort of preparation. If that is
+you, close the guide now and learn the hard way. There is real
+joy in that.
 
-**Looking for the manual instead?** If you're just looking for game
-commands, item lists, and mechanics without spoilers, you want the
-**[Guide to the Mazes of Menace](../guidebook/)** instead. That's the
-reference manual that comes with the game. This document is a
-*strategic* guide. It assumes you already know how to play and want
-to know how to *survive*.
+**Looking for the manual instead?** If you want commands, item
+lists, and bare mechanics without spoilers, you want the
+**[Guide to the Mazes of Menace](../guidebook/)** that comes
+with the game. The document you are reading is a *strategic*
+guide. It assumes you already know how to play and want to know
+how to *survive*.
 
-But if you have perished under the deadly gaze of just one too
-many floating eyes, or if you are tired of the gods abandoning
-you to starve with no food rations on level four, read on. We
-will do our best to keep you alive.
+Read on if you have been stripped of your belongings by one too
+many water nymphs, if you cannot survive the Gnomish Mines, or
+if you have grown tired of the gods abandoning you to starve
+with no food rations on level four. We will do our best to keep
+you alive.
+
+::: web-only
 
 <aside class="download-box">
 <strong>Prefer to read offline?</strong> Print the <a href="book.pdf">book-format PDF</a> (A5 trim, <a href="cover.pdf">cover</a>).
 </aside>
+
+:::
 
 ---
 
@@ -777,17 +786,17 @@ and monsters scattered about. But some rooms are special:
 ```
    A shop:                 A zoo:                 A throne room:
    ┌───────┐               ┌────────┐             ┌────────┐
-   │··[·?!·│               │Z··Z$Z··│             │··Z·Z·Z·│
-   │···@···│               │$Z···$Z·│             │·Z·\··Z·│
-   │!··)·/·│               │·Z$Z··Z$│             │··Z·Z···│
+   │[?!=/("│               │Z··Z$Z··│             │··Z·Z·Z·│
+   │)%*[?!(│               │$Z···$Z·│             │·Z·\··Z·│
+   │··@····│               │·Z$Z··Z$│             │··Z·Z···│
    └──+────┘               └───+────┘             └───+────┘
       #                        #                      #
    @ = shopkeeper          Z = sleeping           \ = throne
    Items for sale.         $ = gold piles         Monsters guard.
 ```
 
-**Shops.** Identified by the shopkeeper standing in the doorway (or
-inside). Shops sell items of a particular type: general
+**Shops.** Identified by the shopkeeper inside, usually near the
+door. Shops sell items of a particular type: general
 stores, armor shops, weapon shops, scroll shops, potion shops, and
 more. Items on the shop floor belong to the shopkeeper; pick one up
 and you'll be quoted a price. You can sell items too. Shopkeepers are
@@ -2280,18 +2289,18 @@ messages still come through.)
 | Message                                          | What it means                                                            |
 |--------------------------------------------------|--------------------------------------------------------------------------|
 | *"You have a sad feeling for a moment, then it passes."* | Your pet just died offscreen.                                        |
-| *"You hear someone counting gold coins."* | Vault on this level, with gold still in it.                                                       |
-| *"You hear the footsteps of a guard on patrol."*<br>*"You hear someone searching."* | Vault on this level (the "searching" message means the vault is already empty).    |
-| *"You hear a strange wind."*           | Oracle on this level.                                                                  |
-| *"You hear someone cursing shoplifters."* | Shop on this level.                                                                 |
 | *"You hear bubbling water."*<br>*"You hear water falling on coins."* | Fountain on this level.                                          |
-| *"You hear a bugle playing reveille!"* | A soldier just woke nearby soldiers; expect a fight.                                   |
-| *"You hear a slurping sound."*         | A gelatinous cube just ate items off the floor on this level.                          |
-| *"You hear a crunching sound."*        | A rust monster, rock mole, or other metallivore just ate something metallic.           |
+| *"You hear someone cursing shoplifters."*<br>*"You hear the chime of a cash register."* | Shop on this level.                                  |
+| *"You hear someone counting gold coins."*<br>*"You hear the footsteps of a guard on patrol."*<br>*"You hear someone searching."* | Vault on this level. The "counting" message means there's still gold inside; "searching" means the vault is already empty. |
 | *"You hear a wolf howling at the moon."* (or jackal) | A werecreature is somewhere on this level.                               |
 | *"You hear crashing rock."*            | A tunneler (dwarf, gnome miner, rock mole, umber hulk) just dug through stone.         |
+| *"You hear rumbling nearby."* (or *in the distance*) | A rolling boulder trap just fired offscreen. *"A rumbling stop abruptly"* means the boulder fell into a pit or teleport trap. |
 | *"You hear a chugging sound."*         | A monster just drank a potion (usually healing themselves).                            |
 | *"You hear a nearby zap."*             | A monster just zapped a wand at something offscreen.                                   |
+| *"You hear a strange wind."*           | Oracle on this level.                                                                  |
+| *"You hear a slurping sound."*         | A gelatinous cube just ate items off the floor on this level.                          |
+| *"You hear a crunching sound."*        | A rust monster, rock mole, or other metallivore just ate something metallic.           |
+| *"You hear a bugle playing reveille!"* | A soldier just woke nearby soldiers; expect a fight.                                   |
 | *"You feel healthy."*                  | Intrinsic poison resistance from a corpse.                                             |
 | *"You feel a momentary chill."*        | Intrinsic fire resistance from a corpse.                                               |
 | *"You feel full of hot air."*          | Intrinsic cold resistance from a corpse.                                               |
@@ -2322,10 +2331,10 @@ messages still come through.)
 | *"You feel agile! You must have been working on your reflexes!"* (and Str / Wis / Con variants) | A stat just went up from the hidden exercise system. See [Exercising Your Stats](#exercising-your-stats) for what counts as exercise. The mirror message *"You haven't been working on reflexes lately"* fires after a streak of abuse instead. |
 | *"You move very quietly."*             | Ring of stealth or elven cloak. (Elven boots give *"You walk very quietly"* instead.)  |
 | *"Wow! This makes you feel great!"*    | Blessed potion of restore ability with no remaining troubles — *or* a blessed magic fountain hit. |
-| *"You feel feverish."*                 | Lycanthropy infection from a were-monster. `q`uaff holy water, eat wolfsbane, or `#pray`. |
-| *"You are slowing down."*              | You're turning to stone. Immediately eat a lizard corpse, drink acid, or pray.         |
+| *"You feel feverish."*                 | Lycanthropy infection from a were-monster. *Quaff* holy water, eat wolfsbane, or `#pray`. |
+| *"You are slowing down."*              | You're turning to stone. Immediately eat a lizard corpse, drink acid, or `#pray`.      |
 | *"You are turning into slime."*        | Green-slime contagion. Burn it off (read a fire scroll, cast fireball on yourself, or self-zap a wand of fire), or `#pray`. |
-| *"You feel deathly sick."*             | Terminal illness (Pestilence, Demogorgon). Quaff extra healing, eat eucalyptus, or pray. |
+| *"You feel deathly sick."*             | Terminal illness (Pestilence, Demogorgon). Quaff extra healing, eat eucalyptus, or `#pray`. |
 
 ---
 
@@ -2838,12 +2847,12 @@ size. Anything that tries to pick "you" up snaps the spell.
 
 The `n` class (wood, water, mountain) doesn't want to kill you.
 She wants your inventory. Each successful claw hit lifts a random
-item from your pack, and the nymph then **teleports away**,
-sometimes within the level, sometimes off it entirely. Your bag
-of holding, your amulet of reflection, a freshly-wished cloak of
-magic resistance: gone, often to a level you'll never revisit.
-No NetHack horror story is more universal than "a nymph walked
-off the level with my bag of holding."
+item from your pack, and the nymph then **teleports away** to a
+random spot on the same level. Your bag of holding, your amulet
+of reflection, a freshly-wished cloak of magic resistance: gone,
+across the map, often into a room you haven't explored. No
+NetHack horror story is more universal than "a nymph walked off
+with my bag of holding."
 
 **The second claw is seduction.** Nymphs get two attacks per
 turn, and the seduction half drains experience levels if the
@@ -2857,15 +2866,15 @@ anything). [Engrave **Elbereth**](#elbereth): nymphs respect it. Or drop your
 most irreplaceable items on the floor before approaching.
 Whatever's not in your pack can't be stolen.
 
-**Already robbed?** A satiated nymph stays in the dungeon
-somewhere, often a nearby level, and her corpse drops what she
-stole. If you have time, search the floors above and below;
-sometimes you get the bag of holding back.
+**Already robbed?** A satiated nymph stays on the same level
+unless she later falls through a trapdoor or wanders onto a
+staircase. Her corpse drops what she stole, so it's often worth
+sweeping the level you were on before moving on.
 
 **Never engage a nymph while carrying the Amulet of Yendor**
-during the Ascension Run. Losing the Amulet to a teleporting
-thief means a return trip to Moloch's Sanctum, which is usually
-where ascension runs go to die.
+during the Ascension Run. If she steals it, you abandon your
+climb to sweep the current level for her corpse, and the
+mysterious force does not pause while you search.
 
 #### A note on puddings
 
@@ -10838,7 +10847,7 @@ All mimics are amorphous, hide, and are acid-resistant.
 -->
 
 
-Steals one item and teleports away. The cure is to engage from range, block her path with pets, or wear an amulet of life saving and steal the item back from her corpse later.
+Steals one item and teleports to a random spot on the same level. Engage from range, block her path with pets, or engrave Elbereth. If she gets a hit in, sweep the level for her corpse, which drops what she stole.
 
 All nymphs teleport.
 
