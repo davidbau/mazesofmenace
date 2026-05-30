@@ -47,6 +47,8 @@ import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
 import {
     movemonSinglemonLikeC,
     mMoveDistfleeckOnlyTurnLikeC,
+    mMoveCapitalKPostNewturnNearLikeC,
+    mMoveCapitalKPostNearEastMmoveRngLikeC,
     mMoveWizardD1Step1DistantAfterPeelLikeC,
     mMoveWizardD1EastTailCorridorRestLikeC,
     mMoveWizardD1LPostTailDistantLikeC,
@@ -66,6 +68,8 @@ import {
     dogMoveInventOnlyLikeC,
     dogMoveSearchPassNearHeroLikeC,
     dogMoveCapitalKPostDistantPeelPetLikeC,
+    dogMoveCapitalKPostNearPetLikeC,
+    dogMoveCapitalKPostNewturnPetLikeC,
 } from './dogmove_mon.js';
 import {
     isWizardD1Step1PeelLikeC,
@@ -707,6 +711,78 @@ export async function movemon(stepNum) {
                 );
                 await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
                 g.context._wizD1PostEastTailWalkNewTurnDoneLikeC = true;
+                /* C: post-new-turn pet — **`distfleeck`**, **`dochug:886`**, **`dog_move`** (~2851–2859). */
+                if (petCapitalK) {
+                    g.context._wizD1CapitalKPostNewturnTailLikeC = true;
+                    try {
+                        setApparxyMonsterLikeC(g, petCapitalK);
+                        g.context._wizD1CapitalKPostNewturnTailDistfleeckBudgetLikeC = 0;
+                        await distfleeckMonsterApplyLikeC(g, petCapitalK);
+                        rn2(4);
+                        dogMoveCapitalKPostNewturnPetLikeC(g, petCapitalK);
+                    } finally {
+                        delete g.context._wizD1CapitalKPostNewturnTailLikeC;
+                        delete g.context._wizD1CapitalKPostNewturnTailDistfleeckBudgetLikeC;
+                    }
+                }
+                /* C: capital **`K`** — distant **`distfleeck`**×2 + **`m_move`** (~2860–2862). */
+                if (peelDistant) {
+                    const u = g.u;
+                    if (u) {
+                        peelDistant.mux = u.ux | 0;
+                        peelDistant.muy = u.uy | 0;
+                    }
+                    setApparxyMonsterLikeC(g, peelDistant);
+                    await distfleeckMonsterApplyLikeC(g, peelDistant);
+                    await distfleeckMonsterApplyLikeC(g, peelDistant);
+                    g.context._wizD1CapitalKPostNewturnDistantRn20LikeC = true;
+                    g.context._wizD1PostEastTailWalkDistantMmoveLikeC = true;
+                    g.context._wizD1CapitalKPostNewturnDistantTailLikeC = true;
+                    try {
+                        await movemonSinglemonLikeC(g, peelDistant, effStepNum);
+                    } finally {
+                        delete g.context._wizD1CapitalKPostNewturnDistantTailLikeC;
+                        delete g.context._wizD1CapitalKPostNewturnDistantRn20LikeC;
+                        delete g.context._wizD1PostEastTailWalkDistantMmoveLikeC;
+                    }
+                }
+                /* C: capital **`K`** — east-niche **`m_move`** **`rn2(24)`** + **`distfleeck`**×2 (~2866–2868). */
+                if (nearWalk) {
+                    g.context._wizD1CapitalKNearMmoveLikeC = true;
+                    try {
+                        await mMoveCapitalKPostNewturnNearLikeC(
+                            g,
+                            nearWalk,
+                            effStepNum,
+                        );
+                    } finally {
+                        delete g.context._wizD1CapitalKNearMmoveLikeC;
+                    }
+                    g.context._wizD1CapitalKPostNewturnNearDoneLikeC = true;
+                }
+                /* C: capital **`K`** — post-near pet **`dochug:886`** **`rn2(4)`**, invent, **`mfndpos`**
+                 * (~2869–2873); no leading **`distfleeck`**. */
+                if (petCapitalK) {
+                    g.context._wizD1CapitalKPostNearPetPendingLikeC = true;
+                    try {
+                        setApparxyMonsterLikeC(g, petCapitalK);
+                        rn2(4);
+                        dogMoveCapitalKPostNearPetLikeC(g, petCapitalK);
+                        /* C: pet **`distfleeck`** after **`dog_move`** (~2878). */
+                        await distfleeckMonsterApplyLikeC(g, petCapitalK);
+                    } finally {
+                        delete g.context._wizD1CapitalKPostNearPetPendingLikeC;
+                        g.context._wizD1CapitalKPostNearPetDoneLikeC = true;
+                    }
+                }
+                /* C: capital **`K`** — near **`m_move`** **`rn2(12)`**×3 (~2879–2881) in same post. */
+                if (
+                    nearWalk
+                    && !g.context?._wizD1CapitalKPostNearShortLMmoveDoneLikeC
+                ) {
+                    mMoveCapitalKPostNearEastMmoveRngLikeC(g, nearWalk);
+                    g.context._wizD1CapitalKPostNearShortLMmoveDoneLikeC = true;
+                }
                 g.context._wizD1SkipLPostInventMoveloopLikeC = true;
                 g.context._wizD1PostEastTailWalkCompleteLikeC = true;
             }

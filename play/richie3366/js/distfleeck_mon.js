@@ -298,7 +298,12 @@ export function inYourSanctuaryMonsterSubsetLikeC(g, mtmp) {
 export async function distfleeckMonsterApplyLikeC(g, mtmp) {
     const out = { inrange: 0, nearby: 0, scared: 0 };
     if (!mtmp) return out;
-
+    /* C: capital **`K`** post-new-turn — one pet **`distfleeck`** (~2851) before **`mfndpos`**. */
+    if (g.context?._wizD1CapitalKPostNewturnTailLikeC) {
+        const n = g.context._wizD1CapitalKPostNewturnTailDistfleeckBudgetLikeC | 0;
+        if (n >= 1) return out;
+        g.context._wizD1CapitalKPostNewturnTailDistfleeckBudgetLikeC = n + 1;
+    }
     const bravegremlin = rn2(5) === 0;
 
     const u = g?.u;

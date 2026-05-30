@@ -143,6 +143,16 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
                     && !(m.mtame | 0)
                     && (m.mgenmklev | 0),
             );
+        /* C: capital **`K`** post-near — near **`m_move`** only (~2879–2881), no peel **`distfleeck`**. */
+        if (g.context?._wizD1CapitalKPostNearPetDoneLikeC) {
+            if (
+                nearMklev
+                && !g.context?._wizD1CapitalKPostNearShortLMmoveDoneLikeC
+            ) {
+                return [nearMklev];
+            }
+            return [];
+        }
         /** @type {typeof mons} */
         const ordered = [];
         if (nearMklev) ordered.push(nearMklev);

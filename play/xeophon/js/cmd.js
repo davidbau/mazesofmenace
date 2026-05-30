@@ -888,6 +888,7 @@ const BOULDER = 465;
 const GOLD_PIECE = 466;
 const CORPSE = 471;
 const STATUE = 472;
+const ROCK_CLASS = 13;
 const FLINT_STONE = 473;
 const HEAVY_IRON_BALL = 474;
 const IRON_CHAIN = 475;
@@ -11198,6 +11199,127 @@ function polymorphSystemShock() {
     return { message: 'You shudder for a moment.', more: false };
 }
 
+function polymorphSelfZapResult(item = null) {
+    if (heroHasUnchanging()) return { message: '', more: false };
+    if (item) setKnownWandLine(item, 'polymorph');
+    const shock = polymorphSystemShock();
+    if (shock) return shock;
+    const formName = randomPolyselfMonsterName();
+    const result = rn2(5) ? becomeMonster(formName) : becomeMonster('human');
+    newsym(game.u?.ux || 0, game.u?.uy || 0);
+    return {
+        message: result?.message || 'Nothing happens.',
+        more: !!result?.more,
+    };
+}
+
+function polyselfWornArmorMatching(pattern) {
+    return (game.inventory || []).find(item =>
+        item?.cls === 'armor' && isWornInventoryItem(item)
+        && pattern.test(inventoryItemName(item).toLowerCase()));
+}
+
+function polyselfWieldedWeaponItem() {
+    return (game.inventory || []).find(item =>
+        item && item.cls === 'weapon' && itemIsWielded(item));
+}
+
+function polyselfFormHasNoHead(form) {
+    return !!(form && (form.nohead || form.noHead || form.headless || form.hasHead === false));
+}
+
+function polyselfIsEyewearItem(item) {
+    return item?.cls === 'tool' && ['blindfold', 'towel', 'lenses'].includes(objectKindKey(item));
+}
+
+function polyselfWornEyewearItem() {
+    return (game.inventory || []).find(item =>
+        polyselfIsEyewearItem(item) && isWornInventoryItem(item));
+}
+
+function polyselfEyewearFalloffName(item) {
+    const kind = objectKindKey(item);
+    if (kind === 'lenses') return 'lenses';
+    if (kind === 'blindfold' || kind === 'towel') return kind;
+    return inventoryItemName(item).replace(/^(?:an?|the) /i, '').replace(/^pair of /i, '');
+}
+
+function clearPolyselfEyewearState(item, form) {
+    if (!polyselfIsEyewearItem(item) || !game.u) return;
+    if (objectKindKey(item) !== 'lenses') game.u.blind = !!form?.noeyes;
+    game.u.blindfolded = false;
+    game.u.Blindfolded = false;
+}
+
+function polyselfEquipmentFalloutForForm(form, { bodyArmor = null } = {}) {
+    const items = [];
+    const messages = [];
+    const addItem = item => {
+        if (item && !items.includes(item)) items.push(item);
+    };
+
+    addItem(bodyArmor);
+    if (form?.nohands || form?.verysmall) {
+        const gloves = polyselfWornArmorMatching(/glove|gauntlet/);
+        const weapon = polyselfWieldedWeaponItem();
+        if (gloves) {
+            messages.push(`You drop your gloves${weapon ? ' and weapon' : ''}!`);
+            addItem(weapon);
+            addItem(gloves);
+        } else if (weapon) {
+            messages.push('You find you must drop your weapon!');
+            addItem(weapon);
+        }
+
+        const shield = polyselfWornArmorMatching(/shield/);
+        if (shield) {
+            messages.push('You can no longer hold your shield!');
+            addItem(shield);
+        }
+
+        const helm = polyselfWornArmorMatching(/helm|helmet|hat|fedora|cornuthaum|cap|pot/);
+        if (helm) {
+            const helmName = /helm/.test(inventoryItemName(helm).toLowerCase()) ? 'helm' : 'helmet';
+            messages.push(`Your ${helmName} falls to the ground!`);
+            addItem(helm);
+        }
+
+        const boots = polyselfWornArmorMatching(/boot|shoe/);
+        if (boots) {
+            messages.push(`Your boots ${form.verysmall ? 'slide' : 'are pushed'} off your feet!`);
+            addItem(boots);
+        }
+    }
+
+    if (polyselfFormHasNoHead(form)) {
+        const eyewear = polyselfWornEyewearItem();
+        if (eyewear) {
+            const eyewearName = polyselfEyewearFalloffName(eyewear);
+            messages.push(`Your ${eyewearName} ${eyewearName === 'lenses' ? 'fall' : 'falls'} off!`);
+            addItem(eyewear);
+        }
+    }
+
+    return { items, messages };
+}
+
+function dropPolyselfEquipmentItems(items, floorMessages = [], form = polyselfForm()) {
+    for (const item of items || []) {
+        if (!(game.inventory || []).includes(item)) continue;
+        clearPolyselfEyewearState(item, form);
+        dropCarriedObjectAtHero(item, floorMessages);
+    }
+}
+
+function recomputePolyselfArmorClass(form = polyselfForm()) {
+    if (!game.u) return;
+    let ac = form?.mac ?? 10;
+    for (const item of game.inventory || []) {
+        if (isWornArmorItem(item)) ac -= wornArmorAcValueGreatestErosion(item);
+    }
+    game.u.uac = ac;
+}
+
 function becomeMonster(name) {
     const base = game.u._polyself_base;
     if (name === 'human' || name === game.urace?.noun || name === game._startup_race) {
@@ -11355,10 +11477,13 @@ function becomeMonster(name) {
         return /armor|mail/.test(name) && !/helm|helmet|gloves|gauntlets|boots|shoes|shield|cloak|shirt/.test(name);
     });
     if (bodyArmor && (form.nohands || form.verysmall)) {
+        const fallout = polyselfEquipmentFalloutForForm(form, { bodyArmor });
         message += '  Your armor falls around you!';
         game._topline_after_more = "You can't even move a handspan with this load!";
         game._topline_more_after_more = 1;
         game._polyself_drop_items_after_overload_more = 1;
+        game._polyself_drop_items_after_overload_items = fallout.items;
+        game._polyself_drop_items_after_overload_message = fallout.messages.join('  ');
         game._polyself_drop_items_after_overload_ac = 9;
         game.u.uac = game.u._polyself_base?.uac ?? game.u.uac ?? 10;
         game._status_uac_before_more = game.u._polyself_base?.uac ?? game.u.uac ?? 10;
@@ -11366,6 +11491,13 @@ function becomeMonster(name) {
         if (!String(game.u._statusSuffix || '').includes('Overloaded'))
             game.u._statusSuffix = `${game.u._statusSuffix || ''} Overloaded`;
         return { message, more: true };
+    }
+    const fallout = polyselfEquipmentFalloutForForm(form);
+    if (fallout.items.length) {
+        const floorMessages = [];
+        dropPolyselfEquipmentItems(fallout.items, floorMessages);
+        recomputePolyselfArmorClass(form);
+        message += `  ${[...fallout.messages, ...floorMessages].filter(Boolean).join('  ')}`;
     }
     const wieldedTool = (game.inventory || []).find(item =>
         item.cls === 'tool' && (item.wielded || item.line?.includes('weapon in')));
@@ -13270,6 +13402,7 @@ function consumeDipPotion(potion) {
 
 function polymorphObjectClassCode(item) {
     const cls = itemClassKey(item);
+    if (item?.otyp === BOULDER || item?.otyp === STATUE || cls === 'rock' || item?.glyph === '`') return ROCK_CLASS;
     if (isPotionObject(item)) return POTION_CLASS;
     if (cls === 'weapon' || item?.glyph === ')') return WEAPON_CLASS;
     if (cls === 'armor' || item?.glyph === '[') return ARMOR_CLASS;
@@ -13324,6 +13457,7 @@ function polymorphObjectClassName(item) {
     case TOOL_CLASS: return 'tool';
     case GEM_CLASS: return 'gem';
     case AMULET_CLASS: return 'amulet';
+    case ROCK_CLASS: return 'rock';
     default: return itemClassKey(item) || '';
     }
 }
@@ -15443,9 +15577,9 @@ function killMonsterFromSystemShock(mon, messages) {
     newsym(mon.mx, mon.my);
 }
 
-function polymorphPotionHitMonster(mon, messages) {
+function polymorphPotionHitMonster(mon, messages, { attackLevel = 6 } = {}) {
     if (monsterHasMagicResistanceForPolymorph(mon)) return true;
-    if (monsterResistsEffect(mon, 6)) return true;
+    if (monsterResistsEffect(mon, attackLevel)) return true;
 
     const visible = monsterCanBeSeenForPotionEffect(mon);
     if (!monsterIsShapechangerForPolymorph(mon) && !rn2(25)) {
@@ -15484,6 +15618,33 @@ function polymorphPotionHitMonster(mon, messages) {
     dropInvalidSaddleAfterPolymorph(mon, messages, oldVisible);
     newsym(mon.mx, mon.my);
     return true;
+}
+
+function addMonsterPolymorphBypassObjects(mon, bypassObjects) {
+    if (!bypassObjects) return;
+    for (const obj of mon?.minvent || []) bypassObjects.add(obj);
+    if (mon?.missile) bypassObjects.add(mon.missile);
+    if (mon?.saddle) bypassObjects.add(mon.saddle);
+}
+
+function polymorphRayHitMonster(mon, messages, {
+    item = null,
+    bypassObjects = null,
+    attackLevel = 12,
+} = {}) {
+    const messageCount = messages.length;
+    addMonsterPolymorphBypassObjects(mon, bypassObjects);
+    polymorphPotionHitMonster(mon, messages, { attackLevel });
+    if (!mon.dead && (mon.mhp ?? 1) > 0) {
+        mon.msleeping = 0;
+        mon.mpeaceful = false;
+    }
+    if (item && messages.length > messageCount)
+        setKnownWandLine(item, 'polymorph');
+}
+
+function polymorphWandHitMonster(mon, messages, item = null, bypassObjects = null) {
+    polymorphRayHitMonster(mon, messages, { item, bypassObjects, attackLevel: 12 });
 }
 
 function monsterResistsFire(mon) {
@@ -25961,21 +26122,105 @@ function polymorphShudderOdds(obj) {
     return Math.max(1, odds);
 }
 
-function useUpPolymorphShudderFloorObject(obj, x, y) {
-    if (!obj) return null;
-    const usedObj = splitFloorObjectForUseUp(obj, 1);
-    const shkp = shopkeeperForCostlySpot(x, y);
-    if (shopkeeperInHisShop(shkp)) {
-        const heroShkp = shopkeeperForShopRoom(game.u?.ux, game.u?.uy);
-        if (sameShopkeeper(shkp, heroShkp)) {
-            addContainerAndContentsToShopBill(usedObj, usedObj, usedObj, shkp, x, y);
-            markObjectTreeShopBillsUsedUp(usedObj);
-        } else {
-            shipObjectShopDebt(usedObj, x, y, { shopFloorObj: true, silent: true });
-        }
+function floorPolymorphObjectMaterial(obj) {
+    const explicit = String(obj?.oc_material || obj?.material || '').toLowerCase().replace(/^hi_/, '');
+    if (explicit) return explicit;
+    const kind = objectKindKey(obj);
+    if (obj?.otyp === CORPSE || obj?.otyp === 'corpse' || obj?.otyp === EGG
+        || obj?.otyp === MEATBALL || obj?.otyp === MEAT_STICK || obj?.otyp === ENORMOUS_MEATBALL
+        || /\b(?:corpse|egg|meat|tripe|glob)\b/.test(kind))
+        return 'flesh';
+    if (obj?.cls === 'food' || obj?.otyp === FOOD_CLASS || obj?.glyph === '%')
+        return 'veggy';
+    if (obj?.cls === 'scroll' || obj?.glyph === '?') return 'paper';
+    if (obj?.cls === 'spellbook' || obj?.glyph === '+') return 'paper';
+    return '';
+}
+
+function floorPolymorphGolemSpecForMaterial(material) {
+    const mat = String(material || '').toLowerCase().replace(/^hi_/, '');
+    if (['iron', 'metal', 'mithril'].includes(mat))
+        return { name: 'iron golem', prefix: 'metal ', cwt: 2000 };
+    if (['copper', 'silver', 'platinum', 'gemstone', 'mineral'].includes(mat)) {
+        const stone = rn2(2);
+        return stone
+            ? { name: 'stone golem', prefix: 'lithic ', cwt: 1900 }
+            : { name: 'clay golem', prefix: 'lithic ', cwt: 1550 };
     }
+    if (!mat || mat === '0' || mat === 'no_material' || mat === 'none' || mat === 'flesh')
+        return { name: 'flesh golem', prefix: 'organic ', cwt: 1400 };
+    if (mat === 'wood') return { name: 'wood golem', prefix: 'wood ', cwt: 900 };
+    if (mat === 'leather') return { name: 'leather golem', prefix: 'leather ', cwt: 800 };
+    if (mat === 'cloth') return { name: 'rope golem', prefix: 'cloth ', cwt: 450 };
+    if (mat === 'bone') return { name: 'skeleton', prefix: 'bony ', cwt: 300 };
+    if (mat === 'gold') return { name: 'gold golem', prefix: 'gold ', cwt: 450 };
+    if (mat === 'glass') return { name: 'glass golem', prefix: 'glassy ', cwt: 1800 };
+    if (mat === 'paper') return { name: 'paper golem', prefix: 'paper ', cwt: 400 };
+    return { name: 'straw golem', prefix: '', cwt: 400 };
+}
+
+function billPolymorphFloorUseUpObject(obj, x, y) {
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return;
+    const heroShkp = shopkeeperForShopRoom(game.u?.ux, game.u?.uy);
+    if (sameShopkeeper(shkp, heroShkp)) {
+        addContainerAndContentsToShopBill(obj, obj, obj, shkp, x, y);
+        markObjectTreeShopBillsUsedUp(obj);
+    } else {
+        shipObjectShopDebt(obj, x, y, { shopFloorObj: true, silent: true });
+    }
+}
+
+function useUpPolymorphShudderFloorObject(obj, x, y, count = 1) {
+    if (!obj) return null;
+    const usedObj = splitFloorObjectForUseUp(obj, count);
+    billPolymorphFloorUseUpObject(usedObj, x, y);
     removeFloorObject(usedObj);
     return usedObj;
+}
+
+function floorPolymorphPolyuseResists(obj) {
+    if (isPotionDipUnpolyableObject(obj)) return true;
+    rn2(100);
+    return false;
+}
+
+function enoughFloorPileForPolymon(pile) {
+    if (!pile.length) return false;
+    return pile.length > 1 || Math.max(1, Math.trunc(Number(pile[0]?.quan || 1))) > 1;
+}
+
+function floorPolymorphPileObjectsAt(x, y, skipObjects = null) {
+    return (game.level?.objects || [])
+        .filter(obj => obj && !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y
+            && !skipObjects?.has(obj));
+}
+
+function polyuseFloorPileForMaterial(x, y, material, minwt, skipObjects = null) {
+    let remaining = Math.max(0, Math.trunc(Number(minwt || 0)));
+    for (const obj of floorPolymorphPileObjectsAt(x, y, skipObjects)) {
+        if (remaining <= 0) break;
+        if (floorPolymorphPolyuseResists(obj)) continue;
+        const sameMaterial = floorPolymorphObjectMaterial(obj) === material;
+        if (sameMaterial === (rn2(remaining + 1) !== 0)) {
+            billPolymorphFloorUseUpObject(obj, x, y);
+            remaining -= Math.max(1, Math.trunc(Number(obj.quan || 1)));
+            removeFloorObject(obj);
+        }
+    }
+}
+
+async function createPolymonFromFloorPile(x, y, material, skipObjects = null) {
+    const pile = floorPolymorphPileObjectsAt(x, y, skipObjects);
+    if (!enoughFloorPileForPolymon(pile)) return [];
+    const spec = floorPolymorphGolemSpecForMaterial(material);
+    const genocided = (game._genocided_monsters || []).includes(spec.name);
+    const data = genocided ? null : monsterByRndName(spec.name);
+    const mon = await makemon(data, x, y, MM_NOMSG);
+    polyuseFloorPileForMaterial(x, y, material, spec.cwt, skipObjects);
+    if (mon && cansee(mon.mx, mon.my))
+        return [`Some ${spec.prefix}objects meld, and ${monsterIndefiniteName(mon.data?.name || 'monster')} arises from the pile!`];
+    return [];
 }
 
 function floorPolymorphContentsHaveShopCost(obj, shkp, x, y, seen = new Set()) {
@@ -26030,22 +26275,57 @@ function prepareFloorPolymorphReplacement(oldObj, newObj) {
     return newObj;
 }
 
-async function polymorphFloorPileAt(x, y, { consumeRangeRoll = false } = {}) {
-    const targetObjects = (game.level?.objects || [])
-        .filter(obj => !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp !== BOULDER);
-    rn2(19);
-    if (consumeRangeRoll) rn2(8);
+function restackFloorBouldersAt(x, y) {
+    const objects = game.level?.objects;
+    if (!objects?.length) return;
+    const sameSquare = objects.filter(obj =>
+        obj && !obj.transientProjectile && obj.ox === x && obj.oy === y);
+    if (sameSquare.length < 2 || !sameSquare.some(obj => obj.otyp === BOULDER)) return;
+    const restacked = [
+        ...sameSquare.filter(obj => obj.otyp !== BOULDER),
+        ...sameSquare.filter(obj => obj.otyp === BOULDER),
+    ];
+    if (sameSquare.every((obj, idx) => obj === restacked[idx])) return;
+    const sameSet = new Set(sameSquare);
+    let replacementIndex = 0;
+    game.level.objects = objects.map(obj =>
+        sameSet.has(obj) ? restacked[replacementIndex++] : obj);
+}
+
+function rockClassPolymorphReplacement(obj, x, y) {
+    const newObj = mkobj(ROCK_CLASS, false);
+    Object.assign(newObj, object_display(newObj), {
+        ox: x,
+        oy: y,
+        quan: obj.quan || 1,
+        cursed: obj.cursed,
+        blessed: obj.blessed,
+    });
+    if (obj.otyp === BOULDER) applySokobanGuilt();
+    return newObj;
+}
+
+async function polymorphFloorPileResultAt(x, y, {
+    skipObjects = null,
+    onlyObjects = null,
+    omitObjects = null,
+    restackBoulders = true,
+} = {}) {
+    const pileObjects = (game.level?.objects || [])
+        .filter(obj => obj && !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
+    const targetObjects = pileObjects
+        .filter(obj => !skipObjects?.has(obj)
+            && (!onlyObjects || onlyObjects.has(obj))
+            && !omitObjects?.has(obj));
     if (!targetObjects.length) {
-        game._pending_message = '';
-        game._message_more = 0;
-        game.context ??= {};
-        game.context.move = 1;
-        return false;
+        if (restackBoulders && pileObjects.length) restackFloorBouldersAt(x, y);
+        return { affected: false, messages: [] };
     }
     const removeTargets = new Set();
-    const replacements = [];
+    const replacementByOld = new Map();
     const alterationMessages = [];
     let didObjectShudder = false;
+    let polyZappedMaterial = null;
     let affected = false;
     for (const obj of [...targetObjects].reverse()) {
         if (polymorphReplacementDisallowed(obj)) continue;
@@ -26056,54 +26336,215 @@ async function polymorphFloorPileAt(x, y, { consumeRangeRoll = false } = {}) {
         game.u.uconduct.polypiles = Math.max(0, Math.trunc(Number(game.u.uconduct.polypiles || 0))) + 1;
         const shudderOdds = polymorphShudderOdds(obj);
         if (!rn2(shudderOdds)) {
-            rn2(45 + (game.u?.uluck || 0));
+            if (polyZappedMaterial == null) {
+                const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
+                for (let i = 0; i < quantity; i++) {
+                    if (!rn2(45 + (game.u?.uluck || 0))) {
+                        polyZappedMaterial = floorPolymorphObjectMaterial(obj);
+                        break;
+                    }
+                }
+            }
+            const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
+            const usedCount = quantity > 1 ? rnd(quantity - 1) : 1;
             rn2(100);
             if (!game._polymorph_wand_learned) {
                 rn2(19);
                 game._polymorph_wand_learned = 1;
             }
-            useUpPolymorphShudderFloorObject(obj, x, y);
+            useUpPolymorphShudderFloorObject(obj, x, y, usedCount);
             didObjectShudder = true;
             affected = true;
             continue;
         }
-        const roll = rnd(1000);
-        const newObjId = next_ident();
-        if (obj.cls === 'potion' || obj.cls === 'scroll') {
-            if (!rn2(4)) rn2(2);
-        }
-        const newObj = { ...obj, id: newObjId, ox: x, oy: y, quan: obj.quan || 1, cursed: obj.cursed, blessed: obj.blessed };
-        if (obj.cls === 'potion') {
-            Object.assign(newObj, { cls: 'potion', glyph: '!', otyp: 'potion', color: NO_COLOR });
-            const appearance = game._object_descriptions?.potions?.[potionIndexForRoll(roll)]?.description || 'clear';
-            newObj.kind = `${appearance} potion`;
-        } else if (obj.cls === 'scroll') {
-            Object.assign(newObj, { cls: 'scroll', glyph: '?', otyp: 'scroll', color: CLR_WHITE });
-            const label = game._object_descriptions?.scrolls?.[scrollIndexForRoll(roll)] || 'ELBIB YLOH';
-            newObj.kind = `scroll labeled ${label}`;
+        let newObj;
+        if (polymorphObjectClassCode(obj) === ROCK_CLASS) {
+            newObj = rockClassPolymorphReplacement(obj, x, y);
         } else {
-            newObj.kind = obj.kind || obj.cls;
+            const roll = rnd(1000);
+            const newObjId = next_ident();
+            if (obj.cls === 'potion' || obj.cls === 'scroll') {
+                if (!rn2(4)) rn2(2);
+            }
+            newObj = { ...obj, id: newObjId, ox: x, oy: y, quan: obj.quan || 1, cursed: obj.cursed, blessed: obj.blessed };
+            if (obj.cls === 'potion') {
+                Object.assign(newObj, { cls: 'potion', glyph: '!', otyp: 'potion', color: NO_COLOR });
+                const appearance = game._object_descriptions?.potions?.[potionIndexForRoll(roll)]?.description || 'clear';
+                newObj.kind = `${appearance} potion`;
+            } else if (obj.cls === 'scroll') {
+                Object.assign(newObj, { cls: 'scroll', glyph: '?', otyp: 'scroll', color: CLR_WHITE });
+                const label = game._object_descriptions?.scrolls?.[scrollIndexForRoll(roll)] || 'ELBIB YLOH';
+                newObj.kind = `scroll labeled ${label}`;
+            } else {
+                newObj.kind = obj.kind || obj.cls;
+            }
         }
         prepareFloorPolymorphReplacement(obj, newObj);
         const angerMessage = floorPolymorphShopkeeperAngerMessage(obj, x, y);
         if (angerMessage && !alterationMessages.includes(angerMessage))
             alterationMessages.push(angerMessage);
         removeTargets.add(obj);
-        replacements.unshift(newObj);
+        replacementByOld.set(obj, newObj);
         affected = true;
         rn2(100);
     }
     if (affected) {
-        game.level.objects = (game.level?.objects || []).filter(obj => !removeTargets.has(obj));
-        game.level.objects.push(...replacements);
+        game.level.objects = (game.level?.objects || []).flatMap(obj => {
+            if (!removeTargets.has(obj)) return [obj];
+            const replacement = replacementByOld.get(obj);
+            return replacement ? [replacement] : [];
+        });
+        if (restackBoulders) restackFloorBouldersAt(x, y);
         newsym(x, y);
+    } else if (restackBoulders) {
+        restackFloorBouldersAt(x, y);
     }
-    const messages = didObjectShudder ? ['You feel shuddering vibrations.'] : [];
+    const messages = [];
+    if (polyZappedMaterial != null) {
+        messages.push(...await createPolymonFromFloorPile(x, y, polyZappedMaterial, skipObjects));
+        if (restackBoulders) restackFloorBouldersAt(x, y);
+    }
+    if (didObjectShudder) messages.push('You feel shuddering vibrations.');
     messages.push(...alterationMessages);
-    await setMessage(messages.join('  '));
+    return { affected, messages };
+}
+
+async function finishPolymorphFloorPileResult(result) {
+    await setMessage(result.messages.join('  '));
     game.context ??= {};
     game.context.move = 1;
-    return affected;
+    return result.affected;
+}
+
+function heroCanHideUnderObjects() {
+    const form = game.u?._polyself_form || game.u?.youmonst?.data || game.u?.data || {};
+    return !!form.hidesUnder;
+}
+
+function heroHidingUnderObjects() {
+    return !!(game.u?.uundetected && heroCanHideUnderObjects());
+}
+
+function topFloorObjectAt(x, y) {
+    return [...(game.level?.objects || [])].reverse().find(obj =>
+        obj && !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y) || null;
+}
+
+function refreshHeroHidingUnderObjectsAt(x, y) {
+    if (!heroCanHideUnderObjects()) return;
+    const hasCover = (game.level?.objects || []).some(obj =>
+        obj && !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
+    game.u.uundetected = hasCover ? 1 : 0;
+}
+
+async function polymorphFloorPileAt(x, y, {
+    consumeRangeRoll = false,
+    onlyObjects = null,
+    omitObjects = null,
+    item = null,
+    learnOnAffected = false,
+    refreshHiding = false,
+    restackBoulders = true,
+} = {}) {
+    rn2(19);
+    if (consumeRangeRoll) rn2(8);
+    const result = await polymorphFloorPileResultAt(x, y, { onlyObjects, omitObjects, restackBoulders });
+    if (refreshHiding) refreshHeroHidingUnderObjectsAt(x, y);
+    if (learnOnAffected && result.affected && item)
+        setKnownWandLine(item, 'polymorph');
+    return finishPolymorphFloorPileResult(result);
+}
+
+function polymorphRayMonsterAt(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon && !mon.dead && (mon.mhp ?? 1) > 0 && mon.mx === x && mon.my === y) || null;
+}
+
+function addUniquePolymorphMessages(messages, additions) {
+    for (const message of additions) {
+        if (message && !messages.includes(message)) messages.push(message);
+    }
+}
+
+function polymorphRayBlockedAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return true;
+    const typ = loc.typ ?? ROOM;
+    return !ZAP_POS(typ) || (typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+async function polymorphFloorPileRay(dir, item = null, { attackLevel = 12 } = {}) {
+    rn2(19);
+    let range = rn1(8, 6);
+    let x = game.u?.ux || 0;
+    let y = game.u?.uy || 0;
+    const messages = [];
+    const bypassObjects = new Set();
+    let affected = false;
+    while (range-- > 0) {
+        x += dir.dx;
+        y += dir.dy;
+        if (!isok(x, y)) break;
+        const monster = polymorphRayMonsterAt(x, y);
+        if (monster) {
+            polymorphRayHitMonster(monster, messages, { item, bypassObjects, attackLevel });
+            affected = true;
+            range -= 3;
+        }
+        const result = await polymorphFloorPileResultAt(x, y, { skipObjects: bypassObjects });
+        if (result.affected) {
+            affected = true;
+            range--;
+            addUniquePolymorphMessages(messages, result.messages);
+        }
+        if (polymorphRayBlockedAt(x, y)) break;
+    }
+    return finishPolymorphFloorPileResult({ affected, messages });
+}
+
+async function polymorphSpellDirection(ch) {
+    const dir = movementDirection(ch);
+    const verticalDir = !dir && ch === '<' ? { dx: 0, dy: 0, dz: -1 }
+        : !dir && ch === '>' ? { dx: 0, dy: 0, dz: 1 } : null;
+    if (ch === '.') {
+        const result = polymorphSelfZapResult();
+        if (result.message) await setMessage(result.message, result.more);
+        else {
+            game._pending_message = '';
+            game._message_more = 0;
+        }
+        return true;
+    }
+    if (!dir && !verticalDir) return false;
+    if (verticalDir?.dz < 0) {
+        if (heroHidingUnderObjects()) {
+            const topObject = topFloorObjectAt(game.u?.ux || 0, game.u?.uy || 0);
+            if (topObject) {
+                await polymorphFloorPileAt(game.u?.ux || 0, game.u?.uy || 0, {
+                    onlyObjects: new Set([topObject]),
+                    refreshHiding: true,
+                    restackBoulders: false,
+                });
+                return true;
+            }
+        }
+        rn2(19);
+        game._pending_message = '';
+        game._message_more = 0;
+        return true;
+    }
+    if (!verticalDir) {
+        await polymorphFloorPileRay(dir, null, { attackLevel: game.u?.ulevel || 1 });
+        return true;
+    }
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const topObject = heroHidingUnderObjects() ? topFloorObjectAt(x, y) : null;
+    await polymorphFloorPileAt(x, y, {
+        omitObjects: topObject ? new Set([topObject]) : null,
+        refreshHiding: !!topObject,
+    });
+    return true;
 }
 
 function billHeldMagicBagLostItem(obj) {
@@ -43372,29 +43813,23 @@ export async function rhack(_cmd) {
             if (game._polyself_drop_items_after_overload_more) {
                 game._polyself_drop_items_after_overload_more = 0;
                 rn2(19);
-                const dropLetters = new Set(['c', 'd', 'f', 'z']);
-                for (const item of [...(game.inventory || [])]) {
-                    if (!dropLetters.has(item.letter)) continue;
-                    const dropped = {
-                        ...item,
-                        line: undefined,
-                        worn: false,
-                        wielded: false,
-                        ox: game.u?.ux || 0,
-                        oy: game.u?.uy || 0,
-                        glyph: item.cls === 'armor' ? '[' : item.glyph || ')',
-                        color: item.color ?? (item.cls === 'armor' ? CLR_BROWN : CLR_CYAN),
-                    };
-                    stopCarriedFigurineTimerOnLeave(dropped);
-                    removeInventoryItem(item);
-                    game.level?.objects?.push(dropped);
-                }
+                const floorMessages = [];
+                const queuedItems = game._polyself_drop_items_after_overload_items;
+                const dropItems = Array.isArray(queuedItems)
+                    ? queuedItems
+                    : [...(game.inventory || [])].filter(item => new Set(['c', 'd', 'f', 'z']).has(item.letter));
+                dropPolyselfEquipmentItems(dropItems, floorMessages);
+                game._polyself_drop_items_after_overload_items = null;
                 if (game.u) game.u.uac = game._polyself_drop_items_after_overload_ac ?? 9;
                 game._polyself_drop_items_after_overload_ac = null;
                 newsym(game.u?.ux || 0, game.u?.uy || 0);
                 const eye = (game.level?.monsters || []).find(mon => mon.data?.name === 'floating eye');
                 if (eye) newsym(eye.mx, eye.my);
-                game._pending_message = 'You drop your gloves and weapon!  Your helm falls to the ground!';
+                game._pending_message = [
+                    game._polyself_drop_items_after_overload_message,
+                    ...floorMessages,
+                ].filter(Boolean).join('  ');
+                game._polyself_drop_items_after_overload_message = '';
                 game._message_more = 0;
                 game._keep_pending_message = 1;
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
@@ -46693,37 +47128,47 @@ export async function rhack(_cmd) {
         game._zap_item = null;
         game._command_mode = null;
         if (selfZap) {
-            const shock = polymorphSystemShock();
-            if (shock) {
-                game.context.move = 1;
-                await setMessage(shock.message, !!shock.more);
-                return;
-            }
-            const formName = randomPolyselfMonsterName();
-            const result = rn2(5) ? becomeMonster(formName) : becomeMonster('human');
-            if (item) {
-                item.wand = 'polymorph';
-                item.kind = 'polymorph';
-                item.wandIndex = 12;
-                item.known = true;
-                item.line = normalInventoryLine({ ...item, line: '' });
-            }
-            newsym(game.u.ux, game.u.uy);
+            const result = polymorphSelfZapResult(item);
             game.context.move = 1;
-            await setMessage(result?.message || 'Nothing happens.', !!result?.more);
+            if (result.message) await setMessage(result.message, result.more);
+            else {
+                game._pending_message = '';
+                game._message_more = 0;
+            }
             return;
         }
         if (!dir && !verticalDir) return;
         if (verticalDir?.dz < 0) {
+            if (heroHidingUnderObjects()) {
+                const topObject = topFloorObjectAt(game.u?.ux || 0, game.u?.uy || 0);
+                if (topObject) {
+                    await polymorphFloorPileAt(game.u?.ux || 0, game.u?.uy || 0, {
+                        onlyObjects: new Set([topObject]),
+                        item,
+                        learnOnAffected: true,
+                        refreshHiding: true,
+                        restackBoulders: false,
+                    });
+                    return;
+                }
+            }
             rn2(19);
             game._pending_message = '';
             game._message_more = 0;
             game.context.move = 1;
             return;
         }
-        const x = verticalDir ? (game.u?.ux || 0) : (game.u?.ux || 0) + dir.dx;
-        const y = verticalDir ? (game.u?.uy || 0) : (game.u?.uy || 0) + dir.dy;
-        await polymorphFloorPileAt(x, y, { consumeRangeRoll: !verticalDir });
+        if (!verticalDir) {
+            await polymorphFloorPileRay(dir, item);
+            return;
+        }
+        const x = game.u?.ux || 0;
+        const y = game.u?.uy || 0;
+        const topObject = heroHidingUnderObjects() ? topFloorObjectAt(x, y) : null;
+        await polymorphFloorPileAt(x, y, {
+            omitObjects: topObject ? new Set([topObject]) : null,
+            refreshHiding: !!topObject,
+        });
         return;
     }
 
@@ -46803,6 +47248,9 @@ export async function rhack(_cmd) {
             } else {
                 await setMessage(`You cast ${spell?.name || 'a spell'}.`);
             }
+        } else if (spell?.name === 'polymorph') {
+            if (!(await polymorphSpellDirection(ch)))
+                await setMessage(`You cast ${spell?.name || 'a spell'}.`);
         } else if (spell?.category === 'healing') {
             game.u.uhp = Math.min(game.u.uhpmax || game.u.uhp || 1, (game.u.uhp || 1) + d(6, 4));
             await setMessage('You feel better.');

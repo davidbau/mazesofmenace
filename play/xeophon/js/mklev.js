@@ -5468,6 +5468,22 @@ export const STONE_RESISTANT_MONSTERS = new Set([
 const MAGIC_ITEM_MONSTERS = new Set([
     'lich', 'demilich', 'master lich', 'arch-lich',
 ]);
+const NOHEAD_MONSTERS = new Set([
+    'acid blob', 'quivering blob', 'gelatinous cube', 'gas spore',
+    'floating eye', 'freezing sphere', 'flaming sphere', 'beholder',
+    'blue jelly', 'spotted jelly', 'ochre jelly', 'small mimic',
+    'large mimic', 'giant mimic', 'lurker above', 'trapper',
+    'fog cloud', 'dust vortex', 'ice vortex', 'energy vortex',
+    'steam vortex', 'fire vortex', 'yellow light', 'black light',
+    'air elemental', 'fire elemental', 'earth elemental', 'water elemental',
+    'lichen', 'brown mold', 'yellow mold', 'green mold',
+    'red mold', 'shrieker', 'violet fungus', 'gray ooze',
+    'brown pudding', 'green slime', 'black pudding', 'Juiblex',
+    'djinni',
+]);
+for (const mon of RANDOM_MONSTER_BY_NAME.values()) {
+    if (NOHEAD_MONSTERS.has(mon.name)) mon.nohead = true;
+}
 const NOEYES_MONSTERS = new Set([
     'lichen', 'brown mold', 'yellow mold', 'green mold', 'red mold',
     'shrieker', 'violet fungus',
@@ -5522,6 +5538,7 @@ function monsterFromRndMeta(row) {
         throwsRocks: monsterThrowsRocksByMeta(name, glyph, flags),
         likesMagic: MAGIC_ITEM_MONSTERS.has(name),
         mindless: flags.includes('i'),
+        nohead: NOHEAD_MONSTERS.has(name),
         noeyes: NOEYES_MONSTERS.has(name),
         inAir: flags.includes('F'),
         swimmer: flags.includes('w'),
