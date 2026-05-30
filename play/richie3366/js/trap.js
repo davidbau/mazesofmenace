@@ -2910,6 +2910,16 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
     const u = g.u;
     if (!mtmp || !u) return TRAP_EFFECT_FINISHED;
 
+    if (
+        (mtmp.mtame | 0)
+        && g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+    ) {
+        g.context = g.context || {};
+        g.context._wizD1EastTailWalkMintrapTailLikeC = true;
+    }
+
     const trap = tAt(mtmp.mx, mtmp.my);
 
     if (!trap) {
@@ -2954,7 +2964,10 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
  * Syncs **`_trapPrev*`** each moveloop step so stationary monsters do not re-trigger.
  */
 export async function mintrapMoveloopTail() {
-    const mons = game.level?.monsters;
+    const g = game;
+    g.context = g.context || {};
+    g.context._wizD1MintrapMoveloopTailRanLikeC = true;
+    const mons = g.level?.monsters;
     if (!mons?.length) return;
     for (const m of mons) {
         if (
@@ -2963,6 +2976,15 @@ export async function mintrapMoveloopTail() {
             && (m._trapPrevMx !== m.mx || m._trapPrevMy !== m.my)
             && tAt(m.mx, m.my)
         ) {
+            if (
+                (m.mtame | 0)
+                && g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            ) {
+                g.context = g.context || {};
+                g.context._wizD1EastTailWalkMintrapTailLikeC = true;
+            }
             await mintrap(m, NO_TRAP_FLAGS);
         }
         m._trapPrevMx = m.mx;

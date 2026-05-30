@@ -8,6 +8,16 @@ export function isFirstSearchMovemonPassLikeC(g) {
     return (g.context?._searchStep11Passes | 0) === 1;
 }
 
+/** C: wizard D:1 — short **`l`** **`fmon`** after east-tail walk mintrap (~2806+). */
+export function wizD1EastTailShortLActiveLikeC(g) {
+    return (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && !!g.context?._wizD1PostEastTailWalkCompleteLikeC
+    );
+}
+
 /**
  * C: **`movemon`** step-1 peel — bulk **`distfleeck`** per **`fmon`** at **`stepNum===1`**
  * (tourist **`seed8000`**); tame pets still need **`dog_move`** and **`dog_goal`** in that pass
@@ -18,6 +28,7 @@ export function isFirstSearchMovemonPassLikeC(g) {
  */
 export function isMovemonStepOnePeelLikeC(g, stepNum) {
     if ((stepNum | 0) === 1) return true;
+    if (wizD1EastTailShortLActiveLikeC(g)) return true;
     return (
         isFirstSearchMovemonPassLikeC(g)
         && !!g.context?._searchPass1NearMonLikeC
@@ -26,14 +37,18 @@ export function isMovemonStepOnePeelLikeC(g, stepNum) {
 
 /** C: wizard D:1 — **`movemon(stepNum 1)`** peel + post-peel distant **`m_move`** (**`seed0006`** **`n`**). */
 export function isWizardD1Step1PeelLikeC(g, stepNum) {
+    const wizD1 =
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1;
+    if (!wizD1) return false;
+    if (wizD1EastTailShortLActiveLikeC(g)) return true;
     return (
         (
             !!g.context?._postBumpInlineDoneLikeC
             || !!g.context?._wizD1PostEastTailWalkFmonLikeC
+            || !!g.context?._wizD1EastTailShortLInlinedLikeC
         )
-        && g.urole?.abbr === 'Wiz'
-        && (g.u?.uz?.dnum | 0) === 0
-        && (g.u?.uz?.dlevel | 0) === 1
         && (stepNum | 0) === 1
     );
 }

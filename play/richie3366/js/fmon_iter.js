@@ -11,6 +11,7 @@ import {
     isRogueColonMovemonActiveLikeC,
     isSecondSearchMovemonPassLikeC,
     rogueSecondSearchFullFmonLikeC,
+    wizD1EastTailShortLActiveLikeC,
 } from './monmove_search.js';
 import {
     eastFungusDoorNicheAtLikeC,
@@ -131,6 +132,24 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         if (distant) ordered.push(distant);
         return ordered;
     }
+    /* C: post-east-tail walk — next **`l`**: near **`distfleeck`**, pet **`dog_move`**, near **`distfleeck`**. */
+    if (wizD1EastTailShortLActiveLikeC(g)) {
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const nearMklev =
+            wizD1EastDoorMklevMonLikeC(g)
+            ?? mons.find(
+                (m) =>
+                    m !== pet
+                    && !(m.mtame | 0)
+                    && (m.mgenmklev | 0),
+            );
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (nearMklev) ordered.push(nearMklev);
+        if (pet) ordered.push(pet);
+        if (nearMklev) ordered.push(nearMklev);
+        return ordered;
+    }
     /* C: post-east-tail walk — near **`distfleeck`**, pet **`dog_move`** / **`obj_resists`** (~2770+). */
     if (
         g.context?._wizD1PostEastTailWalkFmonLikeC
@@ -138,6 +157,7 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         && (g.u?.uz?.dnum | 0) === 0
         && (g.u?.uz?.dlevel | 0) === 1
         && !g.context?._postBumpKillDochugGateLikeC
+        && !g.context?._wizD1PostEastTailWalkCompleteLikeC
     ) {
         const pet = mons.find((m) => (m.mtame | 0) !== 0);
         const nearMklev =

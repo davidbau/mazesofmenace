@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -13679,9 +13679,116 @@ function stoneToFleshCorpstatAnimationInfo(data = {}) {
     return { data, golemXform: false };
 }
 
-function stoneToFleshFloorStatueDeferredCorpstat(data = {}) {
-    return !stoneToFleshCorpstatMonsterIsGolem(data)
-        && !!(data.unique || data.noCorpse || data.cantRevive || data.noCorpstat);
+function savedCorpstatMonsterTraits(item) {
+    return item?.omonst || item?.oextra?.omonst || null;
+}
+
+function clearSavedCorpstatMonsterTraits(item) {
+    if (!item) return;
+    delete item.omonst;
+    delete item.omid;
+    if (item.oextra) {
+        delete item.oextra.omonst;
+        delete item.oextra.omid;
+    }
+}
+
+function stoneToFleshSavedMonsterTraits(item) {
+    return savedCorpstatMonsterTraits(item);
+}
+
+function stoneToFleshStatueHasSavedMonsterTraits(item) {
+    return !!stoneToFleshSavedMonsterTraits(item);
+}
+
+function stoneToFleshStatueHasAttachedMonsterId(item) {
+    return !!(item?.omid || item?.oextra?.omid);
+}
+
+function stoneToFleshHumanZombieData() {
+    return monsterByRndName('human zombie')
+        || RANDOM_MONSTER_BY_NAME.get('human zombie')
+        || { name: 'human zombie', mlet: 'Z', glyph: 'Z', mlevel: 4, hpLevel: 5, mmove: 6, noCorpse: true };
+}
+
+function stoneToFleshLongWormData() {
+    return monsterByRndName('long worm')
+        || RANDOM_MONSTER_BY_NAME.get('long worm')
+        || { name: 'long worm', mlet: 'w', glyph: 'w', mlevel: 8, hpLevel: 9, mmove: 3 };
+}
+
+function stoneToFleshDoppelgangerData() {
+    return monsterByRndName('doppelganger')
+        || RANDOM_MONSTER_BY_NAME.get('doppelganger')
+        || { name: 'doppelganger', mlet: '@', glyph: '@', mlevel: 9, hpLevel: 10, mmove: 12 };
+}
+
+function stoneToFleshCantReviveZombieSubstitute(data = {}) {
+    const name = String(data.name || '').toLowerCase();
+    return data.guard || data.highCleric || data.alignedCleric || data.angel
+        || name === 'guard' || name === 'high cleric' || name === 'aligned cleric' || name === 'angel';
+}
+
+function stoneToFleshStatueCantReviveInfo(item, data = {}) {
+    const name = String(data.name || '').toLowerCase();
+    if (stoneToFleshCantReviveZombieSubstitute(data))
+        return { data: stoneToFleshHumanZombieData(), failureData: data, golemXform: false };
+    if (name === 'long worm tail' || data.longWormTail)
+        return { data: stoneToFleshLongWormData(), failureData: data, golemXform: false };
+    if ((data.unique || data.cantRevive) && !stoneToFleshStatueHasSavedMonsterTraits(item)) {
+        return {
+            data: stoneToFleshDoppelgangerData(),
+            directedDoppelganger: true,
+            directedForm: data,
+            failureData: data,
+            golemXform: false,
+            noCountBirth: true,
+            preserveOriginalOnFailure: true,
+        };
+    }
+    return null;
+}
+
+function stoneToFleshSavedTraitsAnimationInfo(item, { adjacentOk = false } = {}) {
+    const savedTraits = stoneToFleshSavedMonsterTraits(item);
+    if (!savedTraits) return null;
+    return {
+        data: savedTraits.data || item?.corpsenm,
+        savedTraits,
+        golemXform: false,
+        noCountBirth: true,
+        noTail: true,
+        noWait: true,
+        adjacentOk,
+    };
+}
+
+function stoneToFleshFloorStatueAnimationInfo(item, x, y) {
+    if (!(item?.otyp === STATUE || item?.kind === 'statue') || !item?.corpsenm) return null;
+    const material = stoneToFleshObjectMaterial(item);
+    if (material !== 'mineral' && material !== 'gemstone') return null;
+    const cantReviveInfo = stoneToFleshStatueCantReviveInfo(item, item.corpsenm);
+    if (cantReviveInfo) return cantReviveInfo;
+    const golemInfo = stoneToFleshCorpstatGolemAnimationInfo(item.corpsenm);
+    if (golemInfo?.golemXform) return golemInfo;
+    const savedInfo = stoneToFleshSavedTraitsAnimationInfo(item, { adjacentOk: true });
+    if (savedInfo) return savedInfo;
+    if (stoneToFleshStatueHasAttachedMonsterId(item) || item.corpsenm.noCorpstat) return null;
+    return golemInfo || stoneToFleshCorpstatAnimationInfo(item.corpsenm);
+}
+
+function statueTrapAnimationInfo(item) {
+    if (!(item?.otyp === STATUE || item?.kind === 'statue') || !item?.corpsenm) return null;
+    const cantReviveInfo = stoneToFleshStatueCantReviveInfo(item, item.corpsenm);
+    if (cantReviveInfo) return cantReviveInfo;
+    const savedInfo = stoneToFleshSavedTraitsAnimationInfo(item);
+    if (savedInfo) return savedInfo;
+    return { data: item.corpsenm, golemXform: false };
+}
+
+function statueTrapFailureRetriesNextStatue(statue, info) {
+    const data = info?.failureData || statue?.corpsenm || info?.data || {};
+    return !!(data.unique || data.nemesis || data.rider);
 }
 
 function stoneToFleshFigurineAnimationInfo(item) {
@@ -13721,8 +13828,8 @@ function isStoneToFleshAnimationFailure(result) {
 }
 
 function stoneToFleshFailedAnimationPreservesOriginal(info) {
-    const data = info?.data || {};
-    return !!(data.unique || data.noCorpse);
+    const data = info?.failureData || info?.data || {};
+    return !!(info?.preserveOriginalOnFailure || data.unique || data.noCorpse);
 }
 
 function stoneToFleshFailedAnimationCorpse(item) {
@@ -13847,18 +13954,98 @@ async function stoneToFleshAnimateFloorFigurine(item, x, y) {
     return messages;
 }
 
-function stoneToFleshFloorStatueAnimationInfo(item, x, y) {
-    if (!(item?.otyp === STATUE || item?.kind === 'statue') || !item?.corpsenm) return null;
-    const material = stoneToFleshObjectMaterial(item);
-    if (material !== 'mineral' && material !== 'gemstone') return null;
-    if (stoneToFleshFloorStatueDeferredCorpstat(item.corpsenm)) return null;
-    return stoneToFleshCorpstatAnimationInfo(item.corpsenm);
-}
-
 function stoneToFleshGolemStatueVerb(info, mon) {
     if (info?.golemXform) return 'turns into flesh';
     if (stoneToFleshCorpstatMonsterIsGolem(mon?.data || {})) return 'moves';
     return statueAnimationVerb(mon);
+}
+
+function stoneToFleshRetargetMonsterForm(mon, data, { chamBase = null } = {}) {
+    if (!mon || !data) return;
+    if (data.male) mon.female = false;
+    else if (data.female) mon.female = true;
+    else if (!data.neuter && !rn2(10)) mon.female = !mon.female;
+    const level = data.hpLevel ?? adjustedMonsterLevel(data);
+    const hpMax = Math.max(1, monster_hp(data, level));
+    const oldHp = Math.max(1, mon.mhp || 1);
+    const oldMax = Math.max(1, mon.mhpmax || oldHp);
+    Object.assign(mon, {
+        data: { ...data, hpLevel: level },
+        name: data.name,
+        mlet: data.mlet,
+        glyph: data.glyph,
+        color: data.color,
+        m_lev: level,
+        mlevel: level,
+        mhpmax: hpMax,
+        mhp: Math.max(1, Math.min(hpMax, Math.trunc((oldHp * hpMax) / oldMax))),
+        meverseen: 0,
+    });
+    if (chamBase) mon.chamBase = chamBase;
+    else delete mon.chamBase;
+    set_malign(mon);
+}
+
+function applySavedCorpstatMonsterTraits(mon, saved, dataHint = null) {
+    if (!mon || !saved) return;
+    const data = saved.data && typeof saved.data === 'object'
+        ? saved.data
+        : dataHint || mon.data || {};
+    const level = Math.max(0, Math.trunc(Number(saved.m_lev ?? saved.mlevel ?? mon.m_lev ?? mon.mlevel ?? data.mlevel ?? 1)));
+    const baseMax = Math.max(1, Math.trunc(Number(saved.mhpmax || mon.mhpmax || monster_hp(data, data.hpLevel ?? level))));
+    const hpMax = Math.max(baseMax, Math.trunc(Number((data.mlevel || 0) + 1)));
+    Object.assign(mon, {
+        data: { ...data, hpLevel: data.hpLevel ?? level },
+        name: data.name || mon.name,
+        mlet: data.mlet || mon.mlet,
+        glyph: data.glyph || mon.glyph,
+        color: data.color || mon.color,
+        m_lev: level,
+        mlevel: level,
+        mhpmax: hpMax,
+        mhp: hpMax,
+        mrevived: true,
+        mavenge: 0,
+        meating: 0,
+        mleashed: 0,
+        mtrapped: 0,
+        msleeping: 0,
+        mfrozen: 0,
+        mcanmove: true,
+        mcan: 0,
+        mcansee: true,
+        mblinded: 0,
+        mstun: 0,
+        mconf: 0,
+        dead: false,
+    });
+    for (const field of [
+        'female', 'mtame', 'pet', 'mpeaceful', 'isminion', 'isshk', 'ispriest', 'isgd',
+        'givenName', 'chamBase', 'vampBase', 'perminvis', 'minvis', 'invisible', 'mspeed',
+        'mflee', 'mfleetim', 'mtrapseen', 'mstrategy', 'waiting', 'maligntyp',
+        'mundetected', 'm_ap_type', 'appearObj', 'appearGlyph',
+    ]) {
+        if (saved[field] !== undefined) mon[field] = saved[field];
+    }
+    mon.minvent = [];
+    mon.hasInventory = false;
+    mon.mw = null;
+    mon.missile = null;
+    set_malign(mon);
+}
+
+function stoneToFleshApplySavedMonsterTraits(mon, info) {
+    applySavedCorpstatMonsterTraits(mon, info?.savedTraits, info?.data);
+}
+
+function stoneToFleshApplyDirectedDoppelgangerForm(mon, info) {
+    if (!info?.directedDoppelganger) return;
+    if (heroHasProtectionFromShapeChangers()) {
+        stoneToFleshRetargetMonsterForm(mon, info.data);
+        return;
+    }
+    if (isMonsterGenocidedName(info.directedForm?.name)) return;
+    stoneToFleshRetargetMonsterForm(mon, info.directedForm, { chamBase: 'doppelganger' });
 }
 
 function stoneToFleshChristenAnimatedStatueMonster(item, mon) {
@@ -13886,8 +14073,14 @@ function stoneToFleshHistoricStatueGoneMessage(item, x, y) {
 async function stoneToFleshAnimateFloorStatue(item, x, y) {
     const info = stoneToFleshFloorStatueAnimationInfo(item, x, y);
     if (!info || stoneToFleshObjectResists(item)) return null;
-    const mon = await makemon(info.data, x, y, NO_MINVENT | MM_NOMSG | MM_ADJACENTOK);
+    const flags = NO_MINVENT | MM_NOMSG | MM_ADJACENTOK
+        | (info.noCountBirth ? MM_NOCOUNTBIRTH : 0)
+        | (info.noTail ? MM_NOTAIL : 0)
+        | (info.noWait ? MM_NOWAIT : 0);
+    const mon = await makemon(info.data, x, y, flags);
     if (!mon) return stoneToFleshAnimationFailure(info);
+    stoneToFleshApplySavedMonsterTraits(mon, info);
+    stoneToFleshApplyDirectedDoppelgangerForm(mon, info);
     stoneToFleshChristenAnimatedStatueMonster(item, mon);
     mon.msleeping = 0;
     mon.mundetected = false;
@@ -18652,6 +18845,11 @@ function monsterIndefiniteName(name) {
     return `${/^[aeiou]/i.test(monsterName) ? 'an' : 'a'} ${monsterName}`;
 }
 
+function corpstatMonsterIndefiniteName(obj) {
+    const name = corpstatDisplayMonsterName(obj);
+    return obj?.corpsenm?.unique ? name : monsterIndefiniteName(name);
+}
+
 function upstartText(text) {
     const value = String(text || '');
     return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
@@ -18661,6 +18859,12 @@ function statueAnimationVerb(mon) {
     const data = mon?.data || {};
     if (data.nonliving || data.vampshifter) return 'moves';
     return 'comes to life';
+}
+
+function animatedMonsterIndefiniteName(mon, fallback = 'monster') {
+    const data = mon?.data || {};
+    const name = data.name || fallback;
+    return data.unique ? name : monsterIndefiniteName(name);
 }
 
 function moveStatueContentsToMonster(statue, mon) {
@@ -18747,7 +18951,7 @@ function statueSearchAnimationMessage(statue, mon) {
     const spotted = !game.u?.blind && !mon.mundetected
         && (!mon.minvis || game.u?.seeInvisible)
         && couldsee(mon.mx, mon.my);
-    const name = spotted ? monsterIndefiniteName(mon.data?.name || corpstatDisplayMonsterName(statue)) : 'something';
+    const name = spotted ? animatedMonsterIndefiniteName(mon, corpstatDisplayMonsterName(statue)) : 'something';
     return `You find ${name} posing as a statue.`;
 }
 
@@ -18914,41 +19118,52 @@ export async function activateStatueTrap(trap, x, y, { prefix = '', shatter = fa
     if (trap?.ttyp !== STATUE_TRAP) return null;
     game.level.traps = (game.level?.traps || []).filter(candidate => candidate !== trap);
 
-    const statue = (game.level?.objects || []).find(obj =>
+    const statues = (game.level?.objects || []).filter(obj =>
         !obj.transientProjectile && obj.otyp === STATUE && obj.ox === x && obj.oy === y);
-    const data = statue?.corpsenm;
-    if (!statue || !data?.name) {
+    for (const statue of statues) {
+        const info = statueTrapAnimationInfo(statue);
+        if (!info?.data?.name) break;
+
+        const flags = NO_MINVENT | MM_NOMSG
+            | (info.noCountBirth ? MM_NOCOUNTBIRTH : 0)
+            | (info.noTail ? MM_NOTAIL : 0)
+            | (info.noWait ? MM_NOWAIT : 0)
+            | (info.directedDoppelganger || info.adjacentOk ? MM_ADJACENTOK : 0);
+        const mon = await makemon(info.data, x, y, flags);
+        if (!mon) {
+            if (statueTrapFailureRetriesNextStatue(statue, info)) continue;
+            break;
+        }
+
+        stoneToFleshApplySavedMonsterTraits(mon, info);
+        stoneToFleshApplyDirectedDoppelgangerForm(mon, info);
+        stoneToFleshChristenAnimatedStatueMonster(statue, mon);
+        mon.mtame = 0;
+        mon.pet = false;
+        mon.mpeaceful = 0;
+        mon.msleeping = 0;
+        mon.mundetected = false;
+        set_malign(mon);
+
+        const statueName = pickupObjectName(statue);
+        const verb = stoneToFleshGolemStatueVerb(info, mon);
+        const body = search || normal
+            ? statueSearchAnimationMessage(statue, mon)
+            : shatter
+            ? `Instead of shattering, ${game.u?.blind || !couldsee(x, y) ? 'a statue' : `the ${statueName}`} suddenly ${verb}!`
+            : `${upstartText(`the ${statueName}`)} ${verb}!`;
+        const debtMessage = shatter ? statueShatterShopDebtMessage(statue, x, y, mon) : '';
+        const historicMessage = stoneToFleshHistoricStatueGoneMessage(statue, x, y);
+
+        moveStatueContentsToMonster(statue, mon);
+        game.level.objects = (game.level?.objects || []).filter(obj => obj !== statue);
         newsym(x, y);
-        return prefix || '';
+        newsym(mon.mx, mon.my);
+        return [prefix, body, debtMessage, historicMessage].filter(Boolean).join('  ');
     }
 
-    const mon = await makemon(data, x, y, NO_MINVENT | MM_NOMSG | MM_NOCOUNTBIRTH);
-    if (!mon) {
-        newsym(x, y);
-        return prefix || '';
-    }
-
-    mon.mtame = 0;
-    mon.pet = false;
-    mon.mpeaceful = 0;
-    mon.msleeping = 0;
-    mon.mundetected = false;
-    set_malign(mon);
-
-    const statueName = pickupObjectName(statue);
-    const verb = statueAnimationVerb(mon);
-    const body = search || normal
-        ? statueSearchAnimationMessage(statue, mon)
-        : shatter
-        ? `Instead of shattering, ${game.u?.blind || !couldsee(x, y) ? 'a statue' : `the ${statueName}`} suddenly ${verb}!`
-        : `${upstartText(`the ${statueName}`)} ${verb}!`;
-    const debtMessage = shatter ? statueShatterShopDebtMessage(statue, x, y, mon) : '';
-
-    moveStatueContentsToMonster(statue, mon);
-    game.level.objects = (game.level?.objects || []).filter(obj => obj !== statue);
     newsym(x, y);
-    newsym(mon.mx, mon.my);
-    return [prefix, body, debtMessage].filter(Boolean).join('  ');
+    return prefix || '';
 }
 
 function noFittingWishObject() {
@@ -22300,6 +22515,115 @@ function carriedDrainItemLessEffectiveMessage(item) {
     return `Your ${name} ${plural ? 'seem' : 'seems'} less effective.`;
 }
 
+function passiveObjectErosionSpec(type) {
+    if (type === 'rust') return {
+        field: 'oeroded',
+        word: 'rusty',
+        action: 'rust',
+        bythe: 'oxidation',
+        grease: true,
+    };
+    if (type === 'corr' || type === 'acid') return {
+        field: 'oeroded2',
+        word: 'corroded',
+        action: 'corrode',
+        bythe: 'corrosion',
+        grease: true,
+        resistType: 'acid',
+    };
+    if (type === 'fire') return {
+        field: 'oeroded',
+        word: 'burnt',
+        action: 'smoulder',
+        bythe: 'heat',
+        grease: false,
+        resistType: 'fire',
+    };
+    return null;
+}
+
+function activeInventoryResistanceKind(item) {
+    if (!item) return '';
+    const kind = objectKindKey(item);
+    const active = isWornInventoryItem(item) || item.wielded || item.line?.includes('(weapon)');
+    if (!active) return '';
+    if (item.fireResistance || kind === 'ring of fire resistance'
+        || kind === 'red dragon scale mail' || kind === 'red dragon scales'
+        || kind === 'fire brand')
+        return 'fire';
+    if (item.acidResistance || kind === 'alchemy smock'
+        || kind === 'yellow dragon scale mail' || kind === 'yellow dragon scales')
+        return 'acid';
+    return '';
+}
+
+function passiveObjectInventoryResistanceChance(type) {
+    const kind = type === 'fire' ? 'fire' : type === 'acid' || type === 'corr' ? 'acid' : '';
+    if (!kind) return 0;
+    if ((game.inventory || []).some(item => activeInventoryResistanceKind(item) === kind))
+        return 99;
+    if (kind === 'fire' && (game.inventory || []).some(item =>
+        isWornInventoryItem(item) && objectKindKey(item) === 'dwarvish cloak'))
+        return 90;
+    return 0;
+}
+
+function passiveObjectInventoryResists(type) {
+    const chance = passiveObjectInventoryResistanceChance(type);
+    return chance ? rn2(100) < chance : false;
+}
+
+function updatePassiveObjectItemLine(item) {
+    refreshInventoryObjectLine(item);
+    if (item?.unpaid) syncUnpaidBillLine(item);
+}
+
+function erodeDirectMeleePassiveObject(item, type, messages) {
+    const spec = passiveObjectErosionSpec(type);
+    if (!spec) return { handled: false, damaged: false };
+    if (spec.resistType && passiveObjectInventoryResists(spec.resistType))
+        return { handled: true, damaged: false, resisted: true };
+    const profile = wishedDamageProfile(item);
+    const profileWord = spec.field === 'oeroded' ? profile.primaryWord : profile.secondaryWord;
+    if (!profile.erosionMatters || profileWord !== spec.word)
+        return { handled: true, damaged: false };
+
+    const name = pickupObjectName(item);
+    if (spec.grease && item.greased) {
+        if (Array.isArray(messages))
+            messages.push(`Your ${name} ${rustTrapNameVerb(name, 'is', 'are')} protected by the layer of grease!`);
+        if (!rn2(2)) {
+            item.greased = false;
+            updatePassiveObjectItemLine(item);
+            if (Array.isArray(messages)) messages.push('The grease dissolves.');
+        }
+        return { handled: true, damaged: false, greased: true };
+    }
+
+    if (item.oerodeproof || item.rustproof) {
+        if (!item.rknown && game.flags?.verbose !== false && Array.isArray(messages))
+            messages.push(`Somehow, your ${name} ${rustTrapNameVerb(name, 'is', 'are')} not affected by the ${spec.bythe}.`);
+        item.rknown = true;
+        updatePassiveObjectItemLine(item);
+        return { handled: true, damaged: false, proof: true };
+    }
+    if (item.blessed && !rnl(4)) return { handled: true, damaged: false, blessed: true };
+
+    const current = Math.min(3, item[spec.field] || 0);
+    if (current >= 3) return { handled: true, damaged: false };
+    item[spec.field] = current + 1;
+    updatePassiveObjectItemLine(item);
+    if (Array.isArray(messages)) {
+        const adverb = item[spec.field] === 3 ? ' completely' : current ? ' further' : '';
+        messages.push(`Your ${name} ${rustTrapNameVerb(name, `${spec.action}s`, spec.action)}${adverb}!`);
+    }
+    return { handled: true, damaged: true };
+}
+
+function passiveObjectFireBlocked(mon) {
+    return !!(mon?.mcan || String(mon?.data?.name || mon?.name || '').toLowerCase() === 'steam vortex');
+}
+
 function applyDirectMeleePassiveObject(mon, weapon, messages) {
     const type = passiveObjectAttackForMonster(mon);
     if (!type) return { handled: false, damaged: false };
@@ -22314,7 +22638,16 @@ function applyDirectMeleePassiveObject(mon, weapon, messages) {
         }
         return { handled: true, damaged: drain.drained, type, object: targetObject, ...drain };
     }
-    return { handled: false, damaged: false, type, object: targetObject };
+    if (type === 'fire') {
+        if (rn2(6) || passiveObjectFireBlocked(mon))
+            return { handled: true, damaged: false, type, object: targetObject };
+    } else if (type === 'acid') {
+        if (rn2(6))
+            return { handled: true, damaged: false, type, object: targetObject };
+    } else if ((type === 'rust' || type === 'corr') && mon.mcan) {
+        return { handled: true, damaged: false, type, object: targetObject };
+    }
+    return { ...erodeDirectMeleePassiveObject(targetObject, type, messages), type, object: targetObject };
 }
 
 function wandRechargeLimit(item) {
@@ -26897,6 +27230,13 @@ function scheduleCorpseFallbackRot(obj) {
 }
 
 function corpseTimerMonsterData(obj) {
+    const saved = savedCorpstatMonsterTraits(obj);
+    if (saved?.data && typeof saved.data === 'object' && saved.data.name) return saved.data;
+    if (typeof saved?.data === 'string') {
+        const savedName = saved.data.toLowerCase();
+        const savedData = monsterByRndName(savedName) || RANDOM_MONSTER_BY_NAME.get(savedName);
+        if (savedData) return savedData;
+    }
     if (obj?.corpsenm?.name) return obj.corpsenm;
     const name = corpseName(obj);
     return name ? monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name) || null : null;
@@ -26962,17 +27302,25 @@ function handleCorpseRevivalFailure(entry, { zombified = false } = {}) {
 
 async function reviveCorpseTimerEntry(entry, data = corpseTimerMonsterData(entry.obj), options = {}) {
     const obj = entry.obj;
+    const savedTraits = savedCorpstatMonsterTraits(obj);
     clearCorpseTimeout(obj);
     if (!data?.name || obj.norevive || isMonsterGenocidedName(data.name))
         return handleCorpseRevivalFailure(entry, options);
     const spot = corpseRevivalSpot(entry, data);
     if (!spot) return handleCorpseRevivalFailure(entry, options);
-    const mon = await makemon(data, spot.x, spot.y, NO_MINVENT | MM_NOMSG | MM_NOCOUNTBIRTH | MM_NOWAIT);
+    const flags = NO_MINVENT | MM_NOMSG | MM_NOCOUNTBIRTH | MM_NOWAIT
+        | (savedTraits ? MM_NOTAIL : 0);
+    const mon = await makemon(data, spot.x, spot.y, flags);
     if (!mon) return handleCorpseRevivalFailure(entry, options);
 
+    if (savedTraits) applySavedCorpstatMonsterTraits(mon, savedTraits, data);
     mon.mrevived = 1;
     mon.mundetected = 0;
-    applyCorpseGenderToRevivedMonster(mon, obj);
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
+    if (!savedTraits) applyCorpseGenderToRevivedMonster(mon, obj);
     removeCorpseTimerObject(entry);
     newsym(mon.mx, mon.my);
     return corpseRevivalMessages(entry, mon, data);
@@ -26985,6 +27333,7 @@ async function zombifyCorpseTimerEntry(entry) {
     clearCorpseTimeout(obj);
     if (!data?.name || isMonsterGenocidedName(data.name))
         return rotCorpseTimerEntry(entry, { silent: true });
+    clearSavedCorpstatMonsterTraits(obj);
     obj.corpsenm = data;
     obj.zombifying = false;
     Object.assign(obj, object_display(obj));
@@ -28354,8 +28703,13 @@ function passiveObjectAttackForMonster(mon) {
 }
 
 function monsterAtSquareForPassiveObject(x, y) {
-    return (game.level?.monsters || []).find(mon =>
-        mon && mon.mx === x && mon.my === y && !mon.dead && (mon.mhp == null || mon.mhp > 0)) || null;
+    const mon = (game.level?.monsters || []).find(candidate =>
+        candidate && candidate.mx === x && candidate.my === y && !candidate.dead
+        && (candidate.mhp == null || candidate.mhp > 0));
+    if (mon) return mon;
+    if (game.u && game.u.ux === x && game.u.uy === y)
+        return { ...game.u, data: polyselfForm() || game.u.data || {} };
+    return null;
 }
 
 function erodeMonsterThrownPassiveObject(obj, type, messages) {
@@ -28419,12 +28773,15 @@ export function landMonsterThrownObject(missile, x, y, {
     if (!missile || !game.level) return { consumed: false, object: null, messages: [] };
     game.level.objects ??= [];
     const floorMessages = Array.isArray(messages) ? messages : [];
+    const breaksOnContact = isCreamPieObject(missile) || isVenomObject(missile) || (!!ohit && isEggItem(missile));
+    const mulched = !breaksOnContact && !!ohit && shouldMulchMonsterThrownMissile(missile);
     const dropThrow = {
-        broken: isCreamPieObject(missile) || isVenomObject(missile) || (!!ohit && isEggItem(missile))
-            || (!!ohit && shouldMulchMonsterThrownMissile(missile)),
+        broken: breaksOnContact || mulched,
         ohit: !!ohit,
+        mulched,
     };
     if (dropThrow.broken) {
+        if (mulched) rn2(100);
         newsym(x, y);
         return {
             consumed: true,
@@ -30647,10 +31004,10 @@ export function pickupObjectName(obj) {
         return named(slimeMoldNameForObject(obj, (obj.quan || 1) > 1));
     if ((obj.kind === 'statue' || obj.otyp === STATUE) && obj.corpsenm?.name) {
         const historic = archeologist && (((obj.spe || 0) & CORPSTAT_HISTORIC) || obj.historic);
-        return named(`${historic ? 'historic ' : ''}statue of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`);
+        return named(`${historic ? 'historic ' : ''}statue of ${corpstatMonsterIndefiniteName(obj)}`);
     }
     if ((obj.kind === 'figurine' || obj.actualKind === 'figurine') && obj.corpsenm?.name)
-        return named(`figurine of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`);
+        return named(`figurine of ${corpstatMonsterIndefiniteName(obj)}`);
     if (isTinObject(obj)) return named(tinObjectName(obj));
     if (obj.otyp === LARGE_BOX) return named('large box');
     if (obj.otyp === CHEST) return named('chest');
@@ -37807,18 +38164,25 @@ function deadbookAttachEggHatchTimer(item) {
 
 async function reviveDeadbookCorpseItem(item, source) {
     if (!isCorpseItem(item)) return null;
-    const data = deadbookCorpseMonster(item);
+    const savedTraits = savedCorpstatMonsterTraits(item);
+    const data = savedTraits ? corpseTimerMonsterData(item) : deadbookCorpseMonster(item);
     if (!data?.name) return null;
     const x = item.ox || game.u?.ux || 0;
     const y = item.oy || game.u?.uy || 0;
-    const flags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH;
+    const flags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH
+        | (savedTraits ? MM_NOTAIL : 0);
     const mon = await makemon(data, x, y, flags);
     if (!mon) return null;
 
-    if ((item.spe & CORPSTAT_GENDER) === CORPSTAT_MALE) mon.female = false;
+    if (savedTraits) applySavedCorpstatMonsterTraits(mon, savedTraits, data);
+    else if ((item.spe & CORPSTAT_GENDER) === CORPSTAT_MALE) mon.female = false;
     else if ((item.spe & CORPSTAT_GENDER) === CORPSTAT_FEMALE) mon.female = true;
     mon.mrevived = 1;
     mon.mundetected = 0;
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
     removeDeadbookRevivedItem(item, source);
     newsym(mon.mx, mon.my);
     return mon;
@@ -39279,6 +39643,7 @@ async function moveHero(dx, dy) {
             const hitPunctuation = game.flags?.verbose === false || swallowedMove ? '.' : damage > 4 ? '!' : '.';
             messages.push(`You hit ${hitPhrase}${hitPunctuation}`);
             applyConfuseMonsterOnHit(mon, messages, targetPhrase);
+            let directPassiveObjectApplied = false;
             if (attackIndex === 0) {
                 if (attackWeapon && damage > 1 && !twoWeaponActive) {
                     rn2(3);
@@ -39293,10 +39658,13 @@ async function moveHero(dx, dy) {
 	                        mon.mfleetim = fleeTime ? Math.min(fleeTime + (mon.mfleetim || 0), 127) : 0;
 	                        clearMonsterTrack(mon);
 	                    }
+	                    applyDirectMeleePassiveObject(mon, attackWeapon, messages);
+	                    directPassiveObjectApplied = true;
 	                    rn2(3);
 	                }
             }
-            applyDirectMeleePassiveObject(mon, attackWeapon, messages);
+            if (!directPassiveObjectApplied)
+                applyDirectMeleePassiveObject(mon, attackWeapon, messages);
         }
 
         if (!killed) {
@@ -42412,6 +42780,18 @@ export async function rhack(_cmd) {
 			                    rn2(2);
 			                    game._exercise_after_topline_more--;
 			                }
+                if (game._arrow_drop_throw_after_topline_more) {
+                    const arrowDrop = game._arrow_drop_throw_after_topline_more;
+                    game._arrow_drop_throw_after_topline_more = null;
+                    const floorMessages = [];
+                    landMonsterThrownObject(arrowDrop.missile, arrowDrop.x, arrowDrop.y, {
+                        glyph: arrowDrop.glyph || ')',
+                        color: arrowDrop.color ?? CLR_CYAN,
+                        messages: floorMessages,
+                        ohit: !!arrowDrop.ohit,
+                    });
+                    appendToplineAfterMoreMessages(floorMessages);
+                }
                 if (game._arrow_mulch_after_topline_more) {
                     game._arrow_mulch_after_topline_more = 0;
                     rn2(2);

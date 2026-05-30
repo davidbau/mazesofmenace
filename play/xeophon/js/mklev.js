@@ -5073,6 +5073,34 @@ function set_corpsenm(otmp, pm) {
     }
 }
 
+function savedMonsterTraitsForCorpstat(mtmp) {
+    if (!mtmp || typeof mtmp !== 'object') return null;
+    const data = mtmp.data || {};
+    const traits = {
+        data: typeof data === 'object' ? { ...data } : data,
+    };
+    const fields = [
+        'm_id', 'm_lev', 'mlevel', 'mhp', 'mhpmax',
+        'female', 'mtame', 'pet', 'mpeaceful', 'isminion', 'isshk', 'ispriest', 'isgd',
+        'givenName', 'chamBase', 'vampBase', 'perminvis', 'minvis', 'invisible', 'mspeed',
+        'mflee', 'mfleetim', 'mtrapseen', 'mstrategy', 'waiting', 'maligntyp',
+        'mundetected', 'm_ap_type', 'appearObj', 'appearGlyph',
+    ];
+    for (const field of fields) {
+        if (mtmp[field] !== undefined) traits[field] = mtmp[field];
+    }
+    traits.mhpmax = Math.max(1, Math.trunc(Number(traits.mhpmax || mtmp.mhpmax || 1)));
+    traits.mhp = Math.max(0, Math.min(traits.mhpmax, Math.trunc(Number(traits.mhp || mtmp.mhp || 0))));
+    return traits;
+}
+
+function attachSavedMonsterTraits(otmp, mtmp) {
+    const traits = savedMonsterTraitsForCorpstat(mtmp);
+    if (!traits) return;
+    otmp.oextra ??= {};
+    otmp.oextra.omonst = traits;
+}
+
 // mkcorpstat stub
 export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
@@ -5098,6 +5126,7 @@ export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
             }
         }
     }
+    if ((objtyp === CORPSE || objtyp === STATUE) && mtmp) attachSavedMonsterTraits(otmp, mtmp);
     Object.assign(otmp, object_display(otmp));
     return otmp;
 }
@@ -5109,6 +5138,21 @@ function globTypeForMonsterCorpseData(data) {
 
 export function monsterLeavesCorpseLikeDrop(corpseData) {
     return !!corpseData && (!corpseData.noCorpse || !!globTypeForMonsterCorpseData(corpseData));
+}
+
+function monsterCorpseKeepsTraits(mon, corpseData) {
+    if (!mon) return false;
+    const data = mon.data || {};
+    const monName = String(data.name || '').toLowerCase();
+    const corpseName = String(corpseData?.name || '').toLowerCase();
+    if (mon.isshk || data.shopkeeper) return true;
+    if (mon.mtame || mon.pet) return true;
+    if (data.unique || corpseData?.unique || data.nemesis || data.rider || corpseData?.rider) return true;
+    if (data.questLeader || data.questLeaderId || mon.questLeader) return true;
+    if (data.seducer || data.seduction || mon.seducer) return true;
+    if ((data.glyph || data.mlet) === 'T' || (corpseData?.glyph || corpseData?.mlet) === 'T'
+        || monName.includes('troll') || corpseName.includes('troll')) return true;
+    return !!(monName && corpseName && monName !== corpseName);
 }
 
 export function monsterCorpseDropSucceeds(mon, data = mon?.data || {}) {
@@ -5344,7 +5388,8 @@ export function createMonsterCorpseOrGlob(mon, corpseData, x = mon?.mx || 0, y =
         return meldDeathGlobOnFloor(glob, messages);
     }
     if (!corpseData || corpseData.noCorpse) return null;
-    const corpse = mkcorpstat(CORPSE, mon, corpseData, x, y, 8);
+    const traitsSource = monsterCorpseKeepsTraits(mon, corpseData) ? mon : null;
+    const corpse = mkcorpstat(CORPSE, traitsSource, corpseData, x, y, 8);
     Object.assign(corpse, {
         otyp: 'corpse',
         glyph: '%',

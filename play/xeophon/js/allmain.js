@@ -6114,19 +6114,25 @@ async function processMonsterTurns() {
                         && monsterLinedUp(mon, throwTargetX, throwTargetY)) {
                         const missile = mon.minvent[launcherAmmoIndex];
                         rnd(1);
+                        let thrownMissile = missile;
                         if ((missile.quan || 1) > 1) {
                             missile.quan--;
-                            next_ident();
+                            thrownMissile = { ...missile, id: next_ident(), quan: 1 };
                         } else {
                             mon.minvent.splice(launcherAmmoIndex, 1);
+                            if (mon.missile === missile) mon.missile = null;
                         }
+                        const missileSpe = missile.spe || 0;
+                        const sharedArrowLanding = !missile.blessed && !missile.cursed && !missile.greased
+                            && (missileSpe === 0 || missileSpe === 1)
+                            && !(missile.oeroded || 0) && !(missile.oeroded2 || 0);
                         addToplineMessage(`${monsterDisplayName(mon, true)} shoots an arrow!`);
                         game._message_more = 1;
                         game._process_time_with_more = 0;
                         const flightX = (game.u?.ux || 0) - throwDx;
                         const flightY = (game.u?.uy || 0) - throwDy;
                         game.level.objects.push({
-                            ...missile,
+                            ...thrownMissile,
                             ox: flightX,
                             oy: flightY,
                             quan: 1,
@@ -6144,8 +6150,8 @@ async function processMonsterTurns() {
                         if (caught) {
                             game._topline_after_more = 'You catch the arrow!';
                         } else {
-                            const damage = Math.max(1, rnd(6) + (missile.spe || 0));
-                            const hitv = Math.max(-4, 3 - throwRange) + 8 + (missile.spe || 0);
+                            const damage = Math.max(1, rnd(6) + missileSpe);
+                            const hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe;
                             const missed = (game.u?.uac ?? 10) + hitv <= rnd(20);
                             game._topline_after_more = missed ? 'An arrow misses you.'
                                 : `You are hit by an arrow${damage > 4 ? '!' : '.'}`;
@@ -6159,8 +6165,24 @@ async function processMonsterTurns() {
                                 } else {
                                     game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
                                     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
-                                    game._arrow_mulch_after_topline_more = 1;
+                                    if (sharedArrowLanding) {
+                                        game._arrow_drop_throw_after_topline_more = {
+                                            missile: thrownMissile,
+                                            x: game.u?.ux || 0,
+                                            y: game.u?.uy || 0,
+                                            ohit: true,
+                                        };
+                                    } else {
+                                        game._arrow_mulch_after_topline_more = 1;
+                                    }
                                 }
+                            } else if (sharedArrowLanding) {
+                                game._arrow_drop_throw_after_topline_more = {
+                                    missile: thrownMissile,
+                                    x: game.u?.ux || 0,
+                                    y: game.u?.uy || 0,
+                                    ohit: false,
+                                };
                             }
                         }
                         game._search_pending_count = 0;
@@ -6408,9 +6430,15 @@ async function processMonsterTurns() {
                             }
                         }
                         if (clearShot) {
+                            const missile = mon.missile;
                             rnd(1);
                             next_ident();
-                            mon.missile.quan--;
+                            if ((missile.quan || 1) > 1) missile.quan--;
+                            else {
+                                const missileIndex = (mon.minvent || []).indexOf(missile);
+                                if (missileIndex >= 0) mon.minvent.splice(missileIndex, 1);
+                                if (mon.missile === missile) mon.missile = null;
+                            }
                             for (let step = 1; step < throwRange; step++) rn2(5);
                             rn2(90);
                             const dartDamage = rnd(3);
@@ -6418,14 +6446,20 @@ async function processMonsterTurns() {
                             if (hitRoll < 20) {
                                 game.u.uhp = Math.max(0, (game.u?.uhp || 0) - dartDamage);
                                 addToplineMessage('You are hit by a dart.');
-                                rn2(2);
-                                rn2(3);
-                                rn2(100);
+                                exerciseAttribute(A_STR, false);
+                                const floorMessages = [];
+                                landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                    glyph: ')',
+                                    color: CLR_CYAN,
+                                    messages: floorMessages,
+                                    ohit: true,
+                                });
+                                addMonsterThrownFloorMessages(floorMessages);
                             } else {
                                 addToplineMessage('A dart misses you.');
                                 rn2(5);
                                 const floorMessages = [];
-                                landMonsterThrownObject(mon.missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
                                     glyph: ')',
                                     color: CLR_CYAN,
                                     messages: floorMessages,
