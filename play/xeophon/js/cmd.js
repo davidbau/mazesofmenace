@@ -365,6 +365,14 @@ function addHeroGlibTimeout(duration) {
     game.u._glibTimeout = (game.u._glibTimeout || 0) + duration;
 }
 
+function carriedDropDisplayColor(item) {
+    if (!item) return NO_COLOR;
+    if (item.color != null) return item.color;
+    if (item.cls === 'armor') return armorDisplayColor(item);
+    if (item.cls === 'scroll' || item.cls === 'spellbook') return CLR_WHITE;
+    return NO_COLOR;
+}
+
 function dropCarriedObjectAtHero(item, messages = []) {
     const dropped = {
         ...item,
@@ -376,10 +384,10 @@ function dropCarriedObjectAtHero(item, messages = []) {
         quivered: false,
         ox: game.u?.ux || 0,
         oy: game.u?.uy || 0,
-        glyph: item.glyph || (item.cls === 'weapon' ? ')' : item.cls === 'armor' ? '[' : item.cls === 'wand' ? '/'
+        glyph: item.cls === 'weapon' ? ')' : item.cls === 'armor' ? '[' : item.glyph || (item.cls === 'wand' ? '/'
             : item.cls === 'ring' ? '=' : item.cls === 'potion' ? '!' : item.cls === 'scroll' ? '?'
                 : item.cls === 'spellbook' ? '+' : '('),
-        color: item.color ?? (item.cls === 'scroll' || item.cls === 'spellbook' ? CLR_WHITE : NO_COLOR),
+        color: carriedDropDisplayColor(item),
     };
     curseLoadstoneLeavingInventory(dropped);
     if (Array.isArray(dropped.contents)) dropped.contents = [...dropped.contents];
@@ -5007,6 +5015,8 @@ const ARMOR_AC_BONUS = {
     'studded leather armor': 3,
     'banded mail': 6,
     'splint mail': 6,
+    'dwarvish mithril-coat': 6,
+    'elven mithril-coat': 5,
     'plate mail': 7,
     helmet: 1,
     'orcish helm': 1,
@@ -5202,6 +5212,37 @@ const ARMOR_WISH_APPEARANCES = {
     'fumble boots': ['boots', 5, 'riding boots'],
     'levitation boots': ['boots', 6, 'snow boots'],
 };
+const ARMOR_APPEARANCE_COLOR_GROUPS = {
+    cloaks: 'cloakColors',
+    gloves: 'gloveColors',
+    helms: 'helmColors',
+    boots: 'bootColors',
+};
+const ARMOR_KIND_DISPLAY_COLORS = {
+    'mummy wrapping': CLR_GRAY,
+    'elven cloak': CLR_BLACK,
+    'orcish cloak': CLR_BLACK,
+    'dwarvish cloak': CLR_BROWN,
+    'oilskin cloak': CLR_BROWN,
+    robe: CLR_RED,
+    'alchemy smock': CLR_WHITE,
+    'leather cloak': CLR_BROWN,
+    'cloak of protection': CLR_BROWN,
+    'cloak of invisibility': CLR_BRIGHT_MAGENTA,
+    'cloak of magic resistance': CLR_WHITE,
+    'cloak of displacement': CLR_BROWN,
+};
+function armorDisplayColor(item) {
+    const kind = String(item?.actualKind || item?.kind || '').toLowerCase();
+    const armorAppearance = ARMOR_WISH_APPEARANCES[kind];
+    if (armorAppearance) {
+        const [group, index] = armorAppearance;
+        const colorGroup = ARMOR_APPEARANCE_COLOR_GROUPS[group];
+        const shuffledColor = colorGroup ? game._object_descriptions?.[colorGroup]?.[index] : undefined;
+        if (shuffledColor != null) return shuffledColor;
+    }
+    return ARMOR_KIND_DISPLAY_COLORS[kind] ?? NO_COLOR;
+}
 function pairArmorDiscoveryName(name) {
     return /(?:boots|shoes|gloves)$/.test(name) || name.startsWith('gauntlets')
         ? `pair of ${name}` : name;
@@ -11237,6 +11278,160 @@ function polyselfWornEyewearItem() {
         polyselfIsEyewearItem(item) && isWornInventoryItem(item));
 }
 
+function polyselfWornBlindfoldOrTowelItem() {
+    return (game.inventory || []).find(item =>
+        isWornInventoryItem(item) && ['blindfold', 'towel'].includes(objectKindKey(item)));
+}
+
+function polyselfWornShirtItem() {
+    return (game.inventory || []).find(item =>
+        item?.cls === 'armor' && isWornInventoryItem(item)
+        && ['hawaiian shirt', 't-shirt'].includes(objectKindKey(item)));
+}
+
+function polyselfWornBodyArmorItem() {
+    return wornArmorInSlot('body');
+}
+
+function polyselfWornCloakItem() {
+    return wornArmorInSlot('cloak');
+}
+
+function polyselfWornHelmItem() {
+    return wornArmorInSlot('helm');
+}
+
+const POLYSELF_BREAKARM_FORM_NAMES = new Set([
+    'xorn',
+    'marilith',
+    'winged gargoyle',
+]);
+
+const POLYSELF_SMALL_SLIPARM_FORM_NAMES = new Set([
+    'hobbit',
+    'gnome',
+    'gnome leader',
+    'gnome ruler',
+]);
+const POLYSELF_TWO_HORN_FORM_NAMES = new Set(['horned devil', 'minotaur', 'asmodeus', 'balrog']);
+const POLYSELF_ONE_HORN_FORM_NAMES = new Set(['white unicorn', 'gray unicorn', 'black unicorn', 'ki-rin']);
+const POLYSELF_HARD_HELM_KINDS = new Set([
+    'helmet',
+    'orcish helm',
+    'dwarvish iron helm',
+    'dented pot',
+    'helm of brilliance',
+    'helm of caution',
+    'helm of opposite alignment',
+    'helm of telepathy',
+]);
+const POLYSELF_FLIMSY_MATERIALS = new Set(['liquid', 'wax', 'veggy', 'vegetable', 'flesh', 'paper', 'cloth', 'leather', 'rubber']);
+
+function polyselfFormLowerName(form) {
+    return String(form?.name || '').toLowerCase();
+}
+
+function polyselfFormWhirly(form) {
+    const name = polyselfFormLowerName(form);
+    return !!(form?.whirly || form?.mlet === 'v' || form?.glyph === 'v' || name === 'air elemental');
+}
+
+function polyselfFormNoncorporeal(form) {
+    const name = polyselfFormLowerName(form);
+    return !!(form?.noncorporeal || form?.mlet === 'ghost' || name === 'ghost' || name === 'shade');
+}
+
+function polyselfFormSmallEnoughForArmorSlip(form) {
+    const name = polyselfFormLowerName(form);
+    return !!(form?.verysmall || form?.tiny || form?.msize === 'tiny' || form?.msize === 'small'
+        || form?.size === 'tiny' || form?.size === 'small' || POLYSELF_SMALL_SLIPARM_FORM_NAMES.has(name));
+}
+
+function polyselfFormSlipsArmor(form) {
+    return !!(polyselfFormSmallEnoughForArmorSlip(form) || polyselfFormWhirly(form) || polyselfFormNoncorporeal(form));
+}
+
+function polyselfFormNoHandsFallout(form) {
+    return !!(form?.nohands || form?.verysmall || polyselfFormWhirly(form));
+}
+
+function polyselfFormSlithy(form) {
+    const name = polyselfFormLowerName(form);
+    return !!(form?.slithy || /\b(?:snake|eel|worm|naga|salamander)\b/.test(name));
+}
+
+function polyselfFormCentaur(form) {
+    return !!(form?.mlet === 'C' || form?.glyph === 'C' || /\bcentaur\b/.test(polyselfFormLowerName(form)));
+}
+
+function polyselfFormBootFallout(form) {
+    return !!(polyselfFormNoHandsFallout(form) || polyselfFormSlithy(form) || polyselfFormCentaur(form));
+}
+
+function polyselfFormHornCount(form) {
+    const explicit = Number(form?.horns ?? form?.numHorns);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.trunc(explicit);
+    const name = polyselfFormLowerName(form);
+    if (POLYSELF_TWO_HORN_FORM_NAMES.has(name)) return 2;
+    if (POLYSELF_ONE_HORN_FORM_NAMES.has(name)) return 1;
+    return form?.hasHorns ? 1 : 0;
+}
+
+function polyselfFormBreaksArmor(form) {
+    if (!form || polyselfFormSlipsArmor(form)) return false;
+    const name = polyselfFormLowerName(form);
+    return !!(form.breakarm || form.breaksArmor || form.big || POLYSELF_BREAKARM_FORM_NAMES.has(name));
+}
+
+function polyselfFormIsMummy(form) {
+    return !!(form && (form.mlet === 'M' || form.glyph === 'M' || /\bmummy\b/i.test(form.name || '')));
+}
+
+function polyselfFormHumanoidForWrapping(form) {
+    const name = polyselfFormLowerName(form);
+    return !!(form?.humanoid || form?.human || form?.mlet === 'humanoid' || form?.mlet === 'human'
+        || form?.mlet === '@' || form?.glyph === '@' || form?.mlet === 'G' || form?.glyph === 'G'
+        || name === 'hobbit' || name === 'dwarf' || name === 'gnome'
+        || name === 'gnome leader' || name === 'gnome ruler');
+}
+
+function polyselfCloakSimpleName(cloak) {
+    const kind = objectKindKey(cloak);
+    if (kind === 'robe') return 'robe';
+    if (kind === 'mummy wrapping') return 'wrapping';
+    if (kind === 'alchemy smock') return cloak?.known && cloak?.dknown ? 'smock' : 'apron';
+    return 'cloak';
+}
+
+function polyselfHelmSimpleName(helm) {
+    return POLYSELF_HARD_HELM_KINDS.has(objectKindKey(helm)) ? 'helm' : 'hat';
+}
+
+function polyselfHeadgearIsFlimsy(helm) {
+    const material = String(helm?.material || helm?.oc_material || '').toLowerCase().replace(/^hi_/, '');
+    if (POLYSELF_FLIMSY_MATERIALS.has(material)) return true;
+    const kind = objectKindKey(helm);
+    if (kind === 'elven leather helm' || kind === 'fedora' || kind === 'cornuthaum' || kind === 'dunce cap') return true;
+    return !POLYSELF_HARD_HELM_KINDS.has(kind);
+}
+
+function polyselfHeadgearBeingDonned(helm) {
+    return !!(helm?.donning || helm?._donning || helm?.takingOff);
+}
+
+function polyselfMummyWrappingAllowed(form, cloak) {
+    const name = polyselfFormLowerName(form);
+    return objectKindKey(cloak) === 'mummy wrapping'
+        && !polyselfFormNoncorporeal(form)
+        && form?.mlet !== 'C' && form?.glyph !== 'C'
+        && name !== 'marilith' && name !== 'winged gargoyle'
+        && (polyselfFormIsMummy(form) || polyselfFormHumanoidForWrapping(form));
+}
+
+function polyselfRacialArmorException(form, armor) {
+    return polyselfFormLowerName(form) === 'hobbit' && /\belven\b/.test(objectKindKey(armor));
+}
+
 function polyselfEyewearFalloffName(item) {
     const kind = objectKindKey(item);
     if (kind === 'lenses') return 'lenses';
@@ -11253,22 +11448,89 @@ function clearPolyselfEyewearState(item, form) {
 
 function polyselfEquipmentFalloutForForm(form, { bodyArmor = null } = {}) {
     const items = [];
+    const destroyedItems = [];
     const messages = [];
     const addItem = item => {
         if (item && !items.includes(item)) items.push(item);
     };
+    const addDestroyedItem = item => {
+        if (item && !destroyedItems.includes(item)) destroyedItems.push(item);
+    };
 
-    addItem(bodyArmor);
-    if (form?.nohands || form?.verysmall) {
+    if (polyselfFormBreaksArmor(form)) {
+        const armor = bodyArmor || polyselfWornBodyArmorItem();
+        if (armor) {
+            messages.push('You break out of your armor!');
+            addDestroyedItem(armor);
+        }
+
+        const cloak = polyselfWornCloakItem();
+        if (cloak && !polyselfMummyWrappingAllowed(form, cloak)) {
+            const cloakName = polyselfCloakSimpleName(cloak);
+            const cloakKind = objectKindKey(cloak);
+            if (cloakKind === 'mummy wrapping') {
+                messages.push(`Your ${cloakName} tears apart!`);
+                addDestroyedItem(cloak);
+            } else if (cloakKind === 'alchemy smock') {
+                messages.push(`The knot on your ${cloakName} is pulled apart!`);
+                addItem(cloak);
+            } else {
+                messages.push(`The clasp on your ${cloakName} breaks open!`);
+                addItem(cloak);
+            }
+        }
+
+        const shirt = polyselfWornShirtItem();
+        if (shirt) {
+            messages.push('Your shirt rips to shreds!');
+            addDestroyedItem(shirt);
+        }
+    } else {
+        if (polyselfFormSlipsArmor(form)) {
+            const whirly = polyselfFormWhirly(form);
+            const armor = bodyArmor || polyselfWornBodyArmorItem();
+            if (armor && !polyselfRacialArmorException(form, armor)) {
+                if (!bodyArmor) messages.push('Your armor falls around you!');
+                addItem(armor);
+            }
+            const cloak = polyselfWornCloakItem();
+            if (cloak && !polyselfMummyWrappingAllowed(form, cloak)) {
+                messages.push(whirly
+                    ? `Your ${polyselfCloakSimpleName(cloak)} falls, unsupported!`
+                    : `You shrink out of your ${polyselfCloakSimpleName(cloak)}!`);
+                addItem(cloak);
+            }
+            const shirt = polyselfWornShirtItem();
+            if (shirt) {
+                messages.push(whirly ? 'You seep right through your shirt!' : 'You become much too small for your shirt!');
+                addItem(shirt);
+            }
+        } else {
+            addItem(bodyArmor);
+        }
+    }
+
+    const hornCount = polyselfFormHornCount(form);
+    if (hornCount > 0) {
+        const helm = polyselfWornHelmItem();
+        if (helm) {
+            if (polyselfHeadgearIsFlimsy(helm) && !polyselfHeadgearBeingDonned(helm)) {
+                const horns = hornCount === 1 ? 'horn' : 'horns';
+                messages.push(`Your ${horns} ${hornCount === 1 ? 'pierces' : 'pierce'} through ${ownedEquipmentName(helm)}.`);
+            } else {
+                messages.push(`Your ${polyselfHelmSimpleName(helm)} falls to the ground!`);
+                addItem(helm);
+            }
+        }
+    }
+
+    if (polyselfFormNoHandsFallout(form)) {
         const gloves = polyselfWornArmorMatching(/glove|gauntlet/);
         const weapon = polyselfWieldedWeaponItem();
         if (gloves) {
             messages.push(`You drop your gloves${weapon ? ' and weapon' : ''}!`);
             addItem(weapon);
             addItem(gloves);
-        } else if (weapon) {
-            messages.push('You find you must drop your weapon!');
-            addItem(weapon);
         }
 
         const shield = polyselfWornArmorMatching(/shield/);
@@ -11277,17 +11539,28 @@ function polyselfEquipmentFalloutForForm(form, { bodyArmor = null } = {}) {
             addItem(shield);
         }
 
-        const helm = polyselfWornArmorMatching(/helm|helmet|hat|fedora|cornuthaum|cap|pot/);
-        if (helm) {
-            const helmName = /helm/.test(inventoryItemName(helm).toLowerCase()) ? 'helm' : 'helmet';
-            messages.push(`Your ${helmName} falls to the ground!`);
+        const helm = polyselfWornHelmItem();
+        if (helm && !items.includes(helm)) {
+            messages.push(`Your ${polyselfHelmSimpleName(helm)} falls to the ground!`);
             addItem(helm);
         }
 
+    }
+
+    if (polyselfFormBootFallout(form)) {
         const boots = polyselfWornArmorMatching(/boot|shoe/);
         if (boots) {
-            messages.push(`Your boots ${form.verysmall ? 'slide' : 'are pushed'} off your feet!`);
+            messages.push(polyselfFormWhirly(form) ? 'Your boots fall away!' : `Your boots ${form.verysmall ? 'slide' : 'are pushed'} off your feet!`);
             addItem(boots);
+        }
+    }
+
+    if (polyselfFormNoHandsFallout(form)) {
+        const gloves = polyselfWornArmorMatching(/glove|gauntlet/);
+        const weapon = polyselfWieldedWeaponItem();
+        if (!gloves && weapon) {
+            messages.push('You find you must drop your weapon!');
+            addItem(weapon);
         }
     }
 
@@ -11300,15 +11573,65 @@ function polyselfEquipmentFalloutForForm(form, { bodyArmor = null } = {}) {
         }
     }
 
-    return { items, messages };
+    return { items, destroyedItems, messages };
+}
+
+function otherWornFastEquipment(item) {
+    return (game.inventory || []).some(candidate => candidate !== item && isWornInventoryItem(candidate)
+        && (objectKindKey(candidate) === 'speed boots' || isBlueDragonArmorKind(objectKindKey(candidate))));
+}
+
+function addPolyselfBootsOffSideEffects(item, messages) {
+    if (objectKindKey(item) !== 'speed boots' || !game.u) return;
+    if (otherWornFastEquipment(item) || (game.u._veryfastTimeout || 0) > 0) return;
+    messages.push(`You feel yourself slow down${heroHasIntrinsicFast() ? ' a bit' : ''}.`);
 }
 
 function dropPolyselfEquipmentItems(items, floorMessages = [], form = polyselfForm()) {
     for (const item of items || []) {
         if (!(game.inventory || []).includes(item)) continue;
         clearPolyselfEyewearState(item, form);
+        if (armorSlot(item) === 'boots') addPolyselfBootsOffSideEffects(item, floorMessages);
         dropCarriedObjectAtHero(item, floorMessages);
     }
+}
+
+function destroyPolyselfEquipmentItems(items) {
+    let changed = false;
+    for (const item of items || []) {
+        if (!(game.inventory || []).includes(item)) continue;
+        useUpInventoryItem(item, item.quan || 1);
+        changed = true;
+    }
+    if (changed) updateReflectionFromInventory();
+}
+
+function applyPolyselfEquipmentFallout(fallout, floorMessages = [], form = polyselfForm()) {
+    destroyPolyselfEquipmentItems(fallout?.destroyedItems);
+    dropPolyselfEquipmentItems(fallout?.items, floorMessages, form);
+}
+
+function polyselfFalloutHasEffects(fallout) {
+    return !!(fallout?.items?.length || fallout?.destroyedItems?.length || fallout?.messages?.length);
+}
+
+function polyselfBasePersistentBlindness(base) {
+    if (!base?.blind) return false;
+    if ((base._blindTimeout || 0) > 0 || (base.ucreamed || 0) > 0) return false;
+    return !base.blindFromWornBlindfold;
+}
+
+function polyselfNonFormBlindness(base) {
+    if (polyselfWornBlindfoldOrTowelItem()) return true;
+    if ((game.u?._blindTimeout || 0) > 0 || (game.u?.ucreamed || 0) > 0) return true;
+    return polyselfBasePersistentBlindness(base);
+}
+
+function restorePolyselfBaseBlindness(base) {
+    if (!game.u) return;
+    game.u.blind = polyselfNonFormBlindness(base);
+    game.u._blindAfterStatus = game.u.blind ? (base?._blindAfterStatus || 0) : 0;
+    game.u._polyself_form_blinded = false;
 }
 
 function recomputePolyselfArmorClass(form = polyselfForm()) {
@@ -11323,6 +11646,7 @@ function recomputePolyselfArmorClass(form = polyselfForm()) {
 function becomeMonster(name) {
     const base = game.u._polyself_base;
     if (name === 'human' || name === game.urace?.noun || name === game._startup_race) {
+        const wasFormBlinded = !!game.u._polyself_form_blinded;
         const newLevel = Math.max(1, Math.min(30, (game.u?.ulevel || 1) + rn2(5) - 2));
         rn2(10);
         const minExp = newLevel === 1 ? 0 : newLevel - 1 < 10 ? 10 * (2 ** (newLevel - 1))
@@ -11400,6 +11724,7 @@ function becomeMonster(name) {
         game.u.umovement = NORMAL_SPEED;
         game.u._statusSuffix = '';
         game.u._strDisplay = null;
+        if (wasFormBlinded) restorePolyselfBaseBlindness(base);
         game.u._polyself_base = null;
         return { message: game._startup_gender === 'female' ? 'You feel like a new woman!' : 'You feel like a new man!' };
     }
@@ -11409,19 +11734,24 @@ function becomeMonster(name) {
     const alreadyPolymorphed = !!game.u._polyself_base;
     addConductCount('polyselfs');
     if (!alreadyPolymorphed) {
-	        game.u._polyself_base = {
-	            uhp: game.u.uhp,
-	            uhpmax: game.u.uhpmax,
-	            uen: game.u.uen,
-	            uenmax: game.u.uenmax,
-	            uac: game.u.uac,
-	            ulevel: game.u.ulevel,
-	            uhpinc: [...(game.u.uhpinc || [])],
-	            ueninc: [...(game.u.ueninc || [])],
-	            initialHp: game._initialHp,
-	            initialEnergy: game._initialEnergy,
-	            rank: game.urole?.rank || null,
-	        };
+        game.u._polyself_base = {
+            uhp: game.u.uhp,
+            uhpmax: game.u.uhpmax,
+            uen: game.u.uen,
+            uenmax: game.u.uenmax,
+            uac: game.u.uac,
+            ulevel: game.u.ulevel,
+            blind: !!game.u.blind,
+            _blindTimeout: game.u._blindTimeout || 0,
+            _blindAfterStatus: game.u._blindAfterStatus || 0,
+            blindFromWornBlindfold: !!polyselfWornBlindfoldOrTowelItem(),
+            ucreamed: game.u.ucreamed || 0,
+            uhpinc: [...(game.u.uhpinc || [])],
+            ueninc: [...(game.u.ueninc || [])],
+            initialHp: game._initialHp,
+            initialEnergy: game._initialEnergy,
+            rank: game.urole?.rank || null,
+        };
     }
     if (!alreadyPolymorphed) rn2(2);
     rn2(19);
@@ -11431,6 +11761,7 @@ function becomeMonster(name) {
     const hp = form.fixedHp ?? (form.name.includes('dragon') && hpLevel ? 4 * hpLevel + d(hpLevel, 4)
         : hpLevel ? d(hpLevel, 8) : rnd(4));
     const glyph = form.glyph || (form.mlet?.length === 1 ? form.mlet : form.name[0]);
+    const wasFormBlinded = !!game.u._polyself_form_blinded;
     game.u.uhp = Math.max(1, hp);
     game.u.uhpmax = Math.max(1, hp);
     game.u.uac = form.mac ?? 10;
@@ -11444,6 +11775,9 @@ function becomeMonster(name) {
     if (form.noeyes) {
         game.u.blind = true;
         game.u._blindAfterStatus = 1;
+        game.u._polyself_form_blinded = true;
+    } else if (wasFormBlinded) {
+        restorePolyselfBaseBlindness(game.u._polyself_base);
     }
     game.u._strDisplay = form.strong ? '18/**' : null;
     const rank = form.name.replace(/\b\w/g, ch => ch.toUpperCase());
@@ -11460,22 +11794,26 @@ function becomeMonster(name) {
         unpunishHero();
         message += '  You slip out of the iron chain.';
     }
-    const cloak = (game.inventory || []).find(item =>
-        item.cls === 'armor' && (item.worn || item.line?.includes('being worn'))
-        && inventoryItemName(item).toLowerCase().includes('cloak'));
-    if (cloak && (form.name === 'gnome' || form.verysmall)) {
+    if (polyselfFormBreaksArmor(form)) {
+        const fallout = polyselfEquipmentFalloutForForm(form);
+        if (polyselfFalloutHasEffects(fallout)) {
+            const floorMessages = [];
+            applyPolyselfEquipmentFallout(fallout, floorMessages, form);
+            recomputePolyselfArmorClass(form);
+            message += `  ${[...fallout.messages, ...floorMessages].filter(Boolean).join('  ')}`;
+        }
+    }
+    const cloak = polyselfWornCloakItem();
+    if (cloak && (form.verysmall
+        || (form.name === 'gnome' && !polyselfWornBodyArmorItem() && !polyselfWornShirtItem()))) {
         message += '  You shrink out of your cloak!';
         game._polyself_cloak_after_more_letter = cloak.letter;
         game._topline_after_more = 'Your movements are slowed slightly because of your load.';
         game.u._statusSuffix = `${game.u._statusSuffix || ''} Burdened`;
-        game.u.uac = (game.u.uac ?? 10) - 1;
+        game.u.uac = (game.u.uac ?? 10) - wornArmorAcValueGreatestErosion(cloak);
         return { message, more: true };
     }
-    const bodyArmor = (game.inventory || []).find(item => {
-        if (!(item.cls === 'armor' && (item.worn || item.line?.includes('being worn')))) return false;
-        const name = inventoryItemName(item).toLowerCase();
-        return /armor|mail/.test(name) && !/helm|helmet|gloves|gauntlets|boots|shoes|shield|cloak|shirt/.test(name);
-    });
+    const bodyArmor = polyselfWornBodyArmorItem();
     if (bodyArmor && (form.nohands || form.verysmall)) {
         const fallout = polyselfEquipmentFalloutForForm(form, { bodyArmor });
         message += '  Your armor falls around you!';
@@ -11493,9 +11831,9 @@ function becomeMonster(name) {
         return { message, more: true };
     }
     const fallout = polyselfEquipmentFalloutForForm(form);
-    if (fallout.items.length) {
+    if (polyselfFalloutHasEffects(fallout)) {
         const floorMessages = [];
-        dropPolyselfEquipmentItems(fallout.items, floorMessages);
+        applyPolyselfEquipmentFallout(fallout, floorMessages, form);
         recomputePolyselfArmorClass(form);
         message += `  ${[...fallout.messages, ...floorMessages].filter(Boolean).join('  ')}`;
     }
@@ -29470,7 +29808,7 @@ function armorSubject(item) {
 function armorSlot(item) {
     const name = armorKind(item);
     if (/\b(?:cloak|robe|mantelet|pall|cape|cope|cloth|smock|apron)\b/.test(name)) return 'cloak';
-    if (/\b(?:mail|armor|jacket|dragon scales?)\b/.test(name)) return 'body';
+    if (/\b(?:mail|armor|jacket|coat|dragon scales?)\b/.test(name)) return 'body';
     if (/\bshirt\b/.test(name)) return 'shirt';
     if (/\b(?:helm|helmet|hat|fedora|cornuthaum|cap|pot)\b/.test(name)) return 'helm';
     if (/\b(?:gloves|gauntlets)\b/.test(name)) return 'gloves';
@@ -32574,7 +32912,12 @@ function placeObjectOnFloorWithEffects(obj, x, y, messages, verb = 'drop', {
     delete obj.line;
     delete obj.nobj;
     delete obj.nexthere;
-    Object.assign(obj, object_display(obj));
+    const display = object_display(obj);
+    if (display.glyph === '?' && OBJECT_CLASS_GLYPHS[obj.cls]) {
+        display.glyph = OBJECT_CLASS_GLYPHS[obj.cls];
+        if (obj.cls === 'armor') display.color = carriedDropDisplayColor(obj);
+    }
+    Object.assign(obj, display);
     if (!earthFloorEffects(obj, x, y, messages, verb, { usedUpShopBillOnDestroy })) {
         game.level.objects ??= [];
         const stacked = stack ? stackMonsterThrownObject(obj) : obj;
@@ -43310,39 +43653,24 @@ export async function rhack(_cmd) {
                 if (game._polyself_cloak_after_more_letter) {
                     const cloak = (game.inventory || []).find(item => item.letter === game._polyself_cloak_after_more_letter);
                     if (cloak) {
-                        cloak.worn = false;
-                        const dropped = {
-                            ...cloak,
-                            line: undefined,
-                            ox: game.u?.ux || 0,
-                            oy: game.u?.uy || 0,
-                            glyph: '[',
-                            color: cloak.color ?? CLR_BROWN,
-                        };
-                        stopCarriedFigurineTimerOnLeave(dropped);
-                        removeInventoryItem(cloak);
-                        game.level?.objects?.push(dropped);
-                        if (game.u) game.u.uac = (game.u.uac ?? 10) + 1;
-                        newsym(dropped.ox, dropped.oy);
+                        const acBonus = wornArmorAcValueGreatestErosion(cloak);
+                        const floorMessages = [];
+                        const queuedBefore = game._queued_messages_after_more?.length || 0;
+                        dropCarriedObjectAtHero(cloak, floorMessages);
+                        if (game.u) game.u.uac = (game.u.uac ?? 10) + acBonus;
+                        appendToplineAfterMoreMessages(floorMessages);
+                        if ((game._queued_messages_after_more?.length || 0) > queuedBefore) keepMore = true;
                     }
                     game._polyself_cloak_after_more_letter = '';
                 }
                 if (game._polyself_tool_after_more_letter) {
                     const tool = (game.inventory || []).find(item => item.letter === game._polyself_tool_after_more_letter);
                     if (tool) {
-                        const dropped = {
-                            ...tool,
-                            line: undefined,
-                            wielded: false,
-                            ox: game.u?.ux || 0,
-                            oy: game.u?.uy || 0,
-                            glyph: tool.glyph || '(',
-                            color: tool.color ?? NO_COLOR,
-                        };
-                        stopCarriedFigurineTimerOnLeave(dropped);
-                        removeInventoryItem(tool);
-                        game.level?.objects?.push(dropped);
-                        newsym(dropped.ox, dropped.oy);
+                        const floorMessages = [];
+                        const queuedBefore = game._queued_messages_after_more?.length || 0;
+                        dropCarriedObjectAtHero(tool, floorMessages);
+                        appendToplineAfterMoreMessages(floorMessages);
+                        if ((game._queued_messages_after_more?.length || 0) > queuedBefore) keepMore = true;
                     }
 	                if (game._polyself_after_more_ac != null) {
 	                    game.u.uac = game._polyself_after_more_ac;

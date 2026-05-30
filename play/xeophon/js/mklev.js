@@ -5485,9 +5485,21 @@ for (const mon of RANDOM_MONSTER_BY_NAME.values()) {
     if (NOHEAD_MONSTERS.has(mon.name)) mon.nohead = true;
 }
 const NOEYES_MONSTERS = new Set([
-    'lichen', 'brown mold', 'yellow mold', 'green mold', 'red mold',
-    'shrieker', 'violet fungus',
+    'acid blob', 'quivering blob', 'gelatinous cube',
+    'blue jelly', 'spotted jelly', 'ochre jelly',
+    'small mimic', 'large mimic', 'giant mimic',
+    'rock piercer', 'iron piercer', 'glass piercer',
+    'lurker above', 'trapper',
+    'fog cloud', 'dust vortex', 'ice vortex', 'energy vortex',
+    'steam vortex', 'fire vortex', 'yellow light', 'black light',
+    'air elemental', 'fire elemental', 'earth elemental', 'water elemental',
+    'lichen', 'brown mold', 'yellow mold', 'green mold',
+    'red mold', 'shrieker', 'violet fungus',
+    'gray ooze', 'brown pudding', 'green slime', 'black pudding',
 ]);
+for (const mon of RANDOM_MONSTER_BY_NAME.values()) {
+    if (NOEYES_MONSTERS.has(mon.name)) mon.noeyes = true;
+}
 
 function monsterTemperatureShift(name) {
     const temperature = game.level?.flags?.temperature ?? 0;
