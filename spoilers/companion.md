@@ -19,20 +19,22 @@ players.
 
 The dungeon is old. No one remembers who built it, only that
 its entrance has stood open for more than forty years to anyone
-bold enough to descend. They come from every land, drawn by
-tales of an artifact hidden in its depths: Knights, Wizards,
+bold enough to descend. Brave souls come from every land, drawn
+by tales of an artifact hidden in its depths: Knights, Wizards,
 Valkyries, Samurai, Archeologists with their picks, even
 Tourists with their cameras. No two of them have found the same
-mazes. Rooms shift between visits, stairwells move, and a
-route that worked for years can turn deadly today. The
-one constant is that the dungeon is trying to kill you.
+mazes. Rooms shift between visits, stairwells move. An old
+reliable route can turn deadly today. The one constant is that
+the dungeon is trying to kill you.
 
 Most adventurers who go down there never come back. The ones
 who do have taken time to prepare: they have read the myths,
 learned the lore, and listened to the warnings of those who
-went before. The pages that follow gather the wisdom of many
-adventurers and seers, paid for by the lives of those who did
-not return and by the careful observations of those who did.
+went before. The pages that follow gather the wisdom of generations
+of adventurers, and seers have updated them with insights on the
+latest dungeon changes. Each piece of advice has been paid for
+by the lives of those who did not return and by the painstaking
+observations of those who did.
 
 **A word of caution.** This guide will change how you experience
 the Mazes. Once you know that a floating eye can paralyze you
@@ -2046,7 +2048,7 @@ to erase, and whether your stylus suffers wear.
 | ------------------------- | ------------- | -------------- | --------------------------------- |
 | Finger (dust)             | Instant       | Fragile        | Smudges when monsters step on it  |
 | Uncursed athame           | Instant       | Semi-permanent | Doesn't dull (cursed athame does) |
-| Other edged weapon        | Several turns | Semi-permanent | Interruptible; dulls (~1 enchantment per 2 chars — "Elbereth" costs ~−4) |
+| Other edged weapon        | Several turns | Semi-permanent | Interruptible. Dulls roughly 1 enchantment per 2 characters, so "Elbereth" costs about −4. |
 | Hard gem or diamond       | Several turns | Semi-permanent | Interruptible                     |
 | Wand of digging           | Instant       | Semi-permanent | Good middle ground                |
 | Wand of fire or lightning | Instant       | Permanent      | Burns the word into the floor     |
@@ -2054,24 +2056,24 @@ to erase, and whether your stylus suffers wear.
 The three durability tiers correspond to how the text resists
 ordinary erosion:
 
-- **Fragile** (dust) — a monster stepping on the square smudges
+- **Fragile (dust).** A monster stepping on the square smudges
   one character. In dust, an Elbereth lasts as long as the floor
   stays clear.
-- **Semi-permanent** (scratched into the floor) — monster traffic
+- **Semi-permanent (scratched into the floor).** Monster traffic
   doesn't smudge it. Random erosion can occasionally chip a
   character under unusual conditions, but in practice the
   engraving lasts indefinitely.
-- **Permanent** (burned in) — the engraving doesn't erode at all
-  under normal conditions; only ice tiles or magical attacks can
+- **Permanent (burned in).** The engraving doesn't erode at all
+  under normal conditions. Only ice tiles or magical attacks can
   damage it.
 
-**Engraving is an interruptible occupation.** Anything written by
-hand at multi-turn speed (non-athame edged weapon, gem) takes one
-turn per letter. If you're interrupted mid-word — by an attack, a
-monster wandering into view, or anything else that breaks an
-occupation — you get a partial engraving that does nothing useful.
-Instant methods (any wand, finger-in-dust, or an uncursed athame)
-finish in a single occupation action.
+**Engraving by hand can be interrupted.** Anything written by
+hand at multi-turn speed (non-athame edged weapon, gem) takes
+one turn per letter. If something breaks the engraving mid-word
+(an attack, a monster wandering into view, a passing earthquake),
+the partial word you leave behind does nothing useful. Instant
+methods (any wand, finger-in-dust, or an uncursed athame) finish
+in one action.
 
 **Impairment and errors.** If you are blind, confused, stunned, or
 hallucinating, you have a chance of misspelling each letter, and
@@ -2086,18 +2088,19 @@ must read *exactly* that word and nothing else, so the appended
 text usually destroys the ward. To refresh, overwrite the square
 or pick a fresh one.
 
-**Two engravings worth recognizing.** Most engravings you find are
-random flavor (graffiti, "elbereth" left by someone else, etc.),
-but two specific messages are *trap markers* placed by the
-dungeon: *"ad aerarium"* (Latin: *to the treasury*) is engraved
-near a secret closet containing either a **vault teleporter**
-(a one-shot trap that drops you into Croesus's 2×2 gold vault on
-the same level — pick up the gold, then escape ahead of the vault
-guard) or a **level teleporter** (sends you to a random dungeon
-level, often unwelcome without teleport control); *"Vlad was
-here"* marks a secret closet containing a **trap door**. Both are easy to miss in the message log, and
-worth investigating when you see them — but be ready for what's
-on the other side.
+**Two engravings worth recognizing.** Most engravings you find
+are random flavor (graffiti, "elbereth" left by someone else,
+and the like). Two specific messages, though, are *trap markers*
+placed by the dungeon. *"Ad aerarium"* (Latin: *to the
+treasury*) marks a secret closet containing either a **vault
+teleporter** or a **level teleporter**. The vault teleporter is
+a one-shot trap that drops you into Croesus's 2×2 gold vault on
+the same level; pick up the gold and escape ahead of the vault
+guard. The level teleporter sends you to a random dungeon
+level, often unwelcome without teleport control. *"Vlad was
+here"* marks a secret closet containing a **trap door**. Both
+messages are easy to miss in the message log. Investigate them
+when you see them, and be ready for what is on the other side.
 
 #### Elbereth
 <!-- audit
@@ -2128,8 +2131,8 @@ on the other side.
 
 *Elbereth* is Sindarin for "Star-Queen," one of the Elvish names
 of **Varda Elentári**, highest of the Valar in J.R.R. Tolkien's
-*Silmarillion* — the one who set the stars in the sky. In *The
-Lord of the Rings* the Elves invoke her name for protection
+*Silmarillion* and the one who set the stars in the sky. In
+*The Lord of the Rings* the Elves invoke her name for protection
 against evil: Frodo cries *"O Elbereth! Gilthoniel!"* on
 Weathertop and the Witch-king recoils, and Sam invokes her in
 Shelob's lair to make the Phial of Galadriel burn brighter.
@@ -2145,10 +2148,10 @@ dungeon floor is an appeal to a higher power for safe ground.
 Writing the word **Elbereth** on the floor creates a protective
 ward. Most monsters will not melee-attack you while you stand on an
 Elbereth square; they mill around, frustrated, instead. The ward
-applies whether you wrote it or found it already engraved, and the
-underlying engraving method (dust, scratched, burned) doesn't
-affect the strength of the protection — only how long the engraving
-will survive.
+applies whether you wrote it or found it already engraved, and
+the underlying engraving method (dust, scratched, burned) does
+not affect the strength of the protection, only how long the
+engraving will survive.
 
 ##### Rules of the ward
 
@@ -2171,23 +2174,23 @@ will survive.
 
 ##### The defile rule (important)
 
-If you attack a monster while standing on Elbereth — melee, thrown
-weapon, or wand zap — and that monster *would* have feared the
-ward (or is peaceful), the engraving is **deleted instantly, in
-full, regardless of how it was made.** Even a burned-permanent
-Elbereth disappears in one swing.
-You take an **alignment hit** ("You feel like a hypocrite") and see
-the message *"The engraving beneath you fades."* The hit is a flat
-−5 if your alignment record is comfortably positive (above +5);
-otherwise it's a random −1 to −5.
+If you attack a monster while standing on Elbereth (whether by
+melee, thrown weapon, or wand zap), and that monster *would*
+have feared the ward, or is peaceful, the engraving is
+**deleted instantly, in full, regardless of how it was made.**
+Even a burned-permanent Elbereth disappears in one swing. You
+take an **alignment hit** ("You feel like a hypocrite") and see
+the message *"The engraving beneath you fades."* The hit is a
+flat −5 if your alignment record is comfortably positive
+(above +5); otherwise it is a random −1 to −5.
 
-The durability table doesn't show this: "permanent" and
+The durability table doesn't show this. "Permanent" and
 "semi-permanent" describe resistance to *passive* wear (monster
 footsteps, erosion). Your own hostile action wipes the word
-regardless of tier. So Elbereth is strictly **defensive**.
-Use it to heal, drink a potion, read a scroll, swap gear, regroup.
-Any attack from on top — melee, thrown, or zapped — defiles it, so
-step off when you mean to fight back.
+regardless of tier. So Elbereth is strictly **defensive**. Use
+it to heal, drink a potion, read a scroll, swap gear, regroup.
+Any attack from on top defiles it, so step off when you mean
+to fight back.
 
 ##### Practical use
 
@@ -2198,12 +2201,13 @@ either step off the dust ward to keep it for next time (it survives
 until a monster steps on the square), or upgrade to something more
 durable.
 
-For a permanent safe spot, useful for stashing items, resting at a
-fixed retreat point, or anchoring a corridor fight — burn the word
-with a wand of fire or lightning. One turn, no interruption risk,
-no impairment penalty, no wear. A semi-permanent engraving (athame,
-weapon, gem, wand of digging) is the middle ground: durable, but
-the slow methods can be interrupted mid-word.
+For a permanent safe spot, useful for stashing items, resting
+at a fixed retreat point, or anchoring a corridor fight, burn
+the word with a wand of fire or lightning. One turn, no
+interruption risk, no impairment penalty, no wear. A
+semi-permanent engraving (athame, weapon, gem, wand of digging)
+is the middle ground: durable, but the slow methods can be
+interrupted mid-word.
 
 While levitating, you can't engrave with your finger or your
 weapon: the game refuses both. A wand of fire, lightning, cold,
@@ -2214,10 +2218,12 @@ Elbereth into the floor from a wand of fire while floating still
 works.
 
 A **scroll of scare monster** dropped on the floor acts like
-Elbereth on its square, doesn't erode, and works while you're not
-standing on it. The catch: it disappears one read after you pick
-it up, so leave it where you want the safe spot. The Castle wand
-chest is parked on top of a cursed one for exactly this reason.
+Elbereth on its square. It does not erode and works while you
+are not standing on it. The catch: picking it up may destroy it
+(cursed scrolls crumble on the first pickup, uncursed on the
+second), so leave it where you want the safe spot. The Castle
+wand chest is parked on top of a cursed one for exactly this
+reason.
 
 <!-- audit
 2026-05-18:
@@ -2925,60 +2931,61 @@ more glob to eat. The full intrinsic table is in
 
 The `T` class doesn't stay dead. After you kill a troll, its
 corpse sits on the floor for a few hidden turns and then stands
-back up — at full HP, fresh and angry. A pile of corpses after a
-five-troll fight is a *timer*, not a kill count: walk away for
+back up at full HP, fresh and angry. A pile of corpses after a
+five-troll fight is a timer, not a kill count. Walk away for
 twenty turns and the same five trolls are coming back. The
-veteran's lament — *"I beat the trolls, I got cocky, the trolls
-beat me"* — is the most repeated story on the public boards.
+veteran's lament *"I beat the trolls, I got cocky, the trolls
+beat me"* is one of the most repeated stories on the public
+boards.
 
-**Stopping the revival.** Eat the corpse (trolls are safe to
-eat for everyone but vegetarians). Tin it with a tin opener.
-Apply a magic whistle to summon a pet who'll eat it. Zap a wand
-of teleportation at the corpse to send it off-level. Destroy it
-with a wand of striking. In Gehennom, the lava under your feet
-is the simplest solution — kick the corpse onto a lava square
-and walk on.
+**Stopping the revival.** The simplest cure is to eat the corpse,
+since trolls are safe to eat for everyone but vegetarians. You
+can also tin it with a tin opener, apply a magic whistle to call
+a pet over to eat it, zap a wand of teleportation at the corpse
+to send it off-level, or destroy it with a wand of striking. In
+Gehennom, kicking the corpse onto a lava square works in one
+move.
 
-**Trolls drop their gear when they die.** If they revive, they
-re-collect what they were carrying, so a revive-and-recollect
+**Trolls drop their gear when they die.** A revived troll
+re-collects what it was carrying, so a revive-and-recollect
 cycle leaves piles of mixed troll-gear and dead-troll bodies on
-the same square. Pick up the gear before they wake up; the loot
+the same square. Pick up the gear before they wake up. The loot
 is yours either way.
 
 **Class members.** Plain troll, ice troll, rock troll, water
-troll, and the late-game Olog-hai. All revive; the corpse
+troll, and the late-game Olog-hai. All revive, and the corpse
 behaves the same way regardless of variant. The Olog-hai is the
-one to fear — a three-attack hitter at level 13, and "fighting
-the same Olog-hai twice in twenty turns" is one of those
-experiences that turns a careless run into a careful one.
+variant to fear, a three-attack hitter at level 13. Fighting the
+same Olog-hai twice in twenty turns is the experience that turns
+a careless run into a careful one.
 
 #### A note on wraiths
 
 The `W` class has a touch attack that **drains an experience
-level** — one of the few permanent character setbacks in the
+level**, one of the few permanent character setbacks in the
 game. You lose stat points, hit points, mana, and the most
 recent skill slot. There is no easy undo, and the wraith can
 land the touch again if you let it. The standard advice on the
-public boards: fear the wraith on first sight, plan the kill
-from across the room.
+public boards is to fear the wraith on first sight and plan the
+kill from across the room.
 
-**But the corpse is one of the most valuable consumables in the
-game.** Eating a fresh wraith corpse grants you a level — the
-inverse operation. So the recipe: kill the wraith carefully
-(the touch is melee-range only, so engage at distance or from
-inside a corridor where you control the spacing), then eat the
-corpse the moment it drops. Wraith corpses spoil quickly, so
-hesitation costs you the trade.
+**The corpse, though, is one of the most valuable consumables
+in the game.** Eating a fresh wraith corpse grants you a level,
+the inverse operation. The recipe is to kill the wraith
+carefully and then eat the corpse the moment it drops. The
+touch is melee-range only, so engage at distance or from inside
+a corridor where you control the spacing. Wraith corpses spoil
+quickly, so hesitation costs you the trade.
 
-**Farming wraiths.** Mid-to-late-game players actively
-hunt wraiths in the upper Quest and throughout Gehennom for free
-XP. A *cursed* scroll of genocide naming "wraith" reverse-
-genocides four to six fresh wraiths at your feet — a ready-made
-banquet, if you can drop each one in the turn it arrives. The
-classic setup is to stand on stairs (so you can escape if it
-goes wrong), drop a stack of cursed scrolls, and graze. Some
-ascending heroes credit a wraith binge for the experience levels
-that carried them through Gehennom.
+**Farming wraiths.** Mid-to-late-game players actively hunt
+wraiths in the upper Quest and throughout Gehennom for free XP.
+A *cursed* scroll of genocide naming "wraith" reverse-genocides
+four to six fresh wraiths at your feet, a ready-made banquet if
+you can drop each one in the turn it arrives. The classic setup
+is to stand on stairs (so you can escape if it goes wrong),
+drop a stack of cursed scrolls, and graze. Some ascending
+heroes credit a wraith binge for the experience levels that
+carried them through Gehennom.
 
 #### A note on Seduction {#seduction}
 <!-- audit
@@ -4716,13 +4723,12 @@ menu test gives a clean read without committing to picking the
 stone up.
 
 **The pick-up test.** Loadstones are cursed when they generate,
-and a cursed loadstone refuses to be dropped at all — the game
+and a cursed loadstone refuses to be dropped at all. The game
 prints "For some reason, you cannot drop the stone!" and the
-stone stays in your pack. If you pick up a gray
-stone and it weighs you down suspiciously, try to drop it. If
-you can't, you're stuck with a cursed loadstone until you can
-uncurse it (holy water, scroll of remove curse, prayer) — then
-drop it.
+stone stays in your pack. If you pick up a gray stone and it
+weighs you down suspiciously, try to drop it. If you can't, you
+are stuck with a cursed loadstone until you uncurse it (holy
+water, scroll of remove curse, prayer). Then you can drop it.
 
 **The `#tip` escape.** Or, more elegantly: stow the cursed
 loadstone in any container you carry (a 2z sack is enough), then
@@ -5306,9 +5312,13 @@ where mapping by hand could take a lifetime you don't have.
 
 []{#scroll-scare-monster}
 **Scare monster.** The trick: don't read it. Drop it on the floor
-and stand on it. It works like a permanent [Elbereth](#elbereth), frightening
-most monsters away. The catch: pick it up after it's been dropped
-and it crumbles to dust. So choose your standing spot wisely.
+and stand on it. It works like a permanent [Elbereth](#elbereth),
+frightening most monsters away. The first time you pick up an
+uncursed scroll, it survives but gets "stamped"; the next pickup
+ends with *"The scroll turns to dust as you pick it up,"* and
+the scroll is gone. A cursed scroll dusts on the first pickup.
+Drop where you want the safe spot, not where you will need to
+relocate.
 
 []{#scroll-teleportation}
 **Teleportation.** Uncursed teleports you randomly on the level.
@@ -5878,21 +5888,23 @@ answer to the encumbrance problem; carrying everything inside one
 reduces the effective weight to roughly a quarter, which is why
 veteran players treat finding one as a turning point in the run.
 
-**Running out of inventory letters.** Weight isn't the only limit.
-Your inventory has **52 slots** (`a-z` plus `A-Z`), and a 53rd
-item hits *"Your pack is too full."* Stackable items consolidate
-into a single slot only when the game can tell they're the same
-thing — five identified scrolls of identify share one letter, but
-identified and unidentified scrolls of the same type stay in
-separate slots, and weapons of different enchantments don't
-merge. So clutter is usually an identification problem in
-disguise: the more you ID, the more your inventory consolidates.
-The bag of holding doubles as the answer here too — items inside
-any container don't count against your 52, so a stash of
-twenty potions in a BoH costs you a single letter. The `#adjust`
-command lets you swap items between letters, force-merge stacks
-that didn't merge, or split a stack to a new letter — purely
-relabeling, no game effect.
+**Running out of inventory letters.** Weight isn't the only
+limit. Your inventory has **52 slots** (`a-z` plus `A-Z`), and a
+53rd item hits *"Your pack is too full."* Stackable items
+consolidate into a single slot only when the game can tell they
+are the same thing. Five identified scrolls of identify share
+one letter, but identified and unidentified scrolls of the same
+type stay in separate slots, and weapons of different
+enchantments do not merge. Clutter is usually an identification
+problem in disguise: the more you identify, the more your
+inventory consolidates.
+
+The bag of holding doubles as the answer here too. Items
+inside any container do not count against your 52, so a stash
+of twenty potions in a BoH costs you a single letter. The
+`#adjust` command lets you swap items between letters,
+force-merge stacks that didn't merge, or split a stack to a new
+letter; it is purely relabeling, with no game effect.
 
 One 5.0 hazard that you will need to be aware of:
 **intelligent monsters can now loot unlocked containers**.
@@ -7083,22 +7095,22 @@ not the time for ambiguity:
   veteran's incantation. `blessed` because BUC defaults to random,
   `greased` deflects nymph theft and Rider grabs, `fixed` (or
   `erodeproof`) locks erosion, `+3` is the safe enchantment ceiling.
-- "gray dragon scale mail" alone lets the dice pick blessed/
-  cursed and enchantment — a bare wish can roll cursed. You
-  had *one* wish; spell out the BUC and the plus. And don't
-  forget "scale" — "gray dragon mail" hands you a scroll of
-  mail instead.
+- "gray dragon scale mail" alone lets the dice pick the BUC
+  and the enchantment, so a bare wish can land cursed. You had
+  *one* wish; spell out the BUC and the plus. And don't forget
+  "scale": "gray dragon mail" alone hands you a scroll of mail
+  instead.
 - Artifact wishes get *harder* as artifacts accumulate. The
   denial roll scales with the total artifacts in the world
   (yours, generated, even bones-file ones), and your
   artifact-wish counter ticks whether or not the artifact
   actually appears. Quest artifacts are absolutely blocked.
-- A few targets are silently nerfed into mundane substitutes:
-  the **Amulet of Yendor** becomes a fake amulet, the **Bell
+- A few targets are silently nerfed into mundane substitutes.
+  The **Amulet of Yendor** becomes a fake amulet, the **Bell
   of Opening** a plain bell, the **Book of the Dead** blank
-  paper, the **Candelabrum** a tallow candle, and — relevant
-  after all that lamp-rubbing — a wish for a **magic lamp**
-  hands you an ordinary oil lamp.
+  paper, and the **Candelabrum** a tallow candle. A wish for
+  a **magic lamp** also fails, handing you an ordinary oil
+  lamp. Cruel, after all that lamp-rubbing.
 
 ---
 
@@ -7450,11 +7462,11 @@ The drawbridge is the first puzzle. You can lower it four ways:
 Once you're across, the Castle contains:
 
 - A **throne room** with a throne and a random court of
-  high-letter monsters (liches, nymphs, eyes, giants, and the like).
-  Sitting on the throne is tempting but risky (see
-  [Points of Interest](#points-of-interest)). The throne room also
-  holds a separate **treasure chest** with random loot — not the
-  wand chest, just a side prize.
+  high-letter monsters (liches, nymphs, eyes, giants, and the
+  like). Sitting on the throne is tempting but risky (see
+  [Points of Interest](#points-of-interest)). The throne room
+  also holds a separate **treasure chest** with random loot.
+  This is not the wand chest, just a side prize.
 - **Barracks** full of soldiers carrying decent equipment, which is
   to say *your* equipment once you've dealt with them.
 - **Four corner-tower alcoves**. One (and only one, randomly)
@@ -7462,15 +7474,14 @@ Once you're across, the Castle contains:
   all*, or quaff a potion of object detection from the courtyard
   to see which tower holds the chest and skip the other three.
   In 5.0, that chest also holds a **potion of gain level**,
-  included as a small make-good for the wand's charge changes (see
-  below). The chest's square is protected by a burned-in
-  [*Elbereth*](#elbereth) engraving and sealed with a cursed scroll of
-  scare monster. Those
-  wards exist to keep wandering monsters from *eating* the chest
-  itself (some species, like leprechauns and rats, gnaw containers);
-  the cursed scroll is also a known gotcha — don't try to read it
-  casually. The locked chest opens by force, by a key, or by a wand
-  of opening.
+  included as a small make-good for the wand's charge changes
+  (see below). The chest's square is protected by a burned-in
+  [*Elbereth*](#elbereth) engraving and sealed with a cursed
+  scroll of scare monster. Those wards exist to keep wandering
+  monsters from *eating* the chest itself (some species, like
+  leprechauns and rats, gnaw containers). The cursed scroll is
+  also a known gotcha: don't try to read it casually. The locked
+  chest opens by force, by a key, or by a wand of opening.
 - Four **storerooms** along the north and south walls, each guarded
   by a dragon (`D`-class). Don't confuse them with the corner
   alcoves; the storerooms hold random fodder.
@@ -7531,158 +7542,157 @@ artifact**.
 - blessed scroll of genocide on class 'L' wipes lich/demilich/master lich/arch-lich (read.c:2638-3015 do_class_genocide, monsters.h:1864-1899 four S_LICH entries); Wizard of Yendor is S_HUMAN (monsters.h:2847-2858), not affected
 -->
 
-Below the Castle, the dungeon changes. The corridors give way to
-mazes. The monsters give way to demons. The comforting knowledge
-that you can pray to your god for help gives way to silence: in
-Gehennom, you walk beyond the protective gaze of your god.
+Below the Castle the dungeon changes its character. Corridors
+give way to mazes, ordinary monsters to demons. Worst of all,
+your god goes silent. Prayer fails in Gehennom, and from this
+point on you survive on what you packed at the Castle.
 
-This is the part of the game that separates tourists from
-ascenders. Everything you've prepared for has been leading here.
+This is the stretch of the game that separates tourists from
+ascenders. Everything you have prepared for has been leading
+here.
 
 #### The Valley of the Dead
 
-The very first level of Gehennom, immediately below the Castle, is
-a named special level called the **Valley of the Dead**. You'll
-see the arrival message — *"You arrive at the Valley of the
-Dead..."* — and the dungeon overview will mark it for you. It's
-a wide hand-designed map with three irregular graveyards scattered
+The first level of Gehennom, immediately below the Castle, is
+the **Valley of the Dead**. The arrival message reads *"You
+arrive at the Valley of the Dead..."* and the dungeon overview
+marks the level for the rest of the game. The map is a wide
+hand-designed level with three irregular graveyards scattered
 across it and a permanent **shrine to Moloch** in the upper-left
-corner (an unaligned high altar; do not pray here). Walls are
-non-diggable everywhere, so you can't shortcut through them, and
-the level is flagged `noteleport` and `nommap` — magic mapping
-won't reveal it and teleportation doesn't work.
+corner. The shrine sits on an unaligned high altar; do not pray
+here. The walls are non-diggable everywhere, so no shortcuts,
+and both `noteleport` and `nommap` are set, which means magic
+mapping will not reveal the level and teleportation does not
+work.
 
-The morbid detail worth noticing: scattered across the level are
+A morbid detail worth noticing. Scattered across the level are
 **dead bodies of every player role** the dungeon has ever seen
-descend — two corpses each of Archeologists, Barbarians, Cavemen,
+descend: two corpses each of Archeologists, Barbarians, Cavemen,
 Healers, Knights, Rangers, Rogues, Samurai, Tourists, Valkyries,
-and Wizards. Pointedly absent: **no Priests, no Monks** (maybe
-Moloch has a special fate reserved for members of those classes).
+and Wizards. Pointedly absent: no Priests and no Monks. Moloch
+may have a special fate reserved for members of those classes.
 
 #### What's Different in Gehennom
 
-- **No prayer.** Your god is deaf to you in Gehennom (unless you're
-  a Moloch worshipper, and you're not). No emergency healing. No
-  food rescue. No curse removal via divine intervention. Pack
-  accordingly, because down here, you are completely on your own
-- **Fire everywhere.** Fire traps litter the corridors. Demons
-  breathe fire as casually as you breathe air. If you don't have
-  fire resistance by now, turn around
-- **Hot ground.** In 5.0, the ground itself is hot
-  enough to shatter potions dropped on the floor. Keep everything
-  in a bag at all times
-- **Demon lords.** Named demon lords (Orcus, Baalzebub, Asmodeus,
-  Juiblex, Yeenoghu, and if you're very unlucky, Demogorgon) hold
-  court on specific levels. Each is a major battle. Several can
-  summon reinforcements. All of them are angry you're here.
-  However, **most demon lords can be bribed.** On first sight, if
-  you haven't already attacked them, a major demon will name a
-  price in gold for safe passage. The demand is a random fraction
-  (roughly 20–100%) of the gold sitting **in your main inventory**
-  — not gold inside containers — so a well-known runner-up trick
-  is to **stash most of your gold in a bag of holding before
-  approaching the throne**: the demand shrinks proportionally, and
-  a few hundred zm bribe can buy off a prince who would otherwise
-  have demanded thousands. The alternative is fighting a high-level
-  boss, so unless you specifically want the XP or sacrifice corpse,
-  bribery is often the better trade. (Wielding Excalibur or
-  Demonbane closes off the bribery option — they refuse to talk and
-  attack on sight.) The Riders on the Astral Plane and a small
-  handful of demons (notably Demogorgon) won't take a bribe; the
-  rest usually will
-- **Teleportation restrictions.** In 5.0, teleportation
-  is blocked on a demon lord's lair level while that lord still
+- **No prayer.** Your god is deaf to you in Gehennom (unless you
+  are a Moloch worshipper, and you are not). No emergency healing,
+  no food rescue, no curse removal via divine intervention. Pack
+  accordingly; from here on you are on your own.
+- **Fire everywhere.** Fire traps litter the corridors, and demons
+  breathe fire as casually as you breathe air. If you do not have
+  fire resistance by now, turn around.
+- **Hot ground.** In 5.0, the ground itself is hot enough to
+  shatter potions dropped on the floor. Keep everything in a bag
+  at all times.
+- **Demon lords on specific levels.** Asmodeus, Baalzebub,
+  Juiblex, Orcus, Yeenoghu, and, very rarely, Demogorgon hold
+  court on private throne levels. Each fight is a major battle,
+  several can summon reinforcements, and all of them are angry
+  you are here. Their lairs and the bribery rules get their own
+  section below.
+- **Teleportation restrictions.** In 5.0, teleportation is
+  blocked on a demon lord's lair level while that lord still
   lives. Kill or banish them and the restriction lifts. In older
-  editions, most Gehennom levels permanently blocked teleportation
-- **Mazes.** Nearly every level is a maze. A wand of digging or
-  pickaxe isn't optional here; it's as essential as your weapon.
-  Dig straight lines to the stairs and don't look back
+  editions, most Gehennom levels permanently blocked teleportation,
+  which is no longer the case.
+- **Mazes.** Nearly every level is a maze. A wand of digging or a
+  pickaxe is no longer optional. Dig straight lines to the stairs
+  and don't look back.
 
 #### The demon-prince lairs
 
 Three of Gehennom's special levels are the personal thrones of
 **Asmodeus** (fire-, cold-, and poison-resistant, casts cold
 spells, carries wands of cold and fire), **Baalzebub** (the Lord
-of the Flies — gaze that stuns you and a poisonous bite that
+of the Flies, with a stunning gaze and a poisonous bite that
 drains Strength; his lair is a beetle-shaped maze), and
 **Juiblex** (the Faceless Lord, a slime that engulfs in melee
-and spits acid). All three sit alone in their lairs and **won't pursue**
-you, so you can avoid them entirely by skipping their level.
+and spits acid). All three sit alone in their lairs and **will
+not pursue** you, so you can avoid them entirely by skipping
+their level.
 
-**Asmodeus and Baalzebub are bribable**: the demand is a random
-fraction of the gold in your main inventory, so **stash gold in a
-bag of holding before walking up to the throne** and a few hundred
-zm will buy off a prince who would otherwise have demanded
-thousands. Lawful characters get a sweetener: all four bribable
-demon princes are themselves lawful, and they discount the demand
-by half for a co-aligned visitor. **Juiblex is not bribable** —
-only the Arch-Devil demons with the bribe disposition (Geryon,
-Dispater, Baalzebub, Asmodeus) accept gold; Juiblex, Yeenoghu,
-Orcus, and Demogorgon attack on sight regardless. Fighting Juiblex
-is viable late game (wand of death works on all four), but expect
-a real fight. None of their corpses is useful for sacrifice the
-way a fresh weak monster's would be. One thing the demon never
-forgets: a *refused* bribe converts the prince to permanent
-hostility, and they will not offer terms again. Bribe or fight;
-don't dither.
+**Asmodeus and Baalzebub are bribable.** The demand is a random
+fraction of the gold in your main inventory, so **stash gold in
+a bag of holding before walking up to the throne** and a few
+hundred zm will buy off a prince who would otherwise have
+demanded thousands. Lawful characters get a sweetener. All four
+bribable demon princes are themselves lawful, and they discount
+the demand by half for a co-aligned visitor. **Juiblex is not
+bribable**, and neither are Yeenoghu, Orcus, or Demogorgon. Only
+the Arch-Devil demons with the bribe disposition (Geryon,
+Dispater, Baalzebub, Asmodeus) accept gold. The rest attack on
+sight regardless of how friendly your wallet looks.
+
+Fighting Juiblex is viable late game (a wand of death works on
+all four), but expect a real fight. None of their corpses is
+useful for sacrifice the way a fresh weak monster's would be.
+One thing the demon never forgets: a *refused* bribe converts
+the prince to permanent hostility, and he will not offer terms
+again. Bribe or fight. Don't dither.
+
+**Wielding Excalibur or Demonbane closes off bribery entirely.**
+Those artifacts refuse to talk and attack on sight, so a Lawful
+character planning to bribe should sheathe them before approach.
 
 #### Vlad's Tower
 
-A three-level tower branching **upward** off Gehennom (one of the
-only side-branches in the lower dungeon). **Vlad the Impaler** —
-a unique vampire lord — guards the **Candelabrum of Invocation**
-at the top. Climb the tower, kill Vlad, take the Candelabrum.
+A three-level tower branching **upward** off Gehennom, one of
+the only side-branches in the lower dungeon. **Vlad the
+Impaler**, a unique vampire lord, guards the **Candelabrum of
+Invocation** at the top. Climb the tower, kill Vlad, take the
+Candelabrum.
 
-The tower also contains a **special throne**, and 5.0 has made it
-both more rewarding and more painful. The good news: it never
+The tower also contains a **special throne**, and 5.0 has made
+it both more rewarding and more painful. The good news: it never
 disintegrates from sheer use the way ordinary thrones do, so you
 can sit on it again and again. The bad news: you will, because
 the prize is rare. Each sit rolls one of thirteen effects. Four
 of them grant a wish (the throne *does* disintegrate after the
-wish, having spent its power). The other nine are bad: permanent
-level drain, an inventory-coating layer of grease (your weapon
-will slip, your shield will fall off), a stripped intrinsic, a
-forced level teleport to the vibrating-square level (sometimes
-useful, often not), three summoned demons, a confused-blessed
-remove curse on your gear, forced polymorph, acid damage in
-eighty-HP gulps if you don't have acid resistance, or a randomized
-stat shuffle that will probably make several of your scores worse.
+wish, having spent its power). The other nine are bad:
+permanent level drain, an inventory-coating layer of grease
+(your weapon will slip, your shield will fall off), a stripped
+intrinsic, a forced level teleport to the vibrating-square level
+(sometimes useful, often not), three summoned demons, a
+confused-blessed remove curse on your gear, forced polymorph,
+acid damage in eighty-HP gulps if you do not have acid
+resistance, or a randomized stat shuffle that will probably make
+several of your scores worse.
 
 The arithmetic: only one sit in three picks an effect at all
-(the other two roll "you feel out of place" and do nothing); of
-those that fire, 4/13 are the wish. Unconditional rate is about
-1 in 10, so plan on roughly ten sits before the wish lands, with
-about seven bad effects absorbed along the way. Plan accordingly. Stand at full HP,
-leave any precious gear behind (a grease hit coats your whole
-pack and makes your hands slippery for 100 to 200 turns, dropping
-items when you try to use them), and have acid
-resistance or magic resistance ready before you sit. If you don't
-want a forced wish (say, you've already used your Castle wish and
-Amulet wish and want to keep this one for the ascension kit), you
-can sit at any time; you don't have to do it right now. The
-throne stays put unless something destroys it.
+(the other two roll "you feel out of place" and do nothing), and
+of those that fire, 4/13 are the wish. The unconditional rate is
+about 1 in 10, so plan on roughly ten sits before the wish
+lands, with about seven bad effects absorbed along the way.
+Stand at full HP, leave any precious gear behind (a grease hit
+coats your whole pack and makes your hands slippery for 100 to
+200 turns, dropping items when you try to use them), and have
+acid resistance or magic resistance ready before you sit. If you
+do not want a forced wish right now (say, you have already used
+your Castle wish and Amulet wish and want to keep this one for
+the ascension kit), you can come back later. The throne stays
+put unless something destroys it.
 
 #### Orcus Town
 
-**Orcus** is a god of the underworld in Roman mythology — a
-chthonic figure who punishes broken oaths and devours the dead. In
-NetHack he's a unique demon prince (`&`, level 66, fast flier),
-the **Prince of Undead**, who casts spells, swings a weapon, claws
-twice, and stings for strength drain. His signature artifact is
-the **Wand of Orcus** — a wand of death by another name; his
-fingertip cantrip is also a death ray, so wear an amulet of life
-saving and consider opening with your own wand of death rather
-than a melee approach.
+**Orcus** is a god of the underworld in Roman mythology, a
+chthonic figure who punishes broken oaths and devours the dead.
+In NetHack he is a unique demon prince (`&`, level 66, fast
+flier), the **Prince of Undead**, who casts spells, swings a
+weapon, claws twice, and stings for strength drain. His
+signature artifact is the **Wand of Orcus**, a wand of death by
+another name. His fingertip cantrip is also a death ray, so wear
+an amulet of life saving and consider opening with your own wand
+of death rather than a melee approach.
 
-His level is a ghost town: a normal shopping district with all
-the shopkeepers and customers killed off by his ambient aura, the
-buildings stocked with random loot instead of for-sale inventory.
-What's left is an honor guard of liches, vampires, and ghouls.
-Somewhere on the level the dungeon guarantees either a **magic
-lamp** or a **magic marker** (50/50). Walk carefully (fire and
-magic traps everywhere), deal with the residents, and lift the
-lamp or marker on your way out. Either is a real supplement to
-the Castle wand's single charge.
+His level is a ghost town. A normal shopping district has been
+emptied: the shopkeepers and customers were all killed off by
+his ambient aura, and the buildings are stocked with random loot
+instead of for-sale inventory. What remains is an honor guard of
+liches, vampires, and ghouls. Somewhere on the level the dungeon
+guarantees either a **magic lamp** or a **magic marker** (50/50).
+Walk carefully, since fire and magic traps are everywhere; deal
+with the residents, and lift the lamp or marker on your way out.
+Either is a real supplement to the Castle wand's single charge.
 
 #### The Wizard's Tower
 
@@ -7707,7 +7717,7 @@ just one more maze. Once the seal breaks, descend to find the
 **High Priest of Moloch** standing on the **high altar** with the
 **Amulet of Yendor**. The High Priest is a unique non-bribable
 boss who casts spells, summons minions, and aggrieves anyone in
-melee range — the standard answer is a wand of death or finger of
+melee range. The standard answer is a wand of death or finger of
 death from a safe distance.
 
 #### The Heist
@@ -7735,7 +7745,7 @@ frantic climb back to the surface. The steps:
    above Moloch's Sanctum, a single square vibrates when you step
    on it: *"You feel an unsettling vibration under your feet."*
    The square's position is random within the maze, so you have
-   to search by walking — scrolls of magic mapping help enormously.
+   to search by walking. Scrolls of magic mapping help enormously.
 
 4. **Perform the Invocation.** Standing on the vibrating square,
    with the Candelabrum lit and the Book in your pack, **`#invoke`
@@ -7746,31 +7756,33 @@ frantic climb back to the surface. The steps:
    **High Priest** (wand of death is the clean answer), walk onto
    the high altar, and pick up the **Amulet of Yendor**.
 
-6. **Begin the getaway.** The up-stair from the Sanctum now lifts
-   you out (it wouldn't before you had the Amulet). You're now on
-   the **Ascension Run** — every covetous monster in the game has
-   noticed, the Wizard of Yendor will keep teleporting to you to
-   take his Amulet back, and the Mysterious Force will keep
-   yanking you back down. Climb fast (see [The Ascension Run](#the-ascension-run)
-   below).
+6. **Begin the getaway.** The up-stair from the Sanctum now
+   lifts you out (it would not before you had the Amulet). You
+   are now on the **Ascension Run**. Every covetous monster in
+   the game has noticed, the Wizard of Yendor will keep
+   teleporting to you to take his Amulet back, and the
+   Mysterious Force will keep yanking you back down. Climb fast
+   (see [The Ascension Run](#the-ascension-run) below).
 
 #### Survival Tips
 
-- **Bring extra food** — you'll be moving fast and praying is not a reliable refill
-- **Bring scrolls of remove curse** — fast inventory cleanup when something goes wrong
+- **Bring extra food.** You will be moving fast and prayer is
+  not a reliable refill.
+- **Bring scrolls of remove curse.** Fast inventory cleanup when
+  something goes wrong.
 - **Dig, don't navigate.** Maze walls are faster to go through
-  than around
+  than around.
 - **Kill the Wizard quickly.** Every turn he lives is another
   summoned monster, another stolen item, another cursed piece of
-  gear. He'll come back (he always comes back), but the intervals
-  between his appearances give you breathing room
-- **The Amulet anchors you.** Level teleportation doesn't work
+  gear. He will come back (he always comes back), but the
+  intervals between his appearances give you breathing room.
+- **The Amulet anchors you.** Level teleportation does not work
   while you carry it. Every step back to the surface must be
-  climbed by foot
+  climbed by foot.
 - **Genocide the lich class.** A blessed scroll of genocide
-  applied to **L** removes liches, demiliches, master liches, and
-  arch-liches in one read. Some of the worst Gehennom threats,
-  gone for the rest of the run
+  applied to **L** removes liches, demiliches, master liches,
+  and arch-liches in one read. Some of the worst Gehennom
+  threats, gone for the rest of the run.
 
 ---
 
@@ -7797,13 +7809,13 @@ winners carry. Here is the canonical kit, slot by slot:
 | **Helm** | Helm of brilliance or helm of telepathy | Brilliance for casters; telepathy when you might be blind. |
 | **Gloves** | Gauntlets of power | Skip them only if you have a different STR strategy (e.g. a Knight with a +STR ring). |
 | **Boots** | Speed boots | **Universal.** |
-| **Shirt** | Hawaiian shirt or T-shirt | A free body slot under everything else — winners enchant it heavily (typically blessed +4 or +5) for several extra AC at no cost. |
+| **Shirt** | Hawaiian shirt or T-shirt | A free body slot under everything else. Winners enchant it heavily (typically blessed +4 or +5) for several extra AC at no cost. |
 | **Shield** | Mostly skipped | Reflection comes from silver dragon scale mail or an amulet instead; two-weapon fighters can't use a shield anyway. |
 | **Amulet** | Amulet of life saving | The "extra life" plan. |
 | **Ring (L)** | Free action | Anti-paralysis is non-negotiable on the Astral Plane. |
 | **Ring (R)** | Slow digestion, conflict, or regeneration | Conflict is the standard Astral-Plane crowd-control choice. |
 | **Weapon** | Your role's quest artifact + a silver saber | Silver saber appears in most builds as the off-hand because silver bypasses demon resistances. |
-| **Pack** | Bag of holding, magic lamp, unicorn horn, luckstone, wand of death, multiple wands of teleport, seven candles, ≥5 holy water, a couple of blessed potions of full healing, a cockatrice corpse | The "bag-of-holding bundle." Holy water re-blesses items the Wizard or liches keep cursing in Gehennom; full healing is a one-action panic button; a wielded cockatrice corpse one-shots Riders (and other non-stoning-resistant nasties). Candles are for the Candelabrum — Izchak's Minetown lighting shop is an easy source. |
+| **Pack** | Bag of holding, magic lamp, unicorn horn, luckstone, wand of death, multiple wands of teleport, seven candles, ≥5 holy water, a couple of blessed potions of full healing, a cockatrice corpse | The "bag-of-holding bundle." Holy water re-blesses items the Wizard or liches keep cursing in Gehennom; full healing is a one-action panic button; a wielded cockatrice corpse one-shots Riders (and other non-stoning-resistant nasties). Candles are for the Candelabrum, and Izchak's Minetown lighting shop is an easy source. |
 | **Required loot** | Bell of Opening, Candelabrum of Invocation, Book of the Dead, Amulet of Yendor | The Invocation chain plus the prize. |
 
 A typical ascension AC sits in the **−25 to −40** range, but AC
@@ -7825,9 +7837,10 @@ was *behavior*:
   Invocation items, deep in Gehennom, chose to eat a stalker corpse
   while satiated and choked to death. The ring of slow digestion on
   her finger does not prevent choking.
-- **Out of escape consumables.** A Wizard on Dlvl 50 — within sight
-  of the Sanctum — burned the last wand-of-death charge without any
-  further escape route, then died blind and surrounded.
+- **Out of escape consumables.** A Wizard on Dlvl 50, within
+  sight of the Sanctum, burned the last wand-of-death charge
+  without any further escape route, then died blind and
+  surrounded.
 
 Keep at least one escape consumable within reach: a scroll of
 teleportation, a wand of digging, or an oilskin sack with a potion
@@ -7861,27 +7874,28 @@ through the Elemental Planes to the Astral Plane where your god
 awaits. Easy, right?
 
 **A free wish on pickup.** The moment you pick up the Amulet of
-Yendor, your god grants you a single wish on the next turn (it
-fires automatically — you don't need to invoke it). This is one
+Yendor, your god grants you a single wish on the next turn. It
+fires automatically; you do not need to invoke it. This is one
 of the most generous moments in the game. Have your wish list
-ready *before* you reach the Sanctum: gauntlets of power, a
-+5 weapon of your choice, blessed cloak of magic resistance, or
-whatever you're missing for the climb. You only get it once. A
-late-game favorite: a wish for a **cursed potion of gain level**.
-Drinking one while carrying the Amulet skips you up a whole
-Gehennom level without provoking the Mysterious Force.
+ready *before* you reach the Sanctum: gauntlets of power, a +5
+weapon of your choice, a blessed cloak of magic resistance, or
+whatever you are missing for the climb. You only get this wish
+once. A late-game favorite is a wish for a **cursed potion of
+gain level**. Drinking one while carrying the Amulet skips you
+up a whole Gehennom level without provoking the Mysterious
+Force.
 
-**Bring the authentic Amulet.** The climb out is always open:
-every up-stair in the Dungeons of Doom takes you closer to the
-surface regardless of what you carry. The **Astral plane portal**
-at the top of the Endgame ladder, however, won't open without
-the real Amulet of Yendor in your inventory. Only the Amulet you
-took off the High Priest's body in Moloch's Sanctum counts.
-Bones-pile Amulets are fakes (the game converts a dead
-adventurer's real Amulet to a fake when their corpse becomes a
-bones level), and a wish for an Amulet of Yendor silently
-substitutes a fake too. If you didn't pick yours up off the High
-Priest, you don't have the real one.
+**Bring the authentic Amulet.** The climb out is always open.
+Every up-stair in the Dungeons of Doom takes you closer to the
+surface regardless of what you carry. The **Astral plane
+portal** at the top of the Endgame ladder, however, will not
+open without the real Amulet of Yendor in your inventory. Only
+the Amulet you took off the High Priest's body in Moloch's
+Sanctum counts. Bones-pile Amulets are fakes (the game converts
+a dead adventurer's real Amulet to a fake when their corpse
+becomes a bones level), and a wish for an Amulet of Yendor
+silently substitutes a fake too. If you didn't pick yours up off
+the High Priest, you don't have the real one.
 
 The Ascension Run is the victory lap that keeps killing even the
 strongest adventurers. You have the most powerful artifact in the
@@ -7894,35 +7908,35 @@ The most exhilarating and terrifying stretch of the game.
 Four kinds of trouble run at once, all of them aimed at the
 Amulet in your pack:
 
-- **The Wizard of Yendor** periodically teleports to you, summoning
-  nasty monsters and trying to steal back his Amulet. He will not
-  stop.
-  Kill him each time; he always comes back. He is the world's most
-  persistent ex.
-- **The Amulet blocks teleportation.** You can't level teleport
-  while carrying the Amulet. You must climb every single staircase
-  from the bottom of Gehennom to the surface. All of them. By foot.
+- **The Wizard of Yendor** periodically teleports to your
+  location, summoning monsters and reaching for the Amulet. He
+  will not stop. Kill him each time. He always comes back. He is
+  the world's most persistent ex.
+- **The Amulet blocks teleportation.** You cannot level teleport
+  while carrying the Amulet. Every single staircase from the
+  bottom of Gehennom to the surface has to be climbed by foot.
 - **Covetous monsters.** Demon lords and the Wizard can warp
-  directly to your position and attack. They specifically target you
-  for the Amulet, because apparently everyone wants this thing.
-- **The Mysterious Force.** While carrying the Amulet in Gehennom,
-  each time you climb stairs there's a chance the force grabs you
-  instead. Often it just shuffles you elsewhere on the same level;
-  sometimes it drops you **down** a level (Chaotic max), two
-  levels (Neutral max), or even three (Lawfuls only). The
-  worst yank is hardest on Lawfuls and gentlest on Chaotics: a
-  Chaotic climb can never lose more than one level at a time. In
-  5.0 the trigger chance also **decays** as it fires — every yank
-  slightly reduces the chance of the next one, and decays faster
-  when the yank was deeper, so over the whole climb the per-step
-  trigger rate stays roughly even across alignments. The force
-  stops the moment you climb out of Gehennom, and it never fires
-  on the bottom four levels.
+  directly to your position and attack. They are specifically
+  targeting you for the Amulet, because apparently everyone
+  wants this thing.
+- **The Mysterious Force.** While you carry the Amulet in
+  Gehennom, each time you climb stairs there is a chance the
+  force grabs you instead. Often it just shuffles you elsewhere
+  on the same level. Sometimes it drops you **down** a level
+  (Chaotic max), two levels (Neutral max), or even three
+  (Lawfuls only). The worst yank is hardest on Lawfuls and
+  gentlest on Chaotics: a Chaotic climb can never lose more than
+  one level at a time. In 5.0 the trigger chance also **decays**
+  as it fires. Every yank slightly reduces the chance of the
+  next one, and the decay is faster when the yank was deeper,
+  so over the whole climb the per-step rate stays roughly even
+  across alignments. The force stops the moment you climb out
+  of Gehennom, and it never fires on the bottom four levels.
 - **Consider a Chaotic detour.** A helm of opposite alignment
   worn just before the climb flips you to Chaotic and caps every
-  yank at one level. The cost: your Astral offering then goes to
-  the Chaotic altar, since the altar check uses your *current*
-  alignment. An optimization choice, not a free lunch.
+  yank at one level. The cost is that your Astral offering then
+  goes to the Chaotic altar, since the altar check uses your
+  *current* alignment. An optimization choice, not a free lunch.
 
 #### Strategy
 
@@ -9491,10 +9505,10 @@ to keep visiting (the Gnomish Mines general store is a popular
 choice), but don't deposit more than you expect to spend there.
 
 (A more inventive use, called *credit cloning*: drop gold inside
-the shop, then lure a gold-loving monster — an orc, a leprechaun —
-to pick it up, walk it outside, and kill it. The credit stays with
-the shopkeeper and the gold comes back to you. It's one of
-NetHack's older shop-cheese routines.)
+the shop, then lure a gold-loving monster such as an orc or a
+leprechaun to pick it up, walk it outside, and kill it. The
+credit stays with the shopkeeper and the gold comes back to you.
+It is one of NetHack's older shop-cheese routines.)
 
 **Debit** is the inverse: it accrues when you *use* an unpaid item
 inside the shop (read a scroll, quaff a potion, zap a wand) and you
@@ -9517,9 +9531,9 @@ unfazed by [Elbereth](#elbereth). Pay the bill at the door.
 A shopkeeper is one of the toughest NPCs in the game: high HP,
 good AC, hits hard, and unfazed by Elbereth or by the kind of
 clever escape that works on other monsters. They also see
-everything — they track every item you pick up and every item
-that enters the shop, even when you're invisible. The practical
-consequences for the player:
+everything: the shopkeeper tracks every item you pick up and
+every item that enters the shop, even when you are invisible.
+The practical consequences for the player:
 
 - Shopkeepers block the door whenever you have unpaid items.
 - If you break something in the shop (a potion, a wand), you pay
@@ -9547,11 +9561,11 @@ consequences for the player:
 Beyond the rules, a few tactical habits pay off:
 
 - **Drop everything at the door to see your bill.** Standing on
-  the door square, drop your whole inventory; the shopkeeper's
+  the door square, drop your whole inventory and the shopkeeper's
   bill highlights the items you owe for. The shopkeeper isn't
-  guessing — the game tracks unpaid items precisely — but it's a
-  handy way to recall what you actually picked up when the shop
-  has a hundred lookalikes.
+  guessing (the game tracks unpaid items precisely), but it is
+  a handy way to recall what you actually picked up when the
+  shop has a hundred lookalikes.
 - **Sell to build credit.** Credit acts as gold you can spend in
   that shop, and credit doesn't get stolen by nymphs or fall into
   pits. Selling a stack of useless daggers to a weapon shop is a
@@ -9565,8 +9579,8 @@ Beyond the rules, a few tactical habits pay off:
   shopkeeper is still inside, the stock is still unpaid, and
   breaking the door down to get in just earns you a normal shop
   visit plus an angry shopkeeper. (In Orcus Town the shopkeepers
-  are usually dead by the time you arrive — Orcus killed them —
-  so the items there often *are* ownerless.)
+  are usually dead by the time you arrive, killed by Orcus's
+  ambient aura, so the items there often *are* ownerless.)
 
 The best strategy is usually to play fair: sell what you don't need,
 buy what you do, and use the pricing system to identify as much as
