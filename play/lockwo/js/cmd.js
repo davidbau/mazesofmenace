@@ -18,7 +18,8 @@ import { dozap } from './zap.js';
 import { docast } from './spell.js';
 import { doread } from './read.js';
 import { rnl } from './rng.js';
-import { doextcmd } from './extcmd-handlers.js';
+import { doextcmd, hooked_tty_getlin } from './extcmd-handlers.js';
+import { wiz_level_tele } from './do.js';
 import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok } from './const.js';
@@ -95,6 +96,13 @@ export async function rhack(key) {
         // squares for hidden doors/passages/traps.  Takes a game turn.
         await dosearch();
         game.context.move = 1;
+    } else if (key === 22) { // ^V — wizard-mode level teleport (do.c/teleport.c)
+        // C ref: cmd.c keymap C('v') -> wiz_level_tele() -> level_tele().
+        // The "To what level..." prompt is read with the standard top-line
+        // getlin; goto_level() (do.js) makes the destination level on first
+        // visit (getbones + makelevel) and relocates the hero + pet.
+        const res = await wiz_level_tele((q) => hooked_tty_getlin(q, null));
+        game.context.move = res === 1 ? 1 : 0;
     } else if (ch === '#') {
         // C ref: cmd.c doextcmd — read and run an extended command.
         await doextcmd();

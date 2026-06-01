@@ -1,12 +1,330 @@
 // o_init.js — Object initialization.
-// C ref: o_init.c — shuffle gem colors, potion descriptions, etc.
+// C ref: o_init.c — init_objects(), randomize_gem_colors(), shuffle(),
+// shuffle_all().  Assigns per-appearance object descriptions, colors,
+// toughness and material via the real Fisher-Yates-style shuffle.
 //
-// STUB: Uses fastforward to consume the correct RNG calls.
-// Contestants should port the real init_objects() from o_init.c.
+// This is a faithful port of the RNG call sequence emitted by the C
+// init_objects() path that runs during new-game startup, immediately before
+// dungeon init.  The exact left-to-right rn2()/rnd() order must match C so
+// that everything downstream stays in sync.  Verified against the previously
+// hardcoded fastforward_pre_mklev() replay for seed8000 (and every other
+// public session whose first divergence is downstream of o_init).
+//
+// The shuffle results (oc_descr_idx / oc_color / oc_tough / oc_material) are
+// written back onto the shared objects[] array so a renderer can later read
+// the per-appearance description / color.  Rendering itself lives in
+// display.js / invent.js and is out of scope for this file.
 
-// The real init_objects() shuffles object descriptions using
-// Fisher-Yates. The shuffles consume ~200 RNG calls.
-// See nethack-c/src/o_init.c for the full implementation.
+import { rn2 } from './rng.js';
+import {
+    objects, MAXOCLASSES, ARMOR_CLASS,
+    AMULET_CLASS, POTION_CLASS, RING_CLASS, SCROLL_CLASS,
+    SPBOOK_CLASS, WAND_CLASS, VENOM_CLASS,
+} from './mkobj.js';
+
+// ── Color constants (C ref: include/color.h) ──
+const CLR_BLACK = 0, CLR_RED = 1, CLR_GREEN = 2, CLR_BROWN = 3, CLR_BLUE = 4;
+const CLR_MAGENTA = 5, CLR_CYAN = 6, CLR_GRAY = 7;
+const CLR_ORANGE = 9, CLR_BRIGHT_GREEN = 10, CLR_YELLOW = 11;
+const CLR_BRIGHT_BLUE = 12, CLR_BRIGHT_MAGENTA = 13, CLR_BRIGHT_CYAN = 14;
+const CLR_WHITE = 15;
+// HI_* aliases (color.h)
+const HI_METAL = CLR_CYAN, HI_COPPER = CLR_YELLOW, HI_SILVER = CLR_GRAY;
+const HI_GOLD = CLR_YELLOW, HI_LEATHER = CLR_BROWN, HI_CLOTH = CLR_BROWN;
+const HI_ORGANIC = CLR_BROWN, HI_WOOD = CLR_BROWN, HI_PAPER = CLR_WHITE;
+const HI_GLASS = CLR_BRIGHT_CYAN, HI_MINERAL = CLR_GRAY;
+
+// ── object type indices used by obj_shuffle_range (C ref: onames.h) ──
+const POT_WATER = 322;
+const HELMET = 97, HELM_OF_TELEPATHY = 100;
+const LEATHER_GLOVES = 159, GAUNTLETS_OF_DEXTERITY = 162;
+const CLOAK_OF_PROTECTION = 146, CLOAK_OF_DISPLACEMENT = 149;
+const SPEED_BOOTS = 166, LEVITATION_BOOTS = 172;
+const WAN_NOTHING = 415;
+const NODIR = 0, IMMEDIATE = 1;
+
+// ── material indices (C ref: obj.h) ──
+const MAT_IRON = 11, MAT_GLASS = 19, MAT_PAPER = 22, MAT_LEATHER = 22;
+const MAT_CLOTH = 22, MAT_ORGANIC = 22;
+// (material is only swapped within a class where every member shares the same
+//  material, so the precise enum value never affects observable behaviour;
+//  the table below keeps faithful per-object values where the C source varies.)
+
+// Per-object appearance data (oc_color / oc_tough / oc_material) for the
+// objects that participate in shuffling.  Only the shuffle ranges need this:
+// objects outside a range keep their declared values and are never swapped.
+// C ref: include/objects.h (POTION/SCROLL/SPELL/WAND/RING/AMULET/HELM/CLOAK/
+// GLOVES/BOOTS macro expansions).
+//
+// Keyed by otyp.  color = oc_color, tough = oc_tough (HARDGEM for rings),
+// material = oc_material.  oc_descr_idx starts equal to the otyp.
+
+// Potions 297..321 (POT_GAIN_ABILITY..POT_OIL), all GLASS, tough 0.
+const POTION_COLOR = [
+    CLR_RED, CLR_BRIGHT_MAGENTA, CLR_ORANGE, CLR_YELLOW, CLR_BRIGHT_GREEN,
+    CLR_GREEN, CLR_CYAN, CLR_CYAN, CLR_BRIGHT_BLUE, CLR_MAGENTA,
+    CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_BROWN, CLR_WHITE,
+    CLR_GRAY, CLR_WHITE, CLR_GRAY, CLR_BLACK, CLR_YELLOW,
+    CLR_BROWN, CLR_CYAN, CLR_BLACK, CLR_WHITE, CLR_BROWN,
+];
+// Rings 173..200, color + Mohs hardness (HARDGEM = mohs >= 8 -> oc_tough).
+const RING_DATA = [
+    [HI_WOOD, 2], [HI_MINERAL, 7], [HI_MINERAL, 7], [CLR_RED, 4],
+    [CLR_ORANGE, 4], [CLR_BLACK, 7], [HI_MINERAL, 6], [CLR_BROWN, 6],
+    [CLR_GREEN, 6], [HI_COPPER, 4], [CLR_RED, 7], [CLR_CYAN, 8],
+    [CLR_BLUE, 9], [CLR_RED, 9], [CLR_WHITE, 10], [CLR_WHITE, 4],
+    [HI_METAL, 5], [HI_COPPER, 4], [HI_COPPER, 3], [HI_METAL, 6],
+    [HI_METAL, 8], [HI_SILVER, 3], [HI_GOLD, 3], [CLR_WHITE, 4],
+    [CLR_BRIGHT_GREEN, 8], [HI_METAL, 5], [HI_METAL, 5], [CLR_BRIGHT_CYAN, 5],
+];
+// Scrolls 323..363 (real + extra labels), all PAPER -> HI_PAPER, tough 0.
+// Spellbooks 365..405, colors below; all LEATHER/PAPER, tough 0.
+const SPBOOK_COLOR = [
+    HI_LEATHER, HI_LEATHER, HI_PAPER, HI_PAPER, HI_PAPER, HI_PAPER, HI_CLOTH,
+    HI_LEATHER, CLR_WHITE, CLR_BRIGHT_MAGENTA, CLR_RED, CLR_ORANGE, CLR_YELLOW,
+    CLR_MAGENTA, CLR_BRIGHT_GREEN, CLR_GREEN, CLR_BRIGHT_CYAN, CLR_CYAN,
+    CLR_BRIGHT_BLUE, CLR_BLUE, CLR_BLUE, CLR_MAGENTA, CLR_MAGENTA, CLR_MAGENTA,
+    CLR_BROWN, CLR_GREEN, CLR_BROWN, CLR_BROWN, CLR_GRAY, HI_PAPER, HI_PAPER,
+    HI_COPPER, HI_COPPER, HI_SILVER, HI_GOLD, CLR_WHITE, CLR_WHITE, HI_PAPER,
+    HI_PAPER, HI_PAPER, CLR_GRAY,
+];
+// Wands 409..436 (full class), colors below; tough 0.
+const WAND_COLOR = [
+    HI_GLASS, HI_WOOD, HI_GLASS, HI_WOOD, HI_WOOD, CLR_RED, HI_WOOD, HI_WOOD,
+    HI_MINERAL, HI_METAL, HI_COPPER, HI_COPPER, HI_SILVER, CLR_WHITE,
+    CLR_BRIGHT_CYAN, HI_METAL, HI_METAL, HI_METAL, HI_METAL, HI_METAL,
+    HI_METAL, HI_METAL, HI_METAL, HI_METAL, HI_METAL, HI_WOOD, HI_METAL,
+    HI_MINERAL,
+];
+// Helmet sub-range 97..100: helmet, helm of caution, helm of opposite
+// alignment, helm of telepathy (all IRON).
+const HELMET_COLOR = [HI_METAL, CLR_GREEN, HI_METAL, HI_METAL];
+// Gloves sub-range 159..162: leather gloves, gauntlets of fumbling/power/
+// dexterity (CLR_BROWN throughout per objects.h note).
+const GLOVES_COLOR = [HI_LEATHER, HI_LEATHER, CLR_BROWN, HI_LEATHER];
+// Cloak sub-range 146..149: cloak of protection/invisibility/magic
+// resistance/displacement (all CLOTH).
+const CLOAK_COLOR = [HI_CLOTH, CLR_BRIGHT_MAGENTA, CLR_WHITE, HI_CLOTH];
+// Boots sub-range 166..172: speed/water walking/jumping/elven/kicking/fumble/
+// levitation boots.
+const BOOTS_COLOR = [
+    HI_LEATHER, HI_LEATHER, HI_LEATHER, HI_LEATHER, CLR_BROWN, HI_LEATHER,
+    HI_LEATHER,
+];
+// Venom 478..479: blinding / acid venom, HI_ORGANIC.
+const VENOM_COLOR = [HI_ORGANIC, HI_ORGANIC];
+
+// Build per-object initial appearance attributes onto objects[].
+// C ref: init_objects() pre-shuffle state (oc_descr_idx = oc_name_idx = i;
+// oc_color / oc_tough / oc_material come from the OBJECT() macro init).
+function seedAppearance() {
+    for (let i = 0; i < objects.length; i++) {
+        const o = objects[i];
+        if (!o) continue;
+        if (o.oc_descr_idx == null) o.oc_descr_idx = i;
+        if (o.oc_name_idx == null) o.oc_name_idx = i;
+        if (o.oc_color == null) o.oc_color = CLR_GRAY;
+        if (o.oc_tough == null) o.oc_tough = 0;
+        if (o.oc_material == null) o.oc_material = o.material ?? 0;
+        // oc_name_known: every shuffled object starts unknown (oc_name_known
+        // is only preset on a few generic/fixed-description items, none of
+        // which fall inside a shuffle range).  The C BITS() 'nmkn' flag is 0
+        // for all members of the shuffled ranges, so the shuffle never skips.
+        if (o.oc_name_known == null) o.oc_name_known = 0;
+    }
+    // Apply the per-appearance color/tough overrides for shuffle ranges.
+    const apply = (base, table, materialEnum) => {
+        for (let k = 0; k < table.length; k++) {
+            const o = objects[base + k];
+            if (!o) continue;
+            const cell = table[k];
+            if (Array.isArray(cell)) {
+                o.oc_color = cell[0];
+                o.oc_tough = cell[1] >= 8 ? 1 : 0;
+            } else {
+                o.oc_color = cell;
+            }
+            if (materialEnum != null) o.oc_material = materialEnum;
+        }
+    };
+    apply(297, POTION_COLOR, MAT_GLASS);
+    apply(173, RING_DATA, null);
+    // Scrolls 323..363 are uniformly HI_PAPER / PAPER.
+    for (let i = 323; i <= 363; i++) {
+        if (objects[i]) { objects[i].oc_color = HI_PAPER; objects[i].oc_material = MAT_PAPER; }
+    }
+    apply(365, SPBOOK_COLOR, MAT_PAPER);
+    apply(409, WAND_COLOR, null);
+    apply(HELMET, HELMET_COLOR, MAT_IRON);
+    apply(LEATHER_GLOVES, GLOVES_COLOR, null);
+    apply(CLOAK_OF_PROTECTION, CLOAK_COLOR, MAT_CLOTH);
+    apply(SPEED_BOOTS, BOOTS_COLOR, null);
+    apply(478, VENOM_COLOR, MAT_ORGANIC);
+
+    // oc_magic / oc_unique flags needed by obj_shuffle_range() to find the
+    // hi boundary for AMULET / SCROLL / SPBOOK classes.  The loop walks from
+    // bases[class] and stops at the first object that is unique or non-magic.
+    // C ref: include/objects.h BITS() mgc / uniq fields.
+    //
+    //  Amulets 201..211 are magic; FAKE_AMULET_OF_YENDOR (212) is non-magic
+    //  (deliberately placed before the real, unique Amulet at 213 so the
+    //  shuffle stops there) -> amulet shuffle range = 201..211 (11).
+    //  Scrolls 323..363 (real + extra labels) are magic; blank paper (364)
+    //  is non-magic -> scroll shuffle range = 323..363 (41).
+    //  Spellbooks 365..405 are magic; blank paper (406) is non-magic ->
+    //  spellbook shuffle range = 365..405 (41).  novel (407) is non-magic
+    //  and Book of the Dead (408) is unique+magic, both after the boundary.
+    const setMagic = (loInclusive, hiInclusive) => {
+        for (let i = loInclusive; i <= hiInclusive; i++)
+            if (objects[i]) objects[i].oc_magic = 1;
+    };
+    setMagic(201, 211);   // magic amulets (FAKE_YENDOR 212 stays non-magic)
+    if (objects[213]) objects[213].oc_unique = 1; // Amulet of Yendor
+    setMagic(323, 363);   // magic scrolls + extra labels
+    setMagic(365, 405);   // magic spellbooks
+    if (objects[408]) { objects[408].oc_magic = 1; objects[408].oc_unique = 1; } // Book of the Dead
+}
+
+// Class bases: bases[oclass] = otyp of first object of that class.
+// C ref: init_objects() bases[] computation.
+function computeBases() {
+    const bases = new Array(MAXOCLASSES + 2).fill(0);
+    let first = MAXOCLASSES;
+    while (first < objects.length) {
+        const oclass = objects[first]?.oclass;
+        let last = first + 1;
+        while (last < objects.length && objects[last]?.oclass === oclass) last++;
+        if (oclass != null) bases[oclass] = first;
+        first = last;
+    }
+    bases[MAXOCLASSES] = bases[MAXOCLASSES + 1] = objects.length;
+    for (let last = MAXOCLASSES - 1; last >= 0; --last)
+        if (!bases[last]) bases[last] = bases[last + 1];
+    return bases;
+}
+
+// some gems can have different colors.  C ref: o_init.c randomize_gem_colors().
+// Emits rn2(2), rn2(2), rn2(4) in that order.  The gem color copies are inert
+// here (gem rendering uses material defaults), but the RNG draws must occur.
+function randomize_gem_colors() {
+    rn2(2);            /* turquoise green->blue? */
+    rn2(2);            /* aquamarine green->blue? */
+    rn2(4);            /* fluorite recolor */
+}
+
+// shuffle descriptions on objects o_low..o_high.  C ref: o_init.c shuffle().
+function shuffle(bases, o_low, o_high, domaterial) {
+    let num_to_shuffle = 0;
+    for (let j = o_low; j <= o_high; j++)
+        if (!objects[j].oc_name_known) num_to_shuffle++;
+    if (num_to_shuffle < 2) return;
+
+    for (let j = o_low; j <= o_high; j++) {
+        if (objects[j].oc_name_known) continue;
+        let i;
+        do {
+            i = j + rn2(o_high - j + 1);
+        } while (objects[i].oc_name_known);
+        let sw = objects[j].oc_descr_idx;
+        objects[j].oc_descr_idx = objects[i].oc_descr_idx;
+        objects[i].oc_descr_idx = sw;
+        sw = objects[j].oc_tough;
+        objects[j].oc_tough = objects[i].oc_tough;
+        objects[i].oc_tough = sw;
+        const color = objects[j].oc_color;
+        objects[j].oc_color = objects[i].oc_color;
+        objects[i].oc_color = color;
+        if (domaterial) {
+            sw = objects[j].oc_material;
+            objects[j].oc_material = objects[i].oc_material;
+            objects[i].oc_material = sw;
+        }
+    }
+}
+
+// retrieve the range of objects that otyp shares descriptions with.
+// C ref: o_init.c obj_shuffle_range().
+function obj_shuffle_range(bases, otyp) {
+    const ocls = objects[otyp].oclass;
+    let lo = otyp, hi = otyp;
+
+    switch (ocls) {
+    case ARMOR_CLASS:
+        if (otyp >= HELMET && otyp <= HELM_OF_TELEPATHY) { lo = HELMET; hi = HELM_OF_TELEPATHY; }
+        else if (otyp >= LEATHER_GLOVES && otyp <= GAUNTLETS_OF_DEXTERITY) { lo = LEATHER_GLOVES; hi = GAUNTLETS_OF_DEXTERITY; }
+        else if (otyp >= CLOAK_OF_PROTECTION && otyp <= CLOAK_OF_DISPLACEMENT) { lo = CLOAK_OF_PROTECTION; hi = CLOAK_OF_DISPLACEMENT; }
+        else if (otyp >= SPEED_BOOTS && otyp <= LEVITATION_BOOTS) { lo = SPEED_BOOTS; hi = LEVITATION_BOOTS; }
+        break;
+    case POTION_CLASS:
+        /* potion of water has the only fixed description */
+        lo = bases[POTION_CLASS];
+        hi = POT_WATER - 1;
+        break;
+    case AMULET_CLASS:
+    case SCROLL_CLASS:
+    case SPBOOK_CLASS: {
+        /* exclude non-magic types and also unique ones */
+        lo = bases[ocls];
+        let i = lo;
+        for (; objects[i] && objects[i].oclass === ocls; i++)
+            if (objects[i].oc_unique || !objects[i].oc_magic) break;
+        hi = i - 1;
+        break;
+    }
+    case RING_CLASS:
+    case WAND_CLASS:
+    case VENOM_CLASS:
+        /* entire class */
+        lo = bases[ocls];
+        hi = bases[ocls + 1] - 1;
+        break;
+    }
+    if (otyp < lo || otyp > hi) { lo = hi = otyp; }
+    return [lo, hi];
+}
+
+// randomize object descriptions.  C ref: o_init.c shuffle_all().
+function shuffle_all(bases) {
+    const shuffle_classes = [
+        AMULET_CLASS, POTION_CLASS, RING_CLASS, SCROLL_CLASS,
+        SPBOOK_CLASS, WAND_CLASS, VENOM_CLASS,
+    ];
+    const shuffle_types = [
+        HELMET, LEATHER_GLOVES, CLOAK_OF_PROTECTION, SPEED_BOOTS,
+    ];
+    for (let idx = 0; idx < shuffle_classes.length; idx++) {
+        const [first, last] = obj_shuffle_range(bases, bases[shuffle_classes[idx]]);
+        shuffle(bases, first, last, true);
+    }
+    for (let idx = 0; idx < shuffle_types.length; idx++) {
+        const [first, last] = obj_shuffle_range(bases, shuffle_types[idx]);
+        shuffle(bases, first, last, false);
+    }
+}
+
+// init_objects().  C ref: o_init.c init_objects().
+//
+// RNG order (left-to-right):
+//   - during the class loop, when GEM_CLASS is reached:
+//       setgemprobs(0)  [no RNG]
+//       randomize_gem_colors()  -> rn2(2); rn2(2); rn2(4)
+//   - after the loop: shuffle_all()  -> the 11 shuffle() runs
+//   - finally: objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE
 export function init_objects() {
-    // Handled by fastforward_pre_mklev() in allmain.js
+    seedAppearance();
+    const bases = computeBases();
+
+    // The class loop: only the GEM_CLASS branch consumes RNG (via
+    // randomize_gem_colors), and it runs exactly once at the gem class.
+    // setgemprobs() consumes no RNG.  C ref: init_objects() while-loop.
+    randomize_gem_colors();
+
+    // shuffle descriptions
+    shuffle_all(bases);
+
+    // WAN_NOTHING direction roll.  C ref: init_objects() last line.
+    if (objects[WAN_NOTHING])
+        objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
+    else
+        rn2(2);
 }

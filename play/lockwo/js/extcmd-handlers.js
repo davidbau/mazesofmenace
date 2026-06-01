@@ -267,7 +267,7 @@ function draw_getlin(query, shown, cursorCol) {
 // screen frame (the nhgetch fires the capture hook for the freshly drawn
 // prompt state).  Returns the typed string, or "\x1b" if escaped out of an
 // empty buffer.
-async function hooked_tty_getlin(query, hook) {
+export async function hooked_tty_getlin(query, hook) {
     let typed = '';   // what the user actually typed (obufp/bufp content)
     let shown = '';   // what is displayed (typed, possibly autocompleted)
     const base = (query + ' ').length; // column of first input char

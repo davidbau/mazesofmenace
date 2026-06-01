@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { DART, mksobj } from './mkobj.js';
+import { DART, mksobj, next_ident } from './mkobj.js';
 
 // Object type indices (mkobj.js OBJECT_DATA), needed by m_initweap.
 const ORCISH_DAGGER = 36;
@@ -675,9 +675,13 @@ export function mkclass_aligned(klass, spc, atyp = A_NONE) {
     return nums[MONSi(first)] ? MONS[MONSi(first)] : null;
 }
 
-function next_ident() {
-    return rnd(2);
-}
+// C ref: makemon.c:1251 `mtmp->m_id = next_ident()`.  next_ident() lives in
+// mkobj.c and is shared between objects (o_id) and monsters (m_id): it returns
+// the current svc.context.ident and then advances it by rnd(2).  We import the
+// single shared implementation from mkobj.js (the previous local stub returned
+// the rnd(2) increment itself, which produced wrong m_id values and never
+// advanced the shared ident counter — same RNG draw, but inconsistent with C's
+// interleaved o_id/m_id numbering).
 
 // C ref: mongets() (makemon.c:2181). Creates obj via mksobj and gives it to
 // mtmp. We only need the RNG-consuming mksobj() call; the post-creation

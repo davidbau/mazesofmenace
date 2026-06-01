@@ -17,30 +17,55 @@ import { MAXULEV } from './const.js';
 // ── role / race advancement data (C: role.c roles[]/races[]) ──
 // RoleAdvance = {infix, inrnd, lofix, lornd, hifix, hirnd}; xlev is the
 // experience-level cutoff between the "lower" and "higher" advance brackets.
-// PM_ indices match u_init.js / roles[].mnum.
-const PM_BARBARIAN = 1, PM_KNIGHT = 4, PM_CLERIC = 6, PM_VALKYRIE = 11,
-      PM_WIZARD = 12, PM_HEALER = 3;
+// PM_ indices match u_init.js / roles[].mnum (Archeologist=0 .. Wizard=12).
+const PM_ARCHEOLOGIST = 0, PM_BARBARIAN = 1, PM_CAVE_DWELLER = 2,
+      PM_HEALER = 3, PM_KNIGHT = 4, PM_MONK = 5, PM_CLERIC = 6,
+      PM_RANGER = 7, PM_ROGUE = 8, PM_SAMURAI = 9, PM_TOURIST = 10,
+      PM_VALKYRIE = 11, PM_WIZARD = 12;
 
-// hpadv/enadv per role (the full 6-field advance struct), plus xlev.
+// hpadv/enadv per role (the full 6-field advance struct {infix,inrnd,lofix,
+// lornd,hifix,hirnd}), plus xlev.  Transcribed directly from NetHack 5.0
+// src/role.c roles[]; the "Energy" comment in role.c labels the xlev line.
 const ROLE_ADVANCE = new Map([
-    // Wizard  hp {10,0,0,8,1,0}  en {4,3,0,2,0,3}  xlev 12
-    [PM_WIZARD, { hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
-                  enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 3 }, xlev: 12 }],
-    // Knight  hp {14,0,0,8,2,0}  en {1,4,0,1,0,2}  xlev 10
-    [PM_KNIGHT, { hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
-                  enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 }, xlev: 10 }],
-    // Priest  hp {12,0,0,8,1,0}  en {4,3,0,2,0,2}  xlev 10
-    [PM_CLERIC, { hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
-                  enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 }, xlev: 10 }],
+    // Archeologist hp {11,0,0,8,1,0}  en {1,0,0,1,0,1}  xlev 14
+    [PM_ARCHEOLOGIST, { hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+                        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 14 }],
     // Barbarian hp {14,0,0,10,2,0}  en {1,0,0,1,0,1}  xlev 10
     [PM_BARBARIAN, { hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 10, hifix: 2, hirnd: 0 },
                      enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 10 }],
-    // Healer  hp {11,0,0,4,1,0}  en {1,4,0,2,0,2}  xlev 15
-    [PM_HEALER, { hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 4, hifix: 1, hirnd: 0 },
-                  enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 }, xlev: 15 }],
+    // Caveman  hp {14,0,0,8,2,0}  en {1,0,0,1,0,1}  xlev 10
+    [PM_CAVE_DWELLER, { hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
+                        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 10 }],
+    // Healer  hp {11,0,0,8,1,0}  en {1,4,0,1,0,2}  xlev 20
+    [PM_HEALER, { hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+                  enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 }, xlev: 20 }],
+    // Knight  hp {14,0,0,8,2,0}  en {1,4,0,1,0,2}  xlev 10
+    [PM_KNIGHT, { hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
+                  enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 }, xlev: 10 }],
+    // Monk  hp {12,0,0,8,1,0}  en {2,2,0,2,0,2}  xlev 10
+    [PM_MONK, { hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+                enadv: { infix: 2, inrnd: 2, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 }, xlev: 10 }],
+    // Priest  hp {12,0,0,8,1,0}  en {4,3,0,2,0,2}  xlev 10
+    [PM_CLERIC, { hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+                  enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 }, xlev: 10 }],
+    // Ranger  hp {13,0,0,6,1,0}  en {1,0,0,1,0,1}  xlev 12
+    [PM_RANGER, { hpadv: { infix: 13, inrnd: 0, lofix: 0, lornd: 6, hifix: 1, hirnd: 0 },
+                  enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 12 }],
+    // Rogue  hp {10,0,0,8,1,0}  en {1,0,0,1,0,1}  xlev 11
+    [PM_ROGUE, { hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+                 enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 11 }],
+    // Samurai  hp {13,0,0,8,1,0}  en {1,0,0,1,0,1}  xlev 11
+    [PM_SAMURAI, { hpadv: { infix: 13, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+                   enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 11 }],
+    // Tourist  hp {8,0,0,8,0,0}  en {1,0,0,1,0,1}  xlev 14
+    [PM_TOURIST, { hpadv: { infix: 8, inrnd: 0, lofix: 0, lornd: 8, hifix: 0, hirnd: 0 },
+                   enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 14 }],
     // Valkyrie hp {14,0,0,8,2,0}  en {1,0,0,1,0,1}  xlev 10
     [PM_VALKYRIE, { hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
                     enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 }, xlev: 10 }],
+    // Wizard  hp {10,0,0,8,1,0}  en {4,3,0,2,0,3}  xlev 12
+    [PM_WIZARD, { hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+                  enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 3 }, xlev: 12 }],
 ]);
 
 // Human race advance (C: role.c races[human]).  hp {2,0,0,2,1,0} en {1,0,2,0,2,0}.
@@ -185,27 +210,49 @@ export function newexplevel() {
 }
 
 // ── rank tracking (C: botl.c xlev_to_rank / rank_of) ──
-// Full rank ladders for the roles the #levelchange sessions exercise.  Each
-// entry is {m, f}; female form is used when the hero is female and f != null.
+// Full rank ladders for every role, transcribed from NetHack 5.0 src/role.c
+// roles[].rank[].  Each entry is {m, f}; the female form is used when the hero
+// is female and f != null.
 const ROLE_RANKS = new Map([
-    [PM_WIZARD, [['Evoker', null], ['Conjurer', null], ['Thaumaturge', null],
-                 ['Magician', null], ['Enchanter', 'Enchantress'], ['Sorcerer', 'Sorceress'],
-                 ['Necromancer', null], ['Wizard', null], ['Mage', null]]],
-    [PM_CLERIC, [['Aspirant', null], ['Acolyte', null], ['Adept', null],
-                 ['Priest', 'Priestess'], ['Curate', null], ['Canon', 'Canoness'],
-                 ['Lama', null], ['Patriarch', 'Matriarch'], ['High Priest', 'High Priestess']]],
+    [PM_ARCHEOLOGIST, [['Digger', null], ['Field Worker', null], ['Investigator', null],
+                       ['Exhumer', null], ['Excavator', null], ['Spelunker', null],
+                       ['Speleologist', null], ['Collector', null], ['Curator', null]]],
     [PM_BARBARIAN, [['Plunderer', 'Plunderess'], ['Pillager', null], ['Bandit', null],
                     ['Brigand', null], ['Raider', null], ['Reaver', null],
                     ['Slayer', null], ['Chieftain', 'Chieftainess'], ['Conqueror', 'Conqueress']]],
-    [PM_KNIGHT, [['Gallant', null], ['Esquire', null], ['Bachelor', null],
-                 ['Knight', null], ['Lord', 'Lady'], ['Baron', 'Baroness'],
-                 ['Knight Banneret', null], ['Margrave', null], ['Paladin', null]]],
+    [PM_CAVE_DWELLER, [['Troglodyte', null], ['Aborigine', null], ['Wanderer', null],
+                       ['Vagrant', null], ['Wayfarer', null], ['Roamer', null],
+                       ['Nomad', null], ['Rover', null], ['Pioneer', null]]],
     [PM_HEALER, [['Rhizotomist', null], ['Empiric', null], ['Embalmer', null],
-                 ['Dresser', null], ['Medicus', 'Medica'], ['Herbalist', null],
+                 ['Dresser', null], ['Medicus ossium', 'Medica ossium'], ['Herbalist', null],
                  ['Magister', 'Magistra'], ['Physician', null], ['Chirurgeon', null]]],
+    [PM_KNIGHT, [['Gallant', null], ['Esquire', null], ['Bachelor', null],
+                 ['Sergeant', null], ['Knight', null], ['Banneret', null],
+                 ['Chevalier', 'Chevaliere'], ['Seignieur', 'Dame'], ['Paladin', null]]],
+    [PM_MONK, [['Candidate', null], ['Novice', null], ['Initiate', null],
+               ['Student of Stones', null], ['Student of Waters', null], ['Student of Metals', null],
+               ['Student of Winds', null], ['Student of Fire', null], ['Master', null]]],
+    [PM_CLERIC, [['Aspirant', null], ['Acolyte', null], ['Adept', null],
+                 ['Priest', 'Priestess'], ['Curate', null], ['Canon', 'Canoness'],
+                 ['Lama', null], ['Patriarch', 'Matriarch'], ['High Priest', 'High Priestess']]],
+    [PM_RANGER, [['Tenderfoot', null], ['Lookout', null], ['Trailblazer', null],
+                 ['Reconnoiterer', 'Reconnoiteress'], ['Scout', null], ['Arbalester', null],
+                 ['Archer', null], ['Sharpshooter', null], ['Marksman', 'Markswoman']]],
+    [PM_ROGUE, [['Footpad', null], ['Cutpurse', null], ['Rogue', null],
+                ['Pilferer', null], ['Robber', null], ['Burglar', null],
+                ['Filcher', null], ['Magsman', 'Magswoman'], ['Thief', null]]],
+    [PM_SAMURAI, [['Hatamoto', null], ['Ronin', null], ['Ninja', 'Kunoichi'],
+                  ['Joshu', null], ['Ryoshu', null], ['Kokushu', null],
+                  ['Daimyo', null], ['Kuge', null], ['Shogun', null]]],
+    [PM_TOURIST, [['Rambler', null], ['Sightseer', null], ['Excursionist', null],
+                  ['Peregrinator', 'Peregrinatrix'], ['Traveler', null], ['Journeyer', null],
+                  ['Voyager', null], ['Explorer', null], ['Adventurer', null]]],
     [PM_VALKYRIE, [['Stripling', null], ['Skirmisher', null], ['Fighter', null],
                    ['Man-at-arms', 'Woman-at-arms'], ['Warrior', null], ['Swashbuckler', null],
                    ['Hero', 'Heroine'], ['Champion', null], ['Lord', 'Lady']]],
+    [PM_WIZARD, [['Evoker', null], ['Conjurer', null], ['Thaumaturge', null],
+                 ['Magician', null], ['Enchanter', 'Enchantress'], ['Sorcerer', 'Sorceress'],
+                 ['Necromancer', null], ['Wizard', null], ['Mage', null]]],
 ]);
 
 // C ref: botl.c xlev_to_rank — experience level (1..30) -> rank index (0..8).
@@ -328,14 +375,28 @@ function setuhpmax(newmax) {
 
 // ── adjabil intrinsic messages (C: attrib.c adjabil + the *_abil[] tables) ──
 // Only the gain/loss "You feel <X>!" plines (no RNG) affect the recorded
-// screens.  Tables for the exercised roles, {ulevel, gainstr, losestr}.
+// screens.  Full {ulevel, gainstr, losestr} tables for every role, transcribed
+// from attrib.c *_abil[].  An empty gainstr/losestr suppresses the message.
+// The recorded sessions are all human (no race intrinsics that overlap a role
+// intrinsic), so the C "already have it from another source" suppression check
+// never applies here.
 const ROLE_ABIL = new Map([
-    [PM_WIZARD, [[15, 'sensitive', ''], [17, 'controlled', 'uncontrolled']]],
-    [PM_CLERIC, [[15, 'sensitive', ''], [20, 'cool', 'warmer']]],
-    [PM_BARBARIAN, [[7, 'quick', 'slow'], [15, 'stealthy', '']]],
-    [PM_KNIGHT, [[7, 'quick', 'slow']]],
+    [PM_ARCHEOLOGIST, [[1, '', ''], [5, 'stealthy', ''], [10, 'quick', 'slow']]],
+    [PM_BARBARIAN, [[1, '', ''], [7, 'quick', 'slow'], [15, 'stealthy', '']]],
+    [PM_CAVE_DWELLER, [[7, 'quick', 'slow'], [15, 'sensitive', '']]],
     [PM_HEALER, [[1, '', ''], [15, 'sensitive', '']]],
+    [PM_KNIGHT, [[7, 'quick', 'slow']]],
+    [PM_MONK, [[1, '', ''], [1, '', ''], [1, '', ''], [3, 'healthy', ''],
+               [5, 'stealthy', ''], [7, 'sensitive', ''], [9, 'perceptive', 'unaware'],
+               [11, 'cool', 'warmer'], [13, 'warm', 'cooler'], [15, 'insulated', 'conductive'],
+               [17, 'controlled', 'uncontrolled']]],
+    [PM_CLERIC, [[15, 'sensitive', ''], [20, 'cool', 'warmer']]],
+    [PM_RANGER, [[1, '', ''], [7, 'stealthy', ''], [15, '', '']]],
+    [PM_ROGUE, [[1, '', ''], [10, 'perceptive', '']]],
+    [PM_SAMURAI, [[1, '', ''], [15, 'stealthy', '']]],
+    [PM_TOURIST, [[10, 'perceptive', ''], [20, 'hardy', '']]],
     [PM_VALKYRIE, [[1, '', ''], [3, 'stealthy', ''], [7, 'quick', 'slow']]],
+    [PM_WIZARD, [[15, 'sensitive', ''], [17, 'controlled', 'uncontrolled']]],
 ]);
 
 async function adjabil(oldlevel, newlevel, emitMsg) {

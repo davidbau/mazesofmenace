@@ -37,12 +37,16 @@ export const RANDOM_TIN = -2;
 export const HEALTHY_TIN = -3;
 
 const NON_PM = -1;
+// Monster permonst indices (monsters.js order, verified via monster_by_pmidx).
+// Used only by nonrotting_corpse(); the name-based checks below are the
+// authoritative path, but correct numeric indices avoid false positives
+// (e.g. killer bee == 1 must NOT be mistaken for acid blob).
 const PM_LICHEN = 158;
-const PM_LIZARD = 333;
-const PM_DEATH = 318;
-const PM_PESTILENCE = 319;
-const PM_FAMINE = 320;
-const PM_ACID_BLOB = 1; // placeholder; only used for ROTTEN_TIN->HOMEMADE adjustment
+const PM_LIZARD = 325;
+const PM_DEATH = 311;
+const PM_PESTILENCE = 312;
+const PM_FAMINE = 313;
+const PM_ACID_BLOB = 6;
 
 function corpse_mon_name(corpsenm) {
     return monster_by_pmidx(corpsenm)?.name ?? '';

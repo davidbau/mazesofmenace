@@ -37,12 +37,26 @@ function MON_AT(x, y) {
 // C ref: rm.h levl[x][y].typ + the object chain at a square.
 function terrainTyp(x, y) { return game.level?.at(x, y)?.typ; }
 
-// All floor objects on the level (C's `fobj` chain).
-function fobj() { return game.level?.objects || []; }
+// All floor objects on the level (C's `fobj` chain).  C inserts each newly
+// placed object at the HEAD of fobj (otmp->nobj = fobj; fobj = otmp), so the
+// chain iterates newest-first.  Our level.objects array is append-ordered
+// (oldest-first), so reverse it to reproduce C's traversal order — in dog_goal
+// the traversal order determines which object's APPORT rn2(8) fires first and
+// how gg.gtyp evolves, so the obj_resists/rn2(8) stream must match C's fobj.
+function fobj() {
+    const arr = game.level?.objects;
+    if (!arr) return [];
+    const out = [];
+    for (let i = arr.length - 1; i >= 0; i--) out.push(arr[i]);
+    return out;
+}
 
-// Objects at a specific square.
+// Objects at a specific square.  Preserve the level.objects append order here
+// (the per-tile `nexthere` scan in dog_move/dog_invent already matched C at
+// the tiles these sessions exercise); only dog_goal's whole-level fobj scan
+// needs the newest-first traversal.
 function objectsAt(x, y) {
-    return fobj().filter((o) => o.ox === x && o.oy === y);
+    return (game.level?.objects || []).filter((o) => o.ox === x && o.oy === y);
 }
 
 // C ref: hack.h distu(x,y) — squared distance from hero.

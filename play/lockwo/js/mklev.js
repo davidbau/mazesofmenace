@@ -230,11 +230,17 @@ function in_rooms(x, y, rtype) { return []; }
 // ============================================================
 
 // C ref: bones.c getbones()
+// NB: in C, `discover` == flags.explore (the same macro) and `wizard` ==
+// flags.debug. In explore/discover playmode getbones returns 0 with NO rng
+// draw (the rn2(3) is reached only when NOT in discover mode). Our options
+// parser stores playmode:explore as flags.playmode === 'explore' (it never
+// sets flags.explore), so check both spellings.
 function getbones() {
     const flags = game.flags || {};
-    if (flags.explore) return false;
-    if (flags.bones === false) return false;
-    if (rn2(3) && !game.flags?.debug) return false;
+    const discover = flags.explore || flags.playmode === 'explore';
+    if (discover) return false;               // C: if (discover) return 0; (no rng)
+    if (flags.bones === false) return false;  // C: if (!flags.bones) return 0;
+    if (rn2(3) && !flags.debug) return false; // C: if (rn2(3) && !wizard) return 0;
     return false;
 }
 
@@ -286,6 +292,7 @@ function clear_level_structures() {
     g.level.doors = [];
     g.stairs = null;
     g.vault_x = -1;
+    g.in_mk_themerooms = false; // C: flag is only TRUE inside the themeroom maker
     const lf = g.level.flags;
     lf.nfountains = 0;
     lf.nsinks = 0;
@@ -441,8 +448,23 @@ async function makerooms() {
                 if (g.level.rooms[g.level.nroom]) g.level.rooms[g.level.nroom].hx = -1;
             }
         } else {
-            // Themed room selection (reservoir sampling)
-            if (!(await themerooms_generate(difficulty))) {
+            // Themed room selection (reservoir sampling).
+            // C ref: mklev.c:413-417 — gi.in_mk_themerooms is TRUE only for the
+            // duration of the themerooms_generate lua call (it is FALSE in the
+            // vault branch and outside the maker). check_room() reads this flag
+            // and *rejects* a room that needed shrinking instead of
+            // shrinking+accepting it; rejecting skips an extra rect split and
+            // keeps the subsequent rnd_rect args aligned with C. themeroom_failed
+            // is also reset to FALSE around the call (mklev.c:414).
+            g.themeroom_failed = false;
+            g.in_mk_themerooms = true;
+            let themed_ok;
+            try {
+                themed_ok = await themerooms_generate(difficulty);
+            } finally {
+                g.in_mk_themerooms = false;
+            }
+            if (!themed_ok) {
                 if (themeroom_tries++ > 10
                     || g.level.nroom >= Math.trunc(MAXNROFROOMS / 6))
                     break;

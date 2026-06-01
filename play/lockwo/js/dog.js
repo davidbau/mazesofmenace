@@ -4,7 +4,14 @@
 import { game } from './gstate.js';
 import { rn2, rnd, getRngLog } from './rng.js';
 import { roles } from './role.js';
-import { COLNO, ROWNO, NON_PM, DOOR } from './const.js';
+import { COLNO, ROWNO, NON_PM, DOOR, W_SADDLE } from './const.js';
+import { mksobj } from './mkobj.js';
+
+// C ref: include/onames.h — SADDLE object type index (mkobj.js OBJECTS table
+// row [235, "SADDLE", ...]).  A saddle is a TOOL_CLASS object whose
+// mksobj_init() has no SADDLE case, so the only RNG it consumes is the single
+// rnd(2) inside next_ident() that assigns o_id.
+const SADDLE = 235;
 
 // Per-pet display info (class symbol + color).  C ref: include/monsters.h
 // (the starting pets).  Pets are drawn in HI_DOMESTIC = CLR_WHITE.
@@ -219,6 +226,38 @@ function makedog_mon(pettype, x, y) {
     return mtmp;
 }
 
+// C ref: steed.c put_saddle_on_mon — when called with a NULL saddle (as
+// makedog() does for an initial pony), it creates the saddle itself via
+// mksobj(SADDLE, TRUE, FALSE), fully identifies it, gives it to the monster
+// (mpickobj), and sets the W_SADDLE worn masks.
+//
+// RNG: can_saddle()/which_armor()/fully_identify_obj()/mpickobj()/
+// update_mon_extrinsics() consume no RNG for this path (the pet is tame, so
+// mpickobj()'s !mtame branch is skipped).  The ONLY RNG consumed is the
+// single rnd(2) inside mksobj()->next_ident() for the saddle's o_id.  This
+// must be emitted in makedog() between makemon() and u_init (matching C),
+// which is exactly where the recorded sessions show C emitting an
+// rnd(2) @ next_ident(mkobj.c:521).
+function put_saddle_on_mon(saddle, mtmp) {
+    // can_saddle(pony) is TRUE and which_armor(mtmp, W_SADDLE) is NULL for a
+    // freshly created pony, so we always proceed.
+    if (!saddle) {
+        saddle = mksobj(SADDLE, true, false); // consumes rnd(2) via next_ident
+        if (!saddle)
+            return;
+        saddle.known = saddle.bknown = saddle.rknown = 1; // fully_identify_obj
+        saddle.dknown = 1;
+    }
+    // mpickobj(mtmp, saddle): hand the saddle to the (tame) monster.
+    if (!mtmp.minvent) mtmp.minvent = [];
+    saddle.where = 'minvent';
+    mtmp.minvent.push(saddle);
+    // misc_worn_check |= W_SADDLE; saddle->owornmask = W_SADDLE; ...
+    mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_SADDLE;
+    saddle.owornmask = W_SADDLE;
+    saddle.leashmon = mtmp.m_id;
+}
+
 export function makedog() {
     const g = game;
     if (g.preferred_pet === 'n') {
@@ -232,8 +271,16 @@ export function makedog() {
     g.context.startingpet_typ = pettype;
 
     const mtmp = makedog_mon(pettype, g.u?.ux ?? 0, g.u?.uy ?? 0);
-    if (!g.context.startingpet_mid)
+    if (!g.context.startingpet_mid) {
         g.context.startingpet_mid = mtmp.m_id;
+        // C ref: dog.c makedog() — initial horses (PM_PONY) start wearing a
+        // saddle, except for a pauper hero.  NULL saddle arg means
+        // put_saddle_on_mon() creates the saddle itself, consuming a single
+        // rnd(2) inside mksobj(SADDLE)->next_ident() for the saddle's o_id.
+        // This must be emitted here (between makemon and u_init) to match C.
+        if (!g.u?.uroleplay?.pauper && pettype === PM_PONY)
+            put_saddle_on_mon(null, mtmp);
+    }
 
     // C ref: dog.c makedog() — default pet names (dogs only): Slasher
     // (Caveman), Hachi (Samurai), Idefix (Barbarian), Sirius (Ranger).
