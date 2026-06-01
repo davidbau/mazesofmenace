@@ -1753,7 +1753,7 @@ function monster_name_gender(name) {
 }
 
 function monster_name_needs_find_gender_roll(name, ptr) {
-    if (!ptr || ptr.neuter || ptr.male || ptr.female) return false;
+    if (!ptr || ptr.male || ptr.female) return false;
     return monster_name_gender(name) == null;
 }
 
@@ -3460,6 +3460,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
         game._monster_init_item_count = 0;
         game._monster_init_has_gold = false;
         try {
+            if (ptr.msound === MS_NEMESIS) mksobj(BELL_OF_OPENING, true, false);
             if (is_armed_for(ptr)) m_initweap_for(ptr);
             m_initinv_for(ptr, mon);
             // C ref: makemon.c:makemon() calls m_dowear(mtmp, TRUE) after
@@ -9125,6 +9126,152 @@ function loadOrcusSpecial() {
     fixup_special();
 }
 
+const KNI_GOAL_X = 3;
+const KNI_GOAL_Y = 1;
+const KNI_GOAL_MAP = [
+    '....PPPP..PPP..',
+    '.PPPPP...PP..     ..........     .................................',
+    '..PPPPP...P..    ...........    ...................................',
+    '..PPP.......   ...........    ......................................',
+    '...PPP.......    .........     ...............   .....................',
+    '...........    ............    ............     ......................',
+    '............   .............      .......     .....................',
+    '..............................            .........................',
+    '...............................   ..................................',
+    '.............................    ....................................',
+    '.........    ......................................................',
+    '.....PP...    .....................................................',
+    '.....PPP....    ....................................................',
+    '......PPP....   ..............   ....................................',
+    '.......PPP....  .............    .....................................',
+    '........PP...    ............    ......................................',
+    '...PPP........     ..........     ..................................',
+    '..PPPPP........     ..........     ..............................',
+    '....PPPPP......       .........     ..........................',
+    '.......PPPP...',
+];
+
+function kniGoalX(x) { return KNI_GOAL_X + x; }
+function kniGoalY(y) { return KNI_GOAL_Y + y; }
+
+function kniGoalSetTerrain(x, y, ch) {
+    const loc = game.level?.at(kniGoalX(x), kniGoalY(y));
+    if (!loc) return;
+    loc.lit = x <= 14;
+    loc.horizontal = false;
+    switch (ch) {
+    case '.': loc.typ = ROOM; break;
+    case 'P': loc.typ = POOL; break;
+    default: loc.typ = STONE; break;
+    }
+    if (IS_WALL(loc.typ)) loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+}
+
+function loadKniGoalTerrain() {
+    game._special_touched = new Set();
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.typ = STONE;
+            loc.flags = 0;
+            loc.doormask = 0;
+            loc.lit = false;
+            loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+    }
+    for (let y = 0; y < KNI_GOAL_MAP.length; y++) {
+        const row = KNI_GOAL_MAP[y].padEnd(76, ' ');
+        for (let x = 0; x < 76; x++) kniGoalSetTerrain(x, y, row[x]);
+    }
+    game.level.flags.is_maze_lev = true;
+}
+
+function kniGoalDryLocation() {
+    return specialRandomDryLocation(76, KNI_GOAL_MAP.length, KNI_GOAL_X, KNI_GOAL_Y);
+}
+
+function kniGoalObject(x = null, y = null) {
+    const loc = x == null || y == null
+        ? kniGoalDryLocation()
+        : { x: kniGoalX(x), y: kniGoalY(y) };
+    return mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+}
+
+function kniGoalTrap(kind = null, x = null, y = null) {
+    const loc = x == null || y == null
+        ? kniGoalDryLocation()
+        : { x: kniGoalX(x), y: kniGoalY(y) };
+    let actual = kind;
+    if (actual == null) do { actual = traptype_rnd(); } while (actual === NO_TRAP);
+    const trap = maketrap(loc.x, loc.y, actual);
+    maybeTrapVictim(trap);
+    return trap;
+}
+
+function kniGoalCreateMonster(ref, x = null, y = null, peaceful = 0, isClass = false) {
+    const cls = isClass ? specialMonsterClassFromChar(ref) : null;
+    let ptr = cls ? null : monster_by_user_name(ref);
+    if (!cls && monster_name_needs_find_gender_roll(ref, ptr)) rn2(2);
+    induced_align_80();
+    if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
+    const loc = x == null || y == null
+        ? kniGoalDryLocation()
+        : { x: kniGoalX(x), y: kniGoalY(y) };
+    if (m_at(loc.x, loc.y)) {
+        const cc = enexto_core(loc.x, loc.y, ptr, GP_CHECKSCARY)
+            || enexto_core(loc.x, loc.y, ptr, 0);
+        if (cc) {
+            loc.x = cc.x;
+            loc.y = cc.y;
+        }
+    }
+    const mon = apply_monster_name_gender(makemon(ptr, loc.x, loc.y, 0), ref);
+    if (mon && peaceful != null) {
+        mon.mpeaceful = peaceful ? 1 : 0;
+        mon.mhostile = peaceful ? 0 : 1;
+        set_malign_basic(mon);
+    }
+    return mon;
+}
+
+function loadKnightGoalSpecial() {
+    // C ref: dat/Kni-goal.lua loaded through sp_lev.c:lspo_map().
+    rn2(3); rn2(2); // nhlib shuffle()
+    rn2(2); // splev_initlev()
+    loadKniGoalTerrain();
+    placeSpecialStair(kniGoalX(3), kniGoalY(8), true);
+
+    const mirror = mksobj_at(MIRROR, kniGoalX(50), kniGoalY(6), true, false);
+    if (mirror) {
+        mirror.blessed = true;
+        mirror.cursed = false;
+        mirror.spe = 0;
+        mirror.oextra = { ...(mirror.oextra || {}), oname: 'The Magic Mirror of Merlin' };
+        if (!mirror.oartifact) game._nartifact_exist = (game._nartifact_exist ?? 0) + 1;
+        mirror.oartifact = true;
+    }
+    for (const [x, y] of [
+        [33, 1], [33, 2], [33, 3], [33, 4], [33, 5],
+        [34, 1], [34, 2], [34, 3], [34, 4], [34, 5],
+        [35, 1], [35, 2], [35, 3], [35, 4], [35, 5],
+    ]) kniGoalObject(x, y);
+    for (let i = 0; i < 6; i++) kniGoalObject();
+
+    for (const [x, y] of [[13, 7], [12, 8], [12, 9]]) kniGoalTrap(SPIKED_PIT, x, y);
+    for (let i = 0; i < 5; i++) kniGoalTrap();
+
+    kniGoalCreateMonster('Ixoth', 50, 6, 0);
+    for (let i = 0; i < 16; i++) kniGoalCreateMonster('quasit', null, null, 0);
+    for (let i = 0; i < 2; i++) kniGoalCreateMonster('i', null, null, 0, true);
+    for (let i = 0; i < 8; i++) kniGoalCreateMonster('ochre jelly', null, null, 0);
+    kniGoalCreateMonster('j', null, null, 0, true);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3);
+    fixup_special();
+}
+
 // Bare des.map([[...]]) defaults to centered placement.
 // C ref: sp_lev.c:lspo_map().
 const WIZ_START_X = 3;
@@ -10156,6 +10303,10 @@ function makemaz_special(slev) {
     }
     if (game._last_special_protofile === 'orcus') {
         loadOrcusSpecial();
+        return;
+    }
+    if (game._last_special_protofile === 'x-goal' && game.urole?.name?.m === 'Knight') {
+        loadKnightGoalSpecial();
         return;
     }
     if (game._last_special_protofile === 'x-strt' && game.urole?.name?.m === 'Wizard') {

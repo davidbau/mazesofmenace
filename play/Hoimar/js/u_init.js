@@ -529,6 +529,12 @@ const SAMURAI_KNOWN_ARMOR = [
     PLATE_MAIL, SPLINT_MAIL, LEATHER_GLOVES,
 ];
 
+const STARTING_QUIVER_WEAPONS = new Set([
+    ARROW, ELVEN_ARROW, ORCISH_ARROW, SILVER_ARROW, YA, CROSSBOW_BOLT,
+    DART, SHURIKEN, BOOMERANG,
+    DAGGER, ELVEN_DAGGER, ORCISH_DAGGER, SILVER_DAGGER,
+]);
+
 const KNIGHT_KNOWN_WEAPONS = [
     // C ref: src/u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
     // Knights know all ordinary weapons, including polearms.
@@ -821,6 +827,19 @@ function apply_starting_worn_extrinsic(obj) {
     if (obj.otyp === CLOAK_OF_MAGIC_RESISTANCE) game.u.uprops.magic_resistance = true;
 }
 
+function apply_starting_weapon_use(obj) {
+    // C ref: src/u_init.c:ini_inv_use_obj().  Starting missile/ammo stacks
+    // fill the quiver before ordinary weapons are auto-wielded.
+    if (!obj || obj.oclass !== WEAPON_CLASS) return;
+    if (STARTING_QUIVER_WEAPONS.has(obj.otyp)) {
+        if (!(game.inventory || []).some((item) => item?.quivered)) obj.quivered = true;
+    } else if (!(game.inventory || []).some((item) => item?.wielded)) {
+        obj.wielded = true;
+    } else if (!(game.inventory || []).some((item) => item?.alternate)) {
+        obj.alternate = true;
+    }
+}
+
 function armor_base_bonus(obj) {
     switch (obj?.otyp) {
     case GRAY_DRAGON_SCALE_MAIL:
@@ -917,6 +936,7 @@ function ini_inv(trobs, noCreate, roleName) {
         if (trop.quivered) invObj.quivered = true;
         if (trop.worn) invObj.worn = true;
         apply_starting_worn_extrinsic(invObj);
+        apply_starting_weapon_use(invObj);
         learn_initial_spell(invObj);
         if (invObj.oclass === SPBOOK_CLASS && starting_spell_level(invObj.otyp) === 1) {
             gotLevel1Spellbook = true;

@@ -1,7 +1,7 @@
 import { game } from './gstate.js';
 import { d, rn2, rnd, rnl } from './rng.js';
 import { dog_move, dog_move_after_inventory, obj_resists } from './dog.js';
-import { exercise } from './allmain_turns.js';
+import { adjalign, exercise } from './allmain_turns.js';
 import {
     enexto_core, makemon, monsterPtr, MONSTER_SYMBOLS, newmonhp_state_for,
     pick_newcham_shape_for, mkobj, mksobj, place_object, next_ident, stackobj,
@@ -4225,6 +4225,9 @@ function passive_xkilled_nomsg_basic(mon) {
     }
     if (mon.mpeaceful) rn2(2);
     gain_experience_for_monster_kill_basic(mon);
+    if (mon.mtame) adjalign(-15);
+    else if (mon.mpeaceful) adjalign(-5);
+    adjalign(mon.malign ?? 0);
     remove_dead_monster(mon);
 }
 
@@ -6062,6 +6065,8 @@ function queue_fatal_monster_hit_more_if_needed() {
         if (game._monster_attack_tail_transient_after_more
             && (game.wizard || game.flags?.debug || game.flags?.explore)) {
             const msg = 'Die? [yn] (n)';
+            const u = game.u || (game.u = {});
+            u.umortality = (u.umortality || 0) + 1;
             game._monster_death_pending = false;
             game._death_prompt_pending = false;
             game._death_prompt_active = true;
