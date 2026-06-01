@@ -7,7 +7,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    maybe_generate_rnd_mon, regen_hp, gethungry, exerchk,
+    maybe_generate_rnd_mon, regen_hp, regen_pw, gethungry, exerchk,
     maybe_wipe_engraving, maybe_update_seer_turn, dosounds, exercise,
 } from './allmain_turns.js';
 import { distfleeck, flush_deferred_warning_redraws, mcalcdistress, mcalcmove, movemon } from './monmove.js';
@@ -17,7 +17,10 @@ import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
-import { continueRunStep, finish_pending_eaten_corpse, finishPrayerResult, performLevelTeleport, rhack, shouldStopRunForNearbyMonster } from './cmd.js';
+import {
+    continueRunStep, dosearch0_basic, finish_pending_eaten_corpse, finishPrayerResult,
+    performLevelTeleport, rhack, shouldStopRunForNearbyMonster,
+} from './cmd.js';
 import { nhgetch } from './input.js';
 import {
     docrt, cls, bot, flush_screen, pline, append_pline, newsym, serialize_terminal_grid,
@@ -27,7 +30,7 @@ import {
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { roles, findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import { NO_COLOR } from './terminal.js';
-import { A_DEX, A_STR, A_WIS, COLNO, NORMAL_SPEED } from './const.js';
+import { A_DEX, A_INT, A_STR, A_WIS, COLNO, NORMAL_SPEED, W_TOOL } from './const.js';
 import * as ff8000 from './fastforward.js';
 import * as ff0002 from './fastforward0002.js';
 
@@ -42,10 +45,21 @@ const SPEED_BOOTS = 166;
 const GAUNTLETS_OF_POWER = 161;
 const ARMOR_CLASS = 3;
 const PL_NSIZ = 32;
+const BLINDFOLD = 233;
+const TOWEL = 234;
 const NAME_PROMPT_BASE = "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you?";
+
+function wearingBlindfoldLike(g) {
+    return (g.inventory || []).some((obj) => (obj?.otyp === BLINDFOLD || obj?.otyp === TOWEL)
+        && (obj.worn || ((obj.owornmask || 0) & W_TOOL)));
+}
 
 async function nhTimeoutBasic() {
     const u = game.u;
+    // C ref: src/timeout.c:nh_timeout().  Prayer invulnerability returns
+    // before timed-property countdowns; otherwise temporary blindness and
+    // similar effects age during the protected prayer turns.
+    if (u?.uinvulnerable) return;
     if (u?.uprops?.confusion) {
         // C ref: timeout.c:nh_timeout() decrements timed intrinsics and
         // handles CONFUSION through make_confused() when the timer expires.
@@ -58,6 +72,38 @@ async function nhTimeoutBasic() {
             if (oldConfusion) await append_pline(`You feel less ${state} now.`);
         }
     }
+    if ((u?.uprops?.blinded || u?.uprops?.blind) && !wearingBlindfoldLike(game)) {
+        // C refs: timeout.c:nh_timeout() BLINDED case and potion.c:make_blinded().
+        // Worn blindfolds/towels are extrinsic; temporary blindness ages here.
+        const oldBlind = Math.max(Number(u.uprops.blinded || 0), Number(u.uprops.blind || 0));
+        const next = Math.max(0, oldBlind - 1);
+        u.uprops.blinded = next;
+        u.uprops.blind = next;
+        if (u.ucreamed) u.ucreamed = Math.min(u.ucreamed, next);
+        if (!next && u.ublind) {
+            u.ublind = false;
+            u.blind = false;
+            await append_pline('You can see again.');
+        }
+    }
+    if (u?.uprops?.deaf) {
+        // C ref: timeout.c:nh_timeout() HDEAF timeout.  Expiry messaging is
+        // handled by explicit callbacks such as eat.c:Hear_again().
+        u.uprops.deaf = Math.max(0, u.uprops.deaf - 1);
+        u.udeaf = u.uprops.deaf;
+    }
+    if (typeof u?.uprops?.fast === 'number' && u.uprops.fast > 0) {
+        // C ref: timeout.c:nh_timeout() FAST.  Timed very-fast expiring can
+        // still leave the hero intrinsically Fast, yielding "a bit".
+        u.uprops.fast = Math.max(0, u.uprops.fast - 1);
+        if (!u.uprops.fast) {
+            const line = `You feel yourself slow down${u.uprops.intrinsic_fast ? ' a bit' : ''}.`;
+            if (game._pending_message) await append_pline(line);
+            else await pline(line);
+        }
+    }
+    if (typeof u?.uprops?.invulnerable === 'number' && u.uprops.invulnerable > 0)
+        u.uprops.invulnerable = Math.max(0, u.uprops.invulnerable - 1);
 
     // C ref: timeout.c:nh_timeout() WOUNDED_LEGS case -> do.c:heal_legs().
     const timeout = u?.uprops?.wounded_legs || 0;
@@ -583,7 +629,11 @@ export async function advanceTurn() {
             g._fast_extra_action_pending = false;
             g._pet_combat_resume_active = false;
             g._savelife_resume_active = false;
-            if (!occupationPending(g)) return;
+            // C refs: allmain.c:moveloop_core(), ball.c:drag_ball().  A
+            // stored fast movement point can allow another ordinary action,
+            // but a full ball drag imposes its own delay and must still run
+            // the regular turn tail plus the drag catch-up turn.
+            if (!g._ball_drag_delay_pending && !occupationPending(g)) return;
         }
         let monscanmove = firstScanCanMove;
         while (monscanmove) {
@@ -603,30 +653,63 @@ export async function advanceTurn() {
     settrack();
 
     await nhTimeoutBasic();
-    regen_hp();
+    await interruptMultiAfterFullHealth(g, regen_hp());
+    regen_pw((g.moves || 1) + 1);
 
     if (await dosounds()) return;
     finishPostDosoundsTurnTail(g);
 }
 
+async function interruptMultiAfterFullHealth(g, reachedFull) {
+    // C refs: src/allmain.c:regen_hp(), src/allmain.c:interrupt_multi().
+    // Ordinary HP regeneration stops voluntary counted waits/searches as soon
+    // as max HP is reached; `!verbose` suppresses the explanatory topline.
+    if (!reachedFull || (g.context?.multi || 0) <= 0 || g.context?.travel || g.context?.run) return;
+    g.context.multi = 0;
+    g._simple_timed_repeats_remaining = 0;
+    g._simple_timed_repeat_text = '';
+    if (g.flags?.verbose !== false) await pline('You are in full health.');
+}
+
 function finishPostDosoundsTurnTail(g) {
     // C ref: allmain.c:moveloop_core().  Prayer timeout drains once during
     // each real turn, including occupation/extra monster-turn catch-ups.
+    const moveAlreadyIncremented = !!g._moves_incremented_for_dosounds_more;
+    const tailMove = moveAlreadyIncremented ? (g.moves || 1) : (g.moves || 1) + 1;
     if ((g.u?.ublesscnt || 0) > 0) g.u.ublesscnt--;
     gethungry();
-    exerchk();
+    ageKnownSpells(g);
+    exerchk(tailMove);
     maybe_wipe_engraving();
     if (shouldDeferSeerTurnUpdate(g)) {
         g._seer_turn_update_pending = true;
     } else {
-        maybe_update_seer_turn();
+        maybe_update_seer_turn(tailMove);
     }
 
     g._pet_combat_resume_active = false;
     g._savelife_resume_active = false;
     if (g.u) g.u.umoved = false;
-    g.moves = (g.moves || 1) + 1;
+    if (moveAlreadyIncremented) {
+        g._moves_incremented_for_dosounds_more = false;
+    } else {
+        g.moves = tailMove;
+    }
     g._advance_turn_completed_tail = true;
+}
+
+function ageKnownSpells(g) {
+    // C ref: spell.c:age_spells().  Spell memory ages once per completed
+    // hero turn, independent of speed or the source of the turn.
+    if (!Array.isArray(g.knownSpells)) return;
+    for (const spell of g.knownSpells) {
+        const turns = Number.isInteger(spell.sp_know)
+            ? spell.sp_know
+            : (Number.isInteger(spell.turnsLeft) ? spell.turnsLeft : null);
+        if (turns == null || turns <= 0) continue;
+        spell.sp_know = turns - 1;
+        spell.turnsLeft = turns - 1;
+    }
 }
 
 function applyHeroMovementRation(g) {
@@ -638,14 +721,16 @@ function applyHeroMovementRation(g) {
         if (moveamt >= NORMAL_SPEED * 2) g._fast_extra_action_pending = true;
         return;
     }
+    const ballDragSuppressesExtra = g._punished && g.u?.umoved
+        && (g._ball_drag_delay_pending || (g._ball_drag_steps || 0) >= 3);
     if (g.u?.uprops?.fast) {
         // C ref: src/allmain.c:u_calc_moveamt(); speed boots/potion/spell
         // Very_fast grants an extra action on 2/3 of turns.
-        g._fast_extra_action_pending = rn2(3) !== 0;
+        g._fast_extra_action_pending = rn2(3) !== 0 && !ballDragSuppressesExtra;
     } else if (g.u?.uprops?.intrinsic_fast) {
         // C ref: src/allmain.c:u_calc_moveamt(); intrinsic Fast grants an
         // extra action on 1/3 of turns.
-        g._fast_extra_action_pending = rn2(3) === 0;
+        g._fast_extra_action_pending = rn2(3) === 0 && !ballDragSuppressesExtra;
     }
 }
 
@@ -654,6 +739,7 @@ function shouldDeferSeerTurnUpdate(g) {
     // once-per-hero-took-time section after the "hero can't move" loop.  When
     // burdened movement leaves the hero short of NORMAL_SPEED, defer the RNG
     // until any catch-up monster turn has run.
+    if (g._pending_prayer_finish_message && (g._prayer_turns_remaining || 0) <= 0) return true;
     return !!(g.u?.uencumber || g._extra_encumbered_turn_pending);
 }
 
@@ -847,6 +933,51 @@ function creditSlowPolyExtraTurn(g) {
     g._slow_poly_move_debt -= moveamt;
 }
 
+async function finishZeroMovePolyCatchup(g) {
+    const form = g.u?._poly_form || null;
+    if (!form || form.mmove !== 0) {
+        g._zero_move_poly_movement = null;
+        g._zero_move_poly_catchup_active = false;
+        return true;
+    }
+    if (!(g.u?.uprops?.fast || g.u?.uprops?.intrinsic_fast)) {
+        return true;
+    }
+    if (g._monster_turn_paused_for_more) {
+        return false;
+    }
+    // C ref: allmain.c:u_calc_moveamt().  A zero-move form only accumulates
+    // movement when speed grants the extra NORMAL_SPEED chunk; the usual
+    // encumbrance reductions then apply, while OVERLOADED falls through to the
+    // unreduced default case in this local tree.
+    let movement = Number.isFinite(g._zero_move_poly_movement)
+        ? g._zero_move_poly_movement
+        : NORMAL_SPEED;
+    if (!g._zero_move_poly_catchup_active) {
+        movement = Math.max(0, movement - NORMAL_SPEED);
+        g._zero_move_poly_catchup_active = true;
+    }
+    const creditSpeedGrant = () => {
+        if (!g._fast_extra_action_pending) return false;
+        g._fast_extra_action_pending = false;
+        movement += encumberedMoveAmount(g.u?.uencumber || 0);
+        if (movement < NORMAL_SPEED) return false;
+        g._zero_move_poly_movement = movement;
+        g._zero_move_poly_catchup_active = false;
+        return true;
+    };
+    for (let guard = 0; guard < 20; guard++) {
+        if (creditSpeedGrant()) return true;
+        await advanceTurn();
+        if (g._more || g._monster_turn_paused_for_more) {
+            g._zero_move_poly_movement = movement;
+            return false;
+        }
+    }
+    g._zero_move_poly_movement = movement;
+    return true;
+}
+
 function creditEncumberedNomulFinish(g) {
     const enc = g.u?.uencumber || 0;
     if (!enc || g._encumbered_move_debt == null) return;
@@ -859,6 +990,18 @@ function creditEncumberedShortfallTurn(g) {
     const enc = g.u?.uencumber || 0;
     if (!enc || g._encumbered_move_debt == null) return;
     g._encumbered_move_debt -= NORMAL_SPEED - encumberedMoveAmount(enc);
+}
+
+function markObjectTypeKnownNoWisdom(g, otyp, markEncountered = true) {
+    if (!Number.isInteger(otyp)) return;
+    const order = Array.isArray(g.discoveryOrder) ? g.discoveryOrder : (g.discoveryOrder = []);
+    if (!order.includes(otyp)) order.push(otyp);
+    const discovered = g.discoveredObjects || (g.discoveredObjects = new Set());
+    if (typeof discovered.add === 'function') discovered.add(otyp);
+    if (markEncountered) {
+        const encountered = g.encounteredObjects || (g.encounteredObjects = new Set());
+        if (typeof encountered.add === 'function') encountered.add(otyp);
+    }
 }
 
 function applyOccupationFinishObjectEffects(g) {
@@ -895,9 +1038,90 @@ function applyOccupationFinishObjectEffects(g) {
     }
 }
 
+function applyOccupationLearnSpell(g) {
+    const pending = g._occupation_finish_learn_spell;
+    if (!pending?.spell) return;
+    g._occupation_finish_learn_spell = null;
+    const known = g.knownSpells || (g.knownSpells = []);
+    const key = pending.spell.spellKey ?? pending.spell.otyp;
+    const existing = known.find((spell) => (spell.spellKey ?? spell.otyp) === key);
+    if (existing) {
+        existing.sp_know = 20001;
+        existing.turnsLeft = 20001;
+    } else {
+        known.push({ ...pending.spell, sp_know: 20001, turnsLeft: 20001 });
+    }
+    // C ref: spell.c:learn().  Finishing study exercises wisdom before
+    // reporting the learned spell.
+    exercise(A_WIS, true);
+    exercise(A_WIS, true);
+    g._defer_next_spellbook_study_for_fast_extra = true;
+    const obj = pending.obj;
+    if (obj) {
+        obj.knownName = true;
+        obj.known = true;
+        obj.spestudied = (obj.spestudied || 0) + 1;
+        // C ref: src/spell.c:learn() -> makeknown(booktype).
+        // Wisdom credit is already modeled by the two exercise() calls above.
+        markObjectTypeKnownNoWisdom(g, obj.otyp);
+    }
+}
+
+function deferredSpellbookStudyDelay(info) {
+    const level = info?.level || 1;
+    const delay = info?.delay || 1;
+    if (level <= 2) return delay;
+    if (level <= 4) return (level - 1) * delay;
+    if (level <= 6) return level * delay;
+    return 8 * delay;
+}
+
+async function finishDeferredSpellbookStudy(g) {
+    const pending = g._deferred_spellbook_study;
+    if (!pending?.obj || !pending?.info) return true;
+    g._deferred_spellbook_study = null;
+    const obj = pending.obj;
+    const info = pending.info;
+    if (!obj.blessed && !obj.cursed) {
+        const readAbility = (g.u?.acurr?.a?.[A_INT] ?? 0) + 4 + Math.trunc((g.u?.ulevel || 1) / 2)
+            - (2 * (info.level || 1));
+        if (rnd(20) > readAbility) {
+            await pline('These runes were just too much to comprehend.');
+            return true;
+        }
+    }
+    await pline('You begin to memorize the runes.');
+    const delay = deferredSpellbookStudyDelay(info);
+    const knownCount = Array.isArray(g.knownSpells) ? g.knownSpells.length : 0;
+    g._occupation_turns_remaining = Math.max(0, delay);
+    g._occupation_finish_message = knownCount === 0
+        ? `You learn the "${info.name}" spell.`
+        : `You add the "${info.name}" spell to your repertoire, as '${String.fromCharCode(97 + knownCount)}'.`;
+    g._occupation_pack_finish_message = true;
+    g._occupation_pre_finish_extra_turn = true;
+    g._occupation_post_finish_extra_turn = true;
+    g._occupation_finish_learn_spell = {
+        obj,
+        spell: {
+            otyp: obj.otyp,
+            spellKey: pending.spellKey ?? info.spellKey ?? obj.otyp,
+            name: info.name,
+            level: info.level,
+            category: info.category,
+        },
+    };
+    return true;
+}
+
 async function runOccupationPreFinishTurn(g) {
     if (!g._occupation_finish_message) return;
     if (g._occupation_pre_finish_turn_done) return;
+    if (g._occupation_pre_finish_extra_turn) {
+        g._occupation_pre_finish_extra_turn = false;
+        g._occupation_pre_finish_turn_done = true;
+        await advanceTurn();
+        return;
+    }
     if (g.u?.uswallow && g.u?.ustuck) {
         // C ref: allmain.c:moveloop_core().  `unmul()` and `nomovemsg` happen
         // after the "hero can't move" loop has finished.  A swallowed, slow or
@@ -919,6 +1143,7 @@ async function runOccupationPreFinishTurn(g) {
 
 async function continueNomulTurns(g, options = {}) {
     if ((g._nomul_turns_remaining || 0) <= 0) return true;
+    const continueBehindMore = !!g._nomul_continue_behind_more;
     // C ref: allmain.c:moveloop_core() increments negative `multi` after
     // each immobile turn, then `unmul()` prints `nomovemsg` on the final turn.
     if (options.countCurrentTurn && g._advance_turn_completed_tail)
@@ -926,7 +1151,7 @@ async function continueNomulTurns(g, options = {}) {
     while ((g._nomul_turns_remaining || 0) > 0) {
         await advanceTurn();
         if (g._monster_turn_paused_for_more) return false;
-        if (g._more) return false;
+        if (g._more && !continueBehindMore) return false;
         if (g._advance_turn_completed_tail)
             g._nomul_turns_remaining--;
     }
@@ -937,10 +1162,43 @@ async function continueNomulTurns(g, options = {}) {
         // negative-multi turns still use the movement accumulator; by the time
         // unmul() prints nomovemsg, a burdened hero has only partly recovered.
         creditEncumberedNomulFinish(g);
-        if (g._pending_message) await append_pline(msg);
+        if (continueBehindMore && g._more) {
+            g._nomovemsg = msg;
+        } else if (g._pending_message) await append_pline(msg);
         else await pline(msg);
     }
+    if (!g._more || !continueBehindMore) g._nomul_continue_behind_more = false;
     return true;
+}
+
+function restorePrayerBudgetForInterruptedFirstTurn(g) {
+    // C refs: src/pray.c:dopray(), src/allmain.c:moveloop_core().
+    // JS stores prayer's nomul(-3) as the command-owned turn plus queued
+    // follow-up turns.  If tty More interrupts that first turn before the
+    // once-per-turn tail, the command-owned turn has not been charged yet.
+    if (!g._pending_prayer_finish_message) return;
+    if ((g._prayer_turns_remaining || 0) <= 0) return;
+    if (g._prayer_full_budget_no_restore) {
+        g._prayer_turns_remaining = Math.max(0, (g._prayer_turns_remaining || 0) - 1);
+        g._prayer_force_intrinsic_budget_adjust = false;
+        return;
+    }
+    if (g._advance_turn_completed_tail) return;
+    if (g._prayer_interrupted_first_turn_restored) return;
+    g._prayer_turns_remaining++;
+    g._prayer_interrupted_first_turn_restored = true;
+}
+
+function adjustPrayerForceBudgetAfterUninterruptedFirstTurn(g) {
+    if (!g._prayer_force_intrinsic_budget_adjust) return;
+    g._prayer_force_intrinsic_budget_adjust = false;
+    if (!g._pending_prayer_finish_message) return;
+    // C refs: src/pray.c:dopray(), src/allmain.c:moveloop_core().
+    // Intrinsic-fast force prayer can spend a stored no-tail monster pass
+    // before the first real once-per-turn tail.  Only a completed tail should
+    // consume the larger adjustment.
+    const charged = g._advance_turn_completed_tail ? 2 : 1;
+    g._prayer_turns_remaining = Math.max(0, (g._prayer_turns_remaining || 0) - charged);
 }
 
 async function continueOccupationTurns(g) {
@@ -977,6 +1235,7 @@ async function continueOccupationTurns(g) {
         }
         await runOccupationPreFinishTurn(g);
         applyOccupationFinishObjectEffects(g);
+        applyOccupationLearnSpell(g);
         if (g._pending_message
             && g._occupation_pack_finish_message
             && topline_can_pack_message(g._pending_message, g._occupation_finish_message)) {
@@ -998,6 +1257,11 @@ async function continueOccupationTurns(g) {
         g._occupation_finish_message = null;
         g._occupation_pre_finish_turn_done = false;
         g._occupation_pre_finish_catchup = false;
+        if (g._occupation_post_finish_extra_turn) {
+            g._occupation_post_finish_extra_turn = false;
+            await advanceTurn();
+            if (g._more || g._monster_turn_paused_for_more) return false;
+        }
     }
     return true;
 }
@@ -1010,19 +1274,41 @@ async function continueSimpleTimedRepeats(g, options = {}) {
     const interrupted = () => g._more || g._monster_turn_paused_for_more;
     if (interrupted()) {
         g._simple_timed_repeats_remaining = 0;
+        g._simple_timed_repeat_text = '';
         return false;
     }
     while ((g._simple_timed_repeats_remaining || 0) > (leaveTailForInputBoundary ? 1 : 0)) {
         g._simple_timed_repeats_remaining--;
+        if (g._simple_timed_repeat_text === 'searching') await dosearch0_basic(false);
+        if ((g.context?.multi || 0) > 0) g.context.multi--;
         await advanceTurn();
         if (interrupted()) {
             g._simple_timed_repeats_remaining = 0;
+            g._simple_timed_repeat_text = '';
+            if (g.context) g.context.multi = 0;
+            return false;
+        }
+        if (!await finishZeroMovePolyCatchup(g)) {
+            g._simple_timed_repeats_remaining = 0;
+            g._simple_timed_repeat_text = '';
+            if (g.context) g.context.multi = 0;
+            return false;
+        }
+        finishDeferredSeerTurnUpdate(g);
+        if (interrupted()) {
+            g._simple_timed_repeats_remaining = 0;
+            g._simple_timed_repeat_text = '';
+            if (g.context) g.context.multi = 0;
             return false;
         }
         // C ref: allmain.c:u_calc_moveamt().  Batched timed occupations
         // still spend burdened movement points, but the catch-up monster
         // allocation is not charged inside this JS batching loop.
         if (leaveTailForInputBoundary) accrueEncumberedMoveDebt(g, { capPendingExtra: true });
+    }
+    if ((g._simple_timed_repeats_remaining || 0) <= 0) {
+        g._simple_timed_repeat_text = '';
+        if (g.context) g.context.multi = 0;
     }
     return true;
 }
@@ -1093,8 +1379,26 @@ async function continueRunPostTurnChecks(g) {
         }
         creditEncumberedExtraTurn(g);
     }
+    if (!await finishZeroMovePolyCatchup(g)) {
+        if (g.context?.run) g._run_paused_for_more = true;
+        g._run_paused_before_encumbered_check = true;
+        return false;
+    }
     finishDeferredSeerTurnUpdate(g);
     g._run_paused_before_encumbered_check = false;
+    return true;
+}
+
+async function finishRunBallDragDelay(g) {
+    if (!g._ball_drag_delay_pending || !g._extra_encumbered_turn_pending
+        || g._more || g._monster_turn_paused_for_more) return true;
+    // C refs: hack.c:domove_core(), ball.c:drag_ball().  A full ball drag
+    // ends the active travel/run and charges its skipped movement turn before
+    // the next input boundary.
+    g._extra_encumbered_turn_pending = false;
+    await advanceTurn();
+    if (g._more || g._monster_turn_paused_for_more) return false;
+    g._ball_drag_delay_pending = false;
     return true;
 }
 
@@ -1125,6 +1429,9 @@ export async function moveloop_core() {
         await continueSimpleTimedRepeats(g);
         return;
     }
+    if (!g._more && !g._monster_turn_paused_for_more
+        && (g._simple_timed_repeats_remaining || 0) <= 0)
+        g._simple_timed_repeat_stop_text = '';
 
     const key = await nhgetch();
     // Read and execute one command
@@ -1132,6 +1439,11 @@ export async function moveloop_core() {
     if (g._resume_post_dosounds_turn_tail && !g._more) {
         g._resume_post_dosounds_turn_tail = false;
         finishPostDosoundsTurnTail(g);
+        // C ref: allmain.c:moveloop_core().  A sound More can interrupt the
+        // immobile-hero loop after u_calc_moveamt() left movement below
+        // NORMAL_SPEED; dismissing it resumes the tail and then keeps looping
+        // until the hero has movement again.
+        if (!await finishZeroMovePolyCatchup(g)) return;
         return;
     }
     // C ref: teleport.c:level_tele() schedules the destination; allmain.c
@@ -1159,7 +1471,7 @@ export async function moveloop_core() {
         }
         if (g._resume_nomul_after_more) {
             g._resume_nomul_after_more = false;
-            if (!await continueNomulTurns(g)) return;
+            if (!await continueNomulTurns(g, { countCurrentTurn: true })) return;
             if (!occupationPending(g)) finish_pending_eaten_corpse();
             if (!await continueOccupationTurns(g)) return;
         } else {
@@ -1177,6 +1489,10 @@ export async function moveloop_core() {
                 g._deferred_pre_turn_after_more = false;
                 await advanceTurn();
                 if (g._more || g._monster_turn_paused_for_more) return;
+                if (g._deferred_pre_turn_after_more_returns_to_input) {
+                    g._deferred_pre_turn_after_more_returns_to_input = false;
+                    return;
+                }
             }
             if (g._resume_monster_turn) {
                 const resumeOccupationAfterMonsterTurn = !!g._occupation_paused_for_more
@@ -1190,6 +1506,17 @@ export async function moveloop_core() {
                 }
                 if (resumeOccupationAfterMonsterTurn
                     && (g._more || g._monster_turn_paused_for_more)) return;
+                if (g._nomovemsg === 'You survived that attempt on your life.'
+                    && !g._more
+                    && !g._monster_turn_paused_for_more
+                    && g._pending_message
+                    && g._pending_message !== "OK, so you don't die.") {
+                    // C refs: end.c:savelife(), allmain.c:moveloop_core().
+                    // Monster plines produced while resuming the interrupted
+                    // monster turn block before gn.nomovemsg is emitted.
+                    queue_more_prompt();
+                    return;
+                }
                 if (g._nomovemsg && !g._more && !g._monster_turn_paused_for_more) {
                     // C refs: end.c:savelife(), allmain.c:moveloop_core().
                     // If the resumed monster turn does not block on another
@@ -1219,7 +1546,12 @@ export async function moveloop_core() {
             } else {
                 applyOccupationFinalTurnState(g);
                 await advanceTurn();
-                if (g._monster_turn_paused_for_more) return;
+                if (g._monster_turn_paused_for_more) {
+                    restorePrayerBudgetForInterruptedFirstTurn(g);
+                    return;
+                }
+                adjustPrayerForceBudgetAfterUninterruptedFirstTurn(g);
+                if (!await finishDeferredSpellbookStudy(g)) return;
                 if (!await continueNomulTurns(g, { countCurrentTurn: true })) return;
                 if (!occupationPending(g)) finish_pending_eaten_corpse();
                 if (g._more && occupationPending(g) && !g._occupation_continue_behind_more) {
@@ -1230,6 +1562,7 @@ export async function moveloop_core() {
                 if (!await continueOccupationTurns(g)) return;
             }
         }
+        if (!await finishZeroMovePolyCatchup(g)) return;
         const skipPetDeathCatchupDebt = !!g._skip_encumbered_debt_after_pet_death_more;
         g._skip_encumbered_debt_after_pet_death_more = false;
         if (skipPetDeathCatchupDebt) {
@@ -1256,10 +1589,12 @@ export async function moveloop_core() {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Becoming
             // slightly encumbered can leave u.umovement below NORMAL_SPEED,
             // so monsters get one more movement allocation before input.
+            const ballDragDelay = !!g._ball_drag_delay_pending;
             g._extra_encumbered_turn_pending = false;
             await advanceTurn();
             if (g._more || g._monster_turn_paused_for_more) return;
-            seedEncumberedDebtAfterExtraTurn(g);
+            if (ballDragDelay) g._ball_drag_delay_pending = false;
+            else seedEncumberedDebtAfterExtraTurn(g);
         }
         if (g._slow_poly_extra_turn_pending_credit && !g._monster_turn_paused_for_more) {
             g._slow_poly_extra_turn_pending_credit = false;
@@ -1292,6 +1627,18 @@ export async function moveloop_core() {
         while ((g._prayer_turns_remaining || 0) > 0) {
             g._prayer_turns_remaining--;
             await advanceTurn();
+            if (g._advance_turn_completed_tail
+                && g._fast_extra_action_pending
+                && (g._prayer_turns_remaining || 0) === 1) {
+                // C refs: allmain.c:moveloop_core(), pray.c:dopray().
+                // `unmul()`/`prayer_done()` runs at the completed negative
+                // multi turn boundary before a speed-granted no-tail monster
+                // pass can use the newly accumulated movement.  The movement
+                // has already served to end the immobile prayer loop, so it
+                // should not survive as a free JS action on the next command.
+                g._prayer_turns_remaining = 0;
+                g._fast_extra_action_pending = false;
+            }
         }
         if (g._clear_pet_combat_more_after_resume
             && !g._monster_turn_paused_for_more
@@ -1300,20 +1647,26 @@ export async function moveloop_core() {
             g._more = false;
             g._more_dismissals_remaining = 0;
         }
-        finishDeferredSeerTurnUpdate(g);
+        const finishingPrayer = !!g._pending_prayer_finish_message;
+        if (!finishingPrayer) finishDeferredSeerTurnUpdate(g);
         if (g._pending_prayer_finish_message) {
             g._pending_prayer_finish_message = false;
+            g._prayer_interrupted_first_turn_restored = false;
+            g._prayer_full_budget_no_restore = false;
+            g._prayer_force_intrinsic_budget_adjust = false;
             const hadPrayerTopline = !!g._pending_message;
             if (hadPrayerTopline) await append_pline('You finish your prayer.');
             else await pline('You finish your prayer.');
-            if (g._prayer_finish_result_inline && !hadPrayerTopline) {
+            if (g._prayer_finish_result_inline) {
                 g._prayer_finish_result_inline = false;
                 g._pack_next_prayer_result_line = true;
                 await finishPrayerResult();
+                finishDeferredSeerTurnUpdate(g);
             } else {
                 g._prayer_finish_result_inline = false;
                 g._more = true;
                 g._awaiting_prayer_done_more = true;
+                g._prayer_done_more_deferred_seer = !!g._seer_turn_update_pending;
             }
             if (g.u?.uinvulnerable) g.u.uinvulnerable = false;
         }
@@ -1328,10 +1681,12 @@ export async function moveloop_core() {
         if (runSoundMoreLatched) {
             g._run_sound_more_latched = false;
             await continueRunTail(g);
+            if (!await finishRunBallDragDelay(g)) return;
             return;
         }
         if (!await continueSimpleTimedRepeats(g, { leaveTailForInputBoundary: true })) return;
         await continueRunTail(g);
+        if (!await finishRunBallDragDelay(g)) return;
     }
 }
 

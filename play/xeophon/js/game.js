@@ -23,7 +23,7 @@ export function makeLocation() {
         disp_attr: 0,
         gnew: 0,           // dirty flag for flush_glyph_buf
         glyph_symidx: -1,  // S_* symbol index
-        remembered_glyph: undefined,  // { ch, color, decgfx, symidx }
+        remembered_glyph: undefined,  // { ch, color, decgfx, symidx, statueGlyph }
     };
 }
 
@@ -45,6 +45,7 @@ export class GameMap {
         this.buriedobjlist = [];
         this.monsters = [];
         this.traps = [];
+        this.exclusionZones = [];
         this.flags = {
             nfountains: 0,
             nsinks: 0,

@@ -360,6 +360,20 @@ function inHishop(g, shkp) {
     return rnos.includes(eshkShoproomAsLevlRno(e));
 }
 
+/**
+ * C: shk.c **`tended_shop(sroom)`** — **`in_rooms(mtmp->mx,my,SHOPBASE)`** loop in **`do_attack`**.
+ * @param {import('./gstate.js').game} g
+ * @param {number} x
+ * @param {number} y
+ */
+export function tendedShopAtXYLikeC(g, x, y) {
+    for (const rno of inRoomsShopbaseRoomnos(g, x | 0, y | 0)) {
+        const shk = shopKeeperForLevlRoomno(g, rno);
+        if (shk && inHishop(g, shk)) return true;
+    }
+    return false;
+}
+
 /** C: mon.c **`helpless`** subset (**`mfrozen`/`mcanmove`**). */
 function helplessShk(mtmp) {
     if (!mtmp) return false;

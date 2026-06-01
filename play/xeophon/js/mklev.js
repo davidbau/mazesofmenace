@@ -12,7 +12,7 @@ import { docrt, flush_screen, newsym, pline } from './display.js';
 import { cansee } from './vision.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { restoreBonesLevel } from './save.js';
-import { createGasCloud } from './region.js';
+import { createGasCloud, createGasCloudSelection } from './region.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, d, rne, rnz } from './rng.js';
 import {
     CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN,
@@ -23,10 +23,11 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
+import { TRIBUTE_NOVEL_TITLES } from './tribute.js';
 import { clearBuriedOrganicRotTimer, clearCorpseTimeout, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, startCorpseTimeout } from './ice.js';
 import { applySlimeMoldFruitFields } from './fruit.js';
 import {
-    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
+    COLNO, ROWNO, MAX_TYPE, INVALID_TYPE, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
@@ -34,12 +35,15 @@ import {
     COCKNEST, ANTHOLE, VAULT, TEMPLE, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, SHARED_PLUS, SHOPBASE,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
-    IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
+    IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA,
     ACCESSIBLE, IN_SIGHT,
-    SPACE_POS, ZAP_POS, isok, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
+    SPACE_POS, ZAP_POS, isok, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY,
+    W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, TREE, CLOUD,
+    ICED_POOL, ICED_MOAT, MATCH_WALL, SET_LIT_RANDOM, SET_LIT_NOCHANGE,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align,
     FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
+    ARMORSHOP, WEAPONSHOP,
     NO_MINVENT, MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
@@ -478,6 +482,14 @@ const WEAPON_ROLL_KINDS = [
     [917, 'orcish bow', 30, 'crude bow'], [957, 'sling', 3],
     [1002, 'crossbow', 50],
 ];
+
+const SPECIFIC_POLEARM_INFO = new Map([
+    [PARTISAN, { kind: 'vulgar polearm', actualKind: 'partisan', owt: 80 }],
+    [RANSEUR, { kind: 'hilted polearm', actualKind: 'ranseur', owt: 50 }],
+    [SPETUM, { kind: 'forked polearm', actualKind: 'spetum', owt: 50 }],
+    [GLAIVE, { kind: 'single-edged polearm', actualKind: 'glaive', owt: 75 }],
+    [LUCERN_HAMMER, { kind: 'pronged polearm', actualKind: 'lucern hammer', owt: 150 }],
+]);
 
 const SPECIFIC_WEAPONS = new Set([
     DAGGER, BOW, CROSSBOW, KNIFE, SLING, ORCISH_DAGGER, SCIMITAR,
@@ -1733,6 +1745,15 @@ export const SHOP_TYPES = [
     { name: 'lighting store', prob: 0, iprobs: [[30, -WAX_CANDLE], [44, -TALLOW_CANDLE], [5, -BRASS_LANTERN], [9, -OIL_LAMP], [3, -MAGIC_LAMP], [5, -POT_OIL], [2, -WAN_LIGHT], [1, -SCR_LIGHT], [1, -SPE_LIGHT]] },
 ];
 
+export function randomHallucinatedShopkeeperName() {
+    let shopTypeCount = SHOP_TYPES.findIndex(shop => !shop?.prob);
+    if (shopTypeCount < 0) shopTypeCount = SHOP_TYPES.length;
+    if (!(shopTypeCount > 0)) return '';
+    const names = SHOPKEEPER_NAME_LISTS[rn2(shopTypeCount)] || GENERAL_SHOPKEEPER_NAMES;
+    const rawName = names[rn2(names.length)] || '';
+    return rawName.replace(/^[^A-Za-z]/, '');
+}
+
 const XLIM = 4;
 const YLIM = 3;
 
@@ -2745,6 +2766,32 @@ const SPECIAL_TERRAIN = {
     C: CLOUD,
     B: CROSSWALL,
 };
+const SPLEV_MAPCHAR_TERRAIN = {
+    ' ': STONE,
+    '#': CORR,
+    '.': ROOM,
+    '-': HWALL,
+    '|': VWALL,
+    '+': DOOR,
+    A: AIR,
+    C: CLOUD,
+    S: SDOOR,
+    H: SCORR,
+    '{': FOUNTAIN,
+    '\\': THRONE,
+    K: SINK,
+    '}': MOAT,
+    P: POOL,
+    L: LAVAPOOL,
+    Z: LAVAWALL,
+    I: ICE,
+    W: WATER,
+    T: TREE,
+    F: IRONBARS,
+    x: MAX_TYPE,
+    B: CROSSWALL,
+    w: MATCH_WALL,
+};
 
 const ARC_XSTART = 3;
 const ARC_YSTART = 0;
@@ -3652,6 +3699,25 @@ function bad_location(x, y, nlx, nly, nhx, nhy) {
     return false;
 }
 
+function add_exclusion_zone(zonetype, lx, ly, hx, hy) {
+    if (!game.level) return null;
+    game.level.exclusionZones ??= [];
+    const zone = { zonetype, lx, ly, hx, hy };
+    game.level.exclusionZones.push(zone);
+    return zone;
+}
+
+function is_exclusion_zone(rtype, x, y) {
+    for (const zone of game.level?.exclusionZones || []) {
+        const blocks = (rtype === LR_DOWNTELE && (zone.zonetype === LR_DOWNTELE || zone.zonetype === LR_TELE))
+            || (rtype === LR_UPTELE && (zone.zonetype === LR_UPTELE || zone.zonetype === LR_TELE))
+            || rtype === zone.zonetype;
+        if (blocks && x >= zone.lx && x <= zone.hx && y >= zone.ly && y <= zone.hy)
+            return true;
+    }
+    return false;
+}
+
 // C ref: mkmaze.c place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
 export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     if (!lx) {
@@ -3680,7 +3746,9 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
         const y = rn1((hy - ly) + 1, ly);
         const occupiedByMonster = rtype >= LR_TELE && rtype <= LR_DOWNTELE
             && game.level?.monsters?.some(mon => mon.mx === x && mon.my === y);
-        if (!bad_location(x, y, nlx, nly, nhx, nhy) && !occupiedByMonster) {
+        if (!bad_location(x, y, nlx, nly, nhx, nhy)
+            && !is_exclusion_zone(rtype, x, y)
+            && !occupiedByMonster) {
             if (rtype === LR_BRANCH) {
                 place_branch(is_branchlev(), x, y);
                 return;
@@ -3702,7 +3770,8 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     // Deterministic fallback
     for (let x = lx; x <= hx; x++)
         for (let y = ly; y <= hy; y++)
-            if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
+            if (!bad_location(x, y, nlx, nly, nhx, nhy)
+                && !is_exclusion_zone(rtype, x, y)) {
                 if (rtype === LR_BRANCH) {
                     place_branch(is_branchlev(), x, y);
                     return;
@@ -4037,6 +4106,14 @@ export function mksobj(otyp, init, artif) {
             age: otmp.age ?? Math.max(game.moves || 0, 1),
         });
         if (otyp === SLIME_MOLD) applySlimeMoldFruitFields(otmp, otmp.spe || undefined);
+    }
+    const specificPolearm = SPECIFIC_POLEARM_INFO.get(otyp);
+    if (specificPolearm) {
+        Object.assign(otmp, {
+            cls: 'weapon',
+            glyph: ')',
+            known: false,
+        }, specificPolearm);
     }
     if (otyp === CORPSE) {
         if (!otmp.corpsenm) {
@@ -4535,7 +4612,7 @@ export function object_display(otmp) {
         || otyp === ORCISH_SHORT_SWORD || otyp === DWARVISH_SHORT_SWORD
         || otyp === SCIMITAR || otyp === BROADSWORD || otyp === LONG_SWORD
         || otyp === TWO_HANDED_SWORD || otyp === ELVEN_BROADSWORD || otyp === ELVEN_DAGGER
-        || otyp === LUCERN_HAMMER || otyp === AKLYS || otyp === SILVER_MACE
+        || SPECIFIC_POLEARM_INFO.has(otyp) || otyp === AKLYS || otyp === SILVER_MACE
         || otyp === ATHAME || otyp === QUARTERSTAFF
         || otyp === MORNING_STAR || otyp === KATANA || otyp === TSURUGI)
         return { glyph: ')', color: displayColor ?? CLR_CYAN };
@@ -4778,8 +4855,16 @@ export function mkobj(oclass, artif) {
         }
         const otmp = mksobj(SPBOOK_no_NOVEL, true, artif);
         if (spellbook[1] === 'novel') {
-            rn2(41);
-            Object.assign(otmp, { kind: 'novel', cls: 'spellbook', glyph: '+', color: CLR_BRIGHT_BLUE });
+            const novelidx = rn2(TRIBUTE_NOVEL_TITLES.length);
+            Object.assign(otmp, {
+                kind: 'novel',
+                actualKind: 'novel',
+                cls: 'spellbook',
+                glyph: '+',
+                color: CLR_BRIGHT_BLUE,
+                novelidx,
+                novelTitle: TRIBUTE_NOVEL_TITLES[novelidx],
+            });
         } else {
             const blank = spellbook[1] === 'blank paper';
             Object.assign(otmp, {
@@ -6138,7 +6223,6 @@ function mongets(otyp, erodes = true) {
     else if (otyp === TRIDENT) Object.assign(otmp, { cls: 'weapon', kind: 'trident' });
     else if (otyp === STILETTO) Object.assign(otmp, { cls: 'weapon', kind: 'stiletto' });
     else if (otyp === BULLWHIP) Object.assign(otmp, { cls: 'weapon', kind: 'bullwhip' });
-    else if (otyp === LUCERN_HAMMER) Object.assign(otmp, { cls: 'weapon', kind: 'lucern hammer' });
     else if (otyp === AKLYS) Object.assign(otmp, { cls: 'weapon', kind: 'aklys' });
     else if (otyp === SILVER_MACE) Object.assign(otmp, { cls: 'weapon', kind: 'silver mace' });
     else if (otyp === ARROW) Object.assign(otmp, { cls: 'weapon', kind: 'arrow', plural: 'arrows' });
@@ -8709,7 +8793,9 @@ async function make_bar_fill_level(spec) {
 
     rn2(2); // Bar-fil*.lua initial solidfill level_init has random lit.
     g.level.flags.is_maze_lev = true;
-    splevMinesLevelInit(ROOM, spec.bg, { lit: 0, walled: spec.walled, joined: true });
+    splevMinesLevelInit(ROOM, spec.bg, {
+        lit: 0, smoothed: true, walled: spec.walled, joined: true,
+    });
 
     barFillStair(true);
     barFillStair(false);
@@ -15391,7 +15477,7 @@ async function make_minetn1_level() {
     g.level.flags.is_maze_lev = true;
     g.level.flags.rndmongen = true;
     g.level.flags.has_town = true;
-    splevMinesLevelInit(ROOM, STONE);
+    splevMinesLevelInit(ROOM, STONE, { smoothed: true, joined: true, walled: true });
 
     for (let y = 0; y < MINETN1_ROWS.length; y++) {
         const row = MINETN1_ROWS[y];
@@ -15768,7 +15854,7 @@ async function make_minetn6_level() {
     g.level.flags.has_town = true;
     g.level.flags.has_shop = true;
     g.level.flags.has_temple = true;
-    splevMinesLevelInit(ROOM, HWALL, { lit: 1 });
+    splevMinesLevelInit(ROOM, HWALL, { lit: 1, smoothed: true, joined: true, walled: true });
 
     for (let y = 0; y < MINETN6_ROWS.length; y++) {
         const row = MINETN6_ROWS[y];
@@ -17511,13 +17597,502 @@ export function enextoMonsterSpot(x, y, ptr = {}) {
     return all.slice(near.length).find(candidate => makemon_goodpos(ptr, candidate.x, candidate.y)) || null;
 }
 
-function replace_special_terrain(xstart, ystart, width, height, fromTyp, toTyp, chance = 100) {
-    for (let x = Math.max(1, xstart); x < xstart + width; x++) {
-        for (let y = ystart; y < ystart + height; y++) {
-            const loc = game.level.at(x, y);
-            if (loc?.typ === fromTyp && rn2(100) < chance) loc.typ = toTyp;
+function setSpecialTerrainLit(x, y, typ, lit = SET_LIT_NOCHANGE) {
+    const loc = game.level.at(x, y);
+    if (!loc || typ < STONE || typ >= MAX_TYPE) return false;
+    if ((loc.typ === LADDER || loc.typ === STAIRS) && !game.iflags?.debug_overwrite_stairs) return false;
+    loc.typ = typ;
+    if (lit !== SET_LIT_NOCHANGE) {
+        if (IS_LAVA(typ)) loc.lit = true;
+        else if (lit === SET_LIT_RANDOM) loc.lit = !!rn2(2);
+        else loc.lit = !!lit;
+    } else if (IS_LAVA(typ)) {
+        loc.lit = true;
+    }
+    return true;
+}
+
+function splevMapCharToTyp(mapchar, { required = true } = {}) {
+    if (typeof mapchar === 'number') return mapchar;
+    if (typeof mapchar === 'string' && mapchar.length === 1
+        && Object.prototype.hasOwnProperty.call(SPLEV_MAPCHAR_TERRAIN, mapchar)) {
+        return SPLEV_MAPCHAR_TERRAIN[mapchar];
+    }
+    if (required) throw new Error('Erroneous map char');
+    return INVALID_TYPE;
+}
+
+function mapFragmentFromString(mapfragment) {
+    if (typeof mapfragment !== 'string') throw new Error('mapfragment error');
+    const data = mapfragment.replace(/[0-9]/g, '');
+    const lines = data.length ? data.split('\n') : [];
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
+    const width = lines.reduce((max, line) => Math.max(max, line.length), 0);
+    const height = lines.length;
+    const fragment = { lines, width, height };
+    if (!(width % 2) || !(height % 2)) {
+        throw new Error('mapfragment needs to have odd height and width');
+    }
+    const center = mapFragmentGet(fragment, Math.trunc(width / 2), Math.trunc(height / 2));
+    if (center === MAX_TYPE || center === INVALID_TYPE) {
+        throw new Error('mapfragment center must be valid terrain');
+    }
+    return fragment;
+}
+
+function mapFragmentGet(fragment, x, y) {
+    const ch = fragment.lines[y]?.[x];
+    return splevMapCharToTyp(ch, { required: false });
+}
+
+function mapTerrainTypesMatch(patternTyp, levelTyp) {
+    if (patternTyp === MATCH_WALL && !IS_STWALL(levelTyp)) return false;
+    if (patternTyp < MAX_TYPE && patternTyp !== levelTyp) return false;
+    return true;
+}
+
+function mapFragmentMatches(fragment, x, y) {
+    const xmid = Math.trunc(fragment.width / 2);
+    const ymid = Math.trunc(fragment.height / 2);
+    for (let rx = -xmid; rx <= xmid; rx++) {
+        for (let ry = -ymid; ry <= ymid; ry++) {
+            const patternTyp = mapFragmentGet(fragment, rx + xmid, ry + ymid);
+            const levelTyp = game.level.at(x + rx, y + ry)?.typ ?? STONE;
+            if (!mapTerrainTypesMatch(patternTyp, levelTyp)) return false;
         }
     }
+    return true;
+}
+
+function parseSelectionPoint(item) {
+    if (typeof item === 'string') {
+        const parts = item.split(/[,:]/).map(part => Number(part));
+        if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+            return { x: Math.trunc(parts[0]), y: Math.trunc(parts[1]) };
+        }
+    } else if (Array.isArray(item) && item.length >= 2) {
+        const x = Number(item[0]), y = Number(item[1]);
+        if (Number.isFinite(x) && Number.isFinite(y)) return { x: Math.trunc(x), y: Math.trunc(y) };
+    } else if (item && typeof item === 'object') {
+        const x = Number(item.x ?? item.lx);
+        const y = Number(item.y ?? item.ly);
+        if (Number.isFinite(x) && Number.isFinite(y)) return { x: Math.trunc(x), y: Math.trunc(y) };
+    }
+    return null;
+}
+
+function emptyTerrainSelection() {
+    return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1, has: () => false };
+}
+
+function selectionPointKey(x, y) {
+    return `${Math.trunc(Number(x))},${Math.trunc(Number(y))}`;
+}
+
+function randomWallDirection() {
+    return [W_NORTH, W_SOUTH, W_EAST, W_WEST][rn2(4)];
+}
+
+function selectionGrowDirection(dir = 'all') {
+    if (typeof dir === 'number') return dir === W_RANDOM ? randomWallDirection() : dir;
+    switch (dir) {
+    case 'all': return W_ANY;
+    case 'random': return randomWallDirection();
+    case 'north': return W_NORTH;
+    case 'west': return W_WEST;
+    case 'east': return W_EAST;
+    case 'south': return W_SOUTH;
+    default: throw new Error('selection.grow: invalid direction');
+    }
+}
+
+class SplevSelection {
+    constructor(points = []) {
+        this._points = new Set();
+        for (const point of points) {
+            const parsed = parseSelectionPoint(point);
+            if (parsed) this.set(parsed.x, parsed.y, true);
+        }
+    }
+
+    static area(x1, y1, x2, y2) {
+        const sel = new SplevSelection();
+        const ax1 = Math.trunc(Number(x1)), ay1 = Math.trunc(Number(y1));
+        const ax2 = Math.trunc(Number(x2)), ay2 = Math.trunc(Number(y2));
+        if ([ax1, ay1, ax2, ay2].some(value => !Number.isFinite(value))) {
+            throw new TypeError('selection.area: coordinates must be numeric');
+        }
+        for (let y = ay1; y <= ay2; y++) {
+            if (ax1 === ax2) {
+                sel.set(ax1, y, true);
+            } else {
+                const step = ax1 < ax2 ? 1 : -1;
+                for (let x = ax1; ; x += step) {
+                    sel.set(x, y, true);
+                    if (x === ax2) break;
+                }
+            }
+        }
+        return sel;
+    }
+
+    static match(mapfragment) {
+        const fragment = mapFragmentFromString(mapfragment);
+        const sel = new SplevSelection();
+        for (let y = 0; y < ROWNO; y++)
+            for (let x = 1; x < COLNO; x++)
+                if (mapFragmentMatches(fragment, x, y)) sel.set(x, y, true);
+        return sel;
+    }
+
+    static room(croom) {
+        const sel = new SplevSelection();
+        if (!croom || !game.level) return sel;
+        const roomIndex = Number(croom.roomnoidx ?? 0);
+        const roomno = ROOMOFFSET + (Number.isFinite(roomIndex) ? Math.trunc(roomIndex) : 0);
+        for (let y = croom.ly; y <= croom.hy; y++) {
+            for (let x = croom.lx; x <= croom.hx; x++) {
+                const loc = isok(x, y) ? game.level.at(x, y) : null;
+                if (loc && !loc.edge && loc.roomno === roomno) sel.set(x, y, true);
+            }
+        }
+        return sel;
+    }
+
+    clone() {
+        return new SplevSelection([...this._points]);
+    }
+
+    set(x, y, value = true) {
+        const px = Math.trunc(Number(x)), py = Math.trunc(Number(y));
+        if (!Number.isFinite(px) || !Number.isFinite(py)) return this;
+        if (px < 0 || py < 0 || px >= COLNO || py >= ROWNO) return this;
+        const key = selectionPointKey(px, py);
+        if (value) this._points.add(key);
+        else this._points.delete(key);
+        return this;
+    }
+
+    get(x, y) {
+        const point = y == null && (Array.isArray(x) || typeof x === 'object') ? parseSelectionPoint(x) : { x, y };
+        if (!point) return false;
+        const px = Math.trunc(Number(point.x)), py = Math.trunc(Number(point.y));
+        if (!Number.isFinite(px) || !Number.isFinite(py)) return false;
+        return this._points.has(selectionPointKey(px, py));
+    }
+
+    has(x, y) {
+        return this.get(x, y);
+    }
+
+    bounds() {
+        if (!this._points.size) return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 };
+        let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+        for (const item of this._points) {
+            const point = parseSelectionPoint(item);
+            lx = Math.min(lx, point.x);
+            ly = Math.min(ly, point.y);
+            hx = Math.max(hx, point.x);
+            hy = Math.max(hy, point.y);
+        }
+        return { lx, ly, hx, hy };
+    }
+
+    iterate(callback) {
+        const rect = this.bounds();
+        const points = [];
+        for (let x = rect.lx; x <= rect.hx; x++) {
+            for (let y = rect.ly; y <= rect.hy; y++) {
+                if (!this.get(x, y)) continue;
+                points.push([x, y]);
+                if (callback) callback(x, y);
+            }
+        }
+        return points;
+    }
+
+    numpoints() {
+        return this._points.size;
+    }
+
+    percentage(percent) {
+        const p = Math.trunc(Number(percent));
+        if (!Number.isFinite(p)) throw new TypeError('selection.percentage: percent must be numeric');
+        const ret = new SplevSelection();
+        const rect = this.bounds();
+        for (let x = rect.lx; x <= rect.hx; x++)
+            for (let y = rect.ly; y <= rect.hy; y++)
+                if (this.get(x, y) && rn2(100) < p) ret.set(x, y, true);
+        return ret;
+    }
+
+    grow(dir = 'all') {
+        const mask = selectionGrowDirection(dir);
+        const ret = this.clone();
+        const tmp = new SplevSelection();
+        const rect = this.bounds();
+        for (let x = Math.max(0, rect.lx - 1); x <= Math.min(COLNO - 1, rect.hx + 1); x++) {
+            for (let y = Math.max(0, rect.ly - 1); y <= Math.min(ROWNO - 1, rect.hy + 1); y++) {
+                if (((mask & W_WEST) && this.get(x + 1, y))
+                    || (((mask & (W_WEST | W_NORTH)) === (W_WEST | W_NORTH)) && this.get(x + 1, y + 1))
+                    || ((mask & W_NORTH) && this.get(x, y + 1))
+                    || (((mask & (W_NORTH | W_EAST)) === (W_NORTH | W_EAST)) && this.get(x - 1, y + 1))
+                    || ((mask & W_EAST) && this.get(x - 1, y))
+                    || (((mask & (W_EAST | W_SOUTH)) === (W_EAST | W_SOUTH)) && this.get(x - 1, y - 1))
+                    || ((mask & W_SOUTH) && this.get(x, y - 1))
+                    || (((mask & (W_SOUTH | W_WEST)) === (W_SOUTH | W_WEST)) && this.get(x + 1, y - 1))) {
+                    tmp.set(x, y, true);
+                }
+            }
+        }
+        for (const item of tmp._points) {
+            const point = parseSelectionPoint(item);
+            ret.set(point.x, point.y, true);
+        }
+        return ret;
+    }
+
+    filterMapchar(mapchar, lit = SET_LIT_NOCHANGE) {
+        const typ = splevMapCharToTyp(mapchar);
+        const ret = new SplevSelection();
+        const rect = this.bounds();
+        for (let x = rect.lx; x <= rect.hx; x++) {
+            for (let y = rect.ly; y <= rect.hy; y++) {
+                if (!this.get(x, y)) continue;
+                const loc = game.level?.at(x, y);
+                if (!loc || !mapTerrainTypesMatch(typ, loc.typ)) continue;
+                if (lit === SET_LIT_NOCHANGE) ret.set(x, y, true);
+                else if (lit === SET_LIT_RANDOM) ret.set(x, y, !!rn2(2));
+                else if (loc.lit === !!lit) ret.set(x, y, true);
+            }
+        }
+        return ret;
+    }
+
+    filter_mapchar(mapchar, lit = SET_LIT_NOCHANGE) {
+        return this.filterMapchar(mapchar, lit);
+    }
+
+    rndcoord(remove = false) {
+        const rect = this.bounds();
+        let count = 0;
+        for (let x = rect.lx; x <= rect.hx; x++)
+            for (let y = rect.ly; y <= rect.hy; y++)
+                if (this.get(x, y)) count++;
+        if (!count) return { x: -1, y: -1 };
+        let choice = rn2(count);
+        for (let x = rect.lx; x <= rect.hx; x++) {
+            for (let y = rect.ly; y <= rect.hy; y++) {
+                if (!this.get(x, y)) continue;
+                if (!choice) {
+                    if (remove) this.set(x, y, false);
+                    return { x, y };
+                }
+                choice--;
+            }
+        }
+        return { x: -1, y: -1 };
+    }
+
+    or(other) {
+        const ret = this.clone();
+        for (const item of terrainSelectionToPoints(other)) ret.set(item.x, item.y, true);
+        return ret;
+    }
+
+    and(other) {
+        const otherPoints = new Set(terrainSelectionToPoints(other).map(point => selectionPointKey(point.x, point.y)));
+        return new SplevSelection([...this._points].filter(key => otherPoints.has(key)));
+    }
+
+    xor(other) {
+        const ret = this.clone();
+        for (const point of terrainSelectionToPoints(other)) {
+            const key = selectionPointKey(point.x, point.y);
+            if (ret._points.has(key)) ret._points.delete(key);
+            else ret.set(point.x, point.y, true);
+        }
+        return ret;
+    }
+
+    subtract(other) {
+        const ret = this.clone();
+        for (const point of terrainSelectionToPoints(other)) ret.set(point.x, point.y, false);
+        return ret;
+    }
+}
+
+function terrainSelectionToPoints(selection) {
+    const bounds = terrainSelectionFromSpec(selection);
+    const points = [];
+    for (let x = bounds.lx; x <= bounds.hx; x++)
+        for (let y = bounds.ly; y <= bounds.hy; y++)
+            if (bounds.has(x, y)) points.push({ x, y });
+    return points;
+}
+
+const splevSelection = {
+    new: () => new SplevSelection(),
+    fromPoints: points => new SplevSelection(points),
+    area: (x1, y1, x2, y2) => SplevSelection.area(x1, y1, x2, y2),
+    match: mapfragment => SplevSelection.match(mapfragment),
+    room: croom => SplevSelection.room(croom),
+};
+
+function terrainSelectionBounds(selection) {
+    const rawBounds = typeof selection.bounds === 'function' ? selection.bounds() : selection.bounds;
+    const bounds = rawBounds ?? selection;
+    const source = Array.isArray(bounds)
+        ? { lx: bounds[0], ly: bounds[1], hx: bounds[2], hy: bounds[3] }
+        : bounds;
+    const lx = Number(source.lx ?? source.x1 ?? 0);
+    const ly = Number(source.ly ?? source.y1 ?? 0);
+    const hx = Number(source.hx ?? source.x2 ?? COLNO - 1);
+    const hy = Number(source.hy ?? source.y2 ?? ROWNO - 1);
+    if ([lx, ly, hx, hy].some(value => !Number.isFinite(value))) {
+        throw new TypeError('replace_terrain selection bounds must be numeric');
+    }
+    const x1 = Math.trunc(lx), y1 = Math.trunc(ly);
+    const x2 = Math.trunc(hx), y2 = Math.trunc(hy);
+    return {
+        lx: Math.min(x1, x2),
+        ly: Math.min(y1, y2),
+        hx: Math.max(x1, x2),
+        hy: Math.max(y1, y2),
+    };
+}
+
+function terrainSelectionHasPoint(selection, x, y) {
+    if (typeof selection.get === 'function') {
+        return !!selection.get(x, y);
+    }
+    if (typeof selection.has !== 'function') return false;
+    if (selection.has.length >= 2 && selection.has(x, y)) return true;
+    return !!(selection.has(`${x},${y}`) || selection.has(`${x}:${y}`) || selection.has([x, y]));
+}
+
+function terrainSelectionFromSpec(selection) {
+    if (selection == null) return null;
+    if (typeof selection === 'function') {
+        return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1, has: selection };
+    }
+    const items = selection instanceof Set ? [...selection] : Array.isArray(selection) ? selection : selection.points;
+    if (items && Symbol.iterator in Object(items)) {
+        const points = new Set();
+        let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+        for (const item of items) {
+            const point = parseSelectionPoint(item);
+            if (!point) continue;
+            points.add(`${point.x},${point.y}`);
+            lx = Math.min(lx, point.x);
+            ly = Math.min(ly, point.y);
+            hx = Math.max(hx, point.x);
+            hy = Math.max(hy, point.y);
+        }
+        return points.size
+            ? { lx, ly, hx, hy, has: (x, y) => points.has(`${x},${y}`) }
+            : emptyTerrainSelection();
+    }
+    if (typeof selection.get === 'function' || typeof selection.has === 'function') {
+        const bounds = terrainSelectionBounds(selection);
+        return {
+            ...bounds,
+            has: (x, y) => terrainSelectionHasPoint(selection, x, y),
+        };
+    }
+    if (typeof selection.iterate === 'function') {
+        const points = [];
+        const iterated = selection.iterate((x, y) => points.push([x, y]));
+        if (iterated && Symbol.iterator in Object(iterated)) points.push(...iterated);
+        return terrainSelectionFromSpec(points);
+    }
+    throw new TypeError('replace_terrain selection must be iterable or expose get/has');
+}
+
+function regionBoundsFromSpec(spec) {
+    let region = null;
+    const coordValues = [spec.x1, spec.y1, spec.x2, spec.y2];
+    if (coordValues.some(value => value != null)) {
+        if (coordValues.every(value => value === -1)) return null;
+        if (coordValues.some(value => value == null)) {
+            throw new TypeError('replace_terrain bounds must include x1, y1, x2, and y2');
+        }
+        region = { x1: spec.x1, y1: spec.y1, x2: spec.x2, y2: spec.y2 };
+    } else if (spec.region != null) {
+        region = Array.isArray(spec.region)
+            ? { x1: spec.region[0], y1: spec.region[1], x2: spec.region[2], y2: spec.region[3] }
+            : {
+                x1: spec.region.x1 ?? spec.region.lx,
+                y1: spec.region.y1 ?? spec.region.ly,
+                x2: spec.region.x2 ?? spec.region.hx,
+                y2: spec.region.y2 ?? spec.region.hy,
+            };
+    }
+    if (!region) return null;
+    if ([region.x1, region.y1, region.x2, region.y2].some(value => value == null)) {
+        throw new TypeError('replace_terrain region must include x1, y1, x2, and y2');
+    }
+    const originX = spec.originX ?? 0;
+    const originY = spec.originY ?? 0;
+    const x1 = Math.trunc(Number(region.x1) + originX);
+    const y1 = Math.trunc(Number(region.y1) + originY);
+    const x2 = Math.trunc(Number(region.x2) + originX);
+    const y2 = Math.trunc(Number(region.y2) + originY);
+    if ([x1, y1, x2, y2].some(value => !Number.isFinite(value))) {
+        throw new TypeError('replace_terrain region bounds must be numeric');
+    }
+    return {
+        lx: Math.min(x1, x2),
+        ly: Math.min(y1, y2),
+        hx: Math.max(x1, x2),
+        hy: Math.max(y1, y2),
+        has: () => true,
+    };
+}
+
+function replaceDesTerrain(spec) {
+    const toTyp = spec.toTyp ?? (spec.toterrain != null ? splevMapCharToTyp(spec.toterrain) : null);
+    if (toTyp == null || toTyp >= MAX_TYPE) return 0;
+
+    const hasFrom = spec.fromTyp != null || spec.fromterrain != null;
+    const fromTyp = hasFrom
+        ? spec.fromTyp ?? splevMapCharToTyp(spec.fromterrain)
+        : null;
+    const fragment = hasFrom ? null : mapFragmentFromString(spec.mapfragment);
+    const chance = spec.chance ?? 100;
+    const lit = spec.lit ?? SET_LIT_NOCHANGE;
+    const bounds = regionBoundsFromSpec(spec) || terrainSelectionFromSpec(spec.selection) || {
+        lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1, has: () => true,
+    };
+
+    let changed = 0;
+    for (let x = Math.max(1, bounds.lx); x <= Math.min(COLNO - 1, bounds.hx); x++) {
+        for (let y = Math.max(0, bounds.ly); y <= Math.min(ROWNO - 1, bounds.hy); y++) {
+            if (!bounds.has(x, y)) continue;
+            const loc = game.level.at(x, y);
+            const matches = fragment
+                ? mapFragmentMatches(fragment, x, y)
+                : loc && (fromTyp === MATCH_WALL ? IS_STWALL(loc.typ) : loc.typ === fromTyp);
+            if (matches && rn2(100) < chance && setSpecialTerrainLit(x, y, toTyp, lit)) changed++;
+        }
+    }
+    return changed;
+}
+
+function replace_special_terrain(xstart, ystart, width, height, fromTyp, toTyp, chance = 100, lit = SET_LIT_NOCHANGE) {
+    if (typeof xstart === 'object' && xstart) {
+        return replaceDesTerrain(xstart);
+    }
+    return replaceDesTerrain({
+        x1: xstart,
+        y1: ystart,
+        x2: xstart + width - 1,
+        y2: ystart + height - 1,
+        fromTyp,
+        toTyp,
+        chance,
+        lit,
+    });
 }
 
 function sokobanDryLocation(rows, avoidBoulders = true) {
@@ -17764,10 +18339,16 @@ function mkmap_pass_three(bgTyp, fgTyp) {
 }
 
 function mkmap_smooth(bgTyp, fgTyp) {
+    mkmap_run_passes(bgTyp, fgTyp, true);
+}
+
+function mkmap_run_passes(bgTyp, fgTyp, smoothed) {
     mkmap_pass_one(bgTyp, fgTyp);
     mkmap_pass_two(bgTyp, fgTyp);
-    mkmap_pass_three(bgTyp, fgTyp);
-    mkmap_pass_three(bgTyp, fgTyp);
+    if (smoothed) {
+        mkmap_pass_three(bgTyp, fgTyp);
+        mkmap_pass_three(bgTyp, fgTyp);
+    }
 }
 
 function mkmap_flood_region(x, y, roomno, fgTyp) {
@@ -17895,7 +18476,7 @@ function wallify_map(x1, y1, x2, y2) {
     }
 }
 
-function mkmap_finish(fgTyp, bgTyp, lit, walled, joined) {
+function mkmap_finish(fgTyp, bgTyp, lit, walled, joined, icedpools = false) {
     if (walled) {
         wallify_map(1, 0, COLNO - 1, ROWNO - 1);
     }
@@ -17906,13 +18487,20 @@ function mkmap_finish(fgTyp, bgTyp, lit, walled, joined) {
                 if (!loc) continue;
                 if ((!IS_OBSTRUCTED(fgTyp) && loc.typ === fgTyp)
                     || (!IS_OBSTRUCTED(bgTyp) && loc.typ === bgTyp)
+                    || (bgTyp === TREE && loc.typ === bgTyp)
                     || (walled && IS_WALL(loc.typ))) loc.lit = true;
             }
+        const nroom = game.level?.nroom ?? 0;
+        for (let i = 0; i < nroom; i++) {
+            const room = game.level.rooms?.[i];
+            if (room) room.rlit = 1;
+        }
     }
     for (let x = 1; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++) {
             const loc = game.level.at(x, y);
             if (loc?.typ === LAVAPOOL) loc.lit = true;
+            else if (loc?.typ === ICE) loc.icedpool = icedpools ? ICED_POOL : ICED_MOAT;
         }
     if (walled && joined) {
         game.level.flags.is_maze_lev = false;
@@ -17921,15 +18509,17 @@ function mkmap_finish(fgTyp, bgTyp, lit, walled, joined) {
 }
 
 function splevMinesLevelInit(fgTyp, bgTyp, options = {}) {
-    const joined = options.joined ?? true;
-    const walled = options.walled ?? true;
+    const joined = options.joined ?? false;
+    const walled = options.walled ?? false;
+    const smoothed = options.smoothed ?? false;
     const lit = options.lit == null ? rn2(2) : options.lit;
+    const icedpools = options.icedpools ?? false;
 
     mkmap_init(bgTyp, fgTyp);
-    mkmap_smooth(bgTyp, fgTyp);
+    mkmap_run_passes(bgTyp, fgTyp, smoothed);
     if (joined)
         mkmap_join(bgTyp, fgTyp);
-    mkmap_finish(fgTyp, bgTyp, lit, walled, joined);
+    mkmap_finish(fgTyp, bgTyp, lit, walled, joined, icedpools);
 }
 
 function minefill_ok_location(x, y) {
@@ -18110,11 +18700,12 @@ async function makelevel() {
     const dnum = g.u?.uz?.dnum ?? 0;
     if (!g._luathemes_loaded) g._luathemes_loaded = {};
     if (!g._luathemes_loaded[dnum]) {
-        const themedAlign = ['law', 'neutral', 'chaos'];
+        const themedAlign = [A_LAWFUL, A_NEUTRAL, A_CHAOTIC];
         for (let i = themedAlign.length; i > 1; i--) {
             const j = rn2(i);
             [themedAlign[i - 1], themedAlign[j]] = [themedAlign[j], themedAlign[i - 1]];
         }
+        themeroomAlignMap(g).set(dnum, themedAlign);
         g._luathemes_loaded[dnum] = true;
     }
 
@@ -19008,7 +19599,7 @@ const THEMEROOM_META = [
     { name: 'Room with both normal contents and themed fill', frequency: 2 },
     { name: 'Pillars', frequency: 1 },
     { name: 'Mausoleum', frequency: 1 },
-    { name: 'Random dungeon feature', frequency: 1 },
+    { name: 'Random dungeon feature in the middle of an odd-sized room', frequency: 1 },
     { name: 'L-shaped', frequency: 1 },
     { name: 'L-shaped, rot 1', frequency: 1 },
     { name: 'L-shaped, rot 2', frequency: 1 },
@@ -19272,6 +19863,26 @@ const THEMEROOM_FILL_META = [
     { name: 'Teleportation hub' },
 ];
 
+const themeroomAlignByGame = new WeakMap();
+
+function themeroomAlignMap(g = game) {
+    let alignByDnum = themeroomAlignByGame.get(g);
+    if (!alignByDnum) {
+        alignByDnum = new Map();
+        themeroomAlignByGame.set(g, alignByDnum);
+    }
+    return alignByDnum;
+}
+
+function setThemeroomAlign(dnum, align) {
+    themeroomAlignMap().set(dnum, [...align]);
+}
+
+function currentThemeroomAlign() {
+    const dnum = game.u?.uz?.dnum ?? 0;
+    return themeroomAlignMap().get(dnum) || [A_LAWFUL, A_NEUTRAL, A_CHAOTIC];
+}
+
 function is_themeroom_eligible(room, difficulty) {
     if (room.mindiff != null && difficulty < room.mindiff) return false;
     if (room.maxdiff != null && difficulty > room.maxdiff) return false;
@@ -19291,13 +19902,9 @@ function themeroom_fill_rng(lit) {
     return pick;
 }
 
-function themeroom_ghost_adventurer_rng(rows, startX, startY) {
-    const candidates = [];
-    for (let x = 0; x < rows[0].length; x++)
-        for (let y = 0; y < rows.length; y++)
-            if (rows[y][x] === '.') candidates.push({ x: startX + x, y: startY + y });
-
-    const loc = candidates[rn2(candidates.length)];
+function themeroom_ghost_adventurer(croom) {
+    const loc = splevSelection.room(croom).rndcoord(false);
+    if (loc.x < 0) return null;
     rn2(2); // find_montype("ghost") chooses a gender before makemon.
     inducedAlign80();
 
@@ -19323,15 +19930,33 @@ function themeroom_ghost_adventurer_rng(rows, startX, startY) {
     }
     rn2(100);
 
-    if (rn2(100) < 65) mksobj_at(DAGGER, 0, 0, true, true);
-    if (rn2(100) < 55) mkobj_at(WEAPON_CLASS, 0, 0, true);
-    if (rn2(100) < 45) {
-        mksobj_at(BOW, 0, 0, true, true);
-        mksobj_at(ARROW, 0, 0, true, true);
+    if (rn2(100) < 65) {
+        const obj = mksobj_at(DAGGER, loc.x, loc.y, true, true);
+        if (obj) obj.blessed = false;
     }
-    if (rn2(100) < 65) mkobj_at(ARMOR_CLASS, 0, 0, true);
-    if (rn2(100) < 20) mkobj_at(RING_CLASS, 0, 0, true);
-    if (rn2(100) < 20) mkobj_at(SCROLL_CLASS, 0, 0, true);
+    if (rn2(100) < 55) {
+        const obj = mkobj_at(WEAPON_CLASS, loc.x, loc.y, true);
+        if (obj) obj.blessed = false;
+    }
+    if (rn2(100) < 45) {
+        const bow = mksobj_at(BOW, loc.x, loc.y, true, true);
+        const arrow = mksobj_at(ARROW, loc.x, loc.y, true, true);
+        if (bow) bow.blessed = false;
+        if (arrow) arrow.blessed = false;
+    }
+    if (rn2(100) < 65) {
+        const obj = mkobj_at(ARMOR_CLASS, loc.x, loc.y, true);
+        if (obj) obj.blessed = false;
+    }
+    if (rn2(100) < 20) {
+        const obj = mkobj_at(RING_CLASS, loc.x, loc.y, true);
+        if (obj) obj.blessed = false;
+    }
+    if (rn2(100) < 20) {
+        const obj = mkobj_at(SCROLL_CLASS, loc.x, loc.y, true);
+        if (obj) obj.blessed = false;
+    }
+    return ghost;
 }
 
 function themeroomBuriedZombieSpecies() {
@@ -19345,10 +19970,35 @@ function themeroomBuriedZombieSpecies() {
 }
 
 function shuffleThemeroomSpecies(zombifiable) {
-    for (let n = zombifiable.length; n > 1; n--) {
+    shuffleThemeroomList(zombifiable);
+}
+
+function shuffleThemeroomList(list) {
+    for (let n = list.length; n > 1; n--) {
         const j = rn2(n);
-        [zombifiable[n - 1], zombifiable[j]] = [zombifiable[j], zombifiable[n - 1]];
+        [list[n - 1], list[j]] = [list[j], list[n - 1]];
     }
+}
+
+const MASSACRE_CORPSES = [
+    'apprentice', 'warrior', 'ninja', 'thug',
+    'hunter', 'acolyte', 'abbot', 'page',
+    'attendant', 'neanderthal', 'chieftain',
+    'student', 'wizard', 'valkyrie', 'tourist',
+    'samurai', 'rogue', 'ranger', 'priestess',
+    'priest', 'monk', 'knight', 'healer',
+    'cavewoman', 'caveman', 'barbarian',
+    'archeologist',
+];
+
+const WATER_VAULT_UNDEAD = ['giant zombie', 'ettin zombie', 'vampire lord'];
+
+function waterVaultEscapeUnlocksChest(item) {
+    return String(item?.material || item?.oc_material || '').toLowerCase() === 'glass';
+}
+
+function themeroomMassacreCorpse(name) {
+    return RANDOM_MONSTER_BY_NAME.get(name) || { name, neuter: false };
 }
 
 function themeroom_buried_zombies(croom) {
@@ -19375,59 +20025,310 @@ function themeroom_buried_zombies(croom) {
     }
 }
 
+function themeroom_massacre(croom) {
+    const pos = { x: 0, y: 0 };
+    let idx = rn2(MASSACRE_CORPSES.length);
+    for (let i = 0, count = d(5, 5); i < count; i++) {
+        if (rn2(100) < 10) idx = rn2(MASSACRE_CORPSES.length);
+        if (!somexyspace(croom, pos)) continue;
+        const corpse = mksobj_at(CORPSE, pos.x, pos.y, true, false);
+        corpse.corpsenm = themeroomMassacreCorpse(MASSACRE_CORPSES[idx]);
+        corpse.spe = 0;
+        startCorpseTimeout(corpse);
+        Object.assign(corpse, object_display(corpse));
+    }
+}
+
+async function themeroom_cloud_room(croom) {
+    const fog = splevSelection.room(croom);
+    const pos = { x: 0, y: 0 };
+    for (let i = 0, count = Math.trunc(fog.numpoints() / 4); i < count; i++) {
+        if (!somexyspace(croom, pos)) continue;
+        const relocateOnce = game._makemon_relocate_occupied_once;
+        game._makemon_relocate_occupied_once = true;
+        let mon = null;
+        try {
+            mon = await makemon(monsterByRndName('fog cloud'), pos.x, pos.y, 0);
+        } finally {
+            game._makemon_relocate_occupied_once = relocateOnce;
+        }
+        if (mon) mon.msleeping = 1;
+    }
+    createGasCloudSelection(fog.iterate(), 0);
+}
+
+async function themeroom_boulder_room(croom) {
+    const locs = splevSelection.room(croom).percentage(30);
+    for (const [x, y] of locs.iterate()) {
+        if (rn2(100) < 50) mksobj_at(BOULDER, x, y, true, false);
+        else await maketrap(x, y, ROLLING_BOULDER_TRAP);
+    }
+}
+
+async function themeroom_spider_nest(croom) {
+    const spooders = level_difficulty() > 8;
+    const locs = splevSelection.room(croom).percentage(30);
+    for (const [x, y] of locs.iterate()) {
+        const spiderOnWeb = spooders && rn2(100) < 80;
+        const trap = await maketrap(x, y, WEB);
+        if (trap?.ttyp === WEB && spiderOnWeb)
+            await makemon(monsterByRndName('giant spider'), x, y, 0);
+    }
+}
+
+async function themeroom_trap_room(croom) {
+    const traps = [
+        ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP,
+        LANDMINE, SLP_GAS_TRAP, RUST_TRAP, ANTI_MAGIC,
+    ];
+    shuffleThemeroomList(traps);
+    const locs = splevSelection.room(croom).percentage(30);
+    for (const [x, y] of locs.iterate()) await maketrap(x, y, traps[0]);
+}
+
+async function themeroom_statuary(croom) {
+    const pos = { x: 0, y: 0 };
+    for (let i = 0, count = d(5, 5); i < count; i++) {
+        if (somexyspace(croom, pos)) mksobj_at(STATUE, pos.x, pos.y, true, false);
+    }
+    for (let i = 0, count = rnd(3); i < count; i++) {
+        if (somexyspace(croom, pos)) await maketrap(pos.x, pos.y, STATUE_TRAP);
+    }
+}
+
+function themeroom_light_source(croom) {
+    const pos = { x: 0, y: 0 };
+    if (!somexyspace(croom, pos)) return null;
+    const lamp = mksobj_at(OIL_LAMP, pos.x, pos.y, true, false);
+    lamp.lamplit = true;
+    lamp.lit = true;
+    return lamp;
+}
+
+function startThemeroomMeltIceTimer(x, y, timeout) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const turn = (game.moves || 0) + Math.trunc(timeout);
+    loc.meltIceTurn = turn;
+    loc.meltIceTimeout = turn;
+    loc.meltIceAwayTurn = turn;
+    game.level.meltIceTimers ??= [];
+    game._meltIceTimerSeq = (game._meltIceTimerSeq || 0) + 1;
+    game.level.meltIceTimers.push({ x, y, turn, seq: game._meltIceTimerSeq });
+}
+
+function themeroom_ice_room(croom) {
+    const points = [...splevSelection.room(croom).iterate()];
+    for (const [x, y] of points) {
+        const loc = game.level?.at(x, y);
+        if (!loc) continue;
+        loc.typ = ICE;
+        loc.flags = 0;
+        loc.icedpool = 0;
+    }
+    if (rn2(100) >= 25) return;
+
+    const mintime = 1000 - (level_difficulty() * 100);
+    for (const [x, y] of points)
+        startThemeroomMeltIceTimer(x, y, mintime + rn2(1000));
+}
+
+function themeroomFreeRoomLoc(croom, pos) {
+    let cpt = 0;
+    do {
+        if (!somexy(croom, pos)) return false;
+        const loc = game.level.at(pos.x, pos.y);
+        if (loc && SPACE_POS(loc.typ) && !sobj_at(BOULDER, pos.x, pos.y)) break;
+    } while (++cpt < 100);
+
+    let loc = game.level.at(pos.x, pos.y);
+    if (loc?.typ !== ROOM) {
+        let trycnt = 0;
+        do {
+            if (!somexy(croom, pos)) return false;
+            loc = game.level.at(pos.x, pos.y);
+        } while (loc?.typ !== ROOM && ++trycnt <= 100);
+        if (trycnt > 100) return false;
+    }
+    return true;
+}
+
+function themeroom_temple_of_the_gods(croom) {
+    const align = currentThemeroomAlign();
+    const pos = { x: 0, y: 0 };
+    for (const al of align) {
+        if (!themeroomFreeRoomLoc(croom, pos)) continue;
+        const loc = game.level?.at(pos.x, pos.y);
+        if (!loc) continue;
+        loc.typ = ALTAR;
+        loc.altarmask = Align2amask(al);
+        loc.flags = loc.altarmask;
+    }
+}
+
+function themeroom_teleportation_hub(croom) {
+    const locs = splevSelection.room(croom).filter_mapchar('.');
+    const leftX = Number(croom?.lx ?? 0);
+    for (let i = 0, count = 2 + rn2(3); i < count; i++) {
+        const pos = locs.rndcoord(true);
+        if (pos.x > leftX) {
+            game._themeroom_postprocess ??= [];
+            game._themeroom_postprocess.push({ type: 'teleportTrap', x: pos.x, y: pos.y });
+        }
+    }
+}
+
+function buryThemeroomObject(obj) {
+    if (!obj || !game.level) return null;
+    game.level.objects = (game.level.objects || []).filter(candidate => candidate !== obj);
+    obj.buried = true;
+    obj.hidden = true;
+    Object.assign(obj, object_display(obj));
+    game.level.buriedobjlist ??= [];
+    game.level.buriedobjlist.push(obj);
+    return obj;
+}
+
+function themeroom_buried_treasure(croom) {
+    const pos = { x: 0, y: 0 };
+    if (!somexyspace(croom, pos)) return null;
+    const chest = mksobj_at(CHEST, pos.x, pos.y, true, false);
+    if (!chest) return null;
+    delete_contents(chest);
+    for (let i = 0, count = d(3, 4); i < count; i++)
+        add_to_container(chest, mkobj(RANDOM_CLASS, true));
+    buryThemeroomObject(chest);
+    game._themeroom_postprocess ??= [];
+    game._themeroom_postprocess.push({ type: 'digEngraving', x: chest.ox, y: chest.oy });
+    return chest;
+}
+
+async function themeroom_garden(croom) {
+    const room = splevSelection.room(croom);
+    const pos = { x: 0, y: 0 };
+    for (let i = 0, count = Math.trunc(room.numpoints() / 6); i < count; i++) {
+        if (somexyspace(croom, pos)) {
+            const mon = await makemon(monsterByRndName('wood nymph'), pos.x, pos.y, 0);
+            if (mon) mon.msleeping = 1;
+        }
+        if (rn2(100) < 30 && somexyspace(croom, pos)) {
+            const loc = game.level?.at(pos.x, pos.y);
+            if (loc && loc.typ !== FOUNTAIN) {
+                loc.typ = FOUNTAIN;
+                game.level.flags.nfountains = (game.level.flags.nfountains || 0) + 1;
+            }
+        }
+    }
+    game._themeroom_postprocess ??= [];
+    game._themeroom_postprocess.push({ type: 'gardenWalls', selection: room });
+}
+
+async function themeroom_storeroom(croom) {
+    const locs = splevSelection.room(croom).percentage(30);
+    const pos = { x: 0, y: 0 };
+    for (const _point of locs.iterate()) {
+        if (rn2(100) < 25) {
+            if (somexyspace(croom, pos)) mksobj_at(CHEST, pos.x, pos.y, true, false);
+            continue;
+        }
+        rn2(3);
+        const mimic = mkclassMimic();
+        const mon = mimic && somexyspace(croom, pos) ? await makemon(mimic, pos.x, pos.y, 0) : null;
+        if (mon) {
+            mon.appearObj = CHEST;
+            mon.appearGlyph = '(';
+            mon.appearColor = CLR_BROWN;
+        }
+    }
+}
+
 export const __mklevTestHooks = {
+    mkmap_init,
+    mkmap_run_passes,
+    mkmap_finish,
+    replace_special_terrain,
+    replaceDesTerrain,
+    splevSelection,
+    make_minetn3_level,
+    splevMinesLevelInit,
     themeroomBuriedZombieSpecies,
+    waterVaultUndeadSpecies: () => [...WATER_VAULT_UNDEAD],
+    waterVaultEscapeUnlocksChest,
     themeroom_buried_zombies,
+    apply_themeroom_fill,
+    run_themeroom_postprocess,
+    setThemeroomAlign,
+    add_exclusion_zone,
+    is_exclusion_zone,
+    create_themeroom_map,
+    create_themeroom_random_dungeon_feature,
+    create_themeroom_fake_delphi,
+    create_themeroom_room_in_room,
+    create_themeroom_huge_room_inside,
+    create_themeroom_mausoleum,
+    create_themeroom_twin_businesses,
 };
 
 async function apply_themeroom_fill(fill, croom, rows = null, startX = 0, startY = 0) {
     if (fill?.name) croom.themeFillName = fill.name;
-    if (fill?.name === 'Buried zombies') themeroom_buried_zombies(croom);
-    else if (fill?.name === 'Ghost of an Adventurer' && rows) themeroom_ghost_adventurer_rng(rows, startX, startY);
-    else if (fill?.name === 'Teleportation hub') {
-        const locs = [];
-        for (let x = croom.lx; x <= croom.hx; x++)
-            for (let y = croom.ly; y <= croom.hy; y++)
-                if (game.level?.at(x, y)?.typ === ROOM) locs.push({ x, y });
-        for (let i = 0, count = 2 + rn2(3); i < count && locs.length; i++) {
-            const idx = rn2(locs.length);
-            const [pos] = locs.splice(idx, 1);
-            if (pos.x > 0) {
-                game._themeroom_postprocess ??= [];
-                game._themeroom_postprocess.push({ type: 'teleportTrap', x: pos.x, y: pos.y });
-            }
-        }
-    }
-    else if (fill?.name === 'Storeroom') {
-        const locs = [];
-        for (let x = croom.lx; x <= croom.hx; x++)
-            for (let y = croom.ly; y <= croom.hy; y++) {
-                const loc = game.level?.at(x, y);
-                if (loc?.typ === ROOM && rn2(100) < 30) locs.push({ x, y });
-        }
-        for (let i = 0; i < locs.length; i++) {
-            if (rn2(100) < 25) {
-                const pos = {};
-                if (somexyspace(croom, pos)) mksobj_at(CHEST, pos.x, pos.y, true, false);
-                continue;
-            }
-            rn2(3);
-            const mimic = mkclassMimic();
-            const pos = {};
-            const mon = mimic && somexyspace(croom, pos) ? await makemon(mimic, pos.x, pos.y, 0) : null;
-            if (mon) {
-                mon.appearObj = CHEST;
-                mon.appearGlyph = '(';
-                mon.appearColor = CLR_BROWN;
-            }
-        }
-    }
+    if (fill?.name === 'Ice room') themeroom_ice_room(croom);
+    else if (fill?.name === 'Cloud room') await themeroom_cloud_room(croom);
+    else if (fill?.name === 'Boulder room') await themeroom_boulder_room(croom);
+    else if (fill?.name === 'Spider nest') await themeroom_spider_nest(croom);
+    else if (fill?.name === 'Trap room') await themeroom_trap_room(croom);
+    else if (fill?.name === 'Buried zombies') themeroom_buried_zombies(croom);
+    else if (fill?.name === 'Massacre') themeroom_massacre(croom);
+    else if (fill?.name === 'Statuary') await themeroom_statuary(croom);
+    else if (fill?.name === 'Light source') themeroom_light_source(croom);
+    else if (fill?.name === 'Temple of the gods') themeroom_temple_of_the_gods(croom);
+    else if (fill?.name === 'Ghost of an Adventurer') themeroom_ghost_adventurer(croom);
+    else if (fill?.name === 'Teleportation hub') themeroom_teleportation_hub(croom);
+    else if (fill?.name === 'Buried treasure') themeroom_buried_treasure(croom);
+    else if (fill?.name === 'Garden') await themeroom_garden(croom);
+    else if (fill?.name === 'Storeroom') await themeroom_storeroom(croom);
+}
+
+function themeroomDigEngravingText(target, pos) {
+    const tx = target.x - pos.x - 1;
+    const ty = target.y - pos.y;
+    if (tx === 0 && ty === 0) return 'Dig here';
+    let dig = 'Dig';
+    if (tx !== 0) dig += ` ${Math.abs(tx)} ${tx > 0 ? 'east' : 'west'}`;
+    if (ty !== 0) dig += ` ${Math.abs(ty)} ${ty > 0 ? 'south' : 'north'}`;
+    return dig;
+}
+
+function makeThemeroomDigEngraving(entry) {
+    const floors = [];
+    for (let x = 0; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            if (game.level?.at(x, y)?.typ === ROOM) floors.push({ x, y });
+    if (!floors.length) return null;
+    const pos = floors[rn2(floors.length)];
+    make_engr_at(pos.x, pos.y, themeroomDigEngravingText(entry, pos), true, 0, BURN);
+    return pos;
+}
+
+function makeThemeroomGardenWalls(entry) {
+    const selection = entry.selection?.grow?.() || null;
+    if (!selection) return;
+    replaceDesTerrain({ selection, fromterrain: 'w', toterrain: 'T' });
+    if (replaceDesTerrain({ selection, fromterrain: 'S', toterrain: 'A' }) > 0)
+        game.level.flags.arboreal = true;
 }
 
 async function run_themeroom_postprocess() {
     const postprocess = game._themeroom_postprocess || [];
     game._themeroom_postprocess = [];
     for (const entry of postprocess) {
+        if (entry.type === 'digEngraving') {
+            makeThemeroomDigEngraving(entry);
+            continue;
+        }
+        if (entry.type === 'gardenWalls') {
+            makeThemeroomGardenWalls(entry);
+            continue;
+        }
         if (entry.type !== 'teleportTrap') continue;
         const locs = [];
         for (let x = 0; x < COLNO; x++)
@@ -19468,13 +20369,16 @@ function create_themeroom_room({
     return aroom;
 }
 
-function create_themeroom_subroom(parent, { w = -1, h = -1 } = {}) {
+function create_themeroom_subroom(parent, {
+    x = -1, y = -1, w = -1, h = -1, rtype = OROOM, filled = true, joined = true,
+} = {}) {
     if (!(rn2(100) < 100)) return null;
-    const croom = splevCreateSubroom(parent, { x: -1, y: -1, w, h, lit: -1 }, OROOM);
+    const croom = splevCreateSubroom(parent, { x, y, w, h, lit: -1 }, rtype);
     if (!croom) return null;
     topologize(croom);
-    croom.needfill = FILL_NORMAL;
-    croom.needjoining = true;
+    croom.needfill = filled ? FILL_NORMAL : 0;
+    croom.needjoining = joined;
+    parent.irregular = true;
     return croom;
 }
 
@@ -19523,6 +20427,188 @@ function create_themeroom_random_door(croom) {
     }
 }
 
+function create_themeroom_secret_door(croom) {
+    const width = croom.hx - croom.lx + 1;
+    const height = croom.hy - croom.ly + 1;
+    for (let trycnt = 0; trycnt < 100; trycnt++) {
+        let x = 0, y = 0;
+        switch (rn2(4)) {
+        case 0:
+            y = croom.ly - 1;
+            x = croom.lx + rn2(width);
+            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level.at(x, y - 1)?.typ)) continue;
+            break;
+        case 1:
+            y = croom.hy + 1;
+            x = croom.lx + rn2(width);
+            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level.at(x, y + 1)?.typ)) continue;
+            break;
+        case 2:
+            x = croom.lx - 1;
+            y = croom.ly + rn2(height);
+            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level.at(x - 1, y)?.typ)) continue;
+            break;
+        case 3:
+            x = croom.hx + 1;
+            y = croom.ly + rn2(height);
+            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level.at(x + 1, y)?.typ)) continue;
+            break;
+        }
+        if (!okdoor(x, y)) continue;
+        const loc = game.level.at(x, y);
+        loc.typ = SDOOR;
+        loc.doormask = D_CLOSED;
+        return loc;
+    }
+    return null;
+}
+
+function themeroomShopDoorState() {
+    if (rn2(100) < 1) return 'locked';
+    if (rn2(100) < 50) return 'closed';
+    return 'open';
+}
+
+function themeroomWallMask(wall) {
+    if (wall === 'north') return W_NORTH;
+    if (wall === 'south') return W_SOUTH;
+    if (wall === 'east') return W_EAST;
+    if (wall === 'west') return W_WEST;
+    return W_ANY;
+}
+
+function create_themeroom_shop_door(croom, state, wall) {
+    splevDoor(croom, state, themeroomWallMask(wall));
+    splevAddDoorsToRoom(croom);
+}
+
+function setThemeroomTerrain(x, y, typ) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return null;
+    loc.typ = typ;
+    if (typ === LAVAPOOL) loc.lit = true;
+    if (typ === ICE) {
+        loc.flags = 0;
+        loc.icedpool = 0;
+    }
+    return loc;
+}
+
+function create_themeroom_random_dungeon_feature() {
+    const width = 3 + rn2(3) * 2;
+    const height = 3 + rn2(3) * 2;
+    const room = create_themeroom_room({ w: width, h: height, filled: true });
+    if (!room) return null;
+
+    const feature = [CLOUD, LAVAPOOL, ICE, POOL, TREE];
+    shuffleThemeroomList(feature);
+    const x = room.lx + Math.trunc((width - 1) / 2);
+    const y = room.ly + Math.trunc((height - 1) / 2);
+    setThemeroomTerrain(x, y, feature[0]);
+    return room;
+}
+
+function create_themeroom_fake_delphi() {
+    const room = create_themeroom_room({ w: 11, h: 9, filled: true });
+    if (!room) return null;
+    const inner = create_themeroom_subroom(room, { x: 4, y: 3, w: 3, h: 3, filled: true });
+    if (inner) create_themeroom_random_door(inner);
+    return room;
+}
+
+function create_themeroom_room_in_room() {
+    const room = create_themeroom_room({ filled: true });
+    if (!room) return null;
+    const inner = create_themeroom_subroom(room, { filled: false });
+    if (inner) create_themeroom_random_door(inner);
+    return room;
+}
+
+function create_themeroom_huge_room_inside() {
+    const room = create_themeroom_room({ w: rn2(10) + 11, h: rn2(5) + 8, filled: true });
+    if (!room) return null;
+    if (rn2(100) < 90) {
+        const inner = create_themeroom_subroom(room, { filled: true });
+        if (inner) {
+            create_themeroom_random_door(inner);
+            if (rn2(100) < 50) create_themeroom_random_door(inner);
+        }
+    }
+    return room;
+}
+
+async function create_themeroom_mausoleum() {
+    const width = 5 + rn2(3) * 2;
+    const height = 5 + rn2(3) * 2;
+    const room = create_themeroom_room({ w: width, h: height, rtype: THEMEROOM });
+    if (!room) return null;
+
+    const inner = create_themeroom_subroom(room, {
+        x: Math.trunc((width - 1) / 2),
+        y: Math.trunc((height - 1) / 2),
+        w: 1,
+        h: 1,
+        rtype: THEMEROOM,
+        filled: false,
+        joined: false,
+    });
+    if (!inner) return room;
+
+    if (rn2(100) < 50) {
+        const mons = ['M', 'V', 'L', 'Z'];
+        shuffleThemeroomList(mons);
+        const ptr = mkclassAligned(mons[0]);
+        const mon = ptr ? await makemon(ptr, inner.lx, inner.ly, 0) : null;
+        if (mon) mon.waiting = true;
+    } else {
+        const corpse = mksobj_at(CORPSE, inner.lx, inner.ly, true, false);
+        if (corpse) {
+            corpse.corpsenm = mkclassAligned('@') || monsterByRndName('soldier') || { name: 'human', mlet: '@', glyph: '@' };
+            startCorpseTimeout(corpse);
+            Object.assign(corpse, object_display(corpse));
+        }
+    }
+    if (rn2(100) < 20) create_themeroom_secret_door(inner);
+    return room;
+}
+
+function create_themeroom_twin_businesses() {
+    const room = create_themeroom_room({ w: 9, h: 5, rtype: THEMEROOM });
+    if (!room) return null;
+
+    const southeast = () => (rn2(100) < 50 ? 'south' : 'east');
+    const northeast = () => (rn2(100) < 50 ? 'north' : 'east');
+    const northwest = () => (rn2(100) < 50 ? 'north' : 'west');
+    const southwest = () => (rn2(100) < 50 ? 'south' : 'west');
+    const placements = [
+        { lx: 1, ly: 1, rx: 4, ry: 1, lwall: 'south', rwall: southeast() },
+        { lx: 1, ly: 2, rx: 4, ry: 2, lwall: 'north', rwall: northeast() },
+        { lx: 1, ly: 1, rx: 5, ry: 1, lwall: southeast(), rwall: southwest() },
+        { lx: 1, ly: 1, rx: 5, ry: 2, lwall: southeast(), rwall: northwest() },
+        { lx: 1, ly: 2, rx: 5, ry: 1, lwall: northeast(), rwall: southwest() },
+        { lx: 1, ly: 2, rx: 5, ry: 2, lwall: northeast(), rwall: northwest() },
+        { lx: 2, ly: 1, rx: 5, ry: 1, lwall: southwest(), rwall: 'south' },
+        { lx: 2, ly: 2, rx: 5, ry: 2, lwall: northwest(), rwall: 'north' },
+    ];
+
+    let ltype = WEAPONSHOP;
+    let rtype = ARMORSHOP;
+    if (rn2(100) < 50) [ltype, rtype] = [rtype, ltype];
+
+    const p = placements[rnd(placements.length) - 1];
+    const left = create_themeroom_subroom(room, {
+        x: p.lx, y: p.ly, w: 3, h: 3, rtype: ltype, filled: true, joined: false,
+    });
+    if (left) create_themeroom_shop_door(left, themeroomShopDoorState(), p.lwall);
+
+    const right = create_themeroom_subroom(room, {
+        x: p.rx, y: p.ry, w: 3, h: 3, rtype, filled: true, joined: false,
+    });
+    if (right) create_themeroom_shop_door(right, themeroomShopDoorState(), p.rwall);
+
+    return room;
+}
+
 // C ref: themerms.lua themerooms_generate()
 // Reservoir sampling picks one eligible themed-room generator by frequency.
 async function themerooms_generate(difficulty) {
@@ -19538,9 +20624,11 @@ async function themerooms_generate(difficulty) {
     }
     if (!pick) return false;
     if (THEMEROOM_MAPS[pick.name]) return create_themeroom_map(THEMEROOM_MAPS[pick.name], pick.name);
-    if (pick.name === 'Fake Delphi') {
-        return !!create_themeroom_room({ w: 11, h: 9, filled: true });
-    }
+    if (pick.name === 'Fake Delphi') return !!create_themeroom_fake_delphi();
+    if (pick.name === 'Room in a room') return !!create_themeroom_room_in_room();
+    if (pick.name === 'Huge room with another room inside') return !!create_themeroom_huge_room_inside();
+    if (pick.name === 'Mausoleum') return !!(await create_themeroom_mausoleum());
+    if (pick.name === 'Twin businesses') return !!create_themeroom_twin_businesses();
     if (pick.name === 'Nesting rooms') {
         const room = create_themeroom_room({
             w: 9 + rn2(4), h: 9 + rn2(4), filled: true,
@@ -19586,6 +20674,9 @@ async function themerooms_generate(difficulty) {
                 }
         return true;
     }
+    if (pick.name === 'Random dungeon feature in the middle of an odd-sized room') {
+        return !!create_themeroom_random_dungeon_feature();
+    }
     if (pick.name === 'Default room with themed fill' || pick.name === 'Unlit room with themed fill'
         || pick.name === 'Room with both normal contents and themed fill') {
         const room = create_themeroom_room({
@@ -19595,11 +20686,6 @@ async function themerooms_generate(difficulty) {
         });
         if (!room) return false;
         const fill = themeroom_fill_rng(!!room.rlit);
-        if (fill?.name === 'Temple of the gods')
-            for (let i = 0; i < 4; i++) {
-                rn2(room.hx - room.lx + 1);
-                rn2(room.hy - room.ly + 1);
-            }
         await apply_themeroom_fill(fill, room);
         return true;
     }
@@ -19626,8 +20712,10 @@ async function create_themeroom_map(rows, name) {
                 await apply_themeroom_fill(fill, croom, rows, startX, startY);
             }
             if (name === 'Water-surrounded vault') {
+                croom.rtype = THEMEROOM;
                 croom.needfill = 0;
                 croom.needjoining = false;
+                add_exclusion_zone(LR_TELE, startX + 2, startY + 2, startX + 3, startY + 3);
 
                 const chestSpots = [[2, 2], [3, 2], [2, 3], [3, 3]];
                 for (let n = chestSpots.length; n > 1; n--) {
@@ -19663,8 +20751,7 @@ async function create_themeroom_map(rows, name) {
                 const firstChestSpot = chestSpots[0];
                 const firstChest = mksobj_at(CHEST, startX + firstChestSpot[0], startY + firstChestSpot[1], true, false);
                 if (firstChest) {
-                    const wandAppearance = game._object_descriptions?.wands?.[escape.wandIndex]?.description;
-                    if (wandAppearance === 'glass' || wandAppearance === 'crystal') firstChest.olocked = false;
+                    if (waterVaultEscapeUnlocksChest(item)) firstChest.olocked = false;
                     add_to_container(firstChest, item);
                 }
                 for (let i = 1; i < chestSpots.length; i++) {
@@ -19672,7 +20759,7 @@ async function create_themeroom_map(rows, name) {
                     mksobj_at(CHEST, startX + x, startY + y, true, false);
                 }
 
-                const undead = ['giant zombie', 'ettin zombie', 'vampire leader'];
+                const undead = [...WATER_VAULT_UNDEAD];
                 for (let n = undead.length; n > 1; n--) {
                     const j = rn2(n);
                     [undead[n - 1], undead[j]] = [undead[j], undead[n - 1]];

@@ -59,7 +59,7 @@ import { rn2 } from './rng.js';
 const SPECIAL_PM = 338;
 
 /** C `permonst.h` — no monster selected. */
-const NON_PM = -1;
+export const NON_PM = -1;
 
 /** C: defsym.h MONSYM display chars indexed by `mlet` (`S_*`). */
 export const DEF_MONSYM_DISPLAY = /** @type {readonly string[]} */ (Object.freeze([

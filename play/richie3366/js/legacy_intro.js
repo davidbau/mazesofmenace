@@ -2,7 +2,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen } from './display.js';
+import { flush_screen, clearPendingMessageAndToplineLikeC } from './display.js';
 import { nhlibAlignShuffleRn2LikeC } from './nhlib_align_shuffle.js';
 
 /**
@@ -18,10 +18,12 @@ export async function awaitLegacyIntroMoreLikeC() {
     nhlibAlignShuffleRn2LikeC();
 
     g._legacyIntroActive = true;
+    clearPendingMessageAndToplineLikeC();
     await flush_screen(1);
     await nhgetch();
     g._legacyIntroActive = false;
     delete g._botlLine1PreFindAcBotlLikeC;
     delete g._botlLine2PreFindAcBotlLikeC;
+    delete g._legacyIntroCol;
     await flush_screen(1);
 }

@@ -4,6 +4,12 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { pline } from './display.js';
+import { IS_OBSTRUCTED } from './const.js';
+import { passesWalls, raceptr } from './mondata.js';
+import { cansee } from './vision.js';
+import { tendedShopAtXYLikeC } from './shop.js';
+import { monflee } from './monflee.js';
+import { endRunning } from './timeout.js';
 import {
     A_STR, A_DEX, XKILL_GIVEMSG,
     P_NONE, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT, P_ISRESTRICTED,
@@ -29,6 +35,89 @@ function monsterName(mtmp) {
     if (mtmp?.monnam) return mtmp.monnam;
     const n = mtmp?.data?.mname;
     return n || 'monster';
+}
+
+/** C: monsters.h — **`PM_LONG_WORM`**. */
+const PM_LONG_WORM = 114;
+
+/** C: display.h **`canspotmon`** subset (peaceful bump / **`is_safemon`**). */
+function canspotMonSafemonLikeC(g, mtmp) {
+    const u = g?.u;
+    if (!mtmp || !u) return false;
+    if (u.usteed === mtmp) return true;
+    if ((mtmp.minvis | 0) && !(u.See_invisible | 0)) return false;
+    return cansee(mtmp.mx | 0, mtmp.my | 0);
+}
+
+/**
+ * C: display.h **`_is_safemon(mon)`** — peaceful seen, not impaired.
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+export function isSafemonLikeC(g, mtmp) {
+    const flags = g.flags || {};
+    if (flags.safe_dog === false) return false;
+    if (!(mtmp.mpeaceful | 0)) return false;
+    if (!canspotMonSafemonLikeC(g, mtmp)) return false;
+    const u = g.u;
+    if ((u?.Confusion | 0) || (u?.Hallucination | 0) || (u?.Stunned | 0)) return false;
+    return true;
+}
+
+/** C: mon.c **`helpless`** subset used in **`do_attack`**. */
+function helplessSafemonLikeC(mtmp) {
+    if ((mtmp.mfrozen | 0) > 0) return true;
+    return (mtmp.mcanmove | 0) === 0;
+}
+
+/**
+ * C: uhitm.c **`do_attack`** — **`is_safemon && !forcefight`** block (rng + stop / frozen / displace).
+ * @returns {'not_safemon'|'continue_attack'|'stop'|'frozen'|'allow_displace'}
+ */
+export function safemonDoAttackGateLikeC(g, mtmp) {
+    if (!isSafemonLikeC(g, mtmp)) return 'not_safemon';
+    if (g.context?.forcefight) return 'continue_attack';
+
+    const u = g.u;
+    const ptr = raceptr(mtmp);
+    const heroLoc = g.level?.at(u.ux | 0, u.uy | 0);
+    const foo =
+        !!(u?.Punished)
+        || !rn2(7)
+        || ((ptr?.mnum | 0) === PM_LONG_WORM && (mtmp.wormno | 0))
+        || (heroLoc && IS_OBSTRUCTED(heroLoc.typ | 0) && !passesWalls(ptr));
+
+    const inshop = !foo && tendedShopAtXYLikeC(g, mtmp.mx | 0, mtmp.my | 0);
+
+    if (inshop || foo) return 'stop';
+
+    if (
+        (mtmp.mfrozen | 0)
+        || helplessSafemonLikeC(mtmp)
+        || (((ptr?.mmove | 0) === 0) && !rn2(6))
+    ) {
+        return 'frozen';
+    }
+
+    return 'allow_displace';
+}
+
+/**
+ * C: **`do_attack`** safemon stop / frozen plines + **`monflee`** / **`end_running`**.
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {'stop'|'frozen'} kind
+ */
+export async function safemonDoAttackBlockPlinesLikeC(g, mtmp, kind) {
+    endRunning(true);
+    if (kind === 'stop') {
+        if (mtmp.mtame | 0) await monflee(g, mtmp, rnd(6), false, false);
+        let who = monsterName(mtmp);
+        who = who.charAt(0).toUpperCase() + who.slice(1);
+        await pline(`You stop.  ${who} is in the way!`);
+        return;
+    }
+    await pline(`${monsterName(mtmp)} doesn't seem to move!`);
 }
 
 /**

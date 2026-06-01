@@ -15,7 +15,7 @@ import {
 import { findAc } from './u_init_find_ac.js';
 
 const OTYP_QUARTERSTAFF = 79;
-const OTYP_CLOAK_OF_MAGIC_RESISTANCE = 148;
+const OTYP_CLOAK_OF_MAGIC_RESISTANCE = 149;
 /** C `objects[]` — **`MAGIC_MARKER`** 243. */
 const OTYP_MAGIC_MARKER = 243;
 const OTYP_SPE_FORCE_BOLT = 375;

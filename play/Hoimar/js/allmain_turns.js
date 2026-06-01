@@ -3,10 +3,11 @@ import { rn2, rnd } from './rng.js';
 import { dosounds } from './sounds.js';
 import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS,
+    EXT_ENCUMBER, HVY_ENCUMBER, MOD_ENCUMBER,
     W_AMUL, W_RINGL, W_RINGR,
 } from './const.js';
 import { OBJECT_CHARGED } from './object_data.js';
-import { makemon } from './mklev.js';
+import { adj_erinys, makemon } from './mklev.js';
 import { depth } from './hacklib.js';
 
 const RING_CLASS = 4;
@@ -30,14 +31,30 @@ export function regen_hp() {
     // C ref: allmain.c:regen_hp().  This owns the ordinary non-polymorphed
     // regeneration roll once the hero has actually taken HP damage.
     const u = game.u;
-    if (!u || u.uinvulnerable || (u.uhp ?? 0) >= (u.uhpmax ?? 0)) return;
+    if (!u || u.uinvulnerable || (u.uhp ?? 0) >= (u.uhpmax ?? 0)) return false;
     const ringRegen = !!u.uprops?.hp_regeneration
         || wornRing(W_RINGL, 'left')?.otyp === RIN_REGENERATION
         || wornRing(W_RINGR, 'right')?.otyp === RIN_REGENERATION;
     let heal = ((u.ulevel || 0) + currentAttr(A_CON)) > rn2(100) ? 1 : 0;
     if (ringRegen) heal++;
-    if (!heal) return;
+    if (!heal) return false;
     u.uhp = Math.min(u.uhpmax, (u.uhp || 0) + heal);
+    return u.uhp === u.uhpmax;
+}
+
+export function regen_pw(nextMove = (game.moves || 1) + 1) {
+    // C ref: allmain.c:regen_pw().  Power regeneration uses the incremented
+    // turn count and rolls rn1(upper, 1) when the role/level cadence fires.
+    const u = game.u;
+    if (!u || (u.uen ?? 0) >= (u.uenmax ?? 0)) return;
+    const enc = u.uencumber || 0;
+    const cadence = Math.trunc(((30 + 8 - (u.ulevel || 1))
+        * (game.urole?.name?.m === 'Wizard' ? 3 : 4)) / 6);
+    const energyRegen = !!u.uprops?.energy_regeneration;
+    if (!energyRegen && (enc >= 2 || !cadence || nextMove % cadence !== 0)) return;
+    let upper = Math.trunc((currentAttr(A_WIS) + currentAttr(A_INT)) / 15) + 1;
+    if (u.uprops?.magical_breathing) upper += 2;
+    u.uen = Math.min(u.uenmax, (u.uen || 0) + (rn2(upper) + 1));
 }
 
 export function gethungry() {
@@ -47,7 +64,8 @@ export function gethungry() {
     const u = game.u;
     if (!u) return;
     const sleeping = (game._nomul_turns_remaining || 0) > 0
-        && game._nomul_finish_message === 'You wake up.';
+        && (game._nomul_finish_message === 'You wake up.'
+            || game._nomul_finish_message === 'You are conscious again.');
     // C ref: src/eat.c:gethungry().  `Unaware` sleep only burns ordinary
     // metabolism on one in ten turns, before the accessory hunger roll.
     if ((!sleeping || !rn2(10)) && !slowDigestionActive()) {
@@ -152,21 +170,38 @@ export function adjalign(n) {
     if (n < 0) {
         const newabuse = align.abuse - n;
         if (newalign < align.record) align.record = newalign;
-        if (newabuse > align.abuse) align.abuse = newabuse;
+        if (newabuse > align.abuse) {
+            align.abuse = newabuse;
+            adj_erinys(newabuse);
+        }
     } else if (newalign > align.record) {
         const alignlim = 10 + Math.trunc((game.moves || 0) / 200);
         align.record = Math.min(newalign, alignlim);
     }
 }
 
-export function exerchk() {
-    // C ref: attrib.c:exerper().  This covers the ordinary early-game
-    // hunger/encumbrance shape; status, polymorph, and encumbrance side
-    // effects are still future work.
-    const moves = (game.moves || 1) + 1;
+export function exerchk(moveNumber = (game.moves || 1) + 1) {
+    // C ref: attrib.c:exerper().
+    const moves = moveNumber;
     if (moves % 10 === 0) {
         const hunger = game.u?.uhunger ?? 900;
         if (hunger > 150 && hunger <= 1000) exercise(A_CON, true);
+
+        switch (game.u?.uencumber || 0) {
+        case MOD_ENCUMBER:
+            exercise(A_STR, true);
+            break;
+        case HVY_ENCUMBER:
+            exercise(A_STR, true);
+            exercise(A_DEX, false);
+            break;
+        case EXT_ENCUMBER:
+            exercise(A_DEX, false);
+            exercise(A_CON, false);
+            break;
+        default:
+            break;
+        }
     }
     if (moves % 5 === 0) {
         if (game.u?.uprops?.confusion || game.u?.uprops?.hallucination) {

@@ -2,6 +2,7 @@
 // C ref: init_dungeons, init_dungeon_dungeons, init_level, place_level, parent_dlevel, init_castle_tune.
 
 import { rn2, rn1 } from './rng.js';
+import { nhlibAlignShuffleRn2LikeC } from './nhlib_align_shuffle.js';
 import { game } from './gstate.js';
 import { DUNGEON_PROTO } from './dungeon_proto.js';
 import { addSpLevchnLevelOrderedLikeC, findLevelByProtoLikeC } from './sp_levchn.js';
@@ -379,6 +380,8 @@ function initCastleTuneLikeC(g) {
  * @param {import('./gstate.js').game} [g]
  */
 export function initDungeonsLikeC(g = game) {
+    /* C: dungeon.c init_dungeons — nhl_init loads nhlib.lua (align shuffle) before proto parse. */
+    nhlibAlignShuffleRn2LikeC();
     /** @type {object} */
     const pd = {
         start: 0,

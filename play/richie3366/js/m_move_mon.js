@@ -72,6 +72,7 @@ import { ensureMonsterMtrack, monTrackAdd, monTrackClear } from './monflee.js';
 import {
     dogMoveGoalOnlyNoPickLikeC,
     dogMoveMfndposPickOnlyWizD1LikeC,
+    dogMoveTouristD1PostSwapPeelLikeC,
     dogMoveLikeC,
     dogMoveOntoApportTowelLikeC,
     dogMovePostCorridorSecondPetMfndposLikeC,
@@ -2555,10 +2556,22 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 ) {
                     await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
                 }
-                /* C: tourist **`seed8000`** peel — **`distfleeck`** only; wizard pet — full
-                 * **`dog_move`** **`dog_goal`** + **`mfndpos`** pick (**`seed0006`** **`L`** post:
-                 * **`j<0`** toward hero can step east with no **`rn2(12)`**). */
+                /* C: tourist **`seed8000`** peel — **`distfleeck`** only; after first D:1 swap
+                 * (**`seed0900`**) — **`dog_goal`** prescan + **`mfndpos`**; wizard — full **`dog_move`**. */
                 if (
+                    (mtmp.mtame | 0)
+                    && has_edog(mtmp)
+                    && g.urole?.abbr === 'Tou'
+                    && g.context?._touristD1PostSwapDogGoalPrescanLikeC
+                ) {
+                    let mov = mtmp.movement | 0;
+                    if (mov < NORMAL_SPEED) {
+                        mtmp.movement = NORMAL_SPEED;
+                        mov = NORMAL_SPEED;
+                    }
+                    mtmp.movement = mov - NORMAL_SPEED;
+                    dogMoveTouristD1PostSwapPeelLikeC(g, mtmp);
+                } else if (
                     (mtmp.mtame | 0)
                     && has_edog(mtmp)
                     && g.urole?.abbr !== 'Tou'

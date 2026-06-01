@@ -133,6 +133,9 @@ export class NethackGame {
         /* C: allmain.c newgame — svc.context.next_attrib_check = 600L */
         g.context = { move: 0, next_attrib_check: 600, mysteryforce: 0 };
         g.program_state = {};
+        if (opts.flags.discover) g.program_state.discover = true;
+        /* C: optlist.h flags.bones default On; explore mode skips getbones (bones.c). */
+        if (g.flags.bones === undefined && !g.program_state.discover) g.flags.bones = true;
         g.moves = 1;
 
         // Fixed play clock (moon, shop lines, Friday 13th, …) — C uses NETHACK_FIXED_DATETIME
@@ -186,9 +189,13 @@ export class NethackGame {
         const slice = fullLog.slice(this._lastRngIdx);
         this._lastRngIdx = fullLog.length;
 
-        /* C: welcome `--More--` — paint IN_SIGHT map before first tourist input snapshot. */
+        /* C: welcome `--More--` — paint IN_SIGHT map before first tourist input snapshot.
+         * Skip during legacy com_pager `--More--` (seed0900 screen 0 is intro text, not map). */
         const welcomeMoreCapture =
-            bump && this._nhgetchCount === 1 && game.urole?.abbr === 'Tou';
+            bump
+            && this._nhgetchCount === 1
+            && game.urole?.abbr === 'Tou'
+            && !game._legacyIntroActive;
         if (welcomeMoreCapture) await docrtPaintVisibleForWelcomeLikeC();
 
         /* C: tty refresh before input boundaries; also when find_ac flagged botl but moveloop not started.

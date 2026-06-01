@@ -198,6 +198,9 @@ OBJECT_DESCRIPTION[170] = 'buckled boots';
 OBJECT_DESCRIPTION[171] = 'riding boots';
 OBJECT_DESCRIPTION[172] = 'snow boots';
 
+// C ref: include/objects.h TOOL("mirror", "looking glass", ...).
+OBJECT_DESCRIPTION[230] = 'looking glass';
+
 // C ref: objects.h SPELL(name, desc, ...).  Magical spellbook descriptions
 // are shuffled by o_init.c:shuffle_all(); blank paper stays fixed.
 OBJECT_DESCRIPTION[366] = 'parchment';

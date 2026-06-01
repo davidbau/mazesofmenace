@@ -40,6 +40,13 @@ async function sound_pline(msg) {
 }
 
 function queue_sound_after_more(msg) {
+    // C ref: src/allmain.c:moveloop_core() increments svm.moves before
+    // dosounds(); if tty more() blocks inside dosounds(), the status line
+    // already shows the new turn while the rest of the turn tail waits.
+    if (!game._moves_incremented_for_dosounds_more) {
+        game.moves = (game.moves || 1) + 1;
+        game._moves_incremented_for_dosounds_more = true;
+    }
     game._after_more_message = game._after_more_message
         ? `${game._after_more_message}  ${msg}`
         : msg;

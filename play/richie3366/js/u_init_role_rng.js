@@ -29,6 +29,9 @@ import {
     NH5_WEAPON_CLASS,
 } from './nh5_objclass.js';
 
+/** C `objects_nums` — **`WAN_WISHING`** (`u_init.c` **`Wishing[]`**). */
+const OTYP_WAN_WISHING = 413;
+
 /** C objects_nums — OBJECTS_ENUM (nethack-c/upstream/include/objects.h). */
 const OTYP_DAGGER = 35;
 const OTYP_YA = 22;
@@ -47,7 +50,7 @@ const OTYP_LOCK_PICK = 221;
 const OTYP_POT_SICKNESS = 317;
 /** C Wizard[] — `OBJECTS_ENUM` / `objects.h`. */
 const OTYP_QUARTERSTAFF = 79;
-const OTYP_CLOAK_OF_MAGIC_RESISTANCE = 148;
+const OTYP_CLOAK_OF_MAGIC_RESISTANCE = 149;
 /** C `objects[]` — **`P_WHIP`** / bullwhip at otyp **82**. */
 /** C `objects[]` — **`P_WHIP`** / bullwhip (83 is bow). */
 const OTYP_BULLWHIP_MK = 82;
@@ -123,6 +126,34 @@ function blessorcurseLikeC(chance) {
     if (!rn2(chance)) {
         rn2(2);
     }
+}
+
+/** C: mkobj.c mksobj_init — **`WAN_WISHING`** (`spe = 1`, no **`rn1`**). */
+function mksobjInitWandWishingDiscoverLikeC() {
+    void OTYP_WAN_WISHING;
+    blessorcurseLikeC(17);
+}
+
+/**
+ * C: `u_init_inventory_attrs` — `if (discover) ini_inv(Wishing);` after `u_init_role` / `u_init_race`.
+ * Explore sets `discover` via `OPTIONS=playmode:explore` (`options.js`).
+ * @param {import('./gstate.js').game} [g]
+ */
+export function consumeIniInvWishingDiscoverRngIfLikeC(g = game) {
+    if (!g.program_state?.discover) return;
+    trquanMinMaxLikeC(1, 1);
+    nextIdentLikeC();
+    mksobjInitWandWishingDiscoverLikeC();
+}
+
+/**
+ * C: `u_init_inventory_attrs` — `if (u.umoney0) ini_inv(Money);` after Wishing when discover.
+ * @param {import('./gstate.js').game} [g]
+ */
+export function consumeIniInvMoneyRngIfLikeC(g = game) {
+    if (((g.u?.umoney0 ?? 0) | 0) <= 0) return;
+    trquanMinMaxLikeC(1, 1);
+    nextIdentLikeC();
 }
 
 /** C: mkobj.c mksobj_init — WEAPON_CLASS (artif always FALSE for ini_inv). */
@@ -940,12 +971,6 @@ export function consumeTouristHumanIniInvUinitRoleRngLikeC() {
     } else {
         game._touristIniExtra = null;
         game._touristIniMagicmarkerSpe = undefined;
-    }
-
-    /* C: `u_init_inventory_attrs` — after `u_init_role`, `if (u.umoney0) ini_inv(Money)` (`Money[]` one **`trquan`** + **`mksobj`** **`next_ident`**). */
-    if (((game._touristIniUmoney0Rnd ?? 0) | 0) > 0) {
-        trquanMinMaxLikeC(1, 1);
-        nextIdentLikeC();
     }
 }
 

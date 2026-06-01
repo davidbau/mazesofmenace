@@ -457,6 +457,20 @@ function telepathySourceCount() {
     return count;
 }
 
+function warningSourceCount() {
+    let count = 0;
+    for (const item of game.inventory || []) {
+        if (!itemIsWorn(item)) continue;
+        const name = `${item.kind || ''} ${item.actualKind || ''} ${item.line || ''}`.toLowerCase();
+        if (/\bhelm(?:et)? of caution\b/.test(name)) count++;
+    }
+    return count;
+}
+
+function warnsOfMonsters() {
+    return !!(game.u?.warning || game.u?.HWarning || game.u?.warn_of_monsters || warningSourceCount() > 0);
+}
+
 function sensesTelepathically(mon) {
     if (!mon || mon.mindless || mon.data?.mindless) return false;
     const sources = telepathySourceCount();
@@ -657,7 +671,12 @@ function monsterGlyph(mon, detected = false) {
     if (hallucinatesDisplay()) {
         game._hallucinated_map_needs_actual_refresh = 1;
         const monIndex = rn2_on_display_rng(DISPLAY_MONSTER_GLYPHS.length);
-        return { ch: DISPLAY_MONSTER_GLYPHS[monIndex] || '?', color: DISPLAY_MONSTER_COLORS[monIndex] ?? CLR_WHITE, dec: false };
+        return {
+            ch: DISPLAY_MONSTER_GLYPHS[monIndex] || '?',
+            color: DISPLAY_MONSTER_COLORS[monIndex] ?? CLR_WHITE,
+            dec: false,
+            hallucinatedMonsterIndex: monIndex,
+        };
     }
     if (mon.pet) return { ch: mon.data?.mlet?.[0] || 'd', color: mon.data?.name === 'pony' ? CLR_BROWN : CLR_WHITE, dec: false };
     if (mon.data?.name === 'guard') return { ch: '@', color: CLR_BLUE, dec: false };
@@ -675,7 +694,7 @@ function objectGlyph(obj) {
         if (obj.otyp === STATUE) {
             const monIndex = rn2_on_display_rng(DISPLAY_MONSTER_GLYPHS.length);
             rn2_on_display_rng(2);
-            return { ch: DISPLAY_MONSTER_GLYPHS[monIndex] || '?', color: DISPLAY_MONSTER_COLORS[monIndex] ?? CLR_WHITE, dec: false };
+            return { ch: DISPLAY_MONSTER_GLYPHS[monIndex] || '?', color: DISPLAY_MONSTER_COLORS[monIndex] ?? CLR_WHITE, dec: false, statueGlyph: true };
         }
         const objectIndex = rn2_on_display_rng(DISPLAY_OBJECT_GLYPHS.length);
         if (objectIndex + FIRST_DISPLAY_OBJECT === C_RANDOM_CORPSE) {
@@ -699,6 +718,7 @@ function objectGlyph(obj) {
             ch: data.glyph || data.mlet?.[0] || obj.glyph || '`',
             color: obj.color ?? data.color ?? MONSTER_COLORS[data.name] ?? CLR_WHITE,
             dec: false,
+            statueGlyph: true,
         };
     }
     const revealPotionColor = obj.dknown;
@@ -739,18 +759,22 @@ export function seeNearbyObjects() {
             if (monsterAt(x, y)) continue;
             const glyph = objectGlyph(obj);
             const loc = game.level?.at(x, y);
-            if (loc) loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec };
-            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
+            if (loc) loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec, statueGlyph: !!glyph.statueGlyph };
+            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, 0, glyph);
         }
 }
 
-export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
+export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0, meta = null) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     loc.disp_ch = ch;
     loc.disp_color = glyphColor(color);
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
+    if (meta?.hallucinatedMonsterIndex != null) loc.hallucinated_monster_index = meta.hallucinatedMonsterIndex;
+    else delete loc.hallucinated_monster_index;
+    if (meta?.statueGlyph) loc.displayed_statue_glyph = true;
+    else delete loc.displayed_statue_glyph;
 }
 
 export function newsym(x, y) {
@@ -781,7 +805,7 @@ export function newsym(x, y) {
     const warningMon = game.level?.monsters?.find(candidate =>
         candidate.mx === x && candidate.my === y);
     let warning = null;
-    if (warningMon && game.u?.warning && !warningMon.mpeaceful && !warningMon.pet) {
+    if (warningMon && warnsOfMonsters() && !warningMon.mpeaceful && !warningMon.pet) {
         const dx = x - (game.u?.ux ?? 0);
         const dy = y - (game.u?.uy ?? 0);
         if (dx * dx + dy * dy < 100) {
@@ -808,7 +832,7 @@ export function newsym(x, y) {
     if (game.u?.ux === x && game.u?.uy === y) {
         if (game.u.usteed) {
             const glyph = monsterGlyph(game.u.usteed);
-            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
+            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, 0, glyph);
             return;
         }
         if (!game.u.invisible || game.u.seeInvisible || game.u.blind) {
@@ -842,7 +866,7 @@ export function newsym(x, y) {
             }
             const glyph = objectGlyph(obj);
             visibleObjectGlyph = glyph;
-            loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec };
+            loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec, statueGlyph: !!glyph.statueGlyph };
         } else {
             loc.remembered_glyph = null;
         }
@@ -851,13 +875,14 @@ export function newsym(x, y) {
     if (displayedMon && (!game.u?.blind || seesTelepathically) && (monsterVisible || seesInfrared || seesTelepathically)) {
         if (monsterVisible || seesInfrared) recordVisibleMonsterInventoryDiscovery(displayedMon);
         const glyph = monsterGlyph(displayedMon);
-        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, game._hilite_pet && displayedMon.pet ? 1 : 0);
+        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec,
+            game._hilite_pet && displayedMon.pet ? 1 : 0, glyph);
         return;
     }
     if (mon?.appearGlyph && remembered
         && Math.max(Math.abs(x - (game.u?.ux ?? 0)), Math.abs(y - (game.u?.uy ?? 0))) <= 2) {
         const glyph = monsterGlyph(mon);
-        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
+        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, 0, glyph);
         return;
     }
     if (loc.map_invisible) {
@@ -876,7 +901,7 @@ export function newsym(x, y) {
         const pileAttr = game._hilite_pile
             && (game.level?.objects || []).filter(item => !item.hidden && !item.transientProjectile && item.ox === x && item.oy === y).length > 1
             ? 1 : 0;
-        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, pileAttr);
+        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, pileAttr, glyph);
         return;
     }
 
@@ -907,7 +932,7 @@ export function newsym(x, y) {
     if (!visible && loc.remembered_glyph) {
         const glyph = loc.remembered_glyph;
         const color = glyph.ch === '+' && loc.typ === DOOR ? CLR_BROWN : glyph.color ?? NO_COLOR;
-        show_glyph_cell(x, y, glyph.ch, color, glyph.dec);
+        show_glyph_cell(x, y, glyph.ch, color, glyph.dec, 0, glyph);
         return;
     }
 
@@ -965,6 +990,10 @@ function refreshSeenMonsterMap() {
     if (!game.u?.usteed) newsym(game.u?.ux, game.u?.uy);
 }
 
+export function seeMonsters() {
+    refreshSeenMonsterMap();
+}
+
 function redrawRememberedMap() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
@@ -977,7 +1006,7 @@ function redrawRememberedMap() {
             if (loc.remembered_glyph) {
                 const glyph = loc.remembered_glyph;
                 const color = glyph.ch === '+' && loc.typ === DOOR ? CLR_BROWN : glyph.color ?? NO_COLOR;
-                show_glyph_cell(x, y, glyph.ch, color, glyph.dec);
+                show_glyph_cell(x, y, glyph.ch, color, glyph.dec, 0, glyph);
                 continue;
             }
             const trap = trapAt(x, y);
@@ -1033,10 +1062,11 @@ export function refreshHallucinatedMap(forward = false) {
         const visible = !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
         if (visible && monsterAt(x, y) === mon) {
             const glyph = monsterGlyph(mon);
-            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, game._hilite_pet && mon.pet ? 1 : 0);
+            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec,
+                game._hilite_pet && mon.pet ? 1 : 0, glyph);
             continue;
         }
-        if (mon.mpeaceful || mon.pet || !game.u?.warning) continue;
+        if (mon.mpeaceful || mon.pet || !warnsOfMonsters()) continue;
         const dx = x - (game.u?.ux ?? 0);
         const dy = y - (game.u?.uy ?? 0);
         if (dx * dx + dy * dy >= 100) continue;
@@ -1061,7 +1091,8 @@ export function refreshHallucinatedMap(forward = false) {
         const visible = !!(game.viz_array?.[pickup.y]?.[pickup.x] & IN_SIGHT);
         if (mon && visible) {
             const glyph = monsterGlyph(mon);
-            show_glyph_cell(pickup.x, pickup.y, glyph.ch, glyph.color, glyph.dec, game._hilite_pet && mon.pet ? 1 : 0);
+            show_glyph_cell(pickup.x, pickup.y, glyph.ch, glyph.color, glyph.dec,
+                game._hilite_pet && mon.pet ? 1 : 0, glyph);
         }
     }
     for (let index = 0; index < objects.length; index++) {
@@ -1072,7 +1103,7 @@ export function refreshHallucinatedMap(forward = false) {
         const visible = !!(game.viz_array?.[obj.oy]?.[obj.ox] & IN_SIGHT);
         if (!visible || monsterAt(obj.ox, obj.oy)) continue;
         const glyph = objectGlyph(obj);
-        show_glyph_cell(obj.ox, obj.oy, glyph.ch, glyph.color, glyph.dec);
+        show_glyph_cell(obj.ox, obj.oy, glyph.ch, glyph.color, glyph.dec, 0, glyph);
     }
 
     for (const trap of game.level?.traps || []) {

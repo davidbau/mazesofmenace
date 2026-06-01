@@ -24,6 +24,39 @@ export function coerceCStr(x) {
     return String(x);
 }
 
+// C atoi: skip leading whitespace, optional +/- sign, parse digits
+// until non-digit; return 0 if no digits found.  Matches C's
+// <stdlib.h> atoi semantics — used by translated date-parsing,
+// option-value parsing (botl input fields, etc.).  Without this
+// the autostub returns 0 for everything, breaking any path that
+// reads numeric values from C-style strings.  Added 2026-05-31.
+export function atoi(s) {
+    const str = coerceCStr(s);
+    if (!str) return 0;
+    let i = 0;
+    // Skip whitespace (C's isspace: ' ', '\t', '\n', '\v', '\f', '\r').
+    while (i < str.length && /\s/.test(str[i])) i++;
+    let sign = 1;
+    if (i < str.length && (str[i] === '+' || str[i] === '-')) {
+        if (str[i] === '-') sign = -1;
+        i++;
+    }
+    let n = 0;
+    let saw = false;
+    while (i < str.length && str[i] >= '0' && str[i] <= '9') {
+        n = n * 10 + (str.charCodeAt(i) - 48);
+        saw = true;
+        i++;
+    }
+    return saw ? (sign * n) : 0;
+}
+
+// C atol: same as atoi but for `long`.  In our JS model both fit in
+// double precision; same impl.  Translated calls landed at autostub
+// before this — botl.js's number-input handlers would silently
+// return 0 instead of parsing the user's typed number.
+export function atol(s) { return atoi(s); }
+
 export function strcmp(a, b) {
     a = coerceCStr(a);
     b = coerceCStr(b);
@@ -117,8 +150,20 @@ export function strcat(a, b) {
 }
 
 export function strncat(a, b, n) {
+    // Defensive: in C `strncat(dst, src, n)` appends at most n chars.
+    // The C macro `Concat(base, delta, text)` expands to `Strncat(base
+    // ## _eos - delta, text, base ## spaceleft + delta)` where
+    // bufspaceleft = `buf_end - buf_eos`.  Translated JS computes
+    // bufspaceleft as `175 - buf` (because eos returns the array,
+    // not an index) which coerces to NaN.  When n is NaN/undefined
+    // treat it as Infinity (all of src) so the append works to its
+    // natural end and the dest array's `lim` bound prevents overrun.
+    // Without this, objnam.c::xname_flags FOOD_CLASS path emits an
+    // empty name -> "This  is delicious!" in seed1800 instead of
+    // "This fortune cookie is delicious!".  Added 2026-05-31.
+    const nVal = (n == null || Number.isNaN(n)) ? Infinity : n;
     const aStr = coerceCStr(a);
-    const bTail = coerceCStr(b).slice(0, n);
+    const bTail = coerceCStr(b).slice(0, nVal);
     const result = aStr + bTail;
     if (Array.isArray(a)) {
         const lim = a.length;

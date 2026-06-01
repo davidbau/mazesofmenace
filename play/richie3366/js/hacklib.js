@@ -71,7 +71,8 @@ export function depth(uz) {
     const dlevel = uz?.dlevel ?? 1;
     const dungeon = game?.dungeons?.[dnum];
     if (!dungeon) return dlevel;
-    return (dungeon.depth_start || 1) + dlevel - 1;
+    const ds = dungeon.depth_start;
+    return (ds != null ? (ds | 0) : 0) + dlevel - 1;
 }
 
 /** C: dungeon.c on_level(d_level *a, d_level *b) */

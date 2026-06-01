@@ -23,6 +23,8 @@ import {
     consumeCaveDwellerHumanIniInvUinitRoleRngLikeC,
     consumeRangerHumanIniInvUinitRoleRngLikeC,
     consumeTouristHumanIniInvUinitRoleRngLikeC,
+    consumeIniInvWishingDiscoverRngIfLikeC,
+    consumeIniInvMoneyRngIfLikeC,
 } from './u_init_role_rng.js';
 
 /**
@@ -118,6 +120,9 @@ export function runUInitRoleRngAfterMklevLikeC(g = game) {
 export function uInitInventoryAttrsLikeC(g = game) {
     runUInitRoleRngAfterMklevLikeC(g);
     applyRoleStartingUmoney0();
+    /* C: u_init_inventory_attrs — discover Wishing[] then Money[] (not inside u_init_role). */
+    consumeIniInvWishingDiscoverRngIfLikeC(g);
+    consumeIniInvMoneyRngIfLikeC(g);
     initIniInvStub(g);
     applyHiddenGoldToUmoney0(g);
     applyInitAttrPipeline(75);

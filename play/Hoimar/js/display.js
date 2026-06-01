@@ -263,7 +263,7 @@ function is_known_branch_stair(x, y) {
 }
 
 // ── Terrain to display character + color + DEC flag ──
-function terrain_glyph(loc, x, y) {
+export function terrain_glyph(loc, x, y) {
     const typ = display_wall_type(loc);
     if (rogue_level_display()) {
         switch (typ) {
@@ -823,8 +823,21 @@ export function map_level_for_wizard(revealTraps = false) {
             const trap = (game.level.traps || []).find(t => t.tx === x && t.ty === y);
             const covered = terrain_covers_objects(loc);
             let glyph = terrain_glyph(loc, x, y);
-            if (trap?.tseen && !covered) glyph = trap_glyph(trap);
-            else if (!covered) {
+            let mappedForeground = false;
+            if (trap?.tseen && !covered) {
+                glyph = trap_glyph(trap);
+                mappedForeground = true;
+            } else if (!covered) {
+                const ep = engraving_at(x, y);
+                if (ep && spot_shows_engravings(loc)) {
+                    // C ref: detect.c:show_map_spot(); magic mapping shows
+                    // engravings after known traps and before old object glyphs.
+                    ep.erevealed = true;
+                    glyph = engraving_glyph(loc);
+                    mappedForeground = true;
+                }
+            }
+            if (!mappedForeground && !covered) {
                 const obj = (game.level.objects || []).find(o => o.ox === x && o.oy === y);
                 if (obj && old.ch) {
                     const og = object_glyph_for_display(obj, x, y, visible);
@@ -1287,7 +1300,8 @@ function _statusLine2() {
         : `Xp:${u.ulevel || 1}`;
     const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
     const conditions = [];
-    if ((u.uencumber || 0) > 0) conditions.push('Burdened');
+    const encStatus = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+    if ((u.uencumber || 0) > 0) conditions.push(encStatus[u.uencumber] || 'Overloaded');
     if (u.uprops?.confusion || u.uconfusion) conditions.push('Conf');
     if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
     if (u.uprops?.blinded || u.uprops?.blind || u.ublind) conditions.push('Blind');
@@ -1298,7 +1312,9 @@ function _statusLine2() {
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp
         : (u.uhp || 0);
-    const ac = game._status_uac_override ?? u.uac ?? 10;
+    const statusAcOverrideActive = game._status_uac_override != null
+        && (game._status_uac_override_move == null || game._status_uac_override_move === game.moves);
+    const ac = statusAcOverrideActive ? game._status_uac_override : (u.uac ?? 10);
     const goldSymbol = rogue_level_display() ? '*' : '$';
     // C ref: botl.c:describe_level().
     const levelDesc = game.quest_dnum != null && u.uz?.dnum === game.quest_dnum
@@ -1486,6 +1502,7 @@ function _buildScreenOutput() {
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
         if (floorListActive) {
             const col = game._floor_list_col ?? 41;
+            const clearCol = Math.max(0, col - 1);
             for (let i = 0; i < game._floor_list_lines.length; i++) {
                 const line = game._floor_list_lines[i] || '';
                 const row = i + 1;
@@ -1493,16 +1510,16 @@ function _buildScreenOutput() {
                     && line
                     && line !== '(end)'
                     && !/^[a-z] [+-] /.test(line);
-                for (let c = 0; c < display.cols - col; c++)
-                    display.setCell(col + c, row, ' ', NO_COLOR, 0);
+                for (let c = clearCol; c < display.cols; c++)
+                    display.setCell(c, row, ' ', NO_COLOR, 0);
                 for (let c = 0; c < Math.min(line.length, display.cols - col); c++)
                     display.setCell(col + c, row, line[c], NO_COLOR, inverse ? ATR_INVERSE : 0);
             }
             if (game._floor_list_show_more !== false) {
                 const more = '--More--';
                 const row = Math.min(21, game._floor_list_lines.length + 1);
-                for (let c = 0; c < display.cols - col; c++)
-                    display.setCell(col + c, row, ' ', NO_COLOR, 0);
+                for (let c = clearCol; c < display.cols; c++)
+                    display.setCell(c, row, ' ', NO_COLOR, 0);
                 for (let c = 0; c < more.length; c++)
                     display.setCell(col + c, row, more[c], NO_COLOR, 0);
             }

@@ -342,21 +342,27 @@ export function mkobjOtypFoodClassIniInvLikeC() {
     return FOOD_CLASS_MKOBJ_WALK[FOOD_CLASS_MKOBJ_WALK.length - 1][0] | 0;
 }
 
+/** C: mkobj.c mksobj_init — FOOD_CLASS CORPSE (mkbox_cnts ICE_BOX, mksobj). */
+export function mksobjInitCorpseConsumeRngLikeC() {
+    let tryct = 50;
+    let cm = 0;
+    do {
+        cm = undeadToCorpseIniInvLikeC(rndmonnumIniInvLikeC());
+    } while (mvitalsNocorpseLikeC(game, cm) && --tryct > 0);
+    if (tryct === 0) {
+        /* C: corpsenm = PM_HUMAN — no extra RNG */
+    }
+    return cm | 0;
+}
+
 /** C: mkobj.c **`mksobj_init`** — **`FOOD_CLASS`** */
 export function mksobjInitFoodClassIniInvAfterOtypLikeC(otyp) {
     const t = otyp | 0;
     switch (t) {
-        case 174 /* CORPSE */: {
-            let tryct = 50;
-            let cm = 0;
-            do {
-                cm = undeadToCorpseIniInvLikeC(rndmonnumIniInvLikeC());
-            } while (mvitalsNocorpseLikeC(game, cm) && --tryct > 0);
-            if (tryct === 0) {
-                /* C: **`corpsenm = PM_HUMAN`** — no extra RNG. */
-            }
+        case 265 /* CORPSE */:
+        case 174 /* legacy table slot — same init when routed here */:
+            mksobjInitCorpseConsumeRngLikeC();
             break;
-        }
         case 175 /* EGG */:
             if (!rn2(3)) {
                 for (let tryct = 200; tryct > 0; tryct--) {
@@ -394,7 +400,7 @@ export function mksobjInitFoodClassIniInvAfterOtypLikeC(otyp) {
             break;
     }
     /* C: mkobj.c FOOD_CLASS — `Is_pudding` glob init has no quan roll; else `!rn2(6)` for quan 2. */
-    if (t !== 174 && t !== 179 && t !== 184 && !rn2(6)) {
+    if (t !== 265 && t !== 174 && t !== 179 && t !== 184 && !rn2(6)) {
         /* quan 2 */
     }
 }

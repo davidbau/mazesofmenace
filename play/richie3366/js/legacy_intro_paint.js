@@ -45,12 +45,22 @@ of us all:  Go bravely with %d!`;
 
 const MORE_STR = '--More--';
 
+/** C tty `putstr(datawin, 0, line)` — right-justify book title; Moloch block +4 cols from title. */
+function legacyIntroColForLineLikeC(line, inMoloch, g) {
+    if (inMoloch) return (g._legacyIntroCol ?? 17) + 4;
+    if (g._legacyIntroCol != null) return g._legacyIntroCol;
+    const col = Math.min(23, Math.max(17, 60 - line.length));
+    g._legacyIntroCol = col;
+    return col;
+}
+
 /**
  * @param {import('./game_display.js').GameDisplay} display
  */
 export function paintLegacyIntroIntoDisplay(display) {
     const g = game;
     display.clearScreen();
+    delete g._legacyIntroCol;
 
     const rawLines = LEGACY_TEMPLATE.split('\n');
     const rows = rawLines.map((raw) => substituteLegacyLine(raw.replace(/^\s+/, ''), g));
@@ -60,14 +70,15 @@ export function paintLegacyIntroIntoDisplay(display) {
     for (const line of rows) {
         if (line.startsWith('After the Creation')) inMoloch = true;
         if (line) {
-            const col = inMoloch ? 27 : 23;
+            const col = legacyIntroColForLineLikeC(line, inMoloch, g);
             display.putstr(col, r, line, NO_COLOR, 0);
         }
         if (line.includes('bides his time.')) inMoloch = false;
         r++;
     }
 
-    display.putstr(23, r, MORE_STR, NO_COLOR, 0);
-    display.setCursor(23 + MORE_STR.length, r);
+    const moreCol = g._legacyIntroCol ?? 17;
+    display.putstr(moreCol, r, MORE_STR, NO_COLOR, 0);
+    display.setCursor(moreCol + MORE_STR.length, r);
     display.cursorVisible = true;
 }

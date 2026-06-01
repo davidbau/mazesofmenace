@@ -88,6 +88,11 @@ function has_boulder_at(level, x, y) {
     return (level.objects || []).some(o => o.otyp === BOULDER && o.ox === x && o.oy === y);
 }
 
+function visible_gas_region_at(level, x, y) {
+    return (level.gasClouds || []).some((region) =>
+        region.ttl >= 0 && region.x === x && region.y === y);
+}
+
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
     if (!loc) return true;
@@ -101,6 +106,9 @@ function _blocks(level, x, y) {
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
     if (has_boulder_at(level, x, y)) return true;
+    // C refs: vision.c:does_block(), region.c:add_region().  Visible gas
+    // regions are opaque even though the underlying terrain is unchanged.
+    if (visible_gas_region_at(level, x, y)) return true;
     return false;
 }
 

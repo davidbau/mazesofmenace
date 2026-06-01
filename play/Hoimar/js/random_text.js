@@ -9,6 +9,16 @@ import { ENGRAVINGS_TEXT, RUMORS_FALSE_TEXT, RUMORS_TRUE_TEXT } from './random_t
 
 const MD_PAD_RUMORS = 60;
 const MD_PAD_BOGONS = 20;
+const EPITAPH_DATA_SIZE = 24075;
+const EPITAPH_LONG_LINE_REJECTS = [
+    [840, 847], [908, 944], [1005, 1046], [1167, 1168],
+    [1469, 1476], [1777, 1796], [1917, 1930], [2711, 2745],
+    [3046, 3052], [3173, 3183], [3724, 3760], [3941, 3951],
+    [4372, 4407], [5248, 5260], [5801, 5803], [10185, 10186],
+    [11867, 11870], [11991, 12002], [15363, 15366], [18127, 18146],
+    [18807, 18809], [21390, 21396], [21577, 21578], [21879, 21883],
+    [22244, 22254], [22315, 22316], [23397, 23413],
+];
 const COOKIE_MARKER = '[cookie] ';
 const BOGUSMONSIZE = 100;
 const BOGON_CODES = '-_+|=';
@@ -47,12 +57,19 @@ export function randomEngraving() {
 }
 
 export function randomEpitaph() {
-    // C ref: engrave.c:make_grave() -> rumors.c:get_rnd_text(EPITAPHFILE).
-    // The padded epitaph data is 24075 bytes in NetHack 5.0. The actual
-    // headstone text is not displayed in current evidence, but the data-file
-    // offset roll is part of the core RNG stream.
-    rn2(24075);
+    // C refs: engrave.c:make_grave(), rumors.c:get_rnd_text()/get_rnd_line(),
+    // util/makedefs.c:do_rnd_access_file(). The headstone text is not
+    // displayed in current evidence, but long generated epitaph lines can
+    // reject early offsets and retry the data-file roll up to ten times.
+    for (let trylimit = 10; trylimit > 0; --trylimit) {
+        const offset = rn2(EPITAPH_DATA_SIZE);
+        if (!epitaphOffsetRejected(offset)) break;
+    }
     return '';
+}
+
+function epitaphOffsetRejected(offset) {
+    return EPITAPH_LONG_LINE_REJECTS.some(([start, end]) => offset >= start && offset < end);
 }
 
 export function getRumor(truth, excludeCookie) {

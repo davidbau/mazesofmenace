@@ -35,6 +35,10 @@ import { doZapCmd } from './dozap.js';
 import { doReadHeroScrollCmdLikeC } from './read_scroll_hero.js';
 import { doBumpMeleeAttack } from './attack.js';
 import { tryPeacefulSwap } from './peaceful_displace.js';
+import {
+    safemonDoAttackGateLikeC,
+    safemonDoAttackBlockPlinesLikeC,
+} from './uhitm_hero.js';
 import { blocksMovementAt, diagonalHeroMoveBlocked, isClosedDoorLoc } from './walkable.js';
 import {
     doopenIndirHeroLikeC,
@@ -428,9 +432,30 @@ export async function domoveHeroDirLikeC(dx, dy) {
     const mtmp = mAt(newx, newy);
     if (mtmp) {
         if (mtmp.mpeaceful | 0) {
+            const gate = safemonDoAttackGateLikeC(g, mtmp);
+            if (gate === 'stop' || gate === 'frozen') {
+                await safemonDoAttackBlockPlinesLikeC(g, mtmp, gate);
+                newsym(newx, newy);
+                if (game.u) game.u.dz = 0;
+                clearPendingMessageAndToplineLikeC();
+                game._overlayScreen = null;
+                game._inventoryMode = false;
+                vision_recalc(1);
+                return true;
+            }
             const ox = u.ux, oy = u.uy;
             const { swapped } = await tryPeacefulSwap(mtmp, ox, oy, newx, newy);
             if (swapped) {
+                /* C: tourist D:1 peaceful swap — step-1 peel runs **`dog_goal`** floor+invent
+                 * **`obj_resists`** then **`dog_move`** **`mfndpos`** (~2482+ on **`seed0900`**). */
+                if (
+                    g.urole?.abbr === 'Tou'
+                    && (u.uz?.dnum | 0) === 0
+                    && (u.uz?.dlevel | 0) === 1
+                ) {
+                    const ctx = g.context || (g.context = {});
+                    ctx._touristD1PostSwapDogGoalPrescanLikeC = true;
+                }
                 u.ux0 = ox;
                 u.uy0 = oy;
                 u.dx = dx;

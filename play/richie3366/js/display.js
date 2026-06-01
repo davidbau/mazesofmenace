@@ -45,6 +45,7 @@ import {
 } from './const.js';
 import { acurr, getStrengthStrLikeC } from './attrib.js';
 import { rankHeroTitleLikeC } from './roles.js';
+import { upstartLikeC } from './objnam.js';
 import { findAc } from './u_init_find_ac.js';
 import { describeLevelStatusSlotLikeC } from './describe_level.js';
 import { mungspacesLikeC } from './hacklib.js';
@@ -1419,7 +1420,7 @@ function render_map_row(y) {
 function _statusLine1() {
     const u = game.u;
     if (!u) return '';
-    const name = game.plname || 'Hero';
+    const name = upstartLikeC(game.plname || 'Hero');
     const role = rankHeroTitleLikeC(game);
     const title = `${name} the ${role}`;
     const stats = `St:${getStrengthStrLikeC()} Dx:${acurr(A_DEX) || '?'} Co:${acurr(A_CON) || '?'} In:${acurr(A_INT) || '?'} Wi:${acurr(A_WIS) || '?'} Ch:${acurr(A_CHA) || '?'}`;

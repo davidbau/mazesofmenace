@@ -50,7 +50,10 @@ export function parseNethackrc(rc) {
                 else if (key === 'race') { result.race = val; result.explicitRaceInRc = true; }
                 else if (key === 'gender') { result.gender = val; result.explicitGenderInRc = true; }
                 else if (key === 'align') { result.align = val; result.explicitAlignInRc = true; }
-                else if (key === 'playmode' && val === 'debug') result.flags.debug = true;
+                else if (key === 'playmode') {
+                    if (val === 'debug') result.flags.debug = true;
+                    else if (val === 'explore') result.flags.discover = true;
+                }
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
                     if (val === 'none' || val === 'n') result.preferred_pet = 'n';

@@ -3,7 +3,9 @@
 
 import { game } from './gstate.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { rndmonstLikeC } from './makemon_rndmonst.js';
+import { objectOcMaterial } from './obj_oc_material_data.js';
+import { NON_PM, rndmonstLikeC } from './makemon_rndmonst.js';
+import { permonstFromMndxLikeC, verysmall } from './mondata.js';
 import { P_BOW, P_SHURIKEN, OTYP_LOADSTONE, OTYP_LUCKSTONE, OTYP_GOLD_PIECE } from './const.js';
 import { OC_SKILL_ROW_BY_OTYP } from './obj_oc_skill_data.js';
 import { rnd, rn2, rn1, rne } from './rng.js';
@@ -22,6 +24,8 @@ import {
     NH5_ROCK_CLASS,
     NH5_AMULET_CLASS,
     NH5_COIN_CLASS,
+    NH5_BALL_CLASS,
+    NH5_CHAIN_CLASS,
 } from './nh5_objclass.js';
 import {
     WEAPON_CLASS_MKOBJ_OC_PROB_ROWS,
@@ -29,6 +33,8 @@ import {
     TOOL_CLASS_MKOBJ_OC_PROB_ROWS,
     GEM_CLASS_MKOBJ_OC_PROB_ROWS,
     RING_CLASS_MKOBJ_OC_PROB_ROWS,
+    AMULET_CLASS_MKOBJ_OC_PROB_ROWS,
+    COIN_CLASS_MKOBJ_OC_PROB_ROWS,
 } from './mkobj_mklev_oc_prob_data.js';
 import {
     POTION_CLASS_MKOBJ_OC_PROB_ROWS,
@@ -36,8 +42,10 @@ import {
     SPBOOK_CLASS_MKOBJ_OC_PROB_ROWS,
 } from './mkobj_wizard_ini_inv_data.js';
 import { SCROLL_CLASS_MKOBJ_OC_PROB_ROWS } from './mkobj_scroll_class_rng_like_c.js';
+import { consumeMksobjCorpseSpeRngLikeC } from './mkobj_corpse.js';
 import {
     mkobjOtypFoodClassIniInvLikeC,
+    mksobjInitCorpseConsumeRngLikeC,
     mksobjInitFoodClassIniInvAfterOtypLikeC,
 } from './mkobj_food_class_rng_like_c.js';
 
@@ -53,6 +61,19 @@ const BOXIPROBS = Object.freeze([
     [5, NH5_RING_CLASS],
     [1, NH5_AMULET_CLASS],
 ]);
+
+/** C: objects.h — mksobj_init ARMOR_CLASS curse branch otyps. */
+const OTYP_HELM_OF_OPPOSITE_ALIGNMENT = 100;
+const OTYP_GAUNTLETS_OF_FUMBLING = 161;
+const OTYP_FUMBLE_BOOTS = 172;
+const OTYP_LEVITATION_BOOTS = 173;
+/** C: objects.h — mksobj_init AMULET_CLASS curse branch otyps. */
+const OTYP_AMULET_OF_STRANGULATION = 203;
+const OTYP_AMULET_OF_RESTFUL_SLEEP = 204;
+const OTYP_AMULET_OF_CHANGE = 206;
+
+/** C: objects.h — `CORPSE` (NH5 otyp **265**; ICE_BOX mkbox_cnts uses mksobj). */
+const OTYP_CORPSE = 265;
 
 /** C: objects.h — floor containers (mksobj_init TOOL + mkbox_cnts). */
 const OTYP_LARGE_BOX = 215;
@@ -130,11 +151,6 @@ const LEGACY_OCLASS_TO_NH5 = new Map([
     [11, NH5_SPBOOK_CLASS],
 ]);
 
-/** C: objects.h AMULET macros (prob 1 each in mkobj walk). */
-const AMULET_CLASS_MKOBJ_OC_PROB_ROWS = Object.freeze([
-    [191, 1], [192, 1], [193, 1], [194, 1], [195, 1], [196, 1], [197, 1], [198, 1],
-]);
-
 /** C `objects.h` **`ROCK("rock")`** — NH5 otyp **473**. */
 const OTYP_ROCK = 473;
 const OTYP_WAN_WISHING = 413;
@@ -158,11 +174,27 @@ function weaponMultigenMklevLikeC(otyp) {
     return t >= OTYP_FIRST_PROJECTILE && t <= OTYP_LAST_PROJECTILE;
 }
 
-/** C: objnam.c erosion_matters — GEM/food/etc. skip mkobj_erosions. */
+/** C: obj.h is_poisonable — same skill band as multigen (permapoisoned N/A in mklev). */
+function isPoisonableWeaponMklevLikeC(otyp) {
+    return weaponMultigenMklevLikeC(otyp);
+}
+
+/** C: objclass.h obj_material_types (subset used by mkobj.c erosion). */
+const MAT_LIQUID = 1;
+const MAT_WOOD = 8;
+const MAT_DRAGON_HIDE = 10;
+const MAT_IRON = 11;
+const MAT_COPPER = 13;
+const MAT_PLASTIC = 18;
+const MAT_GLASS = 19;
+
+/** C: objnam.c erosion_matters — weptool-only for TOOL_CLASS. */
 function erosionMattersMklevLikeC(oclass) {
     switch (oclass | 0) {
     case NH5_WEAPON_CLASS:
     case NH5_ARMOR_CLASS:
+    case NH5_BALL_CLASS:
+    case NH5_CHAIN_CLASS:
         return true;
     case NH5_TOOL_CLASS:
         return false;
@@ -171,19 +203,69 @@ function erosionMattersMklevLikeC(oclass) {
     }
 }
 
-/** C: mkobj.c mksobj_init tail — mkobj_erosions (WEAPON/ARMOR in mklev). */
+/** C: mkobj.c is_flammable — candles are not flammable for erosion. */
+function isFlammableMklevLikeC(otyp) {
+    const t = otyp | 0;
+    if (t === 219 || t === 220) return false;
+    const omat = objectOcMaterial(t) | 0;
+    return (omat <= MAT_WOOD && omat !== MAT_LIQUID) || omat === MAT_PLASTIC;
+}
+
+/** C: mkobj.c is_rottable */
+function isRottableMklevLikeC(otyp) {
+    const omat = objectOcMaterial(otyp) | 0;
+    return (omat <= MAT_WOOD && omat !== MAT_LIQUID) || omat === MAT_DRAGON_HIDE;
+}
+
+/** C: objclass.h is_rustprone / is_corrodeable / is_crackable */
+function isRustproneMklevLikeC(otyp) {
+    return (objectOcMaterial(otyp) | 0) === MAT_IRON;
+}
+
+function isCorrodeableMklevLikeC(otyp) {
+    const m = objectOcMaterial(otyp) | 0;
+    return m === MAT_COPPER || m === MAT_IRON;
+}
+
+function isCrackableMklevLikeC(otyp, oclass) {
+    return (objectOcMaterial(otyp) | 0) === MAT_GLASS && (oclass | 0) === NH5_ARMOR_CLASS;
+}
+
+/** C: objclass.h is_damageable */
+function isDamageableMklevLikeC(otyp, oclass) {
+    return (
+        isRustproneMklevLikeC(otyp) ||
+        isFlammableMklevLikeC(otyp) ||
+        isRottableMklevLikeC(otyp) ||
+        isCorrodeableMklevLikeC(otyp) ||
+        isCrackableMklevLikeC(otyp, oclass)
+    );
+}
+
+/** C: mkobj.c may_generate_eroded */
+function mayGenerateErodedMklevLikeC(otyp, oclass) {
+    if ((game.moves | 0) <= 1 && !game.in_mklev) return false;
+    if (!erosionMattersMklevLikeC(oclass)) return false;
+    if (!isDamageableMklevLikeC(otyp, oclass)) return false;
+    return true;
+}
+
+/** C: mkobj.c mksobj_init tail — mkobj_erosions */
 export function mkobjErosionsMklevLikeC(otyp, oclass) {
-    if (!game.in_mklev) return;
-    if (!erosionMattersMklevLikeC(oclass)) return;
-    void otyp;
-    if (!rn2(100)) return;
-    if (!rn2(80)) {
+    if (!mayGenerateErodedMklevLikeC(otyp, oclass)) return;
+    if (!rn2(100)) {
+        return;
+    }
+    if (
+        !rn2(80) &&
+        (isFlammableMklevLikeC(otyp) || isRustproneMklevLikeC(otyp) || isCrackableMklevLikeC(otyp, oclass))
+    ) {
         let eroded = 0;
         do {
             eroded++;
         } while (eroded < 3 && !rn2(9));
     }
-    if (!rn2(80)) {
+    if (!rn2(80) && (isRottableMklevLikeC(otyp) || isCorrodeableMklevLikeC(otyp))) {
         let eroded2 = 0;
         do {
             eroded2++;
@@ -223,7 +305,8 @@ export function mkobjPickOclassFromMkobjprobsLikeC() {
     return oclass;
 }
 
-function nh5OclassFromLet(let_) {
+/** mklev.js legacy oclass literals only (not NH5 enum indices). */
+function nh5OclassFromLegacyLet(let_) {
     if (LEGACY_OCLASS_TO_NH5.has(let_ | 0)) return LEGACY_OCLASS_TO_NH5.get(let_ | 0);
     return let_ | 0;
 }
@@ -253,7 +336,7 @@ function mkobjPickOtypForClassLikeC(oclass) {
     case NH5_AMULET_CLASS:
         return mkobjOtypFromProbRowsLikeC(AMULET_CLASS_MKOBJ_OC_PROB_ROWS);
     case NH5_COIN_CLASS:
-        return OTYP_GOLD_PIECE;
+        return mkobjOtypFromProbRowsLikeC(COIN_CLASS_MKOBJ_OC_PROB_ROWS);
     default:
         return 0;
     }
@@ -297,7 +380,11 @@ function mkboxCntsMklevLikeC(box) {
     }
     for (n = rn2(n + 1); n > 0; n--) {
         if (t === OTYP_ICE_BOX) {
-            mkobjMklevConsumeRngLikeC(NH5_FOOD_CLASS, false);
+            /* C: mkobj.c mkbox_cnts — mksobj(CORPSE, TRUE, FALSE); age=0 (no RNG). */
+            rnd(2);
+            const corpsenm = mksobjInitCorpseConsumeRngLikeC();
+            mkobjErosionsMklevLikeC(OTYP_CORPSE, NH5_FOOD_CLASS);
+            consumeMksobjCorpseSpeRngLikeC(corpsenm);
             continue;
         }
         let tprob = rnd(100);
@@ -309,7 +396,7 @@ function mkboxCntsMklevLikeC(box) {
                 break;
             }
         }
-        let otyp = mkobjMklevConsumeRngLikeC(oclass, false);
+        let otyp = mkobjMklevConsumeRngLikeC(oclass, false, true);
         if (oclass === NH5_COIN_CLASS) {
             rnd(levelDifficultyMklevLikeC() + 2);
             rnd(75);
@@ -353,15 +440,27 @@ function mksobjInitWeaponLikeC(otyp, artif) {
     } else {
         blessorcurseLikeC(10);
     }
-    if (!rn2(100)) { /* is_poisonable — broad stub */ }
+    if (isPoisonableWeaponMklevLikeC(otyp) && !rn2(100)) {
+        /* otmp->opoisoned = 1 */
+    }
     if (artif && !rn2(20)) { /* nartifact_exist() stub 0 */ }
 }
 
-function mksobjInitArmorLikeC(artif) {
-    if (rn2(10) && (!rn2(11))) {
+/** C: mkobj.c mksobj_init — ARMOR_CLASS (full otyp guards; not ini_inv leather-only path). */
+function mksobjInitArmorLikeC(otyp, artif) {
+    const t = otyp | 0;
+    if (
+        rn2(10) &&
+        (t === OTYP_FUMBLE_BOOTS ||
+            t === OTYP_LEVITATION_BOOTS ||
+            t === OTYP_HELM_OF_OPPOSITE_ALIGNMENT ||
+            t === OTYP_GAUNTLETS_OF_FUMBLING ||
+            !rn2(11))
+    ) {
+        /* curse(otmp); otmp->spe = -rne(3) */
         rne(3);
     } else if (!rn2(10)) {
-        rn2(2);
+        rn2(2); /* otmp->blessed */
         rne(3);
     } else {
         blessorcurseLikeC(10);
@@ -456,8 +555,17 @@ function mksobjInitToolLikeC(otyp, otmp) {
         }
         otmp.olocked = !!rn2(5);
         otmp.otrapped = !rn2(10);
-        if (!rn2(100) && otmp.otrapped) {
+        /* C: otmp->tknown = otmp->otrapped && !rn2(100) — trap check before rn2(100). */
+        if (otmp.otrapped && !rn2(100)) {
             /* tknown when trap obvious */
+        }
+        /* FALLTHROUGH */
+    case OTYP_ICE_BOX:
+    case OTYP_SACK:
+    case OTYP_OILSKIN_SACK:
+    case OTYP_BAG_OF_HOLDING:
+        if (!otmp) {
+            otmp = { otyp: t, olocked: false, otrapped: false };
         }
         mkboxCntsMklevLikeC(otmp);
         break;
@@ -503,27 +611,45 @@ function mksobjInitGemLikeC(otyp) {
 
 /** C: mkobj.c mksobj_init ROCK_CLASS STATUE — rndmonnum + optional nested mkobj(SPBOOK). */
 function mksobjInitStatueLikeC(otyp) {
-    if ((otyp | 0) !== OTYP_STATUE) return;
-    rndmonstLikeC(); /* rndmonnum → rndmonst_adj */
-    const ld = depth_of_level(game.u?.uz) | 0;
-    if (rn2(Math.trunc(ld / 2) + 10) > 10) {
-        mkobjMklevConsumeRngLikeC(11, false); /* SPBOOK_no_NOVEL */
+    if ((otyp | 0) !== OTYP_STATUE) return null;
+    const corpsenm = rndmonstLikeC();
+    if ((corpsenm | 0) === NON_PM) return null;
+    const ptr = permonstFromMndxLikeC(corpsenm);
+    if (
+        ptr &&
+        !verysmall(ptr) &&
+        rn2(Math.trunc(levelDifficultyMklevLikeC() / 2) + 10) > 10
+    ) {
+        mkobjMklevConsumeRngLikeC(LET_SPBOOK_NO_NOVEL, false); /* SPBOOK_no_NOVEL */
     }
+    return corpsenm | 0;
 }
 
-/** C: mkobj.c mksobj — STATUE corpsenm spe after mksobj_init. */
+/** C: mkobj.c mksobj — STATUE/FIGURINE gender spe when corpsenm unset (mksobj switch). */
 export function mksobjPostInitStatueLikeC(otyp) {
     if ((otyp | 0) !== OTYP_STATUE) return;
     rn2(2);
 }
 
+/** C: mkobj.c mksobj — after mksobj_init (incl. mkobj_erosions): corpse/statue spe. */
+export function mksobjTailConsumeRngLikeC(otyp, oclass, corpsenm) {
+    mkobjErosionsMklevLikeC(otyp, oclass);
+    if (corpsenm !== null) {
+        consumeMksobjCorpseSpeRngLikeC(corpsenm);
+    } else if ((otyp | 0) === OTYP_STATUE) {
+        /* C: mksobj switch when corpsenm still NON_PM after init */
+        mksobjPostInitStatueLikeC(otyp);
+    }
+}
+
 /**
  * C: mkobj.c mkobj + mksobj(TRUE) init tail — consumes RNG only (no invent graph).
- * @param {number} let_ oclass (mklev legacy or NH5 index)
+ * @param {number} let_ oclass (mklev legacy let, or NH5 index when `nh5Oclass`)
  * @param {boolean} artif
+ * @param {boolean} [nh5Oclass] when true, `let_` is already NH5 (mkbox_cnts, NH5 fill paths)
  * @returns {number} otyp
  */
-export function mkobjMklevConsumeRngLikeC(let_, artif) {
+export function mkobjMklevConsumeRngLikeC(let_, artif, nh5Oclass = false) {
     const letRaw = let_ | 0;
     let oclass;
     let otyp;
@@ -532,16 +658,15 @@ export function mkobjMklevConsumeRngLikeC(let_, artif) {
         otyp = rndClassMklevOtypLikeC(OTYP_SPBOOK_CLASS_FIRST, OTYP_SPE_BLANK_PAPER);
         oclass = NH5_SPBOOK_CLASS;
     } else {
-        oclass = nh5OclassFromLet(letRaw);
+        oclass = nh5Oclass ? letRaw : nh5OclassFromLegacyLet(letRaw);
         if (oclass === NH5_RANDOM_CLASS) {
             oclass = mkobjPickOclassFromMkobjprobsLikeC();
         }
         otyp = mkobjPickOtypForClassLikeC(oclass);
     }
     rnd(2);
-    mksobjInitMklevLikeC(otyp, oclass, artif);
-    mksobjPostInitStatueLikeC(otyp);
-    mkobjErosionsMklevLikeC(otyp, oclass);
+    const corpsenm = mksobjInitMklevLikeC(otyp, oclass, artif);
+    mksobjTailConsumeRngLikeC(otyp, oclass, corpsenm);
     return otyp | 0;
 }
 
@@ -551,7 +676,9 @@ export function mkobjMklevConsumeRngLikeC(let_, artif) {
  * @param {number} oclass NH5 class
  * @param {boolean} artif
  */
+/** @returns {number|null} corpsenm when CORPSE init ran (C mksobj tail spe). */
 export function mksobjInitMklevLikeC(otyp, oclass, artif, otmp) {
+    let corpsenm = null;
     switch (oclass) {
     case NH5_SCROLL_CLASS:
     case NH5_POTION_CLASS:
@@ -567,28 +694,43 @@ export function mksobjInitMklevLikeC(otyp, oclass, artif, otmp) {
         mksobjInitRingLikeC(otyp);
         break;
     case NH5_FOOD_CLASS:
-        mksobjInitFoodClassIniInvAfterOtypLikeC(otyp);
+        if ((otyp | 0) === OTYP_CORPSE) {
+            corpsenm = mksobjInitCorpseConsumeRngLikeC();
+        } else {
+            mksobjInitFoodClassIniInvAfterOtypLikeC(otyp);
+        }
         break;
     case NH5_WEAPON_CLASS:
         mksobjInitWeaponLikeC(otyp, artif);
         break;
     case NH5_ARMOR_CLASS:
-        mksobjInitArmorLikeC(artif);
+        mksobjInitArmorLikeC(otyp, artif);
         break;
     case NH5_GEM_CLASS:
         mksobjInitGemLikeC(otyp);
         break;
     case NH5_ROCK_CLASS:
-        mksobjInitStatueLikeC(otyp);
+        corpsenm = mksobjInitStatueLikeC(otyp);
         break;
-    case NH5_AMULET_CLASS:
-        if (rn2(10)) blessorcurseLikeC(10);
-        else blessorcurseLikeC(10);
+    case NH5_AMULET_CLASS: {
+        const t = otyp | 0;
+        if (
+            rn2(10) &&
+            (t === OTYP_AMULET_OF_STRANGULATION ||
+                t === OTYP_AMULET_OF_CHANGE ||
+                t === OTYP_AMULET_OF_RESTFUL_SLEEP)
+        ) {
+            /* curse(otmp) — no RNG */
+        } else {
+            blessorcurseLikeC(10, otmp);
+        }
         break;
+    }
     case NH5_TOOL_CLASS:
         mksobjInitToolLikeC(otyp, otmp);
         break;
     default:
         break;
     }
+    return corpsenm;
 }

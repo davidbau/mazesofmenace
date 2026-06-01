@@ -42,3 +42,18 @@ export function createGasCloud(x, y, cloudsize, damage) {
     game.vision_full_recalc = 1;
     return region;
 }
+
+export function createGasCloudSelection(points, damage = 0) {
+    const coords = [];
+    for (const point of points || []) {
+        if (Array.isArray(point)) coords.push({ x: point[0], y: point[1] });
+        else if (point && Number.isFinite(point.x) && Number.isFinite(point.y))
+            coords.push({ x: point.x, y: point.y });
+    }
+    game.level.regions ??= [];
+    const region = { type: 'gas_cloud', damage, visible: true, coords };
+    game.level.regions.push(region);
+    vision_reset();
+    game.vision_full_recalc = 1;
+    return region;
+}
