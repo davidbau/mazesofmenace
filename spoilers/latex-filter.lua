@@ -131,12 +131,14 @@ function Table(blk)
   end
 
   -- Quoted-price conversion table (Charisma / Markups | Mult | 20 | ... | 500):
-  -- Pandoc's auto-sizing is mostly right but leaves the 500 column a
-  -- touch tight for "1333"; nudge several points away from the
-  -- generous label column and into the 500 column.
+  -- The longest label row ("8–10, 11–15^T^, 16–17^T2^") wraps to two
+  -- lines unless we widen the label column. Take ~4pt back from the
+  -- Mult column (whose widest cell "×0.375" leaves whitespace) and
+  -- ~1pt from the 500 column (still wider than auto so "1333" fits).
   if #blk.colspecs == 12 and headers[1] == "Charisma / Markups" and headers[2] == "Mult" then
-    blk.colspecs[1][2]  = blk.colspecs[1][2]  - 0.015  -- label: −~5pt
-    blk.colspecs[12][2] = blk.colspecs[12][2] + 0.012  -- 500:   +~4pt
+    blk.colspecs[1][2]  = blk.colspecs[1][2]  + 0.015  -- label: +~5pt
+    blk.colspecs[2][2]  = blk.colspecs[2][2]  - 0.012  -- Mult:  −~4pt
+    blk.colspecs[12][2] = blk.colspecs[12][2] - 0.003  -- 500:   −~1pt
     return blk
   end
 
@@ -156,6 +158,21 @@ function Table(blk)
       blk,
       pandoc.RawBlock("latex", "\\endgroup"),
     }
+  end
+
+  -- Armor tables (Armor | AC | MC | Wt | Cost | Material | Notes):
+  -- pandoc auto-sizes Material too narrow for "dragonhide" (10 chars
+  -- vs the "Material" header's 8), causing dragon-scale-mail rows to
+  -- render "dragonhideMagic resistance" with no space. Shift ~3% of
+  -- linewidth from Notes to Material so "dragonhide" fits.
+  if #blk.colspecs == 7
+      and headers[1] == "Armor" and headers[2] == "AC"
+      and headers[3] == "MC" and headers[4] == "Wt"
+      and headers[5] == "Cost" and headers[6] == "Material"
+      and headers[7] == "Notes" then
+    blk.colspecs[6][2] = blk.colspecs[6][2] + 0.03
+    blk.colspecs[7][2] = blk.colspecs[7][2] - 0.03
+    return blk
   end
 
   -- The "Tool | Use" tables in the Tools chapter (containers,
@@ -178,9 +195,10 @@ end
 -- gem-throwing negotiation playbook is in Luck and Fortune.") — in
 -- print, the page number helps the reader jump there.
 local always_pageref = {
-  ["more-ways-to-die"] = true,
+  ["ways-to-die-instantly"] = true,
   ["luck-and-fortune"] = true,
   ["field-guide-to-dungeon-fauna"] = true,
+  ["thrones"] = true,
 }
 
 -- "see [X](#anchor)" cross-references: in print, append a page

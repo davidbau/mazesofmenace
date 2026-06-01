@@ -2510,8 +2510,9 @@ Against an air elemental at speed 36, the baseline ratio is 3.0
 speed boots the ratio is 1.8. Speed boots help, but the gap is
 still hopeless on foot: this is a ranged-or-skip fight.
 
-**The two intrinsic states above 12.** Both work by adding a
-**probabilistic +12 bonus** to each allocation:
+**Intrinsic speed is probabilistic.** There are two levels of
+intrinsics that can raise your speed over 12, and both add a
+**+12 bonus** to each allocation with some random chance:
 
 - **Fast** (intrinsic, gained from certain corpses): the bonus
   lands on roughly **one allocation in three**. Average effective
@@ -2815,7 +2816,7 @@ or below.
 or Nazgul breath puts you to sleep for several turns. If you
 are alone in a corridor it costs you a couple of rounds. If
 you are surrounded by anything else, the surrounding monsters
-chew through your HP while you cannot move. Sleep resistance
+hit you freely while you cannot move. Sleep resistance
 comes from any elf, elven mummy, or giant corpse, and from
 several roles' starting kits (Wizard's cloak of MR, Ranger's
 elven cloak). Eat for it before descending into the Mines or
@@ -2846,8 +2847,7 @@ Mumakil are solo two-attack bruisers (4d12 butt plus 2d6
 bite) that hit harder than anything else in the upper
 dungeon. Both wander mid-level rooms.
 
-**Golems** (`'`). Golems are class `'` (apostrophe), not
-`P` (which is puddings). Most are slow but several hit
+**Golems** (`'`). Most are slow but several hit
 disproportionately hard. The rope golem grapples on a hugs
 attack and pins you in place for adjacent friends to chew on.
 Clay and stone golems deliver 3d10 and 3d8 in a single claw.
@@ -3099,12 +3099,10 @@ engage in your starting iron suit if you can avoid it.
 
 **Eat the globs.** A pudding leaves a **glob** rather than a
 corpse, and the globs are some of the best food in the game.
-(That's *instead* of a corpse, not in addition to one: the old
-3.4-era "pudding farm for endless altar fodder" trick doesn't
-work in 5.0. The reward from a split pudding is more globs, not
-more sacrifice meat.)
-They're slow to spoil (about 500 turns of edibility, twice a
-normal corpse) and packed with resistances. A brown-pudding glob
+One difference between a glob and a corpse is that you cannot
+sacrifice globs at an altar, so puddings can't be farmed for
+offerings. The globs are slow to spoil (about 500 turns of
+edibility, twice a normal corpse) and packed with resistances. A brown-pudding glob
 grants **cold, shock, and poison resistance** over repeated
 eats; a gray-ooze glob grants **fire, cold, and poison
 resistance**; a black-pudding glob also grants **cold, shock,
@@ -5716,15 +5714,10 @@ but powerful.
 
 []{#wand-make-invisible}
 **Make invisible.** Turns a target (or yourself, if you zap it
-reflexively) invisible. In older editions, self-zapping granted a
-permanent invisibility intrinsic, which made this a coveted find. In
-5.0, it gives you 31–45 turns of temporary invisibility.
-Still useful for slipping through a dangerous area or turning a fight
-in your favor, but not a permanent upgrade. For lasting invisibility,
-you want a ring of invisibility or a cloak. The wand is now a tactical
-tool rather than a build enabler: think of it as "invisibility on
-demand for the next minute" rather than "invisibility forever from one
-lucky find."
+reflexively) invisible for 31–45 turns. Useful for slipping
+through a dangerous area or turning a fight in your favor. For
+lasting invisibility, use a ring of invisibility or a cloak of
+invisibility.
 
 []{#wand-stasis}
 **Stasis.** A new 5.0 wand that freezes every monster on the level
@@ -6349,15 +6342,56 @@ water walking or jumping. Haste self alone reaches *very fast*
 just like the boots; maintenance costs about 10 Pw every 150
 turns at Skilled.
 
-**Cloak of magic resistance** provides magic resistance in the cloak
-slot and frees up other slots for different resistances. However,
-be aware that since 3.6, **magic cancellation (MC) values were
-overhauled**: the cloak of magic resistance now provides only MC1,
-not MC3. The **cloak of protection** is now the only single item
-that provides MC3, which blocks 90% of monster special attacks (down
-from 98% in older editions). A ring of protection now contributes
-+1 MC, and the new amulet of guarding provides +2 MC, giving you
-more ways to assemble full magic cancellation coverage.
+**Magic cancellation (MC).** Worn armor pieces contribute a
+hidden defensive value called MC, capped at 3. When a monster
+lands a "special attack" on you (gaze, breath, touch effect,
+monster-cast spell, sticky grab, status inflictor), the game
+rolls to *negate* the attack, with the block chance set by your
+MC level:
+
+| MC | Block chance |
+|----|--------------|
+|  0 | 0%           |
+|  1 | 30%          |
+|  2 | 60%          |
+|  3 | 90%          |
+
+Your MC is the highest `MC` value among your worn armor pieces,
+plus +1 if you have extrinsic Protection (+2 if the Protection
+comes via the **amulet of guarding**), capped at 3. The most
+common single-item paths to MC3 are wearing the cloak of
+protection, or wearing any MC2 piece together with extrinsic
+Protection, or stacking the amulet of guarding's +2 onto an MC1
+piece.
+
+**MC is not the same as the magic resistance intrinsic.** Magic
+resistance is a binary on/off flag that blocks specific *magical*
+attacks at 100%: wand-of-death rays, magic missile, the touch of
+death spell, polymorph beams, magic traps, and so on. MC, by
+contrast, dampens a different category of special attacks at a
+percentage rate: cockatrice touch petrification, mind flayer brain
+suck, monster cancellation, status inflictors, and the like. The
+two defenses cover different threats, and an ascending hero
+generally wants both.
+
+**Cloak of magic resistance vs. cloak of protection.** These two
+cloaks cover those two different defenses:
+
+- The **cloak of magic resistance** grants the magic resistance
+  intrinsic and contributes MC1. It is the simplest source of
+  magic resistance in the game; mid-game heroes who haven't yet
+  wished for gray dragon scale mail rely on it.
+- The **cloak of protection** grants no magic resistance, but
+  contributes MC3 on its own. It is the late-game choice once you
+  already have magic resistance from another source.
+
+The canonical ascension kit takes both defenses by putting
+**gray dragon scale mail** in the body slot (which grants magic
+resistance there) and then wearing the **cloak of protection**
+in the cloak slot (for the MC3). Before you have gray dragon
+scale mail, the cloak of magic resistance is doing essential
+work in the cloak slot, and the cloak of protection waits in
+your pack.
 
 For the AC, MC, weight, cost, and granted-power numbers on every
 piece of armor in the game, see the
@@ -7737,8 +7771,9 @@ throne, the Amulet pickup, Orcus Town's lamp/marker, fountain
 luck, or wresting. The era of the bottomless wishing wand is over
 (see [Key Wands](#key-wands) for the full mechanics).
 
-Once you're fully equipped, the staircase down leads to Gehennom.
-Take a moment before descending. Sit down. Have a snack. Check
+Once you're fully equipped, the trap doors in the central
+hallway are your way down to Gehennom. Take a moment before
+descending. Sit down. Have a snack. Check
 your inventory twice. You should have **magic resistance**,
 **reflection**, **fire** and **poison resistance**, a **wand of
 digging**, a **unicorn horn**, plenty of food, holy water,
@@ -11305,7 +11340,7 @@ All trappers and lurkers hide and follow you up and down stairs.
 
 There are two equine `u`-class creatures. **Horses** (pony, horse, warhorse) spawn hostile in the wild but can be tamed, saddled, and ridden; the Knight starts on a saddled pony.
 
-**Unicorns** (white, gray, black for Lawful, Neutral, Chaotic) are powerful kickers, peaceful when your alignment matches theirs and hostile otherwise. Killing a co-aligned unicorn is a −5 Luck penalty (the game tells you "You feel guilty..."). Killing a cross-aligned one has no Luck consequence either way. If you don't want the fight, throw any gem — even worthless glass — to pacify a hostile unicorn at no cost; throwing real gems also adjusts your Luck (see [Luck and Fortune](#luck-and-fortune)). A killed unicorn drops its horn.
+**Unicorns** (white, gray, black for Lawful, Neutral, Chaotic) are powerful kickers, peaceful when your alignment matches theirs and hostile otherwise. Killing a co-aligned unicorn is a −5 Luck penalty (the game tells you "You feel guilty..."). Killing a cross-aligned one has no Luck consequence either way. If you don't want the fight, throw any gem (even worthless glass) to pacify a hostile unicorn at no cost; throwing real gems also adjusts your Luck (see [Luck and Fortune](#luck-and-fortune)). A killed unicorn drops its horn.
 
 ::: dense-table
 
@@ -12081,7 +12116,7 @@ All zombies are mindless and undead.
 - Master Assassin is the primary Rogue quest nemesis (Rog-goal.lua:72), NOT a backup.
 -->
 
-The catch-all `@` class: shopkeepers, priests, watchmen, role nemeses, quest leaders, soldiers, ninja, doppelgangers, weres, Medusa, Croesus, the Wizard of Yendor, and the player. Most start peaceful; the ones that don't are very dangerous. (Kops are *not* in this class — they're `K`.)
+The catch-all `@` class: shopkeepers, priests, watchmen, role nemeses, quest leaders, soldiers, ninja, doppelgangers, weres, Medusa, Croesus, the Wizard of Yendor, and the player. Most start peaceful; the ones that don't are very dangerous.
 
 ::: dense-table
 
