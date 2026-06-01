@@ -51,7 +51,7 @@ function gameRoleName() {
 
 function realUinitRan() {
     const name = gameRoleName();
-    if (name === 'knight') return game.preferred_pet === 'n';
+    if (name === 'knight') return true;
     return REAL_UINIT_ROLES.has(name);
 }
 

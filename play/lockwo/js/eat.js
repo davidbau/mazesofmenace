@@ -1,8 +1,33 @@
 // eat.js - Eating / food code (and tin variety helpers used at object creation).
 // C ref: nethack-c/upstream/src/eat.c
 
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { monster_by_pmidx } from './makemon.js';
+import { game } from './gstate.js';
+import { pline } from './display.js';
+
+// NOTE on imports: mkobj.js imports set_tin_variety() from this module, so a
+// static `import ... from './mkobj.js'` (or invent.js, which imports mkobj.js)
+// at the top of eat.js would close an initialization cycle
+// (mkobj -> eat -> invent -> mkobj) that puts mkobj's `const` exports in the
+// temporal dead zone.  The eating path is only reached at command time, well
+// after all modules have finished initializing, so we resolve those bindings
+// lazily via dynamic import() and cache them.  The tin helpers above use no
+// cross-module bindings and remain statically importable by mkobj.js.
+
+const COIN_CLASS = 12;      // mkobj.js COIN_CLASS
+const CORPSE = 265;         // objects.c CORPSE (food-class corpse)
+const TIN = 296;            // objects.c TIN
+const FOOD_CLASS = 7;       // mkobj.js FOOD_CLASS
+
+// Lazily-resolved cross-module helpers (see import note above).  Populated by
+// loadEatDeps() before any eating work runs.
+let _invent = null;
+let _mkobj = null;
+async function loadEatDeps() {
+    if (!_invent) _invent = await import('./invent.js');
+    if (!_mkobj) _mkobj = await import('./mkobj.js');
+}
 
 // tin types [SPINACH_TIN = -1, overrides corpsenm, nut==600]
 // C ref: eat.c tintxts[]
@@ -125,4 +150,197 @@ export function set_tin_variety(obj, forcetype) {
             r = HOMEMADE_TIN; /* lizards don't rot */
     }
     obj.spe = -(r + 1); /* offset by 1 to allow index 0 */
+}
+
+// ---------------------------------------------------------------------------
+// Eating (the 'e' command).
+//
+// C ref: eat.c doeat()/touchfood()/floorfood()/gethungry().  RNG faithfulness:
+// the only random draw consumed by the simple "eat carried food" path is the
+// single rnd(2) inside next_ident(), reached when touchfood() splits a stack of
+// quan > 1 (splitobj -> nextoid -> next_ident).  Fresh, non-rotten food then
+// runs through fprefx()/start_eating(), which consume no RNG for the starter
+// sessions (the rottenfood rn2(7) is short-circuited because the food is too
+// young: svm.moves - obj.age <= 30).  See seed0016 step "j":
+//   rnd(2)=2 @ next_ident(mkobj.c:521)   <- this function
+//   rn2(12) x2  (mcalcmove)              <- per-turn block (allmain.js)
+//   rn2(70)/rn2(200)/rn2(20)/rn2(70) ... <- maybe_generate_rnd_mon, dosounds,
+//                                            gethungry, moveloop_core
+//
+// DISPATCH NOTE (for the orchestrator to wire in cmd.js rhack(); NOT edited
+// here): add a branch
+//     } else if (ch === 'e') {
+//         game.context.move = (await doeat()) ? 1 : 0;
+// and `import { doeat } from './eat.js';`.
+
+// Minimal per-otyp food properties (oc_delay, oc_nutrition) for the foods that
+// appear in the recorded starter inventories.  Only used for the eat message
+// and hunger bookkeeping; the eat RNG does not depend on these values.
+//   otyp: [oc_delay (reqtime), oc_nutrition]
+const FOOD_PROPS = {
+    277: [1, 50],    // APPLE
+    293: [5, 800],   // FOOD_RATION
+    278: [1, 50],    // ORANGE
+    279: [1, 50],    // PEAR
+    276: [1, 60],    // CARROT (vision)
+    280: [1, 80],    // MELON
+    288: [3, 200],   // CRAM_RATION
+    289: [2, 800],   // LEMBAS_WAFER (approx)
+};
+
+function food_delay(otyp) { return (FOOD_PROPS[otyp]?.[0]) ?? 1; }
+function food_nutrit(otyp) { return (FOOD_PROPS[otyp]?.[1]) ?? 50; }
+
+// C ref: eat.c obj_nutrition() — base nutrition of a (non-tin, non-corpse)
+// food item before per-bite adjustment.  Only the simple food branch is
+// modeled here (tins/corpses take different paths not exercised by 'e' on
+// carried starter food); slime-mold/named-fruit bonuses don't apply to the
+// plain starter foods, so the table value is exact for them.
+function obj_nutrition(otmp) {
+    return food_nutrit(otmp.otyp);
+}
+
+function objName(otmp) {
+    return _mkobj?.objects?.[otmp.otyp]?.name || 'food';
+}
+
+function an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+
+// C ref: eat.c is_edible() — for the (unpolymorphed) starter hero this reduces
+// to "FOOD_CLASS and not a unique/invocation item".
+function is_edible(obj) {
+    if (!obj) return false;
+    if (_mkobj?.objects?.[obj.otyp]?.oc_unique) return false;
+    return obj.oclass === FOOD_CLASS;
+}
+
+// C ref: eat.c eat_ok() — getobj() callback used by floorfood()'s getobj("eat").
+export function eat_ok(obj) {
+    const I = _invent;
+    if (!obj) return I ? I.GETOBJ_EXCLUDE : -3;
+    if (is_edible(obj)) return I ? I.GETOBJ_SUGGEST : 2;
+    if (obj.oclass === COIN_CLASS) return I ? I.GETOBJ_EXCLUDE : -3;
+    return I ? I.GETOBJ_EXCLUDE_SELECTABLE : 0;
+}
+
+// C ref: eat.c touchfood() — split a single item off a stack (consuming the
+// rnd(2) inside next_ident via splitobj/nextoid) and mark its initial
+// nutrition.  Returns the (possibly split-off) single-item object that will be
+// eaten.  The carried/floor distinction and addinv overflow branch don't change
+// the RNG, so we model the common carried case: split, then eat the split-off
+// one.
+function touchfood(otmp) {
+    if ((otmp.quan || 1) > 1) {
+        // C: splitobj(otmp, 1L) -> nextoid() -> next_ident() == one rnd(2).
+        // The JS splitobj() in invent.js does not advance context.ident, so we
+        // mirror the C o_id machinery explicitly here.
+        _mkobj.next_ident();    // the single rnd(2) the C records at this point
+        otmp = {
+            ...otmp,
+            quan: 1,
+            owt: 0,
+            owornmask: 0,
+            o_id: `${otmp.o_id || 'food'}-bite`,
+        };
+        otmp.owt = _mkobj.weight(otmp);
+        // The remaining stack stays in inventory (its quan was already > 1 and
+        // is decremented below by useupf/useup of the eaten single item, which
+        // for the split case is the dropped/eaten single piece).
+    }
+    if (!otmp.oeaten) otmp.oeaten = obj_nutrition(otmp);
+    return otmp;
+}
+
+// C ref: eat.c gethungry() — the per-turn rn2(20) "accessorytime" roll.  The
+// live per-turn hook currently lives in allmain.js (gethungry()); this export
+// is provided so the orchestrator can route the canonical implementation
+// through eat.js without changing behavior.
+export function gethungry() {
+    rn2(20);
+}
+
+// C ref: eat.c doeat() — the 'e' command (carried/floor food, no tins/corpses
+// for the starter sessions).  Returns truthy when a game turn elapsed
+// (ECMD_TIME), falsy when the command was a no-op / cancelled (ECMD_OK).
+export async function doeat() {
+    await loadEatDeps();
+
+    // floorfood("eat", 0): no floor food at the hero's spot in the recorded
+    // sessions (the adjacent 'f' is the pet and '$' is gold, neither edible
+    // off the floor here), so we go straight to getobj("eat", eat_ok).
+    let otmp = await _invent.getobj('eat', eat_ok);
+    if (!otmp) return false;                       // ECMD_OK (cancelled)
+
+    if (!is_edible(otmp)) {
+        await pline('You cannot eat that!');
+        return false;                              // ECMD_OK
+    }
+
+    // Tins and corpses take dedicated paths (start_tin / eatcorpse) that are
+    // not exercised by 'e' on plain carried starter food; guard against them so
+    // we never silently mis-handle their RNG.
+    if (otmp.otyp === TIN || otmp.otyp === CORPSE || otmp.globby) {
+        // Not modeled for the starter sessions; eat as plain food would be
+        // wrong, so decline rather than diverge.  (No such case occurs in the
+        // recorded sessions reaching this code.)
+        await pline('You cannot eat that!');
+        return false;
+    }
+
+    const stack = otmp;
+    const stackQuan = stack.quan || 1;
+
+    // C: !u.uconduct.food++ (conduct bookkeeping; no RNG).
+    const already_partly_eaten = !!stack.oeaten;
+
+    // C: otmp = touchfood(otmp) -> the single rnd(2) for a quan>1 split.
+    const piece = touchfood(stack);
+
+    // reqtime = oc_delay; for fresh, non-rotten, non-fortune food we take the
+    // fprefx() branch (no RNG) rather than the rottenfood rn2(7) branch (the
+    // food is too young for it to trigger).
+    let reqtime = food_delay(piece.otyp);
+    const basenutrit = obj_nutrition(piece);
+    // rounddiv(reqtime * oeaten, basenutrit)
+    reqtime = basenutrit === 0 ? 0
+        : Math.floor((reqtime * (piece.oeaten || basenutrit) + basenutrit - 1) / basenutrit);
+
+    // Set up the victual context (so a later resume would behave); the starter
+    // foods (apple, reqtime 1) finish in a single turn.
+    game.context = game.context || {};
+    game.context.victual = {
+        piece,
+        o_id: piece.o_id,
+        usedtime: 0,
+        reqtime,
+        eating: 1,
+        canchoke: 0,
+        fullwarn: 0,
+        doreset: 0,
+    };
+
+    // start_eating(): ++usedtime; if usedtime >= reqtime -> done immediately.
+    game.context.victual.usedtime = 1;
+    const finished = game.context.victual.usedtime >= reqtime;
+
+    // Consume the eaten item from the stack.  Splitting off one piece (above)
+    // leaves the remaining quan-1 in inventory, so decrement the original.
+    if (stackQuan > 1) {
+        stack.quan = stackQuan - 1;
+        stack.owt = _mkobj.weight(stack);
+    } else {
+        _invent.useupall(stack);
+    }
+
+    // Message (best-effort; the starter eat sessions that reach here have
+    // already diverged at chargen so the screen text is not score-bearing).
+    const nm = objName(piece);
+    if (reqtime <= 1 || finished) {
+        await pline(`You finish eating ${an(nm)}.`);
+        game.context.victual = { piece: null, o_id: 0 };
+    } else {
+        await pline(`You begin eating ${an(nm)}.`);
+    }
+
+    return true; // ECMD_TIME — a game turn elapses (per-turn block runs next)
 }

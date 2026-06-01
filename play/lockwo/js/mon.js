@@ -15,29 +15,47 @@ import { dochug, initMonMoveState } from './monmove.js';
 const MSLOW = 1;
 const MFAST = 2;
 
-// Base movement rate (permonst.mmove) by pmidx for the low-level monsters
-// that the contest sessions place on dlvl 1.  C ref: include/monsters.h
-// LVL(mlevel, MMOVE, ac, mr, align).  The RNDMONST data table in makemon.js
-// does not carry mmove, so mcalcmove looks it up here.  These pmidx follow
-// the makemon.js MONS-table convention (the same one mklev/makemon use to
-// place dungeon monsters).  An unknown hostile monster falls back to
+// Base movement rate (permonst.mmove) for every species, indexed by pmidx in
+// the makemon.js MONS-table order (the same `MONS_NAMES` convention mklev /
+// makemon use to place dungeon monsters).  C ref: include/monsters.h
+// LVL(mlevel, MMOVE, ac, mr, align) — this is the full MMOVE column, mapped
+// from each makemon.js monster name to its NetHack-5.0 base speed.  The
+// RNDMONST data table in makemon.js does not carry mmove, so mcalcmove looks
+// it up here.  A monster whose pmidx falls outside this table falls back to
 // NORMAL_SPEED (which still emits the rn2(NORMAL_SPEED) rounding roll).
-const MMOVE_BY_PMIDX = Object.freeze({
-    12: 12, // jackal
-    13: 15, // fox
-    59: 6,  // kobold
-    60: 6,  // large kobold
-    62: 6,  // kobold shaman
-    70: 6,  // goblin
-    88: 12, // sewer rat
-    89: 10, // giant rat
-    116: 12, // grid bug
-    158: 1, // lichen
-    239: 6, // kobold zombie
-    321: 6, // newt
-    322: 6, // gecko
-    323: 6, // iguana
-});
+//
+// NOTE: the rounding roll mcalc_round() always uses rn2(NORMAL_SPEED), so an
+// incorrect base speed does NOT change the *RNG draw*; it changes the
+// per-turn movement-point allotment (mmove_adj = mmove % NORMAL_SPEED), which
+// governs whether/when a monster reaches NORMAL_SPEED and acts.  Getting the
+// base speeds right therefore keeps downstream monster-move RNG (distfleeck /
+// dog_move / m_move) and the rendered monster positions in sync with C.
+const MMOVE_BY_PMIDX = Object.freeze([
+    /*   0 */ 18, 18, 18, 18, 6, 24, 3, 1, 6, 4, 6, 6, 12, 15, 12, 12,
+    /*  16 */ 18, 16, 16, 15, 12, 12, 12, 12, 12, 12, 14, 3, 1, 13, 13, 13,
+    /*  32 */ 18, 16, 15, 15, 15, 15, 12, 12, 12, 10, 15, 9, 6, 9, 6, 6,
+    /*  48 */ 12, 12, 3, 12, 12, 3, 15, 13, 0, 0, 3, 6, 6, 6, 6, 15,
+    /*  64 */ 3, 3, 3, 12, 12, 12, 6, 9, 9, 9, 5, 7, 9, 5, 1, 1,
+    /*  80 */ 1, 9, 9, 18, 3, 12, 12, 12, 12, 10, 12, 12, 3, 3, 12, 4,
+    /*  96 */ 15, 15, 3, 3, 16, 24, 24, 24, 20, 24, 1, 20, 20, 20, 22, 22,
+    /* 112 */ 3, 3, 3, 9, 12, 18, 15, 15, 8, 10, 8, 10, 18, 16, 22, 22,
+    /* 128 */ 20, 20, 18, 18, 20, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    /* 144 */ 9, 9, 9, 9, 9, 9, 9, 9, 9, 12, 36, 12, 6, 5, 1, 0,
+    /* 160 */ 0, 0, 0, 1, 1, 6, 8, 10, 10, 6, 6, 10, 12, 12, 12, 12,
+    /* 176 */ 18, 15, 12, 6, 8, 10, 12, 6, 9, 9, 9, 8, 10, 10, 10, 12,
+    /* 192 */ 12, 12, 14, 10, 10, 10, 10, 12, 14, 14, 16, 10, 12, 14, 1, 3,
+    /* 208 */ 6, 6, 12, 12, 18, 12, 8, 15, 15, 3, 15, 18, 12, 10, 12, 14,
+    /* 224 */ 12, 6, 12, 14, 26, 12, 12, 12, 9, 12, 12, 12, 15, 12, 15, 6,
+    /* 240 */ 6, 6, 6, 6, 6, 8, 6, 8, 8, 12, 12, 9, 9, 6, 3, 8,
+    /* 256 */ 7, 6, 6, 6, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 16,
+    /* 272 */ 12, 12, 0, 12, 15, 10, 10, 6, 10, 10, 10, 10, 12, 12, 15, 3,
+    /* 288 */ 10, 12, 12, 9, 12, 12, 12, 12, 6, 15, 6, 9, 6, 12, 5, 3,
+    /* 304 */ 18, 9, 3, 15, 9, 12, 15, 12, 12, 12, 12, 3, 18, 12, 9, 10,
+    /* 320 */ 3, 6, 6, 6, 6, 6, 5, 9, 12, 0, 12, 12, 12, 12, 12, 12,
+    /* 336 */ 12, 12, 12, 12, 12, 12, 12, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+    /* 352 */ 15, 15, 15, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+    /* 368 */ 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+]);
 
 // Starting pets are created by dog.c/dog.js, which tag the pet's permonst
 // stand-in with a DIFFERENT pmidx convention than the makemon MONS table

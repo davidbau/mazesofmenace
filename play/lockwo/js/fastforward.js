@@ -138,7 +138,7 @@ export function fastforward_pre_mklev() {
 export function fastforward_post_mklev() {
     const role = initrole_name();
     if (REAL_UINIT_ROLES.has(role)
-        || (role === 'knight' && game.preferred_pet === 'n')) {
+        || role === 'knight') {
         u_init_inventory_attrs();
         fastforward_legacy_role_intro();
         moveloop_preamble_startup();

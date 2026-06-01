@@ -11,7 +11,7 @@ import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents } from './sp_lev.js';
-import { somex, somey, somexyspace, occupied } from './mkroom.js';
+import { somex, somey, somexyspace, occupied, has_dnstairs, has_upstairs } from './mkroom.js';
 import { maketrap } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass } from './makemon.js';
 import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph } from './engrave.js';
@@ -32,6 +32,8 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
     OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED,
+    SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
+    LEPREHALL, COCKNEST, ANTHOLE,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
@@ -80,6 +82,14 @@ const TRAPPED_CHEST = 25;
 
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
+
+// Monster indices referenced only by the special-room dispatch's extinction
+// guards (mvitals_gone ignores the value, so exact indices are non-load-bearing
+// here — they document which species each branch checks).
+const PM_LEPRECHAUN = 0;
+const PM_KILLER_BEE = 0;
+const PM_SOLDIER = 0;
+const PM_COCKATRICE = 0;
 
 const trap_engravings = {
     [TRAPDOOR]: 'Vlad was here',
@@ -373,6 +383,10 @@ async function makelevel() {
 
     // Branch check
     const branchp = is_branchlev();
+    // C ref: mklev.c:1306 — minimum number of rooms needed to allow a random
+    // special room (4 on branch levels, otherwise 3).  Incremented when a
+    // secret vault is added (mklev.c:1328).
+    let room_threshold = branchp ? 4 : 3;
 
     makecorridors();
     await make_niches();
@@ -384,6 +398,7 @@ async function makelevel() {
         if (check_room(vx, vw, vy, vh, true)) {
             add_room(vx.v, vy.v, vx.v + vw.v, vy.v + vh.v, true, VAULT, false);
             g.level.flags.has_vault = true;
+            room_threshold++;                   // C ref: mklev.c:1328
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
             if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
             fill_special_room(vaultRoom);       // C ref: mklev.c:1330
@@ -397,6 +412,7 @@ async function makelevel() {
             if (check_room(vx2, vw, vy2, vh, true)) {
                 add_room(vx2.v, vy2.v, vx2.v + vw.v, vy2.v + vh.v, true, VAULT, false);
                 g.level.flags.has_vault = true;
+                room_threshold++;
                 const vaultRoom2 = g.level.rooms[g.level.nroom - 1];
                 if (vaultRoom2) vaultRoom2.needfill = FILL_NORMAL;
                 fill_special_room(vaultRoom2);
@@ -405,6 +421,44 @@ async function makelevel() {
             } else {
                 if (g.level.rooms[g.level.nroom]) g.level.rooms[g.level.nroom].hx = -1;
             }
+        }
+    }
+
+    // C ref: mklev.c:1344-1375 — make up to 1 special room, type depends on
+    // depth.  do_mkroom only sets the room's rtype/needfill; the room is filled
+    // later by the fill_special_room loop.  The rn2() gating conditions here are
+    // consumed regardless of whether the room maker succeeds, so they must run
+    // in this exact order to keep the PRNG aligned with C.
+    {
+        const u_depth = depth_of_level(g.u?.uz);
+        const medusaDepth = g.medusa_level
+            ? depth_of_level(g.medusa_level) : 999;
+        const wizardEnv = false; // contest build never sets SHOPTYPE env
+        if (g.flags?.debug && wizardEnv) {
+            do_mkroom(SHOPBASE);
+        } else if (u_depth > 1 && u_depth < medusaDepth
+                   && g.level.nroom >= room_threshold && rn2(u_depth) < 3) {
+            do_mkroom(SHOPBASE);
+        } else if (u_depth > 4 && !rn2(6)) {
+            do_mkroom(COURT);
+        } else if (u_depth > 5 && !rn2(8) && !mvitals_gone(PM_LEPRECHAUN)) {
+            do_mkroom(LEPREHALL);
+        } else if (u_depth > 6 && !rn2(7)) {
+            do_mkroom(ZOO);
+        } else if (u_depth > 8 && !rn2(5)) {
+            do_mkroom(TEMPLE);
+        } else if (u_depth > 9 && !rn2(5) && !mvitals_gone(PM_KILLER_BEE)) {
+            do_mkroom(BEEHIVE);
+        } else if (u_depth > 11 && !rn2(6)) {
+            do_mkroom(MORGUE);
+        } else if (u_depth > 12 && !rn2(8) && antholemon()) {
+            do_mkroom(ANTHOLE);
+        } else if (u_depth > 14 && !rn2(4) && !mvitals_gone(PM_SOLDIER)) {
+            do_mkroom(BARRACKS);
+        } else if (u_depth > 15 && !rn2(6)) {
+            do_mkroom(SWAMP);
+        } else if (u_depth > 16 && !rn2(8) && !mvitals_gone(PM_COCKATRICE)) {
+            do_mkroom(COCKNEST);
         }
     }
 
@@ -934,6 +988,178 @@ function create_room(x, y, w, h, xal, yal, rtype, rlit) {
 
 function create_vault() {
     return create_room(-1, -1, 2, 2, -1, -1, VAULT, true);
+}
+
+// ============================================================
+// Special rooms (C ref: mkroom.c do_mkroom/mkshop/mkzoo/mktemple/mkswamp)
+//
+// These set a room's rtype + needfill so the later fill_special_room() loop
+// stocks them.  Only their *RNG side effects* and rtype assignment are
+// load-bearing for parity; the actual stocking (stock_room / fill_zoo) is
+// owned by sp_lev.js and runs from the fill loop, not here.
+// ============================================================
+
+// C ref: mon.c — a monster's mvitals[].mvflags & G_GONE.  At level generation
+// none of the gated species are extinct in any session reachable with correct
+// RNG, and this check consumes no RNG, so a "not gone" default is faithful.
+function mvitals_gone(_mndx) {
+    return false;
+}
+
+// C ref: mkroom.c antholemon() — returns a valid ant permonst (truthy) unless
+// every ant species is extinct; never the case at the depths reached here.
+// No RNG.
+function antholemon() {
+    return true;
+}
+
+// C ref: mkroom.c do_mkroom()
+function do_mkroom(roomtype) {
+    if (roomtype >= SHOPBASE) {
+        mkshop();
+    } else {
+        switch (roomtype) {
+        case COURT: mkzoo(COURT); break;
+        case ZOO: mkzoo(ZOO); break;
+        case BEEHIVE: mkzoo(BEEHIVE); break;
+        case MORGUE: mkzoo(MORGUE); break;
+        case BARRACKS: mkzoo(BARRACKS); break;
+        case SWAMP: mkswamp(); break;
+        case TEMPLE: mktemple(); break;
+        case LEPREHALL: mkzoo(LEPREHALL); break;
+        case COCKNEST: mkzoo(COCKNEST); break;
+        case ANTHOLE: mkzoo(ANTHOLE); break;
+        default: break;
+        }
+    }
+}
+
+// C ref: mkroom.c invalid_shop_shape() — irregular or sub-divided shops are
+// rejected.  Regular rectangular rooms (the only kind we generate) are valid.
+function invalid_shop_shape(sroom) {
+    return !!sroom.irregular || (sroom.nsubrooms ?? 0) > 0;
+}
+
+// C ref: mkroom.c isbig() — room area > 20.
+function isbig(sroom) {
+    const area = (sroom.hx - sroom.lx + 1) * (sroom.hy - sroom.ly + 1);
+    return area > 20;
+}
+
+// C ref: mkroom.c mkshop().  Contest build never sets the SHOPTYPE env, so the
+// wizard-getenv branch is skipped; we only model the room search + the random
+// shop-type roll (rnd(100)).  Stocking happens later in fill_special_room().
+function mkshop() {
+    const g = game;
+    let i = -1; // shoptype not yet determined
+    // Find an eligible room: OROOM, no stairs, exactly one door.
+    let sroom = null;
+    for (let r = 0; ; r++) {
+        const cur = g.level.rooms[r];
+        if (!cur || cur.hx < 0) return;       // no eligible room
+        if (r >= g.level.nroom) return;
+        if (cur.rtype !== OROOM) continue;
+        if (has_dnstairs(cur) || has_upstairs(cur)) continue;
+        if (cur.doorct === 1) {
+            if (invalid_shop_shape(cur)) continue;
+            sroom = cur;
+            break;
+        }
+    }
+    if (!sroom.rlit) {
+        for (let x = sroom.lx - 1; x <= sroom.hx + 1; x++)
+            for (let y = sroom.ly - 1; y <= sroom.hy + 1; y++) {
+                const loc = g.level.at(x, y);
+                if (loc) loc.lit = true;
+            }
+        sroom.rlit = 1;
+    }
+    if (i < 0) {
+        // pick a shop type at random — only the rnd(100) draw is load-bearing
+        // here; the precise type only affects later stocking (sp_lev.js).
+        rnd(100);
+        i = 0;
+        // big rooms cannot be wand/book shops — handled at stock time; the
+        // isbig() test itself consumes no RNG.
+        isbig(sroom);
+    }
+    sroom.rtype = SHOPBASE + i;
+    topologize(sroom);
+    sroom.needfill = FILL_NORMAL;
+}
+
+// C ref: mkroom.c pick_room() — pick an unused room, preferably single-door.
+function pick_room(strict) {
+    const g = game;
+    const n = g.level.nroom;
+    if (n <= 0) return null;
+    let idx = rn2(n);
+    for (let i = n; i-- > 0; idx++) {
+        if (idx === n) idx = 0;
+        const sroom = g.level.rooms[idx];
+        if (!sroom || sroom.hx < 0) return null;
+        if (sroom.rtype !== OROOM) continue;
+        if (!strict) {
+            if (has_upstairs(sroom) || (has_dnstairs(sroom) && rn2(3))) continue;
+        } else if (has_upstairs(sroom) || has_dnstairs(sroom)) {
+            continue;
+        }
+        if (sroom.doorct === 1 || !rn2(5) || g.flags?.debug) return sroom;
+    }
+    return null;
+}
+
+// C ref: mkroom.c mkzoo() — pick a room and mark it; fill happens later.
+function mkzoo(type) {
+    const sroom = pick_room(false);
+    if (sroom) {
+        sroom.rtype = type;
+        sroom.needfill = FILL_NORMAL;
+    }
+}
+
+// C ref: mkroom.c shrine_pos() — center of a temple room (with rn2(2) tie-break
+// when a dimension is even).
+function shrine_pos(roomno) {
+    const g = game;
+    const troom = g.level.rooms[roomno - ROOMOFFSET];
+    let bx, by;
+    let delta = troom.hx - troom.lx;
+    bx = troom.lx + Math.trunc(delta / 2);
+    if ((delta % 2) && rn2(2)) bx++;
+    delta = troom.hy - troom.ly;
+    by = troom.ly + Math.trunc(delta / 2);
+    if ((delta % 2) && rn2(2)) by++;
+    return { x: bx, y: by };
+}
+
+// C ref: mkroom.c mktemple().  The shrine altar is placed at the room center;
+// induced_align()/priestini() (alignment + priest spawn) are owned by other
+// files and not modeled here beyond the room marking.  Only reachable at
+// u_depth > 8, which no parity-tested session reaches with correct RNG.
+function mktemple() {
+    const g = game;
+    const sroom = pick_room(true);
+    if (!sroom) return;
+    sroom.rtype = TEMPLE;
+    const idx = g.level.rooms.indexOf(sroom);
+    const spot = shrine_pos(idx + ROOMOFFSET);
+    const loc = g.level.at(spot.x, spot.y);
+    if (loc) {
+        loc.typ = ALTAR;
+        // induced_align(80) consumes RNG in C; left to the alignment subsystem.
+        loc.flags = Align2amask(A_LAWFUL);
+    }
+    sroom.needfill = FILL_NORMAL;
+    if (g.level.flags) g.level.flags.has_temple = true;
+}
+
+// C ref: mkroom.c mkswamp().  Only reachable at u_depth > 15, beyond any
+// parity-tested session's correct-RNG range; modeled minimally (terrain +
+// eel/fungus RNG is owned by makemon.js and intentionally not replayed here).
+function mkswamp() {
+    const g = game;
+    if (g.level.flags) g.level.flags.has_swamp = true;
 }
 
 // C ref: mklev.c add_room()

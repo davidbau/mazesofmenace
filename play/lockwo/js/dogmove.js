@@ -17,6 +17,8 @@ import { newsym } from './display.js';
 import { dist2, mfndpos } from './monmove.js';
 import {
     FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS,
+    LARGE_BOX, CHEST, ICE_BOX, CRYSTAL_BALL, TINNING_KIT,
+    BOULDER, STATUE, HEAVY_IRON_BALL,
 } from './mkobj.js';
 
 // dogfood quality enum (mextra.h): lower == more desirable.
@@ -25,7 +27,15 @@ const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
 
 const MMOVE_NOTHING = 0, MMOVE_MOVED = 2, MMOVE_DIED = 3, MMOVE_DONE = 5;
 
-const PM_PONY = 102;
+const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 102;
+
+// C ref: mon.c max_mon_load(mtmp).  MAX_CARR_CAP=1000, WT_HUMAN=1450.
+// kitten(34)/little dog(16): cwt=150, MZ_SMALL, not strong ->
+//   (1000*150)/1450 = 103, then /2 (not strong) = 51.
+// pony(102): cwt=1300, MZ_MEDIUM, M2_STRONG, cwt<=WT_HUMAN -> MAX_CARR_CAP=1000,
+//   no halving (strong) = 1000.
+// All three starting pets are M1_NOHANDS and are not dragons / engulfers.
+const PET_MAXLOAD = { [PM_LITTLE_DOG]: 51, [PM_KITTEN]: 51, [PM_PONY]: 1000 };
 
 // C ref: mon.c MON_AT — a (live) monster other than the hero at <x,y>.
 function MON_AT(x, y) {
@@ -102,13 +112,15 @@ function dogfood(mon, obj) {
     }
 }
 
-// C ref: dog.c initedog() — apport defaults to ACURR(A_CHA); resolved lazily
-// here because the hero's attributes are rolled after makedog().
+// C ref: dog.c initedog() — apport = ACURR(A_CHA), captured at makedog() time.
+// CRITICAL ORDERING: in newgame() (allmain.c:814) makedog() runs BEFORE
+// u_init_inventory_attrs() (allmain.c:816) which sets the hero's attributes.
+// At makedog time u_init_misc() has just memset(&u,0,...), so acurr.a[A_CHA]==0
+// and abon/atemp are 0 too.  acurr(A_CHA) (attrib.c:1200) floors its result at
+// 3 (`tmp <= 3 ? 3`), so the starting pet's apport is ALWAYS 3 regardless of
+// role/race.  (The final, higher CHA is irrelevant — it isn't rolled yet.)
 function edogApport(edog) {
-    if (edog.apport == null) {
-        const cha = game.u?.acurr?.a?.[5] ?? 1;
-        edog.apport = cha > 0 ? cha : 1;
-    }
+    if (edog.apport == null) edog.apport = 3;
     return edog.apport;
 }
 
@@ -224,9 +236,46 @@ function couldsee(_x, _y) { return true; }
 function m_cansee(_mtmp, _x, _y) { return true; }
 function isLit(x, y) { return !!game.level?.at(x, y)?.lit; }
 
-// C ref: mon.c can_carry — pet can carry an ordinary light object; the exact
-// weight math doesn't affect RNG here, so report "yes".
-function can_carry(_mtmp, _obj) { return 1; }
+// C ref: objects.h oc_weight for the heavy single objects whose weight exceeds
+// a small pet's carry capacity (51).  The JS object table (const.js) does not
+// yet carry per-type weights, so mkobj's weight() leaves obj.owt == 1 for these
+// — without this lookup can_carry would wrongly accept a 600-wt chest.  Only
+// types that can flip can_carry need an entry; everything lighter than 51 can
+// safely fall back to obj.owt.  (Container floor weight in C is base + contents,
+// but every container's BASE already exceeds 51, so the base value suffices for
+// the small-pet decision.)
+const OC_WEIGHT = {
+    [LARGE_BOX]: 350, [CHEST]: 600, [ICE_BOX]: 900,
+    [CRYSTAL_BALL]: 150, [TINNING_KIT]: 100,
+    [BOULDER]: 6000, [STATUE]: 2500, [HEAVY_IRON_BALL]: 480,
+};
+
+// Object weight as C's weight() would compute it for the can_carry decision.
+function objWeight(obj) {
+    const base = OC_WEIGHT[obj.otyp];
+    if (base != null) return base * (obj.quan || 1);
+    return obj.owt ?? 1;
+}
+
+// C ref: mon.c can_carry(mtmp, otmp).  Returns 0 (cannot) or a positive
+// quantity.  The dog_goal APPORT branch only cares whether the result is > 0,
+// so we faithfully reproduce the conditions that yield 0 for the starting pet:
+//
+//   - notake / unsafe-to-touch: ordinary objects are fine -> not 0 here.
+//   - M1_NOHANDS pets (all three starting pets) with a stack quan > 1 and no
+//     engulf/dragon "glomper" return 1 BEFORE the load check (mon.c:2026).
+//   - single items: 0 iff curr_mon_load + owt > max_mon_load.  A freshly
+//     created starting pet carries nothing, so curr_mon_load == 0.
+function can_carry(mtmp, obj) {
+    const pmidx = mtmp.data?.pmidx;
+    const maxload = PET_MAXLOAD[pmidx] ?? 51;
+    const iquan = obj.quan || 1;
+    // All starting pets are NOHANDS and not glompers -> early return for stacks.
+    if (iquan > 1) return 1;
+    // single object: load capacity check (curr load is 0 for the start pet).
+    if (objWeight(obj) > maxload) return 0;
+    return iquan;
+}
 
 // C ref: dogmove.c dog_move(mtmp, after).  Drives one pet move.
 export function dog_move(mtmp, after) {

@@ -27,6 +27,8 @@ import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE } from './const.js';
+import { docrt, flush_screen, pline } from './display.js';
+import { vision_reset, vision_recalc } from './vision.js';
 
 // ── small geometry / occupancy helpers (C ref: mklev.c occupied,
 //    mkmaze.c bad_location, teleport.c goodpos/collect_coords/enexto) ──
@@ -267,6 +269,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // Bring the pet(s) along.  C ref: do.c goto_level() -> losedogs().
     losedogs_place(kept);
+
+    // Reset the screen and draw the new level.  C ref: do.c goto_level()
+    // lines ~1837-1841: vision_reset() (clear old level's line-of-sight),
+    // reset_glyphmap(gm_levelchange), docrt() (full vision recalc + redraw),
+    // flush_screen(-1).  None of these consume RNG, so the call sequence the
+    // recorder captured is unaffected; this only paints the destination map
+    // that the hero now stands on (otherwise the screen stays blank after a
+    // level change).
+    game.vision_full_recalc = 0;
+    vision_reset();
+    vision_recalc(0);
+    await docrt();
+    await flush_screen(-1);
 }
 
 // ── next_level (C ref: dungeon.c next_level) ──
@@ -311,6 +326,13 @@ export async function wiz_level_tele(readLevel) {
         return 0; // can't get there from here
 
     await goto_level(newlevel, false, false, false);
+
+    // C ref: teleport.c level_tele() -> schedule_goto(..., "You materialize on
+    // a different level!"); the deferred top-line message is delivered after
+    // goto_level()'s docrt() (via maybe_lvltport_feedback).  Only shown when
+    // flags.verbose (the default).
+    if (game.flags?.verbose !== false)
+        await pline('You materialize on a different level!');
     return 1; // ECMD_TIME
 }
 
