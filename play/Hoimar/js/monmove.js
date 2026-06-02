@@ -216,6 +216,7 @@ const POT_SLEEPING = 314;
 const POT_FULL_HEALING = 315;
 const POT_POLYMORPH = 316;
 const POT_ACID = 320;
+const SCR_SCARE_MONSTER = 326;
 const SCR_CREATE_MONSTER = 329;
 const SCR_TELEPORTATION = 333;
 const SCR_FIRE = 339;
@@ -335,6 +336,11 @@ const NASTY_NAME_ALIASES = new Map([
 const NASTY_BIG_TO_LITTLE = new Map([
     ['ARCH_LICH', 'MASTER_LICH'],
     ['MASTER_MIND_FLAYER', 'MIND_FLAYER'],
+]);
+const WEB_TEARER_NAMES = new Set([
+    'TITANOTHERE', 'BALUCHITHERIUM', 'PURPLE_WORM', 'JABBERWOCK',
+    'IRON_GOLEM', 'BALROG', 'KRAKEN', 'MASTODON', 'ORION', 'NORN',
+    'CYCLOPS', 'LORD_SURTUR',
 ]);
 const MONSTER_ATTACK_TYPE = new Map([
     ['AT_NONE', 0],
@@ -1222,7 +1228,36 @@ function can_mon_step(mtmp, x, y, options = {}) {
     // ordinary movement candidates unless the monster has ALLOW_ROCK.
     if (boulder_at(x, y) && !mon_allows_boulder_square(mtmp)) return false;
     if (!trap_candidate_ok_basic(mtmp, x, y)) return false;
+    if (scare_monster_scroll_at_basic(x, y) && !monster_allows_scare_square_basic(mtmp))
+        return false;
+    if (monster_avoids_line_candidate_basic(mtmp, x, y)) return false;
     return mfndpos_terrain_ok(mtmp, x, y, options);
+}
+
+function scare_monster_scroll_at_basic(x, y) {
+    return objects_at(x, y).some((obj) => obj?.otyp === SCR_SCARE_MONSTER);
+}
+
+function monster_allows_scare_square_basic(mtmp) {
+    // C refs: src/mon.c:mon_allowflags()/mfndpos() and
+    // src/monmove.c:onscary().  This is the scroll-of-scare-monster part of
+    // onscary(); Elbereth has additional visibility/image restrictions.
+    const ptr = mtmp?.data || {};
+    if (mtmp?.mtame || mtmp?.mpeaceful || mtmp?.isshk || mtmp?.ispriest) return true;
+    if (mtmp?.mcansee === 0) return true;
+    if (ptr.mlet === 'S_HUMAN' || ptr.name === 'MINOTAUR') return true;
+    if (ptr.mlet === 'S_ANGEL' || monster_is_rider_basic(ptr)) return true;
+    return false;
+}
+
+function monster_avoids_line_candidate_basic(mtmp, x, y) {
+    // C refs: src/mon.c:mon_allowflags()/mfndpos() NOTONL and monlineu().
+    if (!mon_is_unicorn_basic(mtmp) || game.level?.flags?.noteleport) return false;
+    if (mtmp?.mcansee === 0) return false;
+    if (hero_invisible_basic() && !monster_perceives_invisible(mtmp)) return false;
+    const tx = mtmp?.mux ?? game.u?.ux ?? x;
+    const ty = mtmp?.muy ?? game.u?.uy ?? y;
+    return online2_basic(x, y, tx, ty);
 }
 
 function trap_candidate_ok_basic(mtmp, x, y) {
@@ -3956,6 +3991,46 @@ function mintrap_sleep_gas_basic(mtmp) {
     return MMOVE_MOVED;
 }
 
+function monster_tears_web_basic(mtmp) {
+    // C ref: src/trap.c:trapeffect_web().  This is the monster web branch:
+    // giants, extra-nasty dragons, and a short list of huge uniques/monsters
+    // tear through webs instead of becoming trapped.
+    const ptr = mtmp?.data || {};
+    const name = ptr.name;
+    if (ptr.mlet === 'S_GIANT') return true;
+    if (ptr.mlet === 'S_DRAGON' && ((ptr.mflags2 || 0) & M2_NASTY)) return true;
+    return WEB_TEARER_NAMES.has(name);
+}
+
+function deltrap_basic(trap) {
+    if (!trap || !game.level?.traps) return;
+    game.level.traps = game.level.traps.filter((ttmp) => ttmp !== trap);
+}
+
+async function mintrap_web_basic(mtmp, trap) {
+    // C ref: src/trap.c:trapeffect_web().
+    if (webmaker_basic(mtmp) || mon_is_amorphous(mtmp)
+        || mon_is_whirly(mtmp) || mon_is_unsolid(mtmp))
+        return MMOVE_MOVED;
+
+    const inSight = trap_mon_visible(mtmp);
+    if (monster_tears_web_basic(mtmp)) {
+        if (inSight)
+            await append_trap_topline(`${monster_subject(mtmp)} tears through ${trap.madeby_u ? 'your' : 'a'} spider web!`);
+        deltrap_basic(trap);
+        newsym(mtmp.mx, mtmp.my);
+        return MMOVE_MOVED;
+    }
+
+    if (inSight) {
+        await append_trap_topline(`${monster_subject(mtmp)} is caught in ${trap.madeby_u ? 'your' : 'a'} spider web.`);
+        trap.tseen = true;
+        newsym(trap.tx, trap.ty);
+    }
+    mtmp.mtrapped = 1;
+    return MMOVE_DONE;
+}
+
 function mon_knows_traps_basic(mtmp, ttyp) {
     if (ttyp === ALL_TRAPS) return !!mtmp.mtrapseen;
     if (ttyp === NO_TRAP) return !mtmp.mtrapseen;
@@ -4030,6 +4105,45 @@ function monster_trap_ac_basic(mtmp) {
     default:
         return mtmp?.data?.ac ?? 10;
     }
+}
+
+function monster_easy_escape_pit_basic(mtmp) {
+    return mtmp?.data?.name === 'PIT_FIEND' || (mtmp?.data?.msize ?? 0) >= MZ_HUGE;
+}
+
+function trap_name_basic(ttyp) {
+    if (ttyp === BEAR_TRAP) return 'bear trap';
+    if (ttyp === WEB) return 'web';
+    return 'trap';
+}
+
+async function mintrap_trapped_basic(mtmp, trap) {
+    // C ref: src/trap.c:mintrap().  A monster already caught in a trap probes
+    // escape before `m_move()` can select ordinary movement candidates.
+    if (!trap) {
+        mtmp.mtrapped = 0;
+        return MMOVE_MOVED;
+    }
+    if (!rn2(40) || (is_pit(trap.ttyp) && monster_easy_escape_pit_basic(mtmp))) {
+        if (boulder_at(mtmp.mx, mtmp.my) && is_pit(trap.ttyp)) {
+            if (!rn2(2)) {
+                mtmp.mtrapped = 0;
+                if (trap_mon_visible(mtmp))
+                    await append_trap_topline(`${monster_subject(mtmp)} pulls free...`);
+            }
+        } else {
+            if (trap_mon_visible(mtmp)) {
+                if (is_pit(trap.ttyp)) {
+                    const easily = monster_easy_escape_pit_basic(mtmp) ? 'easily ' : '';
+                    await append_trap_topline(`${monster_subject(mtmp)} climbs ${easily}out of the pit.`);
+                } else if (trap.ttyp === BEAR_TRAP || trap.ttyp === WEB) {
+                    await append_trap_topline(`${monster_subject(mtmp)} pulls free of the ${trap_name_basic(trap.ttyp)}.`);
+                }
+            }
+            mtmp.mtrapped = 0;
+        }
+    }
+    return mtmp.mtrapped ? MMOVE_DONE : MMOVE_MOVED;
 }
 
 function trap_projectile_name(obj) {
@@ -4378,6 +4492,7 @@ async function mintrap_basic(mtmp) {
     if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) return mintrap_hole_basic(mtmp, trap);
     if (trap.ttyp === FIRE_TRAP) return mintrap_fire_basic(mtmp, trap);
     if (trap.ttyp === MAGIC_TRAP) return mintrap_magic_basic(mtmp, trap);
+    if (trap.ttyp === WEB) return mintrap_web_basic(mtmp, trap);
     return MMOVE_MOVED;
 }
 
@@ -5829,6 +5944,19 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
             if (damage > 0 && game._monster_topline_deferred && !damageSharesDeferredHitLine) {
                 game._after_more_hero_damage = (game._after_more_hero_damage || 0) + damage;
                 game._after_more_damage_after_prompt = true;
+                if (attacks.slice(i + 1).some(Boolean)) {
+                    // C ref: src/mhitu.c:mattacku().  A visible hit line can be
+                    // queued behind tty More, but the remaining attack rows
+                    // resume from the same monster after that boundary.
+                    game._deferred_monster_physical_attack = {
+                        mtmp,
+                        attacks,
+                        nextIndex: i + 1,
+                        toHit,
+                        attackVerbCounts: [...attackVerbCounts.entries()],
+                        current: null,
+                    };
+                }
                 if (damage >= preDamageHp) {
                     game._after_more_fatal_monster = {
                         isshk: !!mtmp.isshk,
@@ -6448,6 +6576,11 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
     let appr = mtmp.mflee ? -1 : 1;
     let preferredrange_min = 0;
     let preferredrange_max = 0;
+    if (mtmp.mtrapped) {
+        const trapStatus = await mintrap_trapped_basic(mtmp, trap_at_basic(mtmp.mx, mtmp.my));
+        if (trapStatus === MMOVE_DIED) return MMOVE_DIED;
+        if (trapStatus === MMOVE_DONE) return MMOVE_NOTHING;
+    }
     // C ref: monmove.c:m_move().  While swallowed, bystander monsters
     // spend their movement opportunity without ordinary path selection.
     if (game.u?.uswallow && !mtmp.mflee && game.u?.ustuck !== mtmp) return 1;
@@ -6967,7 +7100,7 @@ async function maybe_finish_post_move_attack(g, mtmp, moveStatus, postMoveState,
         g._hallucination_warning_rng_active = true;
     }
     if (g._fatal_monster_attack_paused && g._monster_turn_paused_for_more
-        && g._more && !hallucinating()) {
+        && g._more) {
         g._resume_movemon_after_mon = mtmp;
         g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
         g._resume_turn_tail_after_more = true;

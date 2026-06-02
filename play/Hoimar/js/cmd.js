@@ -54,7 +54,7 @@ import * as C from './const.js';
 import { initrack } from './track.js';
 import {
     COLNO, ROWNO, STONE, CORR, DOOR, D_NODOOR, D_CLOSED, D_LOCKED,
-    SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, IS_POOL, LR_UPTELE, LR_DOWNTELE, A_STR, A_DEX, A_CON, A_WIS,
+    SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, IS_POOL, IS_SOFT, LR_UPTELE, LR_DOWNTELE, A_STR, A_DEX, A_CON, A_WIS,
 } from './const.js';
 
 const M1_POIS = 0x10000000;
@@ -340,6 +340,7 @@ const GEM_CLASS = 13;
 const VENOM_CLASS = 17;
 const BALL_CLASS = 15;
 const CHAIN_CLASS = 16;
+const GLASS = 19;
 const FIRST_SPELL = 366;
 const LAST_SPELL = 407;
 const SPE_MAGIC_MISSILE = 367;
@@ -1299,6 +1300,72 @@ function consumeInventoryObject(obj) {
     if (idx >= 0) game.inventory.splice(idx, 1);
 }
 
+function wornLifeSavingAmulet() {
+    return (game.inventory || []).find((obj) =>
+        obj?.otyp === AMULET_OF_LIFE_SAVING
+        && (obj.worn || ((obj.owornmask || 0) & C.W_AMUL))) || null;
+}
+
+function clearLifeSavingExtrinsic(obj) {
+    if (obj) {
+        obj.worn = false;
+        obj.owornmask = 0;
+    }
+    if (game.u?.uprops) {
+        game.u.uprops.life_will_be_saved = false;
+        game.u.uprops.life_saved = false;
+    }
+}
+
+function lifeSavingHp() {
+    const con = game.u?.acurr?.a?.[A_CON] ?? 10;
+    return Math.min(game.u?.uhpmax || 1, 50 + 10 * Math.trunc(con / 2));
+}
+
+function applyLifeSavingConPenalty() {
+    const u = game.u || (game.u = {});
+    if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
+    if (!Array.isArray(u.acurr.a)) u.acurr.a = [10, 10, 10, 10, 10, 10];
+    u.acurr.a[A_CON] = Math.max(3, (u.acurr.a[A_CON] ?? 10) - 1);
+}
+
+async function showLifeSavingDeathMessage() {
+    const u = game.u || (game.u = {});
+    u.umortality = (u.umortality || 0) + 1;
+    if (typeof u.uhp === 'number') u.uhp = 0;
+    game._latched_status_uhp = 0;
+    game._monster_death_pending = false;
+    game._death_prompt_pending = false;
+    game._death_prompt_active = false;
+    game._death_bones_checked = false;
+    game._death_bones_check_pending = false;
+    game._death_bones_done_stage_prepared = false;
+    game._death_bones_corpse_prepared = false;
+    game._death_bones_ok = false;
+    game._life_saving_after_more_pending = true;
+    // C refs: src/end.c:done(), src/attrib.c:exercise().  Life-saving
+    // preempts wizard death prompts and, at this More-resume boundary, C has
+    // just run the periodic healthy-hunger Constitution exercise row.
+    exercise(A_CON, true);
+    await pline('You die...  But wait...  Your medallion begins to glow!');
+    queue_more_prompt();
+}
+
+async function finishLifeSavingAfterMore() {
+    const amulet = wornLifeSavingAmulet();
+    game._life_saving_after_more_pending = false;
+    game._fatal_monster_attack_paused = false;
+    applyLifeSavingConPenalty();
+    if (game.u) game.u.uhp = lifeSavingHp();
+    clearLifeSavingExtrinsic(amulet);
+    consumeInventoryObject(amulet);
+    game._latched_status_uhp = null;
+    game._nomovemsg = 'You survived that attempt on your life.';
+    game._savelife_resume_active = true;
+    game._resume_turn_tail_after_more = false;
+    await pline('You feel much better!');
+}
+
 function ensureConduct() {
     game.u = game.u || {};
     return game.u.uconduct || (game.u.uconduct = {});
@@ -1416,6 +1483,98 @@ function thrownLanding(dx, dy) {
     return { ...last, hitHard };
 }
 
+function thrownMonsterTarget(dx, dy) {
+    // C ref: src/zap.c:bhit().  A thrown object stops at the first monster
+    // on the projectile line before the caller resolves thitmonst().
+    let x = game.u?.ux ?? 0;
+    let y = game.u?.uy ?? 0;
+    for (let range = 0; range < 8; range++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const loc = game.level?.at(nx, ny);
+        if (!loc || IS_OBSTRUCTED(loc.typ)) break;
+        const mon = mon_at(nx, ny);
+        if (mon) return { mon, x: nx, y: ny };
+        x = nx;
+        y = ny;
+    }
+    return null;
+}
+
+function plainThrownObjectMissesMonster(obj) {
+    // C ref: src/dothrow.c:thitmonst().  Weapons, weptools, gems, balls,
+    // boulders, potions, venoms, and food-like special cases need their own
+    // hit/effect paths; other carried object classes fall through to tmiss().
+    if (!obj) return false;
+    if (obj.oclass === WEAPON_CLASS || isWeaponTool(obj) || obj.oclass === GEM_CLASS) return false;
+    if (obj.oclass === POTION_CLASS || obj.oclass === VENOM_CLASS || obj.oclass === FOOD_CLASS) return false;
+    if (obj.oclass === BALL_CLASS || obj.otyp === BOULDER) return false;
+    return obj.oclass === ARMOR_CLASS
+        || obj.oclass === RING_CLASS
+        || obj.oclass === AMULET_CLASS
+        || obj.oclass === TOOL_CLASS
+        || obj.oclass === SCROLL_CLASS
+        || obj.oclass === SPBOOK_CLASS
+        || obj.oclass === WAND_CLASS;
+}
+
+async function tmissThrownObject(obj, mon) {
+    // C ref: src/dothrow.c:tmiss().
+    await pline(`The ${baseObjectName(obj)} misses the ${monsterName(mon)}.`);
+    if (!rn2(3)) {
+        mon.msleeping = 0;
+        mon.mstrategy = (mon.mstrategy || 0) & ~C.STRAT_WAITMASK;
+    }
+}
+
+async function thitmonstPlainMiss(obj, mon) {
+    // C ref: src/dothrow.c:thitmonst().  Even object classes that cannot
+    // damage this target still own the generic thrown to-hit roll first.
+    rnd(20);
+    await tmissThrownObject(obj, mon);
+}
+
+function thrownBreaktestDestroysObject(obj, landing) {
+    // C refs: src/dothrow.c:throwit(), src/dothrow.c:breaktest().
+    const loc = game.level?.at(landing.x, landing.y);
+    if (!landing.hitHard && (!loc || IS_SOFT(loc.typ))) return false;
+    if (obj_resists(obj, 1, 99)) return false;
+    const material = OBJECT_MATERIAL[obj.otyp] ?? 0;
+    if (material === GLASS && !obj.oartifact && obj.oclass !== GEM_CLASS) return true;
+    return obj.otyp === EXPENSIVE_CAMERA
+        || obj.oclass === POTION_CLASS
+        || obj.otyp === EGG
+        || obj.otyp === CREAM_PIE
+        || obj.otyp === MELON
+        || obj.oclass === VENOM_CLASS;
+}
+
+function encumbranceDecreaseMessage(newcap) {
+    // C ref: src/pickup.c:encumber_msg().
+    if (newcap <= C.UNENCUMBERED) return 'Your movements are now unencumbered.';
+    if (newcap === C.SLT_ENCUMBER) return 'Your movements are only slowed slightly by your load.';
+    if (newcap === C.MOD_ENCUMBER) return 'You rebalance your load.  Movement is still difficult.';
+    if (newcap === C.HVY_ENCUMBER) return 'You stagger under your load.  Movement is still very hard.';
+    return '';
+}
+
+async function stageThrowEncumbranceMessage(prevEncumbrance) {
+    const oldcap = Math.max(prevEncumbrance || 0, game.u?.uencumber || 0);
+    const newcap = heroNearCapacity();
+    if (game.u) game.u.uencumber = newcap;
+    if (oldcap <= newcap) return;
+    const msg = encumbranceDecreaseMessage(newcap);
+    if (!msg) return;
+    if (game._pending_message || game._more) {
+        game._after_more_message = game._after_more_message
+            ? `${msg}  ${game._after_more_message}`
+            : msg;
+        queue_more_prompt();
+    } else {
+        await pline(msg);
+    }
+}
+
 function matchingLauncherForAmmo(ammo, launcher) {
     return ammo?.otyp === ARROW && launcher?.otyp === BOW;
 }
@@ -1424,8 +1583,9 @@ function isAmmoObject(obj) {
     return obj?.otyp === ARROW;
 }
 
-function throwInventoryObject(obj, dirKey) {
+async function throwInventoryObject(obj, dirKey) {
     if (!obj) return;
+    const prevEncumbrance = game.u?.uencumber || 0;
     const wielded = heroWieldedWeapon();
     const thrownByHand = isAmmoObject(obj) && !matchingLauncherForAmmo(obj, wielded);
     if (obj.oclass === WEAPON_CLASS
@@ -1440,20 +1600,22 @@ function throwInventoryObject(obj, dirKey) {
     const dx = DIR_DX[dirKey] || 0;
     const dy = DIR_DY[dirKey] || 0;
     if (!thrown || (!dx && !dy)) return;
-    const landing = thrownLanding(dx, dy);
-    if (landing.hitHard) {
-        // C ref: dothrow.c:breaktest() -> zap.c:obj_resists().
-        rn2(100);
-    }
+    const target = plainThrownObjectMissesMonster(thrown) ? thrownMonsterTarget(dx, dy) : null;
+    if (target) await thitmonstPlainMiss(thrown, target.mon);
+    const landing = target || thrownLanding(dx, dy);
+    const destroyed = thrownBreaktestDestroysObject(thrown, landing);
     if (landing.x === (game.u?.ux ?? 0) && landing.y === (game.u?.uy ?? 0) && !landing.hitHard) return;
-    place_object(thrown, landing.x, landing.y);
-    see_objects();
+    if (!destroyed) {
+        place_object(thrown, landing.x, landing.y);
+        see_objects();
+    }
     if (thrownByHand) {
         const launcher = obj.otyp === ARROW ? 'a bow' : 'the appropriate launcher';
         const msg = `You aren't wielding ${launcher}, so you throw your ${baseObjectName(obj)} by hand.`;
         game._pending_message = msg;
         game._last_topline_message = msg;
     }
+    await stageThrowEncumbranceMessage(prevEncumbrance);
 }
 
 function lastInventoryLetter() {
@@ -13215,6 +13377,10 @@ async function handleQueuedMore(ch) {
     } else if (game._death_ray_death_pending) {
         game._more_dismissals_remaining = 0;
         await showDeathRayDeathMessage();
+    } else if (game._life_saving_after_more_pending) {
+        game._more_dismissals_remaining = 0;
+        game._more = false;
+        await finishLifeSavingAfterMore();
     } else if (game._sleep_wand_reflect_pending) {
         game._more_dismissals_remaining = 0;
         await showSleepRayReflectBounceAfterMore();
@@ -13232,20 +13398,25 @@ async function handleQueuedMore(ch) {
         return true;
     } else if (game._monster_death_pending && !game._after_more_message) {
         game._more_dismissals_remaining = 0;
+        const lifeSavingAmulet = wornLifeSavingAmulet();
         game._monster_death_pending = false;
-        game._death_prompt_pending = true;
+        game._death_prompt_pending = !lifeSavingAmulet;
         // C refs: src/end.c:done(), src/end.c:really_done(),
         // src/bones.c:can_make_bones().  Wizard/explore deaths ask whether to
         // die before really_done(); declining the prompt must not run the bones
         // feasibility RNG.
-        if (!deathUsesWizardPrompt()) runPendingDeathBonesCheck();
+        if (!lifeSavingAmulet && !deathUsesWizardPrompt()) runPendingDeathBonesCheck();
         if (!game._death_preserve_latched_status) game._latched_status_uhp = 0;
-        await pline('You die...');
-        if (game._death_shopkeeper_takes_name) {
-            await append_pline(`${game._death_shopkeeper_takes_name} takes all your possessions.`);
-            game._death_shopkeeper_takes_name = '';
+        if (lifeSavingAmulet) {
+            await showLifeSavingDeathMessage();
+        } else {
+            await pline('You die...');
+            if (game._death_shopkeeper_takes_name) {
+                await append_pline(`${game._death_shopkeeper_takes_name} takes all your possessions.`);
+                game._death_shopkeeper_takes_name = '';
+            }
+            queue_more_prompt();
         }
-        queue_more_prompt();
     } else if (game._death_prompt_pending) {
         if (deathUsesWizardPrompt()) await showDeathPrompt();
         else await showDeathDisclosureOrPrompt();
@@ -14900,6 +15071,7 @@ function stageWishEncumbranceMessage(prevEncumbrance) {
     const newcap = heroNearCapacity();
     if (game.u) game.u.uencumber = newcap;
     if (newcap <= oldcap) return;
+    game._extra_encumbered_turn_pending = true;
     const msg = encumbranceIncreaseMessage(newcap);
     if (!msg) return;
     game._after_more_message = game._after_more_message
@@ -18939,7 +19111,7 @@ export async function rhack(key) {
             await pline('You cannot throw an object at yourself.');
             return;
         }
-        throwInventoryObject(throwObj, ch);
+        await throwInventoryObject(throwObj, ch);
         game.context.move = 1;
         return;
     }

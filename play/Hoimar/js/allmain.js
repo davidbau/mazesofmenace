@@ -1489,6 +1489,18 @@ export async function moveloop_core() {
                 g._deferred_pre_turn_after_more = false;
                 await advanceTurn();
                 if (g._more || g._monster_turn_paused_for_more) return;
+                if (g._extra_encumbered_turn_pending && !g._more && !g._monster_turn_paused_for_more) {
+                    // C ref: src/allmain.c:moveloop_core().  A command whose
+                    // final message was queued behind tty More still re-enters
+                    // the immobile-hero loop before the next input when burdened
+                    // movement leaves u.umovement short of NORMAL_SPEED.
+                    const ballDragDelay = !!g._ball_drag_delay_pending;
+                    g._extra_encumbered_turn_pending = false;
+                    await advanceTurn();
+                    if (g._more || g._monster_turn_paused_for_more) return;
+                    if (ballDragDelay) g._ball_drag_delay_pending = false;
+                    else seedEncumberedDebtAfterExtraTurn(g);
+                }
                 if (g._deferred_pre_turn_after_more_returns_to_input) {
                     g._deferred_pre_turn_after_more_returns_to_input = false;
                     return;
