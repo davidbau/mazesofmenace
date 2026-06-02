@@ -18,7 +18,7 @@ import { dozap } from './zap.js';
 import { docast } from './spell.js';
 import { doread } from './read.js';
 import { rnl } from './rng.js';
-import { doextcmd, hooked_tty_getlin } from './extcmd-handlers.js';
+import { doextcmd, hooked_tty_getlin, wiz_wish } from './extcmd-handlers.js';
 import { wiz_level_tele } from './do.js';
 import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
@@ -103,6 +103,12 @@ export async function rhack(key) {
         // visit (getbones + makelevel) and relocates the hero + pet.
         const res = await wiz_level_tele((q) => hooked_tty_getlin(q, null));
         game.context.move = res === 1 ? 1 : 0;
+    } else if (key === 23) { // ^W — wizard-mode wish (cmd.c C('w') -> wiz_wish)
+        // C ref: cmd.c keymap C('w') = wizwish, IFBURIED|CMD_M_PREFIX|WIZMODECMD.
+        // Prompts "For what do you wish?", parses via readobjnam(), creates the
+        // wished object, then rolls u.ublesscnt += rn1(100,50).
+        await wiz_wish();
+        game.context.move = 0;
     } else if (ch === '#') {
         // C ref: cmd.c doextcmd — read and run an extended command.
         await doextcmd();

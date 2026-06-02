@@ -30,25 +30,36 @@ const MFAST = 2;
 // governs whether/when a monster reaches NORMAL_SPEED and acts.  Getting the
 // base speeds right therefore keeps downstream monster-move RNG (distfleeck /
 // dog_move / m_move) and the rendered monster positions in sync with C.
+//
+// Built by mapping each makemon.js MONS_NAMES[pmidx] species to its base speed
+// in the RECORDER's include/monsters.h (nethack-c/recorder), the C build that
+// produced the recorded sessions.  The previous version of this table was
+// indexed against a *different* monster enumeration (one that included extra
+// 5.0.0 species such as Cerberus/beholder that the recorder's MONS_NAMES does
+// not), so every entry from pmidx 153 (stalker) onward was shifted by the
+// accumulated offset and read out the wrong species' speed — e.g. gnome
+// (pmidx 165) was 1 instead of 6, the elementals (153-157) were rotated, and
+// the giants / golems / demons were all off by one or more.  Looking each
+// MONS_NAMES entry up by NAME in the recorder fixes the alignment.
 const MMOVE_BY_PMIDX = Object.freeze([
     /*   0 */ 18, 18, 18, 18, 6, 24, 3, 1, 6, 4, 6, 6, 12, 15, 12, 12,
     /*  16 */ 18, 16, 16, 15, 12, 12, 12, 12, 12, 12, 14, 3, 1, 13, 13, 13,
-    /*  32 */ 18, 16, 15, 15, 15, 15, 12, 12, 12, 10, 15, 9, 6, 9, 6, 6,
-    /*  48 */ 12, 12, 3, 12, 12, 3, 15, 13, 0, 0, 3, 6, 6, 6, 6, 15,
+    /*  32 */ 18, 16, 15, 15, 15, 15, 12, 12, 12, 10, 15, 9, 6, 9, 12, 12,
+    /*  48 */ 12, 12, 3, 12, 12, 3, 15, 13, 0, 0, 3, 6, 6, 12, 6, 15,
     /*  64 */ 3, 3, 3, 12, 12, 12, 6, 9, 9, 9, 5, 7, 9, 5, 1, 1,
     /*  80 */ 1, 9, 9, 18, 3, 12, 12, 12, 12, 10, 12, 12, 3, 3, 12, 4,
     /*  96 */ 15, 15, 3, 3, 16, 24, 24, 24, 20, 24, 1, 20, 20, 20, 22, 22,
     /* 112 */ 3, 3, 3, 9, 12, 18, 15, 15, 8, 10, 8, 10, 18, 16, 22, 22,
     /* 128 */ 20, 20, 18, 18, 20, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
     /* 144 */ 9, 9, 9, 9, 9, 9, 9, 9, 9, 12, 36, 12, 6, 5, 1, 0,
-    /* 160 */ 0, 0, 0, 1, 1, 6, 8, 10, 10, 6, 6, 10, 12, 12, 12, 12,
+    /* 160 */ 0, 0, 0, 1, 1, 6, 12, 10, 12, 6, 6, 10, 12, 12, 12, 12,
     /* 176 */ 18, 15, 12, 6, 8, 10, 12, 6, 9, 9, 9, 8, 10, 10, 10, 12,
-    /* 192 */ 12, 12, 14, 10, 10, 10, 10, 12, 14, 14, 16, 10, 12, 14, 1, 3,
+    /* 192 */ 12, 12, 14, 10, 10, 10, 10, 12, 14, 14, 16, 10, 12, 12, 1, 3,
     /* 208 */ 6, 6, 12, 12, 18, 12, 8, 15, 15, 3, 15, 18, 12, 10, 12, 14,
-    /* 224 */ 12, 6, 12, 14, 26, 12, 12, 12, 9, 12, 12, 12, 15, 12, 15, 6,
+    /* 224 */ 12, 6, 12, 12, 26, 12, 12, 12, 9, 12, 12, 12, 15, 12, 15, 6,
     /* 240 */ 6, 6, 6, 6, 6, 8, 6, 8, 8, 12, 12, 9, 9, 6, 3, 8,
     /* 256 */ 7, 6, 6, 6, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 16,
-    /* 272 */ 12, 12, 0, 12, 15, 10, 10, 6, 10, 10, 10, 10, 12, 12, 15, 3,
+    /* 272 */ 12, 12, 0, 12, 12, 10, 10, 6, 10, 10, 10, 10, 12, 12, 15, 3,
     /* 288 */ 10, 12, 12, 9, 12, 12, 12, 12, 6, 15, 6, 9, 6, 12, 5, 3,
     /* 304 */ 18, 9, 3, 15, 9, 12, 15, 12, 12, 12, 12, 3, 18, 12, 9, 10,
     /* 320 */ 3, 6, 6, 6, 6, 6, 5, 9, 12, 0, 12, 12, 12, 12, 12, 12,

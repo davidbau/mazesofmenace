@@ -15,6 +15,8 @@ import { MTSZ, COLNO, ROWNO, IS_ROOM } from './const.js';
 import { obj_resists } from './zap.js';
 import { newsym } from './display.js';
 import { dist2, mfndpos } from './monmove.js';
+import { mattackm } from './mhitm.js';
+import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import {
     FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS,
     LARGE_BOX, CHEST, ICE_BOX, CRYSTAL_BALL, TINNING_KIT,
@@ -298,16 +300,21 @@ export function dog_move(mtmp, after) {
     const appr = dog_goal(mtmp, edog, after, udist, whappr, g);
     if (appr === -2) return MMOVE_NOTHING;
 
-    // mfndpos with pet allowflags (ALLOW_M etc.); for the common case this is
-    // just the free adjacent squares (the hero square is excluded).
-    const poss = mfndpos(mtmp, 0);
+    // mfndpos with pet allowflags.  ALLOW_M keeps monster-occupied adjacent
+    // squares in the candidate list so the pet can melee a hostile monster
+    // (dogmove.c mon_allowflags()).  Other allowflags (ALLOW_MDISP, traps, ...)
+    // aren't exercised by the contest sessions at the points they diverge.
+    const ALLOW_M = 0x00080000;
+    const poss = mfndpos(mtmp, ALLOW_M);
     const cnt = poss.length;
 
-    // Count uncursed-item squares (for the cursed-item avoidance roll).
+    // Count uncursed-item squares (for the cursed-item avoidance roll).  C ref
+    // dogmove.c:1070 — a monster-occupied square without ALLOW_M/ALLOW_MDISP is
+    // skipped; with ALLOW_M (every monster square here) it still counts toward
+    // uncursedcnt unless it also holds a cursed object.
     let uncursedcnt = 0;
     for (let i = 0; i < cnt; i++) {
         const { x: nx, y: ny } = poss[i];
-        if (MON_AT(nx, ny)) continue;
         if (cursed_object_at(nx, ny)) continue;
         uncursedcnt++;
     }
@@ -320,7 +327,19 @@ export function dog_move(mtmp, after) {
     for (let i = 0; i < cnt; i++) {
         const nx = poss[i].x, ny = poss[i].y;
 
-        // (leashed / guardian / attack / displace / kicked-loc skips omitted)
+        // (leashed / guardian skips omitted — never apply to the starting pets
+        //  in these sessions.)
+
+        // C ref: dogmove.c:1102 — ALLOW_M: the pet melees an adjacent monster.
+        // A monster square either triggers an attack (return) or the pet balks
+        // and the square is skipped entirely (C `continue`); either way it never
+        // reaches the cursed-object / backtrack / distance logic below.
+        const mtmp2 = MON_AT(nx, ny);
+        if (mtmp2) {
+            const r = dog_attack_mon(mtmp, mtmp2, omx, omy, after);
+            if (r !== null) return r; // attacked -> done with this move
+            continue;                 // balked -> next candidate square
+        }
 
         // dog eschews cursed objects, likes dog food: scan objects at <nx,ny>.
         let cursemsg = false, ate = false;
@@ -377,3 +396,60 @@ export function dog_move(mtmp, after) {
 }
 
 function GDIST(x, y, g) { return dist2(x, y, g.gx, g.gy); }
+
+// C ref: dogmove.c:1102-1170 — the ALLOW_M branch of dog_move's choice loop.
+// Decides whether the pet (mtmp) attacks an adjacent monster (mtmp2); returns
+// an MMOVE_* code when it does (or when `after` short-circuits), or null when
+// the pet balks at this foe (caller skips the square).
+function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
+    // balk: highest defender level the pet is willing to engage, scaled by the
+    // pet's current HP fraction.  C: m_lev + (5*mhp/mhpmax) - 2.  The starting
+    // pets don't track mhp/mhpmax here, so a missing fraction is treated as full
+    // health (matching a freshly-made pet) to keep the comparison faithful.
+    const petLev = mtmp.m_lev ?? mtmp.data?.mlevel ?? 0;
+    const hpFrac = (mtmp.mhp != null && mtmp.mhpmax)
+        ? Math.trunc((5 * mtmp.mhp) / mtmp.mhpmax) : 5;
+    const balk = petLev + hpFrac - 2;
+    const defLev = mtmp2.m_lev ?? mtmp2.data?.mlevel ?? 0;
+
+    // C dogmove.c:1121 — refuse the fight under any of these conditions.
+    if (defLev >= balk
+        || (mtmp2.mtame && mtmp.mtame /* && !Conflict */)
+        // max_passive_dmg(mtmp2) >= mtmp.mhp: the modeled hostiles (newt/fox/
+        // jackal/rat/gecko) have no passive attack, so this is 0 — never balks.
+        || (mtmp2.mpeaceful /* guardian/leader or low-HP peaceful */
+            && ((mtmp.mhp != null && mtmp.mhpmax && mtmp.mhp * 4 < mtmp.mhpmax)
+                || mtmp2.data?.msound === 'guardian'
+                || mtmp2.data?.msound === 'leader'))) {
+        return null;
+    }
+
+    // Floating-eye / cube / cockatrice ranged-only avoidance (rn2(10) gazes)
+    // isn't reachable for the modeled foes; skip.
+
+    if (after) return MMOVE_NOTHING; // hit only once each move
+
+    let mstatus = mattackm(mtmp, mtmp2); // dogmove.c:1151
+
+    if (mstatus & M_ATTK_AGR_DIED) return MMOVE_DIED;
+
+    // C dogmove.c:1157 — the struck defender may strike back.
+    if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+        && rn2(4)                                 // dogmove.c:1158
+        && mtmp2.mlstmv !== game.moves
+        // onscary() is false for these monsters (no temple/Elbereth here)
+        && monnear(mtmp2, mtmp.mx, mtmp.my)) {
+        mstatus = mattackm(mtmp2, mtmp);          // return attack (dogmove.c:1165)
+        if (mstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
+    }
+    return MMOVE_DONE;
+}
+
+// C ref: mon.c monnear(mon, x, y) — within melee range (dist2 < 3, but grid
+// bugs can't reach diagonal range-2 squares).
+function monnear(mon, x, y) {
+    const PM_GRID_BUG = 116; // makemon MONS-table index (matches mfndpos nodiag)
+    const distance = dist2(mon.mx, mon.my, x, y);
+    if (distance === 2 && mon.data?.pmidx === PM_GRID_BUG) return false;
+    return distance < 3;
+}

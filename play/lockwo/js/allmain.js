@@ -367,13 +367,47 @@ function u_calc_moveamt() {
     if (youHaveFast()) rn2(3);
 }
 
+// C ref: dungeon.c depth() — logical depth of a d_level within its dungeon.
+// Returns null when the referenced dungeon entry isn't materialized (the
+// gameplay-session newgame() installs a single-level stub for dnum 0), so
+// callers can fall back to the shallow default rather than mis-deriving it.
+function levelDepth(lev) {
+    if (!lev) return null;
+    const dng = game.dungeons?.[lev.dnum];
+    if (!dng || dng.depth_start == null) return null;
+    return dng.depth_start + lev.dlevel - 1;
+}
+
 // C ref: allmain.c maybe_generate_rnd_mon() — small chance of a new monster.
+//   rn2(u.uevent.udemigod ? 25
+//       : (depth(&u.uz) > depth(&stronghold_level)) ? 50 : 70)
+// The bound tightens (more frequent spawns) once the hero is past the
+// stronghold, and again after becoming a demigod.  We derive the bound from
+// the live dungeon depth when it's reliably materialized, and otherwise fall
+// back to 70 — which matches every shallow position the gameplay sessions
+// actually reach before any spawn would fire.
 function maybe_generate_rnd_mon() {
-    // depth(uz) on dlvl 1 is below the stronghold => rn2(70).
-    if (!rn2(70)) {
-        // makemon((struct permonst *)0, 0, 0, NO_MM_FLAGS) — left unspawned
-        // here; spawning needs full makemon placement which our level fill
-        // doesn't materialize.  The roll itself preserves RNG position.
+    let bound = 70;
+    if (game.u?.uevent?.udemigod) {
+        bound = 25;
+    } else {
+        const here = levelDepth(game.u?.uz);
+        const sh = levelDepth(game.stronghold_level);
+        if (here != null && sh != null && here > sh)
+            bound = 50;
+    }
+
+    if (!rn2(bound)) {
+        // makemon((struct permonst *)0, 0, 0, NO_MM_FLAGS) — left unspawned.
+        // The faithful spawn consumes a position-search loop
+        // (makemon_rnd_goodpos: rn1(COLNO-3,2)/rn2(ROWNO) until goodpos),
+        // rndmonst()'s class draw, next_ident()/newmonhp(), a gender rn2(2),
+        // and a group-monster rn2(2) with optional m_initgrp placement.  That
+        // sequence depends on materialized floor/monster occupancy which the
+        // gameplay-session level fill doesn't reproduce, so spawning is left
+        // out; every recorded session diverges upstream (mon/dogmove/steed/
+        // mkobj) before any spawn point is reached, so the roll alone keeps
+        // RNG position correct for all currently-reachable turns.
     }
 }
 

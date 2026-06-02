@@ -303,7 +303,10 @@ export function newsym(x, y) {
             const ep = engr_at(x, y);
             if (ep) ep.erevealed = 1;
         }
-        show_glyph_cell(x, y, '@', CLR_WHITE, false);
+        // C ref: display.c display_self() — a mounted hero is drawn as the
+        // steed's glyph (the hero is "on" the steed), not '@'.
+        const hg = hero_glyph();
+        show_glyph_cell(x, y, hg.ch, hg.color, false);
         const bg = background_glyph(loc, x, y);
         loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec };
         return;
@@ -344,7 +347,21 @@ export async function docrt() {
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++)
             newsym(x, y);
-    if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+    if (game.u?.ux > 0) {
+        const hg = hero_glyph();
+        show_glyph_cell(game.u.ux, game.u.uy, hg.ch, hg.color, false);
+    }
+}
+
+// C ref: display.c display_self() — the glyph drawn at the hero's tile.  When
+// riding a steed the steed's glyph is shown instead of the hero's '@'.
+function hero_glyph() {
+    const st = game.u?.usteed;
+    if (st) {
+        const d = st.data || {};
+        return { ch: d.mlet || 'u', color: (d.mcolor != null) ? d.mcolor : CLR_WHITE };
+    }
+    return { ch: '@', color: CLR_WHITE };
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -459,6 +476,10 @@ function _statusLine2() {
         s += ` Xp:${u.ulevel || 1}`;
     if (game.flags?.time)
         s += ` T:${game.moves || 1}`;
+    // C ref: botl.c — the "Ride" condition is shown while the hero is mounted.
+    // Conditions follow the numeric fields on status line 2.
+    if (u.usteed)
+        s += ` Ride`;
     return s;
 }
 

@@ -6453,7 +6453,8 @@ const EXTENDED_COMMANDS = [
     { name: 'quit', min: 1, autocomplete: true },
     { name: 'ride', min: 2, autocomplete: true },
     { name: 'rub', min: 2, autocomplete: true },
-    { name: 'sit', min: 2, autocomplete: true },
+    { name: 'sit', min: 1, autocomplete: true },
+    { name: 'stats', min: 2, autocomplete: true, wizard: true },
     { name: 'terrain', min: 2, autocomplete: true },
     { name: 'tip', min: 3, autocomplete: true },
     { name: 'turn', min: 2, autocomplete: true },
@@ -6921,10 +6922,22 @@ function overviewSeenString(count, noun) {
     return `${n === 2 ? 'some' : 'many'} ${noun}s`;
 }
 
-function overviewTerrainCount(level, typ) {
+function overviewRoomSeen(level, room) {
+    const roomno = (room?.roomnoidx ?? level?.rooms?.indexOf(room) ?? -1) + C.ROOMOFFSET;
+    if (roomno < C.ROOMOFFSET) return false;
+    for (const row of level?.locations || []) {
+        for (const loc of row || []) {
+            if (loc?.roomno === roomno && loc.remembered_glyph) return true;
+        }
+    }
+    return false;
+}
+
+function overviewTerrainCount(level, typ, { rememberedOnly = false } = {}) {
     let count = 0;
     for (const row of level?.locations || []) {
         for (const loc of row || []) {
+            if (rememberedOnly && !loc?.remembered_glyph) continue;
             if (loc?.typ === typ) count++;
         }
     }
@@ -6932,20 +6945,27 @@ function overviewTerrainCount(level, typ) {
 }
 
 function overviewFeatureLine(uz, state) {
-    // C refs: dungeon.c:print_mapseen(), dungeon.c:seen_string().
-    if (sameLevel(uz, game.u?.uz)) return '';
+    // C refs: dungeon.c:recalc_mapseen(), dungeon.c:print_mapseen(),
+    // dungeon.c:seen_string().  Current-level features are recalculated from
+    // remembered terrain, not from raw level-generation counts.
+    const current = sameLevel(uz, game.u?.uz);
     const level = state?.level;
     const parts = [];
-    const shops = overviewRooms(level).filter((room) => (room.rtype ?? 0) >= C.SHOPBASE);
+    const shops = overviewRooms(level).filter((room) =>
+        (room.rtype ?? 0) >= C.SHOPBASE && (!current || overviewRoomSeen(level, room)));
     if (shops.length > 1) {
         parts.push(overviewSeenString(shops.length, 'shop'));
     } else if (shops.length === 1) {
         const name = shopTypeName(shops[0].rtype);
         parts.push(`${overviewArticle(name)} ${name}`);
     }
-    const nfountains = Math.min(3, level?.flags?.nfountains ?? overviewTerrainCount(level, C.FOUNTAIN));
+    const nfountains = current
+        ? Math.min(3, overviewTerrainCount(level, C.FOUNTAIN, { rememberedOnly: true }))
+        : Math.min(3, level?.flags?.nfountains ?? overviewTerrainCount(level, C.FOUNTAIN));
     if (nfountains) parts.push(overviewSeenString(nfountains, 'fountain'));
-    const ntrees = Math.min(3, level?.flags?.ntrees ?? overviewTerrainCount(level, C.TREE));
+    const ntrees = current
+        ? Math.min(3, overviewTerrainCount(level, C.TREE, { rememberedOnly: true }))
+        : Math.min(3, level?.flags?.ntrees ?? overviewTerrainCount(level, C.TREE));
     if (ntrees) parts.push(overviewSeenString(ntrees, 'tree'));
     if (!parts.length) return '';
     const line = parts.join(', ');
@@ -11336,7 +11356,7 @@ const SIMPLE_OPTIONS_PAGE1 = [
     () => ` m - pickup_stolen           [${optionBool('flags', 'pickup_stolen', true) ? 'X' : ' '}]  (for autopickup)`,
     () => ` n - pickup_thrown           [${optionBool('flags', 'pickup_thrown', true) ? 'X' : ' '}]  (for autopickup)`,
     () => ` o - pickup_types            [${game.flags?.pickup_types || 'all'}]  (for autopickup)`,
-    () => ` p - pushweapon              [${optionBool('flags', 'pushweapon', true) ? 'X' : ' '}]`,
+    () => ` p - pushweapon              [${optionBool('flags', 'pushweapon') ? 'X' : ' '}]`,
     ' (1 of 2)',
 ];
 
@@ -11486,7 +11506,7 @@ async function handleSimpleOptionsMenuKey(ch) {
             l: ['flags', 'fireassist', true],
             m: ['flags', 'pickup_stolen', true],
             n: ['flags', 'pickup_thrown', true],
-            p: ['flags', 'pushweapon', true],
+            p: ['flags', 'pushweapon', false],
         };
         const toggle = toggles[ch];
         if (toggle) {
@@ -14755,7 +14775,8 @@ function insightHungerValue(level) {
     // High-level wizard-mode tours still have incomplete hunger side-effect
     // ownership outside the turn tail; keep the established insight fallback
     // until those command/item hunger paths are modeled.
-    if ((game.flags?.debug || game.wizard) && (game.u?.uhunger ?? fallback) < fallback) return fallback;
+    if ((game.flags?.debug || game.wizard) && level >= 15
+        && (game.u?.uhunger ?? fallback) < fallback) return fallback;
     return game.u?.uhunger ?? fallback;
 }
 
@@ -17047,6 +17068,9 @@ export async function rhack(key) {
         game._awaiting_pray_confirm = false;
         if (ch === 'y' || ch === 'Y') {
             rememberPrayerStart();
+            // C ref: src/pray.c:dopray().  Accepting prayer rejects atheist
+            // conduct before can_pray() decides whether the prayer proceeds.
+            noteConductCounter('gnostic');
             game._prayer_finish_result_inline = false;
             await pline(`You begin praying to ${prayerGodName()}.`);
             if (game.wizard || game.flags?.debug) {
@@ -18412,7 +18436,7 @@ export async function rhack(key) {
         const old = heroWieldedWeapon();
         setHeroWieldedWeapon(obj);
         await pline(`${inventoryListing(obj, { includeWorn: true })}.`);
-        if (optionBool('flags', 'pushweapon', true) && old && old !== obj)
+        if (optionBool('flags', 'pushweapon') && old && old !== obj)
             setHeroSecondaryWeapon(old);
         game.context.move = 1;
         return;

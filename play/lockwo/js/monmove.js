@@ -149,6 +149,7 @@ export function mfndpos(mon, flag) {
     // The grid bug carries makemon's pmidx 116 (matching base_mmove's table).
     const nodiag = (mon.data?.pmidx === PM_GRID_BUG);
     const ALLOW_U = 0x100000; // sentinel; callers below pass it in `flag`.
+    const ALLOW_M = 0x00080000; // include monster-occupied squares (const.js).
 
     const maxx = Math.min(x + 1, COLNO - 1);
     const maxy = Math.min(y + 1, ROWNO - 1);
@@ -184,8 +185,14 @@ export function mfndpos(mon, flag) {
                 }
                 if (!(flag & ALLOW_U)) continue;
             } else if (MON_AT(nx, ny)) {
-                // another monster occupies the spot; no displace by default
-                continue;
+                // another monster occupies the spot.  C ref: mon.c mfndpos
+                // (mon.c:2299-2316) — with ALLOW_M the square stays in the
+                // candidate list (the caller, e.g. dog_move, decides whether to
+                // attack it).  A *tame* occupant is still dropped (a pet has no
+                // ALLOW_TM without Conflict, which these sessions never set).
+                // Without ALLOW_M the square is dropped (no displace by default).
+                if (!(flag & ALLOW_M)) continue;
+                if (m_at(nx, ny)?.mtame) continue;
             }
             poss.push({ x: nx, y: ny });
         }

@@ -251,11 +251,41 @@ function touchfood(otmp) {
     return otmp;
 }
 
-// C ref: eat.c gethungry() — the per-turn rn2(20) "accessorytime" roll.  The
-// live per-turn hook currently lives in allmain.js (gethungry()); this export
-// is provided so the orchestrator can route the canonical implementation
-// through eat.js without changing behavior.
+// C ref: eat.c:3163 gethungry() — the per-turn hunger machinery.  RNG-exact
+// to the C ordering:
+//
+//   if ((!Unaware || !rn2(10))            <- eat.c:3174, the *first* draw, but
+//        && (carnivorous|herbivorous|...) <- only consumed when the hero is
+//        && !Slow_digestion)              <- Unaware (asleep/unconscious); the
+//       u.uhunger--;                         awake hero short-circuits on
+//                                            !Unaware and consumes NOTHING here.
+//   accessorytime = rn2(20);              <- eat.c:3191, always consumed.
+//
+// In every recorded session that reaches a per-turn hunger check the hero is
+// awake (Unaware false), so only the rn2(20) at eat.c:3191 fires — which is
+// why the historical one-line `rn2(20)` body matched.  We model the full C
+// structure here so the export stays correct if a future session sleeps; the
+// `Unaware` gate is read from game state and defaults to awake (no extra draw).
+//
+// NOTE: the live per-turn hook still lives in allmain.js's local gethungry()
+// (also `rn2(20)`); this export is the canonical implementation the
+// orchestrator can route allmain through without changing behavior.  Do NOT
+// edit allmain.js from here.
 export function gethungry() {
+    const u = game.u;
+
+    // C ref: eat.c:3167 — u.uinvulnerable / debug_hunger skip the whole thing.
+    if (u && u.uinvulnerable) return;
+
+    // C ref: eat.c:3174 — Unaware hero burns metabolic food at a slowed rate
+    // (1-in-10).  The rn2(10) is only evaluated when Unaware is truthy because
+    // C's `||` short-circuits on `!Unaware`.  The starter hero is awake, so
+    // this branch consumes no RNG (matching the recorded streams).
+    const unaware = !!(u && (u.usleep || u.uunconscious || u.ufrozen));
+    if (unaware) rn2(10);
+
+    // C ref: eat.c:3191 — accessorytime = rn2(20); replaces (moves % 20).
+    // Always consumed; the only hunger draw in the recorded sessions.
     rn2(20);
 }
 

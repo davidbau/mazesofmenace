@@ -16,6 +16,10 @@ import { pluslvl, losexp } from './exper.js';
 import { MAXULEV } from './const.js';
 import { getpos, get_valid_jump_position, is_valid_jump_pos } from './hack.js';
 import { dotwoweapon } from './wield.js';
+import { doride } from './steed.js';
+import { readobjnam } from './readobjnam.js';
+import { hold_another_object } from './invent.js';
+import { rn1 } from './rng.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -448,6 +452,62 @@ async function getlin_top(query) {
     return await hooked_tty_getlin(query, null);
 }
 
+// ── #wizwish (wizcmds.c wiz_wish -> zap.c makewish) ──
+//
+// Wizard-mode wish.  C ref: wizcmds.c:32 wiz_wish() sets flags.verbose=FALSE
+// (so the "You may wish for an object." line is suppressed) then calls
+// makewish().  makewish (zap.c:6314) prompts "For what do you wish?", parses
+// the reply with readobjnam(), creates the object, holds it, and finally rolls
+// u.ublesscnt += rn1(100, 50) — recorded as rn2(100) @ makewish(zap.c:6421).
+//
+// readobjnam() drives the one RNG draw in name resolution (rn2(maxprob) @
+// rnd_otyp_by_namedesc) plus the artifact rn2(nartifact_exist()) when an
+// artifact is wished for; mksobj() supplies the object-creation RNG.
+const MAXWISHTRY = 5;
+// Exported so cmd.js can bind the C('w') keymap entry (cmd.c:2000-2001) in
+// addition to the '#wizwish' extended command both route here.
+export async function wiz_wish() {
+    if (!isWizard()) return 0;
+    await makewish();
+    return 0;
+}
+
+async function makewish() {
+    let tries = 0;
+    let result = null;
+    for (;;) {
+        const prompt = (game.iflags?.cmdassist && tries > 0)
+            ? 'For what do you wish (enter \'help\' for assistance)?'
+            : 'For what do you wish?';
+        let buf = mungspaces(await getlin_top(prompt));
+        if (buf === '\x1b' || (buf.length && buf[0] === '\x1b')) buf = '';
+        if (strcmpi_eq(buf, 'help')) { continue; }
+
+        const r = readobjnam(buf);
+        if (!r || r.kind == null) {
+            await pline('Nothing fitting that description exists in the game.');
+            if (++tries < MAXWISHTRY) continue;
+            await pline("That's enough tries!");
+            // C: otmp = readobjnam(0,0) -> random object; not exercised.
+            return;
+        }
+        if (r.kind === 'nothing') return; /* declined to make a wish */
+        if (r.kind === 'hands') return;   /* terrain wish; not exercised */
+        result = r.obj;
+        break;
+    }
+
+    // hold the wished object (addinv).  drop_fmt/hold_msg as in C makewish.
+    hold_another_object(result, 'Oops!  %s to the floor!', null, null);
+
+    // u.ublesscnt += rn1(100, 50);  /* the gods take notice */
+    const u = game.u;
+    if (u) u.ublesscnt = (u.ublesscnt || 0) + rn1(100, 50);
+    else rn1(100, 50);
+}
+
+function strcmpi_eq(a, b) { return String(a).toLowerCase() === String(b).toLowerCase(); }
+
 // ── #name / #call (do_name.c docallcmd) ──
 //
 // Builds the "What do you want to name?" PICK_ONE menu, displays it as the
@@ -560,6 +620,8 @@ const HANDLERS = {
     pray: dopray,
     name: docallcmd,
     call: docallcmd,
+    ride: doride,
+    wizwish: wiz_wish,
 };
 
 // C ref: cmd.c doextcmd().  '#' entry: read an extended command name and

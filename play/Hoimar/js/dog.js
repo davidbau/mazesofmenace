@@ -266,6 +266,12 @@ export async function makedog() {
         }
         if (pet === PM_PONY) put_starting_saddle_on_pony(mon);
         init_edog(mon);
+        // C ref: src/dog.c:initedog().  Starting pets still count for the
+        // petless conduct; only the livelog message is moveloop-gated.
+        if (game.u) {
+            const conduct = game.u.uconduct || (game.u.uconduct = {});
+            conduct.pets = (conduct.pets || 0) + 1;
+        }
     }
     return mon;
 }

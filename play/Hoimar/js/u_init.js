@@ -532,7 +532,6 @@ const SAMURAI_KNOWN_ARMOR = [
 const STARTING_QUIVER_WEAPONS = new Set([
     ARROW, ELVEN_ARROW, ORCISH_ARROW, SILVER_ARROW, YA, CROSSBOW_BOLT,
     DART, SHURIKEN, BOOMERANG,
-    DAGGER, ELVEN_DAGGER, ORCISH_DAGGER, SILVER_DAGGER,
 ]);
 
 const KNIGHT_KNOWN_WEAPONS = [
@@ -831,6 +830,7 @@ function apply_starting_weapon_use(obj) {
     // C ref: src/u_init.c:ini_inv_use_obj().  Starting missile/ammo stacks
     // fill the quiver before ordinary weapons are auto-wielded.
     if (!obj || obj.oclass !== WEAPON_CLASS) return;
+    if (obj.wielded || obj.alternate || obj.quivered) return;
     if (STARTING_QUIVER_WEAPONS.has(obj.otyp)) {
         if (!(game.inventory || []).some((item) => item?.quivered)) obj.quivered = true;
     } else if (!(game.inventory || []).some((item) => item?.wielded)) {
