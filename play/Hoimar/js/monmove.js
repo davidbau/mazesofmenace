@@ -3735,14 +3735,9 @@ async function show_blocking_monster_message(line) {
         && topline_can_pack_message(game._pending_message, line)) {
         // C refs: src/end.c:savelife(), src/allmain.c:moveloop_core(),
         // win/tty/topl.c:update_topl().  Declining wizard-mode death returns
-        // to the interrupted monster pass; the next visible combat line can
-        // pack behind the OK line, then blocks before later monsters move.
+        // to the interrupted monster pass; combat lines can keep packing
+        // behind the OK line until the saved-life nomovemsg boundary blocks.
         game._pending_message = `${game._pending_message}  ${line}`;
-        game._monster_attack_more_latched = true;
-        game._monster_attack_pause_after_more = true;
-        game._savelife_resume_more_latched = true;
-        game._pending_more_strict_keys = true;
-        queue_more_prompt();
         return;
     }
     if (game._nomovemsg === 'You survived that attempt on your life.'
@@ -5923,6 +5918,7 @@ function handle_monster_fatal_damage(mtmp, preDamageHp) {
     const forceDeathStatusHp0 = !!game._force_fatal_status_hp0;
     game._force_fatal_status_hp0 = false;
     const preserveFatalHitStatusHp = !forceDeathStatusHp0
+        && !pendingMonsterHit
         && ((!pendingTopline && preDamageHp <= 1)
             || (!!pendingTopline && !/^You /.test(pendingTopline)));
     let preserveDeathPromptStatusHp = preserveFatalHitStatusHp && !pendingMonsterHit;
@@ -5938,11 +5934,12 @@ function handle_monster_fatal_damage(mtmp, preDamageHp) {
         game._death_shopkeeper_killer = null;
     }
     game._death_preserve_latched_status = preserveDeathPromptStatusHp;
-    if (!game._pet_combat_resume_active)
+    const fatalStatusHp = preserveFatalHitStatusHp ? preDamageHp : 0;
+    if (!game._pet_combat_resume_active || fatalStatusHp === 0)
         // C refs: src/mhitu.c:hitmu(), src/end.c:done().
         // Fatal hit More frames can show the pre-damage status until
         // done_in_by() advances to the death prompt.
-        game._latched_status_uhp = preserveFatalHitStatusHp ? preDamageHp : 0;
+        game._latched_status_uhp = fatalStatusHp;
     game._monster_death_pending = true;
     // C refs: mhitu.c:mattacku(), end.c:done().  Wizard/explore death
     // handling interrupts the current monster turn even when the hit occurred

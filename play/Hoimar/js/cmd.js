@@ -13450,6 +13450,7 @@ async function handleQueuedMore(ch) {
         game._more = false;
         game._more_dismissals_remaining = 0;
         clear_pending_message();
+        game._latched_status_turn = null;
         game._monster_turn_paused_for_more = false;
         game._monster_attack_more_waiting = false;
         game._resume_encumbered_extra_turn_after_more = false;
@@ -14162,10 +14163,11 @@ async function handleQueuedMore(ch) {
                 }
             }
             if (game._after_more_message) {
-            const split = afterMoreSplit;
-            const msg = split?.first || game._after_more_message;
-            const rest = split?.rest || '';
-            const pendingPhysicalSplit = splitDeferredMonsterPhysicalTopline(dismissedTopline);
+                const ordinaryMonsterToplineDeferred = !!game._monster_topline_deferred;
+                const split = afterMoreSplit;
+                const msg = split?.first || game._after_more_message;
+                const rest = split?.rest || '';
+                const pendingPhysicalSplit = splitDeferredMonsterPhysicalTopline(dismissedTopline);
             // C refs: src/mhitm.c:mattackm(), src/mon.c:monkilled().
             // A deferred monster-vs-monster hit line blocks before visible
             // death side effects such as "The kitten is killed!" are applied.
@@ -14186,6 +14188,7 @@ async function handleQueuedMore(ch) {
             if (game._clear_latched_status_before_after_more) {
                 game._clear_latched_status_before_after_more = false;
                 game._latched_status_uhp = null;
+                game._latched_status_turn = null;
             }
             clearLatchedStatusAttrsAfterMore();
             if (game._clear_status_uencumber_override_before_after_more) {
@@ -14332,16 +14335,22 @@ async function handleQueuedMore(ch) {
                     && !game._extra_encumbered_turn_pending
                     && !game._deferred_monster_physical_attack
                     && !game._after_more_message;
+                const resumePrayerBehindNewMore = ordinaryMonsterToplineDeferred
+                    && !!game._pending_prayer_finish_message
+                    && !rest
+                    && !game._monster_death_pending
+                    && !game._fatal_monster_attack_paused;
                 if (pausedMonsterTurn
                     && !game._monster_death_pending
                     && !game._fatal_monster_attack_paused
                     && (game._monster_attack_resume_behind_after_more
-                        || resumePhysicalBehindNewMore)) {
+                        || resumePhysicalBehindNewMore
+                        || resumePrayerBehindNewMore)) {
                     // C refs: win/tty/topl.c:more(), src/mhitu.c:hitmsg(),
-                    // src/allmain.c:moveloop_core().  A monster physical
-                    // More can be followed by an intervening monster pline;
-                    // after that pline is shown, the interrupted monster pass
-                    // resumes behind the new prompt and may pack the next hit.
+                    // src/hack.c:unmul(), src/allmain.c:moveloop_core().
+                    // Some monster Mores resume work behind the newly shown
+                    // prompt: physical attack tails can pack the next hit, and
+                    // prayer's nomovemsg can pack when unmul() finishes there.
                     resumeMonsterBehindNewMore = true;
                     if (resumePhysicalBehindNewMore) {
                         game._monster_physical_pack_behind_active_more = true;
@@ -14485,6 +14494,7 @@ async function handleQueuedMore(ch) {
         if (game._clear_latched_status_after_more) {
             game._clear_latched_status_after_more = false;
             game._latched_status_uhp = null;
+            game._latched_status_turn = null;
         }
         clearLatchedStatusAttrsAfterMore();
         if (!resumeTailOnly) game._resume_monster_turn = true;
@@ -17584,6 +17594,18 @@ export async function rhack(key) {
             game.context.move = 0;
             return;
         }
+        if (!(ch === 'n' || ch === 'N' || ch === ' '
+            || ch === '\r' || ch === '\n' || ch === '\x1b')) {
+            // C refs: src/cmd.c:paranoid_query(),
+            // win/tty/topl.c:tty_yn_function().  The wizard/discover death
+            // prompt is still inside done(); unrelated command keys are read
+            // and ignored until a valid yn/default answer arrives.
+            const msg = 'Die? [yn] (n)';
+            await showPromptLine(msg);
+            game._prompt_cursor = [msg.length + 1, 0];
+            game.context.move = 0;
+            return;
+        }
         {
             game._death_prompt_active = false;
             const resumeTailOnly = !!game._resume_turn_tail_after_more;
@@ -17615,13 +17637,14 @@ export async function rhack(key) {
                     await finish_deferred_monster_physical_attack();
                 }
                 if (!game._more
-                    && (game._monster_death_pending || game._after_more_message
-                        || game._pending_message !== okLine)) {
+                    && (game._monster_death_pending || game._after_more_message)) {
                     queue_more_prompt();
                 }
                 if (game._more) game._pending_more_strict_keys = true;
                 game._savelife_resume_active = true;
                 if (game._more) {
+                    game._latched_status_turn = (game.moves || 1) + 1;
+                    game._clear_latched_status_after_more = true;
                     game._monster_turn_paused_for_more = true;
                     game._monster_attack_more_waiting = true;
                     game._resume_monster_turn = false;

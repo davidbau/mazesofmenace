@@ -1300,7 +1300,10 @@ function _statusLine2() {
         : game.flags?.showexp
         ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
         : `Xp:${u.ulevel || 1}`;
-    const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
+    const displayedTurn = game._latched_status_turn != null && (game._more || game._death_prompt_active)
+        ? game._latched_status_turn
+        : (game.moves || 1);
+    const turn = game.flags?.time ? ` T:${displayedTurn}` : '';
     const conditions = [];
     const encStatus = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
     const statusEncumbrance = game._more && game._status_uencumber_override != null
