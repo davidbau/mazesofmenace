@@ -311,6 +311,21 @@ export function monster_by_pmidx(pmidx) {
     return MONS[pmidx] ?? null;
 }
 
+// C ref: monsters.h SIZ(wt, nutr, ...) — the per-monster corpse weight (cwt)
+// and body size (msize, MZ_*).  mkobj.c weight() uses these for CORPSE and
+// STATUE objects.  The full mons[] cwt/msize column is large and only matters
+// for the rare floor corpse/statue; we expose accessors here so weight() can
+// use real values where known and fall back (to the base statue weight) where
+// the species isn't in the slice.  Returns undefined when unavailable.
+export function mon_cwt(pmidx) {
+    const m = MONS[pmidx];
+    return m && m.cwt != null ? m.cwt : undefined;
+}
+export function mon_msize(pmidx) {
+    const m = MONS[pmidx];
+    return m && m.msize != null ? m.msize : undefined;
+}
+
 // ------- per-monster data needed by egg / tin / corpse generation -------
 // (ported from include/monsters.h MON() entries: M1_OVIPAROUS bit and the
 //  SIZ() cnutrit field; from src/mondata.c grownups[]; from src/mon.c

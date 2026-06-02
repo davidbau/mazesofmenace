@@ -13,7 +13,7 @@ import {
 } from './const.js';
 import {
     rndmonst_adj, monster_by_pmidx, can_be_hatched, dead_species,
-    undead_to_corpse, mon_has_cnutrit, mon_nocorpse,
+    undead_to_corpse, mon_has_cnutrit, mon_nocorpse, mon_cwt, mon_msize,
 } from './makemon.js';
 import { set_tin_variety, SPINACH_TIN, RANDOM_TIN } from './eat.js';
 
@@ -1033,11 +1033,102 @@ export function start_corpse_timeout(body) {
     start_timer(when, TIMER_OBJECT, action, body);
 }
 
+// C ref: objects.h oc_weight — the base weight of a single object of each
+// otyp.  The JS object table (OBJECT_DATA) omits the weight column, so weight()
+// historically returned 1 for everything except coins, leaving floor objects
+// with owt==1.  That broke mon.c can_carry()/curr_mon_load() for pets: a
+// container (chest base 600, ice box 900, large box 350) was treated as
+// weightless.  BASE_OC_WEIGHT supplies the C oc_weight for the object types
+// whose true weight is load-bearing for the carry decision (every container so
+// the contents recursion has a real base, plus heavy single items so a small
+// pet rejects them).
+const BASE_OC_WEIGHT = Object.freeze({
+    // containers (objects.h CONTAINER wt column)
+    [LARGE_BOX]: 350, [CHEST]: 600, [ICE_BOX]: 900,
+    [SACK]: 15, [OILSKIN_SACK]: 15, [BAG_OF_HOLDING]: 15, [BAG_OF_TRICKS]: 15,
+    // heavy / structural single items
+    [CRYSTAL_BALL]: 150, [TINNING_KIT]: 100,
+    [BOULDER]: 6000, [STATUE]: 2500, [HEAVY_IRON_BALL]: 480, [IRON_CHAIN]: 120,
+});
+
+const CANDELABRUM_OF_INVOCATION = 262;
+
+// C ref: objclass.h Is_container(otmp) — LARGE_BOX..BAG_OF_TRICKS.
+function Is_container(otyp) {
+    return otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS;
+}
+
+// Class-uniform base weights from objects.h (the class macros hard-code these
+// rather than carrying a per-item wt argument).
+const CLASS_OC_WEIGHT = Object.freeze({
+    [RING_CLASS]: 3,
+    [AMULET_CLASS]: 20,
+    [POTION_CLASS]: 20,
+    [SCROLL_CLASS]: 5,
+    [SPBOOK_CLASS]: 50,
+    [WAND_CLASS]: 7,
+});
+
+// C ref: mkobj.c — base weight of one unit of `otmp`'s otyp (objects[].oc_weight).
+function base_oc_weight(otmp) {
+    const b = BASE_OC_WEIGHT[otmp.otyp];
+    if (b != null) return b;
+    const tableWt = objects[otmp.otyp]?.weight;
+    if (tableWt != null) return tableWt;
+    const cls = CLASS_OC_WEIGHT[otmp.oclass];
+    if (cls != null) return cls;
+    return otmp.owt != null && otmp.owt > 0 && (otmp.quan || 1) === 1
+        ? otmp.owt : 1;
+}
+
+// C ref: mkobj.c weight(struct obj *obj).  Containers and statues add (a
+// modified sum of) their contents' weight; corpses scale by the species cwt;
+// coins use the (quan+50)/100 formula; the heavy iron ball and candelabrum
+// have their kludges; everything else is wt*quan (or (quan+1)>>1 when the
+// unit weight is 0).
 export function weight(otmp) {
     if (!otmp) return 0;
-    const obj = objects[otmp.otyp];
-    if (otmp.oclass === COIN_CLASS) return Math.max(Math.trunc(((otmp.quan || 1) + 50) / 100), 1);
-    return Math.max(1, (obj?.weight ?? otmp.owt ?? 1) * (otmp.quan || 1));
+    if ((otmp.quan || 1) < 1) return 0;
+    // globby objects carry a precomputed owt (mksobj manages it).
+    if (otmp.globby) return otmp.owt | 0;
+
+    let wt = base_oc_weight(otmp);
+
+    if (Is_container(otmp.otyp) || otmp.otyp === STATUE) {
+        // C: statue weight is 1.5x its corpse weight, floored by msize.
+        if (otmp.otyp === STATUE && otmp.corpsenm != null && otmp.corpsenm >= 0) {
+            const cwt = mon_cwt(otmp.corpsenm);
+            const msize = mon_msize(otmp.corpsenm);
+            if (cwt != null && msize != null) {
+                const minwt = (msize + msize + 1) * 100;
+                wt = Math.trunc(3 * cwt / 2);
+                if (wt < minwt) wt = minwt;
+                wt *= (otmp.quan || 1);
+            }
+        }
+        let cwt = 0;
+        for (const c of (otmp.cobj || [])) cwt += weight(c);
+        if (otmp.otyp === BAG_OF_HOLDING) {
+            cwt = otmp.cursed ? (cwt * 2)
+                : otmp.blessed ? Math.trunc((cwt + 3) / 4)
+                    : Math.trunc((cwt + 1) / 2);
+        }
+        return wt + cwt;
+    }
+    if (otmp.otyp === CORPSE && otmp.corpsenm != null && otmp.corpsenm >= 0) {
+        const cwt = mon_cwt(otmp.corpsenm);
+        if (cwt != null) return (otmp.quan || 1) * cwt; // (eaten_stat not modeled here)
+    }
+    if (otmp.oclass === COIN_CLASS) {
+        return Math.max(Math.trunc(((otmp.quan || 1) + 50) / 100), 1);
+    }
+    if (otmp.otyp === HEAVY_IRON_BALL && otmp.owt) {
+        return otmp.owt | 0; // kludge for "very" heavy iron ball
+    }
+    if (otmp.otyp === CANDELABRUM_OF_INVOCATION && otmp.spe) {
+        return wt + otmp.spe * (BASE_OC_WEIGHT[TALLOW_CANDLE] ?? objects[TALLOW_CANDLE]?.weight ?? 2);
+    }
+    return wt ? wt * (otmp.quan || 1) : ((otmp.quan || 1) + 1) >> 1;
 }
 
 export function place_object(otmp, x, y) {
@@ -1423,14 +1514,30 @@ export function mkcorpstat(objtype, mtmp, pm, x, y, corpstatflags = 0) {
     return otmp;
 }
 
+// C ref: mkobj.c g_at(x, y) — the gold pile already on the floor at (x,y), if
+// any.  mkgold() merges into it (quan += amount) instead of creating a second
+// gold object, so re-filling a square (e.g. a vault filled in mklev and again
+// in the fill loop) doesn't duplicate the pile or emit an extra next_ident.
+function g_at(x, y) {
+    for (const o of (game.level?.objects || []))
+        if (o.where === 'floor' && o.ox === x && o.oy === y
+            && o.oclass === COIN_CLASS) return o;
+    return null;
+}
+
 export function mkgold(amount, x, y) {
     if (amount <= 0) {
         const d = depth_of_level(game.u?.uz);
         const mul = rnd(Math.trunc(30 / Math.max(12 - d, 2)));
         amount = 1 + rnd(level_difficulty() + 2) * mul;
     }
-    const gold = mksobj_at(GOLD_PIECE, x, y, true, false);
-    gold.quan = amount;
+    let gold = g_at(x, y);
+    if (gold) {
+        gold.quan = (gold.quan || 0) + amount;
+    } else {
+        gold = mksobj_at(GOLD_PIECE, x, y, true, false);
+        gold.quan = amount;
+    }
     gold.owt = weight(gold);
     return gold;
 }

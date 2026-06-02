@@ -14,13 +14,12 @@ import { rn2 } from './rng.js';
 import { MTSZ, COLNO, ROWNO, IS_ROOM } from './const.js';
 import { obj_resists } from './zap.js';
 import { newsym } from './display.js';
+import { couldsee as visCouldsee, clear_path } from './vision.js';
 import { dist2, mfndpos } from './monmove.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import {
-    FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS,
-    LARGE_BOX, CHEST, ICE_BOX, CRYSTAL_BALL, TINNING_KIT,
-    BOULDER, STATUE, HEAVY_IRON_BALL,
+    FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS,
 } from './mkobj.js';
 
 // dogfood quality enum (mextra.h): lower == more desirable.
@@ -30,6 +29,14 @@ const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
 const MMOVE_NOTHING = 0, MMOVE_MOVED = 2, MMOVE_DIED = 3, MMOVE_DONE = 5;
 
 const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 102;
+
+// Kept in lock-step with allmain.js MULTIPASS_MOVEMON.  When the C multi-pass
+// movemon() loop is enabled, the pet's repeat object scan needs real
+// line-of-sight (clear_path) and the hero's COULD_SEE bit (couldsee) to match
+// C's obj_resists/rn2(8) stream in dog_goal's APPORT branch.  Stays OFF in
+// lock-step with the multi-pass gate (single-pass keeps the "always sees"
+// approximation that matches the baseline).
+export const PET_REAL_VISION = false;
 
 // C ref: mon.c max_mon_load(mtmp).  MAX_CARR_CAP=1000, WT_HUMAN=1450.
 // kitten(34)/little dog(16): cwt=150, MZ_SMALL, not strong ->
@@ -231,32 +238,28 @@ function cursed_object_at(x, y) {
     return objectsAt(x, y).some((o) => o.cursed);
 }
 
-// C ref: vision couldsee()/m_cansee() — for a pet in a lit/adjacent room with
-// the hero visible these are true; we approximate with "always can see" since
-// the gameplay sessions keep the pet next to a sighted hero.
-function couldsee(_x, _y) { return true; }
-function m_cansee(_mtmp, _x, _y) { return true; }
+// C ref: include/vision.h — m_cansee(mtmp,x,y) == clear_path(mx,my,x,y) and
+// couldsee(x,y) is the hero's COULD_SEE viz bit.  These gate the pet's APPORT
+// object-fetch branch in dog_goal; using the real vision results (instead of a
+// blanket "always sees") keeps the obj_resists/rn2(8) stream matching C when an
+// object is in the pet's search box but not on a clear line of sight.
+//
+// Gated behind PET_REAL_VISION (kept in lock-step with the multi-pass movemon
+// toggle in allmain.js): the real line-of-sight only pays off once the pet's
+// repeat-move object scan runs (the C multi-pass).
+function couldsee(x, y) { return PET_REAL_VISION ? visCouldsee(x, y) : true; }
+function m_cansee(mtmp, x, y) {
+    return PET_REAL_VISION ? clear_path(mtmp.mx, mtmp.my, x, y) : true;
+}
 function isLit(x, y) { return !!game.level?.at(x, y)?.lit; }
 
-// C ref: objects.h oc_weight for the heavy single objects whose weight exceeds
-// a small pet's carry capacity (51).  The JS object table (const.js) does not
-// yet carry per-type weights, so mkobj's weight() leaves obj.owt == 1 for these
-// — without this lookup can_carry would wrongly accept a 600-wt chest.  Only
-// types that can flip can_carry need an entry; everything lighter than 51 can
-// safely fall back to obj.owt.  (Container floor weight in C is base + contents,
-// but every container's BASE already exceeds 51, so the base value suffices for
-// the small-pet decision.)
-const OC_WEIGHT = {
-    [LARGE_BOX]: 350, [CHEST]: 600, [ICE_BOX]: 900,
-    [CRYSTAL_BALL]: 150, [TINNING_KIT]: 100,
-    [BOULDER]: 6000, [STATUE]: 2500, [HEAVY_IRON_BALL]: 480,
-};
-
-// Object weight as C's weight() would compute it for the can_carry decision.
+// C ref: mon.c can_carry(mtmp, otmp) uses otmp->owt directly.  mkobj.js
+// weight() now computes a C-exact owt for every object (containers = base +
+// contents, the heavy single items keep their real oc_weight), so the
+// can_carry load check reads obj.owt straight.  A defensive Math.max(1, ...)
+// keeps a never-weighed object (owt unset) from reading as 0.
 function objWeight(obj) {
-    const base = OC_WEIGHT[obj.otyp];
-    if (base != null) return base * (obj.quan || 1);
-    return obj.owt ?? 1;
+    return Math.max(1, obj.owt ?? 1);
 }
 
 // C ref: mon.c can_carry(mtmp, otmp).  Returns 0 (cannot) or a positive

@@ -41,6 +41,8 @@ import {
     finish_deferred_monster_magic_spell_effect,
     finish_deferred_monster_passive_counterattack,
     finish_deferred_monster_physical_attack,
+    finish_deferred_monster_physical_knockback_only,
+    finish_deferred_monster_trap_effect,
     finish_pending_swallowed_expulsion,
     monster_projectile_destroyed_by_hit,
 } from './monmove.js';
@@ -122,6 +124,7 @@ const M1_NOLIMBS = 0x00006000;
 const M2_UNDEAD = 0x00000002;
 const M2_STALK = 0x01000000;
 const M2_NASTY = 0x02000000;
+const M2_STRONG = 0x04000000;
 const MS_SILENT = 0;
 const MS_BARK = 1;
 const MS_MEW = 2;
@@ -1184,7 +1187,38 @@ function wishedObjectCount(wish) {
 }
 
 function validInvlet(ch) {
-    return typeof ch === 'string' && /^[a-z]$/.test(ch);
+    return typeof ch === 'string' && /^[A-Za-z]$/.test(ch);
+}
+
+function invletIndex(ch) {
+    if (typeof ch !== 'string' || ch.length !== 1) return -1;
+    const code = ch.charCodeAt(0);
+    if (code >= 97 && code <= 122) return code - 97;
+    if (code >= 65 && code <= 90) return code - 65 + 26;
+    return -1;
+}
+
+function invletFromIndex(index) {
+    if (index >= 0 && index < 26) return String.fromCharCode(97 + index);
+    if (index >= 26 && index < 52) return String.fromCharCode(65 + index - 26);
+    return '#';
+}
+
+function nextInvletStoredCode(index) {
+    if (index < 0) return 97;
+    if (index >= 0 && index < 25) return 97 + index + 1;
+    if (index === 25) return 123; // after 'z', C continues with 'A'
+    if (index >= 26 && index < 51) return 65 + index - 26 + 1;
+    return 91; // after 'Z'
+}
+
+function invletIndexFromStoredCode(code) {
+    if (!Number.isInteger(code)) return 0;
+    if (code >= 97 && code <= 122) return code - 97;
+    if (code === 123) return 26;
+    if (code >= 65 && code <= 90) return code - 65 + 26;
+    if (code === 91) return 52;
+    return 0;
 }
 
 function ensureInventoryLetters() {
@@ -1198,23 +1232,23 @@ function ensureInventoryLetters() {
         if (validInvlet(obj?.invlet)) used.add(obj.invlet);
     }
 
-    let nextCode = 97;
+    let nextIndex = 0;
     for (const obj of game.inventory) {
         if (obj?.oclass === COIN_CLASS || obj?.invlet === '$') {
             if (obj) obj.invlet = '$';
             continue;
         }
         if (!obj || validInvlet(obj.invlet)) continue;
-        while (nextCode <= 122 && used.has(String.fromCharCode(nextCode))) nextCode++;
-        if (nextCode > 122) break;
-        obj.invlet = String.fromCharCode(nextCode++);
+        while (nextIndex < 52 && used.has(invletFromIndex(nextIndex))) nextIndex++;
+        if (nextIndex >= 52) break;
+        obj.invlet = invletFromIndex(nextIndex++);
         used.add(obj.invlet);
     }
 
     if (!Number.isInteger(game._next_invlet_code)) {
-        let maxCode = 96;
-        for (const letter of used) maxCode = Math.max(maxCode, letter.charCodeAt(0));
-        game._next_invlet_code = maxCode + 1;
+        let maxIndex = -1;
+        for (const letter of used) maxIndex = Math.max(maxIndex, invletIndex(letter));
+        game._next_invlet_code = nextInvletStoredCode(maxIndex);
     }
 }
 
@@ -1231,12 +1265,22 @@ function reorderInventoryByLetter() {
 
 function assignInventoryLetter(obj) {
     ensureInventoryLetters();
-    let code = game._next_invlet_code || 97;
-    while (code <= 122 && game.inventory.some((item) => item?.invlet === String.fromCharCode(code))) {
-        code++;
+    const used = new Set((game.inventory || [])
+        .map((item) => item?.invlet)
+        .filter((letter) => validInvlet(letter)));
+    let index = invletIndexFromStoredCode(game._next_invlet_code);
+    for (let scanned = 0; scanned < 52; scanned++) {
+        if (index >= 52) index = 0;
+        const letter = invletFromIndex(index);
+        if (!used.has(letter)) {
+            obj.invlet = letter;
+            game._next_invlet_code = nextInvletStoredCode(index);
+            return obj.invlet;
+        }
+        index++;
     }
-    obj.invlet = code <= 122 ? String.fromCharCode(code) : '?';
-    game._next_invlet_code = code + 1;
+    obj.invlet = '#';
+    game._next_invlet_code = 91;
     return obj.invlet;
 }
 
@@ -1266,6 +1310,26 @@ function make_wish_object(name) {
     // C ref: zap.c:makewish().  The gods take notice of wishes by extending
     // the prayer timeout after the wished object has been created.
     if (game.u) game.u.ublesscnt = (game.u.ublesscnt ?? 300) + rn1(100, 50);
+    if (otmp.otyp === GOLD_PIECE) {
+        // C refs: src/zap.c:makewish(), src/invent.c:addinv().  Wished gold is
+        // carried money immediately, so the status line and `$` inventory stack
+        // update with the object-result line.
+        const wishedQuan = otmp.quan || 1;
+        game.inventory = game.inventory || [];
+        game._goldCount = (game._goldCount || 0) + wishedQuan;
+        const carried = game.inventory.find((obj) => obj?.otyp === GOLD_PIECE);
+        otmp.invlet = '$';
+        if (carried) {
+            carried.invlet = '$';
+            carried.quan = game._goldCount;
+        } else {
+            otmp.quan = game._goldCount;
+            game.inventory.unshift(otmp);
+        }
+        stageWishEncumbranceMessage(prevEncumbrance);
+        noteWishConduct(otmp);
+        return otmp;
+    }
     const merged = merge_inventory_object(otmp);
     if (merged) {
         stageWishEncumbranceMessage(prevEncumbrance);
@@ -1351,6 +1415,31 @@ async function showLifeSavingDeathMessage() {
     queue_more_prompt();
 }
 
+async function showPendingMonsterDeathMessage() {
+    if (!game._monster_death_pending || game._after_more_message) return false;
+    game._more_dismissals_remaining = 0;
+    const lifeSavingAmulet = wornLifeSavingAmulet();
+    game._monster_death_pending = false;
+    game._death_prompt_pending = !lifeSavingAmulet;
+    // C refs: src/end.c:done(), src/end.c:really_done(),
+    // src/bones.c:can_make_bones().  Wizard/explore deaths ask whether to
+    // die before really_done(); declining the prompt must not run the bones
+    // feasibility RNG.
+    if (!lifeSavingAmulet && !deathUsesWizardPrompt()) runPendingDeathBonesCheck();
+    if (!game._death_preserve_latched_status) game._latched_status_uhp = 0;
+    if (lifeSavingAmulet) {
+        await showLifeSavingDeathMessage();
+    } else {
+        await pline('You die...');
+        if (game._death_shopkeeper_takes_name) {
+            await append_pline(`${game._death_shopkeeper_takes_name} takes all your possessions.`);
+            game._death_shopkeeper_takes_name = '';
+        }
+        queue_more_prompt();
+    }
+    return true;
+}
+
 async function finishLifeSavingAfterMore() {
     const amulet = wornLifeSavingAmulet();
     game._life_saving_after_more_pending = false;
@@ -1362,6 +1451,7 @@ async function finishLifeSavingAfterMore() {
     game._latched_status_uhp = null;
     game._nomovemsg = 'You survived that attempt on your life.';
     game._savelife_resume_active = true;
+    game._life_saving_silent_monster_resume = true;
     game._resume_turn_tail_after_more = false;
     await pline('You feel much better!');
 }
@@ -1566,6 +1656,11 @@ async function stageThrowEncumbranceMessage(prevEncumbrance) {
     const msg = encumbranceDecreaseMessage(newcap);
     if (!msg) return;
     if (game._pending_message || game._more) {
+        // C refs: src/dothrow.c:dothrow(), src/pickup.c:encumber_msg().
+        // The thrown-object pline can block on tty More before encumber_msg()
+        // displays the load decrease and updates the visible status field.
+        game._status_uencumber_override = oldcap;
+        game._clear_status_uencumber_override_before_after_more = true;
         game._after_more_message = game._after_more_message
             ? `${msg}  ${game._after_more_message}`
             : msg;
@@ -3256,6 +3351,10 @@ function unknownAppearanceName(obj) {
         if (obj?.oclass === POTION_CLASS) return `${shuffledDescription} potion`;
         if (obj?.oclass === SCROLL_CLASS) {
             if (shuffledDescription === 'unlabeled') return 'unlabeled scroll';
+            // C refs: include/objects.h:SCROLL("mail", "stamped"),
+            // objnam.c:obj_init().  Mail scrolls use their descriptor as an
+            // adjective, not as a label string.
+            if (obj.otyp === SCR_MAIL) return `${shuffledDescription} scroll`;
             return `scroll labeled ${shuffledDescription}`;
         }
         if (obj?.oclass === SPBOOK_CLASS && obj.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL) {
@@ -8861,6 +8960,7 @@ const PRAYER_DEVOUT = 14;
 const PRAYER_STRIDENT = 4;
 
 async function prayerResultPline(line) {
+    if (game._suppress_prayer_result_messages) return;
     if (game._pack_next_prayer_result_line
         && topline_can_pack_message(game._pending_message, line)) {
         game._pack_next_prayer_result_line = false;
@@ -8879,9 +8979,59 @@ async function godVoice(alignment, words = null) {
 }
 
 function queuePrayerMoreMessages(messages) {
+    if (game._suppress_prayer_result_messages) return;
     if (!Array.isArray(game._more_message_queue)) game._more_message_queue = [];
     game._more_message_queue.push(...messages);
     queue_more_prompt();
+}
+
+function adjustAttributeBasic(ndx, delta) {
+    const u = game.u || (game.u = {});
+    if (!u.acurr) u.acurr = { a: [] };
+    if (!Array.isArray(u.acurr.a)) u.acurr.a = [];
+    const current = u.acurr.a[ndx] ?? 10;
+    u.acurr.a[ndx] = Math.max(3, current + delta);
+    if (u.abase?.a) u.abase.a[ndx] = Math.max(3, (u.abase.a[ndx] ?? current) + delta);
+}
+
+function latchStatusAttrsForMoreFrame() {
+    if (!Array.isArray(game.u?.acurr?.a)) return;
+    game._latched_status_attrs = game.u.acurr.a.slice();
+    game._clear_latched_status_attrs_after_more = true;
+}
+
+function clearLatchedStatusAttrsAfterMore() {
+    if (!game._clear_latched_status_attrs_after_more) return;
+    game._clear_latched_status_attrs_after_more = false;
+    game._latched_status_attrs = null;
+}
+
+function loseExperienceLevelBasic() {
+    // C ref: src/exper.c:losexp(NULL).  This covers the ordinary divine-anger
+    // level-loss side effects; role intrinsic loss remains broader adjabil work.
+    const u = game.u || (game.u = {});
+    const oldLevel = u.ulevel || 1;
+    if (oldLevel > 1) u.ulevel = oldLevel - 1;
+    else u.uexp = 0;
+    const level = u.ulevel || 1;
+
+    const hpLoss = Number(u.uhpinc?.[level] ?? 0);
+    if (typeof u.uhpmax === 'number') u.uhpmax = Math.max(1, u.uhpmax - hpLoss);
+    if (typeof u.uhp === 'number') {
+        u.uhp -= hpLoss;
+        if (u.uhp < 1) u.uhp = 1;
+        if (typeof u.uhpmax === 'number' && u.uhp > u.uhpmax) u.uhp = u.uhpmax;
+    }
+
+    const enLoss = Number(u.ueninc?.[level] ?? 0);
+    if (typeof u.uenmax === 'number') u.uenmax = Math.max(0, u.uenmax - enLoss);
+    if (typeof u.uen === 'number') {
+        u.uen -= enLoss;
+        if (u.uen < 0) u.uen = 0;
+        if (typeof u.uenmax === 'number' && u.uen > u.uenmax) u.uen = u.uenmax;
+    }
+
+    if ((u.uexp || 0) > 0) u.uexp = newuexp(level) - 1;
 }
 
 async function angryGods(respGod) {
@@ -8909,11 +9059,13 @@ async function angryGods(respGod) {
     case 2:
     case 3:
         await godVoice(respGod);
+        latchStatusAttrsForMoreFrame();
+        adjustAttributeBasic(A_WIS, -1);
+        loseExperienceLevelBasic();
         queuePrayerMoreMessages([
             {
                 text: '"Thou art arrogant, mortal."  "Thou must relearn thy lessons!"',
                 more: true,
-                attrDelta: { [A_WIS]: -1 },
             },
             { text: 'You feel foolish!', more: false },
         ]);
@@ -13189,6 +13341,24 @@ function splitDeferredPetCombatTopline(line) {
     return { first: match[1], rest: match[2] };
 }
 
+function monsterPhysicalTopline(line) {
+    return /^The .+ (?:misses|bites|hits|kicks|stings|butts|touches|claws|scratches|slashes|punches|jabs|pierces|attacks)(?: .+)?[.!]$/.test(line || '');
+}
+
+function splitDeferredMonsterPhysicalTopline(line) {
+    const msg = String(line || '');
+    const match = /^(The .+? (?:misses|bites|hits|kicks|stings|butts|touches|claws|scratches|slashes|punches|jabs|pierces|attacks)(?: .+)?[.!])  (The .+)$/.exec(msg);
+    if (!match || !monsterPhysicalTopline(match[1]) || !monsterPhysicalTopline(match[2])) return null;
+    return { first: match[1], rest: match[2] };
+}
+
+function splitDeferredPoisonMonsterTopline(line) {
+    const msg = String(line || '');
+    const match = /^(.+? was poisoned!)  (The .+)$/.exec(msg);
+    if (!match || !monsterPhysicalTopline(match[2])) return null;
+    return { first: match[1], rest: match[2] };
+}
+
 function monsterDeathPastTense(mon) {
     // C ref: src/mon.c:monkilled(). Nonliving monsters are destroyed.
     const ptr = mon?.data;
@@ -13206,7 +13376,8 @@ async function handleQueuedMore(ch) {
     if (!game._more || (game._more_dismissals_remaining || 0) <= 0) return false;
     let resumeMonsterBehindNewMore = false;
     let suppressPausedMonsterResume = false;
-    const afterMoreSplit = splitDeferredPetCombatTopline(game._after_more_message || '');
+    const afterMoreSplit = splitDeferredPetCombatTopline(game._after_more_message || '')
+        || splitDeferredPoisonMonsterTopline(game._after_more_message || '');
     const afterMoreTopline = afterMoreSplit?.first || game._after_more_message || '';
     const splitHitDeathPrompt = !!game._pet_death_after_split_hit_more
         && !!game._pet_defender_death_pending
@@ -13218,6 +13389,7 @@ async function handleQueuedMore(ch) {
     const swallowedDamageResume = pausedMonsterTurn && !!game._swallowed_damage_more_waiting;
     const preTurnResume = pausedMonsterTurn && !!game._pre_turn_more_waiting;
     const monsterAttackResume = pausedMonsterTurn && !!game._monster_attack_more_waiting;
+    const dismissedTopline = game._pending_message || '';
     const deferredPetDeathPending = game._pet_defender_death_pending || null;
     const deferredPetDeathCanPack = !!afterMoreTopline
         && !afterMoreSplit
@@ -13264,6 +13436,28 @@ async function handleQueuedMore(ch) {
     game._latched_more_keep_until_dismiss = false;
     if (!(game._monster_death_pending && game._after_more_projectile_clear_after_prompt))
         finishDeferredProjectileClearAfterMore();
+    if (pausedMonsterTurn
+        && monsterAttackResume
+        && game._nomovemsg === 'You survived that attempt on your life.'
+        && (dismissedTopline.startsWith("OK, so you don't die.  The ")
+            || monsterPhysicalTopline(dismissedTopline))
+        && !game._after_more_message) {
+        // C refs: src/end.c:savelife(), src/allmain.c:moveloop_core().
+        // The displayed OK+monster-hit More has already applied that hit's
+        // damage.  Dismissing it resumes the interrupted monster scan; do not
+        // let stale deferred attack state replay a tail before the scan resumes.
+        game._deferred_monster_physical_attack = null;
+        game._more = false;
+        game._more_dismissals_remaining = 0;
+        clear_pending_message();
+        game._monster_turn_paused_for_more = false;
+        game._monster_attack_more_waiting = false;
+        game._resume_encumbered_extra_turn_after_more = false;
+        game._resume_encumbered_extra_turn_after_more_prompt = false;
+        game._resume_monster_turn = true;
+        game.context.move = 1;
+        return true;
+    }
         if (game._stair_arrival_resume_after_floor_list
         && (game._more_dismissals_remaining || 0) <= 0) {
         game._stair_arrival_resume_after_floor_list = false;
@@ -13396,27 +13590,7 @@ async function handleQueuedMore(ch) {
         finishSleepRaySleepAfterMore();
         game.context.move = 1;
         return true;
-    } else if (game._monster_death_pending && !game._after_more_message) {
-        game._more_dismissals_remaining = 0;
-        const lifeSavingAmulet = wornLifeSavingAmulet();
-        game._monster_death_pending = false;
-        game._death_prompt_pending = !lifeSavingAmulet;
-        // C refs: src/end.c:done(), src/end.c:really_done(),
-        // src/bones.c:can_make_bones().  Wizard/explore deaths ask whether to
-        // die before really_done(); declining the prompt must not run the bones
-        // feasibility RNG.
-        if (!lifeSavingAmulet && !deathUsesWizardPrompt()) runPendingDeathBonesCheck();
-        if (!game._death_preserve_latched_status) game._latched_status_uhp = 0;
-        if (lifeSavingAmulet) {
-            await showLifeSavingDeathMessage();
-        } else {
-            await pline('You die...');
-            if (game._death_shopkeeper_takes_name) {
-                await append_pline(`${game._death_shopkeeper_takes_name} takes all your possessions.`);
-                game._death_shopkeeper_takes_name = '';
-            }
-            queue_more_prompt();
-        }
+    } else if (await showPendingMonsterDeathMessage()) {
     } else if (game._death_prompt_pending) {
         if (deathUsesWizardPrompt()) await showDeathPrompt();
         else await showDeathDisclosureOrPrompt();
@@ -13588,6 +13762,7 @@ async function handleQueuedMore(ch) {
         }
         if (game._more_message_queue?.length) {
             const next = game._more_message_queue.shift();
+            clearLatchedStatusAttrsAfterMore();
             if (next.exercise) exercise(next.exercise.attr, !!next.exercise.positive);
             if (next.visionRecalcBefore) {
                 vision_recalc(2);
@@ -13969,14 +14144,28 @@ async function handleQueuedMore(ch) {
         if (game._deferred_monster_breath_ray) {
             await finish_deferred_monster_breath_ray();
         }
-        if (!game._after_more_message && game._deferred_monster_passive_counterattack) {
-            await finish_deferred_monster_passive_counterattack();
-            await finish_deferred_monster_physical_attack();
-        }
-        if (game._after_more_message) {
+            if (!game._after_more_message && game._deferred_monster_passive_counterattack) {
+                await finish_deferred_monster_passive_counterattack();
+                await finish_deferred_monster_physical_attack();
+            }
+            if (!game._after_more_message
+                && game._deferred_monster_physical_attack
+                && !game._deferred_monster_physical_attack.waitForDisplayedMore) {
+                await finish_deferred_monster_physical_attack();
+                if (await showPendingMonsterDeathMessage()) {
+                    game.context.move = 0;
+                    return true;
+                }
+                if (game._monster_death_pending || game._after_more_message || game._more) {
+                    game.context.move = 0;
+                    return true;
+                }
+            }
+            if (game._after_more_message) {
             const split = afterMoreSplit;
             const msg = split?.first || game._after_more_message;
             const rest = split?.rest || '';
+            const pendingPhysicalSplit = splitDeferredMonsterPhysicalTopline(dismissedTopline);
             // C refs: src/mhitm.c:mattackm(), src/mon.c:monkilled().
             // A deferred monster-vs-monster hit line blocks before visible
             // death side effects such as "The kitten is killed!" are applied.
@@ -13997,6 +14186,11 @@ async function handleQueuedMore(ch) {
             if (game._clear_latched_status_before_after_more) {
                 game._clear_latched_status_before_after_more = false;
                 game._latched_status_uhp = null;
+            }
+            clearLatchedStatusAttrsAfterMore();
+            if (game._clear_status_uencumber_override_before_after_more) {
+                game._clear_status_uencumber_override_before_after_more = false;
+                game._status_uencumber_override = null;
             }
             if (game._after_more_hero_damage && !game._after_more_damage_after_prompt) {
                 let fatalAfterMoreDamage = false;
@@ -14026,6 +14220,7 @@ async function handleQueuedMore(ch) {
             }
             await pline(msg);
             await finish_deferred_monster_passive_counterattack();
+            await finish_deferred_monster_trap_effect();
             if (game._hero_melee_post_wakeup_knockback_after_monster_more) {
                 game._hero_melee_post_wakeup_knockback_after_monster_more = false;
                 // C refs: src/steal.c:steal(), src/uhitm.c:hmon_hitmon().
@@ -14043,8 +14238,25 @@ async function handleQueuedMore(ch) {
             const promptDefersPendingMagic = needsPrompt
                 && !game._deferred_monster_physical_attack
                 && !!game._deferred_monster_magic_spell_attack;
-            if (!promptDefersPendingMagic)
+            const suppressPhysicalResume = !!game._deferred_monster_physical_attack?.suppressMonsterResumeAfterMore;
+            const physicalWaitsForDisplayedMore = !!game._deferred_monster_physical_attack?.waitForDisplayedMore;
+            if (physicalWaitsForDisplayedMore) {
+                game._deferred_monster_physical_attack.waitForDisplayedMore = false;
+            } else if (!promptDefersPendingMagic) {
                 await finish_deferred_monster_physical_attack();
+            }
+            if (suppressPhysicalResume
+                && !game._more
+                && !game._after_more_message
+                && !game._monster_death_pending) {
+                // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:more().
+                // The active-prompt physical split already spent the burdened
+                // catch-up pass behind that prompt.  Dismissing the follow-up
+                // hit line should resume the interrupted scan, but must not
+                // schedule a second encumbered catch-up pass.
+                game._extra_encumbered_turn_pending = false;
+                game._resume_encumbered_extra_turn_after_more_prompt = false;
+            }
             if (game._monster_death_pending || game._after_more_message || game._after_more_needs_prompt)
                 needsPrompt = true;
             if (deferredPetDeathCanPack && game._pet_defender_death_pending) {
@@ -14104,14 +14316,40 @@ async function handleQueuedMore(ch) {
                 if (C.isok(glyph.x, glyph.y)) show_glyph_cell(glyph.x, glyph.y, glyph.ch, NO_COLOR, false);
             }
             if (needsPrompt) {
-                queue_more_prompt();
+                if (!game._more || (game._more_dismissals_remaining || 0) <= 0) {
+                    queue_more_prompt();
+                } else {
+                    game._more_dismissals_remaining = Math.max(1, game._more_dismissals_remaining || 0);
+                }
+                if (game._extra_encumbered_turn_pending)
+                    game._resume_encumbered_extra_turn_after_more_prompt = true;
                 if (strictPromptKeys) {
                     game._pending_more_strict_keys = true;
                     if (!heroIsHallucinating())
                         await flush_screen(1);
                 }
-                if (pausedMonsterTurn && game._monster_attack_resume_behind_after_more) {
+                const resumePhysicalBehindNewMore = !!pendingPhysicalSplit
+                    && !game._extra_encumbered_turn_pending
+                    && !game._deferred_monster_physical_attack
+                    && !game._after_more_message;
+                if (pausedMonsterTurn
+                    && !game._monster_death_pending
+                    && !game._fatal_monster_attack_paused
+                    && (game._monster_attack_resume_behind_after_more
+                        || resumePhysicalBehindNewMore)) {
+                    // C refs: win/tty/topl.c:more(), src/mhitu.c:hitmsg(),
+                    // src/allmain.c:moveloop_core().  A monster physical
+                    // More can be followed by an intervening monster pline;
+                    // after that pline is shown, the interrupted monster pass
+                    // resumes behind the new prompt and may pack the next hit.
                     resumeMonsterBehindNewMore = true;
+                    if (resumePhysicalBehindNewMore) {
+                        game._monster_physical_pack_behind_active_more = true;
+                        if (game.u?.uencumber) {
+                            game._extra_encumbered_turn_pending = true;
+                            game._resume_encumbered_extra_turn_after_more_prompt = true;
+                        }
+                    }
                     game._monster_attack_resume_behind_after_more = false;
                 }
             } else {
@@ -14227,6 +14465,10 @@ async function handleQueuedMore(ch) {
         }
         game.context.move = 1;
     } else if (suppressPausedMonsterResume && !game._more) {
+        game._monster_turn_paused_for_more = false;
+        game._swallowed_damage_more_waiting = false;
+        game._pre_turn_more_waiting = false;
+        game._monster_attack_more_waiting = false;
         game._resume_turn_tail_after_more = true;
         game.context.move = 1;
     } else if (pausedMonsterTurn && !game._more && !game._death_prompt_active) {
@@ -14235,10 +14477,16 @@ async function handleQueuedMore(ch) {
         game._swallowed_damage_more_waiting = false;
         game._pre_turn_more_waiting = false;
         game._monster_attack_more_waiting = false;
+        if (game._nomovemsg === 'You survived that attempt on your life.'
+            && !resumeTailOnly) {
+            game._resume_encumbered_extra_turn_after_more = false;
+            game._resume_encumbered_extra_turn_after_more_prompt = false;
+        }
         if (game._clear_latched_status_after_more) {
             game._clear_latched_status_after_more = false;
             game._latched_status_uhp = null;
         }
+        clearLatchedStatusAttrsAfterMore();
         if (!resumeTailOnly) game._resume_monster_turn = true;
         game.context.move = 1;
     } else if (!game._more && (game._nomul_turns_remaining || 0) > 0) {
@@ -14256,7 +14504,18 @@ async function handleQueuedMore(ch) {
             game._resume_run_after_more = false;
             game.context.move = 0;
         }
+    } else if (!game._more
+        && !pausedMonsterTurn
+        && game._resume_encumbered_extra_turn_after_more_prompt
+        && game._extra_encumbered_turn_pending) {
+        // C ref: src/allmain.c:moveloop_core().  A More can split the
+        // immobile-hero loop after a burdened turn tail; resume that pending
+        // catch-up pass before accepting a new command.
+        game._resume_encumbered_extra_turn_after_more_prompt = false;
+        game._resume_encumbered_extra_turn_after_more = true;
+        game.context.move = 1;
     } else {
+        if (!game._more) game._resume_encumbered_extra_turn_after_more_prompt = false;
         game.context.move = 0;
     }
     if (!game._more && game._clear_status_uac_override_after_more
@@ -14265,6 +14524,11 @@ async function handleQueuedMore(ch) {
         game._status_uac_override = null;
         game._status_uac_override_move = null;
     }
+    if (!game._more && game._clear_status_uencumber_override_before_after_more) {
+        game._clear_status_uencumber_override_before_after_more = false;
+        game._status_uencumber_override = null;
+    }
+    if (!game._more) clearLatchedStatusAttrsAfterMore();
     return true;
 }
 
@@ -15015,6 +15279,7 @@ const INSIGHT_CLASS_WEIGHTS = new Map([
 
 function objectInsightWeight(obj) {
     if (!obj) return 0;
+    if (obj.otyp === BOULDER && heroThrowsRocksForCapacity()) return 0;
     if (obj.otyp === GOLD_PIECE) return Math.trunc(((obj.quan || 0) + 50) / 100);
     const quan = Math.max(1, obj.quan || 1);
     const unit = INSIGHT_OBJECT_WEIGHTS.get(obj.otyp)
@@ -15024,18 +15289,66 @@ function objectInsightWeight(obj) {
     return unit * quan;
 }
 
+function polyFormPtrForCapacity() {
+    const form = game.u?._poly_form;
+    if (!form) return null;
+    return form.ptr || monster_by_user_name(form.name) || null;
+}
+
+function heroThrowsRocksForCapacity() {
+    const ptr = polyFormPtrForCapacity();
+    return !!ptr?.throws_rocks;
+}
+
+function strengthRawFromStatusText(value) {
+    if (typeof value !== 'string') return Number(value);
+    const trimmed = value.trim();
+    if (trimmed === '18/**') return C.STR18(100);
+    const exceptional = trimmed.match(/^18\/(\d{1,3})$/);
+    if (exceptional) return 18 + Math.min(100, Math.max(0, Number(exceptional[1])));
+    return Number(trimmed);
+}
+
+function strengthForCapacityFormula() {
+    // C refs: src/hack.c:weight_cap(), src/attrib.c:acurrstr().
+    let raw = strengthRawFromStatusText(game.u?._poly_form?.strength ?? heroAttr(C.A_STR));
+    if (!Number.isFinite(raw)) return 3;
+    if (!game.u?._poly_form && raw === 25 && wearingPowerGauntlets())
+        raw = C.STR19(25);
+    if (raw <= C.STR18(0)) return Math.max(raw, 3);
+    if (raw <= C.STR19(21)) return 19 + Math.trunc(raw / 50);
+    return Math.min(raw, C.STR19(25)) - 100;
+}
+
+function heroFlyingForCapacity() {
+    const form = game.u?._poly_form;
+    return !!(form?.fly || game.u?.uprops?.flying);
+}
+
 function heroWeightCap() {
-    // C ref: hack.c:weight_cap().  Current evidence is human-form, grounded
-    // carrying capacity, so use the Str+Con base and clamp.
-    const str = heroAttr(C.A_STR);
+    // C ref: hack.c:weight_cap().
+    const str = strengthForCapacityFormula();
     const con = heroAttr(C.A_CON);
-    let cap = 25 * (str + con) + 50;
-    if (!game.u?.uprops?.flying) {
+    let cap = C.WT_WEIGHTCAP_STRCON * (str + con) + C.WT_WEIGHTCAP_SPARE;
+    const ptr = polyFormPtrForCapacity();
+    if (ptr) {
+        if (ptr.mlet === 'S_NYMPH') {
+            cap = C.MAX_CARR_CAP;
+        } else if (!ptr.cwt) {
+            cap = Math.trunc((cap * (ptr.msize ?? MZ_HUMAN)) / MZ_HUMAN);
+        } else if (!((ptr.mflags2 ?? 0) & M2_STRONG) || ptr.cwt > C.WT_HUMAN) {
+            cap = Math.trunc((cap * ptr.cwt) / C.WT_HUMAN);
+        }
+    }
+    if (game.u?.uprops?.levitation || heroFlyingForCapacity()) {
+        cap = C.MAX_CARR_CAP;
+    } else {
+        cap = Math.min(cap, C.MAX_CARR_CAP);
         const side = game.u?.wounded_legs_side || (game.u?.uprops?.wounded_legs ? 'right' : '');
         if (side === 'left' || side === 'both') cap -= C.WT_WOUNDEDLEG_REDUCT;
         if (side === 'right' || side === 'both') cap -= C.WT_WOUNDEDLEG_REDUCT;
     }
-    return Math.max(1, Math.min(1000, cap));
+    return Math.max(1, cap);
 }
 
 function heroInventoryWeightDelta() {
@@ -15069,8 +15382,15 @@ function encumbranceIncreaseMessage(newcap) {
 function stageWishEncumbranceMessage(prevEncumbrance) {
     const oldcap = Math.max(prevEncumbrance || 0, game.u?.uencumber || 0);
     const newcap = heroNearCapacity();
-    if (game.u) game.u.uencumber = newcap;
     if (newcap <= oldcap) return;
+    if (game.u) {
+        // C refs: src/invent.c:hold_another_object(), src/pickup.c:encumber_msg().
+        // The wished object line can block on tty More before the following
+        // encumbrance pline updates the visible status condition.
+        game._status_uencumber_override = oldcap;
+        game._clear_status_uencumber_override_before_after_more = true;
+        game.u.uencumber = newcap;
+    }
     game._extra_encumbered_turn_pending = true;
     const msg = encumbranceIncreaseMessage(newcap);
     if (!msg) return;
@@ -16915,7 +17235,8 @@ export async function rhack(key) {
         return;
     }
 
-    if (game._awaiting_prayer_done_more && game._more && (ch === ' ' || ch === '\r' || ch === '\n')) {
+    if (game._awaiting_prayer_done_more && game._more && !game._monster_turn_paused_for_more
+        && (ch === ' ' || ch === '\r' || ch === '\n')) {
         clear_pending_message();
         game._awaiting_prayer_done_more = false;
         await finishPrayerResult();
@@ -17183,7 +17504,7 @@ export async function rhack(key) {
             game.context.move = 0;
             return;
         }
-        if (ch === 'n' || ch === 'N' || ch === ' ' || ch === '\r' || ch === '\n') {
+        if (ch === 'n' || ch === 'N' || ch === ' ' || ch === '\r' || ch === '\n' || ch === '\\') {
             clear_pending_bones_restore();
             const pending = game._pending_level_teleport_after_bones || {};
             game._pending_level_teleport_after_bones = null;
@@ -17256,7 +17577,14 @@ export async function rhack(key) {
             game.context.move = 0;
             return;
         }
-        if (ch === 'n' || ch === 'N' || ch === ' ' || ch === '\r' || ch === '\n') {
+        if (ch === '\\') {
+            const msg = 'Die? [yn] (n)';
+            await showPromptLine(msg);
+            game._prompt_cursor = [msg.length + 1, 0];
+            game.context.move = 0;
+            return;
+        }
+        {
             game._death_prompt_active = false;
             const resumeTailOnly = !!game._resume_turn_tail_after_more;
             game._fatal_monster_attack_paused = false;
@@ -17274,17 +17602,35 @@ export async function rhack(key) {
                 game._nomovemsg = 'You survived that attempt on your life.';
                 await pline("OK, so you don't die.");
                 const okLine = game._pending_message;
-                await finish_deferred_monster_physical_attack();
+                if (game._deferred_monster_physical_attack?.current?.postSideEffectHero
+                    && game._deferred_monster_physical_attack.current.encumberShown) {
+                    // C refs: src/mhitu.c:hitmu(), src/end.c:done()/savelife().
+                    // This side-effect tail damage already drove the wizard death
+                    // prompt; declining death resumes after that hit instead of
+                    // applying the same poison/encumbrance tail again, but hitmu()
+                    // still consumed its knockback RNG before death handling.
+                    finish_deferred_monster_physical_knockback_only();
+                    game._deferred_monster_physical_attack = null;
+                } else {
+                    await finish_deferred_monster_physical_attack();
+                }
                 if (!game._more
                     && (game._monster_death_pending || game._after_more_message
                         || game._pending_message !== okLine)) {
                     queue_more_prompt();
                 }
                 if (game._more) game._pending_more_strict_keys = true;
-                game._monster_turn_paused_for_more = false;
-                game._resume_monster_turn = true;
                 game._savelife_resume_active = true;
-                game.context.move = 1;
+                if (game._more) {
+                    game._monster_turn_paused_for_more = true;
+                    game._monster_attack_more_waiting = true;
+                    game._resume_monster_turn = false;
+                    game.context.move = 0;
+                } else {
+                    game._monster_turn_paused_for_more = false;
+                    game._resume_monster_turn = true;
+                    game.context.move = 1;
+                }
             } else {
                 await pline("OK, so you don't die.  You survived that attempt on your life.");
                 if (resumeTailOnly) {

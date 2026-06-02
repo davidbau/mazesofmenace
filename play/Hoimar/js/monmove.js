@@ -177,6 +177,51 @@ const CONTAINER_TOOLS = new Set([
     BAG_OF_HOLDING,
     BAG_OF_TRICKS,
 ]);
+const ARMOR_OBJECT_NAMES = new Map([
+    // C refs: src/mon.c:mpickstuff(), src/objnam.c:distant_name()/doname().
+    // Visible monster pickups use ordinary object naming, so known-name armor
+    // should not degrade to the fallback "an object" label.
+    [101, 'gray dragon scale mail'],
+    [102, 'gold dragon scale mail'],
+    [103, 'silver dragon scale mail'],
+    [104, 'red dragon scale mail'],
+    [105, 'white dragon scale mail'],
+    [106, 'orange dragon scale mail'],
+    [107, 'black dragon scale mail'],
+    [108, 'blue dragon scale mail'],
+    [109, 'green dragon scale mail'],
+    [110, 'yellow dragon scale mail'],
+    [111, 'gray dragon scales'],
+    [112, 'gold dragon scales'],
+    [113, 'silver dragon scales'],
+    [114, 'red dragon scales'],
+    [115, 'white dragon scales'],
+    [116, 'orange dragon scales'],
+    [117, 'black dragon scales'],
+    [118, 'blue dragon scales'],
+    [119, 'green dragon scales'],
+    [120, 'yellow dragon scales'],
+    [121, 'plate mail'],
+    [122, 'crystal plate mail'],
+    [123, 'bronze plate mail'],
+    [124, 'splint mail'],
+    [125, 'banded mail'],
+    [126, 'dwarvish mithril-coat'],
+    [127, 'elven mithril-coat'],
+    [128, 'chain mail'],
+    [130, 'scale mail'],
+    [131, 'studded leather armor'],
+    [132, 'ring mail'],
+    [134, 'leather armor'],
+    [135, 'leather jacket'],
+    [136, 'Hawaiian shirt'],
+    [137, 'T-shirt'],
+    [138, 'mummy wrapping'],
+    [143, 'robe'],
+    [145, 'leather cloak'],
+    [156, 'large shield'],
+]);
+const ARMOR_SCALE_OBJECTS = new Set([111, 112, 113, 114, 115, 116, 117, 118, 119, 120]);
 const MAGIC_BAGS = new Set([
     BAG_OF_HOLDING,
     BAG_OF_TRICKS,
@@ -1723,16 +1768,36 @@ async function mzapwand_basic(mtmp, obj, self = false) {
     return true;
 }
 
-function mon_adjust_speed_basic(mtmp, adjust) {
+async function mon_adjust_speed_basic(mtmp, adjust) {
     // C ref: worn.c:mon_adjust_speed().
+    const oldspeed = mtmp.mspeed || 0;
+    let giveMsg = true;
     if (adjust > 0) {
         if (mtmp.permspeed === MSLOW) mtmp.permspeed = 0;
         else mtmp.permspeed = MFAST;
     } else if (adjust < 0) {
         if (mtmp.permspeed === MFAST) mtmp.permspeed = 0;
         else mtmp.permspeed = MSLOW;
+    } else if (adjust === 2) {
+        mtmp.permspeed = MFAST;
+        giveMsg = false;
+    } else if (adjust === -2) {
+        mtmp.permspeed = MSLOW;
+        giveMsg = false;
     }
     mtmp.mspeed = mtmp.permspeed || 0;
+    if (!giveMsg || mtmp.mspeed === oldspeed || !(mtmp.data?.mmove)
+        || mtmp.mfrozen || mtmp.msleeping || !hero_can_spot_monster(mtmp)) {
+        return;
+    }
+    const howmuch = (mtmp.mspeed + oldspeed === MFAST + MSLOW) ? 'much ' : '';
+    const line = (adjust > 0 || mtmp.mspeed === MFAST)
+        ? `${monster_subject(mtmp)} is suddenly moving ${howmuch}faster.`
+        : `${monster_subject(mtmp)} seems to be moving ${howmuch}slower.`;
+    await append_monster_effect_topline(line, {
+        resumeMonsterTurn: !!game._monster_turn_paused_for_more,
+        move: !!game._monster_turn_paused_for_more,
+    });
 }
 
 async function maybe_use_misc_item_basic(mtmp) {
@@ -1740,12 +1805,12 @@ async function maybe_use_misc_item_basic(mtmp) {
     if (!candidate) return false;
     if (candidate.kind === 'WAN_SPEED_MONSTER') {
         if (!await mzapwand_basic(mtmp, candidate.obj, true)) return false;
-        mon_adjust_speed_basic(mtmp, 1);
+        await mon_adjust_speed_basic(mtmp, 1);
         return true;
     }
     if (candidate.kind === 'POT_SPEED') {
         await mquaffmsg_basic(mtmp, candidate.obj);
-        mon_adjust_speed_basic(mtmp, 1);
+        await mon_adjust_speed_basic(mtmp, 1);
         remove_monster_inventory_object(mtmp, candidate.obj);
         return true;
     }
@@ -3093,6 +3158,7 @@ const MONSTER_DISPLAY_NAME_OVERRIDES = new Map([
     ['KI_RIN', 'ki-rin'],
     ['ARCH_LICH', 'arch-lich'],
     ['OLOG_HAI', 'Olog-hai'],
+    ['ELF_LORD', 'elf-lord'],
     ['WOODLAND_ELF', 'Woodland-elf'],
     ['GREEN_ELF', 'Green-elf'],
     ['GREY_ELF', 'Grey-elf'],
@@ -3104,6 +3170,9 @@ function monster_name(mtmp) {
     const named = named_monster_name(mtmp);
     if (named) return named;
     const token = String(mtmp?.data?.name || 'monster');
+    // C ref: src/do_name.c:x_monnam().  Some monster "rank" names are
+    // gendered in ordinary visible messages.
+    if (token === 'ELF_LORD' && mtmp?.female) return 'elf-lady';
     return MONSTER_DISPLAY_NAME_OVERRIDES.get(token)
         || token.toLowerCase().replace(/_/g, ' ');
 }
@@ -3151,6 +3220,20 @@ function floor_object_name(obj) {
     if (object_class(obj) === WEAPON_CLASS) {
         const base = object_base_name(obj);
         if (base) return object_display_name(obj, base);
+    }
+    if (object_class(obj) === ARMOR_CLASS) {
+        const base = ARMOR_OBJECT_NAMES.get(obj?.otyp);
+        if (base) {
+            const name = ARMOR_SCALE_OBJECTS.has(obj.otyp) ? `set of ${base}` : base;
+            return object_display_name(obj, name);
+        }
+    }
+    if (CONTAINER_TOOLS.has(obj?.otyp)) {
+        const base = obj.otyp === LARGE_BOX ? 'large box'
+            : obj.otyp === CHEST ? 'chest'
+            : obj.otyp === ICE_BOX ? 'ice box'
+            : 'bag';
+        return object_display_name(obj, base);
     }
     if (object_class(obj) === POTION_CLASS) return 'a potion';
     if (object_class(obj) === GEM_CLASS) {
@@ -3245,6 +3328,17 @@ function object_base_name(obj) {
         return 'sling';
     case CROSSBOW:
         return 'crossbow';
+    case LARGE_BOX:
+        return 'large box';
+    case CHEST:
+        return 'chest';
+    case ICE_BOX:
+        return 'ice box';
+    case SACK:
+    case OILSKIN_SACK:
+    case BAG_OF_HOLDING:
+    case BAG_OF_TRICKS:
+        return 'bag';
     default:
         return '';
     }
@@ -3486,6 +3580,10 @@ function is_simple_monster_hit_you_chain(line) {
     return String(line || '').split('  ').every(is_simple_monster_hit_you_line);
 }
 
+function first_simple_monster_hit_line(line) {
+    return String(line || '').split('  ').find(is_simple_monster_hit_you_line) || '';
+}
+
 function monster_miss_text(toHit, roll) {
     // C ref: src/mhitu.c:missmu().  "just misses" is only used when
     // flags.verbose is enabled.
@@ -3581,6 +3679,7 @@ function pet_combat_more_would_precede_line(line) {
 
 async function flush_pending_more_before_monster_message() {
     if (!game._more || !game._pending_message) return;
+    if (game._monster_physical_pack_behind_active_more) return;
     if (game._pet_combat_more_latched && !hallucinating()) return;
     // C ref: tty topline `--More--` is often serviced when the next pline()
     // wants to print. This lets intervening map updates become visible before
@@ -3628,6 +3727,62 @@ async function flush_pending_more_before_monster_message() {
 
 async function show_blocking_monster_message(line) {
     if (!line) return;
+    if (game._life_saving_silent_monster_resume) return;
+    if (game._nomovemsg === 'You survived that attempt on your life.'
+        && game._pending_message === "OK, so you don't die."
+        && !game._more
+        && is_simple_monster_hit_you_chain(line)
+        && topline_can_pack_message(game._pending_message, line)) {
+        // C refs: src/end.c:savelife(), src/allmain.c:moveloop_core(),
+        // win/tty/topl.c:update_topl().  Declining wizard-mode death returns
+        // to the interrupted monster pass; the next visible combat line can
+        // pack behind the OK line, then blocks before later monsters move.
+        game._pending_message = `${game._pending_message}  ${line}`;
+        game._monster_attack_more_latched = true;
+        game._monster_attack_pause_after_more = true;
+        game._savelife_resume_more_latched = true;
+        game._pending_more_strict_keys = true;
+        queue_more_prompt();
+        return;
+    }
+    if (game._nomovemsg === 'You survived that attempt on your life.'
+        && !game._pending_message
+        && !game._more
+        && is_simple_monster_hit_you_chain(line)) {
+        if (game._savelife_resume_followup_more_shown) {
+            // C refs: src/end.c:savelife(), win/tty/topl.c:update_topl().
+            // After the first post-OK combat More, subsequent same-turn
+            // physical rows have already spent their combat RNG but only the
+            // first hit line is visible at the next input boundary.
+            const firstLine = first_simple_monster_hit_line(line);
+            if (firstLine) await pline(firstLine);
+            return;
+        }
+        // C refs: src/end.c:savelife(), src/mhitu.c:hitmsg().
+        // The first combat line after the OK frame is another tty boundary;
+        // later monsters resume only after this More is dismissed.
+        await pline(line);
+        game._savelife_resume_followup_more_shown = true;
+        game._monster_attack_more_latched = true;
+        game._monster_attack_pause_after_more = true;
+        game._savelife_resume_more_latched = true;
+        game._pending_more_strict_keys = true;
+        queue_more_prompt();
+        return;
+    }
+    if (game._monster_physical_pack_behind_active_more
+        && game._more
+        && game._pending_message
+        && is_simple_monster_hit_you_chain(line)
+        && topline_can_pack_message(game._pending_message, line)) {
+        // C refs: src/mhitu.c:hitmsg(), win/tty/topl.c:update_topl().
+        // The active prompt is still the visible tty boundary; a single
+        // physical hit generated by the resumed pass can share that topline.
+        game._pending_message = `${game._pending_message}  ${line}`;
+        game._monster_physical_pack_behind_active_more = false;
+        queue_more_prompt();
+        return;
+    }
     if (monster_attack_tail_pack_pending()) {
         await append_monster_effect_topline(line, { needsPrompt: true });
         return;
@@ -3687,6 +3842,14 @@ async function show_blocking_monster_message(line) {
         return;
     }
     if (game._pending_message && !game._more && `${game._pending_message}  ${line}`.length < 80) {
+        if (game._savelife_resume_followup_more_shown
+            && is_simple_monster_hit_you_chain(game._pending_message)
+            && is_simple_monster_hit_you_chain(line)) {
+            // C ref: win/tty/topl.c:update_topl().  In this saved-life resume
+            // slice, later simple physical messages update tty history/state
+            // without replacing the already-visible input-boundary topline.
+            return;
+        }
         if (is_simple_monster_hit_you_line(line)
             && !is_simple_monster_vs_monster_line(game._pending_message)
             && !/^You hear the (?:studio audience applaud|rumble of distant thunder\.\.\.)!$/.test(game._pending_message)
@@ -3846,6 +4009,7 @@ async function append_swallowed_damage_message(line) {
 }
 
 async function append_monster_topline(line) {
+    if (game._life_saving_silent_monster_resume) return true;
     if (game.context?.run) {
         // C ref: hack.c:lookaround()/topl.c:pline().  Monster/trap messages
         // emitted during a repeated run can split the visible topline from
@@ -3859,10 +4023,14 @@ async function append_monster_topline(line) {
             game._after_more_message = game._after_more_message
                 ? `${game._after_more_message}  ${line}`
                 : line;
-            game._after_more_needs_prompt = false;
+            // C ref: win/tty/topl.c:update_topl().  If an ordinary monster
+            // pline cannot pack behind an existing More, the new line is the
+            // next tty More frame rather than a promptless transient topline.
+            game._after_more_needs_prompt = true;
             game._monster_topline_deferred = true;
             game._monster_attack_more_latched = true;
             game._monster_attack_pause_after_more = true;
+            game._monster_turn_paused_for_more = true;
             return false;
         }
         game._pending_message = `${pending}  ${line}`;
@@ -3877,16 +4045,19 @@ async function append_monster_topline(line) {
 }
 
 async function append_monster_effect_topline(line, opts = {}) {
+    if (game._life_saving_silent_monster_resume) return;
     if ((game._monster_topline_deferred || monster_attack_tail_pack_pending())
         && game._after_more_message) {
         const pending = game._after_more_message;
         if (topline_can_pack_message(pending, line)) {
             game._after_more_message = `${pending}  ${line}`;
-            if (opts.needsPrompt) game._after_more_needs_prompt = true;
+            game._after_more_needs_prompt = !!opts.needsPrompt;
         } else {
             game._after_more_needs_prompt = true;
             game._after_more_followup_messages = game._after_more_followup_messages || [];
-            game._after_more_followup_messages.push(line);
+            game._after_more_followup_messages.push(opts.resumeMonsterTurn || opts.move
+                ? { text: line, resumeMonsterTurn: !!opts.resumeMonsterTurn, move: !!opts.move }
+                : line);
         }
         return;
     }
@@ -4023,12 +4194,53 @@ async function mintrap_web_basic(mtmp, trap) {
     }
 
     if (inSight) {
-        await append_trap_topline(`${monster_subject(mtmp)} is caught in ${trap.madeby_u ? 'your' : 'a'} spider web.`);
+        const shown = await append_trap_topline(`${monster_subject(mtmp)} is caught in ${trap.madeby_u ? 'your' : 'a'} spider web.`);
+        if (!shown) {
+            // C refs: src/trap.c:trapeffect_web(), src/trap.c:seetrap().
+            // seetrap()/newsym() and the caught state are after the pline();
+            // if tty More blocks that pline, the map update waits too.
+            game._deferred_monster_trap_effect = { kind: 'web-caught', mtmp, trap };
+            game._monster_turn_paused_for_more = true;
+            return MMOVE_DONE;
+        }
         trap.tseen = true;
         newsym(trap.tx, trap.ty);
     }
     mtmp.mtrapped = 1;
     return MMOVE_DONE;
+}
+
+export async function finish_deferred_monster_trap_effect() {
+    const pending = game._deferred_monster_trap_effect;
+    if (!pending) return false;
+    game._deferred_monster_trap_effect = null;
+    const { kind, mtmp, trap } = pending;
+    if (!game.level?.monsters?.includes(mtmp) || (mtmp.mhp ?? 1) <= 0) return true;
+    if (kind === 'web-caught') {
+        trap.tseen = true;
+        newsym(trap.tx, trap.ty);
+        mtmp.mtrapped = 1;
+        await finish_deferred_monster_postmove(mtmp, MMOVE_DONE);
+        return true;
+    }
+    return false;
+}
+
+async function finish_deferred_monster_postmove(mtmp, moveStatus) {
+    if (moveStatus === MMOVE_MOVED || moveStatus === MMOVE_DONE) {
+        if (await mpickstuff_basic(mtmp)) {
+            maybe_spin_web_basic(mtmp);
+            await postmove_hide_under_or_eel_basic(mtmp);
+        } else {
+            maybe_spin_web_basic(mtmp);
+            await postmove_hide_under_or_eel_basic(mtmp);
+        }
+    }
+    distfleeck(mtmp);
+    game._resume_movemon_after_mon = mtmp;
+    game._resume_somebody_can_move = !!game._resume_somebody_can_move
+        || mtmp.movement >= NORMAL_SPEED;
+    game._monster_attack_resume_behind_after_more = true;
 }
 
 function mon_knows_traps_basic(mtmp, ttyp) {
@@ -4174,9 +4386,9 @@ async function append_trap_topline(line) {
             ? `${game._after_more_message}  ${line}`
             : line;
         game._after_more_needs_prompt = false;
-        return;
+        return false;
     }
-    await append_monster_topline(line);
+    return await append_monster_topline(line);
 }
 
 async function thitm_basic(tlev, mtmp, obj, damageOverride = 0) {
@@ -5458,9 +5670,17 @@ function poison_attribute_message(attr) {
 function reduce_poisoned_attribute(attr, loss) {
     const u = game.u;
     if (!u?.acurr?.a) return false;
+    const oldcap = u.uencumber || 0;
     const before = u.acurr.a[attr] ?? 10;
     const after = Math.max(3, before - Math.max(0, loss));
     u.acurr.a[attr] = after;
+    if (after !== before && (attr === A_STR || attr === A_CON)) {
+        const newcap = hero_near_capacity_basic();
+        if (newcap > oldcap) {
+            u.uencumber = newcap;
+            game._pending_poison_encumber_message = encumber_change_message_basic(oldcap, newcap);
+        }
+    }
     return after !== before;
 }
 
@@ -5480,17 +5700,14 @@ function poisoned_by_monster_attack_basic(mtmp, attack, attr, messages) {
             messages.push('The poison was deadly...');
         } else {
             apply_hero_damage(loss);
-            if (reduce_poisoned_attribute(A_CON, attr !== A_CON ? 1 : 3))
-                messages.push(poison_attribute_message(A_CON));
-            if (attr !== A_CON && reduce_poisoned_attribute(attr, 3))
-                messages.push(poison_attribute_message(attr));
+            reduce_poisoned_attribute(A_CON, attr !== A_CON ? 1 : 3);
+            if (attr !== A_CON) reduce_poisoned_attribute(attr, 3);
         }
     } else if (fatal > 5) {
         apply_hero_damage(rn2(10) + 6);
     } else {
         const loss = d(2, 2);
-        if (reduce_poisoned_attribute(attr, loss))
-            messages.push(poison_attribute_message(attr));
+        reduce_poisoned_attribute(attr, loss);
     }
 }
 
@@ -5605,6 +5822,42 @@ function encumber_change_message_basic(oldcap, newcap) {
     return '';
 }
 
+function carried_object_weight_basic(obj) {
+    if (!obj) return 0;
+    if (obj.otyp === GOLD_PIECE) return Math.trunc(((obj.quan || 0) + 50) / 100);
+    const quan = Math.max(1, obj.quan || 1);
+    const cls = object_class(obj);
+    const unit = OBJECT_WEIGHT[obj.otyp]
+        ?? (cls === RING_CLASS ? 3
+            : cls === AMULET_CLASS ? 20
+            : cls === POTION_CLASS ? 20
+            : cls === SCROLL_CLASS ? 5
+            : cls === SPBOOK_CLASS ? 50
+            : cls === WAND_CLASS ? 7
+            : cls === GEM_CLASS ? 1
+            : (typeof obj.owt === 'number' && obj.owt > 1 ? obj.owt : 1));
+    return unit * quan;
+}
+
+function hero_weight_cap_basic() {
+    // C ref: src/hack.c:weight_cap().  Current combat evidence is ordinary
+    // human-form capacity: 25 * (Str + Con) + 50, clamped to NetHack's cap.
+    const str = game.u?.acurr?.a?.[A_STR] ?? 10;
+    const con = game.u?.acurr?.a?.[A_CON] ?? 10;
+    return Math.max(1, Math.min(1000, 25 * (str + con) + 50));
+}
+
+function hero_near_capacity_basic() {
+    // C ref: src/hack.c:near_capacity()/calc_capacity().
+    const total = (game.inventory || []).reduce((sum, obj) => sum + carried_object_weight_basic(obj), 0);
+    const cap = hero_weight_cap_basic();
+    let wt = total - cap;
+    if (game.u?.uprops?.wounded_legs) wt--;
+    if (wt <= 0) return UNENCUMBERED;
+    if (cap <= 1) return EXT_ENCUMBER + 1;
+    return Math.min(Math.trunc((wt * 2) / cap) + 1, EXT_ENCUMBER + 1);
+}
+
 async function flush_pending_rehumanize_message_basic() {
     const line = game._pending_rehumanize_message || '';
     const encumberLine = game._pending_rehumanize_encumber_message || '';
@@ -5629,6 +5882,26 @@ function apply_hero_damage(damage) {
     game.u.uhp = Math.max(0, (game.u.uhp ?? 0) - damage);
 }
 
+function snapshot_hero_combat_state() {
+    const u = game.u || {};
+    return {
+        uhp: u.uhp,
+        mh: u.mh,
+        uencumber: u.uencumber,
+        poisonEncumberMessage: game._pending_poison_encumber_message || '',
+        acurr: Array.isArray(u.acurr?.a) ? u.acurr.a.slice() : null,
+    };
+}
+
+function restore_hero_combat_state(snapshot) {
+    if (!snapshot || !game.u) return;
+    if (typeof snapshot.uhp === 'number') game.u.uhp = snapshot.uhp;
+    if (typeof snapshot.mh === 'number') game.u.mh = snapshot.mh;
+    if (typeof snapshot.uencumber === 'number') game.u.uencumber = snapshot.uencumber;
+    game._pending_poison_encumber_message = snapshot.poisonEncumberMessage || '';
+    if (snapshot.acurr) game.u.acurr = { a: snapshot.acurr.slice() };
+}
+
 function stop_simple_timed_repeat_for_monster_attack(messages) {
     // C refs: src/cmd.c:rhack() set_occupation(), src/mhitu.c:mattacku(),
     // src/allmain.c:stop_occupation().  A monster melee hit or miss interrupts
@@ -5646,10 +5919,13 @@ function handle_monster_fatal_damage(mtmp, preDamageHp) {
     if ((game.u?.uhp ?? 0) > 0) return false;
     begin_monster_fatal_damage_basic();
     const pendingTopline = game._pending_message || '';
-    const preserveFatalHitStatusHp = (!pendingTopline && preDamageHp <= 1)
-        || (!!pendingTopline && !/^You /.test(pendingTopline)
-            && !is_simple_monster_hit_you_chain(pendingTopline));
-    let preserveDeathPromptStatusHp = preserveFatalHitStatusHp;
+    const pendingMonsterHit = is_simple_monster_hit_you_chain(pendingTopline);
+    const forceDeathStatusHp0 = !!game._force_fatal_status_hp0;
+    game._force_fatal_status_hp0 = false;
+    const preserveFatalHitStatusHp = !forceDeathStatusHp0
+        && ((!pendingTopline && preDamageHp <= 1)
+            || (!!pendingTopline && !/^You /.test(pendingTopline)));
+    let preserveDeathPromptStatusHp = preserveFatalHitStatusHp && !pendingMonsterHit;
     if (mtmp.isshk && shopkeeper_name(mtmp)) {
         const honorific = mtmp.female ? 'Ms.' : 'Mr.';
         game._death_killer_name = `${honorific} ${shopkeeper_name(mtmp)}, the shopkeeper`;
@@ -5832,6 +6108,7 @@ async function latch_monster_attack_more_frame(line) {
 
 async function latch_existing_more_before_monster_hit() {
     if (!game._more || !game._pending_message || game._latched_more_screen) return false;
+    if (game._monster_physical_pack_behind_active_more) return false;
     // C refs: win/tty/topl.c:more(), mhitu.c:hitmsg().  A monster hit
     // generated behind an older tty More must not update that older frame's
     // map or HP status before the More is dismissed.
@@ -5860,6 +6137,9 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
     const hitMessages = [];
     const attackVerbCounts = new Map();
     let latchedTailStart = null;
+    const suppressVisibleMessages = !!game._life_saving_silent_monster_resume
+        || (!!game._savelife_resume_followup_more_shown
+            && is_simple_monster_hit_you_chain(game._pending_message || ''));
     for (let i = 0; i < attacks.length; i++) {
         const attack = attacks[i];
         if (!attack) continue;
@@ -5867,17 +6147,71 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
         const roll = rnd(20 + i);
         if (toHit > roll) {
             const verb = monster_attack_verb(attack, attackVerbCounts);
-            await latch_existing_more_before_monster_hit();
+            if (!suppressVisibleMessages) await latch_existing_more_before_monster_hit();
             if (!hero_can_spot_monster(mtmp)) map_invisible_basic(mtmp.mx, mtmp.my);
             const hiddenLine = monster_hidden_under_hit_line_basic(mtmp);
             const line = monster_physical_hit_line_basic(mtmp, attack, verb);
             const displayLine = [hiddenLine, line].filter(Boolean).join('  ');
-            if (displayLine && hitMessages.length
+            if (!suppressVisibleMessages && displayLine && hitMessages.length && game._pending_message && !game._more) {
+                const pendingPrefix = `${game._pending_message}  ${hitMessages.join('  ')}`;
+                if (!tty_topline_can_pack_message_basic(pendingPrefix, displayLine)) {
+                    // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl().
+                    // A command-result topline can pack one monster hit, then
+                    // block before the next attack row rolls damage or side
+                    // effects.  The resumed hit owns its damage/knockback tail.
+                    game._pending_message = pendingPrefix;
+                    game._after_more_message = displayLine;
+                    game._after_more_needs_prompt = false;
+                    game._monster_attack_more_latched = true;
+                    game._monster_attack_pause_after_more = true;
+                    game._monster_attack_resume_behind_after_more = false;
+                    game._deferred_monster_physical_attack = {
+                        mtmp,
+                        attacks,
+                        nextIndex: i + 1,
+                        toHit,
+                        attackVerbCounts: [...attackVerbCounts.entries()],
+                        current: { attack, verb },
+                    };
+                    queue_more_prompt();
+                    return [];
+                }
+            }
+            if (!suppressVisibleMessages && displayLine && hitMessages.length && game._pending_message && game._more
+                && game._monster_physical_pack_behind_active_more) {
+                const pendingTail = hitMessages.join('  ');
+                const pendingPrefix = `${game._pending_message}  ${pendingTail}`;
+                if (!tty_topline_can_pack_message_basic(game._pending_message, `${pendingTail}  ${displayLine}`)) {
+                    // C refs: src/mhitu.c:hitmsg(), win/tty/topl.c:update_topl().
+                    // A monster pass resumed behind an intervening tty More can
+                    // pack the first physical hit with that visible prompt while
+                    // deferring the next attack row before its damage is applied.
+                    game._pending_message = pendingPrefix;
+                    game._after_more_message = displayLine;
+                    game._after_more_needs_prompt = false;
+                    game._monster_attack_more_latched = true;
+                    game._monster_attack_pause_after_more = true;
+                    game._monster_attack_resume_behind_after_more = false;
+                    game._monster_physical_pack_behind_active_more = false;
+                    game._deferred_monster_physical_attack = {
+                        mtmp,
+                        attacks,
+                        nextIndex: i + 1,
+                        toHit,
+                        attackVerbCounts: [...attackVerbCounts.entries()],
+                        current: { attack, verb },
+                        suppressMonsterResumeAfterMore: true,
+                    };
+                    game._more_dismissals_remaining = Math.max(1, game._more_dismissals_remaining || 0);
+                    return [];
+                }
+            }
+            if (!suppressVisibleMessages && displayLine && hitMessages.length
                 && `${hitMessages.join('  ')}  ${displayLine}`.length >= COLNO) {
                 if (await latch_monster_attack_more_frame(hitMessages.join('  ')))
                     latchedTailStart = hitMessages.length;
             }
-            if (hiddenLine && displayLine && game._pending_message && !game._more
+            if (!suppressVisibleMessages && hiddenLine && displayLine && game._pending_message && !game._more
                 && !tty_topline_can_pack_message_basic(game._pending_message, displayLine)) {
                 // C ref: src/mhitu.c:hitmu().  An undetected hider reveal is
                 // printed before damage dice, so a tty More on an older
@@ -5898,11 +6232,46 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                 if (!game._more) queue_more_prompt();
                 return [];
             }
-            if (displayLine) hitMessages.push(displayLine);
+            if (displayLine && !suppressVisibleMessages) hitMessages.push(displayLine);
             let damage = d(damn, damd);
             if (verb === 'weapon') damage += monster_weapon_damage(mtmp.mw);
+            const sideEffectTailStart = hitMessages.length;
+            const preSideEffectHero = snapshot_hero_combat_state();
             damage = apply_monster_hit_adtyp_basic(mtmp, attack, damage, hitMessages);
-            if (displayLine && damage > 0 && game._pending_message && !game._more
+            if (!suppressVisibleMessages
+                && sideEffectTailStart > 0
+                && hitMessages.length > sideEffectTailStart) {
+                const prefix = hitMessages.slice(0, sideEffectTailStart).join('  ');
+                const tail = hitMessages.slice(sideEffectTailStart).join('  ');
+                if (prefix && tail && !tty_topline_can_pack_message_basic(prefix, tail)) {
+                    const postSideEffectHero = snapshot_hero_combat_state();
+                    restore_hero_combat_state(preSideEffectHero);
+                    if (await latch_monster_attack_more_frame(prefix)) {
+                        // C refs: src/mhitu.c:hitmsg(), src/uhitm.c:mhitm_ad_drst(),
+                        // win/tty/topl.c:update_topl().  Poison side-effect
+                        // plines can be blocked behind the physical hit line;
+                        // the already-consumed RNG/state resumes after More.
+                        game._after_more_message = tail;
+                        game._after_more_needs_prompt = true;
+                        game._monster_attack_tail_pending_pack = true;
+                        game._monster_attack_tail_transient_after_more = true;
+                        game._monster_attack_pause_after_more = true;
+                        game._monster_attack_resume_behind_after_more = false;
+                        game._monster_physical_pack_behind_active_more = false;
+                        game._deferred_monster_physical_attack = {
+                            mtmp,
+                            attacks,
+                            nextIndex: i + 1,
+                            toHit,
+                            attackVerbCounts: [...attackVerbCounts.entries()],
+                            current: { damage, postSideEffectHero },
+                        };
+                        return [];
+                    }
+                    restore_hero_combat_state(postSideEffectHero);
+                }
+            }
+            if (!suppressVisibleMessages && displayLine && damage > 0 && game._pending_message && !game._more
                 && !tty_topline_can_pack_message_basic(game._pending_message, displayLine)
                 && !game._monster_attack_tail_transient_after_more) {
                 // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl().
@@ -5942,12 +6311,22 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                 && topline_can_pack_message(game._after_more_message, displayLine);
             if (damageSharesDeferredHitLine) game._relocation_more_deferred = false;
             if (damage > 0 && game._monster_topline_deferred && !damageSharesDeferredHitLine) {
-                game._after_more_hero_damage = (game._after_more_hero_damage || 0) + damage;
-                game._after_more_damage_after_prompt = true;
+                apply_hero_damage(damage);
+                if (displayLine) stop_simple_timed_repeat_for_monster_attack(hitMessages);
+                // C refs: src/mhitu.c:hitmu(), src/end.c:done(),
+                // win/tty/topl.c:more().  The hit has already done damage and
+                // can enter death handling before the hit-line More is dismissed,
+                // but that More frame still shows the pre-damage status row.
+                game._latched_status_uhp = preDamageHp;
+                game._clear_latched_status_after_more = true;
+                if (handle_monster_fatal_damage(mtmp, preDamageHp)) {
+                    game._latched_status_uhp = preDamageHp;
+                    break;
+                }
                 if (attacks.slice(i + 1).some(Boolean)) {
                     // C ref: src/mhitu.c:mattacku().  A visible hit line can be
                     // queued behind tty More, but the remaining attack rows
-                    // resume from the same monster after that boundary.
+                    // resume from the same monster only after that displayed More.
                     game._deferred_monster_physical_attack = {
                         mtmp,
                         attacks,
@@ -5955,16 +6334,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                         toHit,
                         attackVerbCounts: [...attackVerbCounts.entries()],
                         current: null,
-                    };
-                }
-                if (damage >= preDamageHp) {
-                    game._after_more_fatal_monster = {
-                        isshk: !!mtmp.isshk,
-                        female: !!mtmp.female,
-                        shopkeeperName: mtmp.isshk ? shopkeeper_name(mtmp) : '',
-                        monsterName: monster_name(mtmp),
-                        takes: !!(mtmp.isshk && shopkeeper_name(mtmp)
-                            && ((game.inventory || []).length || (game._goldCount || 0) > 0)),
+                        waitForDisplayedMore: true,
                     };
                 }
             } else {
@@ -5992,11 +6362,11 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                     }
                 }
             }
-            if (damageBehindPetCombatMore) {
+            if (!suppressVisibleMessages && damageBehindPetCombatMore) {
                 game._latched_status_uhp = preDamageHp;
                 game._clear_latched_status_before_after_more = true;
             }
-            if (damage > 0 && game._more && game._pet_combat_more_latched) {
+            if (!suppressVisibleMessages && damage > 0 && game._more && game._pet_combat_more_latched) {
                 // C ref: win/tty/topl.c:more() + mhitu.c:hitmsg().
                 // Damage from a monster hit whose pline is queued behind an
                 // active pet-combat More appears on the status line with that
@@ -6004,7 +6374,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                 if (game._latched_status_uhp == null) game._latched_status_uhp = preDamageHp;
                 game._clear_latched_status_before_after_more = true;
             }
-            if (damage > 0 && /^You hear the studio audience applaud!$/.test(game._pending_message || '')) {
+            if (!suppressVisibleMessages && damage > 0 && /^You hear the studio audience applaud!$/.test(game._pending_message || '')) {
                 game._latched_status_uhp = preDamageHp;
                 game._clear_latched_status_after_more = true;
             }
@@ -6035,12 +6405,12 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                     ? `${subject} ${monster_weapon_swing_verb(mtmp.mw)} ${monster_possessive(mtmp)} ${monster_weapon_name(mtmp.mw)}.  ${subject} ${miss}!`
                     : `${subject} ${miss}!`)
                 : `${subject} ${miss}!`;
-            if (hitMessages.length
+            if (!suppressVisibleMessages && hitMessages.length
                 && `${hitMessages.join('  ')}  ${line}`.length >= COLNO) {
                 if (await latch_monster_attack_more_frame(hitMessages.join('  ')))
                     latchedTailStart = hitMessages.length;
             }
-            hitMessages.push(line);
+            if (!suppressVisibleMessages) hitMessages.push(line);
             stop_simple_timed_repeat_for_monster_attack(hitMessages);
         }
     }
@@ -6194,8 +6564,15 @@ function append_after_more_physical_tail(lines) {
     game._monster_topline_deferred = true;
 }
 
-function finish_deferred_physical_hit_damage(mtmp, damage, preDamageHp) {
+function consume_deferred_physical_knockback(current = null) {
+    if (current?.knockbackConsumed) return false;
     mhitm_knockback_frontdoor();
+    if (current) current.knockbackConsumed = true;
+    return true;
+}
+
+function finish_deferred_physical_hit_damage(mtmp, damage, preDamageHp, current = null) {
+    consume_deferred_physical_knockback(current);
     damage = reduce_damage_by_negative_ac(damage);
     apply_hero_damage(damage);
     return handle_monster_fatal_damage(mtmp, preDamageHp);
@@ -6238,6 +6615,27 @@ function finish_deferred_current_physical_hit(mtmp, current) {
     return handle_monster_fatal_damage(mtmp, preDamageHp);
 }
 
+function finish_deferred_physical_side_effect_tail(mtmp, current) {
+    restore_hero_combat_state(current?.postSideEffectHero);
+    if (current?.encumberShown) {
+        game._clear_latched_status_before_after_more = false;
+        game._latched_status_uhp = null;
+        game._force_fatal_status_hp0 = true;
+    }
+    const preDamageHp = game.u?.uhp ?? 0;
+    return finish_deferred_physical_hit_damage(mtmp, current?.damage || 0, preDamageHp, current);
+}
+
+export function finish_deferred_monster_physical_knockback_only() {
+    const pending = game._deferred_monster_physical_attack;
+    const current = pending?.current;
+    if (!current?.postSideEffectHero) return false;
+    // C ref: src/mhitu.c:hitmu().  A deferred poison/encumbrance line can
+    // reach wizard/explore death handling before the fatal HP damage is
+    // intentionally discarded by savelife(); the hit still owns this RNG tail.
+    return consume_deferred_physical_knockback(current);
+}
+
 function queue_fatal_monster_hit_more_if_needed() {
     // C refs: src/mhitu.c:hitmsg(), src/end.c:done().  Fatal monster damage
     // leaves the hit/miss topline visible on a tty More before death handling.
@@ -6277,6 +6675,37 @@ export async function finish_deferred_monster_physical_attack() {
     const attackVerbCounts = new Map(pending.attackVerbCounts || []);
     if (current?.attack) {
         if (finish_deferred_current_physical_hit(mtmp, current)) return true;
+    } else if (current?.postSideEffectHero) {
+        restore_hero_combat_state(current.postSideEffectHero);
+        const encumberLine = game._pending_poison_encumber_message || '';
+        game._pending_poison_encumber_message = '';
+        if (encumberLine && !current.encumberShown) {
+            game._after_more_message = encumberLine;
+            game._after_more_needs_prompt = true;
+            game._monster_topline_deferred = true;
+            if (typeof current.postSideEffectHero?.uhp === 'number') {
+                game._latched_status_uhp = current.postSideEffectHero.uhp;
+                game._clear_latched_status_before_after_more = true;
+            }
+            game._monster_attack_pause_after_more = true;
+            game._monster_attack_resume_behind_after_more = false;
+            game._monster_physical_pack_behind_active_more = false;
+            game._deferred_monster_physical_attack = {
+                mtmp,
+                attacks,
+                nextIndex,
+                toHit,
+                attackVerbCounts: [...attackVerbCounts.entries()],
+                current: {
+                    damage: current.damage,
+                    postSideEffectHero: snapshot_hero_combat_state(),
+                    encumberShown: true,
+                },
+                waitForDisplayedMore: true,
+            };
+            return true;
+        }
+        if (finish_deferred_physical_side_effect_tail(mtmp, current)) return true;
     } else if (current && finish_deferred_physical_hit_damage(mtmp, current.damage, current.preDamageHp)) {
         return true;
     }
@@ -6772,6 +7201,7 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
         if (!deferWarningRedraw) newsym(omx, omy);
         const trapStatus = await mintrap_basic(mtmp);
         if (trapStatus === MMOVE_DIED) return MMOVE_DIED;
+        if (game._monster_turn_paused_for_more) return MMOVE_DONE;
         doorStatus = await postmove_door_basic(mtmp);
         if (doorStatus !== MMOVE_DIED) {
             if (canTunnel && may_dig_basic(mtmp.mx, mtmp.my)) {
@@ -7048,6 +7478,15 @@ async function maybe_finish_post_move_attack(g, mtmp, moveStatus, postMoveState,
         return true;
     }
     await mattacku_basic(mtmp, postMoveState);
+    if (g._monster_death_pending || g._fatal_monster_attack_paused) {
+        // C refs: src/mhitu.c:mattacku(), src/end.c:done().  Death handling
+        // interrupts the monster scan before later monsters get their turns,
+        // even if the visible death line is still behind pending tty More rows.
+        g._resume_movemon_after_mon = mtmp;
+        g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+        g._monster_turn_paused_for_more = true;
+        return false;
+    }
     if (g._swallowed_damage_more_latched && g._more) {
         g._swallowed_damage_more_latched = false;
         g._resume_movemon_after_mon = mtmp;
@@ -7079,6 +7518,15 @@ async function maybe_finish_post_move_attack(g, mtmp, moveStatus, postMoveState,
         // map updates in the same monster pass can happen; the next pline or
         // input-boundary flush services the More.
         g._monster_attack_more_latched = false;
+        if (g._savelife_resume_more_latched) {
+            g._savelife_resume_more_latched = false;
+            g._monster_attack_pause_after_more = false;
+            g._resume_movemon_after_mon = mtmp;
+            g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+            g._monster_turn_paused_for_more = true;
+            g._monster_attack_more_waiting = true;
+            return false;
+        }
         if (g._after_more_message) {
             if (g._pending_message
                 && topline_can_pack_message(g._pending_message, g._after_more_message)) {
@@ -7194,6 +7642,20 @@ export async function movemon() {
         const mtmp = monsters[monIndex];
         let resumePostMoveForThis = false;
         let resumeCurrentAfterMissing = false;
+        if (g._deferred_monster_physical_attack?.current?.postSideEffectHero) {
+            // C ref: src/mhitu.c:hitmu() and win/tty/topl.c:more().  Poison
+            // and encumbrance side-effect plines interrupt hitmu(); the monster
+            // scan cannot advance to the next monster until that hit's
+            // knockback/damage tail has resumed.
+            const previous = monsters[monIndex - 1] || null;
+            if (previous) {
+                g._resume_movemon_after_mon = previous;
+                g._resume_movemon_next_mon = mtmp;
+            }
+            g._resume_somebody_can_move = somebody_can_move;
+            g._monster_turn_paused_for_more = true;
+            return false;
+        }
         if (skippingResumedPrefix) {
             if (mtmp === resumeAfter) {
                 skippingResumedPrefix = false;
@@ -7304,8 +7766,22 @@ export async function movemon() {
         await maybe_covetous_tactics_basic(mtmp);
         if (mtmp.data && ((mtmp.data.mflags3 ?? 0) & M3_COVETOUS)) set_apparxy_basic(mtmp);
         const fleeState = distfleeck(mtmp); // consuming rn2(5)
-        if (await maybe_use_misc_item_basic(mtmp)) continue;
-        if (!mtmp.mtame && await maybe_wield_hth_before_move(mtmp, fleeState)) continue;
+        if (await maybe_use_misc_item_basic(mtmp)) {
+            if (g._monster_turn_paused_for_more) {
+                g._resume_movemon_after_mon = mtmp;
+                g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+                return false;
+            }
+            continue;
+        }
+        if (!mtmp.mtame && await maybe_wield_hth_before_move(mtmp, fleeState)) {
+            if (g._monster_turn_paused_for_more) {
+                g._resume_movemon_after_mon = mtmp;
+                g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+                return false;
+            }
+            continue;
+        }
 
         // C ref: monmove.c:dochug() delegates tame monsters to
         // dogmove.c:dog_move() after the shared distfleeck() phase.

@@ -218,6 +218,21 @@ function q4_path(srow, scol, y2, x2) {
     return 1;
 }
 
+// C ref: vision.c clear_path(col1, row1, col2, row2) — TRUE if there is a
+// straight, unobstructed line of sight between the two points (used by
+// m_cansee()).  Dispatches to the same Bresenham quadrant walkers as C; the
+// JS q*_path() helpers already return 1 (clear) / 0 (blocked) instead of using
+// C's MACRO_CPATH goto, so just forward the result.
+export function clear_path(col1, row1, col2, row2) {
+    if (col1 < col2) {
+        if (row1 > row2) return !!q1_path(row1, col1, row2, col2);
+        return !!q4_path(row1, col1, row2, col2);
+    }
+    if (row1 > row2) return !!q2_path(row1, col1, row2, col2);
+    if (row1 === row2 && col1 === col2) return true;
+    return !!q3_path(row1, col1, row2, col2);
+}
+
 // C ref: vision.c right_side()
 function right_side(row, left, right_mark, limitsIdx) {
     const nrow = row + game.vis_step;

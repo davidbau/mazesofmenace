@@ -424,11 +424,36 @@ export function moveloop_turn() {
     // monster movement loop (svc.context.mon_moving)
     g.context = g.context || {};
     g.context.mon_moving = true;
+    // C ref: allmain.c moveloop_core() inner movement loop:
+    //   do { monscanmove = movemon();
+    //        if (u.umovement >= NORMAL_SPEED) break; } while (monscanmove);
+    // The hero just spent NORMAL_SPEED (svc.context.move), so u.umovement is
+    // below NORMAL_SPEED for a normal-speed hero and the break never fires —
+    // movemon() runs repeatedly until no monster has a full NORMAL_SPEED of
+    // movement left.  movemon() sets game._somebody_can_move when any monster
+    // still has >= NORMAL_SPEED after acting, so a fast pet (kitten mmove 18,
+    // pony 16) that accumulated >= 24 movement this turn takes a SECOND step.
+    // Faithful floor-object placement (mklev/sp_lev VAULT gold + mineralize
+    // gold/gems, now actually place_object()'d so they join the fobj chain on
+    // unseen/dark squares) + C-exact owt + real clear_path (PET_REAL_VISION)
+    // make most of the repeat-pass dog_goal object scan RNG-faithful.
+    //
+    // GATE (still net-regresses, so left OFF): with the floor objects placed,
+    // the pet's first repeat-pass dog_goal scan still diverges on the three
+    // samurai little-dog sessions (seed0017/0107/0700): at the divergence the
+    // pet's 2nd movemon pass scans a box that C finds 5 floor objects in
+    // (5x obj_resists rn2(100)) but the JS pet's box is empty, even though the
+    // floor-object set and the pet's 1st-pass move now match C cell-for-cell
+    // and RNG-for-RNG up to that point.  The residual is in the pet's
+    // repeat-pass position/scan (dochug/dog_move ordering on the 2nd pass), not
+    // the object set.  Flipping this ON nets -3 screens (478 vs 481), so it
+    // stays OFF until that last divergence is resolved; the object-placement
+    // fixes above are correct regardless and hold the 481 baseline.
+    const MULTIPASS_MOVEMON = false;
     let monscanmove = false;
     do {
         monscanmove = movemon();
-        // hero only gets one move per turn here (no Very_fast modelling)
-        break;
+        if (!MULTIPASS_MOVEMON) break;
     } while (monscanmove);
     g.context.mon_moving = false;
 

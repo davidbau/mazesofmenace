@@ -25,6 +25,7 @@ import {
     WAN_DIGGING, SPE_HEALING, LARGE_BOX, CHEST, FOOD_RATION,
     CRAM_RATION, LEMBAS_WAFER,
     mkobj, mkobj_at, mksobj, mksobj_at, mkcorpstat, mkgold, curse,
+    place_object, weight,
 } from './mkobj.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -2206,6 +2207,21 @@ function mineralize_kelp(kelp_pool, kelp_moat) {
                 mksobj_at(KELP_FROND, x, y, true, false);
 }
 
+// C ref: mkobj.c add_to_buried(otmp) — moves the object onto the level's buried
+// chain (svl.level.buriedobjlist).  Buried objects are NOT on the floor (fobj),
+// so the pet's dog_goal scan never sees them; we only need them off level.objects.
+// Tracking them keeps weight/RNG bookkeeping faithful without affecting display.
+function bury_object(otmp) {
+    if (!otmp) return otmp;
+    otmp.where = 'buried';
+    const lvl = game.level;
+    if (lvl) {
+        if (!lvl.buriedobjs) lvl.buriedobjs = [];
+        lvl.buriedobjs.push(otmp);
+    }
+    return otmp;
+}
+
 export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
     mineralize_kelp(kelp_pool, kelp_moat);
@@ -2225,16 +2241,36 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
                 && n([0,-1]) && n([1,-1]) && n([-1,-1])
                 && n([1,0]) && n([-1,0])
                 && n([1,1]) && n([-1,1])) {
+                // C ref: mklev.c mineralize() — seed rock areas with gold/gems.
+                // ~2/3 land on the floor (place_object) and ~1/3 are buried
+                // (add_to_buried); the rn2(3) chooses.  These floor objects sit
+                // on UNSEEN/DARK stone squares, so they never show on the map,
+                // but they DO join the fobj chain and are scanned by the pet's
+                // dog_goal object loop (obj_resists rn2(100) each).  Earlier the
+                // JS port created them (matching RNG) but discarded both branches,
+                // under-populating fobj and desyncing the multi-pass pet scan.
                 if (rn2(1000) < goldprob) {
                     const otmp = mksobj(GOLD_PIECE, false, false);
-                    otmp.quan = 1 + rnd(goldprob * 3);
-                    rn2(3);
+                    if (otmp) {
+                        otmp.ox = x; otmp.oy = y;
+                        otmp.quan = 1 + rnd(goldprob * 3);
+                        otmp.owt = weight(otmp);
+                        if (!rn2(3)) bury_object(otmp);
+                        else place_object(otmp, x, y);
+                    }
                 }
                 if (rn2(1000) < gemprob) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
                         const otmp = mkobj(GEM_CLASS, false);
-                        if (otmp?.otyp !== ROCK) rn2(3);
+                        if (!otmp) continue;
+                        if (otmp.otyp === ROCK) {
+                            // C: dealloc_obj(otmp) — discard (no rn2(3), no place).
+                        } else {
+                            otmp.ox = x; otmp.oy = y;
+                            if (!rn2(3)) bury_object(otmp);
+                            else place_object(otmp, x, y);
+                        }
                     }
                 }
             }

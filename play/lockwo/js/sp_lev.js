@@ -14,6 +14,7 @@ import {
     VAULT, SHOPBASE, FILL_NONE, FILL_NORMAL,
     Align2amask,
 } from './const.js';
+import { mkgold } from './mkobj.js';
 
 const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -335,16 +336,17 @@ export function fill_special_room(croom) {
 
         switch (croom.rtype) {
         case VAULT: {
+            // C ref: sp_lev.c fill_special_room() VAULT case — fills EVERY
+            // vault square with gold via mkgold(rn1(|depth|*100, 51), x, y).
+            // The gold piles are real floor objects (on the dark, unseen vault
+            // squares) and join the fobj chain, so the pet's dog_goal scan sees
+            // them.  The port previously rolled the RNG but never placed the
+            // gold, under-populating fobj and desyncing the multi-pass pet scan.
             const d = Math.abs(depth_of_level(game.u?.uz));
             for (let x = croom.lx; x <= croom.hx; x++) {
                 for (let y = croom.ly; y <= croom.hy; y++) {
-                    const loc = game.level?.at(x, y);
-                    const hadGold = !!loc?._vaultGold;
-                    rn2(d * 100);  // rn1(d*100, 51) → rn2(d*100)
-                    if (!hadGold) {
-                        rnd(2);    // mkgold → mksobj → next_ident
-                        if (loc) loc._vaultGold = true;
-                    }
+                    const amount = 51 + rn2(d * 100); // rn1(d*100, 51)
+                    mkgold(amount, x, y);             // mksobj_at → next_ident rnd(2)
                 }
             }
             break;

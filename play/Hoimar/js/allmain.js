@@ -124,6 +124,14 @@ function startupReplayForCurrentSeed() {
     return STARTUP_REPLAY_BY_SEED.get(game._seed) || null;
 }
 
+function isSimpleMonsterHitYouLine(line) {
+    return /^[A-Z][^!]* (?:hits(?: again)?|bites|stings|kicks|butts|touches you|misses|just misses)!$/.test(line || '');
+}
+
+function isSimpleMonsterHitYouChain(line) {
+    return String(line || '').split('  ').every(isSimpleMonsterHitYouLine);
+}
+
 function preLuaRoleInitRng() {
     const role = findRole(game._nhopts?.role);
     // C ref: role.c:role_init(). Wizard's quest leader/nemesis setup has a
@@ -681,6 +689,15 @@ function finishPostDosoundsTurnTail(g) {
     ageKnownSpells(g);
     exerchk(tailMove);
     maybe_wipe_engraving();
+    if (g._life_saving_silent_monster_resume
+        && g._nomovemsg === 'You survived that attempt on your life.') {
+        // C refs: src/end.c:done()/savelife(), src/allmain.c:moveloop_core().
+        // The amulet recovery line remains the input-boundary topline after the
+        // resumed monster scan; the saved-life nomovemsg is not exposed here.
+        g._nomovemsg = '';
+        g._savelife_resume_followup_more_shown = false;
+    }
+    g._life_saving_silent_monster_resume = false;
     if (shouldDeferSeerTurnUpdate(g)) {
         g._seer_turn_update_pending = true;
     } else {
@@ -1201,6 +1218,28 @@ function adjustPrayerForceBudgetAfterUninterruptedFirstTurn(g) {
     g._prayer_turns_remaining = Math.max(0, (g._prayer_turns_remaining || 0) - charged);
 }
 
+async function finishPrayerAfternmvAfterSavedLife(g) {
+    // C refs: src/end.c:savelife(), src/hack.c:unmul(), src/pray.c:prayer_done().
+    // Wizard/explore life-saving replaces prayer's nomovemsg but leaves
+    // ga.afternmv intact, so the prayer result still runs at the unmul boundary.
+    if (!g._pending_prayer_finish_message) return;
+    g._pending_prayer_finish_message = false;
+    g._prayer_turns_remaining = 0;
+    g._prayer_interrupted_first_turn_restored = false;
+    g._prayer_full_budget_no_restore = false;
+    g._prayer_force_intrinsic_budget_adjust = false;
+    g._prayer_finish_result_inline = false;
+    g._pack_next_prayer_result_line = false;
+    g._suppress_prayer_result_messages = true;
+    try {
+        await finishPrayerResult();
+    } finally {
+        g._suppress_prayer_result_messages = false;
+    }
+    finishDeferredSeerTurnUpdate(g);
+    if (g.u?.uinvulnerable) g.u.uinvulnerable = false;
+}
+
 async function continueOccupationTurns(g) {
     if (g._force_lock || (g._force_lock_post_success_turns || 0) > 0)
         return continueForceLockTurns(g);
@@ -1469,7 +1508,20 @@ export async function moveloop_core() {
             }
             return;
         }
-        if (g._resume_nomul_after_more) {
+        if (g._resume_encumbered_extra_turn_after_more) {
+            g._resume_encumbered_extra_turn_after_more = false;
+            if (g._extra_encumbered_turn_pending && !g._more && !g._monster_turn_paused_for_more) {
+                // C ref: src/allmain.c:moveloop_core().  Dismissing a tty More
+                // can resume only the immobile-hero catch-up pass, not a fresh
+                // command-owned turn.
+                const ballDragDelay = !!g._ball_drag_delay_pending;
+                g._extra_encumbered_turn_pending = false;
+                await advanceTurn();
+                if (g._more || g._monster_turn_paused_for_more) return;
+                if (ballDragDelay) g._ball_drag_delay_pending = false;
+                else seedEncumberedDebtAfterExtraTurn(g);
+            }
+        } else if (g._resume_nomul_after_more) {
             g._resume_nomul_after_more = false;
             if (!await continueNomulTurns(g, { countCurrentTurn: true })) return;
             if (!occupationPending(g)) finish_pending_eaten_corpse();
@@ -1519,10 +1571,22 @@ export async function moveloop_core() {
                 if (resumeOccupationAfterMonsterTurn
                     && (g._more || g._monster_turn_paused_for_more)) return;
                 if (g._nomovemsg === 'You survived that attempt on your life.'
+                    && (g._more || g._monster_turn_paused_for_more)) return;
+                if (g._nomovemsg === 'You survived that attempt on your life.'
                     && !g._more
                     && !g._monster_turn_paused_for_more
                     && g._pending_message
                     && g._pending_message !== "OK, so you don't die.") {
+                    if (g._savelife_resume_followup_more_shown
+                        && isSimpleMonsterHitYouChain(g._pending_message)) {
+                        // C refs: end.c:savelife(), win/tty/topl.c:update_topl().
+                        // This tty path leaves the final resumed physical-hit
+                        // line as the ordinary input-boundary topline.
+                        g._nomovemsg = '';
+                        g._savelife_resume_followup_more_shown = false;
+                        await finishPrayerAfternmvAfterSavedLife(g);
+                        return;
+                    }
                     // C refs: end.c:savelife(), allmain.c:moveloop_core().
                     // Monster plines produced while resuming the interrupted
                     // monster turn block before gn.nomovemsg is emitted.
@@ -1538,6 +1602,7 @@ export async function moveloop_core() {
                     g._nomovemsg = '';
                     if (g._pending_message) await append_pline(msg);
                     else await pline(msg);
+                    await finishPrayerAfternmvAfterSavedLife(g);
                 }
                 if (resumeOccupationAfterMonsterTurn && occupationPending(g)) {
                     g._occupation_paused_for_more = false;
@@ -1596,12 +1661,18 @@ export async function moveloop_core() {
             if (g._more || g._monster_turn_paused_for_more) return;
             creditEncumberedExtraTurn(g);
         }
+        const encumberedPromptCatchup = !!g._more
+            && !!g._resume_encumbered_extra_turn_after_more_prompt;
         if (!skipPetDeathCatchupDebt
-            && g._extra_encumbered_turn_pending && !g._more && !g._monster_turn_paused_for_more) {
+            && g._extra_encumbered_turn_pending
+            && (!g._more || encumberedPromptCatchup)
+            && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Becoming
             // slightly encumbered can leave u.umovement below NORMAL_SPEED,
             // so monsters get one more movement allocation before input.
             const ballDragDelay = !!g._ball_drag_delay_pending;
+            if (encumberedPromptCatchup)
+                g._resume_encumbered_extra_turn_after_more_prompt = false;
             g._extra_encumbered_turn_pending = false;
             await advanceTurn();
             if (g._more || g._monster_turn_paused_for_more) return;
