@@ -70,6 +70,7 @@ const POT_FRUIT_JUICE = 319;
 const POT_OIL = 321;
 const SCROLL_CLASS = 9;
 const SCR_LIGHT = 332;
+const SCR_MAIL = 364;
 const SPBOOK_CLASS = 10;
 const SPE_CONE_OF_COLD = 369;
 const SPE_LIGHT = 372;
@@ -271,6 +272,7 @@ const OILSKIN_SACK = 218;
 const BAG_OF_HOLDING = 219;
 const BAG_OF_TRICKS = 220;
 const HORN_OF_PLENTY = 252;
+const MAGIC_HARP = 254;
 const FOOD_RATION = 293;
 const CRAM_RATION = 292;
 const LEMBAS_WAFER = 291;
@@ -1384,6 +1386,9 @@ function mksobj_init(otmp, otyp, artif) {
         } else if (otyp === BAG_OF_TRICKS || otyp === HORN_OF_PLENTY) {
             // C ref: src/mkobj.c:mksobj_init().
             otmp.spe = rn1(18, 3);
+        } else if (otyp === MAGIC_HARP) {
+            // C ref: src/mkobj.c:mksobj_init(); charged instrument branch.
+            otmp.spe = rn1(5, 4);
         } else if (otyp === FIGURINE) {
             // C ref: mkobj.c:mksobj_init().  Random figurines use a
             // slightly harder monster pool, then reject human forms.
@@ -1398,7 +1403,7 @@ function mksobj_init(otmp, otyp, artif) {
         break;
     case POTION_CLASS:
     case SCROLL_CLASS:
-        blessorcurse(otmp, 4);
+        if (otyp !== SCR_MAIL) blessorcurse(otmp, 4);
         break;
     case SPBOOK_CLASS:
         blessorcurse(otmp, 17);
@@ -4011,6 +4016,30 @@ const BIGRM_4_MAP = [
 const BIGRM_4_XSTART = 3;
 const BIGRM_4_YSTART = 3;
 
+const BIGRM_7_MAP = [
+    '                                                        -----',
+    '                                                ---------...---',
+    '                                        ---------.........L...---',
+    '                                ---------.......................---',
+    '                        ---------.................................---',
+    '                ---------...........................................---',
+    '        ---------.....................................................---',
+    '---------...............................................................---',
+    '|.........................................................................|',
+    '|.L.....................................................................L.|',
+    '|.........................................................................|',
+    '---...............................................................---------',
+    '  ---.....................................................---------',
+    '    ---...........................................---------',
+    '      ---.................................---------',
+    '        ---.......................---------',
+    '          ---...L.........---------',
+    '            ---...---------',
+    '              -----',
+];
+const BIGRM_7_XSTART = 3;
+const BIGRM_7_YSTART = 1;
+
 const BIGRM_8_MAP = [
     '----------------------------------------------',
     '|............................................---',
@@ -4521,6 +4550,10 @@ function bigrm2TerrainAt(x, y) {
 
 function bigrm4TerrainAt(x, y) {
     return BIGRM_4_MAP[y]?.[x] || ' ';
+}
+
+function bigrm7TerrainAt(x, y) {
+    return BIGRM_7_MAP[y]?.[x] || ' ';
 }
 
 function bigrm8TerrainAt(x, y) {
@@ -5353,6 +5386,20 @@ function placeSpecialStair(x, y, up) {
     else game.level.dnstair = { x, y };
 }
 
+function makemonSpecialLevelAt(ptr, x, y, mmflags = 0) {
+    // C ref: sp_lev.c:create_monster() relocates an occupied scripted
+    // coordinate through enexto() before entering makemon().
+    if (m_at(x, y)) {
+        const cc = enexto_core(x, y, ptr, GP_CHECKSCARY)
+            || enexto_core(x, y, ptr, 0);
+        if (cc) {
+            x = cc.x;
+            y = cc.y;
+        }
+    }
+    return makemon(ptr, x, y, mmflags);
+}
+
 function flipXForBounds(x, minx, maxx) {
     return (maxx - x) + minx;
 }
@@ -5534,7 +5581,7 @@ function loadBigrm12Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3); // induced_align() for random monsters on special levels
         const loc = bigrm12GetFloorLocation();
-        makemon(null, loc.x, loc.y, 0);
+        makemonSpecialLevelAt(null, loc.x, loc.y, 0);
     }
 }
 
@@ -5569,6 +5616,7 @@ function bigrmTerrainType(ch) {
     case '-': return HWALL;
     case '|': return VWALL;
     case 'P': return POOL;
+    case '{': return FOUNTAIN;
     case '}': return MOAT;
     case 'L': return LAVAPOOL;
     case 'T': return TREE;
@@ -5586,6 +5634,17 @@ function loadBigrm4Terrain() {
             const loc = game.level.at(x + BIGRM_4_XSTART, y + BIGRM_4_YSTART);
             if (!loc) continue;
             loc.typ = bigrmTerrainType(BIGRM_4_MAP[y][x]);
+        }
+    }
+    game.level.flags.is_maze_lev = true;
+}
+
+function loadBigrm7Terrain() {
+    for (let y = 0; y < BIGRM_7_MAP.length; y++) {
+        for (let x = 0; x < 75; x++) {
+            const loc = game.level.at(x + BIGRM_7_XSTART, y + BIGRM_7_YSTART);
+            if (!loc) continue;
+            loc.typ = bigrmTerrainType(bigrm7TerrainAt(x, y));
         }
     }
     game.level.flags.is_maze_lev = true;
@@ -5761,7 +5820,7 @@ function loadBigrm2Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3);
         loc = bigrm2GetFloorLocation();
-        makemon(null, loc.x, loc.y, 0);
+        makemonSpecialLevelAt(null, loc.x, loc.y, 0);
     }
 }
 
@@ -5813,11 +5872,11 @@ function loadBigrm4Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3);
         loc = bigrm4GetFloorLocation();
-        makemon(null, loc.x, loc.y, 0);
+        makemonSpecialLevelAt(null, loc.x, loc.y, 0);
     }
 }
 
-function markBigrm8NonDiggable() {
+function markBigroomNonDiggable() {
     // C ref: sp_lev.c:lspo_non_diggable() -> sel_set_wall_property().
     for (let y = 0; y < ROWNO; y++)
         for (let x = 0; x < COLNO; x++) {
@@ -5826,6 +5885,84 @@ function markBigrm8NonDiggable() {
                 loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
             }
         }
+}
+
+function bigrm7Location(ok) {
+    let x, y, loc;
+    let tries = 0;
+    do {
+        x = rn2(75);
+        y = rn2(19);
+        loc = game.level?.at(x + BIGRM_7_XSTART, y + BIGRM_7_YSTART);
+        if (loc && ok(loc, x + BIGRM_7_XSTART, y + BIGRM_7_YSTART)) {
+            return { x: x + BIGRM_7_XSTART, y: y + BIGRM_7_YSTART };
+        }
+    } while (++tries < 100);
+
+    for (x = 0; x < 75; x++)
+        for (y = 0; y < 19; y++) {
+            loc = game.level?.at(x + BIGRM_7_XSTART, y + BIGRM_7_YSTART);
+            if (loc && ok(loc, x + BIGRM_7_XSTART, y + BIGRM_7_YSTART)) {
+                return { x: x + BIGRM_7_XSTART, y: y + BIGRM_7_YSTART };
+            }
+        }
+    return { x: BIGRM_7_XSTART, y: BIGRM_7_YSTART };
+}
+
+function bigrm7GetStairLocation() {
+    // C ref: sp_lev.c:l_create_stairway() uses good_stair_loc().
+    return bigrm7Location((loc) => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
+}
+
+function bigrm7GetDryLocation() {
+    return bigrm7Location((loc, x, y) => SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y));
+}
+
+function loadBigrm7Special() {
+    // C ref: dat/bigrm-7.lua loaded through mkmaze.c:makemaz().
+    loadBigrm7Terrain();
+    l_nhcore_init();
+    rn2(2); // splev_initlev flip state; bigrm-7 permits the final flips.
+
+    const terrain = ['L', 'T', '{', '.'];
+    const toterr = terrain[rn2(terrain.length)];
+    for (let y = 0; y < BIGRM_7_MAP.length; y++)
+        for (let x = 0; x < 75; x++) {
+            if (bigrm7TerrainAt(x, y) !== 'L') continue;
+            if (rn2(100) < 100) {
+                const loc = game.level?.at(x + BIGRM_7_XSTART, y + BIGRM_7_YSTART);
+                if (loc) loc.typ = bigrmTerrainType(toterr);
+            }
+        }
+
+    for (let y = 1; y <= 17; y++)
+        for (let x = 1; x <= 73; x++) {
+            const loc = game.level?.at(x + BIGRM_7_XSTART, y + BIGRM_7_YSTART);
+            if (loc) loc.lit = true;
+        }
+
+    let loc = bigrm7GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, true);
+    loc = bigrm7GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, false);
+    markBigroomNonDiggable();
+
+    for (let i = 0; i < 15; i++) {
+        loc = bigrm7GetDryLocation();
+        mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    }
+    for (let i = 0; i < 6; i++) {
+        loc = bigrm7GetDryLocation();
+        let kind;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        const trap = maketrap(loc.x, loc.y, kind);
+        maybeTrapVictim(trap);
+    }
+    for (let i = 0; i < 28; i++) {
+        rn2(3);
+        loc = bigrm7GetDryLocation();
+        makemonSpecialLevelAt(null, loc.x, loc.y, 0);
+    }
 }
 
 function loadBigrm8Special() {
@@ -5857,7 +5994,7 @@ function loadBigrm8Special() {
     placeSpecialStair(loc.x, loc.y, true);
     loc = bigrm8GetStairLocation();
     placeSpecialStair(loc.x, loc.y, false);
-    markBigrm8NonDiggable();
+    markBigroomNonDiggable();
 
     for (let i = 0; i < 15; i++) {
         loc = bigrm8GetDryLocation();
@@ -5873,7 +6010,7 @@ function loadBigrm8Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3);
         loc = bigrm8GetDryLocation();
-        makemon(null, loc.x, loc.y, 0);
+        makemonSpecialLevelAt(null, loc.x, loc.y, 0);
     }
 }
 
@@ -10249,6 +10386,15 @@ function makemaz_special(slev) {
             BIGRM_4_YSTART + BIGRM_4_MAP.length - 1);
         return;
     }
+    if (game._last_special_protofile === 'bigrm-7') {
+        loadBigrm7Special();
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+        flip_level_rnd(3);
+        lightWallsAdjacentToLitCells(BIGRM_7_XSTART, BIGRM_7_YSTART,
+            BIGRM_7_XSTART + 74,
+            BIGRM_7_YSTART + BIGRM_7_MAP.length - 1);
+        return;
+    }
     if (game._last_special_protofile === 'bigrm-8') {
         loadBigrm8Special();
         wallification(1, 0, COLNO - 1, ROWNO - 1);
@@ -14253,9 +14399,6 @@ function mk_knox_portal(x, y) {
     const eligibleKnoxDepth = same_dungeon(game.oracle_level)
         && !at_dgn_entrance('The Quest') && uDepth > 10 && uDepth < medusaDepth;
     const wizardMode = !!(game.wizard || game.flags?.debug);
-    if (wizardMode && !eligibleKnoxDepth) {
-        return;
-    }
 
     if ((source?.dnum ?? 0) < (game.dungeons?.length ?? 0) || (rn2(3) && !wizardMode)) {
         return;

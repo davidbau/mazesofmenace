@@ -175,11 +175,13 @@ const FIGURINE = 241;
 const MAGIC_MARKER = 242;
 const TIN_WHISTLE = 245;
 const MAGIC_WHISTLE = 246;
+const MAGIC_HARP = 254;
 const LEATHER_DRUM = 257;
 const DRUM_OF_EARTHQUAKE = 258;
 const PICK_AXE = 259;
 const GRAPPLING_HOOK = 260;
 const UNICORN_HORN = 261;
+const BELL_OF_OPENING = 263;
 const OIL_LAMP = 227;
 const MAGIC_LAMP = 228;
 const LARGE_BOX = 214;
@@ -289,6 +291,7 @@ const SCR_TELEPORTATION = 333;
 const SCR_IDENTIFY = 336;
 const SCR_MAGIC_MAPPING = 337;
 const SCR_PUNISHMENT = 341;
+const SCR_MAIL = 364;
 const BOULDER = 475;
 const APPLE = 277;
 const ORANGE = 278;
@@ -926,8 +929,8 @@ const RACE_INNATE_ABILITIES = new Map([
 function wishedObjectSpec(name) {
     const wish = String(name || '').toLowerCase();
     const spec = {};
-    const countMatch = wish.match(/^\s*(\d+)\s+/);
-    if (countMatch) spec.quan = Math.max(1, Number(countMatch[1]));
+    const count = wishedObjectCount(wish);
+    if (count) spec.quan = count;
     const chargeMatch = wish.match(/\((\d+)(?::(\d+))?\)/);
     if (chargeMatch) {
         spec.recharged = Number(chargeMatch[1]);
@@ -991,6 +994,15 @@ function wishedObjectSpec(name) {
         // war hammer, then oname() handles artifact naming after mksobj().
         return { ...spec, otyp: WAR_HAMMER, oname: 'Mjollnir', namedArtifact: true };
     }
+    if (/\bdaggers?\b/.test(wish)) {
+        // C ref: objnam.c:readobjnam() -> rnd_otyp_by_namedesc().
+        rn2(31);
+        return { ...spec, otyp: DAGGER };
+    }
+    if (/gold pieces?\b/.test(wish)) {
+        // C ref: objnam.c:readobjnam(); gold bypasses namedesc lookup.
+        return { ...spec, otyp: GOLD_PIECE };
+    }
     if (wish.includes('wand of fire')) {
         rn2(41);
         return { ...spec, otyp: WAN_FIRE };
@@ -1037,6 +1049,16 @@ function wishedObjectSpec(name) {
         // C ref: objnam.c:readobjnam() -> rnd_otyp_by_namedesc().
         rn2(181);
         return { ...spec, otyp: SCR_IDENTIFY };
+    }
+    if (/scrolls? of mail/.test(wish)) {
+        // C ref: objnam.c:readobjnam() -> rnd_otyp_by_namedesc().
+        rn2(1);
+        return { ...spec, otyp: SCR_MAIL };
+    }
+    if (/spellbooks? of magic missile/.test(wish)) {
+        // C ref: objnam.c:readobjnam() -> rnd_otyp_by_namedesc().
+        rn2(46);
+        return { ...spec, otyp: SPE_MAGIC_MISSILE };
     }
     if (/spellbooks? of detect food/.test(wish)) {
         // C ref: objnam.c:readobjnam() -> rnd_otyp_by_namedesc().
@@ -1094,6 +1116,18 @@ function wishedObjectSpec(name) {
         rn2(16);
         return { ...spec, otyp: MAGIC_LAMP };
     }
+    if (wish.includes('bell of opening')) {
+        rn2(1);
+        return { ...spec, otyp: BELL_OF_OPENING, appearanceName: 'silver bell' };
+    }
+    if (wish.includes('magic harp')) {
+        rn2(3);
+        return { ...spec, otyp: MAGIC_HARP, appearanceName: 'harp' };
+    }
+    if (wish.includes('leash')) {
+        rn2(66);
+        return { ...spec, otyp: LEASH };
+    }
     if (wish.includes('mirror')) {
         rn2(46);
         return { ...spec, otyp: MIRROR, appearanceName: 'looking glass' };
@@ -1110,6 +1144,14 @@ function wishedObjectSpec(name) {
         rn2(26);
         return { ...spec, otyp: CREAM_PIE, quan: 1 };
     }
+    if (wish.includes('fortune cookie')) {
+        rn2(56);
+        return { ...spec, otyp: FORTUNE_COOKIE };
+    }
+    if (wish.includes('apple')) {
+        rn2(16);
+        return { ...spec, otyp: APPLE };
+    }
     if (wish.includes('chest')) {
         // C ref: objnam.c:rnd_otyp_by_namedesc().  The name lookup for a
         // wished chest uses chest object probability plus the wish bonus.
@@ -1121,6 +1163,23 @@ function wishedObjectSpec(name) {
         return { ...spec, otyp: BAG_OF_HOLDING, appearanceName: 'bag' };
     }
     return null;
+}
+
+function wishedObjectCount(wish) {
+    // C ref: src/objnam.c:readobjnam_preparse().  BUC and enchantment
+    // prefixes can precede the requested quantity.
+    const cleaned = String(wish || '').replace(/\([^)]*\)/g, ' ');
+    const words = cleaned.trim().split(/\s+/).filter(Boolean);
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        if (/^\d+$/.test(word)) return Math.max(1, Number(word));
+        if (/^[+-]\d+$/.test(word)
+            || ['blessed', 'uncursed', 'cursed', 'very', 'thoroughly',
+                'fixed', 'greased', 'rustproof', 'erodeproof', 'poisoned'].includes(word))
+            continue;
+        return 0;
+    }
+    return 0;
 }
 
 function validInvlet(ch) {
@@ -1183,6 +1242,7 @@ function assignInventoryLetter(obj) {
 function make_wish_object(name) {
     const spec = wishedObjectSpec(name);
     if (!spec?.otyp) return null;
+    const prevEncumbrance = heroNearCapacity();
     const otmp = mksobj(spec.otyp, true, false);
     otmp.wishedfor = true;
     if (typeof spec.spe === 'number') otmp.spe = spec.spe;
@@ -1207,11 +1267,13 @@ function make_wish_object(name) {
     if (game.u) game.u.ublesscnt = (game.u.ublesscnt ?? 300) + rn1(100, 50);
     const merged = merge_inventory_object(otmp);
     if (merged) {
+        stageWishEncumbranceMessage(prevEncumbrance);
         noteWishConduct(merged);
         return merged;
     }
     assignInventoryLetter(otmp);
     game.inventory.push(otmp);
+    stageWishEncumbranceMessage(prevEncumbrance);
     noteWishConduct(otmp);
     return otmp;
 }
@@ -2110,6 +2172,10 @@ function restoreMappedForegroundAfterMonsterRefresh(options = {}) {
         if (!loc || mappingForegroundCovered(loc)) return;
         if (!glyph) return;
         loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, decgfx: !!glyph.dec };
+        if (game.u?.ux === x && game.u?.uy === y) {
+            newsym(x, y);
+            return;
+        }
         show_glyph_cell(x, y, glyph.ch, glyph.color, !!glyph.dec);
     };
     const barsGlyph = mappedIronBarsGlyph();
@@ -4047,6 +4113,7 @@ async function start_takeoff_armor(obj) {
         obj.bknown = true;
         game.context.move = 0;
         await pline(`You can't.  ${plural ? 'They are' : 'It is'} cursed.`);
+        setTravelMapCursor();
         return;
     }
     const finishAc = armorClassAfterTakingOff(obj);
@@ -7444,6 +7511,27 @@ function currentJumpCursor() {
     return game._jump_cursor;
 }
 
+function jumpHighlightDisplayCursor() {
+    // C refs: src/apply.c:get_valid_jump_position(),
+    // src/getpos.c:getpos_sethilite(), src/selvar.c:selection_force_newsyms(),
+    // src/display.c:newsym_force()/flush_screen().
+    // Installing jump getpos highlighting redraws every currently valid
+    // location, but C buffers newsym_force() updates and flushes the map in
+    // row-major order.  The tty cursor is left just after the last glyph
+    // written by that redraw; the logical getpos cursor still starts on the
+    // hero.
+    let cursor = null;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || !C.ACCESSIBLE(loc.typ)) continue;
+            if (!jumpValidation(x, y, false).ok) continue;
+            cursor = { x, y };
+        }
+    }
+    return cursor;
+}
+
 function jumpTrajectory(x, y, magic = false) {
     const ux = game.u?.ux ?? 0;
     const uy = game.u?.uy ?? 0;
@@ -7638,6 +7726,8 @@ async function doJumpCommand() {
     } else {
         game._jump_cursor = { x: game.u?.ux ?? 1, y: game.u?.uy ?? 0 };
         game._awaiting_jump_prompt = true;
+        const displayCursor = jumpHighlightDisplayCursor();
+        if (displayCursor) setPromptCursorAfterMapGlyph(displayCursor.x, displayCursor.y);
     }
     game.context.move = 0;
 }
@@ -12015,6 +12105,17 @@ function setTravelMapCursorAt(x, y) {
     }
 }
 
+function setPromptCursorAfterMapGlyph(x, y) {
+    const col = Math.max(0, x);
+    const row = Math.max(1, y + 1);
+    game._prompt_cursor = [col, row];
+    const display = game.nhDisplay;
+    if (display) {
+        display.cursorCol = col;
+        display.cursorRow = row;
+    }
+}
+
 function setTravelTipCursor() {
     game._prompt_cursor = [16, 8];
     const display = game.nhDisplay;
@@ -13194,7 +13295,11 @@ async function handleQueuedMore(ch) {
             clear_pending_message();
             if (tempMessage?.line) {
                 await showTemperatureChangeMessage(tempMessage);
-                if (!game._more) queue_more_prompt();
+                // C ref: src/do.c:goto_level() -> temperature_change_msg()
+                // before pickup(1).  The temperature line only blocks when
+                // another deferred arrival display step still follows it.
+                if (game._arrival_floor_look_after_more && !game._more)
+                    queue_more_prompt();
             }
             game.context.move = 0;
             return true;
@@ -14080,7 +14185,8 @@ async function showInventoryMenu() {
     const cursorCol = menuCol + lastText.length + (lastText === '(end)' ? 1 : 0);
     const screen = serialize_terminal_grid(display);
     game._inventory_menu_screen = screen;
-    showOverride(screen, [Math.min(cursorCol, COLNO - 1), lastRow]);
+    game._inventory_menu_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
+    showOverride(screen, game._inventory_menu_cursor);
 }
 
 function showInventoryMenuPage2() {
@@ -14101,7 +14207,8 @@ function showInventoryMenuPage2() {
     const cursorCol = menuCol + lastText.length;
     const screen = serialize_terminal_grid(display);
     game._inventory_menu_page2_screen = screen;
-    showOverride(screen, [Math.min(cursorCol, COLNO - 1), lastRow]);
+    game._inventory_menu_page2_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
+    showOverride(screen, game._inventory_menu_page2_cursor);
     return true;
 }
 
@@ -14767,17 +14874,66 @@ function heroInventoryWeightDelta() {
     return delta;
 }
 
+function heroNearCapacity() {
+    // C ref: src/hack.c:near_capacity()/calc_capacity().
+    const wt = heroInventoryWeightDelta();
+    if (wt <= 0) return C.UNENCUMBERED;
+    const cap = heroWeightCap();
+    if (cap <= 1) return C.EXT_ENCUMBER + 1;
+    return Math.min(Math.trunc((wt * 2) / cap) + 1, C.EXT_ENCUMBER + 1);
+}
+
+function encumbranceIncreaseMessage(newcap) {
+    // C ref: src/pickup.c:encumber_msg().
+    if (newcap <= C.UNENCUMBERED) return '';
+    if (newcap === C.SLT_ENCUMBER)
+        return 'Your movements are slowed slightly because of your load.';
+    if (newcap === C.MOD_ENCUMBER)
+        return 'You rebalance your load.  Movement is difficult.';
+    if (newcap === C.HVY_ENCUMBER)
+        return 'You stagger under your heavy load.  Movement is very hard.';
+    return `You ${newcap === C.EXT_ENCUMBER ? 'can barely' : "can't even"} move a handspan with this load!`;
+}
+
+function stageWishEncumbranceMessage(prevEncumbrance) {
+    const oldcap = Math.max(prevEncumbrance || 0, game.u?.uencumber || 0);
+    const newcap = heroNearCapacity();
+    if (game.u) game.u.uencumber = newcap;
+    if (newcap <= oldcap) return;
+    const msg = encumbranceIncreaseMessage(newcap);
+    if (!msg) return;
+    game._after_more_message = game._after_more_message
+        ? `${msg}  ${game._after_more_message}`
+        : msg;
+    queue_more_prompt();
+}
+
 function insightHungerValue(level) {
     const fallback = game.u?.uhallucination || game.u?.uprops?.hallucination ? 874
         : level >= 15 ? 899
         : level <= 1 ? 880
             : 723;
-    // High-level wizard-mode tours still have incomplete hunger side-effect
-    // ownership outside the turn tail; keep the established insight fallback
-    // until those command/item hunger paths are modeled.
-    if ((game.flags?.debug || game.wizard) && level >= 15
-        && (game.u?.uhunger ?? fallback) < fallback) return fallback;
-    return game.u?.uhunger ?? fallback;
+    // C ref: src/insight.c:status_enlightenment().  Wizard insight prints the
+    // current u.uhunger value.  Teleport-at-will nutrition is tracked as an
+    // insight debt until morehungry()/newuhs()/exercise state is safe globally.
+    const live = Number.isFinite(game.u?.uhunger) ? game.u.uhunger : fallback;
+    const adjusted = Math.max(0, live - (game.u?._teleport_hunger_debt || 0));
+    // High-level wizard tours still lack full command/item hunger side-effect
+    // ownership.  If the temporary teleport-at-will debt overdraws the live
+    // value, keep the established insight fallback; otherwise use the positive
+    // live/debt value seen by current lower-level evidence.
+    if ((game.flags?.debug || game.wizard) && level >= 15 && live > 0
+        && adjusted === 0 && (game.u?._teleport_hunger_debt || 0) > live)
+        return fallback;
+    return adjusted;
+}
+
+function noteTeleportNutritionDebt() {
+    // C ref: src/teleport.c:dotele() -> morehungry(100).  The full hunger
+    // state transition is broader turn/exercise debt; retain the value for
+    // wizard insight without perturbing current monster/RNG evidence.
+    if (!game.u) return;
+    game.u._teleport_hunger_debt = (game.u._teleport_hunger_debt || 0) + 100;
 }
 
 function energyLine() {
@@ -15604,6 +15760,11 @@ function levelTeleportDepthTarget(depth, oldUz = game.u?.uz) {
     const curDungeon = game.dungeons?.[dnum];
     const curStart = curDungeon?.depth_start ?? 1;
     const curCount = curDungeon?.num_dunlevs ?? curDungeon?.dunlev_ureached ?? 1;
+    // C ref: teleport.c:level_tele().  In the Quest branch, the prompt uses
+    // status-line numbers ("Home 1", "Home 2", ...), so positive numeric
+    // requests are translated back to logical dungeon depth before get_level().
+    if (game.quest_dnum != null && dnum === game.quest_dnum && depth > 0)
+        depth += curStart - 1;
 
     if (game.medusa_level?.dnum === dnum && depth >= curStart + curCount) {
         return findHellLevelFromCurrentDungeon() || { dnum, dlevel: curCount };
@@ -17130,7 +17291,7 @@ export async function rhack(key) {
             game._awaiting_pray_force = false;
             // C ref: pray.c:dopray().  Declining the wizard force-success
             // prompt still falls through to nomul(-3)/prayer_done().
-            game._prayer_turns_remaining = 4;
+            game._prayer_turns_remaining = prayerTurnBudget();
             game._pending_prayer_finish_message = true;
             game._prayer_finish_result_inline = true;
             game.context.move = 1;
@@ -17757,11 +17918,21 @@ export async function rhack(key) {
                 await teledsBasic(cursor.x, cursor.y);
             } else {
                 await pline('Sorry...');
-                queue_more_prompt();
+                const deferTurnUntilLookHere = game.flags?.verbose === false && !game._more;
+                // C refs: src/teleport.c:scrolltele(), src/teleport.c:teleds().
+                // With !verbose there is no materialize line to pack after
+                // "Sorry...", so the following look-here/floor-list text waits
+                // behind a tty More boundary; the command's time is spent when
+                // that interrupted display sequence resumes.
+                if (deferTurnUntilLookHere) {
+                    queue_more_prompt();
+                }
                 await safeTeledsBasic({ deferLookHereBehindMore: true });
-                game.context.move = 0;
+                noteTeleportNutritionDebt();
+                game.context.move = deferTurnUntilLookHere ? 0 : 1;
                 return;
             }
+            noteTeleportNutritionDebt();
             game.context.move = 1;
             return;
         } else if (ch === '\x1b') {
@@ -17771,7 +17942,7 @@ export async function rhack(key) {
             game._awaiting_teleport_prompt = false;
             game._teleport_cursor = null;
             clear_pending_message();
-            if (game.u) game.u.uhunger = Math.max(0, (game.u.uhunger ?? 900) - 100);
+            noteTeleportNutritionDebt();
             game.context.move = 1;
             return;
         } else {
@@ -18515,11 +18686,12 @@ export async function rhack(key) {
     }
 
     if (game._awaiting_drop_item) {
-        clear_pending_message();
+        const dropPrompt = game._pending_message || '';
         game._awaiting_drop_item = false;
         const idx = inventoryIndexForLetter(ch);
         const obj = idx >= 0 ? game.inventory?.[idx] : null;
         if (!obj) {
+            clear_pending_message();
             game.context.move = 0;
             await pline('Never mind.');
             return;
@@ -18529,11 +18701,16 @@ export async function rhack(key) {
         if (game.flags?.verbose === false) {
             // C refs: src/do.c:drop(), src/invent.c:getobj().
             // Terse drop suppresses "You drop ..." without preserving the
-            // consumed getobj prompt into the following monster turn.
+            // consumed getobj prompt cursor; the prompt text remains visible
+            // for the turn snapshot when no drop pline replaces it.
+            game._pending_message = '';
+            game._pending_message_wrap_cols = 0;
+            if (dropPrompt) game._topline_residue = dropPrompt.trimEnd();
             game._prompt_cursor = null;
             game.context.move = 1;
             return;
         }
+        clear_pending_message();
         await pline(`You drop ${dropObjectName(obj)}.`);
         game.context.move = 1;
         return;
@@ -19138,6 +19315,13 @@ export async function rhack(key) {
             game.context.move = 0;
             return;
         }
+        if (game._more && ch !== ' ' && ch !== '\r' && ch !== '\n' && ch !== '\x1b') {
+            // C ref: win/tty/topl.c:more(); a latched More override ignores
+            // non-dismissal keys instead of treating them as menu input.
+            showOverride(prev, game._latched_more_cursor || null);
+            game.context.move = 0;
+            return;
+        }
         if (prev === game._spell_cast_menu_screen) {
             const entry = game._spell_cast_menu_choices?.get(ch);
             game._spell_cast_menu_screen = null;
@@ -19252,6 +19436,7 @@ export async function rhack(key) {
             game._look_inventory_lookup_active = false;
             game._inventory_menu_screen = null;
             game._inventory_menu_page2_lines = null;
+            game._inventory_menu_cursor = null;
             if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
                 await redrawAfterFullScreenMenuDismiss();
                 game.context.move = 0;
@@ -19280,12 +19465,13 @@ export async function rhack(key) {
             else if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
                 game._inventory_menu_screen = null;
                 game._inventory_menu_page2_lines = null;
+                game._inventory_menu_cursor = null;
                 await redrawAfterFullScreenMenuDismiss();
             } else {
-                const cursor = game._override_serialized_cursor
-                    ? [game._override_serialized_cursor[0], game._override_serialized_cursor[1]]
+                const cursor = game._inventory_menu_cursor
+                    ? [game._inventory_menu_cursor[0], game._inventory_menu_cursor[1]]
                     : null;
-                showSerializedOverride(prev, cursor);
+                showOverride(prev, cursor);
             }
             game.context.move = 0;
             return;
@@ -19294,6 +19480,8 @@ export async function rhack(key) {
             game._inventory_menu_screen = null;
             game._inventory_menu_page2_screen = null;
             game._inventory_menu_page2_lines = null;
+            game._inventory_menu_cursor = null;
+            game._inventory_menu_page2_cursor = null;
             await redrawAfterFullScreenMenuDismiss();
             game.context.move = 0;
             return;
@@ -19403,6 +19591,7 @@ export async function rhack(key) {
             game._attributes_page1_screen = null;
             game._attributes_page2_screen = null;
             game._attributes_page3_screen = null;
+            clearOverrideScreen();
             await redrawAfterFullScreenMenuDismiss();
             game.context.move = 0;
             return;

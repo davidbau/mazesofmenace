@@ -85,6 +85,13 @@ const M2_STRONG = 0x04000000;
 const M2_UNDEAD = 0x00000002;
 const G_FREQ = 0x0007;
 const G_NOCORPSE = 0x0010;
+const MR_FIRE = 0x01;
+const MR_COLD = 0x02;
+const MR_ELEC = 0x10;
+const MR_ACID = 0x40;
+const MR_STONE = 0x80;
+const MS_LEADER = 36;
+const MS_GUARDIAN = 38;
 
 const OBJECT_WEIGHT_OVERRIDES = new Map([
     [LARGE_BOX, 350],
@@ -1475,7 +1482,63 @@ function pet_should_attack(mtmp, target) {
     const petHpMax = Math.max(1, mtmp.mhpmax ?? petHp);
     const balk = petLevel + Math.trunc((5 * petHp) / petHpMax) - 2;
     if (monster_level(target) >= balk) return false;
+    if (max_passive_dmg_basic(target, mtmp) >= petHp) return false;
+    if ((petHp * 4 < petHpMax || target.data?.msound === MS_GUARDIAN
+        || target.data?.msound === MS_LEADER) && target.mpeaceful && !game.Conflict) {
+        return false;
+    }
+    if (monster_touch_petrifies_basic(target.data) && !monster_resists_basic(mtmp, MR_STONE))
+        return false;
     return true;
+}
+
+function monster_touch_petrifies_basic(ptr) {
+    return ptr?.name === 'COCKATRICE' || ptr?.name === 'CHICKATRICE';
+}
+
+function monster_resists_basic(mon, mask) {
+    return !!((mon?.data?.mresists ?? 0) & mask);
+}
+
+function contact_attack_count_basic(mon) {
+    let count = 0;
+    for (const attack of mon?.data?.mattk || []) {
+        switch (attack?.[0]) {
+        case 'AT_CLAW':
+        case 'AT_BITE':
+        case 'AT_KICK':
+        case 'AT_BUTT':
+        case 'AT_TUCH':
+        case 'AT_STNG':
+        case 'AT_HUGS':
+        case 'AT_ENGL':
+        case 'AT_TENT':
+        case 'AT_WEAP':
+            count++;
+            break;
+        }
+    }
+    return count;
+}
+
+function max_passive_dmg_basic(mdef, magr) {
+    // C ref: mondata.c:max_passive_dmg().
+    const multi = contact_attack_count_basic(magr);
+    if (!multi) return 0;
+    for (const attack of mdef?.data?.mattk || []) {
+        if (!attack || (attack[0] !== 'AT_NONE' && attack[0] !== 'AT_BOOM')) continue;
+        const adtyp = attack[1];
+        const resisted = (adtyp === 'AD_ACID' && monster_resists_basic(magr, MR_ACID))
+            || (adtyp === 'AD_COLD' && monster_resists_basic(magr, MR_COLD))
+            || (adtyp === 'AD_FIRE' && monster_resists_basic(magr, MR_FIRE))
+            || (adtyp === 'AD_ELEC' && monster_resists_basic(magr, MR_ELEC));
+        if (resisted) return 0;
+        if (!['AD_ACID', 'AD_COLD', 'AD_FIRE', 'AD_ELEC', 'AD_PHYS'].includes(adtyp))
+            return 0;
+        const dice = attack[2] || ((mdef?.data?.mlevel ?? 0) + 1);
+        return dice * (attack[3] || 0) * multi;
+    }
+    return 0;
 }
 
 function grow_up_from_kill(mtmp, victim) {

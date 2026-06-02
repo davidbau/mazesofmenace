@@ -1428,9 +1428,14 @@ function _buildScreenOutput() {
     }
 
     const floorListActive = Array.isArray(game._floor_list_lines) && game._floor_list_lines.length > 0;
+    const toplineResidue = (!game._pending_message && !game._more && !floorListActive)
+        ? (game._topline_residue || '')
+        : '';
+    const toplineMessage = game._pending_message || toplineResidue;
+    const moreSuffix = game._pending_message && game._more && !floorListActive ? '--More--' : '';
     let output = '';
     // Row 0: message
-    output += (game._pending_message || '') + (game._more && !floorListActive ? '--More--' : '') + '\n';
+    output += toplineMessage + moreSuffix + '\n';
 
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     for (let y = 0; y < ROWNO; y++) {
@@ -1447,8 +1452,8 @@ function _buildScreenOutput() {
     if (display.grid) {
         display.clearScreen();
         // Message line
-        const msg = (game._pending_message || '') + (game._more && !floorListActive ? '--More--' : '');
-        const pending = game._pending_message || '';
+        const msg = toplineMessage + moreSuffix;
+        const pending = game._pending_message || toplineResidue;
         const wrapCols = game._pending_message_wrap_cols || 0;
         if (wrapCols && !game._more_next_message_row) {
             const first = msg.slice(0, wrapCols);
@@ -1555,6 +1560,7 @@ export async function cls() {
     if (display?.clearScreen) display.clearScreen();
     game._swallowed_overlay = null;
     game._pending_message = '';
+    game._topline_residue = '';
 }
 
 // ── bot ──
@@ -1564,6 +1570,7 @@ export async function bot() {
 
 // ── pline ──
 export async function pline(msg) {
+    game._topline_residue = '';
     game._pending_message = msg;
     game._pending_message_wrap_cols = 0;
     game._last_topline_message = msg;
@@ -1620,6 +1627,7 @@ function terminalCellWidth(text) {
 
 export function clear_pending_message() {
     game._pending_message = '';
+    game._topline_residue = '';
     game._pending_message_wrap_cols = 0;
     game._more = false;
     game._more_next_message_row = false;
