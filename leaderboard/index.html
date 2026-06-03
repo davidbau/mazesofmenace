@@ -378,7 +378,7 @@ td.pct {
   <th class="pts">Points <span class="pts-max">/ <span id="pts-total">22,670</span></span></th>
   <th class="pct">PRNG</th>
   <th class="pct">Screen</th>
-  <th class="pct supplemental" title="Supplemental score for animation-frame parity. Not part of the official ranking.">Anim<sup>†</sup></th>
+  <th class="pct supplemental" title="Supplemental count of matched animation frames. Not part of the official ranking.">Anim<sup>†</sup></th>
   <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">88</span></span></th>
   <th class="sparkline">Progress</th>
 </tr>
@@ -398,10 +398,13 @@ td.pct {
   C exactly. The 88 sessions split 44/44 across the public corpus and a held-out
   set kept private until contest end. <strong>PRNG</strong> is advisory &mdash;
   the structural prerequisite for screens to match, but no points on its own.
-  <strong>Anim<sup>&dagger;</sup></strong> is a supplemental score for
-  animation-frame parity: forks that opt in via the new animation API render
-  in-between frames (dart trajectories, explosion expansion, etc.) and earn one
-  point per matched frame. Not part of the official ranking.
+  <strong>Anim<sup>&dagger;</sup></strong> is a supplemental count of
+  matched animation frames: forks that opt in via the new animation API
+  render in-between frames (dart trajectories, explosion expansion, etc.)
+  and earn one credit per matched frame. Reported as a raw integer rather
+  than a percentage so a fork that opts in stays visible even when most
+  contestants haven&rsquo;t wired up the API. Not part of the official
+  ranking.
   <strong>Play</strong> opens that contestant&rsquo;s build in your browser.
   <strong>Tests</strong> opens the Session Viewer scoped to the fork &mdash;
   scrub through each public session frame by frame and see where it diverges
@@ -546,9 +549,6 @@ async function loadLeaderboard() {
 
         // Lift per-row denominators into the headers. Every fork scores against
         // the same session pool, so any team's max values are the totals.
-        // Anim total isn't yet in any team's data (no fork has implemented the
-        // animation API), so we fall back to a constant computed from the
-        // public session corpus (1,480 frames across the 44 sessions).
         const ref = allTeams[0] || { public: {}, heldOut: {} };
         const totalMax  = (ref.public.maxPoints || 0) + ((ref.heldOut && ref.heldOut.maxPoints) || 0);
         const totalSess = (ref.public.total     || 0) + ((ref.heldOut && ref.heldOut.total)     || 0);
@@ -616,10 +616,10 @@ async function loadLeaderboard() {
                     </td>
                     <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${pctClass(rngPct)}">${rngPct.toFixed(1)}%</span></td>
                     <td class="pct" title="Screen match across public + held-out sessions."><span class="${pctClass(scrPct)}">${scrPct.toFixed(1)}%</span></td>
-                    <td class="pct supplemental" title="${animMatched} of ${animTotalRow || 'no'} animation frames matched (supplemental, not part of the official ranking).">
-                        ${animTotalRow > 0
-                            ? `<span class="${pctClass(animMatched / animTotalRow * 100)}">${(animMatched / animTotalRow * 100).toFixed(1)}%</span>`
-                            : '<span class="hidden">0.0%</span>'}
+                    <td class="pct supplemental" title="${fmt(animMatched)} of ${animTotalRow ? fmt(animTotalRow) : 'no'} animation frames matched (supplemental, not part of the official ranking).">
+                        ${animMatched > 0
+                            ? `<span class="${pctClass(animTotalRow > 0 ? animMatched / animTotalRow * 100 : 0)}">${fmt(animMatched)}</span>`
+                            : '<span class="hidden">0</span>'}
                     </td>
                     <td class="pct sessions" title="Sessions fully matched (public + held-out).">
                         <span class="${pctClass(combinedSessPct)}">${pub.passing || 0}</span>
