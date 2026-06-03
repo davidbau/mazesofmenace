@@ -3584,6 +3584,16 @@ function first_simple_monster_hit_line(line) {
     return String(line || '').split('  ').find(is_simple_monster_hit_you_line) || '';
 }
 
+function mark_savelife_resume_physical_more(line) {
+    if (game._nomovemsg !== 'You survived that attempt on your life.'
+        || game._savelife_resume_followup_more_shown)
+        return;
+    const pending = game._pending_message || '';
+    if (!is_simple_monster_hit_you_chain(pending)) return;
+    if (is_simple_monster_hit_you_line(line) || is_simple_monster_hit_you_chain(line))
+        game._savelife_resume_followup_more_shown = true;
+}
+
 function monster_miss_text(toHit, roll) {
     // C ref: src/mhitu.c:missmu().  "just misses" is only used when
     // flags.verbose is enabled.
@@ -6109,6 +6119,7 @@ async function latch_monster_attack_more_frame(line) {
         ? `${oldPending}  ${line}`
         : line;
     game._pending_message = frameLine;
+    mark_savelife_resume_physical_more(line);
     queue_more_prompt();
     await flush_screen(1);
     game._latched_more_screen = serialize_terminal_grid(game.nhDisplay);
@@ -6189,6 +6200,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                         attackVerbCounts: [...attackVerbCounts.entries()],
                         current: { attack, verb },
                     };
+                    mark_savelife_resume_physical_more(displayLine);
                     queue_more_prompt();
                     return [];
                 }
@@ -6247,6 +6259,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                     attackVerbCounts: [...attackVerbCounts.entries()],
                     current: { attack, verb },
                 };
+                mark_savelife_resume_physical_more(displayLine);
                 if (!game._more) queue_more_prompt();
                 return [];
             }
@@ -6311,6 +6324,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                     attackVerbCounts: [...attackVerbCounts.entries()],
                     current: { damage, preDamageHp: game.u?.uhp ?? 0 },
                 };
+                mark_savelife_resume_physical_more(displayLine);
                 if (!game._more) queue_more_prompt();
                 return [];
             }
@@ -6562,6 +6576,13 @@ async function steal_item_melee_attack(mtmp, state, toHit) {
 
 function append_deferred_physical_attack_line(line) {
     if (!line) return;
+    if (game._monster_topline_stop_after_esc_more
+        && (is_simple_monster_hit_you_line(line) || is_simple_monster_hit_you_chain(line))) {
+        // C refs: win/tty/topl.c:more()/update_topl(), src/mhitu.c:hitmsg().
+        // ESC leaves tty in STOP state; deferred later physical rows still
+        // spend damage/RNG but do not replace the line just revealed.
+        return;
+    }
     if (game._pending_message) {
         if (topline_can_pack_message(game._pending_message, line)) {
             game._pending_message = `${game._pending_message}  ${line}`;
@@ -6601,7 +6622,15 @@ function finish_deferred_physical_hit_damage(mtmp, damage, preDamageHp, current 
     consume_deferred_physical_knockback(current);
     damage = reduce_damage_by_negative_ac(damage);
     apply_hero_damage(damage);
-    return handle_monster_fatal_damage(mtmp, preDamageHp);
+    if (handle_monster_fatal_damage(mtmp, preDamageHp)) {
+        if (game._monster_topline_deferred || game._after_more_message) {
+            game._latched_status_uhp = preDamageHp;
+            game._latched_status_turn = game.moves || null;
+            game._clear_latched_status_after_more = true;
+        }
+        return true;
+    }
+    return false;
 }
 
 function finish_deferred_current_physical_hit(mtmp, current) {
@@ -6633,12 +6662,28 @@ function finish_deferred_current_physical_hit(mtmp, current) {
                 : passiveOutcome.message;
             game._after_more_needs_prompt = false;
             game._monster_topline_deferred = true;
-            return handle_monster_fatal_damage(mtmp, preDamageHp);
+            if (handle_monster_fatal_damage(mtmp, preDamageHp)) {
+                game._latched_status_uhp = preDamageHp;
+                game._latched_status_turn = game.moves || null;
+                game._clear_latched_status_after_more = true;
+                return true;
+            }
+            return false;
         }
     }
     stop_simple_timed_repeat_for_monster_attack(tailMessages);
     append_after_more_physical_tail(tailMessages);
-    return handle_monster_fatal_damage(mtmp, preDamageHp);
+    if (handle_monster_fatal_damage(mtmp, preDamageHp)) {
+        // C refs: src/mhitu.c:hitmu()/mdamageu(), win/tty/topl.c:more().
+        // Once a split monster hit line is already the visible deferred
+        // topline, its fatal damage can run before the More is dismissed,
+        // while the screen still shows the hit's pre-damage HP.
+        game._latched_status_uhp = preDamageHp;
+        game._latched_status_turn = game.moves || null;
+        game._clear_latched_status_after_more = true;
+        return true;
+    }
+    return false;
 }
 
 function finish_deferred_physical_side_effect_tail(mtmp, current) {

@@ -24,6 +24,12 @@ const ROLE_INIT = new Map([
         attrdist: [30, 15, 15, 10, 20, 10],
         hp: 16, pwBase: 2, pwRnd: 4, ac: 0, gold: 0,
     }],
+    ['Monk', {
+        attrbase: [10, 7, 8, 8, 7, 7],
+        attrmax: [25, 10, 20, 20, 15, 10],
+        attrdist: [25, 10, 20, 20, 15, 10],
+        hp: 14, pwBase: 3, pwRnd: 2, ac: 0, gold: 0,
+    }],
     ['Priest', {
         attrbase: [7, 7, 10, 7, 7, 7],
         attrmax: [15, 10, 30, 15, 20, 10],
@@ -82,6 +88,11 @@ const LEVEL_ADV = new Map([
         hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
         enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 },
         energyMod: 'knight',
+    }],
+    ['Monk', {
+        xlev: 10,
+        hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+        enadv: { infix: 2, inrnd: 2, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 },
     }],
     ['Priest', {
         xlev: 10,
@@ -298,10 +309,14 @@ const BELL = 255;
 const BUGLE = 256;
 const LEATHER_DRUM = 257;
 const SPE_FORCE_BOLT = 383;
+const SPE_CONFUSE_MONSTER = 377;
+const SPE_PROTECTION = 403;
 const APPLE = 277;
+const ORANGE = 278;
 const CARROT = 282;
 const SPRIG_OF_WOLFSBANE = 283;
 const CLOVE_OF_GARLIC = 284;
+const FORTUNE_COOKIE = 289;
 const TRIPE_RATION = 264;
 const LEMBAS_WAFER = 291;
 const CRAM_RATION = 292;
@@ -403,6 +418,25 @@ const KNIGHT_INVENTORY = [
     { typ: LEATHER_GLOVES, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
     { typ: APPLE, spe: 0, cls: FOOD_CLASS, min: 10, max: 10, bless: 0 },
     { typ: CARROT, spe: 0, cls: FOOD_CLASS, min: 10, max: 10, bless: 0 },
+];
+
+const MONK_INVENTORY = [
+    // C ref: src/u_init.c:Monk[].
+    { typ: LEATHER_GLOVES, spe: 2, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: ROBE, spe: 1, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: SCROLL_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: POT_HEALING, spe: 0, cls: POTION_CLASS, min: 3, max: 3, bless: UNDEF_BLESS },
+    { typ: FOOD_RATION, spe: 0, cls: FOOD_CLASS, min: 3, max: 3, bless: 0 },
+    { typ: APPLE, spe: 0, cls: FOOD_CLASS, min: 5, max: 5, bless: UNDEF_BLESS },
+    { typ: ORANGE, spe: 0, cls: FOOD_CLASS, min: 5, max: 5, bless: UNDEF_BLESS },
+    { typ: FORTUNE_COOKIE, spe: 0, cls: FOOD_CLASS, min: 3, max: 3, bless: UNDEF_BLESS },
+];
+
+const MONK_STARTING_SPELLBOOKS = [
+    // C ref: src/u_init.c:u_init_role() -> M_spell[].
+    { typ: SPE_HEALING, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
+    { typ: SPE_PROTECTION, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
+    { typ: SPE_CONFUSE_MONSTER, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
 ];
 
 const PRIEST_INVENTORY = [
@@ -647,6 +681,7 @@ function rejected_starting_object(obj, noCreate, gotLevel1Spellbook, roleName) {
         || otyp === WAN_NOTHING || otyp === SPE_NOVEL) {
         return true;
     }
+    if (roleName === 'Monk' && otyp === SCR_ENCHANT_WEAPON) return true;
     if (roleName === 'Wizard' && otyp === SPE_FORCE_BOLT) return true;
     if (obj.oclass === SPBOOK_CLASS) {
         const maxLevel = gotLevel1Spellbook ? 3 : 1;
@@ -997,6 +1032,16 @@ export function u_init_role_inventory() {
         ini_inv(KNIGHT_INVENTORY, noCreate, role.name.m);
         for (const otyp of KNIGHT_KNOWN_WEAPONS) discover_role_known_object(otyp);
         for (const otyp of KNIGHT_KNOWN_ARMOR) discover_role_known_object(otyp);
+    } else if (role?.name?.m === 'Monk') {
+        ini_inv(MONK_INVENTORY, noCreate, role.name.m);
+        ini_inv([MONK_STARTING_SPELLBOOKS[Math.trunc(rn2(90) / 30)]], noCreate, role.name.m);
+        if (!rn2(4)) {
+            ini_inv(MAGIC_MARKER_INVENTORY, noCreate, role.name.m);
+        } else if (!rn2(10)) {
+            ini_inv(LAMP_INVENTORY, noCreate, role.name.m);
+        }
+        for (const otyp of KNIGHT_KNOWN_ARMOR) discover_role_known_object(otyp);
+        discover_role_known_object(SHURIKEN);
     } else if (role?.name?.m === 'Priest') {
         ini_inv(PRIEST_INVENTORY, noCreate, role.name.m);
         if (!rn2(5)) {
@@ -1166,7 +1211,12 @@ export function apply_startup_role_state() {
     // C ref: src/polyself.c:set_uasmon().  Hero infravision comes from the
     // physical race's monster form while unpolymorphed.
     if (INFRAVISION_RACES.has(currentRaceName())) game.u.uprops.infravision = true;
-    if (role?.name?.m === 'Samurai') {
+    if (role?.name?.m === 'Monk') {
+        // C refs: src/u_init.c:u_init_misc(), src/attrib.c:mon_abil[].
+        game.u.uprops.intrinsic_fast = true;
+        game.u.uprops.sleep_resistance = true;
+        game.u.uprops.see_invisible = true;
+    } else if (role?.name?.m === 'Samurai') {
         // C ref: src/attrib.c:sam_abil[] grants level-1 intrinsic HFast.
         game.u.uprops.intrinsic_fast = true;
     } else if (role?.name?.m === 'Knight') {

@@ -1444,6 +1444,11 @@ async function finishLifeSavingAfterMore() {
     const amulet = wornLifeSavingAmulet();
     game._life_saving_after_more_pending = false;
     game._fatal_monster_attack_paused = false;
+    // C refs: src/end.c:done()/savelife(), win/tty/topl.c:more().
+    // ESC can leave an interrupted monster More in tty STOP state, but the
+    // amulet recovery sequence owns a new death/life-saving topline boundary;
+    // do not let that STOP suppress later fresh-command monster hit lines.
+    game._monster_topline_stop_after_esc_more = false;
     applyLifeSavingConPenalty();
     if (game.u) game.u.uhp = lifeSavingHp();
     clearLifeSavingExtrinsic(amulet);
@@ -1467,8 +1472,26 @@ function noteConductCounter(name, amount = 1) {
     return conduct[name];
 }
 
+function corpseIsVegan(obj) {
+    // C ref: include/mondata.h:vegan().
+    const ptr = corpseMonsterPtr(obj);
+    if (!ptr) return false;
+    if (['S_BLOB', 'S_JELLY', 'S_FUNGUS', 'S_VORTEX', 'S_LIGHT'].includes(ptr.mlet))
+        return true;
+    if (ptr.mlet === 'S_ELEMENTAL' && ptr.name !== 'STALKER') return true;
+    if (ptr.mlet === 'S_GOLEM' && ptr.name !== 'FLESH_GOLEM' && ptr.name !== 'LEATHER_GOLEM')
+        return true;
+    return false;
+}
+
+function corpseIsVegetarian(obj) {
+    // C ref: include/mondata.h:vegetarian().
+    const ptr = corpseMonsterPtr(obj);
+    return corpseIsVegan(obj) || (ptr?.mlet === 'S_PUDDING' && ptr.name !== 'BLACK_PUDDING');
+}
+
 function foodBreaksVegetarian(obj) {
-    return !obj || obj.otyp === CORPSE
+    return !obj || (obj.otyp === CORPSE && !corpseIsVegetarian(obj))
         || obj.otyp === TRIPE_RATION
         || obj.otyp === MEATBALL
         || obj.otyp === MEAT_STICK
@@ -1477,15 +1500,19 @@ function foodBreaksVegetarian(obj) {
 }
 
 function foodBreaksVegan(obj) {
+    if (obj?.otyp === CORPSE) return !corpseIsVegan(obj);
     return foodBreaksVegetarian(obj);
 }
 
 function noteFoodConduct(obj) {
     // C refs: src/eat.c:eatfood(), src/eat.c:eatcorpse().
     const conduct = ensureConduct();
+    const breaksVegan = foodBreaksVegan(obj);
+    const breaksVegetarian = foodBreaksVegetarian(obj);
     conduct.food = (conduct.food || 0) + 1;
-    if (foodBreaksVegan(obj)) conduct.unvegan = (conduct.unvegan || 0) + 1;
-    if (foodBreaksVegetarian(obj)) conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
+    if (breaksVegan) conduct.unvegan = (conduct.unvegan || 0) + 1;
+    if (breaksVegetarian) conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
+    return { breaksVegan, breaksVegetarian };
 }
 
 function noteLiterateConduct() {
@@ -6425,20 +6452,24 @@ async function drinkSink() {
     game.context.move = 1;
 }
 
-async function handleFloorCorpseEatKey(ch) {
-    const obj = game._floor_corpse_eat_obj;
+function corpseTasteLine(obj, guilty = false) {
     const corpseName = baseObjectName(obj);
-    game._awaiting_floor_corpse_eat = false;
-    game._floor_corpse_eat_obj = null;
-    game._prompt_cursor = null;
-    if (ch !== 'y') {
-        game.context.move = 0;
-        await pline('Never mind.');
-        return true;
-    }
+    const vegetarian = corpseIsVegetarian(obj);
+    if (!vegetarian) rn2(5);
+    const prefix = guilty ? 'You feel guilty.  ' : '';
+    return `${prefix}This ${corpseName} tastes ${vegetarian ? 'okay' : 'terrible'}${vegetarian ? '.' : '!'}`;
+}
+
+async function beginEatingCorpse(obj) {
+    const corpseName = baseObjectName(obj);
+    // C ref: src/eat.c:eatcorpse().  Conduct is checked before rotting and
+    // first-bite effects; Monks receive violated_vegetarian() guilt.
+    const conduct = noteFoodConduct(obj);
+    const monkGuilt = conduct.breaksVegetarian && game.urole?.name?.m === 'Monk';
+    if (monkGuilt) adjalign(-1);
     rn2(20);
     let firstBiteStarted = false;
-    let message = obj?._live_kill_corpse ? 'Blecch!  Rotten food!' : 'You feel sick.';
+    let message = '';
     let blocks = false;
     if (corpseIsPoisonous(obj) && rn2(5)) {
         losePoisonStrength(rnd(4));
@@ -6448,23 +6479,36 @@ async function handleFloorCorpseEatKey(ch) {
             game.u.uhp = Math.max(0, game.u.uhp - hpDamage);
         }
         firstBiteStarted = true;
-        message = 'Ecch - that must have been poisonous!';
+        message = `${monkGuilt ? 'You feel guilty.  ' : ''}Ecch - that must have been poisonous!`;
         blocks = true;
     } else if (obj?._live_kill_corpse) {
-        rn2(7);
-        firstBiteStarted = !rottenFoodResult(obj).interrupts;
-        if (firstBiteStarted) consumeCorpseOeaten(obj, 2);
+        if (obj.orotten || !rn2(7)) {
+            const rotten = rottenFoodResult(obj);
+            firstBiteStarted = !rotten.interrupts;
+            message = `${monkGuilt ? 'You feel guilty.  ' : ''}${rotten.message}`;
+            blocks = rotten.interrupts;
+            if (firstBiteStarted) consumeCorpseOeaten(obj, 2);
+        } else {
+            firstBiteStarted = true;
+            message = corpseTasteLine(obj, monkGuilt);
+        }
     } else {
         rn2(5);
         const damage = rnd(8);
         if (typeof game.u?.uhp === 'number') game.u.uhp = Math.max(0, game.u.uhp - damage);
+        message = `${monkGuilt ? 'You feel guilty.  ' : ''}You feel sick.`;
     }
     if (obj) game._pending_eaten_corpse_remove = obj;
-    if (firstBiteStarted || !obj?._live_kill_corpse) noteFoodConduct(obj);
-    // C ref: src/eat.c:start_eating()/eatfood().  start_eating() records the
-    // first bite, then eatfood() still stays busy while ++usedtime <= reqtime;
-    // the delayed finish happens on the following occupation check.
-    game._occupation_turns_remaining = Math.max(0, corpseEatingReqtime(obj));
+    // C refs: src/eat.c:start_eating()/eatfood(),
+    // src/allmain.c:moveloop_core().  C calls the occupation after charging a
+    // turn tail and the finishing call also returns through that boundary.  The
+    // JS floor-corpse loop preserves the full reqtime evidence; carried corpses
+    // use the first-bite credit together with the carried-only pre-finish turn.
+    const reqtime = corpseEatingReqtime(obj);
+    const carriedCorpse = (game.inventory || []).includes(obj);
+    const remainingTurns = Math.max(0, reqtime - (carriedCorpse && firstBiteStarted ? 1 : 0));
+    game._occupation_turns_remaining = remainingTurns;
+    if (remainingTurns > 0 && carriedCorpse) game._occupation_pre_finish_extra_turn = true;
     game._occupation_pre_finish_catchup = firstBiteStarted;
     game._occupation_finish_message = `You finish eating the ${corpseName}.`;
     game._occupation_pack_finish_message = true;
@@ -6473,9 +6517,25 @@ async function handleFloorCorpseEatKey(ch) {
     if (blocks) {
         game._occupation_continue_behind_more = true;
         queue_more_prompt();
+    } else if (monkGuilt) {
+        game._occupation_continue_behind_more = true;
+        queue_more_prompt();
     }
     game.context.move = 1;
     return true;
+}
+
+async function handleFloorCorpseEatKey(ch) {
+    const obj = game._floor_corpse_eat_obj;
+    game._awaiting_floor_corpse_eat = false;
+    game._floor_corpse_eat_obj = null;
+    game._prompt_cursor = null;
+    if (ch !== 'y') {
+        game.context.move = 0;
+        await pline('Never mind.');
+        return true;
+    }
+    return beginEatingCorpse(obj);
 }
 
 async function showEatInventoryPrompt(afterFloorDecline = false) {
@@ -6608,6 +6668,7 @@ async function handleEatItemKey(ch) {
     }
 
     const food = splitInventoryFoodForEating(obj);
+    if (food.otyp === CORPSE) return beginEatingCorpse(food);
     if (foodIsRottenOnFirstBite(food)) {
         food.partlyEaten = true;
         const rotten = rottenFoodResult(food);
@@ -6659,9 +6720,14 @@ export function finish_pending_eaten_corpse() {
     const obj = game._pending_eaten_corpse_remove;
     if (!obj) return;
     game._pending_eaten_corpse_remove = null;
-    // C ref: eat.c:done_eating() -> invent.c:delobj_core().
-    obj_resists(obj, 0, 0);
-    extractFloorObject(obj);
+    if ((game.inventory || []).includes(obj)) {
+        // C refs: eat.c:done_eating(), invent.c:useup().
+        removeInventoryInstance(obj);
+    } else {
+        // C refs: eat.c:done_eating(), invent.c:useupf()->delobj().
+        obj_resists(obj, 0, 0);
+        extractFloorObject(obj);
+    }
 }
 
 async function pickupHere() {
@@ -9849,11 +9915,36 @@ function heroLuckHitBonus() {
     return Math.sign(luck) * Math.trunc((Math.abs(luck) + 2) / 3);
 }
 
+function heroUsesMartialArts() {
+    // C ref: include/skills.h:martial_bonus().
+    const role = game.urole?.name?.m;
+    return (role === 'Monk' || role === 'Samurai') && !game.u?._poly_form;
+}
+
+function heroBareHandSkillLevel() {
+    // C ref: src/weapon.c:skill_init().  Roles whose bare-handed maximum is
+    // above Expert start at Basic martial arts; ordinary bare hands remain
+    // unskilled until the broader skill table is modeled.
+    return heroUsesMartialArts() ? C.P_BASIC : C.P_UNSKILLED;
+}
+
+function heroBareHandHitBonus() {
+    // C ref: src/weapon.c:weapon_hit_bonus().
+    const skill = Math.max(heroBareHandSkillLevel(), C.P_UNSKILLED) - 1;
+    return Math.trunc(((skill + 2) * (heroUsesMartialArts() ? 2 : 1)) / 2);
+}
+
+function heroBareHandDamageBonus() {
+    // C ref: src/weapon.c:weapon_dam_bonus().
+    const skill = Math.max(heroBareHandSkillLevel(), C.P_UNSKILLED) - 1;
+    return Math.trunc(((skill + 1) * (heroUsesMartialArts() ? 3 : 1)) / 2);
+}
+
 function weaponHitBonusForMelee(weapon) {
     // C ref: src/weapon.c:weapon_hit_bonus().  The current JS skill model is
-    // shallow; represent the unskilled bare-handed bonus and two-weapon
-    // penalty needed by the ordinary uhitm() front door.
-    if (!weapon) return 1;
+    // shallow; represent unarmed skill and the two-weapon penalty needed by
+    // the ordinary uhitm() front door.
+    if (!weapon) return heroBareHandHitBonus();
     if (game.u?.twoweap && (weapon === heroPrimaryWeapon() || weapon === heroSecondaryWeapon()))
         return -9;
     return 0;
@@ -9872,6 +9963,13 @@ function heroMeleeToHit(mon, weapon = heroWieldedWeapon()) {
     if (mon?.mflee) tmp += 2;
     if (mon?.msleeping) tmp += 2;
     if (mon?.mcanmove === 0) tmp += 4;
+    if (game.urole?.name?.m === 'Monk' && !game.u?._poly_form) {
+        // C ref: src/uhitm.c:find_roll_to_hit().  Unarmored, weaponless
+        // Monks get a role to-hit bonus before martial arts skill applies.
+        if (wornArmorInRange(GRAY_DRAGON_SCALE_MAIL, ROBE - 1)) tmp -= 20;
+        else if (!heroWieldedWeapon() && !wornShieldObject())
+            tmp += Math.trunc((game.u?.ulevel ?? 1) / 3) + 2;
+    }
     if (weapon) tmp += (weapon.spe || 0) + weaponObjectHitBonus(weapon);
     tmp += weaponHitBonusForMelee(weapon);
     return tmp;
@@ -9894,7 +9992,8 @@ function setHeroWieldedWeapon(obj) {
 }
 
 function heroMeleeDamageDie(mon, weapon = heroWieldedWeapon()) {
-    if (!weapon) return 2;
+    // C ref: src/uhitm.c:hmon_hitmon_barehands().
+    if (!weapon) return heroUsesMartialArts() ? 4 : 2;
     // C ref: src/weapon.c:dmgval(), include/mondata.h:bigmonst().
     if ((mon?.data?.msize ?? 0) >= MZ_LARGE)
         return WEAPON_LARGE_DAMAGE_DIE.get(weapon?.otyp) || WEAPON_SMALL_DAMAGE_DIE.get(weapon?.otyp) || 6;
@@ -9934,7 +10033,8 @@ function heroMeleeKnockbackFrontdoor() {
 
 function heroMeleeDamageBonus(weapon = heroWieldedWeapon()) {
     // C ref: src/uhitm.c:hmon_hitmon_dmg_recalc().
-    return (game.u?.udaminc || 0) + heroMeleeStrengthDamageBonus(weapon);
+    const skillBonus = weapon ? 0 : heroBareHandDamageBonus();
+    return (game.u?.udaminc || 0) + heroMeleeStrengthDamageBonus(weapon) + skillBonus;
 }
 
 function heroMeleeDamage(mon, weapon = heroWieldedWeapon()) {
@@ -13350,6 +13450,14 @@ function monsterPhysicalToplineChain(line) {
     return parts.length > 0 && parts.every(monsterPhysicalTopline);
 }
 
+function monsterMovementTopline(line) {
+    return /^You see .+ (?:fly|slither|ooze|wiggle|crawl|hide|dive) under .+\.$/.test(line || '');
+}
+
+function monsterPrayerResumeTopline(line) {
+    return monsterPhysicalToplineChain(line) || monsterMovementTopline(line);
+}
+
 function splitDeferredMonsterPhysicalTopline(line) {
     const msg = String(line || '');
     const match = /^(The .+? (?:misses|bites|hits|kicks|stings|butts|touches|claws|scratches|slashes|punches|jabs|pierces|attacks)(?: .+)?[.!])  (The .+)$/.exec(msg);
@@ -14378,10 +14486,18 @@ async function handleQueuedMore(ch) {
                 const resumePhysicalBehindNewMore = !!pendingPhysicalSplit
                     && !game._extra_encumbered_turn_pending
                     && !game._deferred_monster_physical_attack
-                    && !game._after_more_message;
+                    && !game._after_more_message
+                    // C refs: src/dogmove.c:dog_move(), src/mhitm.c:mattackm(),
+                    // src/mon.c:monkilled().  A pet-combat return hit whose
+                    // defender-death line is still pending owns the new tty More;
+                    // the broader monster scan resumes only after that death
+                    // side effect has been shown.
+                    && !deferredPetDeathNeedsPrompt
+                    && !splitHitDeathPrompt;
                 const resumePrayerBehindNewMore = ordinaryMonsterToplineDeferred
                     && !!game._pending_prayer_finish_message
                     && !rest
+                    && monsterPrayerResumeTopline(msg)
                     && !game._monster_death_pending
                     && !game._fatal_monster_attack_paused;
                 if (pausedMonsterTurn
@@ -14869,7 +14985,7 @@ async function buildSpellMenuWindow(title, includeSort) {
         { text: '', headerSegments: true },
         ...spells.map((entry) => ({ text: spellMenuPlainLine(entry, turnsLeft, showTurns) })),
     ];
-    if (includeSort) lines.push({ text: '+ - [sort spells]' });
+    if (includeSort && spells.length > 1) lines.push({ text: '+ - [sort spells]' });
     lines.push({ text: '(end)' });
     const maxLen = Math.max(headerLine.length, ...lines.map((line) => (line.text || '').length));
     const menuCol = Math.max(1, Math.min(COLNO - 1, COLNO - maxLen - 2));
@@ -15604,6 +15720,26 @@ function woundedLegInsightLine() {
     return `  You have a wounded ${prefix}leg.`;
 }
 
+function emptyHandedInsightText() {
+    // C ref: src/wield.c:empty_handed().
+    const gloves = wornArmorInRange(LEATHER_GLOVES, GAUNTLETS_OF_DEXTERITY);
+    return gloves ? 'empty handed' : 'bare handed';
+}
+
+function bareHandSkillInsightLine() {
+    // C refs: src/insight.c:weapon_insight(), src/weapon.c:skill_name().
+    const skillName = heroUsesMartialArts() ? 'martial arts' : 'bare handed combat';
+    const skill = heroBareHandSkillLevel();
+    if (skill === C.P_UNSKILLED) return `  You are unskilled in ${skillName}.`;
+    if (skill === C.P_SKILLED) return `  You are skilled in ${skillName}.`;
+    const levelName = skill === C.P_BASIC ? 'basic'
+        : skill === C.P_EXPERT ? 'expert'
+            : skill === C.P_MASTER ? 'master'
+                : skill === C.P_GRAND_MASTER ? 'grand master'
+                    : 'no';
+    return `  You have ${levelName} skill with ${skillName}.`;
+}
+
 function insightMortalityWord(count) {
     if (count === 1) return 'once';
     if (count === 2) return 'twice';
@@ -15633,8 +15769,8 @@ function roleStatusInsightLines(level) {
         lines.push(`  You are wielding ${articleForWord(skill)} ${skill}.`);
         lines.push(`  You have ${weaponSkillLevelName(wielded)} skill with ${skill}.`);
     } else {
-        lines.push('  You are bare handed.');
-        lines.push('  You are unskilled in bare handed combat.');
+        lines.push(`  You are ${emptyHandedInsightText()}.`);
+        lines.push(bareHandSkillInsightLine());
     }
     if (!wornArmor) lines.push('  You aren\'t wearing any armor.');
     return lines;
@@ -15829,8 +15965,8 @@ function wizardAttributesPage2() {
         lines.push(`  You are wielding ${articleForWord(weaponName)} ${weaponName}.`);
         lines.push(`  You have ${weaponSkillLevelName(wielded)} skill with ${weaponName}.`);
     } else {
-        lines.push('  You are bare handed.');
-        lines.push('  You are unskilled in bare handed combat.');
+        lines.push(`  You are ${emptyHandedInsightText()}.`);
+        lines.push(bareHandSkillInsightLine());
     }
     if (!wornArmor) lines.push('  You aren\'t wearing any armor.');
 

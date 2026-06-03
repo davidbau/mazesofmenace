@@ -638,10 +638,11 @@ export async function advanceTurn() {
             g._pet_combat_resume_active = false;
             g._savelife_resume_active = false;
             // C refs: allmain.c:moveloop_core(), ball.c:drag_ball().  A
-            // stored fast movement point can allow another ordinary action,
-            // but a full ball drag imposes its own delay and must still run
-            // the regular turn tail plus the drag catch-up turn.
-            if (!g._ball_drag_delay_pending && !occupationPending(g)) return;
+            // stored fast movement point can allow another ordinary action or
+            // occupation tick without running turn-tail allocation, but a full
+            // ball drag imposes its own delay and must still run the regular
+            // turn tail plus the drag catch-up turn.
+            if (!g._ball_drag_delay_pending) return;
         }
         let monscanmove = firstScanCanMove;
         while (monscanmove) {
@@ -1249,7 +1250,8 @@ async function continueOccupationTurns(g) {
         g._occupation_turns_remaining--;
         applyOccupationFinalTurnState(g);
         if ((g._occupation_turns_remaining || 0) === 0
-            && g._occupation_finish_removes_eaten_corpse) {
+            && g._occupation_finish_removes_eaten_corpse
+            && !(g.inventory || []).includes(g._pending_eaten_corpse_remove)) {
             finish_pending_eaten_corpse();
             g._occupation_finish_removes_eaten_corpse = false;
         }
