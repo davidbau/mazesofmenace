@@ -277,6 +277,18 @@ tbody tr:nth-child(even) {
 /* Useful Corpse Effects tables (Corpse | Effect): widen the Corpse
    column so entries like "Black pudding (glob)" and "Gelatinous cube †"
    stay on one line. Same proportion as the LaTeX colspec override. */
+/* Intrinsic and Extrinsic Tables (4 cols: Property | What it does |
+   Intrinsic sources | Extrinsic sources). Narrow the Property column
+   by ~33% so the three description columns have more room. */
+#intrinsic-and-extrinsic-tables table th:first-child,
+#intrinsic-and-extrinsic-tables table td:first-child { width: 12%; }
+#intrinsic-and-extrinsic-tables table th:nth-child(2),
+#intrinsic-and-extrinsic-tables table td:nth-child(2) { width: 28%; }
+#intrinsic-and-extrinsic-tables table th:nth-child(3),
+#intrinsic-and-extrinsic-tables table td:nth-child(3) { width: 28%; }
+#intrinsic-and-extrinsic-tables table th:nth-child(4),
+#intrinsic-and-extrinsic-tables table td:nth-child(4) { width: 32%; }
+
 /* The Wand Table (5 cols): halve the Wand column and give the
    Engrave-test result column the slack. */
 #the-wand-table table th:nth-child(1),
@@ -1229,4 +1241,70 @@ td.pi-price { color: var(--color-accent); font-weight: 500; }
 /* Print: keep the widget out of the PDF (it's interactive) */
 @media print {
   .price-id-widget { display: none; }
+}
+
+/* Sokoban flip toolbar: two toggle buttons inserted under each level
+ * heading. State is shared across all levels — clicking any "Flip
+ * horizontal" button mirrors every map at once. */
+.sokoban-flipbar {
+  display: flex;
+  gap: 0.5em;
+  margin: 0.4em 0 0.6em;
+  align-items: center;
+}
+.sokoban-flipbar button {
+  background: var(--color-bg);
+  border: 1px solid var(--color-rule);
+  color: var(--color-text);
+  padding: 0.15em 0.6em;
+  font-family: var(--font-body);
+  font-size: 0.9em;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.sokoban-flipbar button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.sokoban-flipbar button.active {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-link);
+}
+@media print {
+  .sokoban-flipbar { display: none; }
+}
+
+/* Sokoban level layout (HTML only — the print build has its own
+ * pagination via xelatex). Float each map left so the numbered
+ * solution list flows alongside it. Headings, paragraphs, and the
+ * flip toolbar clear the float so they don't wrap around the map. */
+@media screen {
+  #sokoban-solutions .sokoban-level pre {
+    display: inline-block;
+    float: left;
+    margin-right: 32px;
+    margin-top: 8px;
+    clear: both;
+  }
+  #sokoban-solutions h4,
+  #sokoban-solutions p,
+  #sokoban-solutions blockquote,
+  #sokoban-solutions .sokoban-flipbar {
+    clear: both;
+  }
+  /* Make the solution list a block formatting context so it sits as a
+   * column to the right of the floated map instead of letting orphaned
+   * words at the tail end wrap back under the map. */
+  #sokoban-solutions .sokoban-level ol {
+    display: flow-root;
+    padding-left: 5px;
+  }
+  /* Level 3A has a small map with a long solution list — keep default
+   * flow so items past the map's bottom can reclaim the full width
+   * instead of being stuck in a narrow right-of-map column. */
+  #sokoban-solutions #level-3-version-a ol {
+    display: block;
+  }
 }

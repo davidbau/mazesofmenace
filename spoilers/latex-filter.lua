@@ -81,11 +81,19 @@ function Table(blk)
 
   -- Useful Corpse Effects tables (Corpse | Effect): widen Corpse so
   -- "Black pudding (glob)", "Gelatinous cube †", etc. fit on one line.
+  -- Also suppress the longtable header-repeat: each Corpse|Effect
+  -- table is short enough to fit on one page, and longtable was
+  -- emitting a phantom "Corpse | Effect" header stacked right above
+  -- the real one in the Provisions and Dining section.
   if #blk.colspecs == 2
       and headers[1] == "Corpse" and headers[2] == "Effect" then
     blk.colspecs[1][2] = 0.40
     blk.colspecs[2][2] = 0.60
-    return blk
+    return {
+      pandoc.RawBlock("latex", "\\begingroup\\let\\endhead\\endfirsthead"),
+      blk,
+      pandoc.RawBlock("latex", "\\endgroup"),
+    }
   end
 
   -- Field Guide tables (Sym | Class | Notes): pandoc's auto-sizing
@@ -112,6 +120,42 @@ function Table(blk)
     }
   end
 
+  -- Special Symbols table (Sym | What it is | Notes): same phantom-
+  -- header hazard as the Field Guide tables — short enough to fit on
+  -- one page, so longtable's header-repeat must be suppressed.
+  if #blk.colspecs == 3
+      and headers[1] == "Sym" and headers[2] == "What it is"
+      and headers[3] == "Notes" then
+    blk.colspecs[1][2] = 0.07
+    blk.colspecs[2][2] = 0.22
+    blk.colspecs[3][2] = 0.71
+    return {
+      pandoc.RawBlock("latex", "\\begingroup\\let\\endhead\\endfirsthead"),
+      blk,
+      pandoc.RawBlock("latex", "\\endgroup"),
+    }
+  end
+
+  -- Actions That Exercise and Abuse (Stat | Exercises | Abuses): a
+  -- 4-row table that fits on one page, but longtable was emitting a
+  -- phantom "Stat | Exercises | Abuses" header above the real one.
+  -- Also narrow the Stat column — the three-letter abbreviations
+  -- ("Str", "Dex", "Con", "Wis") don't need anything close to a
+  -- third of the page width, so give the slack to Exercises and
+  -- Abuses where the long action lists need it.
+  if #blk.colspecs == 3
+      and headers[1] == "Stat" and headers[2] == "Exercises"
+      and headers[3] == "Abuses" then
+    blk.colspecs[1][2] = 0.07
+    blk.colspecs[2][2] = 0.47
+    blk.colspecs[3][2] = 0.46
+    return {
+      pandoc.RawBlock("latex", "\\begingroup\\let\\endhead\\endfirsthead"),
+      blk,
+      pandoc.RawBlock("latex", "\\endgroup"),
+    }
+  end
+
   -- The Wand Table (Price | Wand | Type | Max Charges | Engrave-test
   -- result): pandoc auto-sizes the wand-name column wide enough for
   -- "Secret door detection" and leaves the engrave-test column too
@@ -128,6 +172,30 @@ function Table(blk)
     blk.colspecs[4][2] = 0.15
     blk.colspecs[5][2] = 0.43
     -- fall through to the Price-table phantom-header wrap
+  end
+
+  -- Intrinsic and Extrinsic Tables (Property | What it does |
+  -- Intrinsic sources | Extrinsic sources): narrow the Property
+  -- column ~33% from the default uniform 25% and give the slack to
+  -- the three description columns. Also suppress longtable's
+  -- header-repeat to avoid the phantom-header bug — the largest
+  -- table (Damage resistances, 13 rows) just barely fits on one
+  -- page in dense-table small font, and longtable was rendering a
+  -- ghost "Property | What it does | …" stub at the top of the
+  -- chapter page before the section heading.
+  if #blk.colspecs == 4
+      and headers[1] == "Property" and headers[2] == "What it does"
+      and headers[3] == "Intrinsic sources"
+      and headers[4] == "Extrinsic sources" then
+    blk.colspecs[1][2] = 0.17
+    blk.colspecs[2][2] = 0.28
+    blk.colspecs[3][2] = 0.28
+    blk.colspecs[4][2] = 0.27
+    return {
+      pandoc.RawBlock("latex", "\\begingroup\\let\\endhead\\endfirsthead"),
+      blk,
+      pandoc.RawBlock("latex", "\\endgroup"),
+    }
   end
 
   -- Quoted-price conversion table (Charisma / Markups | Mult | 20 | ... | 500):
@@ -583,15 +651,19 @@ function Pandoc(doc)
       goto continue
     end
 
-    -- Convert horizontal rules to decorative diamond ornament (centered)
-    -- Stretchable, non-discardable glue on both sides: when the ornament
-    -- flows inline mid-page, the glue compresses to a 1em gap; when the
-    -- ornament lands alone on a page (because the previous content
-    -- filled the page first), both sides stretch equally to center it
-    -- vertically.
+    -- Convert horizontal rules to decorative diamond ornament (centered).
+    -- The ornament renders only when the current page already has enough
+    -- slack to absorb it; if remaining space is less than ~2 inches the
+    -- ornament is silently dropped so the page break would-be-forced by
+    -- the ornament doesn't appear (which would leave the diamond alone
+    -- at the top of a new mostly-empty page). Stretchable glue on both
+    -- sides centers the ornament vertically when it does render.
     if block.tag == "HorizontalRule" then
       table.insert(new_blocks, pandoc.RawBlock("latex",
-        "\\par\\vspace*{1em plus 1fill}\n" ..
+        "\\par\n" ..
+        "\\ifdim\\pagetotal>3in\n" ..
+        "\\ifdim\\dimexpr\\pagegoal-\\pagetotal\\relax>1in\n" ..
+        "\\vspace*{1em plus 1fill}\n" ..
         "\\begin{center}\n" ..
         "{\\color[gray]{0.45}" ..
         "\\rule[0.35ex]{3em}{0.4pt}" ..
@@ -600,7 +672,8 @@ function Pandoc(doc)
         "\\hspace{0.4em}" ..
         "\\rule[0.35ex]{3em}{0.4pt}}\n" ..
         "\\end{center}\n" ..
-        "\\par\\vspace*{1em plus 1fill}"))
+        "\\par\\vspace*{1em plus 1fill}\n" ..
+        "\\fi\\fi"))
       i = i + 1
       goto continue
     end
