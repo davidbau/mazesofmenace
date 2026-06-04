@@ -17011,8 +17011,13 @@ function monsterResistsSicknessPotion(mon) {
 
 function monsterIsSilentForPotionHit(mon) {
     const data = mon?.data || {};
-    const msound = String(data.msound || data.sound || mon?.msound || '').toLowerCase();
-    return !!(mon?.silent || data.silent || msound === 'silent' || msound === 'ms_silent');
+    const explicit = data.msound ?? data.sound ?? mon?.msound ?? mon?.sound;
+    const msound = String(explicit ?? '').toLowerCase();
+    if (mon?.silent || data.silent || explicit === 0 || msound === 'silent' || msound === 'ms_silent')
+        return true;
+    if (explicit != null) return false;
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return tipHatGeneratedMonsterSound(name) === 'silent';
 }
 
 function monsterResistsAcid(mon) {
@@ -35198,12 +35203,15 @@ function chatHeroPolyform() {
 
 function chatHeroIsSilent() {
     const form = chatHeroPolyform();
-    const sound = form?.msound ?? form?.sound;
-    const soundName = String(sound ?? '').toLowerCase();
+    const explicit = form?.msound ?? form?.sound;
+    const soundName = String(explicit ?? '').toLowerCase();
     const name = String(form?.name || '').toLowerCase();
-    return !!(form?.silent || form?.msilent || sound === 0
+    if (form?.silent || form?.msilent || explicit === 0
         || soundName === 'silent' || soundName === 'ms_silent'
-        || CHAT_SILENT_POLYFORM_NAMES.has(name));
+        || CHAT_SILENT_POLYFORM_NAMES.has(name))
+        return true;
+    if (explicit != null) return false;
+    return tipHatGeneratedMonsterSound(name) === 'silent';
 }
 
 function chatHeroPolyformArticleName() {
@@ -35521,8 +35529,13 @@ function tipHatMonsterHelpless(mon) {
 
 function tipHatMonsterSilent(mon) {
     const data = mon?.data || {};
-    const msound = String(mon?.msound ?? mon?.sound ?? data.msound ?? data.sound ?? '').toLowerCase();
-    return !!(mon?.silent || data.silent || msound === 'silent' || msound === 'ms_silent');
+    const explicit = mon?.msound ?? mon?.sound ?? data.msound ?? data.sound;
+    const msound = String(explicit ?? '').toLowerCase();
+    if (mon?.silent || data.silent || explicit === 0 || msound === 'silent' || msound === 'ms_silent')
+        return true;
+    if (explicit != null) return false;
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return tipHatGeneratedMonsterSound(name) === 'silent';
 }
 
 function tipHatHeroHasTopLevelGold() {
@@ -35798,6 +35811,13 @@ const TIPHAT_BOAST_MONSTER_NAMES = new Set([
 
 const TIPHAT_GENERATED_SOUND_BY_MONSTER_NAME = new Map([
     ['killer bee', 'buzz'], ['queen bee', 'buzz'], ['grid bug', 'buzz'], ['xan', 'buzz'],
+    ['chickatrice', 'hiss'], ['cockatrice', 'hiss'], ['pyrolisk', 'hiss'],
+    ['mind flayer', 'hiss'], ['master mind flayer', 'hiss'],
+    ['couatl', 'hiss'], ['garter snake', 'hiss'], ['snake', 'hiss'],
+    ['water moccasin', 'hiss'], ['python', 'hiss'], ['pit viper', 'hiss'],
+    ['cobra', 'hiss'],
+    ['hell hound pup', 'bark'], ['hell hound', 'bark'],
+    ['bat', 'sqeek'], ['giant bat', 'sqeek'], ['vampire bat', 'sqeek'],
     ['jaguar', 'growl'], ['lynx', 'growl'], ['panther', 'growl'], ['tiger', 'growl'],
     ['displacer beast', 'growl'], ['bugbear', 'growl'], ['monkey', 'growl'], ['ape', 'growl'],
     ['yeti', 'growl'], ['carnivorous ape', 'growl'], ['sasquatch', 'growl'],
@@ -35820,6 +35840,8 @@ const TIPHAT_GENERATED_SOUND_BY_MONSTER_NAME = new Map([
     ['water demon', 'djinni'], ['prisoner', 'djinni'], ['djinni', 'djinni'],
     ['titan', 'spell'], ['barrow wight', 'spell'], ['nazgul', 'spell'],
     ['nalfeshnee', 'spell'],
+    ['angel', 'cuss'], ['archon', 'cuss'],
+    ['marilith', 'cuss'], ['sandestin', 'cuss'],
     ['hobbit', 'humanoid'], ['dwarf', 'humanoid'],
     ['dwarf lord', 'humanoid'], ['dwarf lady', 'humanoid'], ['dwarf leader', 'humanoid'],
     ['dwarf king', 'humanoid'], ['dwarf queen', 'humanoid'], ['dwarf ruler', 'humanoid'],
@@ -35831,7 +35853,39 @@ const TIPHAT_GENERATED_SOUND_BY_MONSTER_NAME = new Map([
     ['elvenking', 'humanoid'], ['elvenqueen', 'humanoid'], ['elven monarch', 'humanoid'],
 ]);
 
+const TIPHAT_GENERATED_SILENT_MONSTER_NAMES = new Set([
+    'giant ant', 'soldier ant', 'fire ant', 'giant beetle',
+    'acid blob', 'quivering blob', 'gelatinous cube',
+    'gas spore', 'floating eye', 'freezing sphere', 'flaming sphere',
+    'shocking sphere',
+    'manes', 'homunculus', 'lemure', 'quasit',
+    'blue jelly', 'spotted jelly', 'ochre jelly',
+    'small mimic', 'large mimic', 'giant mimic',
+    'rock piercer', 'iron piercer', 'glass piercer',
+    'rock mole', 'cave spider', 'centipede', 'giant spider', 'scorpion',
+    'lurker above', 'trapper',
+    'fog cloud', 'dust vortex', 'ice vortex', 'energy vortex',
+    'steam vortex', 'fire vortex',
+    'baby long worm', 'baby purple worm', 'long worm', 'purple worm',
+    'yellow light', 'black light', 'zruty',
+    'stalker', 'air elemental', 'fire elemental', 'earth elemental',
+    'water elemental',
+    'lichen', 'brown mold', 'yellow mold', 'green mold', 'red mold',
+    'violet fungus',
+    'kobold mummy', 'gnome mummy', 'orc mummy', 'dwarf mummy', 'elf mummy',
+    'human mummy', 'ettin mummy', 'giant mummy',
+    'gray ooze', 'brown pudding', 'green slime', 'black pudding',
+    'rust monster', 'umber hulk', 'wraith', 'ghoul',
+    'straw golem', 'paper golem', 'rope golem', 'gold golem',
+    'leather golem', 'wood golem', 'flesh golem', 'clay golem',
+    'stone golem', 'glass golem', 'iron golem',
+    'horned devil', 'erinys', 'barbed devil',
+    'vrock', 'hezrou', 'bone devil', 'ice devil', 'balrog',
+    'newt', 'iguana', 'lizard', 'chameleon',
+]);
+
 function tipHatGeneratedMonsterSound(name) {
+    if (TIPHAT_GENERATED_SILENT_MONSTER_NAMES.has(name)) return 'silent';
     if (/^(?:baby )?(?:gray|gold|silver|red|white|orange|black|blue|green|yellow) dragon$/.test(name))
         return 'roar';
     return TIPHAT_GENERATED_SOUND_BY_MONSTER_NAME.get(name) || '';
@@ -36534,6 +36588,7 @@ function tipHatMonsterSound(mon) {
     }
     if (name === 'skeleton') return 'bones';
     if (/^(death|pestilence|famine)$/.test(name)) return 'rider';
+    if (tipHatMonsterIsWizardCuss(mon, name)) return 'cuss';
     if (/\bzombie$/.test(name) || (mlet === 'zombie' && name !== 'ghoul')) return 'groan';
     if (name === 'shrieker') return 'shriek';
     if (/^(mumak|mastodon)$/.test(name)) return 'trumpet';
@@ -36544,6 +36599,7 @@ function tipHatMonsterSound(mon) {
     if (name === 'ki-rin') return 'spell';
     if (name === 'oracle') return 'oracle';
     if (name === 'imp') return 'cuss';
+    if (name === 'amorous demon') return 'seduce';
     if (tipHatMonsterIsNymph(mon, name, mlet)) return 'seduce';
     if (tipHatMonsterIsHumanWereForm(mon, name, mlet)) return 'were';
     if (tipHatMonsterIsVampireInOwnForm(name)) return 'vampire';
@@ -36968,8 +37024,10 @@ function tipHatMonsterNoise(mon, { visible = tipHatMonsterVisible(mon), nameOver
     case 'priest':
         return tipHatPriestNoise(mon, name);
     case 'seduce': {
-        if (!tipHatMonsterIsNymph(mon, monName)) return { handled: false, message: '' };
-        if (!!game.flags?.female !== tipHatMonsterFemale(mon)) {
+        const sameGender = !!game.flags?.female === tipHatMonsterFemale(mon);
+        if (!tipHatMonsterIsNymph(mon, monName) && !sameGender)
+            return { handled: false, message: '' };
+        if (!sameGender) {
             const swval = rn2(3);
             if (swval === 2) return { handled: true, message: '"Hello, sailor."' };
             if (swval === 1) return { handled: true, message: `${name} comes on to you.` };
