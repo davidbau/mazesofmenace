@@ -37,7 +37,20 @@ export function parseNethackrc(rc) {
                 else if (key === 'catname') result.catname = val;
                 else if (key === 'dogname') result.dogname = val;
                 else if (key === 'horsename') result.horsename = val;
-                else if (key === 'playmode' && val === 'debug') result.flags.debug = true;
+                else if (key === 'playmode') {
+                    // C ref: options.c:optfn_playmode().
+                    const mode = val.toLowerCase();
+                    if (mode.startsWith('debug') || mode.startsWith('wizard')) {
+                        result.flags.debug = true;
+                        result.flags.explore = false;
+                    } else if (mode.startsWith('explore') || mode.startsWith('discovery')) {
+                        result.flags.debug = false;
+                        result.flags.explore = true;
+                    } else if (mode.startsWith('normal')) {
+                        result.flags.debug = false;
+                        result.flags.explore = false;
+                    }
+                }
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
                     if (val === 'none' || val === 'n') result.preferred_pet = 'n';

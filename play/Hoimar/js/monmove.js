@@ -46,6 +46,7 @@ const NORMAL_SPEED = 12;
 const BOLT_LIM = 8;
 const MZ_SMALL = 1;
 const MZ_LARGE = 3;
+const MZ_HUGE = 4;
 const HAWAIIAN_SHIRT = 136;
 const T_SHIRT = 137;
 const BLINDING_VENOM = 479;

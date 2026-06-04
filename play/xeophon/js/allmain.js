@@ -9,7 +9,7 @@ import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, vie
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -6196,9 +6196,10 @@ export async function processMonsterTurns() {
                     if (canShootLauncher && !(canThrowOffensivePotion && offensiveItemsLinedUp)
                         && monsterLinedUp(mon, throwTargetX, throwTargetY)) {
                         const missile = mon.minvent[launcherAmmoIndex];
-                        rnd(1);
+                        if ((missile.quan || 1) > 1) rnd(1);
+                        const missileQuan = missile.quan || 1;
                         let thrownMissile = missile;
-                        if ((missile.quan || 1) > 1) {
+                        if (missileQuan > 1) {
                             missile.quan--;
                             thrownMissile = { ...missile, id: next_ident(), quan: 1 };
                         } else {
@@ -6208,9 +6209,12 @@ export async function processMonsterTurns() {
                         const missileSpe = missile.spe || 0;
                         const missileErosion = Math.max(0, Math.trunc(Number(thrownMissile.oeroded || 0)),
                             Math.trunc(Number(thrownMissile.oeroded2 || 0)));
-                        const coveredArrowState = missileSpe === 0
+                        const coveredBlessedEnchantedArrow = thrownMissile.blessed
+                            && (missileSpe === 1 || missileSpe === 2);
+                        const coveredArrowState = missileSpe === 0 || coveredBlessedEnchantedArrow
                             || (!thrownMissile.blessed && (missileSpe === 1 || missileSpe === 2));
-                        const coveredErodedArrowState = !thrownMissile.blessed || missileSpe === 0;
+                        const coveredErodedArrowState = !thrownMissile.blessed
+                            || missileSpe === 0 || coveredBlessedEnchantedArrow;
                         const coveredErosionState = !missileErosion || coveredErodedArrowState;
                         const sharedArrowLanding = coveredArrowState && coveredErosionState;
                         addToplineMessage(`${monsterDisplayName(mon, true)} shoots an arrow!`);
@@ -6240,9 +6244,34 @@ export async function processMonsterTurns() {
                                 return false;
                             }
                             if (misfireDx !== throwDx || misfireDy !== throwDy) {
-                                for (let step = 0; step < throwRange; step++) rn2(5);
-                                landMisfiredArrow(mon.mx + misfireDx * throwRange,
-                                    mon.my + misfireDy * throwRange);
+                                const ordinaryBlockAhead = (x, y) => {
+                                    const nx = x + misfireDx;
+                                    const ny = y + misfireDy;
+                                    const loc = game.level?.at(nx, ny);
+                                    return nx < 1 || nx > COLNO - 1 || ny < 0 || ny > ROWNO - 1
+                                        || !loc || IS_OBSTRUCTED(loc.typ)
+                                        || (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)));
+                                };
+                                let landingX = mon.mx;
+                                let landingY = mon.my;
+                                if (!ordinaryBlockAhead(landingX, landingY)) {
+                                    for (let step = 0; step < throwRange; step++) {
+                                        landingX += misfireDx;
+                                        landingY += misfireDy;
+                                        const remainingRange = throwRange - step - 1;
+                                        rn2(5);
+                                        const stoppedOnSink = remainingRange
+                                            && game.level?.at(landingX, landingY)?.typ === SINK;
+                                        if (stoppedOnSink && !game.u?.blind && cansee(landingX, landingY)) {
+                                            const sinkVerb = (game.u?._statusSuffix || '').includes('Hallu')
+                                                ? 'plops' : 'drops';
+                                            addToplineMessage(`The arrow ${sinkVerb} onto the sink.`);
+                                        }
+                                        if (!remainingRange || stoppedOnSink
+                                            || ordinaryBlockAhead(landingX, landingY)) break;
+                                    }
+                                }
+                                landMisfiredArrow(landingX, landingY);
                                 game._search_pending_count = 0;
                                 game._run_steps_remaining = 0;
                                 game._travel_keys = [];
@@ -6278,12 +6307,14 @@ export async function processMonsterTurns() {
                             game._topline_after_more = missed ? 'An arrow misses you.'
                                 : `You are hit by an arrow${damage > 4 ? '!' : '.'}`;
                             if (!missed) {
-	                                if (damage >= (game.u?.uhp || 0)) {
-	                                    game._lethal_arrow_after_topline_more = {
-	                                        damage,
-	                                        holdStatusHp: (game.u?.uhp || 0) - damage === -1,
-	                                        currentMove: true,
-	                                    };
+                                if (damage >= (game.u?.uhp || 0)) {
+                                    game._lethal_arrow_after_topline_more = {
+                                        damage,
+                                        holdStatusHp: (game.u?.uhp || 0) - damage === -1,
+                                        currentMove: true,
+                                        deathCleanupThrownObject: thrownMissile,
+                                        deathCleanupGlyph: thrownMissile.glyph || ')',
+                                    };
                                 } else {
                                     game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
                                     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
@@ -6298,13 +6329,16 @@ export async function processMonsterTurns() {
                                         game._arrow_mulch_after_topline_more = 1;
                                     }
                                 }
-                            } else if (sharedArrowLanding) {
-                                game._arrow_drop_throw_after_topline_more = {
-                                    missile: thrownMissile,
-                                    x: game.u?.ux || 0,
-                                    y: game.u?.uy || 0,
-                                    ohit: false,
-                                };
+                            } else {
+                                rn2(5);
+                                if (sharedArrowLanding) {
+                                    game._arrow_drop_throw_after_topline_more = {
+                                        missile: thrownMissile,
+                                        x: game.u?.ux || 0,
+                                        y: game.u?.uy || 0,
+                                        ohit: false,
+                                    };
+                                }
                             }
                         }
                         game._search_pending_count = 0;

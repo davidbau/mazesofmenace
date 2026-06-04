@@ -471,6 +471,10 @@ const MONEY_INVENTORY = [
     { typ: GOLD_PIECE, spe: 0, cls: COIN_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
+const WISHING_INVENTORY = [
+    { typ: WAN_WISHING, spe: 3, cls: WAND_CLASS, min: 1, max: 1, bless: 0 },
+];
+
 const BLINDFOLD_INVENTORY = [
     { typ: BLINDFOLD, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
@@ -1102,6 +1106,11 @@ export function u_init_role_inventory() {
     }
     reset_no_create(noCreate);
     u_init_race_inventory(noCreate, role?.name?.m);
+    if (game.flags?.explore) {
+        // C ref: u_init.c:u_init_inventory_attrs().  Explore/discovery mode
+        // grants a starting wand of wishing before startup money/attributes.
+        ini_inv(WISHING_INVENTORY, noCreate, role?.name?.m);
+    }
     if (roleStartingGold > 0) {
         game._initialGoldCount = roleStartingGold;
         ini_inv(MONEY_INVENTORY, noCreate, role?.name?.m);

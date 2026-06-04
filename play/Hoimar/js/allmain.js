@@ -202,6 +202,12 @@ function postInventoryStartupRng() {
         rn2(2);
     }
     const messages = [];
+    if (game.flags?.explore) {
+        // C ref: sys/unix/unixmain.c:wd_message().  New games that start in
+        // explore/discovery mode report it after welcome and before normal
+        // moveloop preamble messages.
+        messages.push('You are in non-scoring explore/discovery mode.');
+    }
     if (game.flags?.moonphase === 4) {
         messages.push('You are lucky!  Full moon tonight.');
         game.u.uluck = (game.u.uluck || 0) + 1;
@@ -1407,15 +1413,18 @@ function applyOccupationFinishObjectEffects(g) {
         obj.known = true;
     } else if (obj.otyp === GAUNTLETS_OF_POWER) {
         // C ref: do_wear.c:Gloves_on().  Wearing power gauntlets reveals the
-        // object type and recalculates strength before the finish message.
+        // object type through makeknown(); strength itself is recalculated as
+        // worn state, not by an explicit Strength exercise in Gloves_on().
         const order = Array.isArray(g.discoveryOrder) ? g.discoveryOrder : (g.discoveryOrder = []);
         if (!order.includes(obj.otyp)) order.push(obj.otyp);
         const discovered = g.discoveredObjects || (g.discoveredObjects = new Set());
-        if (!discovered.has(obj.otyp)) discovered.add(obj.otyp);
+        if (!discovered.has(obj.otyp)) {
+            discovered.add(obj.otyp);
+            exercise(A_WIS, true);
+        }
         obj.known = true;
         obj.knownName = true;
         if (g.u?.acurr?.a) g.u.acurr.a[A_STR] = 25;
-        exercise(A_STR, true);
     }
 }
 
@@ -1682,9 +1691,15 @@ async function continueSimpleTimedRepeats(g, options = {}) {
     // reading fresh input until the count runs out or tty output interrupts.
     const leaveTailForInputBoundary = !!options.leaveTailForInputBoundary;
     const interrupted = () => g._more || g._monster_turn_paused_for_more;
+    const preservePausedRepeatCount = () => {
+        if (!leaveTailForInputBoundary) return;
+        const multi = g.context?.multi || 0;
+        const remaining = g._simple_timed_repeats_remaining || 0;
+        if (remaining > 0 && multi > remaining)
+            g._simple_timed_repeats_remaining = multi;
+    };
     if (interrupted()) {
-        g._simple_timed_repeats_remaining = 0;
-        g._simple_timed_repeat_text = '';
+        preservePausedRepeatCount();
         return false;
     }
     while ((g._simple_timed_repeats_remaining || 0) > (leaveTailForInputBoundary ? 1 : 0)) {
@@ -1697,7 +1712,12 @@ async function continueSimpleTimedRepeats(g, options = {}) {
         await advanceTurn();
         if (checkStopSearching
             && (g._simple_timed_repeats_remaining || 0) > 0
-            && monsterNearbyForSafety(2)) {
+            && (monsterNearbyForSafety()
+                || (!g._pending_message && !g._more && monsterNearbyForSafety(2)))) {
+            // C refs: src/allmain.c:moveloop_core(), src/hack.c:monster_nearby().
+            // Timed search occupations stop for neighboring monsters; the
+            // radius-2 fallback is the legacy batched-search tail catch-up,
+            // and must not overwrite already pending tty output.
             g._simple_timed_repeats_remaining = 0;
             g._simple_timed_repeat_text = '';
             if (g.context) g.context.multi = 0;
@@ -1705,9 +1725,7 @@ async function continueSimpleTimedRepeats(g, options = {}) {
             return true;
         }
         if (interrupted()) {
-            g._simple_timed_repeats_remaining = 0;
-            g._simple_timed_repeat_text = '';
-            if (g.context) g.context.multi = 0;
+            preservePausedRepeatCount();
             return false;
         }
         if (!await finishZeroMovePolyCatchup(g)) {
@@ -1718,9 +1736,7 @@ async function continueSimpleTimedRepeats(g, options = {}) {
         }
         finishDeferredSeerTurnUpdate(g);
         if (interrupted()) {
-            g._simple_timed_repeats_remaining = 0;
-            g._simple_timed_repeat_text = '';
-            if (g.context) g.context.multi = 0;
+            preservePausedRepeatCount();
             return false;
         }
         // C ref: allmain.c:u_calc_moveamt().  Batched timed occupations
@@ -1729,12 +1745,12 @@ async function continueSimpleTimedRepeats(g, options = {}) {
         if (leaveTailForInputBoundary) accrueEncumberedMoveDebt(g, { capPendingExtra: true });
     }
     if ((g._simple_timed_repeats_remaining || 0) <= 0) {
-        const stoppedSearchingEarly = g._simple_timed_repeat_text === 'searching'
+        const stoppedSearchingInTail = g._simple_timed_repeat_text === 'searching'
             && (g.context?.multi || 0) > 0
             && monsterNearbyForSafety(4);
         g._simple_timed_repeat_text = '';
         if (g.context) g.context.multi = 0;
-        if (stoppedSearchingEarly && g.flags?.verbose !== false)
+        if (stoppedSearchingInTail && g.flags?.verbose !== false)
             await pline('You stop searching.');
     }
     return true;

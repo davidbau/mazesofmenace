@@ -579,6 +579,7 @@ const OBJECT_BASE_NAMES = new Map([
     [TIN_OPENER, 'tin opener'],
     [TIN_WHISTLE, 'tin whistle'],
     [MAGIC_WHISTLE, 'magic whistle'],
+    [WAN_WISHING, 'wand of wishing'],
     [OIL_LAMP, 'lamp'],
     [MAGIC_LAMP, 'lamp'],
     [MAGIC_MARKER, 'magic marker'],
@@ -2096,10 +2097,11 @@ async function readScrollOfTeleportation(obj, idx) {
 
 function eatLetters() {
     ensureInventoryLetters();
-    return (game.inventory || [])
+    const letters = (game.inventory || [])
         .filter((obj) => obj?.oclass === FOOD_CLASS)
         .map((obj) => obj.invlet)
-        .join('');
+        .filter(validInvlet);
+    return letters.length > 5 ? compactLettersInOrder(letters) : letters.join('');
 }
 
 function drinkLetters() {
@@ -3524,8 +3526,8 @@ function baseObjectName(obj) {
     if (obj?.otyp === CORPSE) {
         return `${corpseMonsterDisplayName(obj)} corpse`;
     }
-    if (obj?.otyp === TIN && obj.corpsenm) {
-        return `tin of ${objectMonsterDisplayName(obj)}`;
+    if (obj?.otyp === TIN && (obj.knownName || objectTypeNameKnown(obj))) {
+        return tinObjectName(obj);
     }
     if (obj?.otyp === STATUE) {
         return statueObjectName(obj);
@@ -3564,6 +3566,15 @@ function corpseMonsterPtr(obj) {
 function objectMonsterDisplayName(obj) {
     const ptr = corpseMonsterPtr(obj);
     return String(ptr?.name || 'monster').toLowerCase().replace(/_/g, ' ');
+}
+
+function tinObjectName(obj) {
+    // C refs: src/objnam.c:xname()/tin_details(), src/eat.c:tin_variety().
+    if (obj?.spe === 1) return 'tin of spinach';
+    const ptr = corpseMonsterPtr(obj);
+    if (!ptr) return 'empty tin';
+    const name = objectMonsterDisplayName(obj);
+    return `tin of ${name}${corpseIsVegetarian(obj) ? '' : ' meat'}`;
 }
 
 function corpseMonsterDisplayName(obj) {
@@ -4203,6 +4214,10 @@ async function beginStudySpellbook(obj, info) {
         ? `You learn the "${info.name}" spell.`
         : `You add the "${info.name}" spell to your repertoire, as '${String.fromCharCode(97 + knownCount)}'.`;
     game._occupation_pack_finish_message = true;
+    // C refs: src/spell.c:study_book()/learn(), src/allmain.c:moveloop_core().
+    // learn() returns "still busy" when its delay counter reaches zero; the
+    // final learning side effects happen after the following full turn tail.
+    game._occupation_pre_finish_extra_turn = true;
     game._occupation_finish_learn_spell = {
         obj,
         spell: {
@@ -4620,6 +4635,13 @@ async function start_wearing_object(obj) {
     }
     const delay = OBJECT_DELAY[obj.otyp] || 0;
     if (obj.oclass === ARMOR_CLASS && delay > 0) {
+        if (obj.otyp === GAUNTLETS_OF_POWER) {
+            // C refs: do_wear.c:armor_or_accessory_on()/Gloves_on(),
+            // allmain.c:moveloop_core().  Power-gauntlet makeknown()/botl
+            // side effects run from afternmv after the final immobile turn
+            // tail; speed boots have distinct Type_on message evidence.
+            game._occupation_pre_finish_extra_turn = true;
+        }
         game._occupation_turns_remaining = Math.max(0, delay - 1);
         game._occupation_finish_message = armor_finish_message(obj);
         game._occupation_pack_finish_message = true;
@@ -5481,7 +5503,10 @@ async function handleLootActionMenuKey(ch) {
     if (!menu) return false;
     game._override_prev = null;
     if (ch === 'o') {
-        await showLootTakeOutObjectMenu(menu.container, false, { held: menu.held });
+        if (takeOutNeedsClassMenu(menu.container))
+            showLootTypeMenu(menu.container, false, { putIn: false, held: menu.held });
+        else
+            await showLootTakeOutObjectMenu(menu.container, false, { held: menu.held });
         game.context.move = 0;
         return true;
     }
@@ -5508,6 +5533,27 @@ async function handleLootActionMenuKey(ch) {
 
 function containedGoldObject(container) {
     return containerContents(container).find((obj) => obj?.otyp === GOLD_PIECE) || null;
+}
+
+function lootObjectClass(obj) {
+    if (!obj) return null;
+    if (typeof obj.oclass === 'number') return obj.oclass;
+    if (typeof obj.otyp === 'number') return OBJECT_CLASS[obj.otyp] ?? null;
+    return null;
+}
+
+function takeOutNeedsClassMenu(container) {
+    // C refs: src/pickup.c:traditional_loot(), src/pickup.c:query_classes().
+    // query_classes() skips its prompt when collect_obj_classes() finds only
+    // one available object class, and askchain() goes straight to object rows.
+    const classes = new Set();
+    for (const obj of containerContents(container)) {
+        const cls = lootObjectClass(obj);
+        if (cls == null) continue;
+        classes.add(cls);
+        if (classes.size > 1) return true;
+    }
+    return false;
 }
 
 async function showLootTakeOutObjectMenu(container, selectedGold = false, opts = {}) {
@@ -5622,6 +5668,11 @@ async function handleLootTypeMenuKey(ch) {
     }
     if (menu.putIn && (ch === '\r' || ch === '\n')) {
         await showLootPutInGoldMenu(menu.container, false, { held: menu.held });
+        game.context.move = 0;
+        return true;
+    }
+    if (!menu.putIn && (ch === '\r' || ch === '\n')) {
+        await showLootTakeOutObjectMenu(menu.container, false, { held: menu.held });
         game.context.move = 0;
         return true;
     }
@@ -14932,7 +14983,7 @@ async function showNextStartupPreambleMessage() {
     game._more = needsMore;
     game._more_dismissals_remaining = 0;
     game._startup_preamble_more_active = needsMore;
-    game._startup_preamble_done_waiting_tutorial = !hasMorePreamble;
+    game._startup_preamble_done_waiting_tutorial = hasTutorialPrompt;
     game.context.move = 0;
     return true;
 }
@@ -15060,6 +15111,18 @@ async function handleQueuedMore(ch) {
     game._pending_more_strict_keys = false;
     game._more_dismissals_remaining--;
     game._monster_more_accepts_any_key = false;
+    if (game._avoid_pool_tip_pending && game._more_dismissals_remaining <= 0) {
+        // C refs: src/hack.c:swim_move_danger(), src/hack.c:handle_tip().
+        // The liquid-avoidance line owns the blocking More; dismissing it
+        // immediately prints the once-per-game swim tip as the next topline.
+        game._avoid_pool_tip_pending = false;
+        game._more = false;
+        game._more_dismissals_remaining = 0;
+        clear_pending_message();
+        await pline("(Tip: use 'm' prefix to step in if you really want to.)");
+        game.context.move = 0;
+        return true;
+    }
     game._monster_topline_stop_after_esc_more = ch === '\x1b'
         && pausedMonsterTurn
         && (monsterAttackResume
@@ -16386,9 +16449,16 @@ async function showInventoryMenu() {
     }
 
     const maxLen = Math.max(0, ...lines.map((line) => line.text.length));
-    const menuCol = multipage ? 1 : Math.max(1, Math.min(COLNO - 1, COLNO - maxLen - 2));
-    const clearCol = Math.max(0, menuCol - 1);
-    for (let row = 0; row < lines.length; row++) {
+    const ttyMenuWidth = maxLen + 2;
+    // C ref: win/tty/wintty.c:tty_display_nhwindow().  TTY menus use a
+    // right-side corner window only when both width and height leave room.
+    const fullScreenMenu = multipage
+        || lines.length >= displayRows
+        || COLNO - ttyMenuWidth - 1 <= 10;
+    const menuCol = fullScreenMenu ? 1 : Math.max(1, Math.min(COLNO - 1, COLNO - maxLen - 2));
+    const clearCol = fullScreenMenu ? 0 : Math.max(0, menuCol - 1);
+    const clearRows = fullScreenMenu ? displayRows : lines.length;
+    for (let row = 0; row < clearRows; row++) {
         display.putstr(clearCol, row, ' '.repeat(COLNO - clearCol), NO_COLOR, 0);
     }
     for (let row = 0; row < lines.length; row++) {
@@ -17389,7 +17459,8 @@ function roleStatusInsightLines(level) {
 
 function roleMagicAttributesInsightLines() {
     // C ref: src/insight.c:attributes_enlightenment().
-    if (!(game.flags?.debug || game.wizard)) return [];
+    const wizardInsight = !!(game.flags?.debug || game.wizard);
+    if (!(wizardInsight || game.flags?.explore)) return [];
     const grayDragonMail = (game.inventory || [])
         .some((obj) => obj?.otyp === GRAY_DRAGON_SCALE_MAIL && objectIsWorn(obj));
     const teleRing = (game.inventory || []).find((obj) => obj?.otyp === RIN_TELEPORT_CONTROL);
@@ -17399,7 +17470,7 @@ function roleMagicAttributesInsightLines() {
     const pious = piousness(true, 'aligned');
     if ((game.u?.ualign?.record ?? 0) >= 0) lines.push(`  You are ${pious}.`);
     else lines.push(`  You have ${pious}.`);
-    lines.push(`  Your alignment is ${game.u?.ualign?.record ?? 0}.`);
+    if (wizardInsight) lines.push(`  Your alignment is ${game.u?.ualign?.record ?? 0}.`);
     if (grayDragonMail) lines.push('  You are magic-protected because of your gray dragon scale mail.');
     if (game.u?.uprops?.warning) lines.push('  You are warned because of your experience.');
     if (game.u?.uprops?.displaced) lines.push('  You are displaced because of your cloak of displacement.');
@@ -17422,10 +17493,10 @@ function roleMagicAttributesInsightLines() {
     if ((game.inventory || []).some((obj) => obj?.otyp === AMULET_OF_LIFE_SAVING && objectIsWorn(obj))) {
         lines.push('  Your life will be saved.');
     }
-    if (luck < 0) lines.push(`  You are unlucky (${luck}).`);
-    else if (luck > 0) lines.push(`  You are lucky (${luck}).`);
-    else lines.push('  Your luck is zero.');
-    lines.push(`  You can't safely pray (${prayerTimeout}).`);
+    if (luck < 0) lines.push(`  You are unlucky${wizardInsight ? ` (${luck})` : ''}.`);
+    else if (luck > 0) lines.push(`  You are lucky${wizardInsight ? ` (${luck})` : ''}.`);
+    else if (wizardInsight) lines.push('  Your luck is zero.');
+    lines.push(`  You can't safely pray${wizardInsight ? ` (${prayerTimeout})` : ''}.`);
     const mortality = game.u?.umortality || 0;
     if (mortality > 0) lines.push(`  You have been killed ${insightMortalityWord(mortality)}.`);
     return lines;
@@ -17484,8 +17555,9 @@ function roleAttributesAllLines() {
         '',
         ' Miscellaneous:',
     ];
-    if (game.flags?.debug || game.wizard) {
-        lines.push('  You are running in debug mode.');
+    if (game.flags?.debug || game.wizard || game.flags?.explore) {
+        const mode = game.flags?.explore && !(game.flags?.debug || game.wizard) ? 'explore' : 'debug';
+        lines.push(`  You are running in ${mode} mode.`);
         lines.push('  You haven\'t encountered any bones levels.');
     }
     lines.push('  Total elapsed playing time is none.');
@@ -21732,6 +21804,8 @@ export async function rhack(key) {
             if (ch === 'n' || ch === '\x1b') {
                 clear_pending_message();
                 game._tutorial_answered = true;
+                game._startup_preamble_done_waiting_tutorial = false;
+                game._startup_preamble_more_active = false;
                 game.context.move = 0;
                 return;
             }
@@ -21740,6 +21814,8 @@ export async function rhack(key) {
                 // the answer so regular play continues without corrupting RNG.
                 clear_pending_message();
                 game._tutorial_answered = true;
+                game._startup_preamble_done_waiting_tutorial = false;
+                game._startup_preamble_more_active = false;
                 game.context.move = 0;
                 return;
             }
@@ -22088,6 +22164,7 @@ export async function rhack(key) {
         && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b')) {
         game._avoid_pool_tip_pending = false;
         game._more = false;
+        clear_pending_message();
         await pline("(Tip: use 'm' prefix to step in if you really want to.)");
         game.context.move = 0;
         return;

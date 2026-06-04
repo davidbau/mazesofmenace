@@ -31566,6 +31566,58 @@ export function landMonsterThrownObject(missile, x, y, {
     };
 }
 
+// C done_object_cleanup() salvages gt.thrownobj for bones without drop_throw().
+function deathCleanupThrownObjectLandingSpot() {
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    let x = ux + (game.u?.dx || 0);
+    let y = uy + (game.u?.dy || 0);
+    const loc = game.level?.at?.(x, y);
+    if (!isok(x, y) || !loc || !ACCESSIBLE(loc.typ)) {
+        x = ux;
+        y = uy;
+    }
+    return { x, y };
+}
+
+function placeDeathCleanupThrownObject(attack) {
+    const missile = attack?.deathCleanupThrownObject;
+    if (!missile || !game.level) return null;
+    game.level.objects ??= [];
+    const sameProjectile = obj => obj?.transientProjectile
+        && (missile.id != null ? obj.id === missile.id : obj === missile);
+    const projectile = game.level.objects.find(sameProjectile) || missile;
+    const oldX = projectile.ox;
+    const oldY = projectile.oy;
+    const projectileColor = projectile.color;
+    game.level.objects = game.level.objects
+        .filter(obj => obj === projectile || !sameProjectile(obj));
+    if (!game.level.objects.includes(projectile)) game.level.objects.push(projectile);
+
+    const { x, y } = deathCleanupThrownObjectLandingSpot();
+    Object.assign(projectile, missile, {
+        ox: x,
+        oy: y,
+        quan: Math.max(1, attack.deathCleanupQuan || missile.quan || 1),
+        glyph: attack.deathCleanupGlyph || missile.glyph || ')',
+        color: attack.deathCleanupColor ?? projectileColor ?? missile.color ?? CLR_CYAN,
+        hidden: false,
+        buried: false,
+        transientProjectile: false,
+        _deathCleanupThrownObject: true,
+    });
+    delete projectile.line;
+    delete projectile.nobj;
+    delete projectile.nexthere;
+
+    const stacked = stackDroppedFloorObject(projectile);
+    if (oldX != null && oldY != null) newsym(oldX, oldY);
+    newsym(x, y);
+    if (!(game.level.objects || []).some(obj => obj.transientProjectile))
+        game._clear_transient_projectiles_after_more = 0;
+    return stacked;
+}
+
 function appendToplineAfterMoreMessages(messages) {
     for (const msg of messages || []) {
         if (!msg) continue;
@@ -47429,43 +47481,44 @@ export async function rhack(_cmd) {
             if (deferredAttackAfterMore) {
                 const attack = deferredAttackAfterMore;
                 game._deferred_attack_damage_after_more = null;
-	                game._deferred_lethal_attack_after_more = null;
-	                const deferredDamage = attack.damage || 0;
-	                const deferredLethal = deferredDamage >= (game.u?.uhp || 0);
-	                if (deferredDamage && !deferredLethal)
-	                    game.u.uhp = Math.max(0, (game.u?.uhp || 0) - deferredDamage);
-	                const lifesaving = (game.inventory || []).find(item =>
-	                    item.worn && String(item.kind || item.actualKind || item.line || '').includes('life saving'));
-	                if (lifesaving && deferredLethal) {
-	                    rn2(19);
-	                    removeInventoryItem(lifesaving);
-	                    game._life_saving_refresh_con = 1;
-	                    if (game.u) game.u.uhp = 0;
-	                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
-	                    game._command_mode = 'lifeSavingMore';
-	                    await setMessage('You die...  But wait...  Your medallion begins to glow!', true);
-	                    return;
-	                }
-		                if (deferredLethal) {
-		                    game._pending_time_passed = 0;
-		                    game.context.move = 0;
-		                    game._process_command_time_now = 0;
-	                    game._run_steps_remaining = 0;
-	                    game._command_mode = 'deathDieMore';
-	                    if (attack.currentMove) game._death_current_move = 1;
-	                    if (game.u) {
-	                        game._death_status_hp_before_zero = attack.holdStatusHp && !game._death_taker ? game.u.uhp : null;
-	                        game.u.uhp = 0;
-	                    }
-	                    const deathMessage = game._death_taker
-	                        ? `You die...  ${game._death_taker} takes all your possessions.`
-	                        : 'You die...';
-	                    game._death_taker = '';
-                        prepareDeathBones();
-	                    await setMessage(deathMessage, true);
-		                    return;
-		                }
-		            }
+                game._deferred_lethal_attack_after_more = null;
+                const deferredDamage = attack.damage || 0;
+                const deferredLethal = deferredDamage >= (game.u?.uhp || 0);
+                if (deferredDamage && !deferredLethal)
+                    game.u.uhp = Math.max(0, (game.u?.uhp || 0) - deferredDamage);
+                const lifesaving = (game.inventory || []).find(item =>
+                    item.worn && String(item.kind || item.actualKind || item.line || '').includes('life saving'));
+                if (lifesaving && deferredLethal) {
+                    rn2(19);
+                    removeInventoryItem(lifesaving);
+                    game._life_saving_refresh_con = 1;
+                    if (game.u) game.u.uhp = 0;
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                    game._command_mode = 'lifeSavingMore';
+                    await setMessage('You die...  But wait...  Your medallion begins to glow!', true);
+                    return;
+                }
+                if (deferredLethal) {
+                    game._pending_time_passed = 0;
+                    game.context.move = 0;
+                    game._process_command_time_now = 0;
+                    game._run_steps_remaining = 0;
+                    game._command_mode = 'deathDieMore';
+                    if (attack.currentMove) game._death_current_move = 1;
+                    if (game.u) {
+                        game._death_status_hp_before_zero = attack.holdStatusHp && !game._death_taker ? game.u.uhp : null;
+                        game.u.uhp = 0;
+                    }
+                    const deathMessage = game._death_taker
+                        ? `You die...  ${game._death_taker} takes all your possessions.`
+                        : 'You die...';
+                    game._death_taker = '';
+                    placeDeathCleanupThrownObject(attack);
+                    prepareDeathBones();
+                    await setMessage(deathMessage, true);
+                    return;
+                }
+            }
             if (game._deferred_wand_hit_after_more) {
                 game._deferred_wand_hit_after_more = 0;
                 if (game._deferred_wand_hit_more_after_more) {
