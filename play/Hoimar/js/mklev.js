@@ -301,6 +301,10 @@ const MR_STONE = 0x80;
 const G_LGROUP = 0x0040;
 const G_SGROUP = 0x0080;
 const CORPSTAT_HISTORIC = 0x04;
+const CORPSTAT_FEMALE = 0x01;
+const CORPSTAT_MALE = 0x02;
+const CORPSTAT_NEUTER = 0x03;
+const CORPSTAT_SPE_VAL = 0x07;
 
 const SPLEV_LEFT = 1;
 const SPLEV_CENTER = 3;
@@ -1197,9 +1201,15 @@ function mkbox_cnts(box) {
     }
 
     for (n = rn2(n + 1); n > 0; n--) {
-        const otmp = box?.otyp === ICE_BOX
+        const iceBox = box?.otyp === ICE_BOX;
+        const otmp = iceBox
             ? mksobj(CORPSE, true, false)
             : mkobj(pick_prob_entry(boxiprobs).iclass, false);
+        if (iceBox && otmp) {
+            // C ref: src/mkobj.c:mkbox_cnts().  Ice-box corpse age has a
+            // container-specific frozen meaning after ordinary corpse init.
+            otmp.age = 0;
+        }
         if (otmp?.oclass === COIN_CLASS) {
             otmp.quan = rnd(level_difficulty() + 2) * rnd(75);
             } else {
@@ -1244,7 +1254,7 @@ export function mksobj(otyp, init, artif) {
     if (otyp === STATUE && !init) {
         if (otmp.corpsenm == null) otmp.corpsenm = rndmonnum();
         const ptr = monster_ptr(otmp.corpsenm);
-        if (ptr && !ptr.neuter && !ptr.female && !ptr.male) rn2(2);
+        if (ptr) otmp.spe = corpseStatSpe(ptr);
         set_corpsenm(otmp, otmp.corpsenm);
     }
     if (otyp === FIGURINE) {
@@ -1252,7 +1262,7 @@ export function mksobj(otyp, init, artif) {
         // species metadata after mksobj_init(), even for init=FALSE.
         if (otmp.corpsenm == null) otmp.corpsenm = rndmonnum();
         const ptr = monster_ptr(otmp.corpsenm);
-        if (ptr && !ptr.neuter && !ptr.female && !ptr.male) rn2(2);
+        if (ptr) otmp.spe = corpseStatSpe(ptr);
         set_corpsenm(otmp, otmp.corpsenm);
     }
     if (otyp === SPE_NOVEL) {
@@ -1476,10 +1486,8 @@ function mksobj_init(otmp, otyp, artif) {
     mkobj_erosions(otmp);
 
     const corpsePtr = monsterPtr(otmp.corpsenm);
-    if ((otyp === STATUE || otyp === CORPSE) && corpsePtr
-        && !corpsePtr.neuter && !corpsePtr.male && !corpsePtr.female) {
-        rn2(2);
-    }
+    if ((otyp === STATUE || otyp === CORPSE) && corpsePtr)
+        otmp.spe = corpseStatSpe(corpsePtr);
     if (otyp === CORPSE) {
         if (game._live_corpse_timeout) {
             start_corpse_timeout(otmp);
@@ -1552,9 +1560,10 @@ export function place_object(otmp, x, y) {
     return otmp;
 }
 
-function stackable_object_basic(obj) {
-    if (!obj || obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN)
-        return false;
+function stackable_object_basic(obj, opts = {}) {
+    if (!obj) return false;
+    if (obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN)
+        return !!opts.includeMonsterFood;
     if (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS
         || obj.oclass === POTION_CLASS || obj.oclass === SCROLL_CLASS
         || obj.oclass === SPBOOK_CLASS || obj.oclass === FOOD_CLASS)
@@ -1568,13 +1577,16 @@ function stackable_scalar(obj, key) {
     return obj?.[key] ?? false;
 }
 
-function mergable_object_basic(into, obj) {
+function mergable_object_basic(into, obj, opts = {}) {
     // C ref: invent.c:mergable().  This covers ordinary stackable floor
     // objects; container/mail/timer edge cases are outside current evidence.
     if (!into || !obj || into === obj || into.otyp !== obj.otyp) return false;
-    if (!stackable_object_basic(into) || !stackable_object_basic(obj)) return false;
+    if (!stackable_object_basic(into, opts) || !stackable_object_basic(obj, opts)) return false;
     if (into.oartifact || obj.oartifact || into.oname || obj.oname) return false;
     if (into.contents || obj.contents || into.cobj || obj.cobj) return false;
+    if (into.oclass === FOOD_CLASS
+        && ((into.oeaten || 0) !== (obj.oeaten || 0)
+            || !!into.orotten !== !!obj.orotten)) return false;
     for (const key of [
         'cursed', 'blessed', 'spe', 'unpaid', 'no_charge', 'obroken',
         'otrapped', 'lamplit', 'oeroded', 'oeroded2', 'greased',
@@ -1664,10 +1676,26 @@ function weight(otmp) {
     return otmp.owt || 1;
 }
 function add_to_container(container, otmp) {
-    // C ref: src/mkobj.c:add_to_container().  The JS representation keeps the
-    // contained chain as an array, newest object first like C's cobj list.
     if (!container || !otmp) return otmp;
     container.cobj = container.cobj || [];
+    // C ref: src/mkobj.c:add_to_container().  Scan the contained chain before
+    // linking the new object; corpses can merge when species and corpse-stat
+    // spe match.
+    for (const existing of container.cobj) {
+        if (!mergable_object_basic(existing, otmp, { includeMonsterFood: true }))
+            continue;
+        const oldQuan = existing.quan || 1;
+        const newQuan = otmp.quan || 1;
+        if (Number.isFinite(existing.age) && Number.isFinite(otmp.age)) {
+            existing.age = Math.trunc(((existing.age * oldQuan) + (otmp.age * newQuan))
+                / (oldQuan + newQuan));
+        }
+        existing.quan = oldQuan + newQuan;
+        existing.owt = weight(existing);
+        return existing;
+    }
+    // The JS representation keeps the contained chain as an array, newest
+    // object first like C's cobj list.
     Object.defineProperty(otmp, 'ocontainer', {
         value: container,
         enumerable: false,
@@ -1678,6 +1706,18 @@ function add_to_container(container, otmp) {
     container.cobj.unshift(otmp);
     return otmp;
 }
+
+function corpseStatSpe(ptr) {
+    // C ref: src/mkobj.c:mksobj().  CORPSE, STATUE, and FIGURINE record
+    // generated gender in obj->spe; mergable() treats different spe values as
+    // distinct stacks.
+    if (!ptr) return 0;
+    if (ptr.neuter) return CORPSTAT_NEUTER;
+    if (ptr.female) return CORPSTAT_FEMALE;
+    if (ptr.male) return CORPSTAT_MALE;
+    return rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE;
+}
+
 function sobj_at(otyp, x, y) {
     return (game.level?.objects || []).find(o => o.otyp === otyp && o.ox === x && o.oy === y) || false;
 }
@@ -1937,6 +1977,7 @@ export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // corpsenm before mkcorpstat's caller-supplied type overrides it.
     // RNG: next_ident from mksobj
     const otmp = mksobj(objtyp, !!(flags & 8), false);
+    otmp.spe = flags & CORPSTAT_SPE_VAL;
     if (pm !== null && pm !== undefined) {
         const oldCorpsenm = otmp.corpsenm;
         set_corpsenm(otmp, pm);

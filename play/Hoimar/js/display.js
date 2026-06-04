@@ -247,6 +247,19 @@ function object_glyph_for_display(obj, x, y, visible) {
     return { ch: obj.ch || '?', color: obj.color ?? NO_COLOR };
 }
 
+function object_pile_display_attr(x, y, obj) {
+    // C refs: include/display.h:obj_is_piletop(),
+    // src/options.c:opt_hilite_pile.  The tty renderer marks the top glyph
+    // for a stack of distinct floor objects when hilite_pile is enabled.
+    if (!game.iflags?.hilite_pile || !obj) return 0;
+    let count = 0;
+    for (const candidate of game.level?.objects || []) {
+        if (candidate.ox === x && candidate.oy === y && ++count > 1)
+            return ATR_INVERSE;
+    }
+    return 0;
+}
+
 export function object_glyph_for_menu(obj) {
     // C ref: invent.c:display_pickinv().  Menu entries still compute
     // obj_to_glyph(..., rn2_on_display_rng) even when the tty menu renders
@@ -1008,8 +1021,12 @@ export function newsym(x, y) {
                 loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
             }
             // Out of sight but remembered - show remembered glyph.
+            const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
+            const attr = obj
+                ? object_pile_display_attr(x, y, obj)
+                : (loc.remembered_glyph.attr || 0);
             show_glyph_cell(x, y, loc.remembered_glyph.ch,
-                loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+                loc.remembered_glyph.color, loc.remembered_glyph.decgfx, attr);
         } else {
             show_glyph_cell(x, y, ' ', NO_COLOR, false);
         }
@@ -1026,10 +1043,12 @@ export function newsym(x, y) {
     let draw_ch = tg.ch;
     let draw_color = tg.color;
     let draw_dec = tg.dec;
+    let draw_attr = 0;
 
     if (trap?.tseen && !covered) {
         const tr = trap_glyph(trap);
         draw_ch = tr.ch; draw_color = tr.color; draw_dec = tr.dec;
+        draw_attr = 0;
     }
     const ep = engraving_at(x, y);
     if (ep && spot_shows_engravings(loc) && !covered && (visible || ep.erevealed)) {
@@ -1040,10 +1059,12 @@ export function newsym(x, y) {
     if (obj && !covered) {
         const og = object_glyph_for_display(obj, x, y, visible);
         draw_ch = og.ch; draw_color = og.color; draw_dec = false;
+        draw_attr = object_pile_display_attr(x, y, obj);
     }
     let memory_ch = draw_ch;
     let memory_color = draw_color;
     let memory_dec = draw_dec;
+    let memory_attr = draw_attr;
     if (obj && !covered && obj.otyp === STATUE
         && (game.u?.uprops?.hallucination || game.u?.uhallucination)) {
         // C ref: display.c:map_object(). Hallucinated statues are shown as
@@ -1058,24 +1079,26 @@ export function newsym(x, y) {
             const hg = hero_glyph();
             show_glyph_cell(x, y, hg.ch, hg.color, hg.dec);
         } else {
-            show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
+            show_glyph_cell(x, y, draw_ch, draw_color, draw_dec, draw_attr);
         }
         return;
     }
     if (monster_visible(mon)) {
         const mg = monster_glyph(mon);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
+        draw_attr = 0;
     } else if (mon) {
         const wg = warning_glyph(mon);
         if (wg) {
             draw_ch = wg.ch; draw_color = wg.color; draw_dec = false;
+            draw_attr = 0;
         }
     }
 
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
-    show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
+    show_glyph_cell(x, y, draw_ch, draw_color, draw_dec, draw_attr);
     if (game.level?.flags?.hero_memory) {
-        loc.remembered_glyph = { ch: memory_ch, color: memory_color, decgfx: memory_dec };
+        loc.remembered_glyph = { ch: memory_ch, color: memory_color, decgfx: memory_dec, attr: memory_attr };
     }
 }
 
@@ -1086,8 +1109,12 @@ export async function docrt() {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
             if (loc?.remembered_glyph) {
+                const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
+                const attr = obj
+                    ? object_pile_display_attr(x, y, obj)
+                    : (loc.remembered_glyph.attr || 0);
                 show_glyph_cell(x, y, loc.remembered_glyph.ch,
-                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx, attr);
             }
         }
     see_monsters();

@@ -143,6 +143,18 @@ const OBJECT_WEIGHT_OVERRIDES = new Map([
     [MAGIC_MARKER, 2],
 ]);
 
+const KNOWN_FOOD_NAMES = new Map([
+    [TRIPE_RATION, 'tripe ration'],
+    [MEATBALL, 'meatball'],
+    [MEAT_STICK, 'meat stick'],
+    [ENORMOUS_MEATBALL, 'enormous meatball'],
+    [APPLE, 'apple'],
+    [BANANA, 'banana'],
+    [CARROT, 'carrot'],
+    [CLOVE_OF_GARLIC, 'clove of garlic'],
+    [FOOD_RATION, 'food ration'],
+]);
+
 const CORPSE_STATS = new Map([
     // C ref: include/monsters.h SIZ(cwt, cnutrit, ...).
     ['JACKAL', { cwt: 300, cnutrit: 250 }],
@@ -735,7 +747,10 @@ function object_name(obj) {
     if (obj?.otyp === JAVELIN) return 'a throwing spear';
     if (obj?.otyp === ORCISH_DAGGER) return 'a crude dagger';
     if (obj?.otyp === OIL_LAMP || obj?.otyp === MAGIC_LAMP) return 'a lamp';
-    if (obj?.otyp === FOOD_RATION) return 'a food ration';
+    if (KNOWN_FOOD_NAMES.has(obj?.otyp)) {
+        const name = KNOWN_FOOD_NAMES.get(obj.otyp);
+        return `${indefinite_article(name)} ${name}`;
+    }
     if (oclass === AMULET_CLASS && !obj?.knownName) {
         const desc = obj?.appearanceName || getObjectDescription(obj.otyp);
         if (desc) return `a ${desc} amulet`;

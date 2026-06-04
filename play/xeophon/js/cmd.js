@@ -1496,6 +1496,13 @@ const RANSEUR = 10055;
 const PARTISAN = 10056;
 const GLAIVE = 10057;
 const SPETUM = 10058;
+const HALBERD = 10172;
+const BARDICHE = 10173;
+const VOULGE = 10174;
+const FAUCHARD = 10175;
+const GUISARME = 10176;
+const BILL_GUISARME = 10177;
+const BEC_DE_CORBIN = 10178;
 const FLAIL = 10060;
 const LUCERN_HAMMER = 10071;
 const DWARVISH_MATTOCK = 10104;
@@ -1977,7 +1984,14 @@ const WISH_BASE_OBJECTS = new Map([
     ['ranseur', { otyp: RANSEUR, cls: 'weapon', glyph: ')', kind: 'hilted polearm', actualKind: 'ranseur', known: false, owt: 50 }],
     ['spetum', { otyp: SPETUM, cls: 'weapon', glyph: ')', kind: 'forked polearm', actualKind: 'spetum', known: false, owt: 50 }],
     ['glaive', { otyp: GLAIVE, cls: 'weapon', glyph: ')', kind: 'single-edged polearm', actualKind: 'glaive', known: false, owt: 75 }],
+    ['halberd', { otyp: HALBERD, cls: 'weapon', glyph: ')', kind: 'angled poleaxe', actualKind: 'halberd', known: false, owt: 150 }],
+    ['bardiche', { otyp: BARDICHE, cls: 'weapon', glyph: ')', kind: 'long poleaxe', actualKind: 'bardiche', known: false, owt: 120 }],
+    ['voulge', { otyp: VOULGE, cls: 'weapon', glyph: ')', kind: 'pole cleaver', actualKind: 'voulge', known: false, owt: 125 }],
+    ['fauchard', { otyp: FAUCHARD, cls: 'weapon', glyph: ')', kind: 'pole sickle', actualKind: 'fauchard', known: false, owt: 60 }],
+    ['guisarme', { otyp: GUISARME, cls: 'weapon', glyph: ')', kind: 'pruning hook', actualKind: 'guisarme', known: false, owt: 80 }],
+    ['bill-guisarme', { otyp: BILL_GUISARME, cls: 'weapon', glyph: ')', kind: 'hooked polearm', actualKind: 'bill-guisarme', known: false, owt: 120 }],
     ['lucern hammer', { otyp: LUCERN_HAMMER, cls: 'weapon', glyph: ')', kind: 'pronged polearm', actualKind: 'lucern hammer', known: false, owt: 150 }],
+    ['bec de corbin', { otyp: BEC_DE_CORBIN, cls: 'weapon', glyph: ')', kind: 'beaked polearm', actualKind: 'bec de corbin', known: false, owt: 100 }],
     ['bullwhip', { otyp: BULLWHIP, cls: 'weapon', glyph: ')', kind: 'bullwhip', actualKind: 'bullwhip' }],
     ['silver saber', { otyp: SILVER_SABER, cls: 'weapon', glyph: ')', kind: 'silver saber', actualKind: 'silver saber' }],
     ['dwarvish mattock', { otyp: DWARVISH_MATTOCK, cls: 'weapon', glyph: ')', kind: 'dwarvish mattock', actualKind: 'dwarvish mattock' }],
@@ -2125,7 +2139,9 @@ const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['scimitar', 16], ['broadsword', 9], ['elven broadsword', 5],
     ['long sword', 51], ['two-handed sword', 23], ['katana', 5],
     ['flail', 41], ['partisan', 6], ['ranseur', 6], ['spetum', 6], ['glaive', 9],
-    ['lucern hammer', 6],
+    ['halberd', 9], ['bardiche', 5], ['voulge', 5], ['fauchard', 7],
+    ['guisarme', 7], ['bill-guisarme', 5], ['lucern hammer', 6],
+    ['bec de corbin', 5],
     ['bullwhip', 3], ['silver saber', 7], ['dwarvish mattock', 14],
     ['pick-axe', 21], ['pick axe', 21], ['pickaxe', 21], ['pickax', 21], ['pick-ax', 21],
     ['cream pie', 26], ['lump of royal jelly', 1], ['lumps of royal jelly', 1], ['eucalyptus leaf', 4], ['kelp frond', 1], ['kelp fronds', 1],
@@ -2379,6 +2395,20 @@ const WISH_OBJECT_RANGES = new Map([
         ['long sword', 50],
         ['two-handed sword', 22],
         ['katana', 4],
+    ]],
+    ['polearm', [
+        ['partisan', 0],
+        ['ranseur', 0],
+        ['spetum', 0],
+        ['glaive', 0],
+        ['halberd', 0],
+        ['bardiche', 0],
+        ['voulge', 0],
+        ['fauchard', 0],
+        ['guisarme', 0],
+        ['bill-guisarme', 0],
+        ['lucern hammer', 0],
+        ['bec de corbin', 0],
     ]],
 ]);
 const WISH_OBJECT_RANGE_CLASSES = new Map([
@@ -22513,6 +22543,42 @@ function applyEatenRingEffect(item, messages) {
     }
 }
 
+function eatenAmuletStrangulationChoke(item, messages) {
+    exerciseAttribute(A_CON, false);
+    if (heroIsBreathlessForChoke() || heroHasHungerPropertyForChoke()
+        || (!heroIsStrangledForChoke() && !rn2(20))) {
+        messages.push('You choke, but recover your composure.');
+        return true;
+    }
+
+    messages.push(`You choke over your ${metallivoreFoodWord(item)}.`);
+    game._death_cause = `choked on ${articleFor(pickupObjectName({ ...item, quan: 1 }))}`;
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) {
+            game.u.uhp = 0;
+            game.u.uhunger = 900;
+            refreshHeroEatingHungerStatus();
+        }
+        messages.push('You die...');
+        messages.push(`But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+        game._eaten_accessory_command_mode = 'lifeSavingMore';
+        game._eaten_accessory_more = 1;
+        game._eaten_accessory_move = 0;
+        return true;
+    }
+
+    if (game.u) game.u.uhp = 0;
+    game._pending_time_passed = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    prepareDeathBones();
+    messages.push('You die...');
+    game._eaten_accessory_command_mode = 'deathDieMore';
+    game._eaten_accessory_more = 1;
+    game._eaten_accessory_move = 0;
+    return true;
+}
+
 const EATEN_AMULET_PROPERTY_FIELDS = new Map([
     ['amulet of esp', 'telepathy'],
     ['amulet versus poison', 'poisonResistance'],
@@ -22556,14 +22622,7 @@ function applyEatenAmuletEffect(item, messages) {
         }
         return true;
     case 'amulet of strangulation':
-        if (game.u) {
-            game.u.uhp = 0;
-            game.u.strangled = true;
-            game._death_cause = 'killed by strangulation';
-            messages.push('You choke over your food.');
-            messages.push('You die...');
-        }
-        return true;
+        return eatenAmuletStrangulationChoke(item, messages);
     case 'amulet of life saving':
     case 'amulet of flying':
     case 'amulet of reflection':
@@ -22583,6 +22642,16 @@ function markEatenAccessoryTasted(item) {
     item.known = true;
     item.dknown = true;
     recordObservedObjectDiscovery(item);
+}
+
+function clearEatenWornRingState(item) {
+    if (!wornRingItem(item)) return;
+    delete item.worn;
+    delete item.owornmask;
+    delete item.wornMask;
+    delete item._wornMask;
+    if (typeof item.line === 'string')
+        item.line = item.line.replace(/ \(on (?:left|right) hand\)/, '');
 }
 
 function applyEatenMetalAccessoryEffects(item, messages) {
@@ -22665,13 +22734,20 @@ async function eatHeroNonFoodMetal(item, { floorObject = false } = {}) {
     }
 
     addHeroNutrition(heroMetalNonFoodNutrition(item));
+    if (!floorObject && objectIsRingLike(item)) clearEatenWornRingState(item);
     applyEatenMetalAccessoryEffects(item, messages);
+    const accessoryCommandMode = game._eaten_accessory_command_mode || null;
+    const accessoryMore = !!game._eaten_accessory_more;
+    const accessoryMove = game._eaten_accessory_move;
+    delete game._eaten_accessory_command_mode;
+    delete game._eaten_accessory_more;
+    delete game._eaten_accessory_move;
     if (floorObject) removeEatenFloorMetalObject(item);
     else removeInventoryItem(item, item.quan || 1);
     game._pet_food_scan_inventory = game.inventory || [];
-    await setMessage(messages.join('  ') || `This ${name} is delicious!`, messages.length > 1);
-    game._command_mode = null;
-    game.context.move = 1;
+    await setMessage(messages.join('  ') || `This ${name} is delicious!`, messages.length > 1 || accessoryMore);
+    game._command_mode = accessoryCommandMode;
+    game.context.move = accessoryMove ?? 1;
     return true;
 }
 
@@ -32811,9 +32887,18 @@ const WISH_NAME_ALIASES = new Map([
     ['vulgar polearm', 'partisan'],
     ['hilted polearm', 'ranseur'],
     ['forked polearm', 'spetum'],
+    ['polearms', 'polearm'],
     ['single-edged polearm', 'glaive'],
     ['single edged polearm', 'glaive'],
+    ['angled poleaxe', 'halberd'],
+    ['long poleaxe', 'bardiche'],
+    ['pole cleaver', 'voulge'],
+    ['pole sickle', 'fauchard'],
+    ['pruning hook', 'guisarme'],
+    ['hooked polearm', 'bill-guisarme'],
+    ['bill guisarme', 'bill-guisarme'],
     ['pronged polearm', 'lucern hammer'],
+    ['beaked polearm', 'bec de corbin'],
     ['bags of tricks', 'bag of tricks'],
     ['wolfsbane', 'sprig of wolfsbane'],
     ['garlic', 'clove of garlic'],
@@ -36580,8 +36665,6 @@ function tipHatMonsterSound(mon) {
     if (mon?.nemesis || data.nemesis) return 'nemesis';
     if (tipHatMonsterIsShopkeeperType(mon, name)) return 'sell';
     if (tipHatMonsterIsPriestType(mon, name)) return 'priest';
-    if (tipHatMonsterHasOrcSound(mon, name)) return 'orc';
-    if (/^(gremlin|leprechaun)$/.test(name)) return 'laugh';
     {
         const generatedSound = tipHatGeneratedMonsterSound(name);
         if (generatedSound) return generatedSound;
@@ -36590,6 +36673,8 @@ function tipHatMonsterSound(mon) {
     if (/^(death|pestilence|famine)$/.test(name)) return 'rider';
     if (tipHatMonsterIsWizardCuss(mon, name)) return 'cuss';
     if (/\bzombie$/.test(name) || (mlet === 'zombie' && name !== 'ghoul')) return 'groan';
+    if (tipHatMonsterHasOrcSound(mon, name)) return 'orc';
+    if (/^(gremlin|leprechaun)$/.test(name)) return 'laugh';
     if (name === 'shrieker') return 'shriek';
     if (/^(mumak|mastodon)$/.test(name)) return 'trumpet';
     if (/^(rothe|minotaur)$/.test(name)) return 'moo';

@@ -3,10 +3,27 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { append_pline, flush_screen, serialize_terminal_grid } from './display.js';
+import { append_pline } from './display.js';
 import { Is_astralevel, Is_oracle_level, ROOMOFFSET, SHOPBASE, VAULT } from './const.js';
 
 const GOLD_PIECE = 438;
+
+function heroOccupiesVault() {
+    for (const roomno of game.u?.urooms || []) {
+        const room = game.level?.rooms?.[roomno - ROOMOFFSET];
+        if (room?.rtype === VAULT) return true;
+    }
+    return false;
+}
+
+function activeVaultGuardOnLevel() {
+    const uz = game.u?.uz || {};
+    return (game.level?.monsters || []).some((mon) =>
+        mon?.isgd
+        && mon.mextra?.egd?.gdlevel?.dnum === uz.dnum
+        && mon.mextra?.egd?.gdlevel?.dlevel === uz.dlevel
+        && (!mon.mx || !mon.mextra?.egd?.gddone));
+}
 
 async function sound_pline(msg) {
     const pending = game._pending_message || '';
@@ -20,22 +37,6 @@ async function sound_pline(msg) {
     }
     await append_pline(msg);
     game._last_topline_can_force_more = true;
-    if (game.context?.run) {
-        // C ref: allmain.c:runmode_delay_output().  Messages emitted while
-        // a run/rush is active block the repeated movement at the topline.
-        game.context.run.stopBeforeOpenDoor = true;
-        game._more = true;
-        game._more_dismissals_remaining = (game._more_dismissals_remaining || 0) + 1;
-        game._run_sound_more_latched = true;
-        game._run_sound_more_defer_floor_look = true;
-        await flush_screen(1);
-        game._run_sound_more_screen = serialize_terminal_grid(game.nhDisplay);
-        game._run_sound_more_cursor = [
-            game.nhDisplay?.cursorCol ?? 0,
-            game.nhDisplay?.cursorRow ?? 0,
-            1,
-        ];
-    }
     return false;
 }
 
@@ -90,6 +91,9 @@ export async function dosounds() {
             lvl.flags.has_vault = false;
             return;
         }
+        // C ref: src/vault.c:gd_sound().  Vault ambience is suppressed while
+        // the hero occupies any vault or a vault guard is active on this level.
+        if (heroOccupiesVault() || activeVaultGuardOnLevel()) return;
         const choice = rn2(2) + hallu;
         if (choice === 1) {
             const goldInVault = (lvl.objects || []).some((obj) =>

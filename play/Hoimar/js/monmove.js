@@ -9,7 +9,7 @@ import {
 } from './mklev.js';
 import { OBJECT_CLASS, OBJECT_DIR, OBJECT_WEIGHT } from './object_data.js';
 import {
-    BURN, DUST, ENGR_BLOOD, HEADSTONE,
+    BURN, DUST, ENGR_BLOOD, HEADSTONE, ICE,
     D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED,
     ALL_TRAPS, NO_TRAP,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
@@ -38,7 +38,7 @@ import { clear_path, cansee, couldsee, vision_reset, vision_recalc } from './vis
 import { m_dowear_basic } from './mon_wear.js';
 import { calculated_armor_class } from './u_init.js';
 import { gettrack } from './track.js';
-import { randomHallucinatedMonsterName } from './random_text.js';
+import { randomHallucinatedMonsterName, wipeoutText } from './random_text.js';
 import { getObjectColor, getObjectDescription, getObjectMaterial } from './o_init.js';
 import { NO_COLOR } from './terminal.js';
 
@@ -50,6 +50,21 @@ const HAWAIIAN_SHIRT = 136;
 const T_SHIRT = 137;
 const BLINDING_VENOM = 479;
 const ACID_VENOM = 480;
+
+export function promptPendingPetCombatBeforeDeferredFloorList() {
+    if (!game._deferred_move_floor_list || game._more || game._monster_turn_paused_for_more)
+        return false;
+    const line = game._pending_message || '';
+    const petCombat = String(line).split('  ').every(part =>
+        /^The (?:kitten|little dog|(?:saddled )?pony) (?:misses|bites|hits|kicks|stings|butts|touches) .+[.!]$/.test(part));
+    if (!petCombat) return false;
+    // C refs: win/tty/topl.c:more(), src/mhitm.c:missmm(), src/hack.c:domove().
+    // Visible pet combat blocks before a following movement-arrival floor-list
+    // pager or trap effect, even when the combat line did not own a More yet.
+    queue_more_prompt();
+    game._pet_combat_more_latched = true;
+    return true;
+}
 
 const M1_AMORPHOUS = 0x00000004;
 const M2_WERE = 0x00000004;
@@ -1226,18 +1241,22 @@ function engr_at_basic(x, y) {
 }
 
 function wipe_engr_at_basic(x, y, cnt, magical = false) {
+    // C ref: engrave.c:wipe_engr_at().
     const ep = engr_at_basic(x, y);
     if (!ep || ep.type === HEADSTONE || ep.nowipeout) return;
-    if (ep.type === BURN && !magical) return;
-    if (ep.type !== DUST && ep.type !== ENGR_BLOOD) {
-        cnt = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
-    }
-    if (cnt <= 0) return;
-    ep.text = String(ep.text || '').slice(cnt);
-    if (!ep.text) {
-        const list = game.level?.engravings || [];
-        const idx = list.indexOf(ep);
-        if (idx >= 0) list.splice(idx, 1);
+    const loc = game.level?.at(x, y);
+    if (ep.type !== BURN || loc?.typ === ICE || (magical && !rn2(2))) {
+        let count = cnt;
+        if (ep.type !== DUST && ep.type !== ENGR_BLOOD) {
+            count = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
+        }
+        if (count <= 0) return;
+        ep.text = wipeoutText(ep.text || '', count, 0).replace(/^ +/, '');
+        if (!ep.text) {
+            const list = game.level?.engravings || [];
+            const idx = list.indexOf(ep);
+            if (idx >= 0) list.splice(idx, 1);
+        }
     }
 }
 
@@ -7123,7 +7142,10 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
         }
     }
     if (mtmp.isshk) return shk_move_basic(mtmp);
-    if (mtmp.isgd) return MMOVE_NOTHING;
+    if (mtmp.isgd) {
+        const { gdMoveBasic } = await import('./cmd.js');
+        return await gdMoveBasic(mtmp) ? MMOVE_MOVED : MMOVE_NOTHING;
+    }
     if (mtmp.ispriest) {
         // C ref: priest.c:pri_move().  A priest in their temple mills around
         // the shrine before move_special(); the current front door preserves
@@ -7770,6 +7792,22 @@ export async function movemon() {
             }
         }
         if (!g.level.monsters?.includes(mtmp)) continue;
+        // C ref: src/vault.c:parkguard().  Parked vault guards remain attached
+        // to their fake-corridor state, but monster traversal does not give
+        // them ordinary movement turns.
+        if (mtmp.isgd && !mtmp.mx && mtmp.mextra?.egd?.gddone) continue;
+        if (promptPendingPetCombatBeforeDeferredFloorList()) {
+            const previous = monsters[monIndex - 1] || null;
+            g._deferred_move_floor_list_resume_monster_scan = true;
+            if (previous) {
+                g._resume_movemon_after_mon = previous;
+                g._resume_movemon_next_mon = mtmp;
+            } else {
+                g._resume_movemon_next_mon = mtmp;
+            }
+            g._resume_somebody_can_move = somebody_can_move;
+            return false;
+        }
         if (resumePostMoveForThis) {
             const postMoveState = distfleeck(mtmp);
             if (!await maybe_finish_post_move_attack(g, mtmp, MMOVE_MOVED, postMoveState, somebody_can_move)) {
@@ -7858,6 +7896,18 @@ export async function movemon() {
         set_apparxy_basic(mtmp);
         await maybe_covetous_tactics_basic(mtmp);
         if (mtmp.data && ((mtmp.data.mflags3 ?? 0) & M3_COVETOUS)) set_apparxy_basic(mtmp);
+        if (mtmp.isgd) {
+            const { gdMoveBasic, vaultGuardCleanupReadyBasic } = await import('./cmd.js');
+            if (vaultGuardCleanupReadyBasic(mtmp)) {
+                distfleeck(mtmp);
+                await gdMoveBasic(mtmp);
+                if (g._monster_turn_paused_for_more) {
+                    g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+                    return false;
+                }
+                continue;
+            }
+        }
         const fleeState = distfleeck(mtmp); // consuming rn2(5)
         if (await maybe_use_misc_item_basic(mtmp)) {
             if (g._monster_turn_paused_for_more) {
@@ -7918,6 +7968,12 @@ export async function movemon() {
                 return false;
             }
             distfleeck(mtmp);
+            if (promptPendingPetCombatBeforeDeferredFloorList()) {
+                g._deferred_move_floor_list_resume_monster_scan = true;
+                g._resume_movemon_after_mon = mtmp;
+                g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+                return false;
+            }
         } else {
             let postMoveState = fleeState;
             let moveStatus = 0;
@@ -7934,6 +7990,14 @@ export async function movemon() {
                         g._resume_movemon_post_move_mon = mtmp;
                     g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
                     return false;
+                }
+                if (mtmp.mextra?.egd?.gddone
+                    && (!mtmp.mx || mtmp.dead || !g.level.monsters?.includes(mtmp))) {
+                    // C refs: src/monmove.c:dochug(), src/vault.c:gd_move_cleanup().
+                    // A guard parked or removed by gd_move_cleanup() is off-map
+                    // for the caller, so it skips ordinary post-move recalc
+                    // and any attack tail.
+                    continue;
                 }
                 // C calls distfleeck() again after m_move() returns for ordinary
                 // movement, even when the monster is off-screen.

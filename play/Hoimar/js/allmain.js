@@ -10,7 +10,10 @@ import {
     maybe_generate_rnd_mon, regen_hp, regen_pw, gethungry, exerchk,
     maybe_wipe_engraving, maybe_update_seer_turn, dosounds, exercise,
 } from './allmain_turns.js';
-import { distfleeck, flush_deferred_warning_redraws, mcalcdistress, mcalcmove, movemon } from './monmove.js';
+import {
+    distfleeck, flush_deferred_warning_redraws, mcalcdistress, mcalcmove, movemon,
+    promptPendingPetCombatBeforeDeferredFloorList,
+} from './monmove.js';
 import { initrack, settrack } from './track.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
@@ -19,7 +22,9 @@ import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_in
 import { makedog } from './dog.js';
 import {
     continueRunStep, dosearch0_basic, finish_pending_eaten_corpse, finishPrayerResult,
-    performLevelTeleport, rhack, shouldStopRunForNearbyMonster,
+    invaultBasic, monsterNearbyForSafety,
+    performLevelTeleport, rhack,
+    shouldStopRunForNearbyMonster, showDeferredMoveFloorList,
 } from './cmd.js';
 import { nhgetch } from './input.js';
 import {
@@ -48,6 +53,41 @@ const PL_NSIZ = 32;
 const BLINDFOLD = 233;
 const TOWEL = 234;
 const NAME_PROMPT_BASE = "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you?";
+
+const ROLE_SELECTION_CHOICES = [
+    { key: 'a', role: 'Archeologist', article: 'an', races: ['human', 'dwarf', 'gnome'], genders: ['male', 'female'], aligns: ['lawful', 'neutral'] },
+    { key: 'b', role: 'Barbarian', article: 'a', races: ['human', 'orc'], genders: ['male', 'female'], aligns: ['neutral', 'chaotic'] },
+    { key: 'c', role: 'Caveman', femaleRole: 'Cavewoman', article: 'a', races: ['human', 'dwarf', 'gnome'], genders: ['male', 'female'], aligns: ['lawful', 'neutral'] },
+    { key: 'h', role: 'Healer', article: 'a', races: ['human', 'gnome'], genders: ['male', 'female'], aligns: ['neutral'] },
+    { key: 'k', role: 'Knight', article: 'a', races: ['human'], genders: ['male', 'female'], aligns: ['lawful'] },
+    { key: 'm', role: 'Monk', article: 'a', races: ['human'], genders: ['male', 'female'], aligns: ['lawful', 'neutral', 'chaotic'] },
+    { key: 'p', role: 'Priest', femaleRole: 'Priestess', article: 'a', races: ['human', 'elf'], genders: ['male', 'female'], aligns: ['lawful', 'neutral', 'chaotic'] },
+    { key: 'r', role: 'Rogue', article: 'a', races: ['human', 'orc'], genders: ['male', 'female'], aligns: ['chaotic'] },
+    { key: 'R', role: 'Ranger', article: 'a', races: ['human', 'elf', 'gnome', 'orc'], genders: ['male', 'female'], aligns: ['neutral', 'chaotic'] },
+    { key: 's', role: 'Samurai', article: 'a', races: ['human'], genders: ['male', 'female'], aligns: ['lawful'] },
+    { key: 't', role: 'Tourist', article: 'a', races: ['human'], genders: ['male', 'female'], aligns: ['neutral'] },
+    { key: 'v', role: 'Valkyrie', article: 'a', races: ['human', 'dwarf'], genders: ['female'], aligns: ['lawful', 'neutral'] },
+    { key: 'w', role: 'Wizard', article: 'a', races: ['human', 'elf', 'gnome', 'orc'], genders: ['male', 'female'], aligns: ['neutral', 'chaotic'] },
+];
+
+const RACE_SELECTION_CHOICES = [
+    { key: 'h', name: 'human', adj: 'human', aligns: ['lawful', 'neutral', 'chaotic'] },
+    { key: 'e', name: 'elf', adj: 'elven', aligns: ['chaotic'] },
+    { key: 'd', name: 'dwarf', adj: 'dwarven', aligns: ['lawful'] },
+    { key: 'g', name: 'gnome', adj: 'gnomish', aligns: ['neutral'] },
+    { key: 'o', name: 'orc', adj: 'orcish', aligns: ['chaotic'] },
+];
+
+const GENDER_SELECTION_CHOICES = [
+    { key: 'm', name: 'male' },
+    { key: 'f', name: 'female' },
+];
+
+const ALIGN_SELECTION_CHOICES = [
+    { key: 'l', name: 'lawful' },
+    { key: 'n', name: 'neutral' },
+    { key: 'c', name: 'chaotic' },
+];
 
 function wearingBlindfoldLike(g) {
     return (g.inventory || []).some((obj) => (obj?.otyp === BLINDFOLD || obj?.otyp === TOWEL)
@@ -268,6 +308,303 @@ async function promptForPlayerName() {
     g._renameallowed = true;
 }
 
+function startupInputChar(rawKey) {
+    return typeof rawKey === 'number' ? String.fromCharCode(rawKey) : rawKey;
+}
+
+function namePromptWithName(name) {
+    return name ? `${NAME_PROMPT_BASE} ${name}` : NAME_PROMPT_BASE;
+}
+
+async function showStartupOverride(screen, cursor) {
+    const g = game;
+    g._override_screen = screen;
+    g._override_cursor = cursor;
+    if (g.nhDisplay) {
+        g.nhDisplay.cursorCol = cursor[0];
+        g.nhDisplay.cursorRow = cursor[1];
+    }
+    await flush_screen(1);
+    return startupInputChar(await nhgetch());
+}
+
+function roleChoiceForName(name) {
+    const lc = String(name || '').toLowerCase();
+    return ROLE_SELECTION_CHOICES.find(choice => choice.role.toLowerCase() === lc
+        || String(choice.femaleRole || '').toLowerCase() === lc) || null;
+}
+
+function raceChoiceForName(name) {
+    const lc = String(name || '').toLowerCase();
+    return RACE_SELECTION_CHOICES.find(choice => choice.name === lc
+        || choice.adj === lc) || null;
+}
+
+function roleNameForSelection(choice, state) {
+    if (!choice) return '<role>';
+    if (state.gender === 'female' && choice.femaleRole) return choice.femaleRole;
+    if (!state.gender && choice.femaleRole) return `${choice.role}/${choice.femaleRole}`;
+    return choice.role;
+}
+
+function roleLabelForMenu(choice, state) {
+    return `${choice.article} ${roleNameForSelection(choice, state)}`;
+}
+
+function stateFromConfiguredStartup() {
+    const opts = game._nhopts || {};
+    const role = findRole(opts.role);
+    const race = findRace(opts.race);
+    const align = findAlign(opts.align);
+    const gender = String(opts.gender || '').toLowerCase();
+    const state = {};
+    if (role) state.role = role.name.m;
+    if (race) state.race = race.name || race.adj;
+    if (gender === 'male' || gender === 'female') state.gender = gender;
+    if (align) state.align = align.name;
+    return state;
+}
+
+function roleChoiceCompatible(choice, state) {
+    const selectedRole = state.role ? roleChoiceForName(state.role) : null;
+    if (selectedRole && selectedRole.role !== choice.role) return false;
+    if (state.race && !choice.races.includes(state.race)) return false;
+    if (state.gender && !choice.genders.includes(state.gender)) return false;
+    if (state.align && !choice.aligns.includes(state.align)) return false;
+    const race = state.race ? raceChoiceForName(state.race) : null;
+    if (race && state.align && !race.aligns.includes(state.align)) return false;
+    return true;
+}
+
+function anyRoleChoiceCompatible(state) {
+    return ROLE_SELECTION_CHOICES.some(choice => roleChoiceCompatible(choice, state));
+}
+
+function raceChoiceCompatible(choice, state) {
+    if (state.race && state.race !== choice.name) return false;
+    if (state.align && !choice.aligns.includes(state.align)) return false;
+    return anyRoleChoiceCompatible({ ...state, race: choice.name });
+}
+
+function genderChoiceCompatible(choice, state) {
+    if (state.gender && state.gender !== choice.name) return false;
+    return anyRoleChoiceCompatible({ ...state, gender: choice.name });
+}
+
+function alignChoiceCompatible(choice, state) {
+    if (state.align && state.align !== choice.name) return false;
+    const race = state.race ? raceChoiceForName(state.race) : null;
+    if (race && !race.aligns.includes(choice.name)) return false;
+    return anyRoleChoiceCompatible({ ...state, align: choice.name });
+}
+
+function manualSelectionPrompt(state) {
+    const role = state.role ? roleNameForSelection(roleChoiceForName(state.role), state) : '<role>';
+    const race = state.race || '<race>';
+    const gender = state.gender || '<gender>';
+    const align = state.align || '<alignment>';
+    return `${role} ${race} ${gender} ${align}`;
+}
+
+function startupConfirmationLine(state) {
+    const role = roleNameForSelection(roleChoiceForName(state.role), state);
+    const race = raceChoiceForName(state.race);
+    return `${game.plname} the ${state.align} ${state.gender} ${(race?.adj || state.race)} ${role}`;
+}
+
+function addStartupExtra(lines, key, state, facet) {
+    const labels = {
+        role: 'role',
+        race: 'race',
+        gender: 'gender',
+        align: 'alignment',
+    };
+    lines.push(`${key} - Pick${state[facet] ? ' another' : ''} ${labels[facet]} first`);
+}
+
+function selectionMenuLines(kind, state) {
+    if (kind === 'confirm') {
+        return [
+            '\x1b[7mIs this ok? [ynaq]\x1b[0m',
+            '',
+            startupConfirmationLine(state),
+            '',
+            'y * Yes; start game',
+            'n - No; choose role again',
+            'a - Not yet; choose another name',
+            'q - Quit',
+            '(end)',
+        ];
+    }
+
+    const titles = {
+        role: 'Pick a role or profession',
+        race: 'Pick a race or species',
+        gender: 'Pick a gender or sex',
+        align: 'Pick an alignment or creed',
+    };
+    const lines = [
+        `\x1b[7m${titles[kind]}\x1b[0m`,
+        '',
+        manualSelectionPrompt(state),
+        '',
+    ];
+
+    if (kind === 'role') {
+        const choices = ROLE_SELECTION_CHOICES.filter(choice => roleChoiceCompatible(choice, state));
+        for (const choice of choices) {
+            lines.push(`${choice.key} - ${roleLabelForMenu(choice, state)}`);
+        }
+        lines.push('* * Random');
+        if (choices.length < ROLE_SELECTION_CHOICES.length) lines.push('');
+        addStartupExtra(lines, '/', state, 'race');
+        addStartupExtra(lines, '"', state, 'gender');
+        addStartupExtra(lines, '[', state, 'align');
+    } else if (kind === 'race') {
+        for (const choice of RACE_SELECTION_CHOICES.filter(choice => raceChoiceCompatible(choice, state))) {
+            lines.push(`${choice.key} - ${choice.name}`);
+        }
+        lines.push('* * Random', '');
+        addStartupExtra(lines, '?', state, 'role');
+        addStartupExtra(lines, '"', state, 'gender');
+        addStartupExtra(lines, '[', state, 'align');
+    } else if (kind === 'gender') {
+        for (const choice of GENDER_SELECTION_CHOICES.filter(choice => genderChoiceCompatible(choice, state))) {
+            lines.push(`${choice.key} - ${choice.name}`);
+        }
+        lines.push('* * Random', '');
+        addStartupExtra(lines, '?', state, 'role');
+        addStartupExtra(lines, '/', state, 'race');
+        addStartupExtra(lines, '[', state, 'align');
+    } else if (kind === 'align') {
+        for (const choice of ALIGN_SELECTION_CHOICES.filter(choice => alignChoiceCompatible(choice, state))) {
+            lines.push(`${choice.key} - ${choice.name}`);
+        }
+        lines.push('* * Random', '');
+        addStartupExtra(lines, '?', state, 'role');
+        addStartupExtra(lines, '/', state, 'race');
+        addStartupExtra(lines, '"', state, 'gender');
+    }
+
+    lines.push('~ - Set role/race/&c filtering', 'q - Quit', '(end)');
+    return lines;
+}
+
+function renderStartupMenu(lines, rightSide) {
+    const prefix = rightSide ? '\x1b[41C' : ' ';
+    return lines.map(line => line ? `${prefix}${line}` : '').join('\n');
+}
+
+function nextManualSelectionMenu(state) {
+    if (!state.role) return 'role';
+    if (!state.race) return 'race';
+    if (!state.gender) return 'gender';
+    if (!state.align) return 'align';
+    return 'confirm';
+}
+
+async function showManualSelectionMenu(kind, state, rightSide) {
+    const lines = selectionMenuLines(kind, state);
+    const endRow = Math.max(0, lines.lastIndexOf('(end)'));
+    return showStartupOverride(renderStartupMenu(lines, rightSide),
+        [rightSide ? 47 : 7, endRow, 1]);
+}
+
+function applyManualStartupSelection(state) {
+    const g = game;
+    g._selected_startup_role = state.role;
+    g._selected_startup_race = state.race;
+    g._selected_startup_gender = state.gender;
+    g._selected_startup_align = state.align;
+    g._nhopts = g._nhopts || {};
+    g._nhopts.role = state.role;
+    g._nhopts.race = state.race;
+    g._nhopts.gender = state.gender;
+    g._nhopts.align = state.align;
+}
+
+function chooseStartupExtra(kind, key, state) {
+    if (key === 'q' || key === '\x1b') return 'quit';
+    if (key === '~') return kind;
+    const nextByKey = {
+        '?': 'role',
+        '/': 'race',
+        '"': 'gender',
+        '[': 'align',
+    };
+    const next = nextByKey[key];
+    if (!next || next === kind) return null;
+    state[next] = null;
+    return next;
+}
+
+async function selectManualCharacter(initialState = {}) {
+    // C refs: src/role.c:genl_player_setup(), setup_rolemenu(),
+    // setup_racemenu(), setup_gendmenu(), setup_algnmenu().
+    let state = { ...initialState };
+    let kind = nextManualSelectionMenu(state);
+    let rightSide = false;
+
+    for (;;) {
+        const key = await showManualSelectionMenu(kind, state, rightSide);
+        if (kind === 'confirm') {
+            if (key === 'y' || key === ' ' || key === '\n' || key === '\r') {
+                applyManualStartupSelection(state);
+                return true;
+            }
+            if (key === 'n') {
+                state = {};
+                kind = 'role';
+                rightSide = false;
+                continue;
+            }
+            if (key === 'a') {
+                await promptForPlayerName();
+                continue;
+            }
+            if (key === 'q' || key === '\x1b') return false;
+            continue;
+        }
+
+        const extra = chooseStartupExtra(kind, key, state);
+        if (extra === 'quit') return false;
+        if (extra) {
+            kind = extra;
+            rightSide = true;
+            continue;
+        }
+
+        if (kind === 'role') {
+            const choice = ROLE_SELECTION_CHOICES.find(candidate => candidate.key === key
+                && roleChoiceCompatible(candidate, state));
+            if (choice) state.role = choice.role;
+        } else if (kind === 'race') {
+            const choice = RACE_SELECTION_CHOICES.find(candidate => candidate.key === key
+                && raceChoiceCompatible(candidate, state));
+            if (choice) state.race = choice.name;
+        } else if (kind === 'gender') {
+            const choice = GENDER_SELECTION_CHOICES.find(candidate => candidate.key === key
+                && genderChoiceCompatible(candidate, state));
+            if (choice) state.gender = choice.name;
+        } else if (kind === 'align') {
+            const choice = ALIGN_SELECTION_CHOICES.find(candidate => candidate.key === key
+                && alignChoiceCompatible(candidate, state));
+            if (choice) state.align = choice.name;
+        }
+        kind = nextManualSelectionMenu(state);
+        rightSide = true;
+    }
+}
+
+async function askStartupAutoPick() {
+    // C ref: src/role.c:genl_player_setup() build_plselection_prompt().
+    const prompt = "Shall I pick character's race, role, gender and alignment for you? [ynaq]";
+    const key = await showStartupOverride(`${prompt}${namePromptWithName(game.plname)}`,
+        [74, 0, 1]);
+    const low = typeof key === 'string' ? key.toLowerCase() : key;
+    if (low === 'n') await selectManualCharacter(stateFromConfiguredStartup());
+}
+
 function legacyPagerAsciiGlyph(ch, decgfx) {
     if (!decgfx) return ch;
     switch (ch) {
@@ -395,6 +732,19 @@ async function startupTurnTail() {
     maybe_wipe_engraving();
 }
 
+function applyStartupSpellPowerFloor() {
+    const u = game.u;
+    if (!u || !Array.isArray(game.knownSpells) || !game.knownSpells.length
+        || (u.uenmax || 0) >= 5) return;
+    // C ref: src/u_init.c:u_init_skills_discoveries().  Initial spell
+    // knowledge guarantees enough starting Pw to cast a level-1 spell.
+    u.uen = 5;
+    u.uenmax = 5;
+    u.uenpeak = Math.max(u.uenpeak || 0, 5);
+    u.ueninc = u.ueninc || [];
+    u.ueninc[u.ulevel || 1] = 5;
+}
+
 export async function player_selection() {
     const g = game;
     // We just override screens and consume keys to match seed0002 start
@@ -411,17 +761,16 @@ export async function player_selection() {
         "Hello David, welcome to NetHack!  You are a neutral male human Healer.--More--\n\n\n\n\n\n\n\n\x1b[45C\x0elqqqqqqqqqqk\x0f\n\x1b[45C\x0ex~~~~\x0f!\x0e~~~~~~\x0f\n\x1b[45C\x0e~~~\x1b[33m\x0f(\x1b[39m\x0e~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~\x1b[97m\x0f?\x1b[39m\x0e~~~x\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0f@\x1b[39m\x0e~~~\x1b[96m\x0f/\x1b[39m\x0e~~\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0fd\x1b[39m\x0e~~~~~x\x0f\n\x1b[45C\x0emqqqqqqqqqqj\x0f\n\n\n\n\n\n\nDavid the Rhizotomist\x1b[10CSt:8 Dx:7 Co:14 In:11 Wi:18 Ch:17 Neutral\nDlvl:1 $:1218 HP:13(13) Pw:5(5) AC:8 Xp:1",
         "\x1b[21C\x1b[7mDo you want a tutorial?\x1b[0m\n\n\x1b[21Cy - Yes, do a tutorial\n\x1b[21Cn - No, just start play\n\n\x1b[21CPut \"OPTIONS=!tutorial\" in .nethackrc to skip this query.\n\x1b[21C(end)\n\n\x1b[45C\x0elqqqqqqqqqqk\x0f\n\x1b[45C\x0ex~~~~\x0f!\x0e~~~~~~\x0f\n\x1b[45C\x0e~~~\x1b[33m\x0f(\x1b[39m\x0e~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~\x1b[97m\x0f?\x1b[39m\x0e~~~x\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0f@\x1b[39m\x0e~~~\x1b[96m\x0f/\x1b[39m\x0e~~\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0fd\x1b[39m\x0e~~~~~x\x0f\n\x1b[45C\x0emqqqqqqqqqqj\x0f\n\n\n\n\n\n\nDavid the Rhizotomist\x1b[10CSt:8 Dx:7 Co:14 In:11 Wi:18 Ch:17 Neutral\nDlvl:1 $:1218 HP:13(13) Pw:5(5) AC:8 Xp:1"
     ];
-    // C refs: src/role.c:plnamesuffix(), win/tty/wintty.c:tty_askname().
-    // When nethackrc supplies role/race/gender/alignment but leaves the
-    // player name empty, tty asks for just the name before startup RNG.
-    if (g._seed !== 2 && !g._nhopts?.name && fullyConfiguredCharacter()) {
-        await promptForPlayerName();
+    // C refs: src/role.c:plnamesuffix(), src/role.c:genl_player_setup(),
+    // win/tty/wintty.c:tty_askname().  Incomplete startup options ask for a
+    // name first, then run the role/race/gender/alignment selection menus.
+    if (g._seed !== 2) {
+        if (!g._nhopts?.name) await promptForPlayerName();
+        if (!fullyConfiguredCharacter()) await askStartupAutoPick();
         return;
     }
 
-    // We only need to run this for seed 2
-    if (g._seed !== 2) return;
-    
+    // We only need to run this for seed 2.
     // Cursor positions for each step
     const cursors = [
         [13, 12], [14, 12], [15, 12], [16, 12], [17, 12], [18, 12],
@@ -573,6 +922,7 @@ export async function newgame() {
     await bot();
     await flush_screen(1);
     drawQuestIntroOverlay(alignName);
+    if (!ff) applyStartupSpellPowerFloor();
     if (!ff && g.flags?.legacy !== false) {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
@@ -625,6 +975,8 @@ export async function advanceTurn() {
 
     if (!resumeTurnTailOnly) {
         const firstScanCanMove = await movemon();
+        if (g._more && (g._deferred_move_floor_list_resume_monster_scan
+            || g._deferred_move_floor_list_resume_turn_tail)) return;
         if (g._monster_turn_paused_for_more) return;
         if (g._more && firstScanCanMove && g._scan_more_from_tele_restrict) {
             g._scan_more_from_tele_restrict = false;
@@ -647,7 +999,17 @@ export async function advanceTurn() {
         let monscanmove = firstScanCanMove;
         while (monscanmove) {
             monscanmove = await movemon();
+            if (g._more && (g._deferred_move_floor_list_resume_monster_scan
+                || g._deferred_move_floor_list_resume_turn_tail)) return;
             if (g._monster_turn_paused_for_more) return;
+        }
+        if (promptPendingPetCombatBeforeDeferredFloorList()) {
+            // C refs: win/tty/topl.c:more(), src/allmain.c:moveloop_core(),
+            // src/hack.c:domove().  A pet-combat More can block before the
+            // current turn tail, while a movement-arrival floor list and trap
+            // still belong to the interrupted domove() path.
+            g._deferred_move_floor_list_resume_turn_tail = true;
+            return;
         }
     }
 
@@ -666,7 +1028,7 @@ export async function advanceTurn() {
     regen_pw((g.moves || 1) + 1);
 
     if (await dosounds()) return;
-    finishPostDosoundsTurnTail(g);
+    await finishPostDosoundsTurnTail(g);
 }
 
 async function interruptMultiAfterFullHealth(g, reachedFull) {
@@ -680,7 +1042,7 @@ async function interruptMultiAfterFullHealth(g, reachedFull) {
     if (g.flags?.verbose !== false) await pline('You are in full health.');
 }
 
-function finishPostDosoundsTurnTail(g) {
+async function finishPostDosoundsTurnTail(g) {
     // C ref: allmain.c:moveloop_core().  Prayer timeout drains once during
     // each real turn, including occupation/extra monster-turn catch-ups.
     const moveAlreadyIncremented = !!g._moves_incremented_for_dosounds_more;
@@ -689,6 +1051,7 @@ function finishPostDosoundsTurnTail(g) {
     gethungry();
     ageKnownSpells(g);
     exerchk(tailMove);
+    await invaultBasic();
     maybe_wipe_engraving();
     if (g._life_saving_silent_monster_resume
         && g._nomovemsg === 'You survived that attempt on your life.') {
@@ -1182,6 +1545,12 @@ async function continueNomulTurns(g, options = {}) {
         creditEncumberedNomulFinish(g);
         if (continueBehindMore && g._more) {
             g._nomovemsg = msg;
+        } else if (g._pending_message && !topline_can_pack_message(g._pending_message, msg)) {
+            // C refs: src/allmain.c:moveloop_core(), win/tty/topl.c:update_topl().
+            // unmul()'s nomovemsg waits behind a tty More when the existing
+            // topline cannot pack the finish message.
+            g._nomovemsg = msg;
+            queue_more_prompt();
         } else if (g._pending_message) await append_pline(msg);
         else await pline(msg);
     }
@@ -1320,9 +1689,21 @@ async function continueSimpleTimedRepeats(g, options = {}) {
     }
     while ((g._simple_timed_repeats_remaining || 0) > (leaveTailForInputBoundary ? 1 : 0)) {
         g._simple_timed_repeats_remaining--;
-        if (g._simple_timed_repeat_text === 'searching') await dosearch0_basic(false);
+        const checkStopSearching = g._simple_timed_repeat_text === 'searching';
+        if (checkStopSearching) {
+            await dosearch0_basic(false);
+        }
         if ((g.context?.multi || 0) > 0) g.context.multi--;
         await advanceTurn();
+        if (checkStopSearching
+            && (g._simple_timed_repeats_remaining || 0) > 0
+            && monsterNearbyForSafety(2)) {
+            g._simple_timed_repeats_remaining = 0;
+            g._simple_timed_repeat_text = '';
+            if (g.context) g.context.multi = 0;
+            if (g.flags?.verbose !== false) await pline('You stop searching.');
+            return true;
+        }
         if (interrupted()) {
             g._simple_timed_repeats_remaining = 0;
             g._simple_timed_repeat_text = '';
@@ -1348,8 +1729,13 @@ async function continueSimpleTimedRepeats(g, options = {}) {
         if (leaveTailForInputBoundary) accrueEncumberedMoveDebt(g, { capPendingExtra: true });
     }
     if ((g._simple_timed_repeats_remaining || 0) <= 0) {
+        const stoppedSearchingEarly = g._simple_timed_repeat_text === 'searching'
+            && (g.context?.multi || 0) > 0
+            && monsterNearbyForSafety(4);
         g._simple_timed_repeat_text = '';
         if (g.context) g.context.multi = 0;
+        if (stoppedSearchingEarly && g.flags?.verbose !== false)
+            await pline('You stop searching.');
     }
     return true;
 }
@@ -1395,10 +1781,23 @@ async function continueRunTail(g) {
             break;
         }
         if (!await continueRunStep()) break;
+        if (g._more) {
+            if (g.context?.run) g._run_paused_for_more = true;
+            g._run_paused_before_encumbered_check = false;
+            return false;
+        }
         await advanceTurn();
         if (g._more) {
             if (g.context?.run) g._run_paused_for_more = true;
             g._run_paused_before_encumbered_check = true;
+            return false;
+        }
+        if (promptPendingPetCombatBeforeDeferredFloorList()) {
+            if (g.context?.run) g._run_paused_for_more = true;
+            return false;
+        }
+        if (!g._monster_turn_paused_for_more && await showDeferredMoveFloorList()) {
+            if (g.context?.run) g.context.run = null;
             return false;
         }
         if (!await continueRunPostTurnChecks(g)) return false;
@@ -1479,7 +1878,7 @@ export async function moveloop_core() {
     await rhack(key);
     if (g._resume_post_dosounds_turn_tail && !g._more) {
         g._resume_post_dosounds_turn_tail = false;
-        finishPostDosoundsTurnTail(g);
+        await finishPostDosoundsTurnTail(g);
         // C ref: allmain.c:moveloop_core().  A sound More can interrupt the
         // immobile-hero loop after u_calc_moveamt() left movement below
         // NORMAL_SPEED; dismissing it resumes the tail and then keeps looping
@@ -1625,11 +2024,15 @@ export async function moveloop_core() {
             } else {
                 applyOccupationFinalTurnState(g);
                 await advanceTurn();
+                if (g._more && g._deferred_move_floor_list_resume_turn_tail) return;
                 if (g._monster_turn_paused_for_more) {
                     restorePrayerBudgetForInterruptedFirstTurn(g);
                     return;
                 }
                 adjustPrayerForceBudgetAfterUninterruptedFirstTurn(g);
+                if (promptPendingPetCombatBeforeDeferredFloorList()) return;
+                if (!g._more && !g._monster_turn_paused_for_more
+                    && await showDeferredMoveFloorList()) return;
                 if (!await finishDeferredSpellbookStudy(g)) return;
                 if (!await continueNomulTurns(g, { countCurrentTurn: true })) return;
                 if (!occupationPending(g)) finish_pending_eaten_corpse();
@@ -1765,12 +2168,12 @@ export async function moveloop_core() {
         }
         if (runSoundMoreLatched) {
             g._run_sound_more_latched = false;
-            await continueRunTail(g);
+            if (!await continueRunTail(g)) return;
             if (!await finishRunBallDragDelay(g)) return;
             return;
         }
         if (!await continueSimpleTimedRepeats(g, { leaveTailForInputBoundary: true })) return;
-        await continueRunTail(g);
+        if (!await continueRunTail(g)) return;
         if (!await finishRunBallDragDelay(g)) return;
     }
 }

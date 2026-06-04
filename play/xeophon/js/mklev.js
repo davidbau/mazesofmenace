@@ -109,6 +109,13 @@ const RANSEUR = 10055;
 const PARTISAN = 10056;
 const GLAIVE = 10057;
 const SPETUM = 10058;
+const HALBERD = 10172;
+const BARDICHE = 10173;
+const VOULGE = 10174;
+const FAUCHARD = 10175;
+const GUISARME = 10176;
+const BILL_GUISARME = 10177;
+const BEC_DE_CORBIN = 10178;
 const TWO_HANDED_SWORD = 10059;
 const LUCERN_HAMMER = 10071;
 const AKLYS = 10072;
@@ -488,7 +495,14 @@ const SPECIFIC_POLEARM_INFO = new Map([
     [RANSEUR, { kind: 'hilted polearm', actualKind: 'ranseur', owt: 50 }],
     [SPETUM, { kind: 'forked polearm', actualKind: 'spetum', owt: 50 }],
     [GLAIVE, { kind: 'single-edged polearm', actualKind: 'glaive', owt: 75 }],
+    [HALBERD, { kind: 'angled poleaxe', actualKind: 'halberd', owt: 150 }],
+    [BARDICHE, { kind: 'long poleaxe', actualKind: 'bardiche', owt: 120 }],
+    [VOULGE, { kind: 'pole cleaver', actualKind: 'voulge', owt: 125 }],
+    [FAUCHARD, { kind: 'pole sickle', actualKind: 'fauchard', owt: 60 }],
+    [GUISARME, { kind: 'pruning hook', actualKind: 'guisarme', owt: 80 }],
+    [BILL_GUISARME, { kind: 'hooked polearm', actualKind: 'bill-guisarme', owt: 120 }],
     [LUCERN_HAMMER, { kind: 'pronged polearm', actualKind: 'lucern hammer', owt: 150 }],
+    [BEC_DE_CORBIN, { kind: 'beaked polearm', actualKind: 'bec de corbin', owt: 100 }],
 ]);
 
 const SPECIFIC_WEAPONS = new Set([
@@ -497,8 +511,9 @@ const SPECIFIC_WEAPONS = new Set([
     ATHAME, QUARTERSTAFF,
     SPEAR, DWARVISH_SPEAR, TRIDENT, STILETTO, SHORT_SWORD, ELVEN_SHORT_SWORD,
     ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD, BROADSWORD, LONG_SWORD, POLEARM,
-    BATTLE_AXE, CLUB, RANSEUR, PARTISAN, GLAIVE, SPETUM, TWO_HANDED_SWORD,
-    LUCERN_HAMMER, AKLYS, FLAIL, MACE, SILVER_MACE, SILVER_SABER, BULLWHIP,
+    BATTLE_AXE, CLUB, RANSEUR, PARTISAN, GLAIVE, SPETUM, HALBERD, BARDICHE,
+    VOULGE, FAUCHARD, GUISARME, BILL_GUISARME, TWO_HANDED_SWORD,
+    LUCERN_HAMMER, BEC_DE_CORBIN, AKLYS, FLAIL, MACE, SILVER_MACE, SILVER_SABER, BULLWHIP,
     MORNING_STAR, KATANA, TSURUGI,
     AXE, DWARVISH_MATTOCK,
 ]);

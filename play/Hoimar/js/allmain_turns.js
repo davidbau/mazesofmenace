@@ -9,6 +9,8 @@ import {
 import { OBJECT_CHARGED } from './object_data.js';
 import { adj_erinys, makemon } from './mklev.js';
 import { depth } from './hacklib.js';
+import { wipeoutText } from './random_text.js';
+import { BURN, DUST, ENGR_BLOOD, HEADSTONE, ICE } from './const.js';
 
 const RING_CLASS = 4;
 const AMULET_CLASS = 5;
@@ -246,7 +248,33 @@ export function exerchk(moveNumber = (game.moves || 1) + 1) {
 export function maybe_wipe_engraving() {
     // C ref: allmain.c:360 — !rn2(40 + ACURR(A_DEX) * 3)
     const dex = currentAttr(A_DEX);
-    if (!rn2(40 + dex * 3)) rnd(3);
+    if (!rn2(40 + dex * 3)) u_wipe_engr(rnd(3));
+}
+
+function u_wipe_engr(cnt) {
+    // C refs: engrave.c:u_wipe_engr(), engrave.c:can_reach_floor().
+    const u = game.u;
+    if (!u || u.uswallow) return;
+    if (u.uprops?.levitation) return;
+    wipe_engr_at(u.ux, u.uy, cnt, false);
+}
+
+function wipe_engr_at(x, y, cnt, magical) {
+    // C ref: engrave.c:wipe_engr_at().
+    const ep = (game.level?.engravings || []).find((engr) => engr.x === x && engr.y === y);
+    if (!ep || ep.type === HEADSTONE || ep.nowipeout) return;
+    const loc = game.level?.at(x, y);
+    if (ep.type === BURN && loc?.typ !== ICE && !magical) return;
+    let count = cnt;
+    if (ep.type !== DUST && ep.type !== ENGR_BLOOD) {
+        count = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
+    }
+    if (count <= 0) return;
+    ep.text = wipeoutText(ep.text || '', count, 0).replace(/^ +/, '');
+    if (!ep.text) {
+        game.level.engravings = (game.level?.engravings || [])
+            .filter((other) => other !== ep);
+    }
 }
 
 export function maybe_update_seer_turn(moveNumber = null) {
