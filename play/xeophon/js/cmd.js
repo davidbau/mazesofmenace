@@ -31621,6 +31621,7 @@ function placeDeathCleanupThrownObject(attack) {
 }
 
 function appendToplineAfterMoreMessages(messages) {
+    let queued = false;
     for (const msg of messages || []) {
         if (!msg) continue;
         if (!game._topline_after_more) {
@@ -31633,8 +31634,59 @@ function appendToplineAfterMoreMessages(messages) {
         } else {
             game._queued_messages_after_more ??= [];
             game._queued_messages_after_more.push({ text: msg, more: true });
+            queued = true;
         }
     }
+    return queued;
+}
+
+function applyHeroPoisonedProjectileAfterMore(effect) {
+    const reason = String(effect?.reason || 'poisoned arrow');
+    const messages = [];
+    if (!/poison/i.test(reason)) {
+        const plural = /s$/i.test(reason);
+        messages.push(`${/^[A-Z]/.test(reason) ? '' : 'The '}${reason} ${plural ? 'were' : 'was'} poisoned!`);
+    }
+    if (heroHasPoisonResistance()) {
+        messages.push("The poison doesn't seem to affect you.");
+        return { dead: false, more: appendToplineAfterMoreMessages(messages) };
+    }
+
+    const roll = rn2(30);
+    let dead = false;
+    if (roll === 0) {
+        const loss = 6 + d(4, 6);
+        if ((game.u?.uhp || 0) <= loss) {
+            if (game.u) game.u.uhp = -1;
+            messages.push('The poison was deadly...');
+            dead = true;
+        } else {
+            if (game.u) {
+                game.u.uhpmax = Math.max(3, (game.u.uhpmax || game.u.uhp || 1) - Math.trunc(loss / 2));
+                game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+                if (game.u.acurr?.a) {
+                    game.u.acurr.a[A_CON] = Math.max(3, (game.u.acurr.a[A_CON] ?? 10) - 1);
+                    game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - 3);
+                }
+            }
+            messages.push('You feel very sick!');
+            messages.push('You feel weaker!');
+            dead = (game.u?.uhp || 0) < 1;
+        }
+    } else if (roll > 5) {
+        const loss = rnd(6);
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+        dead = (game.u?.uhp || 0) < 1;
+    } else {
+        if (game.u?.acurr?.a) game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - 1);
+        messages.push('You feel weaker!');
+    }
+    const more = appendToplineAfterMoreMessages(messages);
+    if (dead) {
+        game._death_cause = `poisoned by ${String(effect?.killer || reason)}`;
+        game._queued_message_after_more ||= 'You die...';
+    }
+    return { dead, more: more || dead };
 }
 
 function earthTargetIsSolid(target) {
@@ -47660,9 +47712,10 @@ export async function rhack(_cmd) {
                             if (coldLevel > rn2(20)) rn2(5);
                         }
                 if (game._lethal_arrow_after_topline_more) {
-                    game._deferred_lethal_attack_after_more = game._lethal_arrow_after_topline_more;
+                    const lethalArrow = game._lethal_arrow_after_topline_more;
+                    game._deferred_lethal_attack_after_more = lethalArrow;
                     game._lethal_arrow_after_topline_more = null;
-                    game._death_cause = 'killed by an arrow';
+                    game._death_cause = lethalArrow.deathCause || game._death_cause || 'killed by an arrow';
                     keepMore = true;
                 }
 		                if (game._damage_after_topline_more) {
@@ -47690,6 +47743,21 @@ export async function rhack(_cmd) {
 	                        keepMore = true;
 	                    }
 	                }
+                if (game._poisoned_projectile_after_topline_more
+                    && ((game.u?.uhp || 0) > 0 || game.flags?.debug)) {
+                    const poisonEffect = game._poisoned_projectile_after_topline_more;
+                    game._poisoned_projectile_after_topline_more = null;
+                    const poisonResult = applyHeroPoisonedProjectileAfterMore(poisonEffect);
+                    if (poisonResult.more)
+                        keepMore = true;
+                    if (poisonResult.dead) {
+                        game._exercise_after_topline_more = 0;
+                        game._arrow_drop_throw_after_topline_more = null;
+                        game._arrow_mulch_after_topline_more = 0;
+                    }
+                } else {
+                    game._poisoned_projectile_after_topline_more = null;
+                }
                 if (game._deferred_raven_blind_after_more
                     && ((game.u?.uhp || 0) > 0 || game.flags?.debug)) {
                     const ravenAttack = game._deferred_raven_blind_after_more;

@@ -1660,6 +1660,7 @@ const STATUE = 472;
 const POISONOUS_CORPSES = new Set(['kobold', 'large kobold', 'kobold leader', 'kobold shaman']);
 const CORPSE_EATER_MONSTERS = new Set(['purple worm', 'baby purple worm', 'ghoul', 'piranha']);
 const DART = 353;
+const CREAM_PIE = 10081;
 const ORCISH_DAGGER = 10020;
 const DAGGER = 10023;
 const KNIFE = 10026;
@@ -6213,8 +6214,13 @@ export async function processMonsterTurns() {
                     const throwDist2 = (mon.mx - throwTargetX) ** 2 + (mon.my - throwTargetY) ** 2;
                     const nearThrowTarget = throwDist2 < 3
                         && !(mon.data?.name === 'grid bug' && throwTargetX !== mon.mx && throwTargetY !== mon.my);
-	                    const canThrowDart = mon.data?.name === 'kobold' && mon.missile?.otyp === DART && mon.missile.quan > 0
-	                        && throwRange > 1 && throwRange <= 4 && straightThrow;
+                    const canThrowDart = monsterIsKoboldDartThrower(mon) && mon.missile?.otyp === DART && mon.missile.quan > 0
+                        && throwRange > 1 && throwRange <= 4 && straightThrow;
+                    const canThrowCreamPie = !mon._opened_door_this_move && !mon.mpeaceful
+                        && monsterIsKopCreamPieThrower(mon) && isMonsterThrownCreamPie(mon.missile)
+                        && (mon.missile?.quan || 0) > 0
+                        && throwRange > 1 && throwRange < BOLT_LIM && straightThrow
+                        && clearPath(mon.mx, mon.my, throwTargetX, throwTargetY);
                     let offensivePotionIndex = -1;
                     for (let i = 0; i < (mon.minvent || []).length; i++) {
                         const item = mon.minvent[i];
@@ -6254,7 +6260,7 @@ export async function processMonsterTurns() {
                         && (mon.data?.mercenary || mon.mw || !game._armor_wear_occupation);
                     const canUseWeaponAttack = !game.level?.flags?.rogue_level
                         && (canThrowSpear || canThrowShuriken || canThrowPlainDagger || canThrowOrcishDagger
-                            || canThrowKnife || canThrowDart);
+                            || canThrowKnife || canThrowDart || canThrowCreamPie);
                     const canSelectRangedWeapon = canUseWeaponAttack;
                     const canCheckOffensiveItems = !mon.data?.mindless && !mon.data?.nohands && !mon.mpeaceful;
                     let offensiveItemsLinedUp = false;
@@ -6304,7 +6310,7 @@ export async function processMonsterTurns() {
                     }
                         continue;
                     }
-                    if (canReadyLauncher && !((canThrowSpear || canThrowShuriken) && rangedWeaponLinedUp)) {
+                    if (canReadyLauncher && !((canThrowSpear || canThrowShuriken || canThrowCreamPie) && rangedWeaponLinedUp)) {
                         mon.mw = launcher;
                         if (!game.u?.blind && couldSeeCoord(mon.mx, mon.my) && !mon.minvis && !mon.mundetected) {
                             const article = /^[aeiou]/i.test(launcherKind) ? 'an' : 'a';
@@ -6313,7 +6319,7 @@ export async function processMonsterTurns() {
                         }
                         continue;
                     }
-                    if (canShootLauncher && !((canThrowSpear || canThrowShuriken) && rangedWeaponLinedUp)
+                    if (canShootLauncher && !((canThrowSpear || canThrowShuriken || canThrowCreamPie) && rangedWeaponLinedUp)
                         && !(canThrowOffensivePotion && offensiveItemsLinedUp)
                         && monsterLinedUp(mon, throwTargetX, throwTargetY)) {
                         const missile = mon.minvent[launcherAmmoIndex];
@@ -6339,7 +6345,9 @@ export async function processMonsterTurns() {
                         const coveredErosionState = !missileErosion || coveredErodedArrowState;
                         const sharedArrowLanding = coveredArrowState && coveredErosionState;
                         const projectileKind = monsterLauncherProjectileKind(thrownMissile);
+                        const projectileKillerName = monsterLauncherProjectileKillerName(thrownMissile);
                         const projectileArticle = /^[aeiou]/i.test(projectileKind) ? 'an' : 'a';
+                        const projectileKillerArticle = /^[aeiou]/i.test(projectileKillerName) ? 'an' : 'a';
                         const projectileArticleCap = projectileArticle[0].toUpperCase() + projectileArticle.slice(1);
                         addToplineMessage(`${monsterDisplayName(mon, true)} shoots ${projectileArticle} ${projectileKind}!`);
                         game._message_more = 1;
@@ -6527,11 +6535,18 @@ export async function processMonsterTurns() {
                                         currentMove: true,
                                         deathCleanupThrownObject: thrownMissile,
                                         deathCleanupGlyph: thrownMissile.glyph || ')',
+                                        deathCause: `killed by ${projectileArticle} ${projectileKind}`,
                                     };
                                     game._death_cause = `killed by ${projectileArticle} ${projectileKind}`;
                                 } else {
                                     game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
                                     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
+                                    if (thrownMissile.opoisoned && monsterLauncherProjectileIsPoisonable(thrownMissile)) {
+                                        game._poisoned_projectile_after_topline_more = {
+                                            reason: projectileKind,
+                                            killer: `${projectileKillerArticle} ${projectileKillerName}`,
+                                        };
+                                    }
                                     if (sharedArrowLanding) {
                                         game._arrow_drop_throw_after_topline_more = {
                                             missile: thrownMissile,
@@ -6561,6 +6576,102 @@ export async function processMonsterTurns() {
                         game._monster_resume_index = monIndex + 1;
                         game._monster_resume_somebody_can_move = somebodyCanMove;
                         return false;
+                    }
+                    if (canThrowCreamPie && rangedWeaponLinedUp) {
+                        const targetAc = game.u?.uac ?? 10;
+                        if (targetAc < 0 && !consumedMattackuAc) rnd(-targetAc);
+
+                        const missile = mon.missile;
+                        const missileQuan = missile.quan || 1;
+                        const thrownId = next_ident();
+                        let thrownMissile = missile;
+                        if (missileQuan > 1) {
+                            missile.quan--;
+                            thrownMissile = { ...missile, id: thrownId, quan: 1 };
+                        } else {
+                            const missileIndex = (mon.minvent || []).indexOf(missile);
+                            if (missileIndex >= 0) mon.minvent.splice(missileIndex, 1);
+                            if (mon.missile === missile) mon.missile = null;
+                        }
+
+                        const throwerVisible = !game.u?.blind
+                            && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
+                            && !mon.minvis;
+                        if (throwerVisible) {
+                            addToplineMessage(`${monsterDisplayName(mon, true)} throws a cream pie!`);
+                            game._message_more = 1;
+                            game._process_time_with_more = 0;
+                        }
+
+                        let creamPieTerrainStop = null;
+                        for (let step = 1; step < throwRange; step++) {
+                            const sx = mon.mx + throwDx * step;
+                            const sy = mon.my + throwDy * step;
+                            const remainingRange = throwRange - step;
+                            const forcehit = !rn2(5);
+                            if (remainingRange && forcehit
+                                && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS) {
+                                creamPieTerrainStop = { x: sx, y: sy };
+                                break;
+                            }
+                        }
+
+                        if (creamPieTerrainStop) {
+                            const floorMessages = [];
+                            landMonsterThrownObject(thrownMissile, creamPieTerrainStop.x, creamPieTerrainStop.y, {
+                                glyph: '%',
+                                color: CLR_WHITE,
+                                messages: floorMessages,
+                            });
+                            addMonsterThrownFloorMessages(floorMessages, throwerVisible);
+                        } else {
+                            const attackRoll = rnd(20);
+                            const missed = targetAc + 8 <= attackRoll;
+                            let resultMessage = game.u?.blind || game.flags?.verbose === false
+                                ? 'You are hit.'
+                                : 'You are hit by a cream pie.';
+                            if (missed) {
+                                resultMessage = game.u?.blind || game.flags?.verbose === false
+                                    ? 'It misses.'
+                                    : targetAc + 8 <= attackRoll - 2
+                                        ? 'A cream pie misses you.'
+                                        : 'You are almost hit by a cream pie.';
+                            }
+
+                            if (!missed) {
+                                const wasBlind = !!game.u?.blind;
+                                const blindinc = applyMonsterCreamPieBlindness();
+                                if (blindinc) {
+                                    resultMessage = `${resultMessage}  ${wasBlind
+                                        ? "There's something sticky all over your face."
+                                        : "Yecch!  You've been creamed."}`;
+                                }
+                                exerciseAttribute(A_STR, false);
+                            }
+
+                            if (throwerVisible) game._topline_after_more = resultMessage;
+                            else addToplineMessage(resultMessage);
+
+                            const floorMessages = [];
+                            landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                glyph: '%',
+                                color: CLR_WHITE,
+                                messages: floorMessages,
+                                ohit: !missed,
+                            });
+                            addMonsterThrownFloorMessages(floorMessages, throwerVisible);
+                        }
+
+                        game._search_pending_count = 0;
+                        game._run_steps_remaining = 0;
+                        game._travel_keys = [];
+                        if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
+                        if (game._message_more && !game._process_time_with_more) {
+                            game._monster_resume_index = monIndex + 1;
+                            game._monster_resume_somebody_can_move = somebodyCanMove;
+                            return false;
+                        }
+                        continue;
                     }
                     if (canThrowSpear && rangedWeaponLinedUp) {
                         const targetAc = game.u?.uac ?? 10;
@@ -7149,7 +7260,7 @@ export async function processMonsterTurns() {
                         }
                         continue;
                     }
-	                    if (canThrowDart && rangedWeaponLinedUp) {
+                    if (canThrowDart && rangedWeaponLinedUp) {
                         let clearShot = true;
                         for (let step = 1; step < throwRange; step++) {
                             if (IS_OBSTRUCTED(game.level?.at(mon.mx + throwDx * step, mon.my + throwDy * step)?.typ ?? 0)) {
@@ -7160,8 +7271,12 @@ export async function processMonsterTurns() {
                         if (clearShot) {
                             const missile = mon.missile;
                             rnd(1);
-                            next_ident();
-                            if ((missile.quan || 1) > 1) missile.quan--;
+                            const thrownId = next_ident();
+                            let thrownMissile = missile;
+                            if ((missile.quan || 1) > 1) {
+                                missile.quan--;
+                                thrownMissile = { ...missile, id: thrownId, quan: 1 };
+                            }
                             else {
                                 const missileIndex = (mon.minvent || []).indexOf(missile);
                                 if (missileIndex >= 0) mon.minvent.splice(missileIndex, 1);
@@ -7184,7 +7299,7 @@ export async function processMonsterTurns() {
                             }
                             if (dartTerrainStop) {
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, dartTerrainStop.x, dartTerrainStop.y, {
+                                landMonsterThrownObject(thrownMissile, dartTerrainStop.x, dartTerrainStop.y, {
                                     glyph: ')',
                                     color: CLR_CYAN,
                                     messages: floorMessages,
@@ -7199,7 +7314,7 @@ export async function processMonsterTurns() {
                                     addToplineMessage('You are hit by a dart.');
                                     exerciseAttribute(A_STR, false);
                                     const floorMessages = [];
-                                    landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                    landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
                                         glyph: ')',
                                         color: CLR_CYAN,
                                         messages: floorMessages,
@@ -7210,7 +7325,7 @@ export async function processMonsterTurns() {
                                     addToplineMessage('A dart misses you.');
                                     rn2(5);
                                     const floorMessages = [];
-                                    landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                    landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
                                         glyph: ')',
                                         color: CLR_CYAN,
                                         messages: floorMessages,
@@ -8497,7 +8612,15 @@ function monsterThrownShurikenKind(item) {
 }
 
 function monsterLauncherProjectileKind(item) {
-    return String(item?.singular || item?.actualKind || item?.kind || item?.appearance || 'arrow');
+    const name = String(item?.singular || item?.actualKind || item?.kind || item?.appearance || 'arrow');
+    if (item?.opoisoned && monsterLauncherProjectileIsPoisonable(item) && !/^poisoned\b/i.test(name))
+        return `poisoned ${name}`;
+    return name;
+}
+
+function monsterLauncherProjectileKillerName(item) {
+    return String(item?.singular || item?.actualKind || item?.kind || item?.appearance || 'arrow')
+        .replace(/^poisoned\s+/i, '');
 }
 
 function monsterLauncherProjectileNames(item) {
@@ -8525,6 +8648,13 @@ function monsterLauncherProjectileIsBowAmmo(item) {
         && names.some(name => name === 'ya' || name === 'bamboo arrow' || name.includes('arrow'));
 }
 
+function monsterLauncherProjectileIsPoisonable(item) {
+    const names = monsterLauncherProjectileNames(item);
+    return names.some(name => name === 'ya' || name === 'bamboo arrow'
+        || name.includes('arrow') || name === 'crossbow bolt'
+        || name === 'shuriken' || name === 'throwing star');
+}
+
 function monsterLauncherProjectileIsElvenArrow(item) {
     return monsterLauncherProjectileNames(item)
         .some(name => name === 'elven arrow' || name === 'runed arrow');
@@ -8539,6 +8669,54 @@ function monsterLauncherWeaponIsElvenBow(item) {
 function monsterIsElf(mon) {
     const name = String(mon?.data?.name || '').toLowerCase();
     return !!mon?.data?.elf || name === 'elf' || name.includes('elf');
+}
+
+function monsterIsKoboldDartThrower(mon) {
+    const data = mon?.data || {};
+    if (data.armed !== true) return false;
+    const name = String(data.name || '').toLowerCase();
+    return data.mlet === 'kobold'
+        || name === 'kobold'
+        || name === 'large kobold'
+        || name === 'kobold leader'
+        || name === 'kobold lord'
+        || name === 'kobold lady';
+}
+
+function monsterIsKopCreamPieThrower(mon) {
+    const data = mon?.data || {};
+    if (data.armed !== true) return false;
+    const name = String(data.name || '').toLowerCase();
+    return data.mlet === 'Kop'
+        || name === 'keystone kop'
+        || name === 'kop sergeant'
+        || name === 'kop lieutenant'
+        || name === 'kop kaptain';
+}
+
+function isMonsterThrownCreamPie(item) {
+    if (!item) return false;
+    if (item.otyp === CREAM_PIE) return true;
+    return [item.actualKind, item.kind, item.singular, item.appearance]
+        .map(name => String(name || '').toLowerCase())
+        .some(name => name === 'cream pie');
+}
+
+function heroCanBeCreamedByMonsterPie() {
+    if (!game.u) return false;
+    if (game.u.blindfolded || game.u.Blindfolded) return false;
+    return !(game.u?._polyself_form?.noeyes || game.u?.noeyes);
+}
+
+function applyMonsterCreamPieBlindness() {
+    if (!heroCanBeCreamedByMonsterPie()) return 0;
+    const blindinc = rnd(25);
+    game.u.ucreamed = (game.u.ucreamed || 0) + blindinc;
+    game.u._blindTimeout = (game.u._blindTimeout || 0) + blindinc;
+    game.u.blind = true;
+    addHeroStatusSuffix('Blind');
+    for (const other of game.level?.monsters || []) newsym(other.mx, other.my);
+    return blindinc;
 }
 
 function monsterThrownSpearNames(item) {
