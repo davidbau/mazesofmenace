@@ -16560,7 +16560,8 @@ function waterVaporLycanthropyEffect(potion, messages) {
 }
 
 function potionBreathe(potion, messages) {
-    if (!heroCanReceivePotionVapor()) return;
+    const result = {};
+    if (!heroCanReceivePotionVapor()) return result;
     const name = potionEffectNameFromAppearance(potion, alchemyPotionName(potion));
     let knownEffect = false;
     let blockedByWetTowel = false;
@@ -16632,8 +16633,8 @@ function potionBreathe(potion, messages) {
             if (!heroHasFreeAction() && !heroHasSleepResistance()) {
                 messages.push('You feel rather tired.');
                 const duration = rnd(5);
+                result.sleepDuration = duration;
                 game._helpless_time = Math.max(game._helpless_time || 0, duration);
-                game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
                 game._wake_message = 'You can move again.';
                 exerciseAttribute(A_DEX, false);
             } else {
@@ -16671,6 +16672,7 @@ function potionBreathe(potion, messages) {
         }
     }
     learnPotionVaporEffect(potion, name, knownEffect);
+    return result;
 }
 
 function heroIsNextToPotionVapor(x, y) {
@@ -17133,16 +17135,21 @@ function reviveVampshifterFromPotionKill(mon, messages) {
     return true;
 }
 
-function killMonsterFromPotionHit(mon, messages) {
+function killMonsterFromPotionHit(mon, messages, { heroFault = true } = {}) {
     if (!mon || mon.dead) return;
-    if (reviveVampshifterFromPotionKill(mon, messages)) return;
+    if (heroFault && reviveVampshifterFromPotionKill(mon, messages)) return;
     mon.dead = true;
+    mon.mhp = 0;
     const data = mon.data || {};
     const targetName = mon.givenName || `the ${data.name || mon.name || 'monster'}`;
     const nonliving = data.nonliving || data.mlet === 'Z' || data.glyph === 'Z'
         || String(data.name || '').includes('zombie') || String(data.name || '').endsWith(' golem');
-    messages.push(`You ${nonliving ? 'destroy' : 'kill'} ${targetName}!`);
-    recordVanquished(mon);
+    if (heroFault) {
+        messages.push(`You ${nonliving ? 'destroy' : 'kill'} ${targetName}!`);
+    } else if (monsterCanBeSeenForPotionEffect(mon)) {
+        messages.push(`${sentenceCase(targetName)} is ${nonliving ? 'destroyed' : 'killed'}!`);
+    }
+    recordVanquished(mon, heroFault);
     dropMonsterInventory(mon, messages);
 
     const corpseData = data.corpse
@@ -17278,8 +17285,8 @@ function sicknessPotionHitMonster(mon, messages) {
     return true;
 }
 
-function acidPotionHitMonster(potion, mon, messages) {
-    if (monsterResistsAcid(mon) || monsterResistsEffect(mon, 6)) return true;
+function acidPotionHitMonster(potion, mon, messages, { yourFault = true } = {}) {
+    if (monsterResistsAcid(mon) || monsterResistsEffect(mon, 6)) return !!yourFault;
 
     const silent = monsterIsSilentForPotionHit(mon);
     messages.push(`${potionHitMonsterName(mon)} ${silent ? 'writhes' : 'shrieks'} in pain!`);
@@ -17288,8 +17295,8 @@ function acidPotionHitMonster(potion, mon, messages) {
     const dice = potion?.cursed ? 2 : 1;
     const sides = potion?.blessed ? 4 : 8;
     mon.mhp = (mon.mhp || 1) - d(dice, sides);
-    if ((mon.mhp || 0) <= 0) killMonsterFromPotionHit(mon, messages);
-    return true;
+    if ((mon.mhp || 0) <= 0) killMonsterFromPotionHit(mon, messages, { heroFault: !!yourFault });
+    return !!yourFault;
 }
 
 function monsterHasMagicResistanceForPolymorph(mon) {
@@ -17861,7 +17868,7 @@ function potionHitSaddle(potion, mon, messages, kind = thrownPotionEffectKind(po
     return false;
 }
 
-function heroThrownPotionHitMonster(potion, mon) {
+export function heroThrownPotionHitMonster(potion, mon, { yourFault = true } = {}) {
     const messages = [];
     const bottle = chestShatterBottleName();
     const kind = thrownPotionEffectKind(potion);
@@ -17870,7 +17877,7 @@ function heroThrownPotionHitMonster(potion, mon) {
     const targetSquareVisible = potionHitTargetSquareVisible(mon);
     const saddleVisible = targetSquareVisible && monsterCanBeSpottedForPotionHit(mon);
     const waterBranchOptions = { ignoreSaddle: saddlePotion };
-    let angerMon = true;
+    let angerMon = !!yourFault;
     if (targetSquareVisible) {
         messages.push(`The ${bottle} crashes on ${hitSaddle ? saddlePotionHitTargetName(mon) : thrownPotionHitTargetName(mon)} and breaks into shards.`);
     } else {
@@ -17904,7 +17911,7 @@ function heroThrownPotionHitMonster(potion, mon) {
     } else if (kind === 'sickness') {
         angerMon = sicknessPotionHitMonster(mon, messages);
     } else if (kind === 'acid') {
-        angerMon = acidPotionHitMonster(potion, mon, messages);
+        angerMon = acidPotionHitMonster(potion, mon, messages, { yourFault });
     } else if (kind === 'polymorph') {
         angerMon = polymorphPotionHitMonster(mon, messages);
     } else if (kind === 'healing' || kind === 'extra healing' || kind === 'full healing'
@@ -17949,6 +17956,10 @@ function heroThrownPotionHitMonster(potion, mon) {
     const shopDebt = convertUnpaidObjectToShopDebt(potion, { silent: true, broken: true });
     if (!shopDebt.charged) potion.no_charge = true;
     return messages;
+}
+
+export function monsterThrownPotionHitMonster(potion, mon) {
+    return heroThrownPotionHitMonster(potion, mon, { yourFault: false });
 }
 
 function heroThrownVenomTargetName(mon) {
@@ -32794,7 +32805,7 @@ function wishedDamageProfile(item) {
     const nonflammableArmor = armor && FIRE_NONFLAMMABLE_ARMOR_KINDS.has(kind);
     const copperLike = /\b(?:copper|bronze)\b/.test(kind);
     const ironLike = !flammableArmor && !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
-        || /\b(?:plate mail|splint mail|banded mail|ring mail|chain mail|scale mail|large shield|roundshield|gauntlets|helm|helmet|dented pot|shoes|sword|saber|dagger|knife|axe|mace|hammer|flail|morning star|pick-axe|mattock|spear|trident|lance|polearm|dart)\b/.test(kind));
+        || /\b(?:plate mail|splint mail|banded mail|ring mail|chain mail|scale mail|large shield|roundshield|gauntlets|helm|helmet|dented pot|shoes|sword|saber|dagger|knife|axe|mace|hammer|flail|morning star|pick-axe|mattock|spear|trident|lance|polearm|dart|shuriken|throwing star)\b/.test(kind));
     const flammableLike = flammableArmor || (!nonflammableArmor && !glassArmor && !ironLike && !copperLike && !excludedMetal
         && /\b(?:leather|cloth|cloak|robe|shirt|boots|gloves|wooden|small shield|bow|crossbow|arrow|club|quarterstaff|aklys|bullwhip|sling)\b/.test(kind));
     const rustprone = ironLike;
@@ -47591,22 +47602,21 @@ export async function rhack(_cmd) {
                 game.level.objects = (game.level?.objects || []).filter(obj => !obj.transientProjectile);
                 for (const obj of projectiles) newsym(obj.ox, obj.oy);
 
-                const appearance = game._object_descriptions?.potions?.[potion.potionIndex]?.description || 'clear';
-                const messages = [`The ${appearance} potion evaporates.`];
                 const kind = thrownPotionEffectKind(potion);
-                if (kind === 'acid') {
-                    heroAcidPotionSelfHitMessages(potion, messages);
-                    potionBreathe(potion, messages);
-                } else if (kind === 'confusion' || kind === 'paralysis' || kind === 'blindness') {
-                    potionBreathe(potion, messages);
-                } else if (potion.potionIndex === 17) {
-                    const sleepTime = rnd(5);
-                    rn2(2);
+                const messages = [];
+                if (!isPotionOfOil(potion)) {
+                    const appearance = game._object_descriptions?.potions?.[potion.potionIndex]?.description || 'clear';
+                    messages.push(`The ${appearance} potion evaporates.`);
+                }
+                if (kind === 'acid') heroAcidPotionSelfHitMessages(potion, messages);
+                if (kind === 'polymorph') heroPolymorphPotionSelfHitMessages(messages);
+                if (isLitOilPotionHit(potion, kind))
+                    explodeBurningOilPotion(potion, game.u?.ux ?? 0, game.u?.uy ?? 0, messages);
+                const result = potionBreathe(potion, messages) || {};
+                if (result.sleepDuration) {
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, result.sleepDuration);
+                    // The deferred sleeping self-hit turn still has C exercise RNG before monster movement.
                     rn2(19);
-                    game._helpless_time = Math.max(game._helpless_time || 0, sleepTime);
-                    game._wake_message = 'You can move again.';
-                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, sleepTime);
-                    messages.push('You feel rather tired.');
                 }
                 game._pending_message = messages.join('  ');
                 game._message_more = 1;
