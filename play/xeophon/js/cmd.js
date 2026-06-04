@@ -29119,6 +29119,83 @@ function mergePickedObjectIntoInventory(source, target) {
     return `${target.letter} - ${pickedPhrase} (${target.quan} in total).`;
 }
 
+function wieldedItemForFreeHandCheck() {
+    return (game.inventory || []).find(item =>
+        item.wielded || item.line?.includes('weapon in') || item.line?.includes('(wielded)')) || null;
+}
+
+function wornCursedShieldForFreeHandCheck() {
+    return (game.inventory || []).find(item => {
+        const name = inventoryItemName(item).toLowerCase();
+        return item.cursed && (item.worn || /being worn/.test(String(item.line || '')))
+            && /\bshield\b/.test(name);
+    }) || null;
+}
+
+function heroHasFreeHandForThrownCatch() {
+    const weapon = wieldedItemForFreeHandCheck();
+    if (!weapon || !(weapon.cursed || weapon.welded)) return true;
+    return !isTwoHandedWieldItem(weapon) && !wornCursedShieldForFreeHandCheck();
+}
+
+export function heroCanAttemptThrownObjectCatch(obj) {
+    if (!obj || game.u?.blind || game.u?.confusion || game.u?.stunned || game.u?.fumbling) return false;
+    if (isVenomObject(obj) || polyselfNoHands() || !heroHasFreeHandForThrownCatch()) return false;
+    const nextWeight = heroCarriedWeight() + globObjectWeight({ ...obj, quan: Math.max(1, obj.quan || 1) });
+    return heroEncumbranceForWeight(nextWeight) <= 1;
+}
+
+export function holdCaughtThrownObject(obj, {
+    catchName = '',
+    glyph = obj?.glyph || ')',
+    color = obj?.color ?? CLR_CYAN,
+} = {}) {
+    if (!obj) return { held: false, dropped: false, message: '' };
+    const name = catchName || pickupObjectName({ ...obj, quan: 1 });
+    const caught = {
+        ...obj,
+        quan: Math.max(1, Math.trunc(Number(obj.quan || 1))),
+        kind: obj.kind || pickupObjectName({ ...obj, quan: 1 }),
+        glyph,
+        color,
+        petFetchable: true,
+        hidden: false,
+        buried: false,
+        transientProjectile: false,
+    };
+    delete caught.letter;
+    delete caught.line;
+    delete caught.ox;
+    delete caught.oy;
+
+    const mergeInfo = findPickedObjectInventoryMergeTarget(caught, 0);
+    if (mergeInfo) {
+        mergePickedObjectIntoInventory(caught, mergeInfo.target);
+        game._pet_food_scan_inventory = game.inventory;
+        return { held: true, dropped: false, object: mergeInfo.target, message: `You catch the ${name}!` };
+    }
+
+    const letter = simulatedNextInventoryLetters(1)?.[0];
+    if (!letter) {
+        const dropped = {
+            ...caught,
+            ox: game.u?.ux || 0,
+            oy: game.u?.uy || 0,
+        };
+        game.level.objects ??= [];
+        game.level.objects.push(dropped);
+        newsym(dropped.ox, dropped.oy);
+        return { held: false, dropped: true, object: dropped, message: `You catch, but drop, the ${name}.` };
+    }
+
+    Object.assign(caught, { letter });
+    caught.line = normalInventoryLine({ ...caught, line: '' });
+    nextInventoryLetter();
+    game.inventory = [...(game.inventory || []), caught];
+    game._pet_food_scan_inventory = game.inventory;
+    return { held: true, dropped: false, object: caught, message: `You catch the ${name}!` };
+}
+
 function containerTakeoutInventorySourceView(container, obj) {
     return {
         ...obj,
@@ -47515,17 +47592,23 @@ export async function rhack(_cmd) {
                 for (const obj of projectiles) newsym(obj.ox, obj.oy);
 
                 const appearance = game._object_descriptions?.potions?.[potion.potionIndex]?.description || 'clear';
-                let message = `The ${appearance} potion evaporates.`;
-                if (potion.potionIndex === 17) {
+                const messages = [`The ${appearance} potion evaporates.`];
+                const kind = thrownPotionEffectKind(potion);
+                if (kind === 'acid') {
+                    heroAcidPotionSelfHitMessages(potion, messages);
+                    potionBreathe(potion, messages);
+                } else if (kind === 'confusion' || kind === 'paralysis' || kind === 'blindness') {
+                    potionBreathe(potion, messages);
+                } else if (potion.potionIndex === 17) {
                     const sleepTime = rnd(5);
                     rn2(2);
                     rn2(19);
                     game._helpless_time = Math.max(game._helpless_time || 0, sleepTime);
                     game._wake_message = 'You can move again.';
                     game._pending_time_passed = Math.max(game._pending_time_passed || 0, sleepTime);
-                    message = `${message}  You feel rather tired.`;
+                    messages.push('You feel rather tired.');
                 }
-                game._pending_message = message;
+                game._pending_message = messages.join('  ');
                 game._message_more = 1;
                 game._process_time_with_more = game._pending_time_passed ? 1 : 0;
                 game._keep_pending_message = 1;

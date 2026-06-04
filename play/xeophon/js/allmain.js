@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, landMonsterThrownObject, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -1654,6 +1654,22 @@ const ROCK = 467;
 const FLINT = 10166;
 const LUCKSTONE = 10127;
 const LOADSTONE = 10165;
+const TOUCHSTONE = 473;
+const UNICORN_REAL_GEM_NAMES = new Set([
+    'dilithium crystal', 'diamond', 'ruby', 'jacinth', 'jacinth stone',
+    'sapphire', 'black opal', 'emerald', 'turquoise', 'turquoise stone',
+    'citrine', 'citrine stone', 'aquamarine', 'aquamarine stone',
+    'amber', 'amber stone', 'topaz', 'topaz stone', 'jet', 'jet stone',
+    'opal', 'chrysoberyl', 'chrysoberyl stone', 'garnet', 'garnet stone',
+    'amethyst', 'amethyst stone', 'jasper', 'jasper stone', 'fluorite',
+    'fluorite stone', 'obsidian', 'obsidian stone', 'agate', 'agate stone',
+    'jade', 'jade stone',
+]);
+const UNICORN_GRAY_STONE_NAMES = new Set([
+    'rock', 'rocks', 'gray stone', 'grey stone', 'luckstone', 'loadstone',
+    'touchstone', 'flint', 'flint stone',
+]);
+const UNICORN_EXCLUDED_GEM_OTYPS = new Set([ROCK, FLINT, LUCKSTONE, LOADSTONE, TOUCHSTONE]);
 const KELP_FROND = 172;
 const CORPSE = 471;
 const STATUE = 472;
@@ -2673,6 +2689,123 @@ function selectMonsterSlingAmmoIndex(mon) {
 function monsterSlingAmmoDamageSides(item) {
     const name = monsterSlingAmmoName(item).toLowerCase();
     return item?.otyp === FLINT || name === 'flint' || name === 'flint stone' ? 6 : 3;
+}
+
+function normalizedGemName(value) {
+    return String(value || '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function heroPolyselfIsUnicorn() {
+    const form = game.u?._polyself_form || game.u?.youmonst?.data || {};
+    const name = normalizedGemName(form.name || form.mname || form.displayName);
+    const mlet = normalizedGemName(form.mlet || form.glyph || form.symbol);
+    const likesGems = !!(form.likesGems || form.likes_gems || /unicorn/.test(name));
+    return likesGems && (mlet === 'unicorn' || mlet === 'u' || /unicorn/.test(name));
+}
+
+function unicornThrownGemNames(item) {
+    return [
+        item?.actualKind,
+        item?.kind,
+        item?.gemDescription,
+        item?.displayName,
+        item?.objectKindKey,
+    ].map(normalizedGemName).filter(Boolean);
+}
+
+function unicornThrownGemKind(item) {
+    if (!item || monsterPickupClass(item) !== GEM_CLASS) return '';
+    if (UNICORN_EXCLUDED_GEM_OTYPS.has(item.otyp) || item.isRock) return '';
+    const names = unicornThrownGemNames(item);
+    if (names.some(name => UNICORN_GRAY_STONE_NAMES.has(name))) return '';
+    if (names.some(name => /\bworthless piece of\b.*\bglass\b/.test(name) || name === 'glass')
+        || normalizedGemName(item.material || item.oc_material) === 'glass')
+        return 'glass';
+    if (names.some(name => UNICORN_REAL_GEM_NAMES.has(name))) return 'real';
+    const roll = Number(item.gemRoll);
+    if (Number.isFinite(roll) && roll > 0) {
+        if (roll <= 171) return 'real';
+        if (roll <= 862) return 'glass';
+    }
+    return '';
+}
+
+function unicornThrownGemName(item, gemKind) {
+    const names = [
+        item?.actualKind,
+        item?.kind,
+        item?.displayName,
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    if (gemKind === 'glass') {
+        const glassName = names.find(name =>
+            /\bworthless piece of\b.*\bglass\b/.test(name.toLowerCase()));
+        if (glassName) return glassName;
+        const description = String(item?.gemDescription || '').trim();
+        const color = description.match(/^(.+) gem$/i)?.[1] || description;
+        if (color && !/\bworthless piece of\b/i.test(color)) return `worthless piece of ${color} glass`;
+    }
+    return names[0] || monsterSlingAmmoName(item);
+}
+
+function recordUnicornGlassGemDiscovery(item, gemName) {
+    item.known = true;
+    item.dknown = true;
+    const appearance = String(item.gemDescription || '').replace(/ gem$/i, '').trim();
+    recordDiscovery('Gems/Stones', gemName, appearance && appearance !== gemName ? appearance : null, true);
+}
+
+function queueMonsterProjectileHeroMessages(messages, throwerVisible, deferPrayerProjectile) {
+    const shownMessages = (messages || []).filter(Boolean);
+    if (!shownMessages.length) return;
+    if (deferPrayerProjectile) {
+        const text = shownMessages.join('  ');
+        game._pending_message = `${text}  You finish your prayer.  You feel that ${game._prayer_god || 'your god'} is displeased.`;
+        game._keep_pending_message = 1;
+        game._prayer_message_complete_once = 1;
+        game._skip_pending_time_decrement = 1;
+        game._prayer_nearby_trouble = 0;
+        return;
+    }
+    if (throwerVisible) {
+        game._topline_after_more = shownMessages[0];
+        for (const msg of shownMessages.slice(1)) appendAfterMoreMessage(msg);
+        return;
+    }
+    for (const msg of shownMessages) addToplineMessage(msg);
+}
+
+function handleUnicornThrownGemCatch(thrownMissile, mon, { throwerVisible = false, deferPrayerProjectile = false } = {}) {
+    if (!heroPolyselfIsUnicorn()) return false;
+    const gemKind = unicornThrownGemKind(thrownMissile);
+    if (!gemKind) return false;
+    const gemName = unicornThrownGemName(thrownMissile, gemKind);
+    const source = monsterPossessiveName(mon);
+    const messages = [];
+    if (gemKind === 'glass') {
+        recordUnicornGlassGemDiscovery(thrownMissile, gemName);
+        const floorMessages = [];
+        landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+            glyph: thrownMissile.glyph || '*',
+            color: thrownMissile.color ?? NO_COLOR,
+            messages: floorMessages,
+        });
+        messages.push(`You catch the ${gemName}.`);
+        messages.push(`You are not interested in ${source} junk.`);
+        queueMonsterProjectileHeroMessages(messages, throwerVisible, deferPrayerProjectile);
+        addMonsterThrownFloorMessages(floorMessages, throwerVisible && !deferPrayerProjectile);
+        return true;
+    }
+
+    const catchResult = holdCaughtThrownObject(thrownMissile, {
+        catchName: gemName,
+        glyph: thrownMissile.glyph || '*',
+        color: thrownMissile.color ?? NO_COLOR,
+    });
+    messages.push(`You accept ${source} gift in the spirit in which it was intended.`);
+    if (catchResult.dropped) messages.push(`You catch, but drop, ${gemName}.`);
+    else messages.push(`You catch: ${articleFor(gemName)} ${gemName}.`);
+    queueMonsterProjectileHeroMessages(messages, throwerVisible, deferPrayerProjectile);
+    return true;
 }
 
 function armHeroDeathMore(message = 'You die...') {
@@ -6055,14 +6188,8 @@ export async function processMonsterTurns() {
                             const deferPrayerProjectile = !throwerVisible
                                 && (game._pending_prayer_finish_message || game._prayer_occupation);
                             rnd(1);
-                            if ((missile.quan || 1) > 1) {
-                                missile.quan--;
-                                if (mon.missile === missile) mon.missile.quan = missile.quan;
-                                next_ident();
-                            } else {
-                                mon.minvent.splice(postMoveSlingAmmoIndex, 1);
-                                if (mon.missile === missile) mon.missile = null;
-                            }
+                            const thrownMissile = splitMonsterThrownInventoryObject(mon, postMoveSlingAmmoIndex);
+                            if (!thrownMissile) continue;
                             if (throwerVisible) {
                                 addToplineMessage(`${monsterDisplayName(mon, true)} shoots ${missileArticle} ${missileName}!`);
                                 game._message_more = 1;
@@ -6085,19 +6212,39 @@ export async function processMonsterTurns() {
                             }
                             if (slingTerrainStop) {
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, slingTerrainStop.x, slingTerrainStop.y, {
-                                    glyph: missile.glyph || '*',
-                                    color: missile.color ?? NO_COLOR,
+                                landMonsterThrownObject(thrownMissile, slingTerrainStop.x, slingTerrainStop.y, {
+                                    glyph: thrownMissile.glyph || '*',
+                                    color: thrownMissile.color ?? NO_COLOR,
                                     messages: floorMessages,
                                 });
                                 addMonsterThrownFloorMessages(floorMessages, throwerVisible && !deferPrayerProjectile);
                             } else {
+                                if (handleUnicornThrownGemCatch(thrownMissile, mon, {
+                                    throwerVisible,
+                                    deferPrayerProjectile,
+                                })) {
+                                    game._search_pending_count = 0;
+                                    game._run_steps_remaining = 0;
+                                    game._travel_keys = [];
+                                    if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
+                                    if (game._message_more && !game._process_time_with_more) {
+                                        game._monster_resume_index = monIndex + 1;
+                                        game._monster_resume_somebody_can_move = somebodyCanMove;
+                                        return false;
+                                    }
+                                    continue;
+                                }
                                 const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                     - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                                const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                                    && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                                const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                    && rn2(Math.max(1, catchChance)) === 0;
                                 if (caught) {
-                                    const catchMessage = `You catch the ${missileName}!`;
+                                    const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                        catchName: missileName,
+                                        glyph: thrownMissile.glyph || '*',
+                                        color: thrownMissile.color ?? NO_COLOR,
+                                    });
+                                    const catchMessage = catchResult.message;
                                     if (deferPrayerProjectile) {
                                         game._pending_message = `${catchMessage}  You finish your prayer.  You feel that ${game._prayer_god || 'your god'} is displeased.`;
                                         game._keep_pending_message = 1;
@@ -6107,8 +6254,8 @@ export async function processMonsterTurns() {
                                     } else if (throwerVisible) game._topline_after_more = catchMessage;
                                     else addToplineMessage(catchMessage);
                                 } else {
-                                    const damage = rnd(monsterSlingAmmoDamageSides(missile));
-                                    const hitv = Math.max(-4, 3 - throwRange) + 8 + (missile.spe || 0);
+                                    const damage = rnd(monsterSlingAmmoDamageSides(thrownMissile));
+                                    const hitv = Math.max(-4, 3 - throwRange) + 8 + (thrownMissile.spe || 0);
                                     const attackRoll = rnd(20);
                                     const missed = (game.u?.uac ?? 10) + hitv <= attackRoll;
                                     let resultMessage = missed ? 'It misses.' : `You are hit by ${missileArticle} ${missileName}.`;
@@ -6131,9 +6278,9 @@ export async function processMonsterTurns() {
                                     }
                                     if (missed) rn2(5);
                                     const floorMessages = [];
-                                    landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
-                                        glyph: missile.glyph || '*',
-                                        color: missile.color ?? NO_COLOR,
+                                    landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                        glyph: thrownMissile.glyph || '*',
+                                        color: thrownMissile.color ?? NO_COLOR,
                                         messages: floorMessages,
                                         ohit: !missed,
                                     });
@@ -6508,10 +6655,15 @@ export async function processMonsterTurns() {
                         newsym(flightX, flightY);
                         const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                             - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                        const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                            && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                        const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                            && rn2(Math.max(1, catchChance)) === 0;
                         if (caught) {
-                            game._topline_after_more = `You catch the ${projectileKind}!`;
+                            const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                catchName: projectileKind,
+                                glyph: thrownMissile.glyph || ')',
+                                color: thrownMissile.color ?? CLR_CYAN,
+                            });
+                            game._topline_after_more = catchResult.message;
                         } else {
                             const projectileDamageSides = monsterLauncherProjectileDamageSides(thrownMissile);
                             const projectileDamageBonus = monsterLauncherProjectileDamageBonus(thrownMissile);
@@ -6625,41 +6777,55 @@ export async function processMonsterTurns() {
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else {
-                            const attackRoll = rnd(20);
-                            const missed = targetAc + 8 <= attackRoll;
-                            let resultMessage = game.u?.blind || game.flags?.verbose === false
-                                ? 'You are hit.'
-                                : 'You are hit by a cream pie.';
-                            if (missed) {
-                                resultMessage = game.u?.blind || game.flags?.verbose === false
-                                    ? 'It misses.'
-                                    : targetAc + 8 <= attackRoll - 2
-                                        ? 'A cream pie misses you.'
-                                        : 'You are almost hit by a cream pie.';
-                            }
-
-                            if (!missed) {
-                                const wasBlind = !!game.u?.blind;
-                                const blindinc = applyMonsterCreamPieBlindness();
-                                if (blindinc) {
-                                    resultMessage = `${resultMessage}  ${wasBlind
-                                        ? "There's something sticky all over your face."
-                                        : "Yecch!  You've been creamed."}`;
+                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                                - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
+                            const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                && rn2(Math.max(1, catchChance)) === 0;
+                            if (caught) {
+                                const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                    catchName: 'cream pie',
+                                    glyph: '%',
+                                    color: CLR_WHITE,
+                                });
+                                if (throwerVisible) game._topline_after_more = catchResult.message;
+                                else addToplineMessage(catchResult.message);
+                            } else {
+                                const attackRoll = rnd(20);
+                                const missed = targetAc + 8 <= attackRoll;
+                                let resultMessage = game.u?.blind || game.flags?.verbose === false
+                                    ? 'You are hit.'
+                                    : 'You are hit by a cream pie.';
+                                if (missed) {
+                                    resultMessage = game.u?.blind || game.flags?.verbose === false
+                                        ? 'It misses.'
+                                        : targetAc + 8 <= attackRoll - 2
+                                            ? 'A cream pie misses you.'
+                                            : 'You are almost hit by a cream pie.';
                                 }
-                                exerciseAttribute(A_STR, false);
+
+                                if (!missed) {
+                                    const wasBlind = !!game.u?.blind;
+                                    const blindinc = applyMonsterCreamPieBlindness();
+                                    if (blindinc) {
+                                        resultMessage = `${resultMessage}  ${wasBlind
+                                            ? "There's something sticky all over your face."
+                                            : "Yecch!  You've been creamed."}`;
+                                    }
+                                    exerciseAttribute(A_STR, false);
+                                }
+
+                                if (throwerVisible) game._topline_after_more = resultMessage;
+                                else addToplineMessage(resultMessage);
+
+                                const floorMessages = [];
+                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                    glyph: '%',
+                                    color: CLR_WHITE,
+                                    messages: floorMessages,
+                                    ohit: !missed,
+                                });
+                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                             }
-
-                            if (throwerVisible) game._topline_after_more = resultMessage;
-                            else addToplineMessage(resultMessage);
-
-                            const floorMessages = [];
-                            landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
-                                glyph: '%',
-                                color: CLR_WHITE,
-                                messages: floorMessages,
-                                ohit: !missed,
-                            });
-                            addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         }
 
                         game._search_pending_count = 0;
@@ -6688,11 +6854,8 @@ export async function processMonsterTurns() {
                         const missileSpe = Math.trunc(Number(missile.spe || 0));
                         const missileErosion = Math.max(0, Math.trunc(Number(missile.oeroded || 0)),
                             Math.trunc(Number(missile.oeroded2 || 0)));
-                        if ((missile.quan || 1) > 1) missile.quan--;
-                        else {
-                            mon.minvent.splice(spearIndex, 1);
-                            if (mon.missile === missile) mon.missile = null;
-                        }
+                        const thrownMissile = splitMonsterThrownInventoryObject(mon, spearIndex);
+                        if (!thrownMissile) continue;
                         const throwerVisible = !game.u?.blind
                             && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                             && !mon.minvis;
@@ -6719,23 +6882,28 @@ export async function processMonsterTurns() {
                         }
                         if (spearTerrainStop) {
                             const floorMessages = [];
-                            landMonsterThrownObject(missile, spearTerrainStop.x, spearTerrainStop.y, {
+                            landMonsterThrownObject(thrownMissile, spearTerrainStop.x, spearTerrainStop.y, {
                                 glyph: ')',
-                                color: missile.color ?? CLR_CYAN,
+                                color: thrownMissile.color ?? CLR_CYAN,
                                 messages: floorMessages,
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else {
                             const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                            const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                                && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                            const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                && rn2(Math.max(1, catchChance)) === 0;
                             if (caught) {
-                                const catchMessage = `You catch the ${spearKind}!`;
+                                const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                    catchName: spearKind,
+                                    glyph: ')',
+                                    color: thrownMissile.color ?? CLR_CYAN,
+                                });
+                                const catchMessage = catchResult.message;
                                 if (throwerVisible) game._topline_after_more = catchMessage;
                                 else addToplineMessage(catchMessage);
                             } else {
-                                const damage = Math.max(1, rnd(monsterThrownSpearDamageSides(missile))
+                                const damage = Math.max(1, rnd(monsterThrownSpearDamageSides(thrownMissile))
                                     + missileSpe - missileErosion);
                                 const hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe;
                                 const attackRoll = rnd(20);
@@ -6756,9 +6924,9 @@ export async function processMonsterTurns() {
                                 }
                                 rn2(5);
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
                                     glyph: ')',
-                                    color: missile.color ?? CLR_CYAN,
+                                    color: thrownMissile.color ?? CLR_CYAN,
                                     messages: floorMessages,
                                     ohit: !missed,
                                 });
@@ -6787,11 +6955,8 @@ export async function processMonsterTurns() {
                         const missileSpe = Math.trunc(Number(missile.spe || 0));
                         const missileErosion = Math.max(0, Math.trunc(Number(missile.oeroded || 0)),
                             Math.trunc(Number(missile.oeroded2 || 0)));
-                        if ((missile.quan || 1) > 1) missile.quan--;
-                        else {
-                            mon.minvent.splice(shurikenIndex, 1);
-                            if (mon.missile === missile) mon.missile = null;
-                        }
+                        const thrownMissile = splitMonsterThrownInventoryObject(mon, shurikenIndex);
+                        if (!thrownMissile) continue;
                         const throwerVisible = !game.u?.blind
                             && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                             && !mon.minvis;
@@ -6818,19 +6983,24 @@ export async function processMonsterTurns() {
                         }
                         if (shurikenTerrainStop) {
                             const floorMessages = [];
-                            landMonsterThrownObject(missile, shurikenTerrainStop.x, shurikenTerrainStop.y, {
+                            landMonsterThrownObject(thrownMissile, shurikenTerrainStop.x, shurikenTerrainStop.y, {
                                 glyph: ')',
-                                color: missile.color ?? CLR_CYAN,
+                                color: thrownMissile.color ?? CLR_CYAN,
                                 messages: floorMessages,
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else {
                             const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                            const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                                && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                            const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                && rn2(Math.max(1, catchChance)) === 0;
                             if (caught) {
-                                const catchMessage = `You catch the ${shurikenKind}!`;
+                                const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                    catchName: shurikenKind,
+                                    glyph: ')',
+                                    color: thrownMissile.color ?? CLR_CYAN,
+                                });
+                                const catchMessage = catchResult.message;
                                 if (throwerVisible) game._topline_after_more = catchMessage;
                                 else addToplineMessage(catchMessage);
                             } else {
@@ -6854,9 +7024,9 @@ export async function processMonsterTurns() {
                                 }
                                 rn2(5);
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
                                     glyph: ')',
-                                    color: missile.color ?? CLR_CYAN,
+                                    color: thrownMissile.color ?? CLR_CYAN,
                                     messages: floorMessages,
                                     ohit: !missed,
                                 });
@@ -6884,11 +7054,8 @@ export async function processMonsterTurns() {
                         const daggerArticleCap = daggerArticle[0].toUpperCase() + daggerArticle.slice(1);
                         const daggerMaterial = String(missile.material || missile.oc_material || '').toLowerCase();
                         const daggerBarsSound = daggerKind === 'silver dagger' || daggerMaterial === 'silver' ? 'Clink!' : 'Clonk!';
-                        if ((missile.quan || 1) > 1) missile.quan--;
-                        else {
-                            mon.minvent.splice(plainDaggerIndex, 1);
-                            if (mon.missile === missile) mon.missile = null;
-                        }
+                        const thrownMissile = splitMonsterThrownInventoryObject(mon, plainDaggerIndex);
+                        if (!thrownMissile) continue;
                         const throwerVisible = !game.u?.blind
                             && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                             && !mon.minvis;
@@ -6921,7 +7088,7 @@ export async function processMonsterTurns() {
                         }
                         if (daggerTerrainStop) {
                             const floorMessages = [];
-                            landMonsterThrownObject(missile, daggerTerrainStop.x, daggerTerrainStop.y, {
+                            landMonsterThrownObject(thrownMissile, daggerTerrainStop.x, daggerTerrainStop.y, {
                                 glyph: ')',
                                 color: CLR_CYAN,
                                 messages: floorMessages,
@@ -6930,10 +7097,15 @@ export async function processMonsterTurns() {
                         } else {
                             const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                            const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                                && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                            const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                && rn2(Math.max(1, catchChance)) === 0;
                             if (caught) {
-                                const catchMessage = `You catch the ${daggerKind}!`;
+                                const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                    catchName: daggerKind,
+                                    glyph: ')',
+                                    color: CLR_CYAN,
+                                });
+                                const catchMessage = catchResult.message;
                                 if (throwerVisible) game._topline_after_more = catchMessage;
                                 else addToplineMessage(catchMessage);
                             } else {
@@ -6952,7 +7124,7 @@ export async function processMonsterTurns() {
                                 }
                                 rn2(5);
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
                                     glyph: ')',
                                     color: CLR_CYAN,
                                     messages: floorMessages,
@@ -6972,39 +7144,53 @@ export async function processMonsterTurns() {
                         }
                         continue;
                     }
-	                    if (canThrowOffensivePotion && offensiveItemsLinedUp) {
-                        const potion = mon.minvent[offensivePotionIndex];
-                        if ((potion.quan || 1) > 1) potion.quan--;
-                        else mon.minvent.splice(offensivePotionIndex, 1);
+                    if (canThrowOffensivePotion && offensiveItemsLinedUp) {
+                        const thrownPotion = splitMonsterThrownInventoryObject(mon, offensivePotionIndex);
+                        if (!thrownPotion) continue;
 
                         const throwerVisible = !game.u?.blind && (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT) && !mon.minvis;
                         if (throwerVisible) addToplineMessage(`${monsterDisplayName(mon)} hurls a potion!`);
                         for (let step = 1; step < throwRange; step++) rn2(5);
                         const projectileX = (game.u?.ux || 0) - throwDx;
                         const projectileY = (game.u?.uy || 0) - throwDy;
+                        let transientPotionProjectile = null;
                         if (!game.u?.blind && (game.viz_array?.[projectileY]?.[projectileX] & IN_SIGHT)) {
-                            game.level.objects.push({
+                            transientPotionProjectile = {
                                 ox: projectileX,
                                 oy: projectileY,
                                 quan: 1,
                                 glyph: '!',
                                 color: NO_COLOR,
                                 transientProjectile: true,
-                            });
+                            };
+                            game.level.objects.push(transientPotionProjectile);
+                            game._clear_transient_projectiles_after_more = 1;
                             newsym(projectileX, projectileY);
                         }
 
                         const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                             - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                        const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                            && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                        const caught = heroCanAttemptThrownObjectCatch(thrownPotion)
+                            && rn2(Math.max(1, catchChance)) === 0;
                         if (caught) {
-                            addToplineMessage('You catch the potion!');
+                            const catchResult = holdCaughtThrownObject(thrownPotion, {
+                                catchName: 'potion',
+                                glyph: '!',
+                                color: thrownPotion.color ?? NO_COLOR,
+                            });
+                            if (transientPotionProjectile) {
+                                game.level.objects = (game.level?.objects || [])
+                                    .filter(obj => obj !== transientPotionProjectile);
+                                newsym(projectileX, projectileY);
+                                if (!(game.level.objects || []).some(obj => obj.transientProjectile))
+                                    game._clear_transient_projectiles_after_more = 0;
+                            }
+                            addToplineMessage(catchResult.message);
                         } else {
                             const bottle = POTION_BOTTLE_NAMES[rn2(POTION_BOTTLE_NAMES.length)];
                             const damage = rnd(2);
                             game.u.uhp = Math.max(0, (game.u?.uhp || 0) - damage);
-                            game._potion_breathe_after_more = { otyp: potion.otyp, potionIndex: potion.potionIndex };
+                            game._potion_breathe_after_more = { ...thrownPotion, quan: 1 };
                             game._pending_message = `The ${bottle} crashes on your head and breaks into shards.`;
                             game._message_more = 1;
                             game._process_time_with_more = 0;
@@ -7036,11 +7222,8 @@ export async function processMonsterTurns() {
                             if (heroDist > prevHeroDist && rn2(BOLT_LIM - throwRange)) continue;
 
                             const missile = mon.minvent[orcishDaggerIndex];
-                            if ((missile.quan || 1) > 1) missile.quan--;
-                            else {
-                                mon.minvent.splice(orcishDaggerIndex, 1);
-                                if (mon.missile === missile) mon.missile = null;
-                            }
+                            const thrownMissile = splitMonsterThrownInventoryObject(mon, orcishDaggerIndex);
+                            if (!thrownMissile) continue;
                             recordDiscovery('Weapons', 'crude dagger', null, false);
                             const throwerVisible = !game.u?.blind
                                 && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
@@ -7080,7 +7263,7 @@ export async function processMonsterTurns() {
                                 : hitPet ? hitPet.my - throwDy : (game.u?.uy || 0) - throwDy;
                             if (throwerVisible) {
                                 game.level.objects.push({
-                                    ...missile,
+                                    ...thrownMissile,
                                     ox: flightX,
                                     oy: flightY,
                                     quan: 1,
@@ -7105,11 +7288,16 @@ export async function processMonsterTurns() {
                             } else {
                                 const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                     - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                                const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                                    && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                                const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                    && rn2(Math.max(1, catchChance)) === 0;
                                 if (caught) {
                                     crudeDaggerCaught = true;
-                                    const catchMessage = 'You catch the crude dagger!';
+                                    const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                        catchName: 'crude dagger',
+                                        glyph: ')',
+                                        color: NO_COLOR,
+                                    });
+                                    const catchMessage = catchResult.message;
                                     if (throwerVisible) game._topline_after_more = catchMessage;
                                     else addToplineMessage(catchMessage);
                                 } else {
@@ -7128,7 +7316,7 @@ export async function processMonsterTurns() {
                                     newsym(flightX, flightY);
                                 } else {
                                     game._monster_throw_after_more = {
-                                        missile,
+                                        missile: thrownMissile,
                                         hitPet,
                                         x: crudeDaggerTerrainStop ? crudeDaggerTerrainStop.x
                                             : hitPet ? hitPet.mx : game.u?.ux || 0,
@@ -7143,7 +7331,7 @@ export async function processMonsterTurns() {
                                 }
                             } else if (crudeDaggerTerrainStop) {
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, crudeDaggerTerrainStop.x, crudeDaggerTerrainStop.y, {
+                                landMonsterThrownObject(thrownMissile, crudeDaggerTerrainStop.x, crudeDaggerTerrainStop.y, {
                                     glyph: ')',
                                     color: CLR_CYAN,
                                     messages: floorMessages,
@@ -7151,7 +7339,7 @@ export async function processMonsterTurns() {
                                 addMonsterThrownFloorMessages(floorMessages);
                             } else if (hitPet) {
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, hitPet.mx, hitPet.my, {
+                                landMonsterThrownObject(thrownMissile, hitPet.mx, hitPet.my, {
                                     glyph: ')',
                                     color: NO_COLOR,
                                     messages: floorMessages,
@@ -7160,7 +7348,7 @@ export async function processMonsterTurns() {
                                 addMonsterThrownFloorMessages(floorMessages);
                             } else if (!crudeDaggerCaught) {
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
                                     glyph: ')',
                                     color: CLR_CYAN,
                                     messages: floorMessages,
@@ -7180,11 +7368,8 @@ export async function processMonsterTurns() {
                         if (targetAc < 0 && !consumedMattackuAc) rnd(-targetAc);
 
                         const missile = mon.minvent[knifeIndex];
-                        if ((missile.quan || 1) > 1) missile.quan--;
-                        else {
-                            mon.minvent.splice(knifeIndex, 1);
-                            if (mon.missile === missile) mon.missile = null;
-                        }
+                        const thrownMissile = splitMonsterThrownInventoryObject(mon, knifeIndex);
+                        if (!thrownMissile) continue;
                         const throwerVisible = !game.u?.blind
                             && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                             && !mon.minvis;
@@ -7211,7 +7396,7 @@ export async function processMonsterTurns() {
                         }
                         if (knifeTerrainStop) {
                             const floorMessages = [];
-                            landMonsterThrownObject(missile, knifeTerrainStop.x, knifeTerrainStop.y, {
+                            landMonsterThrownObject(thrownMissile, knifeTerrainStop.x, knifeTerrainStop.y, {
                                 glyph: ')',
                                 color: CLR_CYAN,
                                 messages: floorMessages,
@@ -7220,10 +7405,15 @@ export async function processMonsterTurns() {
                         } else {
                             const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
-                            const caught = !game.u?.blind && !game.u?.confusion && !game.u?.stunned
-                                && !game.u?.fumbling && rn2(Math.max(1, catchChance)) === 0;
+                            const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                && rn2(Math.max(1, catchChance)) === 0;
                             if (caught) {
-                                const catchMessage = 'You catch the knife!';
+                                const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                    catchName: 'knife',
+                                    glyph: ')',
+                                    color: CLR_CYAN,
+                                });
+                                const catchMessage = catchResult.message;
                                 if (throwerVisible) game._topline_after_more = catchMessage;
                                 else addToplineMessage(catchMessage);
                             } else {
@@ -7240,7 +7430,7 @@ export async function processMonsterTurns() {
                                 }
                                 rn2(5);
                                 const floorMessages = [];
-                                landMonsterThrownObject(missile, game.u?.ux || 0, game.u?.uy || 0, {
+                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
                                     glyph: ')',
                                     color: CLR_CYAN,
                                     messages: floorMessages,
@@ -8600,6 +8790,26 @@ function monsterUsesPostMoveHide(mon) {
 
 function monsterThrownSpearKind(item) {
     return String(item?.actualKind || item?.kind || item?.singular || item?.appearance || 'spear');
+}
+
+function splitMonsterThrownInventoryObject(mon, index) {
+    const missile = mon?.minvent?.[index];
+    if (!missile) return null;
+    const missileQuan = Math.max(1, Math.trunc(Number(missile.quan || 1)));
+    if (missileQuan > 1) {
+        missile.quan = missileQuan - 1;
+        const thrown = { ...missile, id: next_ident(), quan: 1 };
+        delete thrown.letter;
+        delete thrown.line;
+        return thrown;
+    }
+    mon.minvent.splice(index, 1);
+    if (mon.missile === missile) mon.missile = null;
+    if (mon.mw === missile) mon.mw = null;
+    missile.quan = 1;
+    delete missile.letter;
+    delete missile.line;
+    return missile;
 }
 
 function monsterThrownShurikenKind(item) {
