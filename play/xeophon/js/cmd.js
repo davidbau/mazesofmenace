@@ -31365,6 +31365,8 @@ function monsterThrownMulchCandidate(obj) {
     if (/\bboomerang\b/.test(kind)) return false;
     if (obj.oc_magic || obj.magic || obj.magicStone) return false;
     if (/\b(?:luckstone|loadstone|touchstone)\b/.test(kind)) return false;
+    if ([LUCKSTONE, LOADSTONE, TOUCHSTONE].includes(obj.otyp)) return false;
+    if (obj.otyp === GEM_CLASS || obj.cls === 'gem' || obj.glyph === '*') return true;
     return obj.otyp === DART
         || /\b(?:arrow|arrows|ya|bolt|bolts|dart|darts|shuriken|throwing star|throwing stars|rock|rocks|flint)\b/.test(kind);
 }

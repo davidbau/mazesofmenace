@@ -4621,6 +4621,7 @@ export function object_display(otmp) {
     if (otyp === ARROW || otyp === BOW) return { glyph: ')', color: displayColor ?? CLR_BROWN };
     if (otyp === CROSSBOW_BOLT || otyp === DAGGER || otyp === CROSSBOW
         || otyp === PICK_AXE || otyp === DART || otyp === KNIFE
+        || otyp === SPEAR || otyp === DWARVISH_SPEAR
         || otyp === SLING || otyp === TRIDENT || otyp === BULLWHIP
         || otyp === RUNESWORD || otyp === WAR_HAMMER
         || otyp === SHORT_SWORD || otyp === ELVEN_SHORT_SWORD
