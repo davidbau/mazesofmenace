@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_DAGGER, P_EXPERT, P_KNIFE, P_SKILLED, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -18201,7 +18201,94 @@ function heroProjectileDexHitBonus() {
     return 0;
 }
 
-function heroProjectileBaseHitValue(mon) {
+function heroStrengthDamageBonus() {
+    if (polyselfForm()) return 0;
+    const str = game.u?.acurr?.a?.[A_STR] ?? 10;
+    if (str < 6) return -1;
+    if (str < 16) return 0;
+    if (str < 18) return 1;
+    if (str === 18) return 2;
+    if (str <= STR18(75)) return 3;
+    if (str <= STR18(90)) return 4;
+    if (str < STR18(100)) return 5;
+    return 6;
+}
+
+function heroDamageIncreaseBonus() {
+    return Math.trunc(Number(game.u?.udaminc || 0));
+}
+
+function exerciseHeroProjectileHitDexterity() {
+    exerciseAttribute(A_DEX, true);
+}
+
+const HERO_PROJECTILE_MONSTER_SIZE_VALUES = new Map([
+    ['tiny', 0],
+    ['small', 1],
+    ['medium', 2],
+    ['human', 2],
+    ['large', 3],
+    ['huge', 4],
+    ['gigantic', 7],
+]);
+
+const HERO_THROWN_WEAPON_MONSTER_DATA = new Map([
+    ['dagger', { smallDie: 4, largeDie: 3, hitbon: 2, skill: P_DAGGER, skillName: 'dagger' }],
+    ['knife', { smallDie: 3, largeDie: 2, hitbon: 0, skill: P_KNIFE, skillName: 'knife' }],
+]);
+
+function heroProjectileMonsterSizeValue(mon) {
+    const data = mon?.data || {};
+    const value = mon?.msize ?? mon?.size ?? data.msize ?? data.size;
+    if (Number.isFinite(Number(value))) return Math.trunc(Number(value));
+    const key = heroThrownGemNameValue(value);
+    if (HERO_PROJECTILE_MONSTER_SIZE_VALUES.has(key))
+        return HERO_PROJECTILE_MONSTER_SIZE_VALUES.get(key);
+    if (mon?.verysmall || data.verysmall || mon?.tiny || data.tiny) return 0;
+    if (mon?.small || data.small) return 1;
+    if (mon?.large || data.large) return 3;
+    if (mon?.huge || data.huge) return 4;
+    if (mon?.gigantic || data.gigantic) return 7;
+    return 2;
+}
+
+function heroProjectileObjectUsesHitval(obj) {
+    return heroThrownGemClassObject(obj)
+        || itemClassKey(obj) === 'weapon' || obj?.glyph === ')' || obj?.otyp === WEAPON_CLASS
+        || isWeaponTool(obj);
+}
+
+function heroProjectileObjectHitval(obj) {
+    if (!heroProjectileObjectUsesHitval(obj)) return 0;
+    let bonus = 0;
+    if (itemClassKey(obj) === 'weapon' || obj?.glyph === ')' || obj?.otyp === WEAPON_CLASS || isWeaponTool(obj))
+        bonus += Math.trunc(Number(obj?.spe || 0));
+    const explicit = obj?.hitbon ?? obj?.oc_hitbon;
+    if (Number.isFinite(Number(explicit))) bonus += Math.trunc(Number(explicit));
+    else bonus += Math.trunc(Number(HERO_THROWN_WEAPON_MONSTER_DATA.get(tossUpWeaponObjectKey(obj))?.hitbon || 0));
+    return bonus;
+}
+
+function heroProjectileObjectHitAdjustment(obj, mon, { monNotices = true } = {}) {
+    const data = mon?.data || {};
+    let adjustment = heroProjectileMonsterSizeValue(mon) - 2;
+    if (mon?.msleeping) adjustment += 2;
+    const immobile = mon?.mcanmove === false || mon?.mcanmove === 0
+        || data.mmove === false || data.mmove === 0;
+    if (immobile) {
+        adjustment += 4;
+        if (monNotices && data.mmove !== false && data.mmove !== 0 && !rn2(10)) {
+            mon.mcanmove = true;
+            mon.mfrozen = 0;
+        }
+    }
+    if (obj?.otyp === HEAVY_IRON_BALL && obj !== game.u?.uball) adjustment += 2;
+    else if (obj?.otyp === BOULDER || objectKindKey(obj) === 'boulder') adjustment += 6;
+    else adjustment += heroProjectileObjectHitval(obj);
+    return adjustment;
+}
+
+function heroProjectileBaseHitValue(obj, mon) {
     const ux = game.u?.ux || 0;
     const uy = game.u?.uy || 0;
     const disttmp = Math.max(-4, 3 - distmin(ux, uy, mon?.mx ?? ux, mon?.my ?? uy));
@@ -18212,7 +18299,8 @@ function heroProjectileBaseHitValue(mon) {
         + Math.trunc(Number(game.u?.uhitinc || 0))
         + heroProjectileHitLevel()
         + heroProjectileDexHitBonus()
-        + disttmp;
+        + disttmp
+        + heroProjectileObjectHitAdjustment(obj, mon);
 }
 
 function heroKickedProjectileIsAmmo(obj) {
@@ -18224,7 +18312,7 @@ function heroKickedProjectileIsAmmo(obj) {
 }
 
 function heroKickedProjectileHitValue(obj, mon) {
-    return heroProjectileBaseHitValue(mon) - (heroKickedProjectileIsAmmo(obj) ? 5 : 3);
+    return heroProjectileBaseHitValue(obj, mon) - (heroKickedProjectileIsAmmo(obj) ? 5 : 3);
 }
 
 function shouldMulchHeroProjectileMissile(obj) {
@@ -18239,9 +18327,11 @@ function shouldMulchHeroProjectileMissile(obj) {
 
 function heroKickedStoneMissileRockPasserImpact(obj, mon) {
     if (!heroThrownStoneMissileHarmlessRockPasser(obj, mon)) return { handled: false, messages: [] };
+    const hitValue = heroKickedProjectileHitValue(obj, mon);
     const dieroll = rnd(20);
-    if (heroKickedProjectileHitValue(obj, mon) >= dieroll) {
+    if (hitValue >= dieroll) {
         wakeMonsterFromHeroThrownHit(mon);
+        exerciseHeroProjectileHitDexterity();
         const mulched = shouldMulchHeroProjectileMissile(obj);
         if (mulched) rn2(100);
         return {
@@ -18258,13 +18348,15 @@ function heroKickedStoneMissileRockPasserImpact(obj, mon) {
 
 function heroKickedGemImpact(obj, mon) {
     if (!heroThrownGemClassObject(obj)) return { handled: false, messages: [] };
+    const hitValue = heroKickedProjectileHitValue(obj, mon);
     const dieroll = rnd(20);
     const targetName = heroThrownVenomTargetName(mon);
-    if (heroKickedProjectileHitValue(obj, mon) >= dieroll) {
-        const damage = rnd(2);
+    if (hitValue >= dieroll) {
+        const damage = Math.max(1, rnd(2) + heroStrengthDamageBonus() + heroDamageIncreaseBonus());
         mon.mhp = (mon.mhp || 1) - damage;
         if ((mon.mhp || 0) <= 0) mon.dead = true;
         wakeMonsterFromHeroThrownHit(mon);
+        exerciseHeroProjectileHitDexterity();
         const mulched = shouldMulchHeroProjectileMissile(obj);
         if (mulched) rn2(100);
         return {
@@ -18284,19 +18376,158 @@ function heroThrownGlassGemObject(obj) {
     return heroThrownGemClassObject(obj) && stoneToFleshObjectMaterial(obj) === 'glass';
 }
 
-function heroThrownGemHitValue(mon) {
-    return heroProjectileBaseHitValue(mon) - 4;
+function heroThrownGemHitValue(obj, mon) {
+    return heroProjectileBaseHitValue(obj, mon) - 4;
+}
+
+function heroProjectileSupportedWeaponObject(obj) {
+    if (!obj || obj.artifact || obj.oartifact) return false;
+    return HERO_THROWN_WEAPON_MONSTER_DATA.has(tossUpWeaponObjectKey(obj));
+}
+
+function heroThrownWeaponHitValue(obj, mon) {
+    return heroProjectileBaseHitValue(obj, mon) + 2;
+}
+
+function heroKickedWeaponHitValue(obj, mon) {
+    return heroKickedProjectileHitValue(obj, mon);
+}
+
+function normalizeHeroWeaponSkillLevel(value) {
+    if (value == null) return null;
+    if (value && typeof value === 'object') {
+        if ('skill' in value) return normalizeHeroWeaponSkillLevel(value.skill);
+        if ('level' in value) return normalizeHeroWeaponSkillLevel(value.level);
+        if ('current' in value) return normalizeHeroWeaponSkillLevel(value.current);
+    }
+    if (Number.isFinite(Number(value))) return Math.trunc(Number(value));
+    const key = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
+    if (!key) return null;
+    if (key === 'restricted' || key === 'isrestricted') return 0;
+    if (key === 'unskilled') return P_UNSKILLED;
+    if (key === 'basic') return P_BASIC;
+    if (key === 'skilled') return P_SKILLED;
+    if (key === 'expert') return P_EXPERT;
+    return null;
+}
+
+function heroWeaponSkillStateLookup(source, skill, skillName) {
+    if (!source) return null;
+    if (source instanceof Map) {
+        for (const key of [skill, String(skill), skillName]) {
+            if (source.has(key)) return source.get(key);
+        }
+        return null;
+    }
+    if (Array.isArray(source)) return source[skill] ?? null;
+    if (typeof source === 'object') {
+        for (const key of [skill, String(skill), skillName]) {
+            if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+        }
+    }
+    return null;
+}
+
+function heroExplicitWeaponSkillLevel(skill, skillName) {
+    const sources = [
+        game._weapon_skill_levels,
+        game._weapon_skills,
+        game.weaponSkillLevels,
+        game.weaponSkills,
+        game._weaponSkillLevels,
+        game._weaponSkills,
+        game.u?.weapon_skill_levels,
+        game.u?.weapon_skills,
+        game.u?.weaponSkillLevels,
+        game.u?.weaponSkills,
+        game.u?._weaponSkillLevels,
+        game.u?._weaponSkills,
+    ];
+    for (const source of sources) {
+        const level = normalizeHeroWeaponSkillLevel(heroWeaponSkillStateLookup(source, skill, skillName));
+        if (level != null) return level;
+    }
+    const flagName = `_enhanced_${String(skillName || '').replace(/\W+/g, '_')}`;
+    if (game[flagName]) return P_SKILLED;
+    return null;
+}
+
+function heroWeaponDamageSkillBonus(skill, skillName) {
+    const level = heroExplicitWeaponSkillLevel(skill, skillName);
+    if (level == null) return 0;
+    if (level <= P_UNSKILLED) return -2;
+    if (level === P_BASIC) return 0;
+    if (level === P_SKILLED) return 1;
+    if (level >= P_EXPERT) return 2;
+    return 0;
+}
+
+function heroProjectileWeaponDamage(obj, mon) {
+    const data = HERO_THROWN_WEAPON_MONSTER_DATA.get(tossUpWeaponObjectKey(obj));
+    if (!data || !heroProjectileSupportedWeaponObject(obj)) return 0;
+    const die = heroProjectileMonsterSizeValue(mon) >= 3 ? data.largeDie : data.smallDie;
+    let damage = die ? rnd(die) : 0;
+    damage += Math.trunc(Number(obj.spe || 0));
+    if (damage < 0) damage = 0;
+    if (damage > 0) {
+        damage -= Math.max(0, Math.trunc(Number(obj.oeroded || 0)), Math.trunc(Number(obj.oeroded2 || 0)));
+        if (damage < 1) damage = 1;
+    }
+    damage += heroDamageIncreaseBonus() + heroStrengthDamageBonus();
+    damage += heroWeaponDamageSkillBonus(data.skill, data.skillName);
+    if (damage < 1) damage = 1;
+    return damage;
+}
+
+function heroProjectileHitPunctuation(damage) {
+    if (damage < 0) return '?';
+    return damage <= 4 ? '.' : '!';
+}
+
+function heroProjectileWeaponImpact(obj, mon, hitValue) {
+    if (!heroProjectileSupportedWeaponObject(obj)) return { handled: false, messages: [] };
+    const dieroll = rnd(20);
+    const targetName = heroThrownVenomTargetName(mon);
+    if (hitValue >= dieroll) {
+        const damage = heroProjectileWeaponDamage(obj, mon);
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0) mon.dead = true;
+        wakeMonsterFromHeroThrownHit(mon);
+        exerciseHeroProjectileHitDexterity();
+        const mulched = shouldMulchHeroProjectileMissile(obj);
+        if (mulched) rn2(100);
+        return {
+            handled: true,
+            hit: true,
+            damage,
+            mulched,
+            messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}${heroProjectileHitPunctuation(damage)}`],
+        };
+    }
+    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    messages.push(...wakeMonsterFromHeroThrownMiss(mon));
+    return { handled: true, hit: false, messages };
+}
+
+function heroThrownWeaponImpact(obj, mon) {
+    return heroProjectileWeaponImpact(obj, mon, heroThrownWeaponHitValue(obj, mon));
+}
+
+function heroKickedWeaponImpact(obj, mon) {
+    return heroProjectileWeaponImpact(obj, mon, heroKickedWeaponHitValue(obj, mon));
 }
 
 function heroThrownGemImpact(obj, mon) {
     if (!heroThrownGemClassObject(obj)) return { handled: false, messages: [] };
+    const hitValue = heroThrownGemHitValue(obj, mon);
     const dieroll = rnd(20);
     const targetName = heroThrownVenomTargetName(mon);
-    if (heroThrownGemHitValue(mon) >= dieroll) {
+    if (hitValue >= dieroll) {
         const damage = rnd(2);
         mon.mhp = (mon.mhp || 1) - damage;
         if ((mon.mhp || 0) <= 0) mon.dead = true;
         wakeMonsterFromHeroThrownHit(mon);
+        exerciseHeroProjectileHitDexterity();
         const mulched = shouldMulchHeroProjectileMissile(obj);
         if (mulched) rn2(100);
         return {
@@ -27385,12 +27616,14 @@ function kickFloorObjectRange(obj, x, y, dir) {
     return range;
 }
 
-function placeKickedFloorObject(obj, x, y, messages) {
+function placeKickedFloorObject(obj, x, y, messages, options = {}) {
     obj.ox = x;
     obj.oy = y;
     obj.hidden = false;
     obj.buried = false;
     obj.transientProjectile = false;
+    if (options.ohit)
+        applyMonsterThrownPassiveObject(obj, options.passiveTarget, true, messages);
     if (earthFloorEffects(obj, x, y, messages, 'fall', { usedUpShopBillOnDestroy: true }))
         return null;
     const placed = placeUnstackedFloorObject(obj);
@@ -27411,7 +27644,8 @@ function kickFloorObjectToward(dir, x, y) {
     const canHandleMonsterImpact = targetMon
         && ((heroThrownMonsterIsUnicorn(targetMon) && heroThrownUnicornGemKind(obj))
             || heroThrownStoneMissileHarmlessRockPasser(obj, targetMon)
-            || heroThrownGemClassObject(obj));
+            || heroThrownGemClassObject(obj)
+            || heroProjectileSupportedWeaponObject(obj));
     const gate = remoteProjectileDownGateAt(obj, landX, landY);
     if (!gate && !canHandleMonsterImpact) return { handled: false };
 
@@ -27426,12 +27660,14 @@ function kickFloorObjectToward(dir, x, y) {
         monsterImpact = heroThrownUnicornGemImpact(obj, targetMon);
         if (!monsterImpact.handled) monsterImpact = heroKickedStoneMissileRockPasserImpact(obj, targetMon);
         if (!monsterImpact.handled) monsterImpact = heroKickedGemImpact(obj, targetMon);
+        if (!monsterImpact.handled) monsterImpact = heroKickedWeaponImpact(obj, targetMon);
     }
     if (monsterImpact.handled) {
         removeFloorObject(obj);
         newsym(x, y);
         messages.push(...(monsterImpact.messages || []));
-        if (!monsterImpact.mulched && !monsterImpact.consumed) placeKickedFloorObject(obj, landX, landY, messages);
+        if (!monsterImpact.mulched && !monsterImpact.consumed)
+            placeKickedFloorObject(obj, landX, landY, messages, { ohit: !!monsterImpact.hit, passiveTarget: targetMon });
         return { handled: true, messages, moved: true, target: targetMon, hit: !!monsterImpact.hit };
     }
     if (!gate) return { handled: false };
@@ -27549,6 +27785,9 @@ function maybeShipRemoteProjectileObject(obj, x, y, messages, options = {}) {
 function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
     const messages = [];
     prepareProjectileFloorObject(obj, x, y);
+    const passiveObj = options.ohit
+        ? applyMonsterThrownPassiveObject(obj, options.passiveTarget, true, messages)
+        : { handled: false, damaged: false };
     const hardLanding = !projectileLandingIsSoft(x, y);
     if (hardLanding && !options.skipTopBreak) {
         const breakKind = projectileTopLevelBreakKind(obj, options);
@@ -27563,6 +27802,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
                 impact: { loss: 0, broke: false, messages },
                 topBreak: { broke: true, breakKind, value: shopLanding.value || 0 },
                 shipObject: projectileShipObjectResult(),
+                passiveObj,
                 shopLanding: { ...shopLanding, handled: shopLanding.charged, returned: false },
                 shopSale: { handled: false, shkp: null, message: '', messages: [] },
                 messages,
@@ -27579,6 +27819,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
                 topBreak: { broke: false, breakKind: '', value: 0 },
                 floorEffects: { consumed: false },
                 shipObject,
+                passiveObj,
                 shopLanding: { handled: false, shkp: null, message: '', messages: [], returned: false, charged: false },
                 shopSale: { handled: false, shkp: null, message: '', messages: [] },
                 messages,
@@ -27592,6 +27833,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
             topBreak: { broke: false, breakKind: '', value: 0 },
             floorEffects: { consumed: true },
             shipObject,
+            passiveObj,
             shopLanding: { handled: false, shkp: null, message: '', messages: [], returned: false, charged: false },
             shopSale: { handled: false, shkp: null, message: '', messages: [] },
             messages,
@@ -27607,6 +27849,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
             topBreak: { broke: false, breakKind: '', value: 0 },
             floorEffects: { consumed: false },
             shipObject,
+            passiveObj,
             shopLanding: { handled: false, shkp: null, message: '', messages: [], returned: false, charged: false },
             shopSale: { handled: false, shkp: null, message: '', messages: [] },
             messages,
@@ -27622,7 +27865,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
         : autoSellProjectileLandingObject(placed, x, y, options);
     if (shopSale.message) messages.push(shopSale.message);
     const stacked = stackPlacedProjectileObject(placed);
-    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, floorEffects: { consumed: false }, shipObject, shopLanding, shopSale, messages };
+    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, floorEffects: { consumed: false }, shipObject, passiveObj, shopLanding, shopSale, messages };
 }
 
 function markNoChargeRecursively(obj) {
@@ -31870,12 +32113,13 @@ function erodeMonsterThrownPassiveObject(obj, type, messages) {
             : type === 'fire'
                 ? { field: 'oeroded', word: 'burnt', action: 'smoulder' }
                 : null;
-    if (!erosion || !profile.erosionMatters || (erosion.field === 'oeroded' ? profile.primaryWord : profile.secondaryWord) !== erosion.word)
-        return { handled: !!erosion, damaged: false };
+    if (!erosion) return { handled: false, damaged: false };
     if ((type === 'rust' || type === 'corr' || type === 'acid') && obj.greased) {
         if (!rn2(2)) obj.greased = false;
-        return { handled: true, damaged: false };
+        return { handled: true, damaged: false, greased: true };
     }
+    if (!profile.erosionMatters || (erosion.field === 'oeroded' ? profile.primaryWord : profile.secondaryWord) !== erosion.word)
+        return { handled: !!erosion, damaged: false };
     if (obj.oerodeproof || obj.rustproof) {
         obj.rknown = true;
         return { handled: true, damaged: false };
@@ -31901,12 +32145,14 @@ function applyMonsterThrownPassiveObject(landing, target, ohit, messages) {
         const drain = drainItem(landing, { byYou: true, messages });
         return { handled: true, damaged: drain.drained, type, ...drain };
     }
-    if (type === 'fire' && (target.mcan || String(target.data?.name || target.name || '').toLowerCase() === 'steam vortex'))
-        return { handled: true, damaged: false, type };
     if ((type === 'rust' || type === 'corr') && target.mcan)
         return { handled: true, damaged: false, type };
-    if ((type === 'fire' || type === 'acid') && rn2(6))
+    if (type === 'fire') {
+        if (rn2(6) || target.mcan || String(target.data?.name || target.name || '').toLowerCase() === 'steam vortex')
+            return { handled: true, damaged: false, type };
+    } else if (type === 'acid' && rn2(6)) {
         return { handled: true, damaged: false, type };
+    }
     return { ...erodeMonsterThrownPassiveObject(landing, type, messages), type };
 }
 
@@ -61312,6 +61558,8 @@ export async function rhack(_cmd) {
         const combatObject = item.cls === 'weapon' || item.cls === 'gem' || item.glyph === ')' || item.otyp === GEM_CLASS;
         let impactMessage = '';
         let impactConsumedThrownObject = false;
+        let impactObjectHit = false;
+        let impactPassiveTarget = null;
         if (targetMon && (isBlindingVenomObject(item) || isAcidVenomObject(item))) {
             rnd(20);
             const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
@@ -61399,13 +61647,16 @@ export async function rhack(_cmd) {
             impactMessage = (unicornImpact.messages || []).join('  ');
             impactConsumedThrownObject = !!unicornImpact.consumed;
         } else if (targetMon && heroThrownStoneMissileHarmlessRockPasser(item, targetMon)) {
-            rnd(20);
-            const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+            const hitValue = heroThrownGemHitValue(thrownObject, targetMon);
+            const dieroll = rnd(20);
             const thrownName = floorObjectTheSubject(thrownObject);
             const targetName = heroThrownVenomTargetName(targetMon);
-            if (dex > rnd(25)) {
+            if (hitValue >= dieroll) {
                 wakeMonsterFromHeroThrownHit(targetMon);
+                exerciseHeroProjectileHitDexterity();
                 impactMessage = `${thrownName} hits ${targetName} but does no harm.`;
+                impactObjectHit = true;
+                impactPassiveTarget = targetMon;
             } else {
                 const messages = [`The ${pickupObjectName({ ...item, quan: 1 })} misses the ${targetMon.data?.name || 'creature'}.`];
                 messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
@@ -61415,6 +61666,14 @@ export async function rhack(_cmd) {
             const gemImpact = heroThrownGemImpact(thrownObject, targetMon);
             impactMessage = (gemImpact.messages || []).join('  ');
             impactConsumedThrownObject = !!gemImpact.mulched;
+            impactObjectHit = !!gemImpact.hit;
+            impactPassiveTarget = gemImpact.hit ? targetMon : null;
+        } else if (targetMon && heroProjectileSupportedWeaponObject(item)) {
+            const weaponImpact = heroThrownWeaponImpact(thrownObject, targetMon);
+            impactMessage = (weaponImpact.messages || []).join('  ');
+            impactConsumedThrownObject = !!weaponImpact.mulched;
+            impactObjectHit = !!weaponImpact.hit;
+            impactPassiveTarget = weaponImpact.hit ? targetMon : null;
         } else if (targetMon && !combatObject) {
             rnd(20);
             const thrownName = pickupObjectName({ ...item, quan: 1 });
@@ -61436,11 +61695,17 @@ export async function rhack(_cmd) {
             game.context.move = 0;
             return;
         }
-        const projectileBreakRoll = projectileLandingIsSoft(ox, oy) ? null : rn2(100); // C breaktest: obj_resists() on hard landing.
+        const projectileBreakRoll = !impactObjectHit && !projectileLandingIsSoft(ox, oy)
+            ? rn2(100) // C breaktest: obj_resists() on hard landing.
+            : null;
         curseLoadstoneLeavingInventory(thrownObject);
         if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
         stopCarriedFigurineTimerOnLeave(thrownObject);
-        const landing = landProjectileObjectWithShopHandling(thrownObject, ox, oy, { breakRoll: projectileBreakRoll });
+        const landing = landProjectileObjectWithShopHandling(thrownObject, ox, oy, {
+            breakRoll: projectileBreakRoll,
+            ohit: impactObjectHit,
+            passiveTarget: impactPassiveTarget,
+        });
         const landingMessage = landing.messages.join('  ');
         newsym(ox, oy);
         const wasBurdened = (game.u?._statusSuffix || '').includes('Burdened');
