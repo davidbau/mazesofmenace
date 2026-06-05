@@ -10551,13 +10551,19 @@ function objectArticleName(name) {
 function floorObjectSubject(obj) {
     const quan = Math.max(1, obj?.quan || 1);
     const name = pickupObjectName({ ...obj, line: '', quan });
-    return quan > 1 ? name : sentenceCase(objectArticleName(name));
+    return quan > 1 ? quantityObjectName(obj, name, quan) : sentenceCase(objectArticleName(name));
 }
 
 function floorObjectArticleName(obj) {
     const quan = Math.max(1, obj?.quan || 1);
     const name = pickupObjectName({ ...obj, line: '', quan });
-    return quan > 1 ? name : objectArticleName(name);
+    return quan > 1 ? quantityObjectName(obj, name, quan) : objectArticleName(name);
+}
+
+function quantityObjectName(obj, name = pickupObjectName(obj), quan = Math.max(1, obj?.quan || 1)) {
+    const text = String(name || '').trim();
+    if (/^\d+\b/.test(text)) return text;
+    return `${quan} ${text || (obj?.plural || 'objects')}`;
 }
 
 function floorObjectBaseName(obj) {
@@ -19774,10 +19780,12 @@ function supportsHeroThrownFragileObjectUpwardHit(obj) {
     return impactDropBreakKind(obj) === 'pieces';
 }
 
-async function releaseBrokenCameraDemon(obj, messages) {
+async function releaseBrokenCameraDemon(obj, messages, x = null, y = null) {
     if (!isExpensiveCameraObject(obj) || rn2(3)) return null;
     const data = monsterByRndName(rn2(3) ? 'homunculus' : 'imp') || { name: 'imp', mlet: 'i', glyph: 'i', mlevel: 3, hpLevel: 4 };
-    const mon = await makemon(data, game.u?.ux || obj.ox || 0, game.u?.uy || obj.oy || 0, MM_NOMSG);
+    const releaseX = x ?? game.u?.ux ?? obj.ox ?? 0;
+    const releaseY = y ?? game.u?.uy ?? obj.oy ?? 0;
+    const mon = await makemon(data, releaseX, releaseY, MM_NOMSG);
     if (!mon) return null;
     if (!game.u?.blind && cansee(mon.mx, mon.my)) {
         const released = heroIsHallucinating() ? sentenceCase(articleFor(getbogusmon())) : 'The picture-painting demon';
@@ -19788,9 +19796,39 @@ async function releaseBrokenCameraDemon(obj, messages) {
     return mon;
 }
 
-async function applyHeroThrownFragileBreakSideEffects(obj, messages) {
-    if (isMirrorObject(obj) && game.u) game.u.uluck = (game.u.uluck || 0) - 2;
-    await releaseBrokenCameraDemon(obj, messages);
+async function applyHeroCausedFragileBreakSideEffects(obj, messages, x = null, y = null) {
+    if (isMirrorObject(obj)) changeHeroLuck(-2);
+    if (isEggItem(obj)) applyThrownEggLuckPenalty(obj);
+    await releaseBrokenCameraDemon(obj, messages, x, y);
+}
+
+async function applyHeroThrownFragileBreakSideEffects(obj, messages, x = null, y = null) {
+    await applyHeroCausedFragileBreakSideEffects(obj, messages, x, y);
+}
+
+function applyHeroBrokenEggPostRemovalSideEffects(obj, messages, x, y) {
+    if (!isPyroliskEgg(obj)) return;
+    const explosion = resolvePyroliskEggExplosion(x, y, d(3, 6));
+    messages.push(...explosion.messages);
+    if (explosion.more) messages.more = true;
+}
+
+function heroThrownIronBarsBreakableClassHitObject(obj) {
+    if (!obj) return false;
+    const kind = objectKindKey(obj);
+    if (isMirrorObject(obj) || obj.otyp === CRYSTAL_BALL || kind === 'crystal ball') return true;
+    if (isExpensiveCameraObject(obj)) return true;
+    return isGlassMaterialWandObject(obj);
+}
+
+async function heroThrownIronBarsBreakImpact(obj, impact) {
+    if (!impact?.pointBlank) rn2(5); // C bhit() evaluates the force-hit roll before hits_bars().
+    const breakKind = projectileTopLevelBreakKind(obj);
+    if (!breakKind) return { broke: false, messages: ['Clonk!'] };
+    const messages = [];
+    projectileTopLevelBreakMessage(obj, breakKind, messages);
+    await applyHeroThrownFragileBreakSideEffects(obj, messages, impact.x, impact.y);
+    return { broke: true, messages };
 }
 
 async function heroThrownFragileObjectSelfHitMessages(obj, action, ceilingName = heroThrowCeilingName()) {
@@ -27583,11 +27621,26 @@ function kickFloorObjectAt(x, y) {
 function kickFloorObjectSupported(obj, x, y) {
     if (!obj || obj === game.u?.uball || obj === game.u?.uchain) return false;
     if (isBoulderObject(obj) || shopBillableGold(obj)) return false;
-    if (Math.max(1, Math.trunc(Number(obj.quan || 1))) !== 1) return false;
+    const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
+    if (quantity !== 1 && !kickedFragilePreflightBreakKind(obj)) return false;
     if (isTipContainerObject(obj) || globContents(obj).length) return false;
     if (shopkeeperForCostlySpot(x, y) || shopObjectOrContentsUnpaid(obj)) return false;
-    if (impactDropBreakKind(obj)) return false;
+    if (impactDropBreakKind(obj) && !kickedFragilePreflightBreakKind(obj)) return false;
     return true;
+}
+
+function kickedFragilePreflightBreakKind(obj) {
+    if (!obj) return '';
+    const kind = objectKindKey(obj);
+    if (isMirrorObject(obj)) return impactDropBreakKind(obj);
+    if (obj.otyp === CRYSTAL_BALL || kind === 'crystal ball') return impactDropBreakKind(obj);
+    if (kind === 'lenses') return impactDropBreakKind(obj);
+    if (isGlassMaterialWandObject(obj)) return impactDropBreakKind(obj);
+    if (isCreamPieObject(obj)) return impactDropBreakKind(obj);
+    if (isPotionObject(obj) && thrownPotionEffectKind(obj) !== 'oil') return impactDropBreakKind(obj);
+    if (isExpensiveCameraObject(obj)) return impactDropBreakKind(obj);
+    if (isEggItem(obj)) return impactDropBreakKind(obj);
+    return '';
 }
 
 function kickFloorObjectRange(obj, x, y, dir) {
@@ -27632,7 +27685,20 @@ function placeKickedFloorObject(obj, x, y, messages, options = {}) {
     return stacked;
 }
 
-function kickFloorObjectToward(dir, x, y) {
+async function breakKickedFragileFloorObject(obj, x, y, messages) {
+    if (!kickedFragilePreflightBreakKind(obj)) return false;
+    const breakKind = projectileTopLevelBreakKind(obj);
+    if (!breakKind) return false;
+    projectileTopLevelBreakMessage(obj, breakKind, messages);
+    brokenPotionBreathe(obj, x, y, messages);
+    await applyHeroCausedFragileBreakSideEffects(obj, messages, x, y);
+    removeFloorObject(obj);
+    newsym(x, y);
+    applyHeroBrokenEggPostRemovalSideEffects(obj, messages, x, y);
+    return true;
+}
+
+async function kickFloorObjectToward(dir, x, y) {
     const obj = kickFloorObjectAt(x, y);
     if (!kickFloorObjectSupported(obj, x, y)) return { handled: false };
 
@@ -27647,13 +27713,17 @@ function kickFloorObjectToward(dir, x, y) {
             || heroThrownGemClassObject(obj)
             || heroProjectileSupportedWeaponObject(obj));
     const gate = remoteProjectileDownGateAt(obj, landX, landY);
-    if (!gate && !canHandleMonsterImpact) return { handled: false };
+    const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
+    if (!gate && !canHandleMonsterImpact && !fragileBreakKind) return { handled: false };
 
     const messages = [`You kick ${floorObjectArticleName(obj)}.`];
+    if (fragileBreakKind && await breakKickedFragileFloorObject(obj, x, y, messages))
+        return { handled: true, messages, moved: false, broke: true };
     if (kickFloorObjectRange(obj, x, y, dir) < 2) {
         messages.push('Thump!');
         return { handled: true, messages, moved: false };
     }
+    if (!gate && !canHandleMonsterImpact) return { handled: true, messages, moved: false };
 
     let monsterImpact = { handled: false };
     if (canHandleMonsterImpact) {
@@ -59771,7 +59841,7 @@ export async function rhack(_cmd) {
             game.context.move = 1;
             return;
         }
-        const kickedObject = kickFloorObjectToward(dir, x, y);
+        const kickedObject = await kickFloorObjectToward(dir, x, y);
         if (kickedObject.handled) {
             await setMessage(kickedObject.messages.join('  '), kickedObject.messages.length > 1);
             game._command_mode = null;
@@ -61497,10 +61567,15 @@ export async function rhack(_cmd) {
 		        let ox = ux;
 		        let oy = uy;
 		        let targetMon = null;
+        let ironBarsImpact = null;
         for (let step = 0; step < 8; step++) {
             const nx = ox + dir.dx;
             const ny = oy + dir.dy;
             const loc = game.level?.at(nx, ny);
+            if (loc?.typ === IRONBARS) {
+                ironBarsImpact = { x: ox, y: oy, barsX: nx, barsY: ny, pointBlank: step === 0 };
+                break;
+            }
 	            if (!loc || IS_OBSTRUCTED(loc.typ)) break;
 	            ox = nx;
 	            oy = ny;
@@ -61560,6 +61635,25 @@ export async function rhack(_cmd) {
         let impactConsumedThrownObject = false;
         let impactObjectHit = false;
         let impactPassiveTarget = null;
+        if (ironBarsImpact && heroThrownIronBarsBreakableClassHitObject(thrownObject)) {
+            const barsImpact = await heroThrownIronBarsBreakImpact(thrownObject, ironBarsImpact);
+            if (barsImpact.broke) {
+                if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+                markThrownBrokenObjectDebt(thrownObject);
+                stopCarriedFigurineTimerOnLeave(thrownObject);
+                removeInventoryItem(item, 1);
+                newsym(ironBarsImpact.x, ironBarsImpact.y);
+                await setMessage(barsImpact.messages.join('  '));
+                game._command_mode = null;
+                game._throw_item_letter = null;
+                clearThrowCountState();
+                game._resume_time_after_more = 0;
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                game.context.move = 0;
+                return;
+            }
+            impactMessage = barsImpact.messages.join('  ');
+        }
         if (targetMon && (isBlindingVenomObject(item) || isAcidVenomObject(item))) {
             rnd(20);
             const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
