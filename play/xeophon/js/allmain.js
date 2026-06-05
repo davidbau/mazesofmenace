@@ -6345,7 +6345,8 @@ export async function processMonsterTurns() {
                                     else addToplineMessage(catchMessage);
                                 } else {
                                     const damage = rnd(monsterSlingAmmoDamageSides(thrownMissile));
-                                    const hitv = Math.max(-4, 3 - throwRange) + 8 + (thrownMissile.spe || 0);
+                                    const hitv = Math.max(-4, 3 - throwRange) + 8 + (thrownMissile.spe || 0)
+                                        + heroPolyselfMonsterThrownHitBonus();
                                     const attackRoll = rnd(20);
                                     const missed = (game.u?.uac ?? 10) + hitv <= attackRoll;
                                     let resultMessage = missed ? 'It misses.' : `You are hit by ${missileArticle} ${missileName}.`;
@@ -6530,21 +6531,36 @@ export async function processMonsterTurns() {
                             }
                             for (let step = 1; step < throwRange; step++) rn2(5);
                             const attackRoll = rnd(20);
-                            if (attackRoll === 20) {
-                                if (visibleSpitter) addToplineMessage('It misses.');
+                            const targetAc = game.u?.uac ?? 10;
+                            const missed = targetAc + 8 <= attackRoll;
+                            let resultMessage = game.u?.blind || game.flags?.verbose === false
+                                ? 'You are hit.'
+                                : 'You are hit by a splash of venom.';
+                            if (missed) {
+                                resultMessage = game.u?.blind || game.flags?.verbose === false
+                                    ? 'It misses.'
+                                    : targetAc + 8 <= attackRoll - 2
+                                        ? 'A splash of venom misses you.'
+                                        : 'You are almost hit by a splash of venom.';
                                 rn2(5);
                                 rn2(100);
+                            } else {
+                                const wasBlind = !!game.u?.blind;
+                                const blindinc = applyMonsterBlindingVenomBlindness();
+                                if (blindinc)
+                                    resultMessage = `${resultMessage}  ${wasBlind ? 'Your eyes sting.' : 'The venom blinds you.'}`;
                             }
+                            if (resultMessage) addToplineMessage(resultMessage);
                         }
                         game._search_pending_count = 0;
                         game._run_steps_remaining = 0;
                         game._travel_keys = [];
                         if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
                         if (game._message_more && !game._process_time_with_more) {
-                        game._monster_resume_index = monIndex + 1;
-                        game._monster_resume_somebody_can_move = somebodyCanMove;
-                        return false;
-                    }
+                            game._monster_resume_index = monIndex + 1;
+                            game._monster_resume_somebody_can_move = somebodyCanMove;
+                            return false;
+                        }
                         continue;
                     }
                     if (canReadyLauncher && !((canThrowSpear || canThrowShuriken || canThrowCreamPie) && rangedWeaponLinedUp)) {
@@ -6847,7 +6863,8 @@ export async function processMonsterTurns() {
                             const projectileDamageBonus = monsterLauncherProjectileDamageBonus(thrownMissile);
                             let damage = rnd(projectileDamageSides) + projectileDamageBonus
                                 + missileSpe - missileErosion;
-                            let hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe;
+                            let hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe
+                                + heroPolyselfMonsterThrownHitBonus();
                             if (monsterIsElf(mon) && monsterLauncherProjectileIsBowAmmo(thrownMissile)) {
                                 hitv++;
                                 if (monsterLauncherWeaponIsElvenBow(mon.mw)) hitv++;
@@ -7161,7 +7178,8 @@ export async function processMonsterTurns() {
                             } else {
                                 const damage = Math.max(1, rnd(monsterThrownSpearDamageSides(thrownMissile))
                                     + missileSpe - missileErosion);
-                                const hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe;
+                                const hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe
+                                    + heroPolyselfMonsterThrownHitBonus();
                                 const attackRoll = rnd(20);
                                 const missed = (game.u?.uac ?? 10) + hitv <= attackRoll;
                                 let resultMessage = `You are hit by ${spearArticle} ${spearKind}${damage > 4 ? '!' : '.'}`;
@@ -7304,7 +7322,8 @@ export async function processMonsterTurns() {
                                 else addToplineMessage(catchMessage);
                             } else {
                                 const damage = Math.max(1, rnd(8) + missileSpe - missileErosion);
-                                const hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe;
+                                const hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe
+                                    + heroPolyselfMonsterThrownHitBonus();
                                 const attackRoll = rnd(20);
                                 const missed = (game.u?.uac ?? 10) + hitv <= attackRoll;
                                 let resultMessage = `You are hit by ${shurikenArticle} ${shurikenKind}${damage > 4 ? '!' : '.'}`;
@@ -7448,7 +7467,8 @@ export async function processMonsterTurns() {
                                 else addToplineMessage(catchMessage);
                             } else {
                                 const damage = rnd(4);
-                                const hitv = Math.max(-4, 3 - throwRange) + 8 + (missile.spe || 0);
+                                const hitv = Math.max(-4, 3 - throwRange) + 8 + (missile.spe || 0)
+                                    + heroPolyselfMonsterThrownHitBonus();
                                 const attackRoll = rnd(20);
                                 const missed = (game.u?.uac ?? 10) + hitv <= attackRoll;
                                 const resultMessage = missed
@@ -7854,7 +7874,8 @@ export async function processMonsterTurns() {
                                 else addToplineMessage(catchMessage);
                             } else {
                                 const damage = Math.max(1, rnd(3) + missileSpe - missileErosion);
-                                const hitv = Math.max(-4, 3 - throwRange) + 8 + (missile.spe || 0);
+                                const hitv = Math.max(-4, 3 - throwRange) + 8 + (missile.spe || 0)
+                                    + heroPolyselfMonsterThrownHitBonus();
                                 const attackRoll = rnd(20);
                                 const missed = (game.u?.uac ?? 10) + hitv <= attackRoll;
                                 const resultMessage = missed ? 'A knife misses you.' : 'You are hit by a knife.';
@@ -9418,6 +9439,54 @@ function applyMonsterCreamPieBlindness() {
     return blindinc;
 }
 
+function wornMonsterVenomItemNames(item) {
+    if (!(item?.worn || item?.owornmask || item?.line?.includes('being worn'))) return [];
+    return [
+        item.actualKind,
+        item.kind,
+        item.appearance,
+        item.singular,
+        item.displayName,
+        item.objectKindKey,
+    ].map(name => String(name || '').toLowerCase().trim()).filter(Boolean);
+}
+
+function heroWearsMonsterVenomEyeCovering() {
+    if (game.u?.blindfolded || game.u?.Blindfolded) return true;
+    return (game.inventory || []).some(item => wornMonsterVenomItemNames(item)
+        .some(name => name === 'blindfold' || name === 'towel' || name === 'lenses'
+            || name === 'pair of lenses' || name === 'a pair of lenses'));
+}
+
+function heroWearsMonsterVenomVisoredHelmet() {
+    return (game.inventory || []).some(item => {
+        const names = wornMonsterVenomItemNames(item);
+        if (!names.length) return false;
+        const isArmor = item.cls === 'armor' || item.glyph === '[' || names.some(name => /\b(?:helm|helmet)\b/.test(name));
+        if (!isArmor) return false;
+        return names.some(name => name === 'helm of telepathy' || name === 'visored helmet');
+    });
+}
+
+function heroCanBeBlindedByMonsterVenom() {
+    if (!game.u) return false;
+    if (game.u?._polyself_form?.noeyes || game.u?.noeyes) return false;
+    if (heroWearsMonsterVenomEyeCovering()) return false;
+    if ((game.u.ucreamed || 0) > 0) return false;
+    return !heroWearsMonsterVenomVisoredHelmet();
+}
+
+function applyMonsterBlindingVenomBlindness() {
+    if (!heroCanBeBlindedByMonsterVenom()) return 0;
+    const blindinc = rnd(25);
+    game.u.ucreamed = (game.u.ucreamed || 0) + blindinc;
+    game.u._blindTimeout = (game.u._blindTimeout || 0) + blindinc;
+    game.u.blind = true;
+    addHeroStatusSuffix('Blind');
+    for (const other of game.level?.monsters || []) newsym(other.mx, other.my);
+    return blindinc;
+}
+
 function monsterCanBeBlindedByMonsterThrownCreamPie(mon) {
     const data = mon?.data || {};
     if (mon?.noeyes || mon?.noEyes || data.noeyes || data.noEyes) return false;
@@ -9601,6 +9670,14 @@ function monsterObjectHitSizeValue(target) {
     if (target?.huge || data.huge) return 4;
     if (target?.gigantic || data.gigantic) return 7;
     return 2;
+}
+
+function heroPolyselfMonsterThrownHitBonus() {
+    const form = game.u?._polyself_form || game.u?.youmonst?.data || null;
+    if (!form) return 0;
+    const big = monsterObjectHitSizeValue({ data: form }) >= 3
+        || form.big || form.bigmonst || form.large || form.giant;
+    return big ? 1 : 0;
 }
 
 function monsterHatesBlessedWeapon(target) {

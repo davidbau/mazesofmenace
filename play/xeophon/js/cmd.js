@@ -18000,6 +18000,323 @@ function wakeMonsterFromHeroThrownMiss(mon) {
     return messages;
 }
 
+function wakeMonsterFromHeroThrownHit(mon) {
+    mon.msleeping = 0;
+    mon.meating = 0;
+    setHeroObjectHitMonsterAngry(mon);
+}
+
+function heroThrownStoneMissileObject(obj) {
+    if (!obj || itemClassKey(obj) === 'ring' || obj.glyph === '=' || obj.otyp === RING_CLASS) return false;
+    const material = stoneToFleshObjectMaterial(obj);
+    return material === 'gemstone' || material === 'mineral';
+}
+
+function heroThrownTargetPassesRocks(mon) {
+    const data = mon?.data || {};
+    const name = String(mon?.name || data.name || data.mname || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    const intendedRockPasser = name === 'xorn' || name === 'earth elemental'
+        || mon?.passesRocks || data.passesRocks;
+    const passesWalls = name === 'xorn' || name === 'earth elemental'
+        || mon?.passWalls || mon?.passesWalls || mon?.passes_walls || mon?.wallwalk
+        || data.passWalls || data.passesWalls || data.passes_walls || data.wallwalk;
+    return !!intendedRockPasser && !!passesWalls
+        && !(mon?.unsolid || mon?.noncorporeal || data.unsolid || data.noncorporeal);
+}
+
+function heroThrownStoneMissileHarmlessRockPasser(obj, mon) {
+    return heroThrownStoneMissileObject(obj) && heroThrownTargetPassesRocks(mon);
+}
+
+function heroThrownGemClassObject(obj) {
+    return !!obj && (itemClassKey(obj) === 'gem' || obj.glyph === '*' || obj.otyp === GEM_CLASS)
+        && itemClassKey(obj) !== 'ring' && obj.glyph !== '=';
+}
+
+function heroThrownGemNameValue(value) {
+    return String(value || '').toLowerCase().trim().replace(/^an? /, '').replace(/\s+/g, ' ');
+}
+
+function heroThrownGemNameValues(obj) {
+    return [
+        obj?.actualKind,
+        obj?.kind,
+        obj?.gemDescription,
+        obj?.displayName,
+    ].map(heroThrownGemNameValue).filter(Boolean);
+}
+
+function heroThrownGemIdentityName(obj) {
+    const material = stoneToFleshObjectMaterial(obj);
+    if (material === 'glass') {
+        const glassName = heroThrownGemNameValues(obj)
+            .find(name => /\bworthless piece of\b.*\bglass\b/.test(name));
+        if (glassName) return glassName;
+        const description = heroThrownGemNameValue(obj?.gemDescription);
+        const color = description.match(/^(.+) gem$/)?.[1] || description;
+        if (color) return `worthless piece of ${color} glass`;
+    }
+    return heroThrownGemNameValues(obj)
+        .find(name => STONE_TO_FLESH_GEMSTONE_NAMES.has(name) || STONE_TO_FLESH_MINERAL_GEM_NAMES.has(name))
+        || heroThrownGemNameValue(obj?.actualKind || obj?.kind || obj?.gemDescription);
+}
+
+function heroThrownGemTypeKnown(obj) {
+    if (obj?.dknown === false) return false;
+    const identity = heroThrownGemIdentityName(obj);
+    return obj?.known === true || gemStoneDiscoveryKnown(identity);
+}
+
+function heroThrownGemHasUserName(obj) {
+    return !!(obj?.oname || obj?.o_name || obj?.userName || obj?.calledName || obj?.uname);
+}
+
+function heroThrownMonsterIsUnicorn(mon) {
+    const data = mon?.data || {};
+    const name = heroThrownGemNameValue(mon?.name || data.name || data.mname);
+    const mlet = heroThrownGemNameValue(mon?.mlet || data.mlet || mon?.glyph || data.glyph || data.symbol);
+    const likesGems = !!(mon?.likesGems || mon?.likes_gems || data.likesGems || data.likes_gems || /unicorn/.test(name));
+    return likesGems && (mlet === 'u' || mlet === 'unicorn' || /unicorn/.test(name));
+}
+
+function heroThrownUnicornGemKind(obj) {
+    if (!heroThrownGemClassObject(obj)) return '';
+    const material = stoneToFleshObjectMaterial(obj);
+    if (material === 'mineral') return '';
+    if (material === 'glass') return 'glass';
+    if (material === 'gemstone') return 'real';
+    const names = heroThrownGemNameValues(obj);
+    if (names.some(name => STONE_TO_FLESH_MINERAL_GEM_NAMES.has(name))) return '';
+    if (names.some(name => /\bworthless piece of\b.*\bglass\b/.test(name) || name === 'glass'))
+        return 'glass';
+    if (names.some(name => STONE_TO_FLESH_GEMSTONE_NAMES.has(name))) return 'real';
+    return '';
+}
+
+function heroThrownMonsterHelplessForUnicornGem(mon) {
+    return !!(mon?.helpless || mon?.msleeping || mon?.mfrozen
+        || mon?.mcanmove === false || mon?.mcanmove === 0);
+}
+
+function applyHeroThrownUnicornGemPreCatchAdjustment(mon) {
+    const data = mon?.data || {};
+    const immobile = mon?.mcanmove === false || mon?.mcanmove === 0
+        || data.mmove === false || data.mmove === 0;
+    if (immobile && data.mmove !== false && data.mmove !== 0 && !rn2(10)) {
+        mon.mcanmove = true;
+        mon.mfrozen = 0;
+    }
+}
+
+function heroThrownUnicornGemLuckMessageAndDelta(obj, mon, gemKind) {
+    const monSign = Math.sign(Number(mon?.data?.maligntyp ?? mon?.maligntyp ?? 0));
+    const heroSign = Math.sign(Number(game.u?.ualign?.type ?? A_NEUTRAL));
+    const buddy = monSign === heroSign;
+    const known = heroThrownGemTypeKnown(obj);
+    const named = heroThrownGemHasUserName(obj);
+    if (gemKind === 'real') {
+        if (known) return buddy
+            ? { word: 'gratefully', delta: 5 }
+            : { word: 'hesitatingly', delta: rn2(7) - 3 };
+        if (named) return buddy
+            ? { word: 'gratefully', delta: 2 }
+            : { word: 'hesitatingly', delta: rn2(3) - 1 };
+        return buddy
+            ? { word: 'gratefully', delta: 1 }
+            : { word: 'hesitatingly', delta: rn2(3) - 1 };
+    }
+    if (known || named) return { junk: true };
+    return { word: 'graciously', delta: 0 };
+}
+
+function relocateHeroThrownUnicornGemRecipient(mon) {
+    if (!noteleportLevelForMonster(mon)) rlocNoMsg(mon);
+}
+
+function heroThrownUnicornGemImpact(obj, mon) {
+    if (!heroThrownMonsterIsUnicorn(mon)) return { handled: false, messages: [] };
+    const gemKind = heroThrownUnicornGemKind(obj);
+    if (!gemKind) return { handled: false, messages: [] };
+    applyHeroThrownUnicornGemPreCatchAdjustment(mon);
+    const monName = fireScrollMonsterName(mon);
+    const objectName = floorObjectTheName({ ...obj, quan: 1 });
+    if (heroThrownMonsterHelplessForUnicornGem(mon)) {
+        return {
+            handled: true,
+            consumed: false,
+            messages: [`The ${pickupObjectName({ ...obj, quan: 1 })} misses ${heroThrownVenomTargetName(mon)}.`],
+        };
+    }
+    if (mon?.mtame || mon?.pet || mon?.tame) {
+        return {
+            handled: true,
+            consumed: false,
+            messages: [`${monName} catches and drops ${objectName}.`],
+        };
+    }
+
+    const messages = [`${monName} catches ${objectName}.`];
+    mon.mpeaceful = 1;
+    mon.mavenge = 0;
+    const accept = heroThrownUnicornGemLuckMessageAndDelta(obj, mon, gemKind);
+    if (accept.junk) {
+        if (!game.u?.blind) messages.push(`${monName} is not interested in your junk.`);
+        relocateHeroThrownUnicornGemRecipient(mon);
+        return { handled: true, consumed: false, messages };
+    }
+
+    changeHeroLuck(accept.delta);
+    if (!game.u?.blind) messages.push(`${monName} ${accept.word} accepts your gift.`);
+    const accepted = { ...obj, quan: 1, hidden: false, buried: false, transientProjectile: false };
+    delete accepted.letter;
+    delete accepted.line;
+    delete accepted.ox;
+    delete accepted.oy;
+    add_to_minv(mon, accepted);
+    relocateHeroThrownUnicornGemRecipient(mon);
+    return { handled: true, consumed: true, messages };
+}
+
+function heroProjectileMonsterArmorClass(mon) {
+    const data = mon?.data || {};
+    const ac = mon?.mac ?? mon?.ac ?? data.mac ?? data.ac;
+    const numeric = Number(ac);
+    return Number.isFinite(numeric) ? Math.trunc(numeric) : 10;
+}
+
+function heroProjectileHitLevel() {
+    const polyLevel = game.u?._polyself_form?.mlevel
+        ?? game.u?.youmonst?.mlevel
+        ?? game.u?.youmonst?.data?.mlevel;
+    const level = polyLevel ?? game.u?.ulevel ?? 1;
+    return Math.max(1, Math.trunc(Number(level) || 1));
+}
+
+function heroProjectileDexHitBonus() {
+    const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+    if (dex < 4) return -3;
+    if (dex < 6) return -2;
+    if (dex < 8) return -1;
+    if (dex >= 14) return dex - 14;
+    return 0;
+}
+
+function heroProjectileBaseHitValue(mon) {
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const disttmp = Math.max(-4, 3 - distmin(ux, uy, mon?.mx ?? ux, mon?.my ?? uy));
+    return -1
+        + Math.trunc(Number(game.u?.uluck || 0))
+        + Math.trunc(Number(game.u?.moreluck || 0))
+        + heroProjectileMonsterArmorClass(mon)
+        + Math.trunc(Number(game.u?.uhitinc || 0))
+        + heroProjectileHitLevel()
+        + heroProjectileDexHitBonus()
+        + disttmp;
+}
+
+function heroKickedProjectileIsAmmo(obj) {
+    if (!obj) return false;
+    if (itemClassKey(obj) === 'gem' || obj.glyph === '*' || obj.otyp === GEM_CLASS) return true;
+    const kind = objectKindKey(obj);
+    return obj.otyp === ROCK || obj.otyp === FLINT
+        || /\b(?:arrow|arrows|bolt|bolts|dart|darts|shuriken|throwing stars?|rock|rocks|flint)\b/.test(kind);
+}
+
+function heroKickedProjectileHitValue(obj, mon) {
+    return heroProjectileBaseHitValue(mon) - (heroKickedProjectileIsAmmo(obj) ? 5 : 3);
+}
+
+function shouldMulchHeroProjectileMissile(obj) {
+    if (!monsterThrownMulchCandidate(obj)) return false;
+    const erosion = Math.max(0, Math.trunc(Number(obj.oeroded || 0)), Math.trunc(Number(obj.oeroded2 || 0)));
+    const chance = 3 + erosion - Math.trunc(Number(obj.spe || 0));
+    let broken = chance > 1 ? !!rn2(chance) : !rn2(4);
+    if (obj.blessed && !rnl(4)) broken = false;
+    if (monsterThrownHardGemMulchCandidate(obj) && !rn2(2)) broken = false;
+    return broken;
+}
+
+function heroKickedStoneMissileRockPasserImpact(obj, mon) {
+    if (!heroThrownStoneMissileHarmlessRockPasser(obj, mon)) return { handled: false, messages: [] };
+    const dieroll = rnd(20);
+    if (heroKickedProjectileHitValue(obj, mon) >= dieroll) {
+        wakeMonsterFromHeroThrownHit(mon);
+        const mulched = shouldMulchHeroProjectileMissile(obj);
+        if (mulched) rn2(100);
+        return {
+            handled: true,
+            hit: true,
+            mulched,
+            messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${heroThrownVenomTargetName(mon)} but does no harm.`],
+        };
+    }
+    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    messages.push(...wakeMonsterFromHeroThrownMiss(mon));
+    return { handled: true, hit: false, messages };
+}
+
+function heroKickedGemImpact(obj, mon) {
+    if (!heroThrownGemClassObject(obj)) return { handled: false, messages: [] };
+    const dieroll = rnd(20);
+    const targetName = heroThrownVenomTargetName(mon);
+    if (heroKickedProjectileHitValue(obj, mon) >= dieroll) {
+        const damage = rnd(2);
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0) mon.dead = true;
+        wakeMonsterFromHeroThrownHit(mon);
+        const mulched = shouldMulchHeroProjectileMissile(obj);
+        if (mulched) rn2(100);
+        return {
+            handled: true,
+            hit: true,
+            damage,
+            mulched,
+            messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}.`],
+        };
+    }
+    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    messages.push(...wakeMonsterFromHeroThrownMiss(mon));
+    return { handled: true, hit: false, messages };
+}
+
+function heroThrownGlassGemObject(obj) {
+    return heroThrownGemClassObject(obj) && stoneToFleshObjectMaterial(obj) === 'glass';
+}
+
+function heroThrownGemHitValue(mon) {
+    return heroProjectileBaseHitValue(mon) - 4;
+}
+
+function heroThrownGemImpact(obj, mon) {
+    if (!heroThrownGemClassObject(obj)) return { handled: false, messages: [] };
+    const dieroll = rnd(20);
+    const targetName = heroThrownVenomTargetName(mon);
+    if (heroThrownGemHitValue(mon) >= dieroll) {
+        const damage = rnd(2);
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0) mon.dead = true;
+        wakeMonsterFromHeroThrownHit(mon);
+        const mulched = shouldMulchHeroProjectileMissile(obj);
+        if (mulched) rn2(100);
+        return {
+            handled: true,
+            hit: true,
+            damage,
+            mulched,
+            messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}.`],
+        };
+    }
+    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    messages.push(...wakeMonsterFromHeroThrownMiss(mon));
+    return { handled: true, hit: false, messages };
+}
+
+function heroThrownGlassGemImpact(obj, mon) {
+    if (!heroThrownGlassGemObject(obj)) return { handled: false, messages: [] };
+    return heroThrownGemImpact(obj, mon);
+}
+
 function heroThrownCreamPieHitMonster(pie, mon) {
     const messages = [];
     mon.msleeping = 0;
@@ -27088,14 +27405,36 @@ function kickFloorObjectToward(dir, x, y) {
 
     const landX = x + dir.dx;
     const landY = y + dir.dy;
+    const targetMon = (game.level?.monsters || []).find(mon =>
+        mon && !mon.dead && mon.mx === landX && mon.my === landY
+        && (mon.mhp == null || mon.mhp > 0));
+    const canHandleMonsterImpact = targetMon
+        && ((heroThrownMonsterIsUnicorn(targetMon) && heroThrownUnicornGemKind(obj))
+            || heroThrownStoneMissileHarmlessRockPasser(obj, targetMon)
+            || heroThrownGemClassObject(obj));
     const gate = remoteProjectileDownGateAt(obj, landX, landY);
-    if (!gate) return { handled: false };
+    if (!gate && !canHandleMonsterImpact) return { handled: false };
 
     const messages = [`You kick ${floorObjectArticleName(obj)}.`];
     if (kickFloorObjectRange(obj, x, y, dir) < 2) {
         messages.push('Thump!');
         return { handled: true, messages, moved: false };
     }
+
+    let monsterImpact = { handled: false };
+    if (canHandleMonsterImpact) {
+        monsterImpact = heroThrownUnicornGemImpact(obj, targetMon);
+        if (!monsterImpact.handled) monsterImpact = heroKickedStoneMissileRockPasserImpact(obj, targetMon);
+        if (!monsterImpact.handled) monsterImpact = heroKickedGemImpact(obj, targetMon);
+    }
+    if (monsterImpact.handled) {
+        removeFloorObject(obj);
+        newsym(x, y);
+        messages.push(...(monsterImpact.messages || []));
+        if (!monsterImpact.mulched && !monsterImpact.consumed) placeKickedFloorObject(obj, landX, landY, messages);
+        return { handled: true, messages, moved: true, target: targetMon, hit: !!monsterImpact.hit };
+    }
+    if (!gate) return { handled: false };
 
     removeFloorObject(obj);
     newsym(x, y);
@@ -60972,6 +61311,7 @@ export async function rhack(_cmd) {
         };
         const combatObject = item.cls === 'weapon' || item.cls === 'gem' || item.glyph === ')' || item.otyp === GEM_CLASS;
         let impactMessage = '';
+        let impactConsumedThrownObject = false;
         if (targetMon && (isBlindingVenomObject(item) || isAcidVenomObject(item))) {
             rnd(20);
             const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
@@ -61054,6 +61394,27 @@ export async function rhack(_cmd) {
             const messages = [`The ${thrownName} misses the ${targetMon.data?.name || 'creature'}.`];
             messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
             impactMessage = messages.join('  ');
+        } else if (targetMon && heroThrownMonsterIsUnicorn(targetMon) && heroThrownUnicornGemKind(item)) {
+            const unicornImpact = heroThrownUnicornGemImpact(thrownObject, targetMon);
+            impactMessage = (unicornImpact.messages || []).join('  ');
+            impactConsumedThrownObject = !!unicornImpact.consumed;
+        } else if (targetMon && heroThrownStoneMissileHarmlessRockPasser(item, targetMon)) {
+            rnd(20);
+            const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+            const thrownName = floorObjectTheSubject(thrownObject);
+            const targetName = heroThrownVenomTargetName(targetMon);
+            if (dex > rnd(25)) {
+                wakeMonsterFromHeroThrownHit(targetMon);
+                impactMessage = `${thrownName} hits ${targetName} but does no harm.`;
+            } else {
+                const messages = [`The ${pickupObjectName({ ...item, quan: 1 })} misses the ${targetMon.data?.name || 'creature'}.`];
+                messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
+                impactMessage = messages.join('  ');
+            }
+        } else if (targetMon && heroThrownGemClassObject(item)) {
+            const gemImpact = heroThrownGemImpact(thrownObject, targetMon);
+            impactMessage = (gemImpact.messages || []).join('  ');
+            impactConsumedThrownObject = !!gemImpact.mulched;
         } else if (targetMon && !combatObject) {
             rnd(20);
             const thrownName = pickupObjectName({ ...item, quan: 1 });
@@ -61061,6 +61422,19 @@ export async function rhack(_cmd) {
             const messages = [`The ${thrownName} misses the ${targetName}.`];
             messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
             impactMessage = messages.join('  ');
+        }
+        if (impactConsumedThrownObject) {
+            if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+            stopCarriedFigurineTimerOnLeave(thrownObject);
+            removeInventoryItem(item, 1);
+            newsym(targetMon.mx, targetMon.my);
+            await setMessage(impactMessage);
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
         }
         const projectileBreakRoll = projectileLandingIsSoft(ox, oy) ? null : rn2(100); // C breaktest: obj_resists() on hard landing.
         curseLoadstoneLeavingInventory(thrownObject);
