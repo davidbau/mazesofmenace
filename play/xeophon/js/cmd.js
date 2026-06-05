@@ -1475,6 +1475,7 @@ const OBJECT_CLASS_GLYPHS = {
     amulet: '"',
     spellbook: '+',
 };
+const ARROW = 349;
 const DART = 353;
 const BELL = 358;
 const CANDELABRUM_OF_INVOCATION = 10076;
@@ -43148,6 +43149,10 @@ function trapMessage(...parts) {
     return parts.filter(Boolean).join('  ');
 }
 
+function trapResultHasEffect(result) {
+    return !!(result?.message || result?.fatal || result?.lifeSaving || result?.more);
+}
+
 function sitTrapEscapeAllowed(trap) {
     return ![ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE].includes(trap?.ttyp);
 }
@@ -43610,6 +43615,25 @@ function trapProjectileMessageParts(prefix, ...parts) {
     return [prefix, ...parts].filter(part => part != null && part !== '').join('  ');
 }
 
+function makeHeroTrapArrow(trap) {
+    const arrow = mksobj(ARROW, true, false);
+    Object.assign(arrow, {
+        quan: 1,
+        owt: 1,
+        opoisoned: false,
+        ox: trap?.tx ?? game.u?.ux ?? 0,
+        oy: trap?.ty ?? game.u?.uy ?? 0,
+        cls: 'weapon',
+        kind: 'arrow',
+        actualKind: 'arrow',
+        singular: 'arrow',
+        plural: 'arrows',
+        glyph: ')',
+        color: CLR_CYAN,
+    });
+    return arrow;
+}
+
 function makeHeroTrapDart(trap) {
     const dart = mksobj(DART, true, false);
     Object.assign(dart, {
@@ -43629,6 +43653,18 @@ function makeHeroTrapDart(trap) {
     return dart;
 }
 
+function trapArrowDamage(arrow) {
+    let damage = rnd(6) + Math.trunc(Number(arrow?.spe || 0));
+    if (damage < 0) damage = 0;
+    if (arrow?.blessed && heroTossUpTargetHatesBlessings()) damage += rnd(4);
+    if (damage > 0) damage = Math.max(1, damage - objectGreatestErosion(arrow));
+    return damage;
+}
+
+function heroTrapArrowDamage(arrow) {
+    return maybeHalfPhysicalDamage(Math.max(1, trapArrowDamage(arrow)));
+}
+
 function heroTrapDartDamage(dart) {
     const die = heroTossUpTargetIsBig() ? 2 : 3;
     let damage = rnd(die) + Math.trunc(Number(dart?.spe || 0));
@@ -43636,6 +43672,34 @@ function heroTrapDartDamage(dart) {
     if (dart?.blessed && heroTossUpTargetHatesBlessings()) damage += rnd(4);
     if (damage > 0) damage = Math.max(1, damage - objectGreatestErosion(dart));
     return maybeHalfPhysicalDamage(damage);
+}
+
+function trapArrowDamageAgainstMonster(arrow, mon) {
+    let damage = rnd(6) + Math.trunc(Number(arrow?.spe || 0));
+    if (damage < 0) damage = 0;
+    if (arrow?.blessed && monsterHatesBlessingsForWaterHit(mon)) damage += rnd(4);
+    if (damage > 0) damage = Math.max(1, damage - objectGreatestErosion(arrow));
+    return Math.max(1, damage);
+}
+
+function trapDartDamageAgainstMonster(dart, mon) {
+    const data = mon?.data || {};
+    const die = mon?.big || mon?.bigmonst || data.big || data.bigmonst ? 2 : 3;
+    let damage = rnd(die) + Math.trunc(Number(dart?.spe || 0));
+    if (damage < 0) damage = 0;
+    if (dart?.blessed && monsterHatesBlessingsForWaterHit(mon)) damage += rnd(4);
+    if (damage > 0) damage = Math.max(1, damage - objectGreatestErosion(dart));
+    return Math.max(1, damage);
+}
+
+function placeHeroTrapArrow(arrow) {
+    if (!arrow) return null;
+    arrow.ox = game.u?.ux || 0;
+    arrow.oy = game.u?.uy || 0;
+    game.level.objects ??= [];
+    game.level.objects.push(arrow);
+    newsym(arrow.ox, arrow.oy);
+    return arrow;
 }
 
 function placeHeroTrapDart(dart) {
@@ -43648,22 +43712,106 @@ function placeHeroTrapDart(dart) {
     return dart;
 }
 
-function applyHeroTrapDartPoison(dart, messages) {
-    if (!dart?.opoisoned) return false;
+function placeSteedTrapProjectile(projectile, steed, fields) {
+    if (!projectile || !steed) return null;
+    Object.assign(projectile, {
+        ox: steed.mx ?? game.u?.ux ?? 0,
+        oy: steed.my ?? game.u?.uy ?? 0,
+        glyph: ')',
+        color: CLR_CYAN,
+        petFetchable: true,
+        ...fields,
+    });
+    const stacked = placeStackableFloorObject(projectile);
+    newsym(projectile.ox, projectile.oy);
+    return stacked;
+}
+
+function placeSteedTrapDart(dart, steed) {
+    return placeSteedTrapProjectile(dart, steed, {
+        kind: 'dart',
+        actualKind: 'dart',
+    });
+}
+
+function placeSteedTrapArrow(arrow, steed) {
+    return placeSteedTrapProjectile(arrow, steed, {
+        kind: 'arrow',
+        actualKind: 'arrow',
+        singular: 'arrow',
+        plural: 'arrows',
+    });
+}
+
+function steedTrapProjectileName(steed) {
+    const name = fireScrollMonsterName(steed);
+    if (steed?.saddled && !steed?.givenName && !(steed?.isshk && steed?.shknam))
+        return name.replace(/^The /, 'The saddled ');
+    return name;
+}
+
+function steedTrapDartName(steed) {
+    return steedTrapProjectileName(steed);
+}
+
+function steedTrapProjectileObjectName(projectile) {
+    return articleFor(pickupObjectName(projectile));
+}
+
+function steedTrapDartObjectName(dart) {
+    return steedTrapProjectileObjectName(dart);
+}
+
+function trapKilledMonsterCorpseData(mon) {
+    const data = mon?.data || {};
+    return data.corpse
+        || (data.name?.endsWith(' zombie') ? monsterByRndName(data.name.replace(/ zombie$/, '')) : null)
+        || data;
+}
+
+function finishTrapKilledSteed(steed, messages) {
+    if (!steed) return;
+    const data = steed.data || {};
+    const corpseData = trapKilledMonsterCorpseData(steed);
+    const dropCorpse = monsterLeavesCorpseLikeDrop(corpseData)
+        && monsterCorpseDropSucceeds(steed, data);
+    dropMonsterInventory(steed, messages);
+    if (dropCorpse) createMonsterCorpseOrGlob(steed, corpseData, steed.mx, steed.my, { messages });
+    recordVanquished(steed, false);
+    game.level.monsters = (game.level?.monsters || []).filter(mon => mon !== steed);
+    if (game.u?.usteed === steed) game.u.usteed = null;
+    steed.dead = true;
+    steed.mhp = 0;
+    steed.movement = 0;
+    newsym(steed.mx, steed.my);
+}
+
+function heroDartTrapFatalResult(messages, deathCause) {
+    game._death_cause = deathCause;
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) game.u.uhp = 0;
+        messages.push(`You die...  But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+        return { lifeSaving: true, fatal: false, more: true };
+    }
+    if (game.u) game.u.uhp = 0;
+    messages.push('You die...');
+    return { lifeSaving: false, fatal: true, more: true };
+}
+
+function applyHeroTrapDartPoison(dart, messages, { fatal = 10 } = {}) {
+    if (!dart?.opoisoned) return {};
     messages.push('The dart was poisoned!');
     if (heroHasPoisonResistance()) {
         messages.push("The poison doesn't seem to affect you.");
-        return false;
+        return {};
     }
 
-    const roll = rn2(30);
-    let dead = false;
+    const roll = fatal ? rn2(fatal + 20) : 1;
     if (roll === 0) {
         const loss = 6 + d(4, 6);
         if ((game.u?.uhp || 0) <= loss) {
-            if (game.u) game.u.uhp = -1;
             messages.push('The poison was deadly...');
-            dead = true;
+            return heroDartTrapFatalResult(messages, 'poisoned by a little dart');
         } else {
             if (game.u) {
                 game.u.uhpmax = Math.max(3, (game.u.uhpmax || game.u.uhp || 1) - Math.trunc(loss / 2));
@@ -43671,24 +43819,141 @@ function applyHeroTrapDartPoison(dart, messages) {
                 if (game.u.acurr?.a) game.u.acurr.a[A_CON] = Math.max(3, (game.u.acurr.a[A_CON] ?? 10) - 3);
             }
             messages.push('You feel very sick!');
-            dead = (game.u?.uhp || 0) < 1;
+            if ((game.u?.uhp || 0) < 1)
+                return heroDartTrapFatalResult(messages, 'poisoned by a little dart');
         }
     } else if (roll > 5) {
         const loss = rnd(6);
         if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
-        dead = (game.u?.uhp || 0) < 1;
+        if ((game.u?.uhp || 0) < 1)
+            return heroDartTrapFatalResult(messages, 'poisoned by a little dart');
     } else {
         if (game.u?.acurr?.a) game.u.acurr.a[A_CON] = Math.max(3, (game.u.acurr.a[A_CON] ?? 10) - 1);
         messages.push('You feel very sick!');
     }
-    if (dead) game._death_cause = 'poisoned by a little dart';
-    return dead;
+    return {};
 }
 
-function heroDartTrapMessage(trap, prefix = '', alreadySeen = !!trap?.tseen) {
+function heroDartTrapThituMessage({ hit, damage, threshold, roll }) {
+    const terse = heroIsBlind() || game.flags?.verbose === false;
+    if (!hit) {
+        if (terse) return 'It misses.';
+        return threshold <= roll - 2
+            ? 'A little dart misses you.'
+            : 'You are almost hit by a little dart.';
+    }
+    return terse
+        ? `You are hit${damage > 4 ? '!' : '.'}`
+        : `You are hit by a little dart${damage > 4 ? '!' : '.'}`;
+}
+
+function heroArrowTrapThituMessage({ hit, damage, threshold, roll }) {
+    const terse = heroIsBlind() || game.flags?.verbose === false;
+    if (!hit) {
+        if (terse) return 'It misses.';
+        return threshold <= roll - 2
+            ? 'An arrow misses you.'
+            : 'You are almost hit by an arrow.';
+    }
+    return terse
+        ? `You are hit${damage > 4 ? '!' : '.'}`
+        : `You are hit by an arrow${damage > 4 ? '!' : '.'}`;
+}
+
+function mountedHeroArrowTrapSteedResult(arrow, messages) {
+    const steed = game.u?.usteed;
+    if (!steed || !arrow) return null;
+    steed.mx = game.u?.ux ?? steed.mx;
+    steed.my = game.u?.uy ?? steed.my;
+    const visible = !heroIsBlind() && cansee(steed.mx, steed.my);
+    const armorClass = steed.ac ?? steed.mac ?? steed.data?.ac ?? steed.data?.mac ?? 10;
+    const hit = armorClass + 8 + Math.trunc(Number(arrow.spe || 0)) <= rnd(20);
+    const arrowName = steedTrapProjectileObjectName(arrow);
+    if (!hit) {
+        if (visible) messages.push(`${steedTrapProjectileName(steed)} is almost hit by ${arrowName}!`);
+        placeSteedTrapArrow(arrow, steed);
+        return { message: messages.join('  ') };
+    }
+
+    if (visible) messages.push(`${steedTrapProjectileName(steed)} is hit by ${arrowName}!`);
+    const damage = trapArrowDamageAgainstMonster(arrow, steed);
+    steed.mhp = (steed.mhp || 1) - damage;
+    if ((steed.mhp || 0) <= 0) {
+        if (visible) messages.push(`${steedTrapProjectileName(steed)} is killed!`);
+        finishTrapKilledSteed(steed, messages);
+    }
+    return { message: messages.join('  ') };
+}
+
+function heroArrowTrapResult(trap, prefix = '', alreadySeen = !!trap?.tseen) {
     if (trap?.once && alreadySeen && !rn2(15)) {
         deleteTrap(trap);
-        return trapProjectileMessageParts(prefix, 'You hear a soft click.');
+        return { message: trapProjectileMessageParts(prefix, 'You hear a loud click!') };
+    }
+    if (trap) {
+        trap.once = true;
+        trap.tseen = true;
+    }
+    const arrow = makeHeroTrapArrow(trap);
+    const damage = heroTrapArrowDamage(arrow);
+    const threshold = (game.u?.uac || 0) + 8;
+    const messages = [trapProjectileMessageParts(prefix, 'An arrow shoots out at you!')];
+    if (game.u?.usteed && !rn2(2))
+        return mountedHeroArrowTrapSteedResult(arrow, messages);
+    const roll = rnd(20);
+    if (threshold <= roll) {
+        placeHeroTrapArrow(arrow);
+        messages.push(heroArrowTrapThituMessage({
+            hit: false, damage, threshold, roll,
+        }));
+        return { message: messages.join('  ') };
+    }
+
+    let physicalFatal = false;
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        physicalFatal = (game.u.uhp || 0) <= 0;
+    }
+    messages.push(heroArrowTrapThituMessage({
+        hit: true, damage, threshold, roll,
+    }));
+    if (physicalFatal) {
+        const fatalResult = heroDartTrapFatalResult(messages, 'killed by an arrow');
+        return { message: messages.join('  '), ...fatalResult };
+    }
+    exerciseAttribute(A_STR, false);
+    return { message: messages.join('  ') };
+}
+
+function mountedHeroDartTrapSteedResult(dart, messages) {
+    const steed = game.u?.usteed;
+    if (!steed || !dart) return null;
+    steed.mx = game.u?.ux ?? steed.mx;
+    steed.my = game.u?.uy ?? steed.my;
+    const visible = !heroIsBlind() && cansee(steed.mx, steed.my);
+    const armorClass = steed.ac ?? steed.mac ?? steed.data?.ac ?? steed.data?.mac ?? 10;
+    const hit = armorClass + 7 + Math.trunc(Number(dart.spe || 0)) <= rnd(20);
+    const dartName = steedTrapDartObjectName(dart);
+    if (!hit) {
+        if (visible) messages.push(`${steedTrapDartName(steed)} is almost hit by ${dartName}!`);
+        placeSteedTrapDart(dart, steed);
+        return { message: messages.join('  ') };
+    }
+
+    if (visible) messages.push(`${steedTrapDartName(steed)} is hit by ${dartName}!`);
+    const damage = trapDartDamageAgainstMonster(dart, steed);
+    steed.mhp = (steed.mhp || 1) - damage;
+    if ((steed.mhp || 0) <= 0) {
+        if (visible) messages.push(`${steedTrapDartName(steed)} is killed!`);
+        finishTrapKilledSteed(steed, messages);
+    }
+    return { message: messages.join('  ') };
+}
+
+function heroDartTrapResult(trap, prefix = '', alreadySeen = !!trap?.tseen) {
+    if (trap?.once && alreadySeen && !rn2(15)) {
+        deleteTrap(trap);
+        return { message: trapProjectileMessageParts(prefix, 'You hear a soft click.') };
     }
     if (trap) {
         trap.once = true;
@@ -43698,24 +43963,50 @@ function heroDartTrapMessage(trap, prefix = '', alreadySeen = !!trap?.tseen) {
     dart.opoisoned = !rn2(6);
     const damage = heroTrapDartDamage(dart);
     const threshold = (game.u?.uac || 0) + 7;
-    const roll = rnd(20);
     const messages = [trapProjectileMessageParts(prefix, 'A little dart shoots out at you!')];
+    if (game.u?.usteed && !rn2(2))
+        return mountedHeroDartTrapSteedResult(dart, messages);
+    const roll = rnd(20);
     if (threshold <= roll) {
         placeHeroTrapDart(dart);
-        messages.push(threshold <= roll - 2
-            ? 'A little dart misses you.'
-            : 'You are almost hit by a little dart.');
-        return messages.join('  ');
+        messages.push(heroDartTrapThituMessage({
+            hit: false, damage, threshold, roll,
+        }));
+        return { message: messages.join('  ') };
     }
 
+    let physicalLifeSaving = false;
+    let physicalFatal = false;
     if (game.u) {
         game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-        if ((game.u.uhp || 0) <= 0) game._death_cause = 'killed by a little dart';
+        physicalFatal = (game.u.uhp || 0) <= 0;
     }
+    messages.push(heroDartTrapThituMessage({
+        hit: true, damage, threshold, roll,
+    }));
+    if (physicalFatal) {
+        const fatalResult = heroDartTrapFatalResult(messages, 'killed by a little dart');
+        physicalLifeSaving = !!fatalResult.lifeSaving;
+        physicalFatal = !!fatalResult.fatal;
+    }
+    if (physicalFatal)
+        return { message: messages.join('  '), fatal: true, more: true };
     exerciseAttribute(A_STR, false);
-    messages.push('You are hit by a little dart.');
-    applyHeroTrapDartPoison(dart, messages);
-    return messages.join('  ');
+    const poisonResult = applyHeroTrapDartPoison(dart, messages, {
+        fatal: physicalLifeSaving ? 0 : 10,
+    });
+    return {
+        message: messages.join('  '),
+        lifeSaving: physicalLifeSaving || !!poisonResult.lifeSaving,
+        fatal: !!poisonResult.fatal,
+        more: physicalLifeSaving || !!poisonResult.lifeSaving || !!poisonResult.fatal,
+    };
+}
+
+async function finishHeroDartTrapResult(result, { sit = false, more = false } = {}) {
+    if (sit) await finishSitMessage(result.message, { more: more || !!result.more });
+    else await setMessage(result.message, more || !!result.more);
+    applyLifeSavingOrFatalCommandMode(result);
 }
 
 function sitProjectileTrapMessage(trap, prefix, alreadySeen, spec) {
@@ -43788,15 +44079,66 @@ function sitSqueakyBoardMessage(trap, prefix) {
     return `${prefix}  A board beneath you squeaks ${sitTrapNote(trap)} loudly.`;
 }
 
-function sitSleepGasMessage(trap, prefix) {
-    trap.tseen = true;
-    if (game.u?.sleepResistance || polyselfForm()?.breathless) {
-        return `${prefix}  You are enveloped in a cloud of gas!`;
-    }
+function monsterBreathlessForTrapSleep(mon) {
+    const data = mon?.data || {};
+    return !!(mon?.breathless || data.breathless || data.Breathless);
+}
+
+function monsterHelplessForTrapSleep(mon) {
+    return !!(mon?.helpless || mon?.msleeping || mon?.mfrozen
+        || mon?.mcanmove === false || mon?.mcanmove === 0);
+}
+
+function sleepMonsterFromTrapGas(mon, duration) {
+    if (!mon || monsterResistsSleepEffect(mon) || monsterBreathlessForTrapSleep(mon)
+        || monsterHelplessForTrapSleep(mon))
+        return false;
+    mon.mcanmove = false;
+    mon.mfrozen = Math.min(127, (mon.mfrozen || 0) + duration);
+    mon.meating = 0;
+    return true;
+}
+
+function mountedHeroSleepGasTrapSteedMessages() {
+    const steed = game.u?.usteed;
+    if (!steed) return [];
+    steed.mx = game.u?.ux ?? steed.mx;
+    steed.my = game.u?.uy ?? steed.my;
+    if (monsterResistsSleepEffect(steed) || monsterBreathlessForTrapSleep(steed)
+        || monsterHelplessForTrapSleep(steed))
+        return [];
     const duration = rnd(25);
-    game._helpless_time = Math.max(game._helpless_time || 0, duration);
-    game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
-    return `${prefix}  A cloud of gas puts you to sleep!`;
+    if (!sleepMonsterFromTrapGas(steed, duration)) return [];
+    return [`${steedTrapProjectileName(steed)} suddenly falls asleep!`];
+}
+
+function heroSleepGasTrapResult(trap, prefix = '') {
+    trap.tseen = true;
+    const messages = [prefix];
+    if (game.u?.sleepResistance || game.u?.Sleep_resistance
+        || game.u?.breathless || game.u?.Breathless || polyselfForm()?.breathless) {
+        messages.push('You are enveloped in a cloud of gas!');
+    } else {
+        const duration = rnd(25);
+        game._helpless_time = Math.max(game._helpless_time || 0, duration);
+        game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
+        messages.push('A cloud of gas puts you to sleep!');
+    }
+    messages.push(...mountedHeroSleepGasTrapSteedMessages());
+    return { message: trapMessage(...messages) };
+}
+
+function movementSleepGasTrapResult(trap) {
+    const alreadySeen = !!trap?.tseen;
+    if (game.u?.levitating || game.u?.flying)
+        return { message: alreadySeen ? movementOverFloorTrapMessage(trap) : '', more: false };
+    if (alreadySeen && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+    return heroSleepGasTrapResult(trap, '');
+}
+
+function sitSleepGasMessage(trap, prefix) {
+    return heroSleepGasTrapResult(trap, prefix).message;
 }
 
 function rustTrapWornArmor(slot) {
@@ -44176,21 +44518,370 @@ function sitPolyTrapMessage(trap, prefix) {
     return messages.join('  ');
 }
 
-function sitLandmineMessage(trap, prefix) {
-    const damage = rnd(16);
-    const mineName = sitTrapArticleName(trap);
-    trap.tseen = true;
+function bearTrapSubject(trap) {
+    return trap?.madeby_u ? 'Your' : 'A';
+}
+
+function steedBearTrapName(steed) {
+    return steedTrapProjectileName(steed).replace(/^The\b/, 'the');
+}
+
+function possessiveName(name) {
+    return String(name || 'it').endsWith('s') ? `${name}'` : `${name}'s`;
+}
+
+function applyHeroBearTrapLegWound(side, duration) {
+    if (!game.u) return;
+    if (game.u.acurr?.a && !game.u._woundedDexPenalty) {
+        game.u.acurr.a[A_DEX] = Math.max(3, (game.u.acurr.a[A_DEX] ?? 9) - 1);
+        game.u._woundedDexPenalty = 1;
+    }
+    game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, duration);
+    game.u._woundedLegSide = side;
+}
+
+function maybeQueueBearTrapLoadMessage() {
+    const capacity = heroCarryCapacity() - 100;
+    if (heroCarriedWeight() <= capacity || (game.u?._statusSuffix || '').includes('Burdened')) return;
+    game.u._statusSuffix = `${game.u._statusSuffix || ''} Burdened`;
+    game._queued_message_after_more = 'Your movements are slowed slightly because of your load.';
+    game._queued_message_process_time_after_more = 1;
+}
+
+function bearTrapExerciseDex(deferAfterMore) {
+    if (deferAfterMore) game._bear_trap_exercise_after_more = 1;
+    else exerciseAttribute(A_DEX, false);
+}
+
+function heroBearTrapResult(trap, prefix = '', { deferAfterMore = false } = {}) {
+    const damage = d(2, 4);
+    if (trap) trap.tseen = true;
+    const messages = [prefix];
+    const form = polyselfForm() || {};
+    const subject = bearTrapSubject(trap);
+
+    if (form.amorphous || form.whirly || form.unsolid || form.noncorporeal) {
+        messages.push(`${subject} bear trap closes harmlessly through you.`);
+        bearTrapExerciseDex(deferAfterMore);
+        return { message: trapMessage(...messages) };
+    }
+    if (!game.u?.usteed && (form.msize === 'tiny' || form.msize === 'small'
+        || form.size === 'tiny' || form.size === 'small')) {
+        messages.push(`${subject} bear trap closes harmlessly over you.`);
+        bearTrapExerciseDex(deferAfterMore);
+        return { message: trapMessage(...messages) };
+    }
+
+    if (game.u) {
+        game.u.utrap = rn1(4, 4);
+        game.u.utraptype = 'beartrap';
+    }
+
+    if (game.u?.usteed) {
+        const steed = game.u.usteed;
+        steed.mx = game.u?.ux ?? steed.mx;
+        steed.my = game.u?.uy ?? steed.my;
+        const steedName = steedBearTrapName(steed);
+        messages.push(`${subject} bear trap closes on ${possessiveName(steedName)} foot!`);
+        steed.mhp = (steed.mhp || 1) - damage;
+        if ((steed.mhp || 0) <= 0) {
+            messages.push(`${steedTrapProjectileName(steed)} is killed!`);
+            finishTrapKilledSteed(steed, messages);
+            if (game.u) {
+                game.u.utrap = 0;
+                game.u.utraptype = null;
+            }
+        }
+    } else {
+        messages.push(`${subject} bear trap closes on your foot!`);
+        const woundedSide = rn2(2) ? 'right' : 'left';
+        const woundDuration = rn1(10, 10);
+        applyHeroBearTrapLegWound(woundedSide, woundDuration);
+        if (deferAfterMore) maybeQueueBearTrapLoadMessage();
+        if (game.u) {
+            if (deferAfterMore) game._bear_trap_damage_after_more = maybeHalfPhysicalDamage(damage);
+            else game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
+        }
+        if (!deferAfterMore && (game.u?.uhp || 0) <= 0) {
+            const fatalResult = heroDartTrapFatalResult(messages, 'killed by a bear trap');
+            exerciseAttribute(A_DEX, false);
+            return { message: trapMessage(...messages), ...fatalResult };
+        }
+    }
+    bearTrapExerciseDex(deferAfterMore);
+    return { message: trapMessage(...messages) };
+}
+
+function movementBearTrapResult(trap, options = {}) {
+    const alreadySeen = !!trap?.tseen;
+    if (game.u?.levitating || game.u?.flying)
+        return { message: alreadySeen ? movementOverFloorTrapMessage(trap) : '', more: false };
+    if (alreadySeen && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+    return heroBearTrapResult(trap, '', options);
+}
+
+function heroWearingIronShoes() {
+    return wornArmorItemsBySlotOrder(['boots'])
+        .some(item => item?.otyp === IRON_SHOES || objectKindKey(item) === 'iron shoes');
+}
+
+function landmineArticleName(trap) {
+    return trap?.madeby_u ? 'your land mine' : 'a land mine';
+}
+
+function convertLandmineToPit(trap) {
+    if (!trap) return;
     trap.ttyp = PIT;
     trap.madeby_u = false;
+    newsym(game.u?.ux || trap.tx || 0, game.u?.uy || trap.ty || 0);
+}
+
+function woundHeroLandmineLegs() {
+    if (!game.u) return;
+    const left = rn1(35, 41);
+    const right = rn1(35, 41);
+    game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, left, right);
+    game.u._woundedLegSide = '';
+}
+
+function mountedHeroLandmineSteedResult(messages) {
+    const steed = game.u?.usteed;
+    if (!steed) return false;
+    steed.mx = game.u?.ux ?? steed.mx;
+    steed.my = game.u?.uy ?? steed.my;
+    const damage = rnd(16);
+    steed.mhp = (steed.mhp || 1) - damage;
+    if ((steed.mhp || 0) <= 0) {
+        messages.push(`${steedTrapProjectileName(steed)} is killed!`);
+        finishTrapKilledSteed(steed, messages);
+        return true;
+    }
+    return false;
+}
+
+function applyHeroLandmineDamage(damage, messages) {
+    let fatalResult = {};
     if (game.u) {
-        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-        game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, rn1(35, 41), rn1(35, 41));
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
         game.u.utrap = rn1(6, 2);
         game.u.utraptype = 'pit';
+        if ((game.u.uhp || 0) <= 0)
+            fatalResult = heroDartTrapFatalResult(messages, 'killed by a land mine');
     }
+    return fatalResult;
+}
+
+function heroLandmineAirCurrentResult(trap, prefix, damage) {
+    const alreadySeen = !!trap?.tseen;
+    if (!alreadySeen && rn2(3)) return { message: '', more: false };
+    if (trap) trap.tseen = true;
+    const triggerName = trap?.madeby_u ? 'the trigger of your mine' : 'a trigger';
+    const messages = [
+        prefix,
+        `${alreadySeen ? 'There is' : 'You discover'} ${triggerName} in a pile of soil below you.`,
+    ];
+    if (alreadySeen && rn2(3)) return { message: trapMessage(...messages), more: false };
+    messages.push(`KAABLAMM!!!  The air currents set ${alreadySeen ? landmineArticleName(trap) : 'it'} off!`);
+    convertLandmineToPit(trap);
+    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
+    if ((game.u?.uhp || 0) <= 0) {
+        const fatalResult = heroDartTrapFatalResult(messages, 'killed by a land mine');
+        return { message: trapMessage(...messages), ...fatalResult };
+    }
+    return { message: trapMessage(...messages) };
+}
+
+function heroLandmineResult(trap, prefix = '', { forceTrap = false } = {}) {
+    let damage = rnd(16);
+    if (heroWearingIronShoes()) damage = Math.trunc((damage + 3) / 4);
+    if ((game.u?.levitating || game.u?.flying) && !forceTrap)
+        return heroLandmineAirCurrentResult(trap, prefix, damage);
+    if (trap) trap.tseen = true;
+    const messages = [prefix, `KAABLAMM!!!  You triggered ${landmineArticleName(trap)}!`];
+    mountedHeroLandmineSteedResult(messages);
+    woundHeroLandmineLegs();
+    convertLandmineToPit(trap);
+    const fatalResult = applyHeroLandmineDamage(damage, messages);
     exerciseAttribute(A_DEX, false);
-    newsym(game.u?.ux || 0, game.u?.uy || 0);
-    return `${prefix}  KAABLAMM!!!  You triggered ${mineName}!  You fall into a pit!`;
+    if (!fatalResult.fatal && !fatalResult.lifeSaving) messages.push('You fall into a pit!');
+    return { message: trapMessage(...messages), ...fatalResult };
+}
+
+function movementLandmineResult(trap) {
+    const alreadySeen = !!trap?.tseen;
+    if (alreadySeen && !(game.u?.levitating || game.u?.flying)
+        && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+    return heroLandmineResult(trap, '');
+}
+
+function sitLandmineResult(trap, prefix) {
+    return heroLandmineResult(trap, prefix, { forceTrap: true });
+}
+
+function pitOwnerArticle(trap) {
+    return trap?.madeby_u ? 'your' : 'a';
+}
+
+function steedPitName(steed, { poor = false, capital = false } = {}) {
+    let name = steedTrapProjectileName(steed)
+        .replace(/^The saddled /, '')
+        .replace(/^The /, '')
+        .replace(/^the /, '');
+    if (poor) name = `poor ${name}`;
+    return capital ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+}
+
+function heroPitTrapState() {
+    if (!game.u) return;
+    game.u.utrap = rn1(6, 2);
+    game.u.utraptype = 'pit';
+}
+
+function heroPitDamageDie(relevantSpikes) {
+    if (relevantSpikes) return 10;
+    return 6;
+}
+
+function mountedHeroPitSteedResult(trap, messages) {
+    const steed = game.u?.usteed;
+    if (!steed) return false;
+    steed.mx = game.u?.ux ?? steed.mx;
+    steed.my = game.u?.uy ?? steed.my;
+    const damage = rnd(trap?.ttyp === PIT ? 6 : 10);
+    steed.mhp = (steed.mhp || 1) - damage;
+    if ((steed.mhp || 0) <= 0) {
+        messages.push(`${steedTrapProjectileName(steed)} is killed!`);
+        finishTrapKilledSteed(steed, messages);
+    }
+    return true;
+}
+
+function applyHeroPitDamage(damage, messages, deathCause) {
+    if (!game.u) return {};
+    game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
+    if ((game.u.uhp || 0) <= 0)
+        return heroDartTrapFatalResult(messages, deathCause);
+    return {};
+}
+
+function applyHeroPitPoison(messages, { fatal = 8 } = {}) {
+    messages.push('The spikes were poisoned!');
+    if (heroHasPoisonResistance()) {
+        messages.push("The poison doesn't seem to affect you.");
+        return {};
+    }
+
+    const roll = fatal ? rn2(fatal) : 1;
+    if (roll === 0) {
+        const loss = 6 + d(4, 6);
+        if ((game.u?.uhp || 0) <= loss) {
+            messages.push('The poison was deadly...');
+            return heroDartTrapFatalResult(messages, 'fall onto poison spikes');
+        }
+        if (game.u) {
+            game.u.uhpmax = Math.max(3, (game.u.uhpmax || game.u.uhp || 1) - Math.trunc(loss / 2));
+            game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+            if (game.u.acurr?.a) {
+                game.u.acurr.a[A_CON] = Math.max(3, (game.u.acurr.a[A_CON] ?? 10) - 1);
+                game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - 3);
+            }
+        }
+        if ((game.u?.uhp || 0) <= 0)
+            return heroDartTrapFatalResult(messages, 'fall onto poison spikes');
+        return {};
+    }
+    if (roll > 5) {
+        const loss = rn1(10, 6);
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+        if ((game.u?.uhp || 0) <= 0)
+            return heroDartTrapFatalResult(messages, 'fall onto poison spikes');
+        return {};
+    }
+    const strengthLoss = fatal ? d(2, 2) : 1;
+    if (game.u?.acurr?.a)
+        game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - strengthLoss);
+    return {};
+}
+
+function heroPitClingerResult(trap, prefix, alreadyKnown) {
+    if (trap) trap.tseen = true;
+    const spike = trap?.ttyp === SPIKED_PIT ? 'spiked ' : '';
+    const messages = [prefix];
+    if (alreadyKnown) messages.push(`You see ${pitOwnerArticle(trap)} ${spike}pit below you.`);
+    else {
+        messages.push(`${trap?.madeby_u ? 'Your' : 'A'} pit ${trap?.ttyp === SPIKED_PIT ? 'full of spikes ' : ''}opens up under you!`);
+        messages.push("You don't fall in!");
+    }
+    return { message: trapMessage(...messages) };
+}
+
+function heroPitResult(trap, prefix = '', { viaSitting = false, plunged = false } = {}) {
+    const alreadyKnown = !!trap?.tseen;
+    const inSokoban = In_sokoban(game.u?.uz);
+    if (!inSokoban && (game.u?.levitating || (game.u?.flying && !plunged && !viaSitting)))
+        return { message: '', more: false };
+    if (trap) trap.tseen = true;
+    if (!inSokoban && polyselfForm()?.clinger && !plunged)
+        return heroPitClingerResult(trap, prefix, alreadyKnown);
+
+    let relevantSpikes = trap?.ttyp === SPIKED_PIT;
+    const messages = [prefix];
+    const steed = game.u?.usteed;
+    if (inSokoban) {
+        const pitName = trap?.ttyp === SPIKED_PIT ? 'spiked pit' : 'pit';
+        messages.push(`Air currents pull you down into ${pitOwnerArticle(trap)} ${pitName}!`);
+    } else {
+        if (steed) messages.push(`You lead ${steedPitName(steed, { poor: true })} into ${pitOwnerArticle(trap)} pit!`);
+        else messages.push('You fall into a pit!');
+    }
+    if (relevantSpikes && heroWearingIronShoes()) {
+        messages.push('Your iron shoes protect you from the sharp iron spikes.');
+        relevantSpikes = false;
+    } else if (relevantSpikes) {
+        messages.push(steed
+            ? `${steedPitName(steed, { poor: true, capital: true })} lands on a set of sharp iron spikes!`
+            : 'You land on a set of sharp iron spikes!');
+    }
+
+    heroPitTrapState();
+    if (mountedHeroPitSteedResult(trap, messages))
+        return { message: trapMessage(...messages) };
+
+    const damage = rnd(heroPitDamageDie(relevantSpikes));
+    const deathCause = relevantSpikes ? 'fell into a pit of iron spikes' : 'fell into a pit';
+    const damageResult = applyHeroPitDamage(damage, messages, deathCause);
+    if (damageResult.fatal) return { message: trapMessage(...messages), ...damageResult };
+
+    let poisonResult = {};
+    if (relevantSpikes) {
+        poisonResult = !rn2(6)
+            ? applyHeroPitPoison(messages, { fatal: damageResult.lifeSaving ? 0 : 8 })
+            : {};
+        if (poisonResult.fatal) return { message: trapMessage(...messages), ...poisonResult };
+    }
+    exerciseAttribute(A_STR, false);
+    exerciseAttribute(A_DEX, false);
+    return {
+        message: trapMessage(...messages),
+        lifeSaving: !!damageResult.lifeSaving || !!poisonResult.lifeSaving,
+        more: !!damageResult.more || !!poisonResult.more,
+    };
+}
+
+function movementPitResult(trap) {
+    const alreadySeen = !!trap?.tseen;
+    if (!In_sokoban(game.u?.uz) && (game.u?.levitating || game.u?.flying))
+        return { message: alreadySeen ? movementOverFloorTrapMessage(trap) : '', more: false };
+    if (alreadySeen && !In_sokoban(game.u?.uz)
+        && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+    return heroPitResult(trap, '');
+}
+
+function sitPitResult(trap, prefix) {
+    return heroPitResult(trap, prefix, { viaSitting: true });
 }
 
 function sitRollingBoulderMessage(trap, prefix) {
@@ -44219,25 +44910,16 @@ async function sitTriggerTrap(trap) {
     const alreadySeen = trap.ttyp === HOLE || !!trap.tseen;
     const sokobanInescapable = In_sokoban(game.u?.uz)
         && [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(trap.ttyp);
-    if (alreadySeen && !sokobanInescapable && sitTrapEscapeAllowed(trap) && !rn2(5)) {
+    if (alreadySeen && trap.ttyp !== BEAR_TRAP && !sokobanInescapable && sitTrapEscapeAllowed(trap) && !rn2(5)) {
         await finishSitMessage(`${prefix}  You escape ${sitTrapArticleName(trap)}.`);
         return true;
     }
     if (trap.ttyp === ARROW_TRAP) {
-        await finishSitMessage(sitProjectileTrapMessage(trap, prefix, alreadySeen, {
-            name: 'arrow',
-            subject: 'An arrow',
-            article: 'an arrow',
-            shootsMessage: 'An arrow shoots out at you!',
-            emptyMessage: 'You hear a loud click!',
-            toHit: 8,
-            damage: () => rnd(6),
-            projectile: { cls: 'weapon', kind: 'arrow', singular: 'arrow', plural: 'arrows', glyph: ')' },
-        }));
+        await finishHeroDartTrapResult(heroArrowTrapResult(trap, prefix, alreadySeen), { sit: true });
         return true;
     }
     if (trap.ttyp === DART_TRAP) {
-        await finishSitMessage(heroDartTrapMessage(trap, prefix, alreadySeen));
+        await finishHeroDartTrapResult(heroDartTrapResult(trap, prefix, alreadySeen), { sit: true });
         return true;
     }
     if (trap.ttyp === ROCKTRAP) {
@@ -44249,18 +44931,11 @@ async function sitTriggerTrap(trap) {
         return true;
     }
     if (trap.ttyp === BEAR_TRAP) {
-        trap.tseen = true;
-        const damage = d(2, 4);
-        if (game.u) {
-            game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-            game.u.utrap = rn1(4, 4);
-            game.u.utraptype = 'beartrap';
-        }
-        await finishSitMessage(`${prefix}  A bear trap closes on your foot!`);
+        await finishHeroDartTrapResult(heroBearTrapResult(trap, prefix), { sit: true });
         return true;
     }
     if (trap.ttyp === LANDMINE) {
-        await finishSitMessage(sitLandmineMessage(trap, prefix));
+        await finishHeroDartTrapResult(sitLandmineResult(trap, prefix), { sit: true });
         return true;
     }
     if (trap.ttyp === ROLLING_BOULDER_TRAP) {
@@ -44280,13 +44955,7 @@ async function sitTriggerTrap(trap) {
         return true;
     }
     if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) {
-        trap.tseen = true;
-        if (game.u) {
-            game.u.utrap = rn1(6, 2);
-            game.u.utraptype = 'pit';
-            game.u.uhp = Math.max(0, (game.u.uhp || 1) - rnd(trap.ttyp === SPIKED_PIT ? 10 : 6));
-        }
-        await finishSitMessage(`${prefix}  You fall into ${trap.ttyp === SPIKED_PIT ? 'a spiked pit' : 'a pit'}!`);
+        await finishHeroDartTrapResult(sitPitResult(trap, prefix), { sit: true });
         return true;
     }
     if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) {
@@ -46792,6 +47461,11 @@ async function moveHero(dx, dy) {
         await setMessage(materializeMessage, true);
         return;
     }
+    if (steppedTrap?.ttyp === SLP_GAS_TRAP) {
+        const result = movementSleepGasTrapResult(steppedTrap);
+        if (result.message) await setMessage(result.message, !!result.more);
+        return;
+    }
     if (steppedTrap?.ttyp === RUST_TRAP) {
         steppedTrap.tseen = true;
         rn2(5);
@@ -46964,9 +47638,17 @@ async function moveHero(dx, dy) {
     if (runningStep && objectsHere.length > 1) {
         game._dismount_object_list_spot = { x: newx, y: newy };
         if (trapHere?.ttyp === MAGIC_TRAP) game._pending_magic_trap = trapHere;
+        if (trapHere?.ttyp === SLP_GAS_TRAP) game._pending_sleep_gas_trap = trapHere;
+        if (trapHere?.ttyp === LANDMINE) game._pending_landmine_trap = trapHere;
+        if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) game._pending_pit_trap = trapHere;
+        if (trapHere?.ttyp === BEAR_TRAP) game._pending_bear_trap = trapHere;
         return;
     }
+    if (trapHere?.ttyp === SLP_GAS_TRAP && objectsHere.length > 1) game._pending_sleep_gas_trap = trapHere;
+    if (trapHere?.ttyp === ARROW_TRAP && objectsHere.length > 1) game._pending_arrow_trap = trapHere;
     if (trapHere?.ttyp === DART_TRAP && objectsHere.length > 1) game._pending_dart_trap = trapHere;
+    if (trapHere?.ttyp === LANDMINE && objectsHere.length > 1) game._pending_landmine_trap = trapHere;
+    if ((trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) && objectsHere.length > 1) game._pending_pit_trap = trapHere;
     if (trapHere?.ttyp === BEAR_TRAP && objectsHere.length > 1) game._pending_bear_trap = trapHere;
     const goldHere = objectsHere.find(obj => obj.otyp === GOLD_PIECE || obj.glyph === '$');
     if (game._autopickup && goldHere) {
@@ -47084,6 +47766,10 @@ async function moveHero(dx, dy) {
         game._deferred_context_move = game.context.move || 1;
         game.context.move = 0;
         if (trapHere?.ttyp === MAGIC_TRAP) game._pending_magic_trap = trapHere;
+        if (trapHere?.ttyp === SLP_GAS_TRAP) game._pending_sleep_gas_trap = trapHere;
+        if (trapHere?.ttyp === LANDMINE) game._pending_landmine_trap = trapHere;
+        if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) game._pending_pit_trap = trapHere;
+        if (trapHere?.ttyp === BEAR_TRAP) game._pending_bear_trap = trapHere;
         return;
     }
     if (objectsHere.length > 1 && skipObjectList) {
@@ -47099,10 +47785,45 @@ async function moveHero(dx, dy) {
         if (message) await setMessage(message, !!result.afterMore || !!result.more || !!(pileMessage && result.message));
         return;
     }
+    if (trapHere?.ttyp === SLP_GAS_TRAP) {
+        const result = movementSleepGasTrapResult(trapHere);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (result.message) await setMessage(result.message, !!result.more || !!(pileMessage && result.message));
+        return;
+    }
+    if (trapHere?.ttyp === BEAR_TRAP) {
+        const result = movementBearTrapResult(trapHere);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (result.message)
+            await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
+        return;
+    }
+    if (trapHere?.ttyp === LANDMINE) {
+        const result = movementLandmineResult(trapHere);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (result.message)
+            await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
+        return;
+    }
+    if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) {
+        const result = movementPitResult(trapHere);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (trapResultHasEffect(result))
+            await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
+        return;
+    }
+    if (trapHere?.ttyp === ARROW_TRAP) {
+        const result = heroArrowTrapResult(trapHere, '', !!trapHere.tseen);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (result.message)
+            await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
+        return;
+    }
     if (trapHere?.ttyp === DART_TRAP) {
-        const message = [pileMessage, heroDartTrapMessage(trapHere, '', !!trapHere.tseen)]
-            .filter(Boolean).join('  ');
-        if (message) await setMessage(message, !!(pileMessage && message));
+        const result = heroDartTrapResult(trapHere, '', !!trapHere.tseen);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (result.message)
+            await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
         return;
     }
     if (pileMessage) {
@@ -47426,55 +48147,45 @@ export async function rhack(_cmd) {
                 if (result.message) await setMessage(result.message, !!result.afterMore || !!result.more);
                 return;
             }
+            if (game._pending_sleep_gas_trap) {
+                const result = movementSleepGasTrapResult(game._pending_sleep_gas_trap);
+                game._pending_sleep_gas_trap = null;
+                if (result.message) await setMessage(result.message, !!result.more);
+                return;
+            }
+            if (game._pending_arrow_trap) {
+                const trap = game._pending_arrow_trap;
+                const alreadySeen = !!trap.tseen;
+                game._pending_arrow_trap = null;
+                await finishHeroDartTrapResult(heroArrowTrapResult(trap, '', alreadySeen));
+                return;
+            }
             if (game._pending_dart_trap) {
                 const trap = game._pending_dart_trap;
                 const alreadySeen = !!trap.tseen;
                 game._pending_dart_trap = null;
-                await setMessage(heroDartTrapMessage(trap, '', alreadySeen));
+                await finishHeroDartTrapResult(heroDartTrapResult(trap, '', alreadySeen));
+                return;
+            }
+            if (game._pending_landmine_trap) {
+                const result = movementLandmineResult(game._pending_landmine_trap);
+                game._pending_landmine_trap = null;
+                if (result.message)
+                    await finishHeroDartTrapResult(result, { more: objectListRows > 4 || !!result.more });
+                return;
+            }
+            if (game._pending_pit_trap) {
+                const result = movementPitResult(game._pending_pit_trap);
+                game._pending_pit_trap = null;
+                if (trapResultHasEffect(result))
+                    await finishHeroDartTrapResult(result, { more: objectListRows > 4 || !!result.more });
                 return;
             }
             if (game._pending_bear_trap) {
-                game._pending_bear_trap.tseen = true;
+                const result = movementBearTrapResult(game._pending_bear_trap, { deferAfterMore: objectListRows > 4 });
                 game._pending_bear_trap = null;
-                const damage = d(2, 4);
-                game.u.utrap = rn2(4) + 4;
-                game.u.utraptype = 'beartrap';
-                const woundedSide = rn2(2);
-                const woundDuration = 10 + rn2(10);
-                if (game.u?.acurr?.a && !game.u._woundedDexPenalty) {
-                    game.u.acurr.a[3] = Math.max(3, (game.u.acurr.a[3] || 9) - 1);
-                    game.u._woundedDexPenalty = 1;
-                }
-                game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, woundDuration);
-                game.u._woundedLegSide = woundedSide ? 'right' : 'left';
-                let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
-                for (const invItem of game.inventory || []) {
-                    if (isGoldObject(invItem)) continue;
-                    const kind = String(invItem.kind || invItem.actualKind || invItem.spellName || invItem.spell?.name || '').toLowerCase();
-                    const cls = invItem.cls || (invItem.otyp === RING_CLASS ? 'ring'
-                        : invItem.otyp === SCROLL_CLASS ? 'scroll'
-                            : invItem.otyp === POTION_CLASS ? 'potion'
-                                : invItem.otyp === WAND_CLASS ? 'wand'
-                                    : invItem.otyp === GEM_CLASS ? 'gem' : '');
-                    carriedWeight += (OBJECT_WEIGHTS[kind] ?? CLASS_WEIGHTS[cls] ?? invItem.owt ?? 0) * (invItem.quan || 1);
-                }
-                const stats = game.u?.acurr?.a || [];
-                let capacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
-                capacity -= 100;
-                if (carriedWeight > capacity && !(game.u?._statusSuffix || '').includes('Burdened')) {
-                    game.u._statusSuffix = `${game.u._statusSuffix || ''} Burdened`;
-                    game._queued_message_after_more = 'Your movements are slowed slightly because of your load.';
-                    game._queued_message_process_time_after_more = 1;
-                }
-                if (objectListRows > 4) {
-                    game._bear_trap_damage_after_more = damage;
-                    game._bear_trap_exercise_after_more = 1;
-                    await setMessage('A bear trap closes on your foot!', true);
-                } else {
-                    game.u.uhp = Math.max(1, (game.u?.uhp || 1) - damage);
-                    rn2(2);
-                    await setMessage('A bear trap closes on your foot!');
-                }
+                if (result.message)
+                    await finishHeroDartTrapResult(result, { more: objectListRows > 4 || !!result.more });
             }
         }
         return;
@@ -47494,6 +48205,38 @@ export async function rhack(_cmd) {
                 game._process_command_time_now = 1;
                 if (result.afterMore) game._topline_after_more = result.afterMore;
                 if (result.message) await setMessage(result.message, !!result.afterMore || !!result.more);
+                return;
+            }
+            if (game._pending_sleep_gas_trap) {
+                const result = movementSleepGasTrapResult(game._pending_sleep_gas_trap);
+                game._pending_sleep_gas_trap = null;
+                if (!game._pending_time_passed) game.context.move = 1;
+                game._process_command_time_now = 1;
+                if (result.message) await setMessage(result.message, !!result.more);
+                return;
+            }
+            if (game._pending_landmine_trap) {
+                const result = movementLandmineResult(game._pending_landmine_trap);
+                game._pending_landmine_trap = null;
+                if (!game._pending_time_passed) game.context.move = 1;
+                game._process_command_time_now = 1;
+                if (result.message) await finishHeroDartTrapResult(result);
+                return;
+            }
+            if (game._pending_pit_trap) {
+                const result = movementPitResult(game._pending_pit_trap);
+                game._pending_pit_trap = null;
+                if (!game._pending_time_passed) game.context.move = 1;
+                game._process_command_time_now = 1;
+                if (trapResultHasEffect(result)) await finishHeroDartTrapResult(result);
+                return;
+            }
+            if (game._pending_bear_trap) {
+                const result = movementBearTrapResult(game._pending_bear_trap);
+                game._pending_bear_trap = null;
+                if (!game._pending_time_passed) game.context.move = 1;
+                game._process_command_time_now = 1;
+                if (result.message) await finishHeroDartTrapResult(result);
                 return;
             }
             if (game._pending_time_passed > 0) {
