@@ -9,7 +9,7 @@ import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, vie
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -2689,6 +2689,35 @@ function selectMonsterSlingAmmoIndex(mon) {
 function monsterSlingAmmoDamageSides(item) {
     const name = monsterSlingAmmoName(item).toLowerCase();
     return item?.otyp === FLINT || name === 'flint' || name === 'flint stone' ? 6 : 3;
+}
+
+function monsterSlingAmmoStoneMissile(item) {
+    if (!item || String(item.cls || '').toLowerCase() === 'ring') return false;
+    const material = normalizedGemName(item.material || item.oc_material);
+    if (material === 'gemstone' || material === 'mineral') return true;
+    if (item.otyp === ROCK || item.otyp === FLINT || item.otyp === LUCKSTONE
+        || item.otyp === LOADSTONE || item.otyp === TOUCHSTONE || item.isRock)
+        return true;
+    const name = monsterSlingAmmoName(item).toLowerCase();
+    if (name === 'rock' || name === 'flint' || name === 'flint stone') return true;
+    if (UNICORN_GRAY_STONE_NAMES.has(name) || UNICORN_REAL_GEM_NAMES.has(name)) return true;
+    return monsterPickupClass(item) === GEM_CLASS && unicornThrownGemKind(item) === 'real';
+}
+
+function monsterPassesRocks(target) {
+    const data = target?.data || {};
+    const name = normalizedGemName(target?.name || data.name || data.mname);
+    const intendedRockPasser = name === 'xorn' || name === 'earth elemental'
+        || target?.passesRocks || data.passesRocks;
+    return !!intendedRockPasser
+        && !!(target?.passWalls || target?.passesWalls || target?.passes_walls || target?.wallwalk
+            || data.passWalls || data.passesWalls || data.passes_walls || data.wallwalk
+            || name === 'xorn' || name === 'earth elemental')
+        && !(target?.unsolid || target?.noncorporeal || data.unsolid || data.noncorporeal);
+}
+
+function monsterSlingAmmoHarmlessStoneHit(item, target) {
+    return monsterSlingAmmoStoneMissile(item) && monsterPassesRocks(target);
 }
 
 function normalizedGemName(value) {
@@ -6195,11 +6224,21 @@ export async function processMonsterTurns() {
                                 game._message_more = 1;
                                 game._process_time_with_more = 0;
                             }
+                            let interveningTarget = null;
                             let slingTerrainStop = null;
                             for (let step = 1; step < throwRange; step++) {
                                 const sx = mon.mx + throwDx * step;
                                 const sy = mon.my + throwDy * step;
                                 const remainingRange = throwRange - step;
+                                const targetMon = monsterAtFlightSquare(sx, sy, mon);
+                                if (targetMon) {
+                                    const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
+                                    const hitRoll = rnd(20);
+                                    if (hitValue >= hitRoll) {
+                                        interveningTarget = targetMon;
+                                        break;
+                                    }
+                                }
                                 const forcehit = !rn2(5);
                                 if (remainingRange && forcehit
                                     && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS) {
@@ -6218,6 +6257,30 @@ export async function processMonsterTurns() {
                                     messages: floorMessages,
                                 });
                                 addMonsterThrownFloorMessages(floorMessages, throwerVisible && !deferPrayerProjectile);
+                            } else if (interveningTarget) {
+                                const harmlessStoneHit = monsterSlingAmmoHarmlessStoneHit(thrownMissile, interveningTarget);
+                                const damage = Math.max(1, rnd(monsterSlingAmmoDamageSides(thrownMissile)));
+                                interveningTarget.msleeping = 0;
+                                if (!harmlessStoneHit)
+                                    interveningTarget.mhp = Math.max(0, (interveningTarget.mhp || 1) - damage);
+                                const targetVisible = !game.u?.blind
+                                    && !!(game.viz_array?.[interveningTarget.my]?.[interveningTarget.mx] & IN_SIGHT)
+                                    && couldSeeCoord(interveningTarget.mx, interveningTarget.my);
+                                const hitMessage = targetVisible
+                                    ? (harmlessStoneHit
+                                        ? `The ${missileName} hits the ${interveningTarget.data?.name || 'monster'} but passes harmlessly through it.`
+                                        : `The ${missileName} hits the ${interveningTarget.data?.name || 'monster'}${damage > 4 ? '!' : '.'}`)
+                                    : `It is hit${damage > 4 ? '!' : '.'}`;
+                                if (throwerVisible) game._topline_after_more = hitMessage;
+                                else addToplineMessage(hitMessage);
+                                const floorMessages = [];
+                                landMonsterThrownObject(thrownMissile, interveningTarget.mx, interveningTarget.my, {
+                                    glyph: thrownMissile.glyph || '*',
+                                    color: thrownMissile.color ?? NO_COLOR,
+                                    messages: floorMessages,
+                                    ohit: true,
+                                });
+                                addMonsterThrownFloorMessages(floorMessages, targetVisible || (throwerVisible && !deferPrayerProjectile));
                             } else {
                                 if (handleUnicornThrownGemCatch(thrownMissile, mon, {
                                     throwerVisible,
@@ -6516,6 +6579,65 @@ export async function processMonsterTurns() {
                             });
                             addMonsterThrownFloorMessages(floorMessages);
                         };
+                        const finishLauncherArrowInterveningHit = (target) => {
+                            const projectileDamageSides = monsterLauncherProjectileDamageSides(thrownMissile);
+                            const projectileDamageBonus = monsterLauncherProjectileDamageBonus(thrownMissile);
+                            let damage = Math.max(1, rnd(projectileDamageSides) + projectileDamageBonus
+                                + missileSpe - missileErosion);
+                            const silverSearsTarget = monsterLauncherProjectileIsSilver(thrownMissile)
+                                && monsterHatesSilverWeapon(target);
+                            if (silverSearsTarget) damage += rnd(20);
+                            revealProjectileHitMimicAppearance(target);
+                            target.msleeping = 0;
+                            const targetVisible = !game.u?.blind
+                                && !!(game.viz_array?.[target.my]?.[target.mx] & IN_SIGHT)
+                                && couldSeeCoord(target.mx, target.my);
+                            const targetName = target.data?.name || 'monster';
+                            const hitMessage = targetVisible
+                                ? `The ${projectileKind} hits the ${targetName}${damage > 4 ? '!' : '.'}`
+                                : `It is hit${damage > 4 ? '!' : '.'}`;
+                            game._topline_after_more = hitMessage;
+                            if (thrownMissile.opoisoned && monsterLauncherProjectileIsPoisonable(thrownMissile)) {
+                                if (monsterPoisonResistant(target)) {
+                                    if (targetVisible) {
+                                        const poisonTargetName = monsterDisplayName(target).replace(/^The\b/, 'the');
+                                        appendAfterMoreMessage(`The poison doesn't seem to affect ${poisonTargetName}.`);
+                                    }
+                                } else if (rn2(30)) {
+                                    damage += rnd(6);
+                                } else {
+                                    if (targetVisible) appendAfterMoreMessage('The poison was deadly...');
+                                    damage = target.mhp || 1;
+                                }
+                            }
+                            if (silverSearsTarget) {
+                                const flesh = monsterSilverSearsFlesh(target);
+                                if (targetVisible) {
+                                    const silverTargetName = monsterDisplayName(target).replace(/^The\b/, 'the');
+                                    appendAfterMoreMessage(`The silver sears ${silverTargetName}${flesh ? "'s flesh" : ''}!`);
+                                } else {
+                                    appendAfterMoreMessage(flesh ? 'Its flesh is seared!' : 'It is seared!');
+                                }
+                            }
+                            target.mhp = Math.max(0, (target.mhp || 1) - damage);
+                            if (target.mhp < 1) killMonsterFromLauncherInterveningHit(target, targetVisible);
+                            if (sharedArrowLanding) {
+                                game._arrow_drop_throw_after_topline_more = {
+                                    missile: thrownMissile,
+                                    x: target.mx,
+                                    y: target.my,
+                                    ohit: true,
+                                };
+                            } else {
+                                game._arrow_mulch_after_topline_more = 1;
+                            }
+                            game._search_pending_count = 0;
+                            game._run_steps_remaining = 0;
+                            game._travel_keys = [];
+                            game._monster_resume_index = monIndex + 1;
+                            game._monster_resume_somebody_can_move = somebodyCanMove;
+                            return false;
+                        };
                         if ((thrownMissile.cursed || thrownMissile.greased) && !rn2(7)) {
                             addToplineMessage(`${monsterDisplayName(mon, true)} misfires!`);
                             const misfireDx = rn2(3) - 1;
@@ -6555,6 +6677,22 @@ export async function processMonsterTurns() {
                                         landingX += misfireDx;
                                         landingY += misfireDy;
                                         const remainingRange = throwRange - step - 1;
+                                        const targetMon = monsterAtFlightSquare(landingX, landingY, mon);
+                                        if (targetMon) {
+                                            const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
+                                            const hitRoll = rnd(20);
+                                            if (hitValue >= hitRoll)
+                                                return finishLauncherArrowInterveningHit(targetMon);
+                                            if (!remainingRange) {
+                                                landMisfiredArrow(landingX, landingY);
+                                                game._search_pending_count = 0;
+                                                game._run_steps_remaining = 0;
+                                                game._travel_keys = [];
+                                                game._monster_resume_index = monIndex + 1;
+                                                game._monster_resume_somebody_can_move = somebodyCanMove;
+                                                return false;
+                                            }
+                                        }
                                         const forcehit = !rn2(5);
                                         const hitIronBars = remainingRange && forcehit
                                             && game.level?.at(landingX + misfireDx, landingY + misfireDy)?.typ === IRONBARS;
@@ -6601,10 +6739,20 @@ export async function processMonsterTurns() {
                             return false;
                         }
                         let aimedTerrainStop = null;
+                        let interveningArrowTarget = null;
                         for (let step = 1; step < throwRange; step++) {
                             const sx = mon.mx + throwDx * step;
                             const sy = mon.my + throwDy * step;
                             const remainingRange = throwRange - step;
+                            const targetMon = monsterAtFlightSquare(sx, sy, mon);
+                            if (targetMon) {
+                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
+                                const hitRoll = rnd(20);
+                                if (hitValue >= hitRoll) {
+                                    interveningArrowTarget = targetMon;
+                                    break;
+                                }
+                            }
                             const forcehit = !rn2(5);
                             const hitIronBars = remainingRange && forcehit
                                 && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS;
@@ -6631,7 +6779,9 @@ export async function processMonsterTurns() {
                                 break;
                             }
                         }
-                        if (aimedTerrainStop) {
+                        if (interveningArrowTarget) {
+                            return finishLauncherArrowInterveningHit(interveningArrowTarget);
+                        } else if (aimedTerrainStop) {
                             landAimedArrow(aimedTerrainStop.x, aimedTerrainStop.y);
                             game._search_pending_count = 0;
                             game._run_steps_remaining = 0;
@@ -6873,7 +7023,7 @@ export async function processMonsterTurns() {
                             const remainingRange = throwRange - step;
                             const targetMon = monsterAtFlightSquare(sx, sy, mon);
                             if (targetMon) {
-                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon);
+                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
                                 const hitRoll = rnd(20);
                                 if (hitValue >= hitRoll) {
                                     interveningTarget = targetMon;
@@ -7002,7 +7152,7 @@ export async function processMonsterTurns() {
                             const remainingRange = throwRange - step;
                             const targetMon = monsterAtFlightSquare(sx, sy, mon);
                             if (targetMon) {
-                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon);
+                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
                                 const hitRoll = rnd(20);
                                 if (hitValue >= hitRoll) {
                                     interveningTarget = targetMon;
@@ -7134,7 +7284,7 @@ export async function processMonsterTurns() {
                                 const remainingRange = throwRange - step;
                                 const targetMon = monsterAtFlightSquare(sx, sy, mon);
                                 if (targetMon) {
-                                    const hitValue = monsterThrownObjectAccidentalHitValue(targetMon);
+                                    const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
                                     const hitRoll = rnd(20);
                                     if (hitValue >= hitRoll) {
                                         interveningTarget = targetMon;
@@ -7238,7 +7388,7 @@ export async function processMonsterTurns() {
                             const sy = mon.my + throwDy * step;
                             const targetMon = monsterAtFlightSquare(sx, sy, mon);
                             if (targetMon) {
-                                const hitValue = monsterThrownPotionAccidentalHitValue(targetMon);
+                                const hitValue = monsterThrownPotionAccidentalHitValue(targetMon, thrownPotion);
                                 const hitRoll = rnd(20);
                                 if (hitValue >= hitRoll) {
                                     const targetIndex = (game.level?.monsters || []).indexOf(targetMon);
@@ -7365,7 +7515,7 @@ export async function processMonsterTurns() {
                                     const y = mon.my + throwDy * step;
                                     const targetMon = monsterAtFlightSquare(x, y, mon);
                                     if (targetMon) {
-                                        const hitValue = monsterThrownObjectAccidentalHitValue(targetMon);
+                                        const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
                                         const hitRoll = rnd(20);
                                         if (hitValue >= hitRoll) {
                                             interveningTarget = targetMon;
@@ -7516,7 +7666,7 @@ export async function processMonsterTurns() {
                             const remainingRange = throwRange - step;
                             const targetMon = monsterAtFlightSquare(sx, sy, mon);
                             if (targetMon) {
-                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon);
+                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
                                 const hitRoll = rnd(20);
                                 if (hitValue >= hitRoll) {
                                     interveningTarget = targetMon;
@@ -7616,6 +7766,9 @@ export async function processMonsterTurns() {
                         }
                         if (clearShot) {
                             const missile = mon.missile;
+                            const missileSpe = Math.trunc(Number(missile.spe || 0));
+                            const missileErosion = Math.max(0, Math.trunc(Number(missile.oeroded || 0)),
+                                Math.trunc(Number(missile.oeroded2 || 0)));
                             rnd(1);
                             const thrownId = next_ident();
                             let thrownMissile = missile;
@@ -7628,11 +7781,21 @@ export async function processMonsterTurns() {
                                 if (missileIndex >= 0) mon.minvent.splice(missileIndex, 1);
                                 if (mon.missile === missile) mon.missile = null;
                             }
+                            let interveningTarget = null;
                             let dartTerrainStop = null;
                             for (let step = 1; step < throwRange; step++) {
                                 const sx = mon.mx + throwDx * step;
                                 const sy = mon.my + throwDy * step;
                                 const remainingRange = throwRange - step;
+                                const targetMon = monsterAtFlightSquare(sx, sy, mon);
+                                if (targetMon) {
+                                    const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
+                                    const hitRoll = rnd(20);
+                                    if (hitValue >= hitRoll) {
+                                        interveningTarget = targetMon;
+                                        break;
+                                    }
+                                }
                                 const forcehit = !rn2(5);
                                 if (remainingRange && forcehit
                                     && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS) {
@@ -7651,9 +7814,26 @@ export async function processMonsterTurns() {
                                     messages: floorMessages,
                                 });
                                 addMonsterThrownFloorMessages(floorMessages);
+                            } else if (interveningTarget) {
+                                const dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
+                                interveningTarget.msleeping = 0;
+                                interveningTarget.mhp = Math.max(0, (interveningTarget.mhp || 1) - dartDamage);
+                                const targetVisible = !game.u?.blind
+                                    && !!(game.viz_array?.[interveningTarget.my]?.[interveningTarget.mx] & IN_SIGHT);
+                                addToplineMessage(targetVisible
+                                    ? `The dart hits the ${interveningTarget.data?.name || 'monster'}.`
+                                    : 'It is hit.');
+                                const floorMessages = [];
+                                landMonsterThrownObject(thrownMissile, interveningTarget.mx, interveningTarget.my, {
+                                    glyph: ')',
+                                    color: CLR_CYAN,
+                                    messages: floorMessages,
+                                    ohit: true,
+                                });
+                                addMonsterThrownFloorMessages(floorMessages);
                             } else {
                                 rn2(90);
-                                const dartDamage = rnd(3);
+                                const dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
                                 const hitRoll = rnd(20);
                                 if (hitRoll < 20) {
                                     game.u.uhp = Math.max(0, (game.u?.uhp || 0) - dartDamage);
@@ -9216,14 +9396,194 @@ function monsterAtFlightSquare(x, y, thrower = null) {
         && candidate.mx === x && candidate.my === y) || null;
 }
 
-function monsterThrownPotionAccidentalHitValue(target) {
-    return monsterThrownObjectAccidentalHitValue(target);
+function revealProjectileHitMimicAppearance(mon) {
+    const appearance = M_AP_TYPE(mon);
+    if ((!appearance || appearance === M_AP_MONSTER)
+        && mon?.appearObj == null && !mon?.appearGlyph) return false;
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
+    newsym(mon.mx, mon.my);
+    return true;
 }
 
-function monsterThrownObjectAccidentalHitValue(target) {
+const MONSTER_OBJECT_HIT_SIZE_VALUES = new Map([
+    ['tiny', 0],
+    ['small', 1],
+    ['medium', 2],
+    ['human', 2],
+    ['large', 3],
+    ['huge', 4],
+    ['gigantic', 7],
+]);
+
+function monsterThrownPotionAccidentalHitValue(target, potion = null) {
+    return monsterThrownObjectAccidentalHitValue(target, potion);
+}
+
+function monsterObjectHitSizeValue(target) {
+    const data = target?.data || {};
+    const value = target?.msize ?? target?.size ?? data.msize ?? data.size;
+    if (Number.isFinite(Number(value))) return Math.trunc(Number(value));
+    const key = normalizedGemName(value);
+    if (MONSTER_OBJECT_HIT_SIZE_VALUES.has(key)) return MONSTER_OBJECT_HIT_SIZE_VALUES.get(key);
+    if (target?.verysmall || data.verysmall) return 0;
+    if (target?.small || data.small) return 1;
+    if (target?.large || data.large) return 3;
+    if (target?.huge || data.huge) return 4;
+    if (target?.gigantic || data.gigantic) return 7;
+    return 2;
+}
+
+function monsterHatesBlessedWeapon(target) {
+    const data = target?.data || {};
+    const mlet = String(target?.mlet || data.mlet || data.glyph || '').toLowerCase();
+    const name = normalizedGemName(target?.name || data.name);
+    return !!(target?.undead || data.undead || target?.demon || data.demon
+        || mlet === 'zombie' || mlet === 'mummy' || mlet === 'ghost'
+        || mlet === 'vampire' || mlet === 'demon' || mlet === '&'
+        || name.includes('zombie') || name.includes('mummy') || name.includes('vampire')
+        || name.includes('lich') || name.includes('ghost') || name.includes('shade')
+        || name.includes('demon') || name.includes('devil') || name === 'manes');
+}
+
+function monsterHatesSilverWeapon(target) {
+    const data = target?.data || {};
+    const rawMlet = String(target?.mlet || data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = normalizedGemName(target?.name || data.name);
+    return !!(target?.vampshifter || data.vampshifter
+        || target?.were || target?.isWere || target?.wereHuman || target?.wereBeast
+        || data.were || data.isWere || data.wereHuman || data.wereBeast
+        || target?.demon || data.demon
+        || /^were/.test(name)
+        || rawMlet === 'V' || mlet === 'vampire'
+        || rawMlet === '&' || mlet === 'demon'
+        || name.includes('vampire') || name === 'vlad the impaler'
+        || name.includes('demon') || name.includes('devil') || name === 'manes'
+        || name === 'shade'
+        || ((mlet === 'i' || mlet === 'imp') && name !== 'tengu'));
+}
+
+function monsterSilverSearsFlesh(target) {
+    const data = target?.data || {};
+    const rawMlet = String(target?.mlet || data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = normalizedGemName(target?.name || data.name);
+    return !(target?.noncorporeal || data.noncorporeal
+        || target?.amorphous || data.amorphous
+        || rawMlet === ' ' || mlet === 'ghost'
+        || name === 'shade');
+}
+
+function monsterProjectileDeathIsDestroyed(target, visible) {
+    const data = target?.data || {};
+    const rawMlet = String(target?.mlet || data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = normalizedGemName(target?.name || data.name);
+    return !visible || !!(target?.vampshifter || data.vampshifter
+        || target?.nonliving || data.nonliving
+        || mlet === 'w' || mlet === 'm' || mlet === 'z'
+        || mlet === 'zombie' || mlet === 'mummy' || rawMlet === "'"
+        || name.includes('zombie') || name.includes('mummy') || name.endsWith(' golem')
+        || name === 'manes' || name.includes('vortex'));
+}
+
+function killMonsterFromLauncherInterveningHit(target, visible) {
+    if (!target || target.dead) return;
+    target.dead = true;
+    target.mhp = 0;
+    target.movement = 0;
+    const destroyed = monsterProjectileDeathIsDestroyed(target, visible);
+    const subject = visible ? monsterDisplayName(target) : 'It';
+    appendAfterMoreMessage(`${subject} is ${destroyed ? 'destroyed' : 'killed'}!`);
+
+    const data = target.data || {};
+    recordVanquished(target, false);
+    dropMonsterInventory(target);
+    const corpseData = corpseDataForMonster(data);
+    const loc = game.level?.at?.(target.mx, target.my);
+    const canDropCorpse = loc && (ACCESSIBLE(loc.typ) || IS_POOL(loc.typ))
+        && !target.mcloned
+        && monsterLeavesCorpseLikeDrop(corpseData)
+        && monsterCorpseDropSucceeds(target, data);
+    if (canDropCorpse) createMonsterCorpseOrGlob(target, corpseData);
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== target);
+    newsym(target.mx, target.my);
+}
+
+function monsterLauncherProjectileIsSilver(item) {
+    const material = String(item?.material || item?.oc_material || '')
+        .toLowerCase().replace(/^hi_/, '');
+    if (material === 'silver') return true;
+    return monsterLauncherProjectileNames(item)
+        .some(name => name === 'silver arrow' || name === 'silver arrows');
+}
+
+function monsterThrownObjectNameForHitValue(item) {
+    return normalizedGemName(item?.actualKind || item?.kind || item?.singular || item?.appearance || item?.name);
+}
+
+function monsterThrownObjectIsWeaponForHitValue(item) {
+    if (!item) return false;
+    return item.cls === 'weapon' || item.glyph === ')' || item.otyp === DART
+        || item.otyp === DAGGER || item.otyp === ORCISH_DAGGER || item.otyp === KNIFE
+        || monsterThrownObjectIsSpearForHitValue(item) || !!monsterThrownShurikenKind(item);
+}
+
+function monsterThrownObjectUsesHitval(item) {
+    return monsterThrownObjectIsWeaponForHitValue(item) || item?.cls === 'gem' || item?.glyph === '*';
+}
+
+function monsterThrownObjectBaseHitBonus(item) {
+    if (!item) return 0;
+    if (!monsterThrownObjectUsesHitval(item)) return 0;
+    if (Number.isFinite(Number(item.hitbon))) return Math.trunc(Number(item.hitbon));
+    if (Number.isFinite(Number(item.oc_hitbon))) return Math.trunc(Number(item.oc_hitbon));
+    const name = monsterThrownObjectNameForHitValue(item);
+    if (item.otyp === DAGGER || item.otyp === ORCISH_DAGGER
+        || /\b(?:dagger|athame)\b/.test(name)) return 2;
+    if (monsterThrownShurikenKind(item) || name === 'shuriken' || name === 'throwing star') return 2;
+    if (name === 'ya' || name === 'bamboo arrow') return 1;
+    return 0;
+}
+
+function monsterThrownObjectIsSpearForHitValue(item) {
+    const name = monsterThrownObjectNameForHitValue(item);
+    return item?.otyp === SPEAR || /\b(?:spear|javelin)\b/.test(name);
+}
+
+function monsterTargetIsKebabable(target) {
+    const data = target?.data || {};
+    const mlet = String(target?.mlet || data.mlet || data.glyph || '').toLowerCase();
+    const name = normalizedGemName(target?.name || data.name);
+    return mlet === 'xorn' || mlet === 'dragon' || mlet === 'jabberwock'
+        || mlet === 'naga' || mlet === 'giant'
+        || name.includes('xorn') || name.includes('dragon') || name.includes('jabberwock')
+        || name.includes('naga') || name.includes('giant');
+}
+
+function monsterThrownObjectHitValueAdjustment(target, item) {
+    const data = target?.data || {};
+    let adjustment = monsterObjectHitSizeValue(target) - 2;
+    if (target?.msleeping) adjustment += 2;
+    if (target?.mcanmove === false || target?.mcanmove === 0
+        || data.mmove === 0 || data.mmove === false) adjustment += 4;
+    if (monsterThrownObjectIsWeaponForHitValue(item))
+        adjustment += Math.trunc(Number(item?.spe || 0));
+    adjustment += monsterThrownObjectBaseHitBonus(item);
+    if (monsterThrownObjectIsWeaponForHitValue(item) && item?.blessed
+        && monsterHatesBlessedWeapon(target)) adjustment += 2;
+    if (monsterThrownObjectIsSpearForHitValue(item) && monsterTargetIsKebabable(target))
+        adjustment += 2;
+    return adjustment;
+}
+
+function monsterThrownObjectAccidentalHitValue(target, item = null) {
     const data = target?.data || {};
     const armorClass = target?.ac ?? target?.mac ?? data.ac ?? data.mac ?? 10;
-    return 5 + armorClass;
+    return 5 + armorClass + monsterThrownObjectHitValueAdjustment(target, item);
 }
 
 function monsterLinedUp(mon, targetX, targetY) {
