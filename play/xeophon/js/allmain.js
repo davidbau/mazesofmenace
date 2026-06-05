@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyLifeSavingOrFatalCommandMode } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -15,6 +15,7 @@ import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from '.
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
 import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { createGasCloud } from './region.js';
+import { queueGasSporeDeathExplosion } from './monster_death.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, stopFigurineTransformTimeout } from './figurine.js';
 import { processBuriedOrganicRot, processMeltIceTimers, removedFromIcebox } from './ice.js';
@@ -4697,10 +4698,11 @@ export async function processMonsterTurns() {
                     const wandererMovesInstead = nearby && mon.data?.wanderer && !rn2(4);
                     const wandererCanMoveInstead = wandererMovesInstead && monsterHasNonHeroMove(mon, conflictActive);
 		                    if (adjacentHostile && !wandererCanMoveInstead) {
-	                        const data = mon.data || {};
+                        const data = mon.data || {};
                         const name = data.name || 'creature';
                         const foundYou = apparentX === (game.u?.ux ?? 0) && apparentY === (game.u?.uy ?? 0);
-                        if (foundYou && maybeBlockInvulnerableAttack(mon)) {
+                        const dataAttackIsExplosion = normalizedAttackCode(data.attack?.aatyp) === 'expl';
+                        if (foundYou && !dataAttackIsExplosion && maybeBlockInvulnerableAttack(mon)) {
                             if (game._message_more && !game._process_time_with_more) return false;
                             continue;
                         }
@@ -4803,6 +4805,60 @@ export async function processMonsterTurns() {
                                 sides: 6,
                                 verb: elemental ? 'touches you' : 'hits',
                             };
+                        }
+                        const explosionElement = normalizedAttackCode(attack.adtyp);
+                        if (normalizedAttackCode(attack.aatyp) === 'expl'
+                            && (explosionElement === 'fire' || explosionElement === 'cold' || explosionElement === 'elec')) {
+                            if (mon.mcan) continue;
+                            d(attack.dice ?? 1, attack.sides ?? 1);
+                            const explosionDamage = d(attack.dice ?? 1, attack.sides ?? 1);
+                            const explosionX = mon.mx;
+                            const explosionY = mon.my;
+                            const shownSubject = game.u?.blind || hiddenBullwhip ? 'It' : monsterDisplayName(mon, true);
+                            const baseName = data.name || name || 'monster';
+                            const messages = [foundYou
+                                ? `${shownSubject} explodes!`
+                                : `${shownSubject} explodes at a spot in thin air!`];
+                            mon.dead = true;
+                            mon.mhp = 0;
+                            dropMonsterInventory(mon);
+                            recordVanquished(mon, false);
+                            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+                            newsym(explosionX, explosionY);
+                            const heroInBlast = game.u
+                                && Math.abs((game.u.ux ?? 0) - explosionX) <= 1
+                                && Math.abs((game.u.uy ?? 0) - explosionY) <= 1;
+                            if (heroInBlast) {
+                                messages.push(`You are caught in the ${baseName}'s explosion!`);
+                                if (explosionElement === 'cold')
+                                    applyHeroColdExplosionInventoryDamage(messages, explosionDamage, `${baseName}'s explosion`, {
+                                        fatalMessage: 'It is fatal.',
+                                    });
+                                else if (explosionElement === 'elec')
+                                    applyHeroElectricExplosionInventoryDamage(messages, explosionDamage, `${baseName}'s explosion`, {
+                                        fatalMessage: 'It is fatal.',
+                                    });
+                                else
+                                    applyHeroFireExplosionInventoryDamage(messages, explosionDamage, `${baseName}'s explosion`, {
+                                        fatalMessage: 'It is fatal.',
+                                    });
+                                if ((game.u?.uhp || 0) <= 0 && !messages.lifeSaving) {
+                                    messages.fatal = true;
+                                    messages.more = true;
+                                }
+                            }
+                            addToplineMessage(messages.join('  '));
+                            if (messages.more || messages.fatal || messages.lifeSaving) {
+                                game._message_more = 1;
+                                game._process_time_with_more = 0;
+                            }
+                            if (applyLifeSavingOrFatalCommandMode(messages)) return false;
+                            if (game._message_more && !game._process_time_with_more) {
+                                game._monster_resume_index = monIndex + 1;
+                                game._monster_resume_somebody_can_move = somebodyCanMove;
+                                return false;
+                            }
+                            continue;
                         }
                         const swallowedEngulf = game.u?.uswallow && mon === game.u?.ustuck
                             && normalizedAttackCode(attack.aatyp) === 'engl';
@@ -13190,6 +13246,8 @@ function applyMonsterGasCloud(g, reg, mon) {
     if (couldSeeCoord(mon.mx, mon.my)) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
     recordVanquished(mon, !!reg.heroFault);
     dropMonsterInventory(mon);
+    const explosion = queueGasSporeDeathExplosion(mon);
+    if (explosion) addToplineMessage(explosion.message);
     g.level.monsters = (g.level?.monsters || []).filter(other => other !== mon);
     newsym(mon.mx, mon.my);
     return true;

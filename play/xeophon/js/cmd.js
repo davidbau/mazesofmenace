@@ -28,6 +28,7 @@ import {
 import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
 import { applyMonsterLiquidEffectsAt } from './monster_liquid.js';
+import { queueGasSporeDeathExplosion } from './monster_death.js';
 import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, currentFruitName, fruitWishMatch, setCurrentFruitName, slimeMoldNameForObject } from './fruit.js';
 import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers, killEggHatchTimer } from './egg_timers.js';
 import { METALLIC_MATERIALS, metallivoreObjectAlwaysResists, objectIsAmuletLike, objectIsRingLike, objectIsSlowDigestionRing, objectMaterialForMetallivore } from './metallivore.js';
@@ -10353,6 +10354,103 @@ function coldDamageInventory(origDamage) {
     return { messages, damage, deathCause };
 }
 
+function electricInventoryDisplayName(item) {
+    return pickupObjectName({ ...item, line: '', quan: 1 });
+}
+
+function electricDestroyableInventoryClass(item) {
+    const cls = itemClassKey(item);
+    if (cls === 'ring' || item?.glyph === '=' || item?.otyp === RING_CLASS) return 'ring';
+    if (cls === 'wand' || item?.glyph === '/' || item?.otyp === WAND_CLASS) return 'wand';
+    return '';
+}
+
+function electricWornRingProtectedByGloves(item) {
+    if (!wornRingItem(item)) return false;
+    const gloves = wornGlovesItem();
+    if (!gloves) return false;
+    return !METALLIC_MATERIALS.has(objectMaterialForMetallivore(gloves));
+}
+
+function electricInventoryItemImmune(item, cls) {
+    const kind = objectKindKey(item);
+    if (item?.artifact || item?.oartifact) return true;
+    if (item?.in_use && (item?.quan || 1) === 1) return true;
+    if (cls === 'ring')
+        return kind === 'ring of shock resistance' || item?.ringRoll === 19
+            || electricWornRingProtectedByGloves(item);
+    if (cls === 'wand') {
+        const wand = wandTypeName(item);
+        return wand === 'lightning' || item?.wandIndex === 24;
+    }
+    return false;
+}
+
+function electricInventoryProtectionChance() {
+    return (game.inventory || []).some(item => activeInventoryResistanceKind(item) === 'shock') ? 99 : 0;
+}
+
+function electricInventoryItemProtected() {
+    const chance = electricInventoryProtectionChance();
+    return chance ? rn2(100) < chance : false;
+}
+
+function electricDestroyInventorySelection(items, origDamage) {
+    let limit = Math.trunc(origDamage / 5);
+    if (origDamage % 5 > rn2(5)) limit++;
+    if (limit < 1) return [];
+    limit = Math.min(20, limit);
+
+    const selected = [];
+    let eligible = 0;
+    for (const item of [...(items || [])]) {
+        const cls = electricDestroyableInventoryClass(item);
+        if (!cls || electricInventoryItemImmune(item, cls)) continue;
+        const i = eligible < limit ? eligible : rn2(eligible);
+        eligible++;
+        if (i < limit) selected[i] = item;
+    }
+    return selected.filter(Boolean);
+}
+
+function electricDamageInventory(origDamage) {
+    const messages = [];
+    let damage = 0;
+    let deathCause = '';
+    let resistedDamage = false;
+    for (const item of electricDestroyInventorySelection(game.inventory || [], origDamage)) {
+        if (electricInventoryItemProtected()) continue;
+        const cls = electricDestroyableInventoryClass(item);
+        if (cls === 'ring' && isChargeableRing(item) && rn2(3)) {
+            messages.push(...rechargeRing(item, 0).messages);
+            continue;
+        }
+        const itemDamage = cls === 'wand' ? rnd(10) : 0;
+        const quan = Math.max(0, (item.quan || 1) - (item.in_use ? 1 : 0));
+        let destroyed = 0;
+        for (let i = 0; i < quan; i++)
+            if (!rn2(3)) destroyed++;
+        if (!destroyed) continue;
+
+        const name = electricInventoryDisplayName(item);
+        if (cls === 'ring') {
+            messages.push(`Your ${name} turns to dust and vanishes!`);
+            removeInventoryItem(item, destroyed);
+            continue;
+        }
+
+        messages.push(`Your ${name} breaks apart and explodes!`);
+        removeInventoryItem(item, destroyed);
+        if (heroHasShockResistance()) resistedDamage = true;
+        else {
+            damage += itemDamage;
+            deathCause = 'killed by an exploding wand';
+        }
+    }
+    if (resistedDamage) messages.push("You aren't hurt!");
+    return { messages, damage, deathCause };
+}
+
 function fireItemCanCatchLight(item) {
     if (!item || item.lamplit || item.burning || item.in_use) return false;
     const kind = objectKindKey(item);
@@ -17611,15 +17709,9 @@ function damageHeroFromBurningOilExplosion(damage, messages) {
     const uy = game.u?.uy ?? -99;
     messages.push('You are caught in the burning oil!');
     burnAwayHeroSlime(messages);
-    const fireInventory = fireDamageInventory(damage, true);
-    messages.push(...fireInventory.messages);
-    const totalDamage = (game.u?.fireResistance ? 0 : damage) + (fireInventory.damage || 0);
-    if (totalDamage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - totalDamage);
-    if ((game.u?.uhp || 0) <= 0) {
-        game._death_cause = fireInventory.deathCause || 'caught yourself in your own burning oil';
-        messages.push('It is fatal.');
-        messages.push('You die...');
-    }
+    applyHeroFireExplosionInventoryDamage(messages, damage, 'caught yourself in your own burning oil', {
+        fatalMessage: 'It is fatal.',
+    });
     exerciseAttribute(A_STR, false);
     newsym(ux, uy);
 }
@@ -19806,10 +19898,9 @@ function breakHeroThrownPyroliskEgg(egg, messages, { selfHit = false } = {}) {
     projectileTopLevelBreakMessage(egg, 'splat', messages);
     markThrownBrokenObjectDebt(egg);
     const explosion = resolvePyroliskEggExplosion(game.u?.ux || egg.ox || 0, game.u?.uy || egg.oy || 0, d(3, 6));
-    messages.push(...explosion.messages);
+    appendFireExplosionMessages(messages, explosion);
     if (selfHit && (game.u?.uhp || 0) > 0)
         messages.push("You've got it all over your face!");
-    messages.more = explosion.more;
     return messages;
 }
 
@@ -20015,8 +20106,7 @@ function heroThrownPyroliskEggHitMonster(egg, mon) {
     messages.push(`You hit ${thrownEggTargetTheName(mon)} with ${thrownEggHitArticle(egg)} egg${plural}.`);
     markObjectShopBillUsedUp(egg);
     const explosion = resolvePyroliskEggExplosion(mon.mx, mon.my, d(3, 6));
-    messages.push(...explosion.messages);
-    messages.more = explosion.more;
+    appendFireExplosionMessages(messages, explosion);
     return messages;
 }
 
@@ -20115,8 +20205,7 @@ async function applyHeroThrownFragileBreakSideEffects(obj, messages, x = null, y
 function applyHeroBrokenEggPostRemovalSideEffects(obj, messages, x, y) {
     if (!isPyroliskEgg(obj)) return;
     const explosion = resolvePyroliskEggExplosion(x, y, d(3, 6));
-    messages.push(...explosion.messages);
-    if (explosion.more) messages.more = true;
+    appendFireExplosionMessages(messages, explosion);
 }
 
 function heroThrownIronBarsBreakableClassHitObject(obj) {
@@ -20203,8 +20292,12 @@ function dipPotionAlchemyExplosion(target, amount, messages) {
     if (!explodes) return false;
     messages.push(`${heroIsDeaf() ? '' : 'BOOM!  '}They explode!`);
     exerciseAttribute(A_STR, false);
-    potionBreathe(target, messages);
+    potionBreathe(target, messages, { allowLifeSaving: true });
     useUpInventoryItem(target, target.quan || 1);
+    if (messages.lifeSaving || messages.fatal) {
+        messages.more = true;
+        return true;
+    }
     if (game.u) {
         game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
         if ((game.u.uhp || 0) <= 0) {
@@ -24339,6 +24432,11 @@ export function heroHasColdResistance() {
     return (game.inventory || []).some(item => activeInventoryResistanceKind(item) === 'cold');
 }
 
+export function heroHasShockResistance() {
+    if (game.u?.shockResistance) return true;
+    return (game.inventory || []).some(item => activeInventoryResistanceKind(item) === 'shock');
+}
+
 export function heroHasSlowDigestion() {
     if (game.u?.slowDigestion) return true;
     return !!activeSlowDigestionSource();
@@ -25815,6 +25913,10 @@ function activeInventoryResistanceKind(item) {
     if (item.acidResistance || kind === 'alchemy smock'
         || kind === 'yellow dragon scale mail' || kind === 'yellow dragon scales')
         return 'acid';
+    if (item.shockResistance || kind === 'ring of shock resistance'
+        || kind === 'shield of shock resistance'
+        || dragonArmorKindHasProperty(kind, 'shock'))
+        return 'shock';
     return '';
 }
 
@@ -26493,6 +26595,77 @@ export function igniteMonsterFireInventoryItems(mon, messages = [], visible = fa
     return messages;
 }
 
+function markFireExplosionResultMetadata(messages, result) {
+    if (result?.lifeSaving) messages.lifeSaving = true;
+    if (result?.fatal) messages.fatal = true;
+    if (result?.more || result?.lifeSaving || result?.fatal) messages.more = true;
+}
+
+function appendFireExplosionMessages(messages, result) {
+    messages.push(...(result?.messages || []));
+    markFireExplosionResultMetadata(messages, result);
+}
+
+export function applyHeroFireExplosionInventoryDamage(messages, origDamage, deathCause, { fatalMessage = '' } = {}) {
+    if (game.u?.uinvulnerable) messages.push('You are unharmed!');
+    const fireInventory = fireDamageInventory(origDamage, true, false, { allowLifeSaving: true });
+    messages.push(...fireInventory.messages);
+    if (fireInventory.lifeSaving || fireInventory.fatal) {
+        messages.lifeSaving = !!fireInventory.lifeSaving;
+        messages.fatal = !!fireInventory.fatal;
+        messages.more = true;
+        return { fireInventory, damage: 0 };
+    }
+
+    const damage = (game.u?.fireResistance || game.u?.uinvulnerable ? 0 : origDamage) + fireInventory.damage;
+    if (damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+    if ((game.u?.uhp || 0) <= 0) {
+        game._death_cause = fireInventory.deathCause || deathCause;
+        if (fatalMessage) messages.push(fatalMessage);
+        messages.push('You die...');
+    }
+    return { fireInventory, damage };
+}
+
+export function applyHeroColdExplosionInventoryDamage(messages, origDamage, deathCause, { fatalMessage = '' } = {}) {
+    if (game.u?.uinvulnerable) messages.push('You are unharmed!');
+    const coldInventory = coldDamageInventory(origDamage);
+    messages.push(...coldInventory.messages);
+    const baseDamage = heroHasColdResistance() || game.u?.uinvulnerable ? 0 : origDamage;
+    const damage = baseDamage + coldInventory.damage;
+    const hpBefore = game.u?.uhp || 0;
+    if (damage && game.u) game.u.uhp = Math.max(0, hpBefore - damage);
+    if ((game.u?.uhp || 0) <= 0) {
+        game._death_cause = coldInventory.damage >= hpBefore && coldInventory.deathCause
+            ? coldInventory.deathCause
+            : deathCause;
+        if (fatalMessage) messages.push(fatalMessage);
+        messages.push('You die...');
+    }
+    return { coldInventory, damage };
+}
+
+export function applyHeroElectricExplosionInventoryDamage(messages, origDamage, deathCause, { fatalMessage = '' } = {}) {
+    if (game.u?.uinvulnerable) messages.push('You are unharmed!');
+    const electricInventory = electricDamageInventory(origDamage);
+    messages.push(...electricInventory.messages);
+    const deathAlreadyReported = !!game._death_cause && (game.u?.uhp || 0) <= 0;
+    const baseDamage = heroHasShockResistance() || game.u?.uinvulnerable ? 0 : origDamage;
+    const damage = baseDamage + electricInventory.damage;
+    const hpBefore = game.u?.uhp || 0;
+    if (damage && game.u) game.u.uhp = Math.max(0, hpBefore - damage);
+    if ((game.u?.uhp || 0) <= 0) {
+        game._death_cause = game._death_cause || (electricInventory.damage >= hpBefore && electricInventory.deathCause
+            ? electricInventory.deathCause
+            : deathCause);
+        if (!deathAlreadyReported) {
+            if (fatalMessage) messages.push(fatalMessage);
+            messages.push('You die...');
+        }
+    }
+    return { electricInventory, damage };
+}
+
 function resolveFireScrollExplosion(cx, cy, dam, messages = []) {
     const ux = game.u?.ux ?? -99;
     const uy = game.u?.uy ?? -99;
@@ -26532,18 +26705,16 @@ function resolveFireScrollExplosion(cx, cy, dam, messages = []) {
     }
 
     if (Math.abs(ux - cx) <= 1 && Math.abs(uy - cy) <= 1) {
-        const fireInventory = fireDamageInventory(dam, true);
-        messages.push(...fireInventory.messages);
-        const damage = (game.u?.fireResistance ? 0 : dam) + fireInventory.damage;
-        if (damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
-        if ((game.u?.uhp || 0) <= 0) {
-            game._death_cause = fireInventory.deathCause || 'killed by a tower of flame';
-            messages.push('You die...');
-        }
+        applyHeroFireExplosionInventoryDamage(messages, dam, 'killed by a tower of flame');
         exerciseAttribute(A_STR, false);
     }
 
-    return { messages, more: messages.length > 1 || (game.u?.uhp || 1) <= 0 };
+    return {
+        messages,
+        more: messages.length > 1 || (game.u?.uhp || 1) <= 0 || !!messages.more,
+        lifeSaving: !!messages.lifeSaving,
+        fatal: !!messages.fatal,
+    };
 }
 
 function resolvePyroliskEggExplosion(cx, cy, dam) {
@@ -26581,19 +26752,18 @@ function resolvePyroliskEggExplosion(cx, cy, dam) {
 
     if (Math.abs(ux - cx) <= 1 && Math.abs(uy - cy) <= 1) {
         messages.push('You are caught in the fireball!');
-        const fireInventory = fireDamageInventory(dam, true);
-        messages.push(...fireInventory.messages);
-        const damage = (game.u?.fireResistance ? 0 : dam) + fireInventory.damage;
-        if (damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
-        if ((game.u?.uhp || 0) <= 0) {
-            game._death_cause = fireInventory.deathCause || 'killed by a fireball';
-            messages.push('It is fatal.');
-            messages.push('You die...');
-        }
+        applyHeroFireExplosionInventoryDamage(messages, dam, 'killed by a fireball', {
+            fatalMessage: 'It is fatal.',
+        });
         exerciseAttribute(A_STR, false);
     }
 
-    return { messages, more: messages.length > 1 || (game.u?.uhp || 1) <= 0 };
+    return {
+        messages,
+        more: messages.length > 1 || (game.u?.uhp || 1) <= 0 || !!messages.more,
+        lifeSaving: !!messages.lifeSaving,
+        fatal: !!messages.fatal,
+    };
 }
 
 function earthScrollHasEffect() {
@@ -30407,6 +30577,8 @@ export const __shopBillingTestHooks = {
     fireDamageInventoryForTest: fireDamageInventory,
     heroFireTrapResultForTest: heroFireTrapResult,
     applyHeroFireTrapFatalResultForTest: applyHeroFireTrapFatalResult,
+    resolveFireScrollExplosionForTest: resolveFireScrollExplosion,
+    resolvePyroliskEggExplosionForTest: resolvePyroliskEggExplosion,
     checkUnpaidUsageForTest: checkUnpaidUsage,
     costlyTinForTest: costlyTinAlteration,
     tipContainerContents,
@@ -43791,7 +43963,7 @@ function applyHeroFireTrapFatalResult(result) {
     return applyLifeSavingOrFatalCommandMode(result);
 }
 
-function applyLifeSavingOrFatalCommandMode(result) {
+export function applyLifeSavingOrFatalCommandMode(result) {
     game.context ??= {};
     if (result.lifeSaving) {
         game._command_mode = 'lifeSavingMore';
@@ -44296,6 +44468,7 @@ async function eatPyroliskEgg(item, floorObject = false) {
     await setMessage(result.messages.join('  '), result.more);
     game._command_mode = null;
     game.context.move = 1;
+    if (applyLifeSavingOrFatalCommandMode(result)) return;
 }
 
 async function eatStaleEgg(item, floorObject = false) {
@@ -45811,6 +45984,10 @@ async function moveHero(dx, dy) {
                 else refreshSurvivingWieldedConsumedStack(attackWeapon);
                 killed = !!(mon.dead || (mon.mhp || 0) <= 0);
                 messages.push(...eggMessages);
+                if (eggMessages.lifeSaving) messages.lifeSaving = true;
+                if (eggMessages.fatal) messages.fatal = true;
+                if (eggMessages.more) messages.more = true;
+                if (eggMessages.lifeSaving || eggMessages.fatal) break;
                 if (killed) break;
                 continue;
             }
@@ -46012,44 +46189,8 @@ async function moveHero(dx, dy) {
             }
         }
         if (gasSporeExplosion) {
-            d(4, 6);
-            const explosionDamage = d(4, 6);
-            messages.push('Boom!');
+            queueGasSporeDeathExplosion(mon, { messages });
             await setMessage(messages.join('  '), true);
-            game._preserve_gas_spore_residue = 1;
-            const explosionTarget = (game.level?.monsters || []).find(other => other !== mon
-                && Math.abs(other.mx - mon.mx) <= 1 && Math.abs(other.my - mon.my) <= 1);
-            if (explosionTarget) {
-                game._gas_spore_residue_mon = explosionTarget;
-                game._gas_spore_residue_initial_x = explosionTarget.mx;
-                game._gas_spore_residue_initial_y = explosionTarget.my;
-                game._gas_spore_residue_x = explosionTarget.mx;
-                game._gas_spore_residue_y = explosionTarget.my;
-                game._gas_spore_residue_visible_x = explosionTarget.mx;
-                game._gas_spore_residue_visible_y = explosionTarget.my;
-                game._gas_spore_residue_frames = 0;
-                const targetLevel = Math.max(1, Math.min(50, explosionTarget.m_lev ?? explosionTarget.data?.mlevel ?? 1));
-                const resistBound = Math.max(1, 100 + (game.u?.ulevel || 1) - targetLevel);
-                game._queued_messages_after_more ??= [];
-                game._queued_messages_after_more.push({
-                    text: `The ${explosionTarget.data?.name || 'monster'} is caught in the gas spore's explosion!`,
-                    more: true,
-                    gasSporeMonsterExplosion: {
-                        target: explosionTarget,
-                        damage: explosionDamage,
-                        resistBound,
-                    },
-                });
-            }
-            if (Math.abs(game.u.ux - mon.mx) <= 1 && Math.abs(game.u.uy - mon.my) <= 1) {
-                game._queued_messages_after_more ??= [];
-                game._queued_messages_after_more.push({
-                    text: "You are caught in the gas spore's explosion!",
-                    gasSporeHeroExplosion: { damage: explosionDamage },
-                    processTime: true,
-                });
-            }
-            game._process_time_with_more = 0;
         } else {
             const dropCorpse = monsterCorpseDropSucceeds(mon, data);
             if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
@@ -49717,6 +49858,7 @@ export async function rhack(_cmd) {
             }
             if (game._queued_messages_after_more?.length) {
                 const next = game._queued_messages_after_more.shift();
+                let nextText = next.text;
                 if (next.deferredMeleeWake) {
                     const action = next.deferredMeleeWake;
                     if (action.weaponHit) {
@@ -49746,13 +49888,28 @@ export async function rhack(_cmd) {
                 }
                 if (next.gasSporeHeroExplosion && game.u) {
                     rn2(5);
-                    game.u.uhp = Math.max(0, (game.u.uhp || 0) - next.gasSporeHeroExplosion.damage);
+                    if (game.u.uinvulnerable) {
+                        nextText = `${nextText}  You are unharmed!`;
+                    } else {
+                        const damage = maybeHalfPhysicalDamage(next.gasSporeHeroExplosion.damage);
+                        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+                        if ((game.u.uhp || 0) <= 0) {
+                            game._death_cause = "killed by a gas spore's explosion";
+                            if (consumeLifeSavingAmulet()) {
+                                nextText = `${nextText}  It is fatal.  You die...  But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`;
+                                next.lifeSaving = true;
+                            } else {
+                                nextText = `${nextText}  It is fatal.  You die...`;
+                                next.fatal = true;
+                            }
+                            next.more = true;
+                        }
+                    }
                     exerciseAttribute(A_STR, false);
                 }
                 if (next.clearBeam) game._transient_beam_cells = null;
                 game._pending_message = '';
                 game._message_more = 0;
-                let nextText = next.text;
                 if (next.wakeNearby) {
                     const wakeMessages = [];
                     for (const sleeper of game.level?.monsters || []) {
@@ -53286,6 +53443,7 @@ export async function rhack(_cmd) {
         await setMessage(result.messages.join('  '), result.more);
         game._command_mode = null;
         game.context.move = 1;
+        if (applyLifeSavingOrFatalCommandMode(result)) return;
         return;
     }
 
@@ -53937,6 +54095,7 @@ export async function rhack(_cmd) {
             await setMessage(result.messages.join('  '), result.more);
             game._command_mode = null;
             game.context.move = 1;
+            if (applyLifeSavingOrFatalCommandMode(result)) return;
             return;
         }
         if (isScroll && (scrollName === 'earth' || item.scrollIndex === 17)) {
@@ -58766,14 +58925,16 @@ export async function rhack(_cmd) {
         }
         const source = game._dip_source_item || (game.inventory || []).find(invItem => invItem.letter === game._dip_source_object);
         const target = (game.inventory || []).find(invItem => invItem.letter === ch);
+        let messages = null;
         if (source && target && dipTargetsForSource(source).includes(target)) {
-            const messages = dipObjectIntoPotion(target, source);
-            await setMessage(dipMessagesTopline(messages), messages.length > 1);
+            messages = dipObjectIntoPotion(target, source);
+            await setMessage(dipMessagesTopline(messages), messages.length > 1 || !!messages.more);
             game.context.move = 1;
         }
         game._dip_source_object = '';
         game._dip_source_item = null;
         game._command_mode = null;
+        if (messages && applyLifeSavingOrFatalCommandMode(messages)) return;
         return;
     }
 
@@ -58811,14 +58972,16 @@ export async function rhack(_cmd) {
         }
         const target = game._dip_item || (game.inventory || []).find(invItem => invItem.letter === game._dip_object);
         const potion = (game.inventory || []).find(invItem => invItem.letter === ch);
+        let messages = null;
         if (target && potion && dipPotionSources(target).includes(potion)) {
-            const messages = dipObjectIntoPotion(target, potion);
-            await setMessage(dipMessagesTopline(messages), messages.length > 1);
+            messages = dipObjectIntoPotion(target, potion);
+            await setMessage(dipMessagesTopline(messages), messages.length > 1 || !!messages.more);
             game.context.move = 1;
         }
         game._dip_object = '';
         game._dip_item = null;
         game._command_mode = null;
+        if (messages && applyLifeSavingOrFatalCommandMode(messages)) return;
         return;
     }
 
@@ -62028,11 +62191,12 @@ export async function rhack(_cmd) {
             const messages = heroThrownPyroliskEggUpwardMessages(thrownObject);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             await setMessage(messages.join('  '), !!messages.more);
-            game._command_mode = null;
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
-            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game.context.move = 0;
+            if (applyLifeSavingOrFatalCommandMode(messages)) return;
+            game._command_mode = null;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             return;
         }
         if (ch === '<' && isHeroThrownCrackableArmorObject(item)) {
@@ -62343,11 +62507,12 @@ export async function rhack(_cmd) {
                 removeInventoryItem(item, 1);
                 newsym(targetMon.mx, targetMon.my);
                 await setMessage(messages.join('  '), !!messages.more);
-                game._command_mode = null;
                 game._throw_item_letter = null;
                 game._resume_time_after_more = 0;
-                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 game.context.move = 0;
+                if (applyLifeSavingOrFatalCommandMode(messages)) return;
+                game._command_mode = null;
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 return;
             }
             const thrownName = pickupObjectName({ ...item, quan: 1 });

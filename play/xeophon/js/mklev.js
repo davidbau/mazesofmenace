@@ -5568,6 +5568,16 @@ const COLD_RESISTANT_MONSTERS = new Set([
     'ettin zombie', 'ghoul', 'giant zombie', 'straw golem', 'paper golem',
     'wood golem', 'flesh golem', 'iron golem', 'ice devil',
 ]);
+const ELECTRIC_RESISTANT_MONSTERS = new Set([
+    'gelatinous cube', 'shocking sphere', 'energy vortex', 'grid bug',
+    'yellow light', 'black light', 'Aleax', 'Angel', 'Archon',
+    'baby blue dragon', 'blue dragon', 'storm giant', 'arch-lich',
+    'brown pudding', 'green slime', 'black pudding', 'flesh golem',
+    'iron golem', 'priest', 'priestess', 'aligned cleric', 'high priest',
+    'high priestess', 'high cleric', 'Death', 'Pestilence', 'Famine',
+    'mail daemon', 'electric eel', 'Grand Master', 'Arch Priest',
+    'Chromatic Dragon',
+]);
 export const STONE_RESISTANT_MONSTERS = new Set([
     'acid blob', 'gelatinous cube', 'chickatrice', 'cockatrice',
     'gargoyle', 'winged gargoyle', 'spotted jelly', 'ochre jelly',
@@ -5688,6 +5698,8 @@ function monsterFromRndMeta(row) {
         waiting: name === 'Vlad the Impaler',
         alwaysPeaceful: flags.includes('P'),
         resistsFire: FIRE_RESISTANT_MONSTERS.has(name),
+        resistsCold: COLD_RESISTANT_MONSTERS.has(name),
+        resistsElec: ELECTRIC_RESISTANT_MONSTERS.has(name),
         likesLava: name === 'fire elemental' || name === 'salamander',
     };
     const armedHuman = glyph === '@' && name !== 'nurse';
@@ -5754,6 +5766,16 @@ function monsterFromRndMeta(row) {
         ];
     }
     if (name.endsWith(' elemental')) ptr.mac = 2;
+    if (name === 'gas spore')
+        ptr.attack = { dice: 4, sides: 6, verb: 'explodes', aatyp: 'boom', adtyp: 'phys' };
+    if (name === 'freezing sphere' || name === 'flaming sphere' || name === 'shocking sphere')
+        ptr.attack = {
+            dice: 4,
+            sides: 6,
+            verb: 'explodes',
+            aatyp: 'expl',
+            adtyp: name === 'freezing sphere' ? 'cold' : name === 'shocking sphere' ? 'elec' : 'fire',
+        };
     if (name === 'ice vortex') ptr.attack = { dice: 1, sides: 6, verb: 'engulfs you', aatyp: 'engl', adtyp: 'cold' };
     if (name === 'earth elemental') ptr.attack = { dice: 4, sides: 6, verb: 'hits' };
     if (name === 'chickatrice') ptr.attack = { dice: 1, sides: 2, verb: 'bites', aatyp: 'bite', adtyp: 'phys' };

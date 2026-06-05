@@ -4,6 +4,7 @@ import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { createGasCloud } from './region.js';
 import { newsym } from './display.js';
 import { createMonsterCorpseOrGlob, dropMonsterInventory, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop } from './mklev.js';
+import { queueGasSporeDeathExplosion } from './monster_death.js';
 import { dryupFountainResultAt } from './fountain.js';
 import { meltIceAt } from './ice.js';
 import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
@@ -286,12 +287,13 @@ function killMonsterByPit(mon, messages, visible) {
     if (visible) messages.push(`The ${mon.data?.name || 'creature'} is killed!`);
     const data = mon.data || {};
     const corpseData = data.corpse || data;
-    const dropCorpse = monsterCorpseDropSucceeds(mon, data);
     dropMonsterInventory(mon);
-    if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
-        createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
     game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
     newsym(mon.mx, mon.my);
+    const explosion = queueGasSporeDeathExplosion(mon, { messages });
+    const dropCorpse = !explosion && monsterCorpseDropSucceeds(mon, data);
+    if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+        createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
 }
 
 function applyFireRayPitEffects(x, y, trap) {
@@ -485,12 +487,13 @@ export function fireBreathDamageMonster(mon, nd = 6, inventoryFire = null, {
         }
         const data = mon.data || {};
         const corpseData = data.corpse || data;
-        const dropCorpse = monsterCorpseDropSucceeds(mon, data);
         dropMonsterInventory(mon);
-        if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
-            createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
         game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
         newsym(mon.mx, mon.my);
+        const explosion = queueGasSporeDeathExplosion(mon, { messages });
+        const dropCorpse = !explosion && monsterCorpseDropSucceeds(mon, data);
+        if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+            createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
     }
     return { damage, killed, killedHidden, messages, resistedFire: false };
 }
