@@ -4747,7 +4747,7 @@ function impactDropBreakKind(obj) {
     const cls = impactDropObjectClass(obj);
     const name = String(obj?.actualKind || obj?.kind || pickupObjectName(obj)).toLowerCase();
     if (cls === 'potion') return 'shatter';
-    if (isVenomObject(obj)) return 'splash';
+    if (isBreaktestVenomObject(obj)) return 'splash';
     if (obj?.otyp === EGG || name === 'egg') return 'splat';
     if (name.includes('melon')) return 'splat';
     if (name.includes('cream pie')) return 'mess';
@@ -4756,6 +4756,7 @@ function impactDropBreakKind(obj) {
         || name.includes('mirror') || name.includes('looking glass')
         || name.includes('crystal ball') || name.includes('lenses'))
         return 'pieces';
+    if (breaktestGlassMaterialObject(obj)) return 'pieces';
     if (cls !== 'gem' && /\bglass\b|\bcrystal\b/.test(name)) return 'shatter';
     return '';
 }
@@ -4764,8 +4765,34 @@ function impactDropObjectBreaks(obj) {
     if (!obj) return '';
     const ordinaryResistChance = 1;
     const artifactResistChance = 99;
-    if (rn2(100) < (obj?.artifact ? artifactResistChance : ordinaryResistChance)) return '';
+    const hasArtifact = objectHasArtifactIdentity(obj);
+    if (rn2(100) < (hasArtifact ? artifactResistChance : ordinaryResistChance)) return '';
+    if (hasArtifact && !breaktestExplicitSwitchObject(obj)) return '';
     return impactDropBreakKind(obj);
+}
+
+function objectHasArtifactIdentity(obj) {
+    return !!(obj?.artifact || obj?.oartifact);
+}
+
+function breaktestExplicitSwitchObject(obj) {
+    return isExpensiveCameraObject(obj) || isPotionObject(obj) || isEggItem(obj)
+        || isCreamPieObject(obj) || isMelonObject(obj) || isBreaktestVenomObject(obj);
+}
+
+function breaktestGlassMaterialObject(obj) {
+    if (!obj) return false;
+    const cls = impactDropObjectClass(obj);
+    if (cls === 'gem' || cls === 'armor' || obj.glyph === '[' || obj.otyp === ARMOR_CLASS)
+        return false;
+    const material = String(obj.material || obj.oc_material || '').toLowerCase().replace(/^hi_/, '');
+    return material === 'glass';
+}
+
+function isBreaktestVenomObject(obj) {
+    const kind = objectKindKey(obj);
+    return obj?.otyp === BLINDING_VENOM || obj?.otyp === ACID_VENOM
+        || kind === 'splash of blinding venom' || kind === 'splash of acid venom';
 }
 
 function shipObjectMuffledBreakResult(breakKind) {
@@ -18685,8 +18712,8 @@ function crackableArmorSimpleName(obj) {
     }
 }
 
-function crackableArmorBreaktest(obj) {
-    const roll = rn2(100);
+function crackableArmorBreaktest(obj, breakRoll = null) {
+    const roll = Number.isInteger(breakRoll) ? breakRoll : rn2(100);
     return !(obj?.artifact || obj?.oartifact) && roll >= 90;
 }
 
@@ -18710,8 +18737,8 @@ function erodeCrackableArmorImpact(obj, messages) {
     return { broke: true, destroyed: true };
 }
 
-function crackableArmorImpact(obj, messages) {
-    if (!crackableArmorBreaktest(obj)) return { broke: false, destroyed: false };
+function crackableArmorImpact(obj, messages, options = {}) {
+    if (!crackableArmorBreaktest(obj, options.breakRoll)) return { broke: false, destroyed: false };
     return erodeCrackableArmorImpact(obj, messages);
 }
 
@@ -18721,26 +18748,24 @@ function crackableArmorThrowWeight(obj) {
     return CRACKABLE_ARMOR_THROW_WEIGHTS.get(armorKind(obj)) || 50;
 }
 
-function damageHeroFromFallingCrackableArmor(obj, messages) {
-    const weightDamage = Math.max(1, Math.ceil(crackableArmorThrowWeight(obj) / 100));
-    const damage = Math.min(6, weightDamage <= 1 ? 1 : rnd(weightDamage));
-    if (!game.u || damage <= 0) return;
-    game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
-    if ((game.u.uhp || 0) <= 0) {
-        game._death_cause = 'killed by a falling object';
-        messages.push('You die...');
-        messages.fatal = true;
-        messages.more = true;
-    }
+function heroThrownCrackableArmorFallingDamage(obj, messages) {
+    const helmet = wornTossUpHelmet();
+    const damage = heroThrownGenericObjectFallingDamage(obj, helmet);
+    const heroHp = game.u?.uhp || 0;
+    if (helmet && hardEarthHelmet(helmet) && damage < heroHp)
+        messages.push('Fortunately, you are wearing a hard helmet.');
+    else if (helmet && !hardEarthHelmet(helmet))
+        messages.push(`Your ${simpleTossUpHelmetName(helmet)} does not protect you.`);
+    return damage;
 }
 
-function landCrackableArmorObjectWithShopHandling(obj, messages, { verboseFloor = false } = {}) {
-    const x = game.u?.ux || obj.ox || 0;
-    const y = game.u?.uy || obj.oy || 0;
+function landCrackableArmorObjectWithShopHandling(obj, messages, { verboseFloor = false, x = null, y = null, breakRoll = null } = {}) {
+    x = Number.isInteger(x) ? x : (game.u?.ux || obj.ox || 0);
+    y = Number.isInteger(y) ? y : (game.u?.uy || obj.oy || 0);
     if (verboseFloor && !projectileLandingIsSoft(x, y))
         messages.push(`${floorObjectSubject({ ...obj, quan: 1 })} hits the floor.`);
     if (!projectileLandingIsSoft(x, y)) {
-        const impact = crackableArmorImpact(obj, messages);
+        const impact = crackableArmorImpact(obj, messages, { breakRoll });
         if (impact.destroyed) return null;
     }
     const landing = landProjectileObjectWithShopHandling(obj, x, y, { skipTopBreak: true });
@@ -18748,12 +18773,17 @@ function landCrackableArmorObjectWithShopHandling(obj, messages, { verboseFloor 
     return landing.object;
 }
 
+function landHeroThrownCrackableArmorAt(obj, x, y, messages, { breakRoll = null } = {}) {
+    return landCrackableArmorObjectWithShopHandling(obj, messages, { x, y, breakRoll });
+}
+
 function heroThrownCrackableArmorSelfHitMessages(obj, action, ceilingName = heroThrowCeilingName()) {
     const messages = [`${floorObjectSubject({ ...obj, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`];
     const impact = crackableArmorImpact(obj, messages);
     if (impact.destroyed) return messages;
-    if (!impact.broke) damageHeroFromFallingCrackableArmor(obj, messages);
+    const fallingDamage = impact.broke ? 0 : heroThrownCrackableArmorFallingDamage(obj, messages);
     landCrackableArmorObjectWithShopHandling(obj, messages, { verboseFloor: !impact.broke });
+    applyHeroThrownCorpseFallingDamage(fallingDamage, messages);
     return messages;
 }
 
@@ -19322,6 +19352,7 @@ const HERO_TOSS_UP_WEAPON_SMALL_DAMAGE = new Map([
     ['trident', { die: 6, add: 1 }],
     ['axe', 6],
     ['battle-axe', { die: 8, bonusDie: 4 }],
+    ['pick-axe', 6],
     ['short sword', 6],
     ['elven short sword', 8],
     ['orcish short sword', 5],
@@ -19363,6 +19394,7 @@ function tossUpWeaponObjectKey(obj) {
     if (obj?.otyp === ORCISH_DAGGER) return 'orcish dagger';
     if (obj?.otyp === KNIFE) return 'knife';
     if (obj?.otyp === STILETTO) return 'stiletto';
+    if (obj?.otyp === PICK_AXE) return 'pick-axe';
     if (obj?.otyp === SHORT_SWORD) return 'short sword';
     if (obj?.otyp === ELVEN_SHORT_SWORD) return 'elven short sword';
     if (obj?.otyp === ORCISH_SHORT_SWORD) return 'orcish short sword';
@@ -19416,6 +19448,7 @@ function isTinOpenerTossObject(obj) {
 }
 
 function isHeroThrownGenericDamagingUpwardObject(obj) {
+    if (!obj || isHeroThrownHarmlessUpwardObject(obj)) return false;
     return isTinOpenerTossObject(obj) || isSupportedTossUpWeaponObject(obj);
 }
 
@@ -27389,7 +27422,7 @@ function projectileImpactGlassCandidate(obj) {
 
 function projectileImpactContentBreakKind(obj) {
     if (projectileImpactGlassCandidate(obj)) {
-        if (obj.artifact || rn2(100) < 33) return '';
+        if (objectHasArtifactIdentity(obj) || rn2(100) < 33) return '';
         return 'shatter';
     }
     if (isEggItem(obj) && !rn2(3)) return 'cracking';
@@ -27400,8 +27433,11 @@ function projectileTopLevelBreakKind(obj, options = {}) {
     const roll = Number.isInteger(options.breakRoll) ? options.breakRoll : rn2(100);
     const kind = impactDropBreakKind(obj);
     if (!kind) return '';
-    const resistChance = obj?.artifact ? 99 : 1;
-    return roll < resistChance ? '' : kind;
+    const hasArtifact = objectHasArtifactIdentity(obj);
+    const resistChance = hasArtifact ? 99 : 1;
+    if (roll < resistChance) return '';
+    if (hasArtifact && !breaktestExplicitSwitchObject(obj)) return '';
+    return kind;
 }
 
 function projectileTopLevelBreakMessage(obj, breakKind, messages) {
@@ -27622,10 +27658,12 @@ function kickFloorObjectSupported(obj, x, y) {
     if (!obj || obj === game.u?.uball || obj === game.u?.uchain) return false;
     if (isBoulderObject(obj) || shopBillableGold(obj)) return false;
     const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
-    if (quantity !== 1 && !kickedFragilePreflightBreakKind(obj)) return false;
+    const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
+    if (quantity !== 1 && !fragileBreakKind) return false;
     if (isTipContainerObject(obj) || globContents(obj).length) return false;
-    if (shopkeeperForCostlySpot(x, y) || shopObjectOrContentsUnpaid(obj)) return false;
-    if (impactDropBreakKind(obj) && !kickedFragilePreflightBreakKind(obj)) return false;
+    if ((shopkeeperForCostlySpot(x, y) || shopObjectOrContentsUnpaid(obj)) && !fragileBreakKind)
+        return false;
+    if (impactDropBreakKind(obj) && !fragileBreakKind) return false;
     return true;
 }
 
@@ -27637,9 +27675,13 @@ function kickedFragilePreflightBreakKind(obj) {
     if (kind === 'lenses') return impactDropBreakKind(obj);
     if (isGlassMaterialWandObject(obj)) return impactDropBreakKind(obj);
     if (isCreamPieObject(obj)) return impactDropBreakKind(obj);
-    if (isPotionObject(obj) && thrownPotionEffectKind(obj) !== 'oil') return impactDropBreakKind(obj);
+    if (isMelonObject(obj)) return impactDropBreakKind(obj);
+    if (isBreaktestVenomObject(obj)) return impactDropBreakKind(obj);
+    if (isPotionObject(obj)) return impactDropBreakKind(obj);
     if (isExpensiveCameraObject(obj)) return impactDropBreakKind(obj);
     if (isEggItem(obj)) return impactDropBreakKind(obj);
+    if (isHeroThrownCrackableArmorObject(obj)) return 'crackableArmor';
+    if (breaktestGlassMaterialObject(obj)) return impactDropBreakKind(obj);
     return '';
 }
 
@@ -27648,8 +27690,7 @@ function kickFloorObjectRange(obj, x, y, dir) {
     const strength = Math.max(0, Math.trunc(Number(stats[A_STR] ?? 10)));
     const weight = globObjectWeight({ ...obj, quan: 1 });
     let range = Math.trunc(strength / 2) - Math.trunc(weight / 40);
-    const roleName = game.urole?.name?.m || game._startup_role || '';
-    if (roleName === 'Monk' || roleName === 'Samurai') range += rnd(3);
+    if (heroUsesMartialKickRangeBonus()) range += rnd(3);
 
     const loc = game.level?.at?.(x, y);
     if (loc && IS_POOL(loc.typ)) {
@@ -27669,6 +27710,32 @@ function kickFloorObjectRange(obj, x, y, dir) {
     return range;
 }
 
+function heroUsesMartialKickRangeBonus() {
+    const roleName = game.urole?.name?.m || game._startup_role || '';
+    return roleName === 'Monk' || roleName === 'Samurai';
+}
+
+function lowRangeKickedObjectAvoidsOuch() {
+    return !rn2(3) || heroUsesMartialKickRangeBonus();
+}
+
+function applyKickedObjectOuchDamage() {
+    const stats = game.u?.acurr?.a || [];
+    rn2(2);
+    rn2(2);
+    if (!rn2(3)) {
+        const woundDuration = 5 + rnd(5);
+        if (!game.u._woundedLegTurns && !game.u._woundedDexPenalty) {
+            game.u.acurr.a[A_DEX] = Math.max(3, (game.u.acurr.a[A_DEX] || 9) - 1);
+            game.u._woundedDexPenalty = 1;
+        }
+        game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, woundDuration);
+        game.u._woundedLegSide = 'right';
+    }
+    const damage = rnd((stats[A_CON] ?? 10) > 15 ? 3 : 5);
+    game.u.uhp = Math.max(0, (game.u?.uhp || 0) - damage);
+}
+
 function placeKickedFloorObject(obj, x, y, messages, options = {}) {
     obj.ox = x;
     obj.oy = y;
@@ -27685,21 +27752,79 @@ function placeKickedFloorObject(obj, x, y, messages, options = {}) {
     return stacked;
 }
 
+function splitKickedFloorObjectForFlight(obj) {
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    if (!obj || quantity <= 1) return obj;
+    const kicked = {
+        ...obj,
+        id: next_ident(),
+        o_id: undefined,
+        _shopBillObjectId: undefined,
+        quan: 1,
+    };
+    obj.quan = quantity - 1;
+    return kicked;
+}
+
 async function breakKickedFragileFloorObject(obj, x, y, messages) {
-    if (!kickedFragilePreflightBreakKind(obj)) return false;
+    const preflightBreakKind = kickedFragilePreflightBreakKind(obj);
+    if (!preflightBreakKind) return false;
+    if (preflightBreakKind === 'crackableArmor') {
+        const impact = crackableArmorImpact(obj, messages);
+        if (!impact.destroyed) return false;
+        removeFloorObject(obj);
+        newsym(x, y);
+        return true;
+    }
     const breakKind = projectileTopLevelBreakKind(obj);
     if (!breakKind) return false;
     projectileTopLevelBreakMessage(obj, breakKind, messages);
-    brokenPotionBreathe(obj, x, y, messages);
+    if (isLitOilPotionHit(obj)) explodeBurningOilPotion(obj, x, y, messages);
+    else brokenPotionBreathe(obj, x, y, messages);
     await applyHeroCausedFragileBreakSideEffects(obj, messages, x, y);
+    chargeHeroBrokenShopFloorObject(obj, x, y, messages);
     removeFloorObject(obj);
     newsym(x, y);
     applyHeroBrokenEggPostRemovalSideEffects(obj, messages, x, y);
     return true;
 }
 
+function chargeHeroBrokenShopFloorObject(obj, x, y, messages) {
+    if (!obj || shopBillableGold(obj)) return { charged: false, value: 0, shkp: null };
+    if (shopObjectOrContentsUnpaid(obj)) {
+        const charged = convertUnpaidObjectToShopDebt(obj, { silent: false, broken: true });
+        if (charged.message) messages.push(charged.message);
+        return charged;
+    }
+    if (obj.no_charge) return { charged: false, value: 0, shkp: null };
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return { charged: false, value: 0, shkp: null };
+    const value = lostShopMerchandiseValueForObject({ ox: x, oy: y }, obj, shkp);
+    if (!(value > 0)) return { charged: false, value: 0, shkp };
+
+    const beforeCredit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+    const peaceful = shopkeeperPeacefulForDebt(shkp);
+    const remaining = chargeShopkeeperForLostMerchandise(shkp, value, { peaceful });
+    if (peaceful) {
+        const usedCredit = beforeCredit > Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+        if (usedCredit && shkp.credit > 0) {
+            messages.push(`You have ${shkp.credit} ${shopCurrency(shkp.credit)} credit remaining.`);
+        } else if (usedCredit && !remaining) {
+            messages.push('You have no credit remaining.');
+        } else if (remaining > 0) {
+            const still = usedCredit ? 'still ' : '';
+            messages.push(`You ${still}owe ${shopkeeperDisplayName(shkp)} ${remaining} ${shopCurrency(remaining)} for ${shopDebtObjectPronoun(obj)}!`);
+        }
+    } else if (!game.u?.blind && cansee(shkp.mx, shkp.my)) {
+        messages.push(`${shopkeeperDisplayName(shkp)} booms: "${game.plname || 'Hero'}, you are a thief!"`);
+    } else if (!heroIsDeaf()) {
+        messages.push('You hear a scream, "Thief!"');
+    }
+    return { charged: true, value, shkp };
+}
+
 async function kickFloorObjectToward(dir, x, y) {
-    const obj = kickFloorObjectAt(x, y);
+    let obj = kickFloorObjectAt(x, y);
     if (!kickFloorObjectSupported(obj, x, y)) return { handled: false };
 
     const landX = x + dir.dx;
@@ -27716,15 +27841,21 @@ async function kickFloorObjectToward(dir, x, y) {
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
     if (!gate && !canHandleMonsterImpact && !fragileBreakKind) return { handled: false };
 
+    const range = kickFloorObjectRange(obj, x, y, dir);
     const messages = [`You kick ${floorObjectArticleName(obj)}.`];
     if (fragileBreakKind && await breakKickedFragileFloorObject(obj, x, y, messages))
         return { handled: true, messages, moved: false, broke: true };
-    if (kickFloorObjectRange(obj, x, y, dir) < 2) {
+    if (range < 2) {
         messages.push('Thump!');
+        if (!lowRangeKickedObjectAvoidsOuch()) {
+            applyKickedObjectOuchDamage();
+            messages.push('Ouch!  That hurts!');
+        }
         return { handled: true, messages, moved: false };
     }
     if (!gate && !canHandleMonsterImpact) return { handled: true, messages, moved: false };
 
+    obj = splitKickedFloorObjectForFlight(obj);
     let monsterImpact = { handled: false };
     if (canHandleMonsterImpact) {
         monsterImpact = heroThrownUnicornGemImpact(obj, targetMon);
@@ -61795,11 +61926,17 @@ export async function rhack(_cmd) {
         curseLoadstoneLeavingInventory(thrownObject);
         if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
         stopCarriedFigurineTimerOnLeave(thrownObject);
-        const landing = landProjectileObjectWithShopHandling(thrownObject, ox, oy, {
-            breakRoll: projectileBreakRoll,
-            ohit: impactObjectHit,
-            passiveTarget: impactPassiveTarget,
-        });
+        const landing = isHeroThrownCrackableArmorObject(thrownObject) && !impactObjectHit
+            ? (() => {
+                const messages = [];
+                const object = landHeroThrownCrackableArmorAt(thrownObject, ox, oy, messages, { breakRoll: projectileBreakRoll });
+                return { object, messages };
+            })()
+            : landProjectileObjectWithShopHandling(thrownObject, ox, oy, {
+                breakRoll: projectileBreakRoll,
+                ohit: impactObjectHit,
+                passiveTarget: impactPassiveTarget,
+            });
         const landingMessage = landing.messages.join('  ');
         newsym(ox, oy);
         const wasBurdened = (game.u?._statusSuffix || '').includes('Burdened');
