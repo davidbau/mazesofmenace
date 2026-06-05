@@ -6454,6 +6454,9 @@ const OBJECT_WEIGHTS = {
     'magic lamp': 20,
     'magic marker': 2,
     'oil lamp': 20,
+    'bag of tricks': 15,
+    'bag of holding': 15,
+    'oilskin sack': 15,
     'pick-axe': 100,
     'sack': 15,
     'silver bell': 10,
@@ -16579,9 +16582,13 @@ function waterVaporLycanthropyEffect(potion, messages) {
     const beastName = heroLycanthropeBeastName();
     if (!beastName || heroHasUnchanging()) return false;
     if (potion?.blessed && polyselfFormName() === beastName && !hostileMonsterNearHeroForWereChange()) {
-        const message = rehumanizeAfterRoyalJelly();
-        if (message) messages.push(message);
-        return !!message;
+        const result = rehumanizeAfterPolyselfDeath();
+        messages.push(...result.messages);
+        if (result.died) {
+            messages.fatal = true;
+            messages.more = true;
+        }
+        return !!result.messages.length;
     }
     if (potion?.cursed && !game.u?._polyself_form && !hostileMonsterNearHeroForWereChange()
         && !(game.u?.polymorphControl || game.u?.polycontrol || game.u?.Polymorph_control)) {
@@ -18751,11 +18758,7 @@ function crackableArmorThrowWeight(obj) {
 function heroThrownCrackableArmorFallingDamage(obj, messages) {
     const helmet = wornTossUpHelmet();
     const damage = heroThrownGenericObjectFallingDamage(obj, helmet);
-    const heroHp = game.u?.uhp || 0;
-    if (helmet && hardEarthHelmet(helmet) && damage < heroHp)
-        messages.push('Fortunately, you are wearing a hard helmet.');
-    else if (helmet && !hardEarthHelmet(helmet))
-        messages.push(`Your ${simpleTossUpHelmetName(helmet)} does not protect you.`);
+    pushHeroThrownHelmetMessage(messages, obj, helmet, damage);
     return damage;
 }
 
@@ -19247,6 +19250,12 @@ function maybeHalfPhysicalDamage(damage) {
     return heroHasHalfPhysicalDamage() ? Math.trunc((damage + 1) / 2) : damage;
 }
 
+function heroTossUpActiveHp() {
+    if (!game.u) return 0;
+    if (game.u._polyself_form && game.u.mh != null && game.u.mhmax != null) return game.u.mh || 0;
+    return game.u.uhp || 0;
+}
+
 function heroThrownCorpseFallingDamage(corpse, helmet = null) {
     const weightDamage = Math.max(1, Math.ceil(heroThrownCorpseWeight(corpse) / WT_TO_DMG));
     let damage = weightDamage <= 1 ? 1 : rnd(weightDamage);
@@ -19259,6 +19268,29 @@ function heroThrownCorpseFallingDamage(corpse, helmet = null) {
 
 function applyHeroThrownCorpseFallingDamage(damage, messages) {
     if (!game.u || damage <= 0) return;
+    if (game.u._polyself_form) {
+        if (game.u.mh != null && game.u.mhmax != null) {
+            game.u.mh = Math.max(0, (game.u.mh || 0) - damage);
+            if ((game.u.mh || 0) > 0) return;
+        } else {
+            game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+            if ((game.u.uhp || 0) > 0) return;
+        }
+        if (heroHasUnchanging()) {
+            game._death_cause = 'killed while stuck in creature form';
+            messages.push('You die...');
+            messages.fatal = true;
+            messages.more = true;
+            return;
+        }
+        const result = rehumanizeAfterPolyselfDeath();
+        messages.push(...result.messages);
+        if (result.died) {
+            messages.fatal = true;
+            messages.more = true;
+        }
+        return;
+    }
     game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
     if ((game.u.uhp || 0) <= 0) {
         game._death_cause = 'killed by a falling object';
@@ -19280,7 +19312,7 @@ function heroThrownTouchPetrifyingCorpseSelfHitMessages(corpse, action, ceilingN
         if (rescue) messages.push(rescue);
         else return finishHeroPetrifiedByTossUpObject(messages, corpse);
     }
-    if (helmet && hardEarthHelmet(helmet) && damage < (game.u?.uhp || 0))
+    if (helmet && hardEarthHelmet(helmet) && damage < heroTossUpActiveHp())
         messages.push('Fortunately, you are wearing a hard helmet.');
 
     const landing = landProjectileObjectWithShopHandling(corpse, game.u?.ux || corpse.ox || 0, game.u?.uy || corpse.oy || 0, {});
@@ -19310,7 +19342,7 @@ function heroThrownOrdinaryCorpseSelfHitMessages(corpse, action, ceilingName = h
 
     const helmet = wornTossUpHelmet();
     const damage = heroThrownCorpseFallingDamage(corpse, helmet);
-    if (helmet && hardEarthHelmet(helmet) && damage < (game.u?.uhp || 0))
+    if (helmet && hardEarthHelmet(helmet) && damage < heroTossUpActiveHp())
         messages.push('Fortunately, you are wearing a hard helmet.');
 
     const landing = landProjectileObjectWithShopHandling(corpse, game.u?.ux || corpse.ox || 0, game.u?.uy || corpse.oy || 0, {});
@@ -19389,6 +19421,63 @@ const HERO_TOSS_UP_WEAPON_SMALL_DAMAGE = new Map([
     ['bullwhip', 2],
 ]);
 
+const HERO_TOSS_UP_WEAPON_LARGE_DAMAGE = new Map([
+    ['dagger', 3],
+    ['elven dagger', 3],
+    ['orcish dagger', 3],
+    ['silver dagger', 3],
+    ['athame', 3],
+    ['scalpel', 3],
+    ['knife', 2],
+    ['stiletto', 2],
+    ['worm tooth', 2],
+    ['crysknife', 10],
+    ['spear', 8],
+    ['elven spear', 8],
+    ['orcish spear', 8],
+    ['dwarvish spear', 8],
+    ['silver spear', 8],
+    ['javelin', 6],
+    ['trident', { die: 4, bonusDice: [2, 4] }],
+    ['axe', 4],
+    ['battle-axe', { die: 6, bonusDice: [2, 4] }],
+    ['pick-axe', 3],
+    ['short sword', 8],
+    ['elven short sword', 8],
+    ['orcish short sword', 8],
+    ['dwarvish short sword', 8],
+    ['scimitar', 8],
+    ['silver saber', 8],
+    ['broadsword', { die: 6, add: 1 }],
+    ['elven broadsword', { die: 6, add: 1 }],
+    ['long sword', 12],
+    ['two-handed sword', { die: 6, bonusDice: [2, 6] }],
+    ['katana', 12],
+    ['partisan', { die: 6, add: 1 }],
+    ['ranseur', { die: 4, bonusDie: 4 }],
+    ['spetum', { die: 6, bonusDie: 6 }],
+    ['glaive', 10],
+    ['halberd', { die: 6, bonusDie: 6 }],
+    ['bardiche', { die: 4, bonusDice: [2, 4] }],
+    ['voulge', { die: 4, bonusDie: 4 }],
+    ['fauchard', 8],
+    ['guisarme', 8],
+    ['bill-guisarme', 10],
+    ['lucern hammer', 6],
+    ['bec de corbin', 6],
+    ['mace', 6],
+    ['silver mace', 6],
+    ['morning star', { die: 6, add: 1 }],
+    ['war hammer', 4],
+    ['club', 3],
+    ['rubber hose', 3],
+    ['quarterstaff', 6],
+    ['aklys', 3],
+    ['flail', { die: 4, bonusDie: 4 }],
+    ['lance', 8],
+    ['bullwhip', 1],
+]);
+
 function tossUpWeaponObjectKey(obj) {
     if (obj?.otyp === DAGGER) return 'dagger';
     if (obj?.otyp === ORCISH_DAGGER) return 'orcish dagger';
@@ -19416,26 +19505,42 @@ function tossUpWeaponDamageDie(spec) {
     return typeof spec === 'number' ? spec : spec?.die;
 }
 
+function tossUpWeaponDamageSpecForTarget(obj) {
+    const key = tossUpWeaponObjectKey(obj);
+    return heroTossUpTargetIsBig() ? HERO_TOSS_UP_WEAPON_LARGE_DAMAGE.get(key)
+        : HERO_TOSS_UP_WEAPON_SMALL_DAMAGE.get(key);
+}
+
+function rollTossUpWeaponDamageSpec(spec) {
+    const die = tossUpWeaponDamageDie(spec);
+    if (!die) return 0;
+    let damage = rnd(die);
+    if (typeof spec !== 'object') return damage;
+    damage += Math.trunc(Number(spec.add || 0));
+    if (spec.bonusDie) damage += rnd(spec.bonusDie);
+    if (Array.isArray(spec.bonusDice) && spec.bonusDice.length === 2)
+        damage += d(spec.bonusDice[0], spec.bonusDice[1]);
+    return damage;
+}
+
 function isSupportedTossUpWeaponObject(obj) {
     if (!obj) return false;
     const key = tossUpWeaponObjectKey(obj);
     if (!HERO_TOSS_UP_WEAPON_SMALL_DAMAGE.has(key)) return false;
     const spe = Math.trunc(Number(obj.spe ?? 0)) || 0;
     if (key === 'rubber hose' && spe < 1) return false;
-    return !obj.artifact && !obj.oartifact;
+    return true;
 }
 
 function heroThrownGenericWeaponDamage(obj) {
-    const spec = HERO_TOSS_UP_WEAPON_SMALL_DAMAGE.get(tossUpWeaponObjectKey(obj));
-    const die = tossUpWeaponDamageDie(spec);
-    if (!die || !isSupportedTossUpWeaponObject(obj)) return null;
-    let damage = rnd(die);
-    if (typeof spec === 'object') {
-        damage += Math.trunc(Number(spec.add || 0));
-        if (spec.bonusDie) damage += rnd(spec.bonusDie);
-    }
+    const spec = tossUpWeaponDamageSpecForTarget(obj);
+    if (!tossUpWeaponDamageDie(spec) || !isSupportedTossUpWeaponObject(obj)) return null;
+    let damage = rollTossUpWeaponDamageSpec(spec);
     damage += Math.trunc(Number(obj.spe || 0));
     if (damage < 0) damage = 0;
+    if (heroTossUpTargetIsShade() && !heroTossUpObjectIsSilver(obj)) damage = 0;
+    if (obj?.blessed && heroTossUpTargetHatesBlessings()) damage += rnd(4);
+    if (heroTossUpObjectIsSilver(obj) && heroTossUpTargetHatesSilver()) damage += rnd(20);
     if (damage > 0) {
         damage -= Math.max(0, Math.trunc(Number(obj.oeroded || 0)), Math.trunc(Number(obj.oeroded2 || 0)));
         if (damage < 1) damage = 1;
@@ -19447,19 +19552,123 @@ function isTinOpenerTossObject(obj) {
     return !!obj && (obj.otyp === TIN_OPENER || objectKindKey(obj) === 'tin opener');
 }
 
-function isHeroThrownGenericDamagingUpwardObject(obj) {
-    if (!obj || isHeroThrownHarmlessUpwardObject(obj)) return false;
-    return isTinOpenerTossObject(obj) || isSupportedTossUpWeaponObject(obj);
+function isHeroThrownGenericWeightContainerObject(obj) {
+    if (!obj) return false;
+    const kind = objectKindKey(obj);
+    return isBagOfTricksObject(obj) || BAG_OBJECT_TYPES.has(obj.otyp)
+        || kind === 'sack' || kind === 'oilskin sack' || kind === 'bag of holding';
 }
 
-function heroThrownGenericObjectFallingDamage(obj, helmet = null) {
+function isHeroThrownGenericStoneMissileUpwardObject(obj) {
+    return heroThrownStoneMissileObject(obj) && !(isLoadstoneObject(obj) && obj.cursed);
+}
+
+function isHeroThrownGenericDamagingUpwardObject(obj) {
+    if (!obj || isHeroThrownHarmlessUpwardObject(obj)) return false;
+    return isTinOpenerTossObject(obj) || isHeroThrownGenericWeightContainerObject(obj)
+        || isSupportedTossUpWeaponObject(obj) || isHeroThrownGenericStoneMissileUpwardObject(obj);
+}
+
+function heroTossUpTargetForm() {
+    return polyselfForm() || game.u?.youmonst?.data || game.u?.data || {};
+}
+
+function heroTossUpTargetName() {
+    return String(heroTossUpTargetForm().name || '').toLowerCase();
+}
+
+function heroTossUpObjectIsSilver(obj) {
+    return objectMaterialForMetallivore(obj) === 'silver';
+}
+
+function heroTossUpTargetHatesBlessings() {
+    const form = heroTossUpTargetForm();
+    const rawMlet = String(form.mlet || form.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = heroTossUpTargetName();
+    const undead = form.undead || form.vampshifter
+        || rawMlet === 'L' || rawMlet === 'M' || rawMlet === 'V' || rawMlet === 'W'
+        || rawMlet === 'Z' || rawMlet === "'" || mlet === 'ghost'
+        || /\b(?:ghost|shade|lich|mummy|zombie|vampire|wraith|nazgul|skeleton|ghoul)\b/.test(name);
+    const demon = form.demon || rawMlet === '&' || mlet === 'demon'
+        || /\b(?:demon|devil|manes)\b/.test(name);
+    return !!(undead || demon);
+}
+
+function heroTossUpTargetHatesSilver() {
+    const form = heroTossUpTargetForm();
+    const rawMlet = String(form.mlet || form.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = heroTossUpTargetName();
+    const lycanthrope = game.u?.ulycn != null && game.u.ulycn !== -1 && game.u.ulycn !== false;
+    return !!(lycanthrope || game.u?.lycanthrope
+        || form.vampshifter || form.were || form.isWere || form.wereHuman || form.wereBeast
+        || /^were/.test(name)
+        || rawMlet === 'V' || mlet === 'vampire' || /\bvampire\b/.test(name) || name === 'vlad the impaler'
+        || form.demon || rawMlet === '&' || mlet === 'demon' || /\b(?:demon|devil|manes)\b/.test(name)
+        || name === 'shade'
+        || ((rawMlet === 'i' || mlet === 'imp') && name !== 'tengu'));
+}
+
+function heroTossUpTargetIsShade() {
+    return heroTossUpTargetName() === 'shade';
+}
+
+function heroTossUpTargetPassesRocks() {
+    const form = heroTossUpTargetForm();
+    return heroThrownTargetPassesRocks({
+        name: form?.name,
+        data: form,
+        passesRocks: form?.passesRocks,
+        passWalls: form?.passWalls,
+        passesWalls: form?.passesWalls,
+        passes_walls: form?.passes_walls,
+        wallwalk: form?.wallwalk,
+        unsolid: form?.unsolid,
+        noncorporeal: form?.noncorporeal,
+    });
+}
+
+function heroTossUpStoneMissileHarmlessRockPasser(obj) {
+    return heroThrownStoneMissileObject(obj) && heroTossUpTargetPassesRocks();
+}
+
+function heroTossUpTargetIsBig() {
+    const form = heroTossUpTargetForm();
+    if (!form || !Object.keys(form).length) return false;
+    if (form.big || form.bigmonst) return true;
+    return heroProjectileMonsterSizeValue({
+        data: form,
+        msize: form.msize,
+        size: form.size,
+    }) >= 3;
+}
+
+function heroThrownGenericObjectLessDamage(obj, helmet) {
+    return !!(helmet && hardEarthHelmet(helmet)
+        && (!heroTossUpObjectIsSilver(obj) || !heroTossUpTargetHatesSilver()));
+}
+
+function pushHeroThrownHelmetMessage(messages, obj, helmet, damage) {
+    if (!helmet) return;
+    if (heroThrownGenericObjectLessDamage(obj, helmet) && damage < heroTossUpActiveHp())
+        messages.push('Fortunately, you are wearing a hard helmet.');
+    else
+        messages.push(`Your ${simpleTossUpHelmetName(helmet)} does not protect you.`);
+}
+
+function heroThrownGenericObjectFallingDamage(obj, helmet = null, { harmless = false } = {}) {
     let damage = heroThrownGenericWeaponDamage(obj) ?? 0;
+    if (objectHasArtifactIdentity(obj) && !harmless) rn1(18, 2); // C artifact_hit() gets a fake 2..19 die roll.
     if (!damage) {
         const weightDamage = Math.max(1, Math.ceil(globObjectWeight({ ...obj, quan: 1 }) / WT_TO_DMG));
         damage = weightDamage <= 1 ? 1 : rnd(weightDamage);
         if (damage > 6) damage = 6;
+        if (heroTossUpTargetIsShade() && !heroTossUpObjectIsSilver(obj)) damage = 0;
+        if (obj?.blessed && heroTossUpTargetHatesBlessings()) damage += rnd(4);
+        if (heroTossUpObjectIsSilver(obj) && heroTossUpTargetHatesSilver()) damage += rnd(20);
     }
-    if (helmet && hardEarthHelmet(helmet) && damage > 1) damage = 1;
+    if (heroThrownGenericObjectLessDamage(obj, helmet) && damage > 1) damage = 1;
     if (damage > 0) damage += Math.trunc(Number(game.u?.udaminc || 0));
     if (damage < 0) damage = 0;
     return maybeHalfPhysicalDamage(damage);
@@ -19480,12 +19689,16 @@ function heroThrownGenericObjectSelfHitMessages(obj, action, ceilingName = heroT
     }
 
     const helmet = wornTossUpHelmet();
-    const damage = heroThrownGenericObjectFallingDamage(obj, helmet);
-    const heroHp = game.u?.uhp || 0;
-    if (helmet && hardEarthHelmet(helmet) && damage < heroHp)
-        messages.push('Fortunately, you are wearing a hard helmet.');
-    else if (helmet && !hardEarthHelmet(helmet))
-        messages.push(`Your ${simpleTossUpHelmetName(helmet)} does not protect you.`);
+    const harmlessRockPasser = heroTossUpStoneMissileHarmlessRockPasser(obj);
+    const damage = heroThrownGenericObjectFallingDamage(obj, helmet, { harmless: harmlessRockPasser });
+    if (helmet && harmlessRockPasser)
+        messages.push(`Unfortunately, you are wearing ${objectArticleName(simpleTossUpHelmetName(helmet))}.`);
+    else
+        pushHeroThrownHelmetMessage(messages, obj, helmet, damage);
+    if (heroTossUpObjectIsSilver(obj) && heroTossUpTargetHatesSilver())
+        messages.push('The silver sears you!');
+    if (harmlessRockPasser && !helmet)
+        messages.push(`${floorObjectTheSubject({ ...obj, quan: 1 })} hits you but doesn't hurt.`);
 
     const x = game.u?.ux || obj.ox || 0;
     const y = game.u?.uy || obj.oy || 0;
@@ -19493,7 +19706,8 @@ function heroThrownGenericObjectSelfHitMessages(obj, action, ceilingName = heroT
     if (floorMessage) messages.push(floorMessage);
     const landing = landProjectileObjectWithShopHandling(obj, x, y, {});
     messages.push(...landing.messages);
-    applyHeroThrownCorpseFallingDamage(damage, messages);
+    if (!(harmlessRockPasser && !helmet))
+        applyHeroThrownCorpseFallingDamage(damage, messages);
     return messages;
 }
 
@@ -27407,7 +27621,7 @@ function isProjectileImpactContainer(obj) {
 function projectileLandingIsSoft(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false;
-    return IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT;
+    return IS_SOFT(loc.typ) || IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT;
 }
 
 function projectileImpactGlassCandidate(obj) {
@@ -30635,6 +30849,21 @@ function startGlobShrinkTimeout(obj, when = 0) {
 }
 
 function globContents(obj) {
+    const contents = Array.isArray(obj?.contents) ? obj.contents : [];
+    const cobj = Array.isArray(obj?.cobj) ? obj.cobj : [];
+    if (contents.length && cobj.length) {
+        const seen = new Set();
+        const merged = [];
+        for (const item of [...contents, ...cobj]) {
+            const key = item?.id != null ? `id:${item.id}` : item;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(item);
+        }
+        return merged;
+    }
+    if (contents.length) return contents;
+    if (cobj.length) return cobj;
     if (Array.isArray(obj?.contents)) return obj.contents;
     if (Array.isArray(obj?.cobj)) return obj.cobj;
     return [];
@@ -31037,6 +31266,7 @@ function objectWeightKind(obj) {
     if (!kind && obj?.otyp === SACK) return 'sack';
     if (!kind && obj?.otyp === OILSKIN_SACK) return 'oilskin sack';
     if (!kind && obj?.otyp === BAG_OF_HOLDING) return 'bag of holding';
+    if (!kind && obj?.otyp === BAG_OF_TRICKS) return 'bag of tricks';
     return kind;
 }
 
@@ -31051,16 +31281,26 @@ function objectWeightClass(obj) {
 }
 
 function containerBaseWeight(obj) {
-    if (obj?.otyp === LARGE_BOX) return 350;
-    if (obj?.otyp === CHEST) return 600;
-    if (obj?.otyp === ICE_BOX) return 900;
-    if (obj?.otyp === SACK || obj?.otyp === OILSKIN_SACK || obj?.otyp === BAG_OF_HOLDING) return 15;
+    const kind = objectWeightKind(obj);
+    if (obj?.otyp === LARGE_BOX || kind === 'large box') return 350;
+    if (obj?.otyp === CHEST || kind === 'chest') return 600;
+    if (obj?.otyp === ICE_BOX || kind === 'ice box') return 900;
+    if (obj?.otyp === SACK || obj?.otyp === OILSKIN_SACK
+        || obj?.otyp === BAG_OF_HOLDING || obj?.otyp === BAG_OF_TRICKS
+        || kind === 'sack' || kind === 'oilskin sack'
+        || kind === 'bag of holding' || kind === 'bag of tricks')
+        return 15;
     return null;
 }
 
 function isGlobWeightContainerObject(obj) {
+    const kind = objectWeightKind(obj);
     return obj?.otyp === LARGE_BOX || obj?.otyp === CHEST || obj?.otyp === ICE_BOX
-        || obj?.otyp === SACK || obj?.otyp === OILSKIN_SACK || obj?.otyp === BAG_OF_HOLDING;
+        || obj?.otyp === SACK || obj?.otyp === OILSKIN_SACK
+        || obj?.otyp === BAG_OF_HOLDING || obj?.otyp === BAG_OF_TRICKS
+        || kind === 'large box' || kind === 'chest' || kind === 'ice box'
+        || kind === 'sack' || kind === 'oilskin sack'
+        || kind === 'bag of holding' || kind === 'bag of tricks';
 }
 
 const WISHED_OBJECT_WEIGHT_OVERRIDES = new Map([
@@ -31079,7 +31319,7 @@ function globObjectWeight(obj) {
     const contents = globContents(obj);
     if (contents.length || isGlobWeightContainerObject(obj)) {
         let contentsWeight = contents.reduce((sum, item) => sum + globObjectWeight(item), 0);
-        if (obj?.otyp === BAG_OF_HOLDING) {
+        if (isBagOfHoldingObject(obj)) {
             contentsWeight = obj.cursed ? contentsWeight * 2
                 : obj.blessed ? Math.trunc((contentsWeight + 3) / 4)
                     : Math.trunc((contentsWeight + 1) / 2);
@@ -42181,12 +42421,13 @@ function healWoundedLegsFromRoyalJelly() {
     game.u._woundedLegSide = '';
 }
 
-function rehumanizeAfterRoyalJelly() {
-    if (!game.u) return '';
+function rehumanizeAfterPolyselfDeath() {
+    const result = { messages: [], died: false };
+    if (!game.u) return result;
     const base = game.u._polyself_base || {};
     const hpmax = Math.max(1, base.uhpmax ?? game.u.uhpmax ?? 1);
     game.u.uhpmax = hpmax;
-    game.u.uhp = Math.max(1, Math.min(base.uhp ?? hpmax, hpmax));
+    game.u.uhp = Math.min(base.uhp ?? hpmax, hpmax);
     if (base.uenmax != null) game.u.uenmax = base.uenmax;
     if (base.uen != null) game.u.uen = Math.max(0, Math.min(base.uen, game.u.uenmax ?? base.uen));
     if (base.uac != null) game.u.uac = base.uac;
@@ -42200,10 +42441,19 @@ function rehumanizeAfterRoyalJelly() {
     game.u._monsterMove = null;
     game.u._polyself_form = null;
     game.u._polyself_base = null;
+    game.u.mh = null;
+    game.u.mhmax = null;
     game.u.umovement = NORMAL_SPEED;
     game.u._statusSuffix = '';
     game.u._strDisplay = null;
-    return 'You return to human form!';
+    const raceAdj = game.urace?.adj || game.urace?.noun || game._startup_race || 'human';
+    result.messages.push(`You return to ${raceAdj} form!`);
+    if ((game.u.uhp || 0) < 1) {
+        result.messages.push('Your old form was not healthy enough to survive.');
+        game._death_cause = `killed by reverting to unhealthy ${raceAdj} form`;
+        result.died = true;
+    }
+    return result;
 }
 
 function royalJellyPostEffects(item) {
@@ -42225,9 +42475,9 @@ function royalJellyPostEffects(item) {
             game.u.uhp = game.u.uhpmax || 1;
         } else if ((game.u.uhp || 0) <= 0) {
             if (game.u._polyself_form) {
-                const message = rehumanizeAfterRoyalJelly();
-                if (message) messages.push(message);
-                return { messages, died: false };
+                const result = rehumanizeAfterPolyselfDeath();
+                messages.push(...result.messages);
+                return { messages, died: result.died, suppressDieMessage: result.died };
             }
             game._death_cause = 'poisoned by a rotten lump of royal jelly';
             return { messages, died: true };
@@ -42260,7 +42510,7 @@ async function finishRoyalJellyEating(item, floorObject, baseMessage, { more = f
         game._run_steps_remaining = 0;
         game._command_mode = 'deathDieMore';
         prepareDeathBones();
-        await setMessage(`${message}  You die...`, true);
+        await setMessage(result.suppressDieMessage ? message : `${message}  You die...`, true);
         return;
     }
     await setMessage(message, more);
