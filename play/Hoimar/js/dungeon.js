@@ -348,7 +348,13 @@ function fixupLevelLocations(pd) {
     game.medusa_level = map.get('medusa') || null;
     game.knox_level = map.get('knox') || null;
     game.stronghold_level = map.get('castle') || null;
+    game.sanctum_level = map.get('sanctum') || null;
     game.wiz1_level = map.get('wizard1') || null;
+    game.astral_level = map.get('astral') || null;
+    game.water_level = map.get('water') || null;
+    game.fire_level = map.get('fire') || null;
+    game.air_level = map.get('air') || null;
+    game.earth_level = map.get('earth') || null;
 }
 
 function fixupKnoxFloatingBranch(pd) {

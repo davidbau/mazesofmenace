@@ -3958,23 +3958,27 @@ function blessorcurseChance(otmp, chance) {
 
 function mkobj_erosion_rolls(otmp) {
     if ((game.moves || 1) <= 1 && !game.in_mklev) return;
+    if (otmp?.oerodeproof) return;
     if (otmp?.artifact) return;
     const primary = otmp?._erosion_primary ?? true;
     const secondary = otmp?._erosion_secondary ?? true;
     if (!primary && !secondary) return;
 
-    const erodeproof = !rn2(100);
-    if (!erodeproof) {
+    if (!rn2(100)) {
+        if (otmp) otmp.oerodeproof = true;
+    } else {
         if (!rn2(80) && primary) {
             let eroded = 1;
             while (eroded < 3 && !rn2(9)) eroded++;
+            if (otmp) otmp.oeroded = eroded;
         }
         if (!rn2(80) && secondary) {
             let eroded = 1;
             while (eroded < 3 && !rn2(9)) eroded++;
+            if (otmp) otmp.oeroded2 = eroded;
         }
     }
-    rn2(1000);
+    if (!rn2(1000) && otmp) otmp.greased = true;
 }
 
 function maybeMkArtifact(otmp, artifactKey, chanceBase) {

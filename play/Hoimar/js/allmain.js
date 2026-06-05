@@ -2089,6 +2089,18 @@ export async function moveloop_core() {
             } else {
                 applyOccupationFinalTurnState(g);
                 await advanceTurn();
+                const fireDirectionNeedsTurnMore = !!g._fire_direction_after_turn_more;
+                g._fire_direction_after_turn_more = false;
+                if (fireDirectionNeedsTurnMore
+                    && !g._more
+                    && !g._monster_turn_paused_for_more
+                    && g._pending_message) {
+                    // C ref: src/dothrow.c:dofire().  A fireassist weapon
+                    // swap can consume a turn and produce monster/pet output
+                    // before the canned dofire retry reaches getdir().
+                    queue_more_prompt();
+                    return;
+                }
                 if (g._more && g._deferred_move_floor_list_resume_turn_tail) return;
                 if (g._monster_turn_paused_for_more) {
                     restorePrayerBudgetForInterruptedFirstTurn(g);

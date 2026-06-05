@@ -2562,7 +2562,7 @@ function valid_cloud_pos_basic(x, y) {
     return ACCESSIBLE(loc.typ) || IS_POOL(loc.typ) || IS_LAVA(loc.typ);
 }
 
-function create_gas_cloud_basic(x, y, cloudsize, damage = 0) {
+export function create_gas_cloud_basic(x, y, cloudsize, damage = 0) {
     // C ref: src/region.c:create_gas_cloud().
     const targetSize = Math.max(1, Math.min(150, cloudsize || 1));
     const coords = [{ x, y }];

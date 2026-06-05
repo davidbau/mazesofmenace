@@ -43599,6 +43599,125 @@ function placeSitTrapProjectile(projectile) {
     return obj;
 }
 
+function objectGreatestErosion(obj) {
+    return Math.max(0,
+        Math.trunc(Number(obj?.oeroded || 0)),
+        Math.trunc(Number(obj?.oeroded2 || 0)),
+        Math.trunc(Number(obj?.erosion || 0)));
+}
+
+function trapProjectileMessageParts(prefix, ...parts) {
+    return [prefix, ...parts].filter(part => part != null && part !== '').join('  ');
+}
+
+function makeHeroTrapDart(trap) {
+    const dart = mksobj(DART, true, false);
+    Object.assign(dart, {
+        quan: 1,
+        owt: 1,
+        opoisoned: false,
+        ox: trap?.tx ?? game.u?.ux ?? 0,
+        oy: trap?.ty ?? game.u?.uy ?? 0,
+        cls: 'weapon',
+        kind: 'dart',
+        actualKind: 'dart',
+        singular: 'dart',
+        plural: 'darts',
+        glyph: ')',
+        color: CLR_CYAN,
+    });
+    return dart;
+}
+
+function heroTrapDartDamage(dart) {
+    const die = heroTossUpTargetIsBig() ? 2 : 3;
+    let damage = rnd(die) + Math.trunc(Number(dart?.spe || 0));
+    if (damage < 0) damage = 0;
+    if (dart?.blessed && heroTossUpTargetHatesBlessings()) damage += rnd(4);
+    if (damage > 0) damage = Math.max(1, damage - objectGreatestErosion(dart));
+    return maybeHalfPhysicalDamage(damage);
+}
+
+function placeHeroTrapDart(dart) {
+    if (!dart) return null;
+    dart.ox = game.u?.ux || 0;
+    dart.oy = game.u?.uy || 0;
+    game.level.objects ??= [];
+    game.level.objects.push(dart);
+    newsym(dart.ox, dart.oy);
+    return dart;
+}
+
+function applyHeroTrapDartPoison(dart, messages) {
+    if (!dart?.opoisoned) return false;
+    messages.push('The dart was poisoned!');
+    if (heroHasPoisonResistance()) {
+        messages.push("The poison doesn't seem to affect you.");
+        return false;
+    }
+
+    const roll = rn2(30);
+    let dead = false;
+    if (roll === 0) {
+        const loss = 6 + d(4, 6);
+        if ((game.u?.uhp || 0) <= loss) {
+            if (game.u) game.u.uhp = -1;
+            messages.push('The poison was deadly...');
+            dead = true;
+        } else {
+            if (game.u) {
+                game.u.uhpmax = Math.max(3, (game.u.uhpmax || game.u.uhp || 1) - Math.trunc(loss / 2));
+                game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+                if (game.u.acurr?.a) game.u.acurr.a[A_CON] = Math.max(3, (game.u.acurr.a[A_CON] ?? 10) - 3);
+            }
+            messages.push('You feel very sick!');
+            dead = (game.u?.uhp || 0) < 1;
+        }
+    } else if (roll > 5) {
+        const loss = rnd(6);
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+        dead = (game.u?.uhp || 0) < 1;
+    } else {
+        if (game.u?.acurr?.a) game.u.acurr.a[A_CON] = Math.max(3, (game.u.acurr.a[A_CON] ?? 10) - 1);
+        messages.push('You feel very sick!');
+    }
+    if (dead) game._death_cause = 'poisoned by a little dart';
+    return dead;
+}
+
+function heroDartTrapMessage(trap, prefix = '', alreadySeen = !!trap?.tseen) {
+    if (trap?.once && alreadySeen && !rn2(15)) {
+        deleteTrap(trap);
+        return trapProjectileMessageParts(prefix, 'You hear a soft click.');
+    }
+    if (trap) {
+        trap.once = true;
+        trap.tseen = true;
+    }
+    const dart = makeHeroTrapDart(trap);
+    dart.opoisoned = !rn2(6);
+    const damage = heroTrapDartDamage(dart);
+    const threshold = (game.u?.uac || 0) + 7;
+    const roll = rnd(20);
+    const messages = [trapProjectileMessageParts(prefix, 'A little dart shoots out at you!')];
+    if (threshold <= roll) {
+        placeHeroTrapDart(dart);
+        messages.push(threshold <= roll - 2
+            ? 'A little dart misses you.'
+            : 'You are almost hit by a little dart.');
+        return messages.join('  ');
+    }
+
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        if ((game.u.uhp || 0) <= 0) game._death_cause = 'killed by a little dart';
+    }
+    exerciseAttribute(A_STR, false);
+    messages.push('You are hit by a little dart.');
+    applyHeroTrapDartPoison(dart, messages);
+    return messages.join('  ');
+}
+
 function sitProjectileTrapMessage(trap, prefix, alreadySeen, spec) {
     if (trap.once && alreadySeen && !rn2(15)) {
         deleteTrap(trap);
@@ -44118,17 +44237,7 @@ async function sitTriggerTrap(trap) {
         return true;
     }
     if (trap.ttyp === DART_TRAP) {
-        await finishSitMessage(sitProjectileTrapMessage(trap, prefix, alreadySeen, {
-            name: 'little dart',
-            subject: 'A little dart',
-            article: 'a little dart',
-            shootsMessage: 'A little dart shoots out at you!',
-            emptyMessage: 'You hear a soft click.',
-            toHit: 7,
-            damage: () => rnd(3),
-            poisonable: true,
-            projectile: { otyp: DART, cls: 'weapon', kind: 'dart', singular: 'dart', plural: 'darts', glyph: ')', color: CLR_CYAN },
-        }));
+        await finishSitMessage(heroDartTrapMessage(trap, prefix, alreadySeen));
         return true;
     }
     if (trap.ttyp === ROCKTRAP) {
@@ -46990,6 +47099,12 @@ async function moveHero(dx, dy) {
         if (message) await setMessage(message, !!result.afterMore || !!result.more || !!(pileMessage && result.message));
         return;
     }
+    if (trapHere?.ttyp === DART_TRAP) {
+        const message = [pileMessage, heroDartTrapMessage(trapHere, '', !!trapHere.tseen)]
+            .filter(Boolean).join('  ');
+        if (message) await setMessage(message, !!(pileMessage && message));
+        return;
+    }
     if (pileMessage) {
         await setMessage(pileMessage);
         return;
@@ -47312,35 +47427,11 @@ export async function rhack(_cmd) {
                 return;
             }
             if (game._pending_dart_trap) {
-                game._pending_dart_trap.tseen = true;
-                game._pending_dart_trap.once = true;
+                const trap = game._pending_dart_trap;
+                const alreadySeen = !!trap.tseen;
                 game._pending_dart_trap = null;
-                const dart = mksobj(DART, true, false);
-                dart.quan = 1;
-                dart.opoisoned = !rn2(6);
-                const damage = rnd(3);
-                const threshold = (game.u?.uac || 0) + 7;
-                const roll = rnd(20);
-                const misses = threshold <= roll;
-                if (misses) {
-                    Object.assign(dart, {
-                        kind: 'dart',
-                        ox: game.u?.ux || 0,
-                        oy: game.u?.uy || 0,
-                        glyph: ')',
-                        color: CLR_CYAN,
-                    });
-                    game.level.objects.push(dart);
-                    newsym(game.u?.ux || 0, game.u?.uy || 0);
-                    const missText = threshold <= roll - 2
-                        ? 'A little dart misses you.'
-                        : 'You are almost hit by a little dart.';
-                    await setMessage(`A little dart shoots out at you!  ${missText}`);
-                    return;
-                }
-                game.u.uhp = Math.max(1, (game.u.uhp || 1) - damage);
-                rn2(2);
-                await setMessage('A little dart shoots out at you!  You are hit by a little dart.');
+                await setMessage(heroDartTrapMessage(trap, '', alreadySeen));
+                return;
             }
             if (game._pending_bear_trap) {
                 game._pending_bear_trap.tseen = true;
@@ -50182,7 +50273,23 @@ export async function rhack(_cmd) {
                     for (const mon of game._queued_dead_monsters) {
                         const data = mon.data || {};
                         const corpseData = data.corpse || data;
-                        const dropCorpse = monsterCorpseDropSucceeds(mon, data);
+                        const queuedBeforeExplosion = game._queued_messages_after_more?.length || 0;
+                        const explosionMessages = [];
+                        const explosion = queueGasSporeDeathExplosion(mon, { messages: explosionMessages });
+                        const queuedAfterExplosion = game._queued_messages_after_more || [];
+                        if (explosionMessages.length) {
+                            const boomMessages = explosionMessages.map((text, index) => ({
+                                text,
+                                more: index < explosionMessages.length - 1
+                                    || queuedAfterExplosion.length > queuedBeforeExplosion,
+                            }));
+                            game._queued_messages_after_more = [
+                                ...queuedAfterExplosion.slice(0, queuedBeforeExplosion),
+                                ...boomMessages,
+                                ...queuedAfterExplosion.slice(queuedBeforeExplosion),
+                            ];
+                        }
+                        const dropCorpse = !explosion && monsterCorpseDropSucceeds(mon, data);
                         recordVanquished(mon, false);
                         dropMonsterInventory(mon);
                         if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
@@ -51113,21 +51220,35 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'ponyDamageMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
-            const target = game._pony_second_attack?.target;
-            const targetName = game._pony_second_attack?.targetName || 'creature';
+            const second = game._pony_second_attack || {};
+            const target = second.target;
+            const targetName = second.targetName || 'creature';
+            const killer = second.mon;
             d(1, 2);
             rn2(3);
             rn2(6);
             rn2(3);
-            rnd((target?.data?.mlevel ?? 0) + 1);
-            rn2(5);
+            const messages = [`The ${targetName} is destroyed!`];
             if (target) {
-                recordVanquished(target, false);
+                const data = target.data || {};
+                const explosion = queueGasSporeDeathExplosion(target, { messages });
+                if (explosion) {
+                    recordVanquished(target, false);
+                    dropMonsterInventory(target);
+                    if (!monsterGrowUp(killer, target)) rnd((data.mlevel ?? 0) + 1);
+                } else {
+                    rnd((data.mlevel ?? 0) + 1);
+                    recordVanquished(target, false);
+                }
+                rn2(5);
                 game.level.monsters = (game.level?.monsters || []).filter(mon => mon !== target);
                 newsym(target.mx, target.my);
+            } else {
+                rnd(1);
+                rn2(5);
             }
             game._pony_second_attack = null;
-            await setMessage(`The ${targetName} is destroyed!`);
+            await setMessage(messages.join('  '), !!game._queued_messages_after_more?.length);
             game._command_mode = null;
             return;
         }

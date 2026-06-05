@@ -18,6 +18,18 @@ const ROLE_INIT = new Map([
         attrdist: [20, 20, 20, 10, 20, 10],
         hp: 13, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
     }],
+    ['Barbarian', {
+        attrbase: [16, 7, 7, 15, 16, 6],
+        attrmax: [30, 6, 7, 20, 30, 7],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        hp: 16, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
+    }],
+    ['Caveman', {
+        attrbase: [10, 7, 7, 7, 8, 6],
+        attrmax: [30, 6, 7, 20, 30, 7],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        hp: 16, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
+    }],
     ['Healer', {
         attrbase: [7, 7, 13, 7, 11, 16],
         attrmax: [15, 20, 20, 15, 25, 5],
@@ -86,6 +98,17 @@ const LEVEL_ADV = new Map([
     ['Archeologist', {
         xlev: 14,
         hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+    }],
+    ['Barbarian', {
+        xlev: 10,
+        hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 10, hifix: 2, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+        energyMod: 'barbarian',
+    }],
+    ['Caveman', {
+        xlev: 10,
+        hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
         enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
     }],
     ['Healer', {
@@ -367,6 +390,8 @@ const WAN_NOTHING = 416;
 const WAN_POLYMORPH = 422;
 const WAN_SLEEP = 432;
 const TOUCHSTONE = 472;
+const FLINT = 473;
+const ROCK = 474;
 
 const SPELLBOOK_LEVEL = new Map([
     [366, 5], [367, 2], [368, 4], [369, 4], [370, 3], [371, 7],
@@ -422,6 +447,31 @@ const ARCHEOLOGIST_INVENTORY = [
     { typ: TINNING_KIT, spe: UNDEF_SPE, cls: TOOL_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
     { typ: TOUCHSTONE, spe: 0, cls: GEM_CLASS, min: 1, max: 1, bless: 0 },
     { typ: SACK, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const BARBARIAN_0_INVENTORY = [
+    // C ref: src/u_init.c:Barbarian_0[].
+    { typ: TWO_HANDED_SWORD, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: AXE, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
+    { typ: RING_MAIL, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: FOOD_RATION, spe: 0, cls: FOOD_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const BARBARIAN_1_INVENTORY = [
+    // C ref: src/u_init.c:Barbarian_1[].
+    { typ: BATTLE_AXE, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: SHORT_SWORD, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
+    { typ: RING_MAIL, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: FOOD_RATION, spe: 0, cls: FOOD_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const CAVEMAN_INVENTORY = [
+    // C ref: src/u_init.c:Cave_man[].
+    { typ: CLUB, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: SLING, spe: 2, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
+    { typ: FLINT, spe: 0, cls: GEM_CLASS, min: 10, max: 20, bless: UNDEF_BLESS },
+    { typ: ROCK, spe: 0, cls: GEM_CLASS, min: 3, max: 3, bless: 0 },
+    { typ: LEATHER_ARMOR, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
 ];
 
 const HEALER_INVENTORY = [
@@ -598,9 +648,10 @@ const SAMURAI_KNOWN_ARMOR = [
 
 const STARTING_QUIVER_WEAPONS = new Set([
     ARROW, ELVEN_ARROW, ORCISH_ARROW, SILVER_ARROW, YA, CROSSBOW_BOLT,
-    DART, SHURIKEN, BOOMERANG,
+    DART, SHURIKEN, BOOMERANG, FLINT, ROCK,
 ]);
 const STARTING_WEAPON_TOOLS = new Set([PICK_AXE]);
+const STARTING_THROWN_STONES = new Set([FLINT, ROCK]);
 
 const KNIGHT_KNOWN_WEAPONS = [
     // C ref: src/u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
@@ -899,7 +950,8 @@ function apply_starting_weapon_use(obj) {
     // C ref: src/u_init.c:ini_inv_use_obj().  Starting missile/ammo stacks
     // fill the quiver before ordinary weapons and weapon-tools are used.
     const weaponLike = obj?.oclass === WEAPON_CLASS
-        || (obj?.oclass === TOOL_CLASS && STARTING_WEAPON_TOOLS.has(obj.otyp));
+        || (obj?.oclass === TOOL_CLASS && STARTING_WEAPON_TOOLS.has(obj.otyp))
+        || STARTING_THROWN_STONES.has(obj?.otyp);
     if (!weaponLike) return;
     if (obj.wielded || obj.alternate || obj.quivered) return;
     if (STARTING_QUIVER_WEAPONS.has(obj.otyp)) {
@@ -1065,6 +1117,18 @@ export function u_init_role_inventory() {
         }
         discover_role_known_object(SACK);
         discover_role_known_object(TOUCHSTONE);
+    } else if (role?.name?.m === 'Barbarian') {
+        ini_inv(rn2(100) >= 50 ? BARBARIAN_0_INVENTORY : BARBARIAN_1_INVENTORY,
+            noCreate, role.name.m);
+        if (!rn2(6)) {
+            ini_inv(LAMP_INVENTORY, noCreate, role.name.m);
+        }
+        // C ref: src/u_init.c:u_init_role() -> knows_class(WEAPON_CLASS),
+        // excluding polearms for non-Knight/non-Samurai roles.
+        for (const otyp of VALKYRIE_KNOWN_WEAPONS) discover_role_known_object(otyp);
+        for (const otyp of KNIGHT_KNOWN_ARMOR) discover_role_known_object(otyp);
+    } else if (role?.name?.m === 'Caveman') {
+        ini_inv(CAVEMAN_INVENTORY, noCreate, role.name.m);
     } else if (role?.name?.m === 'Healer') {
         game._goldCount = rn1(1000, 1001);
         game._startupRoleGoldInitialized = true;
@@ -1305,7 +1369,7 @@ function currentAttr(index) {
 function energyMod(en, adv) {
     if (adv?.energyMod === 'wizard') return 2 * en;
     if (adv?.energyMod === 'healer' || adv?.energyMod === 'knight') return Math.trunc((3 * en) / 2);
-    if (adv?.energyMod === 'valkyrie') return Math.trunc((3 * en) / 4);
+    if (adv?.energyMod === 'barbarian' || adv?.energyMod === 'valkyrie') return Math.trunc((3 * en) / 4);
     return en;
 }
 

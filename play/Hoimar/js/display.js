@@ -2,7 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-import { cansee, couldsee } from './vision.js';
+import { cansee, clear_path, couldsee } from './vision.js';
 import { rn2Display } from './rng.js';
 import { MONSTER_DATA } from './monster_data.js';
 import { OBJECT_CLASS } from './object_data.js';
@@ -11,7 +11,7 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, SCORR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, CLOUD,
+    TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, AIR, CLOUD,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
@@ -21,7 +21,8 @@ import {
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     WARNCOUNT, STR18, STR19, def_warnsyms, Is_rogue_level,
-    M3_INFRAVISIBLE,
+    M3_INFRAVISIBLE, In_endgame, Is_astralevel, Is_waterlevel, Is_firelevel,
+    Is_airlevel, Is_earthlevel,
 } from './const.js';
 import { depth, distmin, dist2 } from './hacklib.js';
 import {
@@ -68,6 +69,7 @@ const LAST_SPELL = 407;
 const CORPSE = 265;
 const STATUE = 476;
 const GAUNTLETS_OF_POWER = 161;
+const LONG_WORM_TAIL_DATA = MONSTER_DATA.find(m => m[0] === 'LONG_WORM_TAIL') || null;
 
 const GENERIC_OBJECT_GLYPH = {
     [POTION_CLASS]: { ch: '!', color: CLR_GRAY },
@@ -373,6 +375,8 @@ export function terrain_glyph(loc, x, y) {
             return { ch: '}', color: CLR_RED, dec: false };
         case LAVAWALL:
             return { ch: '}', color: CLR_ORANGE, dec: false };
+        case AIR:
+            return { ch: ' ', color: CLR_CYAN, dec: false };
         case CLOUD:
             return { ch: '#', color: CLR_GRAY, dec: false };
         default:        return { ch: '?', color: NO_COLOR, dec: false };
@@ -438,8 +442,11 @@ export function terrain_glyph(loc, x, y) {
         return { ch: '`', color: CLR_RED, dec: false };
     case LAVAWALL:
         return { ch: '`', color: CLR_ORANGE, dec: false };
+    case AIR:
+        // C ref: display.c:back_to_glyph() S_air.
+        return { ch: ' ', color: CLR_CYAN, dec: false };
     case CLOUD:
-        // C ref: include/defsym.h:S_cloud.
+        // C refs: include/defsym.h:S_cloud, dat/symbols DECGraphics.
         return { ch: '#', color: CLR_GRAY, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
@@ -641,7 +648,7 @@ function engraving_glyph(loc) {
     return { ch: loc?.typ === CORR ? '#' : '`', color: CLR_BRIGHT_BLUE, dec: false };
 }
 
-function monster_glyph(mon) {
+function monster_glyph(mon, wormTail = false) {
     if (game.u?.uprops?.hallucination || game.u?.uhallucination) {
         // C ref: display.h:mon_to_glyph() -> what_mon(..., rn2_on_display_rng).
         const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
@@ -653,8 +660,30 @@ function monster_glyph(mon) {
             };
         }
     }
+    if (wormTail) {
+        // C ref: display.c:display_monster() renders long-worm body cells
+        // as PM_LONG_WORM_TAIL while m_at() still returns the head monster.
+        return {
+            ch: MONSTER_SYMBOLS[LONG_WORM_TAIL_DATA?.[1] ?? 'S_WORM_TAIL'] ?? '~',
+            color: LONG_WORM_TAIL_DATA?.[7] ?? mon?.color ?? NO_COLOR,
+            dec: false,
+        };
+    }
     if (mon?.m_ap_type === M_AP_OBJECT) {
         const otyp = mon.mappearance;
+        if (mon.mcorpsenm != null && (otyp === STATUE || otyp === CORPSE)) {
+            // C ref: display.c:display_monster() builds a fake object for
+            // mimics, so monster-based statues/corpses render through
+            // map_object() with MCORPSENM().
+            return object_glyph_for_display({
+                otyp,
+                oclass: OBJECT_CLASS[otyp],
+                ch: object_class_char(OBJECT_CLASS[otyp]),
+                color: getObjectColor(otyp) ?? NO_COLOR,
+                corpsenm: mon.mcorpsenm,
+                dknown: true,
+            }, mon.mx ?? 0, mon.my ?? 0, true);
+        }
         const oclass = OBJECT_CLASS[otyp];
         return {
             ch: object_class_char(oclass),
@@ -665,6 +694,14 @@ function monster_glyph(mon) {
     return { ch: mon.ch, color: mon.color, dec: false };
 }
 
+function monster_at_display(x, y) {
+    const monsters = game.level?.monsters || [];
+    const head = monsters.find(m => m.mx === x && m.my === y);
+    if (head) return { mon: head, wormTail: false };
+    const tail = monsters.find(m => (m.wsegs || []).some(seg => seg.wx === x && seg.wy === y));
+    return tail ? { mon: tail, wormTail: true } : null;
+}
+
 function monster_visible(mon) {
     // C ref: display.h:_mon_visible().  newsym() only draws a monster in
     // physical sight when it is not an undetected hider and not unseen
@@ -672,6 +709,8 @@ function monster_visible(mon) {
     if (!mon || mon.mundetected) return false;
     if (mon._opened_unseen_door) return false;
     if (mon.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
+    if (game.u?.ux > 0 && cansee(mon.mx, mon.my)
+        && !clear_path(game.u.ux, game.u.uy, mon.mx, mon.my)) return false;
     return true;
 }
 
@@ -709,13 +748,17 @@ function warning_glyph(mon) {
 
 export function refresh_warning_monsters() {
     if (!game.u?.uprops?.warning) return;
-    for (const mon of game.level?.monsters || []) newsym(mon.mx, mon.my);
+    for (const mon of game.level?.monsters || []) {
+        newsym(mon.mx, mon.my);
+        for (const seg of mon.wsegs || []) newsym(seg.wx, seg.wy);
+    }
 }
 
 export function see_monsters() {
     for (const mon of game.level?.monsters || []) {
         if (mon.dead || mon.mhp <= 0) continue;
         newsym(mon.mx, mon.my);
+        for (const seg of mon.wsegs || []) newsym(seg.wx, seg.wy);
     }
     if (game.u?.ux > 0) newsym(game.u.ux, game.u.uy);
 }
@@ -994,7 +1037,9 @@ export function newsym(x, y) {
     const visible = cansee(x, y);
     if (visible) loc.waslit = !!loc.lit;
 
-    const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
+    const monInfo = monster_at_display(x, y);
+    const mon = monInfo?.mon || null;
+    const wormTail = !!monInfo?.wormTail;
 
     if (!visible) {
         if (game.u?.ux === x && game.u?.uy === y && hero_visible_to_self()) {
@@ -1002,8 +1047,18 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, hg.ch, hg.color, hg.dec);
             return;
         }
+        if (wormTail) {
+            if (loc.remembered_glyph) {
+                show_glyph_cell(x, y, loc.remembered_glyph.ch,
+                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx,
+                    loc.remembered_glyph.attr || 0);
+            } else {
+                show_glyph_cell(x, y, ' ', NO_COLOR, false);
+            }
+            return;
+        }
         if (mon && see_with_infrared(mon) && monster_visible(mon)) {
-            const mg = monster_glyph(mon);
+            const mg = monster_glyph(mon, wormTail);
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec);
             return;
         }
@@ -1084,7 +1139,7 @@ export function newsym(x, y) {
         return;
     }
     if (monster_visible(mon)) {
-        const mg = monster_glyph(mon);
+        const mg = monster_glyph(mon, wormTail);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
         draw_attr = 0;
     } else if (mon) {
@@ -1108,7 +1163,17 @@ export async function docrt() {
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
-            if (loc?.remembered_glyph) {
+            if (loc) {
+                loc.disp_ch = undefined;
+                loc.disp_color = undefined;
+                loc.disp_decgfx = undefined;
+                loc.disp_attr = 0;
+            }
+            if (!game.level?.flags?.hero_memory && cansee(x, y)) {
+                // C ref: display.c:docrt().  Air-level cells keep a stored
+                // map glyph, but visible cells are redrawn from current terrain.
+                newsym(x, y);
+            } else if (loc?.remembered_glyph) {
                 const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
                 const attr = obj
                     ? object_pile_display_attr(x, y, obj)
@@ -1354,8 +1419,20 @@ function _statusLine2() {
     // C ref: botl.c:describe_level().
     const levelDesc = game.quest_dnum != null && u.uz?.dnum === game.quest_dnum
         ? `Home ${u.uz?.dlevel || 1}`
+        : In_endgame(u.uz)
+        ? endgame_status_level_desc(u.uz)
         : `Dlvl:${depth(u.uz)}`;
     return `${levelDesc} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${ac} ${xp}${turn}${conditionText}`;
+}
+
+function endgame_status_level_desc(uz) {
+    // C refs: botl.c:describe_level(), dungeon.c:endgamelevelname().
+    if (Is_astralevel(uz)) return 'Astral Plane';
+    if (Is_waterlevel(uz)) return 'Water';
+    if (Is_firelevel(uz)) return 'Fire';
+    if (Is_airlevel(uz)) return 'Air';
+    if (Is_earthlevel(uz)) return 'Earth';
+    return `unknown plane #${depth(uz)}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
@@ -1518,7 +1595,10 @@ function _buildScreenOutput() {
             for (let y = 0; y < ROWNO; y++) {
                 for (let x = 1; x < COLNO; x++) {
                     const loc = game.level?.at(x, y);
-                    if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+                    if (!loc?.disp_ch) continue;
+                    if (loc.disp_ch === ' '
+                        && (loc.disp_color == null || loc.disp_color === CLR_GRAY || loc.disp_color === NO_COLOR)
+                        && !loc.disp_attr) continue;
                     const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
                     display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
                 }

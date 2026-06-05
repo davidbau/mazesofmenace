@@ -4031,18 +4031,9 @@ export async function processMonsterTurns() {
                 if (target.mhp < 1) {
                     const targetName = target.data?.name || 'creature';
                     addToplineMessage(`The ${targetName} is killed!`);
-                    const dropCorpse = monsterCorpseDropSucceeds(target, target.data);
-                    const corpseData = corpseDataForMonster(target.data);
-                    dropMonsterInventory(target);
-                    if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
-                        createMonsterCorpseOrGlob(target, corpseData);
-                    monsterGrowUp(mon, target);
-                    rn2(5);
-	                    recordVanquished(target, false);
-	                    game.level.monsters = (game.level?.monsters || []).filter(other => other !== target);
-	                    newsym(target.mx, target.my);
-	                    const targetIndex = mons.indexOf(target);
-	                    if (targetIndex >= 0) startIndex = Math.max(startIndex, targetIndex + 1);
+                    finishPetKilledMonster(mon, target);
+                    const targetIndex = mons.indexOf(target);
+                    if (targetIndex >= 0) startIndex = Math.max(startIndex, targetIndex + 1);
                 } else {
                     rn2(3);
                     const returnAttackRoll = rn2(4);
@@ -10458,6 +10449,20 @@ function monsterTrapHarmless(mon, trap) {
     return ttyp === STATUE_TRAP || ttyp === MAGIC_TRAP || ttyp === VIBRATING_SQUARE;
 }
 
+function trapDartDamage(dart, mon) {
+    const data = mon?.data || {};
+    const die = mon?.big || mon?.bigmonst || data.big || data.bigmonst ? 2 : 3;
+    let damage = rnd(die) + Math.trunc(Number(dart?.spe || 0));
+    if (damage < 0) damage = 0;
+    damage += monsterThrownObjectBlessedHitDamage(mon, dart);
+    if (damage > 0) {
+        const erosion = Math.max(0, Math.trunc(Number(dart?.oeroded || 0)),
+            Math.trunc(Number(dart?.oeroded2 || 0)), Math.trunc(Number(dart?.erosion || 0)));
+        damage = Math.max(1, damage - erosion);
+    }
+    return Math.max(1, damage);
+}
+
 function monsterPossessiveName(mon) {
     const name = monsterDisplayName(mon).replace(/^The /, 'the ');
     return name.endsWith('s') ? `${name}'` : `${name}'s`;
@@ -11829,21 +11834,13 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         mon.mtrapped = 1;
         const damage = rnd(trap.ttyp === SPIKED_PIT ? 10 : 6);
         mon.mhp = (mon.mhp || 1) - damage;
-	        if (mon.mhp < 1) {
-	            if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
-            const data = mon.data || {};
-            const corpseData = corpseDataForMonster(data);
-            dropMonsterInventory(mon);
-            if (monsterLeavesCorpseLikeDrop(corpseData) && monsterCorpseDropSucceeds(mon, data))
-                createMonsterCorpseOrGlob(mon, corpseData);
-            recordVanquished(mon, false);
-	            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
-	            mon.movement = 0;
-	            newsym(mon.mx, mon.my);
-		            return done();
+        if (mon.mhp < 1) {
+            if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
+            finishTrapKilledMonster(mon);
+            return done();
         }
         mon._move_consumed_turn = 1;
-	    }
+    }
     if ((trap?.ttyp === HOLE || trap?.ttyp === TRAPDOOR) && !monsterTrapHarmless(mon, trap) && !mon.data?.big) {
         const alreadySeen = monsterKnowsTrap(mon, trap.ttyp) || (trap.ttyp === HOLE && !mon.data?.mindless);
         if (alreadySeen && rn2(4)) return done();
@@ -11867,15 +11864,13 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         dart.opoisoned = !rn2(6);
         const inSight = !game.u?.blind && couldSeeCoord(mon.mx, mon.my) && !mon.minvis && !mon.mundetected;
         if (inSight) trap.tseen = true;
-        const hit = (mon.data?.mac ?? 10) + 7 <= rnd(20);
+        const hit = (mon.data?.mac ?? 10) + 7 + Math.trunc(Number(dart.spe || 0)) <= rnd(20);
         if (hit) {
-            mon.mhp = (mon.mhp || 1) - Math.max(1, rnd(3));
+            mon.mhp = (mon.mhp || 1) - trapDartDamage(dart, mon);
             if (inSight) addToplineMessage(`${monsterDisplayName(mon, true)} is hit by a dart!`);
             if (mon.mhp < 1) {
-                recordVanquished(mon, false);
-                game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
-                mon.movement = 0;
-                newsym(mon.mx, mon.my);
+                if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
+                finishTrapKilledMonster(mon);
             }
         } else {
             Object.assign(dart, {
@@ -12034,6 +12029,47 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
 	        mon._move_consumed_turn = 1;
 	    }
     return true;
+}
+
+function finishTrapKilledMonster(mon, { skipPetPostMoveRoll = false } = {}) {
+    const data = mon.data || {};
+    const corpseData = corpseDataForMonster(data);
+    dropMonsterInventory(mon);
+    const explosion = queueGasSporeDeathExplosion(mon);
+    if (explosion) addToplineMessage(explosion.message);
+    else if (monsterLeavesCorpseLikeDrop(corpseData) && monsterCorpseDropSucceeds(mon, data))
+        createMonsterCorpseOrGlob(mon, corpseData);
+    recordVanquished(mon, false);
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+    mon.movement = 0;
+    if (skipPetPostMoveRoll && mon.pet) game._pet_skip_post_move_roll = 1;
+    newsym(mon.mx, mon.my);
+    return explosion;
+}
+
+function finishPetKilledMonster(killer, target, {
+    skipLichenPostMoveRoll = false,
+    markPetKillNoRepeat = false,
+    forcePetKillNoRepeat = false,
+} = {}) {
+    const targetName = target.data?.name || 'creature';
+    const data = target.data || {};
+    const corpseData = corpseDataForMonster(data);
+    const explosion = queueGasSporeDeathExplosion(target);
+    const dropCorpse = !explosion && monsterCorpseDropSucceeds(target, data);
+    dropMonsterInventory(target);
+    if (explosion) addToplineMessage(explosion.message);
+    else if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+        createMonsterCorpseOrGlob(target, corpseData);
+    monsterGrowUp(killer, target);
+    rn2(5);
+    if (skipLichenPostMoveRoll && targetName === 'lichen') game._pet_skip_post_move_roll = 1;
+    recordVanquished(target, false);
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== target);
+    newsym(target.mx, target.my);
+    if (forcePetKillNoRepeat || (markPetKillNoRepeat && targetName !== 'lichen'))
+        game._pet_kill_no_repeat = 1;
+    return explosion;
 }
 
 function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
@@ -12568,18 +12604,8 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                             rn2(3);
                             rn2(6);
                             if (pos.target.mhp < 1) {
-                                const dropCorpse = monsterCorpseDropSucceeds(pos.target, pos.target.data);
-                                const corpseData = corpseDataForMonster(pos.target.data);
-                                dropMonsterInventory(pos.target);
-                                if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
-                                    createMonsterCorpseOrGlob(pos.target, corpseData);
-                                monsterGrowUp(mon, pos.target);
-                                rn2(5);
-                                recordVanquished(pos.target, false);
-                                game.level.monsters = (game.level?.monsters || []).filter(other => other !== pos.target);
-                                newsym(pos.target.mx, pos.target.my);
+                                finishPetKilledMonster(mon, pos.target, { forcePetKillNoRepeat: true });
                                 mon.movement = 0;
-                                game._pet_kill_no_repeat = 1;
                             } else {
                                 rn2(3);
                                 const returnAttackRoll = rn2(4);
@@ -12604,7 +12630,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                         }
                     } else {
                         game._message_more = 1;
-                        game._pony_second_attack = { target: pos.target, targetName, targetAc, petLevel };
+                        game._pony_second_attack = { mon, target: pos.target, targetName, targetAc, petLevel };
                         game._command_mode = 'ponySecondAttackMore';
                     }
                 }
@@ -12652,20 +12678,10 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
 	                        game._message_more = 0;
 	                    }
 	                }
-                const dropCorpse = monsterCorpseDropSucceeds(pos.target, pos.target.data);
-                const corpseData = corpseDataForMonster(pos.target.data);
-                dropMonsterInventory(pos.target);
-                if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
-                    createMonsterCorpseOrGlob(pos.target, corpseData);
-                monsterGrowUp(mon, pos.target);
-                rn2(5);
-                if (targetName === 'lichen') game._pet_skip_post_move_roll = 1;
-                recordVanquished(pos.target, false);
-                game.level.monsters = (game.level?.monsters || []).filter(other => other !== pos.target);
-                newsym(pos.target.mx, pos.target.my);
-                if (targetName !== 'lichen') {
-                    game._pet_kill_no_repeat = 1;
-                }
+                finishPetKilledMonster(mon, pos.target, {
+                    skipLichenPostMoveRoll: true,
+                    markPetKillNoRepeat: true,
+                });
                 return;
             }
 
@@ -13026,29 +13042,30 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         mon.mhp = (mon.mhp || 1) - damage;
         if (mon.mhp < 1) {
             addToplineMessage(`The ${mon.data?.name || 'creature'} is killed!`);
-            const data = mon.data || {};
-            const corpseData = corpseDataForMonster(data);
-            dropMonsterInventory(mon);
-            if (monsterLeavesCorpseLikeDrop(corpseData) && monsterCorpseDropSucceeds(mon, data))
-                createMonsterCorpseOrGlob(mon, corpseData);
-            recordVanquished(mon, false);
-            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
-            mon.movement = 0;
-            if (mon.pet) game._pet_skip_post_move_roll = 1;
-            newsym(mon.mx, mon.my);
+            finishTrapKilledMonster(mon, { skipPetPostMoveRoll: true });
             return;
         }
     }
-	    if (trap?.ttyp === DART_TRAP) {
-	        trap.once = true;
+    if (trap?.ttyp === DART_TRAP && !monsterTrapHarmless(mon, trap)) {
+        if (trap.once && trap.tseen && !rn2(15)) {
+            game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
+            newsym(mon.mx, mon.my);
+            return;
+        }
+        trap.once = true;
         trap.tseen = true;
         const dart = mksobj(DART, true, false);
         dart.quan = 1;
         dart.opoisoned = !rn2(6);
-        const hit = (mon.data?.mac ?? 6) + 7 <= rnd(20);
+        const hit = (mon.data?.mac ?? 6) + 7 + Math.trunc(Number(dart.spe || 0)) <= rnd(20);
         if (hit) {
-            mon.mhp = Math.max(0, (mon.mhp || 1) - 1);
+            mon.mhp = Math.max(0, (mon.mhp || 1) - trapDartDamage(dart, mon));
             addToplineMessage(`The ${mon.data?.name || 'creature'} is hit by a dart!`);
+            if (mon.mhp < 1) {
+                addToplineMessage(`The ${mon.data?.name || 'creature'} is killed!`);
+                finishTrapKilledMonster(mon, { skipPetPostMoveRoll: true });
+                return;
+            }
         } else {
             Object.assign(dart, {
                 kind: 'dart',
@@ -13065,9 +13082,9 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         if (game._message_more) {
             game._pet_delayed_post_move_roll = 1;
             game._pet_skip_post_move_roll = 1;
-	        }
-	    }
-		}
+        }
+    }
+}
 
 // C ref: allmain.c newgame()
 export async function newgame() {

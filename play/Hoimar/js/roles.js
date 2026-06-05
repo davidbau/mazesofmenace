@@ -24,12 +24,32 @@ export const roles = [
       gods: { lawful: 'Mitra', neutral: 'Crom', chaotic: 'Set' },
       quest: { leader: 'PELIAS', nemesis: 'THOTH_AMON' },
       initrecord: 10,
-      title: [{ m: 'Plunderer', f: 'Plunderess' }] },
+      title: [
+          { m: 'Plunderer', f: 'Plunderess' },
+          { m: 'Pillager', f: 'Pillager' },
+          { m: 'Bandit', f: 'Bandit' },
+          { m: 'Brigand', f: 'Brigand' },
+          { m: 'Raider', f: 'Raider' },
+          { m: 'Reaver', f: 'Reaver' },
+          { m: 'Slayer', f: 'Slayer' },
+          { m: 'Chieftain', f: 'Chieftainess' },
+          { m: 'Conqueror', f: 'Conqueress' },
+      ] },
     { name: { m: 'Caveman', f: 'Cavewoman' }, mnum: 2,
       gods: { lawful: 'Anu', neutral: 'Ishtar', chaotic: 'Anshar' },
       quest: { leader: 'SHAMAN_KARNOV', nemesis: 'CHROMATIC_DRAGON' },
       initrecord: 0,
-      title: [{ m: 'Troglodyte', f: 'Troglodyte' }] },
+      title: [
+          { m: 'Troglodyte', f: 'Troglodyte' },
+          { m: 'Aborigine', f: 'Aborigine' },
+          { m: 'Wanderer', f: 'Wanderer' },
+          { m: 'Vagrant', f: 'Vagrant' },
+          { m: 'Wayfarer', f: 'Wayfarer' },
+          { m: 'Roamer', f: 'Roamer' },
+          { m: 'Nomad', f: 'Nomad' },
+          { m: 'Rover', f: 'Rover' },
+          { m: 'Pioneer', f: 'Pioneer' },
+      ] },
     { name: { m: 'Healer', f: 'Healer' }, mnum: 3,
       gods: { lawful: 'Athena', neutral: 'Hermes', chaotic: 'Poseidon' },
       quest: { leader: 'HIPPOCRATES', nemesis: 'CYCLOPS' },
@@ -184,9 +204,15 @@ export function rankIndexForLevel(level) {
 
 export function roleRankForLevel(role, level, female = false) {
     if (!role) return null;
-    const title = role.title?.[rankIndexForLevel(level)];
-    if (!title) return female ? (role.name?.f || role.name?.m) : role.name?.m;
-    return female ? (title.f || title.m) : title.m;
+    // C ref: src/botl.c:rank_of().  Start at the level's rank index and
+    // fall back through lower role ranks before using the role name.
+    for (let i = rankIndexForLevel(level); i >= 0; --i) {
+        const title = role.title?.[i];
+        if (!title) continue;
+        if (female && title.f) return title.f;
+        if (title.m) return title.m;
+    }
+    return female ? (role.name?.f || role.name?.m) : role.name?.m;
 }
 
 export function roleGod(role, alignName = 'neutral') {

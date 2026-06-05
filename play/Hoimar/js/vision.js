@@ -6,11 +6,13 @@
 import { game } from './gstate.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD,
+    IRONBARS,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     IS_ROOM, IS_WALL,
 } from './const.js';
-import { newsym } from './display.js';
+import { newsym, show_glyph_cell } from './display.js';
+import { CLR_CYAN } from './terminal.js';
 
 const BOULDER = 475;
 const COULD_SEE = 0x1;
@@ -91,6 +93,18 @@ function has_boulder_at(level, x, y) {
 function visible_gas_region_at(level, x, y) {
     return (level.gasClouds || []).some((region) =>
         region.ttl >= 0 && region.x === x && region.y === y);
+}
+
+function newsymOrIronBars(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc?.typ !== IRONBARS || !(game.viz_array?.[y]?.[x] & IN_SIGHT)) {
+        newsym(x, y);
+        return;
+    }
+    // C refs: display.c:back_to_glyph(), include/defsym.h:S_bars.
+    const glyph = { ch: '|', color: CLR_CYAN, decgfx: false, attr: 0 };
+    if (game.level?.flags?.hero_memory) loc.remembered_glyph = glyph;
+    show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, glyph.attr);
 }
 
 function _blocks(level, x, y) {
@@ -594,7 +608,7 @@ export function vision_recalc(control = 0) {
                     const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
                     loc.seenv = (loc.seenv || 0) | sv;
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
-                        newsym(col, row);
+                        newsymOrIronBars(col, row);
                     }
                 } else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
@@ -607,7 +621,7 @@ export function vision_recalc(control = 0) {
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
                             loc.seenv = (loc.seenv || 0) | sv;
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
-                                newsym(col, row);
+                                newsymOrIronBars(col, row);
                         }
                     } else {
                         next_row[col] |= IN_SIGHT;
@@ -615,20 +629,20 @@ export function vision_recalc(control = 0) {
                         const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
                         loc.seenv = (loc.seenv || 0) | sv;
                         if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
-                            newsym(col, row);
+                            newsymOrIronBars(col, row);
                     }
                 } else if ((nv & COULD_SEE) && loc.waslit) {
                     loc.waslit = 0;
-                    newsym(col, row);
+                    newsymOrIronBars(col, row);
                 } else {
                     if ((ov & IN_SIGHT)
                         || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                        newsym(col, row);
+                        newsymOrIronBars(col, row);
                     }
                 }
             }
         }
-        if (ux > 0) newsym(ux, uy);
+        if (ux > 0) newsymOrIronBars(ux, uy);
     }
 
     game._viz_rmin = next_rmin;
