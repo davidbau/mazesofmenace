@@ -10078,6 +10078,20 @@ export function consumeLifeSavingAmulet({ clearStoning = false } = {}) {
     return true;
 }
 
+function clearUnsafePetrifyingCorpseWieldAfterLifeSaving() {
+    if (game.u?.stoneResistance || wornGlovesItem()) return;
+    let clearedAlternate = false;
+    for (const item of game.inventory || []) {
+        if (!isPetrifyingCorpseObject(item)) continue;
+        if (!itemIsWielded(item) && !item.alternate && !item.line?.includes('alternate weapon')) continue;
+        if (item.alternate || item.line?.includes('alternate weapon')) clearedAlternate = true;
+        item.wielded = false;
+        item.alternate = false;
+        item.line = normalInventoryLine({ ...item, line: '', wielded: false, alternate: false });
+    }
+    if (clearedAlternate) game._twoweapon = false;
+}
+
 function stopCarriedFigurineTimerOnLeave(item) {
     if (isFigurineObject(item)) stopFigurineTransformTimeout(item);
 }
@@ -16578,16 +16592,25 @@ function hostileMonsterNearHeroForWereChange() {
     });
 }
 
-function waterVaporLycanthropyEffect(potion, messages) {
+function appendRehumanizeDeathResultMessages(messages, result, { allowLifeSaving = false } = {}) {
+    messages.push(...(result.messages || []));
+    if (!result.died) return;
+    if (allowLifeSaving && consumeLifeSavingAmulet({ clearStoning: !!result.clearStoningOnLifeSaving })) {
+        if (game.u) game.u.uhp = 0;
+        messages.push('You die...  But wait...  Your medallion begins to glow!');
+        messages.lifeSaving = true;
+    } else {
+        messages.fatal = true;
+    }
+    messages.more = true;
+}
+
+function waterVaporLycanthropyEffect(potion, messages, options = {}) {
     const beastName = heroLycanthropeBeastName();
     if (!beastName || heroHasUnchanging()) return false;
     if (potion?.blessed && polyselfFormName() === beastName && !hostileMonsterNearHeroForWereChange()) {
         const result = rehumanizeAfterPolyselfDeath();
-        messages.push(...result.messages);
-        if (result.died) {
-            messages.fatal = true;
-            messages.more = true;
-        }
+        appendRehumanizeDeathResultMessages(messages, result, options);
         return !!result.messages.length;
     }
     if (potion?.cursed && !game.u?._polyself_form && !hostileMonsterNearHeroForWereChange()
@@ -16599,7 +16622,7 @@ function waterVaporLycanthropyEffect(potion, messages) {
     return false;
 }
 
-function potionBreathe(potion, messages) {
+function potionBreathe(potion, messages, options = {}) {
     const result = {};
     if (!heroCanReceivePotionVapor()) return result;
     const name = potionEffectNameFromAppearance(potion, alchemyPotionName(potion));
@@ -16701,7 +16724,7 @@ function potionBreathe(potion, messages) {
             break;
         case 'water':
             if (!splitGremlinPolyselfFromWaterVapor(messages))
-                waterVaporLycanthropyEffect(potion, messages);
+                waterVaporLycanthropyEffect(potion, messages, options);
             break;
         case 'acid':
         case 'polymorph':
@@ -16721,13 +16744,13 @@ function heroIsNextToPotionVapor(x, y) {
     return Math.max(Math.abs((x ?? ux) - ux), Math.abs((y ?? uy) - uy)) <= 1;
 }
 
-function brokenPotionBreathe(potion, x, y, messages) {
+function brokenPotionBreathe(potion, x, y, messages, options = {}) {
     if (!isPotionObject(potion) || !heroIsNextToPotionVapor(x, y) || !heroCanReceivePotionVapor()) return;
     if (!isWaterPotion(potion) && !heroHasWetWornTowel()) {
         if (heroBreathesPotionVapor()) messages.push('You smell a peculiar odor...');
         else if (heroHasPotionVaporEyes()) messages.push('Your eyes water.');
     }
-    potionBreathe(potion, messages);
+    potionBreathe(potion, messages, options);
 }
 
 function thrownPotionHitTargetName(mon) {
@@ -18896,7 +18919,7 @@ function heroPolymorphPotionSelfHitMessages(messages) {
     newsym(game.u?.ux || 0, game.u?.uy || 0);
 }
 
-function heroThrownPotionSelfHitMessages(potion, action, ceilingName = heroThrowCeilingName()) {
+function heroThrownPotionSelfHitMessages(potion, action, ceilingName = heroThrowCeilingName(), options = {}) {
     const messages = [];
     const kind = thrownPotionEffectKind(potion);
     messages.push(`${floorObjectSubject({ ...potion, quan: 1 })} ${action} the ${ceilingName}, then falls back on top of your head.`);
@@ -18917,35 +18940,35 @@ function heroThrownPotionSelfHitMessages(potion, action, ceilingName = heroThrow
     if (kind === 'polymorph') heroPolymorphPotionSelfHitMessages(messages);
     if (isLitOilPotionHit(potion, kind))
         explodeBurningOilPotion(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
-    potionBreathe(potion, messages);
+    potionBreathe(potion, messages, options);
     const shopDebt = convertUnpaidObjectToShopDebt(potion, { silent: true, broken: true });
     if (!shopDebt.charged) potion.no_charge = true;
     return messages;
 }
 
-function heroThrownPotionCeilingBreakMessages(potion, breakKind, ceilingName = heroThrowCeilingName()) {
+function heroThrownPotionCeilingBreakMessages(potion, breakKind, ceilingName = heroThrowCeilingName(), options = {}) {
     const messages = [`${floorObjectSubject({ ...potion, quan: 1 })} hits the ${ceilingName}.`];
     projectileTopLevelBreakMessage(potion, breakKind, messages);
     if (isLitOilPotionHit(potion))
         explodeBurningOilPotion(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
     else if (isPotionObject(potion))
-        brokenPotionBreathe(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages);
+        brokenPotionBreathe(potion, game.u?.ux ?? potion.ox ?? 0, game.u?.uy ?? potion.oy ?? 0, messages, options);
     markThrownBrokenObjectDebt(potion);
     return messages;
 }
 
-function heroThrownPotionUpwardMessages(potion) {
+function heroThrownPotionUpwardMessages(potion, options = {}) {
     const ceilingName = heroThrowCeilingName();
     const hasCeiling = heroHasThrowCeiling();
     const hitsRoof = !!(rn2(5) && !heroIsUnderwaterForThrow());
     if (!hasCeiling)
-        return heroThrownPotionSelfHitMessages(potion, 'flies up into', ceilingName);
+        return heroThrownPotionSelfHitMessages(potion, 'flies up into', ceilingName, options);
     if (hitsRoof) {
         const breakKind = projectileTopLevelBreakKind(potion);
-        if (breakKind) return heroThrownPotionCeilingBreakMessages(potion, breakKind, ceilingName);
-        return heroThrownPotionSelfHitMessages(potion, 'hits', ceilingName);
+        if (breakKind) return heroThrownPotionCeilingBreakMessages(potion, breakKind, ceilingName, options);
+        return heroThrownPotionSelfHitMessages(potion, 'hits', ceilingName, options);
     }
-    return heroThrownPotionSelfHitMessages(potion, 'almost hits', ceilingName);
+    return heroThrownPotionSelfHitMessages(potion, 'almost hits', ceilingName, options);
 }
 
 function heroThrownCreamPieSelfHitMessages(pie, action, ceilingName = heroThrowCeilingName()) {
@@ -19286,7 +19309,12 @@ function applyHeroThrownCorpseFallingDamage(damage, messages) {
         const result = rehumanizeAfterPolyselfDeath();
         messages.push(...result.messages);
         if (result.died) {
-            messages.fatal = true;
+            if (consumeLifeSavingAmulet({ clearStoning: !!result.clearStoningOnLifeSaving })) {
+                messages.push('You die...  But wait...  Your medallion begins to glow!');
+                messages.lifeSaving = true;
+            } else {
+                messages.fatal = true;
+            }
             messages.more = true;
         }
         return;
@@ -19342,10 +19370,13 @@ function heroThrownOrdinaryCorpseSelfHitMessages(corpse, action, ceilingName = h
 
     const helmet = wornTossUpHelmet();
     const damage = heroThrownCorpseFallingDamage(corpse, helmet);
-    if (helmet && hardEarthHelmet(helmet) && damage < heroTossUpActiveHp())
-        messages.push('Fortunately, you are wearing a hard helmet.');
+    pushHeroThrownHelmetMessage(messages, corpse, helmet, damage);
 
-    const landing = landProjectileObjectWithShopHandling(corpse, game.u?.ux || corpse.ox || 0, game.u?.uy || corpse.oy || 0, {});
+    const x = game.u?.ux || corpse.ox || 0;
+    const y = game.u?.uy || corpse.oy || 0;
+    const floorMessage = heroThrownGenericObjectFloorMessage(corpse, x, y);
+    if (floorMessage) messages.push(floorMessage);
+    const landing = landProjectileObjectWithShopHandling(corpse, x, y, {});
     messages.push(...landing.messages);
     applyHeroThrownCorpseFallingDamage(damage, messages);
     return messages;
@@ -19385,6 +19416,7 @@ const HERO_TOSS_UP_WEAPON_SMALL_DAMAGE = new Map([
     ['axe', 6],
     ['battle-axe', { die: 8, bonusDie: 4 }],
     ['pick-axe', 6],
+    ['grappling hook', 2],
     ['short sword', 6],
     ['elven short sword', 8],
     ['orcish short sword', 5],
@@ -19442,6 +19474,7 @@ const HERO_TOSS_UP_WEAPON_LARGE_DAMAGE = new Map([
     ['axe', 4],
     ['battle-axe', { die: 6, bonusDice: [2, 4] }],
     ['pick-axe', 3],
+    ['grappling hook', 6],
     ['short sword', 8],
     ['elven short sword', 8],
     ['orcish short sword', 8],
@@ -19484,6 +19517,7 @@ function tossUpWeaponObjectKey(obj) {
     if (obj?.otyp === KNIFE) return 'knife';
     if (obj?.otyp === STILETTO) return 'stiletto';
     if (obj?.otyp === PICK_AXE) return 'pick-axe';
+    if (obj?.otyp === GRAPPLING_HOOK) return 'grappling hook';
     if (obj?.otyp === SHORT_SWORD) return 'short sword';
     if (obj?.otyp === ELVEN_SHORT_SWORD) return 'elven short sword';
     if (obj?.otyp === ORCISH_SHORT_SWORD) return 'orcish short sword';
@@ -21309,8 +21343,9 @@ function eucalyptusPostEffect(touched) {
     return messages.length ? { message: messages.join('  ') } : {};
 }
 
-function royalJellyFatalPostEffect(messages) {
-    if (consumeLifeSavingAmulet()) {
+function royalJellyFatalPostEffect(messages, result = {}) {
+    const clearStoningOnLifeSaving = !!result.clearStoningOnLifeSaving;
+    if (consumeLifeSavingAmulet({ clearStoning: clearStoningOnLifeSaving })) {
         if (game.u) game.u.uhp = 0;
         game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
         game._command_mode = 'lifeSavingMore';
@@ -21331,8 +21366,10 @@ function royalJellyFatalPostEffect(messages) {
     game._run_steps_remaining = 0;
     game._command_mode = 'deathDieMore';
     prepareDeathBones();
+    const suppressDieMessage = result.suppressDieMessage
+        || String(game._death_cause || '').startsWith('petrified by ');
     return {
-        message: [...messages, 'You die...'].join('  '),
+        message: suppressDieMessage ? messages.join('  ') : [...messages, 'You die...'].join('  '),
         more: true,
         fatal: true,
         commandMode: 'deathDieMore',
@@ -21342,7 +21379,7 @@ function royalJellyFatalPostEffect(messages) {
 
 function royalJellyDelayedPostEffect(touched) {
     const result = royalJellyPostEffects(touched);
-    if (result.died) return royalJellyFatalPostEffect(result.messages || []);
+    if (result.died) return royalJellyFatalPostEffect(result.messages || [], result);
     return result.messages?.length ? { message: result.messages.join('  ') } : {};
 }
 
@@ -27643,7 +27680,7 @@ function projectileImpactContentBreakKind(obj) {
     return '';
 }
 
-function projectileTopLevelBreakKind(obj, options = {}) {
+export function projectileTopLevelBreakKind(obj, options = {}) {
     const roll = Number.isInteger(options.breakRoll) ? options.breakRoll : rn2(100);
     const kind = impactDropBreakKind(obj);
     if (!kind) return '';
@@ -27654,7 +27691,7 @@ function projectileTopLevelBreakKind(obj, options = {}) {
     return kind;
 }
 
-function projectileTopLevelBreakMessage(obj, breakKind, messages) {
+export function projectileTopLevelBreakMessage(obj, breakKind, messages) {
     if (!breakKind) return;
     if (breakKind === 'splat') {
         messages.push('Splat!');
@@ -32606,11 +32643,12 @@ export function landMonsterThrownObject(missile, x, y, {
     quan = 1,
     ohit = false,
     passiveTarget = null,
+    contactBreaks = null,
 } = {}) {
     if (!missile || !game.level) return { consumed: false, object: null, messages: [] };
     game.level.objects ??= [];
     const floorMessages = Array.isArray(messages) ? messages : [];
-    const breaksOnContact = isCreamPieObject(missile) || isVenomObject(missile) || (!!ohit && isEggItem(missile));
+    const breaksOnContact = contactBreaks ?? (isCreamPieObject(missile) || isVenomObject(missile) || (!!ohit && isEggItem(missile)));
     const mulched = !breaksOnContact && !!ohit && shouldMulchMonsterThrownMissile(missile);
     const dropThrow = {
         broken: breaksOnContact || mulched,
@@ -42421,10 +42459,32 @@ function healWoundedLegsFromRoyalJelly() {
     game.u._woundedLegSide = '';
 }
 
+function postRehumanizePetrifyingSelfTouchMessage(lostStoneResistance) {
+    if (!lostStoneResistance || !game.u || game.u.stoneResistance || wornGlovesItem()) return null;
+    const corpse = (game.inventory || []).find(item =>
+        isPetrifyingCorpseObject(item)
+        && (itemIsWielded(item) || item.alternate || item.line?.includes('alternate weapon')));
+    if (!corpse) return null;
+    const name = corpseMonsterName(corpse) || 'cockatrice';
+    game.u.uhp = 0;
+    game._death_cause = `petrified by ${petrifyingCorpseArticleName(corpse)}`;
+    game._death_bones_body = 'statue';
+    return {
+        messages: [
+            `No longer petrify-resistant, you touch the ${name} corpse.`,
+            'You turn to stone...',
+        ],
+        died: true,
+        suppressDieMessage: true,
+        clearStoningOnLifeSaving: true,
+    };
+}
+
 function rehumanizeAfterPolyselfDeath() {
     const result = { messages: [], died: false };
     if (!game.u) return result;
     const base = game.u._polyself_base || {};
+    const lostStoneResistance = heroPolyselfResistsStoning() && !game.u.stoneResistance;
     const hpmax = Math.max(1, base.uhpmax ?? game.u.uhpmax ?? 1);
     game.u.uhpmax = hpmax;
     game.u.uhp = Math.min(base.uhp ?? hpmax, hpmax);
@@ -42453,6 +42513,15 @@ function rehumanizeAfterPolyselfDeath() {
         game._death_cause = `killed by reverting to unhealthy ${raceAdj} form`;
         result.died = true;
     }
+    if (!result.died) {
+        const selfTouch = postRehumanizePetrifyingSelfTouchMessage(lostStoneResistance);
+        if (selfTouch) {
+            result.messages.push(...selfTouch.messages);
+            result.died = true;
+            result.suppressDieMessage = selfTouch.suppressDieMessage;
+            result.clearStoningOnLifeSaving = selfTouch.clearStoningOnLifeSaving;
+        }
+    }
     return result;
 }
 
@@ -42477,7 +42546,8 @@ function royalJellyPostEffects(item) {
             if (game.u._polyself_form) {
                 const result = rehumanizeAfterPolyselfDeath();
                 messages.push(...result.messages);
-                return { messages, died: result.died, suppressDieMessage: result.died };
+                return { messages, died: result.died, suppressDieMessage: result.suppressDieMessage ?? result.died,
+                    clearStoningOnLifeSaving: result.clearStoningOnLifeSaving };
             }
             game._death_cause = 'poisoned by a rotten lump of royal jelly';
             return { messages, died: true };
@@ -42496,7 +42566,7 @@ async function finishRoyalJellyEating(item, floorObject, baseMessage, { more = f
     const result = royalJellyPostEffects(item);
     const message = [baseMessage, ...result.messages].filter(Boolean).join('  ');
     if (result.died) {
-        if (consumeLifeSavingAmulet()) {
+        if (consumeLifeSavingAmulet({ clearStoning: !!result.clearStoningOnLifeSaving })) {
             if (game.u) game.u.uhp = 0;
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game._command_mode = 'lifeSavingMore';
@@ -42510,7 +42580,9 @@ async function finishRoyalJellyEating(item, floorObject, baseMessage, { more = f
         game._run_steps_remaining = 0;
         game._command_mode = 'deathDieMore';
         prepareDeathBones();
-        await setMessage(result.suppressDieMessage ? message : `${message}  You die...`, true);
+        const suppressDieMessage = result.suppressDieMessage
+            || String(game._death_cause || '').startsWith('petrified by ');
+        await setMessage(suppressDieMessage ? message : `${message}  You die...`, true);
         return;
     }
     await setMessage(message, more);
@@ -47196,6 +47268,7 @@ export async function rhack(_cmd) {
                 game._death_bones_body = '';
                 game._death_current_move = 0;
                 game._death_status_hp_before_zero = null;
+                clearUnsafePetrifyingCorpseWieldAfterLifeSaving();
             }
             if (game._life_saving_refresh_con && game.u?.acurr?.a)
                 game.u.acurr.a[4] = Math.max(3, game.u.acurr.a[4] - 1);
@@ -61497,16 +61570,29 @@ export async function rhack(_cmd) {
             if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
             const removeBeforeImpact = isLitOilPotionHit(thrownObject);
             if (removeBeforeImpact) removeInventoryItem(item, 1);
-            const messages = heroThrownPotionUpwardMessages(thrownObject);
+            const messages = heroThrownPotionUpwardMessages(thrownObject, { allowLifeSaving: true });
             if (!removeBeforeImpact) removeInventoryItem(item, 1);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             const keepPotionCallPrompt = game._command_mode === 'callPotionAfterMore';
             await setMessage(messages.join('  '), keepPotionCallPrompt || !!messages.more);
-            if (!keepPotionCallPrompt) game._command_mode = null;
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
-            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
+            if (messages.fatal) {
+                game._command_mode = 'deathDieMore';
+                game._pending_time_passed = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                prepareDeathBones();
+                return;
+            }
+            if (!keepPotionCallPrompt) game._command_mode = null;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             return;
         }
         if (ch === '<' && isCreamPieObject(item)) {
@@ -61754,6 +61840,11 @@ export async function rhack(_cmd) {
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
             game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
             if (messages.fatal) {
                 game._command_mode = 'deathDieMore';
                 game._pending_time_passed = 0;
@@ -61816,12 +61907,25 @@ export async function rhack(_cmd) {
             const messages = heroThrownCrackableArmorUpwardMessages(thrownObject);
             removeInventoryItem(item, 1);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
-            await setMessage(messages.join('  '));
-            game._command_mode = null;
+            await setMessage(messages.join('  '), !!messages.more);
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
-            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
+            if (messages.fatal) {
+                game._command_mode = 'deathDieMore';
+                game._pending_time_passed = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                prepareDeathBones();
+                return;
+            }
+            game._command_mode = null;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             return;
         }
         if (ch === '<' && supportsHeroThrownFragileObjectUpwardHit(item)) {
@@ -61878,6 +61982,11 @@ export async function rhack(_cmd) {
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
             game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
             if (messages.fatal) {
                 game._command_mode = 'deathDieMore';
                 game._pending_time_passed = 0;
