@@ -31579,6 +31579,7 @@ export function landMonsterThrownObject(missile, x, y, {
     verb = 'fall',
     quan = 1,
     ohit = false,
+    passiveTarget = null,
 } = {}) {
     if (!missile || !game.level) return { consumed: false, object: null, messages: [] };
     game.level.objects ??= [];
@@ -31602,7 +31603,7 @@ export function landMonsterThrownObject(missile, x, y, {
             dropThrow,
         };
     }
-    const passiveTarget = monsterAtSquareForPassiveObject(x, y);
+    const passiveObjectTarget = passiveTarget || monsterAtSquareForPassiveObject(x, y);
     const landing = {
         ...missile,
         ox: x,
@@ -31641,7 +31642,7 @@ export function landMonsterThrownObject(missile, x, y, {
             dropThrow,
         };
     }
-    const passiveObj = applyMonsterThrownPassiveObject(landing, passiveTarget, !!ohit, floorMessages);
+    const passiveObj = applyMonsterThrownPassiveObject(landing, passiveObjectTarget, !!ohit, floorMessages);
     const stacked = stackMonsterThrownObject(landing);
     if (stacked === landing) game.level.objects.push(landing);
     newsym(x, y);
@@ -47783,6 +47784,7 @@ export async function rhack(_cmd) {
                         color: thrown.color ?? (thrown.hitPet ? NO_COLOR : CLR_CYAN),
                         messages: floorMessages,
                         ohit: !!thrown.ohit,
+                        passiveTarget: thrown.passiveTarget || thrown.hitPet || null,
                     });
                     appendToplineAfterMoreMessages(floorMessages);
                 }
