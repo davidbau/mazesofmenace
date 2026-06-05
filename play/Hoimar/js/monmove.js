@@ -21,12 +21,12 @@ import {
     MON_POLE_DIST, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE,
     NEED_RANGED_WEAPON, NEED_WEAPON, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, W_NONDIGGABLE, W_WEP,
     GP_CHECKSCARY, SDOOR, W_NONPASSWALL,
-    STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, A_DEX, A_STR, A_WIS, A_CON,
+    STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_CLOSE, STRAT_WAITMASK, A_DEX, A_STR, A_WIS, A_CON,
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     MM_NOMSG, Is_rogue_level,
     COLNO, ROWNO, ROOMOFFSET, SHOPBASE, W_RING, W_ARM, W_ARMC, W_ARMOR, W_ACCESSORY, W_TOOL,
     W_QUIVER, W_SWAPWEP, W_WEAPONS, isok, SPACE_POS, is_pit,
-    POOL, Is_waterlevel,
+    POOL, Is_waterlevel, TERMINAL_ROWS, WT_TOOMUCH_DIAGONAL,
 } from './const.js';
 import {
     newsym, queue_more_prompt, pline, flush_screen, clear_pending_message,
@@ -90,6 +90,7 @@ const M1_NOEYES = 0x00001000;
 const M1_NOHANDS = 0x00002000;
 const M1_MINDLESS = 0x00010000;
 const M1_ANIMAL = 0x00040000;
+const M1_SLITHY = 0x00080000;
 const M1_UNSOLID = 0x00100000;
 const M1_REGEN = 0x00800000;
 const M1_SEE_INVIS = 0x01000000;
@@ -138,6 +139,100 @@ const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
 const RANDOM_CLASS = 0;
 const COIN_CLASS = 12;
+
+const QUEST_LEADER_FIRST_TEXT = new Map([
+    ['Archeologist', `"Finally you have returned, %p.  You were always
+my most promising student.  Allow me to see if you are ready for the
+most difficult task of your career."`],
+]);
+
+function render_more_pager_screen_basic(text) {
+    const lines = String(text || '').replace(/\n+$/, '').split('\n');
+    while (lines.length < TERMINAL_ROWS - 1) lines.push('');
+    lines.length = TERMINAL_ROWS - 1;
+    lines.push('--More--');
+    return lines.join('\n');
+}
+
+function show_serialized_override_basic(screen, cursor) {
+    const display = game.nhDisplay;
+    const term = display?.terminal || display;
+    if (term?.serialize && !term._teleportSerializeBase) {
+        const originalSerialize = term.serialize.bind(term);
+        Object.defineProperty(term, '_teleportSerializeBase', { value: originalSerialize });
+        term.serialize = () => ((game._override_screen || game._override_serialized_persistent)
+                && game._override_serialized_screen)
+            ? game._override_serialized_screen
+            : originalSerialize();
+    }
+    game._override_screen = screen;
+    game._override_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
+    game._override_serialized_screen = screen;
+    game._override_serialized_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
+    if (game.nhDisplay && cursor) {
+        game.nhDisplay.cursorCol = cursor[0];
+        game.nhDisplay.cursorRow = cursor[1];
+    }
+}
+
+function show_quest_leader_pager_basic(screen, cursor) {
+    show_serialized_override_basic(screen, cursor);
+    game._latched_more_screen = screen;
+    game._latched_more_cursor = [cursor[0], cursor[1], 1];
+    game._latched_more_keep_until_dismiss = true;
+    game._quest_leader_pager_active = true;
+    queue_more_prompt();
+}
+
+function is_quest_start_level_basic() {
+    const uz = game.u?.uz;
+    if (game.quest_dnum == null || !uz || uz.dnum !== game.quest_dnum) return false;
+    if (game._last_special_protofile === 'x-strt') return true;
+    return !!game.specialLevels?.some((lev) =>
+        lev?.proto === 'x-strt'
+        && lev?.dlevel?.dnum === uz.dnum
+        && lev?.dlevel?.dlevel === uz.dlevel);
+}
+
+function quest_player_name_basic() {
+    return String(game.plname || game.u?.name || 'wizard');
+}
+
+function quest_leader_text_basic(msgid) {
+    if (msgid !== 'leader_first') return '';
+    const text = QUEST_LEADER_FIRST_TEXT.get(game.urole?.name?.m);
+    if (!text) return '';
+    return text.replaceAll('%p', quest_player_name_basic());
+}
+
+function maybe_quest_leader_talk_basic(mtmp, nearby) {
+    // C refs: src/monmove.c:dochug(), src/quest.c:quest_talk(),
+    // src/quest.c:leader_speaks(), src/quest.c:chat_with_leader().
+    if (!nearby || mtmp?.data?.msound !== MS_LEADER || !mtmp.mpeaceful) return false;
+    if (!is_quest_start_level_basic()) return false;
+    const qstat = game.quest_status || (game.quest_status = {});
+    if (qstat.pissed_off || qstat.met_leader) return false;
+    const text = quest_leader_text_basic('leader_first');
+    if (!text) return false;
+
+    // C ref: questpgr.c:qt_pager(); loading quest.lua/nhlib.lua for this
+    // first leader pager performs the top-level alignment shuffle first.
+    rn2(3);
+    rn2(2);
+    qstat.met_leader = true;
+    qstat.not_ready = 0;
+
+    const screen = render_more_pager_screen_basic(text);
+    const cursor = [8, TERMINAL_ROWS - 1];
+    if (game._more || game._pending_message || (game._more_message_queue || []).length) {
+        game._quest_leader_pager_screen = screen;
+        game._quest_leader_pager_cursor = cursor;
+    } else {
+        show_quest_leader_pager_basic(screen, cursor);
+    }
+    game._monster_turn_paused_for_more = true;
+    return true;
+}
 const GEM_CLASS = 13;
 const ROCK_CLASS = 14;
 const BALL_CLASS = 16;
@@ -332,6 +427,22 @@ const SLING_PROJECTILE_ORDER = [FLINT, ROCK, LOADSTONE, LUCKSTONE];
 const SLING_AMMO = new Set(SLING_PROJECTILE_ORDER);
 const THROWN_DAGGER_WEAPON_ORDER = [SILVER_DAGGER, ELVEN_DAGGER, DAGGER, ORCISH_DAGGER, KNIFE];
 const THROWN_DAGGER_WEAPONS = new Set(THROWN_DAGGER_WEAPON_ORDER);
+const THROWN_SMALL_DAMAGE_DICE = new Map([
+    [ARROW, 6], [ELVEN_ARROW, 7], [ORCISH_ARROW, 5], [SILVER_ARROW, 6], [YA, 7],
+    [CROSSBOW_BOLT, 4],
+    [DART, 3], [SHURIKEN, 8], [BOOMERANG, 9],
+    [DAGGER, 4], [ELVEN_DAGGER, 5], [ORCISH_DAGGER, 3], [SILVER_DAGGER, 4],
+    [KNIFE, 3], [SHORT_SWORD, 6],
+    [FLINT, 6], [ROCK, 3], [LOADSTONE, 3], [LUCKSTONE, 3],
+]);
+const THROWN_LARGE_DAMAGE_DICE = new Map([
+    [ARROW, 6], [ELVEN_ARROW, 6], [ORCISH_ARROW, 6], [SILVER_ARROW, 6], [YA, 7],
+    [CROSSBOW_BOLT, 6],
+    [DART, 2], [SHURIKEN, 6], [BOOMERANG, 9],
+    [DAGGER, 3], [ELVEN_DAGGER, 3], [ORCISH_DAGGER, 3], [SILVER_DAGGER, 3],
+    [KNIFE, 2], [SHORT_SWORD, 8],
+    [FLINT, 6], [ROCK, 3], [LOADSTONE, 3], [LUCKSTONE, 3],
+]);
 const NON_HTH_WEAPONS = new Set([
     ARROW, ELVEN_ARROW, ORCISH_ARROW, SILVER_ARROW, YA, CROSSBOW_BOLT, DART, SHURIKEN, BOOMERANG,
     BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW,
@@ -1389,6 +1500,53 @@ function door_blocks_diagonal(x, y) {
     return loc && IS_DOOR(loc.typ) && (loc.doormask & ~D_BROKEN);
 }
 
+function mon_is_slithy_basic(mtmp) {
+    return !!((mtmp?.data?.mflags1 ?? 0) & M1_SLITHY);
+}
+
+function mon_is_noncorporeal_basic(mtmp) {
+    return mtmp?.data?.mlet === 'S_GHOST';
+}
+
+function bad_rock_basic(mtmp, x, y) {
+    // C ref: src/hack.c:bad_rock().
+    if (is_sokoban_level_basic() && boulder_at(x, y)) return true;
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    const flags1 = mtmp?.data?.mflags1 ?? 0;
+    const blockedTunnel = !(flags1 & M1_TUNNEL)
+        || !!(flags1 & M1_NEEDPICK)
+        || !may_dig_basic(x, y);
+    return IS_OBSTRUCTED(loc.typ)
+        && blockedTunnel
+        && !(mon_passes_walls(mtmp) && may_passwall(x, y));
+}
+
+function cant_squeeze_thru_basic(mtmp) {
+    // C ref: src/hack.c:cant_squeeze_thru().  Return truthy when a tight
+    // diagonal blocks the monster.
+    if (mon_passes_walls(mtmp)) return false;
+    const ptr = mtmp?.data || {};
+    if ((ptr.msize ?? MZ_SMALL) >= MZ_LARGE
+        && !mon_is_amorphous(mtmp)
+        && !mon_is_whirly(mtmp)
+        && !mon_is_noncorporeal_basic(mtmp)
+        && !mon_is_slithy_basic(mtmp)
+        && !can_fog_basic(mtmp)) {
+        return true;
+    }
+    const load = monster_inventory_basic(mtmp)
+        .reduce((sum, obj) => sum + object_weight_basic(obj), 0);
+    return load > WT_TOOMUCH_DIAGONAL;
+}
+
+function diagonal_tight_squeeze_blocks_basic(mtmp, omx, omy, nx, ny) {
+    return nx !== omx && ny !== omy
+        && bad_rock_basic(mtmp, omx, ny)
+        && bad_rock_basic(mtmp, nx, omy)
+        && cant_squeeze_thru_basic(mtmp);
+}
+
 function distmin(x0, y0, x1, y1) {
     return Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
 }
@@ -1418,6 +1576,7 @@ function m_move_candidate_list_basic(mtmp, omx, omy, options = {}) {
                 && (door_blocks_diagonal(omx, omy) || door_blocks_diagonal(nx, ny))) {
                 continue;
             }
+            if (diagonal_tight_squeeze_blocks_basic(mtmp, omx, omy, nx, ny)) continue;
             const tunnel = can_tunnel_at_basic(mtmp, nx, ny);
             if (!tunnel && !can_mon_step(mtmp, nx, ny, options)) continue;
             candidates.push({ x: nx, y: ny, tunnel });
@@ -1724,6 +1883,51 @@ function offensive_potion_candidate_basic(mtmp) {
     return candidate?.kind === 'potion' ? candidate.obj : null;
 }
 
+function healing_potion_candidate_basic(mtmp) {
+    // C ref: muse.c:m_use_healing().
+    for (const [kind, otyp] of [
+        ['POT_FULL_HEALING', POT_FULL_HEALING],
+        ['POT_EXTRA_HEALING', POT_EXTRA_HEALING],
+        ['POT_HEALING', POT_HEALING],
+    ]) {
+        const obj = monster_carrying_basic(mtmp, otyp);
+        if (obj) return { kind, obj };
+    }
+    return null;
+}
+
+function defensive_item_candidate_basic(mtmp, tryescape = false) {
+    // C ref: muse.c:find_defensive().  This ports the healing-potion subset;
+    // escape items, horns, and create-monster defenses remain unimplemented.
+    if (mon_is_animal(mtmp) || mon_is_mindless(mtmp)) return null;
+    const targetX = mtmp.mux ?? game.u?.ux ?? mtmp.mx;
+    const targetY = mtmp.muy ?? game.u?.uy ?? mtmp.my;
+    if (!tryescape && dist2(mtmp.mx, mtmp.my, targetX, targetY) > 25) return null;
+    if (game.u?.uswallow && game.u?.ustuck === mtmp) return null;
+
+    const nohands = !!((mtmp.data?.mflags1 ?? 0) & M1_NOHANDS);
+    const pestilence = mtmp.data?.name === 'PESTILENCE';
+    if (mtmp.mcansee === 0 && !nohands && !pestilence) {
+        const blindHealing = healing_potion_candidate_basic(mtmp);
+        if (blindHealing) return blindHealing;
+    }
+
+    if (!tryescape) {
+        const hp = mtmp.mhp ?? mtmp.mhpmax ?? 1;
+        const hpmax = Math.max(1, mtmp.mhpmax ?? hp);
+        const ulevel = game.u?.ulevel ?? 1;
+        const fraction = ulevel < 10 ? 5 : ulevel < 14 ? 4 : 3;
+        if (hp >= hpmax || (hp >= 10 && hp * fraction >= hpmax)) return null;
+
+        if (mtmp.mpeaceful) {
+            return nohands ? null : healing_potion_candidate_basic(mtmp);
+        }
+    }
+
+    if (nohands || pestilence) return null;
+    return healing_potion_candidate_basic(mtmp);
+}
+
 function misc_item_candidate_basic(mtmp) {
     // C ref: muse.c:find_misc().  Choice is not prioritized; the last viable
     // inventory object wins, with nomore() only suppressing adjacent duplicate
@@ -1752,6 +1956,9 @@ function misc_item_candidate_basic(mtmp) {
 function potion_display_name(obj) {
     if (object_type_known_basic(obj?.otyp)) {
         if (obj?.otyp === POT_SPEED) return 'a potion of speed';
+        if (obj?.otyp === POT_HEALING) return 'a potion of healing';
+        if (obj?.otyp === POT_EXTRA_HEALING) return 'a potion of extra healing';
+        if (obj?.otyp === POT_FULL_HEALING) return 'a potion of full healing';
     }
     const appearance = getObjectDescription(obj?.otyp) || '';
     return appearance ? `a ${appearance} potion` : 'a potion';
@@ -1818,6 +2025,72 @@ async function mon_adjust_speed_basic(mtmp, adjust) {
         resumeMonsterTurn: !!game._monster_turn_paused_for_more,
         move: !!game._monster_turn_paused_for_more,
     });
+}
+
+function buc_sign_basic(obj) {
+    return obj?.blessed ? 1 : obj?.cursed ? -1 : 0;
+}
+
+function heal_mon_basic(mtmp, amount, minAmount) {
+    // C ref: mon.c:healmon().  The third argument is allowed overheal,
+    // not a minimum healing amount.
+    const hp = mtmp.mhp ?? mtmp.mhpmax ?? 1;
+    const hpmax = Math.max(1, mtmp.mhpmax ?? hp);
+    if (hp + amount > hpmax + minAmount) {
+        mtmp.mhpmax = hpmax + minAmount;
+        mtmp.mhp = mtmp.mhpmax;
+    } else {
+        mtmp.mhp = hp + amount;
+        if (mtmp.mhp > hpmax) mtmp.mhpmax = mtmp.mhp;
+        else mtmp.mhpmax = hpmax;
+    }
+}
+
+function monster_potion_precheck_basic(mtmp, obj) {
+    // C ref: muse.c:precheck().  NetHack checks the milky/smoky occupant
+    // chance before monster potion effects.  The full occupant branch is a
+    // separate subsystem; consuming the gate here preserves ordinary quaff RNG.
+    const desc = getObjectDescription(obj?.otyp);
+    if (desc !== 'milky' && desc !== 'smoky') return 0;
+    return rn2(13) === 0 ? 2 : 0;
+}
+
+async function maybe_use_defensive_item_basic(mtmp, tryescape = false) {
+    const candidate = defensive_item_candidate_basic(mtmp, tryescape);
+    if (!candidate) return false;
+
+    const precheck = monster_potion_precheck_basic(mtmp, candidate.obj);
+    if (precheck) {
+        await mquaffmsg_basic(mtmp, candidate.obj);
+        remove_monster_inventory_object(mtmp, candidate.obj);
+        return true;
+    }
+
+    if (candidate.kind === 'POT_HEALING') {
+        await mquaffmsg_basic(mtmp, candidate.obj);
+        heal_mon_basic(mtmp, d(6 + 2 * buc_sign_basic(candidate.obj), 4), 1);
+        if (hero_can_spot_monster(mtmp))
+            await append_monster_effect_topline(`${monster_subject(mtmp)} looks better.`);
+        remove_monster_inventory_object(mtmp, candidate.obj);
+        return true;
+    }
+    if (candidate.kind === 'POT_EXTRA_HEALING') {
+        await mquaffmsg_basic(mtmp, candidate.obj);
+        heal_mon_basic(mtmp, d(6 + 2 * buc_sign_basic(candidate.obj), 8), candidate.obj.blessed ? 5 : 2);
+        if (hero_can_spot_monster(mtmp))
+            await append_monster_effect_topline(`${monster_subject(mtmp)} looks much better.`);
+        remove_monster_inventory_object(mtmp, candidate.obj);
+        return true;
+    }
+    if (candidate.kind === 'POT_FULL_HEALING') {
+        await mquaffmsg_basic(mtmp, candidate.obj);
+        heal_mon_basic(mtmp, mtmp.mhpmax ?? mtmp.mhp ?? 1, candidate.obj.blessed ? 8 : 4);
+        if (hero_can_spot_monster(mtmp))
+            await append_monster_effect_topline(`${monster_subject(mtmp)} looks completely healed.`);
+        remove_monster_inventory_object(mtmp, candidate.obj);
+        return true;
+    }
+    return false;
 }
 
 async function maybe_use_misc_item_basic(mtmp) {
@@ -2554,6 +2827,7 @@ async function throw_venom_at_hero_basic(mtmp, obj) {
     while (range-- > 0) {
         x += dx;
         y += dy;
+        observe_thrown_object_basic(obj, x, y);
         if (x === game.u?.ux && y === game.u?.uy) {
             let hitv = 8;
             let damage = 0;
@@ -2641,7 +2915,7 @@ async function throw_weapon_at_hero_basic(mtmp, obj) {
             show_glyph_cell(glyphX, glyphY, thrown_projectile_glyph(projectile), monster_projectile_glyph_color(projectile), false);
         // C ref: src/mthrowu.c:ohitmon(). The hit check precedes dmgval().
         rnd(20);
-        const damage = monster_weapon_damage(projectile);
+        const damage = monster_weapon_damage(projectile, hit.mon);
         if (typeof hit.mon.mhp === 'number') {
             const hp = hit.mon.mhp - damage;
             hit.mon.mhp = hit.mon.mtame ? Math.max(1, hp) : Math.max(0, hp);
@@ -5495,6 +5769,17 @@ function object_type_known_basic(otyp) {
         && game.discoveredObjects.has(otyp);
 }
 
+function observe_thrown_object_basic(obj, x, y) {
+    // C refs: src/mthrowu.c:m_throw(), src/o_init.c:observe_object().
+    if (!Number.isInteger(obj?.otyp) || hallucinating() || !cansee(x, y)) return;
+    const order = Array.isArray(game.discoveryOrder)
+        ? game.discoveryOrder
+        : (game.discoveryOrder = []);
+    if (!order.includes(obj.otyp)) order.push(obj.otyp);
+    const encountered = game.encounteredObjects || (game.encounteredObjects = new Set());
+    if (typeof encountered.add === 'function') encountered.add(obj.otyp);
+}
+
 function discover_monster_wand_effect(otyp) {
     if (!Number.isInteger(otyp)) return;
     const order = Array.isArray(game.discoveryOrder)
@@ -6874,16 +7159,22 @@ function monster_attack_verb(attack, counts) {
     return seen > 0 && verb === 'hits' ? 'hits again' : verb;
 }
 
-function monster_weapon_damage(obj) {
-    let damage = 0;
-    if ([ARROW, ELVEN_ARROW, ORCISH_ARROW, SILVER_ARROW, YA].includes(obj?.otyp)) damage = rnd(6);
-    else if (obj?.otyp === CROSSBOW_BOLT) damage = rnd(4) + 1;
-    else if (THROWN_DAGGER_WEAPONS.has(obj?.otyp) || obj?.otyp === DART) damage = rnd(3);
-    else if (obj?.otyp === FLINT) damage = rnd(6);
-    else if ([ROCK, LOADSTONE, LUCKSTONE].includes(obj?.otyp)) damage = rnd(3);
+function hero_bigmonst_basic() {
+    const ptr = game.youmonst?.data || game.u?.youmonst?.data || game.u?.data;
+    return (ptr?.msize ?? MZ_HUMAN) >= MZ_LARGE;
+}
+
+function monster_weapon_damage(obj, targetMon = null) {
+    // C ref: src/weapon.c:dmgval().  Monster thrown projectiles use the
+    // target's small/large damage die before `thitu()` decides whether the
+    // projectile hits.
+    const big = targetMon ? (targetMon?.data?.msize ?? MZ_HUMAN) >= MZ_LARGE : hero_bigmonst_basic();
+    const dice = (big ? THROWN_LARGE_DAMAGE_DICE : THROWN_SMALL_DAMAGE_DICE).get(obj?.otyp) || 0;
+    let damage = dice ? rnd(dice) : 0;
+    if (obj?.otyp === CROSSBOW_BOLT) damage++;
     else if ([BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW].includes(obj?.otyp)) damage = rnd(2);
-    // C ref: src/weapon.c:dmgval().  Weapon enchantment and erosion adjust
-    // the base damage after the object-specific dice.
+    // Weapon enchantment and erosion adjust the base damage after the
+    // object-specific dice.
     return Math.max(0, damage + (obj?.spe || 0) - projectile_erosion(obj));
 }
 
@@ -7218,6 +7509,10 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
         candidates = m_move_candidate_list_basic(mtmp, omx, omy, { eelLandFallback: true });
     }
     if (!candidates.length) {
+        // C ref: src/monmove.c:m_move().  When mfndpos() finds no legal
+        // square, monsters get one tryescape defensive-item chance before
+        // returning MMOVE_NOMOVES.
+        if (await maybe_use_defensive_item_basic(mtmp, true)) return MMOVE_DONE;
         // C ref: src/monmove.c:m_move()/postmov().  An empty candidate set
         // still reaches postmov() for no-relocation side effects.
         maybe_spin_web_basic(mtmp);
@@ -7569,6 +7864,10 @@ export function mcalcdistress() {
             }
         }
         if (mtmp.mspec_used) mtmp.mspec_used--;
+        if (mtmp.mblinded && --mtmp.mblinded <= 0) {
+            mtmp.mblinded = 0;
+            mtmp.mcansee = 1;
+        }
         if (mtmp.cham) decide_to_shapeshift_basic(mtmp);
         were_change(mtmp);
         if (mtmp.mfrozen && --mtmp.mfrozen <= 0) {
@@ -7871,7 +8170,18 @@ export async function movemon() {
             // get a pre-dochug chance to hide again before normal AI.
             if (hideunder_basic(mtmp)) continue;
         }
-        if (mtmp.mcanmove === 0 || (mtmp.mstrategy & STRAT_WAITMASK)) continue;
+        if (mtmp.mcanmove === 0 || (mtmp.mstrategy & STRAT_WAITMASK)) {
+            if (mtmp.mcanmove !== 0
+                && (mtmp.mstrategy & STRAT_CLOSE)
+                && !mtmp.msleeping
+                && monnear_basic(mtmp, game.u?.ux ?? 0, game.u?.uy ?? 0)
+                && maybe_quest_leader_talk_basic(mtmp, true)) {
+                g._resume_movemon_after_mon = mtmp;
+                g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+                return false;
+            }
+            continue;
+        }
         if (mtmp.msleeping) {
             const awoke = await disturb_basic(mtmp);
             if (!awoke) continue;
@@ -7910,6 +8220,14 @@ export async function movemon() {
             }
         }
         const fleeState = distfleeck(mtmp); // consuming rn2(5)
+        if (await maybe_use_defensive_item_basic(mtmp, false)) {
+            if (g._monster_turn_paused_for_more) {
+                g._resume_movemon_after_mon = mtmp;
+                g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+                return false;
+            }
+            continue;
+        }
         if (await maybe_use_misc_item_basic(mtmp)) {
             if (g._monster_turn_paused_for_more) {
                 g._resume_movemon_after_mon = mtmp;

@@ -12,6 +12,12 @@ import {
 } from './const.js';
 
 const ROLE_INIT = new Map([
+    ['Archeologist', {
+        attrbase: [7, 10, 10, 7, 7, 7],
+        attrmax: [20, 20, 20, 10, 20, 10],
+        attrdist: [20, 20, 20, 10, 20, 10],
+        hp: 13, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
+    }],
     ['Healer', {
         attrbase: [7, 7, 13, 7, 11, 16],
         attrmax: [15, 20, 20, 15, 25, 5],
@@ -77,6 +83,11 @@ const ROLE_INIT = new Map([
 const HUMAN_ATTRMAX = [118, 18, 18, 18, 18, 18];
 
 const LEVEL_ADV = new Map([
+    ['Archeologist', {
+        xlev: 14,
+        hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+    }],
     ['Healer', {
         xlev: 20,
         hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
@@ -242,6 +253,8 @@ const QUARTERSTAFF = 79;
 const AKLYS = 80;
 const FLAIL = 81;
 const BULLWHIP = 82;
+const FEDORA = 92;
+const LEATHER_JACKET = 135;
 const BOW = 83;
 const ELVEN_BOW = 84;
 const ORCISH_BOW = 85;
@@ -260,6 +273,7 @@ const ORCISH_CHAIN_MAIL = 129;
 const RING_MAIL = 132;
 const ORCISH_RING_MAIL = 133;
 const GRAY_DRAGON_SCALE_MAIL = 101;
+const SILVER_DRAGON_SCALE_MAIL = 103;
 const HAWAIIAN_SHIRT = 136;
 const LEATHER_ARMOR = 134;
 const ELVEN_CLOAK = 139;
@@ -298,6 +312,7 @@ const LOCK_PICK = 222;
 const TOWEL = 234;
 const LEASH = 236;
 const STETHOSCOPE = 237;
+const TINNING_KIT = 238;
 const TIN_OPENER = 239;
 const SACK = 217;
 const OIL_LAMP = 227;
@@ -308,6 +323,7 @@ const WOODEN_HARP = 253;
 const BELL = 255;
 const BUGLE = 256;
 const LEATHER_DRUM = 257;
+const PICK_AXE = 259;
 const SPE_FORCE_BOLT = 383;
 const SPE_CONFUSE_MONSTER = 377;
 const SPE_PROTECTION = 403;
@@ -350,6 +366,7 @@ const WAN_WISHING = 414;
 const WAN_NOTHING = 416;
 const WAN_POLYMORPH = 422;
 const WAN_SLEEP = 432;
+const TOUCHSTONE = 472;
 
 const SPELLBOOK_LEVEL = new Map([
     [366, 5], [367, 2], [368, 4], [369, 4], [370, 3], [371, 7],
@@ -393,6 +410,18 @@ const WIZARD_INVENTORY = [
     { typ: SPE_FORCE_BOLT, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
     { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: SPBOOK_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
     { typ: MAGIC_MARKER, spe: 19, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const ARCHEOLOGIST_INVENTORY = [
+    // C ref: src/u_init.c:Archeologist[].
+    { typ: BULLWHIP, spe: 2, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: LEATHER_JACKET, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: FEDORA, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: FOOD_RATION, spe: 0, cls: FOOD_CLASS, min: 3, max: 3, bless: 0 },
+    { typ: PICK_AXE, spe: UNDEF_SPE, cls: TOOL_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: TINNING_KIT, spe: UNDEF_SPE, cls: TOOL_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: TOUCHSTONE, spe: 0, cls: GEM_CLASS, min: 1, max: 1, bless: 0 },
+    { typ: SACK, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
 const HEALER_INVENTORY = [
@@ -571,6 +600,7 @@ const STARTING_QUIVER_WEAPONS = new Set([
     ARROW, ELVEN_ARROW, ORCISH_ARROW, SILVER_ARROW, YA, CROSSBOW_BOLT,
     DART, SHURIKEN, BOOMERANG,
 ]);
+const STARTING_WEAPON_TOOLS = new Set([PICK_AXE]);
 
 const KNIGHT_KNOWN_WEAPONS = [
     // C ref: src/u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
@@ -867,8 +897,10 @@ function apply_starting_worn_extrinsic(obj) {
 
 function apply_starting_weapon_use(obj) {
     // C ref: src/u_init.c:ini_inv_use_obj().  Starting missile/ammo stacks
-    // fill the quiver before ordinary weapons are auto-wielded.
-    if (!obj || obj.oclass !== WEAPON_CLASS) return;
+    // fill the quiver before ordinary weapons and weapon-tools are used.
+    const weaponLike = obj?.oclass === WEAPON_CLASS
+        || (obj?.oclass === TOOL_CLASS && STARTING_WEAPON_TOOLS.has(obj.otyp));
+    if (!weaponLike) return;
     if (obj.wielded || obj.alternate || obj.quivered) return;
     if (STARTING_QUIVER_WEAPONS.has(obj.otyp)) {
         if (!(game.inventory || []).some((item) => item?.quivered)) obj.quivered = true;
@@ -882,6 +914,7 @@ function apply_starting_weapon_use(obj) {
 function armor_base_bonus(obj) {
     switch (obj?.otyp) {
     case GRAY_DRAGON_SCALE_MAIL:
+    case SILVER_DRAGON_SCALE_MAIL:
         return 9;
     case SPLINT_MAIL:
         return 6;
@@ -902,6 +935,7 @@ function armor_base_bonus(obj) {
     case HELMET:
     case CLOAK_OF_MAGIC_RESISTANCE:
     case CLOAK_OF_DISPLACEMENT:
+    case LEATHER_JACKET:
     case LEATHER_GLOVES:
     case GAUNTLETS_OF_POWER:
     case GAUNTLETS_OF_DEXTERITY:
@@ -1018,7 +1052,20 @@ export function u_init_role_inventory() {
         nocreate3: UNDEF_TYP,
         nocreate4: UNDEF_TYP,
     };
-    if (role?.name?.m === 'Healer') {
+    if (role?.name?.m === 'Archeologist') {
+        ini_inv(ARCHEOLOGIST_INVENTORY, noCreate, role.name.m);
+        // C ref: src/u_init.c:u_init_role(). Archeologists get at most one of
+        // tin opener, lamp, or magic marker through this ordered gate chain.
+        if (!rn2(10)) {
+            ini_inv(TIN_OPENER_INVENTORY, noCreate, role.name.m);
+        } else if (!rn2(4)) {
+            ini_inv(LAMP_INVENTORY, noCreate, role.name.m);
+        } else if (!rn2(5)) {
+            ini_inv(MAGIC_MARKER_INVENTORY, noCreate, role.name.m);
+        }
+        discover_role_known_object(SACK);
+        discover_role_known_object(TOUCHSTONE);
+    } else if (role?.name?.m === 'Healer') {
         game._goldCount = rn1(1000, 1001);
         game._startupRoleGoldInitialized = true;
         roleStartingGold = game._goldCount;
@@ -1220,7 +1267,10 @@ export function apply_startup_role_state() {
     // C ref: src/polyself.c:set_uasmon().  Hero infravision comes from the
     // physical race's monster form while unpolymorphed.
     if (INFRAVISION_RACES.has(currentRaceName())) game.u.uprops.infravision = true;
-    if (role?.name?.m === 'Monk') {
+    if (role?.name?.m === 'Archeologist') {
+        // C refs: src/u_init.c:u_init_misc(), src/attrib.c:arc_abil[].
+        game.u.uprops.searching = true;
+    } else if (role?.name?.m === 'Monk') {
         // C refs: src/u_init.c:u_init_misc(), src/attrib.c:mon_abil[].
         game.u.uprops.intrinsic_fast = true;
         game.u.uprops.sleep_resistance = true;

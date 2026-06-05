@@ -15,7 +15,7 @@ import {
     promptPendingPetCombatBeforeDeferredFloorList,
 } from './monmove.js';
 import { initrack, settrack } from './track.js';
-import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
+import { mklev, l_nhcore_init, monster_by_user_name, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
@@ -172,11 +172,24 @@ function isSimpleMonsterHitYouChain(line) {
     return String(line || '').split('  ').every(isSimpleMonsterHitYouLine);
 }
 
+function roleQuestGender(monsterName) {
+    const ptr = monster_by_user_name(monsterName);
+    if (!ptr) return null;
+    if (ptr.neuter) return 2;
+    if (ptr.female) return 1;
+    if (ptr.male) return 0;
+    return rn2(100) < 50 ? 1 : 0;
+}
+
 function preLuaRoleInitRng() {
     const role = findRole(game._nhopts?.role);
-    // C ref: role.c:role_init(). Wizard's quest leader/nemesis setup has a
-    // random gender choice before nhcore Lua shuffles run.
-    if (role?.name?.m === 'Wizard') rn2(100);
+    // C ref: role.c:role_init().  Quest leader/nemesis gender is fixed during
+    // role initialization; random-gender monsters consume rn2(100) before
+    // nhcore Lua shuffles run.
+    const quest = role?.quest || {};
+    const qstat = game.quest_status || (game.quest_status = {});
+    if (quest.leader) qstat.ldrgend = roleQuestGender(quest.leader);
+    if (quest.nemesis) qstat.nemgend = roleQuestGender(quest.nemesis);
     // C ref: role.c:role_init(). Priests have no own pantheon; new games roll
     // random roles until one with gods is found and copy that pantheon.
     if (role?.name?.m === 'Priest' && !role.gods) {
@@ -1033,6 +1046,12 @@ export async function advanceTurn() {
     await interruptMultiAfterFullHealth(g, regen_hp());
     regen_pw((g.moves || 1) + 1);
 
+    // C ref: src/allmain.c:moveloop_core().  Automatic Searching runs before
+    // warning, trap warnings, and ambient sounds; the return value is ignored.
+    if (g.u?.uprops?.searching && !delayedOccupationPending(g)
+        && !g.level?.flags?.noautosearch && (g.context?.multi ?? 0) >= 0)
+        await dosearch0_basic(true);
+
     if (await dosounds()) return;
     await finishPostDosoundsTurnTail(g);
 }
@@ -1159,6 +1178,11 @@ function occupationPending(g) {
         || !!g._occupation_finish_message
         || !!g._force_lock
         || (g._force_lock_post_success_turns || 0) > 0;
+}
+
+function delayedOccupationPending(g) {
+    return (g._occupation_turns_remaining || 0) > 0
+        || !!g._occupation_finish_message;
 }
 
 async function packedOccupationPline(msg) {
@@ -1528,7 +1552,31 @@ async function runOccupationPreFinishTurn(g) {
         g._occupation_pre_finish_turn_done = true;
         await advanceTurn();
         creditEncumberedShortfallTurn(g);
+        return;
     }
+    if (g._occupation_fast_catchup) {
+        // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  A fast hero
+        // whose delayed occupation turn did not grant an extra action remains
+        // in the immobile loop for another monster/allmain pass before
+        // `unmul()` prints the finish message.
+        g._occupation_fast_catchup = false;
+        if (!g._fast_extra_action_pending) {
+            g._occupation_pre_finish_turn_done = true;
+            await advanceTurn();
+        }
+    }
+}
+
+async function completePendingOccupationTurnTail(g) {
+    if (g._advance_turn_completed_tail) return true;
+    if (g._monster_turn_paused_for_more) return false;
+    // C ref: src/allmain.c:moveloop_core().  The final negative-multi turn
+    // runs ambient sounds and the ordinary turn tail before unmul() fires the
+    // armor/study/eat finish callback.  Automatic Searching is skipped here
+    // because C still has gm.multi < 0.
+    if (await dosounds()) return false;
+    await finishPostDosoundsTurnTail(g);
+    return true;
 }
 
 async function continueNomulTurns(g, options = {}) {
@@ -1653,6 +1701,7 @@ async function continueOccupationTurns(g) {
             g._status_uac_override = null;
         }
         await runOccupationPreFinishTurn(g);
+        if (!await completePendingOccupationTurnTail(g)) return false;
         applyOccupationFinishObjectEffects(g);
         applyOccupationLearnSpell(g);
         if (g._pending_message

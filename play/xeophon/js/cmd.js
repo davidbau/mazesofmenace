@@ -11045,9 +11045,22 @@ export function applyLiquidFlowFloorObjectDamage(x, y, typ) {
     return { messages, changed, destroyed };
 }
 
+function fireInventoryDamageResult(messages, events, damage = 0, deathCause = '') {
+    return {
+        messages,
+        events,
+        damage,
+        deathCause,
+        lifeSaving: !!messages.lifeSaving,
+        fatal: !!messages.fatal,
+        more: !!messages.more,
+    };
+}
+
 function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteItems = false, {
     updateArmorInventory = true,
     preburnedArmor = null,
+    allowLifeSaving = false,
 } = {}) {
     const messages = [];
     const events = [];
@@ -11061,7 +11074,7 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
         destroyItems = true;
         igniteItems = true;
     } else if (rollIgniteItems) {
-        if (!armor.bodyHit) return { messages, events, damage: 0, deathCause: '' };
+        if (!armor.bodyHit) return fireInventoryDamageResult(messages, events, 0, '');
         destroyItems = !rn2(3);
         if (destroyItems) rollIgniteAfterDestroy = true;
         else igniteItems = !rn2(3);
@@ -11069,14 +11082,14 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
         destroyItems = true;
         igniteItems = true;
     } else {
-        return { messages, events, damage: 0, deathCause: '' };
+        return fireInventoryDamageResult(messages, events, 0, '');
     }
 
     let damage = 0;
     let deathCause = '';
     if (!destroyItems) {
         if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
-        return { messages, events, damage, deathCause };
+        return fireInventoryDamageResult(messages, events, damage, deathCause);
     }
 
     let limit = Math.trunc(origDamage / 5);
@@ -11084,7 +11097,7 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
     if (limit < 1) {
         if (rollIgniteAfterDestroy) igniteItems = !rn2(3);
         if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
-        return { messages, events, damage, deathCause };
+        return fireInventoryDamageResult(messages, events, damage, deathCause);
     }
     limit = Math.min(20, limit);
 
@@ -11127,7 +11140,19 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
         const message = `${subject} ${fireInventoryDestroyVerb(cls, item, plural)}!`;
         if (cls === 'potion' || cls === 'slime') {
             if (cls === 'potion') {
-                potionBreathe(item, vaporMessages);
+                potionBreathe(item, vaporMessages, { allowLifeSaving });
+                if (vaporMessages.lifeSaving) {
+                    messages.lifeSaving = true;
+                    event.lifeSaving = true;
+                }
+                if (vaporMessages.fatal) {
+                    messages.fatal = true;
+                    event.fatal = true;
+                }
+                if (vaporMessages.more) {
+                    messages.more = true;
+                    event.more = true;
+                }
                 if (vaporMessages.length) {
                     const insertAfter = vaporMessages.map(text => ({ text, more: true }));
                     event.insertAfter = insertAfter;
@@ -11151,7 +11176,7 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
     }
     if (rollIgniteAfterDestroy) igniteItems = !rn2(3);
     if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
-    return { messages, events, damage, deathCause };
+    return fireInventoryDamageResult(messages, events, damage, deathCause);
 }
 
 function forceWeaponName(item) {
@@ -17931,7 +17956,7 @@ function potionHitSaddle(potion, mon, messages, kind = thrownPotionEffectKind(po
     return false;
 }
 
-export function heroThrownPotionHitMonster(potion, mon, { yourFault = true } = {}) {
+export function heroThrownPotionHitMonster(potion, mon, { yourFault = true, allowLifeSaving = false } = {}) {
     const messages = [];
     const bottle = chestShatterBottleName();
     const kind = thrownPotionEffectKind(potion);
@@ -18011,7 +18036,7 @@ export function heroThrownPotionHitMonster(potion, mon, { yourFault = true } = {
     const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
     if ((distance === 0 || (distance < 3 && !rn2(Math.max(1, Math.trunc((1 + dex) / 2)))))
         && heroCanReceivePotionVapor()) {
-        potionBreathe(potion, messages);
+        potionBreathe(potion, messages, { allowLifeSaving });
     } else if (potion.dknown && !game.u?.blind && cansee(mon.mx, mon.my)) {
         queuePotionTryCall(potion, kind);
     }
@@ -30380,6 +30405,8 @@ export const __shopBillingTestHooks = {
     subFromShopBill,
     subOneFromShopBill,
     fireDamageInventoryForTest: fireDamageInventory,
+    heroFireTrapResultForTest: heroFireTrapResult,
+    applyHeroFireTrapFatalResultForTest: applyHeroFireTrapFatalResult,
     checkUnpaidUsageForTest: checkUnpaidUsage,
     costlyTinForTest: costlyTinAlteration,
     tipContainerContents,
@@ -43719,7 +43746,7 @@ function sitRustTrapMessage(trap, prefix) {
     return messages.join('  ');
 }
 
-function heroFireTrapMessage(trap, prefix = '') {
+function heroFireTrapResult(trap, prefix = '', { allowLifeSaving = false } = {}) {
     trap.tseen = true;
     const origDamage = d(2, 4);
     const messages = [prefix ? `${prefix}  A tower of flame erupts from the floor!` : 'A tower of flame erupts from the floor!'];
@@ -43735,7 +43762,7 @@ function heroFireTrapMessage(trap, prefix = '') {
             game.u.uhp = Math.min(game.u.uhp || 1, game.u.uhpmax);
         }
     }
-    const inventoryFire = fireDamageInventory(origDamage);
+    const inventoryFire = fireDamageInventory(origDamage, false, false, { allowLifeSaving });
     messages.push(...inventoryFire.messages);
     const floorFire = burnFloorObjectsByFire(game.u?.ux || 0, game.u?.uy || 0, {
         giveFeedback: !game.u?.blind,
@@ -43743,10 +43770,47 @@ function heroFireTrapMessage(trap, prefix = '') {
     });
     messages.push(...floorFire.messages);
     if (floorFire.count && game.u?.blind) messages.push('You smell paper burning.');
-    damage += inventoryFire.damage;
-    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-    if ((game.u?.uhp || 0) <= 0) game._death_cause = inventoryFire.deathCause || 'killed by a tower of flame';
-    return messages.join('  ');
+    if (!inventoryFire.lifeSaving && !inventoryFire.fatal) {
+        damage += inventoryFire.damage;
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        if ((game.u?.uhp || 0) <= 0) game._death_cause = inventoryFire.deathCause || 'killed by a tower of flame';
+    }
+    return {
+        message: messages.join('  '),
+        more: true,
+        lifeSaving: !!inventoryFire.lifeSaving,
+        fatal: !!inventoryFire.fatal,
+    };
+}
+
+function heroFireTrapMessage(trap, prefix = '') {
+    return heroFireTrapResult(trap, prefix).message;
+}
+
+function applyHeroFireTrapFatalResult(result) {
+    return applyLifeSavingOrFatalCommandMode(result);
+}
+
+function applyLifeSavingOrFatalCommandMode(result) {
+    game.context ??= {};
+    if (result.lifeSaving) {
+        game._command_mode = 'lifeSavingMore';
+        game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+        game.context.move = 0;
+        game._run_stop_now = 1;
+        game._run_steps_remaining = 0;
+        return true;
+    }
+    if (result.fatal) {
+        game._command_mode = 'deathDieMore';
+        game._pending_time_passed = 0;
+        game.context.move = 0;
+        game._process_command_time_now = 0;
+        game._run_steps_remaining = 0;
+        prepareDeathBones();
+        return true;
+    }
+    return false;
 }
 
 function sitFireTrapMessage(trap, prefix) {
@@ -45706,11 +45770,15 @@ async function moveHero(dx, dy) {
             }
             if (attackWeapon && isPotionObject(attackWeapon)) {
                 const bashPotion = wieldedPotionBashObject(attackWeapon);
-                const potionMessages = bashPotion ? heroThrownPotionHitMonster(bashPotion, mon) : [];
+                const potionMessages = bashPotion
+                    ? heroThrownPotionHitMonster(bashPotion, mon, { allowLifeSaving: true })
+                    : [];
+                const potionLifeSaving = !!potionMessages.lifeSaving;
+                const potionFatal = !!potionMessages.fatal;
                 removeInventoryItem(attackWeapon, 1);
                 refreshSurvivingWieldedPotionStack(attackWeapon);
                 killed = !!(mon.dead || (mon.mhp || 0) <= 0);
-                if (!killed) {
+                if (!potionFatal && !killed) {
                     const potionBashDamage = (mon.data?.name === 'shade') ? 0
                         : Math.max(1, 1 + strengthDamageBonus + (game.u?.udaminc || 0));
                     if (potionBashDamage > 0) {
@@ -45719,6 +45787,10 @@ async function moveHero(dx, dy) {
                     }
                 }
                 messages.push(...potionMessages);
+                if (potionLifeSaving) messages.lifeSaving = true;
+                if (potionFatal) messages.fatal = true;
+                if (potionMessages.more) messages.more = true;
+                if (potionLifeSaving || potionFatal) break;
                 if (killed) break;
                 if (attackIndex === 0 && !deferSleepingTwoWeapon) {
                     const fleeRoll = rn2(25);
@@ -45828,6 +45900,24 @@ async function moveHero(dx, dy) {
             }
             if (!directPassiveObjectApplied)
                 applyDirectMeleePassiveObject(mon, attackWeapon, messages);
+        }
+
+        if (messages.lifeSaving || messages.fatal) {
+            const potionCallPrompt = game._command_mode === 'callPotionAfterMore';
+            await setMessage(messages.join('  '), potionCallPrompt || !!messages.more);
+            game._run_stop_now = 1;
+            game._run_steps_remaining = 0;
+            game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
+            game._command_mode = 'deathDieMore';
+            game._pending_time_passed = 0;
+            game._process_command_time_now = 0;
+            prepareDeathBones();
+            return;
         }
 
         if (!killed) {
@@ -46459,7 +46549,9 @@ async function moveHero(dx, dy) {
         return;
     }
     if (steppedTrap?.ttyp === FIRE_TRAP) {
-        await setMessage(heroFireTrapMessage(steppedTrap), true);
+        const result = heroFireTrapResult(steppedTrap, '', { allowLifeSaving: true });
+        await setMessage(result.message, result.more);
+        applyHeroFireTrapFatalResult(result);
         return;
     }
     if (steppedTrap?.ttyp === ROLLING_BOULDER_TRAP) {
@@ -49679,9 +49771,27 @@ export async function rhack(_cmd) {
                     const hit = fireBreathDamageHero(breath.dice, origDamage =>
                         fireDamageInventory(origDamage, false, true, {
                             preburnedArmor: { bodyHit: true, message: '' },
+                            allowLifeSaving: true,
                         }));
-                    const messages = [nextText, ...hit.messages].filter(Boolean);
-                    if (hit.lethal) {
+                    const vaporFatal = !!(hit.lifeSaving || hit.fatal);
+                    const messages = [nextText, ...(vaporFatal ? [] : hit.messages)].filter(Boolean);
+                    if (vaporFatal) {
+                        const followups = hit.messages.map((text, index) => ({
+                            text,
+                            more: index < hit.messages.length - 1,
+                        }));
+                        if (followups.length) {
+                            const final = followups[followups.length - 1];
+                            final.lifeSaving = !!hit.lifeSaving;
+                            final.fatal = !!hit.fatal;
+                            final.more = true;
+                            next.insertAfter = [
+                                ...followups,
+                                ...(next.insertAfter || []),
+                            ];
+                            next.more = true;
+                        }
+                    } else if (hit.lethal) {
                         next.insertAfter = [
                             { text: 'You die...', more: true },
                             ...(next.insertAfter || []),
@@ -49823,6 +49933,7 @@ export async function rhack(_cmd) {
                         ...next.insertAfter,
                         ...(game._queued_messages_after_more || []),
                     ];
+                if (applyLifeSavingOrFatalCommandMode(next)) return;
                 if (next.beginWishPrompt) {
                     game._wish_text = '';
                     game._wish_move_cost = 0;
@@ -52230,22 +52341,34 @@ export async function rhack(_cmd) {
         if (selfZap && fireWand) {
             const origDamage = d(12, 6);
             const resistsFire = !!game.u?.fireResistance;
-            const fireInventory = fireDamageInventory(origDamage, true);
-            if (fireInventory.damage && game.u)
-                game.u.uhp = Math.max(0, (game.u.uhp || 0) - fireInventory.damage);
-            if (!resistsFire && game.u && (game.u.uhp || 0) > 0)
-                game.u.uhp = Math.max(0, (game.u.uhp || 0) - origDamage);
-            const followups = [...fireInventory.messages];
-            if ((game.u?.uhp || 0) <= 0) {
+            const fireInventory = fireDamageInventory(origDamage, true, false, { allowLifeSaving: true });
+            if (!fireInventory.lifeSaving && !fireInventory.fatal) {
+                if (fireInventory.damage && game.u)
+                    game.u.uhp = Math.max(0, (game.u.uhp || 0) - fireInventory.damage);
+                if (!resistsFire && game.u && (game.u.uhp || 0) > 0)
+                    game.u.uhp = Math.max(0, (game.u.uhp || 0) - origDamage);
+            }
+            const followups = fireInventory.messages.map((text, index) => ({
+                text,
+                more: index < fireInventory.messages.length - 1,
+            }));
+            if (!fireInventory.lifeSaving && !fireInventory.fatal && (game.u?.uhp || 0) <= 0) {
                 game._death_cause = fireInventory.deathCause
                     || (hornElement
                         ? `using a magical horn on ${game.flags?.female ? 'herself' : 'himself'}`
                         : `zapped ${game.flags?.female ? 'herself' : 'himself'} with a wand of fire`);
-                followups.push('You die...');
+                if (followups.length) followups[followups.length - 1].more = true;
+                followups.push({ text: 'You die...', more: false });
+            }
+            if ((fireInventory.lifeSaving || fireInventory.fatal) && followups.length) {
+                const final = followups[followups.length - 1];
+                final.lifeSaving = !!fireInventory.lifeSaving;
+                final.fatal = !!fireInventory.fatal;
+                final.more = true;
             }
             if (followups.length)
                 game._queued_messages_after_more = [...(game._queued_messages_after_more || []),
-                    ...followups.map((text, index) => ({ text, more: index < followups.length - 1 }))];
+                    ...followups];
             identifyZapToolOrWand(item, 'fire');
             await setMessage([...preludeMessages, resistsFire ? 'You feel rather warm.' : "You've set yourself afire!"].join('  '), !!followups.length || preludeMessages.length > 0);
             game._command_mode = null;
@@ -52669,26 +52792,52 @@ export async function rhack(_cmd) {
                                     dy = -dy;
                                 } else {
                                     const origDamage = d(6, 6);
-                                    const fireInventory = fireDamageInventory(origDamage, false, true, { updateArmorInventory: false });
+                                    const fireInventory = fireDamageInventory(origDamage, false, true, {
+                                        updateArmorInventory: false,
+                                        allowLifeSaving: true,
+                                    });
                                     if (game.u?.fireResistance) messages.push("You don't feel hot!");
-                                    const baseDamage = game.u?.fireResistance ? 0 : origDamage;
-                                    const damage = fireInventory.damage + baseDamage;
-                                    const lethal = damage >= (game.u?.uhp || 0);
+                                    const fireInventoryFatal = !!(fireInventory.lifeSaving || fireInventory.fatal);
+                                    const baseDamage = fireInventoryFatal || game.u?.fireResistance ? 0 : origDamage;
+                                    const damage = fireInventoryFatal ? 0 : fireInventory.damage + baseDamage;
+                                    const lethal = !fireInventoryFatal && damage >= (game.u?.uhp || 0);
                                     if (fireInventory.events?.length) {
                                         const entries = fireInventory.events.map(event => {
-                                            const entry = { text: event.text, damageAfter: event.damage || 0 };
-                                            if (event.insertAfter?.length)
+                                            const entry = {
+                                                text: event.text,
+                                                damageAfter: fireInventoryFatal ? 0 : event.damage || 0,
+                                            };
+                                            if (event.more || event.insertAfter?.length) entry.more = true;
+                                            if (event.insertAfter?.length) {
                                                 entry.insertAfter = event.insertAfter.map(next => ({ ...next }));
+                                                if (event.lifeSaving || event.fatal) {
+                                                    const final = entry.insertAfter[entry.insertAfter.length - 1];
+                                                    final.lifeSaving = !!event.lifeSaving;
+                                                    final.fatal = !!event.fatal;
+                                                    final.more = true;
+                                                }
+                                            } else if (event.lifeSaving || event.fatal) {
+                                                entry.lifeSaving = !!event.lifeSaving;
+                                                entry.fatal = !!event.fatal;
+                                                entry.more = true;
+                                            }
                                             return entry;
                                         });
-                                        const assignedDamage = entries.reduce((sum, entry) => sum
-                                            + (entry.damageAfter || 0)
-                                            + (entry.insertAfter || []).reduce((inner, next) => inner + (next.damageAfter || 0), 0), 0);
-                                        const remainingDamage = Math.max(0, damage - assignedDamage);
-                                        if (remainingDamage) {
-                                            const breatheEntry = entries.flatMap(entry => entry.insertAfter || [])[0];
-                                            if (lethal && breatheEntry) breatheEntry.damageAfter = (breatheEntry.damageAfter || 0) + remainingDamage;
-                                            else entries[entries.length - 1].damageAfter = (entries[entries.length - 1].damageAfter || 0) + remainingDamage;
+                                        if (!fireInventoryFatal) {
+                                            const assignedDamage = entries.reduce((sum, entry) => sum
+                                                + (entry.damageAfter || 0)
+                                                + (entry.insertAfter || []).reduce((inner, next) => inner + (next.damageAfter || 0), 0), 0);
+                                            const remainingDamage = Math.max(0, damage - assignedDamage);
+                                            if (remainingDamage) {
+                                                const breatheEntry = entries.flatMap(entry => entry.insertAfter || [])[0];
+                                                if (lethal && breatheEntry) breatheEntry.damageAfter = (breatheEntry.damageAfter || 0) + remainingDamage;
+                                                else entries[entries.length - 1].damageAfter = (entries[entries.length - 1].damageAfter || 0) + remainingDamage;
+                                            }
+                                            if (lethal) {
+                                                const damageEntry = [...entries].reverse().find(entry => (entry.damageAfter || 0) > 0)
+                                                    || entries[entries.length - 1];
+                                                if (damageEntry) damageEntry.more = true;
+                                            }
                                         }
                                         followups.push(...entries);
                                     } else if (damage && (messages.length > 1 || fireInventory.messages.length || lethal))
@@ -62210,16 +62359,29 @@ export async function rhack(_cmd) {
             const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
             if (dex > rnd(25)) {
                 if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
-                const messages = heroThrownPotionHitMonster(thrownObject, targetMon);
+                const messages = heroThrownPotionHitMonster(thrownObject, targetMon, { allowLifeSaving: true });
                 removeInventoryItem(item, 1);
                 newsym(targetMon.mx, targetMon.my);
                 const keepPotionCallPrompt = game._command_mode === 'callPotionAfterMore';
-                await setMessage(messages.join('  '), keepPotionCallPrompt);
-                if (!keepPotionCallPrompt) game._command_mode = null;
+                await setMessage(messages.join('  '), keepPotionCallPrompt || !!messages.more);
                 game._throw_item_letter = null;
                 game._resume_time_after_more = 0;
-                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 game.context.move = 0;
+                if (messages.lifeSaving) {
+                    game._command_mode = 'lifeSavingMore';
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                    return;
+                }
+                if (messages.fatal) {
+                    game._command_mode = 'deathDieMore';
+                    game._pending_time_passed = 0;
+                    game._process_command_time_now = 0;
+                    game._run_steps_remaining = 0;
+                    prepareDeathBones();
+                    return;
+                }
+                if (!keepPotionCallPrompt) game._command_mode = null;
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 return;
             }
             const thrownName = pickupObjectName({ ...item, quan: 1 });

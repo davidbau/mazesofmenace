@@ -501,6 +501,8 @@ export function fireBreathDamageHero(nd = 6, inventoryFire = null) {
     const messages = [];
     let damage = game.u?.fireResistance ? 0 : origDamage;
     let deathCause = '';
+    let lifeSaving = false;
+    let fatal = false;
     if (game.u?.fireResistance) messages.push("You don't feel hot!");
 
     const armor = burnHeroArmorFromFire();
@@ -509,20 +511,27 @@ export function fireBreathDamageHero(nd = 6, inventoryFire = null) {
         if (inventoryFire) {
             const inventory = inventoryFire(origDamage);
             messages.push(...(inventory.messages || []));
-            damage += inventory.damage || 0;
-            deathCause = inventory.deathCause || '';
+            lifeSaving = !!inventory.lifeSaving;
+            fatal = !!inventory.fatal;
+            if (lifeSaving || fatal) {
+                damage = 0;
+            } else {
+                damage += inventory.damage || 0;
+                deathCause = inventory.deathCause || '';
+            }
         } else {
             rn2(3);
             rn2(3);
         }
     }
-    if (damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+    if (!lifeSaving && !fatal && damage && game.u)
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
     let lethal = false;
-    if ((game.u?.uhp || 0) <= 0) {
+    if (!lifeSaving && !fatal && (game.u?.uhp || 0) <= 0) {
         lethal = true;
         game._death_cause = deathCause || 'killed by a blast of fire';
     }
-    return { damage, messages, lethal, deathCause: game._death_cause || deathCause };
+    return { damage, messages, lethal, lifeSaving, fatal, deathCause: game._death_cause || deathCause };
 }
 
 export function finishHeroTargetedBreath(mon) {
