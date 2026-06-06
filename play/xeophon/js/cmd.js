@@ -3,10 +3,10 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
+import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_DAGGER, P_EXPERT, P_GRAND_MASTER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SKILLED, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_DAGGER, P_EXPERT, P_GRAND_MASTER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SKILLED, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -47091,7 +47091,11 @@ function heroRollingBoulderApplyDownGateAt(x, y, movingBoulder, messages) {
     const transit = heroRollingBoulderTransitMessage(route, impactQuantity, noDrop);
     if (transit) messages.push(transit);
     if (noDrop) {
-        const impact = impactDropFloorObjects(x, y, route, { targetLevel: gate.targetLevel, route });
+        const impact = impactDropFloorObjects(x, y, route, {
+            targetLevel: gate.targetLevel,
+            missile: movingBoulder,
+            route,
+        });
         if (impact.message) messages.push(impact.message);
         return { handled: false, consumed: false };
     }
@@ -47108,6 +47112,128 @@ function heroRollingBoulderApplyDownGateAt(x, y, movingBoulder, messages) {
     if (impact.message) messages.push(impact.message);
     newsym(x, y);
     return { handled: true, consumed: true };
+}
+
+function heroRollingBoulderTeleportTrapAt(x, y) {
+    return (game.level?.traps || []).find(trap =>
+        [TELEP_TRAP, LEVEL_TELEP].includes(trap.ttyp) && trap.tx === x && trap.ty === y) || null;
+}
+
+function heroRollingBoulderSameLevel(level) {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    return !!level && level.dnum === current.dnum && level.dlevel === current.dlevel;
+}
+
+function heroRollingBoulderTeleportGoodpos(x, y, movingBoulder) {
+    if (!isok(x, y)) return false;
+    if ((game.u?.ux ?? 0) === x && (game.u?.uy ?? 0) === y) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !ACCESSIBLE(loc.typ)) return false;
+    return !(game.level?.objects || []).some(obj =>
+        obj !== movingBoulder && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === x && obj.oy === y);
+}
+
+function heroRollingBoulderTeleportLandingSpot(movingBoulder) {
+    let fallback = { x: movingBoulder?.ox || 0, y: movingBoulder?.oy || 0 };
+    for (let tryLimit = 4000; tryLimit > 0; tryLimit--) {
+        const x = rn1(COLNO - 3, 2);
+        const y = rn2(ROWNO);
+        fallback = { x, y };
+        if (heroRollingBoulderTeleportGoodpos(x, y, movingBoulder)) return fallback;
+    }
+    return fallback;
+}
+
+function heroRollingBoulderTeleportDisappearMessage(x, y) {
+    if (!game.u?.blind && cansee(x, y)) return 'Suddenly the rolling boulder disappears!';
+    return heroIsDeaf() ? '' : 'You hear a rumbling stop abruptly.';
+}
+
+function heroRollingBoulderTeleportWithinLevel(movingBoulder, messages) {
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== movingBoulder);
+    const spot = heroRollingBoulderTeleportLandingSpot(movingBoulder);
+    movingBoulder.ox = spot.x;
+    movingBoulder.oy = spot.y;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    const floorMessages = [];
+    const consumed = earthFloorEffects(movingBoulder, spot.x, spot.y, floorMessages, 'fall');
+    messages.push(...floorMessages);
+    if (!consumed) game.level.objects.push(movingBoulder);
+    newsym(spot.x, spot.y);
+}
+
+function heroRollingBoulderQueueLevelTeleport(movingBoulder, targetLevel) {
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== movingBoulder);
+    movingBoulder.otrapped = 0;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    movingBoulder.ox = targetLevel.dnum;
+    movingBoulder.oy = targetLevel.dlevel;
+    movingBoulder.owornmask = MIGR_RANDOM;
+    queueImpactDroppedObjects(targetLevel, [movingBoulder], { where: MIGR_RANDOM });
+}
+
+function heroRollingBoulderApplyTeleportTrapAt(x, y, movingBoulder, messages) {
+    const trap = heroRollingBoulderTeleportTrapAt(x, y);
+    if (!trap || !movingBoulder) return { handled: false, consumed: false };
+
+    let targetLevel = null;
+    if (trap.ttyp === LEVEL_TELEP) {
+        targetLevel = levelTeleportNumericTarget(randomTeleportDepth());
+        if (heroRollingBoulderSameLevel(targetLevel)) return { handled: false, consumed: false };
+    }
+
+    const disappear = heroRollingBoulderTeleportDisappearMessage(x, y);
+    if (disappear) messages.push(disappear);
+    movingBoulder.otrapped = 0;
+    if (trap.ttyp === TELEP_TRAP) heroRollingBoulderTeleportWithinLevel(movingBoulder, messages);
+    else heroRollingBoulderQueueLevelTeleport(movingBoulder, targetLevel);
+    if (!trap.tseen) {
+        trap.tseen = true;
+        newsym(x, y);
+    }
+    return { handled: true, consumed: true };
+}
+
+function heroRollingBoulderPitHoleTrapAt(x, y) {
+    return (game.level?.traps || []).find(trap =>
+        [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(trap.ttyp) && trap.tx === x && trap.ty === y) || null;
+}
+
+function heroRollingBoulderFloorEffectsAt(x, y, movingBoulder, messages) {
+    const floorMessages = [];
+    const previousMonsterMoving = game._monster_moving;
+    game._monster_moving = 1;
+    let consumed = false;
+    try {
+        consumed = earthFloorEffects(movingBoulder, x, y, floorMessages, 'fall', {
+            usedUpShopBillOnDestroy: true,
+        });
+    } finally {
+        if (previousMonsterMoving === undefined) delete game._monster_moving;
+        else game._monster_moving = previousMonsterMoving;
+    }
+    messages.push(...floorMessages);
+    if (consumed)
+        game.level.objects = (game.level?.objects || []).filter(obj => obj !== movingBoulder);
+    return consumed;
+}
+
+function heroRollingBoulderApplyPitHoleFloorEffectsAt(x, y, movingBoulder, messages) {
+    if (!movingBoulder || !heroRollingBoulderPitHoleTrapAt(x, y))
+        return { handled: false, consumed: false };
+    return {
+        handled: true,
+        consumed: heroRollingBoulderFloorEffectsAt(x, y, movingBoulder, messages),
+    };
+}
+
+function heroRollingBoulderApplyGenericFloorEffectsAt(x, y, movingBoulder, messages) {
+    if (!movingBoulder) return { handled: false, consumed: false };
+    const consumed = heroRollingBoulderFloorEffectsAt(x, y, movingBoulder, messages);
+    return { handled: consumed, consumed };
 }
 
 function deleteHeroRollingBoulderLandmineEngravingAt(x, y) {
@@ -47127,6 +47253,215 @@ function heroRollingBoulderTriggerLandmineAt(x, y, movingBoulder, messages) {
     game.level.objects = (game.level?.objects || []).filter(obj => obj !== movingBoulder);
     if (!game.u?.blind && cansee(x, y)) newsym(x, y);
     return true;
+}
+
+function heroRollingBoulderPathMonsterAt(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon && mon !== game.u?.usteed && !mon.dead && (mon.mhp == null || mon.mhp > 0)
+        && mon.mx === x && mon.my === y) || null;
+}
+
+function heroRollingBoulderRockThrowerSnatchAt(x, y, movingBoulder, messages) {
+    const mon = heroRollingBoulderPathMonsterAt(x, y);
+    if (!mon || !movingBoulder || movingBoulder.otyp !== BOULDER || !mon.data?.throwsRocks)
+        return { handled: false, consumed: false };
+    if (!rn2(3)) return { handled: false, consumed: false };
+
+    if (!game.u?.blind && cansee(x, y))
+        messages.push(`${fireScrollMonsterName(mon)} snatches the boulder.`);
+    movingBoulder.otrapped = 0;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    movingBoulder.no_charge = false;
+    const { shkp } = shopkeeperOwningBillEntry(movingBoulder);
+    if (shkp) subFromShopBill(movingBoulder, shkp);
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== movingBoulder);
+    add_to_minv(mon, movingBoulder);
+    newsym(x, y);
+    return { handled: true, consumed: true };
+}
+
+function heroRollingBoulderMonsterHitAdjustment(mon, movingBoulder) {
+    let adjustment = heroProjectileMonsterSizeValue(mon) - 2;
+    if (mon?.msleeping) adjustment += 2;
+    if (mon?.mcanmove === false || mon?.data?.mmove === 0) adjustment += 4;
+    if (movingBoulder?.otyp === BOULDER) adjustment += 6;
+    return adjustment;
+}
+
+function heroRollingBoulderDisguisedMimic(mon) {
+    const appearance = M_AP_TYPE(mon);
+    return !!mon && appearance && appearance !== M_AP_MONSTER;
+}
+
+function heroRollingBoulderMonsterCanBeSpotted(mon) {
+    if (!mon) return false;
+    if (sensesTelepathically(mon)) return true;
+    return !game.u?.blind && !mon.mundetected
+        && (!mon.minvis || game.u?.seeInvisible) && cansee(mon.mx, mon.my);
+}
+
+function observeHeroRollingBoulderProjectile(movingBoulder, visible) {
+    if (!movingBoulder || !visible || heroIsHallucinating()) return;
+    movingBoulder.dknown = true;
+    recordObservedObjectDiscovery(movingBoulder);
+}
+
+function heroRollingBoulderMonsterNameFromData(data) {
+    const baseName = String(data?.name || '').trim();
+    if (!baseName) return '';
+    const baseNameLower = baseName.toLowerCase();
+    const properName = data?.properName || data?.pname
+        || GENERATED_PROPER_NAME_MONSTER_NAMES.has(baseNameLower);
+    return properName ? baseName : `The ${baseName}`;
+}
+
+function heroRollingBoulderApparentMonsterName(mon) {
+    if (M_AP_TYPE(mon) !== M_AP_MONSTER) return '';
+    const data = mon?.appearData || mon?.mappearanceData || mon?.apparentData;
+    const explicitName = mon?.appearName || mon?.mappearanceName || mon?.apparentMonsterName;
+    return heroRollingBoulderMonsterNameFromData({ ...data, name: explicitName || data?.name });
+}
+
+function heroRollingBoulderMonsterObservedName(mon) {
+    if (!heroRollingBoulderMonsterCanBeSpotted(mon)) return '';
+    let name = (heroRollingBoulderApparentMonsterName(mon) || fireScrollMonsterName(mon))
+        .replace(/^The /, 'The ');
+    if (mon?.minvis && !/^(?:the )?invisible\b/i.test(name))
+        name = /^The /i.test(name) ? name.replace(/^The /i, 'The invisible ') : `invisible ${name}`;
+    return name;
+}
+
+function heroRollingBoulderMonsterTargetName(mon) {
+    if (game.flags?.verbose === false) return 'it';
+    return heroRollingBoulderMonsterObservedName(mon).replace(/^The /, 'the ') || 'it';
+}
+
+function heroRollingBoulderMonsterDeathName(mon) {
+    return sentenceCase(heroRollingBoulderMonsterObservedName(mon)) || 'It';
+}
+
+function heroRollingBoulderMonsterDeathIsDestroyed(mon) {
+    const data = mon?.data || {};
+    const rawMlet = String(mon?.mlet || data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return !heroRollingBoulderMonsterCanBeSpotted(mon)
+        || !!(mon?.vampshifter || data.vampshifter
+            || mon?.nonliving || data.nonliving
+            || mlet === 'w' || mlet === 'm' || mlet === 'z'
+            || mlet === 'zombie' || mlet === 'mummy' || rawMlet === "'"
+            || name.includes('zombie') || name.includes('mummy') || name.endsWith(' golem')
+            || name === 'manes' || name.includes('vortex'));
+}
+
+function heroRollingBoulderRevealMimicAppearance(mon) {
+    if (!heroRollingBoulderDisguisedMimic(mon)) return false;
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function heroRollingBoulderKillMonster(mon, messages, visible, movingBoulder) {
+    if (visible) {
+        const verb = heroRollingBoulderMonsterDeathIsDestroyed(mon) ? 'destroyed' : 'killed';
+        messages.push(`${heroRollingBoulderMonsterDeathName(mon)} is ${verb}!`);
+    }
+    dropMonsterInventory(mon, messages);
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+    mon.mhp = 0;
+    mon.dead = true;
+    recordVanquished(mon, !!movingBoulder?.otrapped);
+    newsym(mon.mx, mon.my);
+}
+
+function applyHeroRollingBoulderHitPassiveObject(movingBoulder, mon, messages) {
+    if (!movingBoulder || !mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) {
+        return { handled: false, damaged: false };
+    }
+    const oldX = movingBoulder.ox;
+    const oldY = movingBoulder.oy;
+    movingBoulder.ox = mon.mx;
+    movingBoulder.oy = mon.my;
+    try {
+        return applyMonsterThrownPassiveObject(movingBoulder, mon, true, messages);
+    } finally {
+        movingBoulder.ox = oldX;
+        movingBoulder.oy = oldY;
+    }
+}
+
+function heroRollingBoulderDropThrowAfterMonsterHitAt(x, y, movingBoulder, mon, messages) {
+    if (!movingBoulder || !mon || mon.dead || (mon.mhp != null && mon.mhp <= 0))
+        return { handled: false, consumed: false };
+    const oldX = movingBoulder.ox;
+    const oldY = movingBoulder.oy;
+    let keepMoving = true;
+    movingBoulder.ox = x;
+    movingBoulder.oy = y;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    try {
+        const downGate = heroRollingBoulderApplyDownGateAt(x, y, movingBoulder, messages);
+        if (downGate.consumed) {
+            keepMoving = false;
+            return { handled: true, consumed: true };
+        }
+        if (heroRollingBoulderFloorEffectsAt(x, y, movingBoulder, messages)) {
+            keepMoving = false;
+            return { handled: true, consumed: true };
+        }
+        applyHeroRollingBoulderHitPassiveObject(movingBoulder, mon, messages);
+        return { handled: true, consumed: false };
+    } finally {
+        if (keepMoving) {
+            movingBoulder.ox = oldX;
+            movingBoulder.oy = oldY;
+        }
+    }
+}
+
+function heroRollingBoulderHitMonsterAt(x, y, movingBoulder, messages) {
+    const mon = heroRollingBoulderPathMonsterAt(x, y);
+    if (!mon || !movingBoulder) return { handled: false, consumed: false };
+
+    const visible = !game.u?.blind && cansee(x, y);
+    observeHeroRollingBoulderProjectile(movingBoulder, visible);
+    const hitThreshold = 5 + (mon.data?.mac ?? 10)
+        + heroRollingBoulderMonsterHitAdjustment(mon, movingBoulder);
+    const hitRoll = rnd(20);
+    const disguisedMimic = heroRollingBoulderDisguisedMimic(mon);
+    const targetName = heroRollingBoulderMonsterTargetName(mon);
+    if (hitThreshold < hitRoll) {
+        if (!disguisedMimic && visible) {
+            const missTarget = game.flags?.verbose === false ? 'it' : targetName;
+            messages.push(`The boulder misses ${missTarget}.`);
+        }
+        return { handled: true, consumed: false };
+    }
+
+    const damage = rnd(20);
+    const harmless = heroThrownTargetPassesRocks(mon);
+    if (disguisedMimic) heroRollingBoulderRevealMimicAppearance(mon);
+    mon.msleeping = 0;
+    if (visible) {
+        if (harmless)
+            messages.push(`The boulder hits ${targetName} but passes harmlessly through it.`);
+        else
+            messages.push(`The boulder hits ${targetName}${damage <= 4 ? '.' : '!'}`);
+        newsym(x, y);
+    }
+    if (!harmless) {
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0)
+            heroRollingBoulderKillMonster(mon, messages, visible, movingBoulder);
+    }
+    if (!mon.dead) setHeroObjectHitMonsterAngry(mon);
+    const dropThrow = heroRollingBoulderDropThrowAfterMonsterHitAt(x, y, movingBoulder, mon, messages);
+    return { handled: true, consumed: dropThrow.consumed };
 }
 
 function heroRollingBoulderChainIntoBoulderAt(x, y, dx, dy, remainingDistance, movingBoulder, messages) {
@@ -47175,6 +47510,20 @@ function heroRollingBoulderPathResult(start, end, movingBoulder) {
         x += dx;
         y += dy;
         if (x === game.u?.ux && y === game.u?.uy) result.crossedHero = true;
+        const snatch = heroRollingBoulderRockThrowerSnatchAt(x, y, result.boulder, result.messages);
+        if (snatch.handled) {
+            result.finalX = x;
+            result.finalY = y;
+            if (snatch.consumed) result.boulder = null;
+            break;
+        }
+        const monsterHit = heroRollingBoulderHitMonsterAt(x, y, result.boulder, result.messages);
+        if (monsterHit.consumed) {
+            result.finalX = x;
+            result.finalY = y;
+            result.boulder = null;
+            break;
+        }
         const downGate = heroRollingBoulderApplyDownGateAt(x, y, result.boulder, result.messages);
         if (downGate.handled) {
             if (downGate.consumed) {
@@ -47188,6 +47537,29 @@ function heroRollingBoulderPathResult(start, end, movingBoulder) {
             result.finalX = x;
             result.finalY = y;
             result.boulder = null;
+            break;
+        }
+        const teleport = heroRollingBoulderApplyTeleportTrapAt(x, y, result.boulder, result.messages);
+        if (teleport.handled) {
+            if (teleport.consumed) {
+                result.finalX = x;
+                result.finalY = y;
+                result.boulder = null;
+            }
+            break;
+        }
+        const pitHole = heroRollingBoulderApplyPitHoleFloorEffectsAt(x, y, result.boulder, result.messages);
+        if (pitHole.handled) {
+            result.finalX = x;
+            result.finalY = y;
+            if (pitHole.consumed) result.boulder = null;
+            break;
+        }
+        const floorEffects = heroRollingBoulderApplyGenericFloorEffectsAt(x, y, result.boulder, result.messages);
+        if (floorEffects.handled) {
+            result.finalX = x;
+            result.finalY = y;
+            if (floorEffects.consumed) result.boulder = null;
             break;
         }
         result.boulder = heroRollingBoulderChainIntoBoulderAt(x, y, dx, dy, dist - 1,

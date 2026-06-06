@@ -61,18 +61,12 @@ import {
     mAvoidSokoPushLocDogmoveLikeC,
 } from './dogmove_reach.js';
 import { raceptr, MZ_MEDIUM, MZ_SMALL } from './mondata.js';
+import { objectStackWeightLikeC } from './obj_oc_weight_data.js';
 
+/** C: monsters.h — `PM_LITTLE_DOG` / `PM_KITTEN` (MON block order). */
 const PM_KITTEN = 34;
-const PM_LITTLE_DOG = 33;
+const PM_LITTLE_DOG = 16;
 const KITTEN_CWT = 150;
-
-/** C: mkobj.c **`weight(obj)`** subset — **`oc_weight`** stub uses **`(quan+1)>>1`** when wt 0. */
-function weightObjLikeC(obj) {
-    const quan = obj.quan | 0;
-    if (quan < 1) return 0;
-    const unit = 0;
-    return unit ? unit * quan : (quan + 1) >> 1;
-}
 
 /**
  * C: mon.c **`max_mon_load`** — **`cwt`** path for kitten/little dog (**`mons[]`** SIZ).
@@ -126,24 +120,23 @@ function currMonLoadMtmpLikeC(mtmp) {
 }
 
 /**
- * C: **`dog_goal`** APPORT — set **`gg.gtyp`** only when pet can take whole stack.
- * **`can_carry > 0`** still gates the **`&&`** chain after **`rn2(8)`** (clang order);
- * **`M1_NOHANDS`** partial stacks return **1** for **`iquan > 1`** without satisfying this.
+ * C: mon.c can_touch_safely — petrifying/rider corpse, silver, touch_artifact.
  * @param {Record<string, unknown>} mtmp
  * @param {Record<string, unknown>} obj
  */
-function canCarryApportGoalLikeC(mtmp, obj) {
-    const carry = canCarryMonsterObjDogmoveLikeC(mtmp, obj);
-    if (carry <= 0) return false;
-    const quan = obj.quan | 0;
-    if (quan <= 1) return true;
-    return carry >= quan;
+function canTouchSafelyMonsterObjDogmoveLikeC(mtmp, obj) {
+    if (!obj || !mtmp) return false;
+    if (!(obj.oartifact | 0)) return true;
+    /* C: artifact.c touch_artifact — non-artifact returns 1; full artifact port deferred. */
+    return true;
 }
 
+/** C: mon.c can_carry — load gate uses real stack weight (not mklev `owt: 1` stub). */
 function canCarryMonsterObjDogmoveLikeC(mtmp, obj) {
     if (!obj) return 0;
     const ptr = raceptr(mtmp);
     if (!ptr) return 0;
+    if (!canTouchSafelyMonsterObjDogmoveLikeC(mtmp, obj)) return 0;
     const quan = obj.quan | 0;
     if (quan <= 0) return 0;
     const iquan = quan > 20000 ? 20000 : quan;
@@ -154,8 +147,7 @@ function canCarryMonsterObjDogmoveLikeC(mtmp, obj) {
             && (oc === NH5_COIN_CLASS || oc === NH5_GEM_CLASS);
         if (!glomper) return 1;
     }
-    /* C: mon.c can_carry — `newload = otmp->owt` (not recomputed weight). */
-    const newload = (obj.owt | 0) > 0 ? (obj.owt | 0) : weightObjLikeC(obj);
+    const newload = objectStackWeightLikeC(obj);
     if (currMonLoadMtmpLikeC(mtmp) + newload > maxMonLoadMtmpLikeC(mtmp)) return 0;
     return iquan;
 }
@@ -729,11 +721,10 @@ function dogGoalFloorScanRngLikeC(
                 && (edog.apport | 0) > rn2(8)
                 && canCarryMonsterObjDogmoveLikeC(mtmp, obj) > 0
             ) {
-                if (canCarryApportGoalLikeC(mtmp, obj)) {
-                    gx = nx;
-                    gy = ny;
-                    gtyp = APPORT;
-                }
+                /* C: dogmove.c:556–558 — APPORT when `can_carry > 0` (rng already spent). */
+                gx = nx;
+                gy = ny;
+                gtyp = APPORT;
             }
         }
     }
@@ -1960,6 +1951,9 @@ export function dogMoveGoalAndPickLikeC(
         dogMoveMfndposPickLikeC(
             g, mtmp, goal.gx, goal.gy, pickAppr, whappr,
         );
+        /* C: dogmove.c:1273 — `pet_ranged_attk` after `mfndpos`, before `newdogpos`. */
+        const ranged = petRangedAttkDogmoveLikeC(g, mtmp, false);
+        if (ranged !== MMOVE_NOTHING) return ranged;
     }
     ensureMonsterMtrack(mtmp);
     if (mtmp.mx !== preMx || mtmp.my !== preMy) {

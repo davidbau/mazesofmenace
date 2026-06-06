@@ -471,7 +471,7 @@ function warnsOfMonsters() {
     return !!(game.u?.warning || game.u?.HWarning || game.u?.warn_of_monsters || warningSourceCount() > 0);
 }
 
-function sensesTelepathically(mon) {
+export function sensesTelepathically(mon) {
     if (!mon || mon.mindless || mon.data?.mindless) return false;
     const sources = telepathySourceCount();
     const intrinsic = !!(game.u?.telepathy || game.u?.telepathetic || game.u?.HTelepat);

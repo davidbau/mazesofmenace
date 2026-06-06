@@ -1206,6 +1206,7 @@ export function u_init_role_inventory() {
         // C ref: u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
         // Rogues know dagger appearances even before encountering those
         // object types, so discoveries marks them with '*'.
+        discover_role_known_object(SACK);
         for (const otyp of ROGUE_KNOWN_WEAPONS) discover_role_known_object(otyp);
     } else if (role?.name?.m === 'Samurai') {
         ini_inv(SAMURAI_INVENTORY, noCreate, role.name.m);

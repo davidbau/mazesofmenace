@@ -2,8 +2,11 @@
 // C ref: dog.c:makedog(), makemon.c:makemon() near-hero placement.
 
 import { game } from './gstate.js';
-import { enexto_core, makemon, mkcorpstat, mksobj, monsterPtr, next_ident, place_object, set_malign_basic } from './mklev.js';
-import { OBJECT_CLASS, OBJECT_DELAY } from './object_data.js';
+import {
+    enexto_core, makemon, mkcorpstat, mksobj, monsterPtr, next_ident,
+    place_object, set_malign_basic, undead_to_corpse_ptr,
+} from './mklev.js';
+import { OBJECT_CLASS, OBJECT_DELAY, OBJECT_NAME } from './object_data.js';
 import { MONSTER_DATA } from './monster_data.js';
 import {
     newsym, pline, queue_more_prompt, flush_screen,
@@ -11,7 +14,7 @@ import {
 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import {
-    ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, ROWNO, TABU, UNDEF,
+    ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, POISON, ROWNO, TABU, UNDEF,
     D_BROKEN, D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
     IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
     W_SADDLE, W_WEP, isok, MGIVENNAME, has_mgivenname, CORPSTAT_INIT,
@@ -20,6 +23,7 @@ import { d, rn2, rnd } from './rng.js';
 import { gettrack } from './track.js';
 import { cansee, clear_area_from, clear_path, couldsee } from './vision.js';
 import { getObjectDescription } from './o_init.js';
+import { noteMonsterDied } from './monstats.js';
 
 const AMULET_CLASS = 5;
 const FOOD_CLASS = 7;
@@ -33,6 +37,8 @@ const ROCK_CLASS = 14;
 const BALL_CLASS = 15;
 const CHAIN_CLASS = 16;
 const M1_NOHANDS = 0x00002000;
+const M1_ACID = 0x08000000;
+const M1_POIS = 0x10000000;
 const GOLD_PIECE = 438;
 const ORCISH_DAGGER = 36;
 const DART = 24;
@@ -88,6 +94,7 @@ const G_NOCORPSE = 0x0010;
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
 const MR_ELEC = 0x10;
+const MR_POISON = 0x20;
 const MR_ACID = 0x40;
 const MR_STONE = 0x80;
 const MS_LEADER = 36;
@@ -524,6 +531,14 @@ function vegan_monster(ptr) {
     return false;
 }
 
+function pet_corpse_is_poisonous(mtmp, ptr) {
+    return !!(ptr?.mflags1 & M1_POIS) && !monster_resists_basic(mtmp, MR_POISON);
+}
+
+function pet_corpse_is_acidic(mtmp, ptr) {
+    return !!(ptr?.mflags1 & M1_ACID) && !monster_resists_basic(mtmp, MR_ACID);
+}
+
 function dogfood(mtmp, obj) {
     // C ref: dog.c:dogfood().  The object-resistance check is deliberately
     // first; it is a common hidden RNG consumer before pet goal selection.
@@ -538,7 +553,14 @@ function dogfood(mtmp, obj) {
             return carni ? DOGFOOD : MANFOOD;
         case CORPSE:
             if (obj.trap_victim) return MANFOOD;
-            if (vegan_monster(monsterPtr(obj.corpsenm))) return herbi ? CADAVER : MANFOOD;
+            {
+                const ptr = monsterPtr(obj.corpsenm);
+                // C ref: src/dog.c:dogfood().  Poisonous/acidic corpses are
+                // rejected before ordinary carnivore corpse preference.
+                if (pet_corpse_is_poisonous(mtmp, ptr) || pet_corpse_is_acidic(mtmp, ptr))
+                    return POISON;
+                if (vegan_monster(ptr)) return herbi ? CADAVER : MANFOOD;
+            }
             return carni ? CADAVER : MANFOOD;
         case EGG:
             return carni ? CADAVER : MANFOOD;
@@ -774,7 +796,27 @@ function object_name(obj) {
         const spe = typeof obj.spe === 'number' ? `${obj.spe >= 0 ? '+' : ''}${obj.spe} ` : '';
         return `a ${buc}${spe}quarterstaff`;
     }
+    const known = known_object_name(obj);
+    if (known) return `${indefinite_article(known)} ${known}`;
     return 'an object';
+}
+
+function known_object_type(obj) {
+    return !!obj?.knownName
+        || !!(game.discoveredObjects
+            && typeof game.discoveredObjects.has === 'function'
+            && game.discoveredObjects.has(obj?.otyp));
+}
+
+function known_object_name(obj) {
+    if (!obj || !Number.isInteger(obj.otyp)) return '';
+    const name = OBJECT_NAME[obj.otyp];
+    if (!name) return '';
+    // C refs: mon.c:mpickstuff(), dogmove.c:dog_move(),
+    // objnam.c:distant_name()/doname().  If a type has no OBJ_DESCR(), doname()
+    // can use the table name directly; otherwise require type discovery.
+    if (!getObjectDescription(obj.otyp) || known_object_type(obj)) return name;
+    return '';
 }
 
 function corpse_species_name(corpsenm) {
@@ -1166,6 +1208,7 @@ function refresh_pet_attack_symbols(mtmp, target) {
 }
 
 function apply_pet_kill_side_effects(mtmp, target, oldx, oldy, targetX, targetY, blockingFrame = true) {
+    noteMonsterDied(target);
     if (corpse_chance(target)) make_pet_kill_corpse(target);
     grow_up_from_kill(mtmp, target);
     const monsters = game.level?.monsters || [];
@@ -1256,13 +1299,14 @@ function corpse_chance(mon) {
 
 function make_pet_kill_corpse(mon) {
     // C ref: mon.c:mondied() -> mkobj.c:mkcorpstat(CORPSE, CORPSTAT_INIT).
-    // C ref: mon.c:make_corpse().  corpse_chance() consumes its RNG before
-    // make_corpse() rejects G_NOCORPSE species such as grid bugs.
-    if ((mon?.data?.geno || 0) & G_NOCORPSE) return;
+    // C ref: mon.c:make_corpse().  Undead corpse conversion is handled
+    // before the default G_NOCORPSE rejection.
+    const corpsePtr = undead_to_corpse_ptr(mon?.data);
+    if (((mon?.data?.geno || 0) & G_NOCORPSE) && corpsePtr === mon?.data) return;
     const oldLiveCorpseTimeout = game._live_corpse_timeout;
     game._live_corpse_timeout = true;
     try {
-        const corpse = mkcorpstat(CORPSE, mon, mon?.data, mon.mx, mon.my, CORPSTAT_INIT);
+        const corpse = mkcorpstat(CORPSE, mon, corpsePtr || mon?.data, mon.mx, mon.my, CORPSTAT_INIT);
         if (corpse) {
             const key = corpse_species_name(corpse.corpsenm).toUpperCase().replace(/[\s-]+/g, '_');
             const stats = CORPSE_STATS.get(key);

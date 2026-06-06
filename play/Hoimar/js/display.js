@@ -694,6 +694,12 @@ function monster_glyph(mon, wormTail = false) {
     return { ch: mon.ch, color: mon.color, dec: false };
 }
 
+function monster_display_attr(mon) {
+    // C refs: win/tty/wintty.c:tty_print_glyph(), src/options.c:opt_hilite_pet().
+    if (!mon?.mtame || !game.iflags?.hilite_pet) return 0;
+    return game.iflags.wc2_petattr || ATR_INVERSE;
+}
+
 function monster_at_display(x, y) {
     const monsters = game.level?.monsters || [];
     const head = monsters.find(m => m.mx === x && m.my === y);
@@ -816,38 +822,45 @@ function terrain_covers_objects(loc) {
     return ((IS_POOL(loc.typ) && !underwater) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL);
 }
 
-function mapped_location_memory(loc, x, y, visible) {
-    // C ref: display.c:_map_location().  Even when the hero or a monster is
-    // drawn on top, the object/trap/background layer updates remembered glyphs.
+function unmapped_object_memory(loc, x, y, visible) {
+    // C ref: display.c:unmap_object().  Clearing remembered invisible/object
+    // glyphs restores known trap/engraving/background memory, not any other
+    // object that might now exist on an out-of-sight square.
     const covered = terrain_covers_objects(loc);
-    const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
     const trap = game.level?.traps?.find(t => t.tx === x && t.ty === y);
-
-    if (obj && !covered) {
-        if (obj.otyp === STATUE
-            && (game.u?.uprops?.hallucination || game.u?.uhallucination)) {
-            object_glyph_for_display(obj, x, y, visible);
-            const mem = random_object_glyph_for_display();
-            return { ch: mem.ch, color: mem.color, decgfx: false };
-        }
-        const og = object_glyph_for_display(obj, x, y, visible);
-        return { ch: og.ch, color: og.color, decgfx: false };
-    }
 
     if (trap?.tseen && !covered) {
         const tr = trap_glyph(trap);
         return { ch: tr.ch, color: tr.color, decgfx: tr.dec };
     }
 
-    const ep = engraving_at(x, y);
-    if (ep && spot_shows_engravings(loc) && !covered && (visible || ep.erevealed)) {
-        if (visible) ep.erevealed = true;
-        const eg = engraving_glyph(loc);
-        return { ch: eg.ch, color: eg.color, decgfx: eg.dec };
+    if (loc.seenv) {
+        const ep = engraving_at(x, y);
+        if (ep && spot_shows_engravings(loc) && !covered) {
+            if (visible) ep.erevealed = true;
+            const eg = engraving_glyph(loc);
+            return { ch: eg.ch, color: eg.color, decgfx: eg.dec };
+        }
+
+        if (!loc.waslit && loc.typ === ROOM)
+            return { ch: ' ', color: NO_COLOR, decgfx: false };
+
+        const tg = terrain_glyph(loc, x, y);
+        return { ch: tg.ch, color: tg.color, decgfx: tg.dec };
     }
 
-    const tg = terrain_glyph(loc, x, y);
-    return { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+    return { ch: ' ', color: NO_COLOR, decgfx: false };
+}
+
+export function unmap_invisible_memory(x, y, options = {}) {
+    // C refs: src/display.c:unmap_invisible(), src/display.c:unmap_object().
+    // Ordinary newsym() preserves remembered invisible markers; explicit
+    // probes clear them and restore trap/engraving/background memory.
+    const loc = game.level?.at(x, y);
+    if (loc?.remembered_glyph?.ch !== 'I') return false;
+    loc.remembered_glyph = unmapped_object_memory(loc, x, y, cansee(x, y));
+    if (options.redraw !== false) newsym(x, y);
+    return true;
 }
 
 export function map_level_for_wizard(revealTraps = false) {
@@ -1059,7 +1072,7 @@ export function newsym(x, y) {
         }
         if (mon && see_with_infrared(mon) && monster_visible(mon)) {
             const mg = monster_glyph(mon, wormTail);
-            show_glyph_cell(x, y, mg.ch, mg.color, mg.dec);
+            show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, monster_display_attr(mon));
             return;
         }
         const wg = mon ? warning_glyph(mon) : null;
@@ -1141,7 +1154,7 @@ export function newsym(x, y) {
     if (monster_visible(mon)) {
         const mg = monster_glyph(mon, wormTail);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
-        draw_attr = 0;
+        draw_attr = monster_display_attr(mon);
     } else if (mon) {
         const wg = warning_glyph(mon);
         if (wg) {

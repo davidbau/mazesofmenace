@@ -13,6 +13,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, hasQueuedInput, initReplayMoves } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
+import { syncHeroOnBranchUpstairLikeC } from './mklev.js';
 import { docrtPaintVisibleForWelcomeLikeC } from './display.js';
 import { runPostCommandTurnAdvanceLikeC } from './moveloop_turn_advance.js';
 import { moveloopPreamble, maybeDoTutorialLikeC } from './moveloop_preamble.js';
@@ -172,6 +173,7 @@ export class NethackGame {
 
         // Run game startup (C: newgame())
         await newgame();
+        syncHeroOnBranchUpstairLikeC(g);
     }
 
     /**

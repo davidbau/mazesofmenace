@@ -6,7 +6,7 @@
 // owns structural dungeon generation.
 
 import { game } from './gstate.js';
-import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs, syncHeroOnBranchUpstairLikeC } from './mklev.js';
 import { domoveHeroDirLikeC, rhack } from './cmd.js';
 import { COLNO } from './const.js';
 import { endRunning } from './timeout.js';
@@ -197,6 +197,7 @@ export async function newgame() {
     vision_reset();
     checkSpecialRoomNewgameFalseLikeC(g);
     makedogLikeC(g);
+    syncHeroOnBranchUpstairLikeC(g);
     uInitInventoryAttrsLikeC(g);
 
     g.multi = 0; /* C: gm.multi — multi-turn actions / occupation */

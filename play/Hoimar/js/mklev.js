@@ -1807,12 +1807,13 @@ function set_corpsenm(otmp, pm) {
     if (otmp.otyp === CORPSE && ptr) {
         otmp.corpse_cwt = ptr.cwt ?? 0;
         otmp.owt = weight(otmp);
+        // C ref: src/mkobj.c:set_corpsenm().
+        start_corpse_timeout(otmp);
     }
 }
 
 function set_corpsenm_restart(otmp, pm) {
     set_corpsenm(otmp, pm);
-    if (otmp?.otyp === CORPSE) start_corpse_timeout(otmp);
 }
 
 function monster_ptr(ref) {
@@ -2029,7 +2030,8 @@ function bury_an_obj_basic(obj) {
 
 // mkcorpstat stub
 export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
-    // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
+    // C ref: mkcorpstat calls mksobj(objtyp) then directly overrides
+    // otmp->corpsenm when a caller supplies a monster species.
     // For STATUE/CORPSE: mksobj(..., init, false) may pick a random
     // corpsenm before mkcorpstat's caller-supplied type overrides it.
     // RNG: next_ident from mksobj
@@ -2037,7 +2039,14 @@ export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     otmp.spe = flags & CORPSTAT_SPE_VAL;
     if (pm !== null && pm !== undefined) {
         const oldCorpsenm = otmp.corpsenm;
-        set_corpsenm(otmp, pm);
+        const ptr = monster_ptr(pm);
+        if (ptr) {
+            otmp.corpsenm = typeof pm === 'number' ? pm : ptr.name;
+            if (otmp.otyp === CORPSE) otmp.corpse_cwt = ptr.cwt ?? 0;
+        } else {
+            otmp.corpsenm = pm;
+        }
+        otmp.owt = weight(otmp);
         // C ref: mkobj.c:mkcorpstat().  Unlike set_corpsenm(), mkcorpstat()
         // only restarts timers for zombify/special corpse cases.
         if (otmp.otyp === CORPSE

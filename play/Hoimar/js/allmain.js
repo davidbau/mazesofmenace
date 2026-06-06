@@ -24,6 +24,7 @@ import {
     continueRunStep, dosearch0_basic, finish_pending_eaten_corpse, finishPrayerResult,
     invaultBasic, monsterNearbyForSafety,
     performLevelTeleport, rhack,
+    resumeFireDirectionAfterTurnMore,
     shouldStopRunForNearbyMonster, showDeferredMoveFloorList,
 } from './cmd.js';
 import { nhgetch } from './input.js';
@@ -292,17 +293,18 @@ function askNameChar(ch, currentLength) {
     return '_';
 }
 
-async function promptForPlayerName() {
+async function promptForPlayerName({ showBanner = true } = {}) {
     const g = game;
     let name = '';
+    const cursorRow = showBanner ? 12 : 10;
 
     for (;;) {
         const cursorCol = 13 + name.length;
-        g._override_screen = name ? `${NAME_PROMPT_BASE} ${name}` : NAME_PROMPT_BASE;
-        g._override_cursor = [cursorCol, 12, 1];
+        g._override_screen = namePromptWithName(name, showBanner);
+        g._override_cursor = [cursorCol, cursorRow, 1];
         if (g.nhDisplay) {
             g.nhDisplay.cursorCol = cursorCol;
-            g.nhDisplay.cursorRow = 12;
+            g.nhDisplay.cursorRow = cursorRow;
         }
         await flush_screen(1);
 
@@ -325,14 +327,21 @@ async function promptForPlayerName() {
 
     g.plname = name;
     g._renameallowed = true;
+    if (!showBanner) {
+        // C refs: win/tty/wintty.c:tty_askname(), src/role.c:genl_player_setup().
+        // Role-confirmation redraw overlays the menu without clearing the
+        // bannerless rename prompt row below it.
+        g._startup_rename_prompt_residue = namePromptWithName(name, false);
+    }
 }
 
 function startupInputChar(rawKey) {
     return typeof rawKey === 'number' ? String.fromCharCode(rawKey) : rawKey;
 }
 
-function namePromptWithName(name) {
-    return name ? `${NAME_PROMPT_BASE} ${name}` : NAME_PROMPT_BASE;
+function namePromptWithName(name, showBanner = true) {
+    const base = showBanner ? NAME_PROMPT_BASE : `${'\n'.repeat(10)}Who are you?`;
+    return name ? `${base} ${name}` : base;
 }
 
 async function showStartupOverride(screen, cursor) {
@@ -384,12 +393,34 @@ function stateFromConfiguredStartup() {
     return state;
 }
 
+function startupRoleFilter() {
+    if (!game._startup_role_filter) {
+        game._startup_role_filter = {
+            roles: new Set(),
+            races: new Set(),
+            genders: new Set(),
+            aligns: new Set(),
+        };
+    }
+    return game._startup_role_filter;
+}
+
+function startupFilterActive() {
+    const filter = startupRoleFilter();
+    return filter.roles.size || filter.races.size || filter.genders.size || filter.aligns.size;
+}
+
 function roleChoiceCompatible(choice, state) {
+    const filter = startupRoleFilter();
+    if (filter.roles.has(choice.role)) return false;
     const selectedRole = state.role ? roleChoiceForName(state.role) : null;
     if (selectedRole && selectedRole.role !== choice.role) return false;
     if (state.race && !choice.races.includes(state.race)) return false;
     if (state.gender && !choice.genders.includes(state.gender)) return false;
     if (state.align && !choice.aligns.includes(state.align)) return false;
+    if (!state.race && choice.races.every((race) => filter.races.has(race))) return false;
+    if (!state.gender && choice.genders.every((gender) => filter.genders.has(gender))) return false;
+    if (!state.align && choice.aligns.every((align) => filter.aligns.has(align))) return false;
     const race = state.race ? raceChoiceForName(state.race) : null;
     if (race && state.align && !race.aligns.includes(state.align)) return false;
     return true;
@@ -400,38 +431,74 @@ function anyRoleChoiceCompatible(state) {
 }
 
 function raceChoiceCompatible(choice, state) {
+    if (startupRoleFilter().races.has(choice.name)) return false;
     if (state.race && state.race !== choice.name) return false;
     if (state.align && !choice.aligns.includes(state.align)) return false;
     return anyRoleChoiceCompatible({ ...state, race: choice.name });
 }
 
 function genderChoiceCompatible(choice, state) {
+    if (startupRoleFilter().genders.has(choice.name)) return false;
     if (state.gender && state.gender !== choice.name) return false;
     return anyRoleChoiceCompatible({ ...state, gender: choice.name });
 }
 
 function alignChoiceCompatible(choice, state) {
+    if (startupRoleFilter().aligns.has(choice.name)) return false;
     if (state.align && state.align !== choice.name) return false;
     const race = state.race ? raceChoiceForName(state.race) : null;
     if (race && !race.aligns.includes(choice.name)) return false;
     return anyRoleChoiceCompatible({ ...state, align: choice.name });
 }
 
+function forcedAlignmentConstraint(state) {
+    const role = state.role ? roleChoiceForName(state.role) : null;
+    if (role?.aligns?.length === 1) return { source: 'role', align: role.aligns[0] };
+    const race = state.race ? raceChoiceForName(state.race) : null;
+    if (race?.aligns?.length === 1) return { source: 'race', align: race.aligns[0] };
+    return null;
+}
+
+function effectiveStartupAlignName(state) {
+    return forcedAlignmentConstraint(state)?.align || state.align || null;
+}
+
+function consumeForcedAlignmentSelection(state) {
+    if (state.align) return;
+    const forced = forcedAlignmentConstraint(state);
+    if (!forced) {
+        state._forcedAlignConsumed = null;
+        return;
+    }
+    const token = `${forced.source}:${forced.align}`;
+    if (state._forcedAlignConsumed === token) return;
+    // C refs: src/role.c:rigid_role_checks(), pick_align().
+    rn2(1);
+    state._forcedAlignConsumed = token;
+}
+
 function manualSelectionPrompt(state) {
     const role = state.role ? roleNameForSelection(roleChoiceForName(state.role), state) : '<role>';
     const race = state.race || '<race>';
     const gender = state.gender || '<gender>';
-    const align = state.align || '<alignment>';
+    const align = effectiveStartupAlignName(state) || '<alignment>';
     return `${role} ${race} ${gender} ${align}`;
 }
 
 function startupConfirmationLine(state) {
     const role = roleNameForSelection(roleChoiceForName(state.role), state);
     const race = raceChoiceForName(state.race);
-    return `${game.plname} the ${state.align} ${state.gender} ${(race?.adj || state.race)} ${role}`;
+    const align = effectiveStartupAlignName(state);
+    return `${game.plname} the ${align} ${state.gender} ${(race?.adj || state.race)} ${role}`;
 }
 
 function addStartupExtra(lines, key, state, facet) {
+    const forcedAlign = facet === 'align' ? forcedAlignmentConstraint(state) : null;
+    if (forcedAlign) {
+        // C ref: src/role.c:role_menu_extra().
+        lines.push(`    ${forcedAlign.source} forces ${forcedAlign.align}`);
+        return;
+    }
     const labels = {
         role: 'role',
         race: 'race',
@@ -439,6 +506,10 @@ function addStartupExtra(lines, key, state, facet) {
         align: 'alignment',
     };
     lines.push(`${key} - Pick${state[facet] ? ' another' : ''} ${labels[facet]} first`);
+}
+
+function addStartupFilterExtra(lines) {
+    lines.push(`~ - ${startupFilterActive() ? 'Reset' : 'Set'} role/race/&c filtering`);
 }
 
 function selectionMenuLines(kind, state) {
@@ -505,28 +576,169 @@ function selectionMenuLines(kind, state) {
         addStartupExtra(lines, '"', state, 'gender');
     }
 
-    lines.push('~ - Set role/race/&c filtering', 'q - Quit', '(end)');
+    addStartupFilterExtra(lines);
+    lines.push('q - Quit', '(end)');
     return lines;
 }
 
-function renderStartupMenu(lines, rightSide) {
-    const prefix = rightSide ? '\x1b[41C' : ' ';
-    return lines.map(line => line ? `${prefix}${line}` : '').join('\n');
+function visibleStartupMenuLength(line) {
+    return String(line || '').replace(/\x1b\[[0-9;]*m/g, '').length;
+}
+
+function startupMenuColumn(kind, lines, rightSide) {
+    if (!rightSide) return 1;
+    if (kind !== 'confirm') return 41;
+
+    // C refs: src/role.c:plsel_startmenu(),
+    // win/tty/wintty.c:tty_end_menu()/tty_display_nhwindow().
+    const maxLen = Math.max(...lines.map(visibleStartupMenuLength));
+    return Math.max(0, COLNO - Math.max(maxLen, 37) - 2);
+}
+
+function renderStartupMenu(lines, kind, rightSide) {
+    const col = startupMenuColumn(kind, lines, rightSide);
+    const prefix = col ? `\x1b[${col}C` : '';
+    const rows = lines.map(line => line ? `${prefix}${line}` : '');
+    if (kind === 'confirm' && game._startup_rename_prompt_residue) {
+        const residueRows = String(game._startup_rename_prompt_residue).split('\n');
+        for (let i = 0; i < residueRows.length; i++) {
+            if (residueRows[i] && !rows[i]) rows[i] = residueRows[i];
+        }
+    }
+    return rows.join('\n');
 }
 
 function nextManualSelectionMenu(state) {
     if (!state.role) return 'role';
     if (!state.race) return 'race';
     if (!state.gender) return 'gender';
-    if (!state.align) return 'align';
+    if (!effectiveStartupAlignName(state)) return 'align';
     return 'confirm';
 }
 
 async function showManualSelectionMenu(kind, state, rightSide) {
     const lines = selectionMenuLines(kind, state);
     const endRow = Math.max(0, lines.lastIndexOf('(end)'));
-    return showStartupOverride(renderStartupMenu(lines, rightSide),
-        [rightSide ? 47 : 7, endRow, 1]);
+    const col = startupMenuColumn(kind, lines, rightSide);
+    return showStartupOverride(renderStartupMenu(lines, kind, rightSide),
+        [col + '(end)'.length + 1, endRow, 1]);
+}
+
+function startupFilterRows(draft, promptHasExistingFilter = false) {
+    const rows = [
+        { text: `\x1b[7mPick all that apply${promptHasExistingFilter ? ' and/or unpick any that no longer apply' : ''}\x1b[0m` },
+        { text: '' },
+        { text: 'Unacceptable roles' },
+    ];
+    for (const choice of ROLE_SELECTION_CHOICES) {
+        rows.push({
+            text: `${choice.key} ${draft.roles.has(choice.role) ? '+' : '-'} ${roleLabelForMenu(choice, {})}`,
+            key: choice.key,
+            bucket: 'roles',
+            value: choice.role,
+        });
+    }
+    rows.push({ text: '' }, { text: 'Unacceptable races' });
+    for (const choice of RACE_SELECTION_CHOICES) {
+        const key = choice.name[0].toUpperCase();
+        rows.push({
+            text: `${key} ${draft.races.has(choice.name) ? '+' : '-'} ${choice.name}`,
+            key,
+            bucket: 'races',
+            value: choice.name,
+        });
+    }
+    rows.push({ text: '' }, { text: 'Unacceptable genders' });
+    for (const choice of GENDER_SELECTION_CHOICES) {
+        const key = choice.name[0].toUpperCase();
+        rows.push({
+            text: `${key} ${draft.genders.has(choice.name) ? '+' : '-'} ${choice.name}`,
+            key,
+            bucket: 'genders',
+            value: choice.name,
+        });
+    }
+    rows.push({ text: '' }, { text: 'Unacceptable alignments' });
+    for (const choice of ALIGN_SELECTION_CHOICES) {
+        const key = choice.name[0].toUpperCase();
+        rows.push({
+            text: `${key} ${draft.aligns.has(choice.name) ? '+' : '-'} ${choice.name}`,
+            key,
+            bucket: 'aligns',
+            value: choice.name,
+        });
+    }
+    return rows;
+}
+
+function startupFilterDraftActive(draft) {
+    return draft.roles.size || draft.races.size || draft.genders.size || draft.aligns.size;
+}
+
+function cloneStartupRoleFilter() {
+    const filter = startupRoleFilter();
+    return {
+        roles: new Set(filter.roles),
+        races: new Set(filter.races),
+        genders: new Set(filter.genders),
+        aligns: new Set(filter.aligns),
+    };
+}
+
+function installStartupRoleFilter(draft) {
+    game._startup_role_filter = {
+        roles: new Set(draft.roles),
+        races: new Set(draft.races),
+        genders: new Set(draft.genders),
+        aligns: new Set(draft.aligns),
+    };
+}
+
+function renderStartupFilterMenu(draft, page, promptHasExistingFilter = false) {
+    // C refs: src/role.c:reset_role_filtering(), win/tty/wintty.c:tty_end_menu().
+    const pageRows = 23;
+    const rows = startupFilterRows(draft, promptHasExistingFilter);
+    const pages = Math.max(1, Math.ceil(rows.length / pageRows));
+    const start = page * pageRows;
+    const body = rows.slice(start, start + pageRows);
+    const keyMap = new Map();
+    const rendered = body.map((row) => {
+        if (row.key) keyMap.set(row.key, row);
+        return row.text ? ` ${row.text}` : '';
+    });
+    const footer = pages > 1 ? `(${page + 1} of ${pages})` : '(end)';
+    rendered.push(` ${footer}`);
+    return {
+        screen: rendered.join('\n'),
+        cursor: [1 + footer.length + (pages > 1 ? 0 : 1), pageRows, 1],
+        keyMap,
+        pages,
+    };
+}
+
+async function runStartupFilterMenu() {
+    const draft = cloneStartupRoleFilter();
+    const promptHasExistingFilter = !!startupFilterActive();
+    let page = 0;
+
+    for (;;) {
+        const menu = renderStartupFilterMenu(draft, page, promptHasExistingFilter);
+        const key = await showStartupOverride(menu.screen, menu.cursor);
+        if (key === '\n' || key === '\r') {
+            installStartupRoleFilter(draft);
+            return true;
+        }
+        if (key === ' ' && menu.pages > 1) {
+            page = (page + 1) % menu.pages;
+            continue;
+        }
+        if (key === 'q' || key === '\x1b') return false;
+        const row = menu.keyMap.get(key);
+        if (!row) continue;
+        const bucket = draft[row.bucket];
+        if (bucket.has(row.value)) bucket.delete(row.value);
+        else bucket.add(row.value);
+    }
 }
 
 function applyManualStartupSelection(state) {
@@ -534,12 +746,12 @@ function applyManualStartupSelection(state) {
     g._selected_startup_role = state.role;
     g._selected_startup_race = state.race;
     g._selected_startup_gender = state.gender;
-    g._selected_startup_align = state.align;
+    g._selected_startup_align = effectiveStartupAlignName(state);
     g._nhopts = g._nhopts || {};
     g._nhopts.role = state.role;
     g._nhopts.race = state.race;
     g._nhopts.gender = state.gender;
-    g._nhopts.align = state.align;
+    g._nhopts.align = g._selected_startup_align;
 }
 
 function chooseStartupExtra(kind, key, state) {
@@ -553,6 +765,7 @@ function chooseStartupExtra(kind, key, state) {
     };
     const next = nextByKey[key];
     if (!next || next === kind) return null;
+    if (next === 'align' && forcedAlignmentConstraint(state)) return null;
     state[next] = null;
     return next;
 }
@@ -561,6 +774,7 @@ async function selectManualCharacter(initialState = {}) {
     // C refs: src/role.c:genl_player_setup(), setup_rolemenu(),
     // setup_racemenu(), setup_gendmenu(), setup_algnmenu().
     let state = { ...initialState };
+    consumeForcedAlignmentSelection(state);
     let kind = nextManualSelectionMenu(state);
     let rightSide = false;
 
@@ -572,16 +786,26 @@ async function selectManualCharacter(initialState = {}) {
                 return true;
             }
             if (key === 'n') {
+                game._startup_rename_prompt_residue = null;
                 state = {};
                 kind = 'role';
                 rightSide = false;
                 continue;
             }
             if (key === 'a') {
-                await promptForPlayerName();
+                await promptForPlayerName({ showBanner: false });
                 continue;
             }
             if (key === 'q' || key === '\x1b') return false;
+            continue;
+        }
+
+        if (key === '~') {
+            if (await runStartupFilterMenu()) {
+                state = {};
+                kind = 'role';
+            }
+            rightSide = true;
             continue;
         }
 
@@ -610,6 +834,7 @@ async function selectManualCharacter(initialState = {}) {
                 && alignChoiceCompatible(candidate, state));
             if (choice) state.align = choice.name;
         }
+        consumeForcedAlignmentSelection(state);
         kind = nextManualSelectionMenu(state);
         rightSide = true;
     }
@@ -2103,6 +2328,12 @@ export async function moveloop_core() {
                     // swap can consume a turn and produce monster/pet output
                     // before the canned dofire retry reaches getdir().
                     queue_more_prompt();
+                    return;
+                }
+                if (fireDirectionNeedsTurnMore
+                    && !g._more
+                    && !g._monster_turn_paused_for_more) {
+                    await resumeFireDirectionAfterTurnMore();
                     return;
                 }
                 if (g._more && g._deferred_move_floor_list_resume_turn_tail) return;

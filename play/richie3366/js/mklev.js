@@ -7,6 +7,7 @@
 
 import { game } from './gstate.js';
 import { insideRoomLikeC } from './hacklib.js';
+import { stairwayAtInGame } from './decor.js';
 import {
     mkobjMklevConsumeRngLikeC,
     mkobjErosionsMklevLikeC,
@@ -1101,6 +1102,24 @@ export function u_on_upstairs() {
     }
     /* C: stairs.c — no upstairs on D:1 → u_on_sstairs(0) → u_on_rndspot (dndest). */
     u_on_sstairsLikeC(0);
+}
+
+/**
+ * C: stairs.c `On_stairs` / `u_on_upstairs` — hero on branch up stair after newgame.
+ * Re-sync when something left `@` off the recorded up-stair tile (e.g. `seed0102`).
+ * @param {import('./gstate.js').game} g
+ */
+export function syncHeroOnBranchUpstairLikeC(g) {
+    const u = g.u;
+    if (!u || In_endgame(u.uz)) return;
+    if (stairwayAtInGame(g, u.ux | 0, u.uy | 0)?.up) return;
+    const stway = stairway_find_dir(true);
+    if (stway) {
+        u_on_newpos(stway.sx, stway.sy);
+        return;
+    }
+    const up = g.level?.upstair;
+    if (up) u_on_newpos(up.x | 0, up.y | 0);
 }
 
 // oinit stub (level-dependent object probability reset)
