@@ -47573,11 +47573,70 @@ function heroRollingBoulderRevealMimicAppearance(mon) {
     return true;
 }
 
+function vampshifterRollingBoulderRevivalBaseName(mon) {
+    const data = mon?.data || {};
+    const rawBase = mon?.vampBase || data.vampBase || mon?.chamName || data.chamName
+        || mon?.cham || data.cham || '';
+    const base = String(rawBase || '').toLowerCase();
+    if (base.includes('vlad')) return 'Vlad the Impaler';
+    if (base === 'vampire lord' || base === 'vampire leader' || base === 'vampire lady')
+        return base === 'vampire lady' ? 'vampire leader' : base;
+    if (base === 'vampire') return 'vampire';
+    if ((mon?.vampshifter || data.vampshifter) && String(data.name || mon?.name || '').toLowerCase() !== 'vampire')
+        return 'vampire';
+    return '';
+}
+
+function reviveVampshifterFromRollingBoulderKill(mon, messages, visible) {
+    const baseName = vampshifterRollingBoulderRevivalBaseName(mon);
+    if (!baseName) return false;
+    const currentName = String(mon?.data?.name || mon?.name || '').toLowerCase();
+    if (currentName === String(baseName).toLowerCase()) return false;
+    if ((game._genocided_monsters || []).includes(baseName)) return false;
+
+    const oldData = mon.data || {};
+    const oldDisplayName = heroRollingBoulderMonsterDeathName(mon);
+    const specialDeath = oldData.noncorporeal || oldData.amorphous
+        || oldData.name === 'fog cloud' || oldData.mlet === 'ghost';
+    const baseData = monsterByRndName(baseName) || RANDOM_MONSTER_BY_NAME.get(baseName);
+    if (!baseData) return false;
+
+    const level = adjustedMonsterLevel(baseData);
+    const maxHp = Math.max(10, monster_hp(baseData, level));
+    mon.dead = false;
+    mon.data = { ...baseData, hpLevel: level };
+    mon.name = baseData.name;
+    mon.mlet = baseData.mlet;
+    mon.glyph = baseData.glyph;
+    mon.color = baseData.color;
+    mon.m_lev = level;
+    mon.mlevel = level;
+    mon.mhpmax = maxHp;
+    mon.mhp = maxHp;
+    mon.mcanmove = true;
+    mon.mfrozen = 0;
+    mon.msleeping = 0;
+    mon.vampshifter = false;
+    delete mon.vampBase;
+    delete mon.chamName;
+    delete mon.cham;
+
+    if (visible && heroRollingBoulderMonsterCanBeSpotted(mon)) {
+        const before = specialDeath ? oldDisplayName : oldDisplayName.replace(/^The /, 'The seemingly dead ');
+        const action = specialDeath ? 'suddenly reconstitutes' : 'suddenly transforms';
+        messages.push(`${before} ${action} and rises as ${indefiniteArticle(baseData.name)} ${baseData.name}!`);
+    }
+    set_malign(mon);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
 function heroRollingBoulderKillMonster(mon, messages, visible, movingBoulder) {
     if (visible) {
         const verb = heroRollingBoulderMonsterDeathIsDestroyed(mon) ? 'destroyed' : 'killed';
         messages.push(`${heroRollingBoulderMonsterDeathName(mon)} is ${verb}!`);
     }
+    if (reviveVampshifterFromRollingBoulderKill(mon, messages, visible)) return;
     dropMonsterInventory(mon, messages);
     game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
     mon.mhp = 0;
