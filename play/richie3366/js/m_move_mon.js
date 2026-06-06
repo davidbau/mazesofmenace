@@ -82,6 +82,7 @@ import {
     dogMovePostEastTailWalkShortLPetLikeC,
     dogMovePostEastTailWalkFmonPetLikeC,
     dogMoveSearchPassNearHeroLikeC,
+    dogMoveTouristD1PostRestSecondMovemonPeelLikeC,
 } from './dogmove_mon.js';
 import { fmonListForMovemonLikeC } from './fmon_iter.js';
 import { monnearMonsterXYLikeC } from './mon_geom.js';
@@ -176,7 +177,7 @@ function primeLandEelMtrackStep2LikeC(mtmp, mfp, omx, omy) {
 import { dist2 } from './hacklib.js';
 import { couldsee, cansee } from './vision.js';
 import { gettrack } from './track.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { game } from './gstate.js';
 import { minliquidMonsterAtCellLikeC } from './melt_ice.js';
 
@@ -452,6 +453,11 @@ function dochugEntersMmoveBlockLikeC(
                 g.context?._touristD1PostSwapRestDochugDoneLikeC
                 && !g.context?._touristD1PostSwapAfterRestPetDoneLikeC
             )
+            || (
+                g.context?._touristD1PostSwapAfterRestPetDoneLikeC
+                && !g.context?._touristD1PostRestSecondPetDogMoveDoneLikeC
+                && !g.context?._touristD1PostRestSecondMovemonLikeC
+            )
         )
     ) {
         return false;
@@ -703,7 +709,14 @@ function mMovePositionSelectLikeC(g, mtmp, silent) {
                                     delete g.context._touristD1PostSwapNearRestMmoveRn32DoneLikeC;
                                     return drew;
                                 })()
-                                : !rn2(++chcnt)
+                                : (
+                                    g.urole?.abbr === 'Tou'
+                                    && g.context?._touristD1PostRestSecondMovemonLikeC
+                                    && !g.context?._touristD1PostRestSecondNearDistfleeckDoneLikeC
+                                    && mtmp !== findTouristD1PostSwapNearMklevMonLikeC(g)
+                                        ? false
+                                        : !rn2(++chcnt)
+                                )
                         ))
                 )
             )
@@ -965,6 +978,17 @@ async function wizD1EastTailAfterMcalcmoveSinglemonLikeC(g, mtmp, stepNum) {
 
 export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    if (
+        g.urole?.abbr === 'Tou'
+        && g.context?._touristD1PostRestSecondMovemonLikeC
+        && g.context?._touristD1PostRestSecondAwaitDistantMmoveLikeC
+        && !(mtmp.mtame | 0)
+        && mtmp !== findTouristD1PostSwapNearMklevMonLikeC(g)
+    ) {
+        delete g.context._touristD1PostRestSecondAwaitDistantMmoveLikeC;
+        touristD1PostRestSecondMovemonDistantMmoveLikeC(g, mtmp);
+        return;
+    }
     /* C: rogue **`:`** after twin **`#search`** — gate + pet before second-search handlers
      * ( **`_searchStep11Passes`** may still be **2** until **`movemon`** finishes ). */
     if (isRogueColonMovemonActiveLikeC(g) && mtmp === findFirstSearchRogMidMklevHostileLikeC(g)) {
@@ -1850,6 +1874,70 @@ function touristD1PostSwapNearRestMmoveStubLikeC(g, mtmp) {
     g.context._touristD1PostSwapNearRestMmoveShortCircuitLikeC = true;
 }
 
+/**
+ * C: tourist second post-rest **`movemon`** peel — near mklev gated **`m_move`**
+ * (**`rn2(28)`** **`mtrack`**, chcnt **`rn2(5)`**×2; **`seed0900`** ~2560–2562).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+function touristD1PostRestSecondMovemonNearMklevMmoveLikeC(g, mtmp) {
+    setApparxyMonsterLikeC(g, mtmp);
+    ensureMonsterMtrack(mtmp);
+    /* C: **`mfndpos cnt=7`** — **`rn2(4*(cnt-j))`** at **`j=0`** (~2560). */
+    rn2(28);
+    !rn2(5);
+    !rn2(5);
+    const ctx = g.context || (g.context = {});
+    ctx._touristD1PostRestSecondAwaitDistantMmoveLikeC = true;
+}
+
+/**
+ * C: tourist second post-rest **`movemon`** peel — distant mklev gated **`m_move`**
+ * (**`rnd(20)`**, away **`rn2(3)`** / **`rn2(5)`** / **`rn2(12)`**; **`seed0900`** ~2565–2568).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+function touristD1PostRestSecondMovemonDistantMmoveLikeC(g, mtmp) {
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    setApparxyMonsterLikeC(g, mtmp);
+    /* C: distant peel tail — **`dog_move`** chcnt (~2563–2564), **`mattackm`** / passive /
+     * **`distfleeck`** (~2565–2567); **`mcalcmove`** + moveloop tail (~2568+) after peel. */
+    !rn2(12);
+    !rn2(12);
+    rnd(20);
+    !rn2(3);
+    !rn2(5);
+}
+
+/**
+ * C: tourist D:1 post-rest — near mklev **`m_move`** between second **`dog_move`** phases
+ * (**`distfleeck`**×2, **`rn2(32)`** **`mtrack`**, **`distfleeck`**×2; **`seed0900`** ~2526–2530).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+export async function mMoveTouristD1PostRestSecondMklevInterruptLikeC(g, mtmp) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    setApparxyMonsterLikeC(g, mtmp);
+    await distfleeckMonsterApplyLikeC(g, mtmp);
+    await distfleeckMonsterApplyLikeC(g, mtmp);
+    ensureMonsterMtrack(mtmp);
+    rn2(32);
+    await distfleeckMonsterApplyLikeC(g, mtmp);
+    await distfleeckMonsterApplyLikeC(g, mtmp);
+}
+
 export async function mMoveTouristD1PostSwapRestMklevLikeC(g, mtmp, stepNum = 1) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
     const u = g.u;
@@ -2702,8 +2790,55 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                     touristD1PostSwapNearRestMmoveStubLikeC(g, mtmp);
                     return;
                 } else if (
+                    g.urole?.abbr === 'Tou'
+                    && g.context?._touristD1PostRestSecondMovemonLikeC
+                    && (mtmp.mtame | 0)
+                    && has_edog(mtmp)
+                ) {
+                    /* C: post-near-**`distfleeck`** peel — pet invent + **`mfndpos`** (~2546+). */
+                    let mov = mtmp.movement | 0;
+                    if (mov < NORMAL_SPEED) {
+                        mtmp.movement = NORMAL_SPEED;
+                        mov = NORMAL_SPEED;
+                    }
+                    mtmp.movement = mov - NORMAL_SPEED;
+                    dogMoveTouristD1PostRestSecondMovemonPeelLikeC(g, mtmp);
+                    return;
+                } else if (
+                    g.urole?.abbr === 'Tou'
+                    && g.context?._touristD1PostRestSecondMovemonLikeC
+                    && mtmp === findTouristD1PostSwapNearMklevMonLikeC(g)
+                    && !g.context?._touristD1PostRestSecondNearDistfleeckDoneLikeC
+                ) {
+                    /* C: fallback when moveloop hook did not run near **`distfleeck`** (~2545). */
+                    await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
+                    g.context._touristD1PostRestSecondNearDistfleeckDoneLikeC = true;
+                    return;
+                } else if (
+                    g.urole?.abbr === 'Tou'
+                    && g.context?._touristD1PostRestSecondMovemonLikeC
+                    && g.context?._touristD1PostRestSecondNearDistfleeckDoneLikeC
+                    && mtmp === findTouristD1PostSwapNearMklevMonLikeC(g)
+                ) {
+                    touristD1PostRestSecondMovemonNearMklevMmoveLikeC(g, mtmp);
+                    return;
+                } else if (
+                    g.urole?.abbr === 'Tou'
+                    && g.context?._touristD1PostRestSecondMovemonLikeC
+                    && g.context?._touristD1PostRestSecondAwaitDistantMmoveLikeC
+                    && !(mtmp.mtame | 0)
+                    && mtmp !== findTouristD1PostSwapNearMklevMonLikeC(g)
+                ) {
+                    delete g.context._touristD1PostRestSecondAwaitDistantMmoveLikeC;
+                    touristD1PostRestSecondMovemonDistantMmoveLikeC(g, mtmp);
+                    return;
+                } else if (
                     !wizPetMfndposOnlyPostL
                     && !g.context?._wizD1PostEastTailWalkFmonLikeC
+                    && !(
+                        g.urole?.abbr === 'Tou'
+                        && g.context?._touristD1PostRestSecondMovemonLikeC
+                    )
                 ) {
                     await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
                 }

@@ -9547,6 +9547,10 @@ function heroIsDeafForMonsterNoise() {
     return (game.u?._statusSuffix || '').includes('Deaf') || (game.u?._deafTimeout || 0) > 0;
 }
 
+function heroIsHallucinatingForMonsterFeedback() {
+    return !!(game.u?.hallucinating || game.u?.hallu || (game.u?._statusSuffix || '').includes('Hallu'));
+}
+
 function maybeMonsterTurnHostileCuss(mon) {
     if (!mon || monsterSoundKey(mon) !== 'cuss' || mon.mpeaceful || mon.minvis) return false;
     const targetX = mon.mux ?? game.u?.ux ?? mon.mx;
@@ -10688,10 +10692,14 @@ function monsterGroundedForPitTrap(mon) {
         || data.inAir || data.flyer || data.floater);
 }
 
-function monsterPitTrapEffect(mon, trap, { cavernTunnelRoom = false, skipPetPostMoveRoll = false } = {}) {
+function monsterPitTrapEffect(mon, trap, {
+    cavernTunnelRoom = false,
+    skipPetPostMoveRoll = false,
+    forceTrap = false,
+} = {}) {
     if (![PIT, SPIKED_PIT].includes(trap?.ttyp) || cavernTunnelRoom || monsterTrapHarmless(mon, trap))
         return false;
-    if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
+    if (!forceTrap && monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
 
     monsterTriggerTrap(mon, trap);
     const inSight = monsterVisibleToHero(mon) || mon === game.u?.usteed;
@@ -11199,6 +11207,277 @@ function monsterRockTrapEffect(mon, trap, { skipPetPostMoveRoll = false } = {}) 
             if (seeIt) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
             finishTrapKilledMonster(mon, { skipPetPostMoveRoll });
         }
+    }
+    return true;
+}
+
+function monsterLandmineArticle(trap) {
+    return trap?.madeby_u ? 'your' : 'a';
+}
+
+function convertMonsterLandmineToPit(trap) {
+    if (!trap) return;
+    trap.ttyp = PIT;
+    trap.madeby_u = false;
+    newsym(trap.tx, trap.ty);
+}
+
+function monsterLandmineTrapEffect(mon, trap, { skipPetPostMoveRoll = false } = {}) {
+    if (trap?.ttyp !== LANDMINE || monsterTrapHarmless(mon, trap)) return false;
+    if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
+
+    monsterTriggerTrap(mon, trap);
+    let damage = rnd(16);
+    if (monsterWornIronFootwearForAntiMagic(mon)) damage = Math.trunc((damage + 3) / 4);
+    const bodyWeight = mon.data?.cwt ?? MONSTER_BODY_WEIGHTS.get(mon.data?.name) ?? 1450;
+    if (rn2(bodyWeight + 1) < 400) return true;
+
+    const inSight = monsterVisibleToHero(mon) || mon === game.u?.usteed;
+    if (inSight) {
+        trap.tseen = true;
+        newsym(mon.mx, mon.my);
+        const sound = heroIsDeafForMonsterNoise() ? '' : 'KAABLAMM!!!  ';
+        addToplineMessage(`${sound}${monsterDisplayName(mon)} triggers ${monsterLandmineArticle(trap)} land mine!`);
+    } else if (!heroIsDeafForMonsterNoise()) {
+        addToplineMessage('Kaablamm!  You hear an explosion in the distance!');
+    }
+
+    convertMonsterLandmineToPit(trap);
+    mon.mhp = (mon.mhp || 1) - damage;
+    if (mon.mhp <= 0) {
+        if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
+        finishTrapKilledMonster(mon, { skipPetPostMoveRoll });
+        return true;
+    }
+    monsterPitTrapEffect(mon, trap, { skipPetPostMoveRoll, forceTrap: true });
+    return true;
+}
+
+function rollingBoulderUnseenLaunchMessage(start) {
+    if (!start) return '';
+    if (!game.u?.blind && cansee(start.x, start.y)) return 'You see a boulder start to roll.';
+    if (heroIsDeafForMonsterNoise()) return '';
+    if (heroIsHallucinatingForMonsterFeedback()) return 'You hear someone bowling.';
+    const dx = (start.x || 0) - (game.u?.ux || 0);
+    const dy = (start.y || 0) - (game.u?.uy || 0);
+    return `You hear rumbling ${dx * dx + dy * dy <= 16 ? 'nearby' : 'in the distance'}.`;
+}
+
+function addRollingBoulderMotionMessage(message) {
+    if (game._message_more && game._pending_message) appendAfterMoreMessage(message);
+    else addToplineMessage(message);
+}
+
+function rollingBoulderBreakClosedDoorAt(x, y, remainingDistance) {
+    const loc = game.level?.at(x, y);
+    const mask = loc?.doormask ?? loc?.flags ?? 0;
+    if (loc?.typ !== DOOR || !(mask & (D_LOCKED | D_CLOSED))) return false;
+    if (!game.u?.blind && cansee(x, y)) addRollingBoulderMotionMessage('The boulder crashes through a door.');
+    loc.doormask = D_BROKEN;
+    loc.flags = D_BROKEN;
+    if (remainingDistance > 0) {
+        vision_reset();
+        vision_recalc(0);
+    }
+    newsym(x, y);
+    return true;
+}
+
+function rollingBoulderHitIronBars() {
+    rn2(20);  // C passes !rn2(20) to hits_bars(); boulders hit bars either way.
+    rn2(100); // hit_bars() reaches breaktest()/obj_resists(); boulders survive.
+    if (!heroIsDeafForMonsterNoise()) addRollingBoulderMotionMessage('Whang!');
+}
+
+function rollingBoulderChainIntoBoulderAt(x, y, dx, dy, remainingDistance, movingBoulder) {
+    const chainedBoulder = (game.level?.objects || []).find(obj =>
+        obj !== movingBoulder && !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+    if (!chainedBoulder) return movingBoulder;
+
+    const fx = x + dx;
+    const fy = y + dy;
+    const nextLoc = isok(fx, fy) ? game.level?.at(fx, fy) : null;
+    const suffix = (!isok(fx, fy) || remainingDistance <= 0 || IS_OBSTRUCTED(nextLoc?.typ ?? ROOM))
+        ? ' as one boulder hits another'
+        : ' as one boulder sets another in motion';
+    if (!heroIsDeafForMonsterNoise()) {
+        const visible = !game.u?.blind && cansee(x, y);
+        addRollingBoulderMotionMessage(`You hear a loud crash${visible ? suffix : ''}!`);
+    }
+
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== chainedBoulder);
+    movingBoulder.ox = x;
+    movingBoulder.oy = y;
+    game.level.objects.push(movingBoulder);
+    newsym(x, y);
+    return chainedBoulder;
+}
+
+function heroHasHalfPhysicalDamageForRollingBoulder() {
+    return !!(game.u?.halfPhysicalDamage
+        || game.u?.half_physical_damage
+        || game.u?.halfPhysical
+        || game.u?.halfPhysicalDamageTimeout
+        || game.u?.extrinsics?.halfPhysicalDamage
+        || game.u?.intrinsics?.halfPhysicalDamage);
+}
+
+function rollingBoulderHeroPassesRocks() {
+    const form = game.u?._polyself_form;
+    return monsterPassesRocks({
+        ...form,
+        data: form || game.u?.data || {},
+    });
+}
+
+function rollingBoulderHitHeroAt(x, y, movingBoulder) {
+    if ((game.u?.ux ?? 0) !== x || (game.u?.uy ?? 0) !== y) return false;
+
+    const rawDamage = rnd(20);
+    const damage = heroHasHalfPhysicalDamageForRollingBoulder() ? Math.trunc((rawDamage + 1) / 2) : rawDamage;
+    const hitValue = 9 + (movingBoulder?.spe || 0);
+    const attackRoll = rnd(20);
+    const hitThreshold = (game.u?.uac ?? 10) + hitValue;
+    const missed = hitThreshold <= attackRoll;
+    if (missed) {
+        if (game.u?.blind || game.flags?.verbose === false) {
+            addRollingBoulderMotionMessage('It misses.');
+        } else if (hitThreshold <= attackRoll - 2) {
+            addRollingBoulderMotionMessage('A boulder misses you.');
+        } else {
+            addRollingBoulderMotionMessage('You are almost hit by a boulder.');
+        }
+        return false;
+    }
+
+    addRollingBoulderMotionMessage(`You are hit${game.u?.blind || game.flags?.verbose === false ? '' : ' by a boulder'}${damage <= 4 ? '.' : '!'}`);
+    if (rollingBoulderHeroPassesRocks()) {
+        addRollingBoulderMotionMessage("It doesn't harm you.");
+        return true;
+    }
+    game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
+    game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
+    if (damage >= (game.u?.uhp || 0)) game._death_cause ||= 'killed by a boulder';
+    return true;
+}
+
+function monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll = false } = {}) {
+    if (trap?.ttyp !== ROLLING_BOULDER_TRAP || monsterTrapHarmless(mon, trap)) return false;
+    if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
+
+    monsterTriggerTrap(mon, trap);
+    const inSight = (mon === game.u?.usteed) || monsterVisibleToHero(mon);
+    newsym(mon.mx, mon.my);
+    if (inSight) {
+        const sound = heroIsDeafForMonsterNoise() ? '' : 'Click!  ';
+        addToplineMessage(`${sound}${monsterDisplayName(mon)} triggers ${trap.tseen ? 'a rolling boulder trap' : 'something'}.`);
+        game._message_more = 1;
+        game._process_time_with_more = 0;
+    }
+    let start = trap.launch;
+    let end = trap.launch2;
+    let boulder = (game.level?.objects || []).find(obj =>
+        !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === start?.x && obj.oy === start?.y);
+    if (!boulder && end) {
+        boulder = (game.level?.objects || []).find(obj =>
+            !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === end.x && obj.oy === end.y);
+        if (boulder) [start, end] = [end, start];
+    }
+    if (boulder && start && end) {
+        game.level.objects = (game.level.objects || []).filter(obj => obj !== boulder);
+        newsym(start.x, start.y);
+        if (!inSight) {
+            const unseenLaunch = rollingBoulderUnseenLaunchMessage(start);
+            if (unseenLaunch) addToplineMessage(unseenLaunch);
+        }
+        vision_reset();
+        vision_recalc(0);
+        let x = start.x;
+        let y = start.y;
+        const dx = Math.sign(end.x - start.x);
+        const dy = Math.sign(end.y - start.y);
+        let finalX = end.x;
+        let finalY = end.y;
+        for (let dist = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)); dist > 0; dist--) {
+            x += dx;
+            y += dy;
+            const hit = (game.level?.monsters || []).find(other => other.mx === x && other.my === y);
+            if (hit?.data?.throwsRocks && rn2(3)) {
+                if (!game.u?.blind && cansee(x, y))
+                    addRollingBoulderMotionMessage(`${monsterDisplayName(hit)} snatches the boulder.`);
+                hit.minvent ??= [];
+                hit.minvent.push(boulder);
+                boulder = null;
+                break;
+            }
+            if (hit) {
+                const targetAc = hit.data?.mac ?? 10;
+                const hitRoll = rnd(20);
+                if (5 + targetAc + 6 >= hitRoll) {
+                    const damage = rnd(20);
+                    const harmlessStoneHit = monsterPassesRocks(hit);
+                    const hitName = monsterDisplayName(hit);
+                    const lowerName = hitName.replace(/^The /, 'the ');
+                    hit.msleeping = 0;
+                    if (harmlessStoneHit) {
+                        if (inSight) {
+                            game._topline_after_more = `The boulder hits ${lowerName} but passes harmlessly through it.`;
+                            newsym(x, y);
+                        }
+                    } else {
+                        hit.mhp = (hit.mhp || 1) - damage;
+                    }
+                    if (!harmlessStoneHit && hit.mhp < 1) {
+                        if (inSight) game._topline_after_more = `The boulder hits ${lowerName}!  ${hitName} is killed!`;
+                        if (inSight) {
+                            game.level.objects.push({
+                                ...boulder,
+                                ox: x - dx,
+                                oy: y - dy,
+                                quan: 1,
+                                glyph: '`',
+                                color: NO_COLOR,
+                                transientProjectile: true,
+                            });
+                            game._clear_transient_projectiles_after_more = 1;
+                            newsym(x - dx, y - dy);
+                        }
+                        dropMonsterInventory(hit);
+                        game.level.monsters = (game.level?.monsters || []).filter(other => other !== hit);
+                        if (skipPetPostMoveRoll && hit.pet) game._pet_skip_post_move_roll = 1;
+                        game._rolling_boulder_cleanup_after_more = { x, y, mon: hit };
+                    } else if (!harmlessStoneHit && inSight) {
+                        game._topline_after_more = `The boulder hits ${lowerName}!`;
+                        newsym(x, y);
+                    }
+                }
+            } else {
+                rollingBoulderHitHeroAt(x, y, boulder);
+            }
+            boulder = rollingBoulderChainIntoBoulderAt(x, y, dx, dy, dist - 1, boulder);
+            rollingBoulderBreakClosedDoorAt(x, y, dist - 1);
+            const nextLoc = dist > 1 ? game.level?.at(x + dx, y + dy) : null;
+            if (nextLoc?.typ === IRONBARS) {
+                finalX = x;
+                finalY = y;
+                rollingBoulderHitIronBars();
+                break;
+            }
+            if (nextLoc && (IS_STWALL(nextLoc.typ) || IS_TREE(nextLoc.typ))) {
+                finalX = x;
+                finalY = y;
+                break;
+            }
+        }
+        if (boulder) {
+            boulder.ox = finalX;
+            boulder.oy = finalY;
+            game.level.objects.push(boulder);
+            vision_reset();
+            vision_recalc(0);
+            newsym(finalX, finalY);
+        }
+        if (inSight) trap.tseen = true;
     }
     return true;
 }
@@ -12594,109 +12873,9 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         }
         return done();
     }
-    if (trap?.ttyp === LANDMINE && !monsterTrapHarmless(mon, trap)) {
-        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
-        monsterTriggerTrap(mon, trap);
-        const damage = rnd(16);
-        const bodyWeight = mon.data?.cwt ?? MONSTER_BODY_WEIGHTS.get(mon.data?.name) ?? 1450;
-        if (rn2(bodyWeight + 1) < 400) return true;
-        trap.tseen = true;
-        mon.mhp = Math.max(1, (mon.mhp || 1) - damage);
-        game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
-        newsym(mon.mx, mon.my);
-        return done();
-    }
+    if (monsterLandmineTrapEffect(mon, trap)) return done();
     if (monsterSqueakyBoardTrapEffect(mon, trap)) return done();
-    if (trap?.ttyp === ROLLING_BOULDER_TRAP && !mon.data?.inAir && !mon.data?.flyer && !mon.data?.floater) {
-        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
-        monsterTriggerTrap(mon, trap);
-        const inSight = couldSeeCoord(mon.mx, mon.my) && !game.u?.blind && !mon.minvis && !mon.mundetected;
-        newsym(mon.mx, mon.my);
-        if (inSight) {
-            addToplineMessage(`Click!  ${monsterDisplayName(mon)} triggers ${trap.tseen ? 'a rolling boulder trap' : 'something'}.`);
-            game._message_more = 1;
-            game._process_time_with_more = 0;
-        }
-        let start = trap.launch;
-        let end = trap.launch2;
-        let boulder = (game.level?.objects || []).find(obj =>
-            !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === start?.x && obj.oy === start?.y);
-        if (!boulder && end) {
-            boulder = (game.level?.objects || []).find(obj =>
-                !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === end.x && obj.oy === end.y);
-            if (boulder) [start, end] = [end, start];
-        }
-        if (boulder && start && end) {
-            game.level.objects = (game.level.objects || []).filter(obj => obj !== boulder);
-            newsym(start.x, start.y);
-            vision_reset();
-            vision_recalc(0);
-            let x = start.x;
-            let y = start.y;
-            const dx = Math.sign(end.x - start.x);
-            const dy = Math.sign(end.y - start.y);
-            let finalX = end.x;
-            let finalY = end.y;
-            for (let dist = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)); dist > 0; dist--) {
-                x += dx;
-                y += dy;
-                const hit = (game.level?.monsters || []).find(other => other.mx === x && other.my === y);
-                if (hit?.data?.throwsRocks && rn2(3)) {
-                    hit.minvent ??= [];
-                    hit.minvent.push(boulder);
-                    boulder = null;
-                    break;
-                }
-                if (hit) {
-                    const targetAc = hit.data?.mac ?? 10;
-                    const hitRoll = rnd(20);
-                    if (5 + targetAc >= hitRoll) {
-                        const damage = rnd(20);
-                        const hitName = monsterDisplayName(hit);
-                        const lowerName = hitName.replace(/^The /, 'the ');
-                        hit.mhp = (hit.mhp || 1) - damage;
-                        if (hit.mhp < 1) {
-                            if (inSight) game._topline_after_more = `The boulder hits ${lowerName}!  ${hitName} is killed!`;
-                            if (inSight) {
-                                game.level.objects.push({
-                                    ...boulder,
-                                    ox: x - dx,
-                                    oy: y - dy,
-                                    quan: 1,
-                                    glyph: '`',
-                                    color: NO_COLOR,
-                                    transientProjectile: true,
-                                });
-                                game._clear_transient_projectiles_after_more = 1;
-                                newsym(x - dx, y - dy);
-                            }
-                            dropMonsterInventory(hit);
-                            game.level.monsters = (game.level?.monsters || []).filter(other => other !== hit);
-                            game._rolling_boulder_cleanup_after_more = { x, y, mon: hit };
-                        } else if (inSight) {
-                            game._topline_after_more = `The boulder hits ${lowerName}!`;
-                            newsym(x, y);
-                        }
-                    }
-                }
-                const nextLoc = dist > 1 ? game.level?.at(x + dx, y + dy) : null;
-                if (nextLoc && (IS_STWALL(nextLoc.typ) || IS_TREE(nextLoc.typ))) {
-                    finalX = x;
-                    finalY = y;
-                    break;
-                }
-            }
-            if (boulder) {
-                boulder.ox = finalX;
-                boulder.oy = finalY;
-                game.level.objects.push(boulder);
-                vision_reset();
-                vision_recalc(0);
-                newsym(finalX, finalY);
-            }
-            if (inSight) trap.tseen = true;
-        }
-    }
+    if (monsterRollingBoulderTrapEffect(mon, trap)) return done();
 	    const webTrap = monsterWebTrapEffect(mon, trap, {
 	        deferCaughtMessage: true,
 	        monIndex,
@@ -13767,6 +13946,8 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
             game._pet_skip_post_move_roll = 1;
         }
     }
+    if (monsterLandmineTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
+    if (monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
 }
 
 // C ref: allmain.c newgame()
@@ -15086,6 +15267,8 @@ export const __allmainTestHooks = {
     monsterAntiMagicTrapEffectForTest: monsterAntiMagicTrapEffect,
     monsterFireTrapEffectForTest: monsterFireTrapEffect,
     monsterRockTrapEffectForTest: monsterRockTrapEffect,
+    monsterLandmineTrapEffectForTest: monsterLandmineTrapEffect,
+    monsterRollingBoulderTrapEffectForTest: monsterRollingBoulderTrapEffect,
     monsterPitTrapEffectForTest: monsterPitTrapEffect,
     monsterTrappedTrapTurnForTest: monsterTrappedTrapTurn,
     monsterSleepGasTrapEffectForTest: monsterSleepGasTrapEffect,

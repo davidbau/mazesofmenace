@@ -26,6 +26,7 @@ import {
     searchPass1NearMonLikeC,
     firstSearchNearMklevHostileLikeC,
     findFirstSearchRogMidMklevHostileLikeC,
+    findTouristD1PostSwapNearMklevMonLikeC,
     westFungusDoorNicheAtLikeC,
 } from './mfndpos_mon.js';
 
@@ -94,6 +95,27 @@ export function fmonListForMcalcmoveLikeC(g) {
  */
 export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
+    /* C: tourist second post-rest peel — pet invent + **`mfndpos`** before other **`m_move`**
+     * (**`seed0900`** ~2546+). */
+    if (
+        g.context?._touristD1PostRestSecondMovemonLikeC
+        && g.urole?.abbr === 'Tou'
+        && (stepNum | 0) === 1
+    ) {
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const nearMklev = findTouristD1PostSwapNearMklevMonLikeC(g);
+        const distant = findDistantMklevMonLikeC(g);
+        const rest = mons.filter(
+            (m) => m !== pet && m !== nearMklev && m !== distant,
+        );
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (pet) ordered.push(pet);
+        if (nearMklev) ordered.push(nearMklev);
+        /* C: distant **`m_move`** chcnt + tail (~2563+) immediately after near stub. */
+        if (distant) ordered.push(distant);
+        return [...ordered, ...rest];
+    }
     /* C: post-bump **`l`** — distant **`distfleeck`** before pet **`dochug:886`** (**`seed0006`** ~2530). */
     if (g.context?._postBumpKillDochugGateLikeC) {
         const ctxF = g.context || (g.context = {});
