@@ -14,7 +14,8 @@ import {
     VAULT, SHOPBASE, FILL_NONE, FILL_NORMAL,
     Align2amask,
 } from './const.js';
-import { mkgold } from './mkobj.js';
+import { mkgold, next_ident } from './mkobj.js';
+import { monster_by_pmidx } from './makemon.js';
 
 const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -207,20 +208,58 @@ function c_d(n, x) {
     return sum;
 }
 
+// PM_GHOST index in the makemon MONS table (see makemon.js MONS_NAMES).  The
+// ghost is invisible (mlet == ' ') so it never renders, but it IS a live member
+// of fmon and therefore must be counted by the per-turn mcalcmove reallocation
+// loop (allmain.c:233).  Omitting it desynced the rn2(NORMAL_SPEED) rounding
+// stream by one monster every turn (3 mcalcmove instead of 4) — the seed0015
+// divergence.  C ref: themerms.lua "Ghost of an Adventurer" -> des.monster({
+// id = "ghost", asleep = true, waiting = true }).
+const PM_GHOST = 287;
+
 function create_ghost_of_adventurer(croom) {
     const loc = selection_rndcoord(selection_room(croom), false);
     if (!loc) return;
 
-    rn2(2);      // find_montype("ghost")
-    rn2(3);      // induced_align()
-    rnd(2);      // next_ident() for ghost corpse/name bookkeeping path
-    c_d(9, 8);   // newmonhp()
-    rn2(2);
-    rn2(7);      // rndghostname()
+    rn2(2);                  // find_montype("ghost")
+    rn2(3);                  // induced_align()
+    next_ident();            // mtmp->m_id = next_ident() — rnd(2)
+    const mhp = c_d(9, 8);   // newmonhp() — d(m_lev, 8); ghost m_lev == 9
+    rn2(2);                  // makemon() gender roll (gcode 0 -> femaleok)
+    rn2(7);                  // rndghostname()
     rn2(34);
-    rn2(50);     // m_initinv()
+    rn2(50);                 // m_initinv()
     rn2(100);
-    rn2(100);    // makemon()
+    rn2(100);                // makemon() trailing roll (makemon.c:1447)
+
+    // Materialize the ghost so it joins fmon (game.level.monsters).  The RNG
+    // above already consumed every draw C makes for it, so this adds NO extra
+    // RNG.  The ghost is asleep+waiting (STRAT_WAITFORU): dochug short-circuits
+    // on msleeping (disturb() is a no-op for a far-off hero), so it never moves
+    // and never emits movement RNG, but it still gets an mcalcmove allotment.
+    const gdata = monster_by_pmidx(PM_GHOST);
+    if (gdata && game.level && loc.x > 0 && loc.y > 0) {
+        const mtmp = {
+            data: gdata,
+            mx: loc.x,
+            my: loc.y,
+            m_id: (game.context_ident ?? 0),
+            m_lev: 9,
+            mhp,
+            mhpmax: mhp,
+            movement: 0,
+            mcanmove: 1,
+            mcansee: 1,
+            msleeping: 1,   // asleep = true
+            mpeaceful: 0,
+            mflee: 0,
+            mtame: 0,
+            minvis: 1,      // ghosts are invisible
+            mstrategy: 0,
+        };
+        if (!game.level.monsters) game.level.monsters = [];
+        game.level.monsters.push(mtmp);
+    }
 
     if (percent(65)) create_simple_object('dagger');
     if (percent(55)) create_object_class('weapon');

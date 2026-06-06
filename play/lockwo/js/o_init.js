@@ -17,10 +17,12 @@
 
 import { rn2 } from './rng.js';
 import {
-    objects, MAXOCLASSES, ARMOR_CLASS,
+    objects, MAXOCLASSES, WEAPON_CLASS, ARMOR_CLASS, COIN_CLASS, GEM_CLASS,
     AMULET_CLASS, POTION_CLASS, RING_CLASS, SCROLL_CLASS,
     SPBOOK_CLASS, WAND_CLASS, VENOM_CLASS,
 } from './mkobj.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
+import { game } from './gstate.js';
 
 // ── Color constants (C ref: include/color.h) ──
 const CLR_BLACK = 0, CLR_RED = 1, CLR_GREEN = 2, CLR_BROWN = 3, CLR_BLUE = 4;
@@ -313,6 +315,7 @@ function shuffle_all(bases) {
 export function init_objects() {
     seedAppearance();
     const bases = computeBases();
+    discoBases = bases;
 
     // The class loop: only the GEM_CLASS branch consumes RNG (via
     // randomize_gem_colors), and it runs exactly once at the gem class.
@@ -327,4 +330,194 @@ export function init_objects() {
         objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
     else
         rn2(2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Object-discovery state and the '\' (discoveries) list.
+//
+// C ref: o_init.c discover_object()/interesting_to_discover()/dodiscovered()
+// and src/objnam.c obj_typename()/disco_typename().  The discovery state lives
+// on objects[i].oc_name_known (type identified) and objects[i].oc_encountered
+// (appearance seen).  None of this consumes RNG.
+// ─────────────────────────────────────────────────────────────────────────
+
+let discoBases = null;
+function getBases() {
+    if (!discoBases) discoBases = computeBases();
+    return discoBases;
+}
+
+const FIRST_OBJECT = MAXOCLASSES; // generic objects sit below this index
+
+// OBJ_DESCR(obj): the unidentified appearance string for this object's current
+// appearance.  C: obj_descr[objects[i].oc_descr_idx].oc_descr.  After shuffling
+// oc_descr_idx points at the appearance now bound to this slot.
+function OBJ_DESCR(otyp) {
+    const o = objects[otyp];
+    if (!o) return null;
+    const idx = o.oc_descr_idx != null ? o.oc_descr_idx : otyp;
+    const d = DESCR_BY_OTYP[idx];
+    return d != null ? d : null;
+}
+
+// C ref: objnam.c Japanese_items[] — keyed by the canonical otyp.
+const JAPANESE_ITEMS = new Map([
+    [46, 'wakizashi'],    // SHORT_SWORD
+    [52, 'ninja-to'],     // BROADSWORD
+    [81, 'nunchaku'],     // FLAIL
+    [62, 'naginata'],     // GLAIVE
+    [222, 'osaku'],       // LOCK_PICK
+    [253, 'koto'],        // WOODEN_HARP
+    [254, 'magic koto'],  // MAGIC_HARP
+    [40, 'shito'],        // KNIFE
+    [121, 'tanko'],       // PLATE_MAIL
+    [97, 'kabuto'],       // HELMET
+    [159, 'yugake'],      // LEATHER_GLOVES
+    [293, 'gunyoki'],     // FOOD_RATION
+    [317, 'sake'],        // POT_BOOZE
+]);
+function disco_is_samurai() {
+    return game.u?.umonnum === 9 || game.urole?.mnum === 9
+        || (game.urole?.name?.m === 'Samurai');
+}
+function disco_japanese_name(otyp) {
+    return (disco_is_samurai() && JAPANESE_ITEMS.has(otyp))
+        ? JAPANESE_ITEMS.get(otyp) : null;
+}
+
+// C ref: o_init.c discover_object(oindx, mark_as_known, mark_as_encountered, _).
+export function discover_object(oindx, markKnown, markEncountered) {
+    if (oindx < FIRST_OBJECT) return;
+    const o = objects[oindx];
+    if (!o) return;
+    if ((!o.oc_name_known && markKnown)
+        || (!o.oc_encountered && markEncountered)
+        || disco_japanese_name(oindx)) {
+        if (markEncountered) o.oc_encountered = 1;
+        if (!o.oc_name_known && markKnown) o.oc_name_known = 1;
+    }
+}
+
+// C ref: o_init.c observe_object() — mark the type as encountered (seen).
+export function observe_object(obj) {
+    if (!obj) return;
+    const oindx = obj.otyp;
+    if (oindx >= FIRST_OBJECT) discover_object(oindx, false, true);
+}
+
+// C ref: u_init.c knows_object() — mark a type known (not encountered).
+export function knows_object(otyp) {
+    discover_object(otyp, true, false);
+}
+
+// C ref: u_init.c knows_class() — pre-discover every ordinary (non-magic)
+// object of a class.  Consumes no RNG.
+export function knows_class(oclass) {
+    const bases = getBases();
+    const samurai = disco_is_samurai();
+    // is_pole(): polearm weapons (GLAIVE..DWARVISH_MATTOCK on the JS table).
+    const isPole = (ct) => ct >= 59 && ct <= 71; // PARTISAN..DWARVISH_MATTOCK
+    const CORNUTHAUM = 100, DUNCE_CAP = 101, SMALL_SHIELD = 110;
+    for (let ct = bases[oclass]; ct < bases[oclass + 1]; ct++) {
+        const o = objects[ct];
+        if (!o) continue;
+        if (ct === CORNUTHAUM || ct === DUNCE_CAP || ct === SMALL_SHIELD) continue;
+        if (oclass === WEAPON_CLASS) {
+            // arbitrary: only knights and samurai recognize polearms
+            if (!samurai && isPole(ct)) continue;
+        }
+        if (o.oc_class === oclass && !o.oc_magic)
+            knows_object(ct);
+    }
+}
+
+// C ref: o_init.c interesting_to_discover().
+function interesting_to_discover(i) {
+    if (disco_japanese_name(i)) return true;
+    const o = objects[i];
+    if (!o) return false;
+    return !!(o.oc_uname != null
+              || ((o.oc_name_known || o.oc_encountered) && OBJ_DESCR(i) != null));
+}
+
+// C ref: objnam.c obj_typename() restricted to the discoveries display.  For
+// the '\' list only weapons/armor (and a few tool/food/potion items) ever
+// reach here pre-discovered, all of which take the default branch:
+//   name-known -> "<actualn>[ (descr)]"; otherwise -> "<descr-or-actualn>".
+function disco_obj_typename(otyp) {
+    const o = objects[otyp];
+    let actualn = disco_japanese_name(otyp) || o.name;
+    let dn = OBJ_DESCR(otyp);
+    if (disco_is_samurai() && (otyp === 253 || otyp === 254)) dn = 'koto';
+    const nn = o.oc_name_known;
+    const un = o.oc_uname != null ? o.oc_uname : null;
+    let buf;
+    if (nn) {
+        buf = actualn;
+        if (un) buf += ` called ${un}`;
+        if (dn) buf += ` (${dn})`;
+    } else {
+        buf = dn ? dn : actualn;
+        if (un) buf += ` called ${un}`;
+    }
+    return buf;
+}
+
+// C ref: o_init.c disco_typename() — augment with the Japanese [actual name].
+function disco_typename(otyp) {
+    let result = disco_obj_typename(otyp);
+    if (disco_is_samurai() && disco_japanese_name(otyp)) {
+        const actualn = (otyp !== 254 && otyp !== 253) || objects[otyp].oc_name_known
+            ? objects[otyp].name : 'harp';
+        if (result.includes(' called'))
+            result = result.replace(' called', ` [${actualn}] called`);
+        else if (result.includes(' ('))
+            result = result.replace(' (', ` [${actualn}] (`);
+        else
+            result = `${result} [${actualn}]`;
+    }
+    return result;
+}
+
+// Default inv_order (options.c def_inv_order); VENOM_CLASS is appended so any
+// pre-discovered venom shows.  C ref: o_init.c dodiscovered() class loop.
+const DISCO_INV_ORDER = [
+    COIN_CLASS, AMULET_CLASS, WEAPON_CLASS, ARMOR_CLASS, 7 /*FOOD*/,
+    SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, RING_CLASS, WAND_CLASS,
+    6 /*TOOL*/, GEM_CLASS, 14 /*ROCK*/, 15 /*BALL*/, 16 /*CHAIN*/, VENOM_CLASS,
+];
+
+// Build the discoveries text rows (default 'o' sort: by order of discovery
+// within each class — which for a fresh game equals object order).  Returns
+// null when nothing is discovered (caller prints the "haven't discovered…"
+// message).  C ref: o_init.c dodiscovered().
+export function build_discoveries_rows() {
+    const bases = getBases();
+    const rows = [];
+    let ct = 0;
+    for (const oclass of DISCO_INV_ORDER) {
+        let printedHeader = false;
+        for (let i = bases[oclass];
+             i < objects.length && objects[i] && objects[i].oc_class === oclass;
+             i++) {
+            if (!interesting_to_discover(i)) continue;
+            ct++;
+            if (!printedHeader) {
+                rows.push({ text: className(oclass), header: true });
+                printedHeader = true;
+            }
+            const prefix = objects[i].oc_encountered ? '  ' : '* ';
+            rows.push({ text: prefix + disco_typename(i) });
+        }
+    }
+    return ct ? rows : null;
+}
+
+const DISCO_CLASS_NAMES = [
+    null, 'Illegal objects', 'Weapons', 'Armor', 'Rings', 'Amulets', 'Tools',
+    'Comestibles', 'Potions', 'Scrolls', 'Spellbooks', 'Wands', 'Coins',
+    'Gems/Stones', 'Boulders/Statues', 'Iron balls', 'Chains', 'Venoms',
+];
+function className(oclass) {
+    return DISCO_CLASS_NAMES[oclass] || DISCO_CLASS_NAMES[1];
 }

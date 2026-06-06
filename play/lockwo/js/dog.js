@@ -206,7 +206,14 @@ function makedog_mon(pettype, x, y) {
         // (all mtame are mpeaceful).  is_safemon() in the hero's bump-to-swap
         // path keys off mpeaceful, so set it explicitly at creation (before
         // initMonMoveState would otherwise default it to hostile).
+        // C ref: makemon.c makemon() sets mtmp->mcanmove = mtmp->mcansee = TRUE
+        // and msleeping = 0 on every freshly created monster.  The pet-swap
+        // bump path (uhitm.c do_attack -> helpless()) reads mcanmove BEFORE the
+        // pet has ever been driven through the move loop (initMonMoveState),
+        // so these must be set at creation or the first bump mis-routes to the
+        // "doesn't seem to move!" branch instead of swapping places.
         mx, my, mtame: 10, mpeaceful: 1,
+        mcanmove: 1, mcansee: 1, msleeping: 0,
         // C ref: dog.c initedog() — edog structure for a freshly-tamed pet.
         // apport = ACURR(A_CHA); the hero's attributes aren't rolled until
         // u_init runs (just after makedog), so leave apport null and resolve it

@@ -659,8 +659,18 @@ const OBJECT_DATA = [
   [479, "ACID_VENOM", 17, 500, 32, 1, 0, "splash of acid venom"],
 ];
 
+// Per-object declared display color (oc_color), ported verbatim from the
+// object macros in include/objects.h (each macro's penultimate argument; HI_*
+// material aliases resolved via include/color.h).  Indexed by otyp.  C ref:
+// display.c reset_glyphmap obj_color(n) = objects[n].oc_color.  This is the
+// object's *declared* color, which for many objects (e.g. apple=CLR_RED on a
+// VEGGY body) differs from the bare material default — so it must override any
+// material-derived fallback.  Value 8 = NO_COLOR (generic placeholders only).
+const OC_COLOR = [8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,6,3,0,7,6,6,6,6,3,6,3,0,6,7,6,6,6,3,0,7,6,6,6,6,15,15,6,6,6,3,0,6,6,7,6,3,6,6,6,6,0,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,6,6,3,3,3,6,6,3,3,3,0,3,3,3,3,0,6,3,4,4,0,15,6,2,6,6,7,11,14,1,15,9,0,4,2,11,7,11,14,1,15,9,0,4,2,11,6,15,11,6,6,7,7,6,0,6,3,6,0,3,0,5,15,7,0,0,3,3,1,15,3,3,13,15,3,3,3,3,2,6,1,6,6,7,3,3,3,3,3,6,3,3,3,3,3,3,3,3,3,7,7,1,9,15,7,3,2,11,3,6,4,1,15,15,6,11,11,6,6,14,11,7,10,3,5,14,6,6,6,6,6,6,6,6,6,6,6,6,6,3,3,15,3,3,3,3,6,6,15,15,15,11,11,11,0,7,14,14,0,5,3,3,6,6,6,6,7,1,1,6,6,6,3,3,15,15,15,15,3,3,11,11,3,3,6,6,15,11,7,3,3,15,3,3,3,3,7,3,2,0,2,2,1,9,10,10,11,9,2,15,3,11,15,12,11,11,15,3,3,3,3,6,1,3,9,11,10,2,3,6,3,5,15,2,15,14,15,7,15,7,0,7,3,6,0,15,3,6,15,15,9,15,15,15,3,15,15,14,14,15,15,11,15,15,6,15,15,15,15,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,15,3,6,15,15,6,15,14,3,15,13,1,9,11,5,6,2,3,6,12,4,4,5,5,5,3,2,3,3,7,15,15,11,11,7,11,15,15,15,15,15,7,15,12,15,14,3,14,3,3,1,3,3,7,6,11,11,7,15,14,6,6,6,6,6,6,6,6,6,6,8,8,8,11,15,15,1,9,4,0,2,2,11,2,3,3,0,15,11,1,5,1,5,0,9,2,15,4,1,3,9,11,0,2,5,7,7,7,7,7,7,15,6,6,3,3];
+
 export const objects = OBJECT_DATA.map(([otyp, sym, oclass, prob, flags, material, dir, name]) => ({
     otyp, sym, oclass, oc_class: oclass, oc_prob: prob, flags, material, dir, name,
+    oc_color: OC_COLOR[otyp] != null ? OC_COLOR[otyp] : 8,
 }));
 
 const objectsByClass = Array.from({ length: MAXOCLASSES + 1 }, () => []);
@@ -1377,6 +1387,15 @@ function mksobj_init(otmp, artif) {
             blessorcurse(otmp, 10);
         }
         if (artif && !rn2(40 + 10 * nartifact_exist())) mk_artifact(otmp);
+        // C ref: mkobj.c mksobj() — "simulate lacquered armor for samurai".
+        // Consumes no RNG.  Role check uses the resolved player monster number
+        // (PM_SAMURAI == 9); the splint mail only gets lacquered at game start
+        // (svm.moves <= 1) or in the quest, exactly as in C.
+        if ((game.u?.umonnum === 9) && otmp.otyp === SPLINT_MAIL
+            && (game.moves ?? 1) <= 1) {
+            otmp.oerodeproof = true;
+            otmp.rknown = 1;
+        }
         break;
     case WAND_CLASS:
         if (otmp.otyp === WAN_WISHING) otmp.spe = 1;

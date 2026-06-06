@@ -62,6 +62,11 @@ const MON_COMBAT = {
     'little dog':  { ac: 6, mlevel: 2, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
     'dog':        { ac: 5, mlevel: 4, msize: MZ_MEDIUM, verysmall: false, gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
     'pony':       { ac: 6, mlevel: 3, msize: MZ_MEDIUM, verysmall: false, gfreq: 2, attacks: [ATK(AT_KICK, AD_PHYS, 1, 6), ATK(AT_BITE, AD_PHYS, 1, 2)] },
+    // C ref: monsters.h S_ZOMBIE — LVL(0,6,10,0,-2), geno (G_GENO|G_NOCORPSE|1)
+    // so G_FREQ==1; MZ_SMALL (not verysmall); attack AT_CLAW AD_PHYS 1d4.  A
+    // hostile kobold zombie killed by the pony makes corpse_chance roll
+    // rn2(2 + (1<2) + 0) == rn2(3) (seed0103 step 42).
+    'kobold zombie': { ac: 10, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_CLAW, AD_PHYS, 1, 4)] },
 };
 
 // Resolve the combat record for a monster instance.  Prefers data.name; the

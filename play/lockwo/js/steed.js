@@ -21,12 +21,12 @@
 // consume no RNG, so leaving them un-modelled in detail is RNG-faithful.
 
 import { game } from './gstate.js';
-import { rnd, rn1 } from './rng.js';
+import { rnd, rn1, rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { pline, flush_screen, newsym } from './display.js';
 import { m_at } from './display.js';
 import { x_monnam } from './uhitm.js';
-import { isok, MAXULEV, W_SADDLE } from './const.js';
+import { isok, MAXULEV, W_SADDLE, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
 
 // C ref: cmd.c getdir() — read a direction.  Renders "In what direction?",
 // reads one key; '.'/'s' = self.  Returns {dx,dy,dz} or null on cancel/ESC.
@@ -139,13 +139,18 @@ export async function mount_steed(mtmp, force) {
     const nux = mtmp.mx, nuy = mtmp.my;
     const ux0 = u.ux, uy0 = u.uy;
 
-    // remove_monster: drop the steed from the level monster list so it is no
-    // longer drawn at its (old) tile; it survives as game.u.usteed.
-    const mons = game.level?.monsters;
-    if (mons) {
-        const idx = mons.indexOf(mtmp);
-        if (idx >= 0) mons.splice(idx, 1);
-    }
+    // remove_monster(x,y) (rm.h) only NULLs the map grid pointer
+    // (svl.level.monsters[x][y]); it does NOT unlink the steed from the `fmon`
+    // chain.  So the steed stays a live level monster: it keeps receiving its
+    // per-turn mcalcmove() ration (rn2(NORMAL_SPEED) rounding roll) and is
+    // still driven by movemon()/dochug()/dog_move() each turn — those RNG rolls
+    // MUST keep firing for parity (removing the steed from fmon, as we used to,
+    // dropped a whole monster's mcalcmove + distfleeck + is_wanderer/dog_move
+    // stream after mount and desynced every post-mount turn).  We therefore KEEP
+    // it in game.level.monsters (our fmon) and instead flag it ridden; m_at()
+    // and the renderer treat a ridden steed as "off the map grid" — it is
+    // colocated with, and drawn as, the hero.
+    mtmp.mridden = true;
 
     // u_on_newpos: hero (and steed) move onto the steed's square.
     u.ux = nux;
@@ -160,6 +165,130 @@ export async function mount_steed(mtmp, force) {
     return true;
 }
 
+// C ref: decl.c xdir/ydir — the 8 compass directions, j == 0..7 == W, NW, N,
+// NE, E, SE, S, SW (the order landing_spot scans).
+const XDIR = [-1, -1, 0, 1, 1, 1, 0, -1];
+const YDIR = [0, -1, -1, -1, 0, 1, 1, 1];
+
+// C ref: monmove.c accessible(x,y) = ACCESSIBLE(SURFACE_AT) && !closed_door.
+function steed_accessible(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (!ACCESSIBLE(loc.typ)) return false;
+    if (IS_DOOR(loc.typ) && (loc.doormask & (D_CLOSED | D_LOCKED))) return false;
+    return true;
+}
+
+// C ref: hack.c bad_rock(mdat,x,y) — for a humanoid hero, a square is "bad
+// rock" when it is not accessible (a wall / closed door / stone).  Used only
+// for the diagonal-squeeze test below.
+function bad_rock(x, y) { return !steed_accessible(x, y); }
+
+// C ref: hack.c test_move(ux,uy,dx,dy,TEST_MOVE) — the subset that matters for
+// dismount landing-spot selection in the open rooms these sessions use: a
+// diagonal step is rejected only when squeezing between two walls, and the
+// destination itself must be accessible (checked by the caller).
+function steed_test_move(ux, uy, dx, dy) {
+    if (dx && dy) {
+        if (bad_rock(ux, uy + dy) && bad_rock(ux + dx, uy))
+            return false; // can't squeeze diagonally between two walls
+    }
+    return true;
+}
+
+// MON_AT excluding the ridden steed itself (which is colocated with the hero
+// and flagged mridden, i.e. off the map grid in C terms).
+function steed_mon_at(x, y) {
+    const mons = game.level?.monsters;
+    if (!mons) return null;
+    for (const m of mons) {
+        if (m.mridden) continue;
+        if (m.mx === x && m.my === y) return m;
+    }
+    return null;
+}
+
+// C ref: steed.c landing_spot(spot, reason, forceit) — pick the square the
+// dismounting hero lands on.  Only the DISMOUNT_BYCHOICE (voluntary, unimpaired)
+// path is needed: best_j/clockwise_j/counterclk_j are all -1, so the candidate
+// list is simply the 8 adjacent squares in xdir/ydir order.  Each viable
+// candidate increments `viable`; among equal-distance candidates the choice is
+// the rn2(viable) tie-break (steed.c:543).  Returns the spot, or null.
+function landing_spot() {
+    const u = game.u;
+    const tryArr = [];
+    for (let j = 0; j < 8; j++) tryArr.push({ x: XDIR[j], y: YDIR[j] });
+
+    let viable = 0, min_distance = -1, found = false;
+    const spot = { x: 0, y: 0 };
+    // i==0 pass only (voluntary, unimpaired) avoids known traps/boulders; the
+    // ride sessions land on bare floor, so the single pass suffices.
+    for (let j = 0; j < tryArr.length; j++) {
+        const x = u.ux + tryArr[j].x;
+        const y = u.uy + tryArr[j].y;
+        if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
+        if (steed_accessible(x, y) && !steed_mon_at(x, y)
+            && steed_test_move(u.ux, u.uy, x - u.ux, y - u.uy)) {
+            ++viable;
+            const distance = (x - u.ux) * (x - u.ux) + (y - u.uy) * (y - u.uy);
+            if (min_distance < 0
+                || (distance < min_distance)
+                || (distance === min_distance && !rn2(viable))) {
+                // (no known-trap / boulder on these floor tiles)
+                spot.x = x; spot.y = y;
+                min_distance = distance;
+                found = true;
+            }
+        }
+    }
+    return found ? spot : null;
+}
+
+// C ref: steed.c dismount_steed(DISMOUNT_BYCHOICE) — voluntary #ride dismount.
+// landing_spot() chooses cc; the steed is placed back on the map grid at the
+// hero's current square and the hero relocates to cc (C: place_monster(steed,
+// u.ux,u.uy) then teleds(cc)).  The now-grounded pony resumes normal pet
+// movement this turn (handled by the standard movemon/dochug path; here we just
+// run the steed's own dochug to reproduce its post-dismount move, matching the
+// recorded obj_resists/dog_move stream).
+async function dismount_steed_bychoice() {
+    const u = game.u;
+    const mtmp = u.usteed;
+    if (!mtmp) return;
+
+    const cc = landing_spot(); // RNG: rn2(viable) tie-breaks
+    if (!cc) {
+        await pline("You can't.  There isn't anywhere for you to stand.");
+        return;
+    }
+
+    await pline("You've been through the dungeon on a horse with no name.");
+
+    // Release the steed.
+    u.usteed = null;
+    u.ugallop = 0;
+
+    // place_monster(steed, u.ux, u.uy): steed grounds at the hero's square and
+    // rejoins the map grid (clear the ridden flag).
+    mtmp.mridden = false;
+    mtmp.mx = u.ux;
+    mtmp.my = u.uy;
+    const ux0 = u.ux, uy0 = u.uy;
+
+    // teleds(cc): the hero steps off onto the landing square.
+    u.ux0 = ux0; u.uy0 = uy0;
+    u.ux = cc.x; u.uy = cc.y;
+
+    // The now-grounded pony (mridden cleared) is a normal pet again; the move
+    // loop's movemon()/dochug() pass for this hero command drives its move (and
+    // its dog_move obj_resists / choice rolls), so we do NOT step it here.
+
+    // Redraw the squares involved.
+    newsym(ux0, uy0);
+    newsym(u.ux, u.uy);
+    newsym(mtmp.mx, mtmp.my);
+}
+
 // C ref: steed.c doride() — the #ride command.  With no current steed, read a
 // direction and try to mount the monster there.  Returns ECMD_TIME (1) when a
 // mount succeeds (a turn passes), else ECMD_OK/ECMD_CANCEL (0, no turn).
@@ -167,12 +296,10 @@ export async function doride() {
     const u = game.u;
 
     if (u.usteed) {
-        // dismount_steed(DISMOUNT_BYCHOICE) — NOT YET MODELLED.  The real
-        // dismount runs landing_spot() (rn2(viable) tie-breaks among the 8
-        // adjacent tiles, steed.c:543) and then a full monster-movement turn,
-        // which is a sizable terrain-dependent port.  Returning ECMD_TIME keeps
-        // the move loop advancing; the RNG diverges here (the next first-
-        // divergence after a successful mount) until dismount is ported.
+        // C ref: steed.c doride() -> dismount_steed(DISMOUNT_BYCHOICE).  A
+        // voluntary dismount: pick a landing spot, ground the steed at the
+        // hero's square, step the hero off, and let the steed take its turn.
+        await dismount_steed_bychoice();
         return 1;
     }
 

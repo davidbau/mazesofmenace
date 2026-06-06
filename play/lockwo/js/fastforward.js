@@ -127,7 +127,16 @@ export function fastforward_pre_mklev() {
         fastforward_legacy_dungeon_seed8000();
     else
         init_dungeons();
-    if (!legacy_startup || game._startup_selected_character)
+    // C ref: u_init.c u_init_misc — newhp()/newpw() run for EVERY role at this
+    // stream position.  Previously this was gated on the startup selection flow
+    // (set only when the rc left a facet unspecified), which skipped HP/Pw for
+    // sessions whose rc fully pins role/race/gender/align (e.g. seed0030's
+    // legacy-startup segments) — leaving HP:0/Pw:0 on the status line.  The
+    // gate fastforward_newpw() itself applies (REAL_UINIT_ROLES.has(role) ||
+    // knight) already covers every role whose real u_init runs, so run it
+    // whenever that role is in scope regardless of the selection path.
+    const ffRole = initrole_name();
+    if (REAL_UINIT_ROLES.has(ffRole) || ffRole === 'knight')
         fastforward_newpw();
     // u_init_misc
     rn2(10);

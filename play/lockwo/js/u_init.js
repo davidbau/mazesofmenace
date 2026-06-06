@@ -412,8 +412,25 @@ const ROLE_ADV = new Map([
     [PM_VALKYRIE, { hpadv: { infix: 14, inrnd: 0 }, enadv: { infix: 1, inrnd: 0 } }],
     [PM_WIZARD, { hpadv: { infix: 10, inrnd: 0 }, enadv: { infix: 4, inrnd: 3 } }],
 ]);
-// Human race advance (the only race used by these sessions).
-const RACE_ADV_HUMAN = { hpadv: { infix: 2, inrnd: 0 }, enadv: { infix: 1, inrnd: 0 } };
+// Race advancement (role.c races[]).  Only the level-0 infix/inrnd fields are
+// used at chargen.  C ref: role.c races[] hpadv/enadv {infix,inrnd,...}.
+//   human  HP {2,0,...} EN {1,0,...}
+//   elf    HP {1,0,...} EN {2,0,...}
+//   dwarf  HP {4,0,...} EN {0,0,...}
+//   gnome  HP {1,0,...} EN {2,0,...}
+//   orc    HP {1,0,...} EN {1,0,...}
+const RACE_ADV = new Map([
+    [PM_HUMAN, { hpadv: { infix: 2, inrnd: 0 }, enadv: { infix: 1, inrnd: 0 } }],
+    [PM_ELF, { hpadv: { infix: 1, inrnd: 0 }, enadv: { infix: 2, inrnd: 0 } }],
+    [PM_DWARF, { hpadv: { infix: 4, inrnd: 0 }, enadv: { infix: 0, inrnd: 0 } }],
+    [PM_GNOME, { hpadv: { infix: 1, inrnd: 0 }, enadv: { infix: 2, inrnd: 0 } }],
+    [PM_ORC, { hpadv: { infix: 1, inrnd: 0 }, enadv: { infix: 1, inrnd: 0 } }],
+]);
+// Human race advance (default when race lookup misses).
+const RACE_ADV_HUMAN = RACE_ADV.get(PM_HUMAN);
+function current_race_adv() {
+    return RACE_ADV.get(current_race_mnum()) || RACE_ADV_HUMAN;
+}
 
 // Player-monster base armor class (mons[].ac).  C ref: include/monsters.h
 // — every player-monster (all 13 roles) has base AC 10.
@@ -531,18 +548,20 @@ export function find_ac() {
 export function newhp() {
     const adv = ROLE_ADV.get(current_role_mnum());
     if (!adv) return 0;
-    let hp = adv.hpadv.infix + RACE_ADV_HUMAN.hpadv.infix;
+    const radv = current_race_adv();
+    let hp = adv.hpadv.infix + radv.hpadv.infix;
     if (adv.hpadv.inrnd > 0) hp += rnd(adv.hpadv.inrnd);
-    if (RACE_ADV_HUMAN.hpadv.inrnd > 0) hp += rnd(RACE_ADV_HUMAN.hpadv.inrnd);
+    if (radv.hpadv.inrnd > 0) hp += rnd(radv.hpadv.inrnd);
     return hp;
 }
 
 export function newpw() {
     const adv = ROLE_ADV.get(current_role_mnum());
     if (!adv) return 0;
-    let en = adv.enadv.infix + RACE_ADV_HUMAN.enadv.infix;
+    const radv = current_race_adv();
+    let en = adv.enadv.infix + radv.enadv.infix;
     if (adv.enadv.inrnd > 0) en += rnd(adv.enadv.inrnd);
-    if (RACE_ADV_HUMAN.enadv.inrnd > 0) en += rnd(RACE_ADV_HUMAN.enadv.inrnd);
+    if (radv.enadv.inrnd > 0) en += rnd(radv.enadv.inrnd);
     if (en <= 0) en = 1;
     return en;
 }
@@ -979,6 +998,9 @@ export function u_init_role() {
     const role = current_role_mnum();
 
     game.moves = 1;
+    // C ref: role_init() sets u.umonnum before inventory creation; mksobj's
+    // samurai lacquered-armor branch reads Role_if(PM_SAMURAI) via umonnum.
+    if (game.u && game.u.umonnum == null) game.u.umonnum = role;
     if (game.u) game.u.umoney0 = game.u.umoney0 ?? 0;
     switch (role) {
     case PM_ARCHEOLOGIST:

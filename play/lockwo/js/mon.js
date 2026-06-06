@@ -176,9 +176,17 @@ function _startReallocBatch() {
 // Computes the monster's movement-point allotment for this turn.  When
 // `m_moving` is true it randomly rounds the per-turn speed to a multiple of
 // NORMAL_SPEED (the rn2(NORMAL_SPEED) call seen in seed8000's trace).
-export function mcalcmove(mon, m_moving) {
+export function mcalcmove(mon, m_moving, inline = false) {
     if (!m_moving)
         return mcalcmove_base(mon);
+
+    // C ref: allmain.c u_calc_moveamt() — a RIDING hero who moved gets
+    // moveamt = mcalcmove(u.usteed, TRUE).  This is a SEPARATE roll from the
+    // steed's per-turn reallocation-loop roll (the steed is in fmon and is
+    // rolled there too), so it must NOT be served from / re-trigger the batch
+    // cache.  `inline` forces a single fresh rn2(NORMAL_SPEED) roll.
+    if (inline)
+        return mcalc_round(mcalcmove_base(mon));
 
     // Is this part of the per-turn reallocation over level monsters?  If the
     // monster is a live member of the level list, serve from the fmon-ordered

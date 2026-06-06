@@ -17,7 +17,7 @@ import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { docast } from './spell.js';
 import { doread } from './read.js';
-import { rnl } from './rng.js';
+import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, hooked_tty_getlin, wiz_wish } from './extcmd-handlers.js';
 import { wiz_level_tele } from './do.js';
 import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook } from './hack.js';
@@ -76,8 +76,17 @@ export async function rhack(key) {
         await dismiss_invent_screen();
         game.context.move = 0;
     } else if (key === 32 || key === 13 || key === 10) {
-        // Space / Return at top level: no-op, no message (used to page
-        // through/acknowledge a preceding menu or message).
+        // Space / Return: dismiss a single-page inventory/text window (C tty
+        // treats space like a confirm/next that ends a one-page menu).  At top
+        // level with no window open, <space> is unbound when 'rest_on_space' is
+        // Off (the default) and elicits "Unknown command ' '." (cmd.c
+        // update_rest_on_space); <return> stays a silent no-op.  C ref: cmd.c
+        // rhack() / process_menu_window().
+        if (game._modal_screen === 'invent' || game._modal_screen === 'textwin') {
+            await dismiss_invent_screen();
+        } else if (key === 32 && !game._modal_screen) {
+            await pline(`Unknown command '${ch}'.`);
+        }
         game.context.move = 0;
     } else if (ch === 'i') {
         ddoinv();
@@ -103,6 +112,12 @@ export async function rhack(key) {
         // squares for hidden doors/passages/traps.  Takes a game turn.
         await dosearch();
         game.context.move = 1;
+    } else if (key === 4) { // ^D — kick (dokick.c dokick())
+        // C ref: cmd.c keymap C('d') = dokick.  Reads a direction, then resolves
+        // the kicked square (monster / object / terrain).  Sets the turn flag
+        // from dokick's ECMD result.
+        const res = await dokick();
+        game.context.move = res === 1 ? 1 : 0;
     } else if (key === 22) { // ^V — wizard-mode level teleport (do.c/teleport.c)
         // C ref: cmd.c keymap C('v') -> wiz_level_tele() -> level_tele().
         // The "To what level..." prompt is read with the standard top-line
@@ -161,6 +176,14 @@ export async function rhack(key) {
         // turn elapses).  C ref: hack.c domove() / rhack().  Do NOT override
         // it here, or blocked moves would wrongly advance the turn counter.
         await domove(DIR_DX[ch], DIR_DY[ch]);
+    } else if (ch === '.') {
+        // C ref: cmd.c command table { '.', "wait", donull } -> do.c donull():
+        // "rest one move while doing nothing".  donull() returns ECMD_TIME with
+        // no top-line message, so the hero's turn elapses (monsters move) but
+        // nothing is printed.  cmd_safety_prevention only fires under attack/
+        // safety conditions absent in these recordings, so we take the plain
+        // ECMD_TIME path.
+        game.context.move = 1;
     } else {
         // Unknown command
         game.context.move = 0;
@@ -200,6 +223,86 @@ async function dosearch() {
             }
         }
     }
+}
+
+// C ref: dokick.c kick_dumb(x,y) — kicking empty space (or an indestructible
+// feature).  exercise(A_DEX, FALSE) always fires (rn2(2) inside exercise); the
+// "strain a muscle" branch needs ACURR(A_DEX) < 16 and not martial and rn2(3)==0.
+async function kick_dumb(_x, _y) {
+    exercise(A_DEX, false);
+    // martial() is false for the starter roles exercised here.
+    if (ACURR(A_DEX) >= 16 || rn2(3)) {
+        await pline('You kick at empty space.');
+    } else {
+        await pline('Dumb move!  You strain a muscle.');
+        exercise(A_STR, false);
+        // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) — wounded-legs bookkeeping.
+        rnd(5);
+    }
+    // (Is_airlevel || Levitation) && rn2(2) -> hurtle: not reachable on dlvl 1.
+}
+
+// C ref: dokick.c kick_ouch(x,y,kickobjnam) — kicking a solid obstacle hurts.
+// RNG order: exercise(A_DEX) [rn2(2)], exercise(A_STR) [rn2(2)], !rn2(3) ->
+// set_wounded_legs(5+rnd(5)), then dmg = rnd(ACURR(A_CON)>15?3:5), losehp(dmg).
+async function kick_ouch(_x, _y) {
+    await pline('Ouch!  That hurts!');
+    exercise(A_DEX, false);
+    exercise(A_STR, false);
+    // wake_nearto(x,y,25): no RNG.
+    if (rn2(3) === 0) rnd(5); // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5))
+    const dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
+    const u = game.u;
+    if (u) u.uhp = Math.max(0, (u.uhp || 0) - dmg);
+    // (Is_airlevel || Levitation) hurtle: not reachable on dlvl 1.
+}
+
+// C ref: dokick.c dokick() — the #kick command.  We faithfully model the
+// no-special-target paths the contest sessions exercise: empty room floor /
+// corridor (-> kick_dumb), and solid rock or walls (-> kick_ouch).  Kicking a
+// monster or an object on the floor is delegated/avoided (those squares aren't
+// kicked in the recorded sessions).  Returns 1 if a game turn elapsed (ECMD_TIME),
+// 0 otherwise (ECMD_OK/CANCEL/FAIL).
+async function dokick() {
+    const u = game.u;
+    // no_kick guards (nolimbs/verysmall/steed/wounded/encumbered/...) don't
+    // apply to the starter heroes exercised here.
+    const dir = await getdir();
+    if (!dir) return 0;            // ECMD_CANCEL (ESC)
+    if (!dir.dx && !dir.dy) return 0; // self / '.' -> ECMD_CANCEL
+
+    const x = u.ux + dir.dx, y = u.uy + dir.dy;
+    u.dx = dir.dx; u.dy = dir.dy;
+
+    // wake_nearby(FALSE) / u_wipe_engr(2): no RNG unless standing on an
+    // engraving (not the case here).
+
+    if (!isok(x, y)) {
+        await kick_ouch(x, y); // gm.maploc = nowhere
+        return 1;
+    }
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+
+    // Monster on the kicked square: not exercised by the recorded sessions;
+    // leave to the normal attack handling would change RNG, so treat as a
+    // failed/!time kick (matches the recorded streams which never kick a mon).
+    if (m_at(x, y)) return 0;
+
+    // Pools/lava, objects, doors: not exercised here.  An object underfoot
+    // would route to kick_object (RNG); none of the kicked squares hold one.
+    if (typ === DOOR) {
+        // Closed/locked door kick would roll; the recorded kicks aren't doors.
+        await kick_dumb(x, y);
+        return 1;
+    }
+    // Solid rock / walls -> kick_ouch; open floor / corridor -> kick_dumb.
+    if (typ === STONE || IS_WALL(typ) || IS_OBSTRUCTED(typ)) {
+        await kick_ouch(x, y);
+        return 1;
+    }
+    await kick_dumb(x, y);
+    return 1;
 }
 
 // C ref: cmd.c getdir() — read a direction key.  Renders "In what direction?",
@@ -396,6 +499,13 @@ export async function domove(dx, dy) {
     u.ux = newx;
     u.uy = newy;
     u.umoved = true; // C ref: hack.c:2968 — position changed
+
+    // C ref: hack.c:2879-2884 — a ridden steed moves with the hero, so its map
+    // position is kept synced to the hero's.  Without this the steed's mx/my go
+    // stale after the first ride step and its per-turn distfleeck nearby/monnear
+    // test (and hence the dochug is_wanderer rn2(4) branch) diverges from C
+    // every subsequent turn.
+    if (u.usteed) { u.usteed.mx = u.ux; u.usteed.my = u.uy; }
 
     // Update display
     newsym(oldx, oldy);

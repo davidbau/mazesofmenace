@@ -25,6 +25,7 @@ export const roles = [
         mnum: 0,
         allow: MH_HUMAN | MH_DWARF | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
         gods: ['Quetzalcoatl', 'Camaxtli', 'Huhetotl'],
+        xlev: 14, initrecord: 10,
     },
     {
         name: { m: 'Barbarian', f: null },
@@ -33,6 +34,7 @@ export const roles = [
         mnum: 1,
         allow: MH_HUMAN | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Mitra', 'Crom', 'Set'],
+        xlev: 10, initrecord: 10,
     },
     {
         name: { m: 'Caveman', f: 'Cavewoman' },
@@ -41,6 +43,7 @@ export const roles = [
         mnum: 2,
         allow: MH_HUMAN | MH_DWARF | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
         gods: ['Anu', '_Ishtar', 'Anshar'],
+        xlev: 10, initrecord: 0,
     },
     {
         name: { m: 'Healer', f: null },
@@ -49,6 +52,7 @@ export const roles = [
         mnum: 3,
         allow: MH_HUMAN | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL,
         gods: ['_Athena', 'Hermes', 'Poseidon'],
+        xlev: 20, initrecord: 10,
     },
     {
         name: { m: 'Knight', f: null },
@@ -57,6 +61,7 @@ export const roles = [
         mnum: 4,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL,
         gods: ['Lugh', '_Brigit', 'Manannan Mac Lir'],
+        xlev: 10, initrecord: 10,
     },
     {
         name: { m: 'Monk', f: null },
@@ -65,6 +70,7 @@ export const roles = [
         mnum: 5,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Shan Lai Ching', 'Chih Sung-tzu', 'Huan Ti'],
+        xlev: 10, initrecord: 10,
     },
     {
         name: { m: 'Priest', f: 'Priestess' },
@@ -73,6 +79,7 @@ export const roles = [
         mnum: 6,
         allow: MH_HUMAN | MH_ELF | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: null,
+        xlev: 10, initrecord: 0,
     },
     {
         name: { m: 'Rogue', f: null },
@@ -81,6 +88,7 @@ export const roles = [
         mnum: 8,
         allow: MH_HUMAN | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_CHAOTIC,
         gods: ['Issek', 'Mog', 'Kos'],
+        xlev: 11, initrecord: 10,
     },
     {
         name: { m: 'Ranger', f: null },
@@ -89,6 +97,7 @@ export const roles = [
         mnum: 7,
         allow: MH_HUMAN | MH_ELF | MH_GNOME | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Mercury', '_Venus', 'Mars'],
+        xlev: 12, initrecord: 10,
     },
     {
         name: { m: 'Samurai', f: null },
@@ -97,6 +106,7 @@ export const roles = [
         mnum: 9,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL,
         gods: ['_Amaterasu Omikami', 'Raijin', 'Susanowo'],
+        xlev: 11, initrecord: 10,
     },
     {
         name: { m: 'Tourist', f: null },
@@ -105,6 +115,7 @@ export const roles = [
         mnum: 10,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL,
         gods: ['Blind Io', '_The Lady', 'Offler'],
+        xlev: 14, initrecord: 0,
     },
     {
         name: { m: 'Valkyrie', f: null },
@@ -113,6 +124,7 @@ export const roles = [
         mnum: 11,
         allow: MH_HUMAN | MH_DWARF | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
         gods: ['Tyr', 'Odin', 'Loki'],
+        xlev: 10, initrecord: 0,
     },
     {
         name: { m: 'Wizard', f: null },
@@ -121,6 +133,7 @@ export const roles = [
         mnum: 12,
         allow: MH_HUMAN | MH_ELF | MH_GNOME | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Ptah', 'Thoth', 'Anhur'],
+        xlev: 12, initrecord: 0,
     },
 ];
 

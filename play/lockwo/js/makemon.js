@@ -18,15 +18,19 @@ import {
     DUNGEON_ALIGN_BY_DNUM,
     GEHENNOM,
     In_endgame, Is_astralevel, Is_rogue_level,
+    COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
 } from './const.js';
 
 const G_UNIQ = 0x1000;
 const G_NOHELL = 0x0800;
 const G_HELL = 0x0400;
 const G_NOGEN = 0x0200;
+const G_SGROUP = 0x0080; // appear in small groups normally
+const G_LGROUP = 0x0040; // appear in large groups normally
 const G_GENO = 0x0020;
 const G_NOCORPSE = 0x0010;
 const G_FREQ = 0x0007;
+const MM_NOGRP = 0x00002000; // suppress creation of monster groups
 const G_IGNORE = 0x8000;
 const G_GONE = 0x03; // mvflags G_GENOD | G_EXTINCT
 const G_GENOD = 0x02;
@@ -287,6 +291,14 @@ const VERYSMALL = new Set([
     214, 321, 322, 323, 325, 326,
 ]);
 
+// C ref: monflag.h M1_CARNIVORE / M1_HERBIVORE — per-monster diet flags,
+// extracted verbatim from the MON() entries in include/monsters.h.  Indexed by
+// pmidx; value is a 2-bit code: bit0 = carnivore, bit1 = herbivore (3 = both,
+// the M1_OMNIVORE pair).  Drives dog.c dogfood(), whose return value (DOGFOOD
+// for an apple to a herbivore pony, etc.) decides when the pet's invent/fobj
+// scans terminate — and therefore how many obj_resists rn2(100) rolls fire.
+const MFOOD = [1,0,1,1,1,0,0,0,3,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,3,3,3,0,0,3,3,0,0,0,0,0,0,0,0,0,3,3,0,3,0,1,1,1,0,0,0,3,3,3,3,3,3,3,3,1,1,1,3,2,3,3,2,2,2,1,1,1,1,0,2,1,1,1,1,1,1,2,2,2,2,2,2,0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,0,0,0,0,0,1,1,1,3,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,3,0,3,0,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,3,3,3,1,3,3,1,0,0,3,3,3,3,3,3,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,3,3,1,1,1,3,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,1,1,3,3,3,3,0,0,3,3,3,3,3,0,0,3,3,3,3,3,3,3,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,3,3,0,3,3,2,0,3,3,3,3,3,3,3,3,3,3,3,2,3,3,3,3,3,3,3,0,3,1,3,1,2,0,1,3,3,3,3,3,3,3,3,3,2,3,3,3,3,3,3,3,3];
+
 const MONS = MONS_RAW.map((t) => ({
     pmidx: t[0],
     name: MONS_NAMES[t[0]],
@@ -301,6 +313,8 @@ const MONS = MONS_RAW.map((t) => ({
     difficulty: t[7],
     mcolor: t[8],
     verysmall: VERYSMALL.has(t[0]), // MZ_TINY -> true (used by mkobj.js)
+    carnivore: ((MFOOD[t[0]] ?? 0) & 1) !== 0, // M1_CARNIVORE
+    herbivore: ((MFOOD[t[0]] ?? 0) & 2) !== 0, // M1_HERBIVORE
 }));
 
 // Monster classes whose members carry their own weapon-generation behavior in
@@ -821,5 +835,247 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         m_initweap(mtmp);
     m_initinv(ptr);
     rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
+    return mtmp;
+}
+
+// ── In-game random spawn: makemon((permonst*)0, 0, 0, NO_MM_FLAGS) ──────────
+// C ref: allmain.c maybe_generate_rnd_mon -> makemon.c makemon with a random
+// type AND a random good position.  This is the per-turn "occasionally add a
+// monster" path (gi.in_mklev == FALSE).  Only seed0103/seed0104 reach an
+// in-game spawn with the RNG stream still in parity, so this path's RNG order
+// is exercised exactly there; every other spawning session has already
+// diverged before its first spawn, so wiring this up cannot regress them.
+
+// C ref: vision.h cansee(x,y) — viz_array[y][x] & IN_SIGHT.
+function mm_cansee(x, y) {
+    if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
+    return !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+}
+
+// C ref: rm.h is_pool / is_lava — terrain type tests used by goodpos().
+function mm_is_pool(x, y) {
+    const t = game.level?.at(x, y)?.typ;
+    return t === POOL || t === MOAT || t === WATER;
+}
+function mm_is_lava(x, y) {
+    return game.level?.at(x, y)?.typ === LAVAPOOL;
+}
+
+// C ref: mon.h MON_AT — a (live) monster occupies <x,y>.
+function mm_mon_at(x, y) {
+    for (const m of game.level?.monsters || []) {
+        if (m.mx === x && m.my === y && (m.mhp == null || m.mhp > 0)) return m;
+    }
+    return null;
+}
+
+// C ref: teleport.c goodpos(x,y,mtmp,gpflags) for a to-be-created monster
+// (fakemon carries the chosen permonst; GP_AVOID_MONPOS|GP_CHECKSCARY set).
+// The slice's spawn levels carry no water/lava/boulders, so the eel/water/lava
+// branches and the boulder/exclusion-zone gates are inert; we keep the load-
+// bearing tests: in-bounds, not the hero, no monster present, accessible.
+function goodpos_spawn(x, y, ptr) {
+    if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) return false; // !isok
+    if (game.u?.ux === x && game.u?.uy === y) return false;       // u_at
+    if (mm_mon_at(x, y)) return false;                            // MON_AT + AVOID_MONPOS
+    // water/lava handled by accessible() below for non-swimmers; the spawn
+    // levels here have neither, so accessible() == ACCESSIBLE(typ).
+    const typ = game.level?.at(x, y)?.typ;
+    if (typ == null) return false;
+    if (typ < DOOR) {            // !accessible
+        if (!mm_is_pool(x, y) && !mm_is_lava(x, y)) return false;
+        return false;            // pool/lava: non-swimmer random mon rejected
+    }
+    return true;
+}
+
+// C ref: makemon.c makemon_rnd_goodpos() — find a random good position for a
+// freshly spawned monster.  Primary loop: up to 50 tries of rn1(COLNO-3,2) /
+// rn2(ROWNO), rejecting any square the hero can currently see; fall back to a
+// full-map scan (RNG-free except the stairway rn2(2) tie-break) otherwise.
+function makemon_rnd_goodpos(ptr) {
+    let nx = 0, ny = 0, good = false, tryct = 0;
+    do {
+        nx = rn2(COLNO - 3) + 2;   // rn1(COLNO-3, 2)
+        ny = rn2(ROWNO);           // rn2(ROWNO)
+        good = mm_cansee(nx, ny) ? false : goodpos_spawn(nx, ny, ptr);
+    } while ((++tryct < 50) && !good);
+
+    if (!good) {
+        // Full-map scan (twice; first pass skips in-sight squares).  Blind is
+        // FALSE here, in_mklev is FALSE.
+        const xofs = nx, yofs = ny;
+        for (let bl = 0; bl < 2 && !good; bl++) {
+            for (let dx = 0; dx < COLNO && !good; dx++) {
+                for (let dy = 0; dy < ROWNO && !good; dy++) {
+                    const cx = ((dx + xofs) % (COLNO - 1)) + 1;
+                    const cy = ((dy + yofs) % (ROWNO - 1)) + 1;
+                    if (bl === 0 && mm_cansee(cx, cy)) continue;
+                    if (goodpos_spawn(cx, cy, ptr)) { nx = cx; ny = cy; good = true; }
+                }
+            }
+            // The stairway rn2(2) tie-break (mon->data->mmove != 0) is omitted:
+            // a good spot is essentially always found above on these levels.
+        }
+        if (!good) return null;
+    }
+    return { x: nx, y: ny };
+}
+
+// C ref: teleport.c collect_coords(candy, cx, cy, maxradius, CC_NO_FLAGS):
+// gather candidate squares in expanding rings, each ring (or radius pair —
+// here ring_pairs is OFF, so per-ring) shuffled in place via Fisher-Yates,
+// consuming rn2(n) exactly as the C engine does.  No skip filters.
+function collect_coords_spawn(cx, cy, maxradius) {
+    const out = [];
+    const rowrange = (cy < ROWNO / 2) ? (ROWNO - 1 - cy) : cy;
+    const colrange = (cx < COLNO / 2) ? (COLNO - 1 - cx) : cx;
+    const k = Math.max(rowrange, colrange);
+    maxradius = maxradius ? Math.min(maxradius, k) : k;
+
+    for (let radius = 1; radius <= maxradius; radius++) {
+        const ringStart = out.length;
+        const lox = cx - radius, hix = cx + radius;
+        const loy = cy - radius, hiy = cy + radius;
+        for (let y = Math.max(loy, 0); y <= hiy; y++) {
+            if (y > ROWNO - 1) break;
+            for (let x = Math.max(lox, 1); x <= hix; x++) {
+                if (x > COLNO - 1) break;
+                if (x !== lox && x !== hix && y !== loy && y !== hiy) continue;
+                out.push({ x, y });
+            }
+        }
+        // Shuffle this ring (scramble && passend, ring_pairs off).
+        let n = out.length - ringStart;
+        let base = ringStart;
+        while (n > 1) {
+            const kk = rn2(n);
+            if (kk) {
+                const tmp = out[base];
+                out[base] = out[base + kk];
+                out[base + kk] = tmp;
+            }
+            base++;
+            n--;
+        }
+    }
+    return out;
+}
+
+// C ref: teleport.c enexto_core(cc, xx, yy, mdat, entflags) — nearest-3-rings
+// (CC_NO_FLAGS) candidates first, then the whole map; first goodpos wins.
+// enexto_gpflags(GP_CHECKSCARY|flags) then (flags) — but goodpos_spawn ignores
+// scary (none on these levels) so the two passes are equivalent; one pass'
+// near+full scan reproduces the RNG (collect_coords draws are what matter).
+function enexto_spawn(xx, yy, ptr) {
+    const near = collect_coords_spawn(xx, yy, 3);
+    for (const c of near) {
+        if (goodpos_spawn(c.x, c.y, ptr)) return { x: c.x, y: c.y };
+    }
+    const all = collect_coords_spawn(xx, yy, 0);
+    for (let i = near.length; i < all.length; i++) {
+        if (goodpos_spawn(all[i].x, all[i].y, ptr)) return { x: all[i].x, y: all[i].y };
+    }
+    return null;
+}
+
+// C ref: makemon.c m_initgrp(mtmp, x, y, n, mmflags) — make a group like mtmp.
+// cnt = rnd(n) / (ulevel<3?4 : ulevel<5?2 : 1); at least 1.  Each non-peaceful
+// member is placed via enexto and created by makemon(..., MM_NOGRP).
+function m_initgrp(mtmp, x, y, n, mmflags) {
+    let cnt = rnd(n);                                  // makemon.c:85
+    const ul = game.u?.ulevel || 1;
+    cnt = Math.trunc(cnt / (ul < 3 ? 4 : ul < 5 ? 2 : 1));
+    if (!cnt) cnt++;
+    let mx = x, my = y;
+    while (cnt-- > 0) {
+        if (peace_minded_spawn(mtmp.data)) continue;   // skip peaceful members
+        const spot = enexto_spawn(mx, my, mtmp.data);  // enexto_gpflags
+        if (spot) {
+            mx = spot.x; my = spot.y;
+            const mon = makemon(mtmp.data, spot.x, spot.y, mmflags | MM_NOGRP);
+            if (mon) {
+                placeOnLevel(mon, spot.x, spot.y);
+                mon.mpeaceful = false;
+            }
+        }
+    }
+}
+
+// C ref: makemon.c peace_minded() — the only RNG-consuming case is a co-aligned
+// monster's hostile chance: rn2(16+record') && rn2(2+abs(mal)).  Differently
+// aligned monsters return FALSE with no RNG (the seed0103/0104 spawns).
+function peace_minded_spawn(ptr) {
+    const mal = ptr.maligntyp ?? 0;
+    const ual = game.u?.ualign?.type ?? 0;
+    // always_peaceful/always_hostile (M2_PEACEFUL/M2_HOSTILE) and special
+    // msounds are not represented in the slice; the random spawns here are
+    // ordinary animals with maligntyp differing from the lawful/neutral hero.
+    if (sgn(mal) !== sgn(ual)) return false;           // hostile, no RNG
+    const record = game.u?.ualign?.record ?? 0;
+    const a = !!rn2(16 + (record < -15 ? -15 : record));
+    const b = !!rn2(2 + Math.abs(mal));
+    return a && b;
+}
+
+// Place a spawned monster on the live level so the renderer and subsequent
+// monster turns see it.  C ref: mon.c place_monster + makemon's fmon insert.
+function placeOnLevel(mtmp, x, y) {
+    mtmp.mx = x; mtmp.my = y;
+    if (!game.level.monsters) game.level.monsters = [];
+    if (!game.level.monsters.includes(mtmp)) game.level.monsters.push(mtmp);
+}
+
+// C ref: makemon.c makemon((permonst*)0, 0, 0, NO_MM_FLAGS) for an in-game
+// random spawn.  Faithful RNG order: makemon_rnd_goodpos -> rndmonst (retry
+// loop) -> next_ident -> newmonhp -> gender -> group(m_initgrp) -> m_initweap/
+// m_initinv -> saddle, then place on the level.
+export function makemon_rnd_spawn() {
+    // Position first (x==0,y==0 path).  C uses a fakemon whose data is set per
+    // rndmonst try inside the loop, but makemon_rnd_goodpos is called BEFORE
+    // rndmonst with fakemon.data == ptr (NULL here since ptr is 0) — goodpos
+    // with a null mdat skips the data-dependent branches, exactly matching
+    // goodpos_spawn(ptr=null).
+    const pos = makemon_rnd_goodpos(null);
+    if (!pos) return null;
+    let x = pos.x, y = pos.y;
+
+    // Random type with up to 50 goodpos retries at the chosen square.
+    let ptr = null, tryct = 0;
+    do {
+        ptr = rndmonst();
+        if (!ptr) return null;
+    } while (++tryct <= 50 && !goodpos_spawn(x, y, ptr));
+    if (!ptr) return null;
+
+    const mtmp = { data: ptr, mx: x, my: y, mmflags: 0 };
+    // C ref: makemon.c:1248-1250 — the new monster is linked into fmon (and gets
+    // its m_id) HERE, before newmonhp/group/inventory.  Placing it on the level
+    // now (rather than at the end) keeps the fmon traversal order correct: the
+    // top monster precedes its group members, so the newest-first movemon loop
+    // visits members before the top, exactly as C does.
+    placeOnLevel(mtmp, x, y);
+    mtmp.m_id = next_ident();
+    newmonhp(mtmp);
+
+    if (ptr.gcode === 0) mtmp.female = rn2(2);
+    else mtmp.female = (ptr.gcode === 2) ? 1 : 0;
+
+    mtmp.mpeaceful = peace_minded_spawn(ptr) ? true : false;
+
+    // Group handling (anymon && !MM_NOGRP).  G_SGROUP -> rn2(2); G_LGROUP ->
+    // rn2(3) ? lgrp : sgrp.  Members are created/placed before the top
+    // monster's inventory (matching the C call order at makemon.c:1429).
+    if ((ptr.geno & G_SGROUP) && rn2(2)) {
+        m_initgrp(mtmp, x, y, 3, 0);               // m_initsgrp -> rnd(3)
+    } else if (ptr.geno & G_LGROUP) {
+        if (rn2(3)) m_initgrp(mtmp, x, y, 10, 0);  // m_initlgrp -> rnd(10)
+        else m_initgrp(mtmp, x, y, 3, 0);          // m_initsgrp -> rnd(3)
+    }
+
+    if (ARMED_MCLS.has(ptr.mcls)) m_initweap(mtmp);
+    m_initinv(ptr);
+    rn2(100); // saddle chance
+
     return mtmp;
 }

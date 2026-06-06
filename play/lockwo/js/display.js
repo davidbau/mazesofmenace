@@ -10,6 +10,9 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     SDOOR, SCORR, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, ICE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
+    WM_MASK, WM_C_OUTER, WM_C_INNER,
+    WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
 } from './const.js';
 import {
     NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
@@ -71,27 +74,19 @@ const HI_BY_MATERIAL = {
     21: CLR_GRAY,       // MINERAL(HI_MINERAL)
 };
 
-// oc_color overrides for the few objects whose declared color in
-// objects.c differs from the material default.  C ref: src/objects.c.
-const OC_COLOR_OVERRIDE = {
-    [STATUE_OTYP]: CLR_WHITE,
-};
-
-// C ref: display.c reset_glyphmap obj_color(n) = objects[n].oc_color.
+// C ref: display.c reset_glyphmap — `#define obj_color(n) objects[n].oc_color`.
+// Each object's declared color is ported into the shared OBJECT_DATA table
+// (mkobj.js OC_COLOR, verbatim from include/objects.h).  Coins always show as
+// CLR_YELLOW (GLYPH_OBJ_PILETOP / has_rogue_color branch never fires here).
 const AMULET_CLASS = 5;
+const FOOD_CLASS = 7;
+const CORPSE_OTYP = 265;
 
 function obj_color(otmp) {
     if (!otmp) return NO_COLOR;
-    if (OC_COLOR_OVERRIDE[otmp.otyp] != null) return OC_COLOR_OVERRIDE[otmp.otyp];
-    const obj = objects[otmp.otyp];
     if (otmp.oclass === COIN_CLASS) return CLR_YELLOW;
-    // C ref: src/objects.h — every AMULET macro entry (and both Amulet-of-Yendor
-    // objects) declares oc_color = HI_METAL (CLR_CYAN), independent of material
-    // (the fake Yendor amulet is PLASTIC yet still HI_METAL).  The shared
-    // OBJECT_DATA omits the per-object oc_color, so pin the class default here.
-    if (otmp.oclass === AMULET_CLASS) return CLR_CYAN;
-    const mat = obj?.material;
-    if (mat != null && HI_BY_MATERIAL[mat] != null) return HI_BY_MATERIAL[mat];
+    const obj = objects[otmp.otyp];
+    if (obj && obj.oc_color != null) return obj.oc_color;
     return NO_COLOR;
 }
 
@@ -103,7 +98,15 @@ function object_glyph(otmp) {
     if (otmp.otyp === STATUE_OTYP) {
         const mon = monster_by_pmidx(otmp.corpsenm);
         const sym = mon?.mlet || OC_SYM[ROCK_CLASS];
+        // C ref: display.c GLYPH_STATUE_* branch — obj_color(STATUE) = CLR_WHITE.
         return { ch: sym, color: CLR_WHITE, dec: false };
+    }
+    // C ref: display.c GLYPH_BODY_* branch — a corpse is drawn with the dead
+    // monster's color (mon_color(corpsenm)), NOT the corpse object's material
+    // (e.g. a red mold's corpse is red, not the FLESH/brown default).
+    if (otmp.otyp === CORPSE_OTYP && otmp.corpsenm != null && otmp.corpsenm >= 0) {
+        const mon = monster_by_pmidx(otmp.corpsenm);
+        return { ch: OC_SYM[FOOD_CLASS], color: mon?.mcolor ?? NO_COLOR, dec: false };
     }
     // Boulder uses the rock symbol; the generic case below covers it.
     const sym = OC_SYM[otmp.oclass] || OC_SYM[1];
@@ -121,11 +124,16 @@ export function vobj_at(x, y) {
     return top;
 }
 
-// Monster at (x, y).  C ref: mon.c m_at.
+// Monster at (x, y).  C ref: rm.h m_at(x,y) = svl.level.monsters[x][y].
+// A ridden steed has been removed from the map grid (remove_monster in
+// mount_steed) but remains in the fmon chain, so it must NOT be reported by the
+// grid lookup even though it is still a live level monster colocated with the
+// hero.
 export function m_at(x, y) {
     const mons = game.level?.monsters;
     if (!mons) return null;
     for (const m of mons) {
+        if (m.mridden) continue;
         if (m.mx === x && m.my === y) return m;
     }
     return null;
@@ -172,24 +180,233 @@ function useDECgraphics() {
 }
 
 // ── Terrain to display character + color + DEC flag ──
+// C ref: defsym.h S_* cmap symbol indices for walls.
+const S_stone = 0, S_vwall = 1, S_hwall = 2, S_tlcorn = 3, S_trcorn = 4,
+    S_blcorn = 5, S_brcorn = 6, S_crwall = 7, S_tuwall = 8, S_tdwall = 9,
+    S_tlwall = 10, S_trwall = 11;
+
+// C ref: display.c wall_angle support tables — all results expressed for a
+// tdwall (T walls rotated) / bottom-right (single crosswalls rotated).
+const wall_matrix = [
+    /* T_d (tdwall) */ [S_stone, S_tlcorn, S_trcorn, S_hwall, S_tdwall],
+    /* T_l (tlwall) */ [S_stone, S_trcorn, S_brcorn, S_vwall, S_tlwall],
+    /* T_u (tuwall) */ [S_stone, S_brcorn, S_blcorn, S_hwall, S_tuwall],
+    /* T_r (trwall) */ [S_stone, S_blcorn, S_tlcorn, S_vwall, S_trwall],
+];
+const T_stone = 0, T_tlcorn = 1, T_trcorn = 2, T_hwall = 3, T_tdwall = 4;
+const T_d = 0, T_l = 1, T_u = 2, T_r = 3;
+
+const cross_matrix = [
+    /* C_bl */ [S_brcorn, S_blcorn, S_tlcorn, S_tuwall, S_trwall, S_crwall],
+    /* C_tl */ [S_blcorn, S_tlcorn, S_trcorn, S_trwall, S_tdwall, S_crwall],
+    /* C_tr */ [S_tlcorn, S_trcorn, S_brcorn, S_tdwall, S_tlwall, S_crwall],
+    /* C_br */ [S_trcorn, S_brcorn, S_blcorn, S_tlwall, S_tuwall, S_crwall],
+];
+const C_bl = 0, C_tl = 1, C_tr = 2, C_br = 3;
+const C_trcorn = 0, C_brcorn = 1, C_blcorn = 2, C_tlwall = 3, C_tuwall = 4, C_crwall = 5;
+
+// C ref: display.c — `only(sv, bits)` macro.
+function _only(sv, bits) { return ((sv & bits) && !(sv & ~bits)); }
+
+// C ref: display.c wall_angle(lev) — choose the wall cmap index from wall
+// type, wall mode (WM_MASK), and the seen vector.  Assumes seenv != 0.
+function wall_angle(lev) {
+    let seenv = lev.seenv & 0xff;
+    const wm = lev.wall_info & WM_MASK;
+    let row, col, idx;
+    switch (lev.typ) {
+    case TUWALL:
+        row = wall_matrix[T_u];
+        seenv = (seenv >> 4 | seenv << 4) & 0xff; /* rotate to tdwall */
+        return do_twall(lev, row, seenv, wm);
+    case TLWALL:
+        row = wall_matrix[T_l];
+        seenv = (seenv >> 2 | seenv << 6) & 0xff;
+        return do_twall(lev, row, seenv, wm);
+    case TRWALL:
+        row = wall_matrix[T_r];
+        seenv = (seenv >> 6 | seenv << 2) & 0xff;
+        return do_twall(lev, row, seenv, wm);
+    case TDWALL:
+        row = wall_matrix[T_d];
+        return do_twall(lev, row, seenv, wm);
+
+    case SDOOR:
+        if (lev.horizontal) return hwall_angle(seenv, wm);
+        /* falls through to VWALL */
+    case VWALL:
+        switch (wm) {
+        case 0:  idx = seenv ? S_vwall : S_stone; break;
+        case 1:  idx = (seenv & (SV1 | SV2 | SV3 | SV4 | SV5)) ? S_vwall : S_stone; break;
+        case 2:  idx = (seenv & (SV0 | SV1 | SV5 | SV6 | SV7)) ? S_vwall : S_stone; break;
+        default: idx = S_stone; break;
+        }
+        return idx;
+
+    case HWALL:
+        return hwall_angle(seenv, wm);
+
+    case TLCORNER:
+        return set_corner(lev, S_tlcorn, (SV3 | SV4 | SV5), SV4, seenv, wm);
+    case TRCORNER:
+        return set_corner(lev, S_trcorn, (SV5 | SV6 | SV7), SV6, seenv, wm);
+    case BLCORNER:
+        return set_corner(lev, S_blcorn, (SV1 | SV2 | SV3), SV2, seenv, wm);
+    case BRCORNER:
+        return set_corner(lev, S_brcorn, (SV7 | SV0 | SV1), SV0, seenv, wm);
+
+    case CROSSWALL:
+        return crosswall_angle(seenv, wm);
+
+    default:
+        return S_stone;
+    }
+}
+
+function hwall_angle(seenv, wm) {
+    switch (wm) {
+    case 0:  return seenv ? S_hwall : S_stone;
+    case 1:  return (seenv & (SV3 | SV4 | SV5 | SV6 | SV7)) ? S_hwall : S_stone;
+    case 2:  return (seenv & (SV0 | SV1 | SV2 | SV3 | SV7)) ? S_hwall : S_stone;
+    default: return S_stone;
+    }
+}
+
+function do_twall(lev, row, seenv, wm) {
+    let col;
+    switch (wm) {
+    case 0:
+        if (seenv === SV4) col = T_tlcorn;
+        else if (seenv === SV6) col = T_trcorn;
+        else if ((seenv & (SV3 | SV5 | SV7)) || ((seenv & SV4) && (seenv & SV6))) col = T_tdwall;
+        else if (seenv & (SV0 | SV1 | SV2)) col = (seenv & (SV4 | SV6)) ? T_tdwall : T_hwall;
+        else col = T_stone;
+        break;
+    case 1: /* WM_T_LONG */
+        if ((seenv & (SV3 | SV4)) && !(seenv & (SV5 | SV6 | SV7))) col = T_tlcorn;
+        else if ((seenv & (SV6 | SV7)) && !(seenv & (SV3 | SV4 | SV5))) col = T_trcorn;
+        else if ((seenv & SV5) || ((seenv & (SV3 | SV4)) && (seenv & (SV6 | SV7)))) col = T_tdwall;
+        else col = T_stone; /* only SV0|SV1|SV2 */
+        break;
+    case 2: /* WM_T_BL */
+        if (_only(seenv, SV4 | SV5)) col = T_tlcorn;
+        else if ((seenv & (SV0 | SV1 | SV2 | SV7)) && !(seenv & (SV3 | SV4 | SV5))) col = T_hwall;
+        else if (_only(seenv, SV6)) col = T_stone;
+        else col = T_tdwall;
+        break;
+    case 3: /* WM_T_BR */
+        if (_only(seenv, SV5 | SV6)) col = T_trcorn;
+        else if ((seenv & (SV0 | SV1 | SV2 | SV3)) && !(seenv & (SV5 | SV6 | SV7))) col = T_hwall;
+        else if (_only(seenv, SV4)) col = T_stone;
+        else col = T_tdwall;
+        break;
+    default:
+        col = T_stone;
+        break;
+    }
+    return row[col];
+}
+
+// C ref: display.c set_corner macro.
+function set_corner(lev, which, outer, inner, seenv, wm) {
+    switch (wm) {
+    case 0:           return which;
+    case WM_C_OUTER:  return (seenv & outer) ? which : S_stone;
+    case WM_C_INNER:  return (seenv & ~inner) ? which : S_stone;
+    default:          return S_stone;
+    }
+}
+
+function crosswall_angle(seenv, wm) {
+    let row, col, idx;
+    switch (wm) {
+    case 0:
+        if (seenv === SV0) idx = S_brcorn;
+        else if (seenv === SV2) idx = S_blcorn;
+        else if (seenv === SV4) idx = S_tlcorn;
+        else if (seenv === SV6) idx = S_trcorn;
+        else if (!(seenv & ~(SV0 | SV1 | SV2)) && ((seenv & SV1) || seenv === (SV0 | SV2))) idx = S_tuwall;
+        else if (!(seenv & ~(SV2 | SV3 | SV4)) && ((seenv & SV3) || seenv === (SV2 | SV4))) idx = S_trwall;
+        else if (!(seenv & ~(SV4 | SV5 | SV6)) && ((seenv & SV5) || seenv === (SV4 | SV6))) idx = S_tdwall;
+        else if (!(seenv & ~(SV0 | SV6 | SV7)) && ((seenv & SV7) || seenv === (SV0 | SV6))) idx = S_tlwall;
+        else idx = S_crwall;
+        return idx;
+    case WM_X_TL:
+        row = cross_matrix[C_tl]; seenv = (seenv >> 4 | seenv << 4) & 0xff;
+        return do_crwall(row, seenv);
+    case WM_X_TR:
+        row = cross_matrix[C_tr]; seenv = (seenv >> 6 | seenv << 2) & 0xff;
+        return do_crwall(row, seenv);
+    case WM_X_BL:
+        row = cross_matrix[C_bl]; seenv = (seenv >> 2 | seenv << 6) & 0xff;
+        return do_crwall(row, seenv);
+    case WM_X_BR:
+        row = cross_matrix[C_br];
+        return do_crwall(row, seenv);
+    case WM_X_TLBR:
+        if (_only(seenv, SV1 | SV2 | SV3)) return S_blcorn;
+        if (_only(seenv, SV5 | SV6 | SV7)) return S_trcorn;
+        if (_only(seenv, SV0 | SV4)) return S_stone;
+        return S_crwall;
+    case WM_X_BLTR:
+        if (_only(seenv, SV0 | SV1 | SV7)) return S_brcorn;
+        if (_only(seenv, SV3 | SV4 | SV5)) return S_tlcorn;
+        if (_only(seenv, SV2 | SV6)) return S_stone;
+        return S_crwall;
+    default:
+        return S_stone;
+    }
+}
+
+function do_crwall(row, seenv) {
+    if (seenv === SV4) return S_stone;
+    seenv = seenv & ~SV4; /* strip SV4 */
+    let col;
+    if (seenv === SV0) col = C_brcorn;
+    else if (seenv & (SV2 | SV3)) {
+        if (seenv & (SV5 | SV6 | SV7)) col = C_crwall;
+        else if (seenv & (SV0 | SV1)) col = C_tuwall;
+        else col = C_blcorn;
+    } else if (seenv & (SV5 | SV6)) {
+        if (seenv & (SV1 | SV2 | SV3)) col = C_crwall;
+        else if (seenv & (SV0 | SV7)) col = C_tlwall;
+        else col = C_trcorn;
+    } else if (seenv & SV1) {
+        col = (seenv & SV7) ? C_crwall : C_tuwall;
+    } else if (seenv & SV7) {
+        col = (seenv & SV1) ? C_crwall : C_tlwall;
+    } else {
+        col = C_crwall;
+    }
+    return row[col];
+}
+
 // C ref: display.c back_to_glyph + drawing.c defsyms.  Walls follow the
 // active symset: DECgraphics VT100 line-drawing, else default ASCII.
-function wall_glyph(typ) {
+// Map an S_* wall cmap index to a glyph descriptor.
+const _WALL_DEC = {
+    [S_vwall]: 'x', [S_hwall]: 'q', [S_tlcorn]: 'l', [S_trcorn]: 'k',
+    [S_blcorn]: 'm', [S_brcorn]: 'j', [S_crwall]: 'n', [S_tuwall]: 'v',
+    [S_tdwall]: 'w', [S_tlwall]: 'u', [S_trwall]: 't',
+};
+const _WALL_ASCII = {
+    [S_vwall]: '|', [S_hwall]: '-', [S_tlcorn]: '-', [S_trcorn]: '-',
+    [S_blcorn]: '-', [S_brcorn]: '-', [S_crwall]: '-', [S_tuwall]: '-',
+    [S_tdwall]: '-', [S_tlwall]: '|', [S_trwall]: '|',
+};
+function wall_cmap_glyph(idx) {
+    if (idx === S_stone || idx == null) return { ch: ' ', color: NO_COLOR, dec: false };
     const dec = useDECgraphics();
-    switch (typ) {
-    case HWALL:     return dec ? { ch: 'q', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case VWALL:     return dec ? { ch: 'x', color: NO_COLOR, dec: true } : { ch: '|', color: NO_COLOR, dec: false };
-    case TLCORNER:  return dec ? { ch: 'l', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case TRCORNER:  return dec ? { ch: 'k', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case BLCORNER:  return dec ? { ch: 'm', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case BRCORNER:  return dec ? { ch: 'j', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case CROSSWALL: return dec ? { ch: 'n', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case TUWALL:    return dec ? { ch: 'v', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case TDWALL:    return dec ? { ch: 'w', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    case TLWALL:    return dec ? { ch: 'u', color: NO_COLOR, dec: true } : { ch: '|', color: NO_COLOR, dec: false };
-    case TRWALL:    return dec ? { ch: 't', color: NO_COLOR, dec: true } : { ch: '|', color: NO_COLOR, dec: false };
-    default:        return dec ? { ch: 'q', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
-    }
+    const ch = dec ? _WALL_DEC[idx] : _WALL_ASCII[idx];
+    return { ch: ch ?? (dec ? 'q' : '-'), color: NO_COLOR, dec };
+}
+
+// Render a wall/SDOOR cell, applying wall_angle (mode + seenv) so walls only
+// show from the angles C would draw them.  C ref: back_to_glyph wall case:
+//   idx = ptr->seenv ? wall_angle(ptr) : S_stone;
+function wall_glyph_for(loc) {
+    const idx = loc.seenv ? wall_angle(loc) : S_stone;
+    return wall_cmap_glyph(idx);
 }
 
 function terrain_glyph(loc, x, y) {
@@ -201,8 +418,9 @@ function terrain_glyph(loc, x, y) {
     case ROOM:      return dec ? { ch: '~', color: NO_COLOR, dec: true } : { ch: '.', color: NO_COLOR, dec: false };
     case CORR:      return { ch: '#', color: NO_COLOR, dec: false };
     case SDOOR:
-        // Secret door shows as the wall it hides in. C ref: back_to_glyph.
-        return loc.horizontal ? wall_glyph(HWALL) : wall_glyph(VWALL);
+        // Secret door shows as the wall it hides in, via wall_angle.
+        // C ref: back_to_glyph — SDOOR falls through to the wall case.
+        return wall_glyph_for(loc);
     case DOOR:
         if (loc.doormask & D_BROKEN)
             return dec ? { ch: '~', color: NO_COLOR, dec: true } : { ch: '.', color: NO_COLOR, dec: false };
@@ -232,7 +450,7 @@ function terrain_glyph(loc, x, y) {
     case TDWALL:
     case TLWALL:
     case TRWALL:
-        return wall_glyph(typ);
+        return wall_glyph_for(loc);
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
 }
@@ -508,6 +726,31 @@ export function serialize_terminal_grid(display) {
         if (r < lastRow) output += '\n';
     }
     return output;
+}
+
+// Draw the map (rows 1-21) and the two status lines (rows 22-23) onto the grid
+// without touching row 0 (the message line) or clearing the grid first.  Used
+// by the menu/window overlay renderers so a partial-width NHW_MENU shows the
+// underlying map in the columns/rows it does not cover — matching C's tty
+// behaviour (tty_display_nhwindow overwrites only the window's own cells).
+export function render_map_to_grid() {
+    const display = game?.nhDisplay;
+    if (!display?.setCell || !display.grid) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+            const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+            display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+        }
+    }
+    const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
+        m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+    for (let c = 0; c < Math.min(s1.length, display.cols); c++)
+        display.setCell(c, 22, s1[c], NO_COLOR, 0);
+    const s2 = _statusLine2();
+    for (let c = 0; c < Math.min(s2.length, display.cols); c++)
+        display.setCell(c, 23, s2[c], NO_COLOR, 0);
 }
 
 // ── Build screen output ──

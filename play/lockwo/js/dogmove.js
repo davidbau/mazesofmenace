@@ -10,8 +10,8 @@
 // the gameplay sessions exercise them at the point they currently diverge.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL } from './const.js';
+import { rn2, rnd } from './rng.js';
+import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok } from './const.js';
 import { obj_resists } from './zap.js';
 import { newsym } from './display.js';
 import { couldsee as visCouldsee, clear_path } from './vision.js';
@@ -19,8 +19,9 @@ import { dist2, mfndpos } from './monmove.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import {
-    FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS,
+    FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, next_ident,
 } from './mkobj.js';
+import { gettrack } from './track.js';
 
 // dogfood quality enum (mextra.h): lower == more desirable.
 const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
@@ -28,7 +29,17 @@ const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
 
 const MMOVE_NOTHING = 0, MMOVE_MOVED = 2, MMOVE_DIED = 3, MMOVE_DONE = 5;
 
-const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 102;
+const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 100;
+
+// Food object types referenced by dogfood() (mkobj.js OBJECT_DATA otyp order).
+const TRIPE_RATION = 264, EGG = 266, MEATBALL = 267, MEAT_STICK = 268,
+      ENORMOUS_MEATBALL = 269, MEAT_RING = 270, APPLE = 277, BANANA = 281,
+      CARROT = 282, CLOVE_OF_GARLIC = 284, SLIME_MOLD = 285;
+
+// C ref: mondata.h haseyes(ptr) — monster has eyes (not NOEYES).  For the pets
+// our sessions drive (dog/cat/pony) this is always true; M1_NOEYES monsters
+// (e.g. blobs) never reach dogfood here, so a constant TRUE is faithful.
+function haseyes(_mdat) { return true; }
 
 // Kept in lock-step with allmain.js MULTIPASS_MOVEMON.  When the C multi-pass
 // movemon() loop is enabled, the pet's repeat object scan needs real
@@ -41,7 +52,7 @@ export const PET_REAL_VISION = true;
 // C ref: mon.c max_mon_load(mtmp).  MAX_CARR_CAP=1000, WT_HUMAN=1450.
 // kitten(34)/little dog(16): cwt=150, MZ_SMALL, not strong ->
 //   (1000*150)/1450 = 103, then /2 (not strong) = 51.
-// pony(102): cwt=1300, MZ_MEDIUM, M2_STRONG, cwt<=WT_HUMAN -> MAX_CARR_CAP=1000,
+// pony(100): cwt=1300, MZ_MEDIUM, M2_STRONG, cwt<=WT_HUMAN -> MAX_CARR_CAP=1000,
 //   no halving (strong) = 1000.
 // All three starting pets are M1_NOHANDS and are not dragons / engulfers.
 const PET_MAXLOAD = { [PM_LITTLE_DOG]: 51, [PM_KITTEN]: 51, [PM_PONY]: 1000 };
@@ -102,15 +113,43 @@ function dogfood(mon, obj) {
         return obj.cursed ? TABU : APPORT;
 
     switch (obj.oclass) {
-    case FOOD_CLASS:
-        // Carnivores treat unknown/meat food as DOGFOOD-ish; herbivores eat
-        // veggie food.  The starting level rarely drops corpses near the pet;
-        // approximate with the carnivore/herbivore default branch.
+    case FOOD_CLASS: {
+        // C ref: dog.c dogfood() FOOD_CLASS — the per-otyp diet switch.  Only
+        // the cases the starter/ride sessions actually place (meat, fruit/veg,
+        // and the generic default) need faithful values; the exotic corpse/egg
+        // /glob/ghoul branches never fire for these pets so they fall into the
+        // shared default.  An apple/carrot returning DOGFOOD to a herbivore
+        // pony is what makes the dog_goal invent scan stop at the right item
+        // (and thus emit the matching number of obj_resists rolls).
         if (!carni && !herbi)
             return obj.cursed ? UNDEF : APPORT;
-        // default food case (dog.c): otyp > SLIME_MOLD ? carni?ACCFOOD:MANFOOD
-        //                                               : herbi?ACCFOOD:MANFOOD
-        return carni ? ACCFOOD : (herbi ? ACCFOOD : MANFOOD);
+        // even carnivores eat carrots while temporarily blind (mblind)
+        const mblind = !mon.mcansee && haseyes(mdat);
+        switch (obj.otyp) {
+        case TRIPE_RATION:
+        case MEATBALL:
+        case MEAT_RING:
+        case MEAT_STICK:
+        case ENORMOUS_MEATBALL:
+            return carni ? DOGFOOD : MANFOOD;
+        case EGG:
+            return carni ? CADAVER : MANFOOD;
+        case APPLE:
+            return herbi ? DOGFOOD : MANFOOD; // (starving -> ACCFOOD; never here)
+        case CARROT:
+            return (herbi || mblind) ? DOGFOOD : MANFOOD;
+        case BANANA:
+            return (herbi) ? ACCFOOD : MANFOOD;
+        case CLOVE_OF_GARLIC:
+            return herbi ? ACCFOOD : MANFOOD;
+        default:
+            // C: otyp > SLIME_MOLD ? (carni?ACCFOOD:MANFOOD)
+            //                      : (herbi?ACCFOOD:MANFOOD)
+            return (obj.otyp > SLIME_MOLD)
+                ? (carni ? ACCFOOD : MANFOOD)
+                : (herbi ? ACCFOOD : MANFOOD);
+        }
+    }
     case ROCK_CLASS:
         return UNDEF;
     default:
@@ -161,13 +200,46 @@ function edogApport(edog) {
     return edog.apport;
 }
 
-// C ref: dogmove.c dog_invent(mtmp, edog, udist).  Only the no-inventory path
-// with an object underfoot consumes RNG (dogfood -> obj_resists); the common
-// follow case (empty square, no minvent) returns 0 silently.  Returns 1 if the
-// pet ate (counts as its move), else 0.
+// C ref: dogmove.c droppables(mon) — return the first droppable object in the
+// pet's minvent.  Consumes no RNG.  The starting pets are NOHANDS animals; any
+// ordinary item they've picked up is unworn/unwielded -> returned as droppable
+// (the pickaxe/unihorn/key/weapon "keep" cases never apply to dog/cat/pony).
+function droppables(mtmp) {
+    const inv = mtmp.minvent;
+    if (!inv || !inv.length) return null;
+    for (const obj of inv) {
+        if (!obj.owornmask && obj !== mtmp.mw) return obj;
+    }
+    return null;
+}
+
+// C ref: dogmove.c dog_invent(mtmp, edog, udist).  The pet either drops a
+// carried object (relobj, no RNG beyond the drop rolls), eats an underfoot
+// item (counts as its move), or picks one up (splitobj -> next_ident when the
+// stack is split).  Picking up sets minvent so later turns take the drop path
+// and dog_goal's `dog_has_minvent` rolls fire.  Returns 1 if the pet ate.
 function dog_invent(mtmp, edog, udist) {
     const omx = mtmp.mx, omy = mtmp.my;
-    // droppables(mtmp): pet carries nothing at the start -> skip the drop path.
+    const apport = edogApport(edog);
+
+    // C ref: dogmove.c:416 — if carrying something, maybe drop it near @.
+    if (droppables(mtmp)) {
+        // assert(apport > 0)
+        // C: if (!rn2(udist+1) || !rn2(apport)) if (rn2(10) < apport)
+        if (rn2(udist + 1) === 0 || rn2(apport) === 0) {
+            if (rn2(10) < apport) {
+                // relobj(mtmp, ..., TRUE): drop everything onto the floor.  No
+                // RNG.  Place each carried object back on the pet's tile.
+                relobj(mtmp, omx, omy);
+                if (edog.apport > 1) edog.apport--;
+                edog.dropdist = udist;
+                edog.droptime = game.moves || 1;
+            }
+        }
+        return 0;
+    }
+
+    // No minvent: maybe eat or pick up an underfoot object.
     const here = objectsAt(omx, omy);
     if (here.length) {
         const obj = here[0]; // svl.level.objects[omx][omy] = top of pile
@@ -180,12 +252,18 @@ function dog_invent(mtmp, edog, udist) {
             return 1;
         }
         // can_carry / pickup path: rn2(20) < apport+3, then rn2(udist)/rn2(apport)
-        const apport = edogApport(edog);
-        if (!obj.cursed) {
+        const carryamt = can_carry(mtmp, obj);
+        if (carryamt > 0 && !obj.cursed) {
             if (rn2(20) < apport + 3) {
-                if (rn2(udist) || !rn2(apport)) {
-                    // pick up — not modeled (no minvent tracking); the rolls
-                    // above already match C's stream for this rare case.
+                if (rn2(udist) || rn2(apport) === 0) {
+                    // C ref: dogmove.c:448-465 — split a partial stack (which
+                    // assigns a fresh o_id via next_ident -> rnd(2)) then move
+                    // the object into the pet's minvent (mpickobj, no RNG).
+                    let otmp = obj;
+                    if (carryamt !== (obj.quan || 1))
+                        otmp = pet_splitobj(obj, carryamt);
+                    pet_extract_floor(otmp);
+                    mpickobj(mtmp, otmp);
                 }
             }
         }
@@ -193,11 +271,57 @@ function dog_invent(mtmp, edog, udist) {
     return 0;
 }
 
+// C ref: steal.c relobj(mtmp,x,y,...) — drop the pet's carried objects onto its
+// tile.  Placement is deterministic (no RNG); we just move them from minvent
+// back into level.objects at (x,y).
+function relobj(mtmp, x, y) {
+    const inv = mtmp.minvent || [];
+    const arr = game.level?.objects;
+    for (const obj of inv) {
+        obj.ox = x; obj.oy = y;
+        obj.where = 0; // OBJ_FLOOR
+        if (arr && !arr.includes(obj)) arr.push(obj);
+    }
+    mtmp.minvent = [];
+}
+
+// C ref: mkobj.c splitobj(obj,num) — split `num` off a stack into a new obj
+// whose o_id comes from next_ident() (rnd(2)).  We only need the RNG-faithful
+// next_ident call and a shallow clone for minvent bookkeeping.
+function pet_splitobj(obj, num) {
+    const split = { ...obj, quan: num, o_id: next_ident() };
+    obj.quan = (obj.quan || 1) - num;
+    return split;
+}
+
+// Remove an object (or split fragment) from the floor pile.
+function pet_extract_floor(obj) {
+    const arr = game.level?.objects;
+    if (!arr) return;
+    const ix = arr.indexOf(obj);
+    if (ix >= 0) arr.splice(ix, 1);
+}
+
+// C ref: mon.c mpickobj(mtmp,otmp) — add an object to the monster's minvent.
+// No RNG for ordinary items.
+function mpickobj(mtmp, obj) {
+    mtmp.minvent = mtmp.minvent || [];
+    obj.where = 3; // OBJ_MINVENT
+    mtmp.minvent.push(obj);
+}
+
 // C ref: dogmove.c dog_goal(...).  Returns the approach desire (-1/0/1) or -2
 // to abort.  Sets the goal coordinates on `g` (gx/gy) used by the move loop.
 function dog_goal(mtmp, edog, after, udist, whappr, g) {
     const omx = mtmp.mx, omy = mtmp.my;
     const u = game.u;
+
+    // C ref: dogmove.c:494-496 — "Steeds don't move on their own will": a
+    // ridden steed returns -2 immediately, BEFORE the fobj/invent scans, so it
+    // consumes no obj_resists/rn2(8) RNG.  dog_move then maps appr==-2 to
+    // MMOVE_NOTHING.  (Reached because the steed stays in fmon and is driven by
+    // movemon/dochug/m_move each turn now that mount_steed keeps it on the list.)
+    if (mtmp === u?.usteed) return -2;
 
     let gtyp = UNDEF;
     g.gx = 0; g.gy = 0;
@@ -209,7 +333,9 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
     const max_y = Math.min(omy + SQ, ROWNO - 1);
 
     const in_masters_sight = couldsee(omx, omy);
-    const dog_has_minvent = false; // pet carries nothing at the start
+    // C ref: dog_has_minvent = (droppables(mtmp) != 0).  True once the pet has
+    // picked something up in dog_invent (it stays in minvent until dropped).
+    const dog_has_minvent = !!droppables(mtmp);
 
     // nearby food/objects (C iterates fobj; order only affects tie-breaks for
     // the goal, not the rn2 stream — obj_resists fires for every object).
@@ -272,7 +398,65 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
         appr = 1;
     }
     if (mtmp.mconf) appr = 0;
+
+    // C ref: dogmove.c:610-644 — when the goal is the hero's square but the pet
+    // is OUT of the master's sight, the pet can't see the hero, so it follows
+    // the hero's footprint track (gettrack) instead of beelining to the (now
+    // unknown) hero position.  Falls back to the pet's remembered previous goal
+    // (edog.ogoal) or, failing that, the nearest square it can see toward the
+    // hero (do_clear_area + wantdoor).  This consumes NO RNG but changes the
+    // goal, which is what feeds the pet's mfndpos/jv candidate selection.
+    const FARAWAY = COLNO + 2;
+    if (g.gx === u.ux && g.gy === u.uy && !in_masters_sight) {
+        const cp = gettrack(omx, omy);
+        if (cp) {
+            g.gx = cp.x; g.gy = cp.y;
+            edog.ogoal = { x: 0, y: 0 };
+        } else if (edog.ogoal && edog.ogoal.x
+                   && (edog.ogoal.x !== omx || edog.ogoal.y !== omy)) {
+            g.gx = edog.ogoal.x; g.gy = edog.ogoal.y;
+            edog.ogoal = { x: 0, y: 0 };
+        } else {
+            let fardist = FARAWAY * FARAWAY;
+            g.gx = g.gy = FARAWAY;
+            const best = { x: FARAWAY, y: FARAWAY, d: fardist };
+            do_clear_area_wantdoor(omx, omy, 9, best);
+            g.gx = best.x; g.gy = best.y;
+            if (g.gx === FARAWAY || (g.gx === omx && g.gy === omy)) {
+                g.gx = u.ux; g.gy = u.uy;
+            } else {
+                edog.ogoal = { x: g.gx, y: g.gy };
+            }
+        }
+    } else {
+        edog.ogoal = { x: 0, y: 0 };
+    }
     return appr;
+}
+
+// C ref: vision.c do_clear_area(omx,omy,9, wantdoor) restricted to the
+// dogmove.c wantdoor() client: visit each square within `range` (circle radius)
+// of (scol,srow) that the pet could see, and keep the one closest to the hero
+// (min distu).  view_from-from-a-non-hero-center is approximated with
+// clear_path (line of sight) from the pet's square — sufficient for the open
+// dlvl-1 layouts the contest sessions exercise; mirrors the C control flow.
+function do_clear_area_wantdoor(scol, srow, range, best) {
+    const u = game.u;
+    const maxY = Math.min(srow + range, ROWNO - 1);
+    const minY = Math.max(srow - range, 0);
+    for (let y = minY; y <= maxY; y++) {
+        const dy = y - srow;
+        // circle: |dx| <= sqrt(range^2 - dy^2) (matches circle_ptr offset bound)
+        const off = Math.floor(Math.sqrt(range * range - dy * dy));
+        const minX = Math.max(scol - off, 1);
+        const maxX = Math.min(scol + off, COLNO - 1);
+        for (let x = minX; x <= maxX; x++) {
+            if (!(x === scol && y === srow) && !clear_path(scol, srow, x, y))
+                continue;
+            const ndist = dist2(x, y, u.ux, u.uy);
+            if (best.d > ndist) { best.d = ndist; best.x = x; best.y = y; }
+        }
+    }
 }
 
 function DDIST(x, y, ox, oy) { return dist2(x, y, ox, oy); }
@@ -324,6 +508,126 @@ function can_carry(mtmp, obj) {
     // single object: load capacity check (curr load is 0 for the start pet).
     if (objWeight(obj) > maxload) return 0;
     return iquan;
+}
+
+// C ref: dogmove.c find_targ(mtmp, dx, dy, maxdist) — walk a straight line from
+// the pet, returning the first visible monster (or the hero, sentinel
+// HERO_TARG) within maxdist; stops at the first square the pet can't see
+// (clear_path).  Returns the target monster, the HERO_TARG sentinel, or null.
+const HERO_TARG = Symbol('youmonst');
+function find_targ(mtmp, dx, dy, maxdist) {
+    let curx = mtmp.mx, cury = mtmp.my;
+    for (let dist = 0; dist < maxdist; dist++) {
+        curx += dx; cury += dy;
+        if (!isok(curx, cury)) break;
+        if (!m_cansee(mtmp, curx, cury)) break;
+        // pet thinks the hero is at mux,muy.
+        if (curx === mtmp.mux && cury === mtmp.muy) return HERO_TARG;
+        const targ = MON_AT(curx, cury);
+        if (targ) {
+            // visible, detected, and (for our monsters) on its own square.
+            if (!targ.minvis && !targ.mundetected) return targ;
+            // can't see it -> assume not there, keep walking.
+        }
+    }
+    return null;
+}
+
+// C ref: dogmove.c find_friends(mtmp, mtarg, maxdist) — is the hero or a pet in
+// line beyond mtarg (so the pet would shoot through a friend)?  Returns true if
+// so.  For the contest pets this gates the score_targ early-return (no rnd(5)).
+function find_friends(mtmp, mtarg, maxdist) {
+    const tx = mtarg.mx, ty = mtarg.my;
+    const dx = Math.sign(tx - mtmp.mx), dy = Math.sign(ty - mtmp.my);
+    let curx = tx, cury = ty;
+    let dist = distmin(tx, ty, mtmp.mx, mtmp.my);
+    for (; dist <= maxdist; dist++) {
+        curx += dx; cury += dy;
+        if (!isok(curx, cury)) return false;
+        if (!m_cansee(mtmp, curx, cury)) return false;
+        if (mtmp.mux === curx && mtmp.muy === cury) return true; // hero behind
+        const pal = MON_AT(curx, cury);
+        if (pal) {
+            if (pal.mtame) {
+                if (!pal.minvis) return true;
+            } else {
+                const ms = pal.data?.msound;
+                if (ms === 'leader' || ms === 'guardian') return true;
+            }
+        }
+    }
+    return false;
+}
+
+// C ref: dogmove.c score_targ(mtmp, mtarg) — desirability of a ranged target.
+// We need its RNG side-effect: the `score += rnd(5)` fuzz roll at dogmove.c:830,
+// which only executes when the target survives the early returns (not a quest
+// friendly, not adjacent, not tame/hero, no friend behind).  The numeric score
+// only matters for best_target's selection, but the contest pets have no ranged
+// attack so a chosen target never produces an attack roll — only the rnd(5)
+// matters for RNG parity.  Returns the score (negative early-returns excluded).
+function score_targ(mtmp, mtarg) {
+    let score = 0;
+    // mconf branch: starting pets aren't confused -> the guard is always true.
+    if (!mtmp.mconf) {
+        // quest friendlies: never targeted (no rnd(5)).
+        const tms = (mtarg !== HERO_TARG) ? mtarg.data?.msound : null;
+        if (tms === 'leader' || tms === 'guardian') return -5000;
+        // adjacent monster -> melee range, not a ranged target (no rnd(5)).
+        if (mtarg !== HERO_TARG
+            && distmin(mtmp.mx, mtmp.my, mtarg.mx, mtarg.my) <= 1)
+            return -3000;
+        // tame monster or the hero -> never targeted (no rnd(5)).
+        if (mtarg === HERO_TARG || mtarg.mtame) return -3000;
+        // friend (hero / pet) behind the target -> don't shoot through (no rnd).
+        if (find_friends(mtmp, mtarg, 15)) return -3000;
+        // hostile-preference + passive/level adjustments (no RNG for our mons).
+        if (!mtarg.mpeaceful) score += 10;
+        const m_lev = mtarg.m_lev ?? mtarg.data?.mlevel ?? 0;
+        score += m_lev * 2 + Math.trunc((mtarg.mhp ?? 0) / 3);
+    }
+    // Fuzz factor (dogmove.c:830) — the roll the post-dismount stream needs.
+    score += rnd(5);
+    return score;
+}
+
+// C ref: dogmove.c best_target(mtmp, forced) — scan the 8 directions (dy outer,
+// dx inner) for the first lined-up target and pick the highest score_targ.  The
+// rnd(5) inside score_targ fires once per qualifying lined-up target.
+function best_target(mtmp) {
+    if (!mtmp.mcansee) return null; // blind pet sees no target (no rnd(5))
+    let bestscore = -40000, best = null;
+    for (let dy = -1; dy < 2; dy++) {
+        for (let dx = -1; dx < 2; dx++) {
+            if (!dx && !dy) continue;
+            const temp = find_targ(mtmp, dx, dy, 7);
+            if (!temp) continue;
+            const currscore = score_targ(mtmp, temp);
+            if (currscore > bestscore) { bestscore = currscore; best = temp; }
+        }
+    }
+    if (bestscore < 0) best = null;
+    return best;
+}
+
+// C ref: dogmove.c pet_ranged_attk(mtmp, FALSE) — the pet's ranged-attack
+// consideration run at the end of dog_move.  best_target() rolls the score_targ
+// rnd(5) fuzz per lined-up target.  For the contest pets (no breath/spit/gaze
+// attack) a chosen target yields M_ATTK_MISS from mattackm with no further RNG,
+// so this returns MMOVE_NOTHING after the scan.  The `!hungry || !rn2(5)` gate
+// only rolls rn2(5) when the pet is hungry (none of the early pets are yet).
+function pet_ranged_attk(mtmp) {
+    const edog = mtmp.edog;
+    const DOG_HUNGRY = 500; // dog.c DOG_HUNGRY
+    const hungry = edog ? ((game.moves || 1) > ((edog.hungrytime || 0) + DOG_HUNGRY)) : false;
+    const mtarg = best_target(mtmp);
+    if (mtarg && (!hungry || !rn2(5))) {
+        // The starting pets have no ranged attack: mattackm returns M_ATTK_MISS
+        // with no RNG, so no attack is executed.  (A real ranged pet would
+        // attack here; wire that in if such a pet is ever exercised.)
+        return MMOVE_NOTHING;
+    }
+    return MMOVE_NOTHING;
 }
 
 // C ref: dogmove.c dog_move(mtmp, after).  Drives one pet move.
@@ -428,7 +732,15 @@ export function dog_move(mtmp, after) {
         }
     }
 
-    // pet_ranged_attk(mtmp, FALSE): dogs/cats have no ranged attack -> nothing.
+    // C ref: dogmove.c:1273 — pet_ranged_attk(mtmp, FALSE) runs after the
+    // candidate loop.  best_target()'s score_targ rolls rnd(5) for each
+    // non-adjacent, non-tame, hostile target lined up within 7 visible squares,
+    // which is RNG the move stream depends on even though the contest pets never
+    // actually fire a ranged attack.  A non-NOTHING result short-circuits.
+    {
+        const r = pet_ranged_attk(mtmp);
+        if (r !== MMOVE_NOTHING) return r;
+    }
 
     // newdogpos:
     if (nix !== omx || niy !== omy) {

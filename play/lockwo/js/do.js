@@ -23,6 +23,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
+import { print_dungeon } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
@@ -303,7 +304,26 @@ export async function next_level(at_stairs) {
 export async function wiz_level_tele(readLevel) {
     const u = game.u;
     const buf = await readLevel('To what level do you want to teleport?');
-    if (buf == null || buf === '' || buf === '\x1b') return 0; // cancelled
+    if (buf == null || buf === '\x1b') return 0; // cancelled (ESC)
+
+    // C ref: teleport.c level_tele() — wizard "?" opens the print_dungeon level
+    // menu.  The menu consumes no RNG and force_dest bypasses the usual range
+    // checks: the chosen (dnum, dlevel) is taken verbatim.
+    let newlevel;
+    if (String(buf) === '?') {
+        const choice = await print_dungeon(true);
+        if (!choice) return 0; // print_dungeon returned 0 (cancel)
+        newlevel = { dnum: choice.destdnum, dlevel: choice.destlev };
+        // force_dest: no further validation; teleport straight to the target.
+        if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
+            return 0;
+        await goto_level(newlevel, false, false, false);
+        if (game.flags?.verbose !== false)
+            await pline('You materialize on a different level!');
+        return 1; // ECMD_TIME
+    }
+
+    if (buf === '') return 0; // empty line: cancelled
 
     const m = String(buf).match(/^(-?\d+)/);
     if (!m) return 0;
@@ -321,7 +341,7 @@ export async function wiz_level_tele(readLevel) {
     if (dlevel > numlevs) dlevel = numlevs;
     if (dlevel < 1) dlevel = 1;
 
-    const newlevel = { dnum: u.uz.dnum, dlevel };
+    newlevel = { dnum: u.uz.dnum, dlevel };
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
         return 0; // can't get there from here
 

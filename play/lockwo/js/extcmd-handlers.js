@@ -20,6 +20,7 @@ import { doride } from './steed.js';
 import { readobjnam } from './readobjnam.js';
 import { hold_another_object } from './invent.js';
 import { rn1 } from './rng.js';
+import { dopray as pray_dopray } from './pray.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -431,13 +432,11 @@ async function wiz_level_change() {
     return 0;
 }
 
-// C ref: pray.c dopray().  ParanoidPray is on by default, so confirm first.
+// C ref: pray.c dopray().  ParanoidPray is on by default, so confirm first; the
+// full prayer resolution (can_pray + nomul(-3) occupation + prayer_done) lives
+// in pray.js, which drives the input-free occupation turns itself.
 async function dopray() {
-    const ok = await paranoid_query('Are you sure you want to pray?');
-    if (!ok) return 0;
-    // The prayer outcome (can_pray / prayer timeout / alignment) is RNG and
-    // game-state heavy; stop after the confirmation.
-    return 0;
+    return await pray_dopray(paranoid_query);
 }
 
 // C ref: cmd.c paranoid_query()/paranoid_ynq() with be_paranoid=FALSE

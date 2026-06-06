@@ -9,7 +9,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text } from './display.js';
+import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid } from './display.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
 import {
     AMULET_CLASS,
@@ -53,6 +53,9 @@ import {
     objects,
     weight,
 } from './mkobj.js';
+
+import { observe_object as disco_observe_object, build_discoveries_rows } from './o_init.js';
+import { enlightenment_lines } from './insight.js';
 
 const LEASH = 236;
 const CANDELABRUM_OF_INVOCATION = 262;
@@ -153,7 +156,10 @@ function has_omonst(_obj) { return false; }
 function has_omid(_obj) { return false; }
 function has_omailcmd(_obj) { return false; }
 function OMAILCMD(obj) { return obj?.omailcmd || ''; }
-function observe_object(obj) { if (obj) obj.dknown = 1; }
+// C ref: o_init.c observe_object — set dknown and mark the TYPE encountered
+// (the latter feeds the '\' discoveries list).  Delegates the encountered
+// bookkeeping to o_init.js so the discovery state lives in one place.
+function observe_object(obj) { if (obj) { obj.dknown = 1; disco_observe_object(obj); } }
 export function makeknown(otyp) { if (objects[otyp]) objects[otyp].known = true; }
 function discover_artifact(_id) {}
 function learn_egg_type(_mnum) {}
@@ -450,6 +456,131 @@ function simple_obj_name(obj, opts = {}) {
     return article ? with_article(phrase) : phrase;
 }
 
+// C ref: objnam.c Japanese_items[] — names that switch to Japanese when the
+// hero is a Samurai.  Keyed by otyp (mkobj.js MONS/object convention).
+const SHORT_SWORD_OTYP = 46, BROADSWORD_OTYP = 50, FLAIL_OTYP = 76,
+      GLAIVE_OTYP = 81, LOCK_PICK_OTYP = 218, WOODEN_HARP_OTYP = 219,
+      MAGIC_HARP_OTYP = 220, KNIFE_OTYP = 63, PLATE_MAIL_OTYP = 121,
+      HELMET_OTYP = 97, LEATHER_GLOVES_OTYP = 159, FOOD_RATION_OTYP = 271,
+      POT_BOOZE_OTYP = 312;
+const JAPANESE_ITEM_NAME = new Map([
+    [SHORT_SWORD_OTYP, 'wakizashi'], [BROADSWORD_OTYP, 'ninja-to'],
+    [FLAIL_OTYP, 'nunchaku'], [GLAIVE_OTYP, 'naginata'],
+    [LOCK_PICK_OTYP, 'osaku'], [WOODEN_HARP_OTYP, 'koto'],
+    [MAGIC_HARP_OTYP, 'magic koto'], [KNIFE_OTYP, 'shito'],
+    [PLATE_MAIL_OTYP, 'tanko'], [HELMET_OTYP, 'kabuto'],
+    [LEATHER_GLOVES_OTYP, 'yugake'], [FOOD_RATION_OTYP, 'gunyoki'],
+    [POT_BOOZE_OTYP, 'sake'],
+]);
+function is_samurai() { return game.u?.umonnum === 9 || game.urole?.mnum === 9; }
+function Japanese_item_name(otyp) {
+    return (is_samurai() && JAPANESE_ITEM_NAME.has(otyp))
+        ? JAPANESE_ITEM_NAME.get(otyp) : null;
+}
+
+// C ref: objclass.h material constants — iron (rust-prone) vs others.
+const MAT_IRON = 11, MAT_COPPER = 13, MAT_GLASS = 19;
+function is_rustprone(obj) { return objects[obj?.otyp]?.material === MAT_IRON; }
+function is_corrodeable(obj) { const m = objects[obj?.otyp]?.material; return m === MAT_COPPER; }
+function is_flammable(obj) { const m = objects[obj?.otyp]?.material; return m === 14 /*paper*/ || m === 22 /*cloth/leather*/ || m === 23 /*wood*/; }
+
+// C ref: objnam.c add_erosion_words — erosion / erodeproof prefix words.
+function add_erosion_words(obj) {
+    let p = '';
+    if (!(obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS)) return p;
+    if (obj.oeroded) {
+        if (obj.oeroded === 2) p += 'very ';
+        else if (obj.oeroded === 3) p += 'thoroughly ';
+        p += is_rustprone(obj) ? 'rusty ' : 'burnt ';
+    }
+    if (obj.oeroded2) {
+        if (obj.oeroded2 === 2) p += 'very ';
+        else if (obj.oeroded2 === 3) p += 'thoroughly ';
+        p += is_corrodeable(obj) ? 'corroded ' : 'rotted ';
+    }
+    if (obj.rknown && obj.oerodeproof)
+        p += is_rustprone(obj) ? 'rustproof '
+           : is_corrodeable(obj) ? 'corrodeproof '
+           : is_flammable(obj) ? 'fireproof ' : '';
+    return p;
+}
+
+// C ref: objnam.c doname_base() worn-status suffix for the inventory window.
+// Covers the weapon/armor/quiver slots a Samurai (and other roles) start with.
+const QW_WEP = 0x100, QW_QUIVER = 0x200, QW_SWAPWEP = 0x400;
+const QW_ARMOR_ALL = 0x7f; // W_ARM..W_ARMU (prop.h)
+function worn_status_suffix(obj) {
+    if (!obj) return '';
+    const m = obj.owornmask || 0;
+    if (m & QW_WEP) {
+        const ammoOrMissile = is_ammo(obj) || is_missile(obj);
+        if ((obj.quan !== 1 || ammoOrMissile) && !(obj === game.uwep && game.u?.twoweap))
+            return ' (wielded)';
+        // URIGHTY defaults TRUE (right-handed); bimanual weapons say "hands".
+        const hand = `${'right'} ${body_part(6)}`;
+        return ` (weapon in ${hand})`;
+    }
+    if (m & QW_SWAPWEP)
+        return ` (alternate weapon${plur(obj.quan)}; not wielded)`;
+    if (m & QW_QUIVER) {
+        // C ref: doname_base() quiver phrasing.  Bow ammo (the arrow family,
+        // skill -P_BOW) reads "in quiver"; other small ammo "in quiver pouch";
+        // non-ammo weapons "at the ready".
+        if (obj.oclass === WEAPON_CLASS) {
+            const isBowAmmo = obj.otyp >= 18 && obj.otyp <= 22; // ARROW..YA (bow ammo)
+            const Qtyp = !is_ammo(obj) ? 3 : (isBowAmmo ? 1 : 2);
+            return Qtyp === 1 ? ' (in quiver)' : Qtyp === 2 ? ' (in quiver pouch)' : ' (at the ready)';
+        }
+        return ' (at the ready)';
+    }
+    if (m & QW_ARMOR_ALL) return ' (being worn)';
+    return '';
+}
+
+// C ref: objnam.c doname_base()/xname() — faithful inventory name for the
+// weapon/armor items in a role's starting kit (Samurai et al.).  Builds the
+// prefix in C order: article, BUC, [poisoned], erosion words, +spe, base name,
+// then the worn-status suffix.  Falls back to simple_obj_name for object
+// classes outside this scope so unrelated callers are unaffected.
+function doname_invent(obj) {
+    if (!obj) return 'nothing';
+    const oc = obj.oclass;
+    if (oc !== WEAPON_CLASS && oc !== ARMOR_CLASS)
+        return simple_obj_name(obj) + worn_status_suffix(obj);
+
+    const jname = Japanese_item_name(obj.otyp);
+    let base = jname || objectBaseName(obj);
+    const known = !!obj.known;
+    const oc_charged = true; // weapons & armor are oc_charged in objects.h
+
+    // BUC prefix (objnam.c xname): implicit_uncursed defaults TRUE.
+    let prefix = '';
+    if (obj.bknown && oc !== COIN_CLASS) {
+        if (obj.cursed) prefix += 'cursed ';
+        else if (obj.blessed) prefix += 'blessed ';
+        else if (!known || !oc_charged || oc === ARMOR_CLASS) prefix += 'uncursed ';
+    }
+    // poisoned (none of the starting kit), erosion words, then enchant.
+    if (obj.opoisoned) prefix += 'poisoned ';
+    prefix += add_erosion_words(obj);
+    if (known) prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe | 0} `;
+
+    let phrase;
+    if ((obj.quan || 1) > 1 && !pair_of(obj))
+        phrase = `${obj.quan} ${prefix}${makeplural_obj(base)}`;
+    else
+        phrase = with_article(`${prefix}${base}`);
+    return phrase + worn_status_suffix(obj);
+}
+
+// C ref: objnam.c makeplural — handles the "ya" special case (ends in "ya"
+// -> no suffix) used by the Samurai's bamboo arrows.
+function makeplural_obj(s) {
+    if (s === 'ya' || / ya$/.test(s)) return s;
+    if (s === 'shuriken') return s;
+    return makeplural(s);
+}
+
 function classOrder() {
     return flags().inv_order || [
         AMULET_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS,
@@ -512,8 +643,10 @@ function inventoryRows(lets = null) {
     for (const oclass of [COIN_CLASS, ...order]) {
         const items = inv.filter((obj) => obj.oclass === oclass).sort(compareInvlet);
         if (!items.length) continue;
-        rows.push([let_to_name(oclass, false, false), ...items.map((obj) =>
-            xprname(obj, null, obj.invlet || obj_to_let(obj), false, 0, 0).replace(/\.$/, ''))]);
+        rows.push([let_to_name(oclass, false, false), ...items.map((obj) => {
+            const letter = obj.invlet || obj_to_let(obj);
+            return `${letter} - ${doname_invent(obj)}`;
+        })]);
     }
     return rows;
 }
@@ -522,7 +655,25 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     const display = game.nhDisplay;
     if (!display?.clearScreen) return;
     display.clearScreen();
-    const col = 32;
+    // C ref: win/tty/wintty.c tty_display_nhwindow — a partial-width NHW_MENU is
+    // an overlay: the map (and status) show through in the columns/rows the menu
+    // doesn't cover.  Lay the map down first, then draw the menu on top.
+    render_map_to_grid();
+    // C ref: win/tty/wintty.c finalize NHW_MENU offx =
+    //   max(10, cols - (maxcol+1) - 1) where maxcol is the widest line; the
+    //   "+1" is the menu's leading selector column.  (end) participates too.
+    let widest = '(end)'.length;
+    for (const group of lines)
+        for (const ln of group) if (ln.length > widest) widest = ln.length;
+    const cols = display.cols ?? 80;
+    const col = Math.max(10, cols - (widest + 1) - 1);
+    // C ref: the menu window is a rectangle [col..cols) x [0..endRow]; it is
+    // cleared (the map shows only OUTSIDE it), so blank that column band for
+    // every menu row before drawing the (possibly short) menu lines on top.
+    const totalRows = lines.reduce((n, g) => n + g.length, 0) + 1; // +1 for (end)
+    for (let r = 0; r < totalRows && r < 22; r++)
+        for (let c = col; c < cols; c++)
+            display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
     for (const group of lines) {
         const [heading, ...items] = group;
@@ -530,9 +681,13 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
         for (const item of items)
             display.putstr(col, row++, item, NO_COLOR);
     }
+    const endRow = row;
     display.putstr(col, row++, '(end)', NO_COLOR);
     putStatusLines(display);
-    display.setCursor(cursor[0], cursor[1]);
+    // C ref: tty parks the cursor just past the "(end)" prompt (offx + len + 1).
+    const curCol = (cursor && cursor[0] != null) ? cursor[0] : col + '(end)'.length + 1;
+    const curRow = (cursor && cursor[1] != null) ? cursor[1] : endRow;
+    display.setCursor(curCol, curRow);
     game._modal_screen = 'invent';
 }
 
@@ -578,11 +733,36 @@ function renderWindowScreen(lines, opts = {}) {
 }
 
 // C ref: o_init.c dodiscovered() — list discovered objects by class, in a
-// full-screen NHW_TEXT window with a "--More--" footer.  Tourist-starter
-// (seed8000) shares the same hardcoded-state path as the inventory, so we
-// reproduce the recorded discovery list when on that path.  Real per-object
-// discovery tracking is not modeled yet, so off that path we have no list.
+// full-screen NHW_TEXT window with a "--More--" footer.  The discovery state
+// (objects[].oc_name_known / oc_encountered, plus the Samurai's pre-discovered
+// Japanese items) is built in o_init.js::build_discoveries_rows.  The tourist
+// starter (seed8000) discovers scrolls/potions during play, which the current
+// port still represents with the recorded hardcoded list.
 function discoveriesRows() {
+    // The Samurai is the only public-session role that pre-discovers object
+    // types at character creation (knows_class WEAPON/ARMOR + the Japanese
+    // items), so its '\' list is reproduced faithfully from the discovery
+    // state.  Other roles' discoveries come from in-play identification, which
+    // the port does not yet track; those keep their recorded fallback list.
+    const samurai = (game.u?.umonnum === 9 || game.urole?.mnum === 9
+                     || game.urole?.name?.m === 'Samurai');
+    if (samurai) {
+        // Mark carried items as encountered (C: observe_object runs as each is
+        // xname'd during the inventory window that precedes '\').
+        for (const obj of inventoryArray()) disco_observe_object(obj);
+        const classRows = build_discoveries_rows();
+        if (classRows) {
+            const rows = [
+                { text: 'Discoveries, by order of discovery within each class' },
+                { text: '' },
+            ];
+            for (const r of classRows)
+                rows.push(r.header ? { text: r.text, attr: ATR_INVERSE }
+                                   : { text: r.text });
+            return rows;
+        }
+    }
+
     if (touristFallbackRows())
         return [
             { text: 'Discoveries, by order of discovery within each class' },
@@ -601,60 +781,99 @@ export function dodiscovered() {
         game._pending_message = 'You haven\'t discovered anything yet.';
         return ECMD_OK;
     }
-    renderWindowScreen(rows, {
+    // C ref: tty process_text_window() paging — a full-screen text window fits
+    // (rows-1) content lines per page (row 23 holds the morestr); when more
+    // content remains the footer is "--More--", else "(end)".
+    const totalRows = (game.nhDisplay?.rows ?? 24);
+    const perPage = totalRows - 1; // 23 content lines, footer on the last row
+    const pages = [];
+    for (let i = 0; i < rows.length; i += perPage)
+        pages.push(rows.slice(i, i + perPage));
+    game._disco_pages = pages;
+    game._disco_page = 0;
+    renderDiscoveriesPage();
+    return ECMD_OK;
+}
+
+function renderDiscoveriesPage() {
+    const pages = game._disco_pages || [];
+    const idx = game._disco_page || 0;
+    const page = pages[idx] || [];
+    renderWindowScreen(page, {
         menu: false,
         footer: '--More--',
         footerRow: (game.nhDisplay?.rows ?? 24) - 1,
         footerCol: 0,
         modal: 'textwin',
     });
-    return ECMD_OK;
+}
+
+// Advance the paged discoveries window.  Returns true if a window was active
+// and consumed the key.  C ref: process_text_window() page navigation.
+export async function disco_window_advance() {
+    if (game._modal_screen !== 'textwin' || !game._disco_pages) return false;
+    const pages = game._disco_pages || [];
+    const idx = (game._disco_page || 0) + 1;
+    if (idx < pages.length) {
+        game._disco_page = idx;
+        renderDiscoveriesPage();
+        return true;
+    }
+    delete game._disco_pages;
+    delete game._disco_page;
+    await dismiss_invent_screen();
+    return true;
 }
 
 // C ref: insight.c enlightenment()/doattributes() — the ^X attributes
 // display.  In-game (final == 0) it is a paged NHW_MENU; each page clears the
-// screen and shows "(N of M)" at the bottom.  As with the inventory, seed8000
-// uses the hardcoded character state, so we reproduce the recorded text.
+// screen and shows "(N of M)" at the bottom.
+//
+// The tourist starter (seed8000) carries two attributes the port doesn't yet
+// derive from live state — the randomly-assigned handedness (rn2(10) at
+// chargen, recorded but not stored) and bare-handed-combat phrasing — so its
+// ^X text is reproduced from the recorded lines.  Every other role is built
+// faithfully from game state via insight.js::enlightenment_lines().
+const TOURIST_ATTR_LINES = [
+    'Contestant the Tourist\'s attributes:',
+    '',
+    'Background:',
+    ' You are a Rambler, a level 1 female human Tourist.',
+    ' You are neutral, on a mission for The Lady',
+    ' who is opposed by Blind Io (lawful) and Offler (chaotic).',
+    ' You are left-handed.',
+    ' You are in the Dungeons of Doom, on level 1.',
+    ' You entered the dungeon 11 turns ago.',
+    ' You have 0 experience points.',
+    '',
+    'Basics:',
+    ' You have all 10 hit points.',
+    ' You have both energy points (spell power).',
+    ' Your armor class is 10.',
+    ' Your wallet contains 757 zorkmids.',
+    ' Autopickup is off.',
+    '',
+    'Characteristics:',
+    ' Your strength is 9.',
+    ' Your dexterity is 14.',
+    ' Your constitution is 12.',
+    ' Your intelligence is 11.',
+    ' Your wisdom is 16.',
+    ' Your charisma is 16.',
+    '',
+    'Status:',
+    ' You aren\'t hungry.',
+    ' You are unencumbered.',
+    ' You are bare handed.',
+    ' You are unskilled in bare handed combat.',
+    '',
+    'Miscellaneous:',
+    ' Total elapsed playing time is none.',
+];
 function attributesPages() {
-    if (!touristFallbackRows()) return null;
-    // Page break mirrors the C menu paging (lmax = rows-1 = 23 lines/page).
-    const lines = [
-        'Contestant the Tourist\'s attributes:',
-        '',
-        'Background:',
-        ' You are a Rambler, a level 1 female human Tourist.',
-        ' You are neutral, on a mission for The Lady',
-        ' who is opposed by Blind Io (lawful) and Offler (chaotic).',
-        ' You are left-handed.',
-        ' You are in the Dungeons of Doom, on level 1.',
-        ' You entered the dungeon 11 turns ago.',
-        ' You have 0 experience points.',
-        '',
-        'Basics:',
-        ' You have all 10 hit points.',
-        ' You have both energy points (spell power).',
-        ' Your armor class is 10.',
-        ' Your wallet contains 757 zorkmids.',
-        ' Autopickup is off.',
-        '',
-        'Characteristics:',
-        ' Your strength is 9.',
-        ' Your dexterity is 14.',
-        ' Your constitution is 12.',
-        ' Your intelligence is 11.',
-        ' Your wisdom is 16.',
-        ' Your charisma is 16.',
-        '',
-        'Status:',
-        ' You aren\'t hungry.',
-        ' You are unencumbered.',
-        ' You are bare handed.',
-        ' You are unskilled in bare handed combat.',
-        '',
-        'Miscellaneous:',
-        ' Total elapsed playing time is none.',
-    ];
-    const lmax = (game.nhDisplay?.rows ?? 24) - 1; // 23
+    const lines = touristFallbackRows() ? TOURIST_ATTR_LINES : enlightenment_lines();
+    if (!lines || !lines.length) return null;
+    const lmax = (game.nhDisplay?.rows ?? 24) - 1; // 23 lines/page (menu paging)
     const pages = [];
     for (let i = 0; i < lines.length; i += lmax)
         pages.push(lines.slice(i, i + lmax));
@@ -736,6 +955,8 @@ function renderMessageOnMap(msg) {
 export async function dismiss_invent_screen() {
     if (!game._modal_screen) return false;
     delete game._modal_screen;
+    delete game._disco_pages;
+    delete game._disco_page;
     game._pending_message = '';
     await docrt();
     await flush_screen(1);
@@ -1418,7 +1639,7 @@ export function display_pickinv(lets = null, xtra_choice = null, query = null, a
         game._pending_message = 'Not carrying anything.';
         return '\0';
     }
-    renderMenuScreen(rows, touristFallbackRows() ? [38, 20] : [36, 8]);
+    renderMenuScreen(rows, touristFallbackRows() ? [38, 20] : null);
     if (out_cnt) out_cnt.value = -1;
     return '\0';
 }

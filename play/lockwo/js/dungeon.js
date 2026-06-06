@@ -3,6 +3,8 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
+import { nhgetch } from './input.js';
+import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     MAXDUNGEON, MAXLEVEL,
     TBR_STAIR, TBR_NO_UP, TBR_NO_DOWN, TBR_PORTAL,
@@ -609,8 +611,24 @@ const level_map = [
 function fixup_level_locations() {
     for (const [lev_name, lev_spec] of level_map) {
         const x = find_level(lev_name);
-        if (x)
+        if (x) {
             game[lev_spec] = { ...x.dlevel };
+            // C ref: dungeon.c init_dungeons() — Kludge to allow a floating
+            // Knox (Fort Ludios) entrance: the branch reaching Knox has its
+            // parent end (end1) marked with the bogus dnum n_dgns so it sorts
+            // to the end of the branch list and is omitted from per-dungeon
+            // listings (print_dungeon's level menu).
+            if (lev_spec === 'knox_level') {
+                const knox = x.dlevel;
+                const br = (game.branches || []).find(
+                    (b) => b.end2.dnum === knox.dnum && b.end2.dlevel === knox.dlevel);
+                if (br) {
+                    br.end1.dnum = game.n_dgns;
+                    // Re-sort the branch list now that end1 changed.
+                    game.branches.sort((a, b) => branch_val(a) - branch_val(b));
+                }
+            }
+        }
     }
 
     game.quest_dnum = dname_to_dnum('The Quest');
@@ -666,4 +684,229 @@ export function init_dungeons() {
 
     init_castle_tune();
     fixup_level_locations();
+}
+
+// ── print_dungeon level-teleport menu (C ref: dungeon.c print_dungeon) ──
+//
+// The wizard ^V "? for a menu" path.  Renders the "Level teleport to where:"
+// menu of every dungeon's special levels and branches and returns the chosen
+// destination.  Consumes NO RNG (the whole menu is derived from the static
+// dungeon model that init_dungeons() already built), so it can never perturb
+// the PRNG stream the recorder captured.
+//
+// Returns { playerlev, destlev, destdnum } for a selection, or null if the
+// player cancels (matching print_dungeon returning 0).
+
+function br_string(type) {
+    switch (type) {
+    case BR_PORTAL: return 'Portal';
+    case BR_NO_END1: return 'Connection';
+    case BR_NO_END2: return 'One way stair';
+    case BR_STAIR: return 'Stair';
+    }
+    return ' (unknown)';
+}
+
+function chr_u_on_lvl(dlev) {
+    const u = game.u;
+    return (u && u.uz && u.uz.dnum === dlev.dnum && u.uz.dlevel === dlev.dlevel)
+        ? '*' : ' ';
+}
+
+// Logical depth of a level within a given dungeon model.
+function pd_depth(M, lev) {
+    return M.dungeons[lev.dnum].depth_start + lev.dlevel - 1;
+}
+
+// C ref: dungeon.c unplaced_floater() — Fort Ludios (knox) is "unplaced" while
+// it remains a floating branch (end1.dnum == n_dgns).
+function unplaced_floater(M, dnum) {
+    const knox = M.knox_level;
+    if (!knox || dnum !== knox.dnum) return false;
+    for (const br of (M.branches || []))
+        if (br.end1.dnum === M.n_dgns && br.end2.dnum === dnum)
+            return true;
+    return false;
+}
+
+// C ref: dungeon.c unreachable_level().  In_endgame is never the case for the
+// recorded ^V sessions; the "dummy" Plane-of-Earth filler level is unreachable.
+function unreachable_level(M, dlev, unplaced) {
+    if (unplaced) return true;
+    const dummy = (M.sp_levchn || []).find((l) => l.proto === 'dummy');
+    if (dummy && dummy.dlevel.dnum === dlev.dnum
+        && dummy.dlevel.dlevel === dlev.dlevel)
+        return true;
+    return false;
+}
+
+// makeplural for the single word used by print_dungeon ("level" -> "levels",
+// "depth" -> "depths").  C ref: objnam.c makeplural — only these two strings
+// reach it from print_dungeon.
+function pd_makeplural(word) {
+    return word + 's';
+}
+
+// Build the ordered list of menu entries that print_dungeon would emit from
+// the given dungeon model M.  Each entry is a heading (non-selectable) or a
+// selectable level.
+function build_levtport_menu(M) {
+    const entries = []; // { heading } | { text, lev, dgn, playerlev, reachable }
+    let menuletter = 'a';
+    const advance = () => {
+        if (menuletter === 'z') menuletter = 'A';
+        else menuletter = String.fromCharCode(menuletter.charCodeAt(0) + 1);
+    };
+
+    // C ref: tport_menu — record the lchoice slot and emit a menu line, with
+    // 4-space padding (and no selector) for unreachable levels.
+    const tport_menu = (entry, lvl, reachable) => {
+        let text = entry;
+        if (!reachable) text = '    ' + entry;
+        entries.push({
+            menuletter,
+            text,
+            lev: lvl.dlevel,
+            dgn: lvl.dnum,
+            playerlev: pd_depth(M, lvl),
+            reachable,
+        });
+        advance();
+    };
+
+    // C ref: print_branch — print child branches whose parent end (end1) is in
+    // [lower_bound+1, upper_bound] of this dungeon, in svb.branches order.
+    const print_branch = (dnum, lowerBound, upperBound) => {
+        for (const br of (M.branches || [])) {
+            if (br.end1.dnum === dnum && lowerBound < br.end1.dlevel
+                && br.end1.dlevel <= upperBound) {
+                const buf = `${chr_u_on_lvl(br.end1)} ${br_string(br.type)} to `
+                    + `${M.dungeons[br.end2.dnum].dname}: ${pd_depth(M, br.end1)}`;
+                tport_menu(buf, br.end1, !unreachable_level(M, br.end1, false));
+            }
+        }
+    };
+
+    for (let i = 0; i < M.n_dgns; i++) {
+        const dptr = M.dungeons[i];
+        const unplaced = unplaced_floater(M, i);
+        const descr = unplaced ? 'depth' : 'level';
+        const nlev = dptr.num_dunlevs;
+        let buf;
+        if (nlev > 1)
+            buf = `${dptr.dname}: ${pd_makeplural(descr)} ${dptr.depth_start} to `
+                + `${dptr.depth_start + nlev - 1}`;
+        else
+            buf = `${dptr.dname}: ${descr} ${dptr.depth_start}`;
+        if (dptr.entry_lev !== 1) {
+            if (dptr.entry_lev === nlev) buf += ', entrance from below';
+            else buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
+        }
+        entries.push({ heading: true, text: buf });
+
+        // Circle through the special levels in this dungeon (sp_levchn order).
+        let lastLevel = 0;
+        for (const slev of (M.sp_levchn || [])) {
+            if (slev.dlevel.dnum !== i) continue;
+            print_branch(i, lastLevel, slev.dlevel.dlevel);
+            let lbuf = `${chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${pd_depth(M, slev.dlevel)}`;
+            if (M.stronghold_level && slev.dlevel.dnum === M.stronghold_level.dnum
+                && slev.dlevel.dlevel === M.stronghold_level.dlevel)
+                lbuf += ` (tune ${(M.tune || []).join('').replace(/\0/g, '')})`;
+            tport_menu(lbuf, slev.dlevel, !unreachable_level(M, slev.dlevel, unplaced));
+            lastLevel = slev.dlevel.dlevel;
+        }
+        print_branch(i, lastLevel, MAXLEVEL);
+    }
+    return entries;
+}
+
+// Render one page of the level-teleport menu to the terminal grid and leave it
+// there; the caller reads the selection key (the pre-nhgetch capture hook
+// snapshots this rendered menu as the boundary screen).  Mirrors
+// win/tty/wintty.c process_menu_window layout: title row, items, morestr.
+export async function print_dungeon(bymenu, _rlev, _rdgn) {
+    if (!bymenu) return 0;
+
+    // Resolve the dungeon model: gameplay sessions stub g.dungeons down to a
+    // single dnum-0 level for level generation, but allmain.newgame() stashes
+    // the complete model (built by init_dungeons) in g._full_dungeon.  Fall
+    // back to the live game state when the full model wasn't captured.
+    const M = game._full_dungeon || {
+        dungeons: game.dungeons,
+        branches: game.branches,
+        sp_levchn: game.sp_levchn,
+        n_dgns: game.n_dgns,
+        tune: game.tune,
+        knox_level: game.knox_level,
+        stronghold_level: game.stronghold_level,
+    };
+
+    const entries = build_levtport_menu(M);
+
+    // The menu title occupies the inverse first row; in the tty menu the title
+    // is emitted by end_menu() as the menu's prompt heading.  process_menu_window
+    // renders it as the first line.  Recorded layout shows: title row, blank,
+    // then headings/items, with the morestr on the final row.
+    const lines = [{ title: true, text: 'Level teleport to where:' }, { blank: true }];
+    for (const e of entries) lines.push(e);
+
+    const disp = game.nhDisplay;
+    const rows = (disp && disp.rows) || 24;
+    // Each page fills rows-1 lines (the last row holds the morestr).
+    const perPage = Math.max(1, rows - 1);
+    const npages = Math.max(1, Math.ceil(lines.length / perPage));
+
+    // Render helper that treats `lines` (with the title/blank prefixed).
+    const renderPage = (pageNo) => {
+        if (!disp || !disp.setCell) return;
+        const cols = disp.cols || 80;
+        const start = (pageNo - 1) * perPage;
+        const end = Math.min(start + perPage, lines.length);
+        const clearRow = (r) => { for (let c = 0; c < cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0); };
+        let row = 0;
+        for (let i = start; i < end; i++, row++) {
+            const e = lines[i];
+            clearRow(row);
+            if (e.blank) continue;
+            if (e.title) { disp.putstr(1, row, e.text, NO_COLOR, ATR_INVERSE); continue; }
+            const line = e.heading ? e.text : `${e.menuletter} - ${e.text}`;
+            disp.putstr(1, row, line, NO_COLOR, e.heading ? ATR_INVERSE : 0);
+        }
+        const morestr = npages > 1 ? `(${pageNo} of ${npages})` : '(end) ';
+        clearRow(row);
+        disp.putstr(1, row, morestr, NO_COLOR, 0);
+        for (let r = row + 1; r < rows; r++) clearRow(r);
+        // C dmore parks the cursor just past the morestr (col 1 + its length).
+        disp.setCursor(1 + morestr.length, row);
+    };
+
+    let pageNo = 1;
+    for (;;) {
+        renderPage(pageNo);
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+
+        // Cancel: ESC.
+        if (key === 27) return 0;
+
+        // Accelerator selection: a letter that maps to a reachable entry on
+        // ANY page selects it immediately (tty PICK_ONE behavior).
+        const sel = entries.find((e) => !e.heading && e.reachable && e.menuletter === ch);
+        if (sel) {
+            return { playerlev: sel.playerlev, destlev: sel.lev, destdnum: sel.dgn };
+        }
+
+        // Paging keys: space / '>' / return advance; '<' goes back.
+        if (key === 32 || ch === '>' || key === 13 || key === 10) {
+            if (pageNo < npages) pageNo++;
+            else return 0; // past the last page with no selection: cancel
+            continue;
+        }
+        if (ch === '<') {
+            if (pageNo > 1) pageNo--;
+            continue;
+        }
+        // Any other key: ignore and redraw.
+    }
 }

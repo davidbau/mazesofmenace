@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_DAGGER, P_EXPERT, P_KNIFE, P_SKILLED, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_ARMF, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_DAGGER, P_EXPERT, P_GRAND_MASTER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_SABER, P_SHORT_SWORD, P_SKILLED, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_ARMF, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -31,7 +31,7 @@ import { applyMonsterLiquidEffectsAt } from './monster_liquid.js';
 import { queueGasSporeDeathExplosion } from './monster_death.js';
 import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, currentFruitName, fruitWishMatch, setCurrentFruitName, slimeMoldNameForObject } from './fruit.js';
 import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers, killEggHatchTimer } from './egg_timers.js';
-import { METALLIC_MATERIALS, metallivoreObjectAlwaysResists, objectIsAmuletLike, objectIsRingLike, objectIsSlowDigestionRing, objectMaterialForMetallivore } from './metallivore.js';
+import { METALLIC_MATERIALS, metallivoreObjectAlwaysResists, monsterIsMetallivore, objectIsAmuletLike, objectIsRingLike, objectIsSlowDigestionRing, objectMaterialForMetallivore } from './metallivore.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -11287,6 +11287,19 @@ function forceWeaponName(item) {
 }
 
 const FORCE_BLADE_NAME_RE = /\b(?:athame|axe|battle-axe|crysknife|dagger|knife|katana|saber|sabre|scalpel|short sword|broadsword|long sword|two-handed sword|tsurugi|wakizashi)\b/;
+const FORCE_WEB_BLADE_NAME_RE = /\b(?:athame|axe|battle-axe|crysknife|dagger|knife|katana|mattock|saber|sabre|scalpel|scimitar|short sword|broadsword|long sword|two-handed sword|tsurugi|wakizashi)\b/;
+const FORCE_WEB_POLEARM_NAME_RE = /\b(?:polearms?|bardiche|bec de corbin|bill-guisarme|fauchard|glaive|guisarme|halberd|lucern hammer|partisan|ranseur|spetum|voulge)\b/;
+const FORCE_WEB_WEAPON_SKILL_BY_DESCR = new Map([
+    ['dagger', { skill: P_DAGGER, name: 'dagger' }],
+    ['knife', { skill: P_KNIFE, name: 'knife' }],
+    ['axe', { skill: P_AXE, name: 'axe' }],
+    ['mattock', { skill: P_PICK_AXE, name: 'pick-axe' }],
+    ['short sword', { skill: P_SHORT_SWORD, name: 'short sword' }],
+    ['broadsword', { skill: P_BROAD_SWORD, name: 'broadsword' }],
+    ['long sword', { skill: P_LONG_SWORD, name: 'long sword' }],
+    ['two-handed sword', { skill: P_TWO_HANDED_SWORD, name: 'two-handed sword' }],
+    ['saber', { skill: P_SABER, name: 'saber' }],
+]);
 const FORCE_WEAPON_LDAM_BY_NAME = new Map([
     ['two-handed sword', 6], ['silver saber', 8], ['dwarvish spear', 8],
     ['elven short sword', 8], ['orcish short sword', 8], ['dwarvish short sword', 8],
@@ -11313,6 +11326,40 @@ function forceWeaponIsPick(item) {
 function forceWeaponIsBlade(item) {
     const name = forceWeaponName(item).toLowerCase();
     return !forceWeaponIsPick(item) && FORCE_BLADE_NAME_RE.test(name);
+}
+
+function forceWebWeaponIsBlade(item) {
+    if (!item) return false;
+    const name = forceWeaponName(item).toLowerCase();
+    const weaponClass = item.cls === 'weapon' || item.oclass === 'weapon' || item.glyph === ')';
+    return weaponClass && FORCE_WEB_BLADE_NAME_RE.test(name);
+}
+
+function forceWebWeaponDescr(item) {
+    const name = forceWeaponName(item).toLowerCase()
+        .replace(/\b(?:very|thoroughly|rusty|corroded|burnt|rotted|greased|fixed|fireproof|rustproof)\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (/\bdwarvish mattock\b|\bmattock\b/.test(name)) return 'mattock';
+    if (/\bpick[- ]?axe\b/.test(name)) return 'pick-axe';
+    if (/\bbattle-axe\b|\baxe\b/.test(name)) return 'axe';
+    if (FORCE_WEB_POLEARM_NAME_RE.test(name)) return 'polearm';
+    if (/\blance\b/.test(name)) return 'lance';
+    if (/\b(?:silver )?mace\b/.test(name)) return 'mace';
+    if (/\bdagger\b/.test(name)) return 'dagger';
+    if (/\b(?:athame|knife|crysknife|scalpel|stiletto|worm tooth)\b/.test(name)) return 'knife';
+    if (/\b(?:elven |orcish |dwarvish )?short sword\b/.test(name)) return 'short sword';
+    if (/\b(?:elven )?broadsword\b|\brunesword\b/.test(name)) return 'broadsword';
+    if (/\b(?:long sword|katana)\b/.test(name)) return 'long sword';
+    if (/\b(?:two-handed sword|tsurugi)\b/.test(name)) return 'two-handed sword';
+    if (/\b(?:scimitar|silver saber|saber|sabre)\b/.test(name)) return 'saber';
+    return name || 'weapon';
+}
+
+function forceWebSkillSpec(primary, secondary) {
+    if (primary && game._twoweapon && secondary) return { skill: P_TWO_WEAPON_COMBAT, name: 'two weapon combat' };
+    if (!primary) return { skill: P_BARE_HANDED_COMBAT, name: 'bare handed combat' };
+    return FORCE_WEB_WEAPON_SKILL_BY_DESCR.get(forceWebWeaponDescr(primary)) || { skill: P_NONE, name: 'none' };
 }
 
 function forceLockChance(item) {
@@ -12018,6 +12065,122 @@ function landingSpot() {
     return best;
 }
 
+function dismountHoldingTrapType(type) {
+    if (type === TT_BEARTRAP || type === 'beartrap') return 'beartrap';
+    if (type === TT_PIT || type === 'pit') return 'pit';
+    if (heroWebTrapType(type)) return 'web';
+    return '';
+}
+
+const DISMOUNT_MINTRAP_SIZE_VALUES = new Map([
+    ['tiny', 0],
+    ['small', 1],
+    ['medium', 2],
+    ['human', 2],
+    ['large', 3],
+    ['huge', 4],
+    ['gigantic', 7],
+]);
+
+function dismountMonsterSizeValue(mon) {
+    const data = mon?.data || {};
+    const value = mon?.msize ?? mon?.size ?? data.msize ?? data.size;
+    if (Number.isFinite(Number(value))) return Math.trunc(Number(value));
+    const key = String(value || '').toLowerCase().trim();
+    if (DISMOUNT_MINTRAP_SIZE_VALUES.has(key)) return DISMOUNT_MINTRAP_SIZE_VALUES.get(key);
+    if (mon?.verysmall || data.verysmall) return 0;
+    if (mon?.small || data.small) return 1;
+    if (mon?.large || data.large) return 3;
+    if (mon?.huge || data.huge) return 4;
+    if (mon?.gigantic || data.gigantic) return 7;
+    return 2;
+}
+
+function dismountMonsterEasyEscapePit(mon) {
+    return mon?.data?.name === 'pit fiend' || dismountMonsterSizeValue(mon) >= 4;
+}
+
+function dismountTrapAtSteed(steed) {
+    return (game.level?.traps || []).find(trap => trap.tx === steed?.mx && trap.ty === steed?.my) || null;
+}
+
+function dismountBoulderAtSteed(steed) {
+    return (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === steed?.mx && obj.oy === steed?.my) || null;
+}
+
+function dismountPullFreeTrapName(ttyp) {
+    if (ttyp === BEAR_TRAP) return 'bear trap';
+    if (ttyp === WEB) return 'web';
+    return '';
+}
+
+function finishDismountBoulderPitEscape(steed, boulder, messages) {
+    if (!boulder || !game.level) return;
+    game.level.objects = (game.level.objects || []).filter(obj => obj !== boulder);
+    const previousMonsterMoving = game._monster_moving;
+    game._monster_moving = 1;
+    let consumed = false;
+    try {
+        consumed = earthFloorEffects(boulder, steed.mx, steed.my, messages, 'settle');
+    } finally {
+        if (previousMonsterMoving === undefined) delete game._monster_moving;
+        else game._monster_moving = previousMonsterMoving;
+    }
+    if (!consumed) {
+        boulder.ox = steed.mx;
+        boulder.oy = steed.my;
+        game.level.objects.push(boulder);
+    }
+}
+
+function dismountFormerSteedMintrapMessages(steed) {
+    if (!steed?.mtrapped) return [];
+    const trap = dismountTrapAtSteed(steed);
+    if (!trap) {
+        steed.mtrapped = 0;
+        return [];
+    }
+    if (![PIT, SPIKED_PIT, BEAR_TRAP, WEB].includes(trap.ttyp)) return [];
+
+    const messages = [];
+    const inSight = !game.u?.blind && couldsee(steed.mx, steed.my);
+    if (!trap.tseen && inSight) trap.tseen = true;
+
+    const pitTrap = trap.ttyp === PIT || trap.ttyp === SPIKED_PIT;
+    const easyEscape = pitTrap && dismountMonsterEasyEscapePit(steed);
+    if (!rn2(40) || easyEscape) {
+        const boulder = pitTrap ? dismountBoulderAtSteed(steed) : null;
+        if (boulder) {
+            if (!rn2(2)) {
+                steed.mtrapped = 0;
+                if (inSight) messages.push(`${steedTrapProjectileName(steed)} pulls free...`);
+                finishDismountBoulderPitEscape(steed, boulder, messages);
+            }
+        } else {
+            if (inSight) {
+                if (pitTrap) {
+                    messages.push(`${steedTrapProjectileName(steed)} climbs ${easyEscape ? 'easily ' : ''}out of the pit.`);
+                } else {
+                    messages.push(`${steedTrapProjectileName(steed)} pulls free of the ${dismountPullFreeTrapName(trap.ttyp)}.`);
+                }
+            }
+            steed.mtrapped = 0;
+        }
+    } else if (monsterIsMetallivore(steed) && trap.ttyp === SPIKED_PIT) {
+        if (inSight) messages.push(`${steedTrapProjectileName(steed)} munches on some spikes!`);
+        trap.ttyp = PIT;
+        steed.meating = 5;
+    } else if (monsterIsMetallivore(steed) && trap.ttyp === BEAR_TRAP) {
+        if (inSight) messages.push(`${steedTrapProjectileName(steed)} eats a bear trap!`);
+        game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
+        steed.meating = 5;
+        steed.mtrapped = 0;
+    }
+    return messages;
+}
+
 async function dismountSteed() {
     const steed = game.u?.usteed;
     const spot = landingSpot();
@@ -12030,14 +12193,22 @@ async function dismountSteed() {
 
     const steedX = game.u.ux;
     const steedY = game.u.uy;
+    const saveUtrap = game.u.utrap || 0;
+    const saveUtrapType = game.u.utraptype;
+    const holdingTrap = saveUtrap > 0 ? dismountHoldingTrapType(saveUtrapType) : '';
     game.u.usteed = null;
     steed.mx = steedX;
     steed.my = steedY;
+    if (holdingTrap) steed.mtrapped = 1;
     if (!game.level.monsters.includes(steed)) game.level.monsters.push(steed);
     game.u.ux0 = steedX;
     game.u.uy0 = steedY;
     game.u.ux = spot.x;
     game.u.uy = spot.y;
+    if (holdingTrap) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+    }
     newsym(steedX, steedY);
     newsym(spot.x, spot.y);
     vision_recalc(0);
@@ -12048,7 +12219,9 @@ async function dismountSteed() {
         !obj.hidden && obj.ox === spot.x && obj.oy === spot.y
     );
     if (objectAtLanding) game._dismount_object_list_spot = { x: spot.x, y: spot.y };
-    await setMessage(`You've been through the dungeon on a ${steed.data?.name || 'steed'} with no name.`, hostileNearby || objectAtLanding);
+    const messages = [`You've been through the dungeon on a ${steed.data?.name || 'steed'} with no name.`];
+    if (holdingTrap) messages.push(...dismountFormerSteedMintrapMessages(steed));
+    await setMessage(messages.join('  '), hostileNearby || objectAtLanding);
     game._command_mode = null;
     game.context.move = 1;
 }
@@ -12103,6 +12276,12 @@ async function rideDirection(ch) {
     const y = (game.u?.uy || 0) + dir.dy;
     const mon = game.level?.monsters?.find(mtmp => mtmp.mx === x && mtmp.my === y);
     await mountSteed(mon);
+}
+
+function preservesTrapmoveRepeatMessage(msg) {
+    return msg === 'You are caught in a bear trap.'
+        || msg === 'You are stuck to the web.'
+        || / is stuck to the web\.$/.test(msg);
 }
 
 async function setMessage(msg, more = false) {
@@ -12163,7 +12342,7 @@ async function setMessage(msg, more = false) {
             refreshSwallowOverlay(more);
         }
     }
-    if (msg !== 'You are caught in a bear trap.') game._last_trapmove_message = '';
+    if (!preservesTrapmoveRepeatMessage(msg)) game._last_trapmove_message = '';
 }
 
 function addHeroStatusSuffix(status) {
@@ -18589,6 +18768,8 @@ function normalizeHeroWeaponSkillLevel(value) {
     if (key === 'basic') return P_BASIC;
     if (key === 'skilled') return P_SKILLED;
     if (key === 'expert') return P_EXPERT;
+    if (key === 'master') return P_MASTER;
+    if (key === 'grand master') return P_GRAND_MASTER;
     return null;
 }
 
@@ -43095,11 +43276,133 @@ function sitTrapState() {
     const type = game.u?.utraptype;
     if (type === TT_BEARTRAP || type === 'beartrap') return 'beartrap';
     if (type === TT_PIT || type === 'pit') return 'pit';
-    if (type === TT_WEB || type === 'web') return 'web';
+    if (heroWebTrapType(type)) return 'web';
     if (type === TT_LAVA || type === 'lava') return 'lava';
     if (type === TT_INFLOOR || type === 'infloor') return 'infloor';
     if (type === TT_BURIEDBALL || type === 'buriedball') return 'buriedball';
     return '';
+}
+
+function heroWebTrapType(type) {
+    return type === TT_WEB || type === 'web';
+}
+
+function heroIsWebTrapped() {
+    return heroWebTrapType(game.u?.utraptype) && (game.u?.utrap || 0) > 0;
+}
+
+function heroWieldsSting() {
+    const item = wieldedItem();
+    if (!item) return false;
+    return [item.artifact, item.oartifact, artifactObjectName(item)].some(name =>
+        String(name || '').toLowerCase().replace(/^the\s+/, '') === 'sting');
+}
+
+function guaranteedWebForceArtifact() {
+    const item = wieldedItem();
+    if (!item) return null;
+    for (const name of [item.artifact, item.oartifact]) {
+        const key = String(name || '').toLowerCase().replace(/^the\s+/, '');
+        if (key === 'sting') return { name: 'Sting', verb: 'cuts' };
+        if (key === 'fire brand') return { name: 'Fire Brand', verb: 'burns' };
+    }
+    return null;
+}
+
+function forceFightSecondaryWeapon(primary) {
+    if (!game._twoweapon) return null;
+    return (game.inventory || []).find(item => item !== primary
+        && (item.alternate || /left hand|alternate weapon/.test(item.line || ''))) || null;
+}
+
+function forceWebPluralDescr(descr) {
+    if (descr === 'axe') return 'axes';
+    if (descr.endsWith('s')) return `${descr}es`;
+    return `${descr}s`;
+}
+
+function forceWebNoCutWeaponPhrase(primary, secondary) {
+    const primaryDescr = forceWebWeaponDescr(primary);
+    const secondaryDescr = secondary ? forceWebWeaponDescr(secondary) : '';
+    const oneWeapon = !secondaryDescr || primaryDescr === secondaryDescr;
+    if (['armor', 'food', 'venom'].includes(primaryDescr)) return primaryDescr;
+    if ((primary?.quan || 1) === 1 && !(game._twoweapon && oneWeapon)) {
+        const primaryPhrase = articleFor(primaryDescr);
+        if (!oneWeapon) {
+            const secondaryPhrase = (secondary?.quan || 1) === 1
+                ? articleFor(secondaryDescr)
+                : forceWebPluralDescr(secondaryDescr);
+            return `${primaryPhrase} or ${secondaryPhrase}`;
+        }
+        return primaryPhrase;
+    }
+    const primaryPhrase = forceWebPluralDescr(primaryDescr);
+    if (!oneWeapon) {
+        const secondaryPhrase = (secondary?.quan || 1) === 1
+            ? articleFor(secondaryDescr)
+            : forceWebPluralDescr(secondaryDescr);
+        return `${primaryPhrase} or ${secondaryPhrase}`;
+    }
+    return primaryPhrase;
+}
+
+function forceWebAcurrstr() {
+    const str = Math.trunc(Number(game.u?.acurr?.a?.[A_STR] ?? 10));
+    if (str <= STR18(0)) return Math.max(str, 3);
+    if (str <= STR19(21)) return 19 + Math.trunc(str / 50);
+    return Math.min(str, 125) - 100;
+}
+
+function forceWebSkillMinusTwo(skillSpec) {
+    const explicit = heroExplicitWeaponSkillLevel(skillSpec.skill, skillSpec.name);
+    return Math.max(explicit ?? P_UNSKILLED, P_UNSKILLED) - 2;
+}
+
+function practiceForceWebSkill(skillSpec) {
+    if (skillSpec.skill === P_NONE) return;
+    const explicit = heroExplicitWeaponSkillLevel(skillSpec.skill, skillSpec.name);
+    if (explicit === 0) return;
+    const current = game.u?.weapon_skills?.[skillSpec.skill];
+    if (!current || typeof current !== 'object') return;
+    if (normalizeHeroWeaponSkillLevel(current) === 0) return;
+    current.advance = Math.trunc(Number(current.advance || 0)) + 1;
+}
+
+async function forceFightWebTrap(trap) {
+    if (!trap || trap.ttyp !== WEB || !trap.tseen) return false;
+    const artifact = guaranteedWebForceArtifact();
+    if (artifact) {
+        rn2(20);
+        deleteTrap(trap);
+        await setMessage(`${artifact.name} ${artifact.verb} through the web!`);
+        game.context.move = 1;
+        return true;
+    }
+    const primary = wieldedItem();
+    const secondary = primary ? forceFightSecondaryWeapon(primary) : null;
+    if (primary && !forceWebWeaponIsBlade(primary)) {
+        if (!forceWebWeaponIsBlade(secondary)) {
+            rn2(20);
+            await setMessage(`You can't cut a web with ${forceWebNoCutWeaponPhrase(primary, secondary)}!`);
+            game.context.move = 1;
+            return true;
+        }
+    }
+    const skillSpec = forceWebSkillSpec(primary, secondary);
+    const skillMinusTwo = forceWebSkillMinusTwo(skillSpec);
+    const roll = rn2(primary ? 20 : 45 - 5 * skillMinusTwo);
+    const threshold = forceWebAcurrstr() - 2
+        + (primary ? Math.trunc(Number(primary.spe || 0)) + skillMinusTwo : 0);
+    if (roll > threshold) {
+        await setMessage(`You ${primary ? 'hack' : 'thrash'} ineffectually at some of the strands.`);
+        game.context.move = 1;
+        return true;
+    }
+    practiceForceWebSkill(skillSpec);
+    deleteTrap(trap);
+    await setMessage(`You ${primary ? 'cut' : 'punch'} through the web.`);
+    game.context.move = 1;
+    return true;
 }
 
 async function sitWhileAlreadyTrapped(trap) {
@@ -43135,8 +43438,11 @@ async function sitWhileAlreadyTrapped(trap) {
 }
 
 function deleteTrap(trap) {
-    game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
-    newsym(game.u?.ux || 0, game.u?.uy || 0);
+    if (!game.level) return;
+    const x = Number.isInteger(trap?.tx) ? trap.tx : game.u?.ux || 0;
+    const y = Number.isInteger(trap?.ty) ? trap.ty : game.u?.uy || 0;
+    game.level.traps = (game.level.traps || []).filter(item => item !== trap);
+    newsym(x, y);
 }
 
 function sitTrapArticleName(trap) {
@@ -43251,8 +43557,8 @@ function scheduleSitLevelChange(targetLevel, options = {}) {
     return true;
 }
 
-function webTrapTimeFromStrength() {
-    const str = game.u?.acurr?.a?.[A_STR] ?? 10;
+function webTrapTimeFromStrength(strength = game.u?.acurr?.a?.[A_STR] ?? 10) {
+    const str = strength;
     if (str <= 3) return rn1(6, 6);
     if (str < 6) return rn1(6, 4);
     if (str < 9) return rn1(4, 4);
@@ -43284,6 +43590,159 @@ function sitWebTrapMessage(trap, prefix) {
         return `${prefix}  You tear through ${trap.madeby_u ? 'your web' : 'a web'}!`;
     }
     return `${prefix}  You are caught by ${sitTrapArticleName(trap)}!`;
+}
+
+function webTrapName(trap) {
+    return `${trap?.madeby_u ? 'your' : 'a'} spider web`;
+}
+
+function webTrapTearName(trap) {
+    return trap?.madeby_u ? 'your web' : 'a web';
+}
+
+function setHeroWebTrapTime(tim) {
+    if (!game.u) return;
+    game.u.utrap = Math.max(0, tim);
+    game.u.utraptype = tim > 0 ? 'web' : null;
+}
+
+function clearHeroWebTrapState() {
+    if (!game.u) return;
+    game.u.utrap = 0;
+    game.u.utraptype = null;
+}
+
+function movementWebLocomotion() {
+    if (game.u?.flying) return 'fly';
+    if (game.u?.levitating) return 'float';
+    return 'stumble';
+}
+
+function steedWebLeadName(steed) {
+    return steedPitName(steed, { poor: true });
+}
+
+function steedWebmakerData(data) {
+    const name = String(data?.name || '').toLowerCase();
+    return !!(data?.webmaker || WEBMAKER_FORM_NAMES.has(name));
+}
+
+function steedWebDestructionVerb(data) {
+    const name = String(data?.name || '').toLowerCase();
+    if (data?.flaming || WEB_FLAMING_FORM_NAMES.has(name)) return 'burns';
+    if (data?.acidic || WEB_ACIDIC_FORM_NAMES.has(name)) return 'dissolves';
+    return '';
+}
+
+function steedFlowsThroughWeb(data) {
+    const name = String(data?.name || '').toLowerCase();
+    return !!(data?.amorphous || data?.whirly || data?.unsolid || data?.noncorporeal
+        || WEB_WHIRLY_FORM_NAMES.has(name) || name === 'gelatinous cube');
+}
+
+const WEB_TEARING_STEED_NAMES = new Set([
+    'titanothere',
+    'baluchitherium',
+    'purple worm',
+    'jabberwock',
+    'iron golem',
+    'balrog',
+    'kraken',
+    'mastodon',
+    'orion',
+    'norn',
+    'cyclops',
+    'lord surtur',
+]);
+
+function steedIsAdultDragon(data) {
+    const name = String(data?.name || '').toLowerCase();
+    const rawMlet = String(data?.mlet || data?.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    return (rawMlet === 'D' || mlet === 'dragon')
+        && !name.startsWith('baby ') && name.endsWith('dragon');
+}
+
+function steedTearsThroughWeb(steed) {
+    const data = steed?.data || {};
+    const name = String(data.name || '').toLowerCase();
+    const rawMlet = String(data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const giantClass = data.giant || rawMlet === 'H' || mlet === 'giant'
+        || name.endsWith(' giant') || ['ettin', 'titan', 'minotaur'].includes(name);
+    const nastyDragon = (rawMlet === 'D' || mlet === 'dragon')
+        && (data.nasty || data.extraNasty || data.extra_nasty || steedIsAdultDragon(data));
+    const longWorm = Array.isArray(steed?.wormSegments) && steed.wormSegments.length > 5;
+    return !!(giantClass || nastyDragon || longWorm || WEB_TEARING_STEED_NAMES.has(name));
+}
+
+function markSteedKnowsTrap(steed, trap) {
+    if (!steed || !trap?.ttyp) return;
+    steed.mtrapseen = (steed.mtrapseen || 0) | (1 << (trap.ttyp - 1));
+}
+
+function mountedHeroWebTrapSteedResult(trap, messages) {
+    const steed = game.u?.usteed;
+    if (!steed) return false;
+    steed.mx = game.u?.ux ?? steed.mx;
+    steed.my = game.u?.uy ?? steed.my;
+    markSteedKnowsTrap(steed, trap);
+    const data = steed.data || {};
+    const webName = webTrapName(trap);
+    if (steedWebmakerData(data)) return false;
+    const destroyVerb = steedWebDestructionVerb(data);
+    if (destroyVerb) {
+        messages.push(`${steedTrapProjectileName(steed)} ${destroyVerb} ${webName}!`);
+        deleteTrap(trap);
+        return false;
+    }
+    if (steedFlowsThroughWeb(data)) {
+        messages.push(`${steedTrapProjectileName(steed)} flows through ${webName}.`);
+        return false;
+    }
+    if (steedTearsThroughWeb(steed)) {
+        messages.push(`${steedTrapProjectileName(steed)} tears through ${webName}!`);
+        deleteTrap(trap);
+        return false;
+    }
+    messages.push(`${steedTrapProjectileName(steed)} is caught in ${webName}.`);
+    steed.mtrapped = 0;
+    const strength = data.strong || steed.strong ? 17 : game.u?.acurr?.a?.[A_STR] ?? 10;
+    setHeroWebTrapTime(webTrapTimeFromStrength(strength));
+    return true;
+}
+
+function movementWebTrapResult(trap) {
+    const alreadySeen = !!trap?.tseen;
+    if (alreadySeen && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+    if (trap) trap.tseen = true;
+    const webName = webTrapName(trap);
+    const destroyVerb = heroWebDestructionVerb();
+    if (destroyVerb) {
+        deleteTrap(trap);
+        return { message: `You ${destroyVerb} ${webName}!` };
+    }
+    if (heroFlowsThroughWeb()) return { message: `You flow through ${webName}.` };
+    if (heroWebmakerForm())
+        return { message: trap?.madeby_u ? 'You take a walk on your web.' : 'There is a spider web here.' };
+
+    const messages = [game.u?.usteed
+        ? `You lead ${steedWebLeadName(game.u.usteed)} into ${webName}!`
+        : `You ${movementWebLocomotion()} into ${webName}!`];
+    setHeroWebTrapTime(1);
+    if (game.u?.usteed) {
+        const caught = mountedHeroWebTrapSteedResult(trap, messages);
+        if (!caught) clearHeroWebTrapState();
+        return { message: trapMessage(...messages) };
+    }
+    const tim = webTrapTimeFromStrength();
+    setHeroWebTrapTime(tim);
+    if (tim <= 0) {
+        deleteTrap(trap);
+        messages.push(`You tear through ${webTrapTearName(trap)}!`);
+    }
+    return { message: trapMessage(...messages) };
 }
 
 function sitFallTargetLevel(trap) {
@@ -43556,6 +44015,7 @@ function movementTrapAlreadySeen(trap) {
 }
 
 function movementTrapEscapeMessage(trap) {
+    if (trap?.ttyp === WEB) return `You escape ${trap.madeby_u ? 'your' : 'a'} web.`;
     return `You escape ${sitTrapArticleName(trap)}.`;
 }
 
@@ -46472,6 +46932,43 @@ async function moveHero(dx, dy) {
         }
     }
 
+    if (!swallowedMove && heroIsWebTrapped()) {
+        let message = '';
+        if (heroWieldsSting()) {
+            game.u.utrap = 0;
+            game.u.utraptype = null;
+            message = 'Sting cuts through the web!';
+        } else {
+            game.u.utrap--;
+            if (game.u.utrap <= 0) {
+                game.u.utrap = 0;
+                game.u.utraptype = null;
+                message = game.u.usteed
+                    ? `${steedTrapProjectileName(game.u.usteed)} breaks out of the web.`
+                    : 'You disentangle yourself.';
+            } else if (game.flags?.verbose !== false) {
+                message = game.u.usteed
+                    ? `${steedTrapProjectileName(game.u.usteed)} is stuck to the web.`
+                    : 'You are stuck to the web.';
+            }
+        }
+        if (message) {
+            if (preservesTrapmoveRepeatMessage(message) && game._last_trapmove_message === message) {
+                game._pending_message = '';
+                game._keep_pending_message = 0;
+            } else {
+                game._last_trapmove_message = message;
+                await setMessage(message);
+            }
+        } else {
+            game._pending_message = '';
+            game._keep_pending_message = 0;
+            game._last_trapmove_message = '';
+        }
+        game.context.move = 1;
+        return;
+    }
+
     if (!swallowedMove && game.level?.flags?.sokoban_rules && dx && dy) {
         const boulderBlocksDiagonal = (x, y) =>
             game.level?.objects?.some(obj => !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp === BOULDER);
@@ -47840,6 +48337,7 @@ async function moveHero(dx, dy) {
         if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) game._pending_pit_trap = trapHere;
         if (trapHere?.ttyp === POLY_TRAP) game._pending_poly_trap = trapHere;
         if (trapHere?.ttyp === BEAR_TRAP) game._pending_bear_trap = trapHere;
+        if (trapHere?.ttyp === WEB) game._pending_web_trap = trapHere;
         return;
     }
     if (trapHere?.ttyp === SLP_GAS_TRAP && objectsHere.length > 1) game._pending_sleep_gas_trap = trapHere;
@@ -47849,6 +48347,7 @@ async function moveHero(dx, dy) {
     if ((trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) && objectsHere.length > 1) game._pending_pit_trap = trapHere;
     if (trapHere?.ttyp === POLY_TRAP && objectsHere.length > 1) game._pending_poly_trap = trapHere;
     if (trapHere?.ttyp === BEAR_TRAP && objectsHere.length > 1) game._pending_bear_trap = trapHere;
+    if (trapHere?.ttyp === WEB && objectsHere.length > 1) game._pending_web_trap = trapHere;
     const goldHere = objectsHere.find(obj => obj.otyp === GOLD_PIECE || obj.glyph === '$');
     if (game._autopickup && goldHere) {
         const pickup = pickUpFloorGoldObject(goldHere);
@@ -47970,6 +48469,7 @@ async function moveHero(dx, dy) {
         if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) game._pending_pit_trap = trapHere;
         if (trapHere?.ttyp === POLY_TRAP) game._pending_poly_trap = trapHere;
         if (trapHere?.ttyp === BEAR_TRAP) game._pending_bear_trap = trapHere;
+        if (trapHere?.ttyp === WEB) game._pending_web_trap = trapHere;
         return;
     }
     if (objectsHere.length > 1 && skipObjectList) {
@@ -47989,6 +48489,13 @@ async function moveHero(dx, dy) {
         const result = movementSleepGasTrapResult(trapHere);
         result.message = [pileMessage, result.message].filter(Boolean).join('  ');
         if (result.message) await setMessage(result.message, !!result.more || !!(pileMessage && result.message));
+        return;
+    }
+    if (trapHere?.ttyp === WEB) {
+        const result = movementWebTrapResult(trapHere);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (result.message)
+            await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
         return;
     }
     if (trapHere?.ttyp === BEAR_TRAP) {
@@ -48360,6 +48867,13 @@ export async function rhack(_cmd) {
                 if (result.message) await setMessage(result.message, !!result.more);
                 return;
             }
+            if (game._pending_web_trap) {
+                const result = movementWebTrapResult(game._pending_web_trap);
+                game._pending_web_trap = null;
+                if (result.message)
+                    await finishHeroDartTrapResult(result, { more: objectListRows > 4 || !!result.more });
+                return;
+            }
             if (game._pending_arrow_trap) {
                 const trap = game._pending_arrow_trap;
                 const alreadySeen = !!trap.tseen;
@@ -48427,6 +48941,14 @@ export async function rhack(_cmd) {
                 if (!game._pending_time_passed) game.context.move = 1;
                 game._process_command_time_now = 1;
                 if (result.message) await setMessage(result.message, !!result.more);
+                return;
+            }
+            if (game._pending_web_trap) {
+                const result = movementWebTrapResult(game._pending_web_trap);
+                game._pending_web_trap = null;
+                if (!game._pending_time_passed) game.context.move = 1;
+                game._process_command_time_now = 1;
+                if (result.message) await finishHeroDartTrapResult(result);
                 return;
             }
             if (game._pending_landmine_trap) {
@@ -49927,6 +50449,8 @@ export async function rhack(_cmd) {
                 }
                 rows.push([objects.length + 1, 41, '--More--']);
                 setOverlay(rows, objects.length + 2);
+                const trap = (game.level?.traps || []).find(item => item.tx === x && item.ty === y);
+                if (trap?.ttyp === WEB) game._pending_web_trap = trap;
                 game._pending_message = 'dismount-object-list';
                 game._message_more = 1;
                 game._keep_pending_message = 1;
@@ -64609,6 +65133,9 @@ export async function rhack(_cmd) {
                 game._force_fight_target = null;
                 return;
             }
+            const webTrap = (game.level?.traps || []).find(trap =>
+                trap.tx === targetX && trap.ty === targetY && trap.ttyp === WEB);
+            if (await forceFightWebTrap(webTrap)) return;
             await setMessage(target && !IS_OBSTRUCTED(target.typ) ? 'You attack thin air.' : 'You harmlessly attack the wall.');
             if (!target || IS_OBSTRUCTED(target.typ)) game._fight_wall_message = 1;
             game.context.move = 1;

@@ -16,15 +16,19 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { phase_of_the_moon, friday_13th, NEW_MOON, FULL_MOON } from './calendar.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_step_count, fastforward_fill_mineralize } from './fastforward.js';
 import { movemon, mcalcdistress, mcalcmove } from './mon.js';
+import { makemon_rnd_spawn } from './makemon.js';
 import { dosounds } from './sounds.js';
 import { find_ac } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
 import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON } from './const.js';
 import { exercise } from './attrib.js';
+import { settrack } from './track.js';
 
 const PM_KNIGHT = 4;
 const PM_WIZARD = 12;
+// C ref: objclass.h COIN_CLASS — gold is an inventory object of this class.
+const COIN_CLASS = 12;
 
 // Resolve the role's PM number from game.initrole (index or name).
 function gameRoleMnum() {
@@ -41,7 +45,7 @@ function gameRoleMnum() {
 const REAL_UINIT_ROLES = new Set([
     'wizard', 'rogue', 'samurai', 'priest',
     'archeologist', 'barbarian', 'caveman', 'healer', 'monk',
-    'ranger', 'valkyrie',
+    'ranger', 'valkyrie', 'tourist',
 ]);
 
 function gameRoleName() {
@@ -85,6 +89,24 @@ export async function newgame() {
     // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua
     // Consumes rn2(3), rn2(2) matching session indices 309-310
     l_nhcore_init();
+
+    // Preserve the full dungeon model that fastforward_pre_mklev's
+    // init_dungeons() materialized (dungeons[], sp_levchn[], branches[], tune[])
+    // before the level-1 stub below clobbers g.dungeons / g.branches.  The
+    // wizard ^V print_dungeon level menu needs the complete model; gameplay
+    // level generation only needs the dnum-0 stub.  The legacy seed8000 path
+    // doesn't build sp_levchn, so guard on its presence.
+    if (Array.isArray(g.sp_levchn) && g.sp_levchn.length) {
+        g._full_dungeon = {
+            dungeons: g.dungeons,
+            branches: g.branches,
+            sp_levchn: g.sp_levchn,
+            n_dgns: g.n_dgns,
+            tune: g.tune,
+            knox_level: g.knox_level,
+            stronghold_level: g.stronghold_level,
+        };
+    }
 
     // Set up game state needed by mklev
     g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
@@ -175,11 +197,27 @@ async function newgame_real() {
                 mnum };
     g.urace = { adj: races[game.initrace]?.adj || 'human' };
     const alignType = aligns[game.initalign]?.value ?? 0;
-    g.u.ualign = { type: alignType, record: 0 };
+    // C ref: attrib.c init_align — u.ualign.record = gu.urole.initrecord; and
+    // u_init.c u_init_misc — u.ublesscnt = 300 (no prayers just yet), u.uluck =
+    // 0.  ugangr (number of times the god has been angered) starts at 0.  These
+    // feed pray.c can_pray()/angrygods() (p_type, maxanger) when the hero prays.
+    g.u.ualign = { type: alignType, record: role?.initrecord ?? 0 };
+    g.u.ublesscnt = 300;
+    g.u.uluck = g.u.uluck ?? 0;
+    g.u.moreluck = g.u.moreluck ?? 0;
+    g.u.ugangr = g.u.ugangr ?? 0;
     g.u.ulevel = 1; g.u.ulevelmax = 1; g.u.uexp = 0;
     g.u.uz = g.u.uz || { dnum: 0, dlevel: 1 };
     g.u.umonnum = mnum;
+    // C ref: status line shows money_cnt(gi.invent).  Roles with rolled
+    // starting gold (Healer rn1(1000,1001), Tourist rnd(1000)) have a
+    // COIN_CLASS object placed by ini_inv(Money); read it instead of
+    // hardcoding 0 so the $ field matches.  This is the GENERAL fix that
+    // subsumes BREADTH30's "preserve _goldCount" (L2↔L4 reconciliation).
     g._goldCount = 0;
+    for (const obj of (g.invent || [])) {
+        if (obj && obj.oclass === COIN_CLASS) g._goldCount += obj.quan || 0;
+    }
     g.moves = 1;
     g.flags = g.flags || {};
     if (g.flags.female === undefined)
@@ -370,7 +408,9 @@ function u_calc_moveamt() {
     if (!u) return;
     let moveamt;
     if (u.usteed && u.umoved) {
-        moveamt = mcalcmove(u.usteed, true); // rn2(NORMAL_SPEED) rounding roll
+        // inline=true: a fresh single roll, distinct from the steed's
+        // reallocation-loop roll (C ref allmain.c:121 mcalcmove(u.usteed,TRUE)).
+        moveamt = mcalcmove(u.usteed, true, true); // rn2(NORMAL_SPEED) rounding roll
     } else {
         moveamt = NORMAL_SPEED; // youmonst.data->mmove for a human hero
         if (youHaveFast() && rn2(3) === 0)
@@ -411,16 +451,16 @@ function maybe_generate_rnd_mon() {
     }
 
     if (!rn2(bound)) {
-        // makemon((struct permonst *)0, 0, 0, NO_MM_FLAGS) — left unspawned.
-        // The faithful spawn consumes a position-search loop
-        // (makemon_rnd_goodpos: rn1(COLNO-3,2)/rn2(ROWNO) until goodpos),
-        // rndmonst()'s class draw, next_ident()/newmonhp(), a gender rn2(2),
-        // and a group-monster rn2(2) with optional m_initgrp placement.  That
-        // sequence depends on materialized floor/monster occupancy which the
-        // gameplay-session level fill doesn't reproduce, so spawning is left
-        // out; every recorded session diverges upstream (mon/dogmove/steed/
-        // mkobj) before any spawn point is reached, so the roll alone keeps
-        // RNG position correct for all currently-reachable turns.
+        // C ref: makemon((struct permonst *)0, 0, 0, NO_MM_FLAGS).  Faithfully
+        // spawn a random monster at a random good position, consuming the full
+        // makemon_rnd_goodpos / rndmonst / next_ident / newmonhp / gender /
+        // group / m_initweap+m_initinv / saddle RNG sequence.  The gameplay
+        // sessions replay from the seed (level generated by the real mklev), so
+        // the floor terrain + vision are materialized in parity, which is what
+        // the goodpos position search depends on.  Only seed0103/seed0104 reach
+        // an in-game spawn with the RNG stream still matching; every other
+        // spawning session has already diverged before its first spawn.
+        makemon_rnd_spawn();
     }
 }
 
@@ -482,10 +522,28 @@ export function moveloop_turn() {
             // block (matches the recorded RNG position).
             u_calc_moveamt();
 
+            // C ref: allmain.c — settrack() records the hero's footprint each
+            // turn so out-of-sight pets can follow the hero's trail (dog_goal).
+            settrack();
+
             g.moves = (g.moves || 1) + 1;
 
+            // C ref: allmain.c moveloop_core() — once-per-turn "if (u.ublesscnt)
+            // u.ublesscnt--;" (the prayer timeout countdown), between run_regions
+            // and the regen_hp heal check.  No RNG; gates pray.c can_pray().
+            if (g.u.ublesscnt) g.u.ublesscnt--;
+
+            // C ref: allmain.c moveloop_core() — regen_hp(wtcap) is called (at
+            // allmain.c:294, right after the moves++ once-per-turn header and
+            // well BEFORE dosounds) only when the hero is below max HP.  For a
+            // non-polymorphed, unencumbered starter hero it rolls a single
+            // rn2(100): heal = (u.ulevel + ACURR(A_CON)) > rn2(100).  An
+            // uninjured hero (uhp == uhpmax, the usual case) skips the call
+            // entirely, so this is RNG-inert for every full-health turn.
+            regen_hp();
+
             // once-per-turn things: ambient sounds + hunger + periodic
-            // exercise.  (nh_timeout / regen / age_spells consume no RNG for the
+            // exercise.  (nh_timeout / age_spells consume no RNG for the
             // starter sessions.)  C order: dosounds, do_storms, gethungry,
             // age_spells, exerchk, invault, ..., u_wipe_engr.
             dosounds();
@@ -511,6 +569,27 @@ export function moveloop_turn() {
 // C ref: eat.c gethungry() — the rn2(20) "accessorytime" roll each turn.
 function gethungry() {
     rn2(20);
+}
+
+// C ref: allmain.c regen_hp(wtcap) — natural HP regeneration.  Only the
+// non-polymorphed starter path is modelled: when the hero is below max HP and
+// not over-encumbered, roll rn2(100) and heal by 1 when (ulevel + Con) beats
+// it (plus Regeneration/Sleepy bonuses, neither set for the starter sessions).
+// The single rn2(100) is the RNG-relevant effect; the heal keeps uhp tracking
+// so the roll stops firing once the hero is back to full.  The caller invokes
+// this only when uhp < uhpmax, mirroring the C guard at allmain.c:290.
+function regen_hp() {
+    const u = game.u;
+    if (!u) return;
+    if (!(u.uhp < u.uhpmax)) return;            // C: guarded call (allmain.c:290)
+    // encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved); UNENCUMBERED here.
+    const con = u.acurr?.a?.[A_CON] ?? 12;
+    let heal = ((u.ulevel || 1) + con) > rn2(100) ? 1 : 0;
+    // (U_CAN_REGEN / Sleepy bonuses never apply to the starter hero.)
+    if (heal) {
+        u.uhp += heal;
+        if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
+    }
 }
 
 const PM_MONK = 5;
@@ -630,6 +709,15 @@ export async function moveloop_core() {
     }
     await bot();
     await flush_screen(1);
+
+    // C ref: allmain.c moveloop_core():513 — `u.umoved = FALSE;` is set BEFORE
+    // rhack() dispatches the command, so any command that does not relocate the
+    // hero (e.g. #ride mount, search, look) leaves u.umoved FALSE.  Movement
+    // commands set it TRUE again inside domove().  u_calc_moveamt() (run at the
+    // top of the NEXT turn) reads this to decide whether a riding hero rolls
+    // mcalcmove(usteed); a stale-TRUE umoved after a mount command made JS roll
+    // an extra rn2(NORMAL_SPEED) that C does not (seed0103 divergence @ #2533).
+    if (g.u) g.u.umoved = false;
 
     // Read and execute one command.  rhack clears the previous command's
     // top-line message only after the capture for that command has fired
