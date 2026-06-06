@@ -4,7 +4,6 @@
 import { game } from './gstate.js';
 import { races } from './roles.js';
 import { NH5_ARMOR_CLASS, NH5_FOOD_CLASS, NH5_POTION_CLASS, NH5_SCROLL_CLASS, NH5_SPBOOK_CLASS, NH5_TOOL_CLASS } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 const OTYP_LEATHER_GLOVES = 160;
 const OTYP_ROBE = 144;
@@ -116,5 +115,4 @@ export function applyMonkHumanLinkedInventAndWearLikeC(g) {
     u.uarmc = null;
     u.uarmu = null;
     u.uarmf = null;
-    findAc(g);
 }

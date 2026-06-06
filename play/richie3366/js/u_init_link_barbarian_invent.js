@@ -10,7 +10,6 @@ import {
     NH5_FOOD_CLASS,
     NH5_TOOL_CLASS,
 } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 /** NH5 `objects_nums` — cpp **`OBJECTS_ENUM` − 1** (`u_init_role_rng.js` / **`obj_oc_skill_data.js`**). */
 /** C `objects_nums` / `obj_oc_skill_data.js`. */
@@ -112,5 +111,4 @@ export function applyBarbarianHumanLinkedInventAndWearLikeC(g) {
         }
     }
 
-    findAc(g);
 }

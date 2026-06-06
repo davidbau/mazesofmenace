@@ -5,7 +5,6 @@
 import { game } from './gstate.js';
 import { races } from './roles.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_FOOD_CLASS } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 /** C `objects_nums` / repo Rogue dagger anchor (NH5 invent **`otyp`**). */
 const OTYP_DAGGER = 35;
@@ -92,5 +91,4 @@ export function applyRangerHumanLinkedInventAndWearLikeC(g) {
         u.uquiver = arr1;
         u.uarmc = cloak;
     }
-    findAc(g);
 }

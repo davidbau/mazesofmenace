@@ -6,7 +6,6 @@ import { game } from './gstate.js';
 import { races } from './roles.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_GEM_CLASS } from './nh5_objclass.js';
 import { OTYP_LEATHER_ARMOR } from './const.js';
-import { findAc } from './u_init_find_ac.js';
 
 const OTYP_CLUB = 78;
 const OTYP_SLING = 87;
@@ -79,5 +78,4 @@ export function applyCaveDwellerHumanLinkedInventAndWearLikeC(g) {
         u.uarm = leather;
         u.uquiver = flint;
     }
-    findAc(g);
 }

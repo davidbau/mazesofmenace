@@ -13,6 +13,7 @@ import {
     MONS_MLEVEL,
     MONS_RNDMONST_MALIGNTYP,
 } from './mons_rndmonst_ini_inv_data.js';
+import { MONS_IS_ARMED } from './mons_is_armed_data.js';
 import { ESHK } from './const.js';
 import {
     XKILL_NOCORPSE,
@@ -153,6 +154,8 @@ export function fakemonForCorpsenm(mnum) {
 
 /** C: monattk.h / permonst.h */
 export const AT_ANY = -1;
+/** C: monattk.h `AT_WEAP` — weapon attack slot (is_armed). */
+export const AT_WEAP = 254;
 /** C: monattk.h — damage kinds used by passes_bars (iron bars). */
 export const AD_RUST = 24;
 export const AD_CORR = 42;
@@ -484,6 +487,73 @@ export function canTrackPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
 
 /** C: monflag.h `M2_GREEDY`. */
 const M2_GREEDY = 0x10000000;
+
+/** C: monflag.h `M2_MERC` / `M2_ELF` / `M2_DWARF` / `M2_GIANT` / `M2_STRONG` / `M2_NASTY` / `M2_LORD` / `M2_PRINCE`. */
+const M2_MERC = 0x00000200;
+const M2_ELF = 0x00000008;
+const M2_DWARF = 0x00000010;
+const M2_GIANT = 0x00000080;
+const M2_STRONG = 0x00000001;
+const M2_NASTY = 0x00000004;
+const M2_LORD = 0x00000400;
+const M2_PRINCE = 0x00000800;
+
+/** C: mondata.h `is_armed(ptr)` — `attacktype(ptr, AT_WEAP)`. */
+export function isArmedPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    const mnum = ptr?.mnum;
+    if (Number.isInteger(mnum) && mnum >= 0 && mnum < MONS_IS_ARMED.length) {
+        return (MONS_IS_ARMED[mnum | 0] | 0) !== 0;
+    }
+    const mattk = ptr?.mattk;
+    if (mattk) {
+        for (let i = 0; i < NATTK; i++) {
+            if ((mattk[i]?.aatyp | 0) === AT_WEAP) return true;
+        }
+    }
+    return false;
+}
+
+/** C: mondata.h `attacktype(ptr, atyp)`. */
+export function attacktypePtrLikeC(/** @type {Permonst|null|undefined} */ ptr, atyp) {
+    const mattk = ptr?.mattk;
+    if (!mattk) return false;
+    for (let i = 0; i < NATTK; i++) {
+        if ((mattk[i]?.aatyp | 0) === (atyp | 0)) return true;
+    }
+    return false;
+}
+
+export function isMercenaryPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_MERC) !== 0;
+}
+
+export function isElfPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_ELF) !== 0;
+}
+
+export function isDwarfPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_DWARF) !== 0;
+}
+
+export function isGiantPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_GIANT) !== 0;
+}
+
+export function strongmonstPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_STRONG) !== 0;
+}
+
+export function extraNastyPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_NASTY) !== 0;
+}
+
+export function isLordPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_LORD) !== 0;
+}
+
+export function isPrincePtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_PRINCE) !== 0;
+}
 
 export function likesGoldPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
     return ((ptr?.mflags2 ?? 0) & M2_GREEDY) !== 0;

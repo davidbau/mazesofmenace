@@ -11,7 +11,6 @@ import {
     NH5_TOOL_CLASS,
     NH5_WEAPON_CLASS,
 } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 const OTYP_BULLWHIP = 82;
 const OTYP_LEATHER_JACKET = 136;
@@ -125,5 +124,4 @@ export function applyArcheologistHumanLinkedInventAndWearLikeC(g) {
     u.uarmg = null;
     u.uarms = null;
     u.uarmf = null;
-    findAc(g);
 }

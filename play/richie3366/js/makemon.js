@@ -8,12 +8,17 @@ import {
     MONS_MLEVEL,
 } from './mons_rndmonst_ini_inv_data.js';
 import {
+    isArmedPtrLikeC,
     isFemalePtrLikeC,
     isMalePtrLikeC,
     isNeuterPtrLikeC,
     permonstFromMndxLikeC,
     throwsRocks,
 } from './mondata.js';
+import {
+    mInitinvMklevLikeC,
+    mInitweapMklevLikeC,
+} from './makemon_m_initweap_inv_like_c.js';
 import { monTrackInitLikeC } from './monflee.js';
 import {
     GP_AVOID_MONPOS,
@@ -90,17 +95,6 @@ function newmonhpMtmpLikeC(mtmp, mndx) {
     if (hp === basehp) hp += 1;
     mtmp.mhp = hp;
     mtmp.mhpmax = hp;
-}
-
-/** C: makemon.c m_initinv — comparisons still evaluate `rn2(50)` / `rn2(100)`. */
-function mInitinvMklevLikeC(mLev) {
-    void mLev;
-    if ((mLev | 0) > rn2(50)) {
-        /* rnd_defensive_item — not ported */
-    }
-    if ((mLev | 0) > rn2(100)) {
-        /* rnd_misc_item — not ported */
-    }
 }
 
 /**
@@ -214,7 +208,10 @@ export function makemon(mdat, x, y, mmflags) {
         newedogLikeC(mtmp);
     }
     if (allowMinvent) {
-        mInitinvMklevLikeC(mtmp.m_lev | 0);
+        if (isArmedPtrLikeC(ptr)) {
+            mInitweapMklevLikeC(mtmp);
+        }
+        mInitinvMklevLikeC(mtmp);
         /* C: makemon.c — `!rn2(100)` domestic saddle (starting pet uses NO_MINVENT). */
         if (!rn2(100)) {
             /* put_saddle_on_mon — not ported */

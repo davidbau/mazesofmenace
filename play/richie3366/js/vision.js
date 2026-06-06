@@ -277,6 +277,20 @@ function q4_path(srow, scol, y2, x2) {
     return 1;
 }
 
+/**
+ * C: vision.c clear_path(col1, row1, col2, row2) — quadrant Bresenham on viz_clear.
+ * Endpoints are not checked. Used by vision.h m_cansee / m_canseeu / do_light_sources.
+ */
+export function clearPathLikeC(col1, row1, col2, row2) {
+    if (col1 === col2 && row1 === row2) return true;
+    if (col1 < col2) {
+        if (row1 > row2) return q1_path(row1, col1, row2, col2) !== 0;
+        return q4_path(row1, col1, row2, col2) !== 0;
+    }
+    if (row1 > row2) return q2_path(row1, col1, row2, col2) !== 0;
+    return q3_path(row1, col1, row2, col2) !== 0;
+}
+
 // C ref: vision.c right_side()
 function right_side(row, left, right_mark, limitsIdx) {
     const nrow = row + game.vis_step;

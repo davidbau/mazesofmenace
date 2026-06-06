@@ -5,7 +5,6 @@
 import { game } from './gstate.js';
 import { races } from './roles.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_FOOD_CLASS } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 /** NH5 `objects_nums` — cpp **`OBJECTS_ENUM`** list index **277** (`obj_oc_cost_data.js` / FOOD `apple`). */
 const OTYP_APPLE = 277;
@@ -100,5 +99,4 @@ export function applyKnightHumanLinkedInventAndWieldLikeC(g) {
     u.uarmh = helmet;
     u.uarms = shield;
     u.uarmg = gloves;
-    findAc(g);
 }

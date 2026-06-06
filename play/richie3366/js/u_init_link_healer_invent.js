@@ -12,7 +12,6 @@ import {
     NH5_WAND_CLASS,
     NH5_WEAPON_CLASS,
 } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 /** C `objects[]` — **`SCALPEL`** (39 is knife/stiletto line). */
 const OTYP_SCALPEL = 40;
@@ -128,5 +127,4 @@ export function applyHealerHumanLinkedInventAndWearLikeC(g) {
     u.uarmg = gloves;
     u.uarms = null;
     u.uarmf = null;
-    findAc(g);
 }

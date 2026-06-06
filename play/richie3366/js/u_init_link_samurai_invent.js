@@ -5,7 +5,6 @@
 import { game } from './gstate.js';
 import { races } from './roles.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_TOOL_CLASS } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 /** C `objects_nums` / cpp OBJECTS_ENUM indices (NH5; splint +2 vs cpp ≥ dragon block per `u_init_find_ac.js`). */
 const OTYP_YA = 22;
@@ -87,5 +86,4 @@ export function applySamuraiHumanLinkedInventAndWieldLikeC(g) {
     u.uswapwep = wakizashi;
     u.uquiver = ya;
     u.uarm = splint;
-    findAc(g);
 }

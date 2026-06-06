@@ -12,7 +12,6 @@ import {
     NH5_WAND_CLASS,
     NH5_WEAPON_CLASS,
 } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 const OTYP_QUARTERSTAFF = 79;
 const OTYP_CLOAK_OF_MAGIC_RESISTANCE = 149;
@@ -126,5 +125,4 @@ export function applyWizardHumanLinkedInventAndWearLikeC(g) {
     u.uarmc = cloak;
     u.uarmu = null;
     u.uarmf = null;
-    findAc(g);
 }

@@ -59,7 +59,6 @@ function legacyIntroColForLineLikeC(line, inMoloch, g) {
  */
 export function paintLegacyIntroIntoDisplay(display) {
     const g = game;
-    display.clearScreen();
     delete g._legacyIntroCol;
 
     const rawLines = LEGACY_TEMPLATE.split('\n');

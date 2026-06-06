@@ -9,7 +9,7 @@ import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, vie
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -11268,11 +11268,58 @@ function rollingBoulderHitIronBars() {
     if (!heroIsDeafForMonsterNoise()) addRollingBoulderMotionMessage('Whang!');
 }
 
+function rollingBoulderTendedShopkeeperForRoom(roomno) {
+    const room = levelRoomByRoomno(roomno);
+    if (!room || room.rtype < SHOPBASE) return null;
+    const shkp = room.resident || (game.level?.monsters || [])
+        .find(mon => mon.isshk && mon.shoproom === roomno);
+    if (!shkp?.isshk || shkp.dead || (shkp.mhp != null && shkp.mhp <= 0)) return null;
+    const x = shkp.mx ?? shkp.shk?.x;
+    const y = shkp.my ?? shkp.shk?.y;
+    if (x == null || y == null) return null;
+    return (game.level?.at?.(x, y)?.roomno || 0) === shkp.shoproom ? shkp : null;
+}
+
+function rollingBoulderShopRoomnosAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    const roomno = loc?.roomno || 0;
+    if (roomno >= ROOMOFFSET) return [roomno];
+    if (roomno !== SHARED && roomno !== SHARED_PLUS) return [];
+
+    const found = [];
+    const step = roomno === SHARED ? 2 : 1;
+    const minX = Math.max(0, x - 1);
+    const maxX = Math.min(COLNO - 1, x + 1);
+    const minY = Math.max(0, y - 1);
+    const maxY = Math.min(ROWNO - 1, y + 1);
+    for (let nx = minX; nx <= maxX; nx += step) {
+        for (let ny = minY; ny <= maxY; ny += step) {
+            const adjRoomno = game.level?.at?.(nx, ny)?.roomno || 0;
+            if (adjRoomno >= ROOMOFFSET && !found.includes(adjRoomno))
+                found.push(adjRoomno);
+        }
+    }
+    return found;
+}
+
+function rollingBoulderNoChargeStillAppliesAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    return rollingBoulderShopRoomnosAt(x, y)
+        .some(roomno => {
+            const shkp = rollingBoulderTendedShopkeeperForRoom(roomno);
+            if (!shkp) return false;
+            if ((loc?.roomno || 0) >= ROOMOFFSET) return true;
+            return !!loc?.edge || (x === shkp.shk?.x && y === shkp.shk?.y);
+        });
+}
+
 function placeRollingBoulderAtRest(boulder, x, y) {
     if (!boulder) return;
     boulder.otrapped = 0;
     boulder.hidden = false;
     boulder.transientProjectile = false;
+    if (boulder.no_charge && !rollingBoulderNoChargeStillAppliesAt(x, y))
+        boulder.no_charge = false;
     boulder.ox = x;
     boulder.oy = y;
     game.level.objects = (game.level?.objects || []).filter(obj => obj !== boulder);
@@ -11370,6 +11417,11 @@ function rollingBoulderHitHeroAt(x, y, movingBoulder) {
     if (game._death_cause === 'killed by a boulder') game._rolling_boulder_launch_killed_hero = 1;
     rollingBoulderStopHeroOccupationOnHit();
     return true;
+}
+
+function rollingBoulderPathMonsterAt(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon !== game.u?.usteed && mon.mx === x && mon.my === y) || null;
 }
 
 function deleteRollingBoulderLandmineEngravingAt(x, y) {
@@ -11556,7 +11608,9 @@ function rollingBoulderApplyPitHoleFloorEffectsAt(x, y, movingBoulder) {
     game._monster_moving = 1;
     let consumed = false;
     try {
-        consumed = earthFloorEffects(movingBoulder, x, y, messages, 'fall');
+        consumed = earthFloorEffects(movingBoulder, x, y, messages, 'fall', {
+            usedUpShopBillOnDestroy: true,
+        });
     } finally {
         if (previousMonsterMoving === undefined) delete game._monster_moving;
         else game._monster_moving = previousMonsterMoving;
@@ -11572,7 +11626,9 @@ function rollingBoulderApplyGenericFloorEffectsAt(x, y, movingBoulder) {
     game._monster_moving = 1;
     let consumed = false;
     try {
-        consumed = earthFloorEffects(movingBoulder, x, y, messages, 'fall');
+        consumed = earthFloorEffects(movingBoulder, x, y, messages, 'fall', {
+            usedUpShopBillOnDestroy: true,
+        });
     } finally {
         if (previousMonsterMoving === undefined) delete game._monster_moving;
         else game._monster_moving = previousMonsterMoving;
@@ -11627,7 +11683,7 @@ function monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll = fals
             }
             x += dx;
             y += dy;
-            const hit = (game.level?.monsters || []).find(other => other.mx === x && other.my === y);
+            const hit = rollingBoulderPathMonsterAt(x, y);
             if (hit?.data?.throwsRocks && rn2(3)) {
                 if (!game.u?.blind && cansee(x, y))
                     addRollingBoulderMotionMessage(`${monsterDisplayName(hit)} snatches the boulder.`);

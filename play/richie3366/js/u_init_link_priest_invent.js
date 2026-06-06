@@ -11,7 +11,6 @@ import {
     NH5_TOOL_CLASS,
     NH5_WEAPON_CLASS,
 } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 const OTYP_MACE = 74;
 const OTYP_ROBE = 144;
@@ -119,5 +118,4 @@ export function applyPriestHumanLinkedInventAndWearLikeC(g) {
     u.uarmu = null;
     u.uarmf = null;
     u.uswapwep = null;
-    findAc(g);
 }

@@ -16,7 +16,6 @@ import {
     NH5_WAND_CLASS,
     NH5_WEAPON_CLASS,
 } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 const OTYP_DART = 25;
 const OTYP_HAWAIIAN_SHIRT = 137;
@@ -146,5 +145,4 @@ export function applyTouristHumanLinkedInventAndWearLikeC(g) {
         u.uarms = null;
         u.uarmf = null;
     }
-    findAc(g);
 }

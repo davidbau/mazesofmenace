@@ -781,7 +781,7 @@ export function consumeCaveDwellerHumanIniInvUinitRoleRngLikeC() {
  * C: u_init.c **`PM_RANGER`** — **`ini_inv(Ranger[])`** for human (no race subs).
  * **`u_init_role`**: **`knows_class(WEAPON_CLASS)`** only (no RNG). Order: **`trquan`** / **`mksobj`** **`next_ident`**
  * / **`mksobj_init`** / second **`trquan`** on **WEAPON** rows (**`ini_inv_adjust_obj`**); cram **FOOD** × **`4+rn2(1)`**
- * with default FOOD **`!rn2(6)`** stack quan each (**`mksobjInitDefaultFoodQuanMaybeDoubleLikeC`** + per-obj tail **`rn2(1)`** like Monk ration loop).
+ * with default FOOD **`!rn2(6)`** stack quan each (**`mksobjInitDefaultFoodQuanMaybeDoubleLikeC`** only — C fixed **`CRAM_RATION`** has no per-item **`trquan`** tail).
  */
 export function consumeRangerHumanIniInvUinitRoleRngLikeC() {
     /* DAGGER +1 */
@@ -808,11 +808,10 @@ export function consumeRangerHumanIniInvUinitRoleRngLikeC() {
     mksobjInitWeaponLikeC(OTYP_ARROW, false);
     game._rangerIniArrow2Quan = 30 + rn2(10);
 
-    /* CLOAK_OF_DISPLACEMENT +2 */
+    /* CLOAK_OF_DISPLACEMENT +2 — ARMOR **`ini_inv_adjust_obj`** does not replay **`trquan`**. */
     rn2(1);
     nextIdentLikeC();
     mksobjInitArmorLikeC(false);
-    rn2(1);
 
     const nc = 4 + rn2(1);
     game._rangerIniCramN = nc;
@@ -820,7 +819,6 @@ export function consumeRangerHumanIniInvUinitRoleRngLikeC() {
     for (let i = 0; i < nc; i++) {
         nextIdentLikeC();
         game._rangerIniCramQuans.push(mksobjInitDefaultFoodQuanMaybeDoubleLikeC());
-        rn2(1);
     }
 }
 

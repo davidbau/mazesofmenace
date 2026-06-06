@@ -2,7 +2,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, clearPendingMessageAndToplineLikeC } from './display.js';
+import { flush_screen, clearPendingMessageAndToplineLikeC, docrt } from './display.js';
 import { nhlibAlignShuffleRn2LikeC } from './nhlib_align_shuffle.js';
 
 /**
@@ -25,5 +25,7 @@ export async function awaitLegacyIntroMoreLikeC() {
     delete g._botlLine1PreFindAcBotlLikeC;
     delete g._botlLine2PreFindAcBotlLikeC;
     delete g._legacyIntroCol;
+    /* C: com_pager dismiss — full docrt restores hero_memory map under quest overlay. */
+    await docrt();
     await flush_screen(1);
 }

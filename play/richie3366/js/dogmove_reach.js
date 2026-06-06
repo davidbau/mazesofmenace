@@ -10,7 +10,7 @@ import { raceptr } from './mondata.js';
 import { dist2, distmin } from './hacklib.js';
 import { OTYP_BOULDER } from './const.js';
 import { floorObjKey } from './floorobj.js';
-import { clearPathRayToTargetLikeC } from './mthrow_mon.js';
+import { clearPathLikeC } from './vision.js';
 
 /** C: dogmove.c cursed_object_at — any cursed member of floor stack at (x,y). */
 export function cursedObjectAtDogmoveLikeC(g, x, y) {
@@ -48,9 +48,9 @@ export function mCanseeDogmoveLikeC(g, mtmp, x, y) {
     const yi = y | 0;
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;
-    /* C: vision.c **`clear_path`** — same square is visible. */
+    /* C: vision.h m_cansee — clear_path(mx, my, x2, y2) on viz_clear (not 8-way ray). */
     if (mx === xi && my === yi) return true;
-    return clearPathRayToTargetLikeC(g, xi, yi, mx, my, false);
+    return clearPathLikeC(mx, my, xi, yi);
 }
 
 /**

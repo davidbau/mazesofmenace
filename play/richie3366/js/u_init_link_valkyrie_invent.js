@@ -10,7 +10,6 @@ import {
     NH5_FOOD_CLASS,
     NH5_TOOL_CLASS,
 } from './nh5_objclass.js';
-import { findAc } from './u_init_find_ac.js';
 
 /** NH5 `objects_nums` — cpp **`OBJECTS_ENUM` − 1** where map key is **28** (`obj_oc_skill_data.js` **SPEAR**). */
 const OTYP_SPEAR = 27;
@@ -84,5 +83,4 @@ export function applyValkyrieHumanLinkedInventAndWieldLikeC(g) {
     u.uwep = spear;
     u.uswapwep = dagger;
     u.uarms = shield;
-    findAc(g);
 }

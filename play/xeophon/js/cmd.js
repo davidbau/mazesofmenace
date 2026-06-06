@@ -46982,13 +46982,232 @@ function findRollingBoulderLaunchObject(trap) {
     let end = trap.launch2;
     const objects = game.level?.objects || [];
     let boulder = objects.find(obj =>
-        !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === start?.x && obj.oy === start?.y);
+        !obj.buried && !obj.transientProjectile
+        && obj.otyp === BOULDER && obj.ox === start?.x && obj.oy === start?.y);
     if (!boulder && end) {
         boulder = objects.find(obj =>
-            !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === end?.x && obj.oy === end?.y);
+            !obj.buried && !obj.transientProjectile
+            && obj.otyp === BOULDER && obj.ox === end?.x && obj.oy === end?.y);
         if (boulder) [start, end] = [end, start];
     }
     return { boulder, start, end };
+}
+
+function splitHeroRollingBoulderLaunchObject(boulder) {
+    const quantity = Math.max(1, Math.trunc(Number(boulder?.quan || 1)));
+    if (!boulder || quantity <= 1) return boulder;
+    const launched = { ...boulder, id: next_ident(), quan: 1 };
+    delete launched.o_id;
+    delete launched._shopBillObjectId;
+    delete launched.letter;
+    delete launched.line;
+    delete launched.timed;
+    delete launched.lamplit;
+    delete launched.burning;
+    delete launched.pickup_prev;
+    delete launched.lua_ref_cnt;
+    launched.owornmask = 0;
+    boulder.quan = quantity - 1;
+    return launched;
+}
+
+function heroRollingBoulderNoChargeStillAppliesAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    const directRoom = (loc?.roomno ?? 0) >= ROOMOFFSET;
+    for (const roomno of shopRoomnosAt(x, y, SHOPBASE)) {
+        const shkp = shopkeeperForRoomno(roomno);
+        if (!shopkeeperInHisShop(shkp)) continue;
+        if (directRoom) return true;
+        if (loc?.edge || (x === shkp.shk?.x && y === shkp.shk?.y)) return true;
+    }
+    return false;
+}
+
+function placeHeroRollingBoulderAtRest(boulder, x, y) {
+    if (!boulder) return;
+    boulder.otrapped = 0;
+    boulder.hidden = false;
+    boulder.transientProjectile = false;
+    if (boulder.no_charge && !heroRollingBoulderNoChargeStillAppliesAt(x, y))
+        boulder.no_charge = false;
+    boulder.ox = x;
+    boulder.oy = y;
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== boulder);
+    game.level.objects.push(boulder);
+}
+
+function heroRollingBoulderBreakClosedDoorAt(x, y, messages, remainingDistance) {
+    const loc = game.level?.at?.(x, y);
+    const mask = loc?.doormask ?? loc?.flags ?? 0;
+    if (loc?.typ !== DOOR || !(mask & (D_LOCKED | D_CLOSED))) return false;
+    if (!game.u?.blind && cansee(x, y)) messages.push('The boulder crashes through a door.');
+    loc.doormask = D_BROKEN;
+    loc.flags = D_BROKEN;
+    if (remainingDistance > 0) {
+        vision_reset();
+        vision_recalc(0);
+    }
+    newsym(x, y);
+    return true;
+}
+
+function heroRollingBoulderHitIronBars(messages) {
+    rn2(20);  // C passes !rn2(20) to hits_bars(); boulders hit bars either way.
+    rn2(100); // hit_bars() reaches breaktest()/obj_resists(); boulders survive.
+    if (!heroIsDeaf()) messages.push('Whang!');
+}
+
+function heroRollingBoulderTransitMessage(gate, impactQuantity, noDrop) {
+    if (!gate?.gateText || game.u?.blind || !cansee(gate.x ?? 0, gate.y ?? 0)) return '';
+    if (impactQuantity > 0) {
+        const other = impactQuantity === 1 ? 'another object' : 'other objects';
+        const suffix = noDrop ? '.' : ` and falls ${gate.gateText}.`;
+        return `A boulder hits ${other}${suffix}`;
+    }
+    return noDrop ? '' : `A boulder falls ${gate.gateText}.`;
+}
+
+function heroRollingBoulderApplyDownGateAt(x, y, movingBoulder, messages) {
+    if (!movingBoulder) return { handled: false, consumed: false };
+    const gate = downGateAt(x, y);
+    if (!gate?.targetLevel) return { handled: false, consumed: false };
+
+    const route = { ...gate, x, y };
+    const impactQuantity = impactDropPileQuantity(impactDropCandidatePile(x, y, { missile: movingBoulder }));
+    const noDrop = gate.where !== MIGR_LADDER_UP && !!rn2(3);
+    if (gate.where === MIGR_RANDOM && gate.trap && movingBoulder.otyp === BOULDER) {
+        if (impactQuantity > 0) {
+            const impact = impactDropFloorObjects(x, y, route, {
+                targetLevel: gate.targetLevel,
+                missile: movingBoulder,
+                missileImpact: true,
+                route,
+            });
+            if (impact.message) messages.push(impact.message);
+        }
+        return { handled: false, consumed: false };
+    }
+
+    const transit = heroRollingBoulderTransitMessage(route, impactQuantity, noDrop);
+    if (transit) messages.push(transit);
+    if (noDrop) {
+        const impact = impactDropFloorObjects(x, y, route, { targetLevel: gate.targetLevel, route });
+        if (impact.message) messages.push(impact.message);
+        return { handled: false, consumed: false };
+    }
+
+    movingBoulder.otrapped = 0;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    movingBoulder.ox = gate.targetLevel.dnum;
+    movingBoulder.oy = gate.targetLevel.dlevel;
+    movingBoulder.owornmask = gate.where;
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== movingBoulder);
+    queueImpactDroppedObjects(gate.targetLevel, [movingBoulder], route);
+    const impact = impactDropFloorObjects(x, y, route, { targetLevel: gate.targetLevel, route });
+    if (impact.message) messages.push(impact.message);
+    newsym(x, y);
+    return { handled: true, consumed: true };
+}
+
+function deleteHeroRollingBoulderLandmineEngravingAt(x, y) {
+    if (!game.level?.engravings) return;
+    game.level.engravings = game.level.engravings.filter(engr => engr.x !== x || engr.y !== y);
+}
+
+function heroRollingBoulderTriggerLandmineAt(x, y, movingBoulder, messages) {
+    const trap = (game.level?.traps || []).find(item => item.ttyp === LANDMINE && item.tx === x && item.ty === y);
+    if (!trap) return false;
+    if (rn2(10) <= 2) return false;
+
+    const suffix = (!game.u?.blind && cansee(x, y)) ? '  The rolling boulder triggers a land mine.' : '';
+    messages.push(`KAABLAMM!!!${suffix}`);
+    game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
+    deleteHeroRollingBoulderLandmineEngravingAt(x, y);
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== movingBoulder);
+    if (!game.u?.blind && cansee(x, y)) newsym(x, y);
+    return true;
+}
+
+function heroRollingBoulderChainIntoBoulderAt(x, y, dx, dy, remainingDistance, movingBoulder, messages) {
+    const chainedBoulder = (game.level?.objects || []).find(obj =>
+        obj !== movingBoulder && !obj.buried && !obj.transientProjectile
+        && obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+    if (!chainedBoulder) return movingBoulder;
+
+    const fx = x + dx;
+    const fy = y + dy;
+    const nextLoc = isok(fx, fy) ? game.level?.at?.(fx, fy) : null;
+    const suffix = (!isok(fx, fy) || remainingDistance <= 0 || IS_OBSTRUCTED(nextLoc?.typ ?? ROOM))
+        ? ' as one boulder hits another'
+        : ' as one boulder sets another in motion';
+    if (!heroIsDeaf()) {
+        const visible = !game.u?.blind && cansee(x, y);
+        messages.push(`You hear a loud crash${visible ? suffix : ''}!`);
+    }
+
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== chainedBoulder);
+    chainedBoulder.otrapped = movingBoulder?.otrapped || 0;
+    placeHeroRollingBoulderAtRest(movingBoulder, x, y);
+    newsym(x, y);
+    return chainedBoulder;
+}
+
+function heroRollingBoulderPathResult(start, end, movingBoulder) {
+    const result = {
+        finalX: end?.x,
+        finalY: end?.y,
+        crossedHero: false,
+        messages: [],
+        boulder: movingBoulder,
+    };
+    if (!start || !end) return result;
+    const dx = Math.sign(end.x - start.x);
+    const dy = Math.sign(end.y - start.y);
+    let x = start.x;
+    let y = start.y;
+    for (let dist = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)); dist > 0; dist--) {
+        if (!isok(x + dx, y + dy)) {
+            result.finalX = x;
+            result.finalY = y;
+            break;
+        }
+        x += dx;
+        y += dy;
+        if (x === game.u?.ux && y === game.u?.uy) result.crossedHero = true;
+        const downGate = heroRollingBoulderApplyDownGateAt(x, y, result.boulder, result.messages);
+        if (downGate.handled) {
+            if (downGate.consumed) {
+                result.finalX = x;
+                result.finalY = y;
+                result.boulder = null;
+            }
+            break;
+        }
+        if (heroRollingBoulderTriggerLandmineAt(x, y, result.boulder, result.messages)) {
+            result.finalX = x;
+            result.finalY = y;
+            result.boulder = null;
+            break;
+        }
+        result.boulder = heroRollingBoulderChainIntoBoulderAt(x, y, dx, dy, dist - 1,
+            result.boulder, result.messages);
+        heroRollingBoulderBreakClosedDoorAt(x, y, result.messages, dist - 1);
+        const nextLoc = dist > 1 && isok(x + dx, y + dy) ? game.level?.at?.(x + dx, y + dy) : null;
+        if (nextLoc?.typ === IRONBARS) {
+            result.finalX = x;
+            result.finalY = y;
+            heroRollingBoulderHitIronBars(result.messages);
+            break;
+        }
+        if (nextLoc && (IS_STWALL(nextLoc.typ) || IS_TREE(nextLoc.typ))) {
+            result.finalX = x;
+            result.finalY = y;
+            if (!heroIsDeaf()) result.messages.push('Thump!');
+            break;
+        }
+    }
+    return result;
 }
 
 function heroRollingBoulderTrapResult(trap, prefix = '') {
@@ -46997,25 +47216,35 @@ function heroRollingBoulderTrapResult(trap, prefix = '') {
     const sound = heroIsDeaf() ? '' : 'Click!  ';
     const { boulder, start, end } = findRollingBoulderLaunchObject(trap);
     let released = false;
+    let crossedHero = false;
+    const motionMessages = [];
     if (boulder && end) {
-        boulder.ox = end.x;
-        boulder.oy = end.y;
+        const launched = splitHeroRollingBoulderLaunchObject(boulder);
+        if (wasKnown) launched.otrapped = 1;
+        const path = heroRollingBoulderPathResult(start, end, launched);
+        motionMessages.push(...path.messages);
+        placeHeroRollingBoulderAtRest(path.boulder, path.finalX, path.finalY);
         released = true;
+        crossedHero = path.crossedHero;
         vision_reset();
         vision_recalc(0);
         newsym(start.x, start.y);
-        newsym(end.x, end.y);
+        newsym(path.finalX, path.finalY);
     }
-    if (released) {
+    if (crossedHero) {
         rnd(20);
         rnd(20);
     }
-    const releaseMessage = released
+    const releaseMessage = released && crossedHero
         ? 'A boulder misses you.'
+        : released
+            ? ''
         : wasKnown ? 'No boulder was released.' : 'Fortunately for you, no boulder was released.';
+    const message = `${prefix ? `${prefix}  ` : ''}${sound}You trigger a rolling boulder trap!`;
+    const suffix = [releaseMessage, ...motionMessages].filter(Boolean).join('  ');
     return {
         released,
-        message: `${prefix ? `${prefix}  ` : ''}${sound}You trigger a rolling boulder trap!  ${releaseMessage}`,
+        message: suffix ? `${message}  ${suffix}` : message,
     };
 }
 

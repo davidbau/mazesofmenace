@@ -28,10 +28,14 @@ import {
 } from './symbols_file.js';
 import { vision_recalc, seeMonsters } from './vision.js';
 import {
+    nh5OclassFromObjectsLikeC, nh5ObjColorFromObjectsLikeC,
+} from './obj_oc_skill_data.js';
+import {
     COLNO, ROWNO, isok, TEMP_LIT, IN_SIGHT, STONE, ROOM, CORR, DOOR, STAIRS, LADDER,
     HWALL, VWALL, SDOOR, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, decgraphics,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
+    SV0, SV1, SV2, ROGUESET, H_IBM,
     SCORR, IRONBARS, TREE, POOL, MOAT, WATER, ICE,
     FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, LAVAPOOL, LAVAWALL,
     Is_rogue_level, Is_waterlevel, LA_DOWN, gs, H_DEC, PRIMARYSET, u_at,
@@ -137,6 +141,21 @@ function touristWelcomeMoreSnapLikeC() {
         && game.urole?.abbr === 'Tou'
         && base.includes('welcome to NetHack')
     );
+}
+
+/**
+ * C: tty 24×80 — when `--More--` is on row 1, only **ROWNO−1** map rows fit (y=1..20).
+ * Tourist welcome keeps all ROWNO rows (more packed on row 0 or absent from wire).
+ * @returns {{ y0: number, y1: number, moreOnRow1: boolean }}
+ */
+function mapYRangeForTtyWireLikeC() {
+    if (touristWelcomeMoreSnapLikeC()) return { y0: 0, y1: ROWNO, moreOnRow1: false };
+    const g = game;
+    if (g._showDefmoreOnTopline && g._toplineNeedMore) {
+        const fmt = formatPendingMessageLineLikeC();
+        if (fmt.includes('\n')) return { y0: 1, y1: ROWNO, moreOnRow1: true };
+    }
+    return { y0: 0, y1: ROWNO, moreOnRow1: false };
 }
 
 /**
@@ -339,9 +358,40 @@ function westApportAlcoveCornerGlyphLikeC(x, y, loc) {
     return null;
 }
 
+/** C: display.c HAS_ROGUE_IBM_GRAPHICS + has_rogue_color (ROGUESET + H_IBM, not DEC). */
+function hasRogueIbmGraphicsColorLikeC() {
+    const gfx = game.context?.currentgraphics ?? PRIMARYSET;
+    const sym = gs.symset[PRIMARYSET];
+    return Is_rogue_level(game.u?.uz)
+        && (gfx | 0) === ROGUESET
+        && sym?.handling === H_IBM
+        && !sym?.nocolor;
+}
+
+/** C: objects[otyp].oc_class when obj.oclass unset (floor mkobj). */
+function objectOclassForGlyphLikeC(obj) {
+    const oc = obj.oclass | 0;
+    if (oc) return oc;
+    return nh5OclassFromObjectsLikeC(obj.otyp | 0);
+}
+
+/** C: display.c has_rogue_color / obj_color — per-otyp on DEC rogue D:1. */
+function objectColorForGlyphLikeC(obj, oc) {
+    if (hasRogueIbmGraphicsColorLikeC()) {
+        if (oc === NH5_COIN_CLASS) return CLR_YELLOW;
+        if (oc === NH5_FOOD_CLASS) return CLR_RED;
+        return CLR_BRIGHT_BLUE;
+    }
+    const fromObj = nh5ObjColorFromObjectsLikeC(obj.otyp | 0);
+    if (fromObj != null && game.iflags?.use_color !== false) return fromObj | 0;
+    if (oc === NH5_COIN_CLASS) return CLR_YELLOW;
+    if (oc === NH5_TOOL_CLASS) return CLR_BRIGHT_BLUE;
+    return CLR_WHITE;
+}
+
 /** C: display.c has_rogue_color / obj_color — rogue D:1 object class colors. */
 function objColorForOclassLikeC(oc) {
-    if (Is_rogue_level(game.u?.uz)) {
+    if (hasRogueIbmGraphicsColorLikeC()) {
         if (oc === NH5_COIN_CLASS) return CLR_YELLOW;
         if (oc === NH5_FOOD_CLASS) return CLR_RED;
         return CLR_BRIGHT_BLUE;
@@ -349,6 +399,40 @@ function objColorForOclassLikeC(oc) {
     if (oc === NH5_COIN_CLASS) return CLR_YELLOW;
     if (oc === NH5_TOOL_CLASS) return CLR_BRIGHT_BLUE;
     return CLR_WHITE;
+}
+
+/**
+ * C: rogue D:1 shop interior — ROOM tiles with partial wall seenv keep corner/door
+ * glyphs from pre-edge wall memory (display.c docrt hero_memory; seed0102 welcome map).
+ */
+function shopInteriorRoomSeenvGlyphLikeC(x, y, loc) {
+    const uz = game.u?.uz;
+    const rogueD1 = Is_rogue_level(uz)
+        || ((uz?.dnum | 0) === 0 && (uz?.dlevel | 0) === 1);
+    if (!rogueD1 || loc.edge || !(loc.seenv | 0)) return null;
+    const seenv = loc.seenv | 0;
+    const lvl = game.level;
+    if (!lvl) return null;
+    /* C: seed0102 shop — seenv SV2 (0x04) two tiles east of west shop door → DEC trcorn `k`. */
+    if (seenv === SV2) {
+        const west = lvl.at((x | 0) - 1, y | 0);
+        const doorWest = lvl.at((x | 0) - 2, y | 0);
+        if (
+            west && (west.typ | 0) === ROOM && (west.seenv | 0) === SV2
+            && doorWest && (doorWest.typ | 0) === DOOR && doorWest.edge
+        ) {
+            return { ch: 'k', color: CLR_BROWN, dec: false };
+        }
+    }
+    if (seenv === (SV0 | SV1)) {
+        const north = lvl.at(x | 0, (y | 0) - 1);
+        if (north && (north.typ | 0) === STAIRS) {
+            const sym = cmapSymGlyphFromShowsymsLikeC(S_hcdoor, false)
+                ?? { ch: 'd', color: CLR_WHITE, dec: false };
+            return { ch: sym.ch, color: CLR_WHITE, dec: !!sym.dec };
+        }
+    }
+    return null;
 }
 
 /** C: display.c **`obj_to_glyph`** subset (tty **`map_glyphinfo`** / **`show_glyph`**). */
@@ -365,26 +449,31 @@ function mapObjectGlyphLikeC(obj) {
     if (ot === OTYP_BOULDER) return { ch: '`', color: CLR_WHITE, dec: false };
     if (ot === OBJ_ROCK) return { ch: '*', color: CLR_WHITE, dec: false };
     if (ot === OTYP_HEAVY_IRON_BALL || ot === OTYP_IRON_CHAIN) return { ch: '*', color: CLR_WHITE, dec: false };
-    const oc = obj.oclass | 0;
+    const oc = objectOclassForGlyphLikeC(obj);
     if (Is_rogue_level(game.u?.uz)) {
-        /* C: drawing.c def_r_oc_syms — rogue level object tty (judge IBM wire on D:1). */
-        if (oc === NH5_WEAPON_CLASS) return { ch: ')', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_GEM_CLASS || oc === NH5_ROCK_CLASS) return { ch: '*', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_COIN_CLASS) return { ch: '$', color: CLR_YELLOW, dec: false };
-        if (oc === NH5_POTION_CLASS) return { ch: '!', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_SCROLL_CLASS) return { ch: '?', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_ARMOR_CLASS) return { ch: '[', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_TOOL_CLASS) return { ch: ',', color: CLR_BRIGHT_BLUE, dec: false };
-        if (oc === NH5_FOOD_CLASS) return { ch: ':', color: CLR_RED, dec: false };
-        if (oc === NH5_WAND_CLASS) return { ch: '/', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_RING_CLASS) return { ch: '=', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_AMULET_CLASS) return { ch: '"', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_SPBOOK_CLASS) return { ch: '+', color: objColorForOclassLikeC(oc), dec: false };
-        if (oc === NH5_BALL_CLASS || oc === NH5_CHAIN_CLASS) return { ch: '*', color: objColorForOclassLikeC(oc), dec: false };
-        return { ch: ')', color: objColorForOclassLikeC(oc), dec: false };
+        if (hasRogueIbmGraphicsColorLikeC()) {
+            /* C: drawing.c def_r_oc_syms + has_rogue_color class palette. */
+            if (oc === NH5_WEAPON_CLASS) return { ch: ')', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_GEM_CLASS || oc === NH5_ROCK_CLASS) return { ch: '*', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_COIN_CLASS) return { ch: '$', color: CLR_YELLOW, dec: false };
+            if (oc === NH5_POTION_CLASS) return { ch: '!', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_SCROLL_CLASS) return { ch: '?', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_ARMOR_CLASS) return { ch: '[', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_TOOL_CLASS) return { ch: ',', color: CLR_BRIGHT_BLUE, dec: false };
+            if (oc === NH5_FOOD_CLASS) return { ch: ':', color: CLR_RED, dec: false };
+            if (oc === NH5_WAND_CLASS) return { ch: '/', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_RING_CLASS) return { ch: '=', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_AMULET_CLASS) return { ch: '"', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_SPBOOK_CLASS) return { ch: '+', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            if (oc === NH5_BALL_CLASS || oc === NH5_CHAIN_CLASS) return { ch: '*', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+            return { ch: ')', color: objectColorForGlyphLikeC(obj, oc), dec: false };
+        }
+        const symG = objClassSymGlyphFromShowsymsLikeC(oc);
+        if (symG) return { ...symG, color: objectColorForGlyphLikeC(obj, oc), dec: false };
+        return { ch: ')', color: objectColorForGlyphLikeC(obj, oc), dec: false };
     }
     const symG = objClassSymGlyphFromShowsymsLikeC(oc);
-    if (symG) return { ...symG, color: objColorForOclassLikeC(oc) };
+    if (symG) return { ...symG, color: objectColorForGlyphLikeC(obj, oc) };
     return { ch: ')', color: CLR_WHITE, dec: false };
 }
 
@@ -532,7 +621,8 @@ function terrainGlyphsEqual(a, b) {
  */
 function mapDispChForJudgeGridLikeC(loc) {
     const ch = loc?.disp_ch ?? ' ';
-    /* C tty on rogue D:1 records IBM wall bytes (`l`, `q`, …), not DEC→Unicode. */
+    /* C com_pager legacy map uses IBM wall bytes; welcome rogue D:1 uses DEC→Unicode elsewhere. */
+    if (game._legacyIntroActive) return ch;
     const decHandler = gs.symset[PRIMARYSET].handling === H_DEC;
     if (loc?.disp_decgfx && decHandler && !Is_rogue_level(game.u?.uz))
         return DEC_TO_UNICODE[ch] || ch;
@@ -603,6 +693,8 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
     case ROOM: {
         const alcoveCorner = westApportAlcoveCornerGlyphLikeC(x, y, loc);
         if (alcoveCorner) return alcoveCorner;
+        const shopInterior = shopInteriorRoomSeenvGlyphLikeC(x, y, loc);
+        if (shopInterior) return shopInterior;
         if (rogue) return { ch: '~', color: CLR_GRAY, dec: false };
         return cmapSymGlyphFromShowsymsLikeC(S_room, false)
             ?? { ch: '~', color: NO_COLOR, dec: true };
@@ -1065,6 +1157,11 @@ function showGlyphFromLevLikeC(x, y) {
         show_glyph_cell(x, y, 'I', NO_COLOR, false);
         return;
     }
+    const shopInterior = shopInteriorRoomSeenvGlyphLikeC(x, y, loc);
+    if (shopInterior) {
+        show_glyph_cell(x, y, shopInterior.ch, shopInterior.color, !!shopInterior.dec);
+        return;
+    }
     if (loc.remembered_glyph) {
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
@@ -1501,6 +1598,96 @@ export function paintStatusRowsForLegacyIntro(display) {
         display.setCell(c, 23, s2[c], NO_COLOR, 0);
 }
 
+/** C: com_pager legacy — west strip IBM bytes recorded with DEC SO/SI (cols 20–22 map). */
+function legacyWestStripDecgfxAtJudgeCellLikeC(col, row) {
+    if (row < 1 || row > ROWNO || !game.level) return false;
+    const x = (col | 0) + 1;
+    const y = (row | 0) - 1;
+    if (x < 20 || x > 22) return false;
+    return !!game.level.at(x, y)?.disp_decgfx;
+}
+
+/**
+ * Like frozen `terminal.serialize()` but emits `\x0e`/`\x0f` when `decAtCell(col,row)` is true.
+ * @param {import('./game_display.js').GameDisplay} display
+ * @param {(col: number, row: number) => boolean} decAtCell
+ */
+function serializeDisplayGridWithDecSoSiLikeC(display, decAtCell) {
+    const term = display?.terminal;
+    if (!term?.grid) return term?.serialize?.() ?? '';
+
+    const colorToFg = (color) => {
+        if (color === 8 || color < 0 || color > 15) return 39;
+        return color < 8 ? 30 + color : 90 + (color - 8);
+    };
+    const sgrTransition = (curFg, curAttr, wantFg, wantAttr) => {
+        if (curFg === wantFg && curAttr === wantAttr) return '';
+        const wantBold = (wantAttr & 2) !== 0;
+        const wantUnder = (wantAttr & 4) !== 0;
+        const wantInv = (wantAttr & 1) !== 0;
+        const curBold = (curAttr & 2) !== 0;
+        const curUnder = (curAttr & 4) !== 0;
+        const curInv = (curAttr & 1) !== 0;
+        const needReset = (curBold && !wantBold) || (curUnder && !wantUnder) || (curInv && !wantInv);
+        const codes = [];
+        if (needReset) {
+            codes.push(0);
+            if (wantBold) codes.push(1);
+            if (wantUnder) codes.push(4);
+            if (wantInv) codes.push(7);
+            if (wantFg !== 39) codes.push(wantFg);
+        } else {
+            if (wantBold && !curBold) codes.push(1);
+            if (wantUnder && !curUnder) codes.push(4);
+            if (wantInv && !curInv) codes.push(7);
+            if (wantFg !== curFg) codes.push(wantFg);
+        }
+        return codes.length ? `\x1b[${codes.join(';')}m` : '';
+    };
+
+    let lastRow = 0;
+    for (let r = 0; r < term.rows; r++) {
+        for (let c = 0; c < term.cols; c++) {
+            if (term.grid[r][c].ch !== ' ') { lastRow = r; break; }
+        }
+    }
+    let out = '';
+    let curFg = 39;
+    let curAttr = 0;
+    let activeDec = false;
+    for (let r = 0; r <= lastRow; r++) {
+        let lastCol = -1;
+        for (let c = term.cols - 1; c >= 0; c--) {
+            if (term.grid[r][c].ch !== ' ') { lastCol = c; break; }
+        }
+        if (lastCol < 0) { if (r < lastRow) out += '\n'; continue; }
+        let firstCol = 0;
+        for (let c = 0; c <= lastCol; c++) {
+            if (term.grid[r][c].ch !== ' ') { firstCol = c; break; }
+        }
+        if (firstCol > 4) out += `\x1b[${firstCol}C`;
+        else if (firstCol > 0) out += ' '.repeat(firstCol);
+        for (let c = firstCol; c <= lastCol; c++) {
+            const cell = term.grid[r][c];
+            const wantDec = !!decAtCell?.(c, r);
+            if (wantDec && !activeDec) { out += '\x0e'; activeDec = true; }
+            else if (!wantDec && activeDec) { out += '\x0f'; activeDec = false; }
+            const wantFg = colorToFg(cell.color);
+            const wantAttr = cell.attr | 0;
+            out += sgrTransition(curFg, curAttr, wantFg, wantAttr);
+            curFg = wantFg;
+            curAttr = wantAttr;
+            out += cell.ch;
+        }
+        if (activeDec) { out += '\x0f'; activeDec = false; }
+        out += sgrTransition(curFg, curAttr, 39, 0);
+        curFg = 39;
+        curAttr = 0;
+        if (r < lastRow) out += '\n';
+    }
+    return out;
+}
+
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
     let output = '';
@@ -1528,16 +1715,58 @@ export function serialize_terminal_grid(display) {
     return output;
 }
 
+/**
+ * C: com_pager leaves the west wall strip from docrt; docrt hero_memory can leave
+ * IN_SIGHT bleed east of the quest text column — clear before overlay (seed0102).
+ */
+function clearLegacyMapBleedEastOfQuestStripLikeC(display) {
+    if (!display?.grid) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 23; x < COLNO; x++) {
+            display.setCell(x - 1, y + 1, ' ', NO_COLOR, 0);
+        }
+    }
+}
+
+/** Reapply west wall strip glyphs from `lev->disp_ch` after bleed clear (cols 20–22, DEC pairs). */
+function paintLegacyQuestWestStripFromDispLikeC(display) {
+    if (!display?.grid || !game.level) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 20; x <= 22; x++) {
+            const loc = game.level.at(x, y);
+            if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+            display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
+                loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+        }
+    }
+}
+
+/** Paint map cells from `lev->disp_ch` into judge grid (legacy intro / tutorial paths). */
+function paintMapGridFromLevelDispLikeC(display) {
+    if (!display?.grid || !game.level) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level.at(x, y);
+            if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+            display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
+                loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+        }
+    }
+}
+
 // ── Build screen output ──
 function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
 
-    /* C allmain.c newgame: `com_pager("legacy")` full-screen menu before `welcome(TRUE)`. */
+    /* C: com_pager("legacy") overlays quest text on the docrt map — do not cls/repaint full map. */
     if (game._legacyIntroActive) {
+        clearLegacyMapBleedEastOfQuestStripLikeC(display);
+        paintLegacyQuestWestStripFromDispLikeC(display);
         paintLegacyIntroIntoDisplay(display);
         paintStatusRowsForLegacyIntro(display);
-        game._screen_output = display.terminal?.serialize ? display.terminal.serialize() : '';
+        game._screen_output = serializeDisplayGridWithDecSoSiLikeC(
+            display, legacyWestStripDecgfxAtJudgeCellLikeC);
         return;
     }
 
@@ -1611,11 +1840,14 @@ function _buildScreenOutput() {
 
     const g = game;
     let output = '';
-    // Row 0: message (C tty WIN_MESSAGE; `update_topl` may concatenate short plines)
-    output += formatPendingMessageLineLikeC() + '\n';
+    // Row 0: message (C tty WIN_MESSAGE; tourist welcome wire omits literal `--More--`)
+    output += (touristWelcomeMoreSnapLikeC()
+        ? (g._pending_message || '')
+        : formatPendingMessageLineLikeC()) + '\n';
 
-    // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
-    for (let y = 0; y < ROWNO; y++) {
+    // Map rows — skip lev y=0 when `--More--` occupies row 1 (24-line tty budget).
+    const mapRange = mapYRangeForTtyWireLikeC();
+    for (let y = mapRange.y0; y < mapRange.y1; y++) {
         output += render_map_row(y) + '\n';
     }
 
@@ -1628,18 +1860,31 @@ function _buildScreenOutput() {
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
         display.clearScreen();
-        // Message line
-        const msg = messageLine0ForJudgeGridLikeC();
-        for (let c = 0; c < Math.min(msg.length, display.cols); c++)
-            display.setCell(c, 0, msg[c], NO_COLOR, 0);
-        // Map — judge grid matches C recorder bytes (no DEC → Unicode conversion)
-        for (let y = 0; y < ROWNO; y++) {
-            for (let x = 1; x < COLNO; x++) {
-                const loc = game.level?.at(x, y);
-                if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
-                display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
-                    loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+        const mapRange = mapYRangeForTtyWireLikeC();
+        const fmt = formatPendingMessageLineLikeC();
+        const nl = fmt.indexOf('\n');
+        const msg = (mapRange.moreOnRow1 && nl >= 0)
+            ? fmt.slice(0, nl)
+            : messageLine0ForJudgeGridLikeC();
+        if (mapRange.moreOnRow1 && nl >= 0) {
+            const head = fmt.slice(0, nl);
+            for (let c = 0; c < Math.min(head.length, display.cols); c++)
+                display.setCell(c, 0, head[c], NO_COLOR, 0);
+            const tail = fmt.slice(nl + 1);
+            for (let c = 0; c < Math.min(tail.length, display.cols); c++)
+                display.setCell(c, 1, tail[c], NO_COLOR, 0);
+            for (let y = mapRange.y0; y < mapRange.y1; y++) {
+                for (let x = 1; x < COLNO; x++) {
+                    const loc = game.level?.at(x, y);
+                    if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+                    display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
+                        loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                }
             }
+        } else {
+            for (let c = 0; c < Math.min(msg.length, display.cols); c++)
+                display.setCell(c, 0, msg[c], NO_COLOR, 0);
+            paintMapGridFromLevelDispLikeC(display);
         }
         // Status lines
         const s1 = statusLine1ForPaintLikeC();
@@ -1655,6 +1900,10 @@ function _buildScreenOutput() {
             || msg.includes('Press a key to continue');
         if (touristWelcomeMoreSnapLikeC() && g.u?.ux > 0) {
             display.setCursor(g.u.ux - 1, g.u.uy + 1);
+            display.cursorVisible = true;
+        } else if (mapRange.moreOnRow1 && g._showDefmoreOnTopline && g._toplineNeedMore) {
+            const tail = nl >= 0 ? fmt.slice(nl + 1) : DEFMORE_STR;
+            display.setCursor(Math.min(tail.length, display.cols - 1), 1);
             display.cursorVisible = true;
         } else if (g._showDefmoreOnTopline || g._toplineNeedMore || (msg.length > 0 && queryTopl)) {
             syncTtyCursorForJudgeLikeC(display);
