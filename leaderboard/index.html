@@ -379,6 +379,8 @@ td.pct {
   <th class="pct">PRNG</th>
   <th class="pct">Screen</th>
   <th class="pct supplemental" title="Supplemental count of matched animation frames. Not part of the official ranking.">Anim<sup>†</sup></th>
+  <th class="pct supplemental" title="Linear fit (startup + per-move) on the offline scoring path. Not part of the official ranking.">Speed<sup>†</sup></th>
+  <th class="pct supplemental" title="Per-keystroke browser-play check. A fork is &lsquo;playable&rsquo; if the aggregate cost stays under 1 ms/move; slower than that and the same code runs but is unusable in a real browser. Not part of the official ranking.">Playable<sup>†</sup></th>
   <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">88</span></span></th>
   <th class="sparkline">Progress</th>
 </tr>
@@ -405,6 +407,18 @@ td.pct {
   than a percentage so a fork that opts in stays visible even when most
   contestants haven&rsquo;t wired up the API. Not part of the official
   ranking.
+  <strong>Speed<sup>&dagger;</sup></strong> is a linear fit on the offline
+  scoring path of the form <em>startup_ms + per_move_ms &times; moves</em>,
+  computed against the same 88 sessions every fork is scored on.
+  Two roughly-comparable numbers in one cell: how much fixed cost a
+  session pays before the first move, and how much each move adds.
+  <strong>Playable<sup>&dagger;</sup></strong> is a per-keystroke
+  browser-play check: drives the fork the same way the browser does
+  (one moveloop call per keypress) and asks whether the aggregate
+  ms/move stays under 1.0&nbsp;ms. Forks slower than that score fine
+  offline but feel laggy when you actually hold down a movement key.
+  Neither column is part of the official ranking; both are reported as
+  diagnostics.
   <strong>Play</strong> opens that contestant&rsquo;s build in your browser.
   <strong>Tests</strong> opens the Session Viewer scoped to the fork &mdash;
   scrub through each public session frame by frame and see where it diverges
@@ -558,7 +572,7 @@ async function loadLeaderboard() {
         const appendCategoryRow = (label) => {
             const tr = document.createElement('tr');
             tr.className = 'cat-row';
-            tr.innerHTML = `<th colspan="10">CATEGORY: ${label}</th>`;
+            tr.innerHTML = `<th colspan="12">CATEGORY: ${label}</th>`;
             tbody.appendChild(tr);
         };
 
@@ -602,6 +616,19 @@ async function loadLeaderboard() {
                 const animMatched  = (pub.animMatched || 0) + (held.animMatched || 0);
                 const animTotalRow = (pub.animTotal   || 0) + (held.animTotal   || 0);
 
+                // Speed: linear fit on the offline scoring path, of the form
+                //   total_session_ms = startup_ms + per_move_ms * moves
+                // The label is e.g. "170+0.20/turn". Computed by the judge
+                // against the same 44 public sessions every fork is scored on,
+                // so the values are directly comparable between forks.
+                const speed = team.speed || null;
+                // Playability: per-keystroke browser-play check. The runner
+                // calls moveloop_core() once per move (the same path the
+                // browser uses) and reports overall ms/move against a 1.0
+                // ms/move threshold. Forks slower than that score fine
+                // offline but feel unusable in a real browser.
+                const playability = team.playability || null;
+
                 const playUrl   = '/play/' + team.name + '/';
                 const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
 
@@ -621,6 +648,20 @@ async function loadLeaderboard() {
                             ? `<span class="${pctClass(animTotalRow > 0 ? animMatched / animTotalRow * 100 : 0)}">${fmt(animMatched)}</span>`
                             : '<span class="hidden">0</span>'}
                     </td>
+                    <td class="pct supplemental" title="${speed
+                            ? `Linear fit on offline scoring: total_session_ms = ${speed.startup_ms} + ${speed.per_move_ms} × moves (R² = ${speed.r2}, n = ${speed.sessions} sessions).`
+                            : 'Speed not yet measured for this fork.'}">
+                        ${speed
+                            ? `<span>${speed.label || `${Math.round(speed.startup_ms)}+${(speed.per_move_ms ?? 0).toFixed(2)}/turn`}</span>`
+                            : '<span class="hidden">&mdash;</span>'}
+                    </td>
+                    <td class="pct supplemental" title="${playability
+                            ? `${playability.playable ? 'Playable' : 'Not playable'} in a real browser: ${playability.ms_per_move?.toFixed(2)} ms/move overall (threshold &lt; ${playability.threshold_ms_per_move} ms/move), ${fmt(playability.total_moves)} moves across ${playability.sessions} sessions.`
+                            : 'Playability not yet measured for this fork.'}">
+                        ${playability
+                            ? `<span class="${playability.playable ? 'pass' : 'fail'}">${playability.playable ? 'yes' : 'no'}</span>`
+                            : '<span class="hidden">&mdash;</span>'}
+                    </td>
                     <td class="pct sessions" title="Sessions fully matched (public + held-out).">
                         <span class="${pctClass(combinedSessPct)}">${pub.passing || 0}</span>
                         <span class="pts-max">+ ${heldPassing}</span>
@@ -639,7 +680,7 @@ async function loadLeaderboard() {
         });
 
         if (rendered === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
 
         appendCategoryRow('NEXT PLAYER');
@@ -650,7 +691,7 @@ async function loadLeaderboard() {
             <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
             <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
             <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
-            <td class="you-cta" colspan="6"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+            <td class="you-cta" colspan="8"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
         `;
         tbody.appendChild(youTr);
     } catch (e) {
