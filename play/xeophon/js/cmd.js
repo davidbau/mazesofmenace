@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_CLUB, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BROAD_SWORD, P_CLUB, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -19810,6 +19810,7 @@ const HERO_THROWN_WEAPON_MONSTER_DATA = new Map([
     ['javelin', { smallDie: 6, largeDie: 6, hitbon: 0, skill: P_SPEAR, skillName: 'spear' }],
     ['war hammer', { smallDie: 4, smallAdd: 1, largeDie: 4, hitbon: 0, skill: P_HAMMER, skillName: 'hammer' }],
     ['aklys', { smallDie: 6, largeDie: 3, hitbon: 0, skill: P_CLUB, skillName: 'club' }],
+    ['boomerang', { smallDie: 9, largeDie: 9, hitbon: 0, skill: P_BOOMERANG, skillName: 'boomerang' }],
 ]);
 
 function heroProjectileMonsterSizeValue(mon) {
@@ -19973,7 +19974,53 @@ function heroProjectileObjectIsWeaponLike(obj) {
 }
 
 function heroThrownWeaponHitValue(obj, mon) {
-    return heroProjectileBaseHitValue(obj, mon) + 2;
+    return heroProjectileBaseHitValue(obj, mon) + (tossUpWeaponObjectKey(obj) === 'boomerang' ? 4 : 2);
+}
+
+function heroThrowDirectionIndex(dir) {
+    for (let i = 0; i < N_DIRS; i++)
+        if (xdir[i] === dir?.dx && ydir[i] === dir?.dy) return i;
+    return -1;
+}
+
+function heroThrowDirectionClamp(dir) {
+    return ((dir % N_DIRS) + N_DIRS) % N_DIRS;
+}
+
+function heroThrownBoomerangPathBlocked(loc) {
+    const closedDoor = loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED));
+    return !loc || !ZAP_POS(loc.typ) || closedDoor;
+}
+
+function heroThrownBoomerangFlightResult(obj, dir, ux, uy) {
+    if (tossUpWeaponObjectKey(obj) !== 'boomerang' || heroIsUnderwaterForThrow()) return { handled: false };
+    let dirIndex = heroThrowDirectionIndex(dir);
+    if (dirIndex < 0) return { handled: false };
+    let x = ux;
+    let y = uy;
+    const counterclockwise = String(game.u?.uhandedness || 'right').toLowerCase() !== 'left';
+    for (let ct = 0; ct < 10; ct++) {
+        dirIndex = heroThrowDirectionClamp(dirIndex);
+        const dx = xdir[dirIndex];
+        const dy = ydir[dirIndex];
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) return { handled: true, x: x - dx, y: y - dy };
+        const targetMon = (game.level?.monsters || []).find(mon => mon.mx === x && mon.my === y) || null;
+        if (targetMon) return { handled: true, x, y, targetMon };
+        const loc = game.level?.at(x, y);
+        if (heroThrownBoomerangPathBlocked(loc)) return { handled: true, x: x - dx, y: y - dy };
+        if (x === ux && y === uy) {
+            const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+            if (heroIsFumbling()) return { handled: true, x, y, failedCatch: true };
+            if (rn2(20) >= dex) return { handled: true, x, y, failedCatch: true };
+            return { handled: true, x, y, caught: true };
+        }
+        if (loc?.typ === SINK) return { handled: true, x, y, message: heroIsDeaf() ? '' : 'Klonk!' };
+        if (ct % 5 !== 0)
+            dirIndex = counterclockwise ? heroThrowDirectionClamp(dirIndex - 1) : heroThrowDirectionClamp(dirIndex + 1);
+    }
+    return { handled: true, x, y };
 }
 
 function heroKickedWeaponHitValue(obj, mon) {
@@ -23886,6 +23933,17 @@ function isPickDigItem(item) {
 
 function itemIsWielded(item) {
     return !!(item && (item.wielded || item.line?.includes('weapon in') || item.line?.includes('(wielded)')));
+}
+
+function itemIsPrimaryWielded(item) {
+    if (!item) return false;
+    const line = String(item.line || '');
+    return !!(item.wielded || /\b(?:weapon|wielded) in (?:right hand|hands)\b/.test(line)
+        || line.includes('(wielded)'));
+}
+
+function itemIsPrimaryWieldedAklys(item) {
+    return itemIsPrimaryWielded(item) && tossUpWeaponObjectKey(item) === 'aklys';
 }
 
 function isTwoHandedWieldItem(item) {
@@ -66651,26 +66709,49 @@ export async function rhack(_cmd) {
         }
         const name = inventoryItemName(item);
         const lowerName = name.toLowerCase();
-	        const ux = game.u?.ux || 0;
-	        const uy = game.u?.uy || 0;
-		        let ox = ux;
-		        let oy = uy;
-		        let targetMon = null;
+        const ux = game.u?.ux || 0;
+        const uy = game.u?.uy || 0;
+        const boomerangFlight = heroThrownBoomerangFlightResult(item, dir, ux, uy);
+        if (boomerangFlight.caught) {
+            exerciseHeroProjectileHitDexterity();
+            newsym(ux, uy);
+            await setMessage('You skillfully catch the boomerang.');
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            clearThrowCountState();
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
+        const returningAklysThrow = itemIsPrimaryWieldedAklys(item);
+        let ox = ux;
+        let oy = uy;
+        let targetMon = null;
         let ironBarsImpact = null;
-        for (let step = 0; step < 8; step++) {
-            const nx = ox + dir.dx;
-            const ny = oy + dir.dy;
-            const loc = game.level?.at(nx, ny);
-            if (loc?.typ === IRONBARS) {
-                ironBarsImpact = { x: ox, y: oy, barsX: nx, barsY: ny, pointBlank: step === 0 };
-                break;
+        const throwRange = returningAklysThrow ? 4 : 8;
+        let flightImpactMessage = '';
+        if (boomerangFlight.handled) {
+            ox = boomerangFlight.x ?? ox;
+            oy = boomerangFlight.y ?? oy;
+            targetMon = boomerangFlight.targetMon || null;
+            flightImpactMessage = boomerangFlight.message || '';
+        } else {
+            for (let step = 0; step < throwRange; step++) {
+                const nx = ox + dir.dx;
+                const ny = oy + dir.dy;
+                const loc = game.level?.at(nx, ny);
+                if (loc?.typ === IRONBARS) {
+                    ironBarsImpact = { x: ox, y: oy, barsX: nx, barsY: ny, pointBlank: step === 0 };
+                    break;
+                }
+                if (!loc || IS_OBSTRUCTED(loc.typ)) break;
+                ox = nx;
+                oy = ny;
+                targetMon = (game.level?.monsters || []).find(mon => mon.mx === ox && mon.my === oy) || null;
+                if (targetMon) break;
             }
-	            if (!loc || IS_OBSTRUCTED(loc.typ)) break;
-	            ox = nx;
-	            oy = ny;
-	            targetMon = (game.level?.monsters || []).find(mon => mon.mx === ox && mon.my === oy) || null;
-	            if (targetMon) break;
-	        }
+        }
         if (shopBillableGold(item)) {
             const amount = Math.max(1, Math.trunc(Number(game._throw_count || game._goldCount || item.quan || 1)));
             const thrownGold = {
@@ -66720,7 +66801,7 @@ export async function rhack(_cmd) {
             color: item.cls === 'food' ? CLR_ORANGE : item.color || (item.cls === 'gem' ? CLR_GRAY : CLR_CYAN),
         };
         const combatObject = item.cls === 'weapon' || item.cls === 'gem' || item.glyph === ')' || item.otyp === GEM_CLASS;
-        let impactMessage = '';
+        let impactMessage = flightImpactMessage;
         let impactConsumedThrownObject = false;
         let impactObjectHit = false;
         let impactPassiveTarget = null;
@@ -66891,6 +66972,54 @@ export async function rhack(_cmd) {
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game.context.move = 0;
             return;
+        }
+        if (returningAklysThrow) {
+            const returnMessage = `${floorObjectTheSubject({ ...thrownObject, quan: 1 })} returns to your hand!`;
+            const failMessage = `${floorObjectTheSubject({ ...thrownObject, quan: 1 })} fails to return!`;
+            if (rn2(100)) {
+                if (!heroIsConfused() && !heroIsStunned() && !heroIsBlind()
+                    && !heroIsHallucinating() && !heroIsFumbling() && rn2(100)) {
+                    item.wielded = true;
+                    item.alternate = false;
+                    item.quivered = false;
+                    if (!/\b(?:weapon|wielded) in (?:right hand|hands)\b/.test(String(item.line || '')))
+                        item.line = normalInventoryLine({ ...item, line: '' });
+                    newsym(ox, oy);
+                    await setMessage([impactMessage, returnMessage].filter(Boolean).join('  '));
+                    game._command_mode = null;
+                    game._throw_item_letter = null;
+                    clearThrowCountState();
+                    game._resume_time_after_more = 0;
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                    game.context.move = 0;
+                    return;
+                }
+                const armHit = !!rn2(2);
+                const badCatchMessage = armHit
+                    ? `${floorObjectTheSubject({ ...thrownObject, quan: 1 })} flies back toward you, hitting your arm!`
+                    : `${floorObjectTheSubject({ ...thrownObject, quan: 1 })} returns back to you, landing at your feet.`;
+                if (armHit) {
+                    const damage = 1 + rnd(3);
+                    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+                }
+                curseLoadstoneLeavingInventory(thrownObject);
+                if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
+                stopCarriedFigurineTimerOnLeave(thrownObject);
+                const landing = landProjectileObjectWithShopHandling(thrownObject, ux, uy, { skipTopBreak: true });
+                const landingMessage = landing.messages.join('  ');
+                newsym(ux, uy);
+                removeInventoryItem(item);
+                await setMessage([impactMessage, badCatchMessage, landingMessage].filter(Boolean).join('  '),
+                    !!landingMessage);
+                game._command_mode = null;
+                game._throw_item_letter = null;
+                clearThrowCountState();
+                game._resume_time_after_more = 0;
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                game.context.move = 0;
+                return;
+            }
+            impactMessage = [impactMessage, failMessage].filter(Boolean).join('  ');
         }
         const projectileBreakRoll = !impactObjectHit && !projectileLandingIsSoft(ox, oy)
             ? rn2(100) // C breaktest: obj_resists() on hard landing.
