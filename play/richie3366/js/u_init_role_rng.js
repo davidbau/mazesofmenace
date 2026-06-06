@@ -911,9 +911,10 @@ export function consumeTouristHumanIniInvUinitRoleRngLikeC() {
     mksobjInitWeaponLikeC(OTYP_DART, false);
     game._touristIniDartQuan = trquanMinMaxLikeC(21, 40);
 
+    game._touristIniFoodOtyps = [];
     const foodN = trquanMinMaxLikeC(10, 10);
     for (let i = 0; i < foodN; i++) {
-        iniInvOneMkobjFoodUndefDrawLikeC();
+        game._touristIniFoodOtyps.push(iniInvOneMkobjFoodUndefDrawLikeC());
     }
 
     const potN = trquanMinMaxLikeC(2, 2);

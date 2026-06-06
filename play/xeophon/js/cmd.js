@@ -729,6 +729,161 @@ function applyChestTrapElectricPayload(messages) {
     return { fatal: true, more: true };
 }
 
+function heroHasFireResistance() {
+    if (game.u?.fireResistance) return true;
+    return (game.inventory || []).some(item => activeInventoryResistanceKind(item) === 'fire');
+}
+
+function chestTrapBoxInPool(box) {
+    if (!box) return false;
+    const loc = game.level?.at?.(box.ox ?? game.u?.ux ?? 0, box.oy ?? game.u?.uy ?? 0);
+    return !!loc && (IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT);
+}
+
+function applyChestTrapFireDamage(messages, damage, deathCause) {
+    if (!damage || game.u?.uinvulnerable) return {};
+    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+    if ((game.u?.uhp || 0) > 0) return {};
+    return heroDartTrapFatalResult(messages, deathCause);
+}
+
+function applyChestTrapFirePayload(box, messages) {
+    const origDamage = d(2, 4);
+    if (chestTrapBoxInPool(box)) {
+        messages.push(`A cascade of steamy bubbles erupts from the ${chestTrapObjectName(box)}!`);
+        if (heroHasFireResistance()) {
+            messages.push('You are uninjured.');
+            return {};
+        }
+        return applyChestTrapFireDamage(messages, rnd(3), 'killed by boiling water');
+    }
+
+    messages.push(`A tower of flame bursts from the ${chestTrapObjectName(box)}!`);
+    let damage;
+    if (heroHasFireResistance()) {
+        damage = rn2(2);
+        if (!damage) messages.push('You are uninjured.');
+    } else {
+        damage = d(2, 4);
+        if (game.u) {
+            const hpMin = 1;
+            const oldMax = game.u.uhpmax || hpMin;
+            const loss = rn2(Math.min(oldMax, damage + 1));
+            game.u.uhpmax = Math.max(hpMin, oldMax - loss);
+            game.u.uhp = Math.min(game.u.uhp || hpMin, game.u.uhpmax);
+        }
+    }
+
+    const directResult = applyChestTrapFireDamage(messages, damage, 'killed by a tower of flame');
+    if (directResult.fatal || directResult.lifeSaving) return directResult;
+
+    const fireInventory = fireDamageInventory(origDamage, false, false, { allowLifeSaving: true });
+    messages.push(...fireInventory.messages);
+    if (fireInventory.lifeSaving || fireInventory.fatal) {
+        game._death_cause = fireInventory.deathCause || 'killed by a tower of flame';
+        return {
+            lifeSaving: !!fireInventory.lifeSaving,
+            fatal: !!fireInventory.fatal,
+            more: true,
+        };
+    }
+
+    return applyChestTrapFireDamage(messages, fireInventory.damage, fireInventory.deathCause || 'killed by a tower of flame');
+}
+
+function chestTrapExplosionObjectsAt(box) {
+    const x = box?.ox ?? game.u?.ux ?? 0;
+    const y = box?.oy ?? game.u?.uy ?? 0;
+    return (game.level?.objects || []).filter(obj => obj.ox === x && obj.oy === y);
+}
+
+function chestTrapExplosionAddShopCharges(charges, source, obj, shkp, options = {}) {
+    const itemCharges = lostShopMerchandiseChargesForObject(source, obj, shkp, new Set(), options);
+    for (const [owner, value] of itemCharges)
+        addLostShopMerchandiseCharge(charges, owner, value);
+}
+
+function chestTrapExplosionShopContext(box, floorObjects) {
+    const x = box?.ox ?? game.u?.ux ?? 0;
+    const y = box?.oy ?? game.u?.uy ?? 0;
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return null;
+    const source = { ox: x, oy: y };
+    const charges = new Map();
+    chestTrapExplosionAddShopCharges(charges, source, box, shkp);
+    for (const obj of floorObjects) {
+        chestTrapExplosionAddShopCharges(charges, source, obj, shkp, obj === box ? { includeContents: false } : {});
+    }
+    return { shkp, charges };
+}
+
+function chestTrapExplosionShopMessage(context) {
+    if (!context?.charges?.size) return '';
+    const insider = heroInShopOwnedBy(context.shkp);
+    let charged = 0;
+    for (const [shkp, value] of context.charges)
+        charged += chargeShopkeeperForLostMerchandise(shkp, value, {
+            peaceful: insider && shopkeeperPeacefulForDebt(context.shkp),
+        });
+    if (!(charged > 0)) return '';
+    if (insider) return `You owe ${charged} ${shopCurrency(charged)} for objects destroyed.`;
+    if (shopkeeperPeacefulForDebt(context.shkp)) {
+        context.shkp.angry = true;
+        context.shkp.hostile = true;
+        context.shkp.mpeaceful = 0;
+        context.shkp.following = 1;
+    }
+    return `You caused ${charged} ${shopCurrency(charged)} worth of damage!`;
+}
+
+function chestTrapExplosionObjectResistsDeletion(obj) {
+    if (drainItemAlwaysResists(obj)) return true;
+    rn2(100);
+    return false;
+}
+
+function wakeNearbyMonstersFromChestTrapExplosion() {
+    const distance = Math.max(0, Math.trunc(Number(game.u?.ulevel || 1))) * 20;
+    for (const sleeper of game.level?.monsters || []) {
+        if (!sleeper || sleeper.dead || (sleeper.mhp != null && sleeper.mhp <= 0)) continue;
+        const dx = (sleeper.mx || 0) - (game.u?.ux || 0);
+        const dy = (sleeper.my || 0) - (game.u?.uy || 0);
+        if (distance !== 0 && dx * dx + dy * dy >= distance) continue;
+        sleeper.msleeping = 0;
+        if (!(sleeper.unique || sleeper.data?.unique || sleeper.data?.uniq))
+            sleeper.mstrategy = 0;
+    }
+}
+
+function deleteChestTrapExplosionObjects(box, floorObjects) {
+    const doomed = new Set();
+    clearLiquidFlowContainerContents(box);
+    for (const obj of floorObjects) {
+        if (chestTrapExplosionObjectResistsDeletion(obj)) continue;
+        doomed.add(obj);
+        clearLiquidFlowContainerContents(obj);
+    }
+    game.level.objects = (game.level?.objects || []).filter(obj => !doomed.has(obj));
+    for (const obj of doomed) newsym(obj.ox, obj.oy);
+    return doomed.has(box);
+}
+
+function applyChestTrapExplosionPayload(box, messages) {
+    messages.push(`The ${chestTrapObjectName(box)} explodes!`);
+    const floorObjects = chestTrapExplosionObjectsAt(box);
+    const shopContext = chestTrapExplosionShopContext(box, floorObjects);
+    const boxDestroyed = deleteChestTrapExplosionObjects(box, floorObjects);
+    wakeNearbyMonstersFromChestTrapExplosion();
+
+    const damage = maybeHalfPhysicalDamage(d(6, 6));
+    const damageResult = applyChestTrapFireDamage(messages, damage, `killed by an exploding ${chestTrapObjectName(box)}`);
+    if (damageResult.fatal) return { ...damageResult, boxDestroyed };
+    exerciseAttribute(A_STR, false);
+    const shopMessage = chestTrapExplosionShopMessage(shopContext);
+    if (shopMessage) messages.push(shopMessage);
+    return { ...damageResult, boxDestroyed };
+}
+
 function chestTrapPoisonTell(attr) {
     if (attr === A_STR) return (game.u?.acurr?.a?.[A_STR] === STR19(25))
         ? 'You feel innately weaker!'
@@ -751,6 +906,7 @@ function applyChestTrapPoison(messages, {
     fatal,
     deathCause,
 }) {
+    const cloud = reason === 'gas cloud';
     if (!/poison/i.test(reason)) messages.push(`The ${reason} was poisoned!`);
     if (heroHasPoisonResistance()) {
         messages.push("The poison doesn't seem to affect you.");
@@ -776,7 +932,8 @@ function applyChestTrapPoison(messages, {
     }
 
     if (roll > 5) {
-        const loss = rn1(10, 6);
+        let loss = rn1(10, 6);
+        if (cloud && heroHasWetWornTowel()) loss = Math.trunc((loss + 1) / 2);
         if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
         if ((game.u?.uhp || 0) <= 0)
             return heroDartTrapFatalResult(messages, deathCause);
@@ -787,8 +944,8 @@ function applyChestTrapPoison(messages, {
     return {};
 }
 
-function applyChestTrapNeedlePayload(messages) {
-    messages.push('You feel a needle prick your finger.');
+function applyChestTrapNeedlePayload(messages, bodyPart = 'finger') {
+    messages.push(`You feel a needle prick your ${bodyPart}.`);
     const result = applyChestTrapPoison(messages, {
         reason: 'needle',
         attr: A_CON,
@@ -799,7 +956,37 @@ function applyChestTrapNeedlePayload(messages) {
     return result;
 }
 
-function applyChestTrapPayload(box, { disarm = true } = {}) {
+function heroOkWithChestTrapPoisonGas() {
+    const form = polyselfForm() || {};
+    const magicalBreathing = (game.inventory || []).some(item =>
+        isWornInventoryItem(item) && objectKindKey(item) === 'amulet of magical breathing');
+    return !!(game.u?.uinvulnerable || game.u?.underwater || game.u?.uunderwater
+        || magicalBreathing || form.breathless || form.nonliving);
+}
+
+function applyChestTrapNoxiousGasPayload(box, messages) {
+    messages.push(`A cloud of noxious gas billows from the ${chestTrapObjectName(box)}.`);
+    let result = {};
+    if (rn2(3)) {
+        result = applyChestTrapPoison(messages, {
+            reason: 'gas cloud',
+            attr: A_STR,
+            fatal: 15,
+            deathCause: 'killed by a cloud of poison gas',
+        });
+    } else {
+        const wasInside = heroInsideGasCloud();
+        const region = createGasCloud(box?.ox ?? game.u?.ux ?? 0, box?.oy ?? game.u?.uy ?? 0, 1, 8);
+        if (region) region.heroFault = true;
+        const enveloped = !wasInside && !heroOkWithChestTrapPoisonGas()
+            && region?.coords?.some(coord => coord.x === (game.u?.ux ?? -1) && coord.y === (game.u?.uy ?? -1));
+        if (enveloped) messages.push('You are enveloped in a cloud of noxious gas!');
+    }
+    if (!result.fatal) exerciseAttribute(A_CON, false);
+    return result;
+}
+
+export function applyChestTrapPayload(box, { disarm = true, needleBodyPart = 'finger' } = {}) {
     const messages = [disarm ? 'You set it off!' : 'You trigger a trap!'];
     let result = {};
     if (box) {
@@ -833,10 +1020,16 @@ function applyChestTrapPayload(box, { disarm = true } = {}) {
         }
     } else if (payload >= 6 && payload <= 8) {
         result = applyChestTrapElectricPayload(messages);
+    } else if (payload >= 9 && payload <= 12) {
+        result = applyChestTrapFirePayload(box, messages);
     } else if (payload >= 13 && payload <= 16) {
-        result = applyChestTrapNeedlePayload(messages);
+        result = applyChestTrapNeedlePayload(messages, needleBodyPart);
+    } else if (payload >= 17 && payload <= 20) {
+        result = applyChestTrapNoxiousGasPayload(box, messages);
+    } else if (payload >= 21 && payload <= 25) {
+        result = applyChestTrapExplosionPayload(box, messages);
     }
-    if (box && !result.fatal) box.tknown = true;
+    if (box && !result.fatal && !result.boxDestroyed) box.tknown = true;
     const message = trapMessage(...messages);
     return result.fatal || result.lifeSaving || result.more
         ? { message, ...result }
@@ -20348,7 +20541,10 @@ function heroThrownCorpseFallingDamage(corpse, helmet = null) {
     const weightDamage = Math.max(1, Math.ceil(heroThrownCorpseWeight(corpse) / WT_TO_DMG));
     let damage = weightDamage <= 1 ? 1 : rnd(weightDamage);
     if (damage > 6) damage = 6;
-    if (helmet && hardEarthHelmet(helmet) && damage > 1) damage = 1;
+    if (heroTossUpTargetIsShade() && !heroTossUpObjectIsSilver(corpse)) damage = 0;
+    if (corpse?.blessed && heroTossUpTargetHatesBlessings()) damage += rnd(4);
+    if (heroTossUpObjectIsSilver(corpse) && heroTossUpTargetHatesSilver()) damage += rnd(20);
+    if (heroThrownGenericObjectLessDamage(corpse, helmet) && damage > 1) damage = 1;
     if (damage > 0) damage += Math.trunc(Number(game.u?.udaminc || 0));
     if (damage < 0) damage = 0;
     return maybeHalfPhysicalDamage(damage);
@@ -29129,7 +29325,7 @@ function kickFloorObjectSupported(obj, x, y) {
     const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
     if (quantity !== 1 && !fragileBreakKind) return false;
-    if (isTipContainerObject(obj) || globContents(obj).length) return false;
+    if ((!isBoxObject(obj) && isTipContainerObject(obj)) || globContents(obj).length) return false;
     if ((shopkeeperForCostlySpot(x, y) || shopObjectOrContentsUnpaid(obj)) && !fragileBreakKind)
         return false;
     if (impactDropBreakKind(obj) && !fragileBreakKind) return false;
@@ -29186,6 +29382,43 @@ function heroUsesMartialKickRangeBonus() {
 
 function lowRangeKickedObjectAvoidsOuch() {
     return !rn2(3) || heroUsesMartialKickRangeBonus();
+}
+
+function breakKickedBoxLock(box) {
+    box.locked = false;
+    box.olocked = false;
+    box.obroken = true;
+    box.lknown = true;
+    newsym(box.ox, box.oy);
+}
+
+function applyKickedBoxTrapPayload(box, messages) {
+    const result = applyChestTrapPayload(box, { disarm: false, needleBodyPart: 'leg' });
+    const objectResult = result && typeof result === 'object';
+    messages.push(objectResult ? result.message : result);
+    return objectResult ? result : null;
+}
+
+function applyKickedBoxImpact(box, range, messages) {
+    if (!isBoxObject(box)) return { handled: false };
+    const hadTrap = !!box.otrapped;
+    if (range < 2) messages.push('THUD!');
+
+    if (box.locked || box.olocked) {
+        if (!rn2(5) || (heroUsesMartialKickRangeBonus() && !rn2(2))) {
+            messages.push('You break open the lock!');
+            breakKickedBoxLock(box);
+            const trapResult = hadTrap ? applyKickedBoxTrapPayload(box, messages) : null;
+            return { handled: true, trapResult };
+        }
+    } else if (!rn2(3) || (heroUsesMartialKickRangeBonus() && !rn2(2))) {
+        messages.push('The lid slams open, then falls shut.');
+        box.lknown = true;
+        const trapResult = hadTrap ? applyKickedBoxTrapPayload(box, messages) : null;
+        return { handled: true, trapResult };
+    }
+
+    return { handled: range < 2 };
 }
 
 function applyKickedObjectOuchDamage() {
@@ -29308,10 +29541,18 @@ async function kickFloorObjectToward(dir, x, y) {
             || heroProjectileSupportedWeaponObject(obj));
     const gate = remoteProjectileDownGateAt(obj, landX, landY);
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
-    if (!gate && !canHandleMonsterImpact && !fragileBreakKind) return { handled: false };
+    const localBoxImpact = isBoxObject(obj);
+    if (!localBoxImpact && !gate && !canHandleMonsterImpact && !fragileBreakKind) return { handled: false };
 
     const range = kickFloorObjectRange(obj, x, y, dir);
     const messages = [`You kick ${floorObjectArticleName(obj)}.`];
+    if (localBoxImpact) {
+        const boxImpact = applyKickedBoxImpact(obj, range, messages);
+        if (boxImpact.handled)
+            return { handled: true, messages, moved: false, trapResult: boxImpact.trapResult };
+        if (!gate && !canHandleMonsterImpact && !fragileBreakKind)
+            return { handled: true, messages, moved: false };
+    }
     if (fragileBreakKind && await breakKickedFragileFloorObject(obj, x, y, messages))
         return { handled: true, messages, moved: false, broke: true };
     if (range < 2) {
@@ -30580,13 +30821,15 @@ function lostShopMerchandiseChargesForObject(source, obj, defaultShkp, seen = ne
             shopItemPrice(obj, source.ox ?? game.u?.ux, source.oy ?? game.u?.uy));
     }
 
-    for (const child of globContents(obj)) {
-        const childCharges = lostShopMerchandiseChargesForObject(source, child, defaultShkp, seen, {
-            ...options,
-            topLevel: false,
-        });
-        for (const [shkp, value] of childCharges)
-            addLostShopMerchandiseCharge(charges, shkp, value);
+    if (options.includeContents !== false) {
+        for (const child of globContents(obj)) {
+            const childCharges = lostShopMerchandiseChargesForObject(source, child, defaultShkp, seen, {
+                ...options,
+                topLevel: false,
+            });
+            for (const [shkp, value] of childCharges)
+                addLostShopMerchandiseCharge(charges, shkp, value);
+        }
     }
     return charges;
 }
@@ -36526,6 +36769,31 @@ function clearContainerSequenceState() {
     game._container_sequence_messages = null;
 }
 
+function lootTrapContainerCandidate(container) {
+    return !!(container?.otrapped
+        && (container.kind === 'chest' || container.otyp === CHEST
+            || container.kind === 'large box' || container.otyp === LARGE_BOX));
+}
+
+async function triggerLootChestTrap(container) {
+    if (!lootTrapContainerCandidate(container)) return false;
+    container.lknown = true;
+    const result = applyChestTrapPayload(container, { disarm: false });
+    game._floor_container_object = null;
+    clearContainerTakeoutState();
+    clearContainerPutState();
+    clearContainerSequenceState();
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+    game._command_mode = null;
+    const objectResult = result && typeof result === 'object';
+    await setMessage(objectResult ? result.message : result, !!(objectResult && result.more));
+    if (objectResult && applyLifeSavingOrFatalCommandMode(result)) return true;
+    game.context ??= {};
+    game.context.move = 1;
+    return true;
+}
+
 function startIceBoxSequence(nextAction) {
     clearIceBoxSequenceState();
     if (nextAction === 'putin') game._icebox_sequence_after_takeout = 'putin';
@@ -39847,20 +40115,29 @@ function tipTargetPhrase(targetBox) {
     return `the ${name}`;
 }
 
-function tipContainerCheckMessage(container, { allowEmpty = false } = {}) {
-    if (!container) return "You don't have that object.";
-    container.lknown = true;
-    if (container.locked || container.olocked) return `The ${tipContainerSimpleName(container)} is locked.`;
-    if (container.otrapped) {
-        container.otrapped = false;
-        container.tknown = false;
-        return 'You trigger a trap!';
+function tipTrapMessages(result) {
+    const objectResult = result && typeof result === 'object';
+    const messages = [objectResult ? result.message : result].filter(Boolean);
+    if (objectResult) {
+        Object.defineProperty(messages, '_trapResult', {
+            value: result,
+            enumerable: false,
+        });
     }
+    return messages;
+}
+
+function tipContainerCheckMessages(container, { allowEmpty = false } = {}) {
+    if (!container) return ["You don't have that object."];
+    container.lknown = true;
+    if (container.locked || container.olocked) return [`The ${tipContainerSimpleName(container)} is locked.`];
+    if (container.otrapped)
+        return tipTrapMessages(applyChestTrapPayload(container, { disarm: false }));
     if (!allowEmpty && !liquidFlowContainerContents(container).length) {
         container.cknown = true;
-        return tipContainerEmptyMessage(container);
+        return [tipContainerEmptyMessage(container)];
     }
-    return '';
+    return null;
 }
 
 function tipChargeCount(item) {
@@ -40720,8 +40997,8 @@ async function tipHornOfPlenty(horn, targetBox = null) {
 
 async function tipSpecialSourceContents(source, targetBox = null) {
     if (targetBox) {
-        const targetError = tipContainerCheckMessage(targetBox, { allowEmpty: true });
-        if (targetError) return [targetError];
+        const targetError = tipContainerCheckMessages(targetBox, { allowEmpty: true });
+        if (targetError) return targetError;
     }
     const restoreFloorBill = beginFloorSpecialSourceUsageBill(source);
     try {
@@ -40773,14 +41050,24 @@ async function tipContainerContents(source, targetBox = null) {
     const special = isBagOfTricksObject(source) || isHornOfPlentyObject(source);
     if (targetBox && isBagOfTricksObject(targetBox))
         return applyBagOfTricksOnce(targetBox, { tipping: false });
-    const sourceError = tipContainerCheckMessage(source, { allowEmpty: special });
-    if (sourceError) return [sourceError];
+    const sourceError = tipContainerCheckMessages(source, { allowEmpty: special });
+    if (sourceError) return sourceError;
     if (special) return tipSpecialSourceContents(source, targetBox);
     if (targetBox) {
-        const targetError = tipContainerCheckMessage(targetBox, { allowEmpty: true });
-        if (targetError) return [targetError];
+        const targetError = tipContainerCheckMessages(targetBox, { allowEmpty: true });
+        if (targetError) return targetError;
     }
     return targetBox ? tipContainerIntoContainer(source, targetBox) : tipContainerToFloor(source);
+}
+
+async function finishTipContainerCommandMessages(messages) {
+    const trapResult = messages?._trapResult;
+    await setMessage((messages || []).join('  '), (messages || []).length > 1 || !!trapResult?.more);
+    if (trapResult && applyLifeSavingOrFatalCommandMode(trapResult)) return true;
+    game.context ??= {};
+    game.context.move = 1;
+    game._command_mode = null;
+    return false;
 }
 
 async function finishCarriedTipSelection(tipTarget) {
@@ -40795,9 +41082,7 @@ async function finishCarriedTipSelection(tipTarget) {
         if (beginTipDestinationSelection(tipTarget)) return;
         game._tip_container_object = null;
         const messages = await tipContainerContents(tipTarget);
-        await setMessage(messages.join('  '), messages.length > 1);
-        game.context.move = 1;
-        game._command_mode = null;
+        await finishTipContainerCommandMessages(messages);
         return;
     }
     game._tip_container_object = null;
@@ -45983,6 +46268,7 @@ function polyTrapTriggerMessage({ viaSitting = false } = {}) {
 
 function heroPolyTrapResult(trap, prefix = '', { viaSitting = false } = {}) {
     if (trap) trap.tseen = true;
+    if (trap) markSteedKnowsTrap(game.u?.usteed, trap);
     const messages = [prefix, polyTrapTriggerMessage({ viaSitting })];
     const ironFootwear = wornIronFootwearItem();
     if (ironFootwear) {
@@ -49900,11 +50186,15 @@ export async function rhack(_cmd) {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             const stoningLifeSaved = !!game._life_saving_clear_stoning;
             const levelTeleportEscape = !!game._life_saving_level_teleport_escape_message;
-            const lifeSavingMessage = stoningLifeSaved || levelTeleportEscape
-                ? 'You feel much better!  The medallion crumbles to dust!'
-                : 'You feel much better!';
+            const exploreLifeSaved = !!(game._pending_explore_lifesaving_message
+                || game._queued_explore_lifesaving_message);
+            const skipRemainingMoreMessages = ch === '\x1b';
+            const lifeSavingMessage = exploreLifeSaved || skipRemainingMoreMessages
+                ? 'You feel much better!'
+                : 'You feel much better!  The medallion crumbles to dust!';
             game._pending_message = lifeSavingMessage;
             game._pending_explore_lifesaving_message = 0;
+            game._queued_explore_lifesaving_message = 0;
             game._message_more = 0;
             game._keep_pending_message = 1;
             game._command_mode = null;
@@ -60774,6 +61064,7 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'lootMenu') {
         const container = game._floor_container_object;
+        if (await triggerLootChestTrap(container)) return;
         const largeBox = container?.kind === 'large box' || container?.otyp === LARGE_BOX;
         const abcLargeBox = !!(largeBox && game.flags?.lootabc);
         const takeoutKey = abcLargeBox ? 'a' : 'o';
@@ -61312,9 +61603,7 @@ export async function rhack(_cmd) {
         const finishTip = async targetBox => {
             const messages = await tipContainerContents(source, targetBox);
             clearTipState();
-            await setMessage(messages.join('  '), messages.length > 1);
-            game.context.move = 1;
-            game._command_mode = null;
+            await finishTipContainerCommandMessages(messages);
         };
         if (!source || !isTipSourceObject(source)) {
             clearTipState();
@@ -61347,9 +61636,7 @@ export async function rhack(_cmd) {
                 if (beginTipDestinationSelection(tipTarget)) return;
                 game._tip_container_object = null;
                 const messages = await tipContainerContents(tipTarget);
-                await setMessage(messages.join('  '), messages.length > 1);
-                game.context.move = 1;
-                game._command_mode = null;
+                await finishTipContainerCommandMessages(messages);
                 return;
             }
             if (isTipSpillageObject(tipTarget)) {
@@ -62074,6 +62361,10 @@ export async function rhack(_cmd) {
                         .find(item => /lock pick|key|credit card/i.test(inventoryItemName(item)));
                     if (unlockTool) game._locked_container_unlock_after_more = { chest, tool: unlockTool };
                     await setMessage(`Hmmm, the ${name} turns out to be locked.`, !!unlockTool);
+                }
+                else if (chest?.otrapped) {
+                    await triggerLootChestTrap(chest);
+                    return;
                 }
                 else if (chest) {
                     game._floor_container_object = chest;
@@ -63191,8 +63482,11 @@ export async function rhack(_cmd) {
         }
         const kickedObject = await kickFloorObjectToward(dir, x, y);
         if (kickedObject.handled) {
-            await setMessage(kickedObject.messages.join('  '), kickedObject.messages.length > 1);
+            const trapResult = kickedObject.trapResult;
+            const trapObjectResult = trapResult && typeof trapResult === 'object';
+            await setMessage(kickedObject.messages.join('  '), kickedObject.messages.length > 1 || !!trapObjectResult);
             game._command_mode = null;
+            if (trapObjectResult && applyLifeSavingOrFatalCommandMode(trapResult)) return;
             game.context.move = 1;
             return;
         }

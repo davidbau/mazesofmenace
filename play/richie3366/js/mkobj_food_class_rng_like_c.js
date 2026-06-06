@@ -408,10 +408,12 @@ export function mksobjInitFoodClassIniInvAfterOtypLikeC(otyp) {
 /**
  * C: **`ini_inv`** one **`FOOD_CLASS`** **`UNDEF_TYP`** draw.
  */
+/** @returns {number} resolved FOOD_CLASS **`otyp`** for linked invent. */
 export function iniInvOneMkobjFoodUndefDrawLikeC() {
     const otyp = mkobjOtypFoodClassIniInvLikeC();
     nextIdentLikeC();
     mksobjInitFoodClassIniInvAfterOtypLikeC(otyp);
     /* C **`ini_inv`**: one **`trquan(trop)`** per **`trobj`** row (before the loop);
      * each extra stack item is **`--quan` / `continue`** with **no** per-item **`trquan`**. */
+    return otyp | 0;
 }

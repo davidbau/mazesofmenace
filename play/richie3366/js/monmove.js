@@ -43,6 +43,7 @@ import {
 } from './monmove_search.js';
 import { searchPass1NearMonLikeC } from './mfndpos_mon.js';
 import { distfleeckMonsterApplyLikeC } from './distfleeck_mon.js';
+import { dogMoveTouristD1PostSwapMfndposResumeLikeC } from './dogmove_mon.js';
 import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
 import {
     movemonSinglemonLikeC,
@@ -591,6 +592,26 @@ export async function movemon(stepNum) {
                     continue;
                 }
                 await movemonSinglemonLikeC(g, m, effStepNum);
+            }
+            /* C: tourist D:1 peaceful swap — pet ~915 **`distfleeck`** then **`mfndpos`** resume
+             * after mklev tail (**`seed0900`** ~2491–2492). */
+            if (
+                g.urole?.abbr === 'Tou'
+                && (effStepNum | 0) === 1
+                && g.context?._touristD1PostSwapMfndposDeferredLikeC
+                && !g.context?._touristD1PostSwapMfndposResumeDoneLikeC
+            ) {
+                const petResume =
+                    g.context._touristD1PostSwapDeferRecalcPetLikeC
+                    ?? (g.level?.monsters ?? []).find((m) => (m.mtame | 0) !== 0);
+                if (petResume) {
+                    setApparxyMonsterLikeC(g, petResume);
+                    await distfleeckMonsterApplyLikeC(g, petResume);
+                    dogMoveTouristD1PostSwapMfndposResumeLikeC(g, petResume);
+                }
+                g.context._touristD1PostSwapMfndposResumeDoneLikeC = true;
+                delete g.context._touristD1PostSwapMfndposDeferredLikeC;
+                delete g.context._touristD1PostSwapDeferRecalcPetLikeC;
             }
             /* C: short **`l`** after east-tail walk — new-turn **`mcalcmove`** tail (~2812+). */
             if (

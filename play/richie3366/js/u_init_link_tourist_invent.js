@@ -1,14 +1,19 @@
 // u_init_link_tourist_invent.js — Human Tourist starting g.invent + wield/wear (C Tourist[] + ini_inv_use_obj).
 // C ref: u_init.c Tourist[] trobj, ini_inv(), ini_inv_adjust_obj(); invent.c addinv;
+//        u_init_inventory_attrs — Wishing[] / Money[] after u_init_role;
 //        ini_inv_use_obj — darts uquiver+uwep ammo, Hawaiian shirt uarmu.
 
 import { game } from './gstate.js';
+import { OTYP_GOLD_PIECE } from './const.js';
 import { races } from './roles.js';
 import {
     NH5_ARMOR_CLASS,
+    NH5_COIN_CLASS,
+    NH5_FOOD_CLASS,
     NH5_POTION_CLASS,
     NH5_SCROLL_CLASS,
     NH5_TOOL_CLASS,
+    NH5_WAND_CLASS,
     NH5_WEAPON_CLASS,
 } from './nh5_objclass.js';
 import { findAc } from './u_init_find_ac.js';
@@ -24,6 +29,8 @@ const OTYP_LEASH = 237;
 const OTYP_TOWEL = 235;
 /** C `objects[]` — **`MAGIC_MARKER`** 243. */
 const OTYP_MAGIC_MARKER = 243;
+/** C `u_init.c` **`Wishing[]`** — **`WAN_WISHING`**, **`trspe` 3**. */
+const OTYP_WAN_WISHING = 413;
 
 const BASE_WT = {
     [OTYP_DART]: 1,
@@ -36,6 +43,8 @@ const BASE_WT = {
     [OTYP_LEASH]: 2,
     [OTYP_TOWEL]: 2,
     [OTYP_MAGIC_MARKER]: 2,
+    [OTYP_WAN_WISHING]: 7,
+    [OTYP_GOLD_PIECE]: 1,
 };
 
 /** @param {import('./gstate.js').game} [g] */
@@ -46,6 +55,7 @@ export function isHumanTouristChargenLikeC(g = game) {
 
 /**
  * Linked **`g.invent`** + **`u.uwep`/`u.uquiver`/`u.uarmu`** after **`consumeTouristHumanIniInvUinitRoleRngLikeC`**.
+ * C **`addinv`** order: tail **`Tourist[]`** (**`dart`…`card`**), optional role extra, discover **`Wishing`**, **`Money`**.
  * @param {import('./gstate.js').game} g
  */
 export function applyTouristHumanLinkedInventAndWearLikeC(g) {
@@ -54,6 +64,11 @@ export function applyTouristHumanLinkedInventAndWearLikeC(g) {
     if (dq < 21 || dq > 40) return;
     const camSpe = g._touristIniCameraSpe | 0;
     if (camSpe < 30 || camSpe > 99) return;
+    const foodOtyps = g._touristIniFoodOtyps;
+    if (!Array.isArray(foodOtyps) || foodOtyps.length !== 10) return;
+    for (const ot of foodOtyps) {
+        if ((ot | 0) <= 0) return;
+    }
     const extra = g._touristIniExtra;
     if (extra != null && extra !== 'tinopener' && extra !== 'leash' && extra !== 'towel' && extra !== 'marker') return;
     if (extra === 'marker') {
@@ -93,11 +108,24 @@ export function applyTouristHumanLinkedInventAndWearLikeC(g) {
     const card = mk(OTYP_CREDIT_CARD, NH5_TOOL_CLASS, 1, 0);
 
     /** @type {ReturnType<typeof mk>[]} */
-    const order = [darts, shirt, p1, p2, s1, s2, s3, s4, camera, card];
+    const order = [darts];
+    for (const otyp of foodOtyps) {
+        order.push(mk(otyp | 0, NH5_FOOD_CLASS, 1, 0));
+    }
+    order.push(p1, p2, s1, s2, s3, s4, shirt, camera, card);
     if (extra === 'tinopener') order.push(mk(OTYP_TIN_OPENER, NH5_TOOL_CLASS, 1, 0));
     else if (extra === 'leash') order.push(mk(OTYP_LEASH, NH5_TOOL_CLASS, 1, 0));
     else if (extra === 'towel') order.push(mk(OTYP_TOWEL, NH5_TOOL_CLASS, 1, 0));
-    else if (extra === 'marker') order.push(mk(OTYP_MAGIC_MARKER, NH5_TOOL_CLASS, 1, g._touristIniMagicmarkerSpe | 0));
+    else if (extra === 'marker') {
+        order.push(mk(OTYP_MAGIC_MARKER, NH5_TOOL_CLASS, 1, g._touristIniMagicmarkerSpe | 0));
+    }
+    if (g.program_state?.discover) {
+        order.push(mk(OTYP_WAN_WISHING, NH5_WAND_CLASS, 1, 3));
+    }
+    const goldQuan = (g.u?.umoney0 ?? g._goldCount ?? 0) | 0;
+    if (goldQuan > 0) {
+        order.push(mk(OTYP_GOLD_PIECE, NH5_COIN_CLASS, goldQuan, 0));
+    }
 
     for (const o of order) {
         o.nobj = g.invent ?? null;

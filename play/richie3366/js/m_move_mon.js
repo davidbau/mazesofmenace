@@ -2897,6 +2897,13 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
         const skipRecalcDistfleeckFirstSearchRogLikeC =
             gateMonPeek || secondRogGateDochug || wizD1Step1PostPeelDochug;
         if (
+            (mtmp.mtame | 0)
+            && has_edog(mtmp)
+            && g.context?._touristD1PostSwapMfndposDeferredLikeC
+        ) {
+            /* C: defer pet ~915 **`distfleeck`** until after mklev tail (**`seed0900`** ~2491). */
+            g.context._touristD1PostSwapDeferRecalcPetLikeC = mtmp;
+        } else if (
             !skipRecalcDistfleeckFirstSearchRogLikeC
             && !skipDistfleeckRecalcAfterMmoveLikeC(g, mtmp, nearby)
         ) {

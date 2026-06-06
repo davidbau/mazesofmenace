@@ -1208,8 +1208,9 @@ function mkobj(oclass, artif) {
     return mkobj_shallow(oclass, artif);
 }
 
+/** C: mkobj.c mkobj_at(oclass, x, y, artif) — full mkobj + place_object (makeniche, …). */
 function mkobj_at(oclass, x, y, artif) {
-    return mkobj(oclass, artif);
+    return mkobjFillAtLikeC(oclass, x, y, artif);
 }
 
 /** C: mkobj.c mkobj_at — fill/mineralize use full mkobj RNG + floor placement. */
