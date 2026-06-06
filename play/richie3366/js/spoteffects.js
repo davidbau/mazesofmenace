@@ -38,7 +38,8 @@ import {
 import { raceptr, breathless, swims, amphibious, S_PIERCER } from './mondata.js';
 import { isIceAt } from './melt_ice.js';
 import { spotTimeLeftMeltIceAway } from './level_timers.js';
-import { enextoNearMon } from './walkable.js';
+import { enextoCoreLikeC, enextoNearMon } from './walkable.js';
+import { GP_CHECKSCARY } from './const.js';
 import { dealWithOvercrowding } from './mon_limbo.js';
 import { d, rnd } from './rng.js';
 import { losehp, maybeHalfPhys } from './mthrowu.js';
@@ -188,28 +189,50 @@ async function spotMonsterOnHeroCeilingLikeC(g) {
 }
 
 /**
+ * C: mon.c **`mnexto`** — **`enexto`** near hero (**`enexto_core`**, not ring walk).
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @returns {boolean} true when monster moved
+ */
+export function mnextoNearHeroSyncLikeC(g, mtmp) {
+    const u = g.u;
+    if (!u || !mtmp) return false;
+    if (mtmp === u.usteed) {
+        mtmp.mx = u.ux | 0;
+        mtmp.my = u.uy | 0;
+        return true;
+    }
+    const ptr = mtmp.data;
+    if (!ptr) return false;
+    const cc = { x: 0, y: 0 };
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    if (
+        !enextoCoreLikeC(g, cc, ux, uy, ptr, GP_CHECKSCARY)
+        && !enextoCoreLikeC(g, cc, ux, uy, ptr, 0)
+    ) {
+        return false;
+    }
+    mtmp.mx = cc.x | 0;
+    mtmp.my = cc.y | 0;
+    return true;
+}
+
+/**
  * C: mon.c **`mnexto`** — **`enexto`** near hero, else **`deal_with_overcrowding`**.
  * @param {typeof game} g
  */
 async function mnextoLikeC(g, mtmp) {
     const u = g.u;
     if (!u || !mtmp) return;
-    if (mtmp === u.usteed) {
-        mtmp.mx = u.ux | 0;
-        mtmp.my = u.uy | 0;
-        return;
-    }
-    const dest = enextoNearMon(g, u.ux | 0, u.uy | 0, mtmp);
-    if (!dest) {
+    const ox = mtmp.mx | 0;
+    const oy = mtmp.my | 0;
+    if (!mnextoNearHeroSyncLikeC(g, mtmp)) {
         await dealWithOvercrowding(g, mtmp);
         return;
     }
-    const ox = mtmp.mx | 0;
-    const oy = mtmp.my | 0;
-    mtmp.mx = dest.x | 0;
-    mtmp.my = dest.y | 0;
     newsym(ox, oy);
-    newsym(mtmp.mx, mtmp.my);
+    newsym(mtmp.mx | 0, mtmp.my | 0);
 }
 
 /**

@@ -5,12 +5,15 @@
 import { game } from './gstate.js';
 import { races } from './roles.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_FOOD_CLASS } from './nh5_objclass.js';
+import { knowsClassLikeC } from './dodiscovered.js';
+import { discoverObjectHeroLikeC } from './objnam.js';
+import { O_INIT_OTYP } from './o_init_objects_meta.js';
 
 /** C `objects_nums` / repo Rogue dagger anchor (NH5 invent **`otyp`**). */
 const OTYP_DAGGER = 35;
 const OTYP_BOW = 84;
 const OTYP_ARROW = 19;
-const OTYP_CLOAK_OF_DISPLACEMENT = 150;
+const OTYP_CLOAK_OF_DISPLACEMENT = O_INIT_OTYP.CLOAK_OF_DISPLACEMENT;
 const OTYP_CRAM_RATION = 145;
 
 /** C `objects[]` oc_weight × quan → owt (subset). */
@@ -91,4 +94,10 @@ export function applyRangerHumanLinkedInventAndWearLikeC(g) {
         u.uquiver = arr1;
         u.uarmc = cloak;
     }
+
+    /* C: u_init_role PM_RANGER — knows_class(WEAPON_CLASS) after ini_inv(Ranger). */
+    knowsClassLikeC(g, NH5_WEAPON_CLASS);
+
+    /* C: ini_inv_use_obj — known armor with descr → discover_object(TRUE, TRUE). */
+    discoverObjectHeroLikeC(g, OTYP_CLOAK_OF_DISPLACEMENT, true, true, false);
 }

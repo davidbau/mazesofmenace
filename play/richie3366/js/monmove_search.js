@@ -8,6 +8,33 @@ export function isFirstSearchMovemonPassLikeC(g) {
     return (g.context?._searchStep11Passes | 0) === 1;
 }
 
+/** @param {import('./gstate.js').game} g @returns {boolean} */
+export function isRangerLikeC(g) {
+    return (
+        g.urole?.abbr === 'Ran'
+        || g.pl_character === 'Ranger'
+        || (g.urole?.mnum | 0) === 8
+    );
+}
+
+/**
+ * C: ranger D:1 twin **`#search`** without rogue/tourist near-mklev peel — pet **`dog_move`**
+ * before **`mcalcmove`** (**`seed0102`** ~4448+ / ~4466+; not tourist west/east subpasses).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {number} [stepNum]
+ */
+export function rangerD1FirstSearchNoNearMonLikeC(g, stepNum = 0) {
+    if (!isRangerLikeC(g)) return false;
+    if ((g.u?.uz?.dnum | 0) !== 0 || (g.u?.uz?.dlevel | 0) !== 1) return false;
+    const searchPass = g.context?._searchStep11Passes | 0;
+    /* C: ranger D:1 — pet-only peel on first and second **`#search`** (**`seed0102`**). */
+    if (searchPass === 1 || searchPass === 2) return true;
+    /* Inline **`#search`** post may clear pass id before peel **`movemon`**. */
+    if (g.context?._searchInlinePostDoneLikeC && (stepNum | 0) === 11) return true;
+    return false;
+}
+
 /** C: wizard D:1 — short **`l`** **`fmon`** after east-tail walk mintrap (~2806+). */
 export function wizD1EastTailShortLActiveLikeC(g) {
     return (
@@ -75,7 +102,7 @@ export function rogueSecondSearchFullFmonLikeC(g) {
     const rogueLike =
         g.urole?.abbr === 'Rog'
         || g.pl_character === 'Rogue'
-        || (g.urole?.mnum | 0) === 8;
+        || (g.urole?.mnum | 0) === 7;
     if (!rogueLike) return false;
     if ((g.u?.uz?.dnum | 0) !== 0 || (g.u?.uz?.dlevel | 0) !== 1) return false;
     return !!findFirstSearchRogMidMklevHostileLikeC(g);
@@ -96,12 +123,12 @@ export function effectiveMovemonStepNumLikeC(g, stepNum) {
      * follows **`s`** — not on later D:1 commands (**`seed0006`** post-bump **`l`** ~2558). */
     if (g.context?._postBumpKillDochugGateLikeC) return raw;
     const searchPass = g.context?._searchStep11Passes | 0;
-    if (
-        (searchPass === 1 || searchPass === 2)
-        && !isRogueColonMovemonActiveLikeC(g)
-        && raw <= 12
-    ) {
-        return 11;
+    if ((searchPass === 1 || searchPass === 2) && !isRogueColonMovemonActiveLikeC(g)) {
+        /* C: ranger **`#search`** — peel at step 11 even when **`moves−1`** is high (**`seed0102`**). */
+        if (isRangerLikeC(g) && (searchPass === 1 || searchPass === 2)) return 11;
+        /* C: first **`#search`** — peel at step 11 even when **`moves−1`** is high (**`seed0102`** ~21). */
+        if (searchPass === 1) return 11;
+        if (raw <= 12) return 11;
     }
     return raw;
 }
@@ -119,6 +146,17 @@ export function clearSearchMovemonSubHarnessLikeC(g) {
     delete g.context._searchMovemonStarted;
     delete g.context._movemonSearch11SubPasses;
     delete g.context._movemonSearch11SubPass;
+    delete g.context._rangerFirstSearchPetFirstPassDoneLikeC;
+    delete g.context._rangerFirstSearchPetSecondPassDoneLikeC;
+    delete g.context._rangerSecondSearchMklevPeelDoneLikeC;
+    delete g.context._rangerPass2InlineApportRn8DeferLikeC;
+    delete g.context._rangerPass2InlineInventPrescanDoneLikeC;
+    delete g.context._rangerPass2InlineSecondInventPrescanDoneLikeC;
+    delete g.context._rangerPass2InlineDeferredApportRn8DoneLikeC;
+    delete g.context._rangerPass2InlineDeferredApportObjLikeC;
+    delete g.context._rangerPass2InlineFloorRankCacheLikeC;
+    delete g.context._rangerPass2InlinePreMfndposDistfleeckDoneLikeC;
+    delete g.context._rangerPass2InlineMfndposAwayRn12CountLikeC;
 }
 
 /** Drop all `#search` harness state before a non-search command (C **`:`** after **`s`**). */

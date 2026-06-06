@@ -3,6 +3,7 @@
 
 import { game } from './gstate.js';
 import { KEY_BINDINGS } from './terminal.js';
+import { closeGetdirHelpOverlayLikeC } from './help_dir.js';
 
 const _inputQueue = [];
 /** Index into the segment **`moves`** string (advanced with each **`nhgetch`**). */
@@ -54,8 +55,19 @@ export async function nhgetch() {
     if (_inputQueue.length > 0) {
         if (_replayPos < _replayMoves.length) _replayPos++;
         const key = _inputQueue.shift();
-        /* C: tty_nhgetch / topl.c `more()` — dismiss `--More--`; clear active line unless retained. */
-        if (game._toplineNeedMore) {
+        /* C: cmd.c help_dir NHW_TEXT — any nhgetch dismisses `--More--` overlay. */
+        if (game._getdirHelpOverlayLikeC) {
+            closeGetdirHelpOverlayLikeC(game);
+        }
+        /* C: tty_nhgetch / topl.c — `--More--` stays visible until space/ESC (other keys pass through). */
+        if (game._showDefmoreOnTopline) {
+            if (key === 32 || key === 27) {
+                game._showDefmoreOnTopline = false;
+                game._toplineNeedMore = false;
+            } else {
+                game._toplineNeedMore = false;
+            }
+        } else if (game._toplineNeedMore) {
             game._toplineNeedMore = false;
             game._showDefmoreOnTopline = false;
             if (!game._keepToplineUntilNextCommand) {

@@ -8,6 +8,9 @@ import {
     P_BOW,
     P_CROSSBOW,
     P_PICK_AXE,
+    P_POLEARMS,
+    P_LANCE,
+    P_SPEAR,
 } from './const.js';
 import { OC_SKILL_ROW_BY_OTYP } from './obj_oc_skill_data.js';
 import { NH5_WEAPON_CLASS, NH5_TOOL_CLASS, NH5_GEM_CLASS } from './nh5_objclass.js';
@@ -74,6 +77,39 @@ export function isAmmo(obj) {
     if (oc !== NH5_WEAPON_CLASS && oc !== NH5_GEM_CLASS) return false;
     const sk = objectOcSkill(obj.otyp | 0);
     return sk >= -P_CROSSBOW && sk <= -P_BOW;
+}
+
+/**
+ * C: obj.h **`is_launcher(otmp)`** — WEAPON with **`P_BOW`..`P_CROSSBOW`** skill.
+ * @param {{ otyp?: number, oclass?: number }|null|undefined} obj
+ */
+export function isLauncherLikeC(obj) {
+    if (!obj) return false;
+    if ((obj.oclass | 0) !== NH5_WEAPON_CLASS) return false;
+    const sk = objectOcSkill(obj.otyp | 0);
+    return sk >= P_BOW && sk <= P_CROSSBOW;
+}
+
+/**
+ * C: obj.h **`is_spear(otmp)`** — WEAPON with **`P_SPEAR`** skill.
+ * @param {{ otyp?: number, oclass?: number }|null|undefined} obj
+ */
+export function isSpearLikeC(obj) {
+    if (!obj) return false;
+    if ((obj.oclass | 0) !== NH5_WEAPON_CLASS) return false;
+    return objectOcSkill(obj.otyp | 0) === P_SPEAR;
+}
+
+/**
+ * C: obj.h **`is_pole(otmp)`** — polearms, lance, Snickersnee (latter omitted).
+ * @param {{ otyp?: number, oclass?: number }|null|undefined} obj
+ */
+export function isPoleLikeC(obj) {
+    if (!obj) return false;
+    const oc = obj.oclass | 0;
+    if (oc !== NH5_WEAPON_CLASS && oc !== NH5_TOOL_CLASS) return false;
+    const sk = objectOcSkill(obj.otyp | 0);
+    return sk === P_POLEARMS || sk === P_LANCE;
 }
 
 /**

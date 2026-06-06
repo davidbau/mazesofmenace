@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_DAGGER, P_EXPERT, P_GRAND_MASTER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SKILLED, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_CLUB, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -19800,6 +19800,16 @@ const HERO_PROJECTILE_MONSTER_SIZE_VALUES = new Map([
 const HERO_THROWN_WEAPON_MONSTER_DATA = new Map([
     ['dagger', { smallDie: 4, largeDie: 3, hitbon: 2, skill: P_DAGGER, skillName: 'dagger' }],
     ['knife', { smallDie: 3, largeDie: 2, hitbon: 0, skill: P_KNIFE, skillName: 'knife' }],
+    ['dart', { smallDie: 3, largeDie: 2, hitbon: 0, skill: P_DART, skillName: 'dart' }],
+    ['shuriken', { smallDie: 8, largeDie: 6, hitbon: 2, skill: P_SHURIKEN, skillName: 'shuriken' }],
+    ['spear', { smallDie: 6, largeDie: 8, hitbon: 0, skill: P_SPEAR, skillName: 'spear' }],
+    ['elven spear', { smallDie: 7, largeDie: 8, hitbon: 0, skill: P_SPEAR, skillName: 'spear' }],
+    ['orcish spear', { smallDie: 5, largeDie: 8, hitbon: 0, skill: P_SPEAR, skillName: 'spear' }],
+    ['dwarvish spear', { smallDie: 8, largeDie: 8, hitbon: 0, skill: P_SPEAR, skillName: 'spear' }],
+    ['silver spear', { smallDie: 6, largeDie: 8, hitbon: 0, skill: P_SPEAR, skillName: 'spear' }],
+    ['javelin', { smallDie: 6, largeDie: 6, hitbon: 0, skill: P_SPEAR, skillName: 'spear' }],
+    ['war hammer', { smallDie: 4, smallAdd: 1, largeDie: 4, hitbon: 0, skill: P_HAMMER, skillName: 'hammer' }],
+    ['aklys', { smallDie: 6, largeDie: 3, hitbon: 0, skill: P_CLUB, skillName: 'club' }],
 ]);
 
 function heroProjectileMonsterSizeValue(mon) {
@@ -19849,7 +19859,13 @@ function heroProjectileObjectHitAdjustment(obj, mon, { monNotices = true } = {})
     }
     if (obj?.otyp === HEAVY_IRON_BALL && obj !== game.u?.uball) adjustment += 2;
     else if (obj?.otyp === BOULDER || objectKindKey(obj) === 'boulder') adjustment += 6;
-    else adjustment += heroProjectileObjectHitval(obj);
+    else {
+        adjustment += heroProjectileObjectHitval(obj);
+        if (heroProjectileObjectIsWeaponLike(obj) && obj?.blessed
+            && heroProjectileTargetHatesBlessings(mon)) {
+            adjustment += 2;
+        }
+    }
     return adjustment;
 }
 
@@ -19873,7 +19889,7 @@ function heroKickedProjectileIsAmmo(obj) {
     if (itemClassKey(obj) === 'gem' || obj.glyph === '*' || obj.otyp === GEM_CLASS) return true;
     const kind = objectKindKey(obj);
     return obj.otyp === ROCK || obj.otyp === FLINT
-        || /\b(?:arrow|arrows|bolt|bolts|dart|darts|shuriken|throwing stars?|rock|rocks|flint)\b/.test(kind);
+        || /\b(?:arrow|arrows|bolt|bolts|rock|rocks|flint)\b/.test(kind);
 }
 
 function heroKickedProjectileHitValue(obj, mon) {
@@ -19919,8 +19935,9 @@ function heroKickedGemImpact(obj, mon) {
     if (hitValue >= dieroll) {
         const damage = Math.max(1, rnd(2) + heroStrengthDamageBonus() + heroDamageIncreaseBonus());
         mon.mhp = (mon.mhp || 1) - damage;
-        if ((mon.mhp || 0) <= 0) mon.dead = true;
-        wakeMonsterFromHeroThrownHit(mon);
+        const messages = [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}.`];
+        if ((mon.mhp || 0) <= 0) killMonsterFromHeroProjectileHit(mon, messages, targetName);
+        if (!mon.dead) wakeMonsterFromHeroThrownHit(mon);
         exerciseHeroProjectileHitDexterity();
         const mulched = shouldMulchHeroProjectileMissile(obj);
         if (mulched) rn2(100);
@@ -19929,7 +19946,7 @@ function heroKickedGemImpact(obj, mon) {
             hit: true,
             damage,
             mulched,
-            messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}.`],
+            messages,
         };
     }
     const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
@@ -19948,6 +19965,11 @@ function heroThrownGemHitValue(obj, mon) {
 function heroProjectileSupportedWeaponObject(obj) {
     if (!obj || obj.artifact || obj.oartifact) return false;
     return HERO_THROWN_WEAPON_MONSTER_DATA.has(tossUpWeaponObjectKey(obj));
+}
+
+function heroProjectileObjectIsWeaponLike(obj) {
+    return !!obj && (itemClassKey(obj) === 'weapon' || obj?.glyph === ')'
+        || obj?.otyp === WEAPON_CLASS || isWeaponTool(obj));
 }
 
 function heroThrownWeaponHitValue(obj, mon) {
@@ -20029,13 +20051,96 @@ function heroWeaponDamageSkillBonus(skill, skillName) {
     return 0;
 }
 
+function heroProjectileTargetHatesBlessings(mon) {
+    const data = mon?.data || {};
+    const rawMlet = String(mon?.mlet || data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = heroThrownGemNameValue(mon?.name || data.name);
+    return !!(mon?.undead || data.undead || mon?.vampshifter || data.vampshifter
+        || mon?.demon || data.demon
+        || rawMlet === 'L' || rawMlet === 'M' || rawMlet === 'V' || rawMlet === 'W'
+        || rawMlet === 'Z' || rawMlet === "'" || mlet === 'ghost'
+        || mlet === 'vampire' || mlet === 'demon' || rawMlet === '&'
+        || /\b(?:ghost|shade|lich|mummy|zombie|vampire|wraith|nazgul|skeleton|ghoul)\b/.test(name)
+        || /\b(?:demon|devil|manes)\b/.test(name));
+}
+
+function heroProjectileTargetHatesSilver(mon) {
+    const data = mon?.data || {};
+    const rawMlet = String(mon?.mlet || data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = heroThrownGemNameValue(mon?.name || data.name);
+    return !!(mon?.vampshifter || data.vampshifter
+        || mon?.were || mon?.isWere || mon?.wereHuman || mon?.wereBeast
+        || data.were || data.isWere || data.wereHuman || data.wereBeast
+        || mon?.demon || data.demon
+        || /^were/.test(name)
+        || rawMlet === 'V' || mlet === 'vampire'
+        || rawMlet === '&' || mlet === 'demon'
+        || name.includes('vampire') || name === 'vlad the impaler'
+        || name.includes('demon') || name.includes('devil') || name === 'manes'
+        || name === 'shade'
+        || ((rawMlet === 'i' || mlet === 'imp') && name !== 'tengu'));
+}
+
+function heroProjectileObjectIsSilver(obj) {
+    return objectMaterialForMetallivore(obj) === 'silver';
+}
+
+function heroProjectileSilverSearsFlesh(mon) {
+    const data = mon?.data || {};
+    const rawMlet = String(mon?.mlet || data.mlet || data.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const name = heroThrownGemNameValue(mon?.name || data.name);
+    return !(mon?.noncorporeal || data.noncorporeal
+        || mon?.amorphous || data.amorphous
+        || rawMlet === ' ' || mlet === 'ghost'
+        || name === 'shade');
+}
+
+function heroProjectileSilverSearingObjectName(obj) {
+    let name = pickupObjectName({ ...obj, quan: 1 })
+        .replace(/^[a-zA-Z$?] - /, '')
+        .replace(/^(?:an?|the)\s+/i, '');
+    if (!/\bsilver\b/i.test(name)) name = `silver ${name}`;
+    return name;
+}
+
+function heroProjectileSilverSearingMessage(obj, mon) {
+    const flesh = heroProjectileSilverSearsFlesh(mon);
+    if (monsterCanBeSeenForPotionEffect(mon)) {
+        const objectName = heroProjectileSilverSearingObjectName(obj);
+        const verb = (obj?.quan || 1) > 1 ? 'sear' : 'sears';
+        const name = heroThrownVenomTargetName(mon);
+        return `Your ${objectName} ${verb} ${name}${flesh ? "'s flesh" : ''}!`;
+    }
+    return flesh ? 'Its flesh is seared!' : 'It is seared!';
+}
+
+function heroProjectileSpecialWeaponDamage(obj, mon) {
+    let damage = 0;
+    let silverMessage = '';
+    if (obj?.blessed && heroProjectileTargetHatesBlessings(mon)) damage += rnd(4);
+    if (heroProjectileObjectIsSilver(obj) && heroProjectileTargetHatesSilver(mon)) {
+        damage += rnd(20);
+        silverMessage = heroProjectileSilverSearingMessage(obj, mon);
+    }
+    return { damage, silverMessage };
+}
+
 function heroProjectileWeaponDamage(obj, mon) {
     const data = HERO_THROWN_WEAPON_MONSTER_DATA.get(tossUpWeaponObjectKey(obj));
-    if (!data || !heroProjectileSupportedWeaponObject(obj)) return 0;
-    const die = heroProjectileMonsterSizeValue(mon) >= 3 ? data.largeDie : data.smallDie;
+    if (!data || !heroProjectileSupportedWeaponObject(obj))
+        return { damage: 0, silverMessage: '' };
+    const largeTarget = heroProjectileMonsterSizeValue(mon) >= 3;
+    const die = largeTarget ? data.largeDie : data.smallDie;
+    const add = largeTarget ? data.largeAdd : data.smallAdd;
     let damage = die ? rnd(die) : 0;
+    damage += Math.trunc(Number(add || 0));
     damage += Math.trunc(Number(obj.spe || 0));
     if (damage < 0) damage = 0;
+    const special = heroProjectileSpecialWeaponDamage(obj, mon);
+    damage += special.damage;
     if (damage > 0) {
         damage -= Math.max(0, Math.trunc(Number(obj.oeroded || 0)), Math.trunc(Number(obj.oeroded2 || 0)));
         if (damage < 1) damage = 1;
@@ -20043,7 +20148,7 @@ function heroProjectileWeaponDamage(obj, mon) {
     damage += heroDamageIncreaseBonus() + heroStrengthDamageBonus();
     damage += heroWeaponDamageSkillBonus(data.skill, data.skillName);
     if (damage < 1) damage = 1;
-    return damage;
+    return { damage, silverMessage: special.silverMessage };
 }
 
 function heroProjectileHitPunctuation(damage) {
@@ -20051,15 +20156,89 @@ function heroProjectileHitPunctuation(damage) {
     return damage <= 4 ? '.' : '!';
 }
 
+function reviveVampshifterFromHeroProjectileKill(mon, messages, targetName) {
+    const baseName = vampshifterRevivalBaseName(mon);
+    if (!baseName) return false;
+    const currentName = String(mon?.data?.name || mon?.name || '').toLowerCase();
+    if (currentName === String(baseName).toLowerCase()) return false;
+    if ((game._genocided_monsters || []).includes(baseName)) return false;
+
+    const baseData = monsterByRndName(baseName) || RANDOM_MONSTER_BY_NAME.get(baseName);
+    if (!baseData) return false;
+    const oldData = mon.data || {};
+    const nonliving = oldData.nonliving || oldData.mlet === 'Z' || oldData.glyph === 'Z'
+        || String(oldData.name || '').includes('zombie') || String(oldData.name || '').endsWith(' golem');
+    messages.push(`You ${nonliving ? 'destroy' : 'kill'} ${targetName || heroThrownVenomTargetName(mon)}!`);
+
+    const oldVisible = monsterCanBeSeenForPotionEffect(mon);
+    const oldDisplayName = potionHitMonsterName(mon);
+    const specialDeath = oldData.nonliving || oldData.noncorporeal || oldData.amorphous
+        || oldData.name === 'fog cloud' || oldData.mlet === 'ghost';
+    const level = adjustedMonsterLevel(baseData);
+    const maxHp = Math.max(10, monster_hp(baseData, level));
+    mon.dead = false;
+    mon.data = { ...baseData, hpLevel: level };
+    mon.name = baseData.name;
+    mon.mlet = baseData.mlet;
+    mon.glyph = baseData.glyph;
+    mon.color = baseData.color;
+    mon.m_lev = level;
+    mon.mlevel = level;
+    mon.mhpmax = maxHp;
+    mon.mhp = maxHp;
+    mon.mcanmove = true;
+    mon.mfrozen = 0;
+    mon.msleeping = 0;
+    mon.vampshifter = false;
+    delete mon.vampBase;
+    delete mon.chamName;
+    delete mon.cham;
+    if (oldVisible && monsterCanBeSeenForPotionEffect(mon) && !heroIsHallucinating()) {
+        const before = specialDeath ? oldDisplayName : oldDisplayName.replace(/^The /, 'The seemingly dead ');
+        const action = specialDeath ? 'suddenly reconstitutes' : 'suddenly transforms';
+        messages.push(`${before} ${action} and rises as ${indefiniteArticle(baseData.name)} ${baseData.name}!`);
+    }
+    set_malign(mon);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function killMonsterFromHeroProjectileHit(mon, messages, targetName) {
+    if (!mon || mon.dead) return;
+    if (reviveVampshifterFromHeroProjectileKill(mon, messages, targetName)) return;
+    mon.dead = true;
+    mon.mhp = 0;
+    const data = mon.data || {};
+    const nonliving = data.nonliving || data.mlet === 'Z' || data.glyph === 'Z'
+        || String(data.name || '').includes('zombie') || String(data.name || '').endsWith(' golem');
+    messages.push(`You ${nonliving ? 'destroy' : 'kill'} ${targetName || heroThrownVenomTargetName(mon)}!`);
+    recordVanquished(mon, true);
+    dropMonsterInventory(mon, messages);
+
+    const corpseData = data.corpse
+        || (data.name?.endsWith(' zombie') ? monsterByRndName(data.name.replace(/ zombie$/, '')) : null)
+        || data;
+    const loc = game.level?.at?.(mon.mx, mon.my);
+    if (loc && (ACCESSIBLE(loc.typ) || IS_POOL(loc.typ))
+        && !mon.mcloned && monsterCorpseDropSucceeds(mon, data)
+        && monsterLeavesCorpseLikeDrop(corpseData)) {
+        createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
+    }
+    game.level.monsters = (game.level?.monsters || []).filter(candidate => candidate !== mon);
+    newsym(mon.mx, mon.my);
+}
+
 function heroProjectileWeaponImpact(obj, mon, hitValue) {
     if (!heroProjectileSupportedWeaponObject(obj)) return { handled: false, messages: [] };
     const dieroll = rnd(20);
     const targetName = heroThrownVenomTargetName(mon);
     if (hitValue >= dieroll) {
-        const damage = heroProjectileWeaponDamage(obj, mon);
+        const { damage, silverMessage } = heroProjectileWeaponDamage(obj, mon);
         mon.mhp = (mon.mhp || 1) - damage;
-        if ((mon.mhp || 0) <= 0) mon.dead = true;
-        wakeMonsterFromHeroThrownHit(mon);
+        const messages = [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}${heroProjectileHitPunctuation(damage)}`];
+        if (silverMessage) messages.push(silverMessage);
+        if ((mon.mhp || 0) <= 0) killMonsterFromHeroProjectileHit(mon, messages, targetName);
+        if (!mon.dead) wakeMonsterFromHeroThrownHit(mon);
         exerciseHeroProjectileHitDexterity();
         const mulched = shouldMulchHeroProjectileMissile(obj);
         if (mulched) rn2(100);
@@ -20068,7 +20247,7 @@ function heroProjectileWeaponImpact(obj, mon, hitValue) {
             hit: true,
             damage,
             mulched,
-            messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}${heroProjectileHitPunctuation(damage)}`],
+            messages,
         };
     }
     const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
@@ -20092,8 +20271,9 @@ function heroThrownGemImpact(obj, mon) {
     if (hitValue >= dieroll) {
         const damage = rnd(2);
         mon.mhp = (mon.mhp || 1) - damage;
-        if ((mon.mhp || 0) <= 0) mon.dead = true;
-        wakeMonsterFromHeroThrownHit(mon);
+        const messages = [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}.`];
+        if ((mon.mhp || 0) <= 0) killMonsterFromHeroProjectileHit(mon, messages, targetName);
+        if (!mon.dead) wakeMonsterFromHeroThrownHit(mon);
         exerciseHeroProjectileHitDexterity();
         const mulched = shouldMulchHeroProjectileMissile(obj);
         if (mulched) rn2(100);
@@ -20102,7 +20282,7 @@ function heroThrownGemImpact(obj, mon) {
             hit: true,
             damage,
             mulched,
-            messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${targetName}.`],
+            messages,
         };
     }
     const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];

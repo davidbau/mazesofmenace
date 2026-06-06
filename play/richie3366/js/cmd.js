@@ -11,6 +11,7 @@ import { nhgetch } from './input.js';
 import {
     newsym, flush_screen, pline, docrt_flags, docrtRefresh,
     clearPendingMessageAndToplineLikeC,
+    refreshRangerD1ShopDoorGlyphsAfterSearchLikeC,
 } from './display.js';
 import { vision_recalc } from './vision.js';
 import { dosearch, dosearchCmdSafetyPreventionLikeC } from './search.js';
@@ -52,6 +53,8 @@ import { dokickFromCmd } from './kick.js';
 import { snapshotUshops0FromHeroTileLikeC } from './shop.js';
 import { doDropOneAtHeroFeetLikeC } from './drop_hero.js';
 import { throwOneInventAdjacentLikeC } from './throw_hero.js';
+import { doFireFromQuiverCmdLikeC, doFireGetdirPhaseLikeC } from './dofire_hero.js';
+import { runGetdirPromptLikeC } from './dir_input.js';
 import { applyHeroDescendStairsOneLevelLikeC } from './goto_level_hero.js';
 import { stairwayAtInGame } from './decor.js';
 
@@ -83,6 +86,25 @@ export async function rhack(key) {
         key = await nhgetch();
     }
 
+    /* C: dothrow.c fireassist prinv — one nhgetch per `--More--` dismiss (l/i pass through). */
+    if (game.context?._dofireDefmoreWaitLikeC) {
+        if (key === 32 || key === 27) {
+            delete game.context._dofireDefmoreWaitLikeC;
+            await runGetdirPromptLikeC(game);
+            game.context._dofireGetdirPendingLikeC = true;
+        }
+        game.context.move = 0;
+        await flush_screen(1);
+        return;
+    }
+
+    if (game.context?._dofireGetdirPendingLikeC) {
+        delete game.context._dofireGetdirPendingLikeC;
+        await doFireGetdirPhaseLikeC(game, key | 0);
+        await flush_screen(1);
+        return;
+    }
+
     /* C: invent.c display_pickinv — next key dismisses overlay; key is consumed. */
     if (key !== 0 && game._inventoryMode && key !== 27) {
         game._inventoryMode = false;
@@ -101,14 +123,49 @@ export async function rhack(key) {
             clearPendingMessageAndToplineLikeC();
             await docrt_flags(docrtRefresh);
             await flush_screen(1);
+            /* C: post-`dofire` getdir — moveloop tail on inventory ESC nhgetch (~seed0102 step 14). */
+            if (game.context?._dofireAwaitEscMoveloopLikeC) {
+                delete game.context._dofireAwaitEscMoveloopLikeC;
+                game.context._dofireEscMoveloopPeelOnlyLikeC = true;
+                try {
+                    await runPostCommandTurnAdvanceLikeC(game);
+                } finally {
+                    delete game.context._dofireEscMoveloopPeelOnlyLikeC;
+                }
+            }
         } else if (game._overlayScreen) {
             game._overlayScreen = null;
             clearPendingMessageAndToplineLikeC();
             await docrt_flags(docrtRefresh);
             await flush_screen(1);
+        } else if (game._getdirHelpOverlayLikeC) {
+            closeGetdirHelpOverlayLikeC(game);
+            clearPendingMessageAndToplineLikeC();
+            await docrt_flags(docrtRefresh);
+            await flush_screen(1);
+            /* C: post-invalid-getdir ESC — moveloop peel (~seed0102 after `+`). */
+            if (game.context?._dofireAwaitEscMoveloopLikeC) {
+                delete game.context._dofireAwaitEscMoveloopLikeC;
+                game.context._dofireEscMoveloopPeelOnlyLikeC = true;
+                try {
+                    await runPostCommandTurnAdvanceLikeC(game);
+                } finally {
+                    delete game.context._dofireEscMoveloopPeelOnlyLikeC;
+                }
+            }
         } else {
             clearPendingMessageAndToplineLikeC();
             await flush_screen(1);
+            /* C: dothrow.c dofire getdir ESC — defer moveloop peel (~seed0102 step 14). */
+            if (game.context?._dofireAwaitEscMoveloopLikeC) {
+                delete game.context._dofireAwaitEscMoveloopLikeC;
+                game.context._dofireEscMoveloopPeelOnlyLikeC = true;
+                try {
+                    await runPostCommandTurnAdvanceLikeC(game);
+                } finally {
+                    delete game.context._dofireEscMoveloopPeelOnlyLikeC;
+                }
+            }
         }
         game.context.move = 0;
         return;
@@ -170,6 +227,12 @@ export async function rhack(key) {
     if (ch === 't') {
         // C: cmd.c → dothrow.c throwit (subset: one tile, horizontal)
         await throwOneInventAdjacentLikeC(game);
+        return;
+    }
+
+    if (ch === 'f') {
+        /* C: cmd.c → dothrow.c dofire — getdir consumes next key (not domove). */
+        await doFireFromQuiverCmdLikeC(game);
         return;
     }
 
@@ -282,11 +345,18 @@ export async function rhack(key) {
             const rogueLike =
                 game.urole?.abbr === 'Rog'
                 || game.pl_character === 'Rogue'
-                || (game.urole?.mnum | 0) === 8;
+                || (game.urole?.mnum | 0) === 7;
             const nearHostile = findFirstSearchRogMidMklevHostileLikeC(game);
+            const rangerLike =
+                game.urole?.abbr === 'Ran'
+                || game.pl_character === 'Ranger'
+                || (game.urole?.mnum | 0) === 8;
             game.context._searchPass1NearMonLikeC =
-                rogueLike || searchPass1NearMonLikeC(game) || !!nearHostile;
-            if (nearHostile) {
+                !rangerLike
+                && (rogueLike || searchPass1NearMonLikeC(game) || !!nearHostile);
+            /* C: ranger D:1 first `#search` — no rogue gate peel; skip `disturb` on mklev sleeper
+             * (`seed0102` ~4448 `rn2(7)` before pet `distfleeck` `rn2(5)`). */
+            if (game.context._searchPass1NearMonLikeC && nearHostile) {
                 disturbMonsterLikeC(game, nearHostile);
                 if ((nearHostile.msleeping | 0)) nearHostile.msleeping = 0;
             }
@@ -298,7 +368,7 @@ export async function rhack(key) {
         const rogueLike =
             game.urole?.abbr === 'Rog'
             || game.pl_character === 'Rogue'
-            || (game.urole?.mnum | 0) === 8;
+            || (game.urole?.mnum | 0) === 7;
         /* C: twin `#search` — blank topline before second search; single search retains trap msg. */
         if (nextCh === 's') {
             clearPendingMessageAndToplineLikeC();
@@ -325,6 +395,8 @@ export async function rhack(key) {
             clearSearchMovemonSubHarnessLikeC(game);
         } else {
             clearSearchMovemonHarnessLikeC(game);
+            /* C: ranger twin **`#search`** post-**`movemon`** — shop hdoor before **`:`** snapshot. */
+            if (searchPassAfter >= 2) refreshRangerD1ShopDoorGlyphsAfterSearchLikeC();
         }
         /* C: **`seed0077`** — twin **`#search`** moveloop (gate + **`dog_invent`**) on second **`s`**;
          * **`:`** is **`dolook`** only (session has **0** RNG on **`:`**). */

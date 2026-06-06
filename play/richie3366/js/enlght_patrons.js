@@ -1,86 +1,68 @@
 // enlght_patrons.js — Quest deity lines for #attributes (enlightenment background).
-// C ref: role.c (quest_info, pantheon), questpgr.c strings.
-//
-// Keyed by canonical role name (urole.name.m) and u.ualign.type (-1 chaotic, 0 neutral, 1 lawful).
+// C ref: insight.c background_enlightenment; pray.c align_gname / u_gname; role.c pantheon.
 
-/** @type {Record<string, [string, string]>} */
-const MISSION_BY_ROLE_ALIGN = {
-    'Tourist|0': [
-        '  You are neutral, on a mission for The Lady',
-        '  who is opposed by Blind Io (lawful) and Offler (chaotic).',
-    ],
-    'Wizard|0': [
-        '  You are neutral, on a mission for Thoth',
-        '  who is opposed by Ptah (lawful) and Anhur (chaotic).',
-    ],
-    'Knight|1': [
-        '  You are lawful, on a mission for Lugh',
-        '  who is opposed by Brigit (neutral) and Manannan Mac Lir (chaotic).',
-    ],
-    'Rogue|-1': [
-        '  You are chaotic, on a mission for Kos',
-        '  who is opposed by Issek (lawful) and Mog (neutral).',
-    ],
-    'Caveman|0': [
-        '  You are neutral, on a mission for Ishtar',
-        '  who is opposed by Anu (lawful) and Anshar (chaotic).',
-    ],
-    'Cavewoman|0': [
-        '  You are neutral, on a mission for Ishtar',
-        '  who is opposed by Anu (lawful) and Anshar (chaotic).',
-    ],
-    'Monk|0': [
-        '  You are neutral, on a mission for Chih Sung-tzu',
-        '  who is opposed by Shan Lai Ching (lawful) and Huan Ti (chaotic).',
-    ],
-    'Archeologist|0': [
-        '  You are neutral, on a mission for Camaxtli',
-        '  who is opposed by Quetzalcoatl (lawful) and Huhetotl (chaotic).',
-    ],
-    'Barbarian|0': [
-        '  You are neutral, on a mission for Crom',
-        '  who is opposed by Mitra (lawful) and Set (chaotic).',
-    ],
-    'Samurai|1': [
-        '  You are lawful, on a mission for Amaterasu Omikami',
-        '  who is opposed by Raijin (neutral) and Susanowo (chaotic).',
-    ],
-    'Priest|0': [
-        '  You are neutral, on a mission for The Lady',
-        '  who is opposed by Blind Io (lawful) and Offler (chaotic).',
-    ],
-    'Priest|1': [
-        '  You are lawful, on a mission for Amaterasu Omikami',
-        '  who is opposed by Raijin (neutral) and Susanowo (chaotic).',
-    ],
-    'Priest|-1': [
-        '  You are chaotic, on a mission for Loki',
-        '  who is opposed by Tyr (lawful) and Odin (neutral).',
-    ],
-    'Healer|0': [
-        '  You are neutral, on a mission for Hermes',
-        '  who is opposed by Apollo (lawful) and Poseidon (chaotic).',
-    ],
-    'Ranger|-1': [
-        '  You are chaotic, on a mission for Mercury',
-        '  who is opposed by Venus (lawful) and Mars (neutral).',
-    ],
-    'Valkyrie|1': [
-        '  You are lawful, on a mission for Tyr',
-        '  who is opposed by Odin (neutral) and Loki (chaotic).',
-    ],
-};
+import { game } from './gstate.js';
+import {
+    A_LAWFUL,
+    A_NEUTRAL,
+    A_CHAOTIC,
+    A_NONE,
+    A_CURRENT,
+    A_ORIGINAL,
+} from './const.js';
+import { alignGnameLikeC, uGnameHeroLikeC } from './pray_align_gname_like_c.js';
+
+/** C: insight.c align_str */
+function alignStrLikeC(alignment) {
+    switch (alignment | 0) {
+        case A_CHAOTIC:
+            return 'chaotic';
+        case A_NEUTRAL:
+            return 'neutral';
+        case A_LAWFUL:
+            return 'lawful';
+        case A_NONE:
+            return 'unaligned';
+        default:
+            return 'unknown';
+    }
+}
 
 /**
- * @param {string} roleNameM — urole.name.m (canonical role id)
- * @param {number} alignType — u.ualign.type: -1 chaotic, 0 neutral, 1 lawful
+ * C: insight.c background_enlightenment — pantheon sentences (enlght_out).
+ * @param {import('./gstate.js').game} [g]
+ * @param {boolean} [final]
  * @returns {string[]}
  */
-export function enlightMissionLines(roleNameM, alignType) {
-    const role = roleNameM || 'Tourist';
-    const a = alignType === 1 || alignType === 0 || alignType === -1 ? alignType : 0;
-    const hit = MISSION_BY_ROLE_ALIGN[`${role}|${a}`];
-    if (hit) return [...hit];
-    const label = a === 1 ? 'lawful' : a === -1 ? 'chaotic' : 'neutral';
-    return [`  You are ${label}.`];
+export function enlightMissionLinesLikeC(g = game, final = false) {
+    const u = g.u || {};
+    const al = u.ualign?.type ?? A_NEUTRAL;
+    const ualignbase = u.ualignbase;
+    const aCur = ualignbase?.[A_CURRENT] ?? al;
+    const aOrig = ualignbase?.[A_ORIGINAL] ?? al;
+
+    let alignAdverb = '';
+    if (al !== aCur) alignAdverb = final ? 'temporarily ' : 'currently ';
+    else if (al !== aOrig) alignAdverb = final ? 'belatedly ' : 'now ';
+    else if (!u.uconduct?.gnostic && (g.moves ?? 0) > 1000) alignAdverb = 'nominally ';
+
+    const youAre = final ? 'You were' : 'You are';
+    const opposed = final ? 'was' : 'is';
+
+    const line1 = `  ${youAre} ${alignAdverb}${alignStrLikeC(al)}, on a mission for ${uGnameHeroLikeC(g)}`;
+
+    let line2 = `  who ${opposed} opposed by`;
+    if (al !== A_LAWFUL) {
+        line2 += ` ${alignGnameLikeC(g, A_LAWFUL)} (${alignStrLikeC(A_LAWFUL)}) and`;
+    }
+    if (al !== A_NEUTRAL) {
+        line2 += ` ${alignGnameLikeC(g, A_NEUTRAL)} (${alignStrLikeC(A_NEUTRAL)})`;
+        if (al !== A_CHAOTIC) line2 += ' and';
+    }
+    if (al !== A_CHAOTIC) {
+        line2 += ` ${alignGnameLikeC(g, A_CHAOTIC)} (${alignStrLikeC(A_CHAOTIC)})`;
+    }
+    line2 += '.';
+
+    return [line1, line2];
 }

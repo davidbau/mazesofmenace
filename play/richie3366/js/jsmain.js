@@ -313,7 +313,7 @@ export async function runSegment(input) {
     }
 
     /* C: one more moveloop_core time slice after the last queued key (no rhack). */
-    if (game.context?.move) {
+    if (game.context?.move && !game.context?._dofireAwaitEscMoveloopLikeC) {
         await runPostCommandTurnAdvanceLikeC(game);
     }
 

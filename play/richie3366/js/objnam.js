@@ -36,6 +36,12 @@ import { nh5HeroObjectClass } from './water_damage.js';
 import { OC_SKILL_ROW_BY_OTYP } from './obj_oc_skill_data.js';
 import { cansee } from './vision.js';
 import { OTYP_GLOB_OF_GREEN_SLIME } from './const.js';
+import {
+    O_INIT_ARRAY_LEN,
+    O_INIT_FIRST_OBJECT,
+    O_INIT_OC_CLASS,
+    O_INIT_OCLASS_BASES,
+} from './o_init_objects_meta.js';
 
 /** C: include/objects.h POTION(...) block — NH **5.0.0** contiguous **`objects_nums`** **296..321** (see **`water_damage.js`** **`nh5HeroObjectClass`**). */
 const OTYP_POT_FIRST = 296;
@@ -304,15 +310,27 @@ function ocSkillRowPluralDonameLikeC(phrase, q) {
  * C: **`doname`** / **`minimal_xname`** fallback for **`otyp`** in **`OC_SKILL_ROW_BY_OTYP`** (weapon/tool/gem/rock…).
  * @returns {string|null}
  */
+/** C: objnam.c doname_base WEAPON_CLASS — `Sprintf(prefix, "%+d ", obj->spe)` when known. */
+function weaponSpePrefixDonameLikeC(otmp) {
+    const spe = otmp.spe | 0;
+    if (spe === 0) return '';
+    const known = otmp.known !== false && (otmp.known || otmp.dknown || spe !== 0);
+    if (!known) return '';
+    return `${spe > 0 ? '+' : ''}${spe} `;
+}
+
 function donameFromOcSkillRowLikeC(otmp, q) {
     const row = OC_SKILL_ROW_BY_OTYP.get(otmp.otyp | 0);
     if (!row) return null;
     const phrase = ocSkillRowPhraseFromRow(row);
     if (!phrase) return null;
     const iq = Math.max(1, q | 0);
+    const oc = nh5HeroObjectClass(otmp);
+    const spePre =
+        oc === NH5_WEAPON_CLASS ? weaponSpePrefixDonameLikeC(otmp) : '';
     if (iq === 1) {
         const art = justArticlePrefix(phrase);
-        return `${art}${phrase}`;
+        return `${art}${spePre}${phrase}`;
     }
     return ocSkillRowPluralDonameLikeC(phrase, iq);
 }
@@ -629,8 +647,26 @@ export function upstartLikeC(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+/** C: o_init.c **`svd.disco[dindx] = oindx`** slot assignment within class. */
+function assignDiscoSlotLikeC(g, otyp) {
+    const t = otyp | 0;
+    const acls = O_INIT_OC_CLASS[t] | 0;
+    const bases = O_INIT_OCLASS_BASES;
+    if (!g.discoSlots || g.discoSlots.length < O_INIT_ARRAY_LEN) {
+        g.discoSlots = new Int32Array(O_INIT_ARRAY_LEN);
+    }
+    let dindx = bases[acls] | 0;
+    while (g.discoSlots[dindx] !== 0 && g.discoSlots[dindx] !== t) dindx++;
+    g.discoSlots[dindx] = t;
+}
+
+/** C: objects[].oc_name_known mirror for **`obj_typename`**. */
+function markObjectNameKnownLikeC(g, otyp) {
+    if (!g.objectNameKnownOtyps) g.objectNameKnownOtyps = new Set();
+    g.objectNameKnownOtyps.add(otyp | 0);
+}
+
 /**
- * C: o_init.c **`discover_object(oindx, mark_as_known, mark_as_encountered, credit_hero)`** — **`disco[]`** slot + **`oc_encountered`** / **`oc_name_known`**.
  * JS: **`g.objectEncountered`** (**`Set<otyp>`**) when **`mark_as_encountered`**; **`partialNameKnown`** uses **`scrollDiscovery`** / **`objectDiscovery`** / **`potionDiscovery`** / **`wandDiscovery`** / **`armorDiscovery`** / **`ringDiscovery`** / **`amuletDiscovery`** like C **`objects[].oc_name_known`** gates for those JS mirrors.
  * Omits **`svb.bases[]`**, Samurai **`Japanese_item_name`**, **`gem_learned`**, **`update_inventory`**, **`exercise`**.
  * @param {import('./gstate.js').game} g
@@ -649,7 +685,7 @@ export function noteDiscoveryOtypLikeC(g, oindx) {
 
 export function discoverObjectHeroLikeC(g, oindx, markAsKnown, markAsEncountered, _creditHero) {
     const t = oindx | 0;
-    if (t < 1) return;
+    if (t < (O_INIT_FIRST_OBJECT | 0)) return;
 
     if (!(g.objectEncountered instanceof Set)) g.objectEncountered = new Set();
     const alreadyEnc = g.objectEncountered.has(t);
@@ -661,6 +697,7 @@ export function discoverObjectHeroLikeC(g, oindx, markAsKnown, markAsEncountered
     const armorKnown = g.armorDiscovery instanceof Set && g.armorDiscovery.has(t);
     const ringKnown = g.ringDiscovery instanceof Set && g.ringDiscovery.has(t);
     const amuletKnown = g.amuletDiscovery instanceof Set && g.amuletDiscovery.has(t);
+    const nameKnownSet = g.objectNameKnownOtyps instanceof Set && g.objectNameKnownOtyps.has(t);
     const partialNameKnown =
         scrollKnown ||
         spellKnown ||
@@ -668,19 +705,20 @@ export function discoverObjectHeroLikeC(g, oindx, markAsKnown, markAsEncountered
         wandKnown ||
         armorKnown ||
         ringKnown ||
-        amuletKnown;
+        amuletKnown ||
+        nameKnownSet;
 
     /* C: outer **`if`** — no **`objects[]`** yet; spell/scroll Sets approximate **`oc_name_known`** for those classes only. */
     const enter = (markAsKnown && !partialNameKnown) || (markAsEncountered && !alreadyEnc);
     if (!enter) return;
 
-    /* C: **`svd.disco[dindx] = oindx`** — ordering deferred. */
+    assignDiscoSlotLikeC(g, t);
     if (!Array.isArray(g.discoOtyps)) g.discoOtyps = [];
     if (!g.discoOtyps.includes(t)) g.discoOtyps.push(t);
     if (markAsEncountered) g.objectEncountered.add(t);
 
     if (markAsKnown && !partialNameKnown) {
-        /* C: **`objects[oindx].oc_name_known`**, **`exercise`**, **`gem_learned`**, **`update_inventory`** — TODO per class. */
+        markObjectNameKnownLikeC(g, t);
         void _creditHero;
     }
 }

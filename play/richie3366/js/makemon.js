@@ -138,6 +138,11 @@ export function makemon(mdat, x, y, mmflags) {
         }
         px = cc.x;
         py = cc.y;
+        if (typeof globalThis.__diagMakemonEnextoLikeC === 'function') {
+            globalThis.__diagMakemonEnextoLikeC(
+                game, game.u?.ux | 0, game.u?.uy | 0, ptrForPlacement, gpflags, cc,
+            );
+        }
     }
     let mnum = 0;
     if (mdat === null) {

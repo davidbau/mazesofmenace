@@ -3171,6 +3171,11 @@ async function fill_ordinary_room(croom, bonus_items) {
                         gate: true,
                         ok: !!tmonst,
                         space: true,
+                        x: pos.x | 0,
+                        y: pos.y | 0,
+                        mx: tmonst?.mx | 0,
+                        my: tmonst?.my | 0,
+                        mnum: tmonst?.mnum | 0,
                     });
                 }
                 if (tmonst && (tmonst.mnum | 0) === PM_GIANT_SPIDER && !occupied(pos.x, pos.y)) {
@@ -3737,7 +3742,7 @@ function pickWestMgenmklevForDoorNicheLikeC(g, findWestNiche) {
     let bestM = null;
     let bestScore = -1;
     for (const m of mons) {
-        if (!(m.mgenmklev | 0)) continue;
+        if (!mgenmklevFungusLikeC(m)) continue;
         const niche = findWestNiche(g, m);
         if (!niche) continue;
         const flag = monAllowflagsMonsterLikeC(g, m);
@@ -3810,7 +3815,6 @@ function preferSleepingLichenDoorNichesLikeC(g) {
             false
         );
     }
-    anchorWestApportSleeperLikeC(g);
 }
 
 /**
@@ -4065,11 +4069,10 @@ function level_finalize_topology() {
     }
     syncLevelFlagsHasTownAfterFixupSpecialLikeC(game);
     openWestDoorColumnNorthCorrLikeC(game);
-    /* C: `mgenmklev` sleepers from `fill_ordinary_room` — no post-`level_finalize_topology` move in C. */
+    /* C: mklev.c `level_finalize_topology` — no generic `fill_ordinary_room` sleeper relocate.
+     * Fungus/lichen door niches only (`preferSleepingLichenDoorNichesLikeC`); not `anchorWestApportSleeperLikeC`. */
     if (anyMgenmklevMonsterLikeC(game)) {
         preferSleepingLichenDoorNichesLikeC(game);
-    } else {
-        anchorWestApportSleeperLikeC(game);
     }
     anchorApportTowelOnWestFillAlcoveLikeC(game);
     /* C: west-door apport gold must stay newest on **`fobj`** after late mklev gold. */

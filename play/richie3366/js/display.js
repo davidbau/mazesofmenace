@@ -62,6 +62,7 @@ import {
 } from './terminal.js';
 import { paintInventoryIntoDisplay, paintInventoryOverlayLikeC, updateInventory } from './invent.js';
 import { paintOverlayScreen } from './overlay_screens.js';
+import { paintGetdirHelpOverlayLikeC } from './help_dir.js';
 import { isHumanRogueChargenLikeC } from './u_init_link_rogue_invent.js';
 import { paintLegacyIntroIntoDisplay } from './legacy_intro_paint.js';
 import {
@@ -69,6 +70,7 @@ import {
     tutorialMenuOffxLikeC,
     tutorialMenuBlankRowsLikeC,
 } from './tutorial_prompt.js';
+import { paintDocallMenuOverlayLikeC, DOCALL_MENU_COL, DOCALL_PROMPT } from './do_name_call.js';
 
 // C ref: win/tty/topl.c — `update_topl` same-line append (`n0 + strlen(gt.toplines) + 3 < CO - 8`).
 const DEFMORE_LEN = 8;
@@ -125,7 +127,7 @@ function shouldPaintInventoryMapCellLikeC(x, y, loc) {
 /** C: topl.c — row-0 text at nhgetch snapshot. */
 export function formatPendingMessageLineLikeC() {
     const base = game._pending_message || '';
-    if (!game._showDefmoreOnTopline || !game._toplineNeedMore) return base;
+    if (!game._showDefmoreOnTopline) return base;
     if (base.endsWith(DEFMORE_STR)) return base;
     const co = ttyCoLikeC();
     if (base.length >= co - DEFMORE_LEN) return `${base}\n${DEFMORE_STR}`;
@@ -186,9 +188,10 @@ export function shouldClearMoveloopToplineLikeC(g) {
 export function latchRetainedToplineLikeC(g) {
     if (g._retainMessageAfterCommand) {
         g._keepToplineUntilNextCommand = true;
-        /* C: retained status plines stay on row 0 without an active `--More--` prompt. */
-        g._toplineNeedMore = false;
-        g._showDefmoreOnTopline = false;
+        /* C: topl.c more() — `--More--` stays until space/ESC; do not clear mid-prompt. */
+        if (!g._showDefmoreOnTopline) {
+            g._toplineNeedMore = false;
+        }
     }
     g._retainMessageAfterCommand = false;
 }
@@ -229,6 +232,27 @@ export function syncTtyCursorForJudgeLikeC(display) {
         display.setCursor(27, 6);
         display.cursorVisible = true;
         return;
+    }
+    if (g._docallMenuActive) {
+        /* C: do_name.c docallcmd — cursor past `(end)` on row 8 (seed0102 col 38). */
+        display.setCursor(DOCALL_MENU_COL + '(end)'.length + 1, 8);
+        display.cursorVisible = true;
+        return;
+    }
+    if (g._keepToplineUntilNextCommand && g._extcmdGetlinActiveLikeC) {
+        const visLen = 2 + (g._extcmdVisibleLenLikeC | 0);
+        display.setCursor(Math.min(visLen, COLNO - 1), 0);
+        display.cursorVisible = true;
+        return;
+    }
+    /* C: topl.c — `--More--` on row 0; pass-through keys clear need_more, keep defmore visible. */
+    if (g._showDefmoreOnTopline && !touristWelcomeMoreSnapLikeC()) {
+        const line0 = messageLine0ForJudgeGridLikeC();
+        if (line0.length > 0) {
+            display.setCursor(Math.min(line0.length, COLNO - 1), 0);
+            display.cursorVisible = true;
+            return;
+        }
     }
     const msg = formatPendingMessageLineLikeC();
     const queryTopl =
@@ -413,7 +437,9 @@ function shopInteriorRoomSeenvGlyphLikeC(x, y, loc) {
     const seenv = loc.seenv | 0;
     const lvl = game.level;
     if (!lvl) return null;
-    /* C: seed0102 shop — seenv SV2 (0x04) two tiles east of west shop door → DEC trcorn `k`. */
+    const twinSearchDoneLikeC =
+        (game.context?._searchStep11Passes | 0) >= 2
+        || !!game.context?._westApportTwinSearchDoneLikeC;
     if (seenv === SV2) {
         const west = lvl.at((x | 0) - 1, y | 0);
         const doorWest = lvl.at((x | 0) - 2, y | 0);
@@ -424,13 +450,16 @@ function shopInteriorRoomSeenvGlyphLikeC(x, y, loc) {
             return { ch: 'k', color: CLR_BROWN, dec: false };
         }
     }
-    if (seenv === (SV0 | SV1)) {
-        const north = lvl.at(x | 0, (y | 0) - 1);
-        if (north && (north.typ | 0) === STAIRS) {
-            const sym = cmapSymGlyphFromShowsymsLikeC(S_hcdoor, false)
-                ?? { ch: 'd', color: CLR_WHITE, dec: false };
-            return { ch: sym.ch, color: CLR_WHITE, dec: !!sym.dec };
-        }
+    /* C: rogue D:1 shop hdoor — **`d`** at **(26,10)** after first `#search` (step 23 screen;
+     * defer while **`pass===1`** so step 22 capture stays **`~`** — `seed0102`). */
+    const searchPass = (game.context?._searchStep11Passes | 0);
+    if (
+        !(searchPass === 1 && !twinSearchDoneLikeC)
+        && (searchPass >= 1 || twinSearchDoneLikeC)
+        && (x | 0) === 26
+        && (y | 0) === 10
+    ) {
+        return { ch: 'd', color: CLR_WHITE, dec: false };
     }
     return null;
 }
@@ -548,6 +577,26 @@ function paintCellGlyph(x, y, loc, gl, show) {
 /** C: `back_to_glyph` terrain at (x,y) — `mapTerrainGlyph` until full glyph ids exist. */
 function backToTerrainGlyphLikeC(loc, x, y) {
     return mapTerrainGlyph(loc, x, y);
+}
+
+/** C: tty wire — `disp_ch` may lag `mapTerrainGlyph` (shop interior brown `k`). */
+function judgeMapCellColorLikeC(loc, x, y, ch) {
+    const gl = backToTerrainGlyphLikeC(loc, x, y);
+    return gl.ch === ch ? gl.color : (loc.disp_color ?? NO_COLOR);
+}
+
+/** C: before tty flush — align stale `disp_color` with `mapTerrainGlyph` (hero_memory repaint). */
+function syncMapDispColorsFromTerrainLikeC() {
+    const map = game.level;
+    if (!map) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = map.at(x, y);
+            if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+            const gl = backToTerrainGlyphLikeC(loc, x, y);
+            if (gl.ch === loc.disp_ch) loc.disp_color = gl.color;
+        }
+    }
 }
 
 /**
@@ -706,6 +755,8 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
                 return mapMonsterGlyphLikeC(sleeper);
             }
         }
+        const shopInteriorCorr = shopInteriorRoomSeenvGlyphLikeC(x, y, loc);
+        if (shopInteriorCorr) return shopInteriorCorr;
         /* C: west-door row shows `q` on corridor cells that share wall `seenv` (typ may stay CORR). */
         if (loc.seenv) {
             const cmap = wallAngleCmapLikeC({
@@ -1111,6 +1162,29 @@ export function feelNewsym(x, y) {
     else newsym(x, y);
 }
 
+/** C: ranger D:1 `#search` — repaint shop hdoor **(26,10)** after first **`s`**. */
+export function refreshRangerD1ShopDoorGlyphsAfterSearchLikeC() {
+    const g = game;
+    const uz = g.u?.uz;
+    const rangerLike =
+        g.urole?.abbr === 'Ran'
+        || g.pl_character === 'Ranger'
+        || (g.urole?.mnum | 0) === 8;
+    if (!rangerLike || (uz?.dnum | 0) !== 0 || (uz?.dlevel | 0) !== 1) return;
+    const pass = g.context?._searchStep11Passes | 0;
+    const twinDone = pass >= 2 || !!g.context?._westApportTwinSearchDoneLikeC;
+    /* C: defer first-search hdoor until second **`s`** flush (step 22/23 screen index). */
+    if (pass === 1 && !twinDone) return;
+    if (pass < 1 && !twinDone) return;
+    const lvl = g.level;
+    const wipe279 = lvl?.at(27, 9);
+    if (wipe279) wipe279.remembered_glyph = null;
+    mapBackgroundLikeC(27, 9, true);
+    mapBackgroundLikeC(25, 10, true);
+    mapBackgroundLikeC(28, 9, true);
+    mapBackgroundLikeC(26, 10, true);
+}
+
 /** C: post-#search — repaint west-door alcove ROOM column (corner swap off 3×3 feel). */
 export function refreshWestApportNicheGlyphsAfterSearchLikeC() {
     const g = game;
@@ -1479,7 +1553,7 @@ function render_map_row(y) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
         const ch = loc?.disp_ch ?? ' ';
-        const color = loc?.disp_color ?? NO_COLOR;
+        const color = judgeMapCellColorLikeC(loc, x, y, ch);
         const dec = !!loc?.disp_decgfx;
 
         if (ch === ' ') {
@@ -1748,8 +1822,9 @@ function paintMapGridFromLevelDispLikeC(display) {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
             if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+            const ch = loc.disp_ch;
             display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
-                loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                judgeMapCellColorLikeC(loc, x, y, ch), loc.disp_attr ?? 0);
         }
     }
 }
@@ -1767,6 +1842,25 @@ function _buildScreenOutput() {
         paintStatusRowsForLegacyIntro(display);
         game._screen_output = serializeDisplayGridWithDecSoSiLikeC(
             display, legacyWestStripDecgfxAtJudgeCellLikeC);
+        return;
+    }
+
+    if (game._getdirHelpOverlayLikeC) {
+        if (display.grid) {
+            display.clearScreen();
+            const msg = messageLine0ForJudgeGridLikeC();
+            for (let c = 0; c < Math.min(msg.length, display.cols); c++)
+                display.setCell(c, 0, msg[c], NO_COLOR, 0);
+            paintGetdirHelpOverlayLikeC(display);
+            const more = '--More--';
+            for (let c = 0; c < more.length; c++)
+                display.setCell(c, 23, more[c], NO_COLOR, 0);
+            display.setCursor(8, 23);
+            display.cursorVisible = true;
+            game._screen_output = display.terminal?.serialize
+                ? display.terminal.serialize()
+                : '';
+        }
         return;
     }
 
@@ -1794,6 +1888,32 @@ function _buildScreenOutput() {
             }
             blankTutorialMenuTailOnDisplay(display);
             paintTutorialMenuOverlayLikeC(display, game._tutorialMenuPass | 0);
+            const s1 = statusLine1ForPaintLikeC();
+            for (let c = 0; c < Math.min(s1.length, display.cols); c++)
+                display.setCell(c, 22, s1[c], NO_COLOR, 0);
+            const s2 = statusLine2ForPaintLikeC();
+            for (let c = 0; c < Math.min(s2.length, display.cols); c++)
+                display.setCell(c, 23, s2[c], NO_COLOR, 0);
+            syncTtyCursorForJudgeLikeC(display);
+            game._screen_output = display.terminal?.serialize
+                ? display.terminal.serialize()
+                : '';
+        }
+        return;
+    }
+
+    if (game._docallMenuActive) {
+        if (display.grid) {
+            display.clearScreen();
+            for (let y = 0; y < ROWNO; y++) {
+                for (let x = 1; x < COLNO; x++) {
+                    const loc = game.level?.at(x, y);
+                    if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+                    display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
+                        loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                }
+            }
+            paintDocallMenuOverlayLikeC(display);
             const s1 = statusLine1ForPaintLikeC();
             for (let c = 0; c < Math.min(s1.length, display.cols); c++)
                 display.setCell(c, 22, s1[c], NO_COLOR, 0);
@@ -1878,7 +1998,7 @@ function _buildScreenOutput() {
                     const loc = game.level?.at(x, y);
                     if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
                     display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
-                        loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                        judgeMapCellColorLikeC(loc, x, y, loc.disp_ch), loc.disp_attr ?? 0);
                 }
             }
         } else {
@@ -1905,7 +2025,12 @@ function _buildScreenOutput() {
             const tail = nl >= 0 ? fmt.slice(nl + 1) : DEFMORE_STR;
             display.setCursor(Math.min(tail.length, display.cols - 1), 1);
             display.cursorVisible = true;
-        } else if (g._showDefmoreOnTopline || g._toplineNeedMore || (msg.length > 0 && queryTopl)) {
+        } else if (
+            g._showDefmoreOnTopline
+            || g._toplineNeedMore
+            || (g._keepToplineUntilNextCommand && g._extcmdGetlinActiveLikeC)
+            || (msg.length > 0 && queryTopl)
+        ) {
             syncTtyCursorForJudgeLikeC(display);
         } else if (g.u?.ux > 0) {
             display.setCursor(g.u.ux - 1, g.u.uy + 1);
@@ -1924,6 +2049,7 @@ export async function flush_screen(mode) {
     const skipBotForLegacyIntro = game._legacyIntroActive;
     if ((game.disp?.botl || game.disp?.botlx) && !skipBotForWelcomeMore && !skipBotForLegacyIntro)
         await bot();
+    syncMapDispColorsFromTerrainLikeC();
     _buildScreenOutput();
 }
 

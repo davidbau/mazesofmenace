@@ -10,6 +10,8 @@ import {
     isFirstSearchMovemonPassLikeC,
     isRogueColonMovemonActiveLikeC,
     isSecondSearchMovemonPassLikeC,
+    isRangerLikeC,
+    rangerD1FirstSearchNoNearMonLikeC,
     rogueSecondSearchFullFmonLikeC,
     wizD1EastTailShortLActiveLikeC,
 } from './monmove_search.js';
@@ -95,6 +97,22 @@ export function fmonListForMcalcmoveLikeC(g) {
  */
 export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
+    /* C: ranger D:1 second **`#search`** — pet pass 1 then one mklev tail **`distfleeck`**
+     * before pass-2 **`dog_goal`** (**`seed0102`** ~4471–4473); not full **`fmon`** peel. */
+    if (
+        isSecondSearchMovemonPassLikeC(g)
+        && rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
+    ) {
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const mklevPeel = mons.find(
+            (m) => !(m.mtame | 0) && (m.mgenmklev | 0),
+        );
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (pet) ordered.push(pet);
+        if (mklevPeel) ordered.push(mklevPeel);
+        return ordered;
+    }
     /* C: tourist second post-rest peel — pet invent + **`mfndpos`** before other **`m_move`**
      * (**`seed0900`** ~2546+). */
     if (
@@ -340,9 +358,11 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         const rogueLike =
             game.urole?.abbr === 'Rog'
             || game.pl_character === 'Rogue'
-            || (game.urole?.mnum | 0) === 8;
+            || (game.urole?.mnum | 0) === 7;
         const rogHostile = rogueLike ? findFirstSearchRogMidMklevHostileLikeC(g) : null;
-        let nearMon = rogueLike || searchPass1NearMonLikeC(g) || !!rogHostile;
+        let nearMon =
+            !isRangerLikeC(g)
+            && (rogueLike || searchPass1NearMonLikeC(g) || !!rogHostile);
         ctx._searchPass1NearMonLikeC = nearMon;
         const pet = mons.find((m) => (m.mtame | 0) !== 0);
         const westKink = findWestKinkMonsterLikeC(g);
@@ -423,6 +443,15 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
                 ...midRest,
                 ...tail,
             ].filter(Boolean);
+        }
+        /* C: ranger D:1 twin **`#search`** — pet **`dog_move`** only (no distant/east peel; **`seed0102`**). */
+        if (
+            (isFirstSearchMovemonPassLikeC(g) || isSecondSearchMovemonPassLikeC(g))
+            && !nearMon
+            && rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
+        ) {
+            const pet = mons.find((m) => (m.mtame | 0) !== 0);
+            return pet ? [pet] : mons;
         }
         const rest = mons.filter((m) => m !== east && m !== distant);
         /** @type {typeof mons} */

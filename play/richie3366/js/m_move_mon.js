@@ -94,6 +94,7 @@ import {
     isRogFirstSearchStepOnePeelLikeC,
     isRogueColonMovemonActiveLikeC,
     isSecondSearchMovemonPassLikeC,
+    rangerD1FirstSearchNoNearMonLikeC,
     rogueSecondSearchFullFmonLikeC,
 } from './monmove_search.js';
 
@@ -378,8 +379,12 @@ function dochugEntersMmoveBlockLikeC(
         }
         return mtmp === findEastMklevSecondHLikeC(g);
     }
-    /* C: second **`#search`** — pass 1 west **`m_move`**; pass 2 east **`m_move`** (inverse of **`y`**). */
-    if ((g.context?._searchStep11Passes | 0) === 2 && !rogueSecondSearchFullFmonLikeC(g)) {
+    /* C: second **`#search`** — pass 1 west **`m_move`**; pass 2 east **`m_move`** (tourist only). */
+    if (
+        (g.context?._searchStep11Passes | 0) === 2
+        && !rogueSecondSearchFullFmonLikeC(g)
+        && !rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
+    ) {
         if ((g.context?._movemonSearch11SubPass | 0) === 1) {
             return mtmp === findWestKinkMonsterLikeC(g);
         }
@@ -991,6 +996,49 @@ async function wizD1EastTailAfterMcalcmoveSinglemonLikeC(g, mtmp, stepNum) {
 
 export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    /* C: ranger D:1 first **`#search`** — pet **`distfleeck`** + **`dog_move`** before any peel path. */
+    if (
+        rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
+        && (mtmp.mtame | 0)
+        && has_edog(mtmp)
+        && !g.context?._rangerFirstSearchPetFirstPassDoneLikeC
+    ) {
+        let mov = mtmp.movement | 0;
+        if (mov < NORMAL_SPEED) {
+            mtmp.movement = NORMAL_SPEED;
+            mov = NORMAL_SPEED;
+        }
+        mtmp.movement = mov - NORMAL_SPEED;
+        if ((mtmp.movement | 0) >= NORMAL_SPEED) {
+            const ctx = g.context || (g.context = {});
+            ctx._somebodyCanMoveLikeC = true;
+        }
+        const u = g.u;
+        if (u) {
+            mtmp.mux = u.ux | 0;
+            mtmp.muy = u.uy | 0;
+        }
+        setApparxyMonsterLikeC(g, mtmp);
+        await distfleeckMonsterApplyLikeC(g, mtmp);
+        dogMoveLikeC(g, mtmp);
+        /* C: dochug ~915 — post-**`m_move`** **`distfleeck`** recalc before twin pass 2 (~4454). */
+        await distfleeckMonsterApplyLikeC(g, mtmp);
+        (g.context || (g.context = {}))._rangerFirstSearchPetFirstPassDoneLikeC = true;
+        return;
+    }
+    /* C: ranger D:1 second **`#search`** — one mklev tail **`distfleeck`** only (no **`m_move`**
+     * ~915 recalc) before pass-2 **`dog_goal`** (**`seed0102`** ~4472–4473). */
+    if (
+        rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
+        && (g.context?._searchStep11Passes | 0) === 2
+        && !(mtmp.mtame | 0)
+        && (mtmp.mgenmklev | 0)
+    ) {
+        if (g.context?._rangerSecondSearchMklevPeelDoneLikeC) return;
+        await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
+        (g.context || (g.context = {}))._rangerSecondSearchMklevPeelDoneLikeC = true;
+        return;
+    }
     if (
         g.urole?.abbr === 'Tou'
         && g.context?._touristD1PostRestSecondMovemonLikeC
@@ -1202,11 +1250,14 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
         const peelMon =
             eastMklevFirstLAfterBLikeC(g, mtmp) || mtmp === findDistantMklevMonLikeC(g);
         const midMklevHostile = firstSearchNearMklevHostileLikeC(g, mtmp);
-        if (!peelMon && !midMklevHostile) return;
+        const rangerPet =
+            rangerD1FirstSearchNoNearMonLikeC(g, stepNum) && (mtmp.mtame | 0);
+        if (!peelMon && !midMklevHostile && !rangerPet) return;
     }
     if (
         (g.context?._searchStep11Passes | 0) === 2
         && !rogueSecondSearchFullFmonLikeC(g)
+        && !rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
         && (g.context?._movemonSearch11SubPass | 0) === 1
     ) {
         if (mtmp !== findWestKinkMonsterLikeC(g)) return;
@@ -3079,6 +3130,7 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
     } else if (
         isFirstSearchMovemonPassLikeC(g)
         && !g.context?._postBumpKillDochugGateLikeC
+        && !rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
     ) {
         if (!g.context?._searchPass1NearMonLikeC) {
             if (mtmp === findDistantMklevMonLikeC(g)) {
@@ -3100,8 +3152,12 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
             return;
         }
     }
-    /* C: second **`#search`** pass 1 — west **(64,12)** only (handled in **`monmove.js`** pass 1). */
-    if ((g.context?._searchStep11Passes | 0) === 2 && !rogueSecondSearchFullFmonLikeC(g)) {
+    /* C: second **`#search`** pass 1 — west **(64,12)** only (tourist; ranger uses pet peel above). */
+    if (
+        (g.context?._searchStep11Passes | 0) === 2
+        && !rogueSecondSearchFullFmonLikeC(g)
+        && !rangerD1FirstSearchNoNearMonLikeC(g, stepNum)
+    ) {
         return;
     }
     /* C: **`y`** pass 1 — west/eel **`distfleeck`**; east fungus **`m_move`** (**`rn2(16)`**). */

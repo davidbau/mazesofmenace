@@ -6,7 +6,7 @@
 // owns structural dungeon generation.
 
 import { game } from './gstate.js';
-import { mklev, l_nhcore_init, u_on_upstairs, syncHeroOnBranchUpstairLikeC } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { domoveHeroDirLikeC, rhack } from './cmd.js';
 import { COLNO } from './const.js';
 import { endRunning } from './timeout.js';
@@ -25,7 +25,7 @@ import { initDungeonsLikeC } from './dungeon_init.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { uInitInventoryAttrsLikeC } from './u_init_post_mklev.js';
 import { makedogLikeC } from './makedog.js';
-import { checkSpecialRoomNewgameFalseLikeC } from './spoteffects.js';
+import { checkSpecialRoomNewgameFalseLikeC, mnextoNearHeroSyncLikeC } from './spoteffects.js';
 import {
     runMoveloopPreambleBeforeRhackLikeC,
     runPostCommandTurnAdvanceLikeC,
@@ -196,8 +196,20 @@ export async function newgame() {
     init_vision_globals();
     vision_reset();
     checkSpecialRoomNewgameFalseLikeC(g);
+    /* C: allmain.c newgame — MON_AT(u.ux,u.uy) → mnexto(RLOC_NOMSG) before makedog(). */
+    const ux0 = g.u?.ux | 0;
+    const uy0 = g.u?.uy | 0;
+    const heroBlocker = g.level?.monsters?.find(
+        (m) => (m.mx | 0) === ux0 && (m.my | 0) === uy0,
+    );
+    if (typeof globalThis.__diagPreMakedogLikeC === 'function') {
+        globalThis.__diagPreMakedogLikeC(g);
+    }
+    if (heroBlocker) mnextoNearHeroSyncLikeC(g, heroBlocker);
+    if (typeof globalThis.__diagPostMnextoMakedogLikeC === 'function') {
+        globalThis.__diagPostMnextoMakedogLikeC(g);
+    }
     makedogLikeC(g);
-    syncHeroOnBranchUpstairLikeC(g);
     uInitInventoryAttrsLikeC(g);
 
     g.multi = 0; /* C: gm.multi — multi-turn actions / occupation */
@@ -302,6 +314,8 @@ export async function moveloop_core() {
                 await runPostCommandTurnAdvanceLikeC(g);
             }
             delete g.context._touristD1SearchInlinePostCompleteLikeC;
+        } else if (g.context._dofireAwaitEscMoveloopLikeC) {
+            /* C: dothrow.c dofire — defer moveloop until getdir ESC nhgetch (~seed0102 step 14). */
         } else if (skipPostForBlockedRunLikeC) {
             /* C: run into closed door (no autoopen) — no monster post before lowercase move/autoopen. */
             delete g.context._wizD1BlockedRunNoTimeLikeC;

@@ -24,6 +24,8 @@ import { isPoolCellLikeC } from './fillholetyp.js';
 import { floorObjKey } from './floorobj.js';
 import { rn2 } from './rng.js';
 import { CC_NO_FLAGS, collectCoordsLikeC } from './collect_coords.js';
+import { isExclusionZoneLikeC } from './exclusion_zone.js';
+import { LR_MONGEN } from './const.js';
 
 /**
  * C: hack.c may_passwall(x,y)
@@ -326,6 +328,7 @@ export function goodposMakemonLikeC(x, y, mtmp, gpflags = 0, g = game) {
     }
 
     if (sobjAtBoulder(x, y, g) && !throwsRocks(ptr)) return false;
+    if (avoidMonpos && isExclusionZoneLikeC(g, LR_MONGEN, x, y)) return false;
     return true;
 }
 
@@ -373,7 +376,8 @@ export function enextoCoreLikeC(g, cc, xx, yy, mdat, entflags) {
     const nearcandyct = collectCoordsLikeC(candy, xx, yy, 3, CC_NO_FLAGS, null, g);
     for (let i = 0; i < nearcandyct; i++) {
         const c = candy[i];
-        if (goodposMakemonLikeC(c.x, c.y, fakemon, entflags, g)) {
+        const ok = goodposMakemonLikeC(c.x, c.y, fakemon, entflags, g);
+        if (ok) {
             cc.x = c.x;
             cc.y = c.y;
             return true;

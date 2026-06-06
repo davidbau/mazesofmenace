@@ -7,6 +7,10 @@ import {
 } from './display.js';
 import { vision_recalc } from './vision.js';
 import { movemon } from './monmove.js';
+import {
+    isRangerLikeC,
+    rangerD1FirstSearchNoNearMonLikeC,
+} from './monmove_search.js';
 import { fmonListForMcalcmoveLikeC } from './fmon_iter.js';
 import { mcalcMoveLikeC } from './mcalc_move.js';
 import { NORMAL_SPEED } from './const.js';
@@ -101,7 +105,7 @@ function skipStep1MovemonRogD1GatePetOnlyLikeC(g) {
     const rogueLike =
         g.urole?.abbr === 'Rog'
         || g.pl_character === 'Rogue'
-        || (g.urole?.mnum | 0) === 8;
+        || (g.urole?.mnum | 0) === 7;
     if (!rogueLike) return false;
     const gate = mons.some((m) => (m.mnum | 0) === 120 && (m.mgenmklev | 0));
     const pet = mons.some((m) => (m.mtame | 0) !== 0);
@@ -310,10 +314,20 @@ export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
     if (skipMcalcmoveAfterLPostTwentieth) {
         delete g.context._touristD1LPostTwentiethMovemonCompleteLikeC;
     }
+    /* C: ranger D:1 inline **`#search`** — twin pet peel already drew moveloop **`rn2(12)`**×2;
+     * skip **`mcalcmove`** rounding before **`maybe_generate_rnd_mon`** (~4479–4481). */
+    const skipMcalcmoveRangerSearchInlineLikeC =
+        !!g.context?._searchInlinePostDoneLikeC
+        && isRangerLikeC(g)
+        && (
+            (g.context?._searchStep11Passes | 0) === 1
+            || (g.context?._searchStep11Passes | 0) === 2
+        );
     /* C: tourist D:1 run-east **`L`** — post-peel new-turn skips **`mcalcmove`** (peel
      * **`movemon`** already spent the round; **`seed0900`** ~2608 **`rn2(70)`** not 2× **`rn2(12)`**). */
     if (
-        !g.context?._wizD1PostCorridorNewTurnLikeC
+        !skipMcalcmoveRangerSearchInlineLikeC
+        && !g.context?._wizD1PostCorridorNewTurnLikeC
         && !g.context?._touristD1LPostPeelCompleteLikeC
         && !skipMcalcmoveAfterLPostTail
         && !skipMcalcmoveAfterLPostThird
@@ -653,11 +667,19 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             /* C: allmain.c always `movemon()` when `context.move`; first `#search` post on D:1
                can be `moves===1` (`movemonStepNum===0`) — peel still maps to step 11. */
             const searchPass = g.context?._searchStep11Passes | 0;
+            const dofireEscPeelOnlyLikeC =
+                !!g.context?._dofireEscMoveloopPeelOnlyLikeC;
             const runMovemon =
-                movemonStepNum > 0
-                || (
-                    (searchPass === 1 || searchPass === 2)
-                    && !!g.context?._searchPass1NearMonLikeC
+                !dofireEscPeelOnlyLikeC
+                && (
+                    movemonStepNum > 0
+                    || (
+                        (searchPass === 1 || searchPass === 2)
+                        && (
+                            !!g.context?._searchPass1NearMonLikeC
+                            || rangerD1FirstSearchNoNearMonLikeC(g, movemonStepNum)
+                        )
+                    )
                 )
             /* C: tourist D:1 swap — no extra **`movemon`** between resume and post-new-turn rest
              * **`dochug`** (**`seed0900`** ~2500–2502). */

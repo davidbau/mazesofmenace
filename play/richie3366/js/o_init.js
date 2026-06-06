@@ -7,11 +7,13 @@ import {
     O_INIT_NUM_OBJECTS,
     O_INIT_OCLASS_BASES,
     O_INIT_OC_CLASS,
+    O_INIT_OC_DESCR,
     O_INIT_OC_HAS_DESCR,
     O_INIT_OC_MAGIC,
     O_INIT_OC_NAME_KNOWN,
     O_INIT_OC_UNIQUE,
     O_INIT_OTYP,
+    O_INIT_ARRAY_LEN,
 } from './o_init_objects_meta.js';
 
 /** C: AMULET_CLASS … VENOM_CLASS — shuffle_all class list. */
@@ -27,6 +29,17 @@ const SHUFFLE_TYPES = [
 
 /** Mutable copy of oc_name_known after init_objects repair (C: objects[i].oc_name_known). */
 let ocNameKnown = null;
+
+/** C: objects[i].oc_descr_idx — permuted by shuffle(); initially identity. */
+let ocDescrIdx = null;
+
+/** C: OBJ_DESCR(objects[otyp]) after init_objects shuffles. */
+export function objectDescrAtOtypLikeC(otyp) {
+    const t = otyp | 0;
+    if (!ocDescrIdx || t < 0 || t >= ocDescrIdx.length) return O_INIT_OC_DESCR[t] ?? null;
+    const ix = ocDescrIdx[t] | 0;
+    return O_INIT_OC_DESCR[ix] ?? null;
+}
 
 /** C: svb.bases[] after init_objects gap-fill. */
 function oclassBasesLikeC() {
@@ -107,6 +120,7 @@ function objShuffleRangeLikeC(otyp) {
  */
 function shuffleLikeC(oLow, oHigh) {
     const nmkn = ocNameKnown;
+    if (!ocDescrIdx) return;
     let numToShuffle = 0;
     for (let j = oLow; j <= oHigh; j++) {
         if (!(nmkn[j] | 0)) numToShuffle++;
@@ -119,6 +133,9 @@ function shuffleLikeC(oLow, oHigh) {
         do {
             i = j + rn2(oHigh - j + 1);
         } while (nmkn[i] | 0);
+        const sw = ocDescrIdx[j];
+        ocDescrIdx[j] = ocDescrIdx[i];
+        ocDescrIdx[i] = sw;
     }
 }
 
@@ -149,6 +166,8 @@ export function initObjectsLikeC() {
     if ((O_INIT_MAXOCLASSES | 0) >= (O_INIT_NUM_OBJECTS | 0)) return;
 
     ocNameKnown = Int8Array.from(O_INIT_OC_NAME_KNOWN);
+    ocDescrIdx = new Int32Array(O_INIT_ARRAY_LEN);
+    for (let i = 0; i < O_INIT_ARRAY_LEN; i++) ocDescrIdx[i] = i;
 
     randomizeGemColorsLikeC();
 

@@ -1027,7 +1027,7 @@ export function searchPass1NearMonLikeC(g) {
     if (
         g.urole?.abbr === 'Rog'
         || g.pl_character === 'Rogue'
-        || (g.urole?.mnum | 0) === 8
+        || (g.urole?.mnum | 0) === 7
     ) {
         for (const m of g.level?.monsters ?? []) {
             if (m === distant || m === pet || m === eastKick) continue;

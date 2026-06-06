@@ -31,6 +31,7 @@ import { dist2, distmin } from './hacklib.js';
 import { game } from './gstate.js';
 import { d, rnd, rn2 } from './rng.js';
 import { growUpLikeC } from './makemon.js';
+import { carnivorous, herbivorous } from './mondata.js';
 import { corpseChanceLikeC } from './uhitm_hero.js';
 import { objResists } from './obj_resists.js';
 import {
@@ -159,6 +160,10 @@ function droppablesMtmpLikeC(mtmp) {
 
 /** C: dogmove.c **`DOG_HUNGRY`**. */
 const DOG_HUNGRY = 300;
+/** C: dogmove.c **`DOG_WEAK`**. */
+const DOG_WEAK = 500;
+/** C: dogmove.c **`DOG_STARVE`**. */
+const DOG_STARVE = 750;
 
 /** C: sounds.c **`MS_LEADER`** / **`MS_GUARDIAN`**. */
 const MS_LEADER = 36;
@@ -191,7 +196,9 @@ function findTargDogmoveLikeC(g, mtmp, dx, dy, maxdist) {
         cury += dy;
         if (curx < 1 || curx > 79 || cury < 0 || cury > 23) break;
         if (!mCanseeDogmoveLikeC(g, mtmp, curx, cury)) break;
-        if (curx === mux && cury === muy) return { _heroTargLikeC: true };
+        if (curx === mux && cury === muy) {
+            return { _heroTargLikeC: true, mx: mux, my: muy };
+        }
         const targ = monAtLevelDogmoveLikeC(g, curx, cury);
         if (!targ) continue;
         if (
@@ -252,29 +259,73 @@ function findFriendsDogmoveLikeC(g, mtmp, mtarg) {
  * @param {Record<string, unknown>} mtarg
  * @returns {number}
  */
+/**
+ * C: dogmove.c dog_starve — pet starvation death (display tails stubbed).
+ * @param {Record<string, unknown>} mtmp
+ */
+function dogStarveDogmoveLikeC(mtmp) {
+    mtmp.mhp = 0;
+}
+
+/**
+ * C: dogmove.c dog_hunger — weak/starve effects; returns TRUE if pet died.
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {Record<string, unknown>} edog
+ * @returns {boolean}
+ */
+function dogHungerDogmoveLikeC(g, mtmp, edog) {
+    if ((g.moves | 0) <= ((edog.hungrytime | 0) + DOG_WEAK)) return false;
+    const ptr = mtmp.data;
+    if (!carnivorous(ptr) && !herbivorous(ptr)) {
+        edog.hungrytime = (g.moves | 0) + DOG_WEAK;
+        return false;
+    }
+    if (!(edog.mhpmax_penalty | 0)) {
+        const newmhpmax = Math.trunc((mtmp.mhpmax | 0) / 3);
+        mtmp.mconf = 1;
+        edog.mhpmax_penalty = (mtmp.mhpmax | 0) - newmhpmax;
+        mtmp.mhpmax = newmhpmax;
+        if ((mtmp.mhp | 0) > (mtmp.mhpmax | 0)) mtmp.mhp = mtmp.mhpmax;
+        if ((mtmp.mhp | 0) <= 0) {
+            dogStarveDogmoveLikeC(mtmp);
+            return true;
+        }
+        /* C: pline / beg / stop_occupation — display only. */
+        return false;
+    }
+    if ((g.moves | 0) > ((edog.hungrytime | 0) + DOG_STARVE) || (mtmp.mhp | 0) <= 0) {
+        dogStarveDogmoveLikeC(mtmp);
+        return true;
+    }
+    return false;
+}
+
 function scoreTargDogmoveLikeC(g, mtmp, mtarg) {
     let score = 0;
     const u = g.u;
-    if (mtarg._heroTargLikeC) {
-        score -= 3000;
-        return score;
+    /* C: quest start only — stub false until quest level port. */
+    const isQstart = false;
+    if (!((mtmp.mconf | 0)) || !rn2(3) || isQstart) {
+        const msound = mtarg.data?.msound | 0;
+        if (msound === MS_LEADER || msound === MS_GUARDIAN) return -5000;
+        if (
+            distmin(mtmp.mx | 0, mtmp.my | 0, mtarg.mx | 0, mtarg.my | 0) <= 1
+        ) {
+            return -3000;
+        }
+        if ((mtarg.mtame | 0) || mtarg === u || mtarg._heroTargLikeC) {
+            return -3000;
+        }
+        if (findFriendsDogmoveLikeC(g, mtmp, mtarg)) return -3000;
+        if (!(mtarg.mpeaceful | 0)) score += 10;
+        const mattk = mtarg.data?.mattk;
+        if (mattk && (mattk[0]?.aatyp | 0) === AT_NONE) score -= 1000;
+        const mtmpLev = mtmp.m_lev | 0;
+        const mtargLev = mtarg.m_lev | 0;
+        if (mtargLev > mtmpLev + 4) score -= (mtargLev - mtmpLev) * 20;
+        score += mtargLev * 2 + Math.trunc((mtarg.mhp | 0) / 3);
     }
-    const msound = mtarg.data?.msound | 0;
-    if (msound === MS_LEADER || msound === MS_GUARDIAN) return -5000;
-    if (
-        distmin(mtmp.mx | 0, mtmp.my | 0, mtarg.mx | 0, mtarg.my | 0) <= 1
-    ) {
-        return -3000;
-    }
-    if ((mtarg.mtame | 0) || mtarg === u) return -3000;
-    if (findFriendsDogmoveLikeC(g, mtmp, mtarg)) return -3000;
-    if (!(mtarg.mpeaceful | 0)) score += 10;
-    const mattk = mtarg.data?.mattk;
-    if (mattk && (mattk[0]?.aatyp | 0) === AT_NONE) score -= 1000;
-    const mtmpLev = mtmp.m_lev | 0;
-    const mtargLev = mtarg.m_lev | 0;
-    if (mtargLev > mtmpLev + 4) score -= (mtargLev - mtmpLev) * 20;
-    score += mtargLev * 2 + Math.trunc((mtarg.mhp | 0) / 3);
     score += rnd(5);
     if ((mtmp.mconf | 0) && !rn2(3)) score -= 1000;
     return score;
@@ -282,6 +333,7 @@ function scoreTargDogmoveLikeC(g, mtmp, mtarg) {
 
 /**
  * C: dogmove.c best_target — best lined-up hostile for pet breath/spit.
+ * **`find_targ`** uses **`mtmp->mx/my`** at call time (before **`newdogpos`**).
  *
  * @param {import('./gstate.js').game} g
  * @param {Record<string, unknown>} mtmp
@@ -306,6 +358,49 @@ function bestTargetDogmoveLikeC(g, mtmp, forced) {
     }
     if (!forced && bestscore < 0) return null;
     return bestTarg;
+}
+
+/**
+ * C: dogmove.c **`newdogpos`** — stage pick when **`pet_ranged_attk`** still pending.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} omx
+ * @param {number} omy
+ * @param {number} nix
+ * @param {number} niy
+ */
+function dogMoveCommitOrStageNewdogposLikeC(g, mtmp, omx, omy, nix, niy) {
+    const nx = nix | 0;
+    const ny = niy | 0;
+    const ox = omx | 0;
+    const oy = omy | 0;
+    if (nx === ox && ny === oy) return;
+    if (g.context?._dogmoveDeferNewdogposLikeC) {
+        mtmp._pendingDogmoveNxLikeC = nx;
+        mtmp._pendingDogmoveNyLikeC = ny;
+        return;
+    }
+    monTrackAdd(mtmp, ox, oy);
+    mtmp.mx = nx;
+    mtmp.my = ny;
+}
+
+/**
+ * C: dogmove.c **`newdogpos`** after **`pet_ranged_attk`**.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+function dogMoveApplyPendingNewdogposLikeC(g, mtmp) {
+    if (mtmp._pendingDogmoveNxLikeC == null) return;
+    const nix = mtmp._pendingDogmoveNxLikeC | 0;
+    const niy = mtmp._pendingDogmoveNyLikeC | 0;
+    const omx = mtmp.mx | 0;
+    const omy = mtmp.my | 0;
+    delete mtmp._pendingDogmoveNxLikeC;
+    delete mtmp._pendingDogmoveNyLikeC;
+    dogMoveCommitOrStageNewdogposLikeC(g, mtmp, omx, omy, nix, niy);
 }
 
 /**
@@ -670,16 +765,23 @@ function dogGoalFloorScanRngLikeC(
         trackApportGoalLikeC
         && g.context?._searchApportTowelXYLikeC
         && (g.context?._searchStep11Passes | 0) >= 2
+        && !g.context?._rangerSearchPass2InlineDogMoveLikeC
     ) {
         gx = g.context._searchApportTowelXYLikeC.x | 0;
         gy = g.context._searchApportTowelXYLikeC.y | 0;
         gtyp = APPORT;
     }
+    const floorRankCache =
+        g.context?._rangerSearchPass2InlineDogMoveLikeC
+            ? (rankCtx._rangerPass2InlineFloorRankCacheLikeC
+                ?? (rankCtx._rangerPass2InlineFloorRankCacheLikeC = new WeakMap()))
+            : null;
     for (const obj of floor) {
         if (!obj) continue;
         const nx = obj.ox | 0;
         const ny = obj.oy | 0;
         const otyp = dogfoodRankLikeC(obj, rankCtx);
+        if (floorRankCache) floorRankCache.set(obj, otyp);
         if (otyp > gtyp || otyp === UNDEF) continue;
         if (
             cursedObjectAtDogmoveLikeC(g, nx, ny)
@@ -713,8 +815,16 @@ function dogGoalFloorScanRngLikeC(
                     (g.context?._searchStep11Passes | 0) >= 2
                     || (g.context?._searchRogGateCountLikeC | 0) >= 1
                 );
+            /* C: ranger twin second **`#search`** pass-2 peel — both floor **`obj_resists`**
+             * before apport **`rn2(8)`** + invent prescan (**`seed0102`** ~4473–4475). */
+            const rangerPass2InlineApportDefer =
+                (g.context?._rangerPass2InlineApportRn8DeferLikeC | 0);
+            const skipRangerPass2InlineApportRn8LikeC =
+                g.context?._rangerSearchPass2InlineDogMoveLikeC
+                && rangerPass2InlineApportDefer < 2;
             if (
                 !skipSecondApportRn2LikeC
+                && !skipRangerPass2InlineApportRn8LikeC
                 && litOk
                 && (otyp === MANFOOD || mCanseeDogmoveLikeC(g, mtmp, nx, ny))
                 && !g.context?._wizD1ShortLApportRn8DoneLikeC
@@ -725,6 +835,13 @@ function dogGoalFloorScanRngLikeC(
                 gx = nx;
                 gy = ny;
                 gtyp = APPORT;
+            } else if (skipRangerPass2InlineApportRn8LikeC) {
+                const ctxDefer = g.context || (g.context = {});
+                const nextDefer = rangerPass2InlineApportDefer + 1;
+                ctxDefer._rangerPass2InlineApportRn8DeferLikeC = nextDefer;
+                if (nextDefer === 2) {
+                    ctxDefer._rangerPass2InlineDeferredApportObjLikeC = obj;
+                }
             }
         }
     }
@@ -743,10 +860,49 @@ function dogGoalFloorScanRngLikeC(
         gtyp === UNDEF
         && g.context?._searchApportTowelXYLikeC
         && (g.context?._searchStep11Passes | 0) >= 2
+        && !g.context?._rangerSearchPass2InlineDogMoveLikeC
     ) {
         gx = g.context._searchApportTowelXYLikeC.x | 0;
         gy = g.context._searchApportTowelXYLikeC.y | 0;
         gtyp = APPORT;
+    }
+    /* C: ranger second **`#search`** pass-2 — one **`gi.invent`** **`obj_resists`**
+     * before deferred floor apport **`rn2(8)`** (**`seed0102`** ~4475–4476). */
+    if (
+        g.context?._rangerSearchPass2InlineDogMoveLikeC
+        && !g.context?._rangerPass2InlineInventPrescanDoneLikeC
+        && g.invent
+    ) {
+        dogfoodRankLikeC(g.invent, rankCtx);
+        (g.context || (g.context = {}))._rangerPass2InlineInventPrescanDoneLikeC = true;
+    }
+    if (
+        g.context?._rangerSearchPass2InlineDogMoveLikeC
+        && !g.context?._rangerPass2InlineDeferredApportRn8DoneLikeC
+    ) {
+        const deferObj =
+            g.context?._rangerPass2InlineDeferredApportObjLikeC
+            ?? floor[1]
+            ?? floor[0];
+        if (deferObj) {
+            const nx = deferObj.ox | 0;
+            const ny = deferObj.oy | 0;
+            const otyp =
+                floorRankCache?.get(deferObj)
+                ?? rankCtx._rangerPass2InlineFloorRankCacheLikeC?.get(deferObj)
+                ?? UNDEF;
+            rn2(8);
+            (g.context || (g.context = {}))._rangerPass2InlineDeferredApportRn8DoneLikeC = true;
+        }
+    }
+    if (
+        g.context?._rangerSearchPass2InlineDogMoveLikeC
+        && g.context?._rangerPass2InlineDeferredApportRn8DoneLikeC
+        && !g.context?._rangerPass2InlineSecondInventPrescanDoneLikeC
+        && g.invent?.nobj
+    ) {
+        dogfoodRankLikeC(g.invent.nobj, rankCtx);
+        (g.context || (g.context = {}))._rangerPass2InlineSecondInventPrescanDoneLikeC = true;
     }
     const follow = dogGoalFollowGxGyApprLikeC(
         g, mtmp, gtyp, gx, gy, udist, whappr, edog, skipFollowInventLikeC,
@@ -868,11 +1024,15 @@ function dogGoalFollowGxGyApprLikeC(
             || !!g.context?._wizD1CapitalKPostDistantPeelPetLikeC
             || !!g.context?._wizD1CapitalKPostNewturnPetLikeC
             || !!g.context?._wizD1CapitalKPostNearPetLikeC;
+        const skipRangerPass2InlineFollowUdistRnLikeC =
+            !!g.context?._rangerSearchPass2InlineDogMoveLikeC
+            || !!g.context?._rangerPass2InlineInventPrescanDoneLikeC;
         /* C: dog_goal — rn2(4) only inside udist > 1; adjacent/on-hero skips that block. */
         if (
             (udist | 0) > 1
             && !afterRestPetGoalLikeC
             && !postRestSecondMovemonPeelLikeC
+            && !skipRangerPass2InlineFollowUdistRnLikeC
             && (
                 !IS_ROOM(g.level?.at(gx, gy)?.typ | 0)
                 || (!skipFollowRn2_4 && !rn2(4))
@@ -939,7 +1099,14 @@ function dogGoalFollowGxGyApprLikeC(
                 }
             }
         } else {
-            for (let o = g.invent; o; o = o.nobj) {
+            let invScan = g.invent;
+            if (g.context?._rangerPass2InlineInventPrescanDoneLikeC && invScan) {
+                invScan = invScan.nobj;
+            }
+            if (g.context?._rangerPass2InlineSecondInventPrescanDoneLikeC && invScan) {
+                invScan = invScan.nobj;
+            }
+            for (let o = invScan; o; o = o.nobj) {
                 if (dogfoodRankLikeC(o) === DOGFOOD) {
                     appr = 1;
                     break;
@@ -1065,6 +1232,12 @@ function resetTouristPostRestAwayRn12LikeC() {
 function dogMovePickRn2LikeC(g, n) {
     const ctx = g.context;
     const ni = n | 0;
+    if (ctx?._rangerPass2InlinePreMfndposDistfleeckDoneLikeC && ni === 12) {
+        const awayN = ctx._rangerPass2InlineMfndposAwayRn12CountLikeC | 0;
+        if (awayN >= 2) return ni;
+        ctx._rangerPass2InlineMfndposAwayRn12CountLikeC = awayN + 1;
+        return rn2(12);
+    }
     if (ctx?._touristD1LPostFourthMfndposPhase1LikeC) {
         return rn2(ni);
     }
@@ -1302,10 +1475,9 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
             pickY = towel.y | 0;
         }
         if (any && !rn2(1)) {
-            /* C: dogmove.c newdogpos — **`mon_track_add(omx,omy)`** before move. */
-            monTrackAdd(mtmp, omx, omy);
-            mtmp.mx = pickX;
-            mtmp.my = pickY;
+            dogMoveCommitOrStageNewdogposLikeC(
+                g, mtmp, omx, omy, pickX, pickY,
+            );
         }
         return;
     }
@@ -1320,6 +1492,12 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
         : dist2(nix, niy, ggx, ggy);
     let chcnt = resumingTouristPostSwapLikeC ? (resumeSt.chcnt | 0) : 0;
     for (let i = 0; i < cnt; i++) {
+        if (
+            g.context?._rangerPass2InlinePreMfndposDistfleeckDoneLikeC
+            && (g.context._rangerPass2InlineMfndposAwayRn12CountLikeC | 0) >= 2
+        ) {
+            break;
+        }
         const nx = mfp.poss[i].x | 0;
         const ny = mfp.poss[i].y | 0;
         const info = mfp.info[i] | 0;
@@ -1397,7 +1575,22 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
         const j = (ndist - nidist) * appr;
         let pickTake = false;
         let postCorridorSecondPetAwayDoneLikeC = false;
-        if (g.context?._touristD1PostSwapAfterRestPetMfndposLikeC) {
+        if (g.context?._rangerPass2InlinePreMfndposDistfleeckDoneLikeC) {
+            /* C: dogmove.c ~1255 — **`chcnt`** ties; away **`rn2(12)`** only when **`!whappr`**
+             * (twin **`#search`** moveloop tail owns **`rn2(12)`**×2 — **`seed0102`** ~4479–4480). */
+            if (j < 0) {
+                pickTake = true;
+            } else if (j === 0) {
+                if (!rn2(++chcnt)) pickTake = true;
+            } else if (j > 0 && !whappr) {
+                const sameCell = omx === nix && omy === niy;
+                if (sameCell && !rn2(3)) {
+                    pickTake = true;
+                } else if (!dogMovePickRn2LikeC(g, 12)) {
+                    pickTake = true;
+                }
+            }
+        } else if (g.context?._touristD1PostSwapAfterRestPetMfndposLikeC) {
             /* C: post-rest — three away rn2(12) via dogMovePickRn2LikeC, mfndpos tail,
              * then pet_ranged_attk !rn2(5) (~2519 on seed0900). */
             if (j > 0 && !whappr && !dogMovePickRn2LikeC(g, 12)) {
@@ -1496,7 +1689,8 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
                     pickTake = true;
                 }
             } else if (
-                !g.context?._wizD1CapitalKPostDistantPeelPetLikeC
+                !g.context?._rangerPass2InlinePreMfndposDistfleeckDoneLikeC
+                && !g.context?._wizD1CapitalKPostDistantPeelPetLikeC
                 && (
                     (j === 0 && !rn2(++chcnt))
                     || j < 0
@@ -1768,6 +1962,12 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
             niy = ny;
             nidist = ndist;
             if (j < 0) chcnt = 0;
+            if (
+                g.context?._rangerPass2InlinePreMfndposDistfleeckDoneLikeC
+                && (g.context._rangerPass2InlineMfndposAwayRn12CountLikeC | 0) >= 2
+            ) {
+                break;
+            }
             if (g.context?._wizD1LPetEastTailMfndposLikeC && j === 0) {
                 /* C: capital **`K`** — one loop: away, **`chcnt`**, second away (~2841–2843). */
                 const ctxBr = g.context;
@@ -1861,12 +2061,7 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
             ctxKt._wizD1CapitalKAway2DoneLikeC = true;
         }
     }
-    if (nix !== omx || niy !== omy) {
-        /* C: dogmove.c:1313 — **`mon_track_add(omx,omy)`** after **`place_monster`**. */
-        monTrackAdd(mtmp, omx, omy);
-        mtmp.mx = nix;
-        mtmp.my = niy;
-    }
+    dogMoveCommitOrStageNewdogposLikeC(g, mtmp, omx, omy, nix, niy);
     if (
         ctxPick?._wizD1Step1InventPostDoneLikeC
         && !ctxPick?._wizD1Step1DogGoalInventLikeC
@@ -1904,22 +2099,42 @@ export function dogMoveGoalAndPickLikeC(
     const u = g.u;
     const edog = EDOG(mtmp);
     if (!u || !edog) return MMOVE_NOTHING;
+    if (dogHungerDogmoveLikeC(g, mtmp, edog)) return MMOVE_DIED;
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
     let udist = dist2(omx, omy, u.ux | 0, u.uy | 0);
-    if (!udist && !g.context?._wizD1Step1LPetTailDogGoalLikeC) return MMOVE_NOTHING;
-    mtmp.mux = u.ux | 0;
-    mtmp.muy = u.uy | 0;
-    const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
-    /* C: second **`#search`** **`dog_invent`** at **~3228** needs **`distu=5`** (towel fill tile). */
+    /* C: second **`#search`** — towel APPORT sync before **`udist`** early-out (**`seed0102`** ~4473). */
     if (
         !skipInventLikeC
         && (g.context?._searchStep11Passes | 0) === 2
     ) {
-        dogMoveOntoApportTowelLikeC(g, mtmp, true);
+        if (g.context?._rangerSearchPass2InlineDogMoveLikeC) {
+            /* C: pass-2 peel — pin towel coords only; no pre-**`dog_goal`** **`place_monster`**
+             * (pet already north of **`@`** from first peel; **`m_cansee`** / floor order ~4473+). */
+            const found = findApportTowelNearPetLikeC(g, mtmp);
+            if (found) {
+                (g.context || (g.context = {}))._searchApportTowelXYLikeC = {
+                    x: found.x | 0,
+                    y: found.y | 0,
+                };
+            }
+        } else {
+            dogMoveOntoApportTowelLikeC(g, mtmp, true);
+        }
         udist = dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0);
     }
-    if (!skipInventLikeC) dogInventLikeC(g, mtmp, udist);
+    if (!udist && !g.context?._wizD1Step1LPetTailDogGoalLikeC) return MMOVE_NOTHING;
+    mtmp.mux = u.ux | 0;
+    mtmp.muy = u.uy | 0;
+    const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
+    /* C: ranger second **`#search`** pass-2 peel — **`dog_goal`** floor **`obj_resists`** only
+     * (**`seed0102`** ~4473; towel sync already ran; no **`dog_invent`** pickup rolls). */
+    if (
+        !skipInventLikeC
+        && !g.context?._rangerSearchPass2InlineDogMoveLikeC
+    ) {
+        dogInventLikeC(g, mtmp, udist);
+    }
     const goal = dogGoalFloorScanRngLikeC(
         g, mtmp, trackApportGoalLikeC, whappr,
     );
@@ -1946,14 +2161,33 @@ export function dogMoveGoalAndPickLikeC(
     const preMx = mtmp.mx | 0;
     const preMy = mtmp.my | 0;
     if (doPick) {
+        /* C: ranger second **`#search`** pass-2 — ~915 **`distfleeck`** before **`mfndpos`**
+         * tail (**`seed0102`** ~4478 **`rn2(5)`** before **`rn2(12)`**). */
+        if (
+            g.context?._rangerSearchPass2InlineDogMoveLikeC
+            && !g.context?._rangerPass2InlinePreMfndposDistfleeckDoneLikeC
+        ) {
+            void distfleeckMonsterApplyLikeC(g, mtmp);
+            (g.context || (g.context = {}))._rangerPass2InlinePreMfndposDistfleeckDoneLikeC = true;
+        }
         const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
         const pickAppr = mfndposApprLikeC ?? goal.appr;
-        dogMoveMfndposPickLikeC(
-            g, mtmp, goal.gx, goal.gy, pickAppr, whappr,
-        );
-        /* C: dogmove.c:1273 — `pet_ranged_attk` after `mfndpos`, before `newdogpos`. */
-        const ranged = petRangedAttkDogmoveLikeC(g, mtmp, false);
-        if (ranged !== MMOVE_NOTHING) return ranged;
+        const rangerPass2InlineSilentMfndposLikeC =
+            !!g.context?._rangerSearchPass2InlineDogMoveLikeC;
+        if (!rangerPass2InlineSilentMfndposLikeC) {
+            const ctx = g.context || (g.context = {});
+            ctx._dogmoveDeferNewdogposLikeC = true;
+            try {
+                dogMoveMfndposPickLikeC(
+                    g, mtmp, goal.gx, goal.gy, pickAppr, whappr,
+                );
+            } finally {
+                delete ctx._dogmoveDeferNewdogposLikeC;
+            }
+            const ranged = petRangedAttkDogmoveLikeC(g, mtmp, false);
+            if (ranged !== MMOVE_NOTHING) return ranged;
+            dogMoveApplyPendingNewdogposLikeC(g, mtmp);
+        }
     }
     ensureMonsterMtrack(mtmp);
     if (mtmp.mx !== preMx || mtmp.my !== preMy) {
