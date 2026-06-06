@@ -436,6 +436,17 @@ function dochugEntersMmoveBlockLikeC(
     if (g.context?._wizD1CapitalKPostNearMmoveLikeC) {
         return true;
     }
+    /* C: tourist D:1 run-east **`L`** — block mklev **`m_move`** during post-**`mcalcmove`** peel. */
+    if (
+        g.urole?.abbr === 'Tou'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._touristD1LPostFmonPeelPendingLikeC
+        && !(mtmp.mtame | 0)
+        && (mtmp.mgenmklev | 0)
+    ) {
+        return false;
+    }
     /* C: tourist D:1 post-swap — near mklev stub **`rn2(32)`** + peel **`distfleeck`**; block full
      * **`m_move`** **`mfndpos`** until post-rest pet **`dog_goal`** (~2501 on **`seed0900`**). */
     if (
@@ -510,6 +521,8 @@ function mmoveMtrackRejectRngLikeC(g, mtmp, j, cnt) {
         && (g.u?.uz?.dlevel | 0) === 1
         && g.context?._touristD1PostSwapMfndposResumeDoneLikeC
         && mtmp === findTouristD1PostSwapNearMklevMonLikeC(g)
+        && !g.context?._touristD1LPostFmonPeelPendingLikeC
+        && !g.context?._touristD1LPostMovemonPeelLikeC
     ) {
         if (
             g.context?._touristD1PostSwapRestDochugDoneLikeC
@@ -2140,6 +2153,21 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp) return;
     if ((mtmp.mhp | 0) <= 0) return;
 
+    /* C: tourist D:1 run-east **`L`** — block mklev **`m_move`** during post-**`mcalcmove`** peel. */
+    if (
+        g.urole?.abbr === 'Tou'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && (
+            g.context?._touristD1LPostFmonPeelPendingLikeC
+            || g.context?._touristD1LPostMovemonPeelLikeC
+        )
+        && !(mtmp.mtame | 0)
+        && (mtmp.mgenmklev | 0)
+    ) {
+        return;
+    }
+
     /* C: tourist D:1 post-rest — moveloop stub already ran; block generic **`dochug`**
      * **`mfndpos`** on later **`movemon`** passes (**`seed0900`** ~2501+). */
     if (
@@ -2781,10 +2809,19 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                     && !!g.context?._wizD1AfterLPostMfndposOnlyLikeC;
                 if (
                     g.urole?.abbr === 'Tou'
+                    && g.context?._touristD1LPostFmonPeelPendingLikeC
+                    && !(mtmp.mtame | 0)
+                    && (mtmp.mgenmklev | 0)
+                ) {
+                    return;
+                } else if (
+                    g.urole?.abbr === 'Tou'
                     && g.context?._touristD1PostSwapRestDochugDoneLikeC
                     && !g.context?._touristD1PostSwapAfterRestPetDoneLikeC
                     && mtmp === findTouristD1PostSwapNearMklevMonLikeC(g)
                     && !g.context?._touristD1PostSwapNearRestMmoveTailPendingLikeC
+                    && !g.context?._touristD1LPostFmonPeelPendingLikeC
+                    && !g.context?._touristD1LPostMovemonPeelLikeC
                 ) {
                     /* C: peel fallback when moveloop rest did not arm tail pending. */
                     touristD1PostSwapNearRestMmoveStubLikeC(g, mtmp);

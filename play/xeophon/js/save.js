@@ -14,6 +14,7 @@ const SKIP_KEYS = new Set([
     'mockStorage',
     'nhDisplay',
     'rng',
+    '_launch_drop_spot',
     '_preNhgetchHook',
 ]);
 
@@ -83,7 +84,23 @@ function findHeroDeathStatue(level, ux, uy) {
             && obj.ox === ux && obj.oy === uy && obj.oname === owner);
 }
 
+function forceLaunchPlacementForBones() {
+    const spot = game._launch_drop_spot;
+    if (!spot?.obj || !game.level) return false;
+    const obj = spot.obj;
+    obj.otrapped = 0;
+    obj.hidden = false;
+    obj.transientProjectile = false;
+    obj.ox = spot.x;
+    obj.oy = spot.y;
+    game.level.objects = (game.level.objects || []).filter(item => item !== obj);
+    game.level.objects.push(obj);
+    delete game._launch_drop_spot;
+    return true;
+}
+
 export function encodeBonesLevel() {
+    forceLaunchPlacementForBones();
     const level = saveClone(game.level);
     const ux = game.u?.ux || 0;
     const uy = game.u?.uy || 0;

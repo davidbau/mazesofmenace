@@ -221,7 +221,7 @@ function findRollToHitMeleeLikeC(g, mtmp) {
 const G_FREQ = 0x0007;
 
 /** C: mon.c corpse_chance — tmp = 2 + rare geno + verysmall; !rn2(tmp). */
-function corpseChanceLikeC(mtmp) {
+export function corpseChanceLikeC(mtmp) {
     const mdat = mtmp.data;
     if (!mdat) return false;
     const geno = mdat.geno | 0;

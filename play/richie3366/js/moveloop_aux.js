@@ -224,6 +224,7 @@ export async function end_of_turn_rng(stepNum) {
         stepNum > 0
         && stepNum <= MOVE_MON_HARNESS_MAX_STEP
         && !game.context?._wizD1LPetInventSkipMoveloop82ExerciseLikeC
+        && !game.context?._touristD1LPostSkipMoveloop82ExerciseLikeC
     ) {
         post_moveloop82_exercise(stepNum);
     }

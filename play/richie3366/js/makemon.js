@@ -246,3 +246,42 @@ export function makemon(mdat, x, y, mmflags) {
 export function rndmonnum() {
     return rndmonstLikeC();
 }
+
+/**
+ * C: makemon.c grow_up — victim-kill HP gain subset (**`rnd(victim.m_lev+1)`**, optional **`rn2`**).
+ * Returns permonst ptr on success; null if monster died (genocide grow).
+ *
+ * @param {Record<string, unknown>} mtmp
+ * @param {Record<string, unknown>|null} victim
+ * @returns {Record<string, unknown>|null}
+ */
+export function growUpLikeC(mtmp, victim) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return null;
+    const ptr = mtmp.data;
+    if (!ptr) return ptr;
+
+    let maxIncrease;
+    let curIncrease;
+    let hpThreshold;
+
+    if (victim) {
+        hpThreshold = (mtmp.m_lev | 0) * 8;
+        if (!(mtmp.m_lev | 0)) hpThreshold = 4;
+        maxIncrease = rnd((victim.m_lev | 0) + 1);
+        if ((mtmp.mhpmax | 0) + maxIncrease > hpThreshold + 1) {
+            maxIncrease = Math.max((hpThreshold + 1) - (mtmp.mhpmax | 0), 0);
+        }
+        curIncrease = maxIncrease > 1 ? rn2(maxIncrease) : 0;
+    } else {
+        maxIncrease = rnd(8);
+        curIncrease = maxIncrease;
+        hpThreshold = 0;
+    }
+
+    mtmp.mhpmax = (mtmp.mhpmax | 0) + maxIncrease;
+    mtmp.mhp = (mtmp.mhp | 0) + curIncrease;
+    if ((mtmp.mhpmax | 0) <= hpThreshold) return ptr;
+
+    mtmp.m_lev = (mtmp.m_lev | 0) + 1;
+    return ptr;
+}

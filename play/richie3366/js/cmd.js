@@ -234,14 +234,30 @@ export async function rhack(key) {
         g.context.run = 1;
         g.context.mv = true;
         g.multi = COLNO;
+        const touD1LPostArmedLikeC =
+            g.urole?.abbr === 'Tou'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && !!g.context?._touristD1LPostArmedLikeC;
         const moved = await domoveHeroDirLikeC(dx, dy);
+        const promoteTouD1LPostLikeC = () => {
+            g.context._touristD1LPostMovemonPendingLikeC = true;
+            delete g.context._touristD1LPostArmedLikeC;
+            endRunning(true);
+            g.multi = 0;
+            g.context.move = 1;
+            delete g.context._wizD1BlockedRunNoTimeLikeC;
+        };
         /* C: blocked run (e.g. closed door without autoopen) — no hero time; next cmd is autoopen. */
         if (!moved && !g.context?.door_opened) {
             endRunning(true);
             g.context.move = 0;
             g.context._wizD1BlockedRunNoTimeLikeC = true;
+            /* C: tourist D:1 **`L`** into wall — still ECMD_TIME + pet peel (~2582+). */
+            if (touD1LPostArmedLikeC) promoteTouD1LPostLikeC();
         } else {
             g.context.move = moved ? 1 : 0;
+            if (touD1LPostArmedLikeC) promoteTouD1LPostLikeC();
         }
     } else if (ch === '.') {
         /* C: do.c donull — wait/rest one turn (ECMD_TIME). */
@@ -296,6 +312,14 @@ export async function rhack(key) {
         /* C: **`#search`** costs time — inline **`movemon`** + new-turn tail on the **`s`** step. */
         game.context._searchInlinePostDoneLikeC = true;
         await runPostCommandTurnAdvanceLikeC(game);
+        if (
+            game.urole?.abbr === 'Tou'
+            && (game.u?.uz?.dnum | 0) === 0
+            && (game.u?.uz?.dlevel | 0) === 1
+        ) {
+            /* C: inline **`#search`** post advanced moveloop — skip duplicate top post once. */
+            game.context._touristD1SearchInlinePostCompleteLikeC = true;
+        }
         /* C: twin **`#search`** — keep **`_searchStep11Passes`**; full clear only before **`:`** / other cmds. */
         if (nextCh === 's') {
             clearSearchMovemonSubHarnessLikeC(game);
@@ -305,6 +329,18 @@ export async function rhack(key) {
         /* C: **`seed0077`** — twin **`#search`** moveloop (gate + **`dog_invent`**) on second **`s`**;
          * **`:`** is **`dolook`** only (session has **0** RNG on **`:`**). */
         game.context.move = 0;
+        if (game.context._touristD1PostRestMonsterMovemonDoneLikeC) {
+            game.context._touristD1LPostArmedLikeC = true;
+            delete game.context._touristD1PostRestMonsterMovemonDoneLikeC;
+        } else if (
+            game.urole?.abbr === 'Tou'
+            && (game.u?.uz?.dnum | 0) === 0
+            && (game.u?.uz?.dlevel | 0) === 1
+            && nextCh === 'L'
+        ) {
+            /* C: **`seed0900`** — run-east **`L`** immediately after **`#search`** post-rest tail. */
+            game.context._touristD1LPostArmedLikeC = true;
+        }
         if (nextCh !== ':') {
             delete game.context._searchInlinePostDoneLikeC;
         }

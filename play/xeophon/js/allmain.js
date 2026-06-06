@@ -3,13 +3,13 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -3101,11 +3101,12 @@ function pauseEatingOccupationAfterChoke(g, remainingTurns) {
     g._eating_nomovemsg = '';
 }
 
-export function interruptEatingOccupation(g = game) {
+export function interruptEatingOccupation(g = game, options = {}) {
     if (!(g._eating_turns_remaining > 0)) return false;
     if (g._eating_turns_remaining <= 1)
         return processEatingOccupationTick(g);
 
+    const addMessage = options.addMessage || addToplineMessage;
     const eatenObject = g._eating_inventory_object || g._eating_floor_object;
     const biteNutrition = Math.trunc(g._eating_bite_nutrition || 0);
     if (eatenObject && biteNutrition > 0) {
@@ -3113,7 +3114,7 @@ export function interruptEatingOccupation(g = game) {
         g._eating_interrupted = 1;
         g._eating_turns_remaining = 0;
         g._pending_rotten_food_eating_message = 0;
-        addToplineMessage(`You stop eating ${eatingOccupationObjectName(eatenObject)}.`);
+        addMessage(`You stop eating ${eatingOccupationObjectName(eatenObject)}.`);
         return true;
     }
 
@@ -3122,7 +3123,7 @@ export function interruptEatingOccupation(g = game) {
     return true;
 }
 
-function interruptPositiveMultiForStoning() {
+function interruptPositiveMulti() {
     game._run_steps_remaining = 0;
     game._running_continuation = 0;
     game._initial_run_command = 0;
@@ -3133,18 +3134,21 @@ function interruptPositiveMultiForStoning() {
     game._counted_repeat_interruptible = 0;
 }
 
-function stopStoningOccupations() {
-    game._eating_turns_remaining = 0;
-    game._eating_finish_message = '';
-    game._eating_floor_object = null;
-    game._eating_floor_object_direct_useup = 0;
-    game._eating_floor_object_pending_useup = null;
-    game._eating_nutrition = 0;
-    game._eating_newt_buzz = 0;
-    clearEatingInventoryState(game);
-    clearInterruptedEatingState(game);
-    clearEatingFullnessState(game);
-    game._pending_rotten_food_eating_message = 0;
+function interruptPositiveMultiForStoning() {
+    interruptPositiveMulti();
+}
+
+function clearActiveDelayedOccupations(options = {}) {
+    const activeEating = game._eating_turns_remaining > 0;
+    if (activeEating || options.clearEatingAlways) {
+        if (activeEating && options.interruptEating) {
+            interruptEatingOccupation(game, { addMessage: options.addEatingMessage });
+        } else {
+            clearActiveEatingOccupation(game);
+            game._eating_floor_object_pending_useup = null;
+            game._pending_rotten_food_eating_message = 0;
+        }
+    }
     game._armor_wear_occupation = null;
     game._armor_takeoff_after_more = null;
     game._armor_finish_after_more = 0;
@@ -3166,12 +3170,21 @@ function stopStoningOccupations() {
     game._prayer_pending_done = 0;
     game._pending_prayer_finish_message = 0;
     game._prayer_process_time_now = 0;
-    game._prayer_debug_pleased = 0;
     game._prayer_split_finish_message = 0;
     game._prayer_split_waiting_for_time = 0;
     game._prayer_split_remaining_time = 0;
-    game._prayer_nearby_trouble = 0;
-    if (game.u) game.u.uinvulnerable = false;
+    if (options.clearPrayerDebug) game._prayer_debug_pleased = 0;
+    if (options.clearPrayerTrouble) game._prayer_nearby_trouble = 0;
+    if (options.clearInvulnerability && game.u) game.u.uinvulnerable = false;
+}
+
+function stopStoningOccupations() {
+    clearActiveDelayedOccupations({
+        clearEatingAlways: true,
+        clearPrayerDebug: true,
+        clearPrayerTrouble: true,
+        clearInvulnerability: true,
+    });
     interruptPositiveMultiForStoning();
 }
 
@@ -9450,42 +9463,8 @@ function demonicBlackmailPrinceReveal(mon) {
 }
 
 function interruptDemonicBlackmailOccupation() {
-    if (game._eating_turns_remaining > 0) {
-        clearActiveEatingOccupation(game);
-        game._pending_rotten_food_eating_message = 0;
-    }
-    game._run_steps_remaining = 0;
-    game._running_continuation = 0;
-    game._initial_run_command = 0;
-    game._run_steps_after_more = 0;
-    game._travel_keys = [];
-    game._travel_dynamic_target = null;
-    game._search_pending_count = 0;
-    game._counted_repeat_interruptible = 0;
-    game._armor_wear_occupation = null;
-    game._armor_takeoff_after_more = null;
-    game._armor_finish_after_more = 0;
-    game._force_lock_occupation = null;
-    game._force_lock_continue_time = 0;
-    game._force_lock_finish_after_more = null;
-    game._pending_force_lock_start_message = 0;
-    game._pick_lock_occupation = null;
-    game._pick_lock_continue_time = 0;
-    game._pick_dig_occupation = null;
-    game._queued_pick_dig_apply_letter = null;
-    game._apply_pick_dig_letter = null;
-    game._tin_opening_occupation = null;
-    game._tin_finish_after_turn = null;
-    game._tin_opened_pending = null;
-    game._spellbook_study_occupation = null;
-    game._spellbook_finish_after_topline_more = null;
-    game._prayer_occupation = 0;
-    game._prayer_pending_done = 0;
-    game._pending_prayer_finish_message = 0;
-    game._prayer_process_time_now = 0;
-    game._prayer_split_finish_message = 0;
-    game._prayer_split_waiting_for_time = 0;
-    game._prayer_split_remaining_time = 0;
+    interruptPositiveMulti();
+    clearActiveDelayedOccupations();
 }
 
 function maybeDemonicBlackmailTrueTargetArtifact(mon) {
@@ -11289,6 +11268,25 @@ function rollingBoulderHitIronBars() {
     if (!heroIsDeafForMonsterNoise()) addRollingBoulderMotionMessage('Whang!');
 }
 
+function placeRollingBoulderAtRest(boulder, x, y) {
+    if (!boulder) return;
+    boulder.otrapped = 0;
+    boulder.hidden = false;
+    boulder.transientProjectile = false;
+    boulder.ox = x;
+    boulder.oy = y;
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== boulder);
+    game.level.objects.push(boulder);
+}
+
+function setLaunchDropSpot(obj, x, y) {
+    if (!obj) {
+        delete game._launch_drop_spot;
+        return;
+    }
+    game._launch_drop_spot = { obj, x, y };
+}
+
 function rollingBoulderChainIntoBoulderAt(x, y, dx, dy, remainingDistance, movingBoulder) {
     const chainedBoulder = (game.level?.objects || []).find(obj =>
         obj !== movingBoulder && !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
@@ -11306,9 +11304,8 @@ function rollingBoulderChainIntoBoulderAt(x, y, dx, dy, remainingDistance, movin
     }
 
     game.level.objects = (game.level?.objects || []).filter(obj => obj !== chainedBoulder);
-    movingBoulder.ox = x;
-    movingBoulder.oy = y;
-    game.level.objects.push(movingBoulder);
+    chainedBoulder.otrapped = movingBoulder?.otrapped || 0;
+    placeRollingBoulderAtRest(movingBoulder, x, y);
     newsym(x, y);
     return chainedBoulder;
 }
@@ -11330,11 +11327,22 @@ function rollingBoulderHeroPassesRocks() {
     });
 }
 
+function rollingBoulderStopHeroOccupationOnHit() {
+    clearActiveDelayedOccupations({
+        interruptEating: true,
+        addEatingMessage: addRollingBoulderMotionMessage,
+        clearPrayerDebug: true,
+        clearPrayerTrouble: true,
+        clearInvulnerability: true,
+    });
+}
+
 function rollingBoulderHitHeroAt(x, y, movingBoulder) {
     if ((game.u?.ux ?? 0) !== x || (game.u?.uy ?? 0) !== y) return false;
 
     const rawDamage = rnd(20);
     const damage = heroHasHalfPhysicalDamageForRollingBoulder() ? Math.trunc((rawDamage + 1) / 2) : rawDamage;
+    interruptPositiveMulti();
     const hitValue = 9 + (movingBoulder?.spe || 0);
     const attackRoll = rnd(20);
     const hitThreshold = (game.u?.uac ?? 10) + hitValue;
@@ -11353,12 +11361,224 @@ function rollingBoulderHitHeroAt(x, y, movingBoulder) {
     addRollingBoulderMotionMessage(`You are hit${game.u?.blind || game.flags?.verbose === false ? '' : ' by a boulder'}${damage <= 4 ? '.' : '!'}`);
     if (rollingBoulderHeroPassesRocks()) {
         addRollingBoulderMotionMessage("It doesn't harm you.");
+        rollingBoulderStopHeroOccupationOnHit();
         return true;
     }
     game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
     if (damage >= (game.u?.uhp || 0)) game._death_cause ||= 'killed by a boulder';
+    if (game._death_cause === 'killed by a boulder') game._rolling_boulder_launch_killed_hero = 1;
+    rollingBoulderStopHeroOccupationOnHit();
     return true;
+}
+
+function deleteRollingBoulderLandmineEngravingAt(x, y) {
+    if (!game.level?.engravings) return;
+    game.level.engravings = game.level.engravings.filter(engr => engr.x !== x || engr.y !== y);
+}
+
+function rollingBoulderTriggerLandmineAt(x, y) {
+    const trap = (game.level?.traps || []).find(item => item.ttyp === LANDMINE && item.tx === x && item.ty === y);
+    if (!trap) return false;
+    if (rn2(10) <= 2) return false;
+
+    const suffix = (!game.u?.blind && cansee(x, y)) ? '  The rolling boulder triggers a land mine.' : '';
+    addRollingBoulderMotionMessage(`KAABLAMM!!!${suffix}`);
+    game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
+    deleteRollingBoulderLandmineEngravingAt(x, y);
+    if (!game.u?.blind && cansee(x, y)) newsym(x, y);
+    return true;
+}
+
+function rollingBoulderImpactPileQuantityAt(x, y) {
+    return (game.level?.objects || []).reduce((total, obj) => {
+        if (!obj || obj.hidden || obj.transientProjectile || obj.buried) return total;
+        if (obj.ox !== x || obj.oy !== y) return total;
+        return total + Math.max(1, Math.trunc(Number(obj.quan || 1)));
+    }, 0);
+}
+
+function rollingBoulderDownGateAt(x, y, movingBoulder) {
+    if (!movingBoulder) return null;
+    const gate = downGateAt(x, y);
+    if (!gate?.targetLevel) return null;
+    return gate;
+}
+
+function rollingBoulderTransitMessage(gate, impactQuantity, noDrop) {
+    if (!gate?.gateText || game.u?.blind || !cansee(gate.x ?? 0, gate.y ?? 0)) return '';
+    if (impactQuantity > 0) {
+        const other = impactQuantity === 1 ? 'another object' : 'other objects';
+        const suffix = noDrop ? '.' : ` and falls ${gate.gateText}.`;
+        return `A boulder hits ${other}${suffix}`;
+    }
+    return noDrop ? '' : `A boulder falls ${gate.gateText}.`;
+}
+
+function rollingBoulderApplyDownGateAt(x, y, movingBoulder) {
+    const gate = rollingBoulderDownGateAt(x, y, movingBoulder);
+    if (!gate) return { handled: false, consumed: false };
+    const route = { ...gate, x, y };
+    const impactQuantity = rollingBoulderImpactPileQuantityAt(x, y);
+    const noDrop = gate.where !== MIGR_LADDER_UP && !!rn2(3);
+    if (gate.where === MIGR_RANDOM && gate.trap && movingBoulder?.otyp === BOULDER) {
+        if (impactQuantity > 0) {
+            const impact = impactDropFloorObjects(x, y, route, {
+                targetLevel: gate.targetLevel,
+                missile: movingBoulder,
+                missileImpact: true,
+                route,
+            });
+            if (impact.message) addRollingBoulderMotionMessage(impact.message);
+        }
+        return { handled: false, consumed: false };
+    }
+    const transit = rollingBoulderTransitMessage(route, impactQuantity, noDrop);
+    if (transit) addRollingBoulderMotionMessage(transit);
+
+    if (noDrop) {
+        const impact = impactDropFloorObjects(x, y, route, { targetLevel: gate.targetLevel, route });
+        if (impact.message) addRollingBoulderMotionMessage(impact.message);
+        return { handled: false, consumed: false };
+    }
+
+    movingBoulder.otrapped = 0;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    movingBoulder.ox = gate.targetLevel.dnum;
+    movingBoulder.oy = gate.targetLevel.dlevel;
+    movingBoulder.owornmask = gate.where;
+    queueImpactDroppedObjects(gate.targetLevel, [movingBoulder], route);
+    const impact = impactDropFloorObjects(x, y, route, { targetLevel: gate.targetLevel, route });
+    if (impact.message) addRollingBoulderMotionMessage(impact.message);
+    newsym(x, y);
+    return { handled: true, consumed: true };
+}
+
+function rollingBoulderTeleportTrapAt(x, y) {
+    return (game.level?.traps || []).find(item =>
+        [TELEP_TRAP, LEVEL_TELEP].includes(item.ttyp) && item.tx === x && item.ty === y) || null;
+}
+
+function rollingBoulderSameLevel(level) {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    return !!level && level.dnum === current.dnum && level.dlevel === current.dlevel;
+}
+
+function rollingBoulderTeleportGoodpos(x, y, movingBoulder) {
+    if (!isok(x, y)) return false;
+    if ((game.u?.ux ?? 0) === x && (game.u?.uy ?? 0) === y) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !ACCESSIBLE(loc.typ)) return false;
+    return !(game.level?.objects || []).some(obj =>
+        obj !== movingBoulder && !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+}
+
+function rollingBoulderTeleportLandingSpot(movingBoulder) {
+    let fallback = { x: movingBoulder?.ox || 0, y: movingBoulder?.oy || 0 };
+    for (let tryLimit = 4000; tryLimit > 0; tryLimit--) {
+        const x = rn1(COLNO - 3, 2);
+        const y = rn2(ROWNO);
+        fallback = { x, y };
+        if (rollingBoulderTeleportGoodpos(x, y, movingBoulder)) return fallback;
+    }
+    return fallback;
+}
+
+function queueRollingBoulderLevelTeleportMigration(movingBoulder, targetLevel) {
+    if (!movingBoulder || !targetLevel) return;
+    movingBoulder.ox = targetLevel.dnum;
+    movingBoulder.oy = targetLevel.dlevel;
+    movingBoulder.owornmask = MIGR_RANDOM;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    game._impact_drop_migrations ??= new Map();
+    const key = `${targetLevel.dnum}:${targetLevel.dlevel}`;
+    const queued = game._impact_drop_migrations.get(key) || [];
+    queued.push(movingBoulder);
+    game._impact_drop_migrations.set(key, queued);
+}
+
+function rollingBoulderTeleportWithinLevel(movingBoulder) {
+    const spot = rollingBoulderTeleportLandingSpot(movingBoulder);
+    movingBoulder.ox = spot.x;
+    movingBoulder.oy = spot.y;
+    movingBoulder.hidden = false;
+    movingBoulder.transientProjectile = false;
+    const messages = [];
+    const consumed = earthFloorEffects(movingBoulder, spot.x, spot.y, messages, 'fall');
+    for (const message of messages) addRollingBoulderMotionMessage(message);
+    if (!consumed) game.level.objects.push(movingBoulder);
+    newsym(spot.x, spot.y);
+}
+
+function addRollingBoulderTeleportDisappearMessage(x, y) {
+    if (!game.u?.blind && cansee(x, y)) {
+        addRollingBoulderMotionMessage('Suddenly the rolling boulder disappears!');
+    } else if (!heroIsDeafForMonsterNoise()) {
+        addRollingBoulderMotionMessage('You hear a rumbling stop abruptly.');
+    }
+}
+
+function rollingBoulderApplyTeleportTrapAt(x, y, movingBoulder) {
+    const trap = rollingBoulderTeleportTrapAt(x, y);
+    if (!trap || !movingBoulder) return { handled: false, consumed: false };
+
+    let targetLevel = null;
+    if (trap.ttyp === LEVEL_TELEP) {
+        targetLevel = levelTeleportNumericTarget(randomTeleportDepth());
+        if (rollingBoulderSameLevel(targetLevel)) return { handled: false, consumed: false };
+    }
+
+    addRollingBoulderTeleportDisappearMessage(x, y);
+    movingBoulder.otrapped = 0;
+    if (trap.ttyp === TELEP_TRAP) {
+        rollingBoulderTeleportWithinLevel(movingBoulder);
+    } else {
+        queueRollingBoulderLevelTeleportMigration(movingBoulder, targetLevel);
+    }
+    if (!trap.tseen) {
+        trap.tseen = true;
+        newsym(x, y);
+    }
+    return { handled: true, consumed: true };
+}
+
+function rollingBoulderPitHoleTrapAt(x, y) {
+    return (game.level?.traps || []).find(item =>
+        [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(item.ttyp) && item.tx === x && item.ty === y) || null;
+}
+
+function rollingBoulderApplyPitHoleFloorEffectsAt(x, y, movingBoulder) {
+    if (!movingBoulder || !rollingBoulderPitHoleTrapAt(x, y)) return { handled: false, consumed: false };
+    const messages = [];
+    const previousMonsterMoving = game._monster_moving;
+    game._monster_moving = 1;
+    let consumed = false;
+    try {
+        consumed = earthFloorEffects(movingBoulder, x, y, messages, 'fall');
+    } finally {
+        if (previousMonsterMoving === undefined) delete game._monster_moving;
+        else game._monster_moving = previousMonsterMoving;
+    }
+    for (const message of messages) addRollingBoulderMotionMessage(message);
+    return { handled: true, consumed };
+}
+
+function rollingBoulderApplyGenericFloorEffectsAt(x, y, movingBoulder) {
+    if (!movingBoulder) return { handled: false, consumed: false };
+    const messages = [];
+    const previousMonsterMoving = game._monster_moving;
+    game._monster_moving = 1;
+    let consumed = false;
+    try {
+        consumed = earthFloorEffects(movingBoulder, x, y, messages, 'fall');
+    } finally {
+        if (previousMonsterMoving === undefined) delete game._monster_moving;
+        else game._monster_moving = previousMonsterMoving;
+    }
+    for (const message of messages) addRollingBoulderMotionMessage(message);
+    return { handled: consumed, consumed };
 }
 
 function monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll = false } = {}) {
@@ -11386,6 +11606,7 @@ function monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll = fals
     if (boulder && start && end) {
         game.level.objects = (game.level.objects || []).filter(obj => obj !== boulder);
         newsym(start.x, start.y);
+        setLaunchDropSpot(boulder, start.x, start.y);
         if (!inSight) {
             const unseenLaunch = rollingBoulderUnseenLaunchMessage(start);
             if (unseenLaunch) addToplineMessage(unseenLaunch);
@@ -11399,12 +11620,20 @@ function monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll = fals
         let finalX = end.x;
         let finalY = end.y;
         for (let dist = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)); dist > 0; dist--) {
+            if (!isok(x + dx, y + dy)) {
+                finalX = x;
+                finalY = y;
+                break;
+            }
             x += dx;
             y += dy;
             const hit = (game.level?.monsters || []).find(other => other.mx === x && other.my === y);
             if (hit?.data?.throwsRocks && rn2(3)) {
                 if (!game.u?.blind && cansee(x, y))
                     addRollingBoulderMotionMessage(`${monsterDisplayName(hit)} snatches the boulder.`);
+                boulder.otrapped = 0;
+                boulder.hidden = false;
+                boulder.transientProjectile = false;
                 hit.minvent ??= [];
                 hit.minvent.push(boulder);
                 boulder = null;
@@ -11453,6 +11682,48 @@ function monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll = fals
                 }
             } else {
                 rollingBoulderHitHeroAt(x, y, boulder);
+                if (game._rolling_boulder_launch_killed_hero) break;
+            }
+            const downGate = rollingBoulderApplyDownGateAt(x, y, boulder);
+            if (downGate.handled) {
+                if (downGate.consumed) {
+                    setLaunchDropSpot(null);
+                    boulder = null;
+                }
+                break;
+            }
+            if (rollingBoulderTriggerLandmineAt(x, y)) {
+                setLaunchDropSpot(null);
+                boulder = null;
+                break;
+            }
+            const teleport = rollingBoulderApplyTeleportTrapAt(x, y, boulder);
+            if (teleport.handled) {
+                if (teleport.consumed) {
+                    setLaunchDropSpot(null);
+                    boulder = null;
+                }
+                break;
+            }
+            const pitHole = rollingBoulderApplyPitHoleFloorEffectsAt(x, y, boulder);
+            if (pitHole.handled) {
+                if (pitHole.consumed) {
+                    setLaunchDropSpot(null);
+                    boulder = null;
+                }
+                else {
+                    finalX = x;
+                    finalY = y;
+                }
+                break;
+            }
+            const floorEffects = rollingBoulderApplyGenericFloorEffectsAt(x, y, boulder);
+            if (floorEffects.handled) {
+                if (floorEffects.consumed) {
+                    setLaunchDropSpot(null);
+                    boulder = null;
+                }
+                break;
             }
             boulder = rollingBoulderChainIntoBoulderAt(x, y, dx, dy, dist - 1, boulder);
             rollingBoulderBreakClosedDoorAt(x, y, dist - 1);
@@ -11466,13 +11737,17 @@ function monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll = fals
             if (nextLoc && (IS_STWALL(nextLoc.typ) || IS_TREE(nextLoc.typ))) {
                 finalX = x;
                 finalY = y;
+                if (!heroIsDeafForMonsterNoise()) addRollingBoulderMotionMessage('Thump!');
                 break;
             }
         }
-        if (boulder) {
-            boulder.ox = finalX;
-            boulder.oy = finalY;
-            game.level.objects.push(boulder);
+        if (game._rolling_boulder_launch_killed_hero) {
+            delete game._rolling_boulder_launch_killed_hero;
+        } else {
+            setLaunchDropSpot(null);
+        }
+        if (boulder && !game._launch_drop_spot) {
+            placeRollingBoulderAtRest(boulder, finalX, finalY);
             vision_reset();
             vision_recalc(0);
             newsym(finalX, finalY);
