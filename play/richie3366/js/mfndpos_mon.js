@@ -354,6 +354,27 @@ export function findDistantMklevMonLikeC(g) {
     ) ?? null;
 }
 
+/**
+ * C: tourist D:1 peaceful swap — non-distant mklev **`dochug`** after new-turn tail
+ * (**`seed0900`** ~2501–2503).
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export function findTouristD1PostSwapNearMklevMonLikeC(g) {
+    const pet = (g.level?.monsters ?? []).find((m) => (m.mtame | 0) !== 0);
+    const distant = findDistantMklevMonLikeC(g);
+    return (
+        (g.level?.monsters ?? []).find(
+            (m) =>
+                (m.mgenmklev | 0)
+                && !(m.mtame | 0)
+                && m !== pet
+                && m !== distant,
+        )
+        ?? null
+    );
+}
+
 export function movemonStep8DistantMonEligibleLikeC(g, mtmp) {
     if (!mtmp) return false;
     if ((mtmp.mnum | 0) === PM_LICHEN && (mtmp.mgenmklev | 0)) return false;

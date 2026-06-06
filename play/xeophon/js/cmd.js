@@ -451,6 +451,24 @@ function untrapWebMonsterAt(trap) {
         !mon.dead && mon.mx === trap?.tx && mon.my === trap?.ty) || null;
 }
 
+function untrapBearTrapFailureChance(trap) {
+    let chance = 3;
+    if (heroIsConfused() || heroIsHallucinating()) chance++;
+    if (game.u?.blind || game.u?.Blind) chance++;
+    if (heroIsStunned()) chance += 2;
+    if (heroIsFumbling()) chance *= 2;
+    if (trap?.madeby_u) chance--;
+    const role = heroRoleName();
+    if (role === 'Ranger' && chance <= 3) return 0;
+    if (role === 'Rogue') {
+        if (rn2(2 * MAXULEV) < (game.u?.ulevel || 1)) chance--;
+        if (game.u?.uhave?.questart && chance > 1) chance--;
+    } else if (role === 'Ranger' && chance > 1) {
+        chance--;
+    }
+    return Math.max(1, chance);
+}
+
 function untrapWebChance(trap) {
     let chance = 3;
     const weapon = untrapWebBladeWeapon();
@@ -491,6 +509,19 @@ function untrapWebDifficultMessage(trap, underHero) {
     return `${which} web is difficult to remove.`;
 }
 
+function untrapBearTrapWhich(trap) {
+    return trap?.madeby_u ? 'your' : 'the';
+}
+
+function untrapBearTrapDifficultMessage(trap, underHero) {
+    const which = trap?.madeby_u ? 'Your' : underHero ? 'This' : 'That';
+    return `${which} bear trap is difficult to disarm.`;
+}
+
+function untrapTrapReachName(trap) {
+    return trap?.ttyp === BEAR_TRAP ? 'bear trap' : 'web';
+}
+
 function untrapBoxObjectsAt(x, y) {
     return (game.level?.objects || []).filter(obj =>
         isForceableBoxObject(obj) && obj.ox === x && obj.oy === y);
@@ -500,14 +531,24 @@ function untrapContainerCountPhrase(count) {
     return count === 1 ? 'is a container' : 'are containers';
 }
 
-function untrapWebContainerPrompt(trap, count) {
-    return `There ${untrapContainerCountPhrase(count)} and a web here.  Remove the web? [ynq] (q)`;
+function untrapHoldingTrapPromptName(trap) {
+    if (trap?.ttyp === BEAR_TRAP)
+        return trap?.madeby_u ? 'your bear trap' : 'a bear trap';
+    return trap?.madeby_u ? 'your web' : 'a web';
+}
+
+function untrapHoldingTrapActionName(trap) {
+    return trap?.ttyp === BEAR_TRAP ? 'Disarm the bear trap' : 'Remove the web';
+}
+
+function untrapHoldingTrapContainerPrompt(trap, count) {
+    return `There ${untrapContainerCountPhrase(count)} and ${untrapHoldingTrapPromptName(trap)} here.  ${untrapHoldingTrapActionName(trap)}? [ynq] (q)`;
 }
 
 function untrapFloorReachMessage(trap, dir, boxes = []) {
     const here = !dir.dx && !dir.dy;
     const parts = [];
-    if (trap) parts.push(trap?.madeby_u ? 'your web' : 'a web');
+    if (trap) parts.push(untrapHoldingTrapPromptName(trap));
     if (boxes.length) parts.push(boxes.length === 1 ? 'a container' : 'containers');
     const plural = (trap && boxes.length > 0) || boxes.length > 1;
     return `There ${plural ? 'are' : 'is'} ${parts.join(' and ')} ${here ? 'here' : 'there'} but you can't reach ${plural ? 'them' : 'it'}${game.u?.usteed ? ' while mounted' : ''}.`;
@@ -566,7 +607,7 @@ async function blockUntrapTightDiagonalReach(trap, dir) {
         return false;
     if (heroTightDiagonalCarriedWeight() <= WT_TOOMUCH_DIAGONAL && !heroTooLargeForTightDiagonal())
         return false;
-    await setMessage('You are unable to reach the web!');
+    await setMessage(`You are unable to reach the ${untrapTrapReachName(trap)}!`);
     return true;
 }
 
@@ -1298,7 +1339,11 @@ async function handleUntrapWebTrap(trap, dir) {
 
     if (monster) {
         monster.mtrapped = 0;
-        await setMessage(`You extract ${earthquakeMonsterName(monster, { capital: false })} from ${untrapWebWhich(trap)} web.`);
+        const messages = [
+            `You extract ${earthquakeMonsterName(monster, { capital: false })} from ${untrapWebWhich(trap)} web.`,
+            ...rewardUntrapHoldingMonster(trap, monster),
+        ];
+        await setMessage(trapMessage(...messages), messages.length > 1);
         game.context.move = 1;
         return true;
     }
@@ -1308,6 +1353,205 @@ async function handleUntrapWebTrap(trap, dir) {
     deleteTrap(trap);
     await setMessage(message);
     game.context.move = 1;
+    return true;
+}
+
+function placeConvertedBearTrapObject(trap) {
+    if (!game.level || !trap) return null;
+    const obj = mksobj(BEARTRAP, true, false);
+    Object.assign(obj, {
+        cls: 'tool',
+        glyph: '(',
+        color: CLR_CYAN,
+        kind: 'beartrap',
+        actualKind: 'beartrap',
+        material: 'iron',
+        oc_material: 'iron',
+        ocMerge: false,
+        nomerge: true,
+        cursed: false,
+        blessed: false,
+        known: true,
+        dknown: true,
+        bknown: true,
+        spe: 0,
+        ox: trap.tx,
+        oy: trap.ty,
+        quan: 1,
+        owt: 200,
+        hidden: false,
+        buried: false,
+        transientProjectile: false,
+        contained: false,
+        container: null,
+    });
+    game.level.objects ??= [];
+    game.level.objects.push(obj);
+    return obj;
+}
+
+function autoSellConvertedTrapObject(obj, x, y) {
+    const sale = shopDroppedPaidObjectSaleInfo(obj, x, y);
+    if (!sale) return '';
+    if (sale.prompt) return finishDroppedObjectSale(sale, true);
+    return sale.message || '';
+}
+
+function monsterHelplessForUntrapReward(mon) {
+    return !!(mon?.helpless || mon?.msleeping || mon?.mfrozen
+        || mon?.mcanmove === false || mon?.mcanmove === 0);
+}
+
+function monsterMindlessForUntrapReward(mon) {
+    return !!(mon?.mindless || mon?.data?.mindless);
+}
+
+function monsterUniqueCorpstatForUntrapReward(mon) {
+    return !!(mon?.uniqueCorpstat || mon?.data?.uniqueCorpstat || mon?.data?.unique);
+}
+
+function rewardUntrapHoldingMonster(trap, monster) {
+    const messages = [];
+    if (!trap || trap.madeby_u || !monster) return messages;
+    if (rnl(10) < 8 && !monster.mpeaceful
+        && !monsterHelplessForUntrapReward(monster)
+        && !monsterMindlessForUntrapReward(monster)
+        && !monsterUniqueCorpstatForUntrapReward(monster)
+        && monster.data?.mlet !== '@') {
+        monster.mpeaceful = 1;
+        monster.hostile = false;
+        monster.angry = false;
+        set_malign(monster);
+        messages.push(`${earthquakeMonsterName(monster)} is grateful.`);
+    }
+    if (!rn2(3) && !rnl(8) && game.u?.ualign?.type === A_LAWFUL) {
+        game.u.ualign.record = (game.u.ualign.record || 0) + 1;
+        messages.push('You feel that you did the right thing.');
+    }
+    return messages;
+}
+
+function canMoveHeroIntoFailedUntrapTrap(trap) {
+    if (!trap) return false;
+    if (failedUntrapPunishmentBlocksMove()) return false;
+    if (heroPassesWalls()) return true;
+    const loc = game.level?.at?.(trap.tx, trap.ty);
+    if (!loc || IS_OBSTRUCTED(loc.typ)) return false;
+    return !(game.level?.objects || []).some(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === trap.tx && obj.oy === trap.ty);
+}
+
+function failedUntrapPunishmentBlocksMove() {
+    if (isBuriedBallTrapActive()) return true;
+    if (!(game.u?.uball || game.u?.uchain || game.u?.upunished || game._punished)) return false;
+    const ball = game.u?.uball;
+    const chain = game.u?.uchain;
+    if (!ball || !chain) return true;
+    return !!(ball.buried || chain.buried || ball.fixed || chain.fixed
+        || ball.immobile || chain.immobile || ball.cannotDrag || chain.cannotDrag);
+}
+
+async function moveHeroIntoFailedUntrapBearTrap(trap, dir) {
+    if ((dir.dx || dir.dy) && !canMoveHeroIntoFailedUntrapTrap(trap)) {
+        await setMessage("Whoops...  Fortunately, you don't move into it.", true);
+        return false;
+    }
+    if (dir.dx || dir.dy) {
+        const oldx = game.u?.ux || 0;
+        const oldy = game.u?.uy || 0;
+        if (game.u) {
+            game.u.ux0 = oldx;
+            game.u.uy0 = oldy;
+            game.u.ux = trap.tx;
+            game.u.uy = trap.ty;
+            game.u.umoved = true;
+            if (game.u.usteed) {
+                game.u.usteed.mx = trap.tx;
+                game.u.usteed.my = trap.ty;
+            }
+        }
+        newsym(oldx, oldy);
+        newsym(trap.tx, trap.ty);
+        vision_recalc(1);
+    }
+    return await finishHeroDartTrapResult(heroBearTrapResult(trap, 'Whoops...'));
+}
+
+function damageMonsterFromFailedBearUntrap(monster, messages) {
+    if (!monster) return;
+    if (monster.mtame) monster.mtame = Math.max(0, (monster.mtame || 0) - 1);
+    monster.mhp = (monster.mhp ?? 1) - rnd(4);
+    if ((monster.mhp || 0) <= 0)
+        killMonsterFromPotionHit(monster, messages);
+}
+
+async function handleUntrapBearTrap(trap, dir) {
+    const underHero = !dir.dx && !dir.dy;
+    const trapName = 'bear trap';
+    if ((game.u?.utrap || 0) > 0) {
+        await setMessage(`You cannot deal with the ${trapName} while trapped${underHero ? ' in it' : ''}!`);
+        game.context.move = 1;
+        return true;
+    }
+    const boulder = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === trap.tx && obj.oy === trap.ty);
+    if (boulder && !underHero && !heroPassesWalls()) {
+        await setMessage('There is a boulder in your way.');
+        return true;
+    }
+    const monster = untrapWebMonsterAt(trap);
+    if (monster && !monster.mtrapped) {
+        await setMessage(`${earthquakeMonsterName(monster)} is in the way.`);
+        return true;
+    }
+    if (await blockUntrapTightDiagonalReach(trap, dir)) return true;
+    if (!heroCanReachFloorForUntrap(underHero)) {
+        if (game.u?.usteed && heroRidingSkillLevel() < P_BASIC)
+            await setMessage("You aren't skilled enough to reach from a steed.");
+        else
+            await setMessage(`You are unable to reach the ${trapName}!`);
+        return true;
+    }
+
+    const chance = untrapBearTrapFailureChance(trap);
+    const failed = chance > 0 && rn2(chance);
+    if (failed) {
+        if (rnl(5)) {
+            const messages = ['Whoops...'];
+            if (monster) {
+                damageMonsterFromFailedBearUntrap(monster, messages);
+                await setMessage(trapMessage(...messages), messages.length > 1);
+            } else {
+                if (await moveHeroIntoFailedUntrapBearTrap(trap, dir)) return true;
+            }
+        } else {
+            await setMessage(untrapBearTrapDifficultMessage(trap, underHero));
+        }
+        game.context.move = 1;
+        return true;
+    }
+
+    if (monster) {
+        monster.mtrapped = 0;
+        const messages = [
+            `You extract ${earthquakeMonsterName(monster, { capital: false })} from ${untrapBearTrapWhich(trap)} bear trap.`,
+            ...rewardUntrapHoldingMonster(trap, monster),
+        ];
+        await setMessage(trapMessage(...messages), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    const message = `You disarm ${untrapBearTrapWhich(trap)} bear trap.`;
+    const object = placeConvertedBearTrapObject(trap);
+    const saleMessage = trap.madeby_u && object
+        ? autoSellConvertedTrapObject(object, trap.tx, trap.ty)
+        : '';
+    deleteTrap(trap);
+    game.context.move = 1;
+    await setMessage([message, saleMessage].filter(Boolean).join('  '));
     return true;
 }
 
@@ -7410,6 +7654,7 @@ const OBJECT_WEIGHTS = {
     'bag of tricks': 15,
     'bag of holding': 15,
     'oilskin sack': 15,
+    'beartrap': 200,
     'pick-axe': 100,
     'sack': 15,
     'silver bell': 10,
@@ -7621,6 +7866,7 @@ const SHOP_OBJECT_COSTS = {
     'oilskin sack': 100,
     'bag of holding': 100,
     'bag of tricks': 100,
+    'beartrap': 60,
     'skeleton key': 10,
     'lock pick': 20,
     'credit card': 10,
@@ -25432,6 +25678,70 @@ function markerPaperTypeWord(item) {
 
 function markerWritePrompt(item) {
     return `What type of ${markerPaperTypeWord(item)} do you want to write?`;
+}
+
+function markerWriteTargetSelectionKind(item) {
+    if (!item?.letter) return 'exclude';
+    const paperType = markerPaperType(item);
+    if (!paperType) return 'exclude';
+    if ((paperType === 'scroll' && isBlankScrollItem(item))
+        || (paperType === 'spellbook' && isBlankSpellbookItem(item)))
+        return 'suggest';
+    return 'downplay';
+}
+
+function markerWriteTargetItemsBySelectionKind(kind) {
+    return (game.inventory || []).filter(item => markerWriteTargetSelectionKind(item) === kind && item.letter);
+}
+
+function markerWriteTargetPromptMessage() {
+    const suggested = markerWriteTargetItemsBySelectionKind('suggest').map(item => item.letter).join('');
+    if (suggested) return `What do you want to write on? [${getobjPromptLetters(suggested)} or ?*]`;
+    if (markerWriteTargetItemsBySelectionKind('downplay').length) return 'What do you want to write on? [*]';
+    return '';
+}
+
+function markerWriteMenuItems(ch) {
+    if (ch === '*') return (game.inventory || []).filter(item => item.letter);
+    const suggested = markerWriteTargetItemsBySelectionKind('suggest');
+    return suggested.length ? suggested : markerWriteTargetItemsBySelectionKind('downplay');
+}
+
+function markerWriteOverlayMatch(item) {
+    if (game._marker_write_overlay_kind === '*') return !!item?.letter;
+    return markerWriteMenuItems('?').includes(item);
+}
+
+async function beginMarkerWriteObjectSelection(marker) {
+    const prompt = markerWriteTargetPromptMessage();
+    if (!prompt) {
+        game._apply_marker_letter = null;
+        game._marker_write_overlay_kind = '';
+        await setMessage("You don't have anything to write on.");
+        game._command_mode = null;
+        return true;
+    }
+    game._apply_marker_letter = marker?.letter || '';
+    await setMessage(prompt);
+    game._command_mode = 'markerWriteObject';
+    return true;
+}
+
+async function resumeMarkerWriteObjectSelection() {
+    const prompt = markerWriteTargetPromptMessage();
+    game._message_more = 0;
+    game._message_more_line = '';
+    game._topline_after_more = '';
+    if (!prompt) {
+        game._apply_marker_letter = null;
+        game._marker_write_overlay_kind = '';
+        await setMessage("You don't have anything to write on.");
+        game._command_mode = null;
+        return false;
+    }
+    await setMessage(prompt);
+    game._command_mode = 'markerWriteObject';
+    return true;
 }
 
 function normalizeMarkerWriteName(text) {
@@ -45592,7 +45902,7 @@ function heroDartTrapResult(trap, prefix = '', alreadySeen = !!trap?.tseen) {
 async function finishHeroDartTrapResult(result, { sit = false, more = false } = {}) {
     if (sit) await finishSitMessage(result.message, { more: more || !!result.more });
     else await setMessage(result.message, more || !!result.more);
-    applyLifeSavingOrFatalCommandMode(result);
+    return applyLifeSavingOrFatalCommandMode(result);
 }
 
 function sitProjectileTrapMessage(trap, prefix, alreadySeen, spec) {
@@ -58785,9 +59095,7 @@ export async function rhack(_cmd) {
             return;
         }
         if (name.includes('magic marker')) {
-            await setMessage('What do you want to write on? [*]');
-            game._apply_marker_letter = item.letter;
-            game._command_mode = 'markerWriteObject';
+            await beginMarkerWriteObjectSelection(item);
             return;
         }
         if (toolChargeKind(item) === 'drum of earthquake'
@@ -59224,10 +59532,7 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'markerWriteInvalidMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
-            game._pending_message = 'What do you want to write on? [*]';
-            game._message_more = 0;
-            game._message_more_line = '';
-            game._command_mode = 'markerWriteObject';
+            await resumeMarkerWriteObjectSelection();
         }
         game._keep_pending_message = 1;
         return;
@@ -59259,10 +59564,40 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'markerWriteInventoryOverlay') {
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        if (ch === '?' || ch === '*') {
+            game._marker_write_overlay_kind = ch;
+            setOverlay(inventoryOverlayLines(0, false, markerWriteOverlayMatch), 24, true);
+            return;
+        }
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._marker_write_overlay_kind = '';
+            await resumeMarkerWriteObjectSelection();
+            return;
+        }
+        const selectable = (game.inventory || []).some(invItem =>
+            invItem.letter === ch && markerWriteOverlayMatch(invItem));
+        if (!selectable) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._marker_write_overlay_kind = '';
+        game._command_mode = 'markerWriteObject';
+    }
+
     if (game._command_mode === 'markerWriteObject') {
-        if (ch === '\x1b') {
+        if (ch === '?' || ch === '*') {
+            game._marker_write_overlay_kind = ch;
+            setOverlay(inventoryOverlayLines(0, false, markerWriteOverlayMatch), 24, true);
+            game._command_mode = 'markerWriteInventoryOverlay';
+            return;
+        }
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
             await setMessage('Never mind.');
             game._apply_marker_letter = null;
+            game._marker_write_overlay_kind = '';
             game._command_mode = null;
             return;
         }
@@ -59277,18 +59612,21 @@ export async function rhack(_cmd) {
             await setMessage('That is a silly thing to write on.');
             game._command_mode = null;
             game._apply_marker_letter = null;
+            game._marker_write_overlay_kind = '';
             return;
         }
         if (game.u?.blind && !item.dknown) {
             await setMessage(`You don't know whether that ${markerPaperTypeWord(item)} is blank or not.`);
             game._command_mode = null;
             game._apply_marker_letter = null;
+            game._marker_write_overlay_kind = '';
             return;
         }
         if (game.u?.blind && paperType === 'spellbook') {
             await setMessage("Magic marker can't create braille text.");
             game._command_mode = null;
             game._apply_marker_letter = null;
+            game._marker_write_overlay_kind = '';
             return;
         }
         if ((paperType === 'scroll' && !isBlankScrollItem(item))
@@ -59296,11 +59634,13 @@ export async function rhack(_cmd) {
             await setMessage(`That ${markerPaperTypeWord(item)} is not blank!`);
             game._command_mode = null;
             game._apply_marker_letter = null;
+            game._marker_write_overlay_kind = '';
             game.context.move = 1;
             return;
         }
         game._marker_write_paper_letter = item.letter;
         game._marker_write_text = '';
+        game._marker_write_overlay_kind = '';
         await setMessage(markerWritePrompt(item));
         game._command_mode = 'markerWriteText';
         return;
@@ -63074,7 +63414,10 @@ export async function rhack(_cmd) {
         if (ch === 'y') {
             game._untrap_web_container_state = null;
             game._command_mode = null;
-            await handleUntrapWebTrap(pending?.trap, pending?.dir || { dx: 0, dy: 0 });
+            if (pending?.trap?.ttyp === BEAR_TRAP)
+                await handleUntrapBearTrap(pending.trap, pending?.dir || { dx: 0, dy: 0 });
+            else
+                await handleUntrapWebTrap(pending?.trap, pending?.dir || { dx: 0, dy: 0 });
             return;
         }
         if (ch === 'n') {
@@ -63197,17 +63540,22 @@ export async function rhack(_cmd) {
             }
             const webTrap = (game.level?.traps || []).find(candidate =>
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === WEB);
+            const bearTrap = (game.level?.traps || []).find(candidate =>
+                candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === BEAR_TRAP);
+            const holdingTrap = webTrap || bearTrap;
             const boxes = (!dir.dx && !dir.dy) ? untrapBoxObjectsAt(x, y) : [];
-            if ((webTrap || boxes.length) && await blockUntrapFloorReach(webTrap, dir, boxes))
+            if ((holdingTrap || boxes.length) && await blockUntrapFloorReach(holdingTrap, dir, boxes))
                 return;
             const force = untrapForce();
-            if (webTrap && boxes.length) {
-                game._untrap_web_container_state = { trap: webTrap, dir, boxes, force, x, y };
-                await setMessage(untrapWebContainerPrompt(webTrap, boxes.length));
+            if (holdingTrap && boxes.length) {
+                game._untrap_web_container_state = { trap: holdingTrap, dir, boxes, force, x, y };
+                await setMessage(untrapHoldingTrapContainerPrompt(holdingTrap, boxes.length));
                 game._command_mode = 'untrapWebContainerConfirm';
                 return;
             }
             if (webTrap && await handleUntrapWebTrap(webTrap, dir))
+                return;
+            if (bearTrap && await handleUntrapBearTrap(bearTrap, dir))
                 return;
             const trap = (game.level?.traps || []).find(candidate =>
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === SQKY_BOARD);

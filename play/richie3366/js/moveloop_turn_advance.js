@@ -54,10 +54,14 @@ import {
 } from './dogmove_mon.js';
 import {
     findDistantMklevMonLikeC,
+    findTouristD1PostSwapNearMklevMonLikeC,
     wizD1EastDoorMklevMonLikeC,
     wizD1PeelDistantMklevMonLikeC,
 } from './mfndpos_mon.js';
-import { primeDistantMtrackRn20LikeC } from './m_move_mon.js';
+import {
+    mMoveTouristD1PostSwapRestMklevLikeC,
+    primeDistantMtrackRn20LikeC,
+} from './m_move_mon.js';
 
 /**
  * C: wizard D:1 second **`L`** post — after east-tail near **`distfleeck`** (~2722), peel
@@ -358,8 +362,20 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     (searchPass === 1 || searchPass === 2)
                     && !!g.context?._searchPass1NearMonLikeC
                 );
+            /* C: tourist D:1 swap — no extra **`movemon`** between resume and post-new-turn rest
+             * **`dochug`** (**`seed0900`** ~2500–2502). */
+            const touristD1RestMoveloopPendingLikeC =
+                g.urole?.abbr === 'Tou'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+                && g.context?._touristD1PostSwapMfndposResumeDoneLikeC
+                && !g.context?._touristD1PostSwapRestDochugDoneLikeC;
+            const touristD1RestMovemonStep1DoneLikeC =
+                !!g.context?._touristD1PostSwapRestMovemonStep1DoneLikeC;
             if (
                 runMovemon
+                && !touristD1RestMoveloopPendingLikeC
+                && !touristD1RestMovemonStep1DoneLikeC
                 && !(
                     wizD1MovemonOnceLikeC
                     && (
@@ -484,6 +500,31 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 ) {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);
                     delete g.context._deferredNewTurnLikeC;
+                    /* C: tourist D:1 peaceful swap — near mklev **`distfleeck`** + **`m_move`**
+                     * after new-turn tail (**`seed0900`** ~2501–2503), not inside **`movemon`**
+                     * before **`mcalcmove`**. */
+                    if (
+                        g.urole?.abbr === 'Tou'
+                        && (g.u?.uz?.dnum | 0) === 0
+                        && (g.u?.uz?.dlevel | 0) === 1
+                        && g.context?._touristD1PostSwapMfndposResumeDoneLikeC
+                        && !g.context?._touristD1PostSwapRestDochugDoneLikeC
+                    ) {
+                        const restMon = findTouristD1PostSwapNearMklevMonLikeC(g);
+                        if (restMon) {
+                            await mMoveTouristD1PostSwapRestMklevLikeC(
+                                g,
+                                restMon,
+                                tailStepNum,
+                            );
+                        }
+                        g.context._touristD1PostSwapRestDochugDoneLikeC = true;
+                        /* C: post-rest pet **`dog_goal`** + ~915 **`distfleeck`** in step-1
+                         * **`movemon`** (~2501+ on **`seed0900`**), not generic **`moves−1`**. */
+                        g.context._movemonHarnessConsumed = false;
+                        await movemon(1);
+                        g.context._touristD1PostSwapRestMovemonStep1DoneLikeC = true;
+                    }
                     if (g.context?._wizD1DistantPass2AwaitMcalcmoveLikeC) {
                         delete g.context._wizD1DistantPass2AwaitMcalcmoveLikeC;
                         delete g.context._wizD1Step1DistantPass2Rn20DoneLikeC;

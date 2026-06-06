@@ -341,6 +341,12 @@ export async function distfleeckMonsterApplyLikeC(g, mtmp) {
         seescaryy = u?.uy | 0;
     }
 
+    /* C: tourist D:1 post-rest moveloop — peel **`rn2(5)`** + geometry only; stub **`m_move`**
+     * follows synchronously (~2498–2500 on **`seed0900`**). */
+    if (g.context?._touristD1PostSwapRestDistfleeckPeelLikeC) {
+        return out;
+    }
+
     const sawscary = onScaryMonsterLikeC(g, seescaryx, seescaryy, mtmp);
     const flees = fleesLightMonsterLikeC(g, mtmp);
     const sanct = inYourSanctuaryMonsterLikeC(g, mtmp);
