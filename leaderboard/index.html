@@ -380,7 +380,7 @@ td.pct {
   <th class="pct">Screen</th>
   <th class="pct supplemental" title="Supplemental count of matched animation frames. Not part of the official ranking.">Anim<sup>†</sup></th>
   <th class="pct supplemental" title="Linear fit (startup + per-move) on the offline scoring path. Not part of the official ranking.">Speed<sup>†</sup></th>
-  <th class="pct supplemental" title="Per-keystroke browser-play check. A fork is &lsquo;playable&rsquo; if the aggregate cost stays under 1 ms/move; slower than that and the same code runs but is unusable in a real browser. Not part of the official ranking.">Playable<sup>†</sup></th>
+  <th class="pct supplemental" title="Two-part browser-playability check: (1) the fork's index.html loads in real headless Chromium with no script errors or failed module fetches; (2) per-keystroke aggregate cost stays under 5 ms/move. Both must pass. Not part of the official ranking.">Playable<sup>†</sup></th>
   <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">88</span></span></th>
   <th class="sparkline">Progress</th>
 </tr>
@@ -412,11 +412,15 @@ td.pct {
   computed against the same 88 sessions every fork is scored on.
   Two roughly-comparable numbers in one cell: how much fixed cost a
   session pays before the first move, and how much each move adds.
-  <strong>Playable<sup>&dagger;</sup></strong> is a per-keystroke
-  browser-play check: drives the fork the same way the browser does
-  (one moveloop call per keypress) and asks whether the aggregate
-  ms/move stays under 1.0&nbsp;ms. Forks slower than that score fine
-  offline but feel laggy when you actually hold down a movement key.
+  <strong>Playable<sup>&dagger;</sup></strong> is a two-part
+  browser-playability check. First, the judge loads the fork's
+  <code>index.html</code> in real headless Chromium and watches for
+  failed module fetches, top-level script errors, or 4xx/5xx on any
+  subresource &mdash; catches deploy mistakes (missing files, broken
+  import paths) that look fine in offline scoring but break the
+  actual play page. Second, it drives the fork the same way the
+  browser does (one moveloop call per keypress) and asks whether the
+  aggregate ms/move stays under 5&nbsp;ms. Both must pass.
   Neither column is part of the official ranking; both are reported as
   diagnostics.
   <strong>Play</strong> opens that contestant&rsquo;s build in your browser.
@@ -649,15 +653,30 @@ async function loadLeaderboard() {
                             : '<span class="hidden">0</span>'}
                     </td>
                     <td class="pct supplemental" title="${speed
-                            ? `Linear fit on offline scoring: total_session_ms = ${speed.startup_ms} + ${speed.per_move_ms} × moves (R² = ${speed.r2}, n = ${speed.sessions} sessions).`
+                            ? `Linear fit on offline scoring: total_session_ms = ${speed.startup_ms} + ${speed.per_move_ms} × moves (R² = ${speed.r2}, n = ${speed.sessions} sessions). Cell shows startup_ms + per_move_ms.`
                             : 'Speed not yet measured for this fork.'}">
                         ${speed
-                            ? `<span>${speed.label || `${Math.round(speed.startup_ms)}+${(speed.per_move_ms ?? 0).toFixed(2)}/turn`}</span>`
+                            ? `<span>${Math.round(speed.startup_ms)}+${(speed.per_move_ms ?? 0).toFixed(1)}</span>`
                             : '<span class="hidden">&mdash;</span>'}
                     </td>
-                    <td class="pct supplemental" title="${playability
-                            ? `${playability.playable ? 'Playable' : 'Not playable'} in a real browser: ${playability.ms_per_move?.toFixed(2)} ms/move overall (threshold &lt; ${playability.threshold_ms_per_move} ms/move), ${fmt(playability.total_moves)} moves across ${playability.sessions} sessions.`
-                            : 'Playability not yet measured for this fork.'}">
+                    <td class="pct supplemental" title="${(() => {
+                        if (!playability) return 'Playability not yet measured for this fork.';
+                        const parts = [];
+                        const browserOk = playability.browser_ok;
+                        if (browserOk === false) {
+                            parts.push(`Browser load FAILED (${playability.error_class || 'unknown'})`);
+                            if (playability.error_message) parts.push(playability.error_message.slice(0, 200));
+                        } else if (browserOk === true) {
+                            parts.push('Browser load OK.');
+                        }
+                        if (playability.ms_per_move != null) {
+                            const t = playability.threshold_ms_per_move ?? 5;
+                            parts.push(`Timing: ${playability.ms_per_move.toFixed(2)} ms/move (threshold < ${t}), ${fmt(playability.total_moves || 0)} moves across ${playability.sessions || 0} sessions`);
+                            if (playability.sessions_killed) parts.push(`${playability.sessions_killed} sessions killed at per-session budget`);
+                            if (playability.aborted_early) parts.push('aborted early on total budget');
+                        }
+                        return parts.join(' · ');
+                    })()}">
                         ${playability
                             ? `<span class="${playability.playable ? 'pass' : 'fail'}">${playability.playable ? 'yes' : 'no'}</span>`
                             : '<span class="hidden">&mdash;</span>'}
