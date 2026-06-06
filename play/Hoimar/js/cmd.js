@@ -25,6 +25,7 @@ import {
 } from './mklev.js';
 import {
     OBJECT_CHARGED, OBJECT_CLASS, OBJECT_DELAY, OBJECT_DIR, OBJECT_MATERIAL, OBJECT_PROB, OBJECT_WEIGHT,
+    OBJECT_DESCR, OBJECT_NAME, OBJECT_USES_KNOWN,
 } from './object_data.js';
 import {
     finish_deferred_monster_pet_hit, finish_deferred_pet_kill_side_effect,
@@ -828,6 +829,7 @@ const SPELLBOOK_SPELL_INFO = new Map([
     [380, { name: 'slow monster', level: 2, category: 'enchantment' }],
     [382, { name: 'create monster', level: 2, category: 'clerical' }],
     [383, { name: 'force bolt', level: 1, category: 'attack' }],
+    [385, { name: 'clairvoyance', level: 3, category: 'divination' }],
     [391, { name: 'extra healing', level: 3, category: 'healing' }],
     [SPE_REMOVE_CURSE, { name: 'remove curse', level: 3, category: 'clerical' }],
     [397, { name: 'identify', level: 3, category: 'divination' }],
@@ -2029,7 +2031,9 @@ function fullyIdentifyObject(obj) {
 
 function notFullyIdentified(obj) {
     if (!obj || obj.oclass === COIN_CLASS) return false;
-    return !(obj.known && obj.knownName && obj.bknown && obj.dknown && obj.rknown);
+    const nameKnown = obj.knownName || knownObjectType(obj.otyp) || !getObjectDescription(obj.otyp);
+    const knownOk = OBJECT_USES_KNOWN[obj.otyp] ? obj.known : true;
+    return !(knownOk && nameKnown && obj.bknown && obj.dknown && obj.rknown);
 }
 
 async function readScrollOfPunishment(obj, idx) {
@@ -3600,7 +3604,8 @@ function objectTypeNameKnown(obj) {
         // exposes enchantment/AC, not magical armor type identity.
         return !!(obj.knownName || knownObjectType(obj.otyp) || ARMOR_XNAMES.get(obj.otyp)?.nameKnown);
     }
-    if (obj.known || obj.knownName || knownObjectType(obj.otyp)) return true;
+    if (obj.otyp === TIN && obj.known) return true;
+    if (obj.knownName || knownObjectType(obj.otyp)) return true;
     return false;
 }
 
@@ -3615,6 +3620,26 @@ function armorObjectName(obj) {
     }
     if (objectTypeNameKnown(obj)) return def.name;
     return getObjectDescription(obj.otyp) || def.desc || def.name;
+}
+
+function objectActualDisplayName(otyp, oclass) {
+    const actual = OBJECT_NAME[otyp];
+    if (!actual) return '';
+    if (OBJECT_BASE_NAMES.has(otyp)) return OBJECT_BASE_NAMES.get(otyp);
+    if (oclass === RING_CLASS) return `ring of ${actual}`;
+    if (oclass === POTION_CLASS) return `potion of ${actual}`;
+    if (oclass === SCROLL_CLASS) return `scroll of ${actual}`;
+    if (oclass === WAND_CLASS) return `wand of ${actual}`;
+    if (oclass === SPBOOK_CLASS) {
+        if (otyp === SPE_NOVEL || otyp === SPE_BOOK_OF_THE_DEAD) return actual;
+        return `spellbook of ${actual}`;
+    }
+    return actual;
+}
+
+function knownBaseObjectName(obj) {
+    if (!obj || typeof obj.otyp !== 'number') return '';
+    return objectActualDisplayName(obj.otyp, obj.oclass);
 }
 
 function baseObjectName(obj) {
@@ -3685,7 +3710,10 @@ function baseObjectName(obj) {
     if (obj?.oclass === SPBOOK_CLASS && obj.spellInfoOverride?.name && objectTypeNameKnown(obj)) {
         return `spellbook of ${obj.spellInfoOverride.name}`;
     }
-    if ((obj?.knownName || knownObjectType(obj?.otyp)) && OBJECT_BASE_NAMES.has(obj.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
+    if (obj?.knownName || knownObjectType(obj?.otyp)) {
+        const actualName = knownBaseObjectName(obj);
+        if (actualName) return actualName;
+    }
     const appearanceName = unknownAppearanceName(obj);
     if (appearanceName) return appearanceName;
     if (obj?.otyp === SLIME_MOLD) return currentFruitName();
@@ -4417,6 +4445,17 @@ function isMetallicObject(obj) {
 function wornArmorObject(otyp) {
     return (game.inventory || []).find((obj) =>
         obj?.oclass === ARMOR_CLASS && obj.otyp === otyp && (obj.worn || obj.owornmask));
+}
+
+function magicResistanceInsightLine() {
+    // C refs: src/insight.c:attributes_enlightenment(),
+    // src/zap.c:item_what().  Wizard enlightenment reports the worn item
+    // source, preferring cloak over body armor.
+    const source = wornArmorObject(CLOAK_OF_MAGIC_RESISTANCE) ? 'cloak of magic resistance'
+        : wornArmorObject(GRAY_DRAGON_SCALE_MAIL) ? 'gray dragon scale mail'
+        : '';
+    if (!source) return '';
+    return `  You are magic-protected because of your ${source}.`;
 }
 
 function wornArmorInRange(first, last) {
@@ -17432,7 +17471,8 @@ function objectDiscoveryPages() {
         ? game.encounteredObjects
         : []);
     for (const obj of game.inventory || []) {
-        if (obj?.oclass === AMULET_CLASS && (obj.worn || obj.known || obj.knownName)) addType(obj.otyp);
+        if (obj?.oclass === AMULET_CLASS
+            && (obj.worn || obj.knownName || knownObjectType(obj.otyp))) addType(obj.otyp);
     }
     if (shouldShowWizardSkillDiscoveries()) {
         for (const otyp of WIZARD_SKILL_BASED_SPELLBOOKS) addType(otyp);
@@ -17466,7 +17506,7 @@ function discoveryDescriptionForObjectType(otyp) {
     const slot = DISCOVERY_DESCRIPTION_SLOT.get(otyp);
     if (typeof slot === 'string') return slot;
     if (Number.isInteger(slot)) return getObjectDescription(slot);
-    return getObjectDescription(otyp) || ARMOR_XNAMES.get(otyp)?.desc || '';
+    return getObjectDescription(otyp) || OBJECT_DESCR[otyp] || ARMOR_XNAMES.get(otyp)?.desc || '';
 }
 
 function discoverySpellbookOverrideForType(otyp) {
@@ -17493,11 +17533,11 @@ function discoveryKnownGemBaseName(otyp, base) {
 
 function discoveryLineForObjectType(otyp, encounteredTypes) {
     const oclass = OBJECT_CLASS[otyp];
-    let base = OBJECT_BASE_NAMES.get(otyp);
     let desc = discoveryDescriptionForObjectType(otyp);
     const prefix = encounteredTypes.has(otyp) || oclass === VENOM_CLASS ? '  ' : '* ';
     const calledName = game.calledObjects instanceof Map ? game.calledObjects.get(otyp) : '';
     const typeKnown = knownObjectType(otyp);
+    let base = typeKnown ? objectActualDisplayName(otyp, oclass) : OBJECT_BASE_NAMES.get(otyp);
     const priceQuote = discoveryPriceQuoteSuffix(otyp);
     const japaneseName = typeKnown ? japaneseItemName(otyp) : '';
     const spellOverride = oclass === SPBOOK_CLASS ? discoverySpellbookOverrideForType(otyp) : null;
@@ -18159,8 +18199,6 @@ function roleMagicAttributesInsightLines() {
     // C ref: src/insight.c:attributes_enlightenment().
     const wizardInsight = !!(game.flags?.debug || game.wizard);
     if (!(wizardInsight || game.flags?.explore)) return [];
-    const grayDragonMail = (game.inventory || [])
-        .some((obj) => obj?.otyp === GRAY_DRAGON_SCALE_MAIL && objectIsWorn(obj));
     const silverDragonMail = (game.inventory || [])
         .some((obj) => obj?.otyp === SILVER_DRAGON_SCALE_MAIL && objectIsWorn(obj));
     const grayswandir = (game.inventory || []).find((obj) =>
@@ -18178,7 +18216,8 @@ function roleMagicAttributesInsightLines() {
         lines.push(`  You are poison resistant ${roleInnateReason('poison_resistance')}.`);
     }
     if (grayswandir) lines.push('  You resist hallucinations because of Grayswandir.');
-    if (grayDragonMail) lines.push('  You are magic-protected because of your gray dragon scale mail.');
+    const magicProtection = magicResistanceInsightLine();
+    if (magicProtection) lines.push(magicProtection);
     if (game.u?.uprops?.warning) lines.push('  You are warned because of your experience.');
     if (game.u?.uprops?.searching) lines.push('  You have automatic searching innately.');
     if (game.u?.uprops?.displaced) lines.push('  You are displaced because of your cloak of displacement.');
@@ -18326,8 +18365,6 @@ function wizardAttributesPage2() {
     const level = game.u?.ulevel || 1;
     const wielded = (game.inventory || []).find((obj) => obj?.wielded || ((obj?.owornmask || 0) & C.W_WEP));
     const wornArmor = (game.inventory || []).some((obj) => obj?.oclass === ARMOR_CLASS && obj.worn);
-    const grayDragonMail = (game.inventory || [])
-        .some((obj) => obj?.otyp === GRAY_DRAGON_SCALE_MAIL && (obj.worn || obj.owornmask));
     const teleRing = (game.inventory || []).find((obj) => obj?.otyp === RIN_TELEPORT_CONTROL);
     const rawAlignRecord = game.u?.ualign?.record ?? 0;
     const alignRecord = rawAlignRecord < 0 && (game.u?.ualign?.abuse ?? 0) >= 15
@@ -18366,8 +18403,8 @@ function wizardAttributesPage2() {
         lines.push('', ' Attributes:');
         lines.push(`  You ${alignText}.`);
         lines.push(`  Your alignment is ${alignRecord}.`);
-        if (grayDragonMail)
-            lines.push('  You are magic-protected because of your gray dragon scale mail.');
+        const magicProtection = magicResistanceInsightLine();
+        if (magicProtection) lines.push(magicProtection);
         if (game.u?.uprops?.warning) lines.push('  You are warned because of your experience.');
         if (game.u?.uprops?.displaced) lines.push('  You are displaced because of your cloak of displacement.');
         if (game.u?.uprops?.teleport_control) {
@@ -20360,6 +20397,24 @@ function clearDeferredPetPickupObjects() {
     for (const obj of game.level?.objects || []) {
         if (obj?._defer_pet_pickup) delete obj._defer_pet_pickup;
     }
+}
+
+const COMMAND_BINDING_KEY = new Map([
+    ['inventory', 'i'],
+    ['invent', 'i'],
+    ['inv', 'i'],
+    ['known', '\\'],
+    ['discoveries', '\\'],
+    ['showspells', '+'],
+    ['spellbook', '+'],
+    ['attributes', '\x18'],
+    ['redraw', '\x12'],
+]);
+
+function applyCommandBinding(ch) {
+    const command = game._nhopts?.bindings?.[ch];
+    if (!command) return ch;
+    return COMMAND_BINDING_KEY.get(String(command).toLowerCase()) || ch;
 }
 
 export async function rhack(key) {
@@ -23543,6 +23598,7 @@ export async function rhack(key) {
     clearDeferredPetPickupObjects();
     const forceCommandPrefix = !!game._force_command_prefix;
     game._force_command_prefix = false;
+    ch = applyCommandBinding(ch);
     const redrawCommand = ch === '\x12' || ch === '\x0c';
     if (!redrawCommand) game._redraw_resumes_run = null;
 

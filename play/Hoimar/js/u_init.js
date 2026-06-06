@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1, rne } from './rng.js';
 import { findRole } from './roles.js';
 import { mkobj, mksobj } from './mklev.js';
-import { OBJECT_CHARGED, OBJECT_CLASS } from './object_data.js';
+import { OBJECT_CHARGED, OBJECT_CLASS, OBJECT_DESCR, OBJECT_USES_KNOWN } from './object_data.js';
 import {
     P_ATTACK_SPELL, P_HEALING_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL,
     P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
@@ -841,7 +841,9 @@ export function add_inventory_object(obj) {
 }
 
 function discover_starting_object(obj) {
-    if (!obj?.knownName || typeof obj.otyp !== 'number') return;
+    // C ref: src/u_init.c:ini_inv_use_obj().  Startup discoveries are the
+    // object types with OBJ_DESCR() whose carried instance is known.
+    if (!obj?.known || typeof obj.otyp !== 'number' || !OBJECT_DESCR[obj.otyp]) return;
     const pending = Array.isArray(game._startingObjectDiscoveries)
         ? game._startingObjectDiscoveries
         : (game._startingObjectDiscoveries = []);
@@ -909,10 +911,10 @@ function ini_inv_adjust_obj(trop, obj) {
         return false;
     }
     obj.cursed = false;
-    // C ref: u_init.c:ini_inv_adjust_obj(). Starting inventory is known to
-    // the hero; later wished/floor objects keep their own unknown flags.
-    obj.known = true;
-    obj.knownName = true;
+    // C ref: src/u_init.c:ini_inv_adjust_obj().  mksobj()/unknow_object()
+    // has already set known for !oc_uses_known types; startup sets it for
+    // the remaining types whose full description uses obj->known.
+    if (OBJECT_USES_KNOWN[obj.otyp]) obj.known = true;
     obj.dknown = true;
     obj.bknown = true;
     obj.rknown = true;
@@ -1247,7 +1249,13 @@ export function u_init_misc_rng() {
         if ((init?.pwRnd ?? 0) > 0) fallbackPower += rnd(init.pwRnd);
         game._initialPower = fallbackPower;
     }
-    if (game.u) game.u.uhandedness = rn2(10) ? 'right' : 'left';
+    if (game.u) {
+        // C ref: src/u_init.c:u_init_misc().  All heroes start with range-1
+        // night vision and no x-ray vision.
+        game.u.nv_range = 1;
+        game.u.xray_range = -1;
+        game.u.uhandedness = rn2(10) ? 'right' : 'left';
+    }
 }
 
 function rndAttr(init) {

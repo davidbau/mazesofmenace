@@ -855,6 +855,10 @@ export async function newgame() {
     // Set up game state needed by mklev
     if (!g.dungeons) g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
     g.u = g.u || {};
+    // C ref: src/u_init.c:u_init_misc().  Some startup paths skip the full
+    // initializer, but later hero-state consumers still expect these fields.
+    if (g.u.nv_range == null) g.u.nv_range = 1;
+    if (g.u.xray_range == null) g.u.xray_range = -1;
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
     // Branch placement scaffolding. The exact dungeon init still lives in

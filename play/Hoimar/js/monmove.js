@@ -7667,7 +7667,7 @@ function m_everyturn_effect(mtmp) {
 
 function visible_gas_region_at(x, y) {
     return (game.level?.gasClouds || []).some((region) =>
-        region.ttl >= 0 && region.x === x && region.y === y);
+        region.ttl !== -2 && region.x === x && region.y === y);
 }
 
 function age_gas_clouds() {

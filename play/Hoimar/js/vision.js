@@ -92,7 +92,7 @@ function has_boulder_at(level, x, y) {
 
 function visible_gas_region_at(level, x, y) {
     return (level.gasClouds || []).some((region) =>
-        region.ttl >= 0 && region.x === x && region.y === y);
+        region.ttl !== -2 && region.x === x && region.y === y);
 }
 
 function newsymOrIronBars(x, y) {

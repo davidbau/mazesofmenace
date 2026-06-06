@@ -2,14 +2,14 @@
 // C refs: src/allmain.c:newgame(), moveloop_core().
 
 import { game } from './gstate.js';
-import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
 import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyLifeSavingOrFatalCommandMode } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG, MIGR_RANDOM, MON_MIGRATING } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -3994,7 +3994,7 @@ export async function processMonsterTurns() {
             mon._pickup_newsym_after_more = 0;
             newsym(mon.mx, mon.my);
         }
-        if ((game.level?.monsters || []).includes(mon)) maybeSpinMonsterWeb(mon);
+        if ((game.level?.monsters || []).includes(mon)) await maybeSpinMonsterWeb(mon);
         rn2(5);
     }
     while (game._pickup_deferred_postmove_rolls > 0) {
@@ -4130,7 +4130,7 @@ export async function processMonsterTurns() {
 	                    monsterPickStuff(mon, monIndex, somebodyCanMove);
 	                    if (game._message_more && !game._process_time_with_more) return false;
 	                    if ((game.level?.monsters || []).includes(mon)) {
-	                        maybeSpinMonsterWeb(mon);
+	                        await maybeSpinMonsterWeb(mon);
 	                        rn2(5);
 	                    }
 	                    resumingSameMonster = false;
@@ -6194,7 +6194,7 @@ export async function processMonsterTurns() {
 	                        moveEndedTurn = moveEndedTurn || monsterPickStuff(mon, monIndex, somebodyCanMove);
 	                        if (game._message_more && !game._process_time_with_more) return false;
 	                    }
-                    maybeSpinMonsterWeb(mon);
+                    await maybeSpinMonsterWeb(mon);
                     if (maybeQueueQuestTalk(mon, { inBattle: questBattleAtTurnStart })) return false;
                     const throwTargetX = mon.mux ?? game.u?.ux ?? mon.mx;
                     const throwTargetY = mon.muy ?? game.u?.uy ?? mon.my;
@@ -11029,7 +11029,7 @@ function monsterFireTrapEffect(mon, trap) {
 }
 
 function monsterWebmakerData(data) {
-    return !!(data?.webmaker || data?.name === 'cave spider' || data?.name === 'giant spider');
+    return data?.name === 'cave spider' || data?.name === 'giant spider';
 }
 
 function monsterWebDestructionVerb(data) {
@@ -11747,11 +11747,71 @@ async function maybeCastUndirectedMonsterSpell(mon) {
     return false;
 }
 
-function maybeSpinMonsterWeb(mon) {
+function upStairwayAt(x, y) {
+    for (let stair = game.stairs; stair; stair = stair.next) {
+        if (stair.sx === x && stair.sy === y && stair.up) return stair;
+    }
+    const up = game.level?.upstair;
+    if (up?.x === x && up?.y === y) return { sx: x, sy: y, up: true, isladder: false };
+    return null;
+}
+
+function holdsUpMonsterWeb(x, y) {
+    if (!isok(x, y)) return true;
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return true;
+    if (IS_OBSTRUCTED(loc.typ)) return true;
+    if ((loc.typ === STAIRS || loc.typ === LADDER) && upStairwayAt(x, y)) return true;
+    return loc.typ === IRONBARS;
+}
+
+function countMonsterWebbingWalls(x, y) {
+    let count = 0;
+    if (holdsUpMonsterWeb(x, y - 1)) count++;
+    if (holdsUpMonsterWeb(x + 1, y)) count++;
+    if (holdsUpMonsterWeb(x, y + 1)) count++;
+    if (holdsUpMonsterWeb(x - 1, y)) count++;
+    return count;
+}
+
+function countExistingWebTraps() {
+    return (game.level?.traps || []).filter(trap => trap.ttyp === WEB).length;
+}
+
+function sokoAllowMonsterWeb(mon) {
+    if (!game.level?.flags?.sokoban_rules) return true;
+    const stair = (() => {
+        for (let s = game.stairs; s; s = s.next)
+            if (s.up) return s;
+        const up = game.level?.upstair;
+        return up ? { sx: up.x, sy: up.y } : null;
+    })();
+    return !!stair && clearPath(mon.mx, mon.my, stair.sx, stair.sy);
+}
+
+async function maybeSpinMonsterWeb(mon) {
+    if (!mon) return null;
     const webmaker = monsterWebmakerData(mon.data);
-    if (!webmaker || mon.mspec_used) return;
-    if (game.level?.traps?.some(trap => trap.tx === mon.mx && trap.ty === mon.my)) return;
-    rn2(1000);
+    if (!webmaker || mon.msleeping || mon.mcanmove === false || mon.mcanmove === 0 || mon.mspec_used) return null;
+    if (game.level?.traps?.some(trap => trap.tx === mon.mx && trap.ty === mon.my)) return null;
+    if (!sokoAllowMonsterWeb(mon)) return null;
+
+    const base = mon.data?.name === 'giant spider' ? 15 : 5;
+    const prob = base * (countMonsterWebbingWalls(mon.mx, mon.my) + 1)
+        - 3 * countExistingWebTraps();
+    if (rn2(1000) >= prob) return null;
+
+    const trap = await maketrap(mon.mx, mon.my, WEB);
+    if (!trap) return null;
+
+    mon.mspec_used = d(4, 4);
+    if (cansee(mon.mx, mon.my)) {
+        const subject = monsterVisibleToHero(mon) ? monsterDisplayName(mon) : 'Something';
+        addToplineMessage(`${subject} spins a web.`);
+        trap.tseen = true;
+    }
+    newsym(mon.mx, mon.my);
+    return trap;
 }
 
 function clearPath(x1, y1, x2, y2) {
@@ -14886,4 +14946,5 @@ export const __allmainTestHooks = {
     monsterPitTrapEffectForTest: monsterPitTrapEffect,
     monsterTrappedTrapTurnForTest: monsterTrappedTrapTurn,
     monsterSleepGasTrapEffectForTest: monsterSleepGasTrapEffect,
+    maybeSpinMonsterWebForTest: maybeSpinMonsterWeb,
 };

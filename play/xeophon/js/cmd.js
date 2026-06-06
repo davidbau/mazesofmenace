@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_DAGGER, P_EXPERT, P_GRAND_MASTER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_SABER, P_SHORT_SWORD, P_SKILLED, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_ARMF, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BROAD_SWORD, P_DAGGER, P_EXPERT, P_GRAND_MASTER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SKILLED, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -261,6 +261,67 @@ function heroIsFumbling() {
             && String(item.kind || item.actualKind || '').toLowerCase() === 'fumble boots'));
 }
 
+function heroPassesWalls() {
+    const forms = [polyselfForm(), game.u?.youmonst?.data, game.u?.data].filter(Boolean);
+    const hasPassWallFlag = target => !!(target?.passWalls || target?.passesWalls
+        || target?.passes_walls || target?.wallwalk);
+    return !!(hasPassWallFlag(game.u) || forms.some(form => {
+        const name = String(form.name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+        return hasPassWallFlag(form) || name === 'xorn' || name === 'earth elemental';
+    }));
+}
+
+function heroFormData() {
+    return polyselfForm() || game.u?.youmonst?.data || game.u?.data || {};
+}
+
+function heroIsHuge() {
+    const form = heroFormData();
+    if (form.huge || form.msize === 'huge' || form.size === 'huge') return true;
+    return heroProjectileMonsterSizeValue({ data: form, msize: form.msize, size: form.size }) >= 4;
+}
+
+function heroIsBigMonster() {
+    const form = heroFormData();
+    if (form.big || form.bigmonst || form.large || form.giant) return true;
+    return heroProjectileMonsterSizeValue({ data: form, msize: form.msize, size: form.size }) >= 3;
+}
+
+const HERO_RIDING_ROLE_SKILLS = new Map([
+    ['Archaeologist', P_BASIC],
+    ['Archeologist', P_BASIC],
+    ['Barbarian', P_BASIC],
+    ['Knight', P_EXPERT],
+    ['Rogue', P_BASIC],
+    ['Ranger', P_BASIC],
+    ['Samurai', P_SKILLED],
+    ['Tourist', P_BASIC],
+    ['Valkyrie', P_SKILLED],
+    ['Wizard', P_BASIC],
+]);
+
+function heroRidingSkillLevel() {
+    return heroExplicitWeaponSkillLevel(P_RIDING, 'riding')
+        ?? HERO_RIDING_ROLE_SKILLS.get(heroRoleName())
+        ?? P_UNSKILLED;
+}
+
+function heroCanReachFloorForUntrap(checkPit = false) {
+    if (game.u?.uswallow) return false;
+    if ((game.u?.levitating || game.u?.levitation || game.u?.Levitation)
+        && !(Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)))
+        return false;
+    if (game.u?.usteed && heroRidingSkillLevel() < P_BASIC) return false;
+    if (game.u?.uundetected && heroFormData().ceilingHider) return false;
+    if (game.u?.flying || game.u?.Flying || heroIsHuge()) return true;
+    if (checkPit) {
+        const trap = (game.level?.traps || []).find(candidate =>
+            candidate.tx === game.u?.ux && candidate.ty === game.u?.uy);
+        if (trap && (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT)) return false;
+    }
+    return true;
+}
+
 function fingersOrGloves() {
     return wornGlovesItem() ? 'gloves' : 'fingers';
 }
@@ -358,6 +419,468 @@ function squeakyBoardUntrapChance(trap) {
     if (heroIsFumbling()) chance *= 2;
     if (trap?.madeby_u) chance--;
     return Math.max(1, chance);
+}
+
+const UNTRAP_WEB_BLADE_NAME_RE = /\b(?:athame|broadsword|crysknife|dagger|katana|knife|long sword|runesword|saber|sabre|scalpel|scimitar|short sword|stiletto|tsurugi|two-handed sword|wakizashi|worm tooth)\b/;
+
+function untrapWebWeaponIsBlade(item) {
+    if (!item) return false;
+    const weaponClass = item.cls === 'weapon' || item.oclass === 'weapon' || item.glyph === ')';
+    return weaponClass && UNTRAP_WEB_BLADE_NAME_RE.test(forceWeaponName(item).toLowerCase());
+}
+
+function untrapWebBladeWeapon() {
+    const primary = wieldedItem();
+    if (untrapWebWeaponIsBlade(primary)) return primary;
+    const secondary = forceFightSecondaryWeapon(primary);
+    return game._twoweapon && untrapWebWeaponIsBlade(secondary) ? secondary : null;
+}
+
+function untrapWebArtifactSpec(item) {
+    if (!item) return null;
+    const key = String(item.artifact || item.oartifact || artifactObjectName(item) || '')
+        .toLowerCase()
+        .replace(/^the\s+/, '');
+    if (key === 'sting' && item === wieldedItem()) return { name: 'Sting', verb: 'cuts' };
+    if (key === 'fire brand') return { name: 'Fire Brand', verb: 'burns' };
+    return null;
+}
+
+function untrapWebMonsterAt(trap) {
+    return (game.level?.monsters || []).find(mon =>
+        !mon.dead && mon.mx === trap?.tx && mon.my === trap?.ty) || null;
+}
+
+function untrapWebChance(trap) {
+    let chance = 3;
+    const weapon = untrapWebBladeWeapon();
+    if (weapon && !untrapWebMonsterAt(trap)) {
+        if (untrapWebArtifactSpec(weapon)) chance = 1;
+    } else if (!heroWebmakerForm()) {
+        chance = 7;
+    }
+    if (heroIsConfused() || heroIsHallucinating()) chance++;
+    if (game.u?.blind || game.u?.Blind) chance++;
+    if (heroIsStunned()) chance += 2;
+    if (heroIsFumbling()) chance *= 2;
+    if (trap?.madeby_u) chance--;
+    const role = heroRoleName();
+    if (role === 'Rogue') {
+        if (rn2(2 * MAXULEV) < (game.u?.ulevel || 1)) chance--;
+        if (game.u?.uhave?.questart && chance > 1) chance--;
+    } else if (role === 'Ranger' && chance > 1) {
+        chance--;
+    }
+    return Math.max(1, chance);
+}
+
+function untrapWebWhich(trap) {
+    return trap?.madeby_u ? 'your' : 'the';
+}
+
+function untrapWebSuccessMessage(trap, weapon) {
+    const which = untrapWebWhich(trap);
+    const artifact = untrapWebArtifactSpec(weapon);
+    if (artifact) return `${artifact.name} ${artifact.verb} through ${which} web!`;
+    if (weapon) return `You cut through ${which} web.`;
+    return `You succeed in removing ${which} web.`;
+}
+
+function untrapWebDifficultMessage(trap, underHero) {
+    const which = trap?.madeby_u ? 'Your' : underHero ? 'This' : 'That';
+    return `${which} web is difficult to remove.`;
+}
+
+function untrapBoxObjectsAt(x, y) {
+    return (game.level?.objects || []).filter(obj =>
+        isForceableBoxObject(obj) && obj.ox === x && obj.oy === y);
+}
+
+function untrapContainerCountPhrase(count) {
+    return count === 1 ? 'is a container' : 'are containers';
+}
+
+function untrapWebContainerPrompt(trap, count) {
+    return `There ${untrapContainerCountPhrase(count)} and a web here.  Remove the web? [ynq] (q)`;
+}
+
+function untrapFloorReachMessage(trap, dir, boxes = []) {
+    const here = !dir.dx && !dir.dy;
+    const parts = [];
+    if (trap) parts.push(trap?.madeby_u ? 'your web' : 'a web');
+    if (boxes.length) parts.push(boxes.length === 1 ? 'a container' : 'containers');
+    const plural = (trap && boxes.length > 0) || boxes.length > 1;
+    return `There ${plural ? 'are' : 'is'} ${parts.join(' and ')} ${here ? 'here' : 'there'} but you can't reach ${plural ? 'them' : 'it'}${game.u?.usteed ? ' while mounted' : ''}.`;
+}
+
+async function blockUntrapFloorReach(trap, dir, boxes = []) {
+    if (heroCanReachFloorForUntrap(false)) return false;
+    await setMessage(untrapFloorReachMessage(trap, dir, boxes));
+    return true;
+}
+
+function untrapMayDig(loc) {
+    return !(IS_STWALL(loc?.typ) || IS_TREE(loc?.typ)) || !(loc?.wall_info & W_NONDIGGABLE);
+}
+
+function untrapMayPasswall(loc) {
+    return !IS_STWALL(loc?.typ) || !(loc?.wall_info & W_NONPASSWALL);
+}
+
+function untrapHeroBadRock(x, y) {
+    const boulder = (game.level?.objects || []).some(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === x && obj.oy === y);
+    if (In_sokoban(game.u?.uz) && boulder) return true;
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !IS_OBSTRUCTED(loc.typ)) return false;
+    const form = heroFormData();
+    const tunnels = !!(form.tunnel || form.tunnels || form.dwarf);
+    const needPick = !!(form.needPick || form.need_pick);
+    return (!tunnels || needPick || !untrapMayDig(loc))
+        && !(heroPassesWalls() && untrapMayPasswall(loc));
+}
+
+function heroTooLargeForTightDiagonal() {
+    const form = heroFormData();
+    if (!heroIsBigMonster()) return false;
+    const name = String(form.name || '').toLowerCase();
+    return !(form.amorphous || form.whirly || form.unsolid || form.noncorporeal
+        || form.slithy || name === 'fog cloud');
+}
+
+function heroTightDiagonalCarriedWeight() {
+    const throwsRocks = !!(game.u?.throwsRocks || heroFormData().throwsRocks);
+    let weight = Math.max(0, Math.trunc(((game._goldCount || 0) + 50) / 100));
+    for (const item of game.inventory || []) {
+        if (isGoldObject(item)) continue;
+        if (throwsRocks && item?.otyp === BOULDER) continue;
+        weight += globObjectWeight(item);
+    }
+    return weight;
+}
+
+async function blockUntrapTightDiagonalReach(trap, dir) {
+    if (!dir.dx || !dir.dy) return false;
+    if (!(untrapHeroBadRock(game.u?.ux, trap.ty) && untrapHeroBadRock(trap.tx, game.u?.uy)))
+        return false;
+    if (heroTightDiagonalCarriedWeight() <= WT_TOOMUCH_DIAGONAL && !heroTooLargeForTightDiagonal())
+        return false;
+    await setMessage('You are unable to reach the web!');
+    return true;
+}
+
+function untrapBoxObjectName(box) {
+    const name = forceBoxSimpleName(box);
+    return box?.lknown && (box.locked || box.olocked) ? `locked ${name}` : name;
+}
+
+function untrapBoxArticleName(box) {
+    const name = untrapBoxObjectName(box);
+    return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+}
+
+function untrapBoxPrompt(box) {
+    if (box?.tknown && box?.dknown)
+        return `Disarm this ${untrapBoxObjectName(box)}? [ynq] (q)`;
+    return `There is ${untrapBoxArticleName(box)} here.  Check it for traps? [ynq] (q)`;
+}
+
+function heroHasMasterKeyOfThievery() {
+    const expected = questArtifactNameKey('The Master Key of Thievery');
+    const rogue = heroRoleName() === 'Rogue';
+    return (game.inventory || []).some(item => {
+        if (item?.otyp != null && item.otyp !== SKELETON_KEY) return false;
+        const isMasterKey = [
+            item?.artifact,
+            item?.oartifact,
+            item?.name,
+            item?.actualKind,
+            item?.kind,
+        ].some(name => questArtifactNameKey(name) === expected);
+        if (!isMasterKey) return false;
+        return rogue ? !item?.cursed : !!item?.blessed;
+    });
+}
+
+function untrapForce() {
+    return heroHasMasterKeyOfThievery();
+}
+
+async function beginUntrapBoxPrompt(boxes, { trapSkipped = false, force = false } = {}) {
+    const targets = boxes.filter(Boolean);
+    if (!targets.length) return false;
+    game._untrap_box_state = { boxes: targets, index: 0, trapSkipped, force };
+    game._command_mode = 'untrapBoxConfirm';
+    await setMessage(untrapBoxPrompt(targets[0]));
+    return true;
+}
+
+function untrapBoxDetectionSucceeds(box, confused, force = false) {
+    if (box?.otrapped) {
+        if (force) return true;
+        const denom = Math.max(1, MAXULEV + 1 - (game.u?.ulevel || 1));
+        if (!confused && rn2(denom) < 10) return true;
+    }
+    if (box?.tknown) return true;
+    return !force && confused && !rn2(3);
+}
+
+function untrapBoxDisarmChance() {
+    let chance = (game.u?.acurr?.a?.[A_DEX] ?? 10) + (game.u?.ulevel || 1);
+    if (heroRoleName() === 'Rogue') chance *= 2;
+    return chance;
+}
+
+function disarmUntrapBox(box, confused, force = false) {
+    if (box?.otrapped) {
+        const difficulty = 75 + Math.trunc(level_difficulty() / 2);
+        if (!force && (confused || heroIsFumbling() || rnd(difficulty) > untrapBoxDisarmChance())) {
+            box.otrapped = false;
+            box.tknown = true;
+            exerciseAttribute(A_DEX, true);
+            return 'You set it off!';
+        }
+        box.otrapped = false;
+        box.tknown = true;
+        exerciseAttribute(A_DEX, true);
+        if (game.u) game.u.uexp = (game.u.uexp || 0) + 8;
+        return 'You disarm it!';
+    }
+    if (box) box.tknown = false;
+    return `That ${untrapBoxObjectName(box)} was not trapped.`;
+}
+
+function untrapDoorDetectionSucceeds(loc, confused, force = false) {
+    if (loc?.doormask & D_TRAPPED) {
+        if (force) return true;
+        const denom = Math.max(1, MAXULEV - (game.u?.ulevel || 1) + 11);
+        if (!confused && rn2(denom) < 10) return true;
+    }
+    return !force && confused && !rn2(3);
+}
+
+function untrapDoorDisarmChance() {
+    const level = game.u?.ulevel || 1;
+    return 15 + (heroRoleName() === 'Rogue' ? level * 3 : level);
+}
+
+function disarmUntrapDoor(loc, x, y, confused, force = false) {
+    if (loc?.doormask & D_TRAPPED) {
+        exerciseAttribute(A_DEX, true);
+        const difficulty = 75 + Math.trunc(level_difficulty() / 2);
+        if (!force && (confused || heroIsFumbling() || rnd(difficulty) > untrapDoorDisarmChance())) {
+            loc.doormask = D_NODOOR;
+            loc.flags = D_NODOOR;
+            newsym(x, y);
+            addShopTerrainDamage(x, y, 0);
+            return 'You set it off!';
+        }
+        loc.doormask &= ~D_TRAPPED;
+        loc.flags = loc.doormask;
+        if (game.u) game.u.uexp = (game.u.uexp || 0) + 8;
+        return 'You disarm it!';
+    }
+    return 'This door was not trapped.';
+}
+
+async function checkUntrapDoor(loc, x, y, { force = false, confused = heroIsConfused() || heroIsHallucinating() } = {}) {
+    if (!loc || loc.typ !== DOOR) return false;
+    switch (loc.doormask) {
+        case D_NODOOR:
+            await setMessage(`You ${game.u?.blind ? 'feel' : 'see'} no door there.`);
+            return true;
+        case D_ISOPEN:
+            await setMessage('This door is safely open.');
+            return true;
+        case D_BROKEN:
+            await setMessage('This door is broken.');
+            return true;
+        default:
+            break;
+    }
+
+    if (untrapDoorDetectionSucceeds(loc, confused, force)) {
+        exerciseAttribute(A_WIS, true);
+        await setMessage('You find a trap on the door!  Disarm it? [ynq] (q)');
+        game._untrap_door_state = { loc, x, y, confused, force };
+        game._command_mode = 'untrapDoorDisarmConfirm';
+        return true;
+    }
+    await setMessage('You find no traps on the door.');
+    game.context.move = 1;
+    return true;
+}
+
+async function checkUntrapBox(box, { force = false, confused = heroIsConfused() || heroIsHallucinating() } = {}) {
+    if (untrapBoxDetectionSucceeds(box, confused, force)) {
+        const knownTrap = box?.tknown && box?.dknown;
+        if (box) {
+            box.tknown = true;
+            if (!heroIsHallucinating()) {
+                box.dknown = true;
+                recordObservedObjectDiscovery(box);
+            }
+        }
+        if (!confused) exerciseAttribute(A_WIS, true);
+        await setMessage(knownTrap
+            ? `There's a trap on the ${untrapBoxObjectName(box)}.  Disarm it? [ynq] (q)`
+            : `You find a trap on the ${untrapBoxObjectName(box)}!  Disarm it? [ynq] (q)`);
+        game._untrap_box_disarm_state = { box, confused, force };
+        game._command_mode = 'untrapBoxDisarmConfirm';
+        return;
+    }
+    await setMessage(`You find no traps on the ${untrapBoxObjectName(box)}.`);
+    game.context.move = 1;
+}
+
+async function declineCurrentUntrapBox() {
+    const state = game._untrap_box_state;
+    if (!state) {
+        game._command_mode = null;
+        return;
+    }
+    state.index = (state.index || 0) + 1;
+    const next = state.boxes[state.index];
+    if (next) {
+        await setMessage(untrapBoxPrompt(next));
+        return;
+    }
+    game._untrap_box_state = null;
+    game._command_mode = null;
+    await setMessage(state.trapSkipped
+        ? 'There are no other chests or boxes here.'
+        : 'There are no other chests or boxes here.  You know of no traps there.', !state.trapSkipped);
+}
+
+function forceHeroIntoWebTrapMessage(trap) {
+    if (trap) trap.tseen = true;
+    const webName = webTrapName(trap);
+    const destroyVerb = heroWebDestructionVerb();
+    if (destroyVerb) {
+        deleteTrap(trap);
+        return `You ${destroyVerb} ${webName}!`;
+    }
+    if (heroFlowsThroughWeb()) return `You flow through ${webName}.`;
+    if (heroWebmakerForm())
+        return trap?.madeby_u ? 'You take a walk on your web.' : 'There is a spider web here.';
+    const messages = [`You are caught by ${webName}!`];
+    const tim = webTrapTimeFromStrength();
+    setHeroWebTrapTime(tim);
+    if (tim <= 0) {
+        deleteTrap(trap);
+        messages.push(`You tear through ${webTrapTearName(trap)}!`);
+    }
+    return trapMessage(...messages);
+}
+
+function applyHeroWebTrapNoMessage(trap) {
+    if (trap) trap.tseen = true;
+    if (heroWebDestructionVerb()) {
+        deleteTrap(trap);
+        return;
+    }
+    if (heroFlowsThroughWeb() || heroWebmakerForm()) return;
+    const tim = webTrapTimeFromStrength();
+    setHeroWebTrapTime(tim);
+    if (tim <= 0) deleteTrap(trap);
+}
+
+async function spreadWebToHeroFromUntrap() {
+    if (heroWebmakerForm() || rn2(3)) return '';
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    let heroTrap = (game.level?.traps || []).find(trap => trap.tx === x && trap.ty === y) || null;
+    if (heroTrap && heroTrap.ttyp !== WEB) return '';
+    if (!heroTrap) heroTrap = await maketrap(x, y, WEB);
+    if (!heroTrap) return '';
+    applyHeroWebTrapNoMessage(heroTrap);
+    return "The web sticks to you.  You're caught too!";
+}
+
+async function moveHeroIntoFailedUntrapWeb(trap, dir) {
+    if (dir.dx || dir.dy) {
+        const oldx = game.u?.ux || 0;
+        const oldy = game.u?.uy || 0;
+        if (game.u) {
+            game.u.ux0 = oldx;
+            game.u.uy0 = oldy;
+            game.u.ux = trap.tx;
+            game.u.uy = trap.ty;
+            game.u.umoved = true;
+            if (game.u.usteed) {
+                game.u.usteed.mx = trap.tx;
+                game.u.usteed.my = trap.ty;
+            }
+        }
+        newsym(oldx, oldy);
+        newsym(trap.tx, trap.ty);
+        vision_recalc(1);
+    }
+    return forceHeroIntoWebTrapMessage(trap);
+}
+
+async function handleUntrapWebTrap(trap, dir) {
+    const underHero = !dir.dx && !dir.dy;
+    const trapName = 'web';
+    if ((game.u?.utrap || 0) > 0) {
+        await setMessage(`You cannot deal with the ${trapName} while trapped${underHero ? ' in it' : ''}!`);
+        game.context.move = 1;
+        return true;
+    }
+    const boulder = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === trap.tx && obj.oy === trap.ty);
+    if (boulder && !underHero && !heroPassesWalls()) {
+        await setMessage('There is a boulder in your way.');
+        return true;
+    }
+    const monster = untrapWebMonsterAt(trap);
+    if (monster && !monster.mtrapped) {
+        await setMessage(`${earthquakeMonsterName(monster)} is in the way.`);
+        return true;
+    }
+    if (await blockUntrapTightDiagonalReach(trap, dir)) return true;
+    if (!heroCanReachFloorForUntrap(underHero)) {
+        if (game.u?.usteed && heroRidingSkillLevel() < P_BASIC)
+            await setMessage("You aren't skilled enough to reach from a steed.");
+        else
+            await setMessage(`You are unable to reach the ${trapName}!`);
+        return true;
+    }
+
+    const failed = rn2(untrapWebChance(trap));
+    if (failed) {
+        if (rnl(5)) {
+            const messages = ['Whoops...'];
+            if (monster) {
+                const spread = await spreadWebToHeroFromUntrap();
+                if (spread) messages.push(spread);
+                if (monster.mtrapped) messages.push(`${earthquakeMonsterName(monster)} remains entangled.`);
+            } else {
+                messages.push(await moveHeroIntoFailedUntrapWeb(trap, dir));
+            }
+            await setMessage(trapMessage(...messages), messages.length > 1);
+        } else {
+            await setMessage(untrapWebDifficultMessage(trap, underHero));
+        }
+        game.context.move = 1;
+        return true;
+    }
+
+    if (monster) {
+        monster.mtrapped = 0;
+        await setMessage(`You extract ${earthquakeMonsterName(monster, { capital: false })} from ${untrapWebWhich(trap)} web.`);
+        game.context.move = 1;
+        return true;
+    }
+
+    const weapon = untrapWebBladeWeapon();
+    const message = untrapWebSuccessMessage(trap, weapon);
+    deleteTrap(trap);
+    await setMessage(message);
+    game.context.move = 1;
+    return true;
 }
 
 function squeakyBoardUntrapPrompt() {
@@ -61937,6 +62460,107 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'untrapWebContainerConfirm') {
+        const pending = game._untrap_web_container_state;
+        if (ch === 'y') {
+            game._untrap_web_container_state = null;
+            game._command_mode = null;
+            await handleUntrapWebTrap(pending?.trap, pending?.dir || { dx: 0, dy: 0 });
+            return;
+        }
+        if (ch === 'n') {
+            game._untrap_web_container_state = null;
+            if (!await beginUntrapBoxPrompt(pending?.boxes || [], {
+                trapSkipped: true,
+                force: !!pending?.force,
+            }))
+                game._command_mode = null;
+            return;
+        }
+        if (ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._untrap_web_container_state = null;
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+        }
+        return;
+    }
+
+    if (game._command_mode === 'untrapBoxConfirm') {
+        const state = game._untrap_box_state;
+        const box = state?.boxes?.[state.index || 0];
+        if (ch === 'y') {
+            game._untrap_box_state = null;
+            game._command_mode = null;
+            if (box?.tknown && box?.dknown) {
+                await setMessage(disarmUntrapBox(
+                    box,
+                    heroIsConfused() || heroIsHallucinating(),
+                    !!state?.force,
+                ));
+                game.context.move = 1;
+            } else {
+                await checkUntrapBox(box, { force: !!state?.force });
+            }
+            return;
+        }
+        if (ch === 'n') {
+            await declineCurrentUntrapBox();
+            return;
+        }
+        if (ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._untrap_box_state = null;
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+        }
+        return;
+    }
+
+    if (game._command_mode === 'untrapBoxDisarmConfirm') {
+        const pending = game._untrap_box_disarm_state;
+        if (ch === 'y') {
+            game._untrap_box_disarm_state = null;
+            game._command_mode = null;
+            await setMessage(disarmUntrapBox(pending?.box, !!pending?.confused, !!pending?.force));
+            game.context.move = 1;
+            return;
+        }
+        if (ch === 'n' || ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._untrap_box_disarm_state = null;
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+            game.context.move = 1;
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'untrapDoorDisarmConfirm') {
+        const pending = game._untrap_door_state;
+        if (ch === 'y') {
+            game._untrap_door_state = null;
+            game._command_mode = null;
+            await setMessage(disarmUntrapDoor(
+                pending?.loc,
+                pending?.x,
+                pending?.y,
+                !!pending?.confused,
+                !!pending?.force,
+            ));
+            game.context.move = 1;
+            return;
+        }
+        if (ch === 'n' || ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._untrap_door_state = null;
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+            game.context.move = 1;
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
     if (game._command_mode === 'untrapDirection') {
         game._command_mode = null;
         if (ch === '\x1b') {
@@ -61951,6 +62575,20 @@ export async function rhack(_cmd) {
                 await setMessage('The perils lurking there are beyond your grasp.');
                 return;
             }
+            const webTrap = (game.level?.traps || []).find(candidate =>
+                candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === WEB);
+            const boxes = (!dir.dx && !dir.dy) ? untrapBoxObjectsAt(x, y) : [];
+            if ((webTrap || boxes.length) && await blockUntrapFloorReach(webTrap, dir, boxes))
+                return;
+            const force = untrapForce();
+            if (webTrap && boxes.length) {
+                game._untrap_web_container_state = { trap: webTrap, dir, boxes, force };
+                await setMessage(untrapWebContainerPrompt(webTrap, boxes.length));
+                game._command_mode = 'untrapWebContainerConfirm';
+                return;
+            }
+            if (webTrap && await handleUntrapWebTrap(webTrap, dir))
+                return;
             const trap = (game.level?.traps || []).find(candidate =>
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === SQKY_BOARD);
             if (trap) {
@@ -61959,8 +62597,13 @@ export async function rhack(_cmd) {
                 game._command_mode = 'untrapSqueakyTool';
                 return;
             }
+            if (boxes.length && await beginUntrapBoxPrompt(boxes, { force }))
+                return;
+            const loc = game.level?.at?.(x, y);
+            if (await checkUntrapDoor(loc, x, y, { force }))
+                return;
         }
-        await setMessage('And just how do you expect to do that?');
+        await setMessage('You know of no traps there.');
         return;
     }
 

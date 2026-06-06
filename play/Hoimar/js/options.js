@@ -6,13 +6,19 @@ import { game } from './gstate.js';
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
-        flags: { pickup_thrown: true }, iflags: {},
+        flags: { pickup_thrown: true }, iflags: {}, bindings: {},
     };
     if (!rc) return result;
 
     for (const rawLine of rc.split('\n')) {
         const line = rawLine.trim();
         if (!line || line.startsWith('#')) continue;
+
+        const bindMatch = line.match(/^BIND(?:INGS)?=(.+)/i);
+        if (bindMatch) {
+            parseBindings(bindMatch[1], result.bindings);
+            continue;
+        }
 
         const optMatch = line.match(/^OPTIONS=(.+)/i);
         if (!optMatch) continue;
@@ -83,4 +89,32 @@ export function parseNethackrc(rc) {
         }
     }
     return result;
+}
+
+function parseBindings(text, bindings) {
+    for (const raw of String(text || '').split(',')) {
+        const colonIdx = raw.indexOf(':');
+        if (colonIdx < 0) continue;
+        const key = parseBindingKey(raw.slice(0, colonIdx).trim());
+        const command = raw.slice(colonIdx + 1).trim().toLowerCase();
+        if (key && command) bindings[key] = command;
+    }
+}
+
+function parseBindingKey(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const lower = text.toLowerCase();
+    if (lower === 'space') return ' ';
+    if (lower === 'esc' || lower === 'escape') return '\x1b';
+    if (lower === 'return' || lower === 'enter') return '\r';
+    if (lower === 'tab') return '\t';
+    if (/^\^[a-z]$/i.test(text)) return String.fromCharCode(text[1].toUpperCase().charCodeAt(0) - 64);
+    if (text.length >= 2 && text[0] === '\\') {
+        if (text[1] === 'n') return '\n';
+        if (text[1] === 'r') return '\r';
+        if (text[1] === 't') return '\t';
+        return text[1];
+    }
+    return text.length === 1 ? text : '';
 }

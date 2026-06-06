@@ -14,7 +14,7 @@ import { randomEngraving, randomEpitaph, wipeoutText } from './random_text.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
 import {
     OBJECT_CLASS, OBJECT_PROB, OBJECT_CHARGED, OBJECT_DIR, OBJECT_MATERIAL,
-    OBJECT_WEIGHT, CLASS_BASES, CLASS_TOTALS,
+    OBJECT_WEIGHT, OBJECT_USES_KNOWN, CLASS_BASES, CLASS_TOTALS,
 } from './object_data.js';
 import { getObjectColor, getObjectMaterial } from './o_init.js';
 import { MONSTER_DATA } from './monster_data.js';
@@ -1288,7 +1288,9 @@ export function mksobj(otyp, init, artif) {
         olocked: false,
         otrapped: false,
         tknown: false,
-        known: false,
+        // C ref: src/mkobj.c:unknow_object().  For object types whose full
+        // description does not use obj->known, new objects keep it set.
+        known: !OBJECT_USES_KNOWN[otyp],
         bknown: false,
         rknown: false,
         dknown: false,
@@ -4213,6 +4215,30 @@ const BIGRM_7_MAP = [
 const BIGRM_7_XSTART = 3;
 const BIGRM_7_YSTART = 1;
 
+const BIGRM_9_MAP = [
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}......................................................}}}}}}}}}}',
+    '}}}}}}}............................................................}}}}}}}',
+    '}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}',
+    '}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}',
+    '}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}',
+    '}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}',
+    '}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}',
+    '}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}',
+    '}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}',
+    '}}}}}}}............................................................}}}}}}}',
+    '}}}}}}}}}}......................................................}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+];
+const BIGRM_9_XSTART = 3;
+const BIGRM_9_YSTART = 1;
+
 const BIGRM_8_MAP = [
     '----------------------------------------------',
     '|............................................---',
@@ -4754,6 +4780,10 @@ function bigrm4TerrainAt(x, y) {
 
 function bigrm7TerrainAt(x, y) {
     return BIGRM_7_MAP[y]?.[x] || ' ';
+}
+
+function bigrm9TerrainAt(x, y) {
+    return BIGRM_9_MAP[y]?.[x] || ' ';
 }
 
 function bigrm8TerrainAt(x, y) {
@@ -6125,6 +6155,32 @@ function loadBigrm7Terrain() {
     game.level.flags.is_maze_lev = true;
 }
 
+function loadBigrm9Terrain() {
+    for (let y = 0; y < BIGRM_9_MAP.length; y++) {
+        for (let x = 0; x < 74; x++) {
+            const loc = game.level.at(x + BIGRM_9_XSTART, y + BIGRM_9_YSTART);
+            if (!loc) continue;
+            loc.typ = bigrmTerrainType(bigrm9TerrainAt(x, y));
+            loc.lit = false;
+        }
+    }
+    // C refs: dat/bigrm-9.lua des.region(selection.area(...), "lit"),
+    // sp_lev.c:lspo_region().  Lit selection regions grow by one map grid
+    // before setting the cell lighting.
+    for (const [x1, y1, x2, y2] of [
+        [26, 4, 47, 14],
+        [21, 5, 51, 13],
+        [19, 6, 54, 12],
+    ]) {
+        for (let y = Math.max(0, y1 - 1); y <= Math.min(18, y2 + 1); y++)
+            for (let x = Math.max(0, x1 - 1); x <= Math.min(73, x2 + 1); x++) {
+                const loc = game.level?.at(x + BIGRM_9_XSTART, y + BIGRM_9_YSTART);
+                if (loc) loc.lit = true;
+            }
+    }
+    game.level.flags.is_maze_lev = true;
+}
+
 function loadBigrm8Terrain() {
     for (let y = 0; y < 18; y++) {
         for (let x = 0; x < 75; x++) {
@@ -6393,6 +6449,37 @@ function bigrm7GetDryLocation() {
     return bigrm7Location((loc, x, y) => SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y));
 }
 
+function bigrm9Location(ok) {
+    let x, y, loc;
+    let tries = 0;
+    do {
+        x = rn2(74);
+        y = rn2(19);
+        loc = game.level?.at(x + BIGRM_9_XSTART, y + BIGRM_9_YSTART);
+        if (loc && ok(loc, x + BIGRM_9_XSTART, y + BIGRM_9_YSTART)) {
+            return { x: x + BIGRM_9_XSTART, y: y + BIGRM_9_YSTART };
+        }
+    } while (++tries < 100);
+
+    for (x = 0; x < 74; x++)
+        for (y = 0; y < 19; y++) {
+            loc = game.level?.at(x + BIGRM_9_XSTART, y + BIGRM_9_YSTART);
+            if (loc && ok(loc, x + BIGRM_9_XSTART, y + BIGRM_9_YSTART)) {
+                return { x: x + BIGRM_9_XSTART, y: y + BIGRM_9_YSTART };
+            }
+        }
+    return { x: BIGRM_9_XSTART, y: BIGRM_9_YSTART };
+}
+
+function bigrm9GetStairLocation() {
+    // C ref: sp_lev.c:l_create_stairway() uses good_stair_loc().
+    return bigrm9Location((loc) => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
+}
+
+function bigrm9GetDryLocation() {
+    return bigrm9Location((loc, x, y) => SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y));
+}
+
 function loadBigrm7Special() {
     // C ref: dat/bigrm-7.lua loaded through mkmaze.c:makemaz().
     loadBigrm7Terrain();
@@ -6436,6 +6523,36 @@ function loadBigrm7Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3);
         loc = bigrm7GetDryLocation();
+        makemonSpecialLevelAt(null, loc.x, loc.y, 0);
+    }
+}
+
+function loadBigrm9Special() {
+    // C ref: dat/bigrm-9.lua loaded through mkmaze.c:makemaz().
+    loadBigrm9Terrain();
+    l_nhcore_init();
+    rn2(2); // splev_initlev flip state for des.level_flags("noflip").
+
+    let loc = bigrm9GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, true);
+    loc = bigrm9GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, false);
+    markBigroomNonDiggable();
+
+    for (let i = 0; i < 15; i++) {
+        loc = bigrm9GetDryLocation();
+        mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    }
+    for (let i = 0; i < 6; i++) {
+        loc = bigrm9GetDryLocation();
+        let kind;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        const trap = maketrap(loc.x, loc.y, kind);
+        maybeTrapVictim(trap);
+    }
+    for (let i = 0; i < 28; i++) {
+        rn2(3);
+        loc = bigrm9GetDryLocation();
         makemonSpecialLevelAt(null, loc.x, loc.y, 0);
     }
 }
@@ -12740,6 +12857,11 @@ function makemaz_special(slev) {
             BIGRM_7_YSTART + BIGRM_7_MAP.length - 1);
         return;
     }
+    if (game._last_special_protofile === 'bigrm-9') {
+        loadBigrm9Special();
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+        return;
+    }
     if (game._last_special_protofile === 'bigrm-8') {
         loadBigrm8Special();
         wallification(1, 0, COLNO - 1, ROWNO - 1);
@@ -13735,14 +13857,13 @@ async function makelevel() {
     // nhlib.lua shuffle when loading themerms.lua (first level of branch)
     const dnum = g.u?.uz?.dnum ?? 0;
     if (!rogueLevel && !g._luathemes_loaded) g._luathemes_loaded = {};
+    if (!rogueLevel && !g._luathemes_align) g._luathemes_align = {};
     if (!rogueLevel && !g._luathemes_loaded[dnum]) {
-        const themedAlign = ['law', 'neutral', 'chaos'];
-        for (let i = themedAlign.length; i > 1; i--) {
-            const j = rn2(i);
-            [themedAlign[i - 1], themedAlign[j]] = [themedAlign[j], themedAlign[i - 1]];
-        }
+        g._luathemes_align[dnum] = nhlibAlignShuffle();
         g._luathemes_loaded[dnum] = true;
     }
+    if (!rogueLevel && g._luathemes_align?.[dnum])
+        g.splev_align = g._luathemes_align[dnum];
 
     if (rogueLevel) {
         makeroguerooms();
@@ -14860,8 +14981,58 @@ function applyTeleportationHubFill(croom) {
     }
 }
 
+function addStaticGasCloudSelection(points, damage = 0) {
+    if (!points.length) return;
+    game.level.gasClouds = game.level.gasClouds || [];
+    for (const point of points)
+        game.level.gasClouds.push({ x: point.x, y: point.y, ttl: -1, damage });
+}
+
+function applyCloudRoomFill(croom) {
+    // C refs: dat/themerms.lua "Cloud room",
+    // sp_lev.c:create_monster(), region.c:create_gas_cloud_selection().
+    const points = roomSelectionPoints(croom);
+    const ptr = monsterPtr('FOG_CLOUD');
+    for (let i = 0, n = Math.floor(points.length / 4); i < n; i++) {
+        let loc = specialRoomMonsterLocation(croom, ptr);
+        if (!loc) continue;
+        if (m_at(loc.x, loc.y)) {
+            loc = enexto_core(loc.x, loc.y, ptr, GP_CHECKSCARY)
+                || enexto_core(loc.x, loc.y, ptr, 0)
+                || loc;
+        }
+        if (croom && !inside_room(croom, loc.x, loc.y)) continue;
+        makemon(ptr, loc.x, loc.y, MM_ASLEEP);
+    }
+    addStaticGasCloudSelection(points, 0);
+}
+
+function applyTempleOfTheGodsFill(croom) {
+    // C refs: dat/themerms.lua "Temple of the gods",
+    // sp_lev.c:create_altar().  These are ordinary altars, not shrines.
+    const align = game.splev_align || [A_LAWFUL, A_NEUTRAL, A_CHAOTIC];
+    for (let i = 0; i < 3; i++) {
+        const loc = specialRoomLocation(croom, -1, -1, (x, y) =>
+            game.level?.at(x, y)?.typ === ROOM);
+        const lev = game.level?.at(loc.x, loc.y);
+        if (!lev) continue;
+        lev.typ = ALTAR;
+        const amask = Align2amask(align[i] ?? A_NONE);
+        lev.flags = amask;
+        lev.altarmask = amask;
+    }
+}
+
 function apply_themeroom_fill(croom) {
     const fill = choose_themeroom_fill(croom);
+    if (fill === 'Cloud room') {
+        applyCloudRoomFill(croom);
+        return;
+    }
+    if (fill === 'Temple of the gods') {
+        applyTempleOfTheGodsFill(croom);
+        return;
+    }
     if (fill === 'Ghost of an Adventurer') {
         applyGhostAdventurerFill(croom);
         return;
