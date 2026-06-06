@@ -607,10 +607,10 @@ function untrapForce() {
     return heroHasMasterKeyOfThievery();
 }
 
-async function beginUntrapBoxPrompt(boxes, { trapSkipped = false, force = false } = {}) {
+async function beginUntrapBoxPrompt(boxes, { trapSkipped = false, force = false, x = null, y = null } = {}) {
     const targets = boxes.filter(Boolean);
     if (!targets.length) return false;
-    game._untrap_box_state = { boxes: targets, index: 0, trapSkipped, force };
+    game._untrap_box_state = { boxes: targets, index: 0, trapSkipped, force, x, y };
     game._command_mode = 'untrapBoxConfirm';
     await setMessage(untrapBoxPrompt(targets[0]));
     return true;
@@ -632,14 +632,225 @@ function untrapBoxDisarmChance() {
     return chance;
 }
 
+function chestTrapLuckMessage(roll) {
+    if (roll >= 11) return 'explosive charge is a dud';
+    if (roll >= 9) return 'electric charge is grounded';
+    if (roll >= 7) return 'flame fizzles out';
+    if (roll >= 4) return 'poisoned needle misses';
+    return 'gas cloud blows away';
+}
+
+function chestTrapPayloadRoll(luck) {
+    return rn2(20) ? (luck >= 13 ? 0 : rn2(13 - luck)) : rn2(26);
+}
+
+const CHEST_TRAP_OBJECT_COLORS = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'colorless', 'orange', 'bright green', 'yellow', 'bright blue',
+    'bright magenta', 'bright cyan', 'white',
+];
+const CHEST_TRAP_BLIND_GAS = ['humid', 'odorless', 'pungent', 'chilling', 'acrid', 'biting'];
+const CHEST_TRAP_HALLUCINATED_COLORS = [
+    'ultraviolet', 'infrared', 'bluish-orange', 'reddish-green', 'dark white',
+    'light black', 'sky blue-pink', 'pinkish-cyan', 'indigo-chartreuse',
+    'salty', 'sweet', 'sour', 'bitter', 'umami',
+    'striped', 'spiral', 'swirly', 'plaid', 'checkered', 'argyle', 'paisley',
+    'blotchy', 'guernsey-spotted', 'polka-dotted', 'square', 'round',
+    'triangular', 'cabernet', 'sangria', 'fuchsia', 'wisteria', 'lemon-lime',
+    'strawberry-banana', 'peppermint', 'romantic', 'incandescent',
+    'octarine', 'excitingly dull', 'mauve', 'electric',
+    'neon', 'fluorescent', 'phosphorescent', 'translucent', 'opaque',
+    'psychedelic', 'iridescent', 'rainbow-colored', 'polychromatic',
+    'colorless', 'colorless green',
+    'dancing', 'singing', 'loving', 'loudy', 'noisy', 'clattery', 'silent',
+    'apocyan', 'infra-pink', 'opalescent', 'violant', 'tuneless',
+    'viridian', 'aureolin', 'cinnabar', 'purpurin', 'gamboge', 'madder',
+    'bistre', 'ecru', 'fulvous', 'tekhelet', 'selective yellow',
+];
+
+function heroHasHallucinationResistance() {
+    if (game.u?.hallucinationResistance || game.u?.hallucination_resistance) return true;
+    if ((game.inventory || []).some(item => item.wielded && item.artifact === 'Grayswandir')) return true;
+    return (game.inventory || []).some(item =>
+        isActiveInventoryExtrinsicItem(item) && dragonArmorKindHasProperty(objectKindKey(item), 'hallucination'));
+}
+
+function heroHasActiveHallucination() {
+    return heroIsHallucinating() && !heroHasHallucinationResistance();
+}
+
+function chestTrapGasName() {
+    if (heroIsBlind()) return CHEST_TRAP_BLIND_GAS[rn2(CHEST_TRAP_BLIND_GAS.length)];
+    const colorIndex = rn2(CHEST_TRAP_OBJECT_COLORS.length);
+    if (heroHasActiveHallucination())
+        return CHEST_TRAP_HALLUCINATED_COLORS[rn2_on_display_rng(CHEST_TRAP_HALLUCINATED_COLORS.length)];
+    return CHEST_TRAP_OBJECT_COLORS[colorIndex];
+}
+
+function chestTrapGasStaggerMessage() {
+    if (heroIsStunned()) return '';
+    if (heroHasActiveHallucination()) return 'What a groovy feeling!';
+    const suffix = heroHasHallucinationResistance()
+        ? ''
+        : heroIsBlind() ? ' and get dizzy' : ' and your vision blurs';
+    return `You stagger${suffix}...`;
+}
+
+function chestTrapObjectName(box) {
+    return forceBoxSimpleName(box);
+}
+
+function applyChestTrapElectricPayload(messages) {
+    const origDamage = d(4, 4);
+    let baseDamage = origDamage;
+    messages.push('You are jolted by a surge of electricity!');
+    if (heroHasShockResistance()) {
+        messages.push("You don't seem to be affected.");
+        baseDamage = 0;
+    }
+
+    const electricInventory = electricDamageInventory(origDamage);
+    messages.push(...electricInventory.messages);
+
+    const hpBefore = game.u?.uhp || 0;
+    const damage = (game.u?.uinvulnerable ? 0 : baseDamage) + electricInventory.damage;
+    if (damage && game.u) game.u.uhp = Math.max(0, hpBefore - damage);
+    if ((game.u?.uhp || 0) > 0) return {};
+
+    game._death_cause = electricInventory.damage >= hpBefore && electricInventory.deathCause
+        ? electricInventory.deathCause
+        : 'killed by an electric shock';
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) game.u.uhp = 0;
+        messages.push(`You die...  But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+        return { lifeSaving: true, more: true };
+    }
+    messages.push('You die...');
+    return { fatal: true, more: true };
+}
+
+function chestTrapPoisonTell(attr) {
+    if (attr === A_STR) return (game.u?.acurr?.a?.[A_STR] === STR19(25))
+        ? 'You feel innately weaker!'
+        : 'You feel weaker!';
+    if (attr === A_CON) return (game.u?.acurr?.a?.[A_CON] === 25)
+        ? 'You feel sick inside!'
+        : 'You feel very sick!';
+    return '';
+}
+
+function applyChestTrapPoisonAttributeLoss(messages, attr, loss) {
+    if (!adjustHeroAttribute(attr, -loss)) return;
+    const message = chestTrapPoisonTell(attr);
+    if (message) messages.push(message);
+}
+
+function applyChestTrapPoison(messages, {
+    reason,
+    attr,
+    fatal,
+    deathCause,
+}) {
+    if (!/poison/i.test(reason)) messages.push(`The ${reason} was poisoned!`);
+    if (heroHasPoisonResistance()) {
+        messages.push("The poison doesn't seem to affect you.");
+        return {};
+    }
+
+    const roll = fatal ? rn2(fatal) : 1;
+    if (roll === 0 && attr !== A_CHA) {
+        const loss = 6 + d(4, 6);
+        if ((game.u?.uhp || 0) <= loss) {
+            messages.push('The poison was deadly...');
+            return heroDartTrapFatalResult(messages, deathCause);
+        }
+        if (game.u) {
+            game.u.uhpmax = Math.max(3, (game.u.uhpmax || game.u.uhp || 1) - Math.trunc(loss / 2));
+            game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+        }
+        applyChestTrapPoisonAttributeLoss(messages, A_CON, attr === A_CON ? 3 : 1);
+        if (attr !== A_CON) applyChestTrapPoisonAttributeLoss(messages, attr, 3);
+        if ((game.u?.uhp || 0) <= 0)
+            return heroDartTrapFatalResult(messages, deathCause);
+        return {};
+    }
+
+    if (roll > 5) {
+        const loss = rn1(10, 6);
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - loss);
+        if ((game.u?.uhp || 0) <= 0)
+            return heroDartTrapFatalResult(messages, deathCause);
+        return {};
+    }
+
+    applyChestTrapPoisonAttributeLoss(messages, attr, fatal ? d(2, 2) : 1);
+    return {};
+}
+
+function applyChestTrapNeedlePayload(messages) {
+    messages.push('You feel a needle prick your finger.');
+    const result = applyChestTrapPoison(messages, {
+        reason: 'needle',
+        attr: A_CON,
+        fatal: 10,
+        deathCause: 'killed by a poisoned needle',
+    });
+    if (!result.fatal) exerciseAttribute(A_CON, false);
+    return result;
+}
+
+function applyChestTrapPayload(box, { disarm = true } = {}) {
+    const messages = [disarm ? 'You set it off!' : 'You trigger a trap!'];
+    let result = {};
+    if (box) {
+        box.tknown = false;
+        box.otrapped = false;
+    }
+    const luck = Math.trunc(Number(game.u?.uluck || 0) + Number(game.u?.moreluck || 0));
+    if (luck > -13 && rn2(13 + luck) > 7) {
+        messages.push(`But luckily the ${chestTrapLuckMessage(rn2(13))}!`);
+        if (box) box.tknown = true;
+        return trapMessage(...messages);
+    }
+
+    const payload = chestTrapPayloadRoll(luck);
+    if (payload <= 2) {
+        messages.push(`A cloud of ${chestTrapGasName()} gas billows from the ${chestTrapObjectName(box)}.`);
+        const staggerMessage = chestTrapGasStaggerMessage();
+        if (staggerMessage) messages.push(staggerMessage);
+        addHeroStun(rn1(7, 16));
+        addHeroHallucination(rn1(5, 16));
+    } else if (payload >= 3 && payload <= 5) {
+        if (heroHasFreeAction()) {
+            messages.push('You momentarily stiffen.');
+        } else {
+            messages.push('Suddenly you are frozen in place!');
+            const duration = d(5, 6);
+            game._helpless_time = Math.max(game._helpless_time || 0, duration);
+            game._wake_message = 'You can move again.';
+            game._multi_reason = 'frozen by a trap';
+            exerciseAttribute(A_DEX, false);
+        }
+    } else if (payload >= 6 && payload <= 8) {
+        result = applyChestTrapElectricPayload(messages);
+    } else if (payload >= 13 && payload <= 16) {
+        result = applyChestTrapNeedlePayload(messages);
+    }
+    if (box && !result.fatal) box.tknown = true;
+    const message = trapMessage(...messages);
+    return result.fatal || result.lifeSaving || result.more
+        ? { message, ...result }
+        : message;
+}
+
 function disarmUntrapBox(box, confused, force = false) {
     if (box?.otrapped) {
         const difficulty = 75 + Math.trunc(level_difficulty() / 2);
         if (!force && (confused || heroIsFumbling() || rnd(difficulty) > untrapBoxDisarmChance())) {
-            box.otrapped = false;
-            box.tknown = true;
-            exerciseAttribute(A_DEX, true);
-            return 'You set it off!';
+            const result = applyChestTrapPayload(box);
+            if (!(result && typeof result === 'object' && result.fatal))
+                exerciseAttribute(A_DEX, true);
+            return result;
         }
         box.otrapped = false;
         box.tknown = true;
@@ -670,11 +881,21 @@ function disarmUntrapDoor(loc, x, y, confused, force = false) {
         exerciseAttribute(A_DEX, true);
         const difficulty = 75 + Math.trunc(level_difficulty() / 2);
         if (!force && (confused || heroIsFumbling() || rnd(difficulty) > untrapDoorDisarmChance())) {
+            const explosion = applyBoobyTrapExplosion({ item: 'door', bodypart: true });
+            if (explosion.fatal) {
+                return {
+                    ...explosion,
+                    message: trapMessage('You set it off!', explosion.message),
+                };
+            }
             loc.doormask = D_NODOOR;
             loc.flags = D_NODOOR;
             newsym(x, y);
             addShopTerrainDamage(x, y, 0);
-            return 'You set it off!';
+            return {
+                ...explosion,
+                message: trapMessage('You set it off!', explosion.message),
+            };
         }
         loc.doormask &= ~D_TRAPPED;
         loc.flags = loc.doormask;
@@ -684,17 +905,22 @@ function disarmUntrapDoor(loc, x, y, confused, force = false) {
     return 'This door was not trapped.';
 }
 
-async function checkUntrapDoor(loc, x, y, { force = false, confused = heroIsConfused() || heroIsHallucinating() } = {}) {
+async function checkUntrapDoor(loc, x, y, {
+    force = false,
+    confused = heroIsConfused() || heroIsHallucinating(),
+    prefix = '',
+} = {}) {
     if (!loc || loc.typ !== DOOR) return false;
+    const doorMessage = message => prefix ? trapMessage(prefix, message) : message;
     switch (loc.doormask) {
         case D_NODOOR:
-            await setMessage(`You ${game.u?.blind ? 'feel' : 'see'} no door there.`);
+            await setMessage(doorMessage(`You ${game.u?.blind ? 'feel' : 'see'} no door there.`));
             return true;
         case D_ISOPEN:
-            await setMessage('This door is safely open.');
+            await setMessage(doorMessage('This door is safely open.'));
             return true;
         case D_BROKEN:
-            await setMessage('This door is broken.');
+            await setMessage(doorMessage('This door is broken.'));
             return true;
         default:
             break;
@@ -702,12 +928,12 @@ async function checkUntrapDoor(loc, x, y, { force = false, confused = heroIsConf
 
     if (untrapDoorDetectionSucceeds(loc, confused, force)) {
         exerciseAttribute(A_WIS, true);
-        await setMessage('You find a trap on the door!  Disarm it? [ynq] (q)');
+        await setMessage(doorMessage('You find a trap on the door!  Disarm it? [ynq] (q)'));
         game._untrap_door_state = { loc, x, y, confused, force };
         game._command_mode = 'untrapDoorDisarmConfirm';
         return true;
     }
-    await setMessage('You find no traps on the door.');
+    await setMessage(doorMessage('You find no traps on the door.'));
     game.context.move = 1;
     return true;
 }
@@ -748,9 +974,18 @@ async function declineCurrentUntrapBox() {
     }
     game._untrap_box_state = null;
     game._command_mode = null;
+    const loc = Number.isInteger(state.x) && Number.isInteger(state.y)
+        ? game.level?.at?.(state.x, state.y)
+        : null;
+    const noMoreBoxes = 'There are no other chests or boxes here.';
+    if (loc?.typ === DOOR && await checkUntrapDoor(loc, state.x, state.y, {
+        force: !!state.force,
+        prefix: noMoreBoxes,
+    }))
+        return;
     await setMessage(state.trapSkipped
-        ? 'There are no other chests or boxes here.'
-        : 'There are no other chests or boxes here.  You know of no traps there.', !state.trapSkipped);
+        ? noMoreBoxes
+        : `${noMoreBoxes}  You know of no traps there.`, !state.trapSkipped);
 }
 
 function forceHeroIntoWebTrapMessage(trap) {
@@ -12902,6 +13137,14 @@ function addHeroStun(turns) {
     addHeroStatusSuffix('Stun');
 }
 
+function addHeroHallucination(turns) {
+    if (!game.u || turns <= 0) return;
+    game.u._halluTimeout = (game.u._halluTimeout || 0) + turns;
+    if (heroHasHallucinationResistance()) return;
+    game.u.hallucinating = true;
+    addHeroStatusSuffix('Hallu');
+}
+
 function clearHeroConfusion() {
     if (!game.u) return;
     game.u._confusionTimeout = 0;
@@ -17570,7 +17813,7 @@ function heroIsNextToPotionVapor(x, y) {
     return Math.max(Math.abs((x ?? ux) - ux), Math.abs((y ?? uy) - uy)) <= 1;
 }
 
-function brokenPotionBreathe(potion, x, y, messages, options = {}) {
+export function brokenPotionBreathe(potion, x, y, messages, options = {}) {
     if (!isPotionObject(potion) || !heroIsNextToPotionVapor(x, y) || !heroCanReceivePotionVapor()) return;
     if (!isWaterPotion(potion) && !heroHasWetWornTowel()) {
         if (heroBreathesPotionVapor()) messages.push('You smell a peculiar odor...');
@@ -24585,23 +24828,72 @@ function applyTinMonsterSideEffects(tin) {
     return '';
 }
 
-function tinTrapDamage() {
+function boobyTrapExplosionDamage() {
     const difficulty = Math.max(1, level_difficulty());
     const sides = 5 + (difficulty < 5 ? difficulty : 2 + Math.trunc(difficulty / 2));
     return rnd(sides);
 }
 
-async function explodeTinTrap(tin, floorObject = false) {
-    const damage = tinTrapDamage();
+function wakeNearbyMonstersFromHeroNoise() {
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const distance = Math.max(0, Math.trunc(Number(game.u?.ulevel || 1)) * 20);
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        const dx = (mon.mx || 0) - ux;
+        const dy = (mon.my || 0) - uy;
+        if (distance !== 0 && dx * dx + dy * dy >= distance) continue;
+        mon.msleeping = 0;
+        if (!(mon.unique || mon.data?.unique)) {
+            if (typeof mon.mstrategy === 'number') mon.mstrategy &= ~STRAT_WAITMASK;
+            else if (mon.mstrategy === 'waitforu') mon.mstrategy = 0;
+            mon.waiting = false;
+        }
+    }
+}
+
+function heroStunOnsetMessage(alreadyStunned) {
+    if (alreadyStunned) return '';
+    return game.u?.usteed ? 'You wobble in the saddle.' : 'You stagger...';
+}
+
+function applyBoobyTrapExplosion({ item = 'door', bodypart = false } = {}) {
+    const damage = boobyTrapExplosionDamage();
+    const messages = [`KABOOM!!  The ${item} was booby-trapped!`];
+    wakeNearbyMonstersFromHeroNoise();
     if (game.u) {
-        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-        game.u._stunTimeout = (game.u._stunTimeout || 0) + damage;
-        addHeroStatusSuffix('Stun');
+        const hpDamage = maybeHalfPhysicalDamage(damage);
+        game.u.uhp = Math.max(0, (game.u.uhp ?? 1) - hpDamage);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'killed by an explosion';
+            if (consumeLifeSavingAmulet()) {
+                messages.push(`It is fatal.  You die...  But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+                messages.lifeSaving = true;
+            } else {
+                messages.push('It is fatal.  You die...');
+                return { message: trapMessage(...messages), damage, fatal: true, more: true };
+            }
+        }
     }
     exerciseAttribute(A_STR, false);
+    if (bodypart) exerciseAttribute(A_CON, false);
+    const stunMessage = heroStunOnsetMessage(heroIsStunned());
+    addHeroStun(damage);
+    if (stunMessage) messages.push(stunMessage);
+    return {
+        message: trapMessage(...messages),
+        damage,
+        lifeSaving: !!messages.lifeSaving,
+        more: !!messages.lifeSaving,
+    };
+}
+
+async function explodeTinTrap(tin, floorObject = false) {
+    const result = applyBoobyTrapExplosion({ item: 'tin' });
     tin = costlyTinAlteration(tin, { floorObject, alterType: 'destroy' });
     consumeTinObject(tin, floorObject);
-    await setMessage('KABOOM!!  The tin was booby-trapped!', true);
+    await setMessage(result.message, true);
+    if (applyLifeSavingOrFatalCommandMode(result)) return;
     game._command_mode = null;
     game.context.move = 1;
 }
@@ -27649,14 +27941,24 @@ function shopkeeperForShopDoorAt(x, y) {
     return null;
 }
 
-function addShopTerrainDamage(x, y, cost) {
+function shopkeeperForShopDamageAt(x, y, loc) {
+    if (loc?.typ === DOOR) return shopkeeperForShopDoorAt(x, y);
+    for (const roomno of shopRoomnosAt(x, y, SHOPBASE)) {
+        const shkp = shopkeeperForRoomno(roomno);
+        if (liveShopkeeper(shkp)) return shkp;
+    }
+    return null;
+}
+
+export function addShopTerrainDamage(x, y, cost) {
     const loc = game.level?.at?.(x, y);
-    if (!loc || loc.typ !== DOOR) return false;
-    const shkp = shopkeeperForShopDoorAt(x, y);
+    if (!loc) return false;
+    const shkp = shopkeeperForShopDamageAt(x, y, loc);
     if (!shkp) return false;
 
     const damage = shopDamageList();
     const when = Math.max(0, Math.trunc(Number(game.moves || 0)));
+    const typ = loc.typ ?? ROOM;
     const entry = damage.find(dam => dam.x === x && dam.y === y);
     if (entry) {
         entry.cost = Math.max(0, Math.trunc(Number(entry.cost || 0))) + Math.max(0, Math.trunc(Number(cost || 0)));
@@ -27671,8 +27973,8 @@ function addShopTerrainDamage(x, y, cost) {
         y,
         cost: Math.max(0, Math.trunc(Number(cost || 0))),
         when,
-        typ: loc.typ,
-        flags: loc.doormask ?? D_CLOSED,
+        typ,
+        flags: loc.doormask ?? loc.flags ?? (typ === DOOR ? D_CLOSED : 0),
         shoproom: shkp.shoproom,
         shopkeeperId: shopkeeperIdentity(shkp),
     });
@@ -27744,6 +28046,14 @@ function repairableShopDamage(dam, shkp) {
             && mon.mx === dam.x && mon.my === dam.y && !monsterPassesWallsForRepair(mon));
         if (blocker) return false;
     }
+    const trap = (game.level?.traps || []).find(candidate => candidate.tx === dam.x && candidate.ty === dam.y);
+    if (trap) {
+        if (game.u?.ux === dam.x && game.u?.uy === dam.y) return false;
+        const trappedMonster = (game.level?.monsters || []).find(mon =>
+            !mon.dead && (mon.mhp == null || mon.mhp > 0)
+            && mon.mx === dam.x && mon.my === dam.y && mon.mtrapped);
+        if (trappedMonster) return false;
+    }
     return true;
 }
 
@@ -27761,6 +28071,14 @@ export function repairShopDamageForShopkeeper(shkp, messages = []) {
         messages.push(`${shopkeeperDisplayName(shkp)} whispers ${closeToHero ? 'an incantation' : 'something'}.`);
     } else if (!heroIsDeaf() && closeToHero) {
         messages.push('You hear someone muttering an incantation.');
+    }
+
+    const trap = (game.level?.traps || []).find(candidate => candidate.tx === dam.x && candidate.ty === dam.y);
+    if (trap) {
+        if (trap.tseen && !game.u?.blind && cansee(trap.tx, trap.ty)) {
+            messages.push(`The ${TRAP_NAMES[trap.ttyp] || 'trap'} vanishes.`);
+        }
+        deleteTrap(trap);
     }
 
     const wasAlreadyRepaired = dam.typ === loc.typ && (dam.typ !== DOOR || (loc.doormask & (D_CLOSED | D_LOCKED)));
@@ -62473,6 +62791,8 @@ export async function rhack(_cmd) {
             if (!await beginUntrapBoxPrompt(pending?.boxes || [], {
                 trapSkipped: true,
                 force: !!pending?.force,
+                x: pending?.x,
+                y: pending?.y,
             }))
                 game._command_mode = null;
             return;
@@ -62492,11 +62812,14 @@ export async function rhack(_cmd) {
             game._untrap_box_state = null;
             game._command_mode = null;
             if (box?.tknown && box?.dknown) {
-                await setMessage(disarmUntrapBox(
+                const result = disarmUntrapBox(
                     box,
                     heroIsConfused() || heroIsHallucinating(),
                     !!state?.force,
-                ));
+                );
+                await setMessage(typeof result === 'string' ? result : result.message, !!result?.more);
+                if (result && typeof result === 'object' && applyLifeSavingOrFatalCommandMode(result))
+                    return;
                 game.context.move = 1;
             } else {
                 await checkUntrapBox(box, { force: !!state?.force });
@@ -62520,7 +62843,10 @@ export async function rhack(_cmd) {
         if (ch === 'y') {
             game._untrap_box_disarm_state = null;
             game._command_mode = null;
-            await setMessage(disarmUntrapBox(pending?.box, !!pending?.confused, !!pending?.force));
+            const result = disarmUntrapBox(pending?.box, !!pending?.confused, !!pending?.force);
+            await setMessage(typeof result === 'string' ? result : result.message, !!result?.more);
+            if (result && typeof result === 'object' && applyLifeSavingOrFatalCommandMode(result))
+                return;
             game.context.move = 1;
             return;
         }
@@ -62540,13 +62866,16 @@ export async function rhack(_cmd) {
         if (ch === 'y') {
             game._untrap_door_state = null;
             game._command_mode = null;
-            await setMessage(disarmUntrapDoor(
+            const result = disarmUntrapDoor(
                 pending?.loc,
                 pending?.x,
                 pending?.y,
                 !!pending?.confused,
                 !!pending?.force,
-            ));
+            );
+            await setMessage(typeof result === 'string' ? result : result.message, !!result?.more);
+            if (result && typeof result === 'object' && applyLifeSavingOrFatalCommandMode(result))
+                return;
             game.context.move = 1;
             return;
         }
@@ -62582,7 +62911,7 @@ export async function rhack(_cmd) {
                 return;
             const force = untrapForce();
             if (webTrap && boxes.length) {
-                game._untrap_web_container_state = { trap: webTrap, dir, boxes, force };
+                game._untrap_web_container_state = { trap: webTrap, dir, boxes, force, x, y };
                 await setMessage(untrapWebContainerPrompt(webTrap, boxes.length));
                 game._command_mode = 'untrapWebContainerConfirm';
                 return;
@@ -62597,7 +62926,7 @@ export async function rhack(_cmd) {
                 game._command_mode = 'untrapSqueakyTool';
                 return;
             }
-            if (boxes.length && await beginUntrapBoxPrompt(boxes, { force }))
+            if (boxes.length && await beginUntrapBoxPrompt(boxes, { force, x, y }))
                 return;
             const loc = game.level?.at?.(x, y);
             if (await checkUntrapDoor(loc, x, y, { force }))

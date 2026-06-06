@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyLifeSavingOrFatalCommandMode } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyLifeSavingOrFatalCommandMode } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -2543,6 +2543,29 @@ function addMonsterThrownFloorMessages(messages, afterMore = false) {
     }
 }
 
+function monsterThrownPotionIsAcid(potion) {
+    const kind = String(potion?.actualKind || potion?.kind || '').toLowerCase();
+    return potion?.otyp === POT_ACID || kind === 'acid' || kind === 'potion of acid';
+}
+
+function dissolveMonsterPotionIronBars(potion, barsX, barsY, messages) {
+    if (!monsterThrownPotionIsAcid(potion)) return;
+    const loc = game.level?.at?.(barsX, barsY);
+    if (!loc) return;
+    const nondiggable = !!(loc.wall_info & W_NONDIGGABLE);
+    if (!nondiggable && cansee(barsX, barsY)) {
+        messages.push('The iron bars are dissolved!');
+    } else if (!heroIsDeafForMonsterNoise()) {
+        messages.push('You hear a hissing noise.');
+    }
+    if (nondiggable) return;
+    loc.typ = (loc.roomno ?? 0) >= ROOMOFFSET ? ROOM : CORR;
+    loc.flags = 0;
+    loc.doormask = D_NODOOR;
+    loc.wall_info = 0;
+    newsym(barsX, barsY);
+}
+
 function noteMonsterResumeRemoval(mon, snapshot = null) {
     if (!mon) return;
     const reverseIndex = Array.isArray(snapshot)
@@ -2666,6 +2689,33 @@ function removeHeroStatusSuffix(status) {
     if (!game.u) return;
     const parts = String(game.u._statusSuffix || '').trim().split(/\s+/).filter(part => part !== status);
     game.u._statusSuffix = parts.length ? ` ${parts.join(' ')}` : '';
+}
+
+function clearHeroStunTimeout() {
+    if (!game.u) return;
+    game.u._stunTimeout = 0;
+    game.u.stunned = false;
+    removeHeroStatusSuffix('Stun');
+    addToplineMessage(`You feel ${game.u.hallucinating || game.u.hallu || (game.u._statusSuffix || '').includes('Hallu')
+        ? 'less wobbly'
+        : 'a bit steadier'} now.`);
+}
+
+function clearHeroHallucinationTimeout() {
+    if (!game.u) return;
+    const wasHallucinating = !!(game.u.hallucinating || game.u.hallu || (game.u._statusSuffix || '').includes('Hallu'));
+    game.u._halluTimeout = 0;
+    game.u.hallucinating = false;
+    game.u.hallu = false;
+    removeHeroStatusSuffix('Hallu');
+    if (wasHallucinating) {
+        if (!game.u.blind && !game._swallow_overlay_active) {
+            game._display_hallucinated_redraw = 1;
+            refreshHallucinatedMap();
+            game._display_hallucinated_redraw = 0;
+        }
+        addToplineMessage(`Everything ${game.u.blind ? 'feels' : 'looks'} SO boring now.`);
+    }
 }
 
 function articleFor(name) {
@@ -7697,9 +7747,11 @@ export async function processMonsterTurns() {
                         const throwerVisible = !game.u?.blind && (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT) && !mon.minvis;
                         if (throwerVisible) addToplineMessage(`${monsterDisplayName(mon)} hurls a potion!`);
                         let potionInterception = null;
+                        let potionTerrainStop = null;
                         for (let step = 1; step < throwRange; step++) {
                             const sx = mon.mx + throwDx * step;
                             const sy = mon.my + throwDy * step;
+                            const remainingRange = throwRange - step;
                             const targetMon = monsterAtFlightSquare(sx, sy, mon);
                             if (targetMon) {
                                 const hitValue = monsterThrownPotionAccidentalHitValue(targetMon, thrownPotion);
@@ -7711,7 +7763,12 @@ export async function processMonsterTurns() {
                                     break;
                                 }
                             }
-                            rn2(5);
+                            const forcehit = !rn2(5);
+                            if (remainingRange && forcehit
+                                && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS) {
+                                potionTerrainStop = { x: sx, y: sy, barsX: sx + throwDx, barsY: sy + throwDy };
+                                break;
+                            }
                         }
                         if (potionInterception) {
                             for (const message of potionInterception.messages)
@@ -7726,6 +7783,33 @@ export async function processMonsterTurns() {
                             if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
                             if (!(game.level?.monsters || []).includes(potionInterception.target))
                                 noteMonsterResumeRemoval(potionInterception.target, mons);
+                            if (game._message_more && !game._process_time_with_more) {
+                                game._monster_resume_index = monIndex + 1;
+                                game._monster_resume_somebody_can_move = somebodyCanMove;
+                                return false;
+                            }
+                            continue;
+                        }
+                        if (potionTerrainStop) {
+                            const messages = [];
+                            const breakKind = projectileTopLevelBreakKind(thrownPotion);
+                            if (breakKind) {
+                                projectileTopLevelBreakMessage(thrownPotion, breakKind, messages);
+                                dissolveMonsterPotionIronBars(thrownPotion, potionTerrainStop.barsX, potionTerrainStop.barsY, messages);
+                                brokenPotionBreathe(thrownPotion, potionTerrainStop.x, potionTerrainStop.y, messages);
+                            } else {
+                                if (!heroIsDeafForMonsterNoise()) messages.push('Clonk!');
+                                landMonsterThrownObject(thrownPotion, potionTerrainStop.x, potionTerrainStop.y, {
+                                    glyph: '!',
+                                    color: thrownPotion.color ?? NO_COLOR,
+                                    messages,
+                                });
+                            }
+                            addMonsterThrownFloorMessages(messages);
+                            game._search_pending_count = 0;
+                            game._run_steps_remaining = 0;
+                            game._travel_keys = [];
+                            if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
                             if (game._message_more && !game._process_time_with_more) {
                                 game._monster_resume_index = monIndex + 1;
                                 game._monster_resume_somebody_can_move = somebodyCanMove;
@@ -8840,6 +8924,14 @@ async function finishMonsterTurnTail() {
                 ? 'You feel less trippy now.'
                 : 'You feel less confused now.');
         }
+    }
+    if ((game.u?._stunTimeout || 0) > 0) {
+        game.u._stunTimeout--;
+        if (!game.u._stunTimeout) clearHeroStunTimeout();
+    }
+    if ((game.u?._halluTimeout || 0) > 0) {
+        game.u._halluTimeout--;
+        if (!game.u._halluTimeout) clearHeroHallucinationTimeout();
     }
     if ((game.u?._stonedTimeout || 0) > 0) {
         addHeroStatusSuffix('Stone');
@@ -11810,6 +11902,7 @@ async function maybeSpinMonsterWeb(mon) {
         addToplineMessage(`${subject} spins a web.`);
         trap.tseen = true;
     }
+    addShopTerrainDamage(mon.mx, mon.my, 0);
     newsym(mon.mx, mon.my);
     return trap;
 }
