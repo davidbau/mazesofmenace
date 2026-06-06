@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_DAGGER, P_EXPERT, P_KNIFE, P_SKILLED, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_DAGGER, P_EXPERT, P_KNIFE, P_SKILLED, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, W_ARMF, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -44503,19 +44503,216 @@ function sitAntiMagicTrapMessage(trap, prefix) {
     return messages.join('  ');
 }
 
-function sitPolyTrapMessage(trap, prefix) {
-    trap.tseen = true;
-    const messages = [`${prefix}  You trigger a polymorph trap!`];
+function wornIronFootwearItem() {
+    return wornArmorItemsBySlotOrder(['boots'])
+        .find(item => item?.otyp === IRON_SHOES || item?.otyp === KICKING_BOOTS
+            || objectKindKey(item) === 'iron shoes' || objectKindKey(item) === 'kicking boots') || null;
+}
+
+function monsterWornIronFootwearItem(mon) {
+    return (mon?.minvent || []).find(item => {
+        if (!item || item.cls !== 'armor' || !(item.worn || item.owornmask)) return false;
+        const kind = objectKindKey(item);
+        return item.otyp === IRON_SHOES || item.otyp === KICKING_BOOTS
+            || kind === 'iron shoes' || kind === 'kicking boots';
+    }) || null;
+}
+
+function polyTrapSteedName(steed) {
+    return steedTrapProjectileName(steed)
+        .replace(/^The saddled /, 'the ')
+        .replace(/^The /, 'the ');
+}
+
+function polyTrapDismountName(steed) {
+    return fireScrollMonsterName(steed).replace(/^The /, 'the ');
+}
+
+function polyTrapIronFootwearMessage(item) {
+    const kind = objectKindKey(item) || 'iron shoes';
+    return `Your ${kind} warp strangely.`;
+}
+
+function polyTrapWarpIronFootwear(item) {
+    if (!item) return;
+    const toKicking = item.otyp === IRON_SHOES || objectKindKey(item) === 'iron shoes';
+    const targetName = toKicking ? 'kicking boots' : 'iron shoes';
+    const metadata = WISH_BASE_OBJECTS.get(targetName) || wishObjectMetadataForName(targetName) || {};
+    const letter = item.letter;
+    const worn = item.worn;
+    const spe = item.spe ?? 0;
+    Object.assign(item, metadata, {
+        letter,
+        worn,
+        spe,
+        known: item.known,
+        dknown: item.dknown,
+    });
+    refreshInventoryObjectLine(item);
+}
+
+function applyMonsterPolymorphTarget(mon, target, messages, visible = monsterCanBeSeenForPotionEffect(mon)) {
+    if (!mon || !target) return false;
+    const oldVisible = visible;
+    const oldName = potionHitMonsterName(mon);
+    const oldHp = Math.max(1, mon.mhp || 1);
+    const oldMax = Math.max(1, mon.mhpmax || oldHp);
+    const nextData = { ...target };
+    const nextLevel = adjustedMonsterLevel(nextData);
+    const nextMax = Math.max(1, monster_hp(nextData, nextLevel));
+    if (nextData.male) mon.female = false;
+    else if (nextData.female) mon.female = true;
+    else if (!nextData.neuter && !rn2(10)) mon.female = !mon.female;
+    Object.assign(mon, {
+        data: { ...nextData, hpLevel: nextLevel },
+        name: nextData.name,
+        mlet: nextData.mlet,
+        glyph: nextData.glyph,
+        color: nextData.color,
+        m_lev: nextLevel,
+        mlevel: nextLevel,
+        mhpmax: nextMax,
+        mhp: Math.max(1, Math.min(nextMax, Math.trunc((oldHp * nextMax) / oldMax))),
+        meverseen: 0,
+    });
+    set_malign(mon);
+    if (oldVisible && monsterCanBeSeenForPotionEffect(mon) && !heroIsHallucinating())
+        messages.push(`${oldName} turns into ${indefiniteArticle(nextData.name)} ${nextData.name}!`);
+    dropInvalidSaddleAfterPolymorph(mon, messages, oldVisible);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function polymorphTrapHitMonster(mon, messages) {
+    if (!mon || monsterHasMagicResistanceForPolymorph(mon)) return false;
+    if (monsterResistsEffect(mon, 12)) return false;
+    const target = randomMonsterPolymorphTarget(mon);
+    if (!target) return false;
+    return applyMonsterPolymorphTarget(mon, target, messages);
+}
+
+export function monsterPolyTrapEffect(mon, messages = [], { visible = monsterCanBeSeenForPotionEffect(mon) } = {}) {
+    const footwear = monsterWornIronFootwearItem(mon);
+    if (footwear) {
+        polyTrapWarpIronFootwear(footwear);
+        footwear.worn = true;
+        footwear.owornmask = W_ARMF;
+        if (mon) mon.misc_worn_check = (mon.misc_worn_check || 0) | W_ARMF;
+        return {
+            changed: false,
+            attempted: false,
+            footwearChanged: true,
+            magicResisted: false,
+            wandResisted: false,
+        };
+    }
+    if (!mon || monsterHasMagicResistanceForPolymorph(mon)) {
+        return {
+            changed: false,
+            attempted: false,
+            footwearChanged: false,
+            magicResisted: true,
+            wandResisted: false,
+        };
+    }
+    if (monsterResistsEffect(mon, 12)) {
+        return {
+            changed: false,
+            attempted: false,
+            footwearChanged: false,
+            magicResisted: false,
+            wandResisted: true,
+        };
+    }
+    const target = randomMonsterPolymorphTarget(mon);
+    if (!target) {
+        return {
+            changed: false,
+            attempted: true,
+            footwearChanged: false,
+            magicResisted: false,
+            wandResisted: false,
+        };
+    }
+    return {
+        changed: applyMonsterPolymorphTarget(mon, target, messages, visible),
+        attempted: true,
+        footwearChanged: false,
+        magicResisted: false,
+        wandResisted: false,
+    };
+}
+
+function mountedHeroPolyTrapSteedResult(messages) {
+    const steed = game.u?.usteed;
+    if (!steed) return false;
+    steed.mx = game.u?.ux ?? steed.mx;
+    steed.my = game.u?.uy ?? steed.my;
+    const changed = polymorphTrapHitMonster(steed, messages);
+    if (game.u?.usteed === steed && (!steed.saddled || !monsterCanWearSaddleData(steed.data))) {
+        messages.push(`You can no longer ride ${polyTrapDismountName(steed)}.`);
+        game.u.usteed = null;
+        if (!game.level.monsters.includes(steed)) game.level.monsters.push(steed);
+    }
+    return changed;
+}
+
+function heroPolyTrapSelfResult(messages) {
+    messages.push('You feel a change coming over you.');
+    const shock = polymorphSystemShock();
+    if (shock) {
+        messages.push(shock.message);
+        if ((game.u?.uhp || 0) <= 0)
+            return heroDartTrapFatalResult(messages, 'system shock');
+        return { more: !!shock.more };
+    }
+    const formName = randomPolyselfMonsterName();
+    const result = rn2(5) ? becomeMonster(formName) : becomeMonster('human');
+    if (result?.message) messages.push(result.message);
+    newsym(game.u?.ux || 0, game.u?.uy || 0);
+    return { more: !!result?.more };
+}
+
+function polyTrapTriggerMessage({ viaSitting = false } = {}) {
+    const steed = game.u?.usteed;
+    if (viaSitting) return 'You trigger a polymorph trap!';
+    if (steed) return `You lead ${polyTrapSteedName(steed)} onto a polymorph trap!`;
+    return `You ${movementTrapLocomotion()} onto a polymorph trap!`;
+}
+
+function heroPolyTrapResult(trap, prefix = '', { viaSitting = false } = {}) {
+    if (trap) trap.tseen = true;
+    const messages = [prefix, polyTrapTriggerMessage({ viaSitting })];
+    const ironFootwear = wornIronFootwearItem();
+    if (ironFootwear) {
+        deleteTrap(trap);
+        messages.push(polyTrapIronFootwearMessage(ironFootwear));
+        polyTrapWarpIronFootwear(ironFootwear);
+        return { message: trapMessage(...messages) };
+    }
     if (heroHasAntimagic() || heroHasUnchanging()) {
         messages.push('You feel momentarily different.');
-        return messages.join('  ');
+        return { message: trapMessage(...messages) };
     }
+
+    mountedHeroPolyTrapSteedResult(messages);
     deleteTrap(trap);
-    const form = rndmonnum();
-    const result = becomeMonster(form?.name || 'newt');
-    messages.push(result?.message || 'You feel a change coming over you.');
-    if (result?.more) game._topline_after_more = result.more === true ? game._topline_after_more : result.more;
-    return messages.join('  ');
+    newsym(game.u?.ux || trap?.tx || 0, game.u?.uy || trap?.ty || 0);
+    const result = heroPolyTrapSelfResult(messages);
+    if (result.more && game._topline_after_more)
+        return { message: trapMessage(...messages), more: true };
+    return { message: trapMessage(...messages), ...result };
+}
+
+function movementPolyTrapResult(trap) {
+    const alreadySeen = !!trap?.tseen;
+    if (alreadySeen && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+    return heroPolyTrapResult(trap, '');
+}
+
+function sitPolyTrapResult(trap, prefix) {
+    return heroPolyTrapResult(trap, prefix, { viaSitting: true });
 }
 
 function bearTrapSubject(trap) {
@@ -44622,8 +44819,7 @@ function movementBearTrapResult(trap, options = {}) {
 }
 
 function heroWearingIronShoes() {
-    return wornArmorItemsBySlotOrder(['boots'])
-        .some(item => item?.otyp === IRON_SHOES || objectKindKey(item) === 'iron shoes');
+    return !!wornIronFootwearItem();
 }
 
 function landmineArticleName(trap) {
@@ -44999,7 +45195,8 @@ async function sitTriggerTrap(trap) {
         return true;
     }
     if (trap.ttyp === POLY_TRAP) {
-        await finishSitMessage(sitPolyTrapMessage(trap, prefix), { more: !!game._topline_after_more });
+        const result = sitPolyTrapResult(trap, prefix);
+        await finishHeroDartTrapResult(result, { sit: true });
         return true;
     }
     if (trap.ttyp === VIBRATING_SQUARE) {
@@ -47641,6 +47838,7 @@ async function moveHero(dx, dy) {
         if (trapHere?.ttyp === SLP_GAS_TRAP) game._pending_sleep_gas_trap = trapHere;
         if (trapHere?.ttyp === LANDMINE) game._pending_landmine_trap = trapHere;
         if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) game._pending_pit_trap = trapHere;
+        if (trapHere?.ttyp === POLY_TRAP) game._pending_poly_trap = trapHere;
         if (trapHere?.ttyp === BEAR_TRAP) game._pending_bear_trap = trapHere;
         return;
     }
@@ -47649,6 +47847,7 @@ async function moveHero(dx, dy) {
     if (trapHere?.ttyp === DART_TRAP && objectsHere.length > 1) game._pending_dart_trap = trapHere;
     if (trapHere?.ttyp === LANDMINE && objectsHere.length > 1) game._pending_landmine_trap = trapHere;
     if ((trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) && objectsHere.length > 1) game._pending_pit_trap = trapHere;
+    if (trapHere?.ttyp === POLY_TRAP && objectsHere.length > 1) game._pending_poly_trap = trapHere;
     if (trapHere?.ttyp === BEAR_TRAP && objectsHere.length > 1) game._pending_bear_trap = trapHere;
     const goldHere = objectsHere.find(obj => obj.otyp === GOLD_PIECE || obj.glyph === '$');
     if (game._autopickup && goldHere) {
@@ -47769,6 +47968,7 @@ async function moveHero(dx, dy) {
         if (trapHere?.ttyp === SLP_GAS_TRAP) game._pending_sleep_gas_trap = trapHere;
         if (trapHere?.ttyp === LANDMINE) game._pending_landmine_trap = trapHere;
         if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) game._pending_pit_trap = trapHere;
+        if (trapHere?.ttyp === POLY_TRAP) game._pending_poly_trap = trapHere;
         if (trapHere?.ttyp === BEAR_TRAP) game._pending_bear_trap = trapHere;
         return;
     }
@@ -47807,6 +48007,13 @@ async function moveHero(dx, dy) {
     }
     if (trapHere?.ttyp === PIT || trapHere?.ttyp === SPIKED_PIT) {
         const result = movementPitResult(trapHere);
+        result.message = [pileMessage, result.message].filter(Boolean).join('  ');
+        if (trapResultHasEffect(result))
+            await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
+        return;
+    }
+    if (trapHere?.ttyp === POLY_TRAP) {
+        const result = movementPolyTrapResult(trapHere);
         result.message = [pileMessage, result.message].filter(Boolean).join('  ');
         if (trapResultHasEffect(result))
             await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
@@ -48181,6 +48388,13 @@ export async function rhack(_cmd) {
                     await finishHeroDartTrapResult(result, { more: objectListRows > 4 || !!result.more });
                 return;
             }
+            if (game._pending_poly_trap) {
+                const result = movementPolyTrapResult(game._pending_poly_trap);
+                game._pending_poly_trap = null;
+                if (trapResultHasEffect(result))
+                    await finishHeroDartTrapResult(result, { more: objectListRows > 4 || !!result.more });
+                return;
+            }
             if (game._pending_bear_trap) {
                 const result = movementBearTrapResult(game._pending_bear_trap, { deferAfterMore: objectListRows > 4 });
                 game._pending_bear_trap = null;
@@ -48226,6 +48440,14 @@ export async function rhack(_cmd) {
             if (game._pending_pit_trap) {
                 const result = movementPitResult(game._pending_pit_trap);
                 game._pending_pit_trap = null;
+                if (!game._pending_time_passed) game.context.move = 1;
+                game._process_command_time_now = 1;
+                if (trapResultHasEffect(result)) await finishHeroDartTrapResult(result);
+                return;
+            }
+            if (game._pending_poly_trap) {
+                const result = movementPolyTrapResult(game._pending_poly_trap);
+                game._pending_poly_trap = null;
                 if (!game._pending_time_passed) game.context.move = 1;
                 game._process_command_time_now = 1;
                 if (trapResultHasEffect(result)) await finishHeroDartTrapResult(result);

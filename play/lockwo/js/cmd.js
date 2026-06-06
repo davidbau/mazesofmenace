@@ -22,7 +22,10 @@ import { doextcmd, hooked_tty_getlin, wiz_wish } from './extcmd-handlers.js';
 import { wiz_level_tele } from './do.js';
 import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
-         SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok } from './const.js';
+         D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
+         SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok, IS_DOOR,
+         A_STR, A_DEX, A_CON } from './const.js';
+import { exercise } from './attrib.js';
 
 // Direction deltas: y u k
 //                   h . l
@@ -91,6 +94,10 @@ export async function rhack(key) {
     } else if (ch === ':') {
         await dolook();
         game.context.move = 0;
+    } else if (ch === 'o') {
+        // C ref: cmd.c doopen -> lock.c doopen_indir(0,0): open an adjacent
+        // door (reads a direction).  Sets the turn flag from doopen's result.
+        game.context.move = (await doopen_indir(0, 0)) ? 1 : 0;
     } else if (ch === 's') {
         // C ref: cmd.c dosearch -> detect.c dosearch0(0): search adjacent
         // squares for hidden doors/passages/traps.  Takes a game turn.
@@ -195,12 +202,113 @@ async function dosearch() {
     }
 }
 
+// C ref: cmd.c getdir() — read a direction key.  Renders "In what direction?",
+// reads one key.  Returns {dx,dy,dz} or null on cancel/ESC.  No RNG.
+async function getdir() {
+    const prompt = 'In what direction?';
+    game._pending_message = prompt;
+    await flush_screen(1);
+    game._modal_screen = 'topl';
+    const disp = game.nhDisplay;
+    if (disp?.setCursor) disp.setCursor(Math.min(prompt.length + 1, 79), 0);
+    const key = await nhgetch();
+    delete game._modal_screen;
+    game._pending_message = '';
+    const ch = String.fromCharCode(key);
+    if (ch === '.' || ch === 's')
+        return { dx: 0, dy: 0, dz: 0 };
+    if (ch === '\x1b' || ch === ' ')
+        return null;
+    const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1, '<': 0, '>': 0 };
+    const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1, '<': 0, '>': 0 };
+    const DZ = { '<': -1, '>': 1 };
+    if (ch in DX)
+        return { dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 };
+    return null;
+}
+
+// C ref: attrib.c acurrstr() — map the encoded A_STR (3..125; 18/01 stored as
+// 19, ..) onto the 3..25 scale used by strength-dependent checks.
+function acurrstr() {
+    const str = game.u?.acurr?.a?.[A_STR] ?? 0;
+    if (str <= 18) return Math.max(str, 3);
+    if (str <= 121) return 19 + Math.trunc(str / 50);
+    return Math.min(str, 125) - 100;
+}
+
+function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
+
+// C ref: lock.c doopen() / doopen_indir(x,y) — the #open ('o') command and the
+// autoopen door-walk path.  When called with explicit coords (autoopen), it
+// skips the getdir() direction prompt.  The starter hero has hands and is not
+// very-small/confused, so the modelled path is: not-a-door message; an
+// already-open / broken / locked door message; or a CLOSED door where
+//   rnl(20) < (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON))/3
+// decides open vs "resists" (the latter also exercise(A_STR, TRUE) -> rn2(19)).
+// Returns 1 (ECMD_TIME) when a turn elapses, else 0 (ECMD_OK).
+export async function doopen_indir(x, y) {
+    const u = game.u;
+    let cx, cy;
+    if (x > 0 && y >= 0) {
+        cx = x; cy = y;
+    } else {
+        // nohands(youmonst): the starter roles all have hands -> skip.
+        const dir = await getdir();
+        if (!dir) return 0; // ESC / invalid direction: like get_adjacent_loc fail
+        cx = u.ux + dir.dx; cy = u.uy + dir.dy;
+    }
+
+    // open at yourself with no closed door here -> loot (not modelled); the
+    // sessions only open an adjacent door, so this branch isn't exercised.
+    const door = game.level?.at(cx, cy);
+    if (!door || !IS_DOOR(door.typ)) {
+        await pline('You see no door there.');
+        return 0;
+    }
+
+    if (!(door.doormask & D_CLOSED)) {
+        let mesg;
+        switch (door.doormask) {
+        case D_BROKEN: mesg = ' is broken'; break;
+        case D_NODOOR: mesg = 'way has no door'; break;
+        case D_ISOPEN: mesg = ' is already open'; break;
+        default:       mesg = ' is locked'; break; // D_LOCKED
+        }
+        await pline(`This door${mesg}.`);
+        return 0;
+    }
+
+    // verysmall(youmonst): false for the starter roles.
+    // door is known to be CLOSED.
+    if (rnl(20) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
+        if (door.doormask & D_TRAPPED) {
+            // b_trapped path not exercised by these sessions.
+            door.doormask = D_NODOOR;
+        } else {
+            door.doormask = D_ISOPEN;
+        }
+        newsym(cx, cy);
+        vision_recalc(0);
+        await pline('The door opens.');
+    } else {
+        exercise(A_STR, true); // -> rn2(19)
+        await pline('The door resists!');
+    }
+    return 1; // ECMD_TIME
+}
+
 // C ref: hack.c domove / domove_core — execute a movement, including the
 // bump-into-a-monster path (attack a hostile, or swap places with a pet).
 export async function domove(dx, dy) {
     const u = game.u;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
+    // C ref: hack.c domove_core() — u.umoved is reset FALSE at the top of a
+    // hero command and set TRUE only when the hero's position changes
+    // (hack.c:2968).  u_calc_moveamt() reads it to decide whether a riding
+    // hero rolls mcalcmove(usteed).
+    const _umoved_ux0 = u.ux, _umoved_uy0 = u.uy;
+    u.umoved = false;
 
     // C ref: domove_core sets u.dx/u.dy from the chosen direction; do_attack()
     // and the swap logic read them.
@@ -242,10 +350,33 @@ export async function domove(dx, dy) {
                 u.uy = u.uy0;
             }
         }
+        u.umoved = (u.ux !== _umoved_ux0 || u.uy !== _umoved_uy0);
         newsym(u.ux0, u.uy0);
         vision_recalc(1);
         newsym(u.ux, u.uy);
         return;
+    }
+
+    // ── walk into a closed door ──  C ref: hack.c test_move() door branch
+    // (hack.c:1097).  With flags.autoopen ON (the default) and not running /
+    // confused / stunned / fumbling, a move into a closed door calls
+    // doopen_indir(x,y) instead of bumping; svc.context.move is then set from
+    // whether the hero actually moved (a resisted door leaves the hero put, so
+    // no turn passes — matching the recorded "door resists!" free action).
+    // Diagonal moves into a door are disallowed (no autoopen there).
+    {
+        const tgt = game.level?.at(newx, newy);
+        const closedDoor = tgt && IS_DOOR(tgt.typ)
+            && (tgt.doormask & (D_CLOSED | D_LOCKED));
+        if (closedDoor && !(dx && dy)
+            && !game.context?.run && !game.context?.mv) {
+            await doopen_indir(newx, newy);
+            // The hero never relocates via autoopen (the door square is not
+            // entered this command), so move follows position change (false).
+            u.umoved = (u.ux !== _umoved_ux0 || u.uy !== _umoved_uy0);
+            game.context.move = u.umoved ? 1 : 0;
+            return;
+        }
     }
 
     if (blocksMove(newx, newy)) {
@@ -264,6 +395,7 @@ export async function domove(dx, dy) {
     u.uy0 = oldy;
     u.ux = newx;
     u.uy = newy;
+    u.umoved = true; // C ref: hack.c:2968 — position changed
 
     // Update display
     newsym(oldx, oldy);

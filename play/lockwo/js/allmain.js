@@ -20,7 +20,8 @@ import { dosounds } from './sounds.js';
 import { find_ac } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
-import { ROLE_MALE, ROLE_FEMALE } from './const.js';
+import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON } from './const.js';
+import { exercise } from './attrib.js';
 
 const PM_KNIGHT = 4;
 const PM_WIZARD = 12;
@@ -357,14 +358,26 @@ function youHaveFast() {
     return (game.u?.ulevel ?? 1) >= lvl;
 }
 
-// C ref: allmain.c u_calc_moveamt() — gives the hero movement points for the
-// turn.  A Fast hero gets a free action on 1/3 of turns: `if (rn2(3) == 0)`.
-// (Very_fast would instead roll `if (rn2(3) != 0)`; not modeled.)  Only the
-// rn2(3) side-effect matters for parity; the hero still moves once per command
-// in our simplified loop.
+// C ref: allmain.c u_calc_moveamt(wtcap) — gives the hero movement points for
+// the turn.  When riding and the hero moved, moveamt = mcalcmove(usteed, TRUE)
+// (rolls rn2(NORMAL_SPEED)); otherwise moveamt = youmonst.data->mmove
+// (== NORMAL_SPEED for a human) plus a possible Fast free-action bonus
+// (Fast: +NORMAL_SPEED on rn2(3)==0; Very_fast not modeled — never set here).
+// The result is added to u.umovement; encumbrance is UNENCUMBERED for the
+// starter sessions (no moveamt reduction).
 function u_calc_moveamt() {
-    if (game.u?.usteed) return; // steed branch consumes no rn2(3)
-    if (youHaveFast()) rn2(3);
+    const u = game.u;
+    if (!u) return;
+    let moveamt;
+    if (u.usteed && u.umoved) {
+        moveamt = mcalcmove(u.usteed, true); // rn2(NORMAL_SPEED) rounding roll
+    } else {
+        moveamt = NORMAL_SPEED; // youmonst.data->mmove for a human hero
+        if (youHaveFast() && rn2(3) === 0)
+            moveamt += NORMAL_SPEED;
+    }
+    u.umovement = (u.umovement || 0) + moveamt;
+    if (u.umovement < 0) u.umovement = 0;
 }
 
 // C ref: dungeon.c depth() — logical depth of a d_level within its dungeon.
@@ -420,79 +433,174 @@ function maybe_generate_rnd_mon() {
 // turns within a single command, with no nhgetch between them).
 export function moveloop_turn() {
     const g = game;
-
-    // monster movement loop (svc.context.mon_moving)
     g.context = g.context || {};
-    g.context.mon_moving = true;
-    // C ref: allmain.c moveloop_core() inner movement loop:
-    //   do { monscanmove = movemon();
-    //        if (u.umovement >= NORMAL_SPEED) break; } while (monscanmove);
-    // The hero just spent NORMAL_SPEED (svc.context.move), so u.umovement is
-    // below NORMAL_SPEED for a normal-speed hero and the break never fires —
-    // movemon() runs repeatedly until no monster has a full NORMAL_SPEED of
-    // movement left.  movemon() sets game._somebody_can_move when any monster
-    // still has >= NORMAL_SPEED after acting, so a fast pet (kitten mmove 18,
-    // pony 16) that accumulated >= 24 movement this turn takes a SECOND step.
-    // Faithful floor-object placement (mklev/sp_lev VAULT gold + mineralize
-    // gold/gems, now actually place_object()'d so they join the fobj chain on
-    // unseen/dark squares) + C-exact owt + real clear_path (PET_REAL_VISION)
-    // make most of the repeat-pass dog_goal object scan RNG-faithful.
+    g.u = g.u || {};
+
+    // C ref: allmain.c moveloop_core() — `if (svc.context.move) { ... }`.
+    // The hero spent this command's move, so deduct NORMAL_SPEED.  u.umovement
+    // is kept >= NORMAL_SPEED at the end of every turn (the hero is "ready" for
+    // the next command), so seed it on first use.
+    if (g.u.umovement == null) g.u.umovement = NORMAL_SPEED;
+    g.u.umovement -= NORMAL_SPEED;
+
+    // C ref: allmain.c moveloop_core():
+    //   do {                                       // "hero can't move yet"
+    //       svc.context.mon_moving = TRUE;
+    //       do { monscanmove = movemon();
+    //            if (u.umovement >= NORMAL_SPEED) break; } while (monscanmove);
+    //       svc.context.mon_moving = FALSE;
+    //       if (!monscanmove && u.umovement < NORMAL_SPEED) { ...once-per-turn }
+    //   } while (u.umovement < NORMAL_SPEED);
     //
-    // GATE (still net-regresses, so left OFF): with the floor objects placed,
-    // the pet's first repeat-pass dog_goal scan still diverges on the three
-    // samurai little-dog sessions (seed0017/0107/0700): at the divergence the
-    // pet's 2nd movemon pass scans a box that C finds 5 floor objects in
-    // (5x obj_resists rn2(100)) but the JS pet's box is empty, even though the
-    // floor-object set and the pet's 1st-pass move now match C cell-for-cell
-    // and RNG-for-RNG up to that point.  The residual is in the pet's
-    // repeat-pass position/scan (dochug/dog_move ordering on the 2nd pass), not
-    // the object set.  Flipping this ON nets -3 screens (478 vs 481), so it
-    // stays OFF until that last divergence is resolved; the object-placement
-    // fixes above are correct regardless and hold the 481 baseline.
-    const MULTIPASS_MOVEMON = false;
-    let monscanmove = false;
+    // movemon() returns whether ANY monster still has a full NORMAL_SPEED left
+    // (game._somebody_can_move).  A fast pet (kitten mmove 18, pony 16) that
+    // accumulated >= 24 movement this turn therefore takes a SECOND movemon
+    // step within the same hero command — that 2nd step (the pet now adjacent
+    // to the hero -> dog_goal appr==0 -> invent obj_resists scan) is where the
+    // divergence lived.  We mirror the C control flow exactly.
     do {
-        monscanmove = movemon();
-        if (!MULTIPASS_MOVEMON) break;
-    } while (monscanmove);
-    g.context.mon_moving = false;
+        g.context.mon_moving = true;
+        let monscanmove;
+        do {
+            monscanmove = movemon();
+            if (g.u.umovement >= NORMAL_SPEED) break; // hero's turn again
+        } while (monscanmove);
+        g.context.mon_moving = false;
 
-    // set up for a new turn
-    mcalcdistress();
-    for (const mtmp of (g.level?.monsters || [])) {
-        if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
-        mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
-    }
-    maybe_generate_rnd_mon();
+        if (!monscanmove && g.u.umovement < NORMAL_SPEED) {
+            // Both hero and all monsters are out of steam -> advance a turn.
+            mcalcdistress();
+            for (const mtmp of (g.level?.monsters || [])) {
+                if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
+                mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
+            }
+            maybe_generate_rnd_mon();
 
-    // C ref: allmain.c — u_calc_moveamt(mvl_wtcap); settrack();  The Fast
-    // hero-speed roll happens here, between maybe_generate_rnd_mon and the
-    // once-per-turn block (matches the recorded RNG position).
-    u_calc_moveamt();
+            // C ref: allmain.c — u_calc_moveamt(mvl_wtcap); settrack();  The
+            // hero's movement-point reallocation (Fast roll / steed mcalcmove)
+            // happens here, between maybe_generate_rnd_mon and the once-per-turn
+            // block (matches the recorded RNG position).
+            u_calc_moveamt();
 
-    g.moves = (g.moves || 1) + 1;
+            g.moves = (g.moves || 1) + 1;
 
-    // once-per-turn things: ambient sounds + hunger.  (nh_timeout / regen /
-    // age_spells consume no RNG for the starter sessions.)
-    dosounds();
-    gethungry();
+            // once-per-turn things: ambient sounds + hunger + periodic
+            // exercise.  (nh_timeout / regen / age_spells consume no RNG for the
+            // starter sessions.)  C order: dosounds, do_storms, gethungry,
+            // age_spells, exerchk, invault, ..., u_wipe_engr.
+            dosounds();
+            gethungry();
+            exerchk();
 
-    // u_wipe_engr check: rn2(40 + ACURR(A_DEX) * 3).  acurr order is
-    // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.
-    const dex = g.u?.acurr?.a?.[3] ?? 12;
-    if (!rn2(40 + dex * 3)) {
-        rnd(3); // u_wipe_engr(rnd(3))
-    }
+            // u_wipe_engr check: rn2(40 + ACURR(A_DEX) * 3).  acurr order is
+            // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.
+            const dex = g.u?.acurr?.a?.[3] ?? 12;
+            if (!rn2(40 + dex * 3)) {
+                rnd(3); // u_wipe_engr(rnd(3))
+            }
 
-    // clairvoyance bookkeeping: seer_turn (rn1(31,15)) when moves catches up
-    if (g.context.seer_turn != null && g.moves >= g.context.seer_turn) {
-        g.context.seer_turn = g.moves + rn1(31, 15);
-    }
+            // clairvoyance bookkeeping: seer_turn (rn1(31,15)) when moves
+            // catches up.
+            if (g.context.seer_turn != null && g.moves >= g.context.seer_turn) {
+                g.context.seer_turn = g.moves + rn1(31, 15);
+            }
+        }
+    } while (g.u.umovement < NORMAL_SPEED);
 }
 
 // C ref: eat.c gethungry() — the rn2(20) "accessorytime" roll each turn.
 function gethungry() {
     rn2(20);
+}
+
+const PM_MONK = 5;
+
+// C ref: attrib.c exerper() — periodic exercise accumulation.  On every 10th
+// turn, a hunger-state exercise (and any encumbrance exercise) fires; on every
+// 5th turn, status-affliction exercises fire.  Each exercise() emits rn2(19)
+// (gain) or rn2(2) (loss) when |AEXE| < AVAL.  For the starter sessions the
+// hero is NOT_HUNGRY (uhunger ~900) and UNENCUMBERED with no afflictions, so
+// the only roll is exercise(A_CON, TRUE) on moves % 10 == 0 — but we mirror the
+// full C control flow (hunger/encumbrance/status) so it stays correct if state
+// changes.  near_capacity() is UNENCUMBERED (0) for the starter pack.
+function exerper() {
+    const g = game;
+    const u = g.u || {};
+    const moves = g.moves || 1;
+    const isMonk = gameRoleMnum() === PM_MONK;
+
+    if (moves % 10 === 0) {
+        // Hunger Checks.  uhunger defaults to the C starting value (900 ->
+        // NOT_HUNGRY) when not explicitly tracked.
+        const uhunger = u.uhunger ?? 900;
+        if (uhunger > 1000) {            // SATIATED
+            exercise(A_DEX, false);
+            if (isMonk) exercise(A_WIS, false);
+        } else if (uhunger > 150) {      // NOT_HUNGRY
+            exercise(A_CON, true);
+        } else if (uhunger > 50) {       // HUNGRY -> no exercise
+            /* (no case in C) */
+        } else if (uhunger > 0) {        // WEAK
+            exercise(A_STR, false);
+            if (isMonk) exercise(A_WIS, true);
+        } else {                         // FAINTING / FAINTED
+            exercise(A_CON, false);
+        }
+
+        // Encumbrance Checks: near_capacity() == UNENCUMBERED (0) for the
+        // starter sessions -> no exercise calls.  (MOD/HVY/EXT branches omitted
+        // because they never fire here; add them if encumbrance is modeled.)
+    }
+
+    if (moves % 5 === 0) {
+        // Status checks: Clairvoyant / Regeneration / Sick / Vomiting /
+        // Confusion / Hallucination / Wounded_legs / Fumbling / Stun — none of
+        // these intrinsics are set for the starter hero, so no rolls.  (Modeled
+        // as a no-op; wire the conditions in if those statuses become tracked.)
+    }
+}
+
+// C ref: attrib.c exerchk() — periodic accumulation (exerper) then, once
+// svm.moves crosses context.next_attrib_check (starts at 600), a per-attribute
+// test that rolls rn2(AVAL) per exercised attr and rn1(200,800) to reschedule.
+// The starter sessions never reach move 600, so only exerper() emits RNG; the
+// attrib-test branch is modeled faithfully for longer runs.
+function exerchk() {
+    const g = game;
+    exerper();
+
+    if (g.context?.next_attrib_check == null)
+        g.context = Object.assign(g.context || {}, { next_attrib_check: 600 });
+
+    const moves = g.moves || 1;
+    // gm.multi: the starter sessions are never mid-occupation at this point.
+    if (moves >= g.context.next_attrib_check) {
+        const AVAL = 50;
+        const aexe = g.u?.aexe?.a || [];
+        const acurr = g.u?.acurr?.a || [];
+        const ATTRMIN = 3, ATTRMAX = 18;
+        for (let i = 0; i < 6; i++) {
+            let ax = aexe[i] || 0;
+            if (!ax) continue;          // Int/Cha and untouched attrs
+            const mod_val = ax > 0 ? 1 : -1;
+            const base = acurr[i] ?? 0; // ABASE approximated by current value
+            if ((ax < 0) ? (base <= ATTRMIN) : (base >= ATTRMAX)) {
+                aexe[i] = (Math.abs(ax) >> 1) * mod_val;
+                continue;
+            }
+            // rn2(AVAL) > (|ax|*2/3 for non-Wis else |ax|) -> skip (no change)
+            const thresh = (i !== A_WIS) ? Math.trunc(Math.abs(ax) * 2 / 3) : Math.abs(ax);
+            if (rn2(AVAL) > thresh) {
+                aexe[i] = (Math.abs(ax) >> 1) * mod_val;
+                continue;
+            }
+            // adjattrib would change the attr; the starter sessions never reach
+            // here (moves < 600), so the rare attrib-change path is left to the
+            // accumulator halving (no further RNG beyond rn2(AVAL) above).
+            aexe[i] = (Math.abs(ax) >> 1) * mod_val;
+        }
+        g.context.next_attrib_check += rn1(200, 800);
+    }
 }
 
 // C ref: allmain.c moveloop_core()

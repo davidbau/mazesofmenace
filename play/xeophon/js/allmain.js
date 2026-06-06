@@ -3,13 +3,13 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyLifeSavingOrFatalCommandMode } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyLifeSavingOrFatalCommandMode } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE, STRAT_APPEARMSG } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -5962,13 +5962,25 @@ export async function processMonsterTurns() {
                     const tunnelWithoutPick = (mon.data?.dwarf || mon.data?.tunnel)
                         && !mon.minvent?.some(item => item.kind === 'pick-axe');
                     if (await maybeCastUndirectedMonsterSpell(mon)) continue;
-			                    if (mon.mtrapped) {
-		                        if (rn2(40)) {
-	                            rn2(5);
-	                            continue;
-		                        }
-		                        mon.mtrapped = 0;
-		                    }
+                    if (mon.mtrapped) {
+                        const trapped = monsterTrappedTrapTurn(mon);
+                        if (trapped.handled) {
+                            if (trapped.caught) {
+                                rn2(5);
+                                continue;
+                            }
+                            if (trapped.occupied) {
+                                if (mon.meating) mon.meating = Math.max(0, mon.meating - 1);
+                                continue;
+                            }
+                        } else {
+                            if (rn2(40)) {
+                                rn2(5);
+                                continue;
+                            }
+                            mon.mtrapped = 0;
+                        }
+                    }
 	                    const blindAdjacentAttack = mon.mcansee === false && !mon.mpeaceful
 	                        && Math.max(Math.abs(mon.mx - (game.u?.ux || 0)), Math.abs(mon.my - (game.u?.uy || 0))) <= 1
 	                        && !(mon.data?.name === 'grid bug' && mon.mx !== (game.u?.ux || 0) && mon.my !== (game.u?.uy || 0));
@@ -10436,17 +10448,319 @@ function monsterTeleportTrapEffect(mon, trap) {
     return true;
 }
 
+function monsterPolymorphTrapEffect(mon, trap) {
+    if (trap?.ttyp !== POLY_TRAP) return false;
+    if (monsterKnowsTrap(mon, trap.ttyp) && rn2(4)) return true;
+
+    const visible = monsterVisibleToHero(mon) || mon === game.u?.usteed;
+    monsterTriggerTrap(mon, trap);
+    const messages = [];
+    const result = monsterPolyTrapEffect(mon, messages, { visible });
+    if (result.magicResisted && cansee(mon.mx, mon.my)) {
+        addToplineMessage(`${monsterDisplayName(mon)} resists!`);
+    }
+    if (result.attempted && visible) trap.tseen = true;
+    for (const message of messages) addToplineMessage(message);
+    return true;
+}
+
+function monsterAvoidsKnownTrapEffect(mon, trap) {
+    if (!trap?.ttyp) return false;
+    const alreadySeen = monsterKnowsTrap(mon, trap.ttyp)
+        || (trap.ttyp === HOLE && !mon.data?.mindless);
+    return !!(alreadySeen && rn2(4));
+}
+
+function monsterFloorTriggerTrapType(ttyp) {
+    return [ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
+        ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
+        HOLE, TRAPDOOR].includes(ttyp);
+}
+
+function monsterSokobanPitHoleBypassesPrelude(trap) {
+    return game.level?.flags?.sokoban_rules && !trap?.madeby_u
+        && [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(trap?.ttyp);
+}
+
+function monsterInAirAvoidsFloorTrigger(mon, trap) {
+    const data = mon?.data || {};
+    return monsterFloorTriggerTrapType(trap?.ttyp)
+        && (mon?.inAir || mon?.flyer || mon?.floater || data.inAir || data.flyer || data.floater)
+        && !monsterSokobanPitHoleBypassesPrelude(trap);
+}
+
+function monsterAvoidsKnownTrapBeforeEffect(mon, trap) {
+    if (!trap?.ttyp) return false;
+    if (mon === game.u?.usteed) return false;
+    if (trap.ttyp === TELEP_TRAP && monsterTeleportTrapDestination(trap)) return false;
+    if (monsterSokobanPitHoleBypassesPrelude(trap)) return false;
+    if (monsterInAirAvoidsFloorTrigger(mon, trap)) return false;
+    return monsterAvoidsKnownTrapEffect(mon, trap);
+}
+
 function monsterTrapHarmless(mon, trap) {
     const ttyp = trap?.ttyp;
     const data = mon.data || {};
-    const floorTrigger = [ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
-        SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(ttyp);
-    if (!game.level?.flags?.sokoban_rules && floorTrigger && data.inAir) return true;
+    if (monsterInAirAvoidsFloorTrigger(mon, trap)) return true;
     if (ttyp === BEAR_TRAP) return data.verysmall || data.small || data.amorphous || data.unsolid;
     if (ttyp === RUST_TRAP) return data.name !== 'iron golem';
     if (ttyp === WEB) return monsterWebPassesThrough(data);
-    if (ttyp === ANTI_MAGIC) return data.resistsMagic || data.defendsMagic;
+    if (ttyp === ANTI_MAGIC) return monsterResistsAntiMagicTrap(mon);
     return ttyp === STATUE_TRAP || ttyp === MAGIC_TRAP || ttyp === VIBRATING_SQUARE;
+}
+
+function monsterWornIronFootwearForAntiMagic(mon) {
+    return (mon?.minvent || []).find(item => {
+        if (!item || item.cls !== 'armor' || !(item.worn || item.owornmask)) return false;
+        const kind = String(item.actualKind || item.kind || '').toLowerCase();
+        return kind === 'iron shoes' || kind === 'kicking boots';
+    }) || null;
+}
+
+const MONSTER_WIELDED_ANTIMAGIC_DEFENSE_ARTIFACTS = new Set([
+    'magicbane',
+    'sceptre of might',
+    'eyes of the overworld',
+    'eye of the aethiopica',
+]);
+
+const MONSTER_CARRIED_ANTIMAGIC_DEFENSE_ARTIFACTS = new Set([
+    'orb of detection',
+    'magic mirror of merlin',
+    'platinum yendorian express card',
+]);
+
+function monsterArtifactKey(item) {
+    const artifact = item?.artifact || item?.oartifact;
+    return artifact ? String(artifact).trim().toLowerCase().replace(/^the\s+/, '') : '';
+}
+
+function monsterWieldsArtifactNamed(mon, artifactKey) {
+    return monsterArtifactKey(mon?.mw) === artifactKey;
+}
+
+function monsterWieldsAntiMagicDefendingArtifact(mon) {
+    return MONSTER_WIELDED_ANTIMAGIC_DEFENSE_ARTIFACTS.has(monsterArtifactKey(mon?.mw));
+}
+
+function monsterCarriesAntiMagicDefendingArtifact(mon) {
+    return (mon?.minvent || []).some(item =>
+        MONSTER_CARRIED_ANTIMAGIC_DEFENSE_ARTIFACTS.has(monsterArtifactKey(item)));
+}
+
+function monsterResistsAntiMagicTrap(mon) {
+    const data = mon?.data || {};
+    return !!(mon?.magicResistance || mon?.resistsMagic || mon?.resists_magm
+        || data.magicResistance || data.resistsMagic || data.resists_magm
+        || data.defendsMagic || data.defends_magm
+        || monsterWieldsAntiMagicDefendingArtifact(mon)
+        || monsterCarriesAntiMagicDefendingArtifact(mon));
+}
+
+function monsterHasAntiMagicDrainAttack(mon) {
+    const data = mon?.data || {};
+    const attacks = Array.isArray(data.attacks)
+        ? data.attacks
+        : data.attack ? [data.attack] : [];
+    return attacks.some(attack => ['magc', 'brea', 'breath'].includes(normalizedAttackCode(attack?.aatyp)))
+        || monsterCastsWizardSpells(data) || data.spellcaster || data.magic || data.priest
+        || data.magicalBreath || data.rbreath || !!MONSTER_BREATH_ATTACKS.get(data.name);
+}
+
+function monsterPassesWallsForAntiMagic(mon) {
+    const data = mon?.data || {};
+    const name = data.name || '';
+    return !!(mon?.passWalls || mon?.passesWalls || mon?.passes_walls || mon?.wallwalk
+        || data.passWalls || data.passesWalls || data.passes_walls || data.wallwalk
+        || data.noncorporeal || data.whirly || name === 'xorn' || name === 'earth elemental');
+}
+
+function monsterPassesWallsForPitTrap(mon) {
+    const data = mon?.data || {};
+    const name = data.name || '';
+    return !!(mon?.passWalls || mon?.passesWalls || mon?.passes_walls || mon?.wallwalk
+        || data.passWalls || data.passesWalls || data.passes_walls || data.wallwalk
+        || name === 'xorn' || name === 'earth elemental');
+}
+
+function monsterGroundedForPitTrap(mon) {
+    const data = mon?.data || {};
+    return !(mon?.inAir || mon?.flyer || mon?.floater
+        || data.inAir || data.flyer || data.floater);
+}
+
+function monsterPitTrapEffect(mon, trap, { cavernTunnelRoom = false, skipPetPostMoveRoll = false } = {}) {
+    if (![PIT, SPIKED_PIT].includes(trap?.ttyp) || cavernTunnelRoom || monsterTrapHarmless(mon, trap))
+        return false;
+    if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
+
+    monsterTriggerTrap(mon, trap);
+    const inSight = monsterVisibleToHero(mon) || mon === game.u?.usteed;
+    const fallVerb = !monsterGroundedForPitTrap(mon) && monsterSokobanPitHoleBypassesPrelude(trap)
+        ? 'is dragged' : 'falls';
+    if (!monsterPassesWallsForPitTrap(mon)) mon.mtrapped = 1;
+    if (inSight) {
+        trap.tseen = true;
+        addToplineMessage(`${monsterDisplayName(mon)} ${fallVerb} into ${trap.madeby_u ? 'your' : 'a'} pit!`);
+        if (mon.data?.name === 'pit viper' || mon.data?.name === 'pit fiend')
+            addToplineMessage("How pitiful.  Isn't that the pits?");
+    }
+    const relevantSpikes = trap.ttyp === SPIKED_PIT && !monsterWornIronFootwearForAntiMagic(mon);
+    const damage = rnd(relevantSpikes ? 10 : 6);
+    mon.mhp = (mon.mhp || 1) - damage;
+    if (mon.mhp < 1) {
+        if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
+        mon.mtrapped = 0;
+        finishTrapKilledMonster(mon, { skipPetPostMoveRoll });
+        return true;
+    }
+    if (mon.mtrapped) mon._move_consumed_turn = 1;
+    return true;
+}
+
+function monsterEasyEscapePit(mon) {
+    return mon?.data?.name === 'pit fiend' || monsterObjectHitSizeValue(mon) >= 4;
+}
+
+function trappedMonsterPullFreeTrapName(ttyp) {
+    if (ttyp === BEAR_TRAP) return 'bear trap';
+    if (ttyp === WEB) return 'web';
+    return '';
+}
+
+function boulderAtMonsterTrap(mon) {
+    return (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === mon?.mx && obj.oy === mon?.my) || null;
+}
+
+function fillMonsterPitWithBoulder(mon, boulder) {
+    if (!boulder || !game.level) return false;
+    game.level.objects = (game.level.objects || []).filter(obj => obj !== boulder);
+    const messages = [];
+    const previousMonsterMoving = game._monster_moving;
+    game._monster_moving = 1;
+    let consumed = false;
+    try {
+        consumed = earthFloorEffects(boulder, mon.mx, mon.my, messages, 'settle');
+    } finally {
+        if (previousMonsterMoving === undefined) delete game._monster_moving;
+        else game._monster_moving = previousMonsterMoving;
+    }
+    if (!consumed) {
+        boulder.ox = mon.mx;
+        boulder.oy = mon.my;
+        game.level.objects.push(boulder);
+    }
+    for (const message of messages) addToplineMessage(message);
+    return consumed;
+}
+
+function monsterTrappedTrapTurn(mon) {
+    if (!mon?.mtrapped) return { handled: false, caught: false };
+    const trap = game.level?.traps?.find(t => t.tx === mon.mx && t.ty === mon.my);
+    if (!trap) {
+        mon.mtrapped = 0;
+        return { handled: true, caught: false };
+    }
+    if (![PIT, SPIKED_PIT, BEAR_TRAP, HOLE, WEB].includes(trap.ttyp)) return { handled: false, caught: false };
+
+    const inSight = monsterVisibleToHero(mon) || mon === game.u?.usteed;
+    if (!trap.tseen && inSight) trap.tseen = true;
+
+    const isPitTrap = [PIT, SPIKED_PIT].includes(trap.ttyp);
+    const isPullFreeTrap = [BEAR_TRAP, WEB].includes(trap.ttyp);
+    const easyEscape = isPitTrap && monsterEasyEscapePit(mon);
+    if (!rn2(40) || easyEscape) {
+        const boulder = isPitTrap ? boulderAtMonsterTrap(mon) : null;
+        if (boulder) {
+            if (!rn2(2)) {
+                mon.mtrapped = 0;
+                if (inSight) addToplineMessage(`${monsterDisplayName(mon)} pulls free...`);
+                fillMonsterPitWithBoulder(mon, boulder);
+            }
+        } else {
+            if (inSight) {
+                if (isPitTrap) {
+                    addToplineMessage(`${monsterDisplayName(mon)} climbs ${easyEscape ? 'easily ' : ''}out of the pit.`);
+                } else if (isPullFreeTrap) {
+                    addToplineMessage(`${monsterDisplayName(mon)} pulls free of the ${trappedMonsterPullFreeTrapName(trap.ttyp)}.`);
+                }
+            }
+            mon.mtrapped = 0;
+        }
+    } else if (monsterIsMetallivore(mon) && trap.ttyp === SPIKED_PIT) {
+        if (inSight) addToplineMessage(`${monsterDisplayName(mon)} munches on some spikes!`);
+        trap.ttyp = PIT;
+        mon.meating = 5;
+    } else if (monsterIsMetallivore(mon) && trap.ttyp === BEAR_TRAP) {
+        if (inSight) addToplineMessage(`${monsterDisplayName(mon)} eats a bear trap!`);
+        game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
+        mon.meating = 5;
+        mon.mtrapped = 0;
+        return { handled: true, caught: false, occupied: true };
+    }
+    return { handled: true, caught: !!mon.mtrapped };
+}
+
+function monsterAntiMagicTrapEffect(mon, trap) {
+    if (trap?.ttyp !== ANTI_MAGIC) return false;
+    if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
+
+    monsterTriggerTrap(mon, trap);
+    const footwear = monsterWornIronFootwearForAntiMagic(mon);
+    if ((footwear?.spe || 0) > 0) {
+        footwear.spe -= 1;
+        return true;
+    }
+
+    const inSight = monsterVisibleToHero(mon) || mon === game.u?.usteed;
+    const seeIt = couldSeeCoord(mon.mx, mon.my);
+    if (!monsterResistsAntiMagicTrap(mon)) {
+        if (!mon.mcan && monsterHasAntiMagicDrainAttack(mon)) {
+            mon.mspec_used = (mon.mspec_used || 0) + d(2, 6);
+            if (inSight) {
+                trap.tseen = true;
+                addToplineMessage(`${monsterDisplayName(mon)} seems lethargic.`);
+            }
+        }
+        return true;
+    }
+
+    let damage = rnd(4);
+    if (monsterWieldsArtifactNamed(mon, 'magicbane')) damage += rnd(4);
+    if (monsterCarriesAntiMagicDefendingArtifact(mon)) damage += rnd(4);
+    if (monsterPassesWallsForAntiMagic(mon)) damage = Math.trunc((damage + 3) / 4);
+    if (inSight) trap.tseen = true;
+    mon.mhp = (mon.mhp || 1) - damage;
+    if (mon.mhp < 1) {
+        if (inSight) {
+            const destroyed = mon.data?.nonliving || mon.data?.mindless;
+            addToplineMessage(`${monsterDisplayName(mon)} is ${destroyed ? 'destroyed' : 'killed'} by the compression from an anti-magic field!`);
+        }
+        finishTrapKilledMonster(mon);
+    } else if (seeIt) {
+        newsym(trap.tx, trap.ty);
+    }
+    return true;
+}
+
+function monsterSleepGasTrapEffect(mon, trap) {
+    if (trap?.ttyp !== SLP_GAS_TRAP) return false;
+    if (monsterTrapHarmless(mon, trap)) return true;
+    if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
+    monsterTriggerTrap(mon, trap);
+    if (mon.mcanmove !== false && !mon.msleeping
+        && !mon.data?.resistsSleep && !mon.data?.breathless) {
+        const duration = rnd(25);
+        mon.mcanmove = false;
+        mon.mfrozen = Math.min((mon.mfrozen || 0) + duration, 127);
+        if (couldSeeCoord(mon.mx, mon.my)) {
+            trap.tseen = true;
+            addToplineMessage(`${monsterDisplayName(mon)} suddenly falls asleep!`);
+        }
+    }
+    return true;
 }
 
 function trapDartDamage(dart, mon) {
@@ -11758,7 +12072,9 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         && game.level?.flags?.is_cavernous_lev && game.level?.at(mon.mx, mon.my)?.typ === ROOM
         && game.level?.at(mon.mx, mon.my)?.seenv === 64;
     if (monsterTeleportTrapEffect(mon, trap)) return done();
+    if (monsterPolymorphTrapEffect(mon, trap)) return done();
     if (trap?.ttyp === MAGIC_PORTAL) {
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         monsterTriggerTrap(mon, trap);
         if (couldSeeCoord(mon.mx, mon.my) && !game.u?.blind && !mon.minvis && !mon.mundetected) {
             trap.tseen = true;
@@ -11776,24 +12092,14 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         monsterTriggerTrap(mon, trap);
         rn2(21);
     }
-    if (trap?.ttyp === ANTI_MAGIC) monsterTriggerTrap(mon, trap);
-    if (trap?.ttyp === SLP_GAS_TRAP && monsterTrapHarmless(mon, trap)) return done();
-    if (trap?.ttyp === SLP_GAS_TRAP) monsterTriggerTrap(mon, trap);
-    if (trap?.ttyp === SLP_GAS_TRAP && mon.mcanmove !== false && !mon.msleeping
-        && !mon.data?.resistsSleep && !mon.data?.breathless) {
-        const duration = rnd(25);
-        mon.mcanmove = false;
-        mon.mfrozen = Math.min((mon.mfrozen || 0) + duration, 127);
-        if (couldSeeCoord(mon.mx, mon.my)) {
-            trap.tseen = true;
-            addToplineMessage(`${monsterDisplayName(mon)} suddenly falls asleep!`);
-        }
-    }
+    if (monsterAntiMagicTrapEffect(mon, trap)) return done();
+    if (monsterSleepGasTrapEffect(mon, trap)) return true;
     if (trap?.ttyp === FIRE_TRAP && !monsterTrapHarmless(mon, trap)) {
-        if (monsterKnowsTrap(mon, trap.ttyp) && rn2(4)) return done();
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         if (monsterFireTrapEffect(mon, trap)) return done();
     }
     if (trap?.ttyp === ROCKTRAP && !monsterTrapHarmless(mon, trap)) {
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         if (trap.once && trap.tseen && !rn2(15)) {
             game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
             newsym(mon.mx, mon.my);
@@ -11823,27 +12129,9 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         }
         return done();
     }
-    if ((trap?.ttyp === PIT || trap?.ttyp === SPIKED_PIT) && !cavernTunnelRoom && !monsterTrapHarmless(mon, trap)) {
-        if (monsterKnowsTrap(mon, trap.ttyp) && rn2(4)) return done();
-        monsterTriggerTrap(mon, trap);
-        const inSight = couldSeeCoord(mon.mx, mon.my);
-        if (inSight) {
-            trap.tseen = true;
-            addToplineMessage(`${monsterDisplayName(mon)} falls into ${trap.madeby_u ? 'your' : 'a'} pit!`);
-        }
-        mon.mtrapped = 1;
-        const damage = rnd(trap.ttyp === SPIKED_PIT ? 10 : 6);
-        mon.mhp = (mon.mhp || 1) - damage;
-        if (mon.mhp < 1) {
-            if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
-            finishTrapKilledMonster(mon);
-            return done();
-        }
-        mon._move_consumed_turn = 1;
-    }
+    if (monsterPitTrapEffect(mon, trap, { cavernTunnelRoom })) return done();
     if ((trap?.ttyp === HOLE || trap?.ttyp === TRAPDOOR) && !monsterTrapHarmless(mon, trap) && !mon.data?.big) {
-        const alreadySeen = monsterKnowsTrap(mon, trap.ttyp) || (trap.ttyp === HOLE && !mon.data?.mindless);
-        if (alreadySeen && rn2(4)) return done();
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         monsterTriggerTrap(mon, trap);
         if (couldSeeCoord(mon.mx, mon.my)) trap.tseen = true;
         game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
@@ -11852,6 +12140,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         return done();
     }
     if (trap?.ttyp === DART_TRAP && !monsterTrapHarmless(mon, trap)) {
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         if (trap.once && trap.tseen && !rn2(15)) {
             game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
             newsym(mon.mx, mon.my);
@@ -11888,6 +12177,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         return done();
     }
     if (trap?.ttyp === LANDMINE && !monsterTrapHarmless(mon, trap)) {
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         monsterTriggerTrap(mon, trap);
         const damage = rnd(16);
         const bodyWeight = mon.data?.cwt ?? MONSTER_BODY_WEIGHTS.get(mon.data?.name) ?? 1450;
@@ -11900,6 +12190,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
     }
     if (trap?.ttyp === SQKY_BOARD) {
         if (monsterTrapHarmless(mon, trap)) return done();
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         monsterTriggerTrap(mon, trap);
         const note = SQUEAKY_NOTES[trap.tnote] || 'a note';
         addToplineMessage(couldSeeCoord(mon.mx, mon.my)
@@ -11913,6 +12204,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         }
     }
     if (trap?.ttyp === ROLLING_BOULDER_TRAP && !mon.data?.inAir && !mon.data?.flyer && !mon.data?.floater) {
+        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
         monsterTriggerTrap(mon, trap);
         const inSight = couldSeeCoord(mon.mx, mon.my) && !game.u?.blind && !mon.minvis && !mon.mundetected;
         newsym(mon.mx, mon.my);
@@ -12001,6 +12293,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
             if (inSight) trap.tseen = true;
         }
     }
+	    if (trap?.ttyp === WEB && monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
 	    if (monsterWebSpecialEffect(mon, trap)) {
 	        mon._move_consumed_turn = 1;
 	    } else if (trap?.ttyp === WEB && !mon.mtrapped) {
@@ -12090,15 +12383,24 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         rn2(4);
     }
     if (mon.mtrapped) {
-        const trap = game.level?.traps?.find(t => t.tx === mon.mx && t.ty === mon.my);
-        if (trap?.ttyp === BEAR_TRAP) {
-            if (rn2(40)) return;
-            mon.mtrapped = 0;
-            if (couldSeeCoord(mon.mx, mon.my)
-                && !addToplineMessage(`The ${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'creature'} pulls free of the bear trap.`)
-                && game._message_more && !game._process_time_with_more) return;
+        const trapped = monsterTrappedTrapTurn(mon);
+        if (trapped.handled) {
+            if (trapped.caught) return;
+            if (trapped.occupied) {
+                if (mon.meating) mon.meating = Math.max(0, mon.meating - 1);
+                return;
+            }
         } else {
-            mon.mtrapped = 0;
+            const trap = game.level?.traps?.find(t => t.tx === mon.mx && t.ty === mon.my);
+            if (trap?.ttyp === BEAR_TRAP) {
+                if (rn2(40)) return;
+                mon.mtrapped = 0;
+                if (couldSeeCoord(mon.mx, mon.my)
+                    && !addToplineMessage(`The ${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'creature'} pulls free of the bear trap.`)
+                    && game._message_more && !game._process_time_with_more) return;
+            } else {
+                mon.mtrapped = 0;
+            }
         }
     }
 
@@ -13015,6 +13317,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
 	    }
 	    const trap = game.level?.traps?.find(t => t.tx === mon.mx && t.ty === mon.my);
 	    if (monsterTeleportTrapEffect(mon, trap)) return;
+	    if (monsterPolymorphTrapEffect(mon, trap)) return;
 	    if (monsterWebSpecialEffect(mon, trap)) return;
 	    if (trap?.ttyp === MAGIC_TRAP && monsterKnowsTrap(mon, trap.ttyp) && rn2(4)) return;
 	    if (trap?.ttyp === MAGIC_TRAP) {
@@ -13035,17 +13338,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         newsym(mon.mx, mon.my);
         addToplineMessage(`The ${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'creature'} is caught in a bear trap!`);
     }
-    if (trap?.ttyp === PIT || trap?.ttyp === SPIKED_PIT) {
-        trap.tseen = true;
-        addToplineMessage(`The ${mon.data?.name || 'creature'} falls into ${trap.madeby_u ? 'your' : 'a'} pit!`);
-        const damage = rnd(trap.ttyp === SPIKED_PIT ? 10 : 6);
-        mon.mhp = (mon.mhp || 1) - damage;
-        if (mon.mhp < 1) {
-            addToplineMessage(`The ${mon.data?.name || 'creature'} is killed!`);
-            finishTrapKilledMonster(mon, { skipPetPostMoveRoll: true });
-            return;
-        }
-    }
+    if (monsterPitTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
     if (trap?.ttyp === DART_TRAP && !monsterTrapHarmless(mon, trap)) {
         if (trap.once && trap.tseen && !rn2(15)) {
             game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
@@ -14395,3 +14688,13 @@ export async function moveloop(_resuming) {
         if (game.program_state?.gameover) break;
     }
 }
+
+export const __allmainTestHooks = {
+    mfndposForTest: mfndpos,
+    monsterAllowFlagsForTest: monsterAllowFlags,
+    monsterAvoidsKnownTrapBeforeEffectForTest: monsterAvoidsKnownTrapBeforeEffect,
+    monsterAntiMagicTrapEffectForTest: monsterAntiMagicTrapEffect,
+    monsterPitTrapEffectForTest: monsterPitTrapEffect,
+    monsterTrappedTrapTurnForTest: monsterTrappedTrapTurn,
+    monsterSleepGasTrapEffectForTest: monsterSleepGasTrapEffect,
+};

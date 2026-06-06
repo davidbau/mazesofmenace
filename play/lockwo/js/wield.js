@@ -77,18 +77,12 @@ export async function dotwoweapon() {
         // C: return (rnd(20) > ACURR(A_DEX)) ? ECMD_TIME : ECMD_OK;
         //
         // The trailing rnd(20) is the canonical C behavior (recorded at
-        // wield.c:861).  Emitting it realigns the RNG stream exactly through
-        // the next command, but it also exposes a pre-existing dog_goal()
-        // divergence in dogmove.js (a conditional rn2(4) at dogmove.c:575
-        // that the JS pet AI does not reproduce once the stream is aligned),
-        // which a separate wave owns.  Until that dogmove parity fix lands,
-        // emitting rnd(20) here regresses seed0107's screen count, so we gate
-        // the roll on a flag the dogmove wave can flip on.  ACURR(A_DEX) and
-        // rnd() are wired and ready; flip game._twoweap_rnd to re-enable.
-        if (game._twoweap_rnd) {
-            return rnd(20) > ACURR(A_DEX) ? 1 : 0;
-        }
-        return 0; // ECMD_OK
+        // wield.c:861).  It realigns the RNG stream exactly through the next
+        // command.  It previously exposed a dog_goal() divergence (the appr==0
+        // invent obj_resists scan / 2nd movemon pass), but that mechanism is
+        // now ported faithfully in dogmove.js + allmain.js, so the roll is
+        // emitted unconditionally as C does.
+        return rnd(20) > ACURR(A_DEX) ? 1 : 0;
     }
     return 0; // ECMD_OK
 }

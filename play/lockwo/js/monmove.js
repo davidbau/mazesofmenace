@@ -44,9 +44,12 @@ const CAN_OPEN_DOOR_PMIDX = new Set([
     328, 329,
 ]);
 
-// Pet pmidx use dog.js's convention (little dog 16, kitten 34, pony 102); all
-// three have hands/aren't tiny, so they can open doors too.
-const PET_CAN_OPEN_PMIDX = new Set([16, 34, 102]);
+// The three starting pets — little dog (16), kitten (34), pony (102) — are all
+// M1_NOHANDS animals, so C's `can_open = !(nohands || verysmall)` is FALSE for
+// them: a pet CANNOT open a closed door (it must wait for the hero / route
+// around).  Earlier this incorrectly granted pets OPENDOOR, which kept a
+// closed door in the pet's mfndpos candidate list (an extra square) and threw
+// off dog_move's choice-loop rn2 count on the 2nd movemon pass.
 
 // C ref: mon.c mon_allowflags() can_open / can_unlock.  OPENDOOR lets a
 // monster treat a *closed* door as passable; UNLOCKDOOR additionally for a
@@ -54,7 +57,6 @@ const PET_CAN_OPEN_PMIDX = new Set([16, 34, 102]);
 // dlvl-1 dungeon monsters), so closed-but-not-locked is the only case we add.
 function mon_can_open_door(mon) {
     const pm = mon?.data?.pmidx;
-    if (mon?.mtame && PET_CAN_OPEN_PMIDX.has(pm)) return true;
     return CAN_OPEN_DOOR_PMIDX.has(pm);
 }
 

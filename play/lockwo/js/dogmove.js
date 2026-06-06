@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { MTSZ, COLNO, ROWNO, IS_ROOM } from './const.js';
+import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL } from './const.js';
 import { obj_resists } from './zap.js';
 import { newsym } from './display.js';
 import { couldsee as visCouldsee, clear_path } from './vision.js';
@@ -36,7 +36,7 @@ const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 102;
 // C's obj_resists/rn2(8) stream in dog_goal's APPORT branch.  Stays OFF in
 // lock-step with the multi-pass gate (single-pass keeps the "always sees"
 // approximation that matches the baseline).
-export const PET_REAL_VISION = false;
+export const PET_REAL_VISION = true;
 
 // C ref: mon.c max_mon_load(mtmp).  MAX_CARR_CAP=1000, WT_HUMAN=1450.
 // kitten(34)/little dog(16): cwt=150, MZ_SMALL, not strong ->
@@ -119,6 +119,34 @@ function dogfood(mon, obj) {
             return APPORT;
         return UNDEF;
     }
+}
+
+// C ref: stairs.c On_stairs(x,y) — stairway_at(x,y) != NULL.  Stairs live on
+// the game.stairs linked list (mklev.js) with .sx/.sy coordinates.
+function On_stairs(x, y) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.sx === x && s.sy === y) return true;
+    return false;
+}
+
+// C ref: dogmove.c dog_goal — `for (obj = gi.invent; obj; obj = obj->nobj)`.
+// The hero's pack, in inventory order.  game.invent is the materialized array.
+function heroInvent() {
+    return game.invent || game.gi?.invent || [];
+}
+
+// C ref: dogmove.c dog_goal — `for (t = gf.ftrap; ...) if (t->ttyp==MAGIC_PORTAL)`
+// Consumes no RNG; just decides whether the pet should follow closely because
+// the hero is on/next to a magic portal.
+function nearMagicPortal() {
+    const u = game.u;
+    for (const t of (game.level?.traps || [])) {
+        if (t.ttyp === MAGIC_PORTAL) {
+            // distu(t.tx,t.ty) <= 2 (the first magic portal found ends the scan).
+            return dist2(t.tx, t.ty, u.ux, u.uy) <= 2;
+        }
+    }
+    return false;
 }
 
 // C ref: dog.c initedog() — apport = ACURR(A_CHA), captured at makedog() time.
@@ -219,10 +247,26 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
                 || (dog_has_minvent && rn2(edogApport(edog))))
                 appr = 1;
         }
+        // C ref: dogmove.c:582 — "if you have dog food it'll follow you more
+        // closely; if you are on stairs (or ladder) or on/next to a magic
+        // portal, it behaves as if you have dog food."  When appr==0, C checks
+        // On_stairs (no RNG), then scans the hero's pack calling dogfood() on
+        // each item (each emits obj_resists rn2(100)), stopping at the first
+        // DOGFOOD; then a magic-portal scan (no RNG).  This invent scan is the
+        // RNG the 2nd movemon pass needs (the pet is adjacent => appr==0).
         if (appr === 0) {
-            // On_stairs / dogfood-in-invent / magic-portal: none apply at the
-            // point our sessions exercise (no dog food in starting invent for
-            // these pets; not on stairs).  Leave appr unchanged.
+            if (On_stairs(u.ux, u.uy)) {
+                appr = 1;
+            } else {
+                for (const obj of heroInvent()) {
+                    if (dogfood(mtmp, obj) === DOGFOOD) { // -> obj_resists rn2(100)
+                        appr = 1;
+                        break;
+                    }
+                }
+                if (appr === 0 && nearMagicPortal())
+                    appr = 1;
+            }
         }
     } else {
         appr = 1;
