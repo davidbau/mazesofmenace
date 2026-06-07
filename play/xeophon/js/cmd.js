@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BROAD_SWORD, P_CLUB, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BROAD_SWORD, P_CLUB, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -7492,6 +7492,7 @@ const OBJECT_WEIGHTS = {
     'elven bow': 30,
     'elven dagger': 10,
     'elven spear': 30,
+    'heavy iron ball': WT_IRON_BALL_BASE,
     'knife': 5,
     'lance': 180,
     'long sword': 40,
@@ -20027,25 +20028,328 @@ function heroHorizontalThrowAirRecoilActive() {
     return !!(Is_airlevel(game.u?.uz) || game.u?.levitating || game.u?.levitation || game.u?.Levitation);
 }
 
-function heroHorizontalThrowAirSplitRange(obj) {
-    const stats = game.u?.acurr?.a || [];
-    const strength = Math.max(0, Math.trunc(Number(stats[A_STR] ?? 10)));
-    const urangeBase = Math.max(0, Math.trunc(strength / 2));
-    const weightDivisor = obj === game.u?.uball ? 100 : 40;
-    let range = urangeBase - Math.trunc(globObjectWeight({ ...obj, quan: 1 }) / weightDivisor);
+function heroThrowAmmoSkill(obj) {
+    const kind = objectKindKey(obj);
+    const name = inventoryItemName(obj).toLowerCase();
+    if (itemClassKey(obj) === 'gem' || obj?.glyph === '*' || obj?.otyp === GEM_CLASS)
+        return 'sling';
+    if (/\bcrossbow bolts?\b/.test(kind) || /\bcrossbow bolts?\b/.test(name))
+        return 'crossbow';
+    if (/\b(?:arrows?|elven arrows?|orcish arrows?|silver arrows?|ya)\b/.test(kind)
+        || /\b(?:arrows?|elven arrows?|orcish arrows?|silver arrows?|ya)\b/.test(name))
+        return 'bow';
+    return '';
+}
+
+function heroThrowLauncherSkill(obj) {
+    if (!obj) return '';
+    const kind = objectKindKey(obj);
+    const name = inventoryItemName(obj).toLowerCase();
+    if (kind === 'crossbow' || /\bcrossbow\b/.test(name)) return 'crossbow';
+    if (kind === 'sling' || /\bsling\b/.test(name)) return 'sling';
+    if (kind === 'yumi' || /\byumi\b/.test(name)) return 'bow';
+    if (/\bbow\b/.test(kind) || /\bbow\b/.test(name)) return 'bow';
+    return '';
+}
+
+function heroWieldedThrowLauncher() {
+    return (game.inventory || []).find(item =>
+        (item.wielded || item.line?.includes('weapon in')) && heroThrowLauncherSkill(item));
+}
+
+function heroThrowCondensedStrength() {
+    const strength = Math.trunc(Number(game.u?.acurr?.a?.[A_STR] ?? 10));
+    if (strength <= STR18(0)) return Math.max(strength, 3);
+    if (strength <= STR19(21)) return 19 + Math.trunc(strength / 50);
+    return Math.min(strength, STR19(25)) - 100;
+}
+
+function heroHorizontalThrowWeightedRange(obj, urangeBase = null) {
+    const baseRange = urangeBase ?? Math.max(0, Math.trunc(heroThrowCondensedStrength() / 2));
+    const heavyIronBall = obj?.otyp === HEAVY_IRON_BALL || objectKindKey(obj) === 'heavy iron ball';
+    const weightDivisor = heavyIronBall ? 100 : 40;
+    let range = baseRange - Math.trunc(globObjectWeight({ ...obj, quan: 1 }) / weightDivisor);
+    if (heroThrownAttachedBallObject(obj)) {
+        if (game.u?.ustuck) range = 1;
+        else if (range >= 5) range = 5;
+    }
     if (range < 1) range = 1;
+    return { range, urangeBase: baseRange };
+}
+
+function heroThrownAttachedBallObject(obj) {
+    return !!obj && (obj === game.u?.uball || (obj?.id != null && obj.id === game.u?.uball?.id));
+}
+
+function heroThrownMjollnirObject(obj) {
+    const artifact = String(obj?.artifact || obj?.oartifact || '').toLowerCase();
+    return artifact === 'mjollnir'
+        || objectKindKey(obj) === 'mjollnir'
+        || /mjollnir/i.test(inventoryItemName(obj));
+}
+
+function heroHorizontalThrowMjollnirRangeCap(range) {
+    return Math.max(1, Math.trunc((Math.max(1, Math.trunc(Number(range || 1))) + 1) / 2));
+}
+
+function heroThrownMjollnirThrowName(obj) {
+    return upstartText(inventoryItemName(obj).replace(/^(?:an?|the) /i, ''));
+}
+
+function heroThrownMjollnirAutoReturn(obj) {
+    return heroThrownMjollnirObject(obj) && itemIsPrimaryWielded(obj) && heroRoleName() === 'Valkyrie';
+}
+
+function heroHorizontalThrowFinalRange(obj, range, { mjollnirThrow = false, returningAklysThrow = false } = {}) {
+    let finalRange = Math.max(1, Math.trunc(Number(range || 1)));
+    if (isBoulderObject(obj)) finalRange = 20;
+    else if (mjollnirThrow) finalRange = heroHorizontalThrowMjollnirRangeCap(finalRange);
+    else if (returningAklysThrow) finalRange = Math.min(finalRange, 4);
+    else if (heroThrownAttachedBallObject(obj) && game.u?.utrap && game.u?.utraptype === TT_INFLOOR)
+        finalRange = 1;
+    if (heroIsUnderwaterForThrow()) finalRange = 1;
+    return finalRange;
+}
+
+function heroDropBallTrapState(type) {
+    if (type === TT_BEARTRAP || type === 'beartrap') return 'beartrap';
+    if (type === TT_PIT || type === 'pit') return 'pit';
+    if (type === TT_WEB || type === 'web') return 'web';
+    if (type === TT_LAVA || type === 'lava') return 'lava';
+    if (type === TT_INFLOOR || type === 'infloor') return 'infloor';
+    if (type === TT_BURIEDBALL || type === 'buriedball') return 'buriedball';
+    return '';
+}
+
+function heroDropBallTrapAt(x, y) {
+    return (game.level?.traps || []).find(trap => trap.tx === x && trap.ty === y) || null;
+}
+
+function heroDropBallMonsterAt(x, y) {
+    return (game.level?.monsters || []).some(mon =>
+        mon.mx === x && mon.my === y && !mon.dead && (mon.mhp == null || mon.mhp > 0));
+}
+
+function heroDropBallLevitating() {
+    return !!(game.u?.levitating || game.u?.levitation || game.u?.Levitation);
+}
+
+function heroDropBallLandingPullsHeroOntoBall(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (loc && IS_POOL(loc.typ)) return true;
+    const trap = heroDropBallTrapAt(x, y);
+    return !!trap && (is_pit(trap.ttyp) || is_hole(trap.ttyp));
+}
+
+function heroDropBallPoolRelocationEffect(x, y, messages) {
+    const loc = game.level?.at?.(x, y);
+    if (!movementIsPoolAt(x, y, loc)) return { more: false, trapResult: null };
+
+    const targetMoveTyp = movementSurfaceTerrain(loc);
+    polyselfWaterFallLanding(x, y, targetMoveTyp);
+    messages.push(targetMoveTyp === WATER
+        ? 'You plunge into the wall of water!  You try to crawl out of the water.'
+        : 'You fall into the pool of water!  You sink like a rock.');
+    return { more: true, trapResult: null };
+}
+
+function heroDropBallTrapRelocationEffect(x, y, messages) {
+    const trap = heroDropBallTrapAt(x, y);
+    if (!trap) return { more: false, trapResult: null };
+
+    let result = null;
+    if ([HOLE, TRAPDOOR].includes(trap.ttyp)) result = movementTransportTrapResult(trap);
+    else if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) result = movementPitResult(trap);
+    if (!trapResultHasEffect(result)) return { more: false, trapResult: null };
+
+    if (result.message) messages.push(result.message);
+    return {
+        more: !!result.more,
+        trapResult: result.fatal || result.lifeSaving ? result : null,
+    };
+}
+
+function heroDropBallPostRelocationEffects(x, y, messages) {
+    const poolResult = heroDropBallPoolRelocationEffect(x, y, messages);
+    if (poolResult.more || poolResult.trapResult) return poolResult;
+    return heroDropBallTrapRelocationEffect(x, y, messages);
+}
+
+function heroDropBallFillPitAt(x, y, messages) {
+    const trap = earthBoulderPitTrapAt(x, y);
+    if (!trap) return false;
+    const boulder = (game.level?.objects || []).find(obj =>
+        isBoulderObject(obj) && obj.ox === x && obj.oy === y);
+    if (!boulder) return false;
+    removeFloorObject(boulder);
+    return earthFloorEffects(boulder, x, y, messages, 'settle', { usedUpShopBillOnDestroy: true });
+}
+
+function heroDropBallReleaseTrapMessages(x, y) {
+    if (!game.u?.utrap) return [];
+    const trapState = heroDropBallTrapState(game.u.utraptype);
+    if (trapState === 'infloor' || trapState === 'buriedball') return [];
+
+    const messages = [];
+    if (trapState === 'pit') {
+        messages.push('The ball pulls you out of the pit!');
+    } else if (trapState === 'web') {
+        messages.push('The ball pulls you out of the web!');
+        messages.push('The web is destroyed!');
+        const trap = heroDropBallTrapAt(x, y);
+        if (trap) deleteTrap(trap);
+    } else if (trapState === 'lava') {
+        messages.push('The ball pulls you out of the lava!');
+    } else if (trapState === 'beartrap') {
+        const side = rn2(3) ? 'left' : 'right';
+        const duration = rn1(1000, 500);
+        messages.push('The ball pulls you out of the bear trap!');
+        applyHeroBearTrapLegWound(side, duration);
+        if (!game.u?.usteed) {
+            messages.push(`Your ${side} leg is severely damaged.`);
+            if (game.u) {
+                game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(2));
+                if ((game.u.uhp || 0) <= 0)
+                    game._death_cause = 'leg damage from being pulled out of a bear trap';
+            }
+        }
+    }
+
+    if (messages.length && game.u) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+        heroDropBallFillPitAt(x, y, messages);
+    }
+    return messages;
+}
+
+function heroDropAttachedBallAfterThrow(obj, x, y, dir) {
+    const result = { messages: [], more: false, trapResult: null };
+    if (!heroThrownAttachedBallObject(obj) || !game.u?.uchain) return result;
+    game.u.uball = obj;
+    game.level.objects ??= [];
+    if (!game.level.objects.includes(obj)) game.level.objects.push(obj);
+    if (!game.level.objects.includes(game.u.uchain)) game.level.objects.push(game.u.uchain);
+    if (x === game.u.ux && y === game.u.uy) return result;
+
+    const dx = Math.sign(dir?.dx || 0);
+    const dy = Math.sign(dir?.dy || 0);
+    const oldUx = game.u.ux;
+    const oldUy = game.u.uy;
+    result.messages.push(...heroDropBallReleaseTrapMessages(oldUx, oldUy));
+    const heroOnBall = !heroDropBallLevitating() && !heroDropBallMonsterAt(x, y) && !game.u?.utrap
+        && heroDropBallLandingPullsHeroOntoBall(x, y);
+    const newUx = heroOnBall ? x : x - dx;
+    const newUy = heroOnBall ? y : y - dy;
+    if (!isok(newUx, newUy)) return result;
+
+    game.u.ux0 = oldUx;
+    game.u.uy0 = oldUy;
+    game.u.ux = newUx;
+    game.u.uy = newUy;
+    game.u.uchain.ox = newUx;
+    game.u.uchain.oy = newUy;
+    game.u.uchain.contained = false;
+    game.u.uchain.container = null;
+    game.u.uchain.hidden = false;
+    game.u.uchain.buried = false;
+    game.u.uchain.transientProjectile = false;
+    newsym(oldUx, oldUy);
+    newsym(newUx, newUy);
+    const post = heroDropBallPostRelocationEffects(newUx, newUy, result.messages);
+    result.more = !!post.more;
+    result.trapResult = post.trapResult;
+    return result;
+}
+
+function prepareHeroThrownAttachedBallVerticalObject(obj, x, y) {
+    Object.assign(obj, {
+        letter: undefined,
+        line: undefined,
+        wielded: false,
+        worn: false,
+        quivered: false,
+        ox: x,
+        oy: y,
+        quan: 1,
+        glyph: obj.glyph || '0',
+        color: obj.color || CLR_CYAN,
+    });
+    return obj;
+}
+
+function ensureHeroThrownAttachedBallFloorState(obj) {
+    if (!heroThrownAttachedBallObject(obj)) return;
+    game.u.uball = obj;
+    game.level.objects ??= [];
+    if (!game.level.objects.includes(obj)) game.level.objects.push(obj);
+    if (game.u?.uchain && !game.level.objects.includes(game.u.uchain))
+        game.level.objects.push(game.u.uchain);
+}
+
+function heroThrownAttachedBallDownwardMessages(obj) {
+    const x = game.u?.ux ?? obj.ox ?? 0;
+    const y = game.u?.uy ?? obj.oy ?? 0;
+    const messages = [];
+    const floorMessage = heroThrownGenericObjectFloorMessage(obj, x, y);
+    if (floorMessage) messages.push(floorMessage);
+    const breakRoll = !projectileLandingIsSoft(x, y) ? rn2(100) : null;
+    const landing = landProjectileObjectWithShopHandling(obj, x, y, { breakRoll });
+    messages.push(...landing.messages);
+    if (landing.object) ensureHeroThrownAttachedBallFloorState(landing.object);
+    return messages;
+}
+
+function heroThrownAttachedBallUpwardMessages(obj) {
+    const messages = heroThrownGenericObjectUpwardMessages(obj);
+    ensureHeroThrownAttachedBallFloorState(obj);
+    return messages;
+}
+
+function heroThrowAmmoWeaponDescription(ammoSkill) {
+    if (ammoSkill === 'crossbow') return 'bolt';
+    if (ammoSkill === 'bow') return 'arrow';
+    return ammoSkill === 'sling' ? 'stone' : 'missile';
+}
+
+function heroHorizontalThrowAmmoRange(obj) {
+    const ammoSkill = heroThrowAmmoSkill(obj);
+    if (!ammoSkill) return null;
+    const launcherSkill = heroThrowLauncherSkill(heroWieldedThrowLauncher());
+    const matchedLauncher = launcherSkill === ammoSkill;
+    if (ammoSkill === 'sling' && !matchedLauncher) return null;
+    const crossbowing = matchedLauncher && launcherSkill === 'crossbow';
+    const urangeBase = Math.max(0, Math.trunc((crossbowing ? 18 : heroThrowCondensedStrength()) / 2));
+    let { range } = heroHorizontalThrowWeightedRange(obj, urangeBase);
+    let noLauncherMessage = '';
+    if (matchedLauncher) {
+        range = crossbowing ? BOLT_LIM : range + 1;
+    } else if (itemClassKey(obj) !== 'gem' && obj?.glyph !== '*' && obj?.otyp !== GEM_CLASS) {
+        range = Math.trunc(range / 2);
+        noLauncherMessage = `You aren't wielding ${articleFor(ammoSkill)}, so you throw your ${heroThrowAmmoWeaponDescription(ammoSkill)} by hand.`;
+    }
+    return { range, urangeBase, noLauncherMessage };
+}
+
+function heroHorizontalThrowAirSplitRange(obj) {
+    const ammoRange = heroHorizontalThrowAmmoRange(obj);
+    const weightedRange = ammoRange ? null : heroHorizontalThrowWeightedRange(obj);
+    const urangeBase = ammoRange?.urangeBase ?? weightedRange.urangeBase;
+    let range = ammoRange?.range ?? weightedRange.range;
 
     let recoilRange = urangeBase - range;
     if (recoilRange < 1) recoilRange = 1;
     range -= recoilRange;
     if (range < 1) range = 1;
 
-    return { recoilRange, throwRange: range };
+    return { recoilRange, throwRange: range, noLauncherMessage: ammoRange?.noLauncherMessage || '' };
 }
 
 function heroHorizontalThrowRecoil(dir, range) {
     if (!heroHorizontalThrowAirRecoilActive() || !dir || (!dir.dx && !dir.dy) || range < 1 || game.u?.ustuck)
         return '';
+    if (game.u?.uball && !(game.inventory || []).includes(game.u.uball))
+        return 'You feel a tug from the iron ball.';
     if (game.u?.utrap) {
         const trapName = game.u.utraptype === TT_WEB ? 'web'
             : game.u.utraptype === TT_LAVA ? 'lava'
@@ -66312,6 +66616,38 @@ export async function rhack(_cmd) {
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === game._throw_item_letter);
+        if ((ch === '<' || ch === '>') && item && heroThrownAttachedBallObject(item)) {
+            const x = game.u?.ux || item.ox || 0;
+            const y = game.u?.uy || item.oy || 0;
+            const thrownObject = prepareHeroThrownAttachedBallVerticalObject(item, x, y);
+            const messages = ch === '<'
+                ? heroThrownAttachedBallUpwardMessages(thrownObject)
+                : heroThrownAttachedBallDownwardMessages(thrownObject);
+            removeInventoryItem(item);
+            ensureHeroThrownAttachedBallFloorState(thrownObject);
+            newsym(x, y);
+            await setMessage(messages.join('  '), !!messages.more);
+            game._throw_item_letter = null;
+            clearThrowCountState();
+            game._resume_time_after_more = 0;
+            game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
+            if (messages.fatal) {
+                game._command_mode = 'deathDieMore';
+                game._pending_time_passed = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                prepareDeathBones();
+                return;
+            }
+            game._command_mode = null;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            return;
+        }
         if (ch === '<' && item && supportsHeroThrownPotionUpwardHit(item)) {
             let thrownId = null;
             if ((item.quan || 1) > 1) thrownId = next_ident();
@@ -66815,6 +67151,35 @@ export async function rhack(_cmd) {
         }
         const name = inventoryItemName(item);
         const lowerName = name.toLowerCase();
+        const mjollnirThrow = heroThrownMjollnirObject(item);
+        if (mjollnirThrow && !itemIsPrimaryWielded(item)) {
+            await setMessage(`${heroThrownMjollnirThrowName(item)} must be wielded before it can be thrown.`);
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            clearThrowCountState();
+            game.context.move = 0;
+            return;
+        }
+        if (mjollnirThrow && Math.trunc(Number(game.u?.acurr?.a?.[A_STR] ?? 10)) < STR19(25)) {
+            await setMessage("It's too heavy.");
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            clearThrowCountState();
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
+        if (isBoulderObject(item) && !heroThrowsRocks()) {
+            await setMessage("It's too heavy.");
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            clearThrowCountState();
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
         let ux = game.u?.ux || 0;
         let uy = game.u?.uy || 0;
         const boomerangUsesCurvedFlight = tossUpWeaponObjectKey(item) === 'boomerang'
@@ -66841,20 +67206,29 @@ export async function rhack(_cmd) {
         const returningAklysThrow = itemIsPrimaryWieldedAklys(item);
         const returningBoomerangOrdinaryThrow = heroIsUnderwaterForThrow()
             && tossUpWeaponObjectKey(item) === 'boomerang';
-        const returningObjectThrow = returningAklysThrow || returningBoomerangOrdinaryThrow;
+        const returningMjollnirThrow = heroThrownMjollnirAutoReturn(item);
+        const returningObjectThrow = returningAklysThrow || returningBoomerangOrdinaryThrow || returningMjollnirThrow;
         let ox = ux;
         let oy = uy;
         let targetMon = null;
         let ironBarsImpact = null;
-        let throwRange = heroIsUnderwaterForThrow() ? 1 : returningAklysThrow ? 4 : 8;
+        const ammoRange = heroHorizontalThrowAmmoRange(item);
+        let throwNoLauncherMessage = ammoRange?.noLauncherMessage || '';
+        let throwRange = heroHorizontalThrowFinalRange(
+            item,
+            ammoRange?.range ?? heroHorizontalThrowWeightedRange(item).range,
+            { mjollnirThrow, returningAklysThrow },
+        );
         let ordinaryAirRecoilRange = 0;
         if (!boomerangFlight.handled && heroHorizontalThrowAirRecoilActive()) {
             const airSplit = heroHorizontalThrowAirSplitRange(item);
             ordinaryAirRecoilRange = airSplit.recoilRange;
-            throwRange = airSplit.throwRange;
-            if (isBoulderObject(item)) throwRange = 20;
-            else if (returningAklysThrow) throwRange = Math.min(throwRange, 4);
-            if (heroIsUnderwaterForThrow()) throwRange = 1;
+            throwRange = heroHorizontalThrowFinalRange(
+                item,
+                airSplit.throwRange,
+                { mjollnirThrow, returningAklysThrow },
+            );
+            throwNoLauncherMessage = airSplit.noLauncherMessage || throwNoLauncherMessage;
         }
         let flightImpactMessage = '';
         if (boomerangFlight.handled) {
@@ -66912,8 +67286,12 @@ export async function rhack(_cmd) {
             if (item.otyp === DART || /\bdarts?\b/.test(lowerName)) rnd(1); // C throw_obj: multishot count.
             thrownId = next_ident(); // C splitobj: nextoid()/next_ident() for the thrown unit.
         }
-        const thrownObject = {
+        const attachedBallThrow = heroThrownAttachedBallObject(item);
+        const thrownObject = attachedBallThrow ? item : {
             ...item,
+            id: thrownId ?? item.id,
+        };
+        Object.assign(thrownObject, {
             letter: undefined,
             line: undefined,
             wielded: false,
@@ -66921,15 +67299,16 @@ export async function rhack(_cmd) {
             quivered: false,
             ox,
             oy,
-            id: thrownId ?? item.id,
             quan: 1,
             glyph: item.cls === 'food' ? '%' : item.glyph || (item.cls === 'gem' ? '*' : ')'),
             color: item.cls === 'food' ? CLR_ORANGE : item.color || (item.cls === 'gem' ? CLR_GRAY : CLR_CYAN),
-        };
+        });
         const combatObject = item.cls === 'weapon' || item.cls === 'gem' || item.glyph === ')' || item.otyp === GEM_CLASS;
         let impactMessage = flightImpactMessage;
         const ordinaryAirRecoilMessage = !boomerangFlight.handled && ordinaryAirRecoilRange > 0
-            ? heroHorizontalThrowRecoil(dir, ordinaryAirRecoilRange)
+            ? attachedBallThrow
+                ? 'You feel a tug from the iron ball.'
+                : heroHorizontalThrowRecoil(dir, ordinaryAirRecoilRange)
             : '';
         let impactConsumedThrownObject = false;
         let impactObjectHit = false;
@@ -67181,6 +67560,14 @@ export async function rhack(_cmd) {
                 ohit: impactObjectHit,
                 passiveTarget: impactPassiveTarget,
             });
+        let attachedBallLandingMore = false;
+        let attachedBallTrapResult = null;
+        if (attachedBallThrow && landing.object) {
+            const attachedDrop = heroDropAttachedBallAfterThrow(landing.object, ox, oy, dir);
+            landing.messages.push(...attachedDrop.messages);
+            attachedBallLandingMore = !!attachedDrop.more;
+            attachedBallTrapResult = attachedDrop.trapResult;
+        }
         const landingMessage = landing.messages.join('  ');
         newsym(ox, oy);
         const wasBurdened = (game.u?._statusSuffix || '').includes('Burdened');
@@ -67204,18 +67591,18 @@ export async function rhack(_cmd) {
                 game._unburden_after_topline_more = 1;
             }
         }
-        const wieldedLauncher = (game.inventory || []).find(invItem =>
-            (invItem.wielded || invItem.line?.includes('weapon in')) && /bow|sling/.test(inventoryItemName(invItem).toLowerCase()));
-        const thrownByHand = /arrow/.test(lowerName) && !wieldedLauncher;
-        if (thrownByHand) {
-            if (landingMessage) game._queued_message_after_more = landingMessage;
-            await setMessage("You aren't wielding a bow, so you throw your arrow by hand.", !!landingMessage);
+        if (throwNoLauncherMessage) {
+            const followUpMessage = [impactMessage, landingMessage].filter(Boolean).join('  ');
+            if (followUpMessage) game._queued_message_after_more = followUpMessage;
+            if (attachedBallLandingMore) game._queued_message_more_after_more = 1;
+            await setMessage(throwNoLauncherMessage, !!followUpMessage);
         }
         else if (impactMessage) {
             if (landingMessage) game._queued_message_after_more = landingMessage;
+            if (attachedBallLandingMore) game._queued_message_more_after_more = 1;
             await setMessage(impactMessage, true);
         }
-        else if (landingMessage) await setMessage(landingMessage);
+        else if (landingMessage) await setMessage(landingMessage, attachedBallLandingMore);
         else {
             game._pending_message = '';
             game._message_more = 0;
@@ -67226,6 +67613,9 @@ export async function rhack(_cmd) {
         game._resume_time_after_more = 0;
         if (boomerangSelfHitResult?.lifeSaving || boomerangSelfHitResult?.fatal) {
             if (applyLifeSavingOrFatalCommandMode(boomerangSelfHitResult)) return;
+        }
+        if (attachedBallTrapResult?.lifeSaving || attachedBallTrapResult?.fatal) {
+            if (applyLifeSavingOrFatalCommandMode(attachedBallTrapResult)) return;
         }
         game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
         game.context.move = 0;
