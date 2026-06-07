@@ -69,6 +69,7 @@ export function wizD1EastTailShortLActiveLikeC(g) {
  * @param {number} stepNum
  */
 export function isMovemonStepOnePeelLikeC(g, stepNum) {
+    if (g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC) return false;
     if ((stepNum | 0) === 1) return true;
     if (wizD1EastTailShortLActiveLikeC(g)) return true;
     /* C: post-east-tail walk **`fmon`** peel — not session step 1 (**`seed0006`** ~2781+). */
@@ -94,6 +95,8 @@ export function isWizardD1Step1PeelLikeC(g, stepNum) {
         && (g.u?.uz?.dnum | 0) === 0
         && (g.u?.uz?.dlevel | 0) === 1;
     if (!wizD1) return false;
+    /* C: comma-U post-third-peel — normal fmon distfleeck + m_move. */
+    if (g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC) return false;
     if (wizD1EastTailShortLActiveLikeC(g)) return true;
     return (
         (

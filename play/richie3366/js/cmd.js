@@ -435,6 +435,13 @@ export async function rhack(key) {
         /* C: pickup.c **`pickup(0)`** / **`check_here`** — costs time; moveloop **`movemon`** tail. */
         await checkHere(false);
         game.context.move = 1;
+        if (
+            game.urole?.abbr === 'Wiz'
+            && (game.u?.uz?.dnum | 0) === 0
+            && (game.u?.uz?.dlevel | 0) === 1
+        ) {
+            game.context._wizD1CommaPickupCapOuterLikeC = true;
+        }
         game._retainMessageAfterCommand = true;
         await flush_screen(1);
     } else if (ch === ':') {

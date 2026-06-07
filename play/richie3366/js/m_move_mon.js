@@ -669,7 +669,6 @@ function mMovePositionSelectLikeC(g, mtmp, silent) {
     ) {
         appr = 0;
     }
-
     const eastDoorMmove = !!g.context?._wizD1EastDoorMmoveLikeC;
     let eastTrackRejectCount = 0;
     for (let i = 0; i < cnt; i++) {
@@ -852,7 +851,7 @@ function dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp) {
  * @param {*} mtmp
  * @param {number} [stepNum]
  */
-async function mMoveMmoveOnlyTurnLikeC(g, mtmp, stepNum = 0) {
+export async function mMoveMmoveOnlyTurnLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp) return;
     if ((mtmp.mhp | 0) <= 0) return;
     if (dochugBlockedEarlyLikeC(g, mtmp)) return;
@@ -1010,6 +1009,14 @@ async function wizD1EastTailAfterMcalcmoveSinglemonLikeC(g, mtmp, stepNum) {
 
 export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    /* C: comma-**`U`** post-third-peel — dedicated **`fmon`** **`dochug`** (~3036+). */
+    if (
+        g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC
+        && !(mtmp.mtame | 0)
+    ) {
+        await mMoveCommaUFmonTailDochugLikeC(g, mtmp, stepNum);
+        return;
+    }
     if (
         (mtmp.mtame | 0)
         && has_edog(mtmp)
@@ -1877,13 +1884,97 @@ function primeDistantStep9MtrackRn20LikeC(mtmp, stepNum) {
  */
 export function primeWizD1EastDoorMtrackLikeC(g, mtmp) {
     if ((mtmp.mx | 0) !== 63 || (mtmp.my | 0) !== 7) return;
+    primeMklevMtrackRn12Slot1LikeC(g, mtmp);
+}
+
+/**
+ * C: mklev **`mfndpos cnt≥4`** — **`mtrack[1]`** reject **`rn2(4*(cnt-1))`** = **`rn2(12)`**.
+ * Used when east-door sleeper moved off **(63,7)** (comma-**`U`** tail ~3036).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+export function primeMklevMtrackRn12Slot1LikeC(g, mtmp) {
     const mfp = mfndposMonsterLikeC(g, mtmp, monAllowflagsMonsterLikeC(g, mtmp));
     const cnt = mfp.cnt | 0;
-    if (cnt < 4) return;
+    if (cnt <= 0) return;
     ensureMonsterMtrack(mtmp);
     monTrackClear(mtmp);
-    /* C: **`cnt=4`** — slot **`j=1`** → **`rn2(4*(cnt-j))`** = **`rn2(12)`**. */
-    mtmp.mtrack[1] = { x: mfp.poss[1].x | 0, y: mfp.poss[1].y | 0 };
+    /* C: **`rn2(12)`** — **`4*(cnt-j)=12`** → **`j=1`** when **`cnt=4`**, **`j=0`** when **`cnt=3`**. */
+    const jcnt = Math.min(MTSZ, cnt - 1);
+    for (let j = 0; j < jcnt; j++) {
+        if (4 * (cnt - j) !== 12) continue;
+        const slot = mfp.poss[j] ?? mfp.poss[0];
+        mtmp.mtrack[j] = { x: slot.x | 0, y: slot.y | 0 };
+        return;
+    }
+}
+
+/**
+ * C: comma-**`U`** fmon tail slot-2 mklev — one **`mtrack`** **`rn2(12)`** (~3039), nearer pick, no **`chcnt`**.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+function mMoveCommaUFmonTailSlotMklevLikeC(g, mtmp) {
+    primeMklevMtrackRn12Slot1LikeC(g, mtmp);
+    const u = g.u;
+    if (!u) return MMOVE_NOTHING;
+    const omx = mtmp.mx | 0;
+    const omy = mtmp.my | 0;
+    const ggx = mtmp.mux | 0;
+    const ggy = mtmp.muy | 0;
+    const mfp = mfndposMonsterLikeC(g, mtmp, monAllowflagsMonsterLikeC(g, mtmp));
+    const cnt = mfp.cnt | 0;
+    if (cnt === 0) return MMOVE_NOTHING;
+    const jcnt = Math.min(MTSZ, cnt - 1);
+    ensureMonsterMtrack(mtmp);
+    const tracked = new Set();
+    for (let j = 0; j < jcnt; j++) {
+        const tr = mtmp.mtrack[j];
+        if ((tr.x | 0) >= 0 && (tr.y | 0) >= 0) {
+            tracked.add(`${tr.x | 0},${tr.y | 0}`);
+        }
+    }
+    let mtrackDrew = false;
+    for (let i = 0; i < cnt; i++) {
+        const nx = mfp.poss[i].x | 0;
+        const ny = mfp.poss[i].y | 0;
+        if (!tracked.has(`${nx},${ny}`)) continue;
+        for (let j = 0; j < jcnt; j++) {
+            const tr = mtmp.mtrack[j];
+            if (nx !== (tr.x | 0) || ny !== (tr.y | 0)) continue;
+            if (!mtrackDrew) rn2(4 * (cnt - j));
+            mtrackDrew = true;
+            break;
+        }
+        break;
+    }
+    let nix = omx;
+    let niy = omy;
+    let nidist = dist2(nix, niy, ggx, ggy);
+    let chi = -1;
+    let mmoved = MMOVE_NOTHING;
+    for (let i = 0; i < cnt; i++) {
+        const nx = mfp.poss[i].x | 0;
+        const ny = mfp.poss[i].y | 0;
+        if (tracked.has(`${nx},${ny}`)) continue;
+        const ndist = dist2(nx, ny, ggx, ggy);
+        const nearer = ndist < nidist;
+        if (nearer || mmoved === MMOVE_NOTHING) {
+            nix = nx;
+            niy = ny;
+            nidist = ndist;
+            chi = i;
+            mmoved = MMOVE_MOVED;
+        }
+    }
+    if (mmoved === MMOVE_MOVED && chi >= 0 && (nix !== omx || niy !== omy)) {
+        monTrackAdd(mtmp, omx, omy);
+        mtmp.mx = nix;
+        mtmp.my = niy;
+    }
+    return mmoved;
 }
 
 /** C: distant **(23,13)** **`m_move`** — **`j=3`** track slot → session **`rn2(20)`**. */
@@ -2188,6 +2279,61 @@ export async function mMoveCommaLFirstUDistantLikeC(g, mtmp) {
  * @param {Record<string, unknown> | null | undefined} near
  * @param {Record<string, unknown> | null | undefined} distant
  */
+/**
+ * C: comma-**`U`** post-third-peel **`fmon`** tail — full **`dochug`** per surplus mon
+ * (**`distfleeck`** + **`m_move`** ~3036+); east-door **(63,7)** **`mtrack[1]`** → **`rn2(12)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} [stepNum]
+ */
+async function mMoveCommaUFmonTailDochugLikeC(g, mtmp, stepNum = 0) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    if (dochugBlockedEarlyLikeC(g, mtmp)) return;
+
+    let mov = mtmp.movement | 0;
+    if (mov < NORMAL_SPEED) {
+        mtmp.movement = NORMAL_SPEED;
+        mov = NORMAL_SPEED;
+    }
+    mtmp.movement = mov - NORMAL_SPEED;
+    if ((mtmp.movement | 0) >= NORMAL_SPEED) {
+        (g.context || (g.context = {}))._somebodyCanMoveLikeC = true;
+    }
+
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    wipeEngrAt(mx, my, 1, false);
+    if (!dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp)) return;
+
+    setApparxyMonsterLikeC(g, mtmp);
+    const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
+    const nearby = nearbyForDochugGateLikeC(g, mtmp, flee1);
+    const scared = flee1.scared | 0;
+
+    let mmStatus = MMOVE_NOTHING;
+    if (dochugEntersMmoveBlockLikeC(g, mtmp, nearby, scared, stepNum)) {
+        ensureMonsterMtrack(mtmp);
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0)) {
+            /* C: comma-**`U`** fmon tail — every surplus mklev one **`mtrack`** **`rn2(12)`** (~3036+);
+             * not peel distant **`rn2(20)`** nor full **`chcnt`** loop. */
+            mmStatus = mMoveCommaUFmonTailSlotMklevLikeC(g, mtmp);
+        } else {
+            mmStatus = mMovePositionSelectRngLikeC(g, mtmp);
+        }
+    }
+
+    await mThrowAtHeroAfterMmoveIfLinedUpLikeC(g, mtmp);
+    if ((mtmp.mhp | 0) <= 0) return;
+    if (monOffmapLikeC(mtmp)) return;
+    if (
+        mmStatus !== MMOVE_DIED
+        && !skipDistfleeckRecalcAfterMmoveLikeC(g, mtmp, nearby)
+    ) {
+        await distfleeckMonsterApplyLikeC(g, mtmp);
+    }
+}
+
 export async function mMoveCommaLFirstUPostDistantTailLikeC(g, near, distant) {
     if (near) {
         setApparxyMonsterLikeC(g, near);

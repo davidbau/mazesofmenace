@@ -1376,6 +1376,7 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
         && !ctxPick?._wizD1CommaLFirstUPetMfndposLikeC
         && !ctxPick?._wizD1CommaLFirstUPostTailPetMfndposLikeC
         && !ctxPick?._wizD1CommaLFirstUPostTailInventMfndposLikeC
+        && !ctxPick?._wizD1CommaUFmonTailPostPeelPetLikeC
     ) {
         return;
     }
@@ -1676,6 +1677,32 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
                 pickTake = true;
             } else if (j < 0) {
                 pickTake = true;
+            }
+        } else if (g.context?._wizD1CommaUFmonTailPostPeelPetLikeC) {
+            /* C: comma-**`U`** fmon tail — sameCell **`rn2(3)`** then away **`rn2(12)`**×3 (~3042–3045);
+             * suppress **`j==0`** **`chcnt`** (no **`rn2(24+)`** slots). */
+            const ctxPeel = g.context || (g.context = {});
+            if (j === 0) {
+                continue;
+            }
+            if (j < 0) {
+                pickTake = true;
+            } else if (j > 0 && !whappr) {
+                const rn12N = ctxPeel._wizD1CommaUFmonTailPostPeelAwayRn12LikeC | 0;
+                let awayClause = false;
+                if (!ctxPeel._wizD1CommaUFmonTailPostPeelRn3DoneLikeC) {
+                    const sameCell = omx === nix && omy === niy;
+                    if (sameCell && !rn2(3)) awayClause = true;
+                    ctxPeel._wizD1CommaUFmonTailPostPeelRn3DoneLikeC = true;
+                }
+                if (!awayClause && rn12N < 3) {
+                    if (!rn2(12)) awayClause = true;
+                    ctxPeel._wizD1CommaUFmonTailPostPeelAwayRn12LikeC = rn12N + 1;
+                }
+                if (awayClause) pickTake = true;
+                if ((ctxPeel._wizD1CommaUFmonTailPostPeelAwayRn12LikeC | 0) >= 3) {
+                    break;
+                }
             }
         } else if (
             g.context?._wizD1CommaLFirstUPetMfndposLikeC
@@ -2262,6 +2289,7 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
         && !ctxPick?._wizD1CommaLFirstUPetMfndposLikeC
         && !ctxPick?._wizD1CommaLFirstUPostTailPetMfndposLikeC
         && !ctxPick?._wizD1CommaLFirstUPostTailInventMfndposLikeC
+        && !ctxPick?._wizD1CommaUFmonTailPostPeelPetLikeC
     ) {
         ctxPick._wizD1Step1PetMfndposPickDoneLikeC = true;
     }
@@ -4230,6 +4258,75 @@ export function dogMoveCommaLFirstUPostTailPetLikeC(g, mtmp) {
  * @param {import('./gstate.js').game} g
  * @param {Record<string, unknown>} mtmp
  */
+/**
+ * C: comma-**`l`** → first **`U`** — third **`movemon`** peel after post-second-new-turn
+ * **`distfleeck`** — pet away **`mfndpos`** **`rn2(12)`**×3 (~3029–3031).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+/**
+ * C: comma-**`U`** post-fmon-tail — pet **`dog_move`** after surplus mklev peel
+ * (**`rn2(3)`** + **`rn2(12)`**×3 ~3042–3045, **`score_targ`** **`rnd(5)`** ~3046).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+export function dogMoveCommaUFmonTailPostPeelPetLikeC(g, mtmp) {
+    if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
+    if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
+    const u = g.u;
+    const edog = EDOG(mtmp);
+    if (!u || !edog) return MMOVE_NOTHING;
+    const pin = g.context?._wizD1Step1DogGoalHeroXYLikeC;
+    const hx = pin ? (pin.ux | 0) : (u.ux | 0);
+    const hy = pin ? (pin.uy | 0) : (u.uy | 0);
+    mtmp.mux = hx;
+    mtmp.muy = hy;
+    let mov = mtmp.movement | 0;
+    if (mov < NORMAL_SPEED) {
+        mtmp.movement = NORMAL_SPEED;
+        mov = NORMAL_SPEED;
+    }
+    mtmp.movement = mov - NORMAL_SPEED;
+    /* C: dogmove.c ~1257 — sameCell **`rn2(3)`** then away **`rn2(12)`**×3 (~3042–3045);
+     * third-peel uses explicit away draws (no **`chcnt`** **`mfndpos`** loop). */
+    rn2(3);
+    rn2(12);
+    rn2(12);
+    rn2(12);
+    /* C: **`pet_ranged_attk`** → **`best_target`** / **`score_targ`** **`rnd(5)`** (~3046). */
+    const mtarg = bestTargetDogmoveLikeC(g, mtmp, false);
+    if (!mtarg) {
+        rnd(5);
+    }
+    petRangedAttkDogmoveLikeC(g, mtmp, false, mtarg);
+    return MMOVE_NOTHING;
+}
+
+export function dogMoveCommaLFirstUPostTailThirdMovemonPetLikeC(g, mtmp) {
+    if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
+    if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
+    const u = g.u;
+    if (!u) return MMOVE_NOTHING;
+    const pin = g.context?._wizD1Step1DogGoalHeroXYLikeC;
+    const hx = pin ? (pin.ux | 0) : (u.ux | 0);
+    const hy = pin ? (pin.uy | 0) : (u.uy | 0);
+    mtmp.mux = hx;
+    mtmp.muy = hy;
+    let mov = mtmp.movement | 0;
+    if (mov < NORMAL_SPEED) {
+        mtmp.movement = NORMAL_SPEED;
+        mov = NORMAL_SPEED;
+    }
+    mtmp.movement = mov - NORMAL_SPEED;
+    /* C: third peel — away **`mfndpos`** **`rn2(12)`**×3 only (~3029–3031); no **`chcnt`**. */
+    rn2(12);
+    rn2(12);
+    rn2(12);
+    return MMOVE_NOTHING;
+}
+
 export function dogMoveCommaLFirstUPostTailInventAfterNewturnLikeC(g, mtmp) {
     if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
     if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;

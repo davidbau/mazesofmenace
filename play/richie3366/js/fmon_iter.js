@@ -25,6 +25,7 @@ import {
     findDistantMklevMonLikeC,
     wizD1CommaLFirstUNearMklevMonLikeC,
     wizD1EastDoorMklevMonLikeC,
+    wizD1PeelDistantMklevMonLikeC,
     wizD1EastTailFmonDistantMtmpLikeC,
     movemonStep8DistantMonEligibleLikeC,
     searchPass1NearMonLikeC,
@@ -99,6 +100,31 @@ export function fmonListForMcalcmoveLikeC(g) {
  */
 export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
+    /* C: comma-U post-third-peel — east-door **`m_move`** **`rn2(12)`** (~3036) before distant/rest. */
+    if (g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC) {
+        const distant =
+            wizD1PeelDistantMklevMonLikeC(g) ?? findDistantMklevMonLikeC(g);
+        const nearMklev = wizD1CommaLFirstUNearMklevMonLikeC(g);
+        const corridor = mons.find(
+            (m) =>
+                m !== nearMklev
+                && m !== distant
+                && !(m.mtame | 0)
+                && (m.mgenmklev | 0),
+        );
+        const handled = new Set(
+            [nearMklev, distant, corridor].filter(Boolean),
+        );
+        const rest = mons.filter(
+            (m) => !(m.mtame | 0) && !handled.has(m),
+        );
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (nearMklev) ordered.push(nearMklev);
+        if (corridor) ordered.push(corridor);
+        if (distant) ordered.push(distant);
+        return [...ordered, ...rest];
+    }
     /* C: comma-**`l`** → first **`U`** — near **`distfleeck`** then pet **`dog_move`** (~2986+). */
     if (
         g.urole?.abbr === 'Wiz'
@@ -218,13 +244,18 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
                     && (m.mgenmklev | 0),
             );
         const distant = findDistantMklevMonLikeC(g);
-        const handled = new Set([pet, nearMklev, distant].filter(Boolean));
-        const rest = mons.filter((m) => !handled.has(m));
         /** @type {typeof mons} */
         const ordered = [];
         if (nearMklev) ordered.push(nearMklev);
         if (pet) ordered.push(pet);
-        return [...ordered, ...rest];
+        if (
+            g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+            && distant
+        ) {
+            ordered.push(distant);
+        }
+        /* C: walk **`fmon`** peel — near + pet (+ distant when deferred); not full **`fmon`**. */
+        return ordered;
     }
     /* C: post-east-tail walk — next short **`l`**: near **`distfleeck`**, pet **`dog_move`**, near **`distfleeck`**. */
     if (wizD1EastTailShortLActiveLikeC(g)) {
