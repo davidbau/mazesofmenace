@@ -59,6 +59,13 @@ export function ageSpellsMoveloopTailLikeC(g) {
 }
 
 export function maybe_generate_rnd_mon() {
+    /* C: comma-**`l`** → first **`U`** — defer **`rn2(70)`** until invent peel (~3014–3020). */
+    if (
+        game.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
+        && !game.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+    ) {
+        return;
+    }
     rn2(70);
 }
 
@@ -214,6 +221,12 @@ export function post_moveloop82_exercise(stepNum) {
  * (**`dosounds`**, **`do_storms`**, **`gethungry`**, **`age_spells`**, **`exerchk`**, … **`u_wipe_engr`**).
  */
 export async function end_of_turn_rng(stepNum) {
+    if (
+        game.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
+        && !game.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+    ) {
+        return;
+    }
     dosounds();
     doStormsMoveloopTailLikeC(game);
     gethungry();

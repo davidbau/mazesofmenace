@@ -1,6 +1,7 @@
 // monmove_search.js — `#search` movemon pass ids (cmd.js → movemon).
 // C ref: monmove.c movemon order on first/second search after D:1 door niche.
 
+import { peekReplayMoves } from './input.js';
 import { findFirstSearchRogMidMklevHostileLikeC } from './mfndpos_mon.js';
 
 /** C: first **`#search`** — **`_searchStep11Passes===1`** (session **`movemonStepNum`** may be 11 or 21+). */
@@ -33,6 +34,17 @@ export function rangerD1FirstSearchNoNearMonLikeC(g, stepNum = 0) {
     /* Inline **`#search`** post may clear pass id before peel **`movemon`**. */
     if (g.context?._searchInlinePostDoneLikeC && (stepNum | 0) === 11) return true;
     return false;
+}
+
+/** C: capital **`K`**, comma, **`l`**, first **`U`** — near **`distfleeck`** before pet **`mfndpos`** (~2986). */
+export function wizD1CommaLFirstUAfterCommaLLikeC(g) {
+    if (g.urole?.abbr !== 'Wiz') return false;
+    if ((g.u?.uz?.dnum | 0) !== 0 || (g.u?.uz?.dlevel | 0) !== 1) return false;
+    return (
+        peekReplayMoves(-1) === 'U'.charCodeAt(0)
+        && peekReplayMoves(-2) === 'l'.charCodeAt(0)
+        && peekReplayMoves(-3) === ','.charCodeAt(0)
+    );
 }
 
 /** C: wizard D:1 — short **`l`** **`fmon`** after east-tail walk mintrap (~2806+). */

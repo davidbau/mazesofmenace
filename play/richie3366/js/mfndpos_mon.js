@@ -267,6 +267,33 @@ export function wizD1EastDoorMklevMonLikeC(g) {
     );
 }
 
+/** C: comma-**`l`** → first **`U`** — near **`distfleeck`** target before pet **`mfndpos`** (~2986). */
+export function wizD1CommaLFirstUNearMklevMonLikeC(g) {
+    const mons = g.level?.monsters ?? [];
+    const pet = mons.find((m) => (m.mtame | 0) !== 0) ?? null;
+    const distant =
+        wizD1PeelDistantMklevMonLikeC(g) ?? findDistantMklevMonLikeC(g);
+    const eastPinned = mons.find(
+        (m) =>
+            (m.mx | 0) === 63
+            && (m.my | 0) === 7
+            && (m.mgenmklev | 0)
+            && !(m.mtame | 0),
+    );
+    if (eastPinned) return eastPinned;
+    return (
+        wizD1EastDoorMklevMonLikeC(g)
+        ?? mons.find(
+            (m) =>
+                m !== pet
+                && m !== distant
+                && !(m.mtame | 0)
+                && (m.mgenmklev | 0),
+        )
+        ?? null
+    );
+}
+
 /** C: wizard **`seed0006`** west-corridor **`mgenmklev`** **~(10–11,10–11)** — deferred **`fmon`** after east-tail pet (~2731+). */
 export function wizD1CorridorMklevMonLikeC(g) {
     return (

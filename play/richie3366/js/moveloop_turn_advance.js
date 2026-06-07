@@ -410,8 +410,13 @@ export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
     for (const line of collectNewuhsPlines(true)) await pline(line);
 
     /* C: allmain.c — after regen, before **`dosounds`** / **`gethungry`**. */
-    maybeHeroTeleportRngLikeC(g);
-    await end_of_turn_rng(stepNum);
+    if (
+        !g.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
+        || g.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+    ) {
+        maybeHeroTeleportRngLikeC(g);
+        await end_of_turn_rng(stepNum);
+    }
     if (g.context?._touristD1LPostFmonPeelPendingLikeC) {
         g.context._touristD1LPostMcalcmoveDoneLikeC = true;
     }
@@ -595,7 +600,6 @@ async function touristD1LPostPeelBeforeOuterLoopLikeC(g) {
 export async function runPostCommandTurnAdvanceLikeC(g) {
     const u = g.u;
     if (!u) return;
-
     await touristD1LPostPeelBeforeOuterLoopLikeC(g);
 
     u.umovement = (u.umovement | 0) - NORMAL_SPEED;
@@ -863,6 +867,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                             g.context._wizD1MovemonRanThisPostLikeC
                             && !g.context?._wizD1PostEastTailWalkCompletePendingLikeC
                             && !commaMoveloopPeelLikeC
+                            && !g.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
                         )
                         || g.context?._wizD1EastTailShortLDeferToNextPostLikeC
                     )
@@ -980,7 +985,6 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 g.context.move = 0;
                 newTurnDone = true;
             }
-
             if (
                 !monscanmove
                 && (u.umovement | 0) < NORMAL_SPEED
@@ -1013,6 +1017,47 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     && !g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC
                 ) {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                    /* C: comma-**`l`** → first **`U`** — pet **`distfleeck`** (~3013) then invent (~3014+). */
+                    if (
+                        wizD1MovemonOnceLikeC
+                        && g.context?._wizD1CommaLFirstUPostTailNewturnPendingLikeC
+                        && !g.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+                    ) {
+                        delete g.context._wizD1CommaLFirstUPostTailNewturnPendingLikeC;
+                        const commaUPetInvent = (g.level?.monsters ?? []).find(
+                            (m) => (m.mtame | 0) !== 0,
+                        );
+                        if (commaUPetInvent) {
+                            setApparxyMonsterLikeC(g, commaUPetInvent);
+                            await distfleeckMonsterApplyLikeC(g, commaUPetInvent);
+                            g.context._wizD1SkipLPostInventMoveloopLikeC = true;
+                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                            g.context._wizD1CommaLFirstUPostTailInventPendingLikeC = true;
+                            /* C: invent peel (~3014–3020) then post-invent **`distfleeck`** (~3021)
+                             * + second **`runNewTurnSetupAndTailLikeC`** (~3022+). */
+                            g.context._movemonHarnessConsumed = false;
+                            await movemon(1);
+                            if (
+                                g.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+                                && !g.context?._wizD1CommaLFirstUPostTailSecondNewturnDoneLikeC
+                            ) {
+                                setApparxyMonsterLikeC(g, commaUPetInvent);
+                                await distfleeckMonsterApplyLikeC(g, commaUPetInvent);
+                                await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                                g.context._wizD1CommaLFirstUPostTailSecondNewturnDoneLikeC = true;
+                                /* C: post-second-new-turn pet **`distfleeck`** (~3028) then peel
+                                 * **`movemon`** (~3029+); surplus **`fmon`** must not lead. */
+                                setApparxyMonsterLikeC(g, commaUPetInvent);
+                                await distfleeckMonsterApplyLikeC(g, commaUPetInvent);
+                                g.context._wizD1CommaLFirstUPostTailThirdMovemonPendingLikeC = true;
+                                delete g.context._wizD1MovemonRanThisPostLikeC;
+                                g.context._movemonHarnessConsumed = false;
+                                await movemon(1);
+                                delete g.context._wizD1CommaLFirstUPostTailThirdMovemonPendingLikeC;
+                                newTurnDone = true;
+                            }
+                        }
+                    }
                     /* C: tourist D:1 second post-rest — after leading new-turn (~2538–2544),
                      * near mklev **`distfleeck`** (~2545) then **`movemon`** peel; blocks another
                      * leading **`runNewTurnSetupAndTailLikeC`** at ~2545. */
@@ -1144,6 +1189,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         && !g.context?._wizD1PostEastTailWalkCompleteLikeC
                         && !g.context?._wizD1EastTailShortLPetDoneLikeC
                         && !g.context?._wizD1FirstShortLFmonNearPetDoneLikeC
+                        && !g.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+                        && !g.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
+                        && !g.context?._wizD1CommaLFirstUPostTailNewturnPendingLikeC
+                        && !g.context?._wizD1CommaLFirstUTailDoneLikeC
                     ) {
                         const pet = (g.level?.monsters ?? []).find(
                             (m) => (m.mtame | 0) !== 0,
@@ -1251,6 +1300,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._wizD1CapitalKPostCommaNearDfLikeC;
         delete g.context._wizD1CapitalKPostCommaFmonHeadDoneLikeC;
         delete g.context._wizD1CapitalKPostCommaPeelDoneLikeC;
+        /* Keep comma-**`l`** → first **`U`** near-**`distfleeck`** flags until **`m_move`** consumes them. */
         delete g.context._wizD1CapitalKPostNearSecondNewTurnDoneLikeC;
         delete g.context._touristD1PostRestSecondOuterMoveloopDoneLikeC;
         delete g.context._touristD1PostRestSecondThirdMovemonPendingLikeC;

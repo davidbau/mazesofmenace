@@ -11,6 +11,7 @@
 // C **`allmain.c`** **`do { movemon(); … } while (monscanmove)`** — one **`fmon`** pass per **`movemon()`**; outer loop in **`moveloop_turn_advance.js`**.
 
 import { rn2 } from './rng.js';
+import { peekReplayMoves } from './input.js';
 import { NORMAL_SPEED, PM_LICHEN } from './const.js';
 import { mintrapMoveloopTail } from './trap.js';
 import { game } from './gstate.js';
@@ -33,6 +34,7 @@ import {
     wizD1CorridorMklevMonLikeC,
     wizD1EastDoorMklevMonLikeC,
     wizD1PeelDistantMklevMonLikeC,
+    wizD1CommaLFirstUNearMklevMonLikeC,
 } from './mfndpos_mon.js';
 import {
     clearRogueColonMovemonActiveLikeC,
@@ -65,6 +67,9 @@ import {
     mMovePostEastTailWalkMintrapDistantPeelLikeC,
     primeDistantMtrackRn20LikeC,
     primeWizD1EastDoorMtrackLikeC,
+    wizD1CommaLFirstUNearDistfleeckBeforePetLikeC,
+    mMoveCommaLFirstUDistantLikeC,
+    mMoveCommaLFirstUPostDistantTailLikeC,
 } from './m_move_mon.js';
 import {
     dogGoalScanSearchPostGateLikeC,
@@ -82,12 +87,16 @@ import {
     dogMoveCapitalKPostNewturnPetLikeC,
     dogMoveCapitalKPostPeelPetLikeC,
     dogMoveCapitalKPostCommaPetLikeC,
+    dogMoveCommaLFirstUPostTailPetLikeC,
+    dogMoveCommaLFirstUPostTailInventAfterNewturnLikeC,
     dogMoveFirstLAfterCommaPetLikeC,
+    dogMoveLPetInventAfterNewturnLikeC,
     dogMovePostEastTailWalkShortLPetLikeC,
 } from './dogmove_mon.js';
 import {
     isWizardD1Step1PeelLikeC,
     rangerD1FirstSearchNoNearMonLikeC,
+    wizD1CommaLFirstUAfterCommaLLikeC,
     wizD1EastTailShortLActiveLikeC,
 } from './monmove_search.js';
 import { raceptr, S_EEL } from './mondata.js';
@@ -161,9 +170,59 @@ export async function movemon(stepNum) {
 
     const g = game;
     g.context = g.context || {};
+    g.context._wizD1GlobalMovemonCountLikeC =
+        (g.context._wizD1GlobalMovemonCountLikeC | 0) + 1;
+    const commaLResumeSkip = g.context._wizD1CommaLResumeSkipMovemonLikeC | 0;
+    if (commaLResumeSkip > 0) {
+        g.context._wizD1CommaLResumeSkipMovemonLikeC = commaLResumeSkip - 1;
+    }
+    /* C: comma **`l`** → first **`U`** — comma moveloop peel may not run; arm at capital **`K`** tail. */
+    if (
+        g.context?._wizD1CommaLAwaitFirstUNearDfLikeC
+        && peekReplayMoves(-1) === 'l'.charCodeAt(0)
+        && !g.context?._wizD1FirstLAfterCommaPeelHeadDoneLikeC
+        && !g.context?._wizD1FirstLAfterCommaPeelLikeC
+    ) {
+        g.context._wizD1FirstLAfterCommaPeelLikeC = true;
+    }
+    if (
+        g.context?._wizD1CommaLArmPendingAfterMovemonLikeC
+        && g.context?._wizD1CommaLArmPendingHeroMoveLikeC != null
+        && (g.moves | 0) > (g.context._wizD1CommaLArmPendingHeroMoveLikeC | 0)
+    ) {
+        g.context._wizD1CommaLFirstUNearDfPendingLikeC = true;
+        delete g.context._wizD1CommaLArmPendingAfterMovemonLikeC;
+        delete g.context._wizD1CommaLArmPendingHeroMoveLikeC;
+    }
+    if (
+        g.context?._wizD1CommaLResumeArmedLikeC
+        && (g.context._wizD1CommaLResumeSkipMovemonLikeC | 0) === 0
+        && g.context?._wizD1CommaLPeelMovemonPassLikeC != null
+        && (g.context._wizD1GlobalMovemonCountLikeC | 0)
+            > (g.context._wizD1CommaLPeelMovemonPassLikeC | 0)
+        && !g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+    ) {
+        g.context._wizD1CommaLFirstUNearDfPendingLikeC = true;
+        delete g.context._wizD1CommaLResumeArmedLikeC;
+        delete g.context._wizD1CommaLPeelMovemonPassLikeC;
+    }
+    if (
+        !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+        && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+    ) {
+        await wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g);
+    }
     if (
         g.context?._wizD1PostEastTailWalkFmonPendingLikeC
         && g.context?._wizD1MovemonRanThisPostLikeC
+    ) {
+        return false;
+    }
+    /* C: comma-**`U`** — block surplus **`fmon`** between invent and second new-turn (~3021). */
+    if (
+        g.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+        && !g.context?._wizD1CommaLFirstUPostTailSecondNewturnDoneLikeC
+        && !g.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
     ) {
         return false;
     }
@@ -182,6 +241,23 @@ export async function movemon(stepNum) {
         delete g.context._postBumpKillDochugGateLikeC;
     }
     try {
+    /* C: comma-**`l`** → first **`U`** — invent peel inside **`try`** (~3014–3020). */
+    if (
+        g.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
+        && g.context?._wizD1MovemonRanThisPostLikeC
+        && !g.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
+    ) {
+        const commaUPetInvent = (g.level?.monsters ?? []).find(
+            (m) => (m.mtame | 0) !== 0,
+        );
+        if (commaUPetInvent) {
+            dogMoveCommaLFirstUPostTailInventAfterNewturnLikeC(g, commaUPetInvent);
+        }
+        delete g.context._wizD1CommaLFirstUPostTailInventPendingLikeC;
+        delete g.context._wizD1SkipLPostInventMoveloopLikeC;
+        g.context._wizD1CommaLFirstUPostTailInventDoneLikeC = true;
+        return false;
+    }
     const rogueLike =
         g.urole?.abbr === 'Rog'
         || g.pl_character === 'Rogue'
@@ -929,7 +1005,83 @@ export async function movemon(stepNum) {
                 ) {
                     continue;
                 }
+                if (
+                    (m.mtame | 0)
+                    && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+                    && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+                ) {
+                    await wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g);
+                }
+                /* C: comma-**`U`** — near entry **`distfleeck`** already at **`movemon`** head (~2986). */
+                const commaUNear =
+                    wizD1CommaLFirstUNearMklevMonLikeC(g);
+                if (
+                    commaUNear
+                    && m === commaUNear
+                    && g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+                    && !g.context?._wizD1CommaLFirstUPetDogMoveDoneLikeC
+                    && !g.context?._wizD1CommaLFirstUNearFmonSkipDoneLikeC
+                ) {
+                    g.context._wizD1CommaLFirstUNearFmonSkipDoneLikeC = true;
+                    continue;
+                }
                 await movemonSinglemonLikeC(g, m, effStepNum);
+            }
+            /* C: comma-**`l`** → first **`U`** — near **`distfleeck`**×2 + distant **`m_move`** (~2993+). */
+            if (
+                g.context?._wizD1CommaLFirstUPetDogMoveDoneLikeC
+                && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+            ) {
+                const commaUTailNear = wizD1CommaLFirstUNearMklevMonLikeC(g);
+                if (commaUTailNear) {
+                    setApparxyMonsterLikeC(g, commaUTailNear);
+                    await distfleeckMonsterApplyLikeC(g, commaUTailNear);
+                    await distfleeckMonsterApplyLikeC(g, commaUTailNear);
+                }
+                const commaUDistant =
+                    wizD1PeelDistantMklevMonLikeC(g)
+                    ?? findDistantMklevMonLikeC(g);
+                if (commaUDistant) {
+                    const uComma = g.u;
+                    if (uComma) {
+                        commaUDistant.mux = uComma.ux | 0;
+                        commaUDistant.muy = uComma.uy | 0;
+                    }
+                    setApparxyMonsterLikeC(g, commaUDistant);
+                    await mMoveCommaLFirstUDistantLikeC(g, commaUDistant);
+                    await mMoveCommaLFirstUPostDistantTailLikeC(
+                        g,
+                        commaUTailNear,
+                        commaUDistant,
+                    );
+                }
+                const commaUPetTail = (g.level?.monsters ?? []).find(
+                    (m) => (m.mtame | 0) !== 0,
+                );
+                if (commaUPetTail) {
+                    let movPetTail = commaUPetTail.movement | 0;
+                    if (movPetTail < NORMAL_SPEED) {
+                        commaUPetTail.movement = NORMAL_SPEED;
+                        movPetTail = NORMAL_SPEED;
+                    }
+                    commaUPetTail.movement = movPetTail - NORMAL_SPEED;
+                    setApparxyMonsterLikeC(g, commaUPetTail);
+                    rn2(4);
+                    dogMoveCommaLFirstUPostTailPetLikeC(g, commaUPetTail);
+                    /* C: post phase-1 **`mfndpos`** — near **`distfleeck`** (~3006); **`mcalcmove`**
+                     * **`rn2(12)`**×3 (~3007–3009) runs in moveloop **`runNewTurnSetupAndTailLikeC`**. */
+                    if (commaUTailNear) {
+                        setApparxyMonsterLikeC(g, commaUTailNear);
+                        await distfleeckMonsterApplyLikeC(g, commaUTailNear);
+                    }
+                }
+                g.context._wizD1CommaLFirstUTailDoneLikeC = true;
+                delete g.context._wizD1CommaLFirstUPetDogMoveDoneLikeC;
+                delete g.context._wizD1CommaLFirstUNearDfDoneLikeC;
+                delete g.context._wizD1CommaLFirstUNearFmonSkipDoneLikeC;
+                delete g.context._wizD1EastTailMovemonPetMfndposPendingLikeC;
+                /* C: moveloop post-**`movemon`** new-turn + pet invent (~3010+). */
+                g.context._wizD1CommaLFirstUPostTailNewturnPendingLikeC = true;
             }
             /* C: first hero l after comma — distant distfleeck x2 + dochug m_move (~2973+);
              * deferred from fmon loop (near+pet handled in head). */
@@ -951,6 +1103,15 @@ export async function movemon(stepNum) {
                         await movemonSinglemonLikeC(g, firstLDistant, effStepNum);
                     } finally {
                         delete g.context._wizD1FirstLAfterCommaDistantPeelLikeC;
+                    }
+                    if (
+                        g.context?._wizD1CommaLAwaitFirstUNearDfLikeC
+                        && !g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+                        && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+                    ) {
+                        g.context._wizD1CommaLArmPendingAfterMovemonLikeC = true;
+                        g.context._wizD1CommaLArmPendingHeroMoveLikeC = g.moves | 0;
+                        delete g.context._wizD1CommaLAwaitFirstUNearDfLikeC;
                     }
                 }
                 delete g.context._wizD1FirstLAfterCommaPeelHeadDoneLikeC;
@@ -1286,6 +1447,9 @@ export async function movemon(stepNum) {
                 await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
                 g.context._wizD1SkipLPostInventMoveloopLikeC = true;
                 g.context._wizD1CapitalKPostCommaPendingLikeC = true;
+                delete g.context._wizD1CommaLFirstUNearDfPendingLikeC;
+                delete g.context._wizD1CommaLFirstUNearDfDoneLikeC;
+                g.context._wizD1CommaLAwaitFirstUNearDfLikeC = true;
                 g.context._wizD1LPostOuterLoopDoneLikeC = true;
                 g.context._wizD1PostEastTailWalkCompleteLikeC = true;
             }
@@ -1324,6 +1488,9 @@ export async function movemon(stepNum) {
                  * **`distfleeck`** (~2948) + pet **`dochug:886`** **`rn2(4)`** (~2949). */
                 delete g.context._wizD1PostEastTailWalkShortLNearDfLikeC;
                 g.context._wizD1FirstLAfterCommaPeelLikeC = true;
+                delete g.context._wizD1CommaLFirstUNearDfPendingLikeC;
+                delete g.context._wizD1CommaLFirstUNearDfDoneLikeC;
+                g.context._wizD1CommaLAwaitFirstUNearDfLikeC = true;
                 delete g.context._wizD1CapitalKPostCommaMoveloopLikeC;
                 delete g.context._wizD1CapitalKPostCommaFmonHeadDoneLikeC;
                 g.context._wizD1PostEastTailWalkNewTurnDoneLikeC = true;
@@ -1361,6 +1528,7 @@ export async function movemon(stepNum) {
             g.context?._wizD1FirstShortLFmonNearPetDoneLikeC
             && !g.context?._wizD1PostEastTailWalkPeelDoneLikeC
             && g.context?._wizD1PostEastTailWalkNewTurnDoneLikeC
+            && !g.context?._wizD1CommaLFirstUPostTailNewturnPendingLikeC
         ) {
             return false;
         }
@@ -1368,6 +1536,8 @@ export async function movemon(stepNum) {
         if (
             g.context?._wizD1EastTailMovemonPetMfndposPendingLikeC
             && !g.context?._wizD1PostEastTailWalkFmonPendingLikeC
+            && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+            && !g.context?._wizD1CommaLFirstUPostTailNewturnPendingLikeC
         ) {
             const petEast = (g.level?.monsters ?? []).find((m) => (m.mtame | 0) !== 0);
             const peelDistant =
@@ -2759,6 +2929,8 @@ export async function movemon(stepNum) {
                 && !g.context?._wizD1EastTailCorridorTurnDoneLikeC
                 && !g.context?._wizD1PostEastTailWalkFmonPendingLikeC
                 && !g.context?._wizD1EastTailShortLPetDoneLikeC
+                && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+                && !g.context?._wizD1CommaLFirstUPostTailNewturnPendingLikeC
             ) {
                 if (
                     g.context?._wizD1Step1DistantFirstDfDoneLikeC
@@ -3012,6 +3184,7 @@ export async function movemon(stepNum) {
         if (
             g.context?._wizD1FirstShortLFmonNearPetDoneLikeC
             && !g.context?._wizD1PostEastTailWalkPeelDoneLikeC
+            && !g.context?._wizD1CommaLFirstUPostTailNewturnPendingLikeC
         ) {
             return false;
         }

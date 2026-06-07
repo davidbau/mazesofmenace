@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -20303,6 +20303,62 @@ function heroWieldedPolearm() {
     return (game.inventory || []).find(item => itemIsPrimaryWielded(item) && isPolearmItem(item));
 }
 
+function itemIsAlternateWeapon(item) {
+    if (!item) return false;
+    const line = String(item.line || '');
+    return !!(item.alternate || /\b(?:alternate weapon|wielded in left hand|weapon in left hand)\b/.test(line));
+}
+
+function heroFireAlternatePolearm() {
+    if (game.flags?.fireassist === false) return null;
+    return (game.inventory || []).find(item =>
+        itemIsAlternateWeapon(item) && isPolearmItem(item)
+        && !(item.cursed && heroFireassistBlessCurseKnown(item))) || null;
+}
+
+function heroWieldedLineForItem(item) {
+    const hand = isTwoHandedWieldItem(item) ? 'hands' : `${game.u?.uhandedness || 'right'} hand`;
+    return `${item.letter || '?'} - ${inventoryItemName(item)} (weapon in ${hand})`;
+}
+
+function heroAlternateLineForItem(item) {
+    return `${item.letter || '?'} - ${inventoryItemName(item)} (alternate weapon${(item.quan || 1) > 1 ? 's' : ''}; not wielded)`;
+}
+
+function swapHeroAlternatePolearmForFire(item) {
+    const previous = (game.inventory || []).find(invItem => invItem !== item && itemIsPrimaryWielded(invItem));
+    for (const invItem of game.inventory || []) {
+        if (invItem === item || invItem === previous) continue;
+        if (itemIsPrimaryWielded(invItem)) {
+            invItem.wielded = false;
+            invItem.line = `${invItem.letter || '?'} - ${inventoryItemName(invItem)}`;
+        }
+    }
+    if (previous) {
+        previous.wielded = false;
+        previous.alternate = true;
+        previous.line = heroAlternateLineForItem(previous);
+    }
+    item.wielded = true;
+    item.alternate = false;
+    item.line = heroWieldedLineForItem(item);
+    game._twoweapon = false;
+    game._wielded_mjollnir = item.artifact === 'Mjollnir' || item.kind === 'mjollnir' || /Mjollnir/.test(inventoryItemName(item));
+    return previous ? `${previous.line}.` : 'You have no secondary weapon readied.';
+}
+
+async function beginHeroFireAlternatePolearmFallback(item) {
+    if (!item || !isPolearmItem(item)) return false;
+    const secondaryLine = swapHeroAlternatePolearmForFire(item);
+    game._fire_count = null;
+    game._fire_item_letter = null;
+    game._fire_launcher_letter = null;
+    game._fire_alternate_polearm_letter = item.letter || null;
+    game._fire_alternate_polearm_more_line = secondaryLine;
+    await setMessage(`${item.line}.`, true);
+    return true;
+}
+
 function isBullwhipItem(item) {
     if (!item) return false;
     if (item.otyp === BULLWHIP) return true;
@@ -20420,10 +20476,44 @@ async function beginHeroFireThrowAndReturnShortcut(item, shotLimit = null) {
 
 async function beginHeroFirePolearmFallback(item) {
     game._fire_count = null;
-    const target = heroPolearmAutohitTarget();
+    const target = heroPolearmAutohitTarget(item);
     if (target) await finishHeroPolearmTarget(item, target.mx, target.my, { autohit: true });
     else await finishHeroPolearmTarget(item, game.u?.ux || 0, game.u?.uy || 0, { autohit: true });
     game._command_mode = null;
+}
+
+function heroFireassistPolearmPriorityTarget(projectile) {
+    if (game.flags?.fireassist === false) return null;
+    if (!heroThrowAmmoSkill(projectile)) return null;
+    const polearm = heroWieldedPolearm();
+    if (!polearm) return null;
+    const target = heroPolearmAutohitTarget(polearm);
+    return target ? { polearm, x: target.mx, y: target.my } : null;
+}
+
+async function beginHeroFirePolearmPriority(projectile, { readyMessage = '' } = {}) {
+    const target = heroFireassistPolearmPriorityTarget(projectile);
+    if (!target) return false;
+    game._fire_count = null;
+    game._fire_item_letter = null;
+    game._fire_launcher_letter = null;
+    game._fire_direction_pending_after_more = 0;
+    game._fire_direction_ready_after_more = 0;
+    game._fire_ready_launcher_line = '';
+    game._fire_ready_swap_more_line = '';
+    game._fire_swap_more_line = '';
+    game._fire_time_pending_after_more = 0;
+    if (readyMessage) {
+        game._fire_polearm_priority_letter = target.polearm.letter || null;
+        game._fire_polearm_priority_x = target.x;
+        game._fire_polearm_priority_y = target.y;
+        await setMessage(readyMessage, true);
+        game._command_mode = null;
+        return true;
+    }
+    await finishHeroPolearmTarget(target.polearm, target.x, target.y, { autohit: true });
+    game._command_mode = null;
+    return true;
 }
 
 function heroFireassistBlessCurseKnown(item) {
@@ -20454,6 +20544,7 @@ function heroFireassistMatchingLauncher(projectile) {
 }
 
 async function beginHeroFireProjectile(projectile, { readyMessage = '' } = {}) {
+    if (await beginHeroFirePolearmPriority(projectile, { readyMessage })) return;
     const launcher = heroFireassistMatchingLauncher(projectile);
     let swapMoreLine = '';
     if (launcher && !(launcher.wielded || launcher.line?.includes('weapon in'))) {
@@ -25597,7 +25688,9 @@ function wieldItemForApply(item) {
 
 function polearmTargetDescription(x, y) {
     const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y);
-    if (mon) return monsterIndefiniteName(mon.data?.name || 'monster');
+    if (mon && heroPolearmCanSpotMonster(mon) && !heroPolearmDisguisedMimic(mon))
+        return monsterIndefiniteName(mon.data?.name || 'monster');
+    if (heroPolearmDisplayGlyphIsInvisible(x, y)) return 'unseen creature';
     const statue = floorStatueAt(x, y);
     if (statue) return pickupObjectPhrase(statue);
     const obj = (game.level?.objects || []).find(candidate =>
@@ -25618,24 +25711,331 @@ function heroPolearmTargetDistance2(x, y) {
     return (x - (game.u?.ux || 0)) ** 2 + (y - (game.u?.uy || 0)) ** 2;
 }
 
-function heroPolearmAutohitTarget() {
-    const candidates = (game.level?.monsters || []).filter(mon =>
-        mon && !mon.dead && (mon.mhp == null || mon.mhp > 0)
-        && !mon.mtame && !mon.pet && !mon.mpeaceful
-        && heroPolearmTargetDistance2(mon.mx, mon.my) === 4
-        && couldsee(mon.mx, mon.my));
-    return candidates.length === 1 ? candidates[0] : null;
+function isSnickersneeItem(item) {
+    if (!item) return false;
+    const artifact = String(item.artifact || item.oartifact || item.artifactName || '')
+        .toLowerCase().replace(/^the\s+/, '');
+    return artifact === 'snickersnee'
+        || /\bsnickersnee\b/.test(inventoryItemName(item).toLowerCase());
+}
+
+function heroSnickersneeDistanceTurn() {
+    return game.moves || 1;
+}
+
+function heroSnickersneeDistanceAttackUsedThisTurn(item) {
+    return itemIsPrimaryWielded(item) && isSnickersneeItem(item)
+        && game.context?.snickersnee_turn === heroSnickersneeDistanceTurn();
+}
+
+function beginHeroSnickersneeDistanceAttack(item, messages) {
+    if (!itemIsPrimaryWielded(item) || !isSnickersneeItem(item)) return false;
+    game.context ??= {};
+    const turn = heroSnickersneeDistanceTurn();
+    const free = game.context.snickersnee_turn !== turn;
+    game.context.snickersnee_turn = turn;
+    if (free && !heroIsDeaf() && Array.isArray(messages)) messages.push('Shkinng!');
+    return free;
+}
+
+function heroPolearmSkillMeta(item) {
+    const name = item ? inventoryItemName(item).toLowerCase() : '';
+    if (/\blance\b/.test(name)) return { skill: P_LANCE, skillName: 'lance' };
+    if (/\bsnickersnee\b/.test(name)) return { skill: P_LONG_SWORD, skillName: 'long sword' };
+    return { skill: P_POLEARMS, skillName: 'polearms' };
+}
+
+function heroPolearmTargetMaxDistance2(item = heroWieldedPolearm()) {
+    const { skill, skillName } = heroPolearmSkillMeta(item);
+    const level = heroExplicitWeaponSkillLevel(skill, skillName);
+    if (level === P_SKILLED) return 5;
+    if (level >= P_EXPERT) return 8;
+    return 4;
+}
+
+function heroPolearmTargetInRange(x, y, item = heroWieldedPolearm()) {
+    const dist2 = heroPolearmTargetDistance2(x, y);
+    return dist2 >= 4 && dist2 <= heroPolearmTargetMaxDistance2(item);
+}
+
+function heroPolearmTargetingImpaired() {
+    return heroIsConfused() || heroIsStunned() || heroIsHallucinating();
+}
+
+function wipeHeroPolearmEngraving() {
+    if (!heroCanReachFloorForUntrap(false)) return;
+    wipe_engr_at(game.u?.ux || 0, game.u?.uy || 0, 2, false);
+}
+
+function heroPolearmDisplayGlyphIsPoleable(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!(loc?.map_invisible || loc?.remembered_glyph?.ch === 'I' || floorStatueAt(x, y));
+}
+
+function heroPolearmDisplayGlyphIsInvisible(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!(loc?.map_invisible || loc?.remembered_glyph?.ch === 'I');
+}
+
+function heroPolearmCanSpotMonster(mon) {
+    return !!mon && !game.u?.blind && !mon.mundetected
+        && (!mon.minvis || game.u?.seeInvisible) && cansee(mon.mx, mon.my);
+}
+
+function heroPolearmSensesMonster(mon) {
+    return heroPolearmCanSpotMonster(mon) || sensesTelepathically(mon)
+        || !!(mon?.detected || mon?.sensed || mon?.warned || mon?.mwarned);
+}
+
+function heroPolearmAutohitMonsterAllowed(mon) {
+    if (heroPolearmTargetingImpaired()) return true;
+    if (mon.mtame || mon.pet) return false;
+    if (mon.mpeaceful && game.flags?.confirm !== false) return false;
+    return true;
+}
+
+function addUniquePolearmCandidate(candidates, seen, candidate) {
+    const key = `${candidate.mx},${candidate.my}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(candidate);
+}
+
+function heroPolearmPositionValidForAutohit(x, y, item = heroWieldedPolearm()) {
+    return isok(x, y) && heroPolearmTargetInRange(x, y, item)
+        && (cansee(x, y) || (couldsee(x, y) && heroPolearmDisplayGlyphIsPoleable(x, y)));
+}
+
+function heroPolearmAddInvisibleMarkerCandidates(candidates, seen, item = heroWieldedPolearm()) {
+    const radius = Math.ceil(Math.sqrt(heroPolearmTargetMaxDistance2(item)));
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const loX = Math.max(1, ux - radius);
+    const hiX = Math.min(COLNO - 1, ux + radius);
+    const loY = Math.max(0, uy - radius);
+    const hiY = Math.min(ROWNO - 1, uy + radius);
+    for (let x = loX; x <= hiX; x++) {
+        for (let y = loY; y <= hiY; y++) {
+            if (!heroPolearmDisplayGlyphIsInvisible(x, y)
+                || !heroPolearmPositionValidForAutohit(x, y, item))
+                continue;
+            const spottedMonster = (game.level?.monsters || []).find(mon =>
+                mon.mx === x && mon.my === y && !mon.dead && (mon.mhp == null || mon.mhp > 0)
+                && heroPolearmCanSpotMonster(mon));
+            if (spottedMonster) continue;
+            addUniquePolearmCandidate(candidates, seen, { mx: x, my: y, invisibleMarker: true });
+        }
+    }
+}
+
+function monsterRememberedPolearmId(mon) {
+    return mon?.m_id ?? mon?.id ?? null;
+}
+
+function rememberHeroPolearmHitmon(mon) {
+    game._polearm_hitmon_id = monsterRememberedPolearmId(mon);
+    game._polearm_hitmon_ref = mon || null;
+}
+
+function clearHeroPolearmHitmon() {
+    game._polearm_hitmon_id = null;
+    game._polearm_hitmon_ref = null;
+}
+
+function heroPolearmRememberedHitmon(item = heroWieldedPolearm()) {
+    const monsters = game.level?.monsters || [];
+    const rememberedId = game._polearm_hitmon_id ?? null;
+    let mon = null;
+    if (rememberedId != null) {
+        mon = monsters.find(candidate => monsterRememberedPolearmId(candidate) === rememberedId) || null;
+    }
+    if (!mon && game._polearm_hitmon_ref && monsters.includes(game._polearm_hitmon_ref))
+        mon = game._polearm_hitmon_ref;
+    if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) {
+        clearHeroPolearmHitmon();
+        return null;
+    }
+    if (!heroPolearmTargetInRange(mon.mx, mon.my, item) || !heroPolearmSensesMonster(mon)
+        || !heroPolearmAutohitMonsterAllowed(mon))
+        return null;
+    return mon;
+}
+
+function heroPolearmAutohitTarget(item = heroWieldedPolearm()) {
+    const candidates = [];
+    const seen = new Set();
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)
+            || !heroPolearmAutohitMonsterAllowed(mon)
+            || !heroPolearmTargetInRange(mon.mx, mon.my, item)
+            || !heroPolearmCanSpotMonster(mon))
+            continue;
+        addUniquePolearmCandidate(candidates, seen, mon);
+    }
+    heroPolearmAddInvisibleMarkerCandidates(candidates, seen, item);
+    if (heroPolearmTargetingImpaired()) {
+        for (const statue of game.level?.objects || []) {
+            if (statue.hidden || statue.transientProjectile || statue.otyp !== STATUE) continue;
+            if (!heroPolearmTargetInRange(statue.ox, statue.oy, item) || !cansee(statue.ox, statue.oy)) continue;
+            addUniquePolearmCandidate(candidates, seen, { mx: statue.ox, my: statue.oy, statue });
+        }
+    }
+    return candidates.length === 1 ? candidates[0] : heroPolearmRememberedHitmon(item);
+}
+
+function heroPolearmAttackPromptName(mon) {
+    return fireScrollMonsterName(mon).replace(/^The /, 'the ');
+}
+
+function heroPolearmAttackNeedsConfirmation(item, mon) {
+    if (!mon?.mpeaceful || heroPolearmTargetingImpaired() || game.flags?.confirm === false) return false;
+    const name = String(item?.artifact || item?.artifactName || item?.kind || item?.actualKind || '').toLowerCase();
+    if (name === 'stormbringer' || /\bstormbringer\b/.test(inventoryItemName(item).toLowerCase())) return false;
+    return heroPolearmCanSpotMonster(mon);
+}
+
+function clearPolearmAttackConfirmState() {
+    game._apply_polearm_confirm_letter = null;
+    game._apply_polearm_confirm_x = null;
+    game._apply_polearm_confirm_y = null;
+}
+
+function markHeroPolearmInvisibleMonster(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    loc.map_invisible = true;
+    loc.waslit = true;
+    loc.remembered_glyph = { ch: 'I', color: NO_COLOR, dec: false };
+    newsym(x, y);
+}
+
+function clearHeroPolearmInvisibleMarkerAt(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !heroPolearmDisplayGlyphIsInvisible(x, y)) return false;
+    loc.map_invisible = false;
+    loc.remembered_glyph = null;
+    newsym(x, y);
+    return true;
+}
+
+function heroPolearmDisguisedMimic(mon) {
+    const appearance = M_AP_TYPE(mon);
+    return !!mon && (appearance === M_AP_OBJECT || appearance === M_AP_FURNITURE
+        || mon.appearObj != null || mon.appearGlyph);
+}
+
+function revealHeroPolearmMimic(mon) {
+    if (!heroPolearmDisguisedMimic(mon)) return false;
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function heroPolearmMonsterHidesUnder(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return !!(mon?.hidesUnder || data.hidesUnder || mon?.hides_under || data.hides_under
+        || mon?.hider || data.hider || data.mlet === ';' || mon?.mlet === ';'
+        || /\beel\b/.test(name));
+}
+
+function heroPolearmWarningGlyphForMonster(mon) {
+    if (!mon || mon.mpeaceful || mon.pet || game.u?.blind) return false;
+    const dx = (mon.mx ?? 0) - (game.u?.ux ?? 0);
+    const dy = (mon.my ?? 0) - (game.u?.uy ?? 0);
+    if (dx * dx + dy * dy >= 100) return false;
+    const level = Math.trunc((mon.m_lev ?? mon.data?.mlevel ?? 0) / 4);
+    const genericWarning = !!(game.u?.warning || game.u?.HWarning || game.u?.warn_of_monsters);
+    return (genericWarning && level >= (game._warnlevel ?? 1))
+        || heroWarnsOfMonsterTypeForRollingBoulder(mon);
+}
+
+function heroPolearmHiddenMonsterMessage(mon) {
+    if (game.u?.blind) return "Wait!  There's a hidden monster there!";
+    const obj = (game.level?.objects || []).find(candidate =>
+        !candidate.hidden && !candidate.transientProjectile
+        && candidate.ox === mon.mx && candidate.oy === mon.my);
+    if (obj) return `Wait!  There's something hiding under ${pickupObjectPhrase(obj)}!`;
+    return "Wait!  There's a hidden monster there!";
+}
+
+async function heroPolearmAttackChecks(item, mon, x, y, { autohit = false, confirmed = false } = {}) {
+    const invisibleMarker = heroPolearmDisplayGlyphIsInvisible(x, y);
+    const warningGlyph = heroPolearmWarningGlyphForMonster(mon);
+    const spotted = heroPolearmCanSpotMonster(mon);
+    const hiddenHider = !!(mon?.mundetected && heroPolearmMonsterHidesUnder(mon));
+
+    if (!spotted && !warningGlyph && !invisibleMarker
+        && !(!game.u?.blind && hiddenHider)) {
+        markHeroPolearmInvisibleMonster(x, y);
+        revealHeroPolearmMimic(mon);
+        wakeMonsterFromHeroThrownHit(mon);
+        await setMessage("Wait!  There's something there you can't see!");
+        game.context.move = 1;
+        return true;
+    }
+
+    if (heroPolearmDisguisedMimic(mon) && !heroPolearmSensesMonster(mon) && !warningGlyph) {
+        if (invisibleMarker) {
+            revealHeroPolearmMimic(mon);
+            return false;
+        }
+        revealHeroPolearmMimic(mon);
+        wakeMonsterFromHeroThrownHit(mon);
+        await setMessage("Wait!  There's something there you can't see!");
+        game.context.move = 1;
+        return true;
+    }
+
+    if (hiddenHider && !spotted && !warningGlyph) {
+        mon.mundetected = false;
+        mon.msleeping = 0;
+        newsym(mon.mx, mon.my);
+        if (invisibleMarker) {
+            revealHeroPolearmMimic(mon);
+            return false;
+        }
+        if (!sensesTelepathically(mon) && !heroHasMonsterDetection()) {
+            await setMessage(heroPolearmHiddenMonsterMessage(mon));
+            game.context.move = 1;
+            return true;
+        }
+    }
+
+    if ((mon.mundetected || heroPolearmDisguisedMimic(mon)) && heroPolearmSensesMonster(mon)) {
+        mon.mundetected = false;
+        wakeMonsterFromHeroThrownHit(mon);
+        revealHeroPolearmMimic(mon);
+    }
+
+    if (!autohit && !confirmed && heroPolearmAttackNeedsConfirmation(item, mon)) {
+        game._apply_polearm_confirm_letter = item.letter || null;
+        game._apply_polearm_confirm_x = x;
+        game._apply_polearm_confirm_y = y;
+        await setMessage(`Really attack ${heroPolearmAttackPromptName(mon)}? [yn] (n)`);
+        game._command_mode = 'applyPolearmAttackConfirm';
+        return true;
+    }
+    return false;
 }
 
 function heroAppliedPolearmHitValue(item, mon) {
+    const { skill, skillName } = heroPolearmSkillMeta(item);
     return heroProjectileBaseHitValue(item, mon)
-        + heroWeaponHitSkillBonus(P_POLEARMS, 'polearms');
+        + heroWeaponHitSkillBonus(skill, skillName);
+}
+
+function heroAppliedPolearmTargetName(mon) {
+    return heroPolearmCanSpotMonster(mon) ? heroThrownVenomTargetName(mon) : 'it';
 }
 
 function heroAppliedPolearmImpact(item, mon) {
     const hitValue = heroAppliedPolearmHitValue(item, mon);
     const dieroll = rnd(20);
-    const targetName = heroThrownVenomTargetName(mon);
+    const targetName = heroAppliedPolearmTargetName(mon);
     if (hitValue >= dieroll) {
         addConductCount('weaphit');
         const damage = Math.max(0, rnd(2) + heroStrengthDamageBonus() + heroDamageIncreaseBonus());
@@ -25644,7 +26044,8 @@ function heroAppliedPolearmImpact(item, mon) {
         if ((mon.mhp || 0) <= 0) killMonsterFromHeroProjectileHit(mon, messages, targetName);
         if (!mon.dead) wakeMonsterFromHeroThrownHit(mon);
         exerciseHeroProjectileHitDexterity();
-        return { hit: true, damage, messages };
+        const passiveObject = applyDirectMeleePassiveObject(mon, item, messages);
+        return { hit: true, damage, messages, passiveObject };
     }
     mon.msleeping = 0;
     mon.meating = 0;
@@ -25655,10 +26056,10 @@ function heroAppliedPolearmImpact(item, mon) {
     };
 }
 
-async function finishHeroPolearmTarget(item, x, y, { autohit = false } = {}) {
+async function finishHeroPolearmTarget(item, x, y, { autohit = false, confirmed = false } = {}) {
     if (!item || !isPolearmItem(item)) return false;
     const dist2 = heroPolearmTargetDistance2(x, y);
-    if (dist2 > 4) {
+    if (dist2 > heroPolearmTargetMaxDistance2(item)) {
         await setMessage('Too far!');
         return true;
     }
@@ -25668,6 +26069,10 @@ async function finishHeroPolearmTarget(item, x, y, { autohit = false } = {}) {
             : 'Too close!');
         return true;
     }
+    if (!cansee(x, y) && !heroPolearmDisplayGlyphIsPoleable(x, y)) {
+        await setMessage("You won't hit anything if you can't see that spot.");
+        return true;
+    }
     if (!couldsee(x, y)) {
         await setMessage("You can't reach that spot from here.");
         return true;
@@ -25675,11 +26080,24 @@ async function finishHeroPolearmTarget(item, x, y, { autohit = false } = {}) {
 
     const mon = (game.level?.monsters || []).find(candidate =>
         candidate.mx === x && candidate.my === y && !candidate.dead && (candidate.mhp == null || candidate.mhp > 0));
+    clearHeroPolearmHitmon();
     if (mon) {
+        if (await heroPolearmAttackChecks(item, mon, x, y, { autohit, confirmed }))
+            return true;
+        rememberHeroPolearmHitmon(mon);
+        if (heroSnickersneeDistanceAttackUsedThisTurn(item)) {
+            await setMessage("The blade doesn't reach there!");
+            game.context.move = 0;
+            return true;
+        }
+        const messages = [];
+        const freeSnickersneeHit = beginHeroSnickersneeDistanceAttack(item, messages);
         const impact = heroAppliedPolearmImpact(item, mon);
-        await setMessage((impact.messages || []).join('  '), (impact.messages || []).length > 1);
+        messages.push(...(impact.messages || []));
+        await setMessage(messages.join('  '), messages.length > 1);
         newsym(x, y);
-        game.context.move = 1;
+        game.context.move = freeSnickersneeHit ? 0 : 1;
+        wipeHeroPolearmEngraving();
         return true;
     }
 
@@ -25691,6 +26109,7 @@ async function finishHeroPolearmTarget(item, x, y, { autohit = false } = {}) {
             : 'Thump!  Your blow bounces harmlessly off the statue.';
         await setMessage(message);
         game.context.move = 1;
+        wipeHeroPolearmEngraving();
         return true;
     }
 
@@ -25699,16 +26118,20 @@ async function finishHeroPolearmTarget(item, x, y, { autohit = false } = {}) {
     if (boulder) {
         await setMessage('Thump!  Your blow bounces harmlessly off the boulder.');
         game.context.move = 1;
+        wipeHeroPolearmEngraving();
         return true;
     }
     const loc = game.level?.at(x, y);
+    clearHeroPolearmInvisibleMarkerAt(x, y);
     if (!loc || !ACCESSIBLE(loc.typ)) {
         await setMessage(`You uselessly attack ${loc?.typ === STONE ? 'stone' : 'an unknown obstacle'}.`);
         game.context.move = 1;
+        wipeHeroPolearmEngraving();
         return true;
     }
     await setMessage('You miss; there is no one there to hit.');
     game.context.move = 1;
+    wipeHeroPolearmEngraving();
     return true;
 }
 
@@ -37622,6 +38045,12 @@ const FIRE_NONFLAMMABLE_ARMOR_KINDS = new Set([
     'shield of reflection', 'gauntlets of power', 'iron shoes', 'kicking boots',
 ]);
 
+const IRON_POLEARM_KINDS = new Set([
+    'partisan', 'ranseur', 'spetum', 'glaive', 'halberd', 'bardiche',
+    'voulge', 'fauchard', 'guisarme', 'bill-guisarme', 'lucern hammer',
+    'bec de corbin',
+]);
+
 function wishedDamageProfile(item) {
     const kind = objectKindKey(item);
     const cls = itemClassKey(item);
@@ -37639,6 +38068,7 @@ function wishedDamageProfile(item) {
     const nonflammableArmor = armor && FIRE_NONFLAMMABLE_ARMOR_KINDS.has(kind);
     const copperLike = /\b(?:copper|bronze)\b/.test(kind);
     const ironLike = !flammableArmor && !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
+        || IRON_POLEARM_KINDS.has(kind)
         || /\b(?:plate mail|splint mail|banded mail|ring mail|chain mail|scale mail|large shield|roundshield|gauntlets|helm|helmet|dented pot|shoes|sword|saber|dagger|knife|axe|mace|hammer|flail|morning star|pick-axe|mattock|spear|trident|lance|polearm|dart|shuriken|throwing star)\b/.test(kind));
     const flammableLike = flammableArmor || (!nonflammableArmor && !glassArmor && !ironLike && !copperLike && !excludedMetal
         && /\b(?:leather|cloth|cloak|robe|shirt|boots|gloves|wooden|small shield|bow|crossbow|arrow|club|quarterstaff|aklys|bullwhip|sling)\b/.test(kind));
@@ -55329,6 +55759,34 @@ export async function rhack(_cmd) {
                 }
                 return;
             }
+            if (game._fire_alternate_polearm_more_line) {
+                const next = game._fire_alternate_polearm_more_line;
+                game._fire_alternate_polearm_more_line = '';
+                game._pending_message = next;
+                game._message_more = 1;
+                game._keep_pending_message = 1;
+                return;
+            }
+            if (game._fire_alternate_polearm_letter) {
+                const letter = game._fire_alternate_polearm_letter;
+                game._fire_alternate_polearm_letter = null;
+                const item = (game.inventory || []).find(invItem => invItem.letter === letter);
+                await beginHeroFirePolearmFallback(item);
+                return;
+            }
+            if (game._fire_polearm_priority_letter) {
+                const letter = game._fire_polearm_priority_letter;
+                const x = game._fire_polearm_priority_x;
+                const y = game._fire_polearm_priority_y;
+                game._fire_polearm_priority_letter = null;
+                game._fire_polearm_priority_x = null;
+                game._fire_polearm_priority_y = null;
+                const item = (game.inventory || []).find(invItem => invItem.letter === letter);
+                if (item && x != null && y != null)
+                    await finishHeroPolearmTarget(item, x, y, { autohit: true });
+                game._command_mode = null;
+                return;
+            }
             if (game._fire_ready_launcher_line) {
                 const next = game._fire_ready_launcher_line;
                 game._fire_ready_launcher_line = '';
@@ -62668,8 +63126,8 @@ export async function rhack(_cmd) {
             game._farlook_x = cursor.x;
             game._farlook_y = cursor.y;
             game._cursor_override = [cursor.x - 1, cursor.y + 1];
-            const dist2 = (cursor.x - (game.u?.ux || 0)) ** 2 + (cursor.y - (game.u?.uy || 0)) ** 2;
-            const validRange = dist2 === 4;
+            const dist2 = heroPolearmTargetDistance2(cursor.x, cursor.y);
+            const validRange = heroPolearmTargetInRange(cursor.x, cursor.y, item);
             await setMessage(validRange ? polearmTargetDescription(cursor.x, cursor.y)
                 : `${polearmTargetDescription(cursor.x, cursor.y)} (${dist2 < 4 ? 'too close' : 'too far'})`);
             return;
@@ -62681,6 +63139,28 @@ export async function rhack(_cmd) {
             game._cursor_override = null;
             game._command_mode = null;
             await finishHeroPolearmTarget(item, x, y);
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'applyPolearmAttackConfirm') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_polearm_confirm_letter);
+        const x = game._apply_polearm_confirm_x;
+        const y = game._apply_polearm_confirm_y;
+        if (ch === 'y') {
+            clearPolearmAttackConfirmState();
+            game._command_mode = null;
+            await finishHeroPolearmTarget(item, x, y, { confirmed: true });
+            return;
+        }
+        if (ch === 'n' || ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            clearPolearmAttackConfirmState();
+            game._command_mode = null;
+            game._pending_message = '';
+            game._message_more = 0;
+            game.context.move = 0;
             return;
         }
         game._keep_pending_message = 1;
@@ -69927,6 +70407,11 @@ export async function rhack(_cmd) {
             if (bullwhip) {
                 game._fire_count = null;
                 await beginHeroBullwhipApply(bullwhip);
+                return;
+            }
+            const alternatePolearm = !game.flags?.autoquiver && heroFireAlternatePolearm();
+            if (alternatePolearm) {
+                await beginHeroFireAlternatePolearmFallback(alternatePolearm);
                 return;
             }
             const letters = inventoryLetters(isReadySuggestItem);

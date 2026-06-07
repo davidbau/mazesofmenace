@@ -13,6 +13,7 @@ import {
     isRangerLikeC,
     rangerD1FirstSearchNoNearMonLikeC,
     rogueSecondSearchFullFmonLikeC,
+    wizD1CommaLFirstUAfterCommaLLikeC,
     wizD1EastTailShortLActiveLikeC,
 } from './monmove_search.js';
 import {
@@ -22,6 +23,7 @@ import {
     findWestKinkMonsterLikeC,
     isLandEelForMovemonLikeC,
     findDistantMklevMonLikeC,
+    wizD1CommaLFirstUNearMklevMonLikeC,
     wizD1EastDoorMklevMonLikeC,
     wizD1EastTailFmonDistantMtmpLikeC,
     movemonStep8DistantMonEligibleLikeC,
@@ -97,6 +99,31 @@ export function fmonListForMcalcmoveLikeC(g) {
  */
 export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
+    /* C: comma-**`l`** → first **`U`** — near **`distfleeck`** then pet **`dog_move`** (~2986+). */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && (
+            (
+                !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+                && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+            )
+            || (
+                g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+                && !g.context?._wizD1CommaLFirstUPetDogMoveDoneLikeC
+                && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+            )
+        )
+    ) {
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const nearMklev = wizD1CommaLFirstUNearMklevMonLikeC(g);
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (nearMklev) ordered.push(nearMklev);
+        if (pet) ordered.push(pet);
+        return ordered;
+    }
     /* C: ranger D:1 second **`#search`** — pet pass 1 then one mklev tail **`distfleeck`**
      * before pass-2 **`dog_goal`** (**`seed0102`** ~4471–4473); not full **`fmon`** peel. */
     if (
@@ -217,6 +244,10 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
             && (
                 g.context?._wizD1CapitalKPostNearPetDoneLikeC
                 || g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC
+            )
+            && !(
+                g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+                && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
             )
         ) {
             return [];
