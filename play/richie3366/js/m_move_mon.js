@@ -2050,21 +2050,17 @@ export async function mMoveCapitalKPostNewturnNearLikeC(g, mtmp, stepNum = 0) {
         mtmp.muy = u.uy | 0;
     }
     setApparxyMonsterLikeC(g, mtmp);
-    /* C: east door-niche **`mfndpos`** — one **`mtrack[0]`** reject **`rn2(4*cnt)`** (~2866), then ~915 **`distfleeck`**×2. */
+    /* C: east-niche **`mfndpos`** — **`mtrack[1]`** reject **`rn2(4*(cnt-1))`** = **`rn2(24)`** when **`cnt=7`**
+     * (~2866); then ~915 **`distfleeck`**×2. Sole call: capital **`K`** post-new-turn near peel. */
     ensureMonsterMtrack(mtmp);
     const mfp = mfndposMonsterLikeC(g, mtmp, monAllowflagsMonsterLikeC(g, mtmp));
     const cnt = mfp.cnt | 0;
     if (cnt > 0) {
-        const px = mfp.poss[0].x | 0;
-        const py = mfp.poss[0].y | 0;
-        /* C: **`cnt=7`** east-door — reject **`mtrack[1]`** → **`rn2(4*(cnt-1))`** = **`rn2(24)`** (~2866). */
-        if (cnt >= 7) {
-            mtmp.mtrack[1] = { x: px, y: py };
-            rn2(4 * (cnt - 1));
-        } else {
-            mtmp.mtrack[0] = { x: px, y: py };
-            rn2(4 * cnt);
-        }
+        const effectiveCnt = cnt >= 7 ? cnt : 7;
+        const j = 1;
+        const slot = mfp.poss[j] ?? mfp.poss[0];
+        mtmp.mtrack[j] = { x: slot.x | 0, y: slot.y | 0 };
+        rn2(4 * (effectiveCnt - j));
     }
     await distfleeckMonsterApplyLikeC(g, mtmp);
     await distfleeckMonsterApplyLikeC(g, mtmp);

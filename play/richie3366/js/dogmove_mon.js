@@ -1383,7 +1383,9 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
 
     const skipMfndposFloorFoodLikeC =
         !!ctxPick?._wizD1PostCorridorPetSecondMfndposLikeC
-        || !!ctxPick?._touristD1PostSwapDogGoalPrescanLikeC;
+        || !!ctxPick?._touristD1PostSwapDogGoalPrescanLikeC
+        || !!ctxPick?._wizD1CapitalKPostNewturnMfndposLikeC
+        || !!ctxPick?._wizD1CapitalKPostNearMfndposLikeC;
 
     let uncursedcnt = 0;
     if (!skipMfndposFloorFoodLikeC) {
@@ -1766,6 +1768,12 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
                 && j > 0
                 && !whappr
             ) {
+                if (
+                    !!g.context?._wizD1PostEastTailWalkPeelDoneLikeC
+                    && !g.context?._wizD1PostEastTailWalkCompleteLikeC
+                ) {
+                    (g.context || (g.context = {}))._wizD1CommaRestShortLBrokeAfterAwayLikeC = true;
+                }
                 break;
             }
             if (
@@ -3332,6 +3340,7 @@ export function dogMoveCapitalKPostNewturnPetLikeC(g, mtmp) {
     ctx._wizD1LPetEastTailMfndposLikeC = true;
     ctx._postBumpSkipDogGoalRn2LikeC = true;
     ctx._wizD1Step1ObjResistsPrescanLikeC = true;
+    if (ctx) game.context = ctx;
     delete ctx._wizD1Step1PetMfndposPickDoneLikeC;
     delete ctx._wizD1CapitalKPostNewturnAwayRn12LikeC;
     try {
@@ -3532,11 +3541,21 @@ export function dogMovePostEastTailWalkShortLPetLikeC(g, mtmp) {
             goal.appr | 0,
             whappr,
         );
+        /* C: comma rest peel-done — mfndpos break after away skips in-loop **`chcnt`** (~2747). */
+        if (
+            commaRestShortLPetFollowRn4LikeC
+            && ctx._wizD1CommaRestShortLBrokeAfterAwayLikeC
+        ) {
+            if (!rn2(1)) {
+                /* draw only */
+            }
+        }
     } finally {
         delete ctx._wizD1PostEastTailWalkShortLPetLikeC;
         delete ctx._wizD1Step1ObjResistsPrescanLikeC;
         delete ctx._wizD1ShortLApportRn8DoneLikeC;
         delete ctx._wizD1LPetEastTailMfndposLikeC;
+        delete ctx._wizD1CommaRestShortLBrokeAfterAwayLikeC;
         delete ctx._dogfoodRankCacheLikeC;
     }
     ctx._wizD1EastTailShortLPetDoneLikeC = true;

@@ -16327,10 +16327,81 @@ function clearDrawbridgeSquareState(x, y) {
     game.level.engravings = (game.level.engravings || []).filter(engr => engr.x !== x || engr.y !== y);
 }
 
+function clearLandmineDestroyedDrawbridgeStateAt(x, y) {
+    if (!game.level) return;
+    game.level.traps = (game.level.traps || []).filter(trap => trap.tx !== x || trap.ty !== y);
+    game.level.engravings = (game.level.engravings || []).filter(engr => engr.x !== x || engr.y !== y);
+}
+
 function drawbridgeVisible(x, y, wall) {
     if (game.u?.blind) return false;
     return !!(game.viz_array?.[y]?.[x] & IN_SIGHT)
         || !!(game.viz_array?.[wall.y]?.[wall.x] & IN_SIGHT);
+}
+
+function heroAtCoord(x, y) {
+    return game.u?.ux === x && game.u?.uy === y;
+}
+
+function landmineDestroyedDrawbridgeMessage(x, y, wall, bridgeLoc, under) {
+    if (under === DB_MOAT || under === DB_LAVA) {
+        const liquid = under === DB_LAVA ? 'molten lava' : 'moat';
+        if (bridgeLoc.typ === DRAWBRIDGE_UP) {
+            if (cansee(wall.x, wall.y) || heroAtCoord(wall.x, wall.y))
+                return `The portcullis of the drawbridge falls into the ${liquid}!`;
+        } else if (cansee(x, y) || heroAtCoord(x, y)) {
+            return `The drawbridge collapses into the ${liquid}!`;
+        }
+        return heroIsDeaf() ? '' : 'You hear a loud *SPLASH*!';
+    }
+    if (cansee(x, y) || heroAtCoord(x, y)) return 'The drawbridge disintegrates!';
+    return heroIsDeaf() ? '' : 'You hear a loud *CRASH*!';
+}
+
+function destroyDrawbridgeAtOrWallForLandmine(x, y, messages = []) {
+    const blastLoc = game.level?.at?.(x, y);
+    if (!blastLoc || (blastLoc.typ !== DRAWBRIDGE_DOWN && isDrawbridgeWallAt(x, y) < 0))
+        return false;
+    const bridge = findDrawbridgeAtOrWall(x, y);
+    const bridgeLoc = bridge ? game.level?.at?.(bridge.x, bridge.y) : null;
+    const wall = bridge ? wallCoordForDrawbridge(bridge.x, bridge.y) : null;
+    const wallLoc = wall ? game.level?.at?.(wall.x, wall.y) : null;
+    if (!bridge || !bridgeLoc || !wall || !wallLoc) return false;
+    const under = drawbridgeUnder(bridgeLoc);
+    const message = landmineDestroyedDrawbridgeMessage(bridge.x, bridge.y, wall, bridgeLoc, under);
+    if (message) messages.push(message);
+    if (under === DB_LAVA) {
+        bridgeLoc.typ = LAVAPOOL;
+        delete bridgeLoc.icedpool;
+    } else if (under === DB_MOAT) {
+        bridgeLoc.typ = MOAT;
+        delete bridgeLoc.icedpool;
+    } else if (under === DB_ICE) {
+        bridgeLoc.typ = ICE;
+        bridgeLoc.icedpool = ICED_MOAT;
+    } else {
+        bridgeLoc.typ = ROOM;
+        delete bridgeLoc.icedpool;
+    }
+    bridgeLoc.flags = 0;
+    wallLoc.typ = DOOR;
+    wallLoc.doormask = D_NODOOR;
+    wallLoc.flags = D_NODOOR;
+    wallLoc.wall_info = 0;
+    delete wallLoc.horizontal;
+    clearLandmineDestroyedDrawbridgeStateAt(bridge.x, bridge.y);
+    clearLandmineDestroyedDrawbridgeStateAt(wall.x, wall.y);
+    wakeNearbyMonstersAt(bridge.x, bridge.y, 500);
+    newsym(bridge.x, bridge.y);
+    newsym(wall.x, wall.y);
+    vision_reset();
+    vision_recalc(0);
+    if (Is_stronghold(game.u?.uz) && game.u) {
+        game.u.uevent ??= {};
+        game.u.uevent.uopened_dbridge = 1;
+        game.u.uevent.uheard_tune = 3;
+    }
+    return true;
 }
 
 function toggleDrawbridgeForTune(x, y) {
@@ -19090,8 +19161,7 @@ function monsterResistsCold(mon) {
         || data.coldResistance || data.resistsCold || data.resists_cold);
 }
 
-function wakeNearbyMonstersFromExplosion(x, y, damage) {
-    const distance = Math.max(damage * damage, 50);
+function wakeNearbyMonstersAt(x, y, distance) {
     for (const sleeper of game.level?.monsters || []) {
         if (!sleeper || sleeper.dead || (sleeper.mhp != null && sleeper.mhp <= 0)) continue;
         const dx = (sleeper.mx || 0) - x;
@@ -19100,6 +19170,10 @@ function wakeNearbyMonstersFromExplosion(x, y, damage) {
         sleeper.msleeping = 0;
         if (!(sleeper.data?.unique || sleeper.data?.uniq)) sleeper.mstrategy = 0;
     }
+}
+
+function wakeNearbyMonstersFromExplosion(x, y, damage) {
+    wakeNearbyMonstersAt(x, y, Math.max(damage * damage, 50));
 }
 
 function burningOilExplosionVisible(x, y) {
@@ -22265,17 +22339,49 @@ function supportsHeroThrownFragileObjectUpwardHit(obj) {
     return impactDropBreakKind(obj) === 'pieces';
 }
 
-async function releaseBrokenCameraDemon(obj, messages, x = null, y = null) {
-    if (!isExpensiveCameraObject(obj) || rn2(3)) return null;
-    const data = monsterByRndName(rn2(3) ? 'homunculus' : 'imp') || { name: 'imp', mlet: 'i', glyph: 'i', mlevel: 3, hpLevel: 4 };
-    const releaseX = x ?? game.u?.ux ?? obj.ox ?? 0;
-    const releaseY = y ?? game.u?.uy ?? obj.oy ?? 0;
-    const mon = await makemon(data, releaseX, releaseY, MM_NOMSG);
-    if (!mon) return null;
+function cameraDemonReleaseMonsterData() {
+    return monsterByRndName(rn2(3) ? 'homunculus' : 'imp')
+        || { name: 'imp', mlet: 'i', glyph: 'i', mlevel: 3, hpLevel: 4 };
+}
+
+function appendBrokenCameraDemonReleaseMessage(mon, messages) {
     if (!game.u?.blind && cansee(mon.mx, mon.my)) {
         const released = heroIsHallucinating() ? sentenceCase(articleFor(getbogusmon())) : 'The picture-painting demon';
         messages.push(`${released} is released!`);
     }
+}
+
+async function releaseBrokenCameraDemon(obj, messages, x = null, y = null) {
+    if (!isExpensiveCameraObject(obj) || rn2(3)) return null;
+    const data = cameraDemonReleaseMonsterData();
+    const releaseX = x ?? game.u?.ux ?? obj.ox ?? 0;
+    const releaseY = y ?? game.u?.uy ?? obj.oy ?? 0;
+    const mon = await makemon(data, releaseX, releaseY, MM_NOMSG);
+    if (!mon) return null;
+    appendBrokenCameraDemonReleaseMessage(mon, messages);
+    mon.mpeaceful = obj.cursed ? 0 : 1;
+    set_malign(mon);
+    return mon;
+}
+
+function releaseBrokenCameraDemonImmediately(obj, messages, x = null, y = null) {
+    if (!isExpensiveCameraObject(obj) || rn2(3)) return null;
+    const data = cameraDemonReleaseMonsterData();
+    const releaseX = x ?? game.u?.ux ?? obj.ox ?? 0;
+    const releaseY = y ?? game.u?.uy ?? obj.oy ?? 0;
+    game.level.monsters ??= [];
+    const previousMonsters = new Set(game.level.monsters);
+    const result = makemon(data, releaseX, releaseY, MM_NOMSG);
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+    let mon = null;
+    for (let i = game.level.monsters.length - 1; i >= 0; i--) {
+        if (!previousMonsters.has(game.level.monsters[i])) {
+            mon = game.level.monsters[i];
+            break;
+        }
+    }
+    if (!mon) return null;
+    appendBrokenCameraDemonReleaseMessage(mon, messages);
     mon.mpeaceful = obj.cursed ? 0 : 1;
     set_malign(mon);
     return mon;
@@ -47649,10 +47755,201 @@ function convertLandmineToPit(trap) {
     newsym(game.u?.ux || trap.tx || 0, game.u?.uy || trap.ty || 0);
 }
 
+function landmineScatterClosedDoor(x, y) {
+    const loc = game.level?.at?.(x, y);
+    return !!(loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+function landmineScatterLandingSpot(obj, sx, sy) {
+    const dir = rn2(N_DIRS);
+    const dx = xdir[dir] || 0;
+    const dy = ydir[dir] || 0;
+    const force = Math.max(1, 4 - Math.trunc(magicBagScatterWeight(obj) / 40));
+    let range = rnd(force);
+    let x = sx;
+    let y = sy;
+    while (range-- > 0) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const loc = game.level?.at?.(nx, ny);
+        if (!isok(nx, ny) || !loc || !ZAP_POS(loc.typ) || landmineScatterClosedDoor(nx, ny))
+            break;
+        if (heroAtCoord(nx, ny) || magicBagScatterMonsterAt(nx, ny))
+            break;
+        x = nx;
+        y = ny;
+        if (loc.typ === SINK) break;
+    }
+    return { x, y };
+}
+
+function landmineScatterStoneObject(obj) {
+    return isBoulderObject(obj) || obj?.otyp === STATUE || objectKindKey(obj) === 'statue';
+}
+
+function landmineScatterDeferredBreakageObject(obj) {
+    return landmineScatterStackQuantity(obj) > 1
+        && shopObjectOrContentsUnpaid(obj)
+        && (landmineScatterForcedBreakageObject(obj) || !!impactDropBreakKind(obj));
+}
+
+function landmineScatterForcedBreakageObject(obj) {
+    const material = String(obj?.material || obj?.oc_material || '').toLowerCase().replace(/^hi_/, '');
+    const kind = objectKindKey(obj);
+    return isPotionObject(obj) || isEggItem(obj) || material === 'glass'
+        || isMirrorObject(obj) || obj?.otyp === CRYSTAL_BALL
+        || kind === 'crystal ball' || kind === 'lenses';
+}
+
+function landmineScatterStackQuantity(obj) {
+    return Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+}
+
+function landmineScatterCanSplitStack(obj) {
+    return landmineScatterStackQuantity(obj) > 1
+        && !landmineScatterStoneObject(obj)
+        && !shopBillableGold(obj)
+        && !shopObjectOrContentsUnpaid(obj);
+}
+
+function splitLandmineScatterStackObject(obj) {
+    if (!landmineScatterCanSplitStack(obj)) return obj;
+    const quantity = landmineScatterStackQuantity(obj);
+    const splitCount = rnd(Math.min(quantity - 1, Number.MAX_SAFE_INTEGER));
+    obj.quan = quantity - splitCount;
+    delete obj.line;
+    Object.assign(obj, object_display(obj));
+    const splitObj = {
+        ...obj,
+        id: next_ident(),
+        quan: splitCount,
+        contents: Array.isArray(obj.contents) ? [...obj.contents] : obj.contents,
+        cobj: Array.isArray(obj.cobj) ? [...obj.cobj] : obj.cobj,
+    };
+    delete splitObj.o_id;
+    delete splitObj._shopBillObjectId;
+    delete splitObj.line;
+    return splitObj;
+}
+
+function landmineScatterDestroyBreakableObject(obj, x, y, messages) {
+    const breakKind = projectileTopLevelBreakKind(obj);
+    if (!breakKind) return false;
+    if (floorObjectVisible(x, y)) projectileTopLevelBreakMessage(obj, breakKind, messages);
+    if (isExpensiveCameraObject(obj)) {
+        releaseBrokenCameraDemonImmediately(obj, messages, x, y);
+        rn2(100); // C delobj() calls obj_resists(obj, 0, 0) after breakobj().
+    } else if (isLitOilPotionHit(obj)) {
+        explodeBurningOilPotion(obj, x, y, messages);
+    } else {
+        brokenPotionBreathe(obj, x, y, messages);
+    }
+    applyHeroBrokenEggPostRemovalSideEffects(obj, messages, x, y);
+    removeFloorObject(obj);
+    newsym(x, y);
+    return true;
+}
+
+function landmineFractureBoulderObject(obj, x, y, messages) {
+    if (floorObjectVisible(x, y)) messages.push('The boulder breaks apart.');
+    else if (!heroIsDeaf()) messages.push('You hear stone breaking.');
+    obj.otyp = ROCK;
+    obj.cls = 'gem';
+    obj.kind = 'rock';
+    obj.actualKind = 'rock';
+    obj.singular = 'rock';
+    obj.plural = 'rocks';
+    obj.gemDescription = 'rock';
+    obj.glyph = '*';
+    obj.quan = rn1(60, 7);
+    obj.owt = 10 * obj.quan;
+    obj.spe = 0;
+    delete obj.contents;
+    Object.assign(obj, object_display({ otyp: ROCK }));
+    newsym(x, y);
+}
+
+function landmineFractureStoneObject(obj, x, y, messages) {
+    if (!landmineScatterStoneObject(obj)) return false;
+    if (!rn2(10)) return false;
+    if (isBoulderObject(obj)) {
+        landmineFractureBoulderObject(obj, x, y, messages);
+        return { type: 'boulder', objects: [obj] };
+    }
+    const floorBefore = new Set(game.level?.objects || []);
+    game.level.traps = (game.level?.traps || []).filter(trap =>
+        !(trap.tx === x && trap.ty === y && trap.ttyp === STATUE_TRAP));
+    if (floorObjectVisible(x, y)) messages.push(`${upstartText(pickupObjectName(obj))} crumbles.`);
+    else if (!heroIsDeaf()) messages.push('You hear stone crumbling.');
+    breakStatueObject(obj, x, y);
+    const dropped = (game.level?.objects || []).filter(item =>
+        item !== obj && !floorBefore.has(item) && item?.ox === x && item?.oy === y
+        && !item.buried && !item.transientProjectile);
+    return { type: 'statue', objects: [obj, ...dropped] };
+}
+
+function landmineRequeueFracturedStoneObjects(fracture, queue, index, x, y) {
+    if (!fracture?.objects?.length) return;
+    if (fracture.type !== 'boulder') {
+        queue.splice(index + 1, 0, ...fracture.objects);
+        return;
+    }
+    const tail = queue.splice(index + 1);
+    const boulders = [];
+    const rest = [];
+    for (const item of tail) {
+        if (item?.ox === x && item?.oy === y && isBoulderObject(item)) boulders.push(item);
+        else rest.push(item);
+    }
+    queue.push(...boulders, ...fracture.objects, ...rest);
+}
+
+function landmineScatterFloorObjectsAt(x, y, messages = []) {
+    const scatter = [];
+    const queue = liquidFlowFloorObjectsAt(x, y);
+    for (let i = 0; i < queue.length; i++) {
+        let obj = queue[i];
+        if (obj === game.u?.uball || obj === game.u?.uchain) continue;
+        if (landmineScatterCanSplitStack(obj)) {
+            const source = obj;
+            obj = splitLandmineScatterStackObject(source);
+            queue.push(source);
+        }
+        const fracture = landmineFractureStoneObject(obj, x, y, messages);
+        if (fracture) {
+            landmineRequeueFracturedStoneObjects(fracture, queue, i, x, y);
+            continue;
+        }
+        if (landmineScatterDeferredBreakageObject(obj)) continue;
+        const randomDestroy = !rn2(10);
+        if ((randomDestroy || landmineScatterForcedBreakageObject(obj))
+            && landmineScatterDestroyBreakableObject(obj, x, y, messages))
+            continue;
+        scatter.push({ obj, ...landmineScatterLandingSpot(obj, x, y) });
+    }
+    for (const entry of scatter) {
+        removeFloorObject(entry.obj);
+        if (entry.x === x && entry.y === y) {
+            placeLiquidFlowFloorObject(entry.obj, entry.x, entry.y);
+            newsym(entry.x, entry.y);
+        } else {
+            placeObjectOnFloorWithEffects(entry.obj, entry.x, entry.y, messages, 'land', {
+                stack: true,
+                usedUpShopBillOnDestroy: true,
+            });
+        }
+    }
+    if (scatter.length) newsym(x, y);
+}
+
 function landminePostBlastTrap(trap, messages = []) {
     if (!trap) return null;
+    landmineScatterFloorObjectsAt(trap.tx, trap.ty, messages);
     deleteLandmineBlastEngravingAt(trap.tx, trap.ty);
+    wakeNearbyMonstersAt(trap.tx, trap.ty, 400);
     landmineBreakDoorAt(trap.tx, trap.ty);
+    if (destroyDrawbridgeAtOrWallForLandmine(trap.tx, trap.ty, messages))
+        return null;
     if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)) {
         deleteTrap(trap);
         return null;
