@@ -945,9 +945,6 @@ export function mfndposMonsterLikeC(g, mtmp, flag) {
         ) {
             /* C: corridor **~(10–11,10–11)** — three **`!appr`** **`rn2(12)`** picks (~2732–2734). */
             data.cnt = 3;
-        } else if (g.context?._wizD1PostEastTailWalkDistantMmoveLikeC) {
-            /* C: post-east-tail walk distant — three **`rn2(12)`** chcnt picks (~2775–2777). */
-            data.cnt = 3;
         }
     }
     return data;

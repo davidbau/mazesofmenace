@@ -4076,6 +4076,19 @@ function teleportHeroToFixedTrapDestination(trap, options = {}) {
     return teleportHeroSameLevel(dst.x, dst.y, options);
 }
 
+function vaultTeleportDestination() {
+    const vaultRoom = (game.level?.rooms || []).find(room => room.rtype === VAULT);
+    const spot = {};
+    if (vaultRoom && somexyspace(vaultRoom, spot) && sameLevelTeleportOk(spot.x, spot.y, false))
+        return spot;
+    return null;
+}
+
+function teleportHeroToVault(options = {}) {
+    const spot = vaultTeleportDestination();
+    return spot ? teleportHeroSameLevel(spot.x, spot.y, options) : null;
+}
+
 function applySameLevelTeleportNutritionPenalty() {
     if (!game.u) return;
     game.u.uhunger = (game.u.uhunger ?? 900) - 100;
@@ -20171,14 +20184,14 @@ async function heroDropBallTrapRelocationEffect(x, y, messages) {
     else if (trap.ttyp === ROCKTRAP) result = movementRockTrapResult(trap);
     else if (trap.ttyp === SQKY_BOARD) result = movementSqueakyBoardTrapResult(trap);
     else if (trap.ttyp === RUST_TRAP) result = movementRustTrapResult(trap);
-    else if (trap.ttyp === FIRE_TRAP) result = heroFireTrapResult(trap, '', { allowLifeSaving: true });
-    else if (trap.ttyp === ROLLING_BOULDER_TRAP) result = heroRollingBoulderTrapResult(trap);
+    else if (trap.ttyp === FIRE_TRAP) result = movementFireTrapResult(trap, { allowLifeSaving: true });
+    else if (trap.ttyp === ROLLING_BOULDER_TRAP) result = movementRollingBoulderTrapResult(trap);
     else if (trap.ttyp === WEB) result = movementWebTrapResult(trap);
     else if (trap.ttyp === BEAR_TRAP) result = movementBearTrapResult(trap);
     else if (trap.ttyp === LANDMINE) result = movementLandmineResult(trap);
     else if (trap.ttyp === POLY_TRAP) result = movementPolyTrapResult(trap);
-    else if (trap.ttyp === ARROW_TRAP) result = heroArrowTrapResult(trap, '', !!trap.tseen);
-    else if (trap.ttyp === DART_TRAP) result = heroDartTrapResult(trap, '', !!trap.tseen);
+    else if (trap.ttyp === ARROW_TRAP) result = movementArrowTrapResult(trap);
+    else if (trap.ttyp === DART_TRAP) result = movementDartTrapResult(trap);
     if (!trapResultHasEffect(result)) return { more: false, trapResult: null };
 
     if (result.message) messages.push(result.message);
@@ -27196,6 +27209,39 @@ function removeCurseScrollEffect(item) {
     return { messages, learned, disintegrates };
 }
 
+function pseudoRemoveCurseSpellEffect({ blessed = false, confused = false } = {}) {
+    const messages = [removeCurseFeelingMessage(confused)];
+
+    if (!confused) {
+        for (const obj of game.inventory || []) {
+            if (obj.cls === 'coin' || obj.otyp === GOLD_PIECE || obj.glyph === '$') continue;
+            const selected = blessed || removeCurseActiveTarget(obj);
+            if (!selected || !obj.cursed) continue;
+            const payment = costlyUncurseWater(obj);
+            if (payment) messages.push(payment);
+            obj.cursed = false;
+            normalizeUncursedWaterPotion(obj);
+            syncCarriedFigurineTransformTimer(obj);
+            refreshInventoryLineAfterBucChange(obj);
+        }
+    } else {
+        for (const obj of game.inventory || []) {
+            if (obj.cls === 'coin' || obj.otyp === GOLD_PIECE || obj.glyph === '$') continue;
+            const selected = blessed || removeCurseActiveTarget(obj);
+            if (!selected) continue;
+            removeCurseBlessOrCurse(obj);
+            obj.bknown = false;
+            refreshInventoryLineAfterBucChange(obj);
+        }
+    }
+
+    const buriedBall = isBuriedBallTrapActive();
+    if (!confused) unpunishHero();
+    if (buriedBall && buriedBallToFreedom())
+        messages.push('The clasp on your leg vanishes.');
+    return { messages };
+}
+
 function scrollReadMessages(confusedReading) {
     const messages = ['As you read the scroll, it disappears.'];
     if (confusedReading)
@@ -32779,6 +32825,7 @@ export const __shopBillingTestHooks = {
     heroHasAntimagicForTest: heroHasAntimagic,
     heroHasColdResistanceForTest: heroHasColdResistance,
     heroHasSlowDigestionForTest: heroHasSlowDigestion,
+    magicTrapResultForTest: magicTrapResult,
     applyHeroOrdinaryHungerForTest: applyHeroOrdinaryHunger,
     applyAccessoryHungerForTest: applyAccessoryHunger,
     coldInventoryProtectionChanceForTest: coldInventoryProtectionChance,
@@ -46163,7 +46210,14 @@ function movementTeleportTrapResult(trap, options = {}) {
     if (heroHasAntimagic() || In_endgame(game.u?.uz) || heroNoTeleportLevel())
         return { message: 'You feel a wrenching sensation.', more: false };
 
-    if (trap.once) deleteTrap(trap);
+    if (trap.once) {
+        deleteTrap(trap);
+        const vaultTeleport = teleportHeroToVault(options);
+        if (vaultTeleport)
+            return { message: vaultTeleport, more: true };
+        const materialize = safeTeleportHeroSameLevel(options);
+        return { message: materialize || 'You shudder for a moment.', more: true };
+    }
     const fixedTeleport = teleportHeroToFixedTrapDestination(trap, options);
     if (fixedTeleport === '')
         return { message: 'You shudder for a moment.', more: true };
@@ -46403,6 +46457,20 @@ function heroDartTrapFatalResult(messages, deathCause) {
     return { lifeSaving: false, fatal: true, more: true };
 }
 
+function restoreLifeSavedHeroForContinuation() {
+    if (game.u) game.u.uhp = game.u.uhpmax || 1;
+}
+
+function finishLandminePitFalloutResult(messages, fatalResult, pitResult) {
+    if (pitResult?.message) messages.push(pitResult.message);
+    return {
+        ...pitResult,
+        lifeSaving: pitResult?.fatal ? !!pitResult.lifeSaving : !!fatalResult.lifeSaving || !!pitResult.lifeSaving,
+        more: pitResult?.fatal ? !!pitResult.more : !!fatalResult.more || !!pitResult.more,
+        message: trapMessage(...messages),
+    };
+}
+
 function applyHeroTrapDartPoison(dart, messages, { fatal = 10 } = {}) {
     if (!dart?.opoisoned) return {};
     messages.push('The dart was poisoned!');
@@ -46606,6 +46674,37 @@ function heroDartTrapResult(trap, prefix = '', alreadySeen = !!trap?.tseen) {
         fatal: !!poisonResult.fatal,
         more: physicalLifeSaving || !!poisonResult.lifeSaving || !!poisonResult.fatal,
     };
+}
+
+function movementFloorTriggerPrecheck(trap) {
+    const alreadySeen = !!trap?.tseen;
+    if (game.u?.levitating || game.u?.flying) {
+        return {
+            handled: true,
+            alreadySeen,
+            result: { message: alreadySeen ? movementOverFloorTrapMessage(trap) : '', more: false },
+        };
+    }
+    if (alreadySeen && sitTrapEscapeAllowed(trap) && !rn2(5)) {
+        return {
+            handled: true,
+            alreadySeen,
+            result: { message: movementTrapEscapeMessage(trap), more: false },
+        };
+    }
+    return { handled: false, alreadySeen };
+}
+
+function movementArrowTrapResult(trap) {
+    const precheck = movementFloorTriggerPrecheck(trap);
+    if (precheck.handled) return precheck.result;
+    return heroArrowTrapResult(trap, '', precheck.alreadySeen);
+}
+
+function movementDartTrapResult(trap) {
+    const precheck = movementFloorTriggerPrecheck(trap);
+    if (precheck.handled) return precheck.result;
+    return heroDartTrapResult(trap, '', precheck.alreadySeen);
 }
 
 async function finishHeroDartTrapResult(result, { sit = false, more = false } = {}) {
@@ -47023,6 +47122,8 @@ function sitRustTrapMessage(trap, prefix) {
 }
 
 function movementRustTrapResult(trap) {
+    const precheck = movementFloorTriggerPrecheck(trap);
+    if (precheck.handled) return precheck.result;
     if (trap) trap.tseen = true;
     rn2(5);
     return { message: 'A gush of water hits you!' };
@@ -47063,6 +47164,12 @@ function heroFireTrapResult(trap, prefix = '', { allowLifeSaving = false } = {})
         lifeSaving: !!inventoryFire.lifeSaving,
         fatal: !!inventoryFire.fatal,
     };
+}
+
+function movementFireTrapResult(trap, options = {}) {
+    const precheck = movementFloorTriggerPrecheck(trap);
+    if (precheck.handled) return precheck.result;
+    return heroFireTrapResult(trap, '', options);
 }
 
 function heroFireTrapMessage(trap, prefix = '') {
@@ -47507,7 +47614,17 @@ function convertLandmineToPit(trap) {
     if (!trap) return;
     trap.ttyp = PIT;
     trap.madeby_u = false;
+    trap.tseen = true;
     newsym(game.u?.ux || trap.tx || 0, game.u?.uy || trap.ty || 0);
+}
+
+function landminePostBlastTrap(trap) {
+    if (!trap) return null;
+    if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)) {
+        deleteTrap(trap);
+        return null;
+    }
+    return trap;
 }
 
 function woundHeroLandmineLegs() {
@@ -47537,8 +47654,6 @@ function applyHeroLandmineDamage(damage, messages) {
     let fatalResult = {};
     if (game.u) {
         game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
-        game.u.utrap = rn1(6, 2);
-        game.u.utraptype = 'pit';
         if ((game.u.uhp || 0) <= 0)
             fatalResult = heroDartTrapFatalResult(messages, 'killed by a land mine');
     }
@@ -47547,7 +47662,7 @@ function applyHeroLandmineDamage(damage, messages) {
 
 function heroLandmineAirCurrentResult(trap, prefix, damage) {
     const alreadySeen = !!trap?.tseen;
-    if (!alreadySeen && rn2(3)) return { message: '', more: false };
+    if (!alreadySeen && rn2(3)) return { message: trapMessage(prefix), more: false };
     if (trap) trap.tseen = true;
     const triggerName = trap?.madeby_u ? 'the trigger of your mine' : 'a trigger';
     const messages = [
@@ -47558,11 +47673,18 @@ function heroLandmineAirCurrentResult(trap, prefix, damage) {
     messages.push(`KAABLAMM!!!  The air currents set ${alreadySeen ? landmineArticleName(trap) : 'it'} off!`);
     convertLandmineToPit(trap);
     if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
+    let fatalResult = {};
     if ((game.u?.uhp || 0) <= 0) {
-        const fatalResult = heroDartTrapFatalResult(messages, 'killed by a land mine');
-        return { message: trapMessage(...messages), ...fatalResult };
+        fatalResult = heroDartTrapFatalResult(messages, 'killed by a land mine');
+        if (fatalResult.fatal) return { message: trapMessage(...messages), ...fatalResult };
+        if (fatalResult.lifeSaving) restoreLifeSavedHeroForContinuation();
     }
-    return { message: trapMessage(...messages) };
+    const pitTrap = landminePostBlastTrap(trap);
+    const pitResult = pitTrap ? movementPitResult(pitTrap, { recursive: true }) : {};
+    const result = finishLandminePitFalloutResult(messages, fatalResult, pitResult);
+    if (fatalResult.lifeSaving && !pitResult?.lifeSaving && !result.fatal && game.u)
+        game._life_saving_post_continue_hp = game.u.uhp;
+    return result;
 }
 
 function heroLandmineResult(trap, prefix = '', { forceTrap = false } = {}) {
@@ -47577,20 +47699,25 @@ function heroLandmineResult(trap, prefix = '', { forceTrap = false } = {}) {
     convertLandmineToPit(trap);
     const fatalResult = applyHeroLandmineDamage(damage, messages);
     exerciseAttribute(A_DEX, false);
-    if (!fatalResult.fatal && !fatalResult.lifeSaving) messages.push('You fall into a pit!');
-    return { message: trapMessage(...messages), ...fatalResult };
+    if (fatalResult.fatal)
+        return { message: trapMessage(...messages), ...fatalResult };
+    if (fatalResult.lifeSaving) restoreLifeSavedHeroForContinuation();
+    const pitTrap = landminePostBlastTrap(trap);
+    const pitResult = pitTrap ? movementPitResult(pitTrap, { recursive: true }) : {};
+    const result = finishLandminePitFalloutResult(messages, fatalResult, pitResult);
+    if (fatalResult.lifeSaving && !pitResult?.lifeSaving && !result.fatal && game.u)
+        game._life_saving_post_continue_hp = game.u.uhp;
+    return result;
 }
 
 function movementLandmineResult(trap) {
-    const alreadySeen = !!trap?.tseen;
-    if (alreadySeen && !(game.u?.levitating || game.u?.flying)
-        && sitTrapEscapeAllowed(trap) && !rn2(5))
-        return { message: movementTrapEscapeMessage(trap), more: false };
+    const precheck = movementFloorTriggerPrecheck(trap);
+    if (precheck.handled) return precheck.result;
     return heroLandmineResult(trap, '');
 }
 
 function sitLandmineResult(trap, prefix) {
-    return heroLandmineResult(trap, prefix, { forceTrap: true });
+    return heroLandmineResult(trap, prefix);
 }
 
 function pitOwnerArticle(trap) {
@@ -47604,6 +47731,11 @@ function steedPitName(steed, { poor = false, capital = false } = {}) {
         .replace(/^the /, '');
     if (poor) name = `poor ${name}`;
     return capital ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+}
+
+function recursiveSteedPitName(steed) {
+    const name = steedPitName(steed);
+    return steed?.givenName ? name : `the ${name}`;
 }
 
 function heroPitTrapState() {
@@ -47690,7 +47822,7 @@ function heroPitClingerResult(trap, prefix, alreadyKnown) {
     return { message: trapMessage(...messages) };
 }
 
-function heroPitResult(trap, prefix = '', { viaSitting = false, plunged = false } = {}) {
+function heroPitResult(trap, prefix = '', { viaSitting = false, plunged = false, recursive = false } = {}) {
     const alreadyKnown = !!trap?.tseen;
     const inSokoban = In_sokoban(game.u?.uz);
     if (!inSokoban && (game.u?.levitating || (game.u?.flying && !plunged && !viaSitting)))
@@ -47706,7 +47838,8 @@ function heroPitResult(trap, prefix = '', { viaSitting = false, plunged = false 
         const pitName = trap?.ttyp === SPIKED_PIT ? 'spiked pit' : 'pit';
         messages.push(`Air currents pull you down into ${pitOwnerArticle(trap)} ${pitName}!`);
     } else {
-        if (steed) messages.push(`You lead ${steedPitName(steed, { poor: true })} into ${pitOwnerArticle(trap)} pit!`);
+        if (steed && recursive) messages.push(`You and ${recursiveSteedPitName(steed)} fall into ${pitOwnerArticle(trap)} pit!`);
+        else if (steed) messages.push(`You lead ${steedPitName(steed, { poor: true })} into ${pitOwnerArticle(trap)} pit!`);
         else messages.push('You fall into a pit!');
     }
     if (relevantSpikes && heroWearingIronShoes()) {
@@ -47743,14 +47876,14 @@ function heroPitResult(trap, prefix = '', { viaSitting = false, plunged = false 
     };
 }
 
-function movementPitResult(trap) {
+function movementPitResult(trap, options = {}) {
     const alreadySeen = !!trap?.tseen;
     if (!In_sokoban(game.u?.uz) && (game.u?.levitating || game.u?.flying))
         return { message: alreadySeen ? movementOverFloorTrapMessage(trap) : '', more: false };
     if (alreadySeen && !In_sokoban(game.u?.uz)
         && sitTrapEscapeAllowed(trap) && !rn2(5))
         return { message: movementTrapEscapeMessage(trap), more: false };
-    return heroPitResult(trap, '');
+    return heroPitResult(trap, '', options);
 }
 
 function sitPitResult(trap, prefix) {
@@ -48666,6 +48799,12 @@ function heroRollingBoulderTrapResult(trap, prefix = '') {
         released,
         message: suffix ? `${message}  ${suffix}` : message,
     };
+}
+
+function movementRollingBoulderTrapResult(trap) {
+    const precheck = movementFloorTriggerPrecheck(trap);
+    if (precheck.handled) return precheck.result;
+    return heroRollingBoulderTrapResult(trap);
 }
 
 function sitRollingBoulderMessage(trap, prefix) {
@@ -49854,7 +49993,10 @@ function magicTrapResult(trap) {
         return { message: 'You are caught in a magical explosion!', afterMore: 'Your body absorbs some of the magical energy.' };
     }
 
-    const fate = rnd(20);
+    return magicTrapFateResult(rnd(20));
+}
+
+function magicTrapFateResult(fate) {
     if (fate < 10) {
         const count = rnd(4);
         const messages = [];
@@ -49902,9 +50044,13 @@ function magicTrapResult(trap) {
         17: 'You smell charred flesh.',
         18: 'You feel tired.',
         19: 'You feel charismatic!',
-        20: 'You feel like someone is helping you.',
     }[fate] || '';
     if (fate === 19 && game.u?.acurr?.a) game.u.acurr.a[A_CHA] = Math.min(25, (game.u.acurr.a[A_CHA] || 3) + 1);
+    if (fate === 20) {
+        exerciseAttribute(A_WIS, true);
+        const result = pseudoRemoveCurseSpellEffect();
+        return { message: result.messages.join('  '), more: result.messages.length > 1 };
+    }
     return { message };
 }
 
@@ -51279,13 +51425,13 @@ async function moveHero(dx, dy) {
         return;
     }
     if (steppedTrap?.ttyp === FIRE_TRAP) {
-        const result = heroFireTrapResult(steppedTrap, '', { allowLifeSaving: true });
+        const result = movementFireTrapResult(steppedTrap, { allowLifeSaving: true });
         await setMessage(result.message, result.more);
         applyHeroFireTrapFatalResult(result);
         return;
     }
     if (steppedTrap?.ttyp === ROLLING_BOULDER_TRAP) {
-        const result = heroRollingBoulderTrapResult(steppedTrap);
+        const result = movementRollingBoulderTrapResult(steppedTrap);
         await setMessage(result.message);
         return;
     }
@@ -51660,14 +51806,14 @@ async function moveHero(dx, dy) {
         return;
     }
     if (trapHere?.ttyp === ARROW_TRAP) {
-        const result = heroArrowTrapResult(trapHere, '', !!trapHere.tseen);
+        const result = movementArrowTrapResult(trapHere);
         result.message = [pileMessage, result.message].filter(Boolean).join('  ');
         if (result.message)
             await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
         return;
     }
     if (trapHere?.ttyp === DART_TRAP) {
-        const result = heroDartTrapResult(trapHere, '', !!trapHere.tseen);
+        const result = movementDartTrapResult(trapHere);
         result.message = [pileMessage, result.message].filter(Boolean).join('  ');
         if (result.message)
             await finishHeroDartTrapResult(result, { more: !!(pileMessage && result.message) });
@@ -52023,16 +52169,18 @@ export async function rhack(_cmd) {
             }
             if (game._pending_arrow_trap) {
                 const trap = game._pending_arrow_trap;
-                const alreadySeen = !!trap.tseen;
                 game._pending_arrow_trap = null;
-                await finishHeroDartTrapResult(heroArrowTrapResult(trap, '', alreadySeen));
+                const result = movementArrowTrapResult(trap);
+                if (result.message)
+                    await finishHeroDartTrapResult(result);
                 return;
             }
             if (game._pending_dart_trap) {
                 const trap = game._pending_dart_trap;
-                const alreadySeen = !!trap.tseen;
                 game._pending_dart_trap = null;
-                await finishHeroDartTrapResult(heroDartTrapResult(trap, '', alreadySeen));
+                const result = movementDartTrapResult(trap);
+                if (result.message)
+                    await finishHeroDartTrapResult(result);
                 return;
             }
             if (game._pending_landmine_trap) {
@@ -52241,16 +52389,19 @@ export async function rhack(_cmd) {
             const exploreLifeSaved = !!(game._pending_explore_lifesaving_message
                 || game._queued_explore_lifesaving_message);
             const skipRemainingMoreMessages = ch === '\x1b';
+            const postContinuationHp = game._life_saving_post_continue_hp;
             const lifeSavingMessage = exploreLifeSaved || skipRemainingMoreMessages
                 ? 'You feel much better!'
                 : 'You feel much better!  The medallion crumbles to dust!';
             game._pending_message = lifeSavingMessage;
             game._pending_explore_lifesaving_message = 0;
             game._queued_explore_lifesaving_message = 0;
+            game._life_saving_post_continue_hp = null;
             game._message_more = 0;
             game._keep_pending_message = 1;
             game._command_mode = null;
-            if (!stoningLifeSaved && game.u) game.u.uhp = game.u.uhpmax || 1;
+            if (!stoningLifeSaved && game.u)
+                game.u.uhp = postContinuationHp == null ? (game.u.uhpmax || 1) : postContinuationHp;
             if (stoningLifeSaved) {
                 game._life_saving_clear_stoning = 0;
                 if (game.u) {

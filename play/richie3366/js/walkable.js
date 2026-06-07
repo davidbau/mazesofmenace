@@ -374,9 +374,15 @@ export function enextoCoreLikeC(g, cc, xx, yy, mdat, entflags) {
     const allowXy = (entflags & GP_ALLOW_XY) !== 0;
 
     const nearcandyct = collectCoordsLikeC(candy, xx, yy, 3, CC_NO_FLAGS, null, g);
+    if (typeof globalThis.__diagEnextoCandyLikeC === 'function') {
+        globalThis.__diagEnextoCandyLikeC(candy, nearcandyct, xx, yy, entflags, fakemon, g);
+    }
     for (let i = 0; i < nearcandyct; i++) {
         const c = candy[i];
         const ok = goodposMakemonLikeC(c.x, c.y, fakemon, entflags, g);
+        if (typeof globalThis.__diagEnextoCandidateLikeC === 'function') {
+            globalThis.__diagEnextoCandidateLikeC(g, xx, yy, i, c.x, c.y, ok, entflags);
+        }
         if (ok) {
             cc.x = c.x;
             cc.y = c.y;
