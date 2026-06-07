@@ -610,10 +610,26 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         g.context._wizD1CapitalKPostCommaMoveloopLikeC = true;
         delete g.context._wizD1CapitalKPostCommaPendingLikeC;
     }
+    /* C: second short **`l`** arms pending; comma pickup promotes deferred peel (~2908). */
+    if (
+        g.context?._wizD1DeferredRunKPendingLikeC
+        && g.context?._wizD1PromoteDeferredRunKLikeC
+    ) {
+        delete g.context._wizD1PromoteDeferredRunKLikeC;
+        delete g.context._wizD1DeferredRunKPendingLikeC;
+        g.context._wizD1PostEastTailWalkFmonLikeC = true;
+        g.context._wizD1PostEastTailWalkFmonDistantDeferredLikeC = true;
+        g.context._wizD1WalkFmonPostMoveloopLikeC = true;
+        delete g.context._wizD1PostEastTailWalkCompleteLikeC;
+        delete g.context._wizD1DeferredRunKNewTurnPassesLikeC;
+        delete g.context._wizD1PostEastTailWalkNewTurnDoneLikeC;
+        delete g.context._wizD1WalkFmonPetDochugRn4DoneLikeC;
+    }
     /* C: stale east-tail deferred without live walk **`fmon`** — avoid runaway new-turn loop. */
     if (
         g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
         && !g.context?._wizD1PostEastTailWalkFmonLikeC
+        && !g.context?._wizD1DeferredRunKPendingLikeC
     ) {
         delete g.context._wizD1PostEastTailWalkFmonDistantDeferredLikeC;
         delete g.context._wizD1WalkFmonPostMoveloopLikeC;
@@ -661,6 +677,8 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             g.context?._wizD1PostEastTailWalkCompleteLikeC
             && !g.context?._wizD1PostEastTailWalkFmonPendingLikeC
             && !g.context?._wizD1CommaPickupCapOuterLikeC
+            && !g.context?._wizD1DeferredRunKPendingLikeC
+            && !g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
         ) {
             /* C: zero-time autoopen **`l`** may leave stale walk **`fmon`** — short **`l`** uses **`Complete`**. */
             wizD1ShortLPostLikeC = true;
@@ -738,12 +756,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC;
         delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
         delete g.context._wizD1EastTailPostMcalcmovePetPendingLikeC;
+        /* C: run-**`K`** deferred comma — pass counter owns exit; do not clear safety **`OuterLoopDone`**. */
         if (
             wizMultiPassOuterLikeC
-            && !(
-                g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
-                && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) >= 3
-            )
+            && !g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
         ) {
             delete g.context._wizD1LPostOuterLoopDoneLikeC;
         }
@@ -758,6 +774,8 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             && !g.context?._wizD1PostEastTailWalkCompletePendingLikeC
             && !g.context?._wizD1EastTailShortLPendingArmedLikeC
             && !g.context?._wizD1PostEastTailWalkFmonPendingLikeC
+            && !g.context?._wizD1DeferredRunKPendingLikeC
+            && !g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
         ) {
             delete g.context._wizD1PostEastTailWalkMintrapPeelDoneLikeC;
             delete g.context._wizD1PostEastTailWalkCompleteLikeC;
@@ -781,6 +799,12 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
              * C loop forever on some public sessions (**`seed0399`**); cap is far above
              * legitimate hero-speed surplus paths (e.g. **`seed0077`**). */
             if (++outerSafety > 500_000) break;
+            if (
+                g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) < 3
+            ) {
+                newTurnDone = false;
+            }
             let monscanmove = false;
             /* C: allmain.c — **`movemon`** uses current **`svm.moves`** each inner-loop pass
                (hero speed surplus can run monster pass + new-turn more than once per input). */
@@ -1001,6 +1025,13 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                             break;
                         }
                         monscanmove = await movemon(stepForMovemon);
+                        if (
+                            g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                            && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) < 3
+                        ) {
+                            monscanmove = false;
+                            break;
+                        }
                         if ((u.umovement | 0) >= NORMAL_SPEED) break;
                     } while (monscanmove);
                     if (
@@ -1013,7 +1044,12 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             }
             if (commaPickupOuterCapLikeC) {
                 delete g.context._wizD1CommaPickupCapOuterLikeC;
-                g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                if (
+                    !g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                    || (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) >= 3
+                ) {
+                    g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                }
             }
             /* C: east-tail post-corridor **`mcalcmove`** already ran inside **`movemon`** (~2751+). */
             if (
@@ -1047,7 +1083,23 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 g.context.move = 0;
                 newTurnDone = true;
             }
+            const deferredRunKNewturnLikeC =
+                !!g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) < 3;
             if (
+                deferredRunKNewturnLikeC
+                && !g.context?._wizD1LPostOuterLoopDoneLikeC
+            ) {
+                const tailStepNum = (g.moves | 0) - 1;
+                await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                const runKPasses =
+                    (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) + 1;
+                g.context._wizD1DeferredRunKNewTurnPassesLikeC = runKPasses;
+                if (runKPasses >= 3) {
+                    g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                }
+                newTurnDone = true;
+            } else if (
                 !monscanmove
                 && (u.umovement | 0) < NORMAL_SPEED
                 && (!capNewTurnsToOne || !newTurnDone)
@@ -1363,10 +1415,15 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             && !g.context?._deferredNewTurnLikeC
             && !g.context?._wizD1LPostOuterLoopDoneLikeC
             && !g.context?._touristD1PostRestSecondOuterMoveloopDoneLikeC
+            && !(
+                g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) >= 3
+            )
         );
         if (
             g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
             && g.context?._wizD1WalkFmonPostMoveloopLikeC
+            && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) >= 3
         ) {
             g.context._wizD1CapitalKPostCommaPendingLikeC = true;
             delete g.context._wizD1CommaLFirstUNearDfPendingLikeC;

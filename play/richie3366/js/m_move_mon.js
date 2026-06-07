@@ -2788,6 +2788,12 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 wizD1PeelDistantMklevMonLikeC(g)
                 ?? findDistantMklevMonLikeC(g);
             if (nearWalk && mtmp === nearWalk) {
+                if (
+                    g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                    && g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
+                ) {
+                    return;
+                }
                 if (g.context?._wizD1CapitalKPostNearMmoveLikeC) {
                     setApparxyMonsterLikeC(g, mtmp);
                     ensureMonsterMtrack(mtmp);
@@ -2802,24 +2808,32 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 }
             }
             if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+                if (
+                    g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                    && g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
+                ) {
+                    return;
+                }
                 let mov = mtmp.movement | 0;
                 if (mov < NORMAL_SPEED) {
                     mtmp.movement = NORMAL_SPEED;
                     mov = NORMAL_SPEED;
                 }
                 mtmp.movement = mov - NORMAL_SPEED;
-                dogMovePostEastTailWalkObjResistsLikeC(g, mtmp);
                 if (g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC) {
-                    dogMovePostEastTailWalkFmonPetLikeC(g, mtmp);
-                } else if (
-                    g.context?._wizD1WalkFmonPostMoveloopLikeC
-                    || !g.context?._wizD1PostCorridorSavedPetGoalLikeC
-                ) {
-                    dogMovePostEastTailWalkFmonPetLikeC(g, mtmp);
-                } else if (g.context?._wizD1PostCorridorSavedPetGoalLikeC) {
-                    dogMovePostCorridorSecondPetMfndposLikeC(g, mtmp);
+                    dogMoveCapitalKPostCommaPetLikeC(g, mtmp);
                 } else {
-                    dogMoveLikeC(g, mtmp);
+                    dogMovePostEastTailWalkObjResistsLikeC(g, mtmp);
+                    if (
+                        g.context?._wizD1WalkFmonPostMoveloopLikeC
+                        || !g.context?._wizD1PostCorridorSavedPetGoalLikeC
+                    ) {
+                        dogMovePostEastTailWalkFmonPetLikeC(g, mtmp);
+                    } else if (g.context?._wizD1PostCorridorSavedPetGoalLikeC) {
+                        dogMovePostCorridorSecondPetMfndposLikeC(g, mtmp);
+                    } else {
+                        dogMoveLikeC(g, mtmp);
+                    }
                 }
                 return;
             }
@@ -3265,16 +3279,22 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 }
                 /* C: post-east-tail walk — near **`distfleeck`** then pet **`dog_move`** / **`obj_resists`**. */
                 if (g.context?._wizD1PostEastTailWalkFmonLikeC) {
+                    if (
+                        g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                        && g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
+                    ) {
+                        return;
+                    }
                     let mov = mtmp.movement | 0;
                     if (mov < NORMAL_SPEED) {
                         mtmp.movement = NORMAL_SPEED;
                         mov = NORMAL_SPEED;
                     }
                     mtmp.movement = mov - NORMAL_SPEED;
-                    dogMovePostEastTailWalkObjResistsLikeC(g, mtmp);
                     if (g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC) {
-                        dogMovePostEastTailWalkFmonPetLikeC(g, mtmp);
+                        dogMoveCapitalKPostCommaPetLikeC(g, mtmp);
                     } else {
+                        dogMovePostEastTailWalkObjResistsLikeC(g, mtmp);
                         dogMoveLikeC(g, mtmp);
                     }
                     return;

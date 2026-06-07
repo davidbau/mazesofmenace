@@ -85,7 +85,6 @@ export async function rhack(key) {
         await flush_screen(1);
         key = await nhgetch();
     }
-
     /* C: dothrow.c fireassist prinv — one nhgetch per `--More--` dismiss (l/i pass through). */
     if (game.context?._dofireDefmoreWaitLikeC) {
         if (key === 32 || key === 27) {
@@ -433,6 +432,15 @@ export async function rhack(key) {
         await flush_screen(1);
     } else if (ch === ',') {
         /* C: pickup.c **`pickup(0)`** / **`check_here`** — costs time; moveloop **`movemon`** tail. */
+        if (
+            game.urole?.abbr === 'Wiz'
+            && (game.u?.uz?.dnum | 0) === 0
+            && (game.u?.uz?.dlevel | 0) === 1
+            && game.context?._wizD1DeferredRunKPendingLikeC
+        ) {
+            /* C: **`seed0006`** — comma promotes deferred east-tail peel (~2908, ~90 RNG). */
+            game.context._wizD1PromoteDeferredRunKLikeC = true;
+        }
         await checkHere(false);
         game.context.move = 1;
         if (

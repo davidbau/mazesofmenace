@@ -11038,11 +11038,44 @@ function isProjectileItem(item) {
         || /arrow|bolt|ya|dart|dagger|knife|spear|shuriken|boomerang|rock|stone/.test(name);
 }
 
+function isManualFireWeaponItem(item) {
+    return itemClassKey(item) === 'weapon' || item?.glyph === ')' || item?.otyp === WEAPON_CLASS;
+}
+
+function isManualFireCoinItem(item) {
+    return itemClassKey(item) === 'coin' || item?.glyph === '$' || item?.otyp === GOLD_PIECE;
+}
+
+function isReadySelectableItem(item) {
+    return !!item?.letter;
+}
+
 function isReadySuggestItem(item) {
     const name = inventoryItemName(item).toLowerCase();
     if (item.wielded || item.line?.includes('weapon in')) return false;
     if (/bow|sling/.test(name)) return false;
-    return isProjectileItem(item);
+    return isProjectileItem(item) || isManualFireWeaponItem(item) || isManualFireCoinItem(item);
+}
+
+function isReadyDownplayItem(item) {
+    return isReadySelectableItem(item) && !isReadySuggestItem(item);
+}
+
+function readyInventoryFilterMatch() {
+    if (game._ready_inventory_filter === 'suggest') return isReadySuggestItem;
+    if (game._ready_inventory_filter === 'downplay') return isReadyDownplayItem;
+    return null;
+}
+
+function readyPromptMessage(verb) {
+    const letters = inventoryLetters(isReadySuggestItem);
+    if (verb === 'fire')
+        return letters
+            ? `What do you want to fire? [${getobjPromptLetters(letters)} or ?*]`
+            : 'What do you want to fire? [*]';
+    return letters
+        ? `What do you want to ready? [- ${letters} or ?*]`
+        : 'What do you want to ready? [- or ?*]';
 }
 
 function isThrowSuggestItem(item) {
@@ -20286,7 +20319,7 @@ function heroAutoquiverProjectile() {
     return oammo || omissile || altammo || omisc;
 }
 
-function heroReadyAutoquiverProjectile(item) {
+function heroReadyObject(item) {
     for (const invItem of game.inventory || []) {
         invItem.quivered = invItem === item;
         if (invItem !== item && invItem.line)
@@ -20297,6 +20330,307 @@ function heroReadyAutoquiverProjectile(item) {
 
 function heroFireReadyLine(item) {
     return `${item?.letter || '?'} - ${inventoryItemName(item)}`;
+}
+
+function clearReadySelectionCount() {
+    game._ready_count_text = '';
+}
+
+function readySelectionCountValue() {
+    return Math.max(0, Math.trunc(Number(game._ready_count_text || 0)));
+}
+
+async function appendReadySelectionCountDigit(ch) {
+    if (!/^\d$/.test(ch)) return false;
+    game._ready_count_text = `${game._ready_count_text || ''}${ch}`;
+    await setMessage(`Count: ${game._ready_count_text}`);
+    return true;
+}
+
+function itemIsAlreadyReadied(item) {
+    return !!item && !!(item.quivered
+        || item.line?.includes('at the ready')
+        || item.line?.includes('in quiver'));
+}
+
+function prepareReadySplitItem(item) {
+    if (!item) return item;
+    item.wielded = false;
+    item.alternate = false;
+    item.worn = false;
+    item.quivered = false;
+    item.owornmask = 0;
+    refreshInventoryObjectLine(item);
+    return item;
+}
+
+async function applyReadySelectionCount(item, verb) {
+    const count = readySelectionCountValue();
+    clearReadySelectionCount();
+    if (count <= 0 || !item) return { handled: false, item };
+
+    const quantity = Math.max(1, Math.trunc(Number(item.quan || 1)));
+    if (count > quantity) {
+        await setMessage(`You don't have that many!  You have only ${quantity}.`);
+        game._command_mode = verb === 'fire' ? 'fireQuiverObject' : 'quiverObject';
+        return { handled: true, item: null };
+    }
+    if (count < quantity && isManualFireCoinItem(item)) {
+        await setMessage("You can't ready only part of your gold.");
+        game._command_mode = null;
+        if (verb === 'fire') game._fire_count = null;
+        return { handled: true, item: null };
+    }
+    if (count >= quantity) return { handled: false, item };
+
+    const split = splitCarriedInventoryItemCount(item, count);
+    return { handled: false, item: prepareReadySplitItem(split) };
+}
+
+function readyObjectQuantity(item) {
+    return Math.max(1, Math.trunc(Number(item?.quan || 1)));
+}
+
+function readyObjectSimpleName(item) {
+    return inventoryItemName(item)
+        .replace(/^(?:an?|the) /i, '')
+        .replace(/^\d+ /, '');
+}
+
+function readyObjectPlural(item) {
+    return readyObjectQuantity(item) > 1 || /\b(?:gloves|lenses|boots|shoes|pair of)\b/i.test(inventoryItemName(item));
+}
+
+function readyWieldedWeaponSlot(item) {
+    if (itemIsPrimaryWielded(item)) return 'primary';
+    if (itemIsAlternateWeapon(item)) return 'alternate';
+    return '';
+}
+
+function readyWieldedWeaponPrompt(item, slot, stage = 'initial') {
+    const quantity = readyObjectQuantity(item);
+    if (stage === 'all') return 'Ready all of them instead? [ynq] (q)';
+    if (quantity > 1) {
+        const itemName = inventoryItemName(item);
+        const splitCount = quantity - 1;
+        if (slot === 'primary')
+            return `You are wielding ${itemName}.  Ready ${splitCount} of them? [ynq] (q)`;
+        const prefix = game._twoweapon ? 'You are dual wielding' : 'Your alternate weapon is';
+        return `${prefix} ${itemName}.  Ready ${splitCount} of them? [ynq] (q)`;
+    }
+    const plural = readyObjectPlural(item);
+    if (slot === 'primary')
+        return `You are wielding ${plural ? 'those' : 'that'}.  Ready ${plural ? 'them' : 'it'} instead? [ynq] (q)`;
+    const subject = plural ? 'Those are' : 'That is';
+    const weaponSlot = game._twoweapon ? 'second' : 'alternate';
+    return `${subject} your ${weaponSlot} weapon.  Ready ${plural ? 'them' : 'it'} instead? [ynq] (q)`;
+}
+
+function readyWieldedWeaponRemainMessage(item, slot, wasTwoweap = game._twoweapon) {
+    const name = readyObjectSimpleName(item);
+    const verb = readyObjectPlural(item) ? 'remain' : 'remains';
+    if (slot === 'alternate' && !wasTwoweap)
+        return `Your ${name} ${verb} as secondary weapon.`;
+    return `Your ${name} ${verb} wielded.`;
+}
+
+function readyWieldedWeaponTimeMessage(slot) {
+    if (slot === 'primary') return 'You are now empty handed.';
+    return 'You are no longer using two weapons at once.';
+}
+
+function refreshReadyWieldedParentLine(item, slot, wasTwoweap = game._twoweapon) {
+    if (!item) return;
+    if (slot === 'primary') {
+        item.wielded = true;
+        item.alternate = false;
+        item.line = heroWieldedLineForItem(item);
+    } else if (wasTwoweap) {
+        item.wielded = false;
+        item.alternate = true;
+        item.line = `${item.letter || '?'} - ${inventoryItemName(item)} (wielded in left hand)`;
+    } else {
+        item.wielded = false;
+        item.alternate = true;
+        item.line = heroAlternateLineForItem(item);
+    }
+}
+
+function clearReadyWieldedConfirm() {
+    game._ready_wield_confirm_item = null;
+    game._ready_wield_confirm_verb = '';
+    game._ready_wield_confirm_slot = '';
+    game._ready_wield_confirm_stage = '';
+    game._ready_wield_confirm_twoweap = false;
+}
+
+async function stageReadyWieldedConfirm(item, verb, slot) {
+    game._ready_wield_confirm_item = item;
+    game._ready_wield_confirm_verb = verb;
+    game._ready_wield_confirm_slot = slot;
+    game._ready_wield_confirm_stage = readyObjectQuantity(item) > 1 ? 'split' : 'all';
+    game._ready_wield_confirm_twoweap = !!game._twoweapon;
+    await setMessage(readyWieldedWeaponPrompt(item, slot));
+    game._command_mode = verb === 'fire' ? 'fireQuiverWieldedConfirm' : 'quiverWieldedConfirm';
+}
+
+function clearReadyWieldedStateForQuiver(item, slot) {
+    const wasTwoweap = !!game._twoweapon;
+    if (slot === 'primary') {
+        item.wielded = false;
+        item.alternate = false;
+        if (item.artifact === 'Mjollnir' || item.kind === 'mjollnir' || /Mjollnir/.test(inventoryItemName(item)))
+            game._wielded_mjollnir = false;
+        game._twoweapon = false;
+    } else {
+        item.wielded = false;
+        item.alternate = false;
+        if (wasTwoweap) game._twoweapon = false;
+    }
+    item.line = `${item.letter || '?'} - ${inventoryItemName(item)}`;
+    return wasTwoweap;
+}
+
+async function completeReadyObject(item, verb, { timeMessage = '', timeCost = false } = {}) {
+    if (verb === 'fire') {
+        const readyMessage = [`You ready: ${heroFireReadyLine(item)}.`, timeMessage].filter(Boolean).join('  ');
+        heroReadyObject(item);
+        await beginHeroFireProjectile(item, { readyMessage });
+        if (timeCost) game._fire_time_pending_after_more = 1;
+        return;
+    }
+    heroReadyObject(item);
+    await setMessage([`${item.line}.`, timeMessage].filter(Boolean).join('  '));
+    game._command_mode = null;
+    if (timeCost) game.context.move = 1;
+}
+
+async function completeReadyWieldedSplit(item, verb, slot, wasTwoweap = game._twoweapon) {
+    const quantity = readyObjectQuantity(item);
+    if (quantity <= 1) return false;
+    const split = prepareReadySplitItem(splitCarriedInventoryItemCount(item, quantity - 1));
+    refreshReadyWieldedParentLine(item, slot, wasTwoweap);
+    await completeReadyObject(split, verb);
+    return true;
+}
+
+async function completeReadyWieldedAll(item, verb, slot) {
+    const wasTwoweap = clearReadyWieldedStateForQuiver(item, slot);
+    const timeCost = slot === 'primary' || wasTwoweap;
+    const timeMessage = timeCost ? readyWieldedWeaponTimeMessage(slot) : '';
+    await completeReadyObject(item, verb, { timeMessage, timeCost });
+}
+
+async function handleReadyWieldedConfirm(ch) {
+    const item = game._ready_wield_confirm_item;
+    const verb = game._ready_wield_confirm_verb || (game._command_mode === 'fireQuiverWieldedConfirm' ? 'fire' : 'ready');
+    const slot = game._ready_wield_confirm_slot || readyWieldedWeaponSlot(item);
+    const stage = game._ready_wield_confirm_stage || 'all';
+    const wasTwoweap = !!game._ready_wield_confirm_twoweap;
+    clearReadyWieldedConfirm();
+    game._command_mode = null;
+    if (!item || !slot) {
+        if (verb === 'fire') game._fire_count = null;
+        return;
+    }
+    if (ch === 'q' || ch === '\x1b' || ch === ' ') {
+        if (verb === 'fire') game._fire_count = null;
+        return;
+    }
+    if (ch !== 'y') {
+        if (stage === 'split') {
+            game._ready_wield_confirm_item = item;
+            game._ready_wield_confirm_verb = verb;
+            game._ready_wield_confirm_slot = slot;
+            game._ready_wield_confirm_stage = 'all';
+            game._ready_wield_confirm_twoweap = wasTwoweap;
+            await setMessage(readyWieldedWeaponPrompt(item, slot, 'all'));
+            game._command_mode = verb === 'fire' ? 'fireQuiverWieldedConfirm' : 'quiverWieldedConfirm';
+            return;
+        }
+        await setMessage(readyWieldedWeaponRemainMessage(item, slot, wasTwoweap));
+        if (verb === 'fire') game._fire_count = null;
+        return;
+    }
+    if (stage === 'split') {
+        await completeReadyWieldedSplit(item, verb, slot, wasTwoweap);
+        return;
+    }
+    await completeReadyWieldedAll(item, verb, slot);
+}
+
+function clearReadyInventoryOverlay() {
+    game._ready_inventory_page = 0;
+    game._ready_inventory_filter = null;
+    game._ready_inventory_verb = '';
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+}
+
+function showReadyInventoryOverlay(verb, filter = null, page = 0) {
+    game._ready_inventory_verb = verb;
+    game._ready_inventory_filter = filter;
+    game._ready_inventory_page = page;
+    showInventoryOverlay(page, false, readyInventoryFilterMatch());
+    game._command_mode = 'readyInventory';
+}
+
+async function restoreReadyPrompt(verb) {
+    clearReadyInventoryOverlay();
+    await setMessage(readyPromptMessage(verb));
+    game._command_mode = verb === 'fire' ? 'fireQuiverObject' : 'quiverObject';
+}
+
+async function finishReadyObjectSelection(selectedItem, verb) {
+    let item = selectedItem;
+    if (!item) {
+        clearReadySelectionCount();
+        await setMessage("You don't have that object.");
+        game._command_mode = null;
+        if (verb === 'fire') game._fire_count = null;
+        return;
+    }
+    const count = readySelectionCountValue();
+    const quantity = Math.max(1, Math.trunc(Number(item.quan || 1)));
+    if (count > quantity) {
+        clearReadySelectionCount();
+        await setMessage(`You don't have that many!  You have only ${quantity}.`);
+        game._command_mode = verb === 'fire' ? 'fireQuiverObject' : 'quiverObject';
+        return;
+    }
+    if (itemIsAlreadyReadied(item)) {
+        clearReadySelectionCount();
+        await setMessage('That ammunition is already readied!');
+        game._command_mode = null;
+        if (verb === 'fire') game._fire_count = null;
+        return;
+    }
+    const counted = await applyReadySelectionCount(item, verb);
+    if (counted.handled) return;
+    item = counted.item;
+    if (isWornInventoryItem(item) && !itemIsWielded(item)) {
+        await setMessage(`You cannot ${verb} that!`);
+        game._command_mode = null;
+        if (verb === 'fire') game._fire_count = null;
+        return;
+    }
+    const wieldedSlot = readyWieldedWeaponSlot(item);
+    if (wieldedSlot) {
+        await stageReadyWieldedConfirm(item, verb, wieldedSlot);
+        return;
+    }
+    if (!isReadySelectableItem(item)) {
+        clearReadySelectionCount();
+        await setMessage("You don't have that object.");
+        game._command_mode = null;
+        if (verb === 'fire') game._fire_count = null;
+        return;
+    }
+    if (verb === 'fire') {
+        await completeReadyObject(item, verb);
+        return;
+    }
+    await completeReadyObject(item, verb);
 }
 
 function heroWieldedPolearm() {
@@ -20378,10 +20712,102 @@ function heroBullwhipProficiency() {
     return Math.max(0, Math.min(3, proficient));
 }
 
-function heroCanSpotBullwhipTarget(mon) {
-    return !!mon && !game.u?.blind && !mon.minvis && !mon.mundetected
-        && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
-        && couldsee(mon.mx, mon.my);
+function heroBullwhipSensesMonster(mon) {
+    return !!mon && (sensesTelepathically(mon)
+        || heroHasMonsterDetection()
+        || mon.detected || mon.sensed || mon.warned || mon.mwarned);
+}
+
+function heroCanSpotBullwhipMonster(mon) {
+    return !!mon && ((!game.u?.blind && !mon.mundetected
+        && (!mon.minvis || game.u?.seeInvisible) && cansee(mon.mx, mon.my))
+        || heroBullwhipSensesMonster(mon));
+}
+
+function bullwhipInvisibleGlyphAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    return !!(loc?.map_invisible || loc?.remembered_glyph?.ch === 'I');
+}
+
+function bullwhipMapInvisibleAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return;
+    loc.map_invisible = true;
+    loc.waslit = true;
+    newsym(x, y);
+    loc.remembered_glyph = { ch: 'I', color: NO_COLOR, dec: false };
+}
+
+function bullwhipUnseenMonsterName(mon) {
+    const name = fireScrollMonsterName(mon);
+    if (!/^The /i.test(name)) return name;
+    return sentenceCase(articleFor(name.replace(/^The /i, '')));
+}
+
+function bullwhipDisguisedMimic(mon) {
+    const appearance = M_AP_TYPE(mon);
+    return !!mon && (appearance === M_AP_OBJECT || appearance === M_AP_FURNITURE
+        || mon.appearObj != null || mon.appearGlyph);
+}
+
+function revealHeroBullwhipMimic(mon, messages) {
+    if (!bullwhipDisguisedMimic(mon)) return false;
+    const name = mon?.givenName || articleFor(mon?.data?.name || mon?.name || 'mimic');
+    messages.push(`Wait!  That's ${name}!`);
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
+    mon.mundetected = 0;
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function revealHeroBullwhipUnseenTarget(mon, x, y, messages) {
+    if (!mon || heroCanSpotBullwhipMonster(mon)) return heroCanSpotBullwhipMonster(mon);
+    mon.mundetected = 0;
+    const spotItNow = heroCanSpotBullwhipMonster(mon);
+    if (spotItNow || !bullwhipInvisibleGlyphAt(x, y)) {
+        messages.push(`${spotItNow ? bullwhipUnseenMonsterName(mon) : 'A monster'} is there that you ${game.u?.blind ? "hadn't noticed" : "couldn't see"}.`);
+        if (spotItNow) newsym(x, y);
+        else bullwhipMapInvisibleAt(x, y);
+    }
+    return spotItNow;
+}
+
+async function forceHeroBullwhipMonsterAttack(mon, dx, dy, messages) {
+    game._hero_melee_prefix_messages = [...messages];
+    game._force_fight_target = mon;
+    try {
+        await moveHero(dx || 0, dy || 0);
+    } finally {
+        if (game._force_fight_target === mon) game._force_fight_target = null;
+        game._hero_melee_prefix_messages = null;
+    }
+    return true;
+}
+
+function heroBullwhipSafeTargetingProtected(mon) {
+    return !!mon && game.flags?.safe_pet !== false && mon.mpeaceful
+        && heroCanSpotBullwhipMonster(mon)
+        && !heroIsConfused() && !heroIsHallucinating() && !heroIsStunned();
+}
+
+async function finishHeroBullwhipSafeTameForceAttempt(mon, messages) {
+    if (!(mon?.mtame || mon?.pet) || !heroBullwhipSafeTargetingProtected(mon))
+        return 'not-safe';
+    if (rn2(7) !== 0) return 'evaded';
+
+    let fleeTime = rnd(6);
+    if (fleeTime === 1) fleeTime++;
+    mon.mflee = 1;
+    mon.mfleetim = Math.min(fleeTime + (mon.mfleetim || 0), 127);
+    clearMonsterTrack(mon);
+    const petName = mon.givenName || `${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'pet'}`;
+    messages.push(`You stop.  ${mon.givenName ? petName : `Your ${petName}`} is in the way!`);
+    await setMessage(messages.join('  '), messages.length > 1);
+    game.context.move = 1;
+    return 'stopped';
 }
 
 function heroCanSpotBullwhipPitMonster(mon) {
@@ -20411,6 +20837,126 @@ function monsterBullwhipPossessivePronoun(mon) {
 
 function bullwhipWeaponHandName(weapon) {
     return isTwoHandedWieldItem(weapon) ? 'hands' : 'hand';
+}
+
+function bullwhipTerrainIsLiquidOrLava(loc) {
+    const typ = loc?.typ;
+    return typ != null && (IS_POOL(typ) || typ === WATER || typ === MOAT || IS_LAVA(typ) || typ === LAVAWALL);
+}
+
+function bullwhipTerrainIsLava(loc) {
+    const typ = loc?.typ;
+    return typ != null && (IS_LAVA(typ) || typ === LAVAWALL);
+}
+
+function bullwhipFloorObjectIsHorseCorpse(obj) {
+    if (!(obj?.otyp === CORPSE || obj?.otyp === 'corpse')) return false;
+    const corpse = obj.corpsenm || obj.corpse || {};
+    const name = String(corpse.name || corpse.mname || objectKindKey(obj).replace(/\s+corpse$/, '')).toLowerCase();
+    return name === 'horse' || name === 'warhorse' || name === 'pony';
+}
+
+function bullwhipFloorObjectWrapName(obj) {
+    return floorObjectArticleName({ ...obj, line: '', quan: 1 });
+}
+
+function putHeroBullwhipFloorObjectInInventory(obj, messages) {
+    if (!obj) return false;
+    const source = { ...obj, line: '', quan: 1 };
+    const mergeInfo = findPickedObjectInventoryMergeTarget(source);
+    const letter = mergeInfo ? null : simulatedNextInventoryLetters(1)?.[0];
+    if (!mergeInfo && !letter) return false;
+
+    const pickedItem = splitFloorPickupObjectForLift(obj, 1);
+    if (pickedItem === obj) removeFloorObject(obj);
+    delete pickedItem.letter;
+    delete pickedItem.line;
+    pickedItem.ocarry = null;
+    pickedItem.contained = false;
+    pickedItem.container = null;
+    pickedItem.hidden = false;
+    pickedItem.buried = false;
+    delete pickedItem.nobj;
+    delete pickedItem.nexthere;
+    delete pickedItem.ox;
+    delete pickedItem.oy;
+
+    if (mergeInfo) {
+        const mergeMessage = mergePickedObjectIntoInventory(pickedItem, mergeInfo.target);
+        if (mergeMessage) messages.push(mergeMessage);
+    } else {
+        pickedItem.letter = letter;
+        pickedItem.line = normalInventoryLine({ ...pickedItem, line: '' });
+        nextInventoryLetter();
+        game.inventory = [...(game.inventory || []), pickedItem];
+        messages.push(`${pickedItem.line}.`);
+    }
+    objectIceEffect(pickedItem, game.u?.ux || 0, game.u?.uy || 0, { onLevel: false });
+    maybeAttachCarriedFigurineTimeout(pickedItem);
+    game._pet_food_scan_inventory = game.inventory;
+    newsym(game.u?.ux || 0, game.u?.uy || 0);
+    return true;
+}
+
+function kickHeroBullwhipSteed(steed) {
+    if (!steed) return;
+    if (steed.msleeping || steed.meating) {
+        steed.msleeping = 0;
+        steed.meating = 0;
+    }
+    if (steed.mtame) steed.mtame = Math.max(0, Math.trunc(Number(steed.mtame)) - 1);
+    setHeroObjectHitMonsterAngry(steed);
+}
+
+async function finishHeroBullwhipSelfOrDown(item) {
+    const proficient = heroBullwhipProficiency();
+    const steed = game.u?.usteed || null;
+    if (steed && rn2(proficient + 2) === 0) {
+        kickHeroBullwhipSteed(steed);
+        const steedName = steedTrapProjectileName(steed).replace(/^The /, 'the ');
+        await setMessage(`You whip ${steedName}!`);
+        game.context.move = 1;
+        return true;
+    }
+
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const heroLoc = game.level?.at?.(ux, uy);
+    if (bullwhipTerrainIsLiquidOrLava(heroLoc)) {
+        const messages = ['You cause a small splash.'];
+        if (bullwhipTerrainIsLava(heroLoc)
+            && ((game.u?.uluck || 0) + (game.u?.moreluck || 0) + 5) <= rn2(20)) {
+            erodeDirectMeleePassiveObject(item, 'fire', messages);
+        }
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    if (game.u?.levitating || game.u?.Levitation || game.u?.flying || game.u?.Flying || steed) {
+        const floorObj = topFloorObjectAt(ux, uy);
+        if (bullwhipFloorObjectIsHorseCorpse(floorObj)) {
+            await setMessage('Why beat a dead horse?');
+            game.context.move = 1;
+            return true;
+        }
+        if (floorObj && proficient) {
+            const messages = [
+                `You wrap your bullwhip around ${bullwhipFloorObjectWrapName(floorObj)} on the ${polyselfFalloffSurfaceName(ux, uy)}.`,
+            ];
+            if (rnl(6) || !putHeroBullwhipFloorObjectInInventory(floorObj, messages))
+                messages.push('The bullwhip slips free.');
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            return true;
+        }
+    }
+
+    const damage = Math.max(1, rnd(2) + heroStrengthDamageBonus() + Math.trunc(Number(item.spe || 0)));
+    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
+    await setMessage('You hit your foot with your bullwhip.');
+    game.context.move = 1;
+    return true;
 }
 
 function monsterWeaponIsWelded(mon, weapon) {
@@ -20588,7 +21134,7 @@ async function finishHeroBullwhipDirection(item, ch) {
         await setMessage('Never mind.');
         return true;
     }
-    const dir = movementDirection(ch);
+    const dir = commandDirection(ch);
     if (!dir) return true;
 
     if (game.u?.uswallow) {
@@ -20612,11 +21158,7 @@ async function finishHeroBullwhipDirection(item, ch) {
     const rx = ux + (dir.dx || 0);
     const ry = uy + (dir.dy || 0);
     if ((!dir.dx && !dir.dy) || dir.dz > 0) {
-        const damage = Math.max(1, rnd(2) + heroStrengthDamageBonus() + Math.trunc(Number(item.spe || 0)));
-        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
-        await setMessage('You hit your foot with your bullwhip.');
-        game.context.move = 1;
-        return true;
+        return finishHeroBullwhipSelfOrDown(item);
     }
     if (!isok(rx, ry)) {
         await setMessage('You miss.');
@@ -20647,10 +21189,14 @@ async function finishHeroBullwhipDirection(item, ch) {
     if (await finishHeroBullwhipPitDirection(rx, ry, targetLoc, mon)) return true;
     if (mon) {
         const proficient = heroBullwhipProficiency();
-        const targetWeapon = heroCanSpotBullwhipTarget(mon) ? monsterWieldedWeapon(mon) : null;
+        const messages = [];
+        const initiallySpotted = heroCanSpotBullwhipMonster(mon);
+        const visibleAfterReveal = initiallySpotted
+            || revealHeroBullwhipUnseenTarget(mon, rx, ry, messages);
+        const targetWeapon = initiallySpotted ? monsterWieldedWeapon(mon) : null;
         if (targetWeapon) {
             const targetWeaponName = inventoryItemName(targetWeapon);
-            const messages = [`You wrap your bullwhip around ${targetWeaponName}.`];
+            messages.push(`You wrap your bullwhip around ${targetWeaponName}.`);
             const gotit = proficient > 0 && (!heroIsFumbling() || !rn2(10));
             if (gotit) {
                 if (monsterWeaponIsWelded(mon, targetWeapon)) {
@@ -20669,8 +21215,21 @@ async function finishHeroBullwhipDirection(item, ch) {
             game.context.move = 1;
             return true;
         }
-        const targetName = fireScrollMonsterName(mon).replace(/^The /, 'the ');
-        const messages = [`You flick your bullwhip towards ${targetName}.`, 'Snap!'];
+        const mimicRevealed = bullwhipDisguisedMimic(mon) && !heroBullwhipSensesMonster(mon)
+            && revealHeroBullwhipMimic(mon, messages);
+        let doSnap = !mimicRevealed;
+        if (!mimicRevealed) {
+            const targetName = visibleAfterReveal ? fireScrollMonsterName(mon).replace(/^The /, 'the ') : 'it';
+            const flickMessage = `You flick your bullwhip towards ${targetName}.`;
+            messages.push(flickMessage);
+        }
+        if (proficient) {
+            const safeTameResult = await finishHeroBullwhipSafeTameForceAttempt(mon, messages);
+            if (safeTameResult === 'stopped') return true;
+            if (safeTameResult !== 'evaded' && !mon.mtame && !mon.pet)
+                return forceHeroBullwhipMonsterAttack(mon, dir.dx || 0, dir.dy || 0, messages);
+        }
+        if (doSnap) messages.push('Snap!');
         mon.msleeping = 0;
         mon.meating = 0;
         setHeroObjectHitMonsterAngry(mon);
@@ -20780,11 +21339,32 @@ function heroFireassistMatchingLauncher(projectile) {
     return unknownBucLauncher;
 }
 
+function stageHeroFireDirectionAfterMore(projectile, launcher) {
+    game._fire_pending_item_letter = projectile?.letter || null;
+    game._fire_pending_launcher_letter = launcher?.letter || null;
+    game._fire_item_letter = null;
+    game._fire_launcher_letter = null;
+    game._fire_direction_pending_after_more = 1;
+    game._command_mode = null;
+}
+
+function activateHeroFirePendingDirection() {
+    if (game._fire_pending_item_letter != null || game._fire_pending_launcher_letter != null) {
+        game._fire_item_letter = game._fire_pending_item_letter;
+        game._fire_launcher_letter = game._fire_pending_launcher_letter;
+        game._fire_pending_item_letter = null;
+        game._fire_pending_launcher_letter = null;
+    }
+    game._command_mode = 'fireDirection';
+}
+
 async function beginHeroFireProjectile(projectile, { readyMessage = '' } = {}) {
     if (await beginHeroFirePolearmPriority(projectile, { readyMessage })) return;
     const launcher = heroFireassistMatchingLauncher(projectile);
     let swapMoreLine = '';
+    let queuedLauncherLifecycle = false;
     if (launcher && !(launcher.wielded || launcher.line?.includes('weapon in'))) {
+        queuedLauncherLifecycle = true;
         const launcherWasAlternate = launcher.alternate || launcher.line?.includes('alternate weapon');
         const current = (game.inventory || []).find(item =>
             item !== launcher && (item.wielded || item.line?.includes('weapon in')));
@@ -20798,17 +21378,22 @@ async function beginHeroFireProjectile(projectile, { readyMessage = '' } = {}) {
         launcher.alternate = false;
         launcher.line = `${launcher.letter || '?'} - ${inventoryItemName(launcher)} (weapon in right hand)`;
     }
-    game._fire_item_letter = projectile.letter;
-    game._fire_launcher_letter = launcher?.letter || null;
+    if (queuedLauncherLifecycle || readyMessage) {
+        stageHeroFireDirectionAfterMore(projectile, launcher);
+    } else {
+        game._fire_pending_item_letter = null;
+        game._fire_pending_launcher_letter = null;
+        game._fire_item_letter = projectile.letter;
+        game._fire_launcher_letter = launcher?.letter || null;
+    }
     if (readyMessage) {
         game._fire_direction_pending_after_more = 1;
-        if (launcher) {
+        if (launcher && queuedLauncherLifecycle) {
             game._fire_ready_launcher_line = `${launcher.line || `${launcher.letter || '?'} - ${inventoryItemName(launcher)}`}.`;
             game._fire_ready_swap_more_line = swapMoreLine;
             game._fire_time_pending_after_more = 1;
         }
         await setMessage(readyMessage, true);
-        game._command_mode = 'fireDirection';
         return;
     }
     if (launcher) {
@@ -20816,7 +21401,7 @@ async function beginHeroFireProjectile(projectile, { readyMessage = '' } = {}) {
         game._fire_time_pending_after_more = 1;
         game._fire_direction_pending_after_more = 1;
         await setMessage(`${launcher.line || `${launcher.letter || '?'} - ${inventoryItemName(launcher)}`}.`, true);
-        game._command_mode = 'fireDirection';
+        if (!queuedLauncherLifecycle) game._command_mode = 'fireDirection';
         return;
     }
     await setMessage('In what direction?');
@@ -52958,7 +53543,10 @@ async function moveHero(dx, dy) {
         if (!swallowedMove) wipe_engr_at(oldx, oldy, 3, false);
         const strengthDamageBonus = str < 6 ? -1 : str < 16 ? 0 : str < 18 ? 1 : str === 18 ? 2
             : str <= 93 ? 3 : str <= 108 ? 4 : str < 118 ? 5 : 6;
-        const messages = [];
+        const messages = game._hero_melee_prefix_messages
+            ? [...game._hero_melee_prefix_messages]
+            : [];
+        game._hero_melee_prefix_messages = null;
         if (caitiffAttack) {
             messages.push('You caitiff!');
             if (game.u?.ualign) {
@@ -53102,6 +53690,7 @@ async function moveHero(dx, dy) {
                 'elven spear': [1, 7],
                 'orcish spear': [1, 5],
                 spear: [1, 6],
+                bullwhip: [1, data.big ? 1 : 2],
                 wakizashi: [1, 6],
             }[weaponBaseName] || [1, attackWeapon ? 6 : (role === 'Monk' || role === 'Samurai') ? 4 : 2];
             let baseDamage = attackWeapon
@@ -56222,6 +56811,7 @@ export async function rhack(_cmd) {
                 game._message_more = 0;
                 game._keep_pending_message = 1;
                 game._fire_direction_pending_after_more = 0;
+                activateHeroFirePendingDirection();
                 if (game._fire_time_pending_after_more) {
                     game._fire_time_pending_after_more = 0;
                     game.context.move = 1;
@@ -56234,6 +56824,7 @@ export async function rhack(_cmd) {
                 game._pending_message = 'In what direction?';
                 game._message_more = 0;
                 game._keep_pending_message = 1;
+                activateHeroFirePendingDirection();
                 return;
             }
             if (game._fire_direction_pending_after_more && !game._topline_after_more) {
@@ -56241,6 +56832,7 @@ export async function rhack(_cmd) {
                 game._pending_message = 'In what direction?';
                 game._message_more = 0;
                 game._keep_pending_message = 1;
+                activateHeroFirePendingDirection();
                 if (game._fire_time_pending_after_more) {
                     game._fire_time_pending_after_more = 0;
                     game.context.move = 1;
@@ -62711,97 +63303,114 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'quiverObject') {
         if (ch === '\x1b') {
+            clearReadySelectionCount();
             await setMessage('Never mind.');
             game._command_mode = null;
             return;
         }
+        if (await appendReadySelectionCountDigit(ch)) return;
+        if (ch === '*') {
+            showReadyInventoryOverlay('ready');
+            return;
+        }
+        if (ch === '?') {
+            const suggestLetters = inventoryLetters(isReadySuggestItem);
+            showReadyInventoryOverlay('ready', suggestLetters ? 'suggest' : 'downplay');
+            return;
+        }
         if (ch === '-') {
+            clearReadySelectionCount();
             for (const item of game.inventory || []) item.quivered = false;
             await setMessage('No ammunition readied.');
             game._command_mode = null;
             return;
         }
         const itemByLetter = (game.inventory || []).find(invItem => invItem.letter === ch);
-        if (itemByLetter?.line?.includes('alternate weapon')) {
-            game._quiver_confirm_item = itemByLetter;
-            await setMessage('That is your alternate weapon.  Ready it instead? [ynq] (q)');
-            game._command_mode = 'quiverAlternateConfirm';
-            return;
-        }
-        const item = itemByLetter && isProjectileItem(itemByLetter) ? itemByLetter : null;
-        if (item) {
-            for (const invItem of game.inventory || []) {
-                invItem.quivered = invItem === item;
-                if (invItem !== item && invItem.line) invItem.line = invItem.line.replace(/ \((?:at the ready|in quiver(?: pouch)?)\).*$/, '');
-            }
-            item.line = `${item.letter || '?'} - ${inventoryItemName(item)}${quiverSuffix(item)}`;
-            await setMessage(`${item.line}.`);
-            game._command_mode = null;
-            return;
-        }
-        await setMessage("You don't have that object.");
-        game._command_mode = null;
+        await finishReadyObjectSelection(itemByLetter, 'ready');
         return;
     }
 
-    if (game._command_mode === 'quiverAlternateConfirm') {
-        const item = game._quiver_confirm_item;
-        game._quiver_confirm_item = null;
-        game._command_mode = null;
-        if (ch !== 'y' || !item) return;
-        for (const invItem of game.inventory || []) {
-            invItem.quivered = invItem === item;
-            if (invItem !== item && invItem.line) invItem.line = invItem.line.replace(/ \((?:at the ready|in quiver(?: pouch)?)\).*$/, '');
+    if (game._command_mode === 'quiverWieldedConfirm' || game._command_mode === 'quiverAlternateConfirm') {
+        if (game._command_mode === 'quiverAlternateConfirm' && !game._ready_wield_confirm_item) {
+            game._ready_wield_confirm_item = game._quiver_confirm_item;
+            game._ready_wield_confirm_verb = 'ready';
+            game._ready_wield_confirm_slot = 'alternate';
+            game._ready_wield_confirm_stage = 'all';
+            game._ready_wield_confirm_twoweap = !!game._twoweapon;
+            game._quiver_confirm_item = null;
         }
-        item.line = `${item.letter || '?'} - ${inventoryItemName(item)}${quiverSuffix(item)}`;
-        await setMessage(`${item.line}.`);
+        await handleReadyWieldedConfirm(ch);
         return;
     }
 
     if (game._command_mode === 'fireQuiverObject') {
         if (ch === '\x1b' || ch === ' ') {
+            clearReadySelectionCount();
             await setMessage('Never mind.');
             game._command_mode = null;
             game._fire_count = null;
             return;
         }
+        if (await appendReadySelectionCountDigit(ch)) return;
+        if (ch === '*') {
+            showReadyInventoryOverlay('fire');
+            return;
+        }
+        if (ch === '?') {
+            const suggestLetters = inventoryLetters(isReadySuggestItem);
+            showReadyInventoryOverlay('fire', suggestLetters ? 'suggest' : 'downplay');
+            return;
+        }
         if (ch === '-') {
+            clearReadySelectionCount();
             await setMessage('You already have no ammunition readied!');
             game._command_mode = null;
             game._fire_count = null;
             return;
         }
         const itemByLetter = (game.inventory || []).find(invItem => invItem.letter === ch);
-        if (itemByLetter?.line?.includes('alternate weapon')) {
-            game._fire_quiver_confirm_item = itemByLetter;
-            await setMessage('That is your alternate weapon.  Ready it instead? [ynq] (q)');
-            game._command_mode = 'fireQuiverAlternateConfirm';
-            return;
-        }
-        const item = itemByLetter && isProjectileItem(itemByLetter) ? itemByLetter : null;
-        if (item) {
-            const readyMessage = `You ready: ${heroFireReadyLine(item)}.`;
-            heroReadyAutoquiverProjectile(item);
-            await beginHeroFireProjectile(item, { readyMessage });
-            return;
-        }
-        await setMessage("You don't have that object.");
-        game._command_mode = null;
-        game._fire_count = null;
+        await finishReadyObjectSelection(itemByLetter, 'fire');
         return;
     }
 
-    if (game._command_mode === 'fireQuiverAlternateConfirm') {
-        const item = game._fire_quiver_confirm_item;
-        game._fire_quiver_confirm_item = null;
-        game._command_mode = null;
-        if (ch !== 'y' || !item) {
-            game._fire_count = null;
+    if (game._command_mode === 'fireQuiverWieldedConfirm' || game._command_mode === 'fireQuiverAlternateConfirm') {
+        if (game._command_mode === 'fireQuiverAlternateConfirm' && !game._ready_wield_confirm_item) {
+            game._ready_wield_confirm_item = game._fire_quiver_confirm_item;
+            game._ready_wield_confirm_verb = 'fire';
+            game._ready_wield_confirm_slot = 'alternate';
+            game._ready_wield_confirm_stage = 'all';
+            game._ready_wield_confirm_twoweap = !!game._twoweapon;
+            game._fire_quiver_confirm_item = null;
+        }
+        await handleReadyWieldedConfirm(ch);
+        return;
+    }
+
+    if (game._command_mode === 'readyInventory') {
+        const verb = game._ready_inventory_verb || 'ready';
+        if (ch === '*' && game._ready_inventory_filter) return;
+        if (ch === ' ') {
+            const page = (game._ready_inventory_page || 0) + 1;
+            if (page < (game._inventory_overlay_total_pages || 1)) {
+                game._ready_inventory_page = page;
+                showInventoryOverlay(page, false, readyInventoryFilterMatch());
+                return;
+            }
+            await restoreReadyPrompt(verb);
             return;
         }
-        const readyMessage = `You ready: ${heroFireReadyLine(item)}.`;
-        heroReadyAutoquiverProjectile(item);
-        await beginHeroFireProjectile(item, { readyMessage });
+        if (ch === '\x1b') {
+            clearReadySelectionCount();
+            clearReadyInventoryOverlay();
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            if (verb === 'fire') game._fire_count = null;
+            return;
+        }
+        if (await appendReadySelectionCountDigit(ch)) return;
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        clearReadyInventoryOverlay();
+        await finishReadyObjectSelection(item, verb);
         return;
     }
 
@@ -66676,12 +67285,15 @@ export async function rhack(_cmd) {
     }
 
     if (ch === 'Q') {
-        const letters = inventoryLetters(isReadySuggestItem);
-        if (!letters) {
+        const readyCount = throwCountTextValue(game._count_prefix);
+        game._count_prefix = '';
+        game._ready_count_text = readyCount > 0 ? String(readyCount) : '';
+        if (!(game.inventory || []).some(isReadySelectableItem)) {
+            clearReadySelectionCount();
             await setMessage("You don't have anything to ready.");
             return;
         }
-        await setMessage(`What do you want to ready? [- ${letters} or ?*]`);
+        await setMessage(readyPromptMessage('ready'));
         game._command_mode = 'quiverObject';
         return;
     }
@@ -69112,6 +69724,14 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'fireDirection') {
+        if (ch === '\x1b') {
+            game._command_mode = null;
+            game._fire_item_letter = null;
+            game._fire_launcher_letter = null;
+            game._fire_count = null;
+            await setMessage('Never mind.');
+            return;
+        }
         const dir = movementDirection(ch);
         if (!dir) {
             game._fire_item_letter = null;
@@ -69276,7 +69896,12 @@ export async function rhack(_cmd) {
                 color: CLR_BROWN,
             });
         }
-        if (oldQuan > shotCount) {
+        if (shopBillableGold(item)) {
+            removeGoldFromHero(shotCount);
+            const money = (game.inventory || []).find(invItem =>
+                invItem.letter === '$' || invItem.cls === 'coin' || invItem.otyp === GOLD_PIECE);
+            if (money?.quivered) money.line = `${money.letter || '$'} - ${money.quan || 0} gold piece${(money.quan || 0) === 1 ? '' : 's'}${quiverSuffix(money)}`;
+        } else if (oldQuan > shotCount) {
             item.quan = oldQuan - shotCount;
             if (item.line) item.line = item.line.replace(/ - \d+ /, ` - ${item.quan} `);
             if (item.unpaid) syncUnpaidBillLine(item);
@@ -70779,6 +71404,7 @@ export async function rhack(_cmd) {
     if (ch === 'f') {
         const fireCount = throwCountTextValue(game._count_prefix);
         game._count_prefix = '';
+        clearReadySelectionCount();
         game._fire_count = fireCount > 0 ? fireCount : null;
         if (polyselfNoHands()) {
             game._fire_count = null;
@@ -70789,7 +71415,7 @@ export async function rhack(_cmd) {
         let autoquiverFailed = false;
         const readiedItem = (game.inventory || []).find(item =>
             item.quivered || item.line?.includes('at the ready') || item.line?.includes('in quiver'));
-        let projectile = readiedItem && isProjectileItem(readiedItem) ? readiedItem : null;
+        let projectile = readiedItem && isReadySelectableItem(readiedItem) ? readiedItem : null;
         const returningWeapon = heroWieldedThrowAndReturnWeapon();
         if (returningWeapon && heroFireReturnWeaponBeatsQuiver(readiedItem)) {
             await beginHeroFireThrowAndReturnShortcut(returningWeapon, fireCount);
@@ -70799,7 +71425,7 @@ export async function rhack(_cmd) {
             projectile = heroAutoquiverProjectile();
             if (projectile) {
                 autoquiverMessage = `You ready: ${heroFireReadyLine(projectile)}.`;
-                heroReadyAutoquiverProjectile(projectile);
+                heroReadyObject(projectile);
             } else {
                 autoquiverFailed = true;
             }
@@ -70821,15 +71447,14 @@ export async function rhack(_cmd) {
                 await beginHeroFireAlternatePolearmFallback(alternatePolearm);
                 return;
             }
-            const letters = inventoryLetters(isReadySuggestItem);
-            if (!letters) {
+            if (!(game.inventory || []).some(isReadySelectableItem)) {
                 game._fire_count = null;
                 await setMessage(autoquiverFailed
                     ? 'You have nothing appropriate for your quiver.'
-                    : "You have no ammunition readied.");
+                    : 'You have nothing to ready for firing.');
                 return;
             }
-            await setMessage(`What do you want to fire? [${getobjPromptLetters(letters)} or ?*]`);
+            await setMessage(readyPromptMessage('fire'));
             game._command_mode = 'fireQuiverObject';
             return;
         }
