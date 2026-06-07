@@ -97,6 +97,10 @@ function stopMeltTimers(x, y) {
         game.level.meltIceTimers = game.level.meltIceTimers.filter(timer => timer.x !== x || timer.y !== y);
 }
 
+export function stopMeltIceTimersAt(x, y) {
+    stopMeltTimers(x, y);
+}
+
 function removeMeltTimers(loc, x, y) {
     if (!loc) return;
     stopMeltTimers(x, y);
