@@ -79,6 +79,7 @@ import {
     dogMoveOntoApportTowelLikeC,
     dogMovePostCorridorSecondPetMfndposLikeC,
     dogMovePostEastTailWalkObjResistsLikeC,
+    dogMoveCapitalKPostCommaPetLikeC,
     dogMovePostEastTailWalkShortLPetLikeC,
     dogMovePostEastTailWalkFmonPetLikeC,
     dogMoveSearchPassNearHeroLikeC,
@@ -883,6 +884,12 @@ async function mMoveMmoveOnlyTurnLikeC(g, mtmp, stepNum = 0) {
 function mMovePetOrPositionSelectLikeC(g, mtmp) {
     if ((mtmp.mtame | 0) && has_edog(mtmp)) {
         const stepNum = g.context?.movemonStepNum | 0;
+        if (
+            g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+            && isWizardD1Step1PeelLikeC(g, stepNum)
+        ) {
+            return dogMoveCapitalKPostCommaPetLikeC(g, mtmp);
+        }
         if (
             (
                 g.context?._wizD1PostEastTailWalkCompleteLikeC
@@ -2540,6 +2547,17 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                         g.context._wizD1PostEastTailWalkCompleteLikeC = true;
                     }
                     if (
+                        g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+                        && nearWalkShort
+                        && mtmp === nearWalkShort
+                        && !g.context?._wizD1CapitalKPostCommaNearDfLikeC
+                    ) {
+                        setApparxyMonsterLikeC(g, mtmp);
+                        await distfleeckMonsterApplyLikeC(g, mtmp);
+                        g.context._wizD1CapitalKPostCommaNearDfLikeC = true;
+                        return;
+                    }
+                    if (
                         (mtmp.mtame | 0)
                         && has_edog(mtmp)
                         && (
@@ -2794,7 +2812,11 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                         mov = NORMAL_SPEED;
                     }
                     mtmp.movement = mov - NORMAL_SPEED;
-                    dogMovePostEastTailWalkShortLPetLikeC(g, mtmp);
+                    if (g.context?._wizD1CapitalKPostCommaMoveloopLikeC) {
+                        dogMoveCapitalKPostCommaPetLikeC(g, mtmp);
+                    } else {
+                        dogMovePostEastTailWalkShortLPetLikeC(g, mtmp);
+                    }
                     return;
                 }
                 /* C: post-east-tail walk — near **`distfleeck`** then pet **`dog_move`** / **`obj_resists`**. */

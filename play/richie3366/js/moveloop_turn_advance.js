@@ -198,7 +198,33 @@ export async function runWizEastTailPostCorridorMcalcmoveNewTurnLikeC(g) {
     await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
 }
 
+/** C: allmain.c — **`fmon`** **`mcalcmove`** loop only (no **`maybe_generate_rnd_mon`** / **`moves++`**). */
+export function runMcalcmoveOnlyLikeC(g) {
+    const mons = fmonListForMcalcmoveLikeC(g);
+    for (const m of mons) {
+        m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
+    }
+}
+
 export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
+    /* C: capital **`K`** post-peel — pet tail + second **`mcalcmove`** inline in **`monmove.js`**
+     * (~2896–2908) before deferred **`maybe_generate_rnd_mon`** (~2909). */
+    if (
+        g.context?._wizD1CapitalKPostNearShortLPeelDeferredTailLikeC
+        && !g.context?._wizD1CapitalKPostNearShortLPeelRunDeferredTailLikeC
+    ) {
+        return;
+    }
+    /* C: capital **`K`** post-near — inline second new-turn in **`monmove.js`** (~2879+); block
+     * a trailing duplicate **`mcalcmove`** on the same post (~2885+). */
+    if (
+        g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC
+        && !g.context?._wizD1CapitalKPostNearSecondNewTurnLikeC
+        && !g.context?._wizD1CapitalKPostNearShortLPeelPendingNewturnLikeC
+        && !g.context?._wizD1CapitalKPostNearShortLPeelRunDeferredTailLikeC
+    ) {
+        return;
+    }
     /* C: second **`L`** post-corridor new-turn — **`movemon`** pass-2 already refreshed
      * **`movement`**; tail starts at **`maybe_generate_rnd_mon`** (~2735 **`rn2(70)`**). */
     const skipMcalcmoveAfterLPostTail =
@@ -323,11 +349,20 @@ export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
             (g.context?._searchStep11Passes | 0) === 1
             || (g.context?._searchStep11Passes | 0) === 2
         );
+    /* C: capital **`K`** post-peel — second inline **`mcalcmove`** (~2906–2908) already ran; tail is
+     * **`maybe_generate_rnd_mon`** + **`moves++`** only (~2909+). */
+    const skipMcalcmoveCapitalKPostPeelDeferredTail =
+        !!g.context?._wizD1CapitalKPostNearShortLPeelRunDeferredTailLikeC;
+    if (skipMcalcmoveCapitalKPostPeelDeferredTail) {
+        delete g.context._wizD1CapitalKPostNearShortLPeelRunDeferredTailLikeC;
+        delete g.context._wizD1CapitalKPostNearShortLPeelDeferredTailLikeC;
+    }
     /* C: tourist D:1 run-east **`L`** — post-peel new-turn skips **`mcalcmove`** (peel
      * **`movemon`** already spent the round; **`seed0900`** ~2608 **`rn2(70)`** not 2× **`rn2(12)`**). */
     if (
         !skipMcalcmoveRangerSearchInlineLikeC
         && !g.context?._wizD1PostCorridorNewTurnLikeC
+        && !skipMcalcmoveCapitalKPostPeelDeferredTail
         && !g.context?._touristD1LPostPeelCompleteLikeC
         && !skipMcalcmoveAfterLPostTail
         && !skipMcalcmoveAfterLPostThird
@@ -567,6 +602,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     if ((u.umovement | 0) < 0) u.umovement = 0;
 
     g.context = g.context || {};
+    if (g.context?._wizD1CapitalKPostCommaPendingLikeC) {
+        g.context._wizD1CapitalKPostCommaMoveloopLikeC = true;
+        delete g.context._wizD1CapitalKPostCommaPendingLikeC;
+    }
     delete g.context._wizD1EastTailShortLDeferToNextPostLikeC;
     delete g.context._wizD1MovemonRanThisPostLikeC;
     const wizD1MovemonOnceLikeC =
@@ -785,12 +824,16 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             if (touristD1LPostSkipNextMovemonLikeC) {
                 delete g.context._touristD1LPostAfterPeelSkipNextMovemonLikeC;
             }
+            const commaMoveloopPeelLikeC =
+                !!g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+                && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC;
             if (
                 runMovemon
                 && !touristD1LPostSkipNextMovemonLikeC
                 && !touristD1RestMoveloopPendingLikeC
                 && (
-                    !touristD1RestMovemonStep1DoneLikeC
+                    commaMoveloopPeelLikeC
+                    || !touristD1RestMovemonStep1DoneLikeC
                     || touristD1LPostPendingLikeC
                     || touristD1LPostFmonPeelLikeC
                     || touristD1LPostAfterPeelTailLikeC
@@ -819,6 +862,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         (
                             g.context._wizD1MovemonRanThisPostLikeC
                             && !g.context?._wizD1PostEastTailWalkCompletePendingLikeC
+                            && !commaMoveloopPeelLikeC
                         )
                         || g.context?._wizD1EastTailShortLDeferToNextPostLikeC
                     )
@@ -838,6 +882,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         || g.context?._wizD1PostEastTailWalkCompleteLikeC
                         || g.context?._wizD1PostEastTailWalkCompletePendingLikeC
                         || g.context?._wizD1EastTailShortLPendingArmedLikeC
+                        || commaMoveloopPeelLikeC
                     )
                     && !g.context?._postBumpKillDochugGateLikeC
                 ) {
@@ -949,6 +994,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 if (g.context?._wizD1PostEastTailWalkNewTurnDoneLikeC) {
                     delete g.context._wizD1PostEastTailWalkNewTurnDoneLikeC;
                     newTurnDone = true;
+                } else if (g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC) {
+                    newTurnDone = true;
+                } else if (commaMoveloopPeelLikeC) {
+                    newTurnDone = true;
                 }
                 /* C: rogue D:1 — defer new-turn before first **`#search`** (`peek 's'`).
                  * Inline **`#search`** post always runs the tail here (no double defer+flush). */
@@ -961,6 +1010,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     !newTurnDone
                     && !g.context?._wizD1EastTailFirstPostCorridorNewTurnDoneLikeC
                     && !g.context?._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC
+                    && !g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC
                 ) {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);
                     /* C: tourist D:1 second post-rest — after leading new-turn (~2538–2544),
@@ -1195,6 +1245,13 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._wizD1EastTailPeelMtmpLikeC;
         delete g.context._wizD1EastTailCorridorTurnDoneLikeC;
         delete g.context._wizD1SkipLPostInventMoveloopLikeC;
+        delete g.context._wizD1CapitalKPostCommaMoveloopLikeC;
+        /* Keep **`_wizD1CapitalKPostCommaPendingLikeC`** across posts — armed at end of capital **`K`**
+         * inline peel; comma post promotes Pending→Moveloop at post start (~2912 **`distfleeck`**). */
+        delete g.context._wizD1CapitalKPostCommaNearDfLikeC;
+        delete g.context._wizD1CapitalKPostCommaFmonHeadDoneLikeC;
+        delete g.context._wizD1CapitalKPostCommaPeelDoneLikeC;
+        delete g.context._wizD1CapitalKPostNearSecondNewTurnDoneLikeC;
         delete g.context._touristD1PostRestSecondOuterMoveloopDoneLikeC;
         delete g.context._touristD1PostRestSecondThirdMovemonPendingLikeC;
         /* **`_wizD1PostEastTailWalkFmonLikeC`** cleared in **`movemon`** after the walk post consumes it. */

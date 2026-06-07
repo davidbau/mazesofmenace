@@ -18490,16 +18490,11 @@ function supportsHeroThrownPotionBodyHit(potion, mon = null, kind = thrownPotion
 }
 
 function isSaddlePotionHit(potion, mon, kind = thrownPotionEffectKind(potion)) {
-    return isPotionObject(potion) && !!monsterWornSaddleForPotionHit(mon)
-        && (kind === 'water'
-            || supportsHeroThrownPotionBodyHit(potion, mon, kind, { ignoreSaddle: true }));
+    return isPotionObject(potion) && !!monsterWornSaddleForPotionHit(mon);
 }
 
 function supportsHeroThrownPotionHit(potion, mon = null) {
-    if (!isPotionObject(potion)) return false;
-    const kind = thrownPotionEffectKind(potion);
-    return supportsHeroThrownPotionBodyHit(potion, mon, kind)
-        || isSaddlePotionHit(potion, mon, kind);
+    return isPotionObject(potion);
 }
 
 function wieldedConsumedBashObject(obj) {
@@ -20205,8 +20200,14 @@ function heroThrownMjollnirObject(obj) {
         || /mjollnir/i.test(inventoryItemName(obj));
 }
 
+function normalizeHeroHorizontalThrowRange(range, minimum = 0) {
+    const numeric = Number(range);
+    const normalized = Number.isFinite(numeric) ? Math.trunc(numeric) : 1;
+    return Math.max(minimum, normalized);
+}
+
 function heroHorizontalThrowMjollnirRangeCap(range) {
-    return Math.max(1, Math.trunc((Math.max(1, Math.trunc(Number(range || 1))) + 1) / 2));
+    return Math.trunc((normalizeHeroHorizontalThrowRange(range) + 1) / 2);
 }
 
 function heroThrownMjollnirThrowName(obj) {
@@ -20218,7 +20219,7 @@ function heroThrownMjollnirAutoReturn(obj) {
 }
 
 function heroHorizontalThrowFinalRange(obj, range, { mjollnirThrow = false, returningAklysThrow = false } = {}) {
-    let finalRange = Math.max(1, Math.trunc(Number(range || 1)));
+    let finalRange = normalizeHeroHorizontalThrowRange(range);
     if (isBoulderObject(obj)) finalRange = 20;
     else if (mjollnirThrow) finalRange = heroHorizontalThrowMjollnirRangeCap(finalRange);
     else if (returningAklysThrow) finalRange = Math.min(finalRange, 4);
@@ -20381,6 +20382,10 @@ async function heroDropAttachedBallAfterThrow(obj, x, y, dir) {
 
     game.u.ux0 = oldUx;
     game.u.uy0 = oldUy;
+    if (game.u.blind) {
+        game.u._bcFelt = 0;
+        delete game.u._bcFeltGlyph;
+    }
     game.u.ux = newUx;
     game.u.uy = newUy;
     game.u.uchain.ox = newUx;
@@ -20481,22 +20486,136 @@ function heroHorizontalThrowAirSplitRange(obj) {
     return { recoilRange, throwRange: range, noLauncherMessage: ammoRange?.noLauncherMessage || '' };
 }
 
-function heroHorizontalThrowRecoil(dir, range) {
+function heroHorizontalThrowRecoilBoulderAt(x, y) {
+    return (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp === BOULDER);
+}
+
+function heroHorizontalThrowRecoilMonsterAt(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon.mx === x && mon.my === y && !mon.dead && (mon.mhp == null || mon.mhp > 0));
+}
+
+function heroHorizontalThrowRecoilTrapAt(x, y) {
+    return (game.level?.traps || []).find(trap => trap.tx === x && trap.ty === y) || null;
+}
+
+function heroHorizontalThrowRecoilTrapPassOverMessageAt(x, y) {
+    const trap = heroHorizontalThrowRecoilTrapAt(x, y);
+    if (!trap?.tseen) return '';
+    if (trap.ttyp === MAGIC_PORTAL || trap.ttyp === VIBRATING_SQUARE || trap.ttyp === FIRE_TRAP) return '';
+    if ((is_pit(trap.ttyp) || is_hole(trap.ttyp)) && In_sokoban(game.u?.uz)) return '';
+    return `You pass right over ${sitTrapArticleName(trap)}.`;
+}
+
+function heroHorizontalThrowRecoilResultFromMessages(messages, options = {}) {
+    return {
+        message: messages.filter(Boolean).join('  '),
+        more: !!options.more,
+        trapResult: options.trapResult || null,
+    };
+}
+
+function heroHorizontalThrowRecoilTrapEffectAt(x, y) {
+    const trap = heroHorizontalThrowRecoilTrapAt(x, y);
+    if (trap?.ttyp === MAGIC_PORTAL) {
+        const result = movementTransportTrapResult(trap);
+        return {
+            messages: result?.message ? [result.message] : [],
+            more: !!result?.more,
+            trapResult: result?.fatal || result?.lifeSaving ? result : null,
+            stop: true,
+        };
+    }
+    if (trap?.ttyp === FIRE_TRAP) {
+        const result = movementFireTrapResult(trap, { allowLifeSaving: true });
+        return {
+            messages: result.message ? [result.message] : [],
+            more: !!result.more,
+            trapResult: result.fatal || result.lifeSaving ? result : null,
+        };
+    }
+    if (trap && (is_pit(trap.ttyp) || is_hole(trap.ttyp)) && In_sokoban(game.u?.uz)) {
+        const result = is_pit(trap.ttyp)
+            ? movementPitResult(trap)
+            : movementTransportTrapResult(trap);
+        return {
+            messages: result?.message ? [result.message] : [],
+            more: !!result?.more,
+            trapResult: result?.fatal || result?.lifeSaving ? result : null,
+            stop: true,
+        };
+    }
+    if (trap?.ttyp !== VIBRATING_SQUARE) return { messages: [] };
+    trap.tseen = true;
+    newsym(x, y);
+    return { messages: ['The ground vibrates as you pass it.'] };
+}
+
+function heroHorizontalThrowRecoilObstacleCollision(loc, x, y, remainingRange, dx, dy) {
+    if (!loc) return { blocked: false };
+    const diagonal = dx !== 0 && dy !== 0;
+    const openDoorFrame = loc.typ === DOOR && (loc.doormask & D_ISOPEN) && diagonal;
+    const closedDoor = loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED));
+    const boulder = heroHorizontalThrowRecoilBoulderAt(x, y);
+    let why = '';
+    const messages = [];
+
+    if (loc.typ === IRONBARS) {
+        why = 'crashing into iron bars';
+        messages.push('You crash into some iron bars.  Ouch!');
+    } else if (IS_OBSTRUCTED(loc.typ) || closedDoor || openDoorFrame) {
+        why = IS_TREE(loc.typ) ? 'bumping into a tree'
+            : IS_OBSTRUCTED(loc.typ) ? 'bumping into a wall'
+                : openDoorFrame ? 'bumping into a door frame'
+                    : 'bumping into a closed door';
+        if (openDoorFrame) messages.push('You hit the door frame!');
+        messages.push('Ouch!');
+    } else if (boulder) {
+        why = 'bumping into a boulder';
+        messages.push('You bump into a boulder.  Ouch!');
+    }
+
+    if (!why) return { blocked: false };
+    const damage = maybeHalfPhysicalDamage(rnd(2 + Math.max(0, Math.trunc(Number(remainingRange || 0)))));
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u.uhp || 0) <= 0) game._death_cause = why;
+    }
+    wakeNearbyMonstersAt(x, y, 10);
+    return { blocked: true, messages };
+}
+
+function heroHorizontalThrowRecoilMonsterCollision(mon, x, y) {
+    if (!mon) return '';
+    const name = articleFor(mon.data?.name || mon.name || 'creature');
+    mon.mundetected = 0;
+    mon.msleeping = 0;
+    mon.meating = 0;
+    setHeroObjectHitMonsterAngry(mon);
+    wakeNearbyMonstersAt(x, y, 10);
+    return `You bump into ${name}.`;
+}
+
+function heroHorizontalThrowRecoilResult(dir, range) {
     if (!heroHorizontalThrowAirRecoilActive() || !dir || (!dir.dx && !dir.dy) || range < 1 || game.u?.ustuck)
-        return '';
+        return heroHorizontalThrowRecoilResultFromMessages([]);
     if (game.u?.uball && !(game.inventory || []).includes(game.u.uball))
-        return 'You feel a tug from the iron ball.';
+        return heroHorizontalThrowRecoilResultFromMessages(['You feel a tug from the iron ball.']);
     if (game.u?.utrap) {
         const trapName = game.u.utraptype === TT_WEB ? 'web'
             : game.u.utraptype === TT_LAVA ? 'lava'
                 : game.u.utraptype === TT_INFLOOR ? 'floor'
                     : game.u.utraptype === TT_BURIEDBALL ? 'buried ball'
                         : 'trap';
-        return `You are anchored by the ${trapName}.`;
+        return heroHorizontalThrowRecoilResultFromMessages([`You are anchored by the ${trapName}.`]);
     }
 
     const recoilRange = Math.max(1, Math.trunc(Number(range || 1)));
     const message = `You ${recoilRange > 1 ? 'hurtle' : 'float'} in the opposite direction.`;
+    const messages = [message];
+    let more = false;
+    let trapResult = null;
     const dx = Math.sign(-dir.dx);
     const dy = Math.sign(-dir.dy);
     for (let step = 0; step < recoilRange; step++) {
@@ -20505,13 +20624,34 @@ function heroHorizontalThrowRecoil(dir, range) {
         const nx = oldx + dx;
         const ny = oldy + dy;
         const loc = game.level?.at(nx, ny);
-        const closedDoor = loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED));
-        const blockedByBoulder = (game.level?.objects || []).some(obj =>
-            !obj.transientProjectile && obj.ox === nx && obj.oy === ny && obj.otyp === BOULDER);
-        const blockedByMonster = (game.level?.monsters || []).some(mon =>
-            mon.mx === nx && mon.my === ny && !mon.dead && (mon.mhp == null || mon.mhp > 0));
-        if (!isok(nx, ny) || !loc || IS_OBSTRUCTED(loc.typ) || closedDoor || blockedByBoulder || blockedByMonster)
+        if (!isok(nx, ny) || !loc)
+            return heroHorizontalThrowRecoilResultFromMessages(
+                [...messages, 'You feel the spirits holding you back.'],
+                { more, trapResult },
+            );
+        const monster = heroHorizontalThrowRecoilMonsterAt(nx, ny);
+        const openDoorFrame = loc.typ === DOOR && (loc.doormask & D_ISOPEN) && dx !== 0 && dy !== 0;
+        const blockedByObstacle = IS_OBSTRUCTED(loc.typ)
+            || loc.typ === IRONBARS
+            || (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)))
+            || openDoorFrame
+            || heroHorizontalThrowRecoilBoulderAt(nx, ny);
+        if (blockedByObstacle) {
+            const collision = heroHorizontalThrowRecoilObstacleCollision(loc, nx, ny, recoilRange - step, dx, dy);
+            if (collision.blocked)
+                return heroHorizontalThrowRecoilResultFromMessages(
+                    [...messages, ...(collision.messages || [])],
+                    { more, trapResult },
+                );
             break;
+        }
+        if (monster) {
+            const collisionMessage = heroHorizontalThrowRecoilMonsterCollision(monster, nx, ny);
+            return heroHorizontalThrowRecoilResultFromMessages(
+                [...messages, collisionMessage],
+                { more, trapResult },
+            );
+        }
         game.u.ux0 = oldx;
         game.u.uy0 = oldy;
         game.u.ux = nx;
@@ -20521,8 +20661,20 @@ function heroHorizontalThrowRecoil(dir, range) {
         newsym(nx, ny);
         if (game.level?.at(nx, ny) === loc) vision_recalc(0);
         else game.vision_full_recalc = 1;
+        const trapEffect = heroHorizontalThrowRecoilTrapEffectAt(nx, ny);
+        if (trapEffect.messages?.length) messages.push(...trapEffect.messages);
+        more = more || !!trapEffect.more;
+        trapResult ||= trapEffect.trapResult || null;
+        if (trapResult || trapEffect.stop)
+            return heroHorizontalThrowRecoilResultFromMessages(messages, { more, trapResult });
+        const trapMessage = heroHorizontalThrowRecoilTrapPassOverMessageAt(nx, ny);
+        if (trapMessage) messages.push(trapMessage);
     }
-    return message;
+    return heroHorizontalThrowRecoilResultFromMessages(messages, { more, trapResult });
+}
+
+function heroHorizontalThrowRecoil(dir, range) {
+    return heroHorizontalThrowRecoilResult(dir, range).message;
 }
 
 function prependHeroHorizontalThrowRecoilMessage(messages, recoilMessage) {
@@ -47806,10 +47958,14 @@ function landmineScatterStackQuantity(obj) {
 }
 
 function landmineScatterCanSplitStack(obj) {
+    const unpaid = !!obj?.unpaid;
+    const unpaidContents = globContents(obj).some(child => shopObjectOrContentsUnpaid(child));
+    const fragile = landmineScatterForcedBreakageObject(obj) || !!impactDropBreakKind(obj);
     return landmineScatterStackQuantity(obj) > 1
         && !landmineScatterStoneObject(obj)
         && !shopBillableGold(obj)
-        && !shopObjectOrContentsUnpaid(obj);
+        && !unpaidContents
+        && (!unpaid || !fragile);
 }
 
 function splitLandmineScatterStackObject(obj) {
@@ -47829,6 +47985,7 @@ function splitLandmineScatterStackObject(obj) {
     delete splitObj.o_id;
     delete splitObj._shopBillObjectId;
     delete splitObj.line;
+    if (obj.unpaid) splitCarriedObjectShopBill(obj, splitObj, splitCount);
     return splitObj;
 }
 
@@ -68039,11 +68196,18 @@ export async function rhack(_cmd) {
         });
         const combatObject = item.cls === 'weapon' || item.cls === 'gem' || item.glyph === ')' || item.otyp === GEM_CLASS;
         let impactMessage = flightImpactMessage;
-        const ordinaryAirRecoilMessage = !boomerangFlight.handled && ordinaryAirRecoilRange > 0
+        const ordinaryAirRecoilResult = !boomerangFlight.handled && ordinaryAirRecoilRange > 0
             ? attachedBallThrow
-                ? 'You feel a tug from the iron ball.'
-                : heroHorizontalThrowRecoil(dir, ordinaryAirRecoilRange)
-            : '';
+                ? heroHorizontalThrowRecoilResultFromMessages(['You feel a tug from the iron ball.'])
+                : heroHorizontalThrowRecoilResult(dir, ordinaryAirRecoilRange)
+            : null;
+        const ordinaryAirRecoilMessage = ordinaryAirRecoilResult?.message || '';
+        const ordinaryAirRecoilMore = !!ordinaryAirRecoilResult?.more;
+        const ordinaryAirRecoilTrapResult = ordinaryAirRecoilResult?.trapResult || null;
+        const applyOrdinaryAirRecoilTrapResult = () => {
+            if (!ordinaryAirRecoilTrapResult?.lifeSaving && !ordinaryAirRecoilTrapResult?.fatal) return false;
+            return applyLifeSavingOrFatalCommandMode(ordinaryAirRecoilTrapResult);
+        };
         let impactConsumedThrownObject = false;
         let impactObjectHit = false;
         let impactPassiveTarget = null;
@@ -68057,13 +68221,14 @@ export async function rhack(_cmd) {
                 removeInventoryItem(item, 1);
                 newsym(ironBarsImpact.x, ironBarsImpact.y);
                 prependHeroHorizontalThrowRecoilMessage(barsImpact.messages, ordinaryAirRecoilMessage);
-                await setMessage(barsImpact.messages.join('  '));
+                await setMessage(barsImpact.messages.join('  '), ordinaryAirRecoilMore);
                 game._command_mode = null;
                 game._throw_item_letter = null;
                 clearThrowCountState();
                 game._resume_time_after_more = 0;
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 game.context.move = 0;
+                if (applyOrdinaryAirRecoilTrapResult()) return;
                 return;
             }
             impactMessage = barsImpact.messages.join('  ');
@@ -68082,12 +68247,13 @@ export async function rhack(_cmd) {
                 removeInventoryItem(item, 1);
                 newsym(targetMon.mx, targetMon.my);
                 prependHeroHorizontalThrowRecoilMessage(messages, ordinaryAirRecoilMessage);
-                await setMessage(messages.join('  '));
+                await setMessage(messages.join('  '), ordinaryAirRecoilMore);
                 game._command_mode = null;
                 game._throw_item_letter = null;
                 game._resume_time_after_more = 0;
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 game.context.move = 0;
+                if (applyOrdinaryAirRecoilTrapResult()) return;
                 return;
             }
             const thrownName = pickupObjectName({ ...item, quan: 1 });
@@ -68103,12 +68269,13 @@ export async function rhack(_cmd) {
                 removeInventoryItem(item, 1);
                 newsym(targetMon.mx, targetMon.my);
                 prependHeroHorizontalThrowRecoilMessage(messages, ordinaryAirRecoilMessage);
-                await setMessage(messages.join('  '));
+                await setMessage(messages.join('  '), ordinaryAirRecoilMore);
                 game._command_mode = null;
                 game._throw_item_letter = null;
                 game._resume_time_after_more = 0;
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 game.context.move = 0;
+                if (applyOrdinaryAirRecoilTrapResult()) return;
                 return;
             }
             const messages = [`The cream pie misses the ${targetMon.data?.name || 'creature'}.`];
@@ -68123,12 +68290,13 @@ export async function rhack(_cmd) {
                 removeInventoryItem(item, 1);
                 newsym(targetMon.mx, targetMon.my);
                 prependHeroHorizontalThrowRecoilMessage(messages, ordinaryAirRecoilMessage);
-                await setMessage(messages.join('  '), !!messages.more);
+                await setMessage(messages.join('  '), !!messages.more || ordinaryAirRecoilMore);
                 game._throw_item_letter = null;
                 game._resume_time_after_more = 0;
                 game.context.move = 0;
                 if (applyLifeSavingOrFatalCommandMode(messages)) return;
                 game._command_mode = null;
+                if (applyOrdinaryAirRecoilTrapResult()) return;
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 return;
             }
@@ -68146,7 +68314,7 @@ export async function rhack(_cmd) {
                 newsym(targetMon.mx, targetMon.my);
                 const keepPotionCallPrompt = game._command_mode === 'callPotionAfterMore';
                 prependHeroHorizontalThrowRecoilMessage(messages, ordinaryAirRecoilMessage);
-                await setMessage(messages.join('  '), keepPotionCallPrompt || !!messages.more);
+                await setMessage(messages.join('  '), keepPotionCallPrompt || !!messages.more || ordinaryAirRecoilMore);
                 game._throw_item_letter = null;
                 game._resume_time_after_more = 0;
                 game.context.move = 0;
@@ -68164,6 +68332,7 @@ export async function rhack(_cmd) {
                     return;
                 }
                 if (!keepPotionCallPrompt) game._command_mode = null;
+                if (applyOrdinaryAirRecoilTrapResult()) return;
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 return;
             }
@@ -68221,12 +68390,13 @@ export async function rhack(_cmd) {
             stopCarriedFigurineTimerOnLeave(thrownObject);
             removeInventoryItem(item, 1);
             newsym(targetMon.mx, targetMon.my);
-            await setMessage(impactMessage);
+            await setMessage(impactMessage, ordinaryAirRecoilMore);
             game._command_mode = null;
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game.context.move = 0;
+            if (applyOrdinaryAirRecoilTrapResult()) return;
             return;
         }
         if (returningObjectThrow) {
@@ -68241,13 +68411,14 @@ export async function rhack(_cmd) {
                     if (!/\b(?:weapon|wielded) in (?:right hand|hands)\b/.test(String(item.line || '')))
                         item.line = normalInventoryLine({ ...item, line: '' });
                     newsym(ox, oy);
-                    await setMessage([impactMessage, returnMessage].filter(Boolean).join('  '));
+                    await setMessage([impactMessage, returnMessage].filter(Boolean).join('  '), ordinaryAirRecoilMore);
                     game._command_mode = null;
                     game._throw_item_letter = null;
                     clearThrowCountState();
                     game._resume_time_after_more = 0;
                     game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                     game.context.move = 0;
+                    if (applyOrdinaryAirRecoilTrapResult()) return;
                     return;
                 }
                 const armHit = !!rn2(2);
@@ -68266,13 +68437,14 @@ export async function rhack(_cmd) {
                 newsym(ux, uy);
                 removeInventoryItem(item);
                 await setMessage([impactMessage, badCatchMessage, landingMessage].filter(Boolean).join('  '),
-                    !!landingMessage);
+                    !!landingMessage || ordinaryAirRecoilMore);
                 game._command_mode = null;
                 game._throw_item_letter = null;
                 clearThrowCountState();
                 game._resume_time_after_more = 0;
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                 game.context.move = 0;
+                if (applyOrdinaryAirRecoilTrapResult()) return;
                 return;
             }
             impactMessage = [impactMessage, failMessage].filter(Boolean).join('  ');
@@ -68329,14 +68501,14 @@ export async function rhack(_cmd) {
             const followUpMessage = [impactMessage, landingMessage].filter(Boolean).join('  ');
             if (followUpMessage) game._queued_message_after_more = followUpMessage;
             if (attachedBallLandingMore) game._queued_message_more_after_more = 1;
-            await setMessage(throwNoLauncherMessage, !!followUpMessage);
+            await setMessage(throwNoLauncherMessage, !!followUpMessage || ordinaryAirRecoilMore);
         }
         else if (impactMessage) {
             if (landingMessage) game._queued_message_after_more = landingMessage;
             if (attachedBallLandingMore) game._queued_message_more_after_more = 1;
             await setMessage(impactMessage, true);
         }
-        else if (landingMessage) await setMessage(landingMessage, attachedBallLandingMore);
+        else if (landingMessage) await setMessage(landingMessage, attachedBallLandingMore || ordinaryAirRecoilMore);
         else {
             game._pending_message = '';
             game._message_more = 0;
@@ -68351,6 +68523,7 @@ export async function rhack(_cmd) {
         if (attachedBallTrapResult?.lifeSaving || attachedBallTrapResult?.fatal) {
             if (applyLifeSavingOrFatalCommandMode(attachedBallTrapResult)) return;
         }
+        if (applyOrdinaryAirRecoilTrapResult()) return;
         game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
         game.context.move = 0;
         return;

@@ -30,7 +30,7 @@ import {
 } from './monmove_search.js';
 import { peekQueuedKey } from './input.js';
 import { maybeSmudgeEngr } from './engrave.js';
-import { dolookHeroLikeC } from './pickup.js';
+import { checkHere, dolookHeroLikeC } from './pickup.js';
 import { runExtcmdFromHashPrefix } from './extcmd.js';
 import { doZapCmd } from './dozap.js';
 import { doReadHeroScrollCmdLikeC } from './read_scroll_hero.js';
@@ -429,6 +429,12 @@ export async function rhack(key) {
         // C: spell menu — no spells known yet
         game.context.move = 0;
         await pline("You don't know any spells right now.");
+        game._retainMessageAfterCommand = true;
+        await flush_screen(1);
+    } else if (ch === ',') {
+        /* C: pickup.c **`pickup(0)`** / **`check_here`** — costs time; moveloop **`movemon`** tail. */
+        await checkHere(false);
+        game.context.move = 1;
         game._retainMessageAfterCommand = true;
         await flush_screen(1);
     } else if (ch === ':') {

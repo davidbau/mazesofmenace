@@ -213,8 +213,11 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         /* C: capital **`K`** post-near — inline **`monmove.js`** runs second new-turn **`mcalcmove`**
          * (~2879–2882); no near **`m_move`** in **`fmon`**. */
         if (
-            g.context?._wizD1CapitalKPostNearPetDoneLikeC
-            || g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC
+            !g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+            && (
+                g.context?._wizD1CapitalKPostNearPetDoneLikeC
+                || g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC
+            )
         ) {
             return [];
         }
