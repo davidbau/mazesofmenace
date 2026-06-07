@@ -21,7 +21,6 @@ import { raceptr } from './mondata.js';
 import { rn2 } from './rng.js';
 import { growUpLikeC } from './makemon.js';
 import { corpseChanceLikeC } from './uhitm_hero.js';
-
 /** C: objects.h **`RIN_TELEPORTATION`**. */
 const OTYP_RIN_TELEPORTATION = 194;
 
@@ -50,6 +49,7 @@ import {
     consumeRogueColonMovemonPendingLikeC,
     effectiveMovemonStepNumLikeC,
     isRogueColonMovemonActiveLikeC,
+    wizD1CommaLFirstUAfterCommaLLikeC,
 } from './monmove_search.js';
 import { peekReplayMoves } from './input.js';
 import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
@@ -72,6 +72,7 @@ import {
     mMoveTouristD1PostRestSecondMklevInterruptLikeC,
     mMoveTouristD1PostSwapRestMklevLikeC,
     primeDistantMtrackRn20LikeC,
+    wizD1CommaLFirstUNearDistfleeckBeforePetLikeC,
 } from './m_move_mon.js';
 
 /**
@@ -357,12 +358,18 @@ export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
         delete g.context._wizD1CapitalKPostNearShortLPeelRunDeferredTailLikeC;
         delete g.context._wizD1CapitalKPostNearShortLPeelDeferredTailLikeC;
     }
+    const skipMcalcmoveCapitalKCommaDeferredFirstNewturn =
+        !!g.context?._wizD1CapitalKPostCommaDeferredSkipMcalcmoveLikeC;
+    if (skipMcalcmoveCapitalKCommaDeferredFirstNewturn) {
+        delete g.context._wizD1CapitalKPostCommaDeferredSkipMcalcmoveLikeC;
+    }
     /* C: tourist D:1 run-east **`L`** — post-peel new-turn skips **`mcalcmove`** (peel
      * **`movemon`** already spent the round; **`seed0900`** ~2608 **`rn2(70)`** not 2× **`rn2(12)`**). */
     if (
         !skipMcalcmoveRangerSearchInlineLikeC
         && !g.context?._wizD1PostCorridorNewTurnLikeC
         && !skipMcalcmoveCapitalKPostPeelDeferredTail
+        && !skipMcalcmoveCapitalKCommaDeferredFirstNewturn
         && !g.context?._touristD1LPostPeelCompleteLikeC
         && !skipMcalcmoveAfterLPostTail
         && !skipMcalcmoveAfterLPostThird
@@ -414,8 +421,14 @@ export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
         !g.context?._wizD1CommaLFirstUPostTailInventPendingLikeC
         || g.context?._wizD1CommaLFirstUPostTailInventDoneLikeC
     ) {
-        maybeHeroTeleportRngLikeC(g);
-        await end_of_turn_rng(stepNum);
+        /* C: comma post-first-**`l`** tail — session **`rn2(19)`** (~2946) before **`rn2(85)`** (~2947). */
+        if (g.context?._wizD1CommaPostFirstLExerBeforeTeleLikeC) {
+            await end_of_turn_rng(stepNum);
+            maybeHeroTeleportRngLikeC(g);
+        } else {
+            maybeHeroTeleportRngLikeC(g);
+            await end_of_turn_rng(stepNum);
+        }
     }
     if (g.context?._touristD1LPostFmonPeelPendingLikeC) {
         g.context._touristD1LPostMcalcmoveDoneLikeC = true;
@@ -903,8 +916,19 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             const commaMoveloopPeelLikeC =
                 !!g.context?._wizD1CapitalKPostCommaMoveloopLikeC
                 && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC;
+            /* C: capital **`K`** alone — 0 RNG; comma promotes deferred peel (~2818+). */
+            const deferRunKZeroRngPostLikeC =
+                wizD1MovemonOnceLikeC
+                && g.context?._wizD1DeferredRunKPendingLikeC
+                && !g.context?._wizD1PromoteDeferredRunKLikeC
+                && !g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC;
+            if (deferRunKZeroRngPostLikeC) {
+                g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                newTurnDone = true;
+            }
             if (
                 runMovemon
+                && !deferRunKZeroRngPostLikeC
                 && !touristD1LPostSkipNextMovemonLikeC
                 && !touristD1RestMoveloopPendingLikeC
                 && (
@@ -933,6 +957,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     || touristD1LPostTwentiethMovemonLikeC
                     || wizD1CommaUThirdMovemonLikeC
                     || wizD1CommaUFmonTailLikeC
+                    || (
+                        g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                        && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) < 3
+                    )
                 )
                 && !(
                     wizD1MovemonOnceLikeC
@@ -1116,6 +1144,9 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 ) {
                     delete g.context._wizD1PostEastTailWalkNewTurnDoneLikeC;
                     newTurnDone = true;
+                } else if (g.context?._wizD1CommaUPostCorridorInlineNewturnDoneLikeC) {
+                    delete g.context._wizD1CommaUPostCorridorInlineNewturnDoneLikeC;
+                    newTurnDone = true;
                 } else if (g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC) {
                     newTurnDone = true;
                 } else if (commaMoveloopPeelLikeC) {
@@ -1130,11 +1161,26 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     g.context._deferredNewTurnLikeC = true;
                 } else if (
                     !newTurnDone
+                    && !deferRunKZeroRngPostLikeC
                     && !g.context?._wizD1EastTailFirstPostCorridorNewTurnDoneLikeC
                     && !g.context?._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC
                     && !g.context?._wizD1CapitalKPostNearSecondNewTurnDoneLikeC
                 ) {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                    /* C: comma-**`l`** → first **`U`** — near **`distfleeck`** (~2948) after new-turn
+                     * **`rn2(85)`** (~2947), then pet **`dog_move`** (~2949+). */
+                    if (
+                        wizD1MovemonOnceLikeC
+                        && wizD1CommaLFirstUAfterCommaLLikeC(g)
+                        && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+                        && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+                    ) {
+                        await wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g);
+                        delete g.context._wizD1MovemonRanThisPostLikeC;
+                        g.context._movemonHarnessConsumed = false;
+                        await movemon(1);
+                        g.context._wizD1MovemonRanThisPostLikeC = true;
+                    }
                     if (g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC) {
                         const runKPasses =
                             (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) + 1;

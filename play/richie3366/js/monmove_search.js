@@ -38,6 +38,7 @@ export function rangerD1FirstSearchNoNearMonLikeC(g, stepNum = 0) {
 
 /** C: capital **`K`**, comma, **`l`**, first **`U`** — near **`distfleeck`** before pet **`mfndpos`** (~2986). */
 export function wizD1CommaLFirstUAfterCommaLLikeC(g) {
+    if (g.context?._wizD1CommaLFirstUActiveLikeC) return true;
     if (g.urole?.abbr !== 'Wiz') return false;
     if ((g.u?.uz?.dnum | 0) !== 0 || (g.u?.uz?.dlevel | 0) !== 1) return false;
     return (
@@ -70,6 +71,15 @@ export function wizD1EastTailShortLActiveLikeC(g) {
  */
 export function isMovemonStepOnePeelLikeC(g, stepNum) {
     if (g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC) return false;
+    if (
+        (
+            g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+            || g.context?._wizD1CommaLFirstUActiveLikeC
+        )
+        && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+    ) {
+        return false;
+    }
     if ((stepNum | 0) === 1) return true;
     if (wizD1EastTailShortLActiveLikeC(g)) return true;
     /* C: post-east-tail walk **`fmon`** peel — not session step 1 (**`seed0006`** ~2781+). */
@@ -95,6 +105,16 @@ export function isWizardD1Step1PeelLikeC(g, stepNum) {
         && (g.u?.uz?.dnum | 0) === 0
         && (g.u?.uz?.dlevel | 0) === 1;
     if (!wizD1) return false;
+    /* C: comma-**`l`** → first **`U`** — dedicated near-**`distfleeck`** + pet peel (~2986+). */
+    if (
+        (
+            g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+            || g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+        )
+        && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+    ) {
+        return false;
+    }
     /* C: comma-U post-third-peel — normal fmon distfleeck + m_move. */
     if (g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC) return false;
     if (wizD1EastTailShortLActiveLikeC(g)) return true;

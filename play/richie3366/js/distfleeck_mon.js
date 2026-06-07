@@ -358,6 +358,7 @@ export async function distfleeckMonsterApplyLikeC(g, mtmp) {
     if (
         out.nearby
         && !skipScaredFleeFirstSearchRogLikeC
+        && !g.context?._wizD1CommaUInventPostCorridorHostileLikeC
         && (sawscary || (flees && !bravegremlin) || (!(mtmp.mpeaceful | 0) && sanct))
     ) {
         out.scared = 1;

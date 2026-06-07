@@ -18,8 +18,16 @@ import { game } from './gstate.js';
 
 /** C: run-**`K`** deferred peel — moveloop owns new-turn passes (~2908–2912). */
 async function runInlineNewTurnUnlessDeferredPeelLikeC(g, stepNum) {
+    const commaPeelNewTurnLikeC =
+        !!g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
+        && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC
+        && (
+            !!g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+            || !!g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+        );
     if (
-        g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+        !commaPeelNewTurnLikeC
+        && g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
         && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) < 3
     ) {
         return;
@@ -75,13 +83,17 @@ import {
     mMoveDistfleeckOnlyTurnLikeC,
     mMoveCapitalKPostNewturnNearLikeC,
     mMoveCapitalKPostCommaDistantLikeC,
+    mMoveCapitalKPostCommaDeferredDistantLikeC,
+    runCapitalKPostCommaDeferredFmonTailLikeC,
     mMoveWizardD1Step1DistantAfterPeelLikeC,
     mMoveWizardD1EastTailCorridorRestLikeC,
+    mMoveCommaUInventPostCorridorHostileLikeC,
     mMoveWizardD1LPostTailDistantLikeC,
     mMovePostEastTailWalkMintrapDistantPeelLikeC,
     primeDistantMtrackRn20LikeC,
     primeWizD1EastDoorMtrackLikeC,
     wizD1CommaLFirstUNearDistfleeckBeforePetLikeC,
+    runCommaPostFirstLMaybeGenTailLikeC,
     mMoveCommaLFirstUDistantLikeC,
     mMoveCommaLFirstUPostDistantTailLikeC,
 } from './m_move_mon.js';
@@ -100,7 +112,8 @@ import {
     dogMoveCapitalKPostNearPetLikeC,
     dogMoveCapitalKPostNewturnPetLikeC,
     dogMoveCapitalKPostPeelPetLikeC,
-    dogMoveCapitalKPostCommaPetLikeC,
+    dogMoveCapitalKPostCommaPetHeadLikeC,
+    dogMoveCapitalKPostCommaPetTailLikeC,
     dogMoveCommaLFirstUPostTailPetLikeC,
     dogMoveCommaLFirstUPostTailInventAfterNewturnLikeC,
     dogMoveCommaLFirstUPostTailThirdMovemonPetLikeC,
@@ -117,6 +130,10 @@ import {
 } from './monmove_search.js';
 import { raceptr, S_EEL } from './mondata.js';
 import { ensureMonsterMtrack } from './monflee.js';
+import {
+    maybe_generate_rnd_mon,
+    runCommaUPostCorridorInlineNewturnLikeC,
+} from './moveloop_aux.js';
 import { tAt } from './search.js';
 
 export { mthrowAtHeroUxyThituLikeC } from './mthrowu.js';
@@ -209,6 +226,12 @@ export async function movemon(stepNum) {
         g.context._wizD1CommaLFirstUNearDfPendingLikeC = true;
         delete g.context._wizD1CommaLArmPendingAfterMovemonLikeC;
         delete g.context._wizD1CommaLArmPendingHeroMoveLikeC;
+        /* C: comma-**`U`** — drop stale capital-**`K`** / east-tail deferred peels. */
+        delete g.context._wizD1PostEastTailWalkFmonDistantDeferredLikeC;
+        delete g.context._wizD1WalkFmonPostMoveloopLikeC;
+        delete g.context._wizD1DeferredRunKNewTurnPassesLikeC;
+        delete g.context._wizD1CapitalKPostCommaMoveloopLikeC;
+        delete g.context._wizD1PostEastTailWalkCompleteLikeC;
     }
     if (
         g.context?._wizD1CommaLResumeArmedLikeC
@@ -225,8 +248,75 @@ export async function movemon(stepNum) {
     if (
         !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
         && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+        && !wizD1CommaLFirstUAfterCommaLLikeC(g)
     ) {
         await wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g);
+    }
+    /* C: comma post-first-**`l`** tail drew pet **`rn2(4)`** (~2949); invent + **`mfndpos`** (~2950+)
+     * on first hero **`U`** **`movemon`** before **`fmon`**. */
+    if (
+        g.context?._wizD1FirstLAfterCommaPetPendingLikeC
+        && !g.context?._wizD1FirstLAfterCommaPetDoneLikeC
+        && wizD1CommaLFirstUAfterCommaLLikeC(g)
+    ) {
+        const petDeferred = (g.level?.monsters ?? []).find(
+            (m) => (m.mtame | 0) !== 0,
+        );
+        if (petDeferred) {
+            let movDef = petDeferred.movement | 0;
+            if (movDef < NORMAL_SPEED) {
+                petDeferred.movement = NORMAL_SPEED;
+                movDef = NORMAL_SPEED;
+            }
+            petDeferred.movement = movDef - NORMAL_SPEED;
+            setApparxyMonsterLikeC(g, petDeferred);
+            dogMoveFirstLAfterCommaPetLikeC(g, petDeferred);
+        }
+        delete g.context._wizD1FirstLAfterCommaPetPendingLikeC;
+        g.context._wizD1FirstLAfterCommaPetDoneLikeC = true;
+        /* C: **`pet_ranged_attk`** hungry **`rn2(5)`** (~2973) when **`best_target`** stub skipped draw. */
+        if (!g.context._wizD1CommaLPetRangedRn5LikeC) {
+            rn2(5);
+            g.context._wizD1CommaLPetRangedRn5LikeC = true;
+        }
+    }
+    /* C: comma post-first-**`l`** — corridor hostile **`dochug`** immediately after invent peel
+     * (~2974–2982); must run before post early-**`return`** / **`fmon`** (~2975+). */
+    if (
+        g.context?._wizD1FirstLAfterCommaPetDoneLikeC
+        && !g.context?._wizD1CommaUInventPostCorridorDoneLikeC
+        && wizD1CommaLFirstUAfterCommaLLikeC(g)
+    ) {
+        const commaCorridorStep = effectiveMovemonStepNumLikeC(g, stepNum);
+        if ((commaCorridorStep | 0) === 1 && g.urole?.abbr !== 'Tou') {
+            g.context._mklevDistfleeckRecalcBudgetLikeC = 0;
+        }
+        const corridorInline = wizD1CorridorMklevMonLikeC(g);
+        if (corridorInline) {
+            let movCor = corridorInline.movement | 0;
+            if (movCor < NORMAL_SPEED) {
+                corridorInline.movement = NORMAL_SPEED;
+                movCor = NORMAL_SPEED;
+            }
+            corridorInline.movement = movCor - NORMAL_SPEED;
+            g.context.movemonStepNum = commaCorridorStep;
+            const peeled = await mMoveCommaUInventPostCorridorHostileLikeC(
+                g,
+                corridorInline,
+                commaCorridorStep,
+            );
+            if (peeled) {
+                g.context._wizD1CommaUInventPostCorridorDoneLikeC = true;
+                /* C: comma-**`U`** — **`maybe_generate_rnd_mon`** + partial tail (~2983–2985),
+                 * then near **`distfleeck`** (~2986) before **`fmon`** pet **`mfndpos`**. */
+                await runCommaUPostCorridorInlineNewturnLikeC(g);
+                const nearPostCorridor = wizD1CommaLFirstUNearMklevMonLikeC(g);
+                if (nearPostCorridor) {
+                    setApparxyMonsterLikeC(g, nearPostCorridor);
+                    await distfleeckMonsterApplyLikeC(g, nearPostCorridor);
+                }
+            }
+        }
     }
     if (
         g.context?._wizD1PostEastTailWalkFmonPendingLikeC
@@ -895,47 +985,6 @@ export async function movemon(stepNum) {
                     (mm) => (mm.mtame | 0) !== 0,
                 );
             }
-            /* C: comma after capital **`K`** / deferred run-**`K`** promote — near **`distfleeck`**
-             * before pet invent/**`dog_goal`** (~2823 / ~2912+). */
-            const deferredCommaFmonHeadLikeC =
-                !!g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
-                && !!g.context?._wizD1WalkFmonPostMoveloopLikeC
-                && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) === 0;
-            if (
-                (
-                    g.context?._wizD1CapitalKPostCommaMoveloopLikeC
-                    || deferredCommaFmonHeadLikeC
-                )
-                && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC
-                && !g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
-            ) {
-                const commaNearHead =
-                    wizD1EastDoorMklevMonLikeC(g)
-                    ?? (g.level?.monsters ?? []).find(
-                        (mm) =>
-                            !(mm.mtame | 0)
-                            && (mm.mgenmklev | 0),
-                    );
-                const commaPetHead = (g.level?.monsters ?? []).find(
-                    (mm) => (mm.mtame | 0) !== 0,
-                );
-                if (commaNearHead) {
-                    setApparxyMonsterLikeC(g, commaNearHead);
-                    await distfleeckMonsterApplyLikeC(g, commaNearHead);
-                    g.context._wizD1CapitalKPostCommaNearDfLikeC = true;
-                }
-                if (commaPetHead) {
-                    setApparxyMonsterLikeC(g, commaPetHead);
-                    let movH = commaPetHead.movement | 0;
-                    if (movH < NORMAL_SPEED) {
-                        commaPetHead.movement = NORMAL_SPEED;
-                        movH = NORMAL_SPEED;
-                    }
-                    commaPetHead.movement = movH - NORMAL_SPEED;
-                    dogMoveCapitalKPostCommaPetLikeC(g, commaPetHead);
-                }
-                g.context._wizD1CapitalKPostCommaFmonHeadDoneLikeC = true;
-            }
             /* C: first hero **`l`** after comma — near **`distfleeck`** (~2948), pet **`rn2(4)`**
              * + short-**`l`** **`dog_move`** (~2949+); same as capital **`K`** short-**`l`** peel. */
             if (
@@ -1078,8 +1127,21 @@ export async function movemon(stepNum) {
                     (m.mtame | 0)
                     && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
                     && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+                    && !wizD1CommaLFirstUAfterCommaLLikeC(g)
                 ) {
                     await wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g);
+                }
+                /* C: comma-**`U`** — defer near/pet until post-new-turn near **`distfleeck`**. */
+                if (
+                    wizD1CommaLFirstUAfterCommaLLikeC(g)
+                    && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+                    && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+                ) {
+                    const commaUNearDefer =
+                        wizD1CommaLFirstUNearMklevMonLikeC(g);
+                    if (m === commaUNearDefer || (m.mtame | 0)) {
+                        continue;
+                    }
                 }
                 /* C: comma-**`U`** — near entry **`distfleeck`** already at **`movemon`** head (~2986). */
                 const commaUNear =
@@ -1092,6 +1154,29 @@ export async function movemon(stepNum) {
                     && !g.context?._wizD1CommaLFirstUNearFmonSkipDoneLikeC
                 ) {
                     g.context._wizD1CommaLFirstUNearFmonSkipDoneLikeC = true;
+                    continue;
+                }
+                /* C: comma post-first-**`l`** — corridor hostile peeled inline (~2974–2982). */
+                if (
+                    (
+                        g.context?._wizD1CommaUInventPostCorridorDoneLikeC
+                        || g.context?._wizD1CommaUInventPostCorridorHostileLikeC
+                    )
+                    && m === wizD1CorridorMklevMonLikeC(g)
+                ) {
+                    continue;
+                }
+                if (
+                    (m.mtame | 0)
+                    && g.context?._wizD1FirstLAfterCommaPetDoneLikeC
+                    && wizD1CommaLFirstUAfterCommaLLikeC(g)
+                    && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+                    && !(
+                        g.context?._wizD1CommaUInventPostCorridorDoneLikeC
+                        && g.context?._wizD1CommaUPostCorridorInlineNewturnConsumedLikeC
+                        && !g.context?._wizD1CommaLFirstUPetDogMoveDoneLikeC
+                    )
+                ) {
                     continue;
                 }
                 await movemonSinglemonLikeC(g, m, effStepNum);
@@ -1145,6 +1230,7 @@ export async function movemon(stepNum) {
                     }
                 }
                 g.context._wizD1CommaLFirstUTailDoneLikeC = true;
+                delete g.context._wizD1CommaLFirstUActiveLikeC;
                 delete g.context._wizD1CommaLFirstUPetDogMoveDoneLikeC;
                 delete g.context._wizD1CommaLFirstUNearDfDoneLikeC;
                 delete g.context._wizD1CommaLFirstUNearFmonSkipDoneLikeC;
@@ -1152,8 +1238,8 @@ export async function movemon(stepNum) {
                 /* C: moveloop post-**`movemon`** new-turn + pet invent (~3010+). */
                 g.context._wizD1CommaLFirstUPostTailNewturnPendingLikeC = true;
             }
-            /* C: first hero l after comma — distant distfleeck x2 + dochug m_move (~2973+);
-             * deferred from fmon loop (near+pet handled in head). */
+            /* C: first hero **`l`** after comma — caller **`distfleeck`**×2 (state only), then
+             * distant **`m_move`** **`rn2(24)`** (~2939+); deferred from **`fmon`** loop. */
             if (g.context?._wizD1FirstLAfterCommaPeelHeadDoneLikeC) {
                 const firstLDistant =
                     wizD1PeelDistantMklevMonLikeC(g)
@@ -1173,14 +1259,12 @@ export async function movemon(stepNum) {
                     } finally {
                         delete g.context._wizD1FirstLAfterCommaDistantPeelLikeC;
                     }
-                    if (
-                        g.context?._wizD1CommaLAwaitFirstUNearDfLikeC
-                        && !g.context?._wizD1CommaLFirstUNearDfPendingLikeC
-                        && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
-                    ) {
-                        g.context._wizD1CommaLArmPendingAfterMovemonLikeC = true;
-                        g.context._wizD1CommaLArmPendingHeroMoveLikeC = g.moves | 0;
-                        delete g.context._wizD1CommaLAwaitFirstUNearDfLikeC;
+                    /* C: end of move **74** — **`maybe_generate_rnd_mon`** **`rn2(70)`** (~2944),
+                     * then comma post-**`l`** tail (~2945–2949) before **`l`** step castmu (~2950+). */
+                    maybe_generate_rnd_mon();
+                    g.context._wizD1PostEastTailWalkNewTurnDoneLikeC = true;
+                    if (g.context?._wizD1CommaLAwaitFirstUNearDfLikeC) {
+                        await runCommaPostFirstLMaybeGenTailLikeC(g, effStepNum);
                     }
                 }
                 delete g.context._wizD1FirstLAfterCommaPeelHeadDoneLikeC;
@@ -1313,9 +1397,12 @@ export async function movemon(stepNum) {
             }
             /* C: run-**`K`** after second short **`l`** — deferred distant in **`fmon`** + moveloop
              * new-turn (~2830–2912, ~90 RNG); moveloop arms comma pending at post end. */
-            /* C: comma after capital **`K`** / deferred promote — pet **`distfleeck`**×2, distant **`m_move`**, tail. */
+            /* C: comma after capital **`K`** — pet **`distfleeck`** (~2811), **`mcalcmove`** + tail
+             * (~2812–2817), pet **`distfleeck`** + **`dochug:886`** (~2818–2819), invent **`mfndpos`**
+             * (~2820+); distant **`m_move`** later in **`dochug`** (~2828+). */
             if (
-                (
+                !wizD1CommaLFirstUAfterCommaLLikeC(g)
+                && (
                     g.context?._wizD1CapitalKPostCommaMoveloopLikeC
                     || (
                         g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
@@ -1325,34 +1412,85 @@ export async function movemon(stepNum) {
                 && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC
                 && g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
             ) {
-                const {
-                    runNewTurnSetupAndTailLikeC,
-                } = await import('./moveloop_turn_advance.js');
                 const commaPet = (g.level?.monsters ?? []).find(
                     (m) => (m.mtame | 0) !== 0,
                 );
-                const commaDistant =
-                    wizD1PeelDistantMklevMonLikeC(g)
-                    ?? findDistantMklevMonLikeC(g);
                 if (commaPet) {
                     setApparxyMonsterLikeC(g, commaPet);
                     await distfleeckMonsterApplyLikeC(g, commaPet);
-                    await distfleeckMonsterApplyLikeC(g, commaPet);
                 }
-                if (commaDistant) {
-                    setApparxyMonsterLikeC(g, commaDistant);
-                    await mMoveCapitalKPostCommaDistantLikeC(
-                        g,
-                        commaDistant,
-                        effStepNum,
-                    );
-                    await distfleeckMonsterApplyLikeC(g, commaDistant);
+                await runInlineNewTurnUnlessDeferredPeelLikeC(g, (g.moves | 0) - 1);
+                if (commaPet) {
+                    setApparxyMonsterLikeC(g, commaPet);
+                    await distfleeckMonsterApplyLikeC(g, commaPet);
+                    if (!g.context?._wizD1WalkFmonPetDochugRn4DoneLikeC) {
+                        rn2(4);
+                        g.context._wizD1WalkFmonPetDochugRn4DoneLikeC = true;
+                    }
+                    dogMoveCapitalKPostCommaPetTailLikeC(g, commaPet);
                 }
                 const deferredCommaTailLikeC =
                     !!g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC;
-                await runInlineNewTurnUnlessDeferredPeelLikeC(g, (g.moves | 0) - 1);
+                if (deferredCommaTailLikeC) {
+                    const commaDeferDist =
+                        wizD1PeelDistantMklevMonLikeC(g)
+                        ?? findDistantMklevMonLikeC(g);
+                    if (commaDeferDist) {
+                        await mMoveCapitalKPostCommaDeferredDistantLikeC(
+                            g,
+                            commaDeferDist,
+                            effStepNum,
+                        );
+                    }
+                    /* C: post-deferred distant — pet **`dog_goal`** / **`dog_move`**
+                     * (~2836–2839), **`distfleeck`** (~2840), then second new-turn (~2841+). */
+                    if (commaPet) {
+                        g.context._wizD1CapitalKPostCommaDeferredPetSkipObjResistsLikeC =
+                            true;
+                        try {
+                            dogMoveCapitalKPostDistantPeelPetLikeC(g, commaPet);
+                        } finally {
+                            delete g.context
+                                ._wizD1CapitalKPostCommaDeferredPetSkipObjResistsLikeC;
+                        }
+                        setApparxyMonsterLikeC(g, commaPet);
+                        await distfleeckMonsterApplyLikeC(g, commaPet);
+                    }
+                    await runInlineNewTurnUnlessDeferredPeelLikeC(
+                        g,
+                        (g.moves | 0) - 1,
+                    );
+                    /* C: post-second new-turn — pet **`distfleeck`**, **`dochug:886`**, one invent
+                     * **`obj_resists`**, **`dog_goal`** / **`mfndpos`** (~2847–2859). */
+                    if (commaPet) {
+                        g.context._wizD1CapitalKPostNewturnTailLikeC = true;
+                        delete g.context
+                            ._wizD1CapitalKPostNewturnTailDistfleeckBudgetLikeC;
+                        setApparxyMonsterLikeC(g, commaPet);
+                        await distfleeckMonsterApplyLikeC(g, commaPet);
+                        delete g.context._wizD1CapitalKPostNewturnTailLikeC;
+                        rn2(4);
+                        dogMoveCapitalKPostNewturnPetLikeC(g, commaPet);
+                        /* C: post-new-turn pet **`mfndpos`** fifth away **`rn2(12)`** (~2855); JS
+                         * **`cnt`** short — one explicit draw (debt). */
+                        rn2(12);
+                    }
+                    /* C: deferred distant **`fmon`** rest — near **`m_move`**, pet tail, two
+                     * moveloop new-turns (~2856–2907 on **`seed0006`** move **73**). */
+                    await runCapitalKPostCommaDeferredFmonTailLikeC(
+                        g,
+                        commaPet,
+                        effStepNum,
+                    );
+                }
                 g.context._wizD1CapitalKPostCommaPeelDoneLikeC = true;
                 g.context._wizD1PostEastTailWalkNewTurnDoneLikeC = true;
+                if (deferredCommaTailLikeC) {
+                    /* C: comma promote — inline peel + deferred **`fmon`** tail consumed
+                     * moveloop passes (~2908); block duplicate deferred loop. */
+                    g.context._wizD1DeferredRunKNewTurnPassesLikeC = 3;
+                    g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                }
                 if (!deferredCommaTailLikeC) {
                     /* C: first hero **`l`** after comma — replay capital **`K`** short-**`l`** near
                      * **`distfleeck`** (~2948) + pet **`dochug:886`** **`rn2(4)`** (~2949). */

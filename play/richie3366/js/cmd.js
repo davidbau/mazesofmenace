@@ -7,7 +7,7 @@
 // wear, wield, drop (d), throw (t), pray, cast, and all other commands.
 
 import { game } from './gstate.js';
-import { nhgetch } from './input.js';
+import { nhgetch, peekReplayMoves } from './input.js';
 import {
     newsym, flush_screen, pline, docrt_flags, docrtRefresh,
     clearPendingMessageAndToplineLikeC,
@@ -301,7 +301,36 @@ export async function rhack(key) {
             && (g.u?.uz?.dnum | 0) === 0
             && (g.u?.uz?.dlevel | 0) === 1
             && !!g.context?._touristD1LPostArmedLikeC;
+        const wizD1DeferRunKLikeC =
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && !!g.context?._wizD1DeferredRunKPendingLikeC;
+        /* C: comma-**`l`** → first run-**`U`** — arm if post-**`l`** tail not already inline (~2945+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && !g.context?._wizD1CommaPostFirstLMaybeGenTailDoneLikeC
+            && peekReplayMoves(-1) === 'U'.charCodeAt(0)
+            && peekReplayMoves(-2) === 'l'.charCodeAt(0)
+            && peekReplayMoves(-3) === ','.charCodeAt(0)
+        ) {
+            g.context._wizD1CommaLFirstUActiveLikeC = true;
+            g.context._wizD1CommaLFirstUNearDfPendingLikeC = true;
+            delete g.context._wizD1PostEastTailWalkFmonDistantDeferredLikeC;
+            delete g.context._wizD1WalkFmonPostMoveloopLikeC;
+            delete g.context._wizD1DeferredRunKNewTurnPassesLikeC;
+            delete g.context._wizD1CapitalKPostCommaMoveloopLikeC;
+            delete g.context._wizD1PostEastTailWalkCompleteLikeC;
+            delete g.context._wizD1CommaLFirstUFirstDochugDoneLikeC;
+        }
         const moved = await domoveHeroDirLikeC(dx, dy);
+        if (wizD1DeferRunKLikeC) {
+            /* C: capital **`K`** alone — one domove, 0 monster RNG; comma promotes peel (~2818+). */
+            endRunning(true);
+            g.multi = 0;
+        }
         const promoteTouD1LPostLikeC = () => {
             g.context._touristD1LPostMovemonPendingLikeC = true;
             delete g.context._touristD1LPostArmedLikeC;

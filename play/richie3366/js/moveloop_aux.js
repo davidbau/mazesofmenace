@@ -204,6 +204,75 @@ export function maybe_u_wipe_engr() {
     if (!rn2(denom)) uWipeEngr(rnd(3));
 }
 
+/** C: objects.h **`RIN_TELEPORTATION`**. */
+const OTYP_RIN_TELEPORTATION = 194;
+
+function heroHasTeleportationLikeC(g) {
+    const u = g.u;
+    if (!u) return false;
+    if ((u.HTeleportation | 0) || (u.ETeleportation | 0)) return true;
+    const ring = (o) => o && (o.otyp | 0) === OTYP_RIN_TELEPORTATION;
+    return !!(ring(u.uleft) || ring(u.uright));
+}
+
+/**
+ * C: comma post-first-**`l`** — partial new-turn after hostile **`dochug`** (~2946–2947):
+ * **`exerchk`** then **`rn2(85)`**; no **`mcalcmove`** / **`maybe_generate_rnd_mon`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaPostFirstLPartialNewturnLikeC(g) {
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    /* C: **`Teleportation`** true on wizard comma tail (~2947); ring/intrinsic port debt. */
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+}
+
+/**
+ * C: comma-**`l`** → first **`U`** — post-corridor invent peel (~2983–2985): inline
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**;
+ * no **`mcalcmove`** (monsters still moving this hero **`U`** post).
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostCorridorInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaUPostCorridorInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaUPostCorridorInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaUPostCorridorInlineNewturnDoneLikeC = true;
+}
+
 /** C: attrib.c exercise — extra rn2(31) after u-wipe tail (session step 6 → stepNum 5). */
 export function post_moveloop82_exercise(stepNum) {
     if (stepNum === 5) {

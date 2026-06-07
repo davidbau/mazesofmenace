@@ -678,6 +678,16 @@ export function isWatchMonsterLikeC(mtmp) {
     return true;
 }
 
+/** C: mondata.h **`PM_MIND_FLAYER`** / **`PM_MASTER_MIND_FLAYER`** (NH 5.0 **`mons[]`** order). */
+const PM_MIND_FLAYER = 50;
+const PM_MASTER_MIND_FLAYER = 51;
+
+/** C: mondata.h **`is_mind_flayer(ptr)`**. */
+export function isMindFlayerPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    const mnum = ptr?.mnum | 0;
+    return mnum === PM_MIND_FLAYER || mnum === PM_MASTER_MIND_FLAYER;
+}
+
 function highc(ch) {
     if (!ch || typeof ch !== 'string') return ch;
     const c = ch[0];

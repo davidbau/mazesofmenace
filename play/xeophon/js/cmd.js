@@ -19712,13 +19712,36 @@ function wakeMonsterFromHeroThrownMiss(mon) {
         messages.push(`${potionHitMonsterName(mon)} wakes up!`);
     mon.msleeping = 0;
     mon.meating = 0;
+    revealHeroProjectileHitMimicAppearance(mon);
     setHeroObjectHitMonsterAngry(mon);
     return messages;
+}
+
+function revealHeroProjectileHitMimicAppearance(mon) {
+    const appearance = M_AP_TYPE(mon);
+    if (appearance === M_AP_MONSTER) return false;
+    if (!appearance && mon?.appearObj == null && !mon?.appearGlyph) return false;
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function heroProjectileMissMessage(objOrName, mon) {
+    const missile = typeof objOrName === 'string'
+        ? objOrName
+        : pickupObjectName({ ...objOrName, quan: 1 });
+    const appearance = M_AP_TYPE(mon);
+    if (appearance && appearance !== M_AP_MONSTER) return `The ${missile} misses.`;
+    return `The ${missile} misses the ${mon?.data?.name || 'creature'}.`;
 }
 
 function wakeMonsterFromHeroThrownHit(mon) {
     mon.msleeping = 0;
     mon.meating = 0;
+    revealHeroProjectileHitMimicAppearance(mon);
     setHeroObjectHitMonsterAngry(mon);
 }
 
@@ -20056,7 +20079,7 @@ function heroProjectileObjectHitAdjustment(obj, mon, { monNotices = true } = {})
     return adjustment;
 }
 
-function heroProjectileBaseHitValue(obj, mon) {
+function heroProjectileBaseHitValue(obj, mon, { bowGloveWeapon = heroWieldedThrowLauncher() } = {}) {
     const ux = game.u?.ux || 0;
     const uy = game.u?.uy || 0;
     const disttmp = Math.max(-4, 3 - distmin(ux, uy, mon?.mx ?? ux, mon?.my ?? uy));
@@ -20068,6 +20091,7 @@ function heroProjectileBaseHitValue(obj, mon) {
         + heroProjectileHitLevel()
         + heroProjectileDexHitBonus()
         + disttmp
+        + heroWieldedBowGloveHitPenalty(bowGloveWeapon)
         + heroProjectileObjectHitAdjustment(obj, mon);
 }
 
@@ -20109,7 +20133,7 @@ function heroKickedStoneMissileRockPasserImpact(obj, mon) {
             messages: [`${floorObjectTheSubject({ ...obj, quan: 1 })} hits ${heroThrownVenomTargetName(mon)} but does no harm.`],
         };
     }
-    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    const messages = [heroProjectileMissMessage(obj, mon)];
     messages.push(...wakeMonsterFromHeroThrownMiss(mon));
     return { handled: true, hit: false, messages };
 }
@@ -20136,7 +20160,7 @@ function heroKickedGemImpact(obj, mon) {
             messages,
         };
     }
-    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    const messages = [heroProjectileMissMessage(obj, mon)];
     messages.push(...wakeMonsterFromHeroThrownMiss(mon));
     return { handled: true, hit: false, messages };
 }
@@ -20334,16 +20358,51 @@ function heroFireReadyLine(item) {
 
 function clearReadySelectionCount() {
     game._ready_count_text = '';
+    game._ready_count_backspaced = false;
+    game._ready_menu_count_text = '';
+    game._ready_menu_count_backspaced = false;
 }
 
 function readySelectionCountValue() {
-    return Math.max(0, Math.trunc(Number(game._ready_count_text || 0)));
+    const text = game._ready_menu_count_text || game._ready_count_text;
+    return Math.max(0, Math.trunc(Number(text || 0)));
 }
 
-async function appendReadySelectionCountDigit(ch) {
+function clearReadyMenuSelectionCount() {
+    game._ready_menu_count_text = '';
+    game._ready_menu_count_backspaced = false;
+}
+
+function readySelectionCountState(menu = false) {
+    return menu
+        ? { textKey: '_ready_menu_count_text', backspacedKey: '_ready_menu_count_backspaced' }
+        : { textKey: '_ready_count_text', backspacedKey: '_ready_count_backspaced' };
+}
+
+function readySelectionCountValueForText(text) {
+    return Math.max(0, Math.trunc(Number(text || 0)));
+}
+
+async function eraseReadySelectionCountDigit(ch, menu = false) {
+    if (ch !== '\b' && ch !== '\x7f') return false;
+    const { textKey, backspacedKey } = readySelectionCountState(menu);
+    const count = readySelectionCountValueForText(game[textKey]);
+    if (count <= 0) return false;
+    const newCount = Math.trunc(count / 10);
+    game[textKey] = newCount > 0 ? String(newCount) : '';
+    game[backspacedKey] = true;
+    await setMessage(`Count: ${game[textKey]}`);
+    return true;
+}
+
+async function appendReadySelectionCountDigit(ch, menu = false) {
     if (!/^\d$/.test(ch)) return false;
-    game._ready_count_text = `${game._ready_count_text || ''}${ch}`;
-    await setMessage(`Count: ${game._ready_count_text}`);
+    const { textKey, backspacedKey } = readySelectionCountState(menu);
+    const backspaced = !!game[backspacedKey];
+    game[textKey] = `${game[textKey] || ''}${ch}`;
+    const typedCount = readySelectionCountValueForText(game[textKey]);
+    if (typedCount > 9 || backspaced) await setMessage(`Count: ${typedCount}`);
+    game[backspacedKey] = false;
     return true;
 }
 
@@ -20437,6 +20496,39 @@ function readyWieldedWeaponRemainMessage(item, slot, wasTwoweap = game._twoweapo
 function readyWieldedWeaponTimeMessage(slot) {
     if (slot === 'primary') return 'You are now empty handed.';
     return 'You are no longer using two weapons at once.';
+}
+
+function readyBlessCurseKnown(item) {
+    return item?.bknown === true || (item?.bknown !== false && /\b(?:blessed|uncursed|cursed)\b/.test(String(item?.line || '')));
+}
+
+function readyPrimaryWillWeld(item) {
+    if (!itemIsPrimaryWielded(item)) return false;
+    if (item?.welded === true) return true;
+    if (!item?.cursed) return false;
+    const cls = itemClassKey(item);
+    const kind = objectKindKey(item);
+    return cls === 'weapon' || item?.glyph === ')' || cls === 'ball' || cls === 'chain'
+        || item?.otyp === HEAVY_IRON_BALL || item?.otyp === IRON_CHAIN
+        || item?.otyp === TIN_OPENER || kind === 'tin opener'
+        || (cls === 'tool' && APPLY_WEAPON_NAME_RE.test(kind));
+}
+
+function readyWeldedPrimaryMessage(item) {
+    const name = readyObjectSimpleName(item);
+    const verb = readyObjectPlural(item) ? 'are' : 'is';
+    const hand = isTwoHandedWieldItem(item) ? 'hands' : 'hand';
+    return `Your ${name} ${verb} welded to your ${hand}!`;
+}
+
+async function handleReadyPrimaryWelded(item) {
+    const unknownCurse = !readyBlessCurseKnown(item);
+    if (item.welded === true) item.cursed = true;
+    item.bknown = true;
+    item.line = heroWieldedLineForItem(item);
+    await setMessage(readyWeldedPrimaryMessage(item));
+    game._command_mode = null;
+    if (unknownCurse) game.context.move = 1;
 }
 
 function refreshReadyWieldedParentLine(item, slot, wasTwoweap = game._twoweapon) {
@@ -20563,31 +20655,70 @@ function clearReadyInventoryOverlay() {
     game._ready_inventory_page = 0;
     game._ready_inventory_filter = null;
     game._ready_inventory_verb = '';
+    game._ready_inventory_visible_letters = '';
     game._overlay_lines = null;
     game._overlay_hide_status = 0;
 }
 
+function captureReadyInventoryVisibleLetters() {
+    const letters = [];
+    for (const row of game._overlay_lines || []) {
+        const text = String(row?.[2] || '');
+        const match = text.match(/^([A-Za-z$]) - /);
+        if (match) letters.push(match[1]);
+    }
+    game._ready_inventory_visible_letters = letters.join('');
+}
+
 function showReadyInventoryOverlay(verb, filter = null, page = 0) {
+    clearReadyMenuSelectionCount();
     game._ready_inventory_verb = verb;
     game._ready_inventory_filter = filter;
     game._ready_inventory_page = page;
     showInventoryOverlay(page, false, readyInventoryFilterMatch());
+    captureReadyInventoryVisibleLetters();
     game._command_mode = 'readyInventory';
 }
 
 async function restoreReadyPrompt(verb) {
     clearReadyInventoryOverlay();
+    clearReadySelectionCount();
     await setMessage(readyPromptMessage(verb));
     game._command_mode = verb === 'fire' ? 'fireQuiverObject' : 'quiverObject';
 }
 
-async function finishReadyObjectSelection(selectedItem, verb) {
+function readyInventoryVisibleLetters() {
+    const letters = new Set(String(game._ready_inventory_visible_letters || '').split('').filter(Boolean));
+    if (letters.size) return letters;
+    for (const row of game._overlay_lines || []) {
+        const text = String(row?.[2] || '');
+        const match = text.match(/^([A-Za-z$]) - /);
+        if (match) letters.add(match[1]);
+    }
+    return letters;
+}
+
+function readyInventoryItemByVisibleLetter(ch) {
+    const visible = readyInventoryVisibleLetters();
+    if (!visible.has(ch)) return null;
+    return (game.inventory || []).find(invItem => invItem.letter === ch) || null;
+}
+
+function objectPromptQuitKey(ch) {
+    return ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n';
+}
+
+async function finishReadyObjectSelection(selectedItem, verb, { keepPromptOnMissing = false } = {}) {
     let item = selectedItem;
     if (!item) {
         clearReadySelectionCount();
         await setMessage("You don't have that object.");
-        game._command_mode = null;
-        if (verb === 'fire') game._fire_count = null;
+        if (keepPromptOnMissing) {
+            game._command_mode = verb === 'fire' ? 'fireQuiverObject' : 'quiverObject';
+        } else {
+            game._command_mode = null;
+            if (verb === 'fire') game._fire_count = null;
+        }
         return;
     }
     const count = readySelectionCountValue();
@@ -20616,6 +20747,11 @@ async function finishReadyObjectSelection(selectedItem, verb) {
     }
     const wieldedSlot = readyWieldedWeaponSlot(item);
     if (wieldedSlot) {
+        if (wieldedSlot === 'primary' && readyPrimaryWillWeld(item)) {
+            await handleReadyPrimaryWelded(item);
+            if (verb === 'fire') game._fire_count = null;
+            return;
+        }
         await stageReadyWieldedConfirm(item, verb, wieldedSlot);
         return;
     }
@@ -22185,7 +22321,7 @@ function heroLauncherAmmoData(obj) {
 }
 
 function heroFiredLauncherAmmoHitValue(obj, mon, launcher) {
-    let hitValue = heroProjectileBaseHitValue(obj, mon);
+    let hitValue = heroProjectileBaseHitValue(obj, mon, { bowGloveWeapon: launcher });
     if (!heroThrowAmmoAndLauncher(obj, launcher)) return hitValue - 4;
     const meta = heroLauncherSkillMeta(launcher);
     hitValue += Math.trunc(Number(launcher?.spe || 0)) - objectGreatestErosion(launcher);
@@ -22193,6 +22329,16 @@ function heroFiredLauncherAmmoHitValue(obj, mon, launcher) {
         hitValue += Math.trunc(Number(launcher.hitbon ?? launcher.oc_hitbon));
     if (meta) hitValue += heroWeaponHitSkillBonus(meta.skill, meta.skillName);
     return hitValue;
+}
+
+function heroWieldedBowGloveHitPenalty(weapon = heroWieldedThrowLauncher()) {
+    if (heroThrowLauncherSkill(weapon) !== 'bow') return 0;
+    const gloves = wornGlovesItem();
+    if (!gloves) return 0;
+    const kind = armorKind(gloves);
+    if (gloves.otyp === GAUNTLETS_OF_POWER || kind === 'gauntlets of power') return -2;
+    if (gloves.otyp === GAUNTLETS_OF_FUMBLING || kind === 'gauntlets of fumbling') return -3;
+    return 0;
 }
 
 function heroFiredLauncherAmmoDamage(obj, mon, launcher) {
@@ -22420,7 +22566,7 @@ function heroFiredLauncherAmmoImpact(obj, mon, launcher) {
             messages,
         };
     }
-    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    const messages = [heroProjectileMissMessage(obj, mon)];
     messages.push(...wakeMonsterFromHeroThrownMiss(mon));
     return { handled: true, hit: false, messages };
 }
@@ -22460,7 +22606,7 @@ function heroFireProjectileMonsterImpact(obj, targetMon, launcher, firedFromLaun
                 passiveTarget: targetMon,
             };
         }
-        const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${targetMon.data?.name || 'creature'}.`];
+        const messages = [heroProjectileMissMessage(obj, targetMon)];
         messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
         return { handled: true, messages, consumed: false, hit: false, passiveTarget: null };
     }
@@ -22525,7 +22671,7 @@ function heroThrownByHandAmmoImpact(obj, mon, launcher = heroWieldedThrowLaunche
             messages,
         };
     }
-    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    const messages = [heroProjectileMissMessage(obj, mon)];
     messages.push(...wakeMonsterFromHeroThrownMiss(mon));
     return { handled: true, hit: false, messages };
 }
@@ -22703,7 +22849,7 @@ function heroProjectileWeaponImpact(obj, mon, hitValue, { poisonApplies = false 
             messages,
         };
     }
-    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    const messages = [heroProjectileMissMessage(obj, mon)];
     messages.push(...wakeMonsterFromHeroThrownMiss(mon));
     return { handled: true, hit: false, messages };
 }
@@ -22740,7 +22886,7 @@ function heroThrownGemImpact(obj, mon) {
             messages,
         };
     }
-    const messages = [`The ${pickupObjectName({ ...obj, quan: 1 })} misses the ${mon?.data?.name || 'creature'}.`];
+    const messages = [heroProjectileMissMessage(obj, mon)];
     messages.push(...wakeMonsterFromHeroThrownMiss(mon));
     return { handled: true, hit: false, messages };
 }
@@ -63302,12 +63448,13 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'quiverObject') {
-        if (ch === '\x1b') {
+        if (objectPromptQuitKey(ch)) {
             clearReadySelectionCount();
             await setMessage('Never mind.');
             game._command_mode = null;
             return;
         }
+        if (await eraseReadySelectionCountDigit(ch)) return;
         if (await appendReadySelectionCountDigit(ch)) return;
         if (ch === '*') {
             showReadyInventoryOverlay('ready');
@@ -63320,13 +63467,17 @@ export async function rhack(_cmd) {
         }
         if (ch === '-') {
             clearReadySelectionCount();
-            for (const item of game.inventory || []) item.quivered = false;
+            for (const item of game.inventory || []) {
+                item.quivered = false;
+                if (item.line)
+                    item.line = item.line.replace(/ \((?:at the ready|in quiver(?: pouch)?)\).*$/, '');
+            }
             await setMessage('No ammunition readied.');
             game._command_mode = null;
             return;
         }
         const itemByLetter = (game.inventory || []).find(invItem => invItem.letter === ch);
-        await finishReadyObjectSelection(itemByLetter, 'ready');
+        await finishReadyObjectSelection(itemByLetter, 'ready', { keepPromptOnMissing: true });
         return;
     }
 
@@ -63344,13 +63495,14 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'fireQuiverObject') {
-        if (ch === '\x1b' || ch === ' ') {
+        if (objectPromptQuitKey(ch)) {
             clearReadySelectionCount();
             await setMessage('Never mind.');
             game._command_mode = null;
             game._fire_count = null;
             return;
         }
+        if (await eraseReadySelectionCountDigit(ch)) return;
         if (await appendReadySelectionCountDigit(ch)) return;
         if (ch === '*') {
             showReadyInventoryOverlay('fire');
@@ -63369,7 +63521,7 @@ export async function rhack(_cmd) {
             return;
         }
         const itemByLetter = (game.inventory || []).find(invItem => invItem.letter === ch);
-        await finishReadyObjectSelection(itemByLetter, 'fire');
+        await finishReadyObjectSelection(itemByLetter, 'fire', { keepPromptOnMissing: true });
         return;
     }
 
@@ -63388,15 +63540,34 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'readyInventory') {
         const verb = game._ready_inventory_verb || 'ready';
-        if (ch === '*' && game._ready_inventory_filter) return;
+        if (ch === '*' && game._ready_inventory_filter) {
+            clearReadyMenuSelectionCount();
+            game._pending_message = '';
+            game._message_more = 0;
+            return;
+        }
         if (ch === ' ') {
             const page = (game._ready_inventory_page || 0) + 1;
             if (page < (game._inventory_overlay_total_pages || 1)) {
+                clearReadyMenuSelectionCount();
+                game._pending_message = '';
+                game._message_more = 0;
                 game._ready_inventory_page = page;
                 showInventoryOverlay(page, false, readyInventoryFilterMatch());
+                captureReadyInventoryVisibleLetters();
                 return;
             }
             await restoreReadyPrompt(verb);
+            return;
+        }
+        if (ch === '\r' || ch === '\n') {
+            await restoreReadyPrompt(verb);
+            return;
+        }
+        if (ch === '\x1b' && game._ready_menu_count_text) {
+            clearReadyMenuSelectionCount();
+            game._pending_message = '';
+            game._message_more = 0;
             return;
         }
         if (ch === '\x1b') {
@@ -63407,8 +63578,15 @@ export async function rhack(_cmd) {
             if (verb === 'fire') game._fire_count = null;
             return;
         }
-        if (await appendReadySelectionCountDigit(ch)) return;
-        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (await eraseReadySelectionCountDigit(ch, true)) return;
+        if (await appendReadySelectionCountDigit(ch, true)) return;
+        const item = readyInventoryItemByVisibleLetter(ch);
+        if (!item) {
+            clearReadyMenuSelectionCount();
+            game._pending_message = '';
+            game._message_more = 0;
+            return;
+        }
         clearReadyInventoryOverlay();
         await finishReadyObjectSelection(item, verb);
         return;
@@ -67285,9 +67463,8 @@ export async function rhack(_cmd) {
     }
 
     if (ch === 'Q') {
-        const readyCount = throwCountTextValue(game._count_prefix);
         game._count_prefix = '';
-        game._ready_count_text = readyCount > 0 ? String(readyCount) : '';
+        clearReadySelectionCount();
         if (!(game.inventory || []).some(isReadySelectableItem)) {
             clearReadySelectionCount();
             await setMessage("You don't have anything to ready.");
@@ -70033,7 +70210,7 @@ export async function rhack(_cmd) {
             }
         }
         game._throw_item_letter = ch;
-        game._throw_count = countGiven && shopBillableGold(item) ? throwCount : null;
+        game._throw_count = countGiven ? throwCount : null;
         game._throw_count_text = '';
         game._throw_count_backspaced = false;
         clearThrowMenuCountState();
@@ -70137,7 +70314,7 @@ export async function rhack(_cmd) {
         game._overlay_lines = null;
         game._overlay_hide_status = 0;
         game._throw_item_letter = ch;
-        game._throw_count = countGiven && shopBillableGold(item) ? throwCount : null;
+        game._throw_count = countGiven ? throwCount : null;
         game._throw_count_text = '';
         game._throw_count_backspaced = false;
         clearThrowMenuCountState();
@@ -70161,7 +70338,7 @@ export async function rhack(_cmd) {
             clearThrowCountState();
             return;
         }
-        const item = (game.inventory || []).find(invItem => invItem.letter === game._throw_item_letter);
+        let item = (game.inventory || []).find(invItem => invItem.letter === game._throw_item_letter);
         if ((ch === '<' || ch === '>') && item && heroThrownAttachedBallObject(item)) {
             const x = game.u?.ux || item.ox || 0;
             const y = game.u?.uy || item.oy || 0;
@@ -70726,6 +70903,9 @@ export async function rhack(_cmd) {
             game.context.move = 0;
             return;
         }
+        const selectedThrowCount = Math.max(0, Math.trunc(Number(game._throw_count || 0)));
+        if (selectedThrowCount > 0 && !shopBillableGold(item))
+            item = splitCarriedInventoryItemCount(item, selectedThrowCount);
         let ux = game.u?.ux || 0;
         let uy = game.u?.uy || 0;
         const boomerangUsesCurvedFlight = tossUpWeaponObjectKey(item) === 'boomerang'
@@ -71018,7 +71198,7 @@ export async function rhack(_cmd) {
                 return;
             }
             const thrownName = pickupObjectName({ ...item, quan: 1 });
-            const messages = [`The ${thrownName} misses the ${targetMon.data?.name || 'creature'}.`];
+            const messages = [heroProjectileMissMessage(thrownName, targetMon)];
             messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
             impactMessage = messages.join('  ');
         } else if (targetMon && isCreamPieObject(item)) {
@@ -71039,7 +71219,7 @@ export async function rhack(_cmd) {
                 if (applyOrdinaryAirRecoilTrapResult()) return;
                 return;
             }
-            const messages = [`The cream pie misses the ${targetMon.data?.name || 'creature'}.`];
+            const messages = [heroProjectileMissMessage('cream pie', targetMon)];
             messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
             impactMessage = messages.join('  ');
         } else if (targetMon && isEggItem(item)) {
@@ -71062,7 +71242,7 @@ export async function rhack(_cmd) {
                 return;
             }
             const thrownName = pickupObjectName({ ...item, quan: 1 });
-            const messages = [`The ${thrownName} misses the ${targetMon.data?.name || 'creature'}.`];
+            const messages = [heroProjectileMissMessage(thrownName, targetMon)];
             messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
             impactMessage = messages.join('  ');
         } else if (targetMon && supportsHeroThrownPotionHit(item, targetMon)) {
@@ -71098,7 +71278,7 @@ export async function rhack(_cmd) {
                 return;
             }
             const thrownName = pickupObjectName({ ...item, quan: 1 });
-            const messages = [`The ${thrownName} misses the ${targetMon.data?.name || 'creature'}.`];
+            const messages = [heroProjectileMissMessage(thrownName, targetMon)];
             messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
             impactMessage = messages.join('  ');
         } else if (targetMon && heroLauncherAmmoData(item) && heroThrowAmmoAndLauncher(item, throwLauncher)) {
@@ -71123,7 +71303,7 @@ export async function rhack(_cmd) {
                 impactObjectHit = true;
                 impactPassiveTarget = targetMon;
             } else {
-                const messages = [`The ${pickupObjectName({ ...item, quan: 1 })} misses the ${targetMon.data?.name || 'creature'}.`];
+                const messages = [heroProjectileMissMessage(item, targetMon)];
                 messages.push(...wakeMonsterFromHeroThrownMiss(targetMon));
                 impactMessage = messages.join('  ');
             }

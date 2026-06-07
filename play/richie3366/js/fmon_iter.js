@@ -24,6 +24,7 @@ import {
     isLandEelForMovemonLikeC,
     findDistantMklevMonLikeC,
     wizD1CommaLFirstUNearMklevMonLikeC,
+    wizD1CorridorMklevMonLikeC,
     wizD1EastDoorMklevMonLikeC,
     wizD1PeelDistantMklevMonLikeC,
     wizD1EastTailFmonDistantMtmpLikeC,
@@ -125,11 +126,10 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         if (distant) ordered.push(distant);
         return [...ordered, ...rest];
     }
-    /* C: comma-**`l`** → first **`U`** — near **`distfleeck`** then pet **`dog_move`** (~2986+). */
+    /* C: comma-**`l`** → first **`U`** — first hostile **`dochug`** **`rn2(20)`** (~2945), then
+     * post-new-turn near **`distfleeck`** + pet **`dog_move`** (~2948+). */
     if (
-        g.urole?.abbr === 'Wiz'
-        && (g.u?.uz?.dnum | 0) === 0
-        && (g.u?.uz?.dlevel | 0) === 1
+        wizD1CommaLFirstUAfterCommaLLikeC(g)
         && (
             (
                 !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
@@ -144,9 +144,29 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
     ) {
         const pet = mons.find((m) => (m.mtame | 0) !== 0);
         const nearMklev = wizD1CommaLFirstUNearMklevMonLikeC(g);
+        const distant =
+            wizD1PeelDistantMklevMonLikeC(g) ?? findDistantMklevMonLikeC(g);
+        const corridor = wizD1CorridorMklevMonLikeC(g);
+        const firstDochug =
+            corridor
+            ?? mons.find(
+                (m) =>
+                    m !== pet
+                    && m !== nearMklev
+                    && m !== distant
+                    && !(m.mtame | 0)
+                    && (m.mgenmklev | 0),
+            )
+            ?? (distant && distant !== nearMklev ? distant : null);
         /** @type {typeof mons} */
         const ordered = [];
-        if (nearMklev) ordered.push(nearMklev);
+        if (
+            firstDochug
+            && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+        ) {
+            ordered.push(firstDochug);
+        }
+        if (nearMklev && !ordered.includes(nearMklev)) ordered.push(nearMklev);
         if (pet) ordered.push(pet);
         return ordered;
     }
@@ -223,6 +243,33 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         const ordered = [];
         if (nearMklev) ordered.push(nearMklev);
         if (distant) ordered.push(distant);
+        return ordered;
+    }
+    /* C: comma promotes deferred run-**`K`** — pet **`dog_move`** only in **`fmon`** (~2811+);
+     * near **`distfleeck`** / distant tail run in **`monmove.js`** peel block. */
+    if (
+        g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+        && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) === 0
+        && (
+            g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+            || g.context?._wizD1CommaPickupCapOuterLikeC
+        )
+        && g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+    ) {
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const nearMklev =
+            wizD1EastDoorMklevMonLikeC(g)
+            ?? mons.find(
+                (m) =>
+                    !(m.mtame | 0)
+                    && (m.mgenmklev | 0),
+            );
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (nearMklev) ordered.push(nearMklev);
+        if (pet) ordered.push(pet);
         return ordered;
     }
     /* C: post-east-tail walk **`fmon`** peel — near + pet only (~2781+); before short **`l`**

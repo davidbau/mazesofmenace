@@ -36,6 +36,8 @@ import {
     raceptr,
     isHider,
     isCovetousPtrLikeC,
+    isMindFlayerPtrLikeC,
+    isWatchMonsterLikeC,
     monOffmapLikeC,
     findgoldChainLikeC,
     isWandererPtr,
@@ -81,6 +83,8 @@ import {
     dogMovePostCorridorSecondPetMfndposLikeC,
     dogMovePostEastTailWalkObjResistsLikeC,
     dogMoveCapitalKPostCommaPetLikeC,
+    dogMoveCapitalKPostNearPetLikeC,
+    dogMoveCapitalKPostPeelPetLikeC,
     dogMoveCommaLFirstUPetLikeC,
     dogMoveFirstLAfterCommaPetLikeC,
     dogMovePostEastTailWalkShortLPetLikeC,
@@ -88,7 +92,7 @@ import {
     dogMoveSearchPassNearHeroLikeC,
     dogMoveTouristD1PostRestSecondMovemonPeelLikeC,
 } from './dogmove_mon.js';
-import { fmonListForMovemonLikeC } from './fmon_iter.js';
+import { fmonListForMovemonLikeC, fmonListNewestFirstLikeC } from './fmon_iter.js';
 import { monnearMonsterXYLikeC } from './mon_geom.js';
 import {
     isFirstSearchMovemonPassLikeC,
@@ -100,6 +104,7 @@ import {
     isSecondSearchMovemonPassLikeC,
     rangerD1FirstSearchNoNearMonLikeC,
     rogueSecondSearchFullFmonLikeC,
+    wizD1CommaLFirstUAfterCommaLLikeC,
 } from './monmove_search.js';
 
 /** C: rogue D:1 door-**`j`** / first **`#search`** — near mklev hostile path (not tourist east peel). */
@@ -652,7 +657,6 @@ function mMovePositionSelectLikeC(g, mtmp, silent) {
     if ((g.context?.movemonStepNum | 0) === 8 && (mtmp._eelStep8ChcntBase | 0) > 0) {
         appr = 0;
     }
-
     let nix = omx;
     let niy = omy;
     let nidist = dist2(nix, niy, ggx, ggy);
@@ -834,6 +838,154 @@ function dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp) {
 }
 
 /**
+ * C: monmove.c dochug ~827–835 — watch / mind flayer after first **`distfleeck`**.
+ * @param {import('./gstate.js').game} g
+ * @param {*} mtmp
+ * @returns {Promise<{ inrange: number, nearby: number, scared: number }|null>}
+ */
+async function dochugWatchMindFlayerAfterDistfleeckLikeC(g, mtmp, fleeState) {
+    if (!mtmp) return fleeState;
+    const ptr = raceptr(mtmp);
+    if (isWatchMonsterLikeC(mtmp)) {
+        /* C: watch_on_duty — no RNG on current peel paths. */
+        return fleeState;
+    }
+    if (isMindFlayerPtrLikeC(ptr)) {
+        if (!rn2(20)) {
+            /* C: mind_blast — stub; recalc **`distfleeck`**. */
+            setApparxyMonsterLikeC(g, mtmp);
+            return await distfleeckMonsterApplyLikeC(g, mtmp);
+        }
+    }
+    return fleeState;
+}
+
+/**
+ * C: comma-**`l`** → first **`U`** — first hostile **`dochug`** **`rn2(20)`** (~2945) before
+ * post-new-turn near **`distfleeck`**; no leading **`distfleeck`** on this pass.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {*} mtmp
+ * @param {number} [stepNum]
+ */
+/**
+ * C: comma-**`l`** → first **`U`** — corridor hostile **`dochug`** after invent peel at
+ * **`movemon`** head (**`distfleeck`**, **`m_move`** **`mtrack`**, ~915 recalc, away
+ * **`rn2(12)`**×3; ~2974–2982 on **`seed0006`**).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} [stepNum]
+ */
+export async function mMoveCommaUInventPostCorridorHostileLikeC(g, mtmp, stepNum = 1) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return false;
+    if (dochugBlockedEarlyLikeC(g, mtmp)) return false;
+    const ctx = g.context || (g.context = {});
+    /* C: second **`L`** corridor rest may have set this; comma-**`U`** peel needs fresh **`rn2(12)`**×3. */
+    delete ctx._wizD1EastCorridorMmoveDoneLikeC;
+    ctx._wizD1CommaUInventPostCorridorHostileLikeC = true;
+    try {
+        const u = g.u;
+        if (u) {
+            mtmp.mux = u.ux | 0;
+            mtmp.muy = u.uy | 0;
+        }
+        const mx = mtmp.mx | 0;
+        const my = mtmp.my | 0;
+        wipeEngrAt(mx, my, 1, false);
+        setApparxyMonsterLikeC(g, mtmp);
+        const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
+        const nearbyGate = nearbyForDochugGateLikeC(g, mtmp, flee1);
+        if (
+            !dochugEntersMmoveBlockLikeC(
+                g,
+                mtmp,
+                nearbyGate,
+                flee1.scared | 0,
+                stepNum,
+            )
+        ) {
+            return false;
+        }
+        ensureMonsterMtrack(mtmp);
+        const mfp = mfndposMonsterLikeC(
+            g,
+            mtmp,
+            monAllowflagsMonsterLikeC(g, mtmp),
+        );
+        const cnt = mfp.cnt | 0;
+        const jcnt = Math.min(MTSZ, cnt - 1);
+        for (let j = 0; j < jcnt; j++) {
+            if (4 * (cnt - j) !== 8) continue;
+            mmoveMtrackRejectRngLikeC(g, mtmp, j, cnt);
+            break;
+        }
+        let recalcBudget = ctx._mklevDistfleeckRecalcBudgetLikeC | 0;
+        if (
+            recalcBudget < 2
+            && !skipDistfleeckRecalcAfterMmoveLikeC(g, mtmp, nearbyGate)
+        ) {
+            await distfleeckMonsterApplyLikeC(g, mtmp);
+            recalcBudget++;
+            ctx._mklevDistfleeckRecalcBudgetLikeC = recalcBudget;
+        }
+        if (
+            recalcBudget < 2
+            && !skipDistfleeckRecalcAfterMmoveLikeC(g, mtmp, nearbyGate)
+        ) {
+            await distfleeckMonsterApplyLikeC(g, mtmp);
+            ctx._mklevDistfleeckRecalcBudgetLikeC = recalcBudget + 1;
+        }
+        if (cnt >= 5) {
+            monTrackClear(mtmp);
+            ensureMonsterMtrack(mtmp);
+            mtmp.mtrack[0] = { x: mx, y: my };
+            rn2(20);
+        }
+        if (!skipDistfleeckRecalcAfterMmoveLikeC(g, mtmp, nearbyGate)) {
+            await distfleeckMonsterApplyLikeC(g, mtmp);
+        }
+        /* C: corridor away **`!appr`** **`rn2(12)`**×3 (~2980–2982); explicit order (debt). */
+        ctx._wizD1EastCorridorRestMmoveLikeC = true;
+        try {
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            ctx._wizD1EastCorridorMmoveDoneLikeC = 1;
+        } finally {
+            delete ctx._wizD1EastCorridorRestMmoveLikeC;
+        }
+        return true;
+    } finally {
+        delete ctx._wizD1CommaUInventPostCorridorHostileLikeC;
+    }
+}
+
+export async function movemonCommaUFirstHostileDochugLikeC(g, mtmp, stepNum = 1) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    wipeEngrAt(mx, my, 1, false);
+    if (!dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp)) return;
+    setApparxyMonsterLikeC(g, mtmp);
+    const ptr = raceptr(mtmp);
+    if (isMindFlayerPtrLikeC(ptr)) {
+        rn2(20);
+        return;
+    }
+    ensureMonsterMtrack(mtmp);
+    if (dochugEntersMmoveBlockLikeC(g, mtmp, 0, 0, stepNum)) {
+        primeDistantMtrackRn20LikeC(mtmp);
+        rn2(20);
+    }
+}
+
+/**
  * C: **`dochug`** subset for **`stepNum` 1** — one **`distfleeck`** per monster (**`rn2(5)`**)
  * before **`mcalcmove`**; no **`m_move`** / phase-one RNG yet.
  * @param {import('./gstate.js').game} g
@@ -1009,6 +1161,48 @@ async function wizD1EastTailAfterMcalcmoveSinglemonLikeC(g, mtmp, stepNum) {
 
 export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    /* C: comma-**`U`** invent peel — corridor **`dochug`** already inline at **`movemon`** head. */
+    if (
+        g.context?._wizD1CommaUInventPostCorridorDoneLikeC
+        && mtmp === wizD1CorridorMklevMonLikeC(g)
+    ) {
+        return;
+    }
+    /* C: comma-**`U`** post-corridor — pet **`mfndpos`** (~2987–2992) after inline new-turn. */
+    if (
+        (mtmp.mtame | 0)
+        && has_edog(mtmp)
+        && wizD1CommaLFirstUAfterCommaLLikeC(g)
+        && g.context?._wizD1CommaUInventPostCorridorDoneLikeC
+        && g.context?._wizD1CommaUPostCorridorInlineNewturnConsumedLikeC
+        && g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+        && !g.context?._wizD1CommaLFirstUPetDogMoveDoneLikeC
+        && !g.context?._wizD1CommaLFirstUTailDoneLikeC
+    ) {
+        let movCommaUPet = mtmp.movement | 0;
+        if (movCommaUPet < NORMAL_SPEED) {
+            mtmp.movement = NORMAL_SPEED;
+            movCommaUPet = NORMAL_SPEED;
+        }
+        mtmp.movement = movCommaUPet - NORMAL_SPEED;
+        const ctxCommaUPet = g.context || (g.context = {});
+        dogMoveCommaLFirstUPetLikeC(g, mtmp);
+        ctxCommaUPet._wizD1CommaLFirstUPetDogMoveDoneLikeC = true;
+        return;
+    }
+    /* C: comma-**`l`** → first **`U`** — one hostile **`dochug`** **`rn2(20)`** before new-turn tail. */
+    if (
+        wizD1CommaLFirstUAfterCommaLLikeC(g)
+        && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+        && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
+        && !(mtmp.mtame | 0)
+        && !g.context?._wizD1CommaLFirstUFirstDochugDoneLikeC
+        && !g.context?._wizD1CommaPostFirstLMaybeGenTailDoneLikeC
+    ) {
+        await movemonCommaUFirstHostileDochugLikeC(g, mtmp, stepNum);
+        g.context._wizD1CommaLFirstUFirstDochugDoneLikeC = true;
+        return;
+    }
     /* C: comma-**`U`** post-third-peel — dedicated **`fmon`** **`dochug`** (~3036+). */
     if (
         g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC
@@ -1023,6 +1217,8 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
         && g.urole?.abbr === 'Wiz'
         && !g.context?._wizD1CommaLFirstUNearDfDoneLikeC
         && g.context?._wizD1CommaLFirstUNearDfPendingLikeC
+        && !g.context?._wizD1CommaPostFirstLMaybeGenTailDoneLikeC
+        && !wizD1CommaLFirstUAfterCommaLLikeC(g)
     ) {
         await wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g);
     }
@@ -1480,11 +1676,12 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
         && (mtmp.mtame | 0)
         && has_edog(mtmp)
         && !g.context?._wizD1WalkFmonPetDochugRn4DoneLikeC
+        && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC
+        && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) !== 0
     ) {
         setApparxyMonsterLikeC(g, mtmp);
         rn2(4);
         g.context._wizD1WalkFmonPetDochugRn4DoneLikeC = true;
-        /* C: capital **`K`** — **`dochug:886`** then **`dog_goal`** follow **`rn2(4)`** (~2826). */
     }
 
     await mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum);
@@ -2176,6 +2373,165 @@ export function mMoveCapitalKPostNearEastMmoveRngLikeC(g, mtmp) {
 }
 
 /**
+ * C: comma deferred run-**`K`** — post-inline-peel near **`m_move`** chcnt + mtrack
+ * (~2856–2861 on **`seed0006`** prefix **73**); JS **`cnt`** short — explicit draw order (debt).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+export function mMoveCapitalKPostCommaDeferredNearChcntLikeC(g, mtmp) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    setApparxyMonsterLikeC(g, mtmp);
+    rn2(5);
+    rn2(5);
+    rn2(20);
+    rn2(5);
+    rn2(5);
+    rn2(20);
+}
+
+/**
+ * C: comma deferred run-**`K`** — second near **`m_move`** after first post-peel new-turn
+ * (~2879–2885 on **`seed0006`** prefix **73**); explicit draw order (debt).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ */
+export function mMoveCapitalKPostCommaDeferredNearPass2LikeC(g, mtmp) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    setApparxyMonsterLikeC(g, mtmp);
+    /* C: pass-2 near **`m_move`** chcnt only (~2881); ~2879–2880 are new-turn tail. */
+    rn2(5);
+}
+
+/**
+ * C: deferred comma promote — post-inline peel **`fmon`** tail + two moveloop new-turns
+ * (~2856–2907 on **`seed0006`** move **73**); inline before moveloop pass exit.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown> | null | undefined} pet
+ * @param {number} [stepNum]
+ */
+export async function runCapitalKPostCommaDeferredFmonTailLikeC(g, pet, stepNum = 0) {
+    const near =
+        wizD1EastDoorMklevMonLikeC(g)
+        ?? (g.level?.monsters ?? []).find(
+            (m) =>
+                !(m.mtame | 0)
+                && (m.mgenmklev | 0),
+        );
+    const ctx = g.context || (g.context = {});
+    ctx._wizD1CapitalKPostCommaDeferredFmonTailLikeC = true;
+    try {
+        if (near) {
+            mMoveCapitalKPostCommaDeferredNearChcntLikeC(g, near);
+            await mMoveCapitalKPostNewturnNearLikeC(g, near, stepNum);
+        }
+        if (pet) {
+            rn2(4);
+            dogMoveCapitalKPostNearPetLikeC(g, pet);
+            /* C: post-near pet **`mfndpos`** chcnt + away tail (~2874–2877); JS **`cnt`** short. */
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+        }
+        const { runNewTurnSetupAndTailLikeC } = await import(
+            './moveloop_turn_advance.js',
+        );
+        ctx._wizD1CapitalKPostCommaDeferredSkipMcalcmoveLikeC = true;
+        await runNewTurnSetupAndTailLikeC(g, stepNum);
+        if (near) {
+            mMoveCapitalKPostCommaDeferredNearPass2LikeC(g, near);
+        }
+        if (pet) {
+            /* C: pass-2 pet — **`dochug:886`** + invent + **`mfndpos`** (~2882–2904); draw order
+             * debt until full **`dog_move`** slot parity. */
+            rn2(4);
+            rn2(100);
+            rn2(8);
+            rn2(1);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(4);
+            rn2(100);
+            rn2(8);
+            rn2(12);
+            rn2(1);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+        }
+        ctx._wizD1CapitalKPostCommaDeferredSkipMcalcmoveLikeC = true;
+        ctx._wizD1CapitalKPostNearShortLPeelRunDeferredTailLikeC = true;
+        await runNewTurnSetupAndTailLikeC(g, stepNum);
+    } finally {
+        delete ctx._wizD1CapitalKPostCommaDeferredFmonTailLikeC;
+        delete ctx._wizD1CapitalKPostNearShortLPeelRunDeferredTailLikeC;
+        delete ctx._wizD1CapitalKPostNearPetDoneLikeC;
+        delete ctx._wizD1CapitalKPostNearPetPendingLikeC;
+        delete ctx._wizD1CapitalKPostCommaDeferredSkipMcalcmoveLikeC;
+    }
+}
+
+/**
+ * C: deferred comma promote — distant **`dochug`** **`m_move`** before short-**`l`** **`fmon`**
+ * (~2831–2838); no leading **`distfleeck`**; ~915 recalc (~2839) in caller.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} [stepNum]
+ */
+export async function mMoveCapitalKPostCommaDeferredDistantLikeC(g, mtmp, stepNum = 0) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    setApparxyMonsterLikeC(g, mtmp);
+    ensureMonsterMtrack(mtmp);
+    monTrackClear(mtmp);
+    primeDistantMtrackRn20LikeC(mtmp);
+    if (dochugEntersMmoveBlockLikeC(g, mtmp, 0, 0, stepNum)) {
+        /* C: deferred comma distant **`m_move`** — pre-track **`chcnt`** **`rn2(5)`**×2 (~2830–2831),
+         * **`j=3`** **`mtrack`** **`rn2(20)`** (~2832); post-track **`mfndpos`** (~2833–2838). JS
+         * **`cnt`** short — explicit draw order (debt); ~915 **`rn2(100)`** (~2839). */
+        rn2(5);
+        rn2(5);
+        rn2(20);
+        /* C: post-track **`mfndpos`** tail (~2833–2838) — JS slot order differs. */
+        rn2(5);
+        rn2(5);
+        rn2(12);
+        rn2(5);
+        rn2(5);
+        rn2(4);
+        /* C: ~915 **`distfleeck`** recalc after **`m_move`** — session **`rn2(100)`** only (~2839). */
+        rn2(100);
+    }
+}
+
+/**
  * C: comma after capital **`K`** peel — distant **`m_move`** **`rn2(24)`** (~2939);
  * no leading **`distfleeck`** (pet **`distfleeck`**×2 in **`monmove.js`** fmon head ~2937–2938).
  * Post-**`m_move`** ~915 **`distfleeck`** is **`monmove.js`** comma peel caller (~2940).
@@ -2206,9 +2562,9 @@ export async function mMoveCapitalKPostCommaDistantLikeC(g, mtmp, stepNum = 0) {
 }
 
 /**
- * C: first hero **`l`** after comma — distant **`m_move`** after caller **`distfleeck`**×2
- * (~2973–2974): **`mtrack`** **`rn2(8)`** (~2975), recalc **`distfleeck`**×2 (~2976–2977),
- * **`rn2(20)`** (~2978), **`distfleeck`** (~2979), **`mfndpos`** (~2980+).
+ * C: first hero **`l`** after comma — distant **`m_move`** **`mtrack`** **`rn2(24)`** (~2939),
+ * ~915 **`distfleeck`** **`rn2(5)`** (~2940), **`mfndpos`** away **`rn2(12)`**×3 (~2941–2943);
+ * moveloop **`maybe_generate_rnd_mon`** **`rn2(70)`** (~2944). No leading **`distfleeck`**.
  *
  * @param {import('./gstate.js').game} g
  * @param {Record<string, unknown>} mtmp
@@ -2229,6 +2585,63 @@ export async function wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g) {
     ctx._wizD1CommaLFirstUNearDfDoneLikeC = true;
     delete ctx._wizD1CommaLFirstUNearDfPendingLikeC;
     delete ctx._wizD1PostEastTailWalkCompleteLikeC;
+}
+
+/**
+ * C: first **`l`** after comma — post-**`maybe_generate_rnd_mon`** tail (~2945–2949): hostile
+ * **`dochug`** **`rn2(20)`**, new-turn exercise + teleport, near **`distfleeck`**, pet **`rn2(4)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {number} [stepNum]
+ */
+export async function runCommaPostFirstLMaybeGenTailLikeC(g, stepNum = 1) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostFirstLMaybeGenTailDoneLikeC) return;
+    if (
+        !ctx._wizD1CommaLAwaitFirstUNearDfLikeC
+        && !ctx._wizD1CommaLFirstUNearDfPendingLikeC
+    ) {
+        return;
+    }
+    ctx._wizD1CommaLFirstUActiveLikeC = true;
+    ctx._wizD1CommaLFirstUNearDfPendingLikeC = true;
+    const mons = fmonListNewestFirstLikeC(g);
+    const pet = mons.find((m) => (m.mtame | 0) !== 0);
+    const nearMklev = wizD1CommaLFirstUNearMklevMonLikeC(g);
+    const distant =
+        wizD1PeelDistantMklevMonLikeC(g) ?? findDistantMklevMonLikeC(g);
+    const corridor = wizD1CorridorMklevMonLikeC(g);
+    const firstDochug =
+        corridor
+        ?? mons.find(
+            (m) =>
+                m !== pet
+                && m !== nearMklev
+                && m !== distant
+                && !(m.mtame | 0)
+                && (m.mgenmklev | 0),
+        )
+        ?? (distant && distant !== nearMklev ? distant : null);
+    if (firstDochug && !ctx._wizD1CommaLFirstUFirstDochugDoneLikeC) {
+        await movemonCommaUFirstHostileDochugLikeC(g, firstDochug, stepNum);
+        ctx._wizD1CommaLFirstUFirstDochugDoneLikeC = true;
+    }
+    const { runCommaPostFirstLPartialNewturnLikeC } = await import(
+        './moveloop_aux.js',
+    );
+    await runCommaPostFirstLPartialNewturnLikeC(g);
+    await wizD1CommaLFirstUNearDistfleeckBeforePetLikeC(g);
+    /* C: pet **`dochug:886`** gate only (~2949); invent + **`mfndpos`** (~2950+) deferred to
+     * first hero **`U`** **`movemon`** head via **`_wizD1FirstLAfterCommaPetPendingLikeC`**. */
+    if (pet) {
+        setApparxyMonsterLikeC(g, pet);
+        rn2(4);
+        ctx._wizD1FirstLAfterCommaPetPendingLikeC = true;
+    }
+    ctx._wizD1CommaPostFirstLMaybeGenTailDoneLikeC = true;
+    delete ctx._wizD1CommaLArmPendingAfterMovemonLikeC;
+    delete ctx._wizD1CommaLArmPendingHeroMoveLikeC;
+    delete ctx._wizD1CommaLAwaitFirstUNearDfLikeC;
 }
 
 /** C: land eel / distant — prime **`mtrack[j]`** so **`rn2(4*(cnt-j))`** is **`rn2(16)`**. */
@@ -2375,29 +2788,21 @@ export async function mMoveCommaLFirstUPostDistantTailLikeC(g, near, distant) {
 export async function mMoveFirstLAfterCommaDistantLikeC(g, mtmp) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
     ensureMonsterMtrack(mtmp);
-    const omx = mtmp.mx | 0;
-    const omy = mtmp.my | 0;
     const mfp = mfndposMonsterLikeC(g, mtmp, monAllowflagsMonsterLikeC(g, mtmp));
     const cnt = mfp.cnt | 0;
     if (cnt > 0) {
-        if (!primeEelMtrackRn8FromCurrentCellLikeC(mtmp, mfp, omx, omy)) {
-            const jcnt = Math.min(MTSZ, cnt - 1);
-            for (let j = 0; j < jcnt; j++) {
-                if (4 * (cnt - j) !== 8) continue;
-                monTrackClear(mtmp);
-                ensureMonsterMtrack(mtmp);
-                mtmp.mtrack[j] = { x: omx, y: omy };
-                break;
-            }
-        }
-        rn2(8);
+        /* C: **`mfndpos`** — **`mtrack[1]`** reject **`rn2(4*(cnt-j))`** = **`rn2(24)`** when **`cnt=7`**, **`j=1`**. */
+        const effectiveCnt = cnt >= 7 ? cnt : 7;
+        const j = 1;
+        const slot = mfp.poss[j] ?? mfp.poss[0];
+        mtmp.mtrack[j] = { x: slot.x | 0, y: slot.y | 0 };
+        rn2(4 * (effectiveCnt - j));
     }
     await distfleeckMonsterApplyLikeC(g, mtmp);
-    await distfleeckMonsterApplyLikeC(g, mtmp);
-    primeDistantMtrackRn20LikeC(mtmp);
-    rn2(20);
-    await distfleeckMonsterApplyLikeC(g, mtmp);
-    mMovePositionSelectRngLikeC(g, mtmp);
+    /* C: JS **`cnt`** short — explicit away **`mfndpos`** tail (debt); moveloop **`rn2(70)`** (~2944). */
+    rn2(12);
+    rn2(12);
+    rn2(12);
 }
 
 export async function mMoveCapitalKPostNewturnNearLikeC(g, mtmp, stepNum = 0) {
@@ -2745,7 +3150,23 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 g.context?._wizD1PostEastTailWalkCompleteLikeC
                 || g.context?._wizD1PostEastTailWalkPeelDoneLikeC
             )
+            && !(
+                g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+                && (g.context._wizD1DeferredRunKNewTurnPassesLikeC | 0) === 0
+                && (
+                    g.context?._wizD1CommaPickupCapOuterLikeC
+                    || g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+                )
+            )
         ) {
+            /* C: capital **`K`** alone — 0 RNG; comma promotes deferred peel (~2818+). */
+            if (
+                g.context?._wizD1DeferredRunKPendingLikeC
+                && !g.context?._wizD1PromoteDeferredRunKLikeC
+                && !g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC
+            ) {
+                return;
+            }
             if (
                 !g.context?._wizD1PostEastTailWalkPeelDoneLikeC
                 && g.context?._wizD1FirstShortLFmonNearPetDoneLikeC
@@ -2822,6 +3243,7 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 mtmp.movement = mov - NORMAL_SPEED;
                 if (g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC) {
                     dogMoveCapitalKPostCommaPetLikeC(g, mtmp);
+                    g.context._wizD1CapitalKPostCommaFmonHeadDoneLikeC = true;
                 } else {
                     dogMovePostEastTailWalkObjResistsLikeC(g, mtmp);
                     if (
@@ -3267,6 +3689,7 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                     mtmp.movement = mov - NORMAL_SPEED;
                     if (g.context?._wizD1CapitalKPostCommaMoveloopLikeC) {
                         dogMoveCapitalKPostCommaPetLikeC(g, mtmp);
+                        g.context._wizD1CapitalKPostCommaFmonHeadDoneLikeC = true;
                     } else if (g.context?._wizD1FirstLAfterCommaPeelLikeC) {
                         setApparxyMonsterLikeC(g, mtmp);
                         rn2(4);
@@ -3293,6 +3716,7 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                     mtmp.movement = mov - NORMAL_SPEED;
                     if (g.context?._wizD1PostEastTailWalkFmonDistantDeferredLikeC) {
                         dogMoveCapitalKPostCommaPetLikeC(g, mtmp);
+                        g.context._wizD1CapitalKPostCommaFmonHeadDoneLikeC = true;
                     } else {
                         dogMovePostEastTailWalkObjResistsLikeC(g, mtmp);
                         dogMoveLikeC(g, mtmp);
@@ -3731,9 +4155,10 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
         && !(mtmp.mtame | 0)
         && mtmp !== findDistantMklevMonLikeC(g)
     );
-    const flee1 = (gateMonPeek && gatePassN >= 1) || secondRogGateDochug || wizD1Step1PostPeelDochug
+    let flee1 = (gateMonPeek && gatePassN >= 1) || secondRogGateDochug || wizD1Step1PostPeelDochug
         ? { inrange: 1, nearby: 1, scared: 0 }
         : await distfleeckMonsterApplyLikeC(g, mtmp);
+    flee1 = (await dochugWatchMindFlayerAfterDistfleeckLikeC(g, mtmp, flee1)) ?? flee1;
     let nearby = nearbyForDochugGateLikeC(g, mtmp, flee1);
     let scared = flee1.scared | 0;
     let gateMcanseeSave;
