@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -19993,6 +19993,11 @@ function heroProjectileObjectHitval(obj) {
     return bonus;
 }
 
+function heroHeavyIronBallObject(obj) {
+    const kind = objectKindKey(obj);
+    return obj?.otyp === HEAVY_IRON_BALL || kind === 'heavy iron ball' || kind === 'iron ball';
+}
+
 function heroProjectileObjectHitAdjustment(obj, mon, { monNotices = true } = {}) {
     const data = mon?.data || {};
     let adjustment = heroProjectileMonsterSizeValue(mon) - 2;
@@ -20006,7 +20011,7 @@ function heroProjectileObjectHitAdjustment(obj, mon, { monNotices = true } = {})
             mon.mfrozen = 0;
         }
     }
-    if (obj?.otyp === HEAVY_IRON_BALL && obj !== game.u?.uball) adjustment += 2;
+    if (heroHeavyIronBallObject(obj) && obj !== game.u?.uball) adjustment += 2;
     else if (obj?.otyp === BOULDER || objectKindKey(obj) === 'boulder') adjustment += 6;
     else {
         adjustment += heroProjectileObjectHitval(obj);
@@ -20210,6 +20215,286 @@ function heroThrowAmmoAndLauncher(ammo, launcher) {
     return !!ammoSkill && heroThrowLauncherSkill(launcher) === ammoSkill;
 }
 
+function heroAutoquiverObjectDiscovered(item) {
+    return item?.known !== false || (game._discoveries || []).some(entry =>
+        entry.section === 'Gems/Stones'
+        && entry.known !== false
+        && String(entry.name || '').toLowerCase() === objectKindKey(item));
+}
+
+function heroAutoquiverRockAmmo(item) {
+    const kind = objectKindKey(item);
+    if (item?.otyp === ROCK || kind === 'rock') return true;
+    if (item?.otyp === FLINT_STONE || kind === 'flint' || kind === 'flint stone')
+        return heroAutoquiverObjectDiscovered(item);
+    return itemClassKey(item) === 'gem' && /\bglass\b/.test(kind)
+        && heroAutoquiverObjectDiscovered(item);
+}
+
+function heroAutoquiverSkipsItem(item) {
+    const line = String(item?.line || '');
+    return !item || item.owornmask || item.oartifact || item.artifact
+        || item.worn || itemIsWielded(item) || item.alternate
+        || /\b(?:being worn|alternate weapon)\b/.test(line)
+        || item.dknown === false;
+}
+
+function heroAutoquiverMissileItem(item) {
+    const kind = objectKindKey(item);
+    return item?.otyp === DART
+        || /\b(?:dart|shuriken|throwing star|boomerang)\b/.test(kind);
+}
+
+function heroAutoquiverThrowingWeapon(item) {
+    const kind = objectKindKey(item);
+    return itemClassKey(item) === 'weapon'
+        && HERO_THROWN_STACKABLE_MULTISHOT_WEAPON_KEYS.has(kind);
+}
+
+function heroAutoquiverProjectile() {
+    const inventory = game.inventory || [];
+    const primaryLauncher = heroWieldedThrowLauncher();
+    const alternateLauncher = inventory.find(item =>
+        (item.alternate || item.line?.includes('alternate weapon')) && heroThrowLauncherSkill(item));
+    let oammo = null;
+    let omissile = null;
+    let altammo = null;
+    let omisc = null;
+
+    for (const item of inventory) {
+        if (heroAutoquiverSkipsItem(item)) continue;
+        if (heroAutoquiverRockAmmo(item)) {
+            if (heroThrowAmmoAndLauncher(item, primaryLauncher)) oammo = item;
+            else if (heroThrowAmmoAndLauncher(item, alternateLauncher)) altammo = item;
+            else if (!omisc) omisc = item;
+        } else if (itemClassKey(item) === 'gem' || item?.glyph === '*' || item?.otyp === GEM_CLASS) {
+            continue;
+        } else if (heroThrowAmmoSkill(item)) {
+            if (heroThrowAmmoAndLauncher(item, primaryLauncher)) oammo = item;
+            else if (heroThrowAmmoAndLauncher(item, alternateLauncher)) altammo = item;
+            else omisc = item;
+        } else if (heroAutoquiverMissileItem(item)) {
+            omissile = item;
+        } else if (heroAutoquiverThrowingWeapon(item)) {
+            const kind = objectKindKey(item);
+            if (/\bdagger\b/.test(kind) && !omissile) omissile = item;
+            else if (kind === 'aklys') continue;
+            else omisc = item;
+        }
+    }
+
+    return oammo || omissile || altammo || omisc;
+}
+
+function heroReadyAutoquiverProjectile(item) {
+    for (const invItem of game.inventory || []) {
+        invItem.quivered = invItem === item;
+        if (invItem !== item && invItem.line)
+            invItem.line = invItem.line.replace(/ \((?:at the ready|in quiver(?: pouch)?)\).*$/, '');
+    }
+    item.line = `${item.letter || '?'} - ${inventoryItemName(item)}${quiverSuffix(item)}`;
+}
+
+function heroFireReadyLine(item) {
+    return `${item?.letter || '?'} - ${inventoryItemName(item)}`;
+}
+
+function heroWieldedPolearm() {
+    return (game.inventory || []).find(item => itemIsPrimaryWielded(item) && isPolearmItem(item));
+}
+
+function isBullwhipItem(item) {
+    if (!item) return false;
+    if (item.otyp === BULLWHIP) return true;
+    return itemClassKey(item) === 'weapon' && /\bbullwhip\b/.test(inventoryItemName(item).toLowerCase());
+}
+
+function heroWieldedBullwhip() {
+    return (game.inventory || []).find(item => itemIsPrimaryWielded(item) && isBullwhipItem(item)) || null;
+}
+
+async function beginHeroBullwhipApply(item) {
+    if (!item || !isBullwhipItem(item)) return false;
+    if (!itemIsPrimaryWielded(item)) {
+        const line = wieldItemForApply(item);
+        await setMessage(`${line}.`);
+        game.context.move = 1;
+        return true;
+    }
+    game._apply_bullwhip_letter = item.letter || null;
+    await setMessage('In what direction?');
+    game._command_mode = 'applyBullwhipDirection';
+    return true;
+}
+
+async function finishHeroBullwhipDirection(item, ch) {
+    game._apply_bullwhip_letter = null;
+    game._command_mode = null;
+    if (!item || !isBullwhipItem(item)) {
+        await setMessage('Never mind.');
+        return true;
+    }
+    if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+        await setMessage('Never mind.');
+        return true;
+    }
+    const dir = movementDirection(ch);
+    if (!dir) return true;
+
+    if (game.u?.uswallow) {
+        await setMessage('There is not enough room to flick your bullwhip.');
+        game.context.move = 1;
+        return true;
+    }
+    if (game.u?.underwater || game.u?.uunderwater || game.u?.Underwater) {
+        await setMessage('There is too much resistance to flick your bullwhip.');
+        game.context.move = 1;
+        return true;
+    }
+    if (dir.dz < 0) {
+        await setMessage('You flick a bug off of the ceiling.');
+        game.context.move = 1;
+        return true;
+    }
+
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const rx = ux + (dir.dx || 0);
+    const ry = uy + (dir.dy || 0);
+    if ((!dir.dx && !dir.dy) || dir.dz > 0) {
+        const damage = Math.max(1, rnd(2) + heroStrengthDamageBonus() + Math.trunc(Number(item.spe || 0)));
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - maybeHalfPhysicalDamage(damage));
+        await setMessage('You hit your foot with your bullwhip.');
+        game.context.move = 1;
+        return true;
+    }
+    if (!isok(rx, ry)) {
+        await setMessage('You miss.');
+        return true;
+    }
+
+    const mon = (game.level?.monsters || []).find(candidate =>
+        candidate.mx === rx && candidate.my === ry && !candidate.dead && (candidate.mhp == null || candidate.mhp > 0));
+    if (mon) {
+        const targetName = fireScrollMonsterName(mon).replace(/^The /, 'the ');
+        const messages = [`You flick your bullwhip towards ${targetName}.`, 'Snap!'];
+        mon.msleeping = 0;
+        mon.meating = 0;
+        setHeroObjectHitMonsterAngry(mon);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    await setMessage(Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)
+        ? 'You snap your whip through thin air.'
+        : 'Snap!');
+    game.context.move = 1;
+    return true;
+}
+
+function heroWieldedThrowAndReturnWeapon() {
+    return (game.inventory || []).find(item => {
+        if (!itemIsPrimaryWielded(item)) return false;
+        const key = tossUpWeaponObjectKey(item);
+        if (key === 'aklys' || key === 'boomerang') return true;
+        return heroThrownMjollnirObject(item) && heroRoleName() === 'Valkyrie'
+            && Math.trunc(Number(game.u?.acurr?.a?.[A_STR] ?? 10)) >= STR19(25);
+    }) || null;
+}
+
+function heroFireReturnWeaponBeatsQuiver(item) {
+    return !item || !!heroThrowAmmoSkill(item);
+}
+
+async function beginHeroFireThrowAndReturnShortcut(item, shotLimit = null) {
+    game._fire_count = null;
+    game._fire_item_letter = null;
+    game._fire_launcher_letter = null;
+    clearThrowCountState();
+    game._throw_item_letter = item?.letter || null;
+    game._throw_shot_limit = shotLimit > 0 ? shotLimit : null;
+    await setMessage('In what direction?');
+    game._command_mode = 'throwDirection';
+}
+
+async function beginHeroFirePolearmFallback(item) {
+    game._fire_count = null;
+    const target = heroPolearmAutohitTarget();
+    if (target) await finishHeroPolearmTarget(item, target.mx, target.my, { autohit: true });
+    else await finishHeroPolearmTarget(item, game.u?.ux || 0, game.u?.uy || 0, { autohit: true });
+    game._command_mode = null;
+}
+
+function heroFireassistBlessCurseKnown(item) {
+    return item?.bknown === true || (item?.bknown !== false
+        && /\b(?:blessed|uncursed|cursed)\b/.test(String(item?.line || '')));
+}
+
+function heroFireassistMatchingLauncher(projectile) {
+    const inventory = game.inventory || [];
+    const wielded = inventory.find(item =>
+        itemIsWielded(item) && heroThrowAmmoAndLauncher(projectile, item));
+    if (wielded) return wielded;
+    if (game.flags?.fireassist === false) return null;
+
+    const alternate = inventory.find(item =>
+        (item.alternate || item.line?.includes('alternate weapon'))
+        && heroThrowAmmoAndLauncher(projectile, item));
+    if (alternate) return alternate;
+
+    let unknownBucLauncher = null;
+    for (const item of inventory) {
+        if (!heroThrowAmmoAndLauncher(projectile, item)) continue;
+        if (item.cursed && heroFireassistBlessCurseKnown(item)) continue;
+        if (heroFireassistBlessCurseKnown(item)) return item;
+        unknownBucLauncher ??= item;
+    }
+    return unknownBucLauncher;
+}
+
+async function beginHeroFireProjectile(projectile, { readyMessage = '' } = {}) {
+    const launcher = heroFireassistMatchingLauncher(projectile);
+    let swapMoreLine = '';
+    if (launcher && !(launcher.wielded || launcher.line?.includes('weapon in'))) {
+        const launcherWasAlternate = launcher.alternate || launcher.line?.includes('alternate weapon');
+        const current = (game.inventory || []).find(item =>
+            item !== launcher && (item.wielded || item.line?.includes('weapon in')));
+        if (current) {
+            current.wielded = false;
+            current.alternate = true;
+            current.line = `${current.letter || '?'} - ${inventoryItemName(current)} (alternate weapon; not wielded)`;
+            if (launcherWasAlternate) swapMoreLine = `${current.line}.`;
+        }
+        launcher.wielded = true;
+        launcher.alternate = false;
+        launcher.line = `${launcher.letter || '?'} - ${inventoryItemName(launcher)} (weapon in right hand)`;
+    }
+    game._fire_item_letter = projectile.letter;
+    game._fire_launcher_letter = launcher?.letter || null;
+    if (readyMessage) {
+        game._fire_direction_pending_after_more = 1;
+        if (launcher) {
+            game._fire_ready_launcher_line = `${launcher.line || `${launcher.letter || '?'} - ${inventoryItemName(launcher)}`}.`;
+            game._fire_ready_swap_more_line = swapMoreLine;
+            game._fire_time_pending_after_more = 1;
+        }
+        await setMessage(readyMessage, true);
+        game._command_mode = 'fireDirection';
+        return;
+    }
+    if (launcher) {
+        game._fire_swap_more_line = swapMoreLine;
+        game._fire_time_pending_after_more = 1;
+        game._fire_direction_pending_after_more = 1;
+        await setMessage(`${launcher.line || `${launcher.letter || '?'} - ${inventoryItemName(launcher)}`}.`, true);
+        game._command_mode = 'fireDirection';
+        return;
+    }
+    await setMessage('In what direction?');
+    game._command_mode = 'fireDirection';
+}
+
 function heroWieldedThrowLauncher() {
     return (game.inventory || []).find(item =>
         (item.wielded || item.line?.includes('weapon in')) && heroThrowLauncherSkill(item));
@@ -20224,7 +20509,7 @@ function heroThrowCondensedStrength() {
 
 function heroHorizontalThrowWeightedRange(obj, urangeBase = null) {
     const baseRange = urangeBase ?? Math.max(0, Math.trunc(heroThrowCondensedStrength() / 2));
-    const heavyIronBall = obj?.otyp === HEAVY_IRON_BALL || objectKindKey(obj) === 'heavy iron ball';
+    const heavyIronBall = heroHeavyIronBallObject(obj);
     const weightDivisor = heavyIronBall ? 100 : 40;
     let range = baseRange - Math.trunc(globObjectWeight({ ...obj, quan: 1 }) / weightDivisor);
     if (heroThrownAttachedBallObject(obj)) {
@@ -21018,7 +21303,7 @@ function heroFiredLauncherAmmoDamage(obj, mon, launcher) {
     return { damage, silverMessage: special.silverMessage };
 }
 
-function heroFireProjectileFlightResult(startX, startY, dir, range) {
+function heroFireProjectileFlightResult(startX, startY, dir, range, obj = null, { ironBars = false } = {}) {
     let ox = startX;
     let oy = startY;
     let targetMon = null;
@@ -21026,7 +21311,18 @@ function heroFireProjectileFlightResult(startX, startY, dir, range) {
         const nx = ox + dir.dx;
         const ny = oy + dir.dy;
         const loc = game.level?.at(nx, ny);
-        if (!loc || IS_OBSTRUCTED(loc.typ)) break;
+        if (ironBars && loc?.typ === IRONBARS) {
+            const pointBlank = step === 0;
+            const forcedHit = pointBlank ? false : rn2(5) === 0;
+            if (forcedHit || heroThrownIronBarsClassHitObject(obj))
+                return {
+                    ox,
+                    oy,
+                    targetMon: null,
+                    ironBarsImpact: { x: ox, y: oy, barsX: nx, barsY: ny, pointBlank, forcedHit },
+                };
+        }
+        if (!loc || (loc.typ === IRONBARS ? !ironBars : IS_OBSTRUCTED(loc.typ))) break;
         ox = nx;
         oy = ny;
         targetMon = (game.level?.monsters || []).find(mon =>
@@ -23066,14 +23362,109 @@ function heroThrownIronBarsBreakableClassHitObject(obj) {
     return isGlassMaterialWandObject(obj);
 }
 
-async function heroThrownIronBarsBreakImpact(obj, impact) {
-    if (!impact?.pointBlank) rn2(5); // C bhit() evaluates the force-hit roll before hits_bars().
+function heroThrownIronBarsClassHitObject(obj) {
+    if (!obj) return false;
+    const cls = itemClassKey(obj);
+    const kind = objectKindKey(obj);
+    if (cls === 'weapon' || obj.glyph === ')') {
+        if (heroThrowAmmoSkill(obj)) return false;
+        const meta = HERO_THROWN_WEAPON_MONSTER_DATA.get(tossUpWeaponObjectKey(obj));
+        const launcherMeta = heroLauncherSkillMeta(obj);
+        const skill = meta?.skill || launcherMeta?.skill || null;
+        return ![P_BOW, P_CROSSBOW, P_DART, P_SHURIKEN, P_SPEAR, P_KNIFE].includes(skill);
+    }
+    if (cls === 'armor' || obj.glyph === '[')
+        return !/\b(?:gloves?|gauntlets?)\b/.test(kind);
+    if (cls === 'tool' || obj.glyph === '(') {
+        return !['skeleton key', 'lock pick', 'credit card', 'tallow candle',
+            'wax candle', 'lenses', 'tin whistle', 'magic whistle'].includes(kind);
+    }
+    if (cls === 'wand' || cls === 'spellbook' || cls === 'ball' || cls === 'chain') return true;
+    if (kind === 'boulder' || heroHeavyIronBallObject(obj)) return true;
+    if (kind === 'meat stick' || kind === 'enormous meatball') return true;
+    return heroThrownIronBarsBreakableClassHitObject(obj);
+}
+
+function heroThrownIronBarsImpactSound(obj) {
+    if (heroIsDeaf()) return '';
+    const kind = objectKindKey(obj);
+    const material = String(obj?.material || obj?.oc_material || '').toLowerCase().replace(/^hi_/, '');
+    if (kind === 'boulder' || heroHeavyIronBallObject(obj)) return 'Whang!';
+    if (heroThrownIronBarsHarmlessMissileObject(obj)) return 'Whap!';
+    if (heroThrownIronBarsFlimsyObject(obj, material)) return 'Flapp!';
+    if (material === 'gold' || material === 'silver' || /\bsilver\b|\bgold(?:en)?\b/.test(kind)) return 'Clink!';
+    return 'Clonk!';
+}
+
+function heroThrownIronBarsHarmlessMissileObject(obj) {
+    const kind = objectKindKey(obj);
+    if (['sling', 'eucalyptus leaf', 'kelp frond', 'sprig of wolfsbane',
+        'fortune cookie', 'pancake'].includes(kind)) return true;
+    if ((kind === 'rubber hose' || kind === 'bag of tricks')
+        && Math.trunc(Number(obj?.spe || 0)) < 1) return true;
+    return false;
+}
+
+function heroThrownIronBarsFlimsyObject(obj, material = '') {
+    const kind = objectKindKey(obj);
+    if (kind === 'rubber hose') return true;
+    if (['liquid', 'wax', 'veggy', 'vegetable', 'flesh', 'paper', 'cloth', 'leather'].includes(material))
+        return true;
+    return /\b(?:cream pie|candy bar|shirt|robe|cloak|leather)\b/.test(kind);
+}
+
+function dissolveHeroBrokenIronBars(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || loc.typ !== IRONBARS) return false;
+    loc.typ = loc.edge ? DOOR : (loc.roomno ?? 0) >= ROOMOFFSET ? ROOM : CORR;
+    loc.flags = 0;
+    loc.doormask = D_NODOOR;
+    loc.wall_info = 0;
+    newsym(x, y);
+    return true;
+}
+
+function heroThrownIronBarsBreakApartChance(obj) {
+    const kind = objectKindKey(obj);
+    const isHeavyIronBall = heroHeavyIronBallObject(obj);
+    if (kind !== 'war hammer' && !isHeavyIronBall) return 0;
+    const ironBallWeight = Math.trunc(Number(obj?.owt || 0)) || WT_IRON_BALL_BASE;
+    const spe = isHeavyIronBall
+        ? Math.trunc(ironBallWeight / WT_IRON_BALL_INCR)
+        : Math.trunc(Number(obj?.spe || 0));
+    return Math.max(2, 60 - heroThrowCondensedStrength() - spe);
+}
+
+function appendHeroThrownIronBarsBreakApart(obj, impact, messages) {
+    const chance = heroThrownIronBarsBreakApartChance(obj);
+    if (!chance || rn2(chance) !== 0) return false;
+    messages.push('You break the bars apart!');
+    return dissolveHeroBrokenIronBars(impact?.barsX, impact?.barsY);
+}
+
+async function heroThrownIronBarsImpact(obj, impact) {
     const breakKind = projectileTopLevelBreakKind(obj);
-    if (!breakKind) return { broke: false, messages: ['Clonk!'] };
+    if (!breakKind) {
+        const sound = heroThrownIronBarsImpactSound(obj);
+        const messages = sound ? [sound] : [];
+        appendHeroThrownIronBarsBreakApart(obj, impact, messages);
+        return { broke: false, messages };
+    }
     const messages = [];
     projectileTopLevelBreakMessage(obj, breakKind, messages);
     await applyHeroThrownFragileBreakSideEffects(obj, messages, impact.x, impact.y);
     return { broke: true, messages };
+}
+
+async function appendHeroProjectileIronBarsImpact(projectileObject, flight, messages) {
+    if (!flight?.ironBarsImpact) return { handled: false, broke: false };
+    const barsImpact = await heroThrownIronBarsImpact(projectileObject, flight.ironBarsImpact);
+    messages.push(...barsImpact.messages);
+    if (barsImpact.broke) {
+        markThrownBrokenObjectDebt(projectileObject);
+        stopCarriedFigurineTimerOnLeave(projectileObject);
+    }
+    return { handled: true, broke: !!barsImpact.broke };
 }
 
 async function heroThrownFragileObjectSelfHitMessages(obj, action, ceilingName = heroThrowCeilingName()) {
@@ -25221,6 +25612,104 @@ function polearmTargetDescription(x, y) {
     if (loc.typ === MOAT) return 'moat';
     if (loc.typ === STONE) return 'stone';
     return loc.typ && loc.typ < DOOR ? 'wall' : 'unexplored area';
+}
+
+function heroPolearmTargetDistance2(x, y) {
+    return (x - (game.u?.ux || 0)) ** 2 + (y - (game.u?.uy || 0)) ** 2;
+}
+
+function heroPolearmAutohitTarget() {
+    const candidates = (game.level?.monsters || []).filter(mon =>
+        mon && !mon.dead && (mon.mhp == null || mon.mhp > 0)
+        && !mon.mtame && !mon.pet && !mon.mpeaceful
+        && heroPolearmTargetDistance2(mon.mx, mon.my) === 4
+        && couldsee(mon.mx, mon.my));
+    return candidates.length === 1 ? candidates[0] : null;
+}
+
+function heroAppliedPolearmHitValue(item, mon) {
+    return heroProjectileBaseHitValue(item, mon)
+        + heroWeaponHitSkillBonus(P_POLEARMS, 'polearms');
+}
+
+function heroAppliedPolearmImpact(item, mon) {
+    const hitValue = heroAppliedPolearmHitValue(item, mon);
+    const dieroll = rnd(20);
+    const targetName = heroThrownVenomTargetName(mon);
+    if (hitValue >= dieroll) {
+        addConductCount('weaphit');
+        const damage = Math.max(0, rnd(2) + heroStrengthDamageBonus() + heroDamageIncreaseBonus());
+        if (damage > 0) mon.mhp = (mon.mhp || 1) - damage;
+        const messages = [`You hit ${targetName}${heroProjectileHitPunctuation(damage)}`];
+        if ((mon.mhp || 0) <= 0) killMonsterFromHeroProjectileHit(mon, messages, targetName);
+        if (!mon.dead) wakeMonsterFromHeroThrownHit(mon);
+        exerciseHeroProjectileHitDexterity();
+        return { hit: true, damage, messages };
+    }
+    mon.msleeping = 0;
+    mon.meating = 0;
+    setHeroObjectHitMonsterAngry(mon);
+    return {
+        hit: false,
+        messages: [`The ${pickupObjectName(item)} misses ${targetName}.`],
+    };
+}
+
+async function finishHeroPolearmTarget(item, x, y, { autohit = false } = {}) {
+    if (!item || !isPolearmItem(item)) return false;
+    const dist2 = heroPolearmTargetDistance2(x, y);
+    if (dist2 > 4) {
+        await setMessage('Too far!');
+        return true;
+    }
+    if (dist2 < 4) {
+        await setMessage(autohit && x === (game.u?.ux || 0) && y === (game.u?.uy || 0)
+            ? "Don't know what to hit."
+            : 'Too close!');
+        return true;
+    }
+    if (!couldsee(x, y)) {
+        await setMessage("You can't reach that spot from here.");
+        return true;
+    }
+
+    const mon = (game.level?.monsters || []).find(candidate =>
+        candidate.mx === x && candidate.my === y && !candidate.dead && (candidate.mhp == null || candidate.mhp > 0));
+    if (mon) {
+        const impact = heroAppliedPolearmImpact(item, mon);
+        await setMessage((impact.messages || []).join('  '), (impact.messages || []).length > 1);
+        newsym(x, y);
+        game.context.move = 1;
+        return true;
+    }
+
+    const statueObj = floorStatueAt(x, y);
+    if (statueObj) {
+        const statueTrap = statueTrapAt(x, y);
+        const message = statueTrap
+            ? await activateStatueTrap(statueTrap, x, y, { normal: true }) || ''
+            : 'Thump!  Your blow bounces harmlessly off the statue.';
+        await setMessage(message);
+        game.context.move = 1;
+        return true;
+    }
+
+    const boulder = (game.level?.objects || []).some(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp === BOULDER);
+    if (boulder) {
+        await setMessage('Thump!  Your blow bounces harmlessly off the boulder.');
+        game.context.move = 1;
+        return true;
+    }
+    const loc = game.level?.at(x, y);
+    if (!loc || !ACCESSIBLE(loc.typ)) {
+        await setMessage(`You uselessly attack ${loc?.typ === STONE ? 'stone' : 'an unknown obstacle'}.`);
+        game.context.move = 1;
+        return true;
+    }
+    await setMessage('You miss; there is no one there to hit.');
+    game.context.move = 1;
+    return true;
 }
 
 function statueStrikeTargetAlongLine(dir) {
@@ -54840,6 +55329,16 @@ export async function rhack(_cmd) {
                 }
                 return;
             }
+            if (game._fire_ready_launcher_line) {
+                const next = game._fire_ready_launcher_line;
+                game._fire_ready_launcher_line = '';
+                game._fire_swap_more_line = game._fire_ready_swap_more_line || '';
+                game._fire_ready_swap_more_line = '';
+                game._pending_message = next;
+                game._message_more = 1;
+                game._keep_pending_message = 1;
+                return;
+            }
             if (game._fire_swap_more_line) {
                 const next = game._fire_swap_more_line;
                 game._fire_swap_more_line = '';
@@ -61394,6 +61893,53 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'fireQuiverObject') {
+        if (ch === '\x1b' || ch === ' ') {
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            game._fire_count = null;
+            return;
+        }
+        if (ch === '-') {
+            await setMessage('You already have no ammunition readied!');
+            game._command_mode = null;
+            game._fire_count = null;
+            return;
+        }
+        const itemByLetter = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (itemByLetter?.line?.includes('alternate weapon')) {
+            game._fire_quiver_confirm_item = itemByLetter;
+            await setMessage('That is your alternate weapon.  Ready it instead? [ynq] (q)');
+            game._command_mode = 'fireQuiverAlternateConfirm';
+            return;
+        }
+        const item = itemByLetter && isProjectileItem(itemByLetter) ? itemByLetter : null;
+        if (item) {
+            const readyMessage = `You ready: ${heroFireReadyLine(item)}.`;
+            heroReadyAutoquiverProjectile(item);
+            await beginHeroFireProjectile(item, { readyMessage });
+            return;
+        }
+        await setMessage("You don't have that object.");
+        game._command_mode = null;
+        game._fire_count = null;
+        return;
+    }
+
+    if (game._command_mode === 'fireQuiverAlternateConfirm') {
+        const item = game._fire_quiver_confirm_item;
+        game._fire_quiver_confirm_item = null;
+        game._command_mode = null;
+        if (ch !== 'y' || !item) {
+            game._fire_count = null;
+            return;
+        }
+        const readyMessage = `You ready: ${heroFireReadyLine(item)}.`;
+        heroReadyAutoquiverProjectile(item);
+        await beginHeroFireProjectile(item, { readyMessage });
+        return;
+    }
+
     if (game._command_mode === 'inventory') {
         if (ch === ' ' && (game._inventory_page || 0) + 1 < (game._inventory_overlay_total_pages || 1)) {
             game._inventory_page = (game._inventory_page || 0) + 1;
@@ -61910,6 +62456,10 @@ export async function rhack(_cmd) {
             game._command_mode = 'applyPickDigDirection';
             return;
         }
+        if (isBullwhipItem(item)) {
+            await beginHeroBullwhipApply(item);
+            return;
+        }
         if (isPolearmItem(item)) {
             if (!itemIsWielded(item)) {
                 const line = wieldItemForApply(item);
@@ -62130,50 +62680,16 @@ export async function rhack(_cmd) {
             game._apply_polearm_letter = null;
             game._cursor_override = null;
             game._command_mode = null;
-            if (!item || !isPolearmItem(item)) return;
-            const dist2 = (x - (game.u?.ux || 0)) ** 2 + (y - (game.u?.uy || 0)) ** 2;
-            if (dist2 > 4) {
-                await setMessage('Too far!');
-                return;
-            }
-            if (dist2 < 4) {
-                await setMessage('Too close!');
-                return;
-            }
-            if (!couldsee(x, y)) {
-                await setMessage("You can't reach that spot from here.");
-                return;
-            }
-
-            const statueObj = floorStatueAt(x, y);
-            if (statueObj) {
-                const statueTrap = statueTrapAt(x, y);
-                const message = statueTrap
-                    ? await activateStatueTrap(statueTrap, x, y, { normal: true }) || ''
-                    : 'Thump!  Your blow bounces harmlessly off the statue.';
-                await setMessage(message);
-                game.context.move = 1;
-                return;
-            }
-
-            const boulder = (game.level?.objects || []).some(obj =>
-                !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp === BOULDER);
-            if (boulder) {
-                await setMessage('Thump!  Your blow bounces harmlessly off the boulder.');
-                game.context.move = 1;
-                return;
-            }
-            const loc = game.level?.at(x, y);
-            if (!loc || !ACCESSIBLE(loc.typ)) {
-                await setMessage(`You uselessly attack ${loc?.typ === STONE ? 'stone' : 'an unknown obstacle'}.`);
-                game.context.move = 1;
-                return;
-            }
-            await setMessage('You miss; there is no one there to hit.');
-            game.context.move = 1;
+            await finishHeroPolearmTarget(item, x, y);
             return;
         }
         game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'applyBullwhipDirection') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_bullwhip_letter);
+        await finishHeroBullwhipDirection(item, ch);
         return;
     }
 
@@ -67742,28 +68258,27 @@ export async function rhack(_cmd) {
             fireRange = heroHorizontalThrowFinalRange(item, airSplit.throwRange);
             fireRecoilResult = heroHorizontalThrowRecoilResult(dir, airSplit.recoilRange);
         }
-        const initialFlight = heroFireProjectileFlightResult(startX, startY, dir, fireRange);
-        let ox = initialFlight.ox;
-        let oy = initialFlight.oy;
-        let targetMon = initialFlight.targetMon;
         const oldQuan = item.quan || 1;
         const firedFromLauncher = !!(launcher && heroThrowAmmoAndLauncher(item, launcher));
         const fireShotLimit = Math.max(0, Math.trunc(Number(game._fire_count || 0)));
         const shotCount = firedFromLauncher
             ? heroLauncherAmmoMultishotCount(item, launcher, fireShotLimit)
             : heroThrownStackableWeaponMultishotCount(item, fireShotLimit);
+        const splitProjectileFlight = shotCount > 1;
+        const initialFlight = splitProjectileFlight
+            ? { ox: startX, oy: startY, targetMon: null, ironBarsImpact: null }
+            : heroFireProjectileFlightResult(startX, startY, dir, fireRange, item, { ironBars: true });
+        let ox = initialFlight.ox;
+        let oy = initialFlight.oy;
+        let targetMon = initialFlight.targetMon;
         let impactMessage = '';
         let landingMessage = '';
         const targetUsesImpact = heroFireProjectileTargetUsesImpact(item, targetMon, launcher, firedFromLauncher);
         const newsymTargets = [];
-        if (targetUsesImpact && shotCount > 1) {
+        if (splitProjectileFlight) {
             const impactMessages = [];
             const landingMessages = [];
             for (let shot = 0; shot < shotCount; shot++) {
-                const flight = heroFireProjectileFlightResult(startX, startY, dir, fireRange);
-                ox = flight.ox;
-                oy = flight.oy;
-                targetMon = flight.targetMon;
                 const shotId = oldQuan - shot > 1 ? next_ident() : item.id;
                 const splitShot = shotId !== item.id;
                 const projectileObject = {
@@ -67776,19 +68291,24 @@ export async function rhack(_cmd) {
                     o_id: splitShot ? undefined : item.o_id,
                     _shopBillObjectId: splitShot ? undefined : item._shopBillObjectId,
                     quan: 1,
-                    ox,
-                    oy,
                     glyph: item.glyph || (item.cls === 'gem' ? '*' : ')'),
                     color: item.color || (item.cls === 'gem' ? CLR_GRAY : CLR_CYAN),
                 };
+                const flight = heroFireProjectileFlightResult(startX, startY, dir, fireRange, projectileObject, { ironBars: true });
+                ox = flight.ox;
+                oy = flight.oy;
+                targetMon = flight.targetMon;
+                projectileObject.ox = ox;
+                projectileObject.oy = oy;
                 if (oldQuan - shot > 1) splitCarriedObjectShopBill(item, projectileObject, 1);
+                const barsResult = await appendHeroProjectileIronBarsImpact(projectileObject, flight, impactMessages);
                 const shotUsesImpact = heroFireProjectileTargetUsesImpact(projectileObject, targetMon, launcher, firedFromLauncher);
-                const impact = shotUsesImpact
+                const impact = !barsResult.handled && shotUsesImpact
                     ? heroFireProjectileMonsterImpact(projectileObject, targetMon, launcher, firedFromLauncher)
                     : { handled: false, messages: [], consumed: false, hit: false, passiveTarget: null };
                 if (impact.handled) impactMessages.push(...impact.messages);
                 if (targetMon) newsymTargets.push(targetMon);
-                if (!impact.consumed) {
+                if (!impact.consumed && !barsResult.broke) {
                     const breakRoll = !projectileLandingIsSoft(ox, oy) ? rn2(100) : null;
                     const landing = landProjectileObjectWithShopHandling(projectileObject, ox, oy, {
                         breakRoll,
@@ -67829,7 +68349,10 @@ export async function rhack(_cmd) {
             let impactConsumedProjectile = false;
             let impactObjectHit = false;
             let impactPassiveTarget = null;
-            if (targetMon) {
+            const projectileImpactMessages = [];
+            const barsResult = await appendHeroProjectileIronBarsImpact(projectileObject, initialFlight, projectileImpactMessages);
+            if (barsResult.handled) impactMessage = projectileImpactMessages.join('  ');
+            if (!barsResult.handled && targetMon) {
                 const impact = heroFireProjectileMonsterImpact(projectileObject, targetMon, launcher, firedFromLauncher);
                 if (impact.handled) {
                     impactMessage = (impact.messages || []).join('  ');
@@ -67839,7 +68362,7 @@ export async function rhack(_cmd) {
                     newsymTargets.push(targetMon);
                 }
             }
-            if (!impactConsumedProjectile && hardLanding) {
+            if (!impactConsumedProjectile && !barsResult.broke && hardLanding) {
                 projectileBreakRoll = null;
                 for (let shot = 0; shot < shotCount; shot++) {
                     if (!splitBeforeImpact && oldQuan - shot > 1) projectileId = next_ident();
@@ -67848,7 +68371,7 @@ export async function rhack(_cmd) {
                 }
             }
             if (!splitBeforeImpact && projectileId != null) projectileObject.id = projectileId;
-            const landing = impactConsumedProjectile
+            const landing = impactConsumedProjectile || barsResult.broke
                 ? { object: null, messages: [] }
                 : landProjectileObjectWithShopHandling(projectileObject, ox, oy, {
                     breakRoll: projectileBreakRoll,
@@ -68742,22 +69265,44 @@ export async function rhack(_cmd) {
             );
             throwNoLauncherMessage = airSplit.noLauncherMessage || throwNoLauncherMessage;
         }
+        const itemQuantity = item.quan || 1;
+        const directLauncherAmmo = !!(heroLauncherAmmoData(item) && heroThrowAmmoAndLauncher(item, throwLauncher));
+        const directShotLimit = Math.max(0, Math.trunc(Number(game._throw_shot_limit || 0)));
+        const directLauncherShotCount = directLauncherAmmo
+            ? heroLauncherAmmoMultishotCount(item, throwLauncher, directShotLimit)
+            : 1;
+        const directThrownStackableWeapon = !directLauncherAmmo && heroThrownStackableWeaponMultishotObject(item);
+        const directThrownStackableWeaponShotCount = directThrownStackableWeapon
+            ? heroThrownStackableWeaponMultishotCount(item, directShotLimit)
+            : 1;
+        const directMultishotCount = directLauncherAmmo
+            ? directLauncherShotCount
+            : directThrownStackableWeaponShotCount;
+        const directCountForcesVolleyMessage = directShotLimit > 0
+            && (directLauncherAmmo || directThrownStackableWeapon);
+        const directProjectileVolley = (directLauncherAmmo || directThrownStackableWeapon)
+            && (directMultishotCount > 1 || directCountForcesVolleyMessage)
+            && !boomerangFlight.handled;
         let flightImpactMessage = '';
         if (boomerangFlight.handled) {
             ox = boomerangFlight.x ?? ox;
             oy = boomerangFlight.y ?? oy;
             targetMon = boomerangFlight.targetMon || null;
             flightImpactMessage = [boomerangPreRecoilMessage, boomerangFlight.message || ''].filter(Boolean).join('  ');
-        } else {
+        } else if (!directProjectileVolley) {
             for (let step = 0; step < throwRange; step++) {
                 const nx = ox + dir.dx;
                 const ny = oy + dir.dy;
                 const loc = game.level?.at(nx, ny);
                 if (loc?.typ === IRONBARS) {
-                    ironBarsImpact = { x: ox, y: oy, barsX: nx, barsY: ny, pointBlank: step === 0 };
-                    break;
+                    const pointBlank = step === 0;
+                    const forcedHit = pointBlank ? false : rn2(5) === 0;
+                    if (forcedHit || heroThrownIronBarsClassHitObject(item)) {
+                        ironBarsImpact = { x: ox, y: oy, barsX: nx, barsY: ny, pointBlank, forcedHit };
+                        break;
+                    }
                 }
-                if (!loc || IS_OBSTRUCTED(loc.typ)) break;
+                if (!loc || (loc.typ !== IRONBARS && IS_OBSTRUCTED(loc.typ))) break;
                 ox = nx;
                 oy = ny;
                 targetMon = (game.level?.monsters || []).find(mon => mon.mx === ox && mon.my === oy) || null;
@@ -68793,22 +69338,7 @@ export async function rhack(_cmd) {
             game.context.move = 0;
             return;
         }
-        const itemQuantity = item.quan || 1;
         const attachedBallThrow = heroThrownAttachedBallObject(item);
-        const directLauncherAmmo = !!(heroLauncherAmmoData(item) && heroThrowAmmoAndLauncher(item, throwLauncher));
-        const directShotLimit = Math.max(0, Math.trunc(Number(game._throw_shot_limit || 0)));
-        const directLauncherShotCount = directLauncherAmmo
-            ? heroLauncherAmmoMultishotCount(item, throwLauncher, directShotLimit)
-            : 1;
-        const directThrownStackableWeapon = !directLauncherAmmo && heroThrownStackableWeaponMultishotObject(item);
-        const directThrownStackableWeaponShotCount = directThrownStackableWeapon
-            ? heroThrownStackableWeaponMultishotCount(item, directShotLimit)
-            : 1;
-        const directMultishotCount = directLauncherAmmo
-            ? directLauncherShotCount
-            : directThrownStackableWeaponShotCount;
-        const directCountForcesVolleyMessage = directShotLimit > 0
-            && (directLauncherAmmo || directThrownStackableWeapon);
         const ordinaryAirRecoilResult = !boomerangFlight.handled && ordinaryAirRecoilRange > 0
             ? attachedBallThrow
                 ? heroHorizontalThrowRecoilResultFromMessages(['You feel a tug from the iron ball.'])
@@ -68821,17 +69351,11 @@ export async function rhack(_cmd) {
             if (!ordinaryAirRecoilTrapResult?.lifeSaving && !ordinaryAirRecoilTrapResult?.fatal) return false;
             return applyLifeSavingOrFatalCommandMode(ordinaryAirRecoilTrapResult);
         };
-        if ((directLauncherAmmo || directThrownStackableWeapon)
-            && (directMultishotCount > 1 || directCountForcesVolleyMessage)
-            && !boomerangFlight.handled && !ironBarsImpact) {
+        if (directProjectileVolley) {
             const impactMessages = [];
             const landingMessages = [];
             const newsymTargets = [];
             for (let shot = 0; shot < directMultishotCount; shot++) {
-                const flight = heroFireProjectileFlightResult(ux, uy, dir, throwRange);
-                ox = flight.ox;
-                oy = flight.oy;
-                targetMon = flight.targetMon;
                 const shotId = itemQuantity - shot > 1 ? next_ident() : item.id;
                 const splitShot = shotId !== item.id;
                 const projectileObject = {
@@ -68845,18 +69369,23 @@ export async function rhack(_cmd) {
                     o_id: splitShot ? undefined : item.o_id,
                     _shopBillObjectId: splitShot ? undefined : item._shopBillObjectId,
                     quan: 1,
-                    ox,
-                    oy,
                     glyph: item.glyph || (item.cls === 'gem' ? '*' : ')'),
                     color: item.color || (item.cls === 'gem' ? CLR_GRAY : CLR_CYAN),
                 };
+                const flight = heroFireProjectileFlightResult(ux, uy, dir, throwRange, projectileObject, { ironBars: true });
+                ox = flight.ox;
+                oy = flight.oy;
+                targetMon = flight.targetMon;
+                projectileObject.ox = ox;
+                projectileObject.oy = oy;
                 if (itemQuantity - shot > 1) splitCarriedObjectShopBill(item, projectileObject, 1);
-                const impact = targetMon
+                const barsResult = await appendHeroProjectileIronBarsImpact(projectileObject, flight, impactMessages);
+                const impact = !barsResult.handled && targetMon
                     ? heroFireProjectileMonsterImpact(projectileObject, targetMon, throwLauncher, directLauncherAmmo)
                     : { handled: false, messages: [], consumed: false, hit: false, passiveTarget: null };
                 if (impact.handled) impactMessages.push(...impact.messages);
                 if (targetMon) newsymTargets.push(targetMon);
-                if (!impact.consumed) {
+                if (!impact.consumed && !barsResult.broke) {
                     const breakRoll = !impact.hit && !projectileLandingIsSoft(ox, oy) ? rn2(100) : null;
                     const landing = landProjectileObjectWithShopHandling(projectileObject, ox, oy, {
                         breakRoll,
@@ -68930,8 +69459,8 @@ export async function rhack(_cmd) {
         let impactObjectHit = false;
         let impactPassiveTarget = null;
         let boomerangSelfHitResult = null;
-        if (ironBarsImpact && heroThrownIronBarsBreakableClassHitObject(thrownObject)) {
-            const barsImpact = await heroThrownIronBarsBreakImpact(thrownObject, ironBarsImpact);
+        if (ironBarsImpact) {
+            const barsImpact = await heroThrownIronBarsImpact(thrownObject, ironBarsImpact);
             if (barsImpact.broke) {
                 if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
                 markThrownBrokenObjectDebt(thrownObject);
@@ -69369,48 +69898,50 @@ export async function rhack(_cmd) {
             await setMessage('You are physically incapable of throwing or shooting anything.');
             return;
         }
-        const projectile = (game.inventory || []).find(item =>
-            isProjectileItem(item) && (item.quivered || item.line?.includes('at the ready') || item.line?.includes('in quiver')))
-            || (game.inventory || []).find(isProjectileItem);
-        if (!projectile) {
-            game._fire_count = null;
-            await setMessage("You have no ammunition readied.");
+        let autoquiverMessage = '';
+        let autoquiverFailed = false;
+        const readiedItem = (game.inventory || []).find(item =>
+            item.quivered || item.line?.includes('at the ready') || item.line?.includes('in quiver'));
+        let projectile = readiedItem && isProjectileItem(readiedItem) ? readiedItem : null;
+        const returningWeapon = heroWieldedThrowAndReturnWeapon();
+        if (returningWeapon && heroFireReturnWeaponBeatsQuiver(readiedItem)) {
+            await beginHeroFireThrowAndReturnShortcut(returningWeapon, fireCount);
             return;
         }
-        let launcher = (game.inventory || []).find(item => {
-            return (item.wielded || item.line?.includes('weapon in'))
-                && heroThrowAmmoAndLauncher(projectile, item);
-        });
-        launcher ??= (game.inventory || []).find(item => {
-            return item.cls === 'weapon' && heroThrowAmmoAndLauncher(projectile, item);
-        });
-        let swapMoreLine = '';
-        if (launcher && !(launcher.wielded || launcher.line?.includes('weapon in'))) {
-            const launcherWasAlternate = launcher.alternate || launcher.line?.includes('alternate weapon');
-            const current = (game.inventory || []).find(item =>
-                item !== launcher && (item.wielded || item.line?.includes('weapon in')));
-            if (current) {
-                current.wielded = false;
-                current.alternate = true;
-                current.line = `${current.letter || '?'} - ${inventoryItemName(current)} (alternate weapon; not wielded)`;
-                if (launcherWasAlternate) swapMoreLine = `${current.line}.`;
+        if (!projectile && game.flags?.autoquiver) {
+            projectile = heroAutoquiverProjectile();
+            if (projectile) {
+                autoquiverMessage = `You ready: ${heroFireReadyLine(projectile)}.`;
+                heroReadyAutoquiverProjectile(projectile);
+            } else {
+                autoquiverFailed = true;
             }
-            launcher.wielded = true;
-            launcher.alternate = false;
-            launcher.line = `${launcher.letter || '?'} - ${inventoryItemName(launcher)} (weapon in right hand)`;
         }
-        game._fire_item_letter = projectile.letter;
-        game._fire_launcher_letter = launcher?.letter || null;
-        if (launcher) {
-            game._fire_swap_more_line = swapMoreLine;
-            game._fire_time_pending_after_more = 1;
-            game._fire_direction_pending_after_more = 1;
-            await setMessage(`${launcher.line || `${launcher.letter || '?'} - ${inventoryItemName(launcher)}`}.`, true);
-            game._command_mode = 'fireDirection';
+        if (!projectile) {
+            const polearm = !game.flags?.autoquiver && heroWieldedPolearm();
+            if (polearm) {
+                await beginHeroFirePolearmFallback(polearm);
+                return;
+            }
+            const bullwhip = !game.flags?.autoquiver && heroWieldedBullwhip();
+            if (bullwhip) {
+                game._fire_count = null;
+                await beginHeroBullwhipApply(bullwhip);
+                return;
+            }
+            const letters = inventoryLetters(isReadySuggestItem);
+            if (!letters) {
+                game._fire_count = null;
+                await setMessage(autoquiverFailed
+                    ? 'You have nothing appropriate for your quiver.'
+                    : "You have no ammunition readied.");
+                return;
+            }
+            await setMessage(`What do you want to fire? [${getobjPromptLetters(letters)} or ?*]`);
+            game._command_mode = 'fireQuiverObject';
             return;
         }
-        await setMessage('In what direction?');
-        game._command_mode = 'fireDirection';
+        await beginHeroFireProjectile(projectile, { readyMessage: autoquiverMessage });
         return;
     }
 
