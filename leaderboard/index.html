@@ -181,6 +181,67 @@ td.pct {
 .partial { color: var(--color-partial); }
 .fail { color: var(--color-fail); }
 .hidden { color: var(--color-text-muted); font-style: italic; }
+
+/* Rich tooltip popup. Used for explaining Playable=no verdicts and
+ * Speed/Anim diagnostics with more than the browser's native title=
+ * affordance gives. Triggered on hover or keyboard focus. */
+.lb-tip {
+    position: relative;
+    cursor: help;
+}
+.lb-tip > .lb-tip-pop {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: calc(100% + 0.4em);
+    right: 0;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    padding: 0.6em 0.85em;
+    border-radius: 4px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    white-space: normal;
+    width: 22em;
+    text-align: left;
+    font-size: 0.85em;
+    font-family: var(--font-serif);
+    color: var(--color-text);
+    z-index: 10;
+    line-height: 1.45;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+}
+.lb-tip:hover > .lb-tip-pop,
+.lb-tip:focus-within > .lb-tip-pop {
+    visibility: visible;
+    opacity: 1;
+}
+.lb-tip-pop strong {
+    display: block;
+    color: var(--color-accent-dark);
+    font-weight: 600;
+    margin-bottom: 0.25em;
+}
+.lb-tip-pop ul {
+    margin: 0.35em 0 0 1em;
+    padding: 0;
+}
+.lb-tip-pop li {
+    margin: 0.15em 0;
+    list-style: disc;
+}
+.lb-tip-pop code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    background: var(--color-row-hover);
+    padding: 0 0.25em;
+    border-radius: 2px;
+    word-break: break-all;
+}
+.lb-tip-pop .err-class {
+    font-family: var(--font-mono);
+    color: var(--color-fail);
+}
 .sparkline { width: 100px; }
 .sparkline svg { display: inline-block; vertical-align: middle; width: 100px; height: 20px; }
 .time {
@@ -659,27 +720,57 @@ async function loadLeaderboard() {
                             ? `<span>${Math.round(speed.startup_ms)}+${(speed.per_move_ms ?? 0).toFixed(1)}</span>`
                             : '<span class="hidden">&mdash;</span>'}
                     </td>
-                    <td class="pct supplemental" title="${(() => {
-                        if (!playability) return 'Playability not yet measured for this fork.';
-                        const parts = [];
-                        const browserOk = playability.browser_ok;
-                        if (browserOk === false) {
-                            parts.push(`Browser load FAILED (${playability.error_class || 'unknown'})`);
-                            if (playability.error_message) parts.push(playability.error_message.slice(0, 200));
-                        } else if (browserOk === true) {
-                            parts.push('Browser load OK.');
-                        }
-                        if (playability.ms_per_move != null) {
-                            const t = playability.threshold_ms_per_move ?? 5;
-                            parts.push(`Timing: ${playability.ms_per_move.toFixed(2)} ms/move (threshold < ${t}), ${fmt(playability.total_moves || 0)} moves across ${playability.sessions || 0} sessions`);
-                            if (playability.sessions_killed) parts.push(`${playability.sessions_killed} sessions killed at per-session budget`);
-                            if (playability.aborted_early) parts.push('aborted early on total budget');
-                        }
-                        return parts.join(' · ');
-                    })()}">
+                    <td class="pct supplemental lb-tip" tabindex="${playability ? 0 : -1}">
                         ${playability
                             ? `<span class="${playability.playable ? 'pass' : 'fail'}">${playability.playable ? 'yes' : 'no'}</span>`
                             : '<span class="hidden">&mdash;</span>'}
+                        ${(() => {
+                            if (!playability) {
+                                return '<span class="lb-tip-pop"><strong>Not measured</strong>The judge has not produced a playability result for this fork yet.</span>';
+                            }
+                            const pop = [];
+                            if (playability.playable) {
+                                pop.push('<strong>Playable</strong>');
+                            } else {
+                                pop.push('<strong>Not playable</strong>');
+                            }
+                            // Browser-load line.
+                            if (playability.browser_ok === false) {
+                                pop.push(
+                                    `<div>Browser load <span class="err-class">FAILED</span> &mdash; <span class="err-class">${playability.error_class || 'unknown'}</span></div>`
+                                );
+                                if (playability.error_message) {
+                                    const esc = String(playability.error_message)
+                                        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                                        .slice(0, 240);
+                                    pop.push(`<div><code>${esc}</code></div>`);
+                                }
+                            } else if (playability.browser_ok === true) {
+                                pop.push('<div>Browser load OK (page loaded in headless Chromium with no script errors).</div>');
+                            }
+                            // Timing line.
+                            if (playability.ms_per_move != null) {
+                                const t = playability.threshold_ms_per_move ?? 5;
+                                const overThresh = playability.ms_per_move >= t;
+                                const moves = fmt(playability.total_moves || 0);
+                                const sess = playability.sessions || 0;
+                                pop.push(
+                                    `<div>Timing: <code>${playability.ms_per_move.toFixed(2)} ms/move</code> across ${moves} moves in ${sess} sessions (threshold &lt; ${t}). `
+                                    + (overThresh
+                                        ? '<span class="err-class">Over threshold</span> &mdash; play would feel laggy when holding a movement key.'
+                                        : 'Under threshold.')
+                                    + '</div>'
+                                );
+                                if (playability.sessions_killed) {
+                                    pop.push(`<div><span class="err-class">${playability.sessions_killed}</span> session(s) hit the per-session budget and were killed before completing.</div>`);
+                                }
+                                if (playability.aborted_early) {
+                                    pop.push('<div><span class="err-class">Aborted early</span> on total time budget &mdash; remaining sessions were not exercised.</div>');
+                                }
+                            }
+                            pop.push('<div style="margin-top:.4em;color:var(--color-text-muted);font-size:.9em">Both checks must pass: browser load + ms/move under threshold.</div>');
+                            return `<span class="lb-tip-pop">${pop.join('')}</span>`;
+                        })()}
                     </td>
                     <td class="pct sessions" title="Sessions fully matched (public + held-out).">
                         <span class="${pctClass(combinedSessPct)}">${pub.passing || 0}</span>
