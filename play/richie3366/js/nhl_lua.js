@@ -1,13 +1,50 @@
 // nhl_lua.js — Fengari runner for upstream **`dat/*.lua`** des protofiles (minetn vertical slice).
 // C ref: nhlua.c `load_lua` / nhlib.lua bootstrap.
+//
+// Fengari loads lazily: Node uses npm `fengari`; browser uses globalThis.fengari
+// from js/vendor/fengari-web.js (see index.html).
 
-import * as fengari from 'fengari';
-import { to_luastring } from 'fengari/src/fengaricore.js';
 import { nhlRn2LikeC, nhlRandomLikeC } from './nhl_rng.js';
 import * as Des from './des_api.js';
 import { BOOL_RANDOM } from './const.js';
 
-const { lua, lauxlib, lualib } = fengari;
+/** @type {import('fengari').lua | undefined} */
+let lua;
+/** @type {import('fengari').lauxlib | undefined} */
+let lauxlib;
+/** @type {import('fengari').lualib | undefined} */
+let lualib;
+/** @type {import('fengari/src/fengaricore.js').to_luastring | undefined} */
+let to_luastring;
+
+function isNodeRuntime() {
+    return typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
+}
+
+async function getFengariLikeC() {
+    if (isNodeRuntime()) {
+        const [fengari, core] = await Promise.all([
+            import('fengari'),
+            import('fengari/src/fengaricore.js'),
+        ]);
+        return {
+            lua: fengari.lua,
+            lauxlib: fengari.lauxlib,
+            lualib: fengari.lualib,
+            to_luastring: core.to_luastring,
+        };
+    }
+    const f = globalThis.fengari;
+    if (!f?.lua || !f?.lauxlib || !f?.lualib || !f?.to_luastring) {
+        throw new Error('fengari-web not loaded — index.html must include js/vendor/fengari-web.js');
+    }
+    return {
+        lua: f.lua,
+        lauxlib: f.lauxlib,
+        lualib: f.lualib,
+        to_luastring: f.to_luastring,
+    };
+}
 
 /** @type {WeakMap<object, Des.NhlDesCtx>} */
 const ctxByState = new WeakMap();
@@ -74,6 +111,8 @@ function tableRegionOpt(L, tidx, key) {
 export async function runLuaProtofileLikeC(g, name, mkmapDeps) {
     const base = String(name ?? '').replace(/\.lua$/i, '');
     if (!base || base !== 'minetn-1') return false;
+
+    ({ lua, lauxlib, lualib, to_luastring } = await getFengariLikeC());
 
     const mksobj = mkmapDeps.mksobj;
     const mkcorpstat = mkmapDeps.mkcorpstat;
