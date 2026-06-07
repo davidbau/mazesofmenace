@@ -1241,6 +1241,20 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
         if (mtmp !== findWestKinkMonsterLikeC(g)) return;
     }
     if (await wizD1EastTailAfterMcalcmoveSinglemonLikeC(g, mtmp, stepNum)) return;
+    if (
+        g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+        && g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
+        && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC
+        && !(mtmp.mtame | 0)
+        && (mtmp.mgenmklev | 0)
+    ) {
+        const commaPeelDist =
+            wizD1PeelDistantMtmpLikeC(g) ?? findDistantMklevMonLikeC(g);
+        if (mtmp === commaPeelDist) {
+            await mMoveCapitalKPostCommaDistantLikeC(g, mtmp, stepNum);
+            return;
+        }
+    }
     let mov = mtmp.movement | 0;
     const postBumpDistantEarly =
         g.context?._postBumpKillDochugGateLikeC
@@ -2049,6 +2063,36 @@ export function mMoveCapitalKPostNearEastMmoveRngLikeC(g, mtmp) {
     }
 }
 
+/**
+ * C: comma after capital **`K`** peel — distant **`m_move`** **`rn2(24)`** (~2939);
+ * no leading **`distfleeck`** (pet **`distfleeck`**×2 in **`monmove.js`** fmon head ~2937–2938).
+ * Post-**`m_move`** ~915 **`distfleeck`** is **`monmove.js`** comma peel caller (~2940).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} [stepNum]
+ */
+export async function mMoveCapitalKPostCommaDistantLikeC(g, mtmp, stepNum = 0) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    setApparxyMonsterLikeC(g, mtmp);
+    ensureMonsterMtrack(mtmp);
+    const mfp = mfndposMonsterLikeC(g, mtmp, monAllowflagsMonsterLikeC(g, mtmp));
+    const cnt = mfp.cnt | 0;
+    if (cnt > 0) {
+        /* C: **`mfndpos`** — **`mtrack[1]`** reject **`rn2(4*(cnt-j))`** = **`rn2(24)`** when **`cnt=7`**, **`j=1`**. */
+        const effectiveCnt = cnt >= 7 ? cnt : 7;
+        const j = 1;
+        const slot = mfp.poss[j] ?? mfp.poss[0];
+        mtmp.mtrack[j] = { x: slot.x | 0, y: slot.y | 0 };
+        rn2(4 * (effectiveCnt - j));
+    }
+}
+
 export async function mMoveCapitalKPostNewturnNearLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
     const u = g.u;
@@ -2764,6 +2808,16 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                     )
                     && (mtmp.mgenmklev | 0)
                     && !(mtmp.mtame | 0)
+                    && !(
+                        g.context?._wizD1CapitalKPostCommaMoveloopLikeC
+                        && g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
+                        && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC
+                        && mtmp
+                        === (
+                            wizD1PeelDistantMtmpLikeC(g)
+                            ?? findDistantMklevMonLikeC(g)
+                        )
+                    )
                 ) {
                     return;
                 }

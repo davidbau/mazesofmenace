@@ -1609,6 +1609,10 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
             && !g.context?._wizD1CapitalKPostPeelPetLikeC
             && !g.context?._touristD1LPostMovemonPeelMfndposLikeC
             && !g.context?._touristD1LPostAfterPeelNewturnTailMfndposLikeC
+            && !(
+                g.context?._wizD1LPetInventAfterNewturnChcntOnlyLikeC
+                && g.context?._wizD1CapitalKPostCommaPetLikeC
+            )
         ) {
             const k = edog ? uncursedcnt : cnt;
             let backtrack = false;
@@ -3481,16 +3485,22 @@ export function dogMoveCapitalKPostCommaPetLikeC(g, mtmp) {
             edog,
         );
         if ((goal.appr | 0) === -2) return MMOVE_NOTHING;
+        delete ctx._dogfoodRankCacheLikeC;
         ctx._wizD1Step1ObjResistsPrescanLikeC = true;
         dogGoalWizardD1Step1ObjResistsPrescanLikeC(g, mtmp);
-        dogMoveMfndposPickLikeC(
-            g,
-            mtmp,
-            goal.gx | 0,
-            goal.gy | 0,
-            goal.appr | 0,
-            whappr,
-        );
+        /* C: **`dog_move`** — one **`fobj`** **`dogfood`** after invent prescan (~2928). */
+        for (let o = g.level?.fobj; o; o = o.nobj) {
+            dogfoodRankComputeLikeC(o);
+            break;
+        }
+        delete ctx._wizD1Step1ObjResistsPrescanLikeC;
+        delete ctx._dogfoodRankCacheLikeC;
+        ctx._wizD1Step1CachedDogGoalLikeC = {
+            gx: goal.gx | 0,
+            gy: goal.gy | 0,
+            appr: goal.appr | 0,
+        };
+        dogMoveMfndposPickFromCachedGoalWizD1LikeC(g, mtmp);
     } finally {
         delete ctx._wizD1CapitalKPostCommaPetLikeC;
         delete ctx._wizD1LPetInventAfterNewturnChcntOnlyLikeC;

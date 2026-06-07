@@ -58,6 +58,7 @@ import {
     movemonSinglemonLikeC,
     mMoveDistfleeckOnlyTurnLikeC,
     mMoveCapitalKPostNewturnNearLikeC,
+    mMoveCapitalKPostCommaDistantLikeC,
     mMoveWizardD1Step1DistantAfterPeelLikeC,
     mMoveWizardD1EastTailCorridorRestLikeC,
     mMoveWizardD1LPostTailDistantLikeC,
@@ -1237,7 +1238,11 @@ export async function movemon(stepNum) {
                 }
                 if (commaDistant) {
                     setApparxyMonsterLikeC(g, commaDistant);
-                    await movemonSinglemonLikeC(g, commaDistant, effStepNum);
+                    await mMoveCapitalKPostCommaDistantLikeC(
+                        g,
+                        commaDistant,
+                        effStepNum,
+                    );
                     await distfleeckMonsterApplyLikeC(g, commaDistant);
                 }
                 await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
