@@ -18,6 +18,9 @@ import { game } from './gstate.js';
 
 /** C: run-**`K`** deferred peel — moveloop owns new-turn passes (~2908–2912). */
 async function runInlineNewTurnUnlessDeferredPeelLikeC(g, stepNum) {
+    if (g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC) {
+        return;
+    }
     const commaPeelNewTurnLikeC =
         !!g.context?._wizD1CapitalKPostCommaFmonHeadDoneLikeC
         && !g.context?._wizD1CapitalKPostCommaPeelDoneLikeC
@@ -332,8 +335,24 @@ export async function movemon(stepNum) {
     ) {
         return false;
     }
-    /* C: comma-**`U`** — outer moveloop tail done; block surplus **`fmon`** / fourth new-turn. */
-    if (g.context?._wizD1CommaLFirstUPostTailOuterMoveloopDoneLikeC) {
+    /* C: comma-**`U`** — defer **`fmon`** until moveloop surplus tail resume (~3059+). */
+    if (
+        g.context?._wizD1CommaSurplusTailPendingLikeC
+        && g.context?._wizD1CommaSecondUSurplusArmedLikeC
+        && !g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
+    ) {
+        return false;
+    }
+    /* C: comma-**`U`** — outer moveloop tail done; block surplus **`fmon`** unless post-fourth
+     * peel is armed (~3058+). */
+    if (
+        g.context?._wizD1CommaLFirstUPostTailOuterMoveloopDoneLikeC
+        && !g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
+        && !(
+            g.context?._wizD1CommaSecondUSurplusArmedLikeC
+            && (g.moves | 0) >= 37
+        )
+    ) {
         return false;
     }
     if (
@@ -386,6 +405,107 @@ export async function movemon(stepNum) {
         delete g.context._searchPass1NearMonLikeC;
     }
     const effStepNum = effectiveMovemonStepNumLikeC(g, stepNum);
+    /* C: comma-**`U`** — post-fourth surplus **`fmon`** **`m_move`** (~3058+). */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
+        && (effStepNum | 0) === 1
+    ) {
+        const petSurplus = (g.level?.monsters ?? []).find(
+            (m) => (m.mtame | 0) !== 0,
+        );
+        const spendSurplusMoveLikeC = (mtmp) => {
+            if (!mtmp) return;
+            setApparxyMonsterLikeC(g, mtmp);
+            let mov = mtmp.movement | 0;
+            if (mov < NORMAL_SPEED) {
+                mtmp.movement = NORMAL_SPEED;
+                mov = NORMAL_SPEED;
+            }
+            mtmp.movement = mov - NORMAL_SPEED;
+        };
+        const nearMklevSurplus = wizD1CommaLFirstUNearMklevMonLikeC(g);
+        const surplusHostile = fmonListForMovemonLikeC(g, effStepNum).filter(
+            (m) => !(m.mtame | 0) && m !== petSurplus,
+        );
+        const strayTailDone =
+            g.context._wizD1CommaSurplusStrayTailDoneSetLikeC
+            ?? (g.context._wizD1CommaSurplusStrayTailDoneSetLikeC = new WeakSet());
+        const nonMklevSurplusDone =
+            g.context._wizD1CommaSurplusNonMklevDoneSetLikeC
+            ?? (g.context._wizD1CommaSurplusNonMklevDoneSetLikeC = new WeakSet());
+        let passList = surplusHostile.some(
+            (m) => (m.movement | 0) >= NORMAL_SPEED,
+        )
+            ? surplusHostile
+            : [];
+        /* C: surplus tail — stray mklev before near peel (~3055–3057), near last (~3058). */
+        if (passList.length === 0) {
+            const strayMklev = surplusHostile.find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && m !== nearMklevSurplus
+                    && !strayTailDone.has(m),
+            );
+            if (strayMklev) {
+                passList = [strayMklev];
+            } else if (
+                nearMklevSurplus
+                && !g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
+            ) {
+                passList = [nearMklevSurplus];
+            } else if (g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC) {
+                const nonMklev = surplusHostile.find(
+                    (m) => !(m.mgenmklev | 0) && !nonMklevSurplusDone.has(m),
+                );
+                if (nonMklev) passList = [nonMklev];
+            }
+        }
+        for (const m of passList) {
+            spendSurplusMoveLikeC(m);
+            await movemonSinglemonLikeC(g, m, effStepNum);
+            if (
+                (m.mgenmklev | 0)
+                && m !== nearMklevSurplus
+            ) {
+                strayTailDone.add(m);
+            } else if (!(m.mgenmklev | 0)) {
+                nonMklevSurplusDone.add(m);
+            }
+        }
+        const hostilesLeft = (g.level?.monsters ?? []).filter(
+            (m) => !(m.mtame | 0) && m !== petSurplus,
+        );
+        const nearMklevStillPendingLikeC =
+            nearMklevSurplus
+            && !passList.includes(nearMklevSurplus)
+            && !g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
+            && surplusHostile.some((m) => m !== nearMklevSurplus);
+        const strayMklevStillPendingLikeC = surplusHostile.some(
+            (m) =>
+                (m.mgenmklev | 0)
+                && m !== nearMklevSurplus
+                && !strayTailDone.has(m),
+        );
+        const nonMklevStillPendingLikeC =
+            g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
+            && surplusHostile.some(
+                (m) => !(m.mgenmklev | 0) && !nonMklevSurplusDone.has(m),
+            );
+        const surplusScanMoreLikeC = !!(
+            g.context?._somebodyCanMoveLikeC
+            || hostilesLeft.some((m) => (m.movement | 0) >= NORMAL_SPEED)
+            || nearMklevStillPendingLikeC
+            || strayMklevStillPendingLikeC
+            || nonMklevStillPendingLikeC
+        );
+        if (g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC) {
+            g.context._wizD1CommaSurplusScanMoreLikeC = surplusScanMoreLikeC;
+        }
+        return surplusScanMoreLikeC;
+    }
     if (g.context?._wizD1Step1InventPostDoneLikeC) {
         delete g.context._wizD1Step1GateDochugLikeC;
     }
@@ -688,6 +808,14 @@ export async function movemon(stepNum) {
             g.urole?.abbr === 'Wiz'
             && g.context?._wizD1CommaLFirstUPostTailThirdMovemonPendingLikeC
             && !g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-fourth surplus **`fmon`** (~3058+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
             && (effStepNum | 0) === 1
         ) {
             mons = [];
@@ -1179,6 +1307,18 @@ export async function movemon(stepNum) {
                 ) {
                     continue;
                 }
+                const nearCommaUPostFourth = wizD1CommaLFirstUNearMklevMonLikeC(g);
+                if (
+                    g.urole?.abbr === 'Wiz'
+                    && (g.u?.uz?.dnum | 0) === 0
+                    && (g.u?.uz?.dlevel | 0) === 1
+                    && (g.moves | 0) >= 37
+                    && g.context?._wizD1CommaSecondUSurplusArmedLikeC
+                    && m === nearCommaUPostFourth
+                    && !(m.mtame | 0)
+                ) {
+                    g.context._wizD1CommaPostFourthHostileSurplusDoneLikeC = true;
+                }
                 await movemonSinglemonLikeC(g, m, effStepNum);
             }
             /* C: comma-**`l`** → first **`U`** — near **`distfleeck`**×2 + distant **`m_move`** (~2993+). */
@@ -1540,7 +1680,10 @@ export async function movemon(stepNum) {
         ) {
             return false;
         }
-        if (g.context?._wizD1CommaLFirstUPostTailOuterMoveloopDoneLikeC) {
+        if (
+            g.context?._wizD1CommaLFirstUPostTailOuterMoveloopDoneLikeC
+            && !g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
+        ) {
             return false;
         }
         /* C: wizard D:1 second **`L`** — pet **`mfndpos`** after east-tail peel (~2726+). */
@@ -1894,7 +2037,26 @@ export async function movemon(stepNum) {
                 setApparxyMonsterLikeC(g, petCommaUThird);
                 await distfleeckMonsterApplyLikeC(g, petCommaUThird);
             }
+            /* C: post-pet **`distfleeck`** (~3047) — stray **`m_move`** **`rn2(12)`**×N (~3048+); no
+             * fourth new-turn before hero **`UU`** continuation. */
+            const strayCommaUPostPet = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && m !== petCommaUThird,
+            );
+            if (strayCommaUPostPet) {
+                g.context._wizD1CommaLFirstUPostTailStrayPostFourthLikeC = true;
+                try {
+                    await movemonSinglemonLikeC(g, strayCommaUPostPet, effStepNum);
+                } finally {
+                    delete g.context._wizD1CommaLFirstUPostTailStrayPostFourthLikeC;
+                }
+            }
             g.context._wizD1CommaLFirstUPostTailOuterMoveloopDoneLikeC = true;
+            /* C: hero **`UU`** second **`U`** — near **`distfleeck`** (~3054) after fourth new-turn (~3051–3053). */
+            g.context._wizD1CommaLFirstUPostTailPostFourthDfPendingLikeC = true;
+            g.context._wizD1CommaSecondUSurplusArmedLikeC = true;
             return false;
         }
         /* C: tourist D:1 run-east **`L`** — fourth **`movemon`** after third-pass new-turn
@@ -3268,11 +3430,14 @@ export async function movemon(stepNum) {
 
     /* C: hero **`b`** — one **`fmon`** pass for distant mon only (no **`monscanmove`** re-entry). */
     if ((stepNum | 0) === 5) return false;
-    /* C: wizard D:1 — one **`movemon()`** pass per hero turn before search **`monscanmove`** re-entry. */
+    /* C: wizard D:1 — one **`movemon()`** pass per hero turn before search **`monscanmove`** re-entry;
+     * comma-**`U`** post-fourth surplus **`fmon`** may re-enter until near mklev peel done (~3074). */
     if (
         g.urole?.abbr === 'Wiz'
         && (g.u?.uz?.dnum | 0) === 0
         && (g.u?.uz?.dlevel | 0) === 1
+        && !g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
+        && !g.context?._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC
     ) {
         return false;
     }

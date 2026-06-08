@@ -101,6 +101,15 @@ export function fmonListForMcalcmoveLikeC(g) {
  */
 export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
+    /* C: comma-**`U`** second hero **`U`** — surplus hostile **`m_move`** (~3058+). */
+    if (g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC) {
+        const nearMklev = wizD1CommaLFirstUNearMklevMonLikeC(g);
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const hostile = mons.filter(
+            (m) => !(m.mtame | 0) && m !== nearMklev && m !== pet,
+        );
+        return hostile.length ? hostile : mons.filter((m) => !(m.mtame | 0));
+    }
     /* C: comma-U post-third-peel — east-door **`m_move`** **`rn2(12)`** (~3036) before distant/rest. */
     if (g.context?._wizD1CommaLFirstUPostTailFmonTailPendingLikeC) {
         const distant =

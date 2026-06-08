@@ -325,6 +325,20 @@ export async function rhack(key) {
             delete g.context._wizD1PostEastTailWalkCompleteLikeC;
             delete g.context._wizD1CommaLFirstUFirstDochugDoneLikeC;
         }
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && !g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
+            && (
+                g.context?._wizD1CommaLFirstUPostTailPostFourthDfPendingLikeC
+                || g.context?._wizD1CommaSurplusTailPendingLikeC
+            )
+            && peekReplayMoves(-1) === 'U'.charCodeAt(0)
+            && peekReplayMoves(-2) === 'U'.charCodeAt(0)
+        ) {
+            g.context._wizD1CommaLFirstUPostTailAwaitSecondHeroULikeC = true;
+        }
         const moved = await domoveHeroDirLikeC(dx, dy);
         if (wizD1DeferRunKLikeC) {
             /* C: capital **`K`** alone — one domove, 0 monster RNG; comma promotes peel (~2818+). */
