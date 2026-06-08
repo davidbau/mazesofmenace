@@ -22916,6 +22916,334 @@ function directMeleePriestRetaliation(messages, priest) {
     return true;
 }
 
+function directMeleePriestInTempleRoom(priest) {
+    const loc = game.level?.at?.(priest?.mx, priest?.my);
+    const room = levelRoomByRoomno(loc?.roomno || 0);
+    return !!room && room.rtype === TEMPLE;
+}
+
+function directMeleeGrowlVerb(mon) {
+    const sound = String(mon?.data?.msound || mon?.msound || '').toLowerCase();
+    if (!sound) return 'growls';
+    if (sound.includes('hiss') || sound.includes('mew')) return 'hisses';
+    if (sound.includes('roar')) return 'roars';
+    if (sound.includes('bellow')) return 'bellows';
+    if (sound.includes('buzz')) return 'buzzes';
+    if (sound.includes('squawk')) return 'screeches';
+    if (sound.includes('sq') || sound.includes('sque')) return 'squeals';
+    if (sound.includes('neigh')) return 'neighs';
+    if (sound.includes('wail')) return 'wails';
+    if (sound.includes('groan')) return 'groans';
+    if (sound.includes('moo')) return 'lows';
+    if (sound.includes('silent')) return '';
+    return 'screams';
+}
+
+function directMeleeMonsterCanBeSeen(mon) {
+    return !!mon && !game.u?.blind && !mon.mundetected
+        && (!mon.minvis || game.u?.seeInvisible) && couldsee(mon.mx, mon.my);
+}
+
+function directMeleeWakeMessage(mon, interesting = false) {
+    const alive = String(mon?.data?.name || mon?.name || '').toLowerCase() === 'flesh golem'
+        ? " It's alive!" : '';
+    return `${fireScrollMonsterName(mon)} wakes up${interesting ? '!' : '.'}${alive}`;
+}
+
+function directMeleeGrowlSuppressed(mon) {
+    return !!(mon?.helpless || mon?.mfrozen || mon?.mcanmove === false || mon?.mcanmove === 0)
+        || !directMeleeGrowlVerb(mon);
+}
+
+function directMeleeGrowlWakeNearby(mon, messages) {
+    const level = Math.max(0, Math.trunc(Number(mon?.data?.mlevel ?? mon?.mlevel ?? 0) || 0));
+    const distance = level * 18;
+    for (const sleeper of game.level?.monsters || []) {
+        if (!sleeper || sleeper === mon || sleeper.dead || (sleeper.mhp != null && sleeper.mhp <= 0))
+            continue;
+        const dx = (sleeper.mx || 0) - (mon?.mx || 0);
+        const dy = (sleeper.my || 0) - (mon?.my || 0);
+        if (distance !== 0 && dx * dx + dy * dy >= distance) continue;
+        if (sleeper.msleeping && directMeleeMonsterCanBeSeen(sleeper))
+            messages.push(directMeleeWakeMessage(sleeper, false));
+        sleeper.msleeping = 0;
+        if (!(sleeper.unique || sleeper.data?.unique || sleeper.data?.uniq))
+            clearDirectMeleeWaitStrategyMask(sleeper);
+    }
+    disturbBuriedZombieCorpseTimersAt(mon?.mx || 0, mon?.my || 0);
+}
+
+function directMeleeStrictElberethAtHero() {
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    const now = game.moves || 0;
+    return (game.level?.engravings || []).find(engr => {
+        if (!engr || engr.x !== ux || engr.y !== uy || engr.type === HEADSTONE) return false;
+        const engrTime = engr.engr_time ?? engr.time;
+        if (engrTime != null && Number(engrTime) > now) return false;
+        return String(engr.text || '').toLowerCase() === 'elbereth';
+    }) || null;
+}
+
+function directMeleeDeleteEngravingAtHero() {
+    if (!game.level?.engravings) return;
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    game.level.engravings = game.level.engravings.filter(engr => engr.x !== ux || engr.y !== uy);
+}
+
+function directMeleeScareMonsterScrollAtHero() {
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    return (game.level?.objects || []).some(obj =>
+        obj && !obj.buried && obj.ox === ux && obj.oy === uy
+        && (obj.otyp === SCR_SCARE_MONSTER || obj.scrollIndex === 3));
+}
+
+function directMeleePriestInOwnTemple(priest) {
+    const shrine = priest?.shrine;
+    return !!(priest?.ispriest && shrine
+        && game.level?.at?.(priest.mx, priest.my)?.roomno === shrine.room
+        && directMeleePriestHasShrine(priest));
+}
+
+function directMeleeMonsterIsVampireOrShifter(mon) {
+    const data = mon?.data || {};
+    const rawMlet = String(data.mlet ?? mon?.mlet ?? data.glyph ?? mon?.glyph ?? '');
+    const mlet = rawMlet.toLowerCase();
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return rawMlet === 'V' || mlet === 'vampire'
+        || mon?.vampshifter || data.vampshifter
+        || mon?.cham === 'vampire' || data.cham === 'vampire'
+        || mon?.vampBase === 'vampire' || data.vampBase === 'vampire'
+        || ['vampire', 'vampire lord', 'vampire lady', 'vampire leader',
+            'vampire mage'].includes(name);
+}
+
+function directMeleeHeroAltarScaresVampire(mon) {
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    return game.level?.at?.(ux, uy)?.typ === ALTAR
+        && directMeleeMonsterIsVampireOrShifter(mon);
+}
+
+function directMeleeOnscaryAtHero(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    const mlet = String(data.mlet ?? mon?.mlet ?? '');
+    if (mon?.iswiz || data.iswiz || name === 'wizard of yendor') return false;
+    if (mon?.lawfulMinion || data.lawfulMinion || data.lminion) return false;
+    if (mlet === 'A' || name === 'angel' || mon?.rider || data.rider) return false;
+    if (mlet === '@' || mon?.unique || data.unique || data.uniq || data.nemesis) return false;
+    if ((mon?.isshk && shopkeeperInHisShop(mon)) || directMeleePriestInOwnTemple(mon)) return false;
+    if (directMeleeHeroAltarScaresVampire(mon)) return true;
+    if (directMeleeScareMonsterScrollAtHero()) return true;
+    if (mon?.isshk || mon?.isgd || mon?.guard) return false;
+    if (mon?.mcansee === false || mon?.mcansee === 0) return false;
+    if (name === 'minotaur') return false;
+    if (game.inhell || In_endgame(game.u?.uz)) return false;
+    return true;
+}
+
+function directMeleePeacefulResponderCanSeeHero(mon, attacked) {
+    if (!mon || mon === attacked || mon.dead || mon.mhp <= 0) return false;
+    const data = mon.data || {};
+    if (!mon.mpeaceful || mon.msleeping || data.mindless || mon.mindless) return false;
+    if (mon.mcansee === false || mon.mcansee === 0 || mon.blind) return false;
+    if (!couldsee(mon.mx ?? 0, mon.my ?? 0)) return false;
+    if (game.u?.invisible && !(mon.seeInvisible || mon.mseeinvis || data.seeInvisible)) return false;
+    return true;
+}
+
+function directMeleeResponderIsOrdinaryHumanoid(mon) {
+    const data = mon?.data || {};
+    const mlet = String(data.mlet ?? mon?.mlet ?? '');
+    return !!(data.humanoid || mon?.humanoid || mlet === '@');
+}
+
+function directMeleeResponderIsHumanoidBranch(mon) {
+    return directMeleeResponderIsOrdinaryHumanoid(mon) || !!mon?.isshk || !!mon?.ispriest;
+}
+
+function directMeleeResponderIsQuestLeader(mon) {
+    const data = mon?.data || {};
+    if (mon?.questLeader || data.questLeader) return true;
+    const sound = String(mon?.msound ?? mon?.sound ?? data.msound ?? data.sound ?? '')
+        .toLowerCase().replace(/^ms_/, '');
+    if (sound !== 'leader') return false;
+    const roleName = game.urole?.name?.m || game._startup_role || '';
+    const leader = String(QUEST_ROLE_DATA[roleName]?.leader || '').toLowerCase();
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return !!leader && name === leader;
+}
+
+function directMeleeResponderAttackedRoleGuardian(attacked) {
+    const name = String(attacked?.data?.name || attacked?.name || '').toLowerCase();
+    return tipHatMonsterIsRoleQuestGuardian(attacked, name);
+}
+
+function directMeleeResponderShrugsInsteadOfAnger(mon, attacked) {
+    if (mon?.isshk || mon?.ispriest) return true;
+    return directMeleeResponderIsQuestLeader(mon)
+        && !directMeleeResponderAttackedRoleGuardian(attacked);
+}
+
+function directMeleeResponderGasp(mon) {
+    if (heroIsDeaf() || rn2(5)) return { exclaimed: false, text: '', needPunct: false };
+    const data = mon?.data || {};
+    let msound = String(data.msound || data.sound || mon?.msound || mon?.sound || '')
+        .toUpperCase().replace(/^MS_/, '');
+    if (!msound && (data.humanoid || mon?.humanoid)) msound = 'HUMANOID';
+    if (msound === 'PRIEST') {
+        const coaligned = Number(game.u?.ualign?.type ?? A_NEUTRAL) === tipHatPriestAlign(mon);
+        if (!coaligned) msound = 'SILENT';
+    }
+    const canGasp = ['HUMANOID', 'ARREST', 'SOLDIER', 'GUARD', 'NURSE', 'SEDUCE',
+        'LEADER', 'GUARDIAN', 'SELL', 'ORACLE', 'PRIEST', 'BOAST',
+        'IMITATE'].includes(msound);
+    if (!canGasp) return { exclaimed: false, text: '', needPunct: false };
+    const exclam = ['Gasp!', 'Uh-oh.', 'Oh my!', 'What?', 'Why?'][rn2(5)];
+    const name = fireScrollMonsterName(mon);
+    if (/^gasp/i.test(exclam))
+        return { exclaimed: true, text: `${name} gasps`, needPunct: true };
+    return { exclaimed: true, text: `${name} exclaims "${exclam}"`, needPunct: false };
+}
+
+function directMeleePeacefulHumanoidBystandersRespond(attacked, messages) {
+    for (const mon of game.level?.monsters || []) {
+        if (!directMeleePeacefulResponderCanSeeHero(mon, attacked)) continue;
+        if (isTownWatchMonster(mon)) continue;
+        if (!directMeleeResponderIsHumanoidBranch(mon)) continue;
+
+        const gasp = directMeleeResponderGasp(mon);
+        if (directMeleeResponderShrugsInsteadOfAnger(mon, attacked)) {
+            if (gasp.text) messages.push(`${gasp.text} then shrugs.`);
+            continue;
+        }
+
+        const level = Number(mon.data?.mlevel ?? mon.m_lev ?? 0);
+        const guardian = mon.data?.guardian || mon.guardian || mon.data?.msound === 'MS_GUARDIAN';
+        const alreadyFleeing = !!(mon.mflee || mon.mfleetim);
+        if (!guardian && level < rn2(10)) {
+            mon.mflee = 1;
+            mon.mfleetim = Math.min((mon.mfleetim || 0) + rn2(50) + 25, 127);
+            if (gasp.exclaimed && game.flags?.verbose !== false && !alreadyFleeing) {
+                gasp.text = `${gasp.text} and then turns to flee.`;
+                gasp.needPunct = false;
+            } else if (!gasp.exclaimed) {
+                messages.push(`${fireScrollMonsterName(mon)} turns to flee.`);
+            }
+        }
+        if (gasp.text) messages.push(`${gasp.text}${gasp.needPunct ? '.' : ''}`);
+        if (mon.mtame || mon.pet) continue;
+        mon.mpeaceful = 0;
+        mon.hostile = true;
+        mon.angry = true;
+        clearDirectMeleeWaitStrategyMask(mon);
+        if (game.u?.ualign) {
+            game.u.ualign.record = (game.u.ualign.record || 0) - 1;
+            game.u.ualign.abuse = (game.u.ualign.abuse || 0) + 1;
+        }
+        if (!gasp.exclaimed) messages.push(`${fireScrollMonsterName(mon)} gets angry!`);
+    }
+}
+
+function directMeleeSetmangryElberethHypocrisy(mon, messages) {
+    if (!directMeleeStrictElberethAtHero()) return false;
+    if (!mon?.mpeaceful && !directMeleeOnscaryAtHero(mon)) return false;
+
+    messages.push('You feel like a hypocrite.');
+    if (game.u?.ualign) {
+        const record = game.u.ualign.record || 0;
+        const penalty = record > 5 ? 5 : rnd(5);
+        game.u.ualign.record = record - penalty;
+        game.u.ualign.abuse = (game.u.ualign.abuse || 0) + penalty;
+    }
+    if (!game.u?.blind) messages.push('The engraving beneath you fades.');
+    directMeleeDeleteEngravingAtHero();
+    return true;
+}
+
+function directMeleeAngerPeacefulMonster(mon, messages, { visible = false } = {}) {
+    if (!mon?.mpeaceful) return false;
+    mon.msleeping = 0;
+    if (mon.meating !== undefined) mon.meating = 0;
+    clearDirectMeleeWaitStrategyMask(mon);
+    if (mon.mtame || mon.pet) return false;
+    mon.mpeaceful = 0;
+    mon.hostile = true;
+    mon.angry = true;
+    if (game.u?.ualign) {
+        if (mon.ispriest) {
+            const coaligned = Number(game.u.ualign.type ?? A_NEUTRAL) === tipHatPriestAlign(mon);
+            game.u.ualign.record = (game.u.ualign.record || 0) + (coaligned ? -5 : 2);
+            if (coaligned) game.u.ualign.abuse = (game.u.ualign.abuse || 0) + 5;
+        } else {
+            game.u.ualign.record = (game.u.ualign.record || 0) - 1;
+            game.u.ualign.abuse = (game.u.ualign.abuse || 0) + 1;
+        }
+    }
+    if (visible) {
+        if (mon.data?.humanoid || mon.isshk || mon.isgd || mon.ispriest) {
+            messages.push(`${fireScrollMonsterName(mon)} gets angry!`);
+        } else {
+            const verb = directMeleeGrowlVerb(mon);
+            if (verb) messages.push(`${fireScrollMonsterName(mon)} ${verb}!`);
+        }
+    }
+    if (!game._monster_moving)
+        directMeleePeacefulHumanoidBystandersRespond(mon, messages);
+    return true;
+}
+
+function directMeleeAngerPeacefulPriest(priest, messages, { visible = false } = {}) {
+    if (!priest?.ispriest) return false;
+    const angered = directMeleeAngerPeacefulMonster(priest, messages, { visible });
+    if (angered && directMeleePriestInTempleRoom(priest))
+        directMeleePriestRetaliation(messages, priest);
+    return angered;
+}
+
+function directMeleeNonlethalWakeupTail(mon, messages, preHitState, {
+    ordinaryMelee = false,
+    visible = false,
+} = {}) {
+    if (!mon) return false;
+    if (ordinaryMelee) {
+        directMeleeSetmangryElberethHypocrisy(mon, messages);
+        if (preHitState?.msleeping) {
+            if (visible) messages.push(directMeleeWakeMessage(mon, true));
+            mon.msleeping = 0;
+            if (mon.meating !== undefined) mon.meating = 0;
+            const verb = directMeleeGrowlVerb(mon);
+            if (!directMeleeGrowlSuppressed(mon)) {
+                if (visible && verb) messages.push(`${fireScrollMonsterName(mon)} ${verb}!`);
+                directMeleeGrowlWakeNearby(mon, messages);
+            }
+        } else if (mon.meating !== undefined) {
+            mon.meating = 0;
+        }
+        clearDirectMeleeWaitStrategyMask(mon);
+    }
+    if (preHitState?.mpeaceful && mon.mpeaceful) {
+        if (mon.ispriest) directMeleeAngerPeacefulPriest(mon, messages, { visible });
+        else if (ordinaryMelee) directMeleeAngerPeacefulMonster(mon, messages, { visible });
+    }
+    return true;
+}
+
+function directMeleeNonlethalWrapperTail(mon, messages, {
+    angerTownWatch = false,
+    silentGuards = false,
+} = {}) {
+    if (!mon) return false;
+    if (mon.ispriest && !rn2(2))
+        directMeleePriestRetaliation(messages, mon);
+    if (angerTownWatch)
+        directMeleeAngerTownWatch(messages, { silent: silentGuards });
+    return true;
+}
+
 function maybeDropHeroProjectileKillRandomTreasure(mon, data, corpseData, killAccessible, treasureDrop) {
     if (!killAccessible || !treasureDrop) return;
     if (corpseData.noCorpse || corpseData !== data) return;
@@ -53983,9 +54311,11 @@ async function moveHero(dx, dy) {
         if (!swallowedMove) wipe_engr_at(oldx, oldy, 3, false);
         const strengthDamageBonus = str < 6 ? -1 : str < 16 ? 0 : str < 18 ? 1 : str === 18 ? 2
             : str <= 93 ? 3 : str <= 108 ? 4 : str < 118 ? 5 : 6;
-        const messages = game._hero_melee_prefix_messages
+        const directMeleePrefixMessages = game._hero_melee_prefix_messages
             ? [...game._hero_melee_prefix_messages]
-            : [];
+            : null;
+        const directMeleeFromSpecialApply = !!directMeleePrefixMessages?.length;
+        const messages = directMeleePrefixMessages ? [...directMeleePrefixMessages] : [];
         game._hero_melee_prefix_messages = null;
         if (caitiffAttack) {
             messages.push('You caitiff!');
@@ -54030,6 +54360,9 @@ async function moveHero(dx, dy) {
         let killingAttackWeapon = null;
         let killedByNormalMelee = false;
         let directMeleeHit = false;
+        let directMeleeOrdinaryWakeupAllowed = false;
+        let directMeleeNonlethalWakeupApplied = false;
+        let directMeleeNonlethalWrapperApplied = false;
         for (let attackIndex = 0; attackIndex < attackWeapons.length; attackIndex++) {
             const attackWeapon = attackWeapons[attackIndex];
             const weaponName = attackWeapon?.kind || attackWeapon?.name || (typeof attackWeapon?.otyp === 'string' ? attackWeapon.otyp : '');
@@ -54110,6 +54443,8 @@ async function moveHero(dx, dy) {
                 if (killed) break;
                 continue;
             }
+            if (!directMeleeFromSpecialApply && !deferSleepingTwoWeapon)
+                directMeleeOrdinaryWakeupAllowed = true;
             if (attackWeapon && !game._chronicle_first_weapon_hit) {
                 game._chronicle_entries ??= [];
                 game._chronicle_entries.push({ turn: game.moves || 1, text: `hit with a wielded weapon (${weaponName || 'weapon'}) for the first time` });
@@ -54175,11 +54510,31 @@ async function moveHero(dx, dy) {
             const hitPunctuation = game.flags?.verbose === false || swallowedMove ? '.' : damage > 4 ? '!' : '.';
             messages.push(`You hit ${hitPhrase}${hitPunctuation}`);
             applyConfuseMonsterOnHit(mon, messages, targetPhrase);
+            if (directMeleeHit
+                && (directMeleeOrdinaryWakeupAllowed
+                    || ((directMeleePreHitState?.mpeaceful || directMeleePreHitState?.msleeping)
+                    && (mon.ispriest || directMeleeOrdinaryWakeupAllowed))
+                    || mon.ispriest || angerTownWatchAfterHit)) {
+                directMeleeNonlethalWakeupTail(mon, messages, directMeleePreHitState, {
+                    ordinaryMelee: directMeleeOrdinaryWakeupAllowed,
+                    visible: targetSpotted,
+                });
+                if (directMeleePreHitState?.msleeping && directMeleeOrdinaryWakeupAllowed)
+                    wokeByHit = false;
+                directMeleeNonlethalWakeupApplied = true;
+            }
             let directPassiveObjectApplied = false;
             if (attackIndex === 0) {
                 if (attackWeapon && damage > 1 && !twoWeaponActive) {
                     rn2(3);
                     rn2(6);
+                }
+                if (directMeleeHit && (mon.ispriest || angerTownWatchAfterHit)) {
+                    directMeleeNonlethalWrapperTail(mon, messages, {
+                        angerTownWatch: angerTownWatchAfterHit,
+                        silentGuards: heroIsDeaf(),
+                    });
+                    directMeleeNonlethalWrapperApplied = true;
                 }
 	                if (!deferSleepingTwoWeapon) {
 	                    const fleeRoll = rn2(25);
@@ -54231,7 +54586,7 @@ async function moveHero(dx, dy) {
                     processTime: true,
                 });
             }
-            if (peacefulShopkeeper) {
+            if (peacefulShopkeeper && mon.mpeaceful) {
                 mon.mpeaceful = 0;
                 messages.push(`${name} gets angry!`);
                 if (!continuePeacefulShopkeeperTurn) {
@@ -54239,8 +54594,20 @@ async function moveHero(dx, dy) {
                     mon._distfleeck_done_after_anger = 1;
                 }
             }
-            if (directMeleeHit && angerTownWatchAfterHit)
-                directMeleeAngerTownWatch(messages, { silent: heroIsDeaf() });
+            if (directMeleeHit && !directMeleeNonlethalWakeupApplied
+                && (directMeleeOrdinaryWakeupAllowed
+                    || ((directMeleePreHitState?.mpeaceful || directMeleePreHitState?.msleeping)
+                    && (mon.ispriest || directMeleeOrdinaryWakeupAllowed))
+                    || mon.ispriest || angerTownWatchAfterHit))
+                directMeleeNonlethalWakeupTail(mon, messages, directMeleePreHitState, {
+                    ordinaryMelee: directMeleeOrdinaryWakeupAllowed,
+                    visible: targetSpotted,
+                });
+            if (directMeleeHit && !directMeleeNonlethalWrapperApplied && (mon.ispriest || angerTownWatchAfterHit))
+                directMeleeNonlethalWrapperTail(mon, messages, {
+                    angerTownWatch: angerTownWatchAfterHit,
+                    silentGuards: heroIsDeaf(),
+                });
             const potionCallPrompt = game._command_mode === 'callPotionAfterMore';
             await setMessage(messages.join('  '), potionCallPrompt || peacefulShopkeeper || wokeByHit);
             if (continuePeacefulShopkeeperTurn) {
