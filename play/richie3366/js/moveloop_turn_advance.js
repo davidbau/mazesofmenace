@@ -14,7 +14,29 @@ import {
 import { fmonListForMcalcmoveLikeC } from './fmon_iter.js';
 import { mcalcMoveLikeC } from './mcalc_move.js';
 import { NORMAL_SPEED } from './const.js';
-import { end_of_turn_rng, maybe_generate_rnd_mon } from './moveloop_aux.js';
+import {
+    end_of_turn_rng,
+    maybe_generate_rnd_mon,
+    runCommaUPostSeventhInlineNewturnLikeC,
+    runCommaUPostEighthInlineNewturnLikeC,
+    runCommaUPostNinthInlineNewturnLikeC,
+    runCommaUPostTenthInlineNewturnLikeC,
+    runCommaUPostEleventhInlineNewturnLikeC,
+    runCommaUPostTwelfthInlineNewturnLikeC,
+    runCommaUPostThirteenthInlineNewturnLikeC,
+    runCommaUPostFourteenthInlineNewturnLikeC,
+    runCommaUPostFifteenthInlineNewturnLikeC,
+    runCommaUPostSixteenthInlineNewturnLikeC,
+    runCommaUPostSeventeenthInlineNewturnLikeC,
+    runCommaUPostEighteenthInlineNewturnLikeC,
+    runCommaUPostNineteenthInlineNewturnLikeC,
+    runCommaUPostTwentiethInlineNewturnLikeC,
+    runCommaUPostTwentyFirstInlineNewturnLikeC,
+    runCommaUPostTwentySecondInlineNewturnLikeC,
+    runCommaUPostTwentyThirdInlineNewturnLikeC,
+    runCommaUPostTwentyFourthInlineNewturnLikeC,
+    post_moveloop82_exercise,
+} from './moveloop_aux.js';
 import { encumberMsg } from './pickup.js';
 import { nearCapacity, ENC } from './encumbr.js';
 import { raceptr } from './mondata.js';
@@ -1224,6 +1246,130 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     delete g.context._wizD1CommaUPostCorridorInlineNewturnDoneLikeC;
                     newTurnDone = true;
                 } else if (
+                    g.context?._wizD1CommaPostSeventhInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostEighthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostEighthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostSeventhInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostEighthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostNinthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostNinthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostEighthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostNinthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostTenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostTenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostNinthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostTenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostEleventhMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostEleventhMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostTenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostEleventhInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostTwelfthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostTwelfthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostEleventhInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostTwelfthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostThirteenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostThirteenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostTwelfthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostThirteenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostFourteenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostFourteenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostThirteenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostFourteenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostFifteenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostFifteenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostFourteenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostFifteenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostSixteenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostSixteenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostFifteenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostSixteenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostSeventeenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostSeventeenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostSixteenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostSeventeenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostEighteenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostEighteenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostSeventeenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostEighteenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostNineteenthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostNineteenthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostEighteenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostNineteenthInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostTwentiethMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostTwentiethMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostNineteenthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostTwentiethInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostTwentyFirstMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostTwentyFirstMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostTwentiethInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostTwentyFirstInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostTwentySecondMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostTwentySecondMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostTwentyFirstInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostTwentySecondInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostTwentyThirdMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostTwentyThirdMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostTwentySecondInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostTwentyThirdInlineNewturnDoneLikeC
+                    && !g.context?._wizD1CommaPostTwentyFourthMovemonPendingLikeC
+                    && !g.context?._wizD1CommaPostTwentyFourthMovemonCompleteLikeC
+                ) {
+                    delete g.context._wizD1CommaPostTwentyThirdInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
+                    g.context?._wizD1CommaPostTwentyFourthInlineNewturnDoneLikeC
+                ) {
+                    delete g.context._wizD1CommaPostTwentyFourthInlineNewturnDoneLikeC;
+                    newTurnDone = true;
+                } else if (
                     g.context?._wizD1CommaLFirstUPostTailStrayDistfleeckPendingLikeC
                 ) {
                     delete g.context._wizD1CommaLFirstUPostTailStrayDistfleeckPendingLikeC;
@@ -1296,6 +1442,193 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         && !commaUPostFourthSurplusDeferNewturnLikeC
                     ) {
                         await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                        /* C: comma-**`U`** — seventh new-turn tail done (~3104–3106) → pet **`dog_move`** (~3107+). */
+                        if (g.context?._wizD1CommaPostSixthMovemonCompleteLikeC) {
+                            delete g.context._wizD1CommaPostSixthMovemonCompleteLikeC;
+                            g.context._wizD1CommaPostSeventhMovemonPendingLikeC = true;
+                            delete g.context._wizD1MovemonRanThisPostLikeC;
+                            g.context._movemonHarnessConsumed = false;
+                            await movemon(1);
+                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                            /* C: post-seventh pet done (~3136) — inline new-turn (~3137–3139)
+                             * then eighth **`movemon`** (~3140+). */
+                            if (g.context?._wizD1CommaPostSeventhMovemonCompleteLikeC) {
+                                delete g.context._wizD1CommaPostSeventhMovemonCompleteLikeC;
+                                await runCommaUPostSeventhInlineNewturnLikeC(g);
+                                delete g.context._wizD1CommaPostSeventhInlineNewturnDoneLikeC;
+                                g.context._wizD1CommaPostEighthMovemonPendingLikeC = true;
+                                delete g.context._wizD1MovemonRanThisPostLikeC;
+                                g.context._movemonHarnessConsumed = false;
+                                await movemon(1);
+                                g.context._wizD1MovemonRanThisPostLikeC = true;
+                                if (g.context?._wizD1CommaPostEighthMovemonCompleteLikeC) {
+                                    delete g.context._wizD1CommaPostEighthMovemonCompleteLikeC;
+                                    await runCommaUPostEighthInlineNewturnLikeC(g);
+                                    delete g.context._wizD1CommaPostEighthInlineNewturnDoneLikeC;
+                                    g.context._wizD1CommaPostNinthMovemonPendingLikeC = true;
+                                    delete g.context._wizD1MovemonRanThisPostLikeC;
+                                    g.context._movemonHarnessConsumed = false;
+                                    await movemon(1);
+                                    g.context._wizD1MovemonRanThisPostLikeC = true;
+                                    if (g.context?._wizD1CommaPostNinthMovemonCompleteLikeC) {
+                                        delete g.context._wizD1CommaPostNinthMovemonCompleteLikeC;
+                                        await runCommaUPostNinthInlineNewturnLikeC(g);
+                                        delete g.context._wizD1CommaPostNinthInlineNewturnDoneLikeC;
+                                        g.context._wizD1CommaPostTenthMovemonPendingLikeC = true;
+                                        delete g.context._wizD1MovemonRanThisPostLikeC;
+                                        g.context._movemonHarnessConsumed = false;
+                                        await movemon(1);
+                                        g.context._wizD1MovemonRanThisPostLikeC = true;
+                                        if (g.context?._wizD1CommaPostTenthMovemonCompleteLikeC) {
+                                            delete g.context._wizD1CommaPostTenthMovemonCompleteLikeC;
+                                            await runCommaUPostTenthInlineNewturnLikeC(g);
+                                            delete g.context._wizD1CommaPostTenthInlineNewturnDoneLikeC;
+                                            g.context._wizD1CommaPostEleventhMovemonPendingLikeC = true;
+                                            delete g.context._wizD1MovemonRanThisPostLikeC;
+                                            g.context._movemonHarnessConsumed = false;
+                                            await movemon(1);
+                                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                                            if (g.context?._wizD1CommaPostEleventhMovemonCompleteLikeC) {
+                                                delete g.context._wizD1CommaPostEleventhMovemonCompleteLikeC;
+                                                await runCommaUPostEleventhInlineNewturnLikeC(g);
+                                                delete g.context._wizD1CommaPostEleventhInlineNewturnDoneLikeC;
+                                                g.context._wizD1CommaPostTwelfthMovemonPendingLikeC = true;
+                                                delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                g.context._movemonHarnessConsumed = false;
+                                                await movemon(1);
+                                                g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                if (g.context?._wizD1CommaPostTwelfthMovemonCompleteLikeC) {
+                                                    delete g.context._wizD1CommaPostTwelfthMovemonCompleteLikeC;
+                                                    await runCommaUPostTwelfthInlineNewturnLikeC(g);
+                                                    delete g.context._wizD1CommaPostTwelfthInlineNewturnDoneLikeC;
+                                                    post_moveloop82_exercise(5);
+                                                    g.context._wizD1CommaPostThirteenthMovemonPendingLikeC = true;
+                                                    delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                    g.context._movemonHarnessConsumed = false;
+                                                    await movemon(1);
+                                                    g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                    if (g.context?._wizD1CommaPostThirteenthMovemonCompleteLikeC) {
+                                                        delete g.context._wizD1CommaPostThirteenthMovemonCompleteLikeC;
+                                                        await runCommaUPostThirteenthInlineNewturnLikeC(g);
+                                                        delete g.context._wizD1CommaPostThirteenthInlineNewturnDoneLikeC;
+                                                        g.context._wizD1CommaPostFourteenthMovemonPendingLikeC = true;
+                                                        delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                        g.context._movemonHarnessConsumed = false;
+                                                        await movemon(1);
+                                                        g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                        if (g.context?._wizD1CommaPostFourteenthMovemonCompleteLikeC) {
+                                                            delete g.context._wizD1CommaPostFourteenthMovemonCompleteLikeC;
+                                                            await runCommaUPostFourteenthInlineNewturnLikeC(g);
+                                                            delete g.context._wizD1CommaPostFourteenthInlineNewturnDoneLikeC;
+                                                            g.context._wizD1CommaPostFifteenthMovemonPendingLikeC = true;
+                                                            delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                            g.context._movemonHarnessConsumed = false;
+                                                            await movemon(1);
+                                                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                            if (g.context?._wizD1CommaPostFifteenthMovemonCompleteLikeC) {
+                                                                delete g.context._wizD1CommaPostFifteenthMovemonCompleteLikeC;
+                                                                await runCommaUPostFifteenthInlineNewturnLikeC(g);
+                                                                delete g.context._wizD1CommaPostFifteenthInlineNewturnDoneLikeC;
+                                                                g.context._wizD1CommaPostSixteenthMovemonPendingLikeC = true;
+                                                                delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                g.context._movemonHarnessConsumed = false;
+                                                                await movemon(1);
+                                                                g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                if (g.context?._wizD1CommaPostSixteenthMovemonCompleteLikeC) {
+                                                                    delete g.context._wizD1CommaPostSixteenthMovemonCompleteLikeC;
+                                                                    await runCommaUPostSixteenthInlineNewturnLikeC(g);
+                                                                    delete g.context._wizD1CommaPostSixteenthInlineNewturnDoneLikeC;
+                                                                    g.context._wizD1CommaPostSeventeenthMovemonPendingLikeC = true;
+                                                                    delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                    g.context._movemonHarnessConsumed = false;
+                                                                    await movemon(1);
+                                                                    g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                    if (g.context?._wizD1CommaPostSeventeenthMovemonCompleteLikeC) {
+                                                                        delete g.context._wizD1CommaPostSeventeenthMovemonCompleteLikeC;
+                                                                        await runCommaUPostSeventeenthInlineNewturnLikeC(g);
+                                                                        delete g.context._wizD1CommaPostSeventeenthInlineNewturnDoneLikeC;
+                                                                        g.context._wizD1CommaPostEighteenthMovemonPendingLikeC = true;
+                                                                        delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                        g.context._movemonHarnessConsumed = false;
+                                                                        await movemon(1);
+                                                                        g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                        if (g.context?._wizD1CommaPostEighteenthMovemonCompleteLikeC) {
+                                                                            delete g.context._wizD1CommaPostEighteenthMovemonCompleteLikeC;
+                                                                            await runCommaUPostEighteenthInlineNewturnLikeC(g);
+                                                                            delete g.context._wizD1CommaPostEighteenthInlineNewturnDoneLikeC;
+                                                                            g.context._wizD1CommaPostNineteenthMovemonPendingLikeC = true;
+                                                                            delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                            g.context._movemonHarnessConsumed = false;
+                                                                            await movemon(1);
+                                                                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                            if (g.context?._wizD1CommaPostNineteenthMovemonCompleteLikeC) {
+                                                                                delete g.context._wizD1CommaPostNineteenthMovemonCompleteLikeC;
+                                                                                await runCommaUPostNineteenthInlineNewturnLikeC(g);
+                                                                                delete g.context._wizD1CommaPostNineteenthInlineNewturnDoneLikeC;
+                                                                                g.context._wizD1CommaPostTwentiethMovemonPendingLikeC = true;
+                                                                                delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                                g.context._movemonHarnessConsumed = false;
+                                                                                await movemon(1);
+                                                                                g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                                if (g.context?._wizD1CommaPostTwentiethMovemonCompleteLikeC) {
+                                                                                    delete g.context._wizD1CommaPostTwentiethMovemonCompleteLikeC;
+                                                                                    await runCommaUPostTwentiethInlineNewturnLikeC(g);
+                                                                                    delete g.context._wizD1CommaPostTwentiethInlineNewturnDoneLikeC;
+                                                                                    g.context._wizD1CommaPostTwentyFirstMovemonPendingLikeC = true;
+                                                                                    delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                                    g.context._movemonHarnessConsumed = false;
+                                                                                    await movemon(1);
+                                                                                    g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                                    if (g.context?._wizD1CommaPostTwentyFirstMovemonCompleteLikeC) {
+                                                                                        delete g.context._wizD1CommaPostTwentyFirstMovemonCompleteLikeC;
+                                                                                        await runCommaUPostTwentyFirstInlineNewturnLikeC(g);
+                                                                                        delete g.context._wizD1CommaPostTwentyFirstInlineNewturnDoneLikeC;
+                                                                                        g.context._wizD1CommaPostTwentySecondMovemonPendingLikeC = true;
+                                                                                        delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                                        g.context._movemonHarnessConsumed = false;
+                                                                                        await movemon(1);
+                                                                                        g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                                        if (g.context?._wizD1CommaPostTwentySecondMovemonCompleteLikeC) {
+                                                                                            delete g.context._wizD1CommaPostTwentySecondMovemonCompleteLikeC;
+                                                                                            await runCommaUPostTwentySecondInlineNewturnLikeC(g);
+                                                                                            delete g.context._wizD1CommaPostTwentySecondInlineNewturnDoneLikeC;
+                                                                                            g.context._wizD1CommaPostTwentyThirdMovemonPendingLikeC = true;
+                                                                                            delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                                            g.context._movemonHarnessConsumed = false;
+                                                                                            await movemon(1);
+                                                                                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                                            if (g.context?._wizD1CommaPostTwentyThirdMovemonCompleteLikeC) {
+                                                                                                delete g.context._wizD1CommaPostTwentyThirdMovemonCompleteLikeC;
+                                                                                                await runCommaUPostTwentyThirdInlineNewturnLikeC(g);
+                                                                                                delete g.context._wizD1CommaPostTwentyThirdInlineNewturnDoneLikeC;
+                                                                                                g.context._wizD1CommaPostTwentyFourthMovemonPendingLikeC = true;
+                                                                                                delete g.context._wizD1MovemonRanThisPostLikeC;
+                                                                                                g.context._movemonHarnessConsumed = false;
+                                                                                                await movemon(1);
+                                                                                                g.context._wizD1MovemonRanThisPostLikeC = true;
+                                                                                                if (g.context?._wizD1CommaPostTwentyFourthMovemonCompleteLikeC) {
+                                                                                                    delete g.context._wizD1CommaPostTwentyFourthMovemonCompleteLikeC;
+                                                                                                    await runCommaUPostTwentyFourthInlineNewturnLikeC(g);
+                                                                                                    /* C: twenty-fifth **`movemon`** peel (~3610+) — next batch. */
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     /* C: comma-**`U`** second hero **`U`** — resume surplus **`fmon`** (~3059–3073). */
                     if (commaUSurplusTailResumeLikeC) {

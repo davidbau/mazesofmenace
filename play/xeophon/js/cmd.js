@@ -27223,6 +27223,7 @@ const GENDERED_CORPSTAT_MONSTER_NAMES = new Map([
     ['vampire leader', { male: 'vampire lord', female: 'vampire lady', neutral: 'vampire leader' }],
     ['elf-noble', { male: 'elf-lord', female: 'elf-lady', neutral: 'elf-noble' }],
     ['elven monarch', { male: 'Elvenking', female: 'Elvenqueen', neutral: 'elven monarch' }],
+    ['cave dweller', { male: 'caveman', female: 'cavewoman', neutral: 'cave dweller' }],
     ['amorous demon', { male: 'incubus', female: 'succubus', neutral: 'amorous demon' }],
 ]);
 
@@ -31001,10 +31002,22 @@ const GENOCIDE_MAX_TRIES = 5;
 const GENOCIDE_EXTRA_MONSTERS = [
     { name: 'watchman', mlet: '@', glyph: '@', color: CLR_GRAY, mlevel: 6, hpLevel: 9, difficulty: 8, mmove: 10, maligntyp: -2, genoFreq: 1, mercenary: true, armed: true, alwaysPeaceful: true },
     { name: 'watch captain', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 10, hpLevel: 11, difficulty: 12, mmove: 10, maligntyp: -4, genoFreq: 1, mercenary: true, armed: true, alwaysPeaceful: true },
+    { name: 'aligned cleric', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 12, hpLevel: 12, difficulty: 15, mmove: 12, maligntyp: 0, genoFreq: 0, priest: true, armed: true, alwaysPeaceful: true },
+    { name: 'high cleric', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 25, hpLevel: 29, difficulty: 30, mmove: 15, maligntyp: 0, genoFreq: 0, priest: true, armed: true, alwaysPeaceful: true, nasty: true },
+    { name: 'Master of Thieves', mlet: '@', glyph: '@', color: CLR_MAGENTA, mlevel: 20, hpLevel: 20, difficulty: 24, mmove: 15, maligntyp: -20, genoFreq: 0, unique: true, male: true, human: true, humanoid: true, armed: true, strong: true, alwaysPeaceful: true },
+    { name: 'Master Assassin', mlet: '@', glyph: '@', color: CLR_MAGENTA, mlevel: 15, hpLevel: 15, difficulty: 20, mmove: 12, maligntyp: 18, genoFreq: 0, unique: true, nemesis: true, male: true, human: true, humanoid: true, armed: true, strong: true, alwaysHostile: true, nasty: true },
+    { name: 'cave dweller', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 10, hpLevel: 10, difficulty: 12, mmove: 12, maligntyp: 1, genoFreq: 0, human: true, humanoid: true, armed: true, strong: true },
+    { name: 'Keystone Kop', mlet: 'K', glyph: 'K', color: CLR_BLUE, mlevel: 1, hpLevel: 1, difficulty: 3, mmove: 6, maligntyp: 9, genoFreq: 0, armed: true },
+    { name: 'Kop Sergeant', mlet: 'K', glyph: 'K', color: CLR_BLUE, mlevel: 2, hpLevel: 2, difficulty: 4, mmove: 8, maligntyp: 10, genoFreq: 0, armed: true },
+    { name: 'Kop Lieutenant', mlet: 'K', glyph: 'K', color: CLR_CYAN, mlevel: 3, hpLevel: 3, difficulty: 5, mmove: 10, maligntyp: 11, genoFreq: 0, armed: true },
+    { name: 'Kop Kaptain', mlet: 'K', glyph: 'K', color: CLR_BLUE, mlevel: 4, hpLevel: 4, difficulty: 6, mmove: 12, maligntyp: 12, genoFreq: 0, armed: true },
+    { name: 'ghost', mlet: ' ', glyph: ' ', color: CLR_GRAY, mlevel: 10, hpLevel: 10, difficulty: 12, mmove: 3, maligntyp: -5, genoFreq: 0 },
+    { name: 'shade', mlet: ' ', glyph: ' ', color: CLR_BLACK, mlevel: 12, hpLevel: 12, difficulty: 14, mmove: 10, maligntyp: 0, genoFreq: 0 },
 ];
 const GENOCIDE_EXTRA_MONSTER_NAMES = [
     'queen bee', 'woodchuck', 'jellyfish', 'piranha', 'shark', 'giant eel',
     'electric eel', 'kraken', 'giant', 'minotaur', 'water troll',
+    'djinni', 'water demon', 'horned devil', 'erinys', 'barbed devil',
 ];
 const GENOCIDE_FORBIDDEN_MONSTER_NAMES = new Set([
     'couatl', 'aleax', 'angel', 'ki-rin', 'archon',
@@ -31013,19 +31026,71 @@ const GENOCIDE_FORBIDDEN_MONSTER_NAMES = new Set([
     'leather golem', 'wood golem', 'flesh golem', 'clay golem',
     'stone golem', 'glass golem', 'iron golem',
     'titan', 'wererat', 'werejackal', 'werewolf',
+    'aligned cleric', 'high cleric', 'master of thief', 'master assassin',
+    'cave dweller', 'djinni', 'water demon', 'horned devil', 'erinys', 'barbed devil',
     'amorous demon', 'marilith', 'vrock', 'hezrou', 'bone devil',
     'ice devil', 'nalfeshnee', 'pit fiend', 'sandestin', 'balrog',
-    'salamander',
+    'salamander', 'ghost', 'shade',
 ]);
-const C_AS_IS_MONSTER_PLURAL_NAMES = new Set(['manes', 'tengu', 'ki-rin', 'nazgul', 'piranha']);
+const C_AS_IS_MONSTER_PLURAL_NAMES = new Set(['manes', 'tengu', 'ki-rin', 'nazgul', 'piranha', 'master of thieves']);
 const C_AS_IS_MONSTER_PLURAL_SUFFIXES = ['-hai', 'fish'];
 const C_GENOCIDE_NAME_ALIASES = new Map([
     ['grey dragon', 'gray dragon'],
     ['baby grey dragon', 'baby gray dragon'],
     ['grey unicorn', 'gray unicorn'],
     ['grey ooze', 'gray ooze'],
+    ['gray-elf', 'Grey-elf'],
+    ['gray elf', 'Grey-elf'],
+    ['wood-elf', 'Woodland-elf'],
+    ['wood elf', 'Woodland-elf'],
+    ['woodland nymph', 'wood nymph'],
+    ['halfling', 'hobbit'],
+    ['genie', 'djinni'],
+    ['invisible stalker', 'stalker'],
+    ['high-elf', 'elven monarch'],
+    ['master-lich', 'master lich'],
+    ['masterlich', 'master lich'],
+    ['ki rin', 'ki-rin'],
+    ['kirin', 'ki-rin'],
+    ['uruk hai', 'Uruk-hai'],
+    ['orc captain', 'orc-captain'],
+    ['woodland elf', 'Woodland-elf'],
+    ['green elf', 'Green-elf'],
+    ['grey elf', 'Grey-elf'],
+    ['archlich', 'arch-lich'],
+    ['elf lady', 'elf-noble'],
+    ['elf lord', 'elf-noble'],
+    ['elf noble', 'elf-noble'],
+    ['olog hai', 'Olog-hai'],
+    ['arch lich', 'arch-lich'],
+    ['aligned priest', 'aligned cleric'],
+    ['aligned priestess', 'aligned cleric'],
+    ['high priest', 'high cleric'],
+    ['high priestess', 'high cleric'],
+    ['master of thieves', 'Master of Thieves'],
+    ['master of thief', 'Master of Thieves'],
+    ['master thief', 'Master of Thieves'],
+    ['master of assassin', 'Master Assassin'],
+    ['human wererat', 'wererat'],
+    ['human werejackal', 'werejackal'],
+    ['human werewolf', 'werewolf'],
+    ['rat wererat', 'wererat'],
+    ['jackal werejackal', 'werejackal'],
+    ['wolf werewolf', 'werewolf'],
     ['mindflayer', 'mind flayer'],
     ['master mindflayer', 'master mind flayer'],
+    ['incubi', 'amorous demon'],
+    ['succubi', 'amorous demon'],
+    ['violet fungi', 'violet fungus'],
+    ['homunculi', 'homunculus'],
+    ['baluchitheria', 'baluchitherium'],
+    ['lurkers above', 'lurker above'],
+    ['cavemen', 'cave dweller'],
+    ['cavewomen', 'cave dweller'],
+    ['watchmen', 'watchman'],
+    ['djinn', 'djinni'],
+    ['mumakil', 'mumak'],
+    ['erinyes', 'erinys'],
 ]);
 
 function isCAsIsMonsterPlural(name) {
@@ -31043,6 +31108,7 @@ function normalizeGenocideName(name) {
         fungi: 'fungus',
         men: 'human',
         humans: 'human',
+        erinys: 'erinys',
         bees: 'bee',
         vortices: 'vortex',
         liches: 'lich',
@@ -31057,16 +31123,55 @@ function normalizeGenocideName(name) {
     return lower;
 }
 
+function normalizeGenocidePrefixInput(name) {
+    let lower = String(name || '').trim().toLowerCase();
+    lower = lower.replace(/^['"]|['"]$/g, '').replace(/^(?:a|an|the) /, '').replace(/\s+/g, ' ');
+    const vortices = lower.indexOf('vortices');
+    if (vortices !== -1)
+        lower = `${lower.slice(0, vortices + 4)}ex`;
+    else if (lower.length > 3 && lower.endsWith('ies')
+        && (lower.length < 7 || !lower.endsWith('zombies')))
+        lower = `${lower.slice(0, -3)}y`;
+    else if (lower.length > 3 && lower.endsWith('ves'))
+        lower = `${lower.slice(0, -3)}f`;
+    return lower;
+}
+
+function cAlternateNameRemainderMatches(remainder) {
+    return !remainder || remainder[0] === ' ' || remainder[0] === "'";
+}
+
+function cCanonicalNameRemainderMatches(remainder) {
+    return !remainder
+        || remainder[0] === ' '
+        || remainder === 's'
+        || remainder.startsWith('s ')
+        || remainder === "'"
+        || remainder.startsWith("' ")
+        || remainder === "'s"
+        || remainder.startsWith("'s ")
+        || remainder === 'es'
+        || remainder.startsWith('es ');
+}
+
+function cNamePrefixMatches(input, candidate, remainderMatches) {
+    if (!input || !candidate || !input.startsWith(candidate)) return false;
+    return remainderMatches(input.slice(candidate.length));
+}
+
 function pluralizeMonsterName(name) {
     const lower = String(name || '').toLowerCase();
     if (isCAsIsMonsterPlural(name)) return name;
     if (lower === 'human') return 'humans';
     if (lower === 'dwarf') return 'dwarves';
     if (lower === 'elf') return 'elves';
+    if (lower.endsWith('-elf')) return `${name.slice(0, -3)}elves`;
+    if (lower.endsWith('monarch')) return `${name}s`;
     if (/ above$/i.test(name)) return `${pluralizeMonsterName(name.slice(0, -6))} above`;
     if (/fungus$/i.test(name)) return `${name.slice(0, -6)}fungi`;
     if (/culus$/i.test(name)) return `${name.slice(0, -5)}culi`;
     if (/mumak$/i.test(name)) return `${name.slice(0, -5)}mumakil`;
+    if (lower === 'erinys') return 'erinyes';
     if (/watchman$/i.test(name)) return `${name.slice(0, -3)}men`;
     if (/rtex$/i.test(name)) return `${name.slice(0, -4)}rtices`;
     if (/ium$/i.test(name)) return `${name.slice(0, -3)}ia`;
@@ -31099,23 +31204,44 @@ function genocideMonsterCatalog() {
 function genocideMonsterByName(name) {
     const wanted = normalizeGenocideName(name);
     if (!wanted) return null;
-    const aliasedWanted = C_GENOCIDE_NAME_ALIASES.get(wanted) || wanted;
-    for (const data of genocideMonsterCatalog()) {
+    const catalog = genocideMonsterCatalog();
+    const dataByNormalizedName = new Map(catalog.map(data => [normalizeGenocideName(data.name), data]));
+    const prefixWanted = normalizeGenocidePrefixInput(name);
+    for (const [alias, target] of C_GENOCIDE_NAME_ALIASES.entries()) {
+        if (!cNamePrefixMatches(prefixWanted, alias, cAlternateNameRemainderMatches)) continue;
+        const data = dataByNormalizedName.get(normalizeGenocideName(target));
+        if (data) return data;
+    }
+    let bestMatch = null;
+    let bestLength = 0;
+    for (const data of catalog) {
+        const genderNames = GENDERED_CORPSTAT_MONSTER_NAMES.get(normalizeGenocideName(data.name));
+        const canonicalCandidates = [
+            data.name,
+            genderNames?.male,
+            genderNames?.female,
+        ].filter(Boolean).map(normalizeGenocidePrefixInput);
+        for (const candidate of canonicalCandidates) {
+            if (candidate.length <= bestLength) continue;
+            if (!cNamePrefixMatches(prefixWanted, candidate, cCanonicalNameRemainderMatches)) continue;
+            bestMatch = data;
+            bestLength = candidate.length;
+        }
+    }
+    if (bestMatch) return bestMatch;
+    for (const data of catalog) {
         const genderNames = GENDERED_CORPSTAT_MONSTER_NAMES.get(normalizeGenocideName(data.name));
         const candidates = [
             data.name,
-            data.name?.replace(/-/g, ' '),
             pluralizeMonsterName(data.name || ''),
             genderNames?.male,
-            genderNames?.male?.replace(/-/g, ' '),
             genderNames?.male ? pluralizeMonsterName(genderNames.male) : null,
             genderNames?.female,
-            genderNames?.female?.replace(/-/g, ' '),
             genderNames?.female ? pluralizeMonsterName(genderNames.female) : null,
             genderNames?.male === 'incubus' ? 'incubi' : null,
             genderNames?.female === 'succubus' ? 'succubi' : null,
         ].filter(Boolean).map(normalizeGenocideName);
-        if (candidates.includes(wanted) || candidates.includes(aliasedWanted)) return data;
+        if (candidates.includes(wanted)) return data;
     }
     return null;
 }
@@ -31280,6 +31406,17 @@ function isHeroGenocideTarget(name) {
     const raceAdj = normalizeGenocideName(game.urace?.adj || '');
     return !!lower && (lower === role || lower === race || lower === raceAdj
         || (raceAdj === 'human' && lower === 'human'));
+}
+
+function isHeroGenocideResolvedTarget(data) {
+    if (!data?.name) return false;
+    const genderNames = GENDERED_CORPSTAT_MONSTER_NAMES.get(normalizeGenocideName(data.name));
+    return [
+        data.name,
+        genderNames?.neutral,
+        genderNames?.male,
+        genderNames?.female,
+    ].filter(Boolean).some(name => isHeroGenocideTarget(name));
 }
 
 function finishHeroGenocide(messages, cause = 'scroll of genocide') {
@@ -31534,6 +31671,10 @@ async function finishGenocideInput(raw) {
     }
     if (pending.classMode) {
         const cls = genocideClassFromInput(input);
+        if (cls === 'I') {
+            await retryGenocidePrompt(pending, "You aren't permitted to genocide such monsters.");
+            return;
+        }
         const members = cls ? genocideClassMembers(cls) : [];
         if (!members.length) {
             await retryGenocidePrompt(pending, `That ${input.length === 1 ? 'symbol' : 'response'} does not represent any monster.`);
@@ -31574,7 +31715,8 @@ async function finishGenocideInput(raw) {
         await retryGenocidePrompt(pending, 'Such creatures no longer exist in this world.');
         return;
     }
-    if (isMonsterForbiddenForGenocideName(data.name)) {
+    const killPlayer = isHeroGenocideResolvedTarget(data);
+    if (isMonsterForbiddenForGenocideName(data.name) && !killPlayer) {
         await retryGenocidePrompt(pending, 'A thunderous voice booms through the caverns:  "No, mortal!  That will not be done."');
         return;
     }
@@ -31583,7 +31725,6 @@ async function finishGenocideInput(raw) {
         await endGenocidePrompt(messages, messages.length > 1);
         return;
     }
-    const killPlayer = isHeroGenocideTarget(input);
     if (data.unique || data.nemesis) {
         await retryGenocidePrompt(pending, `You aren't permitted to genocide ${data.unique ? `the ${data.name}` : pluralizeMonsterName(data.name)}.`);
         return;
@@ -34423,14 +34564,16 @@ function kickFloorObjectAt(x, y) {
         && obj.ox === x && obj.oy === y);
 }
 
-function kickFloorObjectSupported(obj, x, y) {
+function kickFloorObjectSupported(obj, x, y, options = {}) {
     if (!obj || obj === game.u?.uball || obj === game.u?.uchain) return false;
     if (isBoulderObject(obj) || shopBillableGold(obj)) return false;
     const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
     if (quantity !== 1 && !fragileBreakKind) return false;
     if ((!isBoxObject(obj) && isTipContainerObject(obj)) || globContents(obj).length) return false;
-    if ((shopkeeperForCostlySpot(x, y) || shopObjectOrContentsUnpaid(obj)) && !fragileBreakKind)
+    const shopFloorGate = !!options.shopFloorGate;
+    if ((shopObjectOrContentsUnpaid(obj) || (shopkeeperForCostlySpot(x, y) && !shopFloorGate))
+        && !fragileBreakKind)
         return false;
     if (impactDropBreakKind(obj) && !fragileBreakKind) return false;
     return true;
@@ -34631,10 +34774,11 @@ function chargeHeroBrokenShopFloorObject(obj, x, y, messages) {
 
 async function kickFloorObjectToward(dir, x, y) {
     let obj = kickFloorObjectAt(x, y);
-    if (!kickFloorObjectSupported(obj, x, y)) return { handled: false };
-
     const landX = x + dir.dx;
     const landY = y + dir.dy;
+    const gate = remoteProjectileDownGateAt(obj, landX, landY);
+    if (!kickFloorObjectSupported(obj, x, y, { shopFloorGate: !!gate })) return { handled: false };
+
     const targetMon = (game.level?.monsters || []).find(mon =>
         mon && !mon.dead && mon.mx === landX && mon.my === landY
         && (mon.mhp == null || mon.mhp > 0));
@@ -34643,7 +34787,6 @@ async function kickFloorObjectToward(dir, x, y) {
             || heroThrownStoneMissileHarmlessRockPasser(obj, targetMon)
             || heroThrownGemClassObject(obj)
             || heroProjectileSupportedWeaponObject(obj));
-    const gate = remoteProjectileDownGateAt(obj, landX, landY);
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
     const localBoxImpact = isBoxObject(obj);
     if (!localBoxImpact && !gate && !canHandleMonsterImpact && !fragileBreakKind) return { handled: false };
@@ -34692,7 +34835,9 @@ async function kickFloorObjectToward(dir, x, y) {
     obj.ox = landX;
     obj.oy = landY;
 
-    const shipped = maybeShipRemoteProjectileObject(obj, landX, landY, messages);
+    const shipped = maybeShipRemoteProjectileObject(obj, landX, landY, messages, {
+        shopFloorObj: !!shopkeeperForCostlySpot(x, y),
+    });
     if (!shipped.handled) {
         placeKickedFloorObject(obj, landX, landY, messages);
     }
@@ -34780,7 +34925,7 @@ function maybeShipRemoteProjectileObject(obj, x, y, messages, options = {}) {
         if (impact.message) messages.push(impact.message);
         return projectileShipObjectResult({ noDrop: true, target, where: gate.where, gateText, impact });
     }
-    const debt = shipObjectShopDebt(obj, x, y);
+    const debt = shipObjectShopDebt(obj, x, y, { shopFloorObj: !!options.shopFloorObj });
     if (debt.message) messages.push(debt.message);
     const breakKind = impactDropObjectBreaks(obj);
     if (breakKind) {
@@ -48395,7 +48540,8 @@ const GENOCIDE_MONSTER_CLASS_NAMES = new Map([
     ['trapper', 't'], ['unicorn', 'u'], ['vortex', 'v'], ['worm', 'w'],
     ['xan', 'x'], ['light', 'y'], ['zruty', 'z'], ['angel', 'A'],
     ['bat', 'B'], ['centaur', 'C'], ['dragon', 'D'], ['elemental', 'E'],
-    ['fungus', 'F'], ['giant', 'H'], ['jabberwock', 'J'], ['kop', 'K'],
+    ['fungus', 'F'], ['giant', 'H'], ['invisible', 'I'],
+    ['invisible monster', 'I'], ['jabberwock', 'J'], ['kop', 'K'],
     ['lich', 'L'], ['mummy', 'M'], ['naga', 'N'], ['ogre', 'O'],
     ['pudding', 'P'], ['quantum mechanic', 'Q'], ['rust monster', 'R'],
     ['snake', 'S'], ['troll', 'T'], ['umber hulk', 'U'], ['vampire', 'V'],

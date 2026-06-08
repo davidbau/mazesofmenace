@@ -982,6 +982,38 @@ export async function mMoveCommaUInventPostCorridorHostileLikeC(g, mtmp, stepNum
     }
 }
 
+/**
+ * C: comma-**`U`** post-seventh — one hostile **`distfleeck`** + **`dochug:886`** gate
+ * (~3107–3108 on **`seed0006`**) before pet **`dog_goal`** **`obj_resists`** (~3109+).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} [stepNum]
+ */
+export async function movemonCommaUPostSeventhHostilePrefixLikeC(g, mtmp, stepNum = 1) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    if (dochugBlockedEarlyLikeC(g, mtmp)) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    wipeEngrAt(mx, my, 1, false);
+    if (!dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp)) return;
+    setApparxyMonsterLikeC(g, mtmp);
+    const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
+    const nearby = nearbyForDochugGateLikeC(g, mtmp, flee1);
+    void dochugEntersMmoveBlockLikeC(
+        g,
+        mtmp,
+        nearby,
+        flee1.scared | 0,
+        stepNum,
+    );
+}
+
 export async function movemonCommaUFirstHostileDochugLikeC(g, mtmp, stepNum = 1) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
     const u = g.u;

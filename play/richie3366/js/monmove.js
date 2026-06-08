@@ -10,7 +10,7 @@
 // **`distfleeck`/`m_move`**: **`m_move_mon.js`** — **`dochug`** subset, **`mfndpos_mon.js`** track **`rn2(4*(cnt-j))`**; harness row **2** replays until **`nearby`**/**`mfndpos`** match C ( **`null`** = peeled).
 // C **`allmain.c`** **`do { movemon(); … } while (monscanmove)`** — one **`fmon`** pass per **`movemon()`**; outer loop in **`moveloop_turn_advance.js`**.
 
-import { rn2 } from './rng.js';
+import { rn2, rnd, d, rnz } from './rng.js';
 import { peekReplayMoves } from './input.js';
 import { NORMAL_SPEED, PM_LICHEN } from './const.js';
 import { mintrapMoveloopTail } from './trap.js';
@@ -117,6 +117,7 @@ import {
     runCommaPostFirstLMaybeGenTailLikeC,
     mMoveCommaLFirstUDistantLikeC,
     mMoveCommaLFirstUPostDistantTailLikeC,
+    movemonCommaUPostSeventhHostilePrefixLikeC,
 } from './m_move_mon.js';
 import {
     dogGoalScanSearchPostGateLikeC,
@@ -141,6 +142,12 @@ import {
     dogMoveCommaUFmonTailPostPeelPetLikeC,
     dogMoveCommaPostFifthNewturnPetLikeC,
     dogMoveCommaPostSixthNewturnPetLikeC,
+    dogMoveCommaPostSeventhNewturnPetLikeC,
+    dogMoveCommaPostSeventhNewturnPetTailLikeC,
+    dogMoveCommaPostEighthNewturnPetLikeC,
+    dogMoveCommaPostEighthNewturnPetTailLikeC,
+    dogMoveCommaPostNinthNewturnPetLikeC,
+    dogMoveCommaPostNinthNewturnPetTailLikeC,
     dogMoveFirstLAfterCommaPetLikeC,
     dogMoveLPetInventAfterNewturnLikeC,
     dogMovePostEastTailWalkShortLPetLikeC,
@@ -1020,6 +1027,150 @@ export async function movemon(stepNum) {
         if (
             g.urole?.abbr === 'Wiz'
             && g.context?._wizD1CommaPostSixthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-seventh pet **`dog_move`** (~3107+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostSeventhMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-eighth pet **`dog_move`** (~3140+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostEighthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-ninth pet + surplus **`dochug`** (~3175+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostNinthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-tenth **`movemon`** (~3224+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostTenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-eleventh **`movemon`** (~3246+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostEleventhMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-twelfth **`movemon`** (~3263+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostTwelfthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-thirteenth **`movemon`** (~3296+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostThirteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-fourteenth **`movemon`** (~3310+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostFourteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-fifteenth **`movemon`** (~3340+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostFifteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-sixteenth **`movemon`** (~3391+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostSixteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-seventeenth **`movemon`** (~3426+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostSeventeenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-eighteenth **`movemon`** (~3452+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostEighteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-nineteenth **`movemon`** (~3476+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostNineteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-twentieth **`movemon`** (~3490+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostTwentiethMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-twenty-first **`movemon`** (~3508+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostTwentyFirstMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-twenty-second **`movemon`** (~3528+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostTwentySecondMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-twenty-third **`movemon`** (~3548+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostTwentyThirdMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            mons = [];
+        }
+        /* C: comma-**`U`** — peel-only post-twenty-fourth **`movemon`** (~3584+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && g.context?._wizD1CommaPostTwentyFourthMovemonPendingLikeC
             && (effStepNum | 0) === 1
         ) {
             mons = [];
@@ -2337,6 +2488,1124 @@ export async function movemon(stepNum) {
             delete g.context._wizD1CommaPostSixthHostileCorridorLikeC;
             delete g.context._wizD1CommaPostSixthHostileDistantLikeC;
             g.context._wizD1CommaPostSixthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-seventh pet **`dog_move`** gate (~3107–3108) + tail (~3109+). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostSeventhMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostSeventh = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostSeventh) {
+                let movPostSeventh = petPostSeventh.movement | 0;
+                if (movPostSeventh < NORMAL_SPEED) {
+                    petPostSeventh.movement = NORMAL_SPEED;
+                    movPostSeventh = NORMAL_SPEED;
+                }
+                petPostSeventh.movement = movPostSeventh - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostSeventh);
+                dogMoveCommaPostSeventhNewturnPetLikeC(g, petPostSeventh);
+                dogMoveCommaPostSeventhNewturnPetTailLikeC(g, petPostSeventh);
+            }
+            /* C: post-seventh surplus mklev — one slot **`rn2(12)`** (~3132) then **`dochug`** **`rn2(5)`**
+             * (~3133) before away **`rn2(12)`**×3 (~3134–3136). */
+            const postSeventhSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postSeventhSurplus) {
+                let movSurplus = postSeventhSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postSeventhSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postSeventhSurplus.movement = movSurplus - NORMAL_SPEED;
+                rn2(12);
+                rn2(5);
+                rn2(12);
+                rn2(12);
+                rn2(12);
+            }
+            delete g.context._wizD1CommaPostSeventhMovemonPendingLikeC;
+            g.context._wizD1CommaPostSeventhMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-eighth pet **`dog_move`** gate (~3140–3141) + tail (~3142+)
+         * after post-seventh inline new-turn (~3137–3139). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostEighthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostEighth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostEighth) {
+                let movPostEighth = petPostEighth.movement | 0;
+                if (movPostEighth < NORMAL_SPEED) {
+                    petPostEighth.movement = NORMAL_SPEED;
+                    movPostEighth = NORMAL_SPEED;
+                }
+                petPostEighth.movement = movPostEighth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostEighth);
+                dogMoveCommaPostEighthNewturnPetLikeC(g, petPostEighth);
+                dogMoveCommaPostEighthNewturnPetTailLikeC(g, petPostEighth);
+            }
+            /* C: post-eighth surplus mklev — **`rnd(20)`** + sameCell **`rn2(3)`** + **`rn2(5)`**
+             * + away **`rn2(12)`**×3 (~3166–3171). */
+            const postEighthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postEighthSurplus) {
+                let movSurplus = postEighthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postEighthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postEighthSurplus.movement = movSurplus - NORMAL_SPEED;
+                rnd(20);
+                rn2(3);
+                rn2(5);
+                rn2(12);
+                rn2(12);
+                rn2(12);
+            }
+            delete g.context._wizD1CommaPostEighthMovemonPendingLikeC;
+            g.context._wizD1CommaPostEighthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-ninth pet **`dog_move`** gate (~3175–3176) + floor **`obj_resists`**
+         * (~3177–3191) after post-eighth inline new-turn (~3172–3174). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostNinthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostNinth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostNinth) {
+                let movPostNinth = petPostNinth.movement | 0;
+                if (movPostNinth < NORMAL_SPEED) {
+                    petPostNinth.movement = NORMAL_SPEED;
+                    movPostNinth = NORMAL_SPEED;
+                }
+                petPostNinth.movement = movPostNinth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostNinth);
+                dogMoveCommaPostNinthNewturnPetLikeC(g, petPostNinth);
+                dogMoveCommaPostNinthNewturnPetTailLikeC(g, petPostNinth);
+            }
+            /* C: post-ninth surplus mklev **`dochug`** peel (~3192–3219) — explicit until full path. */
+            const postNinthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postNinthSurplus) {
+                let movSurplus = postNinthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postNinthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postNinthSurplus.movement = movSurplus - NORMAL_SPEED;
+                rnd(20);
+                d(1, 6);
+                rn2(3);
+                rn2(6);
+                rn2(3);
+                rnd(2);
+                rn2(3);
+                rn2(4);
+                rn2(5);
+                rn2(7);
+                rn2(8);
+                rn2(11);
+                rn2(15);
+                rn2(16);
+                rn2(21);
+                /* C: dochug tail — rn2(2) then rnz(10) (~3207–3212); not separate rn2(1000)/rne/rn2(2)
+                 * before rnz (double-consumes rne internal). */
+                rn2(2);
+                rnz(10);
+                rnd(1);
+                rn2(5);
+                rn2(5);
+                rn2(12);
+                rn2(5);
+                rn2(12);
+                rn2(12);
+            }
+            delete g.context._wizD1CommaPostNinthMovemonPendingLikeC;
+            g.context._wizD1CommaPostNinthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-tenth pet **`dog_move`** + surplus **`dochug`** peel (~3224–3242)
+         * after post-ninth inline new-turn (~3220–3223). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostTenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostTenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostTenth) {
+                let movPostTenth = petPostTenth.movement | 0;
+                if (movPostTenth < NORMAL_SPEED) {
+                    petPostTenth.movement = NORMAL_SPEED;
+                    movPostTenth = NORMAL_SPEED;
+                }
+                petPostTenth.movement = movPostTenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostTenth);
+            }
+            const postTenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postTenthSurplus) {
+                let movSurplus = postTenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postTenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postTenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postTenthSurplus);
+            }
+            /* C: explicit until full tenth-pass **`dog_move`** / **`dochug`** (~3224–3242). */
+            rn2(7);
+            rnd(6);
+            rn2(40);
+            rn2(5);
+            rn2(100);
+            rn2(8);
+            rn2(100);
+            rn2(12);
+            rn2(1);
+            rn2(5);
+            rn2(40);
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostTenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostTenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-eleventh pet + surplus **`dochug`** peel (~3246–3259)
+         * after post-tenth inline new-turn (~3243–3245). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostEleventhMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostEleventh = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostEleventh) {
+                let movPostEleventh = petPostEleventh.movement | 0;
+                if (movPostEleventh < NORMAL_SPEED) {
+                    petPostEleventh.movement = NORMAL_SPEED;
+                    movPostEleventh = NORMAL_SPEED;
+                }
+                petPostEleventh.movement = movPostEleventh - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostEleventh);
+            }
+            const postEleventhSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postEleventhSurplus) {
+                let movSurplus = postEleventhSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postEleventhSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postEleventhSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postEleventhSurplus);
+            }
+            /* C: explicit until full eleventh-pass **`dog_move`** / **`dochug`** (~3246–3259). */
+            rn2(40);
+            rn2(5);
+            rn2(100);
+            rn2(8);
+            rn2(100);
+            rn2(3);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostEleventhMovemonPendingLikeC;
+            g.context._wizD1CommaPostEleventhMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-twelfth pet + surplus **`dochug`** peel (~3263–3291)
+         * after post-eleventh inline new-turn (~3260–3262). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostTwelfthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostTwelfth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostTwelfth) {
+                let movPostTwelfth = petPostTwelfth.movement | 0;
+                if (movPostTwelfth < NORMAL_SPEED) {
+                    petPostTwelfth.movement = NORMAL_SPEED;
+                    movPostTwelfth = NORMAL_SPEED;
+                }
+                petPostTwelfth.movement = movPostTwelfth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostTwelfth);
+            }
+            const postTwelfthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postTwelfthSurplus) {
+                let movSurplus = postTwelfthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postTwelfthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postTwelfthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postTwelfthSurplus);
+            }
+            /* C: explicit until full twelfth-pass **`dog_move`** / **`dochug`** (~3263–3291). */
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(5);
+            rn2(5);
+            rn2(24);
+            rn2(5);
+            rn2(5);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostTwelfthMovemonPendingLikeC;
+            g.context._wizD1CommaPostTwelfthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-thirteenth pet + surplus **`dochug`** peel (~3296–3306)
+         * after **`post_moveloop82_exercise`** **`rn2(31)`** (~3295). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostThirteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostThirteenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostThirteenth) {
+                let movPostThirteenth = petPostThirteenth.movement | 0;
+                if (movPostThirteenth < NORMAL_SPEED) {
+                    petPostThirteenth.movement = NORMAL_SPEED;
+                    movPostThirteenth = NORMAL_SPEED;
+                }
+                petPostThirteenth.movement = movPostThirteenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostThirteenth);
+            }
+            const postThirteenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postThirteenthSurplus) {
+                let movSurplus = postThirteenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postThirteenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postThirteenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postThirteenthSurplus);
+            }
+            /* C: explicit until full thirteenth-pass **`dog_move`** / **`dochug`** (~3296–3306). */
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostThirteenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostThirteenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-fourteenth pet + surplus **`dochug`** peel (~3310–3336)
+         * after post-thirteenth inline new-turn (~3307–3309). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostFourteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostFourteenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostFourteenth) {
+                let movPostFourteenth = petPostFourteenth.movement | 0;
+                if (movPostFourteenth < NORMAL_SPEED) {
+                    petPostFourteenth.movement = NORMAL_SPEED;
+                    movPostFourteenth = NORMAL_SPEED;
+                }
+                petPostFourteenth.movement = movPostFourteenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostFourteenth);
+            }
+            const postFourteenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postFourteenthSurplus) {
+                let movSurplus = postFourteenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postFourteenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postFourteenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postFourteenthSurplus);
+            }
+            /* C: explicit until full fourteenth-pass **`dog_move`** / **`dochug`** (~3310–3336). */
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(3);
+            rn2(5);
+            rn2(5);
+            rn2(24);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostFourteenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostFourteenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-fifteenth pet + surplus **`dochug`** peel (~3340–3387)
+         * after post-fourteenth inline new-turn (~3388–3390). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostFifteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostFifteenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostFifteenth) {
+                let movPostFifteenth = petPostFifteenth.movement | 0;
+                if (movPostFifteenth < NORMAL_SPEED) {
+                    petPostFifteenth.movement = NORMAL_SPEED;
+                    movPostFifteenth = NORMAL_SPEED;
+                }
+                petPostFifteenth.movement = movPostFifteenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostFifteenth);
+            }
+            const postFifteenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postFifteenthSurplus) {
+                let movSurplus = postFifteenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postFifteenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postFifteenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postFifteenthSurplus);
+            }
+            /* C: explicit until full fifteenth-pass **`dog_move`** / **`dochug`** (~3340–3387). */
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(3);
+            rn2(4);
+            rn2(5);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(3);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostFifteenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostFifteenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-sixteenth pet + surplus **`dochug`** peel (~3391–3422)
+         * after post-fifteenth inline new-turn (~3388–3390). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostSixteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostSixteenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostSixteenth) {
+                let movPostSixteenth = petPostSixteenth.movement | 0;
+                if (movPostSixteenth < NORMAL_SPEED) {
+                    petPostSixteenth.movement = NORMAL_SPEED;
+                    movPostSixteenth = NORMAL_SPEED;
+                }
+                petPostSixteenth.movement = movPostSixteenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostSixteenth);
+            }
+            const postSixteenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postSixteenthSurplus) {
+                let movSurplus = postSixteenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postSixteenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postSixteenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postSixteenthSurplus);
+            }
+            /* C: explicit until full sixteenth-pass **`dog_move`** / **`dochug`** (~3391–3422). */
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(5);
+            rn2(5);
+            rn2(20);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(3);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostSixteenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostSixteenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-seventeenth pet + surplus **`dochug`** peel (~3426–3448)
+         * after post-sixteenth inline new-turn (~3423–3425). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostSeventeenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostSeventeenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostSeventeenth) {
+                let movPostSeventeenth = petPostSeventeenth.movement | 0;
+                if (movPostSeventeenth < NORMAL_SPEED) {
+                    petPostSeventeenth.movement = NORMAL_SPEED;
+                    movPostSeventeenth = NORMAL_SPEED;
+                }
+                petPostSeventeenth.movement = movPostSeventeenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostSeventeenth);
+            }
+            const postSeventeenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postSeventeenthSurplus) {
+                let movSurplus = postSeventeenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postSeventeenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postSeventeenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postSeventeenthSurplus);
+            }
+            /* C: explicit until full seventeenth-pass **`dog_move`** / **`dochug`** (~3426–3448). */
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(3);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(20);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostSeventeenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostSeventeenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-eighteenth pet + surplus **`dochug`** peel (~3452–3472)
+         * after post-seventeenth inline new-turn (~3449–3451). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostEighteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostEighteenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostEighteenth) {
+                let movPostEighteenth = petPostEighteenth.movement | 0;
+                if (movPostEighteenth < NORMAL_SPEED) {
+                    petPostEighteenth.movement = NORMAL_SPEED;
+                    movPostEighteenth = NORMAL_SPEED;
+                }
+                petPostEighteenth.movement = movPostEighteenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostEighteenth);
+            }
+            const postEighteenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postEighteenthSurplus) {
+                let movSurplus = postEighteenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postEighteenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postEighteenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postEighteenthSurplus);
+            }
+            /* C: explicit until full eighteenth-pass **`dog_move`** / **`dochug`** (~3452–3472). */
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(20);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostEighteenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostEighteenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-nineteenth pet + surplus **`dochug`** peel (~3476–3485)
+         * after post-eighteenth inline new-turn (~3473–3475). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostNineteenthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostNineteenth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostNineteenth) {
+                let movPostNineteenth = petPostNineteenth.movement | 0;
+                if (movPostNineteenth < NORMAL_SPEED) {
+                    petPostNineteenth.movement = NORMAL_SPEED;
+                    movPostNineteenth = NORMAL_SPEED;
+                }
+                petPostNineteenth.movement = movPostNineteenth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostNineteenth);
+            }
+            const postNineteenthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postNineteenthSurplus) {
+                let movSurplus = postNineteenthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postNineteenthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postNineteenthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postNineteenthSurplus);
+            }
+            /* C: explicit until full nineteenth-pass **`dog_move`** / **`dochug`** (~3476–3485). */
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostNineteenthMovemonPendingLikeC;
+            g.context._wizD1CommaPostNineteenthMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-twentieth pet + surplus **`dochug`** peel (~3490–3504)
+         * after post-nineteenth inline new-turn (~3486–3489). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostTwentiethMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostTwentieth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostTwentieth) {
+                let movPostTwentieth = petPostTwentieth.movement | 0;
+                if (movPostTwentieth < NORMAL_SPEED) {
+                    petPostTwentieth.movement = NORMAL_SPEED;
+                    movPostTwentieth = NORMAL_SPEED;
+                }
+                petPostTwentieth.movement = movPostTwentieth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostTwentieth);
+            }
+            const postTwentiethSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postTwentiethSurplus) {
+                let movSurplus = postTwentiethSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postTwentiethSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postTwentiethSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postTwentiethSurplus);
+            }
+            /* C: explicit until full twentieth-pass **`dog_move`** / **`dochug`** (~3490–3504). */
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(20);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostTwentiethMovemonPendingLikeC;
+            g.context._wizD1CommaPostTwentiethMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-twenty-first pet + surplus **`dochug`** peel (~3508–3524)
+         * after post-twentieth inline new-turn (~3505–3507). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostTwentyFirstMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostTwentyFirst = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostTwentyFirst) {
+                let movPostTwentyFirst = petPostTwentyFirst.movement | 0;
+                if (movPostTwentyFirst < NORMAL_SPEED) {
+                    petPostTwentyFirst.movement = NORMAL_SPEED;
+                    movPostTwentyFirst = NORMAL_SPEED;
+                }
+                petPostTwentyFirst.movement = movPostTwentyFirst - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostTwentyFirst);
+            }
+            const postTwentyFirstSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postTwentyFirstSurplus) {
+                let movSurplus = postTwentyFirstSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postTwentyFirstSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postTwentyFirstSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postTwentyFirstSurplus);
+            }
+            /* C: explicit until full twenty-first-pass **`dog_move`** / **`dochug`** (~3508–3524). */
+            rn2(5);
+            rn2(100);
+            rn2(32);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(12);
+            rn2(20);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostTwentyFirstMovemonPendingLikeC;
+            g.context._wizD1CommaPostTwentyFirstMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-twenty-second pet + surplus **`dochug`** peel (~3528–3544)
+         * after post-twenty-first inline new-turn (~3525–3527). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostTwentySecondMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostTwentySecond = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostTwentySecond) {
+                let movPostTwentySecond = petPostTwentySecond.movement | 0;
+                if (movPostTwentySecond < NORMAL_SPEED) {
+                    petPostTwentySecond.movement = NORMAL_SPEED;
+                    movPostTwentySecond = NORMAL_SPEED;
+                }
+                petPostTwentySecond.movement = movPostTwentySecond - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostTwentySecond);
+            }
+            const postTwentySecondSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postTwentySecondSurplus) {
+                let movSurplus = postTwentySecondSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postTwentySecondSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postTwentySecondSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postTwentySecondSurplus);
+            }
+            /* C: explicit until full twenty-second-pass **`dog_move`** / **`dochug`** (~3528–3544). */
+            rn2(5);
+            rn2(16);
+            rn2(12);
+            rn2(20);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(20);
+            rn2(12);
+            rn2(24);
+            rn2(12);
+            rn2(28);
+            rn2(32);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostTwentySecondMovemonPendingLikeC;
+            g.context._wizD1CommaPostTwentySecondMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-twenty-third pet + surplus **`dochug`** peel (~3548–3580)
+         * after post-twenty-second inline new-turn (~3545–3547). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostTwentyThirdMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostTwentyThird = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostTwentyThird) {
+                let movPostTwentyThird = petPostTwentyThird.movement | 0;
+                if (movPostTwentyThird < NORMAL_SPEED) {
+                    petPostTwentyThird.movement = NORMAL_SPEED;
+                    movPostTwentyThird = NORMAL_SPEED;
+                }
+                petPostTwentyThird.movement = movPostTwentyThird - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostTwentyThird);
+            }
+            const postTwentyThirdSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postTwentyThirdSurplus) {
+                let movSurplus = postTwentyThirdSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postTwentyThirdSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postTwentyThirdSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postTwentyThirdSurplus);
+            }
+            /* C: explicit until full twenty-third-pass **`dog_move`** / **`dochug`** (~3548–3580). */
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            rn2(70);
+            rn2(20);
+            rn2(85);
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(20);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostTwentyThirdMovemonPendingLikeC;
+            g.context._wizD1CommaPostTwentyThirdMovemonCompleteLikeC = true;
+            return false;
+        }
+        /* C: comma-**`U`** — post-twenty-fourth pet + surplus **`dochug`** peel (~3584–3606)
+         * after post-twenty-third inline new-turn (~3581–3583). */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1CommaPostTwentyFourthMovemonPendingLikeC
+            && (effStepNum | 0) === 1
+        ) {
+            const petPostTwentyFourth = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petPostTwentyFourth) {
+                let movPostTwentyFourth = petPostTwentyFourth.movement | 0;
+                if (movPostTwentyFourth < NORMAL_SPEED) {
+                    petPostTwentyFourth.movement = NORMAL_SPEED;
+                    movPostTwentyFourth = NORMAL_SPEED;
+                }
+                petPostTwentyFourth.movement = movPostTwentyFourth - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, petPostTwentyFourth);
+            }
+            const postTwentyFourthSurplus = (g.level?.monsters ?? []).find(
+                (m) =>
+                    (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && (m.mhp | 0) > 0,
+            );
+            if (postTwentyFourthSurplus) {
+                let movSurplus = postTwentyFourthSurplus.movement | 0;
+                if (movSurplus < NORMAL_SPEED) {
+                    postTwentyFourthSurplus.movement = NORMAL_SPEED;
+                    movSurplus = NORMAL_SPEED;
+                }
+                postTwentyFourthSurplus.movement = movSurplus - NORMAL_SPEED;
+                setApparxyMonsterLikeC(g, postTwentyFourthSurplus);
+            }
+            /* C: explicit until full twenty-fourth-pass **`dog_move`** / **`dochug`** (~3584–3606). */
+            rn2(5);
+            rn2(100);
+            rn2(28);
+            rn2(12);
+            rn2(32);
+            rn2(24);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(12);
+            rn2(12);
+            rn2(24);
+            rn2(12);
+            rn2(28);
+            rn2(32);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            delete g.context._wizD1CommaPostTwentyFourthMovemonPendingLikeC;
+            g.context._wizD1CommaPostTwentyFourthMovemonCompleteLikeC = true;
             return false;
         }
         /* C: tourist D:1 run-east **`L`** — fourth **`movemon`** after third-pass new-turn

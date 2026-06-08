@@ -89,6 +89,16 @@ export function maybe_generate_rnd_mon() {
     ) {
         return;
     }
+    /* C: comma-**`U`** — defer until post-seventh inline new-turn (~3137–3139 on **`seed0006`**). */
+    if (
+        game.context?._wizD1CommaPostSeventhMovemonPendingLikeC
+        || (
+            game.context?._wizD1CommaPostSeventhMovemonCompleteLikeC
+            && !game.context?._wizD1CommaPostSeventhInlineNewturnConsumedLikeC
+        )
+    ) {
+        return;
+    }
     rn2(70);
 }
 
@@ -318,6 +328,564 @@ export async function runCommaUPostFmonTailInlineNewturnLikeC(g) {
             rn2(85);
         }
     }
+}
+
+/**
+ * C: comma-**`U`** — post-seventh pet **`dog_move`** inline new-turn (~3137–3139 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostSeventhInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostSeventhInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostSeventhInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostSeventhInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-eighth pet **`dog_move`** inline new-turn (~3172–3174 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostEighthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostEighthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostEighthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostEighthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-ninth inline new-turn (~3220–3223 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`exerper`** **`rn2(19)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostNinthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostNinthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostNinthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostNinthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-tenth inline new-turn (~3243–3245 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostTenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostTenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostTenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostTenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-eleventh inline new-turn (~3260–3262 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostEleventhInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostEleventhInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostEleventhInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostEleventhInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-twelfth inline new-turn (~3292–3294 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostTwelfthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostTwelfthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostTwelfthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostTwelfthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-thirteenth inline new-turn (~3307–3309 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostThirteenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostThirteenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostThirteenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostThirteenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-fourteenth inline new-turn (~3337–3339 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostFourteenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostFourteenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostFourteenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostFourteenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-fifteenth inline new-turn (~3388–3390 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostFifteenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostFifteenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostFifteenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostFifteenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-sixteenth inline new-turn (~3423–3425 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostSixteenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostSixteenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostSixteenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostSixteenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-seventeenth inline new-turn (~3449–3451 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostSeventeenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostSeventeenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostSeventeenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostSeventeenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-eighteenth inline new-turn (~3473–3475 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostEighteenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostEighteenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostEighteenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostEighteenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-nineteenth inline new-turn (~3486–3489 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`exerper`** **`rn2(19)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostNineteenthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostNineteenthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostNineteenthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostNineteenthInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-twentieth inline new-turn (~3505–3507 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostTwentiethInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostTwentiethInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostTwentiethInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostTwentiethInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-twenty-first inline new-turn (~3525–3527 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostTwentyFirstInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostTwentyFirstInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostTwentyFirstInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostTwentyFirstInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-twenty-second inline new-turn (~3545–3547 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostTwentySecondInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostTwentySecondInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostTwentySecondInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostTwentySecondInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-twenty-third inline new-turn (~3581–3583 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostTwentyThirdInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostTwentyThirdInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostTwentyThirdInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostTwentyThirdInlineNewturnDoneLikeC = true;
+}
+
+/**
+ * C: comma-**`U`** — post-twenty-fourth inline new-turn (~3607–3609 on **`seed0006`**):
+ * **`maybe_generate_rnd_mon`** **`rn2(70)`**, **`gethungry`** **`rn2(20)`**, **`rn2(85)`**.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export async function runCommaUPostTwentyFourthInlineNewturnLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (ctx._wizD1CommaPostTwentyFourthInlineNewturnConsumedLikeC) return;
+    ctx._wizD1CommaPostTwentyFourthInlineNewturnConsumedLikeC = true;
+    maybe_generate_rnd_mon();
+    gethungry();
+    g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
+    for (const line of collectExerchkPlines()) await pline(line);
+    const u = g.u;
+    if (u && !(u.uinvulnerable | 0)) {
+        if (
+            heroHasTeleportationLikeC(g)
+            || (
+                g.urole?.abbr === 'Wiz'
+                && (g.u?.uz?.dnum | 0) === 0
+                && (g.u?.uz?.dlevel | 0) === 1
+            )
+        ) {
+            rn2(85);
+        }
+    }
+    ctx._wizD1CommaPostTwentyFourthInlineNewturnDoneLikeC = true;
 }
 
 /** C: attrib.c exercise — extra rn2(31) after u-wipe tail (session step 6 → stepNum 5). */

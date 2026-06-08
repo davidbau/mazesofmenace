@@ -102,6 +102,43 @@ export function d(n, x) {
     return sum;
 }
 
+/**
+ * C recorder logs one `rne(x)=` line (inner `rn2` draws are not separate log entries).
+ * Use at peel sites where global `rne()` log shape diverges from C.
+ */
+export function rneCompositeLogLikeC(x) {
+    const log = _rngLogEnabled;
+    if (log) _rngLogEnabled = false;
+    const ulevel = game.u?.ulevel || 1;
+    const utmp = ulevel < 15 ? 5 : Math.trunc(ulevel / 3);
+    let tmp = 1;
+    while (tmp < utmp && !rn2(x)) tmp++;
+    if (log) {
+        _rngLogEnabled = true;
+        appendRngLog(`rne(${x})=${tmp}`);
+    }
+    return tmp;
+}
+
+/**
+ * C recorder logs one `rnz(i)=` line (inner `rn2`/`rne` draws are not separate entries).
+ */
+export function rnzCompositeLogLikeC(i) {
+    const log = _rngLogEnabled;
+    if (log) _rngLogEnabled = false;
+    let x = i;
+    let tmp = 1000;
+    tmp += rn2(1000);
+    tmp *= rneCompositeLogLikeC(4);
+    if (rn2(2)) { x *= tmp; x = Math.trunc(x / 1000); }
+    else { x *= 1000; x = Math.trunc(x / tmp); }
+    if (log) {
+        _rngLogEnabled = true;
+        appendRngLog(`rnz(${i})=${x}`);
+    }
+    return x;
+}
+
 // C ref: rne(x) — exponentially distributed
 // Internal rn2 calls are logged (matching C's PRNG log format).
 export function rne(x) {
