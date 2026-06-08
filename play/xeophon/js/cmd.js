@@ -30998,6 +30998,41 @@ function scrollReadMessages(confusedReading) {
 }
 
 const GENOCIDE_MAX_TRIES = 5;
+const GENOCIDE_EXTRA_MONSTERS = [
+    { name: 'watchman', mlet: '@', glyph: '@', color: CLR_GRAY, mlevel: 6, hpLevel: 9, difficulty: 8, mmove: 10, maligntyp: -2, genoFreq: 1, mercenary: true, armed: true, alwaysPeaceful: true },
+    { name: 'watch captain', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 10, hpLevel: 11, difficulty: 12, mmove: 10, maligntyp: -4, genoFreq: 1, mercenary: true, armed: true, alwaysPeaceful: true },
+];
+const GENOCIDE_EXTRA_MONSTER_NAMES = [
+    'queen bee', 'woodchuck', 'jellyfish', 'piranha', 'shark', 'giant eel',
+    'electric eel', 'kraken', 'giant', 'minotaur', 'water troll',
+];
+const GENOCIDE_FORBIDDEN_MONSTER_NAMES = new Set([
+    'couatl', 'aleax', 'angel', 'ki-rin', 'archon',
+    'air elemental', 'fire elemental', 'earth elemental', 'water elemental',
+    'straw golem', 'paper golem', 'rope golem', 'gold golem',
+    'leather golem', 'wood golem', 'flesh golem', 'clay golem',
+    'stone golem', 'glass golem', 'iron golem',
+    'titan', 'wererat', 'werejackal', 'werewolf',
+    'amorous demon', 'marilith', 'vrock', 'hezrou', 'bone devil',
+    'ice devil', 'nalfeshnee', 'pit fiend', 'sandestin', 'balrog',
+    'salamander',
+]);
+const C_AS_IS_MONSTER_PLURAL_NAMES = new Set(['manes', 'tengu', 'ki-rin', 'nazgul', 'piranha']);
+const C_AS_IS_MONSTER_PLURAL_SUFFIXES = ['-hai', 'fish'];
+const C_GENOCIDE_NAME_ALIASES = new Map([
+    ['grey dragon', 'gray dragon'],
+    ['baby grey dragon', 'baby gray dragon'],
+    ['grey unicorn', 'gray unicorn'],
+    ['grey ooze', 'gray ooze'],
+    ['mindflayer', 'mind flayer'],
+    ['master mindflayer', 'master mind flayer'],
+]);
+
+function isCAsIsMonsterPlural(name) {
+    const lower = String(name || '').toLowerCase();
+    return C_AS_IS_MONSTER_PLURAL_NAMES.has(lower)
+        || C_AS_IS_MONSTER_PLURAL_SUFFIXES.some(suffix => lower.endsWith(suffix));
+}
 
 function normalizeGenocideName(name) {
     let lower = String(name || '').trim().toLowerCase();
@@ -31024,12 +31059,17 @@ function normalizeGenocideName(name) {
 
 function pluralizeMonsterName(name) {
     const lower = String(name || '').toLowerCase();
+    if (isCAsIsMonsterPlural(name)) return name;
     if (lower === 'human') return 'humans';
     if (lower === 'dwarf') return 'dwarves';
     if (lower === 'elf') return 'elves';
-    if (lower === 'fungus') return 'fungi';
+    if (/ above$/i.test(name)) return `${pluralizeMonsterName(name.slice(0, -6))} above`;
+    if (/fungus$/i.test(name)) return `${name.slice(0, -6)}fungi`;
     if (/culus$/i.test(name)) return `${name.slice(0, -5)}culi`;
+    if (/mumak$/i.test(name)) return `${name.slice(0, -5)}mumakil`;
+    if (/watchman$/i.test(name)) return `${name.slice(0, -3)}men`;
     if (/rtex$/i.test(name)) return `${name.slice(0, -4)}rtices`;
+    if (/ium$/i.test(name)) return `${name.slice(0, -3)}ia`;
     if (lower.endsWith('y')) return `${name.slice(0, -1)}ies`;
     if (/(?:s|x|z|ch|sh)$/i.test(name)) return `${name}es`;
     return `${name}s`;
@@ -31051,19 +31091,31 @@ function genocideMonsterCatalog() {
         genoFreq: row[6],
     });
     for (const data of RANDOM_MONSTER_BY_NAME.values()) add(data);
+    for (const data of GENOCIDE_EXTRA_MONSTERS) add(data);
+    for (const name of GENOCIDE_EXTRA_MONSTER_NAMES) add(monsterByRndName(name));
     return entries;
 }
 
 function genocideMonsterByName(name) {
     const wanted = normalizeGenocideName(name);
     if (!wanted) return null;
+    const aliasedWanted = C_GENOCIDE_NAME_ALIASES.get(wanted) || wanted;
     for (const data of genocideMonsterCatalog()) {
+        const genderNames = GENDERED_CORPSTAT_MONSTER_NAMES.get(normalizeGenocideName(data.name));
         const candidates = [
             data.name,
             data.name?.replace(/-/g, ' '),
             pluralizeMonsterName(data.name || ''),
-        ].map(normalizeGenocideName);
-        if (candidates.includes(wanted)) return data;
+            genderNames?.male,
+            genderNames?.male?.replace(/-/g, ' '),
+            genderNames?.male ? pluralizeMonsterName(genderNames.male) : null,
+            genderNames?.female,
+            genderNames?.female?.replace(/-/g, ' '),
+            genderNames?.female ? pluralizeMonsterName(genderNames.female) : null,
+            genderNames?.male === 'incubus' ? 'incubi' : null,
+            genderNames?.female === 'succubus' ? 'succubi' : null,
+        ].filter(Boolean).map(normalizeGenocideName);
+        if (candidates.includes(wanted) || candidates.includes(aliasedWanted)) return data;
     }
     return null;
 }
@@ -31074,6 +31126,10 @@ function genocidedMonsterNames() {
 
 function isMonsterGenocidedName(name) {
     return genocidedMonsterNames().includes(normalizeGenocideName(name));
+}
+
+function isMonsterForbiddenForGenocideName(name) {
+    return GENOCIDE_FORBIDDEN_MONSTER_NAMES.has(normalizeGenocideName(name));
 }
 
 function markMonsterGenocided(name) {
@@ -31483,8 +31539,17 @@ async function finishGenocideInput(raw) {
             await retryGenocidePrompt(pending, `That ${input.length === 1 ? 'symbol' : 'response'} does not represent any monster.`);
             return;
         }
+        const eligibleMembers = members.filter(data => !isMonsterForbiddenForGenocideName(data.name));
+        if (!eligibleMembers.length) {
+            await retryGenocidePrompt(pending, "You aren't permitted to genocide such monsters.");
+            return;
+        }
         let wiped = 0;
         for (const data of members) {
+            if (isMonsterForbiddenForGenocideName(data.name)) {
+                messages.push(`You aren't permitted to genocide ${pluralizeMonsterName(data.name)}.`);
+                continue;
+            }
             if (isMonsterGenocidedName(data.name) || data.unique || data.nemesis) continue;
             genocideMonsterType(data, messages, { classMode: true });
             wiped++;
@@ -31507,6 +31572,10 @@ async function finishGenocideInput(raw) {
     }
     if (isMonsterGenocidedName(data.name)) {
         await retryGenocidePrompt(pending, 'Such creatures no longer exist in this world.');
+        return;
+    }
+    if (isMonsterForbiddenForGenocideName(data.name)) {
+        await retryGenocidePrompt(pending, 'A thunderous voice booms through the caverns:  "No, mortal!  That will not be done."');
         return;
     }
     if (pending.cursed) {
