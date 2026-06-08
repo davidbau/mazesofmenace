@@ -53053,7 +53053,7 @@ function heroPolyselfCanBecomeStoneGolem() {
     return form.mlet === "'" || form.glyph === "'";
 }
 
-function maybeTurnPolyselfIntoStoneGolem() {
+export function maybeTurnPolyselfIntoStoneGolem() {
     if (!heroPolyselfCanBecomeStoneGolem()) return '';
     const result = becomeMonster('stone golem');
     if (!result) return '';

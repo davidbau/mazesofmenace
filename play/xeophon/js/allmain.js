@@ -3,13 +3,13 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -54,6 +54,14 @@ const RACE_CANONICAL = new Map(Object.keys(RACE_STATE).map(name => [name.toLower
 const ALIGN_CANONICAL = new Map(Object.keys(ALIGN_TYPE).map(name => [name.toLowerCase(), name]));
 const GENDER_CANONICAL = new Map(['male', 'female'].map(name => [name, name]));
 const EGG = 10001;
+const TIN = 10004;
+const GLOB_OF_GREEN_SLIME = 10182;
+const ACIDIC_MONSTER_NAMES = new Set([
+    'acid blob', 'gelatinous cube', 'spotted jelly', 'ochre jelly',
+    'baby yellow dragon', 'yellow dragon', 'green mold', 'black naga hatchling',
+    'black naga', 'gray ooze', 'brown pudding', 'green slime', 'black pudding',
+    'juiblex',
+]);
 const LUMP_OF_ROYAL_JELLY = 10089;
 const MEAT_RING = 10164;
 const MEATBALL = 11012;
@@ -1685,6 +1693,10 @@ const MONSTER_BLINDING_VENOM_SPITTERS = new Set(['cobra', 'guardian naga']);
 const ORCISH_DAGGER = 10020;
 const DAGGER = 10023;
 const KNIFE = 10026;
+const ATHAME = 10094;
+const STILETTO = 10109;
+const ELVEN_DAGGER = 10123;
+const TIN_OPENER = 10159;
 const SPEAR = 10030;
 const MONSTER_THROWN_SPEAR_RANKS = new Map([
     ['dwarvish spear', 0],
@@ -6595,6 +6607,10 @@ export async function processMonsterTurns() {
                         && !(mon.data?.name === 'grid bug' && throwTargetX !== mon.mx && throwTargetY !== mon.my);
                     const canThrowDart = monsterIsKoboldDartThrower(mon) && mon.missile?.otyp === DART && mon.missile.quan > 0
                         && throwRange > 1 && throwRange <= 4 && straightThrow;
+                    const eggIndex = monsterThrownEggIndex(mon);
+                    const canThrowEgg = !mon._opened_door_this_move && !mon.mpeaceful && eggIndex >= 0
+                        && throwRange > 1 && throwRange < BOLT_LIM && straightThrow
+                        && clearPath(mon.mx, mon.my, throwTargetX, throwTargetY);
                     const canThrowCreamPie = !mon._opened_door_this_move && !mon.mpeaceful
                         && monsterIsKopCreamPieThrower(mon) && isMonsterThrownCreamPie(mon.missile)
                         && (mon.missile?.quan || 0) > 0
@@ -6640,7 +6656,7 @@ export async function processMonsterTurns() {
                         && (mon.data?.mercenary || mon.mw || !game._armor_wear_occupation);
                     const canUseThrownWeaponAttack = !game.level?.flags?.rogue_level
                         && (canThrowSpear || canThrowShuriken || canThrowPlainDagger || canThrowOrcishDagger
-                            || canThrowKnife || canThrowDart || canThrowCreamPie);
+                            || canThrowKnife || canThrowDart || canThrowEgg || canThrowCreamPie);
                     const canUseWeaponAttack = canUseThrownWeaponAttack || canThrowBoulder;
                     const canSelectRangedWeapon = canUseThrownWeaponAttack;
                     const canCheckOffensiveItems = !mon.data?.mindless && !mon.data?.nohands && !mon.mpeaceful;
@@ -6780,7 +6796,132 @@ export async function processMonsterTurns() {
                         }
                         continue;
                     }
-                    if (canThrowBoulder && boulderLinedUp) {
+                    if (canThrowEgg && rangedWeaponLinedUp) {
+                        const targetAc = game.u?.uac ?? 10;
+                        if (targetAc < 0 && !consumedMattackuAc) rnd(-targetAc);
+
+                        const thrownMissile = splitMonsterThrownInventoryObject(mon, eggIndex);
+                        if (!thrownMissile) continue;
+                        const eggName = monsterThrownEggHitName(thrownMissile);
+                        const eggNameCap = `${eggName[0].toUpperCase()}${eggName.slice(1)}`;
+                        const throwerVisible = !game.u?.blind
+                            && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
+                            && !mon.minvis && !mon.mundetected;
+                        if (throwerVisible) {
+                            addToplineMessage(`${monsterDisplayName(mon, true)} throws ${eggName}!`);
+                            game._message_more = 1;
+                            game._process_time_with_more = 0;
+                        }
+
+                        let eggTerrainStop = null;
+                        let interveningTarget = null;
+                        for (let step = 1; step < throwRange; step++) {
+                            const sx = mon.mx + throwDx * step;
+                            const sy = mon.my + throwDy * step;
+                            const remainingRange = throwRange - step;
+                            const targetMon = monsterAtFlightSquare(sx, sy, mon);
+                            if (targetMon) {
+                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
+                                const hitRoll = rnd(20);
+                                if (hitValue >= hitRoll) {
+                                    interveningTarget = targetMon;
+                                    break;
+                                }
+                            }
+                            const forcehit = !rn2(5);
+                            if (remainingRange && forcehit
+                                && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS) {
+                                eggTerrainStop = { x: sx, y: sy };
+                                break;
+                            }
+                        }
+
+                        if (eggTerrainStop) {
+                            const floorMessages = [];
+                            const breakKind = projectileTopLevelBreakKind(thrownMissile);
+                            if (breakKind) projectileTopLevelBreakMessage(thrownMissile, breakKind, floorMessages);
+                            else if (!heroIsDeafForMonsterNoise()) floorMessages.push('Flapp!');
+                            landMonsterThrownObject(thrownMissile, eggTerrainStop.x, eggTerrainStop.y, {
+                                glyph: '%',
+                                color: CLR_WHITE,
+                                messages: floorMessages,
+                                contactBreaks: !!breakKind,
+                            });
+                            addMonsterThrownFloorMessages(floorMessages, throwerVisible);
+                        } else if (interveningTarget) {
+                            revealProjectileHitMimicAppearance(interveningTarget);
+                            interveningTarget.msleeping = 0;
+                            const targetVisible = !game.u?.blind && cansee(interveningTarget.mx, interveningTarget.my);
+                            const hitMessage = targetVisible
+                                ? `Splat!  ${monsterDisplayName(interveningTarget)} is hit with ${eggName}!`
+                                : 'Splat!  It is hit.';
+                            if (throwerVisible) game._topline_after_more = hitMessage;
+                            else addToplineMessage(hitMessage);
+                            petrifyMonsterFromMonsterThrownEgg(interveningTarget, targetVisible, {
+                                afterMore: throwerVisible,
+                            });
+                            const floorMessages = [];
+                            landMonsterThrownObject(thrownMissile, interveningTarget.mx, interveningTarget.my, {
+                                glyph: '%',
+                                color: CLR_WHITE,
+                                messages: floorMessages,
+                                ohit: true,
+                            });
+                            addMonsterThrownFloorMessages(floorMessages, throwerVisible || targetVisible);
+                        } else {
+                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                                - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
+                            const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                && rn2(Math.max(1, catchChance)) === 0;
+                            if (caught) {
+                                const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                    glyph: '%',
+                                    color: CLR_WHITE,
+                                });
+                                if (throwerVisible) game._topline_after_more = catchResult.message;
+                                else addToplineMessage(catchResult.message);
+                            } else {
+                                const attackRoll = rnd(20);
+                                const missed = targetAc + 8 <= attackRoll;
+                                let resultMessage = game.u?.blind || game.flags?.verbose === false
+                                    ? 'You are hit.'
+                                    : `You are hit by ${eggName}.`;
+                                if (missed) {
+                                    resultMessage = game.u?.blind || game.flags?.verbose === false
+                                        ? 'It misses.'
+                                        : targetAc + 8 <= attackRoll - 2
+                                            ? `${eggNameCap} misses you.`
+                                            : `You are almost hit by ${eggName}.`;
+                                } else {
+                                    const polyselfMessage = startHeroMonsterThrownEggStoning(thrownMissile);
+                                    if (polyselfMessage) resultMessage = `${resultMessage}  ${polyselfMessage}`;
+                                }
+                                if (throwerVisible) game._topline_after_more = resultMessage;
+                                else addToplineMessage(resultMessage);
+                                if (missed) rn2(5);
+                                const floorMessages = [];
+                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                    glyph: '%',
+                                    color: CLR_WHITE,
+                                    messages: floorMessages,
+                                    ohit: !missed,
+                                });
+                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
+                            }
+                        }
+
+                        game._search_pending_count = 0;
+                        game._run_steps_remaining = 0;
+                        game._travel_keys = [];
+                        if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
+                        if (game._message_more && !game._process_time_with_more) {
+                            game._monster_resume_index = monIndex + 1;
+                            game._monster_resume_somebody_can_move = somebodyCanMove;
+                            return false;
+                        }
+                        continue;
+                    }
+                    if (canThrowBoulder && boulderLinedUp && !(canThrowEgg && rangedWeaponLinedUp)) {
                         const thrownBoulder = splitMonsterThrownInventoryObject(mon, boulderIndex);
                         if (!thrownBoulder) continue;
                         if (mon.missile?.id === thrownBoulder.id) mon.missile = null;
@@ -9041,7 +9182,9 @@ async function finishMonsterTurnTail() {
         if (!game.u._stonedTimeout) {
             const killer = game.u._stonedKiller || 'cockatrice egg';
             game.u.uhp = 0;
-            game._death_cause = `petrified by ${articleFor(killer)} ${killer}`;
+            game._death_cause = killer === 'petrification'
+                ? 'killed by petrification'
+                : `petrified by ${articleFor(killer)} ${killer}`;
             game._death_current_move = 1;
             if (consumeLifeSavingAmulet({ clearStoning: true })) {
                 armHeroLifeSavingMore();
@@ -9769,6 +9912,260 @@ function isMonsterThrownCreamPie(item) {
         .some(name => name === 'cream pie');
 }
 
+function monsterThrownEggSpeciesName(item) {
+    return String(item?.corpsenm?.name || item?.corpsenm || '').toLowerCase();
+}
+
+function isMonsterThrownPetrifyingEgg(item) {
+    if (!item) return false;
+    const kind = String(item.kind || item.actualKind || item.singular || item.appearance || '').toLowerCase();
+    if (item.otyp !== EGG && kind !== 'egg') return false;
+    const species = monsterThrownEggSpeciesName(item);
+    return PETRIFYING_TOUCH_MONSTERS.has(species) || !!item.corpsenm?.touchPetrifies;
+}
+
+function monsterThrownEggIndex(mon) {
+    return (mon?.minvent || []).findIndex(item => isMonsterThrownPetrifyingEgg(item));
+}
+
+function monsterThrownEggHitName(item) {
+    if (item?.known === false) return 'an egg';
+    const species = monsterThrownEggSpeciesName(item);
+    return species ? `${articleFor(species)} ${species} egg` : 'an egg';
+}
+
+function monsterCanUseMunstone(mon) {
+    if (!mon || monsterResistsStoning(mon)) return false;
+    return !(mon.meating || mon.mfrozen || mon.mcanmove === false);
+}
+
+function monsterAcidResistant(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || '').toLowerCase();
+    return !!(mon?.acidResistance || mon?.resistsAcid || mon?.resists_acid
+        || data.acidResistance || data.resistsAcid || data.resists_acid || name === 'acid blob'
+        || name === 'yellow dragon' || name === 'baby yellow dragon');
+}
+
+function monsterSlimeproof(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || '').toLowerCase();
+    return name === 'green slime' || !!(data.flaming || data.noncorporeal || data.slimeproof);
+}
+
+function monsterMunstoneObjectKind(item) {
+    return String(item?.kind || item?.actualKind || '').toLowerCase();
+}
+
+function monsterMunstoneObjectKinds(item) {
+    return [item?.actualKind, item?.kind]
+        .map(name => String(name || '').toLowerCase())
+        .filter(Boolean);
+}
+
+const MONSTER_TIN_OPENER_DAGGER_OTYPS = new Set([ORCISH_DAGGER, DAGGER, ATHAME, ELVEN_DAGGER]);
+const MONSTER_TIN_OPENER_KNIFE_OTYPS = new Set([KNIFE, STILETTO]);
+const MONSTER_TIN_OPENER_WEAPON_KINDS = new Set([
+    'dagger', 'elven dagger', 'orcish dagger', 'silver dagger', 'athame',
+    'scalpel', 'knife', 'stiletto', 'worm tooth', 'crysknife',
+]);
+
+function sameMonsterInventoryObject(a, b) {
+    return !!a && !!b && (a === b || (a.id != null && b.id != null && a.id === b.id));
+}
+
+function monsterWeldedMunstoneWeapon(mon) {
+    const weapon = mon?.mw || null;
+    if (!weapon) return null;
+    if (!(mon.minvent || []).some(item => sameMonsterInventoryObject(item, weapon))) return null;
+    return weapon.welded || weapon.cursed && (weapon.wielded || sameMonsterInventoryObject(mon.mw, weapon))
+        ? weapon
+        : null;
+}
+
+function monsterMunstoneTinOpenerItem(item) {
+    if (item?.otyp === TIN_OPENER) return true;
+    const kinds = monsterMunstoneObjectKinds(item);
+    if (kinds.includes('tin opener')) return true;
+    if (MONSTER_TIN_OPENER_DAGGER_OTYPS.has(item?.otyp)
+        || MONSTER_TIN_OPENER_KNIFE_OTYPS.has(item?.otyp)) {
+        return true;
+    }
+    if (item?.cls !== 'weapon') return false;
+    return kinds.some(kind => MONSTER_TIN_OPENER_WEAPON_KINDS.has(kind));
+}
+
+function monsterCanOpenTin(mon) {
+    const data = mon?.data || {};
+    if (data.animal) return false;
+    const weldedWeapon = monsterWeldedMunstoneWeapon(mon);
+    return (mon?.minvent || []).some(item => {
+        if (weldedWeapon && !sameMonsterInventoryObject(item, weldedWeapon)) return false;
+        return monsterMunstoneTinOpenerItem(item);
+    });
+}
+
+function monsterMunstoneFoodSpecies(item) {
+    const species = String(item?.corpsenm?.name || item?.corpsenm || '').toLowerCase();
+    if (species) return species;
+    const tinMatch = String(item?.kind || '').toLowerCase().match(/^tin:(.+)$/);
+    return tinMatch ? tinMatch[1].trim() : '';
+}
+
+function monsterMunstoneItemIsCorpse(item) {
+    const kind = monsterMunstoneObjectKind(item);
+    return item?.otyp === CORPSE || item?.otyp === 'corpse' || /\bcorpse$/.test(kind);
+}
+
+function monsterMunstoneItemIsTin(item) {
+    const kind = String(item?.kind || '').toLowerCase();
+    const actualKind = String(item?.actualKind || '').toLowerCase();
+    return item?.otyp === TIN || kind === 'tin' || actualKind === 'tin' || kind.startsWith('tin:');
+}
+
+function monsterMunstoneItemIsAcidPotion(item) {
+    const kind = monsterMunstoneObjectKind(item);
+    return item?.otyp === POT_ACID || item?.potionIndex === 23 || kind === 'acid' || kind === 'potion of acid';
+}
+
+function monsterMunstoneItemIsGreenSlimeGlob(item) {
+    const kind = monsterMunstoneObjectKind(item);
+    return item?.otyp === GLOB_OF_GREEN_SLIME || item?.globby && /\bgreen slime\b/.test(kind);
+}
+
+function monsterMunstoneItemIsAcidicFood(item) {
+    const species = monsterMunstoneFoodSpecies(item);
+    return !!(item?.corpsenm?.acidic || ACIDIC_MONSTER_NAMES.has(species));
+}
+
+function monsterMunstoneCureKind(mon, item, tinok) {
+    if (monsterMunstoneItemIsAcidPotion(item)) return { type: 'potion', acid: true, tinned: false, lizard: false };
+    if (monsterMunstoneItemIsGreenSlimeGlob(item))
+        return monsterSlimeproof(mon) ? { type: 'food', acid: false, tinned: false, lizard: false } : null;
+    const tinned = monsterMunstoneItemIsTin(item);
+    if (!monsterMunstoneItemIsCorpse(item) && (!tinned || !tinok)) return null;
+    const species = monsterMunstoneFoodSpecies(item);
+    if (!species) return null;
+    const lizard = species === 'lizard';
+    if (!lizard && !monsterMunstoneItemIsAcidicFood(item)) return null;
+    return { type: tinned ? 'tin' : 'food', acid: !lizard, tinned, lizard };
+}
+
+function monsterMunstoneConsumeMessage(mon, item, cure, visible) {
+    const action = cure.type === 'potion'
+        ? 'quaffs'
+        : cure.type === 'tin' ? 'opens and eats the contents of' : 'eats';
+    if (!visible) return action === 'quaffs' ? 'You hear drinking.' : 'You hear chewing.';
+    let name = '';
+    if (monsterMunstoneItemIsCorpse(item)) {
+        const species = monsterMunstoneFoodSpecies(item);
+        name = species ? `${species} corpse` : 'corpse';
+    } else if (monsterMunstoneItemIsTin(item)) {
+        name = 'tin';
+    } else if (monsterMunstoneItemIsGreenSlimeGlob(item)) {
+        name = 'glob of green slime';
+    } else {
+        name = pickupObjectName({ ...item, quan: 1, letter: undefined, line: undefined });
+    }
+    return `${monsterDisplayName(mon)} ${action} ${articleFor(name)} ${name}.`;
+}
+
+function consumeMonsterMunstoneItem(mon, item) {
+    if ((item.quan || 1) > 1) {
+        item.quan--;
+    } else {
+        mon.minvent = (mon.minvent || []).filter(obj => obj !== item);
+        if (mon.missile === item) mon.missile = null;
+        if (mon.mw === item) mon.mw = null;
+    }
+}
+
+function adjustMonsterPetrificationSpeed(mon, messages, visible) {
+    if (!mon?.data || mon.data.mmove === 0 || mon.data.mmove === false) return;
+    if (mon.permspeed === 'fast') mon.permspeed = 0;
+    if (mon.mspeed === 'fast') mon.mspeed = 0;
+    if (visible) messages.push(`${monsterDisplayName(mon)} is slowing down.`);
+}
+
+function monsterMunstone(mon, messages, visible) {
+    if (!monsterCanUseMunstone(mon)) return false;
+    if (Number.isInteger(mon.mstrategy)) mon.mstrategy &= ~STRAT_WAITFORU;
+    else if (mon.mstrategy === 'waitforu') mon.mstrategy = 0;
+    mon.waiting = false;
+
+    const tinok = monsterCanOpenTin(mon);
+    const cureItem = (mon.minvent || [])
+        .map(item => ({ item, cure: monsterMunstoneCureKind(mon, item, tinok) }))
+        .find(entry => entry.cure);
+    if (!cureItem) return false;
+
+    adjustMonsterPetrificationSpeed(mon, messages, visible);
+    messages.push(monsterMunstoneConsumeMessage(mon, cureItem.item, cureItem.cure, visible));
+    consumeMonsterMunstoneItem(mon, cureItem.item);
+    if (cureItem.cure.acid && !cureItem.cure.tinned && !monsterAcidResistant(mon)) {
+        mon.mhp = Math.max(0, (mon.mhp || 1) - rnd(15));
+        if (visible) messages.push(`${monsterDisplayName(mon)} has a very bad case of stomach acid.`);
+        if ((mon.mhp || 0) <= 0) {
+            messages.push(`${monsterDisplayName(mon)} dies!`);
+            mon.dead = true;
+            mon.movement = 0;
+            detachMonsterMunstoneDeath(mon);
+            return true;
+        }
+    }
+    if (visible) messages.push(`${monsterDisplayName(mon)} seems limber!`);
+    if (cureItem.cure.lizard && (mon.mconf || mon.mstun)) {
+        mon.mconf = 0;
+        mon.mstun = 0;
+        if (visible && !(mon.data?.bat || mon.data?.name === 'stalker'))
+            messages.push(`${monsterDisplayName(mon)} seems steadier now.`);
+    }
+    mon.movement = (mon.movement || 0) - NORMAL_SPEED;
+    mon.mlstmv = game.moves || 0;
+    return true;
+}
+
+function petrifyMonsterFromMonsterThrownEgg(target, visible, { afterMore = false } = {}) {
+    const messages = [];
+    if (monsterResistsStoning(target)) return false;
+    if (monsterMunstone(target, messages, visible)) {
+        for (const message of messages) {
+            if (afterMore) appendAfterMoreMessage(message);
+            else addToplineMessage(message);
+        }
+        return true;
+    }
+    if (monsterPolyWhenStoned(target) && stoneGolemPolymorphMonster(target, messages, visible)) {
+        for (const message of messages) {
+            if (afterMore) appendAfterMoreMessage(message);
+            else addToplineMessage(message);
+        }
+        return true;
+    }
+    adjustMonsterPetrificationSpeed(target, messages, visible);
+    if (visible) messages.push(`${monsterDisplayName(target)} turns to stone.`);
+    stoneMonster(target, messages, { awardExperience: false });
+    for (const message of messages) {
+        if (afterMore) appendAfterMoreMessage(message);
+        else addToplineMessage(message);
+    }
+    return true;
+}
+
+function startHeroMonsterThrownEggStoning(item) {
+    if (!game.u || !isMonsterThrownPetrifyingEgg(item)) return '';
+    const form = game.u?._polyself_form || {};
+    if (game.u.stoneResistance || form.stoneResistance || String(form.name || '').toLowerCase() === 'stone golem')
+        return '';
+    if (game.u._stonedTimeout) return '';
+    const polyselfMessage = maybeTurnPolyselfIntoStoneGolem();
+    if (polyselfMessage) return polyselfMessage;
+    game.u._stonedTimeout = 5;
+    game.u._stonedKiller = 'petrification';
+    addHeroStatusSuffix('Stone');
+    return '';
+}
+
 function heroCanBeCreamedByMonsterPie() {
     if (!game.u) return false;
     if (game.u.blindfolded || game.u.Blindfolded) return false;
@@ -10240,6 +10637,15 @@ function killMonsterFromThrownInterveningHit(target, visible, { afterMore = fals
         && monsterLeavesCorpseLikeDrop(corpseData)
         && monsterCorpseDropSucceeds(target, data);
     if (canDropCorpse) createMonsterCorpseOrGlob(target, corpseData);
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== target);
+    newsym(target.mx, target.my);
+}
+
+function detachMonsterMunstoneDeath(target) {
+    if (!target) return;
+    noteMonsterResumeRemoval(target);
+    recordVanquished(target, false);
+    dropMonsterInventory(target);
     game.level.monsters = (game.level?.monsters || []).filter(other => other !== target);
     newsym(target.mx, target.my);
 }
