@@ -2,7 +2,8 @@
 // C ref: dogmove.c could_reach_item() ~1362, can_reach_location() ~1379.
 
 import {
-    IS_DOOR, CORR, ROOM, IS_STWALL, IS_TREE, W_NONDIGGABLE, Is_rogue_level,
+    D_CLOSED, D_LOCKED, IS_DOOR, IS_OBSTRUCTED, IS_STWALL, IS_TREE,
+    W_NONDIGGABLE, Is_rogue_level,
 } from './const.js';
 import { isPoolCellLikeC, isLavaCellLikeC } from './fillholetyp.js';
 import { throwsRocks, passesWalls, swims, likesLava } from './mondata.js';
@@ -109,10 +110,6 @@ export function couldReachItemDogmoveLikeC(g, mtmp, nx, ny) {
     return true;
 }
 
-function isObstructedDogmoveLikeC(g, typ) {
-    return typ < IS_DOOR && (typ | 0) !== CORR && (typ | 0) !== ROOM;
-}
-
 /** C: mondata.h **`M1_TUNNEL`**. */
 const M1_TUNNEL = 0x00000020;
 
@@ -156,7 +153,7 @@ export function canReachLocationDogmoveLikeC(g, mtmp, mx, my, fx, fy) {
             if (!loc) continue;
             const typ = loc.typ | 0;
             if (
-                isObstructedDogmoveLikeC(g, typ)
+                IS_OBSTRUCTED(typ)
                 && !passesWalls(ptr)
                 && (
                     !mayDigLocDogmoveLikeC(g, i, j)
@@ -166,7 +163,7 @@ export function canReachLocationDogmoveLikeC(g, mtmp, mx, my, fx, fy) {
             ) {
                 continue;
             }
-            if (IS_DOOR(typ) && ((loc.doormask | 0) & 3)) continue;
+            if (IS_DOOR(typ) && ((loc.doormask | 0) & (D_CLOSED | D_LOCKED))) continue;
             if (!couldReachItemDogmoveLikeC(g, mtmp, i, j)) continue;
             if (canReachLocationDogmoveLikeC(g, mtmp, i, j, xf, yf)) return true;
         }

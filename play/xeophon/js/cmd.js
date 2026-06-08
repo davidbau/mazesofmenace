@@ -39,6 +39,13 @@ const C_RANDOM_CORPSE = 265;
 const VANQUISHED_MONSTER_DATA = new Map(
     RNDMONST_COMMON_MONSTERS.map(([name, , mlevel], index) => [name, { mlevel, index }]),
 );
+const VANQUISHED_COUNT_LIMIT = 255;
+const LIFE_SAVING_RIDER_NAMES = new Set(['death', 'pestilence', 'famine']);
+const LIFE_SAVING_LICH_NAMES = new Set(['lich', 'demilich', 'master lich', 'arch-lich']);
+const LIFE_SAVING_VAMPIRE_NAMES = new Set([
+    'vampire', 'vampire lady', 'vampire leader', 'vampire lord',
+    'vampire mage', 'vlad the impaler',
+]);
 const XP_SPECIAL_ATTACK_TYPES = new Set(['tuch', 'stng', 'hugs', 'spit', 'engl', 'brea', 'expl', 'boom', 'gaze', 'tent']);
 const XP_DOUBLE_DAMAGE_TYPES = new Set(['magm', 'fire', 'cold', 'slee', 'disn', 'elec', 'drst', 'acid', 'spc1', 'spc2']);
 const XP_FLAT_DAMAGE_TYPES = new Set(['drli', 'ston', 'slim']);
@@ -19075,6 +19082,7 @@ function monsterPolymorphTargetAllowed(data) {
     if (!data) return false;
     const name = String(data.name || '').toLowerCase();
     return !(data.noPoly || data.nopoly || data.no_polymorph || data.placeholder
+        || isMonsterGenocidedName(name)
         || data.unique || data.nemesis || data.rider || data.guardian
         || data.were || data.wereHuman || data.wereBeast || /^were/.test(name)
         || name === 'death' || name === 'pestilence' || name === 'famine'
@@ -22769,15 +22777,40 @@ function reviveVampshifterFromHeroProjectileKill(mon, messages, targetName, { ki
     return true;
 }
 
-function monsterAllowsLifeSaving(mon) {
+function monsterIsVampireShifterForLifeSaving(mon) {
+    const data = mon?.data || {};
+    const shifterName = String(mon?.vampBase || data.vampBase
+        || mon?.chamBase || data.chamBase
+        || mon?.chamName || data.chamName
+        || mon?.cham || data.cham || '').toLowerCase();
+    return !!(mon?.vampshifter || data.vampshifter || LIFE_SAVING_VAMPIRE_NAMES.has(shifterName));
+}
+
+function monsterIsNonlivingForLifeSaving(mon) {
     const data = mon?.data || {};
     const name = String(data.name || mon?.name || '').toLowerCase();
-    const mlet = data.mlet || mon?.mlet;
-    const glyph = data.glyph || mon?.glyph;
-    const nonliving = data.nonliving || mon?.nonliving || mlet === 'Z' || glyph === 'Z'
-        || name.includes('zombie') || name.includes('mummy') || name.endsWith(' golem');
-    return !nonliving || mon?.vampshifter || data.vampshifter
-        || mon?.cham === 'vampire' || data.cham === 'vampire';
+    const rawMlet = String(data.mlet || mon?.mlet || '');
+    const rawGlyph = String(data.glyph || mon?.glyph || '');
+    const mlet = rawMlet.toLowerCase();
+    const glyph = rawGlyph.toLowerCase();
+    if (data.rider || mon?.rider || LIFE_SAVING_RIDER_NAMES.has(name)) return false;
+    return !!(data.nonliving || mon?.nonliving || data.undead || mon?.undead
+        || rawMlet === 'L' || rawMlet === 'M' || rawMlet === 'V'
+        || rawMlet === 'W' || rawMlet === 'Z' || rawMlet === "'" || rawMlet === 'v'
+        || rawGlyph === 'L' || rawGlyph === 'M' || rawGlyph === 'V'
+        || rawGlyph === 'W' || rawGlyph === 'Z' || rawGlyph === "'" || rawGlyph === 'v'
+        || mlet === 'ghost' || mlet === 'mummy' || mlet === 'zombie' || mlet === 'vortex'
+        || glyph === 'ghost' || glyph === 'mummy' || glyph === 'zombie' || glyph === 'vortex'
+        || name === 'manes' || name === 'ghost' || name === 'shade' || name === 'ghoul'
+        || name === 'skeleton' || name === 'wraith' || name === 'nazgul'
+        || name === 'fog cloud' || LIFE_SAVING_LICH_NAMES.has(name)
+        || LIFE_SAVING_VAMPIRE_NAMES.has(name)
+        || name.includes('mummy') || name.includes('zombie')
+        || name.endsWith(' vortex') || name.endsWith(' golem'));
+}
+
+function monsterAllowsLifeSaving(mon) {
+    return !monsterIsNonlivingForLifeSaving(mon) || monsterIsVampireShifterForLifeSaving(mon);
 }
 
 function monsterLifeSavingAmulet(mon) {
@@ -22789,10 +22822,12 @@ function monsterLifeSavingAmulet(mon) {
     }) || null;
 }
 
-function applyHeroProjectileMonsterLifeSaving(mon, messages) {
+function applyHeroProjectileMonsterLifeSaving(mon, messages, {
+    unseenMaybeNot = true,
+    visibleSquare = cansee(mon.mx, mon.my),
+} = {}) {
     const amulet = monsterLifeSavingAmulet(mon);
     if (!amulet) return false;
-    const visibleSquare = cansee(mon.mx, mon.my);
     if (visibleSquare) {
         messages.push('But wait...');
         messages.push(`${sSuffixText(fireScrollMonsterName(mon))} medallion begins to glow!`);
@@ -22817,7 +22852,7 @@ function applyHeroProjectileMonsterLifeSaving(mon, messages) {
         return false;
     }
     mon.dead = false;
-    if (!visibleSquare) messages.push('Maybe not...');
+    if (!visibleSquare && unseenMaybeNot) messages.push('Maybe not...');
     return true;
 }
 
@@ -23530,8 +23565,7 @@ async function applyHeroKillLiveExperience(mon, messages) {
 async function killMonsterFromHeroProjectileHit(mon, messages, targetName, { killMessage = true } = {}) {
     if (!mon || mon.dead) return;
     const data = mon.data || {};
-    const nonliving = data.nonliving || data.mlet === 'Z' || data.glyph === 'Z'
-        || String(data.name || '').includes('zombie') || String(data.name || '').endsWith(' golem');
+    const nonliving = monsterIsNonlivingForLifeSaving(mon);
     mon.dead = true;
     mon.mhp = 0;
     recordHeroKillConduct();
@@ -30994,6 +31028,8 @@ function pluralizeMonsterName(name) {
     if (lower === 'dwarf') return 'dwarves';
     if (lower === 'elf') return 'elves';
     if (lower === 'fungus') return 'fungi';
+    if (/culus$/i.test(name)) return `${name.slice(0, -5)}culi`;
+    if (/rtex$/i.test(name)) return `${name.slice(0, -4)}rtices`;
     if (lower.endsWith('y')) return `${name.slice(0, -1)}ies`;
     if (/(?:s|x|z|ch|sh)$/i.test(name)) return `${name}es`;
     return `${name}s`;
@@ -31037,7 +31073,7 @@ function genocidedMonsterNames() {
 }
 
 function isMonsterGenocidedName(name) {
-    return genocidedMonsterNames().includes(name);
+    return genocidedMonsterNames().includes(normalizeGenocideName(name));
 }
 
 function markMonsterGenocided(name) {
@@ -31057,18 +31093,116 @@ function genocideListLines() {
     return rows.slice(0, 24);
 }
 
-function killGenocidedMonsters() {
+function monsterGenocideCurrentName(mon) {
+    return normalizeGenocideName(mon?.data?.name || mon?.name || '');
+}
+
+function monsterGenocideBaseName(mon) {
+    const data = mon?.data || {};
+    const raw = mon?.chamBase || mon?.vampBase || mon?.chamName || mon?.cham
+        || data.chamBase || data.vampBase || data.chamName || data.cham || '';
+    return normalizeGenocideName(raw);
+}
+
+function monsterGenocideVampshifterTarget(mon, names, level = game.level) {
+    const baseName = normalizeGenocideName(vampshifterRevivalBaseName(mon) || monsterGenocideBaseName(mon));
+    if (!baseName || names.has(baseName)) return null;
+    const baseData = monsterByRndName(baseName) || RANDOM_MONSTER_BY_NAME.get(baseName);
+    if (!baseData) return null;
+
+    const current = monsterGenocideCurrentName(mon);
+    let targetName = baseName;
+    const leader = baseName === 'vampire leader' || baseName === 'vampire lord'
+        || baseName === 'vlad the impaler' || baseData.vampireLeader;
+    const loc = level?.at?.(mon?.mx, mon?.my);
+    const badWalkingForm = loc && (IS_POOL(loc.typ) || IS_LAVA(loc.typ));
+
+    if (leader && !rn2(baseName === 'vlad the impaler' ? 3 : 10) && !badWalkingForm) {
+        targetName = 'wolf';
+    } else {
+        targetName = !rn2(4) ? 'fog cloud' : 'vampire bat';
+    }
+    if (names.has(targetName) || (current !== baseName && !rn2(4)))
+        targetName = baseName;
+
+    const target = monsterByRndName(targetName) || RANDOM_MONSTER_BY_NAME.get(targetName) || baseData;
+    if (normalizeGenocideName(target.name) === current) return baseData;
+    return normalizeGenocideName(target.name) === baseName ? target : { ...target, vampshifter: true, vampBase: baseName };
+}
+
+function monsterGenocideCleanupTarget(mon, names, level = game.level) {
+    if (!mon) return null;
+    if (vampshifterRevivalBaseName(mon)) return monsterGenocideVampshifterTarget(mon, names, level);
+    const target = randomMonsterPolymorphTarget(mon);
+    if (target) return target;
+    const baseName = monsterGenocideBaseName(mon);
+    return baseName && !names.has(baseName) ? (monsterByRndName(baseName) || RANDOM_MONSTER_BY_NAME.get(baseName)) : null;
+}
+
+function shiftGenocidedMonsterForm(mon, names, messages = [], options = {}) {
+    const target = monsterGenocideCleanupTarget(mon, names, options.level);
+    if (!target) return false;
+    return applyMonsterPolymorphTarget(mon, target, messages, options.visible, {
+        dropInvalidSaddle: options.dropInvalidSaddle !== false,
+        refresh: options.refresh !== false,
+    });
+}
+
+function restoreGenocideMonsterTrueFormForDeath(mon) {
+    const baseName = monsterGenocideBaseName(mon);
+    if (!baseName) return false;
+    const baseData = monsterByRndName(baseName) || RANDOM_MONSTER_BY_NAME.get(baseName);
+    if (!baseData) return false;
+    mon.data = { ...baseData, hpLevel: baseData.hpLevel ?? baseData.mlevel };
+    mon.name = baseData.name;
+    mon.mlet = baseData.mlet;
+    mon.glyph = baseData.glyph;
+    mon.color = baseData.color;
+    delete mon.chamBase;
+    delete mon.vampBase;
+    delete mon.chamName;
+    delete mon.cham;
+    return true;
+}
+
+function killGenocidedMonsters(messages = []) {
     const names = new Set(genocidedMonsterNames());
     if (!names.size) return;
     const cleanLevel = level => {
         if (!level?.monsters) return;
         for (const mon of [...level.monsters]) {
-            const name = mon.data?.name || mon.name;
-            const base = mon.chamBase || mon.vampBase;
-            if (!names.has(name) && !names.has(base)) continue;
-            if (level === game.level) dropMonsterInventory(mon);
+            const name = monsterGenocideCurrentName(mon);
+            const base = monsterGenocideBaseName(mon);
+            const currentGone = names.has(name);
+            const baseGone = names.has(base);
+            if (!currentGone && !baseGone) continue;
+            if (currentGone && base && !baseGone) {
+                const activeLevel = level === game.level;
+                shiftGenocidedMonsterForm(mon, names, activeLevel ? messages : [], {
+                    level,
+                    dropInvalidSaddle: activeLevel,
+                    refresh: activeLevel,
+                    visible: activeLevel ? undefined : false,
+                });
+                continue;
+            }
+            mon.dead = true;
+            mon.mhp = 0;
+            const activeLevel = level === game.level;
+            if (applyHeroProjectileMonsterLifeSaving(mon, activeLevel ? messages : [], {
+                unseenMaybeNot: false,
+                visibleSquare: activeLevel ? cansee(mon.mx, mon.my) : false,
+            })) {
+                if (activeLevel) newsym(mon.mx, mon.my);
+                continue;
+            }
+            if (activeLevel && name === 'steam vortex')
+                createGasCloud(mon.mx, mon.my, rn2(10) + 5, 0);
+            restoreGenocideMonsterTrueFormForDeath(mon);
+            recordVanquished(mon, false);
+            if (activeLevel) dropMonsterInventory(mon);
             level.monsters = level.monsters.filter(other => other !== mon);
-            if (level === game.level) newsym(mon.mx, mon.my);
+            if (activeLevel) newsym(mon.mx, mon.my);
         }
     };
     cleanLevel(game.level);
@@ -31214,10 +31348,17 @@ function genocideMonsterType(data, messages, { killPlayer = false, cause = 'scro
     if (!classMode) revertHeroVampshifterForGenocide(name, messages);
     markMonsterGenocided(name);
     game._chronicle_genocide_count = (game._chronicle_genocide_count || 0) + 1;
-    messages.push(`Wiped out all ${pluralizeMonsterName(name)}.`);
-    killDeadSpeciesEggHatchTimers(game);
-    killGenocidedMonsters();
-    killDeadSpeciesEggHatchTimers(game);
+    if (classMode) {
+        killDeadSpeciesEggHatchTimers(game);
+        killGenocidedMonsters(messages);
+        killDeadSpeciesEggHatchTimers(game);
+        messages.push(`Wiped out all ${pluralizeMonsterName(name)}.`);
+    } else {
+        messages.push(`Wiped out all ${pluralizeMonsterName(name)}.`);
+        killDeadSpeciesEggHatchTimers(game);
+        killGenocidedMonsters(messages);
+        killDeadSpeciesEggHatchTimers(game);
+    }
     if (classMode) revertHeroVampshifterForGenocide(name, messages);
     if (killPlayer) {
         if (game.u?._polyself_form && !isCurrentPolyselfGenocideTarget(name))
@@ -47889,7 +48030,8 @@ export function recordVanquished(mon, awardExperience = true) {
     if (mon._vanquished_recorded) return;
     mon._vanquished_recorded = 1;
     game._vanquished_counts ??= {};
-    game._vanquished_counts[name] = (game._vanquished_counts[name] || 0) + 1;
+    const previousCount = Math.max(0, Math.trunc(Number(game._vanquished_counts[name]) || 0));
+    game._vanquished_counts[name] = Math.min(VANQUISHED_COUNT_LIMIT, previousCount + 1);
     game._vanquished_total = Object.values(game._vanquished_counts).reduce((sum, count) => sum + count, 0);
     game._vanquished = Object.entries(game._vanquished_counts)
         .sort(([nameA], [nameB]) => {
@@ -51326,8 +51468,10 @@ function polyTrapWarpIronFootwear(item) {
     refreshInventoryObjectLine(item);
 }
 
-function applyMonsterPolymorphTarget(mon, target, messages, visible = monsterCanBeSeenForPotionEffect(mon)) {
+function applyMonsterPolymorphTarget(mon, target, messages, visible = monsterCanBeSeenForPotionEffect(mon), options = {}) {
     if (!mon || !target) return false;
+    const refresh = options.refresh !== false;
+    const dropSaddle = options.dropInvalidSaddle !== false;
     const oldVisible = visible;
     const oldName = potionHitMonsterName(mon);
     const oldHp = Math.max(1, mon.mhp || 1);
@@ -51353,8 +51497,8 @@ function applyMonsterPolymorphTarget(mon, target, messages, visible = monsterCan
     set_malign(mon);
     if (oldVisible && monsterCanBeSeenForPotionEffect(mon) && !heroIsHallucinating())
         messages.push(`${oldName} turns into ${indefiniteArticle(nextData.name)} ${nextData.name}!`);
-    dropInvalidSaddleAfterPolymorph(mon, messages, oldVisible);
-    newsym(mon.mx, mon.my);
+    if (dropSaddle) dropInvalidSaddleAfterPolymorph(mon, messages, oldVisible);
+    if (refresh) newsym(mon.mx, mon.my);
     return true;
 }
 
@@ -55196,10 +55340,7 @@ async function moveHero(dx, dy) {
             return;
         }
 
-        const killVerb = data.nonliving || data.mlet === 'Z' || data.mlet === 'zombie'
-            || data.glyph === 'Z' || data.name?.includes('zombie') || data.name?.endsWith(' golem')
-            ? 'destroy'
-            : 'kill';
+        const killVerb = monsterIsNonlivingForLifeSaving(mon) ? 'destroy' : 'kill';
         const killedPet = mon.mtame || mon.pet;
         let killedName = shownName;
         if (killedPet && (game.u?._statusSuffix || '').includes('Hallu') && !game.u?.blind) {

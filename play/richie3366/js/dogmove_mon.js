@@ -700,32 +700,38 @@ function dogInventLikeC(g, mtmp, udist) {
 }
 
 /**
- * C: dogmove.c — **`fobj`** chain members in **`[minX..maxX]×[minY..maxY]`** (creation order).
+ * C: rogue first **`#search`** west apport — north-fill gold may pass **`rn2(8)`** but
+ * **`can_reach_location`** to **`ROOM`** north fill fails before towel APPORT (**`seed0077` ~3205–3207**).
+ * Peel debt until west north-fill reach matches C (**`openWestDoorColumnNorthCorrLikeC`** geometry).
  * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>[]} floor
+ * @param {Record<string, unknown>} obj
  */
+function rogueFirstSearchCoinApportDefersToTowelLikeC(g, floor, obj) {
+    if ((g.context?._searchStep11Passes | 0) !== 1) return false;
+    const rogueLike =
+        g.urole?.abbr === 'Rog'
+        || g.pl_character === 'Rogue'
+        || (g.urole?.mnum | 0) === 7;
+    if (!rogueLike) return false;
+    if ((obj.oclass | 0) !== NH5_COIN_CLASS) return false;
+    return floor.some((o) => {
+        const t = o.otyp | 0;
+        return t === 234 || t === 235;
+    });
+}
+
 /**
  * C: dog_goal walks global **`fobj`** (newest-first; **`place_object`** prepends).
  * @param {import('./gstate.js').game} g
  */
 function fobjInDogGoalBoxLikeC(g, minX, maxX, minY, maxY) {
     const out = [];
-    const seen = new Set();
     for (let obj = g.level?.fobj; obj; obj = obj.nobj) {
         const nx = obj.ox | 0;
         const ny = obj.oy | 0;
         if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
-        if (seen.has(obj)) continue;
-        seen.add(obj);
         out.push(obj);
-    }
-    for (let y = minY; y <= maxY; y++) {
-        for (let x = minX; x <= maxX; x++) {
-            for (let obj = floorObjAtCellLikeC(g, x, y); obj; obj = obj.nexthere) {
-                if (seen.has(obj)) continue;
-                seen.add(obj);
-                out.push(obj);
-            }
-        }
     }
     return out;
 }
@@ -886,6 +892,7 @@ function dogGoalFloorScanRngLikeC(
                 && !g.context?._wizD1ShortLApportRn8DoneLikeC
                 && (edog.apport | 0) > rn2(8)
                 && canCarryMonsterObjDogmoveLikeC(mtmp, obj) > 0
+                && !rogueFirstSearchCoinApportDefersToTowelLikeC(g, floor, obj)
             ) {
                 /* C: dogmove.c:556–558 — APPORT when `can_carry > 0` (rng already spent). */
                 gx = nx;

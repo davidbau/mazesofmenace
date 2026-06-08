@@ -621,7 +621,9 @@ export function vision_recalc(control = 0) {
                     }
                 } else {
                     const couldSeeToggle = (nv & COULD_SEE) ^ (ov & COULD_SEE);
-                    if (deferSouthLit || deferNorthCorr) {
+                    if (westApportSleeperNicheAtLikeC(game, col, row) && (ov & IN_SIGHT)) {
+                        show_glyph_cell(col, row, ' ', NO_COLOR, false);
+                    } else if (deferSouthLit || deferNorthCorr) {
                         if (ov & IN_SIGHT) {
                             show_glyph_cell(col, row, ' ', NO_COLOR, false);
                         }

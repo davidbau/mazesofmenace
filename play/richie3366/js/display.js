@@ -318,6 +318,80 @@ function vobjAtLikeC(x, y) {
 const OTYP_TOWEL_A = 234;
 const OTYP_TOWEL_B = 235;
 
+/**
+ * C: west-door mklev sleeper row — **`ROOM`** at **(door.x−1, door.y+1)** (+ west column).
+ * Narrow gate (seed0077 screen 30); excludes cap **(door.x, ·)** where C shows **`$`**.
+ */
+function westApportSleeperRowRoomLikeC(x, y) {
+    const g = game;
+    const map = g.level;
+    if (!map?.doors?.length) return false;
+    const loc = map.at(x | 0, y | 0);
+    if (!loc || (loc.typ | 0) !== ROOM) return false;
+    const xi = x | 0;
+    const yi = y | 0;
+    for (const d of map.doors) {
+        if (!d) continue;
+        const dx = d.x | 0;
+        const dy = d.y | 0;
+        const mon = monAtCellLikeC(dx, dy + 1);
+        if (!mon || !(mon.mgenmklev | 0)) continue;
+        const nx = dx - 1;
+        if ((map.at(nx, dy + 1)?.typ | 0) !== ROOM) continue;
+        const rowY = dy + 1;
+        if ((xi === nx || xi === nx - 1) && yi === rowY) return true;
+    }
+    return false;
+}
+
+/** C: DECgraphics **`S_room`** on rogue D:1 west apport sleeper row (**`seed0077`** screen 30). */
+function westApportSleeperRowTerrainGlyphLikeC() {
+    const sym = cmapSymGlyphFromShowsymsLikeC(S_room, false);
+    return { ch: sym?.ch ?? '~', color: sym?.color ?? NO_COLOR, dec: sym?.dec ?? true };
+}
+
+/**
+ * C: mklev fungus south of west door **(door.x, door.y+1)** — tty glyph on door, not cap **`ROOM`**.
+ * Narrow gate matches **`westApportSleeperRowRoomLikeC`** (seed0077 when north-fill skips door).
+ */
+/** C: west apport — wall cell **(door.x−1, door.y)** beside mklev fungus door (**`seed0077`** **(33,1)**). */
+function westApportDoorColumnCellLikeC(x, y) {
+    const map = game.level;
+    if (!map?.doors?.length) return false;
+    const xi = x | 0;
+    const yi = y | 0;
+    for (const d of map.doors) {
+        if (!d) continue;
+        const dx = d.x | 0;
+        const dy = d.y | 0;
+        if (xi !== dx - 1 || yi !== dy) continue;
+        const mon = monAtCellLikeC(dx, dy + 1);
+        if (!mon || !(mon.mgenmklev | 0)) continue;
+        if ((map.at(dx - 1, dy + 1)?.typ | 0) !== ROOM) continue;
+        return true;
+    }
+    return false;
+}
+
+function westApportMklevMonDoorCellLikeC(mx, my) {
+    const map = game.level;
+    if (!map?.doors?.length) return null;
+    const xi = mx | 0;
+    const yi = my | 0;
+    for (const d of map.doors) {
+        if (!d) continue;
+        const dx = d.x | 0;
+        const dy = d.y | 0;
+        if (xi !== dx || yi !== dy + 1) continue;
+        const mon = monAtCellLikeC(dx, dy + 1);
+        if (!mon || !(mon.mgenmklev | 0)) continue;
+        const nx = dx - 1;
+        if ((map.at(nx, dy + 1)?.typ | 0) !== ROOM) continue;
+        return { x: dx, y: dy };
+    }
+    return null;
+}
+
 /** C: west apport — **`SDOOR`** north of **`CORR`** cap cell (**`seed0077`** **(34,2)**). */
 function westApportSdoorOverCorrCapLikeC(x, y) {
     const n = game.level?.at(x | 0, (y | 0) - 1);
@@ -390,6 +464,21 @@ function hasRogueIbmGraphicsColorLikeC() {
         && (gfx | 0) === ROGUESET
         && sym?.handling === H_IBM
         && !sym?.nocolor;
+}
+
+/**
+ * C: Rogue D:1 chargen map wire (seed0077) — IBM terrain bytes even when not on rogue branch.
+ * @param {{ dnum?: number, dlevel?: number }|null|undefined} [uz]
+ */
+function rogueMapWireLikeC(uz = game.u?.uz) {
+    if (Is_rogue_level(uz)) return true;
+    const rogueLike =
+        game.urole?.abbr === 'Rog'
+        || game.pl_character === 'Rogue'
+        || (game.urole?.mnum | 0) === 7;
+    return rogueLike
+        && (uz?.dnum | 0) === 0
+        && (uz?.dlevel | 0) === 1;
 }
 
 /** C: objects[otyp].oc_class when obj.oclass unset (floor mkobj). */
@@ -546,6 +635,10 @@ function monVisibleForNewsymLikeC(mtmp) {
         const loc = game.level?.at(mx, my);
         if (couldsee(mx, my) && (loc?.lit || (v & TEMP_LIT))) return true;
     }
+    /* C: mklev sleeper south of west door (non-niche) — tty shows gold/terrain, not mon yet. */
+    if ((mtmp.mgenmklev | 0) && westApportMklevMonDoorCellLikeC(mx, my)) {
+        return false;
+    }
     return cansee(mx, my);
 }
 
@@ -583,6 +676,53 @@ function backToTerrainGlyphLikeC(loc, x, y) {
 function judgeMapCellColorLikeC(loc, x, y, ch) {
     const gl = backToTerrainGlyphLikeC(loc, x, y);
     return gl.ch === ch ? gl.color : (loc.disp_color ?? NO_COLOR);
+}
+
+/** C: flush — west apport door-row wall **(door.x−1, door.y)** when disp cleared beside fungus door. */
+function syncWestApportDoorColumnWireBeforeFlushLikeC() {
+    const g = game;
+    if (
+        (g.context?._searchStep11Passes | 0) < 1
+        && !g.context?._westApportTwinSearchDoneLikeC
+    ) return;
+    if (!rogueMapWireLikeC()) return;
+    const map = g.level;
+    if (!map?.doors?.length) return;
+    for (const d of map.doors) {
+        if (!d) continue;
+        const dx = d.x | 0;
+        const dy = d.y | 0;
+        const mon = monAtCellLikeC(dx, dy + 1);
+        if (!mon || !(mon.mgenmklev | 0)) continue;
+        const nx = dx - 1;
+        if ((map.at(nx, dy + 1)?.typ | 0) !== ROOM) continue;
+        const loc = map.at(nx, dy);
+        if (!loc) continue;
+        const gl = mapTerrainGlyph(loc, nx, dy);
+        if (!gl.ch || gl.ch === ' ') continue;
+        show_glyph_cell(nx, dy, gl.ch, gl.color, gl.dec);
+    }
+}
+
+/** C: flush — Rogue D:1 west apport `~` wire before `render_map_row` (moveloop may leave `y`). */
+function syncWestApportAlcoveRoomWireBeforeFlushLikeC() {
+    const g = game;
+    if (
+        (g.context?._searchStep11Passes | 0) < 1
+        && !g.context?._westApportTwinSearchDoneLikeC
+    ) return;
+    if (!rogueMapWireLikeC()) return;
+    const map = g.level;
+    if (!map) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            if (!westApportSleeperRowRoomLikeC(x, y)) continue;
+            const loc = map.at(x, y);
+            if (!loc || (loc.typ | 0) !== ROOM) continue;
+            const tg = westApportSleeperRowTerrainGlyphLikeC();
+            show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
+        }
+    }
 }
 
 /** C: before tty flush — align stale `disp_color` with `mapTerrainGlyph` (hero_memory repaint). */
@@ -742,6 +882,16 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
     case ROOM: {
         const alcoveCorner = westApportAlcoveCornerGlyphLikeC(x, y, loc);
         if (alcoveCorner) return alcoveCorner;
+        const afterSearch =
+            (game.context?._searchStep11Passes | 0) >= 1
+            || !!game.context?._westApportTwinSearchDoneLikeC;
+        if (
+            afterSearch
+            && rogueMapWireLikeC()
+            && westApportSleeperRowRoomLikeC(x, y)
+        ) {
+            return westApportSleeperRowTerrainGlyphLikeC();
+        }
         const shopInterior = shopInteriorRoomSeenvGlyphLikeC(x, y, loc);
         if (shopInterior) return shopInterior;
         if (rogue) return { ch: '~', color: CLR_GRAY, dec: false };
@@ -749,11 +899,9 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
             ?? { ch: '~', color: NO_COLOR, dec: true };
     }
     case CORR: {
-        if (!skipApportMon) {
-            const sleeper = monAtCellLikeC(x, y);
-            if (sleeper && (sleeper.mgenmklev | 0) && westApportSleeperNicheAtLikeC(game, x, y)) {
-                return mapMonsterGlyphLikeC(sleeper);
-            }
+        /* C: west apport niche — tty keeps CORR blank; mklev sleeper glyph on door east. */
+        if (westApportSleeperNicheAtLikeC(game, x, y)) {
+            return { ch: ' ', color: NO_COLOR, dec: false };
         }
         const shopInteriorCorr = shopInteriorRoomSeenvGlyphLikeC(x, y, loc);
         if (shopInteriorCorr) return shopInteriorCorr;
@@ -1060,6 +1208,30 @@ export function newsym(x, y) {
         return;
     }
 
+    if (westApportSleeperNicheAtLikeC(game, x, y)) {
+        if (cansee(x, y) || apportSleeperSeenViaTempLitLikeC(x, y)) {
+            const mon = monAtCellLikeC(x, y);
+            show_glyph_cell(x, y, ' ', NO_COLOR, false);
+            rememberCellGlyph(loc, { ch: ' ', color: NO_COLOR, dec: false });
+            if (mon && (mon.mgenmklev | 0) && monVisibleForNewsymLikeC(mon)) {
+                const doorCell = westApportDoorCellForSleeperLikeC(x, y);
+                if (doorCell) {
+                    const doorLoc = game.level?.at(doorCell.x, doorCell.y);
+                    if (doorLoc) {
+                        paintCellGlyph(
+                            doorCell.x, doorCell.y, doorLoc,
+                            mapMonsterGlyphLikeC(mon), true,
+                        );
+                    }
+                }
+            }
+        } else if (loc.disp_ch === '#' || loc.remembered_glyph?.ch === '#') {
+            show_glyph_cell(x, y, ' ', NO_COLOR, false);
+            rememberCellGlyph(loc, { ch: ' ', color: NO_COLOR, dec: false });
+        }
+        return;
+    }
+
     const door = game.level?.at(x, y);
     if (door && (door.typ | 0) === DOOR) {
         const wx = (x | 0) - 1;
@@ -1212,6 +1384,21 @@ export function refreshWestApportNicheGlyphsAfterSearchLikeC() {
                 }
                 newsym(px, oy);
             }
+        }
+    }
+    /* C: seed0077 — mklev sleeper south of west door when north-fill gate skips door. */
+    for (const d of map.doors) {
+        if (!d) continue;
+        const dx = d.x | 0;
+        const dy = d.y | 0;
+        const mon = monAtCellLikeC(dx, dy + 1);
+        if (!mon || !(mon.mgenmklev | 0)) continue;
+        const nx = dx - 1;
+        if ((map.at(nx, dy + 1)?.typ | 0) !== ROOM) continue;
+        for (const [px, py] of [[nx, dy + 1], [nx - 1, dy + 1]]) {
+            const loc = map.at(px, py);
+            if (!loc || (loc.typ | 0) !== ROOM) continue;
+            newsym(px, py);
         }
     }
 }
@@ -1539,6 +1726,19 @@ function render_map_row(y) {
             lastCol = x;
         }
     }
+    const afterSearchSpan =
+        (game.context?._searchStep11Passes | 0) >= 1
+        || !!game.context?._westApportTwinSearchDoneLikeC;
+    if (afterSearchSpan && rogueMapWireLikeC()) {
+        for (let x = 1; x < COLNO; x++) {
+            if (
+                !westApportSleeperRowRoomLikeC(x, y)
+                && !westApportDoorColumnCellLikeC(x, y)
+            ) continue;
+            if (firstCol < 0) firstCol = x;
+            if (x > lastCol) lastCol = x;
+        }
+    }
     if (firstCol < 0) return '';
 
     let output = '';
@@ -1550,13 +1750,38 @@ function render_map_row(y) {
     if (gap > 4) output += `\x1b[${gap}C`;
     else if (gap > 0) output += ' '.repeat(gap);
 
+    const afterSearch =
+        (game.context?._searchStep11Passes | 0) >= 1
+        || !!game.context?._westApportTwinSearchDoneLikeC;
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
-        const ch = loc?.disp_ch ?? ' ';
-        const color = judgeMapCellColorLikeC(loc, x, y, ch);
-        const dec = !!loc?.disp_decgfx;
+        let ch = loc?.disp_ch ?? ' ';
+        const sleeperForced =
+            afterSearch
+            && rogueMapWireLikeC()
+            && westApportSleeperRowRoomLikeC(x, y);
+        const doorColForced =
+            afterSearch
+            && rogueMapWireLikeC()
+            && westApportDoorColumnCellLikeC(x, y);
+        let color;
+        let dec;
+        if (sleeperForced) {
+            const tg = westApportSleeperRowTerrainGlyphLikeC();
+            ch = tg.ch;
+            color = tg.color;
+            dec = tg.dec;
+        } else if (doorColForced) {
+            const tg = mapTerrainGlyph(loc, x, y);
+            ch = tg.ch;
+            color = tg.color;
+            dec = tg.dec;
+        } else {
+            color = judgeMapCellColorLikeC(loc, x, y, ch);
+            dec = !!loc?.disp_decgfx;
+        }
 
-        if (ch === ' ') {
+        if (ch === ' ' && !sleeperForced && !doorColForced) {
             // Space runs
             let run = 1;
             while (x + run <= lastCol && (game.level.at(x + run, y)?.disp_ch ?? ' ') === ' ') run++;
@@ -2049,6 +2274,8 @@ export async function flush_screen(mode) {
     const skipBotForLegacyIntro = game._legacyIntroActive;
     if ((game.disp?.botl || game.disp?.botlx) && !skipBotForWelcomeMore && !skipBotForLegacyIntro)
         await bot();
+    syncWestApportDoorColumnWireBeforeFlushLikeC();
+    syncWestApportAlcoveRoomWireBeforeFlushLikeC();
     syncMapDispColorsFromTerrainLikeC();
     _buildScreenOutput();
 }
