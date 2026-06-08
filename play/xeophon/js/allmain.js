@@ -7472,6 +7472,7 @@ export async function processMonsterTurns() {
                                         deathCleanupThrownObject: thrownMissile,
                                         deathCleanupGlyph: thrownMissile.glyph || ')',
                                         deathCause: `killed by ${projectileArticle} ${projectileKind}`,
+                                        clearDeathMetadataAfterLifeSaving: true,
                                     };
                                     game._death_cause = `killed by ${projectileArticle} ${projectileKind}`;
                                 } else {
@@ -8557,6 +8558,140 @@ export async function processMonsterTurns() {
                                 if (missileIndex >= 0) mon.minvent.splice(missileIndex, 1);
                                 if (mon.missile === missile) mon.missile = null;
                             }
+                            const finishDartThrowAction = () => {
+                                game._search_pending_count = 0;
+                                game._run_steps_remaining = 0;
+                                game._travel_keys = [];
+                                if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
+                                if (game._message_more && !game._process_time_with_more) {
+                                    game._monster_resume_index = monIndex + 1;
+                                    game._monster_resume_somebody_can_move = somebodyCanMove;
+                                    return false;
+                                }
+                                return true;
+                            };
+                            const addDartThrowFollowup = (msg) => {
+                                if (throwerVisible) appendAfterMoreMessage(msg);
+                                else addToplineMessage(msg);
+                            };
+                            const ordinaryDartBlockAhead = (x, y, dx = throwDx, dy = throwDy) => {
+                                const nx = x + dx;
+                                const ny = y + dy;
+                                const loc = game.level?.at(nx, ny);
+                                return nx < 1 || nx > COLNO - 1 || ny < 0 || ny > ROWNO - 1
+                                    || !loc || IS_OBSTRUCTED(loc.typ)
+                                    || (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)));
+                            };
+                            const landDartTerrainStop = (x, y) => {
+                                const floorMessages = [];
+                                landMonsterThrownObject(thrownMissile, x, y, {
+                                    glyph: ')',
+                                    color: CLR_CYAN,
+                                    messages: floorMessages,
+                                });
+                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
+                            };
+                            const finishDartInterveningHit = (target) => {
+                                let dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
+                                const targetVisible = !game.u?.blind
+                                    && !!(game.viz_array?.[target.my]?.[target.mx] & IN_SIGHT);
+                                dartDamage += monsterThrownObjectBlessedHitDamage(target, thrownMissile);
+                                const silverHit = monsterThrownObjectSilverHitEffect(target,
+                                    thrownMissile, targetVisible);
+                                if (silverHit) dartDamage += silverHit.damage;
+                                revealProjectileHitMimicAppearance(target);
+                                target.msleeping = 0;
+                                addDartThrowFollowup(targetVisible
+                                    ? `The dart hits the ${target.data?.name || 'monster'}.`
+                                    : 'It is hit.');
+                                const poisonHit = monsterThrownObjectPoisonHitEffect(dartDamage, target,
+                                    thrownMissile, targetVisible);
+                                dartDamage = poisonHit.damage;
+                                emitMonsterThrownObjectPoisonHitEffect(poisonHit, throwerVisible);
+                                emitMonsterThrownObjectSilverHitEffect(silverHit, throwerVisible);
+                                target.mhp = Math.max(0, (target.mhp || 1) - dartDamage);
+                                if (target.mhp < 1) {
+                                    killMonsterFromThrownInterveningHit(target, targetVisible);
+                                }
+                                const floorMessages = [];
+                                landMonsterThrownObject(thrownMissile, target.mx, target.my, {
+                                    glyph: ')',
+                                    color: CLR_CYAN,
+                                    messages: floorMessages,
+                                    ohit: true,
+                                    passiveTarget: target,
+                                });
+                                addMonsterThrownFloorMessages(floorMessages, throwerVisible || targetVisible);
+                            };
+                            if ((thrownMissile.cursed || thrownMissile.greased) && !rn2(7)) {
+                                if (throwerVisible) {
+                                    const throwerName = monsterDisplayName(mon).replace(/^The\b/, 'the');
+                                    addDartThrowFollowup(`The dart slips as ${throwerName} throws it!`);
+                                }
+                                const misfireDx = rn2(3) - 1;
+                                const misfireDy = rn2(3) - 1;
+                                if (!misfireDx && !misfireDy) {
+                                    landDartTerrainStop(mon.mx, mon.my);
+                                    if (!finishDartThrowAction()) return false;
+                                    continue;
+                                }
+                                if (misfireDx !== throwDx || misfireDy !== throwDy) {
+                                    let landingX = mon.mx;
+                                    let landingY = mon.my;
+                                    let redirectedHandled = false;
+                                    if (!ordinaryDartBlockAhead(landingX, landingY, misfireDx, misfireDy)) {
+                                        for (let step = 0; step < throwRange; step++) {
+                                            landingX += misfireDx;
+                                            landingY += misfireDy;
+                                            const remainingRange = throwRange - step - 1;
+                                            const targetMon = monsterAtFlightSquare(landingX, landingY, mon);
+                                            if (targetMon) {
+                                                const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
+                                                const hitRoll = rnd(20);
+                                                if (hitValue >= hitRoll) {
+                                                    finishDartInterveningHit(targetMon);
+                                                    redirectedHandled = true;
+                                                    break;
+                                                }
+                                                if (!remainingRange) {
+                                                    landDartTerrainStop(landingX, landingY);
+                                                    redirectedHandled = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (redirectedHandled) break;
+                                            const forcehit = !rn2(5);
+                                            const hitIronBars = remainingRange && forcehit
+                                                && game.level?.at(landingX + misfireDx, landingY + misfireDy)?.typ === IRONBARS;
+                                            if (hitIronBars) {
+                                                rn2(100); // C breaktest() calls obj_resists(); ordinary darts still survive.
+                                                if (!heroIsDeafForMonsterNoise()) addDartThrowFollowup('Clonk!');
+                                            }
+                                            const stoppedOnSink = remainingRange
+                                                && game.level?.at(landingX, landingY)?.typ === SINK;
+                                            if (stoppedOnSink && !game.u?.blind && cansee(landingX, landingY)) {
+                                                const sinkVerb = (game.u?._statusSuffix || '').includes('Hallu')
+                                                    ? 'plops' : 'drops';
+                                                addDartThrowFollowup(`The dart ${sinkVerb} onto the sink.`);
+                                            }
+                                            if (!remainingRange || hitIronBars || stoppedOnSink
+                                                || ordinaryDartBlockAhead(landingX, landingY, misfireDx, misfireDy)) {
+                                                landDartTerrainStop(landingX, landingY);
+                                                redirectedHandled = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (!redirectedHandled) landDartTerrainStop(landingX, landingY);
+                                    if (!finishDartThrowAction()) return false;
+                                    continue;
+                                }
+                            }
+                            if (ordinaryDartBlockAhead(mon.mx, mon.my)) {
+                                landDartTerrainStop(mon.mx, mon.my);
+                                if (!finishDartThrowAction()) return false;
+                                continue;
+                            }
                             let interveningTarget = null;
                             let dartTerrainStop = null;
                             for (let step = 1; step < throwRange; step++) {
@@ -8581,6 +8716,17 @@ export async function processMonsterTurns() {
                                     dartTerrainStop = { x: sx, y: sy };
                                     break;
                                 }
+                                const stoppedOnSink = remainingRange
+                                    && game.level?.at(sx, sy)?.typ === SINK;
+                                if (stoppedOnSink && !game.u?.blind && cansee(sx, sy)) {
+                                    const sinkVerb = (game.u?._statusSuffix || '').includes('Hallu')
+                                        ? 'plops' : 'drops';
+                                    addDartThrowFollowup(`The dart ${sinkVerb} onto the sink.`);
+                                }
+                                if (stoppedOnSink || remainingRange && ordinaryDartBlockAhead(sx, sy)) {
+                                    dartTerrainStop = { x: sx, y: sy };
+                                    break;
+                                }
                             }
                             if (dartTerrainStop) {
                                 const floorMessages = [];
@@ -8591,36 +8737,7 @@ export async function processMonsterTurns() {
                                 });
                                 addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                             } else if (interveningTarget) {
-                                let dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
-                                const targetVisible = !game.u?.blind
-                                    && !!(game.viz_array?.[interveningTarget.my]?.[interveningTarget.mx] & IN_SIGHT);
-                                dartDamage += monsterThrownObjectBlessedHitDamage(interveningTarget, thrownMissile);
-                                const silverHit = monsterThrownObjectSilverHitEffect(interveningTarget,
-                                    thrownMissile, targetVisible);
-                                if (silverHit) dartDamage += silverHit.damage;
-                                revealProjectileHitMimicAppearance(interveningTarget);
-                                interveningTarget.msleeping = 0;
-                                addToplineMessage(targetVisible
-                                    ? `The dart hits the ${interveningTarget.data?.name || 'monster'}.`
-                                    : 'It is hit.');
-                                const poisonHit = monsterThrownObjectPoisonHitEffect(dartDamage, interveningTarget,
-                                    thrownMissile, targetVisible);
-                                dartDamage = poisonHit.damage;
-                                emitMonsterThrownObjectPoisonHitEffect(poisonHit);
-                                emitMonsterThrownObjectSilverHitEffect(silverHit);
-                                interveningTarget.mhp = Math.max(0, (interveningTarget.mhp || 1) - dartDamage);
-                                if (interveningTarget.mhp < 1) {
-                                    killMonsterFromThrownInterveningHit(interveningTarget, targetVisible);
-                                }
-                                const floorMessages = [];
-                                landMonsterThrownObject(thrownMissile, interveningTarget.mx, interveningTarget.my, {
-                                    glyph: ')',
-                                    color: CLR_CYAN,
-                                    messages: floorMessages,
-                                    ohit: true,
-                                    passiveTarget: interveningTarget,
-                                });
-                                addMonsterThrownFloorMessages(floorMessages);
+                                finishDartInterveningHit(interveningTarget);
                             } else {
                                 const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                     - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
@@ -8635,52 +8752,96 @@ export async function processMonsterTurns() {
                                     if (throwerVisible) game._topline_after_more = catchResult.message;
                                     else addToplineMessage(catchResult.message);
                                 } else {
-                                    const dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
+                                    let dartDamage = Math.max(1,
+                                        rnd(heroMonsterThrownDartDamageSides()) + missileSpe - missileErosion);
+                                    dartDamage = maybeHalfPhysicalDamage(dartDamage);
+                                    const hitv = Math.max(-4, 3 - throwRange) + 8 + missileSpe
+                                        + heroPolyselfMonsterThrownHitBonus();
+                                    const dartKind = monsterLauncherProjectileKind(thrownMissile);
+                                    const dartArticle = articleFor(dartKind);
+                                    const dartKillerName = monsterLauncherProjectileKillerName(thrownMissile);
+                                    const poisonedHeroHit = !!(thrownMissile.opoisoned
+                                        && monsterThrownObjectIsPoisonable(thrownMissile));
                                     const hitRoll = rnd(20);
-                                    if (hitRoll < 20) {
-                                        const hitMessage = game.u?.blind || game.flags?.verbose === false
-                                            ? 'You are hit.'
-                                            : 'You are hit by a dart.';
-                                        if (throwerVisible) game._topline_after_more = hitMessage;
-                                        else addToplineMessage(hitMessage);
-                                        if (throwerVisible) {
+                                    const missed = (game.u?.uac ?? 10) + hitv <= hitRoll;
+                                    const physicalLethalHit = !missed && dartDamage >= (game.u?.uhp || 0);
+                                    const deferHeroHit = throwerVisible || (!missed && poisonedHeroHit);
+                                    let resultMessage = game.u?.blind || game.flags?.verbose === false
+                                        ? 'You are hit.'
+                                        : `You are hit by ${dartArticle} ${dartKind}${dartDamage > 4 ? '!' : '.'}`;
+                                    if (missed) {
+                                        resultMessage = game.u?.blind || game.flags?.verbose === false
+                                            ? 'It misses.'
+                                            : (game.u?.uac ?? 10) + hitv <= hitRoll - 2
+                                                ? `${dartArticle[0].toUpperCase()}${dartArticle.slice(1)} ${dartKind} misses you.`
+                                                : `You are almost hit by ${dartArticle} ${dartKind}.`;
+                                    }
+                                    if (throwerVisible) game._topline_after_more = resultMessage;
+                                    else addToplineMessage(resultMessage);
+                                    if (!missed) {
+                                        if (physicalLethalHit) {
+                                            game._lethal_arrow_after_topline_more = {
+                                                damage: dartDamage,
+                                                holdStatusHp: (game.u?.uhp || 0) - dartDamage === -1,
+                                                currentMove: true,
+                                                deathCleanupThrownObject: thrownMissile,
+                                                deathCleanupGlyph: thrownMissile.glyph || ')',
+                                                deathCleanupColor: CLR_CYAN,
+                                                deathCause: `killed by ${dartArticle} ${dartKillerName}`,
+                                                clearDeathMetadataAfterLifeSaving: true,
+                                                lifeSavingContinuation: {
+                                                    exerciseStrength: true,
+                                                    poison: poisonedHeroHit ? {
+                                                        reason: dartKind,
+                                                        killer: `${articleFor(dartKillerName)} ${dartKillerName}`,
+                                                        fatal: 0,
+                                                    } : null,
+                                                    monsterThrow: {
+                                                        missile: thrownMissile,
+                                                        x: game.u?.ux || 0,
+                                                        y: game.u?.uy || 0,
+                                                        glyph: ')',
+                                                        color: CLR_CYAN,
+                                                        ohit: true,
+                                                    },
+                                                },
+                                            };
+                                            game._death_cause = `killed by ${dartArticle} ${dartKillerName}`;
+                                            if (!throwerVisible) {
+                                                game._message_more = 1;
+                                                game._keep_pending_message = 1;
+                                            }
+                                        } else if (deferHeroHit) {
                                             game._damage_after_topline_more = (game._damage_after_topline_more || 0) + dartDamage;
                                             game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
+                                            if (poisonedHeroHit) {
+                                                game._poisoned_projectile_after_topline_more = {
+                                                    reason: dartKind,
+                                                    killer: `${articleFor(dartKillerName)} ${dartKillerName}`,
+                                                };
+                                                if (!throwerVisible) {
+                                                    game._message_more = 1;
+                                                    game._keep_pending_message = 1;
+                                                }
+                                            }
                                         } else {
                                             game.u.uhp = Math.max(0, (game.u?.uhp || 0) - dartDamage);
                                             exerciseAttribute(A_STR, false);
                                         }
-                                        finishMonsterThrownHeroLanding(thrownMissile, {
-                                            glyph: ')',
-                                            color: CLR_CYAN,
-                                            ohit: true,
-                                            afterMore: throwerVisible,
-                                        });
                                     } else {
-                                        const missMessage = game.u?.blind || game.flags?.verbose === false
-                                            ? 'It misses.'
-                                            : 'A dart misses you.';
-                                        if (throwerVisible) game._topline_after_more = missMessage;
-                                        else addToplineMessage(missMessage);
                                         rn2(5);
+                                    }
+                                    if (!physicalLethalHit) {
                                         finishMonsterThrownHeroLanding(thrownMissile, {
                                             glyph: ')',
                                             color: CLR_CYAN,
-                                            ohit: false,
-                                            afterMore: throwerVisible,
+                                            ohit: !missed,
+                                            afterMore: missed ? throwerVisible : deferHeroHit,
                                         });
                                     }
                                 }
                             }
-                            game._search_pending_count = 0;
-                            game._run_steps_remaining = 0;
-                            game._travel_keys = [];
-                            if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
-                            if (game._message_more && !game._process_time_with_more) {
-                                game._monster_resume_index = monIndex + 1;
-                                game._monster_resume_somebody_can_move = somebodyCanMove;
-                                return false;
-                            }
+                            if (!finishDartThrowAction()) return false;
                             continue;
                         }
                     }
@@ -10642,6 +10803,26 @@ function heroPolyselfMonsterThrownHitBonus() {
     return big ? 1 : 0;
 }
 
+function heroMonsterThrownDartDamageSides() {
+    const form = game.u?._polyself_form || game.u?.youmonst?.data || game.u?.data || null;
+    const big = form && (monsterObjectHitSizeValue({ data: form }) >= 3
+        || form.big || form.bigmonst || form.large || form.giant);
+    return big ? 2 : 3;
+}
+
+function heroHasHalfPhysicalDamage() {
+    return !!(game.u?.halfPhysicalDamage
+        || game.u?.half_physical_damage
+        || game.u?.halfPhysical
+        || game.u?.halfPhysicalDamageTimeout
+        || game.u?.extrinsics?.halfPhysicalDamage
+        || game.u?.intrinsics?.halfPhysicalDamage);
+}
+
+function maybeHalfPhysicalDamage(damage) {
+    return heroHasHalfPhysicalDamage() ? Math.trunc((damage + 1) / 2) : damage;
+}
+
 function monsterHatesBlessedWeapon(target) {
     const data = target?.data || {};
     const mlet = String(target?.mlet || data.mlet || data.glyph || '').toLowerCase();
@@ -12058,15 +12239,6 @@ function rollingBoulderChainIntoBoulderAt(x, y, dx, dy, remainingDistance, movin
     return chainedBoulder;
 }
 
-function heroHasHalfPhysicalDamageForRollingBoulder() {
-    return !!(game.u?.halfPhysicalDamage
-        || game.u?.half_physical_damage
-        || game.u?.halfPhysical
-        || game.u?.halfPhysicalDamageTimeout
-        || game.u?.extrinsics?.halfPhysicalDamage
-        || game.u?.intrinsics?.halfPhysicalDamage);
-}
-
 function rollingBoulderHeroPassesRocks() {
     const form = game.u?._polyself_form;
     return monsterPassesRocks({
@@ -12089,7 +12261,7 @@ function rollingBoulderHitHeroAt(x, y, movingBoulder) {
     if ((game.u?.ux ?? 0) !== x || (game.u?.uy ?? 0) !== y) return false;
 
     const rawDamage = rnd(20);
-    const damage = heroHasHalfPhysicalDamageForRollingBoulder() ? Math.trunc((rawDamage + 1) / 2) : rawDamage;
+    const damage = maybeHalfPhysicalDamage(rawDamage);
     interruptPositiveMulti();
     const hitValue = 9 + (movingBoulder?.spe || 0);
     const attackRoll = rnd(20);

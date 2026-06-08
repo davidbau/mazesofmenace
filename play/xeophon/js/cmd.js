@@ -38962,6 +38962,40 @@ export function landMonsterThrownObject(missile, x, y, {
     };
 }
 
+function promoteLethalProjectileAfterMore() {
+    if (!game._lethal_arrow_after_topline_more) return false;
+    const lethalArrow = game._lethal_arrow_after_topline_more;
+    game._deferred_lethal_attack_after_more = lethalArrow;
+    game._lethal_arrow_after_topline_more = null;
+    game._death_cause = lethalArrow.deathCause || game._death_cause || 'killed by an arrow';
+    return true;
+}
+
+function continueLethalAttackAfterLifeSaving(attack) {
+    const continuation = attack?.lifeSavingContinuation || {};
+    const messages = [];
+    if (continuation.exerciseStrength) exerciseAttribute(A_STR, false);
+    if (continuation.poison) {
+        const poisonResult = applyHeroPoisonedProjectileAfterMore(continuation.poison, {
+            appendMessages: false,
+        });
+        messages.push(...(poisonResult.messages || []));
+    }
+    const thrown = continuation.monsterThrow;
+    if (thrown?.missile) {
+        const floorMessages = [];
+        landMonsterThrownObject(thrown.missile, thrown.x ?? game.u?.ux ?? 0, thrown.y ?? game.u?.uy ?? 0, {
+            glyph: thrown.glyph || thrown.missile.glyph || ')',
+            color: thrown.color ?? thrown.missile.color ?? CLR_CYAN,
+            messages: floorMessages,
+            ohit: !!thrown.ohit,
+            passiveTarget: thrown.passiveTarget || null,
+        });
+        messages.push(...floorMessages);
+    }
+    return messages;
+}
+
 // C done_object_cleanup() salvages gt.thrownobj for bones without drop_throw().
 function deathCleanupThrownObjectLandingSpot() {
     const ux = game.u?.ux || 0;
@@ -39034,19 +39068,34 @@ function appendToplineAfterMoreMessages(messages) {
     return queued;
 }
 
-function applyHeroPoisonedProjectileAfterMore(effect) {
+function clearLifeSavedDeathState() {
+    game._death_cause = '';
+    game._death_bones_body = '';
+    game._death_current_move = 0;
+    game._death_status_hp_before_zero = null;
+    game._death_taker = '';
+    game._death_moves = 0;
+}
+
+function applyHeroPoisonedProjectileAfterMore(effect, options = {}) {
     const reason = String(effect?.reason || 'poisoned arrow');
     const messages = [];
+    const appendMessages = options.appendMessages !== false;
+    const finishMessages = () => appendMessages
+        ? appendToplineAfterMoreMessages(messages)
+        : messages.length > 0;
     if (!/poison/i.test(reason)) {
         const plural = /s$/i.test(reason);
         messages.push(`${/^[A-Z]/.test(reason) ? '' : 'The '}${reason} ${plural ? 'were' : 'was'} poisoned!`);
     }
     if (heroHasPoisonResistance()) {
         messages.push("The poison doesn't seem to affect you.");
-        return { dead: false, more: appendToplineAfterMoreMessages(messages) };
+        return { dead: false, more: finishMessages(), messages };
     }
 
-    const roll = rn2(30);
+    const fatal = effect?.fatal != null && Number.isFinite(Number(effect.fatal))
+        ? Number(effect.fatal) : 10;
+    const roll = fatal ? rn2(fatal + 20) : 1;
     let dead = false;
     if (roll === 0) {
         const loss = 6 + d(4, 6);
@@ -39075,12 +39124,12 @@ function applyHeroPoisonedProjectileAfterMore(effect) {
         if (game.u?.acurr?.a) game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - 1);
         messages.push('You feel weaker!');
     }
-    const more = appendToplineAfterMoreMessages(messages);
+    const more = finishMessages();
     if (dead) {
         game._death_cause = `poisoned by ${String(effect?.killer || reason)}`;
         game._queued_message_after_more ||= 'You die...';
     }
-    return { dead, more: more || dead };
+    return { dead, more: more || dead, messages };
 }
 
 function earthTargetIsSolid(target) {
@@ -56524,10 +56573,7 @@ export async function rhack(_cmd) {
                     game.u._stonedKiller = '';
                 }
                 removeHeroStatusSuffix('Stone');
-                game._death_cause = '';
-                game._death_bones_body = '';
-                game._death_current_move = 0;
-                game._death_status_hp_before_zero = null;
+                clearLifeSavedDeathState();
                 clearUnsafePetrifyingCorpseWieldAfterLifeSaving();
             }
             if (game._life_saving_refresh_con && game.u?.acurr?.a)
@@ -58037,6 +58083,7 @@ export async function rhack(_cmd) {
                 game._keep_pending_message = 1;
                 return;
             }
+            if (!game._topline_after_more) promoteLethalProjectileAfterMore();
             const deferredAttackAfterMore = game._deferred_attack_damage_after_more || game._deferred_lethal_attack_after_more;
             if (deferredAttackAfterMore) {
                 const attack = deferredAttackAfterMore;
@@ -58053,9 +58100,15 @@ export async function rhack(_cmd) {
                     removeInventoryItem(lifesaving);
                     game._life_saving_refresh_con = 1;
                     if (game.u) game.u.uhp = 0;
+                    const continuationMessages = continueLethalAttackAfterLifeSaving(attack);
+                    if (attack.clearDeathMetadataAfterLifeSaving) clearLifeSavedDeathState();
                     game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                     game._command_mode = 'lifeSavingMore';
-                    await setMessage('You die...  But wait...  Your medallion begins to glow!', true);
+                    const lifeSavingMessage = [
+                        'You die...  But wait...  Your medallion begins to glow!',
+                        ...continuationMessages,
+                    ].filter(Boolean).join('  ');
+                    await setMessage(lifeSavingMessage, true);
                     return;
                 }
                 if (deferredLethal) {
@@ -58203,11 +58256,7 @@ export async function rhack(_cmd) {
                             game._cold_destroy_after_topline_more = null;
                             if (coldLevel > rn2(20)) rn2(5);
                         }
-                if (game._lethal_arrow_after_topline_more) {
-                    const lethalArrow = game._lethal_arrow_after_topline_more;
-                    game._deferred_lethal_attack_after_more = lethalArrow;
-                    game._lethal_arrow_after_topline_more = null;
-                    game._death_cause = lethalArrow.deathCause || game._death_cause || 'killed by an arrow';
+                if (promoteLethalProjectileAfterMore()) {
                     keepMore = true;
                 }
 		                if (game._damage_after_topline_more) {
