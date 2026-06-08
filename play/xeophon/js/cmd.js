@@ -23226,6 +23226,19 @@ function directMeleeMonflee(mon, fleeTime, { first = false, message = false, mes
     return emitted || (!wasFleeing && !!mon.mflee);
 }
 
+function directMeleeLowHpSurvivorFlee(mon) {
+    const fleeRoll = rn2(25);
+    if (!fleeRoll && mon && (mon.mhp || 0) < Math.trunc((mon.mhpmax || 0) / 2)
+        && !(game.u?.uswallow && game.u?.ustuck === mon)) {
+        const fleeTime = rn2(3) ? 0 : rnd(100);
+        mon.mflee = 1;
+        mon.mfleetim = fleeTime ? Math.min(fleeTime + (mon.mfleetim || 0), 127) : 0;
+        clearMonsterTrack(mon);
+        return true;
+    }
+    return false;
+}
+
 function directMeleeResponderIsQuestLeader(mon) {
     const data = mon?.data || {};
     if (mon?.questLeader || data.questLeader) return true;
@@ -24975,6 +24988,7 @@ function placeThrownEggPetrifiedRock(egg, mon) {
         plural: 'rocks',
         quan: 1,
         spe: 0,
+        owt: 10,
         known: false,
         dknown: false,
         bknown: false,
@@ -24982,6 +24996,9 @@ function placeThrownEggPetrifiedRock(egg, mon) {
         oy: mon.my,
         color: CLR_GRAY,
     });
+    delete egg.artifact;
+    delete egg.oartifact;
+    delete egg.artifactShort;
     delete egg.corpsenm;
     delete egg.eggKnown;
     delete egg.line;
@@ -25001,11 +25018,15 @@ function transformMeleeEggStackToRocks(egg) {
         singular: 'rock',
         plural: 'rocks',
         spe: 0,
+        owt: 10,
         known: false,
         dknown: false,
         bknown: false,
         color: CLR_GRAY,
     });
+    delete egg.artifact;
+    delete egg.oartifact;
+    delete egg.artifactShort;
     delete egg.corpsenm;
     delete egg.eggKnown;
     Object.assign(egg, object_display(egg));
@@ -31893,6 +31914,32 @@ function applyDirectMeleePassiveObject(mon, weapon, messages) {
     return { ...erodeDirectMeleePassiveObject(targetObject, type, messages), type, object: targetObject };
 }
 
+function applyDirectMeleePassiveStoning(mon, weapon, messages, { weaponWasDestroyed = false } = {}) {
+    if (!passiveStoningAttackForMonster(mon)) return { handled: false, fatal: false, lifeSaving: false };
+    if (weapon || weaponWasDestroyed || wornGlovesItem()) return { handled: true, fatal: false, lifeSaving: false };
+    if (game.u?.stoneResistance || heroPolyselfResistsStoning()) return { handled: true, fatal: false, lifeSaving: false };
+    const rescue = maybeTurnPolyselfIntoStoneGolem();
+    if (rescue) {
+        if (Array.isArray(messages)) messages.push(rescue);
+        return { handled: true, fatal: false, lifeSaving: false, rescued: true };
+    }
+
+    if (Array.isArray(messages)) messages.push('You turn to stone...');
+    if (game.u) game.u.uhp = 0;
+    const name = String(mon?.data?.name || mon?.name || 'monster').toLowerCase();
+    game._death_cause = `petrified by ${articleFor(name)}`;
+    game._death_bones_body = 'statue';
+    if (messages && typeof messages === 'object') messages.more = true;
+    if (consumeLifeSavingAmulet({ clearStoning: true })) {
+        if (Array.isArray(messages))
+            messages.push('You die...  But wait...  Your medallion begins to glow!');
+        if (messages && typeof messages === 'object') messages.lifeSaving = true;
+        return { handled: true, fatal: false, lifeSaving: true };
+    }
+    if (messages && typeof messages === 'object') messages.fatal = true;
+    return { handled: true, fatal: true, lifeSaving: false };
+}
+
 function wandRechargeLimit(item) {
     const name = wandTypeName(item);
     if (name === 'wishing' || isWishingWand(item)) return 1;
@@ -38711,20 +38758,37 @@ function normalizedPassiveObjectAttackType(type) {
     return '';
 }
 
-function passiveObjectAttackForMonster(mon) {
-    if (!mon) return '';
+function passiveAttackEntriesForMonster(mon) {
     const attacks = [];
+    if (!mon) return attacks;
     if (mon.attack) attacks.push(mon.attack);
     if (Array.isArray(mon.attacks)) attacks.push(...mon.attacks);
     if (mon.data?.attack) attacks.push(mon.data.attack);
     if (Array.isArray(mon.data?.attacks)) attacks.push(...mon.data.attacks);
-    for (const attack of attacks) {
+    return attacks.filter(attack => {
         const aatyp = String(attack?.aatyp || attack?.type || '').toLowerCase();
-        if (aatyp !== 'none' && aatyp !== 'at_none' && aatyp !== 'passive') continue;
+        return aatyp === 'none' || aatyp === 'at_none' || aatyp === 'passive';
+    });
+}
+
+function passiveObjectAttackForMonster(mon) {
+    if (!mon) return '';
+    for (const attack of passiveAttackEntriesForMonster(mon)) {
         const adtyp = normalizedPassiveObjectAttackType(attack?.adtyp || attack?.damageType);
         if (adtyp) return adtyp;
     }
     return MONSTER_PASSIVE_OBJECT_ATTACK_FALLBACKS.get(String(mon.data?.name || mon.name || '').toLowerCase()) || '';
+}
+
+function passiveStoningAttackForMonster(mon) {
+    if (!mon) return false;
+    for (const attack of passiveAttackEntriesForMonster(mon)) {
+        const key = String(attack?.adtyp || attack?.damageType || '').toLowerCase();
+        if (key === 'ad_ston' || key === 'ston' || key === 'stone' || key === 'stoning')
+            return true;
+    }
+    const name = String(mon.data?.name || mon.name || '').toLowerCase();
+    return name === 'cockatrice' || name === 'chickatrice' || !!(mon.touchPetrifies || mon.data?.touchPetrifies);
 }
 
 function monsterAtSquareForPassiveObject(x, y) {
@@ -40030,7 +40094,9 @@ function wishedDamageProfile(item) {
     const flammableArmor = armor && FIRE_FLAMMABLE_ARMOR_KINDS.has(kind);
     const nonflammableArmor = armor && FIRE_NONFLAMMABLE_ARMOR_KINDS.has(kind);
     const copperLike = /\b(?:copper|bronze)\b/.test(kind);
+    const rustproneProjectile = /^(?:arrow|orcish arrow|crude arrow|ya|bamboo arrow|crossbow bolt)$/.test(kind);
     const ironLike = !flammableArmor && !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
+        || rustproneProjectile
         || IRON_POLEARM_KINDS.has(kind)
         || /\b(?:plate mail|splint mail|banded mail|ring mail|chain mail|scale mail|large shield|roundshield|gauntlets|helm|helmet|dented pot|shoes|sword|saber|dagger|knife|axe|mace|hammer|flail|morning star|pick-axe|mattock|spear|trident|lance|polearm|dart|shuriken|throwing star)\b/.test(kind));
     const flammableLike = flammableArmor || (!nonflammableArmor && !glassArmor && !ironLike && !copperLike && !excludedMetal
@@ -48449,6 +48515,7 @@ function isPetrifyingEgg(item) {
 
 function isStaleEggItem(item) {
     if (!isEggItem(item)) return false;
+    if (item.staleEgg || item.oldEgg) return true;
     if (item.age == null) item.age = game.moves || 1;
     return (game.moves || 1) - item.age > 2 * MAX_EGG_HATCH_TIME;
 }
@@ -54482,12 +54549,13 @@ async function moveHero(dx, dy) {
         const martialArts = role === 'Monk' || role === 'Samurai';
         const basicBareHands = martialArts || role === 'Barbarian' || role === 'Caveman';
         const inventory = game.inventory || [];
-        const weapon = role === 'Monk' ? null : inventory.find(item => item.wielded)
+        const actualWieldedWeapon = inventory.find(item => item.wielded)
             || inventory.find(item =>
                 item.line?.includes('weapon in')
                 || item.line?.includes('wielded in right'));
+        const weapon = role === 'Monk' ? null : actualWieldedWeapon;
         const secondWeapon = game._twoweapon
-            ? inventory.find(item => item !== weapon
+            ? inventory.find(item => item !== actualWieldedWeapon
                 && /\b(?:wielded|weapon) in left hand\b/.test(item.line || ''))
             : null;
         const twoWeaponActive = game._twoweapon && !!secondWeapon
@@ -54573,6 +54641,7 @@ async function moveHero(dx, dy) {
         let deferredSleepingWakePreHitState = null;
         let killed = false;
         let killingAttackWeapon = null;
+        let killingAttackContactProtectionWeapon = null;
         let killedByNormalMelee = false;
         let directMeleeHit = false;
         let directMeleeOrdinaryWakeupAllowed = false;
@@ -54580,6 +54649,7 @@ async function moveHero(dx, dy) {
         let directMeleeNonlethalWrapperApplied = false;
         for (let attackIndex = 0; attackIndex < attackWeapons.length; attackIndex++) {
             const attackWeapon = attackWeapons[attackIndex];
+            const attackContactProtectionWeapon = attackWeapon || (attackIndex === 0 ? actualWieldedWeapon : null);
             const attackPreHitState = {
                 msleeping: mon.msleeping,
                 meating: mon.meating,
@@ -54648,14 +54718,7 @@ async function moveHero(dx, dy) {
                 });
                 directMeleeNonlethalWakeupApplied = true;
                 if (attackIndex === 0 && !deferSleepingWakeTail) {
-                    const fleeRoll = rn2(25);
-                    if (!fleeRoll && (mon.mhp || 0) < Math.trunc((mon.mhpmax || 0) / 2)
-                        && !(game.u?.uswallow && game.u?.ustuck === mon)) {
-                        const fleeTime = rn2(3) ? 0 : rnd(100);
-                        mon.mflee = 1;
-                        mon.mfleetim = fleeTime ? Math.min(fleeTime + (mon.mfleetim || 0), 127) : 0;
-                        clearMonsterTrack(mon);
-                    }
+                    directMeleeLowHpSurvivorFlee(mon);
                 }
                 continue;
             }
@@ -54672,13 +54735,32 @@ async function moveHero(dx, dy) {
                 if (eggMessages.lifeSaving || eggMessages.fatal) break;
                 if (killed) break;
                 if (eggHit.wakeupTail !== false) {
-                    directMeleeNonlethalWakeupTail(mon, messages, attackPreHitState, {
-                        ordinaryMelee: !directMeleeFromSpecialApply,
-                        forcefight: directMeleeForcefight,
-                        visible: targetSpotted,
-                        wakeMessage: false,
-                    });
-                    directMeleeNonlethalWakeupApplied = true;
+                    const eggOrdinaryMelee = !directMeleeFromSpecialApply;
+                    const deferEggSleepingWakeTail = attackIndex === 0 && wokeFromSleep
+                        && !twoWeaponActive && eggOrdinaryMelee
+                        && directMeleeSleeperWakeTailMayMessage(mon, attackPreHitState, { visible: targetSpotted });
+                    if (deferEggSleepingWakeTail) {
+                        deferSleepingWakeTail = true;
+                        deferredSleepingWakePreHitState = attackPreHitState;
+                    } else {
+                        directMeleeNonlethalWakeupTail(mon, messages, attackPreHitState, {
+                            ordinaryMelee: eggOrdinaryMelee,
+                            forcefight: directMeleeForcefight,
+                            visible: targetSpotted,
+                        });
+                        if (attackPreHitState?.msleeping && eggOrdinaryMelee) wokeByHit = false;
+                        directMeleeNonlethalWakeupApplied = true;
+                        if (attackIndex === 0) {
+                            directMeleeLowHpSurvivorFlee(mon);
+                            applyDirectMeleePassiveObject(mon, eggHit.consumed ? null : attackWeapon, messages);
+                            applyDirectMeleePassiveStoning(mon,
+                                eggHit.consumed ? null : attackContactProtectionWeapon,
+                                messages,
+                                { weaponWasDestroyed: !!eggHit.consumed });
+                            if (messages.lifeSaving || messages.fatal) break;
+                            rn2(3);
+                        }
+                    }
                 }
                 continue;
             }
@@ -54729,6 +54811,7 @@ async function moveHero(dx, dy) {
             killed = mon.mhp <= 0;
             if (killed) {
                 killingAttackWeapon = attackWeapon;
+                killingAttackContactProtectionWeapon = attackContactProtectionWeapon;
                 killedByNormalMelee = true;
             }
             if (mon.mtame && damage > 0) {
@@ -54783,21 +54866,19 @@ async function moveHero(dx, dy) {
                     directMeleeNonlethalWrapperApplied = true;
                 }
                 if (!deferAttackSleepingWakeTail) {
-                    const fleeRoll = rn2(25);
-                    if (!fleeRoll && (mon.mhp || 0) < Math.trunc((mon.mhpmax || 0) / 2)
-                        && !(game.u?.uswallow && game.u?.ustuck === mon)) {
-                        const fleeTime = rn2(3) ? 0 : rnd(100);
-                        mon.mflee = 1;
-                        mon.mfleetim = fleeTime ? Math.min(fleeTime + (mon.mfleetim || 0), 127) : 0;
-                        clearMonsterTrack(mon);
-                    }
+                    directMeleeLowHpSurvivorFlee(mon);
                     applyDirectMeleePassiveObject(mon, attackWeapon, messages);
+                    applyDirectMeleePassiveStoning(mon, attackContactProtectionWeapon, messages);
+                    if (messages.lifeSaving || messages.fatal) break;
                     directPassiveObjectApplied = true;
                     rn2(3);
                 }
             }
-            if (!directPassiveObjectApplied)
+            if (!directPassiveObjectApplied) {
                 applyDirectMeleePassiveObject(mon, attackWeapon, messages);
+                applyDirectMeleePassiveStoning(mon, attackContactProtectionWeapon, messages);
+                if (messages.lifeSaving || messages.fatal) break;
+            }
         }
 
         if (messages.lifeSaving || messages.fatal) {
@@ -54887,8 +54968,32 @@ async function moveHero(dx, dy) {
             }
         }
         messages.push(`You ${killVerb} ${killedPet ? `the poor ${killedName}` : targetPhrase}!`);
-        if (killedByNormalMelee)
+        if (killedByNormalMelee) {
             applyDirectMeleePassiveObject(mon, killingAttackWeapon, messages);
+            applyDirectMeleePassiveStoning(mon, killingAttackContactProtectionWeapon, messages);
+        }
+        if (messages.lifeSaving || messages.fatal) {
+            recordHeroKillConduct();
+            mon.dead = true;
+            mon.mhp = 0;
+            markHeroKilledTameMonster(mon);
+            recordVanquished(mon);
+            const potionCallPrompt = game._command_mode === 'callPotionAfterMore';
+            await setMessage(messages.join('  '), potionCallPrompt || !!messages.more);
+            game._run_stop_now = 1;
+            game._run_steps_remaining = 0;
+            game.context.move = 0;
+            if (messages.lifeSaving) {
+                game._command_mode = 'lifeSavingMore';
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                return;
+            }
+            game._command_mode = 'deathDieMore';
+            game._pending_time_passed = 0;
+            game._process_command_time_now = 0;
+            prepareDeathBones();
+            return;
+        }
         recordHeroKillConduct();
         mon.dead = true;
         mon.mhp = 0;
@@ -58177,6 +58282,7 @@ export async function rhack(_cmd) {
                         color: arrowDrop.color ?? CLR_CYAN,
                         messages: floorMessages,
                         ohit: !!arrowDrop.ohit,
+                        passiveTarget: arrowDrop.passiveTarget || null,
                     });
                     appendToplineAfterMoreMessages(floorMessages);
                 }
@@ -58797,14 +58903,7 @@ export async function rhack(_cmd) {
                 if (next.deferredMeleeWake) {
                     const action = next.deferredMeleeWake;
                     const target = action.target;
-                    const fleeRoll = rn2(25);
-                    if (!fleeRoll && target && (target.mhp || 0) < Math.trunc((target.mhpmax || 0) / 2)
-                        && !(game.u?.uswallow && game.u?.ustuck === target)) {
-                        const fleeTime = rn2(3) ? 0 : rnd(100);
-                        target.mflee = 1;
-                        target.mfleetim = fleeTime ? Math.min(fleeTime + (target.mfleetim || 0), 127) : 0;
-                        clearMonsterTrack(target);
-                    }
+                    directMeleeLowHpSurvivorFlee(target);
                     rn2(3);
                     const tailMessages = [];
                     directMeleeNonlethalWakeupTail(target, tailMessages, action.preHitState, {
