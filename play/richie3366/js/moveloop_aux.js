@@ -73,11 +73,19 @@ export function maybe_generate_rnd_mon() {
     ) {
         return;
     }
-    /* C: comma-**`U`** — defer fifth new-turn **`maybe_generate`** during post-fourth surplus
-     * **`fmon`** (~3058+). */
+    /* C: comma-**`U`** — defer fifth new-turn **`maybe_generate`** from ~3054 peel (~3074). */
     if (
         game.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
         || game.context?._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC
+        || (
+            game.context?._wizD1CommaDeferFifthNewturnLikeC
+            && !game.context?._wizD1CommaPostFourthSurplusTailDoneLikeC
+        )
+        || (
+            game.context?._wizD1CommaSecondUSurplusArmedLikeC
+            && game.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
+            && !game.context?._wizD1CommaPostFourthSurplusTailDoneLikeC
+        )
     ) {
         return;
     }

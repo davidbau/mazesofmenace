@@ -24,6 +24,7 @@ import {
     isLandEelForMovemonLikeC,
     findDistantMklevMonLikeC,
     wizD1CommaLFirstUNearMklevMonLikeC,
+    wizD1CommaSurplusNearMklevLikeC,
     wizD1CorridorMklevMonLikeC,
     wizD1EastDoorMklevMonLikeC,
     wizD1PeelDistantMklevMonLikeC,
@@ -103,7 +104,9 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
     /* C: comma-**`U`** second hero **`U`** — surplus hostile **`m_move`** (~3058+). */
     if (g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC) {
-        const nearMklev = wizD1CommaLFirstUNearMklevMonLikeC(g);
+        /* C: surplus **`passList`** schedules near @ ~3058; only the scan pin may be
+         * excluded — LFirstU fallback must not drop west stray **~(66,4)** post-peel. */
+        const nearMklev = g.context?._wizD1CommaSurplusNearMklevPinnedLikeC ?? null;
         const pet = mons.find((m) => (m.mtame | 0) !== 0);
         const hostile = mons.filter(
             (m) => !(m.mtame | 0) && m !== nearMklev && m !== pet,

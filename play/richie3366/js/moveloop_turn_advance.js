@@ -68,6 +68,9 @@ import {
     wizD1EastDoorMklevMonLikeC,
     wizD1PeelDistantMklevMonLikeC,
     wizD1CommaLFirstUNearMklevMonLikeC,
+    wizD1CommaSurplusScanClearLikeC,
+    wizD1CommaSurplusScanPrimeLikeC,
+    wizD1CommaSurplusPostPeelActiveLikeC,
 } from './mfndpos_mon.js';
 import {
     mMoveTouristD1PostRestSecondMklevInterruptLikeC,
@@ -75,6 +78,7 @@ import {
     movemonSinglemonLikeC,
     primeDistantMtrackRn20LikeC,
     wizD1CommaLFirstUNearDistfleeckBeforePetLikeC,
+    wizD1CommaPostFifthHostileTailInlineLikeC,
 } from './m_move_mon.js';
 
 /**
@@ -214,6 +218,15 @@ export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
     if (
         g.context?._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC
         || g.context?._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC
+        || (
+            g.context?._wizD1CommaDeferFifthNewturnLikeC
+            && !g.context?._wizD1CommaPostFourthSurplusTailDoneLikeC
+        )
+        || (
+            g.context?._wizD1CommaSecondUSurplusArmedLikeC
+            && g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
+            && !g.context?._wizD1CommaPostFourthSurplusTailDoneLikeC
+        )
     ) {
         return;
     }
@@ -1079,7 +1092,18 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                             monscanmove = false;
                             break;
                         }
-                        if ((u.umovement | 0) >= NORMAL_SPEED) break;
+                        const commaUPostFourthSurplusMonscanLikeC =
+                            g.urole?.abbr === 'Wiz'
+                            && (g.u?.uz?.dnum | 0) === 0
+                            && (g.u?.uz?.dlevel | 0) === 1
+                            && g.context?._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC
+                            && !g.context?._wizD1CommaPostFourthSurplusTailDoneLikeC;
+                        if (
+                            (u.umovement | 0) >= NORMAL_SPEED
+                            && !commaUPostFourthSurplusMonscanLikeC
+                        ) {
+                            break;
+                        }
                     } while (monscanmove);
                     if (
                         g.context?._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC
@@ -1112,6 +1136,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                             g.context._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC = true;
                         }
                     }
+                    /* C: surplus completion + fifth new-turn live in post-fourth block (~3073–3074). */
                     if (
                         wizD1MovemonOnceLikeC
                         && !g.context?._wizD1PostEastTailWalkCompletePendingLikeC
@@ -1250,18 +1275,31 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     && (
                         !g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
                         || g.context?._wizD1CommaSurplusTailPendingLikeC
+                        || (
+                            g.context?._wizD1CommaSecondUSurplusArmedLikeC
+                            && (g.moves | 0) >= 37
+                            && !g.context?._wizD1CommaPostFourthSurplusTailDoneLikeC
+                        )
                     )
                 ) {
                     const commaUSurplusTailResumeLikeC =
                         wizD1MovemonOnceLikeC
                         && g.context?._wizD1CommaSurplusTailPendingLikeC
-                        && g.context?._wizD1CommaSecondUSurplusArmedLikeC
-                        && !g.context?._wizD1CommaLFirstUPostTailOuterMoveloopDoneLikeC;
-                    if (!commaUSurplusTailResumeLikeC) {
+                        && g.context?._wizD1CommaSecondUSurplusArmedLikeC;
+                    /* C: second hero **`U`** — defer fifth new-turn (~3074) after ~3054 peel flag. */
+                    const commaUPostFourthSurplusDeferNewturnLikeC =
+                        wizD1MovemonOnceLikeC
+                        && g.context?._wizD1CommaDeferFifthNewturnLikeC
+                        && !g.context?._wizD1CommaPostFourthSurplusTailDoneLikeC;
+                    if (
+                        !commaUSurplusTailResumeLikeC
+                        && !commaUPostFourthSurplusDeferNewturnLikeC
+                    ) {
                         await runNewTurnSetupAndTailLikeC(g, tailStepNum);
                     }
                     /* C: comma-**`U`** second hero **`U`** — resume surplus **`fmon`** (~3059–3073). */
                     if (commaUSurplusTailResumeLikeC) {
+                        wizD1CommaSurplusScanPrimeLikeC(g, { force: true });
                         delete g.context._wizD1CommaLFirstUPostTailAwaitSecondHeroULikeC;
                         g.context._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC = true;
                         g.context._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC = true;
@@ -1278,12 +1316,30 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         }
                         delete g.context._wizD1CommaSurplusStrayTailDoneSetLikeC;
                         delete g.context._wizD1CommaSurplusNonMklevDoneSetLikeC;
-                        if (!g.context?._wizD1CommaSurplusScanMoreLikeC) {
-                            await runNewTurnSetupAndTailLikeC(g, tailStepNum);
-                        }
+                        const surplusResumeScanMoreLikeC =
+                            !!g.context?._wizD1CommaSurplusScanMoreLikeC;
                         delete g.context._wizD1CommaSurplusScanMoreLikeC;
                         delete g.context._wizD1CommaSurplusTailPendingLikeC;
-                        delete g.context._wizD1CommaSecondUSurplusArmedLikeC;
+                        if (
+                            !surplusResumeScanMoreLikeC
+                            && (
+                                !g.context?._wizD1CommaDeferFifthNewturnLikeC
+                                || g.context?._wizD1CommaPostFourthSurplusTailDoneLikeC
+                            )
+                        ) {
+                            g.context._wizD1CommaPostFourthSurplusTailDoneLikeC = true;
+                            delete g.context._wizD1CommaDeferFifthNewturnLikeC;
+                            delete g.context._wizD1CommaSecondUSurplusArmedLikeC;
+                            delete g.context._wizD1CommaPostPeelPassDoneSetLikeC;
+                            delete g.context._wizD1CommaPostPeelSurplusRoundLikeC;
+                            wizD1CommaSurplusScanClearLikeC(g);
+                            await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                        } else if (
+                            !surplusResumeScanMoreLikeC
+                            && g.context?._wizD1CommaDeferFifthNewturnLikeC
+                        ) {
+                            g.context._wizD1CommaSurplusTailPendingLikeC = true;
+                        }
                         g.context._wizD1MovemonRanThisPostLikeC = true;
                         g.context._wizD1LPostOuterLoopDoneLikeC = true;
                         newTurnDone = true;
@@ -1299,7 +1355,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         if (nearPostFourth) {
                             setApparxyMonsterLikeC(g, nearPostFourth);
                             await distfleeckMonsterApplyLikeC(g, nearPostFourth);
+                            g.context._wizD1CommaDeferFifthNewturnLikeC = true;
                         }
+                        wizD1CommaSurplusScanClearLikeC(g);
+                        wizD1CommaSurplusScanPrimeLikeC(g, { force: true });
                         /* C: surplus **`fmon`** **`monscanmove`** loop (~3055–3073); fifth new-turn ~3074. */
                         g.context._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC = true;
                         g.context._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC = true;
@@ -1314,9 +1373,11 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                             delete g.context._wizD1CommaLFirstUPostTailSecondUPostMovemonLikeC;
                             delete g.context._wizD1CommaLFirstUPostTailAwaitSurplusFmonLikeC;
                         }
+                        const surplusScanMoreAfterLoopLikeC =
+                            !!g.context?._wizD1CommaSurplusScanMoreLikeC;
                         if (
                             g.context?._wizD1CommaSecondUSurplusArmedLikeC
-                            && g.context?._wizD1CommaSurplusScanMoreLikeC
+                            && surplusScanMoreAfterLoopLikeC
                         ) {
                             g.context._wizD1CommaSurplusTailPendingLikeC = true;
                         }
@@ -1343,8 +1404,78 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                             );
                             g.context._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC = true;
                         }
+                        /* C: surplus **`fmon`** done (~3073) — fifth new-turn (~3074). */
+                        if (
+                            g.context?._wizD1CommaSecondUSurplusArmedLikeC
+                            && !surplusScanMoreAfterLoopLikeC
+                            && !g.context?._wizD1CommaSurplusTailPendingLikeC
+                            && g.context?._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC
+                            && !g.context?._wizD1CommaPostFourthSurplusTailDoneLikeC
+                        ) {
+                            g.context._wizD1CommaPostFourthSurplusTailDoneLikeC = true;
+                            delete g.context._wizD1CommaDeferFifthNewturnLikeC;
+                            delete g.context._wizD1CommaSecondUSurplusArmedLikeC;
+                            delete g.context._wizD1CommaSurplusStrayTailDoneSetLikeC;
+                            delete g.context._wizD1CommaSurplusNonMklevDoneSetLikeC;
+                            const postFifthHostileCorridorSaveLikeC =
+                                g.context?._wizD1CommaPostPeelCorridorPinnedLikeC ?? null;
+                            const postFifthHostileDistantSaveLikeC =
+                                g.context?._wizD1CommaPostPeelDistantPinnedLikeC ?? null;
+                            wizD1CommaSurplusScanClearLikeC(g);
+                            if (postFifthHostileCorridorSaveLikeC) {
+                                g.context._wizD1CommaPostFifthHostileCorridorLikeC =
+                                    postFifthHostileCorridorSaveLikeC;
+                            }
+                            if (postFifthHostileDistantSaveLikeC) {
+                                g.context._wizD1CommaPostFifthHostileDistantLikeC =
+                                    postFifthHostileDistantSaveLikeC;
+                            }
+                            await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                            /* C: fifth new-turn done (~3074–3076) — pet **`distfleeck`** + **`dog_move`** (~3077+). */
+                            g.context._wizD1CommaPostFifthMovemonPendingLikeC = true;
+                            delete g.context._wizD1MovemonRanThisPostLikeC;
+                            g.context._movemonHarnessConsumed = false;
+                            await movemon(1);
+                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                        }
+                        /* C: post-fifth pet done (~3081) — peel + surplus **`fmon`** (~3082–3091). */
+                        if (g.context?._wizD1CommaPostFifthHostileTailPendingLikeC) {
+                            delete g.context._wizD1CommaPostFifthHostileTailPendingLikeC;
+                            const postSixthCorridorSaveLikeC =
+                                g.context?._wizD1CommaPostFifthHostileCorridorLikeC
+                                ?? null;
+                            const postSixthDistantSaveLikeC =
+                                g.context?._wizD1CommaPostFifthHostileDistantLikeC
+                                ?? null;
+                            await wizD1CommaPostFifthHostileTailInlineLikeC(
+                                g,
+                                tailStepNum,
+                            );
+                            await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                            if (postSixthCorridorSaveLikeC) {
+                                g.context._wizD1CommaPostSixthHostileCorridorLikeC =
+                                    postSixthCorridorSaveLikeC;
+                            }
+                            if (postSixthDistantSaveLikeC) {
+                                g.context._wizD1CommaPostSixthHostileDistantLikeC =
+                                    postSixthDistantSaveLikeC;
+                            }
+                            /* C: sixth new-turn done (~3092–3094) — pet + hostiles (~3095+). */
+                            g.context._wizD1CommaPostSixthMovemonPendingLikeC = true;
+                            delete g.context._wizD1MovemonRanThisPostLikeC;
+                            g.context._movemonHarnessConsumed = false;
+                            await movemon(1);
+                            g.context._wizD1MovemonRanThisPostLikeC = true;
+                            g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                        }
                         g.context._wizD1MovemonRanThisPostLikeC = true;
-                        g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                        if (
+                            !surplusScanMoreAfterLoopLikeC
+                            && !g.context?._wizD1CommaSurplusTailPendingLikeC
+                            && !g.context?._wizD1CommaPostFifthHostileTailPendingLikeC
+                        ) {
+                            g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                        }
                         newTurnDone = true;
                     }
                     /* C: comma-**`l`** → first **`U`** — near **`distfleeck`** (~2948) after new-turn

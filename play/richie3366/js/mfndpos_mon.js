@@ -267,6 +267,163 @@ export function wizD1EastDoorMklevMonLikeC(g) {
     );
 }
 
+/** C: comma-**`U`** surplus — pin near mklev at ~3054 so **`fmon`** stray/near split stays stable. */
+export function wizD1CommaSurplusNearMklevLikeC(g) {
+    return (
+        g.context?._wizD1CommaSurplusNearMklevPinnedLikeC
+        ?? wizD1CommaLFirstUNearMklevMonLikeC(g)
+    );
+}
+
+/**
+ * C: comma-**`U`** post-peel — peel cockatrice **~(23,13)** march target; not west corridor **~(11,11)**.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {*} corridor
+ * @param {*} near
+ */
+function resolveCommaPostPeelDistantLikeC(g, corridor, near) {
+    const ctx = g.context;
+    for (const pin of [
+        ctx?._wizD1EastTailPeelMtmpLikeC,
+        ctx?._wizD1Step1DistantPeelMtmpLikeC,
+    ]) {
+        if (
+            pin
+            && (pin.mhp | 0) > 0
+            && pin !== corridor
+            && pin !== near
+        ) {
+            return pin;
+        }
+    }
+    const pet = (g.level?.monsters ?? []).find((m) => (m.mtame | 0));
+    const liveCorridor = wizD1CorridorMklevMonLikeC(g);
+    for (const m of g.level?.monsters ?? []) {
+        if (!(m.mgenmklev | 0) || (m.mtame | 0)) continue;
+        if (m === corridor || m === liveCorridor || m === near || m === pet) continue;
+        const mx = m.mx | 0;
+        const my = m.my | 0;
+        if (mx === 63 && my === 7) continue;
+        /* C: surplus stray march (~71,4 → ~66,4) — not east-door near nor west corridor. */
+        return m;
+    }
+    let best = null;
+    let bestMx = -1;
+    for (const m of g.level?.monsters ?? []) {
+        if (!(m.mgenmklev | 0) || (m.mtame | 0)) continue;
+        if (m === corridor || m === liveCorridor || m === near || m === pet) continue;
+        const mx = m.mx | 0;
+        const my = m.my | 0;
+        if (mx === 63 && my === 7) continue;
+        if (mx > bestMx) {
+            bestMx = mx;
+            best = m;
+        }
+    }
+    return best;
+}
+
+/** C: pin west-corridor mgenmklev for post-peel distfleeck then m_move (~3060+). */
+export function wizD1CommaPostPeelCorridorMklevMonLikeC(g) {
+    return (
+        g.context?._wizD1CommaPostPeelCorridorPinnedLikeC
+        ?? wizD1CorridorMklevMonLikeC(g)
+    );
+}
+
+/** C: pin peel-distant cockatrice for post-peel two-pass **`distfleeck`** then **`m_move`** (~3061–3062). */
+export function wizD1CommaPostPeelDistantMklevMonLikeC(g) {
+    return (
+        g.context?._wizD1CommaPostPeelDistantPinnedLikeC
+        ?? resolveCommaPostPeelDistantLikeC(
+            g,
+            wizD1CommaPostPeelCorridorMklevMonLikeC(g),
+            g.context?._wizD1CommaSurplusNearMklevPinnedLikeC
+                ?? wizD1EastDoorMklevMonLikeC(g)
+                ?? null,
+        )
+    );
+}
+
+function pinCommaPostPeelMonstersLikeC(g) {
+    const ctx = g.context || (g.context = {});
+    if (!ctx._wizD1CommaPostPeelCorridorPinnedLikeC) {
+        const corridor = wizD1CorridorMklevMonLikeC(g);
+        if (corridor) ctx._wizD1CommaPostPeelCorridorPinnedLikeC = corridor;
+    }
+    const corridor =
+        ctx._wizD1CommaPostPeelCorridorPinnedLikeC
+        ?? wizD1CorridorMklevMonLikeC(g);
+    const nearForPeelExclude =
+        ctx._wizD1CommaSurplusNearMklevPinnedLikeC
+        ?? wizD1EastDoorMklevMonLikeC(g)
+        ?? null;
+    const peel = resolveCommaPostPeelDistantLikeC(g, corridor, nearForPeelExclude);
+    if (peel) ctx._wizD1CommaPostPeelDistantPinnedLikeC = peel;
+}
+
+/** Re-resolve peel-distant when post-peel surplus starts (~3060). */
+export function wizD1CommaSurplusPostPeelPrimeMonstersLikeC(g) {
+    pinCommaPostPeelMonstersLikeC(g);
+}
+
+/** Prime pinned near + reset pre-peel slot counter for one surplus scan (~3054). */
+export function wizD1CommaSurplusScanPrimeLikeC(g, opts = null) {
+    const ctx = g.context || (g.context = {});
+    const force = !!(opts && opts.force);
+    /* C: moveloop may call **`force`** prime each surplus resume (~3055–3073); only the
+     * first prime in a tail starts the five-slot counter — re-prime must not zero it. */
+    if (force && ctx._wizD1CommaSurplusScanPrimedLikeC) {
+        pinCommaPostPeelMonstersLikeC(g);
+        return;
+    }
+    if (!force && ctx._wizD1CommaSurplusNearMklevPinnedLikeC) return;
+    /* C: surplus near peel @ ~3058 — east-door **~(63,7)** only; not west stray **~(71,4)**. */
+    const near =
+        wizD1EastDoorMklevMonLikeC(g)
+        ?? (g.level?.monsters ?? []).find(
+            (m) =>
+                (m.mx | 0) === 63
+                && (m.my | 0) === 7
+                && (m.mgenmklev | 0)
+                && !(m.mtame | 0),
+        )
+        ?? null;
+    const staleNear = ctx._wizD1CommaSurplusNearMklevPinnedLikeC;
+    if (
+        staleNear
+        && ((staleNear.mx | 0) !== 63 || (staleNear.my | 0) !== 7)
+    ) {
+        delete ctx._wizD1CommaSurplusNearMklevPinnedLikeC;
+    }
+    if (near) ctx._wizD1CommaSurplusNearMklevPinnedLikeC = near;
+    pinCommaPostPeelMonstersLikeC(g);
+    ctx._wizD1CommaSurplusPrePeelSlotPassesLikeC = 0;
+    delete ctx._wizD1CommaSurplusPostPeelActiveLikeC;
+    delete ctx._wizD1CommaLFirstUPostTailSecondUPeelDoneLikeC;
+    if (force) ctx._wizD1CommaSurplusScanPrimedLikeC = true;
+}
+
+export function wizD1CommaSurplusScanClearLikeC(g) {
+    if (!g.context) return;
+    delete g.context._wizD1CommaSurplusNearMklevPinnedLikeC;
+    delete g.context._wizD1CommaSurplusPrePeelSlotPassesLikeC;
+    delete g.context._wizD1CommaSurplusPostPeelActiveLikeC;
+    delete g.context._wizD1CommaSurplusScanPrimedLikeC;
+    delete g.context._wizD1CommaPostPeelMmovePendingSetLikeC;
+    delete g.context._wizD1CommaPostPeelCorridorPinnedLikeC;
+    delete g.context._wizD1CommaPostPeelDistantPinnedLikeC;
+    delete g.context._wizD1CommaPostPeelDfDoneSetLikeC;
+    delete g.context._wizD1CommaPostPeelMmoveDoneSetLikeC;
+    delete g.context._wizD1CommaSecondUPostPeelPetDoneLikeC;
+}
+
+/** C: five pre-peel **`rn2(12)`** slot passes (~3055–3059) then post-peel **`dochug`**. */
+export function wizD1CommaSurplusPostPeelActiveLikeC(g) {
+    return !!g.context?._wizD1CommaSurplusPostPeelActiveLikeC;
+}
+
 /** C: comma-**`l`** → first **`U`** — near **`distfleeck`** target before pet **`mfndpos`** (~2986). */
 export function wizD1CommaLFirstUNearMklevMonLikeC(g) {
     const mons = g.level?.monsters ?? [];
