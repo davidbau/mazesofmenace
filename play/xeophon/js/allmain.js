@@ -2559,6 +2559,35 @@ function addMonsterThrownFloorMessages(messages, afterMore = false) {
     }
 }
 
+function finishMonsterThrownHeroLanding(missile, {
+    glyph = missile?.glyph || ')',
+    color = missile?.color ?? CLR_CYAN,
+    ohit = false,
+    afterMore = false,
+} = {}) {
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    if (afterMore) {
+        game._monster_throw_after_more = {
+            missile,
+            x,
+            y,
+            glyph,
+            color,
+            ohit: !!ohit,
+        };
+        return;
+    }
+    const floorMessages = [];
+    landMonsterThrownObject(missile, x, y, {
+        glyph,
+        color,
+        messages: floorMessages,
+        ohit: !!ohit,
+    });
+    addMonsterThrownFloorMessages(floorMessages);
+}
+
 function monsterThrownPotionIsAcid(potion) {
     const kind = String(potion?.actualKind || potion?.kind || '').toLowerCase();
     return potion?.otyp === POT_ACID || kind === 'acid' || kind === 'potion of acid';
@@ -6521,14 +6550,12 @@ export async function processMonsterTurns() {
                                         game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
                                     }
                                     if (missed) rn2(5);
-                                    const floorMessages = [];
-                                    landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                    finishMonsterThrownHeroLanding(thrownMissile, {
                                         glyph: thrownMissile.glyph || '*',
                                         color: thrownMissile.color ?? NO_COLOR,
-                                        messages: floorMessages,
                                         ohit: !missed,
+                                        afterMore: throwerVisible && !deferPrayerProjectile,
                                     });
-                                    addMonsterThrownFloorMessages(floorMessages, throwerVisible && !deferPrayerProjectile);
                                 }
                             }
                             game._search_pending_count = 0;
@@ -6804,6 +6831,7 @@ export async function processMonsterTurns() {
                         if (!thrownMissile) continue;
                         const eggName = monsterThrownEggHitName(thrownMissile);
                         const eggNameCap = `${eggName[0].toUpperCase()}${eggName.slice(1)}`;
+                        const eggBaseName = eggName.replace(/^(?:an?|the)\s+/i, '');
                         const throwerVisible = !game.u?.blind
                             && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                             && !mon.minvis && !mon.mundetected;
@@ -6811,6 +6839,126 @@ export async function processMonsterTurns() {
                             addToplineMessage(`${monsterDisplayName(mon, true)} throws ${eggName}!`);
                             game._message_more = 1;
                             game._process_time_with_more = 0;
+                        }
+                        const finishEggThrowAction = () => {
+                            game._search_pending_count = 0;
+                            game._run_steps_remaining = 0;
+                            game._travel_keys = [];
+                            if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
+                            if (game._message_more && !game._process_time_with_more) {
+                                game._monster_resume_index = monIndex + 1;
+                                game._monster_resume_somebody_can_move = somebodyCanMove;
+                                return false;
+                            }
+                            return true;
+                        };
+                        const addEggThrowFollowup = (msg) => {
+                            if (throwerVisible) appendAfterMoreMessage(msg);
+                            else addToplineMessage(msg);
+                        };
+                        const ordinaryEggBlockAhead = (x, y, dx = throwDx, dy = throwDy) => {
+                            const nx = x + dx;
+                            const ny = y + dy;
+                            const loc = game.level?.at(nx, ny);
+                            return nx < 1 || nx > COLNO - 1 || ny < 0 || ny > ROWNO - 1
+                                || !loc || IS_OBSTRUCTED(loc.typ)
+                                || (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)));
+                        };
+                        const landEggTerrainStop = (x, y, { ironBars = false } = {}) => {
+                            const floorMessages = [];
+                            const landingOptions = {
+                                glyph: '%',
+                                color: CLR_WHITE,
+                                messages: floorMessages,
+                            };
+                            if (ironBars) {
+                                const breakKind = projectileTopLevelBreakKind(thrownMissile);
+                                if (breakKind) {
+                                    projectileTopLevelBreakMessage(thrownMissile, breakKind, floorMessages);
+                                    landingOptions.contactBreaks = true;
+                                } else {
+                                    if (!heroIsDeafForMonsterNoise()) floorMessages.push('Flapp!');
+                                    landingOptions.contactBreaks = false;
+                                }
+                            }
+                            landMonsterThrownObject(thrownMissile, x, y, landingOptions);
+                            addMonsterThrownFloorMessages(floorMessages, throwerVisible);
+                        };
+                        const finishEggInterveningHit = (target) => {
+                            revealProjectileHitMimicAppearance(target);
+                            target.msleeping = 0;
+                            const targetVisible = !game.u?.blind && cansee(target.mx, target.my);
+                            const hitMessage = targetVisible
+                                ? `Splat!  ${monsterDisplayName(target)} is hit with ${eggName}!`
+                                : 'Splat!  It is hit.';
+                            addEggThrowFollowup(hitMessage);
+                            petrifyMonsterFromMonsterThrownEgg(target, targetVisible, {
+                                afterMore: throwerVisible,
+                            });
+                            const floorMessages = [];
+                            landMonsterThrownObject(thrownMissile, target.mx, target.my, {
+                                glyph: '%',
+                                color: CLR_WHITE,
+                                messages: floorMessages,
+                                ohit: true,
+                            });
+                            addMonsterThrownFloorMessages(floorMessages, throwerVisible || targetVisible);
+                        };
+
+                        if ((thrownMissile.cursed || thrownMissile.greased) && !rn2(7)) {
+                            if (throwerVisible) {
+                                const throwerName = monsterDisplayName(mon).replace(/^The\b/, 'the');
+                                addEggThrowFollowup(`The ${eggBaseName} slips as ${throwerName} throws it!`);
+                            }
+                            const misfireDx = rn2(3) - 1;
+                            const misfireDy = rn2(3) - 1;
+                            if (!misfireDx && !misfireDy) {
+                                landEggTerrainStop(mon.mx, mon.my);
+                                if (!finishEggThrowAction()) return false;
+                                continue;
+                            }
+                            if (misfireDx !== throwDx || misfireDy !== throwDy) {
+                                let landingX = mon.mx;
+                                let landingY = mon.my;
+                                let redirectedHandled = false;
+                                if (!ordinaryEggBlockAhead(landingX, landingY, misfireDx, misfireDy)) {
+                                    for (let step = 0; step < throwRange; step++) {
+                                        landingX += misfireDx;
+                                        landingY += misfireDy;
+                                        const remainingRange = throwRange - step - 1;
+                                        const targetMon = monsterAtFlightSquare(landingX, landingY, mon);
+                                        if (targetMon) {
+                                            const hitValue = monsterThrownObjectAccidentalHitValue(targetMon, thrownMissile);
+                                            const hitRoll = rnd(20);
+                                            if (hitValue >= hitRoll) {
+                                                finishEggInterveningHit(targetMon);
+                                                redirectedHandled = true;
+                                                break;
+                                            }
+                                        }
+                                        if (redirectedHandled) break;
+                                        const forcehit = !rn2(5);
+                                        const hitIronBars = remainingRange && forcehit
+                                            && game.level?.at(landingX + misfireDx, landingY + misfireDy)?.typ === IRONBARS;
+                                        const stoppedOnSink = remainingRange
+                                            && game.level?.at(landingX, landingY)?.typ === SINK;
+                                        if (stoppedOnSink && !game.u?.blind && cansee(landingX, landingY)) {
+                                            const sinkVerb = (game.u?._statusSuffix || '').includes('Hallu')
+                                                ? 'plops' : 'drops';
+                                            addEggThrowFollowup(`The ${eggBaseName} ${sinkVerb} onto the sink.`);
+                                        }
+                                        if (!remainingRange || hitIronBars || stoppedOnSink
+                                            || ordinaryEggBlockAhead(landingX, landingY, misfireDx, misfireDy)) {
+                                            landEggTerrainStop(landingX, landingY, { ironBars: hitIronBars });
+                                            redirectedHandled = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (!redirectedHandled) landEggTerrainStop(landingX, landingY);
+                                if (!finishEggThrowAction()) return false;
+                                continue;
+                            }
                         }
 
                         let eggTerrainStop = null;
@@ -6829,45 +6977,27 @@ export async function processMonsterTurns() {
                                 }
                             }
                             const forcehit = !rn2(5);
-                            if (remainingRange && forcehit
-                                && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS) {
-                                eggTerrainStop = { x: sx, y: sy };
+                            const hitIronBars = remainingRange && forcehit
+                                && game.level?.at(sx + throwDx, sy + throwDy)?.typ === IRONBARS;
+                            const stoppedOnSink = remainingRange
+                                && game.level?.at(sx, sy)?.typ === SINK;
+                            if (stoppedOnSink && !game.u?.blind && cansee(sx, sy)) {
+                                const sinkVerb = (game.u?._statusSuffix || '').includes('Hallu')
+                                    ? 'plops' : 'drops';
+                                addEggThrowFollowup(`The ${eggBaseName} ${sinkVerb} onto the sink.`);
+                            }
+                            if (hitIronBars || stoppedOnSink || remainingRange && ordinaryEggBlockAhead(sx, sy)) {
+                                eggTerrainStop = { x: sx, y: sy, ironBars: hitIronBars };
                                 break;
                             }
                         }
 
                         if (eggTerrainStop) {
-                            const floorMessages = [];
-                            const breakKind = projectileTopLevelBreakKind(thrownMissile);
-                            if (breakKind) projectileTopLevelBreakMessage(thrownMissile, breakKind, floorMessages);
-                            else if (!heroIsDeafForMonsterNoise()) floorMessages.push('Flapp!');
-                            landMonsterThrownObject(thrownMissile, eggTerrainStop.x, eggTerrainStop.y, {
-                                glyph: '%',
-                                color: CLR_WHITE,
-                                messages: floorMessages,
-                                contactBreaks: !!breakKind,
+                            landEggTerrainStop(eggTerrainStop.x, eggTerrainStop.y, {
+                                ironBars: eggTerrainStop.ironBars,
                             });
-                            addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else if (interveningTarget) {
-                            revealProjectileHitMimicAppearance(interveningTarget);
-                            interveningTarget.msleeping = 0;
-                            const targetVisible = !game.u?.blind && cansee(interveningTarget.mx, interveningTarget.my);
-                            const hitMessage = targetVisible
-                                ? `Splat!  ${monsterDisplayName(interveningTarget)} is hit with ${eggName}!`
-                                : 'Splat!  It is hit.';
-                            if (throwerVisible) game._topline_after_more = hitMessage;
-                            else addToplineMessage(hitMessage);
-                            petrifyMonsterFromMonsterThrownEgg(interveningTarget, targetVisible, {
-                                afterMore: throwerVisible,
-                            });
-                            const floorMessages = [];
-                            landMonsterThrownObject(thrownMissile, interveningTarget.mx, interveningTarget.my, {
-                                glyph: '%',
-                                color: CLR_WHITE,
-                                messages: floorMessages,
-                                ohit: true,
-                            });
-                            addMonsterThrownFloorMessages(floorMessages, throwerVisible || targetVisible);
+                            finishEggInterveningHit(interveningTarget);
                         } else {
                             const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
@@ -6878,8 +7008,7 @@ export async function processMonsterTurns() {
                                     glyph: '%',
                                     color: CLR_WHITE,
                                 });
-                                if (throwerVisible) game._topline_after_more = catchResult.message;
-                                else addToplineMessage(catchResult.message);
+                                addEggThrowFollowup(catchResult.message);
                             } else {
                                 const attackRoll = rnd(20);
                                 const missed = targetAc + 8 <= attackRoll;
@@ -6896,8 +7025,7 @@ export async function processMonsterTurns() {
                                     const polyselfMessage = startHeroMonsterThrownEggStoning(thrownMissile);
                                     if (polyselfMessage) resultMessage = `${resultMessage}  ${polyselfMessage}`;
                                 }
-                                if (throwerVisible) game._topline_after_more = resultMessage;
-                                else addToplineMessage(resultMessage);
+                                addEggThrowFollowup(resultMessage);
                                 if (missed) rn2(5);
                                 const floorMessages = [];
                                 landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
@@ -6910,15 +7038,7 @@ export async function processMonsterTurns() {
                             }
                         }
 
-                        game._search_pending_count = 0;
-                        game._run_steps_remaining = 0;
-                        game._travel_keys = [];
-                        if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
-                        if (game._message_more && !game._process_time_with_more) {
-                            game._monster_resume_index = monIndex + 1;
-                            game._monster_resume_somebody_can_move = somebodyCanMove;
-                            return false;
-                        }
+                        if (!finishEggThrowAction()) return false;
                         continue;
                     }
                     if (canThrowBoulder && boulderLinedUp && !(canThrowEgg && rangedWeaponLinedUp)) {
@@ -7013,14 +7133,12 @@ export async function processMonsterTurns() {
                                 game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
                             }
                             rn2(5);
-                            const floorMessages = [];
-                            landMonsterThrownObject(thrownBoulder, game.u?.ux || 0, game.u?.uy || 0, {
+                            finishMonsterThrownHeroLanding(thrownBoulder, {
                                 glyph: '`',
                                 color: NO_COLOR,
-                                messages: floorMessages,
                                 ohit: !missed,
+                                afterMore: throwerVisible,
                             });
-                            addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         }
                         game._search_pending_count = 0;
                         game._run_steps_remaining = 0;
@@ -7673,14 +7791,12 @@ export async function processMonsterTurns() {
                                     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
                                 }
                                 rn2(5);
-                                const floorMessages = [];
-                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                finishMonsterThrownHeroLanding(thrownMissile, {
                                     glyph: ')',
                                     color: thrownMissile.color ?? CLR_CYAN,
-                                    messages: floorMessages,
                                     ohit: !missed,
+                                    afterMore: throwerVisible,
                                 });
-                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                             }
                         }
                         game._search_pending_count = 0;
@@ -7817,14 +7933,12 @@ export async function processMonsterTurns() {
                                     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
                                 }
                                 rn2(5);
-                                const floorMessages = [];
-                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                finishMonsterThrownHeroLanding(thrownMissile, {
                                     glyph: ')',
                                     color: thrownMissile.color ?? CLR_CYAN,
-                                    messages: floorMessages,
                                     ohit: !missed,
+                                    afterMore: throwerVisible,
                                 });
-                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                             }
                         }
                         game._search_pending_count = 0;
@@ -7957,14 +8071,12 @@ export async function processMonsterTurns() {
                                     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
                                 }
                                 rn2(5);
-                                const floorMessages = [];
-                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                finishMonsterThrownHeroLanding(thrownMissile, {
                                     glyph: ')',
                                     color: CLR_CYAN,
-                                    messages: floorMessages,
                                     ohit: !missed,
+                                    afterMore: throwerVisible,
                                 });
-                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                             }
                         }
                         game._search_pending_count = 0;
@@ -8271,14 +8383,11 @@ export async function processMonsterTurns() {
                                 });
                                 addMonsterThrownFloorMessages(floorMessages);
                             } else if (!crudeDaggerCaught) {
-                                const floorMessages = [];
-                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                finishMonsterThrownHeroLanding(thrownMissile, {
                                     glyph: ')',
                                     color: CLR_CYAN,
-                                    messages: floorMessages,
                                     ohit: crudeDaggerOhit,
                                 });
-                                addMonsterThrownFloorMessages(floorMessages);
                             }
                             game._search_pending_count = 0;
                             game._counted_repeat_interruptible = 0;
@@ -8396,14 +8505,12 @@ export async function processMonsterTurns() {
                                     game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
                                 }
                                 rn2(5);
-                                const floorMessages = [];
-                                landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                finishMonsterThrownHeroLanding(thrownMissile, {
                                     glyph: ')',
                                     color: CLR_CYAN,
-                                    messages: floorMessages,
                                     ohit: !missed,
+                                    afterMore: throwerVisible,
                                 });
-                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                             }
                         }
                         game._search_pending_count = 0;
@@ -8426,6 +8533,14 @@ export async function processMonsterTurns() {
                             }
                         }
                         if (clearShot) {
+                            const throwerVisible = !game.u?.blind
+                                && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
+                                && !mon.minvis && !mon.mundetected;
+                            if (throwerVisible) {
+                                addToplineMessage(`${monsterDisplayName(mon)} throws a dart!`);
+                                game._message_more = 1;
+                                game._process_time_with_more = 0;
+                            }
                             const missile = mon.missile;
                             const missileSpe = Math.trunc(Number(missile.spe || 0));
                             const missileErosion = Math.max(0, Math.trunc(Number(missile.oeroded || 0)),
@@ -8474,7 +8589,7 @@ export async function processMonsterTurns() {
                                     color: CLR_CYAN,
                                     messages: floorMessages,
                                 });
-                                addMonsterThrownFloorMessages(floorMessages);
+                                addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                             } else if (interveningTarget) {
                                 let dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
                                 const targetVisible = !game.u?.blind
@@ -8507,37 +8622,66 @@ export async function processMonsterTurns() {
                                 });
                                 addMonsterThrownFloorMessages(floorMessages);
                             } else {
-                                rn2(90);
-                                const dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
-                                const hitRoll = rnd(20);
-                                if (hitRoll < 20) {
-                                    game.u.uhp = Math.max(0, (game.u?.uhp || 0) - dartDamage);
-                                    addToplineMessage('You are hit by a dart.');
-                                    exerciseAttribute(A_STR, false);
-                                    const floorMessages = [];
-                                    landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
+                                const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                                    - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
+                                const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
+                                    && rn2(Math.max(1, catchChance)) === 0;
+                                if (caught) {
+                                    const catchResult = holdCaughtThrownObject(thrownMissile, {
+                                        catchName: 'dart',
                                         glyph: ')',
                                         color: CLR_CYAN,
-                                        messages: floorMessages,
-                                        ohit: true,
                                     });
-                                    addMonsterThrownFloorMessages(floorMessages);
+                                    if (throwerVisible) game._topline_after_more = catchResult.message;
+                                    else addToplineMessage(catchResult.message);
                                 } else {
-                                    addToplineMessage('A dart misses you.');
-                                    rn2(5);
-                                    const floorMessages = [];
-                                    landMonsterThrownObject(thrownMissile, game.u?.ux || 0, game.u?.uy || 0, {
-                                        glyph: ')',
-                                        color: CLR_CYAN,
-                                        messages: floorMessages,
-                                    });
-                                    addMonsterThrownFloorMessages(floorMessages);
+                                    const dartDamage = Math.max(1, rnd(3) + missileSpe - missileErosion);
+                                    const hitRoll = rnd(20);
+                                    if (hitRoll < 20) {
+                                        const hitMessage = game.u?.blind || game.flags?.verbose === false
+                                            ? 'You are hit.'
+                                            : 'You are hit by a dart.';
+                                        if (throwerVisible) game._topline_after_more = hitMessage;
+                                        else addToplineMessage(hitMessage);
+                                        if (throwerVisible) {
+                                            game._damage_after_topline_more = (game._damage_after_topline_more || 0) + dartDamage;
+                                            game._exercise_after_topline_more = (game._exercise_after_topline_more || 0) + 1;
+                                        } else {
+                                            game.u.uhp = Math.max(0, (game.u?.uhp || 0) - dartDamage);
+                                            exerciseAttribute(A_STR, false);
+                                        }
+                                        finishMonsterThrownHeroLanding(thrownMissile, {
+                                            glyph: ')',
+                                            color: CLR_CYAN,
+                                            ohit: true,
+                                            afterMore: throwerVisible,
+                                        });
+                                    } else {
+                                        const missMessage = game.u?.blind || game.flags?.verbose === false
+                                            ? 'It misses.'
+                                            : 'A dart misses you.';
+                                        if (throwerVisible) game._topline_after_more = missMessage;
+                                        else addToplineMessage(missMessage);
+                                        rn2(5);
+                                        finishMonsterThrownHeroLanding(thrownMissile, {
+                                            glyph: ')',
+                                            color: CLR_CYAN,
+                                            ohit: false,
+                                            afterMore: throwerVisible,
+                                        });
+                                    }
                                 }
                             }
                             game._search_pending_count = 0;
                             game._run_steps_remaining = 0;
                             game._travel_keys = [];
                             if ((game._pending_time_passed || 0) > 2) game._pending_time_passed = 2;
+                            if (game._message_more && !game._process_time_with_more) {
+                                game._monster_resume_index = monIndex + 1;
+                                game._monster_resume_somebody_can_move = somebodyCanMove;
+                                return false;
+                            }
+                            continue;
                         }
                     }
                     if (game.u?.usteed

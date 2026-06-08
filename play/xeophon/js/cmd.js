@@ -11987,7 +11987,9 @@ function quantityObjectName(obj, name = pickupObjectName(obj), quan = Math.max(1
 }
 
 function floorObjectBaseName(obj) {
-    return pickupObjectName({ ...obj, line: '', quan: 1 }).replace(/ \(lit\)$/, '');
+    const name = pickupObjectName({ ...obj, line: '', quan: 1 }).replace(/ \(lit\)$/, '');
+    if (name !== 'object' || !obj?.appearance) return name;
+    return String(obj.appearance).trim().replace(/ \(lit\)$/, '') || name;
 }
 
 function floorObjectTheName(obj) {
@@ -31864,7 +31866,7 @@ function erodeDirectMeleePassiveObject(item, type, messages) {
         return { handled: true, damaged: false, greased: true };
     }
 
-    if (item.oerodeproof || item.rustproof) {
+    if (item.oerodeproof || (type === 'rust' && item.rustproof)) {
         if (!item.rknown && game.flags?.verbose !== false && Array.isArray(messages))
             messages.push(`Somehow, your ${name} ${rustTrapNameVerb(name, 'is', 'are')} not affected by the ${spec.bythe}.`);
         item.rknown = true;
@@ -38597,6 +38599,8 @@ function sameMonsterThrownStackObject(existing, obj) {
     if (existing.ox !== obj.ox || existing.oy !== obj.oy) return false;
     if (!!existing.unpaid !== !!obj.unpaid || !!existing.no_charge !== !!obj.no_charge) return false;
     if (existing.unpaid && !sameShopBillUnitPrice(existing, obj)) return false;
+    const erosionMatters = wishedDamageProfile(existing).erosionMatters || wishedDamageProfile(obj).erosionMatters;
+    const compareProofKnown = !!(game.u?.blind || game.u?.hallucinating || /\bHallu\b/.test(game.u?._statusSuffix || ''));
     return objectStackType(existing) === objectStackType(obj)
         && existing.cls === obj.cls
         && existing.kind === obj.kind
@@ -38611,6 +38615,10 @@ function sameMonsterThrownStackObject(existing, obj) {
         && !!existing.opoisoned === !!obj.opoisoned
         && (existing.oeroded || 0) === (obj.oeroded || 0)
         && (existing.oeroded2 || 0) === (obj.oeroded2 || 0)
+        && !!existing.greased === !!obj.greased
+        && (!erosionMatters || (!!existing.oerodeproof === !!obj.oerodeproof
+            && !!existing.rustproof === !!obj.rustproof
+            && (!compareProofKnown || !!existing.rknown === !!obj.rknown)))
         && existing.gemDescription === obj.gemDescription
         && existing.scrollIndex === obj.scrollIndex
         && existing.potionIndex === obj.potionIndex
@@ -38801,14 +38809,23 @@ function monsterAtSquareForPassiveObject(x, y) {
     return null;
 }
 
+function liveMonsterThrownPassiveTarget(target, x, y) {
+    if (!target) return null;
+    if (game.u && target.ux === game.u.ux && target.uy === game.u.uy && x === game.u.ux && y === game.u.uy)
+        return target;
+    if (target.dead || (target.mhp != null && target.mhp <= 0)) return null;
+    if (target.mx != null && target.my != null && (target.mx !== x || target.my !== y)) return null;
+    return target;
+}
+
 function erodeMonsterThrownPassiveObject(obj, type, messages) {
     const profile = wishedDamageProfile(obj);
     const erosion = type === 'rust'
-        ? { field: 'oeroded', word: 'rusty', action: 'rust' }
+        ? { field: 'oeroded', word: 'rusty', action: 'rust', bythe: 'oxidation' }
         : type === 'corr' || type === 'acid'
-            ? { field: 'oeroded2', word: 'corroded', action: 'corrode' }
+            ? { field: 'oeroded2', word: 'corroded', action: 'corrode', bythe: 'corrosion' }
             : type === 'fire'
-                ? { field: 'oeroded', word: 'burnt', action: 'smoulder' }
+                ? { field: 'oeroded', word: 'burnt', action: 'smoulder', bythe: 'heat' }
                 : null;
     if (!erosion) return { handled: false, damaged: false };
     if ((type === 'rust' || type === 'corr' || type === 'acid') && obj.greased) {
@@ -38817,7 +38834,11 @@ function erodeMonsterThrownPassiveObject(obj, type, messages) {
     }
     if (!profile.erosionMatters || (erosion.field === 'oeroded' ? profile.primaryWord : profile.secondaryWord) !== erosion.word)
         return { handled: !!erosion, damaged: false };
-    if (obj.oerodeproof || obj.rustproof) {
+    if (obj.oerodeproof || (type === 'rust' && obj.rustproof)) {
+        const name = floorObjectBaseName(obj);
+        if (!obj.rknown && game.flags?.verbose !== false && floorObjectVisible(obj.ox, obj.oy)
+            && Array.isArray(messages))
+            messages.push(`Somehow, the ${name} ${rustTrapNameVerb(name, 'is', 'are')} not affected by the ${erosion.bythe}.`);
         obj.rknown = true;
         return { handled: true, damaged: false };
     }
@@ -38886,7 +38907,8 @@ export function landMonsterThrownObject(missile, x, y, {
             dropThrow,
         };
     }
-    const passiveObjectTarget = passiveTarget || monsterAtSquareForPassiveObject(x, y);
+    const passiveObjectTarget = liveMonsterThrownPassiveTarget(passiveTarget, x, y)
+        || monsterAtSquareForPassiveObject(x, y);
     const landing = {
         ...missile,
         ox: x,
@@ -40088,18 +40110,26 @@ function wishedDamageProfile(item) {
     const erosionMatters = weapon || armor || ballOrChain || weptool;
     if (!erosionMatters) return { erosionMatters: false };
 
-    const excludedMetal = /\b(?:silver|gold|mithril|platinum|gem|stone|crystal ball|shield of reflection)\b/.test(kind);
-    const glassArmor = armor && /\b(?:crystal plate mail|helm of brilliance|crystal helmet)\b/.test(kind);
+    const material = String(item?.material || item?.oc_material || '').toLowerCase().replace(/_/g, ' ');
+    const hasMaterial = !!material;
+    const materialIron = /^(?:iron|steel)$/.test(material);
+    const materialCopper = /^(?:copper|bronze)$/.test(material);
+    const materialGlass = /^(?:glass|crystal)$/.test(material);
+    const materialFlammable = /^(?:wood|leather|cloth|paper|wax|veggy|vegetable|flesh|plastic)$/.test(material);
+    const materialExcluded = /^(?:silver|gold|mithril|platinum|gem|stone|mineral|metal)$/.test(material);
+    const excludedMetal = materialExcluded || /\b(?:silver|gold|mithril|platinum|gem|stone|crystal ball|shield of reflection)\b/.test(kind);
+    const glassArmor = armor && (materialGlass || /\b(?:crystal plate mail|helm of brilliance|crystal helmet)\b/.test(kind));
     const dragonHide = armor && /\bdragon (?:scales|scale mail|hide)\b/.test(kind);
     const flammableArmor = armor && FIRE_FLAMMABLE_ARMOR_KINDS.has(kind);
     const nonflammableArmor = armor && FIRE_NONFLAMMABLE_ARMOR_KINDS.has(kind);
-    const copperLike = /\b(?:copper|bronze)\b/.test(kind);
-    const rustproneProjectile = /^(?:arrow|orcish arrow|crude arrow|ya|bamboo arrow|crossbow bolt)$/.test(kind);
-    const ironLike = !flammableArmor && !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
+    const copperLike = materialCopper || /\b(?:copper|bronze)\b/.test(kind);
+    const rustproneProjectile = /^(?:arrow|orcish arrow|crude arrow|crossbow bolt)$/.test(kind);
+    const inferredIronLike = !hasMaterial && !flammableArmor && !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
         || rustproneProjectile
         || IRON_POLEARM_KINDS.has(kind)
         || /\b(?:plate mail|splint mail|banded mail|ring mail|chain mail|scale mail|large shield|roundshield|gauntlets|helm|helmet|dented pot|shoes|sword|saber|dagger|knife|axe|mace|hammer|flail|morning star|pick-axe|mattock|spear|trident|lance|polearm|dart|shuriken|throwing star)\b/.test(kind));
-    const flammableLike = flammableArmor || (!nonflammableArmor && !glassArmor && !ironLike && !copperLike && !excludedMetal
+    const ironLike = materialIron || inferredIronLike;
+    const flammableLike = materialFlammable || flammableArmor || (!hasMaterial && !nonflammableArmor && !glassArmor && !ironLike && !copperLike && !excludedMetal
         && /\b(?:leather|cloth|cloak|robe|shirt|boots|gloves|wooden|small shield|bow|crossbow|arrow|club|quarterstaff|aklys|bullwhip|sling)\b/.test(kind));
     const rustprone = ironLike;
     const crackable = glassArmor;
@@ -58155,21 +58185,6 @@ export async function rhack(_cmd) {
 	                    rn2(6);
 	                    game._monster_hit_effects_after_more--;
 	                }
-                if (game._monster_throw_after_more) {
-                    const thrown = game._monster_throw_after_more;
-                    game._monster_throw_after_more = null;
-                    const landingX = thrown.x ?? (thrown.hitPet ? thrown.hitPet.mx : game.u?.ux || 0);
-                    const landingY = thrown.y ?? (thrown.hitPet ? thrown.hitPet.my : game.u?.uy || 0);
-                    const floorMessages = [];
-                    landMonsterThrownObject(thrown.missile, landingX, landingY, {
-                        glyph: thrown.glyph || ')',
-                        color: thrown.color ?? (thrown.hitPet ? NO_COLOR : CLR_CYAN),
-                        messages: floorMessages,
-                        ohit: !!thrown.ohit,
-                        passiveTarget: thrown.passiveTarget || thrown.hitPet || null,
-                    });
-                    appendToplineAfterMoreMessages(floorMessages);
-                }
                         if (game._cold_effect_after_topline_more) {
                             const cold = game._cold_effect_after_topline_more;
                             game._cold_effect_after_topline_more = null;
@@ -58229,6 +58244,7 @@ export async function rhack(_cmd) {
                         keepMore = true;
                     if (poisonResult.dead) {
                         game._exercise_after_topline_more = 0;
+                        game._monster_throw_after_more = null;
                         game._arrow_drop_throw_after_topline_more = null;
                         game._arrow_mulch_after_topline_more = 0;
                     }
@@ -58273,6 +58289,21 @@ export async function rhack(_cmd) {
 			                    rn2(2);
 			                    game._exercise_after_topline_more--;
 			                }
+                if (game._monster_throw_after_more) {
+                    const thrown = game._monster_throw_after_more;
+                    game._monster_throw_after_more = null;
+                    const landingX = thrown.x ?? (thrown.hitPet ? thrown.hitPet.mx : game.u?.ux || 0);
+                    const landingY = thrown.y ?? (thrown.hitPet ? thrown.hitPet.my : game.u?.uy || 0);
+                    const floorMessages = [];
+                    landMonsterThrownObject(thrown.missile, landingX, landingY, {
+                        glyph: thrown.glyph || ')',
+                        color: thrown.color ?? (thrown.hitPet ? NO_COLOR : CLR_CYAN),
+                        messages: floorMessages,
+                        ohit: !!thrown.ohit,
+                        passiveTarget: thrown.passiveTarget || thrown.hitPet || null,
+                    });
+                    appendToplineAfterMoreMessages(floorMessages);
+                }
                 if (game._arrow_drop_throw_after_topline_more) {
                     const arrowDrop = game._arrow_drop_throw_after_topline_more;
                     game._arrow_drop_throw_after_topline_more = null;
