@@ -132,6 +132,7 @@ const LEVEL_ADV = new Map([
         xlev: 10,
         hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
         enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 },
+        energyMod: 'cleric',
     }],
     ['Ranger', {
         xlev: 10,
@@ -966,10 +967,9 @@ function apply_starting_weapon_use(obj) {
 }
 
 function armor_base_bonus(obj) {
+    if (obj?.otyp >= GRAY_DRAGON_SCALE_MAIL && obj.otyp <= 110) return 9;
+    if (obj?.otyp >= 111 && obj.otyp <= 120) return 3;
     switch (obj?.otyp) {
-    case GRAY_DRAGON_SCALE_MAIL:
-    case SILVER_DRAGON_SCALE_MAIL:
-        return 9;
     case SPLINT_MAIL:
         return 6;
     case CHAIN_MAIL:
@@ -1376,7 +1376,7 @@ function currentAttr(index) {
 }
 
 function energyMod(en, adv) {
-    if (adv?.energyMod === 'wizard') return 2 * en;
+    if (adv?.energyMod === 'cleric' || adv?.energyMod === 'wizard') return 2 * en;
     if (adv?.energyMod === 'healer' || adv?.energyMod === 'knight') return Math.trunc((3 * en) / 2);
     if (adv?.energyMod === 'barbarian' || adv?.energyMod === 'valkyrie') return Math.trunc((3 * en) / 4);
     return en;

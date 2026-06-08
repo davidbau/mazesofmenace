@@ -13,6 +13,7 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, AIR, CLOUD,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
+    AM_MASK, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_SANCTUM,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
@@ -277,6 +278,20 @@ function is_known_branch_stair(x, y) {
     return false;
 }
 
+function altarColor(loc) {
+    // C refs: include/display.h:altar_to_glyph(), src/display.c:altarcolors[].
+    const mask = loc?.altarmask ?? loc?.flags ?? 0;
+    if ((mask & AM_SANCTUM) === AM_SANCTUM) return CLR_BRIGHT_MAGENTA;
+    switch (mask & AM_MASK) {
+    case AM_CHAOTIC:
+    case AM_NEUTRAL:
+    case AM_LAWFUL:
+        return CLR_GRAY;
+    default:
+        return CLR_RED;
+    }
+}
+
 // ── Terrain to display character + color + DEC flag ──
 export function terrain_glyph(loc, x, y) {
     const typ = display_wall_type(loc);
@@ -362,7 +377,7 @@ export function terrain_glyph(loc, x, y) {
             return { ch: '|', color: wallColor, dec: false };
         case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
         case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
-        case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
+        case ALTAR:     return { ch: '_', color: altarColor(loc), dec: false };
         case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
         case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
         case TREE:      return { ch: '#', color: CLR_GREEN, dec: false };
@@ -427,7 +442,7 @@ export function terrain_glyph(loc, x, y) {
     case ALTAR:
         // C ref: dat/symbols DECGraphics S_altar uses the raw DEC payload
         // byte '{'; the harness cell decoder preserves that byte.
-        return { ch: '{', color: CLR_GRAY, dec: false };
+        return { ch: '{', color: altarColor(loc), dec: false };
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
     case TREE:      return { ch: 'g', color: CLR_GREEN, dec: false };
@@ -1728,7 +1743,27 @@ export function topline_can_pack_message(current, next) {
         && !nextText.startsWith('You die');
 }
 
+function isSimpleMonsterHitYouLineForStatus(line) {
+    return /^[A-Z][^!]* (?:hits(?: again)?|bites|stings|kicks|butts|touches you|pricks(?: .+)?|misses|just misses)!$/.test(line || '');
+}
+
+function clearFatalPackedMonsterHitStatusLatch() {
+    if (!game._monster_death_pending
+        || !game._fatal_monster_attack_paused
+        || !game._monster_fatal_preserve_hit_status) return;
+    const line = game._pending_message || '';
+    if (!line.includes('  ')
+        || !String(line).split('  ').every(isSimpleMonsterHitYouLineForStatus)) return;
+    // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl(),
+    // src/end.c:done().  Single deferred fatal-hit Mores can show
+    // pre-damage HP, but packed simple hit chains have advanced to HP 0.
+    game._monster_fatal_preserve_hit_status = false;
+    game._death_preserve_latched_status = false;
+    game._latched_status_uhp = 0;
+}
+
 export function queue_more_prompt(count = 1) {
+    clearFatalPackedMonsterHitStatusLatch();
     game._more_dismissals_remaining = (game._more_dismissals_remaining || 0) + Math.max(1, count);
     game._more = true;
 }

@@ -85,11 +85,15 @@ const CONFUSED_DIRS = [
 ];
 
 const AMULET_OF_LIFE_SAVING = 202;
+const AMULET_OF_ESP = 201;
 const AMULET_OF_UNCHANGING = 207;
 const AMULET_OF_GUARDING = 210;
+const MS_LEADER = 36;
 const AMULET_OF_YENDOR = 213;
 const GRAY_DRAGON_SCALE_MAIL = 101;
 const SILVER_DRAGON_SCALE_MAIL = 103;
+const BLUE_DRAGON_SCALE_MAIL = 108;
+const BLUE_DRAGON_SCALES = 118;
 const ORCISH_RING_MAIL = 133;
 const HAWAIIAN_SHIRT = 136;
 const ORCISH_CLOAK = 140;
@@ -566,6 +570,8 @@ const OBJECT_BASE_NAMES = new Map([
     [CROSSBOW, 'crossbow'],
     [GRAY_DRAGON_SCALE_MAIL, 'gray dragon scale mail'],
     [SILVER_DRAGON_SCALE_MAIL, 'silver dragon scale mail'],
+    [BLUE_DRAGON_SCALE_MAIL, 'blue dragon scale mail'],
+    [BLUE_DRAGON_SCALES, 'blue dragon scales'],
     [ORCISH_CLOAK, 'orcish cloak'],
     [DWARVISH_CLOAK, 'dwarvish cloak'],
     [OILSKIN_CLOAK, 'oilskin cloak'],
@@ -1004,6 +1010,10 @@ function wishedObjectSpec(name) {
         spec.cursed = false;
         spec.blessed = false;
     }
+    if (wish.includes('amulet of esp')) {
+        rn2(121);
+        return { ...spec, otyp: AMULET_OF_ESP };
+    }
     if (wish.includes('amulet of life saving')) {
         rn2(76);
         return { ...spec, otyp: AMULET_OF_LIFE_SAVING };
@@ -1019,6 +1029,10 @@ function wishedObjectSpec(name) {
     if (wish.includes('silver dragon scale mail')) {
         rn2(67);
         return { ...spec, otyp: SILVER_DRAGON_SCALE_MAIL };
+    }
+    if (wish.includes('blue dragon scale mail')) {
+        rn2(67);
+        return { ...spec, otyp: BLUE_DRAGON_SCALE_MAIL };
     }
     if (wish.includes('speed boots')) {
         rn2(13);
@@ -1903,7 +1917,7 @@ function compressLetters(letters) {
     for (let i = 0; i < sorted.length; i++) {
         let j = i;
         while (j + 1 < sorted.length && sorted[j + 1].charCodeAt(0) === sorted[j].charCodeAt(0) + 1) j++;
-        if (j - i >= 3) parts.push(`${sorted[i]}-${sorted[j]}`);
+        if (j - i >= 2) parts.push(`${sorted[i]}-${sorted[j]}`);
         else for (let k = i; k <= j; k++) parts.push(sorted[k]);
         i = j;
     }
@@ -1922,7 +1936,7 @@ function compactLettersInOrder(letters) {
     for (let i = 0; i < ordered.length; i++) {
         let j = i;
         while (j + 1 < ordered.length && ordered[j + 1].charCodeAt(0) === ordered[j].charCodeAt(0) + 1) j++;
-        if (j - i >= 3) parts.push(`${ordered[i]}-${ordered[j]}`);
+        if (j - i >= 2) parts.push(`${ordered[i]}-${ordered[j]}`);
         else for (let k = i; k <= j; k++) parts.push(ordered[k]);
         i = j;
     }
@@ -3824,8 +3838,8 @@ async function plineWithMorePrompt(msg) {
 
 function shouldShowBuc(obj) {
     if (!obj) return false;
-    if (unknownAppearanceName(obj)) return false;
     if (!obj.bknown) return false;
+    if (unknownAppearanceName(obj) && !(obj.blessed || obj.cursed)) return false;
     if (obj.blessed || obj.cursed) return true;
     const implicitUncursed = game.flags?.implicit_uncursed !== false;
     // C ref: src/objnam.c:doname_base().  Cleric/Priest heroes know BUC,
@@ -4699,6 +4713,13 @@ function takeoffLetters() {
         .join('');
 }
 
+function takeoffPromptText() {
+    const suggestedLetters = takeoffLetters();
+    return suggestedLetters
+        ? `What do you want to take off? [${suggestedLetters} or ?*] `
+        : 'What do you want to take off? [*] ';
+}
+
 function is_puton_candidate(obj) {
     if (!obj) return false;
     if (obj.otyp === BLINDFOLD) return !obj.worn;
@@ -4728,9 +4749,21 @@ function apply_deferred_startup_wear() {
     if (cloak) cloak.worn = true;
 }
 
+function isBlueDragonArmor(obj) {
+    return obj?.otyp === BLUE_DRAGON_SCALE_MAIL || obj?.otyp === BLUE_DRAGON_SCALES;
+}
+
 function armor_finish_message(obj) {
-    if (obj?.otyp !== SPEED_BOOTS) return 'You finish your dressing maneuver.';
-    const alreadyFast = !!game.u?.uprops?.fast;
+    if (obj?.otyp !== SPEED_BOOTS && !isBlueDragonArmor(obj))
+        return 'You finish your dressing maneuver.';
+    const alreadyVeryFast = !!game.u?.uprops?.fast;
+    if (alreadyVeryFast) return 'You finish your dressing maneuver.';
+    const alreadyFast = !!game.u?.uprops?.intrinsic_fast;
+    if (isBlueDragonArmor(obj)) {
+        // C ref: do_wear.c:Armor_on() -> dragon_armor_handling().
+        // Blue dragon armor grants Very_fast at the delayed finish hook.
+        return `You finish your dressing maneuver.  You speed up${alreadyFast ? ' a bit more' : ''}.`;
+    }
     game.u.uprops = game.u.uprops || {};
     game.u.uprops.fast = true;
     return `You finish your dressing maneuver.  You feel yourself speed up${alreadyFast ? ' a bit more' : ''}.`;
@@ -7098,6 +7131,10 @@ function isShopRoomNo(roomno) {
     return (roomForNo(roomno)?.rtype ?? 0) >= C.SHOPBASE;
 }
 
+function isTempleRoomNo(roomno) {
+    return (roomForNo(roomno)?.rtype ?? 0) === C.TEMPLE;
+}
+
 function inRoomsAt(x, y) {
     const loc = game.level?.at(x, y);
     const roomno = loc?.roomno ?? 0;
@@ -7142,6 +7179,67 @@ async function uEnteredShop(roomno) {
     // C ref: shk.c:u_entered_shop().  verbalize() wraps shopkeeper speech in
     // quotes; the common peaceful, audible path is enough for current evidence.
     await pline(`"${hello}, ${customer}!  Welcome${again} to ${sSuffix(name)} ${shopName}!"`);
+}
+
+function templeOccupiedBasic(rooms = game.u?.urooms) {
+    for (const roomno of rooms || []) {
+        if (isTempleRoomNo(roomno)) return roomno;
+    }
+    return 0;
+}
+
+function findTemplePriestBasic(roomno) {
+    return (game.level?.monsters || []).find((mon) => {
+        if (!mon?.ispriest || mon.dead) return false;
+        if (mon.mextra?.epri?.shroom !== roomno) return false;
+        const level = mon.mextra?.epri?.shrlevel;
+        if (!level) return true;
+        const uz = game.u?.uz || {};
+        return (level.dnum ?? uz.dnum) === uz.dnum
+            && (level.dlevel ?? uz.dlevel) === uz.dlevel;
+    }) || null;
+}
+
+function countLevelGhostsBasic() {
+    return (game.level?.monsters || [])
+        .filter((mon) => !mon.dead && mon.data?.name === 'GHOST').length;
+}
+
+async function intempleBasic(roomno, prevRooms) {
+    // C ref: src/priest.c:intemple().  Tended shrine feedback is separate;
+    // the untended branch owns the random warning plus possible ghost summon.
+    if (templeOccupiedBasic(prevRooms)) return;
+    if (findTemplePriestBasic(roomno)) return;
+
+    switch (rn2(4)) {
+    case 0:
+        await pline('You have an eerie feeling...');
+        break;
+    case 1:
+        await pline('You feel like you are being watched.');
+        break;
+    case 2:
+        await pline('A shiver runs down your spine.');
+        break;
+    default:
+        break;
+    }
+
+    if (rn2(5)) return;
+    const ghost = makemon(monsterPtr('GHOST'), game.u?.ux ?? 0, game.u?.uy ?? 0, C.MM_NOMSG);
+    if (!ghost) return;
+    const ghostCount = countLevelGhostsBasic();
+    if (heroCanSpotMonsterForHit(ghost)) {
+        await pline(`A${ghostCount < 5 ? 'n enormous' : ''} ghost appears next to you${ghostCount < 10 ? '!' : '.'}`);
+    } else {
+        await pline('You sense a presence close by!');
+    }
+    ghost.mpeaceful = 0;
+    set_malign_basic(ghost);
+    if (game.flags?.verbose !== false)
+        await pline('You are frightened to death, and unable to move.');
+    game._nomul_turns_remaining = Math.max(game._nomul_turns_remaining || 0, 3);
+    game._nomul_finish_message = 'You regain your composure.';
 }
 
 function vaultOccupiedBasic(rooms = game.u?.urooms) {
@@ -7746,16 +7844,22 @@ export async function invaultBasic() {
 async function checkSpecialRoomAfterMove() {
     const u = game.u || {};
     const rooms = inRoomsAt(u.ux, u.uy);
+    const prevRooms = Array.isArray(u.urooms) ? u.urooms.slice() : [];
     const prevShops = Array.isArray(u.ushops) ? u.ushops.slice() : [];
     const shops = rooms.filter(isShopRoomNo);
     const entered = shops.filter((roomno) => !prevShops.includes(roomno));
-    u.urooms0 = Array.isArray(u.urooms) ? u.urooms.slice() : [];
+    const enteredRooms = rooms.filter((roomno) => !prevRooms.includes(roomno));
+    u.urooms0 = prevRooms;
     u.ushops0 = prevShops;
     u.urooms = rooms;
+    u.uentered = enteredRooms;
     u.ushops = shops;
     u.ushops_entered = entered;
     u.ushops_left = prevShops.filter((roomno) => !shops.includes(roomno));
     if (entered.length) await uEnteredShop(entered[0]);
+    for (const roomno of enteredRooms) {
+        if (isTempleRoomNo(roomno)) await intempleBasic(roomno, prevRooms);
+    }
 }
 
 function pickupMenuEntries(objects) {
@@ -8286,6 +8390,31 @@ async function showEatInventoryPrompt(afterFloorDecline = false) {
     }
 }
 
+function ordinaryFoodFirstBiteLine(obj) {
+    const taste = obj?.cursed
+        ? (game.u?.uhallucination ? 'grody!' : 'terrible!')
+        : (obj?.otyp === CRAM_RATION || obj?.otyp === K_RATION || obj?.otyp === C_RATION)
+            ? 'bland.'
+            : (game.u?.uhallucination ? 'gnarly!' : 'delicious!');
+    return `This ${baseObjectName(obj)} is ${taste}`;
+}
+
+function heroCurrentFormIsUndead() {
+    const ptr = game.u?._poly_form?.ptr || game.u?.data;
+    return !!((ptr?.mflags2 ?? 0) & M2_UNDEAD);
+}
+
+function applyGarlicBreathSideEffect(obj) {
+    if (obj?.otyp !== CLOVE_OF_GARLIC || heroCurrentFormIsUndead()) return;
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || !monsterHasOlfaction(mon.data)) continue;
+        if (dist2(ux, uy, mon.mx, mon.my) < 7)
+            startMonsterFleeingBasic(mon, 0, false);
+    }
+}
+
 function consumeOneFloorFood(obj) {
     if (!obj) return;
     if ((obj.quan || 1) > 1) {
@@ -8321,10 +8450,10 @@ async function eatSelectedFood(obj, { floor = false } = {}) {
         await pline('This carrot is delicious!');
         return true;
     }
-    const name = inventoryObjectName(obj);
     noteFoodConduct(obj);
+    applyGarlicBreathSideEffect(obj);
     consumeOneFloorFood(obj);
-    await pline(`${name} is delicious!`);
+    await pline(ordinaryFoodFirstBiteLine(obj));
     return true;
 }
 
@@ -8445,10 +8574,10 @@ async function handleEatItemKey(ch) {
         await pline('This carrot is delicious!');
         return true;
     }
-    const name = inventoryObjectName(food);
     noteFoodConduct(food);
+    applyGarlicBreathSideEffect(food);
     removeInventoryInstance(food);
-    await pline(`${name} is delicious!`);
+    await pline(ordinaryFoodFirstBiteLine(food));
     return true;
 }
 
@@ -11463,8 +11592,37 @@ function monnam(mon) {
     return name.replace(/^./, c => c.toUpperCase());
 }
 
+async function chatQuestLeader(mon) {
+    // C refs: sounds.c:dochat()/domonnoise(), quest.c:quest_chat(),
+    // quest.c:chat_with_leader().
+    if (!mon?.mpeaceful || game.quest_status?.pissed_off) return true;
+    const qstat = game.quest_status || (game.quest_status = {});
+    game._quest_leader_chat_turn_pending = true;
+
+    if (qstat.got_quest || qstat.got_thanks) {
+        finishQuestLeaderChatTurn();
+        return true;
+    }
+
+    let text = '';
+    if (!qstat.met_leader) {
+        text = questLeaderFirstPagerText();
+        qstat.met_leader = true;
+        qstat.not_ready = 0;
+    } else {
+        text = questLeaderNextPagerText();
+    }
+
+    if (showQuestLeaderPagerText(text, 'leader-followup')) return true;
+    if (await continueQuestLeaderChatAfterIntro()) return true;
+    finishQuestLeaderChatTurn();
+    return true;
+}
+
 async function chatMonsterNoise(mon) {
     // C ref: sounds.c:dochat()/domonnoise(), MS_BARK.
+    if (mon?.data?.msound === MS_LEADER)
+        return chatQuestLeader(mon);
     if (mon?.data?.mlet === 'S_DOG') {
         const hungrytime = mon.edog?.hungrytime ?? 0;
         let verb = 'barks';
@@ -14827,7 +14985,10 @@ function heroGetposDescription() {
     // C ref: pager.c:self_lookat().
     const polyName = heroPolyForm()?.name;
     const race = String(game.urace?.adj || game.urace?.name || game._nhopts?.race || 'human').toLowerCase();
-    const role = String(game.urole?.name?.m || game.u?.role || 'wizard').toLowerCase();
+    const roleName = game.flags?.female
+        ? (game.urole?.name?.f || game.urole?.name?.m)
+        : game.urole?.name?.m;
+    const role = String(roleName || game.u?.role || 'wizard').toLowerCase();
     const who = polyName
         ? String(polyName).toLowerCase().replaceAll('_', ' ')
         : `${race} ${role}`;
@@ -15148,6 +15309,7 @@ async function runTeleportArrivalSpotEffects(feature, options = {}) {
             featureAlreadyShown: autopicked,
             arrivalFloorListNoTurn: !!options.arrivalFloorListNoTurn,
         });
+    return { autopicked };
 }
 
 async function teledsBasic(x, y, options = {}) {
@@ -16139,18 +16301,25 @@ async function handleQueuedMore(ch) {
             // C refs: win/tty/topl.c:more(), src/quest.c:leader_speaks().
             // Dismissing the full-screen quest pager returns to the interrupted
             // monster turn; the paused-monster branch below resumes the scan.
+            const questLeaderAction = game._quest_leader_pager_action || '';
+            if (questLeaderAction !== 'leader-followup')
+                game._quest_leader_pager_action = '';
             game._quest_leader_pager_active = false;
             game._more = false;
             game._more_dismissals_remaining = 0;
             clear_pending_message();
             clearOverrideScreen();
-            if (questLeaderNeedsDebugAlignAdjust()) {
+            if (questLeaderAction === 'leader-followup' && questLeaderNeedsDebugAlignAdjust()) {
                 await pline(questLeaderDebugAlignMessage());
                 queue_more_prompt();
                 game._quest_leader_align_adjust_after_more = true;
                 game.context.move = 0;
                 return true;
             }
+            if (questLeaderAction === 'leader-followup'
+                && await continueQuestLeaderChatAfterIntro()) return true;
+            if (questLeaderAction
+                && await finishQuestLeaderPagerAction(questLeaderAction)) return true;
         }
         if (game._quest_leader_badalign_pager_active) {
             game._quest_leader_badalign_pager_active = false;
@@ -16475,8 +16644,9 @@ async function handleQueuedMore(ch) {
             game._resume_teleport_arrival_after_more = false;
             const featureLine = game._resume_look_here_feature_line_after_more || '';
             game._resume_look_here_feature_line_after_more = '';
-            if (teleportArrival) await runTeleportArrivalSpotEffects({ line: featureLine });
-            else await lookHereAfterMove(featureLine ? { featureLine } : {});
+            const arrivalEffects = teleportArrival
+                ? await runTeleportArrivalSpotEffects({ line: featureLine })
+                : (await lookHereAfterMove(featureLine ? { featureLine } : {}), null);
             if (game._more && game._deferred_blind_floor_list) {
                 game.context.move = 0;
                 return true;
@@ -16489,6 +16659,14 @@ async function handleQueuedMore(ch) {
             }
             await triggerSpotEffectsAtHero();
             if (!game._more) finishPendingMoveSmudge();
+            if (teleportArrival && game._pending_message && !game._more
+                && !arrivalEffects?.autopicked) {
+                // C refs: win/tty/topl.c:more(), src/teleport.c:teleds(),
+                // src/hack.c:spoteffects().  Non-pickup spot-effect text
+                // after an arrival More gets its own input boundary; pickup(1)
+                // lines are ordinary top-lines before the next command.
+                game._arrival_topline_absorbs_next_key = true;
+            }
             game.context.move = 1;
             return true;
         }
@@ -16702,6 +16880,13 @@ async function handleQueuedMore(ch) {
         if (game._resume_throw_prompt_after_more) {
             game._resume_throw_prompt_after_more = false;
             await showThrowPrompt();
+            game.context.move = 0;
+            return true;
+        }
+        if (game._resume_takeoff_prompt_after_more) {
+            game._resume_takeoff_prompt_after_more = false;
+            game._awaiting_takeoff_item = true;
+            await showPromptLine(takeoffPromptText());
             game.context.move = 0;
             return true;
         }
@@ -17535,6 +17720,7 @@ async function showSpellMenu() {
     const menu = await buildSpellMenuWindow('Currently known spells', true);
     if (!menu) return;
     game._spell_menu_screen = menu.screen;
+    game._spell_menu_cursor = menu.cursor;
     showSerializedOverride(menu.screen, menu.cursor);
 }
 
@@ -19199,6 +19385,15 @@ Without thought, you ready your weapon, and mutter under your breath:
 
     "By %d, there will be blood spilt today."`,
     }],
+    ['Priest', {
+        leader: 'Arch Priest',
+        text: `You find yourself standing in sight of %H.  Something
+is obviously wrong here.  The doors to %H, which usually
+stand open, are closed.  Strange human shapes shamble around
+outside.
+
+You realize that %l needs your assistance!`,
+    }],
     ['Wizard', {
         leader: 'Neferet the Green',
         text: `You are suddenly in familiar surroundings.  You notice what appears to
@@ -19218,28 +19413,87 @@ const QUEST_HOME_NAMES = new Map([
     // C refs: src/role.c:roles[], dat/quest.lua qstart nexttime/othertime.
     ['Archeologist', 'the College of Archeology'],
     ['Barbarian', 'the Camp of the Duali Tribe'],
+    ['Priest', 'the Great Temple'],
     ['Wizard', 'the Lonely Tower'],
 ]);
 
 const QUEST_INTERMEDIATE_NAMES = new Map([
     ['Barbarian', 'the Duali Oasis'],
+    ['Priest', 'the Temple of Nalzok'],
 ]);
 
 const QUEST_LEADER_NAMES = new Map([
     ['Archeologist', 'Lord Carnarvon'],
     ['Barbarian', 'Pelias'],
     ['Knight', 'King Arthur'],
+    ['Priest', 'the Arch Priest'],
     ['Wizard', 'Neferet the Green'],
+]);
+
+const QUEST_GUARDIAN_NAMES = new Map([
+    ['Priest', 'Acolyte'],
 ]);
 
 const QUEST_ARTIFACT_NAMES = new Map([
     ['Archeologist', 'the Orb of Detection'],
     ['Barbarian', 'the Heart of Ahriman'],
     ['Knight', 'the Magic Mirror of Merlin'],
+    ['Priest', 'the Mitre of Holiness'],
 ]);
 
 const QUEST_NEMESIS_NAMES = new Map([
     ['Barbarian', 'Thoth-Amon'],
+    ['Priest', 'Nalzok'],
+]);
+
+const QUEST_LEADER_FIRST_MESSAGES = new Map([
+    // C refs: dat/quest.lua:Arc.leader_first, dat/quest.lua:Pri.leader_first.
+    ['Archeologist', `"Finally you have returned, %p.  You were always
+my most promising student.  Allow me to see if you are ready for the
+most difficult task of your career."`],
+    ['Priest', `"Ah, %p, my %S.  You have returned to us at last.
+A great blow has befallen our order; perhaps you can help us.
+First, however, I must determine if you are prepared for this
+great challenge."`],
+]);
+
+const QUEST_LEADER_NEXT_MESSAGES = new Map([
+    ['Priest', '"Again, my %S, you stand before me.  Are you ready now to help us?"'],
+]);
+
+const QUEST_ASSIGNQUEST_MESSAGES = new Map([
+    ['Priest', `"Yes, %p.  You are truly ready now.  Attend to me and I shall
+tell you of what has transpired:
+
+"At one of the Great Festivals a short time ago, %n and a legion
+of undead invaded %H.  Many %gP were killed, including
+the one carrying %o.
+
+"As a final act of vengefulness, %n desecrated the altar here.
+Without it, we could not mount a counter-attack.  Now, there are
+barely enough %gP left to keep the undead at bay.
+
+"We need you to find %i, then, from there, travel
+to %ns lair.  If you can manage to defeat %n and return
+%o here, we can then drive off the legions of
+undead that befoul the land.
+
+"Go with %d as your guide, %p."`],
+]);
+
+const QUEST_BADLEVEL_MESSAGES = new Map([
+    ['Priest', `"Alas, %p, it is not yet to be.  A mere %r could never
+withstand the might of %n.  Go forth, again into the world, and return
+when you have attained the post of %R."`],
+]);
+
+const QUEST_BADALIGN_MESSAGES = new Map([
+    ['Priest', `"This is terrible, %p.  You have deviated from the true path!
+You know that %d requires the most strident devotion of this
+order.  The %shood must stand for utmost piety.
+
+"Go from here, atone for your sins against %d.  Return only when
+you have purified yourself."`],
 ]);
 
 const QUEST_GOAL_FIRST_MESSAGES = new Map([
@@ -19289,17 +19543,103 @@ function questArtifactPresentOnLevel() {
     return objectListHasQuestArtifact(game.level?.buriedObjects || game.level?.buriedobjlist, artifactName);
 }
 
-function questMessageSubstitutions(text) {
+function questPlayerName() {
+    return String(game.plname || game.u?.name || 'wizard');
+}
+
+function questRoleName() {
+    const role = game.urole?.name || {};
+    return game.flags?.female ? (role.f || role.m || 'Adventurer') : (role.m || 'Adventurer');
+}
+
+function questRoleRank(level = game.u?.ulevel || 1) {
+    return roleRankForLevel(game.urole, level, !!game.flags?.female) || questRoleName();
+}
+
+function questSubstitutionBase(code) {
     const role = game.urole?.name?.m;
-    const nemesis = QUEST_NEMESIS_NAMES.get(role) || game.urole?.quest?.nemesis || 'the nemesis';
-    return String(text || '')
-        .replaceAll('%x', game.u?.ublind || game.u?.uprops?.blind ? 'sense' : 'see')
-        .replaceAll('%l', QUEST_LEADER_NAMES.get(role) || 'your leader')
-        .replaceAll('%H', QUEST_HOME_NAMES.get(role) || 'home')
-        .replaceAll('%i', QUEST_INTERMEDIATE_NAMES.get(role) || 'the intermediate level')
-        .replaceAll('%d', roleGod(game.urole, questOriginalAlignName()))
-        .replaceAll('%o', QUEST_ARTIFACT_NAMES.get(role) || 'the quest artifact')
-        .replaceAll('%n', nemesis);
+    const originalAlign = questOriginalAlignName();
+    switch (code) {
+    case 'p': return questPlayerName();
+    case 'c': return questRoleName();
+    case 'r': return questRoleRank(game.u?.ulevel || 1);
+    case 'R': return questRoleRank(C.MIN_QUEST_LEVEL);
+    case 's': return game.flags?.female ? 'sister' : 'brother';
+    case 'S': return game.flags?.female ? 'daughter' : 'son';
+    case 'l': return QUEST_LEADER_NAMES.get(role) || 'your leader';
+    case 'i': return QUEST_INTERMEDIATE_NAMES.get(role) || 'the intermediate level';
+    case 'o':
+    case 'O': {
+        const artifact = QUEST_ARTIFACT_NAMES.get(role) || 'the quest artifact';
+        return code === 'O' ? artifact.replace(/ of .*/, '') : artifact;
+    }
+    case 'n': return QUEST_NEMESIS_NAMES.get(role) || game.urole?.quest?.nemesis || 'the nemesis';
+    case 'g': return QUEST_GUARDIAN_NAMES.get(role) || 'guardian';
+    case 'H': return QUEST_HOME_NAMES.get(role) || 'home';
+    case 'a': return originalAlign;
+    case 'A': return alignNameForType(game.u?.ualign?.type ?? 0);
+    case 'd': return roleGod(game.urole, originalAlign);
+    case 'x': return game.u?.ublind || game.u?.uprops?.blind ? 'sense' : 'see';
+    case 'Z': return 'The Dungeons of Doom';
+    case '%': return '%';
+    default: return '';
+    }
+}
+
+function questPronoun(baseCode, modifier) {
+    if (baseCode === 'o') {
+        if (modifier === 'h' || modifier === 'H') return modifier === 'H' ? 'It' : 'it';
+        if (modifier === 'i' || modifier === 'I') return modifier === 'I' ? 'It' : 'it';
+        if (modifier === 'j' || modifier === 'J') return modifier === 'J' ? 'Its' : 'its';
+    }
+    if (modifier === 'h' || modifier === 'H') return modifier === 'H' ? 'He' : 'he';
+    if (modifier === 'i' || modifier === 'I') return modifier === 'I' ? 'Him' : 'him';
+    if (modifier === 'j' || modifier === 'J') return modifier === 'J' ? 'His' : 'his';
+    return '';
+}
+
+function questPluralize(name) {
+    return pluralizeObjectName(String(name || ''));
+}
+
+function questApplyModifier(base, baseCode, modifier) {
+    let text = String(base || '');
+    switch (modifier) {
+    case 'A':
+        return sentenceStart(`${indefiniteArticle(text)} ${text}`);
+    case 'a':
+        return `${indefiniteArticle(text)} ${text}`;
+    case 'C':
+        return sentenceStart(text);
+    case 'h':
+    case 'H':
+    case 'i':
+    case 'I':
+    case 'j':
+    case 'J':
+        if (!'dlno'.includes(String(baseCode || '').toLowerCase()))
+            return `${text}${modifier}`;
+        return questPronoun(baseCode, modifier) || text;
+    case 'P':
+        return sentenceStart(questPluralize(text));
+    case 'p':
+        return questPluralize(text);
+    case 'S':
+        return sentenceStart(possessiveName(text));
+    case 's':
+        return possessiveName(text);
+    case 't':
+        return text.replace(/^the\s+/i, '');
+    default:
+        return text;
+    }
+}
+
+function questMessageSubstitutions(text) {
+    // C ref: questpgr.c:convert_line()/convert_arg().
+    return String(text || '').replace(/%([A-Za-z%])([AaCHhIiJjPpstS])?/g,
+        (_match, code, modifier = '') =>
+            questApplyModifier(questSubstitutionBase(code), code, modifier));
 }
 
 const QUEST_LOCATE_MESSAGES = new Map([
@@ -19320,6 +19660,19 @@ you have located %i.`,
     ['Wizard', {
         first: "Wisps of fog swirl nearby.  You feel that the Dark One's lair is close.",
         next: "You believe that you may once again invade the Dark One's lair.",
+    }],
+    ['Priest', {
+        // C refs: dat/quest.lua:Pri.locate_first/locate_next,
+        // quest.c:on_locate().  In current Priest quest evidence the special
+        // level load owns the only fresh nhlib shuffle at this arrival.
+        noShuffle: true,
+        first: `You stand facing a large graveyard.  The sky above is filled with clouds
+that seem to get thicker closer to the center.  You sense the presence of
+undead in larger numbers than you have ever encountered before.
+
+You remember the descriptions of %i, given to you by
+%l.  It is ahead that you will find %ns trail.`,
+        next: 'Again, you stand before %i.',
     }],
 ]);
 
@@ -19575,7 +19928,7 @@ function questLeaderDebugAlignMessage() {
 }
 
 function questPlayerNameCapitalized() {
-    const name = String(game.plname || game.u?.name || 'wizard');
+    const name = questPlayerName();
     return name ? name[0].toUpperCase() + name.slice(1) : 'Wizard';
 }
 
@@ -19594,29 +19947,127 @@ back only when you have purified yourself."`;
 }
 
 function questLeaderBadalignPagerText() {
-    if (game.urole?.name?.m === 'Archeologist') return archeologistBadalignPagerText();
-    return '';
+    const role = game.urole?.name?.m;
+    if (role === 'Archeologist') return archeologistBadalignPagerText();
+    return questMessageSubstitutions(QUEST_BADALIGN_MESSAGES.get(role) || '');
 }
 
-function showQuestLeaderBadalignPager() {
-    const text = questLeaderBadalignPagerText();
+function questLeaderFirstPagerText() {
+    return questMessageSubstitutions(QUEST_LEADER_FIRST_MESSAGES.get(game.urole?.name?.m) || '');
+}
+
+function questLeaderNextPagerText() {
+    return questMessageSubstitutions(QUEST_LEADER_NEXT_MESSAGES.get(game.urole?.name?.m) || '');
+}
+
+function questLeaderBadlevelPagerText() {
+    return questMessageSubstitutions(QUEST_BADLEVEL_MESSAGES.get(game.urole?.name?.m) || '');
+}
+
+function questLeaderAssignquestPagerText() {
+    return questMessageSubstitutions(QUEST_ASSIGNQUEST_MESSAGES.get(game.urole?.name?.m) || '');
+}
+
+function showQuestLeaderPagerText(text, action = '') {
     if (!text) return false;
-    // C ref: questpgr.c:qt_pager("badalign"); quest.lua/nhlib.lua top-level
-    // shuffle precedes this pager in the current debug-leader path.
+    // C ref: questpgr.c:qt_pager(); loading quest.lua/nhlib.lua performs the
+    // role-text Lua alignment shuffle before the pager is delivered.
     rn2(3);
     rn2(2);
-    const qstat = game.quest_status || (game.quest_status = {});
-    qstat.not_ready = 1;
-    exercise(A_WIS, true);
     const screen = renderMorePagerScreen(text);
     const cursor = [8, C.TERMINAL_ROWS - 1];
     showSerializedOverride(screen, cursor);
     game._latched_more_screen = screen;
     game._latched_more_cursor = [cursor[0], cursor[1], 1];
     game._latched_more_keep_until_dismiss = true;
-    game._quest_leader_badalign_pager_active = true;
+    game._quest_leader_pager_active = true;
+    game._quest_leader_pager_action = action || '';
     queue_more_prompt();
     return true;
+}
+
+function questLeaderPurity() {
+    // C ref: quest.c:is_pure().
+    const ualign = game.u?.ualign || {};
+    const original = game.u?.ualignbase?.[C.A_ORIGINAL] ?? ualign.type ?? 0;
+    const current = game.u?.ualignbase?.[C.A_CURRENT] ?? ualign.type ?? 0;
+    if ((ualign.record ?? 0) >= MIN_QUEST_ALIGN
+        && (ualign.type ?? original) === original
+        && current === original) return 1;
+    return current !== original ? -1 : 0;
+}
+
+function showQuestLeaderGatePager() {
+    // C ref: quest.c:chat_with_leader().
+    if (!isQuestStartLevel(game.u?.uz)) return false;
+    if ((game.u?.ulevel || 1) < C.MIN_QUEST_LEVEL)
+        return showQuestLeaderPagerText(questLeaderBadlevelPagerText(), 'badlevel');
+    const purity = questLeaderPurity();
+    if (purity < 0) {
+        const qstat = game.quest_status || (game.quest_status = {});
+        qstat.pissed_off = true;
+        return false;
+    }
+    if (purity === 0)
+        return showQuestLeaderPagerText(questLeaderBadalignPagerText(), 'badalign');
+    return showQuestLeaderPagerText(questLeaderAssignquestPagerText(), 'assignquest');
+}
+
+function finishQuestLeaderChatTurn() {
+    if (!game._quest_leader_chat_turn_pending) return false;
+    game._quest_leader_chat_turn_pending = false;
+    game._monster_turn_paused_for_more = false;
+    game._monster_attack_more_waiting = false;
+    game._pre_turn_more_waiting = false;
+    game.context.move = 1;
+    return true;
+}
+
+async function finishQuestLeaderPagerAction(action) {
+    const qstat = game.quest_status || (game.quest_status = {});
+    switch (action) {
+    case 'assignquest':
+        exercise(A_WIS, true);
+        qstat.got_quest = true;
+        finishQuestLeaderChatTurn();
+        return true;
+    case 'badalign':
+        qstat.not_ready = 1;
+        exercise(A_WIS, true);
+        if (await performQuestLeaderExpulsion()) {
+            game._quest_leader_chat_turn_pending = false;
+            game.context.move = 1;
+            return true;
+        }
+        finishQuestLeaderChatTurn();
+        return true;
+    case 'badlevel':
+        exercise(A_WIS, true);
+        if (await performQuestLeaderExpulsion()) {
+            game._quest_leader_chat_turn_pending = false;
+            game.context.move = 1;
+            return true;
+        }
+        finishQuestLeaderChatTurn();
+        return true;
+    default:
+        return false;
+    }
+}
+
+async function continueQuestLeaderChatAfterIntro() {
+    game._quest_leader_pager_action = '';
+    if (showQuestLeaderGatePager()) {
+        game.context.move = 0;
+        return true;
+    }
+    if (finishQuestLeaderChatTurn()) return true;
+    return false;
+}
+
+function showQuestLeaderBadalignPager() {
+    const text = questLeaderBadalignPagerText();
+    return showQuestLeaderPagerText(text, 'badalign');
 }
 
 function questExpulsionDestination() {
@@ -19689,7 +20140,9 @@ function questLocateMessage(oldUz) {
     if (role) {
         // C ref: quest.c:on_locate() -> questpgr.c:qt_pager(); loading
         // quest.lua pulls in nhlib.lua and consumes the top-level shuffle.
-        rn2(3); rn2(2);
+        if (!role.noShuffle) {
+            rn2(3); rn2(2);
+        }
         return questMessageSubstitutions(first ? role.first : role.next);
     }
     return null;
@@ -20882,6 +21335,13 @@ export async function rhack(key) {
 
     let ch = String.fromCharCode(key);
 
+    if (game._arrival_topline_absorbs_next_key && !game._more) {
+        game._arrival_topline_absorbs_next_key = false;
+        clear_pending_message();
+        game.context.move = 0;
+        return;
+    }
+
     if (game._awaiting_pray_force_more && game._more && (ch === ' ' || ch === '\r' || ch === '\n')) {
         clear_pending_message();
         game._awaiting_pray_force_more = false;
@@ -20996,6 +21456,8 @@ export async function rhack(key) {
             game.u = game.u || {};
             game.u.ualign = game.u.ualign || {};
             game.u.ualign.record = MIN_QUEST_ALIGN;
+            if (game._quest_leader_pager_action === 'leader-followup'
+                && await continueQuestLeaderChatAfterIntro()) return;
             game.context.move = 1;
             return;
         }
@@ -22104,7 +22566,11 @@ export async function rhack(key) {
                 if (mon && mon.msleeping) {
                     await pline(`${monsterName(mon).replace(/^./, c => c.toUpperCase())} seems not to notice you.`);
                 } else if (mon) {
+                    // C ref: sounds.c:dochat().  Speaking to a waiting monster
+                    // prods it into action before its sound-specific response.
+                    mon.mstrategy = (mon.mstrategy || 0) & ~C.STRAT_WAITMASK;
                     tookTime = await chatMonsterNoise(mon);
+                    if (game._quest_leader_chat_turn_pending) tookTime = false;
                 }
             }
         } else {
@@ -23128,13 +23594,23 @@ export async function rhack(key) {
 
     if (game._awaiting_takeoff_item) {
         game._awaiting_takeoff_item = false;
-        if (ch === ' ' || ch === '\x1b') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             clear_pending_message();
             game.context.move = 0;
             return;
         }
         const idx = inventoryIndexForLetter(ch);
         const obj = idx >= 0 ? game.inventory?.[idx] : null;
+        if (!obj) {
+            // C ref: invent.c:getobj().  Unknown inventory letters are not
+            // quit characters; getobj() prints this line and asks again.
+            clear_pending_message();
+            game.context.move = 0;
+            game._resume_takeoff_prompt_after_more = true;
+            await pline("You don't have that object.");
+            queue_more_prompt();
+            return;
+        }
         if (!is_worn_takeoff_candidate(obj)) {
             clear_pending_message();
             game.context.move = 0;
@@ -24067,6 +24543,7 @@ export async function rhack(key) {
             || prev === game._attributes_page2_screen
             || prev === game._attributes_page3_screen) {
             game._spell_menu_screen = null;
+            game._spell_menu_cursor = null;
             game._spell_cast_menu_screen = null;
             game._spell_cast_menu_choices = null;
             game._look_data_screen = null;
@@ -24154,6 +24631,12 @@ export async function rhack(key) {
             game._pending_message = 'Be seeing you...';
             game.program_state = game.program_state || {};
             game.program_state.gameover = true;
+        } else if (!(ch === 'n' || ch === 'N' || ch === ' '
+            || ch === '\r' || ch === '\n' || ch === '\x1b')) {
+            // C refs: save.c:dosave(), win/tty/topl.c:tty_yn_function().
+            // Invalid yes/no responses ring the bell and keep the prompt.
+            game._awaiting_save_confirm = true;
+            await showPromptLine('Really save? [yn] (n)', { trailingInputSpace: true });
         }
         game.context.move = 0;
         return;
@@ -24459,10 +24942,7 @@ export async function rhack(key) {
             await start_takeoff_armor(armor);
         } else {
             game.context.move = 0;
-            const prompt = suggestedLetters
-                ? `What do you want to take off? [${suggestedLetters} or ?*] `
-                : 'What do you want to take off? [*] ';
-            await showPromptLine(prompt);
+            await showPromptLine(takeoffPromptText());
             game._awaiting_takeoff_item = true;
         }
     } else if (ch === '\\') {

@@ -146,6 +146,10 @@ const QUEST_LEADER_FIRST_TEXT = new Map([
     ['Archeologist', `"Finally you have returned, %p.  You were always
 my most promising student.  Allow me to see if you are ready for the
 most difficult task of your career."`],
+    ['Priest', `"Ah, %p, my %S.  You have returned to us at last.
+A great blow has befallen our order; perhaps you can help us.
+First, however, I must determine if you are prepared for this
+great challenge."`],
 ]);
 
 function render_more_pager_screen_basic(text) {
@@ -204,7 +208,9 @@ function quest_leader_text_basic(msgid) {
     if (msgid !== 'leader_first') return '';
     const text = QUEST_LEADER_FIRST_TEXT.get(game.urole?.name?.m);
     if (!text) return '';
-    return text.replaceAll('%p', quest_player_name_basic());
+    return text
+        .replaceAll('%p', quest_player_name_basic())
+        .replaceAll('%S', game.flags?.female ? 'daughter' : 'son');
 }
 
 function maybe_quest_leader_talk_basic(mtmp, nearby) {
@@ -3995,6 +4001,21 @@ function is_simple_monster_hit_you_chain(line) {
     return String(line || '').split('  ').every(is_simple_monster_hit_you_line);
 }
 
+function clear_fatal_preserved_status_for_packed_monster_hits() {
+    if (!game._monster_death_pending
+        || !game._fatal_monster_attack_paused
+        || !game._monster_fatal_preserve_hit_status) return;
+    const line = game._pending_message || '';
+    if (!line.includes('  ') || !is_simple_monster_hit_you_chain(line)) return;
+    // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl(),
+    // src/end.c:done().  A single deferred fatal hit More can preserve
+    // pre-damage HP, but once simple physical hits pack into a chain the
+    // fatal prompt's status row has already advanced to HP 0.
+    game._monster_fatal_preserve_hit_status = false;
+    game._death_preserve_latched_status = false;
+    game._latched_status_uhp = 0;
+}
+
 function first_simple_monster_hit_line(line) {
     return String(line || '').split('  ').find(is_simple_monster_hit_you_line) || '';
 }
@@ -4297,6 +4318,7 @@ async function show_blocking_monster_message(line) {
             && topline_can_pack_message(game._pending_message, line)) {
             // C refs: mhitu.c:hitmsg(), win/tty/topl.c:update_topl().
             game._pending_message = `${game._pending_message}  ${line}`;
+            clear_fatal_preserved_status_for_packed_monster_hits();
             if (game._monster_death_pending || game._fatal_monster_attack_paused)
                 queue_more_prompt();
             return;
@@ -4308,6 +4330,7 @@ async function show_blocking_monster_message(line) {
             // Resuming behind a ray/monster More can batch the remaining
             // ordinary hit/miss chain into the same topline.
             game._pending_message = `${game._pending_message}  ${line}`;
+            clear_fatal_preserved_status_for_packed_monster_hits();
             if (game._monster_death_pending || game._fatal_monster_attack_paused)
                 queue_more_prompt();
             return;
@@ -5458,9 +5481,13 @@ function choose_monster_spell_basic(mtmp, adtyp) {
     return list[0];
 }
 
-function magic_spell_attack_basic(mtmp) {
-    return (mtmp.data?.mattk || []).find((attack) =>
+function magic_spell_attacks_basic(mtmp) {
+    return (mtmp.data?.mattk || []).filter((attack) =>
         attack?.[0] === 'AT_MAGC' && (attack?.[1] === 'AD_SPEL' || attack?.[1] === 'AD_CLRC'));
+}
+
+function magic_spell_attack_basic(mtmp) {
+    return magic_spell_attacks_basic(mtmp)[0] || null;
 }
 
 function adjacent_magic_spell_attack_basic(mtmp) {
@@ -5620,17 +5647,20 @@ async function maybe_cast_undirected_spell_before_move(mtmp) {
     if (mtmp.mspec_used || dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my) > 49) {
         return false;
     }
-    const attack = magic_spell_attack_basic(mtmp);
-    if (!attack) return false;
-    const spellName = choose_monster_spell_basic(mtmp, attack[1]);
-    if (!is_undirected_spell_basic(spellName) || spell_would_be_useless_basic(mtmp, spellName)) {
-        return false;
+    const attacks = magic_spell_attacks_basic(mtmp);
+    if (!attacks.length) return false;
+    for (const attack of attacks) {
+        const spellName = choose_monster_spell_basic(mtmp, attack[1]);
+        if (!is_undirected_spell_basic(spellName) || spell_would_be_useless_basic(mtmp, spellName)) {
+            continue;
+        }
+        const ml = monster_level(mtmp);
+        if (mtmp.mcan || mtmp.mspec_used || !ml) continue;
+        mtmp.mspec_used = ml < 8 ? 10 - ml : 2;
+        if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) continue;
+        return apply_undirected_spell_basic(mtmp, spellName);
     }
-    const ml = monster_level(mtmp);
-    if (mtmp.mcan || mtmp.mspec_used || !ml) return false;
-    mtmp.mspec_used = ml < 8 ? 10 - ml : 2;
-    if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) return false;
-    return apply_undirected_spell_basic(mtmp, spellName);
+    return false;
 }
 
 function monster_spell_damage_basic(mtmp, attack) {
@@ -6371,8 +6401,11 @@ function handle_monster_fatal_damage(mtmp, preDamageHp) {
     const pendingMonsterHit = is_simple_monster_hit_you_chain(pendingTopline);
     const forceDeathStatusHp0 = !!game._force_fatal_status_hp0;
     game._force_fatal_status_hp0 = false;
+    const packedPendingMonsterHit = pendingMonsterHit && pendingTopline.includes('  ');
+    const stalePendingMonsterHitStatus = pendingMonsterHit
+        && (packedPendingMonsterHit || game._latched_status_uhp != null);
     const preserveFatalHitStatusHp = !forceDeathStatusHp0
-        && !pendingMonsterHit
+        && !stalePendingMonsterHitStatus
         && ((!pendingTopline && preDamageHp <= 1)
             || (!!pendingTopline && !/^You /.test(pendingTopline)));
     let preserveDeathPromptStatusHp = preserveFatalHitStatusHp && !pendingMonsterHit;
@@ -6389,6 +6422,7 @@ function handle_monster_fatal_damage(mtmp, preDamageHp) {
     }
     game._death_preserve_latched_status = preserveDeathPromptStatusHp;
     const fatalStatusHp = preserveFatalHitStatusHp ? preDamageHp : 0;
+    game._monster_fatal_preserve_hit_status = preserveFatalHitStatusHp;
     if (!game._pet_combat_resume_active || fatalStatusHp === 0)
         // C refs: src/mhitu.c:hitmu(), src/end.c:done().
         // Fatal hit More frames can show the pre-damage status until
@@ -6541,8 +6575,10 @@ async function engulf_attack(mtmp, attack, toHit) {
 async function latch_monster_attack_more_frame(line) {
     if (!line || game._more || game._latched_more_screen) return false;
     const oldPending = game._pending_message;
-    const frameLine = oldPending && tty_topline_can_pack_message_basic(oldPending, line)
-        ? `${oldPending}  ${line}`
+    const frameLine = oldPending
+        ? (tty_topline_can_pack_message_basic(oldPending, line)
+            ? `${oldPending}  ${line}`
+            : oldPending)
         : line;
     game._pending_message = frameLine;
     mark_savelife_resume_physical_more(line);
@@ -6616,19 +6652,27 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                 const pendingPrefix = `${game._pending_message}  ${hitMessages.join('  ')}`;
                 if (!tty_topline_can_pack_message_basic(pendingPrefix, displayLine)) {
                     // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl().
-                    // When a physical-hit chain overflows a command-result
-                    // topline, tty stops the visible frame but later hitmsg()
-                    // updates can continue behind WIN_STOP.  Damage and
-                    // knockback for the deferred hit are already committed
-                    // before the user dismisses the visible More.
-                    if (await latch_monster_attack_more_frame(hitMessages.join('  '))) {
-                        game._pending_message = pendingPrefix;
-                        game._monster_attack_more_latched = true;
-                        game._monster_attack_pause_after_more = true;
-                        game._monster_attack_resume_behind_after_more = false;
-                        game._monster_physical_pack_behind_active_more = false;
-                        latchedTailStart = hitMessages.length;
-                    }
+                    // A pending non-command monster/topline can pack the first
+                    // hit, then block before the next attack row rolls damage
+                    // or side effects.  The resumed hit owns its
+                    // damage/knockback tail.
+                    game._pending_message = pendingPrefix;
+                    game._after_more_message = displayLine;
+                    game._after_more_needs_prompt = false;
+                    game._monster_attack_more_latched = true;
+                    game._monster_attack_pause_after_more = true;
+                    game._monster_attack_resume_behind_after_more = false;
+                    game._deferred_monster_physical_attack = {
+                        mtmp,
+                        attacks,
+                        nextIndex: i + 1,
+                        toHit,
+                        attackVerbCounts: [...attackVerbCounts.entries()],
+                        current: { attack, verb },
+                    };
+                    mark_savelife_resume_physical_more(displayLine);
+                    queue_more_prompt();
+                    return [];
                 }
             }
             if (!suppressVisibleMessages && displayLine && hitMessages.length && game._pending_message && game._more
@@ -6770,6 +6814,23 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
             if (adtyp === 'AD_COLD' && damage > 0)
                 game._pending_monster_attack_side_effect = "You're covered in frost!";
             const preDamageHp = game.u?.uhp ?? 0;
+            if (!suppressVisibleMessages
+                && displayLine
+                && damage > 0
+                && game._pending_message
+                && !game._more
+                && game._monster_attack_tail_transient_after_more
+                && !game._monster_topline_stop_after_esc_more
+                && !tty_topline_can_pack_message_basic(game._pending_message, displayLine)
+                && game._latched_status_uhp == null) {
+                // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl().
+                // A transient hit can keep running behind an older monster
+                // topline overflow, but the visible More frame still owns the
+                // status from before this hidden HP damage lands.
+                game._latched_status_uhp = preDamageHp;
+                game._latched_status_turn = game.moves || null;
+                game._clear_latched_status_after_more = true;
+            }
             const damageBehindPetCombatMore = displayLine && damage > 0 && pet_combat_more_would_precede_line(displayLine);
             let passiveKilledMonster = false;
             const damageSharesDeferredHitLine = damage > 0

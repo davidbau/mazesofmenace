@@ -48,6 +48,8 @@ const STARTUP_REPLAY_BY_SEED = new Map([
 ]);
 
 const SPEED_BOOTS = 166;
+const BLUE_DRAGON_SCALE_MAIL = 108;
+const BLUE_DRAGON_SCALES = 118;
 const GAUNTLETS_OF_POWER = 161;
 const ARMOR_CLASS = 3;
 const PL_NSIZ = 32;
@@ -1399,6 +1401,7 @@ function applyOccupationTakeoffObject(g) {
     obj.worn = false;
     obj.owornmask = 0;
     obj.known = true;
+    refreshVeryFastFromWornArmor(g);
     g._occupation_takeoff_object = null;
 }
 
@@ -1644,6 +1647,24 @@ function markObjectTypeKnownNoWisdom(g, otyp, markEncountered = true) {
     }
 }
 
+function armorGrantsVeryFast(obj) {
+    return obj?.otyp === SPEED_BOOTS
+        || obj?.otyp === BLUE_DRAGON_SCALE_MAIL
+        || obj?.otyp === BLUE_DRAGON_SCALES;
+}
+
+function wornVeryFastArmor(g) {
+    return (g.inventory || []).some((obj) =>
+        obj?.oclass === ARMOR_CLASS && (obj.worn || obj.owornmask) && armorGrantsVeryFast(obj));
+}
+
+function refreshVeryFastFromWornArmor(g) {
+    if (!g.u) return;
+    g.u.uprops = g.u.uprops || {};
+    if (wornVeryFastArmor(g)) g.u.uprops.fast = true;
+    else if (typeof g.u.uprops.fast !== 'number') g.u.uprops.fast = false;
+}
+
 function applyOccupationFinishObjectEffects(g) {
     const obj = g._occupation_finish_object;
     if (!obj) return;
@@ -1664,6 +1685,10 @@ function applyOccupationFinishObjectEffects(g) {
         // C ref: do_wear.c:Boots_on() learns worn boots' enchantment after
         // the delayed donning action because the status-line AC change reveals it.
         obj.known = true;
+    } else if (obj.otyp === BLUE_DRAGON_SCALE_MAIL || obj.otyp === BLUE_DRAGON_SCALES) {
+        // C ref: do_wear.c:Armor_on() -> dragon_armor_handling(). Blue
+        // dragon armor grants FAST at Armor_on(), after the donning delay.
+        refreshVeryFastFromWornArmor(g);
     } else if (obj.otyp === GAUNTLETS_OF_POWER) {
         // C ref: do_wear.c:Gloves_on().  Wearing power gauntlets reveals the
         // object type through makeknown(); strength itself is recalculated as

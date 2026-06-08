@@ -18637,6 +18637,19 @@ function potionHitMonsterName(mon) {
     return sentenceCase(name);
 }
 
+function heroStuckMonsterMatches(mon) {
+    const stuck = game.u?.ustuck;
+    if (stuck === mon) return true;
+    if (!stuck || !mon) return false;
+    return (stuck.m_id != null && stuck.m_id === mon.m_id)
+        || (stuck.id != null && stuck.id === mon.id);
+}
+
+function heroFormSticks() {
+    const form = polyselfForm() || game.u?.youmonst?.data || game.u?.data || {};
+    return !!(game.u?.sticks || game.u?.sticky || form.sticks || form.sticky);
+}
+
 function sleepMonsterFromPotion(mon, duration) {
     if (monsterResistsSleepEffect(mon)) return false;
     if (monsterResistsEffect(mon, 6)) return false;
@@ -18644,6 +18657,14 @@ function sleepMonsterFromPotion(mon, duration) {
     mon.mcanmove = false;
     mon.mfrozen = Math.min(127, (mon.mfrozen || 0) + duration);
     mon.meating = 0;
+    return true;
+}
+
+function sleptMonsterFromPotion(mon, messages) {
+    if (!heroStuckMonsterMatches(mon) || game.u?.uswallow || heroFormSticks()) return false;
+    messages.push(`${potionHitMonsterName(mon)}'s grip relaxes.`);
+    game.u.ustuck = null;
+    game.u.uswallow = 0;
     return true;
 }
 
@@ -19010,7 +19031,7 @@ function healingPotionHitMonster(potion, mon, kind, messages) {
     return false;
 }
 
-function sicknessPotionHitMonster(mon, messages) {
+function sicknessPotionHitMonster(mon, messages, { yourFault = true } = {}) {
     if (monsterIsPestilence(mon)) {
         const maxHp = Math.max(1, mon.mhpmax || mon.mhp || 1);
         if ((mon.mhp || 0) < maxHp) {
@@ -19024,7 +19045,7 @@ function sicknessPotionHitMonster(mon, messages) {
     if (monsterResistsSicknessPotion(mon)) {
         if (monsterCanBeSeenForPotionEffect(mon))
             messages.push(`${potionHitMonsterName(mon)} looks unharmed.`);
-        return true;
+        return !!yourFault;
     }
 
     if ((mon.mhp || 0) > 2) {
@@ -19032,7 +19053,7 @@ function sicknessPotionHitMonster(mon, messages) {
         if (monsterCanBeSeenForPotionEffect(mon))
             messages.push(`${potionHitMonsterName(mon)} looks rather ill.`);
     }
-    return true;
+    return !!yourFault;
 }
 
 function acidPotionHitMonster(potion, mon, messages, { yourFault = true } = {}) {
@@ -19644,8 +19665,10 @@ export function heroThrownPotionHitMonster(potion, mon, { yourFault = true, allo
     } else if (kind === 'paralysis') {
         if (monsterCanMoveForPotionParalysis(mon)) paralyzeMonsterFromPotion(mon, rnd(25));
     } else if (kind === 'sleeping') {
-        if (sleepMonsterFromPotion(mon, rnd(12)))
+        if (sleepMonsterFromPotion(mon, rnd(12))) {
             messages.push(`${potionHitMonsterName(mon)} falls asleep.`);
+            sleptMonsterFromPotion(mon, messages);
+        }
     } else if (kind === 'blindness') {
         blindMonsterFromPotion(mon);
     } else if (kind === 'speed') {
@@ -19658,7 +19681,7 @@ export function heroThrownPotionHitMonster(potion, mon, { yourFault = true, allo
     } else if (kind === 'invisibility') {
         angerMon = invisibilityPotionHitMonster(potion, mon, messages);
     } else if (kind === 'sickness') {
-        angerMon = sicknessPotionHitMonster(mon, messages);
+        angerMon = sicknessPotionHitMonster(mon, messages, { yourFault });
     } else if (kind === 'acid') {
         angerMon = acidPotionHitMonster(potion, mon, messages, { yourFault });
     } else if (kind === 'polymorph') {
@@ -34564,15 +34587,38 @@ function kickFloorObjectAt(x, y) {
         && obj.ox === x && obj.oy === y);
 }
 
+function trappedKickedFloorObjectRefusal(obj, x, y) {
+    if (!obj || obj === game.u?.uball || obj === game.u?.uchain || isBoulderObject(obj)) return null;
+    const trap = (game.level?.traps || []).find(candidate => candidate.tx === x && candidate.ty === y) || null;
+    if (!trap) return null;
+    const stuckInPit = is_pit(trap.ttyp) && !heroPassesWalls();
+    if (!stuckInPit && trap.ttyp !== WEB) return null;
+    const messages = [];
+    if (!trap.tseen) {
+        trap.tseen = true;
+        exerciseAttribute(A_WIS, true);
+        newsym(x, y);
+        const name = trap.ttyp === WEB ? 'web' : trap.ttyp === SPIKED_PIT ? 'spiked pit' : 'pit';
+        messages.push(`You find ${articleForName(name)}.`);
+    }
+    const place = heroIsHallucinating() ? 'tizzy' : trap.ttyp === WEB ? 'web' : 'pit';
+    messages.push(`You can't kick something that's in a ${place}!`);
+    return {
+        handled: true,
+        messages,
+        moved: false,
+    };
+}
+
 function kickFloorObjectSupported(obj, x, y, options = {}) {
     if (!obj || obj === game.u?.uball || obj === game.u?.uchain) return false;
-    if (isBoulderObject(obj) || shopBillableGold(obj)) return false;
+    if (isBoulderObject(obj)) return false;
     const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
-    if (quantity !== 1 && !fragileBreakKind) return false;
+    if (quantity !== 1 && !fragileBreakKind && !shopBillableGold(obj)) return false;
     if ((!isBoxObject(obj) && isTipContainerObject(obj)) || globContents(obj).length) return false;
     const shopFloorGate = !!options.shopFloorGate;
-    if ((shopObjectOrContentsUnpaid(obj) || (shopkeeperForCostlySpot(x, y) && !shopFloorGate))
+    if ((shopObjectOrContentsUnpaid(obj) || (shopkeeperForCostlySpot(x, y) && !shopFloorGate && !shopBillableGold(obj)))
         && !fragileBreakKind)
         return false;
     if (impactDropBreakKind(obj) && !fragileBreakKind) return false;
@@ -34600,7 +34646,7 @@ function kickedFragilePreflightBreakKind(obj) {
 function kickFloorObjectRange(obj, x, y, dir) {
     const stats = game.u?.acurr?.a || [];
     const strength = Math.max(0, Math.trunc(Number(stats[A_STR] ?? 10)));
-    const weight = globObjectWeight({ ...obj, quan: 1 });
+    const weight = globObjectWeight(shopBillableGold(obj) ? obj : { ...obj, quan: 1 });
     let range = Math.trunc(strength / 2) - Math.trunc(weight / 40);
     if (heroUsesMartialKickRangeBonus()) range += rnd(3);
 
@@ -34618,6 +34664,8 @@ function kickFloorObjectRange(obj, x, y, dir) {
     const nextY = y + dir.dy;
     const nextLoc = game.level?.at?.(nextX, nextY);
     const closedDoor = nextLoc?.typ === DOOR && (nextLoc.doormask & (D_CLOSED | D_LOCKED));
+    const artifact = String(obj?.artifact || obj?.oartifact || obj?.artifactName || '').toLowerCase().replace(/^the /, '');
+    if (artifact === 'mjollnir') range = 1;
     if (!isok(nextX, nextY) || !nextLoc || !ZAP_POS(nextLoc.typ) || closedDoor) range = 1;
     return range;
 }
@@ -34704,6 +34752,7 @@ function placeKickedFloorObject(obj, x, y, messages, options = {}) {
 function splitKickedFloorObjectForFlight(obj) {
     const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
     if (!obj || quantity <= 1) return obj;
+    if (shopBillableGold(obj)) return obj;
     const kicked = {
         ...obj,
         id: next_ident(),
@@ -34713,6 +34762,232 @@ function splitKickedFloorObjectForFlight(obj) {
     };
     obj.quan = quantity - 1;
     return kicked;
+}
+
+function kickedFloorObjectKickName(obj) {
+    if (!shopBillableGold(obj)) return floorObjectArticleName(obj);
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    const name = pickupObjectName({ ...obj, line: '', quan: quantity });
+    return quantity > 1 ? quantityObjectName(obj, name, quantity) : name;
+}
+
+function kickedCoinFlightStopPileAt(obj, x, y) {
+    if (!shopBillableGold(obj)) return null;
+    return (game.level?.objects || []).find(candidate =>
+        candidate && candidate !== obj && !candidate.hidden && !candidate.buried
+        && !candidate.transientProjectile && candidate.ox === x && candidate.oy === y) || null;
+}
+
+const FLYING_COIN_MESSAGES = [
+    'scatter the coins',
+    'knock coins all over the place',
+    'send coins flying in all directions',
+];
+
+function shopCreditSnapshot(shkp) {
+    return {
+        credit: Math.max(0, Math.trunc(Number(shkp?.credit || 0))),
+        debit: Math.max(0, Math.trunc(Number(shkp?.debit || 0))),
+        loan: Math.max(0, Math.trunc(Number(shkp?.loan || 0))),
+    };
+}
+
+function shopCreditReportDeltaMessage(before, shkp) {
+    if (!before || !shkp) return '';
+    const after = shopCreditSnapshot(shkp);
+    let amount = 0;
+    let label = 'debt has increased';
+    if (after.credit < before.credit) {
+        amount = before.credit - after.credit;
+        label = 'credit has been reduced';
+    } else if (after.debit > before.debit) {
+        amount = after.debit - before.debit;
+    } else if (after.loan > before.loan) {
+        amount = after.loan - before.loan;
+    }
+    return amount ? `Your ${label} by ${amount} ${shopCurrency(amount)}.` : '';
+}
+
+function kickedGoldSourceShopkeeper(x, y) {
+    const shkp = shopkeeperForCostlySpot(x, y);
+    return shopkeeperInHisShop(shkp) ? shkp : null;
+}
+
+function kickedGoldNormalFlightLeavesShop(sx, sy, x, y) {
+    const sourceRoom = game.level?.at?.(sx, sy)?.roomno || 0;
+    const landingRoom = game.level?.at?.(x, y)?.roomno || 0;
+    return !shopkeeperForCostlySpot(x, y) || sourceRoom !== landingRoom;
+}
+
+function chargeKickedGoldNormalFlightFromShop(obj, sx, sy, x, y, messages) {
+    if (!shopBillableGold(obj) || !kickedGoldNormalFlightLeavesShop(sx, sy, x, y)) return null;
+    const shkp = kickedGoldSourceShopkeeper(sx, sy);
+    if (!shkp) return null;
+    const quantity = Math.max(1, Math.trunc(Number(obj.quan || 1)));
+    const charged = costlyGoldToShopkeeper(shkp, quantity);
+    messages.push(...costlyGoldMessages(charged));
+    return charged;
+}
+
+function splitKickedGoldScatterStack(obj) {
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    if (!obj || quantity <= 1) return obj;
+    const splitCount = rnd(Math.min(quantity - 1, Number.MAX_SAFE_INTEGER));
+    obj.quan = quantity - splitCount;
+    delete obj.line;
+    const splitObj = {
+        ...obj,
+        id: next_ident(),
+        o_id: undefined,
+        _shopBillObjectId: undefined,
+        quan: splitCount,
+    };
+    return splitObj;
+}
+
+function kickedGoldScatterClosedDoor(loc) {
+    return !!(loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+function kickedGoldScatterLanding(obj, sx, sy, blastForce, messages) {
+    const dir = rn2(N_DIRS);
+    const dx = xdir[dir] || 0;
+    const dy = ydir[dir] || 0;
+    const force = Math.max(1, Math.trunc(Number(blastForce || 1)) - Math.trunc(globObjectWeight(obj) / 40));
+    let range = rnd(force);
+    let x = sx;
+    let y = sy;
+    while (range-- > 0) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!isok(nx, ny)) break;
+        const loc = game.level?.at?.(nx, ny);
+        if (!loc || !ZAP_POS(loc.typ) || kickedGoldScatterClosedDoor(loc)) break;
+        x = nx;
+        y = ny;
+        const mon = magicBagScatterMonsterAt(x, y);
+        if (mon) {
+            range--;
+            const hit = magicBagScatterHitMonster(mon, obj, x, y, messages);
+            if (hit.stopped) return { placed: true, consumed: !!hit.consumed };
+            continue;
+        }
+        if (game.u?.ux === x && game.u?.uy === y) {
+            const hit = magicBagScatterHitHero(obj, messages);
+            if (hit.consumed) return { placed: false, consumed: true };
+            if (hit.hit) range -= 3;
+        }
+        if (loc.typ === SINK) break;
+    }
+    return { x, y, placed: false, consumed: false };
+}
+
+function scatterKickedGoldStack(obj, sx, sy, blastForce, messages) {
+    if (!obj || !game.level) return [];
+    const sourceShkp = kickedGoldSourceShopkeeper(sx, sy);
+    const chargeLostGold = !!sourceShkp && !!heroShopkeeper();
+    const beforeCredit = chargeLostGold ? shopCreditSnapshot(sourceShkp) : null;
+    let lostGold = false;
+    removeFloorObject(obj);
+    const scattered = [];
+    while (obj) {
+        const piece = splitKickedGoldScatterStack(obj);
+        if (piece === obj) obj = null;
+        const pieceQuantity = Math.max(1, Math.trunc(Number(piece?.quan || 1)));
+        const landing = kickedGoldScatterLanding(piece, sx, sy, blastForce, messages);
+        if (!landing.placed && !landing.consumed) {
+            const placed = placeObjectOnFloorWithEffects(piece, landing.x, landing.y, messages, 'land', {
+                stack: true,
+                usedUpShopBillOnDestroy: true,
+            });
+            if (placed && chargeLostGold && (landing.x !== sx || landing.y !== sy)
+                && !shopkeeperForCostlySpot(landing.x, landing.y)) {
+                costlyGoldToShopkeeper(sourceShkp, pieceQuantity);
+                lostGold = true;
+            }
+        }
+        if (!landing.consumed) scattered.push(piece);
+    }
+    newsym(sx, sy);
+    if (lostGold) {
+        const report = shopCreditReportDeltaMessage(beforeCredit, sourceShkp);
+        if (report) messages.push(report);
+    }
+    return scattered;
+}
+
+function applyKickedObjectThumpOuch(messages) {
+    messages.push('Thump!');
+    if (!lowRangeKickedObjectAvoidsOuch()) {
+        applyKickedObjectOuchDamage();
+        messages.push('Ouch!  That hurts!');
+    }
+}
+
+function kickedObjectIronBarsBreakChance(obj) {
+    if (objectKindKey(obj) !== 'war hammer') return 0;
+    const strength = Math.max(3, Math.trunc(Number(game.u?.acurr?.a?.[A_STR] || game.u?.ustr || 10)));
+    const spe = Math.trunc(Number(obj?.spe || 0));
+    return Math.max(2, 60 - strength - spe);
+}
+
+function kickedObjectHitsIronBars(obj, barsX, barsY, pointBlank, messages) {
+    if (!heroThrownIronBarsClassHitObject(obj)) {
+        if (pointBlank || rn2(5)) return false;
+    }
+    rn2(100); // C hit_bars() reaches breaktest()/obj_resists(); ordinary kicked objects survive here.
+    const sound = heroThrownIronBarsImpactSound(obj);
+    if (sound) messages.push(sound);
+    const breakChance = kickedObjectIronBarsBreakChance(obj);
+    if (breakChance && !rn2(breakChance)) {
+        messages.push('You break the bars apart!');
+        dissolveHeroBrokenIronBars(barsX, barsY);
+    }
+    return true;
+}
+
+function kickedSameLevelFlightStop(obj, x, y, dir, range, messages = []) {
+    let landX = x;
+    let landY = y;
+    let pointBlank = true;
+    for (let remaining = range - 1; remaining > 0; remaining--) {
+        const nx = landX + dir.dx;
+        const ny = landY + dir.dy;
+        if (!isok(nx, ny)) break;
+        const loc = game.level?.at?.(nx, ny);
+        const typ = loc?.typ ?? STONE;
+        if (typ === IRONBARS && kickedObjectHitsIronBars(obj, nx, ny, pointBlank, messages))
+            break;
+        const mon = (game.level?.monsters || []).find(candidate =>
+            candidate && !candidate.dead && candidate.mx === nx && candidate.my === ny
+            && (candidate.mhp == null || candidate.mhp > 0));
+        if (mon) break;
+        const web = (game.level?.traps || []).find(trap => trap.tx === nx && trap.ty === ny && trap.ttyp === WEB) || null;
+        if (web && !rn2(3)) {
+            landX = nx;
+            landY = ny;
+            if (!game.u?.blind && cansee(nx, ny)) {
+                messages.push(`${floorObjectSubject(obj)} gets stuck in a web!`);
+                web.tseen = true;
+                newsym(nx, ny);
+            }
+            return { x: landX, y: landY, gate: null, webStuck: true };
+        }
+        if (kickedCoinFlightStopPileAt(obj, nx, ny)) {
+            landX = nx;
+            landY = ny;
+            break;
+        }
+        const closedDoor = typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED));
+        const gate = remoteProjectileDownGateAt(obj, nx, ny);
+        if (gate) return { x: nx, y: ny, gate };
+        if (!loc || !ZAP_POS(typ) || closedDoor) break;
+        landX = nx;
+        landY = ny;
+        if (IS_POOL(typ) || IS_LAVA(typ) || typ === SINK) break;
+        pointBlank = false;
+    }
+    return { x: landX, y: landY, gate: null };
 }
 
 async function breakKickedFragileFloorObject(obj, x, y, messages) {
@@ -34774,6 +35049,8 @@ function chargeHeroBrokenShopFloorObject(obj, x, y, messages) {
 
 async function kickFloorObjectToward(dir, x, y) {
     let obj = kickFloorObjectAt(x, y);
+    const trapRefusal = trappedKickedFloorObjectRefusal(obj, x, y);
+    if (trapRefusal) return trapRefusal;
     const landX = x + dir.dx;
     const landY = y + dir.dy;
     const gate = remoteProjectileDownGateAt(obj, landX, landY);
@@ -34789,10 +35066,12 @@ async function kickFloorObjectToward(dir, x, y) {
             || heroProjectileSupportedWeaponObject(obj));
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
     const localBoxImpact = isBoxObject(obj);
-    if (!localBoxImpact && !gate && !canHandleMonsterImpact && !fragileBreakKind) return { handled: false };
+    const ordinarySameLevelFlight = !localBoxImpact && !fragileBreakKind && !targetMon;
+    if (!localBoxImpact && !gate && !canHandleMonsterImpact && !fragileBreakKind && !ordinarySameLevelFlight)
+        return { handled: false };
 
     const range = kickFloorObjectRange(obj, x, y, dir);
-    const messages = [`You kick ${floorObjectArticleName(obj)}.`];
+    const messages = [`You kick ${kickedFloorObjectKickName(obj)}.`];
     if (localBoxImpact) {
         const boxImpact = applyKickedBoxImpact(obj, range, messages);
         if (boxImpact.handled)
@@ -34803,14 +35082,25 @@ async function kickFloorObjectToward(dir, x, y) {
     if (fragileBreakKind && await breakKickedFragileFloorObject(obj, x, y, messages))
         return { handled: true, messages, moved: false, broke: true };
     if (range < 2) {
-        messages.push('Thump!');
-        if (!lowRangeKickedObjectAvoidsOuch()) {
-            applyKickedObjectOuchDamage();
-            messages.push('Ouch!  That hurts!');
-        }
+        applyKickedObjectThumpOuch(messages);
         return { handled: true, messages, moved: false };
     }
-    if (!gate && !canHandleMonsterImpact) return { handled: true, messages, moved: false };
+    if (!gate && !canHandleMonsterImpact && !ordinarySameLevelFlight)
+        return { handled: true, messages, moved: false };
+
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    if (shopBillableGold(obj) && quantity > 1) {
+        if (rn2(20)) {
+            if (!heroIsDeaf()) messages.push('Thwwpingg!');
+            messages.push(`You ${FLYING_COIN_MESSAGES[rn2(FLYING_COIN_MESSAGES.length)]}!`);
+            scatterKickedGoldStack(obj, x, y, rnd(3), messages);
+            return { handled: true, messages, moved: true, scattered: true };
+        }
+        if (quantity > 300) {
+            applyKickedObjectThumpOuch(messages);
+            return { handled: true, messages, moved: false };
+        }
+    }
 
     obj = splitKickedFloorObjectForFlight(obj);
     let monsterImpact = { handled: false };
@@ -34828,6 +35118,27 @@ async function kickFloorObjectToward(dir, x, y) {
             placeKickedFloorObject(obj, landX, landY, messages, { ohit: !!monsterImpact.hit, passiveTarget: targetMon });
         return { handled: true, messages, moved: true, target: targetMon, hit: !!monsterImpact.hit };
     }
+    if (ordinarySameLevelFlight) {
+        const flight = kickedSameLevelFlightStop(obj, x, y, dir, range, messages);
+        removeFloorObject(obj);
+        newsym(x, y);
+        obj.ox = flight.x;
+        obj.oy = flight.y;
+        if (flight.gate) {
+            const shipped = maybeShipRemoteProjectileObject(obj, flight.x, flight.y, messages, {
+                shopFloorObj: !!shopkeeperForCostlySpot(x, y),
+            });
+            if (!shipped.handled) {
+                chargeKickedGoldNormalFlightFromShop(obj, x, y, flight.x, flight.y, messages);
+                placeKickedFloorObject(obj, flight.x, flight.y, messages);
+            }
+            return { handled: true, messages, moved: true, shipObject: shipped };
+        }
+        chargeKickedGoldNormalFlightFromShop(obj, x, y, flight.x, flight.y, messages);
+        placeKickedFloorObject(obj, flight.x, flight.y, messages);
+        return { handled: true, messages, moved: true };
+    }
+
     if (!gate) return { handled: false };
 
     removeFloorObject(obj);
@@ -49141,6 +49452,9 @@ function rottenFoodEffect({ adjective = 'Rotten', foodWord = 'food' } = {}) {
     if (!rn2(4)) {
         const confusionDuration = d(2, 4);
         if (game.u) game.u._confusionTimeout = (game.u._confusionTimeout || 0) + confusionDuration;
+        message += heroIsHallucinating()
+            ? '  You feel rather trippy.'
+            : '  You feel rather light headed.';
     } else if (!game.u?.blind && !rn2(4)) {
         d(2, 10);
         if (game.u) game.u.blind = true;
@@ -52812,11 +53126,7 @@ function heroIsUnderwater() {
 }
 
 function heroIsSwallowedBy(mon) {
-    const stuck = game.u?.ustuck;
-    if (stuck === mon) return true;
-    if (!stuck || !mon) return false;
-    return (stuck.m_id != null && stuck.m_id === mon.m_id)
-        || (stuck.id != null && stuck.id === mon.id);
+    return heroStuckMonsterMatches(mon);
 }
 
 function heroSensemonRestrictionsAllowRollingBoulder(mon) {

@@ -2144,6 +2144,12 @@ const QUEST_MONSTER_ROLES = new Map([
         enemy1sym: 'S_OGRE',
         enemy2sym: 'S_TROLL',
     }],
+    ['Priest', {
+        enemy1num: 'HUMAN_ZOMBIE',
+        enemy2num: 'WRAITH',
+        enemy1sym: 'S_ZOMBIE',
+        enemy2sym: 'S_WRAITH',
+    }],
     ['Wizard', {
         enemy1num: 'VAMPIRE_BAT',
         enemy2num: 'XORN',
@@ -2564,16 +2570,26 @@ function mkmonmoney_for_current_mon(amount) {
     return gold;
 }
 
+function questMonRepresentsRole(ptr, roleName) {
+    // C ref: src/makemon.c:quest_mon_represents_role().
+    return !!ptr
+        && ptr.mlet === 'S_HUMAN'
+        && game.urole?.name?.m === roleName
+        && (ptr.msound === MS_LEADER || ptr.msound === MS_NEMESIS);
+}
+
 function m_initinv_for(ptr, mon = null) {
     if (!ptr) return;
     if (rogue_level_active()) return;
     const monLevel = mon?.m_lev ?? adj_lev_for(ptr);
-    if (ptr.msound === MS_PRIEST) {
+    if (ptr.msound === MS_PRIEST || questMonRepresentsRole(ptr, 'Priest')) {
         mksobj(rn2(7) ? ROBE
             : rn2(3) ? CLOAK_OF_PROTECTION : CLOAK_OF_MAGIC_RESISTANCE,
         true, false);
         mksobj(SMALL_SHIELD, true, false);
         mkmonmoney_for_current_mon(rn1(10, 20));
+    } else if (questMonRepresentsRole(ptr, 'Monk')) {
+        mksobj(rn2(11) ? ROBE : CLOAK_OF_MAGIC_RESISTANCE, true, false);
     }
     if (ptr.mlet === 'S_GNOME' && !rn2((In_mines(game.u?.uz) && game.in_mklev) ? 20 : 60)) {
         mksobj(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, true, false);
@@ -2910,7 +2926,7 @@ function m_initweap_for(ptr) {
         maybe_init_offensive_item_for(ptr);
         return;
     }
-    if (ptr.msound === MS_PRIEST) {
+    if (ptr.msound === MS_PRIEST || questMonRepresentsRole(ptr, 'Priest')) {
         const mace = mksobj(MACE, false, false);
         mace.spe = rnd(3);
         if (!rn2(2)) curse(mace);
@@ -10282,6 +10298,511 @@ function loadArcheologistStartSpecial() {
     fixup_special();
 }
 
+const PRI_START_X = 3;
+const PRI_START_Y = 1;
+const PRI_START_MAP = [
+    '............................................................................',
+    '............................................................................',
+    '............................................................................',
+    '....................------------------------------------....................',
+    '....................|................|.....|.....|.....|....................',
+    '....................|..------------..|--+-----+-----+--|....................',
+    '....................|..|..........|..|.................|....................',
+    '....................|..|..........|..|+---+---+-----+--|....................',
+    '..................---..|..........|......|...|...|.....|....................',
+    '..................+....|..........+......|...|...|.....|....................',
+    '..................+....|..........+......|...|...|.....|....................',
+    '..................---..|..........|......|...|...|.....|....................',
+    '....................|..|..........|..|+-----+---+---+--|....................',
+    '....................|..|..........|..|.................|....................',
+    '....................|..------------..|--+-----+-----+--|....................',
+    '....................|................|.....|.....|.....|....................',
+    '....................------------------------------------....................',
+    '............................................................................',
+    '............................................................................',
+    '............................................................................',
+];
+
+function priStartX(x) { return PRI_START_X + x; }
+function priStartY(y) { return PRI_START_Y + y; }
+
+function priStartSetTerrain(x, y, ch) {
+    const loc = game.level?.at(priStartX(x), priStartY(y));
+    if (!loc) return;
+    loc.lit = false;
+    loc.horizontal = false;
+    switch (ch) {
+    case '.': loc.typ = ROOM; break;
+    case 'T': loc.typ = TREE; break;
+    case '-': loc.typ = HWALL; break;
+    case '|': loc.typ = VWALL; break;
+    case '+':
+        loc.typ = DOOR;
+        set_door_mask(loc, D_CLOSED);
+        break;
+    default:
+        loc.typ = STONE;
+        break;
+    }
+    game._special_touched = game._special_touched || new Set();
+    game._special_touched.add(specialTouchedKey(priStartX(x), priStartY(y)));
+}
+
+function loadPriStartTerrain(litRandom) {
+    game._special_touched = new Set();
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.typ = STONE;
+            loc.flags = 0;
+            loc.doormask = 0;
+            loc.lit = !!litRandom;
+        }
+    }
+    for (let y = 0; y < PRI_START_MAP.length; y++)
+        for (let x = 0; x < PRI_START_MAP[y].length; x++)
+            priStartSetTerrain(x, y, PRI_START_MAP[y][x]);
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+    game.level.flags.hardfloor = true;
+}
+
+function priStartApplyReplaceTerrain(x1, y1, x2, y2, fromTyp, toTyp, chance) {
+    // C ref: sp_lev.c:lspo_replace_terrain().
+    for (let x = x1; x <= x2; x++) {
+        for (let y = y1; y <= y2; y++) {
+            const loc = game.level?.at(priStartX(x), priStartY(y));
+            if (!loc || loc.typ !== fromTyp) continue;
+            if (rn2(100) < chance) loc.typ = toTyp;
+        }
+    }
+}
+
+function priStartApplyLit(x1, y1, x2, y2, lit) {
+    for (let y = y1; y <= y2; y++)
+        for (let x = x1; x <= x2; x++) {
+            const loc = game.level?.at(priStartX(x), priStartY(y));
+            if (loc) loc.lit = !!lit;
+        }
+}
+
+function priStartRoomRegion(x1, y1, x2, y2, lit, rtype, needfill) {
+    priStartApplyLit(x1, y1, x2, y2, lit);
+    const before = game.level?.nroom ?? 0;
+    add_room(priStartX(x1), priStartY(y1), priStartX(x2), priStartY(y2),
+        lit ? 1 : 0, rtype, true);
+    const croom = game.level?.rooms?.[before];
+    if (!croom) return null;
+    croom.needjoining = true;
+    croom.needfill = needfill;
+    topologize(croom);
+    return croom;
+}
+
+function priStartSetDoor(x, y, mask) {
+    const loc = game.level?.at(priStartX(x), priStartY(y));
+    if (!loc) return;
+    if (!IS_DOOR(loc.typ)) loc.typ = DOOR;
+    loc.horizontal = false;
+    set_door_mask(loc, mask);
+}
+
+function priStartSetAltar(x, y, align = A_NONE) {
+    const loc = game.level?.at(priStartX(x), priStartY(y));
+    if (!loc) return;
+    loc.typ = ALTAR;
+    loc.flags = 0;
+    loc.altarmask = Align2amask(align);
+}
+
+function priStartDryLocation() {
+    return specialRandomDryLocation(PRI_START_MAP[0].length, PRI_START_MAP.length,
+        PRI_START_X, PRI_START_Y);
+}
+
+function priStartInventoryObject(mon, otyp, spe) {
+    // C ref: sp_lev.c:create_object() for CUSTOM_INVENT.  The object still
+    // selects a temporary map coordinate before being moved to minvent.
+    const loc = priStartDryLocation();
+    const obj = mksobj_at(otyp, loc.x, loc.y, true, true);
+    if (obj) {
+        obj.spe = spe;
+        game.level.objects = (game.level.objects || []).filter((o) => o !== obj);
+        give_mon_obj(mon, obj);
+    }
+    return obj;
+}
+
+function priStartCreateMonsterAt(id, loc, peaceful = null) {
+    const cls = String(id || '').length === 1 ? specialMonsterClassFromChar(id) : null;
+    let ptr = cls ? null : monster_by_user_name(id);
+    if (!cls && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
+    induced_align_80();
+    if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
+    const pos = { ...loc };
+    if (m_at(pos.x, pos.y)) {
+        const cc = enexto_core(pos.x, pos.y, ptr, GP_CHECKSCARY)
+            || enexto_core(pos.x, pos.y, ptr, 0);
+        if (cc) {
+            pos.x = cc.x;
+            pos.y = cc.y;
+        }
+    }
+    const mon = apply_monster_name_gender(makemon(ptr, pos.x, pos.y, 0), id);
+    if (mon && peaceful != null) {
+        mon.mpeaceful = peaceful ? 1 : 0;
+        mon.mhostile = peaceful ? 0 : 1;
+        set_malign_basic(mon);
+    }
+    return mon;
+}
+
+function priStartCreateMonster(id, x, y, peaceful = null) {
+    return priStartCreateMonsterAt(id, { x: priStartX(x), y: priStartY(y) }, peaceful);
+}
+
+function priStartSpaceLocations() {
+    // C ref: dat/Pri-strt.lua selection.floodfill(05,04).  The selection is
+    // taken after the side trees have replaced some outdoor floor, so trees
+    // are excluded from the connected outdoor-space pool.
+    const seen = new Set();
+    const queue = [{ x: 5, y: 4 }];
+    const locs = [];
+    const passable = (x, y) => game.level?.at(priStartX(x), priStartY(y))?.typ === ROOM;
+    while (queue.length) {
+        const cur = queue.shift();
+        const key = `${cur.x},${cur.y}`;
+        if (seen.has(key) || !passable(cur.x, cur.y)) continue;
+        seen.add(key);
+        locs.push({ x: priStartX(cur.x), y: priStartY(cur.y) });
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cur.x + dx, ny = cur.y + dy;
+            if (nx < 0 || nx >= PRI_START_MAP[0].length || ny < 0 || ny >= PRI_START_MAP.length) continue;
+            if (!seen.has(`${nx},${ny}`) && passable(nx, ny)) queue.push({ x: nx, y: ny });
+        }
+    }
+    // C ref: selvar.c:selection_rndcoord().  Random selection counts set
+    // points by x-major, then y-major scan order, independent of the order
+    // in which floodfill discovered those points.
+    return locs.sort((a, b) => (a.x - b.x) || (a.y - b.y));
+}
+
+function priStartSelectionRndcoord(locs) {
+    if (!locs.length) return priStartDryLocation();
+    const idx = rn2(locs.length);
+    return locs.splice(idx, 1)[0];
+}
+
+function priStartTrap(kind = null, loc = null) {
+    const pos = loc || priStartDryLocation();
+    let typ = kind;
+    if (typ == null) {
+        do { typ = traptype_rnd(); } while (typ === NO_TRAP);
+    }
+    const trap = maketrap(pos.x, pos.y, typ);
+    maybeTrapVictim(trap);
+}
+
+function priStartMarkNonDiggable() {
+    for (let y = 3; y <= 16; y++) {
+        for (let x = 18; x <= 55; x++) {
+            const loc = game.level?.at(priStartX(x), priStartY(y));
+            if (loc && IS_STWALL(loc.typ)) loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+    }
+}
+
+function registerPriStartLregions(flp, bounds) {
+    const branch = flipRectForBounds({
+        x1: priStartX(5), y1: priStartY(4),
+        x2: priStartX(5), y2: priStartY(4),
+    }, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    game._special_lregions = [
+        { rtype: LR_BRANCH, inarea: branch, delarea: { x1: -1, y1: -1, x2: -1, y2: -1 } },
+    ];
+}
+
+function loadPriestStartSpecial() {
+    // C ref: dat/Pri-strt.lua loaded through sp_lev.c:load_special().
+    game.splev_align = nhlibAlignShuffle();
+    const litRandom = rn2(2); // C ref: sp_lev.c:splev_initlev().
+    loadPriStartTerrain(litRandom);
+
+    priStartApplyLit(0, 0, 75, 19, true);
+    priStartRoomRegion(24, 6, 33, 13, true, TEMPLE, FILL_LVFLAGS);
+    // C ref: src/sp_lev.c:build_room().  Special TEMPLE rooms set the level
+    // flag even when their altar is not a shrine, so dosounds() owns its gate.
+    game.level.flags.has_temple = true;
+    priStartApplyReplaceTerrain(0, 0, 10, 19, ROOM, TREE, 10);
+    priStartApplyReplaceTerrain(65, 0, 75, 19, ROOM, TREE, 10);
+    priStartSetTerrain(5, 4, '.');
+    const spacelocs = priStartSpaceLocations();
+
+    placeSpecialStair(priStartX(52), priStartY(9), false);
+    for (const [x, y, mask] of [
+        [18, 9, D_LOCKED], [18, 10, D_LOCKED],
+        [34, 9, D_CLOSED], [34, 10, D_CLOSED],
+        [40, 5, D_CLOSED], [46, 5, D_CLOSED], [52, 5, D_CLOSED],
+        [38, 7, D_LOCKED], [42, 7, D_CLOSED], [46, 7, D_CLOSED], [52, 7, D_CLOSED],
+        [38, 12, D_LOCKED], [44, 12, D_CLOSED], [48, 12, D_CLOSED], [52, 12, D_CLOSED],
+        [40, 14, D_CLOSED], [46, 14, D_CLOSED], [52, 14, D_CLOSED],
+    ]) priStartSetDoor(x, y, mask);
+    priStartSetAltar(28, 9, A_NONE);
+
+    const leader = priStartCreateMonster('Arch Priest', 28, 10);
+    discardCustomMonsterInventory(leader);
+    priStartInventoryObject(leader, ROBE, 4);
+    priStartInventoryObject(leader, MACE, 4);
+    mksobj_at(CHEST, priStartX(27), priStartY(10), true, false);
+
+    for (const [x, y] of [
+        [32, 7], [32, 8], [32, 11], [32, 12],
+        [33, 7], [33, 8], [33, 11], [33, 12],
+    ]) priStartCreateMonster('acolyte', x, y);
+
+    priStartMarkNonDiggable();
+    for (let i = 0; i < 2; i++) priStartTrap(DART_TRAP, priStartSelectionRndcoord(spacelocs));
+    for (let i = 0; i < 4; i++) priStartTrap();
+    for (let i = 0; i < 12; i++)
+        priStartCreateMonsterAt('human zombie', priStartSelectionRndcoord(spacelocs));
+
+    const ext = get_level_extends();
+    const bounds = {
+        minx: Math.max(1, ext.xmin),
+        maxx: Math.min(COLNO - 1, ext.xmax),
+        miny: Math.max(0, ext.ymin),
+        maxy: Math.min(ROWNO - 1, ext.ymax),
+    };
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flp = flip_level_rnd(3);
+    registerPriStartLregions(flp, bounds);
+    fixup_special();
+}
+
+const PRI_LOCA_X = 21;
+const PRI_LOCA_Y = 5;
+const PRI_LOCA_MAP = [
+    '........................................',
+    '........................................',
+    '..........----------+----------.........',
+    '..........|........|.|........|.........',
+    '..........|........|.|........|.........',
+    '..........|----.----.----.----|.........',
+    '..........+...................+.........',
+    '..........+...................+.........',
+    '..........|----.----.----.----|.........',
+    '..........|........|.|........|.........',
+    '..........|........|.|........|.........',
+    '..........----------+----------.........',
+    '........................................',
+    '........................................',
+];
+
+function priLocaX(x) { return PRI_LOCA_X + x; }
+function priLocaY(y) { return PRI_LOCA_Y + y; }
+
+function priLocaSetTerrain(x, y, ch) {
+    const loc = game.level?.at(priLocaX(x), priLocaY(y));
+    if (!loc) return;
+    loc.lit = false;
+    loc.horizontal = false;
+    loc.flags = 0;
+    loc.doormask = 0;
+    switch (ch) {
+    case '.': loc.typ = ROOM; break;
+    case '-': loc.typ = HWALL; break;
+    case '|': loc.typ = VWALL; break;
+    case '+':
+        loc.typ = DOOR;
+        set_door_mask(loc, D_CLOSED);
+        break;
+    default:
+        loc.typ = STONE;
+        break;
+    }
+    game._special_touched = game._special_touched || new Set();
+    game._special_touched.add(specialTouchedKey(priLocaX(x), priLocaY(y)));
+}
+
+function loadPriLocaTerrain(litRandom) {
+    // C ref: dat/Pri-loca.lua solidfill followed by mines level_init.
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.typ = STONE;
+            loc.flags = 0;
+            loc.doormask = 0;
+            loc.lit = !!litRandom;
+        }
+    }
+    mkmap_mines({
+        bgTyp: ROOM,
+        fgTyp: ROOM,
+        lit: 1,
+        smoothed: false,
+        joined: false,
+        walled: false,
+        minesWalls: false,
+    });
+    game._special_touched = new Set();
+    for (let y = 0; y < PRI_LOCA_MAP.length; y++)
+        for (let x = 0; x < PRI_LOCA_MAP[y].length; x++)
+            priLocaSetTerrain(x, y, PRI_LOCA_MAP[y][x]);
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.hardfloor = true;
+}
+
+function priLocaApplyLit(x1, y1, x2, y2, lit) {
+    for (let y = y1; y <= y2; y++)
+        for (let x = x1; x <= x2; x++) {
+            const loc = game.level?.at(priLocaX(x), priLocaY(y));
+            if (loc) loc.lit = !!lit;
+        }
+}
+
+function priLocaRoomRegion(x1, y1, x2, y2, lit, rtype, needfill, irregular = false) {
+    priLocaApplyLit(x1, y1, x2, y2, lit);
+    const before = game.level?.nroom ?? 0;
+    add_room(priLocaX(x1), priLocaY(y1), priLocaX(x2), priLocaY(y2),
+        lit ? 1 : 0, rtype, true);
+    const croom = game.level?.rooms?.[before];
+    if (!croom) return null;
+    croom.needjoining = true;
+    croom.needfill = needfill;
+    topologize(croom);
+    croom.irregular = !!irregular;
+    return croom;
+}
+
+function priLocaSetDoor(x, y, mask) {
+    const loc = game.level?.at(priLocaX(x), priLocaY(y));
+    if (!loc) return;
+    if (!IS_DOOR(loc.typ)) loc.typ = DOOR;
+    loc.horizontal = false;
+    set_door_mask(loc, mask);
+}
+
+function priLocaSetAltar(x, y) {
+    const loc = game.level?.at(priLocaX(x), priLocaY(y));
+    if (!loc) return;
+    const amask = Align2amask(A_NONE) | AM_SHRINE;
+    loc.typ = ALTAR;
+    loc.flags = amask;
+    loc.altarmask = amask;
+}
+
+function priLocaDryLocation() {
+    return specialRandomDryLocation(PRI_LOCA_MAP[0].length, PRI_LOCA_MAP.length,
+        PRI_LOCA_X, PRI_LOCA_Y);
+}
+
+function priLocaTrapLocation() {
+    let loc = priLocaDryLocation();
+    let trycnt = 0;
+    while ((game.level?.at(loc.x, loc.y)?.typ === STAIRS
+            || game.level?.at(loc.x, loc.y)?.typ === LADDER)
+           && ++trycnt <= 100) {
+        loc = priLocaDryLocation();
+    }
+    return loc;
+}
+
+function priLocaObject(x, y) {
+    return mkobj_at(RANDOM_CLASS, priLocaX(x), priLocaY(y), true);
+}
+
+function priLocaTrap(x = null, y = null) {
+    const loc = x == null ? priLocaTrapLocation() : { x: priLocaX(x), y: priLocaY(y) };
+    let kind;
+    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    const trap = maketrap(loc.x, loc.y, kind);
+    maybeTrapVictim(trap);
+    return trap;
+}
+
+function priLocaCreateAlignedCleric() {
+    // C ref: dat/Pri-loca.lua des.monster({ id="aligned cleric", align="noalign" }).
+    const id = 'aligned cleric';
+    let ptr = monster_ptr(id);
+    if (monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
+    const pos = { x: priLocaX(20), y: priLocaY(7) };
+    if (m_at(pos.x, pos.y)) {
+        const cc = enexto_core(pos.x, pos.y, ptr, GP_CHECKSCARY)
+            || enexto_core(pos.x, pos.y, ptr, 0);
+        if (cc) {
+            pos.x = cc.x;
+            pos.y = cc.y;
+        }
+    }
+    const mon = apply_monster_name_gender(
+        makemon(ptr, pos.x, pos.y, MM_ADJACENTOK | MM_EMIN | MM_NOMSG), id);
+    if (mon) {
+        mon.ispriest = 0;
+        mon.isminion = 1;
+        mon.mextra = mon.mextra || {};
+        mon.mextra.emin = mon.mextra.emin || {};
+        mon.mextra.emin.min_align = A_NONE;
+        mon.mextra.emin.renegade = false;
+        mon.mtrapseen = ALL_TRAPS;
+        mon.mpeaceful = 0;
+        mon.mhostile = 1;
+        mon.msleeping = 0;
+        set_malign_basic(mon);
+    }
+    return mon;
+}
+
+function priLocaMarkNonDiggable() {
+    for (let y = 2; y <= 13; y++) {
+        for (let x = 10; x <= 30; x++) {
+            const loc = game.level?.at(priLocaX(x), priLocaY(y));
+            if (loc && IS_STWALL(loc.typ)) loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+    }
+}
+
+function loadPriestLocateSpecial() {
+    // C ref: dat/Pri-loca.lua loaded through sp_lev.c:load_special().
+    game.splev_align = nhlibAlignShuffle();
+    const litRandom = rn2(2); // C ref: sp_lev.c:splev_initlev() for solidfill.
+    loadPriLocaTerrain(litRandom);
+
+    for (const [x1, y1, x2, y2] of [
+        [0, 0, 9, 13],
+        [9, 0, 30, 1],
+        [9, 12, 30, 13],
+        [31, 0, 39, 13],
+    ]) priLocaRoomRegion(x1, y1, x2, y2, false, MORGUE, FILL_NORMAL);
+    const templeRoom = priLocaRoomRegion(11, 3, 29, 10, true, TEMPLE, FILL_LVFLAGS, true);
+    game.level.flags.has_temple = true;
+
+    priLocaSetAltar(20, 7);
+    priestini(templeRoom);
+    priLocaCreateAlignedCleric();
+    for (const [x, y] of [
+        [10, 6], [10, 7], [20, 2], [20, 11], [30, 6], [30, 7],
+    ]) priLocaSetDoor(x, y, D_LOCKED);
+    placeSpecialStair(priLocaX(43), priLocaY(5), true);
+    placeSpecialStair(priLocaX(20), priLocaY(6), false);
+    priLocaMarkNonDiggable();
+
+    for (const [x, y] of [
+        [14, 3], [15, 3], [16, 3],
+        [14, 10], [15, 10], [16, 10], [17, 10],
+        [24, 3], [25, 3], [26, 3], [27, 3],
+        [24, 10], [25, 10], [26, 10], [27, 10],
+    ]) priLocaObject(x, y);
+    for (const [x, y] of [[15, 4], [25, 4], [15, 9], [25, 9]])
+        priLocaTrap(x, y);
+    priLocaTrap();
+    priLocaTrap();
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    fixup_special();
+}
+
 const ARC_LOCA_X = 3;
 const ARC_LOCA_Y = 1;
 const ARC_LOCA_MAP = [
@@ -12959,8 +13480,16 @@ function makemaz_special(slev) {
         loadArcheologistStartSpecial();
         return;
     }
+    if (game._last_special_protofile === 'x-strt' && game.urole?.name?.m === 'Priest') {
+        loadPriestStartSpecial();
+        return;
+    }
     if (game._last_special_protofile === 'x-loca' && game.urole?.name?.m === 'Archeologist') {
         loadArcheologistLocateSpecial();
+        return;
+    }
+    if (game._last_special_protofile === 'x-loca' && game.urole?.name?.m === 'Priest') {
+        loadPriestLocateSpecial();
         return;
     }
     if (game._last_special_protofile === 'x-loca' && game.urole?.name?.m === 'Barbarian') {
@@ -13038,7 +13567,8 @@ export async function mklev() {
         || game._last_special_protofile === 'minetn-5'
         || game._last_special_protofile === 'wizard1'
         || game._last_special_protofile === 'wizard2'
-        || game._last_special_protofile === 'wizard3')) {
+        || game._last_special_protofile === 'wizard3'
+        || (game._last_special_protofile === 'x-loca' && game.urole?.name?.m === 'Priest'))) {
         for (let i = 0; i < (g.level?.nroom ?? 0); i++) {
             fill_special_room(g.level.rooms[i]);
         }
