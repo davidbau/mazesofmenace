@@ -18,7 +18,7 @@ import { bot, docrt, flush_screen, pline } from './display.js';
 import { parseNethackrc } from './options.js';
 import { GameDisplay } from './game_display.js';
 import { NO_COLOR } from './terminal.js';
-import { restoreSaveState, setRestoreCalendar } from './save.js';
+import { restoreSaveState, restoredPolymorphedGenocideWelcomeMessage, setRestoreCalendar } from './save.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 
 const ROLE_ORDER = [
@@ -229,7 +229,9 @@ export class NethackGame {
             await flush_screen(1);
             const raceName = g.urace?.adj || g._startup_race || 'human';
             const roleName = g._startup_role || g.urole?.name?.m || 'Adventurer';
-            await pline(`Hello ${g.plname || 'Hero'}, the ${raceName} ${roleName}, welcome back to NetHack!`);
+            const restoreWelcome = restoredPolymorphedGenocideWelcomeMessage(g)
+                || `Hello ${g.plname || 'Hero'}, the ${raceName} ${roleName}, welcome back to NetHack!`;
+            await pline(restoreWelcome);
             g._command_mode = null;
             g._welcome_message = 1;
             g._message_more = 1;

@@ -11357,6 +11357,19 @@ export function consumeLifeSavingAmulet({ clearStoning = false } = {}) {
     return true;
 }
 
+function applyLifeSavingConLoss() {
+    if (game._life_saving_refresh_con && game.u?.acurr?.a)
+        game.u.acurr.a[A_CON] = Math.max(3, game.u.acurr.a[A_CON] - 1);
+    game._life_saving_refresh_con = 0;
+}
+
+function restoreHeroHpAfterLifeSaving() {
+    if (!game.u) return;
+    const con = game.u.acurr?.a?.[A_CON] ?? 10;
+    const givehp = 50 + 10 * Math.trunc(con / 2);
+    game.u.uhp = Math.min(game.u.uhpmax || 1, givehp);
+}
+
 function clearUnsafePetrifyingCorpseWieldAfterLifeSaving() {
     if (game.u?.stoneResistance || wornGlovesItem()) return;
     let clearedAlternate = false;
@@ -13865,6 +13878,7 @@ function polymorphSelfZapResult(item = null) {
     return {
         message: result?.message || 'Nothing happens.',
         more: !!result?.more,
+        genocideDeathArmed: !!result?.genocideDeathArmed,
     };
 }
 
@@ -14776,7 +14790,9 @@ function becomeMonster(name) {
         if (wasFormBlinded) restorePolyselfBaseBlindness(base);
         game.u._polyself_base = null;
         const humanMessage = game._startup_gender === 'female' ? 'You feel like a new woman!' : 'You feel like a new man!';
-        return { message: [...skinbackMessages, humanMessage].join('  ') };
+        const messages = [...skinbackMessages, humanMessage];
+        const genocideDeathArmed = finishPendingBaseGenocideAfterRehumanize(messages);
+        return { message: messages.join('  '), more: genocideDeathArmed, genocideDeathArmed };
     }
 
     const form = polyselfFormByName(name);
@@ -18257,6 +18273,11 @@ function hostileMonsterNearHeroForWereChange() {
 
 function appendRehumanizeDeathResultMessages(messages, result, { allowLifeSaving = false } = {}) {
     messages.push(...(result.messages || []));
+    if (result.genocideDeathArmed) {
+        messages.genocideDeathArmed = true;
+        messages.more = true;
+        return;
+    }
     if (!result.died) return;
     if (allowLifeSaving && consumeLifeSavingAmulet({ clearStoning: !!result.clearStoningOnLifeSaving })) {
         if (game.u) game.u.uhp = 0;
@@ -24026,6 +24047,7 @@ function heroPolymorphPotionSelfHitMessages(messages) {
     const result = rn2(5) ? becomeMonster(formName) : becomeMonster('human');
     if (result?.message) messages.push(result.message);
     if (result?.more) messages.more = true;
+    if (result?.genocideDeathArmed) messages.genocideDeathArmed = true;
     newsym(game.u?.ux || 0, game.u?.uy || 0);
 }
 
@@ -24421,6 +24443,11 @@ function applyHeroThrownCorpseFallingDamage(damage, messages) {
         }
         const result = rehumanizeAfterPolyselfDeath();
         messages.push(...result.messages);
+        if (result.genocideDeathArmed) {
+            messages.genocideDeathArmed = true;
+            messages.more = true;
+            return;
+        }
         if (result.died) {
             if (consumeLifeSavingAmulet({ clearStoning: !!result.clearStoningOnLifeSaving })) {
                 messages.push('You die...  But wait...  Your medallion begins to glow!');
@@ -31069,17 +31096,142 @@ function finishHeroGenocide(messages, cause = 'scroll of genocide') {
     messages.push('You die...');
     if (game.u) game.u.uhp = 0;
     game._death_cause = cause;
+    game._death_no_bones = 1;
+    game._genocide_hero_death_pending = 1;
+    messages.genocideDeathArmed = true;
+    messages.more = true;
+    if (!consumeLifeSavingAmulet()) return;
+    messages.push('But wait...');
+    messages.push(`Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+    messages.push('You feel much better!');
+    messages.push('The medallion crumbles to dust!');
+    applyLifeSavingConLoss();
+    restoreHeroHpAfterLifeSaving();
+    messages.push('Unfortunately you are still genocided...');
 }
 
-function genocideMonsterType(data, messages, { killPlayer = false, cause = 'scroll of genocide' } = {}) {
+function armHeroGenocideDeathPrompt() {
+    if (!game._genocide_hero_death_pending) return false;
+    game._genocide_hero_death_pending = 0;
+    game._pending_time_passed = 0;
+    game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._command_mode = 'deathDieMore';
+    prepareDeathBones();
+    return true;
+}
+
+function isHeroBaseGenocided() {
+    return genocidedMonsterNames().some(name => isHeroGenocideTarget(name));
+}
+
+function isCurrentPolyselfGenocideTarget(name) {
+    const formName = game.u?._polyself_form?.name;
+    return !!formName && normalizeGenocideName(formName) === normalizeGenocideName(name);
+}
+
+function heroPolyselfIsVampireOwnForm(name) {
+    return /^(?:vampire|vampire lord|vampire leader|vampire lady|vampire mage)$/.test(normalizeGenocideName(name));
+}
+
+function heroVampshiftBaseName(form = game.u?._polyself_form) {
+    if (!form) return '';
+    const rawBase = form.vampBase || form.chamName || form.cham || form.baseName
+        || (form.vampshifter && !heroPolyselfIsVampireOwnForm(form.name) ? 'vampire' : '');
+    const base = normalizeGenocideName(rawBase);
+    if (base === 'vampire lord' || base === 'vampire lady' || base === 'vampire leader')
+        return 'vampire leader';
+    if (base === 'vampire') return 'vampire';
+    return base;
+}
+
+function heroPolyselfIsShiftedVampire(form = game.u?._polyself_form) {
+    if (!form || heroPolyselfIsVampireOwnForm(form.name)) return false;
+    return !!(form.vampshifter || form.vampBase || form.chamName || form.cham);
+}
+
+function shouldRevertHeroVampshifterForGenocide(targetName) {
+    const form = game.u?._polyself_form;
+    if (!heroPolyselfIsShiftedVampire(form)) return false;
+    const target = normalizeGenocideName(targetName);
+    return !!target && (target === normalizeGenocideName(form.name)
+        || target === heroVampshiftBaseName(form));
+}
+
+function revertHeroVampshifterForGenocide(targetName, messages) {
+    if (!shouldRevertHeroVampshifterForGenocide(targetName)) return false;
+    const baseName = heroVampshiftBaseName(game.u?._polyself_form) || 'vampire';
+    if (isMonsterGenocidedName(baseName)) {
+        messages.push(`You feel rather ${baseName}-ish.`);
+        return false;
+    }
+    const hadMonsterHp = game.u?.mh != null || game.u?.mhmax != null;
+    const result = becomeMonster(baseName);
+    if (result && hadMonsterHp && game.u) {
+        game.u.mh = game.u.uhp;
+        game.u.mhmax = game.u.uhpmax;
+    }
+    if (result?.message) messages.push(result.message);
+    return !!result;
+}
+
+function polyselfDeadInsideState() {
+    const form = game.u?._polyself_form || {};
+    const name = String(form.name || '').toLowerCase();
+    const mlet = form.mlet || form.glyph || '';
+    if (name.endsWith(' golem') || name.includes('vortex') || mlet === "'" || mlet === 'v')
+        return 'empty';
+    if (form.undead || form.vampshifter || ['L', 'M', 'V', 'W', 'Z', 'ghost'].includes(mlet)
+        || /\b(?:ghost|shade|lich|mummy|zombie|vampire|wraith|nazgul|skeleton|ghoul)\b/.test(name))
+        return 'condemned';
+    return 'dead';
+}
+
+function delayHeroGenocideUntilRehumanized(messages, cause = 'scroll of genocide') {
+    if (game.u) game.u.uhp = -1;
+    if (!game._polyself_genocide_delayed)
+        messages.push(`You feel ${polyselfDeadInsideState()} inside.`);
+    game._polyself_genocide_delayed = 1;
+    game._polyself_genocide_delayed_cause = cause;
+}
+
+function clearDelayedHeroGenocide() {
+    game._polyself_genocide_delayed = 0;
+    game._polyself_genocide_delayed_cause = '';
+}
+
+function finishPendingBaseGenocideAfterRehumanize(messages) {
+    if (!isHeroBaseGenocided()) return false;
+    const cause = game._polyself_genocide_delayed_cause || 'self-genocide';
+    clearDelayedHeroGenocide();
+    finishHeroGenocide(messages, cause);
+    return true;
+}
+
+function genocideMonsterType(data, messages, { killPlayer = false, cause = 'scroll of genocide', classMode = false } = {}) {
     const name = data?.name || heroGenocideTargetName();
+    if (!classMode) revertHeroVampshifterForGenocide(name, messages);
     markMonsterGenocided(name);
     game._chronicle_genocide_count = (game._chronicle_genocide_count || 0) + 1;
     messages.push(`Wiped out all ${pluralizeMonsterName(name)}.`);
     killDeadSpeciesEggHatchTimers(game);
     killGenocidedMonsters();
     killDeadSpeciesEggHatchTimers(game);
-    if (killPlayer) finishHeroGenocide(messages, cause);
+    if (classMode) revertHeroVampshifterForGenocide(name, messages);
+    if (killPlayer) {
+        if (game.u?._polyself_form && !isCurrentPolyselfGenocideTarget(name))
+            delayHeroGenocideUntilRehumanized(messages, cause);
+        else
+            finishHeroGenocide(messages, cause);
+    } else if (isCurrentPolyselfGenocideTarget(name)) {
+        if (heroHasUnchanging()) {
+            finishHeroGenocide(messages, cause);
+        } else {
+            const result = rehumanizeAfterPolyselfDeath();
+            appendRehumanizeDeathResultMessages(messages, result, { allowLifeSaving: true });
+        }
+    }
 }
 
 async function createCursedGenocideMonsters(data, messages) {
@@ -31127,12 +31279,14 @@ async function endGenocidePrompt(messages = [], more = false) {
     game._genocide_pending = null;
     game._genocide_input = '';
     game._command_mode = null;
-    game.context.move = 1;
     if (messages.length) await setMessage(messages.join('  '), more);
     else {
         game._pending_message = '';
         game._message_more = 0;
     }
+    if (applyLifeSavingOrFatalCommandMode(messages)) return;
+    if (armHeroGenocideDeathPrompt()) return;
+    game.context.move = 1;
 }
 
 async function retryGenocidePrompt(pending, message) {
@@ -31191,12 +31345,16 @@ async function finishGenocideInput(raw) {
         let wiped = 0;
         for (const data of members) {
             if (isMonsterGenocidedName(data.name) || data.unique || data.nemesis) continue;
-            genocideMonsterType(data, messages);
+            genocideMonsterType(data, messages, { classMode: true });
             wiped++;
         }
         if (!wiped) messages.push('All such monsters are already nonexistent.');
-        if (cls === '@' || members.some(data => isHeroGenocideTarget(data.name)))
-            finishHeroGenocide(messages);
+        if (cls === '@' || members.some(data => isHeroGenocideTarget(data.name))) {
+            if (game.u?._polyself_form)
+                delayHeroGenocideUntilRehumanized(messages);
+            else
+                finishHeroGenocide(messages);
+        }
         await endGenocidePrompt(messages, true);
         return;
     }
@@ -36026,6 +36184,7 @@ async function polymorphSpellDirection(ch) {
             game._pending_message = '';
             game._message_more = 0;
         }
+        if (applyLifeSavingOrFatalCommandMode(result)) return true;
         return true;
     }
     if (!dir && !verticalDir) return false;
@@ -48863,6 +49022,12 @@ function rehumanizeAfterPolyselfDeath() {
     game.u._strDisplay = null;
     const raceAdj = game.urace?.adj || game.urace?.noun || game._startup_race || 'human';
     result.messages.push(`You return to ${raceAdj} form!`);
+    if (finishPendingBaseGenocideAfterRehumanize(result.messages)) {
+        result.died = true;
+        result.genocideDeathArmed = true;
+        result.suppressDieMessage = true;
+        return result;
+    }
     if ((game.u.uhp || 0) < 1) {
         result.messages.push('Your old form was not healthy enough to survive.');
         game._death_cause = `killed by reverting to unhealthy ${raceAdj} form`;
@@ -51007,6 +51172,8 @@ function applyHeroFireTrapFatalResult(result) {
 
 export function applyLifeSavingOrFatalCommandMode(result) {
     game.context ??= {};
+    if (result.genocideDeathArmed && armHeroGenocideDeathPrompt())
+        return true;
     if (result.lifeSaving) {
         game._command_mode = 'lifeSavingMore';
         game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
@@ -51278,7 +51445,7 @@ function heroPolyTrapSelfResult(messages) {
     const result = rn2(5) ? becomeMonster(formName) : becomeMonster('human');
     if (result?.message) messages.push(result.message);
     newsym(game.u?.ux || 0, game.u?.uy || 0);
-    return { more: !!result?.more };
+    return { more: !!result?.more, genocideDeathArmed: !!result?.genocideDeathArmed };
 }
 
 function polyTrapTriggerMessage({ viaSitting = false } = {}) {
@@ -56573,12 +56740,10 @@ export async function rhack(_cmd) {
                     game.u._stonedKiller = '';
                 }
                 removeHeroStatusSuffix('Stone');
-                clearLifeSavedDeathState();
                 clearUnsafePetrifyingCorpseWieldAfterLifeSaving();
             }
-            if (game._life_saving_refresh_con && game.u?.acurr?.a)
-                game.u.acurr.a[4] = Math.max(3, game.u.acurr.a[4] - 1);
-            game._life_saving_refresh_con = 0;
+            clearLifeSavedDeathState();
+            applyLifeSavingConLoss();
             if (stoningLifeSaved && game.u) {
                 const con = game.u.acurr?.a?.[A_CON] ?? 10;
                 const givehp = 50 + 10 * Math.trunc(con / 2);
@@ -56588,7 +56753,6 @@ export async function rhack(_cmd) {
                 const escapeMessage = game._life_saving_level_teleport_escape_message;
                 game._life_saving_level_teleport_escape_message = '';
                 game._keep_pending_message = 0;
-                game._death_cause = '';
                 await beginEscapedGame([lifeSavingMessage, escapeMessage]);
                 return;
             }
@@ -60306,7 +60470,7 @@ export async function rhack(_cmd) {
             const deathTurn = game.moves || 1;
             game._death_moves ||= game._death_current_move ? deathTurn : Math.max(1, deathTurn - 1);
             game._death_current_move = 0;
-            if (game.flags?.debug) {
+            if (game.flags?.debug || game.flags?.explore) {
                 await setMessage('Die? [yn] (n)');
                 game._command_mode = 'wizardDieConfirm';
                 return;
@@ -60342,9 +60506,13 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
-            game.u.uhp = game.u.uhpmax || 1;
-            game._death_cause = '';
-            game._death_bones_body = '';
+            restoreHeroHpAfterLifeSaving();
+            clearLifeSavedDeathState();
+            game._death_no_bones = 0;
+            game._death_bones_prepared = 0;
+            game._death_corpse_created = 0;
+            game._bones_ok = false;
+            game._genocide_hero_death_pending = 0;
             game._wizard_survived_death = 1;
             game._survived_death_count = (game._survived_death_count || 0) + 1;
             if (game._death_negative_level_teleport_escape_message) {
@@ -62347,6 +62515,7 @@ export async function rhack(_cmd) {
                 game._pending_message = '';
                 game._message_more = 0;
             }
+            if (applyLifeSavingOrFatalCommandMode(result)) return;
             return;
         }
         if (!dir && !verticalDir) return;
@@ -62914,6 +63083,7 @@ export async function rhack(_cmd) {
                 if (item.cursed) await createCursedGenocideMonsters(target, messages);
                 else genocideMonsterType(target, messages, { killPlayer: true, cause: 'genocidal confusion' });
                 await setMessage(messages.join('  '), true);
+                if (armHeroGenocideDeathPrompt()) return;
                 game._command_mode = null;
                 game.context.move = 1;
                 return;
@@ -66880,6 +67050,7 @@ export async function rhack(_cmd) {
                 }
                 newsym(game.u.ux, game.u.uy);
                 await setMessage(result.message, !!result.more);
+                if (applyLifeSavingOrFatalCommandMode(result)) return;
                 return;
             }
             await setMessage('Never mind.');
@@ -71736,6 +71907,7 @@ export async function rhack(_cmd) {
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
             game.context.move = 0;
+            if (messages.genocideDeathArmed && applyLifeSavingOrFatalCommandMode(messages)) return;
             if (messages.lifeSaving) {
                 game._command_mode = 'lifeSavingMore';
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
@@ -71778,7 +71950,7 @@ export async function rhack(_cmd) {
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
             game.context.move = 0;
-            if (applyLifeSavingOrFatalCommandMode(messages)) return;
+            if (messages.genocideDeathArmed && applyLifeSavingOrFatalCommandMode(messages)) return;
             game._command_mode = null;
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             return;
@@ -71879,6 +72051,7 @@ export async function rhack(_cmd) {
             game._throw_item_letter = null;
             game._resume_time_after_more = 0;
             game.context.move = 0;
+            if (messages.genocideDeathArmed && applyLifeSavingOrFatalCommandMode(messages)) return;
             if (messages.lifeSaving) {
                 game._command_mode = 'lifeSavingMore';
                 game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);

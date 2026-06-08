@@ -202,6 +202,65 @@ export function restoreSaveState(content) {
     }
 }
 
+function normalizeSavedGenocideName(name) {
+    let lower = String(name || '').trim().toLowerCase();
+    lower = lower.replace(/^['"]|['"]$/g, '').replace(/^(?:a|an|the) /, '').replace(/\s+/g, ' ');
+    const irregular = {
+        dwarves: 'dwarf',
+        elves: 'elf',
+        fungi: 'fungus',
+        men: 'human',
+        humans: 'human',
+        bees: 'bee',
+        vortices: 'vortex',
+        liches: 'lich',
+    }[lower];
+    if (irregular) return irregular;
+    if (lower.endsWith('ies')) return `${lower.slice(0, -3)}y`;
+    if (lower.endsWith('ves')) return `${lower.slice(0, -3)}f`;
+    if (lower.endsWith('ses') || lower.endsWith('xes') || lower.endsWith('zes')
+        || lower.endsWith('ches') || lower.endsWith('shes'))
+        return lower.slice(0, -2);
+    if (lower.endsWith('s') && !lower.endsWith('ss')) return lower.slice(0, -1);
+    return lower;
+}
+
+function savedHeroRoleName(g) {
+    return g.urole?.name?.[g.flags?.female ? 'f' : 'm']
+        || g.urole?.name?.m
+        || g._startup_role
+        || 'adventurer';
+}
+
+function savedHeroBaseIsGenocided(g) {
+    const role = normalizeSavedGenocideName(savedHeroRoleName(g));
+    const race = normalizeSavedGenocideName(g._startup_race || g.urace?.noun || g.urace?.adj || '');
+    const raceAdj = normalizeSavedGenocideName(g.urace?.adj || '');
+    return (g._genocided_monsters || []).some(name => {
+        const lower = normalizeSavedGenocideName(name);
+        return !!lower && (lower === role || lower === race || lower === raceAdj
+            || (race === 'human' && lower === 'human') || (raceAdj === 'human' && lower === 'human'));
+    });
+}
+
+function savedPolyselfDeadInsideState(g) {
+    const form = g.u?._polyself_form || g.u?.youmonst?.data || {};
+    const name = String(form.name || '').toLowerCase();
+    const mlet = form.mlet || form.glyph || '';
+    if (name.endsWith(' golem') || name.includes('vortex') || mlet === "'" || mlet === 'v')
+        return 'empty';
+    if (form.undead || form.vampshifter || ['L', 'M', 'V', 'W', 'Z', 'ghost'].includes(mlet)
+        || /\b(?:ghost|shade|lich|mummy|zombie|vampire|wraith|nazgul|skeleton|ghoul)\b/.test(name))
+        return 'condemned';
+    return 'dead';
+}
+
+export function restoredPolymorphedGenocideWelcomeMessage(g = game) {
+    if (!g.u?._polyself_form) return '';
+    if (!savedHeroBaseIsGenocided(g)) return '';
+    return `You're back, but you still feel ${savedPolyselfDeadInsideState(g)} inside.`;
+}
+
 export function setRestoreCalendar(datetime) {
     const g = game;
     g.flags ??= {};
