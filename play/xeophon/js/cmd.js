@@ -18746,8 +18746,8 @@ function mapInvisibleMonsterAt(mon) {
     if (!loc) return;
     loc.map_invisible = true;
     loc.waslit = true;
-    loc.remembered_glyph = { ch: 'I', color: NO_COLOR, dec: false };
     newsym(mon.mx, mon.my);
+    loc.remembered_glyph = { ch: 'I', color: NO_COLOR, dec: false };
 }
 
 function setMonsterMinvisFromPotion(mon, cursedPotion) {
@@ -19257,6 +19257,7 @@ function wakeNearbyMonstersAt(x, y, distance) {
         sleeper.msleeping = 0;
         if (!(sleeper.data?.unique || sleeper.data?.uniq)) sleeper.mstrategy = 0;
     }
+    disturbBuriedZombieCorpseTimersAt(x, y);
 }
 
 function wakeNearbyMonstersFromExplosion(x, y, damage) {
@@ -22022,23 +22023,96 @@ function heroHorizontalThrowRecoilObstacleCollision(loc, x, y, remainingRange, d
 
     if (!why) return { blocked: false };
     const damage = maybeHalfPhysicalDamage(rnd(2 + Math.max(0, Math.trunc(Number(remainingRange || 0)))));
+    let trapResult = null;
     if (game.u) {
         game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
-        if ((game.u.uhp || 0) <= 0) game._death_cause = why;
+        if ((game.u.uhp || 0) <= 0)
+            trapResult = heroDartTrapFatalResult(messages, why);
     }
     wakeNearbyMonstersAt(x, y, 10);
-    return { blocked: true, messages };
+    return { blocked: true, messages, trapResult };
+}
+
+function heroHorizontalThrowRecoilCanSpotMonster(mon) {
+    if (!mon || game.u?.blind || mon.mundetected) return false;
+    return !(mon.minvis || mon.invis || mon.invisible) || game.u?.seeInvisible;
+}
+
+function heroHorizontalThrowRecoilBodyArmorBlocksPetrification() {
+    return !!(wornArmorInSlot('shirt') || wornArmorInSlot('body') || wornArmorInSlot('cloak'));
+}
+
+function monsterHorizontalThrowRecoilBodyArmorBlocksPetrification(mon) {
+    return (mon?.minvent || []).some(item =>
+        isWornArmorItem(item) && ['shirt', 'body', 'cloak'].includes(armorSlot(item)));
+}
+
+function heroHorizontalThrowRecoilHeroPetrification(mon, messages) {
+    if (!monsterTouchPetrifies(mon) || heroHorizontalThrowRecoilBodyArmorBlocksPetrification())
+        return null;
+    if (game.u?.stoneResistance || heroPolyselfResistsStoning()) return null;
+    const rescue = maybeTurnPolyselfIntoStoneGolem();
+    if (rescue) {
+        messages.push(rescue);
+        return null;
+    }
+
+    messages.push('You turn to stone...');
+    if (game.u) game.u.uhp = 0;
+    const name = String(mon?.data?.name || mon?.name || 'monster').toLowerCase();
+    game._death_cause = `petrified by bumping into ${articleFor(name)}`;
+    game._death_bones_body = 'statue';
+    const result = { lifeSaving: false, fatal: false, more: true };
+    if (consumeLifeSavingAmulet({ clearStoning: true })) {
+        messages.push('You die...  But wait...  Your medallion begins to glow!');
+        result.lifeSaving = true;
+    } else {
+        result.fatal = true;
+    }
+    return result;
+}
+
+function heroHorizontalThrowRecoilCurrentFormTouchPetrifies() {
+    const form = polyselfForm();
+    return !!form && monsterTouchPetrifies({ data: form, touchPetrifies: form.touchPetrifies });
+}
+
+function heroHorizontalThrowRecoilPetrifyMonsterByTouch(mon, messages) {
+    if (!heroHorizontalThrowRecoilCurrentFormTouchPetrifies()
+        || monsterHorizontalThrowRecoilBodyArmorBlocksPetrification(mon))
+        return false;
+    return petrifyMonsterFromThrownEgg(mon, messages);
 }
 
 function heroHorizontalThrowRecoilMonsterCollision(mon, x, y) {
-    if (!mon) return '';
-    const name = articleFor(mon.data?.name || mon.name || 'creature');
+    if (!mon) return { messages: [], trapResult: null };
+    const loc = game.level?.at?.(x, y);
+    const preGlyphInvisible = !!(loc?.map_invisible || loc?.remembered_glyph?.ch === 'I');
+    const appearance = M_AP_TYPE(mon);
+    const preGlyphMonster = !mon.mundetected
+        && (appearance === M_AP_MONSTER
+            || (!appearance && mon.appearObj == null && !mon.appearGlyph
+                && heroHorizontalThrowRecoilCanSpotMonster(mon)));
     mon.mundetected = 0;
+    const canSpotAfterUnhide = heroHorizontalThrowRecoilCanSpotMonster(mon);
+    const name = canSpotAfterUnhide
+        ? articleFor(mon.data?.name || mon.name || 'creature')
+        : 'something';
+    const pronoun = canSpotAfterUnhide ? 'it' : 'something';
     mon.msleeping = 0;
     mon.meating = 0;
+    revealHeroProjectileHitMimicAppearance(mon);
+    if (!heroHorizontalThrowRecoilCanSpotMonster(mon)) mapInvisibleMonsterAt(mon);
     setHeroObjectHitMonsterAngry(mon);
+    const messages = [!preGlyphMonster && !preGlyphInvisible
+        ? `You find ${name} by bumping into ${pronoun}.`
+        : `You bump into ${name}.`];
+    const trapResult = heroHorizontalThrowRecoilHeroPetrification(mon, messages);
+    if (trapResult?.fatal && !trapResult.lifeSaving)
+        return { messages, trapResult };
+    heroHorizontalThrowRecoilPetrifyMonsterByTouch(mon, messages);
     wakeNearbyMonstersAt(x, y, 10);
-    return `You bump into ${name}.`;
+    return { messages, trapResult };
 }
 
 function heroHorizontalThrowRecoilResult(dir, range) {
@@ -22082,18 +22156,21 @@ function heroHorizontalThrowRecoilResult(dir, range) {
             || heroHorizontalThrowRecoilBoulderAt(nx, ny);
         if (blockedByObstacle) {
             const collision = heroHorizontalThrowRecoilObstacleCollision(loc, nx, ny, recoilRange - step, dx, dy);
-            if (collision.blocked)
+            if (collision.blocked) {
+                trapResult ||= collision.trapResult || null;
                 return heroHorizontalThrowRecoilResultFromMessages(
                     [...messages, ...(collision.messages || [])],
-                    { more, trapResult },
+                    { more: more || !!collision.trapResult?.more, trapResult },
                 );
+            }
             break;
         }
         if (monster) {
-            const collisionMessage = heroHorizontalThrowRecoilMonsterCollision(monster, nx, ny);
+            const collision = heroHorizontalThrowRecoilMonsterCollision(monster, nx, ny);
+            trapResult ||= collision.trapResult || null;
             return heroHorizontalThrowRecoilResultFromMessages(
-                [...messages, collisionMessage],
-                { more, trapResult },
+                [...messages, ...(collision.messages || [])],
+                { more: more || !!collision.trapResult?.more, trapResult },
             );
         }
         game.u.ux0 = oldx;
@@ -34634,6 +34711,7 @@ function trappedKickedFloorObjectRefusal(obj, x, y) {
         handled: true,
         messages,
         moved: false,
+        kickObjectSucceeded: true,
     };
 }
 
@@ -34753,10 +34831,57 @@ function applyKickedBoxImpact(box, range, messages) {
     return { handled: range < 2 };
 }
 
-function applyKickedObjectOuchDamage() {
+function kickOuchDeathCause(x, y, kickObjectName = '') {
+    if (kickObjectName) return `kicking ${kickObjectName}`;
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return 'kicking nothing';
+    if (loc.typ === DOOR) return 'kicking a door';
+    if (loc.typ === TREE) return 'kicking a tree';
+    if (IS_STWALL(loc.typ)) return 'kicking a wall';
+    if (loc.typ === DRAWBRIDGE_UP || loc.typ === DRAWBRIDGE_DOWN) return 'kicking a drawbridge';
+    if (IS_OBSTRUCTED(loc.typ)) return 'kicking a rock';
+    if (loc.typ === SINK) return 'kicking a sink';
+    if (loc.typ === STAIRS) return 'kicking the stairs';
+    if (loc.typ === LADDER) return 'kicking a ladder';
+    if (loc.typ === IRONBARS) return 'kicking an iron bar';
+    return 'kicking something weird';
+}
+
+function feelKickOuchLocation(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return;
+    const mon = (game.level?.monsters || []).find(candidate =>
+        candidate && !candidate.dead && candidate.mx === x && candidate.my === y);
+    if (loc.map_invisible && mon) return;
+    loc.seenv = loc.seenv || 1;
+    const obj = topFloorObjectAt(x, y);
+    if (obj) {
+        obj.seen = true;
+        obj._hide_until_seen = false;
+    }
+    newsym(x, y);
+}
+
+function applyKickOuchDamage(x, y, messages, { kickObjectName = '', dir = null } = {}) {
+    messages.push('Ouch!  That hurts!');
     const stats = game.u?.acurr?.a || [];
     rn2(2);
     rn2(2);
+    let wakeX = x;
+    let wakeY = y;
+    if (isok(x, y)) {
+        if (game.u?.blind) feelKickOuchLocation(x, y);
+        if (isDrawbridgeWallAt(x, y) >= 0) {
+            messages.push('The drawbridge is unaffected.');
+            const bridge = findDrawbridgeAtOrWall(x, y);
+            if (bridge) {
+                wakeX = bridge.x;
+                wakeY = bridge.y;
+                game._maploc = { x: wakeX, y: wakeY };
+            }
+        }
+        wakeNearbyMonstersAt(wakeX, wakeY, 5 * 5);
+    }
     if (!rn2(3)) {
         const woundDuration = 5 + rnd(5);
         if (!game.u._woundedLegTurns && !game.u._woundedDexPenalty) {
@@ -34766,8 +34891,20 @@ function applyKickedObjectOuchDamage() {
         game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, woundDuration);
         game.u._woundedLegSide = 'right';
     }
-    const damage = rnd((stats[A_CON] ?? 10) > 15 ? 3 : 5);
-    game.u.uhp = Math.max(0, (game.u?.uhp || 0) - damage);
+    const damage = maybeHalfPhysicalDamage(rnd((stats[A_CON] ?? 10) > 15 ? 3 : 5));
+    if (game.u) game.u.uhp = Math.max(0, (game.u?.uhp || 0) - damage);
+    if ((game.u?.uhp || 0) > 0) {
+        if (dir && heroHorizontalThrowAirRecoilActive()) {
+            const recoil = heroHorizontalThrowRecoilResult(dir, rn1(2, 4));
+            if (recoil.message) messages.push(recoil.message);
+            if (recoil.trapResult) return recoil.trapResult;
+        }
+        return null;
+    }
+    const fatalResult = heroDartTrapFatalResult(messages, kickOuchDeathCause(wakeX, wakeY, kickObjectName));
+    if (fatalResult.lifeSaving)
+        queueKickOuchLifeSavingRecoil(dir);
+    return fatalResult;
 }
 
 function placeKickedFloorObject(obj, x, y, messages, options = {}) {
@@ -34893,7 +35030,7 @@ function billKickedLooseShopObject(obj, x, y, messages) {
     return { shkp: sourceShkp, billed: !!entry };
 }
 
-function tryKickLooseFloorObject(obj, x, y, messages) {
+function tryKickLooseFloorObject(obj, x, y, messages, dir) {
     if (!kickedObjectLooseSourceAt(x, y)) return null;
     const martial = heroUsesMartialKickRangeBonus();
     const dexterity = Math.trunc(Number(game.u?.acurr?.a?.[A_DEX] ?? 10));
@@ -34905,10 +35042,13 @@ function tryKickLooseFloorObject(obj, x, y, messages) {
         else
             messages.push(`${floorObjectTheSubject(obj)} ${kickedLooseObjectDoesNotVerb(obj)} come loose.`);
         if (!lowRangeKickedObjectAvoidsOuch()) {
-            applyKickedObjectOuchDamage();
-            messages.push('Ouch!  That hurts!');
+            const trapResult = applyKickOuchDamage(x, y, messages, {
+                kickObjectName: kickedFloorObjectKickName(obj),
+                dir,
+            });
+            return { handled: true, messages, moved: false, trapResult, kickObjectSucceeded: false };
         }
-        return { handled: true, messages, moved: false };
+        return { handled: true, messages, moved: false, kickObjectSucceeded: true };
     }
 
     if (heroIsBlind())
@@ -34919,7 +35059,7 @@ function tryKickLooseFloorObject(obj, x, y, messages) {
     newsym(x, y);
     billKickedLooseShopObject(obj, x, y, messages);
     placeKickedFloorObject(obj, game.u?.ux, game.u?.uy, messages);
-    return { handled: true, messages, moved: true };
+    return { handled: true, messages, moved: true, kickObjectSucceeded: true };
 }
 
 function kickedCoinFlightStopPileAt(obj, x, y) {
@@ -35174,12 +35314,23 @@ function scatterKickedGoldStack(obj, sx, sy, blastForce, messages) {
     return scattered;
 }
 
-function applyKickedObjectThumpOuch(messages) {
+function applyKickedObjectThumpOuch(messages, x, y, obj, dir) {
     messages.push('Thump!');
     if (!lowRangeKickedObjectAvoidsOuch()) {
-        applyKickedObjectOuchDamage();
-        messages.push('Ouch!  That hurts!');
+        const trapResult = applyKickOuchDamage(x, y, messages, {
+            kickObjectName: kickedFloorObjectKickName(obj),
+            dir,
+        });
+        return { kickObjectSucceeded: false, trapResult };
     }
+    return { kickObjectSucceeded: true, trapResult: null };
+}
+
+function appendSuccessfulKickObjectAirRecoil(dir, messages) {
+    if (!Is_airlevel(game.u?.uz)) return null;
+    const recoil = heroHorizontalThrowRecoilResult(dir, 1);
+    if (recoil.message) messages.push(recoil.message);
+    return recoil;
 }
 
 function kickedObjectIronBarsBreakChance(obj) {
@@ -35354,12 +35505,16 @@ async function kickFloorObjectToward(dir, x, y) {
     if (kickedObjectLooseSourceAt(x, y)) {
         if (!obj) return { handled: false };
         if (!kickFloorObjectLooseSupported(obj)) {
-            applyKickedObjectOuchDamage();
-            return { handled: true, messages: ['Ouch!  That hurts!'], moved: false };
+            const messages = [];
+            const trapResult = applyKickOuchDamage(x, y, messages, {
+                kickObjectName: kickedFloorObjectKickName(obj),
+                dir,
+            });
+            return { handled: true, messages, moved: false, trapResult, kickObjectSucceeded: false };
         }
         const messages = [`You kick ${kickedFloorObjectKickName(obj)}.`];
         kickFloorObjectRange(obj, x, y, dir);
-        return tryKickLooseFloorObject(obj, x, y, messages);
+        return tryKickLooseFloorObject(obj, x, y, messages, dir);
     }
     if (!kickFloorObjectSupported(obj)) return { handled: false };
 
@@ -35383,16 +35538,28 @@ async function kickFloorObjectToward(dir, x, y) {
     if (localBoxImpact) {
         const boxImpact = applyKickedBoxImpact(obj, range, messages);
         if (boxImpact.handled)
-            return { handled: true, messages, moved: false, trapResult: boxImpact.trapResult };
+            return {
+                handled: true,
+                messages,
+                moved: false,
+                trapResult: boxImpact.trapResult,
+                kickObjectSucceeded: true,
+            };
     }
     if (fragileBreakKind && await breakKickedFragileFloorObject(obj, x, y, messages))
-        return { handled: true, messages, moved: false, broke: true };
+        return { handled: true, messages, moved: false, broke: true, kickObjectSucceeded: true };
     if (range < 2) {
-        applyKickedObjectThumpOuch(messages);
-        return { handled: true, messages, moved: false };
+        const thump = applyKickedObjectThumpOuch(messages, x, y, obj, dir);
+        return {
+            handled: true,
+            messages,
+            moved: false,
+            trapResult: thump.trapResult,
+            kickObjectSucceeded: thump.kickObjectSucceeded,
+        };
     }
     if (!gate && !canHandleMonsterImpact && !ordinarySameLevelFlight)
-        return { handled: true, messages, moved: false };
+        return { handled: true, messages, moved: false, kickObjectSucceeded: true };
 
     const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
     if (shopBillableGold(obj) && quantity > 1) {
@@ -35400,11 +35567,17 @@ async function kickFloorObjectToward(dir, x, y) {
             if (!heroIsDeaf()) messages.push('Thwwpingg!');
             messages.push(`You ${FLYING_COIN_MESSAGES[rn2(FLYING_COIN_MESSAGES.length)]}!`);
             scatterKickedGoldStack(obj, x, y, rnd(3), messages);
-            return { handled: true, messages, moved: true, scattered: true };
+            return { handled: true, messages, moved: true, scattered: true, kickObjectSucceeded: true };
         }
         if (quantity > 300) {
-            applyKickedObjectThumpOuch(messages);
-            return { handled: true, messages, moved: false };
+            const thump = applyKickedObjectThumpOuch(messages, x, y, obj, dir);
+            return {
+                handled: true,
+                messages,
+                moved: false,
+                trapResult: thump.trapResult,
+                kickObjectSucceeded: thump.kickObjectSucceeded,
+            };
         }
     }
 
@@ -35422,7 +35595,14 @@ async function kickFloorObjectToward(dir, x, y) {
         messages.push(...(monsterImpact.messages || []));
         if (!monsterImpact.mulched && !monsterImpact.consumed)
             placeKickedFloorObject(obj, landX, landY, messages, { ohit: !!monsterImpact.hit, passiveTarget: targetMon });
-        return { handled: true, messages, moved: true, target: targetMon, hit: !!monsterImpact.hit };
+        return {
+            handled: true,
+            messages,
+            moved: true,
+            target: targetMon,
+            hit: !!monsterImpact.hit,
+            kickObjectSucceeded: true,
+        };
     }
     if (ordinarySameLevelFlight) {
         const flight = kickedSameLevelFlightStop(obj, x, y, dir, range, messages);
@@ -35430,9 +35610,15 @@ async function kickFloorObjectToward(dir, x, y) {
         newsym(x, y);
         const resolved = resolveKickedFlightGateShipping(obj, flight, dir, messages);
         if (resolved.migrated)
-            return { handled: true, messages, moved: true, shipObject: resolved.shipObject };
+            return {
+                handled: true,
+                messages,
+                moved: true,
+                shipObject: resolved.shipObject,
+                kickObjectSucceeded: true,
+            };
         finishKickedFlightLanding(obj, x, y, resolved.flight, messages);
-        const result = { handled: true, messages, moved: true };
+        const result = { handled: true, messages, moved: true, kickObjectSucceeded: true };
         if (resolved.shipObject) result.shipObject = resolved.shipObject;
         return result;
     }
@@ -35449,9 +35635,15 @@ async function kickFloorObjectToward(dir, x, y) {
         remainingSteps: Math.max(0, range - 2),
     }, dir, messages);
     if (resolved.migrated)
-        return { handled: true, messages, moved: true, shipObject: resolved.shipObject };
+        return {
+            handled: true,
+            messages,
+            moved: true,
+            shipObject: resolved.shipObject,
+            kickObjectSucceeded: true,
+        };
     finishKickedFlightLanding(obj, x, y, resolved.flight, messages);
-    return { handled: true, messages, moved: true, shipObject: resolved.shipObject };
+    return { handled: true, messages, moved: true, shipObject: resolved.shipObject, kickObjectSucceeded: true };
 }
 
 function carriedDropDownGateAt(obj, x, y, { allowGold = false } = {}) {
@@ -51420,6 +51612,30 @@ function restoreLifeSavedHeroForContinuation() {
     if (game.u) game.u.uhp = game.u.uhpmax || 1;
 }
 
+function queueKickOuchLifeSavingRecoil(dir) {
+    if (!dir || !heroHorizontalThrowAirRecoilActive()) return;
+    const dx = Math.sign(dir.dx || 0);
+    const dy = Math.sign(dir.dy || 0);
+    if (!dx && !dy) return;
+    game._life_saving_kick_ouch_recoil = {
+        dir: { dx, dy },
+    };
+}
+
+function consumeKickOuchLifeSavingRecoil() {
+    const queued = game._life_saving_kick_ouch_recoil;
+    game._life_saving_kick_ouch_recoil = null;
+    if (!queued) return null;
+    return heroHorizontalThrowRecoilResult(queued.dir, rn1(2, 4));
+}
+
+function queueBoomerangPreRecoilLifeSavingContinuation(item, key) {
+    game._life_saving_boomerang_pre_recoil = {
+        key,
+        letter: item?.letter || game._throw_item_letter || null,
+    };
+}
+
 function finishLandminePitFalloutResult(messages, fatalResult, pitResult) {
     if (pitResult?.message) messages.push(pitResult.message);
     const lavaDeath = game._command_mode === 'lavaDeathMore' && game._death_cause === 'burned by molten lava';
@@ -57714,6 +57930,24 @@ export async function rhack(_cmd) {
                 const givehp = 50 + 10 * Math.trunc(con / 2);
                 game.u.uhp = Math.min(game.u.uhpmax || 1, givehp);
             }
+            const boomerangPreRecoilContinuation = game._life_saving_boomerang_pre_recoil || null;
+            game._life_saving_boomerang_pre_recoil = null;
+            if (boomerangPreRecoilContinuation) {
+                game._skip_boomerang_pre_recoil_once = 1;
+                game._boomerang_pre_recoil_prefix_once = lifeSavingMessage;
+                game._command_mode = 'throwDirection';
+                if (boomerangPreRecoilContinuation.letter)
+                    game._throw_item_letter = boomerangPreRecoilContinuation.letter;
+                game._pending_message = '';
+                game._message_more = 0;
+                await rhack(boomerangPreRecoilContinuation.key || 'l');
+                return;
+            }
+            const postRecoil = consumeKickOuchLifeSavingRecoil();
+            if (postRecoil?.message) {
+                game._pending_message = [lifeSavingMessage, postRecoil.message].filter(Boolean).join('  ');
+                game._message_more = postRecoil.more || postRecoil.trapResult ? 1 : 0;
+            }
             if (levelTeleportEscape) {
                 const escapeMessage = game._life_saving_level_teleport_escape_message;
                 game._life_saving_level_teleport_escape_message = '';
@@ -57721,6 +57955,7 @@ export async function rhack(_cmd) {
                 await beginEscapedGame([lifeSavingMessage, escapeMessage]);
                 return;
             }
+            if (postRecoil?.trapResult && applyLifeSavingOrFatalCommandMode(postRecoil.trapResult)) return;
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game._suppress_monster_attack_messages = 1;
         }
@@ -71147,16 +71382,27 @@ export async function rhack(_cmd) {
         const statueTrap = statueObj ? statueTrapAt(x, y) : null;
         if (statueTrap) {
             const message = await activateStatueTrap(statueTrap, x, y, { normal: true }) || '';
-            await setMessage(message);
+            const messages = message ? [message] : [];
+            const recoil = appendSuccessfulKickObjectAirRecoil(dir, messages);
+            await setMessage(messages.join('  '), messages.length > 1 || !!recoil?.more || !!recoil?.trapResult);
             game._command_mode = null;
+            if (recoil?.trapResult && applyLifeSavingOrFatalCommandMode(recoil.trapResult)) return;
             game.context.move = 1;
             return;
         }
         const kickedObject = await kickFloorObjectToward(dir, x, y);
         if (kickedObject.handled) {
-            const trapResult = kickedObject.trapResult;
+            let trapResult = kickedObject.trapResult;
+            const fatalNoSave = trapResult && typeof trapResult === 'object'
+                && trapResult.fatal && !trapResult.lifeSaving;
+            let more = kickedObject.messages.length > 1 || !!(trapResult && typeof trapResult === 'object');
+            if (kickedObject.kickObjectSucceeded && !fatalNoSave) {
+                const recoil = appendSuccessfulKickObjectAirRecoil(dir, kickedObject.messages);
+                more ||= kickedObject.messages.length > 1 || !!recoil?.more;
+                trapResult = recoil?.trapResult || trapResult;
+            }
             const trapObjectResult = trapResult && typeof trapResult === 'object';
-            await setMessage(kickedObject.messages.join('  '), kickedObject.messages.length > 1 || !!trapObjectResult);
+            await setMessage(kickedObject.messages.join('  '), more || !!trapObjectResult);
             game._command_mode = null;
             if (trapObjectResult && applyLifeSavingOrFatalCommandMode(trapResult)) return;
             game.context.move = 1;
@@ -71201,22 +71447,11 @@ export async function rhack(_cmd) {
             return;
         }
         if (!target || IS_OBSTRUCTED(target.typ) || target.typ === STAIRS || target.typ === LADDER) {
-            const stats = game.u?.acurr?.a || [];
-            rn2(2);
-            rn2(2);
-            if (!rn2(3)) {
-                const woundDuration = 5 + rnd(5);
-                if (!game.u._woundedLegTurns && !game.u._woundedDexPenalty) {
-                    game.u.acurr.a[A_DEX] = Math.max(3, (game.u.acurr.a[A_DEX] || 9) - 1);
-                    game.u._woundedDexPenalty = 1;
-                }
-                game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, woundDuration);
-                game.u._woundedLegSide = 'right';
-            }
-            const damage = rnd((stats[4] ?? 10) > 15 ? 3 : 5);
-            game.u.uhp = Math.max(0, (game.u?.uhp || 0) - damage);
-            await setMessage('Ouch!  That hurts!', game.u.uhp <= 0);
+            const messages = [];
+            const trapResult = applyKickOuchDamage(x, y, messages, { dir });
+            await setMessage(messages.join('  '), messages.length > 1 || !!trapResult?.more);
             game._command_mode = null;
+            if (trapResult && applyLifeSavingOrFatalCommandMode(trapResult)) return;
             game.context.move = 1;
             return;
         }
@@ -72327,8 +72562,8 @@ export async function rhack(_cmd) {
         game._fire_launcher_letter = null;
         game._fire_count = null;
         game.context.move = 1;
-        if (fireRecoilResult?.lifeSaving || fireRecoilResult?.fatal) {
-            if (applyLifeSavingOrFatalCommandMode(fireRecoilResult)) return;
+        if (fireRecoilResult?.trapResult?.lifeSaving || fireRecoilResult?.trapResult?.fatal) {
+            if (applyLifeSavingOrFatalCommandMode(fireRecoilResult.trapResult)) return;
         }
         return;
     }
@@ -73124,8 +73359,30 @@ export async function rhack(_cmd) {
         const boomerangUsesCurvedFlight = tossUpWeaponObjectKey(item) === 'boomerang'
             && !heroIsUnderwaterForThrow();
         let boomerangPreRecoilMessage = '';
+        let boomerangPreRecoilMore = false;
         if (boomerangUsesCurvedFlight && heroHorizontalThrowAirRecoilActive()) {
-            boomerangPreRecoilMessage = heroHorizontalThrowRecoil(dir, 1);
+            const skipBoomerangPreRecoil = !!game._skip_boomerang_pre_recoil_once;
+            const boomerangPreRecoilPrefix = game._boomerang_pre_recoil_prefix_once || '';
+            game._skip_boomerang_pre_recoil_once = 0;
+            game._boomerang_pre_recoil_prefix_once = '';
+            if (skipBoomerangPreRecoil) {
+                boomerangPreRecoilMessage = boomerangPreRecoilPrefix;
+            } else {
+                const boomerangPreRecoilResult = heroHorizontalThrowRecoilResult(dir, 1);
+                boomerangPreRecoilMessage = boomerangPreRecoilResult?.message || '';
+                boomerangPreRecoilMore = !!boomerangPreRecoilResult?.more;
+                const preRecoilTrapResult = boomerangPreRecoilResult?.trapResult || null;
+                if (preRecoilTrapResult?.lifeSaving || preRecoilTrapResult?.fatal) {
+                    await setMessage(boomerangPreRecoilMessage, boomerangPreRecoilMore);
+                    if (preRecoilTrapResult.lifeSaving)
+                        queueBoomerangPreRecoilLifeSavingContinuation(item, ch);
+                    else {
+                        game._throw_item_letter = null;
+                        clearThrowCountState();
+                    }
+                    if (applyLifeSavingOrFatalCommandMode(preRecoilTrapResult)) return;
+                }
+            }
             ux = game.u?.ux || ux;
             uy = game.u?.uy || uy;
         }
@@ -73133,7 +73390,8 @@ export async function rhack(_cmd) {
         if (boomerangFlight.caught) {
             exerciseHeroProjectileHitDexterity();
             newsym(ux, uy);
-            await setMessage([boomerangPreRecoilMessage, 'You skillfully catch the boomerang.'].filter(Boolean).join('  '));
+            await setMessage([boomerangPreRecoilMessage, 'You skillfully catch the boomerang.'].filter(Boolean).join('  '),
+                boomerangPreRecoilMore);
             game._command_mode = null;
             game._throw_item_letter = null;
             clearThrowCountState();

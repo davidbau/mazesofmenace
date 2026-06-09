@@ -325,6 +325,27 @@ export function monster_by_pmidx(pmidx) {
     return MONS[pmidx] ?? null;
 }
 
+// C ref: sp_lev.c lspo_object montype scan — find a monster by its (neutral)
+// name string, returning its pmidx or NON_PM (-1).  Used by themed-room corpse
+// fills (themerms.lua "Buried zombies": montype="kobold"/"gnome"/...).
+const _NAME_TO_PMIDX = (() => {
+    const m = new Map();
+    for (const mon of MONS) {
+        if (mon.name && !m.has(mon.name)) m.set(mon.name, mon.pmidx);
+    }
+    return m;
+})();
+export function name_to_pmidx(name) {
+    const v = _NAME_TO_PMIDX.get(name);
+    return v == null ? -1 : v;
+}
+
+// C ref: dungeon.c level_difficulty() — exported for themed-room fills that
+// branch on difficulty (themerms.lua nh.level_difficulty()).
+export function level_difficulty_ext() {
+    return level_difficulty();
+}
+
 // C ref: monsters.h SIZ(wt, nutr, ...) — the per-monster corpse weight (cwt)
 // and body size (msize, MZ_*).  mkobj.c weight() uses these for CORPSE and
 // STATUE objects.  The full mons[] cwt/msize column is large and only matters

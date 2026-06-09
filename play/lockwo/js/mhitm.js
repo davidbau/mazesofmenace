@@ -25,10 +25,76 @@ import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     NATTK, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
-    M_ATTK_AGR_DONE,
+    M_ATTK_AGR_DONE, W_SADDLE,
 } from './const.js';
 import { DEADMONSTER } from './mon.js';
 import { newsym } from './display.js';
+import { cansee } from './vision.js';
+import { update_topl } from './display.js';
+
+// ── monster-combat message rendering ─────────────────────────────────────────
+// C ref: mhitm.c hitmm()/missmm() + mon.c monkilled().  These emit the "The X
+// bites/misses the Y." and "The Y is destroyed!" top-line messages.  The
+// movemon() pass that reaches mattackm() is async (allmain.js), so each visible
+// combat message is paged through update_topl() inline, exactly like C's topl
+// buffer: a message arriving while the previous one is unacknowledged fires a
+// blocking --More-- (captured as its own screen frame, with the LIVE map state
+// underneath) before replacing it.  This inline timing is what makes the
+// map-under-each-frame match C (the dead defender is still drawn until its
+// death message's predecessor has been paged).
+async function emitMMmsg(msg) {
+    if (!msg) return;
+    await update_topl(msg);
+}
+
+// C ref: do_name.c x_monnam — the bare species name for a monster instance.
+// A mounted/grounded steed wearing a saddle is described as "saddled <species>"
+// (steed.c mon_nam path); the contest's only monster-combat messages with a
+// saddled attacker are the post-dismount pony bites.
+function mon_species(mtmp) {
+    let s = (mtmp?.data?.name) || 'monster';
+    if (((mtmp?.misc_worn_check || 0) & W_SADDLE)
+        && !(mtmp?.mgivenname || mtmp?.mextra?.mgivenname))
+        s = 'saddled ' + s;
+    return s;
+}
+// the(species): "the <species>" with a given name standing alone.
+function the_monnam(mtmp) {
+    const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
+    if (given) return given;
+    return 'the ' + mon_species(mtmp);
+}
+// Monnam(): capitalized the_monnam.
+function Monnam(mtmp) {
+    const s = the_monnam(mtmp);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// C ref: mhitm.c gv.vis — the attack is visible when either combatant is both
+// in line of sight (cansee) and spottable.  The contest pets/hostiles are
+// ordinary visible animals, so canspotmon reduces to cansee here.
+function mm_visible(magr, mdef) {
+    return (cansee(magr.mx, magr.my) || cansee(mdef.mx, mdef.my));
+}
+
+// C ref: mondata.h nonliving(ptr) — undead/golem/vortex/etc don't "die", they
+// are "destroyed".  Zombies (the only mon-vs-mon kill victim the contest shows)
+// are undead -> nonliving.
+function nonliving(mtmp) {
+    const name = mtmp?.data?.name || '';
+    return /\bzombie\b|\bmummy\b|\bskeleton\b|\bwraith\b|\bghost\b|\blich\b|golem\b|\bvortex\b|\belemental\b/.test(name);
+}
+
+// C ref: mhitm.c hitmm() — the verb for a connecting attack of type aatyp.
+function hit_verb(aatyp) {
+    switch (aatyp) {
+    case AT_BITE: return 'bites';
+    case AT_STNG: return 'stings';
+    case AT_BUTT: return 'butts';
+    case AT_TUCH: return 'touches';
+    default:      return 'hits'; // AT_CLAW / AT_KICK / AT_WEAP / etc
+    }
+}
 
 // ── attack-type / damage-type enums (include/monattk.h) ──────────────────────
 const AT_NONE = 0, AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3, AT_BUTT = 4,
@@ -126,7 +192,7 @@ function mhitm_knockback(magr, mdef, mattk, hitflagsRef, weaponUsed) {
 
 // ── mhitm.c mdamagem ─────────────────────────────────────────────────────────
 // Applies one successful melee hit's damage.  Returns the M_ATTK_* result.
-function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
+async function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
     let damage = d(mattk.damn | 0, mattk.damd | 0);   // mhitm.c:1025
     let hitflags = M_ATTK_MISS;
 
@@ -143,6 +209,14 @@ function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
 
     mdef.mhp -= damage;
     if (mdef.mhp < 1) {
+        // C ref: mhitm.c mdamagem() -> monkilled(mdef, "", AD_PHYS).  monkilled
+        // emits "<Monnam(mdef)> is destroyed/killed!" when the defender's square
+        // is visible (cansee), BEFORE the corpse/detach bookkeeping.  Paging it
+        // here (while the defender is still on the map) reproduces C's frame
+        // where the previous combat line's --More-- shows the doomed defender
+        // still drawn; killMonster() then removes it for the final frame.
+        if (cansee(mdef.mx, mdef.my))
+            await emitMMmsg(`${Monnam(mdef)} is ${nonliving(mdef) ? 'destroyed' : 'killed'}!`);
         // monster killed (monkilled -> mondied -> corpse_chance, then grow_up).
         killMonster(mdef, defCd);
         const grew = grow_up(magr, mdef, agrCd, defCd);
@@ -239,7 +313,7 @@ function passivemm(magr, mdef, mhitb, mdead, mwep, defCd) {
 
 // ── mhitm.c mattackm ─────────────────────────────────────────────────────────
 // C ref: mhitm.c:292.  A monster attacks another monster.  Returns M_ATTK_*.
-export function mattackm(magr, mdef) {
+export async function mattackm(magr, mdef) {
     if (!magr || !mdef) return M_ATTK_MISS;
     if (DEADMONSTER(magr) || DEADMONSTER(mdef)) return M_ATTK_MISS;
 
@@ -288,9 +362,17 @@ export function mattackm(magr, mdef) {
             dieroll = rnd(20 + i);             // mhitm.c:441
             strike = (tmp > dieroll) ? 1 : 0;
             if (strike) {
-                res[i] = mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
+                // C ref: mhitm.c hitmm() emits "X <verb> Y." (when visible) and
+                // THEN calls mdamagem() — so the hit message precedes any death
+                // message.  Neither consumes RNG.
+                if (mm_visible(magr, mdef))
+                    await emitMMmsg(`${Monnam(magr)} ${hit_verb(mattk.aatyp)} ${the_monnam(mdef)}.`);
+                res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
+            } else {
+                // C ref: mhitm.c missmm() — "X misses Y." (when visible).  No RNG.
+                if (mm_visible(magr, mdef))
+                    await emitMMmsg(`${Monnam(magr)} misses ${the_monnam(mdef)}.`);
             }
-            // miss -> missmm(): consumes no RNG (only emits a message).
             break;
 
         default:

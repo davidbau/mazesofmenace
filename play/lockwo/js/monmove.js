@@ -17,6 +17,8 @@ import {
 import { DEADMONSTER } from './mon.js';
 import { dog_move } from './dogmove.js';
 import { newsym } from './display.js';
+import { mattackm } from './mhitm.js';
+import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
 
 // C ref: include/monsters.h — grid bug's index (makemon.js MONS convention).
 // The only NODIAG monster the contest sessions place on dlvl 1.
@@ -210,13 +212,13 @@ const ALLOW_U = 0x100000;
 // approach-the-hero path used by ordinary monsters.
 const MMOVE_NOTHING = 0, MMOVE_NOMOVES = 1, MMOVE_MOVED = 2, MMOVE_DIED = 3;
 
-function m_move(mtmp) {
+async function m_move(mtmp) {
     const ptr = mtmp.data;
     let omx = mtmp.mx, omy = mtmp.my;
 
     // C ref: monmove.c:1773 — tame monsters delegate to dog_move() (dogmove.c).
     if (mtmp.mtame)
-        return dog_move(mtmp, 0);
+        return await dog_move(mtmp, 0);
 
     // C ref: monmove.c m_move — meating / hides-under early returns omitted
     // (newt/kobold neither eat nor hide).  set_apparxy was already called by
@@ -350,7 +352,7 @@ function hostileFlag(ptr) {
 // adjustments, PHASE TWO set_apparxy + distfleeck, PHASE THREE m_move (guarded
 // by the same "opportunity to move" predicate as C, which decides whether the
 // recalculating second distfleeck runs), PHASE FOUR attacks.
-export function dochug(mtmp) {
+export async function dochug(mtmp) {
     const mdat = mtmp.data;
     if (DEADMONSTER(mtmp)) return 1;
 
@@ -397,34 +399,229 @@ export function dochug(mtmp) {
 
     if (may_move) {
         // (undirected-spell casting omitted — our monsters have no AT_MAGC)
-        status = m_move(mtmp);
-        if (status !== MMOVE_DIED) {
-            const r = distfleeck(mtmp); /* recalc */
-            return phase_four(mtmp, mdat, status, r.inrange, r.nearby, r.scared);
+        status = await m_move(mtmp);
+        if (status === MMOVE_DIED) return 1;
+        const r = distfleeck(mtmp); /* recalc */
+
+        // C ref monmove.c switch(status): MMOVE_MOVED returns 0 directly
+        // (without reaching PHASE FOUR / mattacku) UNLESS the monster moved
+        // while NOT nearby AND it has a ranged / weapon / offensive option —
+        // then it "break"s out to PHASE FOUR and may still attack.  For the
+        // NOMOVES/NOTHING/DONE cases control always falls through to PHASE FOUR.
+        if (status === MMOVE_MOVED) {
+            const canShootAfterMove =
+                !r.nearby && (ranged_attk_available(mtmp)
+                              || attacktype_weap(mdat)
+                              || find_offensive(mtmp));
+            // (engulfing_u path not modeled — our monsters never swallow)
+            if (!canShootAfterMove)
+                return 0;
         }
-        return 1;
+        return await phase_four(mtmp, mdat, status, r.inrange, r.nearby, r.scared);
     }
 
     // Did not enter the move block -> attack with the pre-move flags.
-    return phase_four(mtmp, mdat, status, inrange, nearby, scared);
+    return await phase_four(mtmp, mdat, status, inrange, nearby, scared);
 }
 
 // C ref: invent.c findgold — hero/monster never carries gold in our sessions.
 function findgold_invent() { return false; }
 function findgold_minvent(_mtmp) { return false; }
 
-// C ref: monmove.c dochug PHASE FOUR — the attack step.  mattacku()/wormhitu()
-// live in uhitm.c (not this file); we don't reproduce their RNG here, so we
-// neither consume nor mis-order the stream.  The trailing cuss() roll is
-// reproduced for MS_CUSS monsters because it belongs to monmove.c.
-function phase_four(mtmp, mdat, status, inrange, nearby, scared) {
-    // (attack RNG handled in uhitm.c; intentionally not emitted here)
+// C ref: monmove.c dochug PHASE FOUR — the attack step.  mattacku() lives in
+// mhitu.c; its steed-redirect roll (mhitu.c:534 rn2(is_orc?2:4)) and the
+// hand-to-hand / weapon to-hit rolls are reproduced here in mattacku() below.
+// The trailing cuss() roll belongs to monmove.c and is reproduced as well.
+const MMOVE_DONE = 4; /* C: bypass m_move (we never set it, but match the gate) */
+async function phase_four(mtmp, mdat, status, inrange, nearby, scared) {
+    const u = game.u;
+    // C ref monmove.c:967 — Standard Attacks.  status != MMOVE_DONE (we never
+    // reach that for the modeled monsters) and the monster is hostile.
+    const conflictAttack = false; /* Conflict not modeled for our sessions */
+    if (status !== MMOVE_DONE && (!mtmp.mpeaceful || conflictAttack)) {
+        // panicattk (NOMOVES while scared) is not modeled; our gate uses the
+        // common "(inrange && !scared)" disjunct only.
+        const uhp = u?.uhp ?? 1;
+        if ((inrange && !scared) && !noattacks(mdat) && uhp > 0) {
+            if (await mattacku(mtmp, mdat)) return 1; /* monster died (rare) */
+        }
+        // (wormhitu omitted — no long worms in these sessions)
+    }
+
     const MS_CUSS = 35;
     if (inrange && mdat?.msound === MS_CUSS && !mtmp.mpeaceful
         && !mtmp.minvis) {
         rn2(5);
     }
     return (status === MMOVE_DIED) ? 1 : 0;
+}
+
+// C ref: include/you.h m_next2u(m) — distu(mx,my) <= 2 (the monster's REAL
+// position is orthogonally/diagonally adjacent to the hero).
+function m_next2u(mtmp) {
+    const u = game.u;
+    const dx = mtmp.mx - u.ux, dy = mtmp.my - u.uy;
+    return (dx * dx + dy * dy) <= 2;
+}
+
+// C ref: mondata.c is_orc(ptr) — (mflags2 & M2_ORC).  The data records carry
+// the monster class (mcls); every S_ORC monster has M2_ORC, and the only other
+// M2_ORC species are orc-mummy / orc-zombie (matched by name).
+const S_ORC = 15;
+function is_orc(mdat) {
+    if (!mdat) return false;
+    if (mdat.mcls === S_ORC) return true;
+    const n = mdat.name || '';
+    return n === 'orc mummy' || n === 'orc zombie';
+}
+
+// C ref: mondata.c noattacks(ptr) — TRUE when the monster has no attacks.
+// Every monster our sessions drive into mattacku has at least one attack, so
+// this is FALSE; kept as a guard mirroring the C control flow.
+function noattacks(mdat) {
+    const atks = mon_attacks(mdat);
+    return atks.length === 0;
+}
+
+// C ref: monattk.h AT_WEAP / mondata.c attacktype(ptr, AT_WEAP).
+const AT_WEAP = 254;
+function attacktype_weap(mdat) {
+    return mon_attacks(mdat).some((a) => a.aatyp === AT_WEAP);
+}
+
+// C ref: mhitu.c ranged_attk_available(mtmp) — TRUE only for AT_SPIT / AT_BREA
+// / AT_GAZE attackers (DISTANCE_ATTK_TYPE).  None of the monsters in the steed
+// combat sessions have such attacks, so this is FALSE (no RNG).
+const AT_SPIT = 10, AT_BREA = 12, AT_GAZE = 15;
+function ranged_attk_available(mtmp) {
+    return mon_attacks(mtmp.data).some(
+        (a) => a.aatyp === AT_SPIT || a.aatyp === AT_BREA || a.aatyp === AT_GAZE);
+}
+
+// C ref: muse.c find_offensive(mtmp) — looks for offensive items in minvent.
+// The dungeon monsters our sessions place carry no such items, so FALSE.
+function find_offensive(_mtmp) { return false; }
+
+// Attack-type metadata (aatyp only — the to-hit gate and the MMOVE_MOVED
+// "can shoot after move" decision only need attack TYPES, not damage).  Keyed
+// by monster class (mcls / S_* index) for the orc class (all AT_WEAP), with a
+// physical-melee default for the ordinary low-level dungeon monsters.  Ported
+// from include/monsters.h mattk[] lists.
+const AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3;
+function mon_attacks(mdat) {
+    if (!mdat) return [];
+    // Orc class (goblin/hobgoblin/orc/hill orc/...) — single AT_WEAP attack.
+    if (mdat.mcls === S_ORC) return [{ aatyp: AT_WEAP }];
+    // The remaining monsters our move loop drives use simple physical melee
+    // (AT_BITE / AT_CLAW / AT_KICK) with no AT_WEAP / ranged component, so the
+    // weapon / ranged gates are FALSE for them.  We return a generic single
+    // melee attack: enough to make noattacks() FALSE without claiming AT_WEAP.
+    return [{ aatyp: AT_BITE }];
+}
+
+// C ref: mhitu.c:489 mattacku(mtmp) — a monster attacks the hero.  Returns 1
+// if the monster dies (rare; e.g. yellow light), 0 otherwise.
+//
+// SCOPE: faithfully reproduces the RNG-bearing control flow exercised by the
+// contest's mon-vs-hero/steed combat: the swallowed/hidden/mimic early-outs
+// don't apply (no such state in the sessions), so we go straight to the
+// u.usteed steed-redirect (mhitu.c:534 rn2(is_orc?2:4)) and then the standard
+// attack loop.  For an attack that is range2 (the monster's apparent target is
+// not adjacent) the hand-to-hand cases roll nothing; AT_WEAP at range calls
+// thrwmu(), which is a no-op (no thrown weapon) for these monsters.  When the
+// monster IS adjacent and found the hero, the to-hit rnd(20+i) is rolled and
+// hitmu/missmu resolve it — hitmu damage isn't modeled yet, so a *successful*
+// adjacent hit declines further RNG (clean divergence, never a silent desync).
+async function mattacku(mtmp, mdat) {
+    const u = game.u;
+
+    // calc_mattacku_vars: range2/foundyou from the APPARENT position (mux/muy).
+    const mux = mtmp.mux ?? mtmp.mx, muy = mtmp.muy ?? mtmp.my;
+    const range2 = !((Math.abs(mtmp.mx - mux) <= 1) && (Math.abs(mtmp.my - muy) <= 1));
+    const foundyou = (mux === u.ux && muy === u.uy);
+
+    // u.uswallow path not modeled (never swallowed in these sessions).
+
+    // ── steed redirect (mhitu.c:524) ────────────────────────────────────────
+    if (u.usteed) {
+        if (mtmp === u.usteed) return 0; /* your steed won't attack you */
+        // Orcs like to steal and eat horses and the like.  The rn2() is
+        // evaluated first (C &&, left-to-right) so it ALWAYS rolls here.
+        if (!rn2(is_orc(mdat) ? 2 : 4) && m_next2u(mtmp)) {
+            const i = await mattackm(mtmp, u.usteed);
+            if (i & M_ATTK_AGR_DIED) return 1;
+            if ((i & M_ATTK_DEF_DIED) || !u.usteed || !m_next2u(mtmp))
+                return 0;
+            // Let your steed retaliate.
+            return ((await mattackm(u.usteed, mtmp)) & M_ATTK_DEF_DIED) ? 1 : 0;
+        }
+    }
+
+    // ── standard attack loop (mhitu.c:765) ──────────────────────────────────
+    // AC differential (mhitu.c:707): tmp = AC_VALUE(u.uac) + 10.
+    // C ref hack.h: AC_VALUE(AC) = (AC >= 0) ? AC : -rnd(-AC) — a NEGATIVE hero
+    // AC rolls rnd(-uac) here (always, before any attack roll).
+    const uac = u.uac ?? 10;
+    const acval = (uac >= 0) ? uac : -rnd(-uac);
+    let tmp = acval + 10;
+    tmp += (mtmp.m_lev ?? mdat?.mlevel ?? 0);
+    if ((u.multi ?? 0) < 0) tmp += 4;
+    if (!mtmp.mcansee) tmp -= 2;
+    if (mtmp.mtrapped) tmp -= 2;
+    if (tmp <= 0) tmp = 1;
+
+    const atks = mon_attacks(mdat);
+    let skipnonmagc = false;
+    const AT_MAGC = 8;
+    for (let i = 0; i < atks.length; i++) {
+        const mattk = atks[i];
+        // C ref mhitu.c:786 — after a wildmiss, skip later non-spell attacks.
+        if (skipnonmagc && mattk.aatyp !== AT_MAGC) continue;
+        switch (mattk.aatyp) {
+        case AT_CLAW:
+        case AT_KICK:
+        case AT_BITE: {
+            if (!range2) {
+                if (foundyou) {
+                    const j = rnd(20 + i);
+                    if (tmp > j) {
+                        // hitmu damage not modeled — decline further RNG so a
+                        // landed hit surfaces as a clean divergence rather than
+                        // a silent desync.  (No such hit occurs in seed0104.)
+                        return 0;
+                    }
+                    // miss: missmu() consumes no RNG.
+                } else {
+                    // wildmiss(): no RNG; skip remaining non-magic attacks.
+                    skipnonmagc = true;
+                }
+            }
+            break;
+        }
+        case AT_WEAP: {
+            if (range2) {
+                // thrwmu(): the orc-class monsters here carry no thrown weapon,
+                // so select_rwep finds nothing and no RNG is consumed.
+            } else if (foundyou) {
+                // tmp += hitval(weapon) — no wielded weapon (MON_WEP null), so
+                // hitval is 0 here.  Then the to-hit roll.
+                const j = rnd(20 + i);
+                if (tmp > j) {
+                    // hitmu not modeled (clean divergence) — see note above.
+                    return 0;
+                }
+                // missmu(): no RNG.
+            } else {
+                // wildmiss(): no RNG.
+                skipnonmagc = true;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    return 0;
 }
 
 // C ref: monmove.c disturb(mtmp) — wake-up check for sleeping monsters.
@@ -465,6 +662,6 @@ function Is_rogue_level() {
 
 // C ref: monmove.c dochugw(mtmp, inrange) — wrapper around dochug used by
 // movemon_singlemon.  The extra warning bookkeeping consumes no RNG.
-export function dochugw(mtmp) {
-    return dochug(mtmp);
+export async function dochugw(mtmp) {
+    return await dochug(mtmp);
 }

@@ -415,16 +415,32 @@ export function knows_object(otyp) {
 export function knows_class(oclass) {
     const bases = getBases();
     const samurai = disco_is_samurai();
-    // is_pole(): polearm weapons (GLAIVE..DWARVISH_MATTOCK on the JS table).
-    const isPole = (ct) => ct >= 59 && ct <= 71; // PARTISAN..DWARVISH_MATTOCK
+    const roleMnum = game.urole?.mnum ?? game.u?.umonnum;
+    const isKnight = roleMnum === 4;
+    const isRanger = roleMnum === 7;
+    const isRogue = roleMnum === 8;
+    // is_pole(): polearm weapons (PARTISAN..DWARVISH_MATTOCK on the JS table).
+    const isPole = (ct) => ct >= 59 && ct <= 71;
+    // C ref: include/obj.h is_launcher/is_ammo (skill in [P_BOW,P_CROSSBOW] /
+    // [-P_CROSSBOW,-P_BOW]) and is_spear (skill == P_SPEAR == 17).
+    const sk = (ct) => objects[ct]?.oc_skill ?? 0;
+    const isLauncher = (ct) => objects[ct]?.oc_class === WEAPON_CLASS && sk(ct) >= 20 && sk(ct) <= 22;
+    const isAmmo = (ct) => objects[ct]?.oc_class === WEAPON_CLASS && sk(ct) >= -22 && sk(ct) <= -20;
+    const isSpear = (ct) => objects[ct]?.oc_class === WEAPON_CLASS && sk(ct) === 17;
     const CORNUTHAUM = 100, DUNCE_CAP = 101, SMALL_SHIELD = 110;
+    const P_DAGGER = 1;
     for (let ct = bases[oclass]; ct < bases[oclass + 1]; ct++) {
         const o = objects[ct];
         if (!o) continue;
         if (ct === CORNUTHAUM || ct === DUNCE_CAP || ct === SMALL_SHIELD) continue;
         if (oclass === WEAPON_CLASS) {
             // arbitrary: only knights and samurai recognize polearms
-            if (!samurai && isPole(ct)) continue;
+            if (!isKnight && !samurai && isPole(ct)) continue;
+            // rangers know all launchers, ammo, and spears regardless of race,
+            // but not other weapons.
+            if (isRanger && !isLauncher(ct) && !isAmmo(ct) && !isSpear(ct)) continue;
+            // rogues know daggers, regardless of racial variations.
+            if (isRogue && sk(ct) !== P_DAGGER) continue;
         }
         if (o.oc_class === oclass && !o.oc_magic)
             knows_object(ct);

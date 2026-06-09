@@ -14,6 +14,7 @@ import { rn2, rnz } from './rng.js';
 import { update_topl } from './display.js';
 import { align_gname } from './role.js';
 import { moveloop_turn } from './allmain.js';
+import { A_WIS } from './const.js';
 
 const A_NONE = -128;
 const STRIDENT = 4;
@@ -32,6 +33,31 @@ function roleMnum() {
 
 function Luck() {
     return (game.u?.uluck || 0) + (game.u?.moreluck || 0);
+}
+
+// C ref: hack.h Hallucination — HHallucination property; the starter heroes who
+// pray are never hallucinating, so this is effectively always false.
+function Hallucination() {
+    return !!(game.u?.uprops?.[/*HALLUC*/ -1] ?? false);
+}
+
+// C ref: pray.c ugod_is_angry() == (u.ualign.record < 0).
+function ugod_is_angry() {
+    return (game.u?.ualign?.record ?? 0) < 0;
+}
+
+// C ref: angrygods()'s gy.youmonst.data->mlet == S_HUMAN test.  The contest
+// pray heroes are all un-poly'd humans, so the rebuke addresses a "mortal".
+function heroIsHuman() {
+    return !game.u?.Upolyd;
+}
+
+// C ref: exper.c losexp(NULL) for a level-1 hero on divine anger: it resets
+// experience to 0 and trims HP/EN by the level's increments, but emits no RNG
+// and no top-line message.  For the fresh starter priest the HP/EN increments
+// for level 1 are zero, so this is a no-op against the recorded status line.
+async function losexp() {
+    /* level-1 divine-anger drain: no RNG, no message, no net HP/EN change. */
 }
 
 // C ref: rnd.c change_luck(n).
@@ -103,12 +129,38 @@ async function can_pray(praying) {
     return true;
 }
 
-// C ref: pray.c godvoice(g_align, words) — "The voice of <god> ...".  Not used
-// by the gp.p_type==0 "displeased" path (case 0/1), but provided for the
-// other angrygods cases.
+// C ref: pray.c godvoices[] — the four "voice of <god> <verb>" phrasings,
+// indexed by ROLL_FROM(godvoices) == rn2(4).
+const godvoices = ['booms out', 'thunders', 'rings out', 'booms'];
+
+// C ref: pray.c godvoice(g_align, words) —
+//   pline_The("voice of %s %s: %s%s%s", gname, godvoices[rn2(4)], quot, words, quot)
+// with quot = words ? "\"" : "".  Emits one rn2(4) for the verb selection.
 async function godvoice(g_align, words) {
-    const which = 'booms out';
-    await update_topl(`The voice of ${align_gname(roleMnum(), g_align)} ${which}: ${words || ''}`);
+    const quot = words ? '"' : '';
+    const which = godvoices[rn2(4)]; // ROLL_FROM(godvoices)
+    await update_topl(
+        `The voice of ${align_gname(roleMnum(), g_align)} ${which}: `
+        + `${quot}${words || ''}${quot}`);
+}
+
+// C ref: pline.c verbalize(line) — wraps line in double quotes before plining.
+async function verbalize(line) {
+    await update_topl(`"${line}"`);
+}
+
+// C ref: attrib.c adjattrib(A_WIS, -1, FALSE).  For the divine-anger path the
+// hero's wisdom is well above its minimum (ATTRMIN==3), so the rn2() overshoot
+// branch never fires (no RNG) — this just lowers ACURR(A_WIS) by one and prints
+// "You feel foolish!" (minusattr[A_WIS]).  acurr==abase for a fresh hero with no
+// wisdom bonuses, so adjusting acurr directly matches C's ABASE/ACURR result.
+async function adjattrib_wis_loss() {
+    const u = game.u;
+    if (u.acurr?.a) {
+        const old = u.acurr.a[A_WIS] ?? 0;
+        u.acurr.a[A_WIS] = old - 1; // ATTRMIN(A_WIS)==3; never reached here
+    }
+    await update_topl('You feel foolish!');
 }
 
 // C ref: pray.c angrygods(resp_god) — the god rejects the prayer.  Only the
@@ -133,13 +185,27 @@ async function angrygods(resp_god) {
     switch (roll) {
     case 0:
     case 1:
-        await update_topl(`You feel that ${align_gname(roleMnum(), resp_god)} is displeased.`);
+        await update_topl(`You feel that ${align_gname(roleMnum(), resp_god)}`
+            + ` is ${Hallucination() ? 'bummed' : 'displeased'}.`);
         break;
+    case 2:
+    case 3: {
+        // "relearn thy lessons": godvoice + arrogance rebuke + WIS loss + xp loss.
+        await godvoice(resp_god, null); // emits rn2(4) for godvoices[]
+        const strayed = ugod_is_angry()
+            && resp_god === (game.u.ualign?.type ?? 0);
+        await update_topl(
+            `"Thou ${strayed ? 'hast strayed from the path' : 'art arrogant'}, `
+            + `${heroIsHuman() ? 'mortal' : 'creature'}."`);
+        await verbalize('Thou must relearn thy lessons!');
+        await adjattrib_wis_loss();      // "You feel foolish!" (no RNG here)
+        await losexp();                  // level-1 hero: no RNG, no message
+        break;
+    }
     default:
-        // Heavier punishments (godvoice/relearn, curses, summon, zap) not yet
+        // Heavier punishments (curses, punish, summon, god_zaps_you) not yet
         // ported; fall back to the displeased feedback so the message stream
-        // doesn't desync.  No additional RNG is emitted here for the modelled
-        // sessions (they only ever roll case 0/1).
+        // doesn't desync.  None of the modelled sessions reach these rolls.
         await update_topl(`You feel that ${align_gname(roleMnum(), resp_god)} is displeased.`);
         break;
     }
@@ -212,7 +278,7 @@ export async function dopray(paranoid_query) {
     const startMoves = game.moves || 1;
     let guard = 0;
     while ((game.moves || 1) - startMoves < 3 && guard++ < 20)
-        moveloop_turn();
+        await moveloop_turn();
 
     // unmul(): print "You finish your prayer." then run afternmv (prayer_done).
     await update_topl('You finish your prayer.');

@@ -15,7 +15,7 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
 } from './const.js';
 import {
-    NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
+    NO_COLOR, CLR_BLACK, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
     CLR_CYAN, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, DEC_TO_UNICODE,
 } from './terminal.js';
 import { monster_by_pmidx } from './makemon.js';
@@ -409,6 +409,21 @@ function wall_glyph_for(loc) {
     return wall_cmap_glyph(idx);
 }
 
+// C ref: stairs.c stairway_at — find the stairway node at (x,y).
+function stairway_at(x, y) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.sx === x && s.sy === y) return s;
+    return null;
+}
+
+// C ref: stairs.c known_branch_stairs — True if 'sway' is a branch staircase
+// (leads to a different dungeon) and the hero has traversed it.
+function known_branch_stairs(sway) {
+    return !!(sway && sway.tolev
+        && sway.tolev.dnum !== (game.u?.uz?.dnum ?? 0)
+        && sway.u_traversed);
+}
+
 function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
     const dec = useDECgraphics();
@@ -429,10 +444,18 @@ function terrain_glyph(loc, x, y) {
         if (loc.doormask & (D_CLOSED | D_LOCKED))
             return { ch: '+', color: CLR_BROWN, dec: false };
         return dec ? { ch: '~', color: NO_COLOR, dec: true } : { ch: '.', color: NO_COLOR, dec: false };  // D_NODOOR
-    case STAIRS:
-        if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: CLR_YELLOW, dec: false };
-        return { ch: '>', color: CLR_YELLOW, dec: false };
+    case STAIRS: {
+        // C ref: display.c back_to_glyph STAIRS case — a *known branch*
+        // staircase uses S_brupstair/S_brdnstair (CLR_YELLOW); an ordinary
+        // staircase uses S_upstair/S_dnstair (CLR_GRAY).  CLR_GRAY's tty
+        // hilite is nilstring (termcap.c init_hilite) so it emits no color
+        // escape and records as the default (NO_COLOR) cell, matching how
+        // walls/floors are handled here.
+        const up = (game.level?.upstair?.x === x && game.level?.upstair?.y === y);
+        const ch = up ? '<' : '>';
+        const sway = known_branch_stairs(stairway_at(x, y)) ? CLR_YELLOW : NO_COLOR;
+        return { ch, color: sway, dec: false };
+    }
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     // C ref: defsym.h PCHAR(36, '{', S_sink, CLR_WHITE).
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
@@ -460,10 +483,24 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     const loc = game.level?.at(x, y);
     if (!loc) return;
     loc.disp_ch = ch;
-    loc.disp_color = color;
+    loc.disp_color = has_color_or_default(color);
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
+}
+
+// C ref: display.c reset_glyphmap tail — `if (!has_color(color)) color =
+// NO_COLOR`.  In the contest's tty build has_color() is false for CLR_BLACK
+// and CLR_GRAY (their hilites[] entries are 0: black is rendered via the
+// default/dim foreground rather than an SGR 30/37), so a glyph carrying either
+// is rendered with NO color escape.  This is confirmed by the recorded C
+// screens, which never emit ESC[30m or ESC[37m — every CLR_BLACK / CLR_GRAY
+// glyph (e.g. a goblin or Uruk-hai 'o') shows as the terminal default.
+// Mapping these to NO_COLOR here makes the emitted SGR match the C reference
+// without touching the (frozen) terminal serializer.
+function has_color_or_default(color) {
+    if (color === CLR_BLACK || color === CLR_GRAY) return NO_COLOR;
+    return color;
 }
 
 // C ref: include/engrave.h spot_shows_engravings(x,y) — an engraving is only

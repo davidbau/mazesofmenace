@@ -138,8 +138,10 @@ export function fastforward_pre_mklev() {
     const ffRole = initrole_name();
     if (REAL_UINIT_ROLES.has(ffRole) || ffRole === 'knight')
         fastforward_newpw();
-    // u_init_misc
-    rn2(10);
+    // u_init_misc: u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED.
+    // Store the result so the ^X attributes display reports handedness correctly.
+    game.u = game.u || {};
+    game.u.uleft_handed = (rn2(10) === 0);
 }
 
 // Post-mklev startup: u_init_role, ini_inv, attributes, moveloop_preamble

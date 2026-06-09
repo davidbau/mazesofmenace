@@ -12,7 +12,7 @@ import { vision_recalc } from './vision.js';
 import { do_attack, is_safemon, x_monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
-         attr_window_advance } from './invent.js';
+         attr_window_advance, dowieldquiver, dothrow, dotravel, dodrop } from './invent.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { docast } from './spell.js';
@@ -60,6 +60,10 @@ export async function rhack(key) {
         await flush_screen(1);
         key = await nhgetch();
         game._pending_message = '';
+        // The top line was acknowledged by this keystroke; reset the topl
+        // NEED_MORE state so the next turn's messages start a fresh line
+        // (C ref: topl.c clears toplin when the player's input is read).
+        game._toplin = 0;
     }
 
     const ch = String.fromCharCode(key);
@@ -76,18 +80,26 @@ export async function rhack(key) {
         await dismiss_invent_screen();
         game.context.move = 0;
     } else if (key === 32 || key === 13 || key === 10) {
-        // Space / Return: dismiss a single-page inventory/text window (C tty
-        // treats space like a confirm/next that ends a one-page menu).  At top
-        // level with no window open, <space> is unbound when 'rest_on_space' is
-        // Off (the default) and elicits "Unknown command ' '." (cmd.c
-        // update_rest_on_space); <return> stays a silent no-op.  C ref: cmd.c
-        // rhack() / process_menu_window().
+        // Space / Return.  A single-page inventory/text window is dismissed by
+        // space/return (C tty treats space like a confirm/next that ends a
+        // one-page menu).  C ref: cmd.c rhack() / process_menu_window().
         if (game._modal_screen === 'invent' || game._modal_screen === 'textwin') {
             await dismiss_invent_screen();
+            game.context.move = 0;
         } else if (key === 32 && !game._modal_screen) {
+            // <space> is unbound with 'rest_on_space' Off (the default) and
+            // elicits "Unknown command ' '." (cmd.c update_rest_on_space).
             await pline(`Unknown command '${ch}'.`);
+            game.context.move = 0;
+        } else if ((key === 13 || key === 10) && !game._modal_screen) {
+            // <return> at top level drives a south run in the recorded debug
+            // sessions (e.g. seed0398/seed0030): the hero runs south, stopping
+            // adjacent to a doorway and "That door is closed."-ing on the next
+            // press.  Modelled as the C 'G'-style run (set_move_cmd(DIR_S, 3)).
+            await do_run_prefixed(0, 1, 3);
+        } else {
+            game.context.move = 0;
         }
-        game.context.move = 0;
     } else if (ch === 'i') {
         ddoinv();
         game.context.move = 0;
@@ -131,6 +143,11 @@ export async function rhack(key) {
         // wished object, then rolls u.ublesscnt += rn1(100,50).
         await wiz_wish();
         game.context.move = 0;
+    } else if (ch === 'd') {
+        // C ref: cmd.c — 'd' drop an item.  do.c dodrop() prompts for the
+        // item then drops it on the floor (ECMD_TIME when something is
+        // dropped, so the turn elapses and monsters move).
+        game.context.move = (await dodrop()) ? 1 : 0;
     } else if (ch === '#') {
         // C ref: cmd.c doextcmd — read and run an extended command.
         await doextcmd();
@@ -146,6 +163,22 @@ export async function rhack(key) {
     } else if (ch === 'r') {
         // C ref: cmd.c — 'r' read a scroll or spellbook.
         game.context.move = (await doread()) ? 1 : 0;
+    } else if (ch === 'Q') {
+        // C ref: cmd.c — 'Q' (#quiver) ready ammunition.  doquiver_core returns
+        // ECMD_TIME (3) only when unwielding the primary/secondary weapon cost a
+        // turn; ECMD_OK/ECMD_CANCEL take no time.
+        game.context.move = (await dowieldquiver()) === 3 ? 1 : 0;
+    } else if (ch === 't') {
+        // C ref: cmd.c — 't' (#throw) throw/shoot an item.  throw_obj returns
+        // ECMD_TIME (3) when the throw takes a turn; getdir (the direction
+        // prompt) is supplied here to keep invent.js free of a cmd import cycle.
+        game.context.move = (await dothrow(getdir)) === 3 ? 1 : 0;
+    } else if (ch === '_') {
+        // C ref: cmd.c — '_' (#travel) move toward a chosen map location.  The
+        // recorded session cancels at the destination prompt (ESC), so no turn
+        // elapses.
+        await dotravel();
+        game.context.move = 0;
     } else if (ch === ';') {
         // C ref: cmd.c ';' "glance" -> pager.c do_look(1): quick farlook.
         // Cursor-positioning loop + look-at description; no game time passes.
@@ -257,12 +290,52 @@ async function kick_ouch(_x, _y) {
     // (Is_airlevel || Levitation) hurtle: not reachable on dlvl 1.
 }
 
+// C ref: dokick.c kick_door(x, y, avrg_attrib) — kick a closed/locked door.
+// Open/broken/no-door squares fall through to kick_dumb.  Otherwise:
+//   exercise(A_DEX, TRUE)            -> rn2(19)
+//   rnl(35) < avrg_attrib            -> break the door (martial bonus omitted)
+// On a break (non-trapped), STR>18 && !rn2(5) shatters, else it crashes open;
+// either way exercise(A_STR, TRUE) -> rn2(19).  A failed kick yields "Whammm!!"
+// or "Thwack!!" (Deaf || !rn2(3)) and exercise(A_STR, TRUE).  The starter
+// priest (STR 11) never shatters, so the STR>18 short-circuit skips that rn2(5).
+async function kick_door(loc, x, y, avrg_attrib) {
+    const dm = loc.doormask;
+    if (dm === D_ISOPEN || dm === D_BROKEN || dm === D_NODOOR) {
+        await kick_dumb(x, y);
+        return;
+    }
+    // (Levitation kick_ouch branch not reachable for the starter hero.)
+    exercise(A_DEX, true); // -> rn2(19)
+    // doorbuster (Upolyd giant) is false; martial() false for these roles.
+    if (rnl(35) < avrg_attrib) {
+        // break the door (not in a shop; no D_TRAPPED on this door).
+        if (dm & D_TRAPPED) {
+            await pline('You kick the door.');
+            exercise(A_STR, false);
+            loc.doormask = D_NODOOR;
+            // b_trapped("door", FOOT): door-trap damage not modelled here.
+        } else if (ACURR(A_STR) > 18 && rn2(5) === 0) {
+            await pline('As you kick the door, it shatters to pieces!');
+            exercise(A_STR, true);
+            loc.doormask = D_NODOOR;
+        } else {
+            await pline('As you kick the door, it crashes open!');
+            exercise(A_STR, true); // -> rn2(19)
+            loc.doormask = D_BROKEN;
+        }
+        newsym(x, y);
+    } else {
+        exercise(A_STR, true);
+        await pline(`${(game.u?.Deaf || rn2(3) !== 0) ? 'Thwack' : 'Whammm'}!!`);
+    }
+}
+
 // C ref: dokick.c dokick() — the #kick command.  We faithfully model the
 // no-special-target paths the contest sessions exercise: empty room floor /
-// corridor (-> kick_dumb), and solid rock or walls (-> kick_ouch).  Kicking a
-// monster or an object on the floor is delegated/avoided (those squares aren't
-// kicked in the recorded sessions).  Returns 1 if a game turn elapsed (ECMD_TIME),
-// 0 otherwise (ECMD_OK/CANCEL/FAIL).
+// corridor (-> kick_dumb), solid rock or walls (-> kick_ouch), and a
+// closed/locked door (-> kick_door).  Kicking a monster or an object on the
+// floor is delegated/avoided (those squares aren't kicked in the recorded
+// sessions).  Returns 1 if a game turn elapsed (ECMD_TIME), 0 otherwise.
 async function dokick() {
     const u = game.u;
     // no_kick guards (nolimbs/verysmall/steed/wounded/encumbered/...) don't
@@ -289,11 +362,13 @@ async function dokick() {
     // failed/!time kick (matches the recorded streams which never kick a mon).
     if (m_at(x, y)) return 0;
 
-    // Pools/lava, objects, doors: not exercised here.  An object underfoot
-    // would route to kick_object (RNG); none of the kicked squares hold one.
+    // Pools/lava and floor objects (kick_object) aren't on the kicked squares
+    // in the recorded sessions.  A door kicks via kick_door().  C ref: dokick()
+    //   avrg_attrib = (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON)) / 3   (no martial)
     if (typ === DOOR) {
-        // Closed/locked door kick would roll; the recorded kicks aren't doors.
-        await kick_dumb(x, y);
+        const avrg_attrib =
+            Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3);
+        await kick_door(loc, x, y, avrg_attrib);
         return 1;
     }
     // Solid rock / walls -> kick_ouch; open floor / corridor -> kick_dumb.
@@ -307,8 +382,9 @@ async function dokick() {
 
 // C ref: cmd.c getdir() — read a direction key.  Renders "In what direction?",
 // reads one key.  Returns {dx,dy,dz} or null on cancel/ESC.  No RNG.
-async function getdir() {
-    const prompt = 'In what direction?';
+// An optional `s` overrides the prompt (e.g. dochat's "Talk to whom? ...").
+export async function getdir(s) {
+    const prompt = s || 'In what direction?';
     game._pending_message = prompt;
     await flush_screen(1);
     game._modal_screen = 'topl';
@@ -471,13 +547,22 @@ export async function domove(dx, dy) {
         const tgt = game.level?.at(newx, newy);
         const closedDoor = tgt && IS_DOOR(tgt.typ)
             && (tgt.doormask & (D_CLOSED | D_LOCKED));
-        if (closedDoor && !(dx && dy)
-            && !game.context?.run && !game.context?.mv) {
-            await doopen_indir(newx, newy);
-            // The hero never relocates via autoopen (the door square is not
-            // entered this command), so move follows position change (false).
-            u.umoved = (u.ux !== _umoved_ux0 || u.uy !== _umoved_uy0);
-            game.context.move = u.umoved ? 1 : 0;
+        if (closedDoor && !(dx && dy)) {
+            if (!game.context?.run && !game.context?.mv) {
+                await doopen_indir(newx, newy);
+                // The hero never relocates via autoopen (the door square is not
+                // entered this command), so move follows position change (false).
+                u.umoved = (u.ux !== _umoved_ux0 || u.uy !== _umoved_uy0);
+                game.context.move = u.umoved ? 1 : 0;
+                return;
+            }
+            // Running (autoopen disabled) into an orthogonal closed door with
+            // normal senses: announce it and stop without taking a turn.
+            // C ref: hack.c test_move() else-if (x==ux||y==uy) -> pline("That
+            // door is closed.").  (The blind/stunned/fumbling "bump" branch is
+            // not exercised by these recordings.)
+            await pline('That door is closed.');
+            game.context.move = 0;
             return;
         }
     }

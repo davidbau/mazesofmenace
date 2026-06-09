@@ -679,7 +679,8 @@ export function Hello(rolenum) {
 // roles[].gods is [lawfulGod, neutralGod, chaoticGod].
 function godForAlign(rolenum, alignType) {
     // C ref: role.c role_init — a role with no own gods (Priest) inherits the
-    // randomly chosen flags.pantheon role's god names.
+    // randomly chosen flags.pantheon role's god names.  rolenum is the index into
+    // the roles[] array (NOT the PM_ mnum; the two differ for Rogue/Ranger).
     let gods = roles[rolenum]?.gods;
     if (!gods && Number.isInteger(game.pantheon))
         gods = roles[game.pantheon]?.gods;

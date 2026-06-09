@@ -668,9 +668,27 @@ const OBJECT_DATA = [
 // material-derived fallback.  Value 8 = NO_COLOR (generic placeholders only).
 const OC_COLOR = [8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,6,3,0,7,6,6,6,6,3,6,3,0,6,7,6,6,6,3,0,7,6,6,6,6,15,15,6,6,6,3,0,6,6,7,6,3,6,6,6,6,0,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,6,6,3,3,3,6,6,3,3,3,0,3,3,3,3,0,6,3,4,4,0,15,6,2,6,6,7,11,14,1,15,9,0,4,2,11,7,11,14,1,15,9,0,4,2,11,6,15,11,6,6,7,7,6,0,6,3,6,0,3,0,5,15,7,0,0,3,3,1,15,3,3,13,15,3,3,3,3,2,6,1,6,6,7,3,3,3,3,3,6,3,3,3,3,3,3,3,3,3,7,7,1,9,15,7,3,2,11,3,6,4,1,15,15,6,11,11,6,6,14,11,7,10,3,5,14,6,6,6,6,6,6,6,6,6,6,6,6,6,3,3,15,3,3,3,3,6,6,15,15,15,11,11,11,0,7,14,14,0,5,3,3,6,6,6,6,7,1,1,6,6,6,3,3,15,15,15,15,3,3,11,11,3,3,6,6,15,11,7,3,3,15,3,3,3,3,7,3,2,0,2,2,1,9,10,10,11,9,2,15,3,11,15,12,11,11,15,3,3,3,3,6,1,3,9,11,10,2,3,6,3,5,15,2,15,14,15,7,15,7,0,7,3,6,0,15,3,6,15,15,9,15,15,15,3,15,15,14,14,15,15,11,15,15,6,15,15,15,15,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,15,3,6,15,15,6,15,14,3,15,13,1,9,11,5,6,2,3,6,12,4,4,5,5,5,3,2,3,3,7,15,15,11,11,7,11,15,15,15,15,15,7,15,12,15,14,3,14,3,3,1,3,3,7,6,11,11,7,15,14,6,6,6,6,6,6,6,6,6,6,8,8,8,11,15,15,1,9,4,0,2,2,11,2,3,3,0,15,11,1,5,1,5,0,9,2,15,4,1,3,9,11,0,2,5,7,7,7,7,7,7,15,6,6,3,3];
 
+// Per-weapon skill subtype (oc_skill == oc_subtyp), ported from the WEAPON/
+// PROJECTILE/BOW macros in include/objects.h.  Ammunition uses the negative of
+// its launcher's skill (e.g. arrow == -P_BOW), which drives is_ammo/is_launcher/
+// matching_launcher (include/obj.h).  Sparse map by otyp; all other objects'
+// oc_skill is P_NONE (0).  C ref: skills.h P_DAGGER..P_CROSSBOW.
+const OC_SKILL = {
+    18: -20, 19: -20, 20: -20, 21: -20, 22: -20, 23: -22, 24: -23, 25: -24,
+    26: -25, 27: 17, 28: 17, 29: 17, 30: 17, 31: 17, 32: 17, 33: 18, 34: 1,
+    35: 1, 36: 1, 37: 1, 38: 1, 39: 2, 40: 2, 41: 2, 42: 2, 43: 2, 44: 3,
+    45: 3, 46: 5, 47: 5, 48: 5, 49: 5, 50: 9, 51: 9, 52: 6, 53: 6, 54: 7,
+    55: 8, 56: 7, 57: 8, 58: 6, 59: 16, 60: 16, 61: 16, 62: 16, 63: 16,
+    64: 16, 65: 16, 66: 16, 67: 16, 68: 16, 69: 16, 70: 16, 71: 4, 72: 19,
+    73: 11, 74: 11, 75: 12, 76: 14, 77: 10, 78: 26, 79: 15, 80: 10, 81: 13,
+    82: 26, 83: 20, 84: 20, 85: 20, 86: 20, 87: 21, 88: 22,
+};
+
 export const objects = OBJECT_DATA.map(([otyp, sym, oclass, prob, flags, material, dir, name]) => ({
     otyp, sym, oclass, oc_class: oclass, oc_prob: prob, flags, material, dir, name,
     oc_color: OC_COLOR[otyp] != null ? OC_COLOR[otyp] : 8,
+    oc_skill: OC_SKILL[otyp] != null ? OC_SKILL[otyp] : 0,
+    oc_subtyp: OC_SKILL[otyp] != null ? OC_SKILL[otyp] : 0,
 }));
 
 const objectsByClass = Array.from({ length: MAXOCLASSES + 1 }, () => []);
@@ -1041,6 +1059,29 @@ export function start_corpse_timeout(body) {
     }
 
     start_timer(when, TIMER_OBJECT, action, body);
+}
+
+// C ref: mkobj.c set_corpsenm() — change a corpse/statue/figurine's monster id
+// and (re)start its decay/revive timer.  Only the CORPSE branch is reachable
+// for the themed-room buried-corpse fill; the old timer stop and weight recalc
+// consume no RNG, so the only RNG side-effect is start_corpse_timeout().
+export function set_corpsenm(obj, id) {
+    if (!obj) return;
+    obj.corpsenm = id;
+    if (obj.otyp === CORPSE) {
+        start_corpse_timeout(obj);
+        obj.owt = weight(obj);
+    } else {
+        obj.owt = weight(obj);
+    }
+}
+
+// C ref: zap.c obj_resists(obj, ochance, achance) — burying a non-artifact,
+// non-special corpse via bury_an_obj() consumes a single rn2(100).  We expose
+// this minimal form (the only callsite that matters for level-gen RNG parity is
+// bury_an_obj's obj_resists(otmp, 0, 0) on a buried themed-room corpse).
+export function obj_resists_rng() {
+    return rn2(100);
 }
 
 // C ref: objects.h oc_weight — the base weight of a single object of each

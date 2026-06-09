@@ -236,7 +236,7 @@ const WRP = [
 function newData(bp) {
     return {
         otmp: null,
-        cnt: 0, spe: 0, spesgn: 0, typ: 0,
+        cnt: 0, spe: 0, spesgn: 0, typ: 0, rechrg: 0,
         very: 0, blessed: 0, uncursed: 0, iscursed: 0,
         ispoisoned: 0, isgreased: 0, eroded: 0, eroded2: 0, erodeproof: 0,
         halfeaten: 0, islit: 0, unlabeled: 0, ishistoric: 0, isdiluted: 0,
@@ -333,6 +333,53 @@ function matchAny(bp, words) {
 }
 
 function wizard() { return !!(game.flags && game.flags.debug) || !!game.wizard || true; }
+
+// readobjnam_parse_charges (C objnam.c:4178): strip a trailing "(spe)",
+// "(rechrg:spe)" or "(lit)" annotation from d.bp, setting d.spe / d.rechrg /
+// d.spesgn / d.islit.  Mismatched parens leave spe/rechrg at 0 and discard the
+// trailing characters; otherwise any text after the ')' is spliced back on.
+// C ref: SPE_LIM = 99 (obj.h:49, declared above); recharge_limit = 7.
+function parse_charges(d) {
+    const op = d.bp.length > 1 ? d.bp.lastIndexOf('(') : -1;
+    if (op >= 0) {
+        let keeptrailingchars = true;
+        // C: if the '(' is preceded by a space, drop that space too.
+        const cut = (op > 0 && d.bp[op - 1] === ' ') ? op - 1 : op;
+        const head = d.bp.slice(0, cut);          // bp truncated before '('
+        let p = d.bp.slice(op + 1);               // chars after '('
+        let tail = '';                            // chars after the ')'
+        if (strncmpi(p, 'lit)', 4)) {
+            d.islit = 1;
+            // C points at ')'; trailing chars are whatever follows it.
+            tail = p.slice(4);
+        } else {
+            d.spe = atoiPrefix(p);
+            let i = 0;
+            while (i < p.length && digit(p[i])) i++;
+            if (p[i] === ':') {
+                i++;
+                d.rechrg = d.spe;
+                const rest = p.slice(i);
+                d.spe = atoiPrefix(rest);
+                let j = 0;
+                while (j < rest.length && digit(rest[j])) j++;
+                i += j;
+            }
+            if (p[i] !== ')') {
+                d.spe = d.rechrg = 0;
+                keeptrailingchars = false; /* mis-matched parens */
+            } else {
+                d.spesgn = 1;
+                tail = p.slice(i + 1); /* text past ')' */
+            }
+        }
+        d.bp = keeptrailingchars ? head + tail : head;
+    }
+    // spe is a schar in C; clamp and normalise sign.
+    if (d.spe < 0) { d.spesgn = -1; d.spe = Math.abs(d.spe); }
+    if (d.spe > SPE_LIM) d.spe = SPE_LIM;
+    if (d.rechrg < 0 || d.rechrg > 7) d.rechrg = 7;
+}
 
 // readobjnam_postparse1: " named "/" called "/pair-of/etc.  Returns a code:
 //   0 continue, 1 srch, 2 typfnd, 3 return otmp, 4 any.
@@ -530,7 +577,9 @@ export function readobjnam(bp) {
     if (preparse(d)) return finalize(d, /*any=*/true);
     if (!d.cnt) d.cnt = 1;
 
-    // parse_charges (recharge/charges) is RNG-free and not exercised; skip.
+    // parse_charges: strip a trailing "(spe)"/"(rechrg:spe)"/"(lit)" annotation
+    // so the remaining name (e.g. "wand of polymorph") parses correctly.
+    parse_charges(d);
 
     let code = postparse1(d);
     if (code === 1) return srch(d);

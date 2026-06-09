@@ -19,6 +19,7 @@ import {
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     ROLE_MALE, ROLE_FEMALE, ROLE_GENDMASK,
 } from './const.js';
+import { objects as mkobjObjects } from './mkobj.js';
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
 function attrval(attrindx, v) {
@@ -47,6 +48,10 @@ export function enlightenment_lines() {
     const u = game.u || {};
     const rolemnum = game.urole?.mnum ?? u.umonnum ?? 9;
     const roleDef = roles.find((r) => r.mnum === rolemnum) || roles[rolemnum] || {};
+    // align_gname()/godForAlign() index the roles[] ARRAY (not the PM_ mnum,
+    // which differs for Rogue/Ranger), so resolve the array index here.
+    const roleArrIdx = roles.findIndex((r) => r.mnum === rolemnum);
+    const roleIdx = roleArrIdx >= 0 ? roleArrIdx : rolemnum;
     const female = !!game.flags?.female;
     const innategend = female ? 1 : 0;
 
@@ -94,14 +99,14 @@ export function enlightenment_lines() {
     youAre(roleBuf);
 
     // alignment + pantheon (bypasses you_are to omit ending period)
-    out(` You are ${alignStr(aligntype)}, on a mission for ${align_gname(rolemnum, aligntype)}`);
+    out(` You are ${alignStr(aligntype)}, on a mission for ${align_gname(roleIdx, aligntype)}`);
     let pan = ' who is opposed by';
     if (aligntype !== A_LAWFUL)
-        pan += ` ${align_gname(rolemnum, A_LAWFUL)} (${alignStr(A_LAWFUL)}) and`;
+        pan += ` ${align_gname(roleIdx, A_LAWFUL)} (${alignStr(A_LAWFUL)}) and`;
     if (aligntype !== A_NEUTRAL)
-        pan += ` ${align_gname(rolemnum, A_NEUTRAL)} (${alignStr(A_NEUTRAL)})${aligntype !== A_CHAOTIC ? ' and' : ''}`;
+        pan += ` ${align_gname(roleIdx, A_NEUTRAL)} (${alignStr(A_NEUTRAL)})${aligntype !== A_CHAOTIC ? ' and' : ''}`;
     if (aligntype !== A_CHAOTIC)
-        pan += ` ${align_gname(rolemnum, A_CHAOTIC)} (${alignStr(A_CHAOTIC)})`;
+        pan += ` ${align_gname(roleIdx, A_CHAOTIC)} (${alignStr(A_CHAOTIC)})`;
     pan += '.';
     out(pan);
 
@@ -196,21 +201,28 @@ function weaponInsight(youAre, youHave) {
     }
 }
 
-// C ref: weapon.c weapon_descr/skill_name — describe a weapon by its skill
-// class name (a katana reads "long sword").  Restricted to the weapon types a
-// role can start wielding; falls back to the object's own name otherwise.
-const SKILL_BY_OTYP = new Map([
-    [56, 'long sword'],     // KATANA
-    [46, 'short sword'],    // SHORT_SWORD (wakizashi)
-    [86, 'bow'],            // YUMI
-    [58, 'long sword'],     // LONG_SWORD
-    [52, 'broadsword'],     // BROADSWORD (ninja-to)
-]);
+// C ref: weapon.c skill_name(weapon_type(obj)) — describe a weapon by its skill
+// class name (a katana reads "long sword", a dagger "dagger").  weapon_type is
+// |oc_skill| (ammo's skill is the negated launcher skill).  P_NAME() uses the
+// representative object's name except for a few PN_* overrides (saber, hammer,
+// polearms, whip).  C ref: weapon.c skill_names_indices/odd_skill_names.
+const SKILL_NAME_BY_NUM = {
+    1: 'dagger', 2: 'knife', 3: 'axe', 4: 'pick-axe', 5: 'short sword',
+    6: 'broadsword', 7: 'long sword', 8: 'two-handed sword', 9: 'saber',
+    10: 'club', 11: 'mace', 12: 'morning star', 13: 'flail', 14: 'hammer',
+    15: 'quarterstaff', 16: 'polearms', 17: 'spear', 18: 'trident', 19: 'lance',
+    20: 'bow', 21: 'sling', 22: 'crossbow', 23: 'dart', 24: 'shuriken',
+    25: 'boomerang', 26: 'whip', 27: 'unicorn horn',
+};
+function weapon_type(obj) {
+    const sk = mkobjObjects?.[obj.otyp]?.oc_skill ?? 0;
+    return sk < 0 ? -sk : sk; // P_NONE (0) for non-weapons
+}
 function weaponDescr(obj) {
-    return SKILL_BY_OTYP.get(obj.otyp) || obj.name || 'weapon';
+    return SKILL_NAME_BY_NUM[weapon_type(obj)] || obj.name || mkobjObjects?.[obj.otyp]?.name || 'weapon';
 }
 function weaponSkillName(obj) {
-    return SKILL_BY_OTYP.get(obj.otyp) || null;
+    return SKILL_NAME_BY_NUM[weapon_type(obj)] || null;
 }
 function weaponSkillLevel(_obj) {
     // skill_init sets P_BASIC for every weapon-type carried at game start.

@@ -23,7 +23,7 @@
 import { game } from './gstate.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { nhgetch } from './input.js';
-import { pline, flush_screen, newsym } from './display.js';
+import { pline, flush_screen, newsym, update_topl } from './display.js';
 import { m_at } from './display.js';
 import { x_monnam } from './uhitm.js';
 import { isok, MAXULEV, W_SADDLE, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
@@ -262,7 +262,26 @@ async function dismount_steed_bychoice() {
         return;
     }
 
-    await pline("You've been through the dungeon on a horse with no name.");
+    // C ref: steed.c dismount_steed() — when the steed has no given name,
+    //   pline("You've been through the dungeon on %s with no name.",
+    //         an(pmname(mtmp->data, Mgender(mtmp))));
+    // pmname is the bare species name (no "saddled" adjective, no article),
+    // and an() prepends a/an.  x_monnam(.,ARTICLE_A) yields "a <species>" from
+    // mtmp.data.name (the species), which for the recorded steed is "pony".
+    // Route through update_topl so a following pet-combat message (the grounded
+    // steed attacking an adjacent hostile on the same turn) pages this line with
+    // a --More-- exactly as C's topl buffer does.
+    {
+        const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
+        if (!given) {
+            const species = (mtmp?.data?.name || 'monster');
+            const an = (/^[aeiou]/i.test(species) ? 'an ' : 'a ') + species;
+            await update_topl(`You've been through the dungeon on ${an} with no name.`);
+        } else {
+            // C: You("dismount %s.", mon_nam(mtmp));
+            await update_topl(`You dismount ${mon_nam(mtmp)}.`);
+        }
+    }
 
     // Release the steed.
     u.usteed = null;

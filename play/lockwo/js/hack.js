@@ -243,8 +243,8 @@ function runOntoStopTerrain() {
 
 // Run the per-turn machinery for the step that just elapsed.  C: the top of
 // allmain.c moveloop_core() runs this when svc.context.move is set.
-function takeTurn() {
-    moveloop_turn();
+async function takeTurn() {
+    await moveloop_turn();
 }
 
 // Drive an entire run/travel.  `run` is the C svc.context.run value (1 = run
@@ -275,7 +275,7 @@ async function run_movement(run) {
 
         // The move happened: run its once-per-turn machinery.
         runOntoStopTerrain();          // may set game.multi = 0 (door etc.)
-        takeTurn();
+        await takeTurn();
 
         if (game.multi <= 0) break;    // nomul triggered -> stop after this turn
 

@@ -25,6 +25,7 @@ import {
     weight,
 } from './mkobj.js';
 import { roles, races } from './role.js';
+import { knows_class, discover_object } from './o_init.js';
 
 export const UNDEF_TYP = 0;
 export const UNDEF_SPE = 0x7f;
@@ -352,6 +353,16 @@ const Magicmarker = [
 
 const Lamp = [
     { trotyp: OIL_LAMP, trspe: 1, trclass: TOOL_CLASS, trquan_min: 1, trquan_max: 1, trbless: 0 },
+    { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 },
+];
+
+// C ref: u_init.c Wishing[] = { { WAN_WISHING, 3, WAND_CLASS, 1, 1, 0 }, ... }.
+// u_init_inventory_attrs() runs `if (discover) ini_inv(Wishing)` in explore
+// (discover) mode.  The WAND_CLASS mksobj emits next_ident rnd(2) + the
+// WAND_CLASS blessorcurse rn2(17); WAN_WISHING takes the spe=1 branch so no
+// rn1 spe roll happens.  This precedes ini_inv(Money) in the stream.
+const Wishing = [
+    { trotyp: WAN_WISHING, trspe: 3, trclass: WAND_CLASS, trquan_min: 1, trquan_max: 1, trbless: 0 },
     { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 },
 ];
 
@@ -910,6 +921,14 @@ function u_init_race() {
     }
 }
 
+// C ref: explore (discover) mode flag.  The harness records playmode:explore
+// in OPTIONS; parseNethackrc stores it as flags.playmode === 'explore' (also
+// accept an explicit flags.explore / flags.discover for robustness).
+function is_discover_mode() {
+    const f = game.flags || {};
+    return !!(f.explore || f.discover || f.playmode === 'explore');
+}
+
 function current_role_attrs() {
     return ROLE_ATTRS.get(current_role_mnum());
 }
@@ -1049,6 +1068,9 @@ export function u_init_role() {
         break;
     case PM_RANGER:
         ini_inv(Ranger);
+        // C ref: u_init.c — rangers pre-discover all launchers, ammo, and spears
+        // (bows/arrows/spears), excluding polearms and other weapons.  No RNG.
+        knows_class(WEAPON_CLASS);
         break;
     case PM_ROGUE:
         if (game.u) game.u.umoney0 = 0;
@@ -1107,11 +1129,15 @@ export function u_init_inventory_attrs() {
         u_init_role();
         u_init_race();
         // C ref: u_init.c u_init_inventory_attrs — `if (discover)
-        // ini_inv(Wishing);` (wizard-mode only, not exercised by these
-        // sessions) then `if (u.umoney0) ini_inv(Money);`.  The Tourist
-        // (and Healer) start with rnd()-rolled gold, so the Money trobj
-        // must run: it emits trquan() (rn2(1)) plus the GOLD_PIECE
-        // next_ident rnd(2) at exactly this stream position.
+        // ini_inv(Wishing);` then `if (u.umoney0) ini_inv(Money);`.
+        // `discover` is the explore-mode flag (playmode:explore); in that
+        // mode C grants a wand of wishing, whose creation consumes the
+        // WAND_CLASS next_ident rnd(2) + blessorcurse rn2(17) right before
+        // the gold.  The Tourist (and Healer) start with rnd()-rolled gold,
+        // so the Money trobj also runs: it emits trquan() (rn2(1)) plus the
+        // GOLD_PIECE next_ident rnd(2) at exactly this stream position.
+        if (is_discover_mode())
+            ini_inv(Wishing);
         if (game.u?.umoney0)
             ini_inv(Money);
         init_attr(75);
@@ -1133,4 +1159,11 @@ export function moveloop_preamble_startup() {
     game.context = game.context || {};
     game.context.rndencode = rnd(9000);
     game.context.seer_turn = rnd(30);
+
+    // C ref: allmain.c set_wear() side-effects of starting gear.  A worn cloak
+    // of displacement is recognized by a sighted hero (the displacement effect
+    // is apparent), so its type is discovered — this is what makes it show as
+    // "cloak of displacement (opera cloak)" in the discoveries window.
+    if (game.uarmc?.otyp === CLOAK_OF_DISPLACEMENT && !game.Blind)
+        discover_object(CLOAK_OF_DISPLACEMENT, true, true);
 }

@@ -631,7 +631,7 @@ function pet_ranged_attk(mtmp) {
 }
 
 // C ref: dogmove.c dog_move(mtmp, after).  Drives one pet move.
-export function dog_move(mtmp, after) {
+export async function dog_move(mtmp, after) {
     const edog = mtmp.edog;
     if (!edog) return MMOVE_NOTHING;
 
@@ -687,7 +687,7 @@ export function dog_move(mtmp, after) {
         // reaches the cursed-object / backtrack / distance logic below.
         const mtmp2 = MON_AT(nx, ny);
         if (mtmp2) {
-            const r = dog_attack_mon(mtmp, mtmp2, omx, omy, after);
+            const r = await dog_attack_mon(mtmp, mtmp2, omx, omy, after);
             if (r !== null) return r; // attacked -> done with this move
             continue;                 // balked -> next candidate square
         }
@@ -760,7 +760,7 @@ function GDIST(x, y, g) { return dist2(x, y, g.gx, g.gy); }
 // Decides whether the pet (mtmp) attacks an adjacent monster (mtmp2); returns
 // an MMOVE_* code when it does (or when `after` short-circuits), or null when
 // the pet balks at this foe (caller skips the square).
-function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
+async function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
     // balk: highest defender level the pet is willing to engage, scaled by the
     // pet's current HP fraction.  C: m_lev + (5*mhp/mhpmax) - 2.  The starting
     // pets don't track mhp/mhpmax here, so a missing fraction is treated as full
@@ -788,7 +788,7 @@ function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
 
     if (after) return MMOVE_NOTHING; // hit only once each move
 
-    let mstatus = mattackm(mtmp, mtmp2); // dogmove.c:1151
+    let mstatus = await mattackm(mtmp, mtmp2); // dogmove.c:1151
 
     if (mstatus & M_ATTK_AGR_DIED) return MMOVE_DIED;
 
@@ -798,7 +798,7 @@ function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
         && mtmp2.mlstmv !== game.moves
         // onscary() is false for these monsters (no temple/Elbereth here)
         && monnear(mtmp2, mtmp.mx, mtmp.my)) {
-        mstatus = mattackm(mtmp2, mtmp);          // return attack (dogmove.c:1165)
+        mstatus = await mattackm(mtmp2, mtmp);    // return attack (dogmove.c:1165)
         if (mstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
     }
     return MMOVE_DONE;

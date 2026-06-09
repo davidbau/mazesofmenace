@@ -199,14 +199,42 @@ export class NethackGame {
         const disp = game.nhDisplay;
         if (!disp?.putstr) return;
         this._renderStartupScreen(game.plname || '');
-        const col = 41;
         const female = sel.gender === 1;
         const role = roleName(sel.role, female);
         const race = races[sel.race]?.adj || 'human';
         const gender = genders[sel.gender]?.adj || 'male';
         const align = aligns[sel.align]?.adj || 'neutral';
+        const nameLine = `${game.plname || 'Hero'} the ${align} ${gender} ${race} ${role}`;
+        // C ref: win/tty/wintty.c display_nhwindow NHW_MENU — the menu is
+        // right-aligned: offx = max(10, cols - (maxcol) - 1) where maxcol is the
+        // widest stored menu string + 1 (tty_putstr stores strlen(str)+1).  For
+        // selectable items the stored string is "c - text" (4-char accel
+        // prefix; see tty_add_menu).  The title (added via tty_end_menu) and the
+        // unselectable name line are stored verbatim.  Compute offx from the
+        // actual line widths so wider/narrower names line up exactly with C.
+        const lines = [
+            'Is this ok? [ynaq]',     // title (no accelerator)
+            nameLine,                 // unselectable str (no accelerator)
+            'y - Yes; start game',    // formatted item ("c - " + text)
+            'n - No; choose role again',
+            'a - Not yet; choose another name',
+            'q - Quit',
+        ];
+        let maxlen = 0;
+        for (const l of lines) if (l.length > maxlen) maxlen = l.length;
+        const maxcol = maxlen + 1;
+        const col = Math.max(10, 80 - maxcol - 1);
+        // C ref: win/tty/wintty.c process_menu_window — each menu line does
+        // tty_curs(window,1,line) [=> screen col offx] then cl_end() then prints
+        // a leading space, so the menu text sits at offx+1 and column offx (one
+        // left of the text) plus everything to EOL is cleared.  Our `col` is the
+        // text column (offx+1); clear from col-1 to EOL on every menu row so the
+        // version-banner overflow underneath the menu is wiped exactly like C.
+        const menuRows = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+        for (const r of menuRows)
+            for (let c = col - 1; c < 80; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
         disp.putstr(col, 0, 'Is this ok? [ynaq]', NO_COLOR, ATR_INVERSE);
-        disp.putstr(col, 2, `${game.plname || 'Hero'} the ${align} ${gender} ${race} ${role}`, NO_COLOR);
+        disp.putstr(col, 2, nameLine, NO_COLOR);
         disp.putstr(col, 4, 'y * Yes; start game', NO_COLOR);
         disp.putstr(col, 5, 'n - No; choose role again', NO_COLOR);
         disp.putstr(col, 6, 'a - Not yet; choose another name', NO_COLOR);

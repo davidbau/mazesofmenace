@@ -10,10 +10,11 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, topl_more, update_topl } from './display.js';
+import { pline, topl_more, update_topl, m_at, vobj_at } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import { pluslvl, losexp } from './exper.js';
-import { MAXULEV } from './const.js';
+import { MAXULEV, IS_WALL, SDOOR } from './const.js';
+import { STATUE } from './mkobj.js';
 import { getpos, get_valid_jump_position, is_valid_jump_pos } from './hack.js';
 import { dotwoweapon } from './wield.js';
 import { doride } from './steed.js';
@@ -21,6 +22,9 @@ import { readobjnam } from './readobjnam.js';
 import { hold_another_object } from './invent.js';
 import { rn1 } from './rng.js';
 import { dopray as pray_dopray } from './pray.js';
+import { isok } from './hacklib.js';
+import { Monnam, canspotmon } from './uhitm.js';
+import { domonnoise } from './sounds.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -445,6 +449,67 @@ async function paranoid_query(prompt) {
     return (await yn_function(prompt, 'yn', 'n')) === 'y';
 }
 
+// C ref: sounds.c dochat() — the #chat command.  The starter heroes can speak
+// (not silent/strangled/swallowed/underwater) and aren't standing on shop
+// merchandise, so the modelled path is: getdir("Talk to whom?...") then, for an
+// adjacent square, talk to a monster (domonnoise) / statue / wall / empty air.
+// getdir consumes no RNG; domonnoise() drives a turn (ECMD_TIME) when it talks
+// to a real monster, otherwise the command is free (ECMD_OK).
+async function dochat() {
+    const u = game.u;
+    // (is_silent / Strangled / uswallow / Underwater / shop-object short-circuits
+    //  don't apply to the speaking starter heroes on a normal floor.)
+    const { getdir } = await import('./cmd.js');
+    const dir = await getdir('Talk to whom? (in what direction)');
+    if (!dir) return 0; /* ECMD_CANCEL -> no turn */
+    u.dx = dir.dx; u.dy = dir.dy; u.dz = dir.dz || 0;
+
+    // talking up/down (no steed) — "They won't hear you up/down there." (no turn)
+    if (u.dz) {
+        await update_topl(`They won't hear you ${u.dz < 0 ? 'up' : 'down'} there.`);
+        return 0;
+    }
+    // talking to yourself.
+    if (u.dx === 0 && u.dy === 0) {
+        await update_topl('Talking to yourself is a bad habit for a dungeoneer.');
+        return 0;
+    }
+
+    const tx = u.ux + u.dx, ty = u.uy + u.dy;
+    if (!isok(tx, ty)) return 0;
+
+    let mtmp = m_at(tx, ty);
+    if (!mtmp || mtmp.mundetected) {
+        // statue / wall talk: a STATUE on the floor, or a wall/SDOOR.  None of
+        // the owned chats target these (the squares are empty floor), so this
+        // simply yields no message (ECMD_OK), matching an empty-air chat.
+        const otmp = vobj_at(tx, ty);
+        if (otmp && otmp.otyp === STATUE) {
+            await update_topl('The statue seems not to notice you.');
+            return 0;
+        }
+        const tgt = game.level?.at(tx, ty);
+        if (tgt && (IS_WALL(tgt.typ) || tgt.typ === SDOOR)) {
+            await update_topl("It's like talking to a wall.");
+            return 0;
+        }
+        if (!mtmp) return 0; // empty air: no message, no turn
+    }
+
+    // sleeping non-priest monsters won't talk.
+    if ((mtmp.msleeping || mtmp.mfrozen) && !mtmp.ispriest) {
+        if (canspotmon(mtmp))
+            await update_topl(`${Monnam(mtmp)} seems not to notice you.`);
+        return 0;
+    }
+    // a tame pet that is busy eating just makes eating noises (no turn).
+    if (mtmp.mtame && mtmp.meating) {
+        await update_topl(`${Monnam(mtmp)} is eating noisily.`);
+        return 0;
+    }
+    return await domonnoise(mtmp);
+}
+
 // ── getlin (plain top-line line input, no completion) ──
 // C ref: win/tty/getline.c tty_getlin().
 async function getlin_top(query) {
@@ -617,6 +682,7 @@ const HANDLERS = {
     levelchange: wiz_level_change,
     twoweapon: dotwoweapon,
     pray: dopray,
+    chat: dochat,
     name: docallcmd,
     call: docallcmd,
     ride: doride,

@@ -21,7 +21,16 @@ function getlt() {
     yday += day - 1;
     // tm_wday: 0=Sunday.  Use a UTC Date (no timezone shift).
     const wday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-    return { tm_year: year - 1900, tm_yday: yday, tm_mday: day, tm_wday: wday };
+    const hour = +dt.slice(8, 10); // HH
+    return { tm_year: year - 1900, tm_yday: yday, tm_mday: day, tm_wday: wday,
+             tm_hour: hour };
+}
+
+// C ref: calendar.c night() — hour < 6 || hour > 21.
+export function night() {
+    const lt = getlt();
+    if (!lt) return false;
+    return lt.tm_hour < 6 || lt.tm_hour > 21;
 }
 
 // C ref: calendar.c phase_of_the_moon — 0-7, 0: new, 4: full.

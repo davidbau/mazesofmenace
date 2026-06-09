@@ -14,8 +14,10 @@ import {
     VAULT, SHOPBASE, FILL_NONE, FILL_NORMAL,
     Align2amask,
 } from './const.js';
-import { mkgold, next_ident } from './mkobj.js';
-import { monster_by_pmidx } from './makemon.js';
+import { mkgold, next_ident, mksobj, set_corpsenm, obj_resists_rng,
+         CORPSE } from './mkobj.js';
+import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext } from './makemon.js';
+import { somexy } from './mkroom.js';
 
 const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -352,6 +354,71 @@ export function themeroom_fill(croom) {
         }
     } else if (pick?.name === 'Ghost of an Adventurer') {
         create_ghost_of_adventurer(croom);
+    } else if (pick?.name === 'Buried zombies') {
+        create_buried_zombies(croom);
+    }
+}
+
+// C ref: themerms.lua "Buried zombies".  For each of (rm.width*rm.height)/2
+// spots: shuffle a small list of zombifiable species, create a buried corpse of
+// the first one, cancel its rot timer and start a zombify timer.  The RNG-exact
+// sequence per spot is:
+//   shuffle(zombifiable)              -> rn2(4),rn2(3),rn2(2)  (4-elem list)
+//   des.object({id="corpse", montype, buried=true}):
+//     get_location_coord(DRY)         -> somexy() pairs (somex/somey)
+//     mksobj(CORPSE)                  -> next_ident, rndmonnum loop, gender,
+//                                        start_corpse_timeout (for random pm)
+//     set_corpsenm(montype)           -> start_corpse_timeout (for the override)
+//     bury_an_obj -> obj_resists(0,0) -> rn2(100)
+//   o:start_timer("zombify-mon", math.random(990,1010)) -> rn2(21)
+function create_buried_zombies(croom) {
+    const diff = level_difficulty_ext();
+    // themerms.lua: { "kobold","gnome","orc","dwarf" } for low difficulty,
+    // +elf,human at diff>3, +ettin,giant at diff>6.  Only the list LENGTH is
+    // load-bearing for the shuffle RNG; the names drive set_corpsenm's
+    // lizard/lichen check (none of these are lizard/lichen -> always a rnz).
+    const zombifiable = ['kobold', 'gnome', 'orc', 'dwarf'];
+    if (diff > 3) {
+        zombifiable.push('elf', 'human');
+        if (diff > 6) zombifiable.push('ettin', 'giant');
+    }
+
+    const width = 1 + (croom.hx - croom.lx);
+    const height = 1 + (croom.hy - croom.ly);
+    const count = Math.floor((width * height) / 2);
+
+    for (let i = 0; i < count; i++) {
+        // shuffle(zombifiable) — Fisher-Yates via math.random(i) = 1 + rn2(i)
+        for (let j = zombifiable.length; j > 1; j--) {
+            const k = rn2(j);
+            const t = zombifiable[j - 1];
+            zombifiable[j - 1] = zombifiable[k];
+            zombifiable[k] = t;
+        }
+        const montype = name_to_pmidx(zombifiable[0]);
+        if (montype < 0) continue;
+
+        // des.object random in-room location (get_location_coord DRY).  All
+        // themed-room cells are ROOM (SPACE_POS) with no boulder, so the
+        // is_ok_location(DRY) test always passes -> exactly one somexy() per
+        // corpse (somexy itself retries somex/somey until it lands in the
+        // irregular room).
+        const c = { x: -1, y: -1 };
+        if (!somexy(croom, c)) continue;
+
+        const otmp = mksobj(CORPSE, true, false); // next_ident + random corpsenm + timer
+        // set the corpse to the chosen zombifiable species (override) -> a
+        // second start_corpse_timeout via set_corpsenm.
+        set_corpsenm(otmp, montype);
+        // buried = true -> bury_an_obj -> obj_resists(otmp,0,0) -> rn2(100).
+        // The corpse is buried (not on the floor), so it is deliberately NOT
+        // added to the floor object list: it must not render as a corpse glyph.
+        otmp.ox = c.x; otmp.oy = c.y; otmp.where = 'buried';
+        obj_resists_rng();
+
+        // o:start_timer("zombify-mon", math.random(990,1010))
+        //   math.random(990,1010) = nh.random(990, 21) = 990 + rn2(21)
+        rn2(21);
     }
 }
 

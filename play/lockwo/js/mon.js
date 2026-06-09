@@ -231,7 +231,7 @@ export function mcalcdistress() {
 
 // C ref: mon.c movemon_singlemon(mtmp) — drive one monster's move, returning
 // true if it still has movement points left after this action.
-function movemon_singlemon(mtmp) {
+async function movemon_singlemon(mtmp) {
     if (DEADMONSTER(mtmp)) return false;
     if (mtmp.mx == null || mtmp.mx <= 0) return false; // off-map
 
@@ -249,14 +249,14 @@ function movemon_singlemon(mtmp) {
     // those rolls already happened in the makemon RNG stream at create time.
     initMonMoveState(mtmp);
 
-    dochug(mtmp);
+    await dochug(mtmp);
     return false;
 }
 
 // C ref: mon.c movemon(void) — one pass over every monster.  Returns true if
 // at least one monster still has a full NORMAL_SPEED of movement left (so the
 // caller's inner loop should run another pass).
-function movemon_pass() {
+async function movemon_pass() {
     game._somebody_can_move = false;
     // iter_mons_safe: snapshot the list so deaths/spawns mid-iteration are safe.
     // C iterates the `fmon` chain, into which makemon prepends each new
@@ -266,7 +266,7 @@ function movemon_pass() {
     // reproduce C's per-monster RNG ordering.
     const snapshot = fmonOrder();
     for (const mtmp of snapshot)
-        movemon_singlemon(mtmp);
+        await movemon_singlemon(mtmp);
     return !!game._somebody_can_move;
 }
 
@@ -277,6 +277,6 @@ function movemon_pass() {
 // it requires faithful floor-object placement for the pet's repeat-move
 // object scans, which the current level materialization does not yet provide,
 // and enabling it without that regresses pet-position screens.)
-export function movemon() {
-    return movemon_pass();
+export async function movemon() {
+    return await movemon_pass();
 }

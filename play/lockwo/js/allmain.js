@@ -323,9 +323,16 @@ async function ask_do_tutorial() {
         if (pass > 0) lines.push({ text: "(Please choose 'y' or 'n'.)" });
         lines.push({ text: '(end)' });
 
+        // C ref: tty_end_menu computes cw->cols = max(strlen(str) + 2) over all
+        // menu items (the +2 is a leading and trailing space).  The corner
+        // menu's offx (window origin column) is then
+        //   offx = max(10, cols - cw->cols - 1)   [wintty.c finalize disp]
+        // and each menu line is drawn as a leading space at column offx plus
+        // the text at offx+1, after cl_end() clears from offx to end-of-line.
         let maxlen = 0;
         for (const l of lines) if (l.text.length > maxlen) maxlen = l.text.length;
-        const offx = Math.max(10, cols - (maxlen + 1) - 1);
+        const maxcol = maxlen + 2;
+        const offx = Math.max(10, cols - maxcol - 1);
 
         // The acknowledged top-line message no longer belongs on screen.  When
         // a long welcome line wrapped its "--More--" onto grid row 1 (cols
@@ -346,15 +353,17 @@ async function ask_do_tutorial() {
                 disp.setCell(x - 1, 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
             }
         }
-        // Overlay the menu: clear cols offx..end per row, leaving the rest of
-        // the map visible underneath.
+        // Overlay the menu: each row, cl_end() clears from offx (the leading
+        // space column) to end-of-line, then the text is drawn at offx+1.  The
+        // map columns left of offx stay visible underneath (e.g. the room's
+        // left wall), matching C's corner-menu overlay.
         for (let i = 0; i < lines.length; i++) {
             for (let c = offx; c < cols; c++) disp.setCell(c, i, ' ', NO_COLOR, 0);
             if (lines[i].text)
-                disp.putstr(offx, i, lines[i].text, NO_COLOR, lines[i].attr || 0);
+                disp.putstr(offx + 1, i, lines[i].text, NO_COLOR, lines[i].attr || 0);
         }
         const endRow = lines.length - 1;
-        disp.setCursor(offx + 6, endRow);
+        disp.setCursor(offx + 7, endRow);
     };
 
     let pass = 0;
@@ -471,7 +480,7 @@ function maybe_generate_rnd_mon() {
 // Exported so the multi-turn run/travel loop in hack.js can run the same
 // per-turn machinery between its inline domove() steps (a run executes many
 // turns within a single command, with no nhgetch between them).
-export function moveloop_turn() {
+export async function moveloop_turn() {
     const g = game;
     g.context = g.context || {};
     g.u = g.u || {};
@@ -502,7 +511,7 @@ export function moveloop_turn() {
         g.context.mon_moving = true;
         let monscanmove;
         do {
-            monscanmove = movemon();
+            monscanmove = await movemon();
             if (g.u.umovement >= NORMAL_SPEED) break; // hero's turn again
         } while (monscanmove);
         g.context.mon_moving = false;
@@ -698,7 +707,7 @@ export async function moveloop_core() {
             fastforward_step(turnNum);
             g.moves = (g.moves || 1) + 1;
         } else {
-            moveloop_turn();
+            await moveloop_turn();
         }
     }
 

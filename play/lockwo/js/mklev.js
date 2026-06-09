@@ -470,7 +470,16 @@ async function makelevel() {
 
     // Place dungeon branch
     if (branchp) {
+        const prevstairs = g.stairs; /* test for place_branch() success */
         place_branch(branchp);
+        // C ref: mklev.c:1382-1387 — for main dungeon level 1, the up stairs
+        // where the hero starts are branch stairs; treat them as if the hero
+        // had just come down them by marking them traversed.  This makes
+        // known_branch_stairs() true so the staircase renders as a branch
+        // staircase (CLR_YELLOW) rather than a plain one.
+        if ((g.u?.uz?.dnum ?? 0) === 0 && (g.u?.uz?.dlevel ?? 1) === 1
+            && g.stairs !== prevstairs)
+            g.stairs.u_traversed = true;
     }
 
     // C ref: mklev.c:1392-1402 — choose which fillable room gets bonus items
