@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -2535,6 +2535,25 @@ function addToplineMessage(msg) {
         game._topline_after_more_fumble_message_roll = 0;
     }
     return false;
+}
+
+function applyHeroLavaSinkingAfterTurn() {
+    const result = processHeroLavaSinkingTurn();
+    if (!result) return null;
+    if (result.message) {
+        addToplineMessage(result.message);
+        game._preserve_pending_message_key = '\0';
+        if (!result.more) game._turn_tail_preserve_message_after_rhack = result.message;
+        if (result.more) {
+            game._message_more = 1;
+            game._message_more_line = '';
+            game._process_time_with_more = 0;
+            game._turn_tail_topline_more = 1;
+        }
+    }
+    if (result.fatal || result.lifeSaving)
+        applyLifeSavingOrFatalCommandMode(result);
+    return result;
 }
 
 function appendAfterMoreMessage(msg) {
@@ -15570,6 +15589,7 @@ export async function moveloop_core() {
         let turnAdvanced = false;
         let skipMonsterTurnsThisPass = false;
         let ballDragNoResumePass = false;
+        let lavaSinkingResult = null;
         if (g._ball_drag_delay_no_resume > 0) {
             g._ball_drag_delay_no_resume--;
             ballDragNoResumePass = true;
@@ -15587,9 +15607,11 @@ export async function moveloop_core() {
             const tailResult = await finishMonsterTurnTail();
             g.moves = (g.moves || 1) + 1;
             await afterMoveTurn(g);
+            lavaSinkingResult = applyHeroLavaSinkingAfterTurn();
             g.u.umoved = false;
             if (g.u?.ublesscnt) g.u.ublesscnt--;
-            if (tailResult === false && g._command_mode === 'deathDieMore') {
+            if ((tailResult === false && g._command_mode === 'deathDieMore')
+                || lavaSinkingResult?.fatal || lavaSinkingResult?.lifeSaving) {
                 g._pending_time_passed = 0;
                 break;
             }
@@ -15744,6 +15766,12 @@ export async function moveloop_core() {
             if (advancedTail) {
                 g.moves = (g.moves || 1) + 1;
                 await afterMoveTurn(g);
+                lavaSinkingResult = applyHeroLavaSinkingAfterTurn();
+                if (lavaSinkingResult?.fatal || lavaSinkingResult?.lifeSaving) {
+                    g.u.umoved = false;
+                    g._pending_time_passed = 0;
+                    break;
+                }
                 advanceSpecialLevelFeatures(g);
                 advanceRegions(g);
             }
@@ -15844,9 +15872,14 @@ export async function moveloop_core() {
         } else if (movedMonsters) {
             g.moves = (g.moves || 1) + 1;
             await afterMoveTurn(g);
+            lavaSinkingResult = applyHeroLavaSinkingAfterTurn();
             g.u.umoved = false;
             turnAdvanced = true;
             if (g.u?.ublesscnt) g.u.ublesscnt--;
+            if (lavaSinkingResult?.fatal || lavaSinkingResult?.lifeSaving) {
+                g._pending_time_passed = 0;
+                break;
+            }
             advanceSpecialLevelFeatures(g);
             advanceRegions(g);
         }
@@ -16454,6 +16487,15 @@ export async function moveloop_core() {
             g.u.umovement = (g.u.umovement || 0) + NORMAL_SPEED;
     }
 	    await rhack(0);
+    if (g._turn_tail_preserve_message_after_rhack) {
+        const preservedMessage = g._turn_tail_preserve_message_after_rhack;
+        g._turn_tail_preserve_message_after_rhack = '';
+        if (!g._message_more
+            && (!g._pending_message || /^Unknown command /.test(g._pending_message))) {
+            g._pending_message = preservedMessage;
+            g._keep_pending_message = 1;
+        }
+    }
     if (g._clear_fumble_after_rhack) {
         const { message, move } = g._clear_fumble_after_rhack;
         g._clear_fumble_after_rhack = null;

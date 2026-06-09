@@ -6706,37 +6706,40 @@ function deleteEarthquakeLiquidTrap(trap, x, y) {
 }
 
 function applyEarthquakeHeroLiquidEffects(x, y, typ, messages) {
-    if (game.u?.ux !== x || game.u?.uy !== y) return;
-    if (game.u?.levitating || game.u?.flying) return;
+    if (game.u?.ux !== x || game.u?.uy !== y) return null;
+    if (game.u?.levitating || game.u?.flying) return null;
     if (typ === LAVAPOOL) {
         const lavaEffect = heroLavaEntryEffect(LAVAPOOL);
         messages.push(...lavaEffect.messages);
-        if (lavaEffect.fatal) {
+        if (lavaEffect.lavaDeath) {
             game.u.uhp = 0;
             game.context ??= {};
             game.context.move = 0;
             game._pending_time_passed = 0;
             messages.push('You die...');
         }
-        return;
+        return lavaEffect;
     }
     game.u.uinwater = 1;
     game.u.underwater = true;
     game.u.uunderwater = true;
     messages.push(`You fall into the ${typ === MOAT ? 'moat' : 'pool of water'}!  You sink like a rock.`);
+    return null;
 }
 
 function earthquakeLiquidFlow(x, y, typ, trap, messages, { fillMessage = '' } = {}) {
-    if (!setEarthquakeLiquidTerrain(x, y, typ)) return false;
+    if (!setEarthquakeLiquidTerrain(x, y, typ)) return null;
     deleteEarthquakeLiquidTrap(trap, x, y);
     objIceEffectsAt(x, y, { doBuried: true });
     unearthObjectsAt(x, y);
     if (fillMessage) messages.push(fillMessage);
     messages.push(...applyLiquidFlowFloorObjectDamage(x, y, typ).messages);
-    if (game.u?.ux === x && game.u?.uy === y) applyEarthquakeHeroLiquidEffects(x, y, typ, messages);
+    let heroResult = null;
+    if (game.u?.ux === x && game.u?.uy === y)
+        heroResult = applyEarthquakeHeroLiquidEffects(x, y, typ, messages);
     else messages.push(...applyMonsterLiquidEffectsAt(x, y, { heroCaused: true, recordKill: recordVanquished }));
     newsym(x, y);
-    return true;
+    return { heroResult };
 }
 
 function landmineMaybeDunkLiquidBoulders(x, y, messages) {
@@ -6850,7 +6853,8 @@ async function doEarthquakePit(x, y, tuPit, messages) {
 
     const fillType = earthquakeFillHoleType(x, y);
     if (fillType !== ROOM) {
-        earthquakeLiquidFlow(x, y, fillType, chasm, messages);
+        const liquidFlow = earthquakeLiquidFlow(x, y, fillType, chasm, messages);
+        if (liquidFlow?.heroResult) messages.heroResult = liquidFlow.heroResult;
         if (!downwardDigTrapAt(x, y)) return;
     }
 
@@ -6913,19 +6917,23 @@ async function doEarthquake(force) {
                 const featureMessage = earthquakeFeatureMessage(loc);
                 if (featureMessage && !game.u?.blind && couldsee(x, y)) messages.push(featureMessage);
                 await doEarthquakePit(x, y, tuPit, messages);
+                if (earthquakeHeroResultStops(messages.heroResult)) return messages;
             } else if (loc.typ === SCORR) {
                 loc.typ = CORR;
                 newsym(x, y);
                 if (!game.u?.blind && couldsee(x, y)) messages.push('A secret corridor is revealed.');
                 await doEarthquakePit(x, y, tuPit, messages);
+                if (earthquakeHeroResultStops(messages.heroResult)) return messages;
             } else if (loc.typ === CORR || loc.typ === ROOM) {
                 await doEarthquakePit(x, y, tuPit, messages);
+                if (earthquakeHeroResultStops(messages.heroResult)) return messages;
             } else if (loc.typ === SDOOR) {
                 loc.typ = DOOR;
                 newsym(x, y);
                 if (!game.u?.blind && couldsee(x, y)) messages.push('A secret door is revealed.');
                 if (loc.doormask === D_NODOOR) {
                     await doEarthquakePit(x, y, tuPit, messages);
+                    if (earthquakeHeroResultStops(messages.heroResult)) return messages;
                 } else {
                     loc.doormask = D_NODOOR;
                     newsym(x, y);
@@ -6934,6 +6942,7 @@ async function doEarthquake(force) {
             } else if (loc.typ === DOOR) {
                 if (loc.doormask === D_NODOOR) {
                     await doEarthquakePit(x, y, tuPit, messages);
+                    if (earthquakeHeroResultStops(messages.heroResult)) return messages;
                 } else {
                     loc.doormask = D_NODOOR;
                     newsym(x, y);
@@ -6943,6 +6952,28 @@ async function doEarthquake(force) {
         }
     }
     return messages;
+}
+
+function earthquakeHeroResultStops(result) {
+    return !!(result && (result.fatal || result.lifeSaving));
+}
+
+function earthquakeFatalEndsInstrument(result) {
+    return !!(result?.fatal && !result.lifeSaving);
+}
+
+async function finishEarthquakeInstrumentMessages(messages, earthquakeMessages) {
+    const heroResult = earthquakeMessages?.heroResult || messages.heroResult || null;
+    await setMessage(messages.join('  '), messages.length > 1 || !!heroResult?.more);
+    if (earthquakeHeroResultStops(heroResult)) {
+        game.context.move = 0;
+        game._pending_time_passed = 0;
+        if (heroResult.lifeSaving || !heroResult.lavaDeath)
+            applyLifeSavingOrFatalCommandMode(heroResult);
+        return true;
+    }
+    game.context.move = 1;
+    return false;
 }
 
 async function zapDigDownwardResult() {
@@ -14777,9 +14808,17 @@ function polyselfWaterFallLanding(x, y, targetMoveTyp) {
 }
 
 function polyselfLavaFalloutMessage(targetMoveTyp) {
+    return `${polyselfLavaFallMessage(targetMoveTyp)}  ${polyselfLavaBurnMessage()}`;
+}
+
+function polyselfLavaFallMessage(targetMoveTyp) {
     return targetMoveTyp === LAVAWALL
-        ? 'You fall into the wall of lava!  You burn to a crisp...'
-        : 'You fall into the molten lava!  You burn to a crisp...';
+        ? 'You fall into the wall of lava!'
+        : 'You fall into the molten lava!';
+}
+
+function polyselfLavaBurnMessage() {
+    return 'You burn to a crisp...';
 }
 
 const LAVA_ORGANIC_BOOT_KINDS = new Set([
@@ -14816,23 +14855,174 @@ function burnLavaWornBootsFirst(messages) {
     return true;
 }
 
+function lavaFatalOrganicInventoryItem(item, cls) {
+    if (cls === 'scroll' || cls === 'spellbook') return true;
+    const material = String(item?.material || item?.oc_material || '').toLowerCase();
+    if (LAVA_DIRECT_BURN_MATERIALS.has(material)) return true;
+    const itemCls = itemClassKey(item);
+    const kind = objectKindKey(item);
+    if ((itemCls === 'food' || item?.otyp === FOOD_CLASS || item?.glyph === '%')
+        && !/\btin\b/.test(kind)) return true;
+    if (item?.otyp === CORPSE || item?.otyp === 'corpse') return true;
+    if (item?.globby || GLOB_TYPES.has(kind.replace(/^glob of /, ''))) return true;
+    const profile = wishedDamageProfile(item);
+    if (profile.erosionMatters && profile.primaryWord === 'burnt') return true;
+    return /\b(?:wax|leather|cloth|wood|wooden|paper|bone|corpse|meat|ration|food|fruit|egg|sack|bag|box|chest|leash|rope|bow|arrow|club|quarterstaff|aklys|bullwhip|sling|flute|harp|drum|whistle|horn)\b/.test(kind);
+}
+
+function lavaFatalInventoryItemFireExempt(item, cls) {
+    if (item?.oerodeproof || item?.fireResistance || item?.fireResistant) return true;
+    const name = String(item?.actualKind || item?.kind || item?.line || '').toLowerCase();
+    if (cls === 'scroll' && (item?.scrollIndex === 16 || /\bscroll of fire\b/.test(name))) return true;
+    if (cls === 'spellbook' && /\bfireball\b/.test(name)) return true;
+    const kind = objectKindKey(item);
+    return kind === 'wand of fire' || kind === 'fire horn' || item?.oprop === 'fire'
+        || item?.oprop === 'fire resistance' || item?.oc_oprop === 'fire'
+        || item?.oc_oprop === 'fire resistance';
+}
+
+function lavaFatalInventoryBurnSelection() {
+    const selected = [];
+    for (const item of game.inventory || []) {
+        if (!item || item.in_use || item.inUse) continue;
+        const cls = fireDestroyableInventoryClass(item);
+        if (lavaFatalInventoryItemFireExempt(item, cls)) continue;
+        if (lavaObjResistsHard(item)) continue;
+        if (cls === 'potion' || lavaFatalOrganicInventoryItem(item, cls))
+            selected.push(item);
+    }
+    return selected;
+}
+
+function heroHasWornLifeSavingAmulet() {
+    return (game.inventory || []).some(item =>
+        item.worn && String(item.kind || item.actualKind || item.line || '').includes('life saving'));
+}
+
+function lavaDestroyedInventorySummary(burnCount, burnMessageCount) {
+    const silentCount = burnCount - burnMessageCount;
+    if (silentCount <= 0) return '';
+    const prefix = burnMessageCount
+        ? silentCount === 1 ? 'Another' : 'Other'
+        : burnCount === 1 ? 'An' : 'Some';
+    return `${prefix} item${silentCount === 1 ? '' : 's'} in your inventory ${silentCount === 1 ? 'has' : 'have'} been destroyed.`;
+}
+
+function destroyLavaFatalInventorySelection(selection, {
+    messages = null,
+    surviving = false,
+    priorBurnCount = 0,
+    priorBurnMessageCount = 0,
+} = {}) {
+    let destroyed = 0;
+    let burnMessages = 0;
+    for (const item of selection || []) {
+        if (!(game.inventory || []).includes(item)) continue;
+        if (isWornArmorItem(item)) {
+            if (surviving && Array.isArray(messages)) {
+                messages.push(`${armorSubject(item)} ${armorVerb(item, 'bursts', 'burst')} into flame!`);
+                burnMessages++;
+            }
+            destroyWornArmorItem(item);
+        }
+        else useUpInventoryItem(item, item.quan || 1);
+        destroyed++;
+    }
+    const totalBurnCount = priorBurnCount + destroyed;
+    const totalBurnMessageCount = priorBurnMessageCount + burnMessages;
+    if (surviving && Array.isArray(messages)) {
+        const summary = lavaDestroyedInventorySummary(totalBurnCount, totalBurnMessageCount);
+        if (summary) messages.push(summary);
+    }
+    return destroyed;
+}
+
+function lifeSaveHeroFromFatalLava(messages) {
+    if (!consumeLifeSavingAmulet()) return false;
+    if (game.u) game.u.uhp = 0;
+    messages.push(`But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+    game._life_saving_lava_safe_teleport = 1;
+    return true;
+}
+
+function heroFloatingOverLavaRescue() {
+    return !!(game.u?.levitating || game.u?.levitation || game.u?.Levitation
+        || game.u?.flying || game.u?.Flying);
+}
+
+function lifeSaveHeroFromLavaSinking(messages) {
+    if (!consumeLifeSavingAmulet()) return false;
+    if (game.u) game.u.uhp = 0;
+    messages.push(`But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+    game._life_saving_lava_clear_trap = 1;
+    if (!heroFloatingOverLavaRescue()) game._life_saving_lava_safe_teleport = 1;
+    return true;
+}
+
+function lavaSurvivorBurnStuff(messages, dmg) {
+    const fireInventory = fireDamageInventory(dmg, true, false, {
+        allowLifeSaving: true,
+        preburnedArmor: { message: '', bodyHit: false },
+    });
+    messages.push(...fireInventory.messages);
+    if (fireInventory.lifeSaving || fireInventory.fatal) {
+        game._death_cause = fireInventory.deathCause || 'burned by molten lava';
+        if (fireInventory.lifeSaving && game.u?.utraptype === TT_LAVA)
+            game._life_saving_lava_clear_trap = 1;
+        return {
+            lifeSaving: !!fireInventory.lifeSaving,
+            fatal: !!fireInventory.fatal,
+            more: true,
+        };
+    }
+    const damageResult = applyChestTrapFireDamage(
+        messages,
+        fireInventory.damage,
+        fireInventory.deathCause || 'burned by molten lava',
+    );
+    if (damageResult.lifeSaving && game.u?.utraptype === TT_LAVA)
+        game._life_saving_lava_clear_trap = 1;
+    return damageResult;
+}
+
 function heroLavaEntryEffect(targetMoveTyp) {
     const messages = [];
     const dmg = d(6, 6);
-    burnLavaWornBootsFirst(messages);
+    burnAwayHeroSlime(messages);
+    const initiallySurvivesLava = heroHasFireResistance()
+        || (heroHasWaterWalking() && dmg < (game.u?.uhp || 0));
+    const fatalInventoryBurn = initiallySurvivesLava ? [] : lavaFatalInventoryBurnSelection();
+    const bootsBurned = burnLavaWornBootsFirst(messages);
     if (!heroHasFireResistance()) {
         if (heroHasWaterWalking()) {
             messages.push('The lava here burns you!');
             if (dmg < (game.u?.uhp || 0)) {
                 game.u.uhp -= dmg;
-                return { messages, fatal: false, more: messages.length > 1 };
+                const burnStuff = lavaSurvivorBurnStuff(messages, dmg);
+                return {
+                    messages,
+                    fatal: !!burnStuff.fatal,
+                    lifeSaving: !!burnStuff.lifeSaving,
+                    more: !!burnStuff.more || messages.length > 1,
+                };
             }
         }
-        messages.push(polyselfLavaFalloutMessage(targetMoveTyp));
+        if (!heroHasWaterWalking()) messages.push(polyselfLavaFallMessage(targetMoveTyp));
+        const willSurviveFatalLava = heroHasWornLifeSavingAmulet()
+            || !!(game.flags?.debug || game.flags?.explore);
+        destroyLavaFatalInventorySelection(fatalInventoryBurn, {
+            messages,
+            surviving: willSurviveFatalLava,
+            priorBurnCount: bootsBurned ? 1 : 0,
+            priorBurnMessageCount: bootsBurned ? 1 : 0,
+        });
+        messages.push(polyselfLavaBurnMessage());
         game._death_cause = 'burned by molten lava';
+        if (lifeSaveHeroFromFatalLava(messages))
+            return { messages, fatal: false, lifeSaving: true, more: true };
         game._command_mode = 'lavaDeathMore';
         game._polyself_lava_death_more = 1;
-        return { messages, fatal: true, more: true };
+        return { messages, fatal: true, lavaDeath: true, more: true };
     }
     if (!heroHasWaterWalking() && (!game.u?.utrap || game.u?.utraptype !== TT_LAVA)) {
         game.u.utrap = rn1(4, 4) + (rn1(4, 12) << 8);
@@ -14842,7 +15032,59 @@ function heroLavaEntryEffect(targetMoveTyp) {
             : 'You sink into the molten lava, but it only burns slightly!');
         if ((game.u.uhp || 0) > 1) game.u.uhp--;
     }
-    return { messages, fatal: false, more: messages.length > 1 };
+    const burnStuff = lavaSurvivorBurnStuff(messages, dmg);
+    return {
+        messages,
+        fatal: !!burnStuff.fatal,
+        lifeSaving: !!burnStuff.lifeSaving,
+        more: !!burnStuff.more || messages.length > 1,
+    };
+}
+
+export function processHeroLavaSinkingTurn() {
+    if (!game.u?.utrap || game.u.utraptype !== TT_LAVA) return null;
+    const x = game.u.ux || 0;
+    const y = game.u.uy || 0;
+    if (!movementIsLavaAt(x, y)) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+        return { cleared: true };
+    }
+    if (game.u.uinvulnerable) return null;
+
+    if (!heroHasFireResistance())
+        game.u.uhp = Math.trunc(((game.u.uhp || 0) + 2) / 3);
+
+    game.u.utrap = (game.u.utrap || 0) - (1 << 8);
+    if (game.u.utrap < (1 << 8)) {
+        const messages = ['You sink below the surface and die.'];
+        burnAwayHeroSlime(messages);
+        game.u.uhp = 0;
+        game._death_cause = 'dissolved in molten lava';
+        game._death_current_move = 1;
+        if (lifeSaveHeroFromLavaSinking(messages))
+            return {
+                message: messages.join('  '),
+                lifeSaving: true,
+                more: true,
+            };
+        if (game.flags?.debug || game.flags?.explore) {
+            game._wizard_lava_refusal_clear_trap = 1;
+            if (!heroFloatingOverLavaRescue())
+                game._wizard_lava_refusal_safe_teleport = 1;
+        }
+        return {
+            message: messages.join('  '),
+            fatal: true,
+            more: true,
+        };
+    }
+
+    if (!game.u.umoved) {
+        game.u.utrap += rnd(4);
+        return { message: 'You sink deeper into the lava.' };
+    }
+    return {};
 }
 
 function addBootsOffLavaFallout(item, messages, targetMoveTyp, discoveryKind = objectKindKey(item)) {
@@ -17896,10 +18138,14 @@ async function finishMusicalImprovisation(item) {
         messages.push('You produce a heavy, thunderous rolling!');
         const earthquakeMessages = await doEarthquake(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
         messages.push(`The entire ${earthquakeLevelDescription()} is shaking around you!`, ...earthquakeMessages);
-        awakenMonstersWithInstrument(ROWNO * COLNO);
-        item.known = true;
-        item.dknown = true;
-        updateChargedItemLine(item);
+        if (!earthquakeFatalEndsInstrument(earthquakeMessages.heroResult)) {
+            awakenMonstersWithInstrument(ROWNO * COLNO);
+            item.known = true;
+            item.dknown = true;
+            updateChargedItemLine(item);
+        }
+        await finishEarthquakeInstrumentMessages(messages, earthquakeMessages);
+        return true;
     } else {
         game._zap_item = item;
         game._zap_prelude_messages = messages;
@@ -53008,13 +53254,17 @@ function queueBoomerangPreRecoilLifeSavingContinuation(item, key) {
     };
 }
 
-function finishLandminePitFalloutResult(messages, fatalResult, pitResult) {
+function finishLandminePitFalloutResult(messages, fatalResult, pitResult, terrainResult = null) {
     if (pitResult?.message) messages.push(pitResult.message);
     const lavaDeath = game._command_mode === 'lavaDeathMore' && game._death_cause === 'burned by molten lava';
+    const terrainFatal = !lavaDeath && !!terrainResult?.fatal;
     return {
         ...pitResult,
-        lifeSaving: pitResult?.fatal ? !!pitResult.lifeSaving : !!fatalResult.lifeSaving || !!pitResult.lifeSaving,
-        more: pitResult?.fatal ? !!pitResult.more : lavaDeath || !!fatalResult.more || !!pitResult.more,
+        fatal: pitResult?.fatal ? !!pitResult.fatal : terrainFatal,
+        lifeSaving: pitResult?.fatal ? !!pitResult.lifeSaving
+            : !!fatalResult.lifeSaving || !!pitResult.lifeSaving || !!terrainResult?.lifeSaving,
+        more: pitResult?.fatal ? !!pitResult.more
+            : lavaDeath || !!fatalResult.more || !!pitResult.more || !!terrainResult?.more,
         message: trapMessage(...messages),
     };
 }
@@ -54425,30 +54675,31 @@ function landmineScatterFloorObjectsAt(x, y, messages = []) {
 }
 
 function landminePostBlastTrap(trap, messages = []) {
-    if (!trap) return null;
+    if (!trap) return { trap: null, terrainResult: null };
     landmineScatterFloorObjectsAt(trap.tx, trap.ty, messages);
     deleteLandmineBlastEngravingAt(trap.tx, trap.ty);
     wakeNearbyMonstersAt(trap.tx, trap.ty, 400, messages);
     landmineBreakDoorAt(trap.tx, trap.ty);
     if (destroyDrawbridgeAtOrWallForLandmine(trap.tx, trap.ty, messages))
-        return null;
+        return { trap: null, terrainResult: null };
     if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)) {
         deleteTrap(trap);
-        return null;
+        return { trap: null, terrainResult: null };
     }
     const fillType = earthquakeFillHoleType(trap.tx, trap.ty);
     if (fillType !== ROOM) {
         const fillMessage = earthVisibleSquare(trap.tx, trap.ty)
             ? `The hole fills with ${fillType === LAVAPOOL ? 'lava' : 'water'}!`
             : '';
-        if (earthquakeLiquidFlow(trap.tx, trap.ty, fillType, trap, messages, { fillMessage })) {
+        const liquidFlow = earthquakeLiquidFlow(trap.tx, trap.ty, fillType, trap, messages, { fillMessage });
+        if (liquidFlow) {
             if (game._command_mode !== 'lavaDeathMore' || game._death_cause !== 'burned by molten lava')
                 landmineMaybeDunkLiquidBoulders(trap.tx, trap.ty, messages);
             landmineRefreshPostBlastBlockPoint(trap.tx, trap.ty);
-            return null;
+            return { trap: null, terrainResult: liquidFlow.heroResult || null };
         }
     }
-    return trap;
+    return { trap, terrainResult: null };
 }
 
 function fillLandminePitWithBoulder(trap, messages) {
@@ -54463,10 +54714,14 @@ function fillLandminePitWithBoulder(trap, messages) {
 }
 
 function landmineRecursivePitTrap(trap, messages) {
-    const pitTrap = landminePostBlastTrap(trap, messages);
-    if (!pitTrap) return null;
+    const postBlast = landminePostBlastTrap(trap, messages);
+    const pitTrap = postBlast?.trap || null;
+    if (!pitTrap) return postBlast || { trap: null, terrainResult: null };
     fillLandminePitWithBoulder(pitTrap, messages);
-    return (game.level?.traps || []).includes(pitTrap) ? pitTrap : null;
+    return {
+        trap: (game.level?.traps || []).includes(pitTrap) ? pitTrap : null,
+        terrainResult: postBlast?.terrainResult || null,
+    };
 }
 
 function woundHeroLandmineLegs() {
@@ -54521,9 +54776,10 @@ function heroLandmineAirCurrentResult(trap, prefix, damage) {
         if (fatalResult.fatal) return { message: trapMessage(...messages), ...fatalResult };
         if (fatalResult.lifeSaving) restoreLifeSavedHeroForContinuation();
     }
-    const pitTrap = landmineRecursivePitTrap(trap, messages);
+    const recursivePit = landmineRecursivePitTrap(trap, messages);
+    const pitTrap = recursivePit?.trap || null;
     const pitResult = pitTrap ? movementPitResult(pitTrap, { recursive: true }) : {};
-    const result = finishLandminePitFalloutResult(messages, fatalResult, pitResult);
+    const result = finishLandminePitFalloutResult(messages, fatalResult, pitResult, recursivePit?.terrainResult || null);
     if (fatalResult.lifeSaving && !pitResult?.lifeSaving && !result.fatal && game.u)
         game._life_saving_post_continue_hp = game.u.uhp;
     return result;
@@ -54544,9 +54800,10 @@ function heroLandmineResult(trap, prefix = '', { forceTrap = false } = {}) {
     if (fatalResult.fatal)
         return { message: trapMessage(...messages), ...fatalResult };
     if (fatalResult.lifeSaving) restoreLifeSavedHeroForContinuation();
-    const pitTrap = landmineRecursivePitTrap(trap, messages);
+    const recursivePit = landmineRecursivePitTrap(trap, messages);
+    const pitTrap = recursivePit?.trap || null;
     const pitResult = pitTrap ? movementPitResult(pitTrap, { recursive: true }) : {};
-    const result = finishLandminePitFalloutResult(messages, fatalResult, pitResult);
+    const result = finishLandminePitFalloutResult(messages, fatalResult, pitResult, recursivePit?.terrainResult || null);
     if (fatalResult.lifeSaving && !pitResult?.lifeSaving && !result.fatal && game.u)
         game._life_saving_post_continue_hp = game.u.uhp;
     return result;
@@ -58215,9 +58472,10 @@ async function moveHero(dx, dy) {
     if (liquidTarget && nopick && (targetMoveTyp === LAVAPOOL || targetMoveTyp === LAVAWALL)) {
         const lavaEffect = heroLavaEntryEffect(targetMoveTyp);
         if (lavaEffect.messages.length) await setMessage(lavaEffect.messages.join('  '), lavaEffect.more);
-        if (lavaEffect.fatal) {
+        if (lavaEffect.fatal || lavaEffect.lifeSaving) {
             game.context.move = 0;
             game._pending_time_passed = 0;
+            if (lavaEffect.lifeSaving || !lavaEffect.lavaDeath) applyLifeSavingOrFatalCommandMode(lavaEffect);
         } else {
             game.context.move = 1;
         }
@@ -59317,6 +59575,8 @@ export async function rhack(_cmd) {
                 || game._queued_explore_lifesaving_message);
             const skipRemainingMoreMessages = ch === '\x1b';
             const postContinuationHp = game._life_saving_post_continue_hp;
+            const lavaSafeTeleport = !!game._life_saving_lava_safe_teleport;
+            const lavaClearTrap = !!game._life_saving_lava_clear_trap;
             const lifeSavingMessage = exploreLifeSaved || skipRemainingMoreMessages
                 ? 'You feel much better!'
                 : 'You feel much better!  The medallion crumbles to dust!';
@@ -59324,6 +59584,8 @@ export async function rhack(_cmd) {
             game._pending_explore_lifesaving_message = 0;
             game._queued_explore_lifesaving_message = 0;
             game._life_saving_post_continue_hp = null;
+            game._life_saving_lava_safe_teleport = 0;
+            game._life_saving_lava_clear_trap = 0;
             game._message_more = 0;
             game._keep_pending_message = 1;
             game._command_mode = null;
@@ -59371,6 +59633,16 @@ export async function rhack(_cmd) {
                 return;
             }
             if (postRecoil?.trapResult && applyLifeSavingOrFatalCommandMode(postRecoil.trapResult)) return;
+            if (lavaClearTrap && game.u) {
+                game.u.utrap = 0;
+                game.u.utraptype = null;
+            }
+            if (lavaSafeTeleport) {
+                const teleportMessage = safeTeleportHeroSameLevel();
+                if (teleportMessage)
+                    game._pending_message = [game._pending_message || lifeSavingMessage, teleportMessage]
+                        .filter(Boolean).join('  ');
+            }
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game._suppress_monster_attack_messages = 1;
         }
@@ -62795,6 +63067,20 @@ export async function rhack(_cmd) {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._polyself_lava_death_more = 0;
             game.u.uhp = 0;
+            if (game.flags?.debug || game.flags?.explore) {
+                game._pending_time_passed = 0;
+                game.context.move = 0;
+                game._process_command_time_now = 0;
+                game._run_steps_remaining = 0;
+                game._death_status_hp_before_zero = null;
+                const deathTurn = game.moves || 1;
+                game._death_moves ||= game._death_current_move ? deathTurn : Math.max(1, deathTurn - 1);
+                game._death_current_move = 0;
+                game._wizard_lava_refusal_safe_teleport = 1;
+                await setMessage('Die? [yn] (n)');
+                game._command_mode = 'wizardDieConfirm';
+                return;
+            }
             await setMessage('Do you want to see your attributes? [ynq] (n)');
             game._command_mode = 'deathAttributesPrompt';
             return;
@@ -63132,6 +63418,8 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'wizardDieConfirm') {
         if (ch === 'y') {
+            game._wizard_lava_refusal_clear_trap = 0;
+            game._wizard_lava_refusal_safe_teleport = 0;
             game._death_moves = game.moves || 1;
             game._bones_ok = canMakeBones();
             if (game._bones_ok) {
@@ -63145,8 +63433,16 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            const lavaRefusalClearTrap = !!game._wizard_lava_refusal_clear_trap;
+            const lavaRefusalSafeTeleport = !!game._wizard_lava_refusal_safe_teleport;
+            game._wizard_lava_refusal_clear_trap = 0;
+            game._wizard_lava_refusal_safe_teleport = 0;
             restoreHeroHpAfterLifeSaving();
             clearLifeSavedDeathState();
+            if (lavaRefusalClearTrap || game.u?.utraptype === TT_LAVA) {
+                game.u.utrap = 0;
+                game.u.utraptype = null;
+            }
             game._death_no_bones = 0;
             game._death_bones_prepared = 0;
             game._death_corpse_created = 0;
@@ -63162,7 +63458,12 @@ export async function rhack(_cmd) {
                 await beginEscapedGame(["OK, so you don't die.", escapeMessage]);
                 return;
             }
-            await setMessage("OK, so you don't die.");
+            const survivalMessages = ["OK, so you don't die."];
+            if (lavaRefusalSafeTeleport) {
+                const teleportMessage = safeTeleportHeroSameLevel();
+                if (teleportMessage) survivalMessages.push(teleportMessage);
+            }
+            await setMessage(survivalMessages.join('  '));
             if (game._deferred_raven_blind_after_more) {
                 const ravenAttack = game._deferred_raven_blind_after_more;
                 game._deferred_raven_blind_after_more = null;
@@ -68169,8 +68470,6 @@ export async function rhack(_cmd) {
             checkUnpaidUsage(item, usageMessages);
             item.spe = Math.max(0, (item.spe ?? 0) - 1);
             updateChargedItemLine(item);
-            item.known = true;
-            item.dknown = true;
             const earthquakeMessages = await doEarthquake(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
             const messages = [
                 ...usageMessages,
@@ -68178,13 +68477,16 @@ export async function rhack(_cmd) {
                 `The entire ${earthquakeLevelDescription()} is shaking around you!`,
                 ...earthquakeMessages,
             ];
-            for (const mon of game.level?.monsters || []) {
-                mon.msleeping = 0;
-                mon.mcanmove = true;
-                mon.mfrozen = 0;
+            if (!earthquakeFatalEndsInstrument(earthquakeMessages.heroResult)) {
+                item.known = true;
+                item.dknown = true;
+                for (const mon of game.level?.monsters || []) {
+                    mon.msleeping = 0;
+                    mon.mcanmove = true;
+                    mon.mfrozen = 0;
+                }
             }
-            await setMessage(messages.join('  '), messages.length > 1);
-            game.context.move = 1;
+            await finishEarthquakeInstrumentMessages(messages, earthquakeMessages);
             return;
         }
         if (name.includes('drum')) {
