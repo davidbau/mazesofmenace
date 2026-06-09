@@ -286,6 +286,11 @@ export class NethackGame {
                 game._clear_preserved_grid_snapshot_after_capture = 0;
                 game._preserved_grid_snapshot = null;
             }
+            if (game._clear_pending_message_visual_override_after_capture) {
+                game._clear_pending_message_visual_override_after_capture = 0;
+                game._pending_message_visual_override = '';
+                game._pending_message_visual_override_base = '';
+            }
 
         };
     }

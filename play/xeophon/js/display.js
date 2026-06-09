@@ -1393,26 +1393,33 @@ function drawGrid() {
         const more = '--More--';
         const pendingMessage = game._pending_message;
         const pendingMore = game._message_more;
+        const visualOverride = !pendingMore
+            && game._pending_message_visual_override
+            && pendingMessage === game._pending_message_visual_override_base
+            ? String(game._pending_message_visual_override)
+            : '';
+        const displayMessage = visualOverride || pendingMessage;
+        if (visualOverride) game._clear_pending_message_visual_override_after_capture = 1;
         const inlineMore = pendingMore
             && !game._message_more_line
-            && pendingMessage.length < d.cols - more.length;
+            && displayMessage.length < d.cols - more.length;
         const extendedWrap = game._command_mode === 'extendedCommand'
             && !pendingMore
-            && pendingMessage.length > d.cols - 1;
+            && displayMessage.length > d.cols - 1;
         writeText(0, 0, ' '.repeat(d.cols), NO_COLOR);
         if (extendedWrap) {
-            writeText(0, 0, pendingMessage.slice(0, d.cols - 1), NO_COLOR);
+            writeText(0, 0, displayMessage.slice(0, d.cols - 1), NO_COLOR);
             writeText(1, 0, ' '.repeat(d.cols), NO_COLOR);
-            const continuation = pendingMessage.slice(d.cols - 1, d.cols + 2);
+            const continuation = displayMessage.slice(d.cols - 1, d.cols + 2);
             writeText(1, 0, continuation, NO_COLOR);
-            d.setCursor(Math.min(continuation.length, pendingMessage.length - (d.cols - 1)), 1);
+            d.setCursor(Math.min(continuation.length, displayMessage.length - (d.cols - 1)), 1);
             cursorSet = true;
         } else {
-            writeText(0, 0, pendingMessage, NO_COLOR);
+            writeText(0, 0, displayMessage, NO_COLOR);
         }
         if (inlineMore) {
-            writeText(0, pendingMessage.length, more, NO_COLOR);
-            setCursorAfter(0, pendingMessage.length, more);
+            writeText(0, displayMessage.length, more, NO_COLOR);
+            setCursorAfter(0, displayMessage.length, more);
             cursorSet = true;
         } else if (pendingMore) {
             writeText(1, 0, ' '.repeat(d.cols), NO_COLOR);
@@ -1423,7 +1430,7 @@ function drawGrid() {
             d.setCursor(game._getpos_prompt_cursor[0], game._getpos_prompt_cursor[1]);
             cursorSet = true;
         } else if (game._command_mode === 'nameInventoryText' && game._name_inventory_text) {
-            d.setCursor(String(game._pending_message || '').length, 0);
+            d.setCursor(displayMessage.length, 0);
             cursorSet = true;
         } else if (game._command_mode === 'fountainDetectPos') {
             d.setCursor((game._fountain_detect_x || game.u?.ux || 1) - 1, (game._fountain_detect_y || game.u?.uy || 0) + 1);
@@ -1455,8 +1462,8 @@ function drawGrid() {
                    || game._command_mode === 'levelChangeText'
                    || game._command_mode === 'optionsFruit'
                    || game._command_mode === 'vaultGuardName'
-                   || game._pending_message.startsWith('Count: ')) {
-            if (game._pending_message.startsWith('Count: ')) d.setCursor(String(game._pending_message || '').length, 0);
+                   || displayMessage.startsWith('Count: ')) {
+            if (displayMessage.startsWith('Count: ')) d.setCursor(displayMessage.length, 0);
             else {
                 const entry = game._command_mode === 'wizardWish' ? game._wish_text
                     : game._command_mode === 'wizGenesisMonster' ? game._wizgenesis_text
@@ -1471,7 +1478,7 @@ function drawGrid() {
                     : game._command_mode === 'optionsFruit' ? game._options_fruit_text
                     : game._command_mode === 'vaultGuardName' ? game._vault_guard_name
                     : '';
-                d.setCursor(String(game._pending_message || '').length + (entry ? 0 : 1), 0);
+                d.setCursor(displayMessage.length + (entry ? 0 : 1), 0);
             }
             cursorSet = true;
         } else if ((game._command_mode && game._pending_message.includes('?'))
@@ -1482,7 +1489,7 @@ function drawGrid() {
                    || game._command_mode === 'zapDirection'
                    || game._command_mode === 'zapPolymorphDirection'
                    || game._command_mode === 'wizardWish') {
-            setCursorAfter(0, 0, game._pending_message, 1);
+            setCursorAfter(0, 0, displayMessage, 1);
             cursorSet = true;
         }
     }
