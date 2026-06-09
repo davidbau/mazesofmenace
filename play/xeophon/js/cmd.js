@@ -6709,16 +6709,15 @@ function applyEarthquakeHeroLiquidEffects(x, y, typ, messages) {
     if (game.u?.ux !== x || game.u?.uy !== y) return;
     if (game.u?.levitating || game.u?.flying) return;
     if (typ === LAVAPOOL) {
-        if (game.u?.fireResistance) return;
-        d(6, 6);
-        game.u.uhp = 0;
-        game._death_cause = 'burned by molten lava';
-        game._command_mode = 'lavaDeathMore';
-        game.context ??= {};
-        game.context.move = 0;
-        game._pending_time_passed = 0;
-        messages.push('You fall into the molten lava!  You burn to a crisp...');
-        messages.push('You die...');
+        const lavaEffect = heroLavaEntryEffect(LAVAPOOL);
+        messages.push(...lavaEffect.messages);
+        if (lavaEffect.fatal) {
+            game.u.uhp = 0;
+            game.context ??= {};
+            game.context.move = 0;
+            game._pending_time_passed = 0;
+            messages.push('You die...');
+        }
         return;
     }
     game.u.uinwater = 1;
@@ -14783,9 +14782,72 @@ function polyselfLavaFalloutMessage(targetMoveTyp) {
         : 'You fall into the molten lava!  You burn to a crisp...';
 }
 
-function addPolyselfWaterWalkingLavaFallout(item, messages, targetMoveTyp) {
+const LAVA_ORGANIC_BOOT_KINDS = new Set([
+    'low boots', 'high boots', 'speed boots', 'water walking boots', 'jumping boots',
+    'elven boots', 'fumble boots', 'levitation boots',
+]);
+
+function heroHasWaterWalking() {
+    return !!(game.u?.waterWalking || game.u?.Wwalking
+        || (game.inventory || []).some(item => isWornInventoryItem(item)
+            && objectKindKey(item) === 'water walking boots'));
+}
+
+function lavaBurnsWornBoots(item) {
+    if (!item || armorSlot(item) !== 'boots') return false;
+    if (item.oerodeproof || item.fireResistance || item.fireResistant) return false;
+    if (item.in_use || item.inUse) return true;
+    const kind = objectKindKey(item);
+    if (LAVA_ORGANIC_BOOT_KINDS.has(kind)) return true;
+    const material = String(item.material || item.oc_material || '').toLowerCase();
+    return LAVA_DIRECT_BURN_MATERIALS.has(material);
+}
+
+function burnLavaWornBootsFirst(messages) {
+    const boots = wornArmorItemsBySlotOrder(['boots'])[0];
+    if (!lavaBurnsWornBoots(boots)) return false;
+    messages.push(`${armorSubject(boots)} ${armorVerb(boots, 'bursts', 'burst')} into flame!`);
+    game._in_lava_effects = (game._in_lava_effects || 0) + 1;
+    try {
+        destroyWornArmorItem(boots, messages);
+    } finally {
+        game._in_lava_effects = Math.max(0, (game._in_lava_effects || 1) - 1);
+    }
+    return true;
+}
+
+function heroLavaEntryEffect(targetMoveTyp) {
+    const messages = [];
+    const dmg = d(6, 6);
+    burnLavaWornBootsFirst(messages);
+    if (!heroHasFireResistance()) {
+        if (heroHasWaterWalking()) {
+            messages.push('The lava here burns you!');
+            if (dmg < (game.u?.uhp || 0)) {
+                game.u.uhp -= dmg;
+                return { messages, fatal: false, more: messages.length > 1 };
+            }
+        }
+        messages.push(polyselfLavaFalloutMessage(targetMoveTyp));
+        game._death_cause = 'burned by molten lava';
+        game._command_mode = 'lavaDeathMore';
+        game._polyself_lava_death_more = 1;
+        return { messages, fatal: true, more: true };
+    }
+    if (!heroHasWaterWalking() && (!game.u?.utrap || game.u?.utraptype !== TT_LAVA)) {
+        game.u.utrap = rn1(4, 4) + (rn1(4, 12) << 8);
+        game.u.utraptype = TT_LAVA;
+        messages.push(targetMoveTyp === LAVAWALL
+            ? 'You sink into the wall of lava, but it only burns slightly!'
+            : 'You sink into the molten lava, but it only burns slightly!');
+        if ((game.u.uhp || 0) > 1) game.u.uhp--;
+    }
+    return { messages, fatal: false, more: messages.length > 1 };
+}
+
+function addBootsOffLavaFallout(item, messages, targetMoveTyp, discoveryKind = objectKindKey(item)) {
     item.known = true;
-    recordKnownArmorDiscovery('water walking boots', false);
+    recordKnownArmorDiscovery(discoveryKind, false);
     d(6, 6);
     if (game.u?.fireResistance) {
         game.u.utrap = rn1(4, 4) + (rn1(4, 12) << 8);
@@ -14811,7 +14873,8 @@ function addPolyselfWaterWalkingBootsOffSideEffects(item, messages) {
     const loc = game.level?.at(x, y);
     const targetMoveTyp = movementSurfaceTerrain(loc);
     if (movementIsLavaAt(x, y, loc)) {
-        addPolyselfWaterWalkingLavaFallout(item, messages, targetMoveTyp);
+        if (game._in_lava_effects) return;
+        addBootsOffLavaFallout(item, messages, targetMoveTyp, 'water walking boots');
         return;
     }
     if (!movementIsPoolAt(x, y, loc)) return;
@@ -14868,6 +14931,18 @@ function addPolyselfLevitationPoolFallout(item, messages, x, y, loc) {
     return true;
 }
 
+function addPolyselfLevitationLavaFallout(item, messages, x, y, loc) {
+    if (!game.u?.levitating || game.u?.flying || game.u?.Flying) return false;
+    if (game.u?.uswallow || game.u?.ustuck || game.u?.uinwater || game.u?.underwater || game.u?.uunderwater) return false;
+    if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)) return false;
+    if (!movementIsLavaAt(x, y, loc)) return false;
+    const targetMoveTyp = movementSurfaceTerrain(loc);
+    clearPolyselfLevitationBootSource(item);
+    if (game._in_lava_effects) return true;
+    addBootsOffLavaFallout(item, messages, targetMoveTyp, 'levitation boots');
+    return true;
+}
+
 function polyselfLevitationFloatDownMessage(x, y, loc) {
     if (!game.u?.levitating) return '';
     if (game.u.flying || game.u.Flying) return 'You have stopped levitating and are now flying.';
@@ -14882,6 +14957,7 @@ function addPolyselfLevitationBootsOffSideEffects(item, messages) {
     const x = game.u.ux || 0;
     const y = game.u.uy || 0;
     const loc = game.level?.at(x, y);
+    if (addPolyselfLevitationLavaFallout(item, messages, x, y, loc)) return;
     if (addPolyselfLevitationPoolFallout(item, messages, x, y, loc)) return;
     const floatDownMessage = polyselfLevitationFloatDownMessage(x, y, loc);
     if (!floatDownMessage) return;
@@ -14889,13 +14965,25 @@ function addPolyselfLevitationBootsOffSideEffects(item, messages) {
     messages.push(floatDownMessage);
 }
 
-function addPolyselfBootsOffSideEffects(item, messages) {
+export function addBootsOffSideEffects(item, messages = []) {
+    const hadRelocation = game._relocate_after_more;
+    const hadLavaDeath = game._polyself_lava_death_more || 0;
     const kind = objectKindKey(item);
     if (kind === 'water walking boots') addPolyselfWaterWalkingBootsOffSideEffects(item, messages);
     if (kind === 'levitation boots') addPolyselfLevitationBootsOffSideEffects(item, messages);
-    if (kind !== 'speed boots' || !game.u) return;
-    if (otherWornFastEquipment(item) || (game.u._veryfastTimeout || 0) > 0) return;
-    messages.push(`You feel yourself slow down${heroHasIntrinsicFast() ? ' a bit' : ''}.`);
+    if (kind === 'speed boots' && game.u
+        && !otherWornFastEquipment(item) && !(game.u._veryfastTimeout || 0))
+        messages.push(`You feel yourself slow down${heroHasIntrinsicFast() ? ' a bit' : ''}.`);
+    return {
+        messages,
+        more: (!!game._relocate_after_more && game._relocate_after_more !== hadRelocation)
+            || (!hadLavaDeath && !!game._polyself_lava_death_more),
+        fatal: game._command_mode === 'lavaDeathMore',
+    };
+}
+
+function addPolyselfBootsOffSideEffects(item, messages) {
+    addBootsOffSideEffects(item, messages);
 }
 
 function polyselfBodyArmorOffMessages(item) {
@@ -16625,6 +16713,10 @@ function takeOffSimpleArmorName(item) {
     return pickupObjectName(item).replace(/^pair of /i, '');
 }
 
+function takeOffGlovesSimpleName(item) {
+    return /\bgauntlets\b/i.test(pickupObjectName(item)) ? 'gauntlets' : 'gloves';
+}
+
 function takeOffCloakSimpleName(item) {
     const name = takeOffSimpleArmorName(item);
     if (/\brobe\b/i.test(name)) return 'robe';
@@ -16689,6 +16781,13 @@ function clearTakeOffPromptState() {
     game._take_off_action = '';
     game._overlay_lines = null;
     game._overlay_hide_status = 0;
+}
+
+function clearTakeOffGlovesCorpsePromptState() {
+    game._takeoff_gloves_corpse_letter = '';
+    game._takeoff_gloves_corpse_prompt = '';
+    game._takeoff_gloves_corpse_text = '';
+    game._takeoff_gloves_corpse_from_all = 0;
 }
 
 function currentTakeOffPromptAction() {
@@ -16760,7 +16859,15 @@ function takeOffRingBlockerResult(item) {
     return null;
 }
 
-function takeOffGlovesBlockerResult(item) {
+function carriedPetrifyingCorpseForGloveRemoval() {
+    return (game.inventory || []).find(isPetrifyingCorpseObject) || null;
+}
+
+function takeOffGlovesCorpsePrompt(item, corpse) {
+    return `Take off your ${takeOffGlovesSimpleName(item)} despite carrying a dead ${corpseMonsterName(corpse) || 'cockatrice'}? [yes|n] (n)`;
+}
+
+function takeOffGlovesBlockerResult(item, options = {}) {
     if (!isWornArmorItem(item) || armorSlot(item) !== 'gloves') return null;
     const weapon = primaryWeldedTakeoffWeapon();
     if (weapon) {
@@ -16773,6 +16880,14 @@ function takeOffGlovesBlockerResult(item) {
     if (heroHasSlipperyFingers()) {
         return {
             messages: [`${item.unpaid ? 'The' : 'Your'} ${takeOffSimpleArmorName(item)} are too slippery to take off.`],
+            move: 0,
+        };
+    }
+    const corpse = carriedPetrifyingCorpseForGloveRemoval();
+    if (corpse && !options.confirmedGlovesCorpse && options.allowGlovesCorpsePrompt !== false) {
+        return {
+            prompt: takeOffGlovesCorpsePrompt(item, corpse),
+            item,
             move: 0,
         };
     }
@@ -16821,9 +16936,9 @@ function takeOffSuitOrShirtBlockerResult(item) {
     return null;
 }
 
-function takeOffSelectBlockerResult(item) {
+function takeOffSelectBlockerResult(item, options = {}) {
     return takeOffRingBlockerResult(item)
-        || takeOffGlovesBlockerResult(item)
+        || takeOffGlovesBlockerResult(item, options)
         || takeOffBootsBlockerResult(item)
         || takeOffSuitOrShirtBlockerResult(item);
 }
@@ -16863,7 +16978,7 @@ function takeOffAllSelectionBlockerResult(item) {
     if (slot === 'primary' && readyPrimaryWillWeld(item))
         return takeOffCursedBlockerResult(item, { primaryWeapon: true });
     if (!isWornEquipmentItem(item)) return null;
-    return takeOffSelectBlockerResult(item)
+    return takeOffSelectBlockerResult(item, { allowGlovesCorpsePrompt: false })
         || (item.cursed ? takeOffCursedBlockerResult(item) : null);
 }
 
@@ -16945,7 +17060,7 @@ async function takeOffEquipment(item, options = {}) {
         if (coveredBlocker) return coveredBlocker;
     }
 
-    const selectBlocker = takeOffSelectBlockerResult(item);
+    const selectBlocker = takeOffSelectBlockerResult(item, options);
     if (selectBlocker) return selectBlocker;
 
     if (item.cursed) return takeOffCursedBlockerResult(item);
@@ -16971,6 +17086,7 @@ async function takeOffEquipment(item, options = {}) {
     }
 
     const acBonus = (ARMOR_AC_BONUS[String(item.kind || '').toLowerCase()] ?? 0) + (item.spe ?? 0);
+    const slot = armorSlot(item);
     const kind = String(item.kind || '').toLowerCase();
     const delay = ARMOR_WEAR_DELAY[kind] || (/dragon scales?/.test(kind) ? 5 : 0);
     if (delay) {
@@ -16999,7 +17115,38 @@ async function takeOffEquipment(item, options = {}) {
         syncHeroSpeedState();
     updateGauntletsOfPowerStrength(kind, false);
     updateWornDisplacement();
-    return { messages: [`You were wearing ${baseName}.`], move: 1 };
+    const messages = [`You were wearing ${baseName}.`];
+    const gloveFallout = slot === 'gloves' ? takeOffGlovesPetrifyingSelfTouchMessages(item) : [];
+    messages.push(...gloveFallout);
+    return {
+        messages,
+        move: 1,
+        more: !!gloveFallout.more,
+        fatal: !!gloveFallout.fatal,
+        lifeSaving: !!gloveFallout.lifeSaving,
+    };
+}
+
+export function takeOffGlovesPetrifyingSelfTouchMessages(gloves) {
+    if (game.u?.stoneResistance || heroPolyselfResistsStoning()) return [];
+    const corpse = (game.inventory || []).find(item =>
+        isPetrifyingCorpseObject(item) && (itemIsPrimaryWielded(item) || (game._twoweapon && itemIsAlternateWeapon(item))));
+    if (!corpse) return [];
+    if (game.u) game.u.uhp = 0;
+    game._death_cause = `petrified by removing ${takeOffGlovesSimpleName(gloves)} while wielding ${petrifyingCorpseArticleName(corpse)}`;
+    game._death_bones_body = 'statue';
+    const messages = [
+        `You now wield ${petrifyingCorpseArticleName(corpse)} in your bare hands.`,
+        'You turn to stone...',
+    ];
+    if (consumeLifeSavingAmulet({ clearStoning: true })) {
+        messages.push('You die...  But wait...  Your medallion begins to glow!');
+        messages.lifeSaving = true;
+    } else {
+        messages.fatal = true;
+    }
+    messages.more = true;
+    return messages;
 }
 
 function unwieldedBaseLine(item) {
@@ -17060,6 +17207,13 @@ async function continueTakeOffAllQueue() {
         if (!item || !isTakeOffAllCandidateItem(item)) continue;
         const result = await takeOffAllItem(item);
         if (!result) continue;
+        if (result.prompt) {
+            await beginTakeOffGlovesCorpsePrompt(result.item || item, result.prompt, {
+                fromAll: true,
+                prefixMessages: [...pendingMessages, ...zeroMoveMessages],
+            });
+            return true;
+        }
         if (!queue.length) {
             game._takeoff_all_queue = null;
             game._takeoff_all_disrobing = '';
@@ -17073,6 +17227,8 @@ async function continueTakeOffAllQueue() {
             await setMessage(messages.join('  '), !!result.more);
         game.context.move = result.move ?? 1;
         if (result.more) game._process_time_with_more = 1;
+        if (result.fatal || result.lifeSaving)
+            applyLifeSavingOrFatalCommandMode(result);
         return true;
     }
     clearTakeOffAllSelectionState();
@@ -17084,10 +17240,45 @@ async function continueTakeOffAllQueue() {
     return false;
 }
 
+async function beginTakeOffGlovesCorpsePrompt(item, prompt, options = {}) {
+    game._takeoff_gloves_corpse_letter = item?.letter || '';
+    game._takeoff_gloves_corpse_prompt = prompt;
+    game._takeoff_gloves_corpse_text = '';
+    game._takeoff_gloves_corpse_from_all = options.fromAll ? 1 : 0;
+    const messages = [...(options.prefixMessages || []), prompt].filter(Boolean);
+    await setMessage(messages.join('  '));
+    game._command_mode = 'takeOffGlovesCorpsePrompt';
+}
+
+async function finishTakeOffGlovesCorpsePrompt(answer) {
+    const fromAll = !!game._takeoff_gloves_corpse_from_all;
+    const letter = game._takeoff_gloves_corpse_letter;
+    const item = (game.inventory || []).find(invItem => invItem.letter === letter);
+    clearTakeOffGlovesCorpsePromptState();
+    game._command_mode = null;
+    if (answer === 'yes' && item) {
+        await finishTakeOffEquipment(item, { confirmedGlovesCorpse: true });
+        if (fromAll && !(game._takeoff_all_queue || []).length)
+            clearTakeOffAllSelectionState();
+        return;
+    }
+    if (fromAll && (game._takeoff_all_queue || []).length) {
+        await continueTakeOffAllQueue();
+        return;
+    }
+    if (fromAll) clearTakeOffAllSelectionState();
+    game.context.move = 0;
+    game._keep_pending_message = 1;
+}
+
 async function finishTakeOffEquipment(item, options = {}) {
     const result = await takeOffEquipment(item, { ...options, coveredArmorBlock: true });
     if (!result) return false;
-    if (result.messages.length) {
+    if (result.prompt) {
+        await beginTakeOffGlovesCorpsePrompt(result.item || item, result.prompt);
+        return true;
+    }
+    if (result.messages?.length) {
         const message = result.messages.join('  ');
         await setMessage(message, !!result.more);
         if (options.visualPromptOverride && !result.more && result.move !== 0
@@ -17098,6 +17289,8 @@ async function finishTakeOffEquipment(item, options = {}) {
     }
     game.context.move = result.move ?? 1;
     if (result.more) game._process_time_with_more = 1;
+    if (result.fatal || result.lifeSaving)
+        applyLifeSavingOrFatalCommandMode(result);
     return true;
 }
 
@@ -41830,11 +42023,26 @@ function updateWornArmorAcAfterChange(armor, oldAc) {
     updateArmorLine(armor);
 }
 
-function destroyWornArmorItem(armor) {
+function destroyWornArmorItem(armor, messages = null) {
     const oldAc = wornArmorAcValueGreatestErosion(armor);
-    if (game.u && isWornArmorItem(armor)) game.u.uac = (game.u.uac ?? 10) + oldAc;
-    updateGauntletsOfPowerStrength(armorKind(armor), false);
-    removeInventoryItem(armor, armor.quan || 1);
+    const wasWorn = isWornArmorItem(armor);
+    const kind = armorKind(armor);
+    if (game.u && wasWorn) game.u.uac = (game.u.uac ?? 10) + oldAc;
+    if (wasWorn) {
+        armor.worn = false;
+        armor.owornmask = 0;
+        armor.line = normalInventoryLine({ ...armor, line: '' });
+    }
+    if ((kind === 'speed boots' || isBlueDragonArmorKind(kind)) && game.u)
+        syncHeroSpeedState();
+    if (armorSlot(armor) === 'gloves')
+        addPolyselfGlovesOffSideEffects(armor);
+    else
+        updateGauntletsOfPowerStrength(kind, false);
+    if (armorSlot(armor) === 'boots' && Array.isArray(messages))
+        addBootsOffSideEffects(armor, messages);
+    if ((game.inventory || []).includes(armor))
+        useUpInventoryItem(armor, armor.quan || 1);
     updateReflectionFromInventory();
 }
 
@@ -41907,7 +42115,7 @@ function erodeDestroyArmor(armor, messages) {
         : `Your ${name} ${erosionVerb(armor, erosion.action)} away!`);
     const payment = costlyAlterationPaymentMessage(armor, erosionAlterationVerb(erosion.action));
     if (payment) messages.push(payment);
-    destroyWornArmorItem(armor);
+    destroyWornArmorItem(armor, messages);
     return 'destroyed';
 }
 
@@ -42038,7 +42246,7 @@ function disintegrateArm(target, messages) {
         delete armor.litRadius;
     }
     messages.push(disintegrateArmorMessage(armor));
-    destroyWornArmorItem(armor);
+    destroyWornArmorItem(armor, messages);
     return true;
 }
 
@@ -42221,12 +42429,10 @@ function enchantArmorScrollEffect(item) {
     if (s > (specialArmor ? 5 : 3) && rn2(s)) {
         const subject = armorSubject(armor);
         const color = enchantArmorColorWord(armor, item.cursed, game.u?.blind);
-        const oldAc = wornArmorAcValue(armor);
-        if (game.u) game.u.uac = (game.u.uac ?? 10) + oldAc;
-        removeInventoryItem(armor);
-        updateReflectionFromInventory();
+        const messages = [`${subject} violently ${armorVerb(armor, game.u?.blind ? 'vibrates' : 'glows', game.u?.blind ? 'vibrate' : 'glow')}${color} for a while, then ${armorVerb(armor, 'evaporates', 'evaporate')}.`];
+        destroyWornArmorItem(armor, messages);
         return {
-            messages: [`${subject} violently ${armorVerb(armor, game.u?.blind ? 'vibrates' : 'glows', game.u?.blind ? 'vibrate' : 'glow')}${color} for a while, then ${armorVerb(armor, 'evaporates', 'evaporate')}.`],
+            messages,
             known: !!armor.known,
         };
     }
@@ -58007,14 +58213,14 @@ async function moveHero(dx, dy) {
         newsym(guard.mx, guard.my);
     const steppedTrap = game.level?.traps?.find(trap => trap.tx === newx && trap.ty === newy);
     if (liquidTarget && nopick && (targetMoveTyp === LAVAPOOL || targetMoveTyp === LAVAWALL)) {
-        d(6, 6);
-        await setMessage(targetMoveTyp === LAVAWALL
-            ? 'You fall into the wall of lava!  You burn to a crisp...'
-            : 'You fall into the molten lava!  You burn to a crisp...', true);
-        game._death_cause = 'burned by molten lava';
-        game._command_mode = 'lavaDeathMore';
-        game.context.move = 0;
-        game._pending_time_passed = 0;
+        const lavaEffect = heroLavaEntryEffect(targetMoveTyp);
+        if (lavaEffect.messages.length) await setMessage(lavaEffect.messages.join('  '), lavaEffect.more);
+        if (lavaEffect.fatal) {
+            game.context.move = 0;
+            game._pending_time_passed = 0;
+        } else {
+            game.context.move = 1;
+        }
         return;
     }
     if (liquidTarget && nopick && targetMoveTyp !== LAVAPOOL && targetMoveTyp !== LAVAWALL) {
@@ -62027,6 +62233,7 @@ export async function rhack(_cmd) {
                         }
                     }
                 }
+                let armorTakeoffFatalResult = null;
                 if (game._armor_takeoff_after_more && next.startsWith('You finish taking off your ')) {
                     const occupation = game._armor_takeoff_after_more;
                     game._armor_takeoff_after_more = null;
@@ -62040,6 +62247,27 @@ export async function rhack(_cmd) {
                             syncHeroSpeedState();
                         updateGauntletsOfPowerStrength(occupation.kind, false);
                         updateWornDisplacement();
+                        if (occupation.kind && /boots$/.test(occupation.kind)) {
+                            const bootMessages = [];
+                            const bootFallout = addBootsOffSideEffects(item, bootMessages);
+                            if (bootMessages.length) next = [next, ...bootMessages].join('  ');
+                            queuedMore ||= !!bootFallout?.more;
+                        }
+                        const armorName = String(`${occupation.kind || ''} ${occupation.simpleName || ''} ${pickupObjectName(item)}`).toLowerCase();
+                        if (/\b(?:gloves?|gauntlets?)\b/.test(armorName)) {
+                            const fallout = takeOffGlovesPetrifyingSelfTouchMessages(item);
+                            if (fallout.length) {
+                                next = [next, ...fallout].join('  ');
+                                queuedMore ||= !!fallout.more;
+                                if (fallout.fatal || fallout.lifeSaving) {
+                                    armorTakeoffFatalResult = {
+                                        fatal: !!fallout.fatal,
+                                        lifeSaving: !!fallout.lifeSaving,
+                                        more: !!fallout.more,
+                                    };
+                                }
+                            }
+                        }
                     }
                 }
                 if (game._nymph_steal_after_more?.stolenMessage === next) {
@@ -62084,6 +62312,8 @@ export async function rhack(_cmd) {
                 }
                 if (next === 'You die...' || next === 'You die.') prepareDeathBones();
                 await setMessage(next, queuedMore);
+                if (armorTakeoffFatalResult)
+                    applyLifeSavingOrFatalCommandMode(armorTakeoffFatalResult);
                 if (game._queued_room_entry_after_queued_more) {
                     const roomEntryText = game._queued_room_entry_after_queued_more;
                     game._queued_room_entry_after_queued_more = '';
@@ -63656,6 +63886,34 @@ export async function rhack(_cmd) {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             await setMessage(game._takeoff_all_prompt || takeOffAllPrompt());
             game._command_mode = 'takeOffAllObject';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'takeOffGlovesCorpsePrompt') {
+        const prompt = game._takeoff_gloves_corpse_prompt || 'Take off your gloves? [yes|n] (n)';
+        const code = typeof key === 'number' ? key : String(ch || '').charCodeAt(0);
+        if (ch === '\x1b' || ch === 'q' || ch === 'n' || ch === ' ' || ch === '\r' || ch === '\n') {
+            const text = String(game._takeoff_gloves_corpse_text || '').trim().toLowerCase();
+            await finishTakeOffGlovesCorpsePrompt(text === 'yes' ? 'yes' : 'n');
+            return;
+        }
+        if (code === 8 || code === 127) {
+            game._takeoff_gloves_corpse_text = String(game._takeoff_gloves_corpse_text || '').slice(0, -1);
+            const text = game._takeoff_gloves_corpse_text || '';
+            await setMessage(`${prompt}${text ? ` ${text}` : ''}`);
+            return;
+        }
+        if (String(ch).trim().toLowerCase() === 'yes') {
+            await finishTakeOffGlovesCorpsePrompt('yes');
+            return;
+        }
+        if (code >= 32) {
+            game._takeoff_gloves_corpse_text = `${game._takeoff_gloves_corpse_text || ''}${ch}`;
+            const text = game._takeoff_gloves_corpse_text || '';
+            await setMessage(`${prompt}${text ? ` ${text}` : ''}`);
             return;
         }
         game._keep_pending_message = 1;
@@ -65357,8 +65615,9 @@ export async function rhack(_cmd) {
             if (result.known) learnScrollByName('enchant armor', item, 0);
             const messages = scrollReadMessages(confusedReading);
             messages.push(...result.messages);
+            const lavaDeathMore = game._command_mode === 'lavaDeathMore';
             await setMessage(messages.join('  '), true);
-            game._command_mode = null;
+            game._command_mode = lavaDeathMore ? 'lavaDeathMore' : null;
             game.context.move = 1;
             return;
         }
@@ -65402,8 +65661,9 @@ export async function rhack(_cmd) {
                 return;
             }
             const shouldCall = !result.skipCall && !alreadyKnown && !result.learned;
-            await setMessage(messages.join('  '), result.more || confusedReading || shouldCall);
-            game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
+            const lavaDeath = game._command_mode === 'lavaDeathMore';
+            await setMessage(messages.join('  '), result.more || confusedReading || shouldCall || lavaDeath);
+            game._command_mode = lavaDeath ? 'lavaDeathMore' : (shouldCall ? 'callScrollAfterMore' : null);
             if (shouldCall) game._call_scroll_label = callLabel;
             game.context.move = shouldCall ? 0 : 1;
             return;
