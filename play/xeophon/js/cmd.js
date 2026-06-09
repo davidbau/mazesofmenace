@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -538,9 +538,20 @@ function untrapLandMineDifficultMessage(trap, underHero) {
     return `${which} land mine is difficult to disarm.`;
 }
 
+function untrapShootingTrapName(trap) {
+    return trap?.ttyp === ARROW_TRAP ? 'arrow trap' : 'dart trap';
+}
+
+function untrapShootingTrapDifficultMessage(trap, underHero) {
+    const which = trap?.madeby_u ? 'Your' : underHero ? 'This' : 'That';
+    return `${which} ${untrapShootingTrapName(trap)} is difficult to disarm.`;
+}
+
 function untrapTrapReachName(trap) {
     if (trap?.ttyp === BEAR_TRAP) return 'bear trap';
     if (trap?.ttyp === LANDMINE) return 'land mine';
+    if (trap?.ttyp === ARROW_TRAP) return 'arrow trap';
+    if (trap?.ttyp === DART_TRAP) return 'dart trap';
     return 'web';
 }
 
@@ -558,12 +569,18 @@ function untrapHoldingTrapPromptName(trap) {
         return trap?.madeby_u ? 'your bear trap' : 'a bear trap';
     if (trap?.ttyp === LANDMINE)
         return trap?.madeby_u ? 'your land mine' : 'a land mine';
+    if (trap?.ttyp === ARROW_TRAP)
+        return trap?.madeby_u ? 'your arrow trap' : 'an arrow trap';
+    if (trap?.ttyp === DART_TRAP)
+        return trap?.madeby_u ? 'your dart trap' : 'a dart trap';
     return trap?.madeby_u ? 'your web' : 'a web';
 }
 
 function untrapHoldingTrapActionName(trap) {
     if (trap?.ttyp === BEAR_TRAP) return 'Disarm the bear trap';
     if (trap?.ttyp === LANDMINE) return 'Disarm the land mine';
+    if (trap?.ttyp === ARROW_TRAP) return 'Disarm the arrow trap';
+    if (trap?.ttyp === DART_TRAP) return 'Disarm the dart trap';
     return 'Remove the web';
 }
 
@@ -801,8 +818,13 @@ function heroHasFireResistance() {
     return (game.inventory || []).some(item => activeInventoryResistanceKind(item) === 'fire');
 }
 
+function chestTrapBoxCarried(box) {
+    return !!box && (box.where === OBJ_INVENT || (game.inventory || []).includes(box));
+}
+
 function chestTrapBoxInPool(box) {
     if (!box) return false;
+    if (chestTrapBoxCarried(box)) return heroIsUnderwater();
     const loc = game.level?.at?.(box.ox ?? game.u?.ux ?? 0, box.oy ?? game.u?.uy ?? 0);
     return !!loc && (IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT);
 }
@@ -1506,6 +1528,35 @@ function placeConvertedLandMineObject(trap) {
     return obj;
 }
 
+function placeConvertedShootingTrapObject(trap, otyp) {
+    if (!game.level || !trap) return null;
+    const count = 50 - rnl(50);
+    const obj = mksobj(otyp, true, false);
+    const isArrow = otyp === ARROW;
+    Object.assign(obj, {
+        cls: 'weapon',
+        glyph: ')',
+        color: CLR_CYAN,
+        kind: isArrow ? 'arrow' : 'dart',
+        actualKind: isArrow ? 'arrow' : 'dart',
+        singular: isArrow ? 'arrow' : 'dart',
+        plural: isArrow ? 'arrows' : 'darts',
+        ox: trap.tx,
+        oy: trap.ty,
+        quan: count,
+        owt: count,
+        hidden: false,
+        buried: false,
+        transientProjectile: false,
+        contained: false,
+        container: null,
+    });
+    if (isArrow) obj.opoisoned = false;
+    game.level.objects ??= [];
+    game.level.objects.push(obj);
+    return obj;
+}
+
 function autoSellConvertedTrapObject(obj, x, y) {
     const sale = shopDroppedPaidObjectSaleInfo(obj, x, y);
     if (!sale) return '';
@@ -1618,6 +1669,36 @@ async function moveHeroOntoFailedUntrapLandMine(trap, dir) {
         vision_recalc(1);
     }
     return await finishHeroDartTrapResult(heroLandmineResult(trap, 'Whoops...', { forceTrap: true }));
+}
+
+async function moveHeroOntoFailedUntrapShootingTrap(trap, dir) {
+    if ((dir.dx || dir.dy) && !canMoveHeroIntoFailedUntrapTrap(trap)) {
+        await setMessage("Whoops...  Fortunately, you don't move onto it.", true);
+        return false;
+    }
+    if (dir.dx || dir.dy) {
+        const oldx = game.u?.ux || 0;
+        const oldy = game.u?.uy || 0;
+        if (game.u) {
+            game.u.ux0 = oldx;
+            game.u.uy0 = oldy;
+            game.u.ux = trap.tx;
+            game.u.uy = trap.ty;
+            game.u.umoved = true;
+            if (game.u.usteed) {
+                game.u.usteed.mx = trap.tx;
+                game.u.usteed.my = trap.ty;
+            }
+        }
+        newsym(oldx, oldy);
+        newsym(trap.tx, trap.ty);
+        vision_recalc(1);
+    }
+    const alreadySeen = !(dir.dx || dir.dy) && !!trap?.tseen;
+    const result = trap?.ttyp === ARROW_TRAP
+        ? heroArrowTrapResult(trap, 'Whoops...', alreadySeen)
+        : heroDartTrapResult(trap, 'Whoops...', alreadySeen);
+    return await finishHeroDartTrapResult(result);
 }
 
 function damageMonsterFromFailedBearUntrap(monster, messages) {
@@ -1740,6 +1821,59 @@ async function handleUntrapLandMine(trap, dir) {
 
     const message = `You disarm ${untrapLandMineWhich(trap)} land mine.`;
     const object = placeConvertedLandMineObject(trap);
+    const saleMessage = trap.madeby_u && object
+        ? autoSellConvertedTrapObject(object, trap.tx, trap.ty)
+        : '';
+    if (object) stackDroppedFloorObject(object);
+    deleteTrap(trap);
+    game.context.move = 1;
+    await setMessage([message, saleMessage].filter(Boolean).join('  '));
+    return true;
+}
+
+async function handleUntrapShootingTrap(trap, dir) {
+    const underHero = !dir.dx && !dir.dy;
+    const trapName = untrapShootingTrapName(trap);
+    if ((game.u?.utrap || 0) > 0) {
+        await setMessage(`You cannot deal with the ${trapName} while trapped${underHero ? ' in it' : ''}!`);
+        game.context.move = 1;
+        return true;
+    }
+    const boulder = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === trap.tx && obj.oy === trap.ty);
+    if (boulder && !underHero && !heroPassesWalls()) {
+        await setMessage('There is a boulder in your way.');
+        return true;
+    }
+    const monster = untrapWebMonsterAt(trap);
+    if (monster) {
+        await setMessage(`${earthquakeMonsterName(monster)} is in the way.`);
+        return true;
+    }
+    if (await blockUntrapTightDiagonalReach(trap, dir)) return true;
+    if (!heroCanReachFloorForUntrap(underHero)) {
+        if (game.u?.usteed && heroRidingSkillLevel() < P_BASIC)
+            await setMessage("You aren't skilled enough to reach from a steed.");
+        else
+            await setMessage(`You are unable to reach the ${trapName}!`);
+        return true;
+    }
+
+    const chance = untrapTrapFailureChance(trap);
+    const failed = chance > 0 && rn2(chance);
+    if (failed) {
+        if (rnl(5)) {
+            if (await moveHeroOntoFailedUntrapShootingTrap(trap, dir)) return true;
+        } else {
+            await setMessage(untrapShootingTrapDifficultMessage(trap, underHero));
+        }
+        game.context.move = 1;
+        return true;
+    }
+
+    const message = `You disarm ${trap?.madeby_u ? 'your' : 'the'} trap.`;
+    const object = placeConvertedShootingTrapObject(trap, trap?.ttyp === ARROW_TRAP ? ARROW : DART);
     const saleMessage = trap.madeby_u && object
         ? autoSellConvertedTrapObject(object, trap.tx, trap.ty)
         : '';
@@ -16305,6 +16439,162 @@ function instrumentSimpleName(item) {
     return instrumentDisplayName(item).replace(/^(?:an?|the) /i, '');
 }
 
+function isTinWhistleObject(item) {
+    return objectKindKey(item) === 'tin whistle';
+}
+
+function whistleYname(item) {
+    const name = instrumentDisplayName(item);
+    if (/\bunpaid\b/i.test(name)) return name;
+    return name.replace(/^(?:an?|the) /i, 'your ');
+}
+
+function applyTinWhistle(item) {
+    const messages = [];
+    if (!heroCanBlowInstrument()) {
+        messages.push('You are incapable of using the whistle.');
+        return messages;
+    }
+    if (game.u?.underwater || game.u?.uunderwater) {
+        messages.push(`You blow bubbles through ${whistleYname(item)}.`);
+        return messages;
+    }
+    messages.push(heroIsDeaf()
+        ? 'You feel rushing air tickle your nose.'
+        : `You produce a ${item?.cursed ? 'shrill' : 'high'} whistling sound.`);
+    wakeNearbyMonstersFromHeroPetcall(messages);
+    return messages;
+}
+
+function isBlindfoldOrLensesApplyItem(item) {
+    const kind = objectKindKey(item);
+    return item?.cls === 'tool' && (kind === 'blindfold' || kind === 'lenses');
+}
+
+function isFacewearItem(item) {
+    const kind = objectKindKey(item);
+    return item?.cls === 'tool' && (kind === 'blindfold' || kind === 'towel' || kind === 'lenses');
+}
+
+function wornFacewearItem() {
+    return (game.inventory || []).find(item => isFacewearItem(item) && isWornInventoryItem(item));
+}
+
+function facewearBaseName(item) {
+    let name = inventoryItemName(item).replace(/\s+\(being worn\).*$/, '');
+    if (objectKindKey(item) === 'lenses' && !/\bpair of lenses\b/i.test(name))
+        name = name.replace(/\blenses\b/i, 'pair of lenses');
+    return name;
+}
+
+function setBlindfoldedState(active) {
+    if (!game.u) return;
+    game.u.blindfolded = !!active;
+    game.u.Blindfolded = !!active;
+}
+
+function facewearCausesBlindness(item) {
+    const kind = objectKindKey(item);
+    return kind === 'blindfold' || kind === 'towel';
+}
+
+function facewearPutOnMessageName(item, baseName) {
+    return objectKindKey(item) === 'towel' ? `${baseName} around your head` : baseName;
+}
+
+function putOnFacewearConflictMessage(worn, item) {
+    const wornKind = objectKindKey(worn);
+    const itemKind = objectKindKey(item);
+    if (wornKind === 'towel') return 'Your face is already covered by a towel.';
+    if (wornKind === 'blindfold') {
+        if (itemKind === 'lenses') return "You can't wear lenses because you're wearing a blindfold there already.";
+        return 'You are already wearing a blindfold.';
+    }
+    if (wornKind === 'lenses') {
+        if (itemKind === 'blindfold') return "You can't wear a blindfold because you're wearing some lenses there already.";
+        return 'You are already wearing some lenses.';
+    }
+    return 'You are already wearing something there.';
+}
+
+async function putOnFacewear(item) {
+    if (!isFacewearItem(item)) return null;
+
+    const wornFacewear = wornFacewearItem();
+    if (wornFacewear) return { messages: [putOnFacewearConflictMessage(wornFacewear, item)], move: 0 };
+
+    const baseName = facewearBaseName(item);
+    item.worn = true;
+    item.owornmask = W_TOOL;
+    item.line = `${item.letter || '?'} - ${baseName} (being worn)`;
+    if (facewearCausesBlindness(item) && game.u) {
+        const alreadyBlind = !!game.u.blind || (game.u._blindTimeout || 0) > 0 || (game.u.ucreamed || 0) > 0;
+        game.u.blind = true;
+        setBlindfoldedState(true);
+        await docrt();
+        const wearName = facewearPutOnMessageName(item, baseName);
+        return alreadyBlind
+            ? { messages: [`You are now wearing ${wearName}.`] }
+            : { messages: [`You are now wearing ${wearName}.`, "You can't see any more."] };
+    }
+    return { messages: [`You are now wearing ${baseName}.`] };
+}
+
+async function takeOffFacewear(item) {
+    if (!isFacewearItem(item)) return null;
+
+    const baseName = facewearBaseName(item);
+    item.worn = false;
+    item.owornmask = 0;
+    item.line = `${item.letter || '?'} - ${baseName}`;
+    if (facewearCausesBlindness(item) && game.u) {
+        setBlindfoldedState(false);
+        const stillBlind = (game.u._blindTimeout || 0) > 0 || (game.u.ucreamed || 0) > 0;
+        game.u.blind = stillBlind;
+        await docrt();
+        return { messages: [`You were wearing ${baseName}.`, stillBlind ? 'You still cannot see.' : 'You can see again.'] };
+    }
+    return { messages: [`You were wearing ${baseName}.`] };
+}
+
+async function applyBlindfoldOrLenses(item) {
+    if (!isBlindfoldOrLensesApplyItem(item)) return null;
+
+    const wornFacewear = wornFacewearItem();
+    if (wornFacewear && wornFacewear !== item) {
+        const kind = objectKindKey(wornFacewear);
+        return {
+            messages: [`You are already ${kind === 'towel' ? 'covered by a towel'
+                : kind === 'blindfold' ? 'wearing a blindfold'
+                    : 'wearing lenses'}.`],
+        };
+    }
+
+    const baseName = facewearBaseName(item);
+    const kind = objectKindKey(item);
+    if (wornFacewear === item) {
+        if (item.cursed) {
+            item.bknown = true;
+            return { messages: [`You can't.  ${kind === 'lenses' ? 'They are' : 'It is'} cursed.`] };
+        }
+        return takeOffFacewear(item);
+    }
+
+    item.worn = true;
+    item.owornmask = W_TOOL;
+    item.line = `${item.letter || '?'} - ${baseName} (being worn)`;
+    if (facewearCausesBlindness(item) && game.u) {
+        const alreadyBlind = !!game.u.blind || (game.u._blindTimeout || 0) > 0 || (game.u.ucreamed || 0) > 0;
+        game.u.blind = true;
+        setBlindfoldedState(true);
+        await docrt();
+        return alreadyBlind
+            ? { messages: [`You are now wearing ${baseName}.`] }
+            : { messages: [`You are now wearing ${baseName}.`, "You can't see any more."] };
+    }
+    return { messages: [`You are now wearing ${baseName}.`] };
+}
+
 function heroCanBlowInstrument() {
     const form = polyselfForm();
     if ((game.u?._statusSuffix || '').includes('Strngl') || game.u?.strangled || game.u?.strangling)
@@ -19450,25 +19740,79 @@ function monsterResistsCold(mon) {
         || data.coldResistance || data.resistsCold || data.resists_cold);
 }
 
-function wakeNearbyMonstersAt(x, y, distance, messages = null) {
+const M3_INFRAVISIBLE = 0x0200;
+const WAKE_MESSAGE_INFRARED_HIDDEN_MLETS = new Set(['blob', 'fungus', 'lizard', 'snake', 'spider', 'S']);
+
+function monsterWakeMessageInfravisible(mon) {
+    const data = mon?.data || {};
+    if (mon?.infravisible === false || mon?.infraVisible === false || mon?.infravisionVisible === false
+        || data.infravisible === false || data.infraVisible === false || data.infravisionVisible === false)
+        return false;
+    if (mon?.infravisible || mon?.infraVisible || mon?.infravisionVisible
+        || data.infravisible || data.infraVisible || data.infravisionVisible)
+        return true;
+    const mflags3 = mon?.mflags3 ?? mon?.m3 ?? mon?.flags3 ?? data.mflags3 ?? data.m3 ?? data.flags3;
+    if (Number.isFinite(Number(mflags3)) && (Number(mflags3) & M3_INFRAVISIBLE)) return true;
+    const flagText = `${mon?.mflags3 || ''} ${mon?.m3 || ''} ${mon?.flags3 || ''} ${data.mflags3 || ''} ${data.m3 || ''} ${data.flags3 || ''}`;
+    if (/\bM3_INFRAVISIBLE\b|infravisible/i.test(flagText)) return true;
+    const mlet = data.mlet || mon?.mlet || '';
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    if (WAKE_MESSAGE_INFRARED_HIDDEN_MLETS.has(mlet)) return false;
+    return !(mon?.mindless || data.mindless || mon?.nonliving || data.nonliving || name.endsWith(' golem'));
+}
+
+function monsterCanseemonForWakeMessage(mon) {
+    if (!mon || game.u?.blind || mon.mundetected) return false;
+    if ((mon.minvis || mon.invis || mon.invisible) && !game.u?.seeInvisible) return false;
+    if (cansee(mon.mx, mon.my)) return true;
+    return !!(game.u?.infravision && monsterWakeMessageInfravisible(mon) && couldsee(mon.mx, mon.my));
+}
+
+function monsterIsMinion(mon) {
+    const data = mon?.data || {};
+    return !!(mon?.isminion || mon?.isMinion || mon?.lminion
+        || data.isminion || data.isMinion || data.lminion);
+}
+
+function applyWakeNearbyPetcall(mon) {
+    if (game._monster_moving || Number(mon?.mtame || 0) <= 0) return;
+    if (!monsterIsMinion(mon)) {
+        ensurePetExtension(mon);
+        mon.mextra.edog.whistletime = Math.max(0, Math.trunc(Number(game.moves || 0)));
+    }
+    clearMonsterTrack(mon);
+}
+
+function wakeNearbyMonstersAt(x, y, distance, messages = null, { petcall = false } = {}) {
     for (const sleeper of game.level?.monsters || []) {
         if (!sleeper || sleeper.dead || (sleeper.mhp != null && sleeper.mhp <= 0)) continue;
         const dx = (sleeper.mx || 0) - x;
         const dy = (sleeper.my || 0) - y;
-        if (dx * dx + dy * dy >= distance) continue;
-        if (messages && sleeper.msleeping && directMeleeMonsterCanBeSeen(sleeper))
+        if (distance !== 0 && dx * dx + dy * dy >= distance) continue;
+        if (messages && sleeper.msleeping && monsterCanseemonForWakeMessage(sleeper))
             messages.push(directMeleeWakeMessage(sleeper, false));
         sleeper.msleeping = 0;
         if (!(sleeper.unique || sleeper.data?.unique || sleeper.data?.uniq)) {
             sleeper.mstrategy = 0;
             sleeper.waiting = false;
         }
+        if (petcall) applyWakeNearbyPetcall(sleeper);
     }
     disturbBuriedZombieCorpseTimersAt(x, y);
 }
 
 function wakeNearbyMonstersFromExplosion(x, y, damage, messages = null) {
     wakeNearbyMonstersAt(x, y, Math.max(damage * damage, 50), messages);
+}
+
+function wakeNearbyMonstersFromHeroPetcall(messages = null) {
+    wakeNearbyMonstersAt(
+        game.u?.ux || 0,
+        game.u?.uy || 0,
+        Math.max(0, Math.trunc(Number(game.u?.ulevel || 1)) * 20),
+        messages,
+        { petcall: true },
+    );
 }
 
 function burningOilExplosionVisible(x, y) {
@@ -34965,8 +35309,7 @@ function kickFloorObjectSupported(obj) {
     const unpaidContents = contents.some(child => shopObjectOrContentsUnpaid(child));
     const topLevelUnpaidContainer = container && obj.unpaid;
     const paidContainerWithUnpaidContents = container && !obj.unpaid && unpaidContents;
-    if ((!box && container && !paidContainerWithUnpaidContents && !topLevelUnpaidContainer)
-        || (!box && contents.length && !paidContainerWithUnpaidContents && !topLevelUnpaidContainer)) return false;
+    if (!box && !container && contents.length) return false;
     const supportedTopLevelUnpaid = obj.unpaid && (!contents.length || topLevelUnpaidContainer);
     if (shopObjectOrContentsUnpaid(obj)
         && !supportedTopLevelUnpaid
@@ -44984,9 +45327,7 @@ function tipHatMonsterLikesMagic(mon) {
 }
 
 function tipHatMonsterIsMinion(mon) {
-    const data = mon?.data || {};
-    return !!(mon?.isminion || mon?.isMinion || mon?.lminion
-        || data.isminion || data.isMinion || data.lminion);
+    return monsterIsMinion(mon);
 }
 
 function tipHatPeacefulHumanoidNoise(mon, name, monName, moves, hungryTime) {
@@ -49977,7 +50318,39 @@ function identifyBellOfOpening(item) {
     if (item.unpaid) syncUnpaidBillLine(item);
 }
 
-function applyBellOfOpening(item) {
+async function mkundeadAroundHero({ flags = NO_MINVENT, reviveCorpses = false } = {}) {
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const count = Math.trunc((level_difficulty() + 1) / 10) + rnd(5);
+    let spawned = 0;
+    let revived = 0;
+
+    for (let i = 0; i < count; i++) {
+        const data = morgueMonster();
+        if (!data) continue;
+        const spot = enextoMonsterSpot(x, y, data);
+        if (!spot) continue;
+
+        const corpse = reviveCorpses ? deadbookFloorCorpseAt(spot.x, spot.y) : null;
+        if (corpse && await reviveDeadbookCorpseItem(corpse, 'floor')) {
+            revived++;
+            continue;
+        }
+
+        const mon = await makemon(data, spot.x, spot.y, flags);
+        if (mon) {
+            spawned++;
+            newsym(mon.mx, mon.my);
+        }
+    }
+
+    game.level ??= {};
+    game.level.flags ??= {};
+    game.level.flags.graveyard = true;
+    return { spawned, revived };
+}
+
+async function applyBellOfOpening(item) {
     const messages = [`You ring the ${pickupObjectName(item)}.`];
     if (game.u?.underwater || game.u?.uunderwater) {
         messages.push('But the sound is muffled.');
@@ -49989,6 +50362,8 @@ function applyBellOfOpening(item) {
         if (invoking) {
             messages.push('But it makes no sound.');
             identifyBellOfOpening(item);
+        } else {
+            wakeNearbyMonstersFromHeroPetcall(messages);
         }
         return messages;
     }
@@ -49997,15 +50372,21 @@ function applyBellOfOpening(item) {
     spendChargedToolUse(item, messages);
     if (item.unpaid) syncUnpaidBillLine(item);
 
+    let wakePets = false;
     if (item.cursed) {
-        messages.push('Nothing happens.');
+        const result = await mkundeadAroundHero({ flags: NO_MINVENT });
+        game._bell_mkundead_spawned = (game._bell_mkundead_spawned || 0) + result.spawned;
+        game._bell_mkundead_revived = (game._bell_mkundead_revived || 0) + result.revived;
+        wakePets = true;
     } else if (invoking) {
         messages.push(`The ${bellName} issues an unsettling shrill sound...`);
         item.age = game.moves || 0;
         identifyBellOfOpening(item);
+        wakePets = true;
     } else {
         messages.push('Nothing happens.');
     }
+    if (wakePets) wakeNearbyMonstersFromHeroPetcall(messages);
     return messages;
 }
 
@@ -52549,37 +52930,99 @@ function movementRustTrapResult(trap) {
 function heroFireTrapResult(trap, prefix = '', { allowLifeSaving = false } = {}) {
     trap.tseen = true;
     const origDamage = d(2, 4);
+    if (heroIsUnderwater()) {
+        const surface = polyselfFalloffSurfaceName(game.u?.ux, game.u?.uy);
+        const bubbleMessage = `A cascade of steamy bubbles erupts from the ${surface}!`;
+        const messages = [prefix ? `${prefix}  ${bubbleMessage}` : bubbleMessage];
+        if (heroHasFireResistance()) {
+            messages.push('You are uninjured.');
+            return {
+                message: messages.join('  '),
+                more: true,
+                lifeSaving: false,
+                fatal: false,
+            };
+        }
+        const damageResult = applyChestTrapFireDamage(messages, rnd(3), 'killed by boiling water');
+        return {
+            ...damageResult,
+            message: messages.join('  '),
+            more: true,
+            lifeSaving: !!damageResult.lifeSaving,
+            fatal: !!damageResult.fatal,
+        };
+    }
     const messages = [prefix ? `${prefix}  A tower of flame erupts from the floor!` : 'A tower of flame erupts from the floor!'];
-    let damage = 0;
-    if (game.u?.fireResistance) {
+    let damage;
+    if (heroHasFireResistance()) {
         damage = rn2(2);
         if (!damage) messages.push('You are uninjured.');
+    } else if (game.u?._polyself_form) {
+        damage = applyPolyselfFireMaxHpLoss(origDamage);
     } else {
         damage = d(2, 4);
-        const hpLoss = rn2(Math.min(game.u?.uhpmax || 1, damage + 1));
         if (game.u) {
-            game.u.uhpmax = Math.max(1, (game.u.uhpmax || 1) - hpLoss);
-            game.u.uhp = Math.min(game.u.uhp || 1, game.u.uhpmax);
+            const hpMin = 1;
+            const oldMax = game.u.uhpmax || hpMin;
+            const loss = rn2(Math.min(oldMax, damage + 1));
+            game.u.uhpmax = Math.max(hpMin, oldMax - loss);
+            game.u.uhp = Math.min(game.u.uhp || hpMin, game.u.uhpmax);
         }
     }
+
+    const directResult = applyChestTrapFireDamage(messages, damage, 'killed by a tower of flame');
+    if (directResult.genocideDeathArmed || directResult.fatal) {
+        return {
+            ...directResult,
+            message: messages.join('  '),
+            more: true,
+        };
+    }
+    if (directResult.lifeSaving) restoreLifeSavedHeroForContinuation();
+
+    burnAwayHeroSlime(messages);
     const inventoryFire = fireDamageInventory(origDamage, false, false, { allowLifeSaving });
     messages.push(...inventoryFire.messages);
+    if (inventoryFire.lifeSaving || inventoryFire.fatal) {
+        game._death_cause = inventoryFire.deathCause || 'killed by a tower of flame';
+        return {
+            message: messages.join('  '),
+            more: true,
+            lifeSaving: inventoryFire.fatal ? !!inventoryFire.lifeSaving : !!directResult.lifeSaving || !!inventoryFire.lifeSaving,
+            fatal: !!inventoryFire.fatal,
+        };
+    }
+
+    const inventoryDamageResult = applyChestTrapFireDamage(
+        messages,
+        inventoryFire.damage,
+        inventoryFire.deathCause || 'killed by a tower of flame',
+    );
+    if (inventoryDamageResult.genocideDeathArmed || inventoryDamageResult.lifeSaving || inventoryDamageResult.fatal) {
+        return {
+            ...inventoryDamageResult,
+            message: messages.join('  '),
+            lifeSaving: inventoryDamageResult.fatal
+                ? !!inventoryDamageResult.lifeSaving
+                : !!directResult.lifeSaving || !!inventoryDamageResult.lifeSaving,
+            more: true,
+        };
+    }
+
     const floorFire = burnFloorObjectsByFire(game.u?.ux || 0, game.u?.uy || 0, {
         giveFeedback: !game.u?.blind,
         heroCaused: true,
     });
     messages.push(...floorFire.messages);
     if (floorFire.count && game.u?.blind) messages.push('You smell paper burning.');
-    if (!inventoryFire.lifeSaving && !inventoryFire.fatal) {
-        damage += inventoryFire.damage;
-        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-        if ((game.u?.uhp || 0) <= 0) game._death_cause = inventoryFire.deathCause || 'killed by a tower of flame';
-    }
+    if (directResult.lifeSaving && game.u) game._life_saving_post_continue_hp = game.u.uhp;
+
     return {
+        ...inventoryDamageResult,
         message: messages.join('  '),
         more: true,
-        lifeSaving: !!inventoryFire.lifeSaving,
-        fatal: !!inventoryFire.fatal,
+        lifeSaving: !!directResult.lifeSaving || !!inventoryDamageResult.lifeSaving,
+        fatal: !!inventoryDamageResult.fatal,
     };
 }
 
@@ -54936,34 +55379,7 @@ function deadbookFloorCorpseAt(x, y) {
 }
 
 async function mkundeadFromBook() {
-    const x = game.u?.ux || 0;
-    const y = game.u?.uy || 0;
-    const count = Math.trunc((level_difficulty() + 1) / 10) + rnd(5);
-    let spawned = 0;
-    let revived = 0;
-
-    for (let i = 0; i < count; i++) {
-        const data = morgueMonster();
-        if (!data) continue;
-        const spot = enextoMonsterSpot(x, y, data);
-        if (!spot) continue;
-
-        const corpse = deadbookFloorCorpseAt(spot.x, spot.y);
-        if (corpse && await reviveDeadbookCorpseItem(corpse, 'floor')) {
-            revived++;
-            continue;
-        }
-
-        const mon = await makemon(data, spot.x, spot.y, NO_MINVENT);
-        if (mon) {
-            spawned++;
-            newsym(mon.mx, mon.my);
-        }
-    }
-
-    game.level ??= {};
-    game.level.flags ??= {};
-    game.level.flags.graveyard = true;
+    const { spawned, revived } = await mkundeadAroundHero({ flags: NO_MINVENT, reviveCorpses: true });
     game._deadbook_mkundead_spawned = (game._deadbook_mkundead_spawned || 0) + spawned;
     game._deadbook_mkundead_revived = (game._deadbook_mkundead_revived || 0) + revived;
 }
@@ -62648,22 +63064,23 @@ export async function rhack(_cmd) {
             game.context.move = 1;
             return;
         }
+        const facewear = (game.inventory || []).find(invItem => invItem.letter === ch && isFacewearItem(invItem));
+        if (facewear) {
+            const result = await putOnFacewear(facewear);
+            await setMessage(result.messages.join('  '), !!result.more);
+            game._command_mode = null;
+            game.context.move = result.move ?? 1;
+            return;
+        }
         const accessory = (game.inventory || []).find(invItem => invItem.letter === ch
-            && ['blindfold', 'towel', 'lenses', 'meat ring'].includes(invItem.kind || invItem.actualKind));
+            && ['meat ring'].includes(invItem.kind || invItem.actualKind));
         if (accessory) {
             accessory.worn = true;
             const baseName = String(accessory.line || `${ch} - ${pickupObjectName(accessory)}`)
                 .replace(/^[a-zA-Z] - /, '')
                 .replace(/ \(being worn\).*$/, '');
             accessory.line = `${ch} - ${baseName} (being worn)`;
-            const accessoryKind = accessory.kind || accessory.actualKind;
-            if (['blindfold', 'towel'].includes(accessoryKind) && game.u) {
-                game.u.blind = true;
-                await docrt();
-                await setMessage(`You are now wearing ${baseName}.  You can't see any more.`);
-            } else {
-                await setMessage(`${accessory.line}.`);
-            }
+            await setMessage(`${accessory.line}.`);
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -62707,15 +63124,11 @@ export async function rhack(_cmd) {
         const baseName = String(item.line || `${item.letter || '?'} - ${pickupObjectName(item)}`)
             .replace(/^[a-zA-Z] - /, '')
             .replace(/ \(being worn\).*$/, '');
-        const accessoryKind = item.kind || item.actualKind;
-        if (['blindfold', 'towel'].includes(accessoryKind) && game.u) {
-            item.worn = false;
-            item.line = `${item.letter || '?'} - ${baseName}`;
-            game.u.blind = false;
-            await docrt();
-            await setMessage(`You were wearing ${baseName}.  You can see again.`, true);
+        const facewearOff = await takeOffFacewear(item);
+        if (facewearOff) {
+            await setMessage(facewearOff.messages.join('  '), !!facewearOff.more);
             game.context.move = 1;
-            game._process_time_with_more = 1;
+            if (facewearOff.more) game._process_time_with_more = 1;
             return;
         }
         const acBonus = (ARMOR_AC_BONUS[String(item.kind || '').toLowerCase()] ?? 0) + (item.spe ?? 0);
@@ -62978,22 +63391,23 @@ export async function rhack(_cmd) {
             game.context.move = 1;
             return;
         }
+        const facewear = (game.inventory || []).find(invItem => invItem.letter === ch && isFacewearItem(invItem));
+        if (facewear) {
+            const result = await putOnFacewear(facewear);
+            await setMessage(result.messages.join('  '), !!result.more);
+            game._command_mode = null;
+            game.context.move = result.move ?? 1;
+            return;
+        }
         const accessory = (game.inventory || []).find(invItem => invItem.letter === ch
-            && ['blindfold', 'towel', 'lenses', 'meat ring'].includes(invItem.kind || invItem.actualKind));
+            && ['meat ring'].includes(invItem.kind || invItem.actualKind));
         if (accessory) {
             accessory.worn = true;
             const baseName = String(accessory.line || `${ch} - ${pickupObjectName(accessory)}`)
                 .replace(/^[a-zA-Z] - /, '')
                 .replace(/ \(being worn\).*$/, '');
             accessory.line = `${ch} - ${baseName} (being worn)`;
-            const accessoryKind = accessory.kind || accessory.actualKind;
-            if (['blindfold', 'towel'].includes(accessoryKind) && game.u) {
-                game.u.blind = true;
-                await docrt();
-                await setMessage(`You are now wearing ${baseName}.  You can't see any more.`);
-            } else {
-                await setMessage(`${accessory.line}.`);
-            }
+            await setMessage(`${accessory.line}.`);
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -66768,8 +67182,20 @@ export async function rhack(_cmd) {
             await beginMusicalInstrumentUse(item);
             return;
         }
+        if (isTinWhistleObject(item)) {
+            const messages = applyTinWhistle(item);
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            return;
+        }
+        const facewearApply = await applyBlindfoldOrLenses(item);
+        if (facewearApply) {
+            await setMessage(facewearApply.messages.join('  '), !!facewearApply.more);
+            game.context.move = 1;
+            return;
+        }
         if (isBellOfOpeningItem(item)) {
-            const messages = applyBellOfOpening(item);
+            const messages = await applyBellOfOpening(item);
             await setMessage(messages.join('  '), messages.length > 1);
             game.context.move = 1;
             return;
@@ -71220,6 +71646,8 @@ export async function rhack(_cmd) {
                 await handleUntrapBearTrap(pending.trap, pending?.dir || { dx: 0, dy: 0 });
             else if (pending?.trap?.ttyp === LANDMINE)
                 await handleUntrapLandMine(pending.trap, pending?.dir || { dx: 0, dy: 0 });
+            else if (pending?.trap?.ttyp === ARROW_TRAP || pending?.trap?.ttyp === DART_TRAP)
+                await handleUntrapShootingTrap(pending.trap, pending?.dir || { dx: 0, dy: 0 });
             else
                 await handleUntrapWebTrap(pending?.trap, pending?.dir || { dx: 0, dy: 0 });
             return;
@@ -71348,7 +71776,11 @@ export async function rhack(_cmd) {
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === BEAR_TRAP);
             const landMineTrap = (game.level?.traps || []).find(candidate =>
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === LANDMINE);
-            const holdingTrap = webTrap || bearTrap || landMineTrap;
+            const arrowTrap = (game.level?.traps || []).find(candidate =>
+                candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === ARROW_TRAP);
+            const dartTrap = (game.level?.traps || []).find(candidate =>
+                candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === DART_TRAP);
+            const holdingTrap = webTrap || bearTrap || landMineTrap || dartTrap || arrowTrap;
             const boxes = (!dir.dx && !dir.dy) ? untrapBoxObjectsAt(x, y) : [];
             if ((holdingTrap || boxes.length) && await blockUntrapFloorReach(holdingTrap, dir, boxes))
                 return;
@@ -71373,6 +71805,10 @@ export async function rhack(_cmd) {
                 game._command_mode = 'untrapSqueakyTool';
                 return;
             }
+            if (dartTrap && await handleUntrapShootingTrap(dartTrap, dir))
+                return;
+            if (arrowTrap && await handleUntrapShootingTrap(arrowTrap, dir))
+                return;
             if (boxes.length && await beginUntrapBoxPrompt(boxes, { force, x, y }))
                 return;
             const loc = game.level?.at?.(x, y);
