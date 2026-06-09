@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -22,8 +22,8 @@ import { dryupFountainAt, dryupFountainResultAt } from './fountain.js';
 import {
     applyColdRayTerrain, buriedBallToFreedom, buriedBallToPunishment,
     clearCorpseTimeout, corpseName, freezeObjectInIcebox,
-    buryObjectsAt, findBuriedBallNear, isBuriedBallTrapActive, objectIceEffect, objIceEffectsAt,
-    removedFromIcebox, riderRevivalDelay, startCorpseTimeout, startMeltIceTimeout, stopMeltIceTimersAt, unearthObjectsAt, zombieFormNameForCorpse,
+    buryObjectsAt, findBuriedBallNear, isBuriedBallTrapActive, isIceAt, objectIceEffect, objIceEffectsAt,
+    removedFromIcebox, riderRevivalDelay, spotMeltIceTimeLeft, startCorpseTimeout, startMeltIceTimeout, stopMeltIceTimersAt, unearthObjectsAt, zombieFormNameForCorpse,
 } from './ice.js';
 import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
@@ -4493,21 +4493,24 @@ function applyAccessoryHunger(accessorytime) {
 }
 
 function safeTeleportHeroSameLevel(options = {}) {
+    const { returnResult = false, ...teleportOptions } = options;
+    const success = message => returnResult ? { ok: true, message } : message;
+    const failure = () => returnResult ? { ok: false, message: '' } : '';
     for (let tcnt = 0; tcnt < 40; tcnt++) {
         const x = rnd(COLNO - 1);
         const y = rn2(ROWNO);
         if (sameLevelTeleportOk(x, y, false))
-            return teleportHeroSameLevel(x, y, options);
+            return success(teleportHeroSameLevel(x, y, teleportOptions));
     }
 
     let backup = null;
     for (const pos of collectSameLevelTeleportCoords(game.u?.ux || 0, game.u?.uy || 0)) {
         if (sameLevelTeleportOk(pos.x, pos.y, false))
-            return teleportHeroSameLevel(pos.x, pos.y, options);
+            return success(teleportHeroSameLevel(pos.x, pos.y, teleportOptions));
         if (!backup && sameLevelTeleportTrapAt(pos.x, pos.y) && sameLevelTeleportOk(pos.x, pos.y, true))
             backup = pos;
     }
-    return backup ? teleportHeroSameLevel(backup.x, backup.y, options) : '';
+    return backup ? success(teleportHeroSameLevel(backup.x, backup.y, teleportOptions)) : failure();
 }
 
 function startControlledTeleportPrompt() {
@@ -11884,12 +11887,15 @@ function fireInventoryNameVerb(name, singular, plural) {
 function addFireInventoryMessage(messages, events, text, event, armor, joinState) {
     if (!joinState.joinedArmorMessage && messages.length === 1 && armor.message) {
         messages[0] = `${messages[0]}  ${text}`;
-        events.push({ ...event, text: messages[0] });
+        const entry = { ...event, text: messages[0] };
+        events.push(entry);
         joinState.joinedArmorMessage = true;
-        return;
+        return entry;
     }
     messages.push(text);
-    events.push({ ...event, text });
+    const entry = { ...event, text };
+    events.push(entry);
+    return entry;
 }
 
 function isGreenSlimeGlobItem(item) {
@@ -11923,6 +11929,11 @@ function fireInventoryDestroyVerb(cls, item, plural) {
     if (cls === 'potion' || cls === 'slime')
         return plural ? 'boil and explode' : 'boils and explodes';
     return plural ? 'catch fire and burn' : 'catches fire and burns';
+}
+
+function fireInventoryItemProtected() {
+    const chance = passiveObjectInventoryResistanceChance('fire');
+    return chance ? rn2(100) < chance : false;
 }
 
 function coldDestroyablePotion(item) {
@@ -12635,6 +12646,37 @@ function fireDamageFloorItem(obj, messages, visible, options = {}) {
 const LAVA_DIRECT_BURN_MATERIALS = new Set([
     'liquid', 'wax', 'veggy', 'vegetable', 'flesh', 'paper', 'cloth', 'leather', 'wood', 'bone',
 ]);
+const LAVA_FATAL_ORGANIC_MATERIALS = new Set([
+    'liquid', 'wax', 'veggy', 'vegetable', 'flesh', 'paper', 'cloth', 'leather', 'wood',
+]);
+const HALLUCINATED_COLORS = [
+    'ultraviolet', 'infrared', 'bluish-orange', 'reddish-green', 'dark white',
+    'light black', 'sky blue-pink', 'pinkish-cyan', 'indigo-chartreuse',
+    'salty', 'sweet', 'sour', 'bitter', 'umami',
+    'striped', 'spiral', 'swirly', 'plaid', 'checkered', 'argyle', 'paisley',
+    'blotchy', 'guernsey-spotted', 'polka-dotted', 'square', 'round',
+    'triangular', 'cabernet', 'sangria', 'fuchsia', 'wisteria', 'lemon-lime',
+    'strawberry-banana', 'peppermint', 'romantic', 'incandescent',
+    'octarine',
+    'excitingly dull', 'mauve', 'electric',
+    'neon', 'fluorescent', 'phosphorescent', 'translucent', 'opaque',
+    'psychedelic', 'iridescent', 'rainbow-colored', 'polychromatic',
+    'colorless', 'colorless green',
+    'dancing', 'singing', 'loving', 'loudy', 'noisy', 'clattery', 'silent',
+    'apocyan', 'infra-pink', 'opalescent', 'violant', 'tuneless',
+    'viridian', 'aureolin', 'cinnabar', 'purpurin', 'gamboge', 'madder',
+    'bistre', 'ecru', 'fulvous', 'tekhelet', 'selective yellow',
+];
+
+function hcolor(colorpref) {
+    return heroIsHallucinating() || !colorpref
+        ? HALLUCINATED_COLORS[rn2_on_display_rng(HALLUCINATED_COLORS.length)]
+        : colorpref;
+}
+
+function bookOfTheDeadGlowMessage() {
+    return `The Book of the Dead glows a strange ${hcolor('dark red')}, but remains intact.`;
+}
 const LIQUID_FLOW_RIDER_CORPSE_NAMES = new Set(['death', 'pestilence', 'famine']);
 
 function liquidFlowRiderCorpse(obj) {
@@ -12662,6 +12704,12 @@ function lavaObjectProtectedByObjResists(obj) {
         return false;
     }
     return !isBookOfTheDeadItem(obj);
+}
+
+function lavaFatalInventoryObjResists(item) {
+    if (lavaObjResistsHard(item)) return true;
+    rn2(100);
+    return false;
 }
 
 function lavaDirectFireExemptObject(obj, cls) {
@@ -12868,14 +12916,14 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
 
     for (const item of selected.filter(Boolean)) {
         const cls = fireDestroyableInventoryClass(item);
+        if (fireInventoryItemProtected()) continue;
         if (cls === 'spellbook' && isBookOfTheDeadItem(item)) {
             if (!game.u?.blind)
-                addFireInventoryMessage(messages, events,
-                    'The Book of the Dead glows a strange dark red, but remains intact.',
+                addFireInventoryMessage(messages, events, bookOfTheDeadGlowMessage(),
                     { damage: 0 }, armor, joinState);
             continue;
         }
-        const quan = item.quan || 1;
+        const quan = Math.max(0, (item.quan || 1) - (item.in_use ? 1 : 0));
         const itemDamage = fireInventoryItemDamage(item, cls);
         let destroyed = 0;
         for (let i = 0; i < quan; i++)
@@ -12893,40 +12941,48 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
         const event = { text: '', damage: 0 };
         const vaporMessages = [];
         const message = `${subject} ${fireInventoryDestroyVerb(cls, item, plural)}!`;
+        if (cls === 'slime') {
+            event.damage = itemDamage;
+            damage += itemDamage;
+            deathCause = fireInventoryDeathCause(cls, item, plural);
+        } else if (cls !== 'potion' && !game.u?.fireResistance) {
+            event.damage = 1;
+            damage += 1;
+            deathCause = fireInventoryDeathCause(cls, item, plural);
+        }
+        const recordedEvent = addFireInventoryMessage(messages, events, message, event, armor, joinState);
         if (cls === 'potion' || cls === 'slime') {
             if (cls === 'potion') {
                 potionBreathe(item, vaporMessages, { allowLifeSaving });
                 if (vaporMessages.lifeSaving) {
                     messages.lifeSaving = true;
-                    event.lifeSaving = true;
+                    recordedEvent.lifeSaving = true;
                 }
                 if (vaporMessages.fatal) {
                     messages.fatal = true;
-                    event.fatal = true;
+                    recordedEvent.fatal = true;
                 }
                 if (vaporMessages.more) {
                     messages.more = true;
-                    event.more = true;
+                    recordedEvent.more = true;
                 }
                 if (vaporMessages.length) {
                     const insertAfter = vaporMessages.map(text => ({ text, more: true }));
-                    event.insertAfter = insertAfter;
+                    recordedEvent.insertAfter = insertAfter;
                 }
+                if (vaporMessages.fatal && !vaporMessages.lifeSaving) {
+                    if (vaporMessages.length) messages.push(...vaporMessages);
+                    return fireInventoryDamageResult(messages, events, damage, deathCause);
+                }
+                recordedEvent.damage = itemDamage;
+                damage += itemDamage;
+                deathCause = fireInventoryDeathCause(cls, item, plural);
             }
-            event.damage = itemDamage;
-            damage += itemDamage;
-            deathCause = fireInventoryDeathCause(cls, item, plural);
             useUpInventoryItem(item, destroyed);
             if (cls === 'potion') rn2(2);
         } else {
             useUpInventoryItem(item, destroyed);
-            if (!game.u?.fireResistance) {
-                event.damage = 1;
-                damage += 1;
-                deathCause = fireInventoryDeathCause(cls, item, plural);
-            }
         }
-        addFireInventoryMessage(messages, events, message, event, armor, joinState);
         if (vaporMessages.length) messages.push(...vaporMessages);
     }
     if (rollIgniteAfterDestroy) igniteItems = !rn2(3);
@@ -14858,7 +14914,7 @@ function burnLavaWornBootsFirst(messages) {
 function lavaFatalOrganicInventoryItem(item, cls) {
     if (cls === 'scroll' || cls === 'spellbook') return true;
     const material = String(item?.material || item?.oc_material || '').toLowerCase();
-    if (LAVA_DIRECT_BURN_MATERIALS.has(material)) return true;
+    if (material) return LAVA_FATAL_ORGANIC_MATERIALS.has(material);
     const itemCls = itemClassKey(item);
     const kind = objectKindKey(item);
     if ((itemCls === 'food' || item?.otyp === FOOD_CLASS || item?.glyph === '%')
@@ -14867,7 +14923,7 @@ function lavaFatalOrganicInventoryItem(item, cls) {
     if (item?.globby || GLOB_TYPES.has(kind.replace(/^glob of /, ''))) return true;
     const profile = wishedDamageProfile(item);
     if (profile.erosionMatters && profile.primaryWord === 'burnt') return true;
-    return /\b(?:wax|leather|cloth|wood|wooden|paper|bone|corpse|meat|ration|food|fruit|egg|sack|bag|box|chest|leash|rope|bow|arrow|club|quarterstaff|aklys|bullwhip|sling|flute|harp|drum|whistle|horn)\b/.test(kind);
+    return /\b(?:wax|leather|cloth|wood|wooden|paper|corpse|meat|ration|food|fruit|egg|sack|bag|box|chest|leash|rope|bow|arrow|club|quarterstaff|aklys|bullwhip|sling|flute|harp|drum|whistle)\b/.test(kind);
 }
 
 function lavaFatalInventoryItemFireExempt(item, cls) {
@@ -14886,10 +14942,10 @@ function lavaFatalInventoryBurnSelection() {
     for (const item of game.inventory || []) {
         if (!item || item.in_use || item.inUse) continue;
         const cls = fireDestroyableInventoryClass(item);
+        if (cls !== 'potion' && !lavaFatalOrganicInventoryItem(item, cls)) continue;
         if (lavaFatalInventoryItemFireExempt(item, cls)) continue;
-        if (lavaObjResistsHard(item)) continue;
-        if (cls === 'potion' || lavaFatalOrganicInventoryItem(item, cls))
-            selected.push(item);
+        if (lavaFatalInventoryObjResists(item)) continue;
+        selected.push(item);
     }
     return selected;
 }
@@ -14916,10 +14972,18 @@ function destroyLavaFatalInventorySelection(selection, {
 } = {}) {
     let destroyed = 0;
     let burnMessages = 0;
-    for (const item of selection || []) {
+    const selected = new Set(selection || []);
+    const inventorySnapshot = [...(game.inventory || [])];
+    const canMessage = surviving && Array.isArray(messages);
+    for (const item of inventorySnapshot) {
         if (!(game.inventory || []).includes(item)) continue;
+        if (isBookOfTheDeadItem(item)) {
+            if (canMessage && !game.u?.blind) messages.push(bookOfTheDeadGlowMessage());
+            continue;
+        }
+        if (!selected.has(item)) continue;
         if (isWornArmorItem(item)) {
-            if (surviving && Array.isArray(messages)) {
+            if (canMessage) {
                 messages.push(`${armorSubject(item)} ${armorVerb(item, 'bursts', 'burst')} into flame!`);
                 burnMessages++;
             }
@@ -14942,6 +15006,7 @@ function lifeSaveHeroFromFatalLava(messages) {
     if (game.u) game.u.uhp = 0;
     messages.push(`But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
     game._life_saving_lava_safe_teleport = 1;
+    game._life_saving_lava_fatal_entry = 1;
     return true;
 }
 
@@ -14957,6 +15022,56 @@ function lifeSaveHeroFromLavaSinking(messages) {
     game._life_saving_lava_clear_trap = 1;
     if (!heroFloatingOverLavaRescue()) game._life_saving_lava_safe_teleport = 1;
     return true;
+}
+
+function armFatalLavaRescueState(dmg) {
+    game._fatal_lava_rescue_failures = 0;
+    game._fatal_lava_rescue_damage = dmg;
+}
+
+function clearFatalLavaRescueState() {
+    game._fatal_lava_rescue_failures = 0;
+    game._fatal_lava_rescue_damage = 0;
+    game._life_saving_lava_fatal_entry = 0;
+    game._wizard_lava_refusal_fatal_entry = 0;
+}
+
+function grantFatalLavaRescueCountermeasures() {
+    if (!game.u) return;
+    if (!heroHasFireResistance()) {
+        game.u._temporaryFireResistanceBase = !!game.u.fireResistance;
+        game.u._temporaryFireResistanceTimeout = Math.max(game.u._temporaryFireResistanceTimeout || 0, 5);
+        game.u.fireResistance = true;
+    }
+    if (!heroHasWaterWalking()) {
+        game.u._temporaryWaterWalkingBase = !!(game.u.waterWalking || game.u.Wwalking);
+        game.u._temporaryWaterWalkingTimeout = Math.max(game.u._temporaryWaterWalkingTimeout || 0, 5);
+        game.u.waterWalking = true;
+        game.u.Wwalking = true;
+    }
+}
+
+function handleFatalLavaSafeTeleportFailure(messages) {
+    game._fatal_lava_rescue_failures = (game._fatal_lava_rescue_failures || 0) + 1;
+    messages.push("You're still burning.");
+    if (game._fatal_lava_rescue_failures < 2) {
+        messages.push(polyselfLavaBurnMessage());
+        game._death_cause = 'burned by molten lava';
+        game._command_mode = 'lavaDeathMore';
+        game._polyself_lava_death_more = 1;
+        if (game.u) game.u.uhp = 0;
+        return { retry: true, more: true };
+    }
+
+    grantFatalLavaRescueCountermeasures();
+    const burnStuff = lavaSurvivorBurnStuff(messages, game._fatal_lava_rescue_damage || 0);
+    clearFatalLavaRescueState();
+    return {
+        retry: false,
+        lifeSaving: !!burnStuff.lifeSaving,
+        fatal: !!burnStuff.fatal,
+        more: !!burnStuff.more || messages.length > 1,
+    };
 }
 
 function lavaSurvivorBurnStuff(messages, dmg) {
@@ -15018,6 +15133,7 @@ function heroLavaEntryEffect(targetMoveTyp) {
         });
         messages.push(polyselfLavaBurnMessage());
         game._death_cause = 'burned by molten lava';
+        armFatalLavaRescueState(dmg);
         if (lifeSaveHeroFromFatalLava(messages))
             return { messages, fatal: false, lifeSaving: true, more: true };
         game._command_mode = 'lavaDeathMore';
@@ -23218,8 +23334,12 @@ function heroDropBallTrapState(type) {
     return '';
 }
 
-function heroDropBallTrapAt(x, y) {
+function heroTrapAt(x, y) {
     return (game.level?.traps || []).find(trap => trap.tx === x && trap.ty === y) || null;
+}
+
+function heroDropBallTrapAt(x, y) {
+    return heroTrapAt(x, y);
 }
 
 function heroDropBallMonsterAt(x, y) {
@@ -23250,8 +23370,8 @@ function heroDropBallPoolRelocationEffect(x, y, messages) {
     return { more: true, trapResult: null };
 }
 
-async function heroDropBallTrapRelocationEffect(x, y, messages) {
-    const trap = heroDropBallTrapAt(x, y);
+async function heroLandingTrapEffectAt(x, y, messages) {
+    const trap = heroTrapAt(x, y);
     if (!trap) return { more: false, trapResult: null };
 
     let result = null;
@@ -23283,6 +23403,163 @@ async function heroDropBallTrapRelocationEffect(x, y, messages) {
         more: !!result.more,
         trapResult: result.fatal || result.lifeSaving ? result : null,
     };
+}
+
+async function heroDropBallTrapRelocationEffect(x, y, messages) {
+    return heroLandingTrapEffectAt(x, y, messages);
+}
+
+function heroLandingIceWarningMessage(x, y) {
+    if (!game.u?.warning || !isIceAt(x, y)) return '';
+    const timeLeft = spotMeltIceTimeLeft(x, y);
+    if (!timeLeft || timeLeft >= 15) return '';
+    if (timeLeft < 5) return 'The ice, is gonna BREAK!';
+    if (timeLeft < 10) return 'You feel the ice shift beneath you!';
+    return 'The ice seems very soft and slushy.';
+}
+
+function wornLevitationBootsItem() {
+    return (game.inventory || []).find(item =>
+        isWornArmorItem(item) && armorSlot(item) === 'boots'
+        && objectKindKey(item) === 'levitation boots') || null;
+}
+
+function wornLevitationRingItems() {
+    return (game.inventory || []).filter(item =>
+        wornRingItem(item) && objectKindKey(item) === 'ring of levitation');
+}
+
+function heroLandingSinkLevitationActive() {
+    return !!(game.u?.levitating || game.u?.levitation || game.u?.Levitation);
+}
+
+function removeSinkFallLevitationBoots(boots) {
+    if (!boots || !game.u) return '';
+    const oldAc = wornArmorAcValueGreatestErosion(boots);
+    const baseName = equipmentBaseName(boots);
+    boots.worn = false;
+    boots.owornmask = 0;
+    boots.line = `${boots.letter || '?'} - ${baseName}`;
+    game.u.uac = (game.u.uac ?? 10) + oldAc;
+    recordKnownArmorDiscovery('levitation boots', false);
+    updateWornDisplacement();
+    return `You were wearing ${baseName}.`;
+}
+
+function removeSinkFallLevitationRing(ring) {
+    if (!ring) return '';
+    const baseName = equipmentBaseName(ring);
+    const messageName = wornRingOffMessageName(ring, baseName);
+    ring.worn = false;
+    ring.owornmask = 0;
+    ring.wornMask = 0;
+    ring._wornMask = 0;
+    ring.line = `${ring.letter || '?'} - ${baseName}`;
+    return `You were wearing ${messageName}.`;
+}
+
+function clearHeroLevitationStateAfterSinkFall() {
+    if (!game.u) return;
+    game.u.levitating = false;
+    game.u.levitation = false;
+    game.u.Levitation = false;
+    game.u._levitationTimeout = 0;
+}
+
+function heroLandingSinkFallEffectAt(x, y, messages) {
+    const loc = game.level?.at?.(x, y);
+    if (loc?.typ !== SINK || !heroLandingSinkLevitationActive()) return { more: false, trapResult: null };
+
+    const boots = wornLevitationBootsItem();
+    const rings = wornLevitationRingItems();
+    const controlledFlight = !!(game.u?.flying || game.u?.Flying);
+    const canCrash = !controlledFlight;
+    let trapResult = null;
+
+    if (canCrash) {
+        const con = game.u?.acurr?.a?.[A_CON] ?? 10;
+        const damage = game.u?.uinvulnerable ? 0 : maybeHalfPhysicalDamage(rn1(8, 25 - con));
+        messages.push('You crash to the floor!');
+        if (damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u?.uhp || 0) <= 0)
+            trapResult = heroDartTrapFatalResult(messages, 'fell onto a sink');
+    } else {
+        messages.push('You gain control of your flight.');
+    }
+
+    for (const ring of rings) {
+        const message = removeSinkFallLevitationRing(ring);
+        if (message) messages.push(message);
+    }
+    const bootMessage = removeSinkFallLevitationBoots(boots);
+    if (bootMessage) messages.push(bootMessage);
+    clearHeroLevitationStateAfterSinkFall();
+
+    return { more: messages.length > 1 || !!trapResult?.more, trapResult };
+}
+
+function clearModeledOneShotSpecialRoom(room) {
+    if (room?.rtype !== MORGUE) return;
+    room.rtype = OROOM;
+    if (!(game.level?.rooms || []).some(candidate => candidate?.rtype === MORGUE)
+        && !(game.level?.subrooms || []).some(candidate => candidate?.rtype === MORGUE)) {
+        if (game.level?.flags) game.level.flags.has_morgue = false;
+    }
+}
+
+async function heroLandingSpecialRoomEffectsNoPickup(x, y, messages, options = {}) {
+    const oldX = options.oldX ?? game.u?.ux0 ?? x;
+    const oldY = options.oldY ?? game.u?.uy0 ?? y;
+    const oldRoomno = game.level?.at(oldX, oldY)?.roomno || 0;
+    const newRoomno = game.level?.at(x, y)?.roomno || 0;
+    if (!newRoomno || newRoomno === oldRoomno) return { more: false };
+
+    let more = false;
+    const shopRoom = levelRoomByRoomno(newRoomno);
+    if (shopRoom?.rtype >= SHOPBASE) {
+        const shkp = shopRoom.resident || (game.level?.monsters || [])
+            .find(mon => mon.isshk && mon.shoproom === newRoomno);
+        if (shkp?.isshk && shkp.mpeaceful && !shkp.following) {
+            const hello = shopkeeperHello(shkp);
+            const shopIndex = (shkp.shoptype || shopRoom.rtype) - SHOPBASE;
+            const shopName = SHOP_TYPES[shopIndex]?.name || 'shop';
+            const shopkeeperName = shkp.shknam || shkp.shopkeeperName || shkp.givenName || 'shopkeeper';
+            const possessive = shopkeeperName.endsWith('s') ? `${shopkeeperName}'` : `${shopkeeperName}'s`;
+            messages.push(`"${hello}, ${game.plname || 'Hero'}!  Welcome${shkp.visitct ? ' again' : ''} to ${possessive} ${shopName}!"`);
+            shkp.visitct = (shkp.visitct || 0) + 1;
+        }
+    }
+
+    const templeEntry = prepareUntendedTempleEntry(newRoomno, oldRoomno);
+    if (templeEntry) {
+        const ghostText = await finishUntendedTempleEntry();
+        const templeText = [templeEntry.text, ghostText].filter(Boolean).join('  ');
+        if (templeText) messages.push(templeText);
+        more = more || !!ghostText;
+    }
+
+    const roomEntryText = specialRoomEntryText(newRoomno);
+    if (roomEntryText) {
+        messages.push(roomEntryText);
+        clearModeledOneShotSpecialRoom(levelRoomByRoomno(newRoomno));
+    }
+
+    return { more };
+}
+
+async function heroLandingSpotEffectsNoPickup(messages, options = {}) {
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const specialRoom = await heroLandingSpecialRoomEffectsNoPickup(x, y, messages, options);
+    const sink = heroLandingSinkFallEffectAt(x, y, messages);
+    if (sink.trapResult)
+        return { ...sink, more: !!(specialRoom.more || sink.more) };
+    const trap = await heroLandingTrapEffectAt(x, y, messages);
+    if (trap.more || trap.trapResult)
+        return { ...trap, more: !!(specialRoom.more || sink.more || trap.more) };
+    const iceWarning = heroLandingIceWarningMessage(game.u?.ux || x, game.u?.uy || y);
+    if (iceWarning) messages.push(iceWarning);
+    return { ...trap, more: !!(specialRoom.more || sink.more || trap.more) };
 }
 
 async function heroDropBallPostRelocationEffects(x, y, messages) {
@@ -34587,7 +34864,9 @@ function fireDestroyableInventoryClass(item) {
 
 function fireInventoryItemImmune(item, cls) {
     const name = String(item?.actualKind || item?.kind || item?.line || '').toLowerCase();
-    if (item?.artifact || item?.oartifact || (item?.in_use && (item?.quan || 1) === 1)) return true;
+    if (item?.in_use && (item?.quan || 1) === 1) return true;
+    if (cls === 'spellbook' && isBookOfTheDeadItem(item)) return false;
+    if (item?.artifact || item?.oartifact) return true;
     if (cls === 'scroll' && (item?.scrollIndex === 16 || /\bscroll of fire\b/.test(name))) return true;
     if (cls === 'spellbook' && /\bfireball\b/.test(name)) return true;
     return false;
@@ -34616,10 +34895,10 @@ export function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
     for (const item of selected.filter(Boolean)) {
         const cls = fireDestroyableInventoryClass(item);
         if (cls === 'spellbook' && isBookOfTheDeadItem(item)) {
-            if (visible) messages.push('The Book of the Dead glows a strange dark red, but remains intact.');
+            if (visible) messages.push(bookOfTheDeadGlowMessage());
             continue;
         }
-        const quan = item.quan || 1;
+        const quan = Math.max(0, (item.quan || 1) - (item.in_use ? 1 : 0));
         const itemDamage = cls === 'potion' ? rnd(6)
             : cls === 'slime' ? Math.trunc(((item.owt || 20) + 19) / 20)
                 : resistsFire ? 0 : 1;
@@ -59586,6 +59865,8 @@ export async function rhack(_cmd) {
             game._life_saving_post_continue_hp = null;
             game._life_saving_lava_safe_teleport = 0;
             game._life_saving_lava_clear_trap = 0;
+            const lavaFatalEntry = !!game._life_saving_lava_fatal_entry;
+            game._life_saving_lava_fatal_entry = 0;
             game._message_more = 0;
             game._keep_pending_message = 1;
             game._command_mode = null;
@@ -59638,10 +59919,32 @@ export async function rhack(_cmd) {
                 game.u.utraptype = null;
             }
             if (lavaSafeTeleport) {
-                const teleportMessage = safeTeleportHeroSameLevel();
-                if (teleportMessage)
-                    game._pending_message = [game._pending_message || lifeSavingMessage, teleportMessage]
-                        .filter(Boolean).join('  ');
+                const landingOrigin = {
+                    oldX: lavaFatalEntry ? game.u?.ux0 ?? game.u?.ux ?? 0 : game.u?.ux ?? 0,
+                    oldY: lavaFatalEntry ? game.u?.uy0 ?? game.u?.uy ?? 0 : game.u?.uy ?? 0,
+                };
+                const teleport = safeTeleportHeroSameLevel({ returnResult: true });
+                if (teleport.ok) {
+                    clearFatalLavaRescueState();
+                    const messages = [game._pending_message || lifeSavingMessage, teleport.message].filter(Boolean);
+                    const landing = await heroLandingSpotEffectsNoPickup(messages, landingOrigin);
+                    game._pending_message = messages.join('  ');
+                    game._message_more = landing.more || landing.trapResult ? 1 : 0;
+                    if (landing.trapResult && applyLifeSavingOrFatalCommandMode(landing.trapResult)) return;
+                } else if (lavaFatalEntry) {
+                    const messages = [game._pending_message || lifeSavingMessage];
+                    const failedRescue = handleFatalLavaSafeTeleportFailure(messages);
+                    game._pending_message = messages.join('  ');
+                    game._message_more = failedRescue.retry || failedRescue.more ? 1 : 0;
+                    if (failedRescue.retry) {
+                        game._keep_pending_message = 1;
+                        return;
+                    }
+                    if (failedRescue.lifeSaving || failedRescue.fatal) {
+                        applyLifeSavingOrFatalCommandMode(failedRescue);
+                        return;
+                    }
+                }
             }
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game._suppress_monster_attack_messages = 1;
@@ -63077,6 +63380,7 @@ export async function rhack(_cmd) {
                 game._death_moves ||= game._death_current_move ? deathTurn : Math.max(1, deathTurn - 1);
                 game._death_current_move = 0;
                 game._wizard_lava_refusal_safe_teleport = 1;
+                game._wizard_lava_refusal_fatal_entry = 1;
                 await setMessage('Die? [yn] (n)');
                 game._command_mode = 'wizardDieConfirm';
                 return;
@@ -63435,8 +63739,10 @@ export async function rhack(_cmd) {
         if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             const lavaRefusalClearTrap = !!game._wizard_lava_refusal_clear_trap;
             const lavaRefusalSafeTeleport = !!game._wizard_lava_refusal_safe_teleport;
+            const lavaRefusalFatalEntry = !!game._wizard_lava_refusal_fatal_entry;
             game._wizard_lava_refusal_clear_trap = 0;
             game._wizard_lava_refusal_safe_teleport = 0;
+            game._wizard_lava_refusal_fatal_entry = 0;
             restoreHeroHpAfterLifeSaving();
             clearLifeSavedDeathState();
             if (lavaRefusalClearTrap || game.u?.utraptype === TT_LAVA) {
@@ -63459,11 +63765,30 @@ export async function rhack(_cmd) {
                 return;
             }
             const survivalMessages = ["OK, so you don't die."];
+            let landing = null;
             if (lavaRefusalSafeTeleport) {
-                const teleportMessage = safeTeleportHeroSameLevel();
-                if (teleportMessage) survivalMessages.push(teleportMessage);
+                const landingOrigin = {
+                    oldX: lavaRefusalFatalEntry ? game.u?.ux0 ?? game.u?.ux ?? 0 : game.u?.ux ?? 0,
+                    oldY: lavaRefusalFatalEntry ? game.u?.uy0 ?? game.u?.uy ?? 0 : game.u?.uy ?? 0,
+                };
+                const teleport = safeTeleportHeroSameLevel({ returnResult: true });
+                if (teleport.ok) {
+                    clearFatalLavaRescueState();
+                    if (teleport.message) survivalMessages.push(teleport.message);
+                    landing = await heroLandingSpotEffectsNoPickup(survivalMessages, landingOrigin);
+                } else if (lavaRefusalFatalEntry) {
+                    const failedRescue = handleFatalLavaSafeTeleportFailure(survivalMessages);
+                    await setMessage(survivalMessages.join('  '), failedRescue.retry || failedRescue.more);
+                    if (failedRescue.lifeSaving || failedRescue.fatal)
+                        applyLifeSavingOrFatalCommandMode(failedRescue);
+                    else if (!failedRescue.retry)
+                        game._command_mode = null;
+                    return;
+                }
             }
-            await setMessage(survivalMessages.join('  '));
+            game._command_mode = null;
+            await setMessage(survivalMessages.join('  '), landing?.more || landing?.trapResult);
+            if (landing?.trapResult && applyLifeSavingOrFatalCommandMode(landing.trapResult)) return;
             if (game._deferred_raven_blind_after_more) {
                 const ravenAttack = game._deferred_raven_blind_after_more;
                 game._deferred_raven_blind_after_more = null;

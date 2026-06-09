@@ -9566,6 +9566,25 @@ async function finishMonsterTurnTail() {
             delete game.u._acidResistanceBase;
         }
     }
+    if ((game.u?._temporaryFireResistanceTimeout || 0) > 0) {
+        game.u._temporaryFireResistanceTimeout--;
+        if (!game.u._temporaryFireResistanceTimeout) {
+            if (!game.u._temporaryFireResistanceBase) game.u.fireResistance = false;
+            delete game.u._temporaryFireResistanceBase;
+            addToplineMessage('Your temporary ability to survive burning has ended.');
+        }
+    }
+    if ((game.u?._temporaryWaterWalkingTimeout || 0) > 0) {
+        game.u._temporaryWaterWalkingTimeout--;
+        if (!game.u._temporaryWaterWalkingTimeout) {
+            if (!game.u._temporaryWaterWalkingBase) {
+                game.u.waterWalking = false;
+                game.u.Wwalking = false;
+            }
+            delete game.u._temporaryWaterWalkingBase;
+            addToplineMessage('Your temporary ability to walk on liquid has ended.');
+        }
+    }
     if ((game.u?._stoneResistanceTimeout || 0) > 0) {
         game.u._stoneResistanceTimeout--;
         if (!game.u._stoneResistanceTimeout) {
