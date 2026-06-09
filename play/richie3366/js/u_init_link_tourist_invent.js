@@ -5,7 +5,6 @@
 
 import { game } from './gstate.js';
 import { OTYP_GOLD_PIECE } from './const.js';
-import { races } from './roles.js';
 import {
     NH5_ARMOR_CLASS,
     NH5_COIN_CLASS,
@@ -48,8 +47,7 @@ const BASE_WT = {
 
 /** @param {import('./gstate.js').game} [g] */
 export function isHumanTouristChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Tou' && (g.initrace | 0) === humanIdx;
+    return g.urole?.abbr === 'Tou';
 }
 
 /**

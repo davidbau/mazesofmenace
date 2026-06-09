@@ -1,32 +1,12 @@
-// mkobj_wizard_ini_inv_filter_like_c.js — C mkobj.c + u_init.c ini_inv_mkobj_filter for human Wizard / Cleric UNDEF rows.
-// C refs: mkobj.c mkobj/mksobj_init (WAND/RING/POTION/SCROLL/SPBOOK); u_init.c ini_inv_mkobj_filter(), Wizard[] / Priest[].
+// mkobj_wizard_ini_inv_filter_like_c.js — C mkobj.c + u_init.c ini_inv_mkobj_filter (one while-loop).
+// C refs: mkobj.c mkobj/mksobj_init (WAND/RING/POTION/SCROLL/SPBOOK); u_init.c ini_inv_mkobj_filter().
 
 import { rnd, rn2, rn1, rne } from './rng.js';
+import { P_NONE } from './const.js';
 import {
-    P_DAGGER,
-    P_KNIFE,
-    P_AXE,
-    P_SHORT_SWORD,
-    P_CLUB,
-    P_MACE,
-    P_QUARTERSTAFF,
-    P_POLEARMS,
-    P_SPEAR,
-    P_TRIDENT,
-    P_SLING,
-    P_DART,
-    P_SHURIKEN,
-    P_ATTACK_SPELL,
-    P_HEALING_SPELL,
-    P_DIVINATION_SPELL,
-    P_ENCHANTMENT_SPELL,
-    P_CLERIC_SPELL,
-    P_ESCAPE_SPELL,
-    P_MATTER_SPELL,
-    P_RIDING,
-    P_BARE_HANDED_COMBAT,
-    P_NONE,
-} from './const.js';
+    mkobjOtypFoodClassIniInvLikeC,
+    mksobjInitFoodClassIniInvAfterOtypLikeC,
+} from './mkobj_food_class_rng_like_c.js';
 import { mkobjScrollOtypLeafDrawLikeC } from './mkobj_scroll_class_rng_like_c.js';
 import {
     WAND_CLASS_MKOBJ_OC_PROB_ROWS,
@@ -37,33 +17,15 @@ import {
     SPELLBOOK_OTYP_OC_SKILL,
     STRANGE_OBJECT_OTYP,
 } from './mkobj_wizard_ini_inv_data.js';
-import { NH5_POTION_CLASS, NH5_RING_CLASS, NH5_SCROLL_CLASS, NH5_SPBOOK_CLASS, NH5_WAND_CLASS } from './nh5_objclass.js';
-
-/** C Skill_W[] skill column — `restricted_spell_discipline` membership. */
-const WIZARD_SKILL_W_SKILLS = new Set([
-    P_DAGGER,
-    P_KNIFE,
-    P_AXE,
-    P_SHORT_SWORD,
-    P_CLUB,
-    P_MACE,
-    P_QUARTERSTAFF,
-    P_POLEARMS,
-    P_SPEAR,
-    P_TRIDENT,
-    P_SLING,
-    P_DART,
-    P_SHURIKEN,
-    P_ATTACK_SPELL,
-    P_HEALING_SPELL,
-    P_DIVINATION_SPELL,
-    P_ENCHANTMENT_SPELL,
-    P_CLERIC_SPELL,
-    P_ESCAPE_SPELL,
-    P_MATTER_SPELL,
-    P_RIDING,
-    P_BARE_HANDED_COMBAT,
-]);
+import {
+    NH5_FOOD_CLASS,
+    NH5_POTION_CLASS,
+    NH5_RING_CLASS,
+    NH5_SCROLL_CLASS,
+    NH5_SPBOOK_CLASS,
+    NH5_WAND_CLASS,
+} from './nh5_objclass.js';
+import { DEF_SKILLS_BY_ABBR } from './u_init_skill_defs.js';
 
 const RING_OC_CHARGED = new Map(RING_CLASS_MKOBJ_ROWS);
 
@@ -224,26 +186,55 @@ function mksobjInitSpellbookIniInvLikeC() {
 }
 
 /**
- * C: u_init.c `restricted_spell_discipline` for PM_WIZARD (`Skill_W[]`).
+ * C: u_init.c `restricted_spell_discipline` — `spell_skilltype(otyp)` not in `skills_for_role()`.
  * @param {number} otyp
+ * @param {string} roleAbbr C role table key (`Wiz`, `Pri`, `Mon`, `Hea`, …)
  */
+/**
+ * C: `Role_if` / `Race_if` + `restricted_spell_discipline` for one role table.
+ * @param {string} roleAbbr C role abbr (`Tou`, `Ran`, `Val`, `Kni`, …)
+ * @param {number} raceMnum C `gu.urace.mnum`
+ * @returns {IniInvMkobjFilterCtx}
+ */
+export function iniInvMkobjFilterCtxForRoleLikeC(roleAbbr, raceMnum) {
+    return {
+        roleWizard: roleAbbr === 'Wiz',
+        roleMonk: roleAbbr === 'Mon',
+        raceOrc: (raceMnum | 0) === 4,
+        restrictedSpellDiscipline: (otyp) => restrictedSpellDisciplineForRoleLikeC(otyp, roleAbbr),
+    };
+}
+
+export function restrictedSpellDisciplineForRoleLikeC(otyp, roleAbbr) {
+    const sk = SPELLBOOK_OTYP_OC_SKILL.get(otyp);
+    if (sk === undefined) return true;
+    if (sk === P_NONE) return true;
+    const rows = DEF_SKILLS_BY_ABBR[roleAbbr];
+    if (!rows) return true;
+    for (const [skill] of rows) {
+        if (skill === P_NONE) break;
+        if (skill === sk) return false;
+    }
+    return true;
+}
+
+/** C: `restricted_spell_discipline` when `skills_for_role()` is `Skill_W[]`. */
 export function wizardSpellbookRestrictedLikeC(otyp) {
-    const sk = SPELLBOOK_OTYP_OC_SKILL.get(otyp);
-    if (sk === undefined) return true;
-    if (sk === P_NONE) return true;
-    return !WIZARD_SKILL_W_SKILLS.has(sk);
+    return restrictedSpellDisciplineForRoleLikeC(otyp, 'Wiz');
 }
 
-/** C `u_init.c` **`Skill_C[]`** spell skills — `restricted_spell_discipline` for **`PM_CLERIC`** (`spell_skilltype` vs role skills). */
-const CLERIC_C_SPELLBOOK_SKILLS = new Set([P_ATTACK_SPELL, P_MATTER_SPELL]);
-
-/** C: u_init.c `restricted_spell_discipline` when **`skills_for_role()`** is **`Skill_C[]`**. */
+/** C: `restricted_spell_discipline` when `skills_for_role()` is `Skill_C[]` (Cleric). */
 export function clericSpellbookRestrictedLikeC(otyp) {
-    const sk = SPELLBOOK_OTYP_OC_SKILL.get(otyp);
-    if (sk === undefined) return true;
-    if (sk === P_NONE) return true;
-    return !CLERIC_C_SPELLBOOK_SKILLS.has(sk);
+    return restrictedSpellDisciplineForRoleLikeC(otyp, 'Pri');
 }
+
+/**
+ * @typedef {object} IniInvMkobjFilterCtx
+ * @property {boolean} roleWizard C `Role_if(PM_WIZARD)` — reject `SPE_FORCE_BOLT`
+ * @property {boolean} roleMonk C `Role_if(PM_MONK)` — reject `SCR_ENCHANT_WEAPON`
+ * @property {boolean} raceOrc C `Race_if(PM_ORC)` — reject `RIN_POISON_RESISTANCE`
+ * @property {(otyp: number) => boolean} restrictedSpellDiscipline C `restricted_spell_discipline(otyp)`
+ */
 
 /**
  * @typedef {{ n1: number; n2: number; n3: number; n4: number }} GnLikeC
@@ -281,14 +272,8 @@ export function iniInvGnAfterUndefAcceptLikeC(oclassNH5, otyp, gn) {
     }
 }
 
-/**
- * @param {number} oclassNH5
- * @param {number} otyp
- * @param {boolean} gotSp1
- * @param {GnLikeC} gn
- * @param {boolean} raceOrc
- */
-function iniInvMkobjFilterRejectWizardLikeC(oclassNH5, otyp, gotSp1, gn, raceOrc) {
+/** C: u_init.c `ini_inv_mkobj_filter` while-body reject test. */
+function iniInvMkobjFilterRejectLikeC(oclassNH5, otyp, gotSp1, gn, ctx) {
     if (otyp === OTYP_WAN_WISHING) return true;
     if (otyp === gn.n1 || otyp === gn.n2 || otyp === gn.n3 || otyp === gn.n4) return true;
     if (otyp === OTYP_RIN_LEVITATION) return true;
@@ -297,33 +282,14 @@ function iniInvMkobjFilterRejectWizardLikeC(oclassNH5, otyp, gotSp1, gn, raceOrc
     if (otyp === OTYP_SPE_BLANK_PAPER) return true;
     if (otyp === OTYP_RIN_AGGRAVATE_MONSTER || otyp === OTYP_RIN_HUNGER) return true;
     if (otyp === OTYP_WAN_NOTHING) return true;
-    if (otyp === OTYP_SPE_FORCE_BOLT) return true;
+    if (otyp === OTYP_RIN_POISON_RESISTANCE && ctx.raceOrc) return true;
+    if (otyp === OTYP_SCR_ENCHANT_WEAPON && ctx.roleMonk) return true;
+    if (otyp === OTYP_SPE_FORCE_BOLT && ctx.roleWizard) return true;
     if (otyp === OTYP_SPE_NOVEL) return true;
-    if (otyp === OTYP_RIN_POISON_RESISTANCE && raceOrc) return true;
     if (oclassNH5 === NH5_SPBOOK_CLASS) {
         const lv = SPELLBOOK_OTYP_LEVEL.get(otyp) ?? 99;
         const maxLv = gotSp1 ? 3 : 1;
-        if (lv > maxLv || wizardSpellbookRestrictedLikeC(otyp)) return true;
-    }
-    return false;
-}
-
-/** C: `ini_inv_mkobj_filter` reject while-body for human Cleric (no **`SPE_FORCE_BOLT`** wizard-only reject). */
-function iniInvMkobjFilterRejectPriestHumanLikeC(oclassNH5, otyp, gotSp1, gn, raceOrc) {
-    if (otyp === OTYP_WAN_WISHING) return true;
-    if (otyp === gn.n1 || otyp === gn.n2 || otyp === gn.n3 || otyp === gn.n4) return true;
-    if (otyp === OTYP_RIN_LEVITATION) return true;
-    if (otyp === OTYP_POT_HALLUCINATION || otyp === OTYP_POT_ACID) return true;
-    if (otyp === OTYP_SCR_AMNESIA || otyp === OTYP_SCR_FIRE || otyp === OTYP_SCR_BLANK_PAPER) return true;
-    if (otyp === OTYP_SPE_BLANK_PAPER) return true;
-    if (otyp === OTYP_RIN_AGGRAVATE_MONSTER || otyp === OTYP_RIN_HUNGER) return true;
-    if (otyp === OTYP_WAN_NOTHING) return true;
-    if (otyp === OTYP_SPE_NOVEL) return true;
-    if (otyp === OTYP_RIN_POISON_RESISTANCE && raceOrc) return true;
-    if (oclassNH5 === NH5_SPBOOK_CLASS) {
-        const lv = SPELLBOOK_OTYP_LEVEL.get(otyp) ?? 99;
-        const maxLv = gotSp1 ? 3 : 1;
-        if (lv > maxLv || clericSpellbookRestrictedLikeC(otyp)) return true;
+        if (lv > maxLv || ctx.restrictedSpellDiscipline(otyp)) return true;
     }
     return false;
 }
@@ -345,6 +311,9 @@ function mksobjInitForOclassLikeC(oclassNH5, otyp) {
     } else if (oclassNH5 === NH5_SPBOOK_CLASS) {
         lastIniInvRingMksobjSpe = undefined;
         mksobjInitSpellbookIniInvLikeC();
+    } else if (oclassNH5 === NH5_FOOD_CLASS) {
+        lastIniInvRingMksobjSpe = undefined;
+        mksobjInitFoodClassIniInvAfterOtypLikeC(otyp);
     } else {
         lastIniInvRingMksobjSpe = undefined;
     }
@@ -368,22 +337,23 @@ function mkobjOtypPickOnlyLikeC(oclassNH5) {
     if (oclassNH5 === NH5_POTION_CLASS) return mkobjOtypFromProbRowsLikeC(POTION_CLASS_MKOBJ_OC_PROB_ROWS);
     if (oclassNH5 === NH5_SCROLL_CLASS) return mkobjScrollOtypLeafDrawLikeC();
     if (oclassNH5 === NH5_SPBOOK_CLASS) return mkobjOtypFromProbRowsLikeC(SPBOOK_CLASS_MKOBJ_OC_PROB_ROWS);
+    if (oclassNH5 === NH5_FOOD_CLASS) return mkobjOtypFoodClassIniInvLikeC();
     return OTYP_PANCAKE;
 }
 
 /**
- * C: u_init.c ini_inv_mkobj_filter — human Wizard (`Role_if(PM_WIZARD)` exclusions).
+ * C: u_init.c `ini_inv_mkobj_filter(int oclass, boolean got_level1_spellbook)`.
  * @param {number} oclassNH5
  * @param {boolean} gotSp1
  * @param {GnLikeC} gn
- * @param {boolean} [raceOrc]
+ * @param {IniInvMkobjFilterCtx} ctx
  * @returns {number} accepted `otyp`
  */
-export function iniInvMkobjFilterWizardHumanLikeC(oclassNH5, gotSp1, gn, raceOrc = false) {
+export function iniInvMkobjFilterLikeC(oclassNH5, gotSp1, gn, ctx) {
     let trycnt = 0;
     let otyp = mkobjOtypPickOnlyLikeC(oclassNH5);
     mksobjInitForOclassLikeC(oclassNH5, otyp);
-    while (iniInvMkobjFilterRejectWizardLikeC(oclassNH5, otyp, gotSp1, gn, raceOrc)) {
+    while (iniInvMkobjFilterRejectLikeC(oclassNH5, otyp, gotSp1, gn, ctx)) {
         if (++trycnt > 1000) {
             lastIniInvRingMksobjSpe = undefined;
             nextIdentLikeC();
@@ -396,27 +366,32 @@ export function iniInvMkobjFilterWizardHumanLikeC(oclassNH5, gotSp1, gn, raceOrc
     return otyp | 0;
 }
 
-/**
- * C: u_init.c **`ini_inv_mkobj_filter`** for human **`PM_CLERIC`** (**`Skill_C[]`** spell restrictions; **`SPE_FORCE_BOLT`** not excluded).
- * @param {number} oclassNH5
- * @param {boolean} gotSp1
- * @param {GnLikeC} gn
- * @param {boolean} [raceOrc]
- * @returns {number} accepted `otyp`
- */
+/** Human Wizard — `Role_if(PM_WIZARD)` + `Skill_W[]` spell restrictions. */
+export function iniInvMkobjFilterWizardHumanLikeC(oclassNH5, gotSp1, gn, raceOrc = false) {
+    return iniInvMkobjFilterLikeC(oclassNH5, gotSp1, gn, {
+        roleWizard: true,
+        roleMonk: false,
+        raceOrc,
+        restrictedSpellDiscipline: wizardSpellbookRestrictedLikeC,
+    });
+}
+
+/** Human Cleric — `Skill_C[]` spell restrictions; no wizard-only `SPE_FORCE_BOLT` reject. */
 export function iniInvMkobjFilterPriestHumanLikeC(oclassNH5, gotSp1, gn, raceOrc = false) {
-    let trycnt = 0;
-    let otyp = mkobjOtypPickOnlyLikeC(oclassNH5);
-    mksobjInitForOclassLikeC(oclassNH5, otyp);
-    while (iniInvMkobjFilterRejectPriestHumanLikeC(oclassNH5, otyp, gotSp1, gn, raceOrc)) {
-        if (++trycnt > 1000) {
-            lastIniInvRingMksobjSpe = undefined;
-            nextIdentLikeC();
-            mksobjInitPancakeFoodTailLikeC();
-            return OTYP_PANCAKE;
-        }
-        otyp = mkobjOtypPickOnlyLikeC(oclassNH5);
-        mksobjInitForOclassLikeC(oclassNH5, otyp);
-    }
-    return otyp | 0;
+    return iniInvMkobjFilterLikeC(oclassNH5, gotSp1, gn, {
+        roleWizard: false,
+        roleMonk: false,
+        raceOrc,
+        restrictedSpellDiscipline: clericSpellbookRestrictedLikeC,
+    });
+}
+
+/** Human Monk UNDEF scroll row — `Role_if(PM_MONK)` rejects `SCR_ENCHANT_WEAPON`. */
+export function iniInvMkobjFilterScrollClassMonkLikeC() {
+    return iniInvMkobjFilterLikeC(NH5_SCROLL_CLASS, false, gnIniInvFreshLikeC(), {
+        roleWizard: false,
+        roleMonk: true,
+        raceOrc: false,
+        restrictedSpellDiscipline: (otyp) => restrictedSpellDisciplineForRoleLikeC(otyp, 'Mon'),
+    });
 }

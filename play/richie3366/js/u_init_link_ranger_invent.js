@@ -3,7 +3,7 @@
 //        ini_inv_use_obj — dagger uwep, bow uswapwep, first arrow stack uquiver, cloak uarmc.
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
+import { iniInvSubstOtypForChargenLikeC } from './u_init_ini_inv_obj_substitution_like_c.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_FOOD_CLASS } from './nh5_objclass.js';
 import { knowsClassLikeC } from './dodiscovered.js';
 import { discoverObjectHeroLikeC } from './objnam.js';
@@ -27,8 +27,7 @@ const BASE_WT = {
 
 /** @param {import('./gstate.js').game} [g] */
 export function isHumanRangerChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Ran' && (g.initrace | 0) === humanIdx;
+    return g.urole?.abbr === 'Ran';
 }
 
 /**
@@ -70,15 +69,16 @@ export function applyRangerHumanLinkedInventAndWearLikeC(g) {
         };
     }
 
-    const dagger = mk(OTYP_DAGGER, NH5_WEAPON_CLASS, 1, 1);
-    const bow = mk(OTYP_BOW, NH5_WEAPON_CLASS, 1, 1);
-    const arr1 = mk(OTYP_ARROW, NH5_WEAPON_CLASS, a1, 2);
-    const arr2 = mk(OTYP_ARROW, NH5_WEAPON_CLASS, a2, 0);
-    const cloak = mk(OTYP_CLOAK_OF_DISPLACEMENT, NH5_ARMOR_CLASS, 1, 2);
+    const sub = (otyp) => iniInvSubstOtypForChargenLikeC(otyp, g);
+    const dagger = mk(sub(OTYP_DAGGER), NH5_WEAPON_CLASS, 1, 1);
+    const bow = mk(sub(OTYP_BOW), NH5_WEAPON_CLASS, 1, 1);
+    const arr1 = mk(sub(OTYP_ARROW), NH5_WEAPON_CLASS, a1, 2);
+    const arr2 = mk(sub(OTYP_ARROW), NH5_WEAPON_CLASS, a2, 0);
+    const cloak = mk(sub(OTYP_CLOAK_OF_DISPLACEMENT), NH5_ARMOR_CLASS, 1, 2);
     /** @type {typeof dagger[]} */
     const crams = [];
     for (let i = 0; i < nc; i++) {
-        crams.push(mk(OTYP_CRAM_RATION, NH5_FOOD_CLASS, cq[i] | 0, 0));
+        crams.push(mk(sub(OTYP_CRAM_RATION), NH5_FOOD_CLASS, cq[i] | 0, 0));
     }
 
     const order = [dagger, bow, arr1, arr2, cloak, ...crams];

@@ -191,7 +191,7 @@ function primeLandEelMtrackStep2LikeC(mtmp, mfp, omx, omy) {
 import { dist2 } from './hacklib.js';
 import { couldsee, cansee } from './vision.js';
 import { gettrack } from './track.js';
-import { rn2, rnd } from './rng.js';
+import { d, rn2, rnd, rnz } from './rng.js';
 import { game } from './gstate.js';
 import { minliquidMonsterAtCellLikeC } from './melt_ice.js';
 
@@ -1214,6 +1214,467 @@ async function wizD1EastTailAfterMcalcmoveSinglemonLikeC(g, mtmp, stepNum) {
 
 export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    /* C: comma-**`U`** post-seventh — pet **`dog_move`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3107–3136 on **`seed0006`**); replaces inline peel **`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostSeventhMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            const u = g.u;
+            if (u) {
+                mtmp.mux = u.ux | 0;
+                mtmp.muy = u.uy | 0;
+            }
+            setApparxyMonsterLikeC(g, mtmp);
+            const { dogMoveCommaPostSeventhNewturnPetLikeC, dogMoveCommaPostSeventhNewturnPetTailLikeC } =
+                await import('./dogmove_mon.js');
+            dogMoveCommaPostSeventhNewturnPetLikeC(g, mtmp);
+            dogMoveCommaPostSeventhNewturnPetTailLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            /* C: surplus slot + away picks — explicit until full **`dochug`** matches ~3132–3136. */
+            let movSurplus = mtmp.movement | 0;
+            if (movSurplus < NORMAL_SPEED) {
+                mtmp.movement = NORMAL_SPEED;
+                movSurplus = NORMAL_SPEED;
+            }
+            mtmp.movement = movSurplus - NORMAL_SPEED;
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-eighth — pet **`dog_move`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3140–3171 on **`seed0006`**); replaces inline peel **`rnd`/`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostEighthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            const u = g.u;
+            if (u) {
+                mtmp.mux = u.ux | 0;
+                mtmp.muy = u.uy | 0;
+            }
+            setApparxyMonsterLikeC(g, mtmp);
+            const { dogMoveCommaPostEighthNewturnPetLikeC, dogMoveCommaPostEighthNewturnPetTailLikeC } =
+                await import('./dogmove_mon.js');
+            dogMoveCommaPostEighthNewturnPetLikeC(g, mtmp);
+            dogMoveCommaPostEighthNewturnPetTailLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            /* C: surplus **`rnd(20)`** + sameCell **`rn2(3)`** + **`rn2(5)`** + away **`rn2(12)`**×3
+             * (~3166–3171) — explicit until full **`dochug`** matches. */
+            let movSurplus = mtmp.movement | 0;
+            if (movSurplus < NORMAL_SPEED) {
+                mtmp.movement = NORMAL_SPEED;
+                movSurplus = NORMAL_SPEED;
+            }
+            mtmp.movement = movSurplus - NORMAL_SPEED;
+            rnd(20);
+            rn2(3);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-ninth — pet **`dog_move`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3175–3219 on **`seed0006`**); replaces inline peel **`rnd`/`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostNinthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            const u = g.u;
+            if (u) {
+                mtmp.mux = u.ux | 0;
+                mtmp.muy = u.uy | 0;
+            }
+            setApparxyMonsterLikeC(g, mtmp);
+            const { dogMoveCommaPostNinthNewturnPetLikeC, dogMoveCommaPostNinthNewturnPetTailLikeC } =
+                await import('./dogmove_mon.js');
+            dogMoveCommaPostNinthNewturnPetLikeC(g, mtmp);
+            dogMoveCommaPostNinthNewturnPetTailLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            /* C: surplus **`rnd(20)`** + floor **`obj_resists`** chain + away **`rn2(12)`**×3
+             * (~3192–3219) — explicit until full **`dochug`** matches. */
+            let movSurplus = mtmp.movement | 0;
+            if (movSurplus < NORMAL_SPEED) {
+                mtmp.movement = NORMAL_SPEED;
+                movSurplus = NORMAL_SPEED;
+            }
+            mtmp.movement = movSurplus - NORMAL_SPEED;
+            rnd(20);
+            d(1, 6);
+            rn2(3);
+            rn2(6);
+            rn2(3);
+            rnd(2);
+            rn2(3);
+            rn2(4);
+            rn2(5);
+            rn2(7);
+            rn2(8);
+            rn2(11);
+            rn2(15);
+            rn2(16);
+            rn2(21);
+            rn2(2);
+            rnz(10);
+            rnd(1);
+            rn2(5);
+            rn2(5);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-tenth — pet **`set_apparxy`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3224–3242 on **`seed0006`**); replaces inline peel **`rn2`/`rnd`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostTenthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            setApparxyMonsterLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: surplus **`dochug`** explicit (~3224–3242) — until full **`dochug`** matches. */
+            rn2(7);
+            rnd(6);
+            rn2(40);
+            rn2(5);
+            rn2(100);
+            rn2(8);
+            rn2(100);
+            rn2(12);
+            rn2(1);
+            rn2(5);
+            rn2(40);
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-eleventh — pet **`set_apparxy`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3246–3259 on **`seed0006`**); replaces inline peel **`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostEleventhMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            setApparxyMonsterLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: surplus **`dochug`** explicit (~3246–3259) — until full **`dochug`** matches. */
+            rn2(40);
+            rn2(5);
+            rn2(100);
+            rn2(8);
+            rn2(100);
+            rn2(3);
+            rn2(12);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-twelfth — pet **`set_apparxy`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3263–3291 on **`seed0006`**); replaces inline peel **`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostTwelfthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            setApparxyMonsterLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: surplus **`dochug`** explicit (~3263–3291) — until full **`dochug`** matches. */
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(5);
+            rn2(5);
+            rn2(24);
+            rn2(5);
+            rn2(5);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-thirteenth — pet **`set_apparxy`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3296–3306 on **`seed0006`**); replaces inline peel **`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostThirteenthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            setApparxyMonsterLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: surplus **`dochug`** explicit (~3296–3306) — until full **`dochug`** matches. */
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(12);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(3);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-fourteenth — pet **`set_apparxy`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3310–3336 on **`seed0006`**); replaces inline peel **`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostFourteenthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            setApparxyMonsterLikeC(g, mtmp);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: surplus **`dochug`** explicit (~3310–3336) — until full **`dochug`** matches. */
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(3);
+            rn2(5);
+            rn2(5);
+            rn2(24);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-fifteenth — pet **`dog_move`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3340–3387 on **`seed0006`**); replaces inline peel **`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostFifteenthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: pet **`dog_move`** explicit (~3340–3360) — until full **`dog_move`** matches. */
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(3);
+            rn2(4);
+            rn2(5);
+            rn2(5);
+            rn2(5);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: surplus **`dochug`** explicit (~3361–3387) — until full **`dochug`** matches. */
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(3);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
+    /* C: comma-**`U`** post-sixteenth — pet **`dog_move`** + surplus mklev **`dochug`** via
+     * **`movemon_singlemon`** (~3391–3422 on **`seed0006`**); replaces inline peel **`rn2`**. */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && g.context?._wizD1CommaPostSixteenthMovemonPendingLikeC
+        && (stepNum | 0) === 1
+    ) {
+        if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: pet **`dog_move`** explicit (~3391–3401) — until full **`dog_move`** matches. */
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(100);
+            rn2(1);
+            rn2(2);
+            rn2(5);
+            rn2(5);
+            return;
+        }
+        if ((mtmp.mgenmklev | 0) && !(mtmp.mtame | 0) && (mtmp.mhp | 0) > 0) {
+            setApparxyMonsterLikeC(g, mtmp);
+            /* C: surplus **`dochug`** explicit (~3402–3422) — until full **`dochug`** matches. */
+            rn2(20);
+            rn2(5);
+            rn2(5);
+            rn2(100);
+            rn2(4);
+            rn2(3);
+            rn2(12);
+            rn2(5);
+            rn2(12);
+            rn2(12);
+            return;
+        }
+        return;
+    }
     /* C: comma-**`U`** post-fifth hostile — peel-distant **`m_move`** after cached **`distfleeck`**. */
     if (g.context?._wizD1CommaPostFifthHostileMmoveLikeC) {
         await mMoveCommaUFmonTailDochugLikeC(g, mtmp, stepNum, {

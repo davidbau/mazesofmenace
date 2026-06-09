@@ -3,7 +3,7 @@
 //        ini_inv_use_obj — uwep spear, uswapwep dagger, uarms small shield.
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
+import { iniInvSubstOtypForChargenLikeC } from './u_init_ini_inv_obj_substitution_like_c.js';
 import {
     NH5_WEAPON_CLASS,
     NH5_ARMOR_CLASS,
@@ -31,9 +31,13 @@ const BASE_WT = {
 };
 
 /** @param {import('./gstate.js').game} [g] */
+export function isValkyrieChargenLikeC(g = game) {
+    return g.urole?.abbr === 'Val';
+}
+
+/** @deprecated use {@link isValkyrieChargenLikeC} */
 export function isHumanValkyrieChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Val' && (g.initrace | 0) === humanIdx;
+    return isValkyrieChargenLikeC(g);
 }
 
 /**
@@ -41,7 +45,7 @@ export function isHumanValkyrieChargenLikeC(g = game) {
  * @param {import('./gstate.js').game} g
  */
 export function applyValkyrieHumanLinkedInventAndWieldLikeC(g) {
-    if (!isHumanValkyrieChargenLikeC(g)) return;
+    if (!isValkyrieChargenLikeC(g)) return;
     const fq = g._valkyrieIniFoodQuan | 0;
     const foodQuan = fq >= 1 && fq <= 2 ? fq : 1;
 
@@ -64,9 +68,10 @@ export function applyValkyrieHumanLinkedInventAndWieldLikeC(g) {
         };
     }
 
-    const spear = mk(OTYP_SPEAR, NH5_WEAPON_CLASS, 1, 1);
-    const dagger = mk(OTYP_DAGGER, NH5_WEAPON_CLASS, 1, 0);
-    const shield = mk(OTYP_SMALL_SHIELD, NH5_ARMOR_CLASS, 1, 3);
+    const sub = (otyp) => iniInvSubstOtypForChargenLikeC(otyp, g);
+    const spear = mk(sub(OTYP_SPEAR), NH5_WEAPON_CLASS, 1, 1);
+    const dagger = mk(sub(OTYP_DAGGER), NH5_WEAPON_CLASS, 1, 0);
+    const shield = mk(sub(OTYP_SMALL_SHIELD), NH5_ARMOR_CLASS, 1, 3);
     const food = mk(OTYP_FOOD_RATION, NH5_FOOD_CLASS, foodQuan, 0);
 
     const order = [spear, dagger, shield, food];

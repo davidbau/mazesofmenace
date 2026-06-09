@@ -4,22 +4,30 @@
 //         mkbox_cnts (SACK empty at moves<=1), blessorcurse().
 
 import { game } from './gstate.js';
+import { races } from './roles.js';
 import { rnd, rn2, rne, rn1 } from './rng.js';
 import { OTYP_LEATHER_ARMOR, P_BOW, P_SHURIKEN } from './const.js';
 import { OC_SKILL_ROW_BY_OTYP } from './obj_oc_skill_data.js';
-import { iniInvMkobjFilterScrollClassMonkLikeC } from './mkobj_scroll_class_rng_like_c.js';
-import { iniInvOneMkobjFoodUndefDrawLikeC } from './mkobj_food_class_rng_like_c.js';
+import { iniInvObjSubstitutionLikeC } from './u_init_ini_inv_obj_substitution_like_c.js';
 import {
     gnIniInvFreshLikeC,
     iniInvAdjustObjRingSpeUndefTropLikeC,
     iniInvGnAfterUndefAcceptLikeC,
-    iniInvMkobjFilterPriestHumanLikeC,
+    iniInvMkobjFilterCtxForRoleLikeC,
+    iniInvMkobjFilterLikeC,
+    iniInvMkobjFilterScrollClassMonkLikeC,
     iniInvMkobjFilterWizardHumanLikeC,
+    restrictedSpellDisciplineForRoleLikeC,
     takeLastIniInvRingMksobjSpeLikeC,
 } from './mkobj_wizard_ini_inv_filter_like_c.js';
+import {
+    iniInvAdjustObjWeaponToolTrquanLikeC,
+    trquanTrobjLikeC,
+} from './ini_inv_adjust_like_c.js';
 import { SPELLBOOK_OTYP_LEVEL } from './mkobj_wizard_ini_inv_data.js';
 import {
     NH5_ARMOR_CLASS,
+    NH5_FOOD_CLASS,
     NH5_POTION_CLASS,
     NH5_RING_CLASS,
     NH5_SCROLL_CLASS,
@@ -31,6 +39,8 @@ import {
 
 /** C `objects_nums` — **`WAN_WISHING`** (`u_init.c` **`Wishing[]`**). */
 const OTYP_WAN_WISHING = 413;
+/** C `objects.h` — **`WAN_SLEEP`** (`Healer[]` fixed trotyp, not `UNDEF_TYP`). */
+const OTYP_WAN_SLEEP = 412;
 
 /** C objects_nums — OBJECTS_ENUM (nethack-c/upstream/include/objects.h). */
 const OTYP_DAGGER = 35;
@@ -107,6 +117,15 @@ const OTYP_POT_WATER = 321;
 /** C `objects.h` FOOD after **`CARROT`** — **`SPRIG_OF_WOLFSBANE`**, **`CLOVE_OF_GARLIC`**. */
 const OTYP_SPRIG_WOLFSBANE = 283;
 const OTYP_CLOVE_GARLIC = 284;
+/** C `u_init.c` `u_init_race` PM_ELF `Instrument[]` — `ROLL_FROM(trotyp)` non-magic tools (`objects.h`). */
+const ELF_INSTRUMENT_OTYPS = Object.freeze([
+    247, /* WOODEN_FLUTE */
+    249, /* TOOLED_HORN */
+    253, /* WOODEN_HARP */
+    255, /* BELL */
+    256, /* BUGLE */
+    257, /* LEATHER_DRUM */
+]);
 
 /** C `obj.h` **`is_multigen`** / **`is_poisonable`** (WEAPON + **`oc_skill`** in **`-P_SHURIKEN`..`-P_BOW`**), extended when **`OC_SKILL_ROW_BY_OTYP`** lacks projectiles **19–24**. */
 function weaponAmmoMultigenOrPoisonableLikeC(otyp) {
@@ -210,6 +229,12 @@ function mksobjInitScrollIniInvLikeC() {
 
 /** C: mkobj.c mksobj_init — SPBOOK_CLASS blessorcurse(otmp, 17) */
 function mksobjInitSpellbookIniInvLikeC() {
+    blessorcurseLikeC(17);
+}
+
+/** C: mkobj.c mksobj_init — `WAN_SLEEP` directional `spe = rn1(5, 4)` + blessorcurse(17). */
+function mksobjInitWandSleepHealerLikeC() {
+    rn1(5, 4);
     blessorcurseLikeC(17);
 }
 
@@ -396,22 +421,22 @@ export function consumeKnightHumanIniInvUinitRoleRngLikeC() {
     rn2(1);
 
     game._knightIniAppleQuans = [];
-    rn2(1);
-    for (let i = 0; i < 10; i++) {
+    const appleN = trquanTrobjLikeC(10, 10);
+    for (let i = 0; i < appleN; i++) {
         nextIdentLikeC();
         game._knightIniAppleQuans.push(mksobjInitDefaultFoodQuanMaybeDoubleLikeC());
     }
 
     game._knightIniCarrotQuans = [];
-    rn2(1);
-    for (let i = 0; i < 10; i++) {
+    const carrotN = trquanTrobjLikeC(10, 10);
+    for (let i = 0; i < carrotN; i++) {
         nextIdentLikeC();
         game._knightIniCarrotQuans.push(mksobjInitDefaultFoodQuanMaybeDoubleLikeC());
     }
 }
 
 /**
- * C: u_init.c **`PM_VALKYRIE`** **`ini_inv(Valkyrie[])`** for human + optional **`!rn2(6)`** **`ini_inv(Lamp)`**.
+ * C: u_init.c **`PM_VALKYRIE`** **`ini_inv(Valkyrie[])`** + optional **`!rn2(6)`** **`ini_inv(Lamp)`** (all races).
  */
 export function consumeValkyrieHumanIniInvUinitRoleRngLikeC() {
     /* SPEAR +1 */
@@ -453,10 +478,9 @@ const OTYP_MONK_MSPELL_BOOKS = /** @type {const} */ ([373, 402, 376]);
  * C: u_init.c **`PM_MONK`** **`u_init_role`** — **`ini_inv(Monk[])`**, **`M_spell[rn2(90)/30]`**,
  * **`!rn2(4)`** **`Magicmarker`**, **`else if (!rn2(10))`** **`Lamp`** (human; no race subs).
  */
-/** C: `trquan()` when `trquan_min` non-zero — `min + rn2(max - min + 1)`. */
+/** @deprecated local alias — use `trquanTrobjLikeC` from `ini_inv_adjust_like_c.js`. */
 function trquanMinMaxLikeC(min, max) {
-    if (!min) return 1;
-    return min + rn2(max - min + 1);
+    return trquanTrobjLikeC(min, max);
 }
 
 /**
@@ -612,7 +636,7 @@ export function consumeArcheologistHumanIniInvUinitRoleRngLikeC() {
 
 /**
  * C: u_init.c **`PM_HEALER`** **`u_init_role`** — **`u.umoney0 = rn1(1000,1001)`** then **`ini_inv(Healer[])`**,
- * **`if (!rn2(25)) ini_inv(Lamp)`** (human; no race subs). Money **`rn1`** must precede pack draws (see **`u_init_money.js`**).
+ * **`if (!rn2(25)) ini_inv(Lamp)`** (all races; otyp subs only). Money **`rn1`** precedes pack (see **`u_init_money.js`**).
  */
 export function consumeHealerHumanIniInvUinitRoleRngLikeC() {
     game._healerIniUmoney0Rn1 = rn1(1000, 1001);
@@ -633,44 +657,39 @@ export function consumeHealerHumanIniInvUinitRoleRngLikeC() {
     nextIdentLikeC();
     rn2(1);
 
-    const healQ = 4 + rn2(1);
+    /* C: ini_inv — one trquan per trobj; quan loop replays mksobj only (no per-item trquan). */
+    const healQ = trquanMinMaxLikeC(4, 4);
     for (let i = 0; i < healQ; i++) {
         nextIdentLikeC();
         mksobjInitPotionLikeC();
-        rn2(1);
     }
 
-    const extraHealQ = 4 + rn2(1);
+    const extraHealQ = trquanMinMaxLikeC(4, 4);
     for (let i = 0; i < extraHealQ; i++) {
         nextIdentLikeC();
         mksobjInitPotionLikeC();
-        rn2(1);
     }
 
-    const gn = gnIniInvFreshLikeC();
+    /* C: `Healer[]` `{ WAN_SLEEP, … }` — fixed otyp `mksobj`, not `ini_inv_mkobj_filter`. */
     trquanMinMaxLikeC(1, 1);
-    game._healerIniWandOtyp = iniInvMkobjFilterWizardHumanLikeC(NH5_WAND_CLASS, false, gn, false);
-    iniInvGnAfterUndefAcceptLikeC(NH5_WAND_CLASS, game._healerIniWandOtyp | 0, gn);
-    rn2(1);
+    nextIdentLikeC();
+    mksobjInitWandSleepHealerLikeC();
+    game._healerIniWandOtyp = OTYP_WAN_SLEEP;
 
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitSpellbookIniInvLikeC();
-    rn2(1);
 
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitSpellbookIniInvLikeC();
-    rn2(1);
 
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitSpellbookIniInvLikeC();
-    rn2(1);
 
-    rn2(1);
     game._healerIniAppleQuans = [];
-    const appleQ = 5 + rn2(1);
+    const appleQ = trquanMinMaxLikeC(5, 5);
     for (let i = 0; i < appleQ; i++) {
         nextIdentLikeC();
         game._healerIniAppleQuans.push(mksobjInitDefaultFoodQuanMaybeDoubleLikeC());
@@ -687,7 +706,7 @@ export function consumeHealerHumanIniInvUinitRoleRngLikeC() {
 
 /**
  * C: u_init.c **`PM_BARBARIAN`** — **`if (rn2(100) >= 50) ini_inv(Barbarian_0); else ini_inv(Barbarian_1);`**
- * then **`if (!rn2(6)) ini_inv(Lamp)`** (human; no race subs).
+ * then **`if (!rn2(6)) ini_inv(Lamp)`** (all races; orc **`Xtra_food`** in **`u_init_race`**).
  */
 export function consumeBarbarianHumanIniInvUinitRoleRngLikeC() {
     const pack0 = rn2(100) >= 50;
@@ -785,35 +804,35 @@ export function consumeCaveDwellerHumanIniInvUinitRoleRngLikeC() {
  */
 export function consumeRangerHumanIniInvUinitRoleRngLikeC() {
     /* DAGGER +1 */
-    rn2(1);
+    trquanTrobjLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitWeaponLikeC(OTYP_DAGGER, false);
-    rn2(1);
+    iniInvAdjustObjWeaponToolTrquanLikeC(1, 1);
 
     /* BOW +1 */
-    rn2(1);
+    trquanTrobjLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitWeaponLikeC(OTYP_BOW, false);
-    rn2(1);
+    iniInvAdjustObjWeaponToolTrquanLikeC(1, 1);
 
-    /* ARROW +2 — first **`trquan`** then stack from second **`trquan`** */
-    50 + rn2(10);
+    /* ARROW +2 — first **`trquan`** then stack from **`ini_inv_adjust_obj`** second **`trquan`** */
+    trquanTrobjLikeC(50, 59);
     nextIdentLikeC();
     mksobjInitWeaponLikeC(OTYP_ARROW, false);
-    game._rangerIniArrow1Quan = 50 + rn2(10);
+    game._rangerIniArrow1Quan = iniInvAdjustObjWeaponToolTrquanLikeC(50, 59);
 
     /* ARROW +0 */
-    30 + rn2(10);
+    trquanTrobjLikeC(30, 39);
     nextIdentLikeC();
     mksobjInitWeaponLikeC(OTYP_ARROW, false);
-    game._rangerIniArrow2Quan = 30 + rn2(10);
+    game._rangerIniArrow2Quan = iniInvAdjustObjWeaponToolTrquanLikeC(30, 39);
 
     /* CLOAK_OF_DISPLACEMENT +2 — ARMOR **`ini_inv_adjust_obj`** does not replay **`trquan`**. */
-    rn2(1);
+    trquanTrobjLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitArmorLikeC(false);
 
-    const nc = 4 + rn2(1);
+    const nc = trquanTrobjLikeC(4, 4);
     game._rangerIniCramN = nc;
     game._rangerIniCramQuans = [];
     for (let i = 0; i < nc; i++) {
@@ -823,8 +842,8 @@ export function consumeRangerHumanIniInvUinitRoleRngLikeC() {
 }
 
 /**
- * C: u_init.c **`PM_CLERIC`** — **`ini_inv(Priest[])`** for human (no race subs) + **`!rn2(5)`** **`Magicmarker`**
- * **`else if (!rn2(10))`** **`Lamp`** (**strict** **`else if`** — lamp gate only when marker misses).
+ * C: u_init.c **`PM_CLERIC`** — **`ini_inv(Priest[])`** (all races) + **`!rn2(5)`** **`Magicmarker`**
+ * **`else if (!rn2(10))`** **`Lamp`** (**strict** **`else if`** — lamp only when marker misses).
  */
 export function consumePriestHumanIniInvUinitRoleRngLikeC() {
     /* MACE +1 (blessed from **`trobj.trbless`**) */
@@ -866,11 +885,13 @@ export function consumePriestHumanIniInvUinitRoleRngLikeC() {
     rn2(1);
 
     const gn = gnIniInvFreshLikeC();
+    const raceMnum = game.urace?.mnum ?? races[game.initrace | 0]?.mnum ?? 0;
+    const priCtx = iniInvMkobjFilterCtxForRoleLikeC('Pri', raceMnum);
     const sbQ = trquanMinMaxLikeC(2, 2);
     game._priestIniSpellbookOtyps = [];
     let gotSp1 = false;
     for (let i = 0; i < sbQ; i++) {
-        const otyp = iniInvMkobjFilterPriestHumanLikeC(NH5_SPBOOK_CLASS, gotSp1, gn, false);
+        const otyp = iniInvMkobjFilterLikeC(NH5_SPBOOK_CLASS, gotSp1, gn, priCtx);
         game._priestIniSpellbookOtyps.push(otyp);
         iniInvGnAfterUndefAcceptLikeC(NH5_SPBOOK_CLASS, otyp, gn);
         if ((SPELLBOOK_OTYP_LEVEL.get(otyp) ?? 99) === 1) gotSp1 = true;
@@ -911,8 +932,11 @@ export function consumeTouristHumanIniInvUinitRoleRngLikeC() {
 
     game._touristIniFoodOtyps = [];
     const foodN = trquanMinMaxLikeC(10, 10);
+    const foodGn = gnIniInvFreshLikeC();
+    const foodCtx = iniInvMkobjFilterCtxForRoleLikeC('Tou', game.urace?.mnum ?? 0);
     for (let i = 0; i < foodN; i++) {
-        game._touristIniFoodOtyps.push(iniInvOneMkobjFoodUndefDrawLikeC());
+        const otyp = iniInvMkobjFilterLikeC(NH5_FOOD_CLASS, false, foodGn, foodCtx);
+        game._touristIniFoodOtyps.push(iniInvObjSubstitutionLikeC(otyp, game.urace?.mnum ?? 0));
     }
 
     const potN = trquanMinMaxLikeC(2, 2);
@@ -1052,4 +1076,55 @@ export function consumeMonkHumanIniInvUinitRoleRngLikeC() {
             rn2(1);
         }
     }
+}
+
+/**
+ * C: u_init.c `u_init_race` PM_ELF — `Role_if(PM_CLERIC) || Role_if(PM_WIZARD)` →
+ * `ROLL_FROM(trotyp)` then `ini_inv(Instrument[])` (fixed TOOL, no `mksobj_init` branch).
+ * `knows_object` elven gear tails are no-RNG (`discover_object` only).
+ * @param {import('./gstate.js').game} [g]
+ */
+export function consumeUInitRaceElfInstrumentIniInvLikeC(g = game) {
+    const elfIdx = races.findIndex((r) => r.name === 'elf');
+    if ((g.initrace | 0) !== elfIdx) return;
+    const abbr = g.urole?.abbr ?? '';
+    if (abbr !== 'Pri' && abbr !== 'Wiz') return;
+
+    const pick = rn2(ELF_INSTRUMENT_OTYPS.length);
+    g._elfIniInstrumentOtyp = ELF_INSTRUMENT_OTYPS[pick];
+
+    /* ini_inv(Instrument[]): trquan → mksobj(next_ident) → ini_inv_adjust_obj trquan */
+    trquanTrobjLikeC(1, 1);
+    nextIdentLikeC();
+    iniInvAdjustObjWeaponToolTrquanLikeC(1, 1);
+}
+
+/**
+ * C: u_init.c `u_init_race` PM_ORC — `if (!Role_if(PM_WIZARD)) ini_inv(Xtra_food)`.
+ * `Xtra_food[]`: UNDEF FOOD × `trquan` 2..2 via `ini_inv_mkobj_filter` + `ini_inv_obj_substitution`.
+ * @param {import('./gstate.js').game} [g]
+ */
+export function consumeUInitRaceOrcXtraFoodIniInvLikeC(g = game) {
+    const orcIdx = races.findIndex((r) => r.name === 'orc');
+    if ((g.initrace | 0) !== orcIdx) return;
+    if (g.urole?.abbr === 'Wiz') return;
+
+    const foodN = trquanTrobjLikeC(2, 2);
+    g._orcXtraFoodOtyps = [];
+    const foodGn = gnIniInvFreshLikeC();
+    const raceMnum = races[orcIdx]?.mnum ?? 4;
+    const foodCtx = iniInvMkobjFilterCtxForRoleLikeC(g.urole?.abbr ?? '', raceMnum);
+    for (let i = 0; i < foodN; i++) {
+        const otyp = iniInvMkobjFilterLikeC(NH5_FOOD_CLASS, false, foodGn, foodCtx);
+        g._orcXtraFoodOtyps.push(iniInvObjSubstitutionLikeC(otyp, raceMnum));
+    }
+}
+
+/**
+ * C: u_init.c `u_init_race()` invent RNG tail — after `u_init_role()`, before Wishing/Money.
+ * @param {import('./gstate.js').game} [g]
+ */
+export function consumeUInitRaceIniInvAfterRoleLikeC(g = game) {
+    consumeUInitRaceElfInstrumentIniInvLikeC(g);
+    consumeUInitRaceOrcXtraFoodIniInvLikeC(g);
 }

@@ -3,7 +3,6 @@
 //        ini_inv_use_obj — uwep bullwhip, uarmu leather jacket, uarmh fedora.
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import {
     NH5_ARMOR_CLASS,
     NH5_FOOD_CLASS,
@@ -41,8 +40,7 @@ const BASE_WT = {
 
 /** @param {import('./gstate.js').game} [g] */
 export function isHumanArcheologistChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Arc' && (g.initrace | 0) === humanIdx;
+    return g.urole?.abbr === 'Arc';
 }
 
 /**

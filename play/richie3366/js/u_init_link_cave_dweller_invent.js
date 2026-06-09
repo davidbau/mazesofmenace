@@ -3,7 +3,6 @@
 //        ini_inv_use_obj — club uwep, sling uswapwep, flint/rock quiver rules (subset: merged stacks).
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_GEM_CLASS } from './nh5_objclass.js';
 import { OTYP_LEATHER_ARMOR } from './const.js';
 
@@ -23,8 +22,7 @@ const BASE_WT = {
 
 /** @param {import('./gstate.js').game} [g] */
 export function isHumanCaveDwellerChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Cav' && (g.initrace | 0) === humanIdx;
+    return g.urole?.abbr === 'Cav';
 }
 
 /**

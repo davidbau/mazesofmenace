@@ -34,6 +34,7 @@ import { enextoCoreLikeC, goodposMakemonLikeC } from './walkable.js';
 import { MM_ANGRY, MM_FEMALE, MM_MALE } from './const.js';
 import { peaceMindedLikeC } from './makemon_peace_minded.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
+import { rndmonnumMklevLikeC } from './mkobj_mklev_like_c.js';
 import { deliverObjToMonLikeC, DF_NONE } from './deliver_obj_to_mon.js';
 import { d, rnd, rn2 } from './rng.js';
 
@@ -244,9 +245,9 @@ export function makemon(mdat, x, y, mmflags) {
     return mtmp;
 }
 
-/** @deprecated Use rndmonstLikeC — legacy stub for mkcorpstat until ported. */
+/** C: mkobj.c rndmonnum() — Plan A rndmonst_adj, else Plan B rn1 (mklev/medusa rerolls). */
 export function rndmonnum() {
-    return rndmonstLikeC();
+    return rndmonnumMklevLikeC();
 }
 
 /**

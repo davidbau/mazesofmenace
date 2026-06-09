@@ -2,7 +2,6 @@
 // C ref: u_init.c Healer[] trobj, ini_inv(), ini_inv_use_obj — uwep scalpel, uarmg leather gloves +1.
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import {
     NH5_ARMOR_CLASS,
     NH5_FOOD_CLASS,
@@ -39,9 +38,13 @@ const BASE_WT = {
 };
 
 /** @param {import('./gstate.js').game} [g] */
+export function isHealerChargenLikeC(g = game) {
+    return g.urole?.abbr === 'Hea';
+}
+
+/** @deprecated use {@link isHealerChargenLikeC} */
 export function isHumanHealerChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Hea' && (g.initrace | 0) === humanIdx;
+    return isHealerChargenLikeC(g);
 }
 
 /**
@@ -49,7 +52,7 @@ export function isHumanHealerChargenLikeC(g = game) {
  * @param {import('./gstate.js').game} g
  */
 export function applyHealerHumanLinkedInventAndWearLikeC(g) {
-    if (!isHumanHealerChargenLikeC(g)) return;
+    if (!isHealerChargenLikeC(g)) return;
 
     const wandO = g._healerIniWandOtyp | 0;
     if (wandO < 409 || wandO > 433) return;

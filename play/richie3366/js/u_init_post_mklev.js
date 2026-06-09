@@ -4,7 +4,6 @@
 
 import { rn2, rnd } from './rng.js';
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import { applyRoleStartingUmoney0 } from './u_init_money.js';
 import { initIniInvStub } from './ini_inv_stub.js';
 import { applyHiddenGoldToUmoney0 } from './u_init_hidden_gold.js';
@@ -25,79 +24,67 @@ import {
     consumeTouristHumanIniInvUinitRoleRngLikeC,
     consumeIniInvWishingDiscoverRngIfLikeC,
     consumeIniInvMoneyRngIfLikeC,
+    consumeUInitRaceIniInvAfterRoleLikeC,
 } from './u_init_role_rng.js';
 
 /**
- * C: u_init_role + ini_inv PRNG (inside u_init_inventory_attrs after makedog).
- * @param {import('./gstate.js').game} [g]
+ * C: u_init.c `u_init_role()` — role `ini_inv` PRNG only (race tail is separate).
+ * @param {import('./gstate.js').game} g
  */
-export function runUInitRoleRngAfterMklevLikeC(g = game) {
-    void g;
-    /* C: u_init.c u_init_role — svm.moves = 1L before ini_inv (invent init boundary). */
-    g.moves = 1;
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    const rog = game.urole?.abbr === 'Rog' && (game.initrace | 0) === humanIdx;
-    if (rog) {
+function consumeUInitRoleIniInvCoreLikeC(g) {
+    /* C: u_init_role — same ini_inv[] all races; subs in ini_inv_obj_substitution / u_init_race. */
+    if (g.urole?.abbr === 'Rog') {
         consumeRogueHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const sam = game.urole?.abbr === 'Sam' && (game.initrace | 0) === humanIdx;
-    if (sam) {
+    if (g.urole?.abbr === 'Sam') {
         consumeSamuraiHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const val = game.urole?.abbr === 'Val' && (game.initrace | 0) === humanIdx;
-    if (val) {
+    /* C: u_init_role PM_VALKYRIE — same ini_inv(Valkyrie[]) all races (subs in ini_inv_obj_substitution). */
+    if (g.urole?.abbr === 'Val') {
         consumeValkyrieHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const kni = game.urole?.abbr === 'Kni' && (game.initrace | 0) === humanIdx;
-    if (kni) {
+    if (g.urole?.abbr === 'Kni') {
         consumeKnightHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const mon = game.urole?.abbr === 'Mon' && (game.initrace | 0) === humanIdx;
-    if (mon) {
+    if (g.urole?.abbr === 'Mon') {
         consumeMonkHumanIniInvUinitRoleRngLikeC();
         return;
     }
     /* C: u_init_role PM_WIZARD — ini_inv(Wizard[]) same for all races (race extras in u_init_race). */
-    if (game.urole?.abbr === 'Wiz') {
+    if (g.urole?.abbr === 'Wiz') {
         consumeWizardHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const arc = game.urole?.abbr === 'Arc' && (game.initrace | 0) === humanIdx;
-    if (arc) {
+    if (g.urole?.abbr === 'Arc') {
         consumeArcheologistHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const hea = game.urole?.abbr === 'Hea' && (game.initrace | 0) === humanIdx;
-    if (hea) {
+    /* C: u_init_role PM_HEALER / PM_CLERIC / PM_BARBARIAN — race-independent ini_inv (subs in ini_inv). */
+    if (g.urole?.abbr === 'Hea') {
         consumeHealerHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const pri = game.urole?.abbr === 'Pri' && (game.initrace | 0) === humanIdx;
-    if (pri) {
+    if (g.urole?.abbr === 'Pri') {
         consumePriestHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const bar = game.urole?.abbr === 'Bar' && (game.initrace | 0) === humanIdx;
-    if (bar) {
+    if (g.urole?.abbr === 'Bar') {
         consumeBarbarianHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const ran = game.urole?.abbr === 'Ran' && (game.initrace | 0) === humanIdx;
-    if (ran) {
+    if (g.urole?.abbr === 'Ran') {
         consumeRangerHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const tou = game.urole?.abbr === 'Tou' && (game.initrace | 0) === humanIdx;
-    if (tou) {
+    if (g.urole?.abbr === 'Tou') {
         consumeTouristHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const cav = game.urole?.abbr === 'Cav' && (game.initrace | 0) === humanIdx;
-    if (cav) {
+    if (g.urole?.abbr === 'Cav') {
         consumeCaveDwellerHumanIniInvUinitRoleRngLikeC();
         return;
     }
@@ -111,6 +98,17 @@ export function runUInitRoleRngAfterMklevLikeC(g = game) {
     rnd(2); rn2(4); rnd(2); rn2(4); rnd(2); rn2(4); rn2(1); rnd(2); rn2(10); rn2(11); rn2(10);
     rn2(10); rn2(1); rnd(2); rn2(70); rn2(1); rn2(1); rnd(2); rn2(1); rn2(25); rn2(25); rn2(25);
     rn2(20); rn2(1); rnd(2);
+}
+
+/**
+ * C: u_init_role + u_init_race ini_inv PRNG (inside u_init_inventory_attrs after makedog).
+ * @param {import('./gstate.js').game} [g]
+ */
+export function runUInitRoleRngAfterMklevLikeC(g = game) {
+    /* C: u_init.c u_init_role — svm.moves = 1L before ini_inv (invent init boundary). */
+    g.moves = 1;
+    consumeUInitRoleIniInvCoreLikeC(g);
+    consumeUInitRaceIniInvAfterRoleLikeC(g);
 }
 
 /**

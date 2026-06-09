@@ -3,7 +3,7 @@
 //        objects.h oc_weight (subset).
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
+import { iniInvSubstOtypForChargenLikeC } from './u_init_ini_inv_obj_substitution_like_c.js';
 import {
     NH5_WEAPON_CLASS,
     NH5_ARMOR_CLASS,
@@ -33,9 +33,13 @@ const BASE_WT = {
 };
 
 /** @param {import('./gstate.js').game} [g] */
+export function isBarbarianChargenLikeC(g = game) {
+    return g.urole?.abbr === 'Bar';
+}
+
+/** @deprecated use {@link isBarbarianChargenLikeC} */
 export function isHumanBarbarianChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Bar' && (g.initrace | 0) === humanIdx;
+    return isBarbarianChargenLikeC(g);
 }
 
 /**
@@ -44,7 +48,7 @@ export function isHumanBarbarianChargenLikeC(g = game) {
  * @param {import('./gstate.js').game} g
  */
 export function applyBarbarianHumanLinkedInventAndWearLikeC(g) {
-    if (!isHumanBarbarianChargenLikeC(g)) return;
+    if (!isBarbarianChargenLikeC(g)) return;
     if (g._barbarianIniPack0 !== true && g._barbarianIniPack0 !== false) return;
     const fq = g._barbarianIniFoodQuan | 0;
     const foodQuan = fq >= 1 && fq <= 2 ? fq : 1;
@@ -68,7 +72,8 @@ export function applyBarbarianHumanLinkedInventAndWearLikeC(g) {
         };
     }
 
-    const ringMail = mk(OTYP_RING_MAIL, NH5_ARMOR_CLASS, 1, 1);
+    const sub = (otyp) => iniInvSubstOtypForChargenLikeC(otyp, g);
+    const ringMail = mk(sub(OTYP_RING_MAIL), NH5_ARMOR_CLASS, 1, 1);
     const food = mk(OTYP_FOOD_RATION, NH5_FOOD_CLASS, foodQuan, 0);
 
     if (g._barbarianIniPack0) {
@@ -92,7 +97,7 @@ export function applyBarbarianHumanLinkedInventAndWearLikeC(g) {
         }
     } else {
         const battle = mk(OTYP_BATTLE_AXE, NH5_WEAPON_CLASS, 1, 0);
-        const shortSword = mk(OTYP_SHORT_SWORD, NH5_WEAPON_CLASS, 1, 0);
+        const shortSword = mk(sub(OTYP_SHORT_SWORD), NH5_WEAPON_CLASS, 1, 0);
         const order = [battle, shortSword, ringMail, food];
         for (const o of order) {
             o.nobj = g.invent ?? null;

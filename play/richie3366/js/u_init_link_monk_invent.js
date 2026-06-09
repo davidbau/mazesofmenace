@@ -2,7 +2,6 @@
 // C ref: u_init.c Monk[] trobj, ini_inv(), ini_inv_use_obj — uarmg leather gloves, uarm robe.
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import { NH5_ARMOR_CLASS, NH5_FOOD_CLASS, NH5_POTION_CLASS, NH5_SCROLL_CLASS, NH5_SPBOOK_CLASS, NH5_TOOL_CLASS } from './nh5_objclass.js';
 
 const OTYP_LEATHER_GLOVES = 160;
@@ -32,8 +31,7 @@ const BASE_WT = {
 
 /** @param {import('./gstate.js').game} [g] */
 export function isHumanMonkChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Mon' && (g.initrace | 0) === humanIdx;
+    return g.urole?.abbr === 'Mon';
 }
 
 /**

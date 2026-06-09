@@ -2,7 +2,6 @@
 // C ref: u_init.c Priest[] trobj, ini_inv(), ini_inv_use_obj — mace uwep, robe uarm, small shield uarms.
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import {
     NH5_ARMOR_CLASS,
     NH5_FOOD_CLASS,
@@ -34,9 +33,13 @@ const BASE_WT = {
 };
 
 /** @param {import('./gstate.js').game} [g] */
+export function isPriestChargenLikeC(g = game) {
+    return g.urole?.abbr === 'Pri';
+}
+
+/** @deprecated use {@link isPriestChargenLikeC} */
 export function isHumanPriestChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Pri' && (g.initrace | 0) === humanIdx;
+    return isPriestChargenLikeC(g);
 }
 
 /**
@@ -44,7 +47,7 @@ export function isHumanPriestChargenLikeC(g = game) {
  * @param {import('./gstate.js').game} g
  */
 export function applyPriestHumanLinkedInventAndWearLikeC(g) {
-    if (!isHumanPriestChargenLikeC(g)) return;
+    if (!isPriestChargenLikeC(g)) return;
     const books = g._priestIniSpellbookOtyps;
     if (!Array.isArray(books) || books.length !== 2) return;
     for (const b of books) {

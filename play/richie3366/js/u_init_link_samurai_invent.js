@@ -3,7 +3,6 @@
 //        ini_inv_use_obj — uwep katana, uswapwep short sword, uquiver ya, uarm splint (subset).
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_TOOL_CLASS } from './nh5_objclass.js';
 
 /** C `objects_nums` / cpp OBJECTS_ENUM indices (NH5; splint +2 vs cpp ≥ dragon block per `u_init_find_ac.js`). */
@@ -28,8 +27,7 @@ const BASE_WT = {
 
 /** @param {import('./gstate.js').game} [g] */
 export function isHumanSamuraiChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Sam' && (g.initrace | 0) === humanIdx;
+    return g.urole?.abbr === 'Sam';
 }
 
 /**

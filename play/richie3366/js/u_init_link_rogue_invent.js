@@ -4,7 +4,7 @@
 //        objects.h OBJECT weights (wt * quan → owt for encumbr.c inv_weight).
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
+import { iniInvSubstOtypForChargenLikeC } from './u_init_ini_inv_obj_substitution_like_c.js';
 import {
     NH5_WEAPON_CLASS,
     NH5_ARMOR_CLASS,
@@ -39,8 +39,7 @@ const BASE_WT = {
 
 /** @param {import('./gstate.js').game} [g] */
 export function isHumanRogueChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Rog' && (g.initrace | 0) === humanIdx;
+    return g.urole?.abbr === 'Rog';
 }
 
 /**
@@ -73,8 +72,9 @@ export function applyRogueHumanLinkedInventAndWieldLikeC(g) {
         };
     }
 
-    const shortSword = mk(OTYP_SHORT_SWORD, NH5_WEAPON_CLASS, 1, 0);
-    const dagger = mk(OTYP_DAGGER, NH5_WEAPON_CLASS, dq, 0);
+    const sub = (otyp) => iniInvSubstOtypForChargenLikeC(otyp, g);
+    const shortSword = mk(sub(OTYP_SHORT_SWORD), NH5_WEAPON_CLASS, 1, 0);
+    const dagger = mk(sub(OTYP_DAGGER), NH5_WEAPON_CLASS, dq, 0);
     const leather = mk(OTYP_LEATHER_ARMOR, NH5_ARMOR_CLASS, 1, 1);
     const potion = mk(OTYP_POT_SICKNESS, NH5_POTION_CLASS, 1, 0);
     const pick = mk(OTYP_LOCK_PICK, NH5_TOOL_CLASS, 1, 0);

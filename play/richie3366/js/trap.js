@@ -67,7 +67,7 @@ import {
     currencyAmountLikeC,
 } from './shop.js';
 import { impactDropLikeC } from './impact_drop.js';
-import { dist2, depth } from './hacklib.js';
+import { dist2, depth, dunlevLikeC, dunlevsInDungeonLikeC } from './hacklib.js';
 import {
     raceptr,
     stagger,
@@ -132,6 +132,7 @@ import {
     In_sokoban,
     In_endgame,
     In_quest,
+    In_hell,
     Is_botlevel,
     Is_knox_level,
     Is_stronghold,
@@ -1502,6 +1503,36 @@ export function canFallThruDlevelLikeC(g) {
     const uz = g.u?.uz;
     if (!uz) return false;
     return canDigDownForFallLikeC(g) || Is_stronghold(uz);
+}
+
+/** C: trap.c `dng_bottom` — quest locate / Gehennom invocation cap on hole depth. */
+function dngBottomLikeC(g, lev) {
+    let bottom = dunlevsInDungeonLikeC(lev);
+    if (In_quest(lev)) {
+        const qlocateDepth = g.qlocate_level?.dlevel ?? bottom;
+        const reached = g.dungeons?.[lev.dnum | 0]?.dunlev_ureached ?? 0;
+        if (reached < qlocateDepth) bottom = qlocateDepth;
+    } else if (In_hell(lev)) {
+        if (!g.u?.uevent?.invoked) bottom -= 1;
+    }
+    return bottom;
+}
+
+/**
+ * C: trap.c `hole_destination` — `maketrap` HOLE/TRAPDOOR `dst` before `mktrap_victim`.
+ * @param {typeof game} g
+ * @param {{ dnum: number, dlevel: number }} dst — mutated in place
+ */
+export function holeDestinationLikeC(g, dst) {
+    const uz = g.u?.uz;
+    if (!uz || !dst) return;
+    const bottom = dngBottomLikeC(g, uz);
+    dst.dnum = uz.dnum | 0;
+    dst.dlevel = dunlevLikeC(uz);
+    while (dst.dlevel < bottom) {
+        dst.dlevel++;
+        if (rn2(4)) break;
+    }
 }
 
 /**

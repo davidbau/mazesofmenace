@@ -17,6 +17,10 @@ import { applyCaveDwellerHumanLinkedInventAndWearLikeC } from './u_init_link_cav
 import { applyRangerHumanLinkedInventAndWearLikeC } from './u_init_link_ranger_invent.js';
 import { applyPriestHumanLinkedInventAndWearLikeC } from './u_init_link_priest_invent.js';
 import { applyTouristHumanLinkedInventAndWearLikeC } from './u_init_link_tourist_invent.js';
+import {
+    applyElfInstrumentInventTailLikeC,
+    applyOrcXtraFoodInventTailLikeC,
+} from './u_init_link_race_invent.js';
 
 const INV_COL = 28;
 
@@ -605,6 +609,8 @@ export function initIniInvStub(/** @type {import('./gstate.js').game} */ g) {
     applyRangerHumanLinkedInventAndWearLikeC(g);
     applyPriestHumanLinkedInventAndWearLikeC(g);
     applyTouristHumanLinkedInventAndWearLikeC(g);
+    applyElfInstrumentInventTailLikeC(g);
+    applyOrcXtraFoodInventTailLikeC(g);
 }
 
 /** @param {import('./game_display.js').GameDisplay} display */

@@ -4,9 +4,10 @@
 import { game } from './gstate.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { objectOcMaterial } from './obj_oc_material_data.js';
-import { NON_PM, rndmonstLikeC } from './makemon_rndmonst.js';
-import { permonstFromMndxLikeC, verysmall } from './mondata.js';
-import { P_BOW, P_SHURIKEN, OTYP_LOADSTONE, OTYP_LUCKSTONE, OTYP_GOLD_PIECE } from './const.js';
+import { NON_PM, rndmonstAdjLikeC } from './makemon_rndmonst.js';
+import { permonstFromMndxLikeC, verysmall, isHumanPtrLikeC } from './mondata.js';
+import { P_BOW, P_SHURIKEN, OTYP_LOADSTONE, OTYP_LUCKSTONE, OTYP_GOLD_PIECE, In_hell, LOW_PM } from './const.js';
+import { MONS_GENO_PLAN_B } from './mons_rndmonst_ini_inv_data.js';
 import { OC_SKILL_ROW_BY_OTYP } from './obj_oc_skill_data.js';
 import { rnd, rn2, rn1, rne } from './rng.js';
 import {
@@ -31,10 +32,10 @@ import {
     WEAPON_CLASS_MKOBJ_OC_PROB_ROWS,
     ARMOR_CLASS_MKOBJ_OC_PROB_ROWS,
     TOOL_CLASS_MKOBJ_OC_PROB_ROWS,
-    GEM_CLASS_MKOBJ_OC_PROB_ROWS,
     RING_CLASS_MKOBJ_OC_PROB_ROWS,
     AMULET_CLASS_MKOBJ_OC_PROB_ROWS,
     COIN_CLASS_MKOBJ_OC_PROB_ROWS,
+    GEM_CLASS_MKOBJ_OC_PROB_ROWS,
 } from './mkobj_mklev_oc_prob_data.js';
 import {
     POTION_CLASS_MKOBJ_OC_PROB_ROWS,
@@ -43,6 +44,7 @@ import {
 } from './mkobj_wizard_ini_inv_data.js';
 import { SCROLL_CLASS_MKOBJ_OC_PROB_ROWS } from './mkobj_scroll_class_rng_like_c.js';
 import { consumeMksobjCorpseSpeRngLikeC } from './mkobj_corpse.js';
+import { mkobjPickGemOtypMklevLikeC } from './o_init.js';
 import {
     mkobjOtypFoodClassIniInvLikeC,
     mksobjInitCorpseConsumeRngLikeC,
@@ -74,6 +76,17 @@ const OTYP_AMULET_OF_CHANGE = 206;
 
 /** C: objects.h — `CORPSE` (NH5 otyp **265**; ICE_BOX mkbox_cnts uses mksobj). */
 const OTYP_CORPSE = 265;
+/** C: objects.h — FIGURINE (NH5 otyp **257**). */
+const OTYP_FIGURINE = 257;
+/** C: objects.h — BELL_OF_OPENING (objects_nums **263**; mksobj_init sets **`spe=3`** only). */
+const OTYP_BELL_OF_OPENING = 263;
+
+const G_UNIQ = 0x1000;
+const G_NOHELL = 0x0800;
+const G_HELL = 0x0400;
+const G_NOGEN = 0x0200;
+/** C: monst.h SPECIAL_PM */
+const SPECIAL_PM = 338;
 
 /** C: objects.h — floor containers (mksobj_init TOOL + mkbox_cnts). */
 const OTYP_LARGE_BOX = 215;
@@ -242,18 +255,36 @@ function isDamageableMklevLikeC(otyp, oclass) {
     );
 }
 
-/** C: mkobj.c may_generate_eroded */
-function mayGenerateErodedMklevLikeC(otyp, oclass) {
+/** C: objects.h WORM_TOOTH / UNICORN_HORN — no erosion on body parts. */
+const OTYP_WORM_TOOTH = 42;
+const OTYP_UNICORN_HORN = 261;
+
+/** @returns {{ otyp: number, oclass: number, oartifact: number, oerodeproof: number }} */
+function mkobjErosionOtmpLikeC(otyp, oclass) {
+    return { otyp: otyp | 0, oclass: oclass | 0, oartifact: 0, oerodeproof: 0 };
+}
+
+/** C: mkobj.c may_generate_eroded — `struct obj *otmp` (oartifact / oerodeproof on object, not artif flag). */
+function mayGenerateErodedMklevLikeC(otmp) {
     if ((game.moves | 0) <= 1 && !game.in_mklev) return false;
+    if (otmp.oerodeproof) return false;
+    const oclass = otmp.oclass | 0;
+    const otyp = otmp.otyp | 0;
     if (!erosionMattersMklevLikeC(oclass)) return false;
     if (!isDamageableMklevLikeC(otyp, oclass)) return false;
+    if (otyp === OTYP_WORM_TOOTH || otyp === OTYP_UNICORN_HORN) return false;
+    if (otmp.oartifact | 0) return false;
     return true;
 }
 
 /** C: mkobj.c mksobj_init tail — mkobj_erosions */
-export function mkobjErosionsMklevLikeC(otyp, oclass) {
-    if (!mayGenerateErodedMklevLikeC(otyp, oclass)) return;
+export function mkobjErosionsMklevLikeC(otmp) {
+    if (!mayGenerateErodedMklevLikeC(otmp)) return;
+    const otyp = otmp.otyp | 0;
+    const oclass = otmp.oclass | 0;
     if (!rn2(100)) {
+        otmp.oerodeproof = 1;
+        rn2(1000);
         return;
     }
     if (
@@ -271,9 +302,7 @@ export function mkobjErosionsMklevLikeC(otyp, oclass) {
             eroded2++;
         } while (eroded2 < 3 && !rn2(9));
     }
-    if (!rn2(1000)) {
-        /* greased */
-    }
+    rn2(1000);
 }
 
 /** @param {readonly (readonly [number, number])[]} rows */
@@ -383,7 +412,7 @@ function mkboxCntsMklevLikeC(box) {
             /* C: mkobj.c mkbox_cnts — mksobj(CORPSE, TRUE, FALSE); age=0 (no RNG). */
             rnd(2);
             const corpsenm = mksobjInitCorpseConsumeRngLikeC();
-            mkobjErosionsMklevLikeC(OTYP_CORPSE, NH5_FOOD_CLASS);
+            mkobjErosionsMklevLikeC(mkobjErosionOtmpLikeC(OTYP_CORPSE, NH5_FOOD_CLASS));
             consumeMksobjCorpseSpeRngLikeC(corpsenm);
             continue;
         }
@@ -419,6 +448,30 @@ function mkboxCntsMklevLikeC(box) {
     }
 }
 
+/**
+ * C: mkobj.c rndmonnum_adj(minadj, maxadj) — Plan A rndmonst_adj, else Plan B rn1 loop.
+ * @param {number} [minadj]
+ * @param {number} [maxadj]
+ * @returns {number} mndx
+ */
+export function rndmonnumAdjMklevLikeC(minadj = 0, maxadj = 0) {
+    const planA = rndmonstAdjLikeC(minadj | 0, maxadj | 0);
+    if (planA !== NON_PM) return planA | 0;
+
+    const inhell = In_hell(game.u?.uz);
+    const excludeflags = G_UNIQ | G_NOGEN | (inhell ? G_NOHELL : G_HELL);
+    let i;
+    do {
+        i = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+    } while ((MONS_GENO_PLAN_B[i] & excludeflags) !== 0);
+    return i | 0;
+}
+
+/** C: mkobj.c rndmonnum() — `rndmonnum_adj(0, 0)`. */
+export function rndmonnumMklevLikeC() {
+    return rndmonnumAdjMklevLikeC(0, 0);
+}
+
 function blessorcurseLikeC(chance, otmp) {
     if (otmp && (otmp.blessed || otmp.cursed)) return;
     if (!rn2(chance)) {
@@ -430,7 +483,7 @@ function blessorcurseLikeC(chance, otmp) {
     }
 }
 
-function mksobjInitWeaponLikeC(otyp, artif) {
+function mksobjInitWeaponLikeC(otyp, artif, otmp) {
     if (weaponMultigenMklevLikeC(otyp)) rn1(6, 6);
     if (!rn2(11)) {
         rne(3);
@@ -443,11 +496,12 @@ function mksobjInitWeaponLikeC(otyp, artif) {
     if (isPoisonableWeaponMklevLikeC(otyp) && !rn2(100)) {
         /* otmp->opoisoned = 1 */
     }
-    if (artif && !rn2(20)) { /* nartifact_exist() stub 0 */ }
+    /* C: mk_artifact(…, TRUE) when `!rn2(20 + 10*nartifact_exist())`; stub nartifact_exist → 0 */
+    if (artif && !rn2(20) && otmp) otmp.oartifact = 1;
 }
 
 /** C: mkobj.c mksobj_init — ARMOR_CLASS (full otyp guards; not ini_inv leather-only path). */
-function mksobjInitArmorLikeC(otyp, artif) {
+function mksobjInitArmorLikeC(otyp, artif, otmp) {
     const t = otyp | 0;
     if (
         rn2(10) &&
@@ -465,7 +519,8 @@ function mksobjInitArmorLikeC(otyp, artif) {
     } else {
         blessorcurseLikeC(10);
     }
-    if (artif && !rn2(40)) { /* mk_artifact stub */ }
+    /* C: mk_artifact(…, TRUE) when `!rn2(40 + 10*nartifact_exist())`; stub nartifact_exist → 0 */
+    if (artif && !rn2(40) && otmp) otmp.oartifact = 1;
 }
 
 function mksobjInitWandLikeC(otyp, otmp) {
@@ -531,7 +586,19 @@ function mksobjInitRingLikeC(otyp) {
     }
 }
 
+/** C: mkobj.c mksobj_init — TOOL_CLASS FIGURINE (`rndmonnum_adj(5,10)` + `is_human` retry). */
+function mksobjInitFigurineLikeC(otmp) {
+    let tryct = 0;
+    let corpsenm;
+    do {
+        corpsenm = rndmonnumAdjMklevLikeC(5, 10);
+    } while (isHumanPtrLikeC(permonstFromMndxLikeC(corpsenm)) && tryct++ < 30);
+    blessorcurseLikeC(4, otmp);
+    return corpsenm | 0;
+}
+
 /** C: mkobj.c mksobj_init — TOOL_CLASS (per-otyp; default is `break` only). */
+/** @returns {number|null} corpsenm when FIGURINE init ran */
 function mksobjInitToolLikeC(otyp, otmp) {
     const t = otyp | 0;
     switch (t) {
@@ -586,6 +653,11 @@ function mksobjInitToolLikeC(otyp, otmp) {
     case 251: /* BAG_OF_TRICKS */
         rn1(18, 3);
         break;
+    case OTYP_FIGURINE:
+        return mksobjInitFigurineLikeC(otmp);
+    case OTYP_BELL_OF_OPENING:
+        if (otmp) otmp.spe = 3;
+        break;
     case 252: /* MAGIC_FLUTE */
     case 253: /* MAGIC_HARP */
     case 254: /* FROST_HORN */
@@ -596,6 +668,7 @@ function mksobjInitToolLikeC(otyp, otmp) {
     default:
         break;
     }
+    return null;
 }
 
 function mksobjInitGemLikeC(otyp) {
@@ -612,7 +685,7 @@ function mksobjInitGemLikeC(otyp) {
 /** C: mkobj.c mksobj_init ROCK_CLASS STATUE — rndmonnum + optional nested mkobj(SPBOOK). */
 function mksobjInitStatueLikeC(otyp) {
     if ((otyp | 0) !== OTYP_STATUE) return null;
-    const corpsenm = rndmonstLikeC();
+    const corpsenm = rndmonnumMklevLikeC();
     if ((corpsenm | 0) === NON_PM) return null;
     const ptr = permonstFromMndxLikeC(corpsenm);
     if (
@@ -632,8 +705,8 @@ export function mksobjPostInitStatueLikeC(otyp) {
 }
 
 /** C: mkobj.c mksobj — after mksobj_init (incl. mkobj_erosions): corpse/statue spe. */
-export function mksobjTailConsumeRngLikeC(otyp, oclass, corpsenm) {
-    mkobjErosionsMklevLikeC(otyp, oclass);
+export function mksobjTailConsumeRngLikeC(otyp, oclass, corpsenm, otmp) {
+    mkobjErosionsMklevLikeC(otmp ?? mkobjErosionOtmpLikeC(otyp, oclass));
     if (corpsenm !== null) {
         consumeMksobjCorpseSpeRngLikeC(corpsenm);
     } else if ((otyp | 0) === OTYP_STATUE) {
@@ -647,9 +720,10 @@ export function mksobjTailConsumeRngLikeC(otyp, oclass, corpsenm) {
  * @param {number} let_ oclass (mklev legacy let, or NH5 index when `nh5Oclass`)
  * @param {boolean} artif
  * @param {boolean} [nh5Oclass] when true, `let_` is already NH5 (mkbox_cnts, NH5 fill paths)
+ * @param {boolean} [mineralizeGem] C: mklev.c mineralize `mkobj(GEM_CLASS)` after setgemprobs
  * @returns {number} otyp
  */
-export function mkobjMklevConsumeRngLikeC(let_, artif, nh5Oclass = false) {
+export function mkobjMklevConsumeRngLikeC(let_, artif, nh5Oclass = false, mineralizeGem = false) {
     const letRaw = let_ | 0;
     let oclass;
     let otyp;
@@ -662,11 +736,16 @@ export function mkobjMklevConsumeRngLikeC(let_, artif, nh5Oclass = false) {
         if (oclass === NH5_RANDOM_CLASS) {
             oclass = mkobjPickOclassFromMkobjprobsLikeC();
         }
-        otyp = mkobjPickOtypForClassLikeC(oclass);
+        if (mineralizeGem && oclass === NH5_GEM_CLASS) {
+            otyp = mkobjPickGemOtypMklevLikeC();
+        } else {
+            otyp = mkobjPickOtypForClassLikeC(oclass);
+        }
     }
     rnd(2);
-    const corpsenm = mksobjInitMklevLikeC(otyp, oclass, artif);
-    mksobjTailConsumeRngLikeC(otyp, oclass, corpsenm);
+    const otmp = mkobjErosionOtmpLikeC(otyp, oclass);
+    const corpsenm = mksobjInitMklevLikeC(otyp, oclass, artif, otmp);
+    mksobjTailConsumeRngLikeC(otyp, oclass, corpsenm, otmp);
     return otyp | 0;
 }
 
@@ -701,10 +780,10 @@ export function mksobjInitMklevLikeC(otyp, oclass, artif, otmp) {
         }
         break;
     case NH5_WEAPON_CLASS:
-        mksobjInitWeaponLikeC(otyp, artif);
+        mksobjInitWeaponLikeC(otyp, artif, otmp);
         break;
     case NH5_ARMOR_CLASS:
-        mksobjInitArmorLikeC(otyp, artif);
+        mksobjInitArmorLikeC(otyp, artif, otmp);
         break;
     case NH5_GEM_CLASS:
         mksobjInitGemLikeC(otyp);
@@ -726,9 +805,11 @@ export function mksobjInitMklevLikeC(otyp, oclass, artif, otmp) {
         }
         break;
     }
-    case NH5_TOOL_CLASS:
-        mksobjInitToolLikeC(otyp, otmp);
+    case NH5_TOOL_CLASS: {
+        const toolCorpsenm = mksobjInitToolLikeC(otyp, otmp);
+        if (toolCorpsenm !== null) corpsenm = toolCorpsenm;
         break;
+    }
     default:
         break;
     }

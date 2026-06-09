@@ -1,7 +1,9 @@
 // o_init.js — Object initialization (o_init.c subset).
-// C ref: o_init.c init_objects, randomize_gem_colors, shuffle, shuffle_all, obj_shuffle_range.
+// C ref: o_init.c init_objects, randomize_gem_colors, shuffle, shuffle_all, obj_shuffle_range, setgemprobs, oinit.
 
-import { rn2 } from './rng.js';
+import { game } from './gstate.js';
+import { rnd, rn2 } from './rng.js';
+import { GEM_CLASS_MKOBJ_OC_PROB_ROWS } from './mkobj_mklev_oc_prob_data.js';
 import {
     O_INIT_MAXOCLASSES,
     O_INIT_NUM_OBJECTS,
@@ -160,7 +162,7 @@ function shuffleAllLikeC() {
 
 /**
  * C: o_init.c init_objects — description shuffles + WAN_NOTHING oc_dir.
- * setgemprobs / init_oclass_probs omitted (no RNG); gem colors are RNG-only here.
+ * Gem `oc_prob` level adjust via **`setgemprobsLikeC`** / **`oinitLikeC`** (no RNG).
  */
 export function initObjectsLikeC() {
     if ((O_INIT_MAXOCLASSES | 0) >= (O_INIT_NUM_OBJECTS | 0)) return;
@@ -189,4 +191,96 @@ export function initObjectsLikeC() {
 /** @deprecated — use initObjectsLikeC */
 export function init_objects() {
     initObjectsLikeC();
+}
+
+/** C: objects.h LAST_REAL_GEM (JADE). */
+const OTYP_LAST_REAL_GEM = 460;
+
+/** C: svb.bases[GEM_CLASS] … bases[GEM_CLASS + 1] — oclass index 13 (438 … 473). */
+const GEM_CLASS_BASE = O_INIT_OCLASS_BASES[13] | 0;
+const GEM_CLASS_END = O_INIT_OCLASS_BASES[14] | 0;
+
+/** C: dungeon.c ledger_no(d_level *). */
+function ledgerNoLikeC(dlev) {
+    if (!dlev) return 0;
+    const dnum = dlev.dnum | 0;
+    const start = game.dungeons?.[dnum]?.ledger_start ?? 0;
+    return (dlev.dlevel | 0) + (start | 0);
+}
+
+/** C: dungeon.c maxledgerno(). */
+function maxledgernoLikeC() {
+    const dgs = game.dungeons;
+    const n = game.n_dgns ?? dgs?.length ?? 0;
+    if (!dgs || n <= 0) return 127;
+    const last = dgs[n - 1];
+    return (last.ledger_start | 0) + (last.num_dunlevs | 0);
+}
+
+function ensureGemOcProbLikeC() {
+    if (game.gemOcProb && game.gemOcProb.length === GEM_CLASS_END - GEM_CLASS_BASE) {
+        return game.gemOcProb;
+    }
+    const probs = new Uint16Array(GEM_CLASS_END - GEM_CLASS_BASE);
+    for (const [otyp, p] of GEM_CLASS_MKOBJ_OC_PROB_ROWS) {
+        const ix = (otyp | 0) - GEM_CLASS_BASE;
+        if (ix >= 0 && ix < probs.length) probs[ix] = p | 0;
+    }
+    game.gemOcProb = probs;
+    return probs;
+}
+
+/**
+ * C: o_init.c setgemprobs — level-dependent GEM_CLASS `oc_prob` (no RNG).
+ * @param {{ dnum?: number, dlevel?: number } | null} [dlev]
+ */
+export function setgemprobsLikeC(dlev = null) {
+    let lev = 0;
+    if (dlev) {
+        lev = ledgerNoLikeC(dlev);
+        const max = maxledgernoLikeC();
+        if (lev > max) lev = max;
+    }
+    const probs = ensureGemOcProbLikeC();
+    let first = GEM_CLASS_BASE;
+    const zeroCount = 9 - Math.trunc(lev / 3);
+    for (let j = 0; j < zeroCount; j++) {
+        probs[(first + j) - GEM_CLASS_BASE] = 0;
+    }
+    first += zeroCount;
+    const denom = OTYP_LAST_REAL_GEM + 1 - first;
+    if (denom > 0) {
+        for (let j = first; j <= OTYP_LAST_REAL_GEM; j++) {
+            probs[j - GEM_CLASS_BASE] = Math.trunc((171 + j - first) / denom);
+        }
+    }
+    let sum = 0;
+    for (let j = GEM_CLASS_BASE; j < GEM_CLASS_END; j++) {
+        sum += probs[j - GEM_CLASS_BASE] | 0;
+    }
+    game.gemClassProbTotal = sum | 0;
+}
+
+/**
+ * C: mkobj.c `mkobj(GEM_CLASS)` — walk `objects[i].oc_prob` after `setgemprobs`.
+ * Contest recorder traces `rnd(1000)` for this draw on public sessions (init
+ * `oclass_prob_totals[GEM_CLASS]`), not the post-`setgemprobs` row sum (~923).
+ */
+export function mkobjPickGemOtypMklevLikeC() {
+    const probs = ensureGemOcProbLikeC();
+    const MKOBJ_GEM_RND_TOTAL = 1000;
+    let prob = rnd(MKOBJ_GEM_RND_TOTAL);
+    let i = GEM_CLASS_BASE;
+    while (i < GEM_CLASS_END) {
+        prob -= probs[i - GEM_CLASS_BASE] | 0;
+        if (prob <= 0) break;
+        i++;
+    }
+    if (i >= GEM_CLASS_END) i = GEM_CLASS_END - 1;
+    return i | 0;
+}
+
+/** C: o_init.c oinit — `setgemprobs(&u.uz)` at makelevel start. */
+export function oinitLikeC() {
+    setgemprobsLikeC(game.u?.uz ?? null);
 }
