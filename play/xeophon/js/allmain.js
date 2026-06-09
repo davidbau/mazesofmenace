@@ -9,7 +9,7 @@ import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, vie
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, isok } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -11494,9 +11494,46 @@ const MONSTER_CARRIED_ANTIMAGIC_DEFENSE_ARTIFACTS = new Set([
     'platinum yendorian express card',
 ]);
 
+const MONSTER_WORN_ANTIMAGIC_ITEM_KINDS = new Set([
+    'cloak of magic resistance',
+    'gray dragon scale mail',
+    'gray dragon scales',
+]);
+
+const MONSTER_ANTIMAGIC_ITEM_SLOTMASK = W_ARMOR | W_ACCESSORY | W_WEP;
+
 function monsterArtifactKey(item) {
     const artifact = item?.artifact || item?.oartifact;
     return artifact ? String(artifact).trim().toLowerCase().replace(/^the\s+/, '') : '';
+}
+
+function monsterItemKindKey(item) {
+    return String(item?.actualKind || item?.kind || '').trim().toLowerCase().replace(/^the\s+/, '');
+}
+
+function monsterItemWornInAntiMagicSlot(item) {
+    const mask = Math.trunc(Number(item?.owornmask || 0));
+    if (mask) return !!(mask & MONSTER_ANTIMAGIC_ITEM_SLOTMASK);
+    return !!item?.worn;
+}
+
+function monsterWornItemConfersAntiMagic(item) {
+    if (!monsterItemWornInAntiMagicSlot(item)) return false;
+    const property = item.oprop ?? item.oc_oprop;
+    const propertyName = String(property || '').trim().toLowerCase();
+    return property === ANTIMAGIC
+        || Number(property) === ANTIMAGIC
+        || propertyName === 'antimagic'
+        || propertyName === 'magic resistance'
+        || item.magicResistance
+        || item.antimagic
+        || item.resistsMagic
+        || item.resists_magm
+        || MONSTER_WORN_ANTIMAGIC_ITEM_KINDS.has(monsterItemKindKey(item));
+}
+
+function monsterWearsAntiMagicItem(mon) {
+    return (mon?.minvent || []).some(monsterWornItemConfersAntiMagic);
 }
 
 function monsterWieldsArtifactNamed(mon, artifactKey) {
@@ -11517,6 +11554,7 @@ function monsterResistsAntiMagicTrap(mon) {
     return !!(mon?.magicResistance || mon?.resistsMagic || mon?.resists_magm
         || data.magicResistance || data.resistsMagic || data.resists_magm
         || data.defendsMagic || data.defends_magm
+        || monsterWearsAntiMagicItem(mon)
         || monsterWieldsAntiMagicDefendingArtifact(mon)
         || monsterCarriesAntiMagicDefendingArtifact(mon));
 }

@@ -458,7 +458,7 @@ function untrapWebMonsterAt(trap) {
         !mon.dead && mon.mx === trap?.tx && mon.my === trap?.ty) || null;
 }
 
-function untrapBearTrapFailureChance(trap) {
+function untrapTrapFailureChance(trap) {
     let chance = 3;
     if (heroIsConfused() || heroIsHallucinating()) chance++;
     if (game.u?.blind || game.u?.Blind) chance++;
@@ -466,7 +466,7 @@ function untrapBearTrapFailureChance(trap) {
     if (heroIsFumbling()) chance *= 2;
     if (trap?.madeby_u) chance--;
     const role = heroRoleName();
-    if (role === 'Ranger' && chance <= 3) return 0;
+    if (role === 'Ranger' && trap?.ttyp === BEAR_TRAP && chance <= 3) return 0;
     if (role === 'Rogue') {
         if (rn2(2 * MAXULEV) < (game.u?.ulevel || 1)) chance--;
         if (game.u?.uhave?.questart && chance > 1) chance--;
@@ -474,6 +474,10 @@ function untrapBearTrapFailureChance(trap) {
         chance--;
     }
     return Math.max(1, chance);
+}
+
+function untrapBearTrapFailureChance(trap) {
+    return untrapTrapFailureChance(trap);
 }
 
 function untrapWebChance(trap) {
@@ -525,8 +529,19 @@ function untrapBearTrapDifficultMessage(trap, underHero) {
     return `${which} bear trap is difficult to disarm.`;
 }
 
+function untrapLandMineWhich(trap) {
+    return trap?.madeby_u ? 'your' : 'the';
+}
+
+function untrapLandMineDifficultMessage(trap, underHero) {
+    const which = trap?.madeby_u ? 'Your' : underHero ? 'This' : 'That';
+    return `${which} land mine is difficult to disarm.`;
+}
+
 function untrapTrapReachName(trap) {
-    return trap?.ttyp === BEAR_TRAP ? 'bear trap' : 'web';
+    if (trap?.ttyp === BEAR_TRAP) return 'bear trap';
+    if (trap?.ttyp === LANDMINE) return 'land mine';
+    return 'web';
 }
 
 function untrapBoxObjectsAt(x, y) {
@@ -541,11 +556,15 @@ function untrapContainerCountPhrase(count) {
 function untrapHoldingTrapPromptName(trap) {
     if (trap?.ttyp === BEAR_TRAP)
         return trap?.madeby_u ? 'your bear trap' : 'a bear trap';
+    if (trap?.ttyp === LANDMINE)
+        return trap?.madeby_u ? 'your land mine' : 'a land mine';
     return trap?.madeby_u ? 'your web' : 'a web';
 }
 
 function untrapHoldingTrapActionName(trap) {
-    return trap?.ttyp === BEAR_TRAP ? 'Disarm the bear trap' : 'Remove the web';
+    if (trap?.ttyp === BEAR_TRAP) return 'Disarm the bear trap';
+    if (trap?.ttyp === LANDMINE) return 'Disarm the land mine';
+    return 'Remove the web';
 }
 
 function untrapHoldingTrapContainerPrompt(trap, count) {
@@ -788,8 +807,61 @@ function chestTrapBoxInPool(box) {
     return !!loc && (IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT);
 }
 
+function heroPolyselfFireHpState() {
+    if (!game.u?._polyself_form) return null;
+    if (game.u.mh != null || game.u.mhmax != null)
+        return { hpKey: 'mh', maxKey: 'mhmax' };
+    return { hpKey: 'uhp', maxKey: 'uhpmax' };
+}
+
+function polyselfFireGolemMaxDamage(form, maxHp) {
+    const name = String(form?.name || '').toLowerCase();
+    if (name === 'paper golem') return maxHp;
+    if (name === 'straw golem') return Math.trunc(maxHp / 2);
+    if (name === 'wood golem') return Math.trunc(maxHp / 4);
+    if (name === 'leather golem') return Math.trunc(maxHp / 8);
+    return 0;
+}
+
+function applyPolyselfFireMaxHpLoss(origDamage) {
+    const state = heroPolyselfFireHpState();
+    if (!state || !game.u) return null;
+    const form = game.u._polyself_form || {};
+    let damage = origDamage;
+    const maxHp = Math.max(1, Math.trunc(Number(game.u[state.maxKey] ?? game.u[state.hpKey] ?? 1)));
+    const golemDamage = polyselfFireGolemMaxDamage(form, maxHp);
+    if (golemDamage > damage) damage = golemDamage;
+    const level = Math.max(0, Math.trunc(Number(form.mlevel ?? form.level ?? form.hpLevel ?? 0)));
+    if (maxHp > level) {
+        const loss = rn2(Math.min(maxHp, damage + 1));
+        game.u[state.maxKey] = Math.max(1, maxHp - loss);
+    } else {
+        game.u[state.maxKey] = maxHp;
+    }
+    game.u[state.hpKey] = Math.min(game.u[state.hpKey] ?? game.u[state.maxKey], game.u[state.maxKey]);
+    return damage;
+}
+
 function applyChestTrapFireDamage(messages, damage, deathCause) {
     if (!damage || game.u?.uinvulnerable) return {};
+    const polyselfHp = heroPolyselfFireHpState();
+    if (polyselfHp && game.u) {
+        game.u[polyselfHp.hpKey] = Math.max(0, (game.u[polyselfHp.hpKey] || 0) - damage);
+        if ((game.u[polyselfHp.hpKey] || 0) > 0) return {};
+        if (heroHasUnchanging()) {
+            game._death_cause = 'killed while stuck in creature form';
+            messages.push('You die...');
+            return { lifeSaving: false, fatal: true, more: true };
+        }
+        const result = rehumanizeAfterPolyselfDeath();
+        appendRehumanizeDeathResultMessages(messages, result, { allowLifeSaving: true });
+        return {
+            genocideDeathArmed: !!messages.genocideDeathArmed,
+            lifeSaving: !!messages.lifeSaving,
+            fatal: !!messages.fatal,
+            more: !!messages.more,
+        };
+    }
     if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
     if ((game.u?.uhp || 0) > 0) return {};
     return heroDartTrapFatalResult(messages, deathCause);
@@ -811,6 +883,8 @@ function applyChestTrapFirePayload(box, messages) {
     if (heroHasFireResistance()) {
         damage = rn2(2);
         if (!damage) messages.push('You are uninjured.');
+    } else if (game.u?._polyself_form) {
+        damage = applyPolyselfFireMaxHpLoss(origDamage);
     } else {
         damage = d(2, 4);
         if (game.u) {
@@ -823,20 +897,30 @@ function applyChestTrapFirePayload(box, messages) {
     }
 
     const directResult = applyChestTrapFireDamage(messages, damage, 'killed by a tower of flame');
-    if (directResult.fatal || directResult.lifeSaving) return directResult;
+    if (directResult.genocideDeathArmed || directResult.fatal) return directResult;
+    if (directResult.lifeSaving) restoreLifeSavedHeroForContinuation();
 
+    burnAwayHeroSlime(messages);
     const fireInventory = fireDamageInventory(origDamage, false, false, { allowLifeSaving: true });
     messages.push(...fireInventory.messages);
     if (fireInventory.lifeSaving || fireInventory.fatal) {
         game._death_cause = fireInventory.deathCause || 'killed by a tower of flame';
         return {
-            lifeSaving: !!fireInventory.lifeSaving,
+            lifeSaving: fireInventory.fatal ? !!fireInventory.lifeSaving : !!directResult.lifeSaving || !!fireInventory.lifeSaving,
             fatal: !!fireInventory.fatal,
             more: true,
         };
     }
 
-    return applyChestTrapFireDamage(messages, fireInventory.damage, fireInventory.deathCause || 'killed by a tower of flame');
+    const inventoryDamageResult = applyChestTrapFireDamage(messages, fireInventory.damage, fireInventory.deathCause || 'killed by a tower of flame');
+    if (directResult.lifeSaving && !inventoryDamageResult.lifeSaving && !inventoryDamageResult.fatal && game.u) {
+        game._life_saving_post_continue_hp = game.u.uhp;
+    }
+    return {
+        ...inventoryDamageResult,
+        lifeSaving: inventoryDamageResult.fatal ? !!inventoryDamageResult.lifeSaving : !!directResult.lifeSaving || !!inventoryDamageResult.lifeSaving,
+        more: !!directResult.more || !!inventoryDamageResult.more,
+    };
 }
 
 function chestTrapExplosionObjectsAt(box) {
@@ -890,17 +974,9 @@ function chestTrapExplosionObjectResistsDeletion(obj) {
     return false;
 }
 
-function wakeNearbyMonstersFromChestTrapExplosion() {
+function wakeNearbyMonstersFromChestTrapExplosion(messages = null) {
     const distance = Math.max(0, Math.trunc(Number(game.u?.ulevel || 1))) * 20;
-    for (const sleeper of game.level?.monsters || []) {
-        if (!sleeper || sleeper.dead || (sleeper.mhp != null && sleeper.mhp <= 0)) continue;
-        const dx = (sleeper.mx || 0) - (game.u?.ux || 0);
-        const dy = (sleeper.my || 0) - (game.u?.uy || 0);
-        if (distance !== 0 && dx * dx + dy * dy >= distance) continue;
-        sleeper.msleeping = 0;
-        if (!(sleeper.unique || sleeper.data?.unique || sleeper.data?.uniq))
-            sleeper.mstrategy = 0;
-    }
+    wakeNearbyMonstersAt(game.u?.ux || 0, game.u?.uy || 0, distance, messages);
 }
 
 function deleteChestTrapExplosionObjects(box, floorObjects) {
@@ -921,7 +997,7 @@ function applyChestTrapExplosionPayload(box, messages) {
     const floorObjects = chestTrapExplosionObjectsAt(box);
     const shopContext = chestTrapExplosionShopContext(box, floorObjects);
     const boxDestroyed = deleteChestTrapExplosionObjects(box, floorObjects);
-    wakeNearbyMonstersFromChestTrapExplosion();
+    wakeNearbyMonstersFromChestTrapExplosion(messages);
 
     const damage = maybeHalfPhysicalDamage(d(6, 6));
     const damageResult = applyChestTrapFireDamage(messages, damage, `killed by an exploding ${chestTrapObjectName(box)}`);
@@ -1397,6 +1473,39 @@ function placeConvertedBearTrapObject(trap) {
     return obj;
 }
 
+function placeConvertedLandMineObject(trap) {
+    if (!game.level || !trap) return null;
+    const obj = mksobj(LAND_MINE, true, false);
+    Object.assign(obj, {
+        cls: 'tool',
+        glyph: '(',
+        color: CLR_RED,
+        kind: 'land mine',
+        actualKind: 'land mine',
+        material: 'iron',
+        oc_material: 'iron',
+        cursed: false,
+        blessed: false,
+        known: true,
+        dknown: true,
+        bknown: true,
+        spe: 0,
+        ox: trap.tx,
+        oy: trap.ty,
+        quan: 1,
+        owt: 200,
+        opoisoned: false,
+        hidden: false,
+        buried: false,
+        transientProjectile: false,
+        contained: false,
+        container: null,
+    });
+    game.level.objects ??= [];
+    game.level.objects.push(obj);
+    return obj;
+}
+
 function autoSellConvertedTrapObject(obj, x, y) {
     const sale = shopDroppedPaidObjectSaleInfo(obj, x, y);
     if (!sale) return '';
@@ -1485,6 +1594,32 @@ async function moveHeroIntoFailedUntrapBearTrap(trap, dir) {
     return await finishHeroDartTrapResult(heroBearTrapResult(trap, 'Whoops...'));
 }
 
+async function moveHeroOntoFailedUntrapLandMine(trap, dir) {
+    if ((dir.dx || dir.dy) && !canMoveHeroIntoFailedUntrapTrap(trap)) {
+        await setMessage("Whoops...  Fortunately, you don't move onto it.", true);
+        return false;
+    }
+    if (dir.dx || dir.dy) {
+        const oldx = game.u?.ux || 0;
+        const oldy = game.u?.uy || 0;
+        if (game.u) {
+            game.u.ux0 = oldx;
+            game.u.uy0 = oldy;
+            game.u.ux = trap.tx;
+            game.u.uy = trap.ty;
+            game.u.umoved = true;
+            if (game.u.usteed) {
+                game.u.usteed.mx = trap.tx;
+                game.u.usteed.my = trap.ty;
+            }
+        }
+        newsym(oldx, oldy);
+        newsym(trap.tx, trap.ty);
+        vision_recalc(1);
+    }
+    return await finishHeroDartTrapResult(heroLandmineResult(trap, 'Whoops...', { forceTrap: true }));
+}
+
 function damageMonsterFromFailedBearUntrap(monster, messages) {
     if (!monster) return;
     if (monster.mtame) monster.mtame = Math.max(0, (monster.mtame || 0) - 1);
@@ -1562,6 +1697,59 @@ async function handleUntrapBearTrap(trap, dir) {
     return true;
 }
 
+async function handleUntrapLandMine(trap, dir) {
+    const underHero = !dir.dx && !dir.dy;
+    const trapName = 'land mine';
+    if ((game.u?.utrap || 0) > 0) {
+        await setMessage(`You cannot deal with the ${trapName} while trapped${underHero ? ' in it' : ''}!`);
+        game.context.move = 1;
+        return true;
+    }
+    const boulder = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.otyp === BOULDER
+        && obj.ox === trap.tx && obj.oy === trap.ty);
+    if (boulder && !underHero && !heroPassesWalls()) {
+        await setMessage('There is a boulder in your way.');
+        return true;
+    }
+    const monster = untrapWebMonsterAt(trap);
+    if (monster) {
+        await setMessage(`${earthquakeMonsterName(monster)} is in the way.`);
+        return true;
+    }
+    if (await blockUntrapTightDiagonalReach(trap, dir)) return true;
+    if (!heroCanReachFloorForUntrap(underHero)) {
+        if (game.u?.usteed && heroRidingSkillLevel() < P_BASIC)
+            await setMessage("You aren't skilled enough to reach from a steed.");
+        else
+            await setMessage(`You are unable to reach the ${trapName}!`);
+        return true;
+    }
+
+    const chance = untrapTrapFailureChance(trap);
+    const failed = chance > 0 && rn2(chance);
+    if (failed) {
+        if (rnl(5)) {
+            if (await moveHeroOntoFailedUntrapLandMine(trap, dir)) return true;
+        } else {
+            await setMessage(untrapLandMineDifficultMessage(trap, underHero));
+        }
+        game.context.move = 1;
+        return true;
+    }
+
+    const message = `You disarm ${untrapLandMineWhich(trap)} land mine.`;
+    const object = placeConvertedLandMineObject(trap);
+    const saleMessage = trap.madeby_u && object
+        ? autoSellConvertedTrapObject(object, trap.tx, trap.ty)
+        : '';
+    if (object) stackDroppedFloorObject(object);
+    deleteTrap(trap);
+    game.context.move = 1;
+    await setMessage([message, saleMessage].filter(Boolean).join('  '));
+    return true;
+}
+
 function squeakyBoardUntrapPrompt() {
     const letters = inventoryLetters(isSqueakyBoardSuggestedUntrapTool);
     return letters
@@ -1625,6 +1813,7 @@ function dropCarriedObjectAtHero(item, messages = [], dropTarget = null) {
         });
     if (!placed) clearObjectShopBillState(item);
     let shopSale = null;
+    if (placed) impactDisturbsBuriedZombieCorpseTimersForObject(dropped, { violent: false });
     if (placed && !sellobjReturnUnpaidToShop(dropped, dropped.ox, dropped.oy)) {
         shopSale = beginDroppedPaidObjectSale(dropped, dropped.ox, dropped.oy);
         if (shopSale?.message) messages.push(shopSale.message);
@@ -3268,7 +3457,7 @@ const WISH_BASE_OBJECTS = new Map([
     ['meat ring', { otyp: MEAT_RING, cls: 'food', glyph: '%', kind: 'meat ring', actualKind: 'meat ring', singular: 'meat ring', plural: 'meat rings', nutrition: 5, quan: 1 }],
     ['tin opener', { otyp: TIN_OPENER, cls: 'tool', glyph: '(', kind: 'tin opener', actualKind: 'tin opener' }],
     ['beartrap', { otyp: BEARTRAP, cls: 'tool', glyph: '(', kind: 'beartrap', actualKind: 'beartrap' }],
-    ['land mine', { otyp: LAND_MINE, cls: 'tool', glyph: '(', kind: 'land mine', actualKind: 'land mine' }],
+    ['land mine', { otyp: LAND_MINE, cls: 'tool', glyph: '(', color: CLR_RED, kind: 'land mine', actualKind: 'land mine' }],
     ['bag of tricks', { otyp: BAG_OF_TRICKS, cls: 'tool', glyph: '(', kind: 'bag of tricks', actualKind: 'bag of tricks' }],
     ['crystal ball', { otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', kind: 'crystal ball', actualKind: 'crystal ball', plural: 'crystal balls', known: true }],
     ['glass orb', { otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', kind: 'glass orb', actualKind: 'crystal ball', plural: 'glass orbs', known: false }],
@@ -7704,6 +7893,7 @@ const OBJECT_WEIGHTS = {
     'bag of holding': 15,
     'oilskin sack': 15,
     'beartrap': 200,
+    'land mine': 200,
     'pick-axe': 100,
     'sack': 15,
     'silver bell': 10,
@@ -7916,6 +8106,7 @@ const SHOP_OBJECT_COSTS = {
     'bag of holding': 100,
     'bag of tricks': 100,
     'beartrap': 60,
+    'land mine': 180,
     'skeleton key': 10,
     'lock pick': 20,
     'credit card': 10,
@@ -12719,25 +12910,36 @@ function disturbBuriedZombieCorpseTimersAt(x, y) {
     for (const obj of level.objects || []) scan(obj, false);
 }
 
+function impactZombieDisturbanceWeight(obj) {
+    if (shopBillableGold(obj)) {
+        const explicit = Math.trunc(Number(obj?.owt ?? obj?.weight ?? 0));
+        return explicit > 0 ? explicit : goldStackWeight(obj?.quan || 1);
+    }
+    return floorEffectsObjectWeight(obj);
+}
+
+function impactZombieDisturbanceFlimsyObject(obj) {
+    if (!obj) return true;
+    if (isFoodObject(obj)) return true;
+    const material = useStoneObjectMaterial(obj);
+    if (USE_STONE_FLIMSY_MATERIALS.has(material)) return true;
+    const kind = objectKindKey(obj);
+    return /\b(?:cream pie|candy bar|shirt|robe|cloak|leather|rubber hose|scroll|spellbook|paper|cloth)\b/.test(kind);
+}
+
+function impactDisturbsBuriedZombieCorpseTimersForObject(obj, { violent = false } = {}) {
+    if (!obj || impactZombieDisturbanceFlimsyObject(obj)) return false;
+    const threshold = violent ? 10 : 100;
+    if (impactZombieDisturbanceWeight(obj) < threshold) return false;
+    disturbBuriedZombieCorpseTimersAt(obj.ox || 0, obj.oy || 0);
+    return true;
+}
+
 function wakeNearbyFromForceLock(messages) {
     const ux = game.u?.ux || 0;
     const uy = game.u?.uy || 0;
     const distance = Math.max(0, Math.trunc(Number(game.u?.ulevel || 1)) * 20);
-    for (const mon of game.level?.monsters || []) {
-        if (!mon || mon.dead || (mon.mhp || 1) <= 0) continue;
-        const dx = (mon.mx || 0) - ux;
-        const dy = (mon.my || 0) - uy;
-        if (dx * dx + dy * dy >= distance) continue;
-        if (mon.msleeping && monsterCanBeSeenForPotionEffect(mon))
-            messages.push(`${potionHitMonsterName(mon)} wakes up.`);
-        mon.msleeping = 0;
-        if (!(mon.unique || mon.data?.unique)) {
-            if (typeof mon.mstrategy === 'number') mon.mstrategy &= ~STRAT_WAITMASK;
-            else if (mon.mstrategy === 'waitforu') mon.mstrategy = 0;
-            mon.waiting = false;
-        }
-    }
-    disturbBuriedZombieCorpseTimersAt(ux, uy);
+    wakeNearbyMonstersAt(ux, uy, distance, messages);
 }
 
 export function processForceLockOccupationTick(force) {
@@ -16454,7 +16656,7 @@ function destroyDrawbridgeAtOrWallForLandmine(x, y, messages = []) {
     delete wallLoc.horizontal;
     clearLandmineDestroyedDrawbridgeStateAt(bridge.x, bridge.y);
     clearLandmineDestroyedDrawbridgeStateAt(wall.x, wall.y);
-    wakeNearbyMonstersAt(bridge.x, bridge.y, 500);
+    wakeNearbyMonstersAt(bridge.x, bridge.y, 500, messages);
     newsym(bridge.x, bridge.y);
     newsym(wall.x, wall.y);
     vision_reset();
@@ -18839,7 +19041,7 @@ function wakeNearbyMonstersFromPotionHit(mon) {
         const dy = (sleeper.my || 0) - (mon?.my || 0);
         if (distance !== 0 && dx * dx + dy * dy >= distance) continue;
         sleeper.msleeping = 0;
-        if (!(sleeper.data?.unique || sleeper.data?.uniq)) sleeper.mstrategy = 0;
+        if (!(sleeper.unique || sleeper.data?.unique || sleeper.data?.uniq)) sleeper.mstrategy = 0;
     }
 }
 
@@ -19248,20 +19450,25 @@ function monsterResistsCold(mon) {
         || data.coldResistance || data.resistsCold || data.resists_cold);
 }
 
-function wakeNearbyMonstersAt(x, y, distance) {
+function wakeNearbyMonstersAt(x, y, distance, messages = null) {
     for (const sleeper of game.level?.monsters || []) {
         if (!sleeper || sleeper.dead || (sleeper.mhp != null && sleeper.mhp <= 0)) continue;
         const dx = (sleeper.mx || 0) - x;
         const dy = (sleeper.my || 0) - y;
         if (dx * dx + dy * dy >= distance) continue;
+        if (messages && sleeper.msleeping && directMeleeMonsterCanBeSeen(sleeper))
+            messages.push(directMeleeWakeMessage(sleeper, false));
         sleeper.msleeping = 0;
-        if (!(sleeper.data?.unique || sleeper.data?.uniq)) sleeper.mstrategy = 0;
+        if (!(sleeper.unique || sleeper.data?.unique || sleeper.data?.uniq)) {
+            sleeper.mstrategy = 0;
+            sleeper.waiting = false;
+        }
     }
     disturbBuriedZombieCorpseTimersAt(x, y);
 }
 
-function wakeNearbyMonstersFromExplosion(x, y, damage) {
-    wakeNearbyMonstersAt(x, y, Math.max(damage * damage, 50));
+function wakeNearbyMonstersFromExplosion(x, y, damage, messages = null) {
+    wakeNearbyMonstersAt(x, y, Math.max(damage * damage, 50), messages);
 }
 
 function burningOilExplosionVisible(x, y) {
@@ -19413,7 +19620,7 @@ function explodeBurningOilPotion(potion, x, y, messages) {
         damageHeroFromBurningOilExplosion(damage, messages);
 
     payForCurrentShopTerrainDamage('burn away', messages);
-    wakeNearbyMonstersFromExplosion(x, y, damage);
+    wakeNearbyMonstersFromExplosion(x, y, damage, messages);
 }
 
 function litOilPotionHitMonster(potion, mon, messages) {
@@ -22029,7 +22236,7 @@ function heroHorizontalThrowRecoilObstacleCollision(loc, x, y, remainingRange, d
         if ((game.u.uhp || 0) <= 0)
             trapResult = heroDartTrapFatalResult(messages, why);
     }
-    wakeNearbyMonstersAt(x, y, 10);
+    wakeNearbyMonstersAt(x, y, 10, messages);
     return { blocked: true, messages, trapResult };
 }
 
@@ -22084,6 +22291,35 @@ function heroHorizontalThrowRecoilPetrifyMonsterByTouch(mon, messages) {
     return petrifyMonsterFromThrownEgg(mon, messages);
 }
 
+function heroHorizontalThrowRecoilSetmangry(mon, messages) {
+    clearMonsterPotionWaitStrategy(mon);
+    if (!mon?.mpeaceful || mon.mtame || mon.pet) return false;
+    mon.mpeaceful = 0;
+    mon.hostile = true;
+    mon.angry = true;
+    if (game.u?.ualign) {
+        if (mon.ispriest) {
+            const coaligned = Number(game.u.ualign.type ?? A_NEUTRAL) === tipHatPriestAlign(mon);
+            game.u.ualign.record = (game.u.ualign.record || 0) + (coaligned ? -5 : 2);
+            if (coaligned) game.u.ualign.abuse = (game.u.ualign.abuse || 0) + 5;
+        } else {
+            game.u.ualign.record = (game.u.ualign.record || 0) - 1;
+            game.u.ualign.abuse = (game.u.ualign.abuse || 0) + 1;
+        }
+    }
+    if (mon.data?.humanoid || mon.humanoid || mon.isshk || mon.isgd || mon.ispriest) {
+        if (directMeleeMonsterCanBeSeen(mon))
+            messages.push(`${fireScrollMonsterName(mon)} gets angry!`);
+    } else if (!directMeleeGrowlSuppressed(mon)) {
+        const verb = directMeleeGrowlVerb(mon);
+        if (directMeleeGrowlCanMessage(mon)) directMeleePushGrowlMessage(mon, messages, verb);
+        directMeleeGrowlWakeNearby(mon, messages);
+    }
+    if (!game._monster_moving)
+        directMeleePeacefulBystandersRespond(mon, messages);
+    return true;
+}
+
 function heroHorizontalThrowRecoilMonsterCollision(mon, x, y) {
     if (!mon) return { messages: [], trapResult: null };
     const loc = game.level?.at?.(x, y);
@@ -22099,19 +22335,21 @@ function heroHorizontalThrowRecoilMonsterCollision(mon, x, y) {
         ? articleFor(mon.data?.name || mon.name || 'creature')
         : 'something';
     const pronoun = canSpotAfterUnhide ? 'it' : 'something';
+    const messages = [!preGlyphMonster && !preGlyphInvisible
+        ? `You find ${name} by bumping into ${pronoun}.`
+        : `You bump into ${name}.`];
+    if (mon.msleeping && directMeleeMonsterCanBeSeen(mon))
+        messages.push(directMeleeWakeMessage(mon, false));
     mon.msleeping = 0;
     mon.meating = 0;
     revealHeroProjectileHitMimicAppearance(mon);
     if (!heroHorizontalThrowRecoilCanSpotMonster(mon)) mapInvisibleMonsterAt(mon);
-    setHeroObjectHitMonsterAngry(mon);
-    const messages = [!preGlyphMonster && !preGlyphInvisible
-        ? `You find ${name} by bumping into ${pronoun}.`
-        : `You bump into ${name}.`];
+    heroHorizontalThrowRecoilSetmangry(mon, messages);
     const trapResult = heroHorizontalThrowRecoilHeroPetrification(mon, messages);
     if (trapResult?.fatal && !trapResult.lifeSaving)
         return { messages, trapResult };
     heroHorizontalThrowRecoilPetrifyMonsterByTouch(mon, messages);
-    wakeNearbyMonstersAt(x, y, 10);
+    wakeNearbyMonstersAt(x, y, 10, messages);
     return { messages, trapResult };
 }
 
@@ -34880,7 +35118,7 @@ function applyKickOuchDamage(x, y, messages, { kickObjectName = '', dir = null }
                 game._maploc = { x: wakeX, y: wakeY };
             }
         }
-        wakeNearbyMonstersAt(wakeX, wakeY, 5 * 5);
+        wakeNearbyMonstersAt(wakeX, wakeY, 5 * 5, messages);
     }
     if (!rn2(3)) {
         const woundDuration = 5 + rnd(5);
@@ -34920,6 +35158,7 @@ function placeKickedFloorObject(obj, x, y, messages, options = {}) {
     if (typeof options.beforePlace === 'function')
         options.beforePlace(obj);
     const placed = placeUnstackedFloorObject(obj);
+    impactDisturbsBuriedZombieCorpseTimersForObject(placed, { violent: true });
     const stacked = stackDroppedFloorObject(placed);
     newsym(x, y);
     return stacked;
@@ -35530,7 +35769,7 @@ async function kickFloorObjectToward(dir, x, y) {
             || heroProjectileSupportedWeaponObject(obj));
     const fragileBreakKind = kickedFragilePreflightBreakKind(obj);
     const localBoxImpact = isBoxObject(obj);
-    const ordinarySameLevelFlight = !fragileBreakKind && !targetMon;
+    const ordinarySameLevelFlight = !targetMon;
     if (!localBoxImpact && !gate && !canHandleMonsterImpact && !fragileBreakKind && !ordinarySameLevelFlight)
         return { handled: false };
 
@@ -35821,6 +36060,8 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
     const impact = !hardLanding
         ? { loss: 0, broke: false, messages }
         : projectileContainerImpactDmg(placed, options.fromX ?? game.u?.ux ?? x, options.fromY ?? game.u?.uy ?? y, { messages, silent: options.silent });
+    if (hardLanding && options.impactDisturbsBuriedZombies !== false)
+        impactDisturbsBuriedZombieCorpseTimersForObject(placed, { violent: true });
     const shopLanding = resolveUnpaidProjectileShopLanding(placed, x, y, options);
     if (shopLanding.message) messages.push(shopLanding.message);
     const shopSale = shopLanding.handled ? { handled: false, shkp: null, message: '', messages: [] }
@@ -52994,7 +53235,7 @@ function landminePostBlastTrap(trap, messages = []) {
     if (!trap) return null;
     landmineScatterFloorObjectsAt(trap.tx, trap.ty, messages);
     deleteLandmineBlastEngravingAt(trap.tx, trap.ty);
-    wakeNearbyMonstersAt(trap.tx, trap.ty, 400);
+    wakeNearbyMonstersAt(trap.tx, trap.ty, 400, messages);
     landmineBreakDoorAt(trap.tx, trap.ty);
     if (destroyDrawbridgeAtOrWallForLandmine(trap.tx, trap.ty, messages))
         return null;
@@ -68064,6 +68305,7 @@ export async function rhack(_cmd) {
             let shopGold = { messages: [] };
             if (!shipObject.handled && !consumedByFloor) {
                 placeStackableFloorObject(floorGold);
+                impactDisturbsBuriedZombieCorpseTimersForObject(floorGold, { violent: false });
                 shopGold = sellobjDroppedGoldAt(floorGold.ox, floorGold.oy, amount);
             }
             const guard = (game.level?.monsters || []).find(mon => mon.isgd || mon.data?.name === 'guard');
@@ -68133,6 +68375,7 @@ export async function rhack(_cmd) {
             }
             if (!shipObject.handled && !consumedByFloor) {
                 game.level.objects.push(dropped);
+                impactDisturbsBuriedZombieCorpseTimersForObject(dropped, { violent: false });
                 if (!sellobjReturnUnpaidToShop(dropped, dropped.ox, dropped.oy))
                     shopSale = beginDroppedPaidObjectSale(dropped, dropped.ox, dropped.oy);
                 if (shopSale?.message) floorMessages.push(shopSale.message);
@@ -70975,6 +71218,8 @@ export async function rhack(_cmd) {
             game._command_mode = null;
             if (pending?.trap?.ttyp === BEAR_TRAP)
                 await handleUntrapBearTrap(pending.trap, pending?.dir || { dx: 0, dy: 0 });
+            else if (pending?.trap?.ttyp === LANDMINE)
+                await handleUntrapLandMine(pending.trap, pending?.dir || { dx: 0, dy: 0 });
             else
                 await handleUntrapWebTrap(pending?.trap, pending?.dir || { dx: 0, dy: 0 });
             return;
@@ -71101,7 +71346,9 @@ export async function rhack(_cmd) {
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === WEB);
             const bearTrap = (game.level?.traps || []).find(candidate =>
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === BEAR_TRAP);
-            const holdingTrap = webTrap || bearTrap;
+            const landMineTrap = (game.level?.traps || []).find(candidate =>
+                candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === LANDMINE);
+            const holdingTrap = webTrap || bearTrap || landMineTrap;
             const boxes = (!dir.dx && !dir.dy) ? untrapBoxObjectsAt(x, y) : [];
             if ((holdingTrap || boxes.length) && await blockUntrapFloorReach(holdingTrap, dir, boxes))
                 return;
@@ -71115,6 +71362,8 @@ export async function rhack(_cmd) {
             if (webTrap && await handleUntrapWebTrap(webTrap, dir))
                 return;
             if (bearTrap && await handleUntrapBearTrap(bearTrap, dir))
+                return;
+            if (landMineTrap && await handleUntrapLandMine(landMineTrap, dir))
                 return;
             const trap = (game.level?.traps || []).find(candidate =>
                 candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === SQKY_BOARD);
