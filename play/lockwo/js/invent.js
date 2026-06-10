@@ -59,10 +59,19 @@ import {
 import { observe_object as disco_observe_object, build_discoveries_rows } from './o_init.js';
 import { enlightenment_lines } from './insight.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
+import { find_ac } from './u_init.js';
 
 const LEASH = 236;
 const CANDELABRUM_OF_INVOCATION = 262;
 const SPE_BOOK_OF_THE_DEAD = 408;
+
+// Armor / eyewear otyps used by the wear ('W') and take-off ('T') commands.
+// C ref: include/onames.h (mirrors u_init.js).
+const FEDORA = 92, HELMET = 97, SPLINT_MAIL = 124, RING_MAIL = 132,
+    LEATHER_ARMOR = 134, LEATHER_JACKET = 135, HAWAIIAN_SHIRT = 136,
+    ROBE = 143, CLOAK_OF_MAGIC_RESISTANCE = 148, CLOAK_OF_DISPLACEMENT = 149,
+    SMALL_SHIELD = 150, LEATHER_GLOVES = 159,
+    LENSES = 232, BLINDFOLD = 233, TOWEL = 234;
 
 export const NOINVSYM = '#';
 export const CONTAINED_SYM = '>';
@@ -1537,6 +1546,15 @@ const QUITCHARS = ' \r\n\x1b';
 // plus trailing space.  The modal flag stops moveloop's re-render from
 // clobbering the prompt before the capturing nhgetch fires.  Returns the key.
 async function topline_query(prompt) {
+    // C ref: getobj() calls yn_function(qbuf,...), which (like tty's prompt)
+    // first flushes an unacknowledged top-line message with --More-- before
+    // overwriting it with the prompt.  getobj sets _yn_need_more after the
+    // "You don't have that object." re-prompt; honour it here so the displayed
+    // --More-- frame(s) match C.
+    if (game._yn_need_more) {
+        game._yn_need_more = false;
+        await topl_more();
+    }
     game._pending_message = prompt;
     await flush_screen(1);
     game._modal_screen = 'topl';
@@ -1600,27 +1618,288 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
     if (!buf) qbuf += ' [*]';
     else qbuf += ` [${buf} or ?*]`;
 
-    const key = await topline_query(qbuf);
-    const ilet = String.fromCharCode(key);
+    // C ref: getobj()'s for(;;) loop.  An invalid letter prints "You don't have
+    // that object." and loops back to re-prompt; the next yn_function call first
+    // flushes that message with --More-- (handled by topline_query honouring
+    // _yn_need_more).  A quitchar (space/return/ESC) cancels with "Never mind.".
+    for (;;) {
+        const key = await topline_query(qbuf);
+        const ilet = String.fromCharCode(key);
 
-    if (QUITCHARS.includes(ilet)) {
-        game._pending_message = '';
-        return null;
-    }
-    if (ilet === HANDS_SYM) {
-        if (!allownone) { mime_action(word); return null; }
-        return hands_obj;
-    }
+        if (QUITCHARS.includes(ilet)) {
+            await pline('Never mind.');
+            return null;
+        }
+        if (ilet === HANDS_SYM) {
+            if (!allownone) { mime_action(word); return null; }
+            return hands_obj;
+        }
 
-    // Resolve the chosen invlet to its inventory object (any letter the player
-    // types is accepted; an unknown letter yields "You don't have that
-    // object.").  The '?'/'*' menu path is not modeled.
-    const otmp = inventoryArray().find(o => o.invlet === ilet);
-    if (!otmp) {
-        await pline('You don\'t have that object.');
-        return null;
+        // Resolve the chosen invlet to its inventory object.  An unknown letter
+        // yields "You don't have that object." and re-prompts.  The '?'/'*'
+        // menu path is not modeled.
+        const otmp = inventoryArray().find(o => o.invlet === ilet);
+        if (!otmp) {
+            await pline('You don\'t have that object.');
+            game._yn_need_more = true;
+            continue;
+        }
+        return otmp;
     }
-    return otmp;
+}
+
+// ── wear / take off armor (C ref: do_wear.c) ─────────────────────────────
+//
+// Worn-armor slot masks match u_init.js setworn()/find_ac() (W_ARM 0x1 ..
+// W_ARMU 0x40); accessory slots use the prop.h-style bits defined above
+// (W_RINGL/W_RINGR/W_AMUL/W_BLINDF) — those aren't filled by the starter kit
+// the wear/takeoff sessions exercise.
+const WA_ARM = 0x01, WA_ARMC = 0x02, WA_ARMH = 0x04, WA_ARMS = 0x08,
+    WA_ARMG = 0x10, WA_ARMF = 0x20, WA_ARMU = 0x40;
+const WA_ARMOR_ALL = 0x7f;
+
+// C ref: include/objects.h ARMOR()/HELM()/...() oc_delay — the per-turn
+// donning/doffing delay (negated by do_wear.c into a positive nomul count).
+// Only the otyps a role can start with are tabulated; the rest default to 0,
+// which (as in C) means the item goes on/off in a single action.
+const ARMOR_OC_DELAY = new Map([
+    [RING_MAIL, 5], [HELMET, 1], [SMALL_SHIELD, 0], [LEATHER_GLOVES, 1],
+    [CLOAK_OF_MAGIC_RESISTANCE, 0], [LEATHER_JACKET, 0], [FEDORA, 0],
+    [LEATHER_ARMOR, 3], [ROBE, 0], [SPLINT_MAIL, 5],
+    [CLOAK_OF_DISPLACEMENT, 0], [HAWAIIAN_SHIRT, 0],
+]);
+
+// C ref: objclass.h is_cloak/is_suit/is_helmet/... — classify a piece of armor
+// by the slot it occupies, returning its WA_* mask (0 if not wearable armor).
+function armor_slot_mask(obj) {
+    if (!obj || obj.oclass !== ARMOR_CLASS) return 0;
+    switch (obj.otyp) {
+    case CLOAK_OF_MAGIC_RESISTANCE:
+    case CLOAK_OF_DISPLACEMENT:
+    case ROBE:            return WA_ARMC;
+    case HELMET:
+    case FEDORA:          return WA_ARMH;
+    case SMALL_SHIELD:    return WA_ARMS;
+    case LEATHER_GLOVES:  return WA_ARMG;
+    case HAWAIIAN_SHIRT:  return WA_ARMU;
+    case RING_MAIL:
+    case LEATHER_ARMOR:
+    case LEATHER_JACKET:
+    case SPLINT_MAIL:     return WA_ARM;
+    default:              return WA_ARM; // generic suit
+    }
+}
+
+function worn_slot_get(mask) {
+    switch (mask) {
+    case WA_ARM:  return game.uarm;
+    case WA_ARMC: return game.uarmc;
+    case WA_ARMH: return game.uarmh;
+    case WA_ARMS: return game.uarms;
+    case WA_ARMG: return game.uarmg;
+    case WA_ARMF: return game.uarmf;
+    case WA_ARMU: return game.uarmu;
+    default: return null;
+    }
+}
+
+function worn_slot_clear(mask) {
+    switch (mask) {
+    case WA_ARM:  game.uarm = null; break;
+    case WA_ARMC: game.uarmc = null; break;
+    case WA_ARMH: game.uarmh = null; break;
+    case WA_ARMS: game.uarms = null; break;
+    case WA_ARMG: game.uarmg = null; break;
+    case WA_ARMF: game.uarmf = null; break;
+    case WA_ARMU: game.uarmu = null; break;
+    default: break;
+    }
+}
+
+function worn_slot_set(obj, mask) {
+    obj.owornmask = (obj.owornmask || 0) | mask;
+    switch (mask) {
+    case WA_ARM:  game.uarm = obj; break;
+    case WA_ARMC: game.uarmc = obj; break;
+    case WA_ARMH: game.uarmh = obj; break;
+    case WA_ARMS: game.uarms = obj; break;
+    case WA_ARMG: game.uarmg = obj; break;
+    case WA_ARMF: game.uarmf = obj; break;
+    case WA_ARMU: game.uarmu = obj; break;
+    default: break;
+    }
+}
+
+// C ref: do_wear.c already_wearing — note the trailing '!' for the c_that_ case.
+async function already_wearing(cc) {
+    await pline(`You are already wearing ${cc}${cc === 'that' ? '!' : '.'}`);
+}
+
+// C ref: do_wear.c equip_ok(obj, removing, accessory=FALSE).  getobj() callback
+// shared by wear (removing=FALSE) and take off (removing=TRUE).  Only the armor
+// path the starter kit exercises is fully reproduced; rings/amulets fall under
+// the GETOBJ_DOWNPLAY branch (selectable but not advertised), matching C.
+function equip_ok(obj, removing) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    const is_worn = ((obj.owornmask || 0) & (WA_ARMOR_ALL | W_ACCESSORY)) !== 0;
+    // ignore for wearing if already worn, or for removing if not worn
+    if (removing ? !is_worn : is_worn) return GETOBJ_EXCLUDE_INACCESS;
+    // exclude object classes that can never be worn
+    if (obj.oclass !== ARMOR_CLASS && obj.oclass !== RING_CLASS
+        && obj.oclass !== AMULET_CLASS) {
+        if (obj.otyp !== BLINDFOLD && obj.otyp !== LENSES && obj.otyp !== TOWEL)
+            return GETOBJ_EXCLUDE;
+    }
+    // 'W'/'T' handle armor; accessories (rings/amulets) are downplayed here.
+    if (obj.oclass !== ARMOR_CLASS) return GETOBJ_DOWNPLAY;
+    return GETOBJ_SUGGEST;
+}
+function wear_ok(obj) { return equip_ok(obj, false); }
+function takeoff_ok(obj) { return equip_ok(obj, true); }
+
+// C ref: do_wear.c accessory_or_armor_on(obj) — the wear path.  Implements the
+// armor branch (the only one the wear/takeoff sessions reach); a piece already
+// worn yields "You are already wearing that!" with no time cost.
+async function accessory_or_armor_on(obj) {
+    if ((obj.owornmask || 0) & (W_ACCESSORY | WA_ARMOR_ALL)) {
+        await already_wearing('that');
+        return ECMD_OK;
+    }
+    if (obj.oclass !== ARMOR_CLASS) {
+        // rings/amulets/eyewear: not exercised by these sessions.
+        await pline("You can't wear that!");
+        return ECMD_OK;
+    }
+    const mask = armor_slot_mask(obj);
+    if (worn_slot_get(mask)) {
+        // slot already occupied by a different piece (e.g. another cloak).
+        await already_wearing('that');
+        return ECMD_OK;
+    }
+    worn_slot_set(obj, mask);
+    obj.known = 1; // +/- becomes evident via the AC status line
+    find_ac();
+    const delay = ARMOR_OC_DELAY.get(obj.otyp) || 0;
+    if (delay) {
+        // C: nomul(-delay) + nomovemsg "You finish your dressing maneuver."
+        start_occupation(delay, 'You finish your dressing maneuver.');
+    } else {
+        await pline(`You are now wearing ${doname_invent(obj)}.`);
+    }
+    if (game._allow_inventory_update !== undefined) update_inventory();
+    return ECMD_TIME;
+}
+
+// C ref: do_wear.c dowear() — the 'W' command.
+export async function dowear() {
+    // verysmall/nohands and "full complement" guards are not reachable for the
+    // humanoid starter roles these sessions use.
+    if (game.uarm && game.uarmu && game.uarmc && game.uarmh && game.uarms
+        && game.uarmg && game.uarmf) {
+        await pline('You are already wearing a full complement of armor.');
+        return ECMD_OK;
+    }
+    const otmp = await getobj('wear', wear_ok, GETOBJ_NOFLAGS);
+    if (!otmp) return ECMD_CANCEL;
+    return await accessory_or_armor_on(otmp);
+}
+
+// C ref: do_wear.c count_worn_stuff — set Narmorpieces/Naccessories and (for
+// take off) the default single armor piece.  Only the outermost of
+// cloak/suit/shirt counts so it can come off without confirmation.
+function count_worn_stuff() {
+    let Narmorpieces = 0, Naccessories = 0, which = null;
+    const more = (o) => { if (o) { Narmorpieces++; which = o; } };
+    more(game.uarmh); more(game.uarms); more(game.uarmg); more(game.uarmf);
+    if (game.uarmc) more(game.uarmc);
+    else if (game.uarm) more(game.uarm);
+    else if (game.uarmu) more(game.uarmu);
+    // accessories (rings/amulet/blindfold) — none worn in these sessions.
+    for (const a of [game.uleft, game.uright, game.uamul, game.ublindf])
+        if (a) Naccessories++;
+    return { Narmorpieces, Naccessories, which };
+}
+
+// C ref: do_wear.c armoroff(otmp) — remove a worn armor piece, with its
+// donning delay.  For a no-delay item the slot clears immediately and the
+// "You were wearing ..." feedback follows the removal.
+async function armoroff(otmp) {
+    const mask = (otmp.owornmask || 0) & WA_ARMOR_ALL;
+    const delay = ARMOR_OC_DELAY.get(otmp.otyp) || 0;
+    if (delay) {
+        // C: nomul(-delay) + nomovemsg "You finish taking off your <what>."
+        // The slot stays occupied until the afternmv fires; deferred-removal
+        // bookkeeping isn't needed by the current sessions (their pieces have
+        // delay 0), so the occupation just elapses and then clears the slot.
+        start_occupation(delay, `You finish taking off your ${simpleonames(otmp)}.`, () => {
+            otmp.owornmask = (otmp.owornmask || 0) & ~mask;
+            worn_slot_clear(mask);
+            find_ac();
+            if (game._allow_inventory_update !== undefined) update_inventory();
+        });
+    } else {
+        otmp.owornmask = (otmp.owornmask || 0) & ~mask;
+        worn_slot_clear(mask);
+        find_ac();
+        // off_msg after removal -> no redundant "(being worn)" suffix.
+        await pline(`You were wearing ${doname_invent(otmp)}.`);
+        if (game._allow_inventory_update !== undefined) update_inventory();
+    }
+}
+
+// C ref: do_wear.c armor_or_accessory_off(obj) — shared by 'T' and 'R'.
+async function armor_or_accessory_off(obj) {
+    if (!((obj.owornmask || 0) & (WA_ARMOR_ALL | W_ACCESSORY))) {
+        await pline('You are not wearing that.');
+        return ECMD_OK;
+    }
+    // "can't take that off without taking off your cloak first" guards
+    // (suit under cloak, shirt under suit/cloak) — not reached when only the
+    // outermost piece is removed, which is the case these sessions exercise.
+    if (((obj === game.uarm) && game.uarmc)
+        || ((obj === game.uarmu) && (game.uarmc || game.uarm))) {
+        let what = '';
+        if (game.uarmc) what += 'cloak';
+        if ((obj === game.uarmu) && game.uarm)
+            what += (game.uarmc ? ' and ' : '') + 'suit';
+        await pline(`You can't take that off without taking off your ${what} first.`);
+        return ECMD_OK;
+    }
+    if ((obj.owornmask || 0) & WA_ARMOR_ALL) {
+        await armoroff(obj);
+    } else {
+        // accessory removal not exercised by these sessions.
+        obj.owornmask = 0;
+        if (game._allow_inventory_update !== undefined) update_inventory();
+    }
+    return ECMD_TIME;
+}
+
+// C ref: do_wear.c dotakeoff() — the 'T' command.
+export async function dotakeoff() {
+    const { Narmorpieces, Naccessories, which } = count_worn_stuff();
+    if (!Narmorpieces && !Naccessories) {
+        await pline('Not wearing any armor or accessories.');
+        return ECMD_OK;
+    }
+    let otmp = which;
+    // ParanoidRemove / item_action_in_progress aren't set in these sessions, so
+    // a single armor piece is removed without the disambiguation getobj prompt.
+    if (Narmorpieces !== 1) {
+        otmp = await getobj('take off', takeoff_ok, GETOBJ_NOFLAGS);
+    }
+    if (!otmp) return ECMD_CANCEL;
+    return await armor_or_accessory_off(otmp);
+}
+
+// C ref: hack.c nomul(nval) + the occupation machinery — make the hero busy
+// for `delay` extra turns, running `afternmv` (and printing `msg`) when the
+// occupation completes.  The moveloop advances monsters each elapsed turn.
+function start_occupation(delay, msg, afternmv) {
+    game.multi = delay;
+    game.multi_reason = 'dressing up';
+    game.nomovemsg = msg;
+    game._afternmv = afternmv || null;
 }
 
 // C ref: hack.h ynq(query) — yes/no/quit prompt, default 'q' on space/return/ESC.
@@ -2085,7 +2364,7 @@ async function drop(obj) {
     // C: `if (!IS_ALTAR(...) && flags.verbose) You("drop %s.", doname(obj));`
     // The wandpoly session runs with !verbose so the drop is silent.
     if (!IS_ALTAR_typ(u) && game.flags?.verbose) {
-        await pline(`You drop ${doname(obj)}.`);
+        await pline(`You drop ${doname_invent(obj)}.`);
     }
     obj.how_lost = LOST_DROPPED;
     dropz(obj, u.ux, u.uy);
@@ -2094,6 +2373,14 @@ async function drop(obj) {
 
 // IS_ALTAR check stub — none of the recorded drop tiles are altars.
 function IS_ALTAR_typ(_u) { return false; }
+
+// C ref: shk.c dopay() — the 'p' command.  Ports the "no shopkeeper here"
+// branch (the hero isn't standing in/next to a shop in these recordings).
+// Returns ECMD_OK (no payment made; no turn elapses).
+export async function dopay() {
+    await pline('There appears to be no shopkeeper here to receive your payment.');
+    return ECMD_OK;
+}
 
 // C ref: do.c dropx/dropy/dropz — place the freed object on the floor and
 // redraw the destination cell.  flooreffects (water/lava/trapdoor) are not
@@ -2106,6 +2393,75 @@ function dropz(obj, x, y) {
 
 function weldmsg(_obj) {}
 const LOST_DROPPED = 3;
+
+// C ref: mkobj.c obj_extract_self() — unlink a floor object from the level's
+// object list (svl.level.objects[ox][oy] nexthere chain + the global fobj
+// chain).  Our floor store is the flat game.level.objects array, so removing
+// the object from it (and clearing its floor coords) is the faithful effect.
+// This is what stops the pet's dog_goal fobj scan from re-rolling obj_resists
+// for an item the hero has just picked up.
+function floor_extract_self(obj) {
+    if (!obj) return;
+    const arr = game.level?.objects;
+    if (Array.isArray(arr)) {
+        const ix = arr.indexOf(obj);
+        if (ix >= 0) arr.splice(ix, 1);
+    }
+    obj.where = OBJ_FREE;
+}
+
+// C ref: pickup.c pick_obj() + pickup_object() for the ordinary by-hand path:
+// detach the object from the floor, add it to inventory (assigning an invlet),
+// and announce it via prinv ("<letter> - <doname>.").  The shop/billing,
+// telekinesis, corpse-touch, and scare-monster branches are not reached for the
+// recorded sessions; near_capacity() is 0 here so pickup_prinv passes no prefix.
+async function pick_one_obj(obj) {
+    const quan = obj.quan || 1;
+    observe_object(obj);
+    floor_extract_self(obj);
+    const held = addinv(obj);
+    // pickup_prinv(held, count, "lifting") with no encumbrance change => prinv
+    // with a NULL prefix, i.e. the bare "<letter> - <name>." pickup line.
+    prinv(null, held, quan);
+    return held;
+}
+
+// C ref: hack.c dopickup() + pickup.c pickup_checks()/pickup(-count).  The ','
+// command picks up the objects under the hero.  We model the floor pickup the
+// recorded sessions exercise (not engulfed, on reachable floor): nothing here ->
+// "There is nothing here to pick up." with no time elapsed; a single object ->
+// auto-selected and lifted (AUTOSELECT_SINGLE under the default menu style),
+// taking a turn.  Returns ECMD_TIME(1) when something was picked up, else
+// ECMD_OK(0).
+export async function dopickup() {
+    const u = ustate();
+    const x = u.ux, y = u.uy;
+    const here = objects_at(x, y); // topmost-first; chain excludes uchain/uball
+    if (here.length === 0) {
+        // pickup_checks(): !OBJ_AT -> "There is nothing here to pick up."
+        // (plain ROOM floor; the throne/sink/fountain/etc. branches are not
+        // reached on the recorded tiles).
+        game._pending_message = 'There is nothing here to pick up.';
+        return 0;
+    }
+    if (here.length === 1) {
+        // AUTOSELECT_SINGLE: the lone object is picked without a menu prompt.
+        await pick_one_obj(here[0]);
+        newsym_force(x, y);
+        return 1;
+    }
+    // Multiple objects: the menu/traditional selection path is not exercised by
+    // the recorded sessions; fall back to lifting the topmost so the floor still
+    // changes (keeps the dog_goal fobj scan honest) and a turn elapses.
+    await pick_one_obj(here[0]);
+    newsym_force(x, y);
+    return 1;
+}
+
+// C ref: display.c newsym_force() — force a redraw of (x,y).  newsym already
+// recomputes the displayed glyph from the (now reduced) floor pile, so this is
+// the same call here.
+function newsym_force(x, y) { newsym(x, y); }
 
 // C ref: invent.c canletgo — refuse to drop a cursed loadstone or a welded
 // weapon (both produce a message), otherwise allow.

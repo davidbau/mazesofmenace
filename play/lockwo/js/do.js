@@ -320,7 +320,11 @@ export async function wiz_level_tele(readLevel) {
         await goto_level(newlevel, false, false, false);
         if (game.flags?.verbose !== false)
             await pline('You materialize on a different level!');
-        return 1; // ECMD_TIME
+        // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — the wizard-mode
+        // level teleport does NOT cost a game turn (no movemon / gethungry /
+        // monster-spawn pass).  Returning ECMD_TIME here advanced moves by one
+        // and let the pet take an extra dog_move, landing it off-position.
+        return 0; // ECMD_OK
     }
 
     if (buf === '') return 0; // empty line: cancelled
@@ -353,7 +357,8 @@ export async function wiz_level_tele(readLevel) {
     // flags.verbose (the default).
     if (game.flags?.verbose !== false)
         await pline('You materialize on a different level!');
-    return 1; // ECMD_TIME
+    // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — no game turn elapses.
+    return 0; // ECMD_OK
 }
 
 // ── dodown (C ref: do.c dodown) — descend stairs / fall through a hole.

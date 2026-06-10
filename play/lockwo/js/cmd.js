@@ -12,7 +12,8 @@ import { vision_recalc } from './vision.js';
 import { do_attack, is_safemon, x_monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
-         attr_window_advance, dowieldquiver, dothrow, dotravel, dodrop } from './invent.js';
+         attr_window_advance, dowieldquiver, dothrow, dotravel, dodrop,
+         dopickup, dowear, dotakeoff, dopay } from './invent.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { docast } from './spell.js';
@@ -20,6 +21,7 @@ import { doread } from './read.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, hooked_tty_getlin, wiz_wish } from './extcmd-handlers.js';
 import { wiz_level_tele } from './do.js';
+import { spoteffects } from './trap.js';
 import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
@@ -143,11 +145,30 @@ export async function rhack(key) {
         // wished object, then rolls u.ublesscnt += rn1(100,50).
         await wiz_wish();
         game.context.move = 0;
+    } else if (ch === 'W') {
+        // C ref: cmd.c keymap 'W' = dowear (do_wear.c).  Prompts for armor to
+        // wear; ECMD_TIME (3) only when the don actually costs a turn.
+        game.context.move = (await dowear()) === 3 ? 1 : 0;
+    } else if (ch === 'T') {
+        // C ref: cmd.c keymap 'T' = dotakeoff (do_wear.c).  Removes worn armor
+        // (a single piece comes off without a disambiguation prompt).
+        game.context.move = (await dotakeoff()) === 3 ? 1 : 0;
+    } else if (ch === 'p') {
+        // C ref: cmd.c keymap 'p' = dopay (shk.c).  Away from a shopkeeper this
+        // reports "There appears to be no shopkeeper here ..." (ECMD_OK).
+        game.context.move = (await dopay()) === 3 ? 1 : 0;
     } else if (ch === 'd') {
         // C ref: cmd.c — 'd' drop an item.  do.c dodrop() prompts for the
         // item then drops it on the floor (ECMD_TIME when something is
         // dropped, so the turn elapses and monsters move).
         game.context.move = (await dodrop()) ? 1 : 0;
+    } else if (ch === ',') {
+        // C ref: cmd.c { ',', "pickup", dopickup } -> hack.c dopickup().  Pick up
+        // the objects under the hero.  ECMD_TIME (turn elapses, monsters move) when
+        // something is lifted; ECMD_OK (nothing here) takes no time.  Lifting the
+        // item removes it from the floor so the pet's dog_goal fobj scan no longer
+        // re-rolls obj_resists for it (the seed0002 early divergence).
+        game.context.move = (await dopickup()) ? 1 : 0;
     } else if (ch === '#') {
         // C ref: cmd.c doextcmd — read and run an extended command.
         await doextcmd();
@@ -568,7 +589,21 @@ export async function domove(dx, dy) {
     }
 
     if (blocksMove(newx, newy)) {
-        // Can't move there
+        // Can't move there.  C ref: hack.c test_move() DO_MOVE else-branch — a
+        // blocked move announces the obstacle when flags.mention_walls is set
+        // (closed doors are already handled above).  C names the background via
+        // back_to_glyph(): S_stone -> "solid stone", otherwise an(explanation)
+        // of the cmap symbol ("a wall").  blocksMove only stops STONE / walls
+        // here, so those two cases cover it; pline_dir for a sighted hero just
+        // prints "It's %s." (no directional prefix).
+        if (game.flags?.mention_walls) {
+            const tgt = game.level?.at(newx, newy);
+            const t = tgt ? tgt.typ : STONE;
+            const buf = (t === STONE) ? 'solid stone'
+                      : IS_WALL(t) ? 'a wall'
+                      : null;
+            if (buf) await pline(`It's ${buf}.`);
+        }
         game.context.move = 0;
         return;
     }
@@ -596,6 +631,11 @@ export async function domove(dx, dy) {
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+
+    // C ref: hack.c domove_core() — after relocating, run the per-square
+    // effects (traps, pools, special rooms).  This is where stepping onto a
+    // trap triggers dotrap().
+    await spoteffects();
 }
 
 // C ref: hack.c domove_swap_with_pet(mtmp, x, y) — swap the hero and a tame

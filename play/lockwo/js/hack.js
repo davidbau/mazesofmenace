@@ -225,6 +225,32 @@ function senseHostileAtDest() {
     return false;
 }
 
+// C ref: pickup.c pickup() — "if there's anything here, stop running":
+//   if (OBJ_AT(u.ux,u.uy) && svc.context.run && svc.context.run != 8
+//       && !svc.context.nopick) nomul(0);
+// pickup() runs from spoteffects(TRUE) at the tail of domove_core, i.e. right
+// after the hero steps onto the new square.  Without this a run sails straight
+// over floor objects instead of halting on them, leaving the hero (and every
+// downstream monster-move / pet object scan) on the wrong square.  Only floor
+// objects count (a picked-up / contained object keeps stale ox/oy but its
+// `where` is no longer OBJ_FLOOR).
+function floorObjAt(x, y) {
+    const objs = game.level?.objects;
+    if (!Array.isArray(objs)) return false;
+    for (const o of objs) {
+        if (o.ox === x && o.oy === y && (o.where === 'floor' || o.where === 1))
+            return true;
+    }
+    return false;
+}
+function runStopOnObject() {
+    const u = game.u;
+    const c = game.context;
+    if (!c.run || c.run === 8 || c.nopick) return false;
+    if (floorObjAt(u.ux, u.uy)) { nomul(0); return true; }
+    return false;
+}
+
 // C ref: hack.c domove_core() tail — after a run move onto a door /
 // obstruction / furniture (when run < 8), nomul(0) so the run ends after this
 // step (its once-per-turn work still runs, then the loop stops).
@@ -275,6 +301,7 @@ async function run_movement(run) {
 
         // The move happened: run its once-per-turn machinery.
         runOntoStopTerrain();          // may set game.multi = 0 (door etc.)
+        runStopOnObject();             // C pickup(): halt the run on a floor object
         await takeTurn();
 
         if (game.multi <= 0) break;    // nomul triggered -> stop after this turn
