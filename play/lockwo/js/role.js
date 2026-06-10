@@ -215,6 +215,15 @@ function maskBlocked(mask) {
     return !!(rfilter().mask & mask);
 }
 
+// C ref: role.c gotrolefilter() — TRUE if any role/race/gender/alignment
+// filtering is currently active (used for the "Set/Reset ... filtering" label).
+export function gotrolefilter() {
+    const f = rfilter();
+    if (f.mask) return true;
+    if (Array.isArray(f.roles)) for (const v of f.roles) if (v) return true;
+    return false;
+}
+
 function normalizeName(str) {
     return String(str || '').trim().toLowerCase();
 }

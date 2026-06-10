@@ -437,10 +437,25 @@ function terrain_glyph(loc, x, y) {
         // C ref: back_to_glyph — SDOOR falls through to the wall case.
         return wall_glyph_for(loc);
     case DOOR:
+        // C ref: display.c back_to_glyph DOOR case — an open or closed door uses
+        // the horizontal/vertical cmap variant per loc.horizontal (S_hodoor '-'
+        // / S_vodoor '|' when open; S_hcdoor / S_vcdoor '+' when closed); broken
+        // or doorless openings use S_ndoor ('.').
         if (loc.doormask & D_BROKEN)
             return dec ? { ch: '~', color: NO_COLOR, dec: true } : { ch: '.', color: NO_COLOR, dec: false };
-        if (loc.doormask & D_ISOPEN)
-            return dec ? { ch: 'a', color: CLR_BROWN, dec: true } : { ch: '|', color: CLR_BROWN, dec: false };
+        if (loc.doormask & D_ISOPEN) {
+            // C ref: include/defsym.h — in ASCII, S_vodoor ("vertical open door",
+            // a door in a VERTICAL wall, loc.horizontal == 0) draws as '-' and
+            // S_hodoor (loc.horizontal == 1) draws as '|'.  The names are
+            // counter-intuitive: the glyph shows the open gap, perpendicular to
+            // the wall it sits in.  The DECgraphics symset draws both open-door
+            // orientations with the same line-drawing glyph ('a').
+            if (dec)
+                return { ch: 'a', color: CLR_BROWN, dec: true };
+            return loc.horizontal
+                ? { ch: '|', color: CLR_BROWN, dec: false }
+                : { ch: '-', color: CLR_BROWN, dec: false };
+        }
         if (loc.doormask & (D_CLOSED | D_LOCKED))
             return { ch: '+', color: CLR_BROWN, dec: false };
         return dec ? { ch: '~', color: NO_COLOR, dec: true } : { ch: '.', color: NO_COLOR, dec: false };  // D_NODOOR

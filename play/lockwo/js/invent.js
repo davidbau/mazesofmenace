@@ -57,6 +57,7 @@ import {
 } from './mkobj.js';
 
 import { observe_object as disco_observe_object, build_discoveries_rows } from './o_init.js';
+import { monster_by_pmidx } from './makemon.js';
 import { enlightenment_lines } from './insight.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { find_ac } from './u_init.js';
@@ -505,6 +506,13 @@ function objectBaseName(obj) {
     if (!obj) return 'object';
     if (obj.otyp === GOLD_PIECE || obj.oclass === COIN_CLASS)
         return `${obj.quan || 0} gold piece${(obj.quan || 0) === 1 ? '' : 's'}`;
+
+    // C ref: objects.c xname() CORPSE — "<species> corpse" (e.g. "goblin
+    // corpse").  The species comes from corpsenm; mons[] name via makemon.
+    if (obj.otyp === CORPSE && obj.corpsenm != null && obj.corpsenm >= 0) {
+        const sp = monster_by_pmidx(obj.corpsenm);
+        if (sp?.name) return `${sp.name} corpse`;
+    }
 
     const ocl = objects[obj.otyp];
     const actualn = ocl?.name || obj.name || 'object';

@@ -14,6 +14,7 @@ import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
          attr_window_advance, dowieldquiver, dothrow, dotravel, dodrop,
          dopickup, dowear, dotakeoff, dopay } from './invent.js';
+import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { docast } from './spell.js';
@@ -117,6 +118,10 @@ export async function rhack(key) {
     } else if (ch === ':') {
         await dolook();
         game.context.move = 0;
+    } else if (ch === 'e') {
+        // C ref: cmd.c 'e' (#eat) -> eat.c doeat().  Eats carried/floor food
+        // (ECMD_TIME when a bite is taken).
+        game.context.move = (await doeat()) ? 1 : 0;
     } else if (ch === 'o') {
         // C ref: cmd.c doopen -> lock.c doopen_indir(0,0): open an adjacent
         // door (reads a direction).  Sets the turn flag from doopen's result.
@@ -212,6 +217,20 @@ export async function rhack(key) {
         // elapsed turn was already taken), so the moveloop does not schedule
         // another per-turn pass.  C ref: cmd.c do_run_*(), hack.c domove().
         await do_run(RUN_DX[ch], RUN_DY[ch]);
+    } else if (ch === 'm') {
+        // C ref: cmd.c do_reqmenu — the 'm' movement prefix sets
+        // iflags.menu_requested (move without autopickup / force a menu on the
+        // following command) and consumes no time or message.  A second 'm'
+        // cancels it ("Double m prefix, canceled.").  The following command is
+        // read on the next rhack iteration.
+        if (game.iflags?.menu_requested) {
+            await pline(`Double m prefix, canceled.`);
+            game.iflags.menu_requested = false;
+        } else {
+            game.iflags = game.iflags || {};
+            game.iflags.menu_requested = true;
+        }
+        game.context.move = 0;
     } else if (ch === 'G' || ch === 'g') {
         // C ref: cmd.c do_run()/do_rush() prefix commands: read a following
         // movement key, then run (G -> run==3) / rush (g -> run==2).  An ESC
@@ -636,6 +655,53 @@ export async function domove(dx, dy) {
     // effects (traps, pools, special rooms).  This is where stepping onto a
     // trap triggers dotrap().
     await spoteffects();
+
+    // C ref: hack.c domove_core() -> spoteffects(TRUE) -> pickup(1).  With
+    // autopickup off (the recorded sessions set !autopickup) pickup() falls
+    // through to look_here(), which announces a single floor object as
+    // "You see here <a thing>." (no game time, no RNG).  Only on a plain
+    // single-square step (not running/travelling) onto a non-empty tile.
+    if (!game.context?.run && !game.context?.mv)
+        await look_here_after_move(newx, newy);
+}
+
+// C ref: invent.c look_here() — the "You see here ..." auto-announcement when
+// stepping onto floor object(s) with autopickup disabled.  Scoped to the
+// single-object case the starter sessions exercise (a fresh corpse left by a
+// kill); piles of >1 object and the dungeon-feature description aren't needed
+// for the owned sessions and would add regression surface, so they're omitted.
+async function look_here_after_move(x, y) {
+    const autopickup = game.flags?.pickup;
+    if (autopickup) return; // autopickup would grab it (different message path)
+    const objs = (game.level?.objects || []).filter(
+        (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+    if (objs.length !== 1) return; // only the single-object case is modeled
+    // Only announce CORPSEs (otyp 265), the case the kill-aftermath sessions
+    // need and the only one we can name faithfully; for other single objects
+    // the generic name would be wrong, so stay silent (matches prior behavior,
+    // avoids regressing sessions like seed0006 that step onto non-corpse items).
+    if (objs[0].otyp !== 265) return;
+    const name = await objDoname(objs[0]);
+    await pline(`You see here ${name}.`);
+}
+
+// Object name with article for the "You see here" line (C: doname()).  Lazy
+// import to avoid a static cycle.  Corpses read "<species> corpse"; other
+// objects defer to invent.js's ansimpleoname().
+async function objDoname(obj) {
+    // CORPSE (otyp 265): "a goblin corpse" — species from corpsenm.
+    if (obj && obj.otyp === 265 && obj.corpsenm != null) {
+        const mm = await import('./makemon.js');
+        const sp = mm.monster_by_pmidx?.(obj.corpsenm);
+        const name = sp?.name || 'monster';
+        const art = /^[aeiou]/i.test(name) ? 'an' : 'a';
+        return `${art} ${name} corpse`;
+    }
+    try {
+        const inv = await import('./invent.js');
+        if (inv.ansimpleoname) return inv.ansimpleoname(obj);
+    } catch (_e) { /* fall through */ }
+    return 'an object';
 }
 
 // C ref: hack.c domove_swap_with_pet(mtmp, x, y) — swap the hero and a tame

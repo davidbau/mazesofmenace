@@ -8,7 +8,7 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
+    IS_WALL, CROSSWALL, TRWALL,
 } from './const.js';
 import { newsym } from './display.js';
 
@@ -21,6 +21,38 @@ const seenv_matrix = [
     [SV3, 0,   SV7],
     [SV4, SV5, SV6],
 ];
+
+// C ref: vision.c new_angle(lev, sv, row, col) — when a crosswall or T-wall
+// (typ in [CROSSWALL .. TRWALL]) is seen from one of the cardinal directions
+// (SV0/SV2/SV4/SV6), the seen-vector also gains the two flanking bits if the
+// neighbouring squares toward those flanks are transparent (viz_clear).  This
+// is what lets a T-wall/crosswall corner render its proper junction glyph
+// (e.g. a TRWALL drawn as '-' instead of '|') as a room is revealed; the
+// skeleton omitted it, so such walls rendered with the wrong cmap symbol.
+function new_angle(loc, sv, row, col) {
+    let res = sv;
+    if (loc.typ >= CROSSWALL && loc.typ <= TRWALL) {
+        switch (sv) {
+        case SV0:
+            if (col > 0 && viz_clear[row][col - 1]) res |= SV7;
+            if (row > 0 && viz_clear[row - 1][col]) res |= SV1;
+            break;
+        case SV2:
+            if (row > 0 && viz_clear[row - 1][col]) res |= SV1;
+            if (col < COLNO - 1 && viz_clear[row][col + 1]) res |= SV3;
+            break;
+        case SV4:
+            if (col < COLNO - 1 && viz_clear[row][col + 1]) res |= SV3;
+            if (row < ROWNO - 1 && viz_clear[row + 1][col]) res |= SV5;
+            break;
+        case SV6:
+            if (row < ROWNO - 1 && viz_clear[row + 1][col]) res |= SV5;
+            if (col > 0 && viz_clear[row][col - 1]) res |= SV7;
+            break;
+        }
+    }
+    return res;
+}
 
 // Circle data for range limits (C vision.c:27-70)
 const circle_data = [
@@ -491,7 +523,7 @@ export function vision_recalc(control = 0) {
                 if (nv & IN_SIGHT) {
                     const oldseenv = loc.seenv || 0;
                     const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                    loc.seenv = (loc.seenv || 0) | sv;
+                    loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
@@ -504,7 +536,7 @@ export function vision_recalc(control = 0) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                            loc.seenv = (loc.seenv || 0) | sv;
+                            loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                                 newsym(col, row);
                         }
@@ -512,7 +544,7 @@ export function vision_recalc(control = 0) {
                         next_row[col] |= IN_SIGHT;
                         const oldseenv = loc.seenv || 0;
                         const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                        loc.seenv = (loc.seenv || 0) | sv;
+                        loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                         if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                             newsym(col, row);
                     }

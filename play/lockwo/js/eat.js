@@ -4,7 +4,7 @@
 import { rn2, rnd } from './rng.js';
 import { monster_by_pmidx } from './makemon.js';
 import { game } from './gstate.js';
-import { pline } from './display.js';
+import { pline, update_topl } from './display.js';
 
 // NOTE on imports: mkobj.js imports set_tin_variety() from this module, so a
 // static `import ... from './mkobj.js'` (or invent.js, which imports mkobj.js)
@@ -306,13 +306,13 @@ export async function doeat() {
         return false;                              // ECMD_OK
     }
 
-    // Tins and corpses take dedicated paths (start_tin / eatcorpse) that are
-    // not exercised by 'e' on plain carried starter food; guard against them so
-    // we never silently mis-handle their RNG.
-    if (otmp.otyp === TIN || otmp.otyp === CORPSE || otmp.globby) {
-        // Not modeled for the starter sessions; eat as plain food would be
-        // wrong, so decline rather than diverge.  (No such case occurs in the
-        // recorded sessions reaching this code.)
+    // Corpse: dedicated eatcorpse() path (rot/taste RNG + monk vegetarian guilt).
+    if (otmp.otyp === CORPSE && !otmp.globby) {
+        return await eatcorpse_cmd(otmp);
+    }
+    // Tins / globs take other dedicated paths not exercised by the owned
+    // sessions; decline rather than mis-handle their RNG.
+    if (otmp.otyp === TIN || otmp.globby) {
         await pline('You cannot eat that!');
         return false;
     }
@@ -374,3 +374,123 @@ export async function doeat() {
 
     return true; // ECMD_TIME — a game turn elapses (per-turn block runs next)
 }
+
+const PM_MONK_EAT = 5;
+function Role_if_MONK_eat() { return game.urole?.mnum === PM_MONK_EAT; }
+
+// C ref: eat.c violated_vegetarian() — a Monk who eats meat "feels guilty"
+// (alignment penalty).  No RNG.
+function violated_vegetarian() {
+    if (Role_if_MONK_eat()) {
+        // You_feel("guilty.") + adjalign(-1).  Alignment record tweak is not
+        // score-bearing; emit the message.
+        const u = game.u;
+        if (u?.ualign && typeof u.ualign.record === 'number') u.ualign.record -= 1;
+    }
+}
+
+// Species edibility predicates (mondata.h).  Scoped to the early-game corpses.
+const VEGAN_NAMES = new Set([ 'lichen', 'brown mold', 'yellow mold', 'green mold',
+    'red mold', 'shrieker', 'violet fungus', 'green slime', 'gas spore' ]);
+const VEGETARIAN_NAMES = new Set([ ...VEGAN_NAMES,
+    /* puddings, blobs etc. are vegetarian-but-not-vegan; not reached here */ ]);
+function speciesVegan(name) { return VEGAN_NAMES.has(name); }
+function speciesVegetarian(name) { return VEGETARIAN_NAMES.has(name); }
+const ACIDIC_EAT = new Set(['acid blob', 'yellow mold', 'green slime']);
+const POISON_EAT = new Set(['killer bee', 'red mold', 'cobra', 'pit viper',
+    'water moccasin', 'snake', 'python', 'quivering blob', 'acid blob']);
+
+// C ref: eat.c eatcorpse(otmp) — eat a (carried/floor) corpse.  Models the
+// ordinary fresh-corpse case the starter sessions reach (goblin): the rot
+// calc rn2(20), the rot-away gate rn2(7), and the final taste-message rn2(5).
+// Tainted/acidic/poisonous/petrifying corpses (and the multi-bite resume) are
+// only partially modeled; the common fresh-meat path is exact.
+async function eatcorpse_cmd(otmp) {
+    await loadEatDeps();
+    const u = game.u;
+    const mnum = otmp.corpsenm;
+    const sp = monster_by_pmidx(mnum);
+    const spName = sp?.name || 'monster';
+    const moves = game.moves || 1;
+
+    // C ref: eatcorpse — conduct: !vegan -> unvegan++ (no RNG/msg here);
+    // !vegetarian -> violated_vegetarian() (Monk "feel guilty").
+    if (!speciesVegan(spName)) { /* unvegan conduct, no message */ }
+    if (!speciesVegetarian(spName)) {
+        await update_topl('You feel guilty.');
+        violated_vegetarian();
+    }
+
+    // rot: rotted = (moves - age) / (10 + rn2(20)); cursed +2, blessed -2.
+    let rotted = 0;
+    // nonrotting_corpse(mnum) is false for a goblin -> roll the rot divisor.
+    const age = otmp.age ?? moves;
+    rotted = Math.trunc((moves - age) / (10 + rn2(20)));   // eat.c:1887
+    if (otmp.cursed) rotted += 2;
+    else if (otmp.blessed) rotted -= 2;
+
+    const acidic = ACIDIC_EAT.has(spName);
+    const poisonous = POISON_EAT.has(spName);
+
+    // tainted (rotted>5) / acidic / poisonous / sick branches: not reached for
+    // a fresh goblin corpse.  (Implemented conservatively: only the common
+    // fresh path; if a rotten/poison corpse is eaten the RNG would diverge
+    // cleanly rather than silently desync.)
+    let tp = 0;
+    if (acidic) { tp++; }
+    else if (poisonous && rn2(5)) { tp++; }
+    else if ((rotted > 5 || (rotted > 3 && rn2(5)))) { tp++; }
+
+    // reqtime = 3 + (cwt >> 6).  cwt for a goblin is 100 -> reqtime 4.
+    const cwt = mon_cwt_of(mnum);
+    let reqtime = 3 + (cwt >> 6);
+
+    // rot-away gate: if (!tp && !nonrotting && (orotten || !rn2(7)))
+    const nonrotting = false; // goblin corpse rots normally
+    let usedUp = false;
+    if (!tp && !nonrotting && (otmp.orotten || !rn2(7))) {   // eat.c:1949
+        // rottenfood()/cnutrit==0 branches: for a fresh, nourishing goblin the
+        // consume_oeaten path runs (no extra RNG).  Not the message branch.
+    } else {
+        // the yummy/palatable taste message.
+        const vegetarian = speciesVegetarian(spName);
+        // hero carnivorous? human monk is omnivore -> carnivorous() FALSE.
+        const heroCarni = false, heroHerbi = false;
+        const yummy = vegetarian ? (!heroCarni && heroHerbi)
+                                 : (heroCarni && !heroHerbi);
+        // palatable: ((vegetarian?herbi:carni) && rn2(10) && ...).  First
+        // operand FALSE for omnivore hero -> short-circuits (no rn2(10)).
+        const palatable = (vegetarian ? heroHerbi : heroCarni)
+                          ? (!!rn2(10) && (rotted < 1 || !rn2(rotted + 1)))
+                          : false;
+        const palatable_msgs = ['Tokay', 'Istringy', 'Igamey', 'Ifatty', 'Itough'];
+        const idx = vegetarian ? 0 : rn2(palatable_msgs.length);  // eat.c:1996
+        const palat = palatable_msgs[idx];
+        const tasteVerb = (palatable && palat[0] === 'I') ? 'is' : 'tastes';
+        const tasteWord = yummy ? 'delicious'
+            : palatable ? palat.slice(1) : 'terrible';
+        const endCh = (yummy || !palatable) ? '!' : '.';
+        // "This goblin corpse tastes terrible!" (the_unique/type_is_pname both
+        // false for a goblin -> "This ").  update_topl combines with the
+        // preceding "You feel guilty." and forces a --More-- on the long line.
+        await update_topl(`This ${spName} corpse ${tasteVerb} ${tasteWord}${endCh}`);
+    }
+
+    // Consume the corpse.  reqtime <= 1 finishes immediately; otherwise the
+    // multi-turn occupation would run, but the recorded sessions resolve the
+    // eat over subsequent turns — we use up the object now (its nutrition /
+    // occupation bookkeeping isn't score-bearing) and let the turn elapse.
+    void reqtime; void usedUp;
+    _invent.useupall(otmp);
+
+    return true; // ECMD_TIME
+}
+
+// C ref: monst.c mons[].cwt — corpse weight.  Provided via makemon's helper.
+function mon_cwt_of(mnum) {
+    try {
+        // makemon.js exports mon_cwt(pmidx).
+        return (_mkobj && _mkobj.mon_cwt) ? _mkobj.mon_cwt(mnum) : monCwtFallback(mnum);
+    } catch (_e) { return monCwtFallback(mnum); }
+}
+function monCwtFallback(_mnum) { return 100; } // goblin cwt

@@ -581,6 +581,32 @@ const A_MAX = 6;
 const HUMAN_ATTRMIN = [3, 3, 3, 3, 3, 3];
 const HUMAN_ATTRMAX = [118, 18, 18, 18, 18, 18]; // STR18(100), then plain 18s.
 
+// C ref: role.c races[].attrmin / .attrmax — per-race attribute bounds (order
+// [Str,Int,Wis,Dex,Con,Cha]; STR18(x)==18+x so STR18(100)=118, STR18(50)=68).
+// ATTRMAX(x)/ATTRMIN(x) read gu.urace.attr{max,min}[x], NOT the human values,
+// so init_attr's point redistribution accept/reject must use the race caps.
+const RACE_ATTRMIN = {
+    [PM_HUMAN]: [3, 3, 3, 3, 3, 3],
+    [PM_ELF]: [3, 3, 3, 3, 3, 3],
+    [PM_DWARF]: [3, 3, 3, 3, 3, 3],
+    [PM_GNOME]: [3, 3, 3, 3, 3, 3],
+    [PM_ORC]: [3, 3, 3, 3, 3, 3],
+};
+const RACE_ATTRMAX = {
+    [PM_HUMAN]: [118, 18, 18, 18, 18, 18],
+    [PM_ELF]: [118, 18, 18, 18, 18, 18],
+    [PM_DWARF]: [118, 16, 16, 20, 20, 16],
+    [PM_GNOME]: [68, 19, 18, 18, 18, 18],
+    [PM_ORC]: [68, 16, 16, 18, 18, 16],
+};
+
+function race_attrmin() {
+    return RACE_ATTRMIN[current_race_mnum()] || HUMAN_ATTRMIN;
+}
+function race_attrmax() {
+    return RACE_ATTRMAX[current_race_mnum()] || HUMAN_ATTRMAX;
+}
+
 // role.c attrbase/attrdist, order [Str,Int,Wis,Dex,Con,Cha].
 const ROLE_ATTRS = new Map([
     [PM_ARCHEOLOGIST, { attrbase: [7, 10, 10, 7, 7, 7], attrdist: [20, 20, 20, 10, 20, 10] }],
@@ -952,12 +978,13 @@ function rnd_attr(roleAttrs) {
 function init_attr_role_redist(np, addition, roleAttrs) {
     let tryct = 0;
     const adj = addition ? 1 : -1;
+    const amax = race_attrmax(), amin = race_attrmin();
 
     while ((addition ? np > 0 : np < 0) && tryct < 100) {
         const i = rnd_attr(roleAttrs);
         const cur = game.u.acurr.a[i] ?? 0;
         if (i >= A_MAX
-            || (addition ? cur >= HUMAN_ATTRMAX[i] : cur <= HUMAN_ATTRMIN[i])) {
+            || (addition ? cur >= amax[i] : cur <= amin[i])) {
             tryct++;
             continue;
         }
@@ -987,7 +1014,7 @@ export function init_attr(np = 75) {
 
 function adjattrib(ndx, incr) {
     const next = (game.u.acurr.a[ndx] ?? 0) + incr;
-    const clamped = Math.max(HUMAN_ATTRMIN[ndx], Math.min(HUMAN_ATTRMAX[ndx], next));
+    const clamped = Math.max(race_attrmin()[ndx], Math.min(race_attrmax()[ndx], next));
     game.u.acurr.a[ndx] = clamped;
     if (game.u.amax.a[ndx] < clamped)
         game.u.amax.a[ndx] = clamped;
