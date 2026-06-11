@@ -181,12 +181,13 @@ function show_serialized_override_basic(screen, cursor) {
     }
 }
 
-function show_quest_leader_pager_basic(screen, cursor) {
+function show_quest_leader_pager_basic(screen, cursor, action = '') {
     show_serialized_override_basic(screen, cursor);
     game._latched_more_screen = screen;
     game._latched_more_cursor = [cursor[0], cursor[1], 1];
     game._latched_more_keep_until_dismiss = true;
     game._quest_leader_pager_active = true;
+    game._quest_leader_pager_action = action || '';
     queue_more_prompt();
 }
 
@@ -229,14 +230,16 @@ function maybe_quest_leader_talk_basic(mtmp, nearby) {
     rn2(2);
     qstat.met_leader = true;
     qstat.not_ready = 0;
+    game._quest_leader_chat_turn_pending = true;
 
     const screen = render_more_pager_screen_basic(text);
     const cursor = [8, TERMINAL_ROWS - 1];
     if (game._more || game._pending_message || (game._more_message_queue || []).length) {
         game._quest_leader_pager_screen = screen;
         game._quest_leader_pager_cursor = cursor;
+        game._quest_leader_pager_action = 'leader-followup';
     } else {
-        show_quest_leader_pager_basic(screen, cursor);
+        show_quest_leader_pager_basic(screen, cursor, 'leader-followup');
     }
     game._monster_turn_paused_for_more = true;
     return true;

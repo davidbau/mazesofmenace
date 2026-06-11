@@ -12271,6 +12271,15 @@ function currentAttr(index) {
     return game.u?.acurr?.a?.[index] ?? 10;
 }
 
+function currentFormulaStrength() {
+    // C refs: src/attrib.c:acurrstr(), include/attrib.h:ACURRSTR.
+    let str = currentAttr(A_STR);
+    if (wearingPowerGauntlets()) str = C.STR19(25);
+    if (str <= C.STR18(0)) return Math.max(str, 3);
+    if (str <= C.STR19(21)) return 19 + Math.trunc(str / 50);
+    return Math.min(str, C.STR19(25)) - 100;
+}
+
 function kickDamageDie() {
     return currentAttr(A_CON) > 15 ? 3 : 5;
 }
@@ -12313,7 +12322,7 @@ async function kickDoor(x, y, loc) {
     // C ref: dokick.c:kick_door().  Door kicks exercise Dex before the
     // force-open test; a failed kick exercises Str and prints Thwack/Whammm.
     exercise(A_DEX, true);
-    const avrgAttrib = Math.trunc((currentAttr(A_STR) + currentAttr(A_DEX) + currentAttr(A_CON)) / 3);
+    const avrgAttrib = Math.trunc((currentFormulaStrength() + currentAttr(A_DEX) + currentAttr(A_CON)) / 3);
     if (rnl(35) < avrgAttrib) {
         const shatters = currentAttr(A_STR) > 18 && !rn2(5) && !doorIsShopDoor(x, y);
         loc.doormask = shatters ? C.D_NODOOR : C.D_BROKEN;
@@ -12374,7 +12383,7 @@ async function kickDirection(ch) {
 async function tryAutoOpenDoor(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc || loc.typ !== DOOR || !(loc.doormask & D_CLOSED) || (loc.doormask & D_LOCKED)) return false;
-    const threshold = Math.trunc((currentAttr(A_STR) + currentAttr(A_DEX) + currentAttr(A_CON)) / 3);
+    const threshold = Math.trunc((currentFormulaStrength() + currentAttr(A_DEX) + currentAttr(A_CON)) / 3);
     if (rnl(20) < threshold) {
         loc.doormask = C.D_ISOPEN;
         loc.flags = C.D_ISOPEN;
@@ -20015,10 +20024,12 @@ function showQuestLeaderGatePager() {
 
 function finishQuestLeaderChatTurn() {
     if (!game._quest_leader_chat_turn_pending) return false;
+    const pausedMonsterTurn = !!game._monster_turn_paused_for_more;
     game._quest_leader_chat_turn_pending = false;
     game._monster_turn_paused_for_more = false;
     game._monster_attack_more_waiting = false;
     game._pre_turn_more_waiting = false;
+    if (pausedMonsterTurn) game._resume_monster_turn = true;
     game.context.move = 1;
     return true;
 }
@@ -20035,7 +20046,7 @@ async function finishQuestLeaderPagerAction(action) {
         qstat.not_ready = 1;
         exercise(A_WIS, true);
         if (await performQuestLeaderExpulsion()) {
-            game._quest_leader_chat_turn_pending = false;
+            finishQuestLeaderChatTurn();
             game.context.move = 1;
             return true;
         }
@@ -20044,7 +20055,7 @@ async function finishQuestLeaderPagerAction(action) {
     case 'badlevel':
         exercise(A_WIS, true);
         if (await performQuestLeaderExpulsion()) {
-            game._quest_leader_chat_turn_pending = false;
+            finishQuestLeaderChatTurn();
             game.context.move = 1;
             return true;
         }
@@ -24241,6 +24252,22 @@ export async function rhack(key) {
             await redrawAfterFullScreenMenuDismiss();
             if (entry) await beginCastSpell(entry);
             else game.context.move = 0;
+            return;
+        }
+        if (prev === game._spell_menu_screen) {
+            const dismiss = ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b';
+            const validSelection = ch === '+'
+                || knownSpellEntries().some((entry) => entry.letter === ch);
+            if (!dismiss && !validSelection) {
+                // C ref: spell.c:dospellmenu() via tty select_menu(); invalid
+                // selectors keep the menu active instead of dismissing it.
+                showSerializedOverride(prev, game._spell_menu_cursor || null);
+            } else {
+                game._spell_menu_screen = null;
+                game._spell_menu_cursor = null;
+                clearOverrideScreen();
+            }
+            game.context.move = 0;
             return;
         }
         if (prev === game._help_menu_screen) {
