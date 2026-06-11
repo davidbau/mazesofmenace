@@ -30,13 +30,13 @@ import {
 } from './object_data.js';
 import {
     finish_deferred_monster_pet_hit, finish_deferred_pet_kill_side_effect,
-    finish_pet_kill, obj_resists, pet_arrive_with_you,
+    finish_pet_kill, obj_resists, pet_arrive_with_you, resolve_arrival_collision,
 } from './dog.js';
 import { calculated_armor_class, merge_inventory_object, newuexp, pluslvl } from './u_init.js';
 import { adjalign, exercise, gethungry, maybe_update_seer_turn } from './allmain_turns.js';
 import { roleGod, roleGreeting, roleRankForLevel, rankIndexForLevel } from './roles.js';
 import { d, rn1, rn2, rnd, rnl, rnz } from './rng.js';
-import { dist2 } from './hacklib.js';
+import { dist2, midnight } from './hacklib.js';
 import { getObjectDescription } from './o_init.js';
 import { getRumor, hallucinatedLiquidName, randomHallucinatedMonsterName, wipeoutText } from './random_text.js';
 import {
@@ -133,6 +133,7 @@ const M1_NOTAKE = 0x00000800;
 const M1_NOEYES = 0x00001000;
 const M1_NOHANDS = 0x00002000;
 const M1_NOLIMBS = 0x00006000;
+const BOLT_LIM = 8;
 const M2_UNDEAD = 0x00000002;
 const M2_STALK = 0x01000000;
 const M2_NASTY = 0x02000000;
@@ -4941,6 +4942,23 @@ async function start_wearing_object(obj) {
         return;
     }
 
+    if (obj.oclass === AMULET_CLASS) {
+        // C refs: do_wear.c:Amulet_on(), worn.c:setworn(),
+        // worn.c:recalc_telepat_range().  The generic accessory path still
+        // needs the worn mask and object-property extrinsic updates.
+        obj.worn = true;
+        obj.owornmask = C.W_AMUL;
+        if (obj.otyp === AMULET_OF_ESP) {
+            game.u.uprops = game.u.uprops || {};
+            game.u.uprops.telepathic = true;
+            game.u.unblind_telepat_range = BOLT_LIM * BOLT_LIM;
+            see_monsters();
+        }
+        await pline(`${inventoryListing(obj)} (being worn).`);
+        game.context.move = 1;
+        return;
+    }
+
     const armorWearName = obj.oclass === ARMOR_CLASS ? baseObjectName(obj) : '';
     obj.worn = true;
     if (obj.otyp === CLOAK_OF_DISPLACEMENT) {
@@ -7200,17 +7218,185 @@ function findTemplePriestBasic(roomno) {
     }) || null;
 }
 
+function roomContainsTerrain(roomno, typ) {
+    for (const row of game.level?.locations || []) {
+        for (const loc of row || []) {
+            if (loc?.roomno === roomno && loc.typ === typ) return true;
+        }
+    }
+    return false;
+}
+
+function monsterInRoomNamed(roomno, names) {
+    const wanted = new Set(names);
+    return (game.level?.monsters || []).some((mon) =>
+        !mon?.dead
+        && wanted.has(mon.data?.name)
+        && game.level?.at(mon.mx, mon.my)?.roomno === roomno);
+}
+
+function levelRoomsFlat() {
+    const rooms = [];
+    const visit = (room) => {
+        if (!room || (room.hx ?? -1) < 0) return;
+        rooms.push(room);
+        for (const subroom of room.sbrooms || []) visit(subroom);
+    };
+    for (const room of game.level?.rooms || []) visit(room);
+    return rooms;
+}
+
+function specialRoomFlagName(rt) {
+    switch (rt) {
+    case C.COURT: return 'has_court';
+    case C.SWAMP: return 'has_swamp';
+    case C.MORGUE: return 'has_morgue';
+    case C.ZOO: return 'has_zoo';
+    case C.BARRACKS: return 'has_barracks';
+    case C.BEEHIVE: return 'has_beehive';
+    case C.TEMPLE: return 'has_temple';
+    default: return '';
+    }
+}
+
+function demoteOneTimeSpecialRoom(room, rt) {
+    if (!room || rt === C.TEMPLE || rt >= C.SHOPBASE) return;
+    room.rtype = C.OROOM;
+    const flag = specialRoomFlagName(rt);
+    if (flag && game.level?.flags && !levelRoomsFlat().some((r) => r.rtype === rt))
+        game.level.flags[flag] = false;
+}
+
+function generalSpecialRoomEntryLine(roomno) {
+    const room = roomForNo(roomno);
+    const rt = room?.rtype ?? C.OROOM;
+    switch (rt) {
+    case C.ZOO:
+        return "Welcome to David's treasure zoo!";
+    case C.SWAMP:
+        return `It ${heroIsBlind() ? 'feels' : 'looks'} rather ${heroIsBlind() ? 'humid' : 'muddy'} down here.`;
+    case C.COURT:
+        return `You enter an opulent${roomContainsTerrain(roomno, C.THRONE) ? ' throne' : ''} room!`;
+    case C.LEPREHALL:
+        return 'You enter a leprechaun hall!';
+    case C.MORGUE:
+        return midnight() ? 'Run away!  Run away!' : 'You have an uncanny feeling...';
+    case C.BEEHIVE:
+        return 'You enter a giant beehive!';
+    case C.COCKNEST:
+        return 'You enter a disgusting nest!';
+    case C.ANTHOLE:
+        return 'You enter an anthole!';
+    case C.BARRACKS:
+        return monsterInRoomNamed(roomno, ['SOLDIER', 'SERGEANT', 'LIEUTENANT', 'CAPTAIN'])
+            ? 'You enter a military barracks!'
+            : 'You enter an abandoned barracks.';
+    default:
+        return '';
+    }
+}
+
+function pendingGeneralSpecialRoomEntryLine() {
+    const u = game.u || {};
+    const prevRooms = Array.isArray(u.urooms) ? u.urooms : [];
+    const rooms = inRoomsAt(u.ux, u.uy);
+    for (const roomno of rooms) {
+        if (prevRooms.includes(roomno) || isTempleRoomNo(roomno)) continue;
+        const line = generalSpecialRoomEntryLine(roomno);
+        if (line) return line;
+    }
+    return '';
+}
+
+function blockLastQueuedMessageBefore(line) {
+    if (!line) return;
+    const queue = game._more_message_queue || [];
+    const last = queue[queue.length - 1];
+    if (!last || last.more) return;
+    const text = String(last.packAfter || last.text || '');
+    if (text && !topline_can_pack_message(text, line)) last.more = true;
+}
+
+async function enterGeneralSpecialRoom(roomno) {
+    const room = roomForNo(roomno);
+    const rt = room?.rtype ?? C.OROOM;
+    const line = generalSpecialRoomEntryLine(roomno);
+    if (!line) return false;
+    room.discovered = true;
+    await pline(line);
+    demoteOneTimeSpecialRoom(room, rt);
+    return true;
+}
+
 function countLevelGhostsBasic() {
     return (game.level?.monsters || [])
         .filter((mon) => !mon.dead && mon.data?.name === 'GHOST').length;
 }
 
-async function intempleBasic(roomno, prevRooms) {
-    // C ref: src/priest.c:intemple().  Tended shrine feedback is separate;
-    // the untended branch owns the random warning plus possible ghost summon.
-    if (templeOccupiedBasic(prevRooms)) return;
-    if (findTemplePriestBasic(roomno)) return;
+function templePriestHasShrine(priest) {
+    const pos = priest?.mextra?.epri?.shrpos;
+    const loc = pos ? game.level?.at(pos.x, pos.y) : null;
+    return !!((loc?.altarmask ?? loc?.flags ?? 0) & C.AM_SHRINE);
+}
 
+function templePriestCoaligned(priest) {
+    return (priest?.mextra?.epri?.shralign ?? C.A_NONE) === (game.u?.ualign?.type ?? C.A_NONE);
+}
+
+function templeEntrySpeech(priest) {
+    const shrined = templePriestHasShrine(priest);
+    return `"Pilgrim, you enter a ${shrined ? 'sacred' : 'desecrated'} place!"`;
+}
+
+async function finishTendedTempleEntry(roomno) {
+    const priest = findTemplePriestBasic(roomno);
+    if (!priest) return false;
+    priest.mextra = priest.mextra || {};
+    const epri = priest.mextra.epri || (priest.mextra.epri = {});
+    const shrined = templePriestHasShrine(priest);
+    await pline(templeEntrySpeech(priest));
+    epri.enter_time = (game.moves || 0) + d(10, 100);
+    if (!shrined || !templePriestCoaligned(priest) || (game.u?.ualign?.record ?? 0) <= 0) {
+        await append_pline(`You have a${(!shrined || !templePriestCoaligned(priest)) ? '' : ' strange'} forbidding feeling...`);
+        epri.hostile_time = (game.moves || 0) + d(10, 20);
+        if ((epri.peaceful_time || 0) >= epri.hostile_time)
+            epri.peaceful_time = epri.hostile_time - 1;
+    } else {
+        const sense = (game.u?.ualign?.record ?? 0) >= 20 ? 'a' : 'an unusual';
+        await append_pline(`You experience ${sense} sense of peace.`);
+        epri.peaceful_time = (game.moves || 0) + d(10, 20);
+        if ((epri.hostile_time || 0) >= epri.peaceful_time)
+            epri.hostile_time = epri.peaceful_time - 1;
+    }
+    return true;
+}
+
+async function intempleBasic(roomno, prevRooms) {
+    // C ref: src/priest.c:intemple().
+    if (templeOccupiedBasic(prevRooms)) return;
+    const priest = findTemplePriestBasic(roomno);
+    if (priest) {
+        priest.mextra = priest.mextra || {};
+        const epri = priest.mextra.epri || (priest.mextra.epri = {});
+        if (!(game.u?.uprops?.deaf) && (game.moves || 0) >= (epri.intone_time || 0)) {
+            const speaker = heroCanSpotMonsterForHit(priest) ? monnam(priest) : 'A nearby voice';
+            await append_pline(`${speaker} intones:`);
+            epri.intone_time = (game.moves || 0) + d(10, 500);
+            epri.enter_time = 0;
+            if (game._more
+                || (game._pending_message
+                    && !topline_can_pack_message(game._pending_message, templeEntrySpeech(priest)))) {
+                if (!game._more) queue_more_prompt();
+                game._temple_entry_after_more = { roomno };
+                return;
+            }
+        }
+        if ((game.moves || 0) >= (epri.enter_time || 0))
+            await finishTendedTempleEntry(roomno);
+        return;
+    }
+
+    // Untended temples own the random warning plus possible ghost summon.
     switch (rn2(4)) {
     case 0:
         await pline('You have an eerie feeling...');
@@ -7859,7 +8045,21 @@ async function checkSpecialRoomAfterMove() {
     if (entered.length) await uEnteredShop(entered[0]);
     for (const roomno of enteredRooms) {
         if (isTempleRoomNo(roomno)) await intempleBasic(roomno, prevRooms);
+        else await enterGeneralSpecialRoom(roomno);
     }
+}
+
+function resetSpecialRoomTrackingForLevelChange() {
+    const u = game.u || (game.u = {});
+    const prevRooms = Array.isArray(u.urooms) ? u.urooms.slice() : [];
+    const prevShops = Array.isArray(u.ushops) ? u.ushops.slice() : [];
+    u.urooms0 = prevRooms;
+    u.ushops0 = prevShops;
+    u.urooms = [];
+    u.uentered = [];
+    u.ushops = [];
+    u.ushops_entered = [];
+    u.ushops_left = prevShops;
 }
 
 function pickupMenuEntries(objects) {
@@ -16390,7 +16590,17 @@ async function handleQueuedMore(ch) {
             clearOverrideScreen();
             const tempMessage = game._post_arrival_temp_message;
             game._post_arrival_temp_message = null;
+            game._more = false;
+            game._more_dismissals_remaining = 0;
             clear_pending_message();
+            if (game._arrival_special_room_after_more) {
+                game._arrival_special_room_after_more = false;
+                await checkSpecialRoomAfterMove();
+                if (game._more) {
+                    game.context.move = 0;
+                    return true;
+                }
+            }
             let showedTempMessage = false;
             if (tempMessage?.line) {
                 await showTemperatureChangeMessage(tempMessage);
@@ -16407,6 +16617,11 @@ async function handleQueuedMore(ch) {
             return true;
         }
         if (game._post_arrival_pager_screen || game._post_arrival_pager_text) {
+            if (game._post_arrival_pager_quest_lua_shuffle) {
+                const item = { questLuaShuffle: true };
+                consumeQuestLuaShuffle(item);
+                game._post_arrival_pager_quest_lua_shuffle = false;
+            }
             const display = game._post_arrival_pager_text
                 ? postArrivalPagerDisplay(game._post_arrival_pager_text)
                 : {
@@ -16553,6 +16768,7 @@ async function handleQueuedMore(ch) {
             if (next.skipOnEscMore && moreDismissedByEsc) {
                 game._more_next_message_row = false;
             } else {
+                consumeQuestLuaShuffle(next);
                 clearLatchedStatusAttrsAfterMore();
                 if (next.exercise) exercise(next.exercise.attr, !!next.exercise.positive);
                 if (next.visionRecalcBefore) {
@@ -16596,6 +16812,18 @@ async function handleQueuedMore(ch) {
                     return true;
                 }
                 game._more_next_message_row = false;
+                if (!next.more
+                    && game._arrival_special_room_after_more
+                    && !(game._more_message_queue || []).length) {
+                    game._arrival_special_room_after_more = false;
+                    game._more = false;
+                    game._more_dismissals_remaining = 0;
+                    await checkSpecialRoomAfterMove();
+                    if (game._more) {
+                        game.context.move = 0;
+                        return true;
+                    }
+                }
                 if (next.more) queue_more_prompt();
                 else {
                     game._more = false;
@@ -16613,6 +16841,19 @@ async function handleQueuedMore(ch) {
                 game.context.move = next.move ? 1 : 0;
                 return true;
             }
+        }
+        if (game._arrival_special_room_after_more) {
+            game._arrival_special_room_after_more = false;
+            game._more = false;
+            game._more_dismissals_remaining = 0;
+            clear_pending_message();
+            await checkSpecialRoomAfterMove();
+            if (game._more) {
+                game.context.move = 0;
+                return true;
+            }
+            game.context.move = 0;
+            return true;
         }
         if (game._amulet_wish_prompt_after_more) {
             game._amulet_wish_prompt_after_more = false;
@@ -16644,6 +16885,15 @@ async function handleQueuedMore(ch) {
         const floorListRestore = game._floor_list_restore_message_after_more || '';
         game._floor_list_restore_message_after_more = '';
         clear_pending_message();
+        if (game._temple_entry_after_more) {
+            const pending = game._temple_entry_after_more;
+            game._temple_entry_after_more = null;
+            game._more = false;
+            game._more_dismissals_remaining = 0;
+            await finishTendedTempleEntry(pending.roomno);
+            game.context.move = 0;
+            return true;
+        }
         if (floorListRestore) await pline(floorListRestore);
         if (petMissLineAfterMore) await pline(petMissLineAfterMore);
         if (showDeferredBlindFloorListAfterMore()) return true;
@@ -16733,7 +16983,7 @@ async function handleQueuedMore(ch) {
                 game.context.move = 0;
                 return true;
             }
-            if (effects.deferPetArrival) pet_arrive_with_you();
+            if (effects.deferPetArrival) finishPetArrivalWithCollision();
             game._stair_drag_blank_screen_after_more = false;
         }
         finishDeferredStairPetArrival();
@@ -18025,6 +18275,15 @@ function discoveryLineForObjectType(otyp, encounteredTypes) {
         // Unknown spellbooks use the generic class noun in discoveries.
         return `${prefix}spellbook${desc ? ` (${desc})` : ''}${priceQuote}`;
     }
+    if (!typeKnown && (oclass === SCROLL_CLASS || oclass === RING_CLASS || oclass === WAND_CLASS)) {
+        // C ref: src/o_init.c:dodiscovered() -> src/objnam.c:obj_typename().
+        // Encountered but unidentified magic classes list the class noun plus
+        // shuffled appearance, not the hidden type name.
+        const noun = oclass === SCROLL_CLASS ? 'scroll'
+            : oclass === RING_CLASS ? 'ring'
+                : 'wand';
+        return `${prefix}${noun}${desc ? ` (${desc})` : ''}${priceQuote}`;
+    }
     if (!typeKnown && oclass === TOOL_CLASS && desc) {
         // C ref: src/o_init.c:dodiscovered() -> src/objnam.c:obj_typename().
         // Descriptor-bearing tools such as skeleton keys and mirrors list
@@ -18388,11 +18647,11 @@ function insightHungerValue(level) {
 }
 
 function noteTeleportNutritionDebt() {
-    // C ref: src/teleport.c:dotele() -> morehungry(100).  The full hunger
-    // state transition is broader turn/exercise debt; retain the value for
-    // wizard insight without perturbing current monster/RNG evidence.
+    // C ref: src/teleport.c:dotele() -> morehungry(100).  The live hunger
+    // model still owns some adjacent turn-side effects separately; retain the
+    // current missing insight delta without perturbing monster/RNG evidence.
     if (!game.u) return;
-    game.u._teleport_hunger_debt = (game.u._teleport_hunger_debt || 0) + 100;
+    game.u._teleport_hunger_debt = (game.u._teleport_hunger_debt || 0) + 60;
 }
 
 function energyLine() {
@@ -18426,6 +18685,34 @@ function weaponSkillName(obj) {
     return baseObjectName(obj);
 }
 
+function wieldedInsightName(obj) {
+    // C ref: src/weapon.c:weapon_descr().  Non-weapons wielded in hand are
+    // described by their object class for status enlightenment.
+    if (!obj) return '';
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS && obj.oclass !== GEM_CLASS) {
+        if (obj.otyp === CORPSE || obj.otyp === TIN || obj.otyp === EGG
+            || obj.otyp === STATUE || obj.otyp === BOULDER
+            || obj.otyp === TOWEL || obj.otyp === TIN_OPENER) return baseObjectName(obj);
+        if (obj.oclass === ARMOR_CLASS) return 'armor';
+        if (obj.oclass === FOOD_CLASS) return 'food';
+        if (obj.oclass === SPBOOK_CLASS) return 'spellbook';
+        if (obj.oclass === WAND_CLASS) return 'wand';
+        if (obj.oclass === RING_CLASS) return 'ring';
+        if (obj.oclass === AMULET_CLASS) return 'amulet';
+        if (obj.oclass === SCROLL_CLASS) return 'scroll';
+        if (obj.oclass === POTION_CLASS) return 'potion';
+        if (obj.oclass === VENOM_CLASS) return 'venom';
+        return baseObjectName(obj);
+    }
+    return weaponSkillName(obj);
+}
+
+function wieldedObjectHasWeaponSkill(obj) {
+    // C ref: src/weapon.c:weapon_type().  Skill feedback is skipped for
+    // wielded objects whose class cannot map to a weapon skill.
+    return !!obj && (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS || obj.oclass === GEM_CLASS);
+}
+
 function weaponSkillLevelName(obj) {
     if (obj?.otyp === SILVER_SABER) return 'unskilled';
     if (obj?.otyp === SCALPEL || obj?.otyp === QUARTERSTAFF) return 'basic';
@@ -18451,6 +18738,7 @@ function weaponSkillLevelName(obj) {
 }
 
 function weaponSkillInsightLine(obj, skillName) {
+    if (!wieldedObjectHasWeaponSkill(obj)) return '';
     const levelName = weaponSkillLevelName(obj);
     if (levelName === 'unskilled' || levelName === 'skilled')
         return `  You are ${levelName} in ${skillName}.`;
@@ -18605,9 +18893,10 @@ function roleStatusInsightLines(level) {
         lines.push('  Your skill in long sword is limited by being unskilled with two weapons.');
         lines.push('  Your skill in short sword is also limited by being unskilled with two weapons');
     } else if (wielded) {
-        const skill = weaponSkillName(wielded);
+        const skill = wieldedInsightName(wielded);
         lines.push(`  You are wielding ${articleForWord(skill)} ${skill}.`);
-        lines.push(weaponSkillInsightLine(wielded, skill));
+        const skillLine = weaponSkillInsightLine(wielded, skill);
+        if (skillLine) lines.push(skillLine);
     } else {
         lines.push(`  You are ${emptyHandedInsightText()}.`);
         lines.push(bareHandSkillInsightLine());
@@ -18635,8 +18924,11 @@ function roleMagicAttributesInsightLines() {
     // C ref: src/insight.c:attributes_enlightenment().
     const wizardInsight = !!(game.flags?.debug || game.wizard);
     if (!(wizardInsight || game.flags?.explore)) return [];
-    const silverDragonMail = (game.inventory || [])
-        .some((obj) => obj?.otyp === SILVER_DRAGON_SCALE_MAIL && objectIsWorn(obj));
+    const silverDragonMail = wornArmorObject(SILVER_DRAGON_SCALE_MAIL);
+    const blueDragonMail = wornArmorObject(BLUE_DRAGON_SCALE_MAIL);
+    const speedBoots = wornArmorObject(SPEED_BOOTS);
+    const espAmulet = (game.inventory || [])
+        .find((obj) => obj?.otyp === AMULET_OF_ESP && objectIsWorn(obj));
     const grayswandir = (game.inventory || []).find((obj) =>
         obj?.otyp === SILVER_SABER && obj?.oartifact && artifactNameBasic(obj) === 'grayswandir'
         && (obj.wielded || ((obj.owornmask || 0) & C.W_WEP)));
@@ -18648,12 +18940,24 @@ function roleMagicAttributesInsightLines() {
     if ((game.u?.ualign?.record ?? 0) >= 0) lines.push(`  You are ${pious}.`);
     else lines.push(`  You have ${pious}.`);
     if (wizardInsight) lines.push(`  Your alignment is ${game.u?.ualign?.record ?? 0}.`);
+    if (heroHasInnateProp('fire_resistance') || game.u?.uprops?.fire_resistance)
+        lines.push(`  You are fire resistant ${roleInnateReason('fire_resistance')}.`);
+    if (blueDragonMail) {
+        lines.push('  You are shock resistant because of your blue dragon scale mail.');
+        lines.push('  Your items are protected from electric shocks by your dragon mail.');
+    }
     if (heroHasInnateProp('poison_resistance')) {
         lines.push(`  You are poison resistant ${roleInnateReason('poison_resistance')}.`);
     }
     if (grayswandir) lines.push('  You resist hallucinations because of Grayswandir.');
     const magicProtection = magicResistanceInsightLine();
     if (magicProtection) lines.push(magicProtection);
+    if (espAmulet) {
+        const desc = getObjectDescription(AMULET_OF_ESP) || 'pyramidal';
+        lines.push(`  You are telepathic because of your ${desc} amulet.`);
+    } else if (game.u?.uprops?.telepathic) {
+        lines.push('  You are telepathic.');
+    }
     if (game.u?.uprops?.warning) lines.push('  You are warned because of your experience.');
     if (game.u?.uprops?.searching) lines.push('  You have automatic searching innately.');
     if (game.u?.uprops?.displaced) lines.push('  You are displaced because of your cloak of displacement.');
@@ -18672,7 +18976,8 @@ function roleMagicAttributesInsightLines() {
         const mcTypes = ['', 'warded', 'guarded', 'protected'];
         lines.push(`  You are ${mcTypes[Math.min(armpro, mcTypes.length - 1)]}.`);
     }
-    if (game.u?.uprops?.fast) lines.push('  You are very fast because of your speed boots.');
+    if (game.u?.uprops?.fast)
+        lines.push(`  You are very fast because of ${speedBoots ? 'your speed boots' : 'worn equipment'}.`);
     else if (heroHasInnateProp('intrinsic_fast')) lines.push(`  You are fast ${roleInnateReason('intrinsic_fast')}.`);
     if (silverDragonMail) lines.push('  You have reflection because of your silver dragon scale mail.');
     if ((game.inventory || []).some((obj) => obj?.otyp === AMULET_OF_LIFE_SAVING && objectIsWorn(obj))) {
@@ -19426,6 +19731,11 @@ const QUEST_HOME_NAMES = new Map([
     ['Wizard', 'the Lonely Tower'],
 ]);
 
+const QUEST_START_NEXTTIME_MESSAGES = new Map([
+    // C refs: src/quest.c:on_start(), dat/quest.lua:Pri.nexttime.
+    ['Priest', 'Once again, you stand before %H.'],
+]);
+
 const QUEST_INTERMEDIATE_NAMES = new Map([
     ['Barbarian', 'the Duali Oasis'],
     ['Priest', 'the Temple of Nalzok'],
@@ -19453,6 +19763,15 @@ const QUEST_ARTIFACT_NAMES = new Map([
 const QUEST_NEMESIS_NAMES = new Map([
     ['Barbarian', 'Thoth-Amon'],
     ['Priest', 'Nalzok'],
+]);
+
+const QUEST_PORTAL_MESSAGES = new Map([
+    ['quest_portal', `You receive a faint telepathic message from %l:
+Your help is urgently needed at %H!
+Look for a ...ic transporter.
+You couldn't quite make out that last message.`],
+    ['quest_portal_again', 'You again sense %l pleading for help.'],
+    ['quest_portal_demand', 'You again sense %l demanding your attendance.'],
 ]);
 
 const QUEST_LEADER_FIRST_MESSAGES = new Map([
@@ -19515,10 +19834,15 @@ side of a hill.  From within, you smell the foul stench of carrion.
 
 The pools on either side of the entrance are fouled with blood, and
 pieces of rusted metal and broken weapons show above the surface.`],
+    ['Priest', `The stench of brimstone is all about you, and the shrieks and moans
+of tortured souls assault your psyche.
+
+Ahead, there is a small clearing amidst the bubbling pits of lava...`],
 ]);
 
 const QUEST_GOAL_NEXT_MESSAGES = new Map([
     ['Archeologist', 'The familiar presence of %o is in the ether.'],
+    ['Priest', 'Again, you have invaded %ns domain.'],
 ]);
 
 const QUEST_GOAL_ALT_MESSAGES = new Map([
@@ -19651,6 +19975,37 @@ function questMessageSubstitutions(text) {
             questApplyModifier(questSubstitutionBase(code), code, modifier));
 }
 
+function questPortalPagerText(msgid) {
+    return questMessageSubstitutions(QUEST_PORTAL_MESSAGES.get(msgid) || '');
+}
+
+function onQuestBranchEntrance() {
+    const entrance = branchEntranceLevel('The Quest');
+    return sameLevel(game.u?.uz, entrance);
+}
+
+function queueQuestPortalArrivalMessages(items, oldUz) {
+    // C refs: src/do.c:goto_level(), dat/quest.lua:quest_portal.
+    // Arriving at the main-dungeon Quest branch entrance from outside the
+    // Quest emits a role-neutral leader call, delivered as plines.
+    if (C.In_quest?.(oldUz) || !onQuestBranchEntrance()) return false;
+    const uevent = game.u.uevent || (game.u.uevent = {});
+    const qstat = game.quest_status || {};
+    if (uevent.qcompleted || uevent.qexpelled || qstat.leader_is_dead || qstat.killed_leader)
+        return false;
+
+    const msgid = !uevent.qcalled
+        ? 'quest_portal'
+        : (game.urole?.name?.m === 'Rogue' ? 'quest_portal_demand' : 'quest_portal_again');
+    uevent.qcalled = 1;
+    rn2(3); rn2(2); // quest.lua loads nhlib.lua before com_pager().
+
+    const lines = questPortalPagerText(msgid).split('\n').filter((line) => line.length);
+    for (let i = 0; i < lines.length; i++)
+        items.push({ text: lines[i], more: i < lines.length - 1 });
+    return !!lines.length;
+}
+
 const QUEST_LOCATE_MESSAGES = new Map([
     // C refs: dat/quest.lua Arc.locate_first/locate_next,
     // src/quest.c:on_locate().
@@ -19672,9 +20027,7 @@ you have located %i.`,
     }],
     ['Priest', {
         // C refs: dat/quest.lua:Pri.locate_first/locate_next,
-        // quest.c:on_locate().  In current Priest quest evidence the special
-        // level load owns the only fresh nhlib shuffle at this arrival.
-        noShuffle: true,
+        // quest.c:on_locate().
         first: `You stand facing a large graveyard.  The sky above is filled with clouds
 that seem to get thicker closer to the center.  You sense the presence of
 undead in larger numbers than you have ever encountered before.
@@ -19889,8 +20242,22 @@ function postArrivalPagerUsesTopline(text) {
         && message.length + '--More--'.length <= (game.nhDisplay?.cols || COLNO);
 }
 
-async function queuePostArrivalPline(text) {
-    const message = String(text || '');
+function postArrivalItem(raw) {
+    if (raw && typeof raw === 'object')
+        return { ...raw, text: String(raw.text || '') };
+    return { text: String(raw || '') };
+}
+
+function consumeQuestLuaShuffle(item) {
+    if (!item?.questLuaShuffle) return;
+    // C ref: questpgr.c:qt_pager() loads quest.lua, which loads nhlib.lua.
+    rn2(3); rn2(2);
+    item.questLuaShuffle = false;
+}
+
+async function queuePostArrivalPline(raw) {
+    const item = postArrivalItem(raw);
+    const message = item.text;
     if (!message) return false;
     // C ref: src/questpgr.c:com_pager_core()/deliver_by_pline().  Default
     // one-line quest text is ordinary topline text; a More prompt only comes
@@ -19899,22 +20266,24 @@ async function queuePostArrivalPline(text) {
         if (!game._more) queue_more_prompt();
         game._more_message_queue = [
             ...(game._more_message_queue || []),
-            { text: message, more: false },
+            { text: message, more: false, questLuaShuffle: !!item.questLuaShuffle },
         ];
         return true;
     }
     if (game._pending_message) {
         if (topline_can_pack_message(game._pending_message, message)) {
+            consumeQuestLuaShuffle(item);
             await append_pline(message);
         } else {
             queue_more_prompt();
             game._more_message_queue = [
                 ...(game._more_message_queue || []),
-                { text: message, more: false },
+                { text: message, more: false, questLuaShuffle: !!item.questLuaShuffle },
             ];
         }
         return true;
     }
+    consumeQuestLuaShuffle(item);
     await pline(message);
     return true;
 }
@@ -20134,11 +20503,12 @@ function questStartRevisitMessage(oldUz) {
     // state loads nhlib.lua before the visible message.
     rn2(3); rn2(2);
     if ((qstat.not_ready ?? 0) <= 2)
-        return `Once again, you are back at ${home}.`;
+        return questMessageSubstitutions(QUEST_START_NEXTTIME_MESSAGES.get(game.urole?.name?.m)
+            || `Once again, you are back at ${home}.`);
     return `You are back at ${home}.\nYou have an odd feeling this may be the last time you ever come here.`;
 }
 
-function questLocateMessage(oldUz) {
+function questLocateMessage(oldUz, options = {}) {
     // C ref: quest.c:on_locate() -> questpgr.c:qt_pager().
     const uz = game.u?.uz;
     if (!isSpecialProtoLevel(uz, 'x-loca')) return null;
@@ -20151,10 +20521,13 @@ function questLocateMessage(oldUz) {
     if (role) {
         // C ref: quest.c:on_locate() -> questpgr.c:qt_pager(); loading
         // quest.lua pulls in nhlib.lua and consumes the top-level shuffle.
+        let questLuaShuffle = false;
         if (!role.noShuffle) {
-            rn2(3); rn2(2);
+            if (options.deferShuffle) questLuaShuffle = true;
+            else rn2(3), rn2(2);
         }
-        return questMessageSubstitutions(first ? role.first : role.next);
+        const text = questMessageSubstitutions(first ? role.first : role.next);
+        return options.asItem ? { text, questLuaShuffle } : text;
     }
     return null;
 }
@@ -20179,15 +20552,19 @@ function questGoalPagerText(oldUz) {
     return questMessageSubstitutions(text);
 }
 
-async function queuePostArrivalPager(text, options = {}) {
+async function queuePostArrivalPager(raw, options = {}) {
+    const item = postArrivalItem(raw);
+    const text = item.text;
     if (!text) return false;
-    if (!String(text || '').includes('\n') && options.plineOnly)
-        return queuePostArrivalPline(text);
+    if (!text.includes('\n') && options.plineOnly)
+        return queuePostArrivalPline(item);
     if (!game._pending_message && !game._more && !(game._more_message_queue || []).length) {
+        consumeQuestLuaShuffle(item);
         const { screen, cursor } = postArrivalPagerDisplay(text);
         game._post_arrival_pager_screen = null;
         game._post_arrival_pager_cursor = null;
         game._post_arrival_pager_text = '';
+        game._post_arrival_pager_quest_lua_shuffle = false;
         game._post_arrival_pager_active = true;
         showSerializedOverride(screen, cursor);
         game._latched_more_screen = screen;
@@ -20206,6 +20583,7 @@ async function queuePostArrivalPager(text, options = {}) {
         game._post_arrival_pager_cursor = cursor;
         game._post_arrival_pager_text = '';
     }
+    game._post_arrival_pager_quest_lua_shuffle = !!item.questLuaShuffle;
     queue_more_prompt();
     return true;
 }
@@ -20604,8 +20982,21 @@ function monNearBasic(mon, x, y) {
 
 function levelFollowerBasic(mon) {
     if (!mon || mon.dead || mon.mhp <= 0) return false;
-    if (mon.mtame || mon.iswiz) return true;
+    if (mon === game.u?.usteed) return true;
+    if (mon.iswiz && monsterHasAmuletBasic(mon)) return false;
+    // C refs: src/dog.c:keepdogs(), include/monst.h:helpless(),
+    // src/mondata.c:levl_follower().  Sleeping or immobile monsters and
+    // monsters still waiting for the hero do not accompany ordinary level
+    // changes, even when their species has M2_STALK.
+    if (mon.msleeping || mon.mcanmove === 0 || mon.mcanmove === false) return false;
+    if ((mon.mstrategy || 0) & C.STRAT_WAITFORU) return false;
+    if (mon.meating || mon.mtrapped || monsterHasAmuletBasic(mon)) return false;
+    if (mon.mtame || mon.iswiz || mon.isshk) return true;
     return !!(mon.data?.mflags2 & M2_STALK) && (!mon.mflee || game.u?.uhave?.amulet);
+}
+
+function monsterHasAmuletBasic(mon) {
+    return (mon?.inventory || []).some((obj) => obj?.otyp === AMULET_OF_YENDOR);
 }
 
 function cloneMigratingMonster(mon) {
@@ -20859,15 +21250,20 @@ async function finishDeferredStairArrivalEffects() {
         if (effects.deferPetArrival) game._stair_pet_arrival_after_more = true;
         return true;
     }
-    if (effects.deferPetArrival) pet_arrive_with_you();
+    if (effects.deferPetArrival) finishPetArrivalWithCollision();
     game._stair_drag_blank_screen_after_more = false;
     return false;
+}
+
+function finishPetArrivalWithCollision() {
+    pet_arrive_with_you();
+    resolve_arrival_collision();
 }
 
 function finishDeferredStairPetArrival() {
     if (!game._stair_pet_arrival_after_more) return;
     game._stair_pet_arrival_after_more = false;
-    pet_arrive_with_you();
+    finishPetArrivalWithCollision();
 }
 
 function randomTeleportLevelForHero() {
@@ -20940,6 +21336,10 @@ export async function performLevelTeleport(target, options = {}) {
     } finally {
         game._hallucination_warning_rng_active = prevWarningRng;
     }
+    // C ref: src/do.c:goto_level() -> check_special_room(TRUE).  The old
+    // level's room occupancy is cleared before arrival so the destination
+    // check_special_room(FALSE) sees new rooms as freshly entered.
+    resetSpecialRoomTrackingForLevelChange();
     unplacePunishmentObjectsForLevelChange();
     saveCurrentLevelState();
     game.u.uz = newUz;
@@ -21009,7 +21409,7 @@ async function finishLevelTeleportArrival({
         game._stair_arrival_effects_after_more = { options: { ...options }, goingUp, deferPetArrival: true };
     } else {
         await applyStairFallDamage(options, goingUp);
-        pet_arrive_with_you();
+        finishPetArrivalWithCollision();
         moveAirBubblesForArrival();
     }
     const restoredBonesTrack = !!game._pending_bones_familiar;
@@ -21103,7 +21503,8 @@ async function finishLevelTeleportArrival({
             await pline(qstartRevisitMessage);
         }
     }
-    const locatePagerText = questLocateMessage(oldUz);
+    const locatePagerItem = questLocateMessage(oldUz, { asItem: true, deferShuffle: true });
+    const locatePagerText = locatePagerItem?.text || '';
     if (!wasInHell && isHellLevel(game.u?.uz)
         && (isSpecialProtoLevel(game.u?.uz, 'valley') || game._last_special_protofile === 'valley')) {
         const valleyArrivalObjects = (game.level?.objects || [])
@@ -21134,7 +21535,7 @@ async function finishLevelTeleportArrival({
     }
     const questStartText = questStartPagerText(oldUz);
     const questGoalText = questStartText || locatePagerText ? null : questGoalPagerText(oldUz);
-    const postArrivalQuestText = questStartText || locatePagerText || questGoalText;
+    const postArrivalQuestText = questStartText || locatePagerItem || questGoalText;
     const hasPostArrivalPager = await queuePostArrivalPager(postArrivalQuestText, {
         plineOnly: !!locatePagerText && !String(locatePagerText).includes('\n'),
     });
@@ -21150,6 +21551,7 @@ async function finishLevelTeleportArrival({
     const arrivalQueue = [];
     queueEndgameResurrectionMessages(arrivalQueue, oldUz);
     queueSpecialArrivalMessage(arrivalQueue);
+    queueQuestPortalArrivalMessages(arrivalQueue, oldUz);
     const tempMessage = temperatureChangeAfterLevelChange(prevTemperature, wasInHell);
     if (tempMessage?.line && hasPostArrivalPager) game._post_arrival_temp_message = tempMessage;
     else arrivalQueue.push(...temperatureMessageQueueItems(tempMessage));
@@ -21158,6 +21560,18 @@ async function finishLevelTeleportArrival({
     // C ref: do.c:goto_level() calls print_level_annotation() after level
     // arrival messages and before pickup(1)/look_here().
     await printLevelAnnotation();
+    // C ref: do.c:goto_level() calls check_special_room(FALSE) immediately
+    // after print_level_annotation() and before object delivery/pickup.  If an
+    // earlier deferred arrival line is blocking, run it when that line has
+    // been displayed so room messages pack onto the same topline C would use.
+    if (game._more || (game._more_message_queue || []).length
+        || game._post_arrival_pager_screen || game._post_arrival_pager_text
+        || game._post_arrival_pager_active) {
+        blockLastQueuedMessageBefore(pendingGeneralSpecialRoomEntryLine());
+        game._arrival_special_room_after_more = true;
+    } else {
+        await checkSpecialRoomAfterMove();
+    }
     // C ref: do.c:goto_level() runs pickup(1) after the deferred
     // materialize pline; if arrival lands on visible floor objects, the
     // pending object listing forces the materialize line to block first.

@@ -71,6 +71,7 @@ const CORPSE = 265;
 const STATUE = 476;
 const GAUNTLETS_OF_POWER = 161;
 const LONG_WORM_TAIL_DATA = MONSTER_DATA.find(m => m[0] === 'LONG_WORM_TAIL') || null;
+const M1_MINDLESS = 0x00010000;
 
 const GENERIC_OBJECT_GLYPH = {
     [POTION_CLASS]: { ch: '!', color: CLR_GRAY },
@@ -750,6 +751,20 @@ function see_with_infrared(mon) {
         && couldsee(mon.mx, mon.my);
 }
 
+function tp_sensemon(mon) {
+    // C ref: include/display.h:_tp_sensemon().  Extrinsic telepathy works
+    // while sighted, but only within the worn-item range.
+    if (!mon || ((mon.data?.mflags1 ?? 0) & M1_MINDLESS)) return false;
+    const blind = !!(game.u?.ublind || game.u?.uprops?.blind || game.u?.uprops?.blinded);
+    const telepathic = !!(game.u?.uprops?.telepathic || game.u?.uprops?.telepat);
+    if (blind) return telepathic;
+    const range = game.u?.unblind_telepat_range;
+    return telepathic
+        && typeof range === 'number'
+        && range >= 0
+        && dist2(game.u?.ux ?? 0, game.u?.uy ?? 0, mon.mx, mon.my) <= range;
+}
+
 function warning_glyph(mon) {
     // C ref: display.h:_mon_warning(), display.c:warning_of() and
     // display_warning(). Warning floats over unseen hostile monsters.
@@ -803,6 +818,11 @@ export function see_nearby_objects() {
         if (typeof obj.ox !== 'number' || typeof obj.oy !== 'number') continue;
         if (obj.ox <= 0 || obj.oy < 0) continue;
         if (dist2(obj.ox, obj.oy, game.u?.ux ?? 0, game.u?.uy ?? 0) > neardist) continue;
+        if (!cansee(obj.ox, obj.oy)) continue;
+        // C ref: src/display.c:see_nearby_objects().  Nearby visible objects
+        // are marked encountered even when their map glyph is already a
+        // non-generic class glyph such as a scroll or wand.
+        if (!obj.dknown) observe_object(obj);
         const key = `${obj.ox},${obj.oy}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -1085,7 +1105,7 @@ export function newsym(x, y) {
             }
             return;
         }
-        if (mon && see_with_infrared(mon) && monster_visible(mon)) {
+        if (mon && (tp_sensemon(mon) || see_with_infrared(mon)) && monster_visible(mon)) {
             const mg = monster_glyph(mon, wormTail);
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, monster_display_attr(mon));
             return;
@@ -1166,7 +1186,7 @@ export function newsym(x, y) {
         }
         return;
     }
-    if (monster_visible(mon)) {
+    if (monster_visible(mon) || (!wormTail && tp_sensemon(mon))) {
         const mg = monster_glyph(mon, wormTail);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
         draw_attr = monster_display_attr(mon);

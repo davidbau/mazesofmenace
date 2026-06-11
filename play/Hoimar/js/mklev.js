@@ -147,6 +147,7 @@ const ELVEN_LEATHER_HELM = 89;
 const ORCISH_HELM = 90;
 const DWARVISH_IRON_HELM = 91;
 const FEDORA = 92;
+const HELM_OF_BRILLIANCE = 96;
 const CHAIN_MAIL = 128;
 const DWARVISH_MITHRIL_COAT = 126;
 const ORCISH_CHAIN_MAIL = 129;
@@ -840,7 +841,10 @@ function goodpos_onscary(x, y, ptr) {
 function goodpos(x, y, entflags = 0, ptr = null) {
     if (!isok(x, y)) return false;
     if (!(entflags & 0x00400000) && u_at(x, y)) return false; // GP_ALLOW_U
-    if (m_at(x, y)) return false;
+    // C ref: src/teleport.c:goodpos().  Existing monsters are rejected
+    // whenever the caller is evaluating a monster position; GP_AVOID_MONPOS
+    // also rejects occupied squares for stricter monster-generation probes.
+    if ((ptr || (entflags & GP_AVOID_MONPOS)) && m_at(x, y)) return false;
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     const isPool = IS_POOL(loc.typ);
@@ -2783,6 +2787,7 @@ function rnd_misc_item_for(ptr, mon = null) {
 
 function rnd_defensive_item_for(ptr, mon = null) {
     if ((ptr?.mflags1 ?? 0) & (M1_ANIMAL | M1_MINDLESS)) return 0;
+    if (ptr?.mattk?.some((atk) => atk && atk[0] === 'AT_EXPL')) return 0;
     if (ptr?.mlet === 'S_GHOST' || ptr?.mlet === 'S_KOP') return 0;
     const difficulty = ptr?.difficulty ?? 0;
     let trycnt = 0;
@@ -2810,6 +2815,8 @@ function rnd_defensive_item_for(ptr, mon = null) {
             return ptr?.name !== 'PESTILENCE' ? POT_FULL_HEALING : POT_SICKNESS;
         case 7:
             if (isSokobanLevel() && rn2(4)) continue;
+            // C ref: src/muse.c:rnd_defensive_item() withholds digging wands from floaters.
+            if (mon_is_floater_for(ptr)) return 0;
             if (mon?.isshk || mon?.isgd || mon?.ispriest) return 0;
             return WAN_DIGGING;
         default:
@@ -4193,6 +4200,29 @@ const BIGRM_2_MAP = [
 const BIGRM_2_XSTART = 3;
 const BIGRM_2_YSTART = 3;
 
+const BIGRM_3_MAP = [
+    '---------------------------------------------------------------------------',
+    '|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|..............---.......................................---..............|',
+    '|...............|.........................................|...............|',
+    '|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|',
+    '|.....|--------   --------|...................|----------   --------|.....|',
+    '|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|',
+    '|...............|.........................................|...............|',
+    '|..............---.......................................---..............|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|',
+    '---------------------------------------------------------------------------',
+];
+const BIGRM_3_XSTART = 3;
+const BIGRM_3_YSTART = 3;
+
 const BIGRM_4_MAP = [
     '-----------                                                     -----------',
     '|.........|                                                     |.........|',
@@ -4609,6 +4639,31 @@ const MEDUSA3_MAP = [
     '}}}}}}}}}}}..}}}}}}}}}}}}}}}.}}}}}}}}}}}}}}}}}T..T}}}}}}}}}}}}}}}}}}}}}}}}}}',
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
 ];
+const MEDUSA1_MAP = [
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}.}}}}}..}}}}}......}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}....}}}...}}}}}',
+    '}...}}.....}}}}}....}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}...............}',
+    '}....}}}}}}}}}}....}}}..}}}}}}}}}}}.......}}}}}}}}}}}}}}}}..}}.....}}}...}}',
+    '}....}}}}}}}}.....}}}}..}}}}}}.................}}}}}}}}}}}.}}}}.....}}...}}',
+    '}....}}}}}}}}}}}}.}}}}.}}}}}}.-----------------.}}}}}}}}}}}}}}}}}.........}',
+    '}....}}}}}}}}}}}}}}}}}}.}}}...|...............S...}}}}}}}}}}}}}}}}}}}....}}',
+    '}.....}.}}....}}}}}}}}}.}}....--------+--------....}}}}}}..}}}}}}}}}}}...}}',
+    '}......}}}}..}}}}}}}}}}}}}........|.......|........}}}}}....}}}}}}}}}}}}}}}',
+    '}.....}}}}}}}}}}}}}}}}}}}}........|.......|........}}}}}...}}}}}}}}}.}}}}}}',
+    '}.....}}}}}}}}}}}}}}}}}}}}....--------+--------....}}}}}}.}.}}}}}}}}}}}}}}}',
+    '}......}}}}}}}}}}}}}}}}}}}}...S...............|...}}}}}}}}}}}}}}}}}.}}}}}}}',
+    '}.......}}}}}}}..}}}}}}}}}}}}.-----------------.}}}}}}}}}}}}}}}}}....}}}}}}',
+    '}........}}.}}....}}}}}}}}}}}}.................}}}}}..}}}}}}}}}.......}}}}}',
+    '}.......}}}}}}}......}}}}}}}}}}}}}}.......}}}}}}}}}.....}}}}}}...}}..}}}}}}',
+    '}.....}}}}}}}}}}}.....}}}}}}}}}}}}}}}}}}}}}}.}}}}}}}..}}}}}}}}}}....}}}}}}}',
+    '}}..}}}}}}}}}}}}}....}}}}}}}}}}}}}}}}}}}}}}...}}..}}}}}}}.}}.}}}}..}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+];
+const MEDUSA1_X = 3;
+const MEDUSA1_Y = 1;
+const MEDUSA1_PLACE_WIDTH = 75;
 const MEDUSA3_PLACE_WIDTH = 76;
 const MEDUSA3_X = 3;
 const MEDUSA3_Y = 1;
@@ -4797,6 +4852,10 @@ function bigrm12TerrainAt(x, y) {
 
 function bigrm2TerrainAt(x, y) {
     return BIGRM_2_MAP[y]?.[x] || ' ';
+}
+
+function bigrm3TerrainAt(x, y) {
+    return BIGRM_3_MAP[y]?.[x] || ' ';
 }
 
 function bigrm4TerrainAt(x, y) {
@@ -5086,6 +5145,125 @@ function createSpecialMonsterRef(croom, ref, opts = {}) {
         set_malign_basic(mon);
     }
     return mon;
+}
+
+function loadMinetown2Special() {
+    // C ref: dat/minetn-2.lua "Town Square" loaded via sp_lev.c:lspo_room().
+    l_nhcore_init();
+    game.level.flags.is_maze_lev = false;
+    game.level.flags.has_town = true;
+    game.level.flags.mines_walls = true;
+
+    const town = buildSpecialRoom({
+        x: 3, y: 3, xal: SPLEV_CENTER, yal: SPLEV_CENTER,
+        w: 31, h: 15, rtype: OROOM, lit: 1,
+    });
+    if (!town) return;
+
+    const fountain = (rx, ry) => {
+        const loc = specialRoomLocation(town, rx, ry);
+        const tile = game.level?.at(loc.x, loc.y);
+        if (tile) tile.typ = FOUNTAIN;
+    };
+    const percentRoom = (spec, contents = null) => {
+        if (rn2(100) >= 75) return null;
+        const room = buildSpecialRoom({ rtype: OROOM, ...spec }, town);
+        if (room && contents) contents(room);
+        return room;
+    };
+
+    fountain(17, 5);
+    fountain(13, 8);
+
+    percentRoom({ x: 2, y: 0, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_WEST));
+    percentRoom({ lit: 0, x: 5, y: 0, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_SOUTH));
+    percentRoom({ x: 8, y: 0, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_EAST));
+    percentRoom({ lit: 1, x: 16, y: 0, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_WEST));
+    percentRoom({ lit: 0, x: 19, y: 0, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_SOUTH));
+    percentRoom({ x: 22, y: 0, w: 2, h: 2 }, room => {
+        createSpecialDoor(room, 'closed', W_SOUTH);
+        createSpecialMonsterRef(room, 'gnome');
+    });
+    percentRoom({ lit: 0, x: 25, y: 0, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_EAST));
+    percentRoom({ lit: 1, x: 2, y: 5, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_NORTH));
+    percentRoom({ lit: 1, x: 5, y: 5, w: 2, h: 2 },
+        room => createSpecialDoor(room, 'closed', W_SOUTH));
+    percentRoom({ x: 8, y: 5, w: 2, h: 2 }, room => {
+        createSpecialDoor(room, 'locked', W_NORTH);
+        createSpecialMonsterRef(room, 'gnome');
+    });
+
+    let room = buildSpecialRoom({ rtype: SHOPBASE, chance: 90, lit: 1, x: 2, y: 10, w: 4, h: 3 }, town);
+    if (room) createSpecialDoor(room, 'closed', W_WEST);
+
+    room = buildSpecialRoom({ rtype: TOOLSHOP, chance: 90, lit: 1, x: 23, y: 10, w: 4, h: 3 }, town);
+    if (room) createSpecialDoor(room, 'closed', W_EAST);
+
+    room = buildSpecialRoom({ rtype: minetownFoodShopType(), chance: 90, lit: 1, x: 24, y: 5, w: 3, h: 4 }, town);
+    if (room) createSpecialDoor(room, 'closed', W_NORTH);
+
+    room = buildSpecialRoom({ rtype: CANDLESHOP, lit: 1, x: 11, y: 10, w: 4, h: 3 }, town);
+    if (room) createSpecialDoor(room, 'closed', W_EAST);
+
+    percentRoom({ lit: 0, x: 7, y: 10, w: 3, h: 3 }, inner => {
+        createSpecialDoor(inner, 'locked', W_NORTH);
+        createSpecialMonsterRef(inner, 'gnome');
+    });
+
+    const temple = buildSpecialRoom({ rtype: TEMPLE, lit: 1, x: 19, y: 5, w: 4, h: 4 }, town);
+    if (temple) {
+        createSpecialDoor(temple, 'closed', W_NORTH);
+        const altarLoc = specialRoomLocation(temple, 2, 2);
+        const altar = game.level?.at(altarLoc.x, altarLoc.y);
+        if (altar) {
+            const amask = Align2amask(game.splev_align?.[0] ?? A_NONE) | AM_SHRINE;
+            altar.typ = ALTAR;
+            altar.flags = amask;
+            altar.altarmask = amask;
+        }
+        priestini(temple);
+        createSpecialMonsterRef(temple, 'gnomish wizard');
+        createSpecialMonsterRef(temple, 'gnomish wizard');
+    }
+
+    percentRoom({ lit: 1, x: 18, y: 10, w: 4, h: 3 }, inner => {
+        createSpecialDoor(inner, 'locked', W_WEST);
+        createSpecialMonsterRef(inner, 'gnome lord');
+    });
+
+    for (let i = 0; i < 4; i++) createSpecialMonsterRef(town, 'watchman', { peaceful: true });
+    createSpecialMonsterRef(town, 'watch captain', { peaceful: true });
+
+    room = buildSpecialRoom({ rtype: OROOM });
+    if (room) createSpecialStair(room, true);
+
+    room = buildSpecialRoom({ rtype: OROOM });
+    if (room) {
+        createSpecialStair(room, false);
+        createSpecialTrap(room);
+        createSpecialMonsterRef(room, 'gnome');
+        createSpecialMonsterRef(room, 'gnome');
+    }
+
+    room = buildSpecialRoom({ rtype: OROOM });
+    if (room) createSpecialMonsterRef(room, 'dwarf');
+
+    room = buildSpecialRoom({ rtype: OROOM });
+    if (room) {
+        createSpecialTrap(room);
+        createSpecialMonsterRef(room, 'gnome');
+    }
+
+    makecorridors();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3);
 }
 
 function loadMinetown4Special() {
@@ -5831,6 +6009,37 @@ function bigrm2GetFloorLocation() {
     return { x: x + BIGRM_2_XSTART, y: y + BIGRM_2_YSTART };
 }
 
+function bigrm3Location(ok) {
+    let x, y, loc;
+    let tries = 0;
+    do {
+        x = rn2(75);
+        y = rn2(18);
+        loc = game.level?.at(x + BIGRM_3_XSTART, y + BIGRM_3_YSTART);
+        if (loc && ok(loc, x + BIGRM_3_XSTART, y + BIGRM_3_YSTART)) {
+            return { x: x + BIGRM_3_XSTART, y: y + BIGRM_3_YSTART };
+        }
+    } while (++tries < 100);
+
+    for (x = 0; x < 75; x++)
+        for (y = 0; y < 18; y++) {
+            loc = game.level?.at(x + BIGRM_3_XSTART, y + BIGRM_3_YSTART);
+            if (loc && ok(loc, x + BIGRM_3_XSTART, y + BIGRM_3_YSTART)) {
+                return { x: x + BIGRM_3_XSTART, y: y + BIGRM_3_YSTART };
+            }
+        }
+    return { x: BIGRM_3_XSTART, y: BIGRM_3_YSTART };
+}
+
+function bigrm3GetStairLocation() {
+    // C ref: sp_lev.c:l_create_stairway() uses good_stair_loc().
+    return bigrm3Location((loc) => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
+}
+
+function bigrm3GetDryLocation() {
+    return bigrm3Location((loc, x, y) => SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y));
+}
+
 function bigrm4GetFloorLocation() {
     let x, y;
     do {
@@ -6158,6 +6367,34 @@ function bigrmTerrainType(ch) {
     }
 }
 
+function loadBigrm3Terrain() {
+    for (let y = 0; y < BIGRM_3_MAP.length; y++) {
+        for (let x = 0; x < BIGRM_3_MAP[y].length; x++) {
+            const loc = game.level.at(x + BIGRM_3_XSTART, y + BIGRM_3_YSTART);
+            if (!loc) continue;
+            loc.typ = bigrmTerrainType(BIGRM_3_MAP[y][x]);
+            loc.lit = y >= 1 && y <= 16 && x >= 1 && x <= 73;
+        }
+    }
+    game.level.flags.is_maze_lev = true;
+}
+
+function replaceBigrm3WallTerrain(ch) {
+    // C refs: dat/bigrm-3.lua, src/sp_lev.c:mapfrag_match(),
+    // src/sp_lev.c:match_maptyps().  Invalid '[' and ']' map chars act like
+    // wildcards here, so this matches wall cells with floor on both sides.
+    const typ = bigrmTerrainType(ch);
+    for (let y = 0; y < BIGRM_3_MAP.length; y++) {
+        for (let x = 1; x < BIGRM_3_MAP[y].length - 1; x++) {
+            const here = BIGRM_3_MAP[y][x];
+            if (here !== '|' && here !== '-') continue;
+            if (BIGRM_3_MAP[y][x - 1] !== '.' || BIGRM_3_MAP[y][x + 1] !== '.') continue;
+            const loc = game.level?.at(x + BIGRM_3_XSTART, y + BIGRM_3_YSTART);
+            if (loc) loc.typ = typ;
+        }
+    }
+}
+
 function loadBigrm4Terrain() {
     for (let y = 0; y < BIGRM_4_MAP.length; y++) {
         for (let x = 0; x < BIGRM_4_MAP[y].length; x++) {
@@ -6243,12 +6480,16 @@ function rememberWallsInRect(x1, y1, x2, y2) {
 }
 
 function lightWallsAdjacentToLitCells(x1, y1, x2, y2) {
-    // C ref: vision.c:vision_recalc() one-sided lit wall handling.
+    // C ref: sp_lev.c:lspo_region() grows lit selections with W_ANY before
+    // sp_lev.c:sel_set_lit(), so diagonal boundary walls are lit too.
     for (let y = y1; y <= y2; y++) {
         for (let x = x1; x <= x2; x++) {
             const loc = game.level?.at(x, y);
             if (!loc || loc.lit || !IS_WALL(loc.typ)) continue;
-            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            for (const [dx, dy] of [
+                [1, 0], [-1, 0], [0, 1], [0, -1],
+                [1, 1], [1, -1], [-1, 1], [-1, -1],
+            ]) {
                 if (game.level?.at(x + dx, y + dy)?.lit) {
                     loc.lit = true;
                     break;
@@ -6377,6 +6618,46 @@ function loadBigrm2Special() {
         rn2(3);
         loc = bigrm2GetFloorLocation();
         makemonSpecialLevelAt(null, loc.x, loc.y, 0);
+    }
+}
+
+function loadBigrm3Special() {
+    // C ref: dat/bigrm-3.lua loaded through mkmaze.c:makemaz().
+    loadBigrm3Terrain();
+    l_nhcore_init();
+    rn2(2); // splev_initlev() random lit state for solidfill.
+
+    if (rn2(100) < 66) {
+        const terrains = ['F', 'T', 'W', 'Z'];
+        replaceBigrm3WallTerrain(terrains[rn2(terrains.length)]);
+    }
+
+    let loc = bigrm3GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, true);
+    loc = bigrm3GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, false);
+    markBigroomNonDiggable();
+
+    for (let i = 0; i < 15; i++) {
+        loc = bigrm3GetDryLocation();
+        mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    }
+    for (let i = 0; i < 6; i++) {
+        loc = bigrm3GetDryLocation();
+        let kind;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        const trap = maketrap(loc.x, loc.y, kind);
+        maybeTrapVictim(trap);
+    }
+
+    for (const [x, y] of [
+        [1, 1], [13, 1], [25, 1], [37, 1], [49, 1], [61, 1], [73, 1],
+        [7, 7], [13, 7], [25, 7], [37, 7], [49, 7], [61, 7], [67, 7],
+        [7, 9], [13, 9], [25, 9], [37, 9], [49, 9], [61, 9], [67, 9],
+        [1, 16], [13, 16], [25, 16], [37, 16], [49, 16], [61, 16], [73, 16],
+    ]) {
+        rn2(3); // induced_align() for random monsters on special levels.
+        makemonSpecialLevelAt(null, x + BIGRM_3_XSTART, y + BIGRM_3_YSTART, 0);
     }
 }
 
@@ -6647,6 +6928,18 @@ function maybeTrapVictim(trap) {
         if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
         mktrap_victim(trap);
     }
+}
+
+function mktrapAt(x, y, kind) {
+    // C ref: src/mklev.c:mktrap().  Scripted special-level traps still pass
+    // through mktrap() before trap.c:maketrap(); on hardfloor levels, holes
+    // and trapdoors are converted to rock traps before maketrap() can assign a
+    // level-change destination.
+    let actual = kind;
+    if (is_hole(actual) && !can_fall_thru()) actual = ROCKTRAP;
+    const trap = maketrap(x, y, actual);
+    maybeTrapVictim(trap);
+    return trap;
 }
 
 function createSokoGiantMimic(spec) {
@@ -7136,6 +7429,132 @@ function medusa3SetTerrain() {
     }
 }
 
+function medusa1SetTerrain() {
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+    for (let y = 0; y < MEDUSA1_MAP.length; y++) {
+        const row = MEDUSA1_MAP[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = game.level?.at(MEDUSA1_X + x, MEDUSA1_Y + y);
+            if (!loc) continue;
+            loc.lit = false;
+            switch (row[x]) {
+            case '.':
+                loc.typ = ROOM;
+                break;
+            case '}':
+                loc.typ = MOAT;
+                break;
+            case '-':
+                loc.typ = HWALL;
+                break;
+            case '|':
+                loc.typ = VWALL;
+                break;
+            case '+':
+                loc.typ = DOOR;
+                set_door_mask(loc, D_CLOSED);
+                break;
+            case 'S':
+                loc.typ = SDOOR;
+                loc.horizontal = row[x - 1] === '-' || row[x + 1] === '-';
+                set_door_mask(loc, D_CLOSED);
+                break;
+            default:
+                loc.typ = STONE;
+                break;
+            }
+        }
+    }
+}
+
+function medusa1ApplyLitRegion(x1, y1, x2, y2, lit) {
+    for (let y = y1; y <= y2; y++) {
+        for (let x = x1; x <= x2; x++) {
+            const loc = game.level?.at(MEDUSA1_X + x, MEDUSA1_Y + y);
+            if (loc) loc.lit = !!lit;
+        }
+    }
+}
+
+function medusa1ArrivalRoom() {
+    // C ref: dat/medusa-1.lua arrival_room region {35,09,41,10}.
+    const before = game.level?.nroom ?? 0;
+    add_room(MEDUSA1_X + 35, MEDUSA1_Y + 9, MEDUSA1_X + 41, MEDUSA1_Y + 10,
+        0, OROOM, true);
+    const croom = game.level?.rooms?.[before];
+    if (croom) {
+        croom.needfill = FILL_NONE;
+        croom.needjoining = true;
+    }
+}
+
+function medusa1SetDoor(x, y, mask) {
+    const loc = game.level?.at(MEDUSA1_X + x, MEDUSA1_Y + y);
+    if (!loc) return;
+    // C ref: sp_lev.c:sel_set_door().  des.door() updates an existing
+    // map 'S' cell's mask without revealing it as a regular door.
+    if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+    set_door_mask(loc, mask);
+}
+
+function medusa1DryLocation() {
+    return specialRandomDryLocation(MEDUSA1_PLACE_WIDTH, MEDUSA1_MAP.length, MEDUSA1_X, MEDUSA1_Y);
+}
+
+function medusa1MonsterLocation(ptr) {
+    let x = 0, y = 0;
+    let trycnt = 0;
+    do {
+        x = MEDUSA1_X + rn2(MEDUSA1_PLACE_WIDTH);
+        y = MEDUSA1_Y + rn2(MEDUSA1_MAP.length);
+        if (specialMonsterLocationOk(x, y, ptr)) return { x, y };
+    } while (++trycnt < 100);
+    return medusa1DryLocation();
+}
+
+function medusa1Object(otyp = null, x = null, y = null) {
+    const loc = x == null ? medusa1DryLocation() : { x, y };
+    if (otyp == null) mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    else mksobj_at(otyp, loc.x, loc.y, true, true);
+}
+
+function medusa1ContainedObject(otyp) {
+    specialRandomDryLocation(MEDUSA1_PLACE_WIDTH, MEDUSA1_MAP.length, MEDUSA1_X, MEDUSA1_Y);
+    return mksobj(otyp, true, true);
+}
+
+function medusa1Statue(x = null, y = null, ptr = null) {
+    const loc = x == null ? medusa1DryLocation() : { x, y };
+    const obj = mkcorpstat(STATUE, null, ptr, loc.x, loc.y, 8);
+    if (obj && ptr) {
+        obj.spe = CORPSTAT_HISTORIC;
+        obj.male = 1;
+        obj.onamelth = 'Perseus'.length;
+        obj.name = 'Perseus';
+    }
+    if (obj && !ptr) medusa3PopulateRandomStatue(obj);
+    return obj;
+}
+
+function medusa1Trap(kind = null, x = null, y = null) {
+    const loc = x == null ? medusa1DryLocation() : { x, y };
+    let actual = kind;
+    if (actual == null) do { actual = traptype_rnd(); } while (actual === NO_TRAP);
+    const trap = maketrap(loc.x, loc.y, actual);
+    maybeTrapVictim(trap);
+}
+
+function medusa1Monster(id = null, x = null, y = null, mmflags = 0) {
+    const cls = String(id || '').length === 1 ? specialMonsterClassFromChar(id) : null;
+    let ptr = cls ? null : monster_ptr(id);
+    if (!cls && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
+    induced_align_80();
+    if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
+    const loc = x == null ? medusa1MonsterLocation(ptr) : { x: MEDUSA1_X + x, y: MEDUSA1_Y + y };
+    return makemonSpecialLevelAt(ptr, loc.x, loc.y, mmflags);
+}
+
 function medusa3ApplyLitRegion(x1, y1, x2, y2, lit) {
     for (let y = y1; y <= y2; y++) {
         for (let x = x1; x <= x2; x++) {
@@ -7160,7 +7579,7 @@ function medusa3ArrivalRoom(lit) {
 function medusa3SetDoor(x, y, mask) {
     const loc = game.level?.at(MEDUSA3_X + x, MEDUSA3_Y + y);
     if (!loc) return;
-    loc.typ = DOOR;
+    if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
     set_door_mask(loc, mask);
 }
 
@@ -7327,6 +7746,113 @@ function registerMedusa3Lregions(flp, bounds) {
             delarea: { x1: 0, y1: 0, x2: 0, y2: 0 },
         },
     ];
+}
+
+function registerMedusa1Lregions(flp, bounds) {
+    const downTele = flipRectForBounds({ x1: MEDUSA1_X + 1, y1: MEDUSA1_Y + 1, x2: MEDUSA1_X + 5, y2: MEDUSA1_Y + 17 }, flp,
+        bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    const upTele = flipRectForBounds({ x1: MEDUSA1_X + 26, y1: MEDUSA1_Y + 4, x2: MEDUSA1_X + 50, y2: MEDUSA1_Y + 15 }, flp,
+        bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    const branch = flipRectForBounds({ x1: MEDUSA1_X + 1, y1: MEDUSA1_Y, x2: COLNO - 1, y2: ROWNO - 1 }, flp,
+        bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    const exclude = flipRectForBounds({ x1: MEDUSA1_X + 30, y1: MEDUSA1_Y + 6, x2: MEDUSA1_X + 46, y2: MEDUSA1_Y + 13 }, flp,
+        bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    game._special_lregions = [
+        {
+            rtype: LR_DOWNTELE,
+            inarea: downTele,
+            delarea: { x1: 0, y1: 0, x2: 0, y2: 0 },
+        },
+        {
+            rtype: LR_UPTELE,
+            inarea: upTele,
+            delarea: { x1: 0, y1: 0, x2: 0, y2: 0 },
+        },
+        {
+            rtype: LR_BRANCH,
+            inarea: branch,
+            delarea: exclude,
+        },
+    ];
+}
+
+function loadMedusa1Special() {
+    // C ref: dat/medusa-1.lua loaded via sp_lev.c:load_special().
+    l_nhcore_init();
+    rn2(2); // splev_initlev() random lit state for solidfill.
+    medusa1SetTerrain();
+
+    medusa1ApplyLitRegion(0, 0, 74, 19, true);
+    medusa1ApplyLitRegion(31, 7, 45, 7, false);
+    medusa1ArrivalRoom();
+    medusa1ApplyLitRegion(31, 12, 45, 12, false);
+
+    placeSpecialStair(MEDUSA1_X + 5, MEDUSA1_Y + 14, true);
+    placeSpecialStair(MEDUSA1_X + 36, MEDUSA1_Y + 10, false);
+    medusa1SetDoor(46, 7, D_CLOSED);
+    medusa1SetDoor(38, 8, D_LOCKED);
+    medusa1SetDoor(38, 11, D_LOCKED);
+    medusa1SetDoor(30, 12, D_CLOSED);
+
+    for (let y = 6; y <= 13; y++)
+        for (let x = 30; x <= 46; x++) {
+            const loc = game.level?.at(MEDUSA1_X + x, MEDUSA1_Y + y);
+            if (loc) loc.wall_info |= W_NONDIGGABLE;
+        }
+
+    medusa1Statue(MEDUSA1_X + 36, MEDUSA1_Y + 10, monster_ptr('KNIGHT'));
+    if (rn2(100) < 75) {
+        const shield = medusa1ContainedObject(SHIELD_OF_REFLECTION);
+        if (shield) {
+            shield.cursed = true;
+            shield.blessed = false;
+            shield.spe = 0;
+        }
+    }
+    if (rn2(100) < 25) {
+        const boots = medusa1ContainedObject(LEVITATION_BOOTS);
+        if (boots) boots.spe = 0;
+    }
+    if (rn2(100) < 50) {
+        const sword = medusa1ContainedObject(SCIMITAR);
+        if (sword) {
+            sword.blessed = true;
+            sword.cursed = false;
+            sword.spe = 2;
+        }
+    }
+    if (rn2(100) < 50) medusa1ContainedObject(SACK);
+
+    for (let i = 0; i < 7; i++) medusa1Statue();
+    for (let i = 0; i < 8; i++) medusa1Object();
+    for (let i = 0; i < 5; i++) medusa1Trap();
+    medusa1Trap(SQKY_BOARD, MEDUSA1_X + 38, MEDUSA1_Y + 7);
+    medusa1Trap(SQKY_BOARD, MEDUSA1_X + 38, MEDUSA1_Y + 12);
+
+    medusa1Monster('MEDUSA', 36, 10, MM_ASLEEP | MM_NOGRP);
+    medusa1Monster('GIANT_EEL', 11, 6);
+    medusa1Monster('GIANT_EEL', 23, 13);
+    medusa1Monster('GIANT_EEL', 29, 2);
+    medusa1Monster('JELLYFISH', 2, 2);
+    medusa1Monster('JELLYFISH', 0, 8);
+    medusa1Monster('JELLYFISH', 4, 18);
+    medusa1Monster('WATER_TROLL', 51, 3);
+    medusa1Monster('WATER_TROLL', 64, 11);
+    medusa1Monster('S', 38, 7);
+    medusa1Monster('S', 38, 12);
+    for (let i = 0; i < 10; i++) medusa1Monster();
+
+    const ext = get_level_extends();
+    const bounds = {
+        minx: Math.max(1, ext.xmin),
+        maxx: Math.min(COLNO - 1, ext.xmax),
+        miny: Math.max(0, ext.ymin),
+        maxy: Math.min(ROWNO - 1, ext.ymax),
+    };
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flp = flip_level_rnd(3);
+    registerMedusa1Lregions(flp, bounds);
+    fixup_special();
 }
 
 function loadMedusa3Special() {
@@ -8135,7 +8661,8 @@ function fixup_special() {
     if (!addedBranch && is_branchlev()) {
         place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
     }
-    if (game._last_special_protofile === 'medusa-3') medusa3FixupSpecial();
+    if (game._last_special_protofile === 'medusa-1'
+        || game._last_special_protofile === 'medusa-3') medusa3FixupSpecial();
     if (game._last_special_protofile === 'baalz') baalzFixup();
 }
 
@@ -10717,9 +11244,7 @@ function priLocaTrap(x = null, y = null) {
     const loc = x == null ? priLocaTrapLocation() : { x: priLocaX(x), y: priLocaY(y) };
     let kind;
     do { kind = traptype_rnd(); } while (kind === NO_TRAP);
-    const trap = maketrap(loc.x, loc.y, kind);
-    maybeTrapVictim(trap);
-    return trap;
+    return mktrapAt(loc.x, loc.y, kind);
 }
 
 function priLocaCreateAlignedCleric() {
@@ -11286,6 +11811,161 @@ function loadArcheologistGoalSpecial() {
     for (let i = 0; i < 18; i++) arcGoalCreateMonster('S');
     for (let i = 0; i < 8; i++) arcGoalCreateMonster('human mummy');
     arcGoalCreateMonster('M');
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3);
+    fixup_special();
+}
+
+const PRI_GOAL_X = 27;
+const PRI_GOAL_Y = 5;
+const PRI_GOAL_MAP = [
+    'xxxxxx..xxxxxx...xxxxxxxxx',
+    'xxxx......xx......xxxxxxxx',
+    'xx.xx.............xxxxxxxx',
+    'x....................xxxxx',
+    '......................xxxx',
+    '......................xxxx',
+    'xx........................',
+    'xxx......................x',
+    'xxx................xxxxxxx',
+    'xxxx.....x.xx.......xxxxxx',
+    'xxxxx...xxxxxx....xxxxxxxx',
+];
+
+function priGoalX(x) { return PRI_GOAL_X + x; }
+function priGoalY(y) { return PRI_GOAL_Y + y; }
+
+function priGoalSetTerrain(x, y, ch) {
+    const loc = game.level?.at(priGoalX(x), priGoalY(y));
+    if (!loc) return;
+    if (ch === 'x') {
+        // C refs: src/nhlua.c:splev_chr2typ(), src/sp_lev.c:lspo_map().
+        // Map char 'x' is MAX_TYPE transparency.  The later "unlit" region
+        // still preserves lava light through sp_lev.c:sel_set_lit().
+        loc.lit = IS_LAVA(loc.typ);
+        return;
+    }
+    loc.lit = false;
+    loc.flags = 0;
+    loc.doormask = 0;
+    loc.horizontal = false;
+    loc.typ = ch === '.' ? ROOM : STONE;
+    game._special_touched = game._special_touched || new Set();
+    game._special_touched.add(specialTouchedKey(priGoalX(x), priGoalY(y)));
+}
+
+function loadPriGoalTerrain() {
+    // C ref: dat/Pri-goal.lua des.level_init(style="mines", fg="L", bg=".").
+    mkmap_mines({
+        bgTyp: ROOM,
+        fgTyp: LAVAPOOL,
+        lit: 0,
+        smoothed: false,
+        joined: false,
+        walled: false,
+        minesWalls: false,
+    });
+    game._special_touched = new Set();
+    for (let y = 0; y < PRI_GOAL_MAP.length; y++)
+        for (let x = 0; x < PRI_GOAL_MAP[y].length; x++)
+            priGoalSetTerrain(x, y, PRI_GOAL_MAP[y][x]);
+    game.level.flags.is_maze_lev = true;
+}
+
+function priGoalDryLocation() {
+    return specialRandomDryLocation(PRI_GOAL_MAP[0].length, PRI_GOAL_MAP.length,
+        PRI_GOAL_X, PRI_GOAL_Y);
+}
+
+function priGoalObject(x = null, y = null) {
+    const loc = x == null || y == null
+        ? priGoalDryLocation()
+        : { x: priGoalX(x), y: priGoalY(y) };
+    return mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+}
+
+function priGoalMitre(loc) {
+    const mitre = mksobj_at(HELM_OF_BRILLIANCE, loc.x, loc.y, true, false);
+    if (!mitre) return null;
+    mitre.blessed = true;
+    mitre.cursed = false;
+    mitre.spe = 0;
+    mitre.oerodeproof = true;
+    mitre.oextra = { ...(mitre.oextra || {}), oname: 'The Mitre of Holiness' };
+    if (!mitre.oartifact) game._nartifact_exist = (game._nartifact_exist ?? 0) + 1;
+    mitre.oartifact = true;
+    return mitre;
+}
+
+function priGoalTrap(kind = null) {
+    const loc = priGoalDryLocation();
+    let actual = kind;
+    if (actual == null) do { actual = traptype_rnd(); } while (actual === NO_TRAP);
+    return mktrapAt(loc.x, loc.y, actual);
+}
+
+function priGoalMonsterLocation(ptr) {
+    if (!ptr) {
+        return specialRandomCoordLocation(PRI_GOAL_MAP[0].length, PRI_GOAL_MAP.length,
+            PRI_GOAL_X, PRI_GOAL_Y, DRY);
+    }
+    let humidity = pm_to_humidity(ptr);
+    let loc = specialRandomCoordLocation(PRI_GOAL_MAP[0].length, PRI_GOAL_MAP.length,
+        PRI_GOAL_X, PRI_GOAL_Y, humidity | NO_LOC_WARN);
+    if (!loc) {
+        humidity |= DRY;
+        loc = specialRandomCoordLocation(PRI_GOAL_MAP[0].length, PRI_GOAL_MAP.length,
+            PRI_GOAL_X, PRI_GOAL_Y, humidity);
+    }
+    return loc;
+}
+
+function priGoalCreateMonster(id, loc = null) {
+    const cls = String(id || '').length === 1 ? specialMonsterClassFromChar(id) : null;
+    let ptr = cls ? null : monster_by_user_name(id);
+    if (!cls && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
+    induced_align_80();
+    if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
+    const pos = loc ? { ...loc } : priGoalMonsterLocation(ptr);
+    if (!pos) return null;
+    if (m_at(pos.x, pos.y)) {
+        const cc = enexto_core(pos.x, pos.y, ptr, GP_CHECKSCARY)
+            || enexto_core(pos.x, pos.y, ptr, 0);
+        if (cc) {
+            pos.x = cc.x;
+            pos.y = cc.y;
+        }
+    }
+    return apply_monster_name_gender(makemon(ptr, pos.x, pos.y, 0), id);
+}
+
+function loadPriestGoalSpecial() {
+    // C refs: src/nhlua.c:load_lua(), src/bones.c:getbones(),
+    // dat/Pri-goal.lua.  Shared mklev() does the bones probe before this
+    // special's quest/nhlib shuffle, then splev_initlev() opens solidfill.
+    game.splev_align = nhlibAlignShuffle();
+    rn2(2); // C ref: sp_lev.c:splev_initlev() for the opening solidfill.
+    loadPriGoalTerrain();
+
+    placeSpecialStair(priGoalX(20), priGoalY(5), true);
+    const mitrePlaces = [
+        { x: priGoalX(14), y: priGoalY(4) },
+        { x: priGoalX(13), y: priGoalY(7) },
+    ];
+    const placeidx = rn2(mitrePlaces.length);
+    const mitreLoc = mitrePlaces[placeidx];
+    priGoalMitre(mitreLoc);
+    for (let i = 0; i < 14; i++) priGoalObject();
+
+    for (let i = 0; i < 4; i++) priGoalTrap(FIRE_TRAP);
+    for (let i = 0; i < 2; i++) priGoalTrap();
+
+    priGoalCreateMonster('Nalzok', mitreLoc);
+    for (let i = 0; i < 16; i++) priGoalCreateMonster('human zombie');
+    for (let i = 0; i < 2; i++) priGoalCreateMonster('Z');
+    for (let i = 0; i < 8; i++) priGoalCreateMonster('wraith');
+    priGoalCreateMonster('W');
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3);
@@ -12397,6 +13077,7 @@ function wizLocaCreateMonster(id, mmflags = 0, opts = {}) {
 const PORTED_QUEST_FILLERS = new Set([
     'Arc-fila', 'Arc-filb',
     'Bar-fila', 'Bar-filb',
+    'Pri-fila', 'Pri-filb',
     'Wiz-fila', 'Wiz-filb',
 ]);
 
@@ -12422,6 +13103,10 @@ function loadQuestFillerSpecial(proto) {
     }
     if (proto === 'Bar-fila' || proto === 'Bar-filb') {
         loadBarbarianFillerSpecial(proto);
+        return true;
+    }
+    if (proto === 'Pri-fila' || proto === 'Pri-filb') {
+        loadPriestFillerSpecial(proto);
         return true;
     }
     return false;
@@ -12600,6 +13285,68 @@ function loadArcheologistFillerSpecial(proto) {
         createSpecialRandomObject(room);
         createSpecialTrap(room);
         createSpecialMonsterRef(room, 'S');
+    }
+
+    makecorridors();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3);
+}
+
+function loadPriestFillerSpecial(proto) {
+    // C refs: dat/Pri-fila.lua and dat/Pri-filb.lua.
+    l_nhcore_init();
+    game.level.flags.is_maze_lev = false;
+    game.level.flags.hardfloor = false;
+
+    let room = buildSpecialRoom({});
+    if (room) {
+        createSpecialStair(room, true);
+        createSpecialRandomObject(room);
+        createSpecialMonsterRef(room, 'human zombie');
+        if (proto === 'Pri-filb') createSpecialMonsterRef(room, 'wraith');
+    }
+
+    room = buildSpecialRoom({ rtype: proto === 'Pri-filb' ? MORGUE : OROOM });
+    if (room) {
+        createSpecialRandomObject(room);
+        createSpecialRandomObject(room);
+        if (proto === 'Pri-filb') createSpecialRandomObject(room);
+    }
+
+    room = buildSpecialRoom({});
+    if (room) {
+        createSpecialRandomObject(room);
+        createSpecialTrap(room);
+        createSpecialRandomObject(room);
+        createSpecialMonsterRef(room, 'human zombie');
+        if (proto === 'Pri-filb') createSpecialMonsterRef(room, 'wraith');
+    }
+
+    room = buildSpecialRoom({ rtype: MORGUE });
+    if (room) {
+        createSpecialStair(room, false);
+        createSpecialRandomObject(room);
+        if (proto === 'Pri-filb') createSpecialRandomObject(room);
+        createSpecialTrap(room);
+    }
+
+    room = buildSpecialRoom({});
+    if (room) {
+        createSpecialRandomObject(room);
+        createSpecialRandomObject(room);
+        createSpecialTrap(room);
+        if (proto === 'Pri-fila') {
+            createSpecialMonsterRef(room, 'wraith');
+        } else {
+            createSpecialMonsterRef(room, 'human zombie');
+            createSpecialMonsterRef(room, 'wraith');
+        }
+    }
+
+    room = buildSpecialRoom({ rtype: MORGUE });
+    if (room) {
+        createSpecialRandomObject(room);
+        createSpecialTrap(room);
     }
 
     makecorridors();
@@ -13370,6 +14117,18 @@ function makemaz_special(slev) {
             BIGRM_2_YSTART + BIGRM_2_MAP.length - 1);
         return;
     }
+    if (game._last_special_protofile === 'bigrm-3') {
+        loadBigrm3Special();
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+        lightWallsAdjacentToLitCells(BIGRM_3_XSTART, BIGRM_3_YSTART,
+            BIGRM_3_XSTART + BIGRM_3_MAP[0].length - 1,
+            BIGRM_3_YSTART + BIGRM_3_MAP.length - 1);
+        // C refs: src/sp_lev.c:load_special(), src/mkmaze.c:fixup_special().
+        // The generic special-level fixup places an implicit branch region on
+        // branch levels when the Lua file did not place one explicitly.
+        fixup_special();
+        return;
+    }
     if (game._last_special_protofile === 'bigrm-4') {
         loadBigrm4Special();
         wallification(1, 0, COLNO - 1, ROWNO - 1);
@@ -13402,6 +14161,10 @@ function makemaz_special(slev) {
         return;
     }
     if (loadSokoSpecial(game._last_special_protofile)) {
+        return;
+    }
+    if (game._last_special_protofile === 'minetn-2') {
+        loadMinetown2Special();
         return;
     }
     if (game._last_special_protofile === 'minetn-4') {
@@ -13468,6 +14231,10 @@ function makemaz_special(slev) {
         loadArcheologistGoalSpecial();
         return;
     }
+    if (game._last_special_protofile === 'x-goal' && game.urole?.name?.m === 'Priest') {
+        loadPriestGoalSpecial();
+        return;
+    }
     if (game._last_special_protofile === 'x-strt' && game.urole?.name?.m === 'Wizard') {
         loadWizardStartSpecial();
         return;
@@ -13524,6 +14291,10 @@ function makemaz_special(slev) {
         loadTower3Special();
         return;
     }
+    if (game._last_special_protofile === 'medusa-1') {
+        loadMedusa1Special();
+        return;
+    }
     if (game._last_special_protofile === 'medusa-3') {
         loadMedusa3Special();
         return;
@@ -13563,11 +14334,14 @@ export async function mklev() {
         || game._last_special_protofile === 'valley'
         || game._last_special_protofile === 'sanctum'
         || game._last_special_protofile === 'orcus'
+        || game._last_special_protofile === 'minetn-2'
         || game._last_special_protofile === 'minetn-4'
         || game._last_special_protofile === 'minetn-5'
         || game._last_special_protofile === 'wizard1'
         || game._last_special_protofile === 'wizard2'
         || game._last_special_protofile === 'wizard3'
+        || game._last_special_protofile === 'Pri-fila'
+        || game._last_special_protofile === 'Pri-filb'
         || (game._last_special_protofile === 'x-loca' && game.urole?.name?.m === 'Priest'))) {
         for (let i = 0; i < (g.level?.nroom ?? 0); i++) {
             fill_special_room(g.level.rooms[i]);
@@ -13839,6 +14613,12 @@ function mkmap_finish(fgTyp, bgTyp, lit, walled) {
         }
         for (let i = 0; i < (game.level?.nroom ?? 0); i++)
             if (game.level.rooms[i]) game.level.rooms[i].rlit = 1;
+    }
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc && loc.typ === LAVAPOOL) loc.lit = true;
+        }
     }
 }
 

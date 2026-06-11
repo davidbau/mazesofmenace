@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import {
     enexto_core, makemon, mkcorpstat, mksobj, monsterPtr, next_ident,
-    place_object, set_malign_basic, undead_to_corpse_ptr,
+    place_object, set_malign_basic, u_on_newpos, undead_to_corpse_ptr,
 } from './mklev.js';
 import { OBJECT_CLASS, OBJECT_DELAY, OBJECT_NAME } from './object_data.js';
 import { MONSTER_DATA } from './monster_data.js';
@@ -404,30 +404,6 @@ function arrive_with_hero(migrating) {
     if (migrating?.edog) mon.edog = { ...migrating.edog };
     init_edog(mon);
     if (game.level?.monsters) game.level.monsters.unshift(mon);
-    if (mon.mx === game.u?.ux && mon.my === game.u?.uy) {
-        if (!rn2(2)) {
-            const cc = enexto_core(game.u.ux, game.u.uy, null, GP_CHECKSCARY)
-                || enexto_core(game.u.ux, game.u.uy, null, 0);
-            if (cc && Math.max(Math.abs(cc.x - game.u.ux), Math.abs(cc.y - game.u.uy)) <= 1) {
-                game.u.ux = cc.x;
-                game.u.uy = cc.y;
-            } else {
-                const mc = enexto_core(mon.mx, mon.my, pet, GP_CHECKSCARY)
-                    || enexto_core(mon.mx, mon.my, pet, 0);
-                if (mc) {
-                    mon.mx = mc.x;
-                    mon.my = mc.y;
-                }
-            }
-        } else {
-            const mc = enexto_core(mon.mx, mon.my, pet, GP_CHECKSCARY)
-                || enexto_core(mon.mx, mon.my, pet, 0);
-            if (mc) {
-                mon.mx = mc.x;
-                mon.my = mc.y;
-            }
-        }
-    }
     return mon;
 }
 
@@ -442,6 +418,51 @@ export function pet_arrive_with_you() {
         if (!first) first = arrived;
     }
     return first;
+}
+
+function send_monster_to_limbo(mon) {
+    const monsters = game.level?.monsters;
+    if (!monsters) return false;
+    const idx = monsters.indexOf(mon);
+    if (idx < 0) return false;
+    monsters.splice(idx, 1);
+    mon.mx = COLNO;
+    mon.my = ROWNO;
+    return true;
+}
+
+function mnexto_after_arrival_collision(mon) {
+    const pet = mon?.data || null;
+    const cc = enexto_core(game.u?.ux ?? mon.mx, game.u?.uy ?? mon.my, pet, GP_CHECKSCARY)
+        || enexto_core(game.u?.ux ?? mon.mx, game.u?.uy ?? mon.my, pet, 0);
+    if (!cc) return send_monster_to_limbo(mon);
+    mon.mx = cc.x;
+    mon.my = cc.y;
+    return true;
+}
+
+export function resolve_arrival_collision() {
+    const ux = game.u?.ux;
+    const uy = game.u?.uy;
+    if (ux == null || uy == null) return false;
+    let mon = mon_at(ux, uy, null);
+    if (!mon) return false;
+
+    // C refs: src/dog.c:mon_arrive(), src/do.c:u_collide_m().  With_you
+    // arrivals can briefly share the hero square; goto_level() resolves that
+    // collision after all followers have arrived.
+    const cc = !rn2(2)
+        ? (enexto_core(ux, uy, null, GP_CHECKSCARY) || enexto_core(ux, uy, null, 0))
+        : null;
+    if (cc && Math.max(Math.abs(cc.x - ux), Math.abs(cc.y - uy)) <= 1) {
+        u_on_newpos(cc.x, cc.y);
+    } else {
+        mnexto_after_arrival_collision(mon);
+    }
+
+    mon = mon_at(game.u?.ux, game.u?.uy, null);
+    if (mon) send_monster_to_limbo(mon);
+    return true;
 }
 
 function dist2(x0, y0, x1, y1) {
