@@ -37,7 +37,10 @@ body {
     min-height: 100vh;
 }
 .container {
-    max-width: 56em;
+    /* Wide enough for the 11-column results table (~63em natural
+       width) to fit without overflowing its margins; the body flex
+       centering keeps it centered on the page. */
+    max-width: 66em;
     width: 100%;
 }
 .nav {
