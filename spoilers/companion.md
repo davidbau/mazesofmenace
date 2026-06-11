@@ -234,11 +234,14 @@ unknown potions of sickness become a free quaff-test (dip a
 unicorn horn into them to convert to fruit juice).
 *Alignment: Neutral.*
 
-**Knight.** You start mounted on a saddled pony, with a +1 long sword
-and a +1 lance among your gear. The pony is a decent combatant early
-on and the basis of your unique trick: jousting from horseback with
-the lance is devastating when it connects, though the lance is largely
-useless on foot. As a Lawful character with a starting long sword, you
+**Knight.** You start with a saddled pony pet, a +1 long sword,
+and a +1 lance among your gear. The pony is a decent combatant
+early on and the basis of your unique trick: jousting from
+horseback with the lance is devastating when it connects, though
+the lance is largely useless on foot. Don't be in a hurry to
+mount, though: the starting pony has only about 7 HP, a failed
+mount attempt costs *you* 10 to 14 HP, and most Knights keep the
+pony as a fighting pet until it grows up. As a Lawful character with a starting long sword, you
 also have the best odds in the game at **[Excalibur](#excalibur-artifact)**. Dip your long sword
 in a fountain at experience level 5+ and Knights get a 1-in-6 chance
 per dip, far better than the 1-in-30 every other Lawful role faces.
@@ -265,8 +268,9 @@ or uncursed, so you know on sight whether that cloak you just found
 is safe to wear. Competent fighters with access to clerical spells.
 Your first sacrifice gift is guaranteed: Demonbane (now a silver
 mace), which aligns with your weapon skill, so sacrifice early and
-often. Keep at least one holy water in reserve: dipping plain water
-into it makes more, indefinitely. *Alignment: Any (matches your god).*
+often. Refill the holy water stash by dropping water potions on a
+co-aligned altar and praying: the entire stack blesses at once, so
+the supply is effectively unlimited. *Alignment: Any (matches your god).*
 
 **Ranger.** You start with a bow, a generous supply of arrows, a
 dagger, and a **+2 cloak of displacement**, one of the strongest
@@ -295,9 +299,10 @@ and range are the role. *Alignment: Chaotic.*
 one-handed weapons in the game, plus a wakizashi backup and a yumi
 bow with arrows. Samurai get speed early and have a strong martial
 kit overall. The katana's damage output carries you through the
-early game with ease. The wakizashi is community-classified
-dead weight: drop it and find a long sword for the off-hand
-instead, since long sword shares katana skill for two-weapon.
+early game with ease. The wakizashi is the wrong off-hand: it's a
+short sword, while your katana is a long sword, so the two don't
+share skill. Drop it for any long sword (the Mines usually provides
+one) and twoweapon for the matched-skill bonus.
 *Alignment: Lawful.*
 
 **Tourist.** You start with a Hawaiian shirt, a credit card, an
@@ -716,7 +721,7 @@ patterns is the first step toward navigating them effectively.
 When Jay Fenlason wrote the original *Hack* in 1982, every level
 in the dungeon looked the same: rooms, corridors, a staircase down
 to more of the same. More than forty years of community
-development later, the Dungeons of Doom you first descend into are
+development later, the Dungeons of Doom you first descend into form
 only one neighborhood of a much larger world. If you survive long
 enough, your adventure will lead you through towns, towers, and
 castles; swamps and islands and fortresses; an underworld of
@@ -1093,16 +1098,12 @@ with dozens of random effects including:
 | Scare monsters    | Bad breath, every monster on the level panics        |
 | Nothing           | "The water is cool and refreshing" or "tasteless"     |
 
-Most of the time, nothing happens. A demon appears about 1/30;
-on shallow levels it may grant you a wish instead of attacking,
-working out to roughly 1 wish per 150 quaffs, dropping to zero
-chance past Dlvl 20. If you want to take the risk, it is a good
-idea to put your items in a bag to protect them from cursing and
-engrave [Elbereth](#elbereth) on a couple squares to protect
-against demons. Wizards' random starting items can include a
-scroll of taming or charm-monster spellbook, and any character
-with a protective instrument (tooled horn, leather drum, magic
-harp) can scare or charm a demon, making the gamble safer.
+Most of the time, nothing happens. A demon appears about 1/30; on
+shallow levels it may grant a wish instead of attacking, working
+out to roughly 1 wish per 150 quaffs and dropping to zero past Dlvl
+20. To take the risk: put your items in a bag (cursing protection),
+engrave [Elbereth](#elbereth) (demons keep their distance), and
+have a charm- or scare-monster effect ready in case a demon appears.
 
 **Dipping in a fountain** is a different gamble, and one that Lawful
 characters should know by heart. If you're at least experience level
@@ -1268,23 +1269,27 @@ There is no door, and no obvious way out. After about thirty
 turns inside, a vault guard appears and asks *"Who are you?"*
 You have two real answers.
 
-**Tell the truth.** The guard demands you drop *all* your gold,
-opens a temporary corridor through the wall, leads you out, and
-re-seals the vault behind him. You lose every coin you were
-carrying, but you escape.
+**Tell the truth.** The guard makes you drop your gold, opens a
+temporary corridor, leads you out, and re-seals the vault behind
+him. You lose every coin, but you escape.
 
-**Answer *Croesus*** (also accepted as *Kroisos* or *Creosote*).
-The guard takes that as the name of the vault's owner and
-politely leaves. Lawful characters lose one point of alignment
-for lying. You keep your gold, but the guard does not open a
-corridor: you are now sealed in alone with your treasure.
+**Answer *Croesus*** (or *Kroisos* or *Creosote*). The guard takes
+that as the vault owner's name and politely leaves. Lawful
+characters lose one alignment point for lying. You keep your gold
+but stay sealed in alone with your treasure.
 
-If you do not want to starve, follow the guard and leave the
-gold, unless you have a way to dig or teleport out on your own.
+If you do not want to starve, follow the guard and leave the gold,
+unless you can dig or teleport out yourself. (If Croesus is dead
+because you killed him at Fort Ludios, the *Croesus* answer angers
+the guard instead; use the real-name route then.)
 
-If Croesus himself is dead (you killed him at Fort Ludios),
-the *Croesus* answer instead angers the guard. Use the real-name
-route then.
+#### Statues
+
+Most statues can be broken for any contents inside (with a pickaxe,
+wand of striking, or force bolt), but some are statue traps that
+animate the sculpted monster when struck or stepped on.
+Archeologists see historic statues by name and take a −1 alignment
+hit for breaking them.
 
 ---
 
@@ -1911,7 +1916,7 @@ skip and you fall in regardless.
 | Polymorph trap    | Polymorphs you into a random creature                |
 | Rolling boulder   | Triggers a boulder rolling along a fixed track; takes you out if your square is in its path |
 
-Fire traps are the sleeper threat. The fire itself hurts, but
+Fire traps are easy to underestimate. The fire itself hurts, but
 the real catastrophe is your inventory: scrolls burn, potions
 shatter, and that stack of twenty scrolls of identify you've been
 hoarding is suddenly ash. [Fire resistance](#damage-resistances) saves your skin but
@@ -4472,7 +4477,7 @@ blessed scroll: the jackpot reads everything in your pack.
 - buy/sell multipliers and Cha bands match shk.c get_cost/set_cost
 - sell offer is 1/2 base (shk.c:3160); 3/8 on unID items from an unfamiliar shopkeeper (shk.c:3173-3174)
 - Tourist surcharge (+33%) applies with dunce cap, Tourist below XL 15, or visible Hawaiian shirt — non-stacking
-- ~1/4 of unID items carry a fixed 4/3 buy surcharge per item
+- ~1/4 of unID items carry a 4/3 buy surcharge rolled per item instance via oid % 4 (shk.c:2864-2872 oid_price_adjustment); two identical-looking stacks on a shop floor can roll differently because place_object doesn't auto-merge
 - ~1/4 of shopkeepers are "unfamiliar" with unID; they offer 3/4 sell, fixed per shop
 - angry-shop +33% surcharge sticks: pacify_shk(FALSE) at shk.c:2663 does NOT clear it
 - only pacify_shk(TRUE) clears (shk.c:302, 793 — bones-load and new-customer transitions)
@@ -4525,8 +4530,11 @@ them collectively as *Tourist*. You don't need to memorize the
 formulas; what matters is grouping by price tier.
 
 Two further wrinkles affect unidentified items. About a quarter of
-unID'd items carry an extra 4/3 buy surcharge, fixed per item, so a
-given scroll's surcharge status is consistent across shops. And
+unID'd items carry an extra ×4/3 buy surcharge, rolled independently
+for each item when it's created. Two stacks of the same scroll in
+one shop can have different prices, but each stack's surcharge
+follows it for life: once you've paid the surcharged price on a
+particular scroll, the next shop you take it to charges the same. And
 about a quarter of shopkeepers are "unfamiliar" with unID'd
 merchandise and offer only 3/4 of normal on sell, fixed per
 shopkeeper, so once you've tested one unID item you know the rule
@@ -6110,25 +6118,19 @@ you reach Medusa's level (surrounded by water) or the Plane of
 Water (entirely underwater). Then it's existential.
 
 **Flying** is the late-addition cousin of levitation: you stay in
-the air the same way, but you can still pick things up and you
-can choose to drop down on your turn. The under-appreciated bonus
-is that **your steed flies with you**. A flying warhorse skips
-over moats, fountains, pools, and [the Castle](#the-castle)'s drawbridge entirely
-A fast Knight can cross Medusa's island and the Castle from edge
-to edge without worrying about the water at all. Stack with boots
-of speed and a wand of speed monster on the mount and you have a
-terrifying cavalry unit.
+the air the same way, but you can still pick things up and choose
+to drop down on your turn. The under-appreciated bonus is that
+**your steed flies with you**. A flying warhorse skips over moats,
+pools, and [the Castle](#the-castle)'s drawbridge, and crosses
+Medusa's island edge to edge. Stack with speed boots on the mount
+for a terrifying cavalry unit.
 
 **Restful sleep** puts you to sleep randomly and is usually cursed,
-which should tell you everything you need to know about when to put it
-on unexamined. However, in 5.0, wearing it while asleep
-grants +1 HP per turn via accelerated regeneration, stacking with your
-normal healing. In a fully secured room with the door spiked shut and
-nothing actively trying to kill you, this turns a nearly useless item
-into a slow but functional field hospital. The conditions required
-(safety, time, and nothing better to do) describe a situation you rarely
-find in the Mazes. When you do, the amulet is less embarrassing to wear
-than it looks.
+which should tell you everything you need to know about putting it
+on unexamined. In 5.0, wearing it while asleep grants +1 HP per
+turn via accelerated regeneration. In a fully secured room with
+the door spiked shut, this turns a near-useless item into a slow
+field hospital.
 
 ---
 
@@ -6363,22 +6365,28 @@ wand), and **enchant weapon / enchant armor** for the +7 ascension
 kit. A well-used marker can produce a meaningful share of your
 ascension kit.
 
-The marker also feeds the **wraith feast**: write a *cursed*
-scroll of genocide, read it on a non-graveyard level, and the
-game reverse-genocides four to six fresh wraiths at your feet
-(see [Farming wraiths](#a-note-on-wraiths)). At ~1.6 corpses per
-scroll, a marker plus a stack of blank paper is a small XP
-factory for the late game.
+The marker also feeds the **wraith feast**: a cursed scroll of
+genocide on a non-graveyard level summons four to six wraiths at
+your feet (see [Farming wraiths](#a-note-on-wraiths)).
 
 The **tinning kit** turns a fresh corpse (`a`pply, then select the
-corpse) into a tin: 450 nutrition's worth of preserved food that
-keeps indefinitely. The interesting part is that tin-eating skips
-the raw-corpse poison and acid damage checks. A tinned killer bee
-or acid blob is safe to eat with no resistance, and the
-intrinsic-grant still applies, so the kit doubles as a way to
-grind poison or [acid resistance](#damage-resistances) without taking the per-corpse
-hits. One warning the kit doesn't give: tinning a cockatrice
-without gloves petrifies you on the spot.
+corpse) into a tin: 450 nutrition of preserved food that keeps
+indefinitely. Tin-eating skips the raw-corpse poison and acid
+damage checks, so a tinned killer bee or acid blob is safe to eat
+with no resistance, and the intrinsic-grant still applies. The kit
+doubles as a way to grind poison or
+[acid resistance](#damage-resistances) without taking the
+per-corpse hits. Don't tin a cockatrice without gloves; you
+petrify on the spot.
+
+The **pickaxe** and the heavier **dwarvish mattock** dig through
+most walls and floors. Apply (`a`) and pick a direction for a
+sideways tunnel, or apply downward to chip through the floor for
+the straight-shaft escape that ends many ascension runs. Wand of
+digging is faster in a straight line but burns charges. Sokoban
+walls and most of Gehennom are non-diggable. Applied to a statue,
+a pickaxe also breaks it (dropping any contents, or animating the
+sculpted monster if it is a statue trap).
 
 The **crystal ball** is a one-question oracle when applied (`a`):
 pick a glyph class, point at a square, learn what's there or what's
@@ -6387,18 +6395,12 @@ Intelligence is low. A blessed ball wants Int 16+ to be reliable,
 and a cursed ball can hallucinate, blind, or simply shatter. Drop
 it on an altar before the first use.
 
-The **magic lamp** must be blessed before you rub it: cursed magic
-lamps never grant the wish, uncursed are around 40%, blessed are
-~80%. Take it to a co-aligned altar first.
-
 The **can of grease** is the cheapest hardening upgrade in the
-dungeon. Apply it to a worn armor piece and the slick coat makes
-the wearer harder to grab and steal from: nymphs slide off, the
-Riders' grab attacks miss, and weapon-snatch attempts fail. Applied
-to a bag of holding, it waterproofs the contents like an oilskin
-sack, handy before crossing Medusa's moat or the Plane of Water.
-The coat wears off after a few hits, so it's per-fight protection,
-not a long-lasting investment.
+dungeon. Applied to worn armor, the slick coat makes the wearer
+harder to grab and steal from: nymphs slide off, Riders' grab
+attacks miss, weapon-snatch attempts fail. Applied to a bag of
+holding, it waterproofs the contents like an oilskin sack. The
+coat wears off after a few hits, so it's per-fight protection.
 
 ---
 
@@ -6717,6 +6719,476 @@ boots over a moat is the moment you'll see why.
 ---
 
 ## Part Five: Mastery
+
+### Playing Each Role
+<!-- audit
+2026-06-06:
+- Archeologist intrinsics: Searching XL 1, Stealth XL 5, Fast XL 10 (attrib.c:27-30 arc_abil)
+- Barbarian intrinsics: Poison res XL 1, Fast XL 7, Stealth XL 15 (attrib.c:32-35 bar_abil)
+- Cave Dweller intrinsics: Fast XL 7, Warning XL 15 (attrib.c:37-39 cav_abil); no early resistances
+- Healer intrinsics: Poison res XL 1, Warning XL 15 (attrib.c:41-43 hea_abil)
+- Knight intrinsics: Fast XL 7 only (attrib.c:45 kni_abil)
+- Monk intrinsics: see invisible/sleep res/Fast XL 1, poison XL 3, stealth XL 5, warning XL 7, searching XL 9, fire XL 11, cold XL 13, shock XL 15, teleport control XL 17 (attrib.c:47-58 mon_abil)
+- Priest intrinsics: Warning XL 15, Fire resistance XL 20 (attrib.c:60-62 pri_abil)
+- Ranger intrinsics: Searching XL 1, Stealth XL 7, See invisible XL 15 (attrib.c:64-67 ran_abil)
+- Rogue intrinsics: Stealth XL 1, Searching XL 10 (attrib.c:69-71 rog_abil)
+- Samurai intrinsics: Fast XL 1, Stealth XL 15 (attrib.c:73-75 sam_abil)
+- Tourist intrinsics: Searching XL 10, Poison resistance XL 20 (attrib.c:77-79 tou_abil)
+- Valkyrie intrinsics: Cold res XL 1, Stealth XL 3, Fast XL 7 (attrib.c:81-84 val_abil)
+- Wizard intrinsics: Warning XL 15, Teleport control XL 17 (attrib.c:86-88 wiz_abil)
+- Skill tables verified in u_init.c:257-572 (Skill_A through Skill_W); Archeologist pick-axe/saber/boomerang/whip Expert, Divination Expert; Barbarian two-handed sword/axe/short sword/hammer Expert, Bare-handed Combat MASTER; Cave Dweller club/mace/quarterstaff/spear Expert, Sling Expert, Bare-handed Combat MASTER; Healer knife/quarterstaff/dart/unicorn horn/healing Expert; Knight long sword/lance/riding Expert; Monk martial arts GRAND MASTER, healing Expert; Priest 6 blunt weapons all Expert (club/mace/morning star/flail/hammer/quarterstaff), healing/divination/cleric Expert; Ranger 6 ranged weapons Expert (bow/sling/crossbow/dart/spear/dagger+boomerang); Rogue dagger/knife/short sword/two-weapon/bare-handed Expert; Samurai long sword/two-handed sword/short sword/bow/shuriken/two-weapon Expert, Martial Arts Master; Tourist dagger/short sword/dart Expert only; Valkyrie dagger/axe/long sword/two-handed sword/hammer/spear Expert; Wizard four spell schools Expert + dagger/quarterstaff/dart Expert
+- body armor -20 to-hit Monk penalty (uhitm.c:397-401)
+- Monk bare-handed bonus = (XL/3)+2 with no weapon and no shield (uhitm.c:400)
+- shopkeeper Tourist surcharge: visible touristy shirt OR Tourist below MAXULEV/2 (=15) (shk.c:2949-2951)
+- Excalibur fountain dip: Knight 1-in-6, other Lawful 1-in-30 (artifact.c)
+- Mjollnir is Valkyrie's guaranteed first sacrifice gift regardless of alignment per role.c artifact assignment
+- Demonbane is Priest's guaranteed first sacrifice gift (artifact.c gift table)
+- Eyes of the Overworld is Monk quest artifact (role.c:257 ART_EYES_OF_THE_OVERWORLD); grants MR + astral vision when worn
+- Cave Dweller skill table: P_BARE_HANDED_COMBAT P_MASTER (u_init.c:324); confirmed Cave Dweller reaches BHC Master (alongside Barbarian)
+- Samurai martial arts caps at Master (u_init.c:487), not Grand Master; Monk is the only Grand Master
+- Healer wand of sleep: starting wand has 1d4+4 charges per u_init.c:81-90 starting kit
+- Priest sacrifice gift: Demonbane is silver mace in 5.0 (book confirms at line 266-267)
+- Wizard quarterstaff gives spell failure rate bonus (book confirms at line 333-334); Wizard Pw regen factor 3 vs 4 for others (spell.c via book audit at 6743)
+- Tourist Quest artifact: Platinum Yendorian Express Card, grants MR + telepathy + half spell damage (artilist.h)
+- Holy water mechanic: praying on a co-aligned altar with potions of water blesses them all; dipping plain water into holy water blesses one plain potion but consumes one holy water (1:1 exchange, not multiplication, per potion.c:2460-2466 and H2Opotion_dip)
+- Wikipedia/NetHackWiki strategy text consulted for roles (Monk, Archeologist, Tourist); checked claims against source
+-->
+
+The Mazes treat different roles very differently. The Knight's
+full-armor mounted combat would not work for a Monk, whose
+weaponless martial arts need a robe and no body armor. Starting
+kits, skill caps, intrinsic ladders, and restrictions add up to
+thirteen distinct games inside the same dungeon. The sections
+that follow give role-specific advice for each.
+
+#### Archeologist
+
+Indiana Jones, basically. You start with a bullwhip, a pickaxe, a
+tinning kit, a touchstone, and a sack: a kit built for exploration
+rather than combat. Your starting Strength and HP are modest, so
+your first ten levels lean on stealth and footwork rather than
+firepower. Survive that stretch and you become one of the better
+mid-game spellcasters in the game.
+
+**Intrinsics:** Searching at XL 1, Stealth at XL 5, intrinsic speed at
+XL 10.
+
+**Skill caps:** Pick-axe and saber both reach Expert, which makes a
+silver saber your endgame weapon and the pickaxe your mid-game one.
+Divination Spell hits Expert too, and your special spell is magic
+mapping, one of the most valuable spells in the game.
+
+**Your pickaxe gives you mobility no other role has.** It skips
+locked doors, chips a diagonal exit from a surrounded room, escapes
+upward when you're cornered, and digs the straight downward shaft
+that finishes most ascension runs in a handful of turns. Train
+Pick-axe to Skilled early by chopping at zombies and ogres; the
+slot cost pays back many times over by the Castle.
+
+**Your touchstone identifies gems.** An Archeologist applies an
+uncursed touchstone as if it were blessed, so any gem you find
+can be tested for whether it's real or worthless glass. Rub gems
+before you offer them to a unicorn, before you sell, and on a
+co-aligned altar for full ID.
+
+**Pivot:** by mid-game your Wisdom and Intelligence are within reach
+of Wizard-tier casting. Once you've read magic missile, identify, and
+cone of cold, you are a caster who happens to swing a saber, not a
+fighter who happens to read books.
+
+**Avoid:** breaking historic statues (a −1 alignment hit per
+offense, and the Archeologist is the only role that automatically
+recognizes which statues are historic). Getting Burdened collecting
+too many items; the role has a mediocre Str cap.
+
+#### Barbarian
+
+A Barbarian's plan is mostly: hit the thing in front of you. You
+start with poison resistance, good Strength, a two-handed sword or
+battle-axe, and an off-hand short sword. Your skill list reads like
+a weapon shop's inventory; the early dungeon is much easier when
+you can carve a path through it without thinking too hard.
+
+**Intrinsics:** Poison resistance at XL 1, intrinsic speed at XL 7,
+Stealth at XL 15.
+
+**Skill caps:** Two-handed sword Expert (or Axe Expert if you took
+the axe start), Short Sword Expert, Hammer Expert. Bare-handed
+combat reaches Master, so if you ever lose your weapon to a
+polymorph trap or a wand of disarming you remain a real melee
+threat with your fists.
+
+**Twoweapon early.** The starting twin pair (two-handed sword plus
+short sword, or battle-axe plus short sword) is positioned for a
+two-weapon transition. Once you find a long sword, drop the short
+sword for it and twoweapon for mauling damage.
+
+**Pivot:** around XL 12 to 15 most Barbarians want magic resistance
+and discover that without spell skill they have only artifact and
+armor options. Aim for gray dragon scale mail in the Castle, or
+crown for Stormbringer if you are Chaotic; the Magicbane option is
+gated behind a sacrifice gift that may not roll.
+
+**Avoid:** picking fights you cannot escape. Barbarians have no
+escape spells and no intrinsic teleport, so once surrounded you
+fight your way out or pray. Skipping early quaff-tests; with poison
+resistance handed to you from turn 1, blind quaffs are unusually
+safe.
+
+#### Cave Dweller
+
+Primitive but tough. You start with a club, a sling, a pile of flint
+stones, and good HP growth. Cave Dwellers are the other role (with
+Barbarian) that pushes bare-handed combat to Master, so even
+unarmed you do real damage. The simplest role in the game: few
+tools, no starting spellbooks, no language quirks.
+
+**Intrinsics:** Speed at XL 7, Warning at XL 15. No early
+resistances at all; this is the role that earns those resistances
+one corpse at a time.
+
+**Skill caps:** Club, mace, quarterstaff, and spear all Expert, plus
+the sling Expert (Cave Dwellers train sling as easily as anyone).
+Bare-handed combat reaches Master.
+
+**Pivot:** the Cave Dweller's mid-game is built from the corpses
+they eat. Without role-granted resistances, you climb the resistance
+ladder by eating fire ants, killer bees, giants, and the right
+molds. Plan to eat every safe intrinsic-granting corpse you can; an
+amulet of life saving is more valuable here than for almost any
+other role.
+
+**Avoid:** putting too much weight on Intelligence. Cave Dwellers
+have the lowest Int cap of any role and the weakest spell access;
+aside from identify or detect-X scrolls you will mostly be reading
+rather than casting. The gnome racial option leans toward casting,
+so pick dwarf or human if you want the heaviest melee.
+
+#### Healer
+
+You start with a stethoscope, four potions of healing, four of
+extra healing, a wand of sleep, three pre-blessed spellbooks
+(healing, extra healing, stone-to-flesh), poison resistance, and
+immunity to sickness. The stethoscope shows monster HP and your own
+internal state; the wand of sleep makes early combat much easier
+than the medical kit suggests.
+
+**Intrinsics:** Poison resistance at XL 1, Warning at XL 15.
+
+**Skill caps:** Knife Expert, Quarterstaff Expert, Dart Expert,
+Unicorn Horn Expert (a permanent dividend on every horn you find),
+Healing Spell Expert. Healing pre-blessed books guarantee successful
+reads from turn 1.
+
+**The wand of sleep is your survival.** A handful of charges that
+put even serious monsters down for several turns, and most of the
+early dungeon has no sleep resistance. Spend one charge per
+dangerous encounter, never on an easy kill, and you'll bridge to XL
+6 before running out. Recharge it later with scrolls of charging or
+a magic marker.
+
+**Sickness immunity is a free quaff-test.** Healers cannot be made
+ill by potions of sickness, so unknown clear-colored potions can be
+tested safely. Dip a unicorn horn into the leftover sickness potion
+to convert it to fruit juice.
+
+**Pivot:** around XL 10, Healers move from "survive on potions and
+sleep" to casting extra healing as a Pw battery. At Skilled in
+the healing school, your healing casts behave like blessed potions.
+
+**Avoid:** spending sleep charges on small monsters. Selling the
+stethoscope.
+
+#### Knight
+
+You start with a saddled pony, a +1 long
+sword, and a +1 lance. The pony is a credible early-game ally, and
+the basis of your unique attack: a jousting blow from horseback
+does heavy damage, and Knights are the only role with Lance at
+Expert. Two catches: chivalry imposes alignment penalties for
+attacking helpless or fleeing monsters, so pick your fights; and
+the lance is useless on foot.
+
+**Intrinsics:** Speed at XL 7. That is the entire ladder.
+
+**Skill caps:** Long Sword Expert (set up for Excalibur), Lance
+Expert, Riding Expert, Bare-handed Combat Expert. Several blunt
+and edged weapons reach Skilled for fallback options.
+
+**Mount strategically.** You can `#ride` from turn 1, but a failed
+mount costs 10 to 14 HP ("slipped while mounting a saddled pony" is
+a noted scoreboard death), and at XL 1 the failure rate is around
+45%. Two unlucky tries kill a starting Knight. Most Knights stay
+on foot until the pony grows up into a horse and then a warhorse:
+by then you have intrinsic speed, more XL behind the mount roll,
+and a steed worth riding.
+
+**Excalibur is almost guaranteed.** A Lawful Knight dipping a long
+sword into a fountain at XL 5 or higher has a 1-in-6 chance per dip,
+five times better than other Lawful roles. Most runs find Excalibur
+before the Mines luckstone.
+
+**Pivot:** with Excalibur and a warhorse, mounted fighting pays
+off: long-sword swings with the Riding bonus plus jousting against
+fleeing targets you can position. A late-game Knight on a
+polymorphed dragon mount is one of the strongest melee builds.
+
+**Avoid:** jousting a fleeing, sleeping, or paralyzed monster (a
+chivalry alignment hit and an alignment record you cannot recover
+quickly). Retrying a failed mount when you're already low on HP.
+
+#### Monk
+
+Bare-handed combat by design. The intrinsic ladder is the broadest
+in the game and your Martial Arts caps at Grand Master, hitting +7
+to-hit and +9 damage with no weapon. The trade-off is a steep set
+of armor restrictions: a body suit costs −20 to-hit, a shield kills
+your martial-arts bonus, and metallic helms, gloves, and boots all
+add a casting penalty. The default Monk fights through the dungeon
+in a robe with no body armor.
+
+**Intrinsics:** see invisible, sleep resistance, and intrinsic
+speed all at XL 1; poison at 3; stealth at 5; warning at 7;
+searching at 9; fire 11; cold 13; shock 15; teleport control 17.
+Eating the matching corpses just accelerates a schedule you'd
+mostly reach anyway.
+
+**Skill caps:** Martial Arts Grand Master, Healing Spell Expert,
+Cleric and Escape Spells Skilled. The four allowed weapon skills
+(quarterstaff, spear, crossbow, shuriken) cap at Basic, so weapon
+training is for the Staff of Aesculapius or the silver spear
+endgame and not much else.
+
+**Gear by slot:** starting robe (+20 spellcasting), elven leather
+helm, gauntlets of dexterity, speed boots, no shield, no body
+armor. The robe is irreplaceable; protect it from polymorph traps
+from D7 onward with a ring of polymorph control or an amulet of
+unchanging.
+
+**Pivot:** the Eyes of the Overworld quest artifact grants magic
+resistance and astral vision, which frees your cloak slot for the
+robe instead of cloak of magic resistance. Most clean Monk runs
+postpone the Quest until after the Castle, then complete the Quest
+for the Eyes.
+
+**Avoid:** eating meat (−1 alignment per offense; vegetarian is
+essentially free for Monks). Wearing iron skull cap, iron shoes, or
+gauntlets of power (all metallic, all penalize casting). Picking up
+a shield for the AC.
+
+#### Priest
+
+Sacrifice-gift specialists. Priests sense the blessed, cursed, and
+uncursed status of every item on sight, so you walk through the
+dungeon knowing which gear is safe to wear. Your first sacrifice
+gift is guaranteed to be Demonbane (in 5.0, a silver mace), and
+your stack of four holy waters lets you re-bless gear at will.
+
+**Intrinsics:** Warning at XL 15, Fire resistance at XL 20. Almost
+nothing innately. Priests trade intrinsics for divine favor.
+
+**Skill caps:** six blunt weapons all reach Expert (club, mace,
+morning star, flail, hammer, quarterstaff), which means
+whatever blunt weapon drops first becomes your trainable kit.
+Healing, Divination, and Cleric Spells all Expert.
+
+**You can refill holy water at will.** Stack potions of water on a
+co-aligned altar and pray; the entire stack becomes holy water
+(each dip elsewhere consumes one holy water but blesses one plain
+water, a 1:1 exchange not a multiplier). The supply scales with
+how much water you find. Save at least one for the trail.
+
+**Pivot:** around XL 14 Priests transition from "Demonbane bops
+things" to a clerical-spell cycle: protection prayer, healing,
+remove curse, and the heavy clerical attack spells. High Wis means
+high prayer success, so #pray during low-HP fights against tough
+foes.
+
+**Avoid:** abusing your luck (breaking mirrors, angering
+shopkeepers, eating your own race) before sacrificing on a
+co-aligned altar; your god may visit with a wand of death. Selling
+holy water for shop credit; it's worth far more in your pack than
+as gold.
+
+#### Ranger
+
+The ranged role. You start with a bow, a generous supply of arrows,
+a dagger, a +2 cloak of displacement, and Searching from XL 1.
+Multishot is your engine: a Ranger at Expert bow fires two or three
+arrows per turn at high Str, and your elven racial option also
+gains sleep resistance at XL 4.
+
+**Intrinsics:** Searching at XL 1, Stealth at XL 7, See invisible at
+XL 15.
+
+**Skill caps:** Bow, Sling, Crossbow, Dart, Spear, Dagger, and
+Boomerang all Expert. Almost every ranged weapon in the game is at
+your top tier, plus Divination Spell Expert for utility casting.
+
+**Guard your cloak of displacement.** +2 enchanted from turn 1 is
+an endgame-quality defensive item. If you find a cloak of magic
+resistance, carry both and swap based on threat (magic resistance
+for monster spells, displacement for melee crowds).
+
+**Pivot:** mid-game Rangers wish for or polypile a stack of silver
+arrows to enchant. Highly enchanted silver arrows on a Ranger at
+Expert bow are one of the highest damage-per-turn options in the
+game.
+
+**Avoid:** mulching your +2 arrow stack. Keep the cheaper found
+arrows as your training stack and reserve the +2s for hard fights.
+Engaging in melee on the front line; your role is ranged.
+
+#### Rogue
+
+NetHack's thief: daggers, stealth, and backstab. You start with a
+short sword, six daggers, leather armor, a lock pick, a sack, and a
+potion of sickness. The lock pick opens every locked door, chest,
+and box from turn 1. Stealth at XL 1 lets you walk past sleeping
+monsters, and backstab adds +1 to +XL bonus damage against fleeing
+or helpless targets.
+
+**Intrinsics:** Stealth at XL 1, Searching at XL 10.
+
+**Skill caps:** Dagger Expert, Knife Expert, Short Sword Expert,
+Two-Weapon Combat Expert, Bare-handed Combat Expert. The two-weapon
+synergy with daggers is unique to the role.
+
+**Throw daggers; do not stab.** Rogues get a multishot bonus on
+thrown daggers, and the backstab modifier applies to throws against
+fleeing targets too. A high-enchantment dagger stack carries you
+through Gehennom.
+
+**Pivot:** around XL 8 you can poison your darts and daggers with
+the starting sickness potion or any poison potion you find. Coated
+daggers double or triple damage against non-poison-resistant targets.
+
+**Avoid:** noisy actions that waste your stealth advantage
+(kicking, casting some spells, attacking unsleeping crowds).
+Selling the lock pick: Rogues get a +25 to +30 bonus on
+lock-picking that doesn't apply to regular keys.
+
+#### Samurai
+
+Katana, off-hand wakizashi, yumi bow with arrows. Samurai start
+with intrinsic speed and a strong opening melee kit. The katana is
+a long sword underneath, so it shares long sword skill: with Long
+Sword and Two-Handed Sword both at Expert, Two-Weapon Combat at
+Expert, and a guaranteed katana start, the role is set up for a
+katana plus long sword two-weapon combination.
+
+**Intrinsics:** Speed at XL 1, Stealth at XL 15.
+
+**Skill caps:** Long Sword, Two-Handed Sword, Short Sword, Bow,
+Shuriken, and Two-Weapon Combat all Expert; Martial Arts Master
+(the only role besides Monk with Martial Arts at all).
+
+**The wakizashi is the wrong off-hand.** It's a short sword, while
+your katana is a long sword, so the two don't share skill. Drop it
+for any long sword (the Mines usually provides one) and twoweapon
+for the matched-skill bonus.
+
+**Pivot:** mid-game Samurai who invested in bow can pivot to a
+multishot ranged build. Yumi at Expert with high Str gives 2 or 3
+arrows per turn, comparable to a Ranger build on a role that
+already starts strong in melee.
+
+**Avoid:** keeping the wakizashi for sentimental reasons.
+Forgetting the yumi: Bow at Expert plus speed puts two or three
+arrows on a target per turn.
+
+#### Tourist
+
+The hardest role. Low HP, no melee weapon, a Hawaiian shirt with
+zero base AC. You start with four scrolls of magic mapping, an
+expensive camera, 21 to 40 +2 darts, a credit card, two potions of
+extra healing, ten random food items, and a 1-in-5 chance of a
+magic marker. Most Tourists die in the first thousand turns; those
+that survive become disproportionately powerful in the late game.
+
+**Intrinsics:** Searching at XL 10, Poison resistance at XL 20.
+Both late.
+
+**Skill caps:** Dart Expert, Dagger Expert, Short Sword Expert.
+That is the entire combat-skill list; every other weapon caps at
+Basic, including most melee weapons you might find.
+
+**Your camera is the early-game survival tool.** Apply it at any
+monster to blind it (and often to scare it). Camera-flash, dart
+from range, let the pet finish, and repeat. Save scrolls of magic
+mapping for levels that look genuinely nasty.
+
+**The Tourist tax.** Shopkeepers charge Tourists below XL 15 a +33%
+markup and offer 1/3 base on sales. Below XL 15 you are literally
+priced as a sucker. Most ascending Tourists do their shopping after
+Quest completion.
+
+**Pivot:** the Tourist quest artifact, the Platinum Yendorian
+Express Card, is one of the best in the game: magic resistance,
+telepathy, and half spell damage all while carried, plus charge
+items by invocation. Tourists who reach the Quest become caster-
+heavy mid-game on a role nobody expects to cast.
+
+**Avoid:** rushing to Minetown without an upgrade weapon. Shopping
+below XL 15. Wearing the Hawaiian shirt if you plan to enchant it
+up; before you protect it with magic resistance it's likely to be
+destroyed (a polymorph trap or the destroy-armor monster spell).
+
+#### Valkyrie
+
+Recommended for first serious attempt. You start with a long sword
+(or spear), a small shield, intrinsic cold resistance, and good
+combat stats. Mjollnir, a +d5/+d24 war hammer that returns when
+thrown at Strength 25, drops as your guaranteed sacrifice gift
+regardless of alignment, so the late-game weapon question is solved
+early.
+
+**Intrinsics:** Cold resistance at XL 1, Stealth at XL 3, intrinsic
+speed at XL 7.
+
+**Skill caps:** Long Sword Expert, Two-Handed Sword Expert, Axe
+Expert, Hammer Expert (Mjollnir's skill), Spear Expert, Dagger
+Expert. The widest practical weapon-skill range in the game.
+
+**Excalibur is also possible.** Lawful Valkyries dipping a long
+sword into a fountain at XL 5+ get the standard 1-in-30 per dip.
+Fountain-dip until it appears, then transition to Mjollnir at the
+altar.
+
+**Pivot:** Valkyries already have most of the combat they need;
+mid-game focus shifts to magic resistance (gray dragon scale mail)
+and reflection (shield of reflection or amulet of reflection from
+Sokoban). The Castle wand of wishing usually settles the magic
+resistance question with one wish.
+
+**Avoid:** coasting through the early game without preparing for
+Gehennom. Magic attacks bypass your HP and AC, so line up magic
+resistance and reflection before things get hard.
+
+#### Wizard
+
+The undisputed caster. You start with a quarterstaff, a +2 cloak of
+magic resistance, a wand, two rings, three potions, three scrolls,
+force bolt plus a random spellbook, and a magic marker.
+
+**Intrinsics:** Warning at XL 15, Teleport control at XL 17.
+
+**Skill caps:** Four spell schools at Expert (Attack, Divination,
+Escape, Matter); Healing, Enchantment, Cleric Skilled. Quarterstaff
+and Dagger Expert. Wielding a quarterstaff lowers spell-failure.
+
+**Spell-school advancement IDs spellbooks.** In 5.0, training a
+spell school auto-reveals book appearances at higher levels.
+Wizards start knowing every level-1 plus level-3 attack and
+enchantment.
+
+**Pivot:** by XL 10 the Wizard mid-game is "get every spellbook."
+
+**Avoid:** force-bolting glass: a nymph's mirror is −2 Luck and
+shattered potions are wasted. Going hungry: you start with no food
+and casting drains nutrition fast.
+
+---
 
 ### Spellcasting
 <!-- audit
@@ -8792,6 +9264,12 @@ NetHack pins the message line at row 0 no matter what you set.
   effect even when the hero is flying or levitating. So flying/
   levitation does not let you skip Sokoban's pits — different
   mechanic from the Luck penalty.
+- digging walls is blocked by the level's `solidify` flag, which
+  sets W_NONDIGGABLE and W_NONPASSWALL on every wall (sp_lev.c:
+  315-323 solidify_map). Wand of digging fails on Sokoban walls
+  and xorn / earth-elemental polyforms can't phase through them
+  either. Like the air-currents mechanic above, this is a level-
+  design constraint rather than a Luck penalty.
 - counted as the `sokocheat` conduct counter (insight.c:2219,
   topten.c:446) — affects the "Sokoban completion" achievement
 -->
@@ -8802,10 +9280,10 @@ You push boulders onto pits to fill them and create a path to the
 next staircase. The penalty for cheating (squeezing past or
 stepping onto a boulder instead of pushing it, destroying boulders
 with wands, reading a scroll of earth in Sokoban) is a −1 Luck
-penalty per infraction, and it stacks. Flying and levitation
-don't help, either — Sokoban pits and holes apply *"Air currents
-pull you down…"* the moment you step over one, bypassing the
-usual float-over escape. Play fair.
+penalty per infraction, and it stacks. Digging walls doesn't work
+in Sokoban: the rock is too hard. Flying and levitation don't
+help either: *"Air currents pull you down…"* if you try to fly
+over an unfilled pit. Play fair.
 
 > *Solutions originally compiled by Boudewijn Waijers, with
 > contributions by Jukka Lahtinen and others, for the steelypips.org
@@ -9756,9 +10234,7 @@ The real prestige comes from combining multiple conducts. A
 vegetarian atheist run is substantially harder than either alone.
 A pacifist illiterate vegan foodless atheist weaponless run is
 the stuff of legends (and has been done). The game's end screen
-lists all maintained conducts, and the community has long
-celebrated players who push the boundaries of what's possible
-within self-imposed constraints. For scale: on the public NAO
+lists all maintained conducts. For scale: on the public NAO
 server, about one in nine ascensions is wishless, and only one
 in eighty is foodless.
 
@@ -9796,11 +10272,10 @@ during the run.
 
 Start with absolutely nothing: no gold, no inventory, no armor, no
 starting weapon. Set `OPTIONS=pauper` in your rcfile (rcfile or
-`NETHACKOPTIONS` env only; the in-game `O` menu cannot toggle it). Pauper
-implicitly sets nudist as well, so you also begin without armor.
-Pauper is a permanent conduct you never lose: it does not forbid
-acquiring or spending gold later. The conduct is about starting
-empty, not about staying penniless.
+`NETHACKOPTIONS` env only; the in-game `O` menu cannot toggle it).
+Pauper implicitly sets nudist. It is a permanent conduct you never
+lose: it does not forbid acquiring or spending gold later, just
+starting empty.
 
 To keep the start from being impossible, the game compensates:
 you get two unspent weapon-skill slots and your role knows one
@@ -9858,11 +10333,11 @@ you just don't get the warning that it happened. Treat empty
 silence near a `F`-class monster as the same threat as the
 usual SCREECH.
 
-Many monster warnings, environmental cues (vaults, fountains, doors
-opening off-screen), and status messages arrive as sounds. Permadeaf
-requires navigating the dungeon by sight and logic alone, which turns
-out to be possible and occasionally educational about how much
-information you normally get for free.
+Monster warnings, environmental cues (vaults, fountains, doors
+opening off-screen), and status messages all arrive as sounds.
+Permadeaf navigates by sight and logic alone, which is possible,
+and educational about how much information you normally get for
+free.
 
 #### Sokoban (new in 5.0)
 <!-- audit
@@ -9880,9 +10355,7 @@ costs **1 point of Luck** and increments the conduct counter:
 **squeezing past** a boulder via a small or empty-handed form,
 **fracturing** a boulder with a wand of striking, **polymorphing**
 a boulder, reading a **scroll of earth**, or **dismounting** onto
-a boulder. The game tracks violations automatically. The conduct
-is for players who enjoy Sokoban's boulder-shoving and want their
-playthrough to acknowledge a clean solve.
+a boulder. The game tracks violations automatically.
 
 #### Bonesless (new in 5.0)
 <!-- audit
@@ -9897,9 +10370,8 @@ playthrough to acknowledge a clean solve.
 -->
 
 Never inherit from another player's grave. Set `OPTIONS=!bones`
-in your rcfile; see [Saving and Bones](#saving-and-bones) for the
-mechanics. The conduct credits only an explicit opt-out, not a
-lucky run without bones.
+(see [Saving and Bones](#saving-and-bones)); a run that just
+happens to find no bones doesn't count.
 
 ---
 
@@ -13136,7 +13608,7 @@ Famine: \hyperref[starvation]{the second Rider, p.~\pageref*{starvation}}; \hype
 Feel: \hyperref[feelings-and-sounds]{feverish, lycanthropy infection, deathly sick, Pestilence or rot, p.~\pageref*{feelings-and-sounds}}\par
 \hyperref[fighting-style-caps]{Fighting style caps (bare hands, two-weapon, riding, martial arts), p.~\pageref*{fighting-style-caps}}\par
 Finger: \hyperref[engravings]{in dust, fragile but instant, p.~\pageref*{engravings}}; \hyperref[key-spells]{of death, the argument-ender, p.~\pageref*{key-spells}}\par
-Fire: \hyperref[dangerous-traps]{trap, sleeper threat for inventory, p.~\pageref*{dangerous-traps}}; \hyperref[useful-corpse-effects]{ant corpse, fire resistance, giant corpse, fire + Strength, p.~\pageref*{useful-corpse-effects}}; \hyperref[wishable-random-artifacts]{Brand, fire + firestorm invoke, p.~\pageref*{wishable-random-artifacts}}\par
+Fire: \hyperref[dangerous-traps]{trap, easy to underestimate, burns inventory, p.~\pageref*{dangerous-traps}}; \hyperref[useful-corpse-effects]{ant corpse, fire resistance, giant corpse, fire + Strength, p.~\pageref*{useful-corpse-effects}}; \hyperref[wishable-random-artifacts]{Brand, fire + firestorm invoke, p.~\pageref*{wishable-random-artifacts}}\par
 First: \hyperref[your-first-descent]{descent, welcome to the dungeon, p.~\pageref*{your-first-descent}}; \hyperref[fighting-smart]{swing wakes the room, p.~\pageref*{fighting-smart}}\par
 \hyperref[alignment]{First-game recommendation, p.~\pageref*{alignment}}\par
 \hyperref[gray-stones-four-stones-one-correct-answer]{Flint, useless ammunition, p.~\pageref*{gray-stones-four-stones-one-correct-answer}}\par
@@ -13463,7 +13935,7 @@ Sacrifice: \hyperref[sacrifice]{fresh within 50 turns, role-biased first gift, m
 \hyperref[feelings-and-sounds]{Sad feeling, your pet died offscreen, p.~\pageref*{feelings-and-sounds}}\par
 \hyperref[lizards]{Salamander, Gehennom-only, p.~\pageref*{lizards}}\par
 \hyperref[sacrifice]{Same-race sacrifice, forbidden, p.~\pageref*{sacrifice}}\par
-Samurai: \hyperref[the-roles]{katana opening, wakizashi is dead weight, giri-breaking penalty, p.~\pageref*{the-roles}}\par
+Samurai: \hyperref[the-roles]{katana opening, drop wakizashi for long sword off-hand, giri-breaking penalty, p.~\pageref*{the-roles}}\par
 \hyperref[apelike-creatures-y]{Sasquatch, fast, p.~\pageref*{apelike-creatures-y}}\par
 \hyperref[quest-artifacts]{Sceptre of Might (Caveman), conflict invoke, p.~\pageref*{quest-artifacts}}\par
 \hyperref[arachnids-and-centipedes-s]{Scorpius, named quest nemesis, p.~\pageref*{arachnids-and-centipedes-s}}\par
