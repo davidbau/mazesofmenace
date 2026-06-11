@@ -200,6 +200,31 @@ export const DESCR_BY_OTYP = {
     341: "VE FORBRYDERNE",
     342: "HACKEM MUCHE",
     343: "VELOX NEB",
+    // XTRA_SCROLL_LABEL entries (SC01..SC20) — appearance-only scroll labels
+    // (objects.h: SCROLL(NoDes, text, ...)) that participate in the scroll
+    // description shuffle (otyp 344..363).  Without these the shuffle could land
+    // a real scroll on one of these appearance slots and DESCR_BY_OTYP would
+    // fall back to the scroll's true name (e.g. "scroll labeled identify").
+    344: "FOOBIE BLETCH",
+    345: "TEMOV",
+    346: "GARVEN DEH",
+    347: "READ ME",
+    348: "ETAOIN SHRDLU",
+    349: "LOREM IPSUM",
+    350: "FNORD",
+    351: "KO BATE",
+    352: "ABRA KA DABRA",
+    353: "ASHPD SODALG",
+    354: "ZLORFIK",
+    355: "GNIK SISI VLE",
+    356: "HAPAX LEGOMENON",
+    357: "EIRIS SAZUN IDISI",
+    358: "PHOL ENDE WODAN",
+    359: "GHOTI",
+    360: "MAPIRO MAHAMA DIROMAT",
+    361: "VAS CORP BET MANI",
+    362: "XOR OTA",
+    363: "STRC PRST SKRZ KRK",
     364: "unlabeled",
     365: "parchment",
     366: "vellum",

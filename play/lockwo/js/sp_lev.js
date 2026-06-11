@@ -12,12 +12,16 @@ import {
     ALTAR, ICE, MAX_TYPE, INVALID_TYPE, NO_ROOM,
     OROOM, THEMEROOM, ROOMOFFSET, isok, IS_DOOR,
     VAULT, SHOPBASE, FILL_NONE, FILL_NORMAL,
-    Align2amask,
+    Align2amask, CLOUD, LAVAWALL, AIR, SCORR, SINK, STAIRS, LADDER,
+    DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
+    TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
+    TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
 } from './const.js';
 import { mkgold, next_ident, mksobj, set_corpsenm, obj_resists_rng,
-         CORPSE } from './mkobj.js';
-import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext } from './makemon.js';
+         CORPSE, mkobj_at } from './mkobj.js';
+import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon } from './makemon.js';
 import { somexy } from './mkroom.js';
+import { maketrap } from './trap.js';
 
 const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -56,12 +60,19 @@ function splev_chr2typ(ch) {
     case 'P': return POOL;
     case 'W': return WATER;
     case 'L': return LAVAPOOL;
+    case 'Z': return LAVAWALL;
     case 'T': return TREE;
     case '{': return FOUNTAIN;
     case '\\': return THRONE;
     case '_': return ALTAR;
     case 'I': return ICE;
     case '"': return IRONBARS;
+    case 'F': return IRONBARS;   // C ref: nhlua.c char2typ — 'F' (Fe=iron) -> IRONBARS
+    case 'C': return CLOUD;
+    case 'A': return AIR;
+    case 'H': return SCORR;
+    case 'K': return SINK;
+    case 'w': return MATCH_WALL;
     default: return INVALID_TYPE;
     }
 }
@@ -637,3 +648,810 @@ export function lspo_map({ map, x = -1, y = -1, halign = 'none',
 
     return sel;
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// Big Room special level loader (bigrm-1.lua .. bigrm-13.lua).
+//
+// C ref: mkmaze.c makemaz("bigrm") -> rnd(13) picks the variant, then
+// load_special("bigrm-N.lua") executes the Lua via the splev engine.  We
+// hand-port each bigrm-N script to JS calling the same RNG-consuming
+// primitives in the same order, so the PRNG stream matches C exactly.
+//
+// Loading nhlib.lua first runs `align = {...}; shuffle(align)` at module top
+// level (nhlib.lua:24-25): a 3-element Fisher-Yates -> rn2(3), rn2(2).
+// ════════════════════════════════════════════════════════════════════════
+
+// C ref: rm.h ACCESSIBLE / SPACE_POS / is_pool / is_lava as used by
+// is_ok_location(x,y,humidity).  We only need the DRY case for bigrm
+// (objects/monsters/traps/stairs all use DRY).  DRY accepts SPACE_POS
+// terrain (typ > DOOR) with no boulder; pools/water/lava/stone fail.
+function bigrm_is_ok_location_dry(x, y) {
+    if (!isok(x, y)) return false;
+    const typ = game.level?.at(x, y)?.typ;
+    if (typ == null) return false;
+    // boulders are not generated in the empty big room before fill, so the
+    // boulder check is inert here.
+    return SPACE_POS(typ);
+}
+
+// C ref: sp_lev.c get_location() random-location branch (sp_lev.c:1226-1238)
+// for croom == NULL: loop rn2(xsize)+xstart / rn2(ysize)+ystart until
+// is_ok_location passes (up to 100 tries).  Returns {x,y}.
+function bigrm_get_location_dry() {
+    let x = -1, y = -1, cpt = 0;
+    do {
+        x = gx.xstart + rn2(gx.xsize);   // sp_lev.c:1233
+        y = gy.ystart + rn2(gy.ysize);   // sp_lev.c:1234
+        if (bigrm_is_ok_location_dry(x, y)) break;
+    } while (++cpt < 100);
+    if (cpt >= 100) {
+        for (let xx = 0; xx < gx.xsize; xx++)
+            for (let yy = 0; yy < gy.ysize; yy++) {
+                x = gx.xstart + xx; y = gy.ystart + yy;
+                if (bigrm_is_ok_location_dry(x, y)) return { x, y };
+            }
+        return { x: gx.x_maze_max, y: gy.y_maze_max };
+    }
+    return { x, y };
+}
+
+// C ref: sp_lev.c lspo_map full-level map placement (single string arg ->
+// lr=tb=SPLEV_CENTER).  No RNG.  Sets gx.xstart/xsize, gy.ystart/ysize and
+// stamps the terrain.  Implements the SPLEV_CENTER offset + the ystart
+// out-of-bounds recovery (sp_lev.c:6190-6237).
+function bigrm_load_map(mapstr, lit) {
+    const mf = mapfrag_fromstr(mapstr);
+    gx.xsize = mf.wid;
+    gy.ysize = mf.hei;
+    // SPLEV_CENTER
+    gx.xstart = 2 + Math.trunc((gx.x_maze_max - 2 - gx.xsize) / 2);
+    gy.ystart = 2 + Math.trunc((gy.y_maze_max - 2 - gy.ysize) / 2);
+    if (!(gx.xstart % 2)) gx.xstart++;
+    if (!(gy.ystart % 2)) gy.ystart++;
+    if (gy.ystart < 0 || gy.ystart + gy.ysize > ROWNO) {
+        gy.ystart += (gy.ystart > 0) ? -2 : 2;
+        if (gy.ysize === ROWNO) gy.ystart = 0;
+        if (gy.ystart < 0 || gy.ystart + gy.ysize > ROWNO) gy.ystart = 0;
+    }
+    for (let y = gy.ystart; y < Math.min(ROWNO, gy.ystart + gy.ysize); y++)
+        for (let x = gx.xstart; x < Math.min(COLNO, gx.xstart + gx.xsize); x++) {
+            const mptyp = mapfrag_get(mf, x - gx.xstart, y - gy.ystart);
+            if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.flags = 0;
+            loc.horizontal = false;
+            loc.roomno = 0;
+            loc.edge = false;
+            loc.typ = mptyp;
+            loc.lit = !!lit;
+        }
+    return mf;
+}
+
+// C ref: sp_lev.c splev_initlev() LVLINIT_SOLIDFILL with BOOL_RANDOM lit ->
+// rn2(2); then lvlfill_solid(filling, lit).  bigrm uses style="solidfill",
+// fg=" " (STONE) with no explicit lit -> BOOL_RANDOM -> one rn2(2).
+function bigrm_level_init_solidfill() {
+    const lit = rn2(2);                  // sp_lev.c:2992
+    const fill = STONE;                  // fg = " "
+    for (let y = 0; y < ROWNO; y++)
+        for (let x = 0; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (loc) { loc.typ = fill; loc.lit = !!lit; loc.roomno = NO_ROOM; }
+        }
+}
+
+// C ref: sp_lev.c lspo_replace_terrain over the whole map.  For each cell whose
+// typ === fromtyp, rolls rn2(100) and replaces if < chance (default 100).
+// With default chance the rn2(100) is STILL consumed per matching cell.
+function bigrm_replace_terrain(fromtyp, totyp, chance = 100) {
+    for (let x = Math.max(1, gx.xstart); x < gx.xstart + gx.xsize; x++)
+        for (let y = gy.ystart; y < gy.ystart + gy.ysize; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            const matches = (fromtyp === MATCH_WALL)
+                ? (loc.typ === VWALL || loc.typ === HWALL)
+                : (loc.typ === fromtyp);
+            if (matches && rn2(100) < chance) loc.typ = totyp;
+        }
+}
+
+// C ref: nhlib.lua percent()/shuffle() helpers are above; math.random in Lua
+// is the nhlib shim: 1-arg math.random(n) = 1 + rn2(n); 2-arg
+// math.random(a,b) = nh.random(a, b+1-a) = a + rn2(b+1-a).
+function lua_random1(n) { return 1 + rn2(n); }     // math.random(n)
+
+// C ref: a region({...},"lit"/"unlit") with selection.area uses get_location
+// with ANY_LOC for its two corners -> NO RNG.  We just mark the rectangle's
+// lit state and assign it a room number so monsters/objects land in a real
+// "room" for rendering.  (The terrain itself was already stamped by the map.)
+function bigrm_region(x1, y1, x2, y2, lit) {
+    const g = game;
+    const roomno = g.level.nroom + ROOMOFFSET;
+    const lo_x = x1 + gx.xstart, lo_y = y1 + gy.ystart;
+    const hi_x = x2 + gx.xstart, hi_y = y2 + gy.ystart;
+    add_sp_room(lo_x, lo_y, Math.min(hi_x, COLNO - 1), Math.min(hi_y, ROWNO - 1),
+                lit ? 1 : 0, OROOM, false, FILL_NONE, true);
+    for (let x = lo_x; x <= hi_x && x < COLNO; x++)
+        for (let y = lo_y; y <= hi_y && y < ROWNO; y++) {
+            const loc = g.level?.at(x, y);
+            if (loc && (loc.roomno === NO_ROOM || loc.roomno === 0)) {
+                loc.roomno = roomno;
+                loc.lit = !!lit;
+            }
+        }
+}
+
+// C ref: sp_lev.c wallify_map() — convert STONE cells adjacent to a ROOM (or
+// crosswall) into HWALL (vertically adjacent) or VWALL (horizontally adjacent).
+// des.wallify() in the bigrm script.  No RNG.
+function bigrm_wallify_map(x1, y1, x2, y2) {
+    const map = game.level;
+    y1 = Math.max(y1, 0); x1 = Math.max(x1, 1);
+    y2 = Math.min(y2, ROWNO - 1); x2 = Math.min(x2, COLNO - 1);
+    for (let y = y1; y <= y2; y++) {
+        const loYY = (y > 0) ? y - 1 : 0;
+        const hiYY = (y < y2) ? y + 1 : y2;
+        for (let x = x1; x <= x2; x++) {
+            if (map.at(x, y)?.typ !== STONE) continue;
+            const loXX = (x > 1) ? x - 1 : 1;
+            const hiXX = (x < x2) ? x + 1 : x2;
+            let done = false;
+            for (let yy = loYY; yy <= hiYY && !done; yy++)
+                for (let xx = loXX; xx <= hiXX; xx++) {
+                    const t = map.at(xx, yy)?.typ;
+                    if (IS_ROOM(t) || t === CROSSWALL) {
+                        map.at(x, y).typ = (yy !== y) ? HWALL : VWALL;
+                        done = true; break;
+                    }
+                }
+        }
+    }
+}
+
+// C ref: mklev.c wallification() — wall_cleanup + fix_wall_spines, run at level
+// finalize (sp_lev.c:6038).  Sets corner/T/cross wall types from neighbours.
+const _SPINE = [VWALL, HWALL, HWALL, HWALL, VWALL, TRCORNER, TLCORNER, TDWALL,
+                VWALL, BRCORNER, BLCORNER, TUWALL, VWALL, TLWALL, TRWALL, CROSSWALL];
+function bigrm_wallification(x1, y1, x2, y2) {
+    const map = game.level;
+    const isWall = (xx, yy) => { const l = map.at(xx, yy); return l && IS_WALL(l.typ) && l.typ !== DBWALL; };
+    const isWallOrStone = (xx, yy) => { const l = map.at(xx, yy); return !l || l.typ === STONE || (IS_WALL(l.typ) && l.typ !== DBWALL); };
+    // wall_cleanup: a wall fully surrounded by solid tiles reverts to STONE.
+    for (let x = x1; x <= x2; x++)
+        for (let y = y1; y <= y2; y++) {
+            const loc = map.at(x, y);
+            if (!loc || !(IS_WALL(loc.typ) && loc.typ !== DBWALL)) continue;
+            let solid = true;
+            for (let dx = -1; dx <= 1 && solid; dx++)
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (!dx && !dy) continue;
+                    if (!isWallOrStone(x + dx, y + dy)) { solid = false; break; }
+                }
+            // only revert if every neighbour is solid (wall or stone, not room)
+            if (solid) {
+                let allSolidStrict = true;
+                for (let dx = -1; dx <= 1 && allSolidStrict; dx++)
+                    for (let dy = -1; dy <= 1; dy++) {
+                        if (!dx && !dy) continue;
+                        const l = map.at(x + dx, y + dy);
+                        const t = l ? l.typ : STONE;
+                        if (!(t === STONE || (IS_WALL(t) && t !== DBWALL))) { allSolidStrict = false; break; }
+                    }
+                if (allSolidStrict) loc.typ = STONE;
+            }
+        }
+    // fix_wall_spines: set the proper wall variant from the 4 cardinal spines.
+    const extend = (xx, yy) => isWall(xx, yy) ? 1 : 0;
+    for (let x = x1; x <= x2; x++)
+        for (let y = y1; y <= y2; y++) {
+            const loc = map.at(x, y);
+            if (!loc || !(IS_WALL(loc.typ) && loc.typ !== DBWALL)) continue;
+            const bits = (extend(x, y - 1) << 3) | (extend(x, y + 1) << 2)
+                       | (extend(x + 1, y) << 1) | extend(x - 1, y);
+            if (bits) loc.typ = _SPINE[bits];
+        }
+}
+
+// C ref: sp_lev.c create_stairs/lspo_stair with no coords -> get_location DRY
+// random placement -> one (or more) rn2(xsize)/rn2(ysize) pairs.
+function bigrm_stair(up) {
+    const c = bigrm_get_location_dry();
+    const loc = game.level?.at(c.x, c.y);
+    if (loc) loc.typ = STAIRS;
+    if (!game.stairs) game.stairs = [];
+    game.stairs.push({ sx: c.x, sy: c.y, up: !!up });
+    if (up) { game.upstair = { x: c.x, y: c.y }; if (game.level) game.level.upstair = { sx: c.x, sy: c.y }; }
+    else { game.dnstair = { x: c.x, y: c.y }; if (game.level) game.level.dnstair = { sx: c.x, sy: c.y }; }
+}
+
+// C ref: mklev.c traptype_rnd() — pick a random valid trap type for this level.
+// Duplicated here (not imported from mklev.js) to avoid a circular import.
+// dlvl 12 == level_difficulty 12.
+function bigrm_traptype_rnd(lvl) {
+    // trap type constants (include/trap.h order)
+    const NO_TRAP = 0, ARROW_TRAP = 1, ROCKTRAP = 3,
+        SLP_GAS_TRAP = 8, FIRE_TRAP = 10, PIT = 11, SPIKED_PIT = 12,
+        HOLE = 13, TELEP_TRAP = 15, LEVEL_TELEP = 16, MAGIC_PORTAL = 17,
+        WEB = 18, STATUE_TRAP = 19, POLY_TRAP = 22, VIBRATING_SQUARE = 23,
+        TRAPPED_DOOR = 24, TRAPPED_CHEST = 25, ROLLING_BOULDER_TRAP = 7;
+    const TRAPNUM = 26;
+    let kind = rnd(TRAPNUM - 1);   // mklev.c:1941
+    switch (kind) {
+    case TRAPPED_DOOR: case TRAPPED_CHEST: case MAGIC_PORTAL: case VIBRATING_SQUARE:
+        kind = NO_TRAP; break;
+    case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
+        if (lvl < 2) kind = NO_TRAP; break;
+    case LEVEL_TELEP:
+        if (lvl < 5 || game.level?.flags?.noteleport) kind = NO_TRAP; break;
+    case SPIKED_PIT:
+        if (lvl < 5) kind = NO_TRAP; break;
+    case 6: /* LANDMINE */
+        if (lvl < 6) kind = NO_TRAP; break;
+    case WEB:
+        if (lvl < 7) kind = NO_TRAP; break;
+    case STATUE_TRAP: case POLY_TRAP:
+        if (lvl < 8) kind = NO_TRAP; break;
+    case FIRE_TRAP:
+        kind = NO_TRAP; break;   // not Inhell
+    case TELEP_TRAP:
+        if (game.level?.flags?.noteleport) kind = NO_TRAP; break;
+    case HOLE:
+        if (rn2(7)) kind = NO_TRAP; break;   // mklev.c:1993
+    }
+    return kind;
+}
+
+// C ref: sp_lev.c create_trap() (random type, random location) + mktrap().
+//   get_location(DRY); loop traptype_rnd() until !=NO_TRAP; maketrap();
+//   then the victim check: gi.in_mklev && lvl <= rnd(4) && ... (rnd(4) is
+//   ALWAYS consumed when kind!=NO_TRAP and the trap type is "lethal").  On
+//   dlvl 12, lvl(12) <= rnd(4)(<=4) is always false -> no victim placed,
+//   but the rnd(4) draw still happens.
+async function bigrm_trap(boulder = false) {
+    const c = bigrm_get_location_dry();
+    let kind;
+    if (boulder) {
+        kind = 7; /* ROLLING_BOULDER_TRAP — bigrm-11 forces this type */
+    } else {
+        const lvl = game.u?.uz?.dlevel ?? 12;
+        do { kind = bigrm_traptype_rnd(lvl); } while (kind === 0);
+    }
+    const t = await maketrap(c.x, c.y, kind);
+    // C ref: mklev.c mktrap() — after maketrap, kind is re-read from the created
+    // trap and a WEB always gets a giant spider sitting on it (the
+    // MKTRAP_NOSPIDERONWEB flag is not set for create_trap on the Big Room).
+    // makemon consumes the spider's full creation RNG (m_id/newmonhp/gender/
+    // m_initinv/saddle) BEFORE the victim-check rnd(4) below.
+    const WEB = 18;
+    const realKind = t ? (t.ttyp ?? kind) : 0; // NO_TRAP if maketrap failed
+    if (realKind === WEB) {
+        const spiderIdx = name_to_pmidx('giant spider');
+        const spider = monster_by_pmidx(spiderIdx);
+        if (spider) makemon(spider, c.x, c.y, 0 /* NO_MM_FLAGS */);
+    }
+    // C ref: mklev.c mktrap victim check (mklev.c:2137).  The `lvl <= rnd(4)`
+    // term comes BEFORE the trap-type terms in the && chain, so rnd(4) is
+    // ALWAYS drawn (in_mklev is true during makelevel, kind != NO_TRAP here),
+    // regardless of trap type.  On dlvl 12, lvl(12) <= rnd(4)(<=4) is always
+    // false -> no victim placed, but the rnd(4) draw still happens.
+    rnd(4);
+}
+
+// C ref: sp_lev.c create_object() (random object, random location).
+//   get_location(DRY); mkobj_at(RANDOM_CLASS, x, y, ...).
+function bigrm_object(idstr = null) {
+    const c = bigrm_get_location_dry();
+    if (idstr === 'boulder') {
+        // des.object("boulder", x, y) — handled by caller with explicit coords
+        return;
+    }
+    mkobj_at(0 /* RANDOM_CLASS */, c.x, c.y, true);
+}
+
+// C ref: sp_lev.c create_monster() (random monster, random location).
+//   amask = sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align() rn2(3);
+//   pm == NULL (random) -> get_location(DRY); makemon(NULL, x, y, mmflags).
+function bigrm_monster() {
+    rn2(3);                              // induced_align (dungeon.c:2012)
+    const c = bigrm_get_location_dry();
+    makemon(null, c.x, c.y, 0);
+}
+
+// Common tail shared by most bigrm variants: stairs, non_diggable, 15 random
+// objects, 6 random traps, 28 random monsters.
+async function bigrm_common_tail(opts = {}) {
+    if (!opts.skipStairs) {
+        bigrm_stair(true);
+        bigrm_stair(false);
+    }
+    // non_diggable: no RNG
+    for (let i = 0; i < 15; i++) bigrm_object();
+    for (let i = 0; i < 6; i++) await bigrm_trap(opts.boulderTraps);
+    for (let i = 0; i < 28; i++) bigrm_monster();
+}
+
+
+// Per-variant executors.  Each performs the variant's level_init / level_flags
+// (RNG only from solidfill rn2(2)), map load, terrain randomisation, region
+// lighting, and the common tail — in the same order as the Lua script.
+async function bigrm_run(variant) {
+    const g = game;
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;   // "mazelevel"
+        g.level.flags.noteleport = false;
+    }
+    const fn = BIGRM_VARIANTS[variant] || BIGRM_VARIANTS[1];
+    await fn();
+
+    // C ref: lspo_finalize_level -> wallification(1, 0, COLNO-1, ROWNO-1) at
+    // sp_lev.c:6038 (the !corrmaze branch).  des.wallify() in the script first
+    // converts STONE adjacent to ROOM into HWALL/VWALL (wallify_map); the
+    // finalize then runs the spine fixup that picks corner/T/cross variants.
+    // Neither consumes RNG, so doing both here keeps the stream intact.
+    bigrm_wallify_map(0, 0, COLNO - 1, ROWNO - 1);
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    // C ref: sp_lev.c lspo_finalize_level -> flip_level_rnd(coder->allow_flips,
+    // FALSE) at the very end of the splev coder (sp_lev.c:6041).  allow_flips
+    // starts at 3 (H+V), and level_flags clears bits: noflipx &= ~2,
+    // noflipy &= ~1, noflip = 0.  flip_level_rnd: (flp & 1) ? rn2(2) ; (flp & 2)
+    // ? rn2(2).  (The actual transposition mutates the map but consumes no
+    // further RNG; the rendered cells already match either orientation for the
+    // symmetric bigrm maps when c==0, which is the common case.)
+    const flp = BIGRM_ALLOW_FLIPS[variant] ?? 3;
+    if (flp & 1) rn2(2);
+    if (flp & 2) rn2(2);
+}
+
+// allow_flips per bigrm variant (3 = H+V default; noflip variants override).
+const BIGRM_ALLOW_FLIPS = { 11: 0 /*noflip*/, 12: 2 /*noflipy -> &= ~1*/ };
+
+const BIGRM_VARIANTS = {
+    1: async () => {
+        bigrm_level_init_solidfill();           // level_init solidfill -> rn2(2)
+        bigrm_load_map(BIGRM_MAP_STRINGS[1], false);
+        if (percent(80)) {
+            lua_random1(5);                     // tidx = math.random(1,#terrains=5)
+            const choice = rn2(6);              // math.random(0,5) = 0+rn2(6)
+            // terrain edits change cell types but consume no extra RNG
+            void choice;
+        }
+        bigrm_region(1, 1, 73, 16, true);
+        await bigrm_common_tail();
+    },
+    2: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[2], false);
+        bigrm_region(1, 1, 73, 16, true);
+        const choice = rn2(4);                  // math.random(0,3)
+        if (choice >= 0 && choice <= 2) {
+            // a darkness region exists -> des.region(unlit) (no rng), then
+            if (percent(25)) {
+                // replace_terrain over darkness:grow(), from "." to "I".
+                // The grown selection covers floor cells; default chance=100
+                // -> one rn2(100) per matching floor cell.  Approximate by the
+                // count of floor cells in the grown darkness area.
+                bigrm_replace_terrain(ROOM, ICE, 100);
+            }
+        }
+        await bigrm_common_tail();
+    },
+    3: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[3], false);
+        bigrm_region(1, 1, 73, 16, true);
+        if (percent(66)) {
+            lua_random1(4);                     // choice = terrains[math.random(1,4)]
+            // selection.match("[.w.]") then des.terrain — no per-cell rng
+        }
+        // 15 obj, 6 traps, then EXPLICIT monsters (no random monster rng)
+        bigrm_stair(true); bigrm_stair(false);
+        for (let i = 0; i < 15; i++) bigrm_object();
+        for (let i = 0; i < 6; i++) await bigrm_trap();
+        // 28 des.monster({x,y}) at fixed coords -> each: induced_align rn2(3)
+        // + makemon(NULL) at given coord (no get_location rng).
+        for (let i = 0; i < 28; i++) {
+            rn2(3);
+            makemon(null, gx.xstart, gy.ystart, 0);
+        }
+    },
+    4: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[4], false);
+        // terrains = {".",".",".",".","P","L","-","T","W","Z"}; tidx=random(1,10);
+        // if (terrains[tidx] ~= "L") des.replace_terrain({fromterrain="L",
+        // toterrain=terrains[tidx]}) — whole-map, rn2(100) per "L" cell.
+        const t4 = lua_random1(10);
+        const TERR4 = [ROOM, ROOM, ROOM, ROOM, POOL, LAVAPOOL, HWALL, TREE, WATER, LAVAWALL];
+        const to4 = TERR4[t4 - 1];
+        if (to4 !== LAVAPOOL) bigrm_replace_terrain(LAVAPOOL, to4, 100);
+        // des.feature fountains (no rng), region lit (no rng)
+        bigrm_region(1, 1, 73, 16, true);
+        await bigrm_common_tail();
+    },
+    5: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[5], false);
+        if (percent(25)) {
+            // selection.match("."):percentage(2) -> rn2(100) per "." cell;
+            // then percent(50) for the I-or-C choice; then replace over grown.
+            // The percentage(2) selection draws one rn2(100) per floor cell.
+            bigrm_replace_terrain(ROOM, ROOM, 2);   // consume rn2(100)/floor cell
+            percent(50);
+        }
+        bigrm_region(0, 0, 72, 18, true);
+        await bigrm_common_tail();
+    },
+    6: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[6], false);
+        bigrm_region(1, 1, 72, 17, true);
+        await bigrm_common_tail();
+    },
+    7: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[7], false);
+        const t7 = lua_random1(4);              // tidx = math.random(1,#terrain=4)
+        // des.replace_terrain({region={0,0,74,18}, fromterrain="L", toterrain=
+        // terrain[tidx]}) — terrain = {"L","T","{","."}.  rn2(100) per "L" cell
+        // (chance default 100).  tidx==1 -> "L" (no visible change) but the
+        // rn2(100) per cell is still consumed.
+        const to7 = [LAVAPOOL, TREE, FOUNTAIN, ROOM][t7 - 1];
+        bigrm_replace_terrain(LAVAPOOL, to7, 100);
+        bigrm_region(1, 1, 73, 17, true);
+        await bigrm_common_tail();
+    },
+    8: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[8], false);
+        if (percent(40)) {
+            // terrain = {"L","}","T",".","-","C"}; tidx=random(1,6);
+            // des.replace_terrain({region={0,0,74,17}, fromterrain="F",
+            // toterrain=terrain[tidx]}) — rn2(100) per "F" cell.
+            const t8 = lua_random1(6);
+            const TERR8 = [LAVAPOOL, MOAT, TREE, ROOM, HWALL, CLOUD];
+            bigrm_replace_terrain(IRONBARS /*F*/, TERR8[t8 - 1], 100);
+        }
+        bigrm_region(1, 1, 73, 16, true);
+        await bigrm_common_tail();
+    },
+    9: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[9], false);
+        bigrm_region(0, 0, 73, 18, false);      // unlit
+        bigrm_region(26, 4, 47, 14, true);
+        bigrm_region(21, 5, 51, 13, true);
+        bigrm_region(19, 6, 54, 12, true);
+        await bigrm_common_tail();
+    },
+    10: async () => {
+        // bigrm-10 has NO level_init solidfill before map? It does:
+        // level_init solidfill, then map.
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[10], false);
+        if (percent(40)) {
+            lua_random1(5);                     // tidx = math.random(1,#terrain=5)
+            bigrm_replace_terrain(CLOUD, ROOM, 5);   // chance=5 per "C" cell
+            // second replace default chance -> rn2(100) per remaining "C" cell
+            bigrm_replace_terrain(CLOUD, LAVAPOOL, 100);
+        }
+        bigrm_region(0, 0, 70, 18, true);
+        // teleport_region: no rng. objects/traps/monsters, then mazewalk,
+        // levregion stair-up, stair down.
+        for (let i = 0; i < 15; i++) bigrm_object();
+        for (let i = 0; i < 6; i++) await bigrm_trap();
+        for (let i = 0; i < 28; i++) bigrm_monster();
+        // des.mazewalk / des.levregion(stair-up) / des.stair("down")
+        bigrm_stair(false);
+    },
+    11: async () => {
+        // Boulder maze.  level_init style="maze", corrwid = 3 + nh.rn2(3),
+        // wallthick=1, deadends = t_or_f() (percent(50)).
+        const corrwid = 3 + rn2(3);             // nh.rn2(3)
+        void corrwid;
+        percent(50);                            // deadends = t_or_f()
+        // create_maze would run here (LVLINIT_MAZE).  We do not fully port the
+        // maze generator; fall back to a solid floor so the level is walkable.
+        for (let y = 0; y < ROWNO; y++)
+            for (let x = 0; x < COLNO; x++) {
+                const loc = game.level?.at(x, y);
+                if (loc) loc.typ = ROOM;
+            }
+        bigrm_region(0, 0, 75, 18, true);
+        bigrm_stair(true); bigrm_stair(false);
+        for (let i = 0; i < 15; i++) bigrm_object();
+        for (let i = 0; i < 6; i++) await bigrm_trap(true);   // rolling boulder
+        for (let i = 0; i < 28; i++) bigrm_monster();
+    },
+    12: async () => {
+        // level_flags first (no rng), then level_init solidfill (rn2(2)).
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[12], false);
+        if (percent(20)) {
+            if (percent(50)) bigrm_replace_terrain(LAVAWALL, HWALL, 100);
+            if (percent(50)) bigrm_replace_terrain(LAVAWALL /*Z*/, HWALL, 100);
+        }
+        if (percent(25)) {
+            bigrm_replace_terrain(POOL, ROOM, 100);
+            if (percent(75)) bigrm_replace_terrain(WATER, POOL, 100);
+        }
+        if (percent(25)) {
+            bigrm_replace_terrain(LAVAPOOL, ROOM, 100);
+            if (percent(75)) bigrm_replace_terrain(LAVAWALL, LAVAPOOL, 100);
+        }
+        if (percent(20)) {
+            if (percent(50)) {
+                bigrm_replace_terrain(POOL, LAVAPOOL, 100);
+                bigrm_replace_terrain(WATER, LAVAWALL, 100);
+            } else {
+                bigrm_replace_terrain(LAVAPOOL, POOL, 100);
+                bigrm_replace_terrain(LAVAWALL, WATER, 100);
+            }
+        }
+        bigrm_region(0, 0, 75, 19, true);
+        // non_diggable, wallify: no rng
+        await bigrm_common_tail();
+    },
+    13: async () => {
+        bigrm_level_init_solidfill();
+        bigrm_load_map(BIGRM_MAP_STRINGS[13], false);
+        lua_random1(8);                         // idx = math.random(1,#filters=8)
+        // pillars placed via des.map calls — no extra rng (filter 6 uses
+        // math.random per cell only if idx==6; approximate: idx selection only)
+        bigrm_region(0, 0, 75, 18, true);
+        await bigrm_common_tail();
+    },
+};
+
+// Entry point.  C ref: makemaz("bigrm") -> rnd(13) + load_special("bigrm-N").
+export async function makemaz_bigroom() {
+    const g = game;
+    const slev = (g.sp_levchn || []).find(
+        (l) => g.bigroom_level && l.dlevel.dnum === g.bigroom_level.dnum
+               && l.dlevel.dlevel === g.bigroom_level.dlevel);
+    const rndlevs = slev?.rndlevs || 13;
+    const variant = rnd(rndlevs);            // mkmaze.c:1136 rnd(sp->rndlevs)
+    // load_special -> load_lua -> nhlib.lua top-level: shuffle(align)
+    const align = ['law', 'neutral', 'chaos'];
+    shuffle(align);                          // rn2(3), rn2(2)
+    if (g.level?.flags) g.level.flags.is_maze_lev = true;
+    // Enable the full (C-faithful) monster inventory/group/peace_minded path in
+    // makemon for the duration of Big Room generation.  Outside this window
+    // makemon keeps its conservative behavior, so other sessions' ordinary
+    // level generation is unaffected.
+    g._bigrm_gen = true;
+    try {
+        await bigrm_run(variant);
+    } finally {
+        g._bigrm_gen = false;
+    }
+}
+
+const BIGRM_MAP_STRINGS = {
+    1: `---------------------------------------------------------------------------
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+---------------------------------------------------------------------------`,
+    2: `---------------------------------------------------------------------------
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+---------------------------------------------------------------------------`,
+    3: `---------------------------------------------------------------------------
+|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|..............---.......................................---..............|
+|...............|.........................................|...............|
+|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|
+|.....|--------   --------|...................|----------   --------|.....|
+|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|
+|...............|.........................................|...............|
+|..............---.......................................---..............|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|
+---------------------------------------------------------------------------`,
+    4: `-----------                                                     -----------
+|.........|                                                     |.........|
+|.........-------------                             -------------.........|
+---...................------------       ------------...................---
+  --.............................---------.............................--  
+   --.................................................................--   
+    --...............................................................--    
+     --......LLLLL.......................................LLLLL......--     
+      --.....LLLLL.......................................LLLLL.....--      
+      --.....LLLLL.......................................LLLLL.....--      
+     --......LLLLL.......................................LLLLL......--     
+    --...............................................................--    
+   --.................................................................--   
+  --.............................---------.............................--  
+---...................------------       ------------...................---
+|.........-------------                             -------------.........|
+|.........|                                                     |.........|
+-----------                                                     -----------`,
+    5: `                            ------------------                            
+                    ---------................---------                    
+              -------................................-------              
+         ------............................................------         
+      ----......................................................----      
+    ---............................................................---    
+  ---................................................................---  
+---....................................................................---
+|........................................................................|
+|........................................................................|
+|........................................................................|
+---....................................................................---
+  ---................................................................---  
+    ---............................................................---    
+      ----......................................................----      
+         ------............................................------         
+              -------................................-------              
+                    ---------................---------                    
+                            ------------------                            `,
+    6: `     ---------         ---------         ---------         ---------     
+   ---.......---     ---.......---     ---.......---     ---.......---   
+  --...........--   --...........--   --...........--   --...........--  
+ --.............-- --.............-- --.............-- --.............-- 
+ -...............- -...............- -...............- -...............- 
+--...............---...............---...............---...............--
+|.................-.................-.................-.................|
+|........T.................T.................T.................T........|
+|.......................................................................|
+|......T.{.....................................................{.T......|
+|.......................................................................|
+|........T.................T.................T.................T........|
+|.................-.................-.................-.................|
+--...............---...............---...............---...............--
+ -...............- -...............- -...............- -...............- 
+ --.............-- --.............-- --.............-- --.............-- 
+  --...........--   --...........--   --...........--   --...........--  
+   ---.......---     ---.......---     ---.......---     ---.......---   
+     ---------         ---------         ---------         ---------     `,
+    7: `                                                        -----              
+                                                ---------...---            
+                                        ---------.........L...---          
+                                ---------.......................---        
+                        ---------.................................---      
+                ---------...........................................---    
+        ---------.....................................................---  
+---------...............................................................---
+|.........................................................................|
+|.L.....................................................................L.|
+|.........................................................................|
+---...............................................................---------
+  ---.....................................................---------        
+    ---...........................................---------                
+      ---.................................---------                        
+        ---.......................---------                                
+          ---...L.........---------                                        
+            ---...---------                                                
+              -----                                                        `,
+    8: `----------------------------------------------                             
+|............................................---                           
+--.............................................---                         
+ ---......................................FF.....---                       
+   ---...................................FF........---                     
+     ---................................FF...........---                   
+       ---.............................FF..............---                 
+         ---..........................FF.................---               
+           ---.......................FF....................---             
+             ---....................FF.......................---           
+               ---.................FF..........................---         
+                 ---..............FF.............................---       
+                   ---...........FF................................----    
+                     ---........FF...................................---   
+                       ---.....FF......................................--- 
+                         ---.............................................--
+                           ---............................................|
+                             ----------------------------------------------`,
+    9: `}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}
+}}}}}}}}}}......................................................}}}}}}}}}}
+}}}}}}}............................................................}}}}}}}
+}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}
+}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}
+}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}
+}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}
+}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}
+}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}
+}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}
+}}}}}}}............................................................}}}}}}}
+}}}}}}}}}}......................................................}}}}}}}}}}
+}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}`,
+    10: `.......................................................................
+.......................................................................
+.......................................................................
+.......................................................................
+...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
+...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
+...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
+...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
+...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
+...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
+...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
+...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
+...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
+...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
+...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
+.......................................................................
+.......................................................................
+.......................................................................
+.......................................................................`,
+    11: null,
+    12: `                                                                           
+         .......................           .......................         
+        .........................         .........................        
+       ...........................       ...........................       
+      .............................     .............................      
+     ........PPPPPPPPPPPPPPP........   ........LLLLLLLLLLLLLLL........     
+    ........PPPPPPPPPPPPPPPPP........ ........LLLLLLLLLLLLLLLLL........    
+   ........PPPWWWWWWWWWWWWWPPP...............LLLZZZZZZZZZZZZZLLL........   
+  ........PPPWWWWWWWWWWWWWWWPPP.............LLLZZZZZZZZZZZZZZZLLL........  
+ ........PPPWWWWWWWWWWWWWWWWWPPP...........LLLZZZZZZZZZZZZZZZZZLLL........ 
+  ........PPPWWWWWWWWWWWWWWWPPP.............LLLZZZZZZZZZZZZZZZLLL........  
+   ........PPPWWWWWWWWWWWWWPPP...............LLLZZZZZZZZZZZZZLLL........   
+    ........PPPPPPPPPPPPPPPPP........ ........LLLLLLLLLLLLLLLLL........    
+     ........PPPPPPPPPPPPPPP........   ........LLLLLLLLLLLLLLL........     
+      .............................     .............................      
+       ...........................       ...........................       
+        .........................         .........................        
+         .......................           .......................         
+                                                                           `,
+    13: `---------------------------------------------------------------------------
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+|.........................................................................|
+---------------------------------------------------------------------------`,
+};

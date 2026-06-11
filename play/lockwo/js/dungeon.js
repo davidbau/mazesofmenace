@@ -194,6 +194,15 @@ export function find_level(s) {
     return (game.sp_levchn || []).find((lev) => lev.proto.toLowerCase() === s.toLowerCase()) || null;
 }
 
+// C ref: dungeon.c Is_special(lev) — return the s_level for this position if it
+// is a special (named) level, else null.  Used by makelevel() to dispatch into
+// the special-level (Lua) loader instead of ordinary room generation.
+export function Is_special(uz) {
+    if (!uz) return null;
+    return (game.sp_levchn || []).find(
+        (lev) => lev.dlevel.dnum === uz.dnum && lev.dlevel.dlevel === uz.dlevel) || null;
+}
+
 function find_branch(s, pd) {
     for (let i = 0; i < pd.n_brs; i++)
         if (pd.tmpbranch[i]?.name === s)

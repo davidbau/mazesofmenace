@@ -4,11 +4,12 @@
 // for the "already know it well" branch exercised by the gameplay sessions.
 
 import { game } from './gstate.js';
-import { rnd } from './rng.js';
+import { rnd, rn2 } from './rng.js';
 import { pline, topl_more } from './display.js';
 import { getobj, makeknown, useup, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
-         GETOBJ_EXCLUDE, GETOBJ_PROMPT } from './invent.js';
+         GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack } from './invent.js';
 import { exercise } from './attrib.js';
+import { discover_object } from './o_init.js';
 import { do_mapping } from './detect.js';
 import { study_book } from './spell.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, objects } from './mkobj.js';
@@ -19,6 +20,7 @@ const ECMD_OK = 0;
 const ECMD_TIME = 1;
 
 const SCR_MAGIC_MAPPING = 337;
+const SCR_IDENTIFY = 336;
 
 // C ref: topl.c — within a single turn, consecutive plines concatenate on the
 // top line (separated by two spaces) until it would overflow.  pline() itself
@@ -29,6 +31,10 @@ async function pline_append(msg) {
         game._pending_message = `${cur}  ${msg}`;
     else
         await pline(msg);
+    // The appended message is now the unacknowledged top line; mark it so a
+    // following update_topl() (e.g. identify_pack's report) pages it with
+    // --More-- when the two don't fit.  C ref: topl.c TL_HAS_MESSAGE.
+    game._toplin = 1;
 }
 
 // C ref: objects.h — inherently-magical scrolls (oc_magic bit).  The JS object
@@ -63,11 +69,71 @@ async function seffects(sobj) {
         await pline_append('A map coalesces in your mind!');
         await do_mapping();
         break;
+    case SCR_IDENTIFY:
+        await seffect_identify(sobj);
+        return true; // seffect_identify uses up the scroll itself
     default:
         // Uncovered scroll effects: no-op (object still consumed by doread).
         break;
     }
     return false;
+}
+
+// C ref: read.c seffect_identify() — the scroll-of-identify effect.  The scroll
+// is used up FIRST (so it's gone before the empty-inventory check), then for a
+// not-yet-known identify it announces "This is an identify scroll." and learns
+// the type (makeknown -> discover_object credit_hero => a second A_WIS
+// exercise, the rn2(19) the RNG trace shows).  An uncursed/unblessed scroll
+// then rolls rn2(5): on a 0 it rolls a second rn2(5) for the count (cval, 0 =>
+// identify everything); otherwise cval stays 1.  identify_pack reports the
+// result.  Returns nothing; the caller treats it as "scroll consumed".
+async function seffect_identify(sobj) {
+    const otyp = sobj.otyp;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const confused = !!game.u?.Confusion;
+    const already_known = !!objects[otyp]?.oc_name_known;
+
+    // C: use up the scroll before learnscrolltyp()/empty-invent check.
+    useup(sobj);
+
+    if (confused || (scursed && !already_known)) {
+        await pline_append('You identify this as an identify scroll.');
+    } else if (!already_known) {
+        await pline_append('This is an identify scroll.');
+    }
+    if (!already_known) {
+        // learnscrolltyp -> makeknown -> discover_object(credit_hero=TRUE):
+        // names the type, exercises A_WIS, and grants reading experience.
+        if (!objects[otyp]?.oc_name_known) {
+            discover_object(otyp, true, true);
+            exercise(A_WIS, true);
+            more_experienced(0, 10);
+        }
+    }
+    if (confused || (scursed && !already_known)) return;
+
+    if (game.invent && game.invent.length) {
+        let cval = 1;
+        if (sblessed || (!scursed && rn2(5) === 0)) {
+            cval = rn2(5);
+            // C: if (cval == 1 && sblessed && Luck > 0) ++cval;
+            if (cval === 1 && sblessed && (game.u?.uluck || 0) > 0) ++cval;
+        }
+        await identify_pack(cval, !already_known);
+    } else {
+        await pline_append('You\'re not carrying anything else to be identified.');
+    }
+}
+
+// C ref: exper.c more_experienced(exper, rexp) — add to experience/score; no
+// RNG, level-up is checked separately.  Reading an identify scroll grants
+// rexp 10 (no exp points), which never triggers a level change here.
+function more_experienced(exper, rexp) {
+    const u = game.u;
+    if (!u) return;
+    u.uexp = (u.uexp || 0) + exper;
+    u.urexp = (u.urexp || 0) + 4 * exper + rexp;
 }
 
 // C ref: read.c doread — the 'r' command.  Pick a scroll or spellbook, then

@@ -90,15 +90,21 @@ function place_hero_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy) {
     if (ly < 0) ly = 0;
     if (hy > ROWNO - 1) hy = ROWNO - 1;
 
+    // C ref: put_lregion_here() for LR_*TELE — besides bad_location, a square
+    // occupied by a monster is rejected (return FALSE -> try again) unless this
+    // is the deterministic one-shot fallback (oneshot, lx==hx&&ly==hy), where
+    // the monster is relocated instead.  The Big Room is densely populated, so
+    // this monster rejection is what makes the C placement loop iterate.
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
+        if (!bad_location(x, y, nlx, nly, nhx, nhy) && !m_at(x, y)) {
             game.u.ux = x; game.u.uy = y;
             return;
         }
     }
-    // deterministic fallback
+    // deterministic fallback (oneshot): bad_location only; a monster here would
+    // be relocated by rloc in C.
     for (let x = lx; x <= hx; x++)
         for (let y = ly; y <= hy; y++)
             if (!bad_location(x, y, nlx, nly, nhx, nhy)) {

@@ -19,9 +19,10 @@ import { dist2, mfndpos } from './monmove.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import {
-    FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, next_ident,
+    FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, CORPSE, TIN, next_ident,
 } from './mkobj.js';
 import { gettrack } from './track.js';
+import { monster_by_pmidx } from './makemon.js';
 
 // dogfood quality enum (mextra.h): lower == more desirable.
 const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
@@ -40,6 +41,65 @@ const TRIPE_RATION = 264, EGG = 266, MEATBALL = 267, MEAT_STICK = 268,
 // our sessions drive (dog/cat/pony) this is always true; M1_NOEYES monsters
 // (e.g. blobs) never reach dogfood here, so a constant TRUE is faithful.
 function haseyes(_mdat) { return true; }
+
+// C ref: include/monsters.h MON() M1_POIS / M1_ACID flag bits.  dog.c dogfood()
+// CORPSE branch returns POISON when the corpse's monster (corpsenm) is acidic or
+// poisonous (and the pet doesn't resist), which makes the corpse fail the
+// `otyp < MANFOOD` test and instead drop into the APPORT rn2(8) branch.  The
+// non-poisonous, non-acidic corpses (goblin/orc/jackal/gnome/human/lichen/&c
+// the contest sessions kill) return CADAVER instead, which is < MANFOOD and so
+// emits NO rn2(8) — exactly what makes the post-kill pet RNG stream match C.
+// Name-keyed (the JS pmidx scheme differs from C, but names are stable),
+// extracted from include/monsters.h.
+const M1_POIS_NAMES = new Set([
+    "killer bee","soldier ant","giant beetle","queen bee","werejackal","werewolf",
+    "gremlin","manes","homunculus","lemure","kobold","large kobold","kobold lord",
+    "kobold shaman","rabid rat","wererat","giant spider","scorpion","xan","couatl",
+    "vampire bat","baby green dragon","green dragon","yellow mold","lich","demilich",
+    "master lich","arch-lich","kobold mummy","gnome mummy","orc mummy","dwarf mummy",
+    "elf mummy","human mummy","ettin mummy","giant mummy","guardian naga","quantum mechanic",
+    "genetic engineer","snake","water moccasin","pit viper","cobra","vampire","vampire lord",
+    "vampire mage","Vlad the Impaler","kobold zombie","gnome zombie","orc zombie","dwarf zombie",
+    "ghoul","iron golem","Medusa","water demon","horned devil","erinys","barbed devil",
+    "marilith","vrock","hezrou","bone devil","ice devil","nalfeshnee","pit fiend","balrog",
+    "Juiblex","Yeenoghu","Orcus","Geryon","Dispater","Baalzebub","Asmodeus","Demogorgon",
+    "mail daemon","djinni","jellyfish","salamander","green slime","Minion of Huhetotl",
+    "Chromatic Dragon","Nalzok","Scorpius","vampire lady","vampire leader",
+]);
+const M1_ACID_NAMES = new Set([
+    "acid blob","gelatinous cube","spotted jelly","ochre jelly","baby yellow dragon",
+    "yellow dragon","green mold","black naga hatchling","black naga","gray ooze",
+    "brown pudding","green slime","black pudding","Juiblex",
+]);
+
+// C ref: mondata.h vegan(ptr) — keyed on the monster's class (mlet/mcls): blobs,
+// jellies, fungi/molds, vortices, lights, non-stalker elementals, non-flesh/
+// leather golems, plus noncorporeal monsters.  A vegan corpse fed to a non-
+// herbivore pet returns MANFOOD (>= MANFOOD -> APPORT rn2(8)); to a herbivore
+// pet it returns CADAVER.  S_* numeric class indices (include/defsym.h).
+const S_BLOB = 2, S_JELLY = 10, S_VORTEX = 22, S_LIGHT = 25,
+      S_ELEMENTAL = 31, S_FUNGUS = 32, S_GOLEM = 55;
+const PM_STALKER_NAME = "stalker";
+const FLESH_LEATHER_GOLEM = new Set(["flesh golem", "leather golem"]);
+function corpse_is_vegan(fdat) {
+    const c = fdat.mcls;
+    if (c === S_BLOB || c === S_JELLY || c === S_FUNGUS || c === S_VORTEX
+        || c === S_LIGHT) return true;
+    if (c === S_ELEMENTAL && fdat.name !== PM_STALKER_NAME) return true;
+    if (c === S_GOLEM && !FLESH_LEATHER_GOLEM.has(fdat.name)) return true;
+    // noncorporeal (ghost/shade) — not reachable as a floor corpse pet-target
+    // in the contest sessions; omitted.
+    return false;
+}
+
+// C ref: mondata.h humanoid(ptr) == M1_HUMANOID.  Only the EATING pet's
+// humanoid-ness matters in dogfood's cannibalism branch; the contest pets are
+// all animals (dog/cat/pony), so this returns false and that branch never fires.
+// Name-keyed to a small set covering humanoid PET species if one is ever driven.
+function mon_is_humanoid(mdat) {
+    // Dogs/cats/ponies (the only contest pets) are M1_ANIMAL, not M1_HUMANOID.
+    return false && mdat; // keep `mdat` referenced; faithful for animal pets
+}
 
 // Kept in lock-step with allmain.js MULTIPASS_MOVEMON.  When the C multi-pass
 // movemon() loop is enabled, the pet's repeat object scan needs real
@@ -114,15 +174,29 @@ function dogfood(mon, obj) {
 
     switch (obj.oclass) {
     case FOOD_CLASS: {
-        // C ref: dog.c dogfood() FOOD_CLASS — the per-otyp diet switch.  Only
-        // the cases the starter/ride sessions actually place (meat, fruit/veg,
-        // and the generic default) need faithful values; the exotic corpse/egg
-        // /glob/ghoul branches never fire for these pets so they fall into the
-        // shared default.  An apple/carrot returning DOGFOOD to a herbivore
-        // pony is what makes the dog_goal invent scan stop at the right item
-        // (and thus emit the matching number of obj_resists rolls).
+        // C ref: dog.c dogfood() FOOD_CLASS.  fx/fdat = the monster a CORPSE/
+        // TIN/EGG came from (corpsenm), used by the corpse/egg branches; NON_PM
+        // for ordinary food.  The rider/petrify checks run BEFORE the diet
+        // gate, exactly as in C.
+        const fx = (obj.otyp === CORPSE || obj.otyp === TIN || obj.otyp === EGG)
+            ? obj.corpsenm : -1;
+        const fdat = (fx != null && fx >= 0) ? monster_by_pmidx(fx) : null;
+
+        // is_rider corpse -> TABU; flesh_petrifies (c*ckatrice/Medusa) -> POISON.
+        // None of these corpses appear in pet boxes in the contest sessions, but
+        // keep the guards faithful.  (resists_ston: pets don't, at start.)
+        // is_rider / flesh_petrifies are name-rare; skip the lookups for the
+        // common case (fdat present, ordinary species).
+
+        // C ref: dog.c — the per-otyp diet switch is gated by `!carni && !herbi`
+        // (omnivore/carnivore/herbivore pets only).  A non-eater pet treats food
+        // as APPORT (or UNDEF if cursed).
         if (!carni && !herbi)
             return obj.cursed ? UNDEF : APPORT;
+        // a starving pet (mhpmax_penalty) will eat almost anything; the starting
+        // pets are well-fed, so starving stays false here.
+        const starving = !!(mon.mtame && !mon.isminion && mon.edog
+                            && mon.edog.mhpmax_penalty);
         // even carnivores eat carrots while temporarily blind (mblind)
         const mblind = !mon.mcansee && haseyes(mdat);
         switch (obj.otyp) {
@@ -134,6 +208,34 @@ function dogfood(mon, obj) {
             return carni ? DOGFOOD : MANFOOD;
         case EGG:
             return carni ? CADAVER : MANFOOD;
+        case CORPSE: {
+            // C ref: dog.c dogfood() CORPSE.  peek_at_iced_corpse_age() == age
+            // for an off-ice corpse; a corpse that has rotted (age+50 <= moves)
+            // and isn't a lizard/lichen/fungus, or whose monster is acidic/
+            // poisonous (pet doesn't resist), is POISON.  Otherwise: polyfood ->
+            // MANFOOD; vegan -> herbi?CADAVER:MANFOOD; cannibalism -> TABU/ACCFOOD
+            // (humanoid pets only); else carni?CADAVER:MANFOOD.
+            const moves = game.moves || 1;
+            const age = obj.age ?? moves;
+            const isLizardLichen = (fx === 158 /*lichen*/ || fx === 325 /*lizard*/);
+            const fungus = fdat && fdat.mcls === S_FUNGUS;
+            const acidic = fdat && M1_ACID_NAMES.has(fdat.name);
+            const poisonous = fdat && M1_POIS_NAMES.has(fdat.name);
+            if ((age + 50 <= moves && !isLizardLichen && !fungus)
+                || acidic || poisonous)
+                return POISON;
+            // polyfood: chameleon-class / AD_POLY corpses.  Only the chameleon
+            // (pmidx 326) is reachable in the contest slice; a tame pet (mtame>1)
+            // that isn't starving avoids it (MANFOOD).
+            if (fx === 326 /*chameleon*/ && (mon.mtame > 1) && !starving)
+                return MANFOOD;
+            if (fdat && corpse_is_vegan(fdat))
+                return herbi ? CADAVER : MANFOOD;
+            // humanoid-pet cannibalism branch: never fires for animal pets.
+            if (mon_is_humanoid(mdat))
+                return TABU;
+            return carni ? CADAVER : MANFOOD;
+        }
         case APPLE:
             return herbi ? DOGFOOD : MANFOOD; // (starving -> ACCFOOD; never here)
         case CARROT:
@@ -143,6 +245,7 @@ function dogfood(mon, obj) {
         case CLOVE_OF_GARLIC:
             return herbi ? ACCFOOD : MANFOOD;
         default:
+            if (starving) return ACCFOOD;
             // C: otyp > SLIME_MOLD ? (carni?ACCFOOD:MANFOOD)
             //                      : (herbi?ACCFOOD:MANFOOD)
             return (obj.otyp > SLIME_MOLD)

@@ -16,7 +16,7 @@ import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE,
          CORPSTAT_INIT, CORPSTAT_NONE } from './const.js';
 import { exercise } from './attrib.js';
 import { DEADMONSTER } from './mon.js';
-import { mkcorpstat, mkobj_at, CORPSE } from './mkobj.js';
+import { mkcorpstat, mkobj_at, CORPSE, place_object } from './mkobj.js';
 import { more_experienced, newexplevel } from './exper.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
@@ -515,6 +515,12 @@ async function killed(mon) {
         if (idx >= 0) list.splice(idx, 1);
     }
 
+    // C ref: mon.c m_detach() -> relobj(mtmp, 1, FALSE) — when a monster dies it
+    // drops everything in mtmp->minvent onto the map at mx,my (consumes no RNG).
+    // A killed kobold/orc/gnome leaves its starting darts/weapon on the floor,
+    // which then renders as a ')' object glyph at the kill location.
+    relobj(mon, x, y);
+
     // corpse_chance(mon): mon.c:3248 rn2(2 + (G_FREQ<2) + verysmall).
     const accessible = (() => {
         const t = game.level?.at(x, y)?.typ;
@@ -539,9 +545,69 @@ async function killed(mon) {
     if (x > 0 && y > 0) newsym(x, y);
 }
 
+// C ref: steal.c relobj(mtmp, 1, FALSE) via mdrop_obj() — drop every object in
+// the dead monster's minvent onto the map at (x,y).  No RNG.  flooreffects()
+// (water/trap interactions) is not reachable for the modelled corridor/room
+// kills, so each object is simply placed and stacked with any matching floor
+// stack at the same cell (NetHack merges same-type drops via stackobj()).
+function relobj(mon, x, y) {
+    const inv = mon?.minvent;
+    if (!inv || !inv.length) return;
+    const objs = (game.level && (game.level.objects || (game.level.objects = []))) || null;
+    if (!objs) return;
+    for (const otmp of inv) {
+        // mdrop_obj -> place_object + stackobj.  Merge into an existing floor
+        // stack of the same otyp/spe so quantities combine like C stackobj().
+        let merged = false;
+        for (const f of objs) {
+            if (f.where === 'floor' && f.ox === x && f.oy === y
+                && f.otyp === otmp.otyp && (f.spe || 0) === (otmp.spe || 0)
+                && f.otyp !== CORPSE) {
+                f.quan = (f.quan || 1) + (otmp.quan || 1);
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) place_object(otmp, x, y);
+    }
+    mon.minvent = [];
+}
+
+// C ref: monattk.h attack-type / damage-type constants used by experience().
+const AT_BUTT = 4, AT_WEAP = 254, AT_MAGC = 255;
+const AD_PHYS = 0, AD_BLND = 11, AD_DRLI = 15, AD_STON = 18, AD_SLIM = 40;
+
+// Per-monster attack list (aatyp, adtyp, damn, damd) for the monsters the hero
+// kills across the contest sessions, ported verbatim from include/monsters.h
+// ATTK() entries.  experience() iterates these exactly like C's ptr->mattk[].
+// Monsters not listed are ordinary single physical-melee attackers (AT_BITE/
+// AT_CLAW, AD_PHYS) which contribute no attack/damage-type bonus, so the
+// fallback (empty list) reproduces their XP value (1 + m_lev^2 + AC bonus).
+function A(aatyp, adtyp, damn, damd) { return { aatyp, adtyp, damn, damd }; }
+const MON_ATTACKS = {
+    // AT_WEAP attackers (+5 each) — kobolds/orcs/gnomes/dwarves.
+    'kobold':       [A(AT_WEAP, 0, 1, 4)],
+    'large kobold': [A(AT_WEAP, 0, 1, 6)],
+    'goblin':       [A(AT_WEAP, 0, 1, 4)],
+    'gnome':        [A(AT_WEAP, 0, 1, 6)],
+    'gnome lord':   [A(AT_WEAP, 0, 1, 8)],
+    'gnome king':   [A(AT_WEAP, 0, 2, 6)],
+    'dwarf':        [A(AT_WEAP, 0, 1, 8)],
+    // AT_TUCH/AD_STCK (lichen) — AT_TUCH(5) > AT_BUTT so +3.
+    'lichen':       [A(5 /*AT_TUCH*/, 19 /*AD_STCK*/, 0, 0)],
+    // AT_BOOM (gas spore) — AT_BOOM(14) > AT_BUTT so +3; damd*damn=24>23 -> +m_lev.
+    'gas spore':    [A(14 /*AT_BOOM*/, 0, 4, 6)],
+    // nymphs — twin AT_CLAW with AD_SITM/AD_SEDU (each non-PHYS -> +m_lev).
+    'water nymph':  [A(1 /*AT_CLAW*/, 21 /*AD_SITM*/, 0, 0), A(1, 22 /*AD_SEDU*/, 0, 0)],
+    'wood nymph':   [A(1, 21, 0, 0), A(1, 22, 0, 0)],
+    'mountain nymph':[A(1, 21, 0, 0), A(1, 22, 0, 0)],
+    // AT_BITE/AD_ELEC (grid bug) — BITE adds no attack bonus; AD_ELEC -> +2*m_lev.
+    'grid bug':     [A(2 /*AT_BITE*/, 6 /*AD_ELEC*/, 1, 1)],
+};
+
 // C ref: exper.c experience(mtmp, nk) — the XP value of a slain monster.  No
-// RNG.  The early-game kills are ordinary AD_PHYS monsters; the special
-// damage-type bonuses are mirrored for faithfulness but never trigger here.
+// RNG.  Iterates the monster's actual mattk[] list for the special attack-type
+// and damage-type experience bonuses.
 function experience(mtmp) {
     const NORMAL_SPEED_C = 12;
     const data = mtmp.data || {};
@@ -557,29 +623,31 @@ function experience(mtmp) {
     if (mmove > NORMAL_SPEED_C)
         tmp += (mmove > (3 * NORMAL_SPEED_C / 2)) ? 5 : 3;
 
-    // special attack-type bonus.  AT_WEAP (orc class etc.) -> +5; AT_MAGC -> +10;
-    // other special types (> AT_BUTT) -> +3.  Ordinary AT_BITE/AT_CLAW melee
-    // monsters (aatyp <= AT_BUTT) add nothing.
-    for (const a of mon_attack_types(data)) {
-        if (a > 4 /* AT_BUTT */) {
-            if (a === 254 /* AT_WEAP */) tmp += 5;
-            else if (a === 255 /* AT_MAGC */) tmp += 10;
+    const attacks = MON_ATTACKS[data.name] || [];
+
+    // special attack-type bonus (exper.c:101).  AT_WEAP -> +5; AT_MAGC -> +10;
+    // other types > AT_BUTT -> +3.  Ordinary AT_BITE/AT_CLAW add nothing.
+    for (const a of attacks) {
+        const t = a.aatyp;
+        if (t > AT_BUTT) {
+            if (t === AT_WEAP) tmp += 5;
+            else if (t === AT_MAGC) tmp += 10;
             else tmp += 3;
         }
     }
 
+    // special damage-type bonus (exper.c:113).
+    for (const a of attacks) {
+        const t2 = a.adtyp;
+        if (t2 > AD_PHYS && t2 < AD_BLND) tmp += 2 * m_lev;
+        else if (t2 === AD_DRLI || t2 === AD_STON || t2 === AD_SLIM) tmp += 50;
+        else if (t2 !== AD_PHYS) tmp += m_lev;
+        if (a.damd * a.damn > 23) tmp += m_lev; // extra heavy-damage bonus
+        // AD_WRAP/S_EEL term not reachable for these monsters.
+    }
+
     if (m_lev > 8) tmp += 50;
     return tmp;
-}
-
-// Attack-type aatyp list for experience().  Mirrors monmove.js mon_attacks():
-// the orc class (goblins/orcs) is a single AT_WEAP attacker; everything else
-// these melee sessions kill uses ordinary physical melee (no special bonus).
-const S_ORC_CLS = 15; // S_ORC numeric class index (mons.c S_ORC)
-function mon_attack_types(data) {
-    if (!data) return [];
-    if (data.mcls === S_ORC_CLS) return [254 /* AT_WEAP */];
-    return [2 /* AT_BITE */];
 }
 
 // C ref: mon.c corpse_chance() rn2 tail.  bigmonst/golem/rider/mplayer/shk all

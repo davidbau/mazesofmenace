@@ -8,7 +8,7 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL, CROSSWALL, TRWALL,
+    IS_WALL, CROSSWALL, TRWALL, TREE, CLOUD, WATER, LAVAWALL,
 } from './const.js';
 import { newsym } from './display.js';
 
@@ -103,11 +103,14 @@ function _blocks(level, x, y) {
     const loc = level.at(x, y);
     if (!loc) return true;
     const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
+    if (typ < POOL) return true;  // IS_OBSTRUCTED: STONE, walls, SDOOR, SCORR
     if (typ === DOOR) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
+    // C ref: vision.c does_block — TREE, CLOUD, waterwall (WATER) and LAVAWALL
+    // also block line of sight (the Big Room's inner W/Z rings, for instance).
+    if (typ === TREE || typ === CLOUD || typ === WATER || typ === LAVAWALL) return true;
     return false;
 }
 

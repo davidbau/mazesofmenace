@@ -7,13 +7,14 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at } from './display.js';
+import { newsym, flush_screen, pline, m_at, update_topl } from './display.js';
 import { vision_recalc } from './vision.js';
 import { do_attack, is_safemon, x_monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
          attr_window_advance, dowieldquiver, dothrow, dotravel, dodrop,
-         dopickup, dowear, dotakeoff, dopay } from './invent.js';
+         dopickup, dowear, dotakeoff, dopay, floor_object_name } from './invent.js';
+import { WEAPON_CLASS } from './mkobj.js';
 import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
@@ -21,6 +22,7 @@ import { docast } from './spell.js';
 import { doread } from './read.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, hooked_tty_getlin, wiz_wish } from './extcmd-handlers.js';
+import { skill_window_advance } from './enhance.js';
 import { wiz_level_tele } from './do.js';
 import { spoteffects } from './trap.js';
 import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook } from './hack.js';
@@ -29,6 +31,27 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok, IS_DOOR,
          A_STR, A_DEX, A_CON } from './const.js';
 import { exercise } from './attrib.js';
+import { engr_at, wipe_engr_at } from './engrave.js';
+import { HEADSTONE } from './const.js';
+
+// C ref: hack.c maybe_smudge_engr() — when the hero walks/rushes from (x1,y1)
+// to (x2,y2) and can reach the floor, any non-headstone engraving at the old
+// and new squares gets wipe_engr_at(.., rnd(5)).  The rnd(5) is evaluated as
+// the call argument whenever engr_at() finds an engraving (even an undegradable
+// one), so it advances the PRNG exactly as C does on every move over engraved
+// terrain (the tut-1 level is covered in engravings).
+function maybe_smudge_engr(x1, y1, x2, y2) {
+    const u = game.u;
+    // can_reach_floor(TRUE): false only while Levitating/Flying without a way
+    // down.  The recorded movers are all walking on the floor here.
+    if (u?.uprops?.Levitation || u?.uprops?.Flying) return;
+    let ep = engr_at(x1, y1);
+    if (ep && ep.engr_type !== HEADSTONE) wipe_engr_at(x1, y1, rnd(5), false);
+    if ((x2 !== x1 || y2 !== y1)) {
+        ep = engr_at(x2, y2);
+        if (ep && ep.engr_type !== HEADSTONE) wipe_engr_at(x2, y2, rnd(5), false);
+    }
+}
 
 // Direction deltas: y u k
 //                   h . l
@@ -77,6 +100,12 @@ export async function rhack(key) {
         && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '>')) {
         await attr_window_advance();
         game.context.move = 0;
+    } else if (game._modal_screen === 'skillwin'
+        && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '>')) {
+        // A paged #enhance "Current skills:" window advances/dismisses on
+        // space/return/'>' (PICK_NONE menu).  ESC falls through below.
+        await skill_window_advance();
+        game.context.move = 0;
     } else if (ch === '\x1b') {
         // Escape: dismiss any open menu/window; a no-op at top level.
         // C ref: cmd.c — ESC produces no message.
@@ -117,6 +146,21 @@ export async function rhack(key) {
         game.context.move = 0;
     } else if (ch === ':') {
         await dolook();
+        game.context.move = 0;
+    } else if (ch === '@') {
+        // C ref: cmd.c { '@', "autopickup", ..., dotogglepickup } -> options.c
+        // dotogglepickup(): flip flags.pickup and report the new state.  No game
+        // time elapses (ECMD_OK).  With no pickup_types restriction (the default
+        // for these sessions) the ON message is "for all objects"; the apelist
+        // exception clause stays empty.
+        game.flags = game.flags || {};
+        game.flags.pickup = !game.flags.pickup;
+        if (game.flags.pickup) {
+            const types = game.flags.pickup_types;
+            await pline(`Autopickup: ON, for ${types ? types : 'all'} objects.`);
+        } else {
+            await pline('Autopickup: OFF.');
+        }
         game.context.move = 0;
     } else if (ch === 'e') {
         // C ref: cmd.c 'e' (#eat) -> eat.c doeat().  Eats carried/floor food
@@ -573,6 +617,12 @@ export async function domove(dx, dy) {
         newsym(u.ux0, u.uy0);
         vision_recalc(1);
         newsym(u.ux, u.uy);
+        // C ref: after swapping with a pet, domove_core() still falls through to
+        // spoteffects(TRUE) -> pickup(1) on the hero's new square, so a swap onto
+        // a floor object announces it (autopickup off) or lifts it (autopickup
+        // on).  Only when the hero actually relocated (the swap succeeded).
+        if (u.umoved)
+            await pickup_after_move(u.ux, u.uy);
         return;
     }
 
@@ -646,6 +696,10 @@ export async function domove(dx, dy) {
     // every subsequent turn.
     if (u.usteed) { u.usteed.mx = u.ux; u.usteed.my = u.uy; }
 
+    // C ref: hack.c domove() — after a successful WALK, smudge any engraving on
+    // the squares the hero left and entered (rnd(5) per engraved square).
+    maybe_smudge_engr(oldx, oldy, newx, newy);
+
     // Update display
     newsym(oldx, oldy);
     vision_recalc(1);
@@ -656,13 +710,73 @@ export async function domove(dx, dy) {
     // trap triggers dotrap().
     await spoteffects();
 
-    // C ref: hack.c domove_core() -> spoteffects(TRUE) -> pickup(1).  With
-    // autopickup off (the recorded sessions set !autopickup) pickup() falls
-    // through to look_here(), which announces a single floor object as
-    // "You see here <a thing>." (no game time, no RNG).  Only on a plain
-    // single-square step (not running/travelling) onto a non-empty tile.
-    if (!game.context?.run && !game.context?.mv)
-        await look_here_after_move(newx, newy);
+    await pickup_after_move(newx, newy);
+}
+
+// C ref: hack.c domove_core() -> spoteffects(TRUE) -> pickup(1).  pickup(1)
+// runs at the tail of EVERY move that relocates the hero (plain step, run,
+// rush, or a swap with a pet).  With autopickup off it falls through to
+// look_here() — announcing a single floor object as "You see here <a thing>."
+// (no game time, no RNG); a run additionally halts on the object (handled by
+// runStopOnObject in hack.js).  With autopickup on it instead lifts the
+// matching floor objects (prinv "<letter> - <name>." lines).  Travel (run == 8)
+// does not auto-stop, but pickup still fires; we exclude only the mid-action
+// teleport case (context.mv with no context.run) which C skips via
+// "gm.multi && !run".
+async function pickup_after_move(x, y) {
+    const ctx = game.context || {};
+    if (game.flags?.pickup)
+        await autopickup_after_move(x, y);
+    else if (ctx.run !== 8)
+        await look_here_after_move(x, y);
+}
+
+// C ref: pickup.c pickup(1) with flags.pickup set -> autopick() picks every
+// floor object matching pickup_types (all classes when unset), then check_here
+// reports any remainder.  The owned sessions only ever auto-pick a single item
+// at a time, which prints the bare prinv line "<letter> - <name>." (no prefix).
+// Multi-object piles would page with --More-- between lines; not exercised, so
+// the single/sequential case is modeled and extra items just chain via pline.
+async function autopickup_after_move(x, y) {
+    const objs = (game.level?.objects || []).filter(
+        (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+    if (objs.length === 0) return;
+    const inv = await import('./invent.js');
+    // autopick order is the floor chain (topmost-first); objects_at returns that
+    // order.  Pick each eligible object (pickup_types unset => all classes).
+    const types = game.flags?.pickup_types;
+    for (const obj of objs) {
+        if (types && !types.includes(classLetter(obj))) continue;
+        await pickup_one(inv, obj, x, y);
+    }
+}
+
+// Map an oclass to its pickup_types letter (objclass.h def_oc_syms).  Only the
+// classes the sessions touch need be exact; unset pickup_types picks all.
+function classLetter(obj) {
+    const SYMS = { 1: ']', 2: ')', 3: '[', 4: '%', 5: '?', 6: '=', 7: '!',
+        8: '/', 9: '+', 10: '"', 11: '(', 12: '$', 13: '*', 14: '`', 15: '0' };
+    return SYMS[obj.oclass] || '';
+}
+
+// Pick up a single floor object, emitting the prinv pickup line.  Mirrors
+// pickup_object -> pickup_prinv with a NULL prefix (the bare "<letter> -
+// <name>." line).  pick_one_obj sets game._pending_message to that bare line.
+// If a message was already pending this turn (e.g. the swap line), we chain the
+// pickup line after it via update_topl(): when the two don't fit on one top
+// line (CO-8 rule), the pending line is paged with --More-- (blocking on the
+// next key) before the pickup line replaces it.  C ref: topl.c update_topl().
+async function pickup_one(inv, obj, x, y) {
+    const prior = game._pending_message || '';
+    await inv.pick_one_obj(obj); // sets _pending_message to the pickup line
+    const line = game._pending_message || '';
+    if (prior) {
+        // Restore the pending line + its TL_HAS_MESSAGE state, then chain.
+        game._pending_message = prior;
+        game._toplin = 1;
+        await update_topl(line);
+    }
+    newsym(x, y);
 }
 
 // C ref: invent.c look_here() — the "You see here ..." auto-announcement when
@@ -676,19 +790,27 @@ async function look_here_after_move(x, y) {
     const objs = (game.level?.objects || []).filter(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
     if (objs.length !== 1) return; // only the single-object case is modeled
-    // Only announce CORPSEs (otyp 265), the case the kill-aftermath sessions
-    // need and the only one we can name faithfully; for other single objects
-    // the generic name would be wrong, so stay silent (matches prior behavior,
-    // avoids regressing sessions like seed0006 that step onto non-corpse items).
-    if (objs[0].otyp !== 265) return;
-    const name = await objDoname(objs[0]);
+    const o = objs[0];
+    // C ref: invent.c look_here() — announce the single floor object with its
+    // faithful doname() ("N <plural>" for a stack, "a <name>" for one item;
+    // gold and corpses handled specially in objDoname).
+    const name = await objDoname(o);
     await pline(`You see here ${name}.`);
 }
 
+// COIN_CLASS (gold) — objclass.h; defined inline here to gate the gold look-here
+// announcement without dragging in an invent.js import cycle at module scope.
+const COIN_CLASS_CMD = 12;
+
 // Object name with article for the "You see here" line (C: doname()).  Lazy
-// import to avoid a static cycle.  Corpses read "<species> corpse"; other
-// objects defer to invent.js's ansimpleoname().
+// import to avoid a static cycle.  Corpses read "<species> corpse"; gold reads
+// "<n> gold piece(s)"; other objects defer to invent.js's doname().
 async function objDoname(obj) {
+    // COIN_CLASS gold: "4 gold pieces" — C doname() has no article for coins.
+    if (obj && (obj.oclass === COIN_CLASS_CMD)) {
+        const q = obj.quan || 0;
+        return `${q} gold piece${q === 1 ? '' : 's'}`;
+    }
     // CORPSE (otyp 265): "a goblin corpse" — species from corpsenm.
     if (obj && obj.otyp === 265 && obj.corpsenm != null) {
         const mm = await import('./makemon.js');
@@ -697,9 +819,10 @@ async function objDoname(obj) {
         const art = /^[aeiou]/i.test(name) ? 'an' : 'a';
         return `${art} ${name} corpse`;
     }
+    // Non-corpse floor object (e.g. a dropped weapon/ammo stack): C doname()
+    // gives "N <plural>" for a stack, "a <name>" for a single item.
     try {
-        const inv = await import('./invent.js');
-        if (inv.ansimpleoname) return inv.ansimpleoname(obj);
+        if (floor_object_name) return floor_object_name(obj);
     } catch (_e) { /* fall through */ }
     return 'an object';
 }

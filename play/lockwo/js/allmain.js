@@ -18,12 +18,14 @@ import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastfo
 import { movemon, mcalcdistress, mcalcmove } from './mon.js';
 import { makemon_rnd_spawn } from './makemon.js';
 import { dosounds } from './sounds.js';
-import { find_ac } from './u_init.js';
+import { find_ac, u_init_skills_discoveries } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
 import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON } from './const.js';
 import { exercise } from './attrib.js';
 import { settrack } from './track.js';
+import { genTutorialLevel } from './tutorial.js';
+import { find_level } from './dungeon.js';
 
 const PM_KNIGHT = 4;
 const PM_WIZARD = 12;
@@ -241,9 +243,13 @@ async function newgame_real() {
         await com_pager_legacy();
     }
 
-    // find_ac() runs in u_init_skills_discoveries (after the legend's bot,
-    // before welcome) — gives the real AC shown from the welcome step on.
+    // u_init_skills_discoveries() runs after the legend's bot, before welcome.
+    // find_ac() gives the real AC shown from the welcome step on; the starting-
+    // Pw floor (spellcasters' Pw forced up to SPELL_LEV_PW(1)) is applied here
+    // too, so the legend status line still shows the pre-bump (newpw) Pw value
+    // and the welcome step onward shows the bumped value (e.g. Healer Pw 3->5).
     find_ac();
+    u_init_skills_discoveries();
 
     // C ref: allmain.c welcome(TRUE).
     await cls();
@@ -300,6 +306,67 @@ async function maybe_do_tutorial(preambleShownMore) {
     // on the top line is the preamble; otherwise it's the welcome line.
     await topl_more();
     await ask_do_tutorial();
+
+    // C ref: maybe_do_tutorial() tutorial-yes branch — ask_do_tutorial() set up
+    // game._tutorial_level via do_tutorial_goto().  Page the deferred-goto
+    // "Entering the tutorial." message (over the previous level), then swap in
+    // the tutorial level and present its arrival.
+    if (g._tutorial_pending_enter) {
+        g._tutorial_pending_enter = false;
+        // Step-13 screen: "Entering the tutorial.--More--" over the previous
+        // level (game.level not yet swapped).
+        await pline('Entering the tutorial.');
+        await topl_more();
+        await enter_tutorial_level();
+    }
+}
+
+// Deferred entry to the freshly-generated tut-1 level: swap game.level, place
+// the hero on the teleport_region, then present the arrival (the hero stands on
+// the "Move around with ..." engraving, so the engraving "feel" message pages).
+async function enter_tutorial_level() {
+    const g = game;
+    g.level = g._tutorial_level;
+    g.fmon = g.level.monsters;
+    g._in_tutorial = true;
+
+    // Now u.uz officially becomes the tutorial level (status -> "Tutorial:1").
+    const dest = g._tutorial_dest || { dnum: g.tutorial_dnum, dlevel: 1 };
+    g.u.uz = { dnum: dest.dnum, dlevel: dest.dlevel };
+
+    // Hero placement: teleport_region {9,3} (Lua) -> abs cell {12,6}.
+    g.u.ux = 12; g.u.uy = 6;
+    g.u.dx = 0; g.u.dy = 0;
+    if (g.u.umovement == null) g.u.umovement = NORMAL_SPEED;
+
+    // Reset vision for the new level and redraw.  C ref: goto_level() ->
+    // vision_reset(); docrt(); flush_screen(-1).
+    g.vision_full_recalc = 0;
+    vision_reset();
+    vision_recalc(0);
+    await docrt();
+    await bot();      // status line now shows "Tutorial:1" (In_tutorial true).
+    await flush_screen(1);
+
+    // C ref: arrival on an engraved square reads the engraving aloud: first
+    // "Something is engraved here on the floor.", then "You read: <text>." —
+    // each paged with --More--.  These are the recorded step-14 / step-15
+    // screens.  No PRNG (the engraving is non-degradable).
+    const ep = engr_at_tut(g.u.ux, g.u.uy);
+    if (ep) {
+        if (ep.engr_type === 3 /*BURN*/)
+            await pline('Something is burned into the floor here.');
+        else
+            await pline('Something is engraved here on the floor.');
+        await topl_more();
+        await pline(`You read: "${ep.actualText}".`);
+        await topl_more();
+    }
+    g._pending_message = '';
+}
+
+function engr_at_tut(x, y) {
+    return (game.level?.engravings || []).find((e) => e.engr_x === x && e.engr_y === y) || null;
 }
 
 // Render the "Do you want a tutorial?" NHW_MENU exactly as the tty corner
@@ -371,13 +438,67 @@ async function ask_do_tutorial() {
     for (;;) {
         const c = await nhgetch();
         const ch = String.fromCharCode(c);
-        if (ch === 'y') { game._tutorial_yes = true; break; }
+        if (ch === 'y') { game._tutorial_yes = true; await do_tutorial_goto(); break; }
         if (ch === 'n' || c === 27) break;       // No / Escape => start play
         // space / return confirm with no selection => re-prompt; any other
         // key is ignored (the menu just waits for the next key).
         if (c === 32 || c === 13 || c === 10) renderMenu(pass++);
     }
     game._pending_message = '';
+}
+
+// C ref: allmain.c maybe_do_tutorial() tutorial-yes branch:
+//   assign_level(&u.ucamefrom, &u.uz); iflags.nofollowers = TRUE;
+//   schedule_goto(&sp->dlevel, ...); deferred_goto(); ...
+// Generates the tut-1 special level (consuming its full PRNG sequence) and
+// schedules entry.  The level swap + hero placement + "Something is engraved
+// here" message are deferred to the --More-- acknowledgement (see
+// enter_tutorial_level), so the recorded step-13 screen still shows the
+// previous level under the "Entering the tutorial." top-line message.
+async function do_tutorial_goto() {
+    const g = game;
+    const u = g.u;
+    g.u.ucamefrom = { dnum: u.uz?.dnum ?? 0, dlevel: u.uz?.dlevel ?? 1 };
+
+    // C ref: goto_level() sets u.uz to the destination BEFORE mklev() runs, so
+    // level-relative state (dungeon_alignment for align_shift, level_difficulty)
+    // reflects the tut-1 branch during generation.  The Tutorial dungeon is
+    // treated as chaotic (DUNGEON_ALIGN_BY_DNUM), which the corpse/monster
+    // generation weights depend on.  We do NOT redraw the status line here, so
+    // the recorded step-13 screen keeps the previous "Dlvl:1" line; the
+    // "Tutorial:1" line appears once bot() runs at the deferred enter.
+    const sp = find_level('tut-1');
+    const dest = sp?.dlevel || { dnum: g.tutorial_dnum ?? u.uz.dnum, dlevel: 1 };
+    g.u.uz0 = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
+    g.u.uz = { dnum: dest.dnum, dlevel: dest.dlevel };
+
+    // The Tutorial branch isn't materialized in the (DoD-only) JS dungeon
+    // graph, but hole_destination()/dng_bottom() need its level count (2: tut-1,
+    // tut-2) so the trap door's hole_destination rolls rn2(4) like C.  Provide a
+    // minimal entry (depth_start 1 -> level_difficulty 1; NO flags.align so
+    // dungeon_alignment falls through to DUNGEON_ALIGN_BY_DNUM = chaotic).
+    if (g.dungeons && g.tutorial_dnum != null && !g.dungeons[g.tutorial_dnum]) {
+        g.dungeons[g.tutorial_dnum] = {
+            dname: 'The Tutorial', depth_start: 1, num_dunlevs: 2, flags: {},
+        };
+    }
+
+    // Generate the new tutorial level into game._tutorial_level (PRNG: getbones
+    // + align shuffle + solidfill lit + all des.* feature rolls + fixup).  This
+    // does NOT swap game.level — the previous level stays on screen under the
+    // deferred "Entering the tutorial." top-line message.
+    genTutorialLevel();
+
+    // Restore u.uz to the PREVIOUS level so the step-13 screen (rendered while
+    // the "Entering the tutorial." --More-- pages) still shows the old map's
+    // "Dlvl:1" status.  enter_tutorial_level() sets u.uz to the tutorial for
+    // real once that --More-- is acknowledged.
+    g.u.uz = { dnum: g.u.uz0.dnum, dlevel: g.u.uz0.dlevel };
+    g._tutorial_dest = { dnum: dest.dnum, dlevel: dest.dlevel };
+
+    // Deferred goto: the message paging + level swap + hero placement all
+    // happen back in maybe_do_tutorial() (enter_tutorial_level).
+    game._tutorial_pending_enter = true;
 }
 
 // C ref: attrib.c innate ability tables (sam_abil/mon_abil/kni_abil/...).

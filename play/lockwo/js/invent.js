@@ -262,6 +262,9 @@ function distant_name(obj, fn = doname) { return fn(obj); }
 function short_oname(obj) { return simple_obj_name(obj, { quantity: false }); }
 function doname(obj) { return simple_obj_name(obj); }
 function doname_with_price(obj) { return doname(obj); }
+// C ref: invent.c doname() — full floor-object name (with quantity/article) for
+// the "You see here ..." auto-announcement after a step.  Exported for cmd.js.
+export function floor_object_name(obj) { return doname(obj); }
 function corpse_xname(obj, _name, flagsArg = 0) { return simple_obj_name(obj, { article: !!(flagsArg & 8) }); }
 function killer_xname(obj) { return simple_obj_name(obj, { article: false }); }
 function greatest_erosion(obj) { return Math.max(obj?.oeroded || 0, obj?.oeroded2 || 0); }
@@ -361,7 +364,43 @@ function collect_obj_classes(buf, list, byNexthere, filter) {
     if (Array.isArray(buf)) buf.splice(0, buf.length, ...out.split(''));
     return seen.size || count;
 }
-function not_fully_identified(obj) { return !(obj?.known && obj?.bknown && obj?.rknown && obj?.dknown); }
+// C ref: objnam.c not_fully_identified(otmp).  Gold is always fully ID'd; an
+// object is "not fully identified" when a fundamental hallmark is missing
+// (known / dknown / bknown / oc_name_known), a container's contents/lock aren't
+// known, or an undiscovered artifact.  rknown (erosion-proofing) only matters
+// for damageable objects (armor/weapon/weptool/ball); for everything else it is
+// irrelevant, so the prior unconditional `rknown` test wrongly flagged ordinary
+// items (and gold) as unidentified, making the identify-scroll path mis-fire.
+function not_fully_identified(obj) {
+    if (!obj) return false;
+    if (obj.oclass === COIN_CLASS) return false; // gold: always fully ID'd
+    // C effective oc_name_known: an object with NO randomized appearance
+    // (OBJ_DESCR == NoDes => absent from DESCR_BY_OTYP) is type-known from the
+    // start (init_objects forces oc_name_known = 1 for it).  The JS objects[]
+    // table only stores the explicit BITS() flag, so treat a missing-appearance
+    // object as name-known here to match C's identification semantics.
+    const typeKnown = !!objects[obj.otyp]?.oc_name_known
+        || DESCR_BY_OTYP[obj.otyp] == null;
+    if (!obj.known || !obj.dknown || !obj.bknown || !typeKnown)
+        return true;
+    if ((!obj.cknown && (Is_container(obj) || obj.otyp === STATUE))
+        || (!obj.lknown && Is_box(obj)))
+        return true;
+    // (undiscovered artifacts: the owned sessions carry none; skipped.)
+    if (obj.rknown
+        || (obj.oclass !== ARMOR_CLASS && obj.oclass !== WEAPON_CLASS
+            && !is_weptool(obj) && obj.oclass !== BALL_CLASS))
+        return false;
+    // lack of rknown only matters for vulnerable (damageable) objects.
+    return is_damageable(obj);
+}
+// C ref: objclass.h Is_box() — large box / chest / ice box (lockable boxes).
+function Is_box(obj) { return obj?.otyp === 214 || obj?.otyp === 215 || obj?.otyp === 216; }
+// C ref: objnam.c is_damageable() — armor/weapon-class objects can erode.
+function is_damageable(obj) {
+    return obj?.oclass === ARMOR_CLASS || obj?.oclass === WEAPON_CLASS
+        || is_weptool(obj);
+}
 function query_objlist(_q, listRef, _flags, _pickList, _pick, filter) {
     for (const obj of iterateObjects(Array.isArray(listRef) ? listRef : listRef?.obj || inventoryArray()))
         if (!filter || filter(obj)) return 1;
@@ -872,7 +911,7 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
 //              1 for the menu "(N of M)" which dmore indents by one).
 const ATR_NONE = 0;
 
-function renderWindowScreen(lines, opts = {}) {
+export function renderWindowScreen(lines, opts = {}) {
     const display = game.nhDisplay;
     if (!display?.clearScreen) return;
     const menu = !!opts.menu;
@@ -1123,6 +1162,8 @@ export async function dismiss_invent_screen() {
     delete game._modal_screen;
     delete game._disco_pages;
     delete game._disco_page;
+    delete game._skill_pages;
+    delete game._skill_page;
     game._pending_message = '';
     await docrt();
     await flush_screen(1);
@@ -2423,7 +2464,7 @@ function floor_extract_self(obj) {
 // and announce it via prinv ("<letter> - <doname>.").  The shop/billing,
 // telekinesis, corpse-touch, and scare-monster branches are not reached for the
 // recorded sessions; near_capacity() is 0 here so pickup_prinv passes no prefix.
-async function pick_one_obj(obj) {
+export async function pick_one_obj(obj) {
     const quan = obj.quan || 1;
     observe_object(obj);
     floor_extract_self(obj);
@@ -2613,9 +2654,35 @@ export function fully_identify_obj(otmp) { makeknown(otmp?.otyp); observe_object
 export function identify(otmp) { fully_identify_obj(otmp); prinv(null, otmp, 0); return 1; }
 export function menu_identify(id_limit) { identify_pack(id_limit, false); }
 export function count_unidentified(objchn) { let n = 0; for (const obj of iterateObjects(objchn)) if (not_fully_identified(obj)) ++n; return n; }
-export function identify_pack(id_limit = 0, _learning_id = false) {
-    let n = id_limit || Infinity;
-    for (const obj of inventoryArray()) if (n > 0 && not_fully_identified(obj)) { identify(obj); --n; }
+// C ref: invent.c identify_pack(id_limit, learning_id).  id_limit==0 OR >=
+// unid_cnt identifies the whole pack; a positive limit identifies up to that
+// many.  When nothing is unidentified, reports "You have already identified
+// <all|the rest> of your possessions." (learning_id => "the rest", since the
+// just-read identify scroll was used up before this call).
+export async function identify_pack(id_limit = 0, learning_id = false) {
+    const unid_cnt = count_unidentified(inventoryArray());
+    if (!unid_cnt) {
+        // C: You("have already identified ..."); update_topl so the message
+        // chains after (and pages with --More--) any line already pending this
+        // turn — e.g. the "This is an identify scroll." line from the read.
+        await update_topl(`You have already identified ${learning_id ? 'the rest' : 'all'} of your possessions.`);
+        update_inventory();
+        return;
+    }
+    if (!id_limit || id_limit >= unid_cnt) {
+        let remaining = unid_cnt;
+        for (const obj of inventoryArray()) {
+            if (not_fully_identified(obj)) { identify(obj); if (--remaining < 1) break; }
+        }
+    } else {
+        // limited identify: identify up to id_limit items (menu selection in C;
+        // the owned sessions never hit the partial-menu path, so take the first
+        // id_limit unidentified items in pack order).
+        let n = id_limit;
+        for (const obj of inventoryArray()) {
+            if (n > 0 && not_fully_identified(obj)) { identify(obj); --n; }
+        }
+    }
     update_inventory();
 }
 export function learn_unseen_invent() { for (const obj of inventoryArray()) observe_object(obj); update_inventory(); }

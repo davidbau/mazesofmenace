@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { addinv as invent_addinv } from './invent.js';
-import { initialspell } from './spell.js';
+import { initialspell, num_spells } from './spell.js';
 import {
     ARMOR_CLASS,
     COIN_CLASS,
@@ -1172,6 +1172,24 @@ export function u_init_inventory_attrs() {
         u_init_carry_attr_boost();
     } finally {
         game._log_mkobj_rne = was_log_mkobj_rne;
+    }
+}
+
+// C ref: u_init.c u_init_skills_discoveries — runs in newgame() AFTER the
+// legend/intro is dismissed and BEFORE the welcome status line (alongside
+// find_ac).  The only RNG-free side effect that affects parity is the
+// starting-Pw floor: a hero who knows at least one spell (e.g. the Healer's
+// healing spellbooks) must start with enough power to cast their level-1
+// spell, so Pw is forced up to SPELL_LEV_PW(1)==5 when the rolled value is
+// lower.  This must NOT run earlier than the legend step, because the legend's
+// status line still shows the pre-bump (newpw) Pw value.
+const SPELL_LEV_PW_1 = 5;
+export function u_init_skills_discoveries() {
+    game.u = game.u || {};
+    if (num_spells() && (game.u.uenmax ?? 0) < SPELL_LEV_PW_1) {
+        game.u.uen = game.u.uenmax = game.u.uenpeak = SPELL_LEV_PW_1;
+        if (Array.isArray(game.u.ueninc) && game.u.ulevel != null)
+            game.u.ueninc[game.u.ulevel] = SPELL_LEV_PW_1;
     }
 }
 

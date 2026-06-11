@@ -10,7 +10,8 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents } from './sp_lev.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom } from './sp_lev.js';
+import { Is_special } from './dungeon.js';
 import { somex, somey, somexyspace, occupied, has_dnstairs, has_upstairs } from './mkroom.js';
 import { maketrap } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass } from './makemon.js';
@@ -358,6 +359,17 @@ async function makelevel() {
     const g = game;
     oinit();
     clear_level_structures();
+
+    // C ref: mklev.c:1267-1270 — special (named) levels dispatch to makemaz()
+    // BEFORE the ordinary-level path (and before the medusa rn2(5) check).
+    // Currently only the Big Room special level is ported; other named levels
+    // fall through to the regular generator (their sessions diverge earlier
+    // anyway, so this cannot regress them).
+    const slev = Is_special(g.u?.uz);
+    if (slev && slev.proto && slev.proto.toLowerCase() === 'bigrm') {
+        await makemaz_bigroom();
+        return;
+    }
 
     // C ref: mklev.c:1295 — check for below-Medusa maze level
     // This rn2(5) is consumed even when the condition fails (short-circuit)
@@ -1922,7 +1934,7 @@ function fix_wall_spines(x1, y1, x2, y2) {
             if (bits) loc.typ = spineArray[bits];
         }
 }
-function wallification(x1, y1, x2, y2) {
+export function wallification(x1, y1, x2, y2) {
     wall_cleanup(x1, y1, x2, y2);
     fix_wall_spines(x1, y1, x2, y2);
 }
@@ -2091,7 +2103,7 @@ export async function fill_ordinary_room(croom, bonus_items) {
     const pos = { x: 0, y: 0 };
     // Sleeping monster (33%)
     if (!rn2(3) && somexyspace(croom, pos)) {
-        await makemon(null, pos.x, pos.y, 2); // MM_NOGRP
+        await makemon(null, pos.x, pos.y, 0x00002000); // MM_NOGRP
     }
     // Traps
     const u_depth = g.u?.uz?.dlevel ?? 1;
@@ -2243,6 +2255,18 @@ function bury_object(otmp) {
 export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
     mineralize_kelp(kelp_pool, kelp_moat);
+    // C ref: mklev.c mineralize() — gold/gem seeding is skipped (after kelp) for
+    // almost all special levels: In_hell || In_V_tower || Is_rogue_level ||
+    // arboreal || (Is_special && !Is_oracle && (!In_mines || town)).  The Big
+    // Room is a special level, so its gold/gem loop is suppressed (kelp only).
+    if (!skip_lvl_checks) {
+        const sp = Is_special(game.u?.uz);
+        if (game.level?.flags?.arboreal
+            || (sp && sp.proto && sp.proto.toLowerCase() !== 'oracle'
+                && sp.proto.toLowerCase() !== 'minetn')) {
+            return;
+        }
+    }
     const absDepth = depth_of_level(game.u?.uz);
     const dunLevel = game.u?.uz?.dlevel ?? 1;
     if (goldprob < 0) goldprob = 20 + Math.trunc(absDepth / 3);
@@ -2469,7 +2493,7 @@ function xy_set_wall_state(x, y) {
 }
 
 // C ref: display.c set_wall_state() — scan the level and set wall modes.
-function set_wall_state() {
+export function set_wall_state() {
     for (let x = 0; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++)
             xy_set_wall_state(x, y);

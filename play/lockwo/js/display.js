@@ -9,6 +9,7 @@ import {
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     SDOOR, SCORR, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, ICE,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, IRONBARS, TREE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
@@ -16,7 +17,8 @@ import {
 } from './const.js';
 import {
     NO_COLOR, CLR_BLACK, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
-    CLR_CYAN, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, DEC_TO_UNICODE,
+    CLR_CYAN, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BLUE, CLR_RED,
+    CLR_ORANGE, CLR_GREEN, DEC_TO_UNICODE,
 } from './terminal.js';
 import { monster_by_pmidx } from './makemon.js';
 import { objects } from './mkobj.js';
@@ -80,11 +82,37 @@ const HI_BY_MATERIAL = {
 // CLR_YELLOW (GLYPH_OBJ_PILETOP / has_rogue_color branch never fires here).
 const AMULET_CLASS = 5;
 const FOOD_CLASS = 7;
+const POTION_CLASS = 8;
 const CORPSE_OTYP = 265;
+// C ref: include/objects.h FIRST_REAL_GEM..LAST_GLASS_GEM and FIRST_SPELL..
+// LAST_SPELL (the otyp ranges that obj_is_generic hides until seen up close).
+const FIRST_SPELL = 365, LAST_SPELL = 406;        // SPE_DIG..SPE_BLANK_PAPER
+const FIRST_REAL_GEM = 438, LAST_GLASS_GEM = 468; // DILITHIUM_CRYSTAL..WORTHLESS_VIOLET_GLASS
+// C ref: include/objects.h GENERIC() macro — every generic class placeholder
+// object (otyp 1..MAXOCLASSES-1) is declared with oc_color = CLR_GRAY, so a
+// generic-object glyph always renders as CLR_GRAY (which the contest tty's
+// has_color() suppresses to NO_COLOR).
+const GENERIC_OBJ_COLOR = CLR_GRAY;
+
+// C ref: include/display.h obj_is_generic — an *undescribed* (dknown == 0)
+// potion, real/glass gem, or spellbook is drawn as its generic class glyph
+// (e.g. an unidentified potion seen from afar is "a potion", gray, with no
+// distinguishing appearance color) until the hero gets close enough to see it
+// (map_object / see_nearby_objects then set dknown via observe_object).
+function obj_is_generic(otmp) {
+    if (!otmp || otmp.dknown) return false;
+    const otyp = otmp.otyp;
+    return otmp.oclass === POTION_CLASS
+        || (otyp >= FIRST_REAL_GEM && otyp <= LAST_GLASS_GEM)
+        || (otyp >= FIRST_SPELL && otyp <= LAST_SPELL);
+}
 
 function obj_color(otmp) {
     if (!otmp) return NO_COLOR;
     if (otmp.oclass === COIN_CLASS) return CLR_YELLOW;
+    // C ref: reset_glyphmap GLYPH_OBJ branch — a generic object glyph uses
+    // obj_color(oclass) = objects[oclass].oc_color = CLR_GRAY.
+    if (obj_is_generic(otmp)) return GENERIC_OBJ_COLOR;
     const obj = objects[otmp.otyp];
     if (obj && obj.oc_color != null) return obj.oc_color;
     return NO_COLOR;
@@ -108,9 +136,33 @@ function object_glyph(otmp) {
         const mon = monster_by_pmidx(otmp.corpsenm);
         return { ch: OC_SYM[FOOD_CLASS], color: mon?.mcolor ?? NO_COLOR, dec: false };
     }
-    // Boulder uses the rock symbol; the generic case below covers it.
+    // Boulder uses the rock symbol; the generic case below covers it.  A
+    // generic object keeps its class symbol (potion '!', gem '*', book '+');
+    // only the color is suppressed to the generic gray.
     const sym = OC_SYM[otmp.oclass] || OC_SYM[1];
     return { ch: sym, color: obj_color(otmp), dec: false };
+}
+
+// C ref: display.c map_object + see_nearby_objects — when the hero can see an
+// undescribed potion/gem/spellbook closely enough (distu(x,y) <= neardist,
+// where neardist is the small rounded square around the hero), it is observed:
+// dknown is set so its glyph upgrades from the generic class symbol to the
+// specific object (revealing its appearance color).  Not done while
+// hallucinating (objects are randomized then).  Setting dknown consumes no
+// RNG; the discovery-list (oc_encountered) bookkeeping is a separate '\'-screen
+// concern handled by o_init.observe_object elsewhere and is not needed here.
+function maybe_observe_near_object(x, y) {
+    const obj = vobj_at(x, y);
+    if (!obj || obj.dknown || !obj_is_generic(obj)) return;
+    if (game.u?.uhallu) return; // C ref: map_object's !Hallucination guard
+    const ux = game.u?.ux, uy = game.u?.uy;
+    if (ux == null || uy == null) return;
+    const xr = game.u?.xray_range ?? 0;
+    const r = (xr > 2) ? xr : 2;
+    const neardist = (r * r) * 2 - r;
+    const distu = (x - ux) * (x - ux) + (y - uy) * (y - uy);
+    if (distu > neardist) return;
+    obj.dknown = 1;
 }
 
 // Topmost visible object at (x, y).  C ref: display.h vobj_at.
@@ -471,6 +523,31 @@ function terrain_glyph(loc, x, y) {
         const sway = known_branch_stairs(stairway_at(x, y)) ? CLR_YELLOW : NO_COLOR;
         return { ch, color: sway, dec: false };
     }
+    // C ref: back_to_glyph POOL/MOAT -> S_pool, WATER -> S_water, LAVAPOOL ->
+    // S_lava, LAVAWALL -> S_lavawall, ICE -> S_ice.  defsym.h ASCII glyphs:
+    // S_pool/S_water/S_lava/S_lavawall '}' ; S_ice '.'.  In DECgraphics the
+    // water/lava cmaps are the meta-'\' diamond, which the recorder emits as a
+    // backtick '`' inside the DEC (Shift-Out) font.  The frozen screen decoder's
+    // DEC_MAP has NO '`' entry, so the recorded C cell renders as the literal
+    // backtick '`'.  We therefore emit ch '`' with dec=FALSE (the terminal would
+    // otherwise map a DEC '`' to the '◆' diamond, which the decoder leaves as
+    // '◆' and would mismatch the recorded literal backtick).  ICE uses '~' which
+    // IS in DEC_MAP (-> centered dot '·'), so it keeps dec.  Colors: S_pool
+    // CLR_BLUE, S_water CLR_BRIGHT_BLUE, S_lava CLR_RED, S_lavawall CLR_ORANGE,
+    // S_ice CLR_CYAN.
+    case POOL:
+    case MOAT:      return dec ? { ch: '`', color: CLR_BLUE, dec: false }
+                               : { ch: '}', color: CLR_BLUE, dec: false };
+    case WATER:     return dec ? { ch: '`', color: CLR_BRIGHT_BLUE, dec: false }
+                               : { ch: '}', color: CLR_BRIGHT_BLUE, dec: false };
+    case LAVAPOOL:  return dec ? { ch: '`', color: CLR_RED, dec: false }
+                               : { ch: '}', color: CLR_RED, dec: false };
+    case LAVAWALL:  return dec ? { ch: '`', color: CLR_ORANGE, dec: false }
+                               : { ch: '}', color: CLR_ORANGE, dec: false };
+    case ICE:       return dec ? { ch: '~', color: CLR_CYAN, dec: true }
+                               : { ch: '.', color: CLR_CYAN, dec: false };
+    case IRONBARS:  return { ch: '#', color: CLR_GRAY, dec: false };
+    case TREE:      return { ch: '#', color: CLR_GREEN, dec: false };
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     // C ref: defsym.h PCHAR(36, '{', S_sink, CLR_WHITE).
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
@@ -533,12 +610,24 @@ function engraving_glyph(loc) {
     return { ch, color: CLR_BRIGHT_BLUE, dec: false };
 }
 
+// C ref: display.h covers_objects(x,y) — a liquid cell hides objects/traps:
+// (is_pool && !Underwater) || LAVAPOOL || LAVAWALL.  is_pool = POOL|MOAT|WATER.
+function covers_objects(loc) {
+    const typ = loc?.typ;
+    return typ === POOL || typ === MOAT || typ === WATER
+        || typ === LAVAPOOL || typ === LAVAWALL;
+}
+
 // The "background" glyph for a cell: the topmost non-monster thing the
 // hero would remember.  C ref: display.c _map_location —
 // priority object > trap > engraving > terrain.  (Traps/regions not modeled.)
 export function background_glyph(loc, x, y) {
     const obj = vobj_at(x, y);
-    if (obj) {
+    // C ref: display.h covers_objects(x,y) — a pool/moat/water (when not
+    // Underwater) or lava cell HIDES any object/trap on it (the object is
+    // submerged), so the terrain is drawn instead.  _map_location only shows the
+    // object when !covers_objects.
+    if (obj && !covers_objects(loc)) {
         const og = object_glyph(obj);
         if (og) return og;
     }
@@ -583,6 +672,11 @@ export function newsym(x, y) {
     }
 
     if (cansee(x, y)) {
+        // C ref: display.c map_object — a generic object glyph (an undescribed
+        // potion/gem/spellbook) becomes specific once the hero is close enough
+        // to see it up close.  observe_object() sets dknown so obj_color() then
+        // returns the real appearance color instead of the generic gray.
+        maybe_observe_near_object(x, y);
         // C ref: display.c unmap_object/_map_location — seeing an engraved
         // spot reveals the engraving so it can be mapped.
         if (spot_shows_engravings(loc)) {
@@ -738,7 +832,12 @@ function _statusLine1() {
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
-    let s = `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
+    // C ref: botl.c describe_level — "Tutorial:n" while In_tutorial(&u.uz),
+    // else "Dlvl:n".  The level number is the depth within the tutorial branch
+    // (1 for tut-1).
+    const inTut = (u.uz?.dnum != null && u.uz.dnum === game.tutorial_dnum);
+    const lvlLabel = inTut ? 'Tutorial' : 'Dlvl';
+    let s = `${lvlLabel}:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
     // C ref: botl.c do_statusline2 — Xp:<lvl>[/<exp>], optional T:<moves>.
     if (game.flags?.showexp)
         s += ` Xp:${u.ulevel || 1}/${u.uexp || 0}`;

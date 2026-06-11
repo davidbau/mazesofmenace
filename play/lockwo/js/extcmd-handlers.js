@@ -18,6 +18,7 @@ import { STATUE } from './mkobj.js';
 import { getpos, get_valid_jump_position, is_valid_jump_pos } from './hack.js';
 import { dotwoweapon } from './wield.js';
 import { doride } from './steed.js';
+import { doenhance } from './enhance.js';
 import { readobjnam } from './readobjnam.js';
 import { hold_another_object } from './invent.js';
 import { rn1 } from './rng.js';
@@ -687,6 +688,7 @@ const HANDLERS = {
     call: docallcmd,
     ride: doride,
     wizwish: wiz_wish,
+    enhance: doenhance,
 };
 
 // C ref: cmd.c doextcmd().  '#' entry: read an extended command name and

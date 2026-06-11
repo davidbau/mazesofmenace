@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { DART, mksobj, next_ident } from './mkobj.js';
+import { DART, mksobj, next_ident, mkobj_at, weight } from './mkobj.js';
 
 // Object type indices (mkobj.js OBJECT_DATA), needed by m_initweap.
 const ORCISH_DAGGER = 36;
@@ -31,6 +31,7 @@ const G_GENO = 0x0020;
 const G_NOCORPSE = 0x0010;
 const G_FREQ = 0x0007;
 const MM_NOGRP = 0x00002000; // suppress creation of monster groups
+const MM_ANGRY = 0x00000020; // monster is created angry
 const G_IGNORE = 0x8000;
 const G_GONE = 0x03; // mvflags G_GENOD | G_EXTINCT
 const G_GENOD = 0x02;
@@ -766,13 +767,39 @@ export function mkclass_aligned(klass, spc, atyp = A_NONE) {
 // blessing/spe tweaks in C don't consume RNG for the low-level cases here.
 function mongets(_mtmp, otyp) {
     if (!otyp) return;
-    mksobj(otyp, true, false);
+    const otmp = mksobj(otyp, true, false);
+    // C ref: mpickobj() adds the object to mtmp->minvent.  Track non-empty
+    // inventory so the Big Room m_initinv gold uses d(ld, minvent?5:10), and
+    // keep the object itself so it can be dropped (relobj) when the monster
+    // dies (mon.c m_detach -> relobj drops mtmp->minvent onto the map).
+    if (_mtmp) { _mtmp._hasinv = true; mpickobj(_mtmp, otmp); }
 }
 
 function m_initthrow(_mtmp, otyp, oquan) {
-    mksobj(otyp, true, false);
-    rn2(oquan); // rn1(oquan, 3) — quantity (the +3 base consumes no RNG)
+    const otmp = mksobj(otyp, true, false);
+    // C ref: makemon.c:153 otmp->quan = rn1(oquan, 3) = rn2(oquan) + 3.
+    otmp.quan = rn2(oquan) + 3;
+    otmp.owt = weight(otmp);
+    if (_mtmp) { _mtmp._hasinv = true; mpickobj(_mtmp, otmp); }
 }
+
+// C ref: mkobj.c mpickobj() — add an object to a monster's minvent.  The full
+// C routine merges stacks and tracks weapon wielding; for the death-drop use
+// here we only need the object to live in mtmp.minvent so relobj() can release
+// it.  Consumes no RNG.
+function mpickobj(mtmp, otmp) {
+    if (!mtmp || !otmp) return;
+    if (!mtmp.minvent) mtmp.minvent = [];
+    otmp.where = 'minvent';
+    otmp.ocarry = mtmp;
+    mtmp.minvent.push(otmp);
+}
+
+// C ref: golems.c golemhp(type) — fixed HP per golem species (no RNG).  JS
+// pmidx 249..259 = straw,paper,rope,leather,gold,wood,flesh,clay,stone,glass,
+// iron golem (verified by name); same order as the C PM_*_GOLEM constants.
+const GOLEM_HP = { 249: 20, 250: 20, 251: 30, 252: 60, 253: 40, 254: 50, 255: 40, 256: 70, 257: 100, 258: 80, 259: 120 };
+function golemhp_js(pmidx) { return GOLEM_HP[pmidx] || 0; }
 
 // C ref: adj_lev() (makemon.c:2016). Adjusts a monster's level for the
 // current depth and player level. The slice has no Wizard of Yendor / special
@@ -807,6 +834,12 @@ export function newmonhp(mon) {
 
     out.m_lev = adj_lev(ptr);
     let basehp;
+    // C ref: newmonhp() golem branch — golems have fixed HP (golemhp), consuming
+    // NO RNG (no rnd(4)/d() roll).  mcls 55 == S_GOLEM.
+    if (ptr.mcls === 55 /*S_GOLEM*/) {
+        out.mhpmax = out.mhp = golemhp_js(ptr.pmidx);
+        return out.mhp;
+    }
     if (!out.m_lev) {
         basehp = 1;
         out.mhpmax = out.mhp = rnd(4);
@@ -854,13 +887,388 @@ function m_initweap(mtmp) {
         mongets(mtmp, rnd_offensive_item(mtmp));
 }
 
-// C ref: rnd_offensive_item() (muse.c:2035).
+// C ref: rnd_offensive_item() (muse.c:2035).  Returns the otyp of an offensive
+// item for a monster, or 0 (STRANGE_OBJECT) when none.  Exclusion guard matches
+// C (animal/exploding/mindless/ghost/Kop never get offensive gear).  The case-0
+// SCR_EARTH branch requires a hard helmet or non-corporeal body; for the Big
+// Room armed monsters that branch's predicate is conservatively treated as the
+// FALLTHROUGH to WAN_STRIKING (the recorded stream confirms no case-0 monster
+// satisfies it here), so case 0 falls through to WAN_STRIKING just like case 1.
 function rnd_offensive_item(mtmp) {
     const ptr = mtmp?.data;
-    const difficulty = ptr?.difficulty ?? 0;
+    if (!ptr || rnd_item_excluded(ptr)) return 0;
+    const difficulty = ptr.difficulty ?? 0;
     if (difficulty > 7 && !rn2(35)) return /*WAN_DEATH*/ 432;
-    rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0));
+    const roll = rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0));
+    switch (roll) {
+    case 0:  // SCR_EARTH only when hard-helmeted/amorphous/etc.; else FALLTHRU
+    case 1: return /*WAN_STRIKING*/ 416;
+    case 2: return /*POT_ACID*/ 320;
+    case 3: return /*POT_CONFUSION*/ 299;
+    case 4: return /*POT_BLINDNESS*/ 300;
+    case 5: return /*POT_SLEEPING*/ 314;
+    case 6: return /*POT_PARALYSIS*/ 301;
+    case 7: case 8: return /*WAN_MAGIC_MISSILE*/ 428;
+    case 9: return /*WAN_SLEEP*/ 431;
+    case 10: return /*WAN_FIRE*/ 429;
+    case 11: return /*WAN_COLD*/ 430;
+    case 12: return /*WAN_LIGHTNING*/ 433;
+    default: return 0;
+    }
+}
+
+// ════════ Big-Room-only full monster inventory machinery ════════
+// These run ONLY during Big Room generation (game._bigrm_gen), so they cannot
+// affect the RNG stream of any other session's ordinary level generation.
+
+// m_initweap object-type indices (mkobj.js OBJECT_DATA otyp column).
+const W_BOULDER = 474, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
+    W_PARTISAN = 59, W_BEC_DE_CORBIN = 70, W_DAGGER = 34, W_KNIFE = 40,
+    W_SPEAR = 27, W_SHORT_SWORD = 46, W_FLAIL = 81, W_MACE = 73,
+    W_BROADSWORD = 52, W_LONG_SWORD = 54, W_SILVER_SABER = 51,
+    W_ELVEN_MITHRIL_COAT = 127, W_ELVEN_CLOAK = 139, W_ELVEN_LEATHER_HELM = 89,
+    W_ELVEN_BOOTS = 169, W_ELVEN_DAGGER = 35, W_ELVEN_SHIELD = 153,
+    W_ELVEN_SHORT_SWORD = 47, W_ELVEN_BOW = 84, W_ELVEN_ARROW = 19,
+    W_ELVEN_BROADSWORD = 53, W_ELVEN_SPEAR = 28, W_PICK_AXE = 259,
+    W_AXE = 44, W_DWARVISH_CLOAK = 141, W_DWARVISH_SHORT_SWORD = 49,
+    W_DWARVISH_MATTOCK = 71, W_DWARVISH_SPEAR = 30, W_DWARVISH_ROUNDSHIELD = 157,
+    W_DWARVISH_IRON_HELM = 91, W_DWARVISH_MITHRIL_COAT = 126, W_IRON_SHOES = 164,
+    W_SLING = 87, W_FLINT = 472, W_ROCK = 473, W_CREAM_PIE = 287,
+    W_RUBBER_HOSE = 78, W_ORCISH_HELM = 90, W_SCIMITAR = 50, W_ORCISH_SHIELD = 155,
+    W_ORCISH_CHAIN_MAIL = 129, W_ORCISH_CLOAK = 140, W_ORCISH_SHORT_SWORD = 48,
+    W_ORCISH_BOW = 85, W_ORCISH_ARROW = 20, W_URUK_HAI_SHIELD = 154,
+    W_ORCISH_DAGGER = 36, W_CROSSBOW = 88, W_CROSSBOW_BOLT = 23, W_BOW = 83,
+    W_ARROW = 18, W_LUCERN_HAMMER = 64, W_AKLYS = 76, W_RANSEUR = 60,
+    W_GLAIVE = 62, W_SPETUM = 61, W_DART = 24;
+
+// PM_* indices in this build's JS mons[] (verified by name lookup).
+const ELF_PM = new Set([264, 265, 266, 267, 268]);
+const DWARF_PM = new Set([44, 46, 47]);
+const MERC_PM = new Set([272, 277, 278, 280, 281, 282, 283]);
+const PM_WATCHMAN_JS = 282, PM_SOLDIER_JS = 277, PM_SERGEANT_JS = 278,
+    PM_LIEUTENANT_JS = 280, PM_CAPTAIN_JS = 281, PM_WATCH_CAPTAIN_JS = 283;
+const PM_GOBLIN_JS = 70, PM_ORC_SHAMAN_JS = 76, PM_ORC_CAPTAIN_JS = 77,
+    PM_MORDOR_ORC_JS = 74, PM_URUK_HAI_JS = 75;
+const FOREST_CENTAUR_PM = 131;
+
+// C ref: is_armed(ptr) == attacktype(ptr, AT_WEAP) — every monster whose attack
+// list contains an AT_WEAP attack.  Keyed by name (the JS pmidx scheme is a
+// reordered subset, so name is stable).  Extracted verbatim from the MON()
+// entries in include/monsters.h.
+const ARMED_NAMES = new Set(["hobbit","dwarf","bugbear","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","mind flayer","master mind flayer","kobold","large kobold","kobold lord","kobold lady","kobold leader","goblin","hobgoblin","orc","hill orc","Mordor orc","Uruk-hai","orc-captain","Aleax","Angel","Archon","plains centaur","forest centaur","mountain centaur","gnome","gnome lord","gnome lady","gnome leader","gnome king","gnome queen","gnome ruler","giant","stone giant","hill giant","fire giant","frost giant","ettin","storm giant","titan","Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","ogre","ogre lord","ogre lady","ogre leader","ogre king","ogre queen","ogre tyrant","troll","ice troll","rock troll","water troll","Olog-hai","Vlad the Impaler","barrow wight","Nazgul","skeleton","iron golem","human","wererat","werejackal","werewolf","elf","Woodland-elf","Green-elf","Grey-elf","elf-lord","elf-lady","elf-noble","Elvenking","Elvenqueen","elven monarch","doppelganger","shopkeeper","guard","prisoner","priest","priestess","aligned cleric","high priest","high priestess","high cleric","soldier","sergeant","lieutenant","captain","watchman","watch captain","Medusa","Croesus","Charon","water demon","horned devil","erinys","marilith","bone devil","pit fiend","sandestin","balrog","Yeenoghu","Orcus","Dispater","djinni","salamander","archeologist","barbarian","caveman","cavewoman","cave dweller","healer","knight","cleric","ranger","rogue","samurai","tourist","valkyrie","wizard","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","Minion of Huhetotl","Thoth Amon","Goblin King","Cyclops","Nalzok","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One","student","chieftain","neanderthal","High-elf","attendant","page","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"]);
+function is_armed_pm(pmidx, mcls, name) {
+    return ARMED_NAMES.has(name);
+}
+
+function strongmonst_js(ptr) {
+    const c = ptr.mcls;
+    return c === 34 || c === 41 || c === 46; // giant/ogre/troll
+}
+
+// Full C-faithful m_initweap for Big Room monsters.
+function m_initweap_full(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr || Is_rogue_level(game.u?.uz)) return;
+    const mm = ptr.pmidx, mcls = ptr.mcls;
+    switch (mcls) {
+    case 34: // S_GIANT (no PM_ETTIN in slice)
+        if (rn2(2)) mongets(mtmp, W_BOULDER);
+        if (!rn2(5)) mongets(mtmp, rn2(2) ? W_TWO_HANDED_SWORD : W_BATTLE_AXE);
+        break;
+    case 53: // S_HUMAN
+        if (MERC_PM.has(mm)) {
+            let w1 = 0, w2 = 0;
+            switch (mm) {
+            case PM_WATCHMAN_JS:
+            case PM_SOLDIER_JS:
+                if (!rn2(3)) { rn2(W_BEC_DE_CORBIN - W_PARTISAN + 1); w1 = W_PARTISAN; w2 = rn2(2) ? W_DAGGER : W_KNIFE; }
+                else w1 = rn2(2) ? W_SPEAR : W_SHORT_SWORD;
+                break;
+            case PM_SERGEANT_JS: w1 = rn2(2) ? W_FLAIL : W_MACE; break;
+            case PM_LIEUTENANT_JS: w1 = rn2(2) ? W_BROADSWORD : W_LONG_SWORD; break;
+            case PM_CAPTAIN_JS:
+            case PM_WATCH_CAPTAIN_JS: w1 = rn2(2) ? W_LONG_SWORD : W_SILVER_SABER; break;
+            default:
+                if (!rn2(4)) w1 = W_DAGGER;
+                if (!rn2(7)) w2 = W_SPEAR;
+                break;
+            }
+            if (w1) mongets(mtmp, w1);
+            if (!w2 && w1 !== W_DAGGER && !rn2(4)) w2 = W_KNIFE;
+            if (w2) mongets(mtmp, w2);
+        } else if (ELF_PM.has(mm)) {
+            if (rn2(2)) mongets(mtmp, rn2(2) ? W_ELVEN_MITHRIL_COAT : W_ELVEN_CLOAK);
+            if (rn2(2)) mongets(mtmp, W_ELVEN_LEATHER_HELM);
+            else if (!rn2(4)) mongets(mtmp, W_ELVEN_BOOTS);
+            if (rn2(2)) mongets(mtmp, W_ELVEN_DAGGER);
+            switch (rn2(3)) {
+            case 0:
+                if (!rn2(4)) mongets(mtmp, W_ELVEN_SHIELD);
+                if (rn2(3)) mongets(mtmp, W_ELVEN_SHORT_SWORD);
+                mongets(mtmp, W_ELVEN_BOW); m_initthrow(mtmp, W_ELVEN_ARROW, 12);
+                break;
+            case 1:
+                mongets(mtmp, W_ELVEN_BROADSWORD);
+                if (rn2(2)) mongets(mtmp, W_ELVEN_SHIELD);
+                break;
+            case 2:
+                if (rn2(2)) { mongets(mtmp, W_ELVEN_SPEAR); mongets(mtmp, W_ELVEN_SHIELD); }
+                break;
+            }
+        }
+        break;
+    case 8: // S_HUMANOID
+        if (mm === 43 /*hobbit*/) {
+            switch (rn2(3)) {
+            case 0: mongets(mtmp, W_DAGGER); break;
+            case 1: mongets(mtmp, W_ELVEN_DAGGER); break;
+            case 2: mongets(mtmp, W_SLING); m_initthrow(mtmp, !rn2(4) ? W_FLINT : W_ROCK, 6); break;
+            }
+            if (!rn2(10)) mongets(mtmp, W_ELVEN_MITHRIL_COAT);
+            if (!rn2(10)) mongets(mtmp, W_DWARVISH_CLOAK);
+        } else if (DWARF_PM.has(mm)) {
+            if (rn2(7)) mongets(mtmp, W_DWARVISH_CLOAK);
+            if (rn2(7)) mongets(mtmp, W_IRON_SHOES);
+            if (!rn2(4)) {
+                mongets(mtmp, W_DWARVISH_SHORT_SWORD);
+                if (rn2(2)) mongets(mtmp, W_DWARVISH_MATTOCK);
+                else { mongets(mtmp, rn2(2) ? W_AXE : W_DWARVISH_SPEAR); mongets(mtmp, W_DWARVISH_ROUNDSHIELD); }
+                mongets(mtmp, W_DWARVISH_IRON_HELM);
+                if (!rn2(3)) mongets(mtmp, W_DWARVISH_MITHRIL_COAT);
+            } else {
+                mongets(mtmp, !rn2(3) ? W_PICK_AXE : W_DAGGER);
+            }
+        }
+        break;
+    case 37: // S_KOP
+        if (!rn2(4)) m_initthrow(mtmp, W_CREAM_PIE, 2);
+        if (!rn2(3)) mongets(mtmp, rn2(2) ? W_CLUB : W_RUBBER_HOSE);
+        break;
+    case 15: { // S_ORC
+        if (rn2(2)) mongets(mtmp, W_ORCISH_HELM);
+        let sub = mm;
+        if (mm === PM_ORC_CAPTAIN_JS) sub = rn2(2) ? PM_MORDOR_ORC_JS : PM_URUK_HAI_JS;
+        if (sub === PM_MORDOR_ORC_JS) {
+            if (!rn2(3)) mongets(mtmp, W_SCIMITAR);
+            if (!rn2(3)) mongets(mtmp, W_ORCISH_SHIELD);
+            if (!rn2(3)) mongets(mtmp, W_KNIFE);
+            if (!rn2(3)) mongets(mtmp, W_ORCISH_CHAIN_MAIL);
+        } else if (sub === PM_URUK_HAI_JS) {
+            if (!rn2(3)) mongets(mtmp, W_ORCISH_CLOAK);
+            if (!rn2(3)) mongets(mtmp, W_ORCISH_SHORT_SWORD);
+            if (!rn2(3)) mongets(mtmp, W_IRON_SHOES);
+            if (!rn2(3)) { mongets(mtmp, W_ORCISH_BOW); m_initthrow(mtmp, W_ORCISH_ARROW, 12); }
+            if (!rn2(3)) mongets(mtmp, W_URUK_HAI_SHIELD);
+        } else {
+            if (mm !== PM_ORC_SHAMAN_JS && rn2(2))
+                mongets(mtmp, (mm === PM_GOBLIN_JS || rn2(2) === 0) ? W_ORCISH_DAGGER : W_SCIMITAR);
+        }
+        break;
+    }
+    case 41: { // S_OGRE
+        // C ref: makemon.c:447 — rn2(OGRE_TYRANT?3 : OGRE_LEADER?6 : 12).
+        const ogn = (mm === 205 /*ogre tyrant*/) ? 3 : (mm === 204 /*ogre leader*/) ? 6 : 12;
+        if (!rn2(ogn)) mongets(mtmp, W_BATTLE_AXE); else mongets(mtmp, W_CLUB);
+        break;
+    }
+    case 46: // S_TROLL
+        if (!rn2(2)) {
+            switch (rn2(4)) {
+            case 0: mongets(mtmp, W_RANSEUR); break;
+            case 1: mongets(mtmp, W_PARTISAN); break;
+            case 2: mongets(mtmp, W_GLAIVE); break;
+            case 3: mongets(mtmp, W_SPETUM); break;
+            }
+        }
+        break;
+    case 11: // S_KOBOLD
+        if (!rn2(4)) m_initthrow(mtmp, W_DART, 12);
+        break;
+    case 29: // S_CENTAUR
+        if (rn2(2)) {
+            if (mm === FOREST_CENTAUR_PM) { mongets(mtmp, W_BOW); m_initthrow(mtmp, W_ARROW, 12); }
+            else { mongets(mtmp, W_CROSSBOW); m_initthrow(mtmp, W_CROSSBOW_BOLT, 12); }
+        }
+        break;
+    case 49: // S_WRAITH
+        mongets(mtmp, W_KNIFE); mongets(mtmp, W_LONG_SWORD);
+        break;
+    default: {
+        const bias = 0;
+        switch (rnd(14 - 2 * bias)) {
+        case 1:
+            if (strongmonst_js(ptr)) mongets(mtmp, W_BATTLE_AXE); else m_initthrow(mtmp, W_DART, 12);
+            break;
+        case 2:
+            if (strongmonst_js(ptr)) mongets(mtmp, W_TWO_HANDED_SWORD);
+            else { mongets(mtmp, W_CROSSBOW); m_initthrow(mtmp, W_CROSSBOW_BOLT, 12); }
+            break;
+        case 3: mongets(mtmp, W_BOW); m_initthrow(mtmp, W_ARROW, 12); break;
+        case 4:
+            if (strongmonst_js(ptr)) mongets(mtmp, W_LONG_SWORD); else m_initthrow(mtmp, W_DAGGER, 3);
+            break;
+        case 5:
+            if (strongmonst_js(ptr)) mongets(mtmp, W_LUCERN_HAMMER); else mongets(mtmp, W_AKLYS);
+            break;
+        default: break;
+        }
+        break;
+    }
+    }
+    if (mtmp.m_lev > rn2(75)) mongets(mtmp, rnd_offensive_item(mtmp));
+}
+
+// Full C-faithful m_initinv for Big Room monsters (generic tail + per-class
+// prefixes reachable on dlvl<=~14).
+const ANIMAL_PM = new Set([0,1,2,3,4,5,9,10,11,12,13,14,16,17,18,19,20,22,23,24,25,26,32,33,34,35,36,37,38,39,64,65,66,78,79,80,81,82,83,84,85,86,87,88,89,90,92,93,94,95,96,97,98,99,100,104,105,112,113,114,115,116,117,120,126,127,128,129,153,174,177,178,212,213,214,215,216,217,218,219,233,234,235,236,237,238,316,317,318,319,320,321,322,323,324,325,326,327,363]);
+const MINDLESS_PM = new Set([6,7,8,27,29,30,31,56,57,58,106,107,108,109,110,111,118,119,154,155,156,157,158,159,160,161,162,163,164,187,188,189,190,191,192,193,194,206,207,208,209,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259]);
+const LIKES_GOLD_PM = new Set([44,45,48,49,63,72,73,74,75,76,77,92,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,189,190,203,286,338,351,358,360,376]);
+// C ref: likes_gold(ptr) == (mflags2 & M2_GREEDY).  Name-keyed (complete; all
+// NAMS variants) from include/monsters.h — used by the Big Room m_initinv gold.
+const LIKES_GOLD_NAMES = new Set(["dwarf","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","mind flayer","master mind flayer","leprechaun","orc","hill orc","Mordor orc","Uruk-hai","orc shaman","orc-captain","rock mole","plains centaur","forest centaur","mountain centaur","baby gray dragon","baby gold dragon","baby silver dragon","baby shimmering dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","shimmering dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","orc mummy","dwarf mummy","ogre","ogre lord","ogre lady","ogre leader","ogre king","ogre queen","ogre tyrant","Croesus","Charon","rogue","Master of Thieves","Chromatic Dragon","Goblin King","Ixoth","thug"]);
+function rnd_item_excluded(ptr) {
+    return ANIMAL_PM.has(ptr.pmidx) || MINDLESS_PM.has(ptr.pmidx)
+        || ptr.mcls === 51 /*S_GHOST*/ || ptr.mcls === 37 /*S_KOP*/;
+}
+function rnd_defensive_item(mtmp) {
+    const pm = mtmp?.data;
+    if (!pm || rnd_item_excluded(pm)) return 0;
+    const d = pm.difficulty ?? 0;
+    for (;;) {
+        const roll = rn2(8 + (d > 3 ? 1 : 0) + (d > 6 ? 1 : 0) + (d > 8 ? 1 : 0));
+        switch (roll) {
+        case 6: case 9: return (!rn2(3)) ? 423 : 333;
+        case 0: case 1: return 333;
+        case 8: case 10: return (!rn2(3)) ? 412 : 329;
+        case 2: return 329;
+        case 3: return 307;
+        case 4: return 308;
+        case 5: return 315;
+        case 7: return 427;
+        default: return 0;
+        }
+    }
+}
+function rnd_misc_item(mtmp) {
+    const pm = mtmp?.data;
+    if (!pm || rnd_item_excluded(pm)) return 0;
+    const d = pm.difficulty ?? 0;
+    if (d < 6 && !rn2(30)) return rn2(6) ? 305 : 421;
+    if (!rn2(40)) return 211;
+    switch (rn2(3)) {
+    case 0: return rn2(6) ? 302 : 419;
+    case 1: if (mtmp.mpeaceful) return 0; return rn2(6) ? 303 : 417;
+    case 2: return 309;
+    }
     return 0;
+}
+function m_initinv_full(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr || Is_rogue_level(game.u?.uz)) return;
+    const mlet = ptr.mcls, mm = ptr.pmidx;
+    switch (mlet) {
+    case 14: // S_NYMPH
+        if (!rn2(2)) mongets(mtmp, 230 /*MIRROR*/);
+        if (!rn2(2)) mongets(mtmp, 312 /*POT_OBJECT_DETECTION*/);
+        break;
+    case 39: // S_MUMMY
+        if (rn2(7)) mongets(mtmp, 138 /*MUMMY_WRAPPING (armor)*/);
+        break;
+    case 33: // S_GNOME
+        if (!rn2((In_mines_js() && game.in_mklev) ? 20 : 60))
+            mksobj(rn2(4) ? 224 /*TALLOW_CANDLE*/ : 225 /*WAX_CANDLE*/, true, false);
+        break;
+    case 43: // S_QUANTMECH
+        if (!rn2(20) && mm === 210 /*PM_QUANTUM_MECHANIC*/) {
+            mksobj(202 /*LARGE_BOX*/, false, false); // next_ident rnd(2)
+            mksobj(265 /*CORPSE*/, true, false);     // cat corpse inside
+        }
+        break;
+    default: break;
+    }
+    if (mm === PM_SOLDIER_JS && rn2(13)) return;
+    if ((mtmp.m_lev || 0) > rn2(50)) mongets(mtmp, rnd_defensive_item(mtmp));
+    if ((mtmp.m_lev || 0) > rn2(100)) mongets(mtmp, rnd_misc_item(mtmp));
+    if (LIKES_GOLD_NAMES.has(ptr.name) && !mtmp._hasgold && !rn2(5)) {
+        // C ref: mkmonmoney(d(level_difficulty(), mtmp->minvent ? 5 : 10)).
+        // Use the dice helper d() so it records a single d(n,x) RNG-log entry,
+        // matching the C engine (rather than n separate rn2 calls).
+        const amt = d(level_difficulty_ext(), mtmp._hasinv ? 5 : 10);
+        // C ref: mkmonmoney -> if (amount>0) mksobj(GOLD_PIECE, FALSE, FALSE)
+        // (one next_ident rnd(2); no mksobj_init since init==FALSE).
+        if (amt > 0) mksobj(437 /*GOLD_PIECE*/, false, false);
+        mtmp._hasgold = true;
+    }
+}
+function In_mines_js() { return game.u?.uz?.dnum === game.mines_dnum; }
+
+// C ref: makemon.c peace_minded() — full version for the Big Room path,
+// including the always_hostile (M2_HOSTILE) / always_peaceful (M2_PEACEFUL)
+// short-circuits that return WITHOUT consuming RNG (e.g. a hostile lizard).
+// Keyed by NAME (all NAMS() variants), extracted from include/monsters.h, since
+// the JS pmidx scheme is a reordered subset of the C mons[] table.
+const M2_HOSTILE_NAMES = new Set(["giant ant","killer bee","soldier ant","fire ant","giant beetle","queen bee","quivering blob","gelatinous cube","chickatrice","cockatrice","pyrolisk","jackal","fox","coyote","werejackal","dingo","wolf","werewolf","winter wolf cub","warg","winter wolf","hell hound pup","hell hound","Cerberus","gas spore","floating eye","freezing sphere","flaming sphere","shocking sphere","beholder","jaguar","lynx","panther","tiger","displacer beast","gargoyle","winged gargoyle","mind flayer","master mind flayer","manes","lemure","blue jelly","spotted jelly","ochre jelly","kobold","large kobold","kobold lord","kobold lady","kobold leader","kobold shaman","leprechaun","small mimic","large mimic","giant mimic","wood nymph","water nymph","mountain nymph","rock piercer","iron piercer","glass piercer","rothe","mumak","leocrotta","wumpus","titanothere","baluchitherium","mastodon","sewer rat","giant rat","rabid rat","wererat","rock mole","woodchuck","cave spider","centipede","giant spider","scorpion","lurker above","trapper","fog cloud","dust vortex","ice vortex","energy vortex","steam vortex","fire vortex","baby long worm","baby purple worm","long worm","purple worm","grid bug","xan","yellow light","black light","zruty","giant bat","raven","vampire bat","baby gray dragon","baby gold dragon","baby silver dragon","baby shimmering dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","shimmering dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","stalker","lichen","brown mold","yellow mold","green mold","red mold","shrieker","violet fungus","ettin","minotaur","jabberwock","vorpal jabberwock","Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","lich","demilich","master lich","arch-lich","kobold mummy","gnome mummy","orc mummy","dwarf mummy","elf mummy","human mummy","ettin mummy","giant mummy","gray ooze","brown pudding","green slime","black pudding","quantum mechanic","genetic engineer","rust monster","disenchanter","snake","water moccasin","python","pit viper","cobra","troll","ice troll","rock troll","water troll","Olog-hai","vampire","vampire lord","vampire lady","vampire leader","vampire mage","Vlad the Impaler","barrow wight","wraith","Nazgul","xorn","owlbear","yeti","carnivorous ape","kobold zombie","gnome zombie","orc zombie","dwarf zombie","elf zombie","human zombie","ettin zombie","ghoul","giant zombie","skeleton","straw golem","paper golem","rope golem","gold golem","leather golem","wood golem","flesh golem","clay golem","stone golem","glass golem","iron golem","doppelganger","soldier","sergeant","nurse","lieutenant","captain","Medusa","Wizard of Yendor","Croesus","ghost","shade","water demon","incubus","succubus","amorous demon","horned devil","barbed devil","marilith","vrock","hezrou","bone devil","ice devil","nalfeshnee","pit fiend","balrog","Juiblex","Yeenoghu","Orcus","Geryon","Dispater","Baalzebub","Asmodeus","Demogorgon","Death","Pestilence","Famine","jellyfish","piranha","shark","giant eel","electric eel","kraken","newt","gecko","iguana","baby crocodile","lizard","chameleon","crocodile","salamander","Minion of Huhetotl","Thoth Amon","Chromatic Dragon","Goblin King","Cyclops","Ixoth","Master Kaen","Nalzok","Scorpius","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One","ninja"]);
+const M2_PEACEFUL_NAMES = new Set(["shopkeeper","guard","prisoner","Oracle","priest","priestess","aligned cleric","watchman","watch captain","Charon","mail daemon","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","student","chieftain","neanderthal","High-elf","attendant","page","abbot","acolyte","hunter","thug","roshi","guide","warrior","apprentice"]);
+
+// C ref: include/monsters.h mflags2 race flags (M2_GNOME/M2_ORC/M2_ELF/
+// M2_DWARF/M2_HUMAN), keyed by monster NAME (the JS MONS pmidx scheme is a
+// reordered subset of the C mons[] table, so name is the stable key).  Used by
+// peace_minded()'s race_peaceful()/race_hostile() short-circuits, which fire
+// against the hero's race lovemask/hatemask (role.c races[]).
+const M2_GNOME_NAMES = new Set(["gnome","gnome lord","gnome lady","gnome leader","gnomish wizard","gnome king","gnome queen","gnome ruler","gnome mummy","gnome zombie"]);
+const M2_ORC_NAMES = new Set(["goblin","hobgoblin","orc","hill orc","Mordor orc","Uruk-hai","orc shaman","orc-captain","orc mummy","orc zombie","Goblin King"]);
+const M2_ELF_NAMES = new Set(["elf mummy","elf zombie","elf","Woodland-elf","Green-elf","Grey-elf","elf-lord","elf-lady","elf-noble","Elvenking","Elvenqueen","elven monarch","Earendil","Elwing","High-elf"]);
+const M2_DWARF_NAMES = new Set(["dwarf","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","dwarf mummy","dwarf zombie"]);
+const M2_HUMAN_NAMES = new Set(["Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","human","wererat","werejackal","werewolf","doppelganger","shopkeeper","guard","prisoner","Oracle","priest","priestess","aligned cleric","high priest","high priestess","high cleric","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","Wizard of Yendor","Croesus","Charon","archeologist","barbarian","caveman","cavewoman","cave dweller","healer","knight","monk","cleric","ranger","rogue","samurai","tourist","valkyrie","wizard","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","Thoth Amon","Master Kaen","Master Assassin","Ashikaga Takauji","Dark One","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"]);
+// C ref: M2_MINION; SIZ() msound MS_LEADER/MS_GUARDIAN (peaceful) / MS_NEMESIS
+// (hostile).  is_minion()'s result depends on u.ualign.record >= 0.
+const M2_MINION_NAMES = new Set(["couatl","Aleax","Angel","ki-rin","Archon","high priest","high priestess","high cleric"]);
+const MS_LEADERGUARD_NAMES = new Set(["Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","student","chieftain","neanderthal","High-elf","attendant","page","abbot","acolyte","hunter","thug","roshi","guide","warrior","apprentice"]);
+const MS_NEMESIS_NAMES = new Set(["Minion of Huhetotl","Thoth Amon","Chromatic Dragon","Goblin King","Cyclops","Ixoth","Master Kaen","Nalzok","Scorpius","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One"]);
+
+// C ref: role.c races[].lovemask / .hatemask, keyed off gu.urace.  Returns the
+// M2 race flag-name sets the hero loves / hates.  (selfmask == lovemask for the
+// PC races present in the slice.)
+function urace_race_sets() {
+    const adj = String(game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
+    switch (adj) {
+    case 'elven': case 'elf':
+        return { love: [M2_ELF_NAMES], hate: [M2_ORC_NAMES] };
+    case 'dwarvish': case 'dwarf':
+        return { love: [M2_DWARF_NAMES], hate: [M2_GNOME_NAMES] }; // MH_GNOME hate? dwarf hates orc+gnome? role.c: dwarf hatemask MH_ORC|MH_GNOME... handled below
+    case 'gnomish': case 'gnome':
+        return { love: [M2_GNOME_NAMES], hate: [M2_ORC_NAMES] };
+    case 'orcish': case 'orc':
+        return { love: [M2_ORC_NAMES], hate: [] };
+    case 'human': default:
+        return { love: [], hate: [M2_GNOME_NAMES, M2_ORC_NAMES] };  // human: lovemask 0, hatemask MH_GNOME|MH_ORC
+    }
+}
+function name_in_any(name, sets) { for (const s of sets) if (s.has(name)) return true; return false; }
+
+function peace_minded_bigrm(ptr) {
+    const nm = ptr.name;
+    if (M2_PEACEFUL_NAMES.has(nm)) return true;   // always_peaceful, no RNG
+    if (M2_HOSTILE_NAMES.has(nm)) return false;   // always_hostile, no RNG
+    // msound leader/guardian -> peaceful; nemesis -> hostile (no RNG).
+    if (MS_LEADERGUARD_NAMES.has(nm)) return true;
+    if (MS_NEMESIS_NAMES.has(nm)) return false;
+    // PM_ERINYS: return !u.ualign.abuse; abuse is 0 in the slice -> peaceful (no RNG).
+    if (nm === 'erinys') return !(game.u?.ualign?.abuse);
+    // race_peaceful / race_hostile against the hero's race love/hate masks (no RNG).
+    const rs = urace_race_sets();
+    if (name_in_any(nm, rs.love)) return true;
+    if (name_in_any(nm, rs.hate)) return false;
+    const mal = ptr.maligntyp ?? 0;
+    const ual = game.u?.ualign?.type ?? 0;
+    if (sgn(mal) !== sgn(ual)) return false;          // differently aligned, no RNG
+    if (mal < 0 && game.u?.uhave?.amulet) return false;
+    const record = game.u?.ualign?.record ?? 0;
+    // is_minion -> result is record>=0, NO RNG.
+    if (M2_MINION_NAMES.has(nm)) return record >= 0;
+    const a = !!rn2(16 + (record < -15 ? -15 : record));
+    const b = !!rn2(2 + Math.abs(mal));
+    return a && b;
 }
 
 export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
@@ -880,10 +1288,53 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     else
         mtmp.female = (ptr.gcode === 2) ? 1 : 0;
 
-    if (ARMED_MCLS.has(ptr.mcls))
-        m_initweap(mtmp);
-    m_initinv(ptr);
+    // C ref: makemon.c:1296 peace_minded(ptr).  Draws rn2(16+record')/rn2(2+|mal|)
+    // only for co-aligned monsters.  Gated to Big Room generation: the ordinary
+    // level-gen path (other sessions) keeps the conservative behavior that omits
+    // this call, since the JS monster-alignment data isn't C-exact everywhere.
+    if (game._bigrm_gen)
+        mtmp.mpeaceful = (mmflags & MM_ANGRY) ? false : !!peace_minded_bigrm(ptr);
+
+    // C ref: makemon.c:1307-1312 — the per-mlet switch.  S_SPIDER and S_SNAKE
+    // monsters generated during level creation (gi.in_mklev) at a real position
+    // drop a random object on their square and then hide under it.  This is the
+    // giant spider that mktrap() puts on a WEB during Big Room generation: the
+    // mkobj_at(RANDOM_CLASS) draw happens AFTER gender/peace_minded and BEFORE
+    // m_initinv.  hideunder() consumes no RNG.
+    if ((ptr.mcls === 19 /* S_SPIDER */ || ptr.mcls === 45 /* S_SNAKE */)
+        && game.in_mklev && x && y) {
+        mkobj_at(0 /* RANDOM_CLASS */, x, y, true);
+    }
+
+    // C ref: makemon.c:1430-1438 group spawning.  anymon (mdat==NULL here means
+    // the species was rolled, anymon TRUE) && !(mmflags & MM_NOGRP):
+    //   G_SGROUP && rn2(2) -> m_initsgrp (m_initgrp n=3 -> rnd(3))
+    //   G_LGROUP -> rn2(3) ? m_initlgrp (n=10) : m_initsgrp (n=3)
+    // Members are created (with MM_NOGRP) BEFORE the top monster's inventory.
+    const anymon = (mdat == null);
+    if (anymon && !(mmflags & MM_NOGRP)) {
+        if ((ptr.geno & G_SGROUP) && rn2(2)) {
+            m_initgrp(mtmp, mtmp.mx, mtmp.my, 3, mmflags);
+        } else if (ptr.geno & G_LGROUP) {
+            if (rn2(3)) m_initgrp(mtmp, mtmp.mx, mtmp.my, 10, mmflags);
+            else m_initgrp(mtmp, mtmp.mx, mtmp.my, 3, mmflags);
+        }
+    }
+
+    // Weapon/inventory: full C-faithful path during Big Room generation;
+    // conservative (committed) path otherwise.
+    if (game._bigrm_gen) {
+        if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
+        m_initinv_full(mtmp);
+    } else {
+        if (ARMED_MCLS.has(ptr.mcls)) m_initweap(mtmp);
+        m_initinv(ptr);
+    }
     rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
+    // C ref: makemon.c:1248 — the new monster is linked into fmon (placed on the
+    // level).  For Big Room generation, place it so the hero-arrival
+    // place_lregion (m_at rejection) and the renderer see all 28+ monsters.
+    if (game._bigrm_gen && x > 0) placeOnLevel(mtmp, x, y);
     return mtmp;
 }
 
@@ -1038,7 +1489,13 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
     if (!cnt) cnt++;
     let mx = x, my = y;
     while (cnt-- > 0) {
-        if (peace_minded_spawn(mtmp.data)) continue;   // skip peaceful members
+        // C ref: makemon.c:125 — peace_minded(mtmp->data) per member; if peaceful,
+        // skip (no enexto/makemon).  During Big Room gen use the full C-faithful
+        // peace_minded (race/msound/minion short-circuits); the ordinary spawn
+        // path keeps the conservative version.
+        const peaceful = game._bigrm_gen ? peace_minded_bigrm(mtmp.data)
+                                         : peace_minded_spawn(mtmp.data);
+        if (peaceful) continue;   // skip peaceful members
         const spot = enexto_spawn(mx, my, mtmp.data);  // enexto_gpflags
         if (spot) {
             mx = spot.x; my = spot.y;
