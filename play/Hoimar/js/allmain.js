@@ -15,13 +15,14 @@ import {
     promptPendingPetCombatBeforeDeferredFloorList,
 } from './monmove.js';
 import { initrack, settrack } from './track.js';
-import { mklev, l_nhcore_init, monster_by_user_name, u_on_upstairs } from './mklev.js';
+import { expire_corpse_timeouts, mklev, l_nhcore_init, monster_by_user_name, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
 import {
     continueRunStep, dosearch0_basic, finish_pending_eaten_corpse, finishPrayerResult,
+    encumbranceDecreaseMessage, heroNearCapacity,
     invaultBasic, monsterNearbyForSafety,
     performLevelTeleport, rhack,
     resumeFireDirectionAfterTurnMore,
@@ -150,17 +151,25 @@ async function nhTimeoutBasic() {
 
     // C ref: timeout.c:nh_timeout() WOUNDED_LEGS case -> do.c:heal_legs().
     const timeout = u?.uprops?.wounded_legs || 0;
-    if (!timeout) return;
-    u.uprops.wounded_legs = Math.max(0, timeout - 1);
-    if (u.uprops.wounded_legs) return;
-
-    if (u.wounded_legs_dex_penalty && Array.isArray(u.acurr?.a)) {
-        u.acurr.a[A_DEX] = (u.acurr.a[A_DEX] ?? 0) + 1;
+    if (timeout) {
+        u.uprops.wounded_legs = Math.max(0, timeout - 1);
+        if (!u.uprops.wounded_legs) {
+            const oldcap = u.uencumber || 0;
+            if (u.wounded_legs_dex_penalty && Array.isArray(u.acurr?.a)) {
+                u.acurr.a[A_DEX] = (u.acurr.a[A_DEX] ?? 0) + 1;
+            }
+            u.wounded_legs_dex_penalty = false;
+            const legs = u.wounded_legs_side === 'both' ? 'legs' : 'leg';
+            u.wounded_legs_side = null;
+            const newcap = heroNearCapacity();
+            u.uencumber = newcap;
+            const encmsg = oldcap > newcap ? encumbranceDecreaseMessage(newcap) : '';
+            if (oldcap > newcap && oldcap > 0) game._encumbered_move_debt_encumbrance = oldcap;
+            await pline(`Your ${legs} ${legs === 'legs' ? 'feel' : 'feels'} better.`);
+            if (encmsg) await append_pline(encmsg);
+        }
     }
-    u.wounded_legs_dex_penalty = false;
-    const legs = u.wounded_legs_side === 'both' ? 'legs' : 'leg';
-    u.wounded_legs_side = null;
-    await pline(`Your ${legs} ${legs === 'legs' ? 'feel' : 'feels'} better.`);
+    for (const { x, y } of expire_corpse_timeouts()) newsym(x, y);
 }
 
 function startupReplayForCurrentSeed() {
@@ -249,8 +258,8 @@ function startupRole() {
         return roleWithStartingRank(role);
     }
 
-    // Random chargen is still not ported; seed 2 currently records the
-    // observed random Healer selection until pick4u() is implemented.
+    // Fallback for fully configured or replay-scaffolded startup paths that
+    // bypass the generic role-selection menu.
     if (game._seed === 2) return roleWithStartingRank(findRole('Healer'));
     return roleWithStartingRank(findRole('Tourist'));
 }
@@ -264,8 +273,8 @@ function startupFemale() {
     if (gender === 'female') return true;
     if (gender === 'male') return false;
 
-    // Preserve current random-chargen evidence until role.c gender
-    // selection is implemented.
+    // Fallback for startup replay scaffolding; generic random chargen stores
+    // the selected gender in _nhopts before newgame() initializes role state.
     return game._seed !== 2;
 }
 
@@ -610,12 +619,137 @@ function renderStartupMenu(lines, kind, rightSide) {
     return rows.join('\n');
 }
 
+function expandedNamePromptRows(name, showBanner = true) {
+    if (!showBanner) {
+        return [
+            '', '', '', '', '', '', '', '', '', '',
+            `Who are you?${name ? ` ${name}` : ''}`,
+        ];
+    }
+    return [
+        '', '', '', '',
+        'NetHack, Copyright 1985-2026',
+        '         By Stichting Mathematisch Centrum and M. Stephenson.',
+        '         Version 5.0.0 MacOS, built May  2 2026 12:00:00.',
+        '         See license for details.',
+        '', '', '', '',
+        `Who are you?${name ? ` ${name}` : ''}`,
+    ];
+}
+
+function overlayAnsiText(baseLine, overlayLine, col) {
+    if (!overlayLine) return baseLine || '';
+    const base = String(baseLine || '');
+    const before = base.length >= col
+        ? `${base.slice(0, Math.max(0, col - 1))} `
+        : base + ' '.repeat(col - base.length);
+    const visibleLen = visibleStartupMenuLength(overlayLine);
+    const suffixAt = col + visibleLen;
+    const suffix = base.length > suffixAt ? base.slice(suffixAt) : '';
+    return `${before}${overlayLine}${suffix}`;
+}
+
+function renderStartupConfirmationOnNamePrompt(state) {
+    // C refs: src/role.c:genl_player_setup(), src/role.c:plsel_startmenu().
+    // tty confirmation is displayed as a menu overlay on the name prompt,
+    // leaving the copyright rows visible where the menu does not overwrite.
+    const lines = selectionMenuLines('confirm', state);
+    const col = startupMenuColumn('confirm', lines, true);
+    const rows = expandedNamePromptRows(game.plname, true);
+    for (let i = 0; i < lines.length; i++) {
+        rows[i] = overlayAnsiText(rows[i], lines[i], col);
+    }
+    return rows.join('\n');
+}
+
+async function showStartupConfirmationOnNamePrompt(state) {
+    const lines = selectionMenuLines('confirm', state);
+    const endRow = Math.max(0, lines.lastIndexOf('(end)'));
+    const col = startupMenuColumn('confirm', lines, true);
+    return showStartupOverride(renderStartupConfirmationOnNamePrompt(state),
+        [col + '(end)'.length + 1, endRow, 1]);
+}
+
 function nextManualSelectionMenu(state) {
     if (!state.role) return 'role';
     if (!state.race) return 'race';
     if (!state.gender) return 'gender';
     if (!effectiveStartupAlignName(state)) return 'align';
     return 'confirm';
+}
+
+function randomCompatibleChoice(choices, compatible, state) {
+    const candidates = choices.filter(choice => compatible(choice, state));
+    if (!candidates.length) return null;
+    return candidates[rn2(candidates.length)];
+}
+
+function validStartupRoleState(state) {
+    const choice = state.role ? roleChoiceForName(state.role) : null;
+    return !!choice && roleChoiceCompatible(choice, state);
+}
+
+function validStartupRaceState(state) {
+    const choice = state.race ? raceChoiceForName(state.race) : null;
+    return !!choice && raceChoiceCompatible(choice, state);
+}
+
+function validStartupGenderState(state) {
+    const choice = state.gender
+        ? GENDER_SELECTION_CHOICES.find(candidate => candidate.name === state.gender)
+        : null;
+    return !!choice && genderChoiceCompatible(choice, state);
+}
+
+function validStartupAlignState(state) {
+    const choice = state.align
+        ? ALIGN_SELECTION_CHOICES.find(candidate => candidate.name === state.align)
+        : null;
+    return !!choice && alignChoiceCompatible(choice, state);
+}
+
+function pickRandomStartupRole(state) {
+    const choice = randomCompatibleChoice(ROLE_SELECTION_CHOICES, roleChoiceCompatible, state)
+        || ROLE_SELECTION_CHOICES[rn2(ROLE_SELECTION_CHOICES.length)];
+    return choice?.role || 'Tourist';
+}
+
+function pickRandomStartupRace(state) {
+    const choice = randomCompatibleChoice(RACE_SELECTION_CHOICES, raceChoiceCompatible, state);
+    return choice?.name || 'human';
+}
+
+function pickRandomStartupGender(state) {
+    const choice = randomCompatibleChoice(GENDER_SELECTION_CHOICES, genderChoiceCompatible, state);
+    return choice?.name || 'female';
+}
+
+function pickRandomStartupAlign(state) {
+    const choice = randomCompatibleChoice(ALIGN_SELECTION_CHOICES, alignChoiceCompatible, state);
+    return choice?.name || effectiveStartupAlignName(state) || 'neutral';
+}
+
+function autoPickStartupState(initialState = {}) {
+    // C ref: src/role.c:genl_player_setup() makepicks:
+    // pick_role(), pick_race(), pick_gend(), pick_align().
+    const state = { ...initialState };
+    if (!validStartupRoleState(state)) {
+        state.role = null;
+        state.role = pickRandomStartupRole(state);
+    }
+    if (!validStartupRaceState(state)) {
+        state.race = null;
+        state.race = pickRandomStartupRace(state);
+    }
+    if (!validStartupGenderState(state)) {
+        state.gender = null;
+        state.gender = pickRandomStartupGender(state);
+    }
+    if (!validStartupAlignState(state)) {
+        state.align = null;
+        state.align = pickRandomStartupAlign(state);
+    }
+    return state;
 }
 
 async function showManualSelectionMenu(kind, state, rightSide) {
@@ -842,13 +976,46 @@ async function selectManualCharacter(initialState = {}) {
     }
 }
 
+async function confirmAutoPickedCharacter(state) {
+    for (;;) {
+        const key = await showStartupConfirmationOnNamePrompt(state);
+        const low = typeof key === 'string' ? key.toLowerCase() : key;
+        if (low === 'y' || low === ' ' || low === '\n' || low === '\r') {
+            applyManualStartupSelection(state);
+            return true;
+        }
+        if (low === 'n') {
+            game._startup_rename_prompt_residue = null;
+            return selectManualCharacter({});
+        }
+        if (low === 'a') {
+            await promptForPlayerName({ showBanner: false });
+            continue;
+        }
+        if (low === 'q' || low === '\x1b') return false;
+    }
+}
+
 async function askStartupAutoPick() {
     // C ref: src/role.c:genl_player_setup() build_plselection_prompt().
     const prompt = "Shall I pick character's race, role, gender and alignment for you? [ynaq]";
-    const key = await showStartupOverride(`${prompt}${namePromptWithName(game.plname)}`,
-        [74, 0, 1]);
-    const low = typeof key === 'string' ? key.toLowerCase() : key;
-    if (low === 'n') await selectManualCharacter(stateFromConfiguredStartup());
+    for (;;) {
+        const key = await showStartupOverride(`${prompt}${namePromptWithName(game.plname)}`,
+            [74, 0, 1]);
+        let low = typeof key === 'string' ? key.toLowerCase() : key;
+        if (low === ' ' || low === '\n' || low === '\r') low = 'y';
+        if (low === '@' || low === '*') low = 'a';
+        if (low === 'q' || low === '\x1b') return false;
+        if (low === 'n') return selectManualCharacter(stateFromConfiguredStartup());
+        if (low === 'y' || low === 'a') {
+            const state = autoPickStartupState(stateFromConfiguredStartup());
+            if (low === 'a') {
+                applyManualStartupSelection(state);
+                return true;
+            }
+            return confirmAutoPickedCharacter(state);
+        }
+    }
 }
 
 function legacyPagerAsciiGlyph(ch, decgfx) {
@@ -1526,7 +1693,7 @@ function seedEncumberedDebtAfterExtraTurn(g) {
 }
 
 function encumberedDebtNeedsExtraTurn(g) {
-    const enc = g.u?.uencumber || 0;
+    const enc = g._encumbered_move_debt_encumbrance || g.u?.uencumber || 0;
     if (!enc || g._encumbered_move_debt == null) return false;
     const moveamt = encumberedMoveAmount(enc);
     g._encumbered_move_debt += NORMAL_SPEED - moveamt;
@@ -1547,9 +1714,13 @@ function accrueEncumberedMoveDebt(g, options = {}) {
 }
 
 function creditEncumberedExtraTurn(g) {
-    const enc = g.u?.uencumber || 0;
+    const enc = g._encumbered_move_debt_encumbrance || g.u?.uencumber || 0;
     if (!enc || g._encumbered_move_debt == null) return;
     g._encumbered_move_debt -= encumberedMoveAmount(enc);
+    if (g._encumbered_move_debt_encumbrance) {
+        g._encumbered_move_debt_encumbrance = null;
+        if (!(g.u?.uencumber || 0)) g._encumbered_move_debt = null;
+    }
 }
 
 function slowPolyMoveAmount(g) {
@@ -2013,6 +2184,18 @@ async function continueSimpleTimedRepeats(g, options = {}) {
         }
         if ((g.context?.multi || 0) > 0) g.context.multi--;
         await advanceTurn();
+        if (checkStopSearching && g._simple_timed_repeat_stop_after_pending
+            && g._pending_message && !g._more) {
+            // C refs: src/allmain.c:moveloop_core(), src/cmd.c:timed_occupation(),
+            // src/mthrowu.c:ohitmon().  Some monster-turn projectile output
+            // becomes the next timed-search frame instead of allowing the JS
+            // repeat batch to consume another queued command behind it.
+            g._simple_timed_repeats_remaining = Math.min(g._simple_timed_repeats_remaining || 0, 1);
+            if (g.context) g.context.multi = Math.min(g.context.multi || 0, g._simple_timed_repeats_remaining || 0);
+            g._simple_timed_repeat_stop_after_pending = false;
+        } else if (!g._pending_message || g._more) {
+            g._simple_timed_repeat_stop_after_pending = false;
+        }
         if (checkStopSearching
             && (g._simple_timed_repeats_remaining || 0) > 0
             && (monsterNearbyForSafety()
@@ -2383,7 +2566,9 @@ export async function moveloop_core() {
         }
         if (!await finishZeroMovePolyCatchup(g)) return;
         const skipPetDeathCatchupDebt = !!g._skip_encumbered_debt_after_pet_death_more;
+        const seedDeferredMonsterTrapDebt = !!g._seed_encumbered_debt_after_deferred_monster_trap_more;
         g._skip_encumbered_debt_after_pet_death_more = false;
+        g._seed_encumbered_debt_after_deferred_monster_trap_more = false;
         if (skipPetDeathCatchupDebt) {
             // C refs: src/topl.c:more(), src/allmain.c:moveloop_core().
             // Dismissing the More before visible pet-death side effects
@@ -2393,7 +2578,19 @@ export async function moveloop_core() {
             // accumulator for later commands.
             accrueEncumberedMoveDebt(g);
         }
+        if (seedDeferredMonsterTrapDebt
+            && g.u?.uencumber
+            && !g._more
+            && !g._monster_turn_paused_for_more) {
+            // C refs: win/tty/topl.c:more(), src/allmain.c:moveloop_core().
+            // A monster trap effect resumed behind tty More belongs to the
+            // interrupted monster turn; becoming burdened should seed future
+            // movement debt, not spend an immediate catch-up pass here.
+            g._extra_encumbered_turn_pending = false;
+            seedEncumberedDebtAfterExtraTurn(g);
+        }
         if (!skipPetDeathCatchupDebt
+            && !seedDeferredMonsterTrapDebt
             && encumberedDebtNeedsExtraTurn(g) && !g._more && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  A
             // burdened hero does not always recover enough movement for the
@@ -2406,6 +2603,7 @@ export async function moveloop_core() {
         const encumberedPromptCatchup = !!g._more
             && !!g._resume_encumbered_extra_turn_after_more_prompt;
         if (!skipPetDeathCatchupDebt
+            && !seedDeferredMonsterTrapDebt
             && g._extra_encumbered_turn_pending
             && (!g._more || encumberedPromptCatchup)
             && !g._monster_turn_paused_for_more) {

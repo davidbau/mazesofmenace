@@ -11,10 +11,11 @@ import { MONSTER_DATA } from './monster_data.js';
 import {
     newsym, pline, queue_more_prompt, flush_screen,
     serialize_terminal_grid, show_glyph_cell, topline_can_pack_message,
+    unmap_invisible_memory,
 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import {
-    ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, POISON, ROWNO, TABU, UNDEF,
+    A_CHA, ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, POISON, ROWNO, TABU, UNDEF,
     D_BROKEN, D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
     IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
     W_SADDLE, W_WEP, isok, MGIVENNAME, has_mgivenname, CORPSTAT_INIT,
@@ -319,7 +320,7 @@ function put_starting_saddle_on_pony(mon) {
 }
 
 function hero_charisma() {
-    const cha = game.u?.acurr?.a?.[5] ?? 0;
+    const cha = game.u?.acurr?.a?.[A_CHA] ?? 0;
     if (cha <= 3) return 3;
     if (cha >= 25) return 25;
     return cha;
@@ -792,7 +793,9 @@ function object_name(obj) {
     if (obj?.otyp === OIL_LAMP || obj?.otyp === MAGIC_LAMP) return 'a lamp';
     if (KNOWN_FOOD_NAMES.has(obj?.otyp)) {
         const name = KNOWN_FOOD_NAMES.get(obj.otyp);
-        return `${indefinite_article(name)} ${name}`;
+        const buc = object_buc_prefix(obj);
+        const full = buc ? `${buc} ${name}` : name;
+        return `${indefinite_article(full)} ${full}`;
     }
     if (oclass === AMULET_CLASS && !obj?.knownName) {
         const desc = obj?.appearanceName || getObjectDescription(obj.otyp);
@@ -820,6 +823,13 @@ function object_name(obj) {
     const known = known_object_name(obj);
     if (known) return `${indefinite_article(known)} ${known}`;
     return 'an object';
+}
+
+function object_buc_prefix(obj) {
+    if (!obj?.bknown) return '';
+    if (obj.blessed) return 'blessed';
+    if (obj.cursed) return 'cursed';
+    return 'uncursed';
 }
 
 function known_object_type(obj) {
@@ -1002,6 +1012,17 @@ function pet_noit_subject(mtmp) {
     return mtmp?.mtame ? `Your ${pet_name(mtmp)}` : `The ${pet_name(mtmp)}`;
 }
 
+function hero_can_spot_pet_basic(mtmp) {
+    // C ref: include/display.h:canseemon().
+    if (!mtmp || mtmp.mundetected) return false;
+    if (mtmp.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
+    if (game.u?.ublind || game.u?.uprops?.blind || game.u?.uprops?.blinded) return false;
+    if (cansee(mtmp.mx, mtmp.my)) return true;
+    return !!(game.u?.uprops?.infravision
+        && (mtmp.data?.mflags3 & 0x00000020)
+        && couldsee(mtmp.mx, mtmp.my));
+}
+
 async function pet_reluctance_pline(line) {
     if (game._more && game._pending_message) {
         game._after_more_message = game._after_more_message
@@ -1069,11 +1090,14 @@ async function dog_eat(mtmp, obj, startX, startY, devour = false) {
         newsym(mtmp.mx, mtmp.my);
     }
 
+    if (object_class(obj?.otyp) === FOOD_CLASS && (obj?.quan || 1) > 1) {
+        // C ref: src/dogmove.c:dog_eat().  Food stacks are split before
+        // distant_name(), reward dogfood(), and m_consume_obj()/delobj().
+        obj = split_floor_object(obj, 1);
+    }
+
     if (cansee(mtmp.mx, mtmp.my) || (cansee(startX, startY) && cansee(mtmp.mx, mtmp.my))) {
         if (cansee(mtmp.mx, mtmp.my)) await latch_more_frame_before_pet_inventory();
-        // C ref: dogmove.c:dog_eat() calls distant_name(obj, doname) before
-        // consuming.  The JS name path is side-effect free, so the later
-        // delobj_core() resistance probe below is the relevant RNG consumer.
         pet_inventory_pline(`${pet_noit_subject(mtmp)} ${devour ? 'devours' : 'eats'} ${object_name(obj)}.`);
     }
 
@@ -1083,11 +1107,8 @@ async function dog_eat(mtmp, obj, startX, startY, devour = false) {
         edog.apport = Math.max(1, (edog.apport || 1) + Math.trunc(200 / denom));
     }
 
-    const consumed = object_class(obj?.otyp) === FOOD_CLASS && (obj?.quan || 1) > 1
-        ? split_floor_object(obj, 1)
-        : obj;
-    if (!obj_resists(consumed, 0, 0)) {
-        if (consumed === obj) remove_level_object(obj);
+    if (!obj_resists(obj, 0, 0)) {
+        if (game.level?.objects?.includes(obj)) remove_level_object(obj);
     }
     newsym(mtmp.mx, mtmp.my);
     return 1;
@@ -1241,6 +1262,9 @@ function apply_pet_kill_side_effects(mtmp, target, oldx, oldy, targetX, targetY,
     // C ref: src/mon.c:monkilled()->mondied().  The defender square is
     // redrawn for removal/corpse placement; the attacker square is not
     // refreshed just because damage resolved.
+    // C ref: src/mon.c:mondead().  Monster death clears a remembered
+    // invisible glyph before the final square redraw.
+    unmap_invisible_memory(targetX, targetY, { redraw: false });
     newsym(targetX, targetY);
 }
 
@@ -1474,6 +1498,16 @@ function monster_level(mon) {
     return mon?.m_lev ?? mon?.data?.mlevel ?? 0;
 }
 
+function hero_conflict_active_basic() {
+    return !!(game.Conflict || game.u?.conflict || game.u?.uprops?.conflict);
+}
+
+function resist_conflict_basic(mtmp) {
+    // C ref: src/mondata.c:resist_conflict().
+    const resistChance = Math.min(19, hero_charisma() - monster_level(mtmp) + (game.u?.ulevel || 1));
+    return rnd(20) > resistChance;
+}
+
 function score_targ(mtmp, mtarg) {
     let score = 0;
     if (!mtmp.mconf || !rn2(3)) {
@@ -1524,14 +1558,18 @@ function door_blocks_diagonal(x, y) {
     return loc && IS_DOOR(loc.typ) && (loc.doormask & ~D_BROKEN);
 }
 
-function pet_can_enter_square(mtmp, x, y, { ignoreMonster = false } = {}) {
+function pet_candidate_is_hero_target(mtmp, x, y) {
+    return (x === game.u?.ux && y === game.u?.uy)
+        || (x === mtmp.mux && y === mtmp.muy);
+}
+
+function pet_can_enter_square(mtmp, x, y, { ignoreMonster = false, allowHeroTarget = false } = {}) {
     if (!isok(x, y)) return false;
     if (x !== mtmp.mx && y !== mtmp.my
         && (door_blocks_diagonal(mtmp.mx, mtmp.my) || door_blocks_diagonal(x, y))) {
         return false;
     }
-    if (x === game.u?.ux && y === game.u?.uy) return false;
-    if (x === mtmp.mux && y === mtmp.muy) return false;
+    if (pet_candidate_is_hero_target(mtmp, x, y) && !allowHeroTarget) return false;
     if (!ignoreMonster && mon_at(x, y, mtmp)) return false;
     if (is_boulder_at(x, y)) return false;
     const loc = game.level?.at(x, y);
@@ -1945,6 +1983,17 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
     const whappr = (game.moves || 0) - (edog.whistletime || 0) < 5;
     const goal = pet_goal(mtmp, after, udist, whappr);
     if (goal.abort) return 0;
+    let allowHeroTarget = false;
+    if (hero_conflict_active_basic()) {
+        // C ref: src/dogmove.c:dog_move().  Tame pets ignore the outcome here,
+        // but the resistance check still consumes RNG before mfndpos().
+        resist_conflict_basic(mtmp);
+    }
+    if (hero_conflict_active_basic()) {
+        // C ref: src/mon.c:mon_allowflags().  A failed resistance adds ALLOW_U;
+        // pet movement can then select the hero square and attack immediately.
+        allowHeroTarget = !resist_conflict_basic(mtmp);
+    }
 
     // C ref: mon.c:mfndpos() scans x first, then y.  dogmove.c then applies
     // distance-weighted reservoir selection against gg.gx/gg.gy.
@@ -1959,12 +2008,17 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
     let doEat = false;
     let eatObj = null;
     let moveReluctant = false;
+    let attackHeroTarget = false;
 
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
             if (nx === mtmp.mx && ny === mtmp.my) continue;
-            const target = mon_at(nx, ny, mtmp);
-            if (!pet_can_enter_square(mtmp, nx, ny, { ignoreMonster: !!target })) continue;
+            const isHeroTarget = allowHeroTarget && pet_candidate_is_hero_target(mtmp, nx, ny);
+            const target = isHeroTarget ? null : mon_at(nx, ny, mtmp);
+            if (!pet_can_enter_square(mtmp, nx, ny, {
+                ignoreMonster: !!target,
+                allowHeroTarget,
+            })) continue;
             mfndposcnt++;
             if (!cursed_object_at(nx, ny)) uncursedcnt++;
         }
@@ -1974,8 +2028,12 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
             if (nx === mtmp.mx && ny === mtmp.my) continue;
-            const target = mon_at(nx, ny, mtmp);
-            if (!pet_can_enter_square(mtmp, nx, ny, { ignoreMonster: !!target })) continue;
+            const isHeroTarget = allowHeroTarget && pet_candidate_is_hero_target(mtmp, nx, ny);
+            const target = isHeroTarget ? null : mon_at(nx, ny, mtmp);
+            if (!pet_can_enter_square(mtmp, nx, ny, {
+                ignoreMonster: !!target,
+                allowHeroTarget,
+            })) continue;
             if (target) {
                 const attack = await pet_melee_attack(mtmp, target);
                 if (attack.attacked) {
@@ -2010,6 +2068,7 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
                         doEat = true;
                         eatObj = obj;
                         moveReluctant = false;
+                        attackHeroTarget = false;
                         cursedOnCandidate = false;
                         break searchCandidates;
                     }
@@ -2043,6 +2102,7 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
                 niy = ny;
                 nidist = ndist;
                 moveReluctant = cursedOnCandidate;
+                attackHeroTarget = isHeroTarget;
                 if (j < 0) chcnt = 0;
             }
         }
@@ -2050,17 +2110,32 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
 
     if (!doEat) pet_ranged_attk(mtmp, false);
 
-    if (nix === mtmp.mx && niy === mtmp.my) return 0;
+    if (attackHeroTarget && (nix !== mtmp.mx || niy !== mtmp.my)) {
+        // C ref: src/dogmove.c:dog_move().  ALLOW_U candidates attack the
+        // hero inside dog_move() and report MMOVE_DONE; they do not relocate.
+        mtmp._dog_conflict_attack_u = true;
+        return 3;
+    }
+
+    if (nix === mtmp.mx && niy === mtmp.my) {
+        // C refs: src/dogmove.c:dog_move(), src/monmove.c:postmov().
+        // Falling through dog_move() reports MMOVE_MOVED even when no new
+        // square was selected, so post-move trap effects still run.
+        return 1;
+    }
     const oldx = mtmp.mx;
     const oldy = mtmp.my;
+    const wasSeen = hero_can_spot_pet_basic(mtmp);
     mtmp.mx = nix;
     mtmp.my = niy;
     mon_track_add(mtmp, oldx, oldy);
     newsym(oldx, oldy);
-    newsym(nix, niy);
-    if (moveReluctant) {
+    if (moveReluctant && (wasSeen || hero_can_spot_pet_basic(mtmp))) {
         const topObj = objects_at(nix, niy)[0];
+        game._pet_reluctance_newsym_after_more = { x: nix, y: niy };
         await pet_reluctance_pline(`${pet_noit_subject(mtmp)} steps reluctantly onto ${topObj ? object_name(topObj) : 'something'}.`);
+    } else {
+        newsym(nix, niy);
     }
     if (doEat && eatObj) {
         const eatStatus = await dog_eat(mtmp, eatObj, oldx, oldy, false);

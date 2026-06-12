@@ -66,6 +66,9 @@ import {
 } from './const.js';
 
 const M1_POIS = 0x10000000;
+const M1_CARNIVORE = 0x20000000;
+const M1_HERBIVORE = 0x40000000;
+const M1_OMNIVORE = M1_CARNIVORE | M1_HERBIVORE;
 
 function refreshWarningAfterHeroMove() {
     if (!game.u?.uprops?.warning) return;
@@ -88,6 +91,7 @@ const AMULET_OF_LIFE_SAVING = 202;
 const AMULET_OF_ESP = 201;
 const AMULET_OF_UNCHANGING = 207;
 const AMULET_OF_GUARDING = 210;
+const MS_RIDER = 35;
 const MS_LEADER = 36;
 const AMULET_OF_YENDOR = 213;
 const GRAY_DRAGON_SCALE_MAIL = 101;
@@ -173,6 +177,7 @@ const RIN_INCREASE_ACCURACY = 176;
 const RIN_STEALTH = 181;
 const RIN_PROTECTION = 178;
 const RIN_REGENERATION = 179;
+const RIN_CONFLICT = 186;
 const RIN_WARNING = 187;
 const RIN_POLYMORPH = 196;
 const RIN_POLYMORPH_CONTROL = 197;
@@ -282,7 +287,7 @@ const APPLY_PICK_TYPES = new Set([PICK_AXE, DWARVISH_MATTOCK]);
 const APPLY_AXE_TYPES = new Set([AXE, BATTLE_AXE]);
 const APPLY_POLE_TYPES = new Set([
     PARTISAN, RANSEUR, SPETUM, GLAIVE, HALBERD, BARDICHE, VOULGE, FAUCHARD,
-    GUISARME, BILL_GUISARME, LUCERN_HAMMER, BEC_DE_CORBIN,
+    GUISARME, BILL_GUISARME, LUCERN_HAMMER, BEC_DE_CORBIN, LANCE,
 ]);
 const TRIPE_RATION = 264;
 const CORPSE = 265;
@@ -343,6 +348,27 @@ const FOOD_RATION = 293;
 const K_RATION = 294;
 const C_RATION = 295;
 const TIN = 296;
+const ORDINARY_FOOD_NUTRITION = new Map([
+    [APPLE, 50],
+    [ORANGE, 80],
+    [PEAR, 50],
+    [MELON, 100],
+    [BANANA, 80],
+    [CARROT, 50],
+    [SPRIG_OF_WOLFSBANE, 40],
+    [CLOVE_OF_GARLIC, 40],
+    [SLIME_MOLD, 250],
+    [LUMP_OF_ROYAL_JELLY, 200],
+    [CREAM_PIE, 100],
+    [CANDY_BAR, 100],
+    [FORTUNE_COOKIE, 40],
+    [PANCAKE, 200],
+    [LEMBAS_WAFER, 800],
+    [CRAM_RATION, 600],
+    [FOOD_RATION, 800],
+    [K_RATION, 400],
+    [C_RATION, 300],
+]);
 const PLATE_MAIL = 121;
 const SPLINT_MAIL = 124;
 const CHAIN_MAIL = 128;
@@ -589,6 +615,7 @@ const OBJECT_BASE_NAMES = new Map([
     [RIN_PROTECTION, 'ring of protection'],
     [RIN_INCREASE_ACCURACY, 'ring of increase accuracy'],
     [RIN_REGENERATION, 'ring of regeneration'],
+    [RIN_CONFLICT, 'ring of conflict'],
     [188, 'ring of poison resistance'],
     [RIN_WARNING, 'ring of warning'],
     [RIN_POLYMORPH, 'ring of polymorph'],
@@ -1337,7 +1364,9 @@ function ensureInventoryLetters() {
 
 function inventoryLetterRank(obj) {
     const ch = obj?.invlet || '';
-    if (!/^[A-Za-z]$/.test(ch)) return Number.MAX_SAFE_INTEGER;
+    if (typeof ch !== 'string' || ch.length !== 1) return Number.MAX_SAFE_INTEGER;
+    // C ref: src/invent.c:reorder_invent().  inv_rank() is invlet ^ 040
+    // for all inventory symbols, so '$' sorts before lettered inventory.
     return ch.charCodeAt(0) ^ 0x20;
 }
 
@@ -1438,9 +1467,10 @@ function make_wish_object(name) {
         if (carried) {
             carried.invlet = '$';
             carried.quan = game._goldCount;
+            keepCarriedGoldFirst(carried);
         } else {
             otmp.quan = game._goldCount;
-            game.inventory.unshift(otmp);
+            keepCarriedGoldFirst(otmp);
         }
         stageWishEncumbranceMessage(prevEncumbrance);
         noteWishConduct(otmp);
@@ -1604,6 +1634,15 @@ function corpseIsVegetarian(obj) {
     // C ref: include/mondata.h:vegetarian().
     const ptr = corpseMonsterPtr(obj);
     return corpseIsVegan(obj) || (ptr?.mlet === 'S_PUDDING' && ptr.name !== 'BLACK_PUDDING');
+}
+
+function corpseIsNonrotting(obj) {
+    // C ref: src/eat.c:nonrotting_corpse().
+    const ptr = corpseMonsterPtr(obj);
+    return ptr?.name === 'LIZARD'
+        || ptr?.name === 'LICHEN'
+        || ptr?.name === 'ACID_BLOB'
+        || ptr?.msound === MS_RIDER;
 }
 
 function foodBreaksVegetarian(obj) {
@@ -1782,7 +1821,7 @@ function thrownBreaktestDestroysObject(obj, landing) {
         || obj.oclass === VENOM_CLASS;
 }
 
-function encumbranceDecreaseMessage(newcap) {
+export function encumbranceDecreaseMessage(newcap) {
     // C ref: src/pickup.c:encumber_msg().
     if (newcap <= C.UNENCUMBERED) return 'Your movements are now unencumbered.';
     if (newcap === C.SLT_ENCUMBER) return 'Your movements are only slowed slightly by your load.';
@@ -1992,6 +2031,13 @@ function readLetters() {
         .filter((obj) => obj?.oclass === SCROLL_CLASS || obj?.oclass === SPBOOK_CLASS)
         .map((obj) => obj.invlet)
         .join('');
+}
+
+function readSuggestedObjects() {
+    ensureInventoryLetters();
+    return (game.inventory || [])
+        .filter((obj) => obj?.oclass === SCROLL_CLASS || obj?.oclass === SPBOOK_CLASS)
+        .filter((obj) => validInvlet(obj.invlet));
 }
 
 function lightScrollArea(radius = 5) {
@@ -2236,7 +2282,89 @@ async function readScrollOfTeleportation(obj, idx) {
         game.context.move = 0;
         return;
     }
-    game.context.move = 1;
+    queue_more_prompt();
+    exercise(A_WIS, true);
+    discoverObjectType(obj.otyp);
+    await safeTeledsBasic({
+        deferLookHereBehindMore: true,
+        deferMaterializeBehindMore: true,
+        materializeMove: true,
+    });
+    game.context.move = 0;
+}
+
+async function finishReadObjectSelection(obj, idx = inventoryIndexForLetter(obj?.invlet || '')) {
+    if (!obj) {
+        game.context.move = 0;
+        return;
+    }
+    if (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS) {
+        // C refs: src/read.c:read_ok(), src/read.c:doread().
+        // Non-scroll inventory is downplayed by getobj() but still selectable;
+        // doread() then rejects it without spending a turn.
+        game.context.move = 0;
+        await pline('That is a silly thing to read.');
+        return;
+    }
+    noteLiterateConduct();
+    if (obj.oclass === SPBOOK_CLASS) {
+        const info = spellbookSpellInfo(obj);
+        const alreadyKnown = info && spellIsActuallyKnown(obj, info);
+        if (alreadyKnown) {
+            // C ref: src/spell.c:study_book().
+            await pline(`You know "${info.name}" quite well already.`);
+            game._spellbook_refresh_prompt_after_more = { otyp: obj.otyp };
+            queue_more_prompt();
+            game.context.move = 0;
+            return;
+        }
+        if (info) {
+            if (game._defer_next_spellbook_study_for_fast_extra && game._fast_extra_action_pending) {
+                game._defer_next_spellbook_study_for_fast_extra = false;
+                game._deferred_spellbook_study = {
+                    obj,
+                    info: { ...info },
+                    spellKey: spellKeyFromRecord(obj, info),
+                };
+                game.context.move = 1;
+                return;
+            }
+            game._defer_next_spellbook_study_for_fast_extra = false;
+            await beginStudySpellbook(obj, info);
+            return;
+        }
+        game.context.move = 0;
+        return;
+    }
+    if (obj.otyp === SCR_REMOVE_CURSE) {
+        await readScrollOfRemoveCurse(obj, idx);
+        return;
+    }
+    if (obj.otyp === SCR_ENCHANT_WEAPON) {
+        await readScrollOfEnchantWeapon(obj, idx);
+        return;
+    }
+    if (obj.otyp === SCR_LIGHT) {
+        await readScrollOfLight(obj, idx);
+        return;
+    }
+    if (obj.otyp === SCR_TELEPORTATION) {
+        await readScrollOfTeleportation(obj, idx);
+        return;
+    }
+    if (obj.otyp === SCR_PUNISHMENT) {
+        await readScrollOfPunishment(obj, idx);
+        return;
+    }
+    if (obj.otyp === SCR_IDENTIFY) {
+        await readScrollOfIdentify(obj, idx);
+        return;
+    }
+    if (obj.otyp === SCR_MAGIC_MAPPING) {
+        await readScrollOfMagicMapping(obj);
+        return;
+    }
+    game.context.move = 0;
 }
 
 function eatLetters() {
@@ -2267,6 +2395,17 @@ function throwLetters() {
         if (obj?.oclass === WEAPON_CLASS) letters.push(obj.invlet);
     }
     return letters.join('');
+}
+
+function throwObjectSuitability(obj) {
+    // C ref: src/dothrow.c:throw_ok().  The prompt suggests coins and
+    // throwable weapons; other inventory stays selectable through '*'.
+    if (!obj) return 'exclude';
+    if ((obj?.wielded || ((obj?.owornmask || 0) & C.W_WEP)) && (obj.quan || 1) === 1)
+        return 'downplay';
+    if (obj.oclass === COIN_CLASS) return 'suggest';
+    if (obj.oclass === WEAPON_CLASS) return 'suggest';
+    return 'downplay';
 }
 
 function readyLetters() {
@@ -4101,6 +4240,10 @@ function boxStatePrefix(obj) {
     return parts.join(' ');
 }
 
+function poisonedWeaponPrefix(obj) {
+    return obj?.opoisoned && obj?.oclass === WEAPON_CLASS ? 'poisoned' : '';
+}
+
 function observeObjectForNaming(obj, opts = {}) {
     if (opts.observe === false || !obj) return;
     if (game.u?.ublind || game.u?.blind || game.u?.uprops?.blinded) return;
@@ -4138,6 +4281,7 @@ function inventoryObjectName(obj, opts = {}) {
         enchantmentPrefix(obj),
         boxStatePrefix(obj),
         obj?.oclass === FOOD_CLASS && obj.partlyEaten ? 'partly eaten' : '',
+        poisonedWeaponPrefix(obj),
         namedBase,
     ].filter(Boolean);
     const body = parts.join(' ') + knownContentsSuffix(obj)
@@ -4745,6 +4889,19 @@ function refreshRingRegenerationExtrinsic() {
         && (item.wornSide || ((item.owornmask || 0) & C.W_RING))) ? 1 : 0;
 }
 
+function refreshRingConflictExtrinsic() {
+    if (!game.u) return;
+    game.u.uprops = game.u.uprops || {};
+    const active = (game.inventory || []).some((item) =>
+        item?.otyp === RIN_CONFLICT
+        && (item.wornSide || ((item.owornmask || 0) & C.W_RING)));
+    // C ref: src/do_wear.c:Ring_on()/Ring_off_or_gone().  Conflict is a
+    // ring extrinsic consumed by monster movement macros.
+    game.u.uprops.conflict = active ? 1 : 0;
+    game.u.conflict = active ? 1 : 0;
+    game.Conflict = active ? 1 : 0;
+}
+
 function apply_deferred_startup_wear() {
     const cloak = (game.inventory || []).find((obj) => obj?.otyp === CLOAK_OF_MAGIC_RESISTANCE);
     if (cloak) cloak.worn = true;
@@ -4898,6 +5055,7 @@ async function start_taking_off_object(obj) {
         obj.wornSide = null;
         obj.owornmask = 0;
         if (obj.otyp === RIN_REGENERATION) refreshRingRegenerationExtrinsic();
+        if (obj.otyp === RIN_CONFLICT) refreshRingConflictExtrinsic();
         await pline(`You were wearing ${inventoryObjectName(obj)} (on ${side} hand).`);
         game.context.move = 1;
     } else {
@@ -5212,6 +5370,8 @@ async function lookHereAfterMove(opts = {}) {
         }
         if (overflow) {
             game._floor_list_pauses_turn = true;
+            if (!opts.arrivalFloorListNoTurn && !opts.resumeStairArrivalAfterFloorList)
+                game._floor_list_resume_spot_effects_on_dismiss = true;
             queue_more_prompt();
         }
         return;
@@ -5222,6 +5382,8 @@ async function lookHereAfterMove(opts = {}) {
     }
     showFloorObjectList(objects, feature.line);
     game._floor_list_pauses_turn = true;
+    if (!opts.arrivalFloorListNoTurn && !opts.resumeStairArrivalAfterFloorList)
+        game._floor_list_resume_spot_effects_on_dismiss = true;
 }
 
 function floorObjectAtHero() {
@@ -5731,6 +5893,24 @@ function containerActionName(container, held = false) {
     return `${held ? 'your' : 'the'} ${name}`;
 }
 
+async function finishEmptyLootTakeOut(container, used = false, held = false) {
+    // C ref: src/pickup.c:use_container().  The take-out action is accepted
+    // even when an empty container did not list 'o'; it reports emptiness and
+    // marks the contents known instead of opening an empty selection menu.
+    const wasKnown = !!container.cknown;
+    container.cknown = true;
+    game._loot_action_menu = null;
+    game._loot_type_menu = null;
+    game._loot_putin_menu = null;
+    game._loot_takeout_menu = null;
+    game._loot_contents_more = null;
+    clearOverrideScreen();
+    clear_pending_message();
+    await redrawAfterFullScreenMenuDismiss();
+    await pline(`${sentenceStart(containerActionName(container, held))} is empty.`);
+    game.context.move = (used || !wasKnown) ? 1 : 0;
+}
+
 function showLootActionMenu(container, used = false, opts = {}) {
     const display = game.nhDisplay;
     if (!display?.putstr) return;
@@ -5877,6 +6057,10 @@ async function handleLootActionMenuKey(ch) {
     if (!menu) return false;
     game._override_prev = null;
     if (ch === 'o') {
+        if (!containerContents(menu.container).length) {
+            await finishEmptyLootTakeOut(menu.container, menu.used, menu.held);
+            return true;
+        }
         if (takeOutNeedsClassMenu(menu.container))
             showLootTypeMenu(menu.container, false, { putIn: false, held: menu.held });
         else
@@ -5978,8 +6162,9 @@ function takeGoldOutOfContainer(container) {
     if (carried) {
         carried.invlet = '$';
         carried.quan = game._goldCount;
+        keepCarriedGoldFirst(carried);
     } else {
-        game.inventory.unshift({
+        keepCarriedGoldFirst({
             otyp: GOLD_PIECE,
             oclass: COIN_CLASS,
             quan: game._goldCount,
@@ -6328,6 +6513,18 @@ function extractFloorObject(obj) {
     obj.oy = 0;
 }
 
+function keepCarriedGoldFirst(carried) {
+    if (!carried) return;
+    game.inventory = game.inventory || [];
+    const idx = game.inventory.indexOf(carried);
+    if (idx > 0) {
+        game.inventory.splice(idx, 1);
+        game.inventory.unshift(carried);
+    } else if (idx < 0) {
+        game.inventory.unshift(carried);
+    }
+}
+
 function pickupGoldObject(obj) {
     const picked = obj?.quan || 1;
     const previousGold = game._goldCount || 0;
@@ -6341,8 +6538,9 @@ function pickupGoldObject(obj) {
         carried.invlet = '$';
         carried.quan = game._goldCount;
         game.inventory = game.inventory || [];
-        game.inventory.push(carried);
+        game.inventory.unshift(carried);
     }
+    keepCarriedGoldFirst(carried);
     const total = previousGold > 0 ? ` (${game._goldCount} in total)` : '';
     return `$ - ${picked} gold ${picked === 1 ? 'piece' : 'pieces'}${total}.`;
 }
@@ -7039,6 +7237,33 @@ async function triggerTrapAtHero() {
     if (!trap) return false;
     if (trap.ttyp === C.ROLLING_BOULDER_TRAP)
         return triggerRollingBoulderTrapAtHero(trap);
+    if (trap.ttyp === C.BEAR_TRAP) {
+        // C ref: src/trap.c:trapeffect_bear_trap().
+        const preDamageHp = u.uhp ?? 0;
+        const oldcap = u.uencumber || 0;
+        const damage = d(2, 4);
+        trap.tseen = true;
+        newsym(trap.tx, trap.ty);
+        u.utrap = rn1(4, 4);
+        u.utraptype = C.TT_BEARTRAP;
+        setWoundedLegs(rn2(2) ? 'right' : 'left', rn1(10, 10));
+        if (typeof u.uhp === 'number') u.uhp = Math.max(0, u.uhp - damage);
+        const newcap = heroNearCapacity();
+        if (newcap > oldcap) {
+            u.uencumber = newcap;
+            game._extra_encumbered_turn_pending = true;
+            const encmsg = encumbranceIncreaseMessage(newcap);
+            if (encmsg) game._after_more_message = game._after_more_message
+                ? `${encmsg}  ${game._after_more_message}`
+                : encmsg;
+        }
+        exercise(A_DEX, false);
+        await pline('A bear trap closes on your foot!');
+        game._latched_status_uhp = preDamageHp;
+        game._bear_trap_clear_latched_hp_after_more = true;
+        queue_more_prompt();
+        return true;
+    }
     if (trap.ttyp === C.DART_TRAP) {
         const otmp = mksobj(DART, true, false);
         if (otmp) {
@@ -8064,12 +8289,20 @@ function resetSpecialRoomTrackingForLevelChange() {
 
 function pickupMenuEntries(objects) {
     const entries = [];
-    const weapons = objects.filter(obj => obj.oclass === WEAPON_CLASS);
-    const food = objects.filter(obj => obj.oclass === FOOD_CLASS);
-    const tools = objects.filter(obj => obj.oclass === TOOL_CLASS);
-    const gems = objects.filter(obj => obj.oclass === 13);
+    const sortGroup = (group) => group
+        .map((obj, idx) => ({ obj, idx, key: containerLootSortName(obj).toLowerCase() }))
+        .sort((a, b) => a.key.localeCompare(b.key) || a.idx - b.idx)
+        .map(({ obj }) => obj);
+    const coins = sortGroup(objects.filter(obj => obj.oclass === COIN_CLASS));
+    const rings = sortGroup(objects.filter(obj => obj.oclass === RING_CLASS));
+    const weapons = sortGroup(objects.filter(obj => obj.oclass === WEAPON_CLASS));
+    const food = sortGroup(objects.filter(obj => obj.oclass === FOOD_CLASS));
+    const tools = sortGroup(objects.filter(obj => obj.oclass === TOOL_CLASS));
+    const gems = sortGroup(objects.filter(obj => obj.oclass === 13));
     let selector = 97;
     for (const [heading, group] of [
+        ['Coins', coins],
+        ['Rings', rings],
         ['Weapons', weapons],
         ['Comestibles', food],
         ['Tools', tools],
@@ -8078,7 +8311,8 @@ function pickupMenuEntries(objects) {
         if (!group.length) continue;
         entries.push({ heading });
         for (const obj of group) {
-            entries.push({ selector: String.fromCharCode(selector++), obj, selected: false });
+            const itemSelector = obj.otyp === GOLD_PIECE ? '$' : String.fromCharCode(selector++);
+            entries.push({ selector: itemSelector, obj, selected: false });
         }
     }
     return entries;
@@ -8146,6 +8380,14 @@ async function handlePickupMenuKey(ch) {
     if (!menu) return false;
     if (ch === '\r' || ch === '\n') {
         await finishPickupMenu();
+        return true;
+    }
+    if (ch === '@') {
+        for (const entry of menu.entries) {
+            if (entry.obj) entry.selected = true;
+        }
+        refreshPickupMenu();
+        game.context.move = 0;
         return true;
     }
     const entry = menu.entries.find(item => item.selector === ch);
@@ -8495,9 +8737,13 @@ async function drinkSink() {
 function corpseTasteLine(obj, guilty = false) {
     const corpseName = baseObjectName(obj);
     const vegetarian = corpseIsVegetarian(obj);
+    const flags = game.u?._poly_form?.ptr?.mflags1 ?? game.u?.data?.mflags1 ?? M1_OMNIVORE;
+    const herbivorous = !!(flags & M1_HERBIVORE);
+    const carnivorous = !!(flags & M1_CARNIVORE);
+    const palatable = (vegetarian ? herbivorous : carnivorous) && rn2(10);
     if (!vegetarian) rn2(5);
     const prefix = guilty ? 'You feel guilty.  ' : '';
-    return `${prefix}This ${corpseName} tastes ${vegetarian ? 'okay' : 'terrible'}${vegetarian ? '.' : '!'}`;
+    return `${prefix}This ${corpseName} tastes ${palatable ? 'okay' : 'terrible'}${palatable ? '.' : '!'}`;
 }
 
 async function beginEatingCorpse(obj) {
@@ -8507,7 +8753,8 @@ async function beginEatingCorpse(obj) {
     const conduct = noteFoodConduct(obj);
     const monkGuilt = conduct.breaksVegetarian && game.urole?.name?.m === 'Monk';
     if (monkGuilt) adjalign(-1);
-    rn2(20);
+    const nonrotting = corpseIsNonrotting(obj);
+    if (!nonrotting) rn2(20);
     let firstBiteStarted = false;
     let message = '';
     let blocks = false;
@@ -8521,7 +8768,7 @@ async function beginEatingCorpse(obj) {
         firstBiteStarted = true;
         message = `${monkGuilt ? 'You feel guilty.  ' : ''}Ecch - that must have been poisonous!`;
         blocks = true;
-    } else if (obj?._live_kill_corpse) {
+    } else if (obj?._live_kill_corpse && !nonrotting) {
         if (obj.orotten || !rn2(7)) {
             const rotten = rottenFoodResult(obj);
             firstBiteStarted = !rotten.interrupts;
@@ -8532,6 +8779,9 @@ async function beginEatingCorpse(obj) {
             firstBiteStarted = true;
             message = corpseTasteLine(obj, monkGuilt);
         }
+    } else if (obj?._live_kill_corpse || nonrotting) {
+        firstBiteStarted = true;
+        message = corpseTasteLine(obj, monkGuilt);
     } else {
         rn2(5);
         const damage = rnd(8);
@@ -8599,6 +8849,15 @@ function ordinaryFoodFirstBiteLine(obj) {
     return `This ${baseObjectName(obj)} is ${taste}`;
 }
 
+function lessHungryFromOrdinaryFood(obj) {
+    const nutrition = ORDINARY_FOOD_NUTRITION.get(obj?.otyp) || 0;
+    if (!nutrition || !game.u) return;
+    // C ref: src/eat.c:eatfood()/lesshungry().  Current ordinary food
+    // evidence is one-turn food, so apply the object's full nutrition when
+    // the item is consumed.
+    game.u.uhunger = (game.u.uhunger ?? 900) + nutrition;
+}
+
 function heroCurrentFormIsUndead() {
     const ptr = game.u?._poly_form?.ptr || game.u?.data;
     return !!((ptr?.mflags2 ?? 0) & M2_UNDEAD);
@@ -8640,17 +8899,20 @@ async function eatSelectedFood(obj, { floor = false } = {}) {
     game.context.move = 1;
     if (obj.otyp === APPLE) {
         noteFoodConduct(obj);
+        lessHungryFromOrdinaryFood(obj);
         consumeOneFloorFood(obj);
         await pline('Delicious!  Must be a Macintosh!');
         return true;
     }
     if (obj.otyp === CARROT) {
         noteFoodConduct(obj);
+        lessHungryFromOrdinaryFood(obj);
         consumeOneFloorFood(obj);
         await pline('This carrot is delicious!');
         return true;
     }
     noteFoodConduct(obj);
+    lessHungryFromOrdinaryFood(obj);
     applyGarlicBreathSideEffect(obj);
     consumeOneFloorFood(obj);
     await pline(ordinaryFoodFirstBiteLine(obj));
@@ -8747,6 +9009,7 @@ async function handleEatItemKey(ch) {
 
     if (food.otyp === FORTUNE_COOKIE) {
         noteFoodConduct(food);
+        lessHungryFromOrdinaryFood(food);
         removeInventoryInstance(food);
         const rumor = getRumor(0, false);
         exercise(A_WIS, true);
@@ -8764,17 +9027,20 @@ async function handleEatItemKey(ch) {
     game.context.move = 1;
     if (food.otyp === APPLE) {
         noteFoodConduct(food);
+        lessHungryFromOrdinaryFood(food);
         removeInventoryInstance(food);
         await pline('Delicious!  Must be a Macintosh!');
         return true;
     }
     if (food.otyp === CARROT) {
         noteFoodConduct(food);
+        lessHungryFromOrdinaryFood(food);
         removeInventoryInstance(food);
         await pline('This carrot is delicious!');
         return true;
     }
     noteFoodConduct(food);
+    lessHungryFromOrdinaryFood(food);
     applyGarlicBreathSideEffect(food);
     removeInventoryInstance(food);
     await pline(ordinaryFoodFirstBiteLine(food));
@@ -8876,6 +9142,34 @@ function setWoundedLegs(side, timeout) {
     }
     u.uprops.wounded_legs = Math.max(u.uprops.wounded_legs || 0, timeout || 0);
     u.wounded_legs_side = side || u.wounded_legs_side || 'right';
+}
+
+function finishDeferredBearTrapMoreEffects() {
+    if (game._bear_trap_clear_latched_hp_after_more) {
+        game._bear_trap_clear_latched_hp_after_more = false;
+        game._latched_status_uhp = null;
+        game._latched_status_turn = null;
+    }
+}
+
+async function moveBlockedByBearTrap(dx, dy) {
+    // C ref: src/hack.c:trapmove() TT_BEARTRAP.
+    const u = game.u || {};
+    if (!u.utrap || u.utraptype !== C.TT_BEARTRAP) return false;
+    finishDeferredBearTrapMoreEffects();
+    const caughtLine = 'You are caught in a bear trap.';
+    const showCaught = game._pending_message !== caughtLine
+        && game._last_topline_message !== caughtLine;
+    if (showCaught) {
+        await pline(caughtLine);
+    }
+    if ((dx && dy) || !rn2(5)) u.utrap = Math.max(0, (u.utrap || 0) - 1);
+    if (!u.utrap) {
+        u.utraptype = C.TT_NONE;
+        if (showCaught) await append_pline('You finally wriggle free.');
+        else await pline('You finally wriggle free.');
+    }
+    return true;
 }
 
 function woundedLegsKickMessage() {
@@ -10655,13 +10949,24 @@ function showNameCommandMenu() {
 }
 
 async function beginWizardWishPrompt() {
-    // C ref: src/wizcmds.c:wiz_wish() -> objnam.c:makewish().
+    // C refs: src/wizcmds.c:wiz_wish(), src/zap.c:makewish().
     const msg = 'For what do you wish? ';
     await pline(msg);
     game._prompt_cursor = [msg.length, 0];
     game._awaiting_wish = true;
     game._wish_input = '';
     game.context.move = 0;
+}
+
+async function beginAmuletWishPromptAfterMore() {
+    // C ref: src/zap.c:makewish().  The verbose Amulet wish line owns a tty
+    // More, then makewish() immediately asks for the object name.
+    game._amulet_wish_prompt_after_more = false;
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    clear_pending_message();
+    await beginWizardWishPrompt();
+    return true;
 }
 
 async function beginWizardPolyselfPrompt() {
@@ -11790,6 +12095,18 @@ function farlookMonsterDescription(mon, x, y) {
 function monnam(mon) {
     const name = monsterHitName(mon);
     return name.replace(/^./, c => c.toUpperCase());
+}
+
+function chatEatingMonsterName(mon) {
+    // C refs: src/sounds.c:dochat(), src/do_name.c:x_monnam().  Monnam()
+    // includes a visible saddle adjective for the noisy-eating response.
+    const named = namedMonsterDisplayName(mon);
+    if (named) return named.replace(/^./, c => c.toUpperCase());
+    const name = `${monsterHasSaddle(mon)
+        && !(game.u?.ublind || game.u?.uprops?.blind)
+        && !(game.u?.uhallucination || game.u?.uprops?.hallucination)
+        ? 'saddled ' : ''}${monsterName(mon)}`;
+    return `The ${name}`;
 }
 
 async function chatQuestLeader(mon) {
@@ -13519,11 +13836,26 @@ function gainExperienceForKill(mon) {
     moreExperienced(monsterExperienceBasic(mon), 0);
 }
 
+function observeMonsterDropNameSideEffects(mon, obj) {
+    if (!mon || !obj || !cansee(mon.mx, mon.my)) return;
+    const r = Math.max(game.u?.xray_range || 0, 2);
+    const neardist = (r * r) * 2 - r;
+    if (!obj.oartifact
+        && dist2(mon.mx, mon.my, game.u?.ux ?? 0, game.u?.uy ?? 0) > neardist) {
+        return;
+    }
+    // C ref: src/steal.c:mdrop_obj() calls distant_name(obj, doname)
+    // before extract_from_minvent(); nearby visible drops get doname()
+    // side effects in monster-inventory order, before floor stack order.
+    inventoryObjectName(obj, { observe: true });
+}
+
 function dropMonsterInventory(mon) {
     // C ref: src/mon.c:m_detach() -> relobj().  A dying monster releases
     // minvent before xkilled() creates any extra treasure or corpse.
     const inv = mon.inventory || [];
     for (const obj of inv) {
+        observeMonsterDropNameSideEffects(mon, obj);
         obj.owornmask = 0;
         place_object(obj, mon.mx, mon.my);
     }
@@ -15258,6 +15590,13 @@ function getposObjectDescription(x, y) {
     return obj ? inventoryObjectName(obj, { observe: false }) : '';
 }
 
+function getposTrapDescription(x, y) {
+    const trap = (game.level?.traps || [])
+        .find((ttmp) => ttmp.tx === x && ttmp.ty === y);
+    if (!trap?.tseen) return '';
+    return trapSearchNameBasic(trap);
+}
+
 function teleportLocationDescription(x, y) {
     if (game.u?.ux === x && game.u?.uy === y) return heroGetposDescription();
     const loc = game.level?.at(x, y);
@@ -15265,6 +15604,8 @@ function teleportLocationDescription(x, y) {
     if (!getposLocationKnown(x, y)) return 'unexplored area';
     const objDesc = getposObjectDescription(x, y);
     if (objDesc) return objDesc;
+    const trapDesc = getposTrapDescription(x, y);
+    if (trapDesc) return trapDesc;
     if (loc.typ === C.STAIRS) {
         // C refs: getpos.c:auto_describe(), pager.c:do_screen_description().
         // Controlled-teleport getpos describes the displayed stair glyph; it
@@ -15303,6 +15644,8 @@ function farlookLocationDescription(x, y) {
     if (!getposLocationKnown(x, y)) return 'unexplored area';
     const objDesc = getposObjectDescription(x, y);
     if (objDesc) return objDesc;
+    const trapDesc = getposTrapDescription(x, y);
+    if (trapDesc) return trapDesc;
     if (loc.typ === C.STAIRS) {
         const st = travelFeatureStairAt(x, y);
         if (st?.isbranch) return `branch staircase ${st.up ? 'up' : 'down'}`;
@@ -15550,8 +15893,17 @@ async function teledsBasic(x, y, options = {}) {
     if (movePunishmentObjects) placePunishmentObjectsAtHero();
     newsym(x, y);
     game._prompt_cursor = null;
-    if (game.flags?.verbose !== false)
-        await append_pline(`You materialize in ${x === oldx && y === oldy ? 'the same' : 'a different'} location!`);
+    if (game.flags?.verbose !== false) {
+        const line = `You materialize in ${x === oldx && y === oldy ? 'the same' : 'a different'} location!`;
+        if (options.deferMaterializeBehindMore && game._more) {
+            game._more_message_queue = [
+                { text: line, more: false, move: !!options.materializeMove },
+                ...(game._more_message_queue || []),
+            ];
+        } else {
+            await append_pline(line);
+        }
+    }
     const feature = lookHereFeature();
     if (options.deferArrivalBehindMore
         || (options.deferLookHereBehindMore && teleportArrivalWouldPrint(feature))) {
@@ -16202,6 +16554,7 @@ function monsterPetDeathLine(mon) {
 async function handleQueuedMore(ch) {
     if (!game._more || (game._more_dismissals_remaining || 0) <= 0) return false;
     let resumeMonsterBehindNewMore = false;
+    let resumeActivePhysicalBehindCurrentMore = false;
     let suppressPausedMonsterResume = false;
     const afterMoreSplit = splitDeferredPetCombatTopline(game._after_more_message || '')
         || splitDeferredPoisonMonsterTopline(game._after_more_message || '');
@@ -16231,7 +16584,8 @@ async function handleQueuedMore(ch) {
         && !!game._pet_combat_more_latched
         && (!deferredPetDeathCanPack || splitHitDeathPrompt)
         && !(game.u?.uhallucination || game.u?.uprops?.hallucination);
-    const pausedFloorListTurn = !!game._resume_floor_list_turn;
+    const pausedFloorListTurn = !!game._resume_floor_list_turn
+        || !!game._floor_list_resume_spot_effects_on_dismiss;
     const pausedRunTail = !!game._run_paused_for_more;
     const preserveMonsterMoreBase = pausedMonsterTurn
         && game._preserve_more_base_for_next_monster_message
@@ -16279,8 +16633,17 @@ async function handleQueuedMore(ch) {
     game._latched_more_screen = null;
     game._latched_more_cursor = null;
     game._latched_more_keep_until_dismiss = false;
+    if (game._amulet_wish_prompt_after_more && game._more_dismissals_remaining <= 0)
+        return await beginAmuletWishPromptAfterMore();
     if (!(game._monster_death_pending && game._after_more_projectile_clear_after_prompt))
         finishDeferredProjectileClearAfterMore();
+    finishDeferredBearTrapMoreEffects();
+    if ((game._more_dismissals_remaining || 0) <= 0
+        && game._pet_reluctance_newsym_after_more) {
+        const pos = game._pet_reluctance_newsym_after_more;
+        game._pet_reluctance_newsym_after_more = null;
+        if (C.isok(pos.x, pos.y)) newsym(pos.x, pos.y);
+    }
     if (pausedMonsterTurn
         && monsterAttackResume
         && game._nomovemsg === 'You survived that attempt on your life.'
@@ -16856,12 +17219,7 @@ async function handleQueuedMore(ch) {
             return true;
         }
         if (game._amulet_wish_prompt_after_more) {
-            game._amulet_wish_prompt_after_more = false;
-            game._more = false;
-            game._more_dismissals_remaining = 0;
-            clear_pending_message();
-            await beginWizardWishPrompt();
-            return true;
+            return await beginAmuletWishPromptAfterMore();
         }
         const petMissLineAfterMore = game._deferred_pet_miss_passive
             && /^The (?:kitten|little dog|(?:saddled )?pony) misses /.test(game._pending_message || '')
@@ -17285,6 +17643,21 @@ async function handleQueuedMore(ch) {
                 game._clear_latched_status_after_more = false;
                 game._latched_status_uhp = null;
                 game._latched_status_turn = null;
+                game._active_more_split_latch_current_physical_more = true;
+            }
+            if ((game._monster_death_pending || game._fatal_monster_attack_paused)
+                && game._after_more_latched_status_uhp == null
+                && game._latched_status_uhp != null
+                && monsterPhysicalToplineChain(msg)
+                && !/^The wand hits you!$/.test(msg)) {
+                // C refs: src/mhitu.c:hitmu(), src/end.c:done_in_by(),
+                // win/tty/topl.c:more().  Once a deferred fatal physical line
+                // is revealed, its damage is already reflected in botl().
+                game._clear_latched_status_after_more = false;
+                game._latched_status_uhp = null;
+                game._latched_status_turn = null;
+                game._monster_fatal_preserve_hit_status = false;
+                game._death_preserve_latched_status = false;
             }
             if (game._after_more_latched_status_uhp != null) {
                 game._latched_status_uhp = game._after_more_latched_status_uhp;
@@ -17325,6 +17698,17 @@ async function handleQueuedMore(ch) {
                     exercise(A_STR, false); // C ref: src/mthrowu.c:thitu().
             }
             await pline(msg);
+            if (game._active_more_split_clear_next_physical_status
+                && monsterPhysicalToplineChain(msg)) {
+                // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:more().
+                // This physical line was produced by the follow-up half of an
+                // active-More split; its damage belongs to this visible More.
+                game._active_more_split_clear_next_physical_status = false;
+                game._clear_latched_status_after_more = false;
+                game._latched_status_uhp = null;
+                game._latched_status_turn = null;
+                resumeActivePhysicalBehindCurrentMore = true;
+            }
             await finish_deferred_monster_passive_counterattack();
             await finish_deferred_monster_trap_effect();
             if (game._hero_melee_post_wakeup_knockback_after_monster_more) {
@@ -17345,11 +17729,37 @@ async function handleQueuedMore(ch) {
                 && !game._deferred_monster_physical_attack
                 && !!game._deferred_monster_magic_spell_attack;
             const suppressPhysicalResume = !!game._deferred_monster_physical_attack?.suppressMonsterResumeAfterMore;
+            const activeMoreFirstRowSplit = !!game._deferred_monster_physical_attack?.activeMoreFirstRowSplit;
             const physicalWaitsForDisplayedMore = !!game._deferred_monster_physical_attack?.waitForDisplayedMore;
             if (physicalWaitsForDisplayedMore) {
                 game._deferred_monster_physical_attack.waitForDisplayedMore = false;
-            } else if (!promptDefersPendingMagic) {
+            } else if (!promptDefersPendingMagic
+                && !game._monster_death_pending
+                && !game._fatal_monster_attack_paused) {
                 await finish_deferred_monster_physical_attack();
+            }
+            if ((suppressPhysicalResume || activeMoreFirstRowSplit)
+                && !game._monster_death_pending
+                && game._clear_latched_status_after_more
+                && game._latched_status_uhp != null
+                && game._pending_message
+                && game._more
+                && monsterPhysicalToplineChain(game._pending_message)) {
+                // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:more().
+                // When an active-More split reveals a physical hit line and
+                // then that line owns the next More, its damage is already in
+                // bot(); only damage hidden behind an older More preserves HP.
+                game._clear_latched_status_after_more = false;
+                game._latched_status_uhp = null;
+                game._latched_status_turn = null;
+            }
+            if (activeMoreFirstRowSplit
+                && game._clear_latched_status_after_more
+                && game._latched_status_uhp != null
+                && game._after_more_message
+                && monsterPhysicalToplineChain(game._after_more_message)) {
+                game._active_more_split_clear_next_physical_status = true;
+                game._active_more_split_preserve_hallu_map_once = true;
             }
             if (suppressPhysicalResume
                 && !game._more
@@ -17444,6 +17854,18 @@ async function handleQueuedMore(ch) {
                 } else {
                     game._more_dismissals_remaining = Math.max(1, game._more_dismissals_remaining || 0);
                 }
+                if (game._active_more_split_latch_current_physical_more) {
+                    game._active_more_split_latch_current_physical_more = false;
+                    if (!game._latched_more_screen) {
+                        await flush_screen(1);
+                        game._latched_more_screen = serialize_terminal_grid(game.nhDisplay);
+                        game._latched_more_keep_until_dismiss = true;
+                        game._latched_more_cursor = [
+                            game.nhDisplay?.cursorCol ?? Math.min(`${game._pending_message || ''}--More--`.length, 79),
+                            game.nhDisplay?.cursorRow ?? 0,
+                        ];
+                    }
+                }
                 if (game._extra_encumbered_turn_pending)
                     game._resume_encumbered_extra_turn_after_more_prompt = true;
                 if (strictPromptKeys) {
@@ -17472,6 +17894,7 @@ async function handleQueuedMore(ch) {
                     && !game._monster_death_pending
                     && !game._fatal_monster_attack_paused
                     && (game._monster_attack_resume_behind_after_more
+                        || resumeActivePhysicalBehindCurrentMore
                         || resumePhysicalBehindNewMore
                         || resumePrayerBehindNewMore)) {
                     // C refs: win/tty/topl.c:more(), src/mhitu.c:hitmsg(),
@@ -17546,7 +17969,10 @@ async function handleQueuedMore(ch) {
         // allmain.c's next input prompt; swallowed Hallucination redraws
         // once in that resumed path and again at the input boundary.
         const finishedSwallowedExpulsion = await finish_pending_swallowed_expulsion();
-        if (!swallowedDamageResume && !preTurnResume && !monsterAttackResume)
+        const preserveActiveMoreSplitHalluMap = !!game._active_more_split_preserve_hallu_map_once;
+        game._active_more_split_preserve_hallu_map_once = false;
+        if (!swallowedDamageResume && !preTurnResume && !monsterAttackResume
+            && !preserveActiveMoreSplitHalluMap)
             refreshSwallowedHallucinationAfterMore({ visibleMap: finishedSwallowedExpulsion });
     }
     if (game._deferred_move_floor_list
@@ -17608,6 +18034,7 @@ async function handleQueuedMore(ch) {
         game._deferred_move_floor_list_resume_monster_scan = false;
         game._deferred_move_floor_list_resume_turn_tail = false;
         game._resume_floor_list_turn = false;
+        game._floor_list_resume_spot_effects_on_dismiss = false;
         await triggerSpotEffectsAtHero();
         if (!game._more) finishPendingMoveSmudge();
         if (resumeStairArrival && !game._more) {
@@ -17809,6 +18236,99 @@ async function showInventoryMenu() {
     game._inventory_menu_screen = screen;
     game._inventory_menu_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
     showOverride(screen, game._inventory_menu_cursor);
+}
+
+function buildThrowInventoryMenuLines(showAll = false) {
+    if (showAll) return buildInventoryMenuLines();
+    const lines = [];
+    const gold = game._goldCount || 0;
+    if (gold > 0) {
+        lines.push({ text: 'Coins', heading: true });
+        lines.push({ text: `$ - ${gold} gold pieces`, heading: false });
+    }
+    const entries = menuInventoryEntries()
+        .filter((entry) => entry.obj && throwObjectSuitability(entry.obj) === 'suggest');
+    for (const group of INVENTORY_GROUPS) {
+        const groupEntries = entries.filter((entry) => entry.cls === group.cls);
+        if (!groupEntries.length) continue;
+        lines.push({ text: group.title, heading: true });
+        for (const entry of groupEntries) {
+            object_glyph_for_menu(entry.obj);
+            lines.push({ text: entry.line, heading: false });
+        }
+    }
+    lines.push({ text: '(end)', heading: false });
+    return lines;
+}
+
+async function showThrowInventoryMenu(showAll = false) {
+    // C refs: src/dothrow.c:dothrow(), src/invent.c:getobj().
+    await flush_screen(1);
+    const display = game.nhDisplay;
+    if (!display?.terminal?.serialize && !display?.serialize) return;
+
+    const allLines = buildThrowInventoryMenuLines(showAll);
+    let lines = allLines;
+    let multipage = false;
+    const displayRows = display.rows || display.terminal?.rows || 24;
+    if (lines.length > displayRows) {
+        lines = lines.slice(0, displayRows - 1);
+        lines.push({ text: '(1 of 2)', heading: false });
+        game._throw_inventory_menu_page2_lines = allLines.slice(displayRows - 1)
+            .filter((line) => line.text !== '(end)');
+        game._throw_inventory_menu_page2_lines.push({ text: '(2 of 2)', heading: false });
+        multipage = true;
+    } else {
+        game._throw_inventory_menu_page2_lines = null;
+    }
+
+    const maxLen = Math.max(0, ...lines.map((line) => line.text.length));
+    const ttyMenuWidth = maxLen + 2;
+    // C ref: win/tty/wintty.c:tty_display_nhwindow().  getobj() help menus
+    // use the same right-side tty menu placement as ordinary inventory.
+    const fullScreenMenu = multipage
+        || lines.length >= displayRows
+        || COLNO - ttyMenuWidth - 1 <= 10;
+    const menuCol = fullScreenMenu ? 1 : Math.max(1, Math.min(COLNO - 1, COLNO - maxLen - 2));
+    const clearCol = fullScreenMenu ? 0 : Math.max(0, menuCol - 1);
+    const clearRows = fullScreenMenu ? displayRows : lines.length;
+    for (let row = 0; row < clearRows; row++)
+        display.putstr(clearCol, row, ' '.repeat(COLNO - clearCol), NO_COLOR, 0);
+    for (let row = 0; row < lines.length; row++) {
+        const line = lines[row];
+        display.putstr(menuCol, row, line.text, NO_COLOR, line.heading ? ATR_INVERSE : 0);
+    }
+    const lastRow = lines.length - 1;
+    const lastText = lines[lastRow]?.text || '';
+    const cursorCol = menuCol + lastText.length + (lastText === '(end)' ? 1 : 0);
+    const screen = serialize_terminal_grid(display);
+    game._throw_inventory_menu_screen = screen;
+    game._throw_inventory_menu_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
+    game._awaiting_throw_item = true;
+    game.context.move = 0;
+    showOverride(screen, game._throw_inventory_menu_cursor);
+}
+
+function showThrowInventoryMenuPage2() {
+    const display = game.nhDisplay;
+    const lines = game._throw_inventory_menu_page2_lines || [];
+    if (!display?.putstr || !lines.length) return false;
+    const displayRows = display.rows || display.terminal?.rows || 24;
+    const menuCol = 1;
+    for (let row = 0; row < displayRows; row++)
+        display.putstr(0, row, ' '.repeat(COLNO), NO_COLOR, 0);
+    for (let row = 0; row < lines.length; row++) {
+        const line = lines[row];
+        display.putstr(menuCol, row, line.text, NO_COLOR, line.heading ? ATR_INVERSE : 0);
+    }
+    const lastRow = lines.length - 1;
+    const lastText = lines[lastRow]?.text || '';
+    const cursorCol = menuCol + lastText.length;
+    const screen = serialize_terminal_grid(display);
+    game._throw_inventory_menu_page2_screen = screen;
+    game._throw_inventory_menu_page2_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
+    showOverride(screen, game._throw_inventory_menu_page2_cursor);
+    return true;
 }
 
 function showInventoryMenuPage2() {
@@ -18584,7 +19104,7 @@ function heroInventoryWeightDelta() {
     return delta;
 }
 
-function heroNearCapacity() {
+export function heroNearCapacity() {
     // C ref: src/hack.c:near_capacity()/calc_capacity().
     const wt = heroInventoryWeightDelta();
     if (wt <= 0) return C.UNENCUMBERED;
@@ -18647,11 +19167,10 @@ function insightHungerValue(level) {
 }
 
 function noteTeleportNutritionDebt() {
-    // C ref: src/teleport.c:dotele() -> morehungry(100).  The live hunger
-    // model still owns some adjacent turn-side effects separately; retain the
-    // current missing insight delta without perturbing monster/RNG evidence.
+    // C ref: src/teleport.c:dotele() -> morehungry(100).  Keep this as
+    // insight debt until morehungry()/newuhs() side effects are live-owned.
     if (!game.u) return;
-    game.u._teleport_hunger_debt = (game.u._teleport_hunger_debt || 0) + 60;
+    game.u._teleport_hunger_debt = (game.u._teleport_hunger_debt || 0) + 100;
 }
 
 function energyLine() {
@@ -21698,14 +22217,11 @@ function queueSimpleTimedRepeatsForCount(actionText = '') {
     // returns; gm.multi already contains the remaining repeat count.
     const base = Math.max(0, game.context?.multi || 0);
     const searchInVault = actionText === 'searching' && vaultOccupiedBasic();
-    // C refs: src/cmd.c:timed_occupation(), src/vault.c:invault().
-    // Outside vaults, the legacy search batch keeps two low-visibility
-    // occupation turns out of the JS monster batching path.  Inside vaults,
-    // those turns must pass through the normal turn tail so invault() runs at
-    // the same point as C instead of receiving a direct timer credit.
-    const remaining = actionText === 'searching' && !searchInVault
-        ? Math.max(0, base - 2)
-        : base;
+    // C refs: src/cmd.c:parse(), src/allmain.c:moveloop_core().
+    // Counted searches use the same positive gm.multi repeat budget as other
+    // counted timed commands; every remaining repeat goes through the normal
+    // turn path before later queued input is consumed.
+    const remaining = base;
     if (searchInVault && base > 0 && game._fast_extra_action_pending && game.u) {
         // C refs: src/allmain.c:moveloop_core(), src/cmd.c:timed_occupation(),
         // src/vault.c:invault().  A counted search that starts on a stored fast
@@ -21763,6 +22279,35 @@ export async function rhack(key) {
     if (game._arrival_topline_absorbs_next_key && !game._more) {
         game._arrival_topline_absorbs_next_key = false;
         clear_pending_message();
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._read_single_pick_after_more && game._more) {
+        const state = game._read_single_pick_after_more;
+        const idx = inventoryIndexForLetter(ch);
+        const obj = idx >= 0 ? game.inventory?.[idx] : null;
+        if (obj && obj.invlet === state.invlet) {
+            game._read_single_pick_after_more = null;
+            clear_pending_message();
+            await finishReadObjectSelection(obj, idx);
+            return;
+        }
+        if (ch === ' ' || ch === '\r' || ch === '\n') {
+            game._read_single_pick_after_more = null;
+            clear_pending_message();
+            game._awaiting_read_item = true;
+            await showPromptLine(`What do you want to read? [${readLetters()} or ?*] `);
+            game.context.move = 0;
+            return;
+        }
+        if (ch === '\x1b') {
+            game._read_single_pick_after_more = null;
+            clear_pending_message();
+            game.context.move = 0;
+            await pline('Never mind.');
+            return;
+        }
         game.context.move = 0;
         return;
     }
@@ -22994,7 +23539,11 @@ export async function rhack(key) {
                     // C ref: sounds.c:dochat().  Speaking to a waiting monster
                     // prods it into action before its sound-specific response.
                     mon.mstrategy = (mon.mstrategy || 0) & ~C.STRAT_WAITMASK;
-                    tookTime = await chatMonsterNoise(mon);
+                    if (mon.mtame && mon.meating) {
+                        await pline(`${chatEatingMonsterName(mon)} is eating noisily.`);
+                    } else {
+                        tookTime = await chatMonsterNoise(mon);
+                    }
                     if (game._quest_leader_chat_turn_pending) tookTime = false;
                 }
             }
@@ -23108,7 +23657,14 @@ export async function rhack(key) {
             game._travel_cursor = null;
             const pendingBeforeTravel = game._pending_message || '';
             const clearGetposError = /^(?:Unknown direction:|Can't find dungeon feature )/.test(pendingBeforeTravel);
+            const transientTravelDescription = !!pendingBeforeTravel
+                && !clearGetposError
+                && !/^Where do you want to travel to\?/.test(pendingBeforeTravel);
+            // C refs: src/getpos.c:getpos()/auto_describe(), src/cmd.c:dotravel().
+            // Valid cursor descriptions remain visible until movement output
+            // replaces them; only getpos error lines are cleared.
             if (clearGetposError) clear_pending_message();
+            game._travel_description_pending = transientTravelDescription;
             const startedTravel = await beginTravelRunToCachedTarget();
             if (clearGetposError && !startedTravel && pendingBeforeTravel) await pline(pendingBeforeTravel);
             game.context.move = startedTravel ? 1 : 0;
@@ -24054,6 +24610,26 @@ export async function rhack(key) {
             await pline('Never mind.');
             return;
         }
+        if (ch === '?' || ch === '*') {
+            const choices = ch === '?' ? readSuggestedObjects()
+                : (game.inventory || []).filter((obj) => obj && validInvlet(obj.invlet));
+            if (ch === '?' && choices.length === 1) {
+                const obj = choices[0];
+                // C refs: src/invent.c:getobj(), src/invent.c:display_pickinv().
+                // A single suggested object is shown as a message-menu line; the
+                // next matching inventory letter at --More-- selects it.
+                game._awaiting_read_item = false;
+                game._read_single_pick_after_more = { invlet: obj.invlet };
+                await pline(`${inventoryListing(obj)}.`);
+                queue_more_prompt();
+                game.context.move = 0;
+                return;
+            }
+            game._awaiting_read_item = true;
+            await showInventoryClassMenu(SCROLL_CLASS);
+            game.context.move = 0;
+            return;
+        }
         const idx = inventoryIndexForLetter(ch);
         const obj = idx >= 0 ? game.inventory?.[idx] : null;
         if (!obj) {
@@ -24064,74 +24640,14 @@ export async function rhack(key) {
             return;
         }
         game._awaiting_read_item = false;
-        if (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS) {
-            game.context.move = 0;
-            await pline('That is a silly thing to read.');
-            return;
-        }
-        noteLiterateConduct();
-        if (obj.oclass === SPBOOK_CLASS) {
-            const info = spellbookSpellInfo(obj);
-            const alreadyKnown = info && spellIsActuallyKnown(obj, info);
-            if (alreadyKnown) {
-                // C ref: src/spell.c:study_book().
-                await pline(`You know "${info.name}" quite well already.`);
-                game._spellbook_refresh_prompt_after_more = { otyp: obj.otyp };
-                queue_more_prompt();
-                game.context.move = 0;
-                return;
-            }
-            if (info) {
-                if (game._defer_next_spellbook_study_for_fast_extra && game._fast_extra_action_pending) {
-                    game._defer_next_spellbook_study_for_fast_extra = false;
-                    game._deferred_spellbook_study = {
-                        obj,
-                        info: { ...info },
-                        spellKey: spellKeyFromRecord(obj, info),
-                    };
-                    game.context.move = 1;
-                    return;
-                }
-                game._defer_next_spellbook_study_for_fast_extra = false;
-                await beginStudySpellbook(obj, info);
-                return;
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (obj.otyp === SCR_REMOVE_CURSE) {
-            await readScrollOfRemoveCurse(obj, idx);
-            return;
-        }
-        if (obj.otyp === SCR_ENCHANT_WEAPON) {
-            await readScrollOfEnchantWeapon(obj, idx);
-            return;
-        }
-        if (obj.otyp === SCR_LIGHT) {
-            await readScrollOfLight(obj, idx);
-            return;
-        }
-        if (obj.otyp === SCR_TELEPORTATION) {
-            await readScrollOfTeleportation(obj, idx);
-            return;
-        }
-        if (obj.otyp === SCR_PUNISHMENT) {
-            await readScrollOfPunishment(obj, idx);
-            return;
-        }
-        if (obj.otyp === SCR_IDENTIFY) {
-            await readScrollOfIdentify(obj, idx);
-            return;
-        }
-        if (obj.otyp === SCR_MAGIC_MAPPING) {
-            await readScrollOfMagicMapping(obj);
-            return;
-        }
-        game.context.move = 0;
+        await finishReadObjectSelection(obj, idx);
         return;
     }
 
-    if (game._awaiting_throw_item) {
+    const throwMenuOverrideActive = game._override_prev
+        && (game._override_prev === game._throw_inventory_menu_screen
+            || game._override_prev === game._throw_inventory_menu_page2_screen);
+    if (game._awaiting_throw_item && !throwMenuOverrideActive) {
         clear_pending_message();
         game._awaiting_throw_item = false;
         if (ch === ' ' || ch === '\x1b') {
@@ -24143,6 +24659,10 @@ export async function rhack(key) {
             game._awaiting_throw_direction = { otyp: GOLD_PIECE, oclass: COIN_CLASS, quan: game._goldCount || 0 };
             game.context.move = 0;
             await showPromptLine('In what direction? ');
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            await showThrowInventoryMenu(ch === '*');
             return;
         }
         const idx = inventoryIndexForLetter(ch);
@@ -24172,6 +24692,7 @@ export async function rhack(key) {
         obj.wornSide = (ch === 'r' || ch === 'R') ? 'right' : 'left';
         obj.owornmask = obj.wornSide === 'right' ? C.W_RINGR : C.W_RINGL;
         if (obj.otyp === RIN_REGENERATION) refreshRingRegenerationExtrinsic();
+        if (obj.otyp === RIN_CONFLICT) refreshRingConflictExtrinsic();
         await pline(`${inventoryListing(obj)} (on ${obj.wornSide} hand).`);
         game.context.move = 1;
         return;
@@ -24811,6 +25332,69 @@ export async function rhack(key) {
         }
         if (prev === game._wizidentify_menu_screen) {
             await handleWizIdentifyMenuInput(ch);
+            return;
+        }
+        if (prev === game._throw_inventory_menu_screen) {
+            if (ch === ' ' && game._throw_inventory_menu_page2_lines?.length) {
+                showThrowInventoryMenuPage2();
+                game.context.move = 0;
+                return;
+            }
+            const selectGold = ch === '$' && (game._goldCount || 0) > 0;
+            const idx = inventoryIndexForLetter(ch);
+            const obj = idx >= 0 ? game.inventory?.[idx] : null;
+            if (selectGold || obj) {
+                game._throw_inventory_menu_screen = null;
+                game._throw_inventory_menu_page2_screen = null;
+                game._throw_inventory_menu_page2_lines = null;
+                game._throw_inventory_menu_cursor = null;
+                game._throw_inventory_menu_page2_cursor = null;
+                clearOverrideScreen();
+                await redrawAfterFullScreenMenuDismiss();
+                game._awaiting_throw_item = false;
+                game._awaiting_throw_direction = selectGold
+                    ? { otyp: GOLD_PIECE, oclass: COIN_CLASS, quan: game._goldCount || 0 }
+                    : obj;
+                game.context.move = 0;
+                await showPromptLine('In what direction? ');
+                return;
+            }
+            if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+                game._throw_inventory_menu_screen = null;
+                game._throw_inventory_menu_page2_screen = null;
+                game._throw_inventory_menu_page2_lines = null;
+                game._throw_inventory_menu_cursor = null;
+                game._throw_inventory_menu_page2_cursor = null;
+                clearOverrideScreen();
+                await redrawAfterFullScreenMenuDismiss();
+                game._awaiting_throw_item = true;
+                await showThrowPrompt();
+                game.context.move = 0;
+                return;
+            }
+            showOverride(prev, game._throw_inventory_menu_cursor || null);
+            game.context.move = 0;
+            return;
+        }
+        if (prev === game._throw_inventory_menu_page2_screen) {
+            const idx = inventoryIndexForLetter(ch);
+            const obj = idx >= 0 ? game.inventory?.[idx] : null;
+            game._throw_inventory_menu_screen = null;
+            game._throw_inventory_menu_page2_screen = null;
+            game._throw_inventory_menu_page2_lines = null;
+            game._throw_inventory_menu_cursor = null;
+            game._throw_inventory_menu_page2_cursor = null;
+            clearOverrideScreen();
+            await redrawAfterFullScreenMenuDismiss();
+            if (obj) {
+                game._awaiting_throw_item = false;
+                game._awaiting_throw_direction = obj;
+                await showPromptLine('In what direction? ');
+            } else {
+                game._awaiting_throw_item = true;
+                await showThrowPrompt();
+            }
+            game.context.move = 0;
             return;
         }
         if (game._look_inventory_lookup_active && prev === game._inventory_menu_screen) {
@@ -25794,6 +26378,8 @@ export async function domove(dx, dy) {
 
     if (target?.remembered_glyph?.ch === 'I')
         return attackRememberedInvisibleEmpty(dx, dy);
+
+    if (await moveBlockedByBearTrap(dx, dy)) return true;
 
     if (target && IS_POOL(target.typ)) {
         // C ref: hack.c:domove_core(); paranoid movement into known liquid

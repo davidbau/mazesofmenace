@@ -59,7 +59,10 @@ const ANSI_COLOR = [
 const COLOR_BY_ANSI = new Map(ANSI_COLOR.map((ansi, color) => [ansi, color]));
 
 const POTION_CLASS = 8;
+const SCROLL_CLASS = 9;
 const SPBOOK_CLASS = 10;
+const WAND_CLASS = 11;
+const RING_CLASS = 4;
 const GEM_CLASS = 13;
 const FIRST_OBJECT = 18;
 const NUM_OBJECTS = OBJECT_CLASS.length - 1;
@@ -158,6 +161,14 @@ function obj_is_generic(obj) {
     return obj.oclass === POTION_CLASS
         || (otyp >= FIRST_REAL_GEM && otyp <= LAST_GLASS_GEM)
         || (otyp >= FIRST_SPELL && otyp <= LAST_SPELL);
+}
+
+function obj_nearby_observation_modeled(obj) {
+    if (!obj || obj.dknown) return false;
+    return obj_is_generic(obj)
+        || obj.oclass === SCROLL_CLASS
+        || obj.oclass === RING_CLASS
+        || obj.oclass === WAND_CLASS;
 }
 
 function observe_object(obj) {
@@ -813,20 +824,21 @@ export function see_nearby_objects() {
     if (game.u?.uprops?.hallucination || game.u?.uhallucination) return;
     const r = Math.max(game.u?.xray_range || 0, 2);
     const neardist = (r * r) * 2 - r;
-    const seen = new Set();
-    for (const obj of game.level?.objects || []) {
-        if (typeof obj.ox !== 'number' || typeof obj.oy !== 'number') continue;
-        if (obj.ox <= 0 || obj.oy < 0) continue;
-        if (dist2(obj.ox, obj.oy, game.u?.ux ?? 0, game.u?.uy ?? 0) > neardist) continue;
-        if (!cansee(obj.ox, obj.oy)) continue;
-        // C ref: src/display.c:see_nearby_objects().  Nearby visible objects
-        // are marked encountered even when their map glyph is already a
-        // non-generic class glyph such as a scroll or wand.
-        if (!obj.dknown) observe_object(obj);
-        const key = `${obj.ox},${obj.oy}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        newsym(obj.ox, obj.oy);
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    for (let y = uy - r; y <= uy + r; y++) {
+        for (let x = ux - r; x <= ux + r; x++) {
+            if (x <= 0 || y < 0) continue;
+            const obj = (game.level?.objects || []).find((o) => o.ox === x && o.oy === y);
+            if (!obj || obj.dknown) continue;
+            if (!cansee(x, y) || dist2(x, y, ux, uy) > neardist) continue;
+            // C ref: src/display.c:see_nearby_objects().  Nearby visible top
+            // objects with descriptor/generic discovery front doors are
+            // encountered before explicit floor naming; other classes still
+            // rely on the naming path until full visibility parity is owned.
+            if (obj_nearby_observation_modeled(obj)) observe_object(obj);
+            newsym(x, y);
+        }
     }
 }
 
@@ -1677,7 +1689,7 @@ function _buildScreenOutput() {
                 const inverse = game._floor_list_show_more === false
                     && line
                     && line !== '(end)'
-                    && !/^[a-z] [+-] /.test(line);
+                    && !/^(?:[a-z]|\$) [+-] /.test(line);
                 for (let c = clearCol; c < display.cols; c++)
                     display.setCell(c, row, ' ', NO_COLOR, 0);
                 for (let c = 0; c < Math.min(line.length, display.cols - col); c++)
@@ -1735,6 +1747,7 @@ export async function bot() {
 export async function pline(msg) {
     game._topline_residue = '';
     game._pending_message = msg;
+    game._travel_description_pending = false;
     game._pending_message_wrap_cols = 0;
     game._last_topline_message = msg;
     game._last_topline_can_force_more = false;
@@ -1810,6 +1823,8 @@ function terminalCellWidth(text) {
 
 export function clear_pending_message() {
     game._pending_message = '';
+    game._simple_timed_repeat_stop_after_pending = false;
+    game._travel_description_pending = false;
     game._topline_residue = '';
     game._pending_message_wrap_cols = 0;
     game._more = false;

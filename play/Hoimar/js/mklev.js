@@ -203,6 +203,7 @@ const DIAMOND = 440;
 const RUBY = 441;
 const EMERALD = 445;
 const AMETHYST = 455;
+const JADE = 460;
 const WORTHLESS_WHITE_GLASS = 461;
 const WORTHLESS_RED_GLASS = 463;
 const WORTHLESS_GREEN_GLASS = 468;
@@ -212,6 +213,8 @@ const LOADSTONE = 471;
 const TOUCHSTONE = 472;
 const FLINT = 473;
 const ROCK = 474;
+const TAINT_AGE = 50;
+const ROT_AGE = 250;
 const KELP_FROND = 275;
 const SLIME_MOLD = 285;
 const LUMP_OF_ROYAL_JELLY = 286;
@@ -1012,8 +1015,35 @@ export function u_on_dnstairs() {
     place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_DOWNTELE, null);
 }
 
-// oinit stub (level-dependent object probability reset)
-function oinit() { /* no-op for contest */ }
+function maxledgerno_basic() {
+    return (game.dungeons || []).reduce((max, dungeon) =>
+        Math.max(max, (dungeon?.ledger_start ?? 0) + (dungeon?.num_dunlevs ?? 0)), 0);
+}
+
+function setgemprobs(uz = game.u?.uz) {
+    // C ref: src/o_init.c:setgemprobs().  Early dungeon levels suppress
+    // high-value gems and recompute the real-gem probability slice before
+    // mkobj(GEM_CLASS) samples the class.
+    const maxLedger = maxledgerno_basic();
+    const ledger = ledger_no(uz);
+    const lev = maxLedger && ledger > maxLedger ? maxLedger : ledger;
+    const skip = Math.max(0, 9 - Math.trunc(lev / 3));
+    let first = DILITHIUM_CRYSTAL;
+    for (let j = 0; j < skip && first + j <= JADE; j++) {
+        OBJECT_PROB[first + j] = 0;
+    }
+    first += skip;
+    if (first > JADE) return;
+    const denom = JADE + 1 - first;
+    for (let j = first; j <= JADE; j++) {
+        OBJECT_PROB[j] = Math.trunc((171 + j - first) / denom);
+    }
+}
+
+function oinit() {
+    // C ref: src/mklev.c:makelevel() -> oinit() -> src/o_init.c:setgemprobs().
+    setgemprobs(game.u?.uz);
+}
 
 export function level_difficulty() {
     const uz = game.u?.uz;
@@ -1300,6 +1330,7 @@ export function mksobj(otyp, init, artif) {
         dknown: false,
         spe: 0,
         corpsenm: null,
+        age: Math.max(game.moves ?? 1, 1),
     };
     otmp.o_id = next_ident();
     if (init) {
@@ -1546,12 +1577,7 @@ function mksobj_init(otmp, otyp, artif) {
     if ((otyp === STATUE || otyp === CORPSE) && corpsePtr)
         otmp.spe = corpseStatSpe(corpsePtr);
     if (otyp === CORPSE) {
-        if (game._live_corpse_timeout) {
-            start_corpse_timeout(otmp);
-        } else {
-            const corpseName = monsterName(otmp.corpsenm);
-            if (corpseName !== 'LICHEN' && corpseName !== 'LIZARD') rnz(25);
-        }
+        start_corpse_timeout(otmp);
     }
 }
 
@@ -1990,11 +2016,35 @@ function tin_can_contain(ptr) {
 }
 
 function start_corpse_timeout(body) {
-    // C ref: mkobj.c:start_corpse_timeout(). Timer storage is still future
-    // work; this preserves the RNG shape for ordinary rotting corpses.
+    // C ref: src/mkobj.c:start_corpse_timeout().
+    if (!body) return;
+    delete body._rot_corpse_at;
     const ptr = monster_ptr(body?.corpsenm);
     if (!ptr || ptr.name === 'LIZARD' || ptr.name === 'LICHEN') return;
-    rnz(game.in_mklev ? 25 : 10);
+    const now = Math.max(game.moves ?? 1, 1);
+    const rotAdjust = game.in_mklev ? 25 : 10;
+    const born = Number.isFinite(body.age) ? body.age : now;
+    const age = now - born;
+    let when = age > ROT_AGE ? rotAdjust : ROT_AGE - age;
+    when += rnz(rotAdjust) - rotAdjust;
+    body._rot_corpse_at = now + when;
+}
+
+export function expire_corpse_timeouts(now = Math.max(game.moves ?? 1, 1)) {
+    // C refs: src/timeout.c:run_timers(), src/dig.c:rot_corpse().
+    const objects = game.level?.objects;
+    if (!Array.isArray(objects)) return [];
+    const expired = [];
+    for (let i = objects.length - 1; i >= 0; i--) {
+        const obj = objects[i];
+        if (obj?.otyp !== CORPSE || !Number.isFinite(obj._rot_corpse_at)
+            || obj._rot_corpse_at > now) continue;
+        const x = obj.ox;
+        const y = obj.oy;
+        objects.splice(i, 1);
+        if (isok(x, y)) expired.push({ x, y });
+    }
+    return expired;
 }
 
 function obj_resists_basic(obj, ochance, achance) {
@@ -18618,6 +18668,8 @@ function mktrap_victim(trap) {
     const corpse = mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
     if (corpse) {
         corpse.trap_victim = true;
+        corpse.age = (Number.isFinite(corpse.age) ? corpse.age : Math.max(game.moves ?? 1, 1))
+            - (TAINT_AGE + 1);
         const stats = victimCorpseStats.get(victim_mnum);
         if (stats) {
             corpse.corpse_cwt = stats.cwt;
