@@ -21,6 +21,8 @@ import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
 import {
+    applyEatingBiteNutrition,
+    applyEatingCorpsePostEffects,
     continueRunStep, dosearch0_basic, finish_pending_eaten_corpse, finishPrayerResult,
     encumbranceDecreaseMessage, heroNearCapacity,
     invaultBasic, monsterNearbyForSafety,
@@ -37,7 +39,10 @@ import {
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { roles, findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import { NO_COLOR } from './terminal.js';
-import { A_DEX, A_INT, A_STR, A_WIS, COLNO, NORMAL_SPEED, W_TOOL } from './const.js';
+import {
+    A_DEX, A_INT, A_STR, A_WIS, COLNO, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED,
+    D_NODOOR, DOOR, NORMAL_SPEED, W_TOOL,
+} from './const.js';
 import * as ff8000 from './fastforward.js';
 import * as ff0002 from './fastforward0002.js';
 
@@ -56,6 +61,9 @@ const ARMOR_CLASS = 3;
 const PL_NSIZ = 32;
 const BLINDFOLD = 233;
 const TOWEL = 234;
+const LOCK_PICK = 222;
+const CREDIT_CARD = 223;
+const CHEST = 215;
 const NAME_PROMPT_BASE = "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you?";
 
 const ROLE_SELECTION_CHOICES = [
@@ -637,14 +645,14 @@ function expandedNamePromptRows(name, showBanner = true) {
     ];
 }
 
-function overlayAnsiText(baseLine, overlayLine, col) {
+function overlayAnsiText(baseLine, overlayLine, col, clearWidth = null) {
     if (!overlayLine) return baseLine || '';
     const base = String(baseLine || '');
     const before = base.length >= col
         ? `${base.slice(0, Math.max(0, col - 1))} `
         : base + ' '.repeat(col - base.length);
     const visibleLen = visibleStartupMenuLength(overlayLine);
-    const suffixAt = col + visibleLen;
+    const suffixAt = col + Math.max(visibleLen, clearWidth ?? visibleLen);
     const suffix = base.length > suffixAt ? base.slice(suffixAt) : '';
     return `${before}${overlayLine}${suffix}`;
 }
@@ -655,9 +663,10 @@ function renderStartupConfirmationOnNamePrompt(state) {
     // leaving the copyright rows visible where the menu does not overwrite.
     const lines = selectionMenuLines('confirm', state);
     const col = startupMenuColumn('confirm', lines, true);
+    const clearWidth = Math.max(...lines.map(visibleStartupMenuLength));
     const rows = expandedNamePromptRows(game.plname, true);
     for (let i = 0; i < lines.length; i++) {
-        rows[i] = overlayAnsiText(rows[i], lines[i], col);
+        rows[i] = overlayAnsiText(rows[i], lines[i], col, clearWidth);
     }
     return rows.join('\n');
 }
@@ -1575,6 +1584,8 @@ function applyOccupationTakeoffObject(g) {
 function occupationPending(g) {
     return (g._occupation_turns_remaining || 0) > 0
         || !!g._occupation_finish_message
+        || !!g._pick_lock
+        || (g._pick_lock_post_success_turns || 0) > 0
         || !!g._force_lock
         || (g._force_lock_post_success_turns || 0) > 0;
 }
@@ -1592,6 +1603,113 @@ async function packedOccupationPline(msg) {
 function clearForceLock(g) {
     g._force_lock = null;
     g._force_lock_resume_turn_first = false;
+}
+
+function clearPickLock(g) {
+    g._pick_lock = null;
+    g._pick_lock_resume_turn_first = false;
+    g._pick_lock_start_before_turn = false;
+}
+
+function pickLockAction(state, loc) {
+    if (state?.box && !state.box.olocked) return state.box.otyp === CHEST ? 'locking the chest' : 'locking the box';
+    if (state?.box && (state?.picktyp === LOCK_PICK || state?.picktyp === CREDIT_CARD)) return 'picking the lock';
+    if (state?.box) return state.box.otyp === CHEST ? 'unlocking the chest' : 'unlocking the box';
+    if (loc && !(loc.doormask & D_LOCKED)) return 'locking the door';
+    if (state?.picktyp === LOCK_PICK || state?.picktyp === CREDIT_CARD) return 'picking the lock';
+    return 'unlocking the door';
+}
+
+async function pickLockAttempt(g) {
+    const state = g._pick_lock;
+    if (!state) return true;
+    if (state.box) {
+        const box = state.box;
+        if (box.ox !== g.u?.ux || box.oy !== g.u?.uy) {
+            clearPickLock(g);
+            return true;
+        }
+        if ((state.usedtime || 0) >= 50 || !state.tool) {
+            await packedOccupationPline(`You give up your attempt at ${pickLockAction(state, null)}.`);
+            exercise(A_DEX, true);
+            clearPickLock(g);
+            return true;
+        }
+
+        state.usedtime = (state.usedtime || 0) + 1;
+        if (rn2(100) >= (state.chance || 0)) return false;
+
+        await packedOccupationPline(`You succeed in ${pickLockAction(state, null)}.`);
+        box.olocked = !box.olocked;
+        box.lknown = true;
+        newsym(box.ox, box.oy);
+        exercise(A_DEX, true);
+        g._pick_lock_post_success_turns = 1;
+        clearPickLock(g);
+        return true;
+    }
+    const loc = g.level?.at(state.x, state.y);
+    if (!loc || loc.typ !== DOOR) {
+        clearPickLock(g);
+        return true;
+    }
+    if (loc.doormask === D_CLOSED || loc.doormask === D_LOCKED
+        || (loc.doormask & (D_CLOSED | D_LOCKED))) {
+        if ((state.usedtime || 0) >= 50 || !state.tool) {
+            await packedOccupationPline(`You give up your attempt at ${pickLockAction(state, loc)}.`);
+            exercise(A_DEX, true);
+            clearPickLock(g);
+            return true;
+        }
+
+        state.usedtime = (state.usedtime || 0) + 1;
+        // C ref: lock.c:picklock().  Each occupation tick tests rn2(100)
+        // against the setup chance from pick_lock().
+        if (rn2(100) >= (state.chance || 0)) return false;
+
+        await packedOccupationPline(`You succeed in ${pickLockAction(state, loc)}.`);
+        if (loc.doormask & D_LOCKED) loc.doormask = D_CLOSED;
+        else loc.doormask = D_LOCKED;
+        loc.flags = loc.doormask;
+        newsym(state.x, state.y);
+        exercise(A_DEX, true);
+        clearPickLock(g);
+        return true;
+    }
+    if (loc.doormask === D_NODOOR) await packedOccupationPline('This doorway has no door.');
+    else if (loc.doormask === D_ISOPEN) await packedOccupationPline('You cannot lock an open door.');
+    else if (loc.doormask === D_BROKEN) await packedOccupationPline('This door is broken.');
+    else await packedOccupationPline('This door is broken.');
+    clearPickLock(g);
+    return true;
+}
+
+async function continuePickLockTurns(g) {
+    let resumeTurnFirst = !!g._pick_lock_resume_turn_first;
+    g._pick_lock_resume_turn_first = false;
+    while (g._pick_lock || (g._pick_lock_post_success_turns || 0) > 0) {
+        if (!g._pick_lock) {
+            g._pick_lock_post_success_turns--;
+            await advanceTurn();
+            if ((g._more || g._monster_turn_paused_for_more) && occupationPending(g)) {
+                g._occupation_paused_for_more = true;
+                return false;
+            }
+            continue;
+        }
+        if (resumeTurnFirst) {
+            resumeTurnFirst = false;
+        } else if (await pickLockAttempt(g)) {
+            continue;
+        }
+        await advanceTurn();
+        if ((g._more || g._monster_turn_paused_for_more) && occupationPending(g)) {
+            g._pick_lock_resume_turn_first = true;
+            g._occupation_paused_for_more = true;
+            return false;
+        }
+    }
+    return true;
 }
 
 async function forceLockAttempt(g) {
@@ -2093,16 +2211,20 @@ async function finishPrayerAfternmvAfterSavedLife(g) {
 }
 
 async function continueOccupationTurns(g) {
+    if (g._pick_lock || (g._pick_lock_post_success_turns || 0) > 0)
+        return continuePickLockTurns(g);
     if (g._force_lock || (g._force_lock_post_success_turns || 0) > 0)
         return continueForceLockTurns(g);
     // C ref: allmain.c:moveloop_core()/occupation.  Delayed occupations keep
     // consuming turns, but tty --More-- pauses can split them across inputs.
     while ((g._occupation_turns_remaining || 0) > 0) {
         g._occupation_turns_remaining--;
+        applyEatingBiteNutrition();
         applyOccupationFinalTurnState(g);
         if ((g._occupation_turns_remaining || 0) === 0
             && g._occupation_finish_removes_eaten_corpse
             && !(g.inventory || []).includes(g._pending_eaten_corpse_remove)) {
+            await applyEatingCorpsePostEffects();
             finish_pending_eaten_corpse();
             g._occupation_finish_removes_eaten_corpse = false;
         }
@@ -2125,6 +2247,7 @@ async function continueOccupationTurns(g) {
             g._occupation_finish_uac = null;
             g._status_uac_override = null;
         }
+        if (g._occupation_finish_removes_eaten_corpse) await applyEatingCorpsePostEffects();
         await runOccupationPreFinishTurn(g);
         if (!await completePendingOccupationTurnTail(g)) return false;
         applyOccupationFinishObjectEffects(g);
@@ -2147,6 +2270,7 @@ async function continueOccupationTurns(g) {
             finish_pending_eaten_corpse();
             g._occupation_finish_removes_eaten_corpse = false;
         }
+        g._occupation_bite_nutrition = null;
         g._occupation_finish_message = null;
         g._occupation_pre_finish_turn_done = false;
         g._occupation_pre_finish_catchup = false;
@@ -2199,11 +2323,17 @@ async function continueSimpleTimedRepeats(g, options = {}) {
         if (checkStopSearching
             && (g._simple_timed_repeats_remaining || 0) > 0
             && (monsterNearbyForSafety()
-                || (!g._pending_message && !g._more && monsterNearbyForSafety(2)))) {
+                || (!g._pending_message && !g._more
+                    && (monsterNearbyForSafety(2)
+                        || (leaveTailForInputBoundary
+                            && (g._simple_timed_repeats_remaining || 0) <= 2
+                            && monsterNearbyForSafety(4)))))) {
             // C refs: src/allmain.c:moveloop_core(), src/hack.c:monster_nearby().
             // Timed search occupations stop for neighboring monsters; the
             // radius-2 fallback is the legacy batched-search tail catch-up,
-            // and must not overwrite already pending tty output.
+            // and the radius-4 tail edge covers the same JS batch boundary
+            // before a fast extra tick can consume the reserved tail.  Neither
+            // fallback should overwrite already pending tty output.
             g._simple_timed_repeats_remaining = 0;
             g._simple_timed_repeat_text = '';
             if (g.context) g.context.multi = 0;
@@ -2230,10 +2360,23 @@ async function continueSimpleTimedRepeats(g, options = {}) {
         // allocation is not charged inside this JS batching loop.
         if (leaveTailForInputBoundary) accrueEncumberedMoveDebt(g, { capPendingExtra: true });
     }
+    const stoppedSearchingInTail = g._simple_timed_repeat_text === 'searching'
+        && (g.context?.multi || 0) > 0
+        && monsterNearbyForSafety(4);
+    if (leaveTailForInputBoundary
+        && (g._simple_timed_repeats_remaining || 0) === 1
+        && stoppedSearchingInTail) {
+        // C refs: src/cmd.c:timed_occupation(), src/allmain.c:moveloop_core().
+        // The JS batcher preserves one timed-search tick for the next input
+        // boundary, but an occupation stop at that edge must be visible before
+        // the following queued command gets to own the final tick.
+        g._simple_timed_repeats_remaining = 0;
+        g._simple_timed_repeat_text = '';
+        if (g.context) g.context.multi = 0;
+        if (g.flags?.verbose !== false) await pline('You stop searching.');
+        return true;
+    }
     if ((g._simple_timed_repeats_remaining || 0) <= 0) {
-        const stoppedSearchingInTail = g._simple_timed_repeat_text === 'searching'
-            && (g.context?.multi || 0) > 0
-            && monsterNearbyForSafety(4);
         g._simple_timed_repeat_text = '';
         if (g.context) g.context.multi = 0;
         if (stoppedSearchingInTail && g.flags?.verbose !== false)
@@ -2509,6 +2652,7 @@ export async function moveloop_core() {
                 }
                 if (resumeOccupationAfterMonsterTurn && occupationPending(g)) {
                     g._occupation_paused_for_more = false;
+                    if (g._pick_lock) g._pick_lock_resume_turn_first = false;
                     if (g._force_lock) g._force_lock_resume_turn_first = false;
                     if (!await continueOccupationTurns(g)) return;
                 }
@@ -2525,6 +2669,14 @@ export async function moveloop_core() {
                 if (!await continueOccupationTurns(g)) return;
             } else {
                 applyOccupationFinalTurnState(g);
+                if (g._pick_lock_start_before_turn && g._pick_lock) {
+                    // C refs: src/lock.c:pick_lock(), src/allmain.c:moveloop_core().
+                    // Installing the picklock occupation clears context.move;
+                    // the first occupation tick runs before the monster scan.
+                    g._pick_lock_start_before_turn = false;
+                    await pickLockAttempt(g);
+                    if (g._more || g._monster_turn_paused_for_more) return;
+                }
                 await advanceTurn();
                 const fireDirectionNeedsTurnMore = !!g._fire_direction_after_turn_more;
                 g._fire_direction_after_turn_more = false;
@@ -2557,6 +2709,7 @@ export async function moveloop_core() {
                 if (!await continueNomulTurns(g, { countCurrentTurn: true })) return;
                 if (!occupationPending(g)) finish_pending_eaten_corpse();
                 if (g._more && occupationPending(g) && !g._occupation_continue_behind_more) {
+                    if (g._pick_lock) g._pick_lock_resume_turn_first = true;
                     if (g._force_lock) g._force_lock_resume_turn_first = true;
                     g._occupation_paused_for_more = true;
                     return;

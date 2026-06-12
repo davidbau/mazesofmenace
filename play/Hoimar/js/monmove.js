@@ -4027,15 +4027,20 @@ function clear_fatal_preserved_status_for_packed_monster_hits() {
     if (!game._monster_death_pending
         || !game._fatal_monster_attack_paused
         || !game._monster_fatal_preserve_hit_status) return;
+    if (!death_uses_wizard_prompt_basic()) return;
     const line = game._pending_message || '';
     if (!line.includes('  ') || !is_simple_monster_hit_you_chain(line)) return;
     // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl(),
-    // src/end.c:done().  A single deferred fatal hit More can preserve
-    // pre-damage HP, but once simple physical hits pack into a chain the
-    // fatal prompt's status row has already advanced to HP 0.
+    // src/end.c:done().  Wizard/explore fatal prompts advance packed simple
+    // hit chains to HP 0; ordinary death/disclosure keeps the pre-fatal-hit
+    // status until disclose() starts.
     game._monster_fatal_preserve_hit_status = false;
     game._death_preserve_latched_status = false;
     game._latched_status_uhp = 0;
+}
+
+function death_uses_wizard_prompt_basic() {
+    return !!(game.wizard || game.flags?.debug || game.flags?.explore);
 }
 
 function first_simple_monster_hit_line(line) {
@@ -6571,7 +6576,8 @@ function handle_monster_fatal_damage(mtmp, preDamageHp) {
         && !stalePendingMonsterHitStatus
         && ((!pendingTopline && preDamageHp <= 1)
             || (!!pendingTopline && !/^You /.test(pendingTopline)));
-    let preserveDeathPromptStatusHp = preserveFatalHitStatusHp && !pendingMonsterHit;
+    let preserveDeathPromptStatusHp = preserveFatalHitStatusHp
+        && (!pendingMonsterHit || !death_uses_wizard_prompt_basic());
     if (mtmp.isshk && shopkeeper_name(mtmp)) {
         const honorific = mtmp.female ? 'Ms.' : 'Mr.';
         game._death_killer_name = `${honorific} ${shopkeeper_name(mtmp)}, the shopkeeper`;

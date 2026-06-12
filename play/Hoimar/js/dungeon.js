@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE } from './const.js';
+import { A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE, Amask2align } from './const.js';
 
 const DUNGEON_SPEC = [
     {
@@ -111,8 +111,26 @@ function luaCoreShuffle() {
     return align;
 }
 
-function dgnFlags(spec) {
+const DGN_FLAG_BITS = {
+    town: 0x01,
+    hellish: 0x02,
+    mazelike: 0x04,
+    roguelike: 0x08,
+    unconnected: 0x10,
+};
+const D_ALIGN_MASK = 0x70;
+
+function dgnFlagList(spec) {
     const flags = Array.isArray(spec.flags) ? spec.flags : spec.flags ? [spec.flags] : [];
+    return flags;
+}
+
+function dgnRawFlags(spec) {
+    return dgnFlagList(spec).reduce((mask, flag) => mask | (DGN_FLAG_BITS[flag] || 0), 0);
+}
+
+function dgnFlags(spec) {
+    const flags = dgnFlagList(spec);
     return {
         hellish: flags.includes('hellish'),
         maze_like: flags.includes('mazelike'),
@@ -121,6 +139,15 @@ function dgnFlags(spec) {
         town: flags.includes('town'),
         align: dgnAlign(spec.alignment),
     };
+}
+
+function inheritedSpecialAlign(spec, parentRawFlags) {
+    const explicit = dgnAlign(spec.alignment);
+    if (explicit !== A_NONE) return explicit;
+    const levelMask = (dgnRawFlags(spec) & D_ALIGN_MASK) >> 4;
+    if (levelMask) return Amask2align(levelMask);
+    const parentMask = (parentRawFlags & D_ALIGN_MASK) >> 4;
+    return parentMask ? Amask2align(parentMask) : A_NONE;
 }
 
 function dgnAlign(name = 'unaligned') {
@@ -251,13 +278,19 @@ function addLevelSpecs(pd, dgn, levels = []) {
     for (let f = 0; f < levels.length; f++) {
         const spec = levels[f];
         const idx = start + f;
+        const flags = dgnFlags(spec);
+        // C ref: src/dungeon.c:init_dungeon_levels()/init_level().
+        // Special-level alignment comes from the raw level flag mask, or from
+        // the raw parent dungeon flags when the level has no explicit align.
+        // This preserves the tutorial UNCONNECTED flag bleed into AM_CHAOTIC.
+        flags.align = inheritedSpecialAlign(spec, pd.tmpDungeons[dgn].rawFlags || 0);
         pd.tmpLevels[idx] = {
             name: spec.name,
             base: spec.base,
             range: spec.range || 0,
             chance: spec.chance ?? 100,
             rndlevs: spec.nlevels || 0,
-            flags: dgnFlags(spec),
+            flags,
             bonetag: spec.bonetag || '',
             chain: spec.chainlevel ? resolveChainLevel(pd, spec.chainlevel, idx) : -1,
         };
@@ -400,6 +433,7 @@ export function init_dungeons() {
             entry_lev: spec.entry || 0,
             branches: 0,
             levels: 0,
+            rawFlags: dgnRawFlags(spec),
             flags: dgnFlags(spec),
         };
         addLevelSpecs(pd, dgn, spec.levels || []);

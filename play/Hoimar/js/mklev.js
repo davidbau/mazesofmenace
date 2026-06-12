@@ -70,6 +70,7 @@ const POT_BOOZE = 317;
 const POT_FRUIT_JUICE = 319;
 const POT_OIL = 321;
 const SCROLL_CLASS = 9;
+const SCR_REMOVE_CURSE = 327;
 const SCR_LIGHT = 332;
 const SCR_MAIL = 364;
 const SPBOOK_CLASS = 10;
@@ -234,6 +235,7 @@ const RIN_AGGRAVATE_MONSTER = 185;
 const RIN_TELEPORTATION = 194;
 const RIN_POLYMORPH = 196;
 const RIN_INVISIBILITY = 198;
+const RIN_LEVITATION = 183;
 
 // Supply chest items
 const POT_HEALING = 307;
@@ -260,6 +262,7 @@ const SCR_CREATE_MONSTER = 329;
 const SCR_EARTH = 340;
 const SCR_BLANK_PAPER = 365;
 const WAN_CREATE_MONSTER = 413;
+const WAN_SECRET_DOOR_DETECTION = 411;
 const WAN_WISHING = 414;
 const WAN_STASIS = 415;
 const WAN_NOTHING = 416;
@@ -285,12 +288,17 @@ const BAG_OF_HOLDING = 219;
 const BAG_OF_TRICKS = 220;
 const HORN_OF_PLENTY = 252;
 const MAGIC_HARP = 254;
+const APPLE = 277;
 const FOOD_RATION = 293;
 const CRAM_RATION = 292;
 const LEMBAS_WAFER = 291;
 const K_RATION = 294;
 const C_RATION = 295;
 const TIN = 296;
+const ROTTEN_TIN = 0;
+const HOMEMADE_TIN = 1;
+const SPINACH_TIN = -1;
+const TIN_VARIETY_COUNT = 15;
 const AMULET_OF_LIFE_SAVING = 202;
 const AMULET_OF_STRANGULATION = 203;
 const AMULET_OF_RESTFUL_SLEEP = 204;
@@ -1404,13 +1412,13 @@ function mksobj_init(otmp, otyp, artif) {
         } else if (otyp === TIN) {
             otmp.corpsenm = null;
             if (!rn2(6)) {
-                otmp.spe = 1; // SPINACH_TIN
+                otmp.spe = 1; // C set_tin_variety(SPINACH_TIN)
             } else {
                 for (let tryct = 200; tryct > 0; tryct--) {
                     const ptr = undead_to_corpse_ptr(rndmonnum_ptr());
                     if (!tin_can_contain(ptr)) continue;
                     otmp.corpsenm = ptr.name;
-                    rn2(15); // set_tin_variety(RANDOM_TIN)
+                    set_tin_variety_basic(otmp, ptr, rn2(TIN_VARIETY_COUNT));
                     break;
                 }
             }
@@ -2015,6 +2023,22 @@ function tin_can_contain(ptr) {
     return !!ptr && !(ptr.geno & G_NOCORPSE);
 }
 
+function tin_nonrotting_corpse_ptr(ptr) {
+    return ptr?.name === 'LIZARD' || ptr?.name === 'LICHEN';
+}
+
+function set_tin_variety_basic(obj, ptr, variety) {
+    // C refs: src/eat.c:set_tin_variety(), src/eat.c:tin_variety().
+    let r = variety;
+    if (r === SPINACH_TIN) {
+        obj.corpsenm = null;
+        obj.spe = 1;
+        return;
+    }
+    if (r === ROTTEN_TIN && tin_nonrotting_corpse_ptr(ptr)) r = HOMEMADE_TIN;
+    obj.spe = -(r + 1);
+}
+
 function start_corpse_timeout(body) {
     // C ref: src/mkobj.c:start_corpse_timeout().
     if (!body) return;
@@ -2144,17 +2168,23 @@ function noteleport_level_for(mon = null, ptr = mon?.data) {
 
 let alignShiftOldMoves = null;
 let alignShiftSeed = null;
+let alignShiftDnum = null;
+let alignShiftDlevel = null;
 let alignShiftSpecial = null;
 
 function align_shift(ptr) {
     const uz = game.u?.uz;
     // C ref: makemon.c:align_shift() caches Is_special(&u.uz) until moves
-    // changes; same-move level generation reuses that cached special.
-    if (alignShiftOldMoves !== (game.moves ?? 0) || alignShiftSeed !== game.currentSeed) {
+    // changes.  JS can enter a new level during the same replay move, so keep
+    // the cache level-sensitive to avoid carrying a stale non-special value.
+    if (alignShiftOldMoves !== (game.moves ?? 0) || alignShiftSeed !== game.currentSeed
+        || alignShiftDnum !== uz?.dnum || alignShiftDlevel !== uz?.dlevel) {
         alignShiftSpecial = (game.specialLevels || []).find((lev) =>
             lev?.dlevel?.dnum === uz?.dnum && lev?.dlevel?.dlevel === uz?.dlevel) || null;
         alignShiftOldMoves = game.moves ?? 0;
         alignShiftSeed = game.currentSeed;
+        alignShiftDnum = uz?.dnum;
+        alignShiftDlevel = uz?.dlevel;
     }
     // C ref: dungeon.c:init_dungeon_dungeons() stores shifted D_ALIGN_* values
     // in dungeon flags, while align_shift() compares against AM_* masks. Only
@@ -6962,10 +6992,10 @@ function loadBigrm8Special() {
     }
 }
 
-function maybeTrapVictim(trap) {
+function maybeTrapVictim(trap, opts = {}) {
     const kind = trap?.ttyp ?? NO_TRAP;
     const lvl = level_difficulty();
-    if (kind === WEB) {
+    if (kind === WEB && opts.spiderOnWeb !== false) {
         // C ref: mklev.c:mktrap() creates a web's guarding spider before
         // the trap victim gate.
         makemon(monster_ptr('GIANT_SPIDER'), trap.tx, trap.ty, 0);
@@ -12329,6 +12359,365 @@ function loadBarbarianStartSpecial() {
     fixup_special();
 }
 
+// C ref: dat/tut-1.lua loaded through sp_lev.c:load_special().
+// Bare des.map([[...]]) defaults to centered placement.
+const TUT1_X = 3;
+const TUT1_Y = 3;
+const TUT1_MAP = [
+    '---------------------------------------------------------------------------',
+    '|-.--|.......|......|..S....|.F.......|.............|.......|.............|',
+    '|.-..........|......|--|....|.F.....|.|S-------.....|.....................|',
+    '||.--|.......|..T......|....|.F.....|.|.......|.....|.......|.............|',
+    '||.|.|.......|......|-.|....|.F.....|.|.......|.....|--------.............|',
+    '||.|.|.......|......||.|-.-----------.-.......|-S----.....................|',
+    '|-+-S---------..---.||........................|...|.......................|',
+    '|......|          |.-------------------.......|...|....--S----............|',
+    '|......|  ######  |.........|      |..S.......|...|....|.....|............|',
+    '|----.-| -+-   #  |.....---.|######+..|.......S...|....|.....|............|',
+    '|----+----.----+---.|.--|.|.|#     ------------...|....|.....F............|',
+    '|........|.|......|.|...F...|#  ........|.....+...|....|.....|............|',
+    '|.P......-S|......|------.---# .........|.....|...|....-------........----|',
+    '|..........|......+.|...|.|.S# ..--S-----.....|LLL|..................|..| |',
+    '|.W......---......|.|.|.|.|.|# ..|......|.....|LLL|..................|..--|',
+    '|....Z.L.S.F......|.|.|.|.---#   |......+.....|...|..................|..|.|',
+    '|........|--......|...|.....|####+......|.....|...+..................||...|',
+    '---------------------------------------------------------------------------',
+];
+
+function tut1X(x) { return TUT1_X + x; }
+function tut1Y(y) { return TUT1_Y + y; }
+
+function tut1MarkTouched(x, y) {
+    game._special_touched = game._special_touched || new Set();
+    game._special_touched.add(specialTouchedKey(x, y));
+}
+
+function tut1SetTerrain(x, y, ch) {
+    const ax = tut1X(x);
+    const ay = tut1Y(y);
+    const loc = game.level?.at(ax, ay);
+    if (!loc) return;
+    loc.flags = 0;
+    loc.doormask = 0;
+    loc.horizontal = false;
+    // C ref: src/sp_lev.c:lspo_region() grows `region(selection, "lit")`
+    // before applying sel_set_lit(), so the room boundary walls are lit too.
+    loc.lit = x >= 0 && x <= 74 && y >= 0 && y <= 17 && ch !== '#' && ch !== ' ';
+    switch (ch) {
+    case '.': loc.typ = ROOM; break;
+    case '#': loc.typ = CORR; break;
+    case '-': loc.typ = HWALL; break;
+    case '|': loc.typ = VWALL; break;
+    case '+':
+        loc.typ = DOOR;
+        set_door_mask(loc, D_CLOSED);
+        break;
+    case 'S':
+        loc.typ = SDOOR;
+        set_door_mask(loc, D_SECRET);
+        break;
+    case 'F':
+        // C ref: src/nhlua.c:splev_chr2typ().  Special-level map `F` means
+        // iron bars (Fe), not fountain; fountains use `{`.
+        loc.typ = IRONBARS;
+        break;
+    case 'T': loc.typ = TREE; break;
+    case 'P': loc.typ = POOL; break;
+    case 'W': loc.typ = WATER; break;
+    case 'L': loc.typ = LAVAPOOL; break;
+    case 'Z': loc.typ = LAVAWALL; break;
+    default:
+        loc.typ = STONE;
+        break;
+    }
+    tut1MarkTouched(ax, ay);
+}
+
+function tut1LoadTerrain(litRandom) {
+    game._special_touched = new Set();
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.typ = STONE;
+            loc.flags = 0;
+            loc.doormask = 0;
+            loc.lit = !!litRandom;
+            loc.horizontal = false;
+        }
+    }
+    for (let y = 0; y < TUT1_MAP.length; y++)
+        for (let x = 0; x < TUT1_MAP[y].length; x++)
+            tut1SetTerrain(x, y, TUT1_MAP[y][x]);
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.nomongen = true;
+    game.level.flags.nodeathdrops = true;
+    game.level.flags.noautosearch = true;
+}
+
+function tut1Door(x, y, state) {
+    const loc = game.level?.at(tut1X(x), tut1Y(y));
+    if (!loc) return;
+    if (state === 'nodoor') {
+        loc.typ = DOOR;
+        set_door_mask(loc, D_NODOOR);
+        return;
+    }
+    loc.typ = state === 'secret' ? SDOOR : DOOR;
+    if (state === 'open') set_door_mask(loc, D_ISOPEN);
+    else if (state === 'locked') set_door_mask(loc, D_LOCKED);
+    else if (state === 'random') set_door_mask(loc, rnddoor_state());
+    else set_door_mask(loc, D_CLOSED);
+}
+
+function tut1Engraving(x, y, type, text) {
+    const ep = make_engr_at(tut1X(x), tut1Y(y), text, text, 0, type === 'burn' ? ENGR_BURN : ENGRAVE);
+    if (ep) ep.nowipeout = true;
+}
+
+function tut1Trap(kind, x, y, seen = false, opts = {}) {
+    const trap = maketrap(tut1X(x), tut1Y(y), kind);
+    if (trap) {
+        trap.tseen = !!seen;
+        if (opts.victim !== false)
+            maybeTrapVictim(trap, { spiderOnWeb: opts.spiderOnWeb });
+    }
+    return trap;
+}
+
+function tut1Object(otyp, x, y, opts = {}) {
+    const obj = mksobj_at(otyp, tut1X(x), tut1Y(y), opts.init ?? true, opts.artif ?? true);
+    if (!obj) return null;
+    if (opts.spe != null) obj.spe = opts.spe;
+    if (opts.quan != null) obj.quan = opts.quan;
+    if (opts.buc) {
+        obj.bknown = true;
+        obj.cursed = opts.buc === 'cursed';
+        obj.blessed = opts.buc === 'blessed';
+    }
+    if (opts.broken != null) obj.obroken = !!opts.broken;
+    if (opts.trapped != null) obj.otrapped = !!opts.trapped;
+    if (opts.corpsenm) set_corpsenm(obj, opts.corpsenm);
+    obj.owt = weight(obj);
+    return obj;
+}
+
+function tut1ContainedObject(otyp) {
+    // C ref: src/sp_lev.c:create_object().  Contained objects still resolve a
+    // DRY location before being removed from the floor into their container.
+    specialRandomDryLocation(TUT1_MAP[0].length, TUT1_MAP.length, TUT1_X, TUT1_Y);
+    return mksobj(otyp, true, true);
+}
+
+function tut1Rock(x, y, min, max) {
+    return tut1Object(ROCK, x, y, { quan: min + rn2(max - min + 1) });
+}
+
+function tut1Monster(id, x, y, opts = {}) {
+    const ptr = monster_ptr(id);
+    const randomGender = monster_name_needs_find_gender_roll(id, ptr) ? rn2(2) : null;
+    induced_align_80();
+    let mmflags = 0;
+    if (opts.countbirth === false) mmflags |= MM_NOCOUNTBIRTH;
+    const mon = makemonSpecialLevelAt(ptr, tut1X(x), tut1Y(y), mmflags);
+    if (!mon) return null;
+    if (randomGender != null) mon.female = randomGender ? 1 : 0;
+    apply_monster_name_gender(mon, id);
+    if (opts.peaceful === 0) {
+        mon.mpeaceful = 0;
+        set_malign_basic(mon);
+    }
+    if (opts.waiting) mon.mstrategy = (mon.mstrategy || 0) | STRAT_WAITFORU;
+    return mon;
+}
+
+let tutCtrlKey = null;
+let tutAltKey = null;
+
+function tutKey(command) {
+    const keys = {
+        movewest: 'h', movesouth: 'j', movenorth: 'k', moveeast: 'l',
+        movesouthwest: 'b', movenortheast: 'u', movesoutheast: 'n', movenorthwest: 'y',
+        close: 'c', kick: '^D', glance: ';', search: 's', untrap: '#untrap',
+        pickup: ',', wear: 'W', wield: 'w', takeoff: 'T', read: 'r', drop: 'd',
+        throw: 't', fire: 'f', quiver: 'Q', wait: '.', loot: '#loot', tip: '#tip',
+        zap: 'z', run: 'G', travel: '_', eat: 'e', twoweapon: 'X', swap: 'x',
+        puton: 'P', remove: 'R', down: '>', cast: 'Z', quaff: 'q', jump: 'j',
+    };
+    const key = keys[command] || command;
+    if (/^\^[A-Z]$/.test(key)) {
+        tutCtrlKey = key[1];
+        return `Ctrl-${key[1]}`;
+    }
+    if (/^M-[A-Z]$/.test(key)) {
+        tutAltKey = key[2];
+        return `Alt-${key[2]}`;
+    }
+    return key;
+}
+
+function tutKeyHelp(x, y) {
+    if (tutCtrlKey != null) {
+        tut1Engraving(x, y, 'engrave',
+            `Note: Outside the tutorial, Ctrl-key combinations are shown prefixed with a caret, like '^${tutCtrlKey}'`);
+        tutCtrlKey = null;
+    }
+}
+
+function loadTut1Special() {
+    tutCtrlKey = null;
+    tutAltKey = null;
+    rn2(3); rn2(2); // C ref: dat/nhlib.lua top-level align shuffle.
+    const litRandom = rn2(2); // C ref: src/sp_lev.c:splev_initlev().
+    tut1LoadTerrain(litRandom);
+    // C ref: dat/tut-1.lua.  The tutorial enables newbie-friendly options
+    // with nh.parse_config() after map load.
+    game.flags = game.flags || {};
+    game.iflags = game.iflags || {};
+    game.flags.mention_walls = true;
+    game.iflags.mention_walls = true;
+    game.iflags.mention_decor = true;
+    game.flags.lit_corridor = true;
+    game.dndest = { lx: tut1X(9), ly: tut1Y(3), hx: tut1X(9), hy: tut1Y(3), nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+    game.updest = { ...game.dndest };
+
+    const movekeys = `${tutKey('movewest')} ${tutKey('movesouth')} ${tutKey('movenorth')} ${tutKey('moveeast')}`;
+    const diagmovekeys = `${tutKey('movesouthwest')} ${tutKey('movenortheast')} ${tutKey('movesoutheast')} ${tutKey('movenorthwest')}`;
+    tut1Engraving(9, 3, 'engrave', `Move around with ${movekeys}`);
+    tut1Engraving(5, 2, 'engrave', `Move diagonally with ${diagmovekeys}`);
+    if (game.urole?.name?.m === 'Knight')
+        tut1Engraving(12, 1, 'engrave', `Knights can jump with '${tutKey('jump')}'`);
+
+    tut1Engraving(2, 4, 'engrave', 'Some actions may require multiple tries before succeeding');
+    tut1Engraving(2, 5, 'engrave', 'Open the door by moving into it');
+    tut1Door(2, 6, 'closed');
+    tut1Engraving(2, 7, 'engrave', `Close the door with '${tutKey('close')}'`);
+    tut1Engraving(4, 5, 'engrave', 'You can leave the tutorial via the magic portal.');
+    tut1Trap(MAGIC_PORTAL, 4, 4, true);
+    tut1Engraving(5, 9, 'engrave', `This door is locked. Kick it with '${tutKey('kick')}'`);
+    tut1Door(5, 10, 'locked');
+    tutKeyHelp(6, 8);
+    tut1Engraving(5, 12, 'engrave', `Look around the map with '${tutKey('glance')}', press ESC when you're done`);
+    tut1Engraving(10, 13, 'engrave', `Use '${tutKey('search')}' to search for secret doors`);
+    tut1Engraving(10, 15, 'engrave', 'Wrong secret');
+    tut1Engraving(10, 10, 'engrave', 'Behind this door is a dark corridor');
+    tut1Door(10, 9, rn2(100) < 50 ? 'locked' : 'closed');
+    tut1Door(15, 10, rn2(100) < 50 ? 'locked' : 'closed');
+
+    tut1Engraving(15, 11, 'engrave', 'There are four traps next to you! Search for them.');
+    const locs = [[14, 11], [14, 12], [15, 12], [16, 12], [16, 11]];
+    for (let i = locs.length - 1; i > 0; i--) {
+        const j = rn2(i + 1);
+        [locs[i], locs[j]] = [locs[j], locs[i]];
+    }
+    for (let i = 0; i < 4; i++)
+        tut1Trap(rn2(100) < 50 ? SLP_GAS_TRAP : SQKY_BOARD, locs[i][0], locs[i][1], false,
+            { victim: false });
+    tut1Engraving(15, 15, 'engrave', `Some traps can be disabled with '${tutKey('untrap')}'`);
+    tut1Trap(WEB, 15, 16, false, { spiderOnWeb: false });
+
+    tut1Door(18, 13, 'closed');
+    tut1Engraving(19, 13, 'engrave', `Pick up items with '${tutKey('pickup')}'`);
+    tut1Object(game.urole?.name?.m === 'Monk' ? LEATHER_GLOVES : LEATHER_ARMOR, 19, 14,
+        { spe: 0, buc: 'cursed' });
+    tut1Engraving(19, 15, 'engrave', `Wear armor with '${tutKey('wear')}'`);
+    tut1Object(DAGGER, 21, 15, { spe: 0, buc: 'not-cursed' });
+    tut1Engraving(21, 14, 'engrave', `Wield weapons with '${tutKey('wield')}'`);
+    tut1Engraving(22, 13, 'engrave', 'Hit monsters by walking into them.');
+    tut1Monster('LICHEN', 23, 15, { waiting: true, countbirth: false });
+    tut1Engraving(24, 16, 'engrave', 'Now you know the very basics. You can leave the tutorial via the magic portal.');
+    tut1Engraving(26, 16, 'engrave', 'Step into this portal to leave the tutorial');
+    tut1Trap(MAGIC_PORTAL, 27, 16, true);
+    tut1Engraving(25, 13, 'engrave', 'Push boulders by moving into them');
+    tut1Object(BOULDER, 25, 12);
+    tut1Engraving(27, 9, 'engrave', `Take off armor with '${tutKey('takeoff')}'`);
+    tut1Object(SCR_REMOVE_CURSE, 23, 11, { buc: 'blessed' });
+    tut1Engraving(22, 11, 'engrave', 'Some items have shuffled descriptions, different each game');
+    tut1Engraving(23, 11, 'engrave', `Pick up this scroll, read it with '${tutKey('read')}', and try to remove the armor again`);
+    tut1Engraving(19, 10, 'engrave', 'Another magic portal, a way to leave this tutorial');
+    tut1Trap(MAGIC_PORTAL, 19, 11, true);
+
+    tut1Rock(14, 5, 50, 99);
+    tut1Rock(15, 5, 10, 30);
+    tut1Rock(14, 4, 10, 30);
+    tut1Rock(15, 6, 30, 60);
+    tut1Rock(14, 6, 30, 60);
+    tut1Object(BOULDER, 14, 6);
+    tut1Door(20, 3, rn2(100) < 50 ? 'open' : 'closed');
+    tut1Engraving(21, 3, 'engrave', 'Avoid being burdened, it slows you down');
+    tut1Engraving(22, 3, 'engrave', `Drop items with '${tutKey('drop')}'`);
+    tut1Engraving(22, 4, 'engrave', 'You can drop partial stacks by prefixing the item slot letter with a number');
+    tut1Monster('YELLOW_MOLD', 26, 2, { waiting: true, countbirth: false });
+    tut1Engraving(25, 5, 'engrave', `Throw items with '${tutKey('throw')}'`);
+    tut1Trap(MAGIC_PORTAL, 21, 1, true);
+    tut1Monster('WOLF', 29, 2, { peaceful: 0, waiting: true, countbirth: false });
+    tut1Engraving(37, 4, 'engrave', 'Missiles, such as rocks, work better when fired from appropriate launcher');
+    tut1Object(SLING, 37, 3, { spe: 9, buc: 'not-cursed' });
+    tut1Engraving(37, 3, 'engrave', 'Wield the sling');
+    tut1Engraving(36, 1, 'engrave', `Use '${tutKey('fire')}' to fire missiles with the wielded launcher`);
+    tut1Engraving(35, 4, 'engrave', `Firing launches items from your quiver; Use '${tutKey('quiver')}' to put items in it`);
+    tut1Engraving(33, 4, 'engrave', `You can wait a turn with '${tutKey('wait')}'`);
+
+    tut1Door(38, 6, 'closed');
+    tut1Engraving(39, 6, 'engrave', `You loot containers with '${tutKey('loot')}'`);
+    const box = tut1Object(LARGE_BOX, 41, 6, { broken: true, trapped: false });
+    if (box) {
+        const wand = tut1ContainedObject(WAN_SECRET_DOOR_DETECTION);
+        if (wand) {
+            wand.spe = 30;
+            add_to_container(box, wand);
+            box.owt = weight(box);
+        }
+    }
+    tut1Engraving(42, 6, 'engrave', `Containers can also be emptied with '${tutKey('tip')}'`);
+    tut1Engraving(45, 6, 'engrave', `Magic wands are used with '${tutKey('zap')}'`);
+    tut1Door(35, 9, 'nodoor');
+    tut1Engraving(34, 9, 'engrave', `You can run by prefixing a movement key with '${tutKey('run')}'`);
+    tut1Door(33, 16, 'nodoor');
+    tut1Engraving(35, 15, 'engrave', `Travel across the level with '${tutKey('travel')}'`);
+    tut1Trap(MAGIC_PORTAL, 27, 14, true);
+
+    tut1Engraving(48, 1, 'burn', `Use '${tutKey('eat')}' to eat edible things`);
+    tut1Object(APPLE, 50, 3, { buc: 'not-cursed' });
+    tut1Object(CANDY_BAR, 50, 3, { buc: 'not-cursed' });
+    tut1Object(CORPSE, 50, 3, { buc: 'not-cursed', corpsenm: 'LICHEN' });
+    tut1Door(46, 11, 'closed');
+    tut1Engraving(43, 11, 'burn', `Use '${tutKey('twoweapon')}' to use two weapons at once`);
+    tut1Object(KNIFE, 43, 13, { buc: 'uncursed' });
+    tut1Object(DAGGER, 43, 14, { buc: 'blessed' });
+    tut1Engraving(43, 16, 'burn', `Swap weapons quickly with '${tutKey('swap')}'`);
+    tut1Door(40, 15, 'random');
+    tut1Object(RIN_LEVITATION, 48, 7, { buc: 'not-cursed' });
+    tut1Engraving(48, 10, 'burn', `Put on accessories with '${tutKey('puton')}'`);
+    tut1Engraving(48, 16, 'burn', `Remove accessories with '${tutKey('remove')}'`);
+    tut1Door(50, 16, 'closed');
+    tut1Engraving(58, 9, 'burn', `Use '${tutKey('down')}' to go down the stairs`);
+    placeSpecialStair(tut1X(58), tut1Y(10), false);
+    tut1Engraving(65, 3, 'burn', 'UNDER CONSTRUCTION');
+    tut1Trap(MAGIC_PORTAL, 66, 2, true);
+    tut1Engraving(69, 12, 'burn', "Can't get through?  You're carrying too much.");
+    tut1Object(BOULDER, 71, 16);
+    tut1Object(BOULDER, 72, 16);
+    tut1Object(BOULDER, 73, 16);
+    tut1Trap(TRAPDOOR, 73, 15, false);
+    tut1Engraving(60, 2, 'engrave', 'Spellcasting');
+    if ((game.u?.uenmax ?? 0) < 5)
+        tut1Engraving(59, 2, 'engrave', "Unfortunately you don't have enough energy to cast spells.");
+    tut1Engraving(57, 2, 'engrave', `Pick up the spellbook with '${tutKey('pickup')}'`);
+    tut1Object(SPE_LIGHT, 57, 2, { buc: 'blessed' });
+    tut1Engraving(55, 2, 'engrave', `Read the spellbook with '${tutKey('read')}'`);
+    tut1Engraving(53, 2, 'engrave', `Use '${tutKey('cast')}' to cast a spell`);
+    for (let x = 53; x <= 59; x++)
+        for (let y = 1; y <= 3; y++) {
+            const loc = game.level?.at(tut1X(x), tut1Y(y));
+            if (loc) loc.lit = false;
+        }
+    tut1Engraving(72, 2, 'engrave', `You "quaff" potions with '${tutKey('quaff')}'`);
+    tut1Object(POT_OBJECT_DETECTION, 72, 2, { buc: 'blessed' });
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+}
+
 // Bare des.map([[...]]) defaults to centered placement.
 // C ref: sp_lev.c:lspo_map().
 const WIZ_START_X = 3;
@@ -14211,6 +14600,10 @@ function makemaz_special(slev) {
         return;
     }
     if (loadSokoSpecial(game._last_special_protofile)) {
+        return;
+    }
+    if (game._last_special_protofile === 'tut-1') {
+        loadTut1Special();
         return;
     }
     if (game._last_special_protofile === 'minetn-2') {

@@ -4,6 +4,7 @@ import { dosounds } from './sounds.js';
 import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS,
     EXT_ENCUMBER, HVY_ENCUMBER, MOD_ENCUMBER,
+    FAINTING, HUNGRY, NOT_HUNGRY, SATIATED, WEAK,
     W_AMUL, W_RINGL, W_RINGR,
 } from './const.js';
 import { OBJECT_CHARGED } from './object_data.js';
@@ -20,6 +21,20 @@ const RIN_SLOW_DIGESTION = 193;
 const MEAT_RING = 270;
 const FAKE_AMULET_OF_YENDOR = 212;
 const AMULET_OF_YENDOR = 213;
+
+function hungerStateForNutrition(hunger) {
+    const h = Number.isFinite(hunger) ? hunger : 900;
+    if (h > 1000) return SATIATED;
+    if (h > 150) return NOT_HUNGRY;
+    if (h > 50) return HUNGRY;
+    if (h > 0) return WEAK;
+    return FAINTING;
+}
+
+function refreshHungerStatus() {
+    if (!game.u) return;
+    game.u.uhs = hungerStateForNutrition(game.u.uhunger ?? 900);
+}
 
 export async function maybe_generate_rnd_mon() {
     // C ref: allmain.c:maybe_generate_rnd_mon().
@@ -109,6 +124,7 @@ export function gethungry() {
     default:
         break;
     }
+    refreshHungerStatus();
 }
 
 function wornRing(mask, side) {
@@ -187,7 +203,17 @@ export function exerchk(moveNumber = (game.moves || 1) + 1) {
     const moves = moveNumber;
     if (moves % 10 === 0) {
         const hunger = game.u?.uhunger ?? 900;
-        if (hunger > 150 && hunger <= 1000) exercise(A_CON, true);
+        if (hunger > 1000) {
+            exercise(A_DEX, false);
+            if (game.urole?.name?.m === 'Monk') exercise(A_WIS, false);
+        } else if (hunger > 150) {
+            exercise(A_CON, true);
+        } else if (hunger > 0 && hunger <= 50) {
+            exercise(A_STR, false);
+            if (game.urole?.name?.m === 'Monk') exercise(A_WIS, true);
+        } else if (hunger <= 0) {
+            exercise(A_CON, false);
+        }
 
         switch (game.u?.uencumber || 0) {
         case MOD_ENCUMBER:

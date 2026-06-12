@@ -89,6 +89,7 @@ const CONFUSED_DIRS = [
 
 const AMULET_OF_LIFE_SAVING = 202;
 const AMULET_OF_ESP = 201;
+const AMULET_OF_RESTFUL_SLEEP = 204;
 const AMULET_OF_UNCHANGING = 207;
 const AMULET_OF_GUARDING = 210;
 const MS_RIDER = 35;
@@ -126,10 +127,17 @@ const RUBBER_HOSE = 78;
 const AKLYS = 80;
 const FLAIL = 81;
 const BULLWHIP = 82;
+const ELVEN_LEATHER_HELM = 89;
+const HELM_OF_TELEPATHY = 100;
+const LEATHER_JACKET = 135;
+const T_SHIRT = 137;
+const MUMMY_WRAPPING = 138;
 const ROBE = 143;
 const CLOAK_OF_MAGIC_RESISTANCE = 148;
 const CLOAK_OF_PROTECTION = 146;
 const M1_FLY = 0x00000001;
+const M1_AMORPHOUS = 0x00000004;
+const M1_WALLWALK = 0x00000008;
 const M1_CLING = 0x00000010;
 const M1_CONCEAL = 0x00000080;
 const M1_HIDE = 0x00000100;
@@ -137,6 +145,8 @@ const M1_NOTAKE = 0x00000800;
 const M1_NOEYES = 0x00001000;
 const M1_NOHANDS = 0x00002000;
 const M1_NOLIMBS = 0x00006000;
+const M1_SLITHY = 0x00080000;
+const M1_UNSOLID = 0x00100000;
 const BOLT_LIM = 8;
 const M2_UNDEAD = 0x00000002;
 const M2_STALK = 0x01000000;
@@ -184,6 +194,7 @@ const RIN_POLYMORPH_CONTROL = 197;
 const DILITHIUM_CRYSTAL = 439;
 const LUCKSTONE = 470;
 const LOADSTONE = 471;
+const SKELETON_KEY = 221;
 const LOCK_PICK = 222;
 const CREDIT_CARD = 223;
 const EXPENSIVE_CAMERA = 229;
@@ -205,6 +216,13 @@ const PICK_AXE = 259;
 const GRAPPLING_HOOK = 260;
 const UNICORN_HORN = 261;
 const BELL_OF_OPENING = 263;
+const ROTTEN_TIN = 0;
+const HOMEMADE_TIN = 1;
+const TIN_VARIETY_TEXT = [
+    'rotten', 'homemade', 'soup made from', 'french fried', 'pickled',
+    'boiled', 'smoked', 'dried', 'deep fried', 'szechuan',
+    'broiled', 'stir fried', 'sauteed', 'candied', 'pureed',
+];
 const OIL_LAMP = 227;
 const MAGIC_LAMP = 228;
 const LARGE_BOX = 214;
@@ -401,6 +419,12 @@ const WISH_RANDOM_CLASSES = [
     SPBOOK_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS,
     FOOD_CLASS, FOOD_CLASS,
 ];
+const MATERIAL_LIQUID = 1;
+const MATERIAL_WOOD = 8;
+const MATERIAL_DRAGON_HIDE = 10;
+const MATERIAL_IRON = 11;
+const MATERIAL_COPPER = 13;
+const MATERIAL_PLASTIC = 18;
 const GLASS = 19;
 const FIRST_SPELL = 366;
 const LAST_SPELL = 407;
@@ -2088,6 +2112,7 @@ function fullyIdentifyObject(obj) {
     obj.bknown = true;
     obj.dknown = true;
     obj.rknown = true;
+    obj.cknown = true;
     obj.chargesKnown = true;
     markObjectTypeKnownNoExercise(obj.otyp);
 }
@@ -2293,6 +2318,230 @@ async function readScrollOfTeleportation(obj, idx) {
     game.context.move = 0;
 }
 
+function wornArmorBySlot(mask, minOtyp, maxOtyp) {
+    return (game.inventory || []).find((obj) => {
+        if (!obj || obj.oclass !== ARMOR_CLASS || !(obj.worn || obj.owornmask)) return false;
+        if ((obj.owornmask || 0) & mask) return true;
+        return !(obj.owornmask || 0) && obj.otyp >= minOtyp && obj.otyp <= maxOtyp;
+    }) || null;
+}
+
+function wornArmorSlotsForDestroyArm() {
+    // C ref: src/do_wear.c:destroy_arm().  This includes non-erodeable armor
+    // so the rn2(idx) selection stream stays aligned even when a hit fizzles.
+    return [
+        wornArmorBySlot(C.W_ARM, GRAY_DRAGON_SCALE_MAIL, LEATHER_JACKET),
+        wornArmorBySlot(C.W_ARMC, MUMMY_WRAPPING, CLOAK_OF_DISPLACEMENT),
+        wornArmorBySlot(C.W_ARMH, ELVEN_LEATHER_HELM, HELM_OF_TELEPATHY),
+        wornArmorBySlot(C.W_ARMS, SMALL_SHIELD, SHIELD_OF_REFLECTION),
+        wornArmorBySlot(C.W_ARMG, LEATHER_GLOVES, GAUNTLETS_OF_DEXTERITY),
+        wornArmorBySlot(C.W_ARMF, LOW_BOOTS, LEVITATION_BOOTS),
+        wornArmorBySlot(C.W_ARMU, HAWAIIAN_SHIRT, T_SHIRT),
+    ].filter(Boolean);
+}
+
+function someWornArmor() {
+    // C ref: src/do_wear.c:some_armor().
+    let picked = wornArmorBySlot(C.W_ARMC, MUMMY_WRAPPING, CLOAK_OF_DISPLACEMENT)
+        || wornArmorBySlot(C.W_ARM, GRAY_DRAGON_SCALE_MAIL, LEATHER_JACKET)
+        || wornArmorBySlot(C.W_ARMU, HAWAIIAN_SHIRT, T_SHIRT);
+    for (const armor of [
+        wornArmorBySlot(C.W_ARMH, ELVEN_LEATHER_HELM, HELM_OF_TELEPATHY),
+        wornArmorBySlot(C.W_ARMG, LEATHER_GLOVES, GAUNTLETS_OF_DEXTERITY),
+        wornArmorBySlot(C.W_ARMF, LOW_BOOTS, LEVITATION_BOOTS),
+        wornArmorBySlot(C.W_ARMS, SMALL_SHIELD, SHIELD_OF_REFLECTION),
+    ]) {
+        if (armor && (!picked || !rn2(4))) picked = armor;
+    }
+    return picked;
+}
+
+function armorMaterial(obj) {
+    return OBJECT_MATERIAL[obj?.otyp] ?? 0;
+}
+
+function armorIsFlammable(obj) {
+    const mat = armorMaterial(obj);
+    return (mat <= MATERIAL_WOOD && mat !== MATERIAL_LIQUID) || mat === MATERIAL_PLASTIC;
+}
+
+function armorIsRotable(obj) {
+    const mat = armorMaterial(obj);
+    return (mat <= MATERIAL_WOOD && mat !== MATERIAL_LIQUID) || mat === MATERIAL_DRAGON_HIDE;
+}
+
+function armorIsRustprone(obj) {
+    return armorMaterial(obj) === MATERIAL_IRON;
+}
+
+function armorIsCrackable(obj) {
+    return armorMaterial(obj) === GLASS && obj?.oclass === ARMOR_CLASS;
+}
+
+function armorIsCorrodeable(obj) {
+    const mat = armorMaterial(obj);
+    return mat === MATERIAL_COPPER || mat === MATERIAL_IRON;
+}
+
+function armorErodeType(obj) {
+    // C ref: src/do_wear.c:obj_erode_type().
+    if (armorIsFlammable(obj)) return { field: 'oeroded', action: 'smoulder', past: 'burnt' };
+    if (armorIsRustprone(obj)) return { field: 'oeroded', action: 'rust', past: 'rusted' };
+    if (armorIsCrackable(obj)) return { field: 'oeroded', action: 'crack', past: 'cracked', shatter: true };
+    if (armorIsRotable(obj)) return { field: 'oeroded2', action: 'rot', past: 'rotten' };
+    if (armorIsCorrodeable(obj)) return { field: 'oeroded2', action: 'corrode', past: 'corroded' };
+    return null;
+}
+
+function armorErodeVerb(obj, action) {
+    if (objectTypeUsesPairPrefix(obj?.otyp) || /(?:boots|gloves|scales)$/.test(armorObjectName(obj)))
+        return action;
+    if (action === 'smoulder') return 'smoulders';
+    if (action === 'corrode') return 'corrodes';
+    if (action === 'crack') return 'cracks';
+    if (action === 'rust') return 'rusts';
+    if (action === 'rot') return 'rots';
+    return `${action}s`;
+}
+
+function removeDestroyedWornArmor(obj) {
+    const oldAc = game.u?.uac;
+    obj.worn = false;
+    obj.owornmask = 0;
+    const idx = game.inventory?.indexOf(obj) ?? -1;
+    if (idx >= 0) game.inventory.splice(idx, 1);
+    if (game.u && typeof oldAc === 'number') {
+        game.u.uac = calculated_armor_class();
+        game._status_uac_override = oldAc;
+        game._status_uac_override_move = game.moves;
+        game._clear_status_uac_override_after_more = true;
+    }
+}
+
+function refreshArmorAcAfterErosion() {
+    const oldAc = game.u?.uac;
+    if (!game.u || typeof oldAc !== 'number') return;
+    game.u.uac = calculated_armor_class();
+    if (game._status_uac_override == null) {
+        game._status_uac_override = oldAc;
+        game._status_uac_override_move = game.moves;
+        game._clear_status_uac_override_after_more = true;
+    }
+}
+
+function erodeWornArmorOnce(obj) {
+    // C refs: src/do_wear.c:destroy_arm(), src/trap.c:erode_obj().
+    const erodeType = armorErodeType(obj);
+    if (!obj || !erodeType || obj.oerodeproof || (obj.blessed && !rnl(4))) return '';
+    const name = armorObjectName(obj) || baseObjectName(obj) || 'armor';
+    const erosion = obj[erodeType.field] || 0;
+    if (erosion < 3) {
+        const adverb = erosion + 1 === 3 ? ' completely' : erosion ? ' further' : '';
+        obj[erodeType.field] = erosion + 1;
+        refreshArmorAcAfterErosion();
+        return `Your ${name} ${armorErodeVerb(obj, erodeType.action)}${adverb}!`;
+    }
+    const verb = erodeType.shatter ? 'shatters' : `${armorErodeVerb(obj, erodeType.action)} away`;
+    removeDestroyedWornArmor(obj);
+    return `Your ${name} ${verb}!`;
+}
+
+function destroyArmErosionMessages() {
+    const armors = wornArmorSlotsForDestroyArm();
+    if (!armors.length) return [];
+    const hits = rn2(4) + 1;
+    const messages = [];
+    for (let i = 0; i < hits; i++) {
+        const armor = armors[rn2(armors.length)];
+        const message = erodeWornArmorOnce(armor);
+        if (message) messages.push(message);
+        if (!game.inventory?.includes(armor)) break;
+    }
+    return messages;
+}
+
+function disintegrateWornArmorMessage(obj) {
+    if (!obj) return '';
+    const name = armorObjectName(obj) || baseObjectName(obj) || 'armor';
+    removeDestroyedWornArmor(obj);
+    if ((obj.owornmask || 0) & C.W_ARMC || obj.otyp >= MUMMY_WRAPPING && obj.otyp <= CLOAK_OF_DISPLACEMENT)
+        return `Your ${name} crumbles and turns to dust!`;
+    if ((obj.owornmask || 0) & C.W_ARMU || obj.otyp === HAWAIIAN_SHIRT || obj.otyp === T_SHIRT)
+        return `Your ${name} crumbles into tiny threads and falls apart!`;
+    if ((obj.owornmask || 0) & C.W_ARMH || obj.otyp >= ELVEN_LEATHER_HELM && obj.otyp <= HELM_OF_TELEPATHY)
+        return `Your ${name} turns to dust and is blown away!`;
+    if ((obj.owornmask || 0) & C.W_ARMG || obj.otyp >= LEATHER_GLOVES && obj.otyp <= GAUNTLETS_OF_DEXTERITY)
+        return `Your ${name} vanish!`;
+    if ((obj.owornmask || 0) & C.W_ARMF || obj.otyp >= LOW_BOOTS && obj.otyp <= LEVITATION_BOOTS)
+        return `Your ${name} disintegrate!`;
+    if ((obj.owornmask || 0) & C.W_ARMS || obj.otyp >= SMALL_SHIELD && obj.otyp <= SHIELD_OF_REFLECTION)
+        return `Your ${name} crumbles away!`;
+    return `Your ${name} turns to dust and falls to the floor!`;
+}
+
+function destroyCursedWornArmorMessages() {
+    // C ref: src/read.c:disintegrate_cursed_armor().
+    const armors = wornArmorSlotsForDestroyArm().filter((armor) => armor.cursed);
+    if (!armors.length) return [];
+    return [disintegrateWornArmorMessage(armors[rn2(armors.length)])];
+}
+
+async function readScrollOfDestroyArmor(obj) {
+    // C refs: src/read.c:doread()/seffect_destroy_armor(),
+    // src/do_wear.c:destroy_arm(), src/trap.c:erode_obj().
+    exercise(A_WIS, true);
+    consumeInventoryObject(obj);
+    await pline('As you read the scroll, it disappears.');
+
+    const confused = !!(game.u?.uprops?.confusion || game.u?.uconfusion);
+    let messages = [];
+    if (confused) {
+        const armor = someWornArmor();
+        if (armor) {
+            armor.oerodeproof = obj.cursed ? 1 : 0;
+            messages = [`Your ${armorObjectName(armor) || 'armor'} glows purple for a moment.`];
+        } else {
+            messages = ['Your bones itch.'];
+        }
+    } else if (obj.cursed) {
+        const armor = someWornArmor();
+        if (armor?.cursed) {
+            if ((armor.spe || 0) >= -6) armor.spe = (armor.spe || 0) - 1;
+            messages = [`Your ${armorObjectName(armor) || 'armor'} vibrates.`];
+        } else if (armor) {
+            messages = [disintegrateWornArmorMessage(armor)];
+        }
+    } else if (obj.blessed) {
+        messages = destroyCursedWornArmorMessages();
+    } else {
+        messages = destroyArmErosionMessages();
+    }
+
+    if (messages.length) {
+        discoverObjectType(obj.otyp);
+        await append_pline(messages[0]);
+    } else {
+        await append_pline('Your skin itches.');
+    }
+
+    const rest = messages.slice(1);
+    if (rest.length) {
+        if (!game._more) queue_more_prompt();
+        game._more_message_queue = [
+            ...(game._more_message_queue || []),
+            ...rest.map((text, i) => ({ text, more: i < rest.length - 1, move: i === rest.length - 1 })),
+        ];
+        game._pre_turn_more_waiting = true;
+        game._monster_turn_paused_for_more = true;
+        game._deferred_pre_turn_after_more_returns_to_input = true;
+    } else if (game._more) {
+        game._pre_turn_more_waiting = true;
+        game._monster_turn_paused_for_more = true;
+        game._deferred_pre_turn_after_more_returns_to_input = true;
+    }
+    game.context.move = 1;
+}
+
 async function finishReadObjectSelection(obj, idx = inventoryIndexForLetter(obj?.invlet || '')) {
     if (!obj) {
         game.context.move = 0;
@@ -2350,6 +2599,10 @@ async function finishReadObjectSelection(obj, idx = inventoryIndexForLetter(obj?
     }
     if (obj.otyp === SCR_TELEPORTATION) {
         await readScrollOfTeleportation(obj, idx);
+        return;
+    }
+    if (obj.otyp === SCR_DESTROY_ARMOR) {
+        await readScrollOfDestroyArmor(obj);
         return;
     }
     if (obj.otyp === SCR_PUNISHMENT) {
@@ -2850,6 +3103,8 @@ function waterbodyNameAt(x, y) {
     }
     if (typ === C.POOL) return `pool of ${hallucinatedLiquidName('water')}`;
     if (typ === C.WATER) return `wall of ${hallucinatedLiquidName('water')}`;
+    if (typ === C.LAVAPOOL) return 'molten lava';
+    if (typ === C.LAVAWALL) return 'wall of lava';
     return `pool of ${hallucinatedLiquidName('water')}`;
 }
 
@@ -3435,6 +3690,7 @@ function deathTombstoneScreen() {
     const moves = game.moves || 0;
     const level = game.u?.ulevel || 1;
     const maxhp = game.u?.uhpmax || 0;
+    const endVerb = game._death_end_verb || 'died';
     const killerArticle = game._death_killer_article || 'a';
     const deathText = game._death_killer_format === 'by'
         ? `killed by ${killer}`
@@ -3487,9 +3743,9 @@ function deathTombstoneScreen() {
         // C refs: src/end.c:really_done(), src/role.c:Goodbye().
         `${roleGoodbye(game.urole)} ${name} the ${roleName}...`,
         '',
-        `You died in ${dungeonName} on dungeon level ${depth} with ${score} points,`,
+        `You ${endVerb} in ${dungeonName} on dungeon level ${depth} with ${score} points,`,
         `and ${gold} pieces of gold, after ${moves} moves.`,
-        `You were level ${level} with a maximum of ${maxhp} hit points when you died.`,
+        `You were level ${level} with a maximum of ${maxhp} hit points when you ${endVerb}.`,
         '--More--',
     ];
     return lines.join('\n');
@@ -3933,7 +4189,18 @@ function tinObjectName(obj) {
     const ptr = corpseMonsterPtr(obj);
     if (!ptr) return 'empty tin';
     const name = objectMonsterDisplayName(obj);
-    return `tin of ${name}${corpseIsVegetarian(obj) ? '' : ' meat'}`;
+    const contents = `${name}${corpseIsVegetarian(obj) ? '' : ' meat'}`;
+    if (obj?.cknown && (obj?.spe || 0) < 0) {
+        let variety = -obj.spe - 1;
+        if (variety === ROTTEN_TIN && corpseIsNonrotting(obj)) variety = HOMEMADE_TIN;
+        const text = TIN_VARIETY_TEXT[variety] || '';
+        if (text) {
+            if (variety === ROTTEN_TIN || variety === HOMEMADE_TIN)
+                return `${text} tin of ${contents}`;
+            return `tin of ${text} ${contents}`;
+        }
+    }
+    return `tin of ${contents}`;
 }
 
 function corpseMonsterDisplayName(obj) {
@@ -4028,6 +4295,37 @@ function erosionProofPrefix(obj) {
     // C ref: src/objnam.c:doname_base(); Samurai lacquered splint mail is
     // reported with the same erosion-proof prefix as rustproof metal armor.
     return 'rustproof';
+}
+
+function objectErosionMattersForName(obj) {
+    return obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS
+        || obj?.oclass === BALL_CLASS || obj?.oclass === CHAIN_CLASS
+        || isWeaponTool(obj);
+}
+
+function erosionLevelPrefix(level) {
+    if (level === 2) return 'very ';
+    if (level >= 3) return 'thoroughly ';
+    return '';
+}
+
+function erosionDamagePrefix(obj) {
+    // C ref: src/objnam.c:add_erosion_words().
+    if (!objectErosionMattersForName(obj)) return '';
+    const parts = [];
+    const primary = obj?.oeroded || 0;
+    if (primary) {
+        const word = armorIsRustprone(obj) ? 'rusty'
+            : armorIsCrackable(obj) ? 'cracked'
+                : 'burnt';
+        parts.push(`${erosionLevelPrefix(primary)}${word}`);
+    }
+    const secondary = obj?.oeroded2 || 0;
+    if (secondary) {
+        const word = armorIsCorrodeable(obj) ? 'corroded' : 'rotted';
+        parts.push(`${erosionLevelPrefix(secondary)}${word}`);
+    }
+    return parts.join(' ');
 }
 
 function chargeSuffix(obj, opts = {}) {
@@ -4277,6 +4575,7 @@ function inventoryObjectName(obj, opts = {}) {
     const parts = [
         emptyContentsPrefix(obj),
         bucPrefix(obj),
+        erosionDamagePrefix(obj),
         erosionProofPrefix(obj),
         enchantmentPrefix(obj),
         boxStatePrefix(obj),
@@ -5111,6 +5410,16 @@ async function start_wearing_object(obj) {
             game.u.uprops.telepathic = true;
             game.u.unblind_telepat_range = BOLT_LIM * BOLT_LIM;
             see_monsters();
+        } else if (obj.otyp === AMULET_OF_RESTFUL_SLEEP) {
+            // C ref: src/do_wear.c:Amulet_on().  Wearing a restful-sleep
+            // amulet installs an intrinsic sleepy timeout via rnd(98)+2.
+            game.u.uprops = game.u.uprops || {};
+            const newnap = rnd(98) + 2;
+            const oldnap = game.u.uprops.sleepy_timeout || 0;
+            if (newnap < oldnap || oldnap === 0) {
+                game.u.uprops.sleepy = true;
+                game.u.uprops.sleepy_timeout = newnap;
+            }
         }
         await pline(`${inventoryListing(obj)} (being worn).`);
         game.context.move = 1;
@@ -5244,9 +5553,21 @@ async function lookHereAfterMove(opts = {}) {
     const objects = (game.level?.objects || [])
         .filter(o => o.ox === u.ux && o.oy === u.uy);
     const countableObjects = objects.filter((obj) => obj !== game.uchain);
+    const explicitFeatureLine = typeof opts.featureLine === 'string';
+    const feature = explicitFeatureLine
+        ? { line: opts.featureLine, blocks: false }
+        : opts.featureAlreadyShown ? { line: '', blocks: false } : lookHereFeature();
     if (!countableObjects.length) {
         // C refs: hack.c:spoteffects(), pickup.c:pickup(), engrave.c:read_engr_at().
-        await readEngravingAtHero({ pauseBeforeReading: true });
+        const engravingText = engravingVisibleText(engravingAt(u.ux, u.uy));
+        const mentionDecor = !!(game.iflags?.mention_decor || game.flags?.mention_decor);
+        if (feature.line && (explicitFeatureLine || engravingText
+            || (mentionDecor && feature.line === 'There is a broken door here.')))
+            await pline(feature.line);
+        await readEngravingAtHero({
+            pauseBeforeReading: true,
+            noTurn: !!opts.arrivalFloorListNoTurn,
+        });
         return;
     }
     const run = game.context?.run;
@@ -5256,9 +5577,6 @@ async function lookHereAfterMove(opts = {}) {
         // output itself may still be deferred until after the monster turn.
         game._run_stop_after_move = true;
     }
-    const feature = typeof opts.featureLine === 'string'
-        ? { line: opts.featureLine, blocks: false }
-        : opts.featureAlreadyShown ? { line: '', blocks: false } : lookHereFeature();
     const deferMoveFloorList = () => {
         // C refs: src/hack.c:domove(), src/pickup.c:check_here(),
         // src/allmain.c:moveloop_core().  A running step stops on floor
@@ -5362,6 +5680,8 @@ async function lookHereAfterMove(opts = {}) {
         if (feature.line) {
             if (blindFeelShown) await append_pline(feature.line);
             else await pline(feature.line);
+            await append_pline(line);
+        } else if (game._pending_message && topline_can_pack_message(game._pending_message, line)) {
             await append_pline(line);
         } else if (blindFeelShown) {
             await append_pline(line);
@@ -5613,6 +5933,9 @@ async function readEngravingAt(x, y, options = {}) {
     ep.eread = 1;
     ep.erevealed = 1;
     ep.remembered = text;
+    // C ref: src/engrave.c:read_engr_at().  Reading an engraving stops an
+    // active run after the current movement, just like nomul(0).
+    if (game.context?.run) game._run_stop_after_move = true;
     await pline(line);
     const punct = /[.!?]$/.test(text) ? '' : '.';
     const readLine = `You ${blind ? 'feel the words' : 'read'}: "${text}"${punct}`;
@@ -5622,16 +5945,19 @@ async function readEngravingAt(x, y, options = {}) {
             return true;
         }
         const cols = game.nhDisplay?.cols || COLNO;
+        const skipMoveSmudge = !!(game.context?.run && (game.context.run.steps || 0) > 0);
         game._more_message_queue = [
             ...(game._more_message_queue || []),
             {
                 text: readLine,
-                move: true,
-                resumeSpotEffects: true,
+                more: !!options.noTurn,
+                move: !options.noTurn,
+                resumeSpotEffects: !options.noTurn,
+                skipMoveSmudge,
                 wrapWithMore: readLine.length > cols,
             },
         ];
-        game._floor_list_pauses_turn = true;
+        game._floor_list_pauses_turn = !options.noTurn;
         queue_more_prompt();
     } else {
         await append_pline(readLine);
@@ -5813,13 +6139,16 @@ async function zapPolymorphObjects(wand, dx, dy) {
     game._poly_zapped = -1;
 }
 
-function lookHereFeature() {
+function lookHereFeature(opts = {}) {
     const st = stairAtHero();
     if (st) return { line: `There is a ${stairsDescription(st)} here.`, blocks: !!st.up };
     const loc = game.level?.at(game.u?.ux, game.u?.uy);
-    if (loc?.typ === C.DOOR && (loc.doormask || 0) === C.D_NODOOR) return { line: 'There is a doorway here.', blocks: false };
+    const includeOrdinaryDoors = !!opts.includeOrdinaryDoors;
+    if (loc?.typ === C.DOOR && (loc.doormask || 0) === C.D_NODOOR)
+        return { line: includeOrdinaryDoors ? 'There is a doorway here.' : '', blocks: false };
     if (loc?.typ === C.DOOR && (loc.doormask || 0) === C.D_BROKEN) return { line: 'There is a broken door here.', blocks: false };
-    if (loc?.typ === C.DOOR && (loc.doormask || 0) === C.D_ISOPEN) return { line: 'There is an open door here.', blocks: false };
+    if (loc?.typ === C.DOOR && (loc.doormask || 0) === C.D_ISOPEN)
+        return { line: includeOrdinaryDoors ? 'There is an open door here.' : '', blocks: false };
     if (loc?.typ === C.DOOR) return { line: 'There is a closed door here.', blocks: false };
     if (loc?.typ === C.SINK) return { line: 'There is a sink here.', blocks: false };
     if (loc?.typ === C.FOUNTAIN) return { line: 'There is a fountain here.', blocks: false };
@@ -5869,10 +6198,8 @@ async function doLootCommand() {
 
     const name = baseObjectName(container) || 'container';
     if (container.olocked) {
-        if (container.lknown) await pline(`The ${name} is locked.`);
-        else await pline(`Hmmm, the ${name} turns out to be locked.`);
-        container.lknown = true;
-        game.context.move = 0;
+        void name;
+        await reportLockedContainerAndMaybeAutounlock(container);
         return;
     }
 
@@ -5918,14 +6245,17 @@ function showLootActionMenu(container, used = false, opts = {}) {
     const held = opts.held ?? (game.inventory || []).includes(container);
     const name = containerActionName(container, held);
     const baseName = baseObjectName(container) || 'container';
+    const selectors = game.flags?.lootabc
+        ? { out: 'a', in: 'b', both: 'c', reverse: 'd', stash: 'e' }
+        : { out: 'o', in: 'i', both: 'b', reverse: 'r', stash: 's' };
     const rows = [
         [0, `Do what with ${name}?`, true],
         [2, `: - Look inside the ${baseName}`, false],
-        [3, 'o - take something out', false],
-        [4, 'i - put something in', false],
-        [5, 'b - both; take out, then put in', false],
-        [6, 'r - both reversed; put in, then take out', false],
-        [7, `s - stash one item into the ${baseName}`, false],
+        [3, `${selectors.out} - take something out`, false],
+        [4, `${selectors.in} - put something in`, false],
+        [5, `${selectors.both} - both; take out, then put in`, false],
+        [6, `${selectors.reverse} - both reversed; put in, then take out`, false],
+        [7, `${selectors.stash} - stash one item into the ${baseName}`, false],
         [9, `q * ${used ? 'done' : 'do nothing'}`, false],
         [10, '(end)', false],
     ];
@@ -5938,6 +6268,25 @@ function showLootActionMenu(container, used = false, opts = {}) {
     game._loot_putin_menu = null;
     game._loot_takeout_menu = null;
     showOverride(serialize_terminal_grid(display), [col + '(end)'.length + 1, 10]);
+}
+
+function lootActionForKey(ch) {
+    if (ch === ':') return 'look';
+    if (ch === 'q' || ch === 'Q' || ch === '\x1b') return 'quit';
+    if (game.flags?.lootabc) {
+        if (ch === 'a') return 'out';
+        if (ch === 'b') return 'in';
+        if (ch === 'c') return 'both';
+        if (ch === 'd') return 'reverse';
+        if (ch === 'e') return 'stash';
+        return '';
+    }
+    if (ch === 'o') return 'out';
+    if (ch === 'i') return 'in';
+    if (ch === 'b') return 'both';
+    if (ch === 'r') return 'reverse';
+    if (ch === 's') return 'stash';
+    return '';
 }
 
 function containerContents(container) {
@@ -5988,13 +6337,59 @@ function showLootContainerContents(container, alreadyUsed = false, opts = {}) {
     showOverride(serialize_terminal_grid(display), [moreCol + '--More--'.length, moreRow]);
 }
 
+const LOOT_CLASS_ORDER = [
+    [COIN_CLASS, 'Coins'],
+    [AMULET_CLASS, 'Amulets'],
+    [WEAPON_CLASS, 'Weapons'],
+    [ARMOR_CLASS, 'Armor'],
+    [FOOD_CLASS, 'Comestibles'],
+    [SCROLL_CLASS, 'Scrolls'],
+    [SPBOOK_CLASS, 'Spellbooks'],
+    [POTION_CLASS, 'Potions'],
+    [RING_CLASS, 'Rings'],
+    [WAND_CLASS, 'Wands'],
+    [TOOL_CLASS, 'Tools'],
+    [GEM_CLASS, 'Gems/Stones'],
+    [BALL_CLASS, 'Iron balls'],
+    [CHAIN_CLASS, 'Chains'],
+];
+
+function lootTypeMenuClasses(container) {
+    const present = new Set(containerContents(container)
+        .map((obj) => lootObjectClass(obj))
+        .filter((cls) => cls != null));
+    return LOOT_CLASS_ORDER.filter(([cls]) => present.has(cls));
+}
+
+function lootTypeMenuBucRows(container) {
+    const contents = containerContents(container);
+    let uncursed = false;
+    let unknown = false;
+    for (const obj of contents) {
+        // C ref: src/invent.c:tally_BUCX().  Coins are either U or X based on
+        // goldX; ordinary unknown BUC state is separate from known uncursed.
+        if (obj?.otyp === GOLD_PIECE || obj?.oclass === COIN_CLASS) {
+            if (game.iflags?.goldX) unknown = true;
+            else uncursed = true;
+            continue;
+        }
+        if (!obj?.bknown) unknown = true;
+        else if (!obj.cursed && !obj.blessed) uncursed = true;
+    }
+    return { uncursed, unknown };
+}
+
 function showLootTypeMenu(container, selectedAuto = false, opts = {}) {
     const display = game.nhDisplay;
     if (!display?.putstr) return;
     const col = 23;
     const putIn = !!opts.putIn;
     const selectedCoins = !!opts.selectedCoins;
-    const rows = putIn ? [
+    const selectedClasses = opts.selectedClasses instanceof Set
+        ? new Set(opts.selectedClasses)
+        : new Set(opts.selectedClasses || []);
+    let classChoices = [];
+    let rows = putIn ? [
         [0, 'Put in what type of objects?', true, col],
         [2, `A ${selectedAuto ? '+' : '-'} Auto-select every relevant item`, false, col],
         [3, '(ignored unless some other choices are also picked)', false, col + 4],
@@ -6011,18 +6406,27 @@ function showLootTypeMenu(container, selectedAuto = false, opts = {}) {
         [16, 'X - Items of unknown Bless/Curse status', false, col],
         [17, `P - Just picked up: ${game._goldCount || 0} gold pieces`, false, col],
         [18, '(end)', false, col],
-    ] : [
-        [0, 'Take out what type of objects?', true, col],
-        [2, `A ${selectedAuto ? '+' : '-'} Auto-select every relevant item`, false, col],
-        [3, '(ignored unless some other choices are also picked)', false, col + 4],
-        [5, 'a - All types', false, col],
-        [6, 'b - Comestibles', false, col],
-        [7, 'c - Potions', false, col],
-        [8, 'd - Rings', false, col],
-        [10, 'X - Items of unknown Bless/Curse status', false, col],
-        [11, '(end)', false, col],
-    ];
-    const lastRow = putIn ? 18 : 11;
+    ] : null;
+    if (!putIn) {
+        rows = [
+            [0, 'Take out what type of objects?', true, col],
+            [2, `A ${selectedAuto ? '+' : '-'} Auto-select every relevant item`, false, col],
+            [3, '(ignored unless some other choices are also picked)', false, col + 4],
+            [5, 'a - All types', false, col],
+        ];
+        let selectorCode = 'b'.charCodeAt(0);
+        for (const [cls, title] of lootTypeMenuClasses(container)) {
+            const selector = String.fromCharCode(selectorCode++);
+            classChoices.push({ selector, cls, title });
+            rows.push([rows[rows.length - 1][0] + 1, `${selector} ${selectedClasses.has(cls) ? '+' : '-'} ${title}`, false, col]);
+        }
+        const buc = lootTypeMenuBucRows(container);
+        if (buc.uncursed || buc.unknown) rows.push([rows[rows.length - 1][0] + 1, '', false, col]);
+        if (buc.uncursed) rows.push([rows[rows.length - 1][0] + 1, 'U - Items known to be Uncursed', false, col]);
+        if (buc.unknown) rows.push([rows[rows.length - 1][0] + 1, 'X - Items of unknown Bless/Curse status', false, col]);
+        rows.push([rows[rows.length - 1][0] + 1, '(end)', false, col]);
+    }
+    const lastRow = rows[rows.length - 1][0];
     clearLootMenuArea(col, lastRow);
     display.putstr(0, 0, ' '.repeat(col), NO_COLOR, 0);
     for (const [row, text, inverse, rowCol] of rows)
@@ -6033,6 +6437,8 @@ function showLootTypeMenu(container, selectedAuto = false, opts = {}) {
         selectedAuto,
         putIn,
         selectedCoins,
+        selectedClasses,
+        classChoices,
         held: opts.held ?? (game.inventory || []).includes(container),
     };
     game._loot_putin_menu = null;
@@ -6056,7 +6462,8 @@ async function handleLootActionMenuKey(ch) {
     const menu = game._loot_action_menu;
     if (!menu) return false;
     game._override_prev = null;
-    if (ch === 'o') {
+    const action = lootActionForKey(ch);
+    if (action === 'out') {
         if (!containerContents(menu.container).length) {
             await finishEmptyLootTakeOut(menu.container, menu.used, menu.held);
             return true;
@@ -6068,19 +6475,19 @@ async function handleLootActionMenuKey(ch) {
         game.context.move = 0;
         return true;
     }
-    if (ch === 'i') {
+    if (action === 'in') {
         showLootTypeMenu(menu.container, false, { putIn: true, held: menu.held });
         game.context.move = 0;
         return true;
     }
-    if (ch === ':') {
+    if (action === 'look') {
         // C ref: src/pickup.c:use_container().  The ':' command shows
         // container contents, then returns to the action loop with "done".
         showLootContainerContents(menu.container, menu.used, { held: menu.held });
         game.context.move = 0;
         return true;
     }
-    if (ch === 'q' || ch === 'Q' || ch === '\x1b') {
+    if (action === 'quit') {
         await dismissLootMenu(menu.used);
         return true;
     }
@@ -6114,36 +6521,121 @@ function takeOutNeedsClassMenu(container) {
     return false;
 }
 
+function lootFoodSubclass(obj) {
+    // C ref: src/invent.c:loot_classify().  Ordinary comestibles sort before
+    // tins, eggs, corpses, and globs; slime molds get their own first bucket.
+    if (obj?.otyp === SLIME_MOLD) return 1;
+    if (obj?.otyp === TIN) return 3;
+    if (obj?.otyp === EGG) return 4;
+    if (obj?.otyp === CORPSE) return 5;
+    if (obj?.globby) return 6;
+    return 2;
+}
+
+function lootSubclass(obj) {
+    if (lootObjectClass(obj) === FOOD_CLASS) return lootFoodSubclass(obj);
+    return 1;
+}
+
+function lootSortName(obj) {
+    // C ref: src/invent.c:sortloot_cmp() uses loot_xname() and sorts
+    // lexicographically while ignoring quantity.  Strip the menu article here
+    // so "an apple" sorts as "apple", not after every "a ..." item.
+    return inventoryObjectName(obj)
+        .replace(/^\d+\s+/, '')
+        .replace(/^(?:an?|the)\s+/i, '')
+        .toLowerCase();
+}
+
+function lootBucSortValue(obj) {
+    if (!obj?.bknown) return 0;
+    if (obj.blessed) return 3;
+    if (!obj.cursed) return 2;
+    return 1;
+}
+
+function sortLootObjects(objects) {
+    // C refs: src/options.c:initoptions() default sortloot='l',
+    // src/invent.c:sortloot()/sortloot_cmp().
+    return objects.map((obj, index) => ({ obj, index }))
+        .sort((a, b) => {
+            let diff = lootSubclass(a.obj) - lootSubclass(b.obj);
+            if (diff) return diff;
+            const nameCmp = lootSortName(a.obj).localeCompare(lootSortName(b.obj));
+            if (nameCmp) return nameCmp;
+            diff = lootBucSortValue(b.obj) - lootBucSortValue(a.obj);
+            if (diff) return diff;
+            diff = Number(!!b.obj?.greased) - Number(!!a.obj?.greased);
+            if (diff) return diff;
+            diff = Math.max(a.obj?.oeroded || 0, a.obj?.oeroded2 || 0)
+                - Math.max(b.obj?.oeroded || 0, b.obj?.oeroded2 || 0);
+            if (diff) return diff;
+            return a.index - b.index;
+        })
+        .map((entry) => entry.obj);
+}
+
+function takeOutObjectEntries(container, selectedClasses = null, selectedKeys = new Set()) {
+    const selectedClassSet = selectedClasses instanceof Set
+        ? selectedClasses
+        : selectedClasses ? new Set(selectedClasses) : null;
+    const contents = containerContents(container);
+    const entries = [];
+    let nextSelector = 'a'.charCodeAt(0);
+    for (const [cls, title] of LOOT_CLASS_ORDER) {
+        const objects = sortLootObjects(contents.filter((obj) => lootObjectClass(obj) === cls
+            && (!selectedClassSet || selectedClassSet.size === 0 || selectedClassSet.has(cls))));
+        if (!objects.length) continue;
+        entries.push({ heading: title });
+        for (const obj of objects) {
+            const selector = cls === COIN_CLASS ? '$' : String.fromCharCode(nextSelector++);
+            entries.push({
+                selector,
+                obj,
+                selected: selectedKeys.has(selector),
+                text: cls === COIN_CLASS
+                    ? `${obj.quan || 0} gold ${(obj.quan || 0) === 1 ? 'piece' : 'pieces'}`
+                    : inventoryObjectName(obj),
+            });
+        }
+    }
+    return entries;
+}
+
 async function showLootTakeOutObjectMenu(container, selectedGold = false, opts = {}) {
     const display = game.nhDisplay;
     if (!display?.putstr) return;
     clearOverrideScreen();
     await redrawAfterFullScreenMenuDismiss();
-    clearLootMenuArea(23, 4);
-    const gold = containedGoldObject(container);
-    const amount = gold?.quan || 0;
-    display.putstr(41, 0, 'Take out what?', NO_COLOR, ATR_INVERSE);
-    if (amount > 0) {
-        display.putstr(34, 2, '┌───── ', NO_COLOR, 0);
-        display.putstr(41, 2, 'Coins', NO_COLOR, ATR_INVERSE);
-        display.putstr(34, 3, '│', NO_COLOR, 0);
-        display.putstr(35, 3, '·····', CLR_BLACK, 0);
-        display.putstr(41, 3, `$ ${selectedGold ? '+' : '-'} ${amount} gold pieces`, NO_COLOR, 0);
-        display.putstr(34, 4, '│', NO_COLOR, 0);
-        display.putstr(35, 4, '·····', CLR_BLACK, 0);
-        display.putstr(41, 4, '(end)', NO_COLOR, 0);
-    } else {
-        display.putstr(41, 2, '(end)', NO_COLOR, 0);
-    }
+    const col = 41;
+    const selectedClasses = opts.selectedClasses instanceof Set
+        ? new Set(opts.selectedClasses)
+        : new Set(opts.selectedClasses || []);
+    const selectedKeys = opts.selectedKeys instanceof Set
+        ? new Set(opts.selectedKeys)
+        : new Set(opts.selectedKeys || []);
+    if (selectedGold) selectedKeys.add('$');
+    const entries = takeOutObjectEntries(container, selectedClasses, selectedKeys);
+    const lastRow = Math.max(2, entries.length + 2);
+    clearLootMenuArea(col, lastRow);
+    display.putstr(col, 0, 'Take out what?', NO_COLOR, ATR_INVERSE);
+    entries.forEach((entry, idx) => {
+        const row = idx + 2;
+        if (entry.heading) display.putstr(col, row, entry.heading, NO_COLOR, ATR_INVERSE);
+        else display.putstr(col, row, `${entry.selector} ${entry.selected ? '+' : '-'} ${entry.text}`, NO_COLOR, 0);
+    });
+    display.putstr(col, lastRow, '(end)', NO_COLOR, 0);
     game._loot_action_menu = null;
     game._loot_type_menu = null;
     game._loot_putin_menu = null;
     game._loot_takeout_menu = {
         container,
-        selectedGold,
+        selectedKeys,
+        selectedClasses,
+        entries,
         held: opts.held ?? (game.inventory || []).includes(container),
     };
-    showOverride(serialize_terminal_grid(display), amount > 0 ? [47, 4] : [47, 2]);
+    showOverride(serialize_terminal_grid(display), [col + '(end)'.length + 1, lastRow]);
 }
 
 function takeGoldOutOfContainer(container) {
@@ -6175,36 +6667,108 @@ function takeGoldOutOfContainer(container) {
     return `$ - ${amount} gold ${amount === 1 ? 'piece' : 'pieces'}.`;
 }
 
+function takeObjectOutOfContainer(container, obj) {
+    const contents = container.cobj || container.contents || [];
+    const idx = contents.indexOf(obj);
+    if (idx >= 0) contents.splice(idx, 1);
+    if (container.cobj) container.cobj = contents;
+    else container.contents = contents;
+    delete obj.ocontainer;
+    obj.where = 'invent';
+    const merged = merge_inventory_object(obj);
+    const carried = merged || obj;
+    if (!merged) {
+        assignInventoryLetter(carried);
+        game.inventory = game.inventory || [];
+        game.inventory.push(carried);
+    }
+    return `${carried.invlet} - ${inventoryObjectName(carried)}.`;
+}
+
+async function takeSelectedObjectsOutOfContainer(container, entries, selectedKeys) {
+    const messages = [];
+    for (const entry of entries || []) {
+        if (!entry.selector || !selectedKeys.has(entry.selector)) continue;
+        if (entry.obj?.oclass === COIN_CLASS) messages.push(takeGoldOutOfContainer(container));
+        else messages.push(takeObjectOutOfContainer(container, entry.obj));
+    }
+    container.cknown = true;
+    if (!messages.length) {
+        await dismissLootMenu(false);
+        return;
+    }
+    await pline(messages[0]);
+    const rest = [];
+    for (const message of messages.slice(1)) {
+        if (!rest.length && topline_can_pack_message(game._pending_message, message))
+            await append_pline(message);
+        else
+            rest.push(message);
+    }
+    if (rest.length) {
+        queue_more_prompt();
+        game._more_message_queue = [
+            ...(game._more_message_queue || []),
+            { text: rest.join('  '), move: true },
+        ];
+        game.context.move = 0;
+    } else {
+        game.context.move = 1;
+    }
+}
+
 async function handleLootTakeOutMenuKey(ch) {
     const menu = game._loot_takeout_menu;
     if (!menu) return false;
     game._override_prev = null;
-    if (ch === '$') {
-        menu.selectedGold = !menu.selectedGold;
-        await showLootTakeOutObjectMenu(menu.container, menu.selectedGold, { held: menu.held });
+    if (ch === '@') {
+        const selectable = (menu.entries || []).filter((entry) => entry.selector);
+        const allSelected = selectable.length > 0
+            && selectable.every((entry) => menu.selectedKeys?.has(entry.selector));
+        menu.selectedKeys = allSelected
+            ? new Set()
+            : new Set(selectable.map((entry) => entry.selector));
+        await showLootTakeOutObjectMenu(menu.container, false, {
+            held: menu.held,
+            selectedClasses: menu.selectedClasses,
+            selectedKeys: menu.selectedKeys,
+        });
+        game.context.move = 0;
+        return true;
+    }
+    const entry = (menu.entries || []).find((item) => item.selector === ch);
+    if (entry) {
+        menu.selectedKeys = menu.selectedKeys instanceof Set ? new Set(menu.selectedKeys) : new Set();
+        if (menu.selectedKeys.has(ch)) menu.selectedKeys.delete(ch);
+        else menu.selectedKeys.add(ch);
+        await showLootTakeOutObjectMenu(menu.container, false, {
+            held: menu.held,
+            selectedClasses: menu.selectedClasses,
+            selectedKeys: menu.selectedKeys,
+        });
         game.context.move = 0;
         return true;
     }
     if (ch === '\r' || ch === '\n') {
-        const selected = !!menu.selectedGold;
         const container = menu.container;
+        const entries = menu.entries || [];
+        const selectedKeys = menu.selectedKeys instanceof Set ? new Set(menu.selectedKeys) : new Set();
         game._loot_takeout_menu = null;
         clearOverrideScreen();
         clear_pending_message();
-        if (selected) {
-            await redrawAfterFullScreenMenuDismiss();
-            await pline(takeGoldOutOfContainer(container));
-            game.context.move = 1;
-        } else {
-            await dismissLootMenu(false);
-        }
+        await redrawAfterFullScreenMenuDismiss();
+        await takeSelectedObjectsOutOfContainer(container, entries, selectedKeys);
         return true;
     }
     if (ch === '\x1b' || ch === 'q' || ch === 'Q') {
         await dismissLootMenu(false);
         return true;
     }
-    await showLootTakeOutObjectMenu(menu.container, menu.selectedGold, { held: menu.held });
+    await showLootTakeOutObjectMenu(menu.container, false, {
+        held: menu.held,
+        selectedClasses: menu.selectedClasses,
+        selectedKeys: menu.selectedKeys,
+    });
     game.context.move = 0;
     return true;
 }
@@ -6219,6 +6783,30 @@ async function handleLootTypeMenuKey(ch) {
         game.context.move = 0;
         return true;
     }
+    if (!menu.putIn && ch === '@') {
+        const choices = menu.classChoices || [];
+        const allSelected = choices.length > 0
+            && choices.every((choice) => menu.selectedClasses?.has(choice.cls));
+        menu.selectedClasses = allSelected
+            ? new Set()
+            : new Set(choices.map((choice) => choice.cls));
+        showLootTypeMenu(menu.container, menu.selectedAuto, menu);
+        game.context.move = 0;
+        return true;
+    }
+    if (!menu.putIn) {
+        const choice = (menu.classChoices || []).find((item) => item.selector === ch);
+        if (choice) {
+            menu.selectedClasses = menu.selectedClasses instanceof Set
+                ? new Set(menu.selectedClasses)
+                : new Set(menu.selectedClasses || []);
+            if (menu.selectedClasses.has(choice.cls)) menu.selectedClasses.delete(choice.cls);
+            else menu.selectedClasses.add(choice.cls);
+            showLootTypeMenu(menu.container, menu.selectedAuto, menu);
+            game.context.move = 0;
+            return true;
+        }
+    }
     if (menu.putIn && ch === '$') {
         menu.selectedCoins = !menu.selectedCoins;
         showLootTypeMenu(menu.container, menu.selectedAuto, menu);
@@ -6231,7 +6819,10 @@ async function handleLootTypeMenuKey(ch) {
         return true;
     }
     if (!menu.putIn && (ch === '\r' || ch === '\n')) {
-        await showLootTakeOutObjectMenu(menu.container, false, { held: menu.held });
+        await showLootTakeOutObjectMenu(menu.container, false, {
+            held: menu.held,
+            selectedClasses: menu.selectedClasses,
+        });
         game.context.move = 0;
         return true;
     }
@@ -6424,6 +7015,139 @@ function forceLockWeaponName(obj) {
     const base = baseObjectName(obj) || 'weapon';
     const oname = C.ONAME(obj);
     return `your ${base}${oname ? ` named ${oname}` : ''}`;
+}
+
+function carriedToolName(obj) {
+    const base = baseObjectName(obj) || 'tool';
+    const oname = C.ONAME(obj);
+    return `your ${base}${oname ? ` named ${oname}` : ''}`;
+}
+
+function autounlockMask() {
+    const value = game.flags?.autounlock;
+    if (value == null || value === true || value === 'true' || value === 'apply-key')
+        return C.AUTOUNLOCK_APPLY_KEY;
+    if (typeof value === 'number') return value;
+    if (value === false || value === 'false' || value === 'none') return 0;
+    let mask = 0;
+    for (const part of String(value).toLowerCase().split(/[+:|,\s]+/)) {
+        if (part === 'apply-key' || part === 'key') mask |= C.AUTOUNLOCK_APPLY_KEY;
+        else if (part === 'kick') mask |= C.AUTOUNLOCK_KICK;
+        else if (part === 'force') mask |= C.AUTOUNLOCK_FORCE;
+        else if (part === 'untrap') mask |= C.AUTOUNLOCK_UNTRAP;
+    }
+    return mask;
+}
+
+function autokey(opening = true) {
+    const inventory = game.inventory || [];
+    const key = inventory.find((obj) => obj?.otyp === SKELETON_KEY);
+    const pick = inventory.find((obj) => obj?.otyp === LOCK_PICK);
+    const card = opening ? inventory.find((obj) => obj?.otyp === CREDIT_CARD) : null;
+    return key || pick || card || null;
+}
+
+function heroIsRogue() {
+    return game.urole?.name?.m === 'Rogue'
+        || String(game._nhopts?.role || '').toLowerCase() === 'rogue'
+        || String(game._selected_startup_role || '').toLowerCase() === 'rogue';
+}
+
+function lockPickChanceForDoor(obj) {
+    const rogueBonus = heroIsRogue();
+    let chance = 0;
+    if (obj?.otyp === CREDIT_CARD) chance = 2 * currentAttr(A_DEX) + (rogueBonus ? 20 : 0);
+    else if (obj?.otyp === LOCK_PICK) chance = 3 * currentAttr(A_DEX) + (rogueBonus ? 30 : 0);
+    else if (obj?.otyp === SKELETON_KEY) chance = 70 + currentAttr(A_DEX);
+    if (obj?.cursed) chance = Math.trunc(chance / 2);
+    return chance;
+}
+
+function lockPickChanceForBox(obj) {
+    const rogueBonus = heroIsRogue();
+    let chance = 0;
+    if (obj?.otyp === CREDIT_CARD) chance = currentAttr(A_DEX) + (rogueBonus ? 20 : 0);
+    else if (obj?.otyp === LOCK_PICK) chance = 4 * currentAttr(A_DEX) + (rogueBonus ? 25 : 0);
+    else if (obj?.otyp === SKELETON_KEY) chance = 75 + currentAttr(A_DEX);
+    if (obj?.cursed) chance = Math.trunc(chance / 2);
+    return chance;
+}
+
+async function promptAutounlockDoorAfterMore() {
+    const state = game._locked_door_autounlock_after_more;
+    if (!state) return false;
+    game._locked_door_autounlock_after_more = null;
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    clear_pending_message();
+    await showPromptLine(`Unlock it with ${carriedToolName(state.tool)}? [ynq] (q)`, { trailingInputSpace: true });
+    game._awaiting_autounlock_door = state;
+    game.context.move = 0;
+    return true;
+}
+
+async function promptAutounlockContainerAfterMore() {
+    const state = game._locked_container_autounlock_after_more;
+    if (!state) return false;
+    game._locked_container_autounlock_after_more = null;
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    clear_pending_message();
+    await showPromptLine(`Unlock it with ${carriedToolName(state.tool)}? [ynq] (q)`, { trailingInputSpace: true });
+    game._awaiting_autounlock_container = state;
+    game.context.move = 0;
+    return true;
+}
+
+async function reportLockedDoorAndMaybeAutounlock(x, y) {
+    await pline('This door is locked.');
+    const tool = (autounlockMask() & C.AUTOUNLOCK_APPLY_KEY) ? autokey(true) : null;
+    if (tool) {
+        queue_more_prompt();
+        game._locked_door_autounlock_after_more = { x, y, tool };
+    }
+    game.context.move = 0;
+    return false;
+}
+
+function startDoorPickLock(x, y, tool) {
+    // C refs: src/lock.c:pick_lock(), src/lock.c:picklock().
+    game._pick_lock = {
+        x,
+        y,
+        tool,
+        picktyp: tool?.otyp || 0,
+        chance: lockPickChanceForDoor(tool),
+        usedtime: 0,
+    };
+    game._pick_lock_start_before_turn = true;
+    game.context.move = 1;
+}
+
+async function reportLockedContainerAndMaybeAutounlock(container) {
+    const name = baseObjectName(container) || 'container';
+    if (container.lknown) await pline(`The ${name} is locked.`);
+    else await pline(`Hmmm, the ${name} turns out to be locked.`);
+    container.lknown = true;
+    const tool = (autounlockMask() & C.AUTOUNLOCK_APPLY_KEY) ? autokey(true) : null;
+    if (tool) {
+        queue_more_prompt();
+        game._locked_container_autounlock_after_more = { box: container, tool };
+    }
+    game.context.move = 0;
+    return true;
+}
+
+function startBoxPickLock(box, tool) {
+    game._pick_lock = {
+        box,
+        tool,
+        picktyp: tool?.otyp || 0,
+        chance: lockPickChanceForBox(tool),
+        usedtime: 0,
+    };
+    game._pick_lock_start_before_turn = false;
+    game.context.move = 1;
 }
 
 async function doForceCommand() {
@@ -7132,6 +7856,122 @@ async function maybeAutopickupBlockedAtHero() {
     if (!heroCannotTakeObjects()) return false;
     if (!floorObjectsAtHero().length) return false;
     await pline('You are physically incapable of picking anything up.');
+    return true;
+}
+
+function crawlDestinationBasic(x, y) {
+    // C ref: src/hack.c:crawl_destination().  This is the hero subset used by
+    // trap.c:drown() after falling into water.
+    return teleokBasic(x, y, true);
+}
+
+function rndNextToCrawlDestination(x, y) {
+    // C ref: src/trap.c:rnd_nextto_goodpos().  Shuffle all eight directions
+    // before testing so failed candidates preserve the RNG stream.
+    const dirs = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (let i = dirs.length; i > 0; --i) {
+        const j = rn2(i);
+        [dirs[j], dirs[i - 1]] = [dirs[i - 1], dirs[j]];
+    }
+    for (const dir of dirs) {
+        const nx = x + C.xdir[dir];
+        const ny = y + C.ydir[dir];
+        if (crawlDestinationBasic(nx, ny)) return { x: nx, y: ny };
+    }
+    return null;
+}
+
+function redrawHeroRelocation(fromX, fromY, toX, toY) {
+    newsym(fromX, fromY);
+    see_monsters();
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
+    refreshWarningAfterHeroMove();
+    newsym(toX, toY);
+    game._prompt_cursor = null;
+}
+
+function relocateHeroSilently(x, y, opts = {}) {
+    const u = game.u;
+    if (!u) return;
+    const oldx = u.ux;
+    const oldy = u.uy;
+    u.ux0 = oldx;
+    u.uy0 = oldy;
+    u.ux = x;
+    u.uy = y;
+    u.umoved = true;
+    if (u.usteed) {
+        u.usteed.mx = x;
+        u.usteed.my = y;
+    }
+    if (opts.redraw !== false) redrawHeroRelocation(oldx, oldy, x, y);
+}
+
+function queuePreTurnMessageAfterMore(entry) {
+    game._more_message_queue = [
+        ...(game._more_message_queue || []),
+        entry,
+    ];
+    game._pre_turn_more_waiting = true;
+    game._monster_turn_paused_for_more = true;
+    game._deferred_pre_turn_after_more_returns_to_input = true;
+}
+
+async function poolEffectsAtHeroAfterMove() {
+    const u = game.u || {};
+    const loc = game.level?.at(u.ux, u.uy);
+    if (!loc) return false;
+    if (C.IS_LAVA(loc.typ)) {
+        // C ref: src/trap.c:lava_effects().  The damage roll is made before
+        // the fatal non-fire-resistant entry message.
+        d(6, 6);
+        const oldHp = typeof u.uhp === 'number' ? u.uhp : null;
+        u.umortality = (u.umortality || 0) + 1;
+        game._latched_status_uhp = oldHp;
+        game._death_killer_name = 'burned by molten lava';
+        game._death_killer_format = 'raw';
+        game._death_tombstone_killer_lines = ['burned by molten', 'lava', ''];
+        game._death_end_verb = 'burned';
+        game._death_shopkeeper_killer = null;
+        game._lava_death_disclosure_pending = true;
+        game._monster_turn_paused_for_more = true;
+        await plineWithMorePrompt(`You fall into the ${waterbodyNameAt(u.ux, u.uy)}!  You burn to a crisp...`);
+        return true;
+    }
+    if (!IS_POOL(loc.typ)) return false;
+    if (u.ustuck || u.uprops?.levitation || u.uprops?.flying) return false;
+
+    const waterName = waterbodyNameAt(u.ux, u.uy);
+    const isSolid = loc.typ === C.WATER;
+    const destination = rndNextToCrawlDestination(u.ux, u.uy);
+    const entryLine = `You ${isSolid ? 'plunge' : 'fall'} into the ${waterName}!`;
+    if (!destination) {
+        await plineWithMorePrompt(entryLine);
+        queuePreTurnMessageAfterMore({ text: 'You drown.', move: true });
+        return true;
+    }
+
+    const waterX = u.ux;
+    const waterY = u.uy;
+    const deferredHeroRelocation = { fromX: waterX, fromY: waterY, toX: destination.x, toY: destination.y };
+    relocateHeroSilently(destination.x, destination.y, { redraw: false });
+    if (isSolid) {
+        await plineWithMorePrompt(`${entryLine}  You try to crawl out of the water.`);
+        queuePreTurnMessageAfterMore({
+            text: 'Pheew!  That was close.',
+            move: true,
+            deferredHeroRelocation,
+        });
+    } else {
+        await plineWithMorePrompt(`${entryLine}  You sink like a rock.`);
+        queuePreTurnMessageAfterMore({
+            text: 'You try to crawl out of the water.',
+            packAfter: 'Pheew!  That was close.',
+            move: true,
+            deferredHeroRelocation,
+        });
+    }
     return true;
 }
 
@@ -8454,6 +9294,93 @@ function consumeCorpseOeaten(obj, amt) {
     return oeaten;
 }
 
+function hungerStateForNutrition(hunger) {
+    const h = Number.isFinite(hunger) ? hunger : 900;
+    if (h > 1000) return C.SATIATED;
+    if (h > 150) return C.NOT_HUNGRY;
+    if (h > 50) return C.HUNGRY;
+    if (h > 0) return C.WEAK;
+    return C.FAINTING;
+}
+
+function refreshHeroHungerStatus() {
+    if (!game.u) return;
+    game.u.uhs = hungerStateForNutrition(game.u.uhunger ?? 900);
+}
+
+function lessHungry(amount) {
+    if (!amount || !game.u) return;
+    game.u.uhunger = (game.u.uhunger ?? 900) + amount;
+    refreshHeroHungerStatus();
+}
+
+function corpseBiteNutritionState(obj, reqtime) {
+    const fullNutrition = corpseNutrition(obj);
+    const oeaten = currentCorpseOeaten(obj, fullNutrition);
+    if (!fullNutrition || !reqtime || !oeaten) return null;
+    let nmod = 0;
+    if (oeaten >= reqtime) nmod = -Math.trunc(oeaten / reqtime);
+    else nmod = reqtime % oeaten;
+    return {
+        piece: obj,
+        reqtime,
+        usedtime: 0,
+        nmod,
+    };
+}
+
+export function applyEatingBiteNutrition() {
+    const state = game._occupation_bite_nutrition;
+    if (!state?.piece || !state.reqtime) return false;
+    state.usedtime = (state.usedtime || 0) + 1;
+    if (state.usedtime > state.reqtime) return false;
+    if (state.nmod < 0) {
+        const amount = -state.nmod;
+        lessHungry(amount);
+        consumeCorpseOeaten(state.piece, state.nmod);
+        return true;
+    }
+    if (state.nmod > 0 && state.usedtime % state.nmod) {
+        lessHungry(1);
+        consumeCorpseOeaten(state.piece, -1);
+        return true;
+    }
+    return false;
+}
+
+function corpseHasMagicalEnergyBuzz(obj) {
+    const ptr = corpseMonsterPtr(obj);
+    return ptr?.name === 'NEWT'
+        || (ptr?.mattk || []).some((attack) => attack?.[0] === 'AT_MAGC');
+}
+
+async function eyeOfNewtBuzz() {
+    const u = game.u;
+    if (!u) return;
+    if (rn2(3) || 3 * (u.uen || 0) <= 2 * (u.uenmax || 0)) {
+        const oldEnergy = u.uen || 0;
+        u.uen = oldEnergy + rnd(3);
+        if (u.uen > (u.uenmax || 0)) {
+            if (!rn2(3)) {
+                u.uenmax = (u.uenmax || 0) + 1;
+                u.uenpeak = Math.max(u.uenpeak || 0, u.uenmax);
+            }
+            u.uen = u.uenmax || 0;
+        }
+        if (oldEnergy !== u.uen) await pline('You feel a mild buzz.');
+    }
+}
+
+export async function applyEatingCorpsePostEffects() {
+    const obj = game._occupation_corpse_post_effect_obj;
+    if (!obj) return false;
+    game._occupation_corpse_post_effect_obj = null;
+    // C ref: src/eat.c:cpostfx().  Magical monsters and newts can grant
+    // a small power boost before done_eating() consumes the corpse object.
+    if (corpseHasMagicalEnergyBuzz(obj)) await eyeOfNewtBuzz();
+    return true;
+}
+
 function rottenFoodResult(obj) {
     // C ref: eat.c:rottenfood().  Only the unconsciousness branch prevents
     // start_eating() from recording the first bite.
@@ -8734,16 +9661,44 @@ async function drinkSink() {
     game.context.move = 1;
 }
 
-function corpseTasteLine(obj, guilty = false) {
+function corpseRotAgeBucket(obj, nonrotting = corpseIsNonrotting(obj)) {
+    if (nonrotting) return 0;
+    const age = Number.isFinite(obj?.age) ? obj.age : 0;
+    let rotted = Math.trunc(((game.moves || 0) - age) / (10 + rn2(20)));
+    if (obj?.cursed) rotted += 2;
+    else if (obj?.blessed) rotted -= 2;
+    return rotted;
+}
+
+function heroCorpseTasteMonsterPtr() {
+    // C ref: src/eat.c:eatcorpse() tests carnivorous/herbivorous against
+    // gy.youmonst.data; in normal form that is the role monster, not the race.
+    if (game.u?._poly_form?.ptr) return game.u._poly_form.ptr;
+    const roleName = String(game.urole?.name?.m || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+    return monsterPtr(roleName) || game.youmonst?.data || game.u?.youmonst?.data || game.u?.data || null;
+}
+
+function corpseTasteLine(obj, guilty = false, rotted = 0) {
     const corpseName = baseObjectName(obj);
     const vegetarian = corpseIsVegetarian(obj);
-    const flags = game.u?._poly_form?.ptr?.mflags1 ?? game.u?.data?.mflags1 ?? M1_OMNIVORE;
+    const flags = heroCorpseTasteMonsterPtr()?.mflags1 ?? 0;
     const herbivorous = !!(flags & M1_HERBIVORE);
     const carnivorous = !!(flags & M1_CARNIVORE);
-    const palatable = (vegetarian ? herbivorous : carnivorous) && rn2(10);
-    if (!vegetarian) rn2(5);
+    const yummy = corpseIsVegan(obj)
+        ? (!carnivorous && herbivorous)
+        : (carnivorous && !herbivorous);
+    const palatable = (vegetarian ? herbivorous : carnivorous)
+        && rn2(10)
+        && (rotted < 1 || !rn2(Math.trunc(rotted) + 1));
+    const palatableMsgs = ['Tokay', 'Istringy', 'Igamey', 'Ifatty', 'Itough'];
+    const palatMsg = palatableMsgs[vegetarian ? 0 : rn2(palatableMsgs.length)];
+    const useIs = heroIsHallucinating() || (palatable && palatMsg.startsWith('I'));
+    const taste = heroIsHallucinating()
+        ? (yummy ? 'gnarly' : palatable ? 'copacetic' : 'grody')
+        : (yummy ? 'delicious' : palatable ? palatMsg.slice(1) : 'terrible');
+    const punct = (yummy || !palatable) ? '!' : '.';
     const prefix = guilty ? 'You feel guilty.  ' : '';
-    return `${prefix}This ${corpseName} tastes ${palatable ? 'okay' : 'terrible'}${palatable ? '.' : '!'}`;
+    return `${prefix}This ${corpseName} ${useIs ? 'is' : 'tastes'} ${taste}${punct}`;
 }
 
 async function beginEatingCorpse(obj) {
@@ -8754,7 +9709,7 @@ async function beginEatingCorpse(obj) {
     const monkGuilt = conduct.breaksVegetarian && game.urole?.name?.m === 'Monk';
     if (monkGuilt) adjalign(-1);
     const nonrotting = corpseIsNonrotting(obj);
-    if (!nonrotting) rn2(20);
+    const rotted = corpseRotAgeBucket(obj, nonrotting);
     let firstBiteStarted = false;
     let message = '';
     let blocks = false;
@@ -8777,11 +9732,11 @@ async function beginEatingCorpse(obj) {
             if (firstBiteStarted) consumeCorpseOeaten(obj, 2);
         } else {
             firstBiteStarted = true;
-            message = corpseTasteLine(obj, monkGuilt);
+            message = corpseTasteLine(obj, monkGuilt, rotted);
         }
     } else if (obj?._live_kill_corpse || nonrotting) {
         firstBiteStarted = true;
-        message = corpseTasteLine(obj, monkGuilt);
+        message = corpseTasteLine(obj, monkGuilt, rotted);
     } else {
         rn2(5);
         const damage = rnd(8);
@@ -8798,6 +9753,11 @@ async function beginEatingCorpse(obj) {
     const carriedCorpse = (game.inventory || []).includes(obj);
     const remainingTurns = Math.max(0, reqtime - (carriedCorpse && firstBiteStarted ? 1 : 0));
     game._occupation_turns_remaining = remainingTurns;
+    game._occupation_bite_nutrition = firstBiteStarted
+        ? corpseBiteNutritionState(obj, reqtime)
+        : null;
+    game._occupation_corpse_post_effect_obj = firstBiteStarted ? obj : null;
+    if (firstBiteStarted) applyEatingBiteNutrition();
     if (remainingTurns > 0 && carriedCorpse) game._occupation_pre_finish_extra_turn = true;
     game._occupation_pre_finish_catchup = firstBiteStarted;
     game._occupation_finish_message = `You finish eating the ${corpseName}.`;
@@ -8851,11 +9811,10 @@ function ordinaryFoodFirstBiteLine(obj) {
 
 function lessHungryFromOrdinaryFood(obj) {
     const nutrition = ORDINARY_FOOD_NUTRITION.get(obj?.otyp) || 0;
-    if (!nutrition || !game.u) return;
     // C ref: src/eat.c:eatfood()/lesshungry().  Current ordinary food
     // evidence is one-turn food, so apply the object's full nutrition when
     // the item is consumed.
-    game.u.uhunger = (game.u.uhunger ?? 900) + nutrition;
+    lessHungry(nutrition);
 }
 
 function heroCurrentFormIsUndead() {
@@ -9112,16 +10071,31 @@ function runDirectionForKey(ch) {
     return RUN_KEY[ch] || null;
 }
 
-async function startRunDirection(dir, mode) {
+async function withCommandNopick(enabled, action) {
+    if (!enabled) return action();
+    game.context = game.context || {};
+    const hadNopick = Object.prototype.hasOwnProperty.call(game.context, 'nopick');
+    const oldNopick = game.context.nopick;
+    game.context.nopick = true;
+    try {
+        return await action();
+    } finally {
+        if (hadNopick) game.context.nopick = oldNopick;
+        else delete game.context.nopick;
+    }
+}
+
+async function startRunDirection(dir, mode, opts = {}) {
     game.context.run = {
         dx: DIR_DX[dir],
         dy: DIR_DY[dir],
         mode,
         steps: 0,
         allowTurns: true,
+        nopick: !!opts.nopick,
     };
     game.context.mv = 1;
-    game.context.move = await domove(DIR_DX[dir], DIR_DY[dir]) ? 1 : 0;
+    game.context.move = await withCommandNopick(!!opts.nopick, () => domove(DIR_DX[dir], DIR_DY[dir])) ? 1 : 0;
     if (!game.context.move || game._run_stop_after_move) {
         game.context.run = null;
         game._run_stop_after_move = false;
@@ -9437,6 +10411,23 @@ function dryupFountainAfterDip() {
     return 'The fountain dries up!';
 }
 
+function monsterGoneForFountain(ptr) {
+    if (!ptr) return true;
+    const key = String(ptr.name || '');
+    const lower = key.toLowerCase();
+    const spaced = lower.replace(/_/g, ' ');
+    const names = game.genocidedMonsters;
+    if (names instanceof Set)
+        return names.has(key) || names.has(lower) || names.has(spaced);
+    if (Array.isArray(names))
+        return names.some((name) => {
+            const value = String(name || '');
+            const valueLower = value.toLowerCase();
+            return value === key || valueLower === lower || valueLower === spaced;
+        });
+    return false;
+}
+
 function nextToDoorBasic(x, y) {
     for (let dx = -1; dx <= 1; dx++)
         for (let dy = -1; dy <= 1; dy++) {
@@ -9478,6 +10469,31 @@ async function dogushforth(drinking = true) {
         }
     }
     if (!madePool) await pline(drinking ? 'Your thirst is quenched.' : 'Water sprays all over you.');
+}
+
+async function waterSnakesFromFountain() {
+    // C ref: src/fountain.c:dowatersnakes().
+    let num = rn1(5, 2);
+    const ptr = monsterPtr('WATER_MOCCASIN');
+    if (monsterGoneForFountain(ptr)) {
+        await pline('The fountain bubbles furiously for a moment, then calms.');
+        return;
+    }
+    if (game.u?.ublind || game.u?.blind || game.u?.uprops?.blind || game.u?.uprops?.blinded) {
+        await pline('You hear something hissing!');
+    } else {
+        const snakeName = (game.u?.uhallucination || game.u?.uprops?.hallucination)
+            ? pluralizeObjectName(randomHallucinatedMonsterName(''))
+            : 'snakes';
+        await pline(`An endless stream of ${snakeName} pours forth!`);
+    }
+    while (num-- > 0) {
+        const mon = makemon(ptr, game.u?.ux ?? 0, game.u?.uy ?? 0, C.MM_NOMSG);
+        if (mon) newsym(mon.mx, mon.my);
+        // C calls mintrap() here when a snake lands on a trap.  Monster trap
+        // entry points are not exported to the command layer yet; ordinary
+        // fountain snakes still get the same enexto/makemon RNG path.
+    }
 }
 
 function rndObjectTypeInRange(first, last) {
@@ -9648,6 +10664,9 @@ async function drinkFountain() {
             if (typeof game.u?.uhp === 'number')
                 game.u.uhp = Math.max(0, game.u.uhp - rnd(10));
             exercise(A_CON, false);
+            break;
+        case 22:
+            await waterSnakesFromFountain();
             break;
         case 23:
             if (await waterDemonFromFountain()) return;
@@ -9961,7 +10980,7 @@ function showOverviewScreen(options = {}) {
             const custom = overviewCustomAnnotation(state.level);
             const special = overviewSpecialProto(uz, state);
             let text = `Level ${depth}:`;
-            if (special) text += ` [${special}]`;
+            if (special && !options.final) text += ` [${special}]`;
             if (custom) text += ` "${custom}"`;
             if (sameLevel(uz, game.u?.uz))
                 text += options.final ? ' <- You were here.' : ' <- You are here.';
@@ -9984,20 +11003,21 @@ function showOverviewScreen(options = {}) {
     const displayLen = Math.max(maxDisplayLen, options.final ? 38 : 0);
     const gutter = displayLen > maxLen ? 2 : 3;
     const menuCol = Math.max(1, Math.min(COLNO - 1, COLNO - displayLen - gutter));
+    const textCol = menuCol + (options.final && byDungeon.size > 1 ? 1 : 0);
     display.putstr(0, 0, ' '.repeat(COLNO), NO_COLOR, 0);
-    const clearCol = Math.max(0, menuCol - 1);
+    const clearCol = Math.max(0, textCol - 1);
     for (let row = 0; row < lines.length; row++) {
         display.putstr(clearCol, row, ' '.repeat(COLNO - clearCol), NO_COLOR, 0);
     }
     for (let row = 0; row < lines.length; row++) {
         const line = lines[row];
         const attr = line.heading && !options.final ? ATR_INVERSE : 0;
-        display.putstr(menuCol + (line.indent || 0), row, line.text, NO_COLOR, attr);
+        display.putstr(textCol + (line.indent || 0), row, line.text, NO_COLOR, attr);
     }
     const screen = serialize_terminal_grid(display);
     game._overview_screen = screen;
     game._death_overview_screen_active = !!options.death;
-    showOverride(screen, [menuCol + '(end)'.length + 1, lines.length - 1]);
+    showOverride(screen, [textCol + '(end)'.length + 1, lines.length - 1]);
     game.context.move = 0;
 }
 
@@ -10756,7 +11776,7 @@ function landingTestMoveBasic(dx, dy) {
     if (target?.typ === DOOR && !doorlessDoorBasic(target)) return false;
     const origin = game.level?.at(ux, uy);
     if (origin?.typ === DOOR && !doorlessDoorBasic(origin)) return false;
-    if (blocksMove(ux, y) && blocksMove(x, uy)) return false;
+    if (tightDiagonalSqueezeReason(ux, uy, dx, dy)) return false;
     return true;
 }
 
@@ -11762,6 +12782,64 @@ function blocksMove(x, y) {
     return false;
 }
 
+function heroInSokobanBasic() {
+    return !!game.level?.flags?.sokoban_rules || !!C.In_sokoban?.(game.u?.uz);
+}
+
+function badRockForHeroSqueeze(x, y) {
+    // C ref: src/hack.c:bad_rock().  Tight diagonal squeezing checks terrain
+    // obstruction, plus Sokoban boulders, but not ordinary closed doors.
+    if (heroInSokobanBasic() && sobj_at_basic(BOULDER, x, y)) return true;
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    return IS_OBSTRUCTED(loc.typ);
+}
+
+function heroPolyPtrForBodySize() {
+    return game.u?._poly_form?.ptr || game.youmonst?.data || game.u?.youmonst?.data || game.u?.data || null;
+}
+
+function heroPassesWallsBasic() {
+    const ptr = heroPolyPtrForBodySize();
+    return !!game.u?.uprops?.passes_walls || !!((ptr?.mflags1 ?? 0) & M1_WALLWALK);
+}
+
+function heroBodyTooLargeForSqueeze() {
+    const form = game.u?._poly_form || null;
+    const ptr = heroPolyPtrForBodySize();
+    const flags1 = ptr?.mflags1 ?? 0;
+    const size = ptr?.msize ?? (form?.name === 'red dragon' ? MZ_LARGE : MZ_HUMAN);
+    if (size < MZ_LARGE) return false;
+    return !(flags1 & (M1_AMORPHOUS | M1_UNSOLID | M1_SLITHY))
+        && ptr?.mlet !== 'S_GHOST'
+        && ptr?.mlet !== 'S_VORTEX'
+        && ptr?.name !== 'AIR_ELEMENTAL';
+}
+
+function heroInventoryWeightTotalForSqueeze() {
+    // C ref: src/hack.c:cant_squeeze_thru().  The hero load test compares
+    // inv_weight() + weight_cap(), which is the carried inventory weight.
+    return (game.inventory || []).reduce((sum, obj) => sum + objectInsightWeight(obj), 0);
+}
+
+function heroCantSqueezeThruReason() {
+    // C ref: src/hack.c:cant_squeeze_thru().  Return values mirror C:
+    // 1 body too large, 2 possessions too heavy, 3 Sokoban restriction.
+    if (heroPassesWallsBasic()) return 0;
+    if (heroBodyTooLargeForSqueeze()) return 1;
+    if (heroInventoryWeightTotalForSqueeze() > C.WT_TOOMUCH_DIAGONAL) return 2;
+    if (heroInSokobanBasic()) return 3;
+    return 0;
+}
+
+function tightDiagonalSqueezeReason(x, y, dx, dy) {
+    if (!dx || !dy) return 0;
+    return badRockForHeroSqueeze(x, y + dy)
+        && badRockForHeroSqueeze(x + dx, y)
+        ? heroCantSqueezeThruReason()
+        : 0;
+}
+
 function blockedMovementMessage(x, y) {
     // C ref: src/hack.c:test_move(DO_MOVE).  With `mention_walls`, bumping
     // ordinary obstructing terrain reports the remembered map feature.
@@ -12003,6 +13081,12 @@ function shouldShowBoulderPushMessage(boulder) {
     return show;
 }
 
+function repositionFloorObjectToTop(obj, x, y) {
+    const idx = game.level?.objects?.indexOf(obj) ?? -1;
+    if (idx >= 0) game.level.objects.splice(idx, 1);
+    return place_object(obj, x, y);
+}
+
 async function tryPushBoulder(boulder, sx, sy, dx, dy) {
     const rx = sx + dx;
     const ry = sy + dy;
@@ -12034,8 +13118,10 @@ async function tryPushBoulder(boulder, sx, sy, dx, dy) {
     if (shouldShowBoulderPushMessage(boulder))
         await pline('With great effort you move the boulder.');
     exercise(A_STR, true);
-    boulder.ox = rx;
-    boulder.oy = ry;
+    // C ref: src/hack.c:moverock_core().  Pushing extracts the boulder from
+    // the floor list and re-places it, which makes later fobj scans see it
+    // before older floor objects.
+    repositionFloorObjectToTop(boulder, rx, ry);
     if (game.context?.run) game._run_stop_after_move = true;
     vision_reset();
 
@@ -12495,6 +13581,14 @@ const VERY_SMALL_MONSTERS = new Set([
 ]);
 
 const WEAPON_SMALL_DAMAGE_DIE = new Map([
+    // C ref: include/objects.h weapon oc_wsdam.
+    [DAGGER, 4],
+    [ELVEN_DAGGER, 5],
+    [ORCISH_DAGGER, 3],
+    [SILVER_DAGGER, 4],
+    [ELVEN_SHORT_SWORD, 8],
+    [ORCISH_SHORT_SWORD, 5],
+    [DWARVISH_SHORT_SWORD, 7],
     [SCALPEL, 3],
     [SILVER_SABER, 8],
     // C ref: include/objects.h WEAPON("long sword", ... oc_wsdam=8).
@@ -12502,6 +13596,15 @@ const WEAPON_SMALL_DAMAGE_DIE = new Map([
 ]);
 
 const WEAPON_LARGE_DAMAGE_DIE = new Map([
+    // C ref: include/objects.h weapon oc_wldam.
+    [DAGGER, 3],
+    [ELVEN_DAGGER, 3],
+    [ORCISH_DAGGER, 3],
+    [SILVER_DAGGER, 2],
+    [SHORT_SWORD, 8],
+    [ELVEN_SHORT_SWORD, 8],
+    [ORCISH_SHORT_SWORD, 8],
+    [DWARVISH_SHORT_SWORD, 8],
     [SCALPEL, 3],
     [SILVER_SABER, 8],
     // C ref: include/objects.h WEAPON("long sword", ... oc_wldam=12).
@@ -12918,7 +14021,7 @@ async function tryAutoOpenDoor(x, y) {
 
 async function bumpClosedDoor(dx, dy) {
     if (dx && dy) {
-        await pline("You can't move diagonally into an intact doorway.");
+        if (game.flags?.mention_walls) await pline("You can't move diagonally into an intact doorway.");
         game.context.move = 0;
         return false;
     }
@@ -12962,7 +14065,13 @@ function maybeTurnCorridorRun(run) {
     if (!current || current.typ === C.ROOM) return;
     const desiredX = u.ux + run.dx;
     const desiredY = u.uy + run.dy;
-    if (runStepIsOpen(desiredX, desiredY)) return;
+    const desired = game.level?.at(desiredX, desiredY);
+    const diagonalClosedDoor = !!(run.dx && run.dy
+        && desired?.typ === DOOR
+        && (desired.doormask & (D_CLOSED | D_LOCKED)));
+    // C ref: hack.c:lookaround().  Diagonal closed doors are ignored as
+    // corridor candidates, so a run can still turn toward an orthogonal path.
+    if (!diagonalClosedDoor && runStepIsOpen(desiredX, desiredY)) return;
 
     let corrct = 0;
     let noturn = false;
@@ -13436,6 +14545,24 @@ async function swapWithSafeMonster(mon, x, y) {
     refreshWarningAfterHeroMove();
     newsym(x, y);
     await pline(`You swap places with ${monsterSwapName(mon)}.`);
+    if (game.context?.run) {
+        // C ref: src/hack.c:domove_core().  Safe-monster displacement does
+        // not itself call nomul(0); the ordinary post-move run stop checks own
+        // doors, corridor exits, and nearby hostiles.
+        const source = game.level?.at(oldx, oldy);
+        const target = game.level?.at(x, y);
+        if (runShouldStopAfterMove(source, target)) game._run_stop_after_move = true;
+    }
+    u.ux0 = oldx;
+    u.uy0 = oldy;
+    u.umoved = true;
+    game._pending_move_smudge = { oldx, oldy };
+    await checkSpecialRoomAfterMove();
+    const autopicked = await autopickupHereAfterMove();
+    if (!autopicked || floorObjectsAtHero().length)
+        await lookHereAfterMove({ featureAlreadyShown: autopicked });
+    if (!game._more && !game._deferred_move_floor_list) await triggerTrapAtHero();
+    if (!game._more) finishPendingMoveSmudge();
 }
 
 async function heroMeleeAttack(mon) {
@@ -14673,13 +15800,15 @@ function renderPickupTypesMenu() {
     // C refs: src/options.c:optfn_pickup_types(),
     // src/windows.c:choose_classes_menu().  The tty class chooser is a menu
     // overlay on the map; row 0 is fully cleared, lower rows clear only the
-    // right-side menu pane.
+    // right-side menu pane and the bottom status rows remain visible.
     for (let row = 0; row <= 21; row++) {
         const clearCol = row === 0 ? 0 : col - 1;
         display.putstr(clearCol, row, ' '.repeat(COLNO - clearCol), NO_COLOR, 0);
     }
-    display.putstr(0, 22, ' '.repeat(COLNO), NO_COLOR, 0);
-    display.putstr(0, 23, ' '.repeat(COLNO), NO_COLOR, 0);
+    if (game._pickup_types_menu?.returnToBasicOptions) {
+        display.putstr(0, 22, ' '.repeat(COLNO), NO_COLOR, 0);
+        display.putstr(0, 23, ' '.repeat(COLNO), NO_COLOR, 0);
+    }
     for (let row = 0; row < rows.length; row++) {
         if (!rows[row]) continue;
         display.putstr(col, row, rows[row], NO_COLOR, row === 0 ? ATR_INVERSE : 0);
@@ -14703,7 +15832,20 @@ async function handlePickupTypesMenuKey(ch) {
     if (ch === '\r' || ch === '\n') {
         game.flags = game.flags || {};
         game.flags.pickup_types = pickupTypesStringFromSet(menu.selected);
+        const returnToPlay = !!menu.returnToPlay;
+        const returnToBasicOptions = !!menu.returnToBasicOptions;
         game._pickup_types_menu = null;
+        if (returnToBasicOptions) {
+            rerenderBasicOptionsFromFirstPage();
+            game.context.move = 0;
+            return true;
+        }
+        if (returnToPlay) {
+            clearOverrideScreen();
+            await redrawAfterFullScreenMenuDismiss();
+            game.context.move = 0;
+            return true;
+        }
         rerenderOptionsFromFirstPage();
         game.context.move = 0;
         return true;
@@ -14711,7 +15853,20 @@ async function handlePickupTypesMenuKey(ch) {
     if (ch === '\x1b') {
         game.flags = game.flags || {};
         game.flags.pickup_types = menu.previous;
+        const returnToPlay = !!menu.returnToPlay;
+        const returnToBasicOptions = !!menu.returnToBasicOptions;
         game._pickup_types_menu = null;
+        if (returnToBasicOptions) {
+            rerenderBasicOptionsFromFirstPage();
+            game.context.move = 0;
+            return true;
+        }
+        if (returnToPlay) {
+            clearOverrideScreen();
+            await redrawAfterFullScreenMenuDismiss();
+            game.context.move = 0;
+            return true;
+        }
         rerenderOptionsFromFirstPage();
         game.context.move = 0;
         return true;
@@ -14736,64 +15891,487 @@ async function handlePickupTypesMenuKey(ch) {
     return true;
 }
 
-const SIMPLE_OPTIONS_PAGE1 = [
-    ' \x1b[7mOptions\x1b[0m',
-    '',
-    ' ? - show help',
-    '',
-    ' \x1b[7m General\x1b[0m',
-    () => ` a - fruit                   [${currentFruitName()}]`,
-    ' b - number_pad              [0=off]',
-    ' c - price_quotes            [ ]',
-    '',
-    ' \x1b[7m Behavior\x1b[0m',
-    () => ` d - autodig                 [${optionBool('flags', 'autodig') ? 'X' : ' '}]`,
-    () => ` e - autoopen                [${optionBool('flags', 'autoopen', true) ? 'X' : ' '}]`,
-    () => ` f - autopickup              [${optionBool('flags', 'pickup') ? 'X' : ' '}]`,
-    ' g - autopickup exceptions   [(0 currently set)]',
-    () => ` h - autoquiver              [${optionBool('flags', 'autoquiver') ? 'X' : ' '}]`,
-    ' i - autounlock              [apply-key]',
-    () => ` j - cmdassist               [${optionBool('iflags', 'cmdassist', true) ? 'X' : ' '}]`,
-    () => ` k - dropped_nopick          [${optionBool('flags', 'dropped_nopick', true) ? 'X' : ' '}]  (for autopickup)`,
-    () => ` l - fireassist              [${optionBool('flags', 'fireassist', true) ? 'X' : ' '}]`,
-    () => ` m - pickup_stolen           [${optionBool('flags', 'pickup_stolen', true) ? 'X' : ' '}]  (for autopickup)`,
-    () => ` n - pickup_thrown           [${optionBool('flags', 'pickup_thrown', true) ? 'X' : ' '}]  (for autopickup)`,
-    () => ` o - pickup_types            [${game.flags?.pickup_types || 'all'}]  (for autopickup)`,
-    () => ` p - pushweapon              [${optionBool('flags', 'pushweapon') ? 'X' : ' '}]`,
-    ' (1 of 2)',
+const SIMPLE_OPTION_DEFS = new Map([
+    ['autopickup', { container: 'flags', key: 'pickup', defaultValue: false }],
+    ['lit_corridor', { container: 'flags', key: 'lit_corridor', defaultValue: false }],
+    ['lootabc', { container: 'flags', key: 'lootabc', defaultValue: false }],
+    ['menucolors', { container: 'iflags', key: 'menucolors', defaultValue: false }],
+    ['price_quotes', { container: 'flags', key: 'price_quotes', defaultValue: false }],
+    ['quick_farsight', { container: 'flags', key: 'quick_farsight', defaultValue: false }],
+    ['showexp', { container: 'flags', key: 'showexp', defaultValue: false }],
+    ['time', { container: 'flags', key: 'time', defaultValue: false }],
+    ['accessiblemsg', { container: 'iflags', key: 'accessiblemsg', defaultValue: false }],
+    ['acoustics', { container: 'iflags', key: 'acoustics', defaultValue: true }],
+    ['altmeta', { container: 'iflags', key: 'altmeta', defaultValue: false }],
+    ['armorstatus', { container: 'iflags', key: 'armorstatus', defaultValue: false }],
+    ['autodescribe', { container: 'iflags', key: 'autodescribe', defaultValue: true }],
+    ['autodig', { container: 'flags', key: 'autodig', defaultValue: false }],
+    ['autoopen', { container: 'flags', key: 'autoopen', defaultValue: true }],
+    ['autoquiver', { container: 'flags', key: 'autoquiver', defaultValue: false }],
+    ['checkpoint', { container: 'flags', key: 'checkpoint', defaultValue: true }],
+    ['cmdassist', { container: 'iflags', key: 'cmdassist', defaultValue: true }],
+    ['color', { container: 'flags', key: 'color', defaultValue: true }],
+    ['confirm', { container: 'flags', key: 'confirm', defaultValue: true }],
+    ['customcolors', { container: 'iflags', key: 'customcolors', defaultValue: true }],
+    ['customsymbols', { container: 'iflags', key: 'customsymbols', defaultValue: true }],
+    ['dark_room', { container: 'flags', key: 'dark_room', defaultValue: true }],
+    ['dropped_nopick', { container: 'flags', key: 'dropped_nopick', defaultValue: true }],
+    ['eight_bit_tty', { container: 'iflags', key: 'eight_bit_tty', defaultValue: false }],
+    ['extmenu', { container: 'iflags', key: 'extmenu', defaultValue: false }],
+    ['fireassist', { container: 'flags', key: 'fireassist', defaultValue: true }],
+    ['fixinv', { container: 'flags', key: 'fixinv', defaultValue: true }],
+    ['force_invmenu', { container: 'flags', key: 'force_invmenu', defaultValue: false }],
+    ['goldX', { container: 'iflags', key: 'goldX', defaultValue: false }],
+    ['help', { container: 'flags', key: 'help', defaultValue: true }],
+    ['herecmd_menu', { container: 'iflags', key: 'herecmd_menu', defaultValue: false }],
+    ['hilite_pet', { container: 'iflags', key: 'hilite_pet', defaultValue: false }],
+    ['hilite_pile', { container: 'iflags', key: 'hilite_pile', defaultValue: false }],
+    ['hitpointbar', { container: 'iflags', key: 'hitpointbar', defaultValue: false }],
+    ['ignintr', { container: 'flags', key: 'ignintr', defaultValue: false }],
+    ['implicit_uncursed', { container: 'iflags', key: 'implicit_uncursed', defaultValue: true }],
+    ['mail', { container: 'iflags', key: 'mail', defaultValue: true }],
+    ['mention_decor', { container: 'iflags', key: 'mention_decor', defaultValue: false }],
+    ['mention_map', { container: 'iflags', key: 'mention_map', defaultValue: false }],
+    ['mention_walls', { container: 'iflags', key: 'mention_walls', defaultValue: false }],
+    ['menu_overlay', { container: 'iflags', key: 'menu_overlay', defaultValue: true }],
+    ['mon_movement', { container: 'iflags', key: 'mon_movement', defaultValue: false }],
+    ['null', { container: 'flags', key: 'null', defaultValue: true }],
+    ['pickup_stolen', { container: 'flags', key: 'pickup_stolen', defaultValue: true }],
+    ['pickup_thrown', { container: 'flags', key: 'pickup_thrown', defaultValue: true }],
+    ['pushweapon', { container: 'flags', key: 'pushweapon', defaultValue: false }],
+    ['query_menu', { container: 'iflags', key: 'query_menu', defaultValue: false }],
+    ['rest_on_space', { container: 'flags', key: 'rest_on_space', defaultValue: false }],
+    ['safe_pet', { container: 'flags', key: 'safe_pet', defaultValue: true }],
+    ['safe_wait', { container: 'flags', key: 'safe_wait', defaultValue: true }],
+    ['showdamage', { container: 'flags', key: 'showdamage', defaultValue: false }],
+    ['showrace', { container: 'flags', key: 'showrace', defaultValue: false }],
+    ['showvers', { container: 'flags', key: 'showvers', defaultValue: false }],
+    ['silent', { container: 'flags', key: 'silent', defaultValue: true }],
+    ['sortpack', { container: 'flags', key: 'sortpack', defaultValue: true }],
+    ['sparkle', { container: 'flags', key: 'sparkle', defaultValue: true }],
+    ['spot_monsters', { container: 'iflags', key: 'spot_monsters', defaultValue: false }],
+    ['standout', { container: 'iflags', key: 'standout', defaultValue: false }],
+    ['terrainstatus', { container: 'iflags', key: 'terrainstatus', defaultValue: false }],
+    ['tips', { container: 'iflags', key: 'tips', defaultValue: true }],
+    ['tombstone', { container: 'flags', key: 'tombstone', defaultValue: true }],
+    ['toptenwin', { container: 'iflags', key: 'toptenwin', defaultValue: false }],
+    ['travel', { container: 'flags', key: 'travel', defaultValue: true }],
+    ['use_inverse', { container: 'iflags', key: 'use_inverse', defaultValue: true }],
+    ['verbose', { container: 'flags', key: 'verbose', defaultValue: true }],
+    ['weaponstatus', { container: 'iflags', key: 'weaponstatus', defaultValue: false }],
+    ['whatis_menu', { container: 'iflags', key: 'whatis_menu', defaultValue: false }],
+    ['whatis_moveskip', { container: 'iflags', key: 'whatis_moveskip', defaultValue: false }],
+]);
+
+const SIMPLE_OPTION_APPLY_ORDER = [
+    'accessiblemsg', 'acoustics', 'altmeta', 'armorstatus', 'autodescribe',
+    'autodig', 'autoopen', 'autopickup', 'autoquiver', 'bgcolors',
+    'checkpoint', 'cmdassist', 'color', 'confirm', 'customcolors',
+    'customsymbols', 'dark_room', 'dropped_nopick', 'eight_bit_tty',
+    'extmenu', 'fireassist', 'fixinv', 'force_invmenu', 'goldX',
+    'help', 'herecmd_menu', 'hilite_pet', 'hilite_pile', 'hitpointbar',
+    'idlecheckpoint', 'ignintr', 'implicit_uncursed', 'lit_corridor',
+    'lootabc', 'mail', 'mention_decor', 'mention_map', 'mention_walls',
+    'menu_overlay', 'menucolors', 'mon_movement', 'null', 'pickup_stolen',
+    'pickup_thrown', 'price_quotes', 'pushweapon', 'query_menu',
+    'quick_farsight', 'rest_on_space', 'safe_pet', 'safe_wait',
+    'showdamage', 'showexp', 'showrace', 'showvers', 'silent', 'sortpack',
+    'sounds', 'sparkle', 'spot_monsters', 'standout', 'terrainstatus',
+    'time', 'tips', 'tombstone', 'toptenwin', 'travel', 'use_inverse',
+    'verbose', 'weaponstatus', 'whatis_menu', 'whatis_moveskip',
+    'pickup_types',
 ];
 
-const SIMPLE_OPTIONS_PAGE2 = [
-    '',
-    ' \x1b[7m Map\x1b[0m',
-    () => ` a - bgcolors                [${optionBool('iflags', 'bgcolors', true) ? 'X' : ' '}]`,
-    () => ` b - color                   [${optionBool('flags', 'color', true) ? 'X' : ' '}]`,
-    () => ` c - customcolors            [${optionBool('iflags', 'customcolors', true) ? 'X' : ' '}]`,
-    () => ` d - customsymbols           [${optionBool('iflags', 'customsymbols', true) ? 'X' : ' '}]`,
-    () => ` e - hilite_pet              [${optionBool('iflags', 'hilite_pet') ? 'X' : ' '}]`,
-    () => ` f - hilite_pile             [${optionBool('iflags', 'hilite_pile') ? 'X' : ' '}]`,
-    () => ` g - showrace                [${optionBool('flags', 'showrace') ? 'X' : ' '}]`,
-    () => ` h - sparkle                 [${optionBool('flags', 'sparkle', true) ? 'X' : ' '}]`,
-    ' i - symset                  [DECgraphics, active, handler=DEC]',
-    '',
-    ' \x1b[7m Status\x1b[0m',
-    () => ` j - hitpointbar             [${optionBool('iflags', 'hitpointbar') ? 'X' : ' '}]`,
-    ' k - menu colors             [(0 currently set)]',
-    () => ` l - showexp                 [${optionBool('flags', 'showexp') ? 'X' : ' '}]`,
-    ' m - status condition fields [(16 currently set)]',
-    ' n - status highlight rules  [(0 currently set)]',
-    ' o - statuslines             [2]',
-    () => ` p - time                    [${optionBool('flags', 'time') ? 'X' : ' '}]`,
-    ' (2 of 2)',
+function tf(value) {
+    return value ? 'true' : 'false';
+}
+
+function simpleOptionValue(name) {
+    const def = SIMPLE_OPTION_DEFS.get(name);
+    if (!def) return null;
+    return tf(optionBool(def.container, def.key, def.defaultValue));
+}
+
+function optionBoxValue(name) {
+    const def = SIMPLE_OPTION_DEFS.get(name);
+    return def && optionBool(def.container, def.key, def.defaultValue) ? 'X' : ' ';
+}
+
+function basicOptionLine(key, name, value, suffix = '') {
+    return ` ${key} - ${name.padEnd(24)}[${value}]${suffix}`;
+}
+
+function basicOptionsLines(page) {
+    if (page === 1) {
+        return [
+            '',
+            ' \x1b[7m Map\x1b[0m',
+            basicOptionLine('a', 'bgcolors', optionBool('iflags', 'bgcolors', true) ? 'X' : ' '),
+            basicOptionLine('b', 'color', optionBoxValue('color')),
+            basicOptionLine('c', 'customcolors', optionBoxValue('customcolors')),
+            basicOptionLine('d', 'customsymbols', optionBoxValue('customsymbols')),
+            basicOptionLine('e', 'hilite_pet', optionBoxValue('hilite_pet')),
+            basicOptionLine('f', 'hilite_pile', optionBoxValue('hilite_pile')),
+            basicOptionLine('g', 'showrace', optionBoxValue('showrace')),
+            basicOptionLine('h', 'sparkle', optionBoxValue('sparkle')),
+            basicOptionLine('i', 'symset', 'DECgraphics, active, handler=DEC'),
+            '',
+            ' \x1b[7m Status\x1b[0m',
+            basicOptionLine('j', 'hitpointbar', optionBoxValue('hitpointbar')),
+            basicOptionLine('k', 'menu colors', '(0 currently set)'),
+            basicOptionLine('l', 'showexp', optionBoxValue('showexp')),
+            basicOptionLine('m', 'status condition fields', '(16 currently set)'),
+            basicOptionLine('n', 'status highlight rules', '(0 currently set)'),
+            basicOptionLine('o', 'statuslines', '2'),
+            basicOptionLine('p', 'time', optionBoxValue('time')),
+            ' (2 of 2)',
+        ];
+    }
+    return [
+        ' \x1b[7mOptions\x1b[0m',
+        '',
+        ' ? - show help',
+        '',
+        ' \x1b[7m General\x1b[0m',
+        basicOptionLine('a', 'fruit', currentFruitName()),
+        basicOptionLine('b', 'number_pad', '0=off'),
+        basicOptionLine('c', 'price_quotes', optionBoxValue('price_quotes')),
+        '',
+        ' \x1b[7m Behavior\x1b[0m',
+        basicOptionLine('d', 'autodig', optionBoxValue('autodig')),
+        basicOptionLine('e', 'autoopen', optionBoxValue('autoopen')),
+        basicOptionLine('f', 'autopickup', optionBoxValue('autopickup')),
+        basicOptionLine('g', 'autopickup exceptions', '(0 currently set)'),
+        basicOptionLine('h', 'autoquiver', optionBoxValue('autoquiver')),
+        basicOptionLine('i', 'autounlock', 'apply-key'),
+        basicOptionLine('j', 'cmdassist', optionBoxValue('cmdassist')),
+        basicOptionLine('k', 'dropped_nopick', optionBoxValue('dropped_nopick'), '  (for autopickup)'),
+        basicOptionLine('l', 'fireassist', optionBoxValue('fireassist')),
+        basicOptionLine('m', 'pickup_stolen', optionBoxValue('pickup_stolen'), '  (for autopickup)'),
+        basicOptionLine('n', 'pickup_thrown', optionBoxValue('pickup_thrown'), '  (for autopickup)'),
+        basicOptionLine('o', 'pickup_types', pickupTypesDescription(), '  (for autopickup)'),
+        basicOptionLine('p', 'pushweapon', optionBoxValue('pushweapon')),
+        ' (1 of 2)',
+    ];
+}
+
+function renderBasicOptionsMenu() {
+    const menu = game._basic_options_menu || (game._basic_options_menu = { page: 0 });
+    const lines = basicOptionsLines(menu.page || 0);
+    const footerRow = lines.length - 1;
+    const footer = lines[footerRow] || '';
+    showSerializedOverride(lines.join('\n'), [footer.length, footerRow]);
+    game.context.move = 0;
+}
+
+function beginBasicOptionsMenu() {
+    // C ref: src/cmd.c:cmdlist['O'] -> src/options.c:doset_simple().
+    game._basic_options_menu = { page: 0 };
+    renderBasicOptionsMenu();
+}
+
+async function finishBasicOptionsMenu() {
+    game._basic_options_menu = null;
+    clearOverrideScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    game.context.move = 0;
+}
+
+function rerenderBasicOptionsFromFirstPage() {
+    if (!game._basic_options_menu) {
+        game.context.move = 0;
+        return;
+    }
+    game._basic_options_menu.page = 0;
+    renderBasicOptionsMenu();
+}
+
+const BASIC_OPTIONS_SELECTIONS = [
+    {
+        c: 'price_quotes',
+        d: 'autodig',
+        e: 'autoopen',
+        f: 'autopickup',
+        h: 'autoquiver',
+        j: 'cmdassist',
+        k: 'dropped_nopick',
+        l: 'fireassist',
+        m: 'pickup_stolen',
+        n: 'pickup_thrown',
+        o: 'pickup_types',
+        p: 'pushweapon',
+    },
+    {
+        a: 'bgcolors',
+        b: 'color',
+        c: 'customcolors',
+        d: 'customsymbols',
+        e: 'hilite_pet',
+        f: 'hilite_pile',
+        g: 'showrace',
+        h: 'sparkle',
+        j: 'hitpointbar',
+        l: 'showexp',
+        p: 'time',
+    },
 ];
+
+async function handleBasicOptionsMenuKey(ch) {
+    const menu = game._basic_options_menu || (game._basic_options_menu = { page: 0 });
+    if (ch === '\x1b' || ch === '\r' || ch === '\n') {
+        await finishBasicOptionsMenu();
+        return;
+    }
+    if (ch === ' ') {
+        if ((menu.page || 0) === 0) {
+            menu.page = 1;
+            renderBasicOptionsMenu();
+        } else {
+            await finishBasicOptionsMenu();
+        }
+        return;
+    }
+    const name = BASIC_OPTIONS_SELECTIONS[menu.page || 0]?.[ch];
+    if (name === 'pickup_types') {
+        await beginPickupTypesMenu();
+        if (game._pickup_types_menu) {
+            game._pickup_types_menu.returnToBasicOptions = true;
+            renderPickupTypesMenu();
+        }
+        return;
+    }
+    if (name === 'bgcolors') {
+        toggleOptionBool('iflags', 'bgcolors', true);
+        rerenderBasicOptionsFromFirstPage();
+        return;
+    }
+    const def = SIMPLE_OPTION_DEFS.get(name);
+    if (def) {
+        toggleOptionBool(def.container, def.key, def.defaultValue);
+        rerenderBasicOptionsFromFirstPage();
+        return;
+    }
+    renderBasicOptionsMenu();
+}
+
+function optionLine(menu, page, key, name, spaces, value = null) {
+    const selected = menu?.selected?.has(`${page}:${key}`) ? '+' : '-';
+    const shown = value ?? simpleOptionValue(name);
+    return ` ${key} ${selected} ${name}\x1b[${spaces}C[${shown}]`;
+}
+
+function fixedOptionLine(name, spaces, value) {
+    return `\x1b[5C${name}\x1b[${spaces}C[${value}]`;
+}
+
+function startupOptionValue(kind) {
+    const opts = game._nhopts || {};
+    if (kind === 'name') return game.plname || opts.name || '';
+    if (kind === 'role') return opts.role || game._selected_startup_role || 'Rogue';
+    if (kind === 'race') return opts.race || game._selected_startup_race || 'human';
+    if (kind === 'gender') return opts.gender || game._selected_startup_gender || 'male';
+    if (kind === 'alignment') return opts.align || game._selected_startup_align || 'neutral';
+    return '';
+}
 
 function simpleOptionsLines(page) {
-    const rows = page === 1 ? SIMPLE_OPTIONS_PAGE2 : SIMPLE_OPTIONS_PAGE1;
-    return rows.map((row) => typeof row === 'function' ? row() : row);
+    const menu = game._options_menu || { selected: new Set() };
+    if (page === 0) {
+        return [
+            ' \x1b[7mSet what options?\x1b[0m',
+            '',
+            '\x1b[5CFor a brief explanation of how this works, type \'?\' to select',
+            '\x1b[5Cthe next menu choice, then press <enter> or <return>.',
+            ' ? - view help for options menu',
+            '\x1b[5C[To suppress this menu help, toggle off the \'cmdassist\' option.]',
+            '',
+            ' \x1b[7mBooleans (selecting will toggle value):\x1b[0m',
+            fixedOptionLine('blind', 19, 'false'),
+            fixedOptionLine('bones', 19, 'true'),
+            fixedOptionLine('deaf', 20, 'false'),
+            fixedOptionLine('legacy', 18, 'true'),
+            fixedOptionLine('news', 20, 'false'),
+            fixedOptionLine('nudist', 18, 'false'),
+            fixedOptionLine('pauper', 18, 'false'),
+            fixedOptionLine('reroll', 18, 'false'),
+            fixedOptionLine('selectsaved', 13, 'true'),
+            fixedOptionLine('status_updates', 10, 'true'),
+            fixedOptionLine('tutorial', 16, 'true'),
+            fixedOptionLine('use_darkgray', 12, 'true'),
+            fixedOptionLine('use_truecolor', 11, 'false'),
+            fixedOptionLine('voices', 18, 'excluded from build'),
+            optionLine(menu, 0, 'a', 'accessiblemsg', 11),
+            ' (1 of 7)',
+        ];
+    }
+    if (page === 1) {
+        return [
+            optionLine(menu, 1, 'a', 'acoustics', 15),
+            optionLine(menu, 1, 'b', 'altmeta', 17),
+            optionLine(menu, 1, 'c', 'armorstatus', 13),
+            optionLine(menu, 1, 'd', 'autodescribe', 12),
+            optionLine(menu, 1, 'e', 'autodig', 17),
+            optionLine(menu, 1, 'f', 'autoopen', 16),
+            optionLine(menu, 1, 'g', 'autopickup', 14),
+            optionLine(menu, 1, 'h', 'autoquiver', 14),
+            optionLine(menu, 1, 'i', 'bgcolors', 16, optionBool('iflags', 'bgcolors', true) ? 'on' : 'off'),
+            optionLine(menu, 1, 'j', 'checkpoint', 14),
+            optionLine(menu, 1, 'k', 'cmdassist', 15),
+            optionLine(menu, 1, 'l', 'color', 19),
+            optionLine(menu, 1, 'm', 'confirm', 17),
+            optionLine(menu, 1, 'n', 'customcolors', 12),
+            optionLine(menu, 1, 'o', 'customsymbols', 11),
+            optionLine(menu, 1, 'p', 'dark_room', 15),
+            optionLine(menu, 1, 'q', 'dropped_nopick', 10),
+            optionLine(menu, 1, 'r', 'eight_bit_tty', 11),
+            optionLine(menu, 1, 's', 'extmenu', 17),
+            optionLine(menu, 1, 't', 'fireassist', 14),
+            optionLine(menu, 1, 'u', 'fixinv', 18),
+            optionLine(menu, 1, 'v', 'force_invmenu', 11),
+            optionLine(menu, 1, 'w', 'goldX', 19),
+            ' (2 of 7)',
+        ];
+    }
+    if (page === 2) {
+        return [
+            optionLine(menu, 2, 'a', 'help', 20),
+            optionLine(menu, 2, 'b', 'herecmd_menu', 12),
+            optionLine(menu, 2, 'c', 'hilite_pet', 14),
+            optionLine(menu, 2, 'd', 'hilite_pile', 13),
+            optionLine(menu, 2, 'e', 'hitpointbar', 13),
+            optionLine(menu, 2, 'f', 'idlecheckpoint', 10, 'off'),
+            optionLine(menu, 2, 'g', 'ignintr', 17),
+            optionLine(menu, 2, 'h', 'implicit_uncursed', 7),
+            optionLine(menu, 2, 'i', 'lit_corridor', 12),
+            optionLine(menu, 2, 'j', 'lootabc', 17),
+            optionLine(menu, 2, 'k', 'mail', 20),
+            optionLine(menu, 2, 'l', 'mention_decor', 11),
+            optionLine(menu, 2, 'm', 'mention_map', 13),
+            optionLine(menu, 2, 'n', 'mention_walls', 11),
+            optionLine(menu, 2, 'o', 'menu_overlay', 12),
+            optionLine(menu, 2, 'p', 'menucolors', 14),
+            optionLine(menu, 2, 'q', 'mon_movement', 12),
+            optionLine(menu, 2, 'r', 'null', 20),
+            optionLine(menu, 2, 's', 'pickup_stolen', 11),
+            optionLine(menu, 2, 't', 'pickup_thrown', 11),
+            optionLine(menu, 2, 'u', 'price_quotes', 12),
+            optionLine(menu, 2, 'v', 'pushweapon', 14),
+            optionLine(menu, 2, 'w', 'query_menu', 14),
+            ' (3 of 7)',
+        ];
+    }
+    if (page === 3) {
+        return [
+            optionLine(menu, 3, 'a', 'quick_farsight', 10),
+            optionLine(menu, 3, 'b', 'rest_on_space', 11),
+            optionLine(menu, 3, 'c', 'safe_pet', 16),
+            optionLine(menu, 3, 'd', 'safe_wait', 15),
+            optionLine(menu, 3, 'e', 'showdamage', 14),
+            optionLine(menu, 3, 'f', 'showexp', 17),
+            optionLine(menu, 3, 'g', 'showrace', 16),
+            optionLine(menu, 3, 'h', 'showvers', 16),
+            optionLine(menu, 3, 'i', 'silent', 18),
+            optionLine(menu, 3, 'j', 'sortpack', 16),
+            optionLine(menu, 3, 'k', 'sounds', 18, 'off'),
+            optionLine(menu, 3, 'l', 'sparkle', 17),
+            optionLine(menu, 3, 'm', 'spot_monsters', 11),
+            optionLine(menu, 3, 'n', 'standout', 16),
+            optionLine(menu, 3, 'o', 'terrainstatus', 11),
+            optionLine(menu, 3, 'p', 'time', 20),
+            optionLine(menu, 3, 'q', 'tips', 20),
+            optionLine(menu, 3, 'r', 'tombstone', 15),
+            optionLine(menu, 3, 's', 'toptenwin', 15),
+            optionLine(menu, 3, 't', 'travel', 18),
+            optionLine(menu, 3, 'u', 'use_inverse', 13),
+            optionLine(menu, 3, 'v', 'verbose', 17),
+            optionLine(menu, 3, 'w', 'weaponstatus', 12),
+            ' (4 of 7)',
+        ];
+    }
+    if (page === 4) {
+        return [
+            optionLine(menu, 4, 'a', 'whatis_menu', 13),
+            optionLine(menu, 4, 'b', 'whatis_moveskip', 9),
+            '',
+            ' \x1b[7mCompounds (selecting will prompt for new value):\x1b[0m',
+            fixedOptionLine('windowtype', 14, 'tty'),
+            fixedOptionLine('playmode', 16, game.flags?.debug ? 'debug' : game.flags?.explore ? 'explore' : 'normal'),
+            fixedOptionLine('name', 20, startupOptionValue('name')),
+            fixedOptionLine('role', 20, startupOptionValue('role')),
+            fixedOptionLine('race', 20, startupOptionValue('race')),
+            fixedOptionLine('gender', 18, startupOptionValue('gender')),
+            fixedOptionLine('alignment', 15, startupOptionValue('alignment')),
+            fixedOptionLine('catname', 17, game._nhopts?.catname || '(none)'),
+            fixedOptionLine('dogname', 17, game._nhopts?.dogname || '(none)'),
+            fixedOptionLine('horsename', 15, game._nhopts?.horsename || '(none)'),
+            fixedOptionLine('msghistory', 14, '20'),
+            fixedOptionLine('pettype', 17, game._nhopts?.pettype || 'random'),
+            fixedOptionLine('soundlib', 16, 'nosound'),
+            optionLine(menu, 4, 'c', 'autounlock', 14, 'apply-key'),
+            optionLine(menu, 4, 'd', 'boulder', 17, '`'),
+            optionLine(menu, 4, 'e', 'crash_email', 13, 'unknown'),
+            optionLine(menu, 4, 'f', 'crash_name', 14, 'unknown'),
+            optionLine(menu, 4, 'g', 'crash_urlmax', 12, '-1'),
+            optionLine(menu, 4, 'h', 'disclose', 16, 'ni na nv ng nc no'),
+            ' (5 of 7)',
+        ];
+    }
+    if (page === 5) {
+        return [
+            optionLine(menu, 5, 'a', 'fruit', 19, currentFruitName()),
+            optionLine(menu, 5, 'b', 'glyph', 19, '(to be done)'),
+            optionLine(menu, 5, 'c', 'hilite_status', 11, '(none)'),
+            optionLine(menu, 5, 'd', 'menu_headings', 11, 'no-color&inverse'),
+            optionLine(menu, 5, 'e', 'menu_objsyms', 12, 'conditional'),
+            optionLine(menu, 5, 'f', 'menuinvertmode', 10, '1'),
+            optionLine(menu, 5, 'g', 'menustyle', 15, 'full'),
+            optionLine(menu, 5, 'h', 'msg_window', 14, 'single'),
+            optionLine(menu, 5, 'i', 'number_pad', 14, '0=off'),
+            optionLine(menu, 5, 'j', 'packorder', 15, '$")[%?+!=/(*`0_'),
+            optionLine(menu, 5, 'k', 'paranoid_confirmation', 3, 'pray trap swim'),
+            optionLine(menu, 5, 'l', 'petattr', 17, 'inverse'),
+            optionLine(menu, 5, 'm', 'pickup_burden', 11, 'stressed'),
+            optionLine(menu, 5, 'n', 'pickup_types', 12, pickupTypesDescription()),
+            optionLine(menu, 5, 'o', 'pile_limit', 14, '5'),
+            optionLine(menu, 5, 'p', 'roguesymset', 13, 'default'),
+            optionLine(menu, 5, 'q', 'runmode', 17, 'run'),
+            optionLine(menu, 5, 'r', 'scores', 18, '3 top/2 around'),
+            optionLine(menu, 5, 's', 'sortdiscoveries', 9, 'by order of discovery within each class'),
+            optionLine(menu, 5, 't', 'sortloot', 16, 'loot'),
+            optionLine(menu, 5, 'u', 'sortvanquished', 10, 't: traditional: by monster level'),
+            optionLine(menu, 5, 'v', 'statushilites', 11, '0 (off: don\'t highlight status fields)'),
+            optionLine(menu, 5, 'w', 'statuslines', 13, '2'),
+            ' (6 of 7)',
+        ];
+    }
+    return [
+        optionLine(menu, 6, 'a', 'suppress_alert', 10, '(none)'),
+        optionLine(menu, 6, 'b', 'symset', 18, 'DECgraphics, active, handler=DEC'),
+        optionLine(menu, 6, 'c', 'versinfo', 16, '1: number (5.0.0)'),
+        optionLine(menu, 6, 'd', 'whatis_coord', 12, 'none'),
+        optionLine(menu, 6, 'e', 'whatis_filter', 11, 'none'),
+        '',
+        ' \x1b[7mOther settings:\x1b[0m',
+        optionLine(menu, 6, 'f', 'autocompletions', 9, '(0 currently set)'),
+        optionLine(menu, 6, 'g', 'autopickup exceptions', 3, '(0 currently set)'),
+        optionLine(menu, 6, 'h', 'bind keys', 15, '(0 currently set)'),
+        optionLine(menu, 6, 'i', 'menu colors', 13, '(0 currently set)'),
+        optionLine(menu, 6, 'j', 'message types', 11, '(0 currently set)'),
+        optionLine(menu, 6, 'k', 'status condition fields', 1, '(16 currently set)'),
+        optionLine(menu, 6, 'l', 'status highlight rules', 2, '(0 currently set)'),
+        ' (7 of 7)',
+    ];
+}
+
+function simpleOptionNameForSelection(page, key) {
+    const rows = simpleOptionsLines(page);
+    const line = rows.find((row) => String(row || '').trimStart().startsWith(`${key} `));
+    const match = String(line || '').trimStart().match(/^[a-zA-Z?] [-+] ([^\x1b\[]+)/);
+    return match ? match[1].trim() : '';
 }
 
 function renderSimpleOptionsMenu() {
-    const menu = game._options_menu || (game._options_menu = { page: 0 });
+    const menu = game._options_menu || (game._options_menu = { page: 0, selected: new Set() });
     const lines = simpleOptionsLines(menu.page);
     const footerRow = lines.length - 1;
     const footer = lines[footerRow] || '';
@@ -14803,20 +16381,121 @@ function renderSimpleOptionsMenu() {
 
 function beginSimpleOptionsMenu() {
     // C ref: src/options.c:doset_simple()/doset_simple_menu().
-    game._options_menu = { page: 0 };
+    game._options_menu = { page: 0, selected: new Set() };
     renderSimpleOptionsMenu();
 }
 
+function selectedSimpleOptionNames(menu) {
+    const names = new Set();
+    for (const token of menu?.selected || []) {
+        const [rawPage, key] = token.split(':');
+        const name = simpleOptionNameForSelection(Number(rawPage), key);
+        if (name) names.add(name);
+    }
+    return names;
+}
+
+function simpleBooleanOptionNextValue(name) {
+    const def = SIMPLE_OPTION_DEFS.get(name);
+    if (!def) return null;
+    return !optionBool(def.container, def.key, def.defaultValue);
+}
+
+function applySimpleBooleanOption(name) {
+    const def = SIMPLE_OPTION_DEFS.get(name);
+    if (!def) return null;
+    const enabled = toggleOptionBool(def.container, def.key, def.defaultValue);
+    return `'${name}' option toggled ${enabled ? 'on' : 'off'}.`;
+}
+
+function applySimpleBooleanOptionOnce(name) {
+    if (!name) return null;
+    game._options_preapplied = game._options_preapplied || new Set();
+    if (game._options_preapplied.has(name)) return null;
+    const msg = applySimpleBooleanOption(name);
+    if (msg) game._options_preapplied.add(name);
+    return msg;
+}
+
+function simpleBooleanOptionMessage(name) {
+    const enabled = simpleBooleanOptionNextValue(name);
+    if (enabled == null) return null;
+    return `'${name}' option toggled ${enabled ? 'on' : 'off'}.`;
+}
+
+function packOptionMessages(entries) {
+    const out = [];
+    let current = null;
+    for (const entry of entries) {
+        if (current && topline_can_pack_message(current.line, entry.message)) {
+            current.line = `${current.line}  ${entry.message}`;
+            current.names.push(entry.name);
+        }
+        else {
+            if (current) out.push(current);
+            current = { line: entry.message, names: [entry.name] };
+        }
+    }
+    if (current) out.push(current);
+    return out;
+}
+
+async function showNextOptionsMessageOrPrompt() {
+    if (game._options_message_queue?.length) {
+        const next = game._options_message_queue.shift();
+        game._more = false;
+        game._more_dismissals_remaining = 0;
+        clear_pending_message();
+        clearOverrideScreen();
+        for (const name of next.names || []) applySimpleBooleanOptionOnce(name);
+        applySimpleBooleanOptionOnce(game._options_message_queue?.[0]?.names?.[0]);
+        await pline(next.line || '');
+        queue_more_prompt();
+        game.context.move = 0;
+        return true;
+    }
+    if (game._options_pickup_types_after_messages) {
+        game._options_pickup_types_after_messages = false;
+        game._more = false;
+        game._more_dismissals_remaining = 0;
+        clear_pending_message();
+        await beginPickupTypesMenu();
+        game._pickup_types_menu.returnToPlay = true;
+        game.context.move = 0;
+        return true;
+    }
+    return false;
+}
+
 async function finishSimpleOptionsMenu() {
+    const menu = game._options_menu;
+    const names = selectedSimpleOptionNames(menu);
     game._options_menu = null;
+    game._options_preapplied = new Set();
     game._pickup_types_menu = null;
     clearOverrideScreen();
     await redrawAfterFullScreenMenuDismiss();
+
+    const messages = [];
+    for (const name of SIMPLE_OPTION_APPLY_ORDER) {
+        if (!names.has(name)) continue;
+        if (name === 'pickup_types') {
+            game._options_pickup_types_after_messages = true;
+            continue;
+        }
+        const message = simpleBooleanOptionMessage(name);
+        if (message) messages.push({ name, message });
+    }
+    game._options_message_queue = packOptionMessages(messages);
+    if (await showNextOptionsMessageOrPrompt()) return;
     game.context.move = 0;
 }
 
 function rerenderOptionsFromFirstPage() {
-    game._options_menu = game._options_menu || { page: 0 };
+    if (!game._options_menu) {
+        game.context.move = 0;
+        return;
+    }
     game._options_menu.page = 0;
     renderSimpleOptionsMenu();
 }
@@ -14886,8 +16565,8 @@ async function handleSimpleOptionsMenuKey(ch) {
         return;
     }
     if (ch === ' ') {
-        if (menu.page === 0) {
-            menu.page = 1;
+        if (menu.page < 6) {
+            menu.page++;
             renderSimpleOptionsMenu();
         } else {
             await finishSimpleOptionsMenu();
@@ -14895,62 +16574,23 @@ async function handleSimpleOptionsMenuKey(ch) {
         return;
     }
     if (ch === '>' || ch === '\x06') {
-        menu.page = 1;
+        menu.page = Math.min(6, (menu.page || 0) + 1);
         renderSimpleOptionsMenu();
         return;
     }
     if (ch === '<' || ch === '\x02') {
-        menu.page = 0;
+        menu.page = Math.max(0, (menu.page || 0) - 1);
         renderSimpleOptionsMenu();
         return;
     }
-    if (menu.page === 0) {
-        if (ch === 'a') {
-            await beginOptionsFruitPrompt();
-            return;
-        }
-        if (ch === 'o') {
-            await beginPickupTypesMenu();
-            return;
-        }
-        const toggles = {
-            d: ['flags', 'autodig', false],
-            e: ['flags', 'autoopen', true],
-            f: ['flags', 'pickup', false],
-            h: ['flags', 'autoquiver', false],
-            j: ['iflags', 'cmdassist', true],
-            k: ['flags', 'dropped_nopick', true],
-            l: ['flags', 'fireassist', true],
-            m: ['flags', 'pickup_stolen', true],
-            n: ['flags', 'pickup_thrown', true],
-            p: ['flags', 'pushweapon', false],
-        };
-        const toggle = toggles[ch];
-        if (toggle) {
-            toggleOptionBool(toggle[0], toggle[1], toggle[2]);
-            rerenderOptionsFromFirstPage();
-            return;
-        }
-    } else {
-        const toggles = {
-            a: ['iflags', 'bgcolors', true],
-            b: ['flags', 'color', true],
-            c: ['iflags', 'customcolors', true],
-            d: ['iflags', 'customsymbols', true],
-            e: ['iflags', 'hilite_pet', false],
-            f: ['iflags', 'hilite_pile', false],
-            g: ['flags', 'showrace', false],
-            h: ['flags', 'sparkle', true],
-            j: ['iflags', 'hitpointbar', false],
-            l: ['flags', 'showexp', false],
-            p: ['flags', 'time', false],
-        };
-        const toggle = toggles[ch];
-        if (toggle) {
-            toggleOptionBool(toggle[0], toggle[1], toggle[2]);
-            rerenderOptionsFromFirstPage();
-            return;
-        }
+    const optionName = simpleOptionNameForSelection(menu.page || 0, ch);
+    if (optionName) {
+        const token = `${menu.page || 0}:${ch}`;
+        menu.selected = menu.selected || new Set();
+        if (menu.selected.has(token)) menu.selected.delete(token);
+        else menu.selected.add(token);
+        renderSimpleOptionsMenu();
+        return;
     }
     renderSimpleOptionsMenu();
 }
@@ -16134,6 +17774,10 @@ function travelMoveAllowed(x, y, dx, dy) {
         const source = game.level?.at(x, y);
         const target = game.level?.at(nx, ny);
         if (doorwayBlocksDiagonalForHero(source) || doorwayBlocksDiagonalForHero(target)) return false;
+        // C ref: src/hack.c:test_move(TEST_TRAV).  Normal heroes can squeeze
+        // through tight diagonal rock gaps; only cant_squeeze_thru() cases
+        // make the travel path invalid.
+        if (tightDiagonalSqueezeReason(x, y, dx, dy)) return false;
     }
     return true;
 }
@@ -16605,6 +18249,7 @@ async function handleQueuedMore(ch) {
 
     game._pending_more_strict_keys = false;
     game._more_dismissals_remaining--;
+    if (game._more_dismissals_remaining <= 0) consumeTutorialEntryUacOverrideDismissal();
     game._monster_more_accepts_any_key = false;
     const moreDismissedByEsc = ch === '\x1b';
     if (game._avoid_pool_tip_pending && game._more_dismissals_remaining <= 0) {
@@ -16800,6 +18445,19 @@ async function handleQueuedMore(ch) {
         game.context.move = 1;
         return true;
     } else if (await showPendingMonsterDeathMessage()) {
+    } else if (game._lava_death_disclosure_pending) {
+        game._more_dismissals_remaining = 0;
+        game._more = false;
+        game._lava_death_disclosure_pending = false;
+        if (game.u && typeof game.u.uhp === 'number') game.u.uhp = 0;
+        game._latched_status_uhp = 0;
+        game._monster_turn_paused_for_more = false;
+        game._pre_turn_more_waiting = false;
+        game._monster_attack_more_waiting = false;
+        game._resume_turn_tail_after_more = false;
+        await showDeathAttributesPrompt();
+        game.context.move = 0;
+        return true;
     } else if (game._death_prompt_pending) {
         if (deathUsesWizardPrompt()) await showDeathPrompt();
         else await showDeathDisclosureOrPrompt();
@@ -16929,6 +18587,9 @@ async function handleQueuedMore(ch) {
             return true;
         }
         if (await showNextStartupPreambleMessage()) return true;
+        if (await showNextOptionsMessageOrPrompt()) return true;
+        if (await promptAutounlockDoorAfterMore()) return true;
+        if (await promptAutounlockContainerAfterMore()) return true;
         if (game._vault_guard_prompt_after_more) {
             game._vault_guard_prompt_after_more = false;
             game._more = false;
@@ -17138,6 +18799,10 @@ async function handleQueuedMore(ch) {
                     vision_recalc(2);
                     vision_recalc(0);
                 }
+                if (next.deferredHeroRelocation) {
+                    const pos = next.deferredHeroRelocation;
+                    redrawHeroRelocation(pos.fromX, pos.fromY, pos.toX, pos.toY);
+                }
                 if (next.attrDelta && game.u?.acurr?.a) {
                     for (const [attr, delta] of Object.entries(next.attrDelta)) {
                         const ndx = Number(attr);
@@ -17193,7 +18858,17 @@ async function handleQueuedMore(ch) {
                     if (next.resumeSpotEffects) {
                         game._resume_floor_list_turn = false;
                         await triggerSpotEffectsAtHero();
-                        if (!game._more) finishPendingMoveSmudge();
+                        if (!game._more) {
+                            if (next.skipMoveSmudge) {
+                                // C ref: src/hack.c:domove().  If a repeated
+                                // run step stops on an engraving and blocks in
+                                // read_engr_at(), the post-domove smudge for
+                                // that run step is not charged on dismissal.
+                                game._pending_move_smudge = null;
+                            } else {
+                                finishPendingMoveSmudge();
+                            }
+                        }
                     }
                     if (preTurnResume) {
                         game._deferred_pre_turn_after_more = true;
@@ -19769,7 +21444,13 @@ function deathWeaponSkillInsightLine(obj, skillName) {
 
 function deathStatusLines() {
     const wielded = (game.inventory || []).find((obj) => obj?.wielded || ((obj?.owornmask || 0) & C.W_WEP));
-    const lines = ['', 'Final Status:', "  You weren't hungry.", deathEncumbranceLine()];
+    const wornArmor = (game.inventory || []).some((obj) =>
+        obj?.oclass === ARMOR_CLASS && (obj.worn || (obj.owornmask || 0)));
+    const lines = ['', 'Final Status:'];
+    if (game.u?.uprops?.sleepy
+        || (game.inventory || []).some((obj) => obj?.otyp === AMULET_OF_RESTFUL_SLEEP && objectIsWorn(obj)))
+        lines.push('  You fell asleep uncontrollably.');
+    lines.push("  You weren't hungry.", deathEncumbranceLine());
     if (wielded) {
         const skill = weaponSkillName(wielded);
         lines.push(`  You were wielding ${articleForWord(skill)} ${skill}.`);
@@ -19778,22 +21459,27 @@ function deathStatusLines() {
         lines.push(`  You were ${emptyHandedInsightText()}.`);
         lines.push(bareHandSkillInsightLine().replace('You have', 'You had').replace('You are', 'You were'));
     }
+    if (!wornArmor) lines.push("  You weren't wearing any armor.");
     return lines;
 }
 
 function deathAlignmentLine() {
     const alignRecord = game.u?.ualign?.record ?? 0;
-    const alignText = alignRecord < -20 ? 'had transgressed'
-        : alignRecord < 0 ? 'had strayed'
-            : alignRecord > 0 ? 'were haltingly aligned' : 'were nominally aligned';
-    return `  You ${alignText}.`;
+    const pious = piousness(true, 'aligned');
+    return alignRecord >= 0 ? `  You were ${pious}.` : `  You had ${pious}.`;
 }
 
 function deathFinalAttributeLines() {
     const lines = ['', 'Final Attributes:', deathAlignmentLine()];
     if (magicResistanceInsightLine()) lines.push('  You were magic-protected.');
+    if (heroHasInnateProp('poison_resistance') || game.u?.uprops?.poison_resistance)
+        lines.push('  You were poison resistant.');
+    if (heroHasInnateProp('searching') || game.u?.uprops?.searching)
+        lines.push('  You had automatic searching.');
     if (game.u?.uprops?.infravision || game.urace?.name === 'gnome')
         lines.push('  You had infravision.');
+    if (heroHasInnateProp('stealth') || game.u?.uprops?.stealth)
+        lines.push('  You were stealthy.');
     const armpro = heroMagicCancellation();
     if (armpro > 0) {
         const mcTypes = ['', 'warded', 'guarded', 'protected'];
@@ -19818,7 +21504,7 @@ function deathAttributesPages() {
         : game.flags?.moonphase === 0
             ? '  There was a new moon in effect when your adventure ended.'
             : '';
-    const page1 = [
+    const lines = [
         `${playerName} the ${roleName}'s attributes:`,
         '',
         'Background:',
@@ -19842,9 +21528,6 @@ function deathAttributesPages() {
         'Final Characteristics:',
         deathAttrLine('strength', C.A_STR),
         deathAttrLine('dexterity', C.A_DEX),
-        '  --More--',
-    ];
-    const page2 = [
         deathAttrLine('constitution', C.A_CON),
         deathAttrLine('intelligence', C.A_INT),
         deathAttrLine('wisdom', C.A_WIS),
@@ -19855,16 +21538,25 @@ function deathAttributesPages() {
         'Miscellaneous:',
         "  You didn't encounter any bones levels.",
         '  Total elapsed playing time was none.',
-        '  --More--',
     ];
     const finalIndent = (line) => line.startsWith('  ') ? line.slice(1) : line;
-    return { page1: page1.map(finalIndent).join('\n'), page2: page2.map(finalIndent).join('\n') };
+    const content = lines.map(finalIndent);
+    const pages = [];
+    for (let i = 0; i < content.length; i += 23) {
+        pages.push([...content.slice(i, i + 23), ' --More--'].join('\n'));
+    }
+    return {
+        page1: pages[0] || ' --More--',
+        page2: pages[1] || null,
+        page3: pages[2] || null,
+    };
 }
 
 function showDeathAttributesPage1() {
     const pages = deathAttributesPages();
     game._death_attributes_page1_screen = pages.page1;
     game._death_attributes_page2_screen = pages.page2;
+    game._death_attributes_page3_screen = pages.page3 || null;
     showOverride(pages.page1, [9, C.TERMINAL_ROWS - 1]);
     game.context.move = 0;
 }
@@ -19877,6 +21569,7 @@ async function showDeathCreaturesPrompt() {
     game._death_creatures_prompt_active = true;
     game._death_attributes_page1_screen = null;
     game._death_attributes_page2_screen = null;
+    game._death_attributes_page3_screen = null;
     clearOverrideScreen();
     await redrawAfterFullScreenMenuDismiss();
     const msg = 'Do you want an account of creatures vanquished? [ynaq] (n)';
@@ -19915,6 +21608,28 @@ function shouldAskTutorial() {
     return !game.tutorial_set_in_config
         && !game._tutorial_prompt_done
         && !game._tutorial_answered;
+}
+
+function tutorialEntryLevel() {
+    return game.specialLevels?.find((lev) => lev?.proto === 'tut-1')?.dlevel || null;
+}
+
+async function enterTutorialAfterPrompt() {
+    // C refs: src/allmain.c:maybe_do_tutorial(), src/do.c:deferred_goto().
+    const target = tutorialEntryLevel();
+    if (!target) return;
+    game.u = game.u || {};
+    game.u.ucamefrom = { ...(game.u.uz || { dnum: 0, dlevel: 1 }) };
+    await pline('Entering the tutorial.');
+    queue_more_prompt();
+    game._level_teleport_after_more = {
+        target: { ...target },
+        flags: {
+            tutorial: true,
+            materializeMessage: false,
+            noFollowers: true,
+        },
+    };
 }
 
 async function showTutorialPrompt(invalidChoice = false) {
@@ -20559,6 +22274,87 @@ You remember the descriptions of %i, given to you by
 
 function sameLevel(a, b) {
     return a?.dnum === b?.dnum && a?.dlevel === b?.dlevel;
+}
+
+function clonePlainState(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function isTutorialLevel(uz) {
+    return !!uz && game.dungeons?.[uz.dnum]?.dname === 'The Tutorial';
+}
+
+function tutorialGamestateDiscoverySnapshot() {
+    return {
+        discoveredObjects: game.discoveredObjects && typeof game.discoveredObjects[Symbol.iterator] === 'function'
+            ? [...game.discoveredObjects]
+            : [],
+        discoveryOrder: clonePlainState(game.discoveryOrder || []),
+        discoveryPriceQuotes: game.discoveryPriceQuotes instanceof Map
+            ? [...game.discoveryPriceQuotes.entries()]
+            : [],
+    };
+}
+
+function restoreTutorialGamestateDiscovery(snapshot = {}) {
+    game.discoveredObjects = new Set(snapshot.discoveredObjects || []);
+    game.discoveryOrder = clonePlainState(snapshot.discoveryOrder || []);
+    game.discoveryPriceQuotes = new Map(snapshot.discoveryPriceQuotes || []);
+}
+
+function saveTutorialGamestate() {
+    // C refs: dat/nhlib.lua:tutorial_enter(), src/nhlua.c:nhl_gamestate().
+    if (game._tutorial_gamestate_saved) return;
+    if (game._deferred_startup_uac != null) {
+        game.u.uac = game._deferred_startup_uac;
+        game._deferred_startup_uac = null;
+        apply_deferred_startup_wear();
+    }
+    const oldAc = game.u?.uac;
+    game._tutorial_gamestate_saved = {
+        moves: game.moves || 0,
+        u: clonePlainState(game.u || {}),
+        inventory: clonePlainState(game.inventory || []),
+        goldCount: game._goldCount || 0,
+        initialGoldCount: game._initialGoldCount,
+        discovery: tutorialGamestateDiscoverySnapshot(),
+    };
+    game.inventory = [];
+    game._goldCount = 0;
+    game.u = game.u || {};
+    game.u.uac = calculated_armor_class();
+    game.u.uencumber = 0;
+    game.u.twoweap = false;
+    if (typeof oldAc === 'number' && oldAc !== game.u.uac) {
+        game._status_uac_override = oldAc;
+        game._status_uac_override_move = game.moves;
+        game._tutorial_entry_uac_override_mores = 2;
+        game._clear_status_uac_override_after_more = false;
+    }
+}
+
+function restoreTutorialGamestate(currentUz) {
+    // C refs: dat/nhlib.lua:tutorial_leave(), src/nhlua.c:nhl_gamestate().
+    const saved = game._tutorial_gamestate_saved;
+    if (!saved) return;
+    game.moves = saved.moves || game.moves || 1;
+    game.inventory = clonePlainState(saved.inventory || []);
+    game._goldCount = saved.goldCount || 0;
+    if (saved.initialGoldCount != null) game._initialGoldCount = saved.initialGoldCount;
+    else delete game._initialGoldCount;
+    game.u = clonePlainState(saved.u || {});
+    if (currentUz) game.u.uz = { ...currentUz };
+    restoreTutorialGamestateDiscovery(saved.discovery);
+    game._tutorial_gamestate_saved = null;
+}
+
+function consumeTutorialEntryUacOverrideDismissal() {
+    if ((game._tutorial_entry_uac_override_mores || 0) <= 0) return;
+    game._tutorial_entry_uac_override_mores--;
+    if (game._tutorial_entry_uac_override_mores > 0) return;
+    game._tutorial_entry_uac_override_mores = 0;
+    game._status_uac_override = null;
+    game._status_uac_override_move = null;
 }
 
 async function printLevelAnnotation() {
@@ -21663,6 +23459,20 @@ function latchBlankToplineMore(line) {
     game._latched_more_keep_until_dismiss = true;
 }
 
+function latchPreChangeMapMore(preChangeScreen) {
+    if (!preChangeScreen || !game._pending_message || !game._more) return;
+    const rows = String(preChangeScreen).split('\n');
+    while (rows.length < C.TERMINAL_ROWS) rows.push('');
+    const currentRows = serialize_terminal_grid(game.nhDisplay).split('\n');
+    rows[0] = `${game._pending_message}--More--`;
+    rows[22] = currentRows[22] || rows[22] || '';
+    rows[23] = currentRows[23] || rows[23] || '';
+    game._latched_more_screen = rows.slice(0, C.TERMINAL_ROWS).join('\n');
+    game._latched_more_cursor = [Math.min(rows[0].length, COLNO - 1), 0, 1];
+    game._latched_more_keep_until_dismiss = true;
+    game._latched_more_use_pending_topline = true;
+}
+
 async function maybeWailAfterHpLoss(damage) {
     // C ref: hack.c:losehp(), hack.c:maybe_wail().
     if (damage <= 0) return false;
@@ -21831,9 +23641,16 @@ export async function performLevelTeleport(target, options = {}) {
     }
     const wasInHell = isHellLevel(oldUz);
     const prevTemperature = game.level?.flags?.temperature || 0;
-    const preChangeScreen = options?.atStairs ? serialize_terminal_grid(game.nhDisplay) : '';
+    const newDungeon = oldUz.dnum !== newUz.dnum;
+    if (newDungeon) {
+        if (isTutorialLevel(newUz)) saveTutorialGamestate();
+        else if (isTutorialLevel(oldUz)) restoreTutorialGamestate(oldUz);
+    }
+    const preChangeScreen = (options?.atStairs || options?.tutorial)
+        ? serialize_terminal_grid(game.nhDisplay)
+        : '';
     if (options?.atStairs) markCurrentStairTraversed();
-    const followers = (game.level?.monsters || [])
+    const followers = options?.noFollowers ? [] : (game.level?.monsters || [])
         .filter((mon) => monNearBasic(mon, game.u?.ux ?? mon.mx, game.u?.uy ?? mon.my)
             && levelFollowerBasic(mon));
     // C ref: dog.c:keepdogs()/losedogs().  keepdogs() scans fmon but
@@ -22105,6 +23922,7 @@ async function finishLevelTeleportArrival({
     if (!countableArrivalObjects.length) {
         // C ref: pickup.c:check_here().  The hero's chain alone does not
         // trigger look_here(); another object at the same spot will include it.
+        await lookHereAfterMove({ arrivalFloorListNoTurn: !arrivalFloorLookSpendsTurn });
     } else if (!game._more && arrivalObjects.length === 1) {
         const line = `You see here ${inventoryObjectName(arrivalObjects[0], { includePrice: true, observe: true })}.`;
         if (game._pending_message) {
@@ -23124,6 +24942,10 @@ export async function rhack(key) {
         await handlePickupTypesMenuKey(ch);
         return;
     }
+    if (game._basic_options_menu) {
+        await handleBasicOptionsMenuKey(ch);
+        return;
+    }
     if (game._options_menu) {
         await handleSimpleOptionsMenuKey(ch);
         return;
@@ -23374,7 +25196,7 @@ export async function rhack(key) {
             } else if (cmd === 'offer') {
                 await doOfferCommand();
             } else if (cmd === 'options') {
-                beginSimpleOptionsMenu();
+                beginBasicOptionsMenu();
             } else if (cmd === 'overview') {
                 showOverviewScreen();
             } else if (cmd === 'version') {
@@ -23502,6 +25324,60 @@ export async function rhack(key) {
         }
         const prompt = `There is ${inventoryObjectName(state.box)} here; force its lock? [ynq] (q)`;
         await showPromptLine(prompt, { trailingInputSpace: true });
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._awaiting_autounlock_door) {
+        const state = game._awaiting_autounlock_door;
+        clear_pending_message();
+        if (ch === 'y' || ch === 'Y') {
+            game._awaiting_autounlock_door = null;
+            startDoorPickLock(state.x, state.y, state.tool);
+            return;
+        }
+        if (ch === 'n' || ch === 'N' || ch === 'q' || ch === 'Q' || ch === '\x1b') {
+            game._awaiting_autounlock_door = null;
+            game.context.move = 0;
+            return;
+        }
+        await showPromptLine(`Unlock it with ${carriedToolName(state.tool)}? [ynq] (q)`, { trailingInputSpace: true });
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._awaiting_autounlock_container) {
+        const state = game._awaiting_autounlock_container;
+        clear_pending_message();
+        if (ch === 'y' || ch === 'Y') {
+            game._awaiting_autounlock_container = null;
+            startBoxPickLock(state.box, state.tool);
+            return;
+        }
+        if (ch === 'n' || ch === 'N' || ch === 'q' || ch === 'Q' || ch === '\x1b') {
+            game._awaiting_autounlock_container = null;
+            game.context.move = 0;
+            return;
+        }
+        await showPromptLine(`Unlock it with ${carriedToolName(state.tool)}? [ynq] (q)`, { trailingInputSpace: true });
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._awaiting_pick_lock_door_confirm) {
+        const state = game._awaiting_pick_lock_door_confirm;
+        clear_pending_message();
+        if (ch === 'y' || ch === 'Y') {
+            game._awaiting_pick_lock_door_confirm = null;
+            startDoorPickLock(state.x, state.y, state.tool);
+            return;
+        }
+        if (ch === 'n' || ch === 'N' || ch === 'q' || ch === 'Q' || ch === '\x1b') {
+            game._awaiting_pick_lock_door_confirm = null;
+            game.context.move = 0;
+            return;
+        }
+        await showPromptLine(`${state.action} it? [ynq] (q)`, { trailingInputSpace: true });
         game.context.move = 0;
         return;
     }
@@ -25037,10 +26913,8 @@ export async function rhack(key) {
             // C refs: src/apply.c:doapply(), src/pickup.c:use_container().
             const name = baseObjectName(obj) || 'container';
             if ((obj.otyp === LARGE_BOX || obj.otyp === CHEST) && obj.olocked) {
-                if (obj.lknown) await pline(`The ${name} is locked.`);
-                else await pline(`Hmmm, the ${name} turns out to be locked.`);
-                obj.lknown = true;
-                game.context.move = 0;
+                void name;
+                await reportLockedContainerAndMaybeAutounlock(obj);
                 return;
             }
             showLootActionMenu(obj, false, { held: true });
@@ -25130,7 +27004,15 @@ export async function rhack(key) {
             if (!loc || !C.IS_DOOR(loc.typ)) await pline('You see no door there.');
             else if (loc.doormask === D_NODOOR) await pline('This doorway has no door.');
             else if (loc.doormask & C.D_ISOPEN) await pline('You cannot lock an open door.');
-            else await pline('This lock is not implemented yet.');
+            else if (loc.doormask === C.D_BROKEN) await pline('This door is broken.');
+            else if (obj.otyp === CREDIT_CARD && !(loc.doormask & D_LOCKED))
+                await pline("You can't lock a door with a credit card.");
+            else {
+                game.context.move = 0;
+                const action = (loc.doormask & D_LOCKED) ? 'Unlock' : 'Lock';
+                game._awaiting_pick_lock_door_confirm = { x: rx, y: ry, tool: obj, action };
+                await showPromptLine(`${action} it? [ynq] (q)`, { trailingInputSpace: true });
+            }
             return;
         }
         if (typeof obj.spe === 'number' && obj.spe > 0) obj.spe--;
@@ -25155,13 +27037,12 @@ export async function rhack(key) {
                 return;
             }
             if (ch === 'y') {
-                // Tutorial dungeon transfer is not implemented yet; record
-                // the answer so regular play continues without corrupting RNG.
                 clear_pending_message();
                 game._tutorial_answered = true;
                 game._startup_preamble_done_waiting_tutorial = false;
                 game._startup_preamble_more_active = false;
                 game.context.move = 0;
+                await enterTutorialAfterPrompt();
                 return;
             }
             // C ref: options.c:ask_do_tutorial() + win/tty/wintty.c:tty_select_menu().
@@ -25272,7 +27153,7 @@ export async function rhack(key) {
             return;
         }
         if (prev === game._death_attributes_page1_screen) {
-            if (ch === ' ' || ch === '\r' || ch === '\n') {
+            if ((ch === ' ' || ch === '\r' || ch === '\n') && game._death_attributes_page2_screen) {
                 showOverride(game._death_attributes_page2_screen, [9, Math.max(0, game._death_attributes_page2_screen.split('\n').length - 1)]);
             } else {
                 await showDeathCreaturesPrompt();
@@ -25281,6 +27162,16 @@ export async function rhack(key) {
             return;
         }
         if (prev === game._death_attributes_page2_screen) {
+            if ((ch === ' ' || ch === '\r' || ch === '\n') && game._death_attributes_page3_screen) {
+                showOverride(game._death_attributes_page3_screen, [9, Math.max(0, game._death_attributes_page3_screen.split('\n').length - 1)]);
+                game.context.move = 0;
+                return;
+            }
+            await showDeathCreaturesPrompt();
+            game.context.move = 0;
+            return;
+        }
+        if (prev === game._death_attributes_page3_screen) {
             await showDeathCreaturesPrompt();
             game.context.move = 0;
             return;
@@ -25763,15 +27654,19 @@ export async function rhack(key) {
         }
         game.context.move = 0;
     } else if (isMovementKey(ch)) {
-        game.context.move = await domove(DIR_DX[ch], DIR_DY[ch]) ? 1 : 0;
+        // C ref: src/cmd.c:parse(), src/hack.c:swim_move_danger().  The `m`
+        // prefix sets svc.context.nopick for movement, bypassing paranoid
+        // liquid prompts and suppressing pickup for this command.
+        game.context.move = await withCommandNopick(forceCommandPrefix,
+            () => domove(DIR_DX[ch], DIR_DY[ch])) ? 1 : 0;
     } else if (key === 10 || key === 13) {
         // C refs: cmd.c:reset_commands(), cmd.c:do_rush_south().  Line-feed is
         // C('j'), bound to rush mode 3 rather than shifted run mode 1.  Tty
         // Enter can arrive as carriage return in replay input.
-        await startRunDirection('j', 3);
+        await startRunDirection('j', 3, { nopick: forceCommandPrefix });
     } else if (runDirectionForKey(ch)) {
         const dir = runDirectionForKey(ch);
-        await startRunDirection(dir, 1);
+        await startRunDirection(dir, 1, { nopick: forceCommandPrefix });
     } else if (ch === 'F') {
         game.context.move = 0;
         game._forcefight_pending = true;
@@ -25901,7 +27796,8 @@ export async function rhack(key) {
         game.context.move = 0;
         await showHelpMenu();
     } else if (ch === 'O') {
-        beginSimpleOptionsMenu();
+        if (forceCommandPrefix) beginSimpleOptionsMenu();
+        else beginBasicOptionsMenu();
     } else if (ch === '/') {
         game.context.move = 0;
         await showLookAtMenu();
@@ -26001,7 +27897,7 @@ export async function rhack(key) {
             queue_more_prompt();
         } else {
             // C ref: invent.c:dolook() -> invent.c:look_here().
-            const feature = lookHereFeature();
+            const feature = lookHereFeature({ includeOrdinaryDoors: true });
             const objects = floorObjectsAtHero();
             if (feature.line) await pline(feature.line);
             if (feature.blocks && objects.length > 0) {
@@ -26199,7 +28095,7 @@ export async function continueRunStep() {
     }
     game.context.move = 0;
     game.context.mv = 1;
-    const moved = await domove(step.dx, step.dy);
+    const moved = await withCommandNopick(!!run.nopick, () => domove(step.dx, step.dy));
     if (run.travel) setTravelMapCursor();
     game.context.move = moved ? 1 : 0;
     if (run.travel && game.u?.ux === run.target.x && game.u?.uy === run.target.y) {
@@ -26303,15 +28199,11 @@ export async function domove(dx, dy) {
     }
 
     if (is_diag && !blocksMove(newx, newy)) {
-        const side1x = u.ux + dx, side1y = u.uy;
-        const side2x = u.ux, side2y = u.uy + dy;
-        const sokoBouldersBlock = !!game.level?.flags?.sokoban_rules;
-        const side1Blocked = blocksMove(side1x, side1y)
-            || (sokoBouldersBlock && sobj_at_basic(BOULDER, side1x, side1y));
-        const side2Blocked = blocksMove(side2x, side2y)
-            || (sokoBouldersBlock && sobj_at_basic(BOULDER, side2x, side2y));
-        if (side1Blocked && side2Blocked) {
-            await pline('You cannot pass that way.');
+        const squeezeReason = tightDiagonalSqueezeReason(u.ux, u.uy, dx, dy);
+        if (squeezeReason) {
+            if (squeezeReason === 1) await pline('Your body is too large to fit through.');
+            else if (squeezeReason === 2) await pline('You are carrying too much to get through.');
+            else await pline('You cannot pass that way.');
             game.context.move = 0;
             return false;
         }
@@ -26330,12 +28222,9 @@ export async function domove(dx, dy) {
     if (target?.typ === DOOR && (target.doormask & (D_CLOSED | D_LOCKED))) {
         if (game.context?.run) return bumpClosedDoor(dx, dy);
         if (target.doormask & D_LOCKED) {
-            // C ref: lock.c:doopen_indir().  A normal movement key against a
-            // locked door reports the lock without spending a turn; run/rush
-            // movement still uses the bump-into-door path above.
-            await pline('This door is locked.');
-            game.context.move = 0;
-            return false;
+            // C ref: lock.c:doopen_indir().  Auto-open reaches the locked-door
+            // branch before deciding whether autounlock should prompt.
+            return reportLockedDoorAndMaybeAutounlock(newx, newy);
         }
         if (await tryAutoOpenDoor(newx, newy)) return false;
         return bumpClosedDoor(dx, dy);
@@ -26381,7 +28270,7 @@ export async function domove(dx, dy) {
 
     if (await moveBlockedByBearTrap(dx, dy)) return true;
 
-    if (target && IS_POOL(target.typ)) {
+    if (target && IS_POOL(target.typ) && !game.context?.nopick) {
         // C ref: hack.c:domove_core(); paranoid movement into known liquid
         // is a zero-time prompt gate when no monster occupies the square.
         await pline(`You avoid stepping into the ${waterbodyNameAt(newx, newy)}.`);
@@ -26389,10 +28278,10 @@ export async function domove(dx, dy) {
         game.context.move = 0;
         return false;
     }
-    if (target && C.IS_LAVA(target.typ)) {
+    if (target && C.IS_LAVA(target.typ) && !game.context?.nopick) {
         // C ref: hack.c:swim_move_danger(); visible lava is blocked by the
         // paranoid swim/liquid safety gate before spending a turn.
-        await pline('You avoid stepping into the molten lava.');
+        await pline(`You avoid stepping into the ${waterbodyNameAt(newx, newy)}.`);
         maybeQueueSwimTip();
         game.context.move = 0;
         return false;
@@ -26443,6 +28332,7 @@ export async function domove(dx, dy) {
     refreshWarningAfterHeroMove();
     newsym(newx, newy);
     revealFakeCorridorNearHeroBasic(findVaultGuardBasic());
+    if (await poolEffectsAtHeroAfterMove()) return true;
     await checkSpecialRoomAfterMove();
     const autopicked = await autopickupHereAfterMove();
     if (!autopicked || floorObjectsAtHero().length)

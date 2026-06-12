@@ -1401,11 +1401,13 @@ async function dog_invent(mtmp, udist) {
         && could_reach_item(mtmp, obj.ox, obj.oy)) {
         return dog_eat(mtmp, obj, omx, omy, false);
     }
+    const deferPetPickup = !!obj._defer_pet_pickup;
+    if (deferPetPickup) delete obj._defer_pet_pickup;
     const carryamt = can_carry(mtmp, obj);
     if (carryamt > 0 && !obj.cursed && could_reach_item(mtmp, obj.ox, obj.oy)) {
         if (rn2(20) < edog.apport + 3) {
             if (rn2(Math.max(1, udist)) || !rn2(edog.apport)) {
-                if (!obj._defer_pet_pickup) {
+                if (!deferPetPickup) {
                     if (cansee(omx, omy)) await latch_more_frame_before_pet_inventory();
                     const picked = split_floor_object(obj, carryamt);
                     if (picked === obj) {
@@ -1594,7 +1596,6 @@ function m_avoid_kicked_loc(mtmp, nx, ny) {
 
 function pet_should_attack(mtmp, target) {
     if (!target || target.mtame) return false;
-    if (target.mpeaceful && !game.Conflict) return false;
     const petLevel = monster_level(mtmp);
     const petHp = mtmp.mhp ?? petLevel;
     const petHpMax = Math.max(1, mtmp.mhpmax ?? petHp);
@@ -1893,7 +1894,6 @@ function pet_goal(mtmp, after, udist, whappr) {
     // gulpmu() disables ordinary hero vision before later pet goal scans.
     const inMastersSight = !game.u?.uswallow && couldsee(mtmp.mx, mtmp.my);
     const dogHasMinvent = !!pet_droppable(mtmp);
-
     for (const obj of game.level?.objects || []) {
         if (typeof obj.otyp !== 'number') continue;
         const nx = obj.ox;

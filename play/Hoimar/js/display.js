@@ -24,6 +24,7 @@ import {
     WARNCOUNT, STR18, STR19, def_warnsyms, Is_rogue_level,
     M3_INFRAVISIBLE, In_endgame, Is_astralevel, Is_waterlevel, Is_firelevel,
     Is_airlevel, Is_earthlevel,
+    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED,
 } from './const.js';
 import { depth, distmin, dist2 } from './hacklib.js';
 import {
@@ -1443,6 +1444,36 @@ function _statusLine1() {
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
 }
 
+function hungerStateForDisplay(u) {
+    if (Number.isInteger(u?.uhs)) return u.uhs;
+    const h = Number.isFinite(u?.uhunger) ? u.uhunger : 900;
+    if (h > 1000) return SATIATED;
+    if (h > 150) return NOT_HUNGRY;
+    if (h > 50) return HUNGRY;
+    if (h > 0) return WEAK;
+    return FAINTING;
+}
+
+function hungerStatusText(u) {
+    switch (hungerStateForDisplay(u)) {
+    case SATIATED:
+        return 'Satiated';
+    case HUNGRY:
+        return 'Hungry';
+    case WEAK:
+        return 'Weak';
+    case FAINTING:
+        return 'Fainting';
+    case FAINTED:
+        return 'Fainted';
+    case STARVED:
+        return 'Starved';
+    case NOT_HUNGRY:
+    default:
+        return '';
+    }
+}
+
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
@@ -1458,6 +1489,8 @@ function _statusLine2() {
     const turn = game.flags?.time ? ` T:${displayedTurn}` : '';
     const conditions = [];
     const encStatus = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+    const hunger = hungerStatusText(u);
+    if (hunger) conditions.push(hunger);
     const statusEncumbrance = game._more && game._status_uencumber_override != null
         ? game._status_uencumber_override
         : (u.uencumber || 0);
@@ -1477,7 +1510,9 @@ function _statusLine2() {
     const ac = statusAcOverrideActive ? game._status_uac_override : (u.uac ?? 10);
     const goldSymbol = rogue_level_display() ? '*' : '$';
     // C ref: botl.c:describe_level().
-    const levelDesc = game.quest_dnum != null && u.uz?.dnum === game.quest_dnum
+    const levelDesc = game.dungeons?.[u.uz?.dnum]?.dname === 'The Tutorial'
+        ? `Tutorial:${u.uz?.dlevel || 1}`
+        : game.quest_dnum != null && u.uz?.dnum === game.quest_dnum
         ? `Home ${u.uz?.dlevel || 1}`
         : In_endgame(u.uz)
         ? endgame_status_level_desc(u.uz)
@@ -1586,12 +1621,30 @@ function renderOverrideScreen(display, screen) {
     }
 }
 
+function currentLatchedMoreScreen() {
+    if (!game._latched_more_screen) return '';
+    if (!game._latched_more_use_pending_topline || !game._pending_message) {
+        return game._latched_more_screen;
+    }
+    const rows = String(game._latched_more_screen).split('\n');
+    while (rows.length < 24) rows.push('');
+    rows[0] = `${game._pending_message}${game._more ? '--More--' : ''}`;
+    if (game._more) {
+        game._latched_more_cursor = [
+            Math.min(terminalCellWidth(rows[0]), COLNO - 1),
+            0,
+            1,
+        ];
+    }
+    return rows.slice(0, 24).join('\n');
+}
+
 // ── Build screen output ──
 function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
     if (game._latched_more_screen) {
-        renderOverrideScreen(display, game._latched_more_screen);
+        renderOverrideScreen(display, currentLatchedMoreScreen());
         return;
     }
     if (game._override_screen) {
@@ -1784,12 +1837,14 @@ function clearFatalPackedMonsterHitStatusLatch() {
     if (!game._monster_death_pending
         || !game._fatal_monster_attack_paused
         || !game._monster_fatal_preserve_hit_status) return;
+    if (!(game.wizard || game.flags?.debug || game.flags?.explore)) return;
     const line = game._pending_message || '';
     if (!line.includes('  ')
         || !String(line).split('  ').every(isSimpleMonsterHitYouLineForStatus)) return;
     // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl(),
-    // src/end.c:done().  Single deferred fatal-hit Mores can show
-    // pre-damage HP, but packed simple hit chains have advanced to HP 0.
+    // src/end.c:done().  Wizard/explore fatal prompts advance packed simple
+    // hit chains to HP 0; ordinary death/disclosure keeps the pre-fatal-hit
+    // status until disclose() starts.
     game._monster_fatal_preserve_hit_status = false;
     game._death_preserve_latched_status = false;
     game._latched_status_uhp = 0;

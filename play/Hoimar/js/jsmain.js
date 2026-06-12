@@ -200,6 +200,7 @@ export class NethackGame {
                 game._latched_more_screen = null;
                 game._latched_more_cursor = null;
                 game._latched_more_keep_until_dismiss = false;
+                game._latched_more_use_pending_topline = false;
             }
             if (game._override_screen) {
                 game._override_prev = game._override_screen; // let rhack know what was shown

@@ -987,6 +987,7 @@ function armor_base_bonus(obj) {
     case ORCISH_HELM:
     case DWARVISH_IRON_HELM:
     case HELMET:
+    case ELVEN_CLOAK:
     case CLOAK_OF_MAGIC_RESISTANCE:
     case CLOAK_OF_DISPLACEMENT:
     case LEATHER_JACKET:
@@ -1340,6 +1341,7 @@ export function apply_startup_role_state() {
     // C ref: src/polyself.c:set_uasmon().  Hero infravision comes from the
     // physical race's monster form while unpolymorphed.
     if (INFRAVISION_RACES.has(currentRaceName())) game.u.uprops.infravision = true;
+    if (currentRaceName() === 'orc') game.u.uprops.poison_resistance = true;
     if (role?.name?.m === 'Archeologist') {
         // C refs: src/u_init.c:u_init_misc(), src/attrib.c:arc_abil[].
         game.u.uprops.searching = true;
