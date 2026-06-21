@@ -15,7 +15,7 @@ import {
     ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
     RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
     ANTI_MAGIC, DOOR, IRONBARS, LADDER, LAVAWALL, MAGIC_PORTAL, MAGIC_TRAP,
-    ROOM, SQKY_BOARD, SLP_GAS_TRAP, STAIRS, STATUE_TRAP, VIBRATING_SQUARE, WEB,
+    CORR, ROOM, SCORR, SQKY_BOARD, SLP_GAS_TRAP, STAIRS, STATUE_TRAP, STONE, TREE, VIBRATING_SQUARE, WEB,
     ACCESSIBLE, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, IS_WATERWALL,
     I_SPECIAL, M_AP_FURNITURE, M_AP_OBJECT,
     MON_POLE_DIST, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE,
@@ -24,9 +24,9 @@ import {
     STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_CLOSE, STRAT_WAITMASK, A_DEX, A_STR, A_WIS, A_CON, A_CHA,
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     MM_NOMSG, Is_rogue_level,
-    COLNO, ROWNO, ROOMOFFSET, SHOPBASE, W_RING, W_ARM, W_ARMC, W_ARMOR, W_ACCESSORY, W_TOOL,
+    COLNO, ROWNO, ROOMOFFSET, MAXNROFROOMS, SHOPBASE, TEMPLE, W_RING, W_ARM, W_ARMC, W_ARMOR, W_ACCESSORY, W_TOOL,
     W_QUIVER, W_SADDLE, W_SWAPWEP, W_WEAPONS, isok, SPACE_POS, is_pit,
-    POOL, Is_waterlevel, TERMINAL_ROWS, WT_TOOMUCH_DIAGONAL,
+    POOL, Is_waterlevel, TERMINAL_ROWS, WT_TOOMUCH_DIAGONAL, WT_ELF,
 } from './const.js';
 import {
     newsym, queue_more_prompt, pline, flush_screen, clear_pending_message,
@@ -88,6 +88,7 @@ const M1_NEEDPICK = 0x00000040;
 const M1_HIDE = 0x00000100;
 const M1_CONCEAL = 0x00000080;
 const M1_BREATHLESS = 0x00000400;
+const M1_NOTAKE = 0x00000800;
 const M1_NOEYES = 0x00001000;
 const M1_NOHANDS = 0x00002000;
 const M1_MINDLESS = 0x00010000;
@@ -96,6 +97,7 @@ const M1_SLITHY = 0x00080000;
 const M1_UNSOLID = 0x00100000;
 const M1_REGEN = 0x00800000;
 const M1_SEE_INVIS = 0x01000000;
+const M1_TPORT = 0x02000000;
 const M1_CARNIVORE = 0x20000000;
 const M2_STRONG = 0x04000000;
 const M2_COLLECT = 0x40000000;
@@ -128,6 +130,7 @@ const TRAP_NOTE_NAMES = [
 const MCF_INDIRECT = 0x0001;
 const MCF_SIGHT = 0x0002;
 const MCF_HOSTILE = 0x0004;
+const M3_INFRAVISIBLE = 0x0200;
 const M3_COVETOUS = 0x001f;
 const WEAPON_CLASS = 2;
 const ARMOR_CLASS = 3;
@@ -160,29 +163,7 @@ function render_more_pager_screen_basic(text) {
     return lines.join('\n');
 }
 
-function show_serialized_override_basic(screen, cursor) {
-    const display = game.nhDisplay;
-    const term = display?.terminal || display;
-    if (term?.serialize && !term._teleportSerializeBase) {
-        const originalSerialize = term.serialize.bind(term);
-        Object.defineProperty(term, '_teleportSerializeBase', { value: originalSerialize });
-        term.serialize = () => ((game._override_screen || game._override_serialized_persistent)
-                && game._override_serialized_screen)
-            ? game._override_serialized_screen
-            : originalSerialize();
-    }
-    game._override_screen = screen;
-    game._override_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
-    game._override_serialized_screen = screen;
-    game._override_serialized_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
-    if (game.nhDisplay && cursor) {
-        game.nhDisplay.cursorCol = cursor[0];
-        game.nhDisplay.cursorRow = cursor[1];
-    }
-}
-
 function show_quest_leader_pager_basic(screen, cursor, action = '') {
-    show_serialized_override_basic(screen, cursor);
     game._latched_more_screen = screen;
     game._latched_more_cursor = [cursor[0], cursor[1], 1];
     game._latched_more_keep_until_dismiss = true;
@@ -471,6 +452,7 @@ const RUBBER_HOSE = 78;
 const QUARTERSTAFF = 79;
 const FLAIL = 81;
 const BULLWHIP = 82;
+const HEAVY_IRON_BALL = 477;
 const UNICORN_HORN = 261;
 const SILVER = 14;
 const BOW_LAUNCHERS = [YUMI, ELVEN_BOW, BOW, ORCISH_BOW];
@@ -487,6 +469,7 @@ const THROWN_SMALL_DAMAGE_DICE = new Map([
     [CROSSBOW_BOLT, 4],
     [DART, 3], [SHURIKEN, 8], [BOOMERANG, 9],
     [DAGGER, 4], [ELVEN_DAGGER, 5], [ORCISH_DAGGER, 3], [SILVER_DAGGER, 4],
+    [BULLWHIP, 2],
     [KNIFE, 3], [SHORT_SWORD, 6],
     [FLINT, 6], [ROCK, 3], [LOADSTONE, 3], [LUCKSTONE, 3],
 ]);
@@ -495,6 +478,7 @@ const THROWN_LARGE_DAMAGE_DICE = new Map([
     [CROSSBOW_BOLT, 6],
     [DART, 2], [SHURIKEN, 6], [BOOMERANG, 9],
     [DAGGER, 3], [ELVEN_DAGGER, 3], [ORCISH_DAGGER, 3], [SILVER_DAGGER, 3],
+    [BULLWHIP, 1],
     [KNIFE, 2], [SHORT_SWORD, 8],
     [FLINT, 6], [ROCK, 3], [LOADSTONE, 3], [LUCKSTONE, 3],
 ]);
@@ -510,7 +494,9 @@ const HTH_WEAPON_ORDER = [
     SCALPEL, KNIFE, WORM_TOOTH,
 ];
 const HTH_WEAPON_TYPES = new Set(HTH_WEAPON_ORDER);
-const BIMANUAL_HTH_WEAPONS = new Set([TSURUGI, DWARVISH_MATTOCK, TWO_HANDED_SWORD, BATTLE_AXE]);
+const BIMANUAL_HTH_WEAPONS = new Set([
+    TSURUGI, DWARVISH_MATTOCK, TWO_HANDED_SWORD, BATTLE_AXE, QUARTERSTAFF,
+]);
 const BASIC_MELEE_ATTACKS = new Set(['AT_CLAW', 'AT_KICK', 'AT_BITE', 'AT_STNG', 'AT_TUCH', 'AT_BUTT', 'AT_TENT', 'AT_WEAP']);
 const BASIC_MELEE_ADTYPES = new Set(['AD_PHYS', 'AD_ELEC', 'AD_COLD', 'AD_FIRE', 'AD_ACID', 'AD_BLND', 'AD_DRST', 'AD_DRDX', 'AD_DRCO', 'AD_STON', 'AD_LEGS']);
 const DISTANCE_ATTACK_TYPES = new Set(['AT_SPIT', 'AT_BREA', 'AT_MAGC', 'AT_GAZE']);
@@ -847,7 +833,14 @@ function rloc_basic(mtmp) {
     return false;
 }
 
+function monster_can_teleport_basic(mtmp) {
+    return !!((mtmp?.data?.mflags1 ?? 0) & M1_TPORT);
+}
+
 function monster_relocation_subject_basic(mtmp, appearmsg) {
+    // C ref: src/teleport.c:rloc_to_core().  STRAT_APPEARMSG can force the
+    // relocation message while blind, but Amonnam()/Monnam() still name the
+    // monster only when canspotmon() can identify it.
     if (!hero_can_spot_monster(mtmp)) return 'It';
     if (mtmp?.isshk && shopkeeper_name(mtmp)) return shopkeeper_name(mtmp);
     const named = named_monster_name(mtmp);
@@ -858,20 +851,29 @@ function monster_relocation_subject_basic(mtmp, appearmsg) {
     return `${article} ${name}`;
 }
 
+function hero_can_notice_relocated_monster_basic(mtmp) {
+    if (!mtmp || mtmp.mundetected) return false;
+    if (mtmp.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
+    return hero_can_spot_monster(mtmp) || couldsee(mtmp.mx, mtmp.my);
+}
+
 async function emit_monster_relocation_message_basic(mtmp, oldx, oldy, opts = {}) {
     if (!opts.msg) return;
     // C ref: src/teleport.c:rloc_to_core().  RLOC_MSG/STRAT_APPEARMSG
     // relocation plines are ordinary tty toplines and can block an older
     // --More-- before subsequent monster attacks update map or status.
     let appearmsg = !!((mtmp?.mstrategy || 0) & STRAT_APPEARMSG);
-    if (!hero_can_spot_monster(mtmp) && !appearmsg) return;
+    if (!hero_can_notice_relocated_monster_basic(mtmp) && !appearmsg) return;
     const du = dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my);
     const next = du <= 2 ? ' next to you' : '';
     const nearu = !next && du <= BOLT_LIM * BOLT_LIM ? ' close by' : '';
     const subject = monster_relocation_subject_basic(mtmp, appearmsg);
     if (appearmsg) mtmp.mstrategy &= ~STRAT_APPEARMSG;
     const packed = await append_monster_topline(`${subject} ${appearmsg ? 'suddenly ' : ''}${hero_is_blind_basic() ? 'arrives' : 'appears'}${next || nearu}!`);
-    if (!packed) game._relocation_more_deferred = true;
+    if (!packed) {
+        game._relocation_more_deferred = true;
+        game._after_more_needs_prompt = false;
+    }
 }
 
 async function mnexto_basic(mtmp, opts = {}) {
@@ -911,7 +913,7 @@ function set_apparxy_basic(mtmp) {
     }
 
     const notseen = mtmp.mcansee === 0
-        || (game.u?.uinvis && !monster_perceives_invisible(mtmp));
+        || (hero_invisible_basic() && !monster_perceives_invisible(mtmp));
     const notthere = !!game.u?.uprops?.displaced && mtmp.data?.name !== 'DISPLACER_BEAST';
     let displ = 0;
     if (game.u?.uprops?.underwater || game.u?.underwater || game.Underwater) displ = 1;
@@ -1175,6 +1177,46 @@ function non_tame_movement_opportunity(mtmp, state) {
     if (mtmp.mcansee === 0 && !rn2(4)) return true;
     if (mtmp.mpeaceful) return true;
     return false;
+}
+
+function is_watch_basic(mtmp) {
+    return mtmp?.data?.name === 'WATCHMAN' || mtmp?.data?.name === 'WATCH_CAPTAIN';
+}
+
+function picking_lock_target_basic() {
+    const state = game._pick_lock;
+    if (!state || !Number.isFinite(state.x) || !Number.isFinite(state.y)) return null;
+    return { x: state.x, y: state.y };
+}
+
+function is_digging_basic() {
+    return !!game.context?.digging || !!game._digging || !!game._digging_context;
+}
+
+async function watch_on_duty_basic(mtmp) {
+    // C ref: src/monmove.c:watch_on_duty().  Peaceful town watchmen check
+    // the hero's intended square, visibility, and an rn2(3) gate before
+    // looking for lock-picking or digging violations.
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    const dx = game.u?.dx ?? 0;
+    const dy = game.u?.dy ?? 0;
+    if (!mtmp.mpeaceful
+        || !in_town_basic(ux + dx, uy + dy)
+        || mtmp.mcansee === 0
+        || !m_canseeu_basic(mtmp)
+        || rn2(3)) {
+        return;
+    }
+    const lockTarget = picking_lock_target_basic();
+    if (lockTarget) {
+        const loc = game.level?.at(lockTarget.x, lockTarget.y);
+        if (loc && IS_DOOR(loc.typ) && (loc.doormask & D_LOCKED) && couldsee(mtmp.mx, mtmp.my)) {
+            await append_monster_topline('Watchman shouts: "Hey, stop picking that lock!"');
+        }
+    } else if (is_digging_basic()) {
+        // Full watch_dig() escalation is shared with digging/dokick backlog.
+    }
 }
 
 function has_gold_basic(objects) {
@@ -1731,6 +1773,14 @@ function boulder_at(x, y) {
     return objects_at(x, y).some((obj) => obj.otyp === BOULDER);
 }
 
+function sobj_at_basic(otyp, x, y) {
+    return objects_at(x, y).find((obj) => obj.otyp === otyp) || null;
+}
+
+function sgnBasic(value) {
+    return value < 0 ? -1 : value > 0 ? 1 : 0;
+}
+
 function could_reach_item(mtmp, x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
@@ -2069,6 +2119,28 @@ function misc_item_candidate_basic(mtmp) {
 
     let found = null;
     for (const obj of mtmp.inventory || []) {
+        if (found?.kind !== 'BULLWHIP' && obj?.otyp === BULLWHIP
+            && !mtmp.mpeaceful && hero_primary_weapon_basic() && !rn2(5)
+            && obj === mtmp.mw && monster_apparent_target_is_hero_basic(mtmp)
+            && monster_next_to_hero_basic(mtmp) && !game.u?.uswallow
+            && (hero_can_let_go_weapon_basic(hero_primary_weapon_basic())
+                || (game.u?.twoweap && hero_can_let_go_weapon_basic(hero_secondary_weapon_basic())))) {
+            found = { kind: 'BULLWHIP', obj };
+        }
+        if (found?.kind !== 'WAN_MAKE_INVISIBLE'
+            && obj?.otyp === WAN_MAKE_INVISIBLE && (obj.spe ?? 0) > 0
+            && !mtmp.minvis && !mtmp.invis_blkd
+            && (!mtmp.mpeaceful || hero_sees_invisible_basic())
+            && (!mon_has_attack_type(mtmp, 'AT_GAZE') || mtmp.mcan)) {
+            found = { kind: 'WAN_MAKE_INVISIBLE', obj };
+        }
+        if (found?.kind !== 'POT_INVISIBILITY'
+            && obj?.otyp === POT_INVISIBILITY
+            && !mtmp.minvis && !mtmp.invis_blkd
+            && (!mtmp.mpeaceful || hero_sees_invisible_basic())
+            && (!mon_has_attack_type(mtmp, 'AT_GAZE') || mtmp.mcan)) {
+            found = { kind: 'POT_INVISIBILITY', obj };
+        }
         if (found?.kind !== 'WAN_SPEED_MONSTER'
             && obj?.otyp === WAN_SPEED_MONSTER && (obj.spe ?? 0) > 0
             && mtmp.mspeed !== MFAST && !mtmp.isgd) {
@@ -2082,8 +2154,35 @@ function misc_item_candidate_basic(mtmp) {
     return found;
 }
 
+function hero_primary_weapon_basic() {
+    return (game.inventory || []).find((obj) => hero_object_wornmask_basic(obj) & W_WEP) || null;
+}
+
+function hero_secondary_weapon_basic() {
+    return (game.inventory || []).find((obj) => hero_object_wornmask_basic(obj) & W_SWAPWEP) || null;
+}
+
+function hero_weapon_welded_basic(obj) {
+    return !!(obj && obj.cursed && (hero_object_wornmask_basic(obj) & W_WEP)
+        && object_class(obj) === WEAPON_CLASS);
+}
+
+function hero_can_let_go_weapon_basic(obj) {
+    return !!obj && !hero_weapon_welded_basic(obj);
+}
+
+function monster_apparent_target_is_hero_basic(mtmp) {
+    return (mtmp.mux ?? game.u?.ux) === game.u?.ux
+        && (mtmp.muy ?? game.u?.uy) === game.u?.uy;
+}
+
+function monster_next_to_hero_basic(mtmp) {
+    return dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my) <= 2;
+}
+
 function potion_display_name(obj) {
     if (object_type_known_basic(obj?.otyp)) {
+        if (obj?.otyp === POT_INVISIBILITY) return 'a potion of invisibility';
         if (obj?.otyp === POT_SPEED) return 'a potion of speed';
         if (obj?.otyp === POT_HEALING) return 'a potion of healing';
         if (obj?.otyp === POT_EXTRA_HEALING) return 'a potion of extra healing';
@@ -2097,8 +2196,8 @@ async function mquaffmsg_basic(mtmp, obj) {
     // C ref: muse.c:mquaffmsg().
     if (hero_can_spot_monster(mtmp)) {
         await append_monster_topline(`${monster_subject(mtmp)} drinks ${potion_display_name(obj)}!`);
-    } else {
-        await pline('You hear a chugging sound.');
+    } else if (!(game.u?.uprops?.deaf || game.u?.udeaf)) {
+        await append_monster_effect_topline('You hear a chugging sound.');
     }
 }
 
@@ -2225,6 +2324,12 @@ async function maybe_use_defensive_item_basic(mtmp, tryescape = false) {
 async function maybe_use_misc_item_basic(mtmp) {
     const candidate = misc_item_candidate_basic(mtmp);
     if (!candidate) return false;
+    if (candidate.kind === 'BULLWHIP') {
+        return use_bullwhip_misc_basic(mtmp);
+    }
+    if (candidate.kind === 'WAN_MAKE_INVISIBLE' || candidate.kind === 'POT_INVISIBILITY') {
+        return use_invisibility_misc_basic(mtmp, candidate.obj);
+    }
     if (candidate.kind === 'WAN_SPEED_MONSTER') {
         if (!await mzapwand_basic(mtmp, candidate.obj, true)) return false;
         await mon_adjust_speed_basic(mtmp, 1);
@@ -2237,6 +2342,114 @@ async function maybe_use_misc_item_basic(mtmp) {
         return true;
     }
     return false;
+}
+
+function mon_set_minvis_basic(mtmp, cursedPotion = false) {
+    // C ref: worn.c:mon_set_minvis().
+    if (!mtmp) return;
+    mtmp.perminvis = cursedPotion ? 0 : 1;
+    if (!mtmp.invis_blkd) mtmp.minvis = mtmp.perminvis;
+}
+
+async function use_invisibility_misc_basic(mtmp, obj) {
+    // C ref: muse.c:use_misc() MUSE_WAN_MAKE_INVISIBLE/MUSE_POT_INVISIBILITY.
+    if (!obj) return false;
+    const precheck = monster_potion_precheck_basic(mtmp, obj);
+    if (precheck) {
+        await mquaffmsg_basic(mtmp, obj);
+        if (obj.otyp === POT_INVISIBILITY) remove_monster_inventory_object(mtmp, obj);
+        return true;
+    }
+
+    const vis = cansee(mtmp.mx, mtmp.my);
+    const vismon = hero_can_spot_monster(mtmp);
+    const visibleSubject = vismon ? monster_subject(mtmp) : '';
+    const nambuf = monster_name(mtmp);
+    if (obj.otyp === WAN_MAKE_INVISIBLE) {
+        if (!await mzapwand_basic(mtmp, obj, true)) return false;
+    } else {
+        await mquaffmsg_basic(mtmp, obj);
+    }
+
+    mon_set_minvis_basic(mtmp, !!obj.cursed);
+    if (vismon && mtmp.minvis) {
+        if (hero_can_spot_monster(mtmp)) {
+            await append_monster_effect_topline(
+                `${monster_subject_suffix(visibleSubject)} body takes on a ${hallucinating() ? 'normal' : 'strange'} transparency.`,
+            );
+        } else {
+            await append_monster_effect_topline(`Suddenly you cannot see the ${nambuf}.`);
+            if (vis) map_invisible_basic(mtmp.mx, mtmp.my);
+        }
+    } else if (vismon && !mtmp.minvis) {
+        await append_monster_effect_topline(`${monster_subject(mtmp)} briefly seems to be transparent.`);
+    } else if (!vismon && hero_can_spot_monster(mtmp)) {
+        await append_monster_effect_topline(`${monster_subject(mtmp)} suddenly appears!`);
+    }
+
+    if (obj.otyp === POT_INVISIBILITY) remove_monster_inventory_object(mtmp, obj);
+    return true;
+}
+
+async function use_bullwhip_misc_basic(mtmp) {
+    // C ref: muse.c:use_misc() MUSE_BULLWHIP.
+    const vismon = hero_can_spot_monster(mtmp);
+    const theWhip = vismon ? 'The bullwhip' : 'A whip';
+    let whereTo = rn2(4);
+    let obj = hero_primary_weapon_basic();
+    const secondary = hero_secondary_weapon_basic();
+    if (!obj || !hero_can_let_go_weapon_basic(obj)
+        || (game.u?.twoweap && hero_can_let_go_weapon_basic(secondary) && rn2(2))) {
+        obj = secondary;
+    }
+    if (!obj) return false;
+    const hand = BIMANUAL_HTH_WEAPONS.has(obj.otyp) ? 'hands' : 'hand';
+    const weapon = `the ${monster_weapon_xname(obj)}`;
+    if (vismon)
+        await append_monster_topline(`${monster_subject(mtmp)} flicks a bullwhip towards your ${hand}!`);
+    if (obj.otyp === HEAVY_IRON_BALL) {
+        await pline(`${theWhip} fails to wrap around ${weapon}.`);
+        return true;
+    }
+    await pline(`${theWhip} wraps around ${weapon} you're wielding!`);
+    if (hero_weapon_welded_basic(obj)) {
+        await pline(`${obj?.quan > 1 ? 'They are' : 'It is'} welded to your ${hand}!`);
+        whereTo = 0;
+    }
+    if (!whereTo) {
+        await pline('The whip slips free.');
+        return true;
+    }
+    if (whereTo === 3 && monster_hates_silver_basic(mtmp)
+        && (OBJECT_MATERIAL[obj.otyp] ?? 0) === SILVER) {
+        whereTo = 2;
+    }
+    const inv = game.inventory || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    obj.owornmask = 0;
+    obj.wielded = false;
+    obj.alternate = false;
+    obj.quivered = false;
+    game._hero_unweapon = true;
+    if (game.uquiver === obj) game.uquiver = null;
+    if (whereTo === 1) {
+        const packed = await append_monster_topline(`${monster_subject(mtmp)} yanks ${weapon} from your ${hand}!`);
+        if (!packed) game._monster_attack_resume_behind_after_more = true;
+        stackobj(place_object(obj, mtmp.mx, mtmp.my));
+        newsym(mtmp.mx, mtmp.my);
+    } else if (whereTo === 2) {
+        const packed = await append_monster_topline(`${monster_subject(mtmp)} yanks ${weapon} to the floor!`);
+        if (!packed) game._monster_attack_resume_behind_after_more = true;
+        stackobj(place_object(obj, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my));
+        newsym(game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my);
+    } else {
+        const packed = await append_monster_topline(`${monster_subject(mtmp)} snatches ${weapon}!`);
+        if (!packed) game._monster_attack_resume_behind_after_more = true;
+        mtmp.inventory = mtmp.inventory || [];
+        mtmp.inventory.unshift(obj);
+    }
+    return true;
 }
 
 async function mon_wield_item_basic(mtmp) {
@@ -3315,9 +3528,23 @@ function max_mon_load(mtmp) {
 }
 
 function can_carry(mtmp, obj) {
+    // C ref: src/mon.c:can_carry().
+    if (!obj || (mtmp?.data?.mflags1 & M1_NOTAKE)) return 0;
+    if (!can_touch_safely_basic(mtmp, obj)) return 0;
+    const iquan = Math.max(1, obj.quan || 1);
+    if (iquan > 1) {
+        const glomper = (mtmp?.data?.mlet === 'S_DRAGON'
+                && (object_class(obj) === COIN_CLASS || object_class(obj) === GEM_CLASS))
+            || mon_has_attack_type(mtmp, 'AT_ENGL');
+        if ((mtmp?.data?.mflags1 & M1_NOHANDS) && !glomper) return 1;
+    }
+    if (mtmp?.isshk) return iquan;
+    if (mtmp?.mpeaceful && !mtmp?.mtame) return 0;
     if (obj?.cursed && mtmp.mtame) return 0;
+    if (((mtmp?.data?.mflags2 ?? 0) & M2_ROCKTHROW) && obj.otyp === BOULDER) return iquan;
+    if (mtmp?.data?.mlet === 'S_NYMPH' && object_class(obj) === ROCK_CLASS) return 0;
     if (current_mon_load(mtmp) + object_weight_basic(obj) > max_mon_load(mtmp)) return 0;
-    return Math.max(1, obj?.quan || 1);
+    return iquan;
 }
 
 function object_material_basic(obj) {
@@ -3432,7 +3659,6 @@ function searches_for_item_basic(mtmp, obj) {
 
 function mon_would_take_item(mtmp, obj) {
     if (!obj || typeof obj.otyp !== 'number') return false;
-    if (obj.otyp === ROCK) return false;
     const cls = object_class(obj);
     const pctload = Math.trunc((current_mon_load(mtmp) * 100) / Math.max(1, max_mon_load(mtmp)));
     if (mon_is_unicorn_basic(mtmp) && object_material_basic(obj) !== GEMSTONE) return false;
@@ -3472,6 +3698,9 @@ function m_search_items_basic(mtmp, ggx, ggy, appr) {
             const pile = objects_at(xx, yy);
             if (!pile.length) continue;
             for (const obj of pile) {
+                // C ref: src/monmove.c:m_search_items().  Monsters may pick
+                // rocks up, but do not detour toward them as item goals.
+                if (obj.otyp === ROCK) continue;
                 const wouldTake = mon_would_take_item(mtmp, obj);
                 const carryAmount = can_carry(mtmp, obj);
                 const wouldConsume = mon_would_consume_item(mtmp, obj);
@@ -3498,14 +3727,31 @@ function m_search_items_basic(mtmp, ggx, ggy, appr) {
 async function mpickstuff_basic(mtmp) {
     const pile = objects_at(mtmp.mx, mtmp.my);
     for (const obj of pile) {
-        if (!mon_would_take_item(mtmp, obj) || can_carry(mtmp, obj) <= 0) continue;
+        if (!mon_would_take_item(mtmp, obj)) continue;
+        const carryAmount = can_carry(mtmp, obj);
+        if (carryAmount <= 0) continue;
         if (cansee(mtmp.mx, mtmp.my)) {
             await append_monster_topline(`${monster_subject(mtmp)} picks up ${floor_object_name(obj)}.`);
         }
-        const idx = game.level.objects.indexOf(obj);
-        if (idx >= 0) game.level.objects.splice(idx, 1);
+        let picked = obj;
+        if (carryAmount !== (obj.quan || 1)) {
+            const oldQuan = obj.quan || 1;
+            const oldWeight = obj.owt ?? object_weight_basic(obj);
+            obj.quan = Math.max(1, oldQuan - carryAmount);
+            obj.owt = object_weight_basic(obj);
+            picked = {
+                ...obj,
+                quan: carryAmount,
+                o_id: next_ident(),
+                owornmask: 0,
+                owt: Math.max(1, oldWeight - (obj.owt || 0)),
+            };
+        } else {
+            const idx = game.level.objects.indexOf(obj);
+            if (idx >= 0) game.level.objects.splice(idx, 1);
+        }
         mtmp.inventory = mtmp.inventory || [];
-        mtmp.inventory.unshift(obj);
+        mtmp.inventory.unshift(picked);
         mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | I_SPECIAL;
         newsym(mtmp.mx, mtmp.my);
         if (hallucinating()) see_monsters();
@@ -3526,6 +3772,110 @@ function refresh_monster_door_vision(mtmp) {
     vision_reset();
     vision_recalc(0);
     game.vision_full_recalc = 0;
+}
+
+function room_contains_basic(room, x, y, roomno) {
+    if (!room) return false;
+    if (room.irregular) {
+        const loc = game.level?.at(x, y);
+        return !!loc && !loc.edge && loc.roomno === roomno;
+    }
+    return x >= room.lx - 1 && x <= room.hx + 1
+        && y >= room.ly - 1 && y <= room.hy + 1;
+}
+
+function in_town_basic(x, y) {
+    // C ref: src/hack.c:in_town().
+    if (!game.level?.flags?.has_town) return false;
+    let hasSubrooms = false;
+    const rooms = game.level?.rooms || [];
+    for (let i = 0; i < rooms.length; i++) {
+        const room = rooms[i];
+        if (!room?.nsubrooms) continue;
+        hasSubrooms = true;
+        if (room_contains_basic(room, x, y, i + ROOMOFFSET)) return true;
+    }
+    return !hasSubrooms;
+}
+
+function refresh_dig_vision_basic(x, y) {
+    newsym(x, y);
+    vision_reset();
+    vision_recalc(0);
+    game.vision_full_recalc = 0;
+}
+
+function create_dig_pile_object_basic(otyp, x, y) {
+    const obj = mksobj(otyp, true, false);
+    place_object(obj, x, y);
+    if (otyp === BOULDER) {
+        // C refs: src/mkobj.c:place_object(), src/vision.c:block_point().
+        vision_reset();
+        vision_recalc(0);
+        game.vision_full_recalc = 0;
+    }
+    newsym(x, y);
+    return obj;
+}
+
+async function mdig_tunnel_basic(mtmp) {
+    // C ref: src/dig.c:mdig_tunnel().
+    const x = mtmp.mx;
+    const y = mtmp.my;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const pile = rnd(12);
+
+    if (loc.typ === SDOOR) loc.typ = DOOR;
+
+    if (closed_door_basic(x, y)) {
+        const trapped = !!(loc.doormask & D_TRAPPED);
+        set_door_mask_basic(loc, trapped ? D_NODOOR : D_BROKEN);
+        refresh_dig_vision_basic(x, y);
+        if (trapped) return await mb_trapped_basic(mtmp, cansee(x, y));
+        if (game.flags?.verbose !== false && !rn2(3))
+            await append_monster_topline('You feel an unexpected draft.');
+        return false;
+    }
+
+    if (loc.typ === SCORR) {
+        loc.typ = CORR;
+        loc.flags = 0;
+        refresh_dig_vision_basic(x, y);
+        await append_monster_topline('You feel a draft.');
+        return false;
+    }
+
+    if (!IS_OBSTRUCTED(loc.typ) && !IS_TREE(loc.typ)) return false;
+    if ((loc.wall_info & W_NONDIGGABLE) !== 0) return false;
+
+    if (IS_WALL(loc.typ)) {
+        if (game.flags?.verbose !== false && !rn2(5))
+            await append_monster_topline('You hear crashing rock.');
+        if (game.level?.flags?.is_maze_lev) {
+            loc.typ = ROOM;
+            loc.flags = 0;
+        } else if (game.level?.flags?.is_cavernous_lev && !in_town_basic(x, y)) {
+            loc.typ = CORR;
+            loc.flags = 0;
+        } else {
+            loc.typ = DOOR;
+            set_door_mask_basic(loc, D_NODOOR);
+        }
+    } else if (IS_TREE(loc.typ)) {
+        loc.typ = ROOM;
+        loc.flags = 0;
+        // C may create tree fruit here; no current JS caller exposes that path.
+    } else {
+        loc.typ = CORR;
+        loc.flags = 0;
+        if (pile && pile < 5)
+            create_dig_pile_object_basic(pile === 1 ? BOULDER : ROCK, x, y);
+    }
+
+    if (!sobj_at_basic(BOULDER, x, y)) refresh_dig_vision_basic(x, y);
+    else newsym(x, y);
+    return false;
 }
 
 function remove_dead_monster(mtmp) {
@@ -3611,9 +3961,13 @@ function shopkeeper_name(mtmp) {
 
 function hero_can_spot_monster(mtmp) {
     if (!mtmp || mtmp.mundetected) return false;
-    if (!cansee(mtmp.mx, mtmp.my)) return false;
     if (mtmp.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
-    return true;
+    if (cansee(mtmp.mx, mtmp.my)) return true;
+    // C refs: include/display.h:canseemon(), include/display.h:see_with_infrared().
+    return !(game.u?.ublind || game.u?.uprops?.blind || game.u?.uprops?.blinded)
+        && !!game.u?.uprops?.infravision
+        && !!((mtmp.data?.mflags3 ?? 0) & M3_INFRAVISIBLE)
+        && couldsee(mtmp.mx, mtmp.my);
 }
 
 function map_invisible_basic(x, y) {
@@ -3704,6 +4058,16 @@ function object_base_name(obj) {
         return 'gray stone';
     case DAGGER:
         return 'dagger';
+    case SPEAR:
+        return 'spear';
+    case ELVEN_SPEAR:
+        return 'elven spear';
+    case ORCISH_SPEAR:
+        return 'orcish spear';
+    case DWARVISH_SPEAR:
+        return 'dwarvish spear';
+    case SILVER_SPEAR:
+        return 'silver spear';
     case ELVEN_DAGGER:
         return 'runed dagger';
     case ORCISH_DAGGER:
@@ -4229,13 +4593,6 @@ async function show_blocking_monster_message(line) {
     if (!line) return;
     if (game._life_saving_silent_monster_resume) return;
     clear_transient_travel_description_for_monster_line();
-    if (game._monster_topline_stop_after_esc_more
-        && (is_simple_monster_hit_you_line(line) || is_simple_monster_hit_you_chain(line))) {
-        // C refs: win/tty/topl.c:more()/update_topl().  ESC at --More--
-        // leaves the tty message window in STOP mode; ordinary later monster
-        // hit lines update history/state without becoming the visible prompt.
-        return;
-    }
     if (game._nomovemsg === 'You survived that attempt on your life.'
         && game._pending_message === "OK, so you don't die."
         && !game._more
@@ -4243,9 +4600,17 @@ async function show_blocking_monster_message(line) {
         && topline_can_pack_message(game._pending_message, line)) {
         // C refs: src/end.c:savelife(), src/allmain.c:moveloop_core(),
         // win/tty/topl.c:update_topl().  Declining wizard-mode death returns
-        // to the interrupted monster pass; combat lines can keep packing
-        // behind the OK line until the saved-life nomovemsg boundary blocks.
+        // to the interrupted monster pass; the resumed physical tail packs
+        // behind the OK line and then blocks before later monsters advance.
         game._pending_message = `${game._pending_message}  ${line}`;
+        queue_more_prompt();
+        return;
+    }
+    if (game._monster_topline_stop_after_esc_more
+        && (is_simple_monster_hit_you_line(line) || is_simple_monster_hit_you_chain(line))) {
+        // C refs: win/tty/topl.c:more()/update_topl().  ESC at --More--
+        // leaves the tty message window in STOP mode; ordinary later monster
+        // hit lines update history/state without becoming the visible prompt.
         return;
     }
     if (game._nomovemsg === 'You survived that attempt on your life.'
@@ -4774,6 +5139,22 @@ export async function finish_deferred_monster_trap_effect() {
         await finish_deferred_monster_postmove(mtmp, MMOVE_DONE);
         return true;
     }
+    if (kind === 'rolling-boulder') {
+        const status = finish_rolling_boulder_trap_basic(mtmp, trap);
+        const nextMon = game._rolling_boulder_trap_killed_next_mon || null;
+        game._rolling_boulder_trap_killed_next_mon = null;
+        if (trap_mon_visible(mtmp)) trap.tseen = true;
+        if (status === MMOVE_DIED) {
+            game._resume_movemon_after_mon = mtmp;
+            game._resume_movemon_next_mon = nextMon;
+            game._resume_somebody_can_move = !!game._resume_somebody_can_move
+                || mtmp.movement >= NORMAL_SPEED;
+            game._monster_attack_resume_behind_after_more = true;
+        } else if (game.level?.monsters?.includes(mtmp)) {
+            await finish_deferred_monster_postmove(mtmp, status);
+        }
+        return true;
+    }
     return false;
 }
 
@@ -5017,6 +5398,281 @@ async function mintrap_rocktrap_basic(mtmp, trap) {
     return (await thitm_basic(0, mtmp, otmp, d(2, 6))) ? MMOVE_DIED : MMOVE_MOVED;
 }
 
+function launch_other_side_for_trap_basic(trap) {
+    if (trap?.launch2 && isok(trap.launch2.x, trap.launch2.y)) return trap.launch2;
+    const launch = trap?.launch || { x: trap?.tx ?? 0, y: trap?.ty ?? 0 };
+    return {
+        x: (trap?.tx ?? 0) - (launch.x - (trap?.tx ?? 0)),
+        y: (trap?.ty ?? 0) - (launch.y - (trap?.ty ?? 0)),
+    };
+}
+
+function extract_rolling_boulder_basic(trap) {
+    // C ref: src/trap.c:launch_obj(). Rolling boulder traps try the recorded
+    // launch square first, then the opposite side of the trap.
+    const launch = trap?.launch || { x: trap?.tx ?? 0, y: trap?.ty ?? 0 };
+    const launch2 = launch_other_side_for_trap_basic(trap);
+    let obj = sobj_at_basic(BOULDER, launch.x, launch.y);
+    let from = launch;
+    let to = launch2;
+    if (!obj) {
+        obj = sobj_at_basic(BOULDER, launch2.x, launch2.y);
+        from = launch2;
+        to = launch;
+    }
+    if (!obj) return null;
+    return { obj, from, to };
+}
+
+function move_floor_object_basic(obj, x, y) {
+    if (!obj) return;
+    const oldx = obj.ox;
+    const oldy = obj.oy;
+    obj.ox = x;
+    obj.oy = y;
+    newsym(oldx, oldy);
+    stackobj(obj);
+    if (obj.otyp === BOULDER) {
+        // C refs: src/mkobj.c:place_object(), src/vision.c:block_point().
+        // A boulder at its resting spot blocks later line-of-sight checks.
+        vision_reset();
+        vision_recalc(0);
+    }
+    newsym(x, y);
+}
+
+function remove_floor_object_basic(obj) {
+    const objects = game.level?.objects || [];
+    const idx = objects.indexOf(obj);
+    if (idx >= 0) objects.splice(idx, 1);
+}
+
+function start_rolling_boulder_launch_basic(launch) {
+    if (!launch?.obj) return null;
+    // C refs: src/trap.c:launch_obj(), src/mkobj.c:obj_extract_self(),
+    // src/mkobj.c:remove_object(). Extracting a boulder updates vision
+    // blockage before the temporary rolling glyph is displayed.
+    const objects = game.level?.objects || [];
+    const wasOnFloor = objects.includes(launch.obj);
+    if (wasOnFloor) {
+        remove_floor_object_basic(launch.obj);
+        vision_reset();
+        vision_recalc(0);
+        newsym(launch.from.x, launch.from.y);
+    }
+    return launch;
+}
+
+function monster_can_snatch_rolling_boulder_basic(mon) {
+    return !!((mon?.data?.mflags2 ?? 0) & M2_ROCKTHROW);
+}
+
+function monster_pickup_rolling_boulder_basic(mon, obj) {
+    const objects = game.level?.objects || [];
+    const idx = objects.indexOf(obj);
+    if (idx >= 0) objects.splice(idx, 1);
+    obj.ox = 0;
+    obj.oy = 0;
+    mon.inventory = mon.inventory || [];
+    mon.inventory.unshift(obj);
+}
+
+function queue_monster_trap_after_more_basic(line) {
+    if (!line) return;
+    if (!game._more) queue_more_prompt();
+    game._after_more_message = game._after_more_message
+        ? `${game._after_more_message}  ${line}`
+        : line;
+    game._after_more_needs_prompt = false;
+    game._monster_topline_deferred = true;
+    game._monster_attack_more_latched = true;
+    game._monster_attack_pause_after_more = true;
+    game._monster_turn_paused_for_more = true;
+}
+
+function rolling_boulder_hit_message_basic(mon, damage) {
+    return `The boulder hits the ${monster_name(mon)}${damage_exclam_basic(damage)}`;
+}
+
+function monster_death_verb_basic(mon) {
+    // C ref: src/mthrowu.c:ohitmon(). Living visible monsters are "killed";
+    // nonliving and unseen kills are "destroyed". Current monster data does
+    // not expose every C nonliving predicate, so keep the visible living path
+    // precise and fall back to the ordinary kill wording otherwise.
+    void mon;
+    return 'killed';
+}
+
+function rolling_boulder_kill_message_basic(mon) {
+    return `${monster_subject(mon)} is ${monster_death_verb_basic(mon)}!`;
+}
+
+function rolling_boulder_mondied_basic(mon) {
+    // C refs: src/mthrowu.c:ohitmon(), src/mon.c:mondied().
+    drop_monster_inventory_basic(mon);
+    const makeCorpse = corpse_chance_basic(mon);
+    if (makeCorpse) make_monster_corpse_basic(mon);
+    remove_dead_monster(mon);
+}
+
+function rolling_boulder_hit_monster_basic(mon) {
+    // C ref: src/mthrowu.c:ohitmon(). A rolling boulder uses the ordinary
+    // object-vs-monster attack roll, then dmgval() for boulder damage.
+    const monsters = game.level?.monsters || [];
+    const monIndex = monsters.indexOf(mon);
+    const nextMon = monIndex >= 0 ? (monsters[monIndex + 1] || null) : null;
+    const attack = 5 + monster_armor_class_basic(mon);
+    const dieroll = rnd(20);
+    if (attack < dieroll) return { hit: false, line: `The boulder misses the ${monster_name(mon)}.` };
+    const damage = rnd(20);
+    const line = rolling_boulder_hit_message_basic(mon, damage);
+    mon.msleeping = 0;
+    mon.mhp = (mon.mhp ?? mon.mhpmax ?? 1) - damage;
+    if (mon.mhp > 0) return { hit: true, killed: false, line };
+    const killLine = rolling_boulder_kill_message_basic(mon);
+    rolling_boulder_mondied_basic(mon);
+    return { hit: true, killed: true, nextMon, line: `${line}  ${killLine}` };
+}
+
+function rolling_boulder_has_visible_monster_target_basic(trap) {
+    const launch = extract_rolling_boulder_basic(trap);
+    if (!launch) return false;
+    const { from, to } = launch;
+    const dx = sgnBasic(to.x - from.x);
+    const dy = sgnBasic(to.y - from.y);
+    const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+    let x = from.x;
+    let y = from.y;
+    for (let i = 0; i < dist; i++) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) return false;
+        const mon = (game.level?.monsters || []).find((candidate) =>
+            candidate.mx === x && candidate.my === y);
+        if (mon && cansee(x, y)) return true;
+    }
+    return false;
+}
+
+function rolling_boulder_visible_monster_frame_basic(trap) {
+    const launch = extract_rolling_boulder_basic(trap);
+    if (!launch) return null;
+    const { from, to } = launch;
+    const dx = sgnBasic(to.x - from.x);
+    const dy = sgnBasic(to.y - from.y);
+    const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+    let prev = { x: from.x, y: from.y };
+    let x = from.x;
+    let y = from.y;
+    for (let i = 0; i < dist; i++) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) return null;
+        const mon = (game.level?.monsters || []).find((candidate) =>
+            candidate.mx === x && candidate.my === y);
+        if (mon && cansee(x, y)) return { obj: launch.obj, from, to, glyph: prev };
+        prev = { x, y };
+    }
+    return null;
+}
+
+function show_terrain_cell_basic(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const glyph = terrain_glyph(loc, x, y);
+    show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
+}
+
+function show_deferred_rolling_boulder_frame_basic(frame) {
+    if (!frame) return;
+    // C refs: src/trap.c:launch_obj(), tmp_at().  The tty More frame for a
+    // visible boulder hit shows the temporary boulder glyph at the previous
+    // square and the launch square already redrawn, before hit RNG is rolled.
+    const launch = start_rolling_boulder_launch_basic(frame);
+    if (!launch) return;
+    game._deferred_rolling_boulder_launch = launch;
+    show_glyph_cell(frame.glyph.x, frame.glyph.y, '`', getObjectColor(BOULDER) ?? 8, false);
+    game._deferred_rolling_boulder_tmp_clear = { x: frame.glyph.x, y: frame.glyph.y };
+}
+
+function finish_rolling_boulder_trap_basic(mtmp, trap) {
+    const tmpClear = game._deferred_rolling_boulder_tmp_clear;
+    game._deferred_rolling_boulder_tmp_clear = null;
+    game._rolling_boulder_trap_killed_next_mon = null;
+    const launch = game._deferred_rolling_boulder_launch
+        || start_rolling_boulder_launch_basic(extract_rolling_boulder_basic(trap));
+    game._deferred_rolling_boulder_launch = null;
+    if (!launch) return MMOVE_MOVED;
+    const { obj, from, to } = launch;
+    const dx = sgnBasic(to.x - from.x);
+    const dy = sgnBasic(to.y - from.y);
+    const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+    let x = from.x;
+    let y = from.y;
+    let usedUp = false;
+    let triggeringMonsterKilled = false;
+
+    for (let i = 0; i < dist; i++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!isok(nx, ny)) break;
+        x = nx;
+        y = ny;
+        const mon = (game.level?.monsters || []).find((candidate) =>
+            candidate.mx === x && candidate.my === y);
+        if (!mon) continue;
+        if (monster_can_snatch_rolling_boulder_basic(mon) && rn2(3)) {
+            if (cansee(x, y))
+                queue_monster_trap_after_more_basic(`${monster_subject(mon)} snatches the boulder.`);
+            monster_pickup_rolling_boulder_basic(mon, obj);
+            usedUp = true;
+            break;
+        }
+        const result = rolling_boulder_hit_monster_basic(mon);
+        if (cansee(x, y) && result.line) queue_monster_trap_after_more_basic(result.line);
+        if (result.killed && mon === mtmp) {
+            triggeringMonsterKilled = true;
+            game._rolling_boulder_trap_killed_next_mon = result.nextMon || null;
+        }
+    }
+
+    if (!usedUp) move_floor_object_basic(obj, x, y);
+    if (tmpClear && isok(tmpClear.x, tmpClear.y)) newsym(tmpClear.x, tmpClear.y);
+    return triggeringMonsterKilled ? MMOVE_DIED : MMOVE_MOVED;
+}
+
+async function mintrap_rolling_boulder_basic(mtmp, trap) {
+    // C refs: src/trap.c:trapeffect_rolling_boulder_trap(),
+    // src/trap.c:launch_obj(), src/mthrowu.c:ohitmon().
+    if (mon_in_air(mtmp)) return MMOVE_MOVED;
+    const inSight = trap_mon_visible(mtmp);
+    newsym(mtmp.mx, mtmp.my);
+    if (inSight) {
+        const prefix = game.u?.uprops?.deaf ? '' : 'Click!  ';
+        const trapName = trap.tseen ? 'a rolling boulder trap' : 'something';
+        await append_trap_topline(`${prefix}${monster_subject(mtmp)} triggers ${trapName}.`);
+    }
+
+    const visibleFrame = inSight ? rolling_boulder_visible_monster_frame_basic(trap) : null;
+    if (visibleFrame || (inSight && rolling_boulder_has_visible_monster_target_basic(trap))) {
+        // C refs: win/tty/topl.c:update_topl(), src/trap.c:launch_obj().
+        // The trigger pline reaches tty More before the later boulder hit
+        // plines, so the pre-launch map remains visible on this frame.
+        show_deferred_rolling_boulder_frame_basic(visibleFrame);
+        game._deferred_monster_trap_effect = { kind: 'rolling-boulder', mtmp, trap };
+        if (!game._more) queue_more_prompt();
+        game._monster_topline_deferred = true;
+        game._monster_attack_more_latched = true;
+        game._monster_attack_pause_after_more = true;
+        game._monster_turn_paused_for_more = true;
+        return MMOVE_DONE;
+    }
+
+    const status = finish_rolling_boulder_trap_basic(mtmp, trap);
+    if (inSight) trap.tseen = true;
+    return status;
+}
+
 async function mintrap_bear_basic(mtmp, trap) {
     // C ref: src/trap.c:trapeffect_bear_trap().
     const canBeCaught = (mtmp.data?.msize ?? MZ_HUMAN) > MZ_SMALL
@@ -5040,6 +5696,51 @@ async function mintrap_bear_basic(mtmp, trap) {
     if (mtmp.mtrapped && !monster_wearing_iron_shoes_basic(mtmp)) {
         const killed = await thitm_basic(0, mtmp, null, d(2, 4));
         if (killed) return MMOVE_DIED;
+    }
+    return mtmp.mtrapped ? MMOVE_DONE : MMOVE_MOVED;
+}
+
+function blow_up_landmine_basic(trap) {
+    // C ref: src/trap.c:blow_up_landmine().  The full scatter/drawbridge
+    // side effects are larger than current evidence needs; preserve the
+    // durable floor-trap state that later mintrap()/display paths observe.
+    if (!trap) return;
+    trap.ttyp = PIT;
+    trap.madeby_u = false;
+    trap.tseen = true;
+    newsym(trap.tx, trap.ty);
+    vision_reset();
+    vision_recalc(0);
+}
+
+async function mintrap_landmine_basic(mtmp, trap) {
+    // C ref: src/trap.c:trapeffect_landmine().
+    let damage = rnd(16);
+    if (monster_wearing_iron_shoes_basic(mtmp))
+        damage = Math.trunc((damage + 3) / 4);
+
+    const triggerWeight = Math.trunc(WT_ELF / 2);
+    if (rn2((mtmp.data?.cwt ?? 0) + 1) < triggerWeight)
+        return MMOVE_MOVED;
+
+    const inSight = trap_mon_visible(mtmp);
+    const tx = trap.tx;
+    const ty = trap.ty;
+    if (inSight) {
+        newsym(mtmp.mx, mtmp.my);
+        const prefix = game.u?.uprops?.deaf || game.u?.udeaf ? '' : 'KAABLAMM!!!  ';
+        await append_trap_topline(`${prefix}${monster_subject(mtmp)} triggers ${trap.madeby_u ? 'your' : 'a'} land mine!`);
+    } else if (!(game.u?.uprops?.deaf || game.u?.udeaf)) {
+        await append_trap_topline('Kaablamm!  You hear an explosion in the distance!');
+    }
+
+    blow_up_landmine_basic(trap);
+    if (await thitm_basic(0, mtmp, null, damage))
+        return MMOVE_DIED;
+    const recursive = trap_at_basic(tx, ty);
+    if (recursive?.ttyp === PIT) {
+        const pitStatus = await mintrap_pit_basic(mtmp, recursive);
+        if (pitStatus === MMOVE_DIED) return MMOVE_DIED;
     }
     return mtmp.mtrapped ? MMOVE_DONE : MMOVE_MOVED;
 }
@@ -5270,7 +5971,9 @@ async function mintrap_basic(mtmp) {
     // is in the air, then known trap types usually get avoided without the
     // effect firing.
     if (floor_trigger_trap_basic(trap.ttyp) && mon_in_air(mtmp)) return MMOVE_MOVED;
-    if (mon_knows_traps_basic(mtmp, trap.ttyp) && rn2(4)) return MMOVE_MOVED;
+    const alreadySeen = mon_knows_traps_basic(mtmp, trap.ttyp)
+        || (trap.ttyp === HOLE && !mon_is_mindless(mtmp));
+    if (alreadySeen && rn2(4)) return MMOVE_MOVED;
     mon_learns_traps_basic(mtmp, trap.ttyp);
     mons_see_trap_basic(trap);
     if (trap.ttyp === MAGIC_PORTAL) {
@@ -5282,7 +5985,9 @@ async function mintrap_basic(mtmp) {
     if (trap.ttyp === ARROW_TRAP) return mintrap_missile_basic(mtmp, trap, ARROW, 8);
     if (trap.ttyp === DART_TRAP) return mintrap_missile_basic(mtmp, trap, DART, 7);
     if (trap.ttyp === ROCKTRAP) return mintrap_rocktrap_basic(mtmp, trap);
+    if (trap.ttyp === ROLLING_BOULDER_TRAP) return mintrap_rolling_boulder_basic(mtmp, trap);
     if (trap.ttyp === BEAR_TRAP) return mintrap_bear_basic(mtmp, trap);
+    if (trap.ttyp === LANDMINE) return mintrap_landmine_basic(mtmp, trap);
     if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) return mintrap_pit_basic(mtmp, trap);
     if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) return mintrap_hole_basic(mtmp, trap);
     if (trap.ttyp === FIRE_TRAP) return mintrap_fire_basic(mtmp, trap);
@@ -5328,12 +6033,14 @@ async function postmove_door_basic(mtmp) {
     }
     if (loc.doormask === D_CLOSED && mon_can_open_doors(mtmp)) {
         set_door_mask_basic(loc, D_ISOPEN);
-        // C ref: monmove.c:postmov().  The monster has already moved to the
-        // door square, but an unseen opener is reported as the door changing.
-        mtmp._opened_unseen_door = true;
         refresh_monster_door_vision(mtmp);
         canseeit = canseeit || cansee(mtmp.mx, mtmp.my);
-        if (canseeit) await append_pline('You see a door open.');
+        const canSpotOpener = canseeit && hero_can_spot_monster(mtmp);
+        // C ref: src/monmove.c:postmov().  Name a visible opener; only the
+        // unseen case is reported as the door changing by itself.
+        mtmp._opened_unseen_door = !canSpotOpener;
+        if (canSpotOpener) await append_pline(`${monster_subject(mtmp)} opens a door.`);
+        else if (canseeit) await append_pline('You see a door open.');
         else await append_pline('You hear a door open.');
     } else if ((loc.doormask & D_CLOSED) && trapped) {
         set_door_mask_basic(loc, D_NODOOR);
@@ -5350,7 +6057,23 @@ function eshk_basic(mtmp) {
 
 function room_for_no_basic(roomno) {
     const idx = (roomno ?? 0) - ROOMOFFSET;
-    return idx >= 0 ? game.level?.rooms?.[idx] : null;
+    if (idx < 0) return null;
+    const rooms = game.level?.rooms || [];
+    if (idx < MAXNROFROOMS) return rooms[idx] || null;
+    const visit = (room) => {
+        if (!room) return null;
+        if (room.roomnoidx === idx) return room;
+        for (const subroom of room.sbrooms || []) {
+            const found = visit(subroom);
+            if (found) return found;
+        }
+        return null;
+    };
+    for (const room of rooms) {
+        const found = visit(room);
+        if (found) return found;
+    }
+    return null;
 }
 
 function in_his_shop_basic(mtmp) {
@@ -5363,6 +6086,16 @@ function in_his_shop_basic(mtmp) {
 function hero_in_shop_basic(eshk) {
     const loc = game.level?.at(game.u?.ux, game.u?.uy);
     return !!eshk && loc?.roomno === eshk.shoproom;
+}
+
+function histemple_at_basic(mtmp, x, y) {
+    // C ref: priest.c:histemple_at().
+    if (!mtmp?.ispriest) return false;
+    const epri = mtmp.mextra?.epri;
+    const roomno = game.level?.at(x, y)?.roomno ?? 0;
+    return !!epri
+        && epri.shroom === roomno
+        && (room_for_no_basic(roomno)?.rtype ?? 0) === TEMPLE;
 }
 
 function shk_move_candidate_ok(mtmp, x, y, omx, omy) {
@@ -5478,6 +6211,36 @@ function shk_move_basic(mtmp) {
     }
 
     return move_special_basic(mtmp, in_his_shop_basic(mtmp), appr, false, avoid, omx, omy, gtx, gty);
+}
+
+function pri_move_basic(mtmp) {
+    // C ref: priest.c:pri_move().
+    const omx = mtmp.mx;
+    const omy = mtmp.my;
+    if (!histemple_at_basic(mtmp, omx, omy)) return null;
+
+    const epri = mtmp.mextra?.epri || {};
+    let ggx = (epri.shrpos?.x ?? omx) + rn2(3) - 1;
+    let ggy = (epri.shrpos?.y ?? omy) + rn2(3) - 1;
+    let avoid = true;
+
+    if (!mtmp.mpeaceful
+        || (hero_conflict_active_basic() && !resist_conflict_basic(mtmp))) {
+        if (monnear_basic(mtmp, game.u?.ux ?? omx, game.u?.uy ?? omy)) {
+            return MMOVE_NOTHING;
+        }
+        if ((game.u?.urooms || []).includes(epri.shroom)) {
+            if (mtmp.mcansee !== 0 && m_canseeu_basic(mtmp)) {
+                ggx = game.u?.ux ?? ggx;
+                ggy = game.u?.uy ?? ggy;
+            }
+            avoid = false;
+        }
+    } else if (hero_invisible_basic()) {
+        avoid = false;
+    }
+
+    return move_special_basic(mtmp, false, true, false, avoid, omx, omy, ggx, ggy);
 }
 
 function mon_track_add(mtmp, x, y) {
@@ -7302,6 +8065,8 @@ function choose_stealable_hero_object() {
 }
 
 function theft_display_name(obj) {
+    if (object_class(obj) === RING_CLASS) return theft_accessory_name(obj, 'ring');
+    if (object_class(obj) === AMULET_CLASS) return theft_accessory_name(obj, 'amulet');
     return object_class(obj) === WEAPON_CLASS ? carried_weapon_name(obj) : floor_object_name(obj);
 }
 
@@ -7309,7 +8074,45 @@ function theft_disarm_name(obj) {
     return object_class(obj) === WEAPON_CLASS ? carried_weapon_your_name(obj) : floor_object_name(obj);
 }
 
+function article_for_basic(noun) {
+    return /^[aeiou]/i.test(String(noun || '')) ? 'an' : 'a';
+}
+
+function theft_accessory_name(obj, noun, opts = {}) {
+    const desc = obj?.dknown === false ? '' : (getObjectDescription(obj?.otyp) || '');
+    const base = desc ? `${desc} ${noun}` : noun;
+    const name = opts.possessive ? `your ${base}` : `${article_for_basic(base)} ${base}`;
+    if (opts.fromHand && object_class(obj) === RING_CLASS && obj?.wornSide)
+        return `${name} (from ${obj.wornSide} hand)`;
+    return name;
+}
+
+function theft_worn_object_name(obj, wornMask) {
+    if (object_class(obj) === RING_CLASS)
+        return theft_accessory_name(obj, 'ring', { possessive: true, fromHand: true });
+    if (object_class(obj) === AMULET_CLASS)
+        return theft_accessory_name(obj, 'amulet', { possessive: true });
+    if (wornMask & W_WEAPONS) return carried_weapon_your_name(obj);
+    return theft_display_name(obj).replace(/^(?:an?|the) /, 'your ');
+}
+
+function theft_worn_removal_line(mtmp, obj, wornMask) {
+    const verb = (wornMask & W_WEAPONS) ? 'disarms'
+        : (wornMask & W_ACCESSORY) ? 'removes'
+        : 'takes off';
+    return `${monster_subject(mtmp)} ${verb} ${theft_worn_object_name(obj, wornMask)}.`;
+}
+
+function nymph_stole_line(mtmp, obj, wornMask, vanishSubject) {
+    const who = (wornMask & (W_ARMOR | W_ACCESSORY | W_WEAPONS))
+        ? monster_pronoun_subject(mtmp)
+        : monster_subject(mtmp);
+    const line = `${who} stole ${theft_display_name(obj)}.`;
+    return vanishSubject ? `${line}  ${vanishSubject} vanishes!` : line;
+}
+
 function transfer_stolen_object_to_monster(mtmp, obj) {
+    const wornMask = hero_object_wornmask_basic(obj);
     const inv = game.inventory || [];
     const idx = inv.indexOf(obj);
     if (idx >= 0) inv.splice(idx, 1);
@@ -7320,8 +8123,74 @@ function transfer_stolen_object_to_monster(mtmp, obj) {
     obj.wornSide = null;
     obj.worn = false;
     if (game.uquiver === obj) game.uquiver = null;
+    if ((wornMask & W_ARMOR) && game.u) {
+        game.u.uac = calculated_armor_class();
+        game._status_uac_override = null;
+        game._clear_status_uac_override_after_more = false;
+        game._status_uac_override_move = null;
+    }
     mtmp.inventory = mtmp.inventory || [];
     mtmp.inventory.unshift(obj);
+}
+
+export async function finish_deferred_nymph_steal(options = {}) {
+    const pending = game._deferred_nymph_steal;
+    if (!pending) return false;
+    game._deferred_nymph_steal = null;
+    const mtmp = pending.mtmp || (game.level?.monsters || []).find((mon) => mon.m_id === pending.monId);
+    const obj = pending.obj;
+    if (!mtmp || !obj || !game.level?.monsters?.includes(mtmp) || (mtmp.mhp ?? 1) <= 0) return true;
+    transfer_stolen_object_to_monster(mtmp, obj);
+    if (options.appendToPending) {
+        const line = nymph_stole_line(mtmp, obj, pending.wornMask || 0, '');
+        // C refs: src/steal.c:steal(), win/tty/topl.c:update_topl().
+        // Revealing a deferred worn-item removal line resumes steal()
+        // immediately, so the final theft line can share that tty More.
+        if (game._pending_message && topline_can_pack_message(game._pending_message, line)) {
+            await append_pline(line);
+        } else if (game._pending_message) {
+            game._after_more_message = game._after_more_message
+                ? `${game._after_more_message}  ${line}`
+                : line;
+            game._after_more_needs_prompt = !options.deferEscapeTail;
+            game._monster_topline_deferred = true;
+        } else {
+            await pline(line);
+        }
+        if (options.deferEscapeTail) {
+            game._deferred_nymph_escape_tail = {
+                mtmp,
+                monId: mtmp.m_id || 0,
+            };
+            return true;
+        }
+    }
+    const wasVisible = hero_can_spot_monster(mtmp);
+    const vanishSubject = wasVisible ? monster_subject(mtmp) : '';
+    const vanished = wasVisible && rloc_basic(mtmp);
+    monflee_basic(mtmp, 0, false);
+    mhitm_knockback_frontdoor();
+    await pline(nymph_stole_line(mtmp, obj, pending.wornMask || 0, vanished ? vanishSubject : ''));
+    return true;
+}
+
+export async function finish_deferred_nymph_escape_tail(options = {}) {
+    const pending = game._deferred_nymph_escape_tail;
+    if (!pending) return false;
+    game._deferred_nymph_escape_tail = null;
+    const mtmp = pending.mtmp || (game.level?.monsters || []).find((mon) => mon.m_id === pending.monId);
+    if (!mtmp || !game.level?.monsters?.includes(mtmp) || (mtmp.mhp ?? 1) <= 0) return false;
+    const wasVisible = hero_can_spot_monster(mtmp);
+    const vanishSubject = wasVisible ? monster_subject(mtmp) : '';
+    const vanished = wasVisible && rloc_basic(mtmp);
+    monflee_basic(mtmp, 0, false);
+    mhitm_knockback_frontdoor();
+    if (vanished && vanishSubject) {
+        const line = `${vanishSubject} vanishes!`;
+        if (options.appendToPending && game._pending_message) await append_pline(line);
+        else await pline(line);
+    }
+    return !!game._more;
 }
 
 async function steal_item_melee_attack(mtmp, state, toHit) {
@@ -7340,12 +8209,34 @@ async function steal_item_melee_attack(mtmp, state, toHit) {
         return true;
     }
     const wornMask = hero_object_wornmask_basic(obj);
-    transfer_stolen_object_to_monster(mtmp, obj);
-    const subject = monster_subject(mtmp);
     const wakeupTail = game._hero_melee_post_wakeup_more
         || (game._hero_melee_post_wakeup_steal_tail?.monId === mtmp.m_id
             ? game._hero_melee_post_wakeup_steal_tail : null);
+    if (wakeupTail) {
+        game._hero_melee_post_wakeup_knockback_after_monster_more = true;
+        game._nymph_steal_after_more = {
+            monId: mtmp.m_id || 0,
+            maybeKnockback: !!wakeupTail.maybeKnockback,
+        };
+    }
+    if (wornMask & (W_ARMOR | W_ACCESSORY | W_WEAPONS)) {
+        const packed = await append_monster_topline(theft_worn_removal_line(mtmp, obj, wornMask));
+        if (!packed) {
+            game._after_more_needs_prompt = true;
+            game._deferred_nymph_steal = {
+                mtmp,
+                monId: mtmp.m_id || 0,
+                obj,
+                wornMask,
+            };
+            return true;
+        }
+    }
+    transfer_stolen_object_to_monster(mtmp, obj);
     if (wornMask & W_WEAPONS) {
+        const packed = await append_monster_topline(`${monster_pronoun_subject(mtmp)} stole ${theft_display_name(obj)}.`);
+        if (!packed) game._after_more_needs_prompt = true;
+    } else if (!(wornMask & (W_ARMOR | W_ACCESSORY))) {
         if (wakeupTail) {
             game._hero_melee_post_wakeup_knockback_after_monster_more = true;
             game._nymph_steal_after_more = {
@@ -7353,24 +8244,35 @@ async function steal_item_melee_attack(mtmp, state, toHit) {
                 maybeKnockback: !!wakeupTail.maybeKnockback,
             };
         }
-        const packed = await append_monster_topline(`${subject} disarms ${theft_disarm_name(obj)}.  ${monster_pronoun_subject(mtmp)} stole ${theft_display_name(obj)}.`);
+        const packed = await append_monster_topline(`${monster_subject(mtmp)} steals ${theft_display_name(obj)}!`);
         if (!packed) game._after_more_needs_prompt = true;
     } else {
-        if (wakeupTail) {
-            game._hero_melee_post_wakeup_knockback_after_monster_more = true;
-            game._nymph_steal_after_more = {
-                monId: mtmp.m_id || 0,
-                maybeKnockback: !!wakeupTail.maybeKnockback,
-            };
-        }
-        const packed = await append_monster_topline(`${subject} steals ${theft_display_name(obj)}!`);
+        const packed = await append_monster_topline(`${monster_pronoun_subject(mtmp)} stole ${theft_display_name(obj)}.`);
         if (!packed) game._after_more_needs_prompt = true;
     }
+    rloc_basic(mtmp);
+    monflee_basic(mtmp, 0, false);
+    mhitm_knockback_frontdoor();
     return true;
 }
 
 function append_deferred_physical_attack_line(line) {
     if (!line) return;
+    if (game._nomovemsg === 'You survived that attempt on your life.'
+        && String(game._pending_message || '').startsWith("OK, so you don't die.")
+        && (is_simple_monster_hit_you_line(line) || is_simple_monster_hit_you_chain(line))
+        && topline_can_pack_message(game._pending_message, line)) {
+        // C refs: src/end.c:savelife(), src/mhitu.c:hitmsg(),
+        // win/tty/topl.c:update_topl().  The interrupted monster's remaining
+        // physical rows pack behind the saved-life OK line even when the
+        // fatal-hit More was dismissed with ESC.
+        game._pending_message = `${game._pending_message}  ${line}`;
+        if (!game._more) queue_more_prompt();
+        else game._more_dismissals_remaining = 1;
+        game._last_topline_message = game._pending_message;
+        game._last_topline_can_force_more = false;
+        return;
+    }
     if (game._monster_topline_stop_after_esc_more
         && (is_simple_monster_hit_you_line(line) || is_simple_monster_hit_you_chain(line))) {
         // C refs: win/tty/topl.c:more()/update_topl(), src/mhitu.c:hitmsg().
@@ -7697,9 +8599,11 @@ function monster_physical_hit_line_basic(mtmp, attack, verb) {
     if (adtyp === 'AD_LEGS') return '';
     const target = verb === 'touches' ? ' you' : '';
     if (verb === 'weapon') {
-        return mtmp.mw
-            ? `${subject} ${monster_weapon_swing_verb(mtmp.mw)} ${monster_weapon_swing_object(mtmp, mtmp.mw)}.  ${subject} hits!`
-            : `${subject} hits!`;
+        // C ref: src/mhitu.c:mswings()/hitmsg().  The weapon swing sentence
+        // is visible-only; hitmsg() still emits the generic unseen hit line.
+        const hitLine = `${subject} hits!`;
+        if (!mtmp.mw || !hero_can_spot_monster(mtmp)) return hitLine;
+        return `${subject} ${monster_weapon_swing_verb(mtmp.mw)} ${monster_weapon_swing_object(mtmp, mtmp.mw)}.  ${hitLine}`;
     }
     return `${subject} ${verb}${target}!`;
 }
@@ -7965,12 +8869,8 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
         return await gdMoveBasic(mtmp) ? MMOVE_MOVED : MMOVE_NOTHING;
     }
     if (mtmp.ispriest) {
-        // C ref: priest.c:pri_move().  A priest in their temple mills around
-        // the shrine before move_special(); the current front door preserves
-        // the altar-offset RNG without falling into ordinary peaceful m_move().
-        rn2(3);
-        rn2(3);
-        return MMOVE_NOTHING;
+        const priestMove = pri_move_basic(mtmp);
+        if (priestMove != null) return priestMove;
     }
     if ((mtmp.data?.mflags1 & M1_CONCEAL)
         && can_hide_under_object_basic(mtmp.mx, mtmp.my)) {
@@ -8151,13 +9051,8 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
                 // C refs: monmove.c:postmov(), dig.c:mdig_tunnel().
                 // Tunnelling side effects happen after floor traps and door
                 // handling; a trap-killed monster never reaches this roll.
-                rnd(12);
-                const loc = game.level?.at(mtmp.mx, mtmp.my);
-                if (digTunnel && loc && IS_WALL(loc.typ)) {
-                    // C ref: dig.c:mdig_tunnel().
-                    rn2(5);
-                }
-                if (digTunnel && loc && !SPACE_POS(loc.typ)) loc.typ = ROOM;
+                if (await mdig_tunnel_basic(mtmp)) return MMOVE_DIED;
+                if (game._monster_turn_paused_for_more) return MMOVE_DONE;
             }
             if (game._swallowed_expulsion_paused_for_more) {
                 game._swallowed_expulsion_paused_for_more = false;
@@ -8754,7 +9649,24 @@ export async function movemon() {
         // C ref: monmove.c:dochug().  Fleeing monsters check the random
         // teleport gate before can_teleport(); non-teleporting pets still
         // consume the rn2(40) while fleeing.
-        if (mtmp.mflee) rn2(40);
+        if (mtmp.mflee) {
+            const fleeTeleport = rn2(40);
+            if (!fleeTeleport
+                && monster_can_teleport_basic(mtmp)
+                && !mtmp.iswiz
+                && !game.level?.flags?.noteleport) {
+                const oldx = mtmp.mx;
+                const oldy = mtmp.my;
+                if (rloc_basic(mtmp))
+                    await emit_monster_relocation_message_basic(mtmp, oldx, oldy, { msg: true });
+                if (g._monster_turn_paused_for_more) {
+                    g._resume_movemon_after_mon = mtmp;
+                    g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
+                    return false;
+                }
+                continue;
+            }
+        }
         if (mtmp.mflee && !mtmp.mfleetim && mtmp.mhp === mtmp.mhpmax && !rn2(25))
             mtmp.mflee = false;
 
@@ -8791,6 +9703,7 @@ export async function movemon() {
             }
             continue;
         }
+        if (is_watch_basic(mtmp)) await watch_on_duty_basic(mtmp);
         if (!mtmp.mtame && await maybe_wield_hth_before_move(mtmp, fleeState)) {
             if (g._monster_turn_paused_for_more) {
                 g._resume_movemon_after_mon = mtmp;

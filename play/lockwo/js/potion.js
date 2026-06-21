@@ -5,13 +5,30 @@
 // "peculiar feeling" path so the RNG / message sequence stays faithful.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
 import { pline } from './display.js';
 import { getobj, makeknown, useup, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS } from './invent.js';
 import { exercise } from './attrib.js';
-import { POTION_CLASS, POT_OIL, objects } from './mkobj.js';
+import { POTION_CLASS, POT_OIL, POT_CONFUSION, objects } from './mkobj.js';
 import { A_WIS } from './const.js';
+
+// C ref: potion.c make_confused(xtime, talk) — set the HConfusion timeout.  The
+// hero's confusion timer lives on game.u.uprops.Confusion (read by isConfused()
+// in engrave.js) and is mirrored to game.u.uconf for the uhitm safe-pet check.
+function make_confused(xtime, _talk) {
+    const u = game.u;
+    if (!u) return;
+    if (!u.uprops) u.uprops = {};
+    u.uprops.Confusion = xtime;
+    u.uconf = xtime > 0;
+}
+function Confusion() { return (game.u?.uprops?.Confusion || 0) > 0; }
+function Hallucination() { return !!game.u?.uhallu; }
+// C ref: objclass.h bcsign(o) — blessed(+1)/cursed(-1)/uncursed(0).
+function bcsign(o) { return (o.blessed ? 1 : 0) - (o.cursed ? 1 : 0); }
+// C ref: youprop.h itimeout_incr — add to a (possibly running) property timer.
+function itimeout_incr(cur, incr) { return (cur || 0) + incr; }
 
 const ECMD_CANCEL = 0;
 const ECMD_OK = 0;
@@ -47,12 +64,35 @@ function peffect_oil(otmp) {
 // we only need to stash the message, so call the setter directly.
 function pline_sync(msg) { game._pending_message = msg; }
 
+// C ref: potion.c peffect_confusion(otmp) — drinking a potion of confusion.
+// When not already confused (and not hallucinating) prints "Huh, What?  Where
+// am I?"; then make_confused(itimeout_incr(HConfusion, rn1(7, 16 - 8*bcsign))).
+// For a cursed potion bcsign == -1 so the duration is rn1(7,24) (== rn2(7)+24).
+function peffect_confusion(otmp) {
+    const u = game.u;
+    if (!Confusion()) {
+        if (Hallucination()) {
+            pline_sync('What a trippy feeling!');
+            game.potion_unkn = (game.potion_unkn || 0) + 1;
+        } else {
+            pline_sync('Huh, What?  Where am I?');
+        }
+    } else {
+        game.potion_nothing = (game.potion_nothing || 0) + 1;
+    }
+    make_confused(itimeout_incr(u?.uprops?.Confusion,
+                                rn1(7, 16 - 8 * bcsign(otmp))), false);
+}
+
 // C ref: potion.c peffects — dispatch by potion type; returns -1 to signal
 // "used up with possible discovery", >=0 to signal an already-handled result.
 function peffects(otmp) {
     switch (otmp.otyp) {
     case POT_OIL:
         peffect_oil(otmp);
+        break;
+    case POT_CONFUSION:
+        peffect_confusion(otmp);
         break;
     default:
         // Uncovered potion type: treat as "nothing obvious happened" so the

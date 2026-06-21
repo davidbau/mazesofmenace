@@ -28,7 +28,7 @@ import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE } from './const.js';
-import { docrt, flush_screen, pline } from './display.js';
+import { docrt, flush_screen, pline, update_topl, topl_more } from './display.js';
 import { vision_reset, vision_recalc } from './vision.js';
 
 // ── small geometry / occupancy helpers (C ref: mklev.c occupied,
@@ -247,6 +247,29 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // Capture accompanying pet(s) before the old level is freed by mklev().
     const kept = at_stairs || !at_stairs ? keepdogs_capture() : [];
 
+    // C ref: do.c goto_level() — the ordinary on-foot transit message ("You
+    // descend the stairs." / "You climb up the stairs.") is delivered at do.c
+    // ~1799, AFTER mklev() but BEFORE the deferred docrt() (do.c:1840) repaints
+    // the destination map.  In the tty the display buffer therefore still holds
+    // the OLD level (and the OLD Dlvl on the status line) when the message's
+    // --More-- is captured: the recorder shows "You descend the stairs.--More--"
+    // over the level being LEFT, then the next acked frame shows the new level
+    // (seed0030 global-28/231/368).  The JS renderer rebuilds the grid from the
+    // live game state on every capture, so to reproduce that old-level frame we
+    // emit the message + force its --More-- HERE, while u.uz and game.level still
+    // refer to the level being left, before switching below.  This consumes no
+    // RNG, so the mklev()/makelevel() PRNG stream that follows is unaffected.
+    // C ref: do.c goto_level arrival block — the "You descend/climb the stairs."
+    // ordinary-transit message is emitted for any at_stairs move (including a
+    // branch crossing into the Gnomish Mines), not just same-dungeon descents.
+    if (at_stairs && (game.flags?.verbose !== false)) {
+        if (up) await update_topl('You climb up the stairs.');
+        else await update_topl('You descend the stairs.');
+        await topl_more();          // capture the old-level transit frame
+        game._pending_message = '';
+        game._toplin = 0;
+    }
+
     // Move to the destination level.
     g._visited_levels = g._visited_levels || {};
     const ledger = `${newlevel.dnum}:${newlevel.dlevel}`;
@@ -265,10 +288,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     // Hero placement.  C ref: do.c goto_level() arrival block.
-    if (at_stairs && !newdungeon) {
-        if (up) u_on_upstairs();
-        else u_on_upstairs(); /* u_on_upstairs picks the up-stair; stair-descent
-                                 lands the hero on the new level's UP stair */
+    if (at_stairs) {
+        // Prefer the stairway on the new level that leads back to the level we
+        // just left (uz0) — for a branch crossing this is the branch staircase.
+        const back = stairway_find_to(u.uz0);
+        if (back) {
+            u.ux = back.sx; u.uy = back.sy;
+            back.u_traversed = true;
+        } else if (up) {
+            u_on_upstairs();
+        } else {
+            u_on_upstairs(); /* descent lands on the new level's UP stair */
+        }
     } else {
         // trap door / level teleport / portal arrival
         u_on_rndspot((up ? 1 : 0));
@@ -289,13 +320,27 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     vision_recalc(0);
     await docrt();
     await flush_screen(-1);
+    // The on-foot transit message + its --More-- frame were already delivered
+    // above (before the level switch) so that the captured frame shows the OLD
+    // level, exactly as the deferred-docrt() tty does.
 }
 
 // ── next_level (C ref: dungeon.c next_level) ──
+// When descending an actual staircase, the destination comes from the
+// stairway's tolev (which, for branch stairs, points into another dungeon
+// branch such as the Gnomish Mines).  Only when not on a staircase (e.g.
+// falling through a hole) do we increment dlevel within the same branch.
 export async function next_level(at_stairs) {
     const u = game.u;
-    const newlevel = { dnum: u.uz.dnum, dlevel: u.uz.dlevel + 1 };
-    await goto_level(newlevel, at_stairs, !at_stairs, false);
+    const stway = stairway_at(u.ux, u.uy);
+    if (at_stairs && stway) {
+        stway.u_traversed = true;
+        const newlevel = { dnum: stway.tolev.dnum, dlevel: stway.tolev.dlevel };
+        await goto_level(newlevel, at_stairs, false, false);
+    } else {
+        const newlevel = { dnum: u.uz.dnum, dlevel: u.uz.dlevel + 1 };
+        await goto_level(newlevel, at_stairs, !at_stairs, false);
+    }
 }
 
 // ── wiz_level_tele (C ref: teleport.c level_tele + cmd.c wiz_level_tele) ──
@@ -367,11 +412,59 @@ export async function wiz_level_tele(readLevel) {
     return 0; // ECMD_OK
 }
 
-// ── dodown (C ref: do.c dodown) — descend stairs / fall through a hole.
-// Provided for the '>' command; lands the hero on the next dlvl down.
+// C ref: stairs.c stairway_at — find the stairway node at <x,y>.
+function stairway_at(x, y) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.sx === x && s.sy === y) return s;
+    return null;
+}
+
+// C ref: stairs.c stairway_find_from — find the stairway on the current level
+// whose destination is the given level (used to land the hero on the staircase
+// that leads back to the level just left, e.g. the mines branch stair).
+function stairway_find_to(dlev) {
+    if (!dlev) return null;
+    for (let s = game.stairs; s; s = s.next)
+        if (s.tolev && s.tolev.dnum === dlev.dnum && s.tolev.dlevel === dlev.dlevel)
+            return s;
+    return null;
+}
+
+// C ref: apply.c next_to_u — FALSE only when a leashed pet (or amulet-bearing
+// steed) can't follow.  Leashes/steeds are not modelled in the recorded
+// sessions, so this is always TRUE (the pet follows down the stairs).
+function next_to_u() {
+    return true;
+}
+
+// ── dodown (C ref: do.c dodown) — descend stairs.
+// Models the on-foot "descend the down stairs" case: the hero must be standing
+// on a (non-ladder) down staircase, not levitating, and able to bring the pet.
+// Trap-door / hole falls, ladders, Gehennom gate, levitation, polymorph-hiders
+// and stuck states are not exercised by the recorded sessions.
 export async function dodown() {
     const u = game.u;
-    // Only the plain "descend the down stairs" case is modelled here.
+
+    // C ref: do.c dodown — stairs_down = stairway present, going down, not a
+    // ladder.
+    let stairs_down = false;
+    const stway = stairway_at(u.ux, u.uy);
+    if (stway && !stway.up)
+        stairs_down = !stway.isladder;
+
+    if (!stairs_down) {
+        // C ref: do.c dodown "You can't go down here." (no trap/hole/autodig
+        // modelled).  ECMD_OK: no turn elapses.
+        await pline("You can't go down here.");
+        return 0; // ECMD_OK
+    }
+
+    // C ref: do.c dodown — pet leash check before transit.
+    if (!next_to_u()) {
+        await pline('You are held back by your pet!');
+        return 0; // ECMD_OK
+    }
+
     await next_level(true);
     return 1; // ECMD_TIME
 }

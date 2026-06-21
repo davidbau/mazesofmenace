@@ -463,7 +463,7 @@ export const DUNGEON_ALIGN_BY_DNUM = {
     [TUTORIAL]: A_CHAOTIC,
 };
 
-// Build-specific constants: hand-pinned for deterministic replay.
+// Build-specific constants: hand-pinned for deterministic parity.
 // These come from date.h and change every C rebuild, so the generator skips them.
 export const BUILD_DATE = "Sun May  3 01:27:17 2026";
 export const BUILD_TIME = (1777786037);
@@ -2835,9 +2835,9 @@ export const DEFERRED_HEADER_CONST_ROOT_BLOCKERS = Object.freeze([
 
 export const HEADER_MACRO_NON_EMITTABLE = Object.freeze([
     "B: objects.h alias; owned by objects.js with objclass.h direction constants",
-    "BUILD_DATE: build-time string from date.h; hand-pinned for deterministic replay",
-    "BUILD_TIME: build-time integer from date.h; hand-pinned for deterministic replay",
-    "COPYRIGHT_BANNER_C: build-specific version string from date.h; hand-pinned for deterministic replay",
+    "BUILD_DATE: build-time string from date.h; hand-pinned for deterministic parity",
+    "BUILD_TIME: build-time integer from date.h; hand-pinned for deterministic parity",
+    "COPYRIGHT_BANNER_C: build-specific version string from date.h; hand-pinned for deterministic parity",
     "DLBFILE: platform/filesystem path constant; not used in web runtime",
     "DUMPLOG_FILE: platform/filesystem path template; not used in web runtime",
     "HACKDIR: platform/filesystem path constant; not used in web runtime",

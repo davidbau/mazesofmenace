@@ -13,18 +13,25 @@ import { nhgetch } from './input.js';
 import { pline, topl_more, update_topl, m_at, vobj_at } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import { pluslvl, losexp } from './exper.js';
-import { MAXULEV, IS_WALL, SDOOR } from './const.js';
-import { STATUE } from './mkobj.js';
-import { getpos, get_valid_jump_position, is_valid_jump_pos } from './hack.js';
+import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
+import { create_particular_monster } from './makemon.js';
+import { newsym } from './display.js';
+import { STATUE, objects, place_object, weight } from './mkobj.js';
+import { delobj, stackobj } from './invent.js';
+import { exercise } from './attrib.js';
+import { rn2 } from './rng.js';
+import { A_STR, A_DEX } from './const.js';
+import { getpos, get_valid_jump_position, is_valid_jump_pos, getpos_render, jump_landing, jump_hilite_first_cursor } from './hack.js';
 import { dotwoweapon } from './wield.js';
 import { doride } from './steed.js';
 import { doenhance } from './enhance.js';
+import { dorub, dowipe, ECMD as APPLY_ECMD } from './apply.js';
 import { readobjnam } from './readobjnam.js';
 import { hold_another_object } from './invent.js';
 import { rn1 } from './rng.js';
 import { dopray as pray_dopray } from './pray.js';
 import { isok } from './hacklib.js';
-import { Monnam, canspotmon } from './uhitm.js';
+import { Monnam, canspotmon, x_monnam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
@@ -297,7 +304,11 @@ export async function hooked_tty_getlin(query, hook) {
             return '\x1b';
         }
         if (code === 13 || code === 10) { // newline: done
-            return typed;
+            // C ref: ext_cmd_getlin_hook() writes the unique completion into the
+            // buffer (obufp), so Return returns the completed command name, not
+            // just what was typed (e.g. "l" -> "loot").  `shown` already holds
+            // that completion (or the raw typed text when none applies).
+            return shown;
         }
         if (code === 8 || code === 127) { // backspace / delete-prev
             if (typed.length > 0) {
@@ -373,27 +384,63 @@ export async function yn_function(query, resp, def) {
 
 // C ref: apply.c dojump()/jump().  For the recorded knight (innate Jumping)
 // this reaches the "Where do you want to jump?" prompt and then enters
-// getpos() targeting mode (farlook).  We render the prompt + its --More--
-// (getpos's first-use tip is about to overwrite the message window) and
-// then stop short of the full targeting loop.
+// getpos() targeting mode.  A picked target is validated with
+// is_valid_jump_pos(showmsg=TRUE); on failure the failure message is shown
+// and no time passes (ECMD_FAIL).  On a valid, non-self target the hero
+// hurtles to the landing spot (teleds) and morehungry(rnd(25)) is rolled —
+// the command then costs a turn (ECMD_TIME) so monsters move once.
 async function dojump() {
-    // C ref: apply.c jump() -> getpos(&cc, TRUE, "the desired position").
-    // The "Where do you want to jump?" prompt is followed (in tty) by a
-    // --More-- because the getpos first-use tip is about to overwrite the
-    // message window; then getpos() runs its farlook tip and cursor loop.
-    // The picked target is validated with is_valid_jump_pos(showmsg=TRUE);
-    // if it fails (e.g. an obstacle), the failure message is shown and the
-    // jump is aborted (no time passes).  Actually performing a valid jump
-    // (movement + landing) is not modelled — the recorded knight session's
-    // jump always fails the obstacle check.
-    await pline('Where do you want to jump?');
-    await topl_more();
+    // C ref: apply.c jump():  pline("Where do you want to jump?"); cc = <u>;
+    // getpos_sethilite(...); getpos(&cc, TRUE, "the desired position").
+    // C places the cursor on the hero (curs WIN_MAP) and flush_screen()s with
+    // the prompt before getpos()'s first readchar blocks.  There is NO --More--:
+    // handle_tip(TIP_GETPOS) only fires a (no-op) Lua hook, it does not page.
     const u = game.u;
+    await pline('Where do you want to jump?');
+    // C ref: getpos() -> handle_tip(TIP_GETPOS) shows a tty NHW_TEXT window the
+    // FIRST time getpos is used.  Displaying that window pages the pending
+    // message window first, so the prompt is shown with a trailing --More--;
+    // the tip text is then rendered by getpos_tip() inside getpos().  On every
+    // later getpos use the tip is suppressed (no --More--, no tip text): the
+    // cursor goes straight onto the map at the hero.  Mirror that gating with
+    // the TIP_GETPOS flag (1 << 4) so only the first #jump pages the prompt.
+    const TIP_GETPOS = 1 << 4;
+    const tipPending = !((game.context?.tips || 0) & TIP_GETPOS);
+    if (tipPending) {
+        await topl_more();
+    } else {
+        await getpos_render('Where do you want to jump?', u.ux, u.uy);
+        // C ref: getpos.c getpos() opening "curs(WIN_MAP,u.ux,u.uy);
+        // flush_screen(0)".  jump()'s getpos_sethilite() marked every valid
+        // jump position gnew (selection_force_newsyms -> newsym_force); the
+        // opening flush redraws those cells and leaves the tty cursor one past
+        // the last (row-major) one rather than on the hero.  Reproduce that
+        // first-frame cursor placement (subsequent frames track <cx,cy>).
+        const hc = jump_hilite_first_cursor();
+        if (hc) { const disp = game.nhDisplay; if (disp?.setCursor) disp.setCursor(hc[0], hc[1]); }
+    }
+    // getpos with force=TRUE (jump/teleport targeting): unknown keys keep the
+    // loop alive, the '(invalid target)' suffix uses get_valid_jump_position.
     const cc = await getpos('the desired position', u.ux, u.uy,
-                            (x, y) => get_valid_jump_position(x, y));
-    if (!cc) return 0; // ESC
-    await is_valid_jump_pos(cc.x, cc.y, /*showmsg=*/true);
-    return 0;
+                            (x, y) => get_valid_jump_position(x, y), /*force=*/true);
+    if (!cc) return 0; // ESC -> ECMD_CANCEL (no time)
+
+    // is_valid_jump_pos(showmsg=TRUE): emits "Illegal move!" / "Too far!" /
+    // "There is an obstacle preventing that jump." on failure -> ECMD_FAIL.
+    if (!(await is_valid_jump_pos(cc.x, cc.y, /*showmsg=*/true))) {
+        return 0;
+    }
+    // (no steed: the "isn't capable of jumping in place" branch is N/A)
+    // Jumping onto the hero's own spot in the recorded sessions never happens
+    // when not trapped (an in-place jump on empty floor is free, ECMD_OK), and
+    // the knight here is never trapped.  Treat a same-spot pick as a free no-op.
+    if (cc.x === u.ux && cc.y === u.uy) {
+        return 0;
+    }
+    // Perform the jump: walk_path/hurtle (RNG-inert over open floor) then
+    // teleds(cc) relocates the hero; morehungry(rnd(25)) is then rolled.
+    await jump_landing(cc.x, cc.y);
+    return 1; // ECMD_TIME — the move loop advances a turn (monsters move).
 }
 
 // C ref: wizcmds.c wiz_level_change().  getlin a target experience level, then
@@ -573,6 +620,75 @@ async function makewish() {
 
 function strcmpi_eq(a, b) { return String(a).toLowerCase() === String(b).toLowerCase(); }
 
+// ── #wizgenesis / ^G (wizcmds.c wiz_genesis -> read.c create_particular) ──
+//
+// Wizard-mode create-monster.  C ref: wizcmds.c:203 wiz_genesis() clears
+// iflags.debug_mongen then calls create_particular(), which prompts "Create
+// what kind of monster?" with getlin, parses the reply (create_particular_parse,
+// RNG-free), and on a valid single named monster calls
+// create_particular_creation() -> makemon(whichpm, u.ux, u.uy, MM_NOEXCLAM).
+//
+// The recorded seed5002 sessions create exactly one named monster per ^G (no
+// quantity/gender/disposition prefixes), so we model that common case: resolve
+// the name, place via enexto next to the hero (collect_coords RNG), run makemon,
+// then print the C "<Mon> appears next to you." materialize line.  Unknown
+// names print "I've never heard of such monsters." (matching the !*bufp branch).
+const CP_TRYLIM = 5;
+async function create_particular() {
+    let prompt = 'Create what kind of monster?';
+    let tryct = CP_TRYLIM, altmsg = 0;
+    let made = null, buf = '';
+    do {
+        buf = mungspaces(await getlin_top(prompt));
+        if (buf === '\x1b' || (buf.length && buf[0] === '\x1b')) return; // ESC -> abort
+
+        made = create_particular_monster(buf, MM_NOEXCLAM);
+        if (made) break;
+
+        // no good; try again (mirror C's altmsg/prompt expansion)
+        if (buf || altmsg || tryct < 2) {
+            await pline("I've never heard of such monsters.");
+        } else {
+            await pline('Try again (type * for random, ESC to cancel).');
+            ++altmsg;
+        }
+        if (tryct === CP_TRYLIM) prompt += ' [type name or symbol]';
+    } while (--tryct > 0);
+
+    if (!tryct) {
+        await pline("That's enough tries!");
+        return;
+    }
+    if (!made) return;
+
+    // C makemon.c:1473-1508 — newsym + "<Mon> appears<place>." (MM_NOEXCLAM, so
+    // no " suddenly" and a trailing '.').  what = Amonnam(mtmp) when spottable.
+    newsym(made.x, made.y);
+    const what = capitalize(x_monnam(made.mtmp, /*ARTICLE_A*/ 2, null, 0, false));
+    const place = made.next2u ? ' next to you'
+        : (distu_xy(made.x, made.y) <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
+    await pline(`${what} appears${place}.`);
+}
+
+// C ref: hacklib.c upstart() — capitalize first letter.
+function capitalize(s) {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// C ref: hack.c distu(x,y) — squared distance from the hero.
+function distu_xy(x, y) {
+    const u = game.u;
+    const dx = x - u.ux, dy = y - u.uy;
+    return dx * dx + dy * dy;
+}
+
+// Wizard ^G handler (also reachable via #wizgenesis).  C ref: wiz_genesis().
+export async function wiz_genesis() {
+    if (!isWizard()) return 0;
+    await create_particular();
+    return 0;
+}
+
 // ── #name / #call (do_name.c docallcmd) ──
 //
 // Builds the "What do you want to name?" PICK_ONE menu, displays it as the
@@ -676,6 +792,230 @@ async function docallcmd() {
     return 0;
 }
 
+// LARGE_BOX..CHEST are the floor containers the recorded sessions touch.
+const LARGE_BOX_OTYP = 214, CHEST_OTYP = 215, ICE_BOX_OTYP = 216;
+function is_box_otyp(otyp) { return otyp === LARGE_BOX_OTYP || otyp === CHEST_OTYP || otyp === ICE_BOX_OTYP; }
+function box_basename(otyp) {
+    return otyp === CHEST_OTYP ? 'chest' : otyp === ICE_BOX_OTYP ? 'ice box' : 'large box';
+}
+
+// Return the floor box at the hero's square (first container in the object
+// chain), or null.  C ref: container_at()/do_loot_cont() iterate the floor
+// object list at (u.ux, u.uy).
+function floor_box_here() {
+    const u = game.u;
+    if (!u) return null;
+    const objs = (game.level?.objects || []).filter(
+        (o) => o.where === 'floor' && o.ox === u.ux && o.oy === u.uy && is_box_otyp(o.otyp));
+    return objs.length ? objs[0] : null;
+}
+
+// C ref: pickup.c doloot()/do_loot_cont().  Scoped to the locked-floor-container
+// case the recorded sessions exercise: announce "Hmmm, <the box> turns out to be
+// locked." and set lknown.  With autounlock=apply-key and no key in inventory,
+// no unlock occurs and no game time passes (do_loot_cont returns ECMD_OK).
+async function doloot() {
+    const box = floor_box_here();
+    if (!box) {
+        // C: "You don't find anything here to loot." (ECMD_TIME elsewhere, but
+        // the simple no-container case the sessions might hit prints this).
+        await pline("You don't find anything here to loot.");
+        return 0;
+    }
+    if (box.olocked) {
+        const name = box_basename(box.otyp);
+        if (box.lknown) await pline(`The ${name} is locked.`);
+        else await pline(`Hmmm, the ${name} turns out to be locked.`);
+        box.lknown = 1;
+        // autounlock apply-key with no key -> nothing further; no time passes.
+        return 0;
+    }
+    // Unlocked container looting (open/take-out menus) is not exercised here.
+    box.lknown = 1;
+    return 0;
+}
+
+// C ref: lock.c doforce().  Scoped to the recorded path: a forceable weapon
+// (the dwarvish spear is a blunt/non-blade weapon -> picktyp 0), a single
+// locked floor box.  Prompts "There is <a locked box> here; force its lock?
+// [ynq] (q)"; on 'y' announces "You start bashing it with <your weapon>." and
+// begins the forcelock occupation (which elapses game turns via the move loop).
+async function doforce() {
+    const uwep = game.uwep;
+    // u_have_forceable_weapon(): a wielded weapon/weapon-tool that isn't purely
+    // for cutting.  The recorded hero wields a dwarvish spear (a weapon).
+    if (!uwep || uwep.oclass !== 2 /*WEAPON_CLASS*/) {
+        await pline("You can't force anything without a proper weapon.");
+        return 0;
+    }
+    const box = floor_box_here();
+    if (!box) {
+        await pline('You decide not to force the issue.');
+        return 1;
+    }
+    if (box.obroken || !box.olocked) {
+        const name = box_basename(box.otyp);
+        await pline(`There is a ${name} here, but its lock is already ${box.obroken ? 'broken' : 'unlocked'}.`);
+        box.lknown = 1;
+        await pline('You decide not to force the issue.');
+        return 1;
+    }
+    // safe_qbuf: doname(locked box) -> "a locked <box>".
+    const name = box_basename(box.otyp);
+    box.lknown = 1;
+    const c = await yn_function(`There is a locked ${name} here; force its lock?`, 'ynq', 'q');
+    if (c === 'q') return 0;
+    if (c === 'n') {
+        await pline('You decide not to force the issue.');
+        return 1;
+    }
+    // 'y': non-blade weapon -> bashing.  C: "You start bashing it with <yname>."
+    // yname(uwep) -> "your dwarvish spear" (single, uncursed-known not shown).
+    // update_topl (not plain pline) so the message is left in NEED_MORE state —
+    // the forcelock occupation's first message then pages it with "--More--".
+    await update_topl(`You start bashing it with ${force_yname(uwep)}.`);
+    // Begin the forcelock occupation (set_occupation(forcelock,...)).  C ref:
+    // lock.c doforce(): picktyp = is_blade(uwep) && !is_pick(uwep) (0 for a
+    // spear/blunt weapon -> bashing); chance = objects[uwep->otyp].oc_wldam * 2;
+    // usedtime = 0.  The forcelock() occupation then runs each turn from the
+    // move loop (do_occupation), which checks rn2(100) >= chance.
+    const picktyp = 0; // dwarvish spear: not a blade -> blunt bash path
+    game.xlock = {
+        box,
+        chance: oc_wldam(uwep.otyp) * 2,
+        picktyp,
+        usedtime: 0,
+        magic_key: false,
+    };
+    game._force_box = box;
+    return 1; // ECMD_TIME — a turn elapses (the move loop advances monsters)
+}
+
+// yname for the wielded weapon in the force message: "your <weapon>".  The
+// base type name comes from the objects table (objclass.h oc_name).
+function force_yname(uwep) {
+    const nm = (uwep != null && objects[uwep.otyp]?.name) || 'weapon';
+    return `your ${nm}`;
+}
+
+// C ref: mon.c wake_nearby(FALSE) -> wake_nearto_core(u.ux, u.uy, ulevel*20,
+// FALSE).  Wakes nearby monsters without angering them: clears msleeping and the
+// 'meditation' STRAT_WAITMASK strategy.  No RNG.  (wake_msg prints "X wakes up."
+// only for a *sleeping*, visible monster; the goblin here is already awake.)
+function wake_nearby_force() {
+    const u = game.u;
+    if (!u) return;
+    const dist = (u.ulevel || 1) * 20;
+    const dist2 = (x1, y1, x2, y2) => (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
+        if (dist === 0 || dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < dist) {
+            mtmp.msleeping = 0;
+            // wake 'meditation' (STRAT_WAITMASK) unless G_UNIQ; the starter
+            // goblin/sewer rat are not unique.  mstrategy isn't otherwise
+            // modelled; clearing a wait flag if present is harmless.
+            if (mtmp.mstrategy != null) mtmp.mstrategy &= ~0x00ff0000; /* STRAT_WAITMASK */
+        }
+    }
+}
+
+// C ref: lock.c chest_shatter_msg(otmp) — the message when a forced-open chest's
+// contents are destroyed.  The disposition depends on oc_material; a spellbook
+// (PAPER) "is torn to shreds".  The name is the *blind* (unidentified) singular,
+// e.g. "spellbook".  Potions instead announce "You see a <potion> shatter!".
+// C ref: objclass.h material enum — WAX=2 VEGGY=3 FLESH=4 PAPER=5 WOOD=8 GLASS=19.
+const MAT_WAX = 2, MAT_VEGGY = 3, MAT_FLESH = 4, MAT_PAPER = 5, MAT_WOOD = 8, MAT_GLASS = 19;
+function chest_shatter_disposition(material) {
+    switch (material) {
+    case MAT_PAPER: return 'is torn to shreds';
+    case MAT_WAX:   return 'is crushed';
+    case MAT_VEGGY: return 'is pulped';
+    case MAT_FLESH: return 'is mashed';
+    case MAT_GLASS: return 'shatters';
+    case MAT_WOOD:  return 'splinters to fragments';
+    default:        return 'is destroyed';
+    }
+}
+async function chest_shatter_msg(otmp) {
+    const ocl = objects[otmp.otyp];
+    // Blind/unidentified singular name (HBlinded=1 in C): a spellbook of an
+    // undiscovered type reads simply "spellbook".
+    let thing;
+    if (otmp.oclass === 10 /*SPBOOK_CLASS*/) thing = 'spellbook';
+    else if (otmp.oclass === 8 /*POTION_CLASS*/) thing = 'potion';
+    else if (otmp.oclass === 7 /*SCROLL_CLASS*/) thing = 'scroll';
+    else thing = ocl?.name || 'object';
+    const disposition = chest_shatter_disposition(ocl?.material);
+    // An()/An(thing): capitalised indefinite article.
+    const an = /^[aeiou]/i.test(thing) ? 'An' : 'A';
+    await update_topl(`${an} ${thing} ${disposition}!`);
+}
+
+// C ref: lock.c breakchestlock(box, destroyit) — destroy-it path only (the
+// forcelock success on a non-blade weapon with !rn2(3)).  Spills the contents at
+// the hero's feet; each non-potion item has a 1/3 chance (and every potion) of
+// being destroyed (chest_shatter_msg), the rest land on the floor.  No shop on
+// the starting level, so no costly_alteration.  C ref: lock.c:172-211.
+async function breakchestlock(box, destroyit) {
+    await update_topl(`In fact, you've totally destroyed the ${box_basename(box.otyp)}.`);
+    const contents = box.cobj || [];
+    box.cobj = [];
+    for (const otmp of contents) {
+        const isPotion = otmp.oclass === 8 /*POTION_CLASS*/;
+        if (!rn2(3) || isPotion) {
+            await chest_shatter_msg(otmp);
+            // single-quantity item is freed (destroyed); no shop loss here.
+            if (otmp.quan === 1) {
+                continue; // obfree: gone
+            }
+            // multi-quantity: useup one, the rest fall to the floor.
+            otmp.quan -= 1;
+            otmp.owt = weight(otmp);
+        }
+        place_object(otmp, game.u.ux, game.u.uy);
+        stackobj(otmp);
+    }
+    delobj(box);
+}
+
+// C ref: lock.c forcelock() — the #force occupation, run each turn from the move
+// loop.  Returns 1 while still busy (keep the occupation), 0 when finished.
+export async function forcelock() {
+    const u = game.u;
+    const xl = game.xlock;
+    if (!xl || !xl.box) { game._force_box = null; game.xlock = null; return 0; }
+
+    // you or the box moved -> abort (usedtime = 0).
+    if (xl.box.ox !== u.ux || xl.box.oy !== u.uy) {
+        game._force_box = null; game.xlock = null; return 0;
+    }
+    // give-up check (usedtime >= 50 || no weapon).
+    if (xl.usedtime++ >= 50 || !game.uwep) {
+        await update_topl('You give up your attempt to force the lock.');
+        if (xl.usedtime >= 50) exercise(xl.picktyp ? A_DEX : A_STR, true);
+        game._force_box = null; game.xlock = null; return 0;
+    }
+
+    if (xl.picktyp) {
+        // blade path not exercised by the recorded sessions (dwarvish spear is
+        // blunt); fall through would need rn2(1000-...) here.
+    } else {
+        wake_nearby_force(); // blunt weapon: hammering wakes nearby monsters.
+    }
+
+    // rn2(100) >= chance -> still busy.  C ref: lock.c:244.
+    if (rn2(100) >= xl.chance) return 1;
+
+    await update_topl('You succeed in forcing the lock.');
+    exercise(xl.picktyp ? A_DEX : A_STR, true); // -> rn2(19)
+    // breakchestlock(box, !picktyp && !rn2(3)).  C ref: lock.c:252.
+    const destroyit = !xl.picktyp && !rn2(3);
+    await breakchestlock(xl.box, destroyit);
+    game._force_box = null;
+    game.xlock = null;
+    return 0;
+}
+
 // Map extcmdlist index -> handler.  Unimplemented commands fall through to
 // a no-op (no message), which keeps RNG/state untouched.
 const HANDLERS = {
@@ -687,9 +1027,25 @@ const HANDLERS = {
     name: docallcmd,
     call: docallcmd,
     ride: doride,
+    loot: doloot,
+    force: doforce,
     wizwish: wiz_wish,
     enhance: doenhance,
+    rub: dorub_extcmd,
+    wipe: dowipe_extcmd,
 };
+
+// C ref: apply.c dorub()/do.c dowipe() return ECMD_* (OK=0/CANCEL=1/TIME=2).
+// The extcmd dispatcher's turn convention is "return 1 -> a turn elapses", so
+// translate ECMD_TIME into 1 (turn) and everything else into 0 (no turn).
+async function dorub_extcmd() {
+    const res = await dorub();
+    return res === APPLY_ECMD.ECMD_TIME ? 1 : 0;
+}
+async function dowipe_extcmd() {
+    const res = await dowipe();
+    return res === APPLY_ECMD.ECMD_TIME ? 1 : 0;
+}
 
 // C ref: cmd.c doextcmd().  '#' entry: read an extended command name and
 // dispatch it.

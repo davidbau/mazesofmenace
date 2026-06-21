@@ -160,11 +160,21 @@ function pet_base_level(pettype) {
     return pettype === PM_PONY ? 3 : 2;
 }
 
-function newmonhp_for_pet(pettype) {
+// C ref: makemon.c newmonhp(mtmp, mndx) — set the freshly-created monster's
+// m_lev (adj_lev of the species base level) and mhp/mhpmax.  Returns the mlev
+// so callers can store it; the hp roll is the same RNG either way.
+function newmonhp_for_pet(pettype, mtmp) {
     const mlev = adj_lev(pet_base_level(pettype));
-    if (!mlev)
-        return rnd(4);
-    return logged_d(mlev, 8);
+    let hp;
+    if (!mlev) hp = rnd(4);
+    else hp = logged_d(mlev, 8);
+    if (mtmp) {
+        // C ref: makemon.c newmonhp — m_lev is adj_lev(ptr); a starting pet on
+        // dlvl 1 with u.ulevel 1 decrements to base-1 (kitten/dog 1, pony 2).
+        mtmp.m_lev = mlev;
+        mtmp.mhp = mtmp.mhpmax = hp;
+    }
+    return mlev;
 }
 
 function peace_minded_pet() {
@@ -227,7 +237,7 @@ function makedog_mon(pettype, x, y) {
         },
     };
     mtmp.m_id = rnd(2);
-    newmonhp_for_pet(pettype);
+    newmonhp_for_pet(pettype, mtmp);
     rn2(2); // random gender
     peace_minded_pet();
     return mtmp;

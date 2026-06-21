@@ -23,6 +23,8 @@ import {
 } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { game } from './gstate.js';
+import { exercise } from './attrib.js';
+import { A_WIS } from './const.js';
 
 // ── Color constants (C ref: include/color.h) ──
 const CLR_BLACK = 0, CLR_RED = 1, CLR_GREEN = 2, CLR_BROWN = 3, CLR_BLUE = 4;
@@ -128,11 +130,22 @@ function seedAppearance() {
         if (o.oc_color == null) o.oc_color = CLR_GRAY;
         if (o.oc_tough == null) o.oc_tough = 0;
         if (o.oc_material == null) o.oc_material = o.material ?? 0;
-        // oc_name_known: every shuffled object starts unknown (oc_name_known
-        // is only preset on a few generic/fixed-description items, none of
-        // which fall inside a shuffle range).  The C BITS() 'nmkn' flag is 0
-        // for all members of the shuffled ranges, so the shuffle never skips.
-        if (o.oc_name_known == null) o.oc_name_known = 0;
+        // oc_name_known / oc_encountered: C init_objects() re-initialises the
+        // per-game discovery state every time it runs (once per new game).  This
+        // MUST reset unconditionally for every discoverable (description-bearing)
+        // object each game: knows_class()/knows_object() during chargen mark
+        // types known, and the appearance shuffle skips already-known objects —
+        // so a leaked "known" flag from a previous game (e.g. in a multi-game
+        // "ten deaths" replay) would shift the shuffle RNG and desync level
+        // generation.  Objects without a randomized description (NoDes) keep
+        // their preset flag (they are always type-known and are never shuffled).
+        // C ref: o_init.c init_objects().
+        if (DESCR_BY_OTYP[i] != null) {
+            o.oc_name_known = 0;
+        } else if (o.oc_name_known == null) {
+            o.oc_name_known = 0;
+        }
+        o.oc_encountered = 0;
     }
     // Apply the per-appearance color/tough overrides for shuffle ranges.
     const apply = (base, table, materialEnum) => {
@@ -385,8 +398,13 @@ function disco_japanese_name(otyp) {
         ? JAPANESE_ITEMS.get(otyp) : null;
 }
 
-// C ref: o_init.c discover_object(oindx, mark_as_known, mark_as_encountered, _).
-export function discover_object(oindx, markKnown, markEncountered) {
+// C ref: o_init.c discover_object(oindx, mark_as_known, mark_as_encountered,
+// credit_hero).  When a type first becomes name-known and credit_hero is set
+// (the makeknown() macro passes TRUE), the hero is credited with a Wisdom
+// exercise — exercise(A_WIS, TRUE) rolls rn2(19).  knows_object/observe_object
+// (initial inventory, autodiscovery) pass credit_hero FALSE, so they roll no
+// RNG, matching C.
+export function discover_object(oindx, markKnown, markEncountered, creditHero) {
     if (oindx < FIRST_OBJECT) return;
     const o = objects[oindx];
     if (!o) return;
@@ -394,7 +412,10 @@ export function discover_object(oindx, markKnown, markEncountered) {
         || (!o.oc_encountered && markEncountered)
         || disco_japanese_name(oindx)) {
         if (markEncountered) o.oc_encountered = 1;
-        if (!o.oc_name_known && markKnown) o.oc_name_known = 1;
+        if (!o.oc_name_known && markKnown) {
+            o.oc_name_known = 1;
+            if (creditHero) exercise(A_WIS, true);
+        }
     }
 }
 

@@ -280,7 +280,8 @@ function runTutProgram() {
 
     // Engravings (lines 80-93) — no PRNG.  Ranger uses hjkl movement keys.
     engrave(9, 3, ENGRAVE, 'Move around with h j k l');
-    engrave(5, 2, ENGRAVE, 'Move diagonally with y u b n');
+    // C ref: dat/tut-1.lua diagmovekeys = SW NE SE NW = "b u n y" (vi-keys).
+    engrave(5, 2, ENGRAVE, 'Move diagonally with b u n y');
     // (Knight jump engraving skipped — hero is a Ranger.)
     engrave(2, 4, ENGRAVE, 'Some actions may require multiple tries before succeeding');
     engrave(2, 5, ENGRAVE, 'Open the door by moving into it');

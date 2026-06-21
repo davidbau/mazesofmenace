@@ -31,6 +31,8 @@ import { DEADMONSTER } from './mon.js';
 import { newsym } from './display.js';
 import { cansee } from './vision.js';
 import { update_topl } from './display.js';
+import { make_corpse } from './uhitm.js';
+import { DOOR, POOL, DRAWBRIDGE_UP } from './const.js';
 
 // ── monster-combat message rendering ─────────────────────────────────────────
 // C ref: mhitm.c hitmm()/missmm() + mon.c monkilled().  These emit the "The X
@@ -101,6 +103,56 @@ const AT_NONE = 0, AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3, AT_BUTT = 4,
       AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_WEAP = 254;
 const AD_PHYS = 0;
 
+// weapon_check states (C ref: monst.h wpn_chk_flags).
+const NO_WEAPON_WANTED = 0, NEED_WEAPON = 1, NEED_HTH_WEAPON = 3;
+// Hand-to-hand weapon priority (C ref: weapon.c hwep[]), restricted to the
+// otyps the contest's armed monsters carry; the orcish "crude" dagger (36) is
+// the only one reachable for the low-level orc/kobold slice.
+const HWEP_PRIORITY_MM = [55, 45, 54, 52, 50, 46, 48, 73, 44, 27, 30, 28, 77,
+    34, 35, 36, 40];
+const ORCISH_DAGGER_MM = 36;
+
+// C ref: mondata.h MON_WEP(mon) — the monster's wielded weapon (mw).
+function MON_WEP_MM(mon) { return mon?.mw || null; }
+
+// C ref: weapon.c select_hwep — first carried weapon in hwep[] priority.  No RNG.
+function select_hwep_mm(mtmp) {
+    for (const otyp of HWEP_PRIORITY_MM)
+        for (const o of (mtmp?.minvent || []))
+            if (o.otyp === otyp) return o;
+    return null;
+}
+
+// C ref: weapon.c mon_wield_item(mon) — wield the best melee weapon.  Returns 1
+// if the monster wielded a (different) weapon this turn, 0 otherwise.  No RNG;
+// only the "<Mon> wields <weapon>!" message + mw set.
+async function mon_wield_item_mm(mon) {
+    if (mon.weapon_check === NO_WEAPON_WANTED) return 0;
+    const obj = select_hwep_mm(mon);
+    if (obj) {
+        const mw_tmp = MON_WEP_MM(mon);
+        if (mw_tmp && mw_tmp.otyp === obj.otyp) {
+            mon.weapon_check = NEED_WEAPON;
+            return 0;
+        }
+        mon.mw = obj;
+        mon.weapon_check = NEED_WEAPON;
+        if (mm_can_see_mon(mon)) {
+            const nm = (obj.otyp === ORCISH_DAGGER_MM) ? 'a crude dagger' : 'a weapon';
+            await emitMMmsg(`${Monnam(mon)} wields ${nm}!`);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+// C ref: canseemon(mon) — visible (on a lit/in-sight square, not invisible).
+function mm_can_see_mon(mon) {
+    if (!mon) return false;
+    if (mon.minvis && !game.u?.see_invis) return false;
+    return !!cansee(mon.mx, mon.my);
+}
+
 // ── combat data for the monsters the contest sessions put into mon-vs-mon
 // melee, ported from include/monsters.h.  Keyed by the monster's display name
 // because the starting-pet records (dog.js) carry the C PM_* index while the
@@ -113,7 +165,7 @@ const AD_PHYS = 0;
 //   gfreq   — geno & G_FREQ (corpse_chance)
 //   attacks — ordered ATTK() list; the first AT_NONE slot terminates it
 //             exactly like the C mons[].mattk[] array (NO_ATTK == AT_NONE).
-const MZ_TINY = 0, MZ_SMALL = 1, MZ_MEDIUM = 2;
+const MZ_TINY = 0, MZ_SMALL = 1, MZ_MEDIUM = 2, MZ_HUMAN = 3;
 function ATK(aatyp, adtyp, damn, damd) { return { aatyp, adtyp, damn, damd }; }
 
 const MON_COMBAT = {
@@ -133,6 +185,33 @@ const MON_COMBAT = {
     // hostile kobold zombie killed by the pony makes corpse_chance roll
     // rn2(2 + (1<2) + 0) == rn2(3) (seed0103 step 42).
     'kobold zombie': { ac: 10, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_CLAW, AD_PHYS, 1, 4)] },
+    // C ref: monsters.h S_KOBOLD "kobold" — LVL(0,6,10,0,-2), geno (G_GENO|1)
+    // so G_FREQ==1; MZ_SMALL (not verysmall); attack AT_WEAP AD_PHYS 1d4 (a
+    // weapon attack: not modeled by the mattackm switch, so it is harmless as a
+    // defender).  Its gfreq drives corpse_chance: rn2(2 + (1<2) + 0) == rn2(3).
+    'kobold': { ac: 10, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 4)] },
+    // C ref: monsters.h S_ORC — armed orcs that carry a weapon (m_initweap ->
+    // orcish "crude" dagger) wield it when they fight, so they must be modeled
+    // as aggressors in the pet's return-attack (mattackm).  AT_WEAP/AD_PHYS,
+    // per-species dice: goblin 1d4, hobgoblin/hill orc/Mordor orc 1d6,
+    // orc/Uruk-hai 1d8.  mattackm's AT_WEAP path wields (no RNG) and returns
+    // MISS, so these records add no to-hit/damage rolls vs the pet.
+    'goblin':     { ac: 10, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 2, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 4)] },
+    'hobgoblin':  { ac: 10, mlevel: 1, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 6)] },
+    'hill orc':   { ac: 10, mlevel: 2, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 6)] },
+    'Mordor orc': { ac: 10, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 1, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 6)] },
+    // C ref: monsters.h S_BAT — a "giant bat" LVL(2,22,7,0,0), geno (G_GENO|2)
+    // so G_FREQ==2; MZ_SMALL; AT_BITE AD_PHYS 1d6.  Needed so the giant bat can
+    // be the *aggressor* in the dog_move return-attack (seed5002 step-242: the
+    // kitten claws the bat, the bat bites back via mattackm -> rnd(20)).  The
+    // plain "bat" bites 1d4; AD_STCK (large/giant mimic) modeled as AD_PHYS for
+    // the to-hit/damage rolls (mhitm_adtyping only special-cases non-PHYS).
+    'bat':        { ac: 8, mlevel: 0, msize: MZ_TINY,  verysmall: true,  gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 4)] },
+    'giant bat':  { ac: 7, mlevel: 2, msize: MZ_SMALL, verysmall: false, gfreq: 2, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
+    'vampire bat':{ ac: 6, mlevel: 5, msize: MZ_SMALL, verysmall: false, gfreq: 2, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
+    // C ref: monsters.h S_MIMIC — "small mimic" LVL(7,3,7,0,0), geno (G_GENO|2)
+    // so G_FREQ==2; MZ_MEDIUM; AT_CLAW AD_PHYS 3d4.
+    'small mimic':{ ac: 7, mlevel: 7, msize: MZ_MEDIUM, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_PHYS, 3, 4)] },
 };
 
 // Resolve the combat record for a monster instance.  Prefers data.name; the
@@ -227,8 +306,9 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
 
 // C ref: mon.c corpse_chance (the rn2 tail) + mondied corpse handling.
 // For the simple animals here: tmp = 2 + (gfreq < 2) + verysmall; !rn2(tmp).
-// We don't materialize the corpse object (no contest screen shows one at the
-// kill site within these sessions), but the rn2(tmp) draw is load-bearing.
+// The rn2(tmp) draw is load-bearing AND its TRUE result triggers make_corpse(),
+// which itself consumes RNG (next_ident + rndmonnum reservoir + corpse timeout)
+// — see killMonster() below.
 function corpse_chance(mdef, defCd) {
     const gfreq = defCd ? defCd.gfreq : 2;
     const verysmall = defCd ? (defCd.verysmall ? 1 : 0) : 0;
@@ -236,21 +316,42 @@ function corpse_chance(mdef, defCd) {
     return !rn2(tmp);                         // mon.c:3248
 }
 
+// C ref: monmove.c accessible(x,y) — ACCESSIBLE(typ)==typ>=DOOR && !closed_door.
+// Kill sites in the contest sessions are open floor/corridor/doorway; no closed
+// door sits under a dying monster, so the closed_door() refinement is omitted.
+function accessible(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return typ != null && typ >= DOOR;
+}
+
+// C ref: rm.h IS_POOL(typ) — pools/moat/water also let a corpse drop.
+function is_pool(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return typ != null && typ >= POOL && typ <= DRAWBRIDGE_UP;
+}
+
 // Remove a dead monster from the level and redraw its square.  C ref: mon.c
-// mondead() -> m_detach() -> remove_monster() + newsym().
+// mondied() -> mondead() [detach] then, if corpse_chance() succeeds and the
+// square is accessible (or a pool), make_corpse() which rolls next_ident,
+// rndmonnum and the corpse-timeout sequence.
 function killMonster(mdef, defCd) {
     mdef.mhp = 0;
-    corpse_chance(mdef, defCd);               // mon.c:3248 rn2(tmp)
+    const dropCorpse = corpse_chance(mdef, defCd); // mon.c:3248 rn2(tmp)
     const mx = mdef.mx, my = mdef.my;
     // Detach from the level so the renderer (m_at / MON_AT) stops drawing it.
     // The dead monster's coordinates are intentionally left intact: mattackm
     // still consults them for the post-attack passivemm adjacency guard (which
-    // returns early for a dead defender anyway, so no extra RNG is drawn).
+    // returns early for a dead defender anyway, so no extra RNG is drawn), and
+    // make_corpse() places the cadaver at those same coordinates.
     const list = game.level?.monsters;
     if (list) {
         const idx = list.indexOf(mdef);
         if (idx >= 0) list.splice(idx, 1);
     }
+    // C ref: mon.c mondied — make_corpse only when corpse_chance passed AND the
+    // square can hold a corpse (accessible terrain or a pool).
+    if (dropCorpse && mx > 0 && my >= 0 && (accessible(mx, my) || is_pool(mx, my)))
+        make_corpse(mdef, mx, my);
     if (mx > 0 && my > 0) newsym(mx, my);
 }
 
@@ -375,8 +476,39 @@ export async function mattackm(magr, mdef) {
             }
             break;
 
+        case AT_WEAP: {
+            // C ref: mhitm.c:406 — an armed aggressor wields its weapon before
+            // striking.  mon_wield_item consumes no RNG; when it actually wields
+            // (returns 1) mattackm returns M_ATTK_MISS (the turn was spent
+            // wielding) — this is the goblin grabbing its crude dagger when the
+            // pet attacks it.  If already wielded, fall through to a normal
+            // weapon strike (rnd(20+i) to-hit + mdamagem with the weapon).
+            if (magr.weapon_check === NEED_WEAPON || !MON_WEP_MM(magr)) {
+                magr.weapon_check = NEED_HTH_WEAPON;
+                if (await mon_wield_item_mm(magr)) return M_ATTK_MISS;
+            }
+            mwep = MON_WEP_MM(magr);
+            if (mwep && mm_visible(magr, mdef)) {
+                // mswingsm(magr, mdef, mwep) — display-only; "<Mon> swings/thrusts
+                // <his> <weapon>." (no RNG for the pierce-only dagger).
+                const hisher = magr.female ? 'her' : 'his';
+                await emitMMmsg(`${Monnam(magr)} thrusts ${hisher} crude dagger.`);
+            }
+            dieroll = rnd(20 + i);             // mhitm.c:441
+            strike = (tmp > dieroll) ? 1 : 0;
+            if (strike) {
+                if (mm_visible(magr, mdef))
+                    await emitMMmsg(`${Monnam(magr)} ${hit_verb(mattk.aatyp)} ${the_monnam(mdef)}.`);
+                res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
+            } else {
+                if (mm_visible(magr, mdef))
+                    await emitMMmsg(`${Monnam(magr)} misses ${the_monnam(mdef)}.`);
+            }
+            break;
+        }
+
         default:
-            // weapon attacks (AT_WEAP) and other aatyps are not modeled.
+            // other aatyps (AT_MAGC, AT_GAZE, ...) are not modeled.
             strike = 0; attk = 0;
             break;
         }

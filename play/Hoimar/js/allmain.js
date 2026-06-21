@@ -1,8 +1,8 @@
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 //
-// Seed-scoped startup replay tables still cover unported startup phases.
-// Real mklev.js handles level generation for screen parity.
+// Startup selection and initial hero state run through the live JS port for
+// current evidence. Real mklev.js handles level generation.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -15,11 +15,15 @@ import {
     promptPendingPetCombatBeforeDeferredFloorList,
 } from './monmove.js';
 import { initrack, settrack } from './track.js';
-import { expire_corpse_timeouts, mklev, l_nhcore_init, monster_by_user_name, u_on_upstairs } from './mklev.js';
+import {
+    expire_corpse_timeouts, mklev, l_nhcore_init, monster_by_user_name,
+    place_object, stackobj, u_on_upstairs,
+} from './mklev.js';
+import { OBJECT_MATERIAL, OBJECT_NAME } from './object_data.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
-import { makedog } from './dog.js';
+import { makedog, obj_resists } from './dog.js';
 import {
     applyEatingBiteNutrition,
     applyEatingCorpsePostEffects,
@@ -35,6 +39,7 @@ import {
     docrt, cls, bot, flush_screen, pline, append_pline, newsym, serialize_terminal_grid,
     refresh_warning_monsters, refresh_swallowed_overlay, clear_pending_message,
     queue_more_prompt, see_monsters, see_objects, see_traps, topline_can_pack_message,
+    renderTextScreen,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { roles, findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
@@ -43,17 +48,10 @@ import {
     A_DEX, A_INT, A_STR, A_WIS, COLNO, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED,
     D_NODOOR, DOOR, NORMAL_SPEED, W_TOOL,
 } from './const.js';
-import * as ff8000 from './fastforward.js';
-import * as ff0002 from './fastforward0002.js';
-
-const STARTUP_REPLAY_BY_SEED = new Map([
-    // These tables are scaffolding for o_init, dungeon init, u_init, and ini_inv.
-    // Keep this registry small and explicit until those systems are ported.
-    [2, ff0002],
-    [8000, ff8000],
-]);
 
 const SPEED_BOOTS = 166;
+const GAUNTLETS_OF_FUMBLING = 160;
+const FUMBLE_BOOTS = 171;
 const BLUE_DRAGON_SCALE_MAIL = 108;
 const BLUE_DRAGON_SCALES = 118;
 const GAUNTLETS_OF_POWER = 161;
@@ -64,6 +62,15 @@ const TOWEL = 234;
 const LOCK_PICK = 222;
 const CREDIT_CARD = 223;
 const CHEST = 215;
+const POTION_CLASS = 8;
+const SCROLL_CLASS = 9;
+const SPBOOK_CLASS = 10;
+const WAX = 2;
+const VEGGY = 3;
+const FLESH = 4;
+const PAPER = 5;
+const WOOD = 8;
+const GLASS = 19;
 const NAME_PROMPT_BASE = "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you?";
 
 const ROLE_SELECTION_CHOICES = [
@@ -104,6 +111,90 @@ const ALIGN_SELECTION_CHOICES = [
 function wearingBlindfoldLike(g) {
     return (g.inventory || []).some((obj) => (obj?.otyp === BLINDFOLD || obj?.otyp === TOWEL)
         && (obj.worn || ((obj.owornmask || 0) & W_TOOL)));
+}
+
+async function slipOrTripBasic() {
+    // C ref: src/timeout.c:slip_or_trip().  This covers the ordinary on-foot
+    // fumble case; object-specific and ice-specific variants are added as
+    // evidence reaches them.
+    switch (rn2(4)) {
+    case 1:
+        await fumbleTopline('You trip over your own feet.');
+        break;
+    case 2:
+        await fumbleTopline('You slip and nearly fall.');
+        break;
+    case 3:
+        await fumbleTopline('You flounder.');
+        break;
+    default:
+        await fumbleTopline('You stumble.');
+        break;
+    }
+}
+
+async function fumbleTopline(msg) {
+    // C refs: src/timeout.c:nh_timeout() FUMBLING, win/tty/topl.c:update_topl().
+    // Fumble output is an ordinary pline(); tty packs it behind a prior
+    // same-turn topline such as mhitm.c:noises() when there is room.
+    if (!game._pending_message || game._travel_description_pending) {
+        await pline(msg);
+        return;
+    }
+    if (topline_can_pack_message(game._pending_message, msg)) {
+        await append_pline(msg);
+        return;
+    }
+    queue_more_prompt();
+    game._after_more_message = game._after_more_message
+        ? `${game._after_more_message}  ${msg}`
+        : msg;
+    game._after_more_needs_prompt = false;
+}
+
+async function timeoutFumblingBasic(u) {
+    if (!u?.uprops) return;
+    if (typeof u.uprops.fumbling_timeout !== 'number' || u.uprops.fumbling_timeout <= 0) return;
+    u.uprops.fumbling_timeout = Math.max(0, u.uprops.fumbling_timeout - 1);
+    if (u.uprops.fumbling_timeout > 0) return;
+    // C ref: src/timeout.c:nh_timeout() FUMBLING.  Fumble messages are only
+    // emitted when a move took place and the hero is neither levitating nor
+    // flying; worn fumble armor then reseeds the recurring timeout.
+    if (u.umoved && !u.uprops.levitation && !u.uprops.flying) {
+        await slipOrTripBasic();
+        // C ref: src/timeout.c:nh_timeout() FUMBLING.  The fumble line is
+        // followed by nomul(-2) with an empty nomovemsg.  nomul() also calls
+        // end_running(TRUE), so active run/travel/multi state stops here.
+        if (game.context) {
+            game.context.run = null;
+            game.context.travel = null;
+            game.context.travel1 = null;
+            game.context.mv = 0;
+            game.context.multi = -2;
+        }
+        game._simple_timed_repeats_remaining = 0;
+        game._simple_timed_repeat_text = '';
+        game._simple_timed_repeat_stop_text = '';
+        // The already completed command turn counts, leaving one helpless turn.
+        game._nomul_turns_remaining = Math.max(game._nomul_turns_remaining || 0, 2);
+        game._nomul_finish_message = '';
+        game._fumble_nomul_pet_inventory_scan = true;
+        if (game._run_tail_turn_active && !hasCloseTamePetForFumble(game, u))
+            game._run_tail_far_pet_fumble_nomul_pending = true;
+    }
+    if (wornFumblingArmor(game)) u.uprops.fumbling_timeout += rnd(20);
+    else u.uprops.fumbling = false;
+}
+
+function hasCloseTamePetForFumble(g, u) {
+    const ux = u?.ux ?? 0;
+    const uy = u?.uy ?? 0;
+    return (g.level?.monsters || []).some((mon) => {
+        if (!mon?.mtame) return false;
+        const dx = (mon.mx ?? ux) - ux;
+        const dy = (mon.my ?? uy) - uy;
+        return dx * dx + dy * dy <= 4;
+    });
 }
 
 async function nhTimeoutBasic() {
@@ -156,6 +247,7 @@ async function nhTimeoutBasic() {
     }
     if (typeof u?.uprops?.invulnerable === 'number' && u.uprops.invulnerable > 0)
         u.uprops.invulnerable = Math.max(0, u.uprops.invulnerable - 1);
+    await timeoutFumblingBasic(u);
 
     // C ref: timeout.c:nh_timeout() WOUNDED_LEGS case -> do.c:heal_legs().
     const timeout = u?.uprops?.wounded_legs || 0;
@@ -178,10 +270,6 @@ async function nhTimeoutBasic() {
         }
     }
     for (const { x, y } of expire_corpse_timeouts()) newsym(x, y);
-}
-
-function startupReplayForCurrentSeed() {
-    return STARTUP_REPLAY_BY_SEED.get(game._seed) || null;
 }
 
 function isSimpleMonsterHitYouLine(line) {
@@ -266,9 +354,8 @@ function startupRole() {
         return roleWithStartingRank(role);
     }
 
-    // Fallback for fully configured or replay-scaffolded startup paths that
-    // bypass the generic role-selection menu.
-    if (game._seed === 2) return roleWithStartingRank(findRole('Healer'));
+    // Fallback for fully configured startup paths that bypass the generic
+    // role-selection menu.
     return roleWithStartingRank(findRole('Tourist'));
 }
 
@@ -281,9 +368,9 @@ function startupFemale() {
     if (gender === 'female') return true;
     if (gender === 'male') return false;
 
-    // Fallback for startup replay scaffolding; generic random chargen stores
+    // Fallback for startup scaffolding; generic random chargen stores
     // the selected gender in _nhopts before newgame() initializes role state.
-    return game._seed !== 2;
+    return true;
 }
 
 function startupAlign() {
@@ -319,13 +406,7 @@ async function promptForPlayerName({ showBanner = true } = {}) {
 
     for (;;) {
         const cursorCol = 13 + name.length;
-        g._override_screen = namePromptWithName(name, showBanner);
-        g._override_cursor = [cursorCol, cursorRow, 1];
-        if (g.nhDisplay) {
-            g.nhDisplay.cursorCol = cursorCol;
-            g.nhDisplay.cursorRow = cursorRow;
-        }
-        await flush_screen(1);
+        renderTextScreen(g.nhDisplay, namePromptWithName(name, showBanner), [cursorCol, cursorRow, 1]);
 
         const rawKey = await nhgetch();
         const ch = typeof rawKey === 'number' ? String.fromCharCode(rawKey) : rawKey;
@@ -364,14 +445,7 @@ function namePromptWithName(name, showBanner = true) {
 }
 
 async function showStartupOverride(screen, cursor) {
-    const g = game;
-    g._override_screen = screen;
-    g._override_cursor = cursor;
-    if (g.nhDisplay) {
-        g.nhDisplay.cursorCol = cursor[0];
-        g.nhDisplay.cursorRow = cursor[1];
-    }
-    await flush_screen(1);
+    renderTextScreen(game.nhDisplay, screen, cursor);
     return startupInputChar(await nhgetch());
 }
 
@@ -478,14 +552,29 @@ function forcedAlignmentConstraint(state) {
     return null;
 }
 
+function forcedGenderConstraint(state) {
+    const role = state.role ? roleChoiceForName(state.role) : null;
+    if (role?.genders?.length === 1) return { source: 'role', gender: role.genders[0] };
+    return null;
+}
+
 function effectiveStartupAlignName(state) {
     return forcedAlignmentConstraint(state)?.align || state.align || null;
+}
+
+function effectiveStartupGenderName(state) {
+    return forcedGenderConstraint(state)?.gender || state.gender || null;
 }
 
 function consumeForcedAlignmentSelection(state) {
     if (state.align) return;
     const forced = forcedAlignmentConstraint(state);
     if (!forced) {
+        state._forcedAlignConsumed = null;
+        return;
+    }
+    if (forced.source !== 'role'
+        && !(forced.source === 'race' && !effectiveStartupGenderName(state))) {
         state._forcedAlignConsumed = null;
         return;
     }
@@ -496,22 +585,44 @@ function consumeForcedAlignmentSelection(state) {
     state._forcedAlignConsumed = token;
 }
 
+function consumeForcedGenderSelection(state) {
+    if (state.gender) return;
+    const forced = forcedGenderConstraint(state);
+    if (!forced) {
+        state._forcedGenderConsumed = null;
+        return;
+    }
+    const token = `${forced.source}:${forced.gender}`;
+    if (state._forcedGenderConsumed === token) return;
+    // C refs: src/role.c:rigid_role_checks(), pick_gend().
+    rn2(1);
+    state._forcedGenderConsumed = token;
+}
+
 function manualSelectionPrompt(state) {
-    const role = state.role ? roleNameForSelection(roleChoiceForName(state.role), state) : '<role>';
+    const gender = effectiveStartupGenderName(state);
+    const promptState = { ...state, gender };
+    const role = state.role ? roleNameForSelection(roleChoiceForName(state.role), promptState) : '<role>';
     const race = state.race || '<race>';
-    const gender = state.gender || '<gender>';
     const align = effectiveStartupAlignName(state) || '<alignment>';
-    return `${role} ${race} ${gender} ${align}`;
+    return `${role} ${race} ${gender || '<gender>'} ${align}`;
 }
 
 function startupConfirmationLine(state) {
-    const role = roleNameForSelection(roleChoiceForName(state.role), state);
+    const gender = effectiveStartupGenderName(state);
+    const role = roleNameForSelection(roleChoiceForName(state.role), { ...state, gender });
     const race = raceChoiceForName(state.race);
     const align = effectiveStartupAlignName(state);
-    return `${game.plname} the ${align} ${state.gender} ${(race?.adj || state.race)} ${role}`;
+    return `${game.plname} the ${align} ${gender} ${(race?.adj || state.race)} ${role}`;
 }
 
 function addStartupExtra(lines, key, state, facet) {
+    const forcedGender = facet === 'gender' ? forcedGenderConstraint(state) : null;
+    if (forcedGender) {
+        // C ref: src/role.c:role_menu_extra().
+        lines.push(`    ${forcedGender.source} forces ${forcedGender.gender}`);
+        return;
+    }
     const forcedAlign = facet === 'align' ? forcedAlignmentConstraint(state) : null;
     if (forcedAlign) {
         // C ref: src/role.c:role_menu_extra().
@@ -682,7 +793,7 @@ async function showStartupConfirmationOnNamePrompt(state) {
 function nextManualSelectionMenu(state) {
     if (!state.role) return 'role';
     if (!state.race) return 'race';
-    if (!state.gender) return 'gender';
+    if (!effectiveStartupGenderName(state)) return 'gender';
     if (!effectiveStartupAlignName(state)) return 'align';
     return 'confirm';
 }
@@ -888,14 +999,15 @@ async function runStartupFilterMenu() {
 
 function applyManualStartupSelection(state) {
     const g = game;
+    const gender = effectiveStartupGenderName(state);
     g._selected_startup_role = state.role;
     g._selected_startup_race = state.race;
-    g._selected_startup_gender = state.gender;
+    g._selected_startup_gender = gender;
     g._selected_startup_align = effectiveStartupAlignName(state);
     g._nhopts = g._nhopts || {};
     g._nhopts.role = state.role;
     g._nhopts.race = state.race;
-    g._nhopts.gender = state.gender;
+    g._nhopts.gender = gender;
     g._nhopts.align = g._selected_startup_align;
 }
 
@@ -910,6 +1022,7 @@ function chooseStartupExtra(kind, key, state) {
     };
     const next = nextByKey[key];
     if (!next || next === kind) return null;
+    if (next === 'gender' && forcedGenderConstraint(state)) return null;
     if (next === 'align' && forcedAlignmentConstraint(state)) return null;
     state[next] = null;
     return next;
@@ -920,6 +1033,7 @@ async function selectManualCharacter(initialState = {}) {
     // setup_racemenu(), setup_gendmenu(), setup_algnmenu().
     let state = { ...initialState };
     consumeForcedAlignmentSelection(state);
+    consumeForcedGenderSelection(state);
     let kind = nextManualSelectionMenu(state);
     let rightSide = false;
 
@@ -980,6 +1094,7 @@ async function selectManualCharacter(initialState = {}) {
             if (choice) state.align = choice.name;
         }
         consumeForcedAlignmentSelection(state);
+        consumeForcedGenderSelection(state);
         kind = nextManualSelectionMenu(state);
         rightSide = true;
     }
@@ -1072,7 +1187,7 @@ function restoreLegacyPagerLowerMapRows(display) {
 function drawQuestIntroOverlay(alignName) {
     const g = game;
     const display = g.nhDisplay;
-    if (!display || g._seed === 2 || g.iflags?.wc_splash_screen === false
+    if (!display || g.iflags?.wc_splash_screen === false
         || g.flags?.legacy === false
         || !findRole(g._nhopts?.role)) return false;
     const god = roleGod(g.urole, alignName);
@@ -1137,8 +1252,9 @@ function drawQuestIntroOverlay(alignName) {
         if (!startupPrimaryDecgraphics()) restoreLegacyPagerLowerMapRows(display);
     }
     for (const [col, row, text] of lines) display.putstr(col, row, text, NO_COLOR, 0);
-    g._override_screen = serialize_terminal_grid(display);
-    g._override_cursor = [left + 8, 17, 1];
+    g._startup_legacy_pager_screen = serialize_terminal_grid(display);
+    g._startup_legacy_pager_cursor = [left + 8, 17, 1];
+    g._startup_legacy_pager_active = true;
     return true;
 }
 
@@ -1169,64 +1285,11 @@ function applyStartupSpellPowerFloor() {
 
 export async function player_selection() {
     const g = game;
-    // We just override screens and consume keys to match seed0002 start
-    const steps = [
-        "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you?",
-        "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you? D",
-        "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you? Da",
-        "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you? Dav",
-        "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you? Davi",
-        "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you? David",
-        "Shall I pick character's race, role, gender and alignment for you? [ynaq]\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you? David",
-        "\x1b[41C\x1b[7mIs this ok? [ynaq]\x1b[0m\n\n\x1b[41CDavid the neutral male human Healer\n\nNetHack, Copyright 1985-2026\x1b[13Cy * Yes; start game\n\x1b[9CBy Stichting Mathematisch Centr n - No; choose role again\n\x1b[9CVersion 5.0.0 MacOS, built May  a - Not yet; choose another name\n\x1b[9CSee license for details.\x1b[8Cq - Quit\n\x1b[41C(end)\n\n\n\nWho are you? David",
-        "\x1b[22CIt is written in the Book of Hermes:\n\n\x1b[26CAfter the Creation, the cruel god Moloch rebelled\n\x1b[26Cagainst the authority of Marduk the Creator.\n\x1b[26CMoloch stole from Marduk the most powerful of all\n\x1b[26Cthe artifacts of the gods, the Amulet of Yendor,\n\x1b[26Cand he hid it in the dark cavities of Gehennom, the\n\x1b[26CUnder World, where he now lurks, and bides his time.\n\n\x1b[22CYour god Hermes seeks to possess the Amulet, and with it\n\x1b[22Cto gain deserved ascendance over the other gods.\n\n\x1b[22CYou, a newly trained Rhizotomist, have been heralded\n\x1b[22Cfrom birth as the instrument of Hermes.  You are destined\n\x1b[22Cto recover the Amulet for your deity, or die in the\n\x1b[22Cattempt.  Your hour of destiny has come.  For the sake\n\x1b[22Cof us all:  Go bravely with Hermes!\n\x1b[22C--More--\n\n\n\n\nDavid the Rhizotomist\x1b[10CSt:8 Dx:7 Co:14 In:11 Wi:18 Ch:17 Neutral\nDlvl:1 $:1218 HP:13(13) Pw:3(3) AC:0 Xp:1",
-        "Hello David, welcome to NetHack!  You are a neutral male human Healer.--More--\n\n\n\n\n\n\n\n\x1b[45C\x0elqqqqqqqqqqk\x0f\n\x1b[45C\x0ex~~~~\x0f!\x0e~~~~~~\x0f\n\x1b[45C\x0e~~~\x1b[33m\x0f(\x1b[39m\x0e~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~\x1b[97m\x0f?\x1b[39m\x0e~~~x\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0f@\x1b[39m\x0e~~~\x1b[96m\x0f/\x1b[39m\x0e~~\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0fd\x1b[39m\x0e~~~~~x\x0f\n\x1b[45C\x0emqqqqqqqqqqj\x0f\n\n\n\n\n\n\nDavid the Rhizotomist\x1b[10CSt:8 Dx:7 Co:14 In:11 Wi:18 Ch:17 Neutral\nDlvl:1 $:1218 HP:13(13) Pw:5(5) AC:8 Xp:1",
-        "\x1b[21C\x1b[7mDo you want a tutorial?\x1b[0m\n\n\x1b[21Cy - Yes, do a tutorial\n\x1b[21Cn - No, just start play\n\n\x1b[21CPut \"OPTIONS=!tutorial\" in .nethackrc to skip this query.\n\x1b[21C(end)\n\n\x1b[45C\x0elqqqqqqqqqqk\x0f\n\x1b[45C\x0ex~~~~\x0f!\x0e~~~~~~\x0f\n\x1b[45C\x0e~~~\x1b[33m\x0f(\x1b[39m\x0e~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~\x1b[97m\x0f?\x1b[39m\x0e~~~x\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0f@\x1b[39m\x0e~~~\x1b[96m\x0f/\x1b[39m\x0e~~\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0fd\x1b[39m\x0e~~~~~x\x0f\n\x1b[45C\x0emqqqqqqqqqqj\x0f\n\n\n\n\n\n\nDavid the Rhizotomist\x1b[10CSt:8 Dx:7 Co:14 In:11 Wi:18 Ch:17 Neutral\nDlvl:1 $:1218 HP:13(13) Pw:5(5) AC:8 Xp:1"
-    ];
     // C refs: src/role.c:plnamesuffix(), src/role.c:genl_player_setup(),
     // win/tty/wintty.c:tty_askname().  Incomplete startup options ask for a
     // name first, then run the role/race/gender/alignment selection menus.
-    if (g._seed !== 2) {
-        if (!g._nhopts?.name) await promptForPlayerName();
-        if (!fullyConfiguredCharacter()) await askStartupAutoPick();
-        return;
-    }
-
-    // We only need to run this for seed 2.
-    // Cursor positions for each step
-    const cursors = [
-        [13, 12], [14, 12], [15, 12], [16, 12], [17, 12], [18, 12],
-        [74, 0], [47, 8], [30, 17], [78, 0]
-    ];
-
-    // We can just consume 10 keys
-    for(let i=0; i<10; i++) {
-        g._override_screen = steps[i];
-        g._override_cursor = [cursors[i][0], cursors[i][1], 1];
-        if (g.nhDisplay) {
-            g.nhDisplay.cursorCol = cursors[i][0];
-            g.nhDisplay.cursorRow = cursors[i][1];
-        }
-        await flush_screen(1);
-
-        if (i === 7) {
-            // C ref: pick_role etc.
-            rn2(13); // pick_role
-            rn2(2);  // pick_race
-            rn2(2);  // pick_gend
-            rn2(1);  // pick_align
-        }
-
-        await nhgetch();
-    }
-    
-    // Set step 10 override to be captured by the main game loop's first nhgetch()
-    g._override_screen = steps[10];
-    g._override_cursor = [27, 6, 1];
-    if (g.nhDisplay) {
-        g.nhDisplay.cursorCol = 27;
-        g.nhDisplay.cursorRow = 6;
-    }
+    if (!g._nhopts?.name) await promptForPlayerName();
+    if (!fullyConfiguredCharacter()) await askStartupAutoPick();
 }
 
 export async function newgame() {
@@ -1234,22 +1297,12 @@ export async function newgame() {
     initrack();
     await player_selection();
 
-    const ff = startupReplayForCurrentSeed();
-
-    // Fast-forward through pre-mklev startup RNG calls.
-    // Replay tables still cover unported dungeon init/u_init_misc for scoped
-    // evidence seeds. Modules that expose an after-o_init entrypoint use the
-    // real object shuffle first so display names/colors mutate with the RNG.
-    if (ff?.fastforward_pre_mklev_after_o_init) {
-        init_objects();
-        ff.fastforward_pre_mklev_after_o_init();
-    } else if (ff) ff.fastforward_pre_mklev?.();
-    else {
-        init_objects();
-        preLuaRoleInitRng();
-        init_dungeons();
-        u_init_misc_rng();
-    }
+    // Real pre-mklev startup phases mutate object descriptions, dungeon
+    // topology, and baseline hero misc state before level generation.
+    init_objects();
+    preLuaRoleInitRng();
+    init_dungeons();
+    u_init_misc_rng();
 
     // C ref: allmain.c l_nhcore_init() — persistent Lua state created
     // after init_dungeons() and u_init_misc().
@@ -1264,9 +1317,11 @@ export async function newgame() {
     if (g.u.xray_range == null) g.u.xray_range = -1;
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
-    // Branch placement scaffolding. The exact dungeon init still lives in
-    // fastforward_pre_mklev; keep enough topology for later level generation
-    // to recognize the dungeon-exit and Mines-entrance branch levels.
+    g._death_first_move_message_shown = false;
+    g._death_continue_after_first_move_more = false;
+    // Branch placement fallback for paths that have not initialized full
+    // dungeon topology; generated levels still need the dungeon exit and Mines
+    // branch shape for branch predicates.
     if (!g.branches) g.branches = [
         { end1: { dnum: 0, dlevel: 1 }, end2: { dnum: 7, dlevel: 1 }, end1_up: true },
         { end1: { dnum: 0, dlevel: 2 }, end2: { dnum: 2, dlevel: 1 }, end1_up: false },
@@ -1277,35 +1332,31 @@ export async function newgame() {
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
 
-    // Hardcoded player state for seed8000 Tourist.
-    // Contestants: port u_init to compute these from game PRNG.
-    g._goldCount = g._seed === 2 ? 1218 : 757;
+    // Initial hero shell. C fills the visible HP/Pw/AC/attributes later in
+    // u_init_inventory_attrs(), after mklev() and makedog().
     g.u.ulevel = 1;
-    g.u.uhp = g._seed === 2 ? 13 : 10; 
-    g.u.uhpmax = g._seed === 2 ? 13 : 10;
-    g.u.uen = g._seed === 2 ? 5 : 2; 
-    g.u.uenmax = g._seed === 2 ? 5 : 2;
-    g.u.uac = g._seed === 2 ? 8 : 10; 
     g.u.uexp = 0;
     const align = startupAlign();
     const alignName = align.name;
-    // Attribute storage follows C order: Str, Int, Wis, Dex, Con, Cha.
-    const startupAttrs = g._seed === 2 ? [8, 11, 18, 7, 14, 17] : [9, 11, 16, 14, 12, 16];
-    g.u.acurr = { a: startupAttrs.slice() };
-    g.u.amax = { a: startupAttrs.slice() };
     g.urole = startupRole();
     g.urace = startupRace();
     g.flags.female = startupFemale();
+    g.u.uhp = g._initialHp ?? 10;
+    g.u.uhpmax = g.u.uhp;
+    g.u.uen = g._initialPower ?? 2;
+    g.u.uenmax = g.u.uen;
+    g.u.uac = 10;
+    // Attribute storage follows C order: Str, Int, Wis, Dex, Con, Cha.
+    g.u.acurr = { a: [0, 0, 0, 0, 0, 0] };
+    g.u.amax = { a: [0, 0, 0, 0, 0, 0] };
     // C refs: src/attrib.c:newhp(), include/you.h:Role.initrecord.
     g.u.ualign = { type: align.value, record: g.urole?.initrecord ?? 10 };
-    g.moves = 1;
     const startupRoleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
     const configuredPlayerName = g.plname;
-    g.plname = g._seed === 2 ? 'David'
-        // C refs: sys/libnh/libnhmain.c:nhmain(), src/options.c:set_playmode().
-        // Wizard/debug mode replaces the player name with lowercase "wizard".
-        : g.flags?.debug ? 'wizard'
-        : startupPlayerName(g.plname);
+    // C refs: sys/libnh/libnhmain.c:nhmain(), src/options.c:set_playmode().
+    // Wizard/debug mode replaces the player name with lowercase "wizard".
+    g.plname = g.flags?.debug ? 'wizard'
+        : startupPlayerName(g._nhopts?.name || g.plname);
     g._startupGreetingName = g.flags?.debug ? String(g.plname).toLowerCase()
         : configuredPlayerName || g.plname;
     // C ref: allmain.c newgame() → u_on_upstairs()
@@ -1317,25 +1368,16 @@ export async function newgame() {
     g.u.acurr = { a: [0, 0, 0, 0, 0, 0] };
     g.u.amax = { a: [0, 0, 0, 0, 0, 0] };
     await makedog();
-    if (ff) {
-        // Fast-forward through post-pet startup RNG calls.
-        // Covers remaining unported u_init/attribute/moveloop-preamble work.
-        if (ff.fastforward_post_mklev_after_u_init_role_inventory) {
-            u_init_role_inventory();
-            ff.fastforward_post_mklev_after_u_init_role_inventory();
-        } else {
-            ff.fastforward_post_mklev?.();
-        }
-        g.u.acurr = { a: startupAttrs.slice() };
-        g.u.amax = { a: startupAttrs.slice() };
-    } else {
-        u_init_role_inventory();
-        apply_startup_role_state();
-        postInventoryStartupRng();
-        if (g.flags?.legacy === false) {
-            // C ref: u_init.c:u_init_skills_discoveries() -> do_wear.c:find_ac().
-            g.u.uac = calculated_armor_class();
-        }
+    // C ref: src/u_init.c:u_init_role().  Initial level generation and
+    // makedog() run with svm.moves == 0; inventory initialization then starts
+    // ordinary play at turn 1.
+    g.moves = 1;
+    u_init_role_inventory();
+    apply_startup_role_state();
+    postInventoryStartupRng();
+    if (g.flags?.legacy === false) {
+        // C ref: u_init.c:u_init_skills_discoveries() -> do_wear.c:find_ac().
+        g.u.uac = calculated_armor_class();
     }
 
     // Initial display
@@ -1348,8 +1390,8 @@ export async function newgame() {
     await bot();
     await flush_screen(1);
     drawQuestIntroOverlay(alignName);
-    if (!ff) applyStartupSpellPowerFloor();
-    if (!ff && g.flags?.legacy !== false) {
+    applyStartupSpellPowerFloor();
+    if (g.flags?.legacy !== false) {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
         const startupAc = calculated_armor_class();
@@ -1369,10 +1411,19 @@ export async function newgame() {
     await pline(welcome);
     const welcomeHasFollowup = !g.tutorial_set_in_config
         || (g._startup_preamble_messages || []).length > 0;
-    if (!ff && welcomeHasFollowup) {
+    if (welcomeHasFollowup) {
         g._more = true;
         g._more_next_message_row = welcome.length + '--More--'.length >= COLNO;
     }
+    // C ref: src/pline.c:vpline() -> src/display.c:flush_screen().
+    // The welcome pager is shown after the startup story text window, so
+    // the map has to be redrawn before the first blocking prompt capture.
+    g._latched_more_screen = null;
+    g._latched_more_cursor = null;
+    g._latched_more_use_pending_topline = false;
+    g._latched_more_keep_until_dismiss = false;
+    g._full_map_redraw_pending = true;
+    await flush_screen(1);
 }
 
 export async function advanceTurn() {
@@ -1584,6 +1635,7 @@ function applyOccupationTakeoffObject(g) {
 function occupationPending(g) {
     return (g._occupation_turns_remaining || 0) > 0
         || !!g._occupation_finish_message
+        || !!g._occupation_silent_finish
         || !!g._pick_lock
         || (g._pick_lock_post_success_turns || 0) > 0
         || !!g._force_lock
@@ -1592,7 +1644,8 @@ function occupationPending(g) {
 
 function delayedOccupationPending(g) {
     return (g._occupation_turns_remaining || 0) > 0
-        || !!g._occupation_finish_message;
+        || !!g._occupation_finish_message
+        || !!g._occupation_silent_finish;
 }
 
 async function packedOccupationPline(msg) {
@@ -1600,9 +1653,68 @@ async function packedOccupationPline(msg) {
     else await pline(msg);
 }
 
+function containerContents(box) {
+    return (box?.cobj || box?.contents || []).filter(Boolean);
+}
+
+function clearContainerContents(box) {
+    if (!box) return;
+    if (box.cobj) box.cobj = [];
+    if (box.contents) box.contents = [];
+}
+
+function forceLockShatterThing(obj) {
+    if (obj?.oclass === SPBOOK_CLASS) return 'spellbook';
+    if (obj?.oclass === SCROLL_CLASS) return 'scroll';
+    if (obj?.oclass === POTION_CLASS) return 'potion';
+    return OBJECT_NAME[obj?.otyp] || 'object';
+}
+
+function forceLockArticle(noun) {
+    return /^[aeiou]/i.test(noun || '') ? 'An' : 'A';
+}
+
+function forceLockShatterMessage(obj) {
+    if (obj?.oclass === POTION_CLASS) return 'You see a potion shatter!';
+    const noun = forceLockShatterThing(obj);
+    let disposition = 'is destroyed';
+    switch (OBJECT_MATERIAL[obj?.otyp] ?? 0) {
+    case PAPER:
+        disposition = 'is torn to shreds';
+        break;
+    case WAX:
+        disposition = 'is crushed';
+        break;
+    case VEGGY:
+        disposition = 'is pulped';
+        break;
+    case FLESH:
+        disposition = 'is mashed';
+        break;
+    case GLASS:
+        disposition = 'shatters';
+        break;
+    case WOOD:
+        disposition = 'splinters to fragments';
+        break;
+    default:
+        break;
+    }
+    return `${forceLockArticle(noun)} ${noun} ${disposition}!`;
+}
+
+function placeForceLockContent(obj, x, y) {
+    if (!obj) return;
+    delete obj.ocontainer;
+    obj.where = 'floor';
+    place_object(obj, x, y);
+    stackobj(obj);
+}
+
 function clearForceLock(g) {
     g._force_lock = null;
     g._force_lock_resume_turn_first = false;
+    g._force_lock_start_more_after_turn = false;
 }
 
 function clearPickLock(g) {
@@ -1716,7 +1828,82 @@ async function forceLockAttempt(g) {
     const state = g._force_lock;
     if (!state) return true;
     const box = state.box;
+    const successLine = 'You succeed in forcing the lock.';
     if (!box || box.ox !== g.u?.ux || box.oy !== g.u?.uy) {
+        clearForceLock(g);
+        return true;
+    }
+    if (state.stage === 'success-after-start-more') {
+        state.stage = '';
+        await packedOccupationPline(successLine);
+        exercise(state.picktyp ? A_DEX : A_STR, true);
+        const destroyit = !state.picktyp && rn2(3) === 0;
+        state.destroyit = destroyit;
+        if (destroyit) {
+            state.stage = 'breakchest';
+            queue_more_prompt();
+            g._occupation_paused_for_more = true;
+            return true;
+        }
+        box.olocked = false;
+        box.obroken = true;
+        box.lknown = true;
+        newsym(box.ox, box.oy);
+        // C's movement loop drains one final monster/allmain allocation after
+        // forcelock() clears the occupation, before the next input prompt.
+        g._force_lock_post_success_turns = 1;
+        clearForceLock(g);
+        return true;
+    }
+    if (state.stage === 'breakchest') {
+        state.stage = 'contents';
+        await pline("In fact, you've totally destroyed the chest.");
+        return true;
+    }
+    if (state.stage === 'shatter-message') {
+        const otmp = state.pendingShatterObject;
+        const msg = state.pendingShatterMessage;
+        state.pendingShatterObject = null;
+        state.pendingShatterMessage = '';
+        state.stage = 'contents';
+        await pline(msg);
+        if (otmp && (otmp.quan || 1) > 1) {
+            otmp.quan = (otmp.quan || 1) - 1;
+            placeForceLockContent(otmp, g.u?.ux, g.u?.uy);
+        }
+        return true;
+    }
+    if (state.stage === 'contents') {
+        if (!state.contents) {
+            state.contents = containerContents(box);
+            state.contentIndex = 0;
+            clearContainerContents(box);
+        }
+        while ((state.contentIndex || 0) < state.contents.length) {
+            const otmp = state.contents[state.contentIndex++];
+            const shattered = rn2(3) === 0 || otmp.oclass === POTION_CLASS;
+            if (shattered) {
+                const msg = forceLockShatterMessage(otmp);
+                if (g._pending_message) {
+                    state.pendingShatterObject = otmp;
+                    state.pendingShatterMessage = msg;
+                    state.stage = 'shatter-message';
+                    queue_more_prompt();
+                    g._occupation_paused_for_more = true;
+                    return true;
+                }
+                await pline(msg);
+                if ((otmp.quan || 1) <= 1) continue;
+                otmp.quan = (otmp.quan || 1) - 1;
+            }
+            placeForceLockContent(otmp, g.u?.ux, g.u?.uy);
+        }
+        const idx = g.level?.objects?.indexOf(box) ?? -1;
+        if (!obj_resists(box, 0, 0) && idx >= 0) g.level.objects.splice(idx, 1);
+        newsym(box.ox, box.oy);
+        // C's movement loop drains one final monster/allmain allocation after
+        // forcelock() clears the occupation, before the next input prompt.
+        g._force_lock_post_success_turns = 1;
         clearForceLock(g);
         return true;
     }
@@ -1732,17 +1919,35 @@ async function forceLockAttempt(g) {
     // turn after that turn's monster/allmain tail has completed.
     if (rn2(100) >= (state.chance || 0)) return false;
 
-    await packedOccupationPline('You succeed in forcing the lock.');
+    if (g._force_lock_start_more_after_turn
+        && g._pending_message
+        && !g._more
+        && !topline_can_pack_message(g._pending_message, successLine)) {
+        // C refs: src/lock.c:forcelock(), win/tty/topl.c:update_topl().
+        // The initial "start bashing" topline remains in TOPLINE_NEED_MORE
+        // while force-lock turns continue.  The success pline cannot pack
+        // with it, so tty blocks on the old start line before consuming the
+        // success side effects.
+        g._force_lock_start_more_after_turn = false;
+        state.stage = 'success-after-start-more';
+        queue_more_prompt();
+        g._occupation_paused_for_more = true;
+        return true;
+    }
+
+    await packedOccupationPline(successLine);
     exercise(state.picktyp ? A_DEX : A_STR, true);
     const destroyit = !state.picktyp && rn2(3) === 0;
+    state.destroyit = destroyit;
+    if (destroyit) {
+        state.stage = 'breakchest';
+        queue_more_prompt();
+        g._occupation_paused_for_more = true;
+        return true;
+    }
     box.olocked = false;
     box.obroken = true;
     box.lknown = true;
-    if (destroyit) {
-        const idx = g.level?.objects?.indexOf(box) ?? -1;
-        if (idx >= 0) g.level.objects.splice(idx, 1);
-        await packedOccupationPline("In fact, you've totally destroyed the chest.");
-    }
     newsym(box.ox, box.oy);
     // C's movement loop drains one final monster/allmain allocation after
     // forcelock() clears the occupation, before the next input prompt.
@@ -1767,6 +1972,10 @@ async function continueForceLockTurns(g) {
         if (resumeTurnFirst) {
             resumeTurnFirst = false;
         } else if (await forceLockAttempt(g)) {
+            if ((g._more || g._monster_turn_paused_for_more) && occupationPending(g)) {
+                g._occupation_paused_for_more = true;
+                return false;
+            }
             continue;
         }
         await advanceTurn();
@@ -1947,11 +2156,34 @@ function wornVeryFastArmor(g) {
         obj?.oclass === ARMOR_CLASS && (obj.worn || obj.owornmask) && armorGrantsVeryFast(obj));
 }
 
+function wornFumblingArmor(g, exclude = null) {
+    return (g.inventory || []).some((obj) =>
+        obj !== exclude
+        && (obj?.worn || obj?.owornmask)
+        && (obj.otyp === GAUNTLETS_OF_FUMBLING || obj.otyp === FUMBLE_BOOTS));
+}
+
 function refreshVeryFastFromWornArmor(g) {
     if (!g.u) return;
     g.u.uprops = g.u.uprops || {};
     if (wornVeryFastArmor(g)) g.u.uprops.fast = true;
     else if (typeof g.u.uprops.fast !== 'number') g.u.uprops.fast = false;
+}
+
+function applyFumblingArmorOn(g, obj) {
+    if (!g.u) return;
+    g.u.uprops = g.u.uprops || {};
+    const hasOtherFumblingArmor = wornFumblingArmor(g, obj);
+    const hasNonTimeoutFumbling = g.u.uprops.fumbling === true;
+    // C ref: src/do_wear.c:Boots_on()/Gloves_on().  Fumbling armor grants an
+    // extrinsic and seeds the recurring HFumbling timeout after the delayed
+    // donning action, unless another non-timeout source is already active.
+    if (!hasOtherFumblingArmor && !hasNonTimeoutFumbling) {
+        const previous = Number.isFinite(Number(g.u.uprops.fumbling_timeout))
+            ? Number(g.u.uprops.fumbling_timeout) : 0;
+        g.u.uprops.fumbling_timeout = previous + rnd(20);
+    }
+    g.u.uprops.fumbling = true;
 }
 
 function applyOccupationFinishObjectEffects(g) {
@@ -1974,6 +2206,8 @@ function applyOccupationFinishObjectEffects(g) {
         // C ref: do_wear.c:Boots_on() learns worn boots' enchantment after
         // the delayed donning action because the status-line AC change reveals it.
         obj.known = true;
+    } else if (obj.otyp === GAUNTLETS_OF_FUMBLING || obj.otyp === FUMBLE_BOOTS) {
+        applyFumblingArmorOn(g, obj);
     } else if (obj.otyp === BLUE_DRAGON_SCALE_MAIL || obj.otyp === BLUE_DRAGON_SCALES) {
         // C ref: do_wear.c:Armor_on() -> dragon_armor_handling(). Blue
         // dragon armor grants FAST at Armor_on(), after the donning delay.
@@ -2234,6 +2468,18 @@ async function continueOccupationTurns(g) {
             return false;
         }
     }
+    if (g._occupation_silent_finish && !g._occupation_finish_message) {
+        if (g._occupation_finish_removes_eaten_corpse) {
+            await applyEatingCorpsePostEffects();
+            finish_pending_eaten_corpse();
+            g._occupation_finish_removes_eaten_corpse = false;
+        }
+        g._occupation_bite_nutrition = null;
+        g._occupation_silent_finish = false;
+        g._occupation_pack_finish_message = false;
+        g._occupation_pre_finish_turn_done = false;
+        g._occupation_pre_finish_catchup = false;
+    }
     if (g._occupation_finish_message) {
         if (g._more) {
             if (g._occupation_continue_behind_more)
@@ -2396,7 +2642,32 @@ async function refreshHallucinationDisplayAtInputBoundary(g) {
     // C tty menus read their selection inside select_menu(); while the menu
     // window is active, moveloop_core() has not resumed for the Hallucination
     // input-boundary redraw.
-    if (g._override_screen) return;
+    if (g._startup_legacy_pager_active || g._tutorial_prompt_active
+        || g._spell_menu_active || g._spell_cast_menu_active
+        || g._help_menu_active || g._help_text_active
+        || g._options_window_active
+        || g._look_window_active
+        || g._travel_tip_screen_active
+        || g._terrain_window_active
+        || g._disclosure_window_active
+        || g._intrinsic_menu_active
+        || g._name_menu_active
+        || g._enhance_skills_active
+        || g._discovery_window_active
+        || g._attributes_window_active
+        || g._level_teleport_menu_active
+        || g._wizidentify_menu_active
+        || g._inventory_action_menu_active
+        || g._inventory_prompt_menu_active
+        || g._throw_inventory_menu_active
+        || g._potion_menu_active
+        || g._inventory_menu_active
+        || g._pay_menu_active
+        || g._loot_menu_active
+        || g._herecmd_menu_active
+        || g._bones_unlink_prompt_active
+        || g._terminal_exit_screen_active
+        || g._direction_help_active || g._getpos_help_active) return;
     if (!(g.u?.uhallucination || g.u?.uprops?.hallucination)) return;
     if (g.u?.uswallow && g.u?.ustuck && g._swallowed_map_active) {
         // C ref: allmain.c:moveloop_core() once-per-player-input Hallucination
@@ -2431,7 +2702,12 @@ async function continueRunTail(g) {
             g._run_paused_before_encumbered_check = false;
             return false;
         }
-        await advanceTurn();
+        g._run_tail_turn_active = true;
+        try {
+            await advanceTurn();
+        } finally {
+            g._run_tail_turn_active = false;
+        }
         if (g._more) {
             if (g.context?.run) g._run_paused_for_more = true;
             g._run_paused_before_encumbered_check = true;
@@ -2441,12 +2717,37 @@ async function continueRunTail(g) {
             if (g.context?.run) g._run_paused_for_more = true;
             return false;
         }
+        if (!g._more && !g._monster_turn_paused_for_more
+            && g._deferred_move_floor_list && g._pending_message) {
+            // C refs: src/allmain.c:moveloop_core(), src/pickup.c:check_here().
+            // A run/travel floor-list deferred behind the monster turn does
+            // not replace ordinary turn-tail toplines; if fumble or monster
+            // output owns the boundary, the stale movement pile display is
+            // abandoned and the repeated move path continues.
+            g._deferred_move_floor_list = null;
+        }
         if (!g._monster_turn_paused_for_more && await showDeferredMoveFloorList()) {
             if (g.context?.run) g.context.run = null;
             return false;
         }
         if (!await continueRunPostTurnChecks(g)) return false;
+        if (!g.context?.run
+            && g._run_tail_far_pet_fumble_nomul_pending
+            && (g._nomul_turns_remaining || 0) > 0) {
+            // C refs: src/timeout.c:nh_timeout() FUMBLING,
+            // src/allmain.c:moveloop_core(), src/dogmove.c:dog_move().  A
+            // fumble during an automatic run-tail turn can leave negative
+            // multi after the normal post-command nomul slot has already
+            // passed.  When no tame pet is close enough to spend that turn
+            // during immediate fumble handling, spend the remaining helpless
+            // turn before returning to input.
+            g._run_tail_far_pet_fumble_nomul_pending = false;
+            if (!await continueNomulTurns(g, { countCurrentTurn: true })) return false;
+            if (!occupationPending(g)) finish_pending_eaten_corpse();
+            if (!await continueOccupationTurns(g)) return false;
+        }
     }
+    g._run_tail_far_pet_fumble_nomul_pending = false;
     return true;
 }
 
@@ -2703,6 +3004,15 @@ export async function moveloop_core() {
                 }
                 adjustPrayerForceBudgetAfterUninterruptedFirstTurn(g);
                 if (promptPendingPetCombatBeforeDeferredFloorList()) return;
+                if (!g._more && !g._monster_turn_paused_for_more
+                    && g._deferred_move_floor_list && g._pending_message) {
+                    // C refs: src/allmain.c:moveloop_core(), src/pickup.c:check_here().
+                    // A run/travel floor-list deferred behind the monster turn
+                    // does not replace ordinary turn-tail toplines; if fumble
+                    // or monster output owns the input boundary, the stale
+                    // movement pile display is abandoned.
+                    g._deferred_move_floor_list = null;
+                }
                 if (!g._more && !g._monster_turn_paused_for_more
                     && await showDeferredMoveFloorList()) return;
                 if (!await finishDeferredSpellbookStudy(g)) return;

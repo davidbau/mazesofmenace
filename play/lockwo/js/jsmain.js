@@ -138,6 +138,14 @@ export class NethackGame {
         const opts = parseNethackrc(this._nethackrc);
         g.plname = opts.name || '';
         g.flags = { verbose: true, ...opts.flags };
+        // C ref: options.c set_playmode() — when wizard (debug) mode is requested
+        // (OPTIONS=playmode:debug) and authorize_wizard_mode() succeeds (the
+        // contest sysconf carries WIZARDS=*, so it always does), the player name
+        // is forced to "wizard", overriding any OPTIONS=name:.  This is invisible
+        // on the status line (it shows the role title) but surfaces wherever
+        // svp.plname is printed, e.g. the stethoscope self-probe "Status of
+        // wizard ..." (insight.c:3485).
+        if (g.flags.debug) g.plname = 'wizard';
         g.iflags = { ...opts.iflags };
         // symset selects the drawing glyph table; DECgraphics uses VT100
         // line-drawing for walls/floor, otherwise the default ASCII symbols.

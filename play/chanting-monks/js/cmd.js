@@ -13,9 +13,15 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN,
          IS_WALL, IS_OBSTRUCTED } from './const.js';
 import { MAXSPELL, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT } from './translated/nh-constants.js';
 import { dosearch0 } from './translated/detect.js';
+import { night as __night, midnight as __midnight } from './translated/calendar.js';
 import { Japanese_item_name as __Japanese_item_name } from './translated/objnam.js';
 import { donull } from './translated/do.js';
 import { domove as t_domove, inv_weight as t_inv_weight, lookaround as t_lookaround } from './translated/hack.js';
+import { THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, STAIRS } from './translated/nh-constants.js';
+import { M_AP_FURNITURE, M_AP_OBJECT, DEAF } from './translated/nh-constants.js';
+import { domonnoise } from './translated/sounds.js';
+import { canseemon, sensemon, map_invisible } from './translated/display.js';
+import { Monnam, mon_nam } from './translated/do_name.js';
 import { pickup as t_pickup } from './translated/pickup.js';
 import { dodown as t_dodown, doup as t_doup } from './translated/do.js';
 import { dolook as t_dolook } from './translated/invent.js';
@@ -31,6 +37,7 @@ import { doapply as t_doapply, apply_ok } from './translated/apply.js';
 import { is_edible, doeat as t_doeat } from './translated/eat.js';
 import { dothrow as t_dothrow, dofire as t_dofire, throw_ok } from './translated/dothrow.js';
 import { doread as t_doread } from './translated/read.js';
+import { dodrink as t_dodrink } from './translated/potion.js';
 import { dozap as t_dozap } from './translated/zap.js';
 import { doclose as t_doclose, doopen as t_doopen } from './translated/lock.js';
 import { dotakeoff as t_dotakeoff, dowear as t_dowear, doputon as t_doputon } from './translated/do_wear.js';
@@ -38,7 +45,7 @@ import { doremring as t_doremring, doddoremarm as t_doddoremarm } from './transl
 import { dopay as t_dopay } from './translated/shk.js';
 import { dowield as t_dowield, dowieldquiver as t_dowieldquiver, dotwoweapon as t_dotwoweapon, ready_ok } from './translated/wield.js';
 import { doengrave as t_doengrave } from './translated/engrave.js';
-import { doddrop as t_doddrop } from './translated/do.js';
+import { doddrop as t_doddrop, dodrop as t_dodrop } from './translated/do.js';
 import { dotypeinv as t_dotypeinv } from './translated/invent.js';
 import { rn2, rnl } from './rng.js';
 
@@ -63,6 +70,26 @@ const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 // skips nhgetch, replaying the saved direction.
 const UPPER_TO_LOWER_DIR = {
     H: 'h', J: 'j', K: 'k', L: 'l', Y: 'y', U: 'u', B: 'b', N: 'n',
+};
+
+// Ctrl+vi-key movement = NetHack's "rush" command (MV_RUSH).  C ref:
+// cmd.c do_rush_west/etc. → set_move_cmd(dir, 3) → svc.context.run=3.
+// Keyed by the raw control-char code.  These bindings apply when
+// number_pad is OFF (with number_pad ON, C rebinds C('l') etc. to
+// redraw/other — cmd.c:2762; the recorded sessions all run num_pad=0).
+// Without this JS dropped ^L (key 12) as a no-op, so a run that stopped
+// at a doorway never continued the rush down the corridor (seed0013).
+//
+// DELIBERATELY EXCLUDED: ^H(8, rubout), ^J(10, newline/Enter), and
+// ^U(21, kill-line) — these are line-editing/confirm keys that C
+// consumes inside getlin/yn/menu prompts and NEVER dispatches as a
+// rush command (verified: seed0383 sends ^J×9 yet the C recorder shows
+// 0 rush events and 0 command-level ^J reads — they are all Enter).
+// JS currently leaks those to rhack (a separate prompt-handling gap);
+// mapping them to rush would mis-move the hero (seed0383 regressed -88
+// when ^J was included).  Only the pure-movement controls are mapped.
+const CTRL_TO_DIR = {
+    11: 'k', 12: 'l', 25: 'y', 2: 'b', 14: 'n',
 };
 
 function isMovementKey(ch) {
@@ -231,6 +258,29 @@ function buildAttributesPages() {
     } else {
         const turnWord = (moves === 1) ? 'turn' : 'turns';
         lines.push(`  You entered the dungeon ${moves} ${turnWord} ago.`);
+    }
+    // C ref insight.c:647-682 (background_enlightenment, environmental
+    // factors) — between "entered the dungeon" and the experience line:
+    //   midnight/night, full/new moon, Friday the 13th.  buildAttributesPages
+    // is a hand-port of enlightenment and omitted these; the moonphase /
+    // friday13 flags ARE correct (computed from the pinned session datetime),
+    // so seed0013 (Oct-13-2000, full moon + Friday 13th) lost two lines and
+    // every line below shifted up (its ^X screen, +friday13 sibling).
+    try {
+        if (__midnight()) {
+            lines.push('  It is the midnight hour.');
+        } else if (__night()) {
+            lines.push('  It is nighttime.');
+        }
+    } catch (_e) { /* calendar shim unavailable — skip */ }
+    {
+        const mp = g.flags?.moonphase;
+        if (mp === 4 /* FULL_MOON */ || mp === 0 /* NEW_MOON */) {
+            lines.push(`  There is a ${mp === 4 ? 'full' : 'new'} moon in effect.`);
+        }
+    }
+    if (g.flags?.friday13) {
+        lines.push('  Bad things can happen on Friday the 13th.');
     }
     // C ref insight.c:688-712 — experience display:
     //   "<exp> experience point<s>"
@@ -502,9 +552,39 @@ function buildAttributesPages() {
                 lines2.push(`  You have ${name} skill with ${wname}.`);
             }
         } else {
-            lines2.push('  You are bare handed.');
-            lines2.push('  You are unskilled in bare handed combat.');
+            // C ref insight.c weapon_insight (!uwep): you_are(empty_handed())
+            // then the P_BARE_HANDED_COMBAT skill line.  empty_handed()
+            // (wield.c:158): gloves worn → "empty handed", else (humanoid)
+            // "bare handed".  The skill is named "martial arts" for monk/
+            // samurai (weapon.js barehands_or_martial), else "bare handed
+            // combat", and uses the actual P_SKILL level.  The hand-port
+            // previously hardcoded "bare handed" + "unskilled in bare handed
+            // combat", wrong for a glove-wearing monk with martial-arts skill
+            // (seed0200 ^X page 2: "You are empty handed." / "You have basic
+            // skill with martial arts.").
+            const isMartial = (g.urole?.mnum === 336 /* PM_MONK */
+                               || g.urole?.mnum === 340 /* PM_SAMURAI */);
+            const bhWname = isMartial ? 'martial arts' : 'bare handed combat';
+            lines2.push(`  You are ${g.uarmg ? 'empty handed' : 'bare handed'}.`);
+            const bhLvl = g.u?.weapon_skills?.[35 /* P_BARE_HANDED_COMBAT */]?.skill | 0;
+            const bhLvls = [null, 'unskilled', 'basic', 'skilled', 'expert', 'master', 'grand-master'];
+            const bhName = bhLvls[Math.min(bhLvl, bhLvls.length - 1)];
+            if (bhLvl === 0 /* P_ISRESTRICTED */) {
+                lines2.push(`  You have no skill with ${bhWname}.`);
+            } else if (bhLvl === 1 /* UNSKILLED */ || bhLvl === 3 /* SKILLED */) {
+                lines2.push(`  You are ${bhName} in ${bhWname}.`);
+            } else {
+                lines2.push(`  You have ${bhName} skill with ${bhWname}.`);
+            }
         }
+    }
+    // C ref insight.c:1260-1265 — report 'nudity' as the last Status line:
+    // when no armor is worn in ANY slot (and not a nudist),
+    // you_are("not wearing any armor") → "You aren't wearing any armor."
+    // (enlght_line contracts "are not" → "aren't").
+    if (!g.uarm && !g.uarmu && !g.uarmc && !g.uarms && !g.uarmg && !g.uarmf
+        && !g.uarmh && !g.u?.uroleplay?.nudist) {
+        lines2.push("  You aren't wearing any armor.");
     }
     // C ref insight.c — the "Attributes:" (magic enlightenment)
     // section shows in wizard/explore ^X ("show more--as if final
@@ -559,6 +639,35 @@ function buildAttributesPages() {
             const mcTypes = ['', 'warded', 'guarded', 'protected'];
             lines2.push(`  You are ${mcTypes[Math.min(armpro, 3)]}.`);
         }
+        // C ref insight.c:1687-1688 (Transportation) — Teleport_control with
+        // from_what() attribution.  A worn item (ring/amulet) whose oc_oprop
+        // is TELEPORT_CONTROL grants it: "You have teleport control because
+        // of your ivory ring."  Scan any worn item (not just armor) for the
+        // property and name it by appearance via xname-style format.
+        const propSrc = (prop) => {
+            for (let it = g.invent; it; it = it?.nobj) {
+                if (!(it?.owornmask | 0)) continue;
+                if (game.objects?.[it.otyp]?.oc_oprop === prop) return it;
+            }
+            return null;
+        };
+        const fromWhatName = (it) => {
+            const o = game.objects?.[it.otyp];
+            const nm = game.obj_descr?.[o?.oc_name_idx]?.oc_name;
+            const ds = game.obj_descr?.[o?.oc_descr_idx]?.oc_descr;
+            const cls = o?.oc_class;
+            const cw = cls === 4 ? 'ring' : cls === 5 ? 'amulet'
+                     : cls === 11 ? 'wand' : '';
+            if (cw) {
+                if (o?.oc_name_known) return `${cw} of ${nm}`;
+                return (ds && ds !== 'null') ? `${ds} ${cw}` : cw;
+            }
+            return nm || 'something';
+        };
+        const tcSrc = propSrc(47 /* TELEPORT_CONTROL */);
+        if (tcSrc) {
+            lines2.push(`  You have teleport control because of your ${fromWhatName(tcSrc)}.`);
+        }
         const luck = (g.u?.uluck | 0) + (g.u?.moreluck | 0);
         if (luck !== 0) {
             let ln = `  You are ${luck > 0 ? 'lucky' : 'unlucky'}`;
@@ -593,7 +702,19 @@ function buildAttributesPages() {
     lines2.push('  Total elapsed playing time is none.');
     lines2.push(' (2 of 2)');
 
-    return [page1, lines2];
+    // C ref: enlightenment paginates by SCREEN HEIGHT, not by section —
+    // page 1 holds the first 23 rows and the rest spills to page 2, so C
+    // breaks mid-Characteristics (str/dex on page 1; con/int/wis/cha on
+    // page 2).  buildAttributesPages historically broke at a fixed section
+    // boundary (after "intelligence"); that only lined up before the
+    // moon/Friday-13th lines were added.  Rebuild from the combined content
+    // split at row 23 (lines/lines2 hold the page bodies sans pager).
+    const __content = lines.concat(lines2.slice(0, -1));
+    const __p1 = __content.slice(0, 23);
+    __p1.push(' (1 of 2)');
+    const __p2 = __content.slice(23);
+    __p2.push(' (2 of 2)');
+    return [__p1, __p2];
 }
 
 // Build the inventory display by walking translator-populated
@@ -622,7 +743,17 @@ function wornSuffix(obj) {
     if (mask & 16)   return ' (being worn)';      // GLOVES
     if (mask & 32)   return ' (being worn)';      // BOOTS
     if (mask & 64)   return ' (being worn)';      // SHIRT
-    if (mask & 128)  return ' (on left hand)';    // RIGHT
+    // C ref objnam.c:1492-1502 (rings) + amulet/eyewear worn suffixes.
+    // These use the wide W_* bits from prop.h (NOT the small armor bits):
+    // W_AMUL 0x10000, W_RINGL 0x20000, W_RINGR 0x40000, W_TOOL(eyewear)
+    // 0x80000.  The old `mask & 128` tested 0x80 — an UNUSED bit (gap
+    // between W_ARMU 0x40 and W_WEP 0x100) — so worn rings/amulets never
+    // got a suffix (seed0116's "o - an ivory ring (on right hand)" lost
+    // its "(on right hand)").
+    if (mask & 0x10000)  return ' (being worn)';     // W_AMUL
+    if (mask & 0x20000)  return ' (on left hand)';   // W_RINGL
+    if (mask & 0x40000)  return ' (on right hand)';  // W_RINGR
+    if (mask & 0x80000)  return ' (being worn)';     // W_TOOL eyewear
     if (mask & 256) {
         // C ref objnam.c:1561-1595 doname — wielded primary weapon.
         // For non-weapon ammo/missile-multiple stacks shows "(wielded)";
@@ -790,7 +921,19 @@ function buildInventoryFromState() {
                        : cls === 4 ? 'ring' : '';
         if (classWord) {
             if (known) return `${classWord} of ${nm}`;
-            return ds && ds !== 'null' ? `${classWord} labeled ${ds}` : classWord;
+            if (!ds || ds === 'null') return classWord;
+            // Unidentified: C xname (objnam.c, RING/WAND/POTION/SPBOOK/
+            // SCROLL cases) formats the appearance descriptor per class.
+            // ONLY magic scrolls use "scroll labeled <desc>"; every other
+            // class — and non-magic scrolls — PREFIXES the descriptor:
+            // "ivory ring", "ruby potion", "oak wand", "papyrus
+            // spellbook".  The hand-port had used "labeled" for all
+            // classes (seed0116's worn ivory ring rendered "a ring
+            // labeled ivory" instead of "an ivory ring").
+            if (cls === 9 /* SCROLL_CLASS */ && o.oc_magic) {
+                return `scroll labeled ${ds}`;
+            }
+            return `${ds} ${classWord}`;
         }
         // Other classes: name is the type name, no appearance for
         // inventory display.  Samurai role overrides certain item
@@ -805,12 +948,17 @@ function buildInventoryFromState() {
             } catch (_e) { /* fall back to ordinary name on any error */ }
         }
         // ARMOR_CLASS (3) "pair of" / "set of" prefix.
-        // C ref objnam.c:254-260 xname — gloves (oc_armcat==3) and
-        // boots (==4) get "pair of "; dragon scales [111..120] get
-        // "set of ".  Without this, "leather gloves" renders without
-        // the "pair of" prefix.
+        // C ref objnam.c:724-725 xname — gloves (oc_subtyp==ARM_GLOVES)
+        // and boots (==ARM_BOOTS) get "pair of "; dragon scales
+        // [111..120] get "set of ".  C uses the `oc_armcat` macro which
+        // aliases `oc_subtyp` (objclass.h:86); the translator emits the
+        // real field name `oc_subtyp`, and the JS objects table has NO
+        // `oc_armcat` field — reading it returned undefined, so the
+        // gloves/boots branch never fired and "leather gloves" rendered
+        // without "pair of " (collapsing the menu width → seed0200's
+        // armor-menu offx was 8 columns off).
         if (cls === 3 /* ARMOR_CLASS */) {
-            const armcat = o.oc_armcat;
+            const armcat = o.oc_subtyp;
             if (armcat === 3 /* ARM_GLOVES */ || armcat === 4 /* ARM_BOOTS */) {
                 nameOut = 'pair of ' + nameOut;
             } else if (otyp >= 111 /* GRAY_DRAGON_SCALES */ && otyp <= 120 /* YELLOW_DRAGON_SCALES */) {
@@ -942,6 +1090,16 @@ function buildInventoryFromState() {
         if ((cls === 2 || cls === 3) && obj.known) {  // weapon/armor
             const sign = obj.spe >= 0 ? '+' : '';
             return `${sign}${obj.spe} `;
+        }
+        // C ref objnam.c:1500-1501 — charged rings (increase accuracy,
+        // protection, gain strength, etc.) show their enchantment when
+        // known: `if (known && oc_charged) Sprintf("%+d ", spe)`.
+        if (cls === 4 /* RING_CLASS */ && obj.known) {
+            const ocl = game.objects?.[obj.otyp];
+            if (ocl?.oc_charged) {
+                const sign = obj.spe >= 0 ? '+' : '';
+                return `${sign}${obj.spe} `;
+            }
         }
         return '';
     };
@@ -1085,7 +1243,21 @@ function buildInventoryFromState() {
     // C adds 1 column padding for the selector glyph, landing at 31.
     let maxLen = 0;
     for (const ln of rawLines) if (ln.text.length > maxLen) maxLen = ln.text.length;
-    const PAD = (__invTotalLines > 22) ? ' ' : ' '.repeat(Math.max(0, 80 - maxLen - 2));
+    // C ref wintty.c:1908-1931 (tty_display_nhwindow, NHW_MENU):
+    //   offx = max(10, cols - maxcol - 1);
+    //   if (offx == 10 || maxrow >= rows || !menu_overlay) offx = 0;
+    // i.e. a menu draws as a right-corner OVERLAY (preserving the map on
+    // the left) unless it is too WIDE (maxcol pushes offx down to the 10
+    // floor) or too TALL (maxrow >= terminal rows).  C's maxcol counts
+    // the 1-column selector glyph that isn't in our line text, so
+    // maxcol = maxLen + 1 and offx = max(10, 78 - maxLen) (the -2 the
+    // overlay PAD already used).  The old heuristic `__invTotalLines > 22`
+    // forced full-screen for any 23-line menu, but C overlays those
+    // (rows = 24): seed0116's 23-line shop inventory drew at offx 1
+    // instead of C's offx 34, failing all 1018 cells of that screen.
+    const __cOffx = Math.max(10, 78 - maxLen);
+    const __fullScreen = (__cOffx === 10) || (__invTotalLines >= 24);
+    const PAD = __fullScreen ? ' ' : ' '.repeat(__cOffx);
     const lines = [];
     for (const ln of rawLines) {
         if (ln.kind === 'hdr') lines.push({ text: PAD + ln.text, attr: 1 });
@@ -1570,6 +1742,13 @@ export async function rhack(key) {
         game._run_dx = null;
         game._run_dy = null;
         await domove(DIR_DX[ch], DIR_DY[ch]);
+        // C ref cmd.c:3789 — after a DOMOVE_WALK domove, C clears
+        // svc.context.forcefight (and iflags.menu_requested).  The 'F'
+        // force-fight prefix sets forcefight=1 for the NEXT move only;
+        // the live hand-port rhack never cleared it (only translated
+        // cmd.js does), so after an 'F'+dir move forcefight stayed 1 and
+        // a subsequent plain move was wrongly treated as a force-fight.
+        game.context.forcefight = 0;
     } else if (UPPER_TO_LOWER_DIR[ch]) {
         // Uppercase movement = rush mode (NetHack vi-keys).  Set
         // context.run=3 BEFORE domove so translated domove's stop-
@@ -1601,15 +1780,54 @@ export async function rhack(key) {
         game._run_dx = dx;
         game._run_dy = dy;
         await domove(dx, dy);
+    } else if (CTRL_TO_DIR[key]) {
+        // Ctrl+direction = rush (MV_RUSH).  C ref cmd.c do_rush_<dir>:
+        // set_move_cmd(dir, 3) → context.run=3, then domove in that
+        // direction; the moveloop replays the saved dir until
+        // end_running clears context.run.  Mirrors the uppercase-run
+        // branch above but with run=3 (rush) instead of run=1 (run).
+        const dir = CTRL_TO_DIR[key];
+        const dx = DIR_DX[dir], dy = DIR_DY[dir];
+        game.context.move = 1;
+        game.context.run = 3;
+        game._run_dx = dx;
+        game._run_dy = dy;
+        await domove(dx, dy);
     } else if (ch === ',') {
-        // Pick up object(s) at hero's position.  C ref: pickup.c
-        // dopickup → pickup(-count) (count=0 when no prior digit
-        // prefix).  Translated pickup() handles the OBJ_AT check,
-        // the multi-item menu (if applicable), and the actual
-        // pickup_object() calls.  Sets context.move = (res & 1)
-        // when a turn was consumed.
+        // Pick up object(s) at hero's position.  C ref: hack.c dopickup
+        // → pickup_checks() → pickup(-command_count).  Calling the
+        // translated pickup() DIRECTLY skipped dopickup's pickup_checks(),
+        // which emits the OBJ_AT-empty feedback ("There is nothing here
+        // to pick up." and the furniture variants for throne/sink/grave/
+        // fountain/door/altar/stairs) — seed0013-rogue ',' on bare floor
+        // showed a blank topl vs C's message.  So run pickup_checks()
+        // first (it fires no rn2), then keep the existing pickup(0) for
+        // the proceed/engulf cases — NOT dopickup's pickup(-command_count),
+        // which shifted PRNG on seed0002/seed0004 (JS's command_count isn't
+        // reset C-identically).
         let res = 0;
-        try { res = (await t_pickup(0)) || 0; } catch (e) {
+        try {
+            // Emit the OBJ_AT-empty feedback INLINE (replicating only
+            // hack.c:3826-3845, not pickup_checks() — the latter also calls
+            // can_reach_floor() which pickup() calls again, and the double
+            // invocation shifted PRNG on seed0002/seed0004).  pline() fires
+            // no rn2, and we still call pickup(0) (a no-op on an empty tile)
+            // so PRNG is unchanged.  D_ISOPEN = 0x02 (const.js).
+            const __ux = game.u?.ux, __uy = game.u?.uy;
+            if (__ux > 0 && !(game.level?.objects?.[__ux]?.[__uy])) {
+                const __l = game.level?.at(__ux, __uy);
+                const __t = __l?.typ;
+                if (__t === THRONE) await pline(`It must weigh${__l.looted ? ' almost' : ''} a ton!`);
+                else if (__t === SINK) await pline('The plumbing connects it to the floor.');
+                else if (__t === GRAVE) await pline("You don't need a gravestone.  Yet.");
+                else if (__t === FOUNTAIN) await pline('You could drink the water...');
+                else if (__t === DOOR && (__l.doormask & 0x02 /* D_ISOPEN */)) await pline("It won't come off the hinges.");
+                else if (__t === ALTAR) await pline('Moving the altar would be a very bad idea.');
+                else if (__t === STAIRS) await pline('The stairs are solidly affixed.');
+                else await pline('There is nothing here to pick up.');
+            }
+            res = (await t_pickup(0)) || 0;
+        } catch (e) {
             if (__env.NH_DEBUG_PICKUP) console.error('pickup:', e.message);
         }
         game._run_dx = null;
@@ -1704,76 +1922,22 @@ export async function rhack(key) {
         }
         game.context.move = (res & 1) ? 1 : 0;
     } else if (ch === 'q') {
-        // Single-char quaff dispatch — async hand-port of
-        // dodrink → getobj("drink", drink_ok, NOFLAGS).  C ref:
-        // potion.c dodrink (line ~525), invent.c getobj.
-        //
-        // drink_ok (potion.c:505):
-        //   POTION_CLASS                   → GETOBJ_SUGGEST (in buf)
-        //   all others (including coin)    → GETOBJ_EXCLUDE
-        //                                    (typed letter triggers
-        //                                     silly_thing → pline
-        //                                     "That is a silly thing
-        //                                     to drink.")
-        //
-        // Floor-feature paths (fountain/sink/water-tile "drink from?")
-        // are emitted by dodrink BEFORE getobj when iflags.menu_requested
-        // is off and player can reach floor liquid; this hand-port
-        // covers only the inventory-getobj branch and short-circuits
-        // when no potions are carried.
-        const POTION_CLASS_LOCAL = 8;
-        const eligibleLetters = [];
-        const invLetters = new Map();
-        for (let p = game.invent; p; p = p.nobj) {
-            if (!p) continue;
-            const letter = String.fromCharCode(p.invlet);
-            invLetters.set(letter, p);
-            if (p.oclass === POTION_CLASS_LOCAL) eligibleLetters.push(letter);
+        // q: direct dispatch to translated potion.c dodrink (quaff).
+        // Mirrors the 'r'/'f'/'t' arms below.  The former hand-port
+        // here manually reproduced dodrink's getobj prompt but left a
+        // TODO at the potion-selected branch — it NEVER applied the
+        // potion effect, so peffects/dopotion never ran and the
+        // potion-effect PRNG was skipped entirely (e.g. seed2200's
+        // potion-of-oil exercise(A_WIS, FALSE) at potion.c:1293 was
+        // missing → first divergence).  Translated dodrink does the
+        // full path: fountain/sink checks, getobj, milky/smoky bottle
+        // rolls, then dopotion → peffects.  Returns ECMD_TIME(1) /
+        // ECMD_OK(0) / ECMD_CANCEL(2); (res & 1) maps to context.move.
+        let res = 0;
+        try { res = (await t_dodrink()) || 0; } catch (_e) {
+            if (__env.NH_DEBUG_EXTCMD) console.error('[q dodrink]', _e.message);
         }
-        if (eligibleLetters.length === 0) {
-            await pline("You have nothing to drink.");
-            game.context.move = 0;
-        } else {
-            const promptText = `What do you want to drink? [${eligibleLetters.join('')} or ?*]`;
-            const moreText = "You don't have that object.--More--";
-            promptLoop:
-            while (true) {
-                game._pending_message = promptText;
-                game._cursor_override = { x: promptText.length + 1, y: 0 };
-                game._cursor_override_oneshot = true;
-                await flush_screen(1);
-                const k = await nhgetch();
-                if (k === 0x1b) {
-                    await pline("Never mind.");
-                    break promptLoop;
-                }
-                const kchr = String.fromCharCode(k);
-                if (eligibleLetters.includes(kchr)) {
-                    // TODO: actually quaff the selected potion.  Same
-                    // deferral as eat — sessions that select a real
-                    // potion will diverge at the potion-effect PRNG.
-                    break promptLoop;
-                }
-                const invObj = invLetters.get(kchr);
-                if (invObj) {
-                    // drink_ok returns EXCLUDE → silly_thing path.
-                    // silly_thing emits "That is a silly thing to drink."
-                    await pline("That is a silly thing to drink.");
-                    break promptLoop;
-                }
-                // Letter not in inventory — More-state until dismissed
-                while (true) {
-                    game._pending_message = moreText;
-                    game._cursor_override = { x: moreText.length, y: 0 };
-                    game._cursor_override_oneshot = true;
-                    await flush_screen(1);
-                    const mk = await nhgetch();
-                    if (mk === 0x20 || mk === 0x0d || mk === 0x0a || mk === 0x1b) break;
-                }
-            }
-            game._cursor_override = null;
-            game.context.move = 0;
-        }
+        game.context.move = (res & 1) ? 1 : 0;
     } else if (ch === 'r') {
         // r: direct dispatch to translated read.c doread.
         // Await-on-input: the former bridge pre-read the item/
@@ -1878,6 +2042,18 @@ export async function rhack(key) {
         let res = 0;
         try { res = (await t_doddrop()) || 0; } catch (_e) {
             if (__env.NH_DEBUG_EXTCMD) console.error('[D doddrop]', _e.message);
+        }
+        game.context.move = (res & 1) ? 1 : 0;
+    } else if (ch === 'd') {
+        // 'd' drop — C ref do.c dodrop → single-item drop (getobj +
+        // drop()).  Previously unwired, so the recorded 'd','a' drop
+        // keys were skipped and the command stream misaligned (seed0116:
+        // JS read the next ^W wish one command early at rng 5800 vs C's
+        // 5849).  C ref cmd.c:1708 ('d' -> dodrop).  A normal floor/shop
+        // drop fires ~0 RNG, so this realigns the input stream.
+        let res = 0;
+        try { res = (await t_dodrop()) || 0; } catch (_e) {
+            if (__env.NH_DEBUG_EXTCMD) console.error('[d dodrop]', _e.message);
         }
         game.context.move = (res & 1) ? 1 : 0;
     } else if (ch === 'X') {
@@ -2345,10 +2521,16 @@ export async function rhack(key) {
         // status hides).  buildInventoryFromState already chooses
         // PAD=1 vs PAD-from-maxcol by the same line-count rule —
         // derive offx from the actual leading-space width.
-        const __invLargest = pages[0]?.length || 0;
-        const __fullScreen = __invLargest > 22;
-        // Pick a non-empty rendered line and count its leading spaces
-        // to get the same offx the rendering chose.
+        // buildInventoryFromState already applied C's wintty.c:1908-1931
+        // offx rule (right-corner overlay vs full-screen) and baked the
+        // choice into each line's leading PAD: full-screen lines carry a
+        // single leading space (offx 0/1, status hidden), right-corner
+        // lines carry the computed offx (= max(10, 78-maxLen)) as leading
+        // spaces.  Derive the geometry from that single source of truth
+        // rather than recomputing the threshold here (they had drifted —
+        // this caller still used the old `> 22` line-count heuristic and
+        // forced kind 'text' for seed0116's 23-line shop inventory, so
+        // the map never showed through on the left).
         let __derivedOffx = 31;
         for (const ln of pages[0] || []) {
             const t = (typeof ln === 'string') ? ln : (ln?.text || '');
@@ -2357,11 +2539,17 @@ export async function rhack(key) {
                 break;
             }
         }
+        const __fullScreen = __derivedOffx <= 1;
         game._menu_overlay = {
             kind: __fullScreen ? 'text' : 'menu',
             pages, page: 0,
             cType: 'NHW_MENU',
             offx: __fullScreen ? 0 : __derivedOffx,
+            // Right-corner menus are an overlay: C does NOT clearscreen
+            // when offx != 0 (wintty.c:1407 `if (!cw->offx) clearscreen`),
+            // so the map stays visible on the left.  bgPreserve renders
+            // the map under the padded menu rows.
+            bgPreserve: !__fullScreen,
         };
         game.context.move = 0;
     } else if (ch === ' ' && Array.isArray(game._menu_overlay?.pages)) {
@@ -2507,26 +2695,57 @@ export async function rhack(key) {
                         const loc = game.level?.locations?.[tx]?.[ty];
                         const mon = game.level?.monsters?.[tx]?.[ty];
                         const typ = loc?.typ | 0;
-                        // C ref sounds.c dochat:1174-1184 — when target
-                        // is wall-ish (typ in [1,DBWALL] or SDOOR) and
-                        // not blind+unmapped, pline "It's like talking
-                        // to a wall."  DBWALL = 9, SDOOR = 10.
-                        if (!mon && typ >= 1 && typ <= 10) {
+                        // C ref sounds.c dochat — chat with a monster in the
+                        // chosen direction.  The hand-port used to DEFER this
+                        // (always free), so chatting an adjacent AWAKE pet
+                        // took no turn where C's domonnoise returns ECMD_TIME
+                        // — that one missing turn forked seed0106 (the pet's
+                        // later dog_goal scheduling). Replicate dochat's gates
+                        // (sounds.js:1171-1194) + domonnoise.
+                        if (mon && !mon.mundetected
+                            && (mon.m_ap_type & 7) !== M_AP_FURNITURE
+                            && (mon.m_ap_type & 7) !== M_AP_OBJECT) {
+                            const dProp = game.u.uprops[DEAF];
+                            const deaf = !!((dProp && (dProp.intrinsic || dProp.extrinsic)) || game.u.uroleplay?.deaf);
+                            const seen = canseemon(mon) || sensemon(mon);
+                            if ((mon.msleeping || !mon.mcanmove) && !mon.ispriest) {
+                                if (seen) await pline("%s seems not to notice you.", await Monnam(mon));
+                                res = 0;
+                            } else {
+                                mon.mstrategy &= ~(268435456 | 536870912);
+                                if (!deaf && mon.mtame && mon.meating) {
+                                    if (!seen) await map_invisible(mon.mx, mon.my);
+                                    await pline("%s is eating noisily.", await Monnam(mon));
+                                    res = 0;
+                                } else if (deaf) {
+                                    const xresp = ((game.youmonst.data.mflags1 & 131072) !== 0) ? "falls on deaf ears" : "is inaudible";
+                                    await pline("Any response%s%s %s.", seen ? " from " : "", seen ? await mon_nam(mon) : "", xresp);
+                                    res = 0;
+                                } else {
+                                    res = await domonnoise(mon);
+                                }
+                            }
+                            game.context.move = (res & 1) ? 1 : 0;
+                            plined = true;
+                        } else if (!mon && typ >= 1 && typ <= 10) {
+                            // wall-ish target (typ in [VWALL,DBWALL] or SDOOR).
                             await pline("It's like talking to a wall.");
                             plined = true;
+                            res = 0;
+                            game.context.move = 0;
+                        } else {
+                            // statue / empty / fountain — silent, no turn
+                            // (those rarer branches still deferred).
+                            res = 0;
+                            game.context.move = 0;
                         }
-                        // Other dochat branches (statues, fountains,
-                        // monsters) deferred — translated path handles
-                        // them when the upstream state is aligned.
+                    } else {
+                        // non-direction key (self '.'/'s', up/down) — defer.
+                        res = 0;
+                        game.context.move = 0;
                     }
-                    // Clear the prompt if nothing was plined.  C's
-                    // dochat returns silently for empty target / mon
-                    // we don't handle; the message line should be
-                    // empty at the next capture, not still showing
-                    // "Talk to whom?".
+                    // Clear the prompt if nothing was plined.
                     if (!plined) game._pending_message = '';
-                    res = 0;
-                    game.context.move = 0;
                 }
             } else if (!cancelled && name === 'pray') {
                 // Await-on-input: bridge deleted — translated
@@ -2773,6 +2992,20 @@ export async function rhack(key) {
         // Until we port the full command dispatch, prefer
         // silence over wrong output.
         game.context.move = 0;
+    }
+
+    // C ref cmd.c:3819-3825 — after a turn-consuming command that was
+    // NOT a kick (^D = 0x04), reset kickedloc so pets stop avoiding the
+    // just-kicked tile.  The translated rhack (cmd.js:2865) does this;
+    // the live hand-port omitted it.  Movement already clears kickedloc
+    // via domove (translated hack.js:2096), but a NON-movement turn such
+    // as 's'earch did not — so a stale kickedloc persisted and the pet
+    // kept avoiding the kicked tile, firing one fewer dog_move
+    // rn2(++chcnt) than C (seed0060 div=3033: dog skipped the kicked
+    // candidate (24,13) that C evaluates/chooses).
+    if (game.context.move && key !== 0x04 && game.kickedloc) {
+        game.kickedloc.x = 0;
+        game.kickedloc.y = 0;
     }
 }
 

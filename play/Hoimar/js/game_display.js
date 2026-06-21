@@ -97,7 +97,7 @@ export class GameDisplay {
     keyMapper = null;
     /** Ctrl-C handler. */
     onInterrupt = null;
-    /** Called when input queue is empty (headless replay). */
+    /** Called when the headless input queue is empty. */
     onEmptyQueue = null;
 
     // --- NetHack-specific methods ---

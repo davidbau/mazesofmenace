@@ -291,6 +291,7 @@ const DWARVISH_IRON_HELM = 91;
 const HELMET = 97;
 const PLATE_MAIL = 121;
 const SPLINT_MAIL = 124;
+const DWARVISH_MITHRIL_COAT = 126;
 const ELVEN_MITHRIL_COAT = 127;
 const CHAIN_MAIL = 128;
 const ORCISH_CHAIN_MAIL = 129;
@@ -348,7 +349,7 @@ const BELL = 255;
 const BUGLE = 256;
 const LEATHER_DRUM = 257;
 const PICK_AXE = 259;
-const SPE_FORCE_BOLT = 383;
+const SPE_FORCE_BOLT = 376;
 const SPE_CONFUSE_MONSTER = 377;
 const SPE_PROTECTION = 403;
 const APPLE = 277;
@@ -692,6 +693,13 @@ const ORC_KNOWN_OBJECTS = [
     ORCISH_SHIELD, URUK_HAI_SHIELD, ORCISH_CLOAK,
 ];
 
+const DWARF_KNOWN_OBJECTS = [
+    // C ref: src/u_init.c:u_init_race().
+    DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK,
+    DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK,
+    DWARVISH_ROUNDSHIELD,
+];
+
 const ELF_KNOWN_OBJECTS = [
     // C ref: src/u_init.c:u_init_race().
     ELVEN_SHORT_SWORD, ELVEN_ARROW, ELVEN_BOW, ELVEN_SPEAR,
@@ -824,6 +832,23 @@ export function merge_inventory_object(obj) {
     const target = game.inventory.find((into) => mergeable_inventory_object(into, obj));
     if (!target) return null;
     target.quan = (target.quan || 1) + (obj.quan || 1);
+    let discovered = false;
+    // C ref: src/invent.c:merged().  Stacking can identify an attribute by
+    // comparing the incoming object with an already-carried stack.
+    if (!!obj.known !== !!target.known) {
+        target.known = true;
+        discovered = true;
+    }
+    if (!!obj.rknown !== !!target.rknown) {
+        target.rknown = true;
+        if (target.oerodeproof) discovered = true;
+    }
+    if (!!obj.bknown !== !!target.bknown) {
+        target.bknown = true;
+        if (game.urole?.name?.m !== 'Priest') discovered = true;
+    }
+    if (discovered && obj.how_lost !== 'LOST_THROWN' && target.how_lost !== 'LOST_THROWN')
+        game._inventory_merge_discovered = true;
     return target;
 }
 
@@ -1093,6 +1118,10 @@ function u_init_race_inventory(noCreate, roleName) {
         for (const otyp of ELF_KNOWN_OBJECTS) discover_role_known_object(otyp);
         return;
     }
+    if (race === 'dwarf') {
+        for (const otyp of DWARF_KNOWN_OBJECTS) discover_role_known_object(otyp);
+        return;
+    }
     if (race !== 'orc') return;
     if (roleName !== 'Wizard') ini_inv(XTRA_FOOD_INVENTORY, noCreate, roleName);
     for (const otyp of ORC_KNOWN_OBJECTS) discover_role_known_object(otyp);
@@ -1193,6 +1222,7 @@ export function u_init_role_inventory() {
             ini_inv(LAMP_INVENTORY, noCreate, role.name.m);
         }
         for (const otyp of VALKYRIE_KNOWN_WEAPONS) discover_role_known_object(otyp);
+        for (const otyp of KNIGHT_KNOWN_ARMOR) discover_role_known_object(otyp);
     } else if (role?.name?.m === 'Ranger') {
         ini_inv(RANGER_INVENTORY, noCreate, role.name.m);
         // C ref: u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
@@ -1474,8 +1504,9 @@ export function newuexp(level) {
     return 10000000 * (lev - 19);
 }
 
-export function pluslvl() {
+export function pluslvl(incremental = false) {
     const u = game.u || {};
+    const oldLevel = u.ulevel || 1;
     const hpinc = newhp();
     u.uhp = (u.uhp || 0) + hpinc;
     u.uhpmax = (u.uhpmax || 0) + hpinc;
@@ -1486,9 +1517,14 @@ export function pluslvl() {
     u.uenmax = (u.uenmax || 0) + eninc;
     u.uenpeak = Math.max(u.uenpeak || 0, u.uenmax);
 
-    if ((u.ulevel || 1) < 30) {
-        u.uexp = newuexp(u.ulevel || 1);
-        u.ulevel = (u.ulevel || 1) + 1;
+    if (oldLevel < 30) {
+        if (incremental) {
+            const nextLevelXp = newuexp(oldLevel + 1);
+            if ((u.uexp || 0) >= nextLevelXp) u.uexp = nextLevelXp - 1;
+        } else {
+            u.uexp = newuexp(oldLevel);
+        }
+        u.ulevel = oldLevel + 1;
         u.ulevelmax = Math.max(u.ulevelmax || 0, u.ulevel);
         u.ulevelpeak = Math.max(u.ulevelpeak || 0, u.ulevel);
     }

@@ -468,7 +468,13 @@ export function vision_recalc(control = 0) {
     const level = game.level;
     const ux = u.ux, uy = u.uy;
 
-    for (let row = 0; row < ROWNO; row++) {
+    // C ref: vision.c:548 — when Blind, view_from still fills COULD_SEE (so
+    // monsters can see the hero), but NO cell becomes IN_SIGHT (the hero sees
+    // nothing).  Skipping the IN_SIGHT pass keeps cansee()==false everywhere,
+    // which makes newsym() blank out monster glyphs the hero can no longer see.
+    const blind = Blind();
+
+    for (let row = 0; row < ROWNO && !blind; row++) {
         const dy = Math.sign(uy - row);
         for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
             if (!(next[row][col] & COULD_SEE)) continue;
@@ -523,6 +529,12 @@ export function vision_recalc(control = 0) {
                 const loc = game.level.at(col, row);
                 if (!loc) continue;
 
+                if (blind) {
+                    // C ref: vision.c Blind branch — only redraw spots that used
+                    // to be IN_SIGHT (to erase the monster/feature now unseen).
+                    if (ov & IN_SIGHT) newsym(col, row);
+                    continue;
+                }
                 if (nv & IN_SIGHT) {
                     const oldseenv = loc.seenv || 0;
                     const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -567,6 +579,16 @@ export function vision_recalc(control = 0) {
 
     game._viz_rmin = next_rmin;
     game._viz_rmax = next_rmax;
+}
+
+// C ref: youprop.h Blind ((HBlinded || EBlinded) && !BBlinded).  The JS hero
+// has no blindness-blocking property, so blindness is simply the temporary
+// HBlinded timer (set by e.g. use_cream_pie; game.u.blinded) or a worn
+// blindfold.  The worn-eyewear slot lives on `game` (game.ublindf), alongside
+// the other worn-slot pointers (game.uarm, game.uarmg, ...).
+export function Blind() {
+    const u = game.u;
+    return !!u && ((u.blinded || 0) > 0 || !!game.ublindf);
 }
 
 // C ref: cansee(x, y)

@@ -14,6 +14,20 @@ function ACURR(i) {
     return game.u?.acurr?.a?.[i] ?? 0;
 }
 
+// C ref: attrib.c acurr(chridx) — the effective attribute = abon+atemp+acurr,
+// clamped to [3,25] for the non-STR characteristics.  Wounded legs lower
+// atemp[A_DEX] by 1, so the effective Dex (used by e.g. the allmain.c:360
+// u_wipe_engr roll) drops accordingly.  STR's encoded value is not adjusted
+// here (its hunger/loss path is modelled elsewhere); callers that need STR use
+// acurrstr().  abon/atemp default to 0 so this is a no-op for unaffected heroes.
+export function acurr_eff(i) {
+    const u = game.u;
+    const base = u?.acurr?.a?.[i] ?? 0;
+    if (i === A_STR) return base;
+    const v = base + (u?.atemp?.a?.[i] || 0) + (u?.abon?.a?.[i] || 0);
+    return v > 25 ? 25 : v < 3 ? 3 : v;
+}
+
 // C ref: attrib.h AEXE(x) — exercise accumulator; lazily allocated to zeros.
 function ensureAexe() {
     game.u = game.u || {};

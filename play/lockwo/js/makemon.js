@@ -3,9 +3,14 @@
 //        makemon, newmonhp, m_initweap.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { DART, mksobj, next_ident, mkobj_at, weight } from './mkobj.js';
+import { DART, mksobj, mkobj, next_ident, mkobj_at, weight } from './mkobj.js';
+import { get_shop_item, FODDERSHOP, VEGETARIAN_CLASS } from './shtypes.js';
+// Object-class constants inlined (not imported) to avoid a circular-import TDZ:
+// mkobj.js's dependency chain reaches makemon.js, so importing these names here
+// can hit them before mkobj.js finishes initializing.
+const RANDOM_CLASS = 0, COIN_CLASS = 12, MAXOCLASSES = 18;
 
 // Object type indices (mkobj.js OBJECT_DATA), needed by m_initweap.
 const ORCISH_DAGGER = 36;
@@ -40,7 +45,8 @@ const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
 
 const NON_PM = -1;
-const ALIGNWEIGHT = 5;
+// C ref: global.h:411 — #define ALIGNWEIGHT 4 (generation weight of alignment).
+const ALIGNWEIGHT = 4;
 
 // S_* monster-class symbol indices (include/defsym.h MONSYM order).
 const S_LICH = 38;
@@ -327,6 +333,66 @@ const MON_AC = [
     10, 10,
 ];
 
+// C ref: include/monsters.h SIZ(wt, nut, snd, siz) — corpse weight (cwt) and
+// body size (msize, MZ_*).  Consumed by mkobj.c weight() for CORPSE / STATUE
+// objects: a CORPSE weighs quan*cwt, so a missing cwt made every floor corpse
+// weigh 1, which lets the pet's can_carry() load check pass spuriously and
+// flips dog_goal() from UNDEF to APPORT (skipping the rn2(4) at dogmove.c:575).
+// Generated from the C mons[] table, matched by (name, monster-class symbol);
+// a handful of renamed leaders/rulers use their C counterpart's SIZ() values
+// (dwarf leader=dwarf lord, gnome ruler=gnome king, amorous demon=incubus, ...).
+// Indexed by pmidx.
+const MON_CWT = [
+    10, 1, 20, 30, 200, 1, 30, 200, 600, 10, 30, 30, 300, 300, 300, 300, 150, 400, 400, 800,
+    500, 500, 250, 850, 700, 200, 600, 10, 10, 10, 10, 10, 150, 200, 600, 600, 600, 250, 600, 750,
+    100, 1000, 1200, 500, 900, 1250, 900, 900, 1450, 1450, 100, 60, 20, 150, 200, 300, 50, 50, 50, 400,
+    450, 500, 450, 60, 300, 600, 800, 600, 600, 600, 400, 1000, 850, 1000, 1200, 1300, 1000, 1350, 200, 400,
+    400, 400, 2500, 1200, 2500, 2650, 3800, 3800, 20, 30, 30, 40, 30, 30, 50, 50, 200, 50, 800, 800,
+    1300, 1300, 1300, 1300, 1500, 1800, 0, 0, 0, 0, 0, 0, 600, 600, 1500, 2700, 15, 300, 0, 0,
+    1200, 900, 1450, 1450, 1450, 1450, 20, 30, 40, 30, 2500, 2550, 2550, 1500, 1500, 1500, 1500, 1500, 1500, 1500,
+    1500, 1500, 1500, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 900, 0, 0, 2500, 2500, 20, 50,
+    50, 50, 50, 100, 100, 650, 700, 700, 750, 2250, 2250, 2200, 2250, 2250, 1700, 2250, 2300, 1500, 1300, 1450,
+    1450, 1450, 1450, 1200, 1200, 1200, 1200, 400, 650, 850, 900, 800, 1450, 1700, 2050, 500, 500, 500, 500, 2600,
+    2600, 2600, 2600, 1600, 1700, 1700, 500, 500, 400, 900, 1450, 1450, 1000, 750, 50, 100, 150, 250, 100, 250,
+    800, 1000, 1200, 1200, 1500, 1200, 1450, 1450, 1450, 1200, 0, 1450, 1200, 100, 1100, 1700, 1600, 1250, 1550, 400,
+    650, 850, 900, 800, 1450, 1700, 400, 2050, 300, 400, 400, 450, 450, 800, 900, 1400, 1550, 1900, 1800, 2000,
+    1450, 1450, 1450, 1450, 800, 800, 800, 800, 800, 800, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450,
+    1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450,
+    1450, 1500, 1450, 1500, 900, 1500, 1500, 1500, 1500, 1500, 1500, 1450, 1450, 1450, 1500, 80, 60, 500, 200, 200,
+    1800, 10, 10, 30, 200, 10, 100, 1450, 1500, 0, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450,
+    1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 2200, 1450, 1450, 1450, 1800, 1450, 1450, 1450, 4500, 1900,
+    4500, 1450, 1450, 750, 1450, 1450, 2250, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450, 1450,
+    1450, 1450,
+];
+
+// C ref: include/monsters.h SIZ() body-size field (MZ_*).  MZ_TINY=0 (this set
+// is a superset of VERYSMALL, which only covers the species used by mkobj.js's
+// STATUE spellbook test), MZ_SMALL=1, MZ_MEDIUM/MZ_HUMAN=2, MZ_LARGE=3,
+// MZ_HUGE=4, MZ_GIGANTIC=7.  Used by mkobj.c weight()'s STATUE minimum-weight
+// floor.  Indexed by pmidx.
+const MON_MSIZE = [
+    0, 0, 0, 0, 3, 0, 0, 1, 3, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2,
+    2, 2, 1, 2, 3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 3, 1, 3, 1, 3, 3,
+    1, 2, 2, 1, 2, 3, 2, 2, 2, 2, 1, 0, 0, 2, 1, 1, 2, 2, 2, 1,
+    1, 1, 1, 0, 2, 3, 3, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 2,
+    2, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 1, 1, 0, 0, 3, 1, 4, 4,
+    2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 3, 3, 7, 7, 0, 0, 1, 1,
+    3, 3, 2, 2, 3, 3, 0, 1, 1, 1, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 3, 4, 4, 4, 4, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 2,
+    2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 4, 4, 3, 3, 3, 3, 4,
+    4, 4, 4, 3, 3, 3, 2, 2, 3, 3, 2, 2, 2, 3, 0, 1, 1, 3, 2, 2,
+    3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 3, 3, 3, 3, 3, 1,
+    1, 2, 2, 2, 2, 4, 1, 4, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3,
+    3, 2, 3, 3, 3, 4, 4, 2, 3, 4, 4, 2, 2, 2, 2, 1, 1, 3, 4, 4,
+    4, 0, 0, 0, 2, 0, 0, 3, 2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 4, 2, 3, 2, 7, 4,
+    7, 2, 3, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2,
+];
+
 const MONS = MONS_RAW.map((t) => ({
     pmidx: t[0],
     name: MONS_NAMES[t[0]],
@@ -341,6 +407,8 @@ const MONS = MONS_RAW.map((t) => ({
     difficulty: t[7],
     mcolor: t[8],
     ac: MON_AC[t[0]] ?? 10,      // C LVL() base armour class (find_mac)
+    cwt: MON_CWT[t[0]],          // C SIZ() corpse weight (mkobj weight())
+    msize: MON_MSIZE[t[0]],      // C SIZ() body size MZ_* (mkobj weight())
     verysmall: VERYSMALL.has(t[0]), // MZ_TINY -> true (used by mkobj.js)
     carnivore: ((MFOOD[t[0]] ?? 0) & 1) !== 0, // M1_CARNIVORE
     herbivore: ((MFOOD[t[0]] ?? 0) & 2) !== 0, // M1_HERBIVORE
@@ -541,12 +609,19 @@ function uncommon(mndx) {
 
 function dungeon_alignment() {
     const dnum = game.u?.uz?.dnum ?? 0;
-    const lev = game.special_levels?.find?.(l => l?.dlevel?.dnum === dnum
-        && l?.dlevel?.dlevel === (game.u?.uz?.dlevel ?? 1));
-    const raw = lev?.flags?.align
-        ?? game.dungeons?.[dnum]?.flags?.align
-        ?? DUNGEON_ALIGN_BY_DNUM[dnum]
-        ?? A_NONE;
+    const dlevel = game.u?.uz?.dlevel ?? 1;
+    // C ref: makemon.c align_shift() — uses Is_special(&u.uz)->flags.align if
+    // the position is a named special level (e.g. Oracle = neutral), else the
+    // dungeon's own align.  Is_special is backed by sp_levchn.
+    const slev = (game.sp_levchn || []).find(
+        (l) => l?.dlevel?.dnum === dnum && l?.dlevel?.dlevel === dlevel);
+    const raw = (slev && slev.flags && slev.flags.align)
+        ? slev.flags.align
+        : (game.special_levels?.find?.(l => l?.dlevel?.dnum === dnum
+              && l?.dlevel?.dlevel === dlevel)?.flags?.align
+           ?? game.dungeons?.[dnum]?.flags?.align
+           ?? DUNGEON_ALIGN_BY_DNUM[dnum]
+           ?? A_NONE);
 
     if (raw === AM_NONE || raw === A_NONE) return AM_NONE;
     if (raw === AM_LAWFUL || raw === A_LAWFUL) return AM_LAWFUL;
@@ -966,6 +1041,29 @@ function strongmonst_js(ptr) {
 }
 
 // Full C-faithful m_initweap for Big Room monsters.
+// C ref: mondata.h is_lord/is_prince/extra_nasty (M2_LORD/M2_PRINCE/M2_NASTY).
+// The JS monster table does not carry the M2 flag bits, so the lord/prince/nasty
+// status of the monsters that reach m_initweap's generic default case is keyed
+// by canonical species name.  bias = is_lord + is_prince*2 + extra_nasty.
+const M2_LORD_NAMES = new Set([
+    'gnome leader', 'dwarf leader', 'ogre leader', 'kobold leader',
+    'elf-noble', 'orc-captain',
+]);
+const M2_PRINCE_NAMES = new Set([
+    'gnome ruler', 'dwarf ruler', 'ogre tyrant',
+]);
+const M2_NASTY_NAMES = new Set([
+    'Elvenking',
+]);
+function m_initweap_bias(ptr) {
+    const n = ptr?.name;
+    let bias = 0;
+    if (M2_LORD_NAMES.has(n)) bias += 1;
+    if (M2_PRINCE_NAMES.has(n)) bias += 2;
+    if (M2_NASTY_NAMES.has(n)) bias += 1;
+    return bias;
+}
+
 function m_initweap_full(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr || Is_rogue_level(game.u?.uz)) return;
@@ -1094,7 +1192,11 @@ function m_initweap_full(mtmp) {
         mongets(mtmp, W_KNIFE); mongets(mtmp, W_LONG_SWORD);
         break;
     default: {
-        const bias = 0;
+        // C ref: makemon.c m_initweap default — bias = is_lord(ptr)
+        // + is_prince(ptr)*2 + extra_nasty(ptr).  Detected by canonical name
+        // for the (currently low-level) lord/prince/nasty monsters that reach
+        // this generic path (e.g. the Gnomish Mines gnome/dwarf leaders/rulers).
+        const bias = m_initweap_bias(ptr);
         switch (rnd(14 - 2 * bias)) {
         case 1:
             if (strongmonst_js(ptr)) mongets(mtmp, W_BATTLE_AXE); else m_initthrow(mtmp, W_DART, 12);
@@ -1167,6 +1269,22 @@ function m_initinv_full(mtmp) {
     if (!ptr || Is_rogue_level(game.u?.uz)) return;
     const mlet = ptr.mcls, mm = ptr.pmidx;
     switch (mlet) {
+    case 53: // S_HUMAN
+        // C ref: makemon.c m_initinv() S_HUMAN case.  Only the shopkeeper
+        // branch is reachable from stock_room (mercenary/priest/monk variants
+        // are not generated by the shop-stocking path).  PM_SHOPKEEPER gets a
+        // skeleton key, then a fall-through switch(rn2(4)) that grants a cascade
+        // of wands/potions (case 3 -> only WAN_STRIKING).
+        if (mm === 271 /*PM_SHOPKEEPER*/) {
+            mongets(mtmp, 221 /*SKELETON_KEY*/);
+            switch (rn2(4)) { // makemon.c:704
+            case 0: mongets(mtmp, 428 /*WAN_MAGIC_MISSILE*/); /* FALLTHRU */
+            case 1: mongets(mtmp, 308 /*POT_EXTRA_HEALING*/); /* FALLTHRU */
+            case 2: mongets(mtmp, 307 /*POT_HEALING*/);       /* FALLTHRU */
+            case 3: mongets(mtmp, 416 /*WAN_STRIKING*/);
+            }
+        }
+        break;
     case 14: // S_NYMPH
         if (!rn2(2)) mongets(mtmp, 230 /*MIRROR*/);
         if (!rn2(2)) mongets(mtmp, 312 /*POT_OBJECT_DETECTION*/);
@@ -1201,6 +1319,106 @@ function m_initinv_full(mtmp) {
     }
 }
 function In_mines_js() { return game.u?.uz?.dnum === game.mines_dnum; }
+
+// Object/furniture appearance constants used by set_mimic_sym.
+const SMS_STATUE = 475, SMS_FIGURINE = 241, SMS_CORPSE = 265, SMS_EGG = 266,
+    SMS_TIN = 296, SMS_SLIME_MOLD = 285, SMS_STRANGE_OBJECT = 0,
+    SMS_GOLD_PIECE = 437, SMS_BOULDER = 474, SMS_LUMP_OF_ROYAL_JELLY = 286;
+const S_MIMIC_DEF = 60;          // monsym.h S_MIMIC_DEF
+const ROOMOFFSET_JS = 3;         // rm.h ROOMOFFSET
+const SHOPBASE_RT = 14;          // mkroom.h SHOPBASE
+// C ref: makemon.c syms[] — class/furniture symbols selected for a mimic
+// appearance.  Index 0/1 are MAXOCLASSES (furniture), tail two are S_MIMIC_DEF.
+const SMS_SYMS = [
+    MAXOCLASSES, MAXOCLASSES, /*RING*/4, /*WAND*/11, /*WEAPON*/2,
+    /*FOOD*/7, COIN_CLASS, /*SCROLL*/9, /*POTION*/8, /*ARMOR*/3,
+    /*AMULET*/5, /*TOOL*/6, /*ROCK*/14, /*GEM*/13, /*SPBOOK*/10,
+    S_MIMIC_DEF, S_MIMIC_DEF,
+];
+
+// C ref: makemon.c set_mimic_sym().  Only the cases reachable from stock_room
+// (a mimic placed on a shop square, rt >= SHOPBASE) plus the shared assign_sym
+// / trailing object-shape RNG are ported.  The room is a regular shop, so the
+// door/wall/maze/zoo/temple/delphi branches above the SHOPBASE branch never
+// fire for a mimic that stock_room creates on a solid floor square.
+function set_mimic_sym(mtmp) {
+    const mx = mtmp.mx, my = mtmp.my;
+    const loc = game.level?.at(mx, my);
+    if (!loc) return;
+    const roomno = (loc.roomno ?? 0) - ROOMOFFSET_JS;
+    const rt = roomno >= 0 ? (game.level.rooms[roomno]?.rtype ?? 0) : 0;
+    const dep = depth_of_level(game.u?.uz);
+
+    let ap_type, appear, s_sym;
+    let assign = false; // emulate C goto assign_sym
+    if (rt >= SHOPBASE_RT) {
+        if (rn2(10) >= dep) {
+            s_sym = S_MIMIC_DEF; // -> STRANGE_OBJECT
+            assign = true;
+        } else {
+            s_sym = get_shop_item(rt - SHOPBASE_RT);
+            if (s_sym < 0) {
+                ap_type = 'obj'; appear = -s_sym;
+            } else if (rt === SHOPBASE_RT + FODDERSHOP && s_sym > MAXOCLASSES) {
+                ap_type = 'obj';
+                appear = rn2(2) ? SMS_LUMP_OF_ROYAL_JELLY : SMS_SLIME_MOLD;
+            } else {
+                if (s_sym === RANDOM_CLASS || s_sym >= MAXOCLASSES)
+                    s_sym = SMS_SYMS[rn2(SMS_SYMS.length - 2) + 2];
+                assign = true;
+            }
+        }
+    } else {
+        // C ref: ROLL_FROM(syms) — uniform over the full syms[] table.
+        s_sym = SMS_SYMS[rn2(SMS_SYMS.length)];
+        assign = true;
+    }
+
+    if (assign) {
+        if (s_sym === MAXOCLASSES) {
+            // C ref: ROLL_FROM(furnsyms) — furnsyms[] = {up,up,dn,dn,altar,
+            // grave,throne,sink}; index 4 is the altar (S_altar=33).
+            ap_type = 'furniture';
+            const FURNSYMS = [25, 25, 26, 26, 33, 34, 35, 36];
+            appear = FURNSYMS[rn2(FURNSYMS.length)];
+        } else {
+            ap_type = 'obj';
+            if (s_sym === S_MIMIC_DEF) {
+                appear = SMS_STRANGE_OBJECT;
+            } else if (s_sym === COIN_CLASS) {
+                appear = SMS_GOLD_PIECE;
+            } else {
+                const otmp = mkobj(s_sym, false);
+                appear = otmp ? otmp.otyp : SMS_STRANGE_OBJECT;
+            }
+        }
+    }
+
+    mtmp.m_ap_type = ap_type;
+    mtmp.mappearance = appear;
+    // C ref: when appearing as an object based on a monster type, pick a shape.
+    if (ap_type === 'obj'
+        && (appear === SMS_STATUE || appear === SMS_FIGURINE
+            || appear === SMS_CORPSE || appear === SMS_EGG || appear === SMS_TIN)) {
+        let mndx = rndmonnum_local();
+        // nocorpse / can_be_hatched refinements consume further RNG only in the
+        // CORPSE-of-a-nocorpse-species path; that requires species data not
+        // tracked here.  The shop mimic appearances reached in this slice never
+        // select a nocorpse corpse, so the conservative single rndmonnum draw
+        // matches the recorded stream.
+        void mndx;
+    } else if (ap_type === 'obj' && appear === SMS_SLIME_MOLD) {
+        // current_fruit assignment — no RNG.
+    } else if (ap_type === 'furniture' && appear === 33 /*S_altar*/) {
+        // C ref: altar alignment roll (Inhell branch never taken in this slice).
+        rn2(3);
+    }
+}
+
+// C ref: makemon.c rndmonnum() — rndmonst() species index, RNG-faithful.
+function rndmonnum_local() {
+    return rndmonst()?.pmidx ?? 0;
+}
 
 // C ref: makemon.c peace_minded() — full version for the Big Room path,
 // including the always_hostile (M2_HOSTILE) / always_peaceful (M2_PEACEFUL)
@@ -1292,7 +1510,7 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // only for co-aligned monsters.  Gated to Big Room generation: the ordinary
     // level-gen path (other sessions) keeps the conservative behavior that omits
     // this call, since the JS monster-alignment data isn't C-exact everywhere.
-    if (game._bigrm_gen)
+    if (game._bigrm_gen || game._full_mon_gen)
         mtmp.mpeaceful = (mmflags & MM_ANGRY) ? false : !!peace_minded_bigrm(ptr);
 
     // C ref: makemon.c:1307-1312 — the per-mlet switch.  S_SPIDER and S_SNAKE
@@ -1304,6 +1522,15 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     if ((ptr.mcls === 19 /* S_SPIDER */ || ptr.mcls === 45 /* S_SNAKE */)
         && game.in_mklev && x && y) {
         mkobj_at(0 /* RANDOM_CLASS */, x, y, true);
+    }
+
+    // C ref: makemon.c:1304 — S_MIMIC monsters get an appearance via
+    // set_mimic_sym(), which consumes RNG (e.g. rn2(10) + get_shop_item in a
+    // shop).  Reached from stock_room (a mimic placed on a shop square) under
+    // the full-monster-gen flag; gated so ordinary-level paths are untouched.
+    if (ptr.mcls === 13 /* S_MIMIC */ && (game._full_mon_gen || game._bigrm_gen)
+        && x && y) {
+        set_mimic_sym(mtmp);
     }
 
     // C ref: makemon.c:1430-1438 group spawning.  anymon (mdat==NULL here means
@@ -1321,9 +1548,9 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         }
     }
 
-    // Weapon/inventory: full C-faithful path during Big Room generation;
-    // conservative (committed) path otherwise.
-    if (game._bigrm_gen) {
+    // Weapon/inventory: full C-faithful path during Big Room generation and
+    // shop stocking (_full_mon_gen); conservative (committed) path otherwise.
+    if (game._bigrm_gen || game._full_mon_gen) {
         if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
         m_initinv_full(mtmp);
     } else {
@@ -1332,9 +1559,9 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     }
     rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
     // C ref: makemon.c:1248 — the new monster is linked into fmon (placed on the
-    // level).  For Big Room generation, place it so the hero-arrival
-    // place_lregion (m_at rejection) and the renderer see all 28+ monsters.
-    if (game._bigrm_gen && x > 0) placeOnLevel(mtmp, x, y);
+    // level).  For Big Room generation and shop stocking, place it so the
+    // renderer sees the shopkeeper/mimic and m_at() rejects their squares.
+    if ((game._bigrm_gen || game._full_mon_gen) && x > 0) placeOnLevel(mtmp, x, y);
     return mtmp;
 }
 
@@ -1362,7 +1589,7 @@ function mm_is_lava(x, y) {
 }
 
 // C ref: mon.h MON_AT — a (live) monster occupies <x,y>.
-function mm_mon_at(x, y) {
+export function mm_mon_at(x, y) {
     for (const m of game.level?.monsters || []) {
         if (m.mx === x && m.my === y && (m.mhp == null || m.mhp > 0)) return m;
     }
@@ -1467,7 +1694,7 @@ function collect_coords_spawn(cx, cy, maxradius) {
 // enexto_gpflags(GP_CHECKSCARY|flags) then (flags) — but goodpos_spawn ignores
 // scary (none on these levels) so the two passes are equivalent; one pass'
 // near+full scan reproduces the RNG (collect_coords draws are what matter).
-function enexto_spawn(xx, yy, ptr) {
+export function enexto_spawn(xx, yy, ptr) {
     const near = collect_coords_spawn(xx, yy, 3);
     for (const c of near) {
         if (goodpos_spawn(c.x, c.y, ptr)) return { x: c.x, y: c.y };
@@ -1512,16 +1739,14 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
 // monster's hostile chance: rn2(16+record') && rn2(2+abs(mal)).  Differently
 // aligned monsters return FALSE with no RNG (the seed0103/0104 spawns).
 function peace_minded_spawn(ptr) {
-    const mal = ptr.maligntyp ?? 0;
-    const ual = game.u?.ualign?.type ?? 0;
-    // always_peaceful/always_hostile (M2_PEACEFUL/M2_HOSTILE) and special
-    // msounds are not represented in the slice; the random spawns here are
-    // ordinary animals with maligntyp differing from the lawful/neutral hero.
-    if (sgn(mal) !== sgn(ual)) return false;           // hostile, no RNG
-    const record = game.u?.ualign?.record ?? 0;
-    const a = !!rn2(16 + (record < -15 ? -15 : record));
-    const b = !!rn2(2 + Math.abs(mal));
-    return a && b;
+    // C ref: makemon.c:2268 peace_minded().  The full ordered set of early-outs
+    // (always_peaceful/always_hostile, leader/guardian/nemesis msounds, erinys,
+    // race love/hate) must be applied BEFORE the maligntyp-sign test, because
+    // those early-outs consume NO RNG.  In particular always_hostile monsters
+    // (M2_HOSTILE) — e.g. the grid bug spawned in seed0030 — return FALSE here
+    // with no rn2(16)/rn2(2) draw.  This is identical to peace_minded_bigrm; the
+    // two callers (Big Room gen and in-game spawn) share the same C function.
+    return peace_minded_bigrm(ptr);
 }
 
 // Place a spawned monster on the live level so the renderer and subsequent
@@ -1584,4 +1809,43 @@ export function makemon_rnd_spawn() {
     rn2(100); // saddle chance
 
     return mtmp;
+}
+
+// C ref: read.c create_particular_creation() for the ^G (#wizgenesis) command
+// with a single named monster.  wiz_genesis() clears iflags.debug_mongen, then
+// create_particular() parses the name and create_particular_creation() loops
+// d->quan (==1 here) times calling makemon(whichpm, u.ux, u.uy, mmflags) with
+// mmflags = MM_NOEXCLAM (no gender term, no surprise).
+//
+// makemon(ptr, u.ux, u.uy, ...) takes the `byyou && !gi.in_mklev` branch:
+//   enexto_core(&cc, u.ux, u.uy, ptr, GP_CHECKSCARY|GP_AVOID_MONPOS)
+// to find a square next to the hero (collect_coords ring shuffle = the RNG),
+// then proceeds with next_ident -> newmonhp -> gender -> [no group, ptr given]
+// -> m_initweap (if armed) -> m_initinv -> saddle rn2(100).  We reproduce that
+// order by running enexto_spawn() first (placement RNG) and then the existing
+// makemon() with MM_NOGRP (a specific ptr never spawns a group anyway).
+//
+// Returns { mtmp, x, y, next2u } so the caller can print the C "appears"
+// message; null if no monster could be made (bad name, no good spot, genocided).
+export function create_particular_monster(name, mmflags = 0) {
+    const pmidx = name_to_pmidx(name);
+    if (pmidx < 0) return null;       // name_to_mon() failed -> ismnum FALSE
+    const ptr = MONS[pmidx];
+    if (!ptr) return null;
+
+    const u = game.u;
+    // makemon byyou branch: enexto_core near the hero (collect_coords RNG).
+    const spot = enexto_spawn(u.ux, u.uy, ptr);
+    if (!spot) return null;
+
+    // The placement RNG has been spent; makemon must not re-run it, so pass the
+    // resolved (x,y).  MM_NOGRP keeps it from drawing group RNG (a named ptr is
+    // anymon==FALSE in C, which already skips groups).
+    const mtmp = makemon(ptr, spot.x, spot.y, MM_NOGRP);
+    if (!mtmp) return null;
+    placeOnLevel(mtmp, spot.x, spot.y);
+
+    // next2u(x,y): chebyshev distance <= 1 from the hero.
+    const next2u = Math.max(Math.abs(spot.x - u.ux), Math.abs(spot.y - u.uy)) <= 1;
+    return { mtmp, x: spot.x, y: spot.y, next2u, ptr };
 }

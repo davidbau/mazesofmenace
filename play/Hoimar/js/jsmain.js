@@ -21,7 +21,7 @@ import { hasSavedGame, restoreSavedGameIntoCurrentState } from './save_restore.j
 import { l_nhcore_init } from './mklev.js';
 
 // ── NethackGame ──
-// Wraps a single game session with replay infrastructure.
+// Wraps a single game session with queued-input infrastructure.
 export class NethackGame {
     constructor(opts = {}) {
         this._seed = opts.seed || 0;
@@ -107,7 +107,9 @@ export class NethackGame {
         g.discoveryOrder = [];
         g.discoveryPriceQuotes = new Map();
         g.program_state = {};
-        g.moves = 1;
+        // C starts the turn counter at 0 and raises it in
+        // u_init.c:u_init_role(), after initial mklev() and makedog().
+        g.moves = 0;
         g._seed = this._seed;
         g.flags.moonphase = phaseOfMoon(g._lt);
         g.flags.friday13 = friday13(g._lt);
@@ -182,15 +184,6 @@ export class NethackGame {
             // Capture from the official terminal serializer. Override screens
             // are rendered into the terminal grid before this hook runs.
             const disp = game?.nhDisplay;
-            if (game?._override_serialized_persistent
-                && game._override_serialized_screen
-                && Array.isArray(game._override_serialized_cursor)
-                && disp?.setCursor) {
-                disp.setCursor(
-                    game._override_serialized_cursor[0],
-                    game._override_serialized_cursor[1],
-                );
-            }
             const term = disp?.terminal || disp;
             nhGame._screens.push(term?.serialize ? term.serialize() : '');
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
@@ -201,15 +194,6 @@ export class NethackGame {
                 game._latched_more_cursor = null;
                 game._latched_more_keep_until_dismiss = false;
                 game._latched_more_use_pending_topline = false;
-            }
-            if (game._override_screen) {
-                game._override_prev = game._override_screen; // let rhack know what was shown
-                if (!game._override_serialized_persistent)
-                    game._override_serialized_cursor = null;
-                game._override_cursor = null;
-                game._override_screen = null;
-            } else {
-                game._override_prev = null;
             }
             nhGame._rngSlices.push(slice);
 
@@ -260,13 +244,13 @@ function createMemoryStorage() {
 
 // ── Per-segment runner — the contest contract ──
 //
-// The judge calls this once per segment. Input is a clean replay
+// The judge calls this once per segment. Input is a clean segment
 // descriptor with up to five fields (NO recorded answers):
 //
 //   { seed: number,        // PRNG seed
 //     datetime: string,    // fixed datetime "YYYYMMDDHHMMSS"
 //     nethackrc: string,   // game-options rc text
-//     moves: string,       // raw key sequence to replay from launch
+//     moves: string,       // raw key sequence to run from launch
 //     storage: object }    // Web-Storage-shaped (getItem/setItem/...)
 //                          //   handle for cross-segment persistence —
 //                          //   shared across all segments of a

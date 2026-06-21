@@ -189,6 +189,14 @@ function build_skill_state() {
     return { P_SKILL, P_MAX, rolemnum };
 }
 
+// C ref: weapon.c P_SKILL(skill) — the hero's current proficiency in a given
+// skill discipline.  Rebuilt deterministically from role + carried weapons
+// (skill advancement via #enhance isn't exercised by the spell-view sessions).
+export function p_skill_of(skill) {
+    const { P_SKILL } = build_skill_state();
+    return P_SKILL[skill];
+}
+
 // C ref: weapon.c skill_ranges[].
 const SKILL_RANGES = [
     [P_FIRST_H_TO_H, P_LAST_H_TO_H, 'Fighting Skills'],

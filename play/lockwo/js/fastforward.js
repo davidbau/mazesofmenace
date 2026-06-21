@@ -12,7 +12,7 @@ import { somexyspace } from "./mkroom.js";
 import { makemon } from "./makemon.js";
 import { ROLE_PRIEST, randrole, roles } from "./role.js";
 import { fill_ordinary_room, mineralize } from "./mklev.js";
-import { fill_special_room } from "./sp_lev.js";
+import { fill_special_room, run_themeroom_postprocess } from "./sp_lev.js";
 import { OROOM, THEMEROOM, FILL_NORMAL } from "./const.js";
 import { moveloop_preamble_startup, u_init_inventory_attrs, newhp, newpw } from "./u_init.js";
 
@@ -225,6 +225,10 @@ export async function fastforward_fill_mineralize() {
                 if (!r || r.hx <= 0) break;
                 fill_special_room(r);
             }
+            // C ref: mklev.c:1420 themerooms_post_level_generate() — run the
+            // queued themeroom postprocess handlers (e.g. Teleportation hub's
+            // deferred teleport traps) after the per-room fill loops.
+            await run_themeroom_postprocess();
             mineralize(-1, -1, -1, -1, false);
         } finally {
             game.in_mklev = was_in_mklev;

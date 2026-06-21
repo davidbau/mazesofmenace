@@ -13,7 +13,7 @@ import {
     apply_hallucination_display_transition, refresh_swallowed_overlay,
     see_monsters, see_objects, see_nearby_objects, see_traps, refresh_warning_monsters, map_level_for_wizard,
     object_glyph_for_menu, serialize_known_terrain_view_screen, terrain_glyph, cls,
-    unmap_invisible_memory,
+    unmap_invisible_memory, installSerializedScreenHook,
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import {
@@ -45,6 +45,8 @@ import {
     finish_deferred_monster_passive_counterattack,
     finish_deferred_monster_physical_attack,
     finish_deferred_monster_physical_knockback_only,
+    finish_deferred_nymph_steal,
+    finish_deferred_nymph_escape_tail,
     finish_deferred_monster_trap_effect,
     finish_pending_swallowed_expulsion,
     create_gas_cloud_basic,
@@ -69,6 +71,8 @@ const M1_POIS = 0x10000000;
 const M1_CARNIVORE = 0x20000000;
 const M1_HERBIVORE = 0x40000000;
 const M1_OMNIVORE = M1_CARNIVORE | M1_HERBIVORE;
+const MR_FIRE = 0x01;
+const MR_COLD = 0x02;
 
 function refreshWarningAfterHeroMove() {
     if (!game.u?.uprops?.warning) return;
@@ -128,6 +132,8 @@ const AKLYS = 80;
 const FLAIL = 81;
 const BULLWHIP = 82;
 const ELVEN_LEATHER_HELM = 89;
+const ORCISH_HELM = 90;
+const DWARVISH_IRON_HELM = 91;
 const HELM_OF_TELEPATHY = 100;
 const LEATHER_JACKET = 135;
 const T_SHIRT = 137;
@@ -165,6 +171,7 @@ const MS_BUZZ = 10;
 const MS_NEIGH = 12;
 const MS_MOO = 13;
 const MS_WAIL = 14;
+const MS_SEDUCE = 31;
 const MS_GROAN = 44;
 const CLOAK_OF_DISPLACEMENT = 149;
 const SMALL_SHIELD = 150;
@@ -176,6 +183,7 @@ const ORCISH_SHIELD = 155;
 const LARGE_SHIELD = 156;
 const DWARVISH_ROUNDSHIELD = 157;
 const SHIELD_OF_REFLECTION = 158;
+
 const LOW_BOOTS = 163;
 const IRON_SHOES = 164;
 const HIGH_BOOTS = 165;
@@ -301,6 +309,104 @@ const SLING_AMMO = new Set([FLINT, ROCK]);
 const CROSSBOW_AMMO = new Set([CROSSBOW_BOLT]);
 const WIELDED_MISSILES = new Set([DART, SHURIKEN, BOOMERANG]);
 const WEPTOOL_TYPES = new Set([PICK_AXE, GRAPPLING_HOOK, UNICORN_HORN]);
+const FORCE_LOCK_ROCK_TYPES = new Set([LUCKSTONE, LOADSTONE, TOUCHSTONE, FLINT, ROCK]);
+const FORCE_LOCK_WEAPON_TYPES = new Set([
+    // C ref: src/lock.c:u_have_forceable_weapon().
+    // Weapon and weapon-tool skills from P_DAGGER through P_LANCE, excluding
+    // P_FLAIL; rocks are handled separately above.
+    SPEAR, ELVEN_SPEAR, ORCISH_SPEAR, DWARVISH_SPEAR, SILVER_SPEAR, JAVELIN,
+    TRIDENT, DAGGER, ELVEN_DAGGER, ORCISH_DAGGER, SILVER_DAGGER, ATHAME,
+    SCALPEL, KNIFE, STILETTO, WORM_TOOTH, CRYSKNIFE, AXE, BATTLE_AXE,
+    SHORT_SWORD, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD,
+    SCIMITAR, SILVER_SABER, BROADSWORD, ELVEN_BROADSWORD, LONG_SWORD,
+    TWO_HANDED_SWORD, KATANA, TSURUGI, RUNESWORD, PARTISAN, RANSEUR, SPETUM,
+    GLAIVE, HALBERD, BARDICHE, VOULGE, FAUCHARD, GUISARME, BILL_GUISARME,
+    LUCERN_HAMMER, BEC_DE_CORBIN, DWARVISH_MATTOCK, LANCE, MACE, SILVER_MACE,
+    MORNING_STAR, WAR_HAMMER, CLUB, QUARTERSTAFF, AKLYS, PICK_AXE,
+]);
+const FORCE_LOCK_LARGE_DAMAGE = new Map([
+    // C refs: include/objects.h WEAPON()/PROJECTILE()/BOW()/WEPTOOL()/ROCK()
+    // oc_wldam fields, used by src/lock.c:doforce().
+    [ARROW, 6],
+    [ELVEN_ARROW, 6],
+    [ORCISH_ARROW, 6],
+    [SILVER_ARROW, 6],
+    [YA, 7],
+    [CROSSBOW_BOLT, 6],
+    [DART, 2],
+    [SHURIKEN, 6],
+    [BOOMERANG, 9],
+    [SPEAR, 8],
+    [ELVEN_SPEAR, 8],
+    [ORCISH_SPEAR, 8],
+    [DWARVISH_SPEAR, 8],
+    [SILVER_SPEAR, 8],
+    [JAVELIN, 6],
+    [TRIDENT, 4],
+    [DAGGER, 3],
+    [ELVEN_DAGGER, 3],
+    [ORCISH_DAGGER, 3],
+    [SILVER_DAGGER, 3],
+    [ATHAME, 3],
+    [SCALPEL, 3],
+    [KNIFE, 2],
+    [STILETTO, 2],
+    [WORM_TOOTH, 2],
+    [CRYSKNIFE, 10],
+    [AXE, 4],
+    [BATTLE_AXE, 6],
+    [SHORT_SWORD, 8],
+    [ELVEN_SHORT_SWORD, 8],
+    [ORCISH_SHORT_SWORD, 8],
+    [DWARVISH_SHORT_SWORD, 8],
+    [SCIMITAR, 8],
+    [SILVER_SABER, 8],
+    [BROADSWORD, 6],
+    [ELVEN_BROADSWORD, 6],
+    [LONG_SWORD, 12],
+    [TWO_HANDED_SWORD, 6],
+    [KATANA, 12],
+    [TSURUGI, 8],
+    [RUNESWORD, 6],
+    [PARTISAN, 6],
+    [RANSEUR, 4],
+    [SPETUM, 6],
+    [GLAIVE, 10],
+    [HALBERD, 6],
+    [BARDICHE, 4],
+    [VOULGE, 4],
+    [FAUCHARD, 8],
+    [GUISARME, 8],
+    [BILL_GUISARME, 10],
+    [LUCERN_HAMMER, 6],
+    [BEC_DE_CORBIN, 6],
+    [DWARVISH_MATTOCK, 8],
+    [LANCE, 8],
+    [MACE, 6],
+    [SILVER_MACE, 6],
+    [MORNING_STAR, 6],
+    [WAR_HAMMER, 4],
+    [CLUB, 3],
+    [RUBBER_HOSE, 3],
+    [QUARTERSTAFF, 6],
+    [AKLYS, 3],
+    [FLAIL, 4],
+    [BULLWHIP, 1],
+    [BOW, 2],
+    [ELVEN_BOW, 2],
+    [ORCISH_BOW, 2],
+    [YUMI, 2],
+    [SLING, 2],
+    [CROSSBOW, 2],
+    [PICK_AXE, 3],
+    [GRAPPLING_HOOK, 6],
+    [UNICORN_HORN, 12],
+    [LUCKSTONE, 3],
+    [LOADSTONE, 3],
+    [TOUCHSTONE, 3],
+    [FLINT, 6],
+    [ROCK, 3],
+]);
 const APPLY_PICK_TYPES = new Set([PICK_AXE, DWARVISH_MATTOCK]);
 const APPLY_AXE_TYPES = new Set([AXE, BATTLE_AXE]);
 const APPLY_POLE_TYPES = new Set([
@@ -393,8 +499,10 @@ const CHAIN_MAIL = 128;
 const LEATHER_GLOVES = 159;
 const GAUNTLETS_OF_POWER = 161;
 const GAUNTLETS_OF_DEXTERITY = 162;
+const MZ_SMALL = 1;
 const MZ_HUMAN = 2;
 const MZ_LARGE = 3;
+const M2_ROCKTHROW = 0x08000000;
 const M2_GREEDY = 0x10000000;
 const M2_JEWELS = 0x20000000;
 const M2_COLLECT = 0x40000000;
@@ -712,7 +820,7 @@ const OBJECT_BASE_NAMES = new Map([
     [378, 'spellbook of cure blindness'],
     [380, 'spellbook of slow monster'],
     [382, 'spellbook of create monster'],
-    [383, 'spellbook of force bolt'],
+    [376, 'spellbook of force bolt'],
     [384, 'spellbook of cause fear'],
     [391, 'spellbook of extra healing'],
     [395, 'spellbook of remove curse'],
@@ -883,17 +991,49 @@ const ARMOR_MAGIC_CANCELLATION = new Map([
 ]);
 
 const SPELLBOOK_SPELL_INFO = new Map([
-    [SPE_DETECT_MONSTERS, { name: 'detect monsters', level: 1, category: 'divination' }],
-    [374, { name: 'healing', level: 1, category: 'healing' }],
-    [378, { name: 'cure blindness', level: 2, category: 'healing' }],
-    [380, { name: 'slow monster', level: 2, category: 'enchantment' }],
-    [382, { name: 'create monster', level: 2, category: 'clerical' }],
-    [383, { name: 'force bolt', level: 1, category: 'attack' }],
-    [385, { name: 'clairvoyance', level: 3, category: 'divination' }],
-    [391, { name: 'extra healing', level: 3, category: 'healing' }],
-    [SPE_REMOVE_CURSE, { name: 'remove curse', level: 3, category: 'clerical' }],
-    [397, { name: 'identify', level: 3, category: 'divination' }],
-    [405, { name: 'stone to flesh', level: 3, category: 'healing' }],
+    // C ref: include/objects.h SPELL() rows.  The fields used here are
+    // oc_delay, oc_level, and spell skill class.
+    [366, { name: 'dig', level: 5, delay: 6, category: 'matter' }],
+    [SPE_MAGIC_MISSILE, { name: 'magic missile', level: 2, delay: 2, category: 'attack' }],
+    [368, { name: 'fireball', level: 4, delay: 4, category: 'attack' }],
+    [369, { name: 'cone of cold', level: 4, delay: 7, category: 'attack' }],
+    [370, { name: 'sleep', level: 3, delay: 1, category: 'enchantment' }],
+    [371, { name: 'finger of death', level: 7, delay: 10, category: 'attack' }],
+    [372, { name: 'light', level: 1, delay: 1, category: 'divination' }],
+    [SPE_DETECT_MONSTERS, { name: 'detect monsters', level: 1, delay: 1, category: 'divination' }],
+    [SPE_HEALING, { name: 'healing', level: 1, delay: 2, category: 'healing' }],
+    [375, { name: 'knock', level: 1, delay: 1, category: 'matter' }],
+    [376, { name: 'force bolt', level: 1, delay: 2, category: 'attack' }],
+    [377, { name: 'confuse monster', level: 1, delay: 2, category: 'enchantment' }],
+    [SPE_CURE_BLINDNESS, { name: 'cure blindness', level: 2, delay: 2, category: 'healing' }],
+    [379, { name: 'drain life', level: 2, delay: 2, category: 'attack' }],
+    [380, { name: 'slow monster', level: 2, delay: 2, category: 'enchantment' }],
+    [381, { name: 'wizard lock', level: 2, delay: 3, category: 'matter' }],
+    [382, { name: 'create monster', level: 2, delay: 3, category: 'clerical' }],
+    [SPE_DETECT_FOOD_WISH, { name: 'detect food', level: 2, delay: 3, category: 'divination' }],
+    [384, { name: 'cause fear', level: 3, delay: 3, category: 'enchantment' }],
+    [385, { name: 'clairvoyance', level: 3, delay: 3, category: 'divination' }],
+    [SPE_CURE_SICKNESS, { name: 'cure sickness', level: 3, delay: 3, category: 'healing' }],
+    [387, { name: 'charm monster', level: 5, delay: 3, category: 'enchantment' }],
+    [388, { name: 'haste self', level: 3, delay: 4, category: 'escape' }],
+    [389, { name: 'detect unseen', level: 3, delay: 4, category: 'divination' }],
+    [390, { name: 'levitation', level: 4, delay: 4, category: 'escape' }],
+    [SPE_EXTRA_HEALING, { name: 'extra healing', level: 3, delay: 5, category: 'healing' }],
+    [SPE_RESTORE_ABILITY, { name: 'restore ability', level: 4, delay: 5, category: 'healing' }],
+    [393, { name: 'invisibility', level: 4, delay: 5, category: 'escape' }],
+    [394, { name: 'detect treasure', level: 4, delay: 5, category: 'divination' }],
+    [SPE_REMOVE_CURSE, { name: 'remove curse', level: 3, delay: 5, category: 'clerical' }],
+    [396, { name: 'magic mapping', level: 5, delay: 7, category: 'divination' }],
+    [397, { name: 'identify', level: 3, delay: 6, category: 'divination' }],
+    [SPE_TURN_UNDEAD, { name: 'turn undead', level: 6, delay: 8, category: 'clerical' }],
+    [SPE_POLYMORPH, { name: 'polymorph', level: 6, delay: 8, category: 'matter' }],
+    [400, { name: 'teleport away', level: 6, delay: 6, category: 'escape' }],
+    [401, { name: 'create familiar', level: 6, delay: 7, category: 'clerical' }],
+    [402, { name: 'cancellation', level: 7, delay: 8, category: 'matter' }],
+    [403, { name: 'protection', level: 1, delay: 3, category: 'clerical' }],
+    [404, { name: 'jumping', level: 1, delay: 3, category: 'escape' }],
+    [405, { name: 'stone to flesh', level: 3, delay: 1, category: 'healing' }],
+    [406, { name: 'chain lightning', level: 2, delay: 4, category: 'attack' }],
 ]);
 
 const SPELL_CATEGORY_SKILL_TYPES = new Map([
@@ -1597,8 +1737,17 @@ async function showPendingMonsterDeathMessage() {
     // feasibility RNG.
     if (!lifeSavingAmulet && !deathUsesWizardPrompt()) runPendingDeathBonesCheck();
     if (!game._death_preserve_latched_status) game._latched_status_uhp = 0;
+    const directWizardPrompt = deathUsesWizardPrompt()
+        && game._monster_attack_tail_transient_after_more;
     if (lifeSavingAmulet) {
         await showLifeSavingDeathMessage();
+    } else if (directWizardPrompt) {
+        // C refs: src/end.c:done(), win/tty/topl.c:update_topl().
+        // Transient fatal monster tails resume within the same tty continuation
+        // as the dismissed hit line, so done() advances to the wizard/explore
+        // paranoid query without making "You die..." another blocking More.
+        game._death_prompt_pending = false;
+        await showDeathPrompt();
     } else {
         await pline('You die...');
         if (game._death_shopkeeper_takes_name) {
@@ -1830,6 +1979,61 @@ async function thitmonstPlainMiss(obj, mon) {
     await tmissThrownObject(obj, mon);
 }
 
+function thrownBlindingObject(obj) {
+    return obj?.otyp === CREAM_PIE || obj?.otyp === SPLASH_OF_BLINDING_VENOM;
+}
+
+function monsterCanBeBlindedByThrownObject(mon, obj) {
+    // C ref: src/mondata.c:can_blnd().  This covers the hero-thrown object
+    // cases currently routed through src/uhitm.c:hmon().
+    if (!mon?.data || !thrownBlindingObject(obj)) return false;
+    if ((mon.data.mflags1 || 0) & M1_NOEYES) return false;
+    if (mon.mcansee === 0 && !(mon.mblinded > 0)) return false;
+    return true;
+}
+
+function thrownCreamPieBlindTarget(mon) {
+    const name = monsterHitName(mon);
+    if (mon?.data?.name === 'FLOATING_EYE') return name;
+    return `${possessiveName(name)} face`;
+}
+
+async function hmonThrownBlindingObject(obj, mon) {
+    // C refs: src/dothrow.c:thitmonst(), src/uhitm.c:hmon().
+    mon.msleeping = 0;
+    mon.mstrategy = (mon.mstrategy || 0) & ~C.STRAT_WAITMASK;
+    if (monsterCanBeBlindedByThrownObject(mon, obj)) {
+        if (game.u?.ublind || game.u?.blind || game.u?.uprops?.blind || game.u?.uprops?.blinded) {
+            await plineOrAppend(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+        } else if (obj.otyp === SPLASH_OF_BLINDING_VENOM) {
+            const further = mon.mcansee ? '' : ' further';
+            await plineOrAppend(`The venom blinds ${monsterHitName(mon)}${further}!`);
+        } else {
+            const what = `The ${baseObjectName(obj)}`;
+            await plineOrAppend(`${what} splashes over ${thrownCreamPieBlindTarget(mon)}!`);
+        }
+        if (mon.mpeaceful) mon.mpeaceful = 0;
+        mon.mcansee = 0;
+        mon.mblinded = Math.min(127, (mon.mblinded || 0) + rn1(25, 21));
+    } else {
+        await plineOrAppend(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+        if (mon.mpeaceful) mon.mpeaceful = 0;
+    }
+    return true;
+}
+
+async function thitmonstThrownBlindingObject(obj, mon) {
+    // C ref: src/dothrow.c:thitmonst().  The generic thrown to-hit roll is
+    // still owned before the dexterity-gated cream-pie/venom hit test.
+    rnd(20);
+    if (currentAttr(A_DEX) > rnd(25)) {
+        await hmonThrownBlindingObject(obj, mon);
+        return true;
+    }
+    await tmissThrownObject(obj, mon);
+    return false;
+}
+
 function thrownBreaktestDestroysObject(obj, landing) {
     // C refs: src/dothrow.c:throwit(), src/dothrow.c:breaktest().
     const loc = game.level?.at(landing.x, landing.y);
@@ -1934,9 +2138,12 @@ async function throwInventoryObject(obj, dirKey) {
     for (let shot = 0; shot < shotCount; shot++) {
         const thrown = thrownObjectFromInventory(obj);
         if (!thrown) break;
+        const thrownTarget = thrownBlindingObject(thrown) ? thrownMonsterTarget(dx, dy) : null;
+        if (thrownTarget && await thitmonstThrownBlindingObject(thrown, thrownTarget.mon))
+            continue;
         const target = plainThrownObjectMissesMonster(thrown) ? thrownMonsterTarget(dx, dy) : null;
         if (target) await thitmonstPlainMiss(thrown, target.mon);
-        const landing = target || thrownLanding(dx, dy);
+        const landing = target || thrownTarget || thrownLanding(dx, dy);
         const destroyed = thrownBreaktestDestroysObject(thrown, landing);
         if (landing.x === (game.u?.ux ?? 0) && landing.y === (game.u?.uy ?? 0) && !landing.hitHard) break;
         if (!destroyed) {
@@ -1973,6 +2180,16 @@ function inventoryLetterRange() {
     // compacted with dashes when it contains more than five letters.
     const compact = (letters.length > 5 ? compressLetters(letters) : letters.join('')) || '';
     return `${hasGold ? '$' : ''}${compact}` || 'a';
+}
+
+function inventoryLetterRangeFor(filter) {
+    ensureInventoryLetters();
+    const letters = [...new Set((game.inventory || [])
+        .filter(filter)
+        .map((obj) => obj?.invlet)
+        .filter(validInvlet))].sort();
+    const compact = (letters.length > 5 ? compressLetters(letters) : letters.join('')) || '';
+    return compact || 'a';
 }
 
 function compressLetters(letters) {
@@ -2176,18 +2393,27 @@ async function readScrollOfIdentify(obj, idx) {
         discoverObjectType(obj.otyp);
     }
 
+    const hasInventory = (game.inventory || []).length > 0;
+    let count = 1;
+    if (hasInventory && (obj.blessed || (!obj.cursed && !rn2(5)))) {
+        // C ref: src/read.c:seffect_identify().  The cval roll happens
+        // before identify_pack() discovers that all remaining items are
+        // already identified.
+        count = rn2(5);
+        if (count === 1 && obj.blessed && (game.u?.uluck || 0) > 0) count++;
+    }
     const unidentified = (game.inventory || []).filter(notFullyIdentified);
-    if (!unidentified.length) {
+    if (!hasInventory) {
+        game._more_message_queue = [
+            ...(game._more_message_queue || []),
+            { text: "You're not carrying anything else to be identified.", move: true },
+        ];
+    } else if (!unidentified.length) {
         game._more_message_queue = [
             ...(game._more_message_queue || []),
             { text: "You have already identified the rest of your possessions.", move: true },
         ];
     } else {
-        let count = 1;
-        if (obj.blessed || (!obj.cursed && !rn2(5))) {
-            count = rn2(5);
-            if (count === 1 && obj.blessed && (game.u?.uluck || 0) > 0) count++;
-        }
         const chosen = (!count || count >= unidentified.length)
             ? unidentified
             : unidentified.slice(0, count);
@@ -2695,10 +2921,11 @@ function writeWithLetters() {
 
 function wieldLetters() {
     ensureInventoryLetters();
-    return (game.inventory || [])
+    return (game.inventory || []).slice()
         // C refs: include/objects.h:WEPTOOL(), src/invent.c:allow_category().
         // Pick-axes and other weapon-tools are offered by the wield prompt.
         .filter((obj) => obj?.oclass === WEAPON_CLASS || isWeaponTool(obj))
+        .sort((a, b) => String(a?.invlet || '').localeCompare(String(b?.invlet || '')))
         .map((obj) => obj.invlet)
         .join('');
 }
@@ -3176,6 +3403,23 @@ function zapHitHero() {
     return 3 - chance < ac;
 }
 
+function zapHitMonster(mon) {
+    // C ref: zap.c:zap_hit(find_mac(mon), 0).
+    const chance = rn2(20);
+    let ac = monsterArmorClass(mon);
+    if (!chance) return rnd(10) < ac;
+    if (ac < 0) ac = -rnd(-ac);
+    return 3 - chance < ac;
+}
+
+function monsterResistsColdFrontdoor(mon) {
+    return !!((mon?.data?.mresists ?? 0) & MR_COLD);
+}
+
+function monsterResistsFireFrontdoor(mon) {
+    return !!((mon?.data?.mresists ?? 0) & MR_FIRE);
+}
+
 function sleepRayHitsHeroAfterBounce(dx, dy) {
     // C ref: zap.c:weffects() -> ubuzz() -> dobuzz().
     let range = rn2(7) + 7;
@@ -3231,6 +3475,11 @@ async function zapFireRayAtHero(dx, dy) {
     rn2(5);      // current burnarmor() body-hit evidence gate
     drawRayBeam(dx, dy);
     await pline('The bolt of fire bounces!  The bolt of fire hits you!');
+    const self = game.flags?.female ? 'herself' : 'himself';
+    game._death_killer_name = `killed by a bolt of fire zapped by ${self}`;
+    game._death_killer_format = 'raw';
+    game._death_tombstone_killer_lines = ['killed by a bolt', 'of fire zapped', `by ${self}`];
+    game._death_shopkeeper_killer = null;
     game._fire_wand_side_effect_pending = true;
     queue_more_prompt();
 }
@@ -3374,6 +3623,30 @@ async function showDeathSaveBonesPrompt() {
     const msg = 'Save bones? [yn] (n)';
     await showPromptLine(msg);
     game._prompt_cursor = [msg.length + 1, 0];
+}
+
+function firstMoveDeathMessageNeeded() {
+    return !game._death_first_move_message_shown
+        && (game.moves ?? 1) <= 1
+        && !game.done_stopprint;
+}
+
+async function showFirstMoveDeathMessage() {
+    // C ref: src/end.c:done().  Very early deaths print this line before
+    // bones/disclosure handling, including wizard-mode "Save bones?".
+    game._death_first_move_message_shown = true;
+    game._death_continue_after_first_move_more = true;
+    await pline('Do not pass Go.  Do not collect 200 zorkmids.');
+    queue_more_prompt();
+}
+
+async function continueAcceptedDeathFlow() {
+    const bonesOk = prepareDeathBonesDoneStageBasic();
+    if (bonesOk && deathCanSaveWizardBones()) {
+        await showDeathSaveBonesPrompt();
+    } else {
+        await showDeathDisclosureOrPrompt();
+    }
 }
 
 function deathUsesWizardPrompt() {
@@ -3674,6 +3947,10 @@ function roleGoodbye(role) {
     }
 }
 
+function deathMoveCountText(moves) {
+    return `${moves} move${moves === 1 ? '' : 's'}`;
+}
+
 function deathTombstoneScreen() {
     // C refs: src/end.c:done_in_by()/really_done(), win/tty/wintty.c RIP.
     const name = game.plname || game.u?.name || 'Hero';
@@ -3744,7 +4021,7 @@ function deathTombstoneScreen() {
         `${roleGoodbye(game.urole)} ${name} the ${roleName}...`,
         '',
         `You ${endVerb} in ${dungeonName} on dungeon level ${depth} with ${score} points,`,
-        `and ${gold} pieces of gold, after ${moves} moves.`,
+        `and ${gold} pieces of gold, after ${deathMoveCountText(moves)}.`,
         `You were level ${level} with a maximum of ${maxhp} hit points when you ${endVerb}.`,
         '--More--',
     ];
@@ -3758,8 +4035,10 @@ async function showDeathDisclosure() {
     clear_pending_message();
     game._more = true;
     game._more_dismissals_remaining = 1;
-    showSerializedOverride(deathTombstoneScreen(), [8, 23]);
-    game._override_serialized_persistent = true;
+    game._latched_more_screen = deathTombstoneScreen();
+    game._latched_more_cursor = [8, 23, 1];
+    game._latched_more_keep_until_dismiss = true;
+    game._latched_more_use_pending_topline = false;
     game.context.move = 0;
 }
 
@@ -3780,7 +4059,7 @@ function quitDisclosureScreen() {
     const lines = Array(24).fill('');
     lines[0] = `${roleGoodbye(game.urole)} ${name} the ${roleName}...`;
     lines[2] = `You quit in ${dungeonName} on dungeon level ${depth} with ${score} points,`;
-    lines[3] = `and ${gold} pieces of gold, after ${moves} moves.`;
+    lines[3] = `and ${gold} pieces of gold, after ${deathMoveCountText(moves)}.`;
     lines[4] = `You were level ${level} with a maximum of ${maxhp} hit points when you quit.`;
     lines[23] = '--More--';
     return lines.join('\n');
@@ -3793,8 +4072,10 @@ async function showQuitDisclosure() {
     clear_pending_message();
     game._more = true;
     game._more_dismissals_remaining = 1;
-    showSerializedOverride(quitDisclosureScreen(), [8, 23]);
-    game._override_serialized_persistent = true;
+    game._latched_more_screen = quitDisclosureScreen();
+    game._latched_more_cursor = [8, 23, 1];
+    game._latched_more_keep_until_dismiss = true;
+    game._latched_more_use_pending_topline = false;
     game.context.move = 0;
 }
 
@@ -4280,7 +4561,7 @@ function bucPrefix(obj) {
 
 function enchantmentPrefix(obj) {
     if (typeof obj?.spe !== 'number') return '';
-    if (!obj.known && !obj.knownName) return '';
+    if (!obj.known) return '';
     if (obj.oclass === ARMOR_CLASS
         || obj.oclass === WEAPON_CLASS
         || isWeaponTool(obj)
@@ -4677,17 +4958,15 @@ function showDeathInventoryDisclosurePage(index = 0) {
     const lastRow = Math.min(rows.length - 1, Math.max(0, page.length - 1));
     const cursorCol = Math.min(COLNO - 1, (rows[lastRow] || '').length);
     const screen = rows.join('\n');
-    game._death_inventory_disclosure_screen = screen;
-    showOverride(screen, [cursorCol, lastRow]);
+    setDisclosureWindowScreen(screen, [cursorCol, lastRow], 'death-inventory');
     game.context.move = 0;
 }
 
 async function showDeathAttributesPrompt() {
     game._death_attributes_prompt_active = true;
-    game._death_inventory_disclosure_screen = null;
     game._death_inventory_disclosure_pages = null;
     game._death_inventory_disclosure_page = 0;
-    clearOverrideScreen();
+    clearDisclosureWindowScreen();
     await redrawAfterFullScreenMenuDismiss();
     const msg = 'Do you want to see your attributes? [ynq] (n)';
     await showPromptLine(msg);
@@ -4722,6 +5001,27 @@ function buildWizIdentifyMenuLines() {
     return lines;
 }
 
+function setWizIdentifyMenuScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._wizidentify_menu_screen = screen;
+    game._wizidentify_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._wizidentify_menu_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearWizIdentifyMenuScreen() {
+    game._wizidentify_menu_active = false;
+    game._wizidentify_menu_screen = null;
+    game._wizidentify_menu_cursor = null;
+}
+
 async function showWizIdentifyMenu() {
     // C refs: wizcmds.c:wiz_identify(), invent.c:display_inventory().
     await flush_screen(1);
@@ -4740,21 +5040,19 @@ async function showWizIdentifyMenu() {
     const lastRow = lines.length - 1;
     const cursorCol = menuCol + (lines[lastRow]?.text || '').length + 1;
     const screen = serialize_terminal_grid(display);
-    game._wizidentify_menu_screen = screen;
-    showOverride(screen, [Math.min(cursorCol, COLNO - 1), lastRow]);
+    setWizIdentifyMenuScreen(screen, [Math.min(cursorCol, COLNO - 1), lastRow]);
     game.context.move = 0;
 }
 
 async function dismissWizIdentifyMenu() {
-    game._wizidentify_menu_screen = null;
-    clearOverrideScreen();
+    clearWizIdentifyMenuScreen();
     await redrawAfterFullScreenMenuDismiss();
     game.context.move = 0;
 }
 
 async function handleWizIdentifyMenuInput(ch) {
     const entries = wizIdentifyInventoryEntries();
-    if (ch === '_' || ch.charCodeAt(0) === 9) {
+    if ((ch === '_' || ch.charCodeAt(0) === 9) && entries.length) {
         for (const entry of entries) fullyIdentifyObject(entry.obj);
         await dismissWizIdentifyMenu();
         return;
@@ -4765,10 +5063,85 @@ async function handleWizIdentifyMenuInput(ch) {
         await dismissWizIdentifyMenu();
         return;
     }
-    await dismissWizIdentifyMenu();
+    if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+        await dismissWizIdentifyMenu();
+        return;
+    }
+    setWizIdentifyMenuScreen(game._wizidentify_menu_screen, game._wizidentify_menu_cursor);
+    game.context.move = 0;
 }
 
-async function showInventoryClassMenu(oclass) {
+function setInventoryPromptMenuScreen(screen, cursor, kind, letters = null) {
+    installSerializedScreenHook();
+    game._inventory_prompt_menu_screen = screen;
+    game._inventory_prompt_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._inventory_prompt_menu_kind = kind || 'inventory';
+    game._inventory_prompt_menu_letters = letters || null;
+    game._inventory_prompt_menu_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearInventoryPromptMenuScreen() {
+    game._inventory_prompt_menu_active = false;
+    game._inventory_prompt_menu_screen = null;
+    game._inventory_prompt_menu_cursor = null;
+    game._inventory_prompt_menu_kind = '';
+    game._inventory_prompt_menu_letters = null;
+}
+
+function setTerminalExitScreen(screen, cursor) {
+    // C refs: src/save.c:dosave(), src/end.c:done2(), win/tty/wintty.c:tty_exit_nhwindows().
+    installSerializedScreenHook();
+    game._terminal_exit_screen = screen;
+    game._terminal_exit_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._terminal_exit_screen_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function setBonesUnlinkPromptScreen(screen, cursor) {
+    // C ref: src/bones.c:getbones(). The wizard unlink prompt is asked after
+    // getlev() but before goto_level() performs the destination docrt().
+    installSerializedScreenHook();
+    game._bones_unlink_prompt_screen = screen;
+    game._bones_unlink_prompt_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._bones_unlink_prompt_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearBonesUnlinkPromptScreen() {
+    game._bones_unlink_prompt_active = false;
+    game._bones_unlink_prompt_screen = null;
+    game._bones_unlink_prompt_cursor = null;
+}
+
+async function dismissInventoryPromptMenuScreen() {
+    clearInventoryPromptMenuScreen();
+    await redrawAfterFullScreenMenuDismiss();
+}
+
+async function showInventoryClassMenu(oclass, kind = 'inventory') {
+    // C refs: src/invent.c:getobj(), src/invent.c:display_pickinv().
     await flush_screen(1);
     const display = game.nhDisplay;
     if (!display?.terminal?.serialize && !display?.serialize) return;
@@ -4794,8 +5167,13 @@ async function showInventoryClassMenu(oclass) {
     }
     const lastRow = lines.length - 1;
     const cursorCol = menuCol + (lines[lastRow]?.text || '').length + 1;
-    const screen = serialize_terminal_grid(display);
-    showOverride(screen, [Math.min(cursorCol, COLNO - 1), lastRow]);
+    const screen = serializeBaseTerminalGrid(display);
+    setInventoryPromptMenuScreen(
+        screen,
+        [Math.min(cursorCol, COLNO - 1), lastRow],
+        kind,
+        entries.map((entry) => entry.obj?.invlet).filter(Boolean),
+    );
 }
 
 function buildApplyInventoryHelpLines(showAll = false) {
@@ -4819,7 +5197,7 @@ function buildApplyInventoryHelpLines(showAll = false) {
 async function showApplyInventoryHelpMenu(showAll = false) {
     // C refs: src/invent.c:getobj(), src/apply.c:apply_ok().  '?' shows the
     // suggested apply subset; '*' opens the full inventory picker.
-    clearOverrideScreen();
+    clearInventoryPromptMenuScreen();
     clear_pending_message();
     await redrawAfterFullScreenMenuDismiss();
     const display = game.nhDisplay;
@@ -4834,10 +5212,16 @@ async function showApplyInventoryHelpMenu(showAll = false) {
         display.putstr(menuCol, row, line.text, NO_COLOR, line.heading ? ATR_INVERSE : 0);
     }
     const cursorCol = menuCol + (lines[lastRow]?.text || '').length + 1;
-    game._apply_inventory_help_menu = { showAll };
     game._awaiting_apply_item = true;
     game.context.move = 0;
-    showOverride(serialize_terminal_grid(display), [Math.min(cursorCol, COLNO - 1), lastRow]);
+    setInventoryPromptMenuScreen(
+        serializeBaseTerminalGrid(display),
+        [Math.min(cursorCol, COLNO - 1), lastRow],
+        'apply',
+        lines
+            .map((line) => line.text?.match(/^([A-Za-z$])\s-/)?.[1])
+            .filter(Boolean),
+    );
 }
 
 async function showTerrainMenu() {
@@ -4858,7 +5242,7 @@ async function showTerrainMenu() {
     for (let row = 0; row <= 4; row++) display.putstr(0, row, ' '.repeat(COLNO), NO_COLOR, 0);
     display.putstr(menuCol - 1, 5, ' '.repeat(COLNO - (menuCol - 1)), NO_COLOR, 0);
     for (const line of lines) display.putstr(menuCol, line.row, line.text, NO_COLOR, line.attr || 0);
-    showOverride(serialize_terminal_grid(display), [menuCol + '(end)'.length + 1, 5]);
+    setTerrainWindowScreen(serializeBaseTerminalGrid(display), [menuCol + '(end)'.length + 1, 5]);
     game._awaiting_terrain_menu = true;
     game.context.move = 0;
 }
@@ -4869,8 +5253,7 @@ function terrainViewCursor() {
 
 function showTerrainView(message, cursor = terrainViewCursor()) {
     const screen = serialize_known_terrain_view_screen(message);
-    showSerializedOverride(screen, cursor);
-    game._override_serialized_persistent = true;
+    setTerrainWindowScreen(screen, cursor);
 }
 
 function showTerrainBrowsePrompt() {
@@ -4930,17 +5313,104 @@ function spellbookStudyDelay(info) {
     return 8 * delay;
 }
 
+function aggravateMonstersFromSpellbook() {
+    const wakeMask = (C.STRAT_WAITFORU || 0) | (C.STRAT_APPEARMSG || 0);
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp ?? 1) <= 0) continue;
+        mon.mstrategy = (mon.mstrategy || 0) & ~wakeMask;
+        mon.msleeping = 0;
+        if (!mon.mcanmove && !rn2(5)) {
+            mon.mfrozen = 0;
+            mon.mcanmove = 1;
+        }
+    }
+}
+
+function takeSpellbookCurseGold() {
+    const gold = game._goldCount || 0;
+    if (!gold) return;
+    game._goldCount = 0;
+    const carried = (game.inventory || []).find((obj) => obj?.oclass === COIN_CLASS || obj?.otyp === GOLD_PIECE);
+    if (carried) removeInventoryInstance(carried);
+}
+
+async function cursedSpellbookEffect(obj, info) {
+    // C ref: src/spell.c:cursed_book().
+    switch (rn2(info?.level || 1)) {
+    case 0:
+        await pline('You feel a wrenching sensation.');
+        break;
+    case 1:
+        await pline('You feel threatened.');
+        aggravateMonstersFromSpellbook();
+        break;
+    case 2: {
+        const timeout = rn1(100, 250);
+        increaseHeroTimeout('blind', timeout);
+        game.u.uprops.blinded = Math.max(game.u.uprops.blinded || 0, game.u.uprops.blind || 0);
+        if (!heroWearingBlindfoldLike()) {
+            game.u.ublind = true;
+            game.u.blind = true;
+        }
+        break;
+    }
+    case 3:
+        takeSpellbookCurseGold();
+        break;
+    case 4:
+        await pline('These runes were just too much to comprehend.');
+        increaseHeroTimeout('confusion', rn1(7, 16));
+        break;
+    case 5:
+        await pline('The book was coated with contact poison!');
+        if (typeof game.u?.uhp === 'number')
+            game.u.uhp = Math.max(0, game.u.uhp - rnd(game.u?.uprops?.poison_resistance ? 6 : 10));
+        if (!game.u?.uprops?.poison_resistance) losePoisonStrength(rn1(4, 3));
+        break;
+    case 6:
+        if (game.u?.uprops?.magic_resistance) {
+            await pline('The book explodes, but you are unharmed!');
+        } else {
+            await pline('As you read the book, it explodes in your face!');
+            if (typeof game.u?.uhp === 'number')
+                game.u.uhp = Math.max(0, game.u.uhp - (2 * rnd(10) + 5));
+        }
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+async function failSpellbookStudy(obj, info) {
+    const gone = await cursedSpellbookEffect(obj, info);
+    const delay = spellbookStudyDelay(info);
+    game._nomul_turns_remaining = Math.max(game._nomul_turns_remaining || 0, delay);
+    game._nomul_finish_message = 'You can move again.';
+    if (gone || !rn2(3)) {
+        if (!gone) await pline('The spellbook crumbles to dust!');
+        removeInventoryInstance(obj);
+    }
+    game.context.move = 1;
+}
+
 async function beginStudySpellbook(obj, info) {
-    // C ref: spell.c:study_book().  Unknown uncursed books always make the
-    // read-ability roll before starting the delayed learn occupation.
-    if (!obj.blessed && !obj.cursed) {
+    // C ref: spell.c:study_book().  Unknown uncursed books make the
+    // read-ability roll before starting the delayed learn occupation; cursed
+    // books always take the too-hard cursed_book() path.
+    let tooHard = false;
+    if (!obj.blessed && obj.otyp !== SPE_BOOK_OF_THE_DEAD) {
+        if (obj.cursed) {
+            tooHard = true;
+        } else {
         const readAbility = heroAttr(C.A_INT) + 4 + Math.trunc((game.u?.ulevel || 1) / 2)
             - (2 * (info.level || 1));
-        if (rnd(20) > readAbility) {
-            await pline('These runes were just too much to comprehend.');
-            game.context.move = 1;
-            return;
+            if (rnd(20) > readAbility) tooHard = true;
         }
+    }
+    if (tooHard) {
+        await failSpellbookStudy(obj, info);
+        return;
     }
     await pline('You begin to memorize the runes.');
     const spellKey = spellKeyFromRecord(obj, info);
@@ -5304,10 +5774,19 @@ async function start_takeoff_armor(obj) {
     const finishAc = armorClassAfterTakingOff(obj);
     const delay = OBJECT_DELAY[obj?.otyp] || 0;
     if (delay <= 0) {
+        const oldAc = game.u?.uac;
         obj.worn = false;
         obj.owornmask = 0;
         obj.known = true;
         game.u.uac = finishAc;
+        if (typeof oldAc === 'number' && oldAc !== finishAc) {
+            // C refs: src/do_wear.c:Armor_off(), src/allmain.c:moveloop_core().
+            // The tty More for the takeoff line can be shown before bot()
+            // redraws armor class at the resumed turn boundary.
+            game._status_uac_override = oldAc;
+            game._status_uac_override_move = game.moves;
+            game._clear_status_uac_override_after_more = true;
+        }
         game.context.move = 1;
         game._fast_extra_action_pending = false;
         setTravelMapCursor();
@@ -5434,6 +5913,7 @@ async function start_wearing_object(obj) {
         // that the cloak is now worn and before moveloop_core() reaches
         // find_ac(), so the blocking frame still shows the previous AC.
         game._status_uac_override = null;
+        game._status_uac_override_move = null;
         discoverObjectType(obj.otyp);
         obj.known = true;
         obj.knownName = true;
@@ -5450,6 +5930,7 @@ async function start_wearing_object(obj) {
         // setworn() makes the bottom line eligible to show new AC before
         // find_ac() updates u.uac for combat calculations.
         game._status_uac_override = calculated_armor_class();
+        game._status_uac_override_move = null;
     }
     const delay = OBJECT_DELAY[obj.otyp] || 0;
     if (obj.oclass === ARMOR_CLASS && delay > 0) {
@@ -5472,6 +5953,7 @@ async function start_wearing_object(obj) {
             obj.known = true;
             game.u.uac = calculated_armor_class();
             game._status_uac_override = null;
+            game._status_uac_override_move = null;
             await pline(`You are now wearing ${wornArmorMessageName(armorWearName)}.`);
         } else {
             await pline(`${inventoryListing(obj)} (being worn).`);
@@ -5540,15 +6022,20 @@ function clearPendingLookHereResume() {
     // C refs: src/hack.c:spoteffects(), src/pickup.c:pickup(),
     // src/invent.c:look_here().  Once a real look_here() path runs, any
     // older tty-More resume marker for look_here has been consumed; leaving it
-    // armed can replay the same floor list after a later unrelated More.
+    // armed can show the same floor list after a later unrelated More.
     game._resume_look_here_after_more = false;
     game._resume_teleport_arrival_after_more = false;
     game._resume_look_here_feature_line_after_more = '';
+    game._resume_look_here_picked_some_after_more = false;
     game._resume_teleport_arrival_pickup_messages_after_more = null;
 }
 
 async function lookHereAfterMove(opts = {}) {
     clearPendingLookHereResume();
+    const pickedSome = !!opts.featureAlreadyShown
+        || !!opts.pickedSome
+        || !!game._look_here_picked_some;
+    game._look_here_picked_some = false;
     const u = game.u;
     const objects = (game.level?.objects || [])
         .filter(o => o.ox === u.ux && o.oy === u.uy);
@@ -5556,7 +6043,11 @@ async function lookHereAfterMove(opts = {}) {
     const explicitFeatureLine = typeof opts.featureLine === 'string';
     const feature = explicitFeatureLine
         ? { line: opts.featureLine, blocks: false }
-        : opts.featureAlreadyShown ? { line: '', blocks: false } : lookHereFeature();
+        : opts.featureAlreadyShown ? { line: '', blocks: false }
+            // C refs: src/pickup.c:check_here(), src/invent.c:look_here().
+            // Movement floor look uses dfeature_at(); with objects present,
+            // ordinary doorways/open doors pack before the object sentence.
+            : lookHereFeature({ includeOrdinaryDoors: true });
     if (!countableObjects.length) {
         // C refs: hack.c:spoteffects(), pickup.c:pickup(), engrave.c:read_engr_at().
         const engravingText = engravingVisibleText(engravingAt(u.ux, u.uy));
@@ -5587,6 +6078,7 @@ async function lookHereAfterMove(opts = {}) {
             y: u.uy,
             featureLine: feature.line || '',
             featureAlreadyShown: !!opts.featureAlreadyShown,
+            pickedSome,
         };
     };
     const blindFeelLine = heroIsBlind() ? blindLookHereTactileLine(u.ux, u.uy) : '';
@@ -5659,6 +6151,22 @@ async function lookHereAfterMove(opts = {}) {
             return;
         }
         if (game._pending_message && !topline_can_pack_message(game._pending_message, line)) {
+            if (feature.line && topline_can_pack_message(game._pending_message, feature.line)) {
+                // C refs: pickup.c:check_here(), invent.c:look_here(),
+                // win/tty/topl.c:update_topl().  The dungeon feature is
+                // printed before the one-object sentence; it can still pack
+                // behind the prior topline even when the object sentence cannot.
+                await append_pline(feature.line);
+                game._deferred_floor_look_after_more = {
+                    line,
+                    overflow: line.length >= (game.nhDisplay?.cols || COLNO),
+                    move: !opts.arrivalFloorListNoTurn,
+                };
+                if (game.context?.run) game.context.run = null;
+                queue_more_prompt();
+                game.context.move = 0;
+                return;
+            }
             // C refs: src/pickup.c:check_here(), src/invent.c:look_here(),
             // win/tty/topl.c:update_topl().  A floor-object sentence which
             // cannot pack behind a prior topline blocks on the prior line
@@ -5700,7 +6208,34 @@ async function lookHereAfterMove(opts = {}) {
         deferMoveFloorList();
         return;
     }
-    showFloorObjectList(objects, feature.line);
+    if (game._pending_message
+        && opts.packFeatureWithPending
+        && feature.line
+        && topline_can_pack_message(game._pending_message, feature.line)) {
+        // C refs: teleport.c:dotele()/teleds(), pickup.c:check_here(),
+        // invent.c:look_here().  A successful !verbose controlled teleport
+        // has no materialize line; its retained getpos description can be the
+        // prefix for the arriving floor-list feature line.
+        showFloorObjectList(objects, feature.line, { pickedSome });
+        game._floor_list_pauses_turn = true;
+        if (!opts.arrivalFloorListNoTurn && !opts.resumeStairArrivalAfterFloorList)
+            game._floor_list_resume_spot_effects_on_dismiss = true;
+        return;
+    }
+    if (game._pending_message) {
+        // C ref: src/invent.c:look_here().  Multi-object floor menus flush
+        // WIN_MESSAGE before display_nhwindow(tmpwin), so an existing movement
+        // topline blocks first instead of being replaced by the menu overlay.
+        game._resume_look_here_after_more = true;
+        game._resume_look_here_feature_line_after_more = feature.line || '';
+        game._resume_look_here_picked_some_after_more = pickedSome;
+        game._look_here_pauses_turn = true;
+        if (game.context?.run) game.context.run = null;
+        queue_more_prompt();
+        game.context.move = 0;
+        return;
+    }
+    showFloorObjectList(objects, feature.line, { pickedSome });
     game._floor_list_pauses_turn = true;
     if (!opts.arrivalFloorListNoTurn && !opts.resumeStairArrivalAfterFloorList)
         game._floor_list_resume_spot_effects_on_dismiss = true;
@@ -5788,8 +6323,9 @@ function showDeferredBlindFloorListAfterMore() {
     return true;
 }
 
-function floorListHeader() {
-    return heroIsBlind() ? 'Things that you feel here:' : 'Things that are here:';
+function floorListHeader(pickedSome = false) {
+    const prefix = pickedSome ? 'Other things' : 'Things';
+    return heroIsBlind() ? `${prefix} that you feel here:` : `${prefix} that are here:`;
 }
 
 function floorListColumn(lines) {
@@ -5817,14 +6353,14 @@ function latchFeatureFloorListMoreMargin(col) {
     game._latched_more_keep_until_dismiss = true;
 }
 
-function showFloorObjectList(objects, featureLine = '') {
+function showFloorObjectList(objects, featureLine = '', opts = {}) {
     // C ref: src/invent.c:look_here().  Explicit ':' look uses obj_cnt=0,
     // so it displays the full object list even when autopickup floor-look
     // would summarize a pile via pile_limit.
     for (const obj of objects.slice().reverse())
         observeObjectForNaming(obj, { observe: true });
     const lines = objects.map(obj => inventoryObjectName(obj, { includePrice: true, observe: false }));
-    const header = floorListHeader();
+    const header = floorListHeader(!!opts.pickedSome);
     const col = floorListColumn([featureLine, header, ...lines]);
     if (featureLine) {
         const prefix = game._pending_message || '';
@@ -5851,7 +6387,7 @@ export async function showDeferredMoveFloorList() {
     game._deferred_move_floor_list = null;
     const objects = floorObjectsAt(state.x, state.y);
     if (objects.length > 1) {
-        showFloorObjectList(objects, state.featureLine || '');
+        showFloorObjectList(objects, state.featureLine || '', { pickedSome: !!state.pickedSome });
         game._floor_list_pauses_turn = false;
         game._resume_floor_list_turn = true;
         // C refs: src/allmain.c:moveloop_core(), src/hack.c:domove().
@@ -6100,6 +6636,21 @@ function learnWandFromVisibleObjectEffect(wand, obj) {
     discoverObjectType(wand.otyp);
 }
 
+function learnWandFromUse(wand) {
+    // C ref: src/zap.c:learnwand().  Observable wand effects discover the
+    // type only after the manipulated wand is known as more than generic.
+    if (!wand || wand.oclass !== WAND_CLASS) return;
+    if (knownObjectType(wand.otyp)) {
+        wand.dknown = true;
+        wand.knownName = true;
+        return;
+    }
+    if (!heroIsBlind()) wand.dknown = true;
+    if (wand.dknown === false) return;
+    wand.knownName = true;
+    discoverObjectType(wand.otyp);
+}
+
 function polymorphZapHitsObject(obj, wand) {
     // C ref: src/zap.c:bhito(), WAN_POLYMORPH case.
     if (unpolyableObject(obj)) return 0;
@@ -6215,6 +6766,29 @@ function clearLootMenuArea(col, maxRow) {
         display.putstr(clearCol, row, ' '.repeat(COLNO - clearCol), NO_COLOR, 0);
 }
 
+function setLootMenuScreen(screen, cursor, kind = 'menu') {
+    installSerializedScreenHook();
+    game._loot_menu_active = true;
+    game._loot_menu_kind = kind;
+    game._loot_menu_screen = screen;
+    game._loot_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearLootMenuScreen() {
+    game._loot_menu_active = false;
+    game._loot_menu_kind = null;
+    game._loot_menu_screen = null;
+    game._loot_menu_cursor = null;
+}
+
 function containerActionName(container, held = false) {
     const name = baseObjectName(container) || 'container';
     return `${held ? 'your' : 'the'} ${name}`;
@@ -6231,7 +6805,7 @@ async function finishEmptyLootTakeOut(container, used = false, held = false) {
     game._loot_putin_menu = null;
     game._loot_takeout_menu = null;
     game._loot_contents_more = null;
-    clearOverrideScreen();
+    clearLootMenuScreen();
     clear_pending_message();
     await redrawAfterFullScreenMenuDismiss();
     await pline(`${sentenceStart(containerActionName(container, held))} is empty.`);
@@ -6267,7 +6841,7 @@ function showLootActionMenu(container, used = false, opts = {}) {
     game._loot_type_menu = null;
     game._loot_putin_menu = null;
     game._loot_takeout_menu = null;
-    showOverride(serialize_terminal_grid(display), [col + '(end)'.length + 1, 10]);
+    setLootMenuScreen(serializeBaseTerminalGrid(display), [col + '(end)'.length + 1, 10], 'action');
 }
 
 function lootActionForKey(ch) {
@@ -6331,10 +6905,14 @@ function showLootContainerContents(container, alreadyUsed = false, opts = {}) {
     game._loot_type_menu = null;
     game._loot_putin_menu = null;
     game._loot_takeout_menu = null;
+    clearLootMenuScreen();
     game._loot_contents_more = { container, used: alreadyUsed || gainedInfo, held };
     game._pending_message = `${' '.repeat(headerCol)}Contents of ${name}:`;
     queue_more_prompt();
-    showOverride(serialize_terminal_grid(display), [moreCol + '--More--'.length, moreRow]);
+    game._latched_more_screen = serializeBaseTerminalGrid(display);
+    game._latched_more_cursor = [moreCol + '--More--'.length, moreRow, 1];
+    game._latched_more_keep_until_dismiss = true;
+    game._latched_more_use_pending_topline = false;
 }
 
 const LOOT_CLASS_ORDER = [
@@ -6443,7 +7021,7 @@ function showLootTypeMenu(container, selectedAuto = false, opts = {}) {
     };
     game._loot_putin_menu = null;
     game._loot_takeout_menu = null;
-    showOverride(serialize_terminal_grid(display), [col + '(end)'.length + 1, lastRow]);
+    setLootMenuScreen(serializeBaseTerminalGrid(display), [col + '(end)'.length + 1, lastRow], 'type');
 }
 
 async function dismissLootMenu(spentTurn = false) {
@@ -6452,7 +7030,7 @@ async function dismissLootMenu(spentTurn = false) {
     game._loot_putin_menu = null;
     game._loot_takeout_menu = null;
     game._loot_contents_more = null;
-    clearOverrideScreen();
+    clearLootMenuScreen();
     clear_pending_message();
     await redrawAfterFullScreenMenuDismiss();
     game.context.move = spentTurn ? 1 : 0;
@@ -6461,7 +7039,6 @@ async function dismissLootMenu(spentTurn = false) {
 async function handleLootActionMenuKey(ch) {
     const menu = game._loot_action_menu;
     if (!menu) return false;
-    game._override_prev = null;
     const action = lootActionForKey(ch);
     if (action === 'out') {
         if (!containerContents(menu.container).length) {
@@ -6605,7 +7182,7 @@ function takeOutObjectEntries(container, selectedClasses = null, selectedKeys = 
 async function showLootTakeOutObjectMenu(container, selectedGold = false, opts = {}) {
     const display = game.nhDisplay;
     if (!display?.putstr) return;
-    clearOverrideScreen();
+    clearLootMenuScreen();
     await redrawAfterFullScreenMenuDismiss();
     const col = 41;
     const selectedClasses = opts.selectedClasses instanceof Set
@@ -6635,7 +7212,7 @@ async function showLootTakeOutObjectMenu(container, selectedGold = false, opts =
         entries,
         held: opts.held ?? (game.inventory || []).includes(container),
     };
-    showOverride(serialize_terminal_grid(display), [col + '(end)'.length + 1, lastRow]);
+    setLootMenuScreen(serializeBaseTerminalGrid(display), [col + '(end)'.length + 1, lastRow], 'takeout');
 }
 
 function takeGoldOutOfContainer(container) {
@@ -6720,7 +7297,6 @@ async function takeSelectedObjectsOutOfContainer(container, entries, selectedKey
 async function handleLootTakeOutMenuKey(ch) {
     const menu = game._loot_takeout_menu;
     if (!menu) return false;
-    game._override_prev = null;
     if (ch === '@') {
         const selectable = (menu.entries || []).filter((entry) => entry.selector);
         const allSelected = selectable.length > 0
@@ -6754,7 +7330,7 @@ async function handleLootTakeOutMenuKey(ch) {
         const entries = menu.entries || [];
         const selectedKeys = menu.selectedKeys instanceof Set ? new Set(menu.selectedKeys) : new Set();
         game._loot_takeout_menu = null;
-        clearOverrideScreen();
+        clearLootMenuScreen();
         clear_pending_message();
         await redrawAfterFullScreenMenuDismiss();
         await takeSelectedObjectsOutOfContainer(container, entries, selectedKeys);
@@ -6776,7 +7352,6 @@ async function handleLootTakeOutMenuKey(ch) {
 async function handleLootTypeMenuKey(ch) {
     const menu = game._loot_type_menu;
     if (!menu) return false;
-    game._override_prev = null;
     if (ch === 'A') {
         menu.selectedAuto = !menu.selectedAuto;
         showLootTypeMenu(menu.container, menu.selectedAuto, menu);
@@ -6838,7 +7413,7 @@ async function handleLootTypeMenuKey(ch) {
 async function showLootPutInGoldMenu(container, selected = false, opts = {}) {
     const display = game.nhDisplay;
     if (!display?.putstr) return;
-    clearOverrideScreen();
+    clearLootMenuScreen();
     await redrawAfterFullScreenMenuDismiss();
     clearLootMenuArea(23, 4);
     const gold = game._goldCount || 0;
@@ -6846,10 +7421,10 @@ async function showLootPutInGoldMenu(container, selected = false, opts = {}) {
     display.putstr(34, 2, '┌───── ', NO_COLOR, 0);
     display.putstr(41, 2, 'Coins', NO_COLOR, ATR_INVERSE);
     display.putstr(34, 3, '│', NO_COLOR, 0);
-    display.putstr(35, 3, '·····', CLR_BLACK, 0);
+    display.putstr(35, 3, '·····', NO_COLOR, 0);
     display.putstr(41, 3, `$ ${selected ? '+' : '-'} ${gold} gold pieces`, NO_COLOR, 0);
     display.putstr(34, 4, '│', NO_COLOR, 0);
-    display.putstr(35, 4, '·····', CLR_BLACK, 0);
+    display.putstr(35, 4, '·····', NO_COLOR, 0);
     display.putstr(41, 4, '(end)', NO_COLOR, 0);
     game._loot_action_menu = null;
     game._loot_type_menu = null;
@@ -6859,7 +7434,7 @@ async function showLootPutInGoldMenu(container, selected = false, opts = {}) {
         held: opts.held ?? (game.inventory || []).includes(container),
     };
     game._loot_takeout_menu = null;
-    showOverride(serialize_terminal_grid(display), [47, 4]);
+    setLootMenuScreen(serializeBaseTerminalGrid(display), [47, 4], 'putin');
 }
 
 function putGoldIntoContainer(container) {
@@ -6894,7 +7469,6 @@ function putGoldIntoContainer(container) {
 async function handleLootPutInMenuKey(ch) {
     const menu = game._loot_putin_menu;
     if (!menu) return false;
-    game._override_prev = null;
     if (ch === '$') {
         menu.selectedGold = !menu.selectedGold;
         await showLootPutInGoldMenu(menu.container, menu.selectedGold, { held: menu.held });
@@ -6905,9 +7479,10 @@ async function handleLootPutInMenuKey(ch) {
         const selected = !!menu.selectedGold;
         const container = menu.container;
         game._loot_putin_menu = null;
-        clearOverrideScreen();
+        clearLootMenuScreen();
         clear_pending_message();
         if (selected) {
+            await redrawAfterFullScreenMenuDismiss();
             await pline(putGoldIntoContainer(container));
             game.context.move = 1;
         } else {
@@ -6984,14 +7559,34 @@ function showHereCommandMenu() {
     for (const [row, text, inverse] of rows)
         display.putstr(col, row, text, NO_COLOR, inverse ? ATR_INVERSE : 0);
     game._herecmd_menu = true;
-    showOverride(serialize_terminal_grid(display), [col + '(end)'.length + 1, 11]);
+    setHereCommandMenuScreen(serializeBaseTerminalGrid(display), [col + '(end)'.length + 1, 11]);
     game.context.move = 0;
+}
+
+function setHereCommandMenuScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._herecmd_menu_active = true;
+    game._herecmd_menu_screen = screen;
+    game._herecmd_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearHereCommandMenuScreen() {
+    game._herecmd_menu_active = false;
+    game._herecmd_menu_screen = null;
+    game._herecmd_menu_cursor = null;
 }
 
 async function dismissHereCommandMenu() {
     game._herecmd_menu = false;
-    game._override_prev = null;
-    clearOverrideScreen();
+    clearHereCommandMenuScreen();
     clear_pending_message();
     await redrawAfterFullScreenMenuDismiss();
     game.context.move = 0;
@@ -6999,16 +7594,16 @@ async function dismissHereCommandMenu() {
 
 function forceableWeapon(obj) {
     if (!obj) return false;
-    if (obj.oclass === WEAPON_CLASS) return true;
-    if (obj.oclass === ROCK_CLASS) return true;
+    // C ref: src/lock.c:u_have_forceable_weapon().
+    if ((obj.oclass === WEAPON_CLASS || isWeaponTool(obj))
+        && FORCE_LOCK_WEAPON_TYPES.has(obj.otyp)) return true;
+    if (FORCE_LOCK_ROCK_TYPES.has(obj.otyp)) return true;
     return false;
 }
 
 function forceLockChance(obj) {
-    // C ref: lock.c:doforce() uses objects[uwep->otyp].oc_wldam * 2.
-    // Current object instances do not carry full objclass damage data yet.
-    if (obj?.otyp === WAR_HAMMER) return 8; // objects.h: war hammer oc_wldam = 4.
-    return 8;
+    // C ref: src/lock.c:doforce().
+    return (FORCE_LOCK_LARGE_DAMAGE.get(obj?.otyp) || 0) * 2;
 }
 
 function forceLockWeaponName(obj) {
@@ -7201,10 +7796,7 @@ async function handleLootDirection(ch) {
         if (ch === '\x1b' || ch === 'q') {
             await pline('Never mind.');
         } else if (game.iflags?.cmdassist !== false) {
-            game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
-            game._direction_help_after_more_message = 'Never mind.';
-            showSerializedOverride(INVALID_DIRECTION_HELP_SCREEN, [8, 23]);
-            queue_more_prompt();
+            showDirectionHelpScreen('Never mind.');
         } else {
             await pline('Never mind.');
         }
@@ -7252,6 +7844,8 @@ function keepCarriedGoldFirst(carried) {
 function pickupGoldObject(obj) {
     const picked = obj?.quan || 1;
     const previousGold = game._goldCount || 0;
+    if (obj?.ox === game.u?.ux && obj?.oy === game.u?.uy)
+        game._look_here_picked_some = true;
     extractFloorObject(obj);
     game._goldCount = previousGold + picked;
     let carried = (game.inventory || []).find((item) => item?.otyp === GOLD_PIECE);
@@ -7270,14 +7864,42 @@ function pickupGoldObject(obj) {
 }
 
 function pickupInventoryObject(obj) {
+    const pickedQuantity = obj?.quan || 1;
+    if (obj?.ox === game.u?.ux && obj?.oy === game.u?.uy)
+        game._look_here_picked_some = true;
     extractFloorObject(obj);
     const merged = merge_inventory_object(obj);
     const carried = merged || obj;
+    if (merged) carried._lastPickupQuantity = pickedQuantity;
     if (!merged) {
         if (!obj.invlet) assignInventoryLetter(obj);
         game.inventory.push(obj);
     }
     return carried;
+}
+
+function pickupInventoryLine(carried, prefix = '') {
+    const pickedQuantity = carried?._lastPickupQuantity || 0;
+    if (carried) delete carried._lastPickupQuantity;
+    const totalQuantity = carried?.quan || 1;
+    if (pickedQuantity > 0 && totalQuantity > pickedQuantity) {
+        const pickedObj = { ...carried, quan: pickedQuantity };
+        return `${prefix ? `${prefix} lifting ` : ''}${carried.invlet} - ${inventoryObjectName(pickedObj)} (${totalQuantity} in total).`;
+    }
+    return `${prefix ? `${prefix} lifting ` : ''}${carried.invlet} - ${inventoryObjectName(carried)}.`;
+}
+
+async function maybeShowInventoryComparisonBeforePickup(line) {
+    if (!game._inventory_merge_discovered) return false;
+    game._inventory_merge_discovered = false;
+    await pline('You learn more about your items by comparing them.');
+    queue_more_prompt();
+    game._more_message_queue = [
+        ...(game._more_message_queue || []),
+        { text: line, move: true },
+    ];
+    game.context.move = 0;
+    return true;
 }
 
 const OBJECT_CLASS_SYMBOLS = {
@@ -7339,6 +7961,7 @@ function collectAutopickupHereAfterMoveMessages() {
         return [];
     const picks = floorObjectsAtHero().filter(autopickupWantsObject);
     if (!picks.length) return [];
+    game._look_here_picked_some = true;
     const lines = [];
     for (const obj of picks.slice()) {
         if (!(game.level?.objects || []).includes(obj)) continue;
@@ -7347,15 +7970,38 @@ function collectAutopickupHereAfterMoveMessages() {
         } else {
             const carried = pickupInventoryObject(obj);
             const prefix = pickupTroublePrefix();
-            lines.push(`${prefix ? `${prefix} lifting ` : ''}${carried.invlet} - ${inventoryObjectName(carried)}.`);
+            lines.push(pickupInventoryLine(carried, prefix));
         }
     }
     return lines;
 }
 
-async function showAutopickupMessages(lines) {
+async function showAutopickupMessages(lines, options = {}) {
     let printed = false;
-    for (const line of lines || []) {
+    if ((lines || []).length) game._look_here_picked_some = true;
+    for (let i = 0; i < (lines || []).length; i++) {
+        const line = lines[i];
+        if (!printed && game._pending_message) {
+            if (topline_can_pack_message(game._pending_message, line)) {
+                await append_pline(line);
+                printed = true;
+                continue;
+            }
+            if (options.deferBlockedFirstLine !== false) {
+                // C refs: src/pickup.c:pickup_object(), src/invent.c:prinv(),
+                // win/tty/topl.c:update_topl().  Pickup has already changed
+                // inventory, but tty blocks on the previous topline when the
+                // pickup line cannot pack after it.
+                game._deferred_autopickup_after_more = {
+                    lines: lines.slice(i),
+                    resumeMovement: !!options.resumeMovement,
+                };
+                game._look_here_pauses_turn = true;
+                queue_more_prompt();
+                game.context.move = 0;
+                return true;
+            }
+        }
         if (printed) await append_pline(line);
         else await pline(line);
         printed = true;
@@ -7364,7 +8010,30 @@ async function showAutopickupMessages(lines) {
 }
 
 async function autopickupHereAfterMove() {
-    return showAutopickupMessages(collectAutopickupHereAfterMoveMessages());
+    const run = game.context?.run;
+    if (run && !run.travel && run.mode !== 8 && !game.context?.nopick
+        && floorObjectsAtHero().length) {
+        // C ref: src/pickup.c:pickup().  The run stops as soon as pickup()
+        // sees an object here, even if autopickup consumes the whole stack and
+        // the later look_here() path has nothing left to report.
+        game._run_stop_after_move = true;
+    }
+    const printed = await showAutopickupMessages(
+        collectAutopickupHereAfterMoveMessages(),
+        { resumeMovement: true },
+    );
+    if (printed && !floorObjectsAtHero().length)
+        game._look_here_picked_some = false;
+    return printed;
+}
+
+async function finishMovementAfterDeferredAutopickup() {
+    if (floorObjectsAtHero().length)
+        await lookHereAfterMove({ featureAlreadyShown: true });
+    else
+        game._look_here_picked_some = false;
+    if (!game._more && !game._deferred_move_floor_list) await triggerTrapAtHero();
+    if (!game._more) finishPendingMoveSmudge();
 }
 
 function shopPickupHonorific() {
@@ -7453,10 +8122,30 @@ function renderPayMenu(menu) {
     }
     const lastRow = lines.length - 1;
     const cursorCol = menuCol + '(end)'.length + 1;
-    const screen = serialize_terminal_grid(display);
-    game._pay_menu_screen = screen;
-    showOverride(screen, [cursorCol, lastRow]);
+    const screen = serializeBaseTerminalGrid(display);
+    setPayMenuScreen(screen, [cursorCol, lastRow]);
     return true;
+}
+
+function setPayMenuScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._pay_menu_active = true;
+    game._pay_menu_screen = screen;
+    game._pay_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearPayMenuScreen() {
+    game._pay_menu_active = false;
+    game._pay_menu_screen = null;
+    game._pay_menu_cursor = null;
 }
 
 function shopThankYouMessage(shkp) {
@@ -7489,7 +8178,7 @@ async function commitPayMenuSelection(menu) {
     const selected = (menu?.entries || []).filter((entry) => entry.selected);
     const shkp = menu?.shkp;
     game._pay_menu = null;
-    game._pay_menu_screen = null;
+    clearPayMenuScreen();
     await redrawAfterFullScreenMenuDismiss();
     if (!selected.length || !shkp) {
         game.context.move = 0;
@@ -7521,9 +8210,29 @@ async function showPayMenu(shkp) {
     game._pay_menu = menu;
     if (!menu.entries.length || !renderPayMenu(menu)) {
         game._pay_menu = null;
-        game._pay_menu_screen = null;
+        clearPayMenuScreen();
         await pline(`You do not owe ${shkname(shkp)} anything.`);
     }
+    game.context.move = 0;
+}
+
+async function handlePayMenuInput(ch) {
+    const menu = game._pay_menu;
+    if (ch === '\x1b') {
+        game._pay_menu = null;
+        clearPayMenuScreen();
+        await redrawAfterFullScreenMenuDismiss();
+        game.context.move = 0;
+        return;
+    }
+    if (ch === '\r' || ch === '\n') {
+        await commitPayMenuSelection(menu);
+        game.context.move = 0;
+        return;
+    }
+    const entry = menu?.entries?.find((item) => item.selector === ch);
+    if (entry) entry.selected = !entry.selected;
+    if (menu) renderPayMenu(menu);
     game.context.move = 0;
 }
 
@@ -7591,12 +8300,13 @@ function pickupTroublePrefix() {
 async function finishShopQuotedPickup(obj) {
     const carried = pickupInventoryObject(obj);
     game.context.move = 1;
-    if (!heavyPickupTrouble(carried)) {
-        await pline(`${carried.invlet} - ${inventoryObjectName(carried)}.`);
+    const hasTrouble = heavyPickupTrouble(carried);
+    if (!hasTrouble) {
+        await pline(pickupInventoryLine(carried));
         return;
     }
     if (game.u) game.u.uencumber = Math.max(game.u.uencumber || 0, 1);
-    await plineWithMorePrompt(`You have a little trouble lifting ${carried.invlet} - ${inventoryObjectName(carried)}.`);
+    await plineWithMorePrompt(pickupInventoryLine(carried, 'You have a little trouble'));
     game._finish_pickup_turn_after_more = true;
     game.context.move = 0;
 }
@@ -8079,9 +8789,10 @@ async function triggerTrapAtHero() {
         return triggerRollingBoulderTrapAtHero(trap);
     if (trap.ttyp === C.BEAR_TRAP) {
         // C ref: src/trap.c:trapeffect_bear_trap().
-        const preDamageHp = u.uhp ?? 0;
         const oldcap = u.uencumber || 0;
+        const oldHp = typeof u.uhp === 'number' ? u.uhp : null;
         const damage = d(2, 4);
+        let encumbranceMore = false;
         trap.tseen = true;
         newsym(trap.tx, trap.ty);
         u.utrap = rn1(4, 4);
@@ -8096,12 +8807,21 @@ async function triggerTrapAtHero() {
             if (encmsg) game._after_more_message = game._after_more_message
                 ? `${encmsg}  ${game._after_more_message}`
                 : encmsg;
+            encumbranceMore = !!encmsg;
         }
         exercise(A_DEX, false);
         await pline('A bear trap closes on your foot!');
-        game._latched_status_uhp = preDamageHp;
-        game._bear_trap_clear_latched_hp_after_more = true;
-        queue_more_prompt();
+        if (encumbranceMore) {
+            // C refs: src/trap.c:trapeffect_bear_trap(),
+            // win/tty/topl.c:update_topl().  The encumbrance pline behind
+            // the trap line owns a tty More; botl still shows pre-losehp HP.
+            if (oldHp != null) {
+                game._latched_status_uhp = oldHp;
+                game._latched_status_turn = game.moves ?? null;
+                game._bear_trap_clear_latched_hp_after_more = true;
+            }
+            if (!game._more) queue_more_prompt();
+        }
         return true;
     }
     if (trap.ttyp === C.DART_TRAP) {
@@ -8207,7 +8927,23 @@ async function triggerTrapAtHero() {
 
 function roomForNo(roomno) {
     const idx = (roomno ?? 0) - C.ROOMOFFSET;
-    return idx >= 0 ? game.level?.rooms?.[idx] : null;
+    if (idx < 0) return null;
+    const rooms = game.level?.rooms || [];
+    if (idx < C.MAXNROFROOMS) return rooms[idx] || null;
+    const visit = (room) => {
+        if (!room) return null;
+        if (room.roomnoidx === idx) return room;
+        for (const subroom of room.sbrooms || []) {
+            const found = visit(subroom);
+            if (found) return found;
+        }
+        return null;
+    };
+    for (const room of rooms) {
+        const found = visit(room);
+        if (found) return found;
+    }
+    return null;
 }
 
 function isShopRoomNo(roomno) {
@@ -9136,6 +9872,7 @@ function pickupMenuEntries(objects) {
     const coins = sortGroup(objects.filter(obj => obj.oclass === COIN_CLASS));
     const rings = sortGroup(objects.filter(obj => obj.oclass === RING_CLASS));
     const weapons = sortGroup(objects.filter(obj => obj.oclass === WEAPON_CLASS));
+    const armor = sortGroup(objects.filter(obj => obj.oclass === ARMOR_CLASS));
     const food = sortGroup(objects.filter(obj => obj.oclass === FOOD_CLASS));
     const tools = sortGroup(objects.filter(obj => obj.oclass === TOOL_CLASS));
     const gems = sortGroup(objects.filter(obj => obj.oclass === 13));
@@ -9144,6 +9881,7 @@ function pickupMenuEntries(objects) {
         ['Coins', coins],
         ['Rings', rings],
         ['Weapons', weapons],
+        ['Armor', armor],
         ['Comestibles', food],
         ['Tools', tools],
         ['Gems/Stones', gems],
@@ -9174,6 +9912,7 @@ function refreshPickupMenu() {
     game._floor_list_lines = lines;
     game._floor_list_col = 41;
     game._floor_list_show_more = false;
+    game._floor_list_clear_to_edge = true;
     game._prompt_cursor = [47, lines.length];
 }
 
@@ -9188,7 +9927,11 @@ async function finishPickupMenu() {
     game._pickup_menu = null;
     game._floor_list_lines = null;
     game._floor_list_show_more = true;
+    game._floor_list_clear_to_edge = false;
     game._prompt_cursor = null;
+    // C ref: src/pickup.c:query_objlist() destroys the menu window before
+    // pickup result messages are shown, restoring the playfield underneath.
+    game._full_map_redraw_pending = true;
     const selected = (menu?.entries || []).filter(entry => entry.selected && entry.obj).map(entry => entry.obj);
     if (!selected.length) {
         game.context.move = 0;
@@ -9202,15 +9945,8 @@ async function finishPickupMenu() {
             messages.push(pickupGoldObject(obj));
             continue;
         }
-        extractFloorObject(obj);
-        const merged = merge_inventory_object(obj);
-        const carried = merged || obj;
-        if (!merged) {
-            assignInventoryLetter(carried);
-            game.inventory = game.inventory || [];
-            game.inventory.push(carried);
-        }
-        messages.push(`${carried.invlet} - ${inventoryObjectName(carried)}.`);
+        const carried = pickupInventoryObject(obj);
+        messages.push(pickupInventoryLine(carried));
     }
     await pline(messages.join('  '));
 }
@@ -9218,7 +9954,7 @@ async function finishPickupMenu() {
 async function handlePickupMenuKey(ch) {
     const menu = game._pickup_menu;
     if (!menu) return false;
-    if (ch === '\r' || ch === '\n') {
+    if (ch === ' ' || ch === '\r' || ch === '\n') {
         await finishPickupMenu();
         return true;
     }
@@ -9599,6 +10335,45 @@ async function drinkPotion(obj, idx) {
         game.context.move = 1;
         return;
     }
+    if (obj.otyp === POT_SICKNESS) {
+        // C refs: src/potion.c:dopotion(), src/potion.c:peffect_sickness().
+        const isHealer = game.urole?.name?.m === 'Healer';
+        await pline('Yecch!  This stuff tastes like poison.');
+        if (obj.dknown) discoverObjectType(obj.otyp);
+        if (obj.blessed) {
+            queue_more_prompt();
+            game._more_message_queue = [
+                ...(game._more_message_queue || []),
+                {
+                    text: '(But in fact it was mildly stale slime mold juice.)',
+                    heroDamage: isHealer ? 0 : 1,
+                    move: true,
+                },
+            ];
+            game._pre_turn_more_waiting = true;
+            game._deferred_pre_turn_after_more_returns_to_input = true;
+            game._monster_turn_paused_for_more = true;
+            game.context.move = 0;
+            return;
+        }
+        if (game.u?.uprops?.poison_resistance) {
+            await append_pline('(But in fact it was biologically contaminated slime mold juice.)');
+        }
+        if (isHealer) {
+            await append_pline('Fortunately, you have been immunized.');
+        } else {
+            const attr = rn2(A_MAX);
+            const resistant = !!game.u?.uprops?.poison_resistance;
+            if (!resistant && game.u?.acurr?.a)
+                game.u.acurr.a[attr] = Math.max(3, (game.u.acurr.a[attr] || 3) - rn1(4, 3));
+            const damage = resistant ? 1 + rn2(2) : rnd(10) + (obj.cursed ? 5 : 0);
+            if (typeof game.u?.uhp === 'number')
+                game.u.uhp = Math.max(0, game.u.uhp - damage);
+            exercise(A_CON, false);
+        }
+        game.context.move = 1;
+        return;
+    }
     if (obj.otyp === POT_BOOZE) {
         // C refs: potion.c:peffect_booze(), potion.c:dopotion().
         const bcsign = obj.blessed ? 1 : (obj.cursed ? -1 : 0);
@@ -9703,6 +10478,7 @@ function corpseTasteLine(obj, guilty = false, rotted = 0) {
 
 async function beginEatingCorpse(obj) {
     const corpseName = baseObjectName(obj);
+    const alreadyPartlyEaten = Number.isFinite(obj?.oeaten) && obj.oeaten > 0;
     // C ref: src/eat.c:eatcorpse().  Conduct is checked before rotting and
     // first-bite effects; Monks receive violated_vegetarian() guilt.
     const conduct = noteFoodConduct(obj);
@@ -9751,7 +10527,10 @@ async function beginEatingCorpse(obj) {
     // use the first-bite credit together with the carried-only pre-finish turn.
     const reqtime = corpseEatingReqtime(obj);
     const carriedCorpse = (game.inventory || []).includes(obj);
-    const remainingTurns = Math.max(0, reqtime - (carriedCorpse && firstBiteStarted ? 1 : 0));
+    const silentFinish = firstBiteStarted && reqtime <= 1 && !alreadyPartlyEaten;
+    const remainingTurns = silentFinish
+        ? 0
+        : Math.max(0, reqtime - (carriedCorpse && firstBiteStarted ? 1 : 0));
     game._occupation_turns_remaining = remainingTurns;
     game._occupation_bite_nutrition = firstBiteStarted
         ? corpseBiteNutritionState(obj, reqtime)
@@ -9760,8 +10539,9 @@ async function beginEatingCorpse(obj) {
     if (firstBiteStarted) applyEatingBiteNutrition();
     if (remainingTurns > 0 && carriedCorpse) game._occupation_pre_finish_extra_turn = true;
     game._occupation_pre_finish_catchup = firstBiteStarted;
-    game._occupation_finish_message = `You finish eating the ${corpseName}.`;
-    game._occupation_pack_finish_message = true;
+    game._occupation_silent_finish = silentFinish;
+    game._occupation_finish_message = silentFinish ? null : `You finish eating the ${corpseName}.`;
+    game._occupation_pack_finish_message = !silentFinish;
     game._occupation_finish_removes_eaten_corpse = true;
     await pline(message);
     if (blocks) {
@@ -9770,6 +10550,15 @@ async function beginEatingCorpse(obj) {
     } else if (monkGuilt) {
         game._occupation_continue_behind_more = true;
         queue_more_prompt();
+    }
+    if (silentFinish && !blocks && !monkGuilt) {
+        await applyEatingCorpsePostEffects();
+        finish_pending_eaten_corpse();
+        game._occupation_bite_nutrition = null;
+        game._occupation_corpse_post_effect_obj = null;
+        game._occupation_finish_removes_eaten_corpse = false;
+        game._occupation_silent_finish = false;
+        game._occupation_pre_finish_catchup = false;
     }
     game.context.move = 1;
     return true;
@@ -10056,7 +10845,9 @@ async function pickupHere() {
     }
     const carried = pickupInventoryObject(obj);
     const prefix = pickupTroublePrefix();
-    await pline(`${prefix ? `${prefix} lifting ` : ''}${carried.invlet} - ${inventoryObjectName(carried)}.`);
+    const line = pickupInventoryLine(carried, prefix);
+    if (await maybeShowInventoryComparisonBeforePickup(line)) return;
+    await pline(line);
 }
 
 function isMovementKey(ch) {
@@ -10069,6 +10860,12 @@ function isGetposMovementKey(ch) {
 
 function runDirectionForKey(ch) {
     return RUN_KEY[ch] || null;
+}
+
+function runPrefixModeForKey(ch) {
+    if (ch === 'g') return 2;
+    if (ch === 'G') return 3;
+    return 0;
 }
 
 async function withCommandNopick(enabled, action) {
@@ -10100,6 +10897,22 @@ async function startRunDirection(dir, mode, opts = {}) {
         game.context.run = null;
         game._run_stop_after_move = false;
     }
+}
+
+async function rejectRunCommandPrefix(ch, prefix) {
+    const prefixKey = prefix?.key || 'G';
+    const prefixMode = runPrefixModeForKey(ch);
+    if (prefixMode) {
+        // C ref: src/cmd.c:do_run()/do_rush().  A second run/rush prefix
+        // cancels the pending prefixed movement and reports the second prefix.
+        await pline(prefixMode === 3
+            ? 'Double run prefix, canceled.'
+            : 'Double rush prefix, canceled.');
+    } else {
+        const suffix = (ch === '<' || ch === '>') ? ' other than up or down' : '';
+        await pline(`The '${prefixKey}' prefix should be followed by a movement command${suffix}.`);
+    }
+    game.context.move = 0;
 }
 
 function hasWoundedLegs() {
@@ -10315,8 +11128,7 @@ function showEnhanceSkillsMenu() {
         : role === 'Priest'
             ? priestEnhanceSkillsScreen()
             : ' \x1b[7mCurrent skills:\x1b[0m\n';
-    game._enhance_skills_screen = screen;
-    showOverride(screen, [9, 23]);
+    setEnhanceSkillsScreen(screen, [9, 23]);
 }
 
 async function beginEnhanceCommand() {
@@ -10333,9 +11145,10 @@ async function beginEnhanceCommand() {
 }
 
 async function handleEnhanceSelection(ch) {
+    clearEnhanceSkillsScreen();
     if (ch === 'j') {
         game._enhance_skill_levels = { ...(game._enhance_skill_levels || {}), longSword: 'Skilled' };
-        clearOverrideScreen();
+        await redrawAfterFullScreenMenuDismiss();
         await pline('You are now more skilled in long sword.');
         queue_more_prompt();
         game._enhance_resume_after_more = true;
@@ -10344,15 +11157,13 @@ async function handleEnhanceSelection(ch) {
     }
     if (ch === 'r') {
         game._enhance_skill_levels = { ...(game._enhance_skill_levels || {}), polearms: 'Basic' };
-        clearOverrideScreen();
+        await redrawAfterFullScreenMenuDismiss();
         await pline('You are now more skilled in polearms.');
         queue_more_prompt();
         game._enhance_resume_after_more = true;
         game.context.move = 0;
         return;
     }
-    game._enhance_skills_screen = null;
-    clearOverrideScreen();
     await redrawAfterFullScreenMenuDismiss();
     game.context.move = 0;
 }
@@ -10374,18 +11185,27 @@ async function doSitCommand() {
 }
 
 function dipPromptObjectName(obj) {
+    // C ref: src/potion.c:dodip() uses short_oname(..., doname, ...), so the
+    // fountain prompt includes known BUC/enchantment and worn status.
+    const name = inventoryObjectName(obj, { includeWorn: true });
+    if (name.length <= 49) return name;
     const quan = obj?.quan || 1;
-    let base = baseObjectName(obj);
-    if (obj?.otyp === CLOVE_OF_GARLIC) base = 'clove of garlic';
-    if (quan > 1) {
-        if (obj?.otyp === CLOVE_OF_GARLIC) return `${quan} cloves of garlic`;
-        return `${quan} ${pluralizeObjectName(base)}`;
-    }
-    return `${indefiniteArticle(base)} ${base}`;
+    const rawBase = baseObjectName(obj);
+    const pairObject = isPairArmorObject(obj)
+        || /\b(?:boots|gloves)$/.test(rawBase)
+        || rawBase.startsWith('gauntlets of ');
+    const base = quan > 1
+        ? (pairObject ? `pairs of ${rawBase}` : pluralizeObjectName(rawBase))
+        : (pairObject ? `pair of ${rawBase}` : rawBase);
+    const body = [enchantmentPrefix(obj), base].filter(Boolean).join(' ');
+    const worn = wornSuffix(obj);
+    if (quan > 1) return `${quan} ${body}${worn}`;
+    return `${indefiniteArticle(body)} ${body}${worn}`;
 }
 
 async function showDipInventoryPrompt() {
-    const letters = inventoryLetterRange();
+    // C ref: src/potion.c:dip_ok(); dipping gold is excluded by getobj().
+    const letters = inventoryLetterRangeFor((obj) => obj?.oclass !== COIN_CLASS);
     await showPromptLine(`What do you want to dip? [${letters} or ?*]`, { trailingInputSpace: true });
     game._awaiting_dip_item = true;
     game.context.move = 0;
@@ -10397,18 +11217,168 @@ async function showDipFountainConfirm(obj) {
     game.context.move = 0;
 }
 
-function dryupFountainAfterDip() {
+function roomContainsTownBasic(room, x, y, roomno) {
+    if (!room) return false;
+    if (room.irregular) {
+        const loc = game.level?.at(x, y);
+        return !!loc && !loc.edge && loc.roomno === roomno;
+    }
+    return x >= room.lx - 1 && x <= room.hx + 1
+        && y >= room.ly - 1 && y <= room.hy + 1;
+}
+
+function inTownBasic(x, y) {
+    // C ref: src/hack.c:in_town().
+    if (!game.level?.flags?.has_town) return false;
+    let hasSubrooms = false;
+    const rooms = game.level?.rooms || [];
+    for (let i = 0; i < rooms.length; i++) {
+        const room = rooms[i];
+        if (!room?.nsubrooms) continue;
+        hasSubrooms = true;
+        if (roomContainsTownBasic(room, x, y, i + C.ROOMOFFSET)) return true;
+    }
+    return !hasSubrooms;
+}
+
+function isWatchMonster(mon) {
+    return mon?.data?.name === 'WATCHMAN' || mon?.data?.name === 'WATCH_CAPTAIN';
+}
+
+function amonnamBasic(mon) {
+    if (C.has_mgivenname(mon)) return sentenceStart(monsterName(mon));
+    const name = monsterName(mon);
+    return `${sentenceStart(indefiniteArticle(name))} ${name}`;
+}
+
+function watchmanFountainWarningMessages() {
+    // C ref: src/fountain.c:watchman_warn_fountain().
+    const watchman = (game.level?.monsters || []).find((mon) =>
+        mon && !mon.dead && isWatchMonster(mon) && mon.mpeaceful && couldsee(mon.mx, mon.my));
+    if (!watchman) return ['The flow reduces to a trickle.'];
+    return [`${amonnamBasic(watchman)} yells:`, '"Hey, stop using that fountain!"'];
+}
+
+function dryupFountainAfterDipMessages() {
     // C ref: src/fountain.c:dryup().
     const loc = game.level?.at(game.u?.ux, game.u?.uy);
-    if (loc?.typ !== C.FOUNTAIN) return '';
-    if (rn2(3)) return '';
+    if (loc?.typ !== C.FOUNTAIN) return [];
+    if (rn2(3) && !loc.fountainWarned) return [];
+    if (inTownBasic(game.u?.ux ?? 0, game.u?.uy ?? 0) && !loc.fountainWarned) {
+        loc.fountainWarned = true;
+        return watchmanFountainWarningMessages();
+    }
     loc.typ = C.ROOM;
     loc.flags = 0;
     loc.blessedftn = 0;
     if (game.level?.flags)
         game.level.flags.nfountains = Math.max(0, (game.level.flags.nfountains || 0) - 1);
     newsym(game.u.ux, game.u.uy);
-    return 'The fountain dries up!';
+    return cansee(game.u?.ux ?? 0, game.u?.uy ?? 0) ? ['The fountain dries up!'] : [];
+}
+
+function dryupFountainAfterDip() {
+    return dryupFountainAfterDipMessages()[0] || '';
+}
+
+async function emitFountainMessagesAfterCurrent(messages, opts = {}) {
+    const lines = (messages || []).filter(Boolean);
+    if (!lines.length) return;
+    const [first, ...rest] = lines;
+    if (game._pending_message && topline_can_pack_message(game._pending_message, first)) {
+        await append_pline(first);
+    } else if (game._pending_message) {
+        queue_more_prompt();
+        game._more_message_queue = [
+            { text: first, more: rest.length > 0, move: !!opts.moveOnLast && !rest.length },
+            ...rest.map((text, idx) => ({
+                text,
+                more: idx < rest.length - 1,
+                move: !!opts.moveOnLast && idx === rest.length - 1,
+            })),
+            ...(game._more_message_queue || []),
+        ];
+        return;
+    } else {
+        await pline(first);
+    }
+    if (rest.length) {
+        queue_more_prompt();
+        game._more_message_queue = [
+            ...(game._more_message_queue || []),
+            ...rest.map((text, idx) => ({
+                text,
+                more: idx < rest.length - 1,
+                move: !!opts.moveOnLast && idx === rest.length - 1,
+            })),
+        ];
+    }
+}
+
+function somegoldBasic(money) {
+    // C ref: src/steal.c:somegold().
+    const igold = Math.max(0, Math.trunc(money || 0));
+    if (igold < 50) return igold;
+    if (igold < 100) return rn1(igold - 25 + 1, 25);
+    if (igold < 500) return rn1(igold - 50 + 1, 50);
+    if (igold < 1000) return rn1(igold - 100 + 1, 100);
+    if (igold < 5000) return rn1(igold - 500 + 1, 500);
+    if (igold < 10000) return rn1(igold - 1000 + 1, 1000);
+    return rn1(igold - 5000 + 1, 5000);
+}
+
+function loseSomeGoldInFountain() {
+    // C ref: src/fountain.c:dipfountain() case 28.
+    const money = heroGoldAmount();
+    if (money <= 10) return false;
+    const loss = Math.max(0, Math.trunc(somegoldBasic(money) / 10));
+    if (!loss) return false;
+    const target = Math.max(0, money - loss);
+    const carried = (game.inventory || []).find((obj) => obj?.otyp === GOLD_PIECE || obj?.oclass === COIN_CLASS);
+    if (carried) {
+        carried.quan = target;
+        if (target <= 0)
+            game.inventory = (game.inventory || []).filter((obj) => obj !== carried);
+    }
+    game._goldCount = target;
+    return true;
+}
+
+async function finishFountainBathAfterMore() {
+    game._fountain_bath_after_more = false;
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    clear_pending_message();
+    const oldGold = heroGoldAmount();
+    if (loseSomeGoldInFountain()) {
+        game._latched_status_gold = oldGold;
+        game._clear_latched_status_gold_after_more = true;
+        await pline('You lost some of your gold in the fountain!');
+        const loc = game.level?.at(game.u?.ux, game.u?.uy);
+        if (loc) loc.fountainLooted = false;
+        exercise(A_WIS, false);
+    }
+    await emitFountainMessagesAfterCurrent(dryupFountainAfterDipMessages(), { moveOnLast: true });
+    game.context.move = game._more ? 0 : 1;
+}
+
+function waterDamageRustForDip(obj) {
+    // C refs: src/trap.c:water_damage(), src/trap.c:erode_obj().
+    if (!obj || !armorIsRustprone(obj)) return { result: 'nothing', message: '' };
+    if (obj.oerodeproof || (obj.blessed && !rnl(4))) return { result: 'nothing', message: '' };
+    const erosion = obj.oeroded || 0;
+    if (erosion >= 3) return { result: 'nothing', message: '' };
+    obj.oeroded = erosion + 1;
+    if (game.u) game.u.uac = calculated_armor_class();
+    game._status_uac_override = null;
+    game._clear_status_uac_override_after_more = false;
+    game._status_uac_override_move = null;
+    const name = armorObjectName(obj) || baseObjectName(obj) || 'armor';
+    const adverb = erosion + 1 === 3 ? ' completely' : erosion ? ' further' : '';
+    return {
+        result: 'damaged',
+        message: `Your ${name} ${armorErodeVerb(obj, 'rust')}${adverb}!`,
+    };
 }
 
 function monsterGoneForFountain(ptr) {
@@ -10494,6 +11464,28 @@ async function waterSnakesFromFountain() {
         // entry points are not exported to the command layer yet; ordinary
         // fountain snakes still get the same enexto/makemon RNG path.
     }
+}
+
+async function waterNymphFromFountain() {
+    // C ref: src/fountain.c:dowaternymph().
+    const ptr = monsterPtr('WATER_NYMPH');
+    const mon = ptr && !monsterGoneForFountain(ptr)
+        ? makemon(ptr, game.u?.ux ?? 0, game.u?.uy ?? 0, C.MM_NOMSG)
+        : null;
+    if (mon) {
+        mon.msleeping = 0;
+        newsym(mon.mx, mon.my);
+        if (game.u?.ublind || game.u?.blind || game.u?.uprops?.blind || game.u?.uprops?.blinded) {
+            await pline('You hear a seductive voice.');
+        } else {
+            await pline(`You attract ${monsterIndefiniteName(mon)}!`);
+        }
+        return;
+    }
+    if (game.u?.ublind || game.u?.blind || game.u?.uprops?.blind || game.u?.uprops?.blinded)
+        await pline('You hear a loud pop.');
+    else
+        await pline('A large bubble rises to the surface and pops.');
 }
 
 function rndObjectTypeInRange(first, last) {
@@ -10591,11 +11583,7 @@ async function waterDemonFromFountain() {
 async function finishFountainWishDryupAfterWish() {
     if (!game._fountain_wish_dryup_after_wish) return false;
     game._fountain_wish_dryup_after_wish = false;
-    const dryupMsg = dryupFountainAfterDip();
-    if (dryupMsg) {
-        if (game._pending_message) await append_pline(dryupMsg);
-        else await pline(dryupMsg);
-    }
+    await emitFountainMessagesAfterCurrent(dryupFountainAfterDipMessages());
     return true;
 }
 
@@ -10612,8 +11600,7 @@ async function finishFountainDetectAfterMore() {
     clear_pending_message();
     await docrt();
     exercise(A_WIS, true);
-    const dryupMsg = dryupFountainAfterDip();
-    if (dryupMsg) await pline(dryupMsg);
+    await emitFountainMessagesAfterCurrent(dryupFountainAfterDipMessages());
     game.context.move = 1;
 }
 
@@ -10683,18 +11670,19 @@ async function drinkFountain() {
             break;
         }
     }
-    const dryupMsg = dryupFountainAfterDip();
-    if (dryupMsg) {
-        if (game._pending_message) await append_pline(dryupMsg);
-        else await pline(dryupMsg);
-    }
+    await emitFountainMessagesAfterCurrent(dryupFountainAfterDipMessages());
     game.context.move = 1;
 }
 
-function dipFountainEffect(obj) {
-    // C ref: src/fountain.c:dipfountain().  The current evidence reaches
-    // ordinary non-Excalibur objects with no water-damage side effect.
-    let msg = '';
+async function dipFountainEffect(obj) {
+    // C ref: src/fountain.c:dipfountain().
+    const waterDamage = waterDamageRustForDip(obj);
+    let msg = waterDamage.message || '';
+    if (waterDamage.result === 'destroyed'
+        || (waterDamage.result !== 'nothing' && !rn2(2))) {
+        if (msg) await pline(msg);
+        return;
+    }
     switch (rnd(30)) {
     case 16:
         if (obj && obj.oclass !== COIN_CLASS && !obj.cursed) {
@@ -10714,12 +11702,69 @@ function dipFountainEffect(obj) {
             msg = 'A feeling of loss comes over you.';
         }
         break;
-    default:
-        msg = 'Nothing seems to happen.';
+    case 21:
+        if (msg) {
+            await pline(msg);
+            msg = '';
+        }
+        if (await waterDemonFromFountain()) return;
+        break;
+    case 22:
+        if (msg) {
+            await pline(msg);
+            msg = '';
+        }
+        await waterNymphFromFountain();
+        break;
+    case 23:
+        if (msg) {
+            await pline(msg);
+            msg = '';
+        }
+        await waterSnakesFromFountain();
+        break;
+    case 24: {
+        const loc = game.level?.at(game.u?.ux, game.u?.uy);
+        if (!loc?.fountainLooted) {
+            if (msg) {
+                await pline(msg);
+                msg = '';
+            }
+            await findFountainGem(loc);
+            break;
+        }
+        await dogushforth(false);
+        msg = '';
         break;
     }
-    const dryupMsg = dryupFountainAfterDip();
-    return msg || dryupMsg;
+    case 25:
+        if (msg) {
+            await pline(msg);
+            msg = '';
+        }
+        await dogushforth(false);
+        break;
+    case 26:
+        msg = 'A strange tingling runs up your arm.';
+        break;
+    case 27:
+        msg = 'You feel a sudden chill.';
+        break;
+    case 28:
+        if (msg) await pline(msg);
+        await emitFountainMessagesAfterCurrent(['An urge to take a bath overwhelms you.']);
+        if (heroGoldAmount() > 10) {
+            game._fountain_bath_after_more = true;
+            queue_more_prompt();
+            return;
+        }
+        break;
+    default:
+        if (waterDamage.result === 'nothing') msg = 'Nothing seems to happen.';
+        break;
+    }
+    if (msg) await emitFountainMessagesAfterCurrent([msg]);
+    await emitFountainMessagesAfterCurrent(dryupFountainAfterDipMessages());
 }
 
 async function doDipCommand() {
@@ -11015,9 +12060,11 @@ function showOverviewScreen(options = {}) {
         display.putstr(textCol + (line.indent || 0), row, line.text, NO_COLOR, attr);
     }
     const screen = serialize_terminal_grid(display);
-    game._overview_screen = screen;
-    game._death_overview_screen_active = !!options.death;
-    showOverride(screen, [textCol + '(end)'.length + 1, lines.length - 1]);
+    setDisclosureWindowScreen(
+        screen,
+        [textCol + '(end)'.length + 1, lines.length - 1],
+        options.death ? 'death-overview' : 'overview',
+    );
     game.context.move = 0;
 }
 
@@ -11153,9 +12200,7 @@ function showConductScreen(options = {}) {
     const display = game.nhDisplay;
     if (!display?.putstr) return;
     const rendered = renderTtyMenuTextWindow(conductLines(options), { minWindowWidth: 39 });
-    game._conduct_screen = rendered.screen;
-    game._death_conduct_screen_active = !!options.death;
-    showOverride(rendered.screen, rendered.cursor);
+    setDisclosureWindowScreen(rendered.screen, rendered.cursor, options.death ? 'death-conduct' : 'conduct');
     game.context.move = 0;
 }
 
@@ -11193,9 +12238,7 @@ function showVanquishedScreen(options = {}) {
     }
     const rendered = renderTtyMenuTextWindow(lines, { minWindowWidth: 39 });
     const screen = rendered.screen;
-    game._vanquished_screen = screen;
-    game._death_vanquished_screen_active = !!options.death;
-    showOverride(screen, rendered.cursor);
+    setDisclosureWindowScreen(screen, rendered.cursor, options.death ? 'death-vanquished' : 'vanquished');
     game.context.move = 0;
 }
 
@@ -11328,6 +12371,7 @@ async function doSwapWeaponCommand() {
         primary.owornmask = 0;
         primary.alternate = true;
     }
+    applyHeroArtifactTouchRng(secondary);
     secondary.alternate = false;
     secondary.owornmask = C.W_WEP;
     secondary.wielded = true;
@@ -11887,10 +12931,7 @@ async function handleUntrapDirection(ch) {
         game.context.move = 0;
         if (ch === '\x1b' || ch === 'q') return;
         if (game.iflags?.cmdassist !== false) {
-            game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
-            game._direction_help_after_more_message = '';
-            showSerializedOverride(INVALID_DIRECTION_HELP_SCREEN, [8, 23]);
-            queue_more_prompt();
+            showDirectionHelpScreen();
         } else {
             await pline('What a strange direction!');
         }
@@ -11964,8 +13005,7 @@ function showNameCommandMenu() {
         display.putstr(col, row, text, NO_COLOR, inverse ? ATR_INVERSE : 0);
     }
     const screen = serialize_terminal_grid(display);
-    game._name_menu_screen = screen;
-    showOverride(screen, [col + '(end)'.length + 1, 8]);
+    setNameMenuScreen(screen, [col + '(end)'.length + 1, 8]);
 }
 
 async function beginWizardWishPrompt() {
@@ -12459,7 +13499,6 @@ async function finishRandomPolyselfFromWand() {
             text: dropLines.join('  '),
             more: false,
             move: true,
-            exercise: { attr: C.A_WIS, positive: true },
             visionRecalcBefore: form.noEyes,
             polyState: { uac: form.finalAc },
         });
@@ -12605,9 +13644,17 @@ function latchStatusAttrsForMoreFrame() {
 }
 
 function clearLatchedStatusAttrsAfterMore() {
-    if (!game._clear_latched_status_attrs_after_more) return;
-    game._clear_latched_status_attrs_after_more = false;
-    game._latched_status_attrs = null;
+    if (game._clear_latched_status_attrs_after_more) {
+        game._clear_latched_status_attrs_after_more = false;
+        game._latched_status_attrs = null;
+    }
+}
+
+function clearLatchedStatusGoldAfterMore() {
+    if (game._clear_latched_status_gold_after_more) {
+        game._clear_latched_status_gold_after_more = false;
+        game._latched_status_gold = null;
+    }
 }
 
 function loseExperienceLevelBasic() {
@@ -12830,6 +13877,24 @@ function heroCantSqueezeThruReason() {
     if (heroInventoryWeightTotalForSqueeze() > C.WT_TOOMUCH_DIAGONAL) return 2;
     if (heroInSokobanBasic()) return 3;
     return 0;
+}
+
+function heroCanMoveOntoBoulderBasic(sx, sy) {
+    // C ref: src/hack.c:could_move_onto_boulder().  Travel may route to a
+    // boulder square; run-mode DO_MOVE still stops before pushing unless the
+    // hero can occupy that boulder square.
+    if (heroPassesWallsBasic()) return true;
+    if (game.u?.usteed) return false;
+    const ptr = heroPolyPtrForBodySize();
+    if ((ptr?.mflags2 ?? 0) & M2_ROCKTHROW) {
+        const dx = game.u?.dx || 0;
+        const dy = game.u?.dy || 0;
+        if (!dx || !dy) return true;
+        return !(C.IS_OBSTRUCTED(game.level?.at(game.u?.ux, sy)?.typ)
+            && C.IS_OBSTRUCTED(game.level?.at(sx, game.u?.uy)?.typ));
+    }
+    if ((ptr?.msize ?? MZ_HUMAN) < MZ_SMALL) return true;
+    return !game.inventory?.length;
 }
 
 function tightDiagonalSqueezeReason(x, y, dx, dy) {
@@ -13088,6 +14153,16 @@ function repositionFloorObjectToTop(obj, x, y) {
 }
 
 async function tryPushBoulder(boulder, sx, sy, dx, dy) {
+    if (game.context?.run && runModeValue(game.context.run) >= 2
+        && !(game.u?.ublind || game.u?.uprops?.blind)
+        && !(game.u?.uhallucination || game.u?.uprops?.hallucination)
+        && !heroCanMoveOntoBoulderBasic(sx, sy)) {
+        // C ref: src/hack.c:test_move(DO_MOVE).  Running/traveling stops
+        // before an ordinary boulder instead of pushing it.
+        if (game.flags?.mention_walls) await pline('A boulder blocks your path.');
+        game.context.move = 0;
+        return false;
+    }
     const rx = sx + dx;
     const ry = sy + dy;
     if (boulderDestinationBlocked(rx, ry)) {
@@ -13118,6 +14193,9 @@ async function tryPushBoulder(boulder, sx, sy, dx, dy) {
     if (shouldShowBoulderPushMessage(boulder))
         await pline('With great effort you move the boulder.');
     exercise(A_STR, true);
+    // C ref: src/hack.c:moverock_core().  A pushed boulder clears a
+    // remembered invisible glyph at its destination before movobj() redraws.
+    unmap_invisible_memory(rx, ry, { redraw: false });
     // C ref: src/hack.c:moverock_core().  Pushing extracts the boulder from
     // the floor list and re-places it, which makes later fobj scans see it
     // before older floor objects.
@@ -13183,6 +14261,14 @@ function monnam(mon) {
     return name.replace(/^./, c => c.toUpperCase());
 }
 
+function yMonnam(mon) {
+    // C ref: src/do_name.c:YMonnam().  Tame monsters use y_monnam() ("Your
+    // little dog" or a given name); non-tame peaceful monsters still use the
+    // ordinary "The <monster>" form without the "peaceful" adjective.
+    const name = mon?.mtame ? monsterSwapName(mon) : monsterHitName(mon);
+    return name.replace(/^./, c => c.toUpperCase());
+}
+
 function chatEatingMonsterName(mon) {
     // C refs: src/sounds.c:dochat(), src/do_name.c:x_monnam().  Monnam()
     // includes a visible saddle adjective for the noisy-eating response.
@@ -13226,6 +14312,20 @@ async function chatMonsterNoise(mon) {
     // C ref: sounds.c:dochat()/domonnoise(), MS_BARK.
     if (mon?.data?.msound === MS_LEADER)
         return chatQuestLeader(mon);
+    if (mon?.data?.msound === MS_SEDUCE) {
+        // C ref: src/sounds.c:domonnoise(), MS_SEDUCE.  Nymphs only spend
+        // the flirtation RNG when their gender differs from poly_gender().
+        const heroFemale = !!game.flags?.female;
+        const swval = heroFemale !== !!mon.female ? rn2(3) : 0;
+        if (swval === 2) {
+            await pline(`${monnam(mon)} says: "Hello, sailor."`);
+        } else if (swval === 1) {
+            await pline(`${monnam(mon)} comes on to you.`);
+        } else {
+            await pline(`${monnam(mon)} cajoles you.`);
+        }
+        return true;
+    }
     if (mon?.data?.mlet === 'S_DOG') {
         const hungrytime = mon.edog?.hungrytime ?? 0;
         let verb = 'barks';
@@ -13586,6 +14686,11 @@ const WEAPON_SMALL_DAMAGE_DIE = new Map([
     [ELVEN_DAGGER, 5],
     [ORCISH_DAGGER, 3],
     [SILVER_DAGGER, 4],
+    [SPEAR, 6],
+    [ELVEN_SPEAR, 7],
+    [ORCISH_SPEAR, 5],
+    [DWARVISH_SPEAR, 8],
+    [SILVER_SPEAR, 6],
     [ELVEN_SHORT_SWORD, 8],
     [ORCISH_SHORT_SWORD, 5],
     [DWARVISH_SHORT_SWORD, 7],
@@ -13601,6 +14706,11 @@ const WEAPON_LARGE_DAMAGE_DIE = new Map([
     [ELVEN_DAGGER, 3],
     [ORCISH_DAGGER, 3],
     [SILVER_DAGGER, 2],
+    [SPEAR, 8],
+    [ELVEN_SPEAR, 8],
+    [ORCISH_SPEAR, 8],
+    [DWARVISH_SPEAR, 8],
+    [SILVER_SPEAR, 8],
     [SHORT_SWORD, 8],
     [ELVEN_SHORT_SWORD, 8],
     [ORCISH_SHORT_SWORD, 8],
@@ -13631,14 +14741,16 @@ function monsterArmorClass(mon) {
 
 function heroAttackAttributeBonus() {
     // C ref: src/weapon.c:abon().
-    const str = currentAttr(A_STR);
+    let str = currentAttr(A_STR);
+    if (wearingPowerGauntlets()) str = C.STR19(25);
     const dex = currentAttr(A_DEX);
     let sbon;
     if (str < 6) sbon = -2;
     else if (str < 8) sbon = -1;
     else if (str < 17) sbon = 0;
-    else if (str < 19) sbon = 1;
-    else sbon = 2;
+    else if (str < C.STR18(50)) sbon = 1;
+    else if (str < C.STR18(100)) sbon = 2;
+    else sbon = 3;
     if ((game.u?.ulevel ?? 1) < 3) sbon++;
     if (dex < 4) return sbon - 3;
     if (dex < 6) return sbon - 2;
@@ -13961,6 +15073,46 @@ async function kickDoor(x, y, loc) {
     }
 }
 
+async function kickMonsterBasic(mon, x, y) {
+    // C refs: src/dokick.c:maybe_kick_monster()/kick_monster()/kickdmg().
+    // This is the ordinary unpolymorphed monster-kick front door.  Kicking an
+    // unseen monster is force-fight, so attack_checks() does not stop at the
+    // remembered invisible marker.
+    if (!mon) return false;
+    gethungry();
+    mon.msleeping = 0;
+    mon.mstrategy = (mon.mstrategy || 0) & ~C.STRAT_WAITMASK;
+    if (!mon.mpeaceful) mon.mpeaceful = false;
+    await pline(`You kick ${monsterHitName(mon)}.`);
+
+    const clumsy = !!(game.u?.uprops?.fumbling || game.u?.ufumbling);
+    const big = (mon.data?.msize ?? C.MZ_HUMAN) >= C.MZ_LARGE;
+    if (!rn2(clumsy ? 3 : 4)
+        && (clumsy || !big)
+        && mon.mcansee !== 0
+        && !mon.mtrapped
+        && !monsterHelpless(mon)
+        && (mon.data?.mmove ?? 0) >= 12) {
+        // Full block/jump/teleport evasion is still broader kick backlog.
+        // The C gate still owns this RNG point even when it does not fire.
+    }
+
+    let damage = Math.trunc((currentFormulaStrength() + currentAttr(A_DEX) + currentAttr(A_CON)) / 15);
+    if (clumsy) damage = Math.trunc(damage / 2);
+    if (damage > 0) {
+        damage = rnd(damage);
+        exercise(A_DEX, true);
+        if (typeof mon.mhp === 'number') {
+            mon.mhp -= damage;
+            if (mon.mhp <= 0) await heroKilledMonster(mon);
+        }
+    }
+    if ((mon.mhp ?? 1) > 0 && !mon.mcan) rn2(3);
+    if (!heroCanSpotMonsterForHit(mon) && mon.mx === x && mon.my === y)
+        mapInvisibleBasic(x, y);
+    return true;
+}
+
 async function kickDirection(ch) {
     // C ref: dokick.c:dokick(), dokick.c:kick_nondoor().
     const dx = DIR_DX[ch] || 0;
@@ -13983,9 +15135,10 @@ async function kickDirection(ch) {
         return;
     }
     const loc = game.level?.at(x, y);
-    if (mon_at(x, y)) {
-        game.context.move = 0;
-        await pline('You kick at empty space.');
+    const mon = mon_at(x, y);
+    if (mon) {
+        await kickMonsterBasic(mon, x, y);
+        game.context.move = 1;
         return;
     }
     if (loc?.typ === DOOR) {
@@ -14019,13 +15172,39 @@ async function tryAutoOpenDoor(x, y) {
     return true;
 }
 
+function mayAutoOpenDoorFromMove() {
+    const u = game.u || {};
+    const uprops = u.uprops || {};
+    // C ref: src/hack.c:test_move().  Ordinary movement only routes a closed
+    // door through doopen_indir() when autoopen is enabled and the hero is not
+    // running, confused, stunned, or fumbling.
+    if (game.context?.run) return false;
+    if (game.flags?.autoopen === false) return false;
+    if (uprops.confusion || u.uconfusion) return false;
+    if (uprops.stunned || u.ustunned) return false;
+    if (uprops.fumbling || (Number(uprops.fumbling_timeout) || 0) > 0) return false;
+    return true;
+}
+
+function shouldBumpPainfullyIntoDoor() {
+    const u = game.u || {};
+    const uprops = u.uprops || {};
+    // C ref: src/hack.c:test_move().  A straight move into a closed door uses
+    // the painful bump branch when the hero is blind, stunned, clumsy, or
+    // fumbling.
+    return !!(uprops.blind || u.ublind
+        || uprops.stunned || u.ustunned
+        || currentAttr(A_DEX) < 10
+        || uprops.fumbling || (Number(uprops.fumbling_timeout) || 0) > 0);
+}
+
 async function bumpClosedDoor(dx, dy) {
     if (dx && dy) {
         if (game.flags?.mention_walls) await pline("You can't move diagonally into an intact doorway.");
         game.context.move = 0;
         return false;
     }
-    if (currentAttr(A_DEX) < 10) {
+    if (shouldBumpPainfullyIntoDoor()) {
         await pline('Ouch!  You bump into a door.');
         exercise(A_DEX, false);
         if (game.context?.run) game._run_stop_after_move = true;
@@ -14038,13 +15217,21 @@ async function bumpClosedDoor(dx, dy) {
 }
 
 function runShouldStopAfterMove(source, target, run = game.context?.run) {
-    if (hostileMonsterNearHeroForRunStop(run)) return true;
+    // C ref: src/allmain.c:moveloop_core() calls src/hack.c:lookaround()
+    // before the next repeated domove(), after the completed move's monster
+    // turn and timeout tail.  Immediate post-move run stops are terrain and
+    // feature exits only; visible-monster stopping belongs to
+    // runShouldStopBeforeRepeatMove().
     // C ref: hack.c:lookaround().  Travel (`context.travel`, run mode 8)
     // does not stop just because the chosen path crosses a doorway or leaves
     // a corridor; findtravelpath()/lookaround() own travel continuation.
     if (run?.travel) return false;
     if ([C.FOUNTAIN, C.SINK, C.ALTAR, C.THRONE, C.GRAVE].includes(target?.typ)) return true;
-    return target?.typ === DOOR || (source?.typ === CORR && target?.typ === C.ROOM);
+    // C ref: src/hack.c:lookaround().  Shift-direction run mode 1 treats
+    // ROOM as uninteresting terrain; it can leave a corridor without stopping
+    // unless another lookaround condition fires.
+    return target?.typ === DOOR
+        || (runModeValue(run) !== 1 && source?.typ === CORR && target?.typ === C.ROOM);
 }
 
 function runStepIsOpen(x, y) {
@@ -14141,25 +15328,88 @@ function maybeTurnCorridorRun(run) {
     }
 }
 
+function shouldAvoidKnownTrapForRun(x, y, msg) {
+    const trap = seenTrapAt(x, y);
+    if (!trap || trap.ttyp === C.VIBRATING_SQUARE) return false;
+    if (msg && game.flags?.mention_walls) {
+        // C ref: src/hack.c:avoid_moving_on_trap().
+        // The full trap name list is not needed by current callers; the stop
+        // itself is what clears the repeated movement before the next domove().
+        game.context.move = 0;
+    }
+    return true;
+}
+
+function shouldAvoidKnownLiquidForRun(x, y, msg) {
+    const loc = game.level?.at(x, y);
+    const here = game.level?.at(game.u?.ux, game.u?.uy);
+    if (!loc || !here || !(C.IS_POOL(loc.typ) || C.IS_LAVA(loc.typ)) || !loc.seenv) return false;
+    const u = game.u || {};
+    const inAir = !!(u.uprops?.levitation || u.uprops?.flying);
+    const knownWaterWalking = !!u.uprops?.water_walking;
+    const knownLavaWalking = !!u.uprops?.lava_walking;
+    const safeTransition = (loc.typ === here.typ
+            || (runModeValue(game.context?.run) < 2 && (!C.IS_LAVA(loc.typ) || inAir))
+            || game.context?.run?.travel)
+        && (inAir || knownLavaWalking || (C.IS_POOL(loc.typ) && knownWaterWalking))
+        && !(C.IS_WATERWALL?.(loc.typ) || loc.typ === C.LAVAWALL);
+    if (safeTransition) return false;
+    if (msg && game.flags?.mention_walls) game.context.move = 0;
+    return true;
+}
+
+function runModeValue(run) {
+    if (!run) return 0;
+    if (typeof run.mode === 'number') return run.mode;
+    return run.travel ? 8 : 0;
+}
+
+function runVectorDx(run) {
+    return run?.dx ?? game.u?.dx ?? 0;
+}
+
+function runVectorDy(run) {
+    return run?.dy ?? game.u?.dy ?? 0;
+}
+
 async function runShouldStopBeforeRepeatMove(run) {
     // C refs: allmain.c:moveloop_core(), hack.c:lookaround().  Repeated
     // rushes stop before a closed door; shifted run mode 1 treats it as a
     // corridor candidate and can still bump into it via domove_core().
-    if (!run || run.travel || run.mode === 1) return false;
+    if (!run || run.mode === 1) return false;
     if (game.u?.ublind || game.u?.uprops?.blind) return false;
     const u = game.u;
     if (!u) return false;
     for (let nx = u.ux - 1; nx <= u.ux + 1; nx++) {
         for (let ny = u.uy - 1; ny <= u.uy + 1; ny++) {
             if (nx === u.ux && ny === u.uy) continue;
-            if (nx === u.ux - run.dx && ny === u.uy - run.dy) continue;
+            if (!C.isok(nx, ny)) continue;
+            const rdx = runVectorDx(run), rdy = runVectorDy(run);
+            const infront = nx === u.ux + rdx && ny === u.uy + rdy;
+            const mon = mon_at(nx, ny);
+            if (mon && heroCanSpotMonsterForHit(mon)) {
+                if ((runModeValue(run) !== 1 && !isSafeMonster(mon))
+                    || (infront && !run.travel)) {
+                    game.context.move = 0;
+                    return true;
+                }
+            }
+            if (shouldAvoidKnownTrapForRun(nx, ny, infront && runModeValue(run) > 1)
+                && infront && runModeValue(run) !== 1)
+                return true;
+            if (nx === u.ux - rdx && ny === u.uy - rdy) continue;
             const loc = game.level?.at(nx, ny);
             const closedDoor = loc?.typ === DOOR && !!(loc.doormask & (D_CLOSED | D_LOCKED));
-            if (!closedDoor) continue;
-            if (nx !== u.ux && ny !== u.uy) continue;
-            if (game.flags?.mention_walls) await pline('You stop in front of the door.');
-            game.context.move = 0;
-            return true;
+            if (closedDoor) {
+                if (nx !== u.ux && ny !== u.uy) continue;
+                if (runModeValue(run) !== 1 && !run.travel) {
+                    if (game.flags?.mention_walls) await pline('You stop in front of the door.');
+                    game.context.move = 0;
+                    return true;
+                }
+                continue;
+            }
+            if (infront && shouldAvoidKnownLiquidForRun(nx, ny, true)) return true;
         }
     }
     return false;
@@ -14179,11 +15429,11 @@ function hostileMonsterNearHeroForRunStop(run = game.context?.run) {
                 // side monsters are ignored until they block or attack.
                 const infront = x === u.ux + run.dx && y === u.uy + run.dy;
                 if (!infront) continue;
-                if (cansee(x, y)) return true;
+                if (heroCanSpotMonsterForHit(mon)) return true;
                 continue;
             }
             if (mon.mpeaceful || mon.mtame || monsterHasNoAttacks(mon)) continue;
-            if (cansee(x, y)) return true;
+            if (heroCanSpotMonsterForHit(mon)) return true;
         }
     }
     return false;
@@ -14530,7 +15780,7 @@ async function swapWithSafeMonster(mon, x, y) {
             mon.mflee = true;
             mon.mfleetim = Math.max(mon.mfleetim || 0, fleetime === 1 ? 2 : fleetime);
         }
-        await pline(`You stop.  ${monsterSwapName(mon).replace(/^your /, 'Your ')} is in the way!`);
+        await pline(`You stop.  ${yMonnam(mon)} is in the way!`);
         game.context.run = null;
         return;
     }
@@ -14567,8 +15817,15 @@ async function swapWithSafeMonster(mon, x, y) {
 
 async function heroMeleeAttack(mon) {
     gethungry();
-    exercise(A_DEX, true);
+    // C refs: src/uhitm.c:attack(), src/uhitm.c:hitum().  Every melee
+    // attempt exercises Strength; Dexterity is credited only after a hit.
+    exercise(A_STR, true);
     const primary = heroWieldedWeapon();
+    if (game._hero_unweapon) {
+        game._hero_unweapon = false;
+        if (!primary) await pline('You begin bashing monsters with your bare hands.');
+        else await pline(`You begin bashing monsters with ${inventoryObjectName(primary)}.`);
+    }
     await maybeCheckCaitiff(mon);
     const toHit = heroMeleeToHit(mon, primary);
     const dieroll = rnd(20);
@@ -14750,6 +16007,71 @@ function monsterResistExplosionFrontdoor(target) {
     if (dlev > 50) dlev = 50;
     else if (dlev < 1) dlev = 1;
     rn2(Math.max(1, 100 + (game.u?.ulevel ?? 1) - dlev));
+}
+
+function monsterResistWandFrontdoor(target) {
+    // C ref: zap.c:resist(..., WAND_CLASS, 0, NOTELL).
+    let dlev = target?.m_lev ?? target?.data?.mlevel ?? 1;
+    if (dlev > 50) dlev = 50;
+    else if (dlev < 1) dlev = 1;
+    rn2(Math.max(1, 100 + 12 - dlev));
+}
+
+async function zapColdMonster(mon) {
+    // C ref: zap.c:zhitm(), ZT_COLD case.
+    if (monsterResistsColdFrontdoor(mon)) return 0;
+    let damage = d(6, 6);
+    const origDamage = damage;
+    if (monsterResistsFireFrontdoor(mon)) damage += d(6, 3);
+    if (!rn2(3)) damage += destroyItemsFrontdoorBasic(origDamage);
+    monsterResistWandFrontdoor(mon);
+    if (typeof mon.mhp === 'number') mon.mhp -= damage;
+    if ((mon.mhp ?? 1) > 0) return damage;
+
+    if (cansee(mon.mx, mon.my)) {
+        const killLine = `You ${monsterKillVerb(mon)} ${monsterKillName(mon)}!`;
+        if (game._pending_message) await append_pline(killLine);
+        else await pline(killLine);
+    }
+    await heroKilledMonster(mon);
+    return damage;
+}
+
+async function zapColdRay(dx, dy) {
+    // C refs: zap.c:weffects() -> ubuzz() -> dobuzz()/zhitm().
+    let range = rn2(7) + 7;
+    let sx = game.u?.ux ?? 0;
+    let sy = game.u?.uy ?? 0;
+
+    while (range-- > 0) {
+        const lsx = sx;
+        const lsy = sy;
+        sx += dx;
+        sy += dy;
+        const loc = game.level?.at(sx, sy);
+        if (!loc || loc.typ === STONE) {
+            const bchance = minesWallBounceChance(loc);
+            range--;
+            ({ dx, dy } = bounceRayDir(sx, sy, dx, dy, bchance));
+            continue;
+        }
+
+        const mon = mon_at(sx, sy);
+        if (mon) {
+            if (zapHitMonster(mon)) {
+                await zapColdMonster(mon);
+                range -= 2;
+            } else if (cansee(mon.mx, mon.my)) {
+                await pline(`The bolt of cold misses ${monsterHitName(mon)}.`);
+            }
+        }
+
+        if (!C.ZAP_POS(loc.typ) || (closedDoorAt(sx, sy) && range >= 0)) {
+            const bchance = minesWallBounceChance(loc);
+            range--;
+            ({ dx, dy } = bounceRayDir(sx, sy, dx, dy, bchance));
+        }
+    }
 }
 
 async function monExplodesBasic(mon, attack) {
@@ -14963,6 +16285,25 @@ function gainExperienceForKill(mon) {
     moreExperienced(monsterExperienceBasic(mon), 0);
 }
 
+async function newExperienceLevelAfterKill() {
+    // C refs: src/mon.c:xkilled(), src/exper.c:newexplevel()/pluslvl(TRUE).
+    const u = game.u;
+    if (!u || (u.ulevel || 1) >= 30 || (u.uexp || 0) < newuexp(u.ulevel || 1))
+        return;
+    const oldLevel = u.ulevel || 1;
+    const welcomeBack = (u.ulevelmax || 0) >= oldLevel + 1;
+    const newLevel = pluslvl(true);
+    const messages = [
+        `Welcome ${welcomeBack ? 'back ' : ''}to experience level ${newLevel}.`,
+        ...applyLevelchangeInnates(oldLevel, newLevel),
+    ];
+    recordRankAchievements(oldLevel, newLevel);
+    for (const msg of messages) {
+        if (game._pending_message) await append_pline(msg);
+        else await pline(msg);
+    }
+}
+
 function observeMonsterDropNameSideEffects(mon, obj) {
     if (!mon || !obj || !cansee(mon.mx, mon.my)) return;
     const r = Math.max(game.u?.xray_range || 0, 2);
@@ -14971,9 +16312,10 @@ function observeMonsterDropNameSideEffects(mon, obj) {
         && dist2(mon.mx, mon.my, game.u?.ux ?? 0, game.u?.uy ?? 0) > neardist) {
         return;
     }
-    // C ref: src/steal.c:mdrop_obj() calls distant_name(obj, doname)
-    // before extract_from_minvent(); nearby visible drops get doname()
-    // side effects in monster-inventory order, before floor stack order.
+    // C refs: src/steal.c:mdrop_obj(), src/objnam.c:distant_name(),
+    // src/o_init.c:observe_object().  Nearby visible drops get doname()
+    // side effects in monster-inventory order: dknown/encountered may change,
+    // but armor type identity still depends on objects[otyp].oc_name_known.
     inventoryObjectName(obj, { observe: true });
 }
 
@@ -15007,6 +16349,7 @@ async function heroKilledMonster(mon) {
         // Luck adjustment is outside the current scoring surface.
     }
     gainExperienceForKill(mon);
+    await newExperienceLevelAfterKill();
     // C ref: mon.c:xkilled() applies tame/peaceful penalties and then the
     // precomputed makemon.c:set_malign() value for ordinary hero kills.
     if (mon.mtame) adjalign(-15);
@@ -15167,7 +16510,7 @@ const DISCOVERY_DESCRIPTION_SLOT = new Map([
     [TOUCHSTONE, 'gray'],
     [FLINT, 'gray'],
     [CLOAK_OF_MAGIC_RESISTANCE, 148],
-    [383, 376], // SPE_FORCE_BOLT's shuffled description slot in this object table.
+    [376, 376], // SPE_FORCE_BOLT's shuffled description slot in this object table.
 ]);
 const WIZARD_SKILL_BASED_SPELLBOOKS = [
     367, // magic missile
@@ -15216,6 +16559,25 @@ const GETPOS_HELP_LINES = [
     "Use '#' to toggle automatic description.",
     "Type a '.' when you are at the right place.",
 ];
+
+function clearDirectionHelpScreen() {
+    game._direction_help_active = false;
+    game._direction_help_screen = '';
+    game._direction_help_cursor = null;
+}
+
+function showDirectionHelpScreen(afterMoreMessage = '') {
+    // C refs: cmd.c:getdir()/getdir_help(); tty displays this as a blocking
+    // text window with dmore(), not as ordinary command dispatch.
+    game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
+    game._direction_help_cursor = [8, C.TERMINAL_ROWS - 1];
+    game._direction_help_active = true;
+    game._direction_help_after_more_message = afterMoreMessage;
+    installSerializedScreenHook();
+    game._full_map_redraw_pending = true;
+    queue_more_prompt();
+}
+
 const LOOKUP_DATA = new Map([
     // C ref: dat/data.base:fountain.
     ['fountain', [
@@ -15651,42 +17013,6 @@ function extendedKeyLine(cmd, desc) {
     return cmd.padEnd(22, ' ') + desc;
 }
 
-function showOverride(screen, cursor) {
-    game._override_serialized_screen = null;
-    game._override_serialized_cursor = null;
-    game._override_screen = screen;
-    game._override_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
-    if (game.nhDisplay && cursor) {
-        game.nhDisplay.cursorCol = cursor[0];
-        game.nhDisplay.cursorRow = cursor[1];
-    }
-}
-
-function showSerializedOverride(screen, cursor) {
-    const display = game.nhDisplay;
-    const term = display?.terminal || display;
-    if (term?.serialize && !term._teleportSerializeBase) {
-        const originalSerialize = term.serialize.bind(term);
-        Object.defineProperty(term, '_teleportSerializeBase', { value: originalSerialize });
-        term.serialize = () => ((game._override_screen || game._override_serialized_persistent)
-                && game._override_serialized_screen)
-            ? game._override_serialized_screen
-            : originalSerialize();
-    }
-    showOverride(screen, cursor);
-    game._override_serialized_screen = screen;
-    game._override_serialized_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
-}
-
-function clearOverrideScreen() {
-    game._override_screen = null;
-    game._override_serialized_screen = null;
-    game._override_serialized_cursor = null;
-    game._override_serialized_persistent = false;
-    game._override_cursor = null;
-    game._override_prev = null;
-}
-
 async function redrawAfterFullScreenMenuDismiss() {
     // C ref: win/tty/wintty.c:erase_menu_or_text().  Full-screen menus
     // dismissed with offx == 0 restore the playfield via docrt()+flush.
@@ -15705,6 +17031,456 @@ async function redrawAfterFullScreenMenuDismiss() {
     } finally {
         game._hallucination_warning_rng_active = prevWarning;
     }
+}
+
+function setOptionsWindowScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._options_window_screen = screen;
+    game._options_window_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._options_window_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function serializeBaseTerminalGrid(display = game.nhDisplay) {
+    const term = display?.terminal || display;
+    if (typeof term?._teleportSerializeBase === 'function')
+        return term._teleportSerializeBase();
+    return serialize_terminal_grid(display);
+}
+
+function clearOptionsWindowScreen({ redraw = false } = {}) {
+    game._options_window_active = false;
+    game._options_window_screen = null;
+    game._options_window_cursor = null;
+    if (redraw) game._full_map_redraw_pending = true;
+}
+
+function setLookWindowScreen(screen, cursor, kind) {
+    installSerializedScreenHook();
+    game._look_window_screen = screen;
+    game._look_window_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._look_window_kind = kind || 'window';
+    game._look_window_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearLookWindowScreen({ redraw = false } = {}) {
+    game._look_window_active = false;
+    game._look_window_screen = null;
+    game._look_window_cursor = null;
+    game._look_window_kind = '';
+    game._look_menu_active = false;
+    game._look_data_active = false;
+    game._look_list_active = false;
+    if (redraw) game._full_map_redraw_pending = true;
+}
+
+function setTravelTipScreen(screen, cursor = [16, 8]) {
+    installSerializedScreenHook();
+    game._travel_tip_screen = screen;
+    game._travel_tip_screen_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._travel_tip_screen_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearTravelTipScreen() {
+    game._travel_tip_screen_active = false;
+    game._travel_tip_screen = null;
+    game._travel_tip_screen_cursor = null;
+}
+
+function setTerrainWindowScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._terrain_window_screen = screen;
+    game._terrain_window_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._terrain_window_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearTerrainWindowScreen({ redraw = false } = {}) {
+    game._terrain_window_active = false;
+    game._terrain_window_screen = null;
+    game._terrain_window_cursor = null;
+    if (redraw) game._full_map_redraw_pending = true;
+}
+
+function setDisclosureWindowScreen(screen, cursor, kind) {
+    installSerializedScreenHook();
+    game._disclosure_window_screen = screen;
+    game._disclosure_window_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._disclosure_window_kind = kind || 'disclosure';
+    game._disclosure_window_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearDisclosureWindowScreen() {
+    game._disclosure_window_active = false;
+    game._disclosure_window_screen = null;
+    game._disclosure_window_cursor = null;
+    game._disclosure_window_kind = '';
+}
+
+function setIntrinsicMenuScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._intrinsic_menu_screen = screen;
+    game._intrinsic_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._intrinsic_menu_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearIntrinsicMenuScreen() {
+    game._intrinsic_menu_active = false;
+    game._intrinsic_menu_screen = null;
+    game._intrinsic_menu_cursor = null;
+}
+
+function setNameMenuScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._name_menu_screen = screen;
+    game._name_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._name_menu_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearNameMenuScreen() {
+    game._name_menu_active = false;
+    game._name_menu_screen = null;
+    game._name_menu_cursor = null;
+}
+
+function setEnhanceSkillsScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._enhance_skills_screen = screen;
+    game._enhance_skills_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._enhance_skills_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearEnhanceSkillsScreen() {
+    game._enhance_skills_active = false;
+    game._enhance_skills_screen = null;
+    game._enhance_skills_cursor = null;
+}
+
+function setDiscoveryWindowScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._discovery_screen = screen;
+    game._discovery_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._discovery_window_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearDiscoveryWindowScreen() {
+    game._discovery_window_active = false;
+    game._discovery_screen = null;
+    game._discovery_cursor = null;
+    game._discovery_pages = null;
+    game._discovery_page = 0;
+}
+
+function setAttributesWindowScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._attributes_screen = screen;
+    game._attributes_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._attributes_window_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearAttributesWindowScreen() {
+    game._attributes_window_active = false;
+    game._attributes_screen = null;
+    game._attributes_cursor = null;
+    game._attributes_page1_screen = null;
+    game._attributes_page2_screen = null;
+    game._attributes_page3_screen = null;
+    game._attributes_page = 0;
+}
+
+function attributesWindowCursor(screen) {
+    return [9, Math.max(0, String(screen || '').split('\n').length - 1)];
+}
+
+function setLevelTeleportMenuScreen(menu) {
+    installSerializedScreenHook();
+    const cursor = levelTeleportMenuCursor(menu?.screen || '');
+    game._level_teleport_menu_screen = menu?.screen || '';
+    game._level_teleport_menu_choices = menu?.choices || {};
+    game._level_teleport_menu_cursor = cursor;
+    game._level_teleport_menu_page = menu?.pageIndex || 0;
+    game._level_teleport_menu_total_pages = menu?.totalPages || 1;
+    game._level_teleport_menu_active = true;
+    if (game.nhDisplay) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function showLevelTeleportMenuPage(pageIndex) {
+    setLevelTeleportMenuScreen(renderLevelTeleportPage(pageIndex));
+}
+
+function clearLevelTeleportMenuScreen() {
+    game._level_teleport_menu_active = false;
+    game._level_teleport_menu_screen = null;
+    game._level_teleport_menu_choices = null;
+    game._level_teleport_menu_cursor = null;
+    game._level_teleport_menu_page = 0;
+    game._level_teleport_menu_total_pages = 0;
+}
+
+async function handleDisclosureWindowInput(ch) {
+    const kind = game._disclosure_window_kind || '';
+    if (kind === 'death-inventory') {
+        const dismiss = ch === ' ' || ch === '\r' || ch === '\n';
+        const pages = Array.isArray(game._death_inventory_disclosure_pages)
+            ? game._death_inventory_disclosure_pages
+            : [];
+        const page = game._death_inventory_disclosure_page || 0;
+        if (dismiss && page + 1 < pages.length) {
+            showDeathInventoryDisclosurePage(page + 1);
+        } else {
+            clearDisclosureWindowScreen();
+            await showDeathAttributesPrompt();
+        }
+        game.context.move = 0;
+        return;
+    }
+    if (kind === 'death-attributes') {
+        const page = game._death_attributes_page || 1;
+        const dismiss = ch === ' ' || ch === '\r' || ch === '\n';
+        if (page === 1 && dismiss && game._death_attributes_page2_screen) {
+            game._death_attributes_page = 2;
+            setDisclosureWindowScreen(
+                game._death_attributes_page2_screen,
+                deathAttributesScreenCursor(game._death_attributes_page2_screen),
+                'death-attributes',
+            );
+        } else if (page === 2 && dismiss && game._death_attributes_page3_screen) {
+            game._death_attributes_page = 3;
+            setDisclosureWindowScreen(
+                game._death_attributes_page3_screen,
+                deathAttributesScreenCursor(game._death_attributes_page3_screen),
+                'death-attributes',
+            );
+        } else {
+            clearDisclosureWindowScreen();
+            await showDeathCreaturesPrompt();
+        }
+        game.context.move = 0;
+        return;
+    }
+    clearDisclosureWindowScreen();
+    if (kind === 'death-vanquished') {
+        await showDeathConductPrompt();
+        return;
+    }
+    if (kind === 'death-conduct') {
+        await showDeathOverviewPrompt();
+        return;
+    }
+    if (kind === 'death-overview') {
+        await showDeathDisclosure();
+        return;
+    }
+    await redrawAfterFullScreenMenuDismiss();
+    game.context.move = 0;
+}
+
+async function handleNameMenuInput(ch) {
+    clearNameMenuScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    if (ch === 'a') await beginAnnotatePrompt();
+    else if (ch === 'i' || ch === 'y') await beginNameInventoryPrompt();
+    else game.context.move = 0;
+}
+
+async function handleDiscoveryWindowInput(ch) {
+    const dismiss = ch === ' ' || ch === '\r' || ch === '\n';
+    const pages = Array.isArray(game._discovery_pages) ? game._discovery_pages : [];
+    const page = game._discovery_page || 0;
+    if (dismiss && page + 1 < pages.length) {
+        game._discovery_page = page + 1;
+        setDiscoveryWindowScreen(pages[game._discovery_page], [8, 23]);
+    } else {
+        clearDiscoveryWindowScreen();
+        await redrawAfterFullScreenMenuDismiss();
+    }
+    game.context.move = 0;
+}
+
+async function handleAttributesWindowInput(key) {
+    // C ref: src/insight.c:doattributes() -> win/tty/wintty.c:tty_display_nhwindow().
+    const advance = key === 32 || key === 13;
+    const escape = key === 27;
+    const page = game._attributes_page || 1;
+
+    if (page === 1) {
+        if (advance && game._attributes_page2_screen) {
+            game._attributes_page = 2;
+            setAttributesWindowScreen(
+                game._attributes_page2_screen,
+                attributesWindowCursor(game._attributes_page2_screen),
+            );
+        } else {
+            clearAttributesWindowScreen();
+            await redrawAfterFullScreenMenuDismiss();
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    if (page === 2) {
+        if (!advance && !escape) {
+            setAttributesWindowScreen(
+                game._attributes_page2_screen,
+                attributesWindowCursor(game._attributes_page2_screen),
+            );
+        } else if (advance && game._attributes_page3_screen) {
+            game._attributes_page = 3;
+            setAttributesWindowScreen(
+                game._attributes_page3_screen,
+                attributesWindowCursor(game._attributes_page3_screen),
+            );
+        } else {
+            clearAttributesWindowScreen();
+            await redrawAfterFullScreenMenuDismiss();
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    if (!advance && !escape) {
+        setAttributesWindowScreen(
+            game._attributes_page3_screen,
+            attributesWindowCursor(game._attributes_page3_screen),
+        );
+    } else {
+        clearAttributesWindowScreen();
+        await redrawAfterFullScreenMenuDismiss();
+    }
+    game.context.move = 0;
+}
+
+async function dismissLevelTeleportMenu() {
+    clearLevelTeleportMenuScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    game.context.move = 0;
+}
+
+async function handleLevelTeleportMenuInput(ch) {
+    // C ref: src/teleport.c:level_tele() -> src/dungeon.c:print_dungeon(TRUE).
+    const page = game._level_teleport_menu_page || 0;
+    const totalPages = game._level_teleport_menu_total_pages || 1;
+    const target = game._level_teleport_menu_choices?.[ch];
+    if (target) {
+        await dismissLevelTeleportMenu();
+        await scheduleLevelTeleportFromMenu(target);
+        return;
+    }
+
+    if ((ch === ' ' || ch === C.MENU_NEXT_PAGE) && page + 1 < totalPages) {
+        showLevelTeleportMenuPage(page + 1);
+        game.context.move = 0;
+        return;
+    }
+    if (ch === C.MENU_PREVIOUS_PAGE && page > 0) {
+        showLevelTeleportMenuPage(page - 1);
+        game.context.move = 0;
+        return;
+    }
+    if (ch === '^' && page > 0) {
+        showLevelTeleportMenuPage(0);
+        game.context.move = 0;
+        return;
+    }
+    if (ch === '|' && page + 1 < totalPages) {
+        showLevelTeleportMenuPage(totalPages - 1);
+        game.context.move = 0;
+        return;
+    }
+
+    if (ch === '\x1b' || ch === '\r' || ch === '\n'
+        || (ch === ' ' && page + 1 >= totalPages)) {
+        await dismissLevelTeleportMenu();
+        return;
+    }
+
+    showLevelTeleportMenuPage(page);
+    game.context.move = 0;
 }
 
 function currentFruitName() {
@@ -15813,7 +17589,7 @@ function renderPickupTypesMenu() {
         if (!rows[row]) continue;
         display.putstr(col, row, rows[row], NO_COLOR, row === 0 ? ATR_INVERSE : 0);
     }
-    showOverride(serialize_terminal_grid(display), [col + '(end)'.length + 1, 21]);
+    setOptionsWindowScreen(serializeBaseTerminalGrid(display), [col + '(end)'.length + 1, 21]);
 }
 
 async function beginPickupTypesMenu() {
@@ -15821,7 +17597,7 @@ async function beginPickupTypesMenu() {
         selected: pickupTypesSetFromString(game.flags?.pickup_types || ''),
         previous: String(game.flags?.pickup_types || ''),
     };
-    clearOverrideScreen();
+    clearOptionsWindowScreen();
     await redrawAfterFullScreenMenuDismiss();
     renderPickupTypesMenu();
 }
@@ -15835,13 +17611,13 @@ async function handlePickupTypesMenuKey(ch) {
         const returnToPlay = !!menu.returnToPlay;
         const returnToBasicOptions = !!menu.returnToBasicOptions;
         game._pickup_types_menu = null;
+        clearOptionsWindowScreen();
         if (returnToBasicOptions) {
             rerenderBasicOptionsFromFirstPage();
             game.context.move = 0;
             return true;
         }
         if (returnToPlay) {
-            clearOverrideScreen();
             await redrawAfterFullScreenMenuDismiss();
             game.context.move = 0;
             return true;
@@ -15856,13 +17632,13 @@ async function handlePickupTypesMenuKey(ch) {
         const returnToPlay = !!menu.returnToPlay;
         const returnToBasicOptions = !!menu.returnToBasicOptions;
         game._pickup_types_menu = null;
+        clearOptionsWindowScreen();
         if (returnToBasicOptions) {
             rerenderBasicOptionsFromFirstPage();
             game.context.move = 0;
             return true;
         }
         if (returnToPlay) {
-            clearOverrideScreen();
             await redrawAfterFullScreenMenuDismiss();
             game.context.move = 0;
             return true;
@@ -16060,7 +17836,9 @@ function renderBasicOptionsMenu() {
     const lines = basicOptionsLines(menu.page || 0);
     const footerRow = lines.length - 1;
     const footer = lines[footerRow] || '';
-    showSerializedOverride(lines.join('\n'), [footer.length, footerRow]);
+    // C ref: options.c:doset_simple(); select_menu() keeps the tty menu active
+    // until the option key is consumed.
+    setOptionsWindowScreen(lines.join('\n'), [footer.length, footerRow]);
     game.context.move = 0;
 }
 
@@ -16072,7 +17850,7 @@ function beginBasicOptionsMenu() {
 
 async function finishBasicOptionsMenu() {
     game._basic_options_menu = null;
-    clearOverrideScreen();
+    clearOptionsWindowScreen();
     await redrawAfterFullScreenMenuDismiss();
     game.context.move = 0;
 }
@@ -16088,6 +17866,7 @@ function rerenderBasicOptionsFromFirstPage() {
 
 const BASIC_OPTIONS_SELECTIONS = [
     {
+        a: 'fruit',
         c: 'price_quotes',
         d: 'autodig',
         e: 'autoopen',
@@ -16131,7 +17910,21 @@ async function handleBasicOptionsMenuKey(ch) {
         }
         return;
     }
+    if (ch === '>' || ch === '\x06') {
+        menu.page = Math.min(1, (menu.page || 0) + 1);
+        renderBasicOptionsMenu();
+        return;
+    }
+    if (ch === '<' || ch === '\x02') {
+        menu.page = Math.max(0, (menu.page || 0) - 1);
+        renderBasicOptionsMenu();
+        return;
+    }
     const name = BASIC_OPTIONS_SELECTIONS[menu.page || 0]?.[ch];
+    if (name === 'fruit') {
+        await beginOptionsFruitPrompt({ returnToBasicOptions: true });
+        return;
+    }
     if (name === 'pickup_types') {
         await beginPickupTypesMenu();
         if (game._pickup_types_menu) {
@@ -16375,7 +18168,9 @@ function renderSimpleOptionsMenu() {
     const lines = simpleOptionsLines(menu.page);
     const footerRow = lines.length - 1;
     const footer = lines[footerRow] || '';
-    showSerializedOverride(lines.join('\n'), [footer.length, footerRow]);
+    // C ref: options.c:doset_simple_menu(); the full options list is a tty
+    // menu window that remains active across selection input.
+    setOptionsWindowScreen(lines.join('\n'), [footer.length, footerRow]);
     game.context.move = 0;
 }
 
@@ -16446,7 +18241,7 @@ async function showNextOptionsMessageOrPrompt() {
         game._more = false;
         game._more_dismissals_remaining = 0;
         clear_pending_message();
-        clearOverrideScreen();
+        clearOptionsWindowScreen();
         for (const name of next.names || []) applySimpleBooleanOptionOnce(name);
         applySimpleBooleanOptionOnce(game._options_message_queue?.[0]?.names?.[0]);
         await pline(next.line || '');
@@ -16473,7 +18268,7 @@ async function finishSimpleOptionsMenu() {
     game._options_menu = null;
     game._options_preapplied = new Set();
     game._pickup_types_menu = null;
-    clearOverrideScreen();
+    clearOptionsWindowScreen();
     await redrawAfterFullScreenMenuDismiss();
 
     const messages = [];
@@ -16500,11 +18295,13 @@ function rerenderOptionsFromFirstPage() {
     renderSimpleOptionsMenu();
 }
 
-async function beginOptionsFruitPrompt() {
+async function beginOptionsFruitPrompt(options = {}) {
+    clearOptionsWindowScreen();
     await redrawAfterFullScreenMenuDismiss();
     game._awaiting_options_fruit = true;
+    game._options_fruit_return_to_basic = !!options.returnToBasicOptions;
     game._options_fruit_input = '';
-    const baseRows = serialize_terminal_grid(game.nhDisplay).split('\n');
+    const baseRows = serializeBaseTerminalGrid(game.nhDisplay).split('\n');
     while (baseRows.length < C.TERMINAL_ROWS) baseRows.push('');
     baseRows[22] = '';
     baseRows[23] = '';
@@ -16517,7 +18314,7 @@ function renderOptionsFruitPromptScreen() {
     const input = game._options_fruit_input || '';
     const prompt = input ? `Set fruit to what? ${input}` : 'Set fruit to what?';
     const screen = screenWithPromptLine(game._options_fruit_base_screen || '', prompt);
-    showSerializedOverride(screen, [Math.min('Set fruit to what? '.length + input.length, 79), 0]);
+    setOptionsWindowScreen(screen, [Math.min('Set fruit to what? '.length + input.length, 79), 0]);
     game._pending_message = prompt;
     game.context.move = 0;
 }
@@ -16529,18 +18326,32 @@ async function handleOptionsFruitKey(ch) {
             game.flags = game.flags || {};
             game.flags.fruit = text;
         }
+        const returnToBasicOptions = !!game._options_fruit_return_to_basic;
         game._awaiting_options_fruit = false;
+        game._options_fruit_return_to_basic = false;
         game._options_fruit_input = '';
         game._options_fruit_base_screen = null;
+        clearOptionsWindowScreen();
         clear_pending_message();
+        if (returnToBasicOptions) {
+            rerenderBasicOptionsFromFirstPage();
+            return;
+        }
         rerenderOptionsFromFirstPage();
         return;
     }
     if (ch === '\x1b') {
+        const returnToBasicOptions = !!game._options_fruit_return_to_basic;
         game._awaiting_options_fruit = false;
+        game._options_fruit_return_to_basic = false;
         game._options_fruit_input = '';
         game._options_fruit_base_screen = null;
+        clearOptionsWindowScreen();
         clear_pending_message();
+        if (returnToBasicOptions) {
+            rerenderBasicOptionsFromFirstPage();
+            return;
+        }
         rerenderOptionsFromFirstPage();
         return;
     }
@@ -16626,8 +18437,7 @@ function showTravelTipOverScreen(baseScreen) {
     while (lines.length < C.TERMINAL_ROWS) lines.push('');
     for (let row = 0; row <= 8; row++) lines[row] = '';
     for (const [row, text] of TRAVEL_TIP_ROWS) lines[row] = `\x1b[10C${text}`;
-    showSerializedOverride(lines.slice(0, C.TERMINAL_ROWS).join('\n'), [16, 8]);
-    game._override_serialized_persistent = true;
+    setTravelTipScreen(lines.slice(0, C.TERMINAL_ROWS).join('\n'), [16, 8]);
 }
 
 async function showTravelTipScreen(baseScreen = null) {
@@ -16646,9 +18456,8 @@ async function showTravelTipScreen(baseScreen = null) {
     for (const [row, text] of TRAVEL_TIP_ROWS) {
         display.putstr(10, row, text, NO_COLOR, 0);
     }
-    const screen = serialize_terminal_grid(display);
-    showSerializedOverride(screen, [16, 8]);
-    game._override_serialized_persistent = true;
+    const screen = serializeBaseTerminalGrid(display);
+    setTravelTipScreen(screen, [16, 8]);
 }
 
 async function showLookAtMenu() {
@@ -16678,9 +18487,9 @@ async function showLookAtMenu() {
     ];
     for (const [row, col, text] of rows)
         display.putstr(col, row, text, NO_COLOR, row === 0 ? ATR_INVERSE : 0);
-    const screen = serialize_terminal_grid(display);
-    showSerializedOverride(screen, [46, 14]);
-    game._override_serialized_persistent = true;
+    const screen = serializeBaseTerminalGrid(display);
+    setLookWindowScreen(screen, [46, 14], 'menu');
+    game._look_menu_active = true;
 }
 
 async function showHelpMenu() {
@@ -16701,8 +18510,9 @@ async function showHelpMenu() {
         display.putstr(17, row, lines[row], NO_COLOR, row === 0 ? ATR_INVERSE : 0);
     const screen = serialize_terminal_grid(display);
     game._help_menu_screen = screen;
-    showSerializedOverride(screen, [23, lines.length - 1]);
-    game._override_serialized_persistent = false;
+    game._help_menu_cursor = [23, lines.length - 1];
+    installSerializedScreenHook();
+    game._help_menu_active = true;
 }
 
 function expandTabsForTty(line) {
@@ -16764,8 +18574,24 @@ function renderHelpTextPage() {
     const screen = rows.join('\n');
     game._help_text_screen = screen;
     game._help_text_cursor = [Math.min(morePrompt.length, COLNO - 1), moreRow];
-    showSerializedOverride(screen, game._help_text_cursor);
-    game._override_serialized_persistent = false;
+    installSerializedScreenHook();
+    game._help_text_active = true;
+}
+
+function clearHelpMenuState() {
+    game._help_menu_active = false;
+    game._help_menu_screen = null;
+    game._help_menu_cursor = null;
+}
+
+function clearHelpTextState() {
+    game._help_text_active = false;
+    game._help_text_pages = null;
+    game._help_text_page = 0;
+    game._help_text_more_prompt = null;
+    game._help_text_compact_final_more = false;
+    game._help_text_cursor = null;
+    game._help_text_screen = null;
 }
 
 function showHelpTextLines(lines, options = {}) {
@@ -16822,7 +18648,7 @@ function showAboutNetHack() {
 }
 
 async function handleHelpMenuSelection(ch) {
-    game._help_menu_screen = null;
+    clearHelpMenuState();
     if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
         await redrawAfterFullScreenMenuDismiss();
         game.context.move = 0;
@@ -16834,6 +18660,7 @@ async function handleHelpMenuSelection(ch) {
         return;
     }
     if (ch === 'e') {
+        await redrawAfterFullScreenMenuDismiss();
         await showLookAtMenu();
         game._awaiting_lookat_menu = true;
         game.context.move = 0;
@@ -16886,6 +18713,43 @@ async function handleHelpMenuSelection(ch) {
     game.context.move = 0;
 }
 
+async function handleHelpMenuInput(ch) {
+    // C ref: pager.c:dohelp() displays an NHW_MENU and select_menu() consumes
+    // the selector before ordinary command dispatch resumes.
+    clearHelpMenuState();
+    await handleHelpMenuSelection(ch);
+    game.context.move = 0;
+}
+
+async function handleHelpTextInput(ch) {
+    // C ref: win/tty/wintty.c:process_text_window().
+    const dismiss = ch === ' ' || ch === '\r' || ch === '\n';
+    const cancel = ch === '\x1b';
+    const pages = game._help_text_pages || [[]];
+    const page = game._help_text_page || 0;
+    if (dismiss && page + 1 < pages.length) {
+        game._help_text_page = page + 1;
+        renderHelpTextPage();
+    } else if (dismiss || cancel) {
+        clearHelpTextState();
+        await redrawAfterFullScreenMenuDismiss();
+    } else {
+        renderHelpTextPage();
+    }
+    game.context.move = 0;
+}
+
+async function handleLookWindowInput(ch) {
+    if (!game._look_data_active && !game._look_list_active) return false;
+    void ch;
+    game._look_data_screen = null;
+    game._look_list_screen = null;
+    clearLookWindowScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    game.context.move = 0;
+    return true;
+}
+
 async function showGetposHelpScreen(kind = 'travel') {
     // C ref: getpos.c:getpos_help(). Tty menu overlays the current map from
     // column 10 onward and blocks on a More prompt before returning to getpos.
@@ -16903,8 +18767,11 @@ async function showGetposHelpScreen(kind = 'travel') {
     display.setCursor(18, 16);
     const screen = serialize_terminal_grid(display);
     game._getpos_help_screen = screen;
+    game._getpos_help_cursor = [18, 16];
+    game._getpos_help_active = true;
     game._getpos_help_after_more = kind;
-    showSerializedOverride(screen, [18, 16]);
+    installSerializedScreenHook();
+    game._full_map_redraw_pending = true;
     queue_more_prompt();
 }
 
@@ -16926,9 +18793,10 @@ async function showLookupDataOverlay(lines) {
     const moreRow = Math.min(lines.length, C.TERMINAL_ROWS - 1);
     for (let c = col; c < COLNO; c++) display.setCell(c, moreRow, ' ', NO_COLOR, 0);
     display.putstr(col, moreRow, '--More--', NO_COLOR, 0);
-    const screen = serialize_terminal_grid(display);
+    const screen = serializeBaseTerminalGrid(display);
     game._look_data_screen = screen;
-    showSerializedOverride(screen, [Math.min(col + '--More--'.length, COLNO - 1), moreRow]);
+    game._look_data_active = true;
+    setLookWindowScreen(screen, [Math.min(col + '--More--'.length, COLNO - 1), moreRow], 'data');
 }
 
 function lookCoord(x, y) {
@@ -16955,7 +18823,8 @@ function showLookListScreen(lines) {
     rows[C.TERMINAL_ROWS - 1] = '--More--';
     const screen = rows.join('\n');
     game._look_list_screen = screen;
-    showSerializedOverride(screen, [8, C.TERMINAL_ROWS - 1]);
+    game._look_list_active = true;
+    setLookWindowScreen(screen, [8, C.TERMINAL_ROWS - 1], 'list');
 }
 
 function visibleLookObjects() {
@@ -17014,8 +18883,15 @@ function showLookEngravingList(all = false) {
 }
 
 async function resumeGetposAfterHelp(kind) {
+    game._getpos_help_active = false;
     game._getpos_help_screen = '';
+    game._getpos_help_cursor = null;
     game._getpos_help_after_more = '';
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    clear_pending_message();
+    game._full_map_redraw_pending = true;
+    await flush_screen(1);
     if (kind === 'travel') {
         const cursor = currentTravelCursor();
         await showPromptLine('Move cursor to the desired destination:');
@@ -17188,7 +19064,7 @@ function travelLocationDescription(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc || !travelSeenOrKnown(x, y)) return 'unexplored area (no travel path)';
     const noTravelPath = !!(game.u && (game.u.ux !== x || game.u.uy !== y)
-        && !findTravelStepToKnownTarget({ x, y }));
+        && !isValidTravelPoint({ x, y }));
     let desc;
     if (loc.typ === C.CLOUD) desc = 'fog/vapor cloud';
     else if (IS_WALL(loc.typ)) desc = 'wall (no travel path)';
@@ -17273,12 +19149,12 @@ function farlookLocationDescription(x, y) {
     if (mon && !mon.mundetected && cansee(x, y)) return farlookMonsterDescription(mon, x, y);
     const loc = game.level?.at(x, y);
     if (!loc) return 'stone';
-    if (!cansee(x, y) && !loc.seenv
+    if (!cansee(x, y)
         && (!loc.disp_ch || loc.disp_ch === ' ')
         && (!loc.remembered_glyph || loc.remembered_glyph.ch === ' ')) {
-        // C refs: src/getpos.c:auto_describe(), src/pager.c:lookat().
-        // Getpos describes the displayed glyph; unseen blank map cells are
-        // treated as stone even if JS already knows hidden corridor terrain.
+        // C ref: src/pager.c:lookat().  Farlook describes glyph_at(), so a
+        // blank remembered cmap square reports the stone glyph even when the
+        // hidden terrain is already known to be corridor.
         return 'stone';
     }
     if (!getposLocationKnown(x, y)) return 'unexplored area';
@@ -17306,7 +19182,7 @@ function farlookLocationDescription(x, y) {
 }
 
 function farlookBlankStoneGlyph(loc, x, y) {
-    return !!loc && !cansee(x, y) && !loc.seenv
+    return !!loc && !cansee(x, y)
         && (!loc.disp_ch || loc.disp_ch === ' ')
         && (!loc.remembered_glyph || loc.remembered_glyph.ch === ' ');
 }
@@ -17500,6 +19376,7 @@ async function runTeleportArrivalSpotEffects(feature, options = {}) {
             featureLine: feature?.line || '',
             featureAlreadyShown: autopicked,
             arrivalFloorListNoTurn: !!options.arrivalFloorListNoTurn,
+            packFeatureWithPending: !!options.packFeatureWithPending,
         });
     return { autopicked };
 }
@@ -17598,6 +19475,15 @@ function travelSeenOrKnown(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     return !!(loc.seenv || loc.remembered_glyph || (loc.disp_ch && loc.disp_ch !== ' ') || couldsee(x, y));
+}
+
+function travelPathCellKnown(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    // C ref: src/hack.c:findtravelpath().  Cursor targeting can describe
+    // remembered glyphs, but pathfinding only expands cells that have seenv
+    // or are currently visible to an unblind hero.
+    return !!(loc.seenv || (!(game.u?.ublind || game.u?.uprops?.blind) && couldsee(x, y)));
 }
 
 function travelFeatureStairAt(x, y) {
@@ -17769,7 +19655,12 @@ function travelMoveAllowed(x, y, dx, dy) {
     const ny = y + dy;
     if (nx < 1 || nx >= COLNO || ny < 0 || ny >= ROWNO) return false;
     if (blocksMove(nx, ny)) return false;
-    if (sobj_at_basic(BOULDER, nx, ny)) return false;
+    if (!travelBoulderAllowed(x, y, nx, ny)) return false;
+    // C ref: src/hack.c:test_move(TEST_TRAV).  Travel pathfinding refuses
+    // known traps and unsafe known liquid; the player can still step there
+    // manually after travel stops.
+    if (shouldAvoidKnownTrapForTravel(nx, ny)) return false;
+    if (shouldAvoidKnownLiquidForTravel(nx, ny)) return false;
     if (dx && dy) {
         const source = game.level?.at(x, y);
         const target = game.level?.at(nx, ny);
@@ -17782,27 +19673,104 @@ function travelMoveAllowed(x, y, dx, dy) {
     return true;
 }
 
-function findTravelStepToKnownTarget(target) {
+function heroHasTravelBoulderBypassToolBasic() {
+    return (game.inventory || []).some((obj) =>
+        obj?.otyp === PICK_AXE || obj?.otyp === DWARVISH_MATTOCK || obj?.otyp === WAN_DIGGING);
+}
+
+function travelBoulderAllowed(x, y, nx, ny) {
+    // C ref: src/hack.c:test_move(TEST_TRAV).  Travel avoids boulders in
+    // Sokoban, but otherwise may path to one boulder square and let the real
+    // movement attempt stop or push according to DO_MOVE rules.
+    if (!sobj_at_basic(BOULDER, nx, ny)) return true;
+    if (heroInSokobanBasic()) return false;
+    if (sobj_at_basic(BOULDER, x, y)
+        && !heroCanMoveOntoBoulderBasic(x, y)
+        && !heroHasTravelBoulderBypassToolBasic()) return false;
+    return true;
+}
+
+function travelDelayedSource(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    return !!sobj_at_basic(BOULDER, x, y);
+}
+
+function shouldAvoidKnownTrapForTravel(x, y) {
+    const trap = seenTrapAt(x, y);
+    return !!trap && trap.ttyp !== C.VIBRATING_SQUARE;
+}
+
+function shouldAvoidKnownLiquidForTravel(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc?.seenv || !(C.IS_POOL(loc.typ) || C.IS_LAVA(loc.typ))) return false;
+    const u = game.u || {};
+    if (u.uprops?.levitation || u.uprops?.flying) return false;
+    if (C.IS_POOL(loc.typ) && u.uprops?.water_walking) return false;
+    if (C.IS_LAVA(loc.typ) && u.uprops?.lava_walking && C.IS_LAVA(game.level?.at(u.ux, u.uy)?.typ)) return false;
+    return true;
+}
+
+function travelRunMap(run) {
+    if (!run) return null;
+    if (!run._travelmap) run._travelmap = new Set();
+    return run._travelmap;
+}
+
+function findTravelStepToKnownTarget(target, run = game.context?.run) {
     const u = game.u;
     if (!u || !target) return false;
     if (u.ux === target.x && u.uy === target.y) return null;
 
-    const seen = new Set([`${target.x},${target.y}`]);
-    const queue = [{ x: target.x, y: target.y }];
-    for (let qi = 0; qi < queue.length && qi < COLNO * ROWNO; qi++) {
-        const here = queue[qi];
+    const bestRadius = new Map([[`${target.x},${target.y}`, 0]]);
+    const queue = [{ x: target.x, y: target.y, radius: 0, order: 0 }];
+    let order = 1;
+    let bestStep = null;
+    for (let qi = 0; queue.length && qi < COLNO * ROWNO; qi++) {
+        queue.sort((a, b) => (a.radius - b.radius) || (a.order - b.order));
+        const here = queue.shift();
+        if (bestStep && (here.radius > bestStep.radius
+            || (here.radius === bestStep.radius && here.order > bestStep.order))) break;
+        const delayed = travelDelayedSource(here.x, here.y);
         for (const [dx, dy] of TRAVEL_DIRS_ORD) {
             const nx = here.x + dx;
             const ny = here.y + dy;
             if (!travelMoveAllowed(here.x, here.y, dx, dy)) continue;
+            const nextRadius = here.radius + (delayed ? 3 : 1);
             if (nx === u.ux && ny === u.uy) {
-                return { dx: here.x - u.ux, dy: here.y - u.uy };
+                const candidateOrder = order++;
+                if (!bestStep || nextRadius < bestStep.radius
+                    || (nextRadius === bestStep.radius && candidateOrder < bestStep.order)) {
+                    bestStep = {
+                        x: here.x,
+                        y: here.y,
+                        radius: nextRadius,
+                        order: candidateOrder,
+                    };
+                }
+                continue;
             }
             const key = `${nx},${ny}`;
-            if (seen.has(key) || !travelSeenOrKnown(nx, ny)) continue;
-            seen.add(key);
-            queue.push({ x: nx, y: ny });
+            if (!travelPathCellKnown(nx, ny)) continue;
+            if ((bestRadius.get(key) ?? Infinity) <= nextRadius) continue;
+            bestRadius.set(key, nextRadius);
+            queue.push({ x: nx, y: ny, radius: nextRadius, order: order++ });
         }
+    }
+    if (bestStep) {
+        const travelmap = travelRunMap(run);
+        const key = `${bestStep.x},${bestStep.y}`;
+        if (run) {
+            if (travelmap?.has(key)) {
+                run._travel_stop_message = 'You stop, unsure which way to go.';
+                run._travel_stop_after_step = true;
+            } else if (bestStep.x === target.x && bestStep.y === target.y) {
+                run._travel_stop_after_step = true;
+                game._travel_cached_target = null;
+            }
+        }
+        travelmap?.add(`${u.ux},${u.uy}`);
+        return { dx: bestStep.x - u.ux, dy: bestStep.y - u.uy };
     }
     return null;
 }
@@ -17824,7 +19792,7 @@ function guessTravelGoal(target) {
             const nx = here.x + dx;
             const ny = here.y + dy;
             const key = `${nx},${ny}`;
-            if (seen.has(key) || !travelMoveAllowed(here.x, here.y, dx, dy) || !travelSeenOrKnown(nx, ny)) continue;
+            if (seen.has(key) || !travelMoveAllowed(here.x, here.y, dx, dy) || !travelPathCellKnown(nx, ny)) continue;
             seen.add(key);
             travel.set(key, here.radius + 1);
             queue.push({ x: nx, y: ny, radius: here.radius + 1 });
@@ -17862,7 +19830,8 @@ function guessTravelGoal(target) {
 }
 
 function findTravelStep(target) {
-    const direct = findTravelStepToKnownTarget(target);
+    const run = game.context?.run;
+    const direct = findTravelStepToKnownTarget(target, run);
     if (direct) return direct;
     const guess = guessTravelGoal(target);
     if (!guess) return direct;
@@ -17871,14 +19840,46 @@ function findTravelStep(target) {
         const dy = Math.sign((target?.y ?? game.u.uy) - game.u.uy);
         return travelMoveAllowed(game.u.ux, game.u.uy, dx, dy) ? { dx, dy } : direct;
     }
-    return findTravelStepToKnownTarget(guess) || direct;
+    return findTravelStepToKnownTarget(guess, run) || direct;
+}
+
+function isValidTravelPoint(target) {
+    // C ref: hack.c:is_valid_travelpt() -> findtravelpath(TRAVP_VALID).
+    const u = game.u;
+    if (!u || !target) return false;
+    if (u.ux === target.x && u.uy === target.y) return true;
+    const start = { x: u.ux, y: u.uy };
+    const seen = new Set([`${start.x},${start.y}`]);
+    const queue = [start];
+    for (let qi = 0; qi < queue.length && qi < COLNO * ROWNO; qi++) {
+        const here = queue[qi];
+        for (const [dx, dy] of TRAVEL_DIRS_ORD) {
+            const nx = here.x + dx;
+            const ny = here.y + dy;
+            if (!C.isok(nx, ny)) continue;
+            if (!travelMoveAllowed(here.x, here.y, dx, dy)) continue;
+            if (!travelPathCellKnown(nx, ny)) continue;
+            if (nx === target.x && ny === target.y) return true;
+            const key = `${nx},${ny}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            queue.push({ x: nx, y: ny });
+        }
+    }
+    return false;
 }
 
 async function beginTravelRunToCachedTarget() {
     const target = game._travel_cached_target;
     if (!target) return false;
     game._run_stop_after_move = false;
-    game.context.run = { travel: true, target: { x: target.x, y: target.y }, steps: 0 };
+    game.context.run = {
+        travel: true,
+        target: { x: target.x, y: target.y },
+        steps: 0,
+        initialAttempt: true,
+        _travelmap: new Set(),
+    };
     return continueRunStep();
 }
 
@@ -18007,8 +20008,7 @@ function renderIntrinsicMenu(menu) {
         : ' (end)';
     lines.push(footer);
     const screen = lines.join('\n');
-    showSerializedOverride(screen, [footer.length, lines.length - 1]);
-    game._override_serialized_persistent = true;
+    setIntrinsicMenuScreen(screen, [footer.length, lines.length - 1]);
 }
 
 function beginIntrinsicMenu() {
@@ -18084,6 +20084,8 @@ async function showNextStartupPreambleMessage() {
     game._more_dismissals_remaining = 0;
     game._startup_preamble_more_active = needsMore;
     game._startup_preamble_done_waiting_tutorial = hasTutorialPrompt;
+    game._full_map_redraw_pending = true;
+    await flush_screen(1);
     game.context.move = 0;
     return true;
 }
@@ -18104,9 +20106,12 @@ async function runArrivalFloorLookAfterMore() {
     game._arrival_floor_look_after_more = false;
     const noTurnFloorList = !!game._arrival_floor_list_no_turn_pending;
     game._arrival_floor_list_no_turn_pending = false;
+    const featureAlreadyShown = !!game._arrival_floor_feature_already_shown_pending;
+    game._arrival_floor_feature_already_shown_pending = false;
     await lookHereAfterMove({
         arrivalFloorListNoTurn: noTurnFloorList,
         resumeStairArrivalAfterFloorList: !noTurnFloorList,
+        featureAlreadyShown,
     });
     if (game._more && game._deferred_blind_floor_list) {
         game.context.move = 0;
@@ -18144,11 +20149,19 @@ function petCombatHitTopline(line) {
     return /^The (?:kitten|little dog|(?:saddled )?pony) (?:bites|hits|kicks|stings|butts|touches) .+[.!]$/.test(line || '');
 }
 
+function petDeathTopline(line) {
+    return /^The (?:kitten|little dog|(?:saddled )?pony) is (?:killed|destroyed)!$/.test(line || '');
+}
+
 function splitDeferredPetCombatTopline(line) {
     const msg = String(line || '');
     const match = /^(The (?:kitten|little dog|(?:saddled )?pony) (?:misses|bites|hits|kicks|stings|butts|touches) .+?[.!])  (The (?:kitten|little dog|(?:saddled )?pony) .+)$/.exec(msg);
-    if (!match || !petCombatTopline(match[1]) || !petCombatTopline(match[2])) return null;
-    return { first: match[1], rest: match[2] };
+    if (match && petCombatTopline(match[1]) && petCombatTopline(match[2]))
+        return { first: match[1], rest: match[2] };
+    const mixed = /^(The (?:kitten|little dog|(?:saddled )?pony) (?:misses|bites|hits|kicks|stings|butts|touches) .+?[.!])  (.+)$/.exec(msg);
+    if (mixed && petCombatTopline(mixed[1]))
+        return { first: mixed[1], rest: mixed[2] };
+    return null;
 }
 
 function monsterPhysicalTopline(line) {
@@ -18235,19 +20248,19 @@ async function handleQueuedMore(ch) {
         && game._preserve_more_base_for_next_monster_message
         && game._latched_more_screen;
     if (!moreDismissKey) {
-        if (game._direction_help_screen) {
-            showSerializedOverride(game._direction_help_screen, [8, 23]);
-            game._override_prev = null;
-        }
-        if (game._getpos_help_screen) {
-            showSerializedOverride(game._getpos_help_screen, [18, 16]);
-            game._override_prev = null;
-        }
         game.context.move = 0;
         return true;
     }
 
     game._pending_more_strict_keys = false;
+    if ((game._more_dismissals_remaining || 0) > 1
+        && game._nomovemsg === 'You survived that attempt on your life.'
+        && String(game._pending_message || '').startsWith("OK, so you don't die.")) {
+        // C refs: src/end.c:savelife(), win/tty/topl.c:more().  The saved-life
+        // OK continuation is a single tty More even if several resumed
+        // physical fragments packed into the visible topline.
+        game._more_dismissals_remaining = 1;
+    }
     game._more_dismissals_remaining--;
     if (game._more_dismissals_remaining <= 0) consumeTutorialEntryUacOverrideDismissal();
     game._monster_more_accepts_any_key = false;
@@ -18278,6 +20291,7 @@ async function handleQueuedMore(ch) {
     game._latched_more_screen = null;
     game._latched_more_cursor = null;
     game._latched_more_keep_until_dismiss = false;
+    game._latched_more_use_pending_topline = false;
     if (game._amulet_wish_prompt_after_more && game._more_dismissals_remaining <= 0)
         return await beginAmuletWishPromptAfterMore();
     if (!(game._monster_death_pending && game._after_more_projectile_clear_after_prompt))
@@ -18298,7 +20312,7 @@ async function handleQueuedMore(ch) {
         // C refs: src/end.c:savelife(), src/allmain.c:moveloop_core().
         // The displayed OK+monster-hit More has already applied that hit's
         // damage.  Dismissing it resumes the interrupted monster scan; do not
-        // let stale deferred attack state replay a tail before the scan resumes.
+        // let stale deferred attack state duplicate a tail before the scan resumes.
         game._deferred_monster_physical_attack = null;
         game._more = false;
         game._more_dismissals_remaining = 0;
@@ -18322,6 +20336,10 @@ async function handleQueuedMore(ch) {
         game._more = false;
         game._more_dismissals_remaining = 0;
         clear_pending_message();
+        // C ref: win/tty/wintty.c:process_text_window().  Dismissing an
+        // arrival floor text window restores the destination map before the
+        // interrupted stair turn continues.
+        game._full_map_redraw_pending = true;
         await triggerSpotEffectsAtHero();
         if (game._more) {
             game.context.move = 0;
@@ -18347,6 +20365,9 @@ async function handleQueuedMore(ch) {
         game._more = false;
         game._more_dismissals_remaining = 0;
         clear_pending_message();
+        // C ref: win/tty/wintty.c:process_text_window().  A no-turn arrival
+        // floor text window still restores the map when it is dismissed.
+        game._full_map_redraw_pending = true;
         await maybeAutopickupBlockedAtHero();
         game.context.move = 0;
         return true;
@@ -18445,6 +20466,20 @@ async function handleQueuedMore(ch) {
         game.context.move = 1;
         return true;
     } else if (await showPendingMonsterDeathMessage()) {
+    } else if (game._death_continue_after_first_move_more) {
+        game._death_continue_after_first_move_more = false;
+        game._more_dismissals_remaining = 0;
+        game._more = false;
+        await continueAcceptedDeathFlow();
+        game.context.move = 0;
+        return true;
+    } else if (game._death_continue_after_shopkeeper_more) {
+        game._death_continue_after_shopkeeper_more = false;
+        game._more_dismissals_remaining = 0;
+        game._more = false;
+        await continueAcceptedDeathFlow();
+        game.context.move = 0;
+        return true;
     } else if (game._lava_death_disclosure_pending) {
         game._more_dismissals_remaining = 0;
         game._more = false;
@@ -18463,9 +20498,8 @@ async function handleQueuedMore(ch) {
         else await showDeathDisclosureOrPrompt();
     } else if (game._quit_disclosure_active) {
         game._quit_disclosure_active = false;
-        game._override_serialized_persistent = false;
         const screen = deathTopTenScreen();
-        showSerializedOverride(screen, [0, Math.max(0, screen.split('\n').length)]);
+        setTerminalExitScreen(screen, [0, Math.max(0, screen.split('\n').length)]);
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
         game.context.move = 0;
@@ -18474,15 +20508,14 @@ async function handleQueuedMore(ch) {
         game._more_dismissals_remaining = 0;
         game._more = false;
         game._death_blank_more_active = false;
-        game._override_serialized_persistent = false;
         if (game.wizard || game.flags?.debug || game.flags?.explore) {
             // C ref: src/topten.c:topten().  Debug/explore games report that
             // the score list is skipped instead of showing ranked entries.
             const mode = (game.wizard || game.flags?.debug) ? 'wizard' : 'discover';
-            showSerializedOverride(`\nSince you were in ${mode} mode, the score list will not be checked.`, [0, 2]);
+            setTerminalExitScreen(`\nSince you were in ${mode} mode, the score list will not be checked.`, [0, 2]);
         } else {
             const screen = deathTopTenScreen();
-            showSerializedOverride(screen, deathTopTenCursor(screen));
+            setTerminalExitScreen(screen, deathTopTenCursor(screen));
         }
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
@@ -18493,8 +20526,10 @@ async function handleQueuedMore(ch) {
         game._death_blank_more_active = true;
         game._more = true;
         game._more_dismissals_remaining = 1;
-        showSerializedOverride(deathBlankMoreScreen(), [8, 23]);
-        game._override_serialized_persistent = true;
+        game._latched_more_screen = deathBlankMoreScreen();
+        game._latched_more_cursor = [8, 23, 1];
+        game._latched_more_keep_until_dismiss = true;
+        game._latched_more_use_pending_topline = false;
         game.context.move = 0;
         return true;
     } else if (game._more_dismissals_remaining <= 0) {
@@ -18517,11 +20552,10 @@ async function handleQueuedMore(ch) {
             game._more = false;
             game._more_dismissals_remaining = 0;
             clear_pending_message();
-            clearOverrideScreen();
-            showSerializedOverride(screen, cursor);
             game._latched_more_screen = screen;
             game._latched_more_cursor = [cursor[0], cursor[1], 1];
             game._latched_more_keep_until_dismiss = true;
+            game._latched_more_use_pending_topline = false;
             game._quest_leader_pager_active = true;
             queue_more_prompt();
             game.context.move = 0;
@@ -18538,7 +20572,7 @@ async function handleQueuedMore(ch) {
             game._more = false;
             game._more_dismissals_remaining = 0;
             clear_pending_message();
-            clearOverrideScreen();
+            await redrawAfterFullScreenMenuDismiss();
             if (questLeaderAction === 'leader-followup' && questLeaderNeedsDebugAlignAdjust()) {
                 await pline(questLeaderDebugAlignMessage());
                 queue_more_prompt();
@@ -18556,7 +20590,6 @@ async function handleQueuedMore(ch) {
             game._more = false;
             game._more_dismissals_remaining = 0;
             clear_pending_message();
-            clearOverrideScreen();
             game._monster_turn_paused_for_more = false;
             game._monster_attack_more_waiting = false;
             game._pre_turn_more_waiting = false;
@@ -18586,6 +20619,10 @@ async function handleQueuedMore(ch) {
             await finishFountainDetectAfterMore();
             return true;
         }
+        if (game._fountain_bath_after_more) {
+            await finishFountainBathAfterMore();
+            return true;
+        }
         if (await showNextStartupPreambleMessage()) return true;
         if (await showNextOptionsMessageOrPrompt()) return true;
         if (await promptAutounlockDoorAfterMore()) return true;
@@ -18604,14 +20641,13 @@ async function handleQueuedMore(ch) {
             game._more = false;
             game._more_dismissals_remaining = 0;
             clear_pending_message();
-            clearOverrideScreen();
             showLootActionMenu(state.container, state.used, { held: state.held });
             game.context.move = 0;
             return true;
         }
         if (game._post_arrival_pager_active) {
             game._post_arrival_pager_active = false;
-            clearOverrideScreen();
+            await redrawAfterFullScreenMenuDismiss();
             const tempMessage = game._post_arrival_temp_message;
             game._post_arrival_temp_message = null;
             game._more = false;
@@ -18658,10 +20694,10 @@ async function handleQueuedMore(ch) {
             game._post_arrival_pager_text = '';
             game._post_arrival_pager_active = true;
             clear_pending_message();
-            showSerializedOverride(screen, cursor);
             game._latched_more_screen = screen;
             game._latched_more_cursor = [cursor[0], cursor[1], 1];
             game._latched_more_keep_until_dismiss = true;
+            game._latched_more_use_pending_topline = false;
             queue_more_prompt();
             game.context.move = 0;
             return true;
@@ -18694,6 +20730,18 @@ async function handleQueuedMore(ch) {
             await pline(deferred.line);
             if (deferred.overflow) queue_more_prompt();
             game.context.move = deferred.move && !game._more ? 1 : 0;
+            return true;
+        }
+        if (game._deferred_autopickup_after_more) {
+            const deferred = game._deferred_autopickup_after_more;
+            game._deferred_autopickup_after_more = null;
+            game._more = false;
+            game._more_dismissals_remaining = 0;
+            clear_pending_message();
+            await showAutopickupMessages(deferred.lines || [], { deferBlockedFirstLine: false });
+            if (deferred.resumeMovement && !game._more)
+                await finishMovementAfterDeferredAutopickup();
+            game.context.move = deferred.resumeMovement && !game._more ? 1 : 0;
             return true;
         }
         game._run_sound_more_defer_floor_look = false;
@@ -18762,6 +20810,18 @@ async function handleQueuedMore(ch) {
             game.context.move = 1;
             return true;
         }
+        if (!game._after_more_message && game._deferred_nymph_steal) {
+            game._more = false;
+            game._more_dismissals_remaining = 0;
+            await finish_deferred_nymph_steal();
+            game._monster_turn_paused_for_more = false;
+            game._monster_attack_more_waiting = false;
+            game._pre_turn_more_waiting = false;
+            game._resume_movemon_post_move_mon = null;
+            game._resume_monster_turn = true;
+            game.context.move = 1;
+            return true;
+        }
         if (game._after_more_damage_after_prompt && !game._after_more_message) {
             if (typeof game.u?.uhp === 'number')
                 game.u.uhp = Math.max(0, game.u.uhp - (game._after_more_hero_damage || 0));
@@ -18809,6 +20869,8 @@ async function handleQueuedMore(ch) {
                         game.u.acurr.a[ndx] = Math.max(3, (game.u.acurr.a[ndx] || 3) + delta);
                     }
                 }
+                if (next.heroDamage && typeof game.u?.uhp === 'number')
+                    game.u.uhp = Math.max(0, game.u.uhp - next.heroDamage);
                 const wrapWithMore = !!next.wrapWithMore
                     && String(next.text || '').length > (game.nhDisplay?.cols || COLNO);
                 if (wrapWithMore) await plineWithMorePrompt(next.text);
@@ -18890,6 +20952,7 @@ async function handleQueuedMore(ch) {
                 game.context.move = 0;
                 return true;
             }
+            if (await runArrivalFloorLookAfterMore()) return true;
             game.context.move = 0;
             return true;
         }
@@ -18917,6 +20980,13 @@ async function handleQueuedMore(ch) {
         }
         const floorListRestore = game._floor_list_restore_message_after_more || '';
         game._floor_list_restore_message_after_more = '';
+        const floorListWindowDismissed = Array.isArray(game._floor_list_lines);
+        if (floorListWindowDismissed && !pausedFloorListTurn) {
+            // C ref: win/tty/wintty.c:process_text_window().  Floor object
+            // lists are tty text windows; closing one reveals the map even when
+            // no command turn is waiting to resume.
+            game._full_map_redraw_pending = true;
+        }
         clear_pending_message();
         if (game._temple_entry_after_more) {
             const pending = game._temple_entry_after_more;
@@ -18936,9 +21006,14 @@ async function handleQueuedMore(ch) {
             game._resume_teleport_arrival_after_more = false;
             const featureLine = game._resume_look_here_feature_line_after_more || '';
             game._resume_look_here_feature_line_after_more = '';
+            const pickedSome = !!game._resume_look_here_picked_some_after_more;
+            game._resume_look_here_picked_some_after_more = false;
             const arrivalEffects = teleportArrival
                 ? await runTeleportArrivalSpotEffects({ line: featureLine })
-                : (await lookHereAfterMove(featureLine ? { featureLine } : {}), null);
+                : (await lookHereAfterMove({
+                    ...(featureLine ? { featureLine } : {}),
+                    pickedSome,
+                }), null);
             if (game._more && game._deferred_blind_floor_list) {
                 game.context.move = 0;
                 return true;
@@ -19028,9 +21103,13 @@ async function handleQueuedMore(ch) {
         }
         game._hallucination_warning_rng_active = false;
         if (await runArrivalFloorLookAfterMore()) return true;
-        if (game._direction_help_screen) {
-            game._direction_help_screen = '';
-            game._override_prev = null;
+        if (game._direction_help_active || game._direction_help_screen) {
+            clearDirectionHelpScreen();
+            game._more = false;
+            game._more_dismissals_remaining = 0;
+            clear_pending_message();
+            game._full_map_redraw_pending = true;
+            await flush_screen(1);
         }
         if (game._direction_help_after_more_message) {
             const msg = game._direction_help_after_more_message;
@@ -19282,11 +21361,17 @@ async function handleQueuedMore(ch) {
                     return true;
                 }
             }
+            if (!game._after_more_message && game._deferred_monster_trap_effect)
+                await finish_deferred_monster_trap_effect();
             if (game._after_more_message) {
                 const ordinaryMonsterToplineDeferred = !!game._monster_topline_deferred;
                 const split = afterMoreSplit;
-                const msg = split?.first || game._after_more_message;
-                const rest = split?.rest || '';
+                let msg = split?.first || game._after_more_message;
+                let rest = split?.rest || '';
+                if (rest && petCombatHitTopline(msg) && topline_can_pack_message(msg, rest)) {
+                    msg = `${msg}  ${rest}`;
+                    rest = '';
+                }
                 const pendingPhysicalSplit = splitDeferredMonsterPhysicalTopline(dismissedTopline);
             // C refs: src/mhitm.c:mattackm(), src/mon.c:monkilled().
             // A deferred monster-vs-monster hit line blocks before visible
@@ -19373,6 +21458,25 @@ async function handleQueuedMore(ch) {
                     exercise(A_STR, false); // C ref: src/mthrowu.c:thitu().
             }
             await pline(msg);
+            if (!game._after_more_message && game._deferred_nymph_escape_tail) {
+                // C refs: src/steal.c:steal(), src/teleport.c:rloc().
+                // The deferred theft line is displayed after the removal More;
+                // the nymph's escape is the same steal() continuation and can
+                // pack into that topline rather than forcing a new prompt.
+                const tailNeedsPrompt = await finish_deferred_nymph_escape_tail({
+                    appendToPending: true,
+                });
+                if (tailNeedsPrompt) needsPrompt = true;
+            }
+            if (!game._after_more_message && game._deferred_nymph_steal) {
+                // C refs: src/steal.c:steal(), src/uhitm.c:mhitm_ad_adtyp().
+                // After a blocked worn-item removal line is revealed, steal()
+                // continues before the nymph's post-theft escape tail.
+                await finish_deferred_nymph_steal({
+                    appendToPending: true,
+                    deferEscapeTail: true,
+                });
+            }
             if (game._active_more_split_clear_next_physical_status
                 && monsterPhysicalToplineChain(msg)) {
                 // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:more().
@@ -19461,12 +21565,24 @@ async function handleQueuedMore(ch) {
             if (deferredPetDeathCanPack && game._pet_defender_death_pending) {
                 const pending = game._pet_defender_death_pending;
                 game._pet_defender_death_pending = null;
+                game._more = false;
+                game._more_dismissals_remaining = 0;
                 await finish_pet_kill(pending.killer, pending.target);
+                game._more = false;
+                game._more_dismissals_remaining = 0;
+                game._pet_combat_more_latched = false;
                 game._skip_encumbered_debt_after_pet_death_more = true;
                 if (game._resume_movemon_after_mon === pending.target)
                     game._resume_movemon_after_mon = null;
                 if (game._resume_tame_post_distfleeck === pending.target)
                     game._resume_tame_post_distfleeck = null;
+                if (!rest
+                    && !deferredPetDeathNeedsPrompt
+                    && !game._after_more_message
+                    && !game._after_more_needs_prompt
+                    && !game._monster_death_pending
+                    && !game._fatal_monster_attack_paused)
+                    needsPrompt = false;
             }
             const finishedDeferredPetKill = finish_deferred_pet_kill_side_effect();
             const suppressPetKillResume = !!game._pet_kill_suppress_resume_after_death_line;
@@ -19592,6 +21708,13 @@ async function handleQueuedMore(ch) {
                 game._more_dismissals_remaining = 0;
                 if (pausedMonsterTurn) game._monster_attack_resume_behind_after_more = false;
             }
+            if (pausedMonsterTurn
+                && !needsPrompt
+                && !rest
+                && petDeathTopline(msg)
+                && !game._more
+                && !game._after_more_message)
+                resumeMonsterBehindNewMore = true;
         } else if (game._cloak_displacement_on_msg_pending) {
             const obj = game._cloak_displacement_on_msg_pending;
             game._cloak_displacement_on_msg_pending = null;
@@ -19614,6 +21737,8 @@ async function handleQueuedMore(ch) {
                 game._resume_movemon_after_mon = null;
             if (game._resume_tame_post_distfleeck === pending.target)
                 game._resume_tame_post_distfleeck = null;
+            if (pausedMonsterTurn && !game._more && !game._after_more_message)
+                resumeMonsterBehindNewMore = true;
         } else if (game._nomovemsg && !pausedMonsterTurn) {
             const msg = game._nomovemsg;
             game._nomovemsg = '';
@@ -19633,7 +21758,13 @@ async function handleQueuedMore(ch) {
             else
                 await pline('You hear the rumble of distant thunder...');
         }
-        await finish_deferred_monster_pet_hit();
+        const finishedDeferredMonsterPetHit = !game._after_more_message
+            && await finish_deferred_monster_pet_hit();
+        if (finishedDeferredMonsterPetHit
+            && pausedMonsterTurn
+            && !game._more
+            && !game._after_more_message)
+            resumeMonsterBehindNewMore = true;
         if (!game._more && game._deferred_pet_miss_passive) {
             game._deferred_pet_miss_passive = false;
             game._pet_combat_passive_paused = false;
@@ -19710,6 +21841,9 @@ async function handleQueuedMore(ch) {
         game._deferred_move_floor_list_resume_turn_tail = false;
         game._resume_floor_list_turn = false;
         game._floor_list_resume_spot_effects_on_dismiss = false;
+        // C ref: win/tty/wintty.c:process_text_window().  Closing the floor
+        // text window restores the map before deferred spot effects continue.
+        game._full_map_redraw_pending = true;
         await triggerSpotEffectsAtHero();
         if (!game._more) finishPendingMoveSmudge();
         if (resumeStairArrival && !game._more) {
@@ -19818,12 +21952,10 @@ async function commitIntrinsicMenuSelection(menu) {
     const selected = menu.rows.filter((row) => row.kind === 'selectable' && row.selected);
     const wasHallucinating = !!(game.u?.uprops?.hallucination || game.u?.uhallucination);
     game._intrinsic_menu = null;
-    game._override_screen = null;
-    game._override_serialized_screen = null;
-    game._override_serialized_cursor = null;
-    game._override_serialized_persistent = false;
-    game._override_cursor = null;
-    game._override_prev = null;
+    // C refs: win/tty/wintty.c:tty_select_menu(), src/wizcmds.c:wiz_intrinsic().
+    // The tty window is dismissed before selected intrinsics emit messages.
+    clearIntrinsicMenuScreen();
+    await redrawAfterFullScreenMenuDismiss();
     if (!selected.length) {
         return;
     }
@@ -19908,9 +22040,38 @@ async function showInventoryMenu() {
     const lastText = lines[lastRow]?.text || '';
     const cursorCol = menuCol + lastText.length + (lastText === '(end)' ? 1 : 0);
     const screen = serialize_terminal_grid(display);
-    game._inventory_menu_screen = screen;
-    game._inventory_menu_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
-    showOverride(screen, game._inventory_menu_cursor);
+    setInventoryMenuScreen(screen, [Math.min(cursorCol, COLNO - 1), lastRow], 1);
+}
+
+function setInventoryMenuScreen(screen, cursor, page = 1) {
+    installSerializedScreenHook();
+    game._inventory_menu_active = true;
+    game._inventory_menu_page = page;
+    if (page === 2) {
+        game._inventory_menu_page2_screen = screen;
+        game._inventory_menu_page2_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    } else {
+        game._inventory_menu_screen = screen;
+        game._inventory_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    }
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearInventoryMenuScreen() {
+    game._inventory_menu_active = false;
+    game._inventory_menu_page = 0;
+    game._inventory_menu_screen = null;
+    game._inventory_menu_page2_screen = null;
+    game._inventory_menu_page2_lines = null;
+    game._inventory_menu_cursor = null;
+    game._inventory_menu_page2_cursor = null;
 }
 
 function buildThrowInventoryMenuLines(showAll = false) {
@@ -19934,6 +22095,37 @@ function buildThrowInventoryMenuLines(showAll = false) {
     }
     lines.push({ text: '(end)', heading: false });
     return lines;
+}
+
+function setThrowInventoryMenuScreen(screen, cursor, page = 1) {
+    installSerializedScreenHook();
+    game._throw_inventory_menu_active = true;
+    game._throw_inventory_menu_page = page;
+    if (page === 2) {
+        game._throw_inventory_menu_page2_screen = screen;
+        game._throw_inventory_menu_page2_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    } else {
+        game._throw_inventory_menu_screen = screen;
+        game._throw_inventory_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    }
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearThrowInventoryMenuScreen() {
+    game._throw_inventory_menu_active = false;
+    game._throw_inventory_menu_page = 0;
+    game._throw_inventory_menu_screen = null;
+    game._throw_inventory_menu_page2_screen = null;
+    game._throw_inventory_menu_page2_lines = null;
+    game._throw_inventory_menu_cursor = null;
+    game._throw_inventory_menu_page2_cursor = null;
 }
 
 async function showThrowInventoryMenu(showAll = false) {
@@ -19977,17 +22169,16 @@ async function showThrowInventoryMenu(showAll = false) {
     const lastText = lines[lastRow]?.text || '';
     const cursorCol = menuCol + lastText.length + (lastText === '(end)' ? 1 : 0);
     const screen = serialize_terminal_grid(display);
-    game._throw_inventory_menu_screen = screen;
-    game._throw_inventory_menu_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
     game._awaiting_throw_item = true;
     game.context.move = 0;
-    showOverride(screen, game._throw_inventory_menu_cursor);
+    setThrowInventoryMenuScreen(screen, [Math.min(cursorCol, COLNO - 1), lastRow], 1);
 }
 
 function showThrowInventoryMenuPage2() {
     const display = game.nhDisplay;
     const lines = game._throw_inventory_menu_page2_lines || [];
     if (!display?.putstr || !lines.length) return false;
+    game._throw_inventory_menu_active = false;
     const displayRows = display.rows || display.terminal?.rows || 24;
     const menuCol = 1;
     for (let row = 0; row < displayRows; row++)
@@ -20000,16 +22191,65 @@ function showThrowInventoryMenuPage2() {
     const lastText = lines[lastRow]?.text || '';
     const cursorCol = menuCol + lastText.length;
     const screen = serialize_terminal_grid(display);
-    game._throw_inventory_menu_page2_screen = screen;
-    game._throw_inventory_menu_page2_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
-    showOverride(screen, game._throw_inventory_menu_page2_cursor);
+    setThrowInventoryMenuScreen(screen, [Math.min(cursorCol, COLNO - 1), lastRow], 2);
     return true;
+}
+
+async function showThrowPromptAfterMenuDismiss(obj) {
+    clearThrowInventoryMenuScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    game._awaiting_throw_item = false;
+    game._awaiting_throw_direction = obj;
+    game.context.move = 0;
+    await showPromptLine('In what direction? ');
+}
+
+async function handleThrowInventoryMenuInput(ch) {
+    const page = game._throw_inventory_menu_page || 1;
+    if (page === 1) {
+        if (ch === ' ' && game._throw_inventory_menu_page2_lines?.length) {
+            showThrowInventoryMenuPage2();
+            game.context.move = 0;
+            return;
+        }
+        const selectGold = ch === '$' && (game._goldCount || 0) > 0;
+        const idx = inventoryIndexForLetter(ch);
+        const obj = idx >= 0 ? game.inventory?.[idx] : null;
+        if (selectGold || obj) {
+            await showThrowPromptAfterMenuDismiss(selectGold
+                ? { otyp: GOLD_PIECE, oclass: COIN_CLASS, quan: game._goldCount || 0 }
+                : obj);
+            return;
+        }
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            clearThrowInventoryMenuScreen();
+            await redrawAfterFullScreenMenuDismiss();
+            game._awaiting_throw_item = true;
+            await showThrowPrompt();
+            game.context.move = 0;
+            return;
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    const idx = inventoryIndexForLetter(ch);
+    const obj = idx >= 0 ? game.inventory?.[idx] : null;
+    if (obj) await showThrowPromptAfterMenuDismiss(obj);
+    else {
+        clearThrowInventoryMenuScreen();
+        await redrawAfterFullScreenMenuDismiss();
+        game._awaiting_throw_item = true;
+        await showThrowPrompt();
+        game.context.move = 0;
+    }
 }
 
 function showInventoryMenuPage2() {
     const display = game.nhDisplay;
     const lines = game._inventory_menu_page2_lines || [];
     if (!display?.putstr || !lines.length) return false;
+    game._inventory_menu_active = false;
     const displayRows = display.rows || display.terminal?.rows || 24;
     const menuCol = 1;
     for (let row = 0; row < displayRows; row++) {
@@ -20023,10 +22263,60 @@ function showInventoryMenuPage2() {
     const lastText = lines[lastRow]?.text || '';
     const cursorCol = menuCol + lastText.length;
     const screen = serialize_terminal_grid(display);
-    game._inventory_menu_page2_screen = screen;
-    game._inventory_menu_page2_cursor = [Math.min(cursorCol, COLNO - 1), lastRow];
-    showOverride(screen, game._inventory_menu_page2_cursor);
+    setInventoryMenuScreen(screen, [Math.min(cursorCol, COLNO - 1), lastRow], 2);
     return true;
+}
+
+async function handleInventoryLookupMenuInput(ch) {
+    game._look_inventory_lookup_active = false;
+    clearInventoryMenuScreen();
+    if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+        await redrawAfterFullScreenMenuDismiss();
+        game.context.move = 0;
+        return;
+    }
+    const idx = inventoryIndexForLetter(ch);
+    const obj = idx >= 0 ? game.inventory?.[idx] : null;
+    const lines = LOOKUP_DATA.get(baseObjectName(obj).toLowerCase());
+    if (lines) {
+        await redrawAfterFullScreenMenuDismiss();
+        await showLookupDataOverlay(lines);
+    }
+    else {
+        await redrawAfterFullScreenMenuDismiss();
+        await pline("You don't have any information on those things.");
+    }
+    game.context.move = 0;
+}
+
+async function handleInventoryMenuInput(ch) {
+    const page = game._inventory_menu_page || 1;
+    if (game._look_inventory_lookup_active) {
+        await handleInventoryLookupMenuInput(ch);
+        return;
+    }
+    if (page === 2) {
+        clearInventoryMenuScreen();
+        await redrawAfterFullScreenMenuDismiss();
+        game.context.move = 0;
+        return;
+    }
+    if (ch === ' ' && game._inventory_menu_page2_lines?.length) {
+        showInventoryMenuPage2();
+        game.context.move = 0;
+        return;
+    }
+    const idx = inventoryIndexForLetter(ch);
+    const obj = idx >= 0 ? game.inventory?.[idx] : null;
+    if (obj) {
+        clearInventoryMenuScreen();
+        await redrawAfterFullScreenMenuDismiss();
+        await showInventoryActionMenu(obj);
+    } else if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+        clearInventoryMenuScreen();
+        await redrawAfterFullScreenMenuDismiss();
+    }
+    game.context.move = 0;
 }
 
 function buildPotionMenuLines() {
@@ -20037,6 +22327,27 @@ function buildPotionMenuLines() {
     }
     rows.push({ text: '(end)', heading: false });
     return rows;
+}
+
+function setPotionMenuScreen(screen, cursor) {
+    installSerializedScreenHook();
+    game._potion_menu_screen = screen;
+    game._potion_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._potion_menu_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearPotionMenuScreen() {
+    game._potion_menu_active = false;
+    game._potion_menu_screen = null;
+    game._potion_menu_cursor = null;
 }
 
 async function showPotionMenu() {
@@ -20055,8 +22366,185 @@ async function showPotionMenu() {
     const lastRow = lines.length - 1;
     const cursorCol = menuCol + '(end)'.length + 1;
     const screen = serialize_terminal_grid(display);
-    game._potion_menu_screen = screen;
-    showOverride(screen, [cursorCol, lastRow]);
+    setPotionMenuScreen(screen, [cursorCol, lastRow]);
+}
+
+async function dismissPotionMenu() {
+    clearPotionMenuScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    game._awaiting_drink_item = false;
+    game.context.move = 0;
+}
+
+async function handlePotionMenuInput(ch) {
+    if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+        await dismissPotionMenu();
+        return;
+    }
+    const idx = inventoryIndexForLetter(ch);
+    const obj = idx >= 0 ? game.inventory?.[idx] : null;
+    if (obj?.oclass === POTION_CLASS) {
+        clear_pending_message();
+        clearPotionMenuScreen();
+        await redrawAfterFullScreenMenuDismiss();
+        game._awaiting_drink_item = false;
+        await drinkPotion(obj, idx);
+        return;
+    }
+    game.context.move = 0;
+}
+
+async function finishZapItemSelection(obj) {
+    if (!await zappableWand(obj)) {
+        game.context.move = 1;
+        await pline('Nothing happens.');
+        return;
+    }
+    if (await maybeBackfireWand(obj)) return;
+    if (obj.otyp === WAN_SECRET_DOOR_DETECTION) {
+        // C ref: zap.c:zapnodir() -> detect.c:findit().
+        exercise(A_WIS, true);
+        await pline("You don't find anything.");
+        learnWandFromUse(obj);
+        game.context.move = 1;
+        return;
+    }
+    game._awaiting_zap_direction = obj;
+    game.context.move = 0;
+    await showPromptLine('In what direction? ');
+}
+
+async function finishApplyObjectSelection(obj) {
+    if (obj.otyp === CREAM_PIE) {
+        // C refs: src/dothrow.c:throwit(), src/do.c:dowipe().
+        // Self-cream sets sticky-goop blindness until #wipe cleans it.
+        consumeInventoryObject(obj);
+        game.u = game.u || {};
+        const blindinc = rnd(25); // C ref: src/apply.c:use_cream_pie().
+        game.u.ucreamed = Math.max(game.u.ucreamed || 0, blindinc);
+        game.u.ublind = true;
+        game.u.uprops = game.u.uprops || {};
+        game.u.uprops.blind = Math.max(game.u.uprops.blind || 0, game.u.ucreamed);
+        game.u.uprops.blinded = Math.max(game.u.uprops.blinded || 0, game.u.ucreamed);
+        await docrt();
+        await plineWithMorePrompt('You immerse your face in the cream pie.');
+        game._more_message_queue = [
+            ...(game._more_message_queue || []),
+            { text: "You can't see through all the sticky goop on your face.", more: false },
+        ];
+        game._cream_pie_resist_after_more = obj;
+        game._pre_turn_more_waiting = true;
+        game._monster_turn_paused_for_more = true;
+        game.context.move = 1;
+        return;
+    }
+    if (obj.oclass !== TOOL_CLASS) {
+        game.context.move = 0;
+        await pline("Sorry, I don't know how to use that.");
+        return;
+    }
+    if (isContainerObject(obj)) {
+        // C refs: src/apply.c:doapply(), src/pickup.c:use_container().
+        const name = baseObjectName(obj) || 'container';
+        if ((obj.otyp === LARGE_BOX || obj.otyp === CHEST) && obj.olocked) {
+            void name;
+            await reportLockedContainerAndMaybeAutounlock(obj);
+            return;
+        }
+        showLootActionMenu(obj, false, { held: true });
+        game.context.move = 0;
+        return;
+    }
+    if (obj.otyp === EXPENSIVE_CAMERA || obj.otyp === STETHOSCOPE
+        || obj.otyp === LOCK_PICK || obj.otyp === CREDIT_CARD) {
+        game._awaiting_apply_direction = obj;
+        game.context.move = 0;
+        await showPromptLine('In what direction? ');
+        return;
+    }
+    if (obj.otyp === MAGIC_MARKER) {
+        game._awaiting_write_on_item = obj;
+        game.context.move = 0;
+        await showPromptLine('What do you want to write on? [*] ');
+        return;
+    }
+    if (obj.otyp === LEATHER_DRUM) {
+        await applyLeatherDrum();
+        return;
+    }
+    game.context.move = 0;
+    await pline('Nothing happens.');
+}
+
+function inventoryPromptMenuNoSelectionKey(ch) {
+    return ch === ' ' || ch === '\r' || ch === '\n';
+}
+
+async function showInventoryPromptAgain(kind) {
+    if (kind === 'read') {
+        game._awaiting_read_item = true;
+        await showPromptLine(`What do you want to read? [${readLetters()} or ?*] `);
+    } else if (kind === 'zap') {
+        const letters = zapLetters();
+        if (letters) {
+            game._awaiting_zap_item = true;
+            await showPromptLine(`What do you want to zap? [${letters} or ?*] `);
+        } else {
+            game._awaiting_zap_item = false;
+            await pline("You don't have anything to zap.");
+        }
+    } else if (kind === 'apply') {
+        game._awaiting_apply_item = true;
+        await showPromptLine(`What do you want to use or apply? [${applyLetters()} or ?*] `);
+    }
+    game.context.move = 0;
+}
+
+async function cancelInventoryPromptMenu(kind) {
+    await dismissInventoryPromptMenuScreen();
+    if (kind === 'read') game._awaiting_read_item = false;
+    else if (kind === 'zap') game._awaiting_zap_item = false;
+    else if (kind === 'apply') game._awaiting_apply_item = false;
+    clear_pending_message();
+    game.context.move = 0;
+    await pline('Never mind.');
+}
+
+async function handleInventoryPromptMenuInput(ch) {
+    // C refs: src/invent.c:getobj()/display_pickinv(),
+    // win/tty/wintty.c:process_menu_window().
+    const kind = game._inventory_prompt_menu_kind || 'inventory';
+    const allowed = Array.isArray(game._inventory_prompt_menu_letters)
+        ? game._inventory_prompt_menu_letters
+        : [];
+    if (ch === '\x1b') {
+        await cancelInventoryPromptMenu(kind);
+        return;
+    }
+    if (inventoryPromptMenuNoSelectionKey(ch)) {
+        await dismissInventoryPromptMenuScreen();
+        clear_pending_message();
+        await showInventoryPromptAgain(kind);
+        return;
+    }
+    const idx = inventoryIndexForLetter(ch);
+    const obj = idx >= 0 ? game.inventory?.[idx] : null;
+    if (!obj || (allowed.length && !allowed.includes(ch))) {
+        game.context.move = 0;
+        return;
+    }
+    await dismissInventoryPromptMenuScreen();
+    clear_pending_message();
+    if (kind === 'read') {
+        game._awaiting_read_item = false;
+        await finishReadObjectSelection(obj, idx);
+    } else if (kind === 'zap') {
+        game._awaiting_zap_item = false;
+        await finishZapItemSelection(obj);
+    } else if (kind === 'apply') {
+        game._awaiting_apply_item = false;
+        await finishApplyObjectSelection(obj);
+    }
 }
 
 function actionMenuItemType(obj) {
@@ -20066,6 +22554,54 @@ function actionMenuItemType(obj) {
     if (obj?.oclass === WAND_CLASS) return 'wand';
     if (obj?.oclass === TOOL_CLASS) return 'tool';
     return 'item';
+}
+
+function setInventoryActionMenuScreen(screen, cursor, obj) {
+    installSerializedScreenHook();
+    game._inventory_action_menu_screen = screen;
+    game._inventory_action_menu_cursor = cursor ? [cursor[0], cursor[1]] : null;
+    game._inventory_action_menu_obj = obj || null;
+    game._inventory_action_menu_active = true;
+    if (game.nhDisplay && cursor) {
+        if (typeof game.nhDisplay.setCursor === 'function')
+            game.nhDisplay.setCursor(cursor[0], cursor[1]);
+        else {
+            game.nhDisplay.cursorCol = cursor[0];
+            game.nhDisplay.cursorRow = cursor[1];
+        }
+    }
+}
+
+function clearInventoryActionMenuScreen() {
+    game._inventory_action_menu_active = false;
+    game._inventory_action_menu_screen = null;
+    game._inventory_action_menu_cursor = null;
+    game._inventory_action_menu_obj = null;
+}
+
+async function dismissInventoryActionMenu() {
+    clearInventoryActionMenuScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    game.context.move = 0;
+}
+
+async function handleInventoryActionMenuInput(ch) {
+    const obj = game._inventory_action_menu_obj;
+    if (ch === '\r' || ch === '\n' || ch === ' ' || ch === '\x1b') {
+        await dismissInventoryActionMenu();
+        return;
+    }
+    if (ch === 't' && obj) {
+        clear_pending_message();
+        clearInventoryActionMenuScreen();
+        game._awaiting_throw_direction = obj;
+        game.context.move = 0;
+        await redrawAfterFullScreenMenuDismiss();
+        await showPromptLine('In what direction? ');
+        return;
+    }
+    if (obj) await showInventoryActionMenu(obj);
+    game.context.move = 0;
 }
 
 async function showInventoryActionMenu(obj) {
@@ -20118,9 +22654,11 @@ async function showInventoryActionMenu(obj) {
     }
 
     const screen = serialize_terminal_grid(display);
-    game._inventory_action_menu_screen = screen;
-    game._inventory_action_menu_obj = obj;
-    showOverride(screen, [menuCol + '(end)'.length + 1, rows.length - 1]);
+    setInventoryActionMenuScreen(
+        screen,
+        [menuCol + '(end)'.length + 1, rows.length - 1],
+        obj,
+    );
 }
 
 function cursorForward(count) {
@@ -20173,9 +22711,10 @@ function spellMenuPlainLine(entry, turnsLeft, showTurns = false) {
 async function showSpellMenu() {
     const menu = await buildSpellMenuWindow('Currently known spells', true);
     if (!menu) return;
+    installSerializedScreenHook();
     game._spell_menu_screen = menu.screen;
     game._spell_menu_cursor = menu.cursor;
-    showSerializedOverride(menu.screen, menu.cursor);
+    game._spell_menu_active = true;
 }
 
 async function buildSpellMenuWindow(title, includeSort) {
@@ -20241,9 +22780,48 @@ async function buildSpellMenuWindow(title, includeSort) {
 async function showCastSpellMenu() {
     const menu = await buildSpellMenuWindow('Choose which spell to cast', false);
     if (!menu) return;
+    installSerializedScreenHook();
     game._spell_cast_menu_screen = menu.screen;
+    game._spell_cast_menu_cursor = menu.cursor;
     game._spell_cast_menu_choices = new Map(menu.spells.map((entry) => [entry.letter, entry]));
-    showSerializedOverride(menu.screen, menu.cursor);
+    game._spell_cast_menu_active = true;
+}
+
+function clearSpellMenuState({ redraw = true } = {}) {
+    game._spell_menu_active = false;
+    game._spell_menu_screen = null;
+    game._spell_menu_cursor = null;
+    if (redraw) game._full_map_redraw_pending = true;
+}
+
+function clearSpellCastMenuState({ redraw = true } = {}) {
+    game._spell_cast_menu_active = false;
+    game._spell_cast_menu_screen = null;
+    game._spell_cast_menu_cursor = null;
+    game._spell_cast_menu_choices = null;
+    if (redraw) game._full_map_redraw_pending = true;
+}
+
+async function handleSpellMenuInput(ch) {
+    const dismiss = ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b';
+    const validSelection = ch === '+'
+        || knownSpellEntries().some((entry) => entry.letter === ch);
+    if (!dismiss && !validSelection) {
+        // C ref: spell.c:dospellmenu() via tty select_menu(); invalid
+        // selectors keep the menu active instead of dismissing it.
+        game.context.move = 0;
+        return;
+    }
+    clearSpellMenuState();
+    game.context.move = 0;
+}
+
+async function handleSpellCastMenuInput(ch) {
+    const entry = game._spell_cast_menu_choices?.get(ch);
+    clearSpellCastMenuState();
+    await redrawAfterFullScreenMenuDismiss();
+    if (entry) await beginCastSpell(entry);
+    else game.context.move = 0;
 }
 
 function spendSpellHunger(entry, energy) {
@@ -21557,20 +24135,30 @@ function showDeathAttributesPage1() {
     game._death_attributes_page1_screen = pages.page1;
     game._death_attributes_page2_screen = pages.page2;
     game._death_attributes_page3_screen = pages.page3 || null;
-    showOverride(pages.page1, [9, C.TERMINAL_ROWS - 1]);
+    game._death_attributes_page = 1;
+    setDisclosureWindowScreen(pages.page1, [9, C.TERMINAL_ROWS - 1], 'death-attributes');
     game.context.move = 0;
 }
 
+function deathAttributesScreenCursor(screen) {
+    return [9, Math.max(0, String(screen || '').split('\n').length - 1)];
+}
+
+function clearDeathAttributesScreens() {
+    game._death_attributes_page1_screen = null;
+    game._death_attributes_page2_screen = null;
+    game._death_attributes_page3_screen = null;
+    game._death_attributes_page = 0;
+}
+
 async function showDeathCreaturesPrompt() {
+    clearDeathAttributesScreens();
+    clearDisclosureWindowScreen();
     if (!vanquishedMonsterEntries().length) {
         await showDeathConductPrompt();
         return;
     }
     game._death_creatures_prompt_active = true;
-    game._death_attributes_page1_screen = null;
-    game._death_attributes_page2_screen = null;
-    game._death_attributes_page3_screen = null;
-    clearOverrideScreen();
     await redrawAfterFullScreenMenuDismiss();
     const msg = 'Do you want an account of creatures vanquished? [ynaq] (n)';
     await showPromptLine(msg);
@@ -21581,9 +24169,7 @@ async function showDeathCreaturesPrompt() {
 async function showDeathConductPrompt() {
     // C ref: src/end.c:disclose().
     game._death_conduct_prompt_active = true;
-    game._death_vanquished_screen_active = false;
-    game._vanquished_screen = null;
-    clearOverrideScreen();
+    clearDisclosureWindowScreen();
     await redrawAfterFullScreenMenuDismiss();
     const msg = 'Do you want to see your conduct? [ynq] (n)';
     await showPromptLine(msg);
@@ -21594,9 +24180,7 @@ async function showDeathConductPrompt() {
 async function showDeathOverviewPrompt() {
     // C ref: src/end.c:disclose().
     game._death_overview_prompt_active = true;
-    game._death_conduct_screen_active = false;
-    game._conduct_screen = null;
-    clearOverrideScreen();
+    clearDisclosureWindowScreen();
     await redrawAfterFullScreenMenuDismiss();
     const msg = 'Do you want to see the dungeon overview? [ynq] (n)';
     await showPromptLine(msg);
@@ -21633,6 +24217,9 @@ async function enterTutorialAfterPrompt() {
 }
 
 async function showTutorialPrompt(invalidChoice = false) {
+    game._tutorial_prompt_active = false;
+    game._tutorial_prompt_cursor = null;
+    game._full_map_redraw_pending = true;
     await flush_screen(1);
     const display = game.nhDisplay;
     if (!display?.terminal?.serialize) return;
@@ -21653,15 +24240,88 @@ async function showTutorialPrompt(invalidChoice = false) {
     }
 
     const screen = serialize_terminal_grid(display);
+    const cursor = invalidChoice ? [27, 7, 1] : [27, 6, 1];
     game._tutorial_prompt_screen = screen;
+    game._tutorial_prompt_cursor = cursor;
+    game._tutorial_prompt_active = true;
     game._tutorial_prompt_done = true;
-    showOverride(screen, invalidChoice ? [27, 7] : [27, 6]);
+}
+
+function clearTutorialPromptState() {
+    game._tutorial_prompt_active = false;
+    game._tutorial_prompt_screen = null;
+    game._tutorial_prompt_cursor = null;
+    game._full_map_redraw_pending = true;
+}
+
+async function handleTutorialPromptInput(ch) {
+    if (ch === 'n' || ch === '\x1b') {
+        clear_pending_message();
+        clearTutorialPromptState();
+        game._tutorial_answered = true;
+        game._startup_preamble_done_waiting_tutorial = false;
+        game._startup_preamble_more_active = false;
+        game.context.move = 0;
+        return;
+    }
+    if (ch === 'y') {
+        clear_pending_message();
+        clearTutorialPromptState();
+        game._tutorial_answered = true;
+        game._startup_preamble_done_waiting_tutorial = false;
+        game._startup_preamble_more_active = false;
+        game.context.move = 0;
+        await enterTutorialAfterPrompt();
+        return;
+    }
+    // C ref: options.c:ask_do_tutorial() + win/tty/wintty.c:tty_select_menu().
+    // The menu loop returns with no selection for space/enter, causing
+    // ask_do_tutorial() to rebuild the menu with the extra guidance line.
+    // Other invalid selector keys are swallowed by the tty menu and leave the
+    // original menu/cursor in place.
+    await showTutorialPrompt(ch === ' ' || ch === '\r' || ch === '\n');
+    game.context.move = 0;
+}
+
+function startupLegacyPagerDismissKey(ch) {
+    return ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b';
+}
+
+function clearStartupLegacyPagerState() {
+    game._startup_legacy_pager_active = false;
+    game._startup_legacy_pager_screen = null;
+    game._startup_legacy_pager_cursor = null;
+    game._full_map_redraw_pending = true;
+}
+
+function handleStartupLegacyPagerInput(ch) {
+    if (game._more && !startupLegacyPagerDismissKey(ch)) {
+        game.context.move = 0;
+        return;
+    }
+    clearStartupLegacyPagerState();
+    if (game._deferred_startup_uac != null) {
+        game.u.uac = game._deferred_startup_uac;
+        game._deferred_startup_uac = null;
+        apply_deferred_startup_wear();
+    }
+    game.context.move = 0;
 }
 
 async function showPromptLine(text, options = {}) {
     await pline(text);
     const cursorPad = options.trailingInputSpace ? 1 : 0;
-    game._prompt_cursor = [Math.min(text.length + cursorPad, 79), 0];
+    const width = String(text || '').length + cursorPad;
+    if (width >= COLNO) {
+        // C ref: win/tty/topl.c:tty_yn_function(). The appended input space
+        // can wrap the tty cursor onto the continuation row.
+        game._prompt_cursor = [
+            Math.min((width % COLNO) + 1, COLNO - 1),
+            Math.floor(width / COLNO),
+        ];
+    } else {
+        game._prompt_cursor = [width, 0];
+    }
 }
 
 function screenWithPromptLine(screen, text) {
@@ -21759,6 +24419,20 @@ async function showTemperatureChangeMessage(tempMessage) {
 function temperatureMessageQueueItems(tempMessage) {
     if (!tempMessage?.line) return [];
     return [{ text: tempMessage.line, more: false, packAfter: tempMessage.afterMore || '' }];
+}
+
+function arrivalObjectsAtHero() {
+    return (game.level?.objects || [])
+        .filter((obj) => obj.ox === game.u?.ux && obj.oy === game.u?.uy && obj.otyp !== GOLD_PIECE);
+}
+
+function postArrivalPlineNeedsFloorLookMore(message, arrivalObjects) {
+    const countableArrivalObjects = (arrivalObjects || []).filter((obj) => obj !== game.uchain);
+    if (!message || !countableArrivalObjects.length) return false;
+    if ((arrivalObjects || []).length > 1) return true;
+    const obj = arrivalObjects[0];
+    const preview = inventoryObjectName({ ...obj }, { includePrice: true, observe: false });
+    return !topline_can_pack_message(message, `You see here ${preview}.`);
 }
 
 function normalizeArrivalMessageQueue(items) {
@@ -21876,6 +24550,22 @@ function queueSpecialArrivalMessage(items) {
     if (!msg) return;
     game._special_arrival_message = '';
     items.push({ text: msg, more: false });
+}
+
+function queueFortLudiosAlarm(items, restoredLevel) {
+    // C ref: do.c:goto_level().  Fort Ludios wakes the level and raises its
+    // alarm on first creation, and on revisits while Croesus still lives.
+    if (!C.Is_knox_level?.(game.u?.uz)) return;
+    const croesusAlive = (game.level?.monsters || [])
+        .some((mon) => !mon?.dead && String(mon?.data?.name || mon?.name || '').toUpperCase() === 'CROESUS');
+    if (restoredLevel && !croesusAlive) return;
+    for (const mon of game.level?.monsters || [])
+        if (mon && !mon.dead) mon.msleeping = 0;
+    items.push({
+        text: 'You have penetrated a high security area!',
+        more: false,
+        packAfter: 'An alarm sounds!',
+    });
 }
 
 async function applyLevelArrivalFumaroles() {
@@ -22570,10 +25260,11 @@ function consumeQuestLuaShuffle(item) {
     item.questLuaShuffle = false;
 }
 
-async function queuePostArrivalPline(raw) {
+async function queuePostArrivalPline(raw, options = {}) {
     const item = postArrivalItem(raw);
     const message = item.text;
     if (!message) return false;
+    const blockAfterDelivery = !!options.blockAfterDelivery;
     // C ref: src/questpgr.c:com_pager_core()/deliver_by_pline().  Default
     // one-line quest text is ordinary topline text; a More prompt only comes
     // from normal topline overflow or later arrival work such as look_here().
@@ -22581,7 +25272,7 @@ async function queuePostArrivalPline(raw) {
         if (!game._more) queue_more_prompt();
         game._more_message_queue = [
             ...(game._more_message_queue || []),
-            { text: message, more: false, questLuaShuffle: !!item.questLuaShuffle },
+            { text: message, more: blockAfterDelivery, questLuaShuffle: !!item.questLuaShuffle },
         ];
         return true;
     }
@@ -22589,17 +25280,19 @@ async function queuePostArrivalPline(raw) {
         if (topline_can_pack_message(game._pending_message, message)) {
             consumeQuestLuaShuffle(item);
             await append_pline(message);
+            if (blockAfterDelivery) queue_more_prompt();
         } else {
             queue_more_prompt();
             game._more_message_queue = [
                 ...(game._more_message_queue || []),
-                { text: message, more: false, questLuaShuffle: !!item.questLuaShuffle },
+                { text: message, more: blockAfterDelivery, questLuaShuffle: !!item.questLuaShuffle },
             ];
         }
         return true;
     }
     consumeQuestLuaShuffle(item);
     await pline(message);
+    if (blockAfterDelivery) queue_more_prompt();
     return true;
 }
 
@@ -22669,10 +25362,10 @@ function showQuestLeaderPagerText(text, action = '') {
     rn2(2);
     const screen = renderMorePagerScreen(text);
     const cursor = [8, C.TERMINAL_ROWS - 1];
-    showSerializedOverride(screen, cursor);
     game._latched_more_screen = screen;
     game._latched_more_cursor = [cursor[0], cursor[1], 1];
     game._latched_more_keep_until_dismiss = true;
+    game._latched_more_use_pending_topline = false;
     game._quest_leader_pager_active = true;
     game._quest_leader_pager_action = action || '';
     queue_more_prompt();
@@ -22872,7 +25565,9 @@ async function queuePostArrivalPager(raw, options = {}) {
     const text = item.text;
     if (!text) return false;
     if (!text.includes('\n') && options.plineOnly)
-        return queuePostArrivalPline(item);
+        return queuePostArrivalPline(item, {
+            blockAfterDelivery: !!options.blockAfterDelivery,
+        });
     if (!game._pending_message && !game._more && !(game._more_message_queue || []).length) {
         consumeQuestLuaShuffle(item);
         const { screen, cursor } = postArrivalPagerDisplay(text);
@@ -22881,10 +25576,10 @@ async function queuePostArrivalPager(raw, options = {}) {
         game._post_arrival_pager_text = '';
         game._post_arrival_pager_quest_lua_shuffle = false;
         game._post_arrival_pager_active = true;
-        showSerializedOverride(screen, cursor);
         game._latched_more_screen = screen;
         game._latched_more_cursor = [cursor[0], cursor[1], 1];
         game._latched_more_keep_until_dismiss = true;
+        game._latched_more_use_pending_topline = false;
         queue_more_prompt();
         return true;
     }
@@ -23251,14 +25946,6 @@ function levelTeleportMenuCursor(screen) {
 
 function buildLevelTeleportMenu() {
     return renderLevelTeleportPage(0);
-}
-
-function buildLevelTeleportMenuPage2() {
-    return renderLevelTeleportPage(1);
-}
-
-function buildLevelTeleportMenuPage3() {
-    return renderLevelTeleportPage(2);
 }
 
 function appendLevelchangeTopline(line, msg) {
@@ -23639,6 +26326,10 @@ export async function performLevelTeleport(target, options = {}) {
         await pline('A mysterious force prevents you from descending.');
         return;
     }
+    // C ref: src/do.c:goto_level(). iflags.travelcc is level-local and is
+    // cleared before the next dotravel() prompt seeds its cursor.
+    game._travel_cached_target = null;
+    game._travel_cursor = null;
     const wasInHell = isHellLevel(oldUz);
     const prevTemperature = game.level?.flags?.temperature || 0;
     const newDungeon = oldUz.dnum !== newUz.dnum;
@@ -23800,6 +26491,7 @@ async function finishLevelTeleportArrival({
     await docrt();
     if (game.u?.uhallucination || game.u?.uprops?.hallucination) see_objects();
     clearUnseenPremappedMimicMemory();
+    await flush_screen(-1);
     // C ref: src/teleport.c:level_tele().  Level teleport schedules this
     // deferred post-message only when flags.verbose is true.
     const suppressEndgameMaterialize = C.In_endgame?.(oldUz)
@@ -23872,8 +26564,13 @@ async function finishLevelTeleportArrival({
     const questStartText = questStartPagerText(oldUz);
     const questGoalText = questStartText || locatePagerText ? null : questGoalPagerText(oldUz);
     const postArrivalQuestText = questStartText || locatePagerItem || questGoalText;
+    const postArrivalQuestLine = postArrivalQuestText
+        ? String(postArrivalQuestText.text ?? postArrivalQuestText)
+        : '';
+    const preQuestArrivalObjects = arrivalObjectsAtHero();
     const hasPostArrivalPager = await queuePostArrivalPager(postArrivalQuestText, {
-        plineOnly: !!locatePagerText && !String(locatePagerText).includes('\n'),
+        plineOnly: !!postArrivalQuestLine && !postArrivalQuestLine.includes('\n'),
+        blockAfterDelivery: postArrivalPlineNeedsFloorLookMore(postArrivalQuestLine, preQuestArrivalObjects),
     });
     if (hasPostArrivalPager && materializeLine
         && game._pending_message === materializeLine && !game._more) {
@@ -23887,6 +26584,7 @@ async function finishLevelTeleportArrival({
     const arrivalQueue = [];
     queueEndgameResurrectionMessages(arrivalQueue, oldUz);
     queueSpecialArrivalMessage(arrivalQueue);
+    queueFortLudiosAlarm(arrivalQueue, restoredLevel);
     queueQuestPortalArrivalMessages(arrivalQueue, oldUz);
     const tempMessage = temperatureChangeAfterLevelChange(prevTemperature, wasInHell);
     if (tempMessage?.line && hasPostArrivalPager) game._post_arrival_temp_message = tempMessage;
@@ -23911,13 +26609,13 @@ async function finishLevelTeleportArrival({
     // C ref: do.c:goto_level() runs pickup(1) after the deferred
     // materialize pline; if arrival lands on visible floor objects, the
     // pending object listing forces the materialize line to block first.
-    const arrivalObjects = (game.level?.objects || [])
-        .filter((obj) => obj.ox === game.u?.ux && obj.oy === game.u?.uy && obj.otyp !== GOLD_PIECE);
+    const arrivalObjects = arrivalObjectsAtHero();
     const countableArrivalObjects = arrivalObjects.filter((obj) => obj !== game.uchain);
     const arrivalFloorLookSpendsTurn = !!options?.atStairs || !!options?.spendsTurn || !!game.context?.move;
-    const deferArrivalFloorLook = () => {
+    const deferArrivalFloorLook = (opts = {}) => {
         game._arrival_floor_look_after_more = true;
         game._arrival_floor_list_no_turn_pending = !arrivalFloorLookSpendsTurn;
+        game._arrival_floor_feature_already_shown_pending = !!opts.featureAlreadyShown;
     };
     if (!countableArrivalObjects.length) {
         // C ref: pickup.c:check_here().  The hero's chain alone does not
@@ -23929,7 +26627,17 @@ async function finishLevelTeleportArrival({
             if (topline_can_pack_message(game._pending_message, line)) {
                 await append_pline(line);
             } else {
-                deferArrivalFloorLook();
+                let featureAlreadyShown = false;
+                const feature = lookHereFeature({ includeOrdinaryDoors: true });
+                if (feature.line && topline_can_pack_message(game._pending_message, feature.line)) {
+                    // C refs: do.c:goto_level(), pickup.c:check_here(),
+                    // invent.c:look_here().  look_here() prints the dfeature
+                    // before the one-object sentence; the dfeature may pack
+                    // behind the materialize line even when the object cannot.
+                    await append_pline(feature.line);
+                    featureAlreadyShown = true;
+                }
+                deferArrivalFloorLook({ featureAlreadyShown });
                 queue_more_prompt();
             }
         } else {
@@ -23943,7 +26651,24 @@ async function finishLevelTeleportArrival({
             showFloorObjectList(arrivalObjects);
         }
     } else if (game._more && arrivalObjects.length > 0) {
-        deferArrivalFloorLook();
+        let featureAlreadyShown = false;
+        const pileLimit = Number.isFinite(Number(game.flags?.pile_limit))
+            ? Math.trunc(Number(game.flags.pile_limit))
+            : 5;
+        if (countableArrivalObjects.length === 1
+            || (pileLimit > 0 && countableArrivalObjects.length >= pileLimit)) {
+            const feature = lookHereFeature({ includeOrdinaryDoors: true });
+            if (feature.line && game._pending_message
+                && topline_can_pack_message(game._pending_message, feature.line)) {
+                // C refs: do.c:goto_level(), pickup.c:check_here(),
+                // invent.c:look_here().  Level-arrival pickup still emits the
+                // dfeature line before the one-object/pile summary even when an
+                // earlier materialize topline is already blocking for tty More.
+                await append_pline(feature.line);
+                featureAlreadyShown = true;
+            }
+        }
+        deferArrivalFloorLook({ featureAlreadyShown });
     }
     game.context.mv = 1;
 }
@@ -24094,6 +26819,9 @@ export async function rhack(key) {
 
     let ch = String.fromCharCode(key);
 
+    if (!game._more && !(game._more_message_queue || []).length)
+        clearLatchedStatusGoldAfterMore();
+
     if (game._arrival_topline_absorbs_next_key && !game._more) {
         game._arrival_topline_absorbs_next_key = false;
         clear_pending_message();
@@ -24180,19 +26908,20 @@ export async function rhack(key) {
             game._terrain_view_done_more = false;
             game._terrain_view_active = false;
             clear_pending_message();
-            clearOverrideScreen();
+            clearTerrainWindowScreen();
+            await redrawAfterFullScreenMenuDismiss();
         }
         game.context.move = 0;
         return;
     }
 
     if (game._terrain_view_intro_more) {
-        game._override_prev = null;
         if (ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b') {
             game._terrain_view_intro_more = false;
             game._more = false;
             game._more_dismissals_remaining = 0;
             clear_pending_message();
+            clearTerrainWindowScreen();
             if (!getposTipSeen()) {
                 markGetposTipSeen();
                 game._travel_tip_active = 'terrain';
@@ -24220,20 +26949,96 @@ export async function rhack(key) {
 
     if (game._awaiting_terrain_menu) {
         game._awaiting_terrain_menu = false;
-        clearOverrideScreen();
         if (ch === 'a') {
+            clearTerrainWindowScreen();
             game._terrain_view_active = true;
             showTerrainView("Showing known terrain only...  (For instructions type a '?')");
         } else if (ch === ' ' || ch === '\r' || ch === '\n') {
+            clearTerrainWindowScreen();
             game._terrain_view_intro_more = true;
             const msg = 'Showing known terrain only...';
             showTerrainView(`${msg}--More--`, [msg.length + '--More--'.length, 0]);
             game._pending_message = msg;
             queue_more_prompt();
+        } else {
+            clearTerrainWindowScreen({ redraw: true });
+            await flush_screen(1);
         }
         game.context.move = 0;
         return;
     }
+
+    if (game._disclosure_window_active) {
+        await handleDisclosureWindowInput(ch);
+        return;
+    }
+
+    if (game._name_menu_active) {
+        await handleNameMenuInput(ch);
+        return;
+    }
+
+    if (game._enhance_skills_active) {
+        await handleEnhanceSelection(ch);
+        return;
+    }
+
+    if (game._discovery_window_active) {
+        await handleDiscoveryWindowInput(ch);
+        return;
+    }
+
+    if (game._attributes_window_active) {
+        await handleAttributesWindowInput(key);
+        return;
+    }
+
+    if (game._level_teleport_menu_active) {
+        await handleLevelTeleportMenuInput(ch);
+        return;
+    }
+
+    if (game._wizidentify_menu_active) {
+        await handleWizIdentifyMenuInput(ch);
+        return;
+    }
+
+    if (game._inventory_action_menu_active) {
+        await handleInventoryActionMenuInput(ch);
+        return;
+    }
+
+    if (game._tutorial_prompt_active) {
+        await handleTutorialPromptInput(ch);
+        return;
+    }
+
+    if (game._startup_legacy_pager_active) {
+        handleStartupLegacyPagerInput(ch);
+        return;
+    }
+
+    if (game._spell_menu_active) {
+        await handleSpellMenuInput(ch);
+        return;
+    }
+
+    if (game._spell_cast_menu_active) {
+        await handleSpellCastMenuInput(ch);
+        return;
+    }
+
+    if (game._help_menu_active) {
+        await handleHelpMenuInput(ch);
+        return;
+    }
+
+    if (game._help_text_active) {
+        await handleHelpTextInput(ch);
+        return;
+    }
+
+    if (await handleLookWindowInput(ch)) return;
 
     if (await handleQueuedMore(ch)) return;
 
@@ -24264,7 +27069,7 @@ export async function rhack(key) {
             const quickFarlook = kind === 'farlook' && !!game._farlook_after_tip_quick;
             game._farlook_after_tip_quick = false;
             game._travel_tip_active = false;
-            clearOverrideScreen();
+            clearTravelTipScreen();
             if (kind === 'farlook') {
                 if (quickFarlook) {
                     game._awaiting_farlook_prompt = true;
@@ -24299,6 +27104,8 @@ export async function rhack(key) {
                 game._awaiting_travel_cursor = false;
                 game._awaiting_travel_prompt = true;
             }
+            game._full_map_redraw_pending = true;
+            await flush_screen(1);
         } else {
             setTravelTipCursor();
         }
@@ -24307,8 +27114,14 @@ export async function rhack(key) {
     }
 
     if (game._awaiting_lookat_menu) {
-        clearOverrideScreen();
+        clearLookWindowScreen();
+        game._look_menu_active = false;
         game._awaiting_lookat_menu = false;
+        // C ref: win/tty/wintty.c:erase_menu_or_text().  The look-at chooser
+        // is a corner overlay; erase it back to the saved map before the
+        // selected action prints a topline or opens another window.
+        game._full_map_redraw_pending = true;
+        await flush_screen(1);
         if (ch === '/') {
             // C ref: src/pager.c:do_look().  The menu-driven screen lookup
             // prints the short "Pick ..." prompt when verbose is disabled,
@@ -24429,11 +27242,13 @@ export async function rhack(key) {
             // has been answered.
             const msg = 'Unlink bones? [yn] (n)';
             await showPromptLine(msg);
-            game._prompt_cursor = [msg.length + 1, 0];
+            const cursor = [msg.length + 1, 0];
+            game._prompt_cursor = cursor;
             if (promptScreen) {
-                showSerializedOverride(screenWithPromptLine(promptScreen, msg), [msg.length + 1, 0]);
+                setBonesUnlinkPromptScreen(screenWithPromptLine(promptScreen, msg), cursor);
+            } else {
+                game._bones_unlink_prompt_active = true;
             }
-            game._bones_unlink_prompt_active = true;
             game.context.move = 0;
             return;
         }
@@ -24462,8 +27277,7 @@ export async function rhack(key) {
     }
 
     if (game._bones_unlink_prompt_active) {
-        game._bones_unlink_prompt_active = false;
-        game._override_prev = null;
+        clearBonesUnlinkPromptScreen();
         clear_pending_message();
         if (ch === 'y' || ch === 'Y') delete_pending_bones_file();
         const pending = game._pending_level_teleport_after_bones || {};
@@ -24612,12 +27426,20 @@ export async function rhack(key) {
                 game._death_bones_checked = true;
                 game._death_bones_check_pending = true;
             }
-            const bonesOk = prepareDeathBonesDoneStageBasic();
-            if (bonesOk && deathCanSaveWizardBones()) {
-                await showDeathSaveBonesPrompt();
-            } else {
-                await showDeathDisclosureOrPrompt();
+            if (game._death_shopkeeper_takes_name) {
+                await pline(`${game._death_shopkeeper_takes_name} takes all your possessions.`);
+                game._death_shopkeeper_takes_name = '';
+                queue_more_prompt();
+                game._death_continue_after_shopkeeper_more = true;
+                game.context.move = 0;
+                return;
             }
+            if (firstMoveDeathMessageNeeded()) {
+                await showFirstMoveDeathMessage();
+                game.context.move = 0;
+                return;
+            }
+            await continueAcceptedDeathFlow();
             game.context.move = 0;
             return;
         }
@@ -24653,6 +27475,7 @@ export async function rhack(key) {
             game._death_bones_done_stage_prepared = false;
             game._death_bones_corpse_prepared = false;
             game._death_bones_ok = false;
+            game._death_shopkeeper_takes_name = '';
             if (game._monster_turn_paused_for_more) {
                 game._resume_turn_tail_after_more = false;
                 game._nomovemsg = 'You survived that attempt on your life.';
@@ -24674,10 +27497,24 @@ export async function rhack(key) {
                     && (game._monster_death_pending || game._after_more_message)) {
                     queue_more_prompt();
                 }
+                if (game._more
+                    && String(game._pending_message || '').startsWith("OK, so you don't die.")) {
+                    // C refs: src/end.c:savelife(), win/tty/topl.c:more().
+                    // The declined-death OK continuation is one blocking tty
+                    // More even when several resumed physical hit fragments
+                    // were packed into that line.
+                    game._more_dismissals_remaining = 1;
+                }
                 if (game._more) game._pending_more_strict_keys = true;
                 game._savelife_resume_active = true;
                 if (game._more) {
-                    game._latched_status_turn = (game.moves || 1) + 1;
+                    // C refs: src/end.c:savelife(), src/mhitu.c:mattacku().
+                    // A transient monster-tail death prompt is still inside
+                    // the current monster turn; ordinary saved-life resumes
+                    // have already crossed the next displayed turn boundary.
+                    game._latched_status_turn = game._monster_attack_tail_transient_after_more
+                        ? (game.moves || 1)
+                        : (game.moves || 1) + 1;
                     game._clear_latched_status_after_more = true;
                     game._monster_turn_paused_for_more = true;
                     game._monster_attack_more_waiting = true;
@@ -24786,7 +27623,7 @@ export async function rhack(key) {
             clear_pending_message();
             game._awaiting_dump_core = false;
             const screen = '\nSince you were in wizard mode, the score list will not be checked.';
-            showOverride(screen, [0, 4]);
+            setTerminalExitScreen(screen, [0, 4]);
             game.program_state = game.program_state || {};
             game.program_state.gameover = true;
             game.context.move = 0;
@@ -25273,10 +28110,7 @@ export async function rhack(key) {
         if (!'hykulnjb<>.'.includes(ch)) {
             game.context.move = 0;
             if (game.iflags?.cmdassist !== false) {
-                game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
-                game._direction_help_after_more_message = '';
-                showSerializedOverride(INVALID_DIRECTION_HELP_SCREEN, [8, 23]);
-                queue_more_prompt();
+                showDirectionHelpScreen();
             } else {
                 await pline('What a strange direction!');
             }
@@ -25308,6 +28142,11 @@ export async function rhack(key) {
                 picktyp,
                 usedtime: 0,
             };
+            // C refs: src/lock.c:doforce(), win/tty/topl.c:update_topl().
+            // The start-bashing line enters TOPLINE_NEED_MORE, but the main
+            // loop keeps running occupation turns until a later topline update
+            // cannot pack and tty services the old line's More.
+            game._force_lock_start_more_after_turn = true;
             game.context.move = 1;
             return;
         }
@@ -25533,13 +28372,19 @@ export async function rhack(key) {
             game._travel_cursor = null;
             const pendingBeforeTravel = game._pending_message || '';
             const clearGetposError = /^(?:Unknown direction:|Can't find dungeon feature )/.test(pendingBeforeTravel);
+            const travelPromptResidue = /^Where do you want to travel to\?/.test(pendingBeforeTravel);
             const transientTravelDescription = !!pendingBeforeTravel
                 && !clearGetposError
-                && !/^Where do you want to travel to\?/.test(pendingBeforeTravel);
+                && !travelPromptResidue;
             // C refs: src/getpos.c:getpos()/auto_describe(), src/cmd.c:dotravel().
-            // Valid cursor descriptions remain visible until movement output
-            // replaces them; only getpos error lines are cleared.
+            // Valid cursor descriptions remain active; the selected travel
+            // prompt remains as stale topline residue until movement output
+            // replaces it. Only getpos error lines are cleared outright.
             if (clearGetposError) clear_pending_message();
+            else if (!transientTravelDescription) {
+                clear_pending_message();
+                if (travelPromptResidue) game._topline_residue = pendingBeforeTravel;
+            }
             game._travel_description_pending = transientTravelDescription;
             const startedTravel = await beginTravelRunToCachedTarget();
             if (clearGetposError && !startedTravel && pendingBeforeTravel) await pline(pendingBeforeTravel);
@@ -25581,7 +28426,7 @@ export async function rhack(key) {
             game._teleport_cursor = null;
             if (teleokBasic(cursor.x, cursor.y, false)) {
                 if (game.flags?.verbose === false) {
-                    await teledsBasic(cursor.x, cursor.y);
+                    await teledsBasic(cursor.x, cursor.y, { packFeatureWithPending: true });
                 } else {
                     clear_pending_message();
                     await teledsBasic(cursor.x, cursor.y, { deferArrivalBehindMore: true });
@@ -25730,7 +28575,6 @@ export async function rhack(key) {
 
     if (game._intrinsic_menu) {
         const menu = game._intrinsic_menu;
-        game._override_prev = null;
         if (ch >= '0' && ch <= '9') {
             menu.count = `${menu.count || ''}${ch}`;
             renderIntrinsicMenu(menu);
@@ -25747,7 +28591,7 @@ export async function rhack(key) {
         }
         if (ch === '\x1b') {
             game._intrinsic_menu = null;
-            clearOverrideScreen();
+            clearIntrinsicMenuScreen();
             await docrt();
             game.context.move = 0;
             return;
@@ -25862,10 +28706,7 @@ export async function rhack(key) {
                 game._awaiting_level_teleport = false;
                 game._level_teleport_help_pending = false;
                 game._level_teleport_input = '';
-                const menu = buildLevelTeleportMenu();
-                game._level_teleport_menu_screen = menu.screen;
-                game._level_teleport_menu_choices = menu.choices;
-                showOverride(menu.screen, levelTeleportMenuCursor(menu.screen));
+                setLevelTeleportMenuScreen(buildLevelTeleportMenu());
             }
             game.context.move = 0;
             return;
@@ -26149,14 +28990,16 @@ export async function rhack(key) {
         const obj = game._awaiting_dip_fountain_confirm;
         game._awaiting_dip_fountain_confirm = null;
         if (ch === 'y' || ch === 'Y') {
-            const msg = dipFountainEffect(obj);
-            if (msg) {
-                clear_pending_message();
-                await pline(msg);
-            } else {
-                game._prompt_cursor = null;
+            const oldPrompt = game._pending_message || '';
+            clear_pending_message();
+            await dipFountainEffect(obj);
+            if (!game._pending_message && !game._more && oldPrompt) {
+                game._pending_message = oldPrompt;
+                game._last_topline_message = oldPrompt;
+                game._pending_message_wrap_cols = 0;
             }
-            game.context.move = 1;
+            if (!game._pending_message) game._prompt_cursor = null;
+            game.context.move = game._more ? 0 : 1;
             return;
         }
         clear_pending_message();
@@ -26188,11 +29031,31 @@ export async function rhack(key) {
         const idx = inventoryIndexForLetter(ch);
         const obj = idx >= 0 ? game.inventory?.[idx] : null;
         const loc = game.level?.at(game.u?.ux, game.u?.uy);
-        if (obj && loc?.typ === C.FOUNTAIN) {
+        if (obj && obj.oclass !== COIN_CLASS && loc?.typ === C.FOUNTAIN) {
             await showDipFountainConfirm(obj);
         } else {
             game.context.move = 0;
         }
+        return;
+    }
+
+    if (game._potion_menu_active) {
+        await handlePotionMenuInput(ch);
+        return;
+    }
+
+    if (game._inventory_menu_active) {
+        await handleInventoryMenuInput(ch);
+        return;
+    }
+
+    if (game._pay_menu_active) {
+        await handlePayMenuInput(ch);
+        return;
+    }
+
+    if (game._inventory_prompt_menu_active) {
+        await handleInventoryPromptMenuInput(ch);
         return;
     }
 
@@ -26293,18 +29156,8 @@ export async function rhack(key) {
         }
         if (obj === heroSecondaryWeapon()) {
             // C ref: src/wield.c:doswapweapon().  Choosing the alternate
-            // weapon from #wield swaps primary/secondary and prints the old
-            // primary after the new primary's prinv() line.
-            const old = heroWieldedWeapon();
-            setHeroSecondaryWeapon(null);
-            applyHeroArtifactTouchRng(obj);
-            setHeroWieldedWeapon(obj);
-            await pline(`${inventoryListing(obj, { includeWorn: true })}.`);
-            if (old && old !== obj) {
-                setHeroSecondaryWeapon(old);
-                await printInventoryLineAfterCurrentTopline(`${inventoryListing(old, { includeWorn: true })}.`);
-            }
-            game.context.move = 1;
+            // weapon from #wield takes the same tty continuation path as #swap.
+            await doSwapWeaponCommand();
             return;
         }
         const old = heroWieldedWeapon();
@@ -26502,7 +29355,7 @@ export async function rhack(key) {
                 return;
             }
             game._awaiting_read_item = true;
-            await showInventoryClassMenu(SCROLL_CLASS);
+            await showInventoryClassMenu(SCROLL_CLASS, 'read');
             game.context.move = 0;
             return;
         }
@@ -26520,10 +29373,12 @@ export async function rhack(key) {
         return;
     }
 
-    const throwMenuOverrideActive = game._override_prev
-        && (game._override_prev === game._throw_inventory_menu_screen
-            || game._override_prev === game._throw_inventory_menu_page2_screen);
-    if (game._awaiting_throw_item && !throwMenuOverrideActive) {
+    if (game._throw_inventory_menu_active) {
+        await handleThrowInventoryMenuInput(ch);
+        return;
+    }
+
+    if (game._awaiting_throw_item) {
         clear_pending_message();
         game._awaiting_throw_item = false;
         if (ch === ' ' || ch === '\x1b') {
@@ -26577,14 +29432,13 @@ export async function rhack(key) {
     if (game._awaiting_zap_item) {
         if (ch === '?' || ch === '*') {
             clear_pending_message();
-            await showInventoryClassMenu(WAND_CLASS);
+            await showInventoryClassMenu(WAND_CLASS, 'zap');
             game._awaiting_zap_item = true;
             game.context.move = 0;
             return;
         }
         clear_pending_message();
         game._awaiting_zap_item = false;
-        clearOverrideScreen();
         const idx = inventoryIndexForLetter(ch);
         const obj = idx >= 0 ? game.inventory?.[idx] : null;
         if (!obj || obj.oclass !== WAND_CLASS) {
@@ -26592,23 +29446,7 @@ export async function rhack(key) {
             await pline('Never mind.');
             return;
         }
-        if (!await zappableWand(obj)) {
-            game.context.move = 1;
-            await pline('Nothing happens.');
-            return;
-        }
-        if (await maybeBackfireWand(obj)) return;
-        if (obj.otyp === WAN_SECRET_DOOR_DETECTION) {
-            // C ref: zap.c:zapnodir() -> detect.c:findit().
-            exercise(A_WIS, true);
-            obj.knownName = true;
-            await pline("You don't find anything.");
-            game.context.move = 1;
-            return;
-        }
-        game._awaiting_zap_direction = obj;
-        game.context.move = 0;
-        await showPromptLine('In what direction? ');
+        await finishZapItemSelection(obj);
         return;
     }
 
@@ -26619,10 +29457,7 @@ export async function rhack(key) {
         if (!'hykulnjb<>.'.includes(ch)) {
             game.context.move = 0;
             if (game.iflags?.cmdassist !== false) {
-                game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
-                game._direction_help_after_more_message = '';
-                showSerializedOverride(INVALID_DIRECTION_HELP_SCREEN, [8, 23]);
-                queue_more_prompt();
+                showDirectionHelpScreen();
             } else {
                 await pline('What a strange direction!');
             }
@@ -26650,10 +29485,7 @@ export async function rhack(key) {
                 return;
             }
             if (game.iflags?.cmdassist !== false) {
-                game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
-                game._direction_help_after_more_message = opening ? 'Never mind.' : '';
-                showSerializedOverride(INVALID_DIRECTION_HELP_SCREEN, [8, 23]);
-                queue_more_prompt();
+                showDirectionHelpScreen(opening ? 'Never mind.' : '');
             } else {
                 await pline('What a strange direction!');
             }
@@ -26710,10 +29542,7 @@ export async function rhack(key) {
         if (!'hykulnjb<>.'.includes(ch)) {
             game.context.move = 0;
             if (game.iflags?.cmdassist !== false) {
-                game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
-                game._direction_help_after_more_message = '';
-                showSerializedOverride(INVALID_DIRECTION_HELP_SCREEN, [8, 23]);
-                queue_more_prompt();
+                showDirectionHelpScreen();
             } else {
                 await pline('What a strange direction!');
             }
@@ -26770,7 +29599,7 @@ export async function rhack(key) {
         const dx = DIR_DX[ch] || 0;
         const dy = DIR_DY[ch] || 0;
         if (obj.otyp === WAN_SLEEP && ch === '.') {
-            obj.knownName = true;
+            learnWandFromUse(obj);
             // C ref: src/zap.c:dozap(), src/zap.c:zapyourself(); self-zaps
             // take the zapyourself branch before weffects exercise handling.
             game._nomul_turns_remaining = rnd(50);
@@ -26780,10 +29609,10 @@ export async function rhack(key) {
             return;
         }
         if (obj.otyp === WAN_DEATH && ch === '.') {
-            obj.knownName = true;
             // C refs: src/cmd.c:getdir()/confdir(), src/zap.c:zapyourself()
-            // for WAN_DEATH.  Confusion still probes impairment before a
-            // deliberate self direction is honored.
+            // for WAN_DEATH.  Fatal self-zaps never return from done(DIED)
+            // to the learnwand() tail, so the only RNG before bones is the
+            // confused-direction impairment probe.
             if (game.u?.uprops?.confusion || game.u?.uconfusion) rn2(5);
             const self = game.flags?.female ? 'herself' : 'himself';
             game._death_killer_name = `shot ${self} with a death ray`;
@@ -26802,21 +29631,22 @@ export async function rhack(key) {
             return;
         }
         if (obj.otyp === WAN_POLYMORPH && ch === '.') {
-            obj.knownName = true;
             await finishRandomPolyselfFromWand();
+            learnWandFromUse(obj);
             return;
         }
         exercise(A_WIS, true);
         if (obj.otyp === WAN_DIGGING) {
-            obj.knownName = true;
             obj.chargesKnown = false;
             zapDig(dx, dy);
-            exercise(A_WIS, true);
+            if (dx || dy) learnWandFromUse(obj);
         } else if (obj.otyp === WAN_FIRE) {
-            obj.knownName = true;
             await zapFireRayAtHero(dx, dy);
+        } else if (obj.otyp === WAN_COLD) {
+            await zapColdRay(dx, dy);
+            obj.dknown = true;
+            learnWandFromUse(obj);
         } else if (obj.otyp === WAN_SLEEP) {
-            obj.knownName = true;
             if (sleepRayHitsHeroAfterBounce(dx, dy)) {
                 drawRayBeam(dx, dy, 12);
                 await pline('The sleep ray bounces!  The sleep ray hits you!');
@@ -26830,6 +29660,7 @@ export async function rhack(key) {
                 }
                 queue_more_prompt();
             }
+            learnWandFromUse(obj);
         } else if (obj.otyp === WAN_POLYMORPH) {
             await zapPolymorphObjects(obj, DIR_DX[ch] || 0, DIR_DY[ch] || 0);
         }
@@ -26842,24 +29673,6 @@ export async function rhack(key) {
     }
 
     if (game._awaiting_apply_item) {
-        const dismissedApplyHelp = !!game._apply_inventory_help_menu;
-        if (dismissedApplyHelp) {
-            game._apply_inventory_help_menu = null;
-            if (ch === '\x1b' || ch === 'q' || ch === 'Q' || ch === ' ') {
-                clearOverrideScreen();
-                await redrawAfterFullScreenMenuDismiss();
-                game._awaiting_apply_item = true;
-                game.context.move = 0;
-                await showPromptLine(`What do you want to use or apply? [${applyLetters()} or ?*] `);
-                return;
-            }
-            if (ch === '?' || ch === '*') {
-                await showApplyInventoryHelpMenu(ch === '*');
-                return;
-            }
-            clearOverrideScreen();
-            await redrawAfterFullScreenMenuDismiss();
-        }
         clear_pending_message();
         game._awaiting_apply_item = false;
         if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
@@ -26881,65 +29694,7 @@ export async function rhack(key) {
             queue_more_prompt();
             return;
         }
-        if (obj.otyp === CREAM_PIE) {
-            // C refs: src/dothrow.c:throwit(), src/do.c:dowipe().
-            // Self-cream sets sticky-goop blindness until #wipe cleans it.
-            consumeInventoryObject(obj);
-            game.u = game.u || {};
-            const blindinc = rnd(25); // C ref: src/apply.c:use_cream_pie().
-            game.u.ucreamed = Math.max(game.u.ucreamed || 0, blindinc);
-            game.u.ublind = true;
-            game.u.uprops = game.u.uprops || {};
-            game.u.uprops.blind = Math.max(game.u.uprops.blind || 0, game.u.ucreamed);
-            game.u.uprops.blinded = Math.max(game.u.uprops.blinded || 0, game.u.ucreamed);
-            await docrt();
-            await plineWithMorePrompt('You immerse your face in the cream pie.');
-            game._more_message_queue = [
-                ...(game._more_message_queue || []),
-                { text: "You can't see through all the sticky goop on your face.", more: false },
-            ];
-            game._cream_pie_resist_after_more = obj;
-            game._pre_turn_more_waiting = true;
-            game._monster_turn_paused_for_more = true;
-            game.context.move = 1;
-            return;
-        }
-        if (obj.oclass !== TOOL_CLASS) {
-            game.context.move = 0;
-            await pline("Sorry, I don't know how to use that.");
-            return;
-        }
-        if (isContainerObject(obj)) {
-            // C refs: src/apply.c:doapply(), src/pickup.c:use_container().
-            const name = baseObjectName(obj) || 'container';
-            if ((obj.otyp === LARGE_BOX || obj.otyp === CHEST) && obj.olocked) {
-                void name;
-                await reportLockedContainerAndMaybeAutounlock(obj);
-                return;
-            }
-            showLootActionMenu(obj, false, { held: true });
-            game.context.move = 0;
-            return;
-        }
-        if (obj.otyp === EXPENSIVE_CAMERA || obj.otyp === STETHOSCOPE
-            || obj.otyp === LOCK_PICK || obj.otyp === CREDIT_CARD) {
-            game._awaiting_apply_direction = obj;
-            game.context.move = 0;
-            await showPromptLine('In what direction? ');
-            return;
-        }
-        if (obj.otyp === MAGIC_MARKER) {
-            game._awaiting_write_on_item = obj;
-            game.context.move = 0;
-            await showPromptLine('What do you want to write on? [*] ');
-            return;
-        }
-        if (obj.otyp === LEATHER_DRUM) {
-            await applyLeatherDrum();
-            return;
-        }
-        game.context.move = 0;
-        await pline('Nothing happens.');
+        await finishApplyObjectSelection(obj);
         return;
     }
 
@@ -27020,478 +29775,6 @@ export async function rhack(key) {
         return;
     }
 
-    // If an override screen was shown last capture (hook set _override_prev),
-    // handle multi-page menus: set the next page before returning.
-    if (game._override_prev) {
-        const prev = game._override_prev;
-        game._override_prev = null;
-        const tutorialOverride = prev === game._tutorial_prompt_screen
-            || (typeof prev === 'string' && prev.includes('Do you want a tutorial?'));
-        if (tutorialOverride) {
-            if (ch === 'n' || ch === '\x1b') {
-                clear_pending_message();
-                game._tutorial_answered = true;
-                game._startup_preamble_done_waiting_tutorial = false;
-                game._startup_preamble_more_active = false;
-                game.context.move = 0;
-                return;
-            }
-            if (ch === 'y') {
-                clear_pending_message();
-                game._tutorial_answered = true;
-                game._startup_preamble_done_waiting_tutorial = false;
-                game._startup_preamble_more_active = false;
-                game.context.move = 0;
-                await enterTutorialAfterPrompt();
-                return;
-            }
-            // C ref: options.c:ask_do_tutorial() + win/tty/wintty.c:tty_select_menu().
-            // The menu loop returns with no selection for space/enter, causing
-            // ask_do_tutorial() to rebuild the menu with the extra guidance
-            // line. Other invalid selector keys are swallowed by the tty menu
-            // and leave the original menu/cursor in place.
-            await showTutorialPrompt(ch === ' ' || ch === '\r' || ch === '\n');
-            game.context.move = 0;
-            return;
-        }
-        if (game._more && ch !== ' ' && ch !== '\r' && ch !== '\n' && ch !== '\x1b') {
-            // C ref: win/tty/topl.c:more(); a latched More override ignores
-            // non-dismissal keys instead of treating them as menu input.
-            showOverride(prev, game._latched_more_cursor || null);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._spell_cast_menu_screen) {
-            const entry = game._spell_cast_menu_choices?.get(ch);
-            game._spell_cast_menu_screen = null;
-            game._spell_cast_menu_choices = null;
-            await redrawAfterFullScreenMenuDismiss();
-            if (entry) await beginCastSpell(entry);
-            else game.context.move = 0;
-            return;
-        }
-        if (prev === game._spell_menu_screen) {
-            const dismiss = ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b';
-            const validSelection = ch === '+'
-                || knownSpellEntries().some((entry) => entry.letter === ch);
-            if (!dismiss && !validSelection) {
-                // C ref: spell.c:dospellmenu() via tty select_menu(); invalid
-                // selectors keep the menu active instead of dismissing it.
-                showSerializedOverride(prev, game._spell_menu_cursor || null);
-            } else {
-                game._spell_menu_screen = null;
-                game._spell_menu_cursor = null;
-                clearOverrideScreen();
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._help_menu_screen) {
-            clearOverrideScreen();
-            await handleHelpMenuSelection(ch);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._help_text_screen) {
-            const keyCode = ch.charCodeAt(0);
-            const dismiss = ch === ' ' || ch === '\r' || ch === '\n';
-            const cancel = ch === '\x1b';
-            const pages = game._help_text_pages || [[]];
-            const page = game._help_text_page || 0;
-            if (dismiss && page + 1 < pages.length) {
-                game._help_text_page = page + 1;
-                renderHelpTextPage();
-            } else if (dismiss || cancel) {
-                game._help_text_pages = null;
-                game._help_text_page = 0;
-                game._help_text_more_prompt = null;
-                game._help_text_compact_final_more = false;
-                game._help_text_cursor = null;
-                game._help_text_screen = null;
-                clearOverrideScreen();
-                await redrawAfterFullScreenMenuDismiss();
-            } else {
-                showSerializedOverride(prev, game._help_text_cursor || [8, C.TERMINAL_ROWS - 1]);
-                game._override_serialized_persistent = false;
-            }
-            game.context.move = 0;
-            void keyCode;
-            return;
-        }
-        if (prev === game._pay_menu_screen) {
-            const menu = game._pay_menu;
-            if (ch === '\x1b') {
-                game._pay_menu = null;
-                game._pay_menu_screen = null;
-                await redrawAfterFullScreenMenuDismiss();
-                game.context.move = 0;
-                return;
-            }
-            if (ch === '\r' || ch === '\n') {
-                await commitPayMenuSelection(menu);
-                game.context.move = 0;
-                return;
-            }
-            const entry = menu?.entries?.find((item) => item.selector === ch);
-            if (entry) entry.selected = !entry.selected;
-            if (menu) renderPayMenu(menu);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._death_inventory_disclosure_screen) {
-            const dismiss = ch === ' ' || ch === '\r' || ch === '\n';
-            const pages = Array.isArray(game._death_inventory_disclosure_pages)
-                ? game._death_inventory_disclosure_pages
-                : [];
-            const page = game._death_inventory_disclosure_page || 0;
-            if (dismiss && page + 1 < pages.length) {
-                showDeathInventoryDisclosurePage(page + 1);
-            } else {
-                await showDeathAttributesPrompt();
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._death_attributes_page1_screen) {
-            if ((ch === ' ' || ch === '\r' || ch === '\n') && game._death_attributes_page2_screen) {
-                showOverride(game._death_attributes_page2_screen, [9, Math.max(0, game._death_attributes_page2_screen.split('\n').length - 1)]);
-            } else {
-                await showDeathCreaturesPrompt();
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._death_attributes_page2_screen) {
-            if ((ch === ' ' || ch === '\r' || ch === '\n') && game._death_attributes_page3_screen) {
-                showOverride(game._death_attributes_page3_screen, [9, Math.max(0, game._death_attributes_page3_screen.split('\n').length - 1)]);
-                game.context.move = 0;
-                return;
-            }
-            await showDeathCreaturesPrompt();
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._death_attributes_page3_screen) {
-            await showDeathCreaturesPrompt();
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._level_teleport_menu_screen) {
-            if (ch === ' ') {
-                const menu = buildLevelTeleportMenuPage2();
-                game._level_teleport_menu_page2_screen = menu.screen;
-                game._level_teleport_menu_page2_choices = menu.choices;
-                showOverride(menu.screen, levelTeleportMenuCursor(menu.screen));
-                game.context.move = 0;
-                return;
-            }
-            const target = game._level_teleport_menu_choices?.[ch];
-            if (target) {
-                await redrawAfterFullScreenMenuDismiss();
-                await scheduleLevelTeleportFromMenu(target);
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._level_teleport_menu_page2_screen) {
-            if (ch === ' ') {
-                const menu = buildLevelTeleportMenuPage3();
-                if (menu.pageIndex < menu.totalPages) {
-                    game._level_teleport_menu_page3_screen = menu.screen;
-                    game._level_teleport_menu_page3_choices = menu.choices;
-                    showOverride(menu.screen, levelTeleportMenuCursor(menu.screen));
-                }
-                game.context.move = 0;
-                return;
-            }
-            const target = game._level_teleport_menu_page2_choices?.[ch];
-            if (target) {
-                await redrawAfterFullScreenMenuDismiss();
-                await scheduleLevelTeleportFromMenu(target);
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._level_teleport_menu_page3_screen) {
-            const target = game._level_teleport_menu_page3_choices?.[ch];
-            if (target) {
-                await redrawAfterFullScreenMenuDismiss();
-                await scheduleLevelTeleportFromMenu(target);
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._wizidentify_menu_screen) {
-            await handleWizIdentifyMenuInput(ch);
-            return;
-        }
-        if (prev === game._throw_inventory_menu_screen) {
-            if (ch === ' ' && game._throw_inventory_menu_page2_lines?.length) {
-                showThrowInventoryMenuPage2();
-                game.context.move = 0;
-                return;
-            }
-            const selectGold = ch === '$' && (game._goldCount || 0) > 0;
-            const idx = inventoryIndexForLetter(ch);
-            const obj = idx >= 0 ? game.inventory?.[idx] : null;
-            if (selectGold || obj) {
-                game._throw_inventory_menu_screen = null;
-                game._throw_inventory_menu_page2_screen = null;
-                game._throw_inventory_menu_page2_lines = null;
-                game._throw_inventory_menu_cursor = null;
-                game._throw_inventory_menu_page2_cursor = null;
-                clearOverrideScreen();
-                await redrawAfterFullScreenMenuDismiss();
-                game._awaiting_throw_item = false;
-                game._awaiting_throw_direction = selectGold
-                    ? { otyp: GOLD_PIECE, oclass: COIN_CLASS, quan: game._goldCount || 0 }
-                    : obj;
-                game.context.move = 0;
-                await showPromptLine('In what direction? ');
-                return;
-            }
-            if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
-                game._throw_inventory_menu_screen = null;
-                game._throw_inventory_menu_page2_screen = null;
-                game._throw_inventory_menu_page2_lines = null;
-                game._throw_inventory_menu_cursor = null;
-                game._throw_inventory_menu_page2_cursor = null;
-                clearOverrideScreen();
-                await redrawAfterFullScreenMenuDismiss();
-                game._awaiting_throw_item = true;
-                await showThrowPrompt();
-                game.context.move = 0;
-                return;
-            }
-            showOverride(prev, game._throw_inventory_menu_cursor || null);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._throw_inventory_menu_page2_screen) {
-            const idx = inventoryIndexForLetter(ch);
-            const obj = idx >= 0 ? game.inventory?.[idx] : null;
-            game._throw_inventory_menu_screen = null;
-            game._throw_inventory_menu_page2_screen = null;
-            game._throw_inventory_menu_page2_lines = null;
-            game._throw_inventory_menu_cursor = null;
-            game._throw_inventory_menu_page2_cursor = null;
-            clearOverrideScreen();
-            await redrawAfterFullScreenMenuDismiss();
-            if (obj) {
-                game._awaiting_throw_item = false;
-                game._awaiting_throw_direction = obj;
-                await showPromptLine('In what direction? ');
-            } else {
-                game._awaiting_throw_item = true;
-                await showThrowPrompt();
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (game._look_inventory_lookup_active && prev === game._inventory_menu_screen) {
-            game._look_inventory_lookup_active = false;
-            game._inventory_menu_screen = null;
-            game._inventory_menu_page2_lines = null;
-            game._inventory_menu_cursor = null;
-            if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
-                await redrawAfterFullScreenMenuDismiss();
-                game.context.move = 0;
-                return;
-            }
-            const idx = inventoryIndexForLetter(ch);
-            const obj = idx >= 0 ? game.inventory?.[idx] : null;
-            const lines = LOOKUP_DATA.get(baseObjectName(obj).toLowerCase());
-            if (lines) await showLookupDataOverlay(lines);
-            else {
-                await redrawAfterFullScreenMenuDismiss();
-                await pline("You don't have any information on those things.");
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._inventory_menu_screen) {
-            if (ch === ' ' && game._inventory_menu_page2_lines?.length) {
-                showInventoryMenuPage2();
-                game.context.move = 0;
-                return;
-            }
-            const idx = inventoryIndexForLetter(ch);
-            const obj = idx >= 0 ? game.inventory?.[idx] : null;
-            if (obj) await showInventoryActionMenu(obj);
-            else if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
-                game._inventory_menu_screen = null;
-                game._inventory_menu_page2_lines = null;
-                game._inventory_menu_cursor = null;
-                await redrawAfterFullScreenMenuDismiss();
-            } else {
-                const cursor = game._inventory_menu_cursor
-                    ? [game._inventory_menu_cursor[0], game._inventory_menu_cursor[1]]
-                    : null;
-                showOverride(prev, cursor);
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._inventory_menu_page2_screen) {
-            game._inventory_menu_screen = null;
-            game._inventory_menu_page2_screen = null;
-            game._inventory_menu_page2_lines = null;
-            game._inventory_menu_cursor = null;
-            game._inventory_menu_page2_cursor = null;
-            await redrawAfterFullScreenMenuDismiss();
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._potion_menu_screen) {
-            clear_pending_message();
-            game._override_prev = null;
-            game._potion_menu_screen = null;
-            game._awaiting_drink_item = false;
-            const idx = inventoryIndexForLetter(ch);
-            const obj = idx >= 0 ? game.inventory?.[idx] : null;
-            if (obj?.oclass === POTION_CLASS) await drinkPotion(obj, idx);
-            else game.context.move = 0;
-            return;
-        }
-        if (prev === game._inventory_action_menu_screen) {
-            const obj = game._inventory_action_menu_obj;
-            if (ch === '\r' || ch === '\n' || ch === ' ' || ch === '\x1b') {
-                game._inventory_action_menu_obj = null;
-                game._inventory_action_menu_screen = null;
-                await redrawAfterFullScreenMenuDismiss();
-                game.context.move = 0;
-                return;
-            }
-            if (ch === 't' && obj) {
-                clear_pending_message();
-                game._inventory_action_menu_obj = null;
-                game._inventory_action_menu_screen = null;
-                game._awaiting_throw_direction = obj;
-                game.context.move = 0;
-                await showPromptLine('In what direction? ');
-                return;
-            }
-            if (obj) await showInventoryActionMenu(obj);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._attributes_page2_screen && key !== 32 && key !== 13 && key !== 27) {
-            const row = Math.max(0, (game._attributes_page2_screen || '').split('\n').length - 1);
-            showOverride(game._attributes_page2_screen, [9, row]);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._attributes_page2_screen
-            && game._attributes_page3_screen
-            && (key === 32 || key === 13)) {
-            const row = Math.max(0, (game._attributes_page3_screen || '').split('\n').length - 1);
-            showOverride(game._attributes_page3_screen, [9, row]);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._attributes_page3_screen && key !== 32 && key !== 13 && key !== 27) {
-            const row = Math.max(0, (game._attributes_page3_screen || '').split('\n').length - 1);
-            showOverride(game._attributes_page3_screen, [9, row]);
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._discovery_screen) {
-            const dismiss = ch === ' ' || ch === '\r' || ch === '\n';
-            const pages = Array.isArray(game._discovery_pages) ? game._discovery_pages : [];
-            const page = game._discovery_page || 0;
-            if (dismiss && page + 1 < pages.length) {
-                game._discovery_page = page + 1;
-                game._discovery_screen = pages[game._discovery_page];
-                showOverride(game._discovery_screen, [8, 23]);
-            } else {
-                game._discovery_screen = null;
-                game._discovery_pages = null;
-                game._discovery_page = 0;
-                await redrawAfterFullScreenMenuDismiss();
-            }
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._name_menu_screen) {
-            game._name_menu_screen = null;
-            clearOverrideScreen();
-            await redrawAfterFullScreenMenuDismiss();
-            if (ch === 'a') await beginAnnotatePrompt();
-            else if (ch === 'i' || ch === 'y') await beginNameInventoryPrompt();
-            else game.context.move = 0;
-            return;
-        }
-        if (prev === game._enhance_skills_screen) {
-            await handleEnhanceSelection(ch);
-            return;
-        }
-        if (prev === game._vanquished_screen && game._death_vanquished_screen_active) {
-            game._death_vanquished_screen_active = false;
-            game._vanquished_screen = null;
-            clearOverrideScreen();
-            await showDeathConductPrompt();
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._conduct_screen && game._death_conduct_screen_active) {
-            game._death_conduct_screen_active = false;
-            game._conduct_screen = null;
-            clearOverrideScreen();
-            await showDeathOverviewPrompt();
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._overview_screen && game._death_overview_screen_active) {
-            game._death_overview_screen_active = false;
-            game._overview_screen = null;
-            clearOverrideScreen();
-            await showDeathDisclosure();
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._look_data_screen
-            || prev === game._look_list_screen
-            || prev === game._overview_screen
-            || prev === game._conduct_screen
-            || prev === game._vanquished_screen
-            || prev === game._spell_cast_menu_screen
-            || (prev === game._attributes_page1_screen && key !== 32 && key !== 13)
-            || prev === game._attributes_page2_screen
-            || prev === game._attributes_page3_screen) {
-            game._spell_menu_screen = null;
-            game._spell_menu_cursor = null;
-            game._spell_cast_menu_screen = null;
-            game._spell_cast_menu_choices = null;
-            game._look_data_screen = null;
-            game._look_list_screen = null;
-            game._name_menu_screen = null;
-            game._enhance_skills_screen = null;
-            game._overview_screen = null;
-            game._conduct_screen = null;
-            game._vanquished_screen = null;
-            game._attributes_page1_screen = null;
-            game._attributes_page2_screen = null;
-            game._attributes_page3_screen = null;
-            clearOverrideScreen();
-            await redrawAfterFullScreenMenuDismiss();
-            game.context.move = 0;
-            return;
-        }
-        if (prev === game._attributes_page1_screen && (key === 32 || key === 13)) {
-            // Space/Enter pages to second attributes page.
-            const row = Math.max(0, (game._attributes_page2_screen || '').split('\n').length - 1);
-            showOverride(game._attributes_page2_screen, [9, row]);
-        }
-        if (game._deferred_startup_uac != null) {
-            game.u.uac = game._deferred_startup_uac;
-            game._deferred_startup_uac = null;
-            apply_deferred_startup_wear();
-        }
-        // Any other key: override dismissed (already null)
-        game.context.move = 0;
-        return;
-    }
-
     const startupMoreDismissKey = game._more && (ch === ' ' || ch === '\r' || ch === '\n');
     const startupPreambleSource = isStartupWelcomeMessage(game._pending_message)
         || game._startup_preamble_more_active;
@@ -27513,13 +29796,16 @@ export async function rhack(key) {
         && !showStartupTutorial) {
         game._startup_preamble_done_waiting_tutorial = false;
         clear_pending_message();
+        game._full_map_redraw_pending = true;
+        await flush_screen(1);
         game.context.move = 0;
         return;
     }
 
     const occupationMore = ch === ' '
         && game._occupation_paused_for_more
-        && game._more;
+        && game._more
+        && !game._monster_turn_paused_for_more;
     if (occupationMore) {
         clear_pending_message();
         game._occupation_paused_for_more = false;
@@ -27543,7 +29829,7 @@ export async function rhack(key) {
         if (ch === 'y' || ch === 'Y') {
             writeSavedGame();
             const screen = `Be seeing you...${'\n'.repeat(C.TERMINAL_ROWS - 1)}`;
-            showOverride(screen, [0, 1]);
+            setTerminalExitScreen(screen, [0, 1]);
             game._pending_message = 'Be seeing you...';
             game.program_state = game.program_state || {};
             game.program_state.gameover = true;
@@ -27619,6 +29905,34 @@ export async function rhack(key) {
     ch = applyCommandBinding(ch);
     const redrawCommand = ch === '\x12' || ch === '\x0c';
     if (!redrawCommand) game._redraw_resumes_run = null;
+    const runCommandPrefix = game._run_command_prefix || null;
+
+    if (runCommandPrefix && ch === '\x1b') {
+        game._run_command_prefix = null;
+        game.context.move = 0;
+        return;
+    }
+    if (runCommandPrefix && ch === 'm') {
+        // C refs: src/cmd.c:do_run()/do_rush()/do_reqmenu(),
+        // set_move_cmd().  `m` can follow a run/rush prefix and then marks the
+        // eventual movement as no-pickup without replacing the run mode.
+        game._run_command_prefix = { ...runCommandPrefix, nopick: true };
+        game.context.move = 0;
+        return;
+    }
+    if (runCommandPrefix) {
+        game._run_command_prefix = null;
+        if (isMovementKey(ch)) {
+            await startRunDirection(ch, runCommandPrefix.mode, {
+                nopick: !!(runCommandPrefix.nopick || forceCommandPrefix),
+            });
+        } else {
+            // C ref: src/cmd.c:rhack().  `g`/`G` are prefix commands, so a
+            // non-movement followup is rejected rather than dispatched.
+            await rejectRunCommandPrefix(ch, runCommandPrefix);
+        }
+        return;
+    }
 
     if (redrawCommand) {
         // C refs: cmd.c:cmdlist[]/bind_key(); display.c:doredraw()/docrt_flags().
@@ -27662,11 +29976,20 @@ export async function rhack(key) {
     } else if (key === 10 || key === 13) {
         // C refs: cmd.c:reset_commands(), cmd.c:do_rush_south().  Line-feed is
         // C('j'), bound to rush mode 3 rather than shifted run mode 1.  Tty
-        // Enter can arrive as carriage return in replay input.
+        // Enter can arrive as carriage return in queued input.
         await startRunDirection('j', 3, { nopick: forceCommandPrefix });
     } else if (runDirectionForKey(ch)) {
         const dir = runDirectionForKey(ch);
         await startRunDirection(dir, 1, { nopick: forceCommandPrefix });
+    } else if (runPrefixModeForKey(ch)) {
+        // C ref: src/cmd.c:do_run()/do_rush().  `G`/`g` are silent movement
+        // prefixes; command dispatch waits for the following movement key.
+        game._run_command_prefix = {
+            key: ch,
+            mode: runPrefixModeForKey(ch),
+            nopick: !!forceCommandPrefix,
+        };
+        game.context.move = 0;
     } else if (ch === 'F') {
         game.context.move = 0;
         game._forcefight_pending = true;
@@ -27869,15 +30192,15 @@ export async function rhack(key) {
     } else if (ch === '\\') {
         game.context.move = 0;
         const screen = discoveriesScreen();
-        game._discovery_screen = screen;
-        showOverride(screen, [8, 23]);
+        setDiscoveryWindowScreen(screen, [8, 23]);
     } else if (key === 24) { // ^X
         game.context.move = 0;
         const screens = buildAttributesScreens();
         game._attributes_page1_screen = screens.page1;
         game._attributes_page2_screen = screens.page2;
         game._attributes_page3_screen = screens.page3 || null;
-        showOverride(screens.page1, [9, 23]);
+        game._attributes_page = 1;
+        setAttributesWindowScreen(screens.page1, [9, C.TERMINAL_ROWS - 1]);
     } else if (key === 6 && (game.wizard || game.flags?.debug)) {
         // C ref: wizcmds.c:wiz_map() -> detect.c:do_mapping().
         map_level_for_wizard(true);
@@ -28020,7 +30343,7 @@ export async function rhack(key) {
             await showPromptLine(`What do you want to zap? [${letters} or ?*] `);
             game._awaiting_zap_item = true;
         } else {
-            await pline('You have nothing to zap.');
+            await pline("You don't have anything to zap.");
         }
     } else if (ch === 't') {
         game.context.move = 0;
@@ -28077,17 +30400,31 @@ export async function continueRunStep() {
         game.context.move = 0;
         return false;
     }
-    if (await runShouldStopBeforeRepeatMove(run)) {
+    if (!(run.travel && run.initialAttempt)
+        && await runShouldStopBeforeRepeatMove(run)) {
         game.context.run = null;
         return false;
     }
     maybeTurnCorridorRun(run);
     let step = run.travel ? findTravelStep(run.target) : { dx: run.dx, dy: run.dy };
     if (!step) {
+        if (run.travel && run.initialAttempt) {
+            // C refs: src/cmd.c:dotravel(), src/hack.c:domove_core().
+            // dotravel() is a time command even when findtravelpath() cannot
+            // supply a unit direction; the failed attempt still reaches the
+            // ordinary turn tail with the cursor-description topline intact.
+            run.initialAttempt = false;
+            game.context.run = null;
+            game.context.move = 1;
+            game.context.mv = 1;
+            return true;
+        }
         game.context.run = null;
         game.context.move = 0;
         return false;
     }
+    const initialTravelAttempt = !!(run.travel && run.initialAttempt);
+    run.initialAttempt = false;
     if (run.travel) {
         // C ref: hack.c:findtravelpath()/domove().  Travel chooses a path,
         // but each domove attempt receives a unit direction.
@@ -28095,19 +30432,23 @@ export async function continueRunStep() {
     }
     game.context.move = 0;
     game.context.mv = 1;
+    if (run._travel_stop_message) {
+        await pline(run._travel_stop_message);
+        run._travel_stop_message = '';
+    }
     const moved = await withCommandNopick(!!run.nopick, () => domove(step.dx, step.dy));
     if (run.travel) setTravelMapCursor();
-    game.context.move = moved ? 1 : 0;
+    game.context.move = (moved || initialTravelAttempt) ? 1 : 0;
     if (run.travel && game.u?.ux === run.target.x && game.u?.uy === run.target.y) {
         game._travel_cached_target = null;
         game.context.run = null;
         return moved;
     }
-    if (!moved || game._run_stop_after_move) {
+    if (!moved || game._run_stop_after_move || run._travel_stop_after_step) {
         game.context.run = null;
         game._run_stop_after_move = false;
     }
-    return moved;
+    return moved || initialTravelAttempt;
 }
 
 function uMaybeImpaired() {
@@ -28220,13 +30561,15 @@ export async function domove(dx, dy) {
     }
 
     if (target?.typ === DOOR && (target.doormask & (D_CLOSED | D_LOCKED))) {
-        if (game.context?.run) return bumpClosedDoor(dx, dy);
-        if (target.doormask & D_LOCKED) {
-            // C ref: lock.c:doopen_indir().  Auto-open reaches the locked-door
-            // branch before deciding whether autounlock should prompt.
-            return reportLockedDoorAndMaybeAutounlock(newx, newy);
+        if (mayAutoOpenDoorFromMove()) {
+            if (target.doormask & D_LOCKED) {
+                // C ref: src/hack.c:test_move() -> src/lock.c:doopen_indir().
+                // Auto-open reaches the locked-door branch before deciding
+                // whether autounlock should prompt.
+                return reportLockedDoorAndMaybeAutounlock(newx, newy);
+            }
+            if (await tryAutoOpenDoor(newx, newy)) return false;
         }
-        if (await tryAutoOpenDoor(newx, newy)) return false;
         return bumpClosedDoor(dx, dy);
     }
 
@@ -28245,7 +30588,7 @@ export async function domove(dx, dy) {
             await swapWithSafeMonster(mon, newx, newy);
             return true;
         }
-        if (game.context?.run && cansee(newx, newy)) {
+        if (game.context?.run && heroCanSpotMonsterForHit(mon)) {
             // C ref: hack.c:domove_core().  Running into a visible non-safe
             // monster stops the run instead of performing a melee attack.
             game.context.move = 0;
@@ -28259,6 +30602,7 @@ export async function domove(dx, dy) {
             // performing the melee hit; force-fight is the explicit attack path.
             await pline("Wait!  There's something there you can't see!");
             mapInvisibleBasic(newx, newy);
+            game.context.run = null;
             return true;
         }
         await attackMonster(mon);

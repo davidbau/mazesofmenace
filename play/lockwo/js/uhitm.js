@@ -17,6 +17,7 @@ import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE,
 import { exercise } from './attrib.js';
 import { DEADMONSTER } from './mon.js';
 import { mkcorpstat, mkobj_at, CORPSE, place_object } from './mkobj.js';
+import { mon_nocorpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
@@ -263,20 +264,27 @@ const P_NONE = 0, P_DAGGER = 1, P_KNIFE = 2, P_AXE = 3, P_PICK_AXE = 4,
       P_TWO_HANDED_SWORD = 8, P_SCIMITAR = 9, P_SABER = 9, P_CLUB = 10,
       P_MACE = 11, P_MORNING_STAR = 12, P_FLAIL = 13, P_HAMMER = 14,
       P_QUARTERSTAFF = 15, P_POLEARMS = 16, P_SPEAR = 17, P_TRIDENT = 18,
-      P_LANCE = 19, P_BOW = 20, P_TWO_WEAPON_COMBAT = 36;
+      P_LANCE = 19, P_BOW = 20, P_DART = 23, P_TWO_WEAPON_COMBAT = 36;
 
 // otyp -> { ws, wl, hb, sk }.  otyp values match mkobj.js objects[] indices.
+// C ref: weapon.c objects[otyp].oc_wldam — large-monster damage die; used by
+// lock.c forcelock() to derive the lock-forcing chance (oc_wldam * 2).
+export function oc_wldam(otyp) { return WEAP[otyp]?.wl ?? 0; }
+
 const WEAP = {
+    24: { ws: 3,  wl: 2,  hb: 0, sk: P_DART },         // DART (objects.h: sdam 3 ldam 2)
     27: { ws: 6,  wl: 8,  hb: 0, sk: P_SPEAR },        // SPEAR
+    30: { ws: 8,  wl: 8,  hb: 0, sk: P_SPEAR },        // DWARVISH_SPEAR
     34: { ws: 4,  wl: 3,  hb: 2, sk: P_DAGGER },       // DAGGER
+    39: { ws: 3,  wl: 3,  hb: 2, sk: P_KNIFE },        // SCALPEL (healer start)
     40: { ws: 3,  wl: 2,  hb: 0, sk: P_KNIFE },        // KNIFE
     44: { ws: 6,  wl: 4,  hb: 0, sk: P_AXE },          // AXE
     46: { ws: 6,  wl: 8,  hb: 0, sk: P_SHORT_SWORD },  // SHORT_SWORD
     50: { ws: 8,  wl: 8,  hb: 0, sk: P_SCIMITAR },     // SCIMITAR
     54: { ws: 8,  wl: 12, hb: 0, sk: P_LONG_SWORD },   // LONG_SWORD
     56: { ws: 10, wl: 12, hb: 1, sk: P_LONG_SWORD },   // KATANA
-    77: { ws: 6,  wl: 8,  hb: 0, sk: P_LANCE },        // LANCE
-    78: { ws: 6,  wl: 6,  hb: 0, sk: P_MACE },         // MACE
+    72: { ws: 6,  wl: 8,  hb: 0, sk: P_LANCE },        // LANCE (mkobj.js otyp 72)
+    73: { ws: 6,  wl: 6,  hb: 0, sk: P_MACE },         // MACE  (mkobj.js otyp 73; +1 small)
     79: { ws: 6,  wl: 6,  hb: 0, sk: P_QUARTERSTAFF }, // QUARTERSTAFF (wizard start)
 };
 
@@ -397,7 +405,22 @@ async function known_hitum(mon, weapon, mhit, dieroll) {
         await missum(mon);
         return true;
     }
-    return await hmon(mon, weapon, dieroll);
+    const oldhp = mon.mhp;
+    const malive = await hmon(mon, weapon, dieroll);
+    // C ref: uhitm.c known_hitum():624 — a monster that SURVIVES the hit has a
+    // 1/25 chance to flee if reduced below half HP.  The rn2(25) gate fires for
+    // every surviving hit; only on a 0 (and mhp < mhpmax/2) does monflee roll
+    // its own rn2(3) duration (seed5002 step-242: rn2(25) after hitting the
+    // small mimic).  (Vorpal-blade "hit converted to miss" not modeled.)
+    if (malive) {
+        if (!rn2(25) && (mon.mhp < Math.trunc((mon.mhpmax ?? 0) / 2))) {
+            // monflee(mon, !rn2(3) ? rnd(100) : 0, FALSE, TRUE)
+            if (!rn2(3)) rnd(100);
+            mon.mflee = 1;
+        }
+        void oldhp;
+    }
+    return malive;
 }
 
 // C ref: uhitm.c missum() — the "You miss the <mon>." top-line message.
@@ -442,11 +465,17 @@ async function hmon(mon, weapon, dieroll) {
         if (dmg < 1) dmg = 1;
     }
 
-    // hmon_hitmon_stagger (uhitm.c:1576): an unarmed hit for >1 damage that is
-    // not a thrown/applied object and not polymorphed rolls rnd(100) to maybe
-    // stagger the victim (the roll fires regardless of the outcome).
+    // C ref uhitm.c:1825-1831 — the stagger/knockback gate, an if/else-if:
+    //   unarmed && dmg>1 && !thrown && !obj && !Upolyd      -> hmon_hitmon_stagger
+    //   !unarmed && dmg>1 && !thrown && !Upolyd && !twoweap && uwep -> maybe_knockback
+    // (jousting omitted — no lance/steed here).  This is evaluated BEFORE the
+    // mhp subtraction; stagger rolls rnd(100) immediately, knockback is deferred
+    // until after a surviving hit (below).
+    let maybe_knockback = false;
     if (unarmed && dmg > 1) {
-        rnd(100);
+        rnd(100);                              // hmon_hitmon_stagger (uhitm.c:1576)
+    } else if (!unarmed && dmg > 1 && !game.u?.twoweap && game.uwep) {
+        maybe_knockback = true;                // uhitm.c:1831
     }
 
     mon.mhp = (mon.mhp || 0) - dmg;
@@ -466,6 +495,18 @@ async function hmon(mon, weapon, dieroll) {
     else
         await update_topl('You hit it.');
     mon.msleeping = 0;
+
+    // C ref uhitm.c:1922-1931 — wakeup(mon) then, for a surviving armed hit,
+    // mhitm_knockback(&youmonst, mon, ...).  Its leading rolls always fire:
+    //   knockdistance = rn2(3)        (uhitm.c:5258)
+    //   if (rn2(chance)) return FALSE  (uhitm.c:5269, chance==6, no ogresmasher)
+    // The contest hits all take the 5/6 "no knockback" branch, so the later
+    // size/solidity gates draw nothing.  (seed5002 step-242: hero hits the
+    // small mimic — the rn2(6) chance roll must follow the rn2(3) knockdistance.)
+    if (maybe_knockback) {
+        rn2(3);                                // knockdistance (uhitm.c:5258)
+        rn2(6);                                // chance         (uhitm.c:5269)
+    }
     return true;
 }
 
@@ -500,9 +541,13 @@ async function killed(mon) {
     else
         await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} it!`);
 
-    // illogical-but-traditional treasure drop gate (mon.c:3587).
+    // illogical-but-traditional treasure drop gate (mon.c:3587).  C also gates
+    // on !(mvitals[mndx].mvflags & G_NOCORPSE): a G_NOCORPSE species (grid bug,
+    // gas spore, …) never drops the extra item.  The rn2(6) still rolls first.
+    const mndx0 = mon.data?.pmidx;
+    const nocorpse = (mndx0 != null) ? mon_nocorpse(mndx0) : false;
     let dropTreasure = false;
-    if (!rn2(6) && (x !== game.u.ux || y !== game.u.uy)) {
+    if (!rn2(6) && !nocorpse && (x !== game.u.ux || y !== game.u.uy)) {
         dropTreasure = true;          // mdat->mlet S_KOP / mcloned excluded
     }
 
@@ -664,10 +709,13 @@ function corpse_chance(mon) {
 // :0, mdat, x, y, CORPSTAT_INIT).  mksobj() builds the corpse object: rolls the
 // next_ident o_id, the rndmonnum() reservoir scan (overwritten with mdat after),
 // the gender rn2(2), and start_corpse_timeout().  Reuses mkobj.js verbatim.
-function make_corpse(mon, x, y) {
+export function make_corpse(mon, x, y) {
     const mndx = mon.data?.pmidx;
     if (mndx == null) return;
-    // G_NOCORPSE check (mvflags) — the modelled victims all leave a corpse.
+    // C ref: mon.c:893 make_corpse default path — a G_NOCORPSE species (grid
+    // bug, gas spore, …) returns NULL with NO mksobj rolls.  corpse_chance()
+    // still rolled its rn2 in the caller; only the corpse object is suppressed.
+    if (mon_nocorpse(mndx)) return;
     // mkcorpstat(CORPSE, KEEPTRAITS(mon)?mon:0, mdat, x, y, CORPSTAT_INIT):
     // mksobj() rolls next_ident, the rndmonnum() reservoir scan, gender rn2(2),
     // and start_corpse_timeout().  pm (mndx) overrides the rolled corpsenm after.
@@ -698,9 +746,9 @@ export function dmgval(otmp, mon) {
         }
     } else {
         if (w && w.ws) tmp = rnd(w.ws);          // small-monster damage die
-        // weapon.c small-monster "extra" additions:
+        // weapon.c small-monster "extra" additions (weapon.c:266-295):
         switch (otyp) {
-        case 78: tmp += 1; break;                // MACE: +1
+        case 73: tmp += 1; break;                // MACE (mkobj.js otyp 73): +1
         case 27: tmp += 0; break;                // SPEAR: none
         default: break;
         }
@@ -747,6 +795,16 @@ export function Monnam(mtmp) {
 export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
     const base = mtmp?.data?.name || 'monster';
     const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
+
+    // C ref: do_name.c x_monnam do_it — an unspottable monster (e.g. while the
+    // hero is blind) is just "it" unless ARTICLE_YOUR was requested.  Gated on
+    // Blind specifically (rather than the broader !canspotmon) to avoid shifting
+    // coincidental matches in early-diverged sessions whose monsters are merely
+    // out of line-of-sight; the recorded seed5006 case is blindfold-blindness.
+    if (article !== 3 && mtmp && mtmp !== game.u?.usteed
+        && (game.u?.ublindf || (game.u?.blinded || 0) > 0 || game.ublindf)
+        && !canspotmon(mtmp))
+        return 'it';
 
     // ARTICLE_YOUR only applies to tame monsters; otherwise downgrade to THE.
     if (article === 3 && !mtmp.mtame) article = 1;

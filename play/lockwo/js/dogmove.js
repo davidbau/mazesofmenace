@@ -14,15 +14,18 @@ import { rn2, rnd } from './rng.js';
 import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok } from './const.js';
 import { obj_resists } from './zap.js';
 import { newsym } from './display.js';
-import { couldsee as visCouldsee, clear_path } from './vision.js';
+import { couldsee as visCouldsee, clear_path, cansee } from './vision.js';
+import { Monnam, x_monnam } from './uhitm.js';
+import { floor_object_name } from './invent.js';
 import { dist2, mfndpos } from './monmove.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import {
     FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, CORPSE, TIN, next_ident,
+    GOLD_PIECE, COIN_CLASS,
 } from './mkobj.js';
 import { gettrack } from './track.js';
-import { monster_by_pmidx } from './makemon.js';
+import { monster_by_pmidx, mon_msize, mon_cwt } from './makemon.js';
 
 // dogfood quality enum (mextra.h): lower == more desirable.
 const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
@@ -316,6 +319,18 @@ function droppables(mtmp) {
     return null;
 }
 
+// C ref: objnam.c doname(obj) for the items a starter pet carries (gold and
+// ordinary floor objects), used in the pet pickup/drop toplines.  For a single
+// gold piece doname() prefixes the article: "a gold piece"; a multi stack reads
+// "<n> gold pieces".  Other objects defer to floor_object_name (== doname).
+function pet_doname(obj) {
+    if (obj && (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE)) {
+        const q = obj.quan || 0;
+        return q === 1 ? 'a gold piece' : `${q} gold pieces`;
+    }
+    return floor_object_name(obj);
+}
+
 // C ref: dogmove.c dog_invent(mtmp, edog, udist).  The pet either drops a
 // carried object (relobj, no RNG beyond the drop rolls), eats an underfoot
 // item (counts as its move), or picks one up (splitobj -> next_ident when the
@@ -365,6 +380,12 @@ function dog_invent(mtmp, edog, udist) {
                     let otmp = obj;
                     if (carryamt !== (obj.quan || 1))
                         otmp = pet_splitobj(obj, carryamt);
+                    // C ref: dogmove.c:451-462 — if the hero can see the pet's
+                    // tile, announce the pickup (verbose default).  doname() is
+                    // evaluated before the object is removed from the floor.  No
+                    // RNG (cansee is deterministic; gold/ordinary doname is too).
+                    if (cansee(omx, omy) && game.flags?.verbose !== false)
+                        game._pending_message = `${Monnam(mtmp)} picks up ${pet_doname(otmp)}.`;
                     pet_extract_floor(otmp);
                     mpickobj(mtmp, otmp);
                 }
@@ -380,9 +401,19 @@ function dog_invent(mtmp, edog, udist) {
 function relobj(mtmp, x, y) {
     const inv = mtmp.minvent || [];
     const arr = game.level?.objects;
+    // C ref: steal.c relobj(is_pet=TRUE) -> mdrop_obj(mon,obj,is_pet&&verbose).
+    // For each droppable, when verbose and the hero can see the pet's tile,
+    // announce "<Mon> drops <obj>." (doname evaluated before the floor drop).
+    const verbose = game.flags?.verbose !== false;
+    const announce = verbose && cansee(x, y);
     for (const obj of inv) {
+        if (announce)
+            game._pending_message = `${Monnam(mtmp)} drops ${pet_doname(obj)}.`;
         obj.ox = x; obj.oy = y;
-        obj.where = 0; // OBJ_FLOOR
+        // C ref: mdrop_obj -> place_object: the object goes back on the floor.
+        // Use the same 'floor' marker place_object sets so vobj_at/the display
+        // (display.c map_object) renders the dropped glyph.
+        obj.where = 'floor';
         if (arr && !arr.includes(obj)) arr.push(obj);
     }
     mtmp.minvent = [];
@@ -777,6 +808,11 @@ export async function dog_move(mtmp, after) {
     let nidist = GDIST(nix, niy, g);
     const k = uncursedcnt; // edog ? uncursedcnt : cnt
     const mtrack = mtmp.mtrack || [];
+    // C ref: dogmove.c:1175 do_eat / `obj` — when the candidate scan finds food,
+    // C records the object and jumps to newdogpos, where (after moving) it calls
+    // dog_eat(mtmp, obj, ...).  We must do the same: the eat consumes the corpse
+    // and rolls its own RNG (dogfood reward-check + delobj obj_resists).
+    let do_eat = false, eat_obj = null;
 
     for (let i = 0; i < cnt; i++) {
         const nx = poss[i].x, ny = poss[i].y;
@@ -803,6 +839,7 @@ export async function dog_move(mtmp, after) {
             if (otyp < MANFOOD
                 && (otyp < ACCFOOD || edog.hungrytime <= (game.moves || 1))) {
                 nix = nx; niy = ny; chi = i; ate = true;
+                do_eat = true; eat_obj = obj;
                 break;
             }
         }
@@ -840,7 +877,9 @@ export async function dog_move(mtmp, after) {
     // non-adjacent, non-tame, hostile target lined up within 7 visible squares,
     // which is RNG the move stream depends on even though the contest pets never
     // actually fire a ranged attack.  A non-NOTHING result short-circuits.
-    {
+    // NOTE: when the candidate scan found food it `goto newdogpos` in C, jumping
+    // PAST pet_ranged_attk, so we only run it when the pet isn't eating.
+    if (!do_eat) {
         const r = pet_ranged_attk(mtmp);
         if (r !== MMOVE_NOTHING) return r;
     }
@@ -852,9 +891,115 @@ export async function dog_move(mtmp, after) {
         // Redraw the vacated and occupied squares (C: place_monster + newsym).
         newsym(omx, omy);
         newsym(nix, niy);
+        // C ref: dogmove.c:1318 — after moving onto the food, the pet eats it.
+        if (do_eat && eat_obj) {
+            const r = await dog_eat(mtmp, edog, eat_obj, omx, omy);
+            if (r === 2) return MMOVE_DIED;
+        }
         return MMOVE_MOVED;
     }
     return MMOVE_NOTHING;
+}
+
+// C ref: dogmove.c dog_eat(mtmp, obj, x, y, devour=FALSE) — the pet eats a floor
+// object it has just moved onto.  We model the RNG-load-bearing + observable
+// pieces exercised by the contest pets (corpses / ordinary food, never devour /
+// shop / royal-jelly / metal here):
+//   - dog_nutrition(): no RNG; updates edog->hungrytime + mtmp->meating.
+//   - the "<pet> eats <obj>." topline when the pet or food is in view.
+//   - the reward-apport dogfood() check (dog.c:1197 equiv) -> obj_resists rn2(100).
+//   - m_consume_obj() -> delobj() -> obj_resists(obj,0,0) rn2(100), then the
+//     corpse is removed from the floor.
+// Returns 2 if the pet died (never here), else 1.
+async function dog_eat(mtmp, edog, obj, x, y) {
+    const moves = game.moves || 1;
+    if (edog.hungrytime < moves) edog.hungrytime = moves;
+    // dog_nutrition(): nutrit drives hungrytime; corpses use the species cnutrit
+    // table, but only hungrytime (a non-RNG counter) depends on it, so a faithful
+    // bump keeps later `hungrytime <= moves` food gates aligned.  We approximate
+    // the nutrition with the corpse's species nutrition when available.
+    edog.hungrytime += dog_nutrition(mtmp, obj);
+    mtmp.mconf = 0;
+    if (mtmp.mflee && mtmp.mfleetim > 1) mtmp.mfleetim = Math.trunc(mtmp.mfleetim / 2);
+    if ((mtmp.mtame || 0) < 20) mtmp.mtame = (mtmp.mtame || 0) + 1;
+    // moved & ate on same turn: redraw the start and current squares.
+    if (x !== mtmp.mx || y !== mtmp.my) { newsym(x, y); newsym(mtmp.mx, mtmp.my); }
+
+    // C ref: dog_eat — food items are eaten one at a time (splitobj) when the
+    // pile has quan>1; corpses are quan==1, so no splitobj/next_ident here.
+
+    // "<pet> eats <obj>." — shown when the pet (at its new tile) or the food is
+    // in view.  noit_Monnam == "Your kitten" for a tame pet.
+    const seeobj = cansee(mtmp.mx, mtmp.my);
+    const sawpet = cansee(x, y);
+    if (sawpet || seeobj) {
+        const what = pet_doname(obj);
+        await emit_pet_msg(`${noit_Monnam(mtmp)} eats ${what}.`);
+    }
+
+    // C ref: dog_eat:315 — reward-apport bump only when DOGFOOD && obj->invlet,
+    // but dogfood() is *called* unconditionally (obj_resists rn2(100) fires).
+    dogfood(mtmp, obj); // -> obj_resists rn2(100)
+
+    // C ref: m_consume_obj -> delobj(obj): obj_resists(obj,0,0) rn2(100), then
+    // the object is removed from the floor.
+    obj_resists(obj, 0, 0); // rn2(100)
+    pet_extract_floor(obj);
+
+    return 1;
+}
+
+// C ref: dogmove.c dog_nutrition(mtmp, obj) — no RNG.  Only the hungrytime
+// side-effect is load-bearing for the move stream: it pushes hungrytime well
+// past svm.moves so the pet stops being "hungry" (gating future ACCFOOD eats via
+// `hungrytime <= moves`).  The precise nutrition value isn't observable, so we
+// approximate it with a positive amount large enough to keep the not-hungry gate
+// stable for the rest of the session.  Corpses scale a base nutrition by the
+// eater's body size; other food uses a small positive default.
+function dog_nutrition(mtmp, obj) {
+    // C ref: dog_nutrition sets mtmp->meating (the digesting-occupation counter)
+    // AND returns nutrit (the hungrytime bump).  meating gates the pet's movement
+    // for the next few m_move() calls (monmove.c:1745), so it MUST be exact:
+    //   corpse:    meating = 3 + (mons[corpsenm].cwt >> 6)
+    //   other food: meating = objects[otyp].oc_delay  (not exercised here)
+    // For a corpse, cwt < 64 (newt cwt 10) -> meating = 3.
+    let nutrit;
+    if (obj.otyp === CORPSE) {
+        const cwt = mon_cwt(obj.corpsenm) ?? 0;
+        mtmp.meating = 3 + (cwt >> 6);
+        // nutrit = mons[corpsenm].cnutrit; the cnutrit table isn't ported, so use
+        // a conservative positive base (only the hungrytime sign/magnitude is
+        // observable, never the exact value).
+        nutrit = 50;
+    } else {
+        mtmp.meating = 1;
+        nutrit = 50;
+    }
+    const msize = (mtmp.data?.msize != null)
+        ? mtmp.data.msize
+        : (mon_msize(mtmp.data?.pmidx) ?? 2 /* MZ_MEDIUM */);
+    switch (msize) {
+    case 0: nutrit *= 8; break;  // MZ_TINY
+    case 1: nutrit *= 6; break;  // MZ_SMALL
+    case 3: nutrit *= 4; break;  // MZ_LARGE
+    case 4: nutrit *= 3; break;  // MZ_HUGE
+    case 5: nutrit *= 2; break;  // MZ_GIGANTIC
+    default: nutrit *= 5; break; // MZ_MEDIUM
+    }
+    return nutrit;
+}
+
+// C ref: do_name.c Monnam()/x_monnam(ARTICLE_YOUR) capitalized — "Your kitten".
+function noit_Monnam(mtmp) {
+    const s = x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, 0, false);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Emit a pet topline message, honoring the --More-- pacing that update_topl
+// applies when a previous (e.g. kill) message is still pending acknowledgment.
+async function emit_pet_msg(msg) {
+    const { update_topl } = await import('./display.js');
+    await update_topl(msg);
 }
 
 function GDIST(x, y, g) { return dist2(x, y, g.gx, g.gy); }

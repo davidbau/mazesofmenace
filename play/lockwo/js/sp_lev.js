@@ -9,19 +9,22 @@ import { somexyspace } from './mkroom.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, HWALL, VWALL, SDOOR, DOOR,
     IRONBARS, POOL, MOAT, WATER, LAVAPOOL, TREE, FOUNTAIN, THRONE,
-    ALTAR, ICE, MAX_TYPE, INVALID_TYPE, NO_ROOM,
+    ALTAR, ICE, MAX_TYPE, INVALID_TYPE, NO_ROOM, SHARED,
     OROOM, THEMEROOM, ROOMOFFSET, isok, IS_DOOR,
     VAULT, SHOPBASE, FILL_NONE, FILL_NORMAL,
     Align2amask, CLOUD, LAVAWALL, AIR, SCORR, SINK, STAIRS, LADDER,
     DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
     TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
+    TELEP_TRAP,
 } from './const.js';
 import { mkgold, next_ident, mksobj, set_corpsenm, obj_resists_rng,
-         CORPSE, mkobj_at } from './mkobj.js';
-import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon } from './makemon.js';
+         CORPSE, CHEST, mkobj_at } from './mkobj.js';
+import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
+         mkclass, mm_mon_at, enexto_spawn } from './makemon.js';
 import { somexy } from './mkroom.js';
 import { maketrap } from './trap.js';
+import { stock_room } from './shknam.js';
 
 const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -166,6 +169,24 @@ function flood_fill_room(sx, sy, roomno, lit) {
         if (p.x > maxx) maxx = p.x;
         if (p.y < miny) miny = p.y;
         if (p.y > maxy) maxy = p.y;
+        // C ref: mkmap.c flood_fill_rm() anyroom branch (lines 179-195): each
+        // flooded ROOM cell also pulls its surrounding walls/doors into the
+        // room, marking them edge=1, assigning roomno, and (when lit) lighting
+        // them.  Without this an irregular lit room's wall border stays unlit
+        // and never renders when the hero stands in it (vision_recalc only
+        // gives a wall IN_SIGHT when the wall itself is lit).  No RNG.
+        for (let ii = p.x - 1; ii <= p.x + 1; ii++)
+            for (let jj = p.y - 1; jj <= p.y + 1; jj++) {
+                if (!isok(ii, jj)) continue;
+                const wl = game.level?.at(ii, jj);
+                if (!wl) continue;
+                if (IS_WALL(wl.typ) || IS_DOOR(wl.typ) || wl.typ === SDOOR) {
+                    wl.edge = 1;
+                    if (lit) wl.lit = true;
+                    if (wl.roomno === NO_ROOM || wl.roomno == null) wl.roomno = roomno;
+                    else if (wl.roomno !== roomno) wl.roomno = SHARED;
+                }
+            }
         stack.push({ x: p.x + 1, y: p.y });
         stack.push({ x: p.x - 1, y: p.y });
         stack.push({ x: p.x, y: p.y + 1 });
@@ -367,7 +388,198 @@ export function themeroom_fill(croom) {
         create_ghost_of_adventurer(croom);
     } else if (pick?.name === 'Buried zombies') {
         create_buried_zombies(croom);
+    } else if (pick?.name === 'Ice room') {
+        create_ice_room(croom);
+    } else if (pick?.name === 'Massacre') {
+        create_massacre(croom);
+    } else if (pick?.name === 'Teleportation hub') {
+        create_teleportation_hub(croom);
+    } else if (pick?.name === 'Storeroom') {
+        create_storeroom(croom);
     }
+}
+
+// C ref: themerms.lua "Teleportation hub".
+//   local locs = selection.room():filter_mapchar(".");  -- room floor cells
+//   for i = 1, 2 + nh.rn2(3) do                          -- one rn2(3) (count)
+//      local pos = locs:rndcoord(1);                     -- rn2(remaining), removeit
+//      if (pos.x > 0) then
+//         ... queue make_a_trap postprocess for a "teleport" trap at pos ...
+//      end
+//   end
+// rndcoord(1) removes the chosen cell, so the modulus shrinks by one each
+// iteration.  The actual teleport traps are created later in
+// post_level_generate() (see run_themeroom_postprocess), AFTER the per-room
+// fill loops — exactly like C's themerooms_post_level_generate (mklev.c:1420).
+function create_teleportation_hub(croom) {
+    const locs = selection_room(croom).slice(); // a working copy we can splice
+    const count = 2 + rn2(3);
+    for (let i = 0; i < count; i++) {
+        const pos = selection_rndcoord(locs, true); // rndcoord(1): removeit
+        if (!pos || pos.x < 0) continue;
+        // C ref: nhlsel.c l_selection_rndcoord returns coords RELATIVE to the
+        // current room (abs - croom->lx/ly).  themerms.lua checks `pos.x > 0`
+        // on that RELATIVE x, then maps back to the map via
+        //   pos.x = pos.x + rm.region.x1 - 1   (region.x1 == croom.lx)
+        //   pos.y = pos.y + rm.region.y1       (region.y1 == croom.ly)
+        // so the final trap cell is (abs_x - 1, abs_y).  A floor cell sitting on
+        // the room's left bounding column (abs_x == lx) yields relative x == 0
+        // and is silently skipped — this is why an irregular hub can queue fewer
+        // traps than its loop count.
+        const relx = pos.x - croom.lx;
+        const rely = pos.y - croom.ly;
+        if (relx <= 0) continue; // pos.x > 0 on the RELATIVE coordinate
+        const tx = relx + croom.lx - 1; // == pos.x - 1
+        const ty = rely + croom.ly;     // == pos.y
+        if (!game.level) continue;
+        if (!game.level._themeroom_postprocess)
+            game.level._themeroom_postprocess = [];
+        game.level._themeroom_postprocess.push({
+            handler: 'teleport_trap', x: tx, y: ty,
+        });
+    }
+}
+
+// C ref: themerms.lua make_a_trap() + post_level_generate().  Runs the queued
+// themeroom postprocess handlers after the whole level (rooms + fills) is built.
+// For a teleport trap (teledest == 1):
+//   local locs = selection.negate():filter_mapchar(".");  -- ALL "." cells
+//   repeat data.teledest = locs:rndcoord(1) until teledest != coord  -- rn2 loop
+//   des.trap(data) -> create_trap -> mktrap(TELEP_TRAP, MKTRAP_SEEN, NULL, &tm):
+//      the explicit coord skips trap-type/location RNG; the mktrap_victim gate
+//      still evaluates `lvl <= rnd(4)` (one rnd(4)) before the kind<HOLE test
+//      short-circuits it out for a teleport trap (mklev.c:2135-2144).
+export async function run_themeroom_postprocess() {
+    const queue = game.level?._themeroom_postprocess;
+    if (!queue || !queue.length) return;
+    game.level._themeroom_postprocess = [];
+    for (const entry of queue) {
+        if (entry.handler !== 'teleport_trap') continue;
+        // selection.negate():filter_mapchar(".") — every ROOM ("." char) cell on
+        // the level (negate of the empty selection = all cells, filtered to ".").
+        const allDots = [];
+        for (let x = 0; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = game.level?.at(x, y);
+                if (loc && loc.typ === ROOM) allDots.push({ x, y });
+            }
+        }
+        // repeat teledest = locs:rndcoord(1) until teledest != trap coord.
+        // C ref themerms.lua make_a_trap: the `until` terminates only when BOTH
+        // coords differ: `(teledest.x ~= coord.x and teledest.y ~= coord.y)`.
+        // So the loop RETRIES (re-rolls rndcoord, shrinking the modulus via the
+        // removeit splice) whenever the pick shares EITHER x OR y with the trap
+        // cell — hence the break uses && (both differ), not ||.
+        let teledest = null;
+        while (allDots.length) {
+            teledest = selection_rndcoord(allDots, true);
+            if (!teledest) break;
+            if (teledest.x !== entry.x && teledest.y !== entry.y) break;
+        }
+        // des.trap -> mktrap teleport: mktrap_victim gate consumes one rnd(4),
+        // then the kind<HOLE test fails so no victim is rolled.
+        rnd(4);
+        await maketrap(entry.x, entry.y, TELEP_TRAP);
+    }
+}
+
+// C ref: themerms.lua "Ice room".
+//   local ice = selection.room();        -- every ROOM cell of the room
+//   des.terrain(ice, "I");               -- set those cells to ICE (no RNG)
+//   if (percent(25)) then                -- one rn2(100)
+//      local mintime = 1000 - (nh.level_difficulty() * 100);
+//      ice:iterate(function(x,y)
+//         nh.start_timer_at(x,y, "melt-ice", mintime + nh.rn2(1000)); -- rn2(1000)
+//      end);
+//   end
+// The terrain change is RNG-free but load-bearing for rendering: the room
+// floor becomes ICE.  The melt timers (one rn2(1000) per cell) only fire when
+// the 25% roll passes.
+function create_ice_room(croom) {
+    const cells = selection_room(croom);
+    for (const c of cells) {
+        // des.terrain(sel, "I") -> set_levltyp(x,y, ICE); preserve lit state.
+        const loc = game.level?.at(c.x, c.y);
+        set_levltyp_lit(c.x, c.y, ICE, loc ? loc.lit : false);
+    }
+    if (percent(25)) {
+        // ice:iterate over the SAME selection order; one rn2(1000) per cell.
+        for (let i = 0; i < cells.length; i++) rn2(1000);
+    }
+}
+
+// C ref: themerms.lua "Massacre".
+//   local mon = { ...27 player-monster names... };
+//   local idx = math.random(#mon);                 -- 1 + rn2(27)
+//   for i = 1, d(5,5) do                            -- d(5,5): 5x rn2(5)+5
+//      if (percent(10)) then idx = math.random(#mon); end  -- rn2(100) [+rn2(27)]
+//      des.object({ id = "corpse", montype = mon[idx] });  -- floor corpse
+//   end
+// Each des.object corpse is placed at a random in-room cell (somexy: rn2(4)
+// somex + rn2(3) somey on the typical filled room) and built by mksobj(CORPSE):
+//   next_ident rnd(2) + rndmonst_adj loop + mksobj rn2(2) + start_corpse_timeout,
+// then set_corpsenm(montype) does a second start_corpse_timeout (none of these
+// player monsters is a lizard/lichen, so the timeout is always the rnz form,
+// exactly like Buried zombies).  Massacre corpses are NOT buried (no
+// obj_resists) and have NO zombify timer.
+const MASSACRE_MON = [
+    'apprentice', 'warrior', 'ninja', 'thug',
+    'hunter', 'acolyte', 'abbot', 'page',
+    'attendant', 'neanderthal', 'chieftain',
+    'student', 'wizard', 'valkyrie', 'tourist',
+    'samurai', 'rogue', 'ranger', 'priestess',
+    'priest', 'monk', 'knight', 'healer',
+    'cavewoman', 'caveman', 'barbarian',
+    'archeologist',
+];
+
+// C ref: nhlib.lua:29 d(dice, faces) — the Lua dice roller used by themed-room
+// fills.  Each die is math.random(1, faces) == 1 + nh.rn2(faces), i.e. one
+// rn2(faces) per die (NOT the C-internal d()/rnd()).
+function lua_d(dice, faces) {
+    let sum = 0;
+    for (let i = 0; i < dice; i++) sum += 1 + rn2(faces);
+    return sum;
+}
+
+function create_massacre(croom) {
+    const nmon = MASSACRE_MON.length; // 27
+    let idx = rn2(nmon); // math.random(#mon) == 1 + rn2(#mon); store 0-based
+    const count = lua_d(5, 5); // d(5,5) -> 5x rn2(5)
+    for (let i = 0; i < count; i++) {
+        if (percent(10)) idx = rn2(nmon); // re-roll species occasionally
+        const c = { x: -1, y: -1 };
+        if (!somexy(croom, c)) continue;
+        const montype = name_to_pmidx(MASSACRE_MON[idx]);
+        const otmp = mksobj(CORPSE, true, false); // next_ident + rndmonst + timer
+        if (montype >= 0) {
+            set_corpsenm(otmp, montype); // override species -> 2nd corpse timeout
+        } else {
+            // Fall back: still consume the override start_corpse_timeout RNG so
+            // the stream stays in lockstep even if the name lookup fails.
+            set_corpsenm(otmp, otmp.corpsenm);
+        }
+        // Place the corpse as a real floor object so it renders as a %-glyph.
+        otmp.ox = c.x; otmp.oy = c.y;
+        place_floor_obj(otmp, c.x, c.y);
+    }
+}
+
+// Add a freshly-built object to the floor object chain at (x,y) without any
+// further RNG.  Mirrors place_object()/add_to_fobj enough for rendering and
+// the fobj scans that level-gen and the pet AI perform.
+function place_floor_obj(otmp, x, y) {
+    if (!otmp || !game.level) return;
+    otmp.ox = x; otmp.oy = y; otmp.where = 'floor';
+    const loc = game.level.at(x, y);
+    if (loc) {
+        otmp.nexthere = loc.objects || null;
+        loc.objects = otmp;
+    }
+    if (!game.level.objects) game.level.objects = [];
+    otmp.nobj = game.level.fobj || null;
+    game.level.fobj = otmp;
+    game.level.objects.push(otmp);
 }
 
 // C ref: themerms.lua "Buried zombies".  For each of (rm.width*rm.height)/2
@@ -433,6 +645,76 @@ function create_buried_zombies(croom) {
     }
 }
 
+// C ref: themerms.lua "Storeroom".
+//   local locs = selection.room():percentage(30);   -- rn2(100) per room cell
+//   local func = function(x,y)                       -- locs:iterate(func)
+//      if (percent(25)) then                         -- rn2(100) per selected cell
+//         des.object("chest");                        -- a chest at a random room cell
+//      else
+//         des.monster({ class = "m", appear_as = "obj:chest" });  -- a mimic
+//      end
+//   end;
+//   locs:iterate(func);
+// The (x,y) the iterate passes to func are NOT used by des.object/des.monster
+// (no coord arg) — each instead picks its own random in-room location via
+// get_location_coord(DRY) -> somexy().  So only the COUNT of percentage-selected
+// cells matters; the selection order is irrelevant to the RNG order.
+//
+// des.object("chest") -> create_object: get_location_coord(DRY) somexy +
+//   mksobj(CHEST, TRUE) (next_ident, mksobj_init, mkbox_cnts).
+// des.monster({class="m", appear_as="obj:chest"}) -> create_monster:
+//   amask = sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align() rn2(3);
+//   pm = mkclass(S_MIMIC, G_NOGEN);  get_location_coord(DRY) somexy;
+//   makemon(pm, x, y, 0) -> next_ident, newmonhp, gender, set_mimic_sym
+//   (regular-room branch: rn2(17) over syms[] + mkobj for the shape),
+//   m_initinv_full, trailing saddle rn2(100).  The M_AP_OBJECT override to
+//   "chest" that create_monster applies afterward consumes no RNG.
+const S_MIMIC_CLASS = 13; // monsym.h S_MIMIC
+const G_NOGEN_FLAG = 0x0200; // include/permonst.h G_NOGEN
+function create_storeroom(croom) {
+    // selection.room():percentage(30) — one rn2(100) per ROOM cell of croom,
+    // selected when the roll is < 30.  selection_room() walks the room bounds in
+    // (x outer, y inner) order, exactly like C's selection_filter_percent over
+    // selection_getbounds().
+    const cells = selection_room(croom);
+    let selected = 0;
+    for (let i = 0; i < cells.length; i++) {
+        if (rn2(100) < 30) selected++;
+    }
+
+    const g = game;
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    try {
+        for (let i = 0; i < selected; i++) {
+            if (percent(25)) {
+                // des.object("chest"): a chest dropped at a random room cell.
+                const c = { x: -1, y: -1 };
+                if (!somexy(croom, c)) continue;
+                const otmp = mksobj(CHEST, true, false);
+                otmp.ox = c.x; otmp.oy = c.y;
+                place_floor_obj(otmp, c.x, c.y);
+            } else {
+                // des.monster({class="m", appear_as="obj:chest"}).
+                rn2(3); // induced_align(80) (dungeon.c:2012) via sp_amask_to_amask
+                const pm = mkclass(S_MIMIC_CLASS, G_NOGEN_FLAG);
+                const c = { x: -1, y: -1 };
+                if (!somexy(croom, c)) continue;
+                const mtmp = makemon(pm, c.x, c.y, 0);
+                // C create_monster overrides the mimic's appearance to a chest
+                // object (M_AP_OBJECT) — no further RNG.  Mark it so the renderer
+                // shows a "(" (chest) glyph rather than the mimic letter.
+                if (mtmp) {
+                    mtmp.m_ap_type = 'obj';
+                    mtmp.mappearance = CHEST;
+                }
+            }
+        }
+    } finally {
+        g._full_mon_gen = was_full;
+    }
+}
+
 // C ref: sp_lev.c fill_special_room() — fills vaults, zoos, shops, etc.
 export function fill_special_room(croom) {
     if (!croom) return;
@@ -447,7 +729,8 @@ export function fill_special_room(croom) {
 
     if (croom.needfill === FILL_NORMAL) {
         if (croom.rtype >= SHOPBASE) {
-            // stock_room: not yet implemented, skip
+            // C ref: sp_lev.c fill_special_room() shop case -> stock_room().
+            stock_room(croom.rtype - SHOPBASE, croom);
             return;
         }
 
@@ -773,12 +1056,27 @@ function bigrm_region(x1, y1, x2, y2, lit) {
     const hi_x = x2 + gx.xstart, hi_y = y2 + gy.ystart;
     add_sp_room(lo_x, lo_y, Math.min(hi_x, COLNO - 1), Math.min(hi_y, ROWNO - 1),
                 lit ? 1 : 0, OROOM, false, FILL_NONE, true);
+    // C ref: mklev.c do_room_or_subroom() — when the room is lit, light the
+    // room PLUS a one-cell border (lowx-1..hix+1, lowy-1..hiy+1) so the room's
+    // bounding walls are lit too.  Without this the diamond Big Room's outermost
+    // wall ring stays dark and never gets revealed by vision_recalc (which only
+    // shows a wall when it AND the floor toward the hero are lit).
+    if (lit) {
+        const lx = Math.max(lo_x - 1, 1), hx = Math.min(hi_x + 1, COLNO - 1);
+        const ly = Math.max(lo_y - 1, 0), hy = Math.min(hi_y + 1, ROWNO - 1);
+        for (let x = lx; x <= hx; x++)
+            for (let y = ly; y <= hy; y++) {
+                const loc = g.level?.at(x, y);
+                if (loc) loc.lit = true;
+            }
+    }
+    // roomno is assigned only to the region interior (topologize covers the
+    // room's own cells; the bordering walls keep their existing roomno).
     for (let x = lo_x; x <= hi_x && x < COLNO; x++)
         for (let y = lo_y; y <= hi_y && y < ROWNO; y++) {
             const loc = g.level?.at(x, y);
             if (loc && (loc.roomno === NO_ROOM || loc.roomno === 0)) {
                 loc.roomno = roomno;
-                loc.lit = !!lit;
             }
         }
 }
@@ -862,8 +1160,8 @@ function bigrm_stair(up) {
     if (loc) loc.typ = STAIRS;
     if (!game.stairs) game.stairs = [];
     game.stairs.push({ sx: c.x, sy: c.y, up: !!up });
-    if (up) { game.upstair = { x: c.x, y: c.y }; if (game.level) game.level.upstair = { sx: c.x, sy: c.y }; }
-    else { game.dnstair = { x: c.x, y: c.y }; if (game.level) game.level.dnstair = { sx: c.x, sy: c.y }; }
+    if (up) { game.upstair = { x: c.x, y: c.y }; if (game.level) game.level.upstair = { x: c.x, y: c.y }; }
+    else { game.dnstair = { x: c.x, y: c.y }; if (game.level) game.level.dnstair = { x: c.x, y: c.y }; }
 }
 
 // C ref: mklev.c traptype_rnd() — pick a random valid trap type for this level.
@@ -956,7 +1254,18 @@ function bigrm_object(idstr = null) {
 function bigrm_monster() {
     rn2(3);                              // induced_align (dungeon.c:2012)
     const c = bigrm_get_location_dry();
-    makemon(null, c.x, c.y, 0);
+    // C ref: sp_lev.c create_monster() (sp_lev.c:1977) — "try to find a close
+    // place if someone else is already there": when a monster already occupies
+    // the chosen spot, relocate via enexto() (collect_coords ring shuffle) BEFORE
+    // makemon().  pm is NULL here (random monster); C's enexto() defaults the
+    // null mdat to the hero's monster type, which only affects water/lava spots
+    // (none on the Big Room), so the goodpos filter is equivalent with null.
+    let mx = c.x, my = c.y;
+    if (mm_mon_at(mx, my)) {
+        const cc = enexto_spawn(mx, my, null);
+        if (cc) { mx = cc.x; my = cc.y; }
+    }
+    makemon(null, mx, my, 0);
 }
 
 // Common tail shared by most bigrm variants: stairs, non_diggable, 15 random
@@ -1000,9 +1309,145 @@ async function bigrm_run(variant) {
     // ? rn2(2).  (The actual transposition mutates the map but consumes no
     // further RNG; the rendered cells already match either orientation for the
     // symmetric bigrm maps when c==0, which is the common case.)
+    // C ref: sp_lev.c flip_level_rnd(allow_flips, FALSE) — independently draw an
+    // rn2(2) for each enabled axis; a 1 sets that axis's bit in `c`.  When c != 0
+    // flip_level(c) transposes the map (and every entity on it) within the level
+    // extents.  Earlier the JS only consumed the RNG and skipped the transpose,
+    // assuming bigrm maps are flip-invariant — but the asymmetric variants (and
+    // the random monster/object/stair positions) DO move, so render the flip.
     const flp = BIGRM_ALLOW_FLIPS[variant] ?? 3;
-    if (flp & 1) rn2(2);
-    if (flp & 2) rn2(2);
+    let c = 0;
+    if ((flp & 1) && rn2(2)) c |= 1;
+    if ((flp & 2) && rn2(2)) c |= 2;
+    if (c) flip_level(c);
+}
+
+// C ref: mkmaze.c get_level_extends() — bounding box of the non-STONE area,
+// padded by 1 (maze edge) or 2 (open level) on each side.  Mirrors mklev.js's
+// copy so the flip transform uses the identical extents the C engine does.
+function bigrm_get_level_extends() {
+    const map = game.level;
+    let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
+    let found = false, nonwall = false;
+    const isMaze = !!map?.flags?.is_maze_lev;
+    for (xmin = 0; !found && xmin <= COLNO - 1; xmin++)
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const typ = map.at(xmin, y)?.typ ?? STONE;
+            if (typ !== STONE) { found = true; if (!IS_WALL(typ)) nonwall = true; }
+        }
+    xmin -= (nonwall || !isMaze) ? 2 : 1;
+    found = false; nonwall = false;
+    for (xmax = COLNO - 1; !found && xmax >= 0; xmax--)
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const typ = map.at(xmax, y)?.typ ?? STONE;
+            if (typ !== STONE) { found = true; if (!IS_WALL(typ)) nonwall = true; }
+        }
+    xmax += (nonwall || !isMaze) ? 2 : 1;
+    found = false; nonwall = false;
+    for (ymin = 0; !found && ymin <= ROWNO - 1; ymin++)
+        for (let x = xmin; x <= xmax; x++) {
+            const typ = map.at(x, ymin)?.typ ?? STONE;
+            if (typ !== STONE) { found = true; if (!IS_WALL(typ)) nonwall = true; }
+        }
+    ymin -= (nonwall || !isMaze) ? 2 : 1;
+    found = false; nonwall = false;
+    for (ymax = ROWNO - 1; !found && ymax >= 0; ymax--)
+        for (let x = xmin; x <= xmax; x++) {
+            const typ = map.at(x, ymax)?.typ ?? STONE;
+            if (typ !== STONE) { found = true; if (!IS_WALL(typ)) nonwall = true; }
+        }
+    ymax += (nonwall || !isMaze) ? 2 : 1;
+    if (ymin < 0) ymin = 0;
+    if (xmin < 1) xmin = 1;
+    if (xmax >= COLNO) xmax = COLNO - 1;
+    if (ymax >= ROWNO) ymax = ROWNO - 1;
+    return { minx: xmin, maxx: xmax, miny: ymin, maxy: ymax };
+}
+
+// C ref: sp_lev.c flip_level(flp, FALSE) — level-creation flip.  Transposes the
+// map cells, monsters, objects, traps, stairs, rooms and doors within the level
+// extents.  Restricted to the entity kinds the Big Room generates (extras=FALSE,
+// so the #wizfliplevel-only branches and vault/shk/worm fixups are inapplicable).
+function flip_level(flp) {
+    if ((flp & 3) === 0) return;
+    const g = game;
+    const map = g.level;
+    const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
+    const FlipX = (x) => (minx + maxx - x);
+    const FlipY = (y) => (miny + maxy - y);
+    const inArea = (x, y) => (x >= minx && x <= maxx && y >= miny && y <= maxy);
+
+    // stairs (game.stairs may be an array (bigrm) or null)
+    for (const s of (Array.isArray(g.stairs) ? g.stairs : [])) {
+        if (flp & 1) s.sy = FlipY(s.sy);
+        if (flp & 2) s.sx = FlipX(s.sx);
+    }
+    const flipPt = (pt, kx, ky) => {
+        if (!pt) return;
+        if (flp & 1) pt[ky] = FlipY(pt[ky]);
+        if (flp & 2) pt[kx] = FlipX(pt[kx]);
+    };
+    flipPt(g.upstair, 'x', 'y'); flipPt(g.dnstair, 'x', 'y');
+    if (map?.upstair) flipPt(map.upstair, 'x', 'y');
+    if (map?.dnstair) flipPt(map.dnstair, 'x', 'y');
+
+    // traps
+    for (const t of (map.traps || [])) {
+        if (!inArea(t.tx, t.ty)) continue;
+        if (flp & 1) t.ty = FlipY(t.ty);
+        if (flp & 2) t.tx = FlipX(t.tx);
+    }
+    // objects
+    for (const o of (map.objects || [])) {
+        if (!inArea(o.ox, o.oy)) continue;
+        if (flp & 1) o.oy = FlipY(o.oy);
+        if (flp & 2) o.ox = FlipX(o.ox);
+    }
+    // monsters
+    for (const m of (map.monsters || [])) {
+        if (!inArea(m.mx, m.my)) continue;
+        if (flp & 1) m.my = FlipY(m.my);
+        if (flp & 2) m.mx = FlipX(m.mx);
+    }
+    // rooms
+    for (let i = 0; i < (map.nroom || 0); i++) {
+        const r = map.rooms[i];
+        if (!r || r.hx < 0) continue;
+        if (flp & 1) {
+            r.ly = FlipY(r.ly); r.hy = FlipY(r.hy);
+            if (r.ly > r.hy) { const t = r.ly; r.ly = r.hy; r.hy = t; }
+        }
+        if (flp & 2) {
+            r.lx = FlipX(r.lx); r.hx = FlipX(r.hx);
+            if (r.lx > r.hx) { const t = r.lx; r.lx = r.hx; r.hx = t; }
+        }
+    }
+    // doors
+    for (const d of (map.doors || [])) {
+        if (!d) continue;
+        if (flp & 1) d.y = FlipY(d.y);
+        if (flp & 2) d.x = FlipX(d.x);
+    }
+
+    // the map cells
+    if (flp & 1) {
+        for (let x = minx; x <= maxx; x++)
+            for (let y = miny; y < (miny + Math.floor((maxy - miny + 1) / 2)); y++) {
+                const ny = FlipY(y);
+                const tmp = map.locations[x][y];
+                map.locations[x][y] = map.locations[x][ny];
+                map.locations[x][ny] = tmp;
+            }
+    }
+    if (flp & 2) {
+        for (let x = minx; x < (minx + Math.floor((maxx - minx + 1) / 2)); x++)
+            for (let y = miny; y <= maxy; y++) {
+                const nx = FlipX(x);
+                const tmp = map.locations[x][y];
+                map.locations[x][y] = map.locations[nx][y];
+                map.locations[nx][y] = tmp;
+            }
+    }
 }
 
 // allow_flips per bigrm variant (3 = H+V default; noflip variants override).

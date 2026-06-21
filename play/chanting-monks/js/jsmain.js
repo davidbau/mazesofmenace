@@ -169,6 +169,24 @@ export class NethackGame {
         // 'Z' cast flow showed "[a-b *?]" prompts where C renders
         // the spell menu (seed0501 step 4).
         __setFlag('menu_style', 2);
+        // C-correct default (ref options.c:7207 initoptions_init):
+        // flags.pickup_burden = MOD_ENCUMBER (2, "stressed").  decl.js
+        // zero-inits it to UNENCUMBERED (0), which makes
+        // hold_another_object (invent.js:1220) drop a picked/wished item
+        // whenever adding it raises near_capacity() above 0 — vs C's
+        // threshold of 2.  seed0399: the last wished item (spellbook)
+        // pushes the hero to SLT_ENCUMBER(1); C holds it (1 !> 2), JS
+        // dropped it (1 > 0), so JS lost the encumber "--More--" and the
+        // recorded keys desynced.
+        __setFlag('pickup_burden', 2);
+        // More C initoptions_init defaults (options.c:7200-7260) that decl.js
+        // zero-inits.  Sessions were recorded with C's defaults, so JS must
+        // match to consume the same confirmation/pickup keys.  Tested as a
+        // group; bisect on regression.
+        __setFlag('paranoia_bits', 0x0020 | 0x0400 | 0x0800); // PRAY|SWIM|TRAP
+        __setFlag('pile_limit', 5);     // PILE_LIMIT_DFLT
+        __setFlag('runmode', 1);        // RUN_LEAP
+        __setFlag('sortloot', 'l'.charCodeAt(0)); // 'l'
         // C-correct default (ref optlist.h:410 NHOPTB(legacy, ..., On, ...)).
         // rc options like `!legacy` override below.
         __setFlag('legacy', 1);
@@ -309,6 +327,26 @@ export class NethackGame {
                     }
                 }
                 __screen = __rows.join('\n');
+            }
+            // #100 occupation render-at-end: when an atomic occupation left a
+            // deferred --More--, allmain.js stashed the occupation-end botl+map
+            // in game._topl_bg_snapshot.  Replay rows 1..23 under the current
+            // topl so the capture matches C's inline more() (frozen at the
+            // occupation's last turn) rather than the next turn JS advanced to.
+            // moves-gated: only when the turn actually advanced past generation.
+            const __snap = game._topl_bg_snapshot;
+            if (typeof __snap === 'string' && __snap
+                && game._topl_bg_snapshot_moves != null
+                && game._topl_bg_snapshot_moves !== (game.moves || 0)) {
+                const __r0end = __screen.indexOf('\n');
+                if (__r0end > 0 && __screen.slice(0, __r0end).includes('--More--')) {
+                    const __cur = __screen.split('\n');
+                    const __sn = __snap.split('\n');
+                    for (let __i = 1; __i < 24 && __i < __cur.length && __i < __sn.length; __i++) {
+                        __cur[__i] = __sn[__i];
+                    }
+                    __screen = __cur.join('\n');
+                }
             }
             nhGame._screens.push(__screen);
             nhGame._rngSlices.push(slice);

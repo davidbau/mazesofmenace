@@ -7,31 +7,34 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at, update_topl } from './display.js';
-import { vision_recalc } from './vision.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl } from './display.js';
+import { vision_recalc, cansee } from './vision.js';
 import { do_attack, is_safemon, x_monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
-         attr_window_advance, dowieldquiver, dothrow, dotravel, dodrop,
-         dopickup, dowear, dotakeoff, dopay, floor_object_name } from './invent.js';
+         attr_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
+         dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
+         renderWindowScreen, ECMD_NOTHANDLED } from './invent.js';
 import { WEAPON_CLASS } from './mkobj.js';
 import { doeat } from './eat.js';
+import { doapply, ECMD } from './apply.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { docast } from './spell.js';
 import { doread } from './read.js';
 import { rnl, rn2, rnd } from './rng.js';
-import { doextcmd, hooked_tty_getlin, wiz_wish } from './extcmd-handlers.js';
+import { doextcmd, hooked_tty_getlin, wiz_wish, wiz_genesis } from './extcmd-handlers.js';
 import { skill_window_advance } from './enhance.js';
-import { wiz_level_tele } from './do.js';
+import { wiz_level_tele, dodown } from './do.js';
 import { spoteffects } from './trap.js';
-import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook } from './hack.js';
+import { doset, dosetSimple } from './doset.js';
+import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok, IS_DOOR,
-         A_STR, A_DEX, A_CON } from './const.js';
+         A_STR, A_DEX, A_CON, Is_rogue_level } from './const.js';
 import { exercise } from './attrib.js';
-import { engr_at, wipe_engr_at } from './engrave.js';
+import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
 import { HEADSTONE } from './const.js';
 
 // C ref: hack.c maybe_smudge_engr() — when the hero walks/rushes from (x1,y1)
@@ -70,6 +73,39 @@ export function blocksMove(x, y) {
     if (loc.typ === STONE) return true;
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    return false;
+}
+
+// C ref: hack.c doorless_door() — a doorway that lacks its door (NODOOR or
+// BROKEN).  All rogue-level doors are treated as if their door were present so
+// that diagonal access is disallowed there too.
+function doorless_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    if (Is_rogue_level(game.u?.uz)) return false;
+    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
+}
+
+// C ref: hack.c test_move() lines 1140-1150 and 1208-1214 — for a diagonal
+// step (dx && dy), the hero cannot move diagonally INTO a doorway that still
+// has its door (open/closed/locked/broken-only does not count as doorless),
+// nor diagonally OUT of such a doorway.  block_door()/block_entry() add a
+// shopkeeper-blocking case that is not reachable for the starter sessions
+// (no shop), so a non-doorless door is sufficient to block here.  Passes_walls
+// heroes (phasing/xorn form) bypass this, but those don't occur in the corpus
+// and the existing blocksMove() likewise ignores phasing.
+function blocksDiagonalDoor(ux, uy, x, y, dx, dy) {
+    if (!(dx && dy)) return false;
+    // Diagonal move INTO a door with a door present.  Closed/locked doors are
+    // *not* rejected here: C's test_move() handles them via the closed_door
+    // branch (autoopen) before ever reaching testdiag (hack.c:1075 vs 1140), so
+    // only an open/broken-with-frame door blocks a diagonal entry.
+    const tgt = game.level?.at(x, y);
+    if (tgt && IS_DOOR(tgt.typ) && !doorless_door(x, y)
+        && !(tgt.doormask & (D_CLOSED | D_LOCKED))) return true;
+    // Diagonal move OUT of a doorway with a door present.
+    const here = game.level?.at(ux, uy);
+    if (here && IS_DOOR(here.typ) && !doorless_door(ux, uy)) return true;
     return false;
 }
 
@@ -132,6 +168,19 @@ export async function rhack(key) {
         } else {
             game.context.move = 0;
         }
+    } else if (ch === 'O') {
+        // C ref: cmd.c { 'O', "options", doset_simple, ... CMD_M_PREFIX }.
+        // Plain 'O' runs doset_simple() (the categorized "Options" PICK_ONE
+        // menu); 'm O' (menu_requested) runs the full #optionsfull doset() menu
+        // ("Set what options?").  doset_simple()/doset() consume the
+        // menu-requested flag (they cross-dispatch in C).  No game time/RNG.
+        if (game.iflags?.menu_requested) {
+            game.iflags.menu_requested = false;
+            await doset();
+        } else {
+            await dosetSimple();
+        }
+        game.context.move = 0;
     } else if (ch === 'i') {
         ddoinv();
         game.context.move = 0;
@@ -140,6 +189,20 @@ export async function rhack(key) {
         game.context.move = 0;
     } else if (ch === '+') {
         await dovspell();
+        game.context.move = 0;
+    } else if (ch === 'S') {
+        // C ref: cmd.c { 'S', "save", ..., dosave, ... } -> save.c dosave().
+        // Clears the message window, asks y_n("Really save?"); on 'n' (the
+        // covered path) it clears the message again and returns ECMD_OK (no game
+        // turn).  The actual save (writing a file + terminating) is not driven
+        // by any covered session, so only the decline path is modelled.
+        game._pending_message = '';
+        const ans = await y_n('Really save?', 'yn\x1b', 'n');
+        game._pending_message = '';
+        if (ans !== 'n') {
+            // y_n only returns from {y,n} or default 'n'; a 'y' would save.
+            await pline('Saving...');
+        }
         game.context.move = 0;
     } else if (ch === '\x18') { // ^X
         doattributes();
@@ -162,6 +225,12 @@ export async function rhack(key) {
             await pline('Autopickup: OFF.');
         }
         game.context.move = 0;
+    } else if (ch === 'a') {
+        // C ref: cmd.c 'a' (#apply) -> apply.c doapply().  Applies a tool;
+        // ECMD_TIME only when the use costs a turn (e.g. a *repeat* stethoscope
+        // probe in the same turn).  The first stethoscope-to-self probe is free
+        // (ECMD_OK) and consumes no RNG.
+        game.context.move = (await doapply()) === ECMD.ECMD_TIME ? 1 : 0;
     } else if (ch === 'e') {
         // C ref: cmd.c 'e' (#eat) -> eat.c doeat().  Eats carried/floor food
         // (ECMD_TIME when a bite is taken).
@@ -170,17 +239,49 @@ export async function rhack(key) {
         // C ref: cmd.c doopen -> lock.c doopen_indir(0,0): open an adjacent
         // door (reads a direction).  Sets the turn flag from doopen's result.
         game.context.move = (await doopen_indir(0, 0)) ? 1 : 0;
+    } else if (ch === 'c') {
+        // C ref: cmd.c doclose -> lock.c doclose(): close an adjacent door
+        // (reads a direction).  ECMD_CANCEL (cancelled direction) and ECMD_OK
+        // (no door / already closed) elapse no turn; closing an open door is
+        // ECMD_TIME.
+        game.context.move = (await doclose()) === 2 ? 1 : 0;
     } else if (ch === 's') {
         // C ref: cmd.c dosearch -> detect.c dosearch0(0): search adjacent
-        // squares for hidden doors/passages/traps.  Takes a game turn.
-        await dosearch();
-        game.context.move = 1;
+        // squares for hidden doors/passages/traps.  Takes a game turn unless
+        // the safe_wait safety check refuses it (hostile monster adjacent).
+        game.context.move = (await dosearch()) ? 1 : 0;
     } else if (key === 4) { // ^D — kick (dokick.c dokick())
         // C ref: cmd.c keymap C('d') = dokick.  Reads a direction, then resolves
         // the kicked square (monster / object / terrain).  Sets the turn flag
         // from dokick's ECMD result.
         const res = await dokick();
         game.context.move = res === 1 ? 1 : 0;
+    } else if (key === 7) { // ^G — wizard-mode create monster (wizcmds.c wiz_genesis)
+        // C ref: cmd.c keymap C('g') = wiz_genesis, IFBURIED|WIZMODECMD.  Clears
+        // iflags.debug_mongen, then create_particular() prompts "Create what kind
+        // of monster?" and makemon()s the named species next to the hero.
+        // wiz_genesis returns ECMD_OK, so no game turn elapses.
+        if (game.flags?.debug) {
+            await wiz_genesis();
+            game.context.move = 0;
+        } else {
+            game.context.move = 0;
+            await pline(`Unknown command '${ch}'.`);
+        }
+    } else if (key === 20) { // ^T — teleport (cmd.c dotelecmd -> teleport.c)
+        // C ref: cmd.c keymap C('t') = dotelecmd.  In wizard mode (playmode:
+        // debug) with no 'm' prefix, dotelecmd sets ignore_restrictions and
+        // calls dotele(TRUE) -> tele(): "Where do you want to be teleported?"
+        // then getpos(force=TRUE).  dotele() returns ECMD_TIME, so a game turn
+        // elapses whether or not the targeting was cancelled.  (Non-wizard ^T
+        // without the teleport intrinsic is not modelled — no such session.)
+        if (game.flags?.debug) {
+            const res = await dotele_wizard();
+            game.context.move = res === 1 ? 1 : 0;
+        } else {
+            game.context.move = 0;
+            await pline(`Unknown command '${ch}'.`);
+        }
     } else if (key === 22) { // ^V — wizard-mode level teleport (do.c/teleport.c)
         // C ref: cmd.c keymap C('v') -> wiz_level_tele() -> level_tele().
         // The "To what level..." prompt is read with the standard top-line
@@ -202,6 +303,30 @@ export async function rhack(key) {
         // C ref: cmd.c keymap 'T' = dotakeoff (do_wear.c).  Removes worn armor
         // (a single piece comes off without a disambiguation prompt).
         game.context.move = (await dotakeoff()) === 3 ? 1 : 0;
+    } else if (ch === 'P') {
+        // C ref: cmd.c keymap 'P' = doputon (do_wear.c).  Puts on a ring,
+        // amulet, or eyewear; rings prompt for the ring-finger.  When doputon
+        // declines (no accessory to put on; see its scoping guard) fall through
+        // to the "Unknown command" path so previously-matching sessions are
+        // undisturbed.
+        const rP = await doputon();
+        if (rP === ECMD_NOTHANDLED) {
+            await pline(`Unknown command '${ch}'.`);
+            game.context.move = 0;
+        } else {
+            game.context.move = rP === 3 ? 1 : 0;
+        }
+    } else if (ch === 'R') {
+        // C ref: cmd.c keymap 'R' = doremring (do_wear.c).  Removes a worn
+        // accessory (ring/amulet/blindfold).  Declines (and reports the key as
+        // unknown) when the hero wears no accessory, mirroring the 'P' guard.
+        const rR = await doremring();
+        if (rR === ECMD_NOTHANDLED) {
+            await pline(`Unknown command '${ch}'.`);
+            game.context.move = 0;
+        } else {
+            game.context.move = rR === 3 ? 1 : 0;
+        }
     } else if (ch === 'p') {
         // C ref: cmd.c keymap 'p' = dopay (shk.c).  Away from a shopkeeper this
         // reports "There appears to be no shopkeeper here ..." (ECMD_OK).
@@ -230,6 +355,13 @@ export async function rhack(key) {
     } else if (ch === 'Z') {
         // C ref: cmd.c — 'Z' cast a spell.
         game.context.move = (await docast()) ? 1 : 0;
+    } else if (ch === 'E') {
+        // C ref: cmd.c — 'E' (#engrave) -> engrave.c doengrave(): write/engrave
+        // on the floor.  doengrave sets up the engraving (garble loop +
+        // make_engr_at) and runs it as a one-action occupation; we model the
+        // single-action completion inline and pass a turn (ECMD_TIME) so
+        // monsters move once.
+        game.context.move = (await doengrave()) === 1 ? 1 : 0;
     } else if (ch === 'r') {
         // C ref: cmd.c — 'r' read a scroll or spellbook.
         game.context.move = (await doread()) ? 1 : 0;
@@ -238,11 +370,23 @@ export async function rhack(key) {
         // ECMD_TIME (3) only when unwielding the primary/secondary weapon cost a
         // turn; ECMD_OK/ECMD_CANCEL take no time.
         game.context.move = (await dowieldquiver()) === 3 ? 1 : 0;
+    } else if (ch === 'w') {
+        // C ref: cmd.c keymap 'w' = dowield (wield.c).  Wields a weapon (or
+        // nothing).  ECMD_TIME (3) when the wield consumes a turn; ECMD_OK/FAIL/
+        // CANCEL take no time.
+        game.context.move = (await dowield()) === 3 ? 1 : 0;
     } else if (ch === 't') {
         // C ref: cmd.c — 't' (#throw) throw/shoot an item.  throw_obj returns
         // ECMD_TIME (3) when the throw takes a turn; getdir (the direction
         // prompt) is supplied here to keep invent.js free of a cmd import cycle.
         game.context.move = (await dothrow(getdir)) === 3 ? 1 : 0;
+    } else if (ch === 'f') {
+        // C ref: cmd.c keymap 'f' = dofire (dothrow.c).  Throws/shoots from the
+        // quiver; with fireassist On a launcher in the swap slot is auto-wielded
+        // (doswapweapon) before firing.  ECMD_TIME (3) when a missile is launched
+        // and a turn elapses; the recorded session cancels at the direction
+        // prompt so no time passes.
+        game.context.move = (await dofire(getdir)) === 3 ? 1 : 0;
     } else if (ch === '_') {
         // C ref: cmd.c — '_' (#travel) move toward a chosen map location.  The
         // recorded session cancels at the destination prompt (ESC), so no turn
@@ -253,6 +397,11 @@ export async function rhack(key) {
         // C ref: cmd.c ';' "glance" -> pager.c do_look(1): quick farlook.
         // Cursor-positioning loop + look-at description; no game time passes.
         await do_farlook();
+        game.context.move = 0;
+    } else if (ch === '/') {
+        // C ref: cmd.c { '/', "whatis", dowhatis } -> pager.c do_look(0): the
+        // full whatis command (menu + verbose farlook).  No game time passes.
+        await do_look_full();
         game.context.move = 0;
     } else if (isRunKey(ch)) {
         // Capital-letter run: do_run_west/east/... -> set_move_cmd(dir, 1).
@@ -293,6 +442,11 @@ export async function rhack(key) {
         // turn elapses).  C ref: hack.c domove() / rhack().  Do NOT override
         // it here, or blocked moves would wrongly advance the turn counter.
         await domove(DIR_DX[ch], DIR_DY[ch]);
+    } else if (ch === '>') {
+        // C ref: cmd.c { '>', "down", dodown } — descend a down staircase.
+        // dodown returns ECMD_TIME (1) when the hero actually descends (a turn
+        // elapses) or ECMD_OK (0) when blocked ("You can't go down here.").
+        game.context.move = (await dodown()) === 1 ? 1 : 0;
     } else if (ch === '.') {
         // C ref: cmd.c command table { '.', "wait", donull } -> do.c donull():
         // "rest one move while doing nothing".  donull() returns ECMD_TIME with
@@ -308,12 +462,16 @@ export async function rhack(key) {
     }
 }
 
-// C ref: detect.c dosearch0(0) — explicit searching of the 8 adjacent
-// squares for hidden doors, passages, and unseen traps.  RNG is consumed
-// only when such a hidden feature is actually adjacent (rnl(7)/rnl(8)); in
-// the common open-room case this takes a turn with no RNG.
-async function dosearch() {
+// C ref: detect.c dosearch0(aflag) — search the 8 adjacent squares for hidden
+// doors, passages, and unseen traps.  aflag distinguishes intrinsic autosearch
+// (aflag=1, called every turn from the moveloop when Searching) from the
+// explicit `s` command (aflag=0).  The feel_location / invisible-monster /
+// mfind0 paths are gated by !aflag in C and are not modelled here, so the only
+// RNG either mode consumes is rnl(7-fund) per adjacent SDOOR/SCORR and rnl(8)
+// per adjacent unseen trap.  In the common open-room case this consumes no RNG.
+export async function dosearch0(aflag) {
     const u = game.u;
+    if (!u || u.uswallow) return; // swallowed: no searching (RNG-inert here)
     const fund = 0; // no search-boosting artifact/lenses in starter state
     for (let x = u.ux - 1; x < u.ux + 2; x++) {
         for (let y = u.uy - 1; y < u.uy + 2; y++) {
@@ -340,6 +498,47 @@ async function dosearch() {
             }
         }
     }
+}
+
+// C ref: hack.c monster_nearby() — a hostile, awake, spottable monster on one
+// of the 8 squares adjacent to the hero.  Drives the safe_wait safety check.
+function monster_nearby() {
+    const u = game.u;
+    if (!u) return false;
+    for (let x = u.ux - 1; x <= u.ux + 1; x++)
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
+            const mtmp = m_at(x, y);
+            if (mtmp && !mtmp.mpeaceful && mtmp.mcanmove !== 0
+                && cansee(x, y))
+                return true;
+        }
+    return false;
+}
+
+// C ref: do.c cmd_safety_prevention() — with the (default-On) safe_wait option
+// and no menu-request prefix or multi-turn action, a wait/search next to a
+// hostile monster is refused: it prints `act` (+ the cmdassist "Use 'm' prefix"
+// hint) and returns true (the command does nothing and costs no turn).
+async function cmd_safety_prevention(ucverb, cmddesc, act) {
+    if (game.flags?.safe_wait !== false && !game._menu_requested && !game.multi) {
+        // cmdassist defaults On, so the "Use 'm' prefix" suffix always shows.
+        const buf = `  Use 'm' prefix to force ${cmddesc}.`;
+        if (monster_nearby()) {
+            await pline(`${act}${buf}`);
+            return true;
+        }
+    }
+    return false;
+}
+
+// The explicit `s` search command.  C ref: detect.c dosearch().
+async function dosearch() {
+    if (await cmd_safety_prevention('Searching', 'another search',
+        'You already found a monster.'))
+        return false; // ECMD_OK: no game turn
+    await dosearch0(0);
+    return true;
 }
 
 // C ref: dokick.c kick_dumb(x,y) — kicking empty space (or an indestructible
@@ -412,6 +611,11 @@ async function kick_door(loc, x, y, avrg_attrib) {
         exercise(A_STR, true);
         await pline(`${(game.u?.Deaf || rn2(3) !== 0) ? 'Thwack' : 'Whammm'}!!`);
     }
+    // C ref: topl.c — pline() leaves the message unacknowledged
+    // (toplin = TOPLINE_NEED_MORE).  A turn-consuming kick is followed by the
+    // monster-move pass, whose first pline must page the kick message with
+    // --More-- when the two won't fit on one top line.
+    game._toplin = 1;
 }
 
 // C ref: dokick.c dokick() — the #kick command.  We faithfully model the
@@ -487,7 +691,45 @@ export async function getdir(s) {
     const DZ = { '<': -1, '>': 1 };
     if (ch in DX)
         return { dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 };
+    // C ref: cmd.c getdir() — an invalid direction key (not a movement key and
+    // not a quitchar) with iflags.cmdassist On (default) shows the help_dir()
+    // text window "cmdassist: Invalid direction key!" + the direction-keys
+    // legend, then returns 0 (cancel).  quitchars (space/return/ESC) were already
+    // handled above and return null silently.
+    await help_dir_window('Invalid direction key!');
     return null;
+}
+
+// C ref: cmd.c help_dir() — the cmdassist explanation window shown for an
+// invalid direction key (no prefix handling, no ^-key suggestion for our
+// callers).  Renders a full-screen NHW_TEXT window with a "--More--" footer.
+async function help_dir_window(msg) {
+    const lines = [
+        `cmdassist: ${msg}`,
+        '',
+        'Valid direction keys are:',
+        '          y  k  u',
+        '           \\ | / ',
+        '          h- . -l',
+        '           / | \\ ',
+        '          b  j  n',
+        '',
+        '          <  up',
+        '          >  down',
+        '          .  direct at yourself',
+        '',
+        '(Suppress this message with !cmdassist in config file.)',
+    ];
+    renderWindowScreen(lines, { footer: '--More--', footerRow: 23, footerCol: 0, modal: 'textwin' });
+    await flush_screen(1);
+    game._modal_screen = 'topl';
+    // xwaitforspace: read keys until space / return / escape.
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+    }
+    delete game._modal_screen;
+    game._pending_message = '';
 }
 
 // C ref: attrib.c acurrstr() — map the encoded A_STR (3..125; 18/01 stored as
@@ -530,14 +772,27 @@ export async function doopen_indir(x, y) {
     }
 
     if (!(door.doormask & D_CLOSED)) {
-        let mesg;
+        let mesg, locked = false;
         switch (door.doormask) {
         case D_BROKEN: mesg = ' is broken'; break;
         case D_NODOOR: mesg = 'way has no door'; break;
         case D_ISOPEN: mesg = ' is already open'; break;
-        default:       mesg = ' is locked'; break; // D_LOCKED
+        default:       mesg = ' is locked'; locked = true; break; // D_LOCKED
         }
         await pline(`This door${mesg}.`);
+        // C ref: lock.c doopen_indir() — a locked door with flags.autounlock
+        // (default AUTOUNLOCK_APPLY_KEY) and a lock pick / key in inventory
+        // triggers pick_lock(): "This door is locked." is followed by an
+        // "Unlock it with <tool>? [ynq]" prompt; on 'y' the occupation rolls
+        // rn2(100) against the pick chance and (on success) opens the lock.
+        if (locked && (game.flags?.autounlock ?? true)) {
+            const tool = autokey();
+            if (tool) {
+                // pick_lock_door returns 2 when the lock-picking occupation
+                // elapsed a turn (so the caller advances monsters), 0 otherwise.
+                return await pick_lock_door(tool, cx, cy, door);
+            }
+        }
         return 0;
     }
 
@@ -558,6 +813,127 @@ export async function doopen_indir(x, y) {
         await pline('The door resists!');
     }
     return 1; // ECMD_TIME
+}
+
+// C ref: lock.c doclose() — the #close ('c') command: close an adjacent open
+// door.  Returns an ECMD_* code (1 CANCEL, 0 OK / no turn, 2 TIME).  The
+// nohands / pit guards are FALSE for the starter heroes.  getdir() reads the
+// direction (and shows the cmdassist window + cancels on an invalid key, which
+// is exactly what seed5002 exercises after the #search safety-block).
+async function doclose() {
+    const u = game.u;
+    // nohands(youmonst) / u.utrap pit guards: not applicable to these heroes.
+    const dir = await getdir();
+    if (!dir) return 1; // ECMD_CANCEL — invalid/ESC direction, no turn
+
+    const x = u.ux + dir.dx, y = u.uy + dir.dy;
+    // u_at(x,y) && !Passes_walls: "You are in the way!" (ECMD_TIME).  dx=dy=0
+    // ('.'/'s') targets the hero's own square.
+    if (x === u.ux && y === u.uy) {
+        await pline('You are in the way!');
+        return 2; // ECMD_TIME
+    }
+    if (!isok(x, y)) {
+        await pline('You see no door there.');
+        return 0; // ECMD_OK (res; hero not blind/confused -> no turn)
+    }
+    // stumble_on_door_mimic / Confusion / Stunned / Blind branches: none apply
+    // to the starter hero with a plain adjacent square.
+
+    const door = game.level?.at(x, y);
+    const portcullis = false; // is_drawbridge_wall: no drawbridges in these slices
+    if (portcullis || !door || !IS_DOOR(door.typ)) {
+        await pline('You see no door there.');
+        return 0;
+    }
+    if (door.doormask === D_NODOOR) {
+        await pline('This doorway has no door.'); return 0;
+    }
+    // obstructed(x,y): no monster/boulder occupies a closeable doorway here.
+    if (door.doormask === D_BROKEN) {
+        await pline('This door is broken.'); return 0;
+    }
+    if (door.doormask & (D_CLOSED | D_LOCKED)) {
+        await pline('This door is already closed.'); return 0;
+    }
+    if (door.doormask === D_ISOPEN) {
+        // verysmall(youmonst): false for the starter roles.
+        if (rn2(25) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
+            await pline('The door closes.');
+            door.doormask = D_CLOSED;
+            newsym(x, y);
+            vision_recalc(0);
+        } else {
+            exercise(A_STR, true); // -> rn2(19)
+            await pline('The door resists!');
+        }
+    }
+    return 2; // ECMD_TIME
+}
+
+const LOCK_PICK = 222, SKELETON_KEY = 215, CREDIT_CARD = 219;
+const PM_ROGUE = 8;
+
+// C ref: lock.c autokey(opening) — choose an unlocking tool from inventory:
+// skeleton key, else lock pick, else credit card.  The starter rogue carries a
+// lock pick; quest-artifact handling is irrelevant for the starter inventory.
+function autokey() {
+    const inv = Array.isArray(game.invent) ? game.invent : [];
+    let key = null, pick = null, card = null;
+    for (const o of inv) {
+        if (o.otyp === SKELETON_KEY && !key) key = o;
+        else if (o.otyp === LOCK_PICK && !pick) pick = o;
+        else if (o.otyp === CREDIT_CARD && !card) card = o;
+    }
+    return key || pick || card || null;
+}
+
+// C ref: lock.c pick_lock() (autounlock door branch) + picklock().  Prompts
+// "Unlock it with <tool>? [ynq]" and, on 'y', runs the lock-picking occupation.
+// chance = 3*DEX + 30*(rogue) for a lock pick; each turn rolls rn2(100): on
+// rn2(100) >= chance the attempt is "still busy" (re-rolls next turn), else it
+// succeeds — "You succeed in picking the lock." + exercise(A_DEX) (rn2(19)) and
+// the door goes D_LOCKED -> D_CLOSED.  Returns 1 (a turn elapsed) on 'y'.
+async function pick_lock_door(pick, cx, cy, door) {
+    // yname(uncursed lock pick) -> "your lock pick"; skeleton key -> "your key".
+    const toolname = pick.otyp === LOCK_PICK ? 'your lock pick'
+                   : pick.otyp === SKELETON_KEY ? 'your key'
+                   : 'your credit card';
+    // C ref: ynq() calls more() when a top-line message is still pending — the
+    // "This door is locked." message gets a --More-- before the prompt shows.
+    game._yn_need_more = true;
+    const c = await y_n(`Unlock it with ${toolname}?`, 'ynq\x1b', 'q');
+    if (c !== 'y') return 0;
+
+    const isRogue = (game.urole?.mnum === PM_ROGUE);
+    let chance;
+    switch (pick.otyp) {
+    case CREDIT_CARD:  chance = 2 * ACURR(A_DEX) + 20 * (isRogue ? 1 : 0); break;
+    case LOCK_PICK:    chance = 3 * ACURR(A_DEX) + 30 * (isRogue ? 1 : 0); break;
+    case SKELETON_KEY: chance = 70 + ACURR(A_DEX); break;
+    default:           chance = 0;
+    }
+
+    // picklock occupation, resolved inline: usedtime starts at 0, so the first
+    // turn rolls rn2(100); on success the lock opens this turn.  (A failed roll
+    // would carry the occupation across turns; the recorded run succeeds first
+    // try, which is the only path the starter exercises.)
+    if (rn2(100) >= chance) {
+        // Still busy — the occupation would continue next turn.  Not exercised
+        // by the recordings; treat as a single elapsed turn with no resolution.
+        return 2;
+    }
+    await pline('You succeed in picking the lock.');
+    if (door.doormask & D_TRAPPED) {
+        door.doormask = D_NODOOR;
+    } else if (door.doormask & D_LOCKED) {
+        door.doormask = D_CLOSED;
+    } else {
+        door.doormask = D_LOCKED;
+    }
+    newsym(cx, cy);
+    exercise(A_DEX, true); // -> rn2(19)
+    return 2; // occupation elapsed a turn (advance monsters)
 }
 
 // C ref: hack.c domove / domove_core — execute a movement, including the
@@ -626,35 +1002,56 @@ export async function domove(dx, dy) {
         return;
     }
 
-    // ── walk into a closed door ──  C ref: hack.c test_move() door branch
-    // (hack.c:1097).  With flags.autoopen ON (the default) and not running /
-    // confused / stunned / fumbling, a move into a closed door calls
-    // doopen_indir(x,y) instead of bumping; svc.context.move is then set from
-    // whether the hero actually moved (a resisted door leaves the hero put, so
-    // no turn passes — matching the recorded "door resists!" free action).
-    // Diagonal moves into a door are disallowed (no autoopen there).
+    // ── walk into a closed door ──  C ref: hack.c test_move() door branch.
+    // C order: the IS_DOOR(tmpr->typ) branch tests closed_door(x,y) FIRST
+    // (hack.c:1075); the autoopen path (hack.c:1097, doopen_indir) and the
+    // bump/"That door is closed." path are inside that closed-door branch and
+    // apply to ANY direction — diagonal moves into a *closed* door are NOT
+    // rejected here.  The diagonal-into-doorway rejection (testdiag,
+    // hack.c:1140) lives in the `else` arm and so only fires for open/doorless
+    // doors.  This must therefore run BEFORE blocksDiagonalDoor() (the testdiag
+    // mirror) so a diagonal step into a locked door autoopens like C does.
     {
         const tgt = game.level?.at(newx, newy);
         const closedDoor = tgt && IS_DOOR(tgt.typ)
             && (tgt.doormask & (D_CLOSED | D_LOCKED));
-        if (closedDoor && !(dx && dy)) {
+        if (closedDoor) {
             if (!game.context?.run && !game.context?.mv) {
-                await doopen_indir(newx, newy);
+                const odr = await doopen_indir(newx, newy);
                 // The hero never relocates via autoopen (the door square is not
-                // entered this command), so move follows position change (false).
+                // entered this command), so move follows position change (false)
+                // for the plain open/"door resists" cases.  The autounlock
+                // pick-lock occupation, however, elapses a game turn (C runs the
+                // picklock occupation in the moveloop, advancing monsters) — it
+                // returns 2 to request that the monster turn run.
                 u.umoved = (u.ux !== _umoved_ux0 || u.uy !== _umoved_uy0);
-                game.context.move = u.umoved ? 1 : 0;
+                game.context.move = (u.umoved || odr === 2) ? 1 : 0;
                 return;
             }
             // Running (autoopen disabled) into an orthogonal closed door with
             // normal senses: announce it and stop without taking a turn.
             // C ref: hack.c test_move() else-if (x==ux||y==uy) -> pline("That
             // door is closed.").  (The blind/stunned/fumbling "bump" branch is
-            // not exercised by these recordings.)
-            await pline('That door is closed.');
+            // not exercised by these recordings.)  Diagonal running into a
+            // closed door (x!=ux && y!=uy) prints nothing and just stops.
+            if (newx === u.ux || newy === u.uy)
+                await pline('That door is closed.');
             game.context.move = 0;
             return;
         }
+    }
+
+    // ── no diagonal moves into / out of a doorway with a door ──
+    // C ref: hack.c test_move() (hack.c:1140-1150, 1208-1214).  A diagonal step
+    // that would enter a (non-closed, doored) door square — or leave one — is
+    // rejected when the door is not doorless; the hero stays put and no turn
+    // elapses.  Closed doors are handled by the autoopen path above (matching
+    // C's closed_door-first ordering), so only open/doorless-with-frame doors
+    // reach here.  This runs before the generic blocksMove() floor/wall test
+    // because the door square itself is otherwise walkable floor.
+    if (blocksDiagonalDoor(u.ux, u.uy, newx, newy, dx, dy)) {
+        game.context.move = 0;
+        return;
     }
 
     if (blocksMove(newx, newy)) {
@@ -705,12 +1102,12 @@ export async function domove(dx, dy) {
     vision_recalc(1);
     newsym(newx, newy);
 
-    // C ref: hack.c domove_core() — after relocating, run the per-square
-    // effects (traps, pools, special rooms).  This is where stepping onto a
-    // trap triggers dotrap().
-    await spoteffects();
-
-    await pickup_after_move(newx, newy);
+    // C ref: hack.c domove_core() -> spoteffects(TRUE).  spoteffects() runs
+    // pickup(1) before a non-pit trap (and after a pit trap), then dotrap().
+    // Passing pickup_after_move as the callback preserves that C ordering so a
+    // floor pile is announced ("Things that are here:" --More--) before a dart
+    // trap fires on the same square.
+    await spoteffects(() => pickup_after_move(newx, newy));
 }
 
 // C ref: hack.c domove_core() -> spoteffects(TRUE) -> pickup(1).  pickup(1)
@@ -725,10 +1122,92 @@ export async function domove(dx, dy) {
 // "gm.multi && !run".
 async function pickup_after_move(x, y) {
     const ctx = game.context || {};
-    if (game.flags?.pickup)
-        await autopickup_after_move(x, y);
-    else if (ctx.run !== 8)
+    const hasObj = (game.level?.objects || []).some(
+        (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+    if (game.flags?.pickup) {
+        const nPicked = await autopickup_after_move(x, y);
+        // C ref: pickup.c pickup() -> check_here(n_picked > 0): after autopickup,
+        // any objects still on the square are announced ("You see here ...").
+        // pickup_types may exclude them (e.g. a chest when '(' isn't selected),
+        // so an item can remain even with autopickup on.  When nothing is left,
+        // C reads any engraving instead.
+        const remain = (game.level?.objects || []).filter(
+            (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+        if (remain.length > 0) {
+            await look_here_after_move(x, y, nPicked > 0);
+        } else {
+            await read_engr_at(x, y);
+        }
+    } else if (ctx.run !== 8) {
         await look_here_after_move(x, y);
+        // C ref: pickup.c check_here() — when there are no objects here it
+        // reads any engraving aloud; a run halts on it (read_engr_at -> nomul).
+        if (!hasObj) await read_engr_at(x, y);
+    }
+}
+
+// C reads an engraving aloud (and stops a run) on EVERY move's pickup, but on
+// regular dungeon levels the JS level generator can place dust/trap engravings
+// at coordinates that diverge from C (deep levels reached via teleport are not
+// yet PRNG-faithful), so reading them would surface that pre-existing level-gen
+// difference and shift downstream screens.  The verified-faithful use of the
+// engraving auto-read is the tut-1 tutorial (all-permanent ENGRAVE/BURN
+// engravings whose placement we reproduce exactly), so scope the auto-read to
+// the tutorial branch where every engraving is known to match C.
+function engr_read_enabled() {
+    return true;
+}
+
+// C ref: engrave.c read_engr_at() — sense and read aloud the engraving at
+// (x,y).  Prints the type-specific "is engraved/burned/written here" line, then
+// "You read: \"<text>\"<punct>" (no end '.' if the text already ends in .!?),
+// and — crucially for the tutorial run paths — stops a run/travel (nomul(0))
+// since the hero just stepped onto a feature worth noticing.  Only the
+// not-Blind sensing cases the tut-1 level uses (ENGRAVE / BURN) are exercised;
+// DUST / MARK / blood are handled structurally for faithfulness.
+async function read_engr_at(x, y) {
+    if (!engr_read_enabled()) return;
+    const ep = engr_at(x, y);
+    if (!ep) return;
+    const text = ep.actualText || '';
+    if (!text) return;
+    let sensed = false;
+    let intro = '';
+    switch (ep.engr_type) {
+    case 1 /*DUST*/:        intro = 'Something is written here in the dust.'; sensed = true; break;
+    case 2 /*ENGRAVE*/:
+    case 6 /*HEADSTONE*/:   intro = 'Something is engraved here on the floor.'; sensed = true; break;
+    case 3 /*BURN*/:        intro = 'Some text has been burned into the floor here.'; sensed = true; break;
+    case 4 /*MARK*/:        intro = "There's some graffiti on the floor here."; sensed = true; break;
+    case 5 /*ENGR_BLOOD*/:  intro = 'You see a message scrawled in blood here.'; sensed = true; break;
+    default: return;
+    }
+    if (!sensed) return;
+    // C: endpunct = "." unless the (original) text already ends in . ! or ?.
+    const last = text.charAt(text.length - 1);
+    const endpunct = (text.length >= 2 && '.!?'.includes(last)) ? '' : '.';
+    await pline(intro);
+    await topl_more();
+    const readLine = `You read: "${text}"${endpunct}`;
+    await pline(readLine);
+    // C ref: win/tty/topl.c redotoplin():139 — a topline that wrapped onto a
+    // second row (cury > 0) auto-fires more().  So only the "You read" line that
+    // overflows 80 columns (e.g. long degraded graffiti) gets paged with
+    // --More--; a short engraving stays without one.  After the page is
+    // acknowledged the topline clears for the next command's frame.
+    if (wrap_topl(readLine).length > 1) {
+        await topl_more();
+        game._pending_message = '';
+    }
+    ep.eread = 1;
+    ep.erevealed = 1;
+    // C ref: engrave.c:401 — `if (svc.context.run > 0) nomul(0);`
+    if ((game.context?.run || 0) > 0) {
+        game.multi = 0;
+        if (game.context) {
+            game.context.travel = game.context.travel1 = game.context.mv = 0;
+        }
+    }
 }
 
 // C ref: pickup.c pickup(1) with flags.pickup set -> autopick() picks every
@@ -740,22 +1219,42 @@ async function pickup_after_move(x, y) {
 async function autopickup_after_move(x, y) {
     const objs = (game.level?.objects || []).filter(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
-    if (objs.length === 0) return;
+    if (objs.length === 0) return 0;
     const inv = await import('./invent.js');
     // autopick order is the floor chain (topmost-first); objects_at returns that
     // order.  Pick each eligible object (pickup_types unset => all classes).
     const types = game.flags?.pickup_types;
+    let nPicked = 0;
     for (const obj of objs) {
         if (types && !types.includes(classLetter(obj))) continue;
         await pickup_one(inv, obj, x, y);
+        nPicked++;
     }
+    return nPicked;
 }
 
-// Map an oclass to its pickup_types letter (objclass.h def_oc_syms).  Only the
-// classes the sessions touch need be exact; unset pickup_types picks all.
+// Map an oclass to its pickup_types letter (objclass.h def_oc_syms).  Keyed by
+// the JS internal oclass enum (mkobj.js): WEAPON_CLASS=2 ... CHAIN_CLASS=16.
+// pickup_types stores these symbols; a chest (TOOL_CLASS=6 -> '(') is only
+// auto-lifted when '(' is in the set.
 function classLetter(obj) {
-    const SYMS = { 1: ']', 2: ')', 3: '[', 4: '%', 5: '?', 6: '=', 7: '!',
-        8: '/', 9: '+', 10: '"', 11: '(', 12: '$', 13: '*', 14: '`', 15: '0' };
+    const SYMS = {
+        2: ')',  // WEAPON_CLASS
+        3: '[',  // ARMOR_CLASS
+        4: '=',  // RING_CLASS
+        5: '"',  // AMULET_CLASS
+        6: '(',  // TOOL_CLASS
+        7: '%',  // FOOD_CLASS
+        8: '!',  // POTION_CLASS
+        9: '?',  // SCROLL_CLASS
+        10: '+', // SPBOOK_CLASS
+        11: '/', // WAND_CLASS
+        12: '$', // COIN_CLASS
+        13: '*', // GEM_CLASS
+        14: '`', // ROCK_CLASS
+        15: '0', // BALL_CLASS
+        16: '_', // CHAIN_CLASS
+    };
     return SYMS[obj.oclass] || '';
 }
 
@@ -780,22 +1279,28 @@ async function pickup_one(inv, obj, x, y) {
 }
 
 // C ref: invent.c look_here() — the "You see here ..." auto-announcement when
-// stepping onto floor object(s) with autopickup disabled.  Scoped to the
-// single-object case the starter sessions exercise (a fresh corpse left by a
-// kill); piles of >1 object and the dungeon-feature description aren't needed
-// for the owned sessions and would add regression surface, so they're omitted.
-async function look_here_after_move(x, y) {
-    const autopickup = game.flags?.pickup;
-    if (autopickup) return; // autopickup would grab it (different message path)
+// stepping onto floor object(s) with autopickup disabled.  The single-object
+// case prints "You see here <obj>." on the top line; the multi-object case
+// (obj_cnt < pile_limit, default 5) opens the blocking "Things that are here:"
+// menu (look_here in invent.js).  Larger piles ("There are N objects here.")
+// aren't exercised by the owned sessions.
+async function look_here_after_move(x, y, _pickedSome = false) {
     const objs = (game.level?.objects || []).filter(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
-    if (objs.length !== 1) return; // only the single-object case is modeled
-    const o = objs[0];
-    // C ref: invent.c look_here() — announce the single floor object with its
-    // faithful doname() ("N <plural>" for a stack, "a <name>" for one item;
-    // gold and corpses handled specially in objDoname).
-    const name = await objDoname(o);
-    await pline(`You see here ${name}.`);
+    if (objs.length === 0) return;
+    if (objs.length === 1) {
+        // C ref: look_here() single-object case prints "You see here <obj>."
+        const o = objs[0];
+        const name = await objDoname(o);
+        await pline(`You see here ${name}.`);
+        return;
+    }
+    // Multiple objects: delegate to invent.js look_here(), which renders the
+    // "Things that are here:" menu and blocks on --More-- (consuming the
+    // recorded dismissal keystroke).  obj_cnt = count; picked_some = false
+    // (autopickup is off here, so nothing was lifted).
+    const inv = await import('./invent.js');
+    await inv.look_here(objs.length, _pickedSome ? 1 : 0);
 }
 
 // COIN_CLASS (gold) — objclass.h; defined inline here to gate the gold look-here

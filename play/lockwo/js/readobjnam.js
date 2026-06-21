@@ -243,6 +243,7 @@ function newData(bp) {
         trapped: 0,
         oclass: 0,
         actualn: null, dn: null, un: null, name: null,
+        dragonIdx: null, /* set by stripDragonPrefix; C d->mntmp dragon family */
         bp, origbp: bp,
         fruitbuf: '',
     };
@@ -414,18 +415,28 @@ function postparse1(d) {
 }
 
 // Strip a leading dragon monster name, mirroring the relevant slice of C's
-// name_to_monplus() handling in readobjnam_postparse1.  Only the dragon
-// family (used by "gray dragon scale mail") matters for parity here.
-const DRAGON_COLORS = ['gray', 'silver', 'red', 'white', 'orange', 'black',
-    'blue', 'green', 'yellow', 'grey'];
+// name_to_monplus() handling in readobjnam_postparse1 (objnam.c:4407).  Only
+// the dragon family (used by "gray dragon scale mail") matters for parity here.
+// When a color is recognised we record its dragon index on d.dragonIdx so that
+// finalize() can promote a resulting SCALE_MAIL to the colored dragon scale
+// mail (C objnam.c:5246-5251 SCALE_MAIL switch case using d.mntmp).
+//
+// Index order matches the GRAY_DRAGON_SCALE_MAIL..YELLOW_DRAGON_SCALE_MAIL
+// object order (== PM_GRAY_DRAGON..PM_YELLOW_DRAGON monster order):
+//   gray, gold, silver, red, white, orange, black, blue, green, yellow.
+const DRAGON_COLOR_IDX = {
+    gray: 0, grey: 0, gold: 1, silver: 2, red: 3, white: 4,
+    orange: 5, black: 6, blue: 7, green: 8, yellow: 9,
+};
 function stripDragonPrefix(d) {
     const low = d.bp.toLowerCase();
-    for (const c of DRAGON_COLORS) {
+    for (const c of Object.keys(DRAGON_COLOR_IDX)) {
         const pre = c + ' dragon';
         if (low.startsWith(pre)) {
             let rest = d.bp.slice(pre.length);
             if (rest.startsWith(' ')) {
                 d.bp = rest.slice(1);
+                d.dragonIdx = DRAGON_COLOR_IDX[c];
             } else if (rest.length === 0) {
                 // bare "<color> dragon" with no referent; leave as-is
             }
@@ -632,6 +643,18 @@ function finalize(d, anyRandom) {
     if (!otmp) return null;
     d.typ = otmp.otyp;
     d.oclass = otmp.oclass;
+
+    // C objnam.c:5246-5251 — SCALE_MAIL case of the ismnum(d.mntmp) switch.
+    // "gray dragon scale mail" parses to bare "scale mail" (the dragon name was
+    // stripped by stripDragonPrefix, recording d.dragonIdx); promote the base
+    // scale mail (otyp 130) to the matching colored dragon scale mail
+    // (GRAY_DRAGON_SCALE_MAIL=101 .. YELLOW_DRAGON_SCALE_MAIL=110).
+    const SCALE_MAIL = 130, GRAY_DRAGON_SCALE_MAIL = 101;
+    if (otmp.otyp === SCALE_MAIL && d.dragonIdx != null) {
+        otmp.otyp = GRAY_DRAGON_SCALE_MAIL + d.dragonIdx;
+        d.typ = otmp.otyp;
+        d.oclass = otmp.oclass;
+    }
 
     // count: in wizard mode quantity isn't restricted.
     if (d.cnt > 0 && objects[d.typ].oc_merge) otmp.quan = d.cnt;

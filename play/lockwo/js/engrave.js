@@ -4,10 +4,20 @@
 //         hacklib.c xcrypt().
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { BUFSZ, BURN, DUST, ENGR_BLOOD, HEADSTONE, ICE } from './const.js';
+import { rn2, rnd } from './rng.js';
+import { BUFSZ, BURN, DUST, ENGR_BLOOD, ENGRAVE, HEADSTONE, ICE, MARK,
+         FINGERTIP, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT } from './const.js';
 import { RUMORS_B64, ENGRAVE_B64 } from './rumors_data.js';
 import { EPITAPH_B64 } from './epitaph_data.js';
+import { WEAPON_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS,
+         TOOL_CLASS } from './mkobj.js';
+import { exercise } from './attrib.js';
+import { A_WIS } from './const.js';
+
+// Heavy UI/inventory modules (display.js, invent.js, extcmd-handlers.js) are
+// loaded lazily inside doengrave() to avoid a module-init cycle: display.js
+// statically imports this file, so a static import back into it would create a
+// temporal-dead-zone error (e.g. "Cannot access 'MAXOCLASSES' ...").
 
 const MD_PAD_RUMORS = 60;
 
@@ -201,10 +211,11 @@ function getrumor(truth, exclude_cookie) {
 
     let rumor = '';
     let count = 0;
+    let adjtruth = 0;
     do {
         rumor = '';
         // input: 1 0 -1 ; rn2+1 => 2/1=T, 1/0=T/F, 0/-1=F/F
-        const adjtruth = truth + rn2(2);
+        adjtruth = truth + rn2(2);
         let beginning;
         let ending;
         if (adjtruth >= 1) {
@@ -218,9 +229,42 @@ function getrumor(truth, exclude_cookie) {
     } while (count++ < 50 && exclude_cookie
              && rumor.slice(0, marklen) === cookie_marker);
 
+    // C ref: rumors.c getrumor() — `else if (!gi.in_mklev) exercise(A_WIS,
+    // (adjtruth > 0))` (avoid exercising wisdom for graffiti placed at level
+    // creation).  This rn2(19)/rn2(2) draw is part of getrumor()'s RNG.
+    if (!game.in_mklev)
+        exercise(A_WIS, adjtruth > 0);
+
     if (!exclude_cookie && rumor.slice(0, marklen) === cookie_marker)
         rumor = rumor.slice(marklen);
     return rumor;
+}
+
+// C ref: rumors.c outrumor(truth, mechanism).  mechanism BY_COOKIE/BY_PAPER
+// means the hero is reading (fortune cookie or scroll of fortune); BY_ORACLE
+// is the oracle path.  We model the reading path (the only one the owned
+// sessions reach): blindness/faint guards short-circuit before getrumor (and
+// thus before any RNG), otherwise getrumor() is consulted with exclude_cookie
+// FALSE.  Returns the rumor text for the caller to pline().
+export const BY_COOKIE = 0;
+export const BY_PAPER = 1;
+export const BY_ORACLE = 2;
+
+export function outrumor(truth, mechanism) {
+    const reading = (mechanism === BY_COOKIE || mechanism === BY_PAPER);
+    if (reading) {
+        // is_fainted() && BY_COOKIE: too weak to read; no RNG, no message.
+        if (mechanism === BY_COOKIE && (game.u?.uhs ?? 0) >= 5 /*FAINTED*/)
+            return '';
+        // Blind: can't read it; no getrumor RNG.
+        if (game.u?.Blind)
+            return '';
+    }
+    // get a rumor; exclude_cookie is FALSE when reading (cookie rumors allowed).
+    let line = getrumor(truth, reading ? false : true);
+    if (!line)
+        line = 'NetHack rumors file closed for renovation.';
+    return line;
 }
 
 export function random_engraving() {
@@ -309,9 +353,230 @@ export function make_engr_at(x, y, text, pristine, epoch, engr_type) {
         rememberedText: text,
         pristineText: pristine ?? text,
     };
+    // C ref: engrave.c make_engr_at() — engraving exactly "Elbereth" by the
+    // player (not during level creation) exercises wisdom (rn2(19) inside
+    // exercise()).  During mklev it instead sets the old-style guard flag.
+    if (text === 'Elbereth' && !game.in_mklev) {
+        exercise(A_WIS, true);
+    }
     game.level.engravings.unshift(ep);
     return ep;
 }
+
+// C ref: hacklib.c mungspaces() — collapse runs of whitespace to one and trim.
+function mungspaces(s) {
+    return s.replace(/\s+/g, ' ').replace(/^ | $/g, '');
+}
+
+// C ref: engrave.c stylus_ok(obj) — getobj classifier for "write with".
+// Fingers (obj==null) and weapons/wands/gems/rings are SUGGEST; markers and
+// towels are SUGGEST tools; everything else is DOWNPLAY.
+function stylus_ok(obj) {
+    if (!obj) return GETOBJ_SUGGEST;
+    if (obj.oclass === WEAPON_CLASS || obj.oclass === WAND_CLASS
+        || obj.oclass === GEM_CLASS || obj.oclass === RING_CLASS)
+        return GETOBJ_SUGGEST;
+    if (obj.oclass === TOOL_CLASS
+        && (obj.otyp === 234 /*TOWEL*/ || obj.otyp === 242 /*MAGIC_MARKER*/))
+        return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
+}
+
+// C ref: engrave.c u_can_engrave() — can the hero engrave at their location?
+// The recorded heroes are always on ordinary accessible floor (not swallowed,
+// not over lava/pool/fountain/air, able to hold things, unencumbered), so the
+// terrain checks pass.  Returns false (with the matching message) only for the
+// disqualifying terrains; the swallow/capacity/cantwield branches are not
+// exercised and are treated as "can engrave".
+function u_can_engrave() {
+    // No FOUNTAIN/pool/lava/air on the engraving squares the sessions use.
+    return true;
+}
+
+// C ref: engrave.c doengrave() — the 'E' (#engrave) command.  Prompt for a
+// writing implement, classify it, print the "You write in the dust ..." line,
+// read the engraving text with getlin(), garble it when the surface/state of
+// mind is unsound (rn2(25) per char for DUST/blood; Blind/Confused/Stunned/
+// Hallucinating add their own rolls), record the engraving, and run the
+// engraving as a one-action occupation (returns ECMD_TIME so a turn passes).
+//
+// Only the DUST/finger (and structurally weapon/wand/marker) paths the
+// recorded sessions take are reproduced; the altar/grave/swallow/teleengr
+// special effects are stubs that fall through to the ordinary write path.
+export async function doengrave() {
+    const u = game.u;
+
+    if (!u_can_engrave()) return 0; // ECMD_FAIL
+
+    // Lazy imports (see note at top of file) to avoid the display.js<->engrave.js
+    // static-import cycle.
+    const { pline, topl_more, newsym } = await import('./display.js');
+    const { getobj, hands_obj, body_part, floor_object_name }
+        = await import('./invent.js');
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+
+    // doengrave_ctx_init(): defaults.
+    const de = {
+        type: DUST,
+        oetype: 0,
+        ptext: true,
+        dengr: false,
+        teleengr: false,
+        zapwand: false,
+        eow: false,
+        adding: false,
+        doblind: false,
+        doknown: false,
+        buf: '',          // engraving text from special effects (e.g. cancel)
+        ebuf: '',         // text the player types
+        writer: '',
+        everb: '',
+        eloc: '',
+        ret: 0,           // ECMD_OK
+    };
+    const oep = engr_at(u.ux, u.uy);
+    if (oep) de.oetype = oep.engr_type;
+    // (ENGR_BLOOD-when-bleeding and jello/frost branches not exercised.)
+    const frosted = (game.level?.at(u.ux, u.uy)?.typ === ICE);
+
+    // getobj("write with", stylus_ok, GETOBJ_PROMPT): otmp == hands_obj for '-'.
+    const otmp = await getobj('write with', stylus_ok, GETOBJ_PROMPT);
+    if (!otmp) return 0; // ECMD_CANCEL ("Never mind." already shown)
+
+    if (otmp === hands_obj) {
+        de.writer = `your ${body_part(FINGERTIP)}`;
+    } else {
+        // yname(otmp) — only the bare-finger path is exercised by the
+        // recorded sessions; a real stylus would use the object's name here.
+        de.writer = floor_object_name(otmp);
+    }
+
+    // doengrave_sfx_item(): for fingers (RANDOM_CLASS) this is a no-op; the
+    // wand/weapon/marker special effects are not exercised by the sessions, so
+    // we keep the default DUST/ptext path for non-finger implements too (no
+    // RNG, no message) rather than mis-modelling them.
+
+    // (Identify-stylus / teleengr / dengr / pre-filled buf branches skipped:
+    //  none apply to the bare-finger DUST path.)
+
+    if (!de.ptext) { de.ret = 1; await maybe_newsym(de); return de.ret; }
+
+    // Existing-engraving handling (add-to / overwrite prompts) is not reached
+    // by the recorded sessions (the engrave squares are blank), so we skip the
+    // yn_function add-prompt and proceed to a fresh engraving.
+
+    doengrave_ctx_verb(de, frosted);
+
+    // "Tell adventurer what is going on."
+    if (otmp !== hands_obj) {
+        await pline(`You ${de.everb} the ${de.eloc} with ${de.writer}.`);
+    } else {
+        await pline(`You ${de.everb} the ${de.eloc} with your ${body_part(FINGERTIP)}.`);
+    }
+    // getlin is about to overwrite the message, so it pages with --More--.
+    await topl_more();
+
+    // "Prompt for engraving!"  getlin(qbuf, ebuf); mungspaces(ebuf).
+    const qbuf = `What do you want to ${de.everb} the ${de.eloc} here?`;
+    let ebuf = await hooked_tty_getlin(qbuf, null);
+    if (ebuf === '\x1b') ebuf = '';
+    ebuf = mungspaces(ebuf);
+
+    // Count engraved chars (excluding spaces).
+    let len = ebuf.length;
+    for (const c of ebuf) if (c === ' ') len -= 1;
+
+    if (len === 0 || ebuf.includes('\x1b')) {
+        // (zapwand glow/fade branch not reached for fingers.)
+        await pline('Never mind.');
+        return 0;
+    }
+
+    // getlin drew its prompt over the top line; the engrave occupation prints
+    // no message on its first (and, for short words, only) action, so the
+    // captured frame after Enter has a blank message line.  Clear the stale
+    // "You write in the dust ..." pline that --More-- already acknowledged.
+    game._pending_message = '';
+    game._toplin = 0;
+
+    // Mix up engraving if surface or state of mind is unsound.  This does not
+    // add or remove spaces.  C ref: engrave.c:1219-1227.
+    // Conditions tracked: DUST/ENGR_BLOOD -> rn2(25); Blind -> rn2(11);
+    // Confusion -> rn2(7); Stunned -> rn2(4); Hallucination -> rn2(2).
+    const blind = isBlind();
+    const confused = isConfused();
+    const stunned = isStunned();
+    const hallu = isHallu();
+    const chars = Array.from(ebuf);
+    for (let i = 0; i < chars.length; i++) {
+        if (chars[i] === ' ') continue;
+        const garble =
+            (((de.type === DUST || de.type === ENGR_BLOOD) && !rn2(25))
+             || (blind && !rn2(11)) || (confused && !rn2(7))
+             || (stunned && !rn2(4)) || (hallu && !rn2(2)));
+        if (garble) {
+            // ' ' + rnd(96 - 2): ASCII '!' (33) thru '~' (126).
+            chars[i] = String.fromCharCode(32 + rnd(94));
+        }
+    }
+    ebuf = chars.join('');
+
+    // (de->eow overwrite-previous branch not reached: blank square.)
+
+    // Record the engraving and run it as a one-action occupation.  For DUST
+    // with rate 10, words up to 10 non-space chars finish in a single action
+    // (no RNG, no "You finish ..." message on the first action), so we model
+    // the occupation result inline: make the engraving and pass a turn.
+    make_engr_at(u.ux, u.uy, ebuf, '', game.moves ?? 1, de.type);
+    const ep = engr_at(u.ux, u.uy);
+    if (ep && !blind) { ep.eread = 1; ep.erevealed = 1; }
+    if (game.u) newsym(u.ux, u.uy);
+
+    // doengrave returns ECMD_OK (the occupation provides the turn); modelled
+    // here as ECMD_TIME so the move loop advances exactly one turn.
+    return 1;
+}
+
+// C ref: engrave.c doengrave_ctx_verb() — pick the verb/location phrasing.
+function doengrave_ctx_verb(de, frosted) {
+    switch (de.type) {
+    case DUST:
+        de.everb = de.adding ? 'add to the writing in' : 'write in';
+        de.eloc = frosted ? 'frost' : 'dust';
+        break;
+    case ENGRAVE:
+        de.everb = de.adding ? 'add to the engraving in' : 'engrave in';
+        break;
+    case BURN:
+        de.everb = de.adding
+            ? (frosted ? 'add to the text melted into' : 'add to the text burned into')
+            : (frosted ? 'melt into' : 'burn into');
+        break;
+    case MARK:
+        de.everb = de.adding ? 'add to the graffiti on' : 'scribble on';
+        break;
+    case ENGR_BLOOD:
+        de.everb = de.adding ? 'add to the scrawl on' : 'scrawl on';
+        break;
+    default:
+        de.everb = de.adding ? 'add to the weird writing on' : 'write strangely on';
+        break;
+    }
+}
+
+async function maybe_newsym(de) {
+    if (de.disprefresh && game.u) newsym(game.u.ux, game.u.uy);
+}
+
+// Status helpers — the recorded wizard is none of these, but model them so the
+// garble conditions are correct for future sessions.
+function isBlind() {
+    const u = game.u;
+    return !!(u?.uprops?.Blinded || u?.Blind || (u?.uprops?.Blind));
+}
+function isConfused() { const u = game.u; return !!(u?.uprops?.Confusion || u?.Confusion); }
+function isStunned() { const u = game.u; return !!(u?.uprops?.Stun || u?.Stunned); }
+function isHallu() { const u = game.u; return !!(u?.uprops?.Hallucination || u?.Hallu); }
 
 export function wipe_engr_at(x, y, cnt, magical = false) {
     const ep = engr_at(x, y);

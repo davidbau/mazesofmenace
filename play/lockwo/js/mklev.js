@@ -12,9 +12,11 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
-import { somex, somey, somexyspace, occupied, has_dnstairs, has_upstairs } from './mkroom.js';
+import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs } from './mkroom.js';
 import { maketrap } from './trap.js';
-import { makemon as make_monster, rndmonst, mkclass } from './makemon.js';
+import { makemon as make_monster, rndmonst, mkclass,
+         name_to_pmidx, monster_by_pmidx } from './makemon.js';
+import { set_corpsenm } from './mkobj.js';
 import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph } from './engrave.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, FOOD_CLASS,
@@ -26,19 +28,21 @@ import {
     WAN_DIGGING, SPE_HEALING, LARGE_BOX, CHEST, FOOD_RATION,
     CRAM_RATION, LEMBAS_WAFER,
     mkobj, mkobj_at, mksobj, mksobj_at, mkcorpstat, mkgold, curse,
-    place_object, weight,
+    place_object, weight, objects, add_to_container,
 } from './mkobj.js';
+import { obj_resists } from './zap.js';
+import { spell_level } from './u_init.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
-    OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED,
+    OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, NO_ROOM,
     SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
     LEPREHALL, COCKNEST, ANTHOLE,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
-    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
+    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_ROOM,
     IS_SDOOR,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
@@ -49,6 +53,7 @@ import {
     A_LAWFUL, Align2amask,
     LR_UPTELE,
     DUST, MARK, HEADSTONE,
+    TAINT_AGE,
 } from './const.js';
 
 const XLIM = 4;
@@ -369,6 +374,23 @@ async function makelevel() {
     if (slev && slev.proto && slev.proto.toLowerCase() === 'bigrm') {
         await makemaz_bigroom();
         return;
+    }
+    if (slev && slev.proto && slev.proto.toLowerCase() === 'oracle') {
+        await makemaz_oracle();
+        return;
+    }
+
+    // C ref: mklev.c:1271 — svd.dungeons[dnum].fill_lvl[0] dispatch (the mines
+    // filler), BEFORE the regular path and the below-Medusa rn2(5) check.
+    // Only the Gnomish Mines "minefill" filler is ported; other fill levels (if
+    // any) fall through to the regular generator.
+    {
+        const dnum0 = g.u?.uz?.dnum ?? 0;
+        const fill = g.dungeons?.[dnum0]?.fill_lvl;
+        if (!slev && fill && fill.toLowerCase() === 'minefill') {
+            await makemaz_minefill();
+            return;
+        }
     }
 
     // C ref: mklev.c:1295 — check for below-Medusa maze level
@@ -856,22 +878,26 @@ async function themerooms_generate(difficulty) {
         });
         return !!placed && !game.themeroom_failed;
     }
-    let spec = { rtype: OROOM, rlit: -1, needfill: FILL_NORMAL, contents: null };
-    if (game.currentSeed === 2600) {
-        const roomSpecs = {
-            default: { rtype: OROOM, rlit: -1, needfill: FILL_NORMAL, contents: null },
-            'Default room with themed fill': {
-                rtype: THEMEROOM, rlit: -1, needfill: FILL_NONE, contents: themeroom_fill,
-            },
-            'Unlit room with themed fill': {
-                rtype: THEMEROOM, rlit: 0, needfill: FILL_NONE, contents: themeroom_fill,
-            },
-            'Room with both normal contents and themed fill': {
-                rtype: THEMEROOM, rlit: -1, needfill: FILL_NORMAL, contents: themeroom_fill,
-            },
-        };
-        spec = roomSpecs[pick.name] || roomSpecs.default;
-    }
+    // C ref: themerms.lua — the three "themed fill" themerooms call
+    //   des.room({ type = "themed", [lit=0|filled=1,] contents = themeroom_fill })
+    // i.e. a THEMEROOM whose contents() runs the themeroom_fill reservoir
+    // (themerms.lua:1039).  des.room inside in_mk_themerooms defaults needfill
+    // to 0 (FILL_NONE) unless filled=1 is passed (sp_lev.c:4076-4077).  All
+    // other non-map picks fall through to the plain "default" room
+    // (des.room({type="ordinary", filled=1}) -> OROOM, FILL_NORMAL, no fill).
+    const roomSpecs = {
+        'Default room with themed fill': {
+            rtype: THEMEROOM, rlit: -1, needfill: FILL_NONE, contents: themeroom_fill,
+        },
+        'Unlit room with themed fill': {
+            rtype: THEMEROOM, rlit: 0, needfill: FILL_NONE, contents: themeroom_fill,
+        },
+        'Room with both normal contents and themed fill': {
+            rtype: THEMEROOM, rlit: -1, needfill: FILL_NORMAL, contents: themeroom_fill,
+        },
+    };
+    const spec = roomSpecs[pick.name]
+        || { rtype: OROOM, rlit: -1, needfill: FILL_NORMAL, contents: null };
     rn2(100); // build_room chance check
     const ok = create_room(-1, -1, -1, -1, -1, -1, spec.rtype, spec.rlit);
     if (ok) {
@@ -996,8 +1022,54 @@ function create_room(x, y, w, h, xal, yal, rtype, rlit) {
             htmp = ddy.v + 1;
             r2 = { lx: xabs - 1, ly: yabs - 1, hx: xabs + wtmp, hy: yabs + htmp };
         } else {
-            // positioned room (not used for seed8000)
-            return false;
+            // C ref: sp_lev.c:1580-1645 — "Only some parameters are random".
+            // Used by special levels (e.g. Oracle) with explicit/aligned coords.
+            let rndpos = 0;
+            if (xtmp < 0 && ytmp < 0) { // Position is RANDOM
+                xtmp = rnd(5);
+                ytmp = rnd(5);
+                rndpos = 1;
+            }
+            if (wtmp < 0 || htmp < 0) { // Size is RANDOM
+                wtmp = rn1(15, 3);
+                htmp = rn1(8, 2);
+            }
+            if (xaltmp === -1) xaltmp = rnd(3); // Horizontal alignment RANDOM
+            if (yaltmp === -1) yaltmp = rnd(3); // Vertical alignment RANDOM
+
+            xabs = Math.trunc(((xtmp - 1) * COLNO) / 5) + 1;
+            yabs = Math.trunc(((ytmp - 1) * ROWNO) / 5) + 1;
+            // SPLEV_LEFT=1, SPLEV_CENTER=3, SPLEV_RIGHT=5; TOP=1, BOTTOM=5.
+            switch (xaltmp) {
+            case 1: break;                                   // SPLEV_LEFT
+            case 5: xabs += Math.trunc(COLNO / 5) - wtmp; break; // SPLEV_RIGHT
+            case 3: xabs += Math.trunc((Math.trunc(COLNO / 5) - wtmp) / 2); break; // CENTER
+            }
+            switch (yaltmp) {
+            case 1: break;                                   // TOP
+            case 5: yabs += Math.trunc(ROWNO / 5) - htmp; break; // BOTTOM
+            case 3: yabs += Math.trunc((Math.trunc(ROWNO / 5) - htmp) / 2); break; // CENTER
+            }
+            if (xabs + wtmp - 1 > COLNO - 2) xabs = COLNO - wtmp - 3;
+            if (xabs < 2) xabs = 2;
+            if (yabs + htmp - 1 > ROWNO - 2) yabs = ROWNO - htmp - 3;
+            if (yabs < 2) yabs = 2;
+            // C ref: sp_lev.c:1634-1644. r2 is the scratch rect passed to
+            // get_rect AND later to split_rects (with its PRE-check_room coords);
+            // check_room may shift xabs/yabs but does NOT touch r2. add_room uses
+            // wtmp/htmp (the original sizes), not dx/dy.
+            r2 = { lx: xabs - 1, ly: yabs - 1, hx: xabs + wtmp + rndpos, hy: yabs + htmp + rndpos };
+            r1 = get_rect(r2);
+            const dx = wtmp, dy = htmp;
+            if (r1) {
+                const lowx = { v: xabs }, ddx = { v: dx };
+                const lowy = { v: yabs }, ddy = { v: dy };
+                if (!check_room(lowx, ddx, lowy, ddy, vault)) {
+                    r1 = null;
+                } else {
+                    xabs = lowx.v; yabs = lowy.v;
+                }
+            }
         }
     } while (++trycnt <= 100 && !r1);
     if (!r1) return false;
@@ -1716,6 +1788,921 @@ async function generate_stairs() {
 }
 
 // ============================================================
+// Oracle special level (C ref: dat/oracle.lua, loaded via makemaz("oracle")
+// -> load_special -> the des.* program).  Reuses create_room/makecorridors/
+// wallification.  Only entered for the Oracle level position; gated so it
+// cannot affect ordinary level generation.
+// ============================================================
+
+// C ref: dungeon.c induced_align(80).  The Oracle level has flags.align set
+// (neutral), so the level-align rn2(100) gate runs; the main dungeon has no
+// align so the fallthrough is just rn2(3).
+function oracle_induced_align(pct = 80) {
+    const slev = Is_special(game.u?.uz);
+    if (slev && slev.flags && slev.flags.align) {
+        if (rn2(100) < pct) return; // returns level align (no further rng)
+    }
+    // main dungeon flags.align == 0 -> skip its rn2(100); fall through.
+    rn2(3);
+}
+
+// C ref: sp_lev.c create_subroom() — random size/pos within parent.
+function create_subroom(proom, x, y, w, h, rtype, rlit) {
+    const width = proom.hx - proom.lx + 1;
+    const height = proom.hy - proom.ly + 1;
+    if (width < 4 || height < 4) return false;
+    if (w === -1) w = rnd(width - 3);
+    if (h === -1) h = rnd(height - 3);
+    if (x === -1) x = rnd(width - w);
+    if (y === -1) y = rnd(height - h);
+    if (x === 1) x = 0;
+    if (y === 1) y = 0;
+    if ((x + w + 1) === width) x++;
+    if ((y + h + 1) === height) y++;
+    if (rtype === -1) rtype = OROOM;
+    rlit = litstate_rnd(rlit);
+    add_subroom(proom, proom.lx + x, proom.ly + y,
+                proom.lx + x + w - 1, proom.ly + y + h - 1, rlit, rtype, false);
+    return true;
+}
+
+// C ref: mklev.c add_subroom().
+function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+    const g = game;
+    const croom = {
+        lx: lowx, ly: lowy, hx: hix, hy: hiy,
+        rtype, rlit: lit ? 1 : 0,
+        doorct: 0, fdoor: g.level.doorindex,
+        irregular: false, needjoining: !special,
+        nsubrooms: 0, sbrooms: [],
+        roomnoidx: g.level.nroom - 1, // subrooms share parent's roomno region
+        needfill: 0,
+    };
+    do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, false);
+    if (!proom.sbrooms) proom.sbrooms = [];
+    proom.sbrooms[proom.nsubrooms++] = croom;
+    return croom;
+}
+
+// C ref: sp_lev.c create_door() for a room-relative door (x=y=-1).
+function oracle_create_door(broom, wallmask, mask) {
+    for (let trycnt = 0; trycnt < 100; trycnt++) {
+        let x = 0, y = 0;
+        const dpos = -1;
+        switch (rn2(4)) {
+        case 0:
+            if (!(wallmask & 1 /*W_NORTH*/)) continue;
+            y = broom.ly - 1;
+            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level.at(x, y - 1)?.typ)) continue;
+            break;
+        case 1:
+            if (!(wallmask & 2 /*W_SOUTH*/)) continue;
+            y = broom.hy + 1;
+            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level.at(x, y + 1)?.typ)) continue;
+            break;
+        case 2:
+            if (!(wallmask & 8 /*W_WEST*/)) continue;
+            x = broom.lx - 1;
+            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level.at(x - 1, y)?.typ)) continue;
+            break;
+        case 3:
+            if (!(wallmask & 4 /*W_EAST*/)) continue;
+            x = broom.hx + 1;
+            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level.at(x + 1, y)?.typ)) continue;
+            break;
+        default: break;
+        }
+        if (oracle_okdoor(x, y)) {
+            const loc = game.level.at(x, y);
+            if (loc && IS_WALL(loc.typ)) {
+                loc.typ = DOOR;
+                loc.doormask = mask;
+                add_door(x, y, broom);
+            }
+            return;
+        }
+    }
+}
+
+function oracle_okdoor(x, y) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    const near_door = bydoor(x, y);
+    return (loc.typ === HWALL || loc.typ === VWALL) && !near_door;
+}
+
+// C ref: get_free_room_loc -> get_location_coord(random) -> somexy(croom).
+function oracle_get_free_room_loc(croom) {
+    const c = { x: 0, y: 0 };
+    somexy(croom, c);
+    return c;
+}
+
+// Place a random STATUE with the given montype monster-class index (the
+// historic statue gets a random corpsenm from the class, then create_object
+// overrides corpsenm with the montype species; statue internals consume the
+// rndmonnum + spellbook rolls inside mksobj_init).  x,y are absolute.
+function oracle_place_statue(x, y, monclass) {
+    // C: lspo_object pre-roll — mkclass(monclass, G_NOGEN|G_IGNORE) for montype.
+    const pm = mkclass(monclass, 0);
+    // create_object -> mksobj_at(STATUE, x, y, init=true)
+    const otmp = mksobj_at(STATUE, x, y, true, true);
+    // create_object: o->corpsenm != NON_PM -> set_corpsenm(otmp, montype species)
+    if (pm && otmp) set_corpsenm(otmp, pm.pmidx);
+    return otmp;
+}
+
+// ============================================================
+// Gnomish Mines fill level (C ref: dat/minefill.lua loaded via
+// makemaz("minefill") -> load_special -> the des.* program; the cave is built
+// by the cellular-automaton generator mkmap.c).  Gated so it only runs for the
+// mines fill levels and cannot perturb ordinary level generation.
+// ============================================================
+
+// mkmap.c constants.
+const MK_HEIGHT = ROWNO - 1;   // 20
+const MK_WIDTH = COLNO - 2;    // 78
+
+// mkmap.c dirs[16] — 8 neighbor offsets.
+const MK_DIRS = [
+    -1, -1,  -1, 0,  -1, 1,  0, -1,
+     0,  1,   1, -1,  1, 0,  1,  1,
+];
+
+// C ref: mkmap.c get_map()
+function mk_get_map(col, row, bg_typ) {
+    if (col <= 0 || row < 0 || col > MK_WIDTH || row >= MK_HEIGHT)
+        return bg_typ;
+    return game.level.at(col, row).typ;
+}
+
+// C ref: mkmap.c init_map()
+function mk_init_map(bg_typ) {
+    const map = game.level;
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            loc.roomno = NO_ROOM;
+            loc.typ = bg_typ;
+            loc.lit = false;
+        }
+}
+
+// C ref: mkmap.c init_fill()
+function mk_init_fill(bg_typ, fg_typ) {
+    const map = game.level;
+    const limit = Math.trunc((MK_WIDTH * MK_HEIGHT * 2) / 5);
+    let count = 0;
+    while (count < limit) {
+        const x = rn1(MK_WIDTH - 1, 2);   // rn1(77, 2) = 2 + rn2(77)
+        const y = rnd(MK_HEIGHT - 1);     // rnd(19)
+        const loc = map.at(x, y);
+        if (loc && loc.typ === bg_typ) {
+            loc.typ = fg_typ;
+            count++;
+        }
+    }
+}
+
+// C ref: mkmap.c pass_one()
+function mk_pass_one(bg_typ, fg_typ) {
+    const map = game.level;
+    for (let x = 2; x <= MK_WIDTH; x++)
+        for (let y = 1; y < MK_HEIGHT; y++) {
+            let count = 0;
+            for (let dr = 0; dr < 8; dr++)
+                if (mk_get_map(x + MK_DIRS[dr * 2], y + MK_DIRS[dr * 2 + 1], bg_typ) === fg_typ)
+                    count++;
+            const loc = map.at(x, y);
+            switch (count) {
+            case 0: case 1: case 2:
+                loc.typ = bg_typ; break;
+            case 5: case 6: case 7: case 8:
+                loc.typ = fg_typ; break;
+            default: break;
+            }
+        }
+}
+
+// C ref: mkmap.c pass_two()
+function mk_pass_two(bg_typ, fg_typ) {
+    const map = game.level;
+    const newloc = new Array((MK_WIDTH + 1) * MK_HEIGHT);
+    for (let x = 2; x <= MK_WIDTH; x++)
+        for (let y = 1; y < MK_HEIGHT; y++) {
+            let count = 0;
+            for (let dr = 0; dr < 8; dr++)
+                if (mk_get_map(x + MK_DIRS[dr * 2], y + MK_DIRS[dr * 2 + 1], bg_typ) === fg_typ)
+                    count++;
+            newloc[y * (MK_WIDTH + 1) + x] = (count === 5) ? bg_typ : mk_get_map(x, y, bg_typ);
+        }
+    for (let x = 2; x <= MK_WIDTH; x++)
+        for (let y = 1; y < MK_HEIGHT; y++)
+            map.at(x, y).typ = newloc[y * (MK_WIDTH + 1) + x];
+}
+
+// C ref: mkmap.c pass_three()
+function mk_pass_three(bg_typ, fg_typ) {
+    const map = game.level;
+    const newloc = new Array((MK_WIDTH + 1) * MK_HEIGHT);
+    for (let x = 2; x <= MK_WIDTH; x++)
+        for (let y = 1; y < MK_HEIGHT; y++) {
+            let count = 0;
+            for (let dr = 0; dr < 8; dr++)
+                if (mk_get_map(x + MK_DIRS[dr * 2], y + MK_DIRS[dr * 2 + 1], bg_typ) === fg_typ)
+                    count++;
+            newloc[y * (MK_WIDTH + 1) + x] = (count < 3) ? bg_typ : mk_get_map(x, y, bg_typ);
+        }
+    for (let x = 2; x <= MK_WIDTH; x++)
+        for (let y = 1; y < MK_HEIGHT; y++)
+            map.at(x, y).typ = newloc[y * (MK_WIDTH + 1) + x];
+}
+
+// flood_fill_rm bookkeeping (C ref: gm.min_rx etc.).
+let mk_min_rx, mk_max_rx, mk_min_ry, mk_max_ry, mk_n_loc_filled;
+
+// C ref: mkmap.c flood_fill_rm() — anyroom=FALSE path only (used by join_map).
+function mk_flood_fill_rm(sx, sy, rmno) {
+    const map = game.level;
+    const fg_typ = map.at(sx, sy).typ;
+
+    while (sx > 0 && map.at(sx, sy).typ === fg_typ
+           && map.at(sx, sy).roomno !== rmno)
+        sx--;
+    sx++;
+
+    if (sx < mk_min_rx) mk_min_rx = sx;
+    if (sy < mk_min_ry) mk_min_ry = sy;
+
+    let i;
+    for (i = sx; i <= MK_WIDTH && map.at(i, sy).typ === fg_typ; i++) {
+        map.at(i, sy).roomno = rmno;
+        map.at(i, sy).lit = false;
+        mk_n_loc_filled++;
+    }
+    const nx = i;
+
+    if (isok(sx, sy - 1)) {
+        for (i = sx; i < nx; i++)
+            if (map.at(i, sy - 1).typ === fg_typ) {
+                if (map.at(i, sy - 1).roomno !== rmno)
+                    mk_flood_fill_rm(i, sy - 1, rmno);
+            } else {
+                if ((i > sx || isok(i - 1, sy - 1))
+                    && map.at(i - 1, sy - 1).typ === fg_typ) {
+                    if (map.at(i - 1, sy - 1).roomno !== rmno)
+                        mk_flood_fill_rm(i - 1, sy - 1, rmno);
+                }
+                if ((i < nx - 1 || isok(i + 1, sy - 1))
+                    && map.at(i + 1, sy - 1).typ === fg_typ) {
+                    if (map.at(i + 1, sy - 1).roomno !== rmno)
+                        mk_flood_fill_rm(i + 1, sy - 1, rmno);
+                }
+            }
+    }
+    if (isok(sx, sy + 1)) {
+        for (i = sx; i < nx; i++)
+            if (map.at(i, sy + 1).typ === fg_typ) {
+                if (map.at(i, sy + 1).roomno !== rmno)
+                    mk_flood_fill_rm(i, sy + 1, rmno);
+            } else {
+                if ((i > sx || isok(i - 1, sy + 1))
+                    && map.at(i - 1, sy + 1).typ === fg_typ) {
+                    if (map.at(i - 1, sy + 1).roomno !== rmno)
+                        mk_flood_fill_rm(i - 1, sy + 1, rmno);
+                }
+                if ((i < nx - 1 || isok(i + 1, sy + 1))
+                    && map.at(i + 1, sy + 1).typ === fg_typ) {
+                    if (map.at(i + 1, sy + 1).roomno !== rmno)
+                        mk_flood_fill_rm(i + 1, sy + 1, rmno);
+                }
+            }
+    }
+
+    if (nx > mk_max_rx) mk_max_rx = nx - 1;
+    if (sy > mk_max_ry) mk_max_ry = sy;
+}
+
+// C ref: mkmap.c join_map_cleanup()
+function mk_join_map_cleanup() {
+    const map = game.level;
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            map.at(x, y).roomno = NO_ROOM;
+    game.level.nroom = 0;
+    game.level.rooms[0] = { hx: -1 };
+}
+
+// C ref: mkmap.c join_map()
+function mk_join_map(bg_typ, fg_typ) {
+    const g = game;
+    const map = g.level;
+
+    for (let x = 2; x <= MK_WIDTH; x++)
+        for (let y = 1; y < MK_HEIGHT; y++) {
+            const loc = map.at(x, y);
+            if (loc.typ === fg_typ && loc.roomno === NO_ROOM) {
+                mk_min_rx = mk_max_rx = x;
+                mk_min_ry = mk_max_ry = y;
+                mk_n_loc_filled = 0;
+                mk_flood_fill_rm(x, y, g.level.nroom + ROOMOFFSET);
+                if (mk_n_loc_filled > 3) {
+                    add_room(mk_min_rx, mk_min_ry, mk_max_rx, mk_max_ry,
+                             false, OROOM, true);
+                    g.level.rooms[g.level.nroom - 1].irregular = true;
+                    if (g.level.nroom >= (MAXNROFROOMS * 2)) {
+                        return mk_join_map_corridors(bg_typ, fg_typ);
+                    }
+                } else {
+                    for (let sx = mk_min_rx; sx <= mk_max_rx; sx++)
+                        for (let sy = mk_min_ry; sy <= mk_max_ry; sy++) {
+                            const l2 = map.at(sx, sy);
+                            if (l2.roomno === g.level.nroom + ROOMOFFSET) {
+                                l2.typ = bg_typ;
+                                l2.roomno = NO_ROOM;
+                            }
+                        }
+                }
+            }
+        }
+    return mk_join_map_corridors(bg_typ, fg_typ);
+}
+
+// C ref: mkmap.c join_map() second half — connect regions with corridors.
+function mk_join_map_corridors(bg_typ, fg_typ) {
+    const g = game;
+    const rooms = g.level.rooms;
+    let ci = 0, c2i = 1;
+    const sm = { x: 0, y: 0 }, em = { x: 0, y: 0 };
+    while (c2i < g.level.nroom) {
+        const croom = rooms[ci], croom2 = rooms[c2i];
+        if (!somexy(croom, sm) || !somexy(croom2, em)) {
+            sm.x = croom.lx + Math.trunc((croom.hx - croom.lx) / 2);
+            sm.y = croom.ly + Math.trunc((croom.hy - croom.ly) / 2);
+            em.x = croom2.lx + Math.trunc((croom2.hx - croom2.lx) / 2);
+            em.y = croom2.ly + Math.trunc((croom2.hy - croom2.ly) / 2);
+        }
+        dig_corridor(sm, em, null, false, fg_typ, bg_typ);
+        if (croom2.lx > croom.hx
+            || ((croom2.ly > croom.hy || croom2.hy < croom.ly) && rn2(3))) {
+            ci = c2i;
+        }
+        c2i++;
+    }
+    mk_join_map_cleanup();
+}
+
+// C ref: sp_lev.c wallify_map() — convert STONE cells adjacent to a ROOM (or
+// crosswall) into HWALL (vertically adjacent) or VWALL (horizontally adjacent).
+// No RNG.  This is what gives the cave its walls; the corner/T types are set
+// later by wallification().
+function mk_wallify_map(x1, y1, x2, y2) {
+    const map = game.level;
+    y1 = Math.max(y1, 0); x1 = Math.max(x1, 1);
+    y2 = Math.min(y2, ROWNO - 1); x2 = Math.min(x2, COLNO - 1);
+    for (let y = y1; y <= y2; y++) {
+        const loYY = (y > 0) ? y - 1 : 0;
+        const hiYY = (y < y2) ? y + 1 : y2;
+        for (let x = x1; x <= x2; x++) {
+            if (map.at(x, y)?.typ !== STONE) continue;
+            const loXX = (x > 1) ? x - 1 : 1;
+            const hiXX = (x < x2) ? x + 1 : x2;
+            let done = false;
+            for (let yy = loYY; yy <= hiYY && !done; yy++)
+                for (let xx = loXX; xx <= hiXX; xx++) {
+                    const t = map.at(xx, yy)?.typ;
+                    if (IS_ROOM(t) || t === CROSSWALL) {
+                        map.at(x, y).typ = (yy !== y) ? HWALL : VWALL;
+                        done = true; break;
+                    }
+                }
+        }
+    }
+}
+
+// C ref: mkmap.c finish_map() — walled + lit handling (smooth/join already done).
+function mk_finish_map(fg_typ, bg_typ, lit, walled) {
+    const map = game.level;
+    if (walled)
+        mk_wallify_map(1, 0, COLNO - 1, ROWNO - 1);
+    if (lit) {
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++) {
+                const t = map.at(x, y).typ;
+                if ((!IS_OBSTRUCTED(fg_typ) && t === fg_typ)
+                    || (!IS_OBSTRUCTED(bg_typ) && t === bg_typ)
+                    || (walled && IS_WALL(t)))
+                    map.at(x, y).lit = true;
+            }
+        for (let x = 0; x < game.level.nroom; x++)
+            game.level.rooms[x].rlit = 1;
+    }
+}
+
+// C ref: mkmap.c mkmap() — bg=STONE, fg=ROOM, smooth+join+walled for mines.
+function mk_mkmap(lit) {
+    const bg_typ = STONE, fg_typ = ROOM;
+    mk_init_map(bg_typ);
+    mk_init_fill(bg_typ, fg_typ);
+    mk_pass_one(bg_typ, fg_typ);     // N_P1_ITER = 1
+    mk_pass_two(bg_typ, fg_typ);     // N_P2_ITER = 1
+    mk_pass_three(bg_typ, fg_typ);   // N_P3_ITER = 2 (smoothed)
+    mk_pass_three(bg_typ, fg_typ);
+    mk_join_map(bg_typ, fg_typ);     // joined
+    mk_finish_map(fg_typ, bg_typ, lit, true);  // walled
+    // a walled, joined level is cavernous, not mazelike
+    game.level.flags.is_maze_lev = false;
+    game.level.flags.is_cavernous_lev = true;
+}
+
+// ── lspo helpers for minefill ──
+
+// C ref: sp_lev.c get_location() random spot (croom=NULL), then is_ok_location.
+// Returns {x,y}.  okfn(typ-cell) gates acceptance (DRY-equivalent default).
+function mk_get_location_random(okfn) {
+    const map = game.level;
+    const mx = 1, my = 0, sx = COLNO - 1, sy = ROWNO; // xstart/ystart/xsize/ysize
+    let cpt = 0;
+    let x = -1, y = -1;
+    do {
+        x = mx + rn2(sx);   // 1 + rn2(79)
+        y = my + rn2(sy);   // 0 + rn2(21)
+        if (okfn(x, y)) break;
+    } while (++cpt < 100);
+    if (cpt >= 100) {
+        for (let xx = 0; xx < sx; xx++)
+            for (let yy = 0; yy < sy; yy++) {
+                x = mx + xx; y = my + yy;
+                if (okfn(x, y)) return { x, y };
+            }
+    }
+    return { x, y };
+}
+
+// is_ok_location DRY: SPACE_POS(typ) && no boulder.
+function mk_ok_dry(x, y) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    if (!SPACE_POS(loc.typ)) return false;
+    // no boulder at this spot (objects placed later, so floor is clear)
+    return true;
+}
+
+// good_stair_loc: ROOM || CORR || ICE.
+function mk_ok_stair(x, y) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    return loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE;
+}
+
+// des.stair(dir) random spot: get_location_coord(DRY) with good_stair_loc, then
+// mkstairs.  C ref: l_create_stairway().
+function mk_stair(up) {
+    const c = mk_get_location_random(mk_ok_stair);
+    const t = game.level.at(c.x, c.y);
+    if (t) t.typ = ROOM; // SpLev_Map mark; cell becomes floor for the stair
+    mkstairs(c.x, c.y, up ? 1 : 0, null);
+}
+
+// des.object(class) at a random DRY spot.  oclass: GEM_CLASS / WEAPON_CLASS /
+// RANDOM_CLASS / BOULDER(specific id).  C ref: create_object().
+function mk_object(oclass, specificId) {
+    const c = mk_get_location_random(mk_ok_dry);
+    if (specificId != null) {
+        mksobj_at(specificId, c.x, c.y, true, true);
+    } else if (oclass === RANDOM_CLASS) {
+        mkobj_at(RANDOM_CLASS, c.x, c.y, true);
+    } else {
+        mkobj_at(oclass, c.x, c.y, true);
+    }
+}
+
+// Name-implied gender for find_montype: returns 'male'/'female'/'neutral'.
+// A name that is the gendered variant (e.g. "gnome lord" is male, "gnome lady"
+// is female) supplies the gender directly; a base/neutral name yields 'neutral'.
+const MK_MALE_NAMES = new Set([
+    'gnome lord', 'gnome leader', 'gnome king', 'gnome ruler',
+    'dwarf lord', 'dwarf leader', 'dwarf king', 'dwarf ruler',
+]);
+const MK_FEMALE_NAMES = new Set([
+    'gnome lady', 'gnome queen', 'dwarf lady', 'dwarf queen',
+]);
+function mk_name_gender(name) {
+    if (MK_MALE_NAMES.has(name)) return 'male';
+    if (MK_FEMALE_NAMES.has(name)) return 'female';
+    return 'neutral';
+}
+
+// The JS monster table stores gender-neutral canonical names ("gnome leader",
+// "gnome ruler"); the lua uses gendered aliases ("gnome lord", "gnome king").
+// Resolve a gendered name to the canonical species name for lookup.
+const MK_NAME_ALIAS = {
+    'gnome lord': 'gnome leader', 'gnome lady': 'gnome leader',
+    'gnome king': 'gnome ruler', 'gnome queen': 'gnome ruler',
+    'dwarf lord': 'dwarf leader', 'dwarf lady': 'dwarf leader',
+    'dwarf king': 'dwarf ruler', 'dwarf queen': 'dwarf ruler',
+};
+function mk_resolve_name(name) {
+    return MK_NAME_ALIAS[name] || name;
+}
+
+// is_male/is_female: species fixed gender (gcode 1=male, 2=female).
+function mk_is_fixed_gender(data) {
+    return !!data && (data.gcode === 1 || data.gcode === 2);
+}
+
+// C ref: sp_lev.c find_montype() — name lookup + conditional gender roll.
+// Rolls rn2(2) only when the species is not fixed-gender AND the name does not
+// imply a gender.  Returns the permonst data for the named monster.
+function mk_find_montype(name) {
+    const pm = name_to_pmidx(mk_resolve_name(name));
+    const data = monster_by_pmidx(pm);
+    if (mk_is_fixed_gender(data)) {
+        // gender fixed by species — no roll.
+    } else {
+        const ng = mk_name_gender(name);
+        if (ng === 'neutral') rn2(2);   // mgend = rn2(2)
+        // else mgend taken from the name; no roll.
+    }
+    return data;
+}
+
+// des.monster(name) — a multi-char monster name (id given, no mkclass).
+// C ref: lspo_monster (find_montype) + create_monster (induced_align + makemon).
+function mk_monster_named(name) {
+    const data = mk_find_montype(name);
+    // sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align(80).
+    oracle_induced_align();
+    // In_mines && your_race(pm) && (Race_if(DWARF)||Race_if(GNOME)) && rn2(3):
+    // hero (seed0030) is not gnome/dwarf race, so this gate does not fire.
+    // pm_to_humidity(pm) — DRY for these mines monsters (no swimmers/flyers).
+    const c = mk_get_location_random(mk_ok_dry);
+    make_monster(data, c.x, c.y, 0);
+}
+
+// des.monster("G"/"h") — a single-char monster CLASS (no find_montype gender
+// roll).  C ref: create_monster -> mkclass(class, G_NOGEN), then induced_align
+// + makemon.  S_GNOME=33 ('G'), S_HUMANOID=8 ('h').
+function mk_monster_class(classChar) {
+    const klass = classChar === 'G' ? 33 : classChar === 'h' ? 8 : 0;
+    // C ref: create_monster — amask = sp_amask_to_amask(AM_SPLEV_RANDOM) ->
+    // induced_align(80) is computed FIRST, then pm = mkclass(class, G_NOGEN),
+    // then get_location + makemon.
+    oracle_induced_align();
+    const data = mkclass(klass, 1 /* G_NOGEN */);
+    const c = mk_get_location_random(mk_ok_dry);
+    make_monster(data, c.x, c.y, 0);
+}
+
+// dispatch: single-char -> class; else named.
+function mk_monster(spec) {
+    if (spec.length === 1) mk_monster_class(spec);
+    else mk_monster_named(spec);
+}
+
+// des.trap() random type at a random DRY spot (avoiding stairs/ladders).
+// C ref: create_trap() croom==NULL path + mktrap().
+async function mk_trap() {
+    const map = game.level;
+    let c, trycnt = 0;
+    do {
+        c = mk_get_location_random(mk_ok_dry);
+        const t = map.at(c.x, c.y);
+        if (!(t && (t.typ === STAIRS))) break; // LADDER not present here
+    } while (++trycnt <= 100);
+    // mktrap(type=-1 random): traptype loop + maketrap + victim gate.
+    let kind;
+    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const canFallThru = (game.u?.uz?.dlevel ?? 1)
+        < (dungeon?.num_dunlevs ?? 99);
+    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    const trap = await maketrap(c.x, c.y, kind);
+    kind = trap ? trap.ttyp : NO_TRAP;
+    const lvl = level_difficulty();
+    if (kind !== NO_TRAP
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+        mktrap_victim(trap);
+    }
+}
+
+// math.random(lo,hi) = lo + rn2(hi+1-lo).
+function mk_mrandom(lo, hi) { return lo + rn2(hi + 1 - lo); }
+// percent(n) = rn2(100) < n.
+function mk_percent(n) { return rn2(100) < n; }
+
+// C ref: dat/minefill.lua + mkmap.c + load_special finalize + mineralize.
+async function makemaz_minefill() {
+    const g = game;
+
+    // load_special -> load_lua -> nhlib.lua prelude shuffle(align): rn2(3),rn2(2)
+    const align = ['law', 'neutral', 'chaos'];
+    for (let i = align.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const a = i - 1, b = j - 1;
+        const t = align[a]; align[a] = align[b]; align[b] = t;
+    }
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    try {
+        // des.level_init({ style="solidfill", fg=" " })
+        //   splev_initlev SOLIDFILL: lit = rn2(2); lvlfill_solid(STONE, lit).
+        rn2(2);
+        // des.level_flags("mazelevel","noflip") — no PRNG.
+        // des.level_init({ style="mines", fg=".", bg=" ", smoothed, joined, walled })
+        //   splev_initlev MINES: lit = rn2(2); lvlfill_solid(ROOM,0); mkmap().
+        const minesLit = rn2(2);
+        // litstate_rnd(lit): lit >= 0 -> returns lit, no PRNG.
+        mk_mkmap(!!minesLit);
+
+        // des.stair("up"); des.stair("down")
+        mk_stair(true);
+        mk_stair(false);
+
+        // for i=1,math.random(2,5) do des.object("*") end  (gems)
+        let n = mk_mrandom(2, 5);
+        for (let i = 0; i < n; i++) mk_object(GEM_CLASS);
+        // des.object("(")   (tool, '(' == TOOL_CLASS)
+        mk_object(TOOL_CLASS);
+        // for i=1,math.random(2,4) do des.object() end  (random class)
+        n = mk_mrandom(2, 4);
+        for (let i = 0; i < n; i++) mk_object(RANDOM_CLASS);
+        // if percent(75) then for i=1,math.random(1,2) do des.object("boulder")
+        if (mk_percent(75)) {
+            n = mk_mrandom(1, 2);
+            for (let i = 0; i < n; i++) mk_object(null, BOULDER);
+        }
+
+        // for i=1,math.random(6,8) do des.monster("gnome") end
+        n = mk_mrandom(6, 8);
+        for (let i = 0; i < n; i++) mk_monster('gnome');
+        mk_monster('gnome lord');
+        mk_monster('dwarf');
+        mk_monster('dwarf');
+        mk_monster('G');               // random gnome class
+        mk_monster('G');
+        mk_monster(mk_percent(50) ? 'h' : 'G');
+
+        // des.trap() x6
+        for (let i = 0; i < 6; i++) await mk_trap();
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // load_special finalize: !corrmaze -> wallification(1,0,COLNO-1,ROWNO-1).
+    // (mkmap already wallified; this is idempotent for our purposes — no PRNG.)
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    // fixup_special: place the dungeon branch staircase (place_lregion LR_BRANCH
+    // probabilistic loop, since join_map_cleanup left svn.nroom == 0).
+    mk_fixup_branch();
+
+    // NOTE: level_finalize_topology -> mineralize() is NOT called here; the JS
+    // engine factors mineralize() into fastforward_fill_mineralize(), which
+    // goto_level() runs immediately after mklev().  For minefill the room-fill
+    // loop there is a no-op (join_map_cleanup left nroom == 0) and only
+    // mineralize() runs, matching C's level_finalize_topology ordering.
+}
+
+// C ref: mkmaze.c fixup_special() — for a branch level with no rooms left
+// (join_map_cleanup reset svn.nroom to 0), the branch is placed via
+// place_lregion(0,...,LR_BRANCH).  Because nroom==0 the LR_BRANCH early-return
+// (place_branch) is NOT taken; instead place_lregion runs its probabilistic
+// rn1 loop: x = rn1(79,1), y = rn1(21,0) until put_lregion_here succeeds.
+// put_lregion_here(LR_BRANCH): valid iff !bad_location -> !occupied && typ==ROOM
+// (cavernous, not is_maze_lev), then place_branch(branchp, x, y).
+function mk_fixup_branch() {
+    const branchp = is_branchlev();
+    if (!branchp) return;
+    let x = 0, y = 0;
+    for (let trycnt = 0; trycnt < 200; trycnt++) {
+        x = rn1(COLNO - 1 - 1 + 1, 1);  // rn1((hx-lx)+1, lx) = rn1(79, 1)
+        y = rn1(ROWNO - 1 - 0 + 1, 0);  // rn1((hy-ly)+1, ly) = rn1(21, 0)
+        if (mk_put_branch_here(x, y, branchp)) return;
+    }
+    // deterministic fallback (no PRNG)
+    for (x = 1; x <= COLNO - 1; x++)
+        for (y = 0; y <= ROWNO - 1; y++)
+            if (mk_put_branch_here(x, y, branchp, true)) return;
+}
+
+function mk_bad_branch_location(x, y) {
+    const loc = game.level.at(x, y);
+    if (!loc) return true;
+    if (occupied(x, y)) return true;
+    // cavernous mines: is_maze_lev is false, so only ROOM is valid.
+    return loc.typ !== ROOM;
+}
+
+function mk_put_branch_here(x, y, branchp) {
+    if (mk_bad_branch_location(x, y)) return false;
+    mk_place_branch_at(branchp, x, y);
+    return true;
+}
+
+// C ref: mklev.c place_branch(br, x, y) with explicit coords.
+function mk_place_branch_at(branchp, x, y) {
+    const g = game;
+    if (!branchp || g.made_branch) return;
+    const onEnd1 = (branchp.end1?.dnum === g.u?.uz?.dnum
+                    && branchp.end1?.dlevel === g.u?.uz?.dlevel);
+    const dest = onEnd1 ? branchp.end2 : branchp.end1;
+    const makeStairs = onEnd1 ? (branchp.type !== 1 /*BR_NO_END1*/)
+                              : (branchp.type !== 2 /*BR_NO_END2*/);
+    if (branchp.type === 3 /*BR_PORTAL*/) {
+        // mkportal — not exercised for the mines branch.
+    } else if (makeStairs) {
+        const goes_up = onEnd1 ? !!branchp.end1_up : !branchp.end1_up;
+        stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
+        const loc = g.level.at(x, y);
+        if (loc) { loc.typ = STAIRS; loc.ladder = goes_up ? 1 : 2; }
+        if (goes_up) g.level.upstair = { x, y };
+        else g.level.dnstair = { x, y };
+    }
+    g.made_branch = true;
+}
+
+// C ref: oracle.lua — the full des.* program.
+async function makemaz_oracle() {
+    const g = game;
+    g.level.flags.is_maze_lev = false;
+    // load_special -> load_lua -> nhlib.lua top-level shuffle(align): rn2(3),rn2(2)
+    const align = ['law', 'neutral', 'chaos'];
+    for (let i = align.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const a = i - 1, b = j - 1;
+        const t = align[a]; align[a] = align[b]; align[b] = t;
+    }
+    // des.level_flags("noflip") — sets allow_flips=0 (handled at finalize: no rng)
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    try {
+        // ---- Room 1: the big ordinary center room (lit) -------------------
+        // des.room({ type="ordinary", lit=1, x=3,y=3, xalign="center",
+        //            yalign="center", w=11,h=9, contents=... })
+        rn2(100);                                   // build_room chance
+        let ok = create_room(3, 3, 11, 9, 3 /*CENTER*/, 3 /*CENTER*/, OROOM, 1);
+        const room1 = g.level.rooms[g.level.nroom - 1];
+        if (ok && room1) {
+            topologize(room1);
+            // C: special-level rooms are filled inline (here) during gen and
+            // are NOT re-filled by the ordinary fill_ordinary_room loop, so mark
+            // them FILL_NONE to keep fastforward_fill_mineralize from re-stocking.
+            room1.needfill = FILL_NONE;
+            // 8 historic centaur statues at fixed room-relative coords.
+            const S_CENTAUR = 29;
+            const statpos = [[0,0],[0,8],[10,0],[10,8],[5,1],[5,7],[2,4],[8,4]];
+            for (const [rx, ry] of statpos) {
+                oracle_place_statue(room1.lx + rx, room1.ly + ry, S_CENTAUR);
+            }
+            // delphi subroom: des.room({ type="delphi", lit=1, x=4,y=3, w=3,h=3 })
+            rn2(100);                               // build_room chance (subroom)
+            const oksub = create_subroom(room1, 4, 3, 3, 3, OROOM, 1);
+            room1.irregular = true;                 // parent made irregular
+            if (oksub) {
+                const delphi = room1.sbrooms[room1.nsubrooms - 1];
+                // four fountains at fixed delphi-relative coords (no rng)
+                const setfeat = (rx, ry, typ) => {
+                    const loc = g.level.at(delphi.lx + rx, delphi.ly + ry);
+                    if (loc) loc.typ = typ;
+                };
+                setfeat(0, 1, FOUNTAIN);
+                setfeat(1, 0, FOUNTAIN);
+                setfeat(1, 2, FOUNTAIN);
+                setfeat(2, 1, FOUNTAIN);
+                // des.monster("Oracle", 1, 1) — fixed coords inside delphi.
+                oracle_induced_align();             // sp_amask_to_amask
+                const ox = delphi.lx + 1, oy = delphi.ly + 1;
+                make_monster(monster_by_pmidx(name_to_pmidx('Oracle')), ox, oy, 0);
+                // des.door({ state="nodoor", wall="all" })
+                oracle_create_door(delphi, 15 /*W_ANY*/, D_NODOOR);
+            }
+            // des.monster(); des.monster() — two random monsters in room 1.
+            for (let i = 0; i < 2; i++) {
+                oracle_induced_align();
+                const c = oracle_get_free_room_loc(room1);
+                make_monster(null, c.x, c.y, 0);
+            }
+        }
+
+        // ---- Rooms 2..6: fully random rooms with contents -----------------
+        // Room 2: { stair("up"), object() }
+        await oracle_random_room(async (croom) => {
+            await oracle_stair(croom, true);
+            oracle_object(croom);
+        });
+        // Room 3: { stair("down"), object(), trap(), monster(), monster() }
+        await oracle_random_room(async (croom) => {
+            await oracle_stair(croom, false);
+            oracle_object(croom);
+            await oracle_trap(croom);
+            oracle_monster(croom);
+            oracle_monster(croom);
+        });
+        // Room 4: { object(), object(), monster() }
+        await oracle_random_room(async (croom) => {
+            oracle_object(croom);
+            oracle_object(croom);
+            oracle_monster(croom);
+        });
+        // Room 5: { object(), trap(), monster() }
+        await oracle_random_room(async (croom) => {
+            oracle_object(croom);
+            await oracle_trap(croom);
+            oracle_monster(croom);
+        });
+        // Room 6: { object(), trap(), monster() }
+        await oracle_random_room(async (croom) => {
+            oracle_object(croom);
+            await oracle_trap(croom);
+            oracle_monster(croom);
+        });
+
+        // ---- des.random_corridors() -> create_corridor(src=-1) -> makecorridors
+        makecorridors();
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // load_special finalize: wallification(1,0,COLNO-1,ROWNO-1) (not corrmaze).
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+}
+
+// Build a fully-random room (no coords/size/align) and run its contents.
+async function oracle_random_room(contents) {
+    const g = game;
+    rn2(100);                                       // build_room chance
+    const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+    if (!ok) return;
+    const croom = g.level.rooms[g.level.nroom - 1];
+    if (!croom) return;
+    topologize(croom);
+    croom.needfill = FILL_NONE;   // filled inline, not by fill_ordinary_room
+    if (contents) await contents(croom);
+}
+
+// des.stair(dir) with random coord: get_location_coord(random) -> somexy.
+async function oracle_stair(croom, up) {
+    const c = oracle_get_free_room_loc(croom);
+    mkstairs(c.x, c.y, up ? 1 : 0, croom);
+}
+
+// des.object() fully random: get_location(random)->somexy, then mkobj_at(RANDOM).
+function oracle_object(croom) {
+    const c = oracle_get_free_room_loc(croom);
+    mkobj_at(RANDOM_CLASS, c.x, c.y, true);
+}
+
+// des.monster() fully random: induced_align, somexy, makemon(rndmonst).
+function oracle_monster(croom) {
+    oracle_induced_align();
+    const c = oracle_get_free_room_loc(croom);
+    make_monster(null, c.x, c.y, 0);
+}
+
+// des.trap() fully random: create_trap -> get_free_room_loc(somexy) ->
+// mktrap(type=-1, MKTRAP_MAZEFLAG, croom=NULL, tm) — random traptype loop +
+// victim gate.  C ref: sp_lev.c create_trap + mklev.c mktrap.
+async function oracle_trap(croom) {
+    const g = game;
+    const c = oracle_get_free_room_loc(croom);      // somexy (get_free_room_loc)
+    // is_pool_or_lava(tm) check: room floor is never pool here.
+    let kind;
+    do { kind = traptype_rnd(); } while (kind === NO_TRAP); // rnd(25) loop
+    const dungeon = g.dungeons?.[g.u?.uz?.dnum ?? 0];
+    const canFallThru = (g.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? dungeon?.dunlev_ureached ?? 99);
+    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    const trap = await maketrap(c.x, c.y, kind);
+    kind = trap ? trap.ttyp : NO_TRAP;
+    const lvl = level_difficulty();
+    // victim gate (gi.in_mklev is true during gen)
+    if (kind !== NO_TRAP
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+        mktrap_victim(trap);
+    }
+}
+
+// ============================================================
 // Niches
 // ============================================================
 
@@ -1980,22 +2967,65 @@ function find_okay_roompos(croom, crd) {
     return true;
 }
 
+// C ref: dothrow.c breaktest(obj) — used by mktrap_victim()'s PIT (exploded
+// landmine) branch to discard fragile possessions.  Rolls obj_resists(obj,1,99)
+// (rn2(100)); only the RNG side-effect + glass/potion/egg/etc verdict matter
+// here.  No glass armor reaches a trap-victim, so the ARMOR/GLASS nonbreakchance
+// tweak is irrelevant but kept faithful.
+function breaktest(otmp) {
+    const GLASS_MATERIAL = 19; // objclass.h obj_material_types GLASS
+    const POT_WATER = 322, EGG = 266, EXPENSIVE_CAMERA = 229;
+    const CREAM_PIE = 287, MELON = 280, ACID_VENOM = 479, BLINDING_VENOM = 478;
+    const od = objects[otmp.otyp] || {};
+    let nonbreakchance = 1;
+    if (otmp.oclass === ARMOR_CLASS && od.material === GLASS_MATERIAL)
+        nonbreakchance = 90;
+    if (obj_resists(otmp, nonbreakchance, 99))
+        return false;
+    if (od.material === GLASS_MATERIAL && !otmp.oartifact
+        && otmp.oclass !== GEM_CLASS)
+        return true;
+    const key = (otmp.oclass === POTION_CLASS) ? POT_WATER : otmp.otyp;
+    switch (key) {
+    case EXPENSIVE_CAMERA:
+    case POT_WATER:
+    case EGG:
+    case CREAM_PIE:
+    case MELON:
+    case ACID_VENOM:
+    case BLINDING_VENOM:
+        return true;
+    default:
+        return false;
+    }
+}
+
 function mktrap_victim(trap) {
     const lvl = game.u?.uz?.dlevel ?? 1;
     const kind = trap.ttyp;
     const x = trap.tx, y = trap.ty;
-    // Object based on trap type
+    // Object generated by the trap (placed on the floor at the trap square).
+    // C ref: mklev.c mktrap_victim() — ARROW_TRAP also clears opoisoned.
+    let otmp = null;
     switch (kind) {
-    case ARROW_TRAP: mksobj(ARROW, true, false); break;
-    case DART_TRAP: mksobj(DART, true, false); break;
-    case ROCKTRAP: mksobj(ROCK, true, false); break;
+    case ARROW_TRAP: otmp = mksobj(ARROW, true, false); otmp.opoisoned = 0; break;
+    case DART_TRAP: otmp = mksobj(DART, true, false); break;
+    case ROCKTRAP: otmp = mksobj(ROCK, true, false); break;
     default: break;
     }
-    // Random items on victim
+    if (otmp) place_object(otmp, x, y);
+    // Random items on victim — each cursed and placed at (x,y).  C ref: mklev.c
+    // mktrap_victim() do/while loop; for a PIT (exploded landmine) a fragile item
+    // is destroyed (breaktest) instead of placed.
     do {
         const cls = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS][rn2(4)];
-        const otmp = mkobj(cls, false);
+        otmp = mkobj(cls, false);
         curse(otmp);
+        if (kind === PIT && breaktest(otmp)) {
+            // dealloc: object never reaches the floor (matches C dealloc_obj).
+        } else {
+            place_object(otmp, x, y);
+        }
     } while (!rn2(5));
     // Victim type.  C ref: include/monsters.h / pm.h global mons[] indices —
     // these are the real PM_* constants (the corpse's corpsenm, which drives the
@@ -2014,16 +3044,27 @@ function mktrap_victim(trap) {
     case 3: case 4: case 5: victim_mnum = PM_ORC; break;
     case 6: case 7: case 8: case 9:
         victim_mnum = PM_GNOME;
+        // 10% chance of a candle too — placed on the floor and (if the square is
+        // unlit) lit.  C ref: mklev.c mktrap_victim().
         if (!rn2(10)) {
-            const otmp = mksobj(rn2(4) ? 370 : 371, true, false); // TALLOW_CANDLE / WAX_CANDLE
+            otmp = mksobj(rn2(4) ? 370 : 371, true, false); // TALLOW_CANDLE / WAX_CANDLE
+            otmp.quan = 1;
+            otmp.owt = weight(otmp);
             curse(otmp);
+            place_object(otmp, x, y);
+            // C begin_burn(otmp, FALSE): mark the candle lit on an unlit square.
+            // No RNG; the light-source list isn't modelled, so just set lamplit.
+            if (!game.level?.at(x, y)?.lit) otmp.lamplit = 1;
         }
         break;
     default: victim_mnum = PM_HUMAN; break;
     }
     if (victim_mnum === PM_HUMAN && rn2(25))
         victim_mnum = rn1(PM_WIZARD - PM_ARCHEOLOGIST, PM_ARCHEOLOGIST);
-    mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
+    // C ref: mklev.c — the corpse is placed at (x,y) (mksobj_at via mkcorpstat)
+    // and aged past TAINT_AGE so it can't be safely eaten.
+    otmp = mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
+    if (otmp) otmp.age = (otmp.age || 0) - (TAINT_AGE + 1);
 }
 
 async function mktrap_room(croom) {
@@ -2150,7 +3191,11 @@ export async function fill_ordinary_room(croom, bonus_items) {
             mksobj_at((rn2(5) < 3) ? FOOD_RATION : rn2(2) ? CRAM_RATION : LEMBAS_WAFER,
                 pos.x, pos.y, true, false);
         } else if (uz.dnum === oracle_level.dnum && uz.dlevel < oracle_level.dlevel && rn2(3)) {
-            // Supply chest
+            // Supply chest.  C ref: mklev.c fill_ordinary_room() supply-chest
+            // branch — the rolled items are added INTO the chest (add_to_container);
+            // the chest weight is recomputed at the end.  (The previous port rolled
+            // the items but discarded them, leaving the chest empty, which broke
+            // #force/loot of the chest's contents downstream.)
             const supply_chest = mksobj_at(rn2(3) ? CHEST : LARGE_BOX, pos.x, pos.y, false, false);
             if (supply_chest) {
                 supply_chest.olocked = !!rn2(6);
@@ -2166,8 +3211,10 @@ export async function fill_ordinary_room(croom, bonus_items) {
                     const otmp = mksobj(otyp, true, false);
                     if (otmp && otyp === POT_HEALING && rn2(2)) {
                         otmp.quan = 2;
+                        otmp.owt = weight(otmp);
                     }
                     cursed_item = otmp?.cursed ?? false;
+                    add_to_container(supply_chest, otmp);
                     if (++tryct2 >= 50) break;
                 } while (cursed_item || !rn2(5));
                 if (rn2(3)) {
@@ -2177,13 +3224,25 @@ export async function fill_ordinary_room(croom, bonus_items) {
                     const oclass = extra_classes[rn2(extra_classes.length)];
                     let otmp = mkobj(oclass, false);
                     if (oclass === SPBOOK_no_NOVEL && otmp) {
+                        // Bias towards a lower-level spellbook: re-roll maxpass
+                        // times and keep the lowest-oc_level book.  C ref:
+                        // mklev.c — compares objects[].oc_level, dealloc the
+                        // higher one.
                         const depth = g.u?.uz?.dlevel ?? 1;
                         const maxpass = (depth > 2) ? 2 : 3;
                         for (let pass = 1; pass <= maxpass; pass++) {
-                            mkobj(oclass, false);
+                            const otmp2 = mkobj(oclass, false);
+                            if (spell_level(otmp.otyp) <= spell_level(otmp2.otyp)) {
+                                // keep otmp (otmp2 discarded)
+                            } else {
+                                otmp = otmp2;
+                            }
                         }
                     }
+                    add_to_container(supply_chest, otmp);
                 }
+                // C: add_to_container() doesn't update the container weight.
+                supply_chest.owt = weight(supply_chest);
             }
             skip_chests = true;
         }
@@ -2271,6 +3330,16 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
     const dunLevel = game.u?.uz?.dlevel ?? 1;
     if (goldprob < 0) goldprob = 20 + Math.trunc(absDepth / 3);
     if (gemprob < 0) gemprob = Math.trunc(goldprob / 4);
+    // C ref: mklev.c mineralize() — mines have MORE goodies, quest fewer.
+    if (!skip_lvl_checks) {
+        const dnum = game.u?.uz?.dnum ?? 0;
+        if (game.mines_dnum != null && dnum === game.mines_dnum) {
+            goldprob *= 2; gemprob *= 3;
+        } else if (game.quest_dnum != null && dnum === game.quest_dnum) {
+            goldprob = Math.trunc(goldprob / 4);
+            gemprob = Math.trunc(gemprob / 6);
+        }
+    }
     for (let x = 2; x < COLNO - 2; x++) {
         for (let y = 1; y < ROWNO - 1; y++) {
             const loc = map.at(x, y);
@@ -2503,6 +3572,18 @@ function level_finalize_topology() {
     bound_digging();
     // mineralize is consumed by fastforward_fill_mineralize
     game.in_mklev = false;
+    // C ref: mklev.c themerooms_post_level_generate() runs the level-wide
+    // wallification(1, 0, COLNO-1, ROWNO-1) at the very end of makelevel()
+    // (mklev.c:1190), BEFORE mklev()'s topologize + set_wall_state() pass
+    // (mklev.c:1561-1569).  It converts HWALL/VWALL spines into proper corner
+    // and T-junction wall types so the room borders (including irregular
+    // themeroom borders) carry the right typ for set_wall_state()/wall_angle().
+    // Our fill loop runs after mklev() returns, but wallification only depends
+    // on the room/corridor wall layout (fixed by makerooms/makecorridors) and
+    // consumes no RNG, so running it here is terrain-equivalent and keeps the
+    // PRNG aligned.  Without it, irregular lit rooms render straight walls
+    // instead of corners.  C ref: mklev.c wallification().
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
         for (let i = 0; i < nroom; i++)

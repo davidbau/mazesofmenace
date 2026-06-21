@@ -23,6 +23,7 @@ import {
 import { monster_by_pmidx } from './makemon.js';
 import { objects } from './mkobj.js';
 import { engr_at } from './engrave.js';
+import { depth as depth_of_level } from './hacklib.js';
 
 const COIN_CLASS = 12;
 const ROCK_CLASS = 14;
@@ -120,7 +121,7 @@ function obj_color(otmp) {
 
 // Glyph (symbol + color) for a single floor object.
 // C ref: display.h obj_to_glyph + display.c reset_glyphmap.
-function object_glyph(otmp) {
+export function object_glyph(otmp) {
     if (!otmp) return null;
     // Statues display as the petrified monster's class symbol.
     if (otmp.otyp === STATUE_OTYP) {
@@ -193,8 +194,22 @@ export function m_at(x, y) {
 
 // Glyph (symbol + color) for a monster.  C ref: display.c mon_color /
 // def_monsyms: symbol = monster class char, color = mons[].mcolor.
+// A disguised monster (m_ap_type set, e.g. a mimic appearing as an object or
+// furniture, or stock_room's chest-mimics) renders as its disguise, not its
+// own class letter — exactly like C's display.c mon_to_glyph / map_object,
+// which calls obj_to_glyph(mappearance) / cmap_to_glyph(mappearance).
 function monster_glyph(mon) {
     if (!mon) return null;
+    if (mon.m_ap_type === 'obj' && mon.mappearance != null) {
+        // Appear as an object: same glyph the floor object would draw.  C ref:
+        // display.c map_object/obj_to_glyph(mappearance) for an M_AP_OBJECT mon.
+        return object_glyph({
+            otyp: mon.mappearance,
+            oclass: objects[mon.mappearance]?.oclass ?? 1,
+            corpsenm: mon.mcorpsenm ?? -1,
+            dknown: 1,
+        });
+    }
     const d = mon.data || {};
     const sym = d.mlet || 'x';
     const color = (d.mcolor != null) ? d.mcolor : NO_COLOR;
@@ -450,7 +465,17 @@ function wall_cmap_glyph(idx) {
     if (idx === S_stone || idx == null) return { ch: ' ', color: NO_COLOR, dec: false };
     const dec = useDECgraphics();
     const ch = dec ? _WALL_DEC[idx] : _WALL_ASCII[idx];
-    return { ch: ch ?? (dec ? 'q' : '-'), color: NO_COLOR, dec };
+    return { ch: ch ?? (dec ? 'q' : '-'), color: wall_cmap_color(), dec };
+}
+
+// C ref: display.c reset_glyphmap wall_color() — walls in the Gnomish Mines use
+// the GLYPH_CMAP_MINES range -> wallcolors[mines_walls] (CLR_BROWN); the main
+// dungeon uses main_walls (CLR_GRAY, which emits no tty escape == NO_COLOR).
+function wall_cmap_color() {
+    const uz = game.u?.uz;
+    if (uz && game.mines_dnum != null && uz.dnum === game.mines_dnum)
+        return CLR_BROWN;
+    return NO_COLOR;
 }
 
 // Render a wall/SDOOR cell, applying wall_angle (mode + seenv) so walls only
@@ -483,7 +508,17 @@ function terrain_glyph(loc, x, y) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
     case SCORR:     return { ch: ' ', color: NO_COLOR, dec: false };  // secret corridor = stone
     case ROOM:      return dec ? { ch: '~', color: NO_COLOR, dec: true } : { ch: '.', color: NO_COLOR, dec: false };
-    case CORR:      return { ch: '#', color: NO_COLOR, dec: false };
+    case CORR: {
+        // C ref: display.c back_to_glyph CORR — idx = (ptr->waslit ||
+        // flags.lit_corridor) ? S_litcorr : S_corr.  Both S_corr and S_litcorr
+        // are '#' with defsym color CLR_GRAY, but reset_glyphmap (display.c
+        // ~2934) bumps S_litcorr to CLR_WHITE when its symbol matches the dark
+        // corridor symbol (always true: both '#'), to give a visible
+        // difference.  CLR_GRAY emits no tty escape (records as NO_COLOR=8),
+        // CLR_WHITE records as bright white (15).  lit_corridor defaults off.
+        const litcorr = !!(loc.waslit || (game.flags && game.flags.lit_corridor));
+        return { ch: '#', color: litcorr ? CLR_WHITE : NO_COLOR, dec: false };
+    }
     case SDOOR:
         // Secret door shows as the wall it hides in, via wall_angle.
         // C ref: back_to_glyph — SDOOR falls through to the wall case.
@@ -656,6 +691,9 @@ export function newsym(x, y) {
     if (!loc) return;
 
     if (game.u?.ux === x && game.u?.uy === y) {
+        // C ref: display.c newsym — the hero's own cell is cansee, so its lit
+        // condition is remembered: lev->waslit = (lev->lit != 0).
+        loc.waslit = loc.lit ? 1 : 0;
         // Hero — drawn live; remember the background underneath.  Standing on
         // an engraved spot reveals it (C ref: display.c _map_location).
         if (spot_shows_engravings(loc)) {
@@ -672,6 +710,10 @@ export function newsym(x, y) {
     }
 
     if (cansee(x, y)) {
+        // C ref: display.c newsym — remember the lit condition while the cell
+        // is visible: lev->waslit = (lev->lit != 0).  back_to_glyph then uses
+        // waslit to pick S_litcorr (lit corridor, CLR_WHITE) vs S_corr.
+        loc.waslit = loc.lit ? 1 : 0;
         // C ref: display.c map_object — a generic object glyph (an undescribed
         // potion/gem/spellbook) becomes specific once the hero is close enough
         // to see it up close.  observe_object() sets dknown so obj_color() then
@@ -697,10 +739,34 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, bg.ch, bg.color, bg.dec);
         }
     } else if (loc.remembered_glyph) {
+        // C ref: display.c newsym else-branch (~1087) — a cell out of sight that
+        // is remembered as a lit corridor (S_litcorr) re-darkens to S_corr when
+        // it is no longer waslit ("Darkened while out of the hero's sight").
+        // Our litcorr glyph is '#' with CLR_WHITE; the dark corridor is '#'
+        // with NO_COLOR.  Mutate the remembered glyph so subsequent redraws
+        // stay consistent (C overwrites lev->glyph likewise).
+        if (loc.typ === CORR && !loc.waslit
+            && loc.remembered_glyph.ch === '#'
+            && loc.remembered_glyph.color === CLR_WHITE) {
+            loc.remembered_glyph.color = NO_COLOR;
+        }
         // Out of sight but remembered — show remembered background.
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
     }
+}
+
+// C ref: display.c map_invisible(x,y) — make the hero remember that a square
+// holds a monster it can sense but cannot see (drawn as the 'I' invisible-mon
+// glyph, NO_COLOR).  Never drawn on the hero's own tile.  The remembered glyph
+// is stored so subsequent redraws keep the 'I' until unmap_invisible/newsym.
+export function map_invisible(x, y) {
+    if (x === game.u?.ux && y === game.u?.uy) return;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    if (game.level?.flags?.hero_memory)
+        loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false };
+    show_glyph_cell(x, y, 'I', NO_COLOR, false);
 }
 
 // ── docrt ──
@@ -819,8 +885,17 @@ function _statusLine1() {
     const title = `${name} the ${role}`;
     // acurr.a is stored in attribute order [STR, INT, WIS, DEX, CON, CHA]
     // (A_STR..A_CHA); the status line displays St Dx Co In Wi Ch.
+    // C ref: attrib.c acurr() — the shown value is abon+atemp+acurr clamped to
+    // [3,25] for the non-STR characteristics (e.g. wounded legs set atemp[DEX]
+    // to -1, dropping displayed Dx by one).  abon/atemp default to 0.
     const a = u.acurr?.a || [];
-    const stats = `St:${_strengthStr(a[0] ?? 0)} Dx:${a[3] ?? 0} Co:${a[4] ?? 0} In:${a[1] ?? 0} Wi:${a[2] ?? 0} Ch:${a[5] ?? 0}`;
+    const atemp = u.atemp?.a || [];
+    const abon = u.abon?.a || [];
+    const _eff = (i) => {
+        const v = (a[i] ?? 0) + (atemp[i] || 0) + (abon[i] || 0);
+        return v > 25 ? 25 : v < 3 ? 3 : v;
+    };
+    const stats = `St:${_strengthStr(a[0] ?? 0)} Dx:${_eff(3)} Co:${_eff(4)} In:${_eff(1)} Wi:${_eff(2)} Ch:${_eff(5)}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C pads title+"  " out so the stats column starts at a fixed offset
     // (mrank_sz + 15 == 31 for our roles).
@@ -837,7 +912,13 @@ function _statusLine2() {
     // (1 for tut-1).
     const inTut = (u.uz?.dnum != null && u.uz.dnum === game.tutorial_dnum);
     const lvlLabel = inTut ? 'Tutorial' : 'Dlvl';
-    let s = `${lvlLabel}:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
+    // C ref: botl.c bot1() — displayed HP is clamped at 0 (negative uhp shows 0).
+    const hpShown = Math.max(0, u.uhp || 0);
+    // C ref: botl.c describe_level — the displayed level number is depth(&u.uz),
+    // the ledger depth across branches (so the Gnomish Mines show Dlvl:3, not
+    // the mines-relative dlevel 1), not u.uz.dlevel.
+    const dlvlNum = inTut ? (u.uz?.dlevel || 1) : depth_of_level(u.uz);
+    let s = `${lvlLabel}:${dlvlNum} $:${game._goldCount || 0} HP:${hpShown}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
     // C ref: botl.c do_statusline2 — Xp:<lvl>[/<exp>], optional T:<moves>.
     if (game.flags?.showexp)
         s += ` Xp:${u.ulevel || 1}/${u.uexp || 0}`;
@@ -845,8 +926,23 @@ function _statusLine2() {
         s += ` Xp:${u.ulevel || 1}`;
     if (game.flags?.time)
         s += ` T:${game.moves || 1}`;
-    // C ref: botl.c — the "Ride" condition is shown while the hero is mounted.
-    // Conditions follow the numeric fields on status line 2.
+    // C ref: botl.c bot1()/enc_stat[] — the encumbrance field (BL_CAP) precedes
+    // the status conditions.  enc_stat[near_capacity()] is "" when unencumbered,
+    // else Burdened/Stressed/Strained/Overtaxed/Overloaded.  near_capacity() is
+    // recomputed by encumber_msg() (allmain.c:208/403) just before each bot(),
+    // so the cached level (game._oldcap) is current at render time.  A bear trap
+    // that wounds a leg drops weight_cap below the carried weight -> "Burdened".
+    const encWord = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'][game._curcap || 0];
+    if (encWord) s += ` ${encWord}`;
+    // C ref: botl.c bot2 — status conditions follow the numeric fields, in
+    // order: ... Blind, Deaf, Stun, Conf, Hallu, Lev, Fly, Ride.  Only the
+    // conditions the contest sessions reach are modelled (Blind from a cream
+    // pie / blindfold; Ride while mounted).
+    if ((u.blinded || 0) > 0 || game.ublindf)
+        s += ` Blind`;
+    // C ref: botl.c bot2 condition order — Stun, then Conf, then Hallu.
+    if ((u.uprops?.Confusion || 0) > 0)
+        s += ` Conf`;
     if (u.usteed)
         s += ` Ride`;
     return s;
@@ -927,12 +1023,22 @@ function _buildScreenOutput() {
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
         display.clearScreen();
-        // Message line
+        // Message line(s): a topline wider than the screen wraps onto row 1+
+        // exactly as the tty's update_topl() does (C ref topl.c:284-297).
         const msg = game._pending_message || '';
-        for (let c = 0; c < Math.min(msg.length, display.cols); c++)
-            display.setCell(c, 0, msg[c], NO_COLOR, 0);
-        // Map — write characters to grid (DEC → Unicode for browser display)
+        const mlines = wrap_topl(msg);
+        for (let li = 0; li < mlines.length; li++) {
+            const ln = mlines[li];
+            for (let c = 0; c < Math.min(ln.length, display.cols); c++)
+                display.setCell(c, li, ln[c], NO_COLOR, 0);
+        }
+        // Map — write characters to grid (DEC → Unicode for browser display).
+        // A multi-line topline obscures the map rows it overlaps (grid rows
+        // 0..mlines.length-1); skip those map rows so the message stays visible,
+        // matching the tty topline window overlay.
+        const msgRows = mlines.length;
         for (let y = 0; y < ROWNO; y++) {
+            if (y + 1 < msgRows) continue;
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
@@ -995,6 +1101,40 @@ export async function pline(msg) {
     game._pending_message = msg;
 }
 
+// C ref: win/tty/topl.c update_topl():284-297 — word-wrap a topline that is
+// wider than the screen (CO=80) by replacing the last space within each CO-wide
+// window with a newline (scan back from column CO-1; if the token is huge, split
+// at the next space).  Returns the message split into one string per display
+// row.  Matches the tty's multi-line topline so a long "You read: ..." message
+// (graffiti etc.) lands on the same rows the recorder captured.
+export function wrap_topl(msg) {
+    const CO_W = 80;
+    const s = String(msg || '');
+    if (s.length <= CO_W) return [s]; // an 80-col line fills cols 0..79 without wrapping (C topl.c)
+    const arr = s.split('');
+    const lines = [];
+    let segStart = 0;
+    let pos = 0;
+    while (arr.length - pos >= CO_W) {
+        const otl = pos;
+        let found = -1;
+        for (let i = otl + CO_W - 1; i > otl; i--) {
+            if (arr[i] === ' ') { found = i; break; }
+        }
+        if (found < 0) {
+            // Huge token: split after it (at the next space).
+            const sp = arr.indexOf(' ', otl);
+            if (sp < 0) break; // no choice but to emit it whole
+            found = sp;
+        }
+        lines.push(arr.slice(segStart, found).join(''));
+        pos = found + 1;
+        segStart = found + 1;
+    }
+    lines.push(arr.slice(segStart).join(''));
+    return lines;
+}
+
 // Draw "--More--" for the current top-line message and block until the
 // user presses space/return/escape.  C ref: win/tty/topl.c more() +
 // win/tty/getline.c xwaitforspace().  The current message is assumed to
@@ -1010,12 +1150,15 @@ export async function topl_more() {
     _buildScreenOutput();
 
     const msg = game._pending_message || '';
-    let curx = msg.length;   // 0-based column one past the message
-    let cury = 0;
+    // The message may already span multiple rows (topl.c word-wrap); --More--
+    // follows the end of the LAST wrapped row.
+    const mlines = wrap_topl(msg);
+    let cury = mlines.length - 1;
+    let curx = mlines[cury].length;   // 0-based column one past the last line
     // C more(): if there's no room for "--More--" on the line, wrap first.
     if (curx >= CO - 8) {
         curx = 0;
-        cury = 1;
+        cury += 1;
     }
     for (let i = 0; i < DEFMORESTR.length && curx + i < CO; i++)
         disp.setCell(curx + i, cury, DEFMORESTR[i], NO_COLOR, 0);

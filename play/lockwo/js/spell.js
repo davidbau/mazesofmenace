@@ -10,7 +10,31 @@ import { pline, flush_screen } from './display.js';
 import { exercise } from './attrib.js';
 import { objects, mksobj, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
 import { SPELL_META } from './u_init.js';
-import { A_WIS } from './const.js';
+import { A_WIS, P_UNSKILLED, P_EXPERT, P_SKILLED, P_BASIC } from './const.js';
+import { p_skill_of } from './enhance.js';
+
+// C ref: objclass.h obj_material_types — is_metallic() = material in [IRON,MITHRIL].
+const MAT_IRON = 11, MAT_MITHRIL = 17;
+// C ref: include/objects.h — otyp constants used by percent_success / weight.
+const OTYP_ROBE = 143, OTYP_QUARTERSTAFF = 79, OTYP_SMALL_SHIELD = 150;
+// C ref: spell.c — metal armor casting penalties.
+const UARMHBON = 4, UARMGBON = 6, UARMFBON = 2;
+// C ref: include/objects.h — base oc_weight of the shield types (for the
+// "shield heavier than a small shield" casting penalty).  Light shields (small
+// shield, *-resistance, elven) are <= 40; only metal/large shields are heavier.
+const SHIELD_OC_WEIGHT = {
+    150: 30, 151: 30, 152: 30, // small / drain-res / shock-res shields
+    153: 40,                   // elven shield
+    154: 50, 155: 50,          // Uruk-hai / orcish shields
+    156: 100,                  // large shield
+    157: 100, 158: 50,         // dwarvish roundshield / shield of reflection
+};
+
+function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
+function is_metallic_obj(o) {
+    const m = objects[o?.otyp]?.material;
+    return m != null && m >= MAT_IRON && m <= MAT_MITHRIL;
+}
 
 // C ref: spell.c spelltypemnemonic — skill discipline -> menu category name.
 const SKILL_CATEGORY = {
@@ -47,6 +71,20 @@ function spl_book() {
 function spellid(i) { return spl_book()[i]?.sp_id ?? NO_SPELL; }
 function spellev(i) { return spl_book()[i]?.sp_lev ?? 0; }
 function spellknow(i) { return spl_book()[i]?.sp_know ?? 0; }
+
+// Index-based accessors for the dovspell view menu (invent.js).
+export function spellid_at(i) { return spellid(i); }
+export function spellknow_at(i) { return spellknow(i); }
+export function percent_success_at(i) { return percent_success(i); }
+export function spellretention_at(i) { return spellretention(i); }
+
+// C ref: spell.c age_spells() — every move-loop pass decrements each known
+// spell's retention by one (decrnknow).  Consumes no RNG.
+export function age_spells() {
+    const book = spl_book();
+    for (let i = 0; i < MAXSPELL && book[i].sp_id !== NO_SPELL; i++)
+        if (book[i].sp_know) book[i].sp_know--;
+}
 
 // C ref: spell.c num_spells — count of known spells (until first NO_SPELL).
 export function num_spells() {
@@ -95,25 +133,109 @@ async function getspell() {
     return await spell_menu('Choose which spell to cast', nspells, spl_book(), meta);
 }
 
-// C ref: spell.c spellretention — "100%" for a freshly-learned spell (sp_know
-// at KEEN).  turnsleft = sp_know; pct = (turnsleft * 100 + KEEN-1) / KEEN.
+// C ref: spell.c spellretention(idx, outbuf) — retention as a percentage range
+// whose precision depends on the hero's skill in the spell's discipline:
+//   expert 2% / skilled 5% / basic 10% / unskilled 25% intervals.
+// "100%" when freshly learned (sp_know >= KEEN), "(gone)" when expired.
 function spellretention(i) {
+    let skill = p_skill_of(spell_skilltype(spellid(i)));
+    skill = Math.max(skill, P_UNSKILLED); // restricted same as unskilled
     const turnsleft = spellknow(i);
     if (turnsleft < 1) return '(gone)';
     if (turnsleft >= KEEN) return '100%';
-    const pct = Math.floor((turnsleft * 100 + (KEEN - 1)) / KEEN);
-    return `${pct}%`;
+    // percent = (turnsleft - 1) / (KEEN/100) + 1
+    let percent = Math.trunc((turnsleft - 1) / Math.trunc(KEEN / 100)) + 1;
+    const accuracy = skill === P_EXPERT ? 2
+        : skill === P_SKILLED ? 5
+            : skill === P_BASIC ? 10 : 25;
+    // round up to the high end of this range
+    percent = accuracy * (Math.trunc((percent - 1) / accuracy) + 1);
+    return `${percent - accuracy + 1}%-${percent}%`;
 }
 
 // C ref: spell.c SPELL_LEV_PW — energy cost = 5 * spell level.
 function SPELL_LEV_PW(lev) { return 5 * lev; }
 
-// C ref: spell.c percent_success — chance to cast.  A faithful port needs
-// armor/skill/role modifiers; for the covered level-1 priest heal the recorded
-// rnd(100) lands within range, so a near-certain estimate suffices.  The RNG
-// (rnd(100)) is consumed in spelleffects_check regardless of this value.
+// C ref: spell.c isqrt — integer square root (used by percent_success).
+function isqrt(val) {
+    let r = Math.floor(Math.sqrt(val));
+    while ((r + 1) * (r + 1) <= val) r++;
+    while (r * r > val) r--;
+    return r;
+}
+
+// C ref: include/objclass.h weight macros — base oc_weight of one shield.
+function shield_oc_weight(o) {
+    return SHIELD_OC_WEIGHT[o?.otyp] ?? OTYP_SMALL_SHIELD; // default light
+}
+
+// C ref: spell.c percent_success(spell) — combine intrinsic ability
+// (splcaster, from role spell stats + worn armor) with learned ability
+// (chance, from magic stat, hero level and skill) into a 0..100 cast chance.
+// `spell` is a spl_book[] index.
 function percent_success(spell) {
-    return 100;
+    const u = game.u || {};
+    const role = game.urole || {};
+    const sp = role.spel || { base: 0, heal: 0, shld: 0, armr: 0, stat: A_WIS, spec: 0, sbon: 0 };
+    const otyp = spellid(spell);
+    const skilltype = spell_skilltype(otyp);
+    // Knights don't get the metal-armor penalty for clerical spells.
+    const Role_if_KNIGHT = role.mnum === 4;
+    const paladin_bonus = Role_if_KNIGHT && skilltype === 32 /*P_CLERIC_SPELL*/;
+
+    let splcaster = sp.base;
+    const special = sp.heal;
+    const statused = ACURR(sp.stat);
+
+    const uarm = game.uarm, uarmc = game.uarmc, uarms = game.uarms,
+        uarmh = game.uarmh, uarmg = game.uarmg, uarmf = game.uarmf,
+        uwep = game.uwep;
+
+    if (uarm && is_metallic_obj(uarm) && !paladin_bonus)
+        splcaster += (uarmc && uarmc.otyp === OTYP_ROBE)
+            ? Math.trunc(sp.armr / 2) : sp.armr;
+    else if (uarmc && uarmc.otyp === OTYP_ROBE)
+        splcaster -= sp.armr;
+    if (uarms)
+        splcaster += sp.shld;
+    if (uwep && uwep.otyp === OTYP_QUARTERSTAFF)
+        splcaster -= 3;
+    if (!paladin_bonus) {
+        if (uarmh && is_metallic_obj(uarmh)) splcaster += UARMHBON;
+        if (uarmg && is_metallic_obj(uarmg)) splcaster += UARMGBON;
+        if (uarmf && is_metallic_obj(uarmf)) splcaster += UARMFBON;
+    }
+    if (otyp === sp.spec) splcaster += sp.sbon;
+    // healing-spell bonus (SPE_HEALING 373, EXTRA_HEALING 374, CURE_BLINDNESS 388,
+    // CURE_SICKNESS 385, RESTORE_ABILITY 391, REMOVE_CURSE 394).
+    if (otyp === 373 || otyp === 374 || otyp === 388 || otyp === 385
+        || otyp === 391 || otyp === 394)
+        splcaster += special;
+    if (splcaster > 20) splcaster = 20;
+
+    let chance = Math.trunc(11 * statused / 2);
+    let skill = p_skill_of(skilltype);
+    skill = Math.max(skill, P_UNSKILLED) - 1; // unskilled => 0
+    const difficulty = (spellev(spell) - 1) * 4
+        - (skill * 6 + Math.trunc((u.ulevel || 1) / 3) + 1);
+    if (difficulty > 0) {
+        chance -= isqrt(900 * difficulty + 2000);
+    } else {
+        const learning = Math.trunc(15 * -difficulty / spellev(spell));
+        chance += learning > 20 ? 20 : learning;
+    }
+    if (chance < 0) chance = 0;
+    if (chance > 120) chance = 120;
+
+    if (uarms && shield_oc_weight(uarms) > 30 /*small shield oc_weight*/) {
+        if (otyp === sp.spec) chance = Math.trunc(chance / 2);
+        else chance = Math.trunc(chance / 4);
+    }
+
+    chance = Math.trunc(chance * (20 - splcaster) / 15) - splcaster;
+    if (chance > 100) chance = 100;
+    if (chance < 0) chance = 0;
+    return chance;
 }
 
 // C ref: spell.c spelleffects_check — pre-cast validation; consumes the cast

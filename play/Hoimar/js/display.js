@@ -11,7 +11,8 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, SCORR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, AIR, CLOUD,
+    TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, AIR, CLOUD,
+    DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE, DB_FLOOR,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     AM_MASK, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_SANCTUM,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
@@ -20,10 +21,11 @@ import {
     MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST,
     M_AP_OBJECT, IS_POOL, IS_WALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
+    WM_C_OUTER, WM_C_INNER, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     WARNCOUNT, STR18, STR19, def_warnsyms, Is_rogue_level,
     M3_INFRAVISIBLE, In_endgame, Is_astralevel, Is_waterlevel, Is_firelevel,
-    Is_airlevel, Is_earthlevel,
+    Is_airlevel, Is_earthlevel, Is_knox_level,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED,
 } from './const.js';
 import { depth, distmin, dist2 } from './hacklib.js';
@@ -305,9 +307,20 @@ function altarColor(loc) {
     }
 }
 
+function drawbridge_under_type(loc) {
+    // C ref: display.c:back_to_glyph(), rm.h:drawbridgemask.
+    switch ((loc?.drawbridgemask ?? loc?.flags ?? 0) & DB_UNDER) {
+    case DB_MOAT: return MOAT;
+    case DB_LAVA: return LAVAPOOL;
+    case DB_ICE: return ICE;
+    case DB_FLOOR: return ROOM;
+    default: return ROOM;
+    }
+}
+
 // ── Terrain to display character + color + DEC flag ──
 export function terrain_glyph(loc, x, y) {
-    const typ = display_wall_type(loc);
+    const typ = display_wall_type(loc, x, y);
     if (rogue_level_display()) {
         switch (typ) {
         case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
@@ -342,11 +355,20 @@ export function terrain_glyph(loc, x, y) {
         case LAVAPOOL:
         case LAVAWALL:
             return { ch: '`', color: NO_COLOR, dec: false };
+        case ICE:
+            return { ch: '.', color: NO_COLOR, dec: false };
+        case DBWALL:
+            return { ch: '#', color: NO_COLOR, dec: false };
+        case DRAWBRIDGE_UP:
+            return terrain_glyph({ ...loc, typ: drawbridge_under_type(loc) }, x, y);
+        case DRAWBRIDGE_DOWN:
+            return { ch: '.', color: NO_COLOR, dec: false };
         default:        return { ch: '?', color: NO_COLOR, dec: false };
         }
     }
     const wallColor = (game.level?.flags?.red_walls || hell_level_display())
         ? CLR_RED
+        : Is_knox_level(game.u?.uz) ? CLR_YELLOW
         : game.level?.flags?.sokoban_rules ? (primary_decgraphics() ? CLR_BLUE : NO_COLOR)
             : game.level?.flags?.mines_walls ? CLR_BROWN : NO_COLOR;
     if (!primary_decgraphics()) {
@@ -403,6 +425,14 @@ export function terrain_glyph(loc, x, y) {
             return { ch: '}', color: CLR_RED, dec: false };
         case LAVAWALL:
             return { ch: '}', color: CLR_ORANGE, dec: false };
+        case ICE:
+            return { ch: '.', color: CLR_CYAN, dec: false };
+        case DBWALL:
+            return { ch: '#', color: CLR_BROWN, dec: false };
+        case DRAWBRIDGE_UP:
+            return terrain_glyph({ ...loc, typ: drawbridge_under_type(loc) }, x, y);
+        case DRAWBRIDGE_DOWN:
+            return { ch: '.', color: CLR_BROWN, dec: false };
         case AIR:
             return { ch: ' ', color: CLR_CYAN, dec: false };
         case CLOUD:
@@ -470,6 +500,14 @@ export function terrain_glyph(loc, x, y) {
         return { ch: '`', color: CLR_RED, dec: false };
     case LAVAWALL:
         return { ch: '`', color: CLR_ORANGE, dec: false };
+    case ICE:
+        return { ch: '~', color: CLR_CYAN, dec: true };
+    case DBWALL:
+        return { ch: '#', color: CLR_BROWN, dec: false };
+    case DRAWBRIDGE_UP:
+        return terrain_glyph({ ...loc, typ: drawbridge_under_type(loc) }, x, y);
+    case DRAWBRIDGE_DOWN:
+        return { ch: '~', color: CLR_BROWN, dec: true };
     case AIR:
         // C ref: display.c:back_to_glyph() S_air.
         return { ch: ' ', color: CLR_CYAN, dec: false };
@@ -480,16 +518,67 @@ export function terrain_glyph(loc, x, y) {
     }
 }
 
-function display_wall_type(loc) {
+function display_wall_type(loc, x, y) {
     // C ref: display.c:wall_angle(). For wallification glyphs, NetHack
     // derives the visible wall character from terrain type plus seenv.
     const seenv = (loc.seenv || 0) & 0xff;
-    if (!seenv || (((loc.wall_info || 0) & WM_MASK) && loc.typ !== CROSSWALL)) return loc.typ;
+    const mode = (loc.wall_info || 0) & WM_MASK;
+    if (!seenv) {
+        switch (loc.typ) {
+        case SDOOR:
+        case HWALL:
+        case VWALL:
+        case TLCORNER:
+        case TRCORNER:
+        case BLCORNER:
+        case BRCORNER:
+        case CROSSWALL:
+        case TUWALL:
+        case TDWALL:
+        case TLWALL:
+        case TRWALL:
+            return STONE;
+        default:
+            return loc.typ;
+        }
+    }
     let rotated = seenv;
     let row = null;
     switch (loc.typ) {
     case CROSSWALL:
         return display_crosswall_type(loc, seenv);
+    case SDOOR:
+        return secret_door_wall_type(loc, x, y, seenv);
+    case VWALL:
+        switch (mode) {
+        case 0:
+            return VWALL;
+        case 1:
+            return seenv & (SV1 | SV2 | SV3 | SV4 | SV5) ? VWALL : STONE;
+        case 2:
+            return seenv & (SV0 | SV1 | SV5 | SV6 | SV7) ? VWALL : STONE;
+        default:
+            return STONE;
+        }
+    case HWALL:
+        switch (mode) {
+        case 0:
+            return HWALL;
+        case 1:
+            return seenv & (SV3 | SV4 | SV5 | SV6 | SV7) ? HWALL : STONE;
+        case 2:
+            return seenv & (SV0 | SV1 | SV2 | SV3 | SV7) ? HWALL : STONE;
+        default:
+            return STONE;
+        }
+    case TLCORNER:
+        return display_corner_type(TLCORNER, seenv, mode, SV3 | SV4 | SV5, SV4);
+    case TRCORNER:
+        return display_corner_type(TRCORNER, seenv, mode, SV5 | SV6 | SV7, SV6);
+    case BLCORNER:
+        return display_corner_type(BLCORNER, seenv, mode, SV1 | SV2 | SV3, SV2);
+    case BRCORNER:
+        return display_corner_type(BRCORNER, seenv, mode, SV7 | SV0 | SV1, SV0);
     case TDWALL:
         row = [STONE, TLCORNER, TRCORNER, HWALL, TDWALL];
         break;
@@ -509,12 +598,65 @@ function display_wall_type(loc) {
         return loc.typ;
     }
 
-    let col = 0;
-    if (rotated === SV4) col = 1;
-    else if (rotated === SV6) col = 2;
-    else if ((rotated & (SV3 | SV5 | SV7)) || ((rotated & SV4) && (rotated & SV6))) col = 4;
-    else if (rotated & (SV0 | SV1 | SV2)) col = (rotated & (SV4 | SV6)) ? 4 : 3;
+    const col = display_twall_column(rotated, mode);
     return row[col];
+}
+
+function display_corner_type(which, seenv, mode, outer, inner) {
+    // C ref: display.c:wall_angle() set_corner().
+    switch (mode) {
+    case 0:
+        return which;
+    case WM_C_OUTER:
+        return seenv & outer ? which : STONE;
+    case WM_C_INNER:
+        return seenv & ~inner ? which : STONE;
+    default:
+        return STONE;
+    }
+}
+
+function secret_door_wall_type(loc, x, y, seenv) {
+    // SDOOR falls through to the HWALL/VWALL wall-angle cases in C.
+    if (secret_door_horizontal(loc, x, y)) {
+        const mode = (loc.wall_info || 0) & WM_MASK;
+        if (mode === 1) return seenv & (SV3 | SV4 | SV5 | SV6 | SV7) ? HWALL : STONE;
+        if (mode === 2) return seenv & (SV0 | SV1 | SV2 | SV3 | SV7) ? HWALL : STONE;
+        return HWALL;
+    }
+    const mode = (loc.wall_info || 0) & WM_MASK;
+    if (mode === 1) return seenv & (SV1 | SV2 | SV3 | SV4 | SV5) ? VWALL : STONE;
+    if (mode === 2) return seenv & (SV0 | SV1 | SV5 | SV6 | SV7) ? VWALL : STONE;
+    return VWALL;
+}
+
+function display_twall_column(seenv, mode) {
+    // C ref: display.c:wall_angle(), TDWALL/T*WALL cases after rotation.
+    switch (mode) {
+    case 0:
+        if (seenv === SV4) return 1;
+        if (seenv === SV6) return 2;
+        if ((seenv & (SV3 | SV5 | SV7)) || ((seenv & SV4) && (seenv & SV6))) return 4;
+        if (seenv & (SV0 | SV1 | SV2)) return (seenv & (SV4 | SV6)) ? 4 : 3;
+        return 0;
+    case WM_T_LONG:
+        if ((seenv & (SV3 | SV4)) && !(seenv & (SV5 | SV6 | SV7))) return 1;
+        if ((seenv & (SV6 | SV7)) && !(seenv & (SV3 | SV4 | SV5))) return 2;
+        if ((seenv & SV5) || ((seenv & (SV3 | SV4)) && (seenv & (SV6 | SV7)))) return 4;
+        return 0;
+    case WM_T_BL:
+        if (onlySeenv(seenv, SV4 | SV5)) return 1;
+        if ((seenv & (SV0 | SV1 | SV2 | SV7)) && !(seenv & (SV3 | SV4 | SV5))) return 3;
+        if (onlySeenv(seenv, SV6)) return 0;
+        return 4;
+    case WM_T_BR:
+        if (onlySeenv(seenv, SV5 | SV6)) return 2;
+        if ((seenv & (SV0 | SV1 | SV2 | SV3)) && !(seenv & (SV5 | SV6 | SV7))) return 3;
+        if (onlySeenv(seenv, SV4)) return 0;
+        return 4;
+    default:
+        return 0;
+    }
 }
 
 function onlySeenv(seenv, bits) {
@@ -728,9 +870,22 @@ function monster_display_attr(mon) {
     return game.iflags.wc2_petattr || ATR_INVERSE;
 }
 
+function active_pet_kill_more_overlay() {
+    const overlay = game._pet_kill_more_overlay || null;
+    if (!overlay?.mon || !game._more) return null;
+    if (overlay.line && !(game._pending_message || '').includes(overlay.line))
+        return null;
+    return overlay;
+}
+
 function monster_at_display(x, y) {
+    const overlay = active_pet_kill_more_overlay();
+    if (overlay && x === overlay.x && y === overlay.y)
+        return { mon: overlay.mon, wormTail: false };
     const monsters = game.level?.monsters || [];
     const head = monsters.find(m => m.mx === x && m.my === y);
+    if (overlay && head === overlay.mon && x === overlay.oldX && y === overlay.oldY)
+        return null;
     if (head) return { mon: head, wormTail: false };
     const tail = monsters.find(m => (m.wsegs || []).some(seg => seg.wx === x && seg.wy === y));
     return tail ? { mon: tail, wormTail: true } : null;
@@ -935,8 +1090,10 @@ export function map_level_for_wizard(revealTraps = false) {
                 decgfx: loc.disp_decgfx,
             };
             const visible = cansee(x, y);
+            // C ref: detect.c:show_map_spot().  Mapping marks every
+            // coordinate as seen, not just wall-angle terrain.
+            loc.seenv = 0xff;
             if (loc.typ === SCORR) loc.typ = CORR;
-            if (IS_WALL(loc.typ) || loc.typ === SDOOR) loc.seenv = 0xff;
             const trap = (game.level.traps || []).find(t => t.tx === x && t.ty === y);
             const covered = terrain_covers_objects(loc);
             let glyph = terrain_glyph(loc, x, y);
@@ -981,6 +1138,17 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_decgfx = rogue_level_display() ? false : primary_decgraphics() && !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
+}
+
+function write_map_cell(display, x, y, loc, forceBlank = false) {
+    if (!display || !loc) return;
+    const raw = loc.disp_ch ?? ' ';
+    const blank = raw === ' '
+        && (loc.disp_color == null || loc.disp_color === CLR_GRAY || loc.disp_color === NO_COLOR)
+        && !loc.disp_attr;
+    if (blank && !forceBlank) return;
+    const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[raw] || raw) : raw;
+    display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
 }
 
 const SWALLOW_CHARS = [
@@ -1199,16 +1367,25 @@ export function newsym(x, y) {
         }
         return;
     }
+    let drewMonsterOrWarning = false;
     if (monster_visible(mon) || (!wormTail && tp_sensemon(mon))) {
         const mg = monster_glyph(mon, wormTail);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
         draw_attr = monster_display_attr(mon);
+        drewMonsterOrWarning = true;
     } else if (mon) {
         const wg = warning_glyph(mon);
         if (wg) {
             draw_ch = wg.ch; draw_color = wg.color; draw_dec = false;
             draw_attr = 0;
+            drewMonsterOrWarning = true;
         }
+    }
+
+    if (!drewMonsterOrWarning && loc.remembered_glyph?.ch === 'I') {
+        const mem = loc.remembered_glyph;
+        show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx, mem.attr || 0);
+        return;
     }
 
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
@@ -1246,6 +1423,7 @@ export async function docrt() {
     see_monsters();
     show_premapped_mimics();
     if (game.u?.ux > 0) newsym(game.u.ux, game.u.uy);
+    game._full_map_redraw_pending = true;
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -1505,19 +1683,25 @@ function _statusLine2() {
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp
         : (u.uhp || 0);
+    const gold = game._latched_status_gold != null
+            && (game._more || game._clear_latched_status_gold_after_more)
+        ? game._latched_status_gold
+        : (game._goldCount || 0);
     const statusAcOverrideActive = game._status_uac_override != null
         && (game._status_uac_override_move == null || game._status_uac_override_move === game.moves);
     const ac = statusAcOverrideActive ? game._status_uac_override : (u.uac ?? 10);
     const goldSymbol = rogue_level_display() ? '*' : '$';
     // C ref: botl.c:describe_level().
-    const levelDesc = game.dungeons?.[u.uz?.dnum]?.dname === 'The Tutorial'
+    const levelDesc = Is_knox_level(u.uz)
+        ? (game.dungeons?.[u.uz?.dnum]?.dname || 'Fort Ludios')
+        : game.dungeons?.[u.uz?.dnum]?.dname === 'The Tutorial'
         ? `Tutorial:${u.uz?.dlevel || 1}`
         : game.quest_dnum != null && u.uz?.dnum === game.quest_dnum
         ? `Home ${u.uz?.dlevel || 1}`
         : In_endgame(u.uz)
         ? endgame_status_level_desc(u.uz)
         : `Dlvl:${depth(u.uz)}`;
-    return `${levelDesc} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${ac} ${xp}${turn}${conditionText}`;
+    return `${levelDesc} ${goldSymbol}:${gold} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${ac} ${xp}${turn}${conditionText}`;
 }
 
 function endgame_status_level_desc(uz) {
@@ -1563,7 +1747,8 @@ function applySgr(params, state) {
     }
 }
 
-function renderOverrideScreen(display, screen) {
+export function renderTextScreen(display, screen, cursor = null) {
+    if (!display) return;
     if (display.clearScreen) display.clearScreen();
     const state = { row: 0, col: 0, color: NO_COLOR, attr: 0, dec: false };
     const text = String(screen || '');
@@ -1613,12 +1798,89 @@ function renderOverrideScreen(display, screen) {
         state.col++;
     }
 
-    const cursor = game._override_cursor
-        || game._latched_more_cursor
-        || (game._override_serialized_persistent ? game._override_serialized_cursor : null);
     if (cursor && display.setCursor) {
         display.setCursor(cursor[0], cursor[1]);
     }
+}
+
+function activeSerializedTextScreen() {
+    if (game._startup_legacy_pager_active && game._startup_legacy_pager_screen)
+        return game._startup_legacy_pager_screen;
+    if (game._tutorial_prompt_active && game._tutorial_prompt_screen)
+        return game._tutorial_prompt_screen;
+    if (game._spell_menu_active && game._spell_menu_screen)
+        return game._spell_menu_screen;
+    if (game._spell_cast_menu_active && game._spell_cast_menu_screen)
+        return game._spell_cast_menu_screen;
+    if (game._help_menu_active && game._help_menu_screen)
+        return game._help_menu_screen;
+    if (game._help_text_active && game._help_text_screen)
+        return game._help_text_screen;
+    if (game._options_window_active && game._options_window_screen)
+        return game._options_window_screen;
+    if (game._look_window_active && game._look_window_screen)
+        return game._look_window_screen;
+    if (game._travel_tip_screen_active && game._travel_tip_screen)
+        return game._travel_tip_screen;
+    if (game._terrain_window_active && game._terrain_window_screen)
+        return game._terrain_window_screen;
+    if (game._disclosure_window_active && game._disclosure_window_screen)
+        return game._disclosure_window_screen;
+    if (game._intrinsic_menu_active && game._intrinsic_menu_screen)
+        return game._intrinsic_menu_screen;
+    if (game._name_menu_active && game._name_menu_screen)
+        return game._name_menu_screen;
+    if (game._enhance_skills_active && game._enhance_skills_screen)
+        return game._enhance_skills_screen;
+    if (game._discovery_window_active && game._discovery_screen)
+        return game._discovery_screen;
+    if (game._attributes_window_active && game._attributes_screen)
+        return game._attributes_screen;
+    if (game._level_teleport_menu_active && game._level_teleport_menu_screen)
+        return game._level_teleport_menu_screen;
+    if (game._wizidentify_menu_active && game._wizidentify_menu_screen)
+        return game._wizidentify_menu_screen;
+    if (game._inventory_action_menu_active && game._inventory_action_menu_screen)
+        return game._inventory_action_menu_screen;
+    if (game._inventory_prompt_menu_active && game._inventory_prompt_menu_screen)
+        return game._inventory_prompt_menu_screen;
+    if (game._throw_inventory_menu_active) {
+        if (game._throw_inventory_menu_page === 2 && game._throw_inventory_menu_page2_screen)
+            return game._throw_inventory_menu_page2_screen;
+        if (game._throw_inventory_menu_screen)
+            return game._throw_inventory_menu_screen;
+    }
+    if (game._potion_menu_active && game._potion_menu_screen)
+        return game._potion_menu_screen;
+    if (game._inventory_menu_active) {
+        if (game._inventory_menu_page === 2 && game._inventory_menu_page2_screen)
+            return game._inventory_menu_page2_screen;
+        if (game._inventory_menu_screen)
+            return game._inventory_menu_screen;
+    }
+    if (game._pay_menu_active && game._pay_menu_screen)
+        return game._pay_menu_screen;
+    if (game._loot_menu_active && game._loot_menu_screen)
+        return game._loot_menu_screen;
+    if (game._herecmd_menu_active && game._herecmd_menu_screen)
+        return game._herecmd_menu_screen;
+    if (game._bones_unlink_prompt_active && game._bones_unlink_prompt_screen)
+        return game._bones_unlink_prompt_screen;
+    if (game._terminal_exit_screen_active && game._terminal_exit_screen)
+        return game._terminal_exit_screen;
+    if (game._direction_help_active && game._direction_help_screen)
+        return game._direction_help_screen;
+    if (game._getpos_help_active && game._getpos_help_screen)
+        return game._getpos_help_screen;
+    return null;
+}
+
+export function installSerializedScreenHook(display = game.nhDisplay) {
+    const term = display?.terminal || display;
+    if (!term?.serialize || term._teleportSerializeBase) return;
+    const originalSerialize = term.serialize.bind(term);
+    Object.defineProperty(term, '_teleportSerializeBase', { value: originalSerialize });
+    term.serialize = () => activeSerializedTextScreen() || originalSerialize();
 }
 
 function currentLatchedMoreScreen() {
@@ -1640,18 +1902,149 @@ function currentLatchedMoreScreen() {
 }
 
 // ── Build screen output ──
-function _buildScreenOutput() {
+function _buildScreenOutput(options = {}) {
     const display = game?.nhDisplay;
     if (!display) return;
     if (game._latched_more_screen) {
-        renderOverrideScreen(display, currentLatchedMoreScreen());
+        const screen = currentLatchedMoreScreen();
+        renderTextScreen(display, screen, game._latched_more_cursor || null);
         return;
     }
-    if (game._override_screen) {
-        renderOverrideScreen(display, game._override_screen);
+    if (game._startup_legacy_pager_active && game._startup_legacy_pager_screen) {
+        renderTextScreen(display, game._startup_legacy_pager_screen, game._startup_legacy_pager_cursor || null);
         return;
     }
-
+    if (game._tutorial_prompt_active && game._tutorial_prompt_screen) {
+        renderTextScreen(display, game._tutorial_prompt_screen, game._tutorial_prompt_cursor || null);
+        return;
+    }
+    if (game._spell_menu_active && game._spell_menu_screen) {
+        renderTextScreen(display, game._spell_menu_screen, game._spell_menu_cursor || null);
+        return;
+    }
+    if (game._spell_cast_menu_active && game._spell_cast_menu_screen) {
+        renderTextScreen(display, game._spell_cast_menu_screen, game._spell_cast_menu_cursor || null);
+        return;
+    }
+    if (game._help_menu_active && game._help_menu_screen) {
+        renderTextScreen(display, game._help_menu_screen, game._help_menu_cursor || null);
+        return;
+    }
+    if (game._help_text_active && game._help_text_screen) {
+        renderTextScreen(display, game._help_text_screen, game._help_text_cursor || null);
+        return;
+    }
+    if (game._options_window_active && game._options_window_screen) {
+        renderTextScreen(display, game._options_window_screen, game._options_window_cursor || null);
+        return;
+    }
+    if (game._look_window_active && game._look_window_screen) {
+        renderTextScreen(display, game._look_window_screen, game._look_window_cursor || null);
+        return;
+    }
+    if (game._travel_tip_screen_active && game._travel_tip_screen) {
+        renderTextScreen(display, game._travel_tip_screen, game._travel_tip_screen_cursor || null);
+        return;
+    }
+    if (game._terrain_window_active && game._terrain_window_screen) {
+        renderTextScreen(display, game._terrain_window_screen, game._terrain_window_cursor || null);
+        return;
+    }
+    if (game._disclosure_window_active && game._disclosure_window_screen) {
+        renderTextScreen(display, game._disclosure_window_screen, game._disclosure_window_cursor || null);
+        return;
+    }
+    if (game._intrinsic_menu_active && game._intrinsic_menu_screen) {
+        renderTextScreen(display, game._intrinsic_menu_screen, game._intrinsic_menu_cursor || null);
+        return;
+    }
+    if (game._name_menu_active && game._name_menu_screen) {
+        renderTextScreen(display, game._name_menu_screen, game._name_menu_cursor || null);
+        return;
+    }
+    if (game._enhance_skills_active && game._enhance_skills_screen) {
+        renderTextScreen(display, game._enhance_skills_screen, game._enhance_skills_cursor || null);
+        return;
+    }
+    if (game._discovery_window_active && game._discovery_screen) {
+        renderTextScreen(display, game._discovery_screen, game._discovery_cursor || null);
+        return;
+    }
+    if (game._attributes_window_active && game._attributes_screen) {
+        renderTextScreen(display, game._attributes_screen, game._attributes_cursor || null);
+        return;
+    }
+    if (game._level_teleport_menu_active && game._level_teleport_menu_screen) {
+        renderTextScreen(display, game._level_teleport_menu_screen, game._level_teleport_menu_cursor || null);
+        return;
+    }
+    if (game._wizidentify_menu_active && game._wizidentify_menu_screen) {
+        renderTextScreen(display, game._wizidentify_menu_screen, game._wizidentify_menu_cursor || null);
+        return;
+    }
+    if (game._inventory_action_menu_active && game._inventory_action_menu_screen) {
+        renderTextScreen(display, game._inventory_action_menu_screen, game._inventory_action_menu_cursor || null);
+        return;
+    }
+    if (game._inventory_prompt_menu_active && game._inventory_prompt_menu_screen) {
+        renderTextScreen(display, game._inventory_prompt_menu_screen, game._inventory_prompt_menu_cursor || null);
+        return;
+    }
+    if (game._throw_inventory_menu_active) {
+        if (game._throw_inventory_menu_page === 2 && game._throw_inventory_menu_page2_screen) {
+            renderTextScreen(display, game._throw_inventory_menu_page2_screen, game._throw_inventory_menu_page2_cursor || null);
+            return;
+        }
+        if (game._throw_inventory_menu_screen) {
+            renderTextScreen(display, game._throw_inventory_menu_screen, game._throw_inventory_menu_cursor || null);
+            return;
+        }
+    }
+    if (game._potion_menu_active && game._potion_menu_screen) {
+        renderTextScreen(display, game._potion_menu_screen, game._potion_menu_cursor || null);
+        return;
+    }
+    if (game._inventory_menu_active) {
+        if (game._inventory_menu_page === 2 && game._inventory_menu_page2_screen) {
+            renderTextScreen(display, game._inventory_menu_page2_screen, game._inventory_menu_page2_cursor || null);
+            return;
+        }
+        if (game._inventory_menu_screen) {
+            renderTextScreen(display, game._inventory_menu_screen, game._inventory_menu_cursor || null);
+            return;
+        }
+    }
+    if (game._pay_menu_active && game._pay_menu_screen) {
+        renderTextScreen(display, game._pay_menu_screen, game._pay_menu_cursor || null);
+        return;
+    }
+    if (game._loot_menu_active && game._loot_menu_screen) {
+        renderTextScreen(display, game._loot_menu_screen, game._loot_menu_cursor || null);
+        return;
+    }
+    if (game._herecmd_menu_active && game._herecmd_menu_screen) {
+        renderTextScreen(display, game._herecmd_menu_screen, game._herecmd_menu_cursor || null);
+        return;
+    }
+    if (game._bones_unlink_prompt_active && game._bones_unlink_prompt_screen) {
+        renderTextScreen(display, game._bones_unlink_prompt_screen, game._bones_unlink_prompt_cursor || null);
+        return;
+    }
+    if (game._terminal_exit_screen_active && game._terminal_exit_screen) {
+        renderTextScreen(display, game._terminal_exit_screen, game._terminal_exit_cursor || null);
+        return;
+    }
+    if (game._direction_help_active && game._direction_help_screen) {
+        renderTextScreen(display, game._direction_help_screen, game._direction_help_cursor || null);
+        return;
+    }
+    if (game._getpos_help_active && game._getpos_help_screen) {
+        renderTextScreen(display, game._getpos_help_screen, game._getpos_help_cursor || null);
+        return;
+    }
+    const fullMapRedraw = !!options.fullMap
+        || !!game._swallowed_map_active
+        || !!game._swallowed_latched_overlay;
     const floorListActive = Array.isArray(game._floor_list_lines) && game._floor_list_lines.length > 0;
     const toplineResidue = (!game._pending_message && !game._more && !floorListActive)
         ? (game._topline_residue || '')
@@ -1675,7 +2068,12 @@ function _buildScreenOutput() {
 
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
-        display.clearScreen();
+        if (fullMapRedraw) display.clearScreen();
+        else {
+            display.clearRow(0);
+            display.clearRow(22);
+            display.clearRow(23);
+        }
         // Message line
         const msg = toplineMessage + moreSuffix;
         const pending = game._pending_message || toplineResidue;
@@ -1703,17 +2101,23 @@ function _buildScreenOutput() {
             for (let c = col; c < Math.min(msg.length, display.cols); c++)
                 display.setCell(c, 0, msg[c], NO_COLOR, ATR_INVERSE);
         }
+        if (!floorListActive && !fullMapRedraw && game._floor_list_last_clear) {
+            const { clearCol, clearEnd, rows } = game._floor_list_last_clear;
+            for (let row = 1; row <= Math.min(21, rows || 0); row++)
+                for (let c = clearCol; c < Math.min(display.cols, clearEnd || display.cols); c++)
+                    display.setCell(c, row, ' ', NO_COLOR, 0);
+            game._floor_list_last_clear = null;
+        } else if (!floorListActive) {
+            game._floor_list_last_clear = null;
+        }
         // Map — write characters to grid (DEC → Unicode for browser display)
         if (!game._swallowed_map_active && !game._swallowed_latched_overlay) {
             for (let y = 0; y < ROWNO; y++) {
                 for (let x = 1; x < COLNO; x++) {
                     const loc = game.level?.at(x, y);
-                    if (!loc?.disp_ch) continue;
-                    if (loc.disp_ch === ' '
-                        && (loc.disp_color == null || loc.disp_color === CLR_GRAY || loc.disp_color === NO_COLOR)
-                        && !loc.disp_attr) continue;
-                    const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
-                    display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                    if (!loc) continue;
+                    if (fullMapRedraw || loc.gnew) write_map_cell(display, x, y, loc, !!loc.gnew);
+                    loc.gnew = 0;
                 }
             }
         } else {
@@ -1736,6 +2140,17 @@ function _buildScreenOutput() {
         if (floorListActive) {
             const col = game._floor_list_col ?? 41;
             const clearCol = Math.max(0, col - 1);
+            const maxLineLength = Math.max(0, ...game._floor_list_lines.map((line) => (line || '').length));
+            const moreLength = game._floor_list_show_more !== false ? '--More--'.length : 0;
+            const clearEnd = game._floor_list_clear_to_edge || game._floor_list_show_more !== false
+                ? display.cols
+                : Math.min(display.cols, Math.max(clearCol + 1, col + Math.max(maxLineLength, moreLength) + 1));
+            game._floor_list_last_clear = {
+                clearCol,
+                clearEnd,
+                rows: Math.min(21, game._floor_list_lines.length
+                    + (game._floor_list_show_more !== false ? 1 : 0)),
+            };
             for (let i = 0; i < game._floor_list_lines.length; i++) {
                 const line = game._floor_list_lines[i] || '';
                 const row = i + 1;
@@ -1743,7 +2158,7 @@ function _buildScreenOutput() {
                     && line
                     && line !== '(end)'
                     && !/^(?:[a-z]|\$) [+-] /.test(line);
-                for (let c = clearCol; c < display.cols; c++)
+                for (let c = clearCol; c < clearEnd; c++)
                     display.setCell(c, row, ' ', NO_COLOR, 0);
                 for (let c = 0; c < Math.min(line.length, display.cols - col); c++)
                     display.setCell(col + c, row, line[c], NO_COLOR, inverse ? ATR_INVERSE : 0);
@@ -1751,7 +2166,7 @@ function _buildScreenOutput() {
             if (game._floor_list_show_more !== false) {
                 const more = '--More--';
                 const row = Math.min(21, game._floor_list_lines.length + 1);
-                for (let c = clearCol; c < display.cols; c++)
+                for (let c = clearCol; c < clearEnd; c++)
                     display.setCell(c, row, ' ', NO_COLOR, 0);
                 for (let c = 0; c < more.length; c++)
                     display.setCell(col + c, row, more[c], NO_COLOR, 0);
@@ -1779,7 +2194,17 @@ function _buildScreenOutput() {
 
 // ── flush_screen ──
 export async function flush_screen(mode) {
-    _buildScreenOutput();
+    const fullMap = !!game._full_map_redraw_pending;
+    const blockedByLatchedMore = fullMap && !!game._latched_more_screen;
+    game._full_map_redraw_pending = false;
+    _buildScreenOutput({ fullMap });
+    if (blockedByLatchedMore) {
+        // C refs: win/tty/topl.c:more(), src/display.c:docrt().
+        // A full redraw requested while a tty More frame is latched must
+        // survive until that frame is dismissed; rendering the old More screen
+        // is not the redraw itself.
+        game._full_map_redraw_pending = true;
+    }
 }
 
 // ── cls ──
@@ -1877,6 +2302,9 @@ function terminalCellWidth(text) {
 }
 
 export function clear_pending_message() {
+    const petKillOverlay = game._pet_kill_more_overlay || null;
+    game._pet_kill_more_overlay = null;
+    const hadContinuationRow = !!(game._more_next_message_row || game._message_continuation_row);
     game._pending_message = '';
     game._simple_timed_repeat_stop_after_pending = false;
     game._travel_description_pending = false;
@@ -1897,5 +2325,11 @@ export function clear_pending_message() {
     game._floor_list_lines = null;
     game._floor_list_col = null;
     game._floor_list_show_more = true;
+    game._floor_list_clear_to_edge = false;
     game._floor_list_pauses_turn = false;
+    if (petKillOverlay) {
+        newsym(petKillOverlay.oldX, petKillOverlay.oldY);
+        newsym(petKillOverlay.x, petKillOverlay.y);
+    }
+    if (hadContinuationRow) game._full_map_redraw_pending = true;
 }

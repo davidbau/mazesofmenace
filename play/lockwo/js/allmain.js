@@ -10,19 +10,21 @@ import { nhgetch } from './input.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { makedog } from './dog.js';
-import { rhack } from './cmd.js';
+import { rhack, dosearch0 } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, topl_more } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { phase_of_the_moon, friday_13th, NEW_MOON, FULL_MOON } from './calendar.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_step_count, fastforward_fill_mineralize } from './fastforward.js';
 import { movemon, mcalcdistress, mcalcmove } from './mon.js';
 import { makemon_rnd_spawn } from './makemon.js';
+import { SPEED_BOOTS } from './mkobj.js';
 import { dosounds } from './sounds.js';
+import { age_spells } from './spell.js';
 import { find_ac, u_init_skills_discoveries } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
 import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON } from './const.js';
-import { exercise } from './attrib.js';
+import { exercise, acurr_eff } from './attrib.js';
 import { settrack } from './track.js';
 import { genTutorialLevel } from './tutorial.js';
 import { find_level } from './dungeon.js';
@@ -110,15 +112,32 @@ export async function newgame() {
         };
     }
 
-    // Set up game state needed by mklev
-    g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
+    // Set up game state needed by mklev.
+    //
+    // Gameplay sessions (those that ran init_dungeons and stashed the complete
+    // model in _full_dungeon) keep the REAL dungeons[]/branches[] so that later
+    // level generation — e.g. a wizard ^V teleport to dlvl 2/3 — sees the true
+    // branch placement.  Otherwise mk_knox_portal() (mklev.c:2638) mis-judges
+    // Is_branchlev(&u.uz): the real Gnomish Mines branch entrance sits on dlvl
+    // 2-4, so those levels ARE branch levels and mk_knox_portal returns BEFORE
+    // its rn2(3); a hardcoded "Mines on dlvl 1" stub instead made the porter
+    // consume an extra rn2(3) on every teleport-destination level, desyncing the
+    // PRNG for the rest of the run (seed5006 diverged here).  The legacy
+    // seed8000 path never built _full_dungeon, so it falls back to the stub that
+    // keeps its level-1 generation byte-identical.
+    if (g._full_dungeon) {
+        g.dungeons = g._full_dungeon.dungeons;
+        g.branches = g._full_dungeon.branches;
+    } else {
+        g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
+        // Branch: Mines entrance on level 1 (for seed 8000)
+        g.branches = [
+            { end1: { dnum: 0, dlevel: 1 }, end2: { dnum: 2, dlevel: 1 }, end1_up: true },
+        ];
+    }
     g.u = g.u || {};
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
-    // Branch: Mines entrance on level 1 (for seed 8000)
-    g.branches = [
-        { end1: { dnum: 0, dlevel: 1 }, end2: { dnum: 2, dlevel: 1 }, end1_up: true },
-    ];
 
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
@@ -196,7 +215,10 @@ async function newgame_real() {
     // Wire up urole/urace/ualign and level for the status line.
     g.urole = { name: { m: role?.name?.m, f: role?.name?.f },
                 rank: { m: rankName(game.initrole, !!g.flags?.female) },
-                mnum };
+                mnum,
+                // C ref: role.c roles[] spell-statistics block; drives
+                // spell.c percent_success().
+                spel: role?.spel };
     g.urace = { adj: races[game.initrace]?.adj || 'human' };
     const alignType = aligns[game.initalign]?.value ?? 0;
     // C ref: attrib.c init_align — u.ualign.record = gu.urole.initrecord; and
@@ -278,12 +300,24 @@ async function moveloop_preamble_messages() {
     const g = game;
     const moonphase = phase_of_the_moon();
     let preamble = null;
-    if (moonphase === FULL_MOON)
+    // C ref: allmain.c moveloop_preamble() — a full moon grants +1 Luck and
+    // Friday the 13th costs -1 via change_luck().  That starting Luck feeds the
+    // rnl() bias roll (rnl() fires a secondary rn2(37+|Luck|) when Luck != 0),
+    // e.g. the door-open rnl(20) check, so we MUST apply the side-effect to keep
+    // the RNG stream in lockstep with C.  Full moon and Friday-the-13th are
+    // independent in C (separate if blocks), so apply each luck change on its
+    // own; the displayed preamble keeps the moon message precedence.
+    if (moonphase === FULL_MOON) {
         preamble = 'You are lucky!  Full moon tonight.';
-    else if (moonphase === NEW_MOON)
+        g.u.uluck = (g.u.uluck || 0) + 1; // change_luck(1)
+    } else if (moonphase === NEW_MOON) {
         preamble = 'Be careful!  New moon tonight.';
-    if (!preamble && friday_13th())
-        preamble = 'Watch out!  Bad things can happen on Friday the 13th.';
+    }
+    if (friday_13th()) {
+        if (!preamble)
+            preamble = 'Watch out!  Bad things can happen on Friday the 13th.';
+        g.u.uluck = (g.u.uluck || 0) - 1; // change_luck(-1)
+    }
 
     if (!preamble) return false;
 
@@ -363,6 +397,48 @@ async function enter_tutorial_level() {
         await topl_more();
     }
     g._pending_message = '';
+
+    // C ref: dat/nhlib.lua tutorial_enter() -> nh.gamestate() (save), which is
+    // nhlua.c nhl_gamestate() store branch: every inventory item is setnotworn()
+    // + freeinv()'d and sequestered in gg.gmst_invent.  The hero therefore enters
+    // the tutorial with NO worn gear, so find_ac() resets to the base unarmored
+    // class (the recorded screens show AC drop from 7 -> 10 for the Ranger whose
+    // cloak of displacement gave -3).  setnotworn() is silent (no message), and
+    // the status line is rebuilt live from u.uac at each flush, so the AC change
+    // must not be visible on the arrival/engraving --More-- pages (recorded steps
+    // 13-15 still show AC:7).  Do the sequester AFTER those pages so the updated
+    // AC first appears on the first moveloop turn's bot() (recorded step 16).
+    sequester_inventory_for_tutorial();
+}
+
+// C ref: nhlua.c nhl_gamestate() store branch (dat/nhlib.lua tutorial_enter ->
+// nh.gamestate()).  On tutorial entry the entire inventory is set aside: each
+// item is unworn (setnotworn) and removed from invent (freeinv), then stashed
+// in gg.gmst_invent (with owornmask kept as a re-wear flag for the later
+// restore on leave).  We mirror that here: clear every worn-equipment pointer
+// so find_ac() yields the unarmored base class, and stash the items + their
+// worn masks on game._tutorial_saved_state for symmetry with leave (no recorded
+// session leaves the tutorial, so the restore path is not exercised, but we keep
+// the saved state faithful to the C structure).
+function sequester_inventory_for_tutorial() {
+    const g = game;
+    const inv = Array.isArray(g.invent) ? g.invent : [];
+    const saved = [];
+    for (const obj of inv) {
+        saved.push({ obj, wornmask: obj.owornmask || 0 });
+        obj.owornmask = 0;
+    }
+    // setnotworn equivalent: drop every worn-slot pointer (armor, weapons,
+    // accessories) so they no longer contribute to find_ac / behaviour.
+    g.uarm = g.uarmc = g.uarmh = g.uarms = g.uarmg = g.uarmf = g.uarmu = null;
+    g.uwep = g.uswapwep = g.uquiver = null;
+    g.uleft = g.uright = g.uamul = g.ublindf = null;
+    if (g.u) g.u.twoweap = false;
+    // freeinv equivalent: the hero carries nothing inside the tutorial.
+    g.invent = [];
+    g._tutorial_saved_state = { invent: saved };
+    // find_ac() recomputes u.uac from the now-empty worn slots -> base 10.
+    find_ac();
 }
 
 function engr_at_tut(x, y) {
@@ -516,12 +592,43 @@ const FAST_AT_LEVEL = Object.freeze({
 });
 
 // C ref: hack.h Fast / Very_fast — does the hero have intrinsic Fast?
-// We model only the role-granted intrinsic (no speed boots/potions in the
-// gameplay sessions we exercise).  Very_fast (extrinsic) is never set here,
-// so u_calc_moveamt only emits the `Fast` branch rn2(3).
+// We model only the role-granted intrinsic.  Extrinsic Fast (speed boots) is
+// handled separately by youHaveVeryFast(); since Very_fast takes priority in
+// u_calc_moveamt's else-if chain, the two never both fire on the same turn.
 function youHaveFast() {
     const mnum = gameRoleMnum();
     const lvl = FAST_AT_LEVEL[mnum];
+    if (lvl == null) return false;
+    return (game.u?.ulevel ?? 1) >= lvl;
+}
+
+// C ref: hack.h Very_fast == ((HFast & ~INTRINSIC) || EFast).  EFast is the
+// extrinsic FAST conferred by worn speed boots (objects[SPEED_BOOTS].oc_oprop
+// == FAST, set on the boots slot by setworn()).  Potion/spell speed (the
+// HFast & TIMEOUT term) isn't exercised by the scored sessions, so only the
+// worn-boots term is modelled here.
+function youHaveVeryFast() {
+    return game.uarmf?.otyp === SPEED_BOOTS;
+}
+
+// C ref: attrib.c innate ability tables (*_abil[] with &HSearching).  The
+// dungeon-XP level at which each role first gains intrinsic Searching.  Keys
+// are this codebase's roles[].mnum (Rogue=8, Ranger=7 here).  Roles absent
+// never gain Searching intrinsically.  Drives the per-turn dosearch0(1) call.
+const SEARCHING_AT_LEVEL = Object.freeze({
+    0: 1,    // Archeologist (arc_abil): { 1, &HSearching }
+    5: 9,    // Monk         (mon_abil): { 9, &HSearching }
+    7: 1,    // Ranger       (ran_abil): { 1, &HSearching }
+    8: 10,   // Rogue        (rog_abil): { 10, &HSearching }
+    10: 10,  // Tourist      (tou_abil): { 10, &HSearching }
+});
+
+// C ref: hack.h Searching — does the hero have intrinsic Searching (HSearching)?
+// Only the role-granted intrinsic is modelled (no ring of searching / lenses in
+// the gameplay sessions).  When set, the moveloop runs dosearch0(1) each turn.
+function youHaveSearching() {
+    const mnum = gameRoleMnum();
+    const lvl = SEARCHING_AT_LEVEL[mnum];
     if (lvl == null) return false;
     return (game.u?.ulevel ?? 1) >= lvl;
 }
@@ -543,8 +650,11 @@ function u_calc_moveamt() {
         moveamt = mcalcmove(u.usteed, true, true); // rn2(NORMAL_SPEED) rounding roll
     } else {
         moveamt = NORMAL_SPEED; // youmonst.data->mmove for a human hero
-        if (youHaveFast() && rn2(3) === 0)
-            moveamt += NORMAL_SPEED;
+        if (youHaveVeryFast()) {
+            if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
+        } else if (youHaveFast()) {
+            if (rn2(3) === 0) moveamt += NORMAL_SPEED;
+        }
     }
     u.umovement = (u.umovement || 0) + moveamt;
     if (u.umovement < 0) u.umovement = 0;
@@ -658,6 +768,25 @@ export async function moveloop_turn() {
 
             g.moves = (g.moves || 1) + 1;
 
+            // C ref: allmain.c moveloop_core():380 — while the hero is immobile
+            // (multi < 0, e.g. "jumping around" after #jump), each elapsed turn
+            // counts down toward 0; when it reaches 0 the hero is freed (unmul).
+            // This sits inside the same once-per-turn block as the reallocation.
+            if ((g.multi ?? 0) < 0) {
+                if (++g.multi === 0) {
+                    // unmul: hero regains control next command.
+                    g.context.travel = g.context.travel1 = g.context.mv = 0;
+                    // C ref: hack.c unmul(NULL) — announce the pending nomovemsg
+                    // (e.g. "You survived that attempt on your life." after a
+                    // declined wizard-mode death) when the immobilizing count
+                    // reaches 0, then clear it.
+                    if (g.nomovemsg) {
+                        await pline(g.nomovemsg);
+                        g.nomovemsg = '';
+                    }
+                }
+            }
+
             // C ref: allmain.c moveloop_core() — once-per-turn "if (u.ublesscnt)
             // u.ublesscnt--;" (the prayer timeout countdown), between run_regions
             // and the regen_hp heal check.  No RNG; gates pray.c can_pray().
@@ -672,17 +801,29 @@ export async function moveloop_turn() {
             // entirely, so this is RNG-inert for every full-health turn.
             regen_hp();
 
-            // once-per-turn things: ambient sounds + hunger + periodic
-            // exercise.  (nh_timeout / age_spells consume no RNG for the
-            // starter sessions.)  C order: dosounds, do_storms, gethungry,
-            // age_spells, exerchk, invault, ..., u_wipe_engr.
+            // C ref: allmain.c moveloop_core() — intrinsic autosearch.  Runs
+            // every turn before dosounds when the hero has Searching (and the
+            // level isn't noautosearch and multi >= 0).  dosearch0(1) consumes
+            // rnl(7-fund) per adjacent hidden door/passage and rnl(8) per
+            // adjacent unseen trap; RNG-inert in the common open-room case.
+            if (youHaveSearching() && !g.level?.flags?.noautosearch
+                && (g.multi == null || g.multi >= 0))
+                await dosearch0(1);
+
+            // once-per-turn things: ambient sounds + hunger + spell aging +
+            // periodic exercise.  (nh_timeout consumes no RNG for the starter
+            // sessions.)  C order: dosounds, do_storms, gethungry, age_spells,
+            // exerchk, invault, ..., u_wipe_engr.
             dosounds();
             gethungry();
+            age_spells(); // C ref: spell.c age_spells — decrnknow each turn (no RNG)
             exerchk();
 
             // u_wipe_engr check: rn2(40 + ACURR(A_DEX) * 3).  acurr order is
-            // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.
-            const dex = g.u?.acurr?.a?.[3] ?? 12;
+            // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.  C ACURR()
+            // includes atemp/abon, so wounded legs (atemp[DEX] = -1) lowers the
+            // effective Dex used by this roll.
+            const dex = acurr_eff(3);
             if (!rn2(40 + dex * 3)) {
                 rnd(3); // u_wipe_engr(rnd(3))
             }
@@ -715,11 +856,24 @@ function regen_hp() {
     // encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved); UNENCUMBERED here.
     const con = u.acurr?.a?.[A_CON] ?? 12;
     let heal = ((u.ulevel || 1) + con) > rn2(100) ? 1 : 0;
-    // (U_CAN_REGEN / Sleepy bonuses never apply to the starter hero.)
+    // C ref: U_CAN_REGEN() == Regeneration — a worn ring of regeneration grants
+    // an extra +1 heal each turn (so the hero recovers every turn).  Sleepy is
+    // never set for the starter hero.
+    if (u_can_regen()) heal += 1;
     if (heal) {
         u.uhp += heal;
         if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
     }
+}
+
+// C ref: youprop.h Regeneration — the hero has the REGENERATION extrinsic.  For
+// the starter sessions this comes only from a worn ring of regeneration
+// (RIN_REGENERATION, otyp 179) on either ring finger.
+const RIN_REGENERATION_OTYP = 179;
+function u_can_regen() {
+    const g = game;
+    return (g.uleft && g.uleft.otyp === RIN_REGENERATION_OTYP)
+        || (g.uright && g.uright.otyp === RIN_REGENERATION_OTYP);
 }
 
 const PM_MONK = 5;
@@ -737,7 +891,6 @@ function exerper() {
     const u = g.u || {};
     const moves = g.moves || 1;
     const isMonk = gameRoleMnum() === PM_MONK;
-
     if (moves % 10 === 0) {
         // Hunger Checks.  uhunger defaults to the C starting value (900 ->
         // NOT_HUNGRY) when not explicitly tracked.
@@ -848,6 +1001,65 @@ export async function moveloop_core() {
     // mcalcmove(usteed); a stale-TRUE umoved after a mount command made JS roll
     // an extra rn2(NORMAL_SPEED) that C does not (seed0103 divergence @ #2533).
     if (g.u) g.u.umoved = false;
+
+    // C ref: allmain.c moveloop_core():485 — `if (gm.multi >= 0 && go.occupation)
+    // { (*go.occupation)(); ...; return; }`.  When an occupation (e.g. #force's
+    // forcelock) is active, the move loop RUNS THE OCCUPATION instead of reading
+    // a command; the spaces in the recorded input then acknowledge the
+    // occupation's --More-- prompts rather than being parsed as commands.  The
+    // occupation returns 0 when finished (clear it) or 1 to continue next turn.
+    if (g._force_box) {
+        const { forcelock } = await import('./extcmd-handlers.js');
+        const busy = await forcelock();
+        // The forcelock turn consumed game time; schedule next turn's per-turn
+        // work (monsters move, etc.).
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        if (!busy) g._force_box = null;
+        return;
+    }
+
+    // C ref: allmain.c moveloop_core() — when the hero is helpless / busy with a
+    // multi-turn action (gm.multi < 0, e.g. "jumping around" after #jump), no
+    // command is read; instead game time keeps passing (context.move stays 1)
+    // and the per-turn work runs until the multi countdown frees the hero.
+    if ((g.multi ?? 0) < 0) {
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        return;
+    }
+
+    // C ref: allmain.c moveloop_core():309 — the wipeoff occupation (set by
+    // #wipe / dowipe).  Runs AFTER the command turn's monster moves and consumes
+    // another game turn, so the hero regains sight only between the command turn
+    // and the following turn.
+    if (g._wipe_occupation) {
+        const { wipeoff } = await import('./apply.js');
+        const busy = await wipeoff();
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        if (!busy) g._wipe_occupation = null;
+        return;
+    }
+
+    // C ref: allmain.c moveloop_core():485 — the eatfood() occupation (set by
+    // eat.c start_eating()).  Like #wipe/#force, the move loop runs the
+    // occupation step instead of reading a command: each turn advances usedtime
+    // and elapses a game turn (monsters move), with no nhgetch in between, so the
+    // whole multi-turn meal produces a single captured screen (the one read at
+    // the next command boundary, showing "You finish eating <corpse>.").
+    if (g._eat_occupation) {
+        const { eatfood_step } = await import('./eat.js');
+        const busy = await eatfood_step();
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        if (!busy) g._eat_occupation = null;
+        return;
+    }
 
     // Read and execute one command.  rhack clears the previous command's
     // top-line message only after the capture for that command has fired

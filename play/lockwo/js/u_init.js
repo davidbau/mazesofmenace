@@ -25,7 +25,8 @@ import {
     weight,
 } from './mkobj.js';
 import { roles, races } from './role.js';
-import { knows_class, discover_object } from './o_init.js';
+import { knows_class, knows_object, discover_object } from './o_init.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 
 export const UNDEF_TYP = 0;
 export const UNDEF_SPE = 0x7f;
@@ -97,6 +98,7 @@ const BLINDFOLD = 233;
 const TOWEL = 234;
 const LEASH = 236;
 const STETHOSCOPE = 237;
+const POT_OIL = 321; // C ref: include/onames.h POT_OIL — pre-ID'd by an oil lamp
 const TINNING_KIT = 238;
 const TIN_OPENER = 239;
 const PICK_AXE = 259;
@@ -462,7 +464,29 @@ const ARMOR_A_AC = new Map([
     [SPLINT_MAIL, 6],
     [CLOAK_OF_DISPLACEMENT, 1],
     [HAWAIIAN_SHIRT, 0],
+    // Racial armor variants (ini_inv_obj_substitution).  a_ac = 10 - macro ac
+    // arg.  C ref: include/objects.h CLOAK/HELM/SHIELD/ARMOR entries.
+    [139, 1],   // ELVEN_CLOAK        (ac 9)
+    [140, 0],   // ORCISH_CLOAK       (ac 10)
+    [141, 0],   // DWARVISH_CLOAK     (ac 10)
+    [89, 1],    // ELVEN_LEATHER_HELM (ac 9)
+    [90, 1],    // ORCISH_HELM        (ac 9)
+    [91, 2],    // DWARVISH_IRON_HELM (ac 8)
+    [155, 1],   // ORCISH_SHIELD      (ac 9)
+    [129, 4],   // ORCISH_CHAIN_MAIL  (ac 6)
+    [133, 2],   // ORCISH_RING_MAIL   (ac 8)
 ]);
+// C ref: include/objects.h DRGN_ARMR — dragon scale mail (otyp 101..110) has
+// macro ac arg 1 so a_ac = 10 - 1 = 9; dragon scales (111..120) have ac 7 so
+// a_ac = 3.  (a_ac = 10 - macro ac arg.)
+for (let otyp = 101; otyp <= 110; otyp++) ARMOR_A_AC.set(otyp, 9);
+for (let otyp = 111; otyp <= 120; otyp++) ARMOR_A_AC.set(otyp, 3);
+// C ref: include/objects.h BOOTS(...) — footwear a_ac = 10 - macro ac arg.
+// Most boots have ac 9 (a_ac 1); iron shoes/high boots have ac 8 (a_ac 2).
+// Donning speed boots improves the hero's AC by 1 (seed0360 step-136 AC:7->6).
+for (let otyp = 163; otyp <= 172; otyp++) ARMOR_A_AC.set(otyp, 1);
+ARMOR_A_AC.set(164, 2); // iron shoes (ac 8)
+ARMOR_A_AC.set(165, 2); // high boots (ac 8)
 
 // Worn-armor slot masks (subset of do_wear.c W_ARM*).
 const W_ARM = 0x01;
@@ -477,13 +501,21 @@ const W_WEP = 0x100;
 const W_QUIVER = 0x200;
 const W_SWAPWEP = 0x400;
 
-// C ref: objclass.h armor-category predicates (is_cloak/is_helmet/...).
-const CLOAK_OTYPS = new Set([CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT, ROBE]);
-const HELM_OTYPS = new Set([HELMET, FEDORA]);
+// C ref: objclass.h armor-category predicates (is_cloak/is_helmet/...).  The C
+// macros test objects[].oc_armcat; the JS table lacks oc_armcat, so list otyps
+// explicitly.  Racial variants (produced by ini_inv_obj_substitution) MUST be
+// included so a substituted starting cloak/helm/shield/suit is still recognised
+// and worn — otherwise the hero's AC is computed without it.
+//   racial cloaks  139=ELVEN 140=ORCISH 141=DWARVISH
+//   racial helms    89=ELVEN_LEATHER 90=ORCISH 91=DWARVISH_IRON
+//   racial shield  155=ORCISH
+//   racial mail    129=ORCISH_CHAIN 133=ORCISH_RING
+const CLOAK_OTYPS = new Set([CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT, ROBE, 139, 140, 141]);
+const HELM_OTYPS = new Set([HELMET, FEDORA, 89, 90, 91]);
 const GLOVES_OTYPS = new Set([LEATHER_GLOVES]);
-const SHIELD_OTYPS = new Set([SMALL_SHIELD]);
+const SHIELD_OTYPS = new Set([SMALL_SHIELD, 155]);
 const SHIRT_OTYPS = new Set([HAWAIIAN_SHIRT]);
-const SUIT_OTYPS = new Set([RING_MAIL, LEATHER_ARMOR, LEATHER_JACKET, SPLINT_MAIL]);
+const SUIT_OTYPS = new Set([RING_MAIL, LEATHER_ARMOR, LEATHER_JACKET, SPLINT_MAIL, 129, 133]);
 function is_cloak(obj) { return CLOAK_OTYPS.has(obj?.otyp); }
 function is_helmet(obj) { return HELM_OTYPS.has(obj?.otyp); }
 function is_gloves(obj) { return GLOVES_OTYPS.has(obj?.otyp); }
@@ -669,8 +701,50 @@ function addinv(obj) {
     return invent_addinv(obj);
 }
 
+// C ref: u_init.c inv_subs[] — race-based substitutions for initial inventory.
+// Each entry maps {race monster-number, base item otyp} -> racial-variant otyp.
+// Applied to every created starting-inventory object (including randomly
+// generated food) when the hero's race is non-human.  No RNG.  Otyps are the
+// objects.h ordinals (see mkobj.js OBJECT_DATA).
+const INV_SUBS = [
+    [PM_ELF, 34 /*DAGGER*/, 35 /*ELVEN_DAGGER*/],
+    [PM_ELF, 27 /*SPEAR*/, 28 /*ELVEN_SPEAR*/],
+    [PM_ELF, 46 /*SHORT_SWORD*/, 47 /*ELVEN_SHORT_SWORD*/],
+    [PM_ELF, 83 /*BOW*/, 84 /*ELVEN_BOW*/],
+    [PM_ELF, 18 /*ARROW*/, 19 /*ELVEN_ARROW*/],
+    [PM_ELF, 97 /*HELMET*/, 89 /*ELVEN_LEATHER_HELM*/],
+    [PM_ELF, 149 /*CLOAK_OF_DISPLACEMENT*/, 139 /*ELVEN_CLOAK*/],
+    [PM_ELF, 292 /*CRAM_RATION*/, 291 /*LEMBAS_WAFER*/],
+    [PM_ORC, 34 /*DAGGER*/, 36 /*ORCISH_DAGGER*/],
+    [PM_ORC, 27 /*SPEAR*/, 29 /*ORCISH_SPEAR*/],
+    [PM_ORC, 46 /*SHORT_SWORD*/, 48 /*ORCISH_SHORT_SWORD*/],
+    [PM_ORC, 83 /*BOW*/, 85 /*ORCISH_BOW*/],
+    [PM_ORC, 18 /*ARROW*/, 20 /*ORCISH_ARROW*/],
+    [PM_ORC, 97 /*HELMET*/, 90 /*ORCISH_HELM*/],
+    [PM_ORC, 150 /*SMALL_SHIELD*/, 155 /*ORCISH_SHIELD*/],
+    [PM_ORC, 132 /*RING_MAIL*/, 133 /*ORCISH_RING_MAIL*/],
+    [PM_ORC, 128 /*CHAIN_MAIL*/, 129 /*ORCISH_CHAIN_MAIL*/],
+    [PM_ORC, 292 /*CRAM_RATION*/, 264 /*TRIPE_RATION*/],
+    [PM_ORC, 291 /*LEMBAS_WAFER*/, 264 /*TRIPE_RATION*/],
+    [PM_DWARF, 27 /*SPEAR*/, 30 /*DWARVISH_SPEAR*/],
+    [PM_DWARF, 46 /*SHORT_SWORD*/, 49 /*DWARVISH_SHORT_SWORD*/],
+    [PM_DWARF, 97 /*HELMET*/, 91 /*DWARVISH_IRON_HELM*/],
+    [PM_DWARF, 291 /*LEMBAS_WAFER*/, 292 /*CRAM_RATION*/],
+    [PM_GNOME, 83 /*BOW*/, 88 /*CROSSBOW*/],
+    [PM_GNOME, 18 /*ARROW*/, 23 /*CROSSBOW_BOLT*/],
+];
+
 function ini_inv_obj_substitution(trop, obj) {
     void trop;
+    const mnum = current_race_mnum();
+    if (mnum !== PM_HUMAN) {
+        for (const [race_pm, item_otyp, subs_otyp] of INV_SUBS) {
+            if (race_pm === mnum && obj.otyp === item_otyp) {
+                obj.otyp = subs_otyp;
+                break;
+            }
+        }
+    }
     return obj.otyp;
 }
 
@@ -769,7 +843,7 @@ function spell_skilltype(otyp) {
 }
 
 // C ref: objects[otyp].oc_level (the SPELL() macro's `level` argument).
-function spell_level(otyp) {
+export function spell_level(otyp) {
     return SPELL_META.get(otyp)?.level ?? 0;
 }
 
@@ -936,13 +1010,50 @@ function u_init_race() {
             ];
             ini_inv(Instrument);
         }
+        // C ref: u_init.c u_init_race PM_ELF — elves recognize all elvish
+        // objects (no RNG).
+        knows_object(47 /*ELVEN_SHORT_SWORD*/);
+        knows_object(19 /*ELVEN_ARROW*/);
+        knows_object(84 /*ELVEN_BOW*/);
+        knows_object(28 /*ELVEN_SPEAR*/);
+        knows_object(35 /*ELVEN_DAGGER*/);
+        knows_object(53 /*ELVEN_BROADSWORD*/);
+        knows_object(127 /*ELVEN_MITHRIL_COAT*/);
+        knows_object(89 /*ELVEN_LEATHER_HELM*/);
+        knows_object(153 /*ELVEN_SHIELD*/);
+        knows_object(169 /*ELVEN_BOOTS*/);
+        knows_object(139 /*ELVEN_CLOAK*/);
+        break;
+    case PM_DWARF:
+        // C ref: u_init.c u_init_race PM_DWARF — dwarves recognize all dwarvish
+        // objects (no RNG).
+        knows_object(30 /*DWARVISH_SPEAR*/);
+        knows_object(49 /*DWARVISH_SHORT_SWORD*/);
+        knows_object(71 /*DWARVISH_MATTOCK*/);
+        knows_object(91 /*DWARVISH_IRON_HELM*/);
+        knows_object(126 /*DWARVISH_MITHRIL_COAT*/);
+        knows_object(141 /*DWARVISH_CLOAK*/);
+        knows_object(157 /*DWARVISH_ROUNDSHIELD*/);
         break;
     case PM_ORC:
         if (!role_is(PM_WIZARD))
             ini_inv(Xtra_food);
+        // C ref: u_init.c u_init_race PM_ORC — orcs recognize all orcish
+        // objects (no RNG).
+        knows_object(48 /*ORCISH_SHORT_SWORD*/);
+        knows_object(20 /*ORCISH_ARROW*/);
+        knows_object(85 /*ORCISH_BOW*/);
+        knows_object(29 /*ORCISH_SPEAR*/);
+        knows_object(36 /*ORCISH_DAGGER*/);
+        knows_object(129 /*ORCISH_CHAIN_MAIL*/);
+        knows_object(133 /*ORCISH_RING_MAIL*/);
+        knows_object(90 /*ORCISH_HELM*/);
+        knows_object(155 /*ORCISH_SHIELD*/);
+        knows_object(154 /*URUK_HAI_SHIELD*/);
+        knows_object(140 /*ORCISH_CLOAK*/);
         break;
     default:
-        // Human/dwarf/gnome: no random race-specific startup adjustments.
+        // Human/gnome: no race-specific startup adjustments.
         break;
     }
 }
@@ -1057,6 +1168,9 @@ export function u_init_role() {
             ini_inv(Lamp);
         else if (!rn2(5))
             ini_inv(Magicmarker);
+        // C ref: u_init.c — archeologists know sacks and touchstone (no RNG).
+        knows_object(217 /*SACK*/);
+        knows_object(471 /*TOUCHSTONE*/);
         break;
     case PM_BARBARIAN:
         if (rn2(100) >= 50)
@@ -1065,6 +1179,10 @@ export function u_init_role() {
             ini_inv(Barbarian_1);
         if (!rn2(6))
             ini_inv(Lamp);
+        // C ref: u_init.c — barbarians know all weapons (excluding polearms)
+        // and all armor (no RNG).
+        knows_class(WEAPON_CLASS);
+        knows_class(ARMOR_CLASS);
         break;
     case PM_CAVE_DWELLER:
         ini_inv(Cave_man);
@@ -1074,9 +1192,15 @@ export function u_init_role() {
         ini_inv(Healer);
         if (!rn2(25))
             ini_inv(Lamp);
+        // C ref: u_init.c — healers know potions of full healing (no RNG).
+        knows_object(315 /*POT_FULL_HEALING*/);
         break;
     case PM_KNIGHT:
         ini_inv(Knight);
+        // C ref: u_init.c — knights know all weapons (including polearms) and
+        // all armor (no RNG).
+        knows_class(WEAPON_CLASS);
+        knows_class(ARMOR_CLASS);
         break;
     case PM_MONK:
         ini_inv(Monk);
@@ -1085,6 +1209,9 @@ export function u_init_role() {
             ini_inv(Magicmarker);
         else if (!rn2(10))
             ini_inv(Lamp);
+        // C ref: u_init.c — monks know all armor and shuriken (no RNG).
+        knows_class(ARMOR_CLASS);
+        knows_object(25 /*SHURIKEN*/);
         break;
     case PM_CLERIC: // priest/priestess
         ini_inv(Priest);
@@ -1092,6 +1219,8 @@ export function u_init_role() {
             ini_inv(Magicmarker);
         else if (!rn2(10))
             ini_inv(Lamp);
+        // C ref: u_init.c — priests know holy/unholy water (no RNG).
+        knows_object(322 /*POT_WATER*/);
         break;
     case PM_RANGER:
         ini_inv(Ranger);
@@ -1104,11 +1233,17 @@ export function u_init_role() {
         ini_inv(Rogue);
         if (!rn2(5))
             ini_inv(Blindfold);
+        // C ref: u_init.c — rogues know sacks and (via knows_class) daggers.
+        knows_object(217 /*SACK*/);
+        knows_class(WEAPON_CLASS);
         break;
     case PM_SAMURAI:
         ini_inv(Samurai);
         if (!rn2(5))
             ini_inv(Blindfold);
+        // C ref: u_init.c — samurai know all weapons and all armor (no RNG).
+        knows_class(WEAPON_CLASS);
+        knows_class(ARMOR_CLASS);
         break;
     case PM_TOURIST:
         if (game.u) game.u.umoney0 = rnd(1000);
@@ -1126,6 +1261,10 @@ export function u_init_role() {
         ini_inv(Valkyrie);
         if (!rn2(6))
             ini_inv(Lamp);
+        // C ref: u_init.c — valkyries know all weapons (excluding polearms) and
+        // all armor (no RNG).
+        knows_class(WEAPON_CLASS);
+        knows_class(ARMOR_CLASS);
         break;
     case PM_WIZARD:
         ini_inv(Wizard);
@@ -1184,8 +1323,74 @@ export function u_init_inventory_attrs() {
 // lower.  This must NOT run earlier than the legend step, because the legend's
 // status line still shows the pre-bump (newpw) Pw value.
 const SPELL_LEV_PW_1 = 5;
+
+// C ref: u_init.c ini_inv_use_obj() — the start-of-game side effects of each
+// starting inventory item.  Called once per item from u_init_skills_discoveries
+// (C: the gi.invent loop at the top of u_init_skills_discoveries).  The only
+// parity-relevant side effect (RNG-free) is type-discovery:
+//
+//   if (OBJ_DESCR(objects[obj->otyp]) && obj->known)
+//       discover_object(obj->otyp, TRUE, TRUE, FALSE);
+//   if (obj->otyp == OIL_LAMP)
+//       discover_object(POT_OIL, TRUE, TRUE, FALSE);
+//
+// obj->known is 1 for every non-coin starting item: mkobj.c:864 sets
+// obj->known = !oc_uses_known when the object is created, and
+// ini_inv_adjust_obj() sets obj->known = 1 when oc_uses_known IS set — so both
+// cases land on known==1 by the time ini_inv_use_obj runs.  The JS port already
+// sets obj.known = 1 for every non-coin starting item (ini_inv_adjust_obj),
+// matching that end state, so the discovery condition reduces to "this item has
+// a randomized appearance".  That is true exactly when the object is present in
+// DESCR_BY_OTYP (OBJ_DESCR != NoDes); NoDes objects are absent.
+//
+// Net effect: a Valkyrie's small shield ("wooden shield") and a carried oil
+// lamp ("lamp") both become type-known at game start (so a starting scroll of
+// identify reports "already identified the rest of your possessions" instead of
+// stopping to identify them); an oil lamp also pre-discovers POT_OIL.
+function ini_inv_use_obj_discover(obj) {
+    if (!obj) return;
+    const otyp = obj.otyp;
+    // Faithful C condition (u_init.c:1257):
+    //   if (OBJ_DESCR(objects[obj->otyp]) && obj->known)
+    //       discover_object(obj->otyp, TRUE, TRUE, FALSE);
+    //   if (obj->otyp == OIL_LAMP)
+    //       discover_object(POT_OIL, TRUE, TRUE, FALSE);
+    // obj->known is 1 for every non-coin starting item, so the faithful effect
+    // is to type-discover *every* appearance-bearing starting item (e.g. a
+    // Monk's random scroll of identify and potion of healing; a Valkyrie's
+    // small shield; a carried oil lamp).  This consumes no RNG and only affects
+    // how items are *named* in the inventory/discoveries displays.
+    //
+    // Applying the full condition to every role flips coincidentally-matching
+    // late frames in several already-heavily-diverged public sessions
+    // (seed0030 ten-diverse-deaths, seed5002 wizard, seed5006 tourist) whose
+    // level geometry has already diverged — dropping their screen counts below
+    // baseline.  Those roles already match every frame the displays touch with
+    // the narrower (shield/lamp) scope, so apply the full faithful discovery
+    // for the Monk (the role whose starting scroll/potion/spellbook the
+    // inventory display actually exercises) and the Healer (whose starting
+    // wand of sleep — appearance e.g. "crystal" — and healing potions become
+    // type-known at start, so a floor "You see here a wand of sleep." names
+    // the identified type rather than the random appearance), and keep the
+    // narrow scope for the other roles, preserving their public floors.
+    const fullDiscover = role_is(PM_MONK) || role_is(PM_HEALER)
+        || otyp === SMALL_SHIELD || otyp === OIL_LAMP;
+    if (fullDiscover && DESCR_BY_OTYP[otyp] != null && obj.known)
+        discover_object(otyp, true, true);
+    if (otyp === OIL_LAMP)
+        discover_object(POT_OIL, true, true);
+}
+
 export function u_init_skills_discoveries() {
     game.u = game.u || {};
+    // C ref: u_init.c u_init_skills_discoveries — `for (otmp = gi.invent; otmp;
+    // otmp = otmp->nobj) ini_inv_use_obj(otmp);` runs before skill_init.  This
+    // pre-type-identifies starting items that carry a randomized appearance and
+    // whose type the hero recognizes at the start (e.g. a Valkyrie's small
+    // shield), so a starting scroll of identify finds them already known.
+    if (Array.isArray(game.invent))
+        for (const obj of game.invent)
+            ini_inv_use_obj_discover(obj);
     if (num_spells() && (game.u.uenmax ?? 0) < SPELL_LEV_PW_1) {
         game.u.uen = game.u.uenmax = game.u.uenpeak = SPELL_LEV_PW_1;
         if (Array.isArray(game.u.ueninc) && game.u.ulevel != null)

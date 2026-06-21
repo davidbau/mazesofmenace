@@ -57,6 +57,7 @@ export const LEMBAS_WAFER = 291;
 export const CRAM_RATION = 292;
 export const FOOD_RATION = 293;
 export const POT_OIL = 321;
+export const POT_CONFUSION = 299;
 export const POT_WATER = 322;
 export const POT_HEALING = 307;
 export const POT_EXTRA_HEALING = 308;
@@ -113,6 +114,11 @@ export const FROST_HORN = 250;
 export const FIRE_HORN = 251;
 export const DRUM_OF_EARTHQUAKE = 258;
 export const UNICORN_HORN = 261;
+export const SPEED_BOOTS = 166;
+export const WATER_WALKING_BOOTS = 167;
+export const JUMPING_BOOTS = 168;
+export const ELVEN_BOOTS = 169;
+export const KICKING_BOOTS = 170;
 export const FUMBLE_BOOTS = 171;
 export const LEVITATION_BOOTS = 172;
 export const HELM_OF_OPPOSITE_ALIGNMENT = 99;
@@ -682,6 +688,10 @@ const OC_SKILL = {
     64: 16, 65: 16, 66: 16, 67: 16, 68: 16, 69: 16, 70: 16, 71: 4, 72: 19,
     73: 11, 74: 11, 75: 12, 76: 14, 77: 10, 78: 26, 79: 15, 80: 10, 81: 13,
     82: 26, 83: 20, 84: 20, 85: 20, 86: 20, 87: 21, 88: 22,
+    // Tool-class weapon-tools (WEPTOOL in objects.h): these have a real
+    // oc_skill so is_weptool() recognises them.  P_PICK_AXE=4, P_FLAIL=13,
+    // P_UNICORN_HORN=27.
+    259: 4 /*pick-axe*/, 260: 13 /*grappling hook*/, 261: 27 /*unicorn horn*/,
 };
 
 export const objects = OBJECT_DATA.map(([otyp, sym, oclass, prob, flags, material, dir, name]) => ({
@@ -689,7 +699,27 @@ export const objects = OBJECT_DATA.map(([otyp, sym, oclass, prob, flags, materia
     oc_color: OC_COLOR[otyp] != null ? OC_COLOR[otyp] : 8,
     oc_skill: OC_SKILL[otyp] != null ? OC_SKILL[otyp] : 0,
     oc_subtyp: OC_SKILL[otyp] != null ? OC_SKILL[otyp] : 0,
+    oc_magic: 0,
 }));
+
+// C ref: include/objects.h BITS() mgc field — oc_magic, the "magic" flag used
+// by poly_obj() (zap.c) to keep a polymorphed object's magic-or-not status the
+// same as the source, and by obj_shuffle_range().  Extracted from the per-class
+// object macros (WAND/POTION/SCROLL/RING/AMULET/TOOL/CONTAINER/WEPTOOL/SPELL,
+// ARMOR family, ROCK) where the mgc argument is 1; WEAPON/PROJECTILE/BOW/FOOD/
+// GEM/EYEWEAR are always non-magic.  (o_init.js also sets a subset of these at
+// init time for the shuffle-range boundary; keeping the full table here makes
+// poly_obj() faithful for every class that can land on a polymorph pile.)
+const OC_MAGIC_RANGES = [
+    [93, 94], [96, 96], [98, 100], [139, 139], [143, 144], [146, 149],
+    [151, 152], [158, 158], [160, 162], [166, 211], [219, 220], [228, 228],
+    [231, 231], [241, 242], [246, 246], [248, 248], [250, 252], [254, 254],
+    [258, 258], [261, 261], [297, 316], [323, 343], [365, 405], [409, 414],
+    [416, 436], [469, 471],
+];
+for (const [lo, hi] of OC_MAGIC_RANGES)
+    for (let i = lo; i <= hi; i++)
+        if (objects[i]) objects[i].oc_magic = 1;
 
 const objectsByClass = Array.from({ length: MAXOCLASSES + 1 }, () => []);
 for (const obj of objects) {
@@ -1102,6 +1132,54 @@ const BASE_OC_WEIGHT = Object.freeze({
     [BOULDER]: 6000, [STATUE]: 2500, [HEAVY_IRON_BALL]: 480, [IRON_CHAIN]: 120,
 });
 
+// C ref: objects.h objects[].oc_weight — the per-otyp base encumbrance, dumped
+// byte-for-byte from the recorder's compiled obj_init[] table and re-keyed by
+// JS otyp via object NAME (the JS otyp numbering shifts by +1 relative to C
+// after otyp 363 because C carries an extra SCR_MAIL entry, so a raw C-index
+// copy would be off-by-one for boulders/gems/etc).  Used by base_oc_weight()
+// so mon.c can_carry()/curr_mon_load() see real weights: a RING_MAIL (250) or
+// other heavy armor on the floor is now correctly rejected by a small pet,
+// matching C's dog_goal APPORT scan (the rn2(8)/obj_resists stream).  Zero
+// entries (generic dummies, corpse — computed by species) fall through to the
+// existing per-class / dynamic logic.  Class-uniform items (rings, amulets,
+// potions, scrolls, books, wands) are intentionally omitted here and resolved
+// by CLASS_OC_WEIGHT; coins/corpses/containers/statues keep their special
+// cases in weight() regardless of this table.
+const OC_WEIGHT = Object.freeze({
+    18:1, 19:1, 20:1, 21:1, 22:1, 23:1, 24:1, 25:1, 26:5, 27:30,
+    28:30, 29:30, 30:35, 31:36, 32:20, 33:25, 34:10, 35:10, 36:10, 37:12, 38:10, 39:5, 40:5, 41:5,
+    42:20, 43:20, 44:60, 45:120, 46:30, 47:30, 48:30, 49:30, 50:40, 51:40, 52:70, 53:70, 54:40, 55:150,
+    56:40, 57:60, 58:40, 59:80, 60:50, 61:50, 62:75, 63:150, 64:120, 65:125, 66:60, 67:80, 68:120, 69:150,
+    70:100, 71:120, 72:180, 73:30, 74:36, 75:120, 76:50, 77:30, 78:20, 79:40, 80:15, 81:15, 82:20, 83:30,
+    84:30, 85:30, 86:30, 87:3, 88:50, 89:3, 90:30, 91:40, 92:3, 93:4, 94:4, 95:10, 96:40, 97:30,
+    98:50, 99:50, 100:50, 101:40, 102:40, 103:40, 104:40, 105:40, 106:40, 107:40, 108:40, 109:40, 110:40, 111:40,
+    112:40, 113:40, 114:40, 115:40, 116:40, 117:40, 118:40, 119:40, 120:40, 121:450, 122:415, 123:450, 124:400, 125:350,
+    126:150, 127:150, 128:300, 129:300, 130:250, 131:200, 132:250, 133:250, 134:150, 135:30, 136:5, 137:5, 138:3, 139:10,
+    140:10, 141:10, 142:10, 143:15, 144:10, 145:15, 146:10, 147:10, 148:10, 149:10, 150:30, 151:30, 152:30, 153:40,
+    154:50, 155:50, 156:100, 157:100, 158:50, 159:10, 160:10, 161:30, 162:10, 163:10, 164:50, 165:20, 166:20, 167:15,
+    168:20, 169:15, 170:50, 171:20, 172:15, 173:3, 174:3, 175:3, 176:3, 177:3, 178:50, 179:3, 180:3, 181:3,
+    182:3, 183:50, 184:3, 185:3, 186:3, 187:3, 188:3, 189:3, 190:3, 191:3, 192:3, 193:3, 194:7, 195:3,
+    196:7, 197:3, 198:50, 199:20, 200:3, 201:20, 202:20, 203:20, 204:20, 205:20, 206:20, 207:20, 208:20, 209:20,
+    210:20, 211:20, 212:20, 213:20, 214:350, 215:600, 216:900, 217:15, 218:15, 219:15, 220:15, 221:3, 222:4, 223:1,
+    224:2, 225:2, 226:30, 227:20, 228:20, 229:12, 230:13, 231:150, 232:3, 233:2, 234:5, 235:200, 236:12, 237:4,
+    238:100, 239:4, 240:15, 241:50, 242:2, 243:200, 244:200, 245:3, 246:3, 247:5, 248:5, 249:18, 250:18, 251:18,
+    252:18, 253:30, 254:30, 255:30, 256:10, 257:25, 258:25, 259:100, 260:30, 261:20, 262:10, 263:10, 264:10,
+    266:1, 267:1, 268:1, 269:400, 270:5, 271:20, 272:20, 273:20, 274:20, 275:1, 276:1, 277:2, 278:2, 279:2,
+    280:5, 281:2, 282:2, 283:1, 284:1, 285:5, 286:2, 287:10, 288:2, 289:1, 290:2, 291:5, 292:15, 293:20,
+    294:10, 295:10, 296:10, 297:20, 298:50, 299:20, 300:20, 301:20, 302:20, 303:50, 304:20, 305:50, 306:20, 307:50,
+    308:50, 309:20, 310:7, 311:20, 312:20, 313:20, 314:20, 315:20, 316:7, 317:20, 318:20, 319:20, 320:20, 321:20,
+    322:20, 323:5, 324:5, 325:50, 326:5, 327:50, 328:5, 329:7, 330:5, 331:5, 332:7, 333:7, 334:5, 335:5,
+    336:50, 337:50, 338:5, 339:7, 340:5, 341:5, 342:5, 343:5, 364:50, 365:50, 366:7, 367:50, 368:50, 369:7,
+    370:50, 371:7, 372:50, 373:50, 374:50, 375:50, 376:50, 377:50, 378:50, 379:7, 380:50, 381:7, 382:50, 383:50,
+    384:50, 385:50, 386:50, 387:50, 388:50, 389:50, 390:50, 391:50, 392:50, 393:50, 394:50, 395:50, 396:50, 397:50,
+    398:7, 399:50, 400:50, 401:7, 402:50, 403:50, 404:50, 405:50, 406:50, 407:10, 408:50, 409:7, 410:7, 411:7,
+    412:7, 413:7, 414:7, 415:7, 416:7, 417:7, 418:7, 419:7, 420:7, 421:7, 422:7, 423:7, 424:7, 425:7,
+    426:7, 427:7, 428:7, 429:7, 430:7, 431:7, 432:7, 433:7, 437:1, 438:1, 439:1, 440:1, 441:1, 442:1,
+    443:1, 444:1, 445:1, 446:1, 447:1, 448:1, 449:1, 450:1, 451:1, 452:1, 453:1, 454:1, 455:1, 456:1,
+    457:1, 458:1, 459:1, 460:1, 461:1, 462:1, 463:1, 464:1, 465:1, 466:1, 467:1, 468:1, 469:10, 470:500,
+    471:10, 472:10, 473:10, 474:6000, 475:2500, 476:480, 477:120, 478:1, 479:1,
+});
+
 const CANDELABRUM_OF_INVOCATION = 262;
 
 // C ref: objclass.h Is_container(otmp) — LARGE_BOX..BAG_OF_TRICKS.
@@ -1124,6 +1202,10 @@ const CLASS_OC_WEIGHT = Object.freeze({
 function base_oc_weight(otmp) {
     const b = BASE_OC_WEIGHT[otmp.otyp];
     if (b != null) return b;
+    // Authoritative per-otyp oc_weight from objects.h (nonzero entries only;
+    // zero entries — dummies / corpse — fall through to the dynamic logic).
+    const ocw = OC_WEIGHT[otmp.otyp];
+    if (ocw != null && ocw > 0) return ocw;
     const tableWt = objects[otmp.otyp]?.weight;
     if (tableWt != null) return tableWt;
     const cls = CLASS_OC_WEIGHT[otmp.oclass];

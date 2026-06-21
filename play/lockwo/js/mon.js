@@ -8,8 +8,10 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { NORMAL_SPEED, A_NEUTRAL } from './const.js';
-import { dochug, initMonMoveState } from './monmove.js';
+import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit } from './const.js';
+import { dochug, initMonMoveState, m_next2u } from './monmove.js';
+import { cansee } from './vision.js';
+import { t_at } from './trap.js';
 
 // Speed-modifier flags (permonst.mspeed); C ref: monst.h.
 const MSLOW = 1;
@@ -229,6 +231,69 @@ export function mcalcdistress() {
     }
 }
 
+// C ref: mondata.h is_hider(ptr) = (mflags1 & M1_HIDE).  The monster data here
+// carries no mflags1, so identify the hiding species by pmidx (the 8 M1_HIDE
+// entries in include/monsters.h: small/large/giant mimic, rock/iron/glass
+// piercer, lurker above, trapper).
+const M1_HIDE_PMIDX = new Set([64, 65, 66, 78, 79, 80, 98, 99]);
+function is_hider(ptr) {
+    return ptr != null && M1_HIDE_PMIDX.has(ptr.pmidx);
+}
+
+// C ref: monsym.h S_MIMIC=13, S_PIERCER=16, S_TRAPPER=20.  ceiling_hider(ptr)
+// is True for clinging hiders that aren't mimics and for flyers (lurker above);
+// piercers (S_PIERCER) cling so they are ceiling hiders, mimics are not.
+const S_MIMIC = 13, S_PIERCER = 16, S_TRAPPER = 20;
+function ceiling_hider(ptr) {
+    // M1_CLING hiders (piercers) and M1_FLY hiders (lurker above) hang from the
+    // ceiling; the mimics (S_MIMIC) and floor trapper do not.
+    const mcls = ptr?.mcls;
+    return mcls === S_PIERCER || ptr?.pmidx === 98 /* lurker above (flyer) */;
+}
+
+// C ref: display.c sensemon(mon) — telepathy / detect-monster sensing.  The
+// knight / monsters in these sessions carry no telepathy item, ESP intrinsic,
+// or detect-monster effect, so the hero never senses a monster magically.
+function sensemon(_mtmp) { return false; }
+
+// C ref: mon.c restrap(mtmp) — an unwatched hider may re-hide.  Returns true if
+// the monster successfully hid (in which case movemon_singlemon skips dochug,
+// so the monster does not move and its distfleeck/m_move RNG is not consumed).
+// The leading short-circuit chain decides whether the rn2(3) "stays revealed"
+// roll fires AT ALL — it only rolls when the hero cannot see the monster's
+// square and the earlier disqualifiers are all false.
+function restrap(mtmp) {
+    const u = game.u;
+    const t = (mtmp.mtrapped) ? t_at(mtmp.mx, mtmp.my) : null;
+    if (mtmp.mcan
+        || mtmp.m_ap_type            // M_AP_TYPE(mtmp): wearing an appearance
+        || cansee(mtmp.mx, mtmp.my)  // hero can see the square -> stays visible
+        || rn2(3)
+        || mtmp === u?.ustuck
+        // can't hide while trapped except in pits
+        || (mtmp.mtrapped && t && !is_pit(t.ttyp))
+        // can't hide on ceiling if there isn't one (always has one in dungeon)
+        || (ceiling_hider(mtmp.data) && !has_ceiling())
+        // won't hide when adjacent to hero and magically sensed
+        || (sensemon(mtmp) && m_next2u(mtmp)))
+        return false;
+
+    if (mtmp.data?.mcls === S_MIMIC) {
+        if (mtmp.msleeping || mtmp.mfrozen) return false;
+        // set_mimic_sym: the mimic disguises itself; no RNG beyond the rolls
+        // inside set_mimic_sym (not reached by our piercer-only sessions).
+        return true;
+    } else if (game.level?.at(mtmp.mx, mtmp.my)?.typ === ROOM) {
+        mtmp.mundetected = 1;
+        return true;
+    }
+    return false;
+}
+
+// C ref: dungeon.c has_ceiling(&u.uz) — TRUE everywhere except the endgame's
+// air/water planes, which these dungeon sessions never reach.
+function has_ceiling() { return true; }
+
 // C ref: mon.c movemon_singlemon(mtmp) — drive one monster's move, returning
 // true if it still has movement points left after this action.
 async function movemon_singlemon(mtmp) {
@@ -248,6 +313,23 @@ async function movemon_singlemon(mtmp) {
     // is consumed here: peace_minded only rolls for co-aligned monsters and
     // those rolls already happened in the makemon RNG stream at create time.
     initMonMoveState(mtmp);
+
+    // C ref: mon.c movemon_singlemon() — hiding monsters (mimics, piercers,
+    // lurker above / trapper; M1_HIDE) get a chance to re-hide BEFORE dochug.
+    // If restrap() succeeds the monster hides and skips its move entirely.
+    if (is_hider(mtmp.data)) {
+        // unwatched mimics and piercers may hide again
+        if (restrap(mtmp)) return false;
+        // C ref: mon.c:1287-1290 — a hider still wearing a FURNITURE/OBJECT
+        // appearance (a mimic disguised as an object/furniture it never gave
+        // up) skips its move ENTIRELY: it neither moves nor attacks while
+        // camouflaged.  This must be checked BEFORE the mundetected gate.
+        // (seed5002 step-190: a small mimic disguised as a `(` was attacking
+        // the hero in JS — `The small mimic bites!` — while C left it inert.)
+        if (mtmp.m_ap_type === 'furniture' || mtmp.m_ap_type === 'obj')
+            return false;
+        if (mtmp.mundetected) return false;
+    }
 
     await dochug(mtmp);
     return false;

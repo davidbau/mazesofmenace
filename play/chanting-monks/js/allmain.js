@@ -28,7 +28,7 @@ import { settrack } from './translated/track.js';
 import { nh_timeout, do_storms } from './translated/timeout.js';
 import { regen_hp, regen_pw, maybe_generate_rnd_mon, u_calc_moveamt } from './translated/allmain.js';
 import { age_spells } from './translated/spell.js';
-import { glibr } from './translated/do_wear.js';
+import { glibr, find_ac } from './translated/do_wear.js';
 import { overexert_hp, near_capacity, unmul, runmode_delay_output, monster_nearby } from './translated/hack.js';
 import { prayer_done } from './translated/pray.js';
 import {
@@ -42,7 +42,8 @@ import { run_regions } from './translated/region.js';
 import { mkot_trap_warn } from './translated/artifact.js';
 import { dosounds } from './translated/sounds.js';
 import { gethungry } from './translated/eat.js';
-import { exerchk, exercise } from './translated/attrib.js';
+import { acurr, exerchk, exercise } from './translated/attrib.js';
+import { A_DEX } from './translated/nh-constants.js';
 import { tele } from './translated/teleport.js';
 import { polyself } from './translated/polyself.js';
 import { you_were } from './translated/were.js';
@@ -2410,14 +2411,20 @@ async function per_iter_setup() {
         game.moves = (game.moves || 1) + 1;
     }
 
-    // Multi-turn freeze: C ref allmain.c:380-388.  Originally narrowed
-    // to prayer_done only; 2026-05-30 extended via allowlist to also
-    // include the take-off finalizers (Armor_off/Shield_off/etc).
-    // These are structurally simple cleanup functions (setworn(null)
-    // + property updates, no PRNG draws) so safer to fire than the
-    // broader category of afternmv targets.  Per
-    // project_singlechar_dispatch_gap memory's callee-blocker
-    // pattern: incremental allowlist beats all-or-nothing broadening.
+    // Multi-turn freeze: C ref allmain.c:380-388.  C ALWAYS runs the
+    // countdown (`if (++gm.multi == 0) unmul()`) for any multi<0; JS gates
+    // it on an allowlist because firing unsafe (not-yet-ported) afternmv
+    // callbacks at multi==0 regresses.  NON-NULL allowlisted afternmv
+    // (prayer_done / *_off / eatmdone) counts down HERE.  NULL-afternmv
+    // freezes (sleep, sleep-ray helpless, count-wait) are deferred to the
+    // END of post_turn_block instead — C runs the multi<0 countdown at
+    // allmain.c:380, AFTER gethungry (354), and gethungry's "asleep" rn2(10)
+    // (eat.c:3174) is gated on Unaware = (multi<0 && unconscious()).
+    // Incrementing multi to 0 BEFORE gethungry would make the last sleep
+    // turn see Unaware=false and skip that rn2 (seed0016's residual fork at
+    // div 3578).  We keep non-null afternmv early because deferring it
+    // entangles with the *_off occupation path and regresses (see memory
+    // feedback_atomic_multi_turn_prng_drift).
     const __mtf_allow = (game.afternmv === prayer_done
         || game.afternmv === Armor_off
         || game.afternmv === Shield_off
@@ -2428,7 +2435,14 @@ async function per_iter_setup() {
         || game.afternmv === Shirt_off
         || game.afternmv === Shirt_on
         || game.afternmv === eatmdone);
-    if ((game.multi || 0) < 0 && __mtf_allow) {
+    // prayer_done is deferred to the LATE site (post_turn_block, after
+    // dosounds/gethungry) to match C's single countdown at allmain.c:380 —
+    // C runs dosounds(352) BEFORE the multi<0 countdown(380), but JS fired
+    // prayer_done HERE (before dosounds), forking seed0106 #pray at div 2622
+    // (C rn2(400)@dosounds vs JS rn2(1000)@prayer_done/rnz).  The *_off and
+    // eatmdone afternmv stay early (deferring THEM entangles with the
+    // occupation path and regresses, per the comment above).
+    if ((game.multi || 0) < 0 && __mtf_allow && game.afternmv !== prayer_done) {
         game.multi++;
         if (game.multi === 0) {
             try { await unmul(null); } catch (_e) {}
@@ -2595,20 +2609,40 @@ async function post_turn_block(wtcap, did_per_iter_setup) {
     // we fired only the gate rn2 and dropped the consequent rnd(3),
     // which shifted PRNG by one call on every turn where rn2 happened
     // to roll 0.
-    const dex = game.u?.acurr?.a?.[3] ?? 14;
+    // C ref allmain.c:360 uses ACURR(A_DEX) = acurr(A_DEX), which sums
+    // u.abon.a[] + u.atemp.a[] + u.acurr.a[] (capped 3..25) — NOT the bare
+    // u.acurr.a[A_DEX].  The hand-port read only the base, dropping any DEX
+    // bonus/penalty: seed0004 carries a -1 DEX atemp so C's acurr()=8 (rn2(64))
+    // where the bare read gave 9 (rn2(67)).  acurr() is sync + PRNG-free.
+    const dex = acurr(A_DEX);
     if (rn2(40 + dex * 3) === 0) {
         rnd(3);
     }
-  } // end of `if (did_per_iter_setup)` — the inside-the-gate block
 
-    // Seer-turn re-roll, C ref allmain.c:414-417 — `if (moves >=
-    // context.seer_turn) context.seer_turn = moves + rn1(31, 15);`.
-    // C fires this OUTSIDE the if-gate, in the once-per-hero-took-time
-    // block.  Stays unconditional in JS.
-    if (game.moves !== undefined && game.context?.seer_turn !== undefined
-            && game.moves >= game.context.seer_turn) {
-        game.context.seer_turn = game.moves + rn2(31) + 15;
+    // Null-afternmv freeze countdown (sleep / sleep-ray helpless / count-wait):
+    // C ref allmain.c:380 — runs HERE, after dosounds(352)/gethungry(354)/
+    // wipe_engr(360), at the end of C's per-iter block.  Deferred from
+    // per_iter_setup so the last sleep turn's gethungry "asleep" rn2(10)
+    // (eat.c:3174, gated on Unaware = multi<0 && unconscious) fires while
+    // multi is still <0 — matching C and fixing seed0016's residual fork.
+    // unmul(null) for a null afternmv is PRNG-safe (no callback, just clears
+    // the freeze + nomovemsg).  Non-null afternmv counted down in
+    // per_iter_setup (kept early; deferring it entangles with *_off).
+    // Null-afternmv freezes AND prayer_done count down HERE (after dosounds/
+    // gethungry), matching C's single multi<0 countdown at allmain.c:380.
+    // unmul(null) fires game.afternmv if set (prayer_done) — PRNG-safe.
+    if ((!game.afternmv || game.afternmv === prayer_done) && (game.multi || 0) < 0) {
+        game.multi++;
+        if (game.multi === 0) {
+            try { await unmul(null); } catch (_e) {}
+        }
     }
+  } // end of `if (did_per_iter_setup)` — the inside-the-gate block
+    // NOTE: the seer_turn re-roll (C allmain.c:414-417) was here but is now
+    // hoisted to runPerTurnIteration AFTER the umovement loop — it belongs to
+    // C's once-per-hero-took-time block (allmain.c:392+), which runs ONCE per
+    // command, not per new-turn-setup.  Since post_turn_block now runs per
+    // setup, keeping it here fired the rn2(31) twice for an encumbered hero.
 }
 
 // One full C-style per-turn iteration: u.umovement decrement, the
@@ -2664,6 +2698,18 @@ async function runPerTurnIteration() {
         if (!monscanmove && g.u.umovement < 12) {
             try { wtcap_last = await per_iter_setup(); } catch (_e) {}
             __per_iter_ran = true;
+            // C ref allmain.c:222-389 — the ENTIRE per-turn block (regen_hp,
+            // gethungry, dosounds, fumaroles, ...) is INSIDE the new-turn
+            // `if (!monscanmove && u.umovement < NORMAL_SPEED)`, so it runs
+            // PER new-turn-setup.  A slow/encumbered hero (moveamt<12) takes
+            // 2+ setups per command, so C runs regen_hp et al. 2+ times; the
+            // old code ran post_turn_block ONCE after the loop → JS did
+            // regen_hp once where C did it twice (seed0399 @10486: C's 2nd-
+            // setup rn2(100)@regen_hp vs JS's next-command distfleeck).  Run
+            // it here, per setup.  Single-setup heroes (all 15 PASS) are
+            // unaffected (one setup → one call, as before; display refresh
+            // below is rng-free so order is PRNG-neutral).
+            try { await post_turn_block(wtcap_last, __per_iter_ran); } catch (_e) {}
         }
     } while (g.u.umovement < 12);
     // Refresh display cells for monsters that ACTUALLY moved or died.
@@ -2682,7 +2728,15 @@ async function runPerTurnIteration() {
             }
         }
     } catch (_e) {}
-    try { await post_turn_block(wtcap_last, __per_iter_ran); } catch (_e) {}
+    // post_turn_block (the per-new-turn-setup block, C allmain.c:222-389) now
+    // runs inside the loop above.  The once-per-hero-took-time block
+    // (C allmain.c:392-417) runs HERE, ONCE per command.  Currently only the
+    // seer_turn re-roll consumes RNG; it must NOT fire per setup (an encumbered
+    // hero would roll rn2(31) twice — seed0004 et al.).
+    if (g.moves !== undefined && g.context?.seer_turn !== undefined
+            && g.moves >= g.context.seer_turn) {
+        g.context.seer_turn = g.moves + rn2(31) + 15;
+    }
 }
 
 // C ref: allmain.c moveloop_core()
@@ -2719,8 +2773,32 @@ export async function moveloop_core() {
     // to guard against translator-side infinite loops; on throw,
     // restore the PRNG state and surface monscanmove=0 so the loop
     // terminates cleanly.
+    const __qBeforePTI = (game._dmore_queue && game._dmore_queue.length) || 0;
     if (g.context?.move) {
         await runPerTurnIteration();
+    }
+    // #100 per-message snapshot: a message queued DURING this turn's monster
+    // phase (e.g. seed1150 "Slasher drops a food ration." at T:23, behind the
+    // T:22 swap-weapons --More--) belongs to THIS turn's background, not the
+    // earlier _pending_message's.  Render now and tag the freshly-queued entries
+    // in the parallel _dmore_snaps array so the drain replays each queued
+    // message's OWN turn (the pet is a corpse '%' at T:23, was 'd' at T:22).
+    {
+        const __qAfterPTI = (game._dmore_queue && game._dmore_queue.length) || 0;
+        if (__qAfterPTI > __qBeforePTI) {
+            try {
+                await bot();
+                await flush_screen(0);
+                const __pt = game?.nhDisplay?.terminal || game?.nhDisplay;
+                if (__pt && __pt.serialize) {
+                    const __ps = __pt.serialize();
+                    game._dmore_snaps = game._dmore_snaps || [];
+                    while (game._dmore_snaps.length < __qAfterPTI) {
+                        game._dmore_snaps.push({ snap: __ps, moves: (game.moves || 0) });
+                    }
+                }
+            } catch (_e) { /* best-effort */ }
+        }
     }
 
     // C ref allmain.c:513 — `u.umoved = FALSE;` runs after the per-turn
@@ -2734,6 +2812,19 @@ export async function moveloop_core() {
     // C does regen_hp where JS did the extra mcalcmove(steed)).  Reset
     // matches C's position: after u_calc_moveamt, before rhack.
     g.u.umoved = 0;
+
+    // Recompute armor class once per player input.  C ref allmain.c:453
+    // — the "once-per-player-input" block calls find_ac() every iteration
+    // so u.uac tracks worn-gear changes (e.g. doffing a cloak via the
+    // no-delay armoroff path, which removes uarmc + prints off_msg but
+    // never calls find_ac itself; C relies on this moveloop call to update
+    // botl).  The hand moveloop was missing it, so u.uac stayed at its
+    // chargen value forever (seed0116: doff cloak of magic resistance at
+    // T:3 → C AC 9→10, JS stuck at 9, shifting the whole status line).
+    // find_ac consumes no RNG (pure recompute from worn items + uprops),
+    // so this is PRNG-safe.  Must run before bot() so the rendered AC is
+    // current.  [[hand-moveloop-missing-state-resets]]
+    try { find_ac(); } catch (_e) {}
 
     // Vision + display
     if (g.vision_full_recalc) {
@@ -2760,6 +2851,7 @@ export async function moveloop_core() {
     // eat).  game.occupation is a real null-initialized field (the
     // translated moveloop_core checks it the same way), so the
     // truthiness test is ghost-safe.
+    let __occRanThisIter = false;
     if ((g.multi || 0) >= 0 && g.occupation) {
         let __occRes = 0;
         try { __occRes = await g.occupation(); } catch (_e) { __occRes = 0; }
@@ -2768,6 +2860,7 @@ export async function moveloop_core() {
         try { __mn = !!monster_nearby(); } catch (_e) { __mn = false; }
         if (__mn) { try { await stop_occupation(); } catch (_e) {} }
         g.context.move = 1; // the occupation took a turn
+        __occRanThisIter = true;
     } else if ((g.multi || 0) > 0 && g._multiSearch === 1) {
         // C ref allmain.c:515-531 — counted non-movement command repeat.
         // For search (svc.context.mv FALSE) C does `--gm.multi;
@@ -2813,10 +2906,18 @@ export async function moveloop_core() {
     // spread-across-iterations semantics.
     //
     // Allowlist is the same as per_iter_setup's __mtf_allow: only
-    // afternmv targets we've audited as safe to drive atomically.
-    // safety cap of 8 covers the largest known nomul depth (prayer
-    // is -3, takeoff is generally -1 to -3) with margin.
-    const __mtf_allow_atomic = (game.afternmv === prayer_done
+    // afternmv targets we've audited as safe to drive atomically, PLUS
+    // null-afternmv freezes (sleep / sleep-ray helpless / count-wait —
+    // unmul(null) just clears the freeze, no callback).  Without the
+    // null case the deep sleep freeze (multi ~ -27) was never driven
+    // atomically, so JS ran only as many frozen turns as the harness'
+    // input loop happened to pump before exhausting, vs C's full N —
+    // forking all monster scheduling during the sleep (seed0016).
+    // Safety cap sized to the actual freeze depth (+margin) so deep
+    // sleeps complete; the multi<0 condition still bounds the loop since
+    // per_iter_setup increments multi each iteration.
+    const __mtf_allow_atomic = (!game.afternmv
+        || game.afternmv === prayer_done
         || game.afternmv === Armor_off
         || game.afternmv === Shield_off
         || game.afternmv === Helmet_off
@@ -2826,7 +2927,7 @@ export async function moveloop_core() {
         || game.afternmv === Shirt_off
         || game.afternmv === Shirt_on
         || game.afternmv === eatmdone);
-    let __mtf_safety = 8;
+    let __mtf_safety = Math.max(8, Math.abs(game.multi || 0) + 4);
     const __mtf_started = (game.multi || 0) < 0 && __mtf_allow_atomic;
     while ((game.multi || 0) < 0 && __mtf_allow_atomic && __mtf_safety-- > 0) {
         // C ref allmain.c:203 — per-turn block runs ONLY when
@@ -2849,6 +2950,46 @@ export async function moveloop_core() {
     // call already ran (consuming 'y', not ' ').  Clearing here
     // mirrors what C's dispatch of the post-freeze input would do.
     if (__mtf_started) g.context.move = 0;
+
+    // #100 occupation render-at-end: the atomic multi<0 loop above ran the
+    // occupation's turns (eating, sleep) via runPerTurnIteration WITHOUT
+    // bot()/flush per turn, so the terminal is stale at the occupation's START
+    // turn (verified: bot() not called for moves 13-19 during seed0200's
+    // 6-turn eat-corpse occupation).  If the occupation left a deferred
+    // --More-- ("You feel guilty.  ...tastes terrible!"), C blocked it inline
+    // at the occupation's LAST turn (T:19); JS captures it a turn later (T:20)
+    // after the next moveloop's monster moves.  Render the occupation-end
+    // state now and snapshot it so the deferred --More-- capture replays THIS
+    // turn's botl+map (jsmain _preNhgetchHook, moves-gated).  Display-only:
+    // only the captured screen STRING changes — no game state, no PRNG.
+    // Broadened beyond occupations: ANY deferred --More-- pending after this
+    // moveloop_core iteration's command+freeze gets the render-at-generation
+    // snapshot.  seed1150: the swap-weapons command messages ("b - a +2 sling
+    // ...--More--") are generated at T:22 but JS captures the chain at T:23
+    // (after the monster phase killed the pet → 'd' becomes corpse '%').
+    // Rendering here (still moves=22, before the next iteration advances)
+    // captures the command's turn; the moves-gated capture replays it.
+    if ((game._pending_message || '').endsWith('--More--')
+        || (game._dmore_queue && game._dmore_queue.length)) {
+        try {
+            await bot();
+            await flush_screen(0);
+            const __t = game?.nhDisplay?.terminal || game?.nhDisplay;
+            if (__t && __t.serialize) {
+                const __s = __t.serialize();
+                game._topl_bg_snapshot = __s;
+                game._topl_bg_snapshot_moves = (game.moves || 0);
+                // Tag any queued messages from THIS command-turn that don't yet
+                // have a snapshot (command-generated, e.g. seed1150's 2nd swap
+                // message) with this turn's background.
+                const __ql = (game._dmore_queue && game._dmore_queue.length) || 0;
+                if (__ql) {
+                    game._dmore_snaps = game._dmore_snaps || [];
+                    while (game._dmore_snaps.length < __ql) game._dmore_snaps.push({ snap: __s, moves: (game.moves || 0) });
+                }
+            }
+        } catch (_e) { /* best-effort display snapshot */ }
+    }
 
     // C ref allmain.c:538 — after rhack, if `u.utotype` (level-
     // transition flags set by schedule_goto) is non-zero, fire

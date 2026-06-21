@@ -15,7 +15,7 @@ export function pushKeys(keys) {
 }
 
 // C ref: tty_nhgetch — read one key.
-// In replay mode, reads from the input queue.
+// In queued-input mode, reads from the input queue.
 // In browser mode, waits for a real keypress.
 export async function nhgetch() {
     // Fire the capture hook before reading the next key

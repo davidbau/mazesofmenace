@@ -58,12 +58,17 @@ export function rnl(x) {
     if (x <= 15)
         adjustment = Math.trunc((Math.abs(adjustment) + 1) / 3) * Math.sign(adjustment);
     let i = RND(x);
-    if (_rngLogEnabled) _rngLog.push(`rnl(${x})=${i}`);
+    // C ref: rnd.c rnl() — the luck adjustment fires a secondary rn2(37+|adj|)
+    // bias roll AFTER the base RND(x).  The C recorder emits that internal rn2
+    // entry BEFORE the rnl() entry in the flat log, so push the rnl marker only
+    // after the bias roll to keep the two streams in lockstep.  With Luck==0
+    // (no bias roll) ordering is moot — the rnl marker is pushed immediately.
     if (adjustment && rn2(37 + Math.abs(adjustment))) {
         i -= adjustment;
         if (i < 0) i = 0;
         else if (i >= x) i = x - 1;
     }
+    if (_rngLogEnabled) _rngLog.push(`rnl(${x})=${i}`);
     return i;
 }
 

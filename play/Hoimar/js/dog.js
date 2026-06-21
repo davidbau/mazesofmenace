@@ -4,9 +4,9 @@
 import { game } from './gstate.js';
 import {
     enexto_core, makemon, mkcorpstat, mksobj, monsterPtr, next_ident,
-    place_object, set_malign_basic, u_on_newpos, undead_to_corpse_ptr,
+    place_object, set_malign_basic, stackobj, u_on_newpos, undead_to_corpse_ptr,
 } from './mklev.js';
-import { OBJECT_CLASS, OBJECT_DELAY, OBJECT_NAME } from './object_data.js';
+import { OBJECT_CLASS, OBJECT_DELAY, OBJECT_MATERIAL, OBJECT_NAME } from './object_data.js';
 import { MONSTER_DATA } from './monster_data.js';
 import {
     newsym, pline, queue_more_prompt, flush_screen,
@@ -16,9 +16,10 @@ import {
 import { NO_COLOR } from './terminal.js';
 import {
     A_CHA, ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, POISON, ROWNO, TABU, UNDEF,
-    D_BROKEN, D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
-    IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
-    W_SADDLE, W_WEP, isok, MGIVENNAME, has_mgivenname, CORPSTAT_INIT,
+    BEAR_TRAP, CORR, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, GP_AVOID_MONPOS, GP_CHECKSCARY,
+    HWALL, IS_DOOR, IS_OBSTRUCTED, IS_LAVA, IS_POOL, IS_ROOM, LADDER, MAGIC_PORTAL, MM_EDOG,
+    M3_INFRAVISIBLE, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
+    VWALL, W_ARMS, W_SADDLE, W_WEP, isok, MGIVENNAME, has_mgivenname, CORPSTAT_INIT,
 } from './const.js';
 import { d, rn2, rnd } from './rng.js';
 import { gettrack } from './track.js';
@@ -40,12 +41,54 @@ const CHAIN_CLASS = 16;
 const M1_NOHANDS = 0x00002000;
 const M1_ACID = 0x08000000;
 const M1_POIS = 0x10000000;
+const MZ_SMALL = 1;
 const GOLD_PIECE = 438;
+const AXE = 44;
+const BATTLE_AXE = 45;
+const SHORT_SWORD = 46;
+const ELVEN_SHORT_SWORD = 47;
+const ORCISH_SHORT_SWORD = 48;
+const DWARVISH_SHORT_SWORD = 49;
+const SCIMITAR = 50;
+const SILVER_SABER = 51;
+const BROADSWORD = 52;
+const ELVEN_BROADSWORD = 53;
+const LONG_SWORD = 54;
+const TWO_HANDED_SWORD = 55;
+const KATANA = 56;
+const TSURUGI = 57;
+const RUNESWORD = 58;
+const DWARVISH_MATTOCK = 71;
+const SPEAR = 27;
+const ELVEN_SPEAR = 28;
+const ORCISH_SPEAR = 29;
+const DWARVISH_SPEAR = 30;
+const SILVER_SPEAR = 31;
 const ORCISH_DAGGER = 36;
+const SILVER_DAGGER = 37;
+const ELVEN_DAGGER = 35;
+const DAGGER = 34;
+const ATHAME = 38;
+const SCALPEL = 39;
+const KNIFE = 40;
+const WORM_TOOTH = 42;
+const CRYSKNIFE = 43;
 const DART = 24;
 const JAVELIN = 32;
+const TRIDENT = 33;
+const MACE = 73;
+const SILVER_MACE = 74;
+const MORNING_STAR = 75;
+const WAR_HAMMER = 76;
+const CLUB = 77;
+const RUBBER_HOSE = 78;
 const QUARTERSTAFF = 79;
+const AKLYS = 80;
+const FLAIL = 81;
+const BULLWHIP = 82;
 const TRIPE_RATION = 264;
+const PICK_AXE = 259;
+const UNICORN_HORN = 261;
 const FOOD_RATION = 293;
 const BOULDER = 475;
 const CORPSE = 265;
@@ -89,6 +132,8 @@ const BELL_OF_OPENING = 263;
 const CANDELABRUM_OF_INVOCATION = 262;
 const DOG_HUNGRY = 300;
 const M2_STRONG = 0x04000000;
+const M2_WERE = 0x00000004;
+const M2_DEMON = 0x00000100;
 const M2_UNDEAD = 0x00000002;
 const G_FREQ = 0x0007;
 const G_NOCORPSE = 0x0010;
@@ -100,6 +145,21 @@ const MR_ACID = 0x40;
 const MR_STONE = 0x80;
 const MS_LEADER = 36;
 const MS_GUARDIAN = 38;
+const SILVER = 14;
+
+const PET_COUNTER_HTH_WEAPON_ORDER = [
+    TSURUGI, RUNESWORD, DWARVISH_MATTOCK, TWO_HANDED_SWORD, BATTLE_AXE,
+    KATANA, UNICORN_HORN, CRYSKNIFE, TRIDENT, LONG_SWORD, ELVEN_BROADSWORD,
+    BROADSWORD, SCIMITAR, SILVER_SABER, MORNING_STAR, ELVEN_SHORT_SWORD,
+    DWARVISH_SHORT_SWORD, SHORT_SWORD, ORCISH_SHORT_SWORD, SILVER_MACE, MACE,
+    AXE, DWARVISH_SPEAR, SILVER_SPEAR, ELVEN_SPEAR, SPEAR, ORCISH_SPEAR, FLAIL,
+    BULLWHIP, QUARTERSTAFF, JAVELIN, AKLYS, CLUB, PICK_AXE, RUBBER_HOSE,
+    WAR_HAMMER, SILVER_DAGGER, ELVEN_DAGGER, DAGGER, ORCISH_DAGGER, ATHAME,
+    SCALPEL, KNIFE, WORM_TOOTH,
+];
+const PET_COUNTER_BIMANUAL_WEAPONS = new Set([
+    TSURUGI, DWARVISH_MATTOCK, TWO_HANDED_SWORD, BATTLE_AXE, QUARTERSTAFF,
+]);
 
 const OBJECT_WEIGHT_OVERRIDES = new Map([
     [LARGE_BOX, 350],
@@ -355,6 +415,13 @@ function migrated_wielded_object(migrating, inventory) {
         && obj.otyp === migrating.mw.otyp) || { ...migrating.mw };
 }
 
+function monster_at_xy(x, y) {
+    const monsters = game.level?.monsters || [];
+    return monsters.find((mon) => mon.mx === x && mon.my === y)
+        || monsters.find((mon) => (mon.wsegs || []).some((seg) => seg.wx === x && seg.wy === y))
+        || null;
+}
+
 function arrive_with_hero(migrating) {
     game._migrating_pet = null;
     if (!migrating) return null;
@@ -362,7 +429,11 @@ function arrive_with_hero(migrating) {
     if (!pet) return null;
     if (migrating.mtame) game.pet_type = pet;
 
-    const exact = !rn2(migrating.mtame ? 10 : migrating.mpeaceful ? 5 : 2);
+    // C ref: src/dog.c:mon_arrive(With_you).  A follower only rolls the
+    // exact-arrival chance when the hero square is not already occupied by an
+    // earlier arrival or resident monster; otherwise it goes through mnexto().
+    const exact = !monster_at_xy(game.u.ux, game.u.uy)
+        && !rn2(migrating.mtame ? 10 : migrating.mpeaceful ? 5 : 2);
     let x = game.u.ux;
     let y = game.u.uy;
     if (!exact) {
@@ -505,6 +576,14 @@ function cursed_object_at(x, y) {
 
 function trap_at(x, y) {
     return (game.level?.traps || []).find((trap) => trap.tx === x && trap.ty === y) || null;
+}
+
+function pet_trap_is_harmless(mtmp, trap) {
+    // C refs: src/mon.c:mfndpos(), src/trap.c:m_harmless_trap().
+    if (!trap) return true;
+    if (trap.ttyp === BEAR_TRAP)
+        return (mtmp.data?.msize ?? 2) <= MZ_SMALL;
+    return false;
 }
 
 function is_boulder_at(x, y) {
@@ -894,8 +973,38 @@ function monster_has_weapon_attack(mon) {
     return (mon?.data?.mattk || []).some((attack) => attack?.[0] === 'AT_WEAP');
 }
 
+function monster_hates_silver_basic(mon) {
+    const ptr = mon?.data || {};
+    return !!((ptr.mflags2 ?? 0) & (M2_WERE | M2_DEMON))
+        || ptr.mlet === 'S_VAMPIRE'
+        || ptr.name === 'SHADE'
+        || (ptr.mlet === 'S_IMP' && ptr.name !== 'TENGU');
+}
+
+function monster_can_use_pet_counter_weapon(mon, obj) {
+    if (!obj || OBJECT_CLASS[obj?.otyp] !== WEAPON_CLASS) return false;
+    const ptr = mon?.data || {};
+    const strong = !!((ptr.mflags2 ?? 0) & M2_STRONG);
+    const wearingShield = !!((mon?.misc_worn_check ?? 0) & W_ARMS);
+    if (PET_COUNTER_BIMANUAL_WEAPONS.has(obj.otyp) && (!strong || wearingShield)) return false;
+    if ((OBJECT_MATERIAL[obj.otyp] ?? 0) === SILVER && monster_hates_silver_basic(mon)) return false;
+    return true;
+}
+
 function monster_weapon_candidate(mon) {
-    return (mon?.inventory || []).find((obj) => OBJECT_CLASS[obj?.otyp] === WEAPON_CLASS);
+    // C refs: src/dogmove.c:dog_move(), src/mhitm.c:mattackm(),
+    // src/weapon.c:select_hwep().  Pet-counter AT_WEAP attacks get the same
+    // ordered hand-to-hand selector as ordinary monster weapon checks; ranged
+    // ammo such as darts is not a fallback melee pick.
+    const inventory = mon?.inventory || [];
+    const artifact = inventory.find((obj) =>
+        obj?.oartifact && monster_can_use_pet_counter_weapon(mon, obj));
+    if (artifact) return artifact;
+    for (const otyp of PET_COUNTER_HTH_WEAPON_ORDER) {
+        const obj = inventory.find((candidate) => candidate?.otyp === otyp);
+        if (monster_can_use_pet_counter_weapon(mon, obj)) return obj;
+    }
+    return null;
 }
 
 function monster_weapon_name(obj) {
@@ -953,15 +1062,24 @@ function pet_subject(mtmp) {
 
 function monster_spotted_for_combat(mon) {
     // C ref: src/mhitm.c:mattackm() via cansee()+canspotmon().
-    if (!mon || !cansee(mon.mx, mon.my)) return false;
+    if (!mon) return false;
     if (mon.mundetected || mon._opened_unseen_door) return false;
     if (mon.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
-    return true;
+    if (cansee(mon.mx, mon.my)) return true;
+    return hero_can_see_with_infravision_basic(mon);
 }
 
 function monster_combat_visible(magr, mdef) {
     // C ref: src/mhitm.c:mattackm().
-    return monster_spotted_for_combat(magr) || monster_spotted_for_combat(mdef);
+    return monster_visible_combat_square(magr) || monster_visible_combat_square(mdef);
+}
+
+function monster_visible_combat_square(mon) {
+    // C ref: src/mhitm.c:mattackm() sets gv.vis with cansee(mon square)
+    // gating canspotmon(); infravision alone is not enough for visible
+    // monster-vs-monster combat feedback.
+    if (!mon) return false;
+    return cansee(mon.mx, mon.my) && monster_spotted_for_combat(mon);
 }
 
 function monster_combat_subject(mon) {
@@ -1018,8 +1136,16 @@ function hero_can_spot_pet_basic(mtmp) {
     if (mtmp.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
     if (game.u?.ublind || game.u?.uprops?.blind || game.u?.uprops?.blinded) return false;
     if (cansee(mtmp.mx, mtmp.my)) return true;
+    return hero_can_see_with_infravision_basic(mtmp);
+}
+
+function hero_can_see_with_infravision_basic(mtmp) {
+    // C ref: include/display.h:see_with_infrared().
     return !!(game.u?.uprops?.infravision
-        && (mtmp.data?.mflags3 & 0x00000020)
+        && !game.u?.ublind
+        && !game.u?.uprops?.blind
+        && !game.u?.uprops?.blinded
+        && ((mtmp.data?.mflags3 ?? 0) & M3_INFRAVISIBLE)
         && couldsee(mtmp.mx, mtmp.my));
 }
 
@@ -1040,7 +1166,7 @@ async function pet_reluctance_pline(line) {
     queue_more_prompt();
 }
 
-function pet_inventory_pline(line) {
+async function pet_inventory_pline(line) {
     // C tty keeps the post-move floor-look line at the next prompt even when
     // a visible pet inventory drop happens during the following monster turn.
     if (typeof game._pending_message === 'string'
@@ -1057,15 +1183,17 @@ function pet_inventory_pline(line) {
     if (game._pending_message) {
         const packed = `${game._pending_message}  ${line}`;
         if (!topline_can_pack_message(game._pending_message, line)) {
+            game._force_lock_start_more_after_turn = false;
             queue_more_prompt();
             game._pet_inventory_more_latched = true;
             game._after_more_message = line;
             game._after_more_needs_prompt = false;
+            await latch_more_frame_before_pet_inventory();
             if (game._more) return;
         }
         game._pending_message = packed;
     } else {
-        pline(line);
+        await pline(line);
     }
 }
 
@@ -1098,7 +1226,7 @@ async function dog_eat(mtmp, obj, startX, startY, devour = false) {
 
     if (cansee(mtmp.mx, mtmp.my) || (cansee(startX, startY) && cansee(mtmp.mx, mtmp.my))) {
         if (cansee(mtmp.mx, mtmp.my)) await latch_more_frame_before_pet_inventory();
-        pet_inventory_pline(`${pet_noit_subject(mtmp)} ${devour ? 'devours' : 'eats'} ${object_name(obj)}.`);
+        await pet_inventory_pline(`${pet_noit_subject(mtmp)} ${devour ? 'devours' : 'eats'} ${object_name(obj)}.`);
     }
 
     const eatenFoodType = dogfood(mtmp, obj);
@@ -1146,10 +1274,44 @@ function pending_pet_combat_boundary() {
         || /^You (?:miss|hit) .+  The (?:kitten|little dog|(?:saddled )?pony) .+\.$/.test(game._pending_message || '');
 }
 
+function pet_combat_hit_topline(line) {
+    return /^The (?:kitten|little dog|(?:saddled )?pony) (?:bites|hits|kicks|stings|butts|touches) .+/.test(line || '');
+}
+
+function monster_death_topline(line) {
+    return /^The .+ is (?:killed|destroyed)!$/.test(line || '');
+}
+
 async function append_topline_message(line) {
+    game._last_pet_combat_line_deferred = false;
     if (game._pending_message?.startsWith('You start putting on ')) game._pending_message = '';
     if (game._pending_message) {
         if (game._more && !hallucinating()) {
+            if (pet_combat_hit_topline(game._pending_message)
+                && topline_can_pack_message(game._pending_message, line)) {
+                game._pending_message = `${game._pending_message}  ${line}`;
+                game._last_topline_message = game._pending_message;
+                game._pet_miss_prompt_after_resume = false;
+                if (monster_death_topline(line)) {
+                    // C refs: src/mhitm.c:hitmm()/mdamagem(),
+                    // src/mon.c:monkilled(), win/tty/topl.c:update_topl().
+                    // A visible pet hit can pack its kill line after the
+                    // dismissed tty More without showing a second prompt.
+                    game._more = false;
+                    game._more_dismissals_remaining = 0;
+                    game._pet_combat_more_latched = false;
+                }
+                return;
+            }
+            if (game._pet_combat_more_latched || pet_combat_hit_topline(game._pending_message)) {
+                game._after_more_message = game._after_more_message
+                    ? `${game._after_more_message}  ${line}`
+                    : line;
+                game._after_more_needs_prompt = false;
+                game._pet_combat_more_latched = true;
+                game._last_pet_combat_line_deferred = true;
+                return;
+            }
             if (topline_can_pack_message(game._pending_message, line)) {
                 game._pending_message = `${game._pending_message}  ${line}`;
                 game._last_topline_message = game._pending_message;
@@ -1162,6 +1324,7 @@ async function append_topline_message(line) {
                 game._after_more_needs_prompt = !!game._after_more_needs_prompt
                     || packed.length >= (game.nhDisplay?.cols || COLNO);
                 game._pet_combat_more_latched = true;
+                game._last_pet_combat_line_deferred = true;
             }
             return;
         }
@@ -1172,6 +1335,7 @@ async function append_topline_message(line) {
                 : line;
             game._after_more_needs_prompt = false;
             game._pet_combat_more_latched = true;
+            game._last_pet_combat_line_deferred = true;
             return;
         }
         if (pending_pet_combat_boundary()) {
@@ -1182,6 +1346,24 @@ async function append_topline_message(line) {
                 : line;
             game._after_more_needs_prompt = false;
             game._pet_combat_more_latched = true;
+            game._last_pet_combat_line_deferred = true;
+            return;
+        }
+        if (pet_combat_hit_topline(game._pending_message) && !hallucinating()) {
+            if (topline_can_pack_message(game._pending_message, line)) {
+                game._pending_message = `${game._pending_message}  ${line}`;
+                game._last_topline_message = game._pending_message;
+                game._pet_combat_more_latched = false;
+                game._pet_miss_prompt_after_resume = false;
+                return;
+            }
+            queue_more_prompt();
+            game._after_more_message = game._after_more_message
+                ? `${game._after_more_message}  ${line}`
+                : line;
+            game._after_more_needs_prompt = false;
+            game._pet_combat_more_latched = true;
+            game._last_pet_combat_line_deferred = true;
             return;
         }
         const pending = game._pending_message;
@@ -1217,6 +1399,7 @@ async function append_topline_message(line) {
             game._after_more_needs_prompt = false;
             game._pet_combat_more_latched = true;
             game._pet_miss_prompt_after_resume = false;
+            game._last_pet_combat_line_deferred = true;
         }
         if (occupation_message_boundary_active()) {
             // C ref: tty topline handling via pline()/--More--.  A second
@@ -1227,7 +1410,24 @@ async function append_topline_message(line) {
             game._occupation_paused_for_more = true;
         }
     } else {
+        if (game._after_more_message
+            && pet_combat_hit_topline(line)
+            && topline_can_pack_message(line, game._after_more_message)
+            && !hallucinating()) {
+            line = `${line}  ${game._after_more_message}`;
+            game._after_more_message = '';
+            game._after_more_needs_prompt = false;
+        }
         await pline(line);
+        if (game._resuming_monster_turn_after_more
+            && pet_combat_hit_topline(line)
+            && !hallucinating()) {
+            // C refs: win/tty/topl.c:more(), src/mhitm.c:hitmm().
+            // A pet hit printed while resuming an interrupted monster turn
+            // blocks before a following monster-vs-monster hit applies damage.
+            queue_more_prompt();
+            game._pet_combat_more_latched = true;
+        }
     }
 }
 
@@ -1249,23 +1449,74 @@ function refresh_pet_attack_symbols(mtmp, target) {
     if (visibleCombat && !spottedDefender) map_invisible_basic(target.mx, target.my);
 }
 
+function pet_corpse_food_class_without_resist(mtmp, obj) {
+    if (!obj || obj.otyp !== CORPSE || obj.trap_victim) return MANFOOD;
+    const { carni, herbi } = pet_diet(mtmp);
+    const ptr = monsterPtr(obj.corpsenm);
+    if (pet_corpse_is_poisonous(mtmp, ptr) || pet_corpse_is_acidic(mtmp, ptr))
+        return POISON;
+    if (vegan_monster(ptr)) return herbi ? CADAVER : MANFOOD;
+    return carni ? CADAVER : MANFOOD;
+}
+
+function latch_pet_kill_more_overlay(mtmp, target, corpse, oldx, oldy, targetX, targetY) {
+    if (!corpse || !mtmp?.mtame || dist2(oldx, oldy, targetX, targetY) > 2) return false;
+    if (pet_corpse_food_class_without_resist(mtmp, corpse) > CADAVER) return false;
+    const line = pet_kill_line(target);
+    if (!game._more || !(game._pending_message || '').includes(line)) return false;
+    // C refs: src/dogmove.c:dog_move(), src/mhitm.c:mattackm().
+    // The pet's selected occupied square is the visible combat focus for the
+    // blocking kill frame; actual movement/eating still resumes afterward.
+    game._pet_kill_more_overlay = {
+        mon: mtmp,
+        oldX: oldx,
+        oldY: oldy,
+        x: targetX,
+        y: targetY,
+        line,
+    };
+    newsym(oldx, oldy);
+    return true;
+}
+
 function apply_pet_kill_side_effects(mtmp, target, oldx, oldy, targetX, targetY, blockingFrame = true) {
     noteMonsterDied(target);
-    if (corpse_chance(target)) make_pet_kill_corpse(target);
+    drop_pet_kill_inventory(target);
+    const corpse = corpse_chance(target) ? make_pet_kill_corpse(target) : null;
     grow_up_from_kill(mtmp, target);
     const monsters = game.level?.monsters || [];
     const idx = monsters.indexOf(target);
     if (idx >= 0) monsters.splice(idx, 1);
+    const overlayLatched = latch_pet_kill_more_overlay(
+        mtmp, target, corpse, oldx, oldy, targetX, targetY,
+    );
     // C ref: src/dogmove.c:dog_move().  A pet which kills an adjacent monster
     // returns after mattackm(); it does not step into the defender square as
     // part of the death side effects.
     // C ref: src/mon.c:monkilled()->mondied().  The defender square is
-    // redrawn for removal/corpse placement; the attacker square is not
+    // redrawn for removal/corpse/drop placement; the attacker square is not
     // refreshed just because damage resolved.
     // C ref: src/mon.c:mondead().  Monster death clears a remembered
     // invisible glyph before the final square redraw.
     unmap_invisible_memory(targetX, targetY, { redraw: false });
     newsym(targetX, targetY);
+    if (overlayLatched) newsym(oldx, oldy);
+}
+
+function drop_pet_kill_inventory(mon) {
+    // C ref: src/mon.c:mondead() -> m_detach() -> relobj().  Monster-vs-
+    // monster deaths release minvent before corpse_chance() and corpse
+    // placement, so later dog_goal() scans see the dropped gear in floor order.
+    const inv = mon?.inventory || [];
+    for (const obj of inv) {
+        if (!obj) continue;
+        obj.owornmask = 0;
+        stackobj(place_object(obj, mon.mx, mon.my));
+    }
+    if (mon) {
+        mon.inventory = [];
+        mon.mw = null;
+    }
 }
 
 export function finish_deferred_pet_kill_side_effect() {
@@ -1316,17 +1567,41 @@ export async function finish_pet_kill(mtmp, target) {
 
 export async function finish_deferred_monster_pet_hit() {
     const pending = game._deferred_monster_pet_hit || null;
-    if (!pending) return false;
+    if (!pending) {
+        if (game._deferred_monster_pet_miss_passive) {
+            game._deferred_monster_pet_miss_passive = false;
+            rn2(3); // C ref: src/mhitm.c:passivemm().
+            return true;
+        }
+        return false;
+    }
     game._deferred_monster_pet_hit = null;
     const { attacker, target, attack } = pending;
-    const damage = d(attack?.[2] || 1, attack?.[3] || 6);
+    const damage = monster_attack_damage(attacker, attack);
     target.mhp = (target.mhp ?? 1) - damage;
     rn2(3);
     rn2(6);
     if (target.mhp < 1) {
+        if (game._resume_tame_post_distfleeck === target)
+            game._resume_tame_post_distfleeck = null;
+        if (game._resume_movemon_after_mon === target
+            && attacker
+            && game.level?.monsters?.includes(attacker)) {
+            game._resume_movemon_next_mon = attacker;
+        }
         await finish_pet_kill(attacker, target);
     } else {
         rn2(3);
+        if (pending.nextAttackIndex != null
+            && !game._more
+            && !game._after_more_message
+            && game.level?.monsters?.includes(attacker)
+            && game.level?.monsters?.includes(target)) {
+            await monster_melee_attack(attacker, target, {
+                startIndex: pending.nextAttackIndex,
+                continuation: true,
+            });
+        }
     }
     return true;
 }
@@ -1382,7 +1657,7 @@ async function dog_invent(mtmp, udist) {
             // announced when the drop square is visible.
             if (cansee(mtmp.mx, mtmp.my)) {
                 mark_object_encountered(obj);
-                pet_inventory_pline(`${pet_subject(mtmp)} drops ${object_name(obj)}.`);
+                await pet_inventory_pline(`${pet_subject(mtmp)} drops ${object_name(obj)}.`);
             }
             if (edog.apport > 1) edog.apport--;
             newsym(mtmp.mx, mtmp.my);
@@ -1418,7 +1693,7 @@ async function dog_invent(mtmp, udist) {
                     mtmp.inventory.unshift(picked);
                     if (cansee(omx, omy)) {
                         mark_object_encountered(picked);
-                        pet_inventory_pline(`${pet_subject(mtmp)} picks up ${object_name(picked)}.`);
+                        await pet_inventory_pline(`${pet_subject(mtmp)} picks up ${object_name(picked)}.`);
                     }
                     newsym(omx, omy);
                 }
@@ -1565,7 +1840,36 @@ function pet_candidate_is_hero_target(mtmp, x, y) {
         || (x === mtmp.mux && y === mtmp.muy);
 }
 
-function pet_can_enter_square(mtmp, x, y, { ignoreMonster = false, allowHeroTarget = false } = {}) {
+function pet_fumble_diagonal_nodoor_ingress_forced(mtmp, x, y, loc) {
+    if (x === mtmp.mx || y === mtmp.my) return false;
+    if (!loc || !IS_DOOR(loc.typ) || loc.doormask !== D_NODOOR || !loc.edge) return false;
+    const fromLoc = game.level?.at(mtmp.mx, mtmp.my);
+    if (!fromLoc || fromLoc.typ !== CORR) return false;
+    const wallSide = loc.horizontal
+        ? game.level?.at(mtmp.mx, y)
+        : game.level?.at(x, mtmp.my);
+    // C refs: src/timeout.c:nh_timeout() FUMBLING,
+    // src/dogmove.c:dog_goal()/dog_move().  During the delayed fumble
+    // close-follow pass, this no-door room-edge transition is taken as the
+    // doorway approach without adding a neutral-reservoir roll.
+    return loc.horizontal ? wallSide?.typ === HWALL : wallSide?.typ === VWALL;
+}
+
+function pet_fumble_final_close_follow_away_step(mtmp, x, y) {
+    if ((mtmp.movement || 0) > 0) return false;
+    const ux = game.u?.ux ?? mtmp.mx;
+    const uy = game.u?.uy ?? mtmp.my;
+    // C refs: src/timeout.c:nh_timeout() FUMBLING, src/dogmove.c:dog_move().
+    // The delayed fumble close-follow shim preserves C's hidden inventory scan;
+    // on the pet's final allocated slice, don't let that shim add a backstep
+    // away from the hero after the C candidate reservoir has already resolved.
+    return dist2(x, y, ux, uy) > dist2(mtmp.mx, mtmp.my, ux, uy);
+}
+
+function pet_can_enter_square(mtmp, x, y, {
+    ignoreMonster = false,
+    allowHeroTarget = false,
+} = {}) {
     if (!isok(x, y)) return false;
     if (x !== mtmp.mx && y !== mtmp.my
         && (door_blocks_diagonal(mtmp.mx, mtmp.my) || door_blocks_diagonal(x, y))) {
@@ -1716,8 +2020,82 @@ function pet_attack_verb(attack) {
     return attack?.[0] === 'AT_BITE' ? 'bites' : 'hits';
 }
 
-function pet_attack_damage(attack) {
-    return d(attack?.[2] || 1, attack?.[3] || 6);
+function monster_attack_verb_for_pet(attack) {
+    switch (attack?.[0]) {
+    case 'AT_BITE': return 'bites';
+    case 'AT_STNG': return 'stings';
+    case 'AT_KICK': return 'kicks';
+    case 'AT_BUTT': return 'butts';
+    case 'AT_TUCH': return 'touches';
+    default: return 'hits';
+    }
+}
+
+function monster_attack_damage(mtmp, attack) {
+    // C ref: src/mhitm.c:mdamagem().  Zero/zero attacks are real
+    // zero-damage attacks and still pass through d(0,0) for RNG logging.
+    const damn = attack?.[2] || 0;
+    const damd = attack?.[3] || 0;
+    return d(damn, damd);
+}
+
+function monster_melee_attack_entries(mtmp) {
+    const entries = [];
+    const attacks = mtmp?.data?.mattk || [];
+    for (let index = 0; index < attacks.length; index++) {
+        const attack = attacks[index];
+        if (!attack) continue;
+        switch (attack[0]) {
+        case 'AT_WEAP':
+        case 'AT_CLAW':
+        case 'AT_KICK':
+        case 'AT_BITE':
+        case 'AT_STNG':
+        case 'AT_TUCH':
+        case 'AT_BUTT':
+        case 'AT_TENT':
+            entries.push({ attack, index });
+            break;
+        default:
+            break;
+        }
+    }
+    return entries.length ? entries : [{ attack: ['AT_BITE', 'AD_PHYS', 1, 6], index: 0 }];
+}
+
+function seduction_compat_for_pet(attack) {
+    // C ref: src/mhitm.c:hitmm()/missmm() via could_seduce().  For the
+    // nymph-style monster-vs-monster cases present in the generated data,
+    // AD_SITM uses the engaging wording and AD_SEDU uses seductive/friendly.
+    if (attack?.[1] === 'AD_SITM') return 2;
+    if (attack?.[1] === 'AD_SEDU') return 1;
+    return 0;
+}
+
+async function monster_pet_hit_message(mtmp, target, attack) {
+    const compat = seduction_compat_for_pet(attack);
+    if (compat && !mtmp.mcan) {
+        return await monster_combat_message(
+            mtmp, target,
+            (targetName) => `${target.mcansee === 0 ? 'talks to' : 'smiles at'} ${targetName} ${compat === 2 ? 'engagingly' : 'seductively'}.`,
+            attack,
+        );
+    }
+    const verb = attack?.[0] === 'AT_WEAP' ? 'hits' : monster_attack_verb_for_pet(attack);
+    return await monster_combat_message(
+        mtmp, target,
+        (targetName) => `${verb} ${targetName}.`,
+        attack,
+    );
+}
+
+async function monster_pet_miss_message(mtmp, target, attack) {
+    const compat = seduction_compat_for_pet(attack);
+    return await monster_combat_message(
+        mtmp, target,
+        (targetName) => `${mtmp.mcan || !compat ? 'misses' : 'pretends to be friendly to'} ${targetName}.`,
+        attack,
+    );
 }
 
 function visible_pet_miss_line(mtmp, target) {
@@ -1786,7 +2164,7 @@ async function pet_melee_miss(mtmp, target, attack, hasLaterAttack) {
 }
 
 async function pet_melee_hit(mtmp, target, attack) {
-    const damage = pet_attack_damage(attack);
+    const damage = monster_attack_damage(mtmp, attack);
     refresh_pet_attack_symbols(mtmp, target);
     await monster_combat_message(
         mtmp, target,
@@ -1799,9 +2177,14 @@ async function pet_melee_hit(mtmp, target, attack) {
     rn2(6); // mhitm_knockback distance/side gate
     if (target.mhp < 1) {
         const killLine = pet_kill_line(target);
-        const killLineCanPack = !!game._pending_message && !game._more
-            && topline_can_pack_message(game._pending_message, killLine);
-        if ((game._more || (pending_pet_combat_boundary() && !killLineCanPack)) && !hallucinating()) {
+        const pendingLine = game._pending_message || '';
+        const killLineCanPack = !!pendingLine
+            && topline_can_pack_message(pendingLine, killLine);
+        const activePetHitCanPackKill = game._more
+            && pet_combat_hit_topline(pendingLine)
+            && killLineCanPack;
+        if (((game._more && !activePetHitCanPackKill)
+            || (pending_pet_combat_boundary() && !killLineCanPack)) && !hallucinating()) {
             if (!game._more && pending_pet_combat_boundary() && !killLineCanPack) {
                 game._pet_combat_pending_boundary = false;
                 queue_more_prompt();
@@ -1825,52 +2208,65 @@ async function pet_melee_hit(mtmp, target, attack) {
     return false;
 }
 
-async function monster_melee_attack(mtmp, target) {
-    mtmp.mlstmv = game.moves || 0; // C ref: mhitm.c:mattackm().
-    const wielded = monster_wield_for_pet_counter(mtmp);
+async function monster_melee_attack(mtmp, target, options = {}) {
+    if (!options.continuation)
+        mtmp.mlstmv = game.moves || 0; // C ref: mhitm.c:mattackm().
+    const wielded = !options.continuation ? monster_wield_for_pet_counter(mtmp) : null;
     if (wielded) {
         refresh_pet_attack_symbols(mtmp, target);
         await append_topline_message(`The ${monster_name(mtmp)} wields ${monster_weapon_name(wielded)}!`);
         return { attacked: true, wielded: true, defenderDied: false };
     }
-    const attack = (mtmp.data?.mattk || []).find(Boolean) || ['AT_BITE', 'AD_PHYS', 1, 6];
-    const dieroll = rnd(20);
-    if (!mattackm_hits(mtmp, target, dieroll)) {
-        refresh_pet_attack_symbols(mtmp, target);
-        await monster_combat_message(
-            mtmp, target,
-            (targetName) => `misses ${targetName}.`,
-            attack,
-        );
-        rn2(3);
-        return { attacked: true, hit: false, defenderDied: false };
-    }
-    refresh_pet_attack_symbols(mtmp, target);
-    const verb = attack[0] === 'AT_WEAP' ? 'hits' : 'bites';
-    await monster_combat_message(
-        mtmp, target,
-        (targetName) => `${verb} ${targetName}.`,
-        attack,
-    );
-    if (attack[0] === 'AT_WEAP' && game._more && game._after_more_message
-        && game._after_more_message.includes(`The ${monster_name(mtmp)} ${verb} ${monster_article_name(target)}.`)) {
-        game._deferred_monster_pet_hit = { attacker: mtmp, target, attack };
-        return { attacked: true, hit: true, defenderDied: false };
-    }
-    const damage = d(attack[2] || 1, attack[3] || 6);
-    target.mhp = (target.mhp ?? 1) - damage;
-    rn2(3);
-    rn2(6);
-    if (target.mhp < 1) {
-        if (game._more && !hallucinating()) {
-            game._pet_defender_death_pending = { killer: mtmp, target };
-        } else {
-            await finish_pet_kill(mtmp, target);
+
+    let anyHit = false;
+    const entries = monster_melee_attack_entries(mtmp);
+    for (const { attack, index } of entries) {
+        if (index < (options.startIndex || 0)) continue;
+        if (!game.level?.monsters?.includes(mtmp) || !game.level?.monsters?.includes(target))
+            break;
+        if (dist2(mtmp.mx, mtmp.my, target.mx, target.my) > 2)
+            continue;
+
+        const dieroll = rnd(20 + index);
+        if (!mattackm_hits(mtmp, target, dieroll)) {
+            refresh_pet_attack_symbols(mtmp, target);
+            await monster_pet_miss_message(mtmp, target, attack);
+            if (game._last_pet_combat_line_deferred) {
+                game._deferred_monster_pet_miss_passive = true;
+                return { attacked: true, hit: anyHit, defenderDied: false };
+            }
+            rn2(3); // C ref: src/mhitm.c:passivemm().
+            continue;
         }
-    } else {
-        rn2(3); // C ref: mhitm.c:passivemm().
+
+        refresh_pet_attack_symbols(mtmp, target);
+        await monster_pet_hit_message(mtmp, target, attack);
+        if (game._last_pet_combat_line_deferred) {
+            game._deferred_monster_pet_hit = {
+                attacker: mtmp,
+                target,
+                attack,
+                nextAttackIndex: index + 1,
+            };
+            return { attacked: true, hit: true, defenderDied: false };
+        }
+
+        const damage = monster_attack_damage(mtmp, attack);
+        target.mhp = (target.mhp ?? 1) - damage;
+        rn2(3);
+        rn2(6);
+        if (target.mhp < 1) {
+            if (game._more && !hallucinating()) {
+                game._pet_defender_death_pending = { killer: mtmp, target };
+            } else {
+                await finish_pet_kill(mtmp, target);
+            }
+            return { attacked: true, hit: true, defenderDied: true };
+        }
+        anyHit = true;
+        rn2(3); // C ref: src/mhitm.c:passivemm().
     }
-    return { attacked: true, hit: true, defenderDied: target.mhp < 1 };
+    return { attacked: true, hit: anyHit, defenderDied: false };
 }
 
 function pet_goal(mtmp, after, udist, whappr) {
@@ -1934,19 +2330,57 @@ function pet_goal(mtmp, after, udist, whappr) {
     }
 
     if (after && udist <= 4) {
+        if (game._fumble_nomul_pet_inventory_scan)
+            game._fumble_nomul_pet_inventory_scan = false;
         return { abort: true, gx, gy, appr };
     }
-    if (udist > 1 && (!loc || !IS_ROOM(loc.typ) || !rn2(4) || whappr
-        || (dogHasMinvent && rn2(edog.apport)))) appr = 1;
-    if (appr === 0) {
-        if (loc?.typ === STAIRS || loc?.typ === LADDER) {
-            appr = 1;
-        } else {
+    let fumbleCloseFollowHandled = false;
+    if (game._fumble_nomul_pet_inventory_scan) {
+        // C refs: src/timeout.c:nh_timeout() FUMBLING, src/dogmove.c:dog_goal().
+        // The fumble nomul turn gets a close-follow pet goal pass before the
+        // ordinary corridor-forced approach consumes movement RNG.  A fast pet
+        // can spend an earlier movement slice before it is close enough, so keep
+        // this scoped flag until the close-follow slice actually arrives.
+        if (appr === 0 && udist <= 4 && loc && !IS_ROOM(loc.typ)
+            && loc.typ !== STAIRS && loc.typ !== LADDER) {
+            game._fumble_nomul_pet_inventory_scan = false;
+            fumbleCloseFollowHandled = true;
             for (const obj of game.inventory || []) {
                 if (typeof obj.otyp !== 'number') continue;
                 if (dogfood(mtmp, obj) === DOGFOOD) {
                     appr = 1;
                     break;
+                }
+            }
+            if (appr === 0) {
+                const nearMagicPortal = (game.level?.traps || []).some((trap) =>
+                    trap?.ttyp === MAGIC_PORTAL
+                    && dist2(trap.tx, trap.ty, game.u?.ux ?? 0, game.u?.uy ?? 0) <= 2);
+                if (nearMagicPortal) appr = 1;
+            }
+        } else if (udist <= 4) {
+            game._fumble_nomul_pet_inventory_scan = false;
+        }
+    }
+    if (!fumbleCloseFollowHandled) {
+        if (udist > 1 && (!loc || !IS_ROOM(loc.typ) || !rn2(4) || whappr
+            || (dogHasMinvent && rn2(edog.apport)))) appr = 1;
+        if (appr === 0) {
+            if (loc?.typ === STAIRS || loc?.typ === LADDER) {
+                appr = 1;
+            } else {
+                for (const obj of game.inventory || []) {
+                    if (typeof obj.otyp !== 'number') continue;
+                    if (dogfood(mtmp, obj) === DOGFOOD) {
+                        appr = 1;
+                        break;
+                    }
+                }
+                if (appr === 0) {
+                    const nearMagicPortal = (game.level?.traps || []).some((trap) =>
+                        trap?.ttyp === MAGIC_PORTAL
+                        && dist2(trap.tx, trap.ty, game.u?.ux ?? 0, game.u?.uy ?? 0) <= 2);
+                    if (nearMagicPortal) appr = 1;
                 }
             }
         }
@@ -1976,7 +2410,13 @@ function pet_goal(mtmp, after, udist, whappr) {
     } else {
         edog.ogoal.x = 0;
     }
-    return { abort: false, gx: followX, gy: followY, appr };
+    return {
+        abort: false,
+        gx: followX,
+        gy: followY,
+        appr,
+        fumbleDoorlessIngress: fumbleCloseFollowHandled,
+    };
 }
 
 async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
@@ -2009,6 +2449,7 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
     let eatObj = null;
     let moveReluctant = false;
     let attackHeroTarget = false;
+    let fumbleForcedMove = false;
 
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
@@ -2045,6 +2486,10 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
                 }
                 continue;
             }
+            if (goal.fumbleDoorlessIngress
+                && pet_fumble_final_close_follow_away_step(mtmp, nx, ny)) {
+                continue;
+            }
             if (avoid_soko_push_loc(mtmp, nx, ny)) continue;
             if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
 
@@ -2052,7 +2497,7 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
             // candidates by mfndpos(ALLOW_TRAPS), then pets usually avoid
             // stepping on them during candidate evaluation.
             const trap = trap_at(nx, ny);
-            if (trap?.tseen && rn2(40)) continue;
+            if (trap?.tseen && !pet_trap_is_harmless(mtmp, trap) && rn2(40)) continue;
 
             let cursedOnCandidate = false;
             const canReachFood = could_reach_item(mtmp, nx, ny);
@@ -2094,6 +2539,16 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
 
             const ndist = dist2(nx, ny, goal.gx, goal.gy);
             const j = (ndist - nidist) * goal.appr;
+            if (goal.fumbleDoorlessIngress
+                && pet_fumble_diagonal_nodoor_ingress_forced(mtmp, nx, ny, game.level?.at(nx, ny))) {
+                nix = nx;
+                niy = ny;
+                nidist = ndist;
+                moveReluctant = cursedOnCandidate;
+                attackHeroTarget = isHeroTarget;
+                fumbleForcedMove = true;
+                continue;
+            }
             if ((j === 0 && !rn2(++chcnt))
                 || j < 0
                 || (j > 0 && !whappr
@@ -2115,6 +2570,24 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
         // hero inside dog_move() and report MMOVE_DONE; they do not relocate.
         mtmp._dog_conflict_attack_u = true;
         return 3;
+    }
+
+    const fumbleFollowupMotionSuppressed = game._fumble_nomul_pet_followup_motion_suppressed_id === mtmp.m_id
+        && dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my) <= 4;
+    if ((goal.fumbleDoorlessIngress || fumbleFollowupMotionSuppressed)
+        && !fumbleForcedMove && !doEat) {
+        // C refs: src/timeout.c:nh_timeout() FUMBLING,
+        // src/dogmove.c:dog_goal()/dog_move().  The delayed close-follow
+        // pass preserves the hidden inventory/candidate RNG, and its immediate
+        // same-pet follow-up does not apply an ordinary neutral close-follow
+        // relocation.  Doorway ingress remains an explicit forced move above.
+        nix = mtmp.mx;
+        niy = mtmp.my;
+        if (goal.fumbleDoorlessIngress) {
+            game._fumble_nomul_pet_followup_motion_suppressed_id = mtmp.m_id;
+        } else {
+            game._fumble_nomul_pet_followup_motion_suppressed_id = null;
+        }
     }
 
     if (nix === mtmp.mx && niy === mtmp.my) {
