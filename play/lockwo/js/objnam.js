@@ -13,6 +13,7 @@
 // which in turn fixes the object that the single rn2() resolves to.
 
 import { rn2 } from './rng.js';
+import { game } from './gstate.js';
 import {
     objects,
     MAXOCLASSES,
@@ -122,6 +123,17 @@ function makesingular(s) {
     if (s.endsWith('ies')) return s.slice(0, -3) + 'y';
     if (s.endsWith('s')) return s.slice(0, -1);
     return s;
+}
+
+// C ref: objnam.c fruitname() — name the player's current fruit, optionally
+// appending " juice".  svp.pl_fruit defaults to "slime molds"; a custom fruit
+// "<x> of <y>" uses the part after " of ".  No public session sets a custom
+// fruit, so the default singular ("slime mold") drives "slime mold juice".
+export function fruitname(juice) {
+    const pl_fruit = game.svp?.pl_fruit || game.pl_fruit || 'slime molds';
+    const idx = pl_fruit.indexOf(' of ');
+    const fruit_nam = idx >= 0 ? pl_fruit.slice(idx + 4) : pl_fruit;
+    return makesingular(fruit_nam) + (juice ? ' juice' : '');
 }
 
 // ─────────────────────────────────────────────────────────────────────────

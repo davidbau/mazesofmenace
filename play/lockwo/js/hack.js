@@ -16,7 +16,8 @@
 import { game } from './gstate.js';
 import { domove, blocksMove } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
-import { m_at, flush_screen, newsym, pline, update_topl, topl_more, y_n } from './display.js';
+import { m_at, vobj_at, covers_objects, flush_screen, newsym, pline, update_topl, topl_more, y_n } from './display.js';
+import { obj_doname } from './invent.js';
 import { rnd } from './rng.js';
 import { vision_recalc } from './vision.js';
 import { nhgetch } from './input.js';
@@ -532,6 +533,31 @@ function terrain_description(x, y) {
     return 'floor of a room';
 }
 
+// C ref: pager.c lookat() glyph_is_object branch -> look_at_object().  When the
+// displayed glyph at <x,y> is a floor object (e.g. a STATUE drawn as the
+// petrified monster's class letter), lookat names that object via
+// distant_name(otmp, doname) rather than the terrain underneath — so a statue
+// of a plains centaur reads "a statue of a plains centaur", not "floor of a
+// room".  We mirror C's _map_location object priority: an object is the drawn
+// background glyph only when present and not hidden by deep water/lava
+// (covers_objects).  A spotted monster on the cell is drawn on top (handled by
+// the caller before this, matching lookat's glyph_is_monster precedence), so
+// this is only consulted when no monster occupies the displayed glyph.  Returns
+// the object's name, or null when no floor object is shown.  look_at_object's
+// terrain suffixes (" in water", " embedded in ...") do not apply to a statue
+// on ordinary room floor and are omitted.
+function look_at_object_here(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return null;
+    // C: object only shown (and thus only named) when the cell has been
+    // revealed; an unexplored cell reads as "unexplored area" via terrain.
+    if (!loc.seenv && loc.remembered_glyph == null) return null;
+    if (covers_objects(loc)) return null;
+    const obj = vobj_at(x, y);
+    if (!obj) return null;
+    return obj_doname(obj);
+}
+
 // C ref: stairs.c known_branch_stairs() + defsym.h S_upstair/S_dnstair vs
 // S_brupstair/S_brdnstair.  A staircase that leads to a different dungeon
 // branch and has been traversed by the hero is reported as a "branch
@@ -773,8 +799,17 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
     // with the optional "(invalid target)" suffix from getpos_getvalid.
     const describe = (x, y) => {
         let desc;
-        if (u && x === u.ux && y === u.uy) desc = self_lookat();
-        else desc = terrain_description(x, y);
+        if (u && x === u.ux && y === u.uy) {
+            desc = self_lookat();
+        } else {
+            // C ref: pager.c lookat() dispatch — when the cell's displayed glyph
+            // is a floor object (e.g. a STATUE drawn as the petrified monster's
+            // class letter) and no spotted monster is drawn on top, lookat names
+            // the object via look_at_object() instead of the terrain underneath.
+            const mtmp = m_at(x, y);
+            const objname = (mtmp && canspotmon(mtmp)) ? null : look_at_object_here(x, y);
+            desc = objname || terrain_description(x, y);
+        }
         if (validfn && !validfn(x, y)) desc += ' (invalid target)';
         return desc;
     };

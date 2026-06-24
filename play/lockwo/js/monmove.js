@@ -13,6 +13,7 @@ import { rn2, rnd, d } from './rng.js';
 import {
     COLNO, ROWNO, MTSZ, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
     IS_OBSTRUCTED, IS_DOOR, IS_POOL, IS_LAVA, isok, OBJ_AT, is_pit,
+    IS_STWALL, W_NONPASSWALL,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
@@ -107,6 +108,22 @@ function terrainTyp(x, y) {
 }
 function doormask(x, y) {
     return game.level?.at(x, y)?.doormask || 0;
+}
+// C ref: mondata.h passes_walls(ptr) = (mflags1 & M1_WALLWALK).  makemon carries
+// no mflags1, so the four M1_WALLWALK species are identified by pmidx (the same
+// set mon_allows_rock uses): earth elemental(156), xorn(232), ghost(287),
+// shade(288).
+function passes_walls(data) {
+    return !!data && WALLWALK_PMIDX.has(data.pmidx);
+}
+// C ref: hack.c:939 may_passwall(x,y) — a stone wall is phaseable unless it is
+// flagged W_NONPASSWALL (the level border / permanent walls).  Our mklev does
+// not set W_NONPASSWALL, so interior room walls (the earth elemental's case)
+// are phaseable, matching C.
+function may_passwall(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return !(IS_STWALL(loc.typ) && ((loc.wall_info || 0) & W_NONPASSWALL));
 }
 
 // C ref: monmove.c distfleeck(mtmp, &inrange, &nearby, &scared).
@@ -250,7 +267,15 @@ export function mfndpos(mon, flag) {
             if (nx === x && ny === y) continue;
             const ntyp = terrainTyp(nx, ny);
             if (ntyp == null) continue;
-            if (IS_OBSTRUCTED(ntyp)) continue; // wall / rock (no dig/passwall)
+            // C ref: mon.c:2212-2214 — an obstructed cell is dropped unless the
+            // monster passes walls (ALLOW_WALL && may_passwall).  A wall-walker
+            // (earth elemental, xorn, ghost, shade) keeps its adjacent phaseable
+            // walls as candidates, so cnt matches C and the m_move rn2(4*cnt)
+            // mtrack tie-break aligns (seed4500 earth elemental: cnt 5 -> 7).
+            // (The dig path — rockok/treeok && may_dig — is not modeled here.)
+            if (IS_OBSTRUCTED(ntyp)
+                && !(passes_walls(mon.data) && may_passwall(nx, ny)))
+                continue;
             // closed/locked doors: a monster that can_open (has hands, not
             // tiny) treats a *closed* door as passable (C: OPENDOOR flag in
             // mon_allowflags); a *locked* door still blocks (no dlvl-1 monster
@@ -902,6 +927,14 @@ const MON_HITU_ATTACKS = {
     'hill orc': [MA(AT_WEAP, AD_PHYS, 1, 6)],
     'Mordor orc': [MA(AT_WEAP, AD_PHYS, 1, 6)],
     'Uruk-hai': [MA(AT_WEAP, AD_PHYS, 1, 8)],
+    // S_GNOME family (include/monsters.h): the Mines' weapon-wielding gnomes.
+    // A plain gnome has a single AT_WEAP/AD_PHYS attack — it "hits" (not the
+    // generic "bites"); the lord/king dice differ (seed0030 step-47 gnome,
+    // d(1,6) base before any wielded-weapon dmgval).  gnomish wizard is AT_MAGC
+    // (spellcaster, handled elsewhere) so it is intentionally not listed here.
+    'gnome': [MA(AT_WEAP, AD_PHYS, 1, 6)],
+    'gnome lord': [MA(AT_WEAP, AD_PHYS, 1, 8)],
+    'gnome king': [MA(AT_WEAP, AD_PHYS, 2, 6)],
 };
 function mon_attacks(mdat) {
     if (!mdat) return [];

@@ -89,6 +89,68 @@ export class NethackGame {
         this._pendingAnimFrames = [];
         this._lastRngIdx = 0;
         this._nhgetchCount = 0;
+        // Differential-oracle state dumps, parallel to _screens (one entry
+        // per input boundary).  Populated ONLY when process.env.NHJSDUMP is
+        // set (Node-side diagnosis); a complete no-op otherwise so the judge
+        // run (no NHJSDUMP) has zero overhead and zero behaviour change.
+        this._stateDumps = [];
+        this._nhjsdump = (typeof process !== 'undefined'
+                          && process.env && process.env.NHJSDUMP
+                          && process.env.NHJSDUMP !== '0') ? true : false;
+    }
+
+    // Snapshot the full game state at an input boundary into a plain object
+    // mirroring the C recorder's .state.jsonl record (seq/rng/moves/ux/uy/
+    // dlevel/uhp/uhpmax/multi + the fmon chain in iteration order).  Called
+    // ONLY when NHJSDUMP is set.  `rngCount` is the number of logged RNG
+    // calls so far (== getRngLog().length), which equals the C recorder's
+    // rng_call_count at the same boundary (both count one entry per
+    // top-level rn2/rnd/d/rne/rnz/rnl call), so dumps align by rng#.
+    _captureStateDump(rngCount) {
+        const u = game.u || {};
+        const mons = (game.level && game.level.monsters) || game.fmon || [];
+        const out = [];
+        for (let i = 0; i < mons.length; i++) {
+            const m = mons[i];
+            if (!m) continue;
+            const d = m.data || {};
+            // Normalize JS booleans / undefined to the 0/1 ints C emits.
+            const b = (v) => (v ? 1 : 0);
+            const n = (v) => (v == null ? 0 : (v | 0));
+            out.push({
+                i,
+                m_id: n(m.m_id),
+                pm: (d.pmidx == null ? -1 : (d.pmidx | 0)),
+                name: d.name != null ? String(d.name) : '(null)',
+                mx: n(m.mx),
+                my: n(m.my),
+                mhp: n(m.mhp),
+                mhpmax: n(m.mhpmax),
+                mflee: b(m.mflee),
+                mfleetim: n(m.mfleetim),
+                mfrozen: n(m.mfrozen),
+                mtame: n(m.mtame),
+                mpeaceful: b(m.mpeaceful),
+                msleeping: b(m.msleeping),
+                mcanmove: (m.mcanmove == null ? 1 : b(m.mcanmove)),
+                dead: (n(m.mhp) < 1) ? 1 : 0,
+            });
+        }
+        this._stateDumps.push({
+            seq: this._stateDumps.length + 1,
+            rng: rngCount | 0,
+            moves: (game.moves == null ? 0 : (game.moves | 0)),
+            ux: (u.ux == null ? 0 : (u.ux | 0)),
+            uy: (u.uy == null ? 0 : (u.uy | 0)),
+            dlevel: (u.uz && u.uz.dlevel != null)
+                    ? (u.uz.dlevel | 0)
+                    : (game.dlevel == null ? -1 : (game.dlevel | 0)),
+            uhp: (u.uhp == null ? 0 : (u.uhp | 0)),
+            uhpmax: (u.uhpmax == null ? 0 : (u.uhpmax | 0)),
+            multi: (game.multi == null ? 0 : (game.multi | 0)),
+            mons: out,
+            nmon: out.length,
+        });
     }
 
     // Universal animation-frame hook.  Call once per intermediate
@@ -904,6 +966,14 @@ export class NethackGame {
             // snapshot and reset here so the next step starts empty.
             nhGame._animFramesByStep.push(nhGame._pendingAnimFrames);
             nhGame._pendingAnimFrames = [];
+
+            // Differential-oracle state snapshot (gated; no-op when unset).
+            // fullLog.length is the logged-RNG-call count at this boundary,
+            // which equals the C recorder's rng_call_count for the same
+            // step (see _captureStateDump).  Use it so the JS and C dumps
+            // align on the SAME rng# even when an earlier divergence has
+            // already shifted the step<->rng mapping.
+            if (nhGame._nhjsdump) nhGame._captureStateDump(fullLog.length);
         };
     }
 
@@ -923,6 +993,13 @@ export class NethackGame {
     // for steps that didn't animate.  SUPPLEMENTAL metric — not part
     // of the official ranking; see API.md.
     getAnimationFramesByStep() { return this._animFramesByStep; }
+    // Per-step full game-state snapshots, parallel to getScreens().  One
+    // entry per input boundary, each mirroring the C recorder's
+    // .state.jsonl record (hero + fmon chain + rng#).  Populated ONLY when
+    // process.env.NHJSDUMP is set — empty array (zero overhead) otherwise.
+    // Consumed by scripts/oracle.mjs to pinpoint the first state divergence
+    // from C.  NOT part of scoring.
+    getStateDumps() { return this._stateDumps; }
 }
 
 // ── Per-segment runner — the contest contract ──

@@ -32,7 +32,9 @@ import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok, IS_DOOR,
-         A_STR, A_DEX, A_CON, Is_rogue_level } from './const.js';
+         A_STR, A_DEX, A_CON, Is_rogue_level,
+         TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
+         PIT, SPIKED_PIT } from './const.js';
 import { exercise } from './attrib.js';
 import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
 import { HEADSTONE } from './const.js';
@@ -109,6 +111,56 @@ function blocksDiagonalDoor(ux, uy, x, y, dx, dy) {
     return false;
 }
 
+// C ref: cmd.c get_count() — gather typed digits into a repeat count, echoing
+// "Count: N" on the top line, and return the first non-digit key.  With
+// number_pad Off (the default for the recorded sessions) parse() always routes
+// the first command key through here, so any leading digit starts a count.
+//
+// Faithful subset: maxcount is LARGEST_INT (32767); the only control keys that
+// matter for the corpus are digits, ESC (cancel) and the terminating command
+// letter.  The echo timing mirrors C exactly — "Count: N" is not shown until
+// the count exceeds a single digit (cnt > 9), so a one-digit count leaves the
+// top line blank (matching the recorder, e.g. seed0900 "20s": the '2' frame is
+// blank, the '0' frame shows "Count: 20").  backspace/erase support is omitted
+// (no recorded session backspaces inside a count).
+const LARGEST_INT = 32767;
+
+async function get_count(inkey) {
+    let cnt = 0;
+    let key = inkey;
+    for (;;) {
+        const ch = String.fromCharCode(key);
+        if (ch >= '0' && ch <= '9') {
+            const dgt = key - 48;
+            cnt = cnt * 10 + dgt; // C AppendLongDigit (no overflow for our range)
+            if (cnt < 0) cnt = 0;
+            else if (cnt > LARGEST_INT) cnt = LARGEST_INT;
+        } else {
+            // First non-digit terminates the count; return it to rhack.
+            break;
+        }
+        // C get_count(): echo "Count: N" only once the count is multi-digit
+        // (cnt > 9).  custompline() replaces the top line; the cursor parks at
+        // the end of the prompt (row 0).  The frame is captured by the next
+        // nhgetch() below, so set the message + cursor before reading.
+        if (cnt > 9) {
+            game._pending_message = `Count: ${cnt}`;
+            await flush_screen(1);
+            const disp = game?.nhDisplay;
+            if (disp?.setCursor)
+                disp.setCursor(Math.min(game._pending_message.length, 79), 0);
+        }
+        key = await nhgetch();
+    }
+    // C parse(): clear the count echo from the top line once a command key
+    // arrives, then hand the count to the move loop via gm.multi.
+    game._pending_message = '';
+    game.command_count = cnt;
+    game.multi = cnt;
+    if (game.multi) game.multi -= 1;
+    return key;
+}
+
 // C ref: cmd.c rhack — main command dispatcher
 export async function rhack(key) {
     if (key === 0) {
@@ -126,6 +178,29 @@ export async function rhack(key) {
         // NEED_MORE state so the next turn's messages start a fresh line
         // (C ref: topl.c clears toplin when the player's input is read).
         game._toplin = 0;
+
+        // C ref: cmd.c parse() — with number_pad Off, the first command key is
+        // routed through get_count(); a leading digit accumulates a repeat
+        // count and get_count() returns the following command key.  A bare ESC
+        // (no digits) cancels with no count.  Any digit-prefixed command thus
+        // sets gm.multi so the move loop repeats it.
+        const fc = String.fromCharCode(key);
+        if (fc >= '0' && fc <= '9') {
+            key = await get_count(key);
+            // ESC after a count cancels it (C: clears WIN_MESSAGE, multi 0).
+            if (key === 27) {
+                game._pending_message = '';
+                game.command_count = 0;
+                game.multi = 0;
+            }
+        } else {
+            // C parse(): with no count, command_count is 0 and gm.multi is set
+            // to 0 (gm.multi = command_count).  Reset it here so a stale count
+            // from an earlier command can never leak into this dispatch (e.g.
+            // arm the search occupation for a plain 's').
+            game.command_count = 0;
+            game.multi = 0;
+        }
     }
 
     const ch = String.fromCharCode(key);
@@ -182,8 +257,14 @@ export async function rhack(key) {
         }
         game.context.move = 0;
     } else if (ch === 'i') {
-        ddoinv();
-        game.context.move = 0;
+        // C ref: cmd.c { 'i', ..., ddoinv }.  ddoinv() shows the selectable
+        // inventory (a blocking PICK_ONE menu); choosing an item runs
+        // itemactions() ("Do what with X?"), whose chosen action dispatches the
+        // real command.  All key-consumption happens inside ddoinv (so the menu
+        // keystrokes don't leak to the command loop); the turn flag comes from
+        // the dispatched command (e.g. a Throw that elapses a turn).  getdir is
+        // threaded in for the Throw action's direction prompt.
+        game.context.move = (await ddoinv(getdir)) === 3 ? 1 : 0;
     } else if (ch === '\\') {
         dodiscovered();
         game.context.move = 0;
@@ -249,7 +330,17 @@ export async function rhack(key) {
         // C ref: cmd.c dosearch -> detect.c dosearch0(0): search adjacent
         // squares for hidden doors/passages/traps.  Takes a game turn unless
         // the safe_wait safety check refuses it (hostile monster adjacent).
-        game.context.move = (await dosearch()) ? 1 : 0;
+        //
+        // C rhack(): a repeat count (gm.multi) on a command with f_text
+        // ("searching") arms a timed occupation — set_occupation(dosearch,
+        // "searching", gm.multi) — so the move loop re-runs the search for
+        // gm.multi more turns without reading another command key.  We mirror
+        // that with game._search_occupation: this first search is the command
+        // turn; the move loop counts down gm.multi over the following turns.
+        const searched = await dosearch();
+        game.context.move = searched ? 1 : 0;
+        if (searched && (game.multi ?? 0) > 0)
+            game._search_occupation = true;
     } else if (key === 4) { // ^D — kick (dokick.c dokick())
         // C ref: cmd.c keymap C('d') = dokick.  Reads a direction, then resolves
         // the kicked square (monster / object / terrain).  Sets the turn flag
@@ -758,8 +849,11 @@ export async function doopen_indir(x, y) {
         cx = x; cy = y;
     } else {
         // nohands(youmonst): the starter roles all have hands -> skip.
+        // C ref: lock.c doopen_indir() -> get_adjacent_loc(): when getdir()
+        // returns 0 (a quitchar, or an invalid-direction key after the cmdassist
+        // help window), get_adjacent_loc prints "Never mind." and returns 0.
         const dir = await getdir();
-        if (!dir) return 0; // ESC / invalid direction: like get_adjacent_loc fail
+        if (!dir) { await pline('Never mind.'); return 0; }
         cx = u.ux + dir.dx; cy = u.uy + dir.dy;
     }
 
@@ -1002,6 +1096,26 @@ export async function domove(dx, dy) {
         return;
     }
 
+    // ── trapped hero struggles instead of moving ──  C ref: hack.c
+    // domove_core() (hack.c:2830): once past the monster-bump handling, a hero
+    // with u.utrap set calls trapmove(); a still-stuck (or just-freed) hero
+    // remains in place — trapmove returns FALSE ("!moved") and domove_core
+    // returns without advancing the hero.  The struggle still elapses a game
+    // turn (monsters move), which is what makes the recorded sessions' bear-trap
+    // sequence advance.  Reproduced here so a directional command while trapped
+    // does NOT move the hero (seed0004: the pony stays adjacent because the
+    // trapped hero never relocates, keeping its dochug is_wanderer rn2(4) live).
+    if (u.utrap) {
+        const moved = await trapmove(newx, newy);
+        if (!u.utrap) game.botl = true; // reset_utrap(TRUE) — freed this turn
+        if (!moved) {
+            game.context.move = 1; // the struggle elapses a turn
+            return;
+        }
+        // (TT_PIT into an adjacent pit / TT_LAVA edge can return moved==TRUE and
+        //  fall through to the normal move below — not exercised here.)
+    }
+
     // ── walk into a closed door ──  C ref: hack.c test_move() door branch.
     // C order: the IS_DOOR(tmpr->typ) branch tests closed_door(x,y) FIRST
     // (hack.c:1075); the autoopen path (hack.c:1097, doopen_indir) and the
@@ -1109,6 +1223,96 @@ export async function domove(dx, dy) {
     // trap fires on the same square.
     await spoteffects(() => pickup_after_move(newx, newy));
 }
+
+// C ref: hack.c trapmove(x, y, desttrap) — the hero, already trapped, tries to
+// move in direction (u.dx,u.dy) toward (x,y).  Returns FALSE when the hero
+// stays put (the common case: still struggling, or just wriggled free this
+// turn), TRUE only when a trap type lets the move proceed (adjacent-pit /
+// lava-edge — not reached by the contest hero).  Decrements u.utrap and emits
+// the Norep predicament line.  RNG: only the TT_BEARTRAP orthogonal-move
+// rn2(5) and (when implemented) other types' rolls — a diagonal bear-trap
+// struggle consumes NO RNG, matching the recorded seed0004 "b" struggles.
+async function trapmove(x, y) {
+    const u = game.u;
+    if (!u.utrap) return true; // sanity (C: !u.utrap -> return TRUE)
+    const dx = u.dx, dy = u.dy;
+
+    switch (u.utraptype) {
+    case TT_BEARTRAP: {
+        // C ref: hack.c:1567 — verbose predicament line (Norep-deduped).
+        await Norep_topl('You are caught in a bear trap.');
+        // C ref: hack.c:1575 — "[why does diagonal movement give quickest
+        // escape?]"  A diagonal move always frees one tick; an orthogonal move
+        // does so only on !rn2(5).
+        if ((dx && dy) || !rn2(5))
+            u.utrap--;
+        // Whether still stuck or just freed (wriggle_free), the hero does not
+        // relocate this turn.
+        if (!u.utrap)
+            await pline('You finally wriggle free.');
+        return false;
+    }
+    case TT_PIT: {
+        // C ref: hack.c:1580 — moving into a *seen* adjacent pit is allowed.
+        const t = trap_at(x, y);
+        if (t && t.tseen && is_pit_ttyp(t.ttyp))
+            return true;
+        // Otherwise try to climb out (position unchanged).  climb_pit() rolls
+        // are not exercised by the contest hero at the diverging points; struggle
+        // in place without consuming RNG keeps the stream aligned if reached.
+        await climb_pit_min();
+        return false;
+    }
+    case TT_WEB:
+        // C ref: hack.c:1587 — --u.utrap, stay put; ART_STING free not modeled.
+        if (--u.utrap)
+            await Norep_topl('You are stuck to the web.');
+        else
+            await pline('You disentangle yourself.');
+        return false;
+    case TT_LAVA:
+        // C ref: hack.c:1609 — stuck in lava; struggle in place.
+        await Norep_topl('You are stuck in the lava.');
+        u.utrap--;
+        if ((u.utrap & 0xff) === 0) u.utrap = 0;
+        return false;
+    case TT_INFLOOR:
+        // C ref: hack.c:1631 — stuck in the floor (buried-ball not modeled).
+        if (--u.utrap)
+            await Norep_topl('You are stuck in the floor.');
+        else
+            await pline('You finally wriggle free.');
+        return false;
+    default:
+        // Unknown trap type: struggle in place without consuming RNG.
+        if (u.utrap) u.utrap--;
+        return false;
+    }
+}
+
+// C ref: pline.c Norep(...) — like pline() but suppresses an immediately
+// repeated identical top-line (used by the verbose "You are caught ..." lines).
+// We track the last emitted struggle line and skip a same-text repeat so the
+// recorded screen (which shows the line once, persisting across struggles)
+// matches.
+async function Norep_topl(msg) {
+    if (game._lastNorep === msg) return;
+    game._lastNorep = msg;
+    const { update_topl } = await import('./display.js');
+    await update_topl(msg);
+}
+
+// C ref: trap.c t_at(x,y) — the trap at a square (or null).
+function trap_at(x, y) {
+    for (const t of (game.level?.traps || []))
+        if (t.tx === x && t.ty === y) return t;
+    return null;
+}
+// C ref: trap.h is_pit(ttyp) — PIT or SPIKED_PIT.
+function is_pit_ttyp(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
+// Minimal climb_pit placeholder — the contest hero never reaches the
+// RNG-bearing climb path at a diverging point; struggle in place.
+async function climb_pit_min() { /* no RNG; position unchanged */ }
 
 // C ref: hack.c domove_core() -> spoteffects(TRUE) -> pickup(1).  pickup(1)
 // runs at the tail of EVERY move that relocates the hero (plain step, run,

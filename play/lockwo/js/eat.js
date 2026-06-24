@@ -21,6 +21,8 @@ const TIN = 296;            // objects.c TIN
 const FOOD_CLASS = 7;       // mkobj.js FOOD_CLASS
 const FORTUNE_COOKIE = 289; // objects.h FORTUNE_COOKIE
 const CLOVE_OF_GARLIC = 284; // mkobj.js CLOVE_OF_GARLIC
+const APPLE = 277;          // mkobj.js APPLE
+const CRAM_RATION = 292, K_RATION = 294, C_RATION = 295; // mkobj.js rations
 
 // C ref: mondata.c olfaction(mdat) — most monsters can smell; golems, eyes,
 // jellies, puddings, blobs, vortices, elementals, fungi and lights cannot.
@@ -328,6 +330,32 @@ export function gethungry() {
     rn2(20);
 }
 
+// C ref: eat.c newuhs(incr) — recompute the hunger status (u.uhs) from
+// u.uhunger and announce any status change.  Only the not-eating, NOT_HUNGRY
+// path is exercised by the covered sessions (drinking fruit juice nudges
+// hunger up while well-fed), where newhs == u.uhs and this is a pure no-op.
+// The HUNGRY/WEAK transition messages are ported faithfully; the FAINTING /
+// STARVED branches (which would need fainting occupation / done()) are not yet
+// reached and are left out so we never diverge mid-port.
+export function newuhs(incr) {
+    const u = game.u;
+    if (!u) return;
+    const h = u.uhunger ?? 900;
+    const newhs = (h > 1000) ? 0 /*SATIATED*/
+        : (h > 150) ? 1 /*NOT_HUNGRY*/
+        : (h > 50) ? 2 /*HUNGRY*/
+        : (h > 0) ? 3 /*WEAK*/ : 4 /*FAINTING*/;
+    if (newhs === (u.uhs ?? 1)) { u.uhs = newhs; return; }
+    if (newhs === 2 /*HUNGRY*/ || newhs === 3 /*WEAK*/) {
+        const word = newhs === 2
+            ? (!incr ? 'only feel hungry now' : (h < 145) ? 'feel hungry' : 'are beginning to feel hungry')
+            : (!incr ? 'are still' : (h < 45) ? 'feel' : 'are beginning to feel');
+        if (newhs === 2) game._pending_message = `You ${word}.`;
+        else game._pending_message = `You ${word} weak.`;
+    }
+    u.uhs = newhs;
+}
+
 // C ref: eat.c doeat() — the 'e' command (carried/floor food, no tins/corpses
 // for the starter sessions).  Returns truthy when a game turn elapsed
 // (ECMD_TIME), falsy when the command was a no-op / cancelled (ECMD_OK).
@@ -438,34 +466,56 @@ export async function doeat() {
         _invent.useupall(stack);
     }
 
-    // C ref: eat.c fprefx() — the per-otyp "first bite" feedback, issued before
-    // the (possibly multi-turn) eating completes.  Clove of garlic: the hero
-    // (not undead) gets the garlic-breath scare on nearby monsters and the
-    // give_feedback "This clove of garlic is delicious!" line.
+    // C ref: eat.c doeat() -> fprefx(otmp) — the per-otyp "first bite" feedback
+    // (present tense), issued once on the first bite (not on resume), before the
+    // possibly-multi-turn meal completes.  RNG-free for the foods reached here.
     const nm = objName(piece);
-    if (piece.otyp === CLOVE_OF_GARLIC && !game.u?.uundead) {
-        garlic_breath();
-        const taste = piece.cursed ? 'terrible!' : 'delicious!';
-        await pline(`This ${nm} is ${taste}`);
-        if (reqtime <= 1 || finished) game.context.victual = { piece: null, o_id: 0 };
-        return true;
-    }
+    if (!already_partly_eaten) await fprefx(piece);
 
-    // Message (best-effort; the starter eat sessions that reach here have
-    // already diverged at chargen so the screen text is not score-bearing).
     if (reqtime <= 1 || finished) {
-        await pline(`You finish eating ${an(nm)}.`);
-        // C ref: eat.c done_eating() -> fpostfx(piece) (called after the
-        // "finish eating" feedback, before useup()).  Runs the per-otyp
-        // post-effects; the only RNG-bearing one the owned sessions reach is
-        // the fortune cookie's outrumor().
+        // C ref: eat.c eatfood()/start_eating() -> done_eating(message), with
+        // message = (reqtime > 1 || already_partly_eaten) (eat.c:2067).  A FRESH
+        // single-turn food passes FALSE, so the "You finish eating" line is
+        // suppressed — only fprefx()'s feedback shows (e.g. an apple prints just
+        // "Delicious!  Must be a Macintosh!").
+        if (reqtime > 1 || already_partly_eaten) {
+            await pline(`You finish eating ${an(nm)}.`);
+        }
+        // done_eating() -> fpostfx(piece): per-otyp post-effects (the only
+        // RNG-bearing one the owned sessions reach is the fortune cookie's
+        // outrumor()).
         await fpostfx(piece);
         game.context.victual = { piece: null, o_id: 0 };
-    } else {
-        await pline(`You begin eating ${an(nm)}.`);
     }
+    // else: multi-turn meal in progress — C sets the eatfood occupation and
+    // prints no extra start-of-meal line (fprefx already gave the feedback).
 
     return true; // ECMD_TIME — a game turn elapses (per-turn block runs next)
+}
+
+// C ref: eat.c fprefx(otmp) — "first bite" feedback (present tense, eat.c:2099).
+// Only the cases reachable by the scored sessions are ported; the rest fall
+// through to give_feedback.  All RNG-free here.  The recorder is a MACOS build,
+// so a non-cursed APPLE prints the Macintosh line (eat.c:2183) rather than the
+// UNIX rnd(100) "core dumped" joke.
+async function fprefx(otmp) {
+    const Halluc = !!game.u?.uhallu;
+    if (otmp.otyp === CLOVE_OF_GARLIC && !game.u?.uundead) {
+        garlic_breath();
+        /* FALLTHROUGH to give_feedback */
+    } else if (otmp.otyp === APPLE && otmp.cursed /* && !Sleep_resistance */) {
+        return; /* skip core joke; feedback deferred to fpostfx() (sleep) */
+    } else if (otmp.otyp === APPLE) {
+        await pline('Delicious!  Must be a Macintosh!');
+        return;
+    }
+    // give_feedback: the generic per-food taste line (eat.c:2204).
+    const ration = (otmp.otyp === CRAM_RATION || otmp.otyp === K_RATION
+                    || otmp.otyp === C_RATION);
+    const taste = otmp.cursed ? (Halluc ? 'grody!' : 'terrible!')
+        : ration ? 'bland.'
+        : (Halluc ? 'gnarly!' : 'delicious!');
+    await pline(`This ${objName(otmp)} is ${taste}`);
 }
 
 // C ref: eat.c fpostfx(otmp) — post-consumption effects for non-corpse food.

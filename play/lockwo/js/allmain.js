@@ -11,7 +11,7 @@ import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { makedog } from './dog.js';
 import { rhack, dosearch0 } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline, topl_more } from './display.js';
+import { docrt, cls, bot, flush_screen, pline, topl_more, update_topl } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { phase_of_the_moon, friday_13th, NEW_MOON, FULL_MOON } from './calendar.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_step_count, fastforward_fill_mineralize } from './fastforward.js';
@@ -779,9 +779,18 @@ export async function moveloop_turn() {
                     // C ref: hack.c unmul(NULL) — announce the pending nomovemsg
                     // (e.g. "You survived that attempt on your life." after a
                     // declined wizard-mode death) when the immobilizing count
-                    // reaches 0, then clear it.
+                    // reaches 0, then clear it.  C's pline() honours the topline
+                    // state: when a message from earlier this turn is still
+                    // unacknowledged (toplin == NEED_MORE — e.g. savelife's "OK,
+                    // so you don't die." plus the monster-move messages that
+                    // followed), pline first fires --More-- on that line before
+                    // the nomovemsg replaces it.  Route through update_topl so
+                    // that blocking --More-- (captured as its own frame, and
+                    // absorbing the recorded keystrokes) appears; when nothing is
+                    // pending (the prayer/takeoff cases) update_topl just sets the
+                    // line, matching the old pline behaviour.
                     if (g.nomovemsg) {
-                        await pline(g.nomovemsg);
+                        await update_topl(g.nomovemsg);
                         g.nomovemsg = '';
                     }
                 }
@@ -915,12 +924,39 @@ function exerper() {
     }
 
     if (moves % 5 === 0) {
-        // Status checks: Clairvoyant / Regeneration / Sick / Vomiting /
-        // Confusion / Hallucination / Wounded_legs / Fumbling / Stun — none of
-        // these intrinsics are set for the starter hero, so no rolls.  (Modeled
-        // as a no-op; wire the conditions in if those statuses become tracked.)
+        // C ref: attrib.c exerper() status checks (attrib.c:570-583).  Each
+        // active affliction exercises an attribute; the loss cases roll rn2(2).
+        // For the starter sessions Clairvoyant/Regeneration/Sick/Vomiting/
+        // Confusion/Hallucination/Fumbling/Stun are all clear, but a BEAR TRAP
+        // (or other leg wound) sets Wounded_legs, so a dismounted wounded hero
+        // rolls exercise(A_DEX, FALSE) every 5th turn — the seed0004 wounded-leg
+        // struggle rn2(2)@exercise that gates the rest of the trapped sequence.
+        if (HClairvoyant() && !BClairvoyant()) exercise(A_WIS, true);
+        if (HRegeneration()) exercise(A_STR, true);
+        if (Sick() || Vomiting()) exercise(A_CON, false);
+        if (Confusion() || Hallucination()) exercise(A_WIS, false);
+        if ((Wounded_legs() && !u.usteed) || Fumbling() || HStun())
+            exercise(A_DEX, false);
     }
 }
+
+// C ref: include/youprop.h — the hero affliction predicates exerper() consults.
+// Only Wounded_legs is ever set in the contest starter sessions (by a bear
+// trap); the others are stubbed to their always-false starter value but kept
+// so the control flow mirrors C exactly if those statuses become tracked.
+function Wounded_legs() {
+    const u = game.u || {};
+    return !!((u.HWounded_legs || 0) || (u.EWounded_legs || 0));
+}
+function HClairvoyant() { return false; }
+function BClairvoyant() { return false; }
+function HRegeneration() { return false; }
+function Sick() { return !!(game.u?.sick); }
+function Vomiting() { return !!(game.u?.vomiting); }
+function Confusion() { return !!(game.u?.uconf || game.u?.HConfusion); }
+function Hallucination() { return !!(game.u?.HHallucination); }
+function Fumbling() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
+function HStun() { return !!(game.u?.HStun || game.u?.ustun); }
 
 // C ref: attrib.c exerchk() — periodic accumulation (exerper) then, once
 // svm.moves crosses context.next_attrib_check (starts at 600), a per-attribute
@@ -1058,6 +1094,25 @@ export async function moveloop_core() {
         g.context.move = 1;
         g._pendingTurn = true;
         if (!busy) g._eat_occupation = null;
+        return;
+    }
+
+    // C ref: cmd.c set_occupation(dosearch, "searching", gm.multi) +
+    // allmain.c moveloop_core():485 `(*go.occupation)()` — a counted search
+    // ("20s") arms a timed occupation so the move loop re-runs dosearch each
+    // turn (decrementing gm.multi) WITHOUT reading another command key, exactly
+    // like #eat/#force above.  No nhgetch fires between occupation turns, so the
+    // whole run produces a single captured frame (read at the next command
+    // boundary) — unless a monster-combat message overflows the top line, whose
+    // blocking --More-- inside the turn's movemon() captures its own frames.
+    if (g._search_occupation) {
+        await dosearch0(0); // timed_occ_fn: the per-turn search (RNG-inert in open room)
+        // C timed_occupation(): `if (gm.multi > 0) gm.multi--; return multi>0`.
+        if ((g.multi ?? 0) > 0) g.multi -= 1;
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        if ((g.multi ?? 0) <= 0) { g._search_occupation = null; g.multi = 0; }
         return;
     }
 

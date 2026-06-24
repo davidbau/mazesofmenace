@@ -57,6 +57,7 @@ export const LEMBAS_WAFER = 291;
 export const CRAM_RATION = 292;
 export const FOOD_RATION = 293;
 export const POT_OIL = 321;
+export const POT_FRUIT_JUICE = 319;
 export const POT_CONFUSION = 299;
 export const POT_WATER = 322;
 export const POT_HEALING = 307;

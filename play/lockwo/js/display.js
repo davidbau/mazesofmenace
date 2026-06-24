@@ -647,7 +647,7 @@ function engraving_glyph(loc) {
 
 // C ref: display.h covers_objects(x,y) — a liquid cell hides objects/traps:
 // (is_pool && !Underwater) || LAVAPOOL || LAVAWALL.  is_pool = POOL|MOAT|WATER.
-function covers_objects(loc) {
+export function covers_objects(loc) {
     const typ = loc?.typ;
     return typ === POOL || typ === MOAT || typ === WATER
         || typ === LAVAPOOL || typ === LAVAWALL;
@@ -1229,14 +1229,20 @@ export async function y_n(query, resp = 'yn\x1b', def = 'n') {
         const c = await nhgetch();
         delete game._modal_screen;
         const ch = String.fromCharCode(c);
-        // quitchars (space/return/ESC) -> default.
+        // quitchars (space/return/ESC) -> default.  Answering the prompt clears
+        // the top line (C ref: topl.c — the toplin NEED_MORE state is reset once
+        // the player's response is read), so a message printed right after the
+        // prompt (e.g. savelife's "OK, so you don't die.") starts a fresh line
+        // rather than appending after a phantom "  " separator.
         if (c === 32 || c === 13 || c === 10 || c === 27) {
             game._pending_message = '';
+            game._toplin = 0;
             return def;
         }
         const lc = ch.toLowerCase();
         if (resp.includes(lc)) {
             game._pending_message = '';
+            game._toplin = 0;
             return lc;
         }
         // invalid response: re-prompt (no bell modeled).

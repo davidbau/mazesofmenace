@@ -7,11 +7,13 @@
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import { pline } from './display.js';
-import { getobj, makeknown, useup, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
+import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS } from './invent.js';
 import { exercise } from './attrib.js';
-import { POTION_CLASS, POT_OIL, POT_CONFUSION, objects } from './mkobj.js';
+import { POTION_CLASS, POT_OIL, POT_CONFUSION, POT_FRUIT_JUICE, objects } from './mkobj.js';
 import { A_WIS } from './const.js';
+import { fruitname } from './objnam.js';
+import { newuhs } from './eat.js';
 
 // C ref: potion.c make_confused(xtime, talk) — set the HConfusion timeout.  The
 // hero's confusion timer lives on game.u.uprops.Confusion (read by isConfused()
@@ -84,12 +86,34 @@ function peffect_confusion(otmp) {
                                 rn1(7, 16 - 8 * bcsign(otmp))), false);
 }
 
+// C ref: potion.c peffect_see_invisible — POT_FRUIT_JUICE shares this handler.
+// For the fruit-juice sub-case (uncursed, not diluted, not hallucinating, not
+// already invisible — the only case the sessions reach) it just announces the
+// taste and nourishes a little, then returns before the see-invisible logic.
+function peffect_fruit_juice(otmp) {
+    game.potion_unkn = (game.potion_unkn || 0) + 1;
+    if (otmp.cursed) {
+        pline_sync(`Yecch!  This tastes ${Hallucination() ? 'overripe' : 'rotten'}.`);
+    } else if (Hallucination()) {
+        pline_sync(`This tastes like 10% real ${otmp.odiluted ? 'reconstituted ' : ''}${fruitname(true)} all-natural beverage.`);
+    } else {
+        pline_sync(`This tastes like ${otmp.odiluted ? 'reconstituted ' : ''}${fruitname(true)}.`);
+    }
+    // POT_FRUIT_JUICE: nourish and return (no see-invisible effect).
+    const u = game.u;
+    if (u) u.uhunger = (u.uhunger ?? 900) + (otmp.odiluted ? 5 : 10) * (2 + bcsign(otmp));
+    newuhs(false);
+}
+
 // C ref: potion.c peffects — dispatch by potion type; returns -1 to signal
 // "used up with possible discovery", >=0 to signal an already-handled result.
 function peffects(otmp) {
     switch (otmp.otyp) {
     case POT_OIL:
         peffect_oil(otmp);
+        break;
+    case POT_FRUIT_JUICE:
+        peffect_fruit_juice(otmp);
         break;
     case POT_CONFUSION:
         peffect_confusion(otmp);
@@ -116,12 +140,13 @@ async function dopotion(otmp) {
         game.potion_unkn = (game.potion_unkn || 0) + 1;
         await pline(`You have a ${game.u?.Hallucination ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
     }
-    if (otmp.dknown && !objects[otmp.otyp]?.known) {
+    if (otmp.dknown && !objects[otmp.otyp]?.oc_name_known) {
         if (!game.potion_unkn) {
             makeknown(otmp.otyp);
             // more_experienced(0, 10): no RNG, score-only.
+        } else {
+            await trycall(otmp);
         }
-        // trycall(otmp): naming prompt, not modeled.
     }
     useup(otmp);
     return ECMD_TIME;

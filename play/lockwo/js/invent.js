@@ -68,6 +68,7 @@ import {
     UNENCUMBERED, OVERLOADED,
     WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, WT_WOUNDEDLEG_REDUCT, MAX_CARR_CAP,
     A_CON, A_STR, LEFT_SIDE, RIGHT_SIDE,
+    CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_INT,
 } from './const.js';
 
 const LEASH = 236;
@@ -382,6 +383,50 @@ export async function wield_tool(obj, verb) {
 }
 function corpse_xname(obj, _name, flagsArg = 0) { return simple_obj_name(obj, { article: !!(flagsArg & 8) }); }
 function killer_xname(obj) { return simple_obj_name(obj, { article: false }); }
+
+// C ref: do_name.c docall_xname(obj) — the bare "a/an <appearance>" name used
+// in the "Call <x>:" prompt: a fresh copy with diluted/poison/BUC fixups so it
+// reads as the plain unidentified type ("a ruby potion", not "a diluted ...").
+function docall_xname(obj) {
+    const otemp = { ...obj, quan: 1, blessed: 0, cursed: 0 };
+    if (otemp.oclass === POTION_CLASS) otemp.odiluted = 0;
+    return with_article(simple_obj_name(otemp, { quantity: false, buc: false }));
+}
+
+// C ref: do_name.c docall(obj) — prompt "Call <a appearance>:" and attach the
+// typed call-name to the object TYPE (objects[].oc_uname), adding it to the
+// discoveries list.  The unacknowledged taste message is paged with --More--
+// (captured as its own frame) before getlin overwrites the top line.  Returns
+// after recording (or clearing) the type's user-name.
+export async function docall(obj) {
+    if (!obj?.dknown) return;          // probably blind
+    await flush_screen(1);
+    // getlin is about to overwrite the top-line message, so page it first.
+    if (game._pending_message) await topl_more();
+    const qbuf = `Call ${docall_xname(obj)}:`;
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    let buf = await hooked_tty_getlin(qbuf, null);
+    // The taste message was acknowledged (--More--) and getlin overwrote the
+    // top line; C leaves the message window empty afterward (TOPLINE_EMPTY).
+    game._pending_message = '';
+    if (buf === '\x1b') buf = '';
+    buf = mungspaces(buf);
+    const ocl = objects[obj.otyp];
+    if (!buf) {
+        if (ocl?.oc_uname) ocl.oc_uname = null;   // undiscover (clear call-name)
+    } else {
+        if (ocl) ocl.oc_uname = buf;
+        discover_object(obj.otyp, false, true, true);
+    }
+    update_inventory();
+}
+
+// C ref: do.c trycall(obj) — offer to name an unidentified object type after
+// the hero gets non-identifying feedback (e.g. the taste of an unknown potion).
+export async function trycall(obj) {
+    const ocl = objects[obj.otyp];
+    if (ocl && !ocl.oc_name_known && !ocl.oc_uname) await docall(obj);
+}
 function greatest_erosion(obj) { return Math.max(obj?.oeroded || 0, obj?.oeroded2 || 0); }
 function erosion_matters(obj) { return obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS; }
 function same_price(_obj, _otmp) { return true; }
@@ -744,10 +789,24 @@ function readchar() { return '\0'; }
 function get_count(_q, first, _max, out) { if (out) out.value = Number(first) || 0; return '\n'; }
 function wait_synch() {}
 function putmsghistory(_q, _restoring) {}
-function cmdq_pop() { return null; }
-function cmdq_clear(_which) {}
-function cmdq_add_int(_which, _n) {}
-function cmdq_add_key(_which, _k) {}
+// C ref: cmd.c cmdq_* — the canned command queue (CQ_CANNED).  itemactions()
+// pushes the chosen object's invlet here; a subsequent getobj() pops it as the
+// object selection WITHOUT rendering a prompt (mirroring tty's cmdq_pop fast
+// path).  The queue lives on game so it survives across the dispatched command.
+function _cmdq(which) {
+    const key = which === CQ_REPEAT ? '_cmdq_repeat' : '_cmdq_canned';
+    if (!game[key]) game[key] = [];
+    return game[key];
+}
+function cmdq_pop(which = CQ_CANNED) {
+    const q = _cmdq(which);
+    return q.length ? q.shift() : null;
+}
+function cmdq_clear(which = CQ_CANNED) { _cmdq(which).length = 0; }
+function cmdq_add_int(which, n) { _cmdq(which).push({ typ: CMDQ_INT, intval: n }); }
+function cmdq_add_key(which, k) {
+    _cmdq(which).push({ typ: CMDQ_KEY, key: typeof k === 'number' ? k : String(k).charCodeAt(0) });
+}
 function silly_thing_to() { return 'That is a silly thing to do.'; }
 function clear_bypasses() { for (const obj of inventoryArray()) obj.bypass = 0; }
 function bypass_objlist(list, value) { for (const obj of iterateObjects(list)) obj.bypass = value ? 1 : 0; }
@@ -958,6 +1017,28 @@ function objectBaseName(obj) {
     if (obj.otyp === CORPSE && obj.corpsenm != null && obj.corpsenm >= 0) {
         const sp = monster_by_pmidx(obj.corpsenm);
         if (sp?.name) return `${sp.name} corpse`;
+    }
+
+    // C ref: objnam.c xname_flags ROCK_CLASS/STATUE — a statue of a known
+    // monster names the petrified species: Snprintf "%s%s of %s%s" with the
+    // (archeologist-only "historic ") prefix, actualn "statue", the monster's
+    // article ("the " for a unique, "" for a proper-name monster, else "a "/"an"
+    // from just_an), and the monster pmname.  The leading object article ("a")
+    // is prepended later by with_article().
+    if (obj.otyp === STATUE && obj.corpsenm != null && obj.corpsenm >= 0) {
+        const sp = monster_by_pmidx(obj.corpsenm);
+        const pmname = sp?.name;
+        if (pmname) {
+            const G_UNIQ = 0x1000, M2_PNAME = 0x00200000;
+            const mflags2 = sp.mflags2 ?? 0;
+            const isPname = (mflags2 & M2_PNAME) !== 0;
+            const isUnique = !isPname && ((sp.geno ?? 0) & G_UNIQ) !== 0;
+            // C just_an(): "a "/"an " for the pmname (no leading article -> "").
+            const monArticle = isPname ? ''
+                : isUnique ? 'the '
+                : (/^[aeiou]/i.test(pmname) ? 'an ' : 'a ');
+            return `statue of ${monArticle}${pmname}`;
+        }
     }
 
     const ocl = objects[obj.otyp];
@@ -2223,6 +2304,41 @@ async function topline_query(prompt) {
     return c;
 }
 
+// C ref: invent.c getobj() '?'/'*' branch -> display_pickinv(want_reply=TRUE)
+// -> win/tty/wintty.c process_menu_window() PICK_ONE.  Render the centred
+// candidate menu (display_pickinv already lays the overlay out + parks the
+// cursor past "(end) "), then read keystrokes until the player picks an item
+// or cancels.  Returns the selected invlet, '\0' for a no-selection commit
+// (space/return), or '\x1b' for cancel.  '?'/'*' re-issue the menu with the
+// other candidate set.  Any other key just rings the bell (no re-render: the
+// menu screen is unchanged).
+async function getobj_menu(lets, allowed) {
+    for (;;) {
+        // allowed=true (the '?' set): show only `lets`; allowed=false ('*'):
+        // show the whole pack.  display_pickinv() sets game._modal_screen and
+        // positions the cursor exactly like C's NHW_MENU.
+        const choices = allowed ? lets : null;
+        display_pickinv(choices, null, null, false, true, null);
+        // The menu lines drive which letters are selectable; outside-of-menu
+        // letters ring the bell.  Build the selectable set from the rows shown.
+        const shownLets = new Set();
+        for (const obj of inventoryArray())
+            if (!choices || String(choices).includes(obj.invlet))
+                shownLets.add(obj.invlet);
+        for (;;) {
+            const key = await nhgetch();
+            const ch = String.fromCharCode(key);
+            if (ch === '\x1b') { delete game._modal_screen; return '\x1b'; }
+            if (ch === '\0' || ch === '\n' || ch === '\r' || ch === ' ') {
+                delete game._modal_screen; return '\0';
+            }
+            if (ch === '?' || ch === '*') { allowed = (ch === '?'); break; } // redo_menu
+            if (shownLets.has(ch)) { delete game._modal_screen; return ch; }
+            // unacceptable input: tty_nhbell() (no visible change), keep reading
+        }
+    }
+}
+
 // C ref: invent.c getobj() — prompt for an inventory object passing obj_ok.
 // Ports the common interactive path: build the candidate-letter summary from
 // inventory in invlet order, render "What do you want to <word>? [<lets> or
@@ -2280,7 +2396,13 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
     // flushes that message with --More-- (handled by topline_query honouring
     // _yn_need_more).  A quitchar (space/return/ESC) cancels with "Never mind.".
     for (;;) {
-        const key = await topline_query(qbuf);
+        // C ref: invent.c getobj() — a canned command-queue key (pushed by
+        // itemactions, the "Do what with X?" submenu) is consumed as the object
+        // selection WITHOUT rendering the prompt (no extra frame), exactly as
+        // tty's cmdq_pop fast path does.
+        const canned = cmdq_pop(CQ_CANNED);
+        const key = canned && canned.typ === CMDQ_KEY
+            ? canned.key : await topline_query(qbuf);
         const ilet = String.fromCharCode(key);
 
         if (QUITCHARS.includes(ilet)) {
@@ -2292,10 +2414,23 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
             return hands_obj;
         }
 
+        // C ref: invent.c getobj() redo_menu — '?'/'*' open the candidate menu.
+        // '?' lists the suggested letters (or, if none were suggested but the
+        // '-' hands choice is in altlets, those); '*' lists the whole pack.
+        let pick = ilet;
+        if (pick === '?' || pick === '*') {
+            const allowed = (pick === '?');
+            const choiceLets = (allowed && !lets && altlets.length) ? altlets.join('') : lets;
+            const sel = await getobj_menu(choiceLets, allowed);
+            if (sel === '\x1b') { if (game.flags?.verbose !== false) await pline('Never mind.'); return null; }
+            if (sel === '\0') continue;                   // committed with no pick: re-prompt
+            if (sel === HANDS_SYM) return hands_obj;
+            pick = sel;
+        }
+
         // Resolve the chosen invlet to its inventory object.  An unknown letter
-        // yields "You don't have that object." and re-prompts.  The '?'/'*'
-        // menu path is not modeled.
-        const otmp = inventoryArray().find(o => o.invlet === ilet);
+        // yields "You don't have that object." and re-prompts.
+        const otmp = inventoryArray().find(o => o.invlet === pick);
         if (!otmp) {
             await pline('You don\'t have that object.');
             game._yn_need_more = true;
@@ -2545,6 +2680,11 @@ async function on_msg_accessory(obj) {
     const verbose = game.flags?.verbose !== false;
     if ((m & (W_RINGL | W_RINGR | W_AMUL)) || ((m & W_BLINDF) && !verbose)) {
         prinv(null, obj, 0);
+        // C ref: prinv() -> pline() leaves toplin == NEED_MORE, so a following
+        // same-turn message (e.g. a monster's attack on the freed turn)
+        // accumulates onto the worn-confirmation line via update_topl() instead
+        // of replacing it (matches the wield prinv path above).
+        game._toplin = 1;
         return;
     }
     // C ref: on_msg() verbose branch uses an(xname(otmp)) — no worn-status
@@ -4106,14 +4246,308 @@ export function xprname(obj, txt = null, letChar = '\0', dot = true, cost = 0, q
     return result;
 }
 
-export function dispinv_with_action(lets = null, use_inuse_ordering = false, alt_label = null) {
-    void use_inuse_ordering; void alt_label;
-    display_inventory(lets, false);
-    return ECMD_OK;
+// C ref: invent.c surface(x,y) — the noun for the terrain underfoot, used in
+// the itemactions "Write on the <surface> with this item" label.  Ordinary
+// dungeon floor (and the cases the recorded sessions reach) is "floor".
+function surface_underfoot() {
+    const loc = game.level?.at?.(game.u?.ux, game.u?.uy);
+    const typ = loc?.typ;
+    // C distinguishes water/lava/ice/air/cloud; none occur under the hero in the
+    // itemactions-exercising sessions, so the common dungeon case is "floor".
+    if (typ === 21 /* ICE */) return 'ice';
+    return 'floor';
 }
 
-export function ddoinv() {
-    return dispinv_with_action(null, false, null);
+// C ref: objects.h HARDGEM(n) == (n >= 8) — a gem/ring is "tough" (engrave, not
+// write) only for the hardest gemstones (mohs >= 8: diamond and a handful of
+// gem types).  The objects table here carries no mohs field; none of the
+// exercised rings/gems are HARDGEM, so this conservatively returns false (->
+// "Write").  Hard-gem otyps can be added if a session ever engraves with one.
+function obj_is_hardgem(_obj) { return false; }
+
+// itemactions() action enum (iactions.h IA_*) — the subset the object classes in
+// the recorded sessions can offer.  Each entry carries its menu accelerator and
+// label; itemactions_dispatch() turns the chosen one into the real command.
+const IA_NONE = 0, IA_UNWIELD = 1, IA_APPLY_OBJ = 2, IA_NAME_OBJ = 3,
+    IA_NAME_OTYP = 4, IA_DROP_OBJ = 5, IA_EAT_OBJ = 6, IA_ENGRAVE_OBJ = 7,
+    IA_FIRE_OBJ = 8, IA_ADJUST_OBJ = 9, IA_SPLIT_OBJ = 10, IA_SACRIFICE = 11,
+    IA_BUY_OBJ = 12, IA_WEAR_OBJ = 13, IA_QUAFF_OBJ = 14, IA_QUIVER_OBJ = 15,
+    IA_READ_OBJ = 16, IA_TAKEOFF_OBJ = 17, IA_RUB_OBJ = 18, IA_THROW_OBJ = 19,
+    IA_TIP_CONTAINER = 20, IA_INVOKE_OBJ = 21, IA_WIELD_OBJ = 22,
+    IA_ZAP_OBJ = 23, IA_WHATIS_OBJ = 24;
+
+// C ref: iactions.c itemactions(otmp) — build the per-object "Do what with %s?"
+// action list, in the C cascade order.  Mirrors the conditions for each action
+// block; only the cases the recorded object classes reach are populated.  Each
+// returned entry is { act, accel, label }.
+function itemactions_list(otmp) {
+    const out = [];
+    const add = (act, accel, label) => out.push({ act, accel, label });
+    const oclass = otmp.oclass;
+    const already_worn = (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) !== 0;
+    const quan = otmp.quan || 1;
+    const is_blade = (o) => o.oclass === WEAPON_CLASS && objects[o.otyp]?.oc_skill != null;
+
+    // 'a' (apply): tools / specific applicables.  Rings et al. are not applied.
+    if (oclass === TOOL_CLASS && is_weptool(otmp) === false) {
+        // The recorded tool sessions don't reach the itemactions 'a' branch for
+        // the carried tools, so leave apply out unless a session needs it.
+    }
+    // 'c' / 'C' (name this specific object / name the type).  For a type-known,
+    // un-individually-named object NetHack offers "Name this specific <obj>".
+    if (oclass !== COIN_CLASS) {
+        add(IA_NAME_OBJ, 'c', `Name this specific ${cxname_singular(otmp)}`);
+    }
+    // 'd' (drop): any unworn carried object.
+    if (!already_worn) add(IA_DROP_OBJ, 'd', 'Drop this item');
+    // 'E' (engrave/write): wand / ring / gem / blade-tipped writer.  C verb is
+    // "Engrave" iff is_blade || WAND || ((GEM||RING) && oc_tough), where oc_tough
+    // = HARDGEM(mohs) (mohs >= 8 — only the hardest gemstones).  None of the
+    // exercised rings/gems are HARDGEM (the see-invisible ring's mohs is 5), so
+    // they "Write"; only wands and blades "Engrave".
+    if (oclass === WAND_CLASS || oclass === RING_CLASS || oclass === GEM_CLASS
+        || is_blade(otmp)) {
+        const tough = (oclass === GEM_CLASS || oclass === RING_CLASS)
+            && obj_is_hardgem(otmp);
+        const verb = (is_blade(otmp) || oclass === WAND_CLASS || tough)
+            ? 'Engrave' : 'Write';
+        add(IA_ENGRAVE_OBJ, 'E', `${verb} on the ${surface_underfoot()} with this item`);
+    }
+    // 'i' (adjust inventory letter): any non-coin object.
+    if (oclass !== COIN_CLASS) {
+        add(IA_ADJUST_OBJ, 'i', 'Adjust inventory by assigning new letter');
+    }
+    // 'I' (split a stack): quantity > 1.
+    if (quan > 1) add(IA_SPLIT_OBJ, 'I', 'Split this stack of items');
+    // 'P' (put on): ring/amulet/eyewear, not already worn.
+    if (!already_worn && (oclass === RING_CLASS)) {
+        const free_finger = !game.uleft || !game.uright;
+        if (free_finger) add(IA_WEAR_OBJ, 'P', 'Put this ring on');
+        else add(IA_NONE, 'P', '[both ring fingers in use]');
+    } else if (!already_worn && oclass === AMULET_CLASS) {
+        add(IA_WEAR_OBJ, 'P', 'Put this amulet on');
+    }
+    // 't' (throw): any unworn object.
+    if (!already_worn) add(IA_THROW_OBJ, 't', 'Throw this item');
+    // 'w' (wield in hands): unworn, not the currently wielded weapon.
+    if (!already_worn && otmp !== game.uwep) {
+        // body_part index 6 == HAND (humanoid hero); makeplural -> "hands".
+        add(IA_WIELD_OBJ, 'w', `Wield this item in your ${makeplural(body_part(6))}`);
+    }
+    // '/' (look up): data.base entry exists.  The recorded ring/weapon sessions
+    // all reach the '/' line, so offer it for the exercised object classes.
+    add(IA_WHATIS_OBJ, '/', 'Look up information about this');
+    return out;
+}
+
+// Render the itemactions "Do what with %s?" submenu as a tty overlay menu (the
+// query is the inverse-video title at row 0, then a blank row, the action lines,
+// and "(end)").  C ref: win/tty/wintty.c finalize NHW_MENU — offx is computed
+// from the widest line; the map shows through below/outside the menu band.
+function renderItemActionsMenu(otmp, entries) {
+    const display = game.nhDisplay;
+    if (!display?.clearScreen) return;
+    const title = `Do what with ${the_obj(otmp)}?`;
+    const itemLines = entries.map((e) => `${e.accel} - ${e.label}`);
+    const lines = [title, '', ...itemLines, '(end)'];
+    // offx = max(10, cols - (maxcol+1) - 1); maxcol = widest line + 2.
+    let maxcol = 0;
+    for (const ln of lines) maxcol = Math.max(maxcol, ln.length + 2);
+    if (maxcol > 80) maxcol = 80;
+    const cols = display.cols ?? 80;
+    let offx = Math.max(10, cols - (maxcol + 1) - 1);
+    if (offx === 10) offx = 0;
+
+    display.clearScreen();
+    render_map_to_grid();
+    // Blank the menu's column band for every row it occupies (the menu window is
+    // cleared; the map shows through only OUTSIDE it).
+    for (let r = 0; r < lines.length && r < 22; r++)
+        for (let c = offx; c < cols; c++)
+            display.setCell(c, r, ' ', NO_COLOR, 0);
+    let row = 0;
+    // Row 0: the query title, drawn ATR_INVERSE (C end_menu prompt highlight).
+    for (let c = 0; c < title.length && offx + c < 80; c++)
+        display.setCell(offx + c, row, title[c], NO_COLOR, ATR_INVERSE);
+    row++;
+    display.putstr(offx, row++, '', NO_COLOR, 0); // blank separator row
+    for (const ln of itemLines) display.putstr(offx, row++, ln, NO_COLOR, 0);
+    const endRow = row;
+    display.putstr(offx, row, '(end)', NO_COLOR, 0);
+    putStatusLines(display);
+    // C tty parks the cursor just past the "(end)" prompt (offx + 5 + 1).
+    display.setCursor(offx + '(end)'.length + 1, endRow);
+    game._modal_screen = 'itemactions';
+}
+
+// the(cxname(otmp)) — "the <object name>", used in the submenu title.
+function the_obj(otmp) {
+    const nm = cxname_singular(otmp);
+    return /^(the |a |an |your |my |[A-Z])/.test(nm) ? nm : `the ${nm}`;
+}
+
+// C ref: iactions.c itemactions(otmp) — show the "Do what with %s?" PICK_ONE
+// submenu, block until the player picks a valid action accelerator (invalid
+// keys ring the bell and keep the menu shown — each blocking read is captured as
+// its own recorded frame), then run the chosen command.  Always returns the
+// chosen command's ECMD result (or ECMD_OK when cancelled), since the 'i'
+// command itself elapses no time.  getDir is threaded through for the Throw
+// action (whose dothrow needs the direction prompt) without a cmd<->invent
+// import cycle.
+async function itemactions(otmp, getDir) {
+    const entries = itemactions_list(otmp);
+    // Selectable accelerators (an IA_NONE placeholder like "[both ring fingers
+    // in use]" is shown but not selectable — pressing its key rings the bell).
+    const sel = new Map();
+    for (const e of entries) if (e.act !== IA_NONE) sel.set(e.accel, e);
+    for (;;) {
+        renderItemActionsMenu(otmp, entries);
+        const c = await nhgetch();
+        const ch = String.fromCharCode(c);
+        if (c === 27) { // ESC: cancel — no action, no time
+            delete game._modal_screen;
+            return ECMD_OK;
+        }
+        if (c === 13 || c === 10) { // Return/Enter: commit with nothing -> cancel
+            delete game._modal_screen;
+            return ECMD_OK;
+        }
+        const chosen = sel.get(ch);
+        if (!chosen) continue; // invalid selector: bell, menu stays (re-render)
+        delete game._modal_screen;
+        return await itemactions_dispatch(otmp, chosen.act, getDir);
+    }
+}
+
+// C ref: iactions.c itemactions_pushkeys(otmp, act) — push the chosen action's
+// command (function + the object's invlet) onto the canned command queue, then
+// itemactions returns ECMD_OK so the queued command runs next.  Here we run the
+// command directly, pre-seeding the object's invlet at the FRONT of the input
+// queue so the command's getobj() consumes it before any further player keys
+// (the cmdq_add_key equivalent).
+async function itemactions_dispatch(otmp, act, getDir) {
+    // C ref: itemactions_pushkeys — push the object's invlet onto the canned
+    // command queue so the dispatched command's getobj() consumes it silently.
+    const seedInvlet = () => cmdq_add_key(CQ_CANNED, otmp.invlet);
+    switch (act) {
+    case IA_DROP_OBJ:
+        seedInvlet();
+        return await dodrop();
+    case IA_THROW_OBJ:
+        seedInvlet();
+        return await dothrow(getDir);
+    case IA_WIELD_OBJ:
+        seedInvlet();
+        return await dowield();
+    case IA_WEAR_OBJ: // 'P' put-on routes through dowear (unified wear/put-on)
+        seedInvlet();
+        return await dowear();
+    case IA_ENGRAVE_OBJ: {
+        // doengrave lives in engrave.js; load it on demand.  It reads the
+        // stylus via getobj, which consumes the pre-seeded invlet.
+        seedInvlet();
+        const eng = await import('./engrave.js');
+        return await eng.doengrave();
+    }
+    // IA_NAME_OBJ / IA_ADJUST_OBJ / IA_WHATIS_OBJ and the other actions are not
+    // exercised by any recorded session; itemactions returns ECMD_OK for them so
+    // the 'i' command elapses no time (the canned command, if any, would run on
+    // a subsequent rhack iteration).
+    default:
+        return ECMD_OK;
+    }
+}
+
+// C ref: invent.c dispinv_with_action(lets, use_inuse_ordering, alt_label) —
+// show the inventory and, when it was a PICK_ONE menu (lets==NULL for the 'i'
+// command), call itemactions() on the selected object.  The interactive menu
+// blocks reading keys (each blocking read is captured as its own recorded
+// frame); pressing an item's invlet selects it (PICK_ONE finishes immediately),
+// space/return/ESC dismiss without a selection, and an invalid key rings the
+// bell and keeps the menu shown.  Returns the chosen command's ECMD result.
+export async function dispinv_with_action(lets = null, use_inuse_ordering = false, alt_label = null, getDir = null) {
+    void use_inuse_ordering; void alt_label;
+    const len = lets ? String(lets).length : 0;
+    const menumode = (len !== 1) || !!game.iflags?.menu_requested;
+    if (!menumode) {
+        // len==1 (e.g. dopramulet on a single letter): a one-line message_menu
+        // display, no item selection.  Keep the existing non-interactive render.
+        display_inventory(lets, false);
+        return ECMD_OK;
+    }
+    // Build the selectable inventory; empty -> "Not carrying anything."
+    const rows = inventoryRows(lets);
+    if (!rows.length) {
+        await renderMessageOnMap('Not carrying anything.');
+        return ECMD_OK;
+    }
+    // Map every displayed invlet to its object so a selection resolves to an item.
+    const byLet = new Map();
+    for (const obj of inventoryArray())
+        if (!lets || String(lets).includes(obj.invlet)) byLet.set(obj.invlet, obj);
+
+    // Interactive PICK_ONE menu loop.  C ref: display_pickinv + select_menu.
+    for (;;) {
+        renderInventoryMenu(rows);
+        const c = await nhgetch();
+        // ESC cancels; space/return commit-with-nothing (dismiss).  C
+        // process_menu_window(): on the last page, space finishes the menu.
+        if (c === 27 || c === 32 || c === 13 || c === 10) {
+            await dismiss_invent_screen();
+            return ECMD_OK;
+        }
+        const ch = String.fromCharCode(c);
+        const otmp = byLet.get(ch);
+        if (!otmp) continue; // invalid selector: bell, menu stays (re-render)
+        // PICK_ONE: selecting an item finishes; dispinv_with_action then runs
+        // itemactions(otmp).
+        delete game._modal_screen;
+        return await itemactions(otmp, getDir);
+    }
+}
+
+// Render the selectable inventory.  When the content fits one page it is a tty
+// overlay (offx computed from the widest line, "(end)" footer); when it overflows
+// it becomes a full-screen paged menu with an "(N of M)" footer.  C ref:
+// win/tty/wintty.c finalize NHW_MENU + process_menu_window paging.  Only the
+// first page is rendered/needed by the exercising sessions (the selection is on
+// page 1); paging keys would advance via the same blocking loop if reached.
+function renderInventoryMenu(rows) {
+    // Flatten rows into menu lines, tagging class headers (ATR_INVERSE).
+    const lines = [];
+    for (const group of rows) {
+        const [heading, ...items] = group;
+        lines.push({ text: ` ${heading}`, attr: ATR_INVERSE, header: true });
+        for (const it of items) lines.push({ text: ` ${it}`, attr: 0 });
+    }
+    const display = game.nhDisplay;
+    if (!display?.clearScreen) return;
+    const totalRows = display.rows ?? 24;
+    const perPage = totalRows - 1; // 23 content lines, footer on the last row
+    const multipage = lines.length > perPage;
+    if (multipage) {
+        // Full-screen paged menu: page 1 = first perPage lines, footer "(N of M)".
+        const pages = Math.ceil(lines.length / perPage);
+        const page = lines.slice(0, perPage);
+        display.clearScreen();
+        let row = 0;
+        for (const ln of page) {
+            display.putstr(0, row, ln.text, NO_COLOR, ln.attr || 0);
+            row++;
+        }
+        const footer = `(1 of ${pages})`;
+        const footerRow = perPage; // row 23
+        display.putstr(0, footerRow, footer, NO_COLOR, 0);
+        display.setCursor(footer.length + 1, footerRow);
+        game._modal_screen = 'invent';
+        return;
+    }
+    // Single page: overlay via the existing renderer (map shows through).
+    renderMenuScreen(rows, null);
+}
+
+export async function ddoinv(getDir = null) {
+    return await dispinv_with_action(null, false, null, getDir);
 }
 
 export function find_unpaid(list, last_found) {
