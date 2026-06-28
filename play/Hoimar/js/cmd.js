@@ -73,6 +73,7 @@ const M1_HERBIVORE = 0x40000000;
 const M1_OMNIVORE = M1_CARNIVORE | M1_HERBIVORE;
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
+const MR_ELEC = 0x10;
 
 function refreshWarningAfterHeroMove() {
     if (!game.u?.uprops?.warning) return;
@@ -155,6 +156,11 @@ const M1_SLITHY = 0x00080000;
 const M1_UNSOLID = 0x00100000;
 const BOLT_LIM = 8;
 const M2_UNDEAD = 0x00000002;
+const M2_WERE = 0x00000004;
+const M2_ELF = 0x00000010;
+const M2_ORC = 0x00000080;
+const M2_DEMON = 0x00000100;
+const M2_GIANT = 0x00002000;
 const M2_STALK = 0x01000000;
 const M2_NASTY = 0x02000000;
 const M2_STRONG = 0x04000000;
@@ -532,6 +538,7 @@ const MATERIAL_WOOD = 8;
 const MATERIAL_DRAGON_HIDE = 10;
 const MATERIAL_IRON = 11;
 const MATERIAL_COPPER = 13;
+const MATERIAL_SILVER = 14;
 const MATERIAL_PLASTIC = 18;
 const GLASS = 19;
 const FIRST_SPELL = 366;
@@ -3418,6 +3425,10 @@ function monsterResistsColdFrontdoor(mon) {
 
 function monsterResistsFireFrontdoor(mon) {
     return !!((mon?.data?.mresists ?? 0) & MR_FIRE);
+}
+
+function monsterResistsElecFrontdoor(mon) {
+    return !!((mon?.data?.mresists ?? 0) & MR_ELEC);
 }
 
 function sleepRayHitsHeroAfterBounce(dx, dy) {
@@ -14423,8 +14434,20 @@ function heroHitExclam(mon, damage) {
 
 function heroMeleeHitMessage(mon, damage) {
     // C ref: src/uhitm.c:hmon_hitmon_msg_hit().
+    if (game._hero_melee_artifact_hit_message) {
+        const line = game._hero_melee_artifact_hit_message;
+        game._hero_melee_artifact_hit_message = '';
+        game._hero_melee_artifact_hit_more = true;
+        return line;
+    }
     if (!verboseMessagesEnabled()) return 'You hit it.';
     return `You hit ${monsterHitName(mon)}${heroHitExclam(mon, damage)}`;
+}
+
+function maybeQueueHeroMeleeArtifactHitMore() {
+    if (!game._hero_melee_artifact_hit_more) return;
+    game._hero_melee_artifact_hit_more = false;
+    game._hero_melee_artifact_hit_deferred_more = true;
 }
 
 function heroMeleeMissMessage(mon) {
@@ -14695,9 +14718,16 @@ const WEAPON_SMALL_DAMAGE_DIE = new Map([
     [ORCISH_SHORT_SWORD, 5],
     [DWARVISH_SHORT_SWORD, 7],
     [SCALPEL, 3],
+    [BATTLE_AXE, 8],
     [SILVER_SABER, 8],
+    [BROADSWORD, 4],
+    [ELVEN_BROADSWORD, 6],
     // C ref: include/objects.h WEAPON("long sword", ... oc_wsdam=8).
     [LONG_SWORD, 8],
+    [KATANA, 10],
+    [SILVER_MACE, 6],
+    [MORNING_STAR, 4],
+    [WAR_HAMMER, 4],
 ]);
 
 const WEAPON_LARGE_DAMAGE_DIE = new Map([
@@ -14716,9 +14746,16 @@ const WEAPON_LARGE_DAMAGE_DIE = new Map([
     [ORCISH_SHORT_SWORD, 8],
     [DWARVISH_SHORT_SWORD, 8],
     [SCALPEL, 3],
+    [BATTLE_AXE, 6],
     [SILVER_SABER, 8],
+    [BROADSWORD, 6],
+    [ELVEN_BROADSWORD, 6],
     // C ref: include/objects.h WEAPON("long sword", ... oc_wldam=12).
     [LONG_SWORD, 12],
+    [KATANA, 12],
+    [SILVER_MACE, 6],
+    [MORNING_STAR, 6],
+    [WAR_HAMMER, 4],
 ]);
 
 const BIMANUAL_MELEE_WEAPONS = new Set([
@@ -14867,9 +14904,25 @@ function weaponObjectHitBonus(weapon) {
 }
 
 const ARTIFACT_ATTACK_PROFILES = new Map([
-    // C refs: include/artilist.h, artifact.c:spec_applies().  Artifacts with
-    // no SPFX_DBONUS/SPFX_ATTK and AD_PHYS apply their attack bonus broadly.
+    // C refs: include/artilist.h, artifact.c:spec_applies().  Physical
+    // artifacts without SPFX_DBONUS/SPFX_ATTK apply broadly; bane artifacts
+    // apply when their SPFX_DFLAG2/SPFX_DCLAS target matches the monster.
+    ['excalibur', { otyp: LONG_SWORD, adtyp: 'AD_PHYS', damn: 5, damd: 10, applies: 'always' }],
+    ['mjollnir', { otyp: WAR_HAMMER, adtyp: 'AD_ELEC', damn: 5, damd: 24, applies: 'attack' }],
+    ['cleaver', { otyp: BATTLE_AXE, adtyp: 'AD_PHYS', damn: 3, damd: 6, applies: 'always' }],
+    ['grimtooth', { otyp: ORCISH_DAGGER, adtyp: 'AD_PHYS', damn: 2, damd: 6, applies: 'mflags2', mflags2: M2_ELF, damageApplies: 'always' }],
+    ['orcrist', { otyp: ELVEN_BROADSWORD, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mflags2', mflags2: M2_ORC }],
+    ['sting', { otyp: ELVEN_DAGGER, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mflags2', mflags2: M2_ORC }],
+    ['dragonbane', { otyp: BROADSWORD, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mlet', mlet: 'S_DRAGON' }],
+    ['demonbane', { otyp: SILVER_MACE, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mflags2', mflags2: M2_DEMON }],
+    ['werebane', { otyp: SILVER_SABER, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mflags2', mflags2: M2_WERE }],
     ['grayswandir', { otyp: SILVER_SABER, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'always' }],
+    ['giantslayer', { otyp: LONG_SWORD, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mflags2', mflags2: M2_GIANT }],
+    ['ogresmasher', { otyp: WAR_HAMMER, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mlet', mlet: 'S_OGRE' }],
+    ['trollsbane', { otyp: MORNING_STAR, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mlet', mlet: 'S_TROLL' }],
+    ['vorpal blade', { otyp: LONG_SWORD, adtyp: 'AD_PHYS', damn: 5, damd: 1, applies: 'always' }],
+    ['snickersnee', { otyp: KATANA, adtyp: 'AD_PHYS', damn: 0, damd: 8, applies: 'always' }],
+    ['sunsword', { otyp: LONG_SWORD, adtyp: 'AD_PHYS', damn: 5, damd: 0, applies: 'mflags2', mflags2: M2_UNDEAD }],
 ]);
 
 function artifactNameBasic(obj) {
@@ -14886,6 +14939,14 @@ function artifactAttackProfile(obj) {
 function artifactSpecialAttackApplies(profile, _mon) {
     if (!profile) return false;
     if (profile.applies === 'always') return profile.adtyp === 'AD_PHYS';
+    if (profile.applies === 'mflags2')
+        return !!((_mon?.data?.mflags2 ?? 0) & (profile.mflags2 ?? 0));
+    if (profile.applies === 'mlet')
+        return _mon?.data?.mlet === profile.mlet;
+    if (profile.applies === 'attack') {
+        // C ref: artifact.c:spec_applies() SPFX_ATTK branch.
+        if (profile.adtyp === 'AD_ELEC') return !monsterResistsElecFrontdoor(_mon);
+    }
     return false;
 }
 
@@ -14899,7 +14960,8 @@ function artifactAttackBonus(obj, mon) {
 function artifactDamageBonus(obj, mon, damage) {
     // C refs: src/artifact.c:artifact_hit(), src/artifact.c:spec_dbon().
     const profile = artifactAttackProfile(obj);
-    if (!profile || !artifactSpecialAttackApplies(profile, mon)) return 0;
+    if (!profile || (profile.damageApplies !== 'always'
+        && !artifactSpecialAttackApplies(profile, mon))) return 0;
     if (profile.damd) return rnd(profile.damd);
     return Math.max(damage, 1);
 }
@@ -14987,12 +15049,90 @@ function heroMeleeDamageBonus(weapon = heroWieldedWeapon()) {
     return (game.u?.udaminc || 0) + heroMeleeStrengthDamageBonus(weapon) + skillBonus;
 }
 
+function heroMeleeDmgvalExtra(mon, weapon) {
+    // C ref: src/weapon.c:dmgval().  objects[].oc_wsdam/oc_wldam provide
+    // the first die; several weapon bases add a flat or random tail.
+    if (!weapon) return 0;
+    if ((mon?.data?.msize ?? 0) >= MZ_LARGE) {
+        switch (weapon.otyp) {
+        case MORNING_STAR:
+        case BROADSWORD:
+        case ELVEN_BROADSWORD:
+            return 1;
+        case BATTLE_AXE:
+            return d(2, 4);
+        default:
+            return 0;
+        }
+    }
+    switch (weapon.otyp) {
+    case MACE:
+    case SILVER_MACE:
+    case WAR_HAMMER:
+        return 1;
+    case BATTLE_AXE:
+    case BROADSWORD:
+    case ELVEN_BROADSWORD:
+    case MORNING_STAR:
+        return rnd(4);
+    default:
+        return 0;
+    }
+}
+
+function monsterHatesBlessingsBasic(mon) {
+    // C ref: src/mondata.c:mon_hates_blessings().
+    return !!((mon?.data?.mflags2 ?? 0) & (M2_UNDEAD | M2_DEMON));
+}
+
+function monsterHatesSilverBasic(mon) {
+    // C ref: src/mondata.c:mon_hates_silver(), hates_silver().
+    const ptr = mon?.data;
+    if (!ptr) return false;
+    return !!((ptr.mflags2 ?? 0) & (M2_WERE | M2_DEMON))
+        || ptr.mlet === 'S_VAMPIRE'
+        || ptr.name === 'SHADE'
+        || (ptr.mlet === 'S_IMP' && ptr.name !== 'TENGU');
+}
+
+function artifactDamageBonusProbe(obj, mon, damage) {
+    return artifactDamageBonus(obj, mon, damage);
+}
+
+function heroMeleeWeaponTargetBonus(mon, weapon) {
+    // C ref: src/weapon.c:dmgval() weapon-vs-monster-type bonus block.
+    if (!weapon) return 0;
+    let bonus = 0;
+    if (weapon.blessed && monsterHatesBlessingsBasic(mon)) bonus += rnd(4);
+    if ((OBJECT_MATERIAL[weapon.otyp] ?? 0) === MATERIAL_SILVER
+        && monsterHatesSilverBasic(mon)) bonus += rnd(20);
+    if (bonus > 1 && weapon.oartifact && artifactDamageBonusProbe(weapon, mon, 25) >= 25)
+        bonus = Math.trunc((bonus + 1) / 2);
+    return bonus;
+}
+
+function heroMeleeArtifactHitSideEffect(mon, weapon, damage) {
+    // C ref: src/artifact.c:artifact_hit() AD_ELEC branch for Mjollnir.
+    const profile = artifactAttackProfile(weapon);
+    if (profile?.adtyp !== 'AD_ELEC') return;
+    const applies = artifactSpecialAttackApplies(profile, mon);
+    const name = monsterHitName(mon);
+    game._hero_melee_artifact_hit_message = applies
+        ? `The massive hammer hits!  Lightning strikes ${name}!`
+        : `The massive hammer hits ${name}.`;
+    if (!rn2(5)) destroyItemsFrontdoorBasic(damage);
+}
+
 function heroMeleeDamage(mon, weapon = heroWieldedWeapon()) {
     let damage = rnd(heroMeleeDamageDie(mon, weapon));
+    damage += heroMeleeDmgvalExtra(mon, weapon);
     if (weapon && typeof weapon.spe === 'number')
         damage = Math.max(0, damage + weapon.spe);
+    damage += heroMeleeWeaponTargetBonus(mon, weapon);
     const artifactBonus = artifactDamageBonus(weapon, mon, damage);
-    return Math.max(1, damage + artifactBonus + heroMeleeDamageBonus(weapon));
+    damage += artifactBonus;
+    heroMeleeArtifactHitSideEffect(mon, weapon, damage);
+    return Math.max(1, damage + heroMeleeDamageBonus(weapon));
 }
 
 function doorwayBlocksDiagonalForHero(loc) {
@@ -15816,6 +15956,9 @@ async function swapWithSafeMonster(mon, x, y) {
 }
 
 async function heroMeleeAttack(mon) {
+    game._hero_melee_artifact_hit_message = '';
+    game._hero_melee_artifact_hit_more = false;
+    game._hero_melee_artifact_hit_deferred_more = false;
     gethungry();
     // C refs: src/uhitm.c:attack(), src/uhitm.c:hitum().  Every melee
     // attempt exercises Strength; Dexterity is credited only after a hit.
@@ -15851,6 +15994,7 @@ async function heroMeleeAttack(mon) {
         if (typeof mon.mhp === 'number') {
             mon.mhp -= damage;
             if (mon.mhp <= 0) {
+                game._hero_melee_artifact_hit_message = '';
                 const petSoundPrinted = mon.mtame ? await abuseDog(mon) : false;
                 const killLine = `You ${monsterKillVerb(mon)} ${monsterKillName(mon)}!`;
                 if (game._pending_message) await append_pline(killLine);
@@ -15866,6 +16010,7 @@ async function heroMeleeAttack(mon) {
             }
         }
         await plineOrAppend(heroMeleeHitMessage(mon, damage));
+        maybeQueueHeroMeleeArtifactHitMore();
         if (await wakeupMonsterByAttack(mon)) {
             queueHeroMeleePostWakeupMore(mon, { maybeKnockback });
             game.context.run = null;
@@ -15894,6 +16039,7 @@ async function heroMeleeAttack(mon) {
     if (typeof mon.mhp === 'number') {
         mon.mhp -= damage;
         if (mon.mhp <= 0) {
+            game._hero_melee_artifact_hit_message = '';
             const petSoundPrinted = mon.mtame ? await abuseDog(mon) : false;
             const killLine = `You ${monsterKillVerb(mon)} ${monsterKillName(mon)}!`;
             if (game._pending_message) await append_pline(killLine);
@@ -15909,6 +16055,7 @@ async function heroMeleeAttack(mon) {
         }
     }
     await plineOrAppend(heroMeleeHitMessage(mon, damage));
+    maybeQueueHeroMeleeArtifactHitMore();
     if (await wakeupMonsterByAttack(mon)) {
         queueHeroMeleePostWakeupMore(mon, { maybeKnockback });
         game.context.run = null;
@@ -19062,7 +19209,14 @@ function travelLocationDescription(x, y) {
     // than the raw '@' map symbol.
     if (game.u?.ux === x && game.u?.uy === y) return heroGetposDescription();
     const loc = game.level?.at(x, y);
-    if (!loc || !travelSeenOrKnown(x, y)) return 'unexplored area (no travel path)';
+    if (!loc) return 'unexplored area (no travel path)';
+    // C refs: src/getpos.c:auto_describe(), src/pager.c:do_screen_description().
+    // Travel describes the displayed glyph.  A recorded blank stone cmap cell
+    // is a stone glyph; an unrecorded raw stone cell is still unexplored.
+    const blankStoneGlyph = (loc.typ === STONE || loc.typ === SCORR)
+        && loc.disp_ch === ' ';
+    if (!travelSeenOrKnown(x, y) && !blankStoneGlyph)
+        return 'unexplored area (no travel path)';
     const noTravelPath = !!(game.u && (game.u.ux !== x || game.u.uy !== y)
         && !isValidTravelPoint({ x, y }));
     let desc;
@@ -19117,6 +19271,7 @@ function teleportLocationDescription(x, y) {
     if (game.u?.ux === x && game.u?.uy === y) return heroGetposDescription();
     const loc = game.level?.at(x, y);
     if (!loc) return 'stone';
+    if (loc.typ === STONE || loc.typ === SCORR) return 'stone';
     if (!getposLocationKnown(x, y)) return 'unexplored area';
     const objDesc = getposObjectDescription(x, y);
     if (objDesc) return objDesc;
@@ -19130,7 +19285,6 @@ function teleportLocationDescription(x, y) {
         return `staircase ${st?.up ? 'up' : 'down'}`;
     }
     if (loc.typ === C.CLOUD) return 'fog/vapor cloud';
-    if (loc.typ === STONE || loc.typ === SCORR) return 'stone';
     if (IS_WALL(loc.typ)) return 'wall';
     if (loc.typ === CORR) return 'corridor';
     if (loc.typ === DOOR) return getposDoorDescription(loc);
@@ -20761,7 +20915,9 @@ async function handleQueuedMore(ch) {
             const text = typeof next === 'string' ? next : next?.text;
             clear_pending_message();
             if (text) await pline(text);
-            if (game._monster_followup_physical_topline_needs_more) {
+            const savedLifePhysicalFollowup = game._nomovemsg === 'You survived that attempt on your life.'
+                && text && monsterPhysicalToplineChain(text);
+            if (game._monster_followup_physical_topline_needs_more || savedLifePhysicalFollowup) {
                 game._monster_followup_physical_topline_needs_more = false;
                 if (text && monsterPhysicalToplineChain(text)) {
                     game._clear_latched_status_after_more = false;
@@ -21888,6 +22044,10 @@ async function handleQueuedMore(ch) {
         game.context.move = 0;
     } else if (pausedMonsterTurn && !game._more && !game._death_prompt_active) {
         const resumeTailOnly = !!game._resume_turn_tail_after_more;
+        const resumeCommandAfterPostDosoundsTail =
+            game._resume_command_key_after_post_dosounds_tail != null;
+        const resumeCommandAfterMore =
+            game._resume_command_key_after_more != null;
         game._monster_turn_paused_for_more = false;
         game._swallowed_damage_more_waiting = false;
         game._pre_turn_more_waiting = false;
@@ -21903,7 +22063,10 @@ async function handleQueuedMore(ch) {
             game._latched_status_turn = null;
         }
         clearLatchedStatusAttrsAfterMore();
-        if (!resumeTailOnly) game._resume_monster_turn = true;
+        if (!resumeTailOnly
+            && !resumeCommandAfterPostDosoundsTail
+            && !resumeCommandAfterMore)
+            game._resume_monster_turn = true;
         game.context.move = 1;
     } else if (!game._more && (game._nomul_turns_remaining || 0) > 0) {
         // C ref: topl.c:more(), allmain.c:moveloop_core().  Dismissing a
@@ -29845,6 +30008,31 @@ export async function rhack(key) {
     }
     if (game._more && ch !== ' ' && ch !== '\r' && ch !== '\n' && ch !== '\x1b') {
         // C ref: win/tty/topl.c:more(); non-dismissal keys do not reach rhack().
+        game.context.move = 0;
+        return;
+    }
+    if (game._hero_melee_artifact_hit_deferred_more
+        && game._pending_message
+        && !game._more) {
+        // C refs: src/artifact.c:artifact_hit(), win/tty/topl.c:more().
+        // Artifact hit output reaches the topline first; the next command
+        // attempt blocks on the same line before rhack() clears it.  Dismissing
+        // that More is consumed before this command continues through normal
+        // rhack() dispatch.
+        game._hero_melee_artifact_hit_deferred_more = false;
+        queue_more_prompt();
+        await flush_screen(1);
+        game._latched_more_screen = serialize_terminal_grid(game.nhDisplay);
+        game._latched_more_cursor = [
+            Math.min(`${game._pending_message || ''}--More--`.length, 79),
+            0,
+            1,
+        ];
+        game._latched_more_keep_until_dismiss = true;
+        game._latched_more_use_pending_topline = false;
+        game._pre_turn_more_waiting = true;
+        game._resume_command_key_after_more = key;
+        game._monster_turn_paused_for_more = true;
         game.context.move = 0;
         return;
     }

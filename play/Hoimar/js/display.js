@@ -898,7 +898,13 @@ function monster_visible(mon) {
     if (!mon || mon.mundetected) return false;
     if (mon._opened_unseen_door) return false;
     if (mon.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
-    if (game.u?.ux > 0 && cansee(mon.mx, mon.my)
+    const loc = game.level?.at(mon.mx, mon.my);
+    // C ref: include/display.h:_mon_visible().  Terrain is already handled by
+    // cansee()/region rules; vault guards can be shown on temporary stone or
+    // fake-corridor entry cells when the location is visible.
+    if (loc && (loc.typ === AIR || loc.typ === CLOUD)
+        && mon.data?.mlet === 'S_VORTEX'
+        && game.u?.ux > 0 && cansee(mon.mx, mon.my)
         && !clear_path(game.u.ux, game.u.uy, mon.mx, mon.my)) return false;
     return true;
 }

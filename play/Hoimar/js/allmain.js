@@ -133,23 +133,29 @@ async function slipOrTripBasic() {
     }
 }
 
-async function fumbleTopline(msg) {
-    // C refs: src/timeout.c:nh_timeout() FUMBLING, win/tty/topl.c:update_topl().
-    // Fumble output is an ordinary pline(); tty packs it behind a prior
-    // same-turn topline such as mhitm.c:noises() when there is room.
+async function timeoutTopline(msg) {
+    // C refs: src/timeout.c:nh_timeout(), win/tty/topl.c:update_topl().
+    // Timeout output is ordinary pline() traffic; tty packs it behind a prior
+    // same-turn topline when there is room, otherwise the old line owns More.
     if (!game._pending_message || game._travel_description_pending) {
         await pline(msg);
-        return;
+        return false;
     }
     if (topline_can_pack_message(game._pending_message, msg)) {
         await append_pline(msg);
-        return;
+        return false;
     }
     queue_more_prompt();
     game._after_more_message = game._after_more_message
         ? `${game._after_more_message}  ${msg}`
         : msg;
     game._after_more_needs_prompt = false;
+    return true;
+}
+
+async function fumbleTopline(msg) {
+    // C ref: src/timeout.c:nh_timeout() FUMBLING.
+    await timeoutTopline(msg);
 }
 
 async function timeoutFumblingBasic(u) {
@@ -265,8 +271,16 @@ async function nhTimeoutBasic() {
             u.uencumber = newcap;
             const encmsg = oldcap > newcap ? encumbranceDecreaseMessage(newcap) : '';
             if (oldcap > newcap && oldcap > 0) game._encumbered_move_debt_encumbrance = oldcap;
-            await pline(`Your ${legs} ${legs === 'legs' ? 'feel' : 'feels'} better.`);
-            if (encmsg) await append_pline(encmsg);
+            const deferred = await timeoutTopline(`Your ${legs} ${legs === 'legs' ? 'feel' : 'feels'} better.`);
+            if (encmsg) {
+                if (deferred) {
+                    game._after_more_message = game._after_more_message
+                        ? `${game._after_more_message}  ${encmsg}`
+                        : encmsg;
+                } else {
+                    await append_pline(encmsg);
+                }
+            }
         }
     }
     for (const { x, y } of expire_corpse_timeouts()) newsym(x, y);
@@ -1308,8 +1322,8 @@ export async function newgame() {
     // after init_dungeons() and u_init_misc().
     l_nhcore_init();
 
-    // Set up game state needed by mklev
-    if (!g.dungeons) g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
+    // Set up game state needed by mklev.  init_dungeons() above installs
+    // dungeon topology, branch records, and mines_dnum before level creation.
     g.u = g.u || {};
     // C ref: src/u_init.c:u_init_misc().  Some startup paths skip the full
     // initializer, but later hero-state consumers still expect these fields.
@@ -1319,15 +1333,6 @@ export async function newgame() {
     g.flags = g.flags || {};
     g._death_first_move_message_shown = false;
     g._death_continue_after_first_move_more = false;
-    // Branch placement fallback for paths that have not initialized full
-    // dungeon topology; generated levels still need the dungeon exit and Mines
-    // branch shape for branch predicates.
-    if (!g.branches) g.branches = [
-        { end1: { dnum: 0, dlevel: 1 }, end2: { dnum: 7, dlevel: 1 }, end1_up: true },
-        { end1: { dnum: 0, dlevel: 2 }, end2: { dnum: 2, dlevel: 1 }, end1_up: false },
-    ];
-    if (g.mines_dnum == null) g.mines_dnum = 2;
-
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
@@ -2822,15 +2827,37 @@ export async function moveloop_core() {
     const key = await nhgetch();
     // Read and execute one command
     await rhack(key);
+    if (g._resume_command_key_after_more != null && !g._more) {
+        const resumeCommandKey = g._resume_command_key_after_more;
+        g._resume_command_key_after_more = null;
+        await rhack(resumeCommandKey);
+        if (g._more || g._monster_turn_paused_for_more) return;
+    } else if (!g._more) {
+        g._resume_command_key_after_more = null;
+    }
     if (g._resume_post_dosounds_turn_tail && !g._more) {
         g._resume_post_dosounds_turn_tail = false;
+        const resumeMonsterAfterTail = !!g._resume_monster_turn_after_post_dosounds_tail;
+        const resumeCommandKey = g._resume_command_key_after_post_dosounds_tail;
+        g._resume_monster_turn_after_post_dosounds_tail = false;
+        g._resume_command_key_after_post_dosounds_tail = null;
         await finishPostDosoundsTurnTail(g);
         // C ref: allmain.c:moveloop_core().  A sound More can interrupt the
         // immobile-hero loop after u_calc_moveamt() left movement below
         // NORMAL_SPEED; dismissing it resumes the tail and then keeps looping
         // until the hero has movement again.
         if (!await finishZeroMovePolyCatchup(g)) return;
-        return;
+        if (resumeCommandKey != null && !g._more && !g._monster_turn_paused_for_more) {
+            await rhack(resumeCommandKey);
+            if (g._more || g._monster_turn_paused_for_more) return;
+        } else if (resumeMonsterAfterTail && !g._more && !g._monster_turn_paused_for_more) {
+            g._resume_monster_turn = true;
+        } else {
+            return;
+        }
+    } else if (!g._resume_post_dosounds_turn_tail) {
+        g._resume_monster_turn_after_post_dosounds_tail = false;
+        g._resume_command_key_after_post_dosounds_tail = null;
     }
     // C ref: teleport.c:level_tele() schedules the destination; allmain.c
     // performs deferred_goto() after rhack() returns.

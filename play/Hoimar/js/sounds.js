@@ -158,5 +158,7 @@ export async function dosounds() {
         // sound gate after ordinary feature/special-room sound gates.
         return;
     }
-    // TODO: Implement more sounds (throne, swamp, vault, beehive, etc.)
+    // Remaining dosounds() debt is mostly unevidenced special-room monster
+    // iteration/messages; current evidence still needs these gates here for
+    // C-shaped RNG ownership.
 }

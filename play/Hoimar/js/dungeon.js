@@ -379,6 +379,7 @@ function fixupLevelLocations(pd) {
     game.rogue_level = map.get('rogue') || null;
     game.oracle_level = map.get('oracle') || null;
     game.medusa_level = map.get('medusa') || null;
+    game.juiblex_level = map.get('juiblex') || null;
     game.knox_level = map.get('knox') || null;
     game.stronghold_level = map.get('castle') || null;
     game.sanctum_level = map.get('sanctum') || null;
