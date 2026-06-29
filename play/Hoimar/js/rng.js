@@ -1,6 +1,6 @@
 // rng.js — PRNG wrappers around ISAAC64.
-// C ref: rng.c — three RNG contexts: core, display, lua.
-// Contest: only core context is used for parity.
+// C ref: rng.c — separate core and display contexts.
+// Lua math.random is seeded through the local deterministic C harness patch.
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
