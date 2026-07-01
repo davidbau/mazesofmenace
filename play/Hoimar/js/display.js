@@ -19,7 +19,7 @@ import {
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
     MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST,
-    M_AP_OBJECT, IS_POOL, IS_WALL,
+    M_AP_FURNITURE, M_AP_OBJECT, ACCESSIBLE, IS_POOL, IS_WALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
     WM_C_OUTER, WM_C_INNER, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
@@ -955,6 +955,56 @@ function warning_glyph(mon) {
     return def_warnsyms[Math.min(WARNCOUNT - 1, Math.max(0, level))] || null;
 }
 
+function monster_warning_active(mon) {
+    if (!game.u?.uprops?.warning || mon?.mpeaceful) return false;
+    if (dist2(game.u?.ux ?? 0, game.u?.uy ?? 0, mon.mx, mon.my) >= 100) return false;
+    const realLevel = Math.trunc((mon.m_lev ?? mon.data?.mlevel ?? 0) / 4);
+    return realLevel >= (game.context?.warnlevel ?? 1);
+}
+
+function gas_region_contains(region, x, y) {
+    if (region?.x === x && region?.y === y) return true;
+    if (Array.isArray(region?.rects)) {
+        return region.rects.some((rect) =>
+            x >= rect.lx && x <= rect.hx && y >= rect.ly && y <= rect.hy);
+    }
+    if (region?.lx != null && region?.hx != null && region?.ly != null && region?.hy != null)
+        return x >= region.lx && x <= region.hx && y >= region.ly && y <= region.hy;
+    return false;
+}
+
+function visible_gas_region_at_display(x, y) {
+    return (game.level?.gasClouds || []).find((region) =>
+        region.ttl !== -2 && region.visible !== false && gas_region_contains(region, x, y)) || null;
+}
+
+function gas_region_glyph(region) {
+    return {
+        ch: '#',
+        color: region?.damage ? CLR_BRIGHT_GREEN : CLR_GRAY,
+        dec: false,
+    };
+}
+
+function monster_overrides_region(mon, x, y, loc) {
+    // C ref: display.c:mon_overrides_region().  A visible gas region masks a
+    // monster unless it is sensed/warning-visible or close enough to be seen
+    // through the gas.
+    if (game.u?.uswallow && (!mon || mon !== game.u?.ustuck)) return false;
+    if (mon) {
+        if (x === mon.mx && y === mon.my
+            && (tp_sensemon(mon) || monster_warning_active(mon))) return true;
+        const blind = !!(game.u?.ublind || game.u?.uprops?.blind || game.u?.uprops?.blinded);
+        const r = Math.max(game.u?.xray_range || 0, 1);
+        if (!blind && monster_visible(mon)
+            && mon.m_ap_type !== M_AP_FURNITURE
+            && mon.m_ap_type !== M_AP_OBJECT
+            && dist2(game.u?.ux ?? 0, game.u?.uy ?? 0, x, y) <= r * (r + 1))
+            return true;
+    }
+    return loc?.remembered_glyph?.ch === 'I';
+}
+
 export function refresh_warning_monsters() {
     if (!game.u?.uprops?.warning) return;
     for (const mon of game.level?.monsters || []) {
@@ -1009,6 +1059,23 @@ export function see_traps() {
         const loc = game.level?.at(trap.tx, trap.ty);
         if (!trap.tseen || loc?.disp_ch !== '^') continue;
         newsym(trap.tx, trap.ty);
+    }
+}
+
+export function refresh_message_clear_map_rows() {
+    // C refs: win/tty/topl.c:more(), win/tty/wintty.c:tty_clear_nhwindow(),
+    // docorner().  Clearing a blocking message can row-refresh the map before
+    // allmain's next hallucination input-boundary refresh.
+    if (!game.level || game._swallowed_map_active || game._swallowed_latched_overlay) return;
+    if (!(game.u?.uhallucination || game.u?.uprops?.hallucination)) return;
+    const prevWarning = game._hallucination_warning_rng_active;
+    game._hallucination_warning_rng_active = true;
+    try {
+        for (let y = 0; y < ROWNO; y++)
+            for (let x = 1; x < COLNO; x++)
+                newsym(x, y);
+    } finally {
+        game._hallucination_warning_rng_active = prevWarning;
     }
 }
 
@@ -1212,7 +1279,19 @@ export function refresh_swallowed_overlay() {
 export function apply_hallucination_display_transition(wasHallucinating, isHallucinating) {
     if (wasHallucinating === isHallucinating) return;
     if (!game.u?.uswallow || !game._swallowed_map_active || !game.u?.ustuck) {
+        // C ref: src/potion.c:make_hallucinated().  The visible map is
+        // refreshed before the transition pline, so the blocking More frame
+        // already shows hallucinated monsters, objects, and traps.
         game._swallowed_overlay = null;
+        const prevWarning = game._hallucination_warning_rng_active;
+        game._hallucination_warning_rng_active = true;
+        try {
+            see_monsters();
+            see_objects();
+            see_traps();
+        } finally {
+            game._hallucination_warning_rng_active = prevWarning;
+        }
         return;
     }
     // C ref: potion.c:make_hallucinated() -> swallowed(0).
@@ -1324,6 +1403,15 @@ export function newsym(x, y) {
     }
 
     // Contestants: add monster, object, and trap display here.
+    const region = visible_gas_region_at_display(x, y);
+    if (region && (ACCESSIBLE(loc.typ) || ((IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL) && region.visible !== false))) {
+        if (!monster_overrides_region(mon, x, y, loc)) {
+            const rg = gas_region_glyph(region);
+            show_glyph_cell(x, y, rg.ch, rg.color, rg.dec);
+            return;
+        }
+    }
+
     let tg = terrain_glyph(loc, x, y);
 
     const trap = game.level?.traps?.find(t => t.tx === x && t.ty === y);
@@ -1679,11 +1767,15 @@ function _statusLine2() {
         ? game._status_uencumber_override
         : (u.uencumber || 0);
     if (statusEncumbrance > 0) conditions.push(encStatus[statusEncumbrance] || 'Overloaded');
-    if (u.uprops?.confusion || u.uconfusion) conditions.push('Conf');
-    if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
+    // C refs: src/botl.c:do_statusline2(), src/windows.c:genl_status_update().
+    // Status conditions render in fixed severity order after hunger/capacity.
     if (u.uprops?.blinded || u.uprops?.blind || u.ublind) conditions.push('Blind');
     if (u.uprops?.deaf) conditions.push('Deaf');
-    if (form?.fly) conditions.push('Fly');
+    if (u.uprops?.stunned || u.ustunned) conditions.push('Stun');
+    if (u.uprops?.confusion || u.uconfusion) conditions.push('Conf');
+    if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
+    if (u.uprops?.levitation) conditions.push('Lev');
+    if (u.uprops?.flying || form?.fly) conditions.push('Fly');
     if (u.usteed) conditions.push('Ride');
     const conditionText = conditions.length ? ` ${conditions.join(' ')}` : '';
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)

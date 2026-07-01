@@ -11,7 +11,8 @@ import {
     newsym, show_glyph_cell, flush_screen, pline, append_pline, clear_pending_message, docrt,
     serialize_terminal_grid, queue_more_prompt, topline_can_pack_message,
     apply_hallucination_display_transition, refresh_swallowed_overlay,
-    see_monsters, see_objects, see_nearby_objects, see_traps, refresh_warning_monsters, map_level_for_wizard,
+    see_monsters, see_objects, see_nearby_objects, see_traps, refresh_message_clear_map_rows,
+    refresh_warning_monsters, map_level_for_wizard,
     object_glyph_for_menu, serialize_known_terrain_view_screen, terrain_glyph, cls,
     unmap_invisible_memory, installSerializedScreenHook,
 } from './display.js';
@@ -49,6 +50,7 @@ import {
     finish_deferred_nymph_escape_tail,
     finish_deferred_monster_trap_effect,
     finish_pending_swallowed_expulsion,
+    finish_after_more_monster_explosion_basic,
     create_gas_cloud_basic,
     monster_projectile_destroyed_by_hit,
 } from './monmove.js';
@@ -458,6 +460,7 @@ const SCR_MAGIC_MAPPING = 337;
 const SCR_PUNISHMENT = 341;
 const SCR_MAIL = 364;
 const BOULDER = 475;
+const HEAVY_IRON_BALL = 477;
 const APPLE = 277;
 const ORANGE = 278;
 const PEAR = 279;
@@ -1435,7 +1438,7 @@ function wishedObjectSpec(name) {
     }
     if (wish.includes('apple')) {
         rn2(16);
-        return { ...spec, otyp: APPLE };
+        return { ...spec, otyp: APPLE, quan: spec.quan ?? 1 };
     }
     if (wish.includes('chest')) {
         // C ref: objnam.c:rnd_otyp_by_namedesc().  The name lookup for a
@@ -1906,7 +1909,10 @@ function thrownObjectFromInventory(obj) {
     if ((obj.quan || 1) > 1) {
         next_ident();
         const thrown = { ...obj, quan: 1, invlet: undefined, ox: 0, oy: 0 };
+        const unitWeight = OBJECT_WEIGHT[obj.otyp];
+        if (Number.isFinite(unitWeight)) thrown.owt = unitWeight;
         obj.quan--;
+        if (Number.isFinite(unitWeight)) obj.owt = Math.max(1, obj.quan || 1) * unitWeight;
         return thrown;
     }
     const idx = game.inventory?.indexOf(obj) ?? -1;
@@ -1915,12 +1921,43 @@ function thrownObjectFromInventory(obj) {
     return obj;
 }
 
-function thrownLanding(dx, dy) {
+function objectWeightForThrow(obj) {
+    if (!obj) return 1;
+    const unitWeight = OBJECT_WEIGHT[obj.otyp];
+    if (Number.isFinite(unitWeight)) return Math.max(0, unitWeight * (obj.quan || 1));
+    return Math.max(1, obj.owt || 1);
+}
+
+function thrownObjectIsAmmo(obj) {
+    return isAmmoObject(obj) || obj?.otyp === DART || obj?.otyp === SHURIKEN;
+}
+
+function thrownRange(obj, wielded) {
+    // C ref: src/dothrow.c:throwit().  Ordinary thrown range is based on
+    // ACURRSTR and object weight, then adjusted for ammo/launcher cases.
+    const crossbowing = matchingLauncherForAmmo(obj, wielded) && wielded?.otyp === CROSSBOW;
+    const urange = Math.trunc((crossbowing ? 18 : currentFormulaStrength()) / 2);
+    let range = obj?.otyp === HEAVY_IRON_BALL
+        ? urange - Math.trunc(objectWeightForThrow(obj) / 100)
+        : urange - Math.trunc(objectWeightForThrow(obj) / 40);
+    if (range < 1) range = 1;
+    if (thrownObjectIsAmmo(obj)) {
+        if (matchingLauncherForAmmo(obj, wielded)) {
+            range = crossbowing ? BOLT_LIM : range + 1;
+        } else if (obj?.oclass !== GEM_CLASS) {
+            range = Math.trunc(range / 2);
+        }
+    }
+    if (obj?.otyp === BOULDER) range = 20;
+    return Math.max(1, range);
+}
+
+function thrownLanding(dx, dy, rangeLimit) {
     let x = game.u?.ux ?? 0;
     let y = game.u?.uy ?? 0;
     let last = { x, y };
     let hitHard = false;
-    for (let range = 0; range < 8; range++) {
+    for (let range = 0; range < rangeLimit; range++) {
         const nx = x + dx;
         const ny = y + dy;
         const loc = game.level?.at(nx, ny);
@@ -1935,12 +1972,12 @@ function thrownLanding(dx, dy) {
     return { ...last, hitHard };
 }
 
-function thrownMonsterTarget(dx, dy) {
+function thrownMonsterTarget(dx, dy, rangeLimit) {
     // C ref: src/zap.c:bhit().  A thrown object stops at the first monster
     // on the projectile line before the caller resolves thitmonst().
     let x = game.u?.ux ?? 0;
     let y = game.u?.uy ?? 0;
-    for (let range = 0; range < 8; range++) {
+    for (let range = 0; range < rangeLimit; range++) {
         const nx = x + dx;
         const ny = y + dy;
         const loc = game.level?.at(nx, ny);
@@ -2145,12 +2182,21 @@ async function throwInventoryObject(obj, dirKey) {
     for (let shot = 0; shot < shotCount; shot++) {
         const thrown = thrownObjectFromInventory(obj);
         if (!thrown) break;
-        const thrownTarget = thrownBlindingObject(thrown) ? thrownMonsterTarget(dx, dy) : null;
+        // C ref: src/zap.c:bhit().  Thrown-object tmp_at() initializes the
+        // projectile glyph with obj_to_glyph(..., rn2_on_display_rng).
+        if (!game.u?.uswallow) {
+            object_glyph_for_menu(thrown);
+            // The following monster turn may flush deferred warning redraws
+            // against the same display-RNG position as the thrown glyph.
+            game._thrown_projectile_display_rng_moves = game.moves;
+        }
+        const rangeLimit = thrownRange(thrown, wielded);
+        const thrownTarget = thrownBlindingObject(thrown) ? thrownMonsterTarget(dx, dy, rangeLimit) : null;
         if (thrownTarget && await thitmonstThrownBlindingObject(thrown, thrownTarget.mon))
             continue;
-        const target = plainThrownObjectMissesMonster(thrown) ? thrownMonsterTarget(dx, dy) : null;
+        const target = plainThrownObjectMissesMonster(thrown) ? thrownMonsterTarget(dx, dy, rangeLimit) : null;
         if (target) await thitmonstPlainMiss(thrown, target.mon);
-        const landing = target || thrownTarget || thrownLanding(dx, dy);
+        const landing = target || thrownTarget || thrownLanding(dx, dy, rangeLimit);
         const destroyed = thrownBreaktestDestroysObject(thrown, landing);
         if (landing.x === (game.u?.ux ?? 0) && landing.y === (game.u?.uy ?? 0) && !landing.hitHard) break;
         if (!destroyed) {
@@ -2275,10 +2321,11 @@ function applyLetters() {
 
 function readLetters() {
     ensureInventoryLetters();
-    return (game.inventory || [])
+    const letters = (game.inventory || [])
         .filter((obj) => obj?.oclass === SCROLL_CLASS || obj?.oclass === SPBOOK_CLASS)
         .map((obj) => obj.invlet)
-        .join('');
+        .filter(validInvlet);
+    return letters.length > 5 ? compactLettersInOrder(letters) : letters.join('');
 }
 
 function readSuggestedObjects() {
@@ -2780,6 +2827,28 @@ async function finishReadObjectSelection(obj, idx = inventoryIndexForLetter(obj?
         game.context.move = 0;
         return;
     }
+    if (obj.otyp === FORTUNE_COOKIE) {
+        // C refs: src/read.c:doread(), src/rumors.c:outrumor(BY_COOKIE).
+        if (!heroIsBlind()) noteLiterateConduct();
+        consumeInventoryObject(obj);
+        if (heroIsBlind()) {
+            game._cookie_message_queue = [
+                { text: 'This cookie has a scrap of paper inside.', more: true },
+                { text: 'What a pity that you cannot read it!', move: true },
+            ];
+        } else {
+            const rumor = getRumor(obj.blessed ? 1 : obj.cursed ? -1 : 0, false);
+            exercise(A_WIS, true);
+            game._cookie_message_queue = [
+                { text: 'This cookie has a scrap of paper inside.  It reads:', more: true },
+                { text: rumor, move: true },
+            ];
+        }
+        game.context.move = 0;
+        await pline('You break up the cookie and throw away the pieces.');
+        queue_more_prompt();
+        return;
+    }
     if (obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS) {
         // C refs: src/read.c:read_ok(), src/read.c:doread().
         // Non-scroll inventory is downplayed by getobj() but still selectable;
@@ -2787,6 +2856,19 @@ async function finishReadObjectSelection(obj, idx = inventoryIndexForLetter(obj?
         game.context.move = 0;
         await pline('That is a silly thing to read.');
         return;
+    }
+    if (heroIsBlind() && obj.otyp !== SPE_BOOK_OF_THE_DEAD) {
+        // C ref: src/read.c:doread().  Blind scroll reading is allowed only
+        // when the label is known; regular spellbooks and novels are blocked.
+        let what = '';
+        if (obj.otyp === SPE_NOVEL) what = 'words';
+        else if (obj.oclass === SPBOOK_CLASS) what = 'mystic runes';
+        else if (!obj.dknown) what = 'formula on the scroll';
+        if (what) {
+            game.context.move = 0;
+            await pline(`Being blind, you cannot read the ${what}.`);
+            return;
+        }
     }
     noteLiterateConduct();
     if (obj.oclass === SPBOOK_CLASS) {
@@ -4413,6 +4495,16 @@ function baseObjectName(obj) {
         // C ref: objnam.c:xname_flags().  Blind inventory formatting does
         // not expose an undiscovered wand's shuffled appearance.
         return 'wand';
+    }
+    if (obj?.oclass === SCROLL_CLASS && obj.dknown === false) {
+        // C ref: objnam.c:xname_flags().  Blind inventory formatting does
+        // not expose an undiscovered scroll's shuffled label.
+        return 'scroll';
+    }
+    if (obj?.oclass === SPBOOK_CLASS && obj.dknown === false) {
+        // C ref: objnam.c:xname_flags().  Blind inventory formatting does
+        // not expose an undiscovered spellbook title.
+        return 'spellbook';
     }
     if (obj?.otyp === POT_WATER) {
         if (obj.blessed) return 'potion of holy water';
@@ -6886,6 +6978,10 @@ function containerLootSortName(obj) {
 
 function containerContentMenuRows(container) {
     const contents = containerContents(container);
+    // C refs: src/end.c:container_contents(), src/invent.c:loot_xname(),
+    // src/objnam.c:xname_flags().  Sorting and displaying visible container
+    // contents names the objects, which observes their descriptions first.
+    for (const obj of contents) observeObjectForNaming(obj);
     // C ref: src/end.c:container_contents() -> sortloot(SORTLOOT_LOOT).
     // Names sort lexicographically while ignoring quantity, with original
     // object-list order as the final tie-breaker.
@@ -20212,7 +20308,29 @@ function selectIntrinsicMenuPage(menu, count) {
     }
 }
 
+function refreshHallucinationAfterMoreDismissal() {
+    if (game._more) return;
+    if (!(game.u?.uhallucination || game.u?.uprops?.hallucination)) return;
+    if (game.u?.uswallow && game.u?.ustuck && game._swallowed_map_active)
+        refresh_swallowed_overlay();
+    else {
+        // C ref: src/allmain.c:moveloop_core().  After tty more() returns
+        // to a fresh input boundary, hallucination redraws monsters, objects,
+        // and traps before nhgetch() captures the next screen.
+        const prevWarning = game._hallucination_warning_rng_active;
+        game._hallucination_warning_rng_active = true;
+        try {
+            see_monsters();
+            see_objects();
+            see_traps();
+        } finally {
+            game._hallucination_warning_rng_active = prevWarning;
+        }
+    }
+}
+
 function refreshSwallowedHallucinationAfterMore({ visibleMap = false } = {}) {
+    if (game._more) return;
     if (!(game.u?.uhallucination || game.u?.uprops?.hallucination)) return;
     if (game.u?.uswallow && game.u?.ustuck && game._swallowed_map_active)
         refresh_swallowed_overlay();
@@ -21614,6 +21732,7 @@ async function handleQueuedMore(ch) {
                     exercise(A_STR, false); // C ref: src/mthrowu.c:thitu().
             }
             await pline(msg);
+            finish_after_more_monster_explosion_basic();
             if (!game._after_more_message && game._deferred_nymph_escape_tail) {
                 // C refs: src/steal.c:steal(), src/teleport.c:rloc().
                 // The deferred theft line is displayed after the removal More;
@@ -21927,15 +22046,22 @@ async function handleQueuedMore(ch) {
             game._clear_pet_combat_more_after_resume = true;
             rn2(3); // C ref: src/mhitm.c:passivemm().
         }
-        // C ref: topl.c:more() returns to the interrupted command before
-        // allmain.c's next input prompt; swallowed Hallucination redraws
-        // once in that resumed path and again at the input boundary.
+        // C ref: win/tty/topl.c:more(), src/allmain.c:moveloop_core().
+        // A completed blocking More reaches a fresh input boundary before
+        // nhgetch() captures the next screen, so sighted Hallucination gets
+        // its normal random map redraw here rather than one capture later.
         const finishedSwallowedExpulsion = await finish_pending_swallowed_expulsion();
         const preserveActiveMoreSplitHalluMap = !!game._active_more_split_preserve_hallu_map_once;
         game._active_more_split_preserve_hallu_map_once = false;
         if (!swallowedDamageResume && !preTurnResume && !monsterAttackResume
-            && !preserveActiveMoreSplitHalluMap)
-            refreshSwallowedHallucinationAfterMore({ visibleMap: finishedSwallowedExpulsion });
+            && !preserveActiveMoreSplitHalluMap) {
+            if (finishedSwallowedExpulsion) {
+                refreshSwallowedHallucinationAfterMore({ visibleMap: true });
+            } else {
+                refresh_message_clear_map_rows();
+                refreshHallucinationAfterMoreDismissal();
+            }
+        }
     }
     if (game._deferred_move_floor_list
         && (game._more_dismissals_remaining || 0) <= 0
@@ -22134,7 +22260,7 @@ async function commitIntrinsicMenuSelection(menu) {
             game.u.uhallucination = newtimeout;
             const isHallucinating = !!(game.u.uhallucination || game.u.uprops.hallucination);
             apply_hallucination_display_transition(wasHallucinating, isHallucinating);
-            await pline('Oh wow!  Everything looks so cosmic!');
+            await pline(`Oh wow!  Everything ${heroIsBlind() ? 'feels' : 'looks'} so cosmic!`);
             queue_more_prompt();
             continue;
         }
@@ -29273,12 +29399,15 @@ export async function rhack(key) {
         } else if (ch === 'b') {
             game.context.move = 0;
             await pline('You are already wearing that!');
+        } else if (obj) {
+            game.context.move = 0;
+            await pline('That is a silly thing to wear.');
         } else if (ch === '\x1b') {
             game.context.move = 0;
             await pline('Never mind.');
         } else {
             game.context.move = 0;
-            await pline("You can't wear that.");
+            await pline("You don't have that object.");
         }
         return;
     }

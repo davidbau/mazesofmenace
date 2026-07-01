@@ -18,7 +18,7 @@ import {
 } from './object_data.js';
 import { getObjectColor, getObjectMaterial } from './o_init.js';
 import { MONSTER_DATA } from './monster_data.js';
-import { m_dowear_basic } from './mon_wear.js';
+import { m_dowear_basic, mon_break_armor_basic } from './mon_wear.js';
 import { noteMonsterBorn, monsterGenocided, monsterGone } from './monstats.js';
 import { CLR_CYAN, CLR_GRAY, NO_COLOR } from './terminal.js';
 import {
@@ -33,7 +33,7 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_SDOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA, IS_ROOM,
     ACCESSIBLE,
-    SPACE_POS, ZAP_POS, isok, W_NONDIGGABLE,
+    SPACE_POS, ZAP_POS, isok, I_SPECIAL, W_NONDIGGABLE,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
@@ -2670,6 +2670,8 @@ function initial_shapeshift(mon, ptr) {
     mon.m_lev = monState.level;
     mon.mhp = monState.hp;
     mon.mhpmax = monState.hp;
+    mon_break_armor_basic(mon);
+    mon.misc_worn_check = (mon.misc_worn_check || 0) | I_SPECIAL;
     return true;
 }
 
@@ -4501,6 +4503,30 @@ const BIGRM_4_MAP = [
 const BIGRM_4_XSTART = 3;
 const BIGRM_4_YSTART = 3;
 
+const BIGRM_5_MAP = [
+    '                            ------------------                            ',
+    '                    ---------................---------                    ',
+    '              -------................................-------              ',
+    '         ------............................................------         ',
+    '      ----......................................................----      ',
+    '    ---............................................................---    ',
+    '  ---................................................................---  ',
+    '---....................................................................---',
+    '|........................................................................|',
+    '|........................................................................|',
+    '|........................................................................|',
+    '---....................................................................---',
+    '  ---................................................................---  ',
+    '    ---............................................................---    ',
+    '      ----......................................................----      ',
+    '         ------............................................------         ',
+    '              -------................................-------              ',
+    '                    ---------................---------                    ',
+    '                            ------------------                            ',
+];
+const BIGRM_5_XSTART = 3;
+const BIGRM_5_YSTART = 1;
+
 const BIGRM_7_MAP = [
     '                                                        -----',
     '                                                ---------...---',
@@ -5190,6 +5216,10 @@ function bigrm3TerrainAt(x, y) {
 
 function bigrm4TerrainAt(x, y) {
     return BIGRM_4_MAP[y]?.[x] || ' ';
+}
+
+function bigrm5TerrainAt(x, y) {
+    return BIGRM_5_MAP[y]?.[x] || ' ';
 }
 
 function bigrm7TerrainAt(x, y) {
@@ -6770,6 +6800,37 @@ function bigrm4GetFloorLocation() {
     return { x: x + BIGRM_4_XSTART, y: y + BIGRM_4_YSTART };
 }
 
+function bigrm5Location(ok) {
+    let x, y, loc;
+    let tries = 0;
+    do {
+        x = rn2(74);
+        y = rn2(19);
+        loc = game.level?.at(x + BIGRM_5_XSTART, y + BIGRM_5_YSTART);
+        if (loc && ok(loc, x + BIGRM_5_XSTART, y + BIGRM_5_YSTART)) {
+            return { x: x + BIGRM_5_XSTART, y: y + BIGRM_5_YSTART };
+        }
+    } while (++tries < 100);
+
+    for (x = 0; x < 74; x++)
+        for (y = 0; y < 19; y++) {
+            loc = game.level?.at(x + BIGRM_5_XSTART, y + BIGRM_5_YSTART);
+            if (loc && ok(loc, x + BIGRM_5_XSTART, y + BIGRM_5_YSTART)) {
+                return { x: x + BIGRM_5_XSTART, y: y + BIGRM_5_YSTART };
+            }
+        }
+    return { x: BIGRM_5_XSTART, y: BIGRM_5_YSTART };
+}
+
+function bigrm5GetStairLocation() {
+    // C ref: sp_lev.c:l_create_stairway() uses good_stair_loc().
+    return bigrm5Location((loc) => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
+}
+
+function bigrm5GetDryLocation() {
+    return bigrm5Location((loc, x, y) => SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y));
+}
+
 function bigrm8Location(ok) {
     let x, y, loc;
     let tries = 0;
@@ -7185,6 +7246,7 @@ function loadBigrm2Terrain() {
 function bigrmTerrainType(ch) {
     switch (ch) {
     case '.': return ROOM;
+    case 'I': return ICE;
     case '-': return HWALL;
     case '|': return VWALL;
     case 'P': return POOL;
@@ -7234,6 +7296,17 @@ function loadBigrm4Terrain() {
             const loc = game.level.at(x + BIGRM_4_XSTART, y + BIGRM_4_YSTART);
             if (!loc) continue;
             loc.typ = bigrmTerrainType(BIGRM_4_MAP[y][x]);
+        }
+    }
+    game.level.flags.is_maze_lev = true;
+}
+
+function loadBigrm5Terrain() {
+    for (let y = 0; y < BIGRM_5_MAP.length; y++) {
+        for (let x = 0; x < BIGRM_5_MAP[y].length; x++) {
+            const loc = game.level.at(x + BIGRM_5_XSTART, y + BIGRM_5_YSTART);
+            if (!loc) continue;
+            loc.typ = bigrmTerrainType(bigrm5TerrainAt(x, y));
         }
     }
     game.level.flags.is_maze_lev = true;
@@ -7542,6 +7615,80 @@ function loadBigrm4Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3);
         loc = bigrm4GetFloorLocation();
+        makemonSpecialLevelAt(null, loc.x, loc.y, 0);
+    }
+}
+
+function growSelectionPoints(points) {
+    const grown = new Set(points);
+    for (const key of points) {
+        const [x, y] = key.split(',').map(Number);
+        for (let dx = -1; dx <= 1; dx++)
+            for (let dy = -1; dy <= 1; dy++) {
+                if (!dx && !dy) continue;
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < COLNO && ny >= 0 && ny < ROWNO)
+                    grown.add(`${nx},${ny}`);
+            }
+    }
+    return grown;
+}
+
+function maybeBigrm5IceCloudPatch() {
+    // C refs: dat/bigrm-5.lua, selvar.c:selection_filter_percent()/
+    // selection_do_grow(), sp_lev.c:lspo_replace_terrain().
+    if (rn2(100) >= 25) return;
+    let points = new Set();
+    for (let x = 0; x < 74; x++)
+        for (let y = 0; y < 19; y++) {
+            const loc = game.level?.at(x + BIGRM_5_XSTART, y + BIGRM_5_YSTART);
+            if (loc?.typ === ROOM && rn2(100) < 2)
+                points.add(`${x + BIGRM_5_XSTART},${y + BIGRM_5_YSTART}`);
+        }
+    points = growSelectionPoints(points);
+    const typ = rn2(100) < 50 ? ICE : CLOUD;
+    for (let x = Math.max(1, BIGRM_5_XSTART - 1); x <= BIGRM_5_XSTART + 74; x++)
+        for (let y = BIGRM_5_YSTART - 1; y <= BIGRM_5_YSTART + 19; y++) {
+            if (!points.has(`${x},${y}`)) continue;
+            const loc = game.level?.at(x, y);
+            if (loc?.typ === ROOM && rn2(100) < 100)
+                loc.typ = typ;
+        }
+}
+
+function loadBigrm5Special() {
+    // C ref: dat/bigrm-5.lua loaded through mkmaze.c:makemaz().
+    loadBigrm5Terrain();
+    l_nhcore_init();
+    rn2(2); // splev_initlev flip state for des.level_flags("noflip")
+    maybeBigrm5IceCloudPatch();
+
+    for (let y = 0; y <= 18; y++)
+        for (let x = 0; x <= 73; x++) {
+            const loc = game.level?.at(x + BIGRM_5_XSTART, y + BIGRM_5_YSTART);
+            if (loc) loc.lit = true;
+        }
+
+    let loc = bigrm5GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, true);
+    loc = bigrm5GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, false);
+    markBigroomNonDiggable();
+
+    for (let i = 0; i < 15; i++) {
+        loc = bigrm5GetDryLocation();
+        mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    }
+    for (let i = 0; i < 6; i++) {
+        loc = bigrm5GetDryLocation();
+        let kind;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        const trap = maketrap(loc.x, loc.y, kind);
+        maybeTrapVictim(trap);
+    }
+    for (let i = 0; i < 28; i++) {
+        rn2(3);
+        loc = bigrm5GetDryLocation();
         makemonSpecialLevelAt(null, loc.x, loc.y, 0);
     }
 }
@@ -16010,6 +16157,14 @@ function makemaz_special(slev) {
         lightWallsAdjacentToLitCells(BIGRM_4_XSTART, BIGRM_4_YSTART,
             BIGRM_4_XSTART + BIGRM_4_MAP[0].length - 1,
             BIGRM_4_YSTART + BIGRM_4_MAP.length - 1);
+        return;
+    }
+    if (game._last_special_protofile === 'bigrm-5') {
+        loadBigrm5Special();
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+        lightWallsAdjacentToLitCells(BIGRM_5_XSTART, BIGRM_5_YSTART,
+            BIGRM_5_XSTART + BIGRM_5_MAP[0].length - 1,
+            BIGRM_5_YSTART + BIGRM_5_MAP.length - 1);
         return;
     }
     if (game._last_special_protofile === 'bigrm-7') {

@@ -13,7 +13,7 @@ import {
     D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED,
     ALL_TRAPS, NO_TRAP,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
-    RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
+    RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP,
     ANTI_MAGIC, DOOR, IRONBARS, LADDER, LAVAWALL, MAGIC_PORTAL, MAGIC_TRAP,
     CORR, ROOM, SCORR, SQKY_BOARD, SLP_GAS_TRAP, STAIRS, STATUE_TRAP, STONE, TREE, VIBRATING_SQUARE, WEB,
     ACCESSIBLE, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, IS_WATERWALL,
@@ -35,7 +35,7 @@ import {
 } from './display.js';
 import { nhgetch } from './input.js';
 import { clear_path, cansee, couldsee, vision_reset, vision_recalc } from './vision.js';
-import { m_dowear_basic } from './mon_wear.js';
+import { m_dowear_basic, mon_break_armor_basic } from './mon_wear.js';
 import { calculated_armor_class, newuexp } from './u_init.js';
 import { gettrack } from './track.js';
 import { randomHallucinatedMonsterName, wipeoutText } from './random_text.js';
@@ -1407,11 +1407,24 @@ function defer_warning_redraw_square(x, y) {
         game._deferred_warning_redraws.push({ x, y });
 }
 
-export function flush_deferred_warning_redraws() {
+export function flush_deferred_warning_redraws({ hallucinatedWarningRng = false } = {}) {
     const pending = game._deferred_warning_redraws || [];
     if (!pending.length) return;
-    game._deferred_warning_redraws = [];
-    for (const pt of pending) newsym(pt.x, pt.y);
+    const hallucinating = !!(game.u?.uprops?.hallucination || game.u?.uhallucination);
+    const previousWarningRng = game._monster_move_warning_rng_active;
+    // Single-pair deferred warning redraws are normally covered by the
+    // Hallucination boundary refresh.  Batched movement flushes and the
+    // monster turn immediately after a displayed thrown projectile still need
+    // the postmove warning display RNG here.
+    if (hallucinatedWarningRng && hallucinating
+        && (pending.length > 2 || game._thrown_projectile_display_rng_moves === game.moves))
+        game._monster_move_warning_rng_active = true;
+    try {
+        game._deferred_warning_redraws = [];
+        for (const pt of pending) newsym(pt.x, pt.y);
+    } finally {
+        game._monster_move_warning_rng_active = previousWarningRng;
+    }
 }
 
 function minliquid_basic(mtmp) {
@@ -2673,6 +2686,13 @@ function increment_hero_blind_timeout_basic(amount) {
         vision_recalc(2);
         vision_recalc(0);
     }
+}
+
+function hero_resists_light_blindness_basic() {
+    // C ref: src/mondata.c:resists_blnd() for gy.youmonst.
+    return hero_is_blind_basic()
+        || !!game.u?.uprops?.light_induced_blindness_resistance
+        || !!(game.u?.data?.mflags1 & M1_NOEYES);
 }
 
 function verbose_messages_enabled_basic() {
@@ -4971,6 +4991,42 @@ async function append_monster_topline(line) {
     return true;
 }
 
+async function blinding_explosion_attack_hero_basic(mtmp, attack) {
+    // C refs: src/mhitu.c:mattacku()/explmu().  Adjacent AT_EXPL attacks hit
+    // automatically and roll their damage before the blindness side effect is
+    // blocked behind the explosion topline's tty More.
+    if (!attack || mtmp.mcan) return false;
+    const [, , damn, damd] = attack;
+    const duration = d(damn, damd);
+    const packed = await append_monster_topline(`${monster_subject(mtmp)} explodes!`);
+    if (!packed) return true;
+    queue_more_prompt();
+    game._monster_attack_more_latched = true;
+    game._monster_attack_pause_after_more = true;
+    const resisted = hero_resists_light_blindness_basic();
+    game._after_more_monster_explosion = {
+        mtmp,
+        duration,
+        blind: !resisted,
+    };
+    game._after_more_message = resisted
+        ? 'You seem unaffected by it.'
+        : 'You are blinded by a blast of light!';
+    game._after_more_needs_prompt = false;
+    return true;
+}
+
+export function finish_after_more_monster_explosion_basic() {
+    const pending = game._after_more_monster_explosion;
+    if (!pending) return false;
+    game._after_more_monster_explosion = null;
+    if (pending.blind)
+        increment_hero_blind_timeout_basic(pending.duration);
+    if (pending.mtmp && game.level?.monsters?.includes(pending.mtmp))
+        remove_dead_monster(pending.mtmp);
+    return true;
+}
+
 async function append_monster_effect_topline(line, opts = {}) {
     if (game._life_saving_silent_monster_resume) return;
     clear_transient_travel_description_for_monster_line();
@@ -6014,6 +6070,10 @@ async function mintrap_basic(mtmp) {
     if (trap.ttyp === LANDMINE) return mintrap_landmine_basic(mtmp, trap);
     if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) return mintrap_pit_basic(mtmp, trap);
     if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) return mintrap_hole_basic(mtmp, trap);
+    if (trap.ttyp === TELEP_TRAP) {
+        rloc_basic(mtmp);
+        return MMOVE_DIED;
+    }
     if (trap.ttyp === FIRE_TRAP) return mintrap_fire_basic(mtmp, trap);
     if (trap.ttyp === MAGIC_TRAP) return mintrap_magic_basic(mtmp, trap);
     if (trap.ttyp === WEB) return mintrap_web_basic(mtmp, trap);
@@ -6800,6 +6860,11 @@ function basic_engulf_attack(mtmp) {
     if (aatyp !== 'AT_ENGL' || damn <= 0 || damd <= 0) return null;
     if (!['AD_COLD', 'AD_FIRE', 'AD_ELEC', 'AD_PHYS', 'AD_ACID'].includes(adtyp)) return null;
     return attack;
+}
+
+function blinding_explosion_attack(mtmp) {
+    return (mtmp.data?.mattk || []).find((attack) =>
+        attack?.[0] === 'AT_EXPL' && attack?.[1] === 'AD_BLND') || null;
 }
 
 function cooldown_replacement_attack(mtmp) {
@@ -8862,6 +8927,7 @@ async function mattacku_basic(mtmp, state, opts = {}) {
     const physical = engulf ? null : basic_physical_attacks(mtmp, !rangeWeapon);
     const stealAttack = engulf ? null : steal_item_attack_basic(mtmp, !rangeWeapon);
     const magicAttack = !engulf && state?.nearby ? adjacent_magic_spell_attack_basic(mtmp) : null;
+    const explosionAttack = !engulf && state?.nearby ? blinding_explosion_attack(mtmp) : null;
     // C refs: src/mhitu.c:mattacku(), src/muse.c:find_offensive().
     // mattacku() computes AC_VALUE() before checking offensive inventory.
     const toHit = mattacku_to_hit(mtmp);
@@ -8908,7 +8974,8 @@ async function mattacku_basic(mtmp, state, opts = {}) {
         && mtmp.data?.name !== 'DISPLACER_BEAST';
     const targetsDisplacedImage = heroDisplaced && state?.nearby
         && (mtmp.mux !== game.u?.ux || mtmp.muy !== game.u?.uy);
-    if (!engulf && !physical && !stealAttack && !magicAttack && !rangeWeapon && !rangeBreath && !rangeSpit) {
+    if (!engulf && !physical && !stealAttack && !magicAttack && !explosionAttack
+        && !rangeWeapon && !rangeBreath && !rangeSpit) {
         if (state?.inrange && (mtmp.data?.mattk || []).some(Boolean)) {
             if (targetsDisplacedImage && wildmissMelee) {
                 await wildmiss_displaced_image_basic(mtmp);
@@ -8926,6 +8993,11 @@ async function mattacku_basic(mtmp, state, opts = {}) {
     if (targetsDisplacedImage && (physical || wildmissMelee)) {
         await wildmiss_displaced_image_basic(mtmp);
         return true;
+    }
+    if (!physical && !stealAttack && !magicAttack && explosionAttack) {
+        if (!game._monster_topline_deferred && !monster_attack_tail_pack_pending())
+            await flush_pending_more_before_monster_message();
+        return blinding_explosion_attack_hero_basic(mtmp, explosionAttack);
     }
     if (game._hero_melee_message_pending && game._pending_message) queue_more_prompt();
     if (rangeWeapon && !physical) {
@@ -9329,7 +9401,35 @@ function apply_newcham_basic(mon, ptr) {
     let hp = oldMax > 0 ? Math.trunc(oldHp * mon.mhpmax / oldMax) : mon.mhpmax;
     if (hp < 0 || hp > mon.mhpmax) hp = mon.mhpmax;
     mon.mhp = hp || 1;
+    mon.meverseen = 0;
+    newsym(mon.mx, mon.my);
+    mon_break_armor_basic(mon, {
+        dropObject(mtmp, obj) {
+            stackobj(place_object(obj, mtmp.mx, mtmp.my));
+            newsym(mtmp.mx, mtmp.my);
+        },
+    });
+    mon.misc_worn_check = (mon.misc_worn_check || 0) | I_SPECIAL;
+    drop_shapechange_boulders_basic(mon);
     return true;
+}
+
+function drop_shapechange_boulders_basic(mon) {
+    // C ref: src/mon.c:newcham(). Former rock-throwers cannot keep carrying
+    // boulders after changing into a non-rock-throwing form.
+    if (!mon || ((mon.data?.mflags2 ?? 0) & M2_ROCKTHROW)) return;
+    const inv = mon.inventory || [];
+    let dropped = false;
+    for (let i = inv.length - 1; i >= 0; i--) {
+        const obj = inv[i];
+        if (obj?.otyp !== BOULDER) continue;
+        inv.splice(i, 1);
+        if (mon.mw === obj) mon.mw = null;
+        obj.owornmask = 0;
+        stackobj(place_object(obj, mon.mx, mon.my));
+        dropped = true;
+    }
+    if (dropped) newsym(mon.mx, mon.my);
 }
 
 function decide_to_shapeshift_basic(mon) {
@@ -10024,7 +10124,13 @@ export async function movemon() {
         return false;
     }
     g._packed_monster_more_candidate = false;
-    if (!g._more) flush_deferred_warning_redraws();
+    if (!g._more) {
+        // C refs: src/monmove.c:postmov(), src/display.c:display_warning().
+        // Batched deferred off-screen warning redraws flushed at the
+        // monster-turn input boundary still use display RNG while
+        // hallucinating.
+        flush_deferred_warning_redraws({ hallucinatedWarningRng: true });
+    }
 
     return somebody_can_move;
 }
