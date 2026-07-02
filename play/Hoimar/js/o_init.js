@@ -2,11 +2,12 @@
 // C ref: o_init.c — shuffle gem colors, potion descriptions, etc.
 //
 import { rn2 } from './rng.js';
-import { OBJECT_COLOR, OBJECT_MATERIAL } from './object_data.js';
+import { OBJECT_COLOR, OBJECT_MATERIAL, OBJECT_PROB } from './object_data.js';
 
 let objectColors = [...OBJECT_COLOR];
 let objectMaterials = [...OBJECT_MATERIAL];
 let objectDescriptions = [];
+const baseObjectProbs = [...OBJECT_PROB];
 
 const TURQUOISE = 446;
 const AQUAMARINE = 448;
@@ -307,6 +308,9 @@ export function init_objects() {
     objectColors = [...OBJECT_COLOR];
     objectMaterials = [...OBJECT_MATERIAL];
     objectDescriptions = [...OBJECT_DESCRIPTION];
+    // C starts each game process from the compiled objects[] table before
+    // o_init.c:setgemprobs() rewrites level-specific gem probabilities.
+    for (let i = 0; i < baseObjectProbs.length; i++) OBJECT_PROB[i] = baseObjectProbs[i];
     randomize_gem_colors();
     shuffle_all();
     // C ref: objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE.

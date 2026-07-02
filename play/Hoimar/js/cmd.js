@@ -40,6 +40,7 @@ import { d, rn1, rn2, rnd, rnl, rnz } from './rng.js';
 import { dist2, midnight } from './hacklib.js';
 import { getObjectDescription } from './o_init.js';
 import { getRumor, hallucinatedLiquidName, randomHallucinatedMonsterName, wipeoutText } from './random_text.js';
+import { HELP_DATA_FILES } from './help_data.js';
 import {
     finish_deferred_monster_breath_ray,
     finish_deferred_monster_magic_spell_effect,
@@ -2228,7 +2229,7 @@ function inventoryLetterRange() {
         || (game.inventory || []).some((obj) => obj?.otyp === GOLD_PIECE || obj?.invlet === '$');
     const letters = [...new Set((game.inventory || [])
         .map((obj) => obj?.invlet)
-        .filter(validInvlet))].sort();
+        .filter(validInvlet))].sort(asciiCompare);
     // C ref: invent.c:getobj().  The suggested-letter buffer is only
     // compacted with dashes when it contains more than five letters.
     const compact = (letters.length > 5 ? compressLetters(letters) : letters.join('')) || '';
@@ -2240,13 +2241,13 @@ function inventoryLetterRangeFor(filter) {
     const letters = [...new Set((game.inventory || [])
         .filter(filter)
         .map((obj) => obj?.invlet)
-        .filter(validInvlet))].sort();
+        .filter(validInvlet))].sort(asciiCompare);
     const compact = (letters.length > 5 ? compressLetters(letters) : letters.join('')) || '';
     return compact || 'a';
 }
 
 function compressLetters(letters) {
-    const sorted = [...new Set(letters.filter(validInvlet))].sort();
+    const sorted = [...new Set(letters.filter(validInvlet))].sort(asciiCompare);
     const parts = [];
     for (let i = 0; i < sorted.length; i++) {
         let j = i;
@@ -3000,6 +3001,12 @@ function canWriteWithObject(obj) {
         || (obj.oclass === TOOL_CLASS && (obj.otyp === TOWEL || obj.otyp === MAGIC_MARKER));
 }
 
+function asciiCompare(a, b) {
+    const aa = String(a || '');
+    const bb = String(b || '');
+    return aa < bb ? -1 : aa > bb ? 1 : 0;
+}
+
 function writeWithLetters() {
     ensureInventoryLetters();
     return (game.inventory || [])
@@ -3014,7 +3021,7 @@ function wieldLetters() {
         // C refs: include/objects.h:WEPTOOL(), src/invent.c:allow_category().
         // Pick-axes and other weapon-tools are offered by the wield prompt.
         .filter((obj) => obj?.oclass === WEAPON_CLASS || isWeaponTool(obj))
-        .sort((a, b) => String(a?.invlet || '').localeCompare(String(b?.invlet || '')))
+        .sort((a, b) => asciiCompare(a?.invlet, b?.invlet))
         .map((obj) => obj.invlet)
         .join('');
 }
@@ -4984,7 +4991,7 @@ function menuInventoryEntries() {
     if ((game.inventory || []).length) {
         return (game.inventory || [])
             .filter((obj) => obj && validInvlet(obj.invlet))
-            .sort((a, b) => String(a.invlet || '').localeCompare(String(b.invlet || '')))
+            .sort((a, b) => asciiCompare(a.invlet, b.invlet))
             .map((obj) => ({ cls: obj.oclass, obj, line: inventoryListing(obj, { includeWorn: true }) }));
     }
     const role = game.urole?.name?.m;
@@ -6987,7 +6994,7 @@ function containerContentMenuRows(container) {
     // object-list order as the final tie-breaker.
     return contents
         .map((obj, idx) => ({ obj, idx, key: containerLootSortName(obj).toLowerCase() }))
-        .sort((a, b) => a.key.localeCompare(b.key) || a.idx - b.idx)
+        .sort((a, b) => asciiCompare(a.key, b.key) || a.idx - b.idx)
         .map(({ obj }) => inventoryObjectName(obj, { observe: false }));
 }
 
@@ -7245,7 +7252,7 @@ function sortLootObjects(objects) {
         .sort((a, b) => {
             let diff = lootSubclass(a.obj) - lootSubclass(b.obj);
             if (diff) return diff;
-            const nameCmp = lootSortName(a.obj).localeCompare(lootSortName(b.obj));
+            const nameCmp = asciiCompare(lootSortName(a.obj), lootSortName(b.obj));
             if (nameCmp) return nameCmp;
             diff = lootBucSortValue(b.obj) - lootBucSortValue(a.obj);
             if (diff) return diff;
@@ -9974,7 +9981,7 @@ function pickupMenuEntries(objects) {
     const entries = [];
     const sortGroup = (group) => group
         .map((obj, idx) => ({ obj, idx, key: containerLootSortName(obj).toLowerCase() }))
-        .sort((a, b) => a.key.localeCompare(b.key) || a.idx - b.idx)
+        .sort((a, b) => asciiCompare(a.key, b.key) || a.idx - b.idx)
         .map(({ obj }) => obj);
     const coins = sortGroup(objects.filter(obj => obj.oclass === COIN_CLASS));
     const rings = sortGroup(objects.filter(obj => obj.oclass === RING_CLASS));
@@ -18852,21 +18859,9 @@ function showHelpTextLines(lines, options = {}) {
     renderHelpTextPage();
 }
 
-async function readUpstreamDataFile(name) {
-    try {
-        if (globalThis.process?.versions?.node) {
-            const fs = await import('node:fs/promises');
-            return await fs.readFile(`nethack-c/upstream/dat/${name}`, 'utf8');
-        }
-    } catch {
-        return null;
-    }
-    return null;
-}
-
 async function showHelpDataFile(name) {
     // C ref: pager.c:dispfile_*() -> tty_display_file().
-    const text = await readUpstreamDataFile(name);
+    const text = HELP_DATA_FILES[name] ?? null;
     if (text == null) {
         await redrawAfterFullScreenMenuDismiss();
         await pline(`Cannot open "${name}".`);
