@@ -12,7 +12,7 @@ import {
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, AIR, CLOUD,
-    DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE, DB_FLOOR,
+    DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, IRONBARS, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE, DB_FLOOR,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     AM_MASK, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_SANCTUM,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
@@ -132,7 +132,7 @@ const MONSTER_SYMBOLS = {
 };
 
 function tty_color(color) {
-    return color === CLR_GRAY || color === CLR_BLACK ? NO_COLOR : color;
+    return color === CLR_GRAY ? NO_COLOR : color;
 }
 
 function rogue_level_display() {
@@ -146,6 +146,42 @@ function primary_decgraphics() {
 function dark_room_color_display() {
     // C defaults: optlist.h enables dark_room, and tty runs with color.
     return game.flags?.dark_room !== false && game.flags?.color !== false;
+}
+
+function darkRoomMapFloorColor(loc, x, y, ch, dec, color) {
+    if (loc?.typ !== ROOM || cansee(x, y) || !dark_room_color_display()) return null;
+    if (ch !== '~' || !dec) return null;
+    const current = color ?? NO_COLOR;
+    if (current !== NO_COLOR && current !== CLR_GRAY) return null;
+    // C refs: display.c:newsym(), display.c:back_to_glyph(),
+    // include/defsym.h:S_darkroom.  Remembered, out-of-sight room floor uses
+    // S_darkroom on color tty, which shares the room DEC glyph but carries
+    // CLR_BLACK.
+    return CLR_BLACK;
+}
+
+function remembered_glyph_for_display(loc, x, y) {
+    if (!loc?.remembered_glyph) return null;
+    const mem = loc.remembered_glyph;
+    if (loc.typ === ROOM && !cansee(x, y) && dark_room_color_display()) {
+        const roomGlyph = terrain_glyph({ ...loc, typ: ROOM }, x, y);
+        if (mem.ch === roomGlyph.ch && !!mem.decgfx === !!roomGlyph.dec) {
+            // C refs: display.c:docrt_flags(), vision.c:vision_recalc(),
+            // display.c:newsym().  docrt() shuts down vision before drawing
+            // memory, so unseen remembered room floor is S_darkroom.
+            loc.remembered_glyph = { ...mem, color: CLR_BLACK };
+        }
+    }
+    if (loc.typ === CORR && !cansee(x, y) && (!loc.waslit || dark_room_color_display())
+        && loc.remembered_glyph.ch === '#'
+        && loc.remembered_glyph.color === CLR_WHITE) {
+        // C ref: display.c:newsym().  With dark_room+color, an out-of-sight
+        // remembered lit corridor is redisplayed dark.
+        const tg = terrain_glyph(loc, x, y);
+        tg.color = NO_COLOR;
+        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+    }
+    return loc.remembered_glyph;
 }
 
 function hell_level_display() {
@@ -485,23 +521,31 @@ export function terrain_glyph(loc, x, y) {
     case ALTAR:
         // C ref: dat/symbols DECGraphics S_altar uses the raw DEC payload
         // byte '{'; the harness cell decoder preserves that byte.
-        return { ch: '{', color: altarColor(loc), dec: false };
+        return { ch: '{', color: altarColor(loc), dec: true };
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
-    case TREE:      return { ch: 'g', color: CLR_GREEN, dec: false };
+    case TREE:
+        // C ref: dat/symbols DECGraphics S_tree uses the meta-g plus/minus
+        // payload, so tty output keeps DEC mode active for this byte.
+        return { ch: 'g', color: CLR_GREEN, dec: true };
     case POOL:
     case MOAT:
         // C ref: display.c:back_to_glyph() S_pool.  The tty DECgraphics wire
-        // glyph for liquid surfaces is the backtick diamond byte.
-        return { ch: '`', color: CLR_BLUE, dec: false };
+        // glyph for liquid surfaces is emitted in DEC mode with the backtick
+        // diamond payload byte.
+        return { ch: '`', color: CLR_BLUE, dec: true };
     case WATER:
-        return { ch: '`', color: CLR_BRIGHT_BLUE, dec: false };
+        return { ch: '`', color: CLR_BRIGHT_BLUE, dec: true };
     case LAVAPOOL:
-        return { ch: '`', color: CLR_RED, dec: false };
+        return { ch: '`', color: CLR_RED, dec: true };
     case LAVAWALL:
-        return { ch: '`', color: CLR_ORANGE, dec: false };
+        return { ch: '`', color: CLR_ORANGE, dec: true };
     case ICE:
         return { ch: '~', color: CLR_CYAN, dec: true };
+    case IRONBARS:
+        // C ref: dat/symbols DECGraphics S_bars uses the meta-| not-equals
+        // payload, so tty output keeps DEC mode active for this byte.
+        return { ch: '|', color: CLR_CYAN, dec: true };
     case DBWALL:
         return { ch: '#', color: CLR_BROWN, dec: false };
     case DRAWBRIDGE_UP:
@@ -1170,6 +1214,12 @@ export function map_level_for_wizard(revealTraps = false) {
             const trap = (game.level.traps || []).find(t => t.tx === x && t.ty === y);
             const covered = terrain_covers_objects(loc);
             let glyph = terrain_glyph(loc, x, y);
+            if (!visible && !loc.waslit && loc.typ === ROOM && glyph.ch === '~' && glyph.dec) {
+                // C ref: src/display.c:magic_map_background().  Magic
+                // mapping corrects unseen, not-remembered-lit ROOM floors to
+                // DARKROOMSYM before storing/displaying the memory glyph.
+                glyph = { ...glyph, color: CLR_BLACK };
+            }
             let mappedForeground = false;
             if (trap?.tseen && !covered) {
                 glyph = trap_glyph(trap);
@@ -1216,17 +1266,20 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
 function write_map_cell(display, x, y, loc, forceBlank = false) {
     if (!display || !loc) return;
     const raw = loc.disp_ch ?? ' ';
+    const color = darkRoomMapFloorColor(loc, x, y, raw, !!loc.disp_decgfx, loc.disp_color)
+        ?? loc.disp_color ?? NO_COLOR;
     const blank = raw === ' '
-        && (loc.disp_color == null || loc.disp_color === CLR_GRAY || loc.disp_color === NO_COLOR)
+        && (color === CLR_GRAY || color === NO_COLOR)
         && !loc.disp_attr;
     if (blank && !forceBlank) return;
     const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[raw] || raw) : raw;
-    display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+    display.setCell(x - 1, y + 1, ch, color, loc.disp_attr ?? 0);
+    markSerializedDecCell(display, x - 1, y + 1, raw, !!loc.disp_decgfx);
 }
 
 const SWALLOW_CHARS = [
     ['/', 'o', '\\'],
-    ['│', '@', '│'],
+    ['x', '@', 'x'],
     ['\\', 's', '/'],
 ];
 
@@ -1255,7 +1308,7 @@ function build_swallowed_overlay() {
             if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) continue;
             const ch = SWALLOW_CHARS[dy + 1][dx + 1];
             if (ch === '@') {
-                overlay.set(`${x},${y}`, { ch, color: CLR_WHITE });
+                overlay.set(`${x},${y}`, { ch, color: CLR_WHITE, dec: false });
                 continue;
             }
             let color = game.u.ustuck.data?.color ?? CLR_GREEN;
@@ -1263,7 +1316,7 @@ function build_swallowed_overlay() {
                 const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
                 color = mdat ? (mdat[7] ?? NO_COLOR) : color;
             }
-            overlay.set(`${x},${y}`, { ch, color });
+            overlay.set(`${x},${y}`, { ch, color, dec: primary_decgraphics() && (ch === 'o' || ch === 'x' || ch === 's') });
         }
     }
 
@@ -1380,22 +1433,13 @@ export function newsym(x, y) {
         if (wg) {
             show_glyph_cell(x, y, wg.ch, wg.color, false);
         } else if (loc.remembered_glyph) {
-            if (loc.typ === CORR && (!loc.waslit || dark_room_color_display())
-                && loc.remembered_glyph.ch === '#'
-                && loc.remembered_glyph.color === CLR_WHITE) {
-                // C ref: display.c:newsym().  With dark_room+color, an
-                // out-of-sight remembered lit corridor is redisplayed dark.
-                const tg = terrain_glyph(loc, x, y);
-                tg.color = NO_COLOR;
-                loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
-            }
             // Out of sight but remembered - show remembered glyph.
+            const mem = remembered_glyph_for_display(loc, x, y);
             const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
             const attr = obj
                 ? object_pile_display_attr(x, y, obj)
-                : (loc.remembered_glyph.attr || 0);
-            show_glyph_cell(x, y, loc.remembered_glyph.ch,
-                loc.remembered_glyph.color, loc.remembered_glyph.decgfx, attr);
+                : (mem.attr || 0);
+            show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx, attr);
         } else {
             show_glyph_cell(x, y, ' ', NO_COLOR, false);
         }
@@ -1506,12 +1550,12 @@ export async function docrt() {
                 // map glyph, but visible cells are redrawn from current terrain.
                 newsym(x, y);
             } else if (loc?.remembered_glyph) {
+                const mem = remembered_glyph_for_display(loc, x, y);
                 const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
                 const attr = obj
                     ? object_pile_display_attr(x, y, obj)
-                    : (loc.remembered_glyph.attr || 0);
-                show_glyph_cell(x, y, loc.remembered_glyph.ch,
-                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx, attr);
+                    : (mem.attr || 0);
+                show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx, attr);
             }
         }
     see_monsters();
@@ -1535,6 +1579,7 @@ function render_map_row(y) {
         if (gap > 4) output += `\x1b[${gap}C`;
         else if (gap > 0) output += ' '.repeat(gap);
         let activeColor = ANSI_DEFAULT;
+        let activeDec = false;
         for (let x = firstCol; x <= lastCol; x++) {
             const sg = swallowed_glyph_at(x, y) || { ch: ' ', color: NO_COLOR };
             const wantAnsi = ANSI_COLOR[sg.color] ?? ANSI_DEFAULT;
@@ -1542,8 +1587,12 @@ function render_map_row(y) {
                 output += `\x1b[${wantAnsi}m`;
                 activeColor = wantAnsi;
             }
+            const wantDec = !!sg.dec;
+            if (wantDec && !activeDec) { output += '\x0e'; activeDec = true; }
+            else if (!wantDec && activeDec) { output += '\x0f'; activeDec = false; }
             output += sg.ch;
         }
+        if (activeDec) output += '\x0f';
         if (activeColor !== ANSI_DEFAULT) output += `\x1b[${ANSI_DEFAULT}m`;
         return output;
     }
@@ -1569,8 +1618,9 @@ function render_map_row(y) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
         const ch = loc?.disp_ch ?? ' ';
-        const color = loc?.disp_color ?? NO_COLOR;
         const dec = !!loc?.disp_decgfx;
+        const color = darkRoomMapFloorColor(loc, x, y, ch, dec, loc?.disp_color)
+            ?? loc?.disp_color ?? NO_COLOR;
 
         if (ch === ' ') {
             // Space runs
@@ -1615,6 +1665,8 @@ function render_known_terrain_row(y) {
         // known map without monsters, objects, and traps, so render the base
         // terrain instead of the remembered object/monster display layer.
         const glyph = terrain_glyph(loc, x, y);
+        glyph.color = darkRoomMapFloorColor(loc, x, y, glyph.ch, glyph.dec, glyph.color)
+            ?? glyph.color;
         if (glyph.ch === '#' || glyph.ch === '>') glyph.color = NO_COLOR;
         glyphs.set(x, glyph);
         if (glyph.ch !== ' ') {
@@ -1885,6 +1937,7 @@ export function renderTextScreen(display, screen, cursor = null) {
         }
 
         if (state.col < 80) {
+            const raw = ch;
             display.setCell(
                 state.col,
                 state.row,
@@ -1892,6 +1945,7 @@ export function renderTextScreen(display, screen, cursor = null) {
                 state.color,
                 state.attr,
             );
+            markSerializedDecCell(display, state.col, state.row, raw, state.dec);
         }
         state.col++;
     }
@@ -1973,12 +2027,191 @@ function activeSerializedTextScreen() {
     return null;
 }
 
+function clearSerializedDecCell(cell) {
+    if (!cell) return;
+    delete cell._teleportDecgfx;
+    delete cell._teleportRawCh;
+}
+
+function markSerializedDecCell(display, col, row, raw, decgfx) {
+    const term = display?.terminal || display;
+    const cell = term?.grid?.[row]?.[col];
+    if (!cell) return;
+    if (!decgfx) {
+        clearSerializedDecCell(cell);
+        return;
+    }
+    cell._teleportDecgfx = true;
+    cell._teleportRawCh = raw;
+}
+
+export function putDecstr(display, col, row, rawText, color = NO_COLOR, attr = 0) {
+    const text = String(rawText ?? '');
+    for (let i = 0; i < text.length; i++) {
+        const raw = text[i];
+        display?.setCell?.(col + i, row, DEC_TO_UNICODE[raw] || raw, color, attr);
+        markSerializedDecCell(display, col + i, row, raw, true);
+    }
+}
+
+function colorToSerializedFg(color) {
+    return ANSI_COLOR[color] ?? ANSI_DEFAULT;
+}
+
+function serializedMapCellColor(cell, row, col) {
+    if (!cell?._teleportDecgfx || (cell._teleportRawCh ?? cell.ch) !== '~') return null;
+    const x = col + 1;
+    const y = row - 1;
+    if (y < 0 || y >= ROWNO || x < 1 || x >= COLNO) return null;
+    const loc = game.level?.at(x, y);
+    return darkRoomMapFloorColor(loc, x, y, cell._teleportRawCh ?? cell.ch,
+        !!cell._teleportDecgfx, cell.color);
+}
+
+function serializedCellColor(cell, attr, row = -1, col = -1) {
+    const mapColor = serializedMapCellColor(cell, row, col);
+    if (mapColor != null) return mapColor;
+    return cell.ch === ' ' && attr === 0 && cell.color === CLR_GRAY
+        ? NO_COLOR
+        : cell.color;
+}
+
+function countCursorSpaceRun(term, row, col, lastCol, wantFg, wantAttr) {
+    if ((wantAttr & (ATR_INVERSE | ATR_UNDERLINE)) !== 0) return 0;
+    let n = 0;
+    for (let c = col; c <= lastCol; c++) {
+        const cell = term.grid[row][c];
+        const attr = cell.attr | 0;
+        if (cell.ch !== ' ' || cell._teleportDecgfx) break;
+        if (attr !== wantAttr || (attr & (ATR_INVERSE | ATR_UNDERLINE)) !== 0) break;
+        if (colorToSerializedFg(serializedCellColor(cell, attr, row, c)) !== wantFg) break;
+        n++;
+    }
+    return n;
+}
+
+function serializedSgrTransition(curFg, curAttr, wantFg, wantAttr) {
+    if (curFg === wantFg && curAttr === wantAttr) return '';
+    const wantBold = (wantAttr & 2) !== 0;
+    const wantUnder = (wantAttr & 4) !== 0;
+    const wantInv = (wantAttr & 1) !== 0;
+    const curBold = (curAttr & 2) !== 0;
+    const curUnder = (curAttr & 4) !== 0;
+    const curInv = (curAttr & 1) !== 0;
+    const codes = [];
+    if (wantFg === 39 && wantAttr === 0 && curAttr !== 0) {
+        codes.push(0);
+    } else {
+        if (curBold && !wantBold) codes.push(22);
+        if (curUnder && !wantUnder) codes.push(24);
+        if (curInv && !wantInv) codes.push(27);
+        if (wantBold && !curBold) codes.push(1);
+        if (wantUnder && !curUnder) codes.push(4);
+        if (wantInv && !curInv) codes.push(7);
+        if (wantFg !== curFg) codes.push(wantFg);
+    }
+    return codes.map((code) => `\x1b[${code}m`).join('');
+}
+
+function serializeTerminalGridWithDec(term) {
+    if (!term?.grid) return '';
+    let lastRow = 0;
+    for (let r = 0; r < term.rows; r++) {
+        for (let c = 0; c < term.cols; c++) {
+            if (term.grid[r][c].ch !== ' ') {
+                lastRow = r;
+                break;
+            }
+        }
+    }
+
+    let out = '';
+    let curFg = 39;
+    let curAttr = 0;
+    let curDec = false;
+    for (let r = 0; r <= lastRow; r++) {
+        let lastCol = -1;
+        for (let c = term.cols - 1; c >= 0; c--) {
+            if (term.grid[r][c].ch !== ' ') {
+                lastCol = c;
+                break;
+            }
+        }
+        if (lastCol < 0) {
+            if (r < lastRow) out += '\n';
+            continue;
+        }
+
+        let firstCol = 0;
+        for (let c = 0; c <= lastCol; c++) {
+            if (term.grid[r][c].ch !== ' ') {
+                firstCol = c;
+                break;
+            }
+        }
+        if (firstCol > 4) out += `\x1b[${firstCol}C`;
+        else if (firstCol > 0) out += ' '.repeat(firstCol);
+
+        for (let c = firstCol; c <= lastCol;) {
+            const cell = term.grid[r][c];
+            const wantAttr = cell.attr | 0;
+            const color = serializedCellColor(cell, wantAttr, r, c);
+            const wantFg = colorToSerializedFg(color);
+            const cursorRun = countCursorSpaceRun(term, r, c, lastCol, wantFg, wantAttr);
+            if (cursorRun > 4) {
+                out += serializedSgrTransition(curFg, curAttr, wantFg, wantAttr);
+                curFg = wantFg;
+                curAttr = wantAttr;
+                if (curDec) {
+                    out += '\x0f';
+                    curDec = false;
+                }
+                out += `\x1b[${cursorRun}C`;
+                c += cursorRun;
+                continue;
+            }
+            out += serializedSgrTransition(curFg, curAttr, wantFg, wantAttr);
+            curFg = wantFg;
+            curAttr = wantAttr;
+
+            const wantDec = !!cell._teleportDecgfx;
+            if (wantDec !== curDec) {
+                out += wantDec ? '\x0e' : '\x0f';
+                curDec = wantDec;
+            }
+            out += wantDec ? (cell._teleportRawCh ?? cell.ch) : cell.ch;
+            c++;
+        }
+
+        if (curDec) {
+            out += '\x0f';
+            curDec = false;
+        }
+        out += serializedSgrTransition(curFg, curAttr, 39, 0);
+        curFg = 39;
+        curAttr = 0;
+        if (r < lastRow) out += '\n';
+    }
+    return out;
+}
+
 export function installSerializedScreenHook(display = game.nhDisplay) {
     const term = display?.terminal || display;
-    if (!term?.serialize || term._teleportSerializeBase) return;
+    if (!term) return;
+    if (term.setCell && !term._teleportSetCellBase) {
+        const originalSetCell = term.setCell.bind(term);
+        Object.defineProperty(term, '_teleportSetCellBase', { value: originalSetCell });
+        term.setCell = (col, row, ch, color, attr = 0) => {
+            const result = originalSetCell(col, row, ch, color, attr);
+            clearSerializedDecCell(term.grid?.[row]?.[col]);
+            return result;
+        };
+    }
+    if (!term.serialize || term._teleportSerializeBase) return;
     const originalSerialize = term.serialize.bind(term);
-    Object.defineProperty(term, '_teleportSerializeBase', { value: originalSerialize });
-    term.serialize = () => activeSerializedTextScreen() || originalSerialize();
+    Object.defineProperty(term, '_teleportSerializeOriginal', { value: originalSerialize });
+    Object.defineProperty(term, '_teleportSerializeBase', { value: () => serializeTerminalGridWithDec(term) });
+    term.serialize = () => activeSerializedTextScreen() || term._teleportSerializeBase();
 }
 
 function currentLatchedMoreScreen() {
@@ -2223,7 +2456,14 @@ function _buildScreenOutput(options = {}) {
                 for (let x = 1; x < COLNO; x++) {
                     const sg = swallowed_glyph_at(x, y);
                     if (!sg) continue;
-                    display.setCell(x - 1, y + 1, sg.ch, tty_color(sg.color), 0);
+                    display.setCell(
+                        x - 1,
+                        y + 1,
+                        sg.dec ? (DEC_TO_UNICODE[sg.ch] || sg.ch) : sg.ch,
+                        tty_color(sg.color),
+                        0,
+                    );
+                    markSerializedDecCell(display, x - 1, y + 1, sg.ch, !!sg.dec);
                 }
             }
         }

@@ -19,6 +19,10 @@ const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 const TEMP_LIT = 0x4;
 
+function primary_decgraphics() {
+    return String(game._nhopts?.symset || '').toLowerCase() === 'decgraphics';
+}
+
 const LIGHT_EMITTING_MONSTERS = new Set([
     'FLAMING_SPHERE',
     'SHOCKING_SPHERE',
@@ -102,7 +106,7 @@ function newsymOrIronBars(x, y) {
         return;
     }
     // C refs: display.c:back_to_glyph(), include/defsym.h:S_bars.
-    const glyph = { ch: '|', color: CLR_CYAN, decgfx: false, attr: 0 };
+    const glyph = { ch: '|', color: CLR_CYAN, decgfx: primary_decgraphics(), attr: 0 };
     if (game.level?.flags?.hero_memory) loc.remembered_glyph = glyph;
     show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, glyph.attr);
 }

@@ -20,7 +20,11 @@ import { getObjectColor, getObjectMaterial } from './o_init.js';
 import { MONSTER_DATA } from './monster_data.js';
 import { m_dowear_basic, mon_break_armor_basic } from './mon_wear.js';
 import { noteMonsterBorn, monsterGenocided, monsterGone } from './monstats.js';
-import { CLR_CYAN, CLR_GRAY, NO_COLOR } from './terminal.js';
+import {
+    CLR_BLACK, CLR_BLUE, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_MAGENTA,
+    CLR_RED, CLR_ORANGE, CLR_BRIGHT_BLUE, CLR_BRIGHT_GREEN,
+    CLR_BRIGHT_MAGENTA, NO_COLOR,
+} from './terminal.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR, CLOUD,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -7451,6 +7455,59 @@ function premapGlyphForLoc(loc, x, y) {
     }
 }
 
+function premapTrapGlyph(trap) {
+    let ch = '^';
+    let color = CLR_GRAY;
+    // C ref: include/defsym.h trap PCHAR rows via rm.h:trap_to_defsym().
+    switch (trap?.ttyp) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case BEAR_TRAP:
+        color = CLR_CYAN;
+        break;
+    case SQKY_BOARD:
+    case HOLE:
+    case TRAPDOOR:
+        color = CLR_BROWN;
+        break;
+    case LANDMINE:
+        color = CLR_RED;
+        break;
+    case SLP_GAS_TRAP:
+    case MAGIC_TRAP:
+    case ANTI_MAGIC:
+        color = CLR_BRIGHT_BLUE;
+        break;
+    case RUST_TRAP:
+        color = CLR_BLUE;
+        break;
+    case FIRE_TRAP:
+        color = CLR_ORANGE;
+        break;
+    case PIT:
+    case SPIKED_PIT:
+        color = CLR_BLACK;
+        break;
+    case TELEP_TRAP:
+    case LEVEL_TELEP:
+    case VIBRATING_SQUARE:
+        color = CLR_MAGENTA;
+        break;
+    case MAGIC_PORTAL:
+        color = CLR_BRIGHT_MAGENTA;
+        break;
+    case WEB:
+        ch = '"';
+        break;
+    case POLY_TRAP:
+        color = CLR_BRIGHT_GREEN;
+        break;
+    default:
+        break;
+    }
+    return { ch, color, decgfx: false };
+}
+
 function premapSokoban() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
@@ -7475,11 +7532,7 @@ function premapSokoban() {
         const loc = game.level?.at(trap.tx, trap.ty);
         if (!loc) continue;
         trap.tseen = true;
-        loc.remembered_glyph = {
-            ch: '^',
-            color: (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) ? 3 : 7,
-            decgfx: false,
-        };
+        loc.remembered_glyph = premapTrapGlyph(trap);
     }
     game.level.flags.premapped = true;
 }

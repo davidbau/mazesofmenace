@@ -14,7 +14,7 @@ import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
-import { bot, docrt, flush_screen, pline } from './display.js';
+import { bot, docrt, flush_screen, installSerializedScreenHook, pline } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { friday13, midnight, night, parseDatetime, phaseOfMoon } from './hacklib.js';
 import { hasSavedGame, restoreSavedGameIntoCurrentState } from './save_restore.js';
@@ -129,6 +129,7 @@ export class NethackGame {
             g.nhDisplay = this._pendingDisplay;
             this._pendingDisplay = null;
         }
+        installSerializedScreenHook(g.nhDisplay);
 
         // Install capture hook
         this._installCaptureHook();
