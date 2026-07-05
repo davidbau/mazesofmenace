@@ -1277,6 +1277,13 @@ function write_map_cell(display, x, y, loc, forceBlank = false) {
     markSerializedDecCell(display, x - 1, y + 1, raw, !!loc.disp_decgfx);
 }
 
+export function refresh_map_cell_display(x, y, display = game.nhDisplay) {
+    const loc = game.level?.at(x, y);
+    if (!display || !loc) return;
+    write_map_cell(display, x, y, loc, true);
+    loc.gnew = 0;
+}
+
 const SWALLOW_CHARS = [
     ['/', 'o', '\\'],
     ['x', '@', 'x'],
@@ -1626,6 +1633,10 @@ function render_map_row(y) {
             // Space runs
             let run = 1;
             while (x + run <= lastCol && (game.level.at(x + run, y)?.disp_ch ?? ' ') === ' ') run++;
+            if (activeColor !== ANSI_DEFAULT) {
+                output += `\x1b[${ANSI_DEFAULT}m`;
+                activeColor = ANSI_DEFAULT;
+            }
             if (activeDec) { output += '\x0f'; activeDec = false; }
             if (run > 4) output += `\x1b[${run}C`;
             else output += ' '.repeat(run);
@@ -1664,9 +1675,10 @@ function render_known_terrain_row(y) {
         // C ref: cmd.c:doterrain().  The first terrain-view choice shows the
         // known map without monsters, objects, and traps, so render the base
         // terrain instead of the remembered object/monster display layer.
+        // C ref: detect.c:reveal_terrain_getglyph().  Terrain view normalizes
+        // S_darkroom/S_litcorr back to S_room/S_corr instead of using the
+        // ordinary remembered-map darkroom wire color.
         const glyph = terrain_glyph(loc, x, y);
-        glyph.color = darkRoomMapFloorColor(loc, x, y, glyph.ch, glyph.dec, glyph.color)
-            ?? glyph.color;
         if (glyph.ch === '#' || glyph.ch === '>') glyph.color = NO_COLOR;
         glyphs.set(x, glyph);
         if (glyph.ch !== ' ') {
@@ -1688,6 +1700,10 @@ function render_known_terrain_row(y) {
         if (glyph.ch === ' ') {
             let run = 1;
             while (x + run <= lastCol && (glyphs.get(x + run)?.ch ?? ' ') === ' ') run++;
+            if (activeColor !== ANSI_DEFAULT) {
+                output += `\x1b[${ANSI_DEFAULT}m`;
+                activeColor = ANSI_DEFAULT;
+            }
             if (activeDec) { output += '\x0f'; activeDec = false; }
             if (run > 4) output += `\x1b[${run}C`;
             else output += ' '.repeat(run);
@@ -1705,8 +1721,8 @@ function render_known_terrain_row(y) {
         output += glyph.ch;
     }
 
-    if (activeColor !== ANSI_DEFAULT) output += `\x1b[${ANSI_DEFAULT}m`;
     if (activeDec) output += '\x0f';
+    if (activeColor !== ANSI_DEFAULT) output += `\x1b[${ANSI_DEFAULT}m`;
     return output;
 }
 
@@ -2078,7 +2094,7 @@ function countCursorSpaceRun(term, row, col, lastCol, wantFg, wantAttr) {
     return n;
 }
 
-function serializedSgrTransition(curFg, curAttr, wantFg, wantAttr) {
+function serializedSgrTransition(curFg, curAttr, wantFg, wantAttr, allowFullReset = false) {
     if (curFg === wantFg && curAttr === wantAttr) return '';
     const wantBold = (wantAttr & 2) !== 0;
     const wantUnder = (wantAttr & 4) !== 0;
@@ -2087,7 +2103,7 @@ function serializedSgrTransition(curFg, curAttr, wantFg, wantAttr) {
     const curUnder = (curAttr & 4) !== 0;
     const curInv = (curAttr & 1) !== 0;
     const codes = [];
-    if (wantFg === 39 && wantAttr === 0 && curAttr !== 0) {
+    if (allowFullReset && wantFg === 39 && wantAttr === 0 && curAttr !== 0) {
         codes.push(0);
     } else {
         if (curBold && !wantBold) codes.push(22);
@@ -2187,7 +2203,7 @@ function serializeTerminalGridWithDec(term) {
             out += '\x0f';
             curDec = false;
         }
-        out += serializedSgrTransition(curFg, curAttr, 39, 0);
+        out += serializedSgrTransition(curFg, curAttr, 39, 0, true);
         curFg = 39;
         curAttr = 0;
         if (r < lastRow) out += '\n';

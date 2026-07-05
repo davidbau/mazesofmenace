@@ -14,7 +14,7 @@ import {
     see_monsters, see_objects, see_nearby_objects, see_traps, refresh_message_clear_map_rows,
     refresh_warning_monsters, map_level_for_wizard,
     object_glyph_for_menu, serialize_known_terrain_view_screen, terrain_glyph, cls,
-    unmap_invisible_memory, installSerializedScreenHook, putDecstr,
+    unmap_invisible_memory, installSerializedScreenHook, putDecstr, refresh_map_cell_display,
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import {
@@ -77,6 +77,20 @@ const M1_OMNIVORE = M1_CARNIVORE | M1_HERBIVORE;
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
 const MR_ELEC = 0x10;
+
+function markVisionTopologyDirty() {
+    // C refs: vision.c:unblock_point()/recalc_block_point(). Rebuild the
+    // cached obstruction graph whenever terrain or door masks change whether
+    // light can pass through a square.
+    vision_reset();
+    game.vision_full_recalc = 1;
+}
+
+function refreshVisionAfterTopologyChange() {
+    markVisionTopologyDirty();
+    vision_recalc(0);
+    game.vision_full_recalc = 0;
+}
 
 function refreshWarningAfterHeroMove() {
     if (!game.u?.uprops?.warning) return;
@@ -6880,6 +6894,16 @@ function clearLootMenuArea(col, maxRow) {
         display.putstr(clearCol, row, ' '.repeat(COLNO - clearCol), NO_COLOR, 0);
 }
 
+function restoreLootMenuMapInterior(row, startCol, endCol) {
+    const display = game.nhDisplay;
+    if (!display || row < 1 || row > ROWNO) return;
+    const mapY = row - 1;
+    for (let col = startCol; col <= endCol; col++) {
+        const mapX = col + 1;
+        if (mapX >= 1 && mapX < COLNO) refresh_map_cell_display(mapX, mapY, display);
+    }
+}
+
 function setLootMenuScreen(screen, cursor, kind = 'menu') {
     installSerializedScreenHook();
     game._loot_menu_active = true;
@@ -7539,9 +7563,13 @@ async function showLootPutInGoldMenu(container, selected = false, opts = {}) {
     putDecstr(display, 34, 2, 'lqqqqq', NO_COLOR, 0);
     display.setCell(40, 2, ' ', NO_COLOR, 0);
     display.putstr(41, 2, 'Coins', NO_COLOR, ATR_INVERSE);
-    putDecstr(display, 34, 3, 'x~~~~~', NO_COLOR, 0);
+    putDecstr(display, 34, 3, 'x', NO_COLOR, 0);
+    restoreLootMenuMapInterior(3, 35, 39);
+    display.setCell(40, 3, ' ', NO_COLOR, 0);
     display.putstr(41, 3, `$ ${selected ? '+' : '-'} ${gold} gold pieces`, NO_COLOR, 0);
-    putDecstr(display, 34, 4, 'x~~~~~', NO_COLOR, 0);
+    putDecstr(display, 34, 4, 'x', NO_COLOR, 0);
+    restoreLootMenuMapInterior(4, 35, 39);
+    display.setCell(40, 4, ' ', NO_COLOR, 0);
     display.putstr(41, 4, '(end)', NO_COLOR, 0);
     game._loot_action_menu = null;
     game._loot_type_menu = null;
@@ -9466,6 +9494,7 @@ function finalizeVaultGuardCorridorBasic(state, guard) {
         loc.typ = C.DOOR;
         loc.doormask = C.D_NODOOR;
         loc.flags = C.D_NODOOR;
+        markVisionTopologyDirty();
     }
 }
 
@@ -9587,6 +9616,7 @@ function restFakeCorridorBasic(guard, { forceshow = false, clearBeyondBreach = f
             const glyph = terrain_glyph(loc, fc.fx, fc.fy);
             loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, decgfx: glyph.dec };
             show_glyph_cell(fc.fx, fc.fy, glyph.ch, glyph.color, glyph.dec);
+            markVisionTopologyDirty();
         }
         egd.fcbeg = fcbeg + 1;
     }
@@ -9695,6 +9725,7 @@ function vaultGuardExitStepBasic(guard, { commit = true } = {}) {
                     loc.doormask = 0;
                 }
                 newsym(nx, ny);
+                markVisionTopologyDirty();
             }
             return { x: nx, y: ny };
         }
@@ -15312,8 +15343,7 @@ async function kickDoor(x, y, loc) {
         loc.doormask = shatters ? C.D_NODOOR : C.D_BROKEN;
         loc.flags = loc.doormask;
         newsym(x, y);
-        vision_reset();
-        vision_recalc(0);
+        refreshVisionAfterTopologyChange();
         await pline(shatters
             ? 'As you kick the door, it shatters to pieces!'
             : 'As you kick the door, it crashes open!');
@@ -15413,8 +15443,7 @@ async function tryAutoOpenDoor(x, y) {
         loc.doormask = C.D_ISOPEN;
         loc.flags = C.D_ISOPEN;
         newsym(x, y);
-        vision_reset();
-        vision_recalc(0);
+        refreshVisionAfterTopologyChange();
         await pline('The door opens.');
     } else {
         exercise(A_STR, true);
@@ -29901,7 +29930,9 @@ export async function rhack(key) {
         if (loc.doormask === C.D_ISOPEN) {
             if (rn2(25) < 10) {
                 loc.doormask = D_CLOSED;
+                loc.flags = D_CLOSED;
                 newsym(x, y);
+                refreshVisionAfterTopologyChange();
                 await pline('The door closes.');
             } else {
                 await pline('The door resists!');
@@ -30206,7 +30237,8 @@ export async function rhack(key) {
         clear_pending_message();
         if (ch === 'y' || ch === 'Y') {
             writeSavedGame();
-            const screen = `Be seeing you...${'\n'.repeat(C.TERMINAL_ROWS - 1)}`;
+            // C ref: save.c:dosave() -> exit_nhwindows("Be seeing you...").
+            const screen = 'Be seeing you...';
             setTerminalExitScreen(screen, [0, 1]);
             game._pending_message = 'Be seeing you...';
             game.program_state = game.program_state || {};
