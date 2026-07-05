@@ -2058,19 +2058,7 @@ function colorToSerializedFg(color) {
     return ANSI_COLOR[color] ?? ANSI_DEFAULT;
 }
 
-function serializedMapCellColor(cell, row, col) {
-    if (!cell?._teleportDecgfx || (cell._teleportRawCh ?? cell.ch) !== '~') return null;
-    const x = col + 1;
-    const y = row - 1;
-    if (y < 0 || y >= ROWNO || x < 1 || x >= COLNO) return null;
-    const loc = game.level?.at(x, y);
-    return darkRoomMapFloorColor(loc, x, y, cell._teleportRawCh ?? cell.ch,
-        !!cell._teleportDecgfx, cell.color);
-}
-
-function serializedCellColor(cell, attr, row = -1, col = -1) {
-    const mapColor = serializedMapCellColor(cell, row, col);
-    if (mapColor != null) return mapColor;
+function serializedCellColor(cell, attr) {
     return cell.ch === ' ' && attr === 0 && cell.color === CLR_GRAY
         ? NO_COLOR
         : cell.color;
@@ -2084,7 +2072,7 @@ function countCursorSpaceRun(term, row, col, lastCol, wantFg, wantAttr) {
         const attr = cell.attr | 0;
         if (cell.ch !== ' ' || cell._teleportDecgfx) break;
         if (attr !== wantAttr || (attr & (ATR_INVERSE | ATR_UNDERLINE)) !== 0) break;
-        if (colorToSerializedFg(serializedCellColor(cell, attr, row, c)) !== wantFg) break;
+        if (colorToSerializedFg(serializedCellColor(cell, attr)) !== wantFg) break;
         n++;
     }
     return n;
@@ -2149,13 +2137,25 @@ function serializeTerminalGridWithDec(term) {
                 break;
             }
         }
-        if (firstCol > 4) out += `\x1b[${firstCol}C`;
-        else if (firstCol > 0) out += ' '.repeat(firstCol);
+        if (firstCol > 4) {
+            const leadCell = term.grid[r][0];
+            const leadAttr = leadCell?.attr | 0;
+            if (leadCell && (leadAttr & (ATR_INVERSE | ATR_UNDERLINE)) === 0) {
+                const leadColor = serializedCellColor(leadCell, leadAttr);
+                const leadFg = colorToSerializedFg(leadColor);
+                if (leadFg !== curFg || leadAttr !== curAttr) {
+                    out += serializedSgrTransition(curFg, curAttr, leadFg, leadAttr);
+                    curFg = leadFg;
+                    curAttr = leadAttr;
+                }
+            }
+            out += `\x1b[${firstCol}C`;
+        } else if (firstCol > 0) out += ' '.repeat(firstCol);
 
         for (let c = firstCol; c <= lastCol;) {
             const cell = term.grid[r][c];
             const wantAttr = cell.attr | 0;
-            const color = serializedCellColor(cell, wantAttr, r, c);
+            const color = serializedCellColor(cell, wantAttr);
             const wantFg = colorToSerializedFg(color);
             const cursorRun = countCursorSpaceRun(term, r, c, lastCol, wantFg, wantAttr);
             if (cursorRun > 4) {

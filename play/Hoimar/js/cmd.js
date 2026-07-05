@@ -4349,6 +4349,7 @@ function deathTopTenScreen() {
         const displayRank = unrankedCurrent && entryRank === rank ? 0 : entryRank;
         lines.push(...topTenEntryLines(displayRank, entries[i], entryRank === rank));
     }
+    while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
     game._death_topten_screen = lines.join('\n');
     return game._death_topten_screen;
 }
@@ -11161,7 +11162,7 @@ function samuraiEnhanceSkillsScreen() {
         '   attack spells     [Unskilled]',
         ' (1 of 2)',
     ];
-    return lines.join('\n');
+    return serializeTtyTextRows(lines);
 }
 
 function priestEnhanceSkillsScreen() {
@@ -11193,7 +11194,7 @@ function priestEnhanceSkillsScreen() {
         ' \x1b[7mSpellcasting Skills\x1b[0m',
         ' (1 of 2)',
     ];
-    return lines.join('\n');
+    return serializeTtyTextRows(lines);
 }
 
 function knightEnhanceSkillsScreen() {
@@ -11207,7 +11208,7 @@ function knightEnhanceSkillsScreen() {
     const polearmsLimit = polearms === 'Basic' ? 80 : 20;
     const skill = (letter, name, level = 'Unskilled', advance = 0, needed = 20) =>
         ` ${letter} -  ${name.padEnd(18)} ${level.padEnd(12)} ${String(advance).padStart(5)}(${String(needed).padStart(4)})`;
-    return [
+    const lines = [
         ' \x1b[7mPick a skill to advance:\x1b[0m',
         '',
         ' \x1b[7mFighting Skills\x1b[0m',
@@ -11232,7 +11233,8 @@ function knightEnhanceSkillsScreen() {
         skill('r', 'polearms', polearms, 0, polearmsLimit),
         skill('s', 'spear'),
         ' (1 of 2)',
-    ].join('\n');
+    ];
+    return serializeTtyTextRows(lines);
 }
 
 function showEnhanceSkillsMenu() {
@@ -18824,6 +18826,68 @@ function normalizeTtyTextLines(lines) {
     return out;
 }
 
+function serializeTtyTextRow(line) {
+    // Active serialized screens bypass the terminal grid serializer; keep
+    // default painted spaces in the same blank-run wire form.
+    const text = String(line ?? '');
+    let out = '';
+    let spaces = 0;
+    let inverse = false;
+    let underline = false;
+    const flushSpaces = () => {
+        if (!spaces) return;
+        out += spaces > 4 && !inverse && !underline
+            ? `\x1b[${spaces}C`
+            : ' '.repeat(spaces);
+        spaces = 0;
+    };
+    const applySgr = (body) => {
+        const codes = body.split(';').filter(Boolean).map((v) => Number.parseInt(v, 10));
+        if (!codes.length) codes.push(0);
+        for (const code of codes) {
+            if (code === 0) {
+                inverse = false;
+                underline = false;
+            } else if (code === 4) {
+                underline = true;
+            } else if (code === 7) {
+                inverse = true;
+            } else if (code === 24) {
+                underline = false;
+            } else if (code === 27) {
+                inverse = false;
+            }
+        }
+    };
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '\x1b' && text[i + 1] === '[') {
+            flushSpaces();
+            let j = i + 2;
+            while (j < text.length) {
+                const code = text.charCodeAt(j);
+                if (code >= 0x40 && code <= 0x7e) break;
+                j++;
+            }
+            const seq = text.slice(i, j + 1);
+            out += seq;
+            if (text[j] === 'm') applySgr(text.slice(i + 2, j));
+            i = j;
+        } else if (ch === ' ') {
+            spaces++;
+        } else {
+            flushSpaces();
+            out += ch;
+        }
+    }
+    flushSpaces();
+    return out;
+}
+
+function serializeTtyTextRows(lines) {
+    return lines.map(serializeTtyTextRow).join('\n');
+}
+
 function renderHelpTextPage() {
     const page = game._help_text_page || 0;
     const pages = game._help_text_pages || [[]];
@@ -18836,7 +18900,10 @@ function renderHelpTextPage() {
         : C.TERMINAL_ROWS - 1;
     const morePrompt = game._help_text_more_prompt || '--More--';
     rows[moreRow] = morePrompt;
-    const screen = rows.join('\n');
+    const screenRows = moreRow < rows.length - 1
+        ? rows.slice(0, moreRow + 1)
+        : rows;
+    const screen = serializeTtyTextRows(screenRows);
     game._help_text_screen = screen;
     game._help_text_cursor = [Math.min(morePrompt.length, COLNO - 1), moreRow];
     installSerializedScreenHook();
@@ -20267,7 +20334,7 @@ function renderIntrinsicMenu(menu) {
         ? ` (${menu.page + 1} of ${menu.pages.length})`
         : ' (end)';
     lines.push(footer);
-    const screen = lines.join('\n');
+    const screen = serializeTtyTextRows(lines);
     setIntrinsicMenuScreen(screen, [footer.length, lines.length - 1]);
 }
 
