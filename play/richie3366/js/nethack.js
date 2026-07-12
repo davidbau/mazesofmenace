@@ -7,7 +7,6 @@ import { NethackGame } from './jsmain.js';
 import { GameDisplay } from './game_display.js';
 import { game } from './gstate.js';
 import { moveloop_core } from './allmain.js';
-import { moveloopPreamble } from './moveloop_preamble.js';
 
 // Start an interactive browser game with the given terminal container.
 export async function startBrowser(container, seed = 42) {
@@ -18,7 +17,6 @@ export async function startBrowser(container, seed = 42) {
     game.nhDisplay = display;
 
     await nhGame.start();
-    await moveloopPreamble(false);
 
     // Game loop: each iteration reads one key and processes one turn
     for (;;) {

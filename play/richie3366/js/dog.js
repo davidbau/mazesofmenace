@@ -1,50 +1,76 @@
-// dog.js — Starting pet edog / tame (dog.c newedog, initedog, makedog tail).
-// C ref: dog.c newedog(), initedog(), makedog() after makemon(MM_EDOG).
+// dog.js — Starting pet.
+// C ref: dog.c — pet_type, makedog.
 
-import { A_CHA } from './const.js';
+import { game } from './gstate.js';
+import { rn2 } from './rng.js';
+import { makemon } from './makemon.js';
+import { mons, NON_PM } from './monsters.js';
+import { MM_EDOG, NO_MINVENT } from './const.js';
+import { monsterNames } from './generated/monsters_data.js';
+import { acurr, A_CHA } from './attrib.js';
 
-/**
- * C: dog.c newedog — allocate **`mextra.edog`**.
- * @param {Record<string, unknown>} mtmp
- */
-export function newedogLikeC(mtmp) {
-    if (!mtmp.mextra) mtmp.mextra = {};
-    if (!mtmp.mextra.edog) {
-        mtmp.mextra.edog = {
-            apport: 0,
-            hungrytime: 0,
-            whistletime: 0,
-            mhpmax_penalty: 0,
-        };
-    }
+const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
+const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
+const PM_PONY = monsterNames.indexOf('PM_PONY');
+
+// C ref: dog.c pet_type()
+function pet_type() {
+    const rolePet = game.urole?.petnum;
+    if (rolePet != null && rolePet !== NON_PM && rolePet >= 0) return rolePet;
+    const pref = game.preferred_pet;
+    if (pref === 'c') return PM_KITTEN;
+    if (pref === 'd') return PM_LITTLE_DOG;
+    return rn2(2) ? PM_KITTEN : PM_LITTLE_DOG;
 }
 
-/**
- * C: dog.c initedog — tame/peaceful and apport from Cha.
- * @param {import('./gstate.js').game} g
- * @param {Record<string, unknown>} mtmp
- * @param {boolean} [everything]
- */
-export function initedogLikeC(g, mtmp, everything = true) {
-    newedogLikeC(mtmp);
-    const edog = mtmp.mextra.edog;
-    const minimumtame = 10; /* domestic — C: is_domestic → 10 */
-    mtmp.mtame = Math.max(minimumtame, mtmp.mtame | 0);
+// C ref: dog.c initedog()
+function initedog(mtmp, everything) {
+    if (!mtmp.edog) mtmp.edog = {};
+    const edogp = mtmp.edog;
+    const minhungry = (game.moves ?? 1) + 1000;
+    mtmp.mtame = Math.max(10, mtmp.mtame || 0);
     mtmp.mpeaceful = 1;
-    mtmp.mavenge = 0;
     if (everything) {
         mtmp.mleashed = 0;
         mtmp.meating = 0;
-        edog.droptime = 0;
-        edog.dropdist = 10000;
-        const cha = g.u?.attrib?.[A_CHA]?.a_cur ?? g.u?.attrib?.[A_CHA]?.a_max ?? 10;
-        edog.apport = cha | 0;
-        edog.whistletime = 0;
-        edog.abuse = 0;
-        edog.mhpmax_penalty = 0;
-    } else if ((edog.apport | 0) <= 0) {
-        edog.apport = 1;
+        edogp.droptime = 0;
+        edogp.dropdist = 10000;
+        // C: ACURR(A_CHA) at makedog — before init_attr, clamps to 3
+        edogp.apport = acurr(A_CHA);
+        edogp.whistletime = 0;
+        edogp.ogoal = { x: -1, y: -1 };
+        edogp.abuse = 0;
+        edogp.revivals = 0;
+        edogp.mhpmax_penalty = 0;
+        edogp.killed_by_u = 0;
+    } else if ((edogp.apport || 0) <= 0) {
+        edogp.apport = 1;
     }
-    const minhungry = (g.moves | 0) + 1000;
-    if ((edog.hungrytime | 0) < minhungry) edog.hungrytime = minhungry;
+    if ((edogp.hungrytime || 0) < minhungry) edogp.hungrytime = minhungry;
+}
+
+// C ref: dog.c makedog()
+export function makedog() {
+    if (game.preferred_pet === 'n') {
+        if (!game.context) game.context = {};
+        game.context.startingpet_typ = NON_PM;
+        return null;
+    }
+
+    const pettype = pet_type();
+    if (!game.context) game.context = {};
+    game.context.startingpet_typ = pettype;
+
+    const ptr = mons(pettype);
+    if (!ptr) return null;
+
+    const mtmp = makemon(ptr, game.u?.ux ?? 0, game.u?.uy ?? 0, MM_EDOG | NO_MINVENT);
+    if (!mtmp) return null;
+
+    if (!game.context.startingpet_mid) {
+        game.context.startingpet_mid = mtmp.m_id ?? 1;
+        void PM_PONY;
+    }
+    initedog(mtmp, true);
+    return mtmp;
 }

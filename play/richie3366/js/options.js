@@ -1,28 +1,12 @@
 // options.js — Parse .nethackrc options.
 // C ref: options.c — handles OPTIONS=, BIND=, etc.
 
-/**
- * C: options.c boolean opt_set-style OPTIONS=key:val (tutorial:yes, color:no, …).
- * @param {string} val
- */
-export function parseRcBooleanishLikeC(val) {
-    const v = String(val).trim().toLowerCase();
-    if (!v) return false;
-    if (v === 'no' || v === 'false' || v === 'off' || v === '0' || v === 'n') return false;
-    if (v === 'yes' || v === 'true' || v === 'on' || v === '1' || v === 'y') return true;
-    return false;
-}
+import { game } from './gstate.js';
 
 export function parseNethackrc(rc) {
-    /* Unknown OPTIONS=key:val pairs land in flags (e.g. genericusers — C sysopt.genericusers / plnamesuffix). */
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
         flags: {}, iflags: {},
-        explicitNameInRc: false,
-        explicitRoleInRc: false,
-        explicitRaceInRc: false,
-        explicitGenderInRc: false,
-        explicitAlignInRc: false,
     };
     if (!rc) return result;
 
@@ -45,14 +29,17 @@ export function parseNethackrc(rc) {
                 const key = stripped.slice(0, colonIdx).trim().toLowerCase();
                 const val = stripped.slice(colonIdx + 1).trim();
 
-                if (key === 'name') { result.name = val; result.explicitNameInRc = true; }
-                else if (key === 'role') { result.role = val; result.explicitRoleInRc = true; }
-                else if (key === 'race') { result.race = val; result.explicitRaceInRc = true; }
-                else if (key === 'gender') { result.gender = val; result.explicitGenderInRc = true; }
-                else if (key === 'align') { result.align = val; result.explicitAlignInRc = true; }
+                if (key === 'name') result.name = val;
+                else if (key === 'role') result.role = val;
+                else if (key === 'race') result.race = val;
+                else if (key === 'gender') result.gender = val;
+                else if (key === 'align') result.align = val;
                 else if (key === 'playmode') {
-                    if (val === 'debug') result.flags.debug = true;
-                    else if (val === 'explore') result.flags.discover = true;
+                    // C ref: options.c playmode — explore skips bones RNG (getbones)
+                    const mode = val.toLowerCase();
+                    if (mode === 'debug' || mode === 'wizard') result.flags.debug = true;
+                    else if (mode === 'explore' || mode === 'discover') result.flags.explore = true;
+                    else result.flags.playmode = mode;
                 }
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
@@ -63,25 +50,7 @@ export function parseNethackrc(rc) {
                 else if (key === 'symset') result.symset = val;
                 else if (key === 'suppress_alert') result.flags.suppress_alert = val;
                 else if (key === 'msg_window') result.iflags.prevmsg_window = val;
-                else if (key === 'tutorial') {
-                    /* C: opt_set_in_config[opt_tutorial] — ask_do_tutorial skips menu when set from rc */
-                    result.flags.tutorial = parseRcBooleanishLikeC(val);
-                    result.tutorial_set = true;
-                } else if (key === 'color') result.flags.color = parseRcBooleanishLikeC(val);
-                else if (key === 'verbose') result.flags.verbose = parseRcBooleanishLikeC(val);
-                else if (key === 'legacy') result.flags.legacy = parseRcBooleanishLikeC(val);
-                else if (key === 'autoopen') result.flags.autoopen = parseRcBooleanishLikeC(val);
-                else if (key === 'pushweapon') result.flags.pushweapon = parseRcBooleanishLikeC(val);
-                else if (key === 'showexp') result.flags.showexp = parseRcBooleanishLikeC(val);
-                else if (key === 'time') result.flags.time = parseRcBooleanishLikeC(val);
-                else if (key === 'autopickup' || key === 'pickup') {
-                    /* C: boolean branch maps autopickup → flags.pickup */
-                    result.flags.pickup = parseRcBooleanishLikeC(val);
-                } else if (key === 'splash_screen') {
-                    result.iflags.wc_splash_screen = parseRcBooleanishLikeC(val);
-                } else if (key === 'perm_invent') {
-                    result.iflags.perm_invent = parseRcBooleanishLikeC(val);
-                } else result.flags[key] = val;
+                else result.flags[key] = val;
             } else {
                 // Boolean flag
                 const lname = stripped.toLowerCase();
@@ -92,8 +61,6 @@ export function parseNethackrc(rc) {
                 else if (lname === 'legacy') result.flags.legacy = value;
                 else if (lname === 'tutorial') { result.flags.tutorial = value; result.tutorial_set = true; }
                 else if (lname === 'splash_screen') result.iflags.wc_splash_screen = value;
-                else if (lname === 'perm_invent') result.iflags.perm_invent = value;
-                else if (lname === 'autoopen') result.flags.autoopen = value;
                 else if (lname === 'pushweapon') result.flags.pushweapon = value;
                 else if (lname === 'showexp') result.flags.showexp = value;
                 else if (lname === 'time') result.flags.time = value;

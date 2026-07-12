@@ -1,26 +1,24 @@
-// fastforward.js — Transitional RNG harness (NOT a design target).
+// fastforward.js — Auto-generated RNG replay for seed8000 starter session.
+// Split into pre-mklev and post-mklev phases.
+// The mklev RNG calls are now consumed by the real mklev.js implementation.
 //
-// Blocks below replay leaf PRNG calls captured from a reference session so the
-// ISAAC stream stays aligned while init/mklev/moveloop pieces are still stubs.
-// They must be deleted or narrowed as real ports land:
-//   • fastforward_pre_mklev / post_mklev → u_init.c (mklev fill
-//     + mineralize run in mklev.js makelevel / level_finalize_topology).
-//   • Per-turn tail: allmain.js moveloop_core → monmove.js + moveloop_aux.js
-//     (replacing fastforward_step); this file keeps startup fill/replay only.
-//
-// Session JSON was only the extraction source; behavior must converge by
-// matching C, not by tuning to fixtures.
-//
-// Derived from a frozen reference session RNG log (historical extraction).
+// Generated from: seed8000-tourist-starter.session.json
 
-import { runUInitRoleRngAfterMklevLikeC } from "./u_init_post_mklev.js";
-
-// Pre-mklev: u_init remainder (init_objects + init_dungeons in o_init.js / dungeon_init.js)
+// Pre-mklev: peeled — real init_dungeons (dungeon.js) + u_init_misc (u_init.js)
 export function fastforward_pre_mklev() {
-    /* init_objects + init_dungeons — js/o_init.js, js/dungeon_init.js */
+    /* deleted — dungeon topology + castle tune + handedness now run for real */
 }
 
-/** @deprecated Use runUInitRoleRngAfterMklevLikeC from u_init_post_mklev.js */
+// Post-mklev startup: peeled — real u_init_inventory_attrs + moveloop_preamble
 export function fastforward_post_mklev() {
-    runUInitRoleRngAfterMklevLikeC();
+    /* deleted — u_init / attrib / moveloop_preamble now run for real */
+}
+
+// Per-step leaf RNG calls — peeled: real moveloop / m_move / mcalcmove path
+export function fastforward_step(_stepNum) {
+    /* deleted — end-of-turn RNG now runs in allmain.moveloop_core */
+}
+// Fill + mineralize: peeled — real path in mklev.js makelevel/level_finalize_topology
+export function fastforward_fill_mineralize() {
+    /* deleted — fill_ordinary_room + mineralize now run for real */
 }

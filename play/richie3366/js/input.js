@@ -3,28 +3,9 @@
 
 import { game } from './gstate.js';
 import { KEY_BINDINGS } from './terminal.js';
-import { closeGetdirHelpOverlayLikeC } from './help_dir.js';
+import { clear_win_stop, mark_topline_seen } from './display.js';
 
 const _inputQueue = [];
-/** Index into the segment **`moves`** string (advanced with each **`nhgetch`**). */
-let _replayMoves = '';
-let _replayPos = 0;
-
-export function initReplayMoves(moves) {
-    _replayMoves = moves || '';
-    _replayPos = 0;
-}
-
-/** Next character in the replay script without consuming the queue. */
-export function peekReplayMoves(offset = 0) {
-    const i = _replayPos + offset;
-    return i < _replayMoves.length ? (_replayMoves.charCodeAt(i) | 0) : null;
-}
-
-/** Replay index advanced by **`nhgetch`** (diagnostics / tools). */
-export function replayMovesPosLikeC() {
-    return _replayPos | 0;
-}
 
 export function pushKey(key) {
     _inputQueue.push(typeof key === 'number' ? key : key.charCodeAt(0));
@@ -34,62 +15,36 @@ export function pushKeys(keys) {
     for (const k of keys) pushKey(k);
 }
 
-/** True if replay (or tests) still have keys queued before the next nhgetch. */
-export function hasQueuedInput() {
-    return _inputQueue.length > 0;
-}
-
-/** Next queued key without consuming (moveloop defers new-turn before **`#search`**). */
-export function peekQueuedKey() {
-    return _inputQueue.length > 0 ? (_inputQueue[0] | 0) : null;
-}
-
 // C ref: tty_nhgetch — read one key.
 // In replay mode, reads from the input queue.
 // In browser mode, waits for a real keypress.
 export async function nhgetch() {
+    // C: wins[WIN_MESSAGE]->flags &= ~WIN_STOP before blocking
+    clear_win_stop();
+
     // Fire the capture hook before reading the next key
     const hook = game._preNhgetchHook;
     if (hook) await hook();
 
+    let key;
     if (_inputQueue.length > 0) {
-        if (_replayPos < _replayMoves.length) _replayPos++;
-        const key = _inputQueue.shift();
-        /* C: cmd.c help_dir NHW_TEXT — any nhgetch dismisses `--More--` overlay. */
-        if (game._getdirHelpOverlayLikeC) {
-            closeGetdirHelpOverlayLikeC(game);
+        key = _inputQueue.shift();
+    } else {
+        // Browser mode: wait for keypress from the display
+        const display = game?.nhDisplay;
+        if (display?.readKey) {
+            key = await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
+        } else {
+            throw new Error('Input queue empty - test may be missing keystrokes');
         }
-        /* C: tty_nhgetch / topl.c — `--More--` stays visible until space/ESC (other keys pass through). */
-        if (game._showDefmoreOnTopline) {
-            if (key === 32 || key === 27) {
-                game._showDefmoreOnTopline = false;
-                game._toplineNeedMore = false;
-            } else {
-                game._toplineNeedMore = false;
-            }
-        } else if (game._toplineNeedMore) {
-            game._toplineNeedMore = false;
-            game._showDefmoreOnTopline = false;
-            if (!game._keepToplineUntilNextCommand) {
-                game._pending_message = '';
-                game._toplineAccum = '';
-            }
-        }
-        return key;
     }
 
-    // Browser mode: wait for keypress from the display
-    const display = game?.nhDisplay;
-    if (display?.readKey) {
-        return await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
-    }
-
-    throw new Error('Input queue empty - test may be missing keystrokes');
+    // C: topline has been seen — NEED_MORE → NON_EMPTY
+    mark_topline_seen();
+    return key;
 }
 
 // Reset input state
 export function resetInputState() {
     _inputQueue.length = 0;
-    _replayMoves = '';
-    _replayPos = 0;
 }

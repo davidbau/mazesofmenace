@@ -1,409 +1,467 @@
 // allmain.js — Main game loop.
-// C ref: allmain.c — newgame, moveloop, moveloop_core.
-//
-// Uses fastforward.js for startup RNG gaps not yet covered by ported init
-// (see .cursor/plans/nethack-port/10-moveloop-detect-c-map.md). mklev.js
-// owns structural dungeon generation.
+// C ref: allmain.c — newgame, moveloop, moveloop_core, moveloop_preamble.
 
 import { game } from './gstate.js';
+import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
-import { domoveHeroDirLikeC, rhack } from './cmd.js';
-import { COLNO } from './const.js';
-import { endRunning } from './timeout.js';
-import {
-    docrt, docrtPaintVisibleForWelcomeLikeC, bot, flush_screen, pline, newsym,
-    clearPendingMessageAndToplineLikeC, shouldClearMoveloopToplineLikeC, latchRetainedToplineLikeC,
-} from './display.js';
-import {
-    vision_recalc, vision_reset, init_vision_globals,
-    noticeMonOffLikeC, noticeMonOnLikeC, noticeAllMonsLikeC, dolookaroundLikeC,
-} from './vision.js';
-import { genders, roleHasFemaleRoleNameLikeC } from './roles.js';
-import { initObjectsLikeC } from './o_init.js';
-import { roleInitLikeC } from './role_init.js';
-import { initDungeonsLikeC } from './dungeon_init.js';
+import { rhack, continue_run, run_active, continue_search, search_repeat_active } from './cmd.js';
+import { docrt, cls, bot, flush_screen, pline, flush_topl_more } from './display.js';
+import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev } from './fastforward.js';
-import { uInitInventoryAttrsLikeC } from './u_init_post_mklev.js';
-import { makedogLikeC } from './makedog.js';
-import { checkSpecialRoomNewgameFalseLikeC, mnextoNearHeroSyncLikeC } from './spoteffects.js';
+import { init_objects } from './o_init.js';
+import { init_dungeons } from './dungeon.js';
+import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries } from './u_init.js';
+import { makedog } from './dog.js';
+import { makemon } from './makemon.js';
+import { mcalcmove, movemon, NORMAL_SPEED } from './mon.js';
+import { A_DEX, A_STR, A_CON, acurr, exercise, change_luck } from './attrib.js';
+import { nhgetch } from './input.js';
+import { near_capacity, paint_corner_nhw_menu } from './invent.js';
+import { com_pager_legacy } from './questpgr.js';
+import { snapshot_status_lines } from './display.js';
+import { Hello, align_str } from './roles.js';
+import { phase_of_the_moon, friday_13th, FULL_MOON, NEW_MOON } from './calendar.js';
+import { ATR_INVERSE } from './terminal.js';
 import {
-    runMoveloopPreambleBeforeRhackLikeC,
-    runPostCommandTurnAdvanceLikeC,
-    clearLeavingTutorialIfActiveLikeC,
-} from './moveloop_turn_advance.js';
-import { applyBirthHpEnergy } from './u_init_hp_energy.js';
-import { applyAdjabil } from './u_init_adjabil.js';
-import { findAc } from './u_init_find_ac.js';
-import { applySkillInit } from './u_init_skills.js';
-import { UHS } from './hunger.js';
-import { moveloopPreamble } from './moveloop_preamble.js';
-import { initMvitalsStub } from './mvitals.js';
-import { initArtidiscoHeroLikeC } from './artifact_discover_like_c.js';
-import { bootstrapSpLevchnMinesMinetnFromBranchStubLikeC } from './sp_levchn.js';
-import { maybeRecordEnteredNewLevelLivelogLikeC } from './livelog.js';
-import { awaitLegacyIntroMoreLikeC } from './legacy_intro.js';
-import { rn2 } from './rng.js';
-import { LAST_PROP } from './const.js';
+    UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
+    NO_MM_FLAGS, Upolyd,
+} from './const.js';
+
+// C ref: allmain.c moveloop_preamble() — moon/friday + new-game RNG leaves
+async function moveloop_preamble(_resuming) {
+    if (!game.context) game.context = {};
+    game.flags = game.flags || {};
+
+    // C: flags.moonphase = phase_of_the_moon();
+    game.flags.moonphase = phase_of_the_moon();
+    if (game.flags.moonphase === FULL_MOON) {
+        await pline('You are lucky!  Full moon tonight.');
+        change_luck(1);
+    } else if (game.flags.moonphase === NEW_MOON) {
+        await pline('Be careful!  New moon tonight.');
+    }
+    game.flags.friday13 = friday_13th();
+    if (game.flags.friday13) {
+        await pline('Watch out!  Bad things can happen on Friday the 13th.');
+        change_luck(-1);
+    }
+
+    // svc.context.rndencode = rnd(9000);
+    game.context.rndencode = rnd(9000);
+    // svc.context.seer_turn = (long) rnd(30);
+    game.context.seer_turn = rnd(30);
+    // C: u.umovement = NORMAL_SPEED on new game
+    game.u.umovement = NORMAL_SPEED;
+    game.context.move = 0;
+}
+
+// C ref: allmain.c u_calc_moveamt()
+function u_calc_moveamt(wtcap) {
+    let moveamt = NORMAL_SPEED; // human mmove; Fast/Very_fast omitted
+    switch (wtcap) {
+        case SLT_ENCUMBER:
+            moveamt -= Math.trunc(moveamt / 4);
+            break;
+        case MOD_ENCUMBER:
+            moveamt -= Math.trunc(moveamt / 2);
+            break;
+        case HVY_ENCUMBER:
+            moveamt -= Math.trunc((moveamt * 3) / 4);
+            break;
+        case EXT_ENCUMBER:
+            moveamt -= Math.trunc((moveamt * 7) / 8);
+            break;
+        case UNENCUMBERED:
+        default:
+            break;
+    }
+    game.u.umovement = (game.u.umovement || 0) + moveamt;
+    if (game.u.umovement < 0) game.u.umovement = 0;
+}
+
+// C ref: allmain.c maybe_generate_rnd_mon()
+function maybe_generate_rnd_mon() {
+    // depth 1, not udemigod, not past stronghold → rn2(70)
+    if (!rn2(70)) {
+        makemon(null, 0, 0, NO_MM_FLAGS);
+    }
+}
+
+/** C: U_CAN_REGEN() — Regeneration || (Sleepy && u.usleep). Props deferred. */
+function u_can_regen() {
+    const u = game.u || {};
+    const regen = !!(u.HRegeneration || u.ERegeneration);
+    const sleepy = !!(u.HSleepy || u.ESleepy);
+    return regen || (sleepy && !!u.usleep);
+}
+
+/**
+ * C ref: allmain.c interrupt_multi() — stop voluntary multi-turn activity.
+ * Norep message deferred; only clears multi when not travel/run.
+ */
+function interrupt_multi(_msg) {
+    const ctx = game.context || {};
+    if ((game.multi || 0) > 0 && !ctx.travel && !ctx.run) {
+        game.multi = 0;
+    }
+}
+
+/**
+ * C ref: allmain.c regen_hp(wtcap) — maybe recover HP once/turn.
+ * Upolyd eel-out-of-water hp-loss rolls (rn2(mh)/rn2(8)) deferred until poly
+ * eel forms are live; Breathless / Half_physical_damage props deferred.
+ */
+function regen_hp(wtcap) {
+    const u = game.u || (game.u = {});
+    let heal = 0;
+    let reached_full = false;
+    const encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved);
+
+    if (Upolyd(u)) {
+        if ((u.mh || 0) < 1) {
+            // rehumanize deferred
+        } else if ((u.mh || 0) < (u.mhmax || 0)) {
+            if (u_can_regen() || (encumbrance_ok && !((game.moves || 0) % 20))) {
+                heal = 1;
+            }
+        }
+        if (heal) {
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+            u.mh = (u.mh || 0) + heal;
+            reached_full = (u.mh === u.mhmax);
+        }
+    } else if (
+        (u.uhp || 0) < (u.uhpmax || 0) && (encumbrance_ok || u_can_regen())
+    ) {
+        // C: heal = (u.ulevel + (int)ACURR(A_CON)) > rn2(100);
+        heal = ((u.ulevel || 1) + acurr(A_CON)) > rn2(100) ? 1 : 0;
+        if (u_can_regen()) heal += 1;
+        if ((u.HSleepy || u.ESleepy) && u.usleep) heal++;
+
+        if (heal) {
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+            u.uhp = (u.uhp || 0) + heal;
+            if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
+            reached_full = (u.uhp === u.uhpmax);
+        }
+    }
+
+    if (reached_full) interrupt_multi('You are in full health.');
+}
+
+// C ref: sounds.c dosounds() — feature rolls; vault matters once has_vault
+function dosounds() {
+    const lf = game.level?.flags;
+    if (!lf) return;
+    // Deaf / !acoustics / uswallow / Underwater — skip (Tourist defaults ok)
+    if (lf.nfountains && !rn2(400)) {
+        rn2(3); // fountain_msg index
+    }
+    if (lf.nsinks && !rn2(300)) {
+        rn2(2); // sink_msg
+    }
+    if (lf.has_court && !rn2(200)) {
+        // throne_mon_sound — not hit on early Tourist peels
+    }
+    if (lf.has_swamp && !rn2(200)) {
+        rn2(2); // swamp_msg; C returns after
+        return;
+    }
+    if (lf.has_vault && !rn2(200)) {
+        // gd_sound / vault messages — only when rn2 hits 0; seed1800 burns the roll
+        // Full vault sound path TODO when a peel lands on 0
+    }
+}
+
+// C ref: eat.c gethungry() — accessorytime roll
+function gethungry() {
+    const accessorytime = rn2(20);
+    void accessorytime;
+    // hunger side-effects omitted (no further RNG on seed8000 path)
+}
+
+function exerper() {
+    const moves = game.moves || 0;
+    if (!(moves % 10)) {
+        // Hunger Checks — Tourist starts Not Hungry → exercise(A_CON, TRUE)
+        const hunger = game.u.uhunger ?? 900;
+        if (hunger > 1000) {
+            exercise(A_DEX, false);
+        } else if (hunger > 150) {
+            exercise(A_CON, true);
+        } else if (hunger > 50) {
+            /* HUNGRY — no exercise in switch default for STR until WEAK */
+        } else if (hunger > 0) {
+            exercise(A_STR, false);
+        } else {
+            exercise(A_CON, false);
+        }
+    }
+}
+
+function exerchk() {
+    exerper();
+    // next_attrib_check tests not hit early in seed8000
+}
+
+// C ref: allmain.c welcome() — new-game path only (restore deferred)
+async function welcome(new_game) {
+    const g = game;
+    const female = !!g.flags?.female;
+    const role = g.urole || {};
+    const race = g.urace || {};
+    const atype = g.u?.ualign?.type ?? 0;
+
+    // C builds buf as " <align> <gender?> <race> <role>"
+    let buf = ` ${align_str(atype)}`;
+    // C: if (!urole.name.f && role allows both genders) add gender adj
+    // Tourist/Rogue use same male/female name string → treat as !name.f distinct
+    const distinctFemale = role.name?.f && role.name.f !== role.name.m;
+    if (!distinctFemale) {
+        buf += ` ${female ? 'female' : 'male'}`;
+    }
+    buf += ` ${race.adj || 'human'}`;
+    buf += ` ${(female && distinctFemale) ? role.name.f : (role.name?.m || 'Adventurer')}`;
+
+    const hello = Hello(role.mnum);
+    const plname = g.plname || 'Hero';
+    if (new_game) {
+        await pline(`${hello} ${plname}, welcome to NetHack!  You are a${buf}.`);
+    } else {
+        await pline(`${hello} ${plname}, the${buf}, welcome back to NetHack!`);
+    }
+}
 
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
 
-    /* C: allmain.c newgame — welcome before monster-notice plines (flag.h notice_mon_off) */
-    noticeMonOffLikeC();
-    /* C: u_init_misc / moveloop — svm.moves==0 until u_init_role sets 1 (u_init.c u_init_role) */
-    g.moves = 0;
+    // C ref: allmain.c → init_objects() (o_init.c)
+    init_objects();
 
-    /* C: o_init.c init_objects — gem colors, description shuffles, WAN_NOTHING oc_dir. */
-    initObjectsLikeC();
-    /* C: allmain.c — flags.pantheon = -1; role_init() before init_dungeons(). */
-    g.flags = g.flags || {};
-    g.flags.pantheon = -1;
-    /* C: optlist.h autoopen — default On (opt_out); hack.c test_move DO_MOVE closed door. */
-    if (g.flags.autoopen === undefined) g.flags.autoopen = true;
-    /* C: flag.h flags.acoustics — dosounds() early-out when false (default on). */
-    if (g.flags.acoustics === undefined) g.flags.acoustics = true;
-    roleInitLikeC(g);
-    /* C: align shuffle runs in l_nhcore_init() before mklev (not a separate draw here). */
-    initDungeonsLikeC(g);
-    fastforward_pre_mklev();
+    // Role/race before init_dungeons (quest filecode in fixup_level_locations)
+    const rc = g._parsed_rc || {};
+    setup_role_race_from_rc({
+        role: rc.role || 'Tourist',
+        race: rc.race || 'human',
+        gender: rc.gender || 'female',
+        align: rc.align || 'neutral',
+        name: rc.name || g.plname || 'Contestant',
+    });
 
-    // Set up game state needed by mklev (dungeons[] from initDungeonsLikeC)
-    g.u = g.u || {};
-    g.u.dx |= 0;
-    g.u.dy |= 0;
-    g.u.uz = { dnum: 0, dlevel: 1 };
-    // Hardcoded player state for early stub (C u_init_misc zeroing / defaults before newhp).
-    g.u.umortality = 0;
-    g.u.Half_physical_damage = 0;
-    g.u.uexp = 0;
-    g.u.urexp = 0; /* C: u_init / exper.c — score-style experience accumulator */
-    g.u.ualign = g.u.ualign || { type: 0, record: 0 };
-    g.u.uhs = UHS.NOT_HUNGRY; /* port eat.c / moveloop when hunger advances */
-    /* C: eat.c init_uhunger — u.uhunger = 900 (NOT_HUNGRY band for exerper) */
-    g.u.uhunger = 900;
-    g.u.near_capacity = 0; /* C: near_capacity(); port invent weight when ready */
-    g.u.Levitation = 0;
-    g.u.HLevitation = 0;
-    g.u.ELevitation = 0;
-    g.u.BLevitation = 0; /* youprop.h BLevitation — switch_terrain FROMOUTSIDE block */
-    g.u.Flying = 0;
-    g.u.HFlying = 0;
-    g.u.EFlying = 0;
-    g.u.BFlying = 0;
-    g.u.BStealth = 0; /* youprop.h BStealth — polyself.c steed_vs_stealth FROMOUTSIDE when mounted */
-    g.u.Fumbling = 0;
-    g.u.Sleep_resistance = 0;
-    g.u.timed = { blind: 0, deaf: 0 };
-    g.u.resists_blind = 0;
-    g.u.See_invisible = 0;
-    g.u.Fire_resistance = 0;
-    g.u.Wwalking = 0; /* youprop.h WATER — water walking (boots); trap.c lava_effects / drown */
-    g.u.Cold_resistance = 0;
-    g.u.HInvis = 0;
-    g.u.EInvis = 0;
-    g.u.Antimagic = 0;
-    g.u.noteleport = 0;
-    g.u.Hallucination = 0;
-    g.u.Poison_resistance = 0;
-    g.u.Stealth = 0;
-    g.u.Fast = 0;
-    g.u.HRegeneration = 0; /* prop.c — intrinsic; high bits (e.g. FROMFORM) when poly grants from form */
-    g.u.ERegeneration = 0; /* extrinsic sources bitmask (eat.c gethungry excludes W_ARTI|W_WEP) */
-    g.u.Hunger = 0;
-    g.u.Breathless = 0; /* eat.c choke */
-    g.u.Strangled = 0;
-    /* C: prop.h Slimed — timeout.c burn_away_slime / make_slimed; no slime timer yet */
-    g.u.Slimed = 0;
-    g.u.HConflict = 0;
-    g.u.EConflict = 0; /* extrinsic conflict sources (gethungry excludes W_ARTI only) */
-    g.u.HWarning = 0;
-    g.u.EWarning = 0; /* youprop.h Warning — ice melt timer plines in spoteffects */
-    g.u.HWarn_of_mon = 0;
-    g.u.EWarn_of_mon = 0; /* youprop.h Warn_of_mon — display.h sensemon / shop angry_guards */
-    g.u.HTelepat = 0;
-    g.u.ETelepat = 0; /* Blind + sensemon subset for spoteffects surprise */
-    g.u.uwep = null;
-    g.u.uswapwep = null;
-    g.u.uquiver = null;
-    g.u.twoweap = false;
-    g.u.uarmh = null;
-    g.u.uarms = null;
-    g.u.uarmc = null;
-    g.u.uarm = null;
-    g.u.uarmu = null;
-    g.u.uarmg = null; /* gloves — port invent wear when ready */
-    /* C: you.h uhave — eat.c gethungry switch case 16 (carried real Amulet) */
-    g.u.uhave = { amulet: 0 };
-    g.u.uamul = null;
-    g.u.uleft = null;
-    g.u.uright = null;
-    g.u.Unaware = 0; /* eat.c gethungry — asleep / !rn2(10) metabolic branch */
-    g.u.EProtection = 0; /* prop.c subset — wear.js refreshEProtectionFromRings sets W_RING* from rings */
-    /* C: you.h `struct u_property u.uprops[LAST_PROP+1]` — stub; pray.c / prop.c set `[PROTECTION].intrinsic` (youprop.h HProtection). Helpers: `divine_protection.js`; `#pray` via `pray_hero.js` + `extcmd.js` tty line; `#chat` / priest.c via `priest_talk_hero.js`; `#sit` / sit.c throne + attrcurse via `sit_hero.js`. */
-    {
-        const up = new Array(LAST_PROP + 1);
-        for (let i = 0; i <= LAST_PROP; i++) up[i] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-        g.u.uprops = up;
-    }
-    /* C: u_init.c u_init_misc — u.ublessed / u.uspellprot (you.h); pray / spell protection vs AC */
-    g.u.ublessed = 0;
-    g.u.uspellprot = 0;
-    /* C: artifact.c init_artifacts — before u_init_misc (allmain.c newgame). */
-    initArtidiscoHeroLikeC(g);
+    // C ref: allmain.c → init_dungeons() (dungeon.c) — peels fastforward_pre_mklev
+    init_dungeons();
+    // C ref: allmain.c → u_init_misc() (u_init.c)
+    u_init_misc();
+    fastforward_pre_mklev(); // emptied — kept as delete-only hook
 
-    /* C u_init_misc — newhp()/newpw() with u.ulevel==0; adjabil(0,1); u.ulevel=u.ulevelmax=1 (before mklev) */
-    g.u.ulevel = 0;
-    g.u.ulevelmax = 0;
-    applyBirthHpEnergy();
-    applyAdjabil(0, 1);
-    g.u.ulevel = 1;
-    g.u.ulevelmax = 1;
-    /* C: u_init_misc — after newhp/newpw/adjabil/ulevel bump (role.c:1031). */
-    g.u.left_handed = (rn2(10) === 0);
-    g.u.uhpinc = g.u.uhpinc || [];
-    g.u.ueninc = g.u.ueninc || [];
-    g.u.uhpinc[1] = g.u.uhpmax | 0;
-    g.u.ueninc[1] = g.u.uenmax | 0;
-
-    /* C: allmain.c newgame — u_init_misc() before l_nhcore_init() (Lua align shuffle). */
+    // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua (second nhlib load)
     l_nhcore_init();
 
-    g.context = g.context || {};
-    if (g.context.next_attrib_check == null) g.context.next_attrib_check = 600;
-    g.context.victual = { eating: 0, fullwarn: 0, canchoke: 1 };
-    /* C: allmain.c newgame — mvitals[i].mvflags = mons[i].geno & G_NOCORPSE (see mvitals.js initMvitalsStub) */
-    initMvitalsStub(g);
-
+    g.u = g.u || {};
+    g.u.uz = g.u.uz || { dnum: 0, dlevel: 1 };
+    // ulevel/HP/Pw/ualign already set in u_init_misc (C order)
+    g.u.ulevel = g.u.ulevel || 1; // needed during mklev for monmax_difficulty / rne
+    g.u.uac = 0; // C: 0 until find_ac(); first bot may show AC:0
     g.flags = g.flags || {};
-    /* C: hack.c flags.terrainstatus — gate classify_terrain; default on for new games */
-    if (g.flags.terrainstatus === undefined) g.flags.terrainstatus = true;
-    /* C: dungeon topology — mines **`dnum`** from init_dungeons branch list. */
-    for (const br of g.branches || []) {
-        if ((br.end2?.dnum | 0) > 0 && br.end1_up) {
-            g.mines_dnum = br.end2.dnum | 0;
-            break;
-        }
-    }
-    bootstrapSpLevchnMinesMinetnFromBranchStubLikeC(g);
-    // Real mklev generates the level with correct room positions
-    // Structural phase consumes RNG for rooms/corridors/doors/stairs
-    // C: do.c goto_level — **`if (new)`** after **`mklev`**; **`allmain.c`** **`newgame`** calls **`mklev()`** with **`u.uz`** on D:1 (no bones on brand-new game).
-    if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
+    // mines_dnum / oracle_level / branches set by init_dungeons / fixup_level_locations
 
-    /* C: allmain.c newgame — after mklev: place hero, vision, special room, starting pet, then invent. */
-    u_on_upstairs();
-    init_vision_globals();
-    vision_reset();
-    checkSpecialRoomNewgameFalseLikeC(g);
-    /* C: allmain.c newgame — MON_AT(u.ux,u.uy) → mnexto(RLOC_NOMSG) before makedog(). */
-    const ux0 = g.u?.ux | 0;
-    const uy0 = g.u?.uy | 0;
-    const heroBlocker = g.level?.monsters?.find(
-        (m) => (m.mx | 0) === ux0 && (m.my | 0) === uy0,
-    );
-    if (typeof globalThis.__diagPreMakedogLikeC === 'function') {
-        globalThis.__diagPreMakedogLikeC(g);
-    }
-    if (heroBlocker) mnextoNearHeroSyncLikeC(g, heroBlocker);
-    if (typeof globalThis.__diagPostMnextoMakedogLikeC === 'function') {
-        globalThis.__diagPostMnextoMakedogLikeC(g);
-    }
-    makedogLikeC(g);
-    uInitInventoryAttrsLikeC(g);
+    // Real mklev: rooms/corridors + fill_ordinary_room + mineralize
+    await mklev();
 
-    g.multi = 0; /* C: gm.multi — multi-turn actions / occupation */
-    g._prevMoveTick = 1;
+    // Post-mklev placeholders that u_init_misc does not set
+    g.u.ulevel = 1;
+    g.u.uexp = 0;
+    g.u.uhunger = g.u.uhunger ?? 900;
+    g.moves = 1;
+    g.flags.female = g.flags.female !== false;
     g.plname = g.plname || 'Contestant';
 
-    /* C: allmain.c newgame — `docrt()` (vision shutdown, cls, hero_memory, see_monsters). */
+    // C ref: allmain.c newgame() — u_on_upstairs before makedog
+    u_on_upstairs();
+    // C ref: allmain.c → makedog() (skipped when preferred_pet === 'n')
+    makedog();
+
+    // C ref: allmain.c → u_init_inventory_attrs() (after makedog)
+    u_init_inventory_attrs();
+
+    // Initial display BEFORE wear (C: docrt/bot then u_init_skills_discoveries)
+    init_vision_globals();
+    vision_reset();
+    vision_recalc(0);
+    await cls();
     await docrt();
     await flush_screen(1);
     await bot();
-    /* C: com_pager — first botl lines stay at AC:0 until welcome refresh after find_ac. */
-    g._botlLine1PreFindAcBotlLikeC = g._cachedBotlLine1;
-    g._botlLine2PreFindAcBotlLikeC = g._cachedBotlLine2;
+    // Snapshot status for legacy window — C tty often still shows pre-wear botl
+    const statusSnap = snapshot_status_lines();
 
-    /* C: u_init.c u_init_skills_discoveries — skill_init(); find_ac() after invent + docrt/bot */
-    applySkillInit(g);
-    findAc();
-    vision_recalc(0);
-    /* C: display.c docrt after vision — tourist welcome snapshot includes rogue D:1 map. */
-    if (g.urole?.abbr === 'Tou') await docrtPaintVisibleForWelcomeLikeC();
+    // C ref: allmain.c → u_init_skills_discoveries() (wear/wield/discover)
+    u_init_skills_discoveries();
 
-    /* C: allmain.c newgame — `if (flags.legacy) com_pager(...)` before `welcome(TRUE)`. */
-    await awaitLegacyIntroMoreLikeC();
+    // C ref: allmain.c — if (flags.legacy) com_pager("legacy")
+    if (g.flags.legacy !== false) {
+        const align = ['law', 'neutral', 'chaos'];
+        for (let i = align.length; i > 1; i--) {
+            const j = rn2(i);
+            [align[i - 1], align[j]] = [align[j], align[i - 1]];
+        }
+        g._legacy_align = align;
+        await com_pager_legacy(statusSnap);
+    }
 
-    // Welcome message (C: allmain.c welcome(TRUE); pline format + buf like u_init.)
-    const hi = welcomeInterjectionLikeC(g);
-    const welcomeBuf = welcomeBufLikeC(g);
-    /* C: allmain.c welcome() — `pline(..., "You are a%s.")`; tty recorder emits two spaces after `!` (matches public sessions). */
-    await pline(`${hi} ${g.plname}, welcome to NetHack!  You are a${welcomeBuf}.`);
-    /* C: topl.c `redotoplin` + `more()` — welcome snapshot shows `--More--` before first key. */
-    g._showDefmoreOnTopline = true;
+    // Refresh map/status after wear (and after legacy dismiss)
+    await docrt();
     await flush_screen(1);
+    await bot();
 
-    /* C: allmain.c newgame — after welcome: notice_mon_on(); then dolookaround XOR notice_all_mons */
-    noticeMonOnLikeC();
-    if (g.a11y?.glyph_updates)
-        dolookaroundLikeC();
-    else
-        noticeAllMonsLikeC(true);
+    // C ref: allmain.c welcome(TRUE)
+    await welcome(true);
+
+    // C ref: unixmain.c wd_message() after newgame() — explore/discovery
+    if (g.flags.explore || g.flags.discover) {
+        await pline('You are in non-scoring explore/discovery mode.');
+    }
+
+    // C ref: allmain.c moveloop() → moveloop_preamble(FALSE) before first turn
+    await moveloop_preamble(false);
+    // C ref: allmain.c moveloop() → maybe_do_tutorial() before core loop
+    await maybe_do_tutorial();
 }
 
 /**
- * C: allmain.c welcome() — build buf after align_str (simplified: no adrift / restore branch).
- * !gu.urole.name.f plus both-sexes role mask in C maps to !roleHasFemaleRoleNameLikeC && allows.gender === 'any'
- * for genders[currentgend].adj; role title uses name.f only for Cave and Priest when female.
+ * C ref: options.c ask_do_tutorial() — NHW_MENU y/n unless OPTIONS=tutorial set.
+ * C ref: wintty.c tty_end_menu / tty_display_nhwindow / process_menu_window
+ *        corner offx = max(10, 80 - maxcol - 1); title uses menu_headings
+ *        (ATR_INVERSE) after adjust_menu_promptstyle(WIN_INVEN).
  */
-function welcomeBufLikeC(g) {
-    const t = g.u?.ualign?.type ?? 0;
-    const alignName = t === 0 ? 'neutral' : t > 0 ? 'lawful' : 'chaotic';
-    const female = !!g.flags?.female;
-    const gendIdx = female ? 1 : 0;
-    const roleRow = g.urole;
-    const raceAdj = g.urace?.adj || 'human';
-    let buf = ` ${alignName}`;
-    if (!roleHasFemaleRoleNameLikeC(roleRow) && roleRow?.allows?.gender === 'any')
-        buf += ` ${genders[gendIdx].adj}`;
-    const roleTitle = female && roleHasFemaleRoleNameLikeC(roleRow)
-        ? (roleRow.name.f || roleRow.name.m)
-        : roleRow.name.m;
-    buf += ` ${raceAdj} ${roleTitle}`;
-    return buf;
+async function ask_do_tutorial() {
+    if (game.tutorial_set_in_config) return !!game.flags.tutorial;
+    // C flushes pending topline --More-- (welcome) before the tutorial menu
+    await flush_topl_more();
+    let pass = 0;
+    for (;;) {
+        // C: nh_basename(get_configfile()) — contest sessions use .nethackrc
+        const rcname = '.nethackrc';
+        const footer =
+            `Put "OPTIONS=!tutorial" in ${rcname} to skip this query.`;
+        // Order after tty_end_menu(prompt): prompt, "", y, n, "", footer [, hint]
+        const entries = [
+            { text: 'Do you want a tutorial?', attr: ATR_INVERSE },
+            { text: '', attr: 0 },
+            { text: 'y - Yes, do a tutorial', attr: 0 },
+            { text: 'n - No, just start play', attr: 0 },
+            { text: '', attr: 0 },
+            { text: footer, attr: 0 },
+        ];
+        if (pass > 0)
+            entries.push({ text: "(Please choose 'y' or 'n'.)", attr: 0 });
+
+        await paint_corner_nhw_menu(entries, '(end) ');
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        const ch = String.fromCharCode(key);
+        if (ch === 'y' || ch === 'Y') return true;
+        if (ch === 'n' || ch === 'N' || key === 27) return false;
+        // space/return / other → re-prompt (C select_menu n==0)
+        pass++;
+    }
 }
 
-/** C u_init.c — first word of welcome pline depends on role (tty sessions). */
-function welcomeInterjectionLikeC(g) {
-    const a = g.urole?.abbr;
-    if (a === 'Tou') return 'Aloha';
-    if (a === 'Sam') return 'Konnichi wa';
-    if (a === 'Val') return 'Velkommen';
-    if (a === 'Kni') return 'Salutations';
-    return 'Hello';
+/** C ref: allmain.c maybe_do_tutorial() — yes-path (schedule_goto tut) deferred. */
+async function maybe_do_tutorial() {
+    if (!(await ask_do_tutorial())) return;
+    await pline('Entering the tutorial.');
 }
 
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
-    g.context = g.context || {};
+    if (!g.context) g.context = {};
+    if (!g.u) g.u = {};
 
-    await runMoveloopPreambleBeforeRhackLikeC(g);
-
-    /* C: hack.c domove — rush into closed door leaves move=0; next step is autoopen only.
-     * Flag may be armed during this iteration's **`runPost`** (east-tail inline), so re-read after post. */
-    let skipPostForBlockedRunLikeC = !!g.context._wizD1BlockedRunNoTimeLikeC;
-
-    /* C: allmain.c — **`if (svc.context.move)`** at top: spend hero time + **`movemon`**
-       for the *previous* command before reading the next one. */
+    // C: if (svc.context.move) { actual time passed ... }
     if (g.context.move) {
-        if (g.context._searchInlinePostDoneLikeC) {
-            /* C: inline **`#search`** post already ran in cmd.js — do not run moveloop post again. */
-        } else if (g.context._touristD1SearchInlinePostCompleteLikeC) {
-            /* C: tourist third **`#search`** post-rest tail already advanced inline (~2575–2581);
-             * run-east **`L`** still needs its own moveloop post (~2582+). Promote **`armed`**
-             * before post — **`rhack`** may not have run yet this iteration. */
-            if (
-                g.context._touristD1LPostArmedLikeC
-                && !g.context._touristD1LPostMovemonPendingLikeC
-            ) {
-                g.context._touristD1LPostMovemonPendingLikeC = true;
-                delete g.context._touristD1LPostArmedLikeC;
+        g.u.umovement = (g.u.umovement || 0) - NORMAL_SPEED;
+
+        let monscanmove = false;
+        do {
+            do {
+                monscanmove = await movemon();
+                if ((g.u.umovement || 0) >= NORMAL_SPEED) break;
+            } while (monscanmove);
+
+            if (!monscanmove && (g.u.umovement || 0) < NORMAL_SPEED) {
+                // End of turn: reallocate movement, maybe spawn, hero regen clock
+                for (const mtmp of g.fmon || []) {
+                    mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
+                }
+                maybe_generate_rnd_mon();
+                // C: mvl_wtcap = near_capacity() earlier; reuse for regen_hp/pw
+                let mvl_wtcap = near_capacity();
+                u_calc_moveamt(mvl_wtcap);
+                g.moves = (g.moves || 1) + 1;
+
+                // once-per-turn — C: regen_hp before dosounds when HP below max
+                if (g.u.uinvulnerable) {
+                    mvl_wtcap = UNENCUMBERED;
+                } else if (
+                    !Upolyd(g.u)
+                        ? ((g.u.uhp || 0) < (g.u.uhpmax || 0))
+                        : ((g.u.mh || 0) < (g.u.mhmax || 0))
+                ) {
+                    regen_hp(mvl_wtcap);
+                }
+                // regen_pw / Teleportation / Polymorph deferred (no early RNG)
+                dosounds();
+                gethungry();
+                exerchk();
+
+                // C: if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3));
+                if (!rn2(40 + (acurr(A_DEX) * 3))) {
+                    rnd(3);
+                }
+
+                // Clairvoyance timer
+                if ((g.moves || 0) >= (g.context.seer_turn || 0)) {
+                    g.context.seer_turn = g.moves + rn1(31, 15);
+                }
             }
-            if (g.context._touristD1LPostMovemonPendingLikeC) {
-                await runPostCommandTurnAdvanceLikeC(g);
-            }
-            delete g.context._touristD1SearchInlinePostCompleteLikeC;
-        } else if (g.context._dofireAwaitEscMoveloopLikeC) {
-            /* C: dothrow.c dofire — defer moveloop until getdir ESC nhgetch (~seed0102 step 14). */
-        } else if (skipPostForBlockedRunLikeC) {
-            /* C: run into closed door (no autoopen) — no monster post before lowercase move/autoopen. */
-            delete g.context._wizD1BlockedRunNoTimeLikeC;
-            delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
-            g.context.move = 0;
-        } else if (g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC) {
-            /* C: east-tail **`L`** post-corridor — **`movemon`** + new-turn already ran inside **`movemon`**;
-             * next command (**`seed0006`** step 45 **`l`** autoopen) must not duplicate **`distfleeck`**. */
-            delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
-            g.context._wizD1PostEastTailWalkFmonLikeC = true;
-            g.context.move = 0;
-        } else {
-            await runPostCommandTurnAdvanceLikeC(g);
-        }
+        } while ((g.u.umovement || 0) < NORMAL_SPEED);
     }
 
-    skipPostForBlockedRunLikeC = !!g.context._wizD1BlockedRunNoTimeLikeC;
-
-    /* C: allmain.c — default assume next command costs time; rhack may clear it. */
-    if (skipPostForBlockedRunLikeC) {
-        g.context.move = 0;
-    } else {
-        g.context.move = 1;
-    }
-
-    /* C: allmain.c — gm.multi continuation: extra domove before next rhack(0). */
-    if ((g.multi | 0) > 0) {
-        g.context = g.context || {};
-        if (skipPostForBlockedRunLikeC) {
-            endRunning(true);
-        } else if (g.context.mv) {
-            if ((g.multi | 0) < COLNO && (g.multi = (g.multi | 0) - 1) <= 0) {
-                endRunning(true);
-            }
-            const u = g.u || {};
-            await domoveHeroDirLikeC(u.dx | 0, u.dy | 0);
-        } else {
-            g.multi = (g.multi | 0) - 1;
-            await rhack(0);
-        }
-    } else {
-        await rhack(0);
-    }
-
-    /* C: allmain.c moveloop_core — vision_recalc after rhack when unblock/block changed. */
+    // Vision + display (before getch — screen capture in nhgetch)
     if (g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;
     }
-    const apx = g._doorOpenApportNewsymX | 0;
-    const apy = g._doorOpenApportNewsymY | 0;
-    if (apx > 0 && apy >= 0) {
-        newsym(apx, apy);
-        g._doorOpenApportNewsymX = 0;
-        g._doorOpenApportNewsymY = 0;
-        /* C: tty refresh after door-open niche newsym — grid must match disp_ch before next capture. */
-        await flush_screen(1);
+    await bot();
+    await flush_screen(1);
+
+    // C: svc.context.move = 1; then rhack(0) — or continue DOMOVE_RUSH / counted s
+    g.context.move = 1;
+    if (run_active()) {
+        await continue_run();
+    } else if (search_repeat_active()) {
+        await continue_search();
+    } else {
+        await rhack(0);
     }
-
-    if (shouldClearMoveloopToplineLikeC(g)) clearPendingMessageAndToplineLikeC();
-    latchRetainedToplineLikeC(g);
-
-    /* C: east-tail **`L`** post already ran — defer **`movemon`** until after autoopen **`l`**. */
-    if (g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC) {
-        g.context._wizD1BlockedRunNoTimeLikeC = true;
-        g.context._wizD1PostEastTailWalkFmonLikeC = true;
-        g.context.move = 0;
-        delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
-    }
-
-    /* C: hack.c — blocked run / east-tail defer: next command must not spend hero time. */
-    if (g.context._wizD1BlockedRunNoTimeLikeC) {
-        g.context.move = 0;
-    }
-
-    if (g.context._wizD1AutoopenNoMoveLikeC) {
-        g.context.move = 0;
-        delete g.context._wizD1AutoopenNoMoveLikeC;
-    }
-
-    g._prevMoveTick = g.context?.move ? 1 : 0;
-
-    clearLeavingTutorialIfActiveLikeC(g);
+    // Message cleared at start of next rhack so pline() survives until the
+    // following nhgetch capture (C keeps topline until next command).
 }
 
 // C ref: allmain.c moveloop()
 export async function moveloop(resuming) {
-    await moveloopPreamble(resuming);
+    vision_recalc(0);
+    await docrt();
+    await flush_screen(1);
+
     for (;;) {
         await moveloop_core();
         if (game.program_state?.gameover) break;

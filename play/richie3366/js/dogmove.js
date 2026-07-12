@@ -1,0 +1,712 @@
+// dogmove.js — Pet AI movement.
+// C ref: dogmove.c — dog_move, dog_goal, dogfood (via dog.c), obj_resists callers.
+
+import { game } from './gstate.js';
+import { rn2, rnd } from './rng.js';
+import {
+    dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, ALLOW_M,
+    ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
+} from './mon.js';
+import { objects_at, obj_extract_self, place_object, splitobj } from './mkobj.js';
+import { mattackm, max_passive_dmg } from './mhitm.js';
+import { newsym, pline } from './display.js';
+import { doname } from './objnam.js';
+import { mpickobj } from './makemon.js';
+import { t_at } from './trap.js';
+import {
+    COLNO, ROWNO, ROOM, STAIRS,
+    DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT, POISON, UNDEF, TABU,
+    MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_NOMOVES, MMOVE_DONE,
+    M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
+    IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, ALLOW_MDISP,
+} from './const.js';
+import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, objectNames } from './objects.js';
+import { monsterNames } from './monsters.js';
+import { m_cansee, couldsee, cansee } from './vision.js';
+
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
+
+const MTSZ = 4;
+const SQSRCHRADIUS = 5;
+
+const TRIPE_RATION = objectNames.indexOf('TRIPE_RATION');
+const MEATBALL = objectNames.indexOf('MEATBALL');
+const MEAT_RING = objectNames.indexOf('MEAT_RING');
+const MEAT_STICK = objectNames.indexOf('MEAT_STICK');
+const ENORMOUS_MEATBALL = objectNames.indexOf('ENORMOUS_MEATBALL');
+const APPLE = objectNames.indexOf('APPLE');
+const CARROT = objectNames.indexOf('CARROT');
+const BANANA = objectNames.indexOf('BANANA');
+const EGG = objectNames.indexOf('EGG');
+const CORPSE = objectNames.indexOf('CORPSE');
+const TIN = objectNames.indexOf('TIN');
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+
+function mon_track_add(mtmp, x, y) {
+    if (!mtmp.mtrack) {
+        mtmp.mtrack = [
+            { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
+        ];
+    }
+    for (let j = MTSZ - 1; j > 0; j--) mtmp.mtrack[j] = { ...mtmp.mtrack[j - 1] };
+    mtmp.mtrack[0] = { x, y };
+}
+
+// C ref: stairs.c On_stairs — stairs/ladder endpoints only
+function On_stairs(x, y) {
+    const L = game.level;
+    if (!L) return false;
+    if ((x === L.upstair?.x && y === L.upstair?.y)
+        || (x === L.dnstair?.x && y === L.dnstair?.y)
+        || (x === L.upladder?.x && y === L.upladder?.y)
+        || (x === L.dnladder?.x && y === L.dnladder?.y))
+        return true;
+    // Also typ-based: hero standing on STAIRS glyph (ladder flag)
+    const loc = L.at?.(x, y);
+    return !!(loc && (loc.typ === STAIRS || loc.ladder));
+}
+
+// C ref: rm.h IS_ROOM — typ >= ROOM (includes STAIRS / furniture)
+function IS_ROOM(typ) {
+    return typ >= ROOM;
+}
+
+// C ref: zap.c obj_resists() — always consumes rn2(100) for normal objs
+export function obj_resists(obj, ochance, achance) {
+    if (!obj) return false;
+    // Quest/invocation items omitted for early dlvl
+    const chance = rn2(100);
+    return chance < (obj.oartifact ? achance : ochance);
+}
+
+// C ref: dog.c dogfood() — quality; always rolls obj_resists first.
+// mflags1 not in monsters_data yet: treat domestic pets as carnivorous
+// (dogs/cats). Ponies (herbivore) need mflags1 before seed with pony pet.
+export function dogfood(mon, obj) {
+    if (!obj) return UNDEF;
+    if (obj.opoisoned) return POISON;
+    if (obj_resists(obj, 0, 95)) return obj.cursed ? TABU : APPORT;
+
+    const oclass = obj.oclass ?? 0;
+    const otyp = obj.otyp ?? -1;
+    const carni = true; // until mflags1 is extracted
+    const herbi = false;
+    const starving = !!(mon?.mtame && !mon?.isminion && mon?.edog?.mhpmax_penalty);
+
+    if (oclass === FOOD_CLASS) {
+        switch (otyp) {
+            case TRIPE_RATION:
+            case MEATBALL:
+            case MEAT_RING:
+            case MEAT_STICK:
+            case ENORMOUS_MEATBALL:
+                return carni ? DOGFOOD : MANFOOD;
+            case EGG:
+                return carni ? CADAVER : MANFOOD;
+            case CORPSE: {
+                // C: peek_at_iced_corpse_age(obj) + 50 <= moves → POISON
+                // (lizard/lichen/fungus-pet exceptions deferred)
+                const moves = game.moves ?? 1;
+                const corpseAge = obj.age ?? moves;
+                if (corpseAge + 50 <= moves) return POISON;
+                // poisonous/acidic need mflags1 — deferred; age covers tainted mklev corpses
+                return carni ? CADAVER : MANFOOD;
+            }
+            case APPLE:
+                return herbi ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+            case CARROT:
+                return herbi ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+            case BANANA:
+                return herbi ? ACCFOOD : MANFOOD;
+            case TIN:
+                return MANFOOD;
+            default:
+                if (starving) return ACCFOOD;
+                if (otyp > SLIME_MOLD) return carni ? ACCFOOD : MANFOOD;
+                return herbi ? ACCFOOD : MANFOOD;
+        }
+    }
+    if (!obj.cursed && oclass !== BALL_CLASS && oclass !== CHAIN_CLASS
+        && oclass !== ROCK_CLASS) {
+        return APPORT;
+    }
+    if (oclass === ROCK_CLASS) return UNDEF;
+    return UNDEF;
+}
+
+// Goal state for current dog_move (C: gg.gtyp/gx/gy)
+const gg = { gtyp: UNDEF, gx: 0, gy: 0 };
+
+function could_reach_item(_mtmp, _x, _y) {
+    return true; // flyer/swimmer/boulder edge cases omitted
+}
+
+function isok(x, y) {
+    return x >= 1 && x < COLNO && y >= 0 && y < ROWNO;
+}
+
+/** C ref: dogmove.c can_reach_location — recursive path toward goal. */
+function can_reach_location(mon, mx, my, fx, fy) {
+    if (mx === fx && my === fy) return true;
+    if (!isok(mx, my)) return false;
+    const dist = dist2(mx, my, fx, fy);
+    for (let i = mx - 1; i <= mx + 1; i++) {
+        for (let j = my - 1; j <= my + 1; j++) {
+            if (!isok(i, j)) continue;
+            if (dist2(i, j, fx, fy) >= dist) continue;
+            const loc = game.level?.at?.(i, j);
+            const typ = loc?.typ ?? 0;
+            if (IS_OBSTRUCTED(typ) /* passes_walls / dig stub: pets can't */)
+                continue;
+            if (IS_DOOR(typ) && ((loc?.doormask || 0) & (D_CLOSED | D_LOCKED)))
+                continue;
+            if (!could_reach_item(mon, i, j)) continue;
+            if (can_reach_location(mon, i, j, fx, fy)) return true;
+        }
+    }
+    return false;
+}
+
+/** C ref: mon.c max_mon_load / can_carry — weight + nohands partial stack. */
+function max_mon_load(mtmp) {
+    const MAX_CARR_CAP = 1000; // decl.c
+    const MZ_HUMAN = 3;
+    const WT_HUMAN = 1450;
+    const msize = mtmp.data?.msize ?? 2;
+    const cwt = mtmp.data?.cwt ?? 0;
+    let maxload;
+    if (!cwt)
+        maxload = Math.trunc((MAX_CARR_CAP * msize) / MZ_HUMAN);
+    else
+        maxload = Math.trunc((MAX_CARR_CAP * cwt) / WT_HUMAN);
+    // non-strong: half (kittens/dogs are not strongmonst)
+    maxload = Math.trunc(maxload / 2);
+    return Math.max(1, maxload);
+}
+
+function can_carry(mtmp, otmp) {
+    if (!mtmp || !otmp) return 0;
+    let iquan = otmp.quan || 1;
+    // nohands + quan>1 → return 1 before weight (C mon.c can_carry)
+    if (iquan > 1) {
+        return 1;
+    }
+    if ((otmp.owt || 0) > max_mon_load(mtmp)) return 0;
+    return iquan;
+}
+
+
+// C ref: dogmove.c cursed_object_at()
+function cursed_object_at(x, y) {
+    for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
+        if (otmp.cursed) return true;
+    }
+    return false;
+}
+
+// C ref: dogmove.c dog_goal()
+function dog_goal(mtmp, edog, after, udist, whappr) {
+    const omx = mtmp.mx, omy = mtmp.my;
+    // C: in_masters_sight = couldsee(omx, omy) — viz_array COULD_SEE
+    const in_masters_sight = couldsee(omx, omy);
+    const dog_has_minvent = !!(edog && droppables(mtmp));
+
+    if (!edog || mtmp.mleashed) {
+        gg.gtyp = APPORT;
+        gg.gx = game.u.ux;
+        gg.gy = game.u.uy;
+    } else {
+        gg.gtyp = UNDEF;
+        gg.gx = 0;
+        gg.gy = 0;
+        const min_x = Math.max(1, omx - SQSRCHRADIUS);
+        const max_x = Math.min(COLNO - 1, omx + SQSRCHRADIUS);
+        const min_y = Math.max(0, omy - SQSRCHRADIUS);
+        const max_y = Math.min(ROWNO - 1, omy + SQSRCHRADIUS);
+
+        for (let obj = game.fobj; obj; obj = obj.nobj) {
+            const nx = obj.ox, ny = obj.oy;
+            if (nx < min_x || nx > max_x || ny < min_y || ny > max_y) continue;
+            const otyp = dogfood(mtmp, obj);
+            if (otyp > gg.gtyp || otyp === UNDEF) continue;
+            // C: avoid cursed items unless starving for real food
+            if (cursed_object_at(nx, ny)
+                && !(edog.mhpmax_penalty && otyp < MANFOOD))
+                continue;
+            if (!could_reach_item(mtmp, nx, ny)
+                || !can_reach_location(mtmp, omx, omy, nx, ny)) continue;
+
+            if (otyp < MANFOOD) {
+                // C: otyp < gtyp || closer — UNDEF(6) makes first food win
+                if (otyp < gg.gtyp
+                    || dist2(nx, ny, omx, omy) < dist2(gg.gx, gg.gy, omx, omy)) {
+                    gg.gx = nx;
+                    gg.gy = ny;
+                    gg.gtyp = otyp;
+                }
+            } else if (gg.gtyp === UNDEF && in_masters_sight && !dog_has_minvent
+                // C: (!levl[omx][omy].lit || levl[u.ux][u.uy].lit)
+                && (!(game.level?.at(omx, omy)?.lit)
+                    || !!(game.level?.at(game.u.ux, game.u.uy)?.lit))
+                // C: (otyp == MANFOOD || m_cansee(mtmp, nx, ny))
+                && (otyp === MANFOOD || m_cansee(mtmp, nx, ny))
+                && edog.apport > rn2(8)
+                && can_carry(mtmp, obj) > 0) {
+                gg.gx = nx;
+                gg.gy = ny;
+                gg.gtyp = APPORT;
+            }
+        }
+    }
+
+    let appr;
+    if (gg.gtyp === UNDEF || (gg.gtyp !== DOGFOOD && gg.gtyp !== APPORT
+        && (game.moves ?? 1) < (edog?.hungrytime ?? 0))) {
+        gg.gx = game.u.ux;
+        gg.gy = game.u.uy;
+        if (after && udist <= 4 && game.u.ux === gg.gx && game.u.uy === gg.gy)
+            return -2;
+        appr = (udist >= 9) ? 1 : (mtmp.mflee ? -1 : 0);
+        // C: if (udist > 1) — squared; ortho-adjacent (udist==1) skips
+        if (udist > 1) {
+            const heroTyp = game.level?.at(game.u.ux, game.u.uy)?.typ ?? 0;
+            if (!IS_ROOM(heroTyp) || !rn2(4) || whappr
+                || (dog_has_minvent && rn2(edog?.apport || 1)))
+                appr = 1;
+        }
+        if (appr === 0) {
+            if (On_stairs(game.u.ux, game.u.uy)) {
+                appr = 1;
+            } else {
+                for (const obj of game.invent || []) {
+                    if (dogfood(mtmp, obj) === DOGFOOD) {
+                        appr = 1;
+                        break;
+                    }
+                }
+            }
+        }
+    } else {
+        appr = 1;
+    }
+    if (mtmp.mconf) appr = 0;
+    return appr;
+}
+
+// C ref: dogmove.c droppables — animal/mindless keep no tools; first free obj
+function droppables(mon) {
+    const wep = mon.mwep || null;
+    for (let obj = mon.minvent; obj; obj = obj.nobj) {
+        // Tool-keeping branches omitted for animal pets (kitten/dog):
+        // is_animal → pick/horn/key treated as already held → fall to default.
+        if (!obj.owornmask && obj !== wep) return obj;
+    }
+    return null;
+}
+
+// C ref: steal.c mdrop_obj — pet drop subset (worn/saddle/shop/extrinsics omitted)
+async function mdrop_obj(mon, obj, verbosely) {
+    const omx = mon.mx, omy = mon.my;
+    // C: distant_name before extract; side-effects omitted → doname
+    const obj_name = doname(obj);
+    // C: extract_from_minvent(mon, obj, FALSE, TRUE) → core is obj_extract_self
+    obj_extract_self(obj);
+    if (obj.owornmask) obj.owornmask = 0;
+    // C: if (verbosely && cansee(omx, omy)) pline_mon(...)
+    if (verbosely && cansee(omx, omy)) {
+        await pline(`${Monnam(mon)} drops ${obj_name}.`);
+    }
+    // flooreffects omitted — ordinary missiles/items place on floor
+    place_object(obj, omx, omy);
+    // stackobj merge omitted (C-JS-MAP)
+}
+
+// C ref: steal.c relobj — is_pet uses droppables; vault-guard gold omitted
+async function relobj(mtmp, show, is_pet) {
+    const omx = mtmp.mx, omy = mtmp.my;
+    let otmp;
+    while ((otmp = (is_pet ? droppables(mtmp) : mtmp.minvent)) != null) {
+        await mdrop_obj(mtmp, otmp, !!(is_pet && game.flags?.verbose !== false));
+    }
+    // C: if (show && cansee(omx, omy)) newsym(...)
+    if (show && cansee(omx, omy)) newsym(omx, omy);
+}
+
+// C ref: dogmove.c dog_invent — udist is squared dist2 (same as dog_move)
+async function dog_invent(mtmp, edog, udist) {
+    if (mtmp.meating) return 0;
+    // C: if (droppables(mtmp)) { assert(apport>0); maybe relobj }
+    if (droppables(mtmp)) {
+        if (!edog || !(edog.apport > 0)) return 0;
+        // Use udist+1 so steed won't cause divide by zero
+        if (!rn2(udist + 1) || !rn2(edog.apport)) {
+            if (rn2(10) < edog.apport) {
+                await relobj(mtmp, mtmp.minvis ? 1 : 0, true);
+                if (edog.apport > 1) edog.apport--;
+                edog.dropdist = udist;
+                edog.droptime = game.moves ?? 1;
+            }
+        }
+        return 0;
+    }
+    const obj = objects_at(mtmp.mx, mtmp.my);
+    if (!obj) return 0;
+    const oclass = obj.oclass ?? 0;
+    if (oclass === BALL_CLASS || oclass === CHAIN_CLASS || oclass === ROCK_CLASS)
+        return 0;
+
+    const edible = dogfood(mtmp, obj);
+    // Eat path omitted (DOGFOOD/CADAVER) — dart pickup is the verified path
+    void edible;
+
+    const carryamt = can_carry(mtmp, obj);
+    if (carryamt > 0 && !obj.cursed && edog && could_reach_item(mtmp, obj.ox, obj.oy)) {
+        if (rn2(20) < (edog.apport || 0) + 3) {
+            if (rn2(udist) || !rn2(edog.apport || 1)) {
+                let otmp = obj;
+                // C: if (carryamt != obj->quan) otmp = splitobj(obj, carryamt);
+                if (carryamt !== (obj.quan || 1)) {
+                    otmp = splitobj(obj, carryamt) || obj;
+                }
+                const omx = mtmp.mx, omy = mtmp.my;
+                // C: distant_name/doname side-effects only when cansee; then
+                // flags.verbose pline — silent pickup when out of sight
+                if (cansee(omx, omy)) {
+                    const otmpname = doname(otmp);
+                    if (game.flags?.verbose !== false) {
+                        await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
+                    }
+                }
+                obj_extract_self(otmp);
+                newsym(omx, omy);
+                mpickobj(mtmp, otmp);
+                // mon_wield_item / check_gear_next_turn omitted (no AT_WEAP pet)
+            }
+        }
+    }
+    return 0;
+}
+
+function sgn(n) {
+    return n < 0 ? -1 : n > 0 ? 1 : 0;
+}
+
+// C ref: dogmove.c find_targ() — first monster on a ray
+function find_targ(mtmp, dx, dy, maxdist) {
+    let curx = mtmp.mx, cury = mtmp.my;
+    for (let dist = 0; dist < maxdist; dist++) {
+        curx += dx;
+        cury += dy;
+        if (curx < 1 || curx >= COLNO || cury < 0 || cury >= ROWNO) break;
+        // C: m_cansee == clear_path; walls/closed doors stop the ray
+        if (!m_cansee(mtmp, curx, cury)) break;
+        if (curx === mtmp.mux && cury === mtmp.muy) return { _youmonst: true };
+        const targ = m_at(curx, cury);
+        if (targ) {
+            // C: visible + head square only (worm tail rejected)
+            if ((!targ.minvis || false) && !targ.mundetected
+                && targ.mx === curx && targ.my === cury) return targ;
+        }
+    }
+    return null;
+}
+
+// C ref: dogmove.c find_friends() — hero/ally beyond target on the same ray
+function find_friends(mtmp, mtarg, maxdist) {
+    const tmx = mtarg._youmonst ? game.u.ux : mtarg.mx;
+    const tmy = mtarg._youmonst ? game.u.uy : mtarg.my;
+    const dx = sgn(tmx - mtmp.mx);
+    const dy = sgn(tmy - mtmp.my);
+    let curx = tmx, cury = tmy;
+    let dist = distmin(tmx, tmy, mtmp.mx, mtmp.my);
+    for (; dist <= maxdist; dist++) {
+        curx += dx;
+        cury += dy;
+        if (curx < 1 || curx >= COLNO || cury < 0 || cury >= ROWNO) return 0;
+        if (!m_cansee(mtmp, curx, cury)) return 0;
+        if (mtmp.mux === curx && mtmp.muy === cury) return 1;
+        const pal = m_at(curx, cury);
+        if (pal) {
+            if (pal.mtame) {
+                if (!pal.minvis) return 1;
+            } else if (pal.data?.msound === 'MS_LEADER'
+                || pal.data?.msound === 'MS_GUARDIAN') {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// C ref: dogmove.c score_targ() — attractiveness; always ends with rnd(5) unless early-out
+function score_targ(mtmp, mtarg) {
+    let score = 0;
+    // Non-confused path (pet not conf) — early returns skip rnd(5)
+    if (mtarg.data?.msound === 'MS_LEADER'
+        || mtarg.data?.msound === 'MS_GUARDIAN') {
+        return -5000;
+    }
+    if (distmin(mtmp.mx, mtmp.my,
+        mtarg._youmonst ? game.u.ux : mtarg.mx,
+        mtarg._youmonst ? game.u.uy : mtarg.my) <= 1) {
+        score -= 3000;
+        return score;
+    }
+    if (mtarg._youmonst || mtarg.mtame) {
+        score -= 3000;
+        return score;
+    }
+    // C: master/ally beyond target → refuse without fuzz rnd(5)
+    if (find_friends(mtmp, mtarg, 15)) {
+        score -= 3000;
+        return score;
+    }
+    if (!mtarg.mpeaceful) score += 10;
+    score += (mtarg.m_lev || 0) * 2 + Math.trunc((mtarg.mhp || 0) / 3);
+    score += rnd(5);
+    if (mtmp.mconf && !rn2(3)) score -= 1000;
+    return score;
+}
+
+// C ref: dogmove.c best_target()
+function best_target(mtmp, forced) {
+    if (!mtmp?.mcansee) return null;
+    let bestscore = -40000;
+    let best_targ = null;
+    for (let dy = -1; dy < 2; dy++) {
+        for (let dx = -1; dx < 2; dx++) {
+            if (!dx && !dy) continue;
+            const temp = find_targ(mtmp, dx, dy, 7);
+            if (!temp) continue;
+            const curr = score_targ(mtmp, temp);
+            if (curr > bestscore) {
+                bestscore = curr;
+                best_targ = temp;
+            }
+        }
+    }
+    if (!forced && bestscore < 0) best_targ = null;
+    return best_targ;
+}
+
+// C ref: dogmove.c pet_ranged_attk() — score targets; little dog has no ranged ATK
+function pet_ranged_attk(mtmp, forced) {
+    const mtarg = best_target(mtmp, forced);
+    if (!mtarg) return MMOVE_NOTHING;
+    // Hungry check: hungrytime is far future → not hungry
+    // mattackm stub: no ranged → M_ATTK_MISS → continue move
+    void mtarg;
+    return MMOVE_NOTHING;
+}
+
+function mon_plain_name(m) {
+    const raw = m?.data?.name || monsterNames[m?.mnum] || 'monster';
+    return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+}
+
+// C ref: monnam.c Monnam — observed pet form in thitm/pickup is "The <type>"
+function Monnam(mtmp) {
+    return `The ${mon_plain_name(mtmp)}`;
+}
+
+// C ref: monnam.c noit_Monnam — cursemsg uses "Your <type>" for pets
+function noit_Monnam(mtmp) {
+    if (mtmp?.mtame) return `Your ${mon_plain_name(mtmp)}`;
+    return Monnam(mtmp);
+}
+
+// C: canseemon stub — visible pets in early sessions
+function canseemon(mtmp) {
+    return !!(mtmp && !mtmp.minvis && !mtmp.mundetected);
+}
+
+/**
+ * C ref: dogmove.c dog_move()
+ * Pet movement with food-goal obj_resists + approach selection.
+ */
+export async function dog_move(mtmp, after) {
+    const edog = mtmp.edog;
+    if (!edog && !mtmp.isminion) return MMOVE_NOTHING;
+
+    const omx = mtmp.mx, omy = mtmp.my;
+    let udist = dist2(omx, omy, game.u.ux, game.u.uy);
+    if (!udist) return MMOVE_NOTHING;
+
+    let nix = omx, niy = omy;
+    let whappr = 0;
+
+    if (edog) {
+        // C: dog_invent(mtmp, edog, udist) — squared dist2, not Euclidean
+        const j = await dog_invent(mtmp, edog, udist);
+        if (j === 1) {
+            return MMOVE_MOVED;
+        }
+        whappr = ((game.moves ?? 1) - (edog.whistletime || 0) < 5) ? 1 : 0;
+    }
+
+    const appr = dog_goal(mtmp, edog, after, udist, whappr);
+    if (appr === -2) return MMOVE_NOTHING;
+
+    const allowflags = mon_allowflags(mtmp);
+    const mfp = { cnt: 0, poss: [], info: [] };
+    const cnt = mfndpos(mtmp, mfp, allowflags);
+    if (cnt === 0) return MMOVE_NOMOVES;
+
+    // C: count uncursed reachable squares before candidate loop
+    let uncursedcnt = 0;
+    for (let i = 0; i < cnt; i++) {
+        const nx = mfp.poss[i].x;
+        const ny = mfp.poss[i].y;
+        if (m_at(nx, ny)
+            && !((mfp.info[i] & ALLOW_M) || (mfp.info[i] & ALLOW_MDISP)))
+            continue;
+        if (cursed_object_at(nx, ny))
+            continue;
+        uncursedcnt++;
+    }
+
+    let chcnt = 0;
+    let chi = -1;
+    let nidist = dist2(nix, niy, gg.gx, gg.gy);
+    const cursemsg = new Array(cnt).fill(false);
+
+    for (let i = 0; i < cnt; i++) {
+        const nx = mfp.poss[i].x;
+        const ny = mfp.poss[i].y;
+        cursemsg[i] = false;
+        // C: ALLOW_M + MON_AT → mattackm (before food / selection RNG)
+        if ((mfp.info[i] & ALLOW_M) && m_at(nx, ny)) {
+            const mtmp2 = m_at(nx, ny);
+            const balk = (mtmp.m_lev || 0)
+                + Math.trunc((5 * mtmp.mhp) / (mtmp.mhpmax || 1)) - 2;
+            const Conflict = !!(game.Conflict || game.flags?.Conflict);
+
+            if ((mtmp2.m_lev || 0) >= balk
+                || (mtmp2.mtame && mtmp.mtame && !Conflict)
+                || (max_passive_dmg(mtmp2, mtmp) >= mtmp.mhp)
+                || (((mtmp.mhp * 4 < mtmp.mhpmax)
+                    || mtmp2.data?.msound === 'MS_GUARDIAN'
+                    || mtmp2.data?.msound === 'MS_LEADER')
+                    && mtmp2.mpeaceful && !Conflict)) {
+                continue;
+            }
+
+            const mnum2 = mtmp2.mnum ?? mtmp2.data?.mndx;
+            if ((mnum2 === PM_FLOATING_EYE && rn2(10)
+                    && mtmp.mcansee && mtmp2.mcansee)
+                || (mnum2 === PM_GELATINOUS_CUBE && rn2(10))) {
+                if (dist2(mtmp.mx, mtmp.my, mtmp2.mx, mtmp2.my) <= 2) continue;
+                // best_target ranged skip omitted → treat as continue
+                continue;
+            }
+
+            if (after) return MMOVE_NOTHING;
+
+            let mstatus = await mattackm(mtmp, mtmp2);
+            if (mstatus & M_ATTK_AGR_DIED) return MMOVE_DIED;
+
+            if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+                && rn2(4)
+                && mtmp2.mlstmv !== (game.moves ?? 0)
+                && monnear(mtmp2, mtmp.mx, mtmp.my)) {
+                mstatus = await mattackm(mtmp2, mtmp);
+                if (mstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
+            }
+            return MMOVE_DONE;
+        }
+
+        // C ref: dogmove.c / monmove.c — avoid square hero just kicked
+        if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
+        if (m_avoid_soko_push_loc(mtmp, nx, ny)) continue;
+
+        // C: pets may step on known traps with 1/40; else skip
+        if ((mfp.info[i] & ALLOW_TRAPS)) {
+            const trap = t_at(nx, ny);
+            if (trap) {
+                if (mtmp.mleashed) {
+                    // whimper omitted
+                } else if (trap.tseen && rn2(40)) {
+                    continue;
+                }
+            }
+        }
+
+        // C: dog eschews cursed objects, but likes dog food
+        if (edog) {
+            const can_reach_food = could_reach_item(mtmp, nx, ny);
+            for (let obj = objects_at(nx, ny); obj; obj = obj.nexthere) {
+                if (obj.cursed) {
+                    cursemsg[i] = true;
+                } else if (can_reach_food) {
+                    const otyp = dogfood(mtmp, obj);
+                    if (otyp < MANFOOD && (otyp < ACCFOOD
+                        || (edog.hungrytime || 0) <= (game.moves ?? 1))) {
+                        nix = nx;
+                        niy = ny;
+                        chi = i;
+                        cursemsg[i] = false;
+                        // newdogpos eat path still collapses to move (partial)
+                        mtmp.mx = nix;
+                        mtmp.my = niy;
+                        mon_track_add(mtmp, omx, omy);
+                        newsym(omx, omy);
+                        newsym(nix, niy);
+                        return MMOVE_MOVED;
+                    }
+                }
+            }
+        }
+        // C: usually keep looking if cursed and another uncursed square exists
+        if (cursemsg[i] && !mtmp.mleashed && uncursedcnt > 0
+            && rn2(13 * uncursedcnt))
+            continue;
+
+        if (!mtmp.mleashed && distmin(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) > 5) {
+            const k = edog ? uncursedcnt : cnt;
+            for (let j = 0; j < MTSZ && j < k - 1; j++) {
+                if (mtmp.mtrack?.[j]
+                    && nx === mtmp.mtrack[j].x && ny === mtmp.mtrack[j].y) {
+                    if (rn2(MTSZ * (k - j))) continue;
+                }
+            }
+        }
+
+        const ndist = dist2(nx, ny, gg.gx, gg.gy);
+        const j = (ndist - nidist) * appr;
+        if ((j === 0 && !rn2(++chcnt)) || j < 0
+            || (j > 0 && !whappr
+                && ((omx === nix && omy === niy && !rn2(3)) || !rn2(12)))) {
+            nix = nx;
+            niy = ny;
+            nidist = ndist;
+            if (j < 0) chcnt = 0;
+            chi = i;
+        }
+    }
+
+    // C: after candidate loop, before newdogpos — ranged consider
+    const ranged = pet_ranged_attk(mtmp, false);
+    if (ranged !== MMOVE_NOTHING) return ranged;
+
+    if (nix !== omx || niy !== omy) {
+        // C: wasseen before place; cursemsg pline after place_monster
+        const wasseen = canseemon(mtmp);
+        mtmp.mx = nix;
+        mtmp.my = niy;
+        if (chi >= 0 && cursemsg[chi] && (wasseen || canseemon(mtmp))) {
+            // C: distant_name(vobj_at) / something — top floor object
+            const o = objects_at(nix, niy);
+            const what = o ? doname(o) : 'something';
+            await pline(`${noit_Monnam(mtmp)} steps reluctantly onto ${what}.`);
+        }
+        mon_track_add(mtmp, omx, omy);
+        newsym(omx, omy);
+        newsym(nix, niy);
+        return MMOVE_MOVED;
+    }
+    // C: dog_move ends with return MMOVE_MOVED even if nix/niy unchanged
+    // (postmov still runs mintrap on the current square).
+    void chi;
+    return MMOVE_MOVED;
+}

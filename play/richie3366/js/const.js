@@ -81,15 +81,6 @@ export const DRAWBRIDGE_DOWN = 34;
 export const AIR = 35;
 export const CLOUD = 36;
 export const MAX_TYPE = 37;
-/** C: rm.h — status-line terrain indices (not `levl[][].typ` values). */
-export const X_FLOOR = 39;
-export const X_GROUND = 40;
-export const X_OPENDOOR = 41;
-export const X_SHUTDOOR = 42;
-export const X_SWAMP = 43;
-export const X_SUBMERGED = 44;
-export const X_SEA = 45;
-export const X_WATERWALL = 46;
 
 // Door states — cf. rm.h
 export const D_NODOOR = 0x00;
@@ -288,10 +279,6 @@ export const NHW_PERMINVENT = 6;
 export const PICK_NONE = 0;
 export const PICK_ONE = 1;
 export const PICK_ANY = 2;
-/** C: include/flag.h enum debug_fuzzer_states — iflags.debug_fuzzer */
-export const FUZZER_OFF = 0;
-export const FUZZER_IMPOSSIBLE_PANIC = 1;
-export const FUZZER_IMPOSSIBLE_CONTINUE = 2;
 export const MENU_BEHAVE_STANDARD = 0;
 export const MENU_BEHAVE_PERMINV = 1;
 export const ATR_ULINE = 1;
@@ -1285,7 +1272,6 @@ export const RS_ROLE = 1;
 export const RS_RACE = 2;
 export const RS_GENDER = 3;
 export const RS_ALGNMNT = 4;
-export const RS_filter = 5;
 export const WININIT = 0;
 export const WININIT_UNDO = 1;
 export const WINCHAIN_ALLOC = 0;
@@ -1319,12 +1305,6 @@ export const MON_OFFMAP = 0x01;
 export const MON_DETACH = 0x02;
 export const MON_MIGRATING = 0x04;
 export const MON_LIMBO = 0x08;
-/** C: monst.h MON_STILL_ARRIVING — dog.c mon_arrive in progress */
-export const MON_STILL_ARRIVING = 0x100;
-/** C: dog.c mon_arrive `when` (Before_you / With_you / After_you / Wiz_arrive) */
-export const MON_ARRIVE_BEFORE_YOU = 0;
-export const MON_ARRIVE_AFTER_YOU = 2;
-export const WIZ_ARRIVE = -1;
 export const MON_BUBBLEMOVE = 0x10;
 export const MON_ENDGAME_FREE = 0x20;
 export const MON_ENDGAME_MIGR = 0x40;
@@ -1332,10 +1312,6 @@ export const MON_OBLITERATE = 0x80;
 export const M_AP_TYPMASK = 0x7;
 export const M_AP_F_DKNOWN = 0x8;
 export const MAX_NUM_WORMS = 32;
-/** C: monflag.h `M3_WAITFORU` / `M3_CLOSE` / `M3_WAITMASK` (makemon.c `mstrategy`). */
-export const M3_WAITFORU = 0x0040;
-export const M3_CLOSE = 0x0080;
-export const M3_WAITMASK = 0x00c0;
 export const STRAT_APPEARMSG = 0x80000000;
 export const STRAT_ARRIVE = 0x40000000;
 export const STRAT_WAITFORU = 0x20000000;
@@ -1358,11 +1334,6 @@ export const UTOTYPE_FALLING = 0x02;
 export const UTOTYPE_PORTAL = 0x04;
 export const UTOTYPE_RMPORTAL = 0x10;
 export const UTOTYPE_DEFERRED = 0x20;
-export const MH_HUMAN = 0x00000008;
-export const MH_ELF = 0x00000010;
-export const MH_DWARF = 0x00000020;
-export const MH_GNOME = 0x00000040;
-export const MH_ORC = 0x00000080;
 export const ROLE_RACEMASK = 0x0ff8;
 export const ROLE_GENDMASK = 0xf000;
 export const ROLE_MALE = 0x1000;
@@ -2309,12 +2280,6 @@ export const TRAPPED_DOOR = 24;
 export const TRAPPED_CHEST = 25;
 export const TRAPNUM = 26;
 
-/** C: trap.h — `mintrap` / `trapeffect_*` return codes */
-export const TRAP_EFFECT_FINISHED = 0;
-export const TRAP_CAUGHT_MON = 1;
-export const TRAP_KILLED_MON = 2;
-export const TRAP_MOVED_MON = 3;
-
 // Trap helpers (trap.h)
 export function is_pit(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
 export function is_hole(ttyp) { return ttyp === HOLE || ttyp === TRAPDOOR; }
@@ -2655,21 +2620,6 @@ export function set_symhandling(handling, which_set) {
   }
 }
 
-/** C: options.c optfn_symset + symbols.c read_sym_file `Handling:` (minimal without dat/symbols parse). */
-const SYMSSET_HANDLING_BY_NAME = {
-  DECgraphics: 'DEC',
-  IBMgraphics: 'IBM',
-  curses: 'DEC',
-};
-
-/** C: optfn_symset(do_set) → read_sym_file(PRIMARYSET) → set_symhandling from symset block. */
-export function applyPrimarySymsetFromRcLikeC(name) {
-  if (!name) return;
-  gs.symset[PRIMARYSET].name = name;
-  const handling = SYMSSET_HANDLING_BY_NAME[name];
-  if (handling) set_symhandling(handling, PRIMARYSET);
-}
-
 // free_symsets, savedsym_free, savedsym_add, savedsym_strbuf, parsesymbols
 // — moved to drawing.js (depend on symbols.js / hacklib.js)
 // AUTO-IMPORT-BEGIN: CONST_WEAPON_SKILLS
@@ -2934,14 +2884,13 @@ export function Upolyd(player) {
 
 // Canonical macros — previously duplicated as local stubs in 15+ files
 export function u_at(x, y) { return game?.u?.ux === x && game?.u?.uy === y; }
-// C ref: rm.h OBJ_AT — head of floor object stack at (x,y)
-export function OBJ_AT(x, y) {
-    const heads = game?.level?.floorObjHeads;
-    if (!heads) return false;
-    const h = heads.get(`${x},${y}`);
-    return h != null;
-}
+export function OBJ_AT(x, y) { return game?.level?.objects?.some(o => o.ox === x && o.oy === y) ?? false; }
 export function Has_contents(obj) { return obj?.cobj != null; }
+// C ref: obj.h Is_container — otyp in [LARGE_BOX .. BAG_OF_TRICKS]
+export function Is_container(obj) {
+    const t = obj?.otyp;
+    return t >= 214 && t <= 220; // LARGE_BOX .. BAG_OF_TRICKS
+}
 export function M_AP_TYPE(mon) { return mon?.m_ap_type ?? 0; }
 export function engulfing_u(mon) { const g = (typeof game !== 'undefined' ? game : null); return g?.u?.uswallow && g?.u?.ustuck === mon; }
 // C ref: permonst.h — ismnum(x) means x is a valid monster index.
@@ -2953,12 +2902,6 @@ export function ismnum(pm) {
 // ── Level classification predicates (C: dungeon.h macros) ──
 export function In_quest(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.quest_dnum; }
 export function In_endgame(uz) { const lev = uz ?? game?.u?.uz; const al = game?.astral_level; return !!lev && !!al && lev.dnum === al.dnum; }
-/** C: dungeon.h `Inhell` → `In_hell(&u.uz)`; dungeon.c `In_hell` — `dungeons[dnum].flags.hellish`. */
-export function In_hell(uz) {
-    const lev = uz ?? game?.u?.uz;
-    if (!lev) return false;
-    return !!(game?.dungeons?.[lev.dnum]?.flags?.hellish);
-}
 export function Is_astralevel(uz) { return In_endgame(uz) && (uz ?? game?.u?.uz)?.dlevel === 1; }
 export function Is_waterlevel(uz) { const lev = uz ?? game?.u?.uz; const wl = game?.water_level; return !!lev && !!wl && lev.dnum === wl.dnum && lev.dlevel === wl.dlevel; }
 export function Is_firelevel(uz) { const lev = uz ?? game?.u?.uz; const fl = game?.fire_level; return !!lev && !!fl && lev.dnum === fl.dnum && lev.dlevel === fl.dlevel; }
@@ -2967,49 +2910,7 @@ export function Is_airlevel(uz) { const lev = uz ?? game?.u?.uz; const al = game
 export function In_mines(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.mines_dnum; }
 export function In_sokoban(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.sokoban_dnum; }
 export function In_V_tower(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.tower_dnum; }
-
-/**
- * C: dungeon.c `On_W_tower_level` — `Is_wiz1_level || Is_wiz2_level || Is_wiz3_level` (Lcheck vs `wiz*_level`).
- * JS: when **`game.wiz1_level`** / **`wiz2_level`** / **`wiz3_level`** are set (init_dungeons parity).
- * @param {{ dnum?: number, dlevel?: number }|null|undefined} [uz]
- */
-export function onWTowerLevelLikeC(uz) {
-    const g = game;
-    const lev = uz ?? g?.u?.uz;
-    if (!lev) return false;
-    /** @param {unknown} ref */
-    const same = (ref) =>
-        !!ref &&
-        typeof ref === 'object' &&
-        (lev.dnum | 0) === (/** @type {{ dnum?: number }} */ (ref).dnum | 0) &&
-        (lev.dlevel | 0) === (/** @type {{ dlevel?: number }} */ (ref).dlevel | 0);
-    return same(g?.wiz1_level) || same(g?.wiz2_level) || same(g?.wiz3_level);
-}
-
-/**
- * C: dungeon.c `In_W_tower(x,y,lev)` — `On_W_tower_level(lev)` && `within_bounded_area` vs **`svd.dndest`**.
- * JS: **`game.dndest`** `{ nlx, nly, nhx, nhy }` when tower bounds are wired.
- * @param {number} x
- * @param {number} y
- * @param {Record<string, unknown>} [g]
- */
-export function inWTowerLikeC(x, y, g = game) {
-    const lev = g?.u?.uz;
-    if (!onWTowerLevelLikeC(lev)) return false;
-    const d = /** @type {{ nlx?: number, nly?: number, nhx?: number, nhy?: number }|undefined} */ (g?.dndest);
-    const nlx = d?.nlx | 0;
-    if (!nlx) return false;
-    const nly = d?.nly | 0;
-    const nhx = d?.nhx | 0;
-    const nhy = d?.nhy | 0;
-    const xi = x | 0;
-    const yi = y | 0;
-    return xi >= nlx && xi <= nhx && yi >= nly && yi <= nhy;
-}
-
 export function Is_stronghold(uz) { const g = game; return g?.stronghold_level && (uz ?? g?.u?.uz)?.dnum === g.stronghold_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.stronghold_level.dlevel; }
-/** C: dungeon.h **`Is_sanctum(x)`** — **`Lcheck(x, &sanctum_level)`**; JS when **`game.sanctum_level`** is set. */
-export function Is_sanctum(uz) { const g = game; return g?.sanctum_level && (uz ?? g?.u?.uz)?.dnum === g.sanctum_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.sanctum_level.dlevel; }
 // C ref: dungeon.c:1637 — Is_botlevel checks if level is the deepest
 // in its dungeon branch. Each branch has its own num_dunlevs.
 export function Is_botlevel(uz) {
@@ -3022,121 +2923,3 @@ export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (u
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
 export function Is_juiblex_level(uz) { return false; /* TODO */ }
-
-// eat.c gethungry switch — NH5 objects_nums (objclass.h + objects.h; first weapon DART = 25).
-export const OTYP_RIN_SLOW_DIGESTION = 192;
-/** C: objects.h RING() — NH5 `objects_nums` / cpp OBJECTS_ENUM (symbol index + 16 from `objects.h` order). */
-export const OTYP_RIN_SHOCK_RESISTANCE = 190;
-/** C: objects.h — fake/real Yendor after `RING` block; NH5 **201..213** (`objnam_ring_amulet_like_c.js`). */
-export const OTYP_FAKE_AMULET_OF_YENDOR = 212;
-export const OTYP_AMULET_OF_YENDOR = 213;
-/** C: objects.h — `AMULET_OF_GUARDING` (before `AMULET_OF_FLYING` 196 / fake 197). */
-export const OTYP_AMULET_OF_GUARDING = 195;
-/** C: objects.h FOOD() — `GLOB_OF_GREEN_SLIME` (NH5 `objects_nums`, cpp OBJECTS_ENUM). */
-export const OTYP_GLOB_OF_GREEN_SLIME = 276;
-export const OTYP_RIN_PROTECTION = 178;
-export const OTYP_MEAT_RING = 255;
-/** C: objects.h `OBJ("boulder", …)` — `objects[]` **474** (`ROCK_CLASS`). */
-export const OTYP_BOULDER = 474;
-/** C: objects.h `COIN("gold piece", …, GOLD_PIECE)` */
-export const OTYP_GOLD_PIECE = 466;
-/** C: objects.h gray stones — `LUCKSTONE` **470**, `LOADSTONE` **471** (`objects[]` order after worthless glass). */
-export const OTYP_LUCKSTONE = 470;
-export const OTYP_LOADSTONE = 471;
-/** C: objects.h `STATUE` **475**; `HEAVY_IRON_BALL` **476**; `IRON_CHAIN` **477**. */
-export const OTYP_STATUE = 475;
-export const OTYP_HEAVY_IRON_BALL = 476;
-export const OTYP_IRON_CHAIN = 477;
-/** C: `monsters.h` `MON()` order (NH 5.0 upstream) — zero-based `mons[]` index; purple worm line (**`LITTLE_TO_BIG`** **[115,117]**). */
-export const PM_BABY_PURPLE_WORM = 115;
-export const PM_PURPLE_WORM = 117;
-export const PM_GRID_BUG = 118;
-/** C: `monsters.h` — gremlin. */
-/** C: `monsters.h` — `GIANT_SPIDER` (webmaker; mklev fill + `maketrap` WEB). */
-export const PM_GIANT_SPIDER = 101;
-export const PM_GREMLIN = 42;
-/** C: `monsters.h` MON() order — displacer beast (`set_apparxy` displacement exception). */
-export const PM_DISPLACER_BEAST = 41;
-/** C: `monsters.h` MON() order — xorn (`set_apparxy` smell-gold when blind to hero). */
-export const PM_XORN = 238;
-/** C: `monsters.h` MON() order — Medusa (`mon.c` `m_respond` gaze). */
-export const PM_MEDUSA = 290;
-/** C: `monsters.h` MON() order — Erinys (`m_respond` → `aggravate`). */
-export const PM_ERINYS = 299;
-/** C: `monsters.h` — incubus/succubus (`MON(NAMS(..., AMOROUS_DEMON)`); `#if 0` blocks skipped vs `MON()` count). */
-export const PM_AMOROUS_DEMON = 292;
-/** C: `monsters.h` MON() order — lichen/lizard corpses skip **`start_corpse_timeout`**. */
-export const PM_LICHEN = 162;
-/** C: `monsters.h` MON() order — giant eel (NH5 `mons[]` / `MONS_*` index **328**). */
-export const PM_GIANT_EEL = 328;
-/** C: `monsters.h` MON() order — adult gray–yellow dragon (`mondata.c` `defended`, `Dragon_scales_to_pm`). */
-export const PM_GRAY_DRAGON = 143;
-export const PM_YELLOW_DRAGON = 153;
-/** C: `objects.h` — dragon scale mail / scales blocks + NH5 armor **`objects_nums`** **90..173** (helms … **`LEVITATION_BOOTS`**). */
-export const OTYP_ARMOR_FIRST = 90;
-export const OTYP_ARMOR_LAST = 173;
-export const OTYP_GRAY_DRAGON_SCALE_MAIL = 102;
-export const OTYP_YELLOW_DRAGON_SCALE_MAIL = 111;
-export const OTYP_GRAY_DRAGON_SCALES = 112;
-export const OTYP_YELLOW_DRAGON_SCALES = 121;
-export const OTYP_BLACK_DRAGON_SCALES = 118;
-/** C: `artifact.c` **`defends`**: mail is tested as equivalent scales offset. */
-export const OTYP_DRAGON_MAIL_TO_SCALES_DELTA = OTYP_GRAY_DRAGON_SCALES - OTYP_GRAY_DRAGON_SCALE_MAIL;
-/**
- * C: `objects.h` `OBJECTS_ENUM` armor tail — NH5 `objects_nums` matches cpp index **+1** when cpp **`otyp` ≥ 120**
- * (cpp `YELLOW_DRAGON_SCALES` **120** → `OTYP_YELLOW_DRAGON_SCALES` **121**; first suit `PLATE_MAIL` cpp **121** → **122**).
- * Use these instead of raw literals in JS that keys off post-dragon armor.
- */
-export const OTYP_PLATE_MAIL = 122;
-export const OTYP_LEATHER_ARMOR = 135;
-export const OTYP_HAWAIIAN_SHIRT = 137;
-export const OTYP_DWARVISH_CLOAK = 142;
-export const OTYP_GAUNTLETS_OF_POWER = 162;
-/** C: defsym.h `MONSYM` — golem (**`mondata.h`** **`is_golem`**). */
-export const S_GOLEM = 55;
-/** C: defsym.h `MONSYM` — nymph (**`attrib.c`** **`acurr`** CHA floor when poly). */
-export const S_NYMPH = 14;
-/** C: defsym.h `MONSYM` — dragon (**`makemon.c`** **`monhp_per_lvl`** adult branch). */
-export const S_DRAGON = 30;
-/** C: `monsters.h` MON() order — **`mondata.h`** **`eyecount`**. */
-export const PM_FLOATING_EYE = 29;
-/** C: `monsters.h` MON() order — cyclops. */
-export const PM_CYCLOPS = 370;
-export const PM_LIZARD = 333;
-/** C: `monsters.h` — iron golem. */
-export const PM_IRON_GOLEM = 257;
-/** C: `monsters.h` — elementals block (after stalker). */
-export const PM_AIR_ELEMENTAL = 155;
-/** C: `monsters.h` — fire elemental. */
-export const PM_FIRE_ELEMENTAL = 156;
-/** C: `monsters.h` — earth elemental. */
-export const PM_EARTH_ELEMENTAL = 157;
-/** C: `monsters.h` — water elemental. */
-export const PM_WATER_ELEMENTAL = 158;
-/** C: `monsters.h` — salamander. */
-export const PM_SALAMANDER = 323;
-/** C: `monsters.h` — straw / paper / leather / wood golem (**`dofiretrap`** **`switch`**). */
-export const PM_STRAW_GOLEM = 247;
-export const PM_PAPER_GOLEM = 248;
-/** C: `monsters.h` — rope / gold / flesh / clay / stone / glass golem (**`makemon.c`** **`golemhp`**). */
-export const PM_ROPE_GOLEM = 249;
-export const PM_GOLD_GOLEM = 250;
-export const PM_LEATHER_GOLEM = 251;
-export const PM_WOOD_GOLEM = 252;
-export const PM_FLESH_GOLEM = 253;
-export const PM_CLAY_GOLEM = 254;
-export const PM_STONE_GOLEM = 255;
-export const PM_GLASS_GOLEM = 256;
-/** C: `monsters.h` — human mummy / zombie (**`dig.c`** **`dig_up_grave`** **`mkclass`** stand-in). */
-export const PM_HUMAN_MUMMY = 192;
-export const PM_HUMAN_ZOMBIE = 244;
-/** C: `monsters.h` — role corpses (**`mk_tt_object`** fallback **`rn1`** range). */
-export const PM_ARCHEOLOGIST = 330;
-export const PM_WIZARD = 342;
-/** C: `monsters.h` — Riders (`is_rider`); `mons[]` order (NH 5.0 upstream). */
-export const PM_DEATH = 305;
-export const PM_PESTILENCE = 306;
-export const PM_FAMINE = 307;
-/** C: objects.h RING() — BITS chrg uses `spec`; first six rings have spec 1 (NH5 objects_nums). */
-/** C: objects.h — first six `RING()` entries use `spec` 1 (charged rings); NH5 `otyp`. */
-export const OC_CHARGED_RING_OTYPES = new Set([173, 174, 175, 176, 177, 178]);

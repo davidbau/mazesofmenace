@@ -1,279 +1,194 @@
-// attrib.js — Hero attributes and luck.
-// C ref: attrib.c acurr, adjattrib, change_luck(), exercise(); you.h ATTRMIN/ATTRMAX.
+// attrib.js — Hero attributes.
+// C ref: attrib.c — rnd_attr, init_attr, vary_init_attr, adjattrib (partial).
 
 import { game } from './gstate.js';
-import {
-    LUCKMIN,
-    LUCKMAX,
-    STR18,
-    A_STR,
-    A_INT,
-    A_WIS,
-    A_DEX,
-    A_CON,
-    A_CHA,
-    A_MAX,
-} from './const.js';
-import { rn1, rn2 } from './rng.js';
-import { nearCapacity, ENC } from './encumbr.js';
-import { acurrLikeC } from './attr_acurr_like_c.js';
+import { rn2, rnd } from './rng.js';
 
-const DEF_ATTRMIN = Object.freeze([3, 3, 3, 3, 3, 3]);
-const DEF_ATTRMAX = Object.freeze([STR18(100), 18, 18, 18, 18, 18]);
+export const A_STR = 0;
+export const A_INT = 1;
+export const A_WIS = 2;
+export const A_DEX = 3;
+export const A_CON = 4;
+export const A_CHA = 5;
+export const A_MAX = 6;
 
-/** @param {number} ndx A_STR…A_CHA — C ATTRMIN(ndx) */
-export function getRaceAttrMin(ndx) {
-    return game.urace?.attrmin?.[ndx] ?? DEF_ATTRMIN[ndx] ?? 3;
+function abase(i) {
+    return game.u.acurr.a[i];
+}
+function setAbase(i, v) {
+    game.u.acurr.a[i] = v;
+}
+function amax(i) {
+    return game.u.amax.a[i];
+}
+function setAmax(i, v) {
+    game.u.amax.a[i] = v;
 }
 
-/** @param {number} ndx A_STR…A_CHA — C ATTRMAX(ndx) */
-export function getRaceAttrMax(ndx) {
-    return game.urace?.attrmax?.[ndx] ?? DEF_ATTRMAX[ndx] ?? 18;
-}
-
-/** @param {number} ndx A_STR…A_CHA */
-function attrMin(ndx) {
-    return getRaceAttrMin(ndx);
-}
-
-/** @param {number} ndx A_STR…A_CHA */
-function attrMax(ndx) {
-    return getRaceAttrMax(ndx);
-}
-
-/**
- * C: attrib.c acurr(x) — effective attribute (**`u.abon`/`u.atemp`/`u.acurr`** sum + C specials).
- * @param {number} x attrib_types A_STR…A_CHA
- */
-export function acurr(x) {
-    return acurrLikeC(x, game);
-}
-
-/**
- * C: botl.c get_strength_str — string for **St:** on **`do_statusline1`** from **ACURR(A_STR)**.
- * Encoded strength: plain **3–18**, **18/01–18/99**, **18/\*\*** at **STR18(100)**, **19–25** when **> STR18(100)** (**`%2d`**).
- */
-export function getStrengthStrLikeC() {
-    const st = acurr(A_STR);
-    if (st > 18) {
-        if (st > STR18(100))
-            return String(st - 100).padStart(2, ' ');
-        if (st < STR18(100))
-            return `18/${String(st - 18).padStart(2, '0')}`;
-        return '18/**';
+// C ref: attrib.c acurr() — clamp non-STR to [3,25]; STR min 3 (encoding stub)
+export function acurr(i) {
+    const u = game.u;
+    const tmp = (u.abon?.a?.[i] || 0) + (u.atemp?.a?.[i] || 0) + (u.acurr?.a?.[i] || 0);
+    if (i === A_STR) {
+        // Full 18/xx encoding omitted; early sessions only need floor of 3
+        return Math.max(tmp, 3);
     }
-    return `${st}`;
+    if (tmp >= 25) return 25;
+    if (tmp <= 3) return 3;
+    return tmp;
 }
 
-/** C: change_luck(schar n) — adjust u.uluck with bounds; no RNG. */
-export function changeLuck(n) {
+// C ref: attrib.c exercise()
+export function exercise(i, inc_or_dec) {
+    if (i === A_INT || i === A_CHA) return;
     const u = game.u;
-    u.uluck = (u.uluck ?? 0) + n;
-    if (u.uluck < 0 && u.uluck < LUCKMIN) u.uluck = LUCKMIN;
-    if (u.uluck > 0 && u.uluck > LUCKMAX) u.uluck = LUCKMAX;
+    if (!u.aexe) u.aexe = { a: [0, 0, 0, 0, 0, 0] };
+    const ax = u.aexe.a[i] || 0;
+    const AVAL = 50; // attrib.h
+    if (Math.abs(ax) < AVAL) {
+        // C: AEXE(i) += (inc_or_dec) ? (rn2(19) > ACURR(i)) : -rn2(2);
+        if (inc_or_dec) {
+            u.aexe.a[i] = ax + (rn2(19) > acurr(i) ? 1 : 0);
+        } else {
+            u.aexe.a[i] = ax - rn2(2);
+        }
+    }
 }
 
-/**
- * C: attrib.c adjattrib(int ndx, int incr, int msgflg)
- * JS maps ABASE/AMAX onto u.acurr.a / u.amax.a (no separate ABASE until invent/poly port).
- * @param {number} attr — A_STR … A_CHA
- * @param {number} change — delta (positive or negative)
- * @param {boolean|number} tell — C msgflg: positive => no message (hero init uses truthy skip)
- * @returns {boolean} true if ACURR changed
- */
-export function adjattrib(attr, change, tell) {
-    void tell;
+function attrMax(i) {
+    return game.urace?.attrmax?.[i] ?? 18;
+}
+function attrMin(i) {
+    return game.urace?.attrmin?.[i] ?? 3;
+}
+
+// C ref: attrib.c rnd_attr()
+function rnd_attr() {
+    let x = rn2(100);
+    let i;
+    for (i = 0; i < A_MAX; ++i) {
+        if ((x -= game.urole.attrdist[i]) < 0) break;
+    }
+    return i;
+}
+
+// C ref: attrib.c init_attr_role_redist()
+function init_attr_role_redist(np, addition) {
+    let tryct = 0;
+    const adj = addition ? 1 : -1;
+    while ((addition ? np > 0 : np < 0) && tryct < 100) {
+        const i = rnd_attr();
+        if (
+            i >= A_MAX
+            || (addition ? abase(i) >= attrMax(i) : abase(i) <= attrMin(i))
+        ) {
+            tryct++;
+            continue;
+        }
+        tryct = 0;
+        setAbase(i, abase(i) + adj);
+        setAmax(i, amax(i) + adj);
+        np -= adj;
+    }
+    return np;
+}
+
+// C ref: attrib.c init_attr()
+export function init_attr(np) {
     const u = game.u;
-    if (!change || !u?.acurr?.a || !u?.amax?.a) return false;
-    if (u.Fixed_abil) return false;
+    if (!u.acurr) u.acurr = { a: [0, 0, 0, 0, 0, 0] };
+    if (!u.amax) u.amax = { a: [0, 0, 0, 0, 0, 0] };
+    if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
+    if (!u.atime) u.atime = { a: [0, 0, 0, 0, 0, 0] };
+    if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
 
-    const old_acurr = acurr(attr);
-    const old_abase = u.acurr.a[attr] ?? 10;
-    const AMN = attrMin(attr);
-    const AMX = attrMax(attr);
+    for (let i = 0; i < A_MAX; i++) {
+        u.acurr.a[i] = u.amax.a[i] = game.urole.attrbase[i];
+        u.atemp.a[i] = u.atime.a[i] = 0;
+        np -= game.urole.attrbase[i];
+    }
+    np = init_attr_role_redist(np, true);
+    np = init_attr_role_redist(np, false);
+    return np;
+}
 
-    u.acurr.a[attr] = old_abase + change;
-
-    if (change > 0) {
-        if (u.acurr.a[attr] > u.amax.a[attr]) {
-            u.amax.a[attr] = u.acurr.a[attr];
-            if (u.amax.a[attr] > AMX) u.acurr.a[attr] = u.amax.a[attr] = AMX;
+// C ref: attrib.c adjattrib() — increment path used by vary_init_attr / carry boost
+export function adjattrib(ndx, incr, _msgflg) {
+    if (!incr) return false;
+    const old = abase(ndx);
+    setAbase(ndx, old + incr);
+    if (incr > 0) {
+        if (abase(ndx) > amax(ndx)) {
+            setAmax(ndx, abase(ndx));
+            if (amax(ndx) > attrMax(ndx)) {
+                setAbase(ndx, attrMax(ndx));
+                setAmax(ndx, attrMax(ndx));
+            }
         }
     } else {
-        if (u.acurr.a[attr] < AMN) {
-            const decr = rn2(AMN - u.acurr.a[attr] + 1);
-            u.acurr.a[attr] = AMN;
-            u.amax.a[attr] -= decr;
-            if (u.amax.a[attr] < AMN) u.amax.a[attr] = AMN;
+        if (abase(ndx) < attrMin(ndx)) {
+            // decrease-below-min path uses rn2; not hit by vary_init_attr on seed8000
+            const decr = rn2(attrMin(ndx) - abase(ndx) + 1);
+            setAbase(ndx, attrMin(ndx));
+            setAmax(ndx, amax(ndx) - decr);
+            if (amax(ndx) < attrMin(ndx)) setAmax(ndx, attrMin(ndx));
         }
     }
-
-    if (acurr(attr) === old_acurr) return false;
-
-    if (u.atemp?.a) u.atemp.a[attr] = 0;
-    if (u.atime?.a) u.atime.a[attr] = 0;
-    if (u.aexe?.a) u.aexe.a[attr] = 0;
-
-    game.disp = game.disp || {};
-    game.disp.botl = true;
-    return true;
+    return abase(ndx) !== old;
 }
 
-/** C: attrib.c #define AVAL 50 — tune value for exercise gains */
-const AVAL = 50;
-
-function ensureAexe(u) {
-    if (!u) return;
-    if (!u.aexe?.a || u.aexe.a.length < A_MAX) {
-        const prev = u.aexe?.a || [];
-        u.aexe = { a: Array.from({ length: A_MAX }, (_, j) => prev[j] ?? 0) };
-    }
-}
-
-/**
- * C: attrib.c exercise(int i, boolean inc_or_dec)
- * Encumbrance message (C encumber_msg on Str/Con) not called — pickup.encumberMsg is async.
- * @param {number} i — A_STR … A_CHA
- * @param {boolean} incOrDec
- */
-export function exercise(i, incOrDec) {
-    const u = game.u;
-    if (!u) return;
-    if (i === A_INT || i === A_CHA) return;
-    if ((u.Upolyd | 0) && i !== A_WIS) return;
-    ensureAexe(u);
-    let ax = u.aexe.a[i] | 0;
-    if (Math.abs(ax) >= AVAL) return;
-    ax += incOrDec ? (rn2(19) > acurr(i) ? 1 : 0) : -rn2(2);
-    u.aexe.a[i] = ax;
-    /* C: if (svm.moves > 0 && (i == A_STR || i == A_CON)) encumber_msg(); */
-}
-
-/** C: sgn() — sign of int */
-function sgn(x) {
-    return x > 0 ? 1 : x < 0 ? -1 : 0;
-}
-
-/* C: attrib.c exertext[][] — order A_STR…A_CHA; Int/Cha unused */
-const EXERTEXT = Object.freeze([
-    ['exercising diligently', 'exercising properly'],
-    [null, null],
-    ['very observant', 'paying attention'],
-    ['working on your reflexes', 'working on reflexes lately'],
-    ['leading a healthy life-style', 'watching your health'],
-    [null, null],
-]);
-
-/**
- * C: attrib.c exerper(void) — hunger / encumbrance / status hooks into exercise().
- * Uses u.uhunger when set (C eat.c init_uhunger: 900); skips hunger branch otherwise.
- */
-export function exerper() {
-    const g = game;
-    const u = g.u;
-    if (!u) return;
-    const moves = g.moves | 0;
-
-    if (!(moves % 10)) {
-        const uh = u.uhunger;
-        if (typeof uh === 'number') {
-            const band =
-                uh > 1000 ? 'sat'
-                    : uh > 150 ? 'not'
-                        : uh > 50 ? 'hungry'
-                            : uh > 0 ? 'weak'
-                                : 'faint';
-            const monk = g.urole?.abbr === 'Mon';
-            if (band === 'sat') {
-                exercise(A_DEX, false);
-                if (monk) exercise(A_WIS, false);
-            } else if (band === 'not') {
-                exercise(A_CON, true);
-            } else if (band === 'weak') {
-                exercise(A_STR, false);
-                if (monk) exercise(A_WIS, true);
-            } else if (band === 'faint') {
-                exercise(A_CON, false);
-            }
-        }
-
-        const cap = nearCapacity();
-        if (cap === ENC.MOD_ENCUMBER) exercise(A_STR, true);
-        else if (cap === ENC.HVY_ENCUMBER) {
-            exercise(A_STR, true);
-            exercise(A_DEX, false);
-        } else if (cap === ENC.EXT_ENCUMBER) {
-            exercise(A_DEX, false);
-            exercise(A_CON, false);
-        }
-    }
-
-    if (!(moves % 5)) {
-        if ((u.HClairvoyant | 0) && !(u.BClairvoyant | 0)) exercise(A_WIS, true);
-        if (u.HRegeneration) exercise(A_STR, true);
-        if (u.usick || u.Vomiting) exercise(A_CON, false);
-        if (u.Confusion || u.Hallucination) exercise(A_WIS, false);
-        if (((u.wounded_legs | 0) && !u.usteed) || u.Fumbling || u.HStun) exercise(A_DEX, false);
-    }
-}
-
-/**
- * C: attrib.c exerchk(void) — after exerper, maybe apply AEXE and schedule next check.
- * @returns {string[]} pline texts ("You …") for caller to await pline()
- */
-export function collectExerchkPlines() {
-    const plines = [];
-    const g = game;
-    const u = g.u;
-    if (!u) return plines;
-
-    exerper();
-
-    g.context = g.context || {};
-    if (g.context.next_attrib_check == null) g.context.next_attrib_check = 600;
-    const nextChk = g.context.next_attrib_check;
-    const moves = g.moves | 0;
-    if (moves < nextChk || (g.multi | 0)) return plines;
-
-    ensureAexe(u);
+// C ref: attrib.c vary_init_attr()
+export function vary_init_attr() {
     for (let i = 0; i < A_MAX; i++) {
-        const ax0 = u.aexe.a[i] | 0;
-        if (!ax0) continue;
-
-        const modVal = sgn(ax0);
-        let lolim = attrMin(i);
-        let hilim = attrMax(i);
-        if (hilim > 18) hilim = 18;
-        const abase = u.acurr?.a?.[i] ?? 10;
-        if ((ax0 < 0 ? abase <= lolim : abase >= hilim)) {
-            u.aexe.a[i] = (Math.abs(ax0) / 2) * modVal;
-            continue;
+        if (!rn2(20)) {
+            const xd = rn2(7) - 2; // biased variation
+            adjattrib(i, xd, true);
+            if (abase(i) < amax(i)) setAmax(i, abase(i));
         }
-        if ((u.Upolyd | 0) && i !== A_WIS) {
-            u.aexe.a[i] = (Math.abs(ax0) / 2) * modVal;
-            continue;
-        }
-
-        const thresh = i !== A_WIS ? Math.trunc((Math.abs(ax0) * 2) / 3) : Math.abs(ax0);
-        if (rn2(AVAL) > thresh) {
-            u.aexe.a[i] = (Math.abs(ax0) / 2) * modVal;
-            continue;
-        }
-
-        let axPost = ax0;
-        if (adjattrib(i, modVal, -1)) {
-            axPost = 0;
-            const pair = EXERTEXT[i];
-            const j = modVal > 0 ? 0 : 1;
-            const phrase = pair?.[j];
-            if (phrase) {
-                const lead = modVal > 0 ? 'must have been' : "haven't been";
-                plines.push(`You ${lead} ${phrase}.`);
-            }
-        }
-        u.aexe.a[i] = (Math.abs(axPost) / 2) * modVal;
     }
+}
 
-    g.context.next_attrib_check += rn1(200, 800);
-    return plines;
+// C ref: attrib.c newhp() — u.ulevel==0 init path only (level-up deferred)
+export function newhp() {
+    const u = game.u;
+    const roleAdv = game.urole?.hpadv || { infix: 8, inrnd: 0 };
+    const raceAdv = game.urace?.hpadv || { infix: 2, inrnd: 0 };
+    let hp;
+    if ((u.ulevel | 0) === 0) {
+        hp = (roleAdv.infix | 0) + (raceAdv.infix | 0);
+        if ((roleAdv.inrnd | 0) > 0) hp += rnd(roleAdv.inrnd);
+        if ((raceAdv.inrnd | 0) > 0) hp += rnd(raceAdv.inrnd);
+        // Alignment init when moves==0 is done in u_init_misc (C newhp + u_init_misc).
+    } else {
+        // Level-up path not ported yet.
+        hp = (roleAdv.lofix | 0) + (raceAdv.lofix | 0);
+    }
+    if (hp <= 0) hp = 1;
+    return hp;
+}
+
+// C ref: exper.c newpw() — u.ulevel==0 init path only
+export function newpw() {
+    const u = game.u;
+    const roleAdv = game.urole?.enadv || { infix: 1, inrnd: 0 };
+    const raceAdv = game.urace?.enadv || { infix: 1, inrnd: 0 };
+    let en;
+    if ((u.ulevel | 0) === 0) {
+        en = (roleAdv.infix | 0) + (raceAdv.infix | 0);
+        if ((roleAdv.inrnd | 0) > 0) en += rnd(roleAdv.inrnd);
+        if ((raceAdv.inrnd | 0) > 0) en += rnd(raceAdv.inrnd);
+    } else {
+        en = 1;
+    }
+    if (en <= 0) en = 1;
+    return en;
+}
+
+// C ref: attrib.c change_luck() — clamp u.uluck; no RNG
+export function change_luck(n) {
+    const u = game.u || (game.u = {});
+    let luck = (u.uluck || 0) + (n | 0);
+    if (luck > 10) luck = 10;
+    if (luck < -10) luck = -10;
+    u.uluck = luck;
 }

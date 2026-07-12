@@ -13,7 +13,6 @@ export function makeLocation() {
         waslit: false,     // was this cell lit last time we checked?
         flags: 0,          // door flags, wall flags, etc.
         doormask: 0,       // door state (D_NODOOR, D_CLOSED, etc.)
-        drawbridgemask: 0, // dbridge.c DB_* (direction + under); drawbridge span only
         seenv: 0,          // which angles the hero has seen this wall from
         horizontal: false, // is this a horizontal wall?
         edge: false,       // is this at the edge of the map?
@@ -43,27 +42,13 @@ export class GameMap {
         this.doors = [];
         this.doorindex = 0;
         this.objects = [];
-        /** C: mkobj.c global **`fobj`** — newest-first floor object chain (**`nobj`**). */
-        this.fobj = null;
-        /** C: svl.level.objects[x][y] — head of floor stack at each cell; key "x,y". */
-        this.floorObjHeads = new Map();
-        /** C: svl.level.buriedobjlist — per-cell heads (**`dig.c`** **`bury_objs`/`unearth_objs`** subset). */
-        this.buriedObjHeads = new Map();
         this.monsters = [];
         this.traps = [];
-        /** C: decl.h head_engr — flat list until save/restore chains port */
-        this.engravings = [];
-        /** C: timeout.c level timer chains — **`MELT_ICE_AWAY`** etc. */
-        this.timers = [];
-        /** C: shk.c **`svl.level.damagelist`** — shop / terrain repair bill (subset). */
-        this.damagelist = [];
         this.flags = {
             nfountains: 0,
             nsinks: 0,
             hero_memory: true,
             is_maze_lev: false,
-            /** C: mklev.c level.flags.temperature — **`zap.c`** **`zap_over_floor`** cold lavawall **`rn2(chance)`**. */
-            temperature: 0,
         };
     }
 

@@ -1,21 +1,13 @@
 // rng.js — PRNG wrappers around ISAAC64.
-// C ref: rng.c — three RNG contexts: core, display, lua.
-// Contest: core + Lua ISAAC contexts (see nhl_rng.js); display stream still deferred.
+// C ref: rnd.c — two ISAAC64 streams: core and display.
+// Lua nh.rn2/nh.random uses core; the recorder adds Lua caller provenance.
+// Current port only implements the core stream and remains partial (no rnl).
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
-import { initLuaRngFromCoreBytesLikeC } from './nhl_rng.js';
 
 let _rngLog = [];
 let _rngLogEnabled = false;
-
-/** Avoid multi-million-entry logs when a port spins RNG in a tight loop (judge **`spawnSync`**). */
-const MAX_RNG_LOG = 500_000;
-
-function appendRngLog(line) {
-    if (!_rngLogEnabled || _rngLog.length >= MAX_RNG_LOG) return;
-    _rngLog.push(line);
-}
 
 export function initRng(seed) {
     game.currentSeed = seed;
@@ -27,37 +19,23 @@ export function initRng(seed) {
         s >>= 8n;
     }
     game.coreCtx = isaac64_init(bytes);
-    initLuaRngFromCoreBytesLikeC(bytes);
     _rngLog = [];
 }
 
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
 export function getRngLog() { return _rngLog; }
-export function pushRngLogEntry(entry) { appendRngLog(entry); }
+export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
 
 function RND(x) {
     const val = isaac64_next_uint64(game.coreCtx);
     return Number(val % BigInt(x));
 }
 
-/** One ISAAC draw mod x — no log line (used inside rnl’s first draw; rnd.c). */
-function RND_unlogged(x) {
-    if (x <= 0) return 0;
-    return RND(x);
-}
-
-/** C macro Luck — minimal stand-in until prop.c / you.h port (LUCKADD + uluck). */
-function luckMacro() {
-    const u = game.u;
-    if (!u) return 0;
-    return (u.LUCKADD ?? 0) + (u.uluck ?? 0);
-}
-
 // C ref: rn2(x) — random number 0..x-1
 export function rn2(x) {
     if (x <= 0) return 0;
     const val = RND(x);
-    if (_rngLogEnabled) appendRngLog(`rn2(${x})=${val}`);
+    if (_rngLogEnabled) _rngLog.push(`rn2(${x})=${val}`);
     return val;
 }
 
@@ -65,78 +43,22 @@ export function rn2(x) {
 export function rnd(x) {
     if (x <= 0) return 0;
     const val = RND(x) + 1;
-    if (_rngLogEnabled) appendRngLog(`rnd(${x})=${val}`);
+    if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}`);
     return val;
 }
 
 // C ref: rn1(x, y) — random number y..y+x-1
 export function rn1(x, y) { return rn2(x) + y; }
 
-// C ref: rnd.c rnl — 0..x-1 with Luck bias; inner rn2 calls are logged, first RND is not.
-export function rnl(x) {
-    if (x <= 0) return 0;
-    let adjustment = luckMacro();
-    if (x <= 15) {
-        adjustment = Math.trunc((Math.abs(adjustment) + 1) / 3) * Math.sign(adjustment);
-    }
-    let i = RND_unlogged(x);
-    if (adjustment && rn2(37 + Math.abs(adjustment))) {
-        i -= adjustment;
-        if (i < 0) i = 0;
-        else if (i >= x) i = x - 1;
-    }
-    if (_rngLogEnabled) appendRngLog(`rnl(${x})=${i}`);
-    return i;
-}
-
-// C ref: d(n, x) — roll n dice of x sides (C recorder logs one `d(n,x)=` line, not inner `rnd`)
+// C ref: d(n, x) — roll n dice of x sides
 export function d(n, x) {
-    const log = _rngLogEnabled;
-    if (log) _rngLogEnabled = false;
     let sum = 0;
-    for (let i = 0; i < n; i++) sum += rnd(x);
-    if (log) {
-        _rngLogEnabled = true;
-        appendRngLog(`d(${n},${x})=${sum}`);
+    for (let i = 0; i < n; i++) {
+        // Use RND directly so only the outer d() is logged (matches C PRNG log)
+        sum += 1 + RND(x);
     }
+    if (_rngLogEnabled) _rngLog.push(`d(${n},${x})=${sum}`);
     return sum;
-}
-
-/**
- * C recorder logs one `rne(x)=` line (inner `rn2` draws are not separate log entries).
- * Use at peel sites where global `rne()` log shape diverges from C.
- */
-export function rneCompositeLogLikeC(x) {
-    const log = _rngLogEnabled;
-    if (log) _rngLogEnabled = false;
-    const ulevel = game.u?.ulevel || 1;
-    const utmp = ulevel < 15 ? 5 : Math.trunc(ulevel / 3);
-    let tmp = 1;
-    while (tmp < utmp && !rn2(x)) tmp++;
-    if (log) {
-        _rngLogEnabled = true;
-        appendRngLog(`rne(${x})=${tmp}`);
-    }
-    return tmp;
-}
-
-/**
- * C recorder logs one `rnz(i)=` line (inner `rn2`/`rne` draws are not separate entries).
- */
-export function rnzCompositeLogLikeC(i) {
-    const log = _rngLogEnabled;
-    if (log) _rngLogEnabled = false;
-    let x = i;
-    let tmp = 1000;
-    tmp += rn2(1000);
-    tmp *= rneCompositeLogLikeC(4);
-    if (rn2(2)) { x *= tmp; x = Math.trunc(x / 1000); }
-    else { x *= 1000; x = Math.trunc(x / tmp); }
-    if (log) {
-        _rngLogEnabled = true;
-        appendRngLog(`rnz(${i})=${x}`);
-    }
-    return x;
 }
 
 // C ref: rne(x) — exponentially distributed
@@ -146,7 +68,7 @@ export function rne(x) {
     const utmp = ulevel < 15 ? 5 : Math.trunc(ulevel / 3);
     let tmp = 1;
     while (tmp < utmp && !rn2(x)) tmp++;
-    if (_rngLogEnabled) appendRngLog(`rne(${x})=${tmp}`);
+    if (_rngLogEnabled) _rngLog.push(`rne(${x})=${tmp}`);
     return tmp;
 }
 
@@ -159,7 +81,7 @@ export function rnz(i) {
     tmp *= rne(4);
     if (rn2(2)) { x *= tmp; x = Math.trunc(x / 1000); }
     else { x *= 1000; x = Math.trunc(x / tmp); }
-    if (_rngLogEnabled) appendRngLog(`rnz(${i})=${x}`);
+    if (_rngLogEnabled) _rngLog.push(`rnz(${i})=${x}`);
     return x;
 }
 
