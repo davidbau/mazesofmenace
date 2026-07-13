@@ -1,7 +1,10 @@
 // mondata.js — Monster name lookup + growth (partial).
 // C ref: mondata.c name_to_mon / name_to_monplus / little_to_big / big_to_little
 
-import { monsterNames, NON_PM, LOW_PM } from './monsters.js';
+import {
+    monsterNames, pmnames, NON_PM, LOW_PM,
+    MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
+} from './monsters.js';
 
 function pm(name) {
     return monsterNames.indexOf(`PM_${name}`);
@@ -94,23 +97,20 @@ export function big_to_little(montype) {
     return montype;
 }
 
-/** PM_SILVER_DRAGON → "silver dragon" */
-function pm_to_name(pmName) {
-    if (!pmName || !pmName.startsWith('PM_')) return '';
-    return pmName.slice(3).toLowerCase().replace(/_/g, ' ');
-}
-
 const ALT_NAMES = [
-    // C ref: mondata.c name_to_monplus alt_spl — grey↔gray dragons
-    { name: 'grey dragon', mndx: () => monsterNames.indexOf('PM_GRAY_DRAGON') },
-    { name: 'baby grey dragon', mndx: () => monsterNames.indexOf('PM_BABY_GRAY_DRAGON') },
+    // C ref: mondata.c name_to_monplus alt_spl — grey↔gray dragons (+ genderhint)
+    { name: 'grey dragon', mndx: () => monsterNames.indexOf('PM_GRAY_DRAGON'), gender: NEUTRAL },
+    { name: 'baby grey dragon', mndx: () => monsterNames.indexOf('PM_BABY_GRAY_DRAGON'), gender: NEUTRAL },
 ];
 
 /**
- * C ref: mondata.c name_to_monplus — longest prefix match; returns mndx.
+ * C ref: mondata.c name_to_monplus — longest match on pmnames[MALE..NEUTRAL].
  * remainder_p: { rest: string } optional out for unmatched suffix.
+ * gender_name_var: { gender: number } optional in/out (C int*); init to
+ *   NEUTRAL or -1. Matching a MALE/FEMALE pmname updates it; a NEUTRAL
+ *   match only updates when incoming gender is -1.
  */
-export function name_to_monplus(in_str, remainder_p = null) {
+export function name_to_monplus(in_str, remainder_p = null, gender_name_var = null) {
     if (remainder_p) remainder_p.rest = null;
     if (!in_str) return NON_PM;
 
@@ -120,46 +120,83 @@ export function name_to_monplus(in_str, remainder_p = null) {
     else if (str.toLowerCase().startsWith('the ')) str = str.slice(4);
 
     const lower = str.toLowerCase();
+    const slen = str.length;
     let best = NON_PM;
     let bestLen = 0;
     let bestRest = null;
+    let matchgend = -1;
+    let exactMatch = false;
 
-    const tryMatch = (cand, mndx) => {
+    const tryMatch = (cand, mndx, gend) => {
         if (mndx < LOW_PM && mndx !== 0) return;
-        if (mndx < 0) return;
+        if (mndx < 0 || !cand) return;
         const cl = cand.toLowerCase();
+        const mLen = cand.length;
+        if (mLen <= bestLen) return;
         if (!lower.startsWith(cl)) return;
-        const after = str.slice(cand.length);
-        // Must be end, or space / plural suffix boundary (C subset)
-        if (after.length === 0
-            || after[0] === ' '
-            || after.toLowerCase().startsWith('s ')
-            || after.toLowerCase().startsWith('es ')
-            || after.toLowerCase().startsWith("'s ")) {
-            if (cand.length > bestLen) {
-                bestLen = cand.length;
-                best = mndx;
-                bestRest = after;
-            }
+        const after = str.slice(mLen);
+        // C: exact, or space / plural / possessive boundary
+        if (after.length === 0) {
+            bestLen = mLen;
+            best = mndx;
+            bestRest = after;
+            matchgend = gend;
+            exactMatch = true;
+            return;
+        }
+        const al = after.toLowerCase();
+        if (after[0] === ' '
+            || al === 's' || al.startsWith('s ')
+            || al === "'" || al.startsWith("' ")
+            || al === "'s" || al.startsWith("'s ")
+            || al === 'es' || al.startsWith('es ')) {
+            bestLen = mLen;
+            best = mndx;
+            bestRest = after;
+            matchgend = gend;
         }
     };
 
-    for (let i = 0; i < monsterNames.length; i++) {
-        const nm = pm_to_name(monsterNames[i]);
-        if (nm) tryMatch(nm, i);
-    }
+    // C alt_spl table first (returns immediately on hit)
     for (const alt of ALT_NAMES) {
-        tryMatch(alt.name, alt.mndx());
+        const mndx = alt.mndx();
+        const cand = alt.name;
+        const cl = cand.toLowerCase();
+        if (!lower.startsWith(cl)) continue;
+        const after = str.slice(cand.length);
+        if (after.length === 0 || after[0] === ' ' || after[0] === "'") {
+            if (remainder_p) remainder_p.rest = after;
+            if (gender_name_var) gender_name_var.gender = alt.gender;
+            return mndx;
+        }
+    }
+
+    for (let i = 0; i < monsterNames.length; i++) {
+        const names = pmnames[i];
+        if (!names) continue;
+        for (let mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
+            tryMatch(names[mgend], i, mgend);
+            if (exactMatch) break;
+        }
+        if (exactMatch) break;
     }
 
     if (best >= LOW_PM || best === 0) {
         if (remainder_p) remainder_p.rest = bestRest ?? '';
+        if (gender_name_var && matchgend !== -1) {
+            // C: don't override with neuter if caller already has male/female
+            if (gender_name_var.gender === -1 || matchgend !== NEUTRAL) {
+                gender_name_var.gender = matchgend;
+            }
+        }
         return best;
     }
     return NON_PM;
 }
 
 /** C ref: mondata.c name_to_mon */
-export function name_to_mon(in_str) {
-    return name_to_monplus(in_str, null);
+export function name_to_mon(in_str, gender_name_var = null) {
+    return name_to_monplus(in_str, null, gender_name_var);
 }
+
+export { MALE, FEMALE, NEUTRAL, NUM_MGENDERS };

@@ -7,15 +7,15 @@ import { rn2, rnd } from './rng.js';
 import {
     IS_OBSTRUCTED, HMON_MELEE, STRAT_WAITMASK,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
-    LL_CONDUCT,
+    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT,
 } from './const.js';
 import { WEAPON_CLASS, objectNameStrs } from './objects.js';
 import { exercise, A_STR, A_DEX, acurr } from './attrib.js';
 import { overexertion } from './hack.js';
 import { pline, newsym } from './display.js';
-import { dmgval } from './weapon.js';
+import { dmgval, P_SKILL } from './weapon.js';
 import { find_mac, AT_WEAP, AD_PHYS } from './mhitm.js';
-import { verysmall, G_FREQ } from './monsters.js';
+import { verysmall, G_FREQ, bigmonst, thick_skinned } from './monsters.js';
 import { relobj_on_death } from './mkobj.js';
 import { record_mvitals_died } from './mon.js';
 import { livelog_printf } from './pline.js';
@@ -201,8 +201,25 @@ async function killed(mtmp) {
 }
 
 /**
+ * C ref: uhitm.c hmon_hitmon_stagger — unarmed stun chance before damage.
+ * Always burns rnd(100); stun pline + mhurtle_to_doom deferred when the
+ * skill/size/hide gate would succeed and pending dmg < mhp.
+ */
+function hmon_hitmon_stagger(mon, dmg) {
+    const mdat = mon?.data;
+    if (rnd(100) < P_SKILL(P_BARE_HANDED_COMBAT)
+        && !bigmonst(mdat)
+        && !thick_skinned(mdat)) {
+        // canspotmon stagger pline + mhurtle_to_doom deferred
+        void dmg;
+        return true; // hittxt
+    }
+    return false;
+}
+
+/**
  * C ref: uhitm.c hmon / hmon_hitmon — melee weapon or bare-hand physical.
- * Poison / joust / stagger / live knockback / pudding split deferred.
+ * Poison / joust / live knockback / pudding split deferred.
  * Hit pline: hmon_hitmon_msg_hit skips when destroyed (melee); thrown
  * multishot exception deferred.
  */
@@ -221,6 +238,13 @@ async function hmon(mon, obj, thrown, _dieroll) {
     dmg += (game.u?.udaminc | 0);
     if (dmg < 1) dmg = 1;
 
+    // C: unarmed = !uwep && !uarm && !uarms; stagger before mhp -= dmg
+    const unarmed = !game.u?.uwep && !game.u?.uarm && !game.u?.uarms;
+    let hittxt = false;
+    if (unarmed && dmg > 1 && !thrown && !obj && !Upolyd(game.u)) {
+        hittxt = hmon_hitmon_stagger(mon, dmg);
+    }
+
     // C hmon_hitmon: first_weapon_hit before damage when weaphit just broke
     if (obj
         && (obj === game.u?.uwep || (obj === game.u?.uswapwep && game.u?.twoweap))
@@ -237,7 +261,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
     if (destroyed) mon.mhp = 0;
 
     // C: msg_hit only if !hittxt && (!destroyed || thrown-multishot)
-    if (thrown === HMON_MELEE && !destroyed) {
+    if (thrown === HMON_MELEE && !destroyed && !hittxt) {
         if (game.flags?.verbose !== false) {
             // canseemon ? exclam(dmg) : "." — period stand-in; full exclam later
             await pline(`You hit ${mon_nam(mon)}.`);

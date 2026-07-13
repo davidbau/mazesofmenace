@@ -36,11 +36,12 @@ import {
     monmax_difficulty,
     montooweak,
     montoostrong,
+    likes_gold,
     monsterNames,
 } from './monsters.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME,
-    GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level,
+    GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, In_mines,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
@@ -307,14 +308,28 @@ function newmonhp(mon, ptr) {
     }
 }
 
+// C ref: mondata.h race_peaceful / race_hostile
+function race_peaceful(ptr) {
+    const mask = game.urace?.lovemask ?? 0;
+    return !!(mask && (ptr.mflags2 & mask));
+}
+function race_hostile(ptr) {
+    const mask = game.urace?.hatemask ?? 0;
+    return !!(mask && (ptr.mflags2 & mask));
+}
+
 // C ref: makemon.c peace_minded()
 function peace_minded(ptr) {
     if (always_peaceful(ptr)) return true;
     if (always_hostile(ptr)) return false;
+    // MS_LEADER/GUARDIAN/NEMESIS, ERINYS, is_minion, amulet arms — deferred
+    if (race_peaceful(ptr)) return true;
+    if (race_hostile(ptr)) return false;
     const mal = ptr.maligntyp;
     const ual = game.u?.ualign?.type ?? 0;
     const sgn = (x) => (x < 0 ? -1 : x > 0 ? 1 : 0);
     if (sgn(mal) !== sgn(ual)) return false;
+    if (mal < 0 && game.u?.uhave?.amulet) return false;
     const record = game.u?.ualign?.record ?? 0;
     const recClamp = record < -15 ? -15 : record;
     return !!rn2(16 + recClamp) && !!rn2(2 + Math.abs(mal));
@@ -534,15 +549,65 @@ function m_initweap(mtmp) {
     if (mtmp.m_lev > rn2(75)) mongets(mtmp, rnd_offensive_item(mtmp));
 }
 
-// C ref: makemon.c m_initinv trailing defensive/misc rolls
-function m_initinv_tail(mtmp) {
-    // Always consume these two rn2 calls (even when m_lev is 0).
+// C ref: steal.c findgold — first GOLD_PIECE on chain (no container walk)
+function findgold(argchain) {
+    let chain = argchain;
+    const gold = otyp('GOLD_PIECE');
+    while (chain && chain.otyp !== gold) chain = chain.nobj;
+    return chain || null;
+}
+
+// C ref: makemon.c mkmonmoney
+function mkmonmoney(mtmp, amount) {
+    if (amount > 0) {
+        const gold = mksobj(otyp('GOLD_PIECE'), false, false);
+        gold.quan = amount;
+        gold.owt = weight(gold);
+        add_to_minv(mtmp, gold);
+    }
+}
+
+// C ref: makemon.c m_initinv — S_GNOME candle + trailing defensive/misc/gold
+function m_initinv(mtmp) {
+    const ptr = mtmp.data;
+    if (Is_rogue_level(game.u?.uz)) return;
+
+    switch (ptr.mlet) {
+    case 'S_GNOME':
+        // C: In_mines && in_mklev → rn2(20), else rn2(60)
+        if (!rn2((In_mines(game.u?.uz) && game.in_mklev) ? 20 : 60)) {
+            const otmp = mksobj(
+                rn2(4) ? otyp('TALLOW_CANDLE') : otyp('WAX_CANDLE'),
+                true,
+                false,
+            );
+            otmp.quan = 1;
+            otmp.owt = weight(otmp);
+            // begin_burn when mpickobj fails and tile unlit — deferred (no RNG)
+            mpickobj(mtmp, otmp);
+        }
+        break;
+    default:
+        // Other m_initinv bodies (mercenary armor, nymph, …) deferred
+        break;
+    }
+
+    // C: PM_SOLDIER && rn2(13) early return — deferred (mercenary m_initinv)
     if (mtmp.m_lev > rn2(50)) {
-        /* rnd_defensive_item — not reached for dlvl1 commons */
+        /* rnd_defensive_item */
     }
     if (mtmp.m_lev > rn2(100)) {
         /* rnd_misc_item */
     }
+    // C: likes_gold && !findgold(minvent) && !rn2(5) → mkmonmoney
+    if (likes_gold(ptr) && !findgold(mtmp.minvent) && !rn2(5)) {
+        mkmonmoney(mtmp, d(level_difficulty(), mtmp.minvent ? 5 : 10));
+    }
+}
+
+// C ref: makemon.c m_initinv trailing defensive/misc rolls (compat alias)
+function m_initinv_tail(mtmp) {
+    m_initinv(mtmp);
 }
 
 // C ref: makemon.c makemon_rnd_goodpos()
@@ -751,7 +816,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // C: allow_minvent → is_armed? m_initweap; m_initinv; domestic saddle
     if (allow_minvent) {
         if (is_armed(ptr)) m_initweap(mtmp);
-        m_initinv_tail(mtmp);
+        m_initinv(mtmp);
         if (!rn2(100) && is_domestic(ptr)) {
             /* put_saddle_on_mon — not needed for RNG on fail path */
         }

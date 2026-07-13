@@ -21,6 +21,7 @@ import {
     mattks,
     mcolors,
     monsterNames,
+    pmnames,
     PM_GIANT_SPIDER,
     PM_LICHEN,
     PM_HUMAN,
@@ -47,8 +48,15 @@ export {
     PM_ARCHEOLOGIST,
     PM_WIZARD,
     monsterNames,
+    pmnames,
     mcolors,
 };
+
+/** C ref: monflag.h enum mgender */
+export const MALE = 0;
+export const FEMALE = 1;
+export const NEUTRAL = 2;
+export const NUM_MGENDERS = 3;
 
 export const G_UNIQ = 0x1000;
 export const G_NOHELL = 0x0800;
@@ -70,6 +78,10 @@ export const M2_PEACEFUL = 0x00200000;
 export const M2_DOMESTIC = 0x00400000;
 export const M2_WANDER = 0x00800000;
 export const M2_ROCKTHROW = 0x08000000;
+export const M2_GREEDY = 0x10000000; /* monflag.h — likes gold */
+export const M2_JEWELS = 0x20000000; /* monflag.h — likes gems */
+export const M2_COLLECT = 0x40000000; /* monflag.h — picks up weapons/food */
+export const M2_MAGIC = 0x80000000; /* monflag.h — picks up magic items */
 export const M2_LORD = 0x00000400;
 export const M2_PRINCE = 0x00000800;
 export const M2_NASTY = 0x02000000;
@@ -80,7 +92,10 @@ export const M1_FLY = 0x00000001; /* monflag.h — can fly or float */
 export const M1_AMORPHOUS = 0x00000004; /* monflag.h — can flow under doors */
 export const M1_WALLWALK = 0x00000008;
 export const M1_CLING = 0x00000010; /* monflag.h — cling to ceiling */
+export const M1_TUNNEL = 0x00000020; /* monflag.h — can tunnel through rock */
+export const M1_NEEDPICK = 0x00000040; /* monflag.h — needs pick to tunnel */
 export const M1_NOHANDS = 0x00002000;
+export const M1_THICK_HIDE = 0x00200000; /* monflag.h — thick hide or scales */
 export const M1_SEE_INVIS = 0x01000000; /* monflag.h — sees invisible */
 export const M1_NOEYES = 0x00001000;
 export const M1_MINDLESS = 0x00010000;
@@ -130,13 +145,36 @@ export function infravisible(ptr) {
 // C ref: mondata.h / monflag.h — verysmall = msize < MZ_SMALL
 export const MZ_TINY = 0;
 export const MZ_SMALL = 1;
+export const MZ_LARGE = 3; /* monflag.h — 7-12' */
 export function verysmall(ptr) {
     return (ptr?.msize ?? 2) < MZ_SMALL;
+}
+
+/** C ref: mondata.h bigmonst — msize >= MZ_LARGE */
+export function bigmonst(ptr) {
+    return (ptr?.msize ?? 0) >= MZ_LARGE;
+}
+
+/** C ref: mondata.h thick_skinned — M1_THICK_HIDE */
+export function thick_skinned(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_THICK_HIDE);
 }
 
 // C ref: mondata.h nohands()
 export function nohands(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_NOHANDS);
+}
+
+/** C ref: mondata.h haseyes — !(M1_NOEYES) */
+export function haseyes(ptr) {
+    return !((ptr?.mflags1 ?? 0) & M1_NOEYES);
+}
+
+/**
+ * C ref: mondata.c can_track — haseyes; ART_EXCALIBUR wield named omission.
+ */
+export function can_track(ptr) {
+    return haseyes(ptr);
 }
 
 /** C ref: mondata.h lays_eggs() */
@@ -166,6 +204,14 @@ export function passes_walls(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_WALLWALK);
 }
 
+/** C ref: mondata.h tunnels / needspick */
+export function tunnels(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_TUNNEL);
+}
+export function needspick(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_NEEDPICK);
+}
+
 // C ref: mondata.c mon_knows_traps / mon_learns_traps — mtrapseen bitset
 // (trap.h ALL_TRAPS=-1, NO_TRAP=0; bits are 1<<(ttyp-1)).
 export function mon_knows_traps(mtmp, ttyp) {
@@ -188,6 +234,41 @@ export function mon_learns_traps(mtmp, ttyp) {
 
 export function throws_rocks(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_ROCKTHROW);
+}
+
+/** C ref: mondata.h likes_gold */
+export function likes_gold(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_GREEDY);
+}
+
+/** C ref: mondata.h likes_gems */
+export function likes_gems(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_JEWELS);
+}
+
+/** C ref: mondata.h likes_objs — COLLECT or is_armed */
+export function likes_objs(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_COLLECT) || is_armed(ptr);
+}
+
+/** C ref: mondata.h likes_magic */
+export function likes_magic(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_MAGIC);
+}
+
+/** C ref: mondata.h mindless */
+export function mindless(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_MINDLESS);
+}
+
+/** C ref: mondata.h is_animal */
+export function is_animal(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_ANIMAL);
+}
+
+/** C ref: mondata.h strongmonst */
+export function strongmonst(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_STRONG);
 }
 
 export function always_hostile(ptr) {
@@ -224,9 +305,6 @@ export function is_prince(ptr) {
 }
 export function extra_nasty(ptr) {
     return !!(ptr?.mflags2 & M2_NASTY);
-}
-export function strongmonst(ptr) {
-    return !!(ptr?.mflags2 & M2_STRONG);
 }
 export function is_mercenary(ptr) {
     return !!(ptr?.mflags2 & M2_MERC);

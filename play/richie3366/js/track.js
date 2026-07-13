@@ -3,7 +3,8 @@
 //
 // Branch envelope: UTSZ ring, stealth-ring skip, gettrack ndist<=1
 // (on-cell → null, adjacent → coord). Save/restore omitted (no bones
-// yet). Named omissions: SFCTOOL-only paths.
+// yet). Named omissions: SFCTOOL-only paths; per-level rest_track on
+// return visits (goto_level clears via initrack like C savelev release).
 
 import { game } from './gstate.js';
 import { objectNames } from './objects.js';

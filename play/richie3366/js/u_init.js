@@ -1478,6 +1478,10 @@ export function setup_role_race_from_rc(opts = {}) {
         attrmax: race.attrmax,
         hpadv: race.hpadv || { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },
         enadv: race.enadv || { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 },
+        // C: gu.urace.selfmask/lovemask/hatemask — peace_minded race_* (D-0172)
+        selfmask: race.selfmask ?? 0,
+        lovemask: race.lovemask ?? 0,
+        hatemask: race.hatemask ?? 0,
     };
     game.flags = game.flags || {};
     if (fr.initgend === 1 || opts.gender === 'female' || opts.gender === 1)

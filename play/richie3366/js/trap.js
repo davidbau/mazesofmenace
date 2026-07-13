@@ -1,10 +1,11 @@
 // trap.js — Trap creation + monster-step subset.
 // C ref: trap.c — maketrap/choose_trapnote/hole_destination/trapnote,
 // t_at, t_missile, thitm, mintrap, trapeffect_dart_trap / trapeffect_pit /
-// trapeffect_sqky_board (monster), make_corpse ordinary path via thitm death.
+// trapeffect_rocktrap / trapeffect_sqky_board (monster), make_corpse
+// ordinary path via thitm death.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import {
     mksobj, place_object, weight, stackobj, mkcorpstat, relobj_on_death,
 } from './mkobj.js';
@@ -20,7 +21,7 @@ import {
     mon_knows_traps, mon_learns_traps,
 } from './monsters.js';
 import {
-    DART_TRAP, FORCETRAP, FORCEBUNGLE,
+    DART_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
     PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, is_hole, In_quest,
     CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NONE,
@@ -30,6 +31,7 @@ import {
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 
 const DART = objectNames.indexOf('DART');
+const ROCK = objectNames.indexOf('ROCK');
 const CORPSE = objectNames.indexOf('CORPSE');
 const AD_PHYS = 0;
 
@@ -452,6 +454,34 @@ async function trapeffect_dart_trap(mtmp, trap) {
 }
 
 /**
+ * C ref: trap.c trapeffect_rocktrap — monster branch (hero dotrap deferred).
+ * Envelope: once+tseen empty-door rn2(15)/deltrap; else t_missile(ROCK) +
+ * thitm(..., d(2,6)); seetrap only when canseemon. Named omissions: hero
+ * helmet/passes_rocks path; empty-door pline_mon text; stone_missile
+ * harmless arm in thitm.
+ */
+async function trapeffect_rocktrap(mtmp, trap, _trflags) {
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+
+    if (trap.once && trap.tseen && !rn2(15)) {
+        // C: pline_mon when in_sight && cansee — display only; omit body
+        const traps = game.level?.traps;
+        if (traps) {
+            const i = traps.indexOf(trap);
+            if (i >= 0) traps.splice(i, 1);
+        }
+        newsym(mtmp.mx, mtmp.my);
+        return Trap_Is_Gone;
+    }
+    trap.once = true;
+    const otmp = t_missile(ROCK, trap);
+    if (in_sight) seetrap(trap);
+    const trapkilled = await thitm(0, mtmp, otmp, d(2, 6), false);
+    return trapkilled ? Trap_Killed_Mon
+        : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
+}
+
+/**
  * C ref: trap.c trapeffect_sqky_board — monster branch (hero dotrap deferred).
  * Envelope: in-sight pline+seetrap; out-of-sight You_hear nearby|distance;
  * m_in_air skip; wake_nearto(40). Soundeffect no-op (no RNG).
@@ -486,11 +516,13 @@ async function trapeffect_sqky_board(mtmp, trap, _trflags) {
     return Trap_Effect_Finished;
 }
 
-// C ref: trap.c trapeffect_selector — dart + pit + sqky; other types no-op
+// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky; other types no-op
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
         return trapeffect_dart_trap(mtmp, trap);
+    case ROCKTRAP:
+        return trapeffect_rocktrap(mtmp, trap, trflags);
     case PIT:
     case SPIKED_PIT:
         return trapeffect_pit(mtmp, trap, trflags);
@@ -504,7 +536,7 @@ async function trapeffect_selector(mtmp, trap, trflags) {
 
 /**
  * C ref: trap.c mintrap() — monster steps on a trap.
- * Early-session envelope: dart / pit / sqky learn+effect; already_seen
+ * Early-session envelope: dart / rock / pit / sqky learn+effect; already_seen
  * rn2(4) skip when mon_knows_traps. Other types and escape paths partial.
  */
 export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {

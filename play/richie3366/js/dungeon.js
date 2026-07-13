@@ -470,7 +470,9 @@ function init_dungeon_dungeons(entry, pd, dngidx) {
             hellish: !!(dgn_flags & HELLISH),
             maze_like: !!(dgn_flags & MAZELIKE),
             rogue_like: !!(dgn_flags & ROGUELIKE),
-            align: dgn_align,
+            // C: d_flags.align is a 3-bit bitfield; assigning D_ALIGN_*
+            // (e.g. LAWFUL=0x40) truncates to 0 — match that for induced_align.
+            align: dgn_align & 7,
             unconnected: !!(dgn_flags & UNCONNECTED),
         },
     };
@@ -495,7 +497,7 @@ function init_dungeon_dungeons(entry, pd, dngidx) {
     game.dungeons[dngidx].flags.hellish = !!(dgn_flags & HELLISH);
     game.dungeons[dngidx].flags.maze_like = !!(dgn_flags & MAZELIKE);
     game.dungeons[dngidx].flags.rogue_like = !!(dgn_flags & ROGUELIKE);
-    game.dungeons[dngidx].flags.align = dgn_align;
+    game.dungeons[dngidx].flags.align = dgn_align & 7;
     game.dungeons[dngidx].flags.unconnected = !!(dgn_flags & UNCONNECTED);
 
     init_dungeon_set_entry(pd, dngidx);

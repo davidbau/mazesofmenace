@@ -5,13 +5,13 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { dochugw } from './monmove.js';
 import {
-    COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
-    ALLOW_ROCK,
+    COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
+    ALLOW_ROCK, ALLOW_DIG, Is_rogue_level,
 } from './const.js';
 import { t_at } from './trap.js';
 import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
-    monsterNames, NON_PM, LOW_PM, mon_knows_traps,
+    monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import { little_to_big, big_to_little } from './mondata.js';
@@ -20,10 +20,31 @@ import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { G_GENOD } from './const.js';
 import { enexto, rloc_to } from './teleport.js';
+import { may_dig } from './dig.js';
 
 export const NORMAL_SPEED = 12;
 
 const BOULDER = objectNames.indexOf('BOULDER');
+const PICK_AXE = objectNames.indexOf('PICK_AXE');
+const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
+const AXE = objectNames.indexOf('AXE');
+const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
+
+/** C ref: invent.c m_carrying — first matching otyp in minvent chain. */
+export function m_carrying(mon, otyp) {
+    for (let o = mon?.minvent; o; o = o.nobj) {
+        if (o.otyp === otyp) return o;
+    }
+    return null;
+}
+
+/** C ref: worn.c which_armor(W_ARMS) — shield blocks two-hand dig tools. */
+export function mon_has_shield(mon) {
+    for (let o = mon?.minvent; o; o = o.nobj) {
+        if ((o.owornmask || 0) & 0x00000008 /* W_ARMS */) return true;
+    }
+    return false;
+}
 
 /**
  * C ref: mon.c mondead — svm.mvitals[mndx].died++ (cap 255).
@@ -202,11 +223,19 @@ export function mnexto(mtmp, _rlocflags = 0) {
     rloc_to(mtmp, mm.x, mm.y);
 }
 
-// C ref: mon.c mon_allowflags() — hostile/peaceful subset for seed8000
+// C ref: mon.c mon_allowflags() — hostile/peaceful + dig/tunnel flags
 export function mon_allowflags(mtmp) {
     let allowflags = 0;
     // C: can_open = !(nohands(data) || verysmall(data))
     const can_open = !(nohands(mtmp.data) || verysmall(mtmp.data));
+    // C: can_tunnel = tunnels && !Is_rogue_level; needspick hostiles close
+    // enough prefer weapon over dig (same gate as m_move).
+    let can_tunnel = tunnels(mtmp.data) && !Is_rogue_level(game.u?.uz);
+    if (can_tunnel && needspick(mtmp.data)
+        && ((!mtmp.mpeaceful || game.Conflict || game.flags?.Conflict)
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8)) {
+        can_tunnel = false;
+    }
     if (mtmp.mtame) {
         allowflags |= ALLOW_M | ALLOW_TRAPS | ALLOW_SANCT | ALLOW_SSM;
     } else if (mtmp.mpeaceful) {
@@ -218,11 +247,12 @@ export function mon_allowflags(mtmp) {
     // m_can_break_boulder (wielded dig tool) deferred — named in C-JS-MAP
     if (passes_walls(mtmp.data)) allowflags |= ALLOW_ROCK; // ALLOW_WALL deferred
     if (throws_rocks(mtmp.data)) allowflags |= ALLOW_ROCK;
+    if (can_tunnel) allowflags |= ALLOW_DIG;
     if (can_open) allowflags |= OPENDOOR;
     return allowflags;
 }
 
-// C ref: mon.c mfndpos() — open-floor neighbour scan for dlvl1
+// C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
 export function mfndpos(mon, data, flag) {
     const x = mon.mx;
     const y = mon.my;
@@ -235,6 +265,24 @@ export function mfndpos(mon, data, flag) {
     const nowtyp = nowloc?.typ;
     const nowdm = nowloc?.doormask || 0;
     const nodiag = NODIAG(mon.mnum ?? mon.data?.mndx);
+    const mdat = mon.data;
+
+    let rockok = false;
+    let treeok = false;
+    let thrudoor = false;
+    if (flag & ALLOW_DIG) {
+        // C: !needspick → both; else carrying pick/axe (cursed-mwep gate deferred)
+        if (!needspick(mdat)) {
+            rockok = true;
+            treeok = true;
+        } else {
+            rockok = !!(m_carrying(mon, PICK_AXE)
+                || (m_carrying(mon, DWARVISH_MATTOCK) && !mon_has_shield(mon)));
+            treeok = !!(m_carrying(mon, AXE)
+                || (m_carrying(mon, BATTLE_AXE) && !mon_has_shield(mon)));
+        }
+        if (rockok || treeok) thrudoor = true;
+    }
 
     const maxx = Math.min(x + 1, COLNO - 1);
     const maxy = Math.min(y + 1, ROWNO - 1);
@@ -244,11 +292,18 @@ export function mfndpos(mon, data, flag) {
             const loc = game.level?.at(nx, ny);
             if (!loc) continue;
             const ntyp = loc.typ;
-            if (IS_OBSTRUCTED(ntyp)) continue;
+            // C: obstructed unless ALLOW_WALL passwall or diggable rock/tree
+            if (IS_OBSTRUCTED(ntyp)
+                && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny))) {
+                continue;
+            }
+            // peaceful shop/temple dig avoid deferred
             if (IS_DOOR(ntyp)) {
                 const dm = loc.doormask || 0;
-                if ((dm & D_CLOSED) && !(flag & OPENDOOR)) continue;
-                if ((dm & D_LOCKED) && !(flag & UNLOCKDOOR)) continue;
+                if (((dm & D_CLOSED) && !(flag & OPENDOOR))
+                    || ((dm & D_LOCKED) && !(flag & UNLOCKDOOR))) {
+                    if (!thrudoor) continue;
+                }
             }
             // C: first diagonal checks — NODIAG + non-broken doors
             if (nx !== x && ny !== y) {

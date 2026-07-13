@@ -12,6 +12,7 @@ import {
     mklev,
 } from './mklev.js';
 import { keepdogs, losedogs } from './dog.js';
+import { initrack } from './track.js';
 import { m_at, mnexto } from './mon.js';
 import { enexto } from './teleport.js';
 
@@ -108,6 +109,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             stairs: game.stairs,
         };
     }
+
+    // C: savelev → save_track → release_data → initrack (do.c/save.c/track.c).
+    // Clears hero footstep ring so gettrack cannot see prior-level cells.
+    // Named omission: per-level save/rest of utrack on return visits.
+    initrack();
 
     assign_level(u.uz0 || (u.uz0 = { dnum: 0, dlevel: 0 }), u.uz);
     assign_level(u.uz, newlevel);

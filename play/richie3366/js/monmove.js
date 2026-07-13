@@ -7,35 +7,61 @@ import { dog_move, finish_meating } from './dogmove.js';
 import { newsym, pline } from './display.js';
 import {
     dist2,
+    distmin,
     monnear,
     mon_allowflags,
     mfndpos,
+    m_at,
 } from './mon.js';
 import {
     is_wanderer, is_armed, passes_walls, nohands, verysmall,
-    monsterNames, M1_SEE_INVIS, M1_AMORPHOUS,
+    monsterNames, M1_SEE_INVIS, M1_AMORPHOUS, tunnels, needspick,
+    can_track, likes_gold, likes_gems, likes_objs, likes_magic,
+    throws_rocks, mindless, is_animal, strongmonst, is_mercenary,
+    mon_knows_traps,
 } from './monsters.js';
+import { gettrack } from './track.js';
+import { objects_at } from './mkobj.js';
 import {
     mintrap,
     NO_TRAP_FLAGS,
     Trap_Killed_Mon,
     Trap_Moved_Mon,
     Trap_Caught_Mon,
+    t_at,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
-import { cansee, couldsee, vision_recalc, recalc_block_point } from './vision.js';
+import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from './vision.js';
 import {
-    isok, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
-    D_BROKEN, D_TRAPPED, u_at, DISPLACED,
+    isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE,
+    D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
+    D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level,
+    NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
+    P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO,
 } from './const.js';
 import {
-    CLOAK_OF_DISPLACEMENT, COIN_CLASS, objectNames,
+    CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
+    GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
+    WAND_CLASS, RING_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS,
+    objectNames,
 } from './objects.js';
 import { Monnam } from './do_name.js';
+import { may_dig, mdig_tunnel } from './dig.js';
+import { MON_WEP, mon_wield_item } from './weapon.js';
+import { lined_up } from './mthrowu.js';
+import { acurrstr } from './attrib.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const ROCK = objectNames.indexOf('ROCK');
+const BOULDER = objectNames.indexOf('BOULDER');
+const CORPSE = objectNames.indexOf('CORPSE');
+const MINERAL = 21; // obj.h
+const MAX_CARR_CAP = 1000;
+const MZ_HUMAN = 3;
+const WT_HUMAN = 1450;
 const MTSZ = 4;
 const BOLT_LIM = 8;
 const MMOVE_NOTHING = 0;
@@ -43,6 +69,237 @@ const MMOVE_MOVED = 1;
 const MMOVE_DIED = 2;
 const MMOVE_DONE = 3;
 const MMOVE_NOMOVES = 4;
+
+// C ref: monmove.c practical[] / magical[] for mon_would_take_item
+const PRACTICAL_CLASSES = [WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS];
+const MAGICAL_CLASSES = [
+    AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS,
+];
+const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
+
+/** C ref: mon.c curr_mon_load */
+function curr_mon_load(mtmp) {
+    let curload = 0;
+    for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+        if (obj.otyp !== BOULDER || !throws_rocks(mtmp.data)) {
+            curload += obj.owt || 0;
+        }
+    }
+    return curload;
+}
+
+/** C ref: mon.c max_mon_load */
+function max_mon_load(mtmp) {
+    const ptr = mtmp.data;
+    const cwt = ptr?.cwt ?? 0;
+    const msize = ptr?.msize ?? 2;
+    let maxload;
+    if (!cwt) {
+        maxload = Math.trunc((MAX_CARR_CAP * msize) / MZ_HUMAN);
+    } else if (!strongmonst(ptr) || cwt > WT_HUMAN) {
+        maxload = Math.trunc((MAX_CARR_CAP * cwt) / WT_HUMAN);
+    } else {
+        maxload = MAX_CARR_CAP;
+    }
+    if (!strongmonst(ptr)) maxload = Math.trunc(maxload / 2);
+    return Math.max(1, maxload);
+}
+
+/**
+ * C ref: mon.c can_touch_safely — corpse petrify/rider + silver/artifact
+ * deferred as always-safe except rider/petrify corpse stubs.
+ */
+function can_touch_safely(_mtmp, otmp) {
+    if (!otmp) return false;
+    // touch_petrifies / is_rider / silver / touch_artifact named omissions
+    return true;
+}
+
+/** C ref: mon.c can_carry — weight + touch; notake/quan specials partial. */
+function can_carry(mtmp, otmp) {
+    if (!mtmp || !otmp) return 0;
+    if (!can_touch_safely(mtmp, otmp)) return 0;
+    const iquan = otmp.quan || 1;
+    if (iquan > 1) return 1;
+    if ((otmp.owt || 0) > max_mon_load(mtmp)) return 0;
+    if (curr_mon_load(mtmp) + (otmp.owt || 0) > max_mon_load(mtmp)) return 0;
+    return iquan;
+}
+
+/**
+ * C ref: monmove.c mon_would_take_item
+ * Named omission: searches_for_item; unicorn GEMSTONE; uball/uchain.
+ */
+function mon_would_take_item(mtmp, otmp) {
+    const ptr = mtmp.data;
+    const pctload = Math.trunc((curr_mon_load(mtmp) * 100) / max_mon_load(mtmp));
+    if (mtmp.mtame && otmp.cursed) return false;
+    if (likes_gold(ptr) && otmp.otyp === GOLD_PIECE && pctload < 95) return true;
+    const mat = game.objects?.[otmp.otyp]?.oc_material ?? 0;
+    if (likes_gems(ptr) && otmp.oclass === GEM_CLASS
+        && mat !== MINERAL && pctload < 85) {
+        return true;
+    }
+    if (likes_objs(ptr) && PRACTICAL_CLASSES.includes(otmp.oclass)
+        && pctload < 75) {
+        return true;
+    }
+    if (likes_magic(ptr) && MAGICAL_CLASSES.includes(otmp.oclass)
+        && pctload < 85) {
+        return true;
+    }
+    if (throws_rocks(ptr) && otmp.otyp === BOULDER && pctload < 50
+        && !game.sokoban && !game.level?.flags?.sokoban) {
+        return true;
+    }
+    if ((ptr?.mndx ?? -1) === PM_GELATINOUS_CUBE
+        && otmp.oclass !== ROCK_CLASS && otmp.oclass !== BALL_CLASS) {
+        return true;
+    }
+    return false;
+}
+
+/** C ref: monmove.c mon_would_consume_item — corpse_eater / pet food deferred. */
+function mon_would_consume_item(_mtmp, _otmp) {
+    return false;
+}
+
+/** C ref: dogmove.c could_reach_item — flyer/swimmer/boulder omitted. */
+function could_reach_item(_mtmp, _x, _y) {
+    return true;
+}
+
+/**
+ * C ref: monmove.c m_search_items — redirect gg toward interesting floor loot.
+ * Named omissions: in_rooms shop rn2(25); hides_under; onscary; costly_spot
+ * merchandise; is_mines_prize/is_soko_prize; helpless under-monster skip
+ * beyond mcanmove/msleeping/mmove; searches_for_item via mon_would_take.
+ */
+function m_search_items(mtmp, gg) {
+    let minr = SQSRCHRADIUS;
+    const omx = mtmp.mx;
+    const omy = mtmp.my;
+    const ptr = mtmp.data;
+
+    if (distmin(mtmp.mux, mtmp.muy, omx, omy) < SQSRCHRADIUS
+        && !mtmp.mpeaceful) {
+        minr--;
+    }
+    if (!mtmp.mpeaceful && is_mercenary(ptr)) minr = 1;
+
+    // shop in_rooms + rn2(25) deferred (no shop rooms on Mines path)
+
+    const hmx = Math.min(COLNO - 1, omx + minr);
+    const hmy = Math.min(ROWNO - 1, omy + minr);
+    const lmx = Math.max(1, omx - minr);
+    const lmy = Math.max(0, omy - minr);
+
+    for (let xx = lmx; xx <= hmx; xx++) {
+        for (let yy = lmy; yy <= hmy; yy++) {
+            let otmp = objects_at(xx, yy);
+            if (!otmp) continue;
+            if (minr < distmin(omx, omy, xx, yy)) continue;
+            if (!could_reach_item(mtmp, xx, yy)) continue;
+            // hides_under + cansee deferred
+            const mtoo = m_at(xx, yy);
+            if (mtoo && (
+                !mtoo.mcanmove
+                || mtoo.msleeping
+                || mtoo.mundetected
+                || (mtoo.mappearance && !mtoo.iswiz)
+                || !(mtoo.data?.mmove)
+            )) {
+                continue;
+            }
+            // onscary deferred
+            const ttmp = t_at(xx, yy);
+            if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp)) {
+                if (gg.x === xx && gg.y === yy) {
+                    gg.x = mtmp.mux;
+                    gg.y = mtmp.muy;
+                }
+                continue;
+            }
+            if (!m_cansee(mtmp, xx, yy)) continue;
+            // costly_spot merchandise skip deferred
+
+            for (; otmp; otmp = otmp.nexthere) {
+                if (otmp.otyp === ROCK) continue;
+                // is_mines_prize / is_soko_prize deferred
+                if ((mon_would_take_item(mtmp, otmp) && can_carry(mtmp, otmp) > 0)
+                    || mon_would_consume_item(mtmp, otmp)) {
+                    minr = distmin(omx, omy, xx, yy);
+                    gg.x = otmp.ox ?? xx;
+                    gg.y = otmp.oy ?? yy;
+                    if (gg.x === omx && gg.y === omy) {
+                        return true; // MMOVE_DONE caller
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    if (minr < SQSRCHRADIUS && gg.appr === -1) {
+        if (distmin(omx, omy, mtmp.mux, mtmp.muy) <= 3) {
+            gg.x = mtmp.mux;
+            gg.y = mtmp.muy;
+        } else {
+            gg.appr = 1;
+        }
+    }
+    return false;
+}
+
+/** C ref: obj.h is_pick / is_axe — dig-tool skill predicates. */
+function is_pick(obj) {
+    if (!obj) return false;
+    return (game.objects?.[obj.otyp]?.oc_skill ?? 0) === P_PICK_AXE;
+}
+function is_axe(obj) {
+    if (!obj) return false;
+    return (game.objects?.[obj.otyp]?.oc_skill ?? 0) === P_AXE;
+}
+
+function closed_door_at(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/** C ref: wield.c mwelded — cursed weapon stuck in hand. */
+function mwelded(obj) {
+    return !!(obj && obj.cursed && ((obj.owornmask || 0) & W_WEP));
+}
+
+/**
+ * C ref: monmove.c m_digweapon_check — spend turn wielding dig tool if needed.
+ * Returns true when the monster used this move to wield (no place/dig yet).
+ */
+function m_digweapon_check(mtmp, nix, niy) {
+    let can_tunnel = false;
+    if (!Is_rogue_level(game.u?.uz)) can_tunnel = tunnels(mtmp.data);
+    const mw_tmp = MON_WEP(mtmp);
+    if (!(can_tunnel && needspick(mtmp.data) && !mwelded(mw_tmp)
+        && (may_dig(nix, niy) || closed_door_at(nix, niy)))) {
+        return false;
+    }
+    const here = game.level?.at(nix, niy);
+    if (closed_door_at(nix, niy)) {
+        // C: !mw_tmp || !is_pick || !is_axe (almost always sets for doors)
+        if (!mw_tmp || !is_pick(mw_tmp) || !is_axe(mw_tmp)) {
+            mtmp.weapon_check = NEED_PICK_OR_AXE;
+        }
+    } else if (here && IS_TREE(here.typ)) {
+        if (!mw_tmp || !is_axe(mw_tmp)) mtmp.weapon_check = NEED_AXE;
+    } else if (here && IS_STWALL(here.typ)) {
+        if (!mw_tmp || !is_pick(mw_tmp)) mtmp.weapon_check = NEED_PICK_AXE;
+    }
+    if ((mtmp.weapon_check | 0) >= NEED_PICK_AXE && mon_wield_item(mtmp)) {
+        return true;
+    }
+    return false;
+}
 
 // C monsters.h indices (not exported from monsters_data)
 const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
@@ -281,8 +538,8 @@ function canspotmon(mtmp) {
  * C ref: monmove.c postmov — after a successful step: traps then doors.
  * Branch envelope: D_CLOSED open / D_LOCKED unlock / smash doorbuster;
  * amorphous squeeze message; mb_trapped. Named omissions: vampshift fog
- * sequencing; iron bars; mdig_tunnel; engulfing_u; shop add_damage;
- * has_magic_key disarm; full mondied from trap death.
+ * sequencing; iron bars; engulfing_u; shop add_damage;
+ * has_magic_key disarm; full mondied from trap death; m_digweapon_check.
  */
 async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
     if (mmoved !== MMOVE_MOVED) return mmoved;
@@ -369,7 +626,14 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
             // shop add_damage deferred
         }
     }
-    // IRONBARS / mdig_tunnel / engulfing_u deferred
+    // IRONBARS / engulfing_u deferred
+
+    // C: possibly dig — can_tunnel && may_dig → mdig_tunnel (burns rnd(12)
+    // even on open floor).
+    if (can_tunnel && may_dig(mtmp.mx, mtmp.my)
+        && await mdig_tunnel(mtmp)) {
+        return MMOVE_DIED;
+    }
 
     if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
     return mmoved;
@@ -378,8 +642,8 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
 // C ref: monmove.c m_move() — pets → postmov(dog_move); else approach / track path
 export async function m_move(mtmp, after) {
     const ptr = mtmp.data;
-    // C: can_tunnel = tunnels(ptr) off Rogue level — deferred (always false)
-    const can_tunnel = false;
+    // C: can_tunnel = tunnels(ptr) off Rogue level
+    let can_tunnel = tunnels(ptr) && !Is_rogue_level(game.u?.uz);
     const can_open = !(nohands(ptr) || verysmall(ptr));
     // C: can_unlock = (can_open && monhaskey) || iswiz || is_rider
     const can_unlock = (can_open && monhaskey(mtmp, true))
@@ -416,18 +680,59 @@ export async function m_move(mtmp, after) {
 
     set_apparxy(mtmp);
 
-    const ggx = mtmp.mux;
-    const ggy = mtmp.muy;
+    let ggx = mtmp.mux;
+    let ggy = mtmp.muy;
     let appr = mtmp.mflee ? -1 : 1;
     if (mtmp.mconf) {
         appr = 0;
     } else if (mtmp.mpeaceful && !mtmp.isshk) {
         // C: peaceful (non-shk) → appr = 0
         appr = 0;
+    } else {
+        // C ref: monmove.c m_move should_see + gettrack
+        const goalLoc = game.level?.at(ggx, ggy);
+        const monLoc = game.level?.at(omx, omy);
+        const should_see = !!(
+            couldsee(omx, omy)
+            && (!!goalLoc?.lit || !monLoc?.lit)
+            && dist2(omx, omy, ggx, ggy) <= 36
+        );
+        // Named omission: Invis rn2(11); stalker/bat rn2(3); balks;
+        // shortsighted.
+        if (!should_see && can_track(ptr)) {
+            const cp = gettrack(omx, omy);
+            if (cp) {
+                ggx = cp.x;
+                ggy = cp.y;
+            }
+        }
     }
 
-    // Hostiles keep appr=1; peaceful wander uses !rn2(++chcnt) instead of track.
-    // Named omission: gettrack goal, shortsighted, m_search_items, balks.
+    // C ref: monmove.c m_move getitems + m_search_items
+    let getitems = false;
+    if ((!mtmp.mpeaceful || !rn2(10)) && !Is_rogue_level(game.u?.uz)) {
+        const youData = game.youmonst?.data;
+        const in_line = !!(lined_up(mtmp)
+            && distmin(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
+                <= (throws_rocks(youData) ? 20 : (Math.trunc(acurrstr() / 2) + 1)));
+        if (appr !== 1 || !in_line) getitems = true;
+    }
+    if (getitems) {
+        const gg = { x: ggx, y: ggy, appr };
+        if (m_search_items(mtmp, gg)) {
+            return postmov(mtmp, omx, omy, MMOVE_DONE, can_tunnel, can_unlock, can_open);
+        }
+        ggx = gg.x;
+        ggy = gg.y;
+        appr = gg.appr;
+    }
+
+    // C: don't tunnel if hostile and close enough to prefer a weapon
+    if (can_tunnel && needspick(ptr)
+        && ((!mtmp.mpeaceful || game.Conflict || game.flags?.Conflict)
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8)) {
+        can_tunnel = false;
+    }
 
     const flag = mon_allowflags(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
@@ -478,10 +783,14 @@ export async function m_move(mtmp, after) {
 
     if (mmoved === MMOVE_NOTHING) return MMOVE_NOTHING;
 
-    // Attack-you square: leave in place for now (mattacku not ported)
-    // C returns MMOVE_NOTHING here; DONE is close enough for fall-through.
-    if (nix === game.u.ux && niy === game.u.uy) {
+    // C: m_digweapon_check before place — may spend turn wielding dig tool
+    if (m_digweapon_check(mtmp, nix, niy)) {
         return MMOVE_DONE;
+    }
+
+    // Attack-you square: C returns MMOVE_NOTHING (dochug falls through).
+    if (nix === game.u.ux && niy === game.u.uy) {
+        return MMOVE_NOTHING;
     }
 
     // C: place_monster + mon_track_add then postmov (mintrap on new cell)

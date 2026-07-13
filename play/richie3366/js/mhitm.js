@@ -25,6 +25,7 @@ import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
 const CORPSE = objectNames.indexOf('CORPSE');
 
 const NATTK = 6;
+// C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
 const AT_NONE = 0;
 const AT_CLAW = 1;
 const AT_BITE = 2;
@@ -32,51 +33,43 @@ const AT_KICK = 3;
 const AT_BUTT = 4;
 const AT_TUCH = 5;
 const AT_STNG = 6;
-const AT_WEAP = 10;
+const AT_HUGS = 7;
+const AT_SPIT = 10;
+const AT_ENGL = 11;
+const AT_BREA = 12;
+const AT_EXPL = 13;
+const AT_BOOM = 14;
+const AT_GAZE = 15;
+const AT_TENT = 16;
+const AT_WEAP = 254;
+const AT_MAGC = 255;
 const AD_PHYS = 0;
 const AD_STCK = 19;
 const AC_MAX = 99;
 
-// Compact first-attack table until full mattk[] is extracted.
-// Subsequent slots are AT_NONE (NO_ATTK) for these early-game types.
-const FIRST_ATTK = (() => {
-    const t = new Map();
-    const set = (name, aatyp, adtyp, damn, damd) => {
-        const i = monsterNames.indexOf(name);
-        if (i >= 0) t.set(i, { aatyp, adtyp, damn, damd });
-    };
-    set('PM_LITTLE_DOG', AT_BITE, AD_PHYS, 1, 6);
-    set('PM_DOG', AT_BITE, AD_PHYS, 1, 6);
-    set('PM_LARGE_DOG', AT_BITE, AD_PHYS, 2, 4);
-    set('PM_KITTEN', AT_BITE, AD_PHYS, 1, 6);
-    set('PM_HOUSECAT', AT_BITE, AD_PHYS, 1, 6);
-    set('PM_LARGE_CAT', AT_BITE, AD_PHYS, 2, 4);
-    set('PM_JACKAL', AT_BITE, AD_PHYS, 1, 2);
-    set('PM_FOX', AT_BITE, AD_PHYS, 1, 3);
-    set('PM_COYOTE', AT_BITE, AD_PHYS, 1, 4);
-    set('PM_LICHEN', AT_TUCH, AD_STCK, 0, 0);
-    set('PM_GRID_BUG', AT_BITE, AD_PHYS, 1, 1); // AD_ELEC ignored until needed
-    set('PM_NEWT', AT_BITE, AD_PHYS, 1, 2);
-    set('PM_GECKO', AT_BITE, AD_PHYS, 1, 3);
-    set('PM_IGUANA', AT_BITE, AD_PHYS, 1, 4);
-    set('PM_KOBOLD', AT_WEAP, AD_PHYS, 1, 4);
-    set('PM_GOBLIN', AT_WEAP, AD_PHYS, 1, 4);
-    set('PM_HOBGOBLIN', AT_WEAP, AD_PHYS, 1, 6);
-    set('PM_SEWER_RAT', AT_BITE, AD_PHYS, 1, 3);
-    set('PM_GIANT_RAT', AT_BITE, AD_PHYS, 1, 3);
-    set('PM_BAT', AT_BITE, AD_PHYS, 1, 4);
-    return t;
-})();
+const NO_ATTK = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
 
-/** First-slot mattk from compact table; later slots AT_NONE until full extract. */
+/**
+ * C ref: mhitu.c getmattk — base mptr->mattk[indx] (substitutions deferred).
+ * Uses extracted monsters_data mattks (mons().mattk), not a hand table.
+ */
 export function get_mattk(magr, i) {
-    if (i > 0) return { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
-    const mndx = magr.mnum ?? magr.data?.mndx;
-    return FIRST_ATTK.get(mndx) || { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
+    if (i < 0 || i >= NATTK) return { ...NO_ATTK };
+    const slots = magr?.data?.mattk;
+    if (!slots || !slots[i]) return { ...NO_ATTK };
+    const a = slots[i];
+    return {
+        aatyp: a.aatyp | 0,
+        adtyp: a.adtyp | 0,
+        damn: a.damn | 0,
+        damd: a.damd | 0,
+    };
 }
 
 export {
-    AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP, AD_PHYS,
+    AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
+    AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
+    AT_WEAP, AT_MAGC, AD_PHYS,
 };
 
 function deadmonster(m) {
@@ -119,19 +112,14 @@ function max_passive_dmg(mdef, magr) {
         if (a === AT_CLAW || a === AT_BITE || a === AT_KICK || a === AT_BUTT
             || a === AT_TUCH || a === AT_STNG || a === AT_WEAP) multi2++;
     }
-    // Defender passives: only known if first attk is AT_NONE (rare); NO_ATTK
-    // slots are AT_NONE with 0,0 → dmg becomes 0 after *= damd.
+    // Defender passives: AT_NONE slots; NO_ATTK is AT_NONE 0,0 → dmg 0.
     for (let i = 0; i < NATTK; i++) {
-        const at = i === 0 ? (FIRST_ATTK.get(mdef.mnum ?? mdef.data?.mndx) || null) : null;
-        const aatyp = at ? at.aatyp : AT_NONE;
-        const adtyp = at ? at.adtyp : AD_PHYS;
-        const damn = at ? at.damn : 0;
-        const damd = at ? at.damd : 0;
-        if (aatyp !== AT_NONE) continue;
-        if (adtyp === AD_PHYS) {
-            let dmg = damn;
+        const at = get_mattk(mdef, i);
+        if (at.aatyp !== AT_NONE) continue;
+        if (at.adtyp === AD_PHYS) {
+            let dmg = at.damn;
             if (!dmg) dmg = (md.mlevel ?? 0) + 1;
-            dmg *= damd;
+            dmg *= at.damd;
             return dmg * multi2;
         }
         break;

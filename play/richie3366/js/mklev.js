@@ -26,12 +26,17 @@ import {
     AIR, CLOUD, THRONE, TREE, DRAWBRIDGE_UP,
     MAX_TYPE, INVALID_TYPE, MATCH_WALL,
     A_LAWFUL, Align2amask, STRAT_WAITFORU, NON_PM,
-    LR_UPTELE,
+    LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH,
+    LR_TELE, LR_UPTELE, LR_DOWNTELE,
+    BR_PORTAL, BR_NO_END1, BR_NO_END2,
     TAINT_AGE,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
+    BOOL_RANDOM,
+    LVLINIT_SOLIDFILL, LVLINIT_MINES,
+    In_mines,
 } from './const.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
@@ -49,7 +54,8 @@ import { makemon, mkclass, MM_NOGRP } from './makemon.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER,
-    is_male, is_female, mons,
+    is_male, is_female, mons, G_NOGEN,
+    MALE, FEMALE, NEUTRAL,
 } from './monsters.js';
 import { name_to_monplus } from './mondata.js';
 import { make_engr_at, wipe_engr_at, random_engraving } from './engrave.js';
@@ -198,44 +204,100 @@ function u_on_newpos(x, y) {
     game.u.uy = y;
 }
 
-// C ref: mkmaze.c bad_location — simplified for skeleton
+// C ref: dungeon.h within_bounded_area
+function within_bounded_area(x, y, lx, ly, hx, hy) {
+    return x >= lx && x <= hx && y >= ly && y <= hy;
+}
+
+// C ref: mkmaze.c bad_location
 function bad_location(x, y, nlx, nly, nhx, nhy) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    // Excluded region
-    if (nlx && x >= nlx && x <= nhx && y >= nly && y <= nhy) return true;
-    // Must be ROOM or (CORR in maze)
-    if (loc.typ !== ROOM && !(loc.typ === CORR && game.level?.flags?.is_maze_lev))
-        return true;
-    return false;
+    if (occupied(x, y)) return true;
+    if (within_bounded_area(x, y, nlx, nly, nhx, nhy)) return true;
+    const okTyp = (loc.typ === CORR && game.level?.flags?.is_maze_lev)
+        || loc.typ === ROOM
+        || loc.typ === AIR;
+    return !okTyp;
 }
 
-// C ref: mkmaze.c place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
+// C ref: mkmaze.c put_lregion_here — place stair/branch/tele at (x,y)
+function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
+    if (bad_location(x, y, nlx, nly, nhx, nhy)) {
+        if (!oneshot) return false;
+        // C: deltrap undestroyable-safe then retry bad_location; exclusion
+        // zones deferred (minefill has none).
+        const t = t_at(x, y);
+        if (t) {
+            // Remove ordinary trap so oneshot placement can proceed
+            let prev = null;
+            for (let cur = game.ftrap; cur; prev = cur, cur = cur.ntrap) {
+                if (cur === t) {
+                    if (prev) prev.ntrap = cur.ntrap;
+                    else game.ftrap = cur.ntrap;
+                    break;
+                }
+            }
+        }
+        if (bad_location(x, y, nlx, nly, nhx, nhy)) return false;
+    }
+    switch (rtype) {
+    case LR_TELE:
+    case LR_UPTELE:
+    case LR_DOWNTELE:
+        u_on_newpos(x, y);
+        break;
+    case LR_PORTAL:
+        // mkportal deferred — named in C-JS-MAP
+        break;
+    case LR_DOWNSTAIR:
+    case LR_UPSTAIR:
+        mkstairs(x, y, rtype === LR_UPSTAIR ? 1 : 0, null);
+        break;
+    case LR_BRANCH:
+        place_branch(is_branchlev(), x, y);
+        break;
+    }
+    return true;
+}
+
+// C ref: mkmaze.c place_lregion
 export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     if (!lx) {
-        lx = 1; hx = COLNO - 1; ly = 0; hy = ROWNO - 1;
+        // When rooms exist, let place_branch pick (avoid corridor branches)
+        if (rtype === LR_BRANCH && (game.level?.nroom | 0)) {
+            place_branch(is_branchlev(), 0, 0);
+            return;
+        }
+        lx = 1;
+        hx = COLNO - 1;
+        ly = 0;
+        hy = ROWNO - 1;
     }
     if (lx < 1) lx = 1;
     if (hx > COLNO - 1) hx = COLNO - 1;
     if (ly < 0) ly = 0;
     if (hy > ROWNO - 1) hy = ROWNO - 1;
 
-    // Probabilistic search
+    const oneshot = (lx === hx && ly === hy);
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-            u_on_newpos(x, y);
+        if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
             return;
-        }
     }
-    // Deterministic fallback
     for (let x = lx; x <= hx; x++)
         for (let y = ly; y <= hy; y++)
-            if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-                u_on_newpos(x, y);
+            if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
                 return;
-            }
+}
+
+// C ref: mkmaze.c fixup_special — post-special-level branch/lregion placement
+function fixup_special() {
+    // lev_region[] from level compiler deferred (minefill has none / noflip)
+    if (!game.made_branch && is_branchlev()) {
+        place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
+    }
 }
 
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
@@ -397,6 +459,603 @@ function litstate_rnd(litstate) {
     return !!litstate;
 }
 
+// Maze extent — C ref: decl.c x_maze_max / y_maze_max
+const X_MAZE_MAX = (COLNO - 1) & ~1; // 78
+const Y_MAZE_MAX = (ROWNO - 1) & ~1; // 20
+const MKMAP_WIDTH = COLNO - 2; // 78
+const MKMAP_HEIGHT = ROWNO - 1; // 20
+
+/**
+ * C ref: mkmaze.c makemaz — load special proto/fill, else maze fallback.
+ * Ported: fill_lvl "minefill" via JS minefill.lua body.
+ */
+async function makemaz(s) {
+    const protofile = s ? String(s) : '';
+    if (protofile === 'minefill') {
+        load_minefill();
+        return;
+    }
+    // Other protos / empty-maze create_maze deferred (C-JS-MAP)
+}
+
+/** C ref: nhlib.lua top-level shuffle(align) on special-level load */
+function nhlib_shuffle_align() {
+    const align = ['law', 'neutral', 'chaos'];
+    for (let i = align.length; i > 1; i--) {
+        const j = rn2(i);
+        [align[i - 1], align[j]] = [align[j], align[i - 1]];
+    }
+    game.splev_align = align;
+}
+
+/** C ref: sp_lev.c lvlfill_solid */
+function lvlfill_solid(filling, lit) {
+    const map = game.level;
+    for (let x = 2; x <= X_MAZE_MAX; x++) {
+        for (let y = 0; y <= Y_MAZE_MAX; y++) {
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            loc.typ = filling;
+            loc.flags = 0;
+            loc.horizontal = false;
+            loc.roomno = 0;
+            loc.edge = false;
+            if (lit) loc.lit = true;
+        }
+    }
+}
+
+/** C ref: mkmap.c init_map */
+function mkmap_init_map(bg_typ) {
+    const map = game.level;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            loc.roomno = NO_ROOM;
+            loc.typ = bg_typ;
+            loc.lit = false;
+        }
+    }
+}
+
+/** C ref: mkmap.c init_fill */
+function mkmap_init_fill(bg_typ, fg_typ) {
+    const map = game.level;
+    const limit = (MKMAP_WIDTH * MKMAP_HEIGHT * 2) / 5;
+    let count = 0;
+    while (count < limit) {
+        const x = rn1(MKMAP_WIDTH - 1, 2);
+        const y = rnd(MKMAP_HEIGHT - 1);
+        const loc = map.at(x, y);
+        if (loc && loc.typ === bg_typ) {
+            loc.typ = fg_typ;
+            count++;
+        }
+    }
+}
+
+const MKMAP_DIRS = [
+    -1, -1, -1, 0, -1, 1, 0, -1,
+    0, 1, 1, -1, 1, 0, 1, 1,
+];
+
+function mkmap_get(col, row, bg_typ) {
+    if (col <= 0 || row < 0 || col > MKMAP_WIDTH || row >= MKMAP_HEIGHT)
+        return bg_typ;
+    return game.level.at(col, row)?.typ ?? bg_typ;
+}
+
+function mkmap_pass_one(bg_typ, fg_typ) {
+    const map = game.level;
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            let count = 0;
+            for (let dr = 0; dr < 8; dr++) {
+                if (mkmap_get(x + MKMAP_DIRS[dr * 2], y + MKMAP_DIRS[dr * 2 + 1], bg_typ)
+                    === fg_typ)
+                    count++;
+            }
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            if (count <= 2) loc.typ = bg_typ;
+            else if (count >= 5) loc.typ = fg_typ;
+        }
+    }
+}
+
+function mkmap_pass_two(bg_typ, fg_typ) {
+    const map = game.level;
+    const neu = new Array((MKMAP_WIDTH + 1) * MKMAP_HEIGHT);
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            let count = 0;
+            for (let dr = 0; dr < 8; dr++) {
+                if (mkmap_get(x + MKMAP_DIRS[dr * 2], y + MKMAP_DIRS[dr * 2 + 1], bg_typ)
+                    === fg_typ)
+                    count++;
+            }
+            neu[y * (MKMAP_WIDTH + 1) + x] = (count === 5)
+                ? bg_typ
+                : mkmap_get(x, y, bg_typ);
+        }
+    }
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            const loc = map.at(x, y);
+            if (loc) loc.typ = neu[y * (MKMAP_WIDTH + 1) + x];
+        }
+    }
+}
+
+function mkmap_pass_three(bg_typ, fg_typ) {
+    const map = game.level;
+    const neu = new Array((MKMAP_WIDTH + 1) * MKMAP_HEIGHT);
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            let count = 0;
+            for (let dr = 0; dr < 8; dr++) {
+                if (mkmap_get(x + MKMAP_DIRS[dr * 2], y + MKMAP_DIRS[dr * 2 + 1], bg_typ)
+                    === fg_typ)
+                    count++;
+            }
+            neu[y * (MKMAP_WIDTH + 1) + x] = (count < 3)
+                ? bg_typ
+                : mkmap_get(x, y, bg_typ);
+        }
+    }
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            const loc = map.at(x, y);
+            if (loc) loc.typ = neu[y * (MKMAP_WIDTH + 1) + x];
+        }
+    }
+}
+
+function mkmap_flood_fill_rm(sx, sy, rmno, lit, anyroom, bounds) {
+    const map = game.level;
+    const fg_typ = map.at(sx, sy)?.typ;
+    if (fg_typ == null) return;
+
+    while (sx > 0) {
+        const loc = map.at(sx, sy);
+        if (!loc) break;
+        const oktyp = anyroom ? IS_ROOM(loc.typ) : loc.typ === fg_typ;
+        if (!oktyp || loc.roomno === rmno) break;
+        sx--;
+    }
+    sx++;
+
+    if (sx < bounds.min_rx) bounds.min_rx = sx;
+    if (sy < bounds.min_ry) bounds.min_ry = sy;
+
+    let i = sx;
+    for (; i <= MKMAP_WIDTH; i++) {
+        const loc = map.at(i, sy);
+        if (!loc || loc.typ !== fg_typ) break;
+        loc.roomno = rmno;
+        loc.lit = !!lit;
+        bounds.n_filled = (bounds.n_filled | 0) + 1;
+        if (anyroom) {
+            for (let ii = (i === sx ? i - 1 : i); ii <= i + 1; ii++) {
+                for (let jj = sy - 1; jj <= sy + 1; jj++) {
+                    if (!isok(ii, jj)) continue;
+                    const w = map.at(ii, jj);
+                    if (!w) continue;
+                    if (IS_WALL(w.typ) || IS_DOOR(w.typ) || w.typ === SDOOR) {
+                        w.edge = true;
+                        if (lit) w.lit = true;
+                        if (w.roomno === NO_ROOM) w.roomno = rmno;
+                        else if (w.roomno !== rmno) w.roomno = SHARED;
+                    }
+                }
+            }
+        }
+    }
+    const nx = i;
+
+    if (isok(sx, sy - 1)) {
+        for (i = sx; i < nx; i++) {
+            const above = map.at(i, sy - 1);
+            if (above?.typ === fg_typ) {
+                if (above.roomno !== rmno)
+                    mkmap_flood_fill_rm(i, sy - 1, rmno, lit, anyroom, bounds);
+            } else {
+                const al = map.at(i - 1, sy - 1);
+                if ((i > sx || isok(i - 1, sy - 1)) && al?.typ === fg_typ
+                    && al.roomno !== rmno)
+                    mkmap_flood_fill_rm(i - 1, sy - 1, rmno, lit, anyroom, bounds);
+                const ar = map.at(i + 1, sy - 1);
+                if ((i < nx - 1 || isok(i + 1, sy - 1)) && ar?.typ === fg_typ
+                    && ar.roomno !== rmno)
+                    mkmap_flood_fill_rm(i + 1, sy - 1, rmno, lit, anyroom, bounds);
+            }
+        }
+    }
+    if (isok(sx, sy + 1)) {
+        for (i = sx; i < nx; i++) {
+            const below = map.at(i, sy + 1);
+            if (below?.typ === fg_typ) {
+                if (below.roomno !== rmno)
+                    mkmap_flood_fill_rm(i, sy + 1, rmno, lit, anyroom, bounds);
+            } else {
+                const bl = map.at(i - 1, sy + 1);
+                if ((i > sx || isok(i - 1, sy + 1)) && bl?.typ === fg_typ
+                    && bl.roomno !== rmno)
+                    mkmap_flood_fill_rm(i - 1, sy + 1, rmno, lit, anyroom, bounds);
+                const br = map.at(i + 1, sy + 1);
+                if ((i < nx - 1 || isok(i + 1, sy + 1)) && br?.typ === fg_typ
+                    && br.roomno !== rmno)
+                    mkmap_flood_fill_rm(i + 1, sy + 1, rmno, lit, anyroom, bounds);
+            }
+        }
+    }
+
+    if (nx - 1 > bounds.max_rx) bounds.max_rx = nx - 1;
+    if (sy > bounds.max_ry) bounds.max_ry = sy;
+}
+
+function join_map_cleanup() {
+    const g = game;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.roomno = NO_ROOM;
+        }
+    }
+    g.level.nroom = 0;
+    g.level.rooms = [{ hx: -1 }];
+}
+
+function join_map_dig_pass(bg_typ, fg_typ) {
+    const g = game;
+    const rooms = g.level.rooms;
+    const nroom = g.level.nroom;
+    let ci = 0;
+    let cj = 1;
+    while (cj < nroom) {
+        const croom = rooms[ci];
+        const croom2 = rooms[cj];
+        if (!croom || !croom2) break;
+        const sm = { x: 0, y: 0 };
+        const em = { x: 0, y: 0 };
+        if (!somexy(croom, sm) || !somexy(croom2, em)) {
+            sm.x = croom.lx + ((croom.hx - croom.lx) / 2 | 0);
+            sm.y = croom.ly + ((croom.hy - croom.ly) / 2 | 0);
+            em.x = croom2.lx + ((croom2.hx - croom2.lx) / 2 | 0);
+            em.y = croom2.ly + ((croom2.hy - croom2.ly) / 2 | 0);
+        }
+        dig_corridor(sm, em, null, false, fg_typ, bg_typ);
+        if (croom2.lx > croom.hx
+            || ((croom2.ly > croom.hy || croom2.hy < croom.ly) && rn2(3))) {
+            ci = cj;
+        }
+        cj++;
+    }
+}
+
+/** C ref: mkmap.c join_map */
+function join_map_fixed(bg_typ, fg_typ) {
+    const g = game;
+    outer:
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            const loc = g.level.at(x, y);
+            if (!loc || loc.typ !== fg_typ || loc.roomno !== NO_ROOM) continue;
+            const bounds = {
+                min_rx: x, max_rx: x, min_ry: y, max_ry: y, n_filled: 0,
+            };
+            mkmap_flood_fill_rm(x, y, g.level.nroom + ROOMOFFSET, false, false, bounds);
+            if (bounds.n_filled > 3) {
+                add_room(bounds.min_rx, bounds.min_ry, bounds.max_rx, bounds.max_ry,
+                    false, OROOM, true);
+                const croom = g.level.rooms[g.level.nroom - 1];
+                if (croom) croom.irregular = true;
+                if (g.level.nroom >= MAXNROFROOMS * 2) break outer;
+            } else {
+                const rmno = /* room index before add */ (g.level.nroom + ROOMOFFSET);
+                // flood used nroom+ROOMOFFSET without incrementing nroom
+                for (let sx = bounds.min_rx; sx <= bounds.max_rx; sx++) {
+                    for (let sy = bounds.min_ry; sy <= bounds.max_ry; sy++) {
+                        const cell = g.level.at(sx, sy);
+                        if (cell && cell.roomno === rmno) {
+                            cell.typ = bg_typ;
+                            cell.roomno = NO_ROOM;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    join_map_dig_pass(bg_typ, fg_typ);
+    join_map_cleanup();
+}
+
+/** C ref: sp_lev.c wallify_map */
+function wallify_map(x1, y1, x2, y2) {
+    const map = game.level;
+    y1 = Math.max(y1, 0);
+    x1 = Math.max(x1, 1);
+    y2 = Math.min(y2, ROWNO - 1);
+    x2 = Math.min(x2, COLNO - 1);
+    for (let y = y1; y <= y2; y++) {
+        const lo_yy = (y > 0) ? y - 1 : 0;
+        const hi_yy = (y < y2) ? y + 1 : y2;
+        for (let x = x1; x <= x2; x++) {
+            const loc = map.at(x, y);
+            if (!loc || loc.typ !== STONE) continue;
+            const lo_xx = (x > 1) ? x - 1 : 1;
+            const hi_xx = (x < x2) ? x + 1 : x2;
+            let done = false;
+            for (let yy = lo_yy; yy <= hi_yy && !done; yy++) {
+                for (let xx = lo_xx; xx <= hi_xx; xx++) {
+                    const n = map.at(xx, yy);
+                    if (n && (IS_ROOM(n.typ) || n.typ === CROSSWALL)) {
+                        loc.typ = (yy !== y) ? HWALL : VWALL;
+                        done = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+function finish_map(fg_typ, bg_typ, lit, walled, icedpools) {
+    const map = game.level;
+    if (walled) wallify_map(1, 0, COLNO - 1, ROWNO - 1);
+    if (lit) {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = map.at(x, y);
+                if (!loc) continue;
+                if ((!IS_OBSTRUCTED(fg_typ) && loc.typ === fg_typ)
+                    || (!IS_OBSTRUCTED(bg_typ) && loc.typ === bg_typ)
+                    || (bg_typ === TREE && loc.typ === bg_typ)
+                    || (walled && IS_WALL(loc.typ)))
+                    loc.lit = true;
+            }
+        }
+        for (let i = 0; i < (game.level.nroom | 0); i++) {
+            if (game.level.rooms[i]) game.level.rooms[i].rlit = 1;
+        }
+    }
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            if (loc.typ === LAVAPOOL) loc.lit = true;
+            else if (loc.typ === ICE) loc.icedpool = icedpools ? 1 : 2;
+        }
+    }
+}
+
+/** C ref: mkmap.c mkmap */
+function mkmap(init_lev) {
+    const bg_typ = init_lev.bg;
+    const fg_typ = init_lev.fg;
+    const smooth = !!init_lev.smoothed;
+    const join = !!init_lev.joined;
+    let lit = init_lev.lit;
+    const walled = !!init_lev.walled;
+
+    lit = litstate_rnd(lit) ? 1 : 0;
+
+    mkmap_init_map(bg_typ);
+    mkmap_init_fill(bg_typ, fg_typ);
+    mkmap_pass_one(bg_typ, fg_typ);
+    mkmap_pass_two(bg_typ, fg_typ);
+    if (smooth) {
+        mkmap_pass_three(bg_typ, fg_typ);
+        mkmap_pass_three(bg_typ, fg_typ);
+    }
+    if (join) join_map_fixed(bg_typ, fg_typ);
+    finish_map(fg_typ, bg_typ, lit, walled, !!init_lev.icedpools);
+    if (walled && join) {
+        game.level.flags.is_maze_lev = false;
+        game.level.flags.is_cavernous_lev = true;
+    }
+}
+
+/** C ref: sp_lev.c splev_initlev — SOLIDFILL + MINES for minefill */
+function splev_initlev(linit) {
+    switch (linit.init_style) {
+    case LVLINIT_SOLIDFILL:
+        if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
+        lvlfill_solid(linit.filling, linit.lit);
+        break;
+    case LVLINIT_MINES:
+        if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
+        if (linit.filling > -1) lvlfill_solid(linit.filling, 0);
+        mkmap(linit);
+        break;
+    default:
+        break;
+    }
+}
+
+function splev_map_origin() {
+    return { mx: 1, my: 0, sx: COLNO - 1, sy: ROWNO };
+}
+
+function good_stair_loc(x, y) {
+    const typ = game.level.at(x, y)?.typ;
+    return typ === ROOM || typ === CORR || typ === ICE;
+}
+
+function is_ok_location_dry(x, y) {
+    if (!isok(x, y)) return false;
+    const typ = game.level.at(x, y)?.typ;
+    return SPACE_POS(typ);
+}
+
+function get_location_random(ok_fn) {
+    const { mx, my, sx, sy } = splev_map_origin();
+    let x = 0, y = 0;
+    let cpt = 0;
+    const ok = ok_fn || ((xx, yy) => is_ok_location_dry(xx, yy));
+    do {
+        x = mx + rn2(sx);
+        y = my + rn2(sy);
+        if (ok(x, y)) break;
+    } while (++cpt < 100);
+    if (cpt >= 100) {
+        for (let xx = 0; xx < sx; xx++) {
+            for (let yy = 0; yy < sy; yy++) {
+                x = mx + xx;
+                y = my + yy;
+                if (ok(x, y)) return { x, y };
+            }
+        }
+        return { x: X_MAZE_MAX, y: Y_MAZE_MAX };
+    }
+    return { x, y };
+}
+
+function lua_random2(lo, hi) {
+    return lo + rn2(hi - lo + 1);
+}
+
+function splev_create_object(oclass) {
+    const pos = get_location_random(null);
+    if (oclass == null) mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
+    else mkobj_at(oclass, pos.x, pos.y, true);
+}
+
+function splev_create_boulder() {
+    const pos = get_location_random(null);
+    mksobj_at(BOULDER, pos.x, pos.y, true, true);
+}
+
+function monclass_letter_to_mlet(ch) {
+    if (ch === 'G') return 'S_GNOME';
+    if (ch === 'h') return 'S_HUMANOID';
+    return null;
+}
+
+// C ref: sp_lev.c create_monster — sp_amask_to_amask before mkclass / makemon
+function splev_create_monster(id_or_class) {
+    let pm = null;
+    let female = 0;
+    const isClass = typeof id_or_class === 'string' && id_or_class.length === 1;
+    // Named ids: find_montype gender RNG happens before create_monster in C Lua
+    // binding; class letters leave id=NON_PM and resolve via mkclass after amask.
+    if (!isClass && typeof id_or_class === 'string') {
+        const r = find_montype_gender(id_or_class);
+        female = r.female;
+        if (r.mndx !== NON_PM && r.mndx >= 0) pm = mons(r.mndx);
+    }
+    // C: amask = sp_amask_to_amask(m->sp_amask) → induced_align(80) for RANDOM
+    induced_align(80);
+    if (isClass) {
+        const mlet = monclass_letter_to_mlet(id_or_class);
+        pm = mlet ? mkclass(mlet, G_NOGEN) : null;
+    }
+    const pos = get_location_random(null);
+    const mtmp = makemon(pm, pos.x, pos.y, 0);
+    if (mtmp && typeof id_or_class === 'string' && id_or_class.length > 1) {
+        mtmp.female = female;
+    }
+}
+
+function splev_create_stair(up) {
+    const pos = get_location_random(good_stair_loc);
+    const trap = t_at(pos.x, pos.y);
+    if (trap) {
+        let prev = null;
+        for (let t = game.ftrap; t; t = t.ntrap) {
+            if (t === trap) {
+                if (prev) prev.ntrap = t.ntrap;
+                else game.ftrap = t.ntrap;
+                break;
+            }
+            prev = t;
+        }
+    }
+    mkstairs(pos.x, pos.y, up ? 1 : 0, null);
+}
+
+// C ref: sp_lev.c create_trap → mktrap(random) — retry until kind != NO_TRAP
+function splev_create_trap() {
+    const pos = get_location_random(null);
+    let kind;
+    do {
+        kind = traptype_rnd();
+    } while (kind === NO_TRAP);
+    // C mktrap: is_hole && !Can_fall_thru → ROCKTRAP
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
+    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    const trap = maketrap(pos.x, pos.y, kind);
+    kind = trap ? trap.ttyp : NO_TRAP;
+    // C mktrap victim gate (minefill des.trap has no novictim)
+    const lvl = level_difficulty();
+    if (game.in_mklev
+        && kind !== NO_TRAP
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP
+            && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+        mktrap_victim(trap);
+    }
+}
+
+/**
+ * C ref: dat/minefill.lua via load_special — JS port of the fill script.
+ */
+function load_minefill() {
+    const g = game;
+    nhlib_shuffle_align();
+
+    splev_initlev({
+        init_style: LVLINIT_SOLIDFILL,
+        fg: STONE, bg: STONE, filling: STONE,
+        lit: BOOL_RANDOM, smoothed: false, joined: false, walled: false,
+    });
+
+    g.level.flags.is_maze_lev = true;
+
+    splev_initlev({
+        init_style: LVLINIT_MINES,
+        fg: ROOM, bg: STONE, filling: ROOM,
+        lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
+        icedpools: false,
+    });
+
+    splev_create_stair(true);
+    splev_create_stair(false);
+
+    for (let i = 0, n = lua_random2(2, 5); i < n; i++)
+        splev_create_object(GEM_CLASS);
+    splev_create_object(TOOL_CLASS);
+    for (let i = 0, n = lua_random2(2, 4); i < n; i++)
+        splev_create_object(null);
+    if (percent(75)) {
+        for (let i = 0, n = lua_random2(1, 2); i < n; i++)
+            splev_create_boulder();
+    }
+
+    for (let i = 0, n = lua_random2(6, 8); i < n; i++)
+        splev_create_monster('gnome');
+    splev_create_monster('gnome lord');
+    splev_create_monster('dwarf');
+    splev_create_monster('dwarf');
+    splev_create_monster('G');
+    splev_create_monster('G');
+    splev_create_monster(percent(50) ? 'h' : 'G');
+
+    for (let i = 0; i < 6; i++) splev_create_trap();
+
+    if (!g.level.flags.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    // C ref: sp_lev.c load_special — fixup_special after wallify/noflip
+    fixup_special();
+}
+
+
 // C ref: mklev.c makelevel()
 async function makelevel() {
     const g = game;
@@ -405,12 +1064,34 @@ async function makelevel() {
     // C: themerms.lua local postprocess = {} (fresh each Lua load / level)
     themerms_postprocess.length = 0;
 
-    // C ref: mklev.c:1295 — check for below-Medusa maze level
-    // This rn2(5) is consumed even when the condition fails (short-circuit)
+    const dun = g.dungeons?.[g.u?.uz?.dnum | 0];
+    const fill = dun?.fill_lvl || '';
+    // C ref: mklev.c:1267-1289 — Is_special / proto / fill_lvl before ordinary.
+    // Medusa rn2(5) only in hell/medusa else-if — NOT before fill_lvl.
+    if (fill) {
+        await makemaz(fill);
+    } else {
+        await makelevel_ordinary();
+        return; // ordinary already runs fill_special + themerms_post + wallify
+    }
+
+    // C ref: mklev.c:1416-1420 — common tail after makemaz
+    for (let i = 0; i < (g.level?.nroom | 0); i++)
+        fill_special_room(g.level.rooms[i]);
+    run_themerms_post_level_generate();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+}
+
+// C ref: mklev.c makelevel() regular-room branch
+async function makelevel_ordinary() {
+    const g = game;
+
+    // C ref: mklev.c:1286-1289 — hell or (rn2(5) && past medusa) → makemaz("")
+    // Burn Medusa rn2(5) only on the ordinary path when not In_hell.
     const medusa = g.medusa_level;
     if (rn2(5) && g.u?.uz?.dnum === medusa?.dnum
-        && (g.u?.uz?.dlevel ?? 1) > (medusa?.dlevel ?? 999)) {
-        // Would generate maze — not applicable for contest level 1
+        && depth_of_level(g.u?.uz) > depth_of_level(medusa)) {
+        // Would makemaz("") — deferred; continue ordinary for now
     }
 
     // Regular level generation
@@ -1046,16 +1727,22 @@ function create_object_themed(opts, x, y) {
     return otmp;
 }
 
-// C ref: sp_lev.c find_montype — gender roll for non-fixed-sex species
+// C ref: sp_lev.c find_montype — gender from name_to_monplus / fixed-sex / rn2(2)
 function find_montype_gender(name) {
-    const i = name_to_monplus(name);
+    // C: int mgend = NEUTRAL; then name_to_monplus(..., &mgend)
+    const genderVar = { gender: NEUTRAL };
+    const i = name_to_monplus(name, null, genderVar);
     if (i < 0 || i === NON_PM) return { mndx: NON_PM, female: 0 };
     const ptr = mons(i);
     let female = 0;
     if (is_male(ptr) || is_female(ptr)) {
-        female = is_female(ptr) ? 1 : 0;
+        female = is_female(ptr) ? FEMALE : MALE;
     } else {
-        female = rn2(2); // FEMALE=1 / MALE=0
+        const mgend = genderVar.gender;
+        // C: (mgend == FEMALE) ? FEMALE : (mgend == MALE) ? MALE : rn2(2)
+        female = mgend === FEMALE ? FEMALE
+            : mgend === MALE ? MALE
+            : rn2(2);
     }
     return { mndx: i, female };
 }
@@ -2281,23 +2968,43 @@ function find_branch_room(mp) {
     return croom;
 }
 
-function place_branch(branchp) {
+function place_branch(branchp, x = 0, y = 0) {
     const g = game;
-    const mp = { x: 0, y: 0 };
-    const croom = find_branch_room(mp);
-    if (croom && mp.x > 0) {
-        const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum
-            && branchp.end1?.dlevel === g.u?.uz?.dlevel);
-        const dest = on_end1 ? branchp.end2 : branchp.end1;
+    // C ref: mklev.c place_branch — early-out if none or already placed
+    if (!branchp || g.made_branch) return;
+
+    if (!x) {
+        const mp = { x: 0, y: 0 };
+        const croom = find_branch_room(mp);
+        if (croom && mp.x > 0) {
+            x = mp.x;
+            y = mp.y;
+        } else {
+            g.made_branch = true;
+            return;
+        }
+    }
+
+    const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum
+        && branchp.end1?.dlevel === g.u?.uz?.dlevel);
+    const dest = on_end1 ? branchp.end2 : branchp.end1;
+    const brType = branchp.type ?? 0;
+    let make_stairs = true;
+    if (on_end1) make_stairs = brType !== BR_NO_END1;
+    else make_stairs = brType !== BR_NO_END2;
+
+    if (brType === BR_PORTAL) {
+        // mkportal deferred — still mark placed (C made_branch)
+    } else if (make_stairs) {
         const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
-        const loc = g.level?.at(mp.x, mp.y);
+        const loc = g.level?.at(x, y);
         if (loc) {
             loc.typ = STAIRS;
             loc.ladder = goes_up ? 1 : 2;
         }
-        stairway_add(mp.x, mp.y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
-        if (goes_up) g.level.upstair = { x: mp.x, y: mp.y };
-        else g.level.dnstair = { x: mp.x, y: mp.y };
+        stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
+        if (goes_up) g.level.upstair = { x, y };
+        else g.level.dnstair = { x, y };
     }
     g.made_branch = true;
 }
@@ -2708,11 +3415,20 @@ function mineralize_kelp(kelp_pool, kelp_moat) {
 function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
     mineralize_kelp(kelp_pool, kelp_moat);
-    // Endgame / hell / special-level skips not applicable for DoD dlvl1
+    // C ref: mklev.c mineralize — hell / V_tower / rogue / arboreal / most
+    // specials skip rock deposits (deferred beyond mines boost).
     const absDepth = depth_of_level(game.u?.uz);
     const dunLevel = game.u?.uz?.dlevel ?? 1;
     if (goldprob < 0) goldprob = 20 + Math.trunc(absDepth / 3);
     if (gemprob < 0) gemprob = Math.trunc(goldprob / 4);
+    // C: mines have ***MORE*** goodies
+    if (!skip_lvl_checks) {
+        if (In_mines(game.u?.uz)) {
+            goldprob *= 2;
+            gemprob *= 3;
+        }
+        // In_quest goldprob/=4 gemprob/=6 deferred until quest fill
+    }
     for (let x = 2; x < COLNO - 2; x++) {
         for (let y = 1; y < ROWNO - 1; y++) {
             const loc = map.at(x, y);
@@ -2741,7 +3457,7 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
                         const otmp = mkobj(GEM_CLASS, false);
-                        if (otmp && otmp.otyp === objectNames.indexOf('ROCK')) {
+                        if (otmp && otmp.otyp === ROCK) {
                             /* dealloc — not placed */
                         } else if (otmp) {
                             otmp.ox = x;

@@ -28,9 +28,12 @@ import {
     P_FIRST_H_TO_H, P_LAST_H_TO_H, P_NUM_SKILLS,
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     P_MASTER, P_GRAND_MASTER,
-    NEED_WEAPON, NEED_RANGED_WEAPON, NO_WEAPON_WANTED, W_WEP,
+    NEED_WEAPON, NEED_RANGED_WEAPON, NEED_HTH_WEAPON,
+    NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
+    NO_WEAPON_WANTED, W_WEP,
     ECMD_OK,
 } from './const.js';
+import { m_carrying, mon_has_shield } from './mon.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     skill_based_spellbook_id, spell_skilltype,
@@ -257,16 +260,46 @@ export function select_rwep(mtmp) {
     return null;
 }
 
+const PICK_AXE = objectNames.indexOf('PICK_AXE');
+const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
+const AXE = objectNames.indexOf('AXE');
+const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
+
 /**
- * C ref: weapon.c mon_wield_item — NEED_RANGED_WEAPON → propellor only.
+ * C ref: weapon.c mon_wield_item — ranged + dig-tool pick/axe envelope.
+ * NEED_HTH_WEAPON / select_hwep, weld plines, artifact_light deferred.
  */
 export function mon_wield_item(mon) {
     if (mon.weapon_check === NO_WEAPON_WANTED) return 0;
     let obj = null;
-    if (mon.weapon_check === NEED_RANGED_WEAPON) {
+    switch (mon.weapon_check) {
+    case NEED_RANGED_WEAPON:
         select_rwep(mon);
         obj = game._propellor;
-    } else {
+        break;
+    case NEED_PICK_AXE:
+        obj = m_carrying(mon, PICK_AXE);
+        if (!obj && !mon_has_shield(mon)) {
+            obj = m_carrying(mon, DWARVISH_MATTOCK);
+        }
+        break;
+    case NEED_AXE:
+        obj = m_carrying(mon, BATTLE_AXE);
+        if (!obj || mon_has_shield(mon)) obj = m_carrying(mon, AXE);
+        break;
+    case NEED_PICK_OR_AXE:
+        obj = m_carrying(mon, DWARVISH_MATTOCK);
+        if (!obj) obj = m_carrying(mon, BATTLE_AXE);
+        if (!obj || mon_has_shield(mon)) {
+            obj = m_carrying(mon, PICK_AXE);
+            if (!obj) obj = m_carrying(mon, AXE);
+        }
+        break;
+    case NEED_HTH_WEAPON:
+        // select_hwep deferred — keep prior stub (no spend)
+        mon.weapon_check = NEED_WEAPON;
+        return 0;
+    default:
         mon.weapon_check = NEED_WEAPON;
         return 0;
     }
@@ -276,6 +309,7 @@ export function mon_wield_item(mon) {
             mon.weapon_check = NEED_WEAPON;
             return 0;
         }
+        // mwelded refuse-wield deferred — treat as free switch
         mon.mw = obj;
         if (mw_tmp) mw_tmp.owornmask = (mw_tmp.owornmask || 0) & ~W_WEP;
         obj.owornmask = (obj.owornmask || 0) | W_WEP;
@@ -369,7 +403,8 @@ function skill_level_name(skill) {
     }
 }
 
-function P_SKILL(type) {
+/** C ref: skills.h P_SKILL — current skill rank (u.weapon_skills). */
+export function P_SKILL(type) {
     return game.u?.weapon_skills?.[type]?.skill ?? P_ISRESTRICTED;
 }
 function P_MAX_SKILL(type) {

@@ -26,7 +26,10 @@ import {
     NON_PM,
     monsterNames,
 } from './generated/monsters_data.js';
-import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS } from './const.js';
+import {
+    A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS,
+    MH_HUMAN, MH_ELF, MH_DWARF, MH_GNOME, MH_ORC,
+} from './const.js';
 
 function pm(name) {
     const i = monsterNames.indexOf(name);
@@ -360,6 +363,7 @@ export const roles = [
 
 export const races = [
     // C ref: role.c races[] — hpadv/enadv Init columns feed newhp()/newpw() at ulevel==0
+    // C: races[] selfmask / lovemask / hatemask (role.c) — peace_minded
     {
         name: 'human',
         adj: 'human',
@@ -370,7 +374,9 @@ export const races = [
         hpadv: adv(2, 0, 0, 2, 1, 0),
         enadv: adv(1, 0, 2, 0, 2, 0),
         allow: 0x300f,
-        selfmask: 0x8,
+        selfmask: MH_HUMAN,
+        lovemask: 0,
+        hatemask: MH_GNOME | MH_ORC,
     },
     {
         name: 'elf',
@@ -382,7 +388,9 @@ export const races = [
         hpadv: adv(1, 0, 0, 1, 1, 0),
         enadv: adv(2, 0, 3, 0, 3, 0),
         allow: 0x3011,
-        selfmask: 0x10,
+        selfmask: MH_ELF,
+        lovemask: MH_ELF,
+        hatemask: MH_ORC,
     },
     {
         name: 'dwarf',
@@ -394,7 +402,9 @@ export const races = [
         hpadv: adv(4, 0, 0, 3, 2, 0),
         enadv: adv(0, 0, 0, 0, 0, 0),
         allow: 0x3024,
-        selfmask: 0x20,
+        selfmask: MH_DWARF,
+        lovemask: MH_DWARF | MH_GNOME,
+        hatemask: MH_ORC,
     },
     {
         name: 'gnome',
@@ -406,7 +416,9 @@ export const races = [
         hpadv: adv(1, 0, 0, 1, 0, 0),
         enadv: adv(2, 0, 2, 0, 2, 0),
         allow: 0x3042,
-        selfmask: 0x40,
+        selfmask: MH_GNOME,
+        lovemask: MH_DWARF | MH_GNOME,
+        hatemask: MH_HUMAN,
     },
     {
         name: 'orc',
@@ -419,7 +431,9 @@ export const races = [
         hpadv: adv(1, 0, 0, 1, 0, 0),
         enadv: adv(1, 0, 1, 0, 1, 0),
         allow: 0x3081,
-        selfmask: 0x80,
+        selfmask: MH_ORC,
+        lovemask: 0,
+        hatemask: MH_HUMAN | MH_ELF | MH_DWARF,
     },
 ];
 
