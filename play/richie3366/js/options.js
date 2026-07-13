@@ -204,6 +204,8 @@ export function parseNethackrc(rc) {
                 else if (lname === 'showexp') result.flags.showexp = value;
                 else if (lname === 'time') result.flags.time = value;
                 else if (lname === 'verbose') result.flags.verbose = value;
+                // C: OPTIONS=DECgraphics loads Primary DEC showsyms (same as symset:)
+                else if (lname === 'decgraphics') result.flags.decgraphics = value;
                 else result.flags[lname] = value;
             }
         }

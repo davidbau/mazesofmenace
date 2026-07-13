@@ -1507,7 +1507,7 @@ export async function u_init_misc() {
 }
 
 // C ref: u_init.c u_init_inventory_attrs()
-export function u_init_inventory_attrs() {
+export async function u_init_inventory_attrs() {
     game.invent = [];
     game._goldCount = 0;
     game._lastinvnr = 51; // C: gl.lastinvnr = 51
@@ -1534,7 +1534,7 @@ export function u_init_inventory_attrs() {
     if (game.u.umoney0) ini_inv(Money);
 
     init_attr(75);
-    vary_init_attr();
+    await vary_init_attr();
     u_init_carry_attr_boost();
 }
 

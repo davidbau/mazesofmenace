@@ -112,6 +112,12 @@ export class NethackGame {
             g.flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
         }
         g.iflags = { ...opts.iflags };
+        // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics
+        // (or boolean DECgraphics) loads H_DEC showsyms. Never assume DEC.
+        const sym = String(opts.symset || '').toLowerCase();
+        g.iflags.decgraphics = sym === 'decgraphics'
+            || opts.flags?.DECgraphics === true
+            || opts.flags?.decgraphics === true;
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
         g._parsed_rc = opts;

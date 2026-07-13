@@ -26,7 +26,7 @@ import {
     PICK_RANDOM,
     PICK_RIGID,
 } from './const.js';
-import { ATR_INVERSE } from './terminal.js';
+import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 
 /** C: gr.rfilter — empty until filter menu is ported. */
 const rfilter = { roles: [], mask: 0 };
@@ -785,7 +785,8 @@ async function shall_i_pick_prompt(prompt) {
     if (disp?.grid) {
         for (let c = 0; c < (disp.cols || 80); c++) {
             const ch = c < line.length ? line[c] : ' ';
-            disp.setCell(c, 0, ch, 0, 0);
+            // C tty topline / yn uses NO_COLOR (not CLR_BLACK=0)
+            disp.setCell(c, 0, ch, NO_COLOR, 0);
         }
         disp.setCursor(line.length, 0);
         disp.flush?.();

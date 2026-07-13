@@ -163,6 +163,8 @@ async function killed(mtmp) {
 /**
  * C ref: uhitm.c hmon / hmon_hitmon — melee weapon or bare-hand physical.
  * Poison / joust / stagger / live knockback / pudding split deferred.
+ * Hit pline: hmon_hitmon_msg_hit skips when destroyed (melee); thrown
+ * multishot exception deferred.
  */
 async function hmon(mon, obj, thrown, _dieroll) {
     let dmg = 0;
@@ -179,16 +181,21 @@ async function hmon(mon, obj, thrown, _dieroll) {
     dmg += (game.u?.udaminc | 0);
     if (dmg < 1) dmg = 1;
 
-    if (thrown === HMON_MELEE) {
-        // verbose hit message; killed() also messages on death
+    mon.mhp = (mon.mhp | 0) - dmg;
+    const destroyed = (mon.mhp | 0) < 1;
+    if (destroyed) mon.mhp = 0;
+
+    // C: msg_hit only if !hittxt && (!destroyed || thrown-multishot)
+    if (thrown === HMON_MELEE && !destroyed) {
         if (game.flags?.verbose !== false) {
+            // canseemon ? exclam(dmg) : "." — period stand-in; full exclam later
             await pline(`You hit ${mon_nam(mon)}.`);
+        } else {
+            await pline('You hit it.');
         }
     }
 
-    mon.mhp = (mon.mhp | 0) - dmg;
-    if ((mon.mhp | 0) < 1) {
-        mon.mhp = 0;
+    if (destroyed) {
         await killed(mon);
         return false; // died
     }

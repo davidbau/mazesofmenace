@@ -7,7 +7,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rnl } from './rng.js';
 import { acurr, A_DEX, A_STR, A_CON, exercise } from './attrib.js';
 import { pline, newsym } from './display.js';
-import { vision_recalc } from './vision.js';
+import { vision_recalc, recalc_block_point } from './vision.js';
 import { getdir } from './lock.js';
 import { near_capacity } from './invent.js';
 import { objects_at } from './mkobj.js';
@@ -118,6 +118,7 @@ async function kick_door(x, y, avrg_attrib) {
             if (loc.flags !== undefined) loc.flags = loc.doormask;
             // b_trapped("door", FOOT) deferred
             newsym(x, y);
+            recalc_block_point(x, y);
             vision_recalc(1);
         } else if (acurr(A_STR) > 18 && !rn2(5) && !shopdoor) {
             await pline('As you kick the door, it shatters to pieces!');
@@ -125,6 +126,7 @@ async function kick_door(x, y, avrg_attrib) {
             loc.doormask = D_NODOOR;
             if (loc.flags !== undefined) loc.flags = loc.doormask;
             newsym(x, y);
+            recalc_block_point(x, y);
             vision_recalc(1);
         } else {
             await pline('As you kick the door, it crashes open!');
@@ -132,6 +134,7 @@ async function kick_door(x, y, avrg_attrib) {
             loc.doormask = D_BROKEN;
             if (loc.flags !== undefined) loc.flags = loc.doormask;
             newsym(x, y);
+            recalc_block_point(x, y);
             vision_recalc(1);
         }
         // add_damage / pay_for_damage / watchman_thief_arrest deferred

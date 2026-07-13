@@ -311,7 +311,7 @@ export async function newgame() {
     makedog();
 
     // C ref: allmain.c → u_init_inventory_attrs() (after makedog)
-    u_init_inventory_attrs();
+    await u_init_inventory_attrs();
 
     // Initial display BEFORE wear (C: docrt/bot then u_init_skills_discoveries)
     init_vision_globals();

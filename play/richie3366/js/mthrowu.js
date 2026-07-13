@@ -11,7 +11,7 @@ import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
 } from './const.js';
-import { couldsee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import {
     place_object, splitobj, stackobj, obj_extract_self, delobj,
 } from './mkobj.js';
@@ -23,10 +23,10 @@ import { ammo_and_launcher } from './wield.js';
 import { acurr, A_DEX, A_STR, exercise } from './attrib.js';
 import { calc_capacity } from './invent.js';
 import { losehp, nomul, maybe_half_phys } from './hack.js';
-import { pline } from './display.js';
+import { pline, mon_visible, see_with_infrared } from './display.js';
 import { Monnam } from './do_name.js';
 import { nohands, mons } from './monsters.js';
-import { xname, singular } from './objnam.js';
+import { xname, singular, an, vtense } from './objnam.js';
 import { VENOM_CLASS, objectNames } from './objects.js';
 import {
     PM_MONK, PM_ROGUE, PM_HUMAN,
@@ -54,9 +54,26 @@ function blocking_terrain(x, y) {
     return false;
 }
 
+/**
+ * C ref: display.h _canseemon — cansee/infrared + mon_visible (worms deferred).
+ */
 function canseemon(mtmp) {
-    // Visible-when-couldsee stand-in (full canspotmon deferred)
-    return couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis;
+    if (!mtmp) return false;
+    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
+    return mon_visible(mtmp);
+}
+
+/** C ref: zap.c exclam — punctuation by damage force. */
+function exclam(force) {
+    if (force < 0) return '?';
+    if (force <= 4) return '.';
+    return '!';
+}
+
+/** C ref: hacklib.c upstart — capitalize first letter in place. */
+function upstart(str) {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 /** C invent.c freehand — either hand free (uwep not bimanual / uswap empty). */
@@ -97,21 +114,45 @@ export function lined_up(mtmp) {
 }
 
 /**
- * C ref: mthrowu.c thitu — hit/miss vs hero AC.
+ * C ref: mthrowu.c thitu — hit/miss vs hero AC; onm via an(xname)/mshot.
+ * Multishot mshot_xname "the Nth" prefix deferred (single-shot path).
  */
-export function thitu(tlev, dam, objp, _name) {
+export function thitu(tlev, dam, objp, name) {
     const obj = objp ? objp.obj : null;
     const u = game.u || {};
+    const Blind = !!(u.Blind || u.ublind);
+    const verbose = game.flags?.verbose !== false;
+    let onmbuf;
+    if (!name) {
+        if (!obj) throw new Error('thitu: name & obj both null');
+        // quan>1 → doname deferred; single missile uses xname (mshot_xname)
+        onmbuf = singular(obj, xname) || xname(obj) || 'missile';
+        name = onmbuf;
+    } else {
+        onmbuf = name;
+    }
+    // obj_is_pname → the(name) deferred; quan>1 keeps bare name
+    const onm = (obj && (obj.quan | 0) > 1) ? name : an(name);
+
     const uac = u.uac ?? 10;
     const dieroll = rnd(20);
     if (uac + tlev <= dieroll) {
         game._mesg_given = (game._mesg_given || 0) + 1;
-        // miss messages deferred
+        if (Blind || !verbose) {
+            pline('It misses.');
+        } else if (uac + tlev <= dieroll - 2) {
+            const subj = upstart(onm);
+            pline(`${subj} ${vtense(onm, 'miss')} you.`);
+        } else {
+            pline(`You are almost hit by ${onm}.`);
+        }
         return 0;
     }
-    // Hit
-    const onm = obj ? (singular(obj, xname) || 'missile') : 'it';
-    pline(`You are hit by ${onm}!`);
+    if (Blind || !verbose) {
+        pline(`You are hit${exclam(dam)}`);
+    } else {
+        pline(`You are hit by ${onm}${exclam(dam)}`);
+    }
     losehp(dam, onm, /* KILLED_BY */ 1);
     exercise(A_STR, false);
     return 1;
@@ -260,7 +301,8 @@ function monshoot(mtmp, otmp, mwep) {
         if (multishot > 1) {
             onm = `${multishot} ${xname(otmp)}`;
         } else {
-            onm = singular(otmp, xname);
+            // C: singular then obj_is_pname ? the : an
+            onm = an(singular(otmp, xname));
         }
         pline(`${Monnam(mtmp)} ${shooting ? 'shoots' : 'throws'} ${onm}!`);
     }

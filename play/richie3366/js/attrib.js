@@ -164,11 +164,23 @@ export function init_attr(np) {
     return np;
 }
 
-// C ref: attrib.c adjattrib() — increment path used by vary_init_attr / carry boost
-export function adjattrib(ndx, incr, _msgflg) {
+// C ref: attrib.c plusattr[] / minusattr[]
+const PLUSATTR = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
+const MINUSATTR = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
+
+/**
+ * C ref: attrib.c adjattrib() — mutate ABASE/AMAX; You_feel when msgflg <= 0.
+ * Fixed_abil / Dunce cap / verbose "already" messages / encumber deferred.
+ * @param {number} ndx
+ * @param {number} incr
+ * @param {number|boolean} [msgflg=1] positive => silent; <=0 => You_feel
+ */
+export async function adjattrib(ndx, incr, msgflg = 1) {
     if (!incr) return false;
+    const old_acurr = acurr(ndx);
     const old = abase(ndx);
     setAbase(ndx, old + incr);
+    let attrstr;
     if (incr > 0) {
         if (abase(ndx) > amax(ndx)) {
             setAmax(ndx, abase(ndx));
@@ -177,6 +189,7 @@ export function adjattrib(ndx, incr, _msgflg) {
                 setAmax(ndx, attrMax(ndx));
             }
         }
+        attrstr = PLUSATTR[ndx];
     } else {
         if (abase(ndx) < attrMin(ndx)) {
             // decrease-below-min path uses rn2; not hit by vary_init_attr on seed8000
@@ -185,16 +198,27 @@ export function adjattrib(ndx, incr, _msgflg) {
             setAmax(ndx, amax(ndx) - decr);
             if (amax(ndx) < attrMin(ndx)) setAmax(ndx, attrMin(ndx));
         }
+        attrstr = MINUSATTR[ndx];
     }
-    return abase(ndx) !== old;
+    // C: if (ACURR(ndx) == old_acurr) return FALSE (verbose msgs deferred)
+    if (acurr(ndx) === old_acurr) return false;
+    if (game.u.aexe?.a) game.u.aexe.a[ndx] = 0;
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    if ((msgflg | 0) <= 0) {
+        const { You_feel } = await import('./display.js');
+        const very = (incr > 1 || incr < -1) ? 'very ' : '';
+        await You_feel(`${very}${attrstr}!`);
+    }
+    return true;
 }
 
 // C ref: attrib.c vary_init_attr()
-export function vary_init_attr() {
+export async function vary_init_attr() {
     for (let i = 0; i < A_MAX; i++) {
         if (!rn2(20)) {
             const xd = rn2(7) - 2; // biased variation
-            adjattrib(i, xd, true);
+            await adjattrib(i, xd, true); // msgflg true → silent
             if (abase(i) < amax(i)) setAmax(i, abase(i));
         }
     }

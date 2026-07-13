@@ -5,16 +5,18 @@
 // Branch envelope: ParanoidPray yn confirm (default on) + noninteractive
 // #pray with ublesscnt-too-soon (p_type 0) → nomul(-3)/afternmv →
 // prayer_done rnz(250)+change_luck+gods_upset → angrygods cases 0–3
-// (displeased / godvoice+relearn) + trailing rnz(300); #offer not-on-altar.
+// (displeased / godvoice+pline+verbalize+adjattrib You_feel) + trailing
+// rnz(300); #offer not-on-altar.
 // Named omissions: full in_trouble body; ParanoidConfirm "yes" path /
 // wizard force; angrygods cases 4+ (curse/minion/zap); pleased / crown /
 // fix troubles; p_type -2/-1/1/2/3 outcome bodies beyond water_prayer scan;
 // pray_revive; floorfood sacrifice / #turn; livelog; is_demon/is_undead
-// poly paths; full losexp (adjabil/resists_drli/Upolyd).
+// poly paths; full losexp (adjabil/resists_drli/Upolyd); Fixed_abil/Dunce
+// adjattrib; Unaware You_feel dream prefix.
 
 import { game } from './gstate.js';
 import { rn2, rnz } from './rng.js';
-import { pline } from './display.js';
+import { pline, verbalize } from './display.js';
 import { nomul } from './hack.js';
 import { A_WIS, change_luck, adjattrib } from './attrib.js';
 import { align_gname } from './roles.js';
@@ -268,12 +270,14 @@ async function angrygods(resp_god) {
         await godvoice(resp_god, null);
         const strayed = ((u.ualign?.record | 0) < 0)
             && resp_god === (u.ualign?.type ?? 0);
-        // C: ugod_is_angry() — approx via negative record
+        // C: ugod_is_angry() — (u.ualign.record < 0)
         await pline(
             `"Thou ${strayed ? 'hast strayed from the path' : 'art arrogant'}, ${mortal}."`,
         );
-        await pline('Thou must relearn thy lessons!');
-        adjattrib(A_WIS, -1, false);
+        // C: SetVoice + verbalize("Thou must relearn thy lessons!")
+        await verbalize('Thou must relearn thy lessons!');
+        // C: adjattrib(A_WIS, -1, FALSE) → You_feel("foolish!") → more()
+        await adjattrib(A_WIS, -1, false);
         losexp_divine();
         break;
     }

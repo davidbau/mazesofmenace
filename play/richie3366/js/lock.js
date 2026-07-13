@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, newsym } from './display.js';
-import { vision_recalc } from './vision.js';
+import { vision_recalc, recalc_block_point } from './vision.js';
 import {
     COLNO, ROWNO, IS_DOOR,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_TRAPPED,
@@ -106,7 +106,9 @@ export async function doopen_indir(x, y) {
             loc.doormask = D_ISOPEN;
         }
         newsym(x, y);
-        vision_recalc(1); // C: feel_newsym + recalc_block_point
+        // C: feel_location + recalc_block_point(cc) then vision via full recalc
+        recalc_block_point(x, y);
+        vision_recalc(1);
     } else {
         exercise(A_STR, true);
         await pline('The door resists!');
@@ -138,7 +140,22 @@ export async function pick_lock(pick) {
         return PICKLOCK_LEARNED_SOMETHING;
     }
 
-    // Real door lock/unlock occupation deferred
-    await pline('This doorway has no door.');
-    return PICKLOCK_LEARNED_SOMETHING;
+    // C ref: lock.c pick_lock — switch (door->doormask) exact cases
+    const mask = loc.doormask || 0;
+    switch (mask) {
+    case D_NODOOR:
+        await pline('This doorway has no door.');
+        return PICKLOCK_LEARNED_SOMETHING;
+    case D_ISOPEN:
+        await pline('You cannot lock an open door.');
+        return PICKLOCK_LEARNED_SOMETHING;
+    case D_BROKEN:
+        await pline('This door is broken.');
+        return PICKLOCK_LEARNED_SOMETHING;
+    default:
+        // CLOSED/LOCKED (+ TRAPPED): yn lock/unlock occupation, autounlock,
+        // credit-card rules deferred (named in C-JS-MAP).
+        await pline('This doorway has no door.');
+        return PICKLOCK_LEARNED_SOMETHING;
+    }
 }

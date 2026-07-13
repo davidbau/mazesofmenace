@@ -121,6 +121,18 @@ export function vision_reset() {
     game._viz_rmax = null;
 }
 
+/**
+ * C ref: vision.c recalc_block_point — after door open/break, refresh
+ * viz_clear so LOS can pass (or block) at (x,y). Incremental dig_point
+ * deferred; full vision_reset matches does_block semantics.
+ */
+export function recalc_block_point(x, y) {
+    void x;
+    void y;
+    vision_reset();
+    game.vision_full_recalc = 1;
+}
+
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
 function q1_path(srow, scol, y2, x2) {
     let x = scol, y = srow;

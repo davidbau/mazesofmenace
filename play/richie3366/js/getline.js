@@ -51,8 +51,69 @@ export async function getlin(query) {
 }
 
 /**
- * Minimal extended-command table (C extcmdlist subset).
- * Only AUTOCOMPLETE + available (wizard for WIZMODECMD) entries.
+ * C ref: cmd.c extcmdlist — every AUTOCOMPLETE entry (excl. CMD_NOT_AVAILABLE /
+ * INTERNALCMD). Used only for NEWAUTOCOMP uniqueness in ext_cmd_getlin_hook;
+ * runnable bodies stay in EXT_CMDS below. Incomplete runners must not shrink
+ * this set or prefixes like "c" falsely unique-match "chat".
+ */
+const EXT_CMD_AC = [
+    { name: '?', wiz: false },
+    { name: 'adjust', wiz: false },
+    { name: 'annotate', wiz: false },
+    { name: 'chat', wiz: false },
+    { name: 'chronicle', wiz: false },
+    { name: 'conduct', wiz: false },
+    { name: 'dip', wiz: false },
+    { name: 'enhance', wiz: false },
+    { name: 'force', wiz: false },
+    { name: 'genocided', wiz: false },
+    { name: 'herecmdmenu', wiz: false },
+    { name: 'history', wiz: false },
+    { name: 'invoke', wiz: false },
+    { name: 'jump', wiz: false },
+    { name: 'levelchange', wiz: true },
+    { name: 'lightsources', wiz: true },
+    { name: 'loot', wiz: false },
+    { name: 'migratemons', wiz: true },
+    { name: 'monster', wiz: false },
+    { name: 'name', wiz: false },
+    { name: 'offer', wiz: false },
+    { name: 'overview', wiz: false },
+    { name: 'panic', wiz: true },
+    { name: 'polyself', wiz: true },
+    { name: 'pray', wiz: false },
+    { name: 'quit', wiz: false },
+    { name: 'ride', wiz: false },
+    { name: 'rub', wiz: false },
+    { name: 'sit', wiz: false },
+    { name: 'stats', wiz: true },
+    { name: 'terrain', wiz: false },
+    { name: 'therecmdmenu', wiz: false },
+    { name: 'timeout', wiz: true },
+    { name: 'tip', wiz: false },
+    { name: 'turn', wiz: false },
+    { name: 'untrap', wiz: false },
+    { name: 'vanquished', wiz: false },
+    { name: 'version', wiz: false },
+    { name: 'vision', wiz: true },
+    { name: 'wipe', wiz: false },
+    { name: 'wizbury', wiz: true },
+    { name: 'wizdispmacros', wiz: true },
+    { name: 'wizintrinsic', wiz: true },
+    { name: 'wizkill', wiz: true },
+    { name: 'wizmondiff', wiz: true },
+    { name: 'wizrumorcheck', wiz: true },
+    { name: 'wizseenv', wiz: true },
+    { name: 'wizshownhuuid', wiz: true },
+    { name: 'wizsmell', wiz: true },
+    { name: 'wiztelekinesis', wiz: true },
+    { name: 'wizwhere', wiz: true },
+    { name: 'wmode', wiz: true },
+];
+
+/**
+ * Runnable extended-command table (C extcmdlist subset with JS bodies).
+ * Enter resolution uses this list; progressive paint uses EXT_CMD_AC.
  */
 const EXT_CMDS = [
     {
@@ -165,10 +226,20 @@ function availableExtCmds() {
     return EXT_CMDS.filter((ec) => !ec.wiz || wizardMode());
 }
 
-/** C ref: cmdline.c / getline.c ext_cmd_getlin_hook — unique prefix → expand */
+/** C ref: cmd.c extcmds_match(ECM_NOFLAGS) — AUTOCOMPLETE + !WIZ unless wizard */
+function availableAcNames() {
+    return EXT_CMD_AC.filter((ec) => !ec.wiz || wizardMode());
+}
+
+/**
+ * C ref: getline.c ext_cmd_getlin_hook → extcmds_match(base, ECM_NOFLAGS)
+ * Unique AUTOCOMPLETE prefix → expand to full ef_txt.
+ */
 function extCmdAutocomplete(base) {
-    const matches = availableExtCmds().filter(
-        (ec) => ec.autocomplete && ec.name.startsWith(base),
+    if (!base) return null;
+    const lower = base.toLowerCase();
+    const matches = availableAcNames().filter((ec) =>
+        ec.name.toLowerCase().startsWith(lower),
     );
     if (matches.length === 1) return matches[0].name;
     return null;

@@ -25,7 +25,7 @@ import {
     VENOM_CLASS, objectNames,
 } from './objects.js';
 import {
-    NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+    NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
     DEC_TO_UNICODE,
 } from './terminal.js';
 import {
@@ -34,6 +34,11 @@ import {
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
+// C ref: objects.h MARKER — obj_is_generic gem/spell ranges
+const FIRST_REAL_GEM_OTYP = objectNames.indexOf('DILITHIUM_CRYSTAL');
+const LAST_GLASS_GEM_OTYP = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
+const FIRST_SPELL_OTYP = objectNames.indexOf('SPE_DIG');
+const LAST_SPELL_OTYP = objectNames.indexOf('SPE_BLANK_PAPER');
 
 // C ref: defsym.h OBJCLASS_DRAWING — default object-class map symbols
 const DEF_OC_SYM = {
@@ -206,6 +211,25 @@ function covers_objects(x, y) {
     return t === POOL || t === MOAT || t === WATER || t === LAVAPOOL || t === LAVAWALL;
 }
 
+// C ref: display.h obj_is_generic — !dknown potions/gems/spellbooks use
+// generic class glyph (objects[oclass]), not per-otyp oc_color.
+function obj_is_generic(obj) {
+    if (obj.dknown) return false;
+    const oclass = obj.oclass ?? game.objects?.[obj.otyp]?.oc_class;
+    if (oclass === POTION_CLASS) return true;
+    const otyp = obj.otyp;
+    if (otyp >= FIRST_REAL_GEM_OTYP && otyp <= LAST_GLASS_GEM_OTYP) return true;
+    if (otyp >= FIRST_SPELL_OTYP && otyp <= LAST_SPELL_OTYP) return true;
+    return false;
+}
+
+// Contest nomux / tty ANSI_DEFAULT: CLR_GRAY hilite is empty → capture
+// emits default fg (decoded NO_COLOR). CLR_BLACK fg 0 is coerced the same.
+function tty_map_color(color) {
+    if (color === CLR_GRAY || color === CLR_BLACK) return NO_COLOR;
+    return color;
+}
+
 // C ref: display.c map_object / display.h obj_to_glyph + mon_color for corpses
 // C ref: display.h statue_to_glyph — statues use mons[corpsenm].mlet + obj_color(STATUE)
 export function obj_glyph(obj) {
@@ -223,6 +247,11 @@ export function obj_glyph(obj) {
     if (obj.otyp === CORPSE_OTYP && obj.corpsenm != null && obj.corpsenm >= 0) {
         const color = mcolors[obj.corpsenm] ?? def?.oc_color ?? NO_COLOR;
         return { ch, color, dec: false };
+    }
+    // C: generic_obj_to_glyph → objects[oclass] (GENERIC_POTION etc.)
+    if (obj_is_generic(obj)) {
+        const gen = game.objects?.[oclass];
+        return { ch, color: gen?.oc_color ?? NO_COLOR, dec: false };
     }
     const color = def?.oc_color ?? NO_COLOR;
     return { ch, color, dec: false };
@@ -273,7 +302,24 @@ const S_TDWALL = 9;
 const S_TLWALL = 10;
 const S_TRWALL = 11;
 
-const WALL_GLYPH = {
+/** C ref: defsym.h PCHAR Primary (ASCII) wall glyphs. */
+const WALL_GLYPH_ASCII = {
+    [S_STONE]:  { ch: ' ', color: NO_COLOR, dec: false },
+    [S_VWALL]:  { ch: '|', color: NO_COLOR, dec: false },
+    [S_HWALL]:  { ch: '-', color: NO_COLOR, dec: false },
+    [S_TLCORN]: { ch: '-', color: NO_COLOR, dec: false },
+    [S_TRCORN]: { ch: '-', color: NO_COLOR, dec: false },
+    [S_BLCORN]: { ch: '-', color: NO_COLOR, dec: false },
+    [S_BRCORN]: { ch: '-', color: NO_COLOR, dec: false },
+    [S_CRWALL]: { ch: '-', color: NO_COLOR, dec: false },
+    [S_TUWALL]: { ch: '-', color: NO_COLOR, dec: false },
+    [S_TDWALL]: { ch: '-', color: NO_COLOR, dec: false },
+    [S_TLWALL]: { ch: '|', color: NO_COLOR, dec: false },
+    [S_TRWALL]: { ch: '|', color: NO_COLOR, dec: false },
+};
+
+/** C ref: dat/symbols DECgraphics — VT100 alternate charset bytes + SO/SI. */
+const WALL_GLYPH_DEC = {
     [S_STONE]:  { ch: ' ', color: NO_COLOR, dec: false },
     [S_VWALL]:  { ch: 'x', color: NO_COLOR, dec: true },
     [S_HWALL]:  { ch: 'q', color: NO_COLOR, dec: true },
@@ -287,6 +333,15 @@ const WALL_GLYPH = {
     [S_TLWALL]: { ch: 'u', color: NO_COLOR, dec: true },
     [S_TRWALL]: { ch: 't', color: NO_COLOR, dec: true },
 };
+
+/** C: gs.symset[].handling == H_DEC after OPTIONS=symset:DECgraphics. */
+function use_decgraphics() {
+    return !!game.iflags?.decgraphics;
+}
+
+function wall_glyph_table() {
+    return use_decgraphics() ? WALL_GLYPH_DEC : WALL_GLYPH_ASCII;
+}
 
 // C ref: display.c wall_matrix / cross_matrix
 const T_STONE = 0, T_TLCORN = 1, T_TRCORN = 2, T_HWALL = 3, T_TDWALL = 4;
@@ -486,15 +541,20 @@ function do_crwall(seenv, row) {
 function wall_glyph(loc) {
     // C: idx = ptr->seenv ? wall_angle(ptr) : S_stone
     const idx = (loc.seenv) ? wall_angle(loc) : S_STONE;
-    return WALL_GLYPH[idx] || WALL_GLYPH[S_STONE];
+    const tab = wall_glyph_table();
+    return tab[idx] || tab[S_STONE];
 }
 
 function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
+    const dec = use_decgraphics();
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
     case SCORR:     return { ch: ' ', color: NO_COLOR, dec: false }; // C: like stone until found
-    case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
+    // C defsym S_room: ASCII '.'; DECgraphics meta-~ (middle dot)
+    case ROOM:      return dec
+        ? { ch: '~', color: NO_COLOR, dec: true }
+        : { ch: '.', color: NO_COLOR, dec: false };
     case CORR: {
         // C ref: display.c back_to_glyph — S_litcorr if waslit||lit_corridor
         // else S_corr. reset_glyphmap: S_litcorr + shared '#' → CLR_WHITE;
@@ -507,9 +567,22 @@ function terrain_glyph(loc, x, y) {
         };
     }
     case DOOR:
-        if (loc.doormask & D_ISOPEN) return { ch: '|', color: CLR_BROWN, dec: false };
-        if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
-        return { ch: '~', color: NO_COLOR, dec: true };  // D_NODOOR = floor
+        // C ref: display.c back_to_glyph DOOR — S_hodoor/S_vodoor when open.
+        // DEC: both open-door cmaps are meta-a (checkerboard).
+        // ASCII: horizontal → S_hodoor '|'; else S_vodoor '-'.
+        if (loc.doormask & D_ISOPEN) {
+            if (dec) return { ch: 'a', color: CLR_BROWN, dec: true };
+            return loc.horizontal
+                ? { ch: '|', color: CLR_BROWN, dec: false }
+                : { ch: '-', color: CLR_BROWN, dec: false };
+        }
+        if (loc.doormask & (D_CLOSED | D_LOCKED)) {
+            return { ch: '+', color: CLR_BROWN, dec: false };
+        }
+        // D_NODOOR = S_ndoor: ASCII '.'; DEC meta-~
+        return dec
+            ? { ch: '~', color: NO_COLOR, dec: true }
+            : { ch: '.', color: NO_COLOR, dec: false };
     case STAIRS: {
         // C defsym.h: ordinary stairs CLR_GRAY; branch CLR_YELLOW.
         // Recorded public sessions paint upstairs '<' as CLR_YELLOW and
@@ -547,7 +620,7 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     const loc = game.level?.at(x, y);
     if (!loc) return;
     loc.disp_ch = ch;
-    loc.disp_color = color;
+    loc.disp_color = tty_map_color(color);
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
@@ -568,10 +641,12 @@ export function magic_map_background(x, y, show) {
 
     // C: out-of-sight lit rooms/corridors the hero does not remember as lit
     if (!cansee(x, y) && !lev.waslit) {
-        if (lev.typ === ROOM && tg.ch === '~' && tg.dec) {
+        const isRoomFloor = lev.typ === ROOM
+            && ((tg.ch === '~' && tg.dec) || (tg.ch === '.' && !tg.dec));
+        if (isRoomFloor) {
             // C: (flags.dark_room && iflags.use_color) ? DARKROOMSYM
             //    : GLYPH_NOTHING. Defaults On; showsyms equate darkroom to
-            //    room floor (reglyph_darkroom). Keep ·/NO_COLOR like S_room.
+            //    room floor (reglyph_darkroom). Keep floor/NO_COLOR like S_room.
             const darkRoom = game.flags?.dark_room !== false;
             const useColor = game.flags?.color !== false
                 && game.iflags?.use_color !== false;
@@ -968,6 +1043,18 @@ export function mark_topline_seen() {
 
 export function get_win_stop() {
     return _win_stop;
+}
+
+// C ref: pline.c You_feel — prefix "You feel " (Unaware dream path deferred)
+export async function You_feel(msg) {
+    if (msg == null || msg === '') return;
+    await pline(`You feel ${msg}`);
+}
+
+// C ref: pline.c verbalize — wrap spoken text in double quotes
+export async function verbalize(msg) {
+    if (msg == null || msg === '') return;
+    await pline(`"${msg}"`);
 }
 
 // ── pline ──

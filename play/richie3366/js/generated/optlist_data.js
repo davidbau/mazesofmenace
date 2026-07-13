@@ -261,7 +261,7 @@ export const optionHelpCompounds = [
   },
   {
     "name": "msg_window",
-    "descr": "(not applicable)"
+    "descr": "control of \"view previous message(s)\" (^P) behavior"
   },
   {
     "name": "msghistory",
