@@ -130,7 +130,7 @@ function mon_at_display(x, y) {
 }
 
 // C ref: display.h _mon_visible — invis/undetected only (caller handles sight)
-function mon_visible(mon) {
+export function mon_visible(mon) {
     if (!mon) return false;
     if (mon.minvis && !game.u?.See_invisible) return false;
     if (mon.mundetected) return false;
@@ -147,7 +147,7 @@ function hero_has_infravision() {
 }
 
 // C ref: display.h _see_with_infrared
-function see_with_infrared(mon) {
+export function see_with_infrared(mon) {
     if (!mon) return false;
     if (game.u?.Blind || game.u?.ublind) return false;
     if (!hero_has_infravision()) return false;
@@ -156,9 +156,38 @@ function see_with_infrared(mon) {
     return couldsee(mon.mx, mon.my);
 }
 
+/**
+ * C ref: display.c newsym / glyph_at — what look_all treats as "currently shown".
+ * Returns {kind:'hero'|'mon'|'obj', mtmp?, obj?} or null.
+ */
+export function look_shown_at(x, y) {
+    const u = game.u || {};
+    if (u.ux === x && u.uy === y) return { kind: 'hero' };
+
+    const mtmp = mon_at_display(x, y);
+    if (cansee(x, y)) {
+        if (mtmp && mon_visible(mtmp)) return { kind: 'mon', mtmp };
+        const obj = objects_at(x, y);
+        if (obj && !covers_objects(x, y)) return { kind: 'obj', obj };
+        return null;
+    }
+    if (mtmp && mon_visible(mtmp) && see_with_infrared(mtmp)) {
+        return { kind: 'mon', mtmp };
+    }
+    // Remembered object glyph still on map (hero_memory)
+    const loc = game.level?.at?.(x, y);
+    const rg = loc?.remembered_glyph;
+    const obj = objects_at(x, y);
+    if (rg && obj && !covers_objects(x, y)) {
+        const og = obj_glyph(obj);
+        if (rg.ch === og.ch) return { kind: 'obj', obj };
+    }
+    return null;
+}
+
 // C ref: display.c map_glyph / mon_color(monsndx) — per-species mcolor.
 // Newt is CLR_YELLOW; gecko/lizard are CLR_GREEN — mlet-only color is wrong.
-function mon_glyph(mtmp) {
+export function mon_glyph(mtmp) {
     const mlet = mtmp.data?.mlet || mtmp.mlet;
     const ch = MLET_CH[mlet] || '?';
     if (mtmp.mtame) return { ch, color: CLR_WHITE };
@@ -179,7 +208,7 @@ function covers_objects(x, y) {
 
 // C ref: display.c map_object / display.h obj_to_glyph + mon_color for corpses
 // C ref: display.h statue_to_glyph — statues use mons[corpsenm].mlet + obj_color(STATUE)
-function obj_glyph(obj) {
+export function obj_glyph(obj) {
     const def = game.objects?.[obj.otyp];
     const oclass = obj.oclass ?? def?.oc_class ?? ILLOBJ_CLASS;
     // C: STATUE → monster letter (not ROCK_CLASS '`'); color is statue white
@@ -466,13 +495,17 @@ function terrain_glyph(loc, x, y) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
     case SCORR:     return { ch: ' ', color: NO_COLOR, dec: false }; // C: like stone until found
     case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
-    case CORR:
-        // C: lit_corridor → S_litcorr; same glyph as S_corr → CLR_WHITE
+    case CORR: {
+        // C ref: display.c back_to_glyph — S_litcorr if waslit||lit_corridor
+        // else S_corr. reset_glyphmap: S_litcorr + shared '#' → CLR_WHITE;
+        // S_corr is defsym CLR_GRAY, which tty records as NO_COLOR.
+        const litCorr = !!(loc.waslit || game.flags?.lit_corridor);
         return {
             ch: '#',
-            color: game.flags?.lit_corridor ? CLR_WHITE : NO_COLOR,
+            color: litCorr ? CLR_WHITE : NO_COLOR,
             dec: false,
         };
+    }
     case DOOR:
         if (loc.doormask & D_ISOPEN) return { ch: '|', color: CLR_BROWN, dec: false };
         if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
@@ -571,6 +604,8 @@ export function newsym(x, y) {
 
     if (game.u?.ux === x && game.u?.uy === y) {
         // Hero
+        // C: cansee path still sets waslit before display_self
+        loc.waslit = !!loc.lit;
         show_glyph_cell(x, y, '@', CLR_WHITE, false);
         const tg = terrain_glyph(loc, x, y);
         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
@@ -580,6 +615,8 @@ export function newsym(x, y) {
     // C ref: display.c newsym — monster via cansee+mon_visible, or infrared
     const mtmp = mon_at_display(x, y);
     if (cansee(x, y)) {
+        // C: lev->waslit = (lev->lit != 0); /* remember lit condition */
+        loc.waslit = !!loc.lit;
         if (mtmp && mon_visible(mtmp)) {
             const mg = mon_glyph(mtmp);
             show_glyph_cell(x, y, mg.ch, mg.color, false);
@@ -615,9 +652,20 @@ export function newsym(x, y) {
     }
 
     if (loc.remembered_glyph) {
-        // Out of sight but remembered — show remembered glyph
-        show_glyph_cell(x, y, loc.remembered_glyph.ch,
-            loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+        // C ref: display.c newsym — out of sight, correct lit memory to
+        // match waslit. With lit_corridor, visible CORR paints as
+        // S_litcorr (CLR_WHITE); when !waslit (or dark_room+color), show
+        // S_corr instead (tty CLR_GRAY → NO_COLOR).
+        let mem = loc.remembered_glyph;
+        const darkRoomColor = game.flags?.dark_room !== false
+            && game.flags?.color !== false
+            && game.iflags?.use_color !== false;
+        if (loc.typ === CORR && mem.ch === '#' && mem.color === CLR_WHITE
+            && (!loc.waslit || darkRoomColor)) {
+            mem = { ch: '#', color: NO_COLOR, decgfx: false };
+            loc.remembered_glyph = mem;
+        }
+        show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx);
     }
 }
 

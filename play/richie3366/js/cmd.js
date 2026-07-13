@@ -33,6 +33,7 @@ import { wiz_wish } from './wizcmds.js';
 import { dowield } from './wield.js';
 import { dowhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
+import { spoteffects } from './pickup.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -517,4 +518,8 @@ async function domove(dx, dy) {
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+
+    // C: if (u.umoved) spoteffects(TRUE) — autopickup / check_here look
+    u.umoved = true;
+    await spoteffects(true);
 }

@@ -25,6 +25,16 @@ export function christen_monst(mtmp, name) {
     return mtmp;
 }
 
+function mon_plain_name(mtmp) {
+    const raw = mtmp?.data?.name || 'monster';
+    return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+}
+
+function highc_name(name) {
+    if (!name) return 'It';
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 /**
  * C ref: do_name.c x_monnam — tame/name subset for displace and pet plines.
  * ARTICLE_YOUR + named pet → bare given name (name_at_start clears article).
@@ -32,10 +42,30 @@ export function christen_monst(mtmp, name) {
 export function x_monnam_tame(mtmp) {
     if (!mtmp) return 'it';
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
-    const raw = mtmp.data?.name || 'monster';
-    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+    const plain = mon_plain_name(mtmp);
     if (mtmp.mtame) return `your ${plain}`;
     return `the ${plain}`;
+}
+
+/**
+ * C ref: do_name.c mon_nam / Monnam — ARTICLE_THE; named → bare name.
+ * Hallu / invis / saddle / priest / shk deferred.
+ */
+export function Monnam(mtmp) {
+    if (!mtmp) return 'It';
+    if (has_mgivenname(mtmp)) return highc_name(MGIVENNAME(mtmp));
+    return highc_name(`the ${mon_plain_name(mtmp)}`);
+}
+
+/**
+ * C ref: do_name.c noit_mon_nam / noit_Monnam — ARTICLE_YOUR; named → bare.
+ * SUPPRESS_IT / hallu deferred.
+ */
+export function noit_Monnam(mtmp) {
+    if (!mtmp) return 'It';
+    if (has_mgivenname(mtmp)) return highc_name(MGIVENNAME(mtmp));
+    if (mtmp.mtame) return highc_name(`your ${mon_plain_name(mtmp)}`);
+    return Monnam(mtmp);
 }
 
 /**

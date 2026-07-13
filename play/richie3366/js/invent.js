@@ -43,6 +43,7 @@ import {
     P_SPEAR, P_TRIDENT, P_LANCE, P_BOW, P_SLING, P_CROSSBOW,
     P_DART, P_SHURIKEN, P_BOOMERANG, P_UNICORN_HORN,
     P_BARE_HANDED_COMBAT,
+    W_ARMOR,
 } from './const.js';
 import { align_str, align_gname, u_gname } from './roles.js';
 import {
@@ -567,6 +568,23 @@ function pretty_weapon_descr(obj) {
 }
 
 /**
+ * C ref: mhitu.c magic_negation — worn armor a_can (objects.oc_level for armor)
+ * plus Protection bumps. Branch envelope: worn W_ARMOR a_can max; amulet/
+ * extrinsic Protection deferred until a seed needs them.
+ */
+function magic_negation_you() {
+    let mc = 0;
+    for (const o of game.invent || []) {
+        if (((o.owornmask || 0) & W_ARMOR) !== 0) {
+            // C: objects[o->otyp].a_can — packed as oc_level for armor
+            const armpro = game.objects?.[o.otyp]?.oc_level ?? 0;
+            if (armpro > mc) mc = armpro;
+        }
+    }
+    return mc;
+}
+
+/**
  * C ref: insight.c enlightenment(BASICENLIGHTENMENT) — pantheon/wallet from C.
  */
 export async function doattributes() {
@@ -585,6 +603,12 @@ export async function doattributes() {
     const turns = game.moves || 1;
     const hand = (u.uhandedness === 1 /* LEFT_HANDED */) ? 'left' : 'right';
     const gold = game._goldCount || 0;
+    // C ref: insight.c — omit gender when urole.name.f is set (Caveman/
+    // Cavewoman, Priest/Priestess). JS stores null-f as same string as m
+    // (Tourist/Rogue); distinct f is the C non-null case (same as welcome()).
+    const distinctFemale = game.urole?.name?.f
+        && game.urole.name.f !== game.urole.name.m;
+    const genderPart = distinctFemale ? '' : `${gender} `;
 
     // C ref: insight.c — mission for u_gname(); opposed by other pantheon gods
     let opposed = '  who is opposed by';
@@ -608,7 +632,7 @@ export async function doattributes() {
         ` ${name} the ${role}'s attributes:`,
         '',
         ' Background:',
-        `  You are a ${rank}, a level ${u.ulevel || 1} ${gender} ${race} ${role}.`,
+        `  You are a ${rank}, a level ${u.ulevel || 1} ${genderPart}${race} ${role}.`,
         `  You are ${align}, on a mission for ${u_gname(game.urole, atype)}`,
         opposed,
         `  You are ${hand}-handed.`,
@@ -662,6 +686,16 @@ export async function doattributes() {
         page2.push(
             ' Attributes:',
             '  You are nominally aligned.',
+        );
+        // C ref: insight.c attributes_enlightenment — magic_negation after
+        // piousness, before pray (resistances omitted when absent)
+        const armpro = magic_negation_you();
+        if (armpro > 0) {
+            const mc_types = ['', 'warded', 'guarded', 'protected'];
+            const idx = Math.min(armpro, mc_types.length - 1);
+            page2.push(`  You are ${mc_types[idx]}.`);
+        }
+        page2.push(
             "  You can't safely pray.",
             '',
             ' Miscellaneous:',

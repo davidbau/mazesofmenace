@@ -43,6 +43,24 @@ function is_rustprone_obj(obj) {
     return (game.objects?.[obj.otyp]?.oc_material ?? 0) === 11; // IRON
 }
 
+// C ref: objclass.h enum obj_material_types
+const GEMSTONE = 20;
+const MINERAL = 21;
+
+/**
+ * C ref: objnam.c GemStone(typ) — gems/rocks that append " stone".
+ * FLINT always; GEMSTONE material except named crystal exceptions.
+ */
+function GemStone(typ) {
+    if (objectNames[typ] === 'FLINT') return true;
+    const mat = game.objects?.[typ]?.oc_material ?? 0;
+    if (mat !== GEMSTONE) return false;
+    const n = objectNames[typ];
+    return n !== 'DILITHIUM_CRYSTAL' && n !== 'RUBY' && n !== 'DIAMOND'
+        && n !== 'SAPPHIRE' && n !== 'BLACK_OPAL' && n !== 'EMERALD'
+        && n !== 'OPAL';
+}
+
 const PRETTY = {
     DART: 'dart',
     FOOD_RATION: 'food ration',
@@ -125,6 +143,11 @@ function pretty_base(obj) {
     // C: corpse → "<monster> corpse" when corpsenm known
     if (n === 'CORPSE' && obj.corpsenm != null && obj.corpsenm >= 0)
         return `${mon_name(obj.corpsenm)} corpse`;
+    // C ref: objnam.c xname ROCK_CLASS STATUE — "statue of a <pm>"
+    if (n === 'STATUE' && obj.corpsenm != null && obj.corpsenm >= 0) {
+        const pm = mon_name(obj.corpsenm);
+        return `statue of ${an(pm)}`;
+    }
     // C: xname potion — "potion of X" when oc_name_known (startup kits are)
     if (n && n.startsWith('POT_')) {
         const rest = n.slice(4).toLowerCase().replace(/_/g, ' ');
@@ -135,6 +158,62 @@ function pretty_base(obj) {
         }
         return `potion of ${rest}`;
     }
+    // C ref: objnam.c xname SCROLL_CLASS — "scroll of <actualn>" when known
+    if (n && n.startsWith('SCR_')) {
+        const actual = objectNameStrs[obj.otyp]
+            || n.slice(4).toLowerCase().replace(/_/g, ' ');
+        if (obj.dknown && (game.objects?.[obj.otyp]?.oc_name_known || obj.known))
+            return `scroll of ${actual}`;
+        return 'scroll';
+    }
+    // C ref: objnam.c xname SPBOOK_CLASS — "spellbook of <actualn>" when known
+    if (n && n.startsWith('SPE_')) {
+        if (n === 'SPE_NOVEL') return 'book';
+        const actual = objectNameStrs[obj.otyp]
+            || n.slice(4).toLowerCase().replace(/_/g, ' ');
+        if (n === 'SPE_BOOK_OF_THE_DEAD') return actual;
+        if (obj.dknown && (game.objects?.[obj.otyp]?.oc_name_known || obj.known))
+            return `spellbook of ${actual}`;
+        return 'spellbook';
+    }
+    // C ref: objnam.c xname RING_CLASS — "ring of <actualn>" when known
+    if (n && n.startsWith('RIN_')) {
+        const actual = objectNameStrs[obj.otyp]
+            || n.slice(4).toLowerCase().replace(/_/g, ' ');
+        if (obj.dknown && (game.objects?.[obj.otyp]?.oc_name_known || obj.known))
+            return `ring of ${actual}`;
+        return 'ring';
+    }
+    // C ref: objnam.c xname WAND_CLASS — "wand of <actualn>" when known
+    if (n && n.startsWith('WAN_')) {
+        const actual = objectNameStrs[obj.otyp]
+            || n.slice(4).toLowerCase().replace(/_/g, ' ');
+        if (obj.dknown && (game.objects?.[obj.otyp]?.oc_name_known || obj.known))
+            return `wand of ${actual}`;
+        return 'wand';
+    }
+    // C ref: objnam.c xname GEM_CLASS — stone/gem + GemStone " stone"
+    if (obj.oclass === GEM_CLASS) {
+        const ocl = game.objects?.[obj.otyp];
+        const rock = (ocl?.oc_material === MINERAL) ? 'stone' : 'gem';
+        const nn = !!(ocl?.oc_name_known);
+        const dknown = !!obj.dknown;
+        const un = ocl?.oc_uname || null;
+        const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
+        let actual = objectNameStrs[obj.otyp]
+            || (n ? n.toLowerCase().replace(/_/g, ' ') : rock);
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        if (!dknown) return rock;
+        if (!nn) {
+            if (un) return `${rock} called ${un}`;
+            return `${dn || 'gray'} ${rock}`;
+        }
+        if (GemStone(obj.otyp)) return `${actual} stone`;
+        return actual;
+    }
     let base = PRETTY[n] || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
     // C ref: objnam.c xname — Samurai Japanese_item_name overrides actualn
     if (Role_if_samurai()) {
@@ -142,6 +221,28 @@ function pretty_base(obj) {
         if (jn) base = jn;
     }
     return base;
+}
+
+/**
+ * C ref: objnam.c xname — base name with quan pluralization (doname subset).
+ */
+export function xname(obj) {
+    if (!obj) return 'something';
+    let base = pretty_base(obj);
+    if ((obj.quan || 1) !== 1) base = makeplural(base);
+    return base;
+}
+
+/**
+ * C ref: objnam.c singular — temporarily force quan=1 for naming.
+ */
+export function singular(obj, func = xname) {
+    if (!obj) return func(obj);
+    const savequan = obj.quan;
+    obj.quan = 1;
+    const nam = func(obj);
+    obj.quan = savequan;
+    return nam;
 }
 
 // C ref: objnam.c makeplural — enough for "X of Y" and simple nouns.
@@ -193,6 +294,13 @@ export function vtense(subj, verb) {
         return verb + 's';
     }
     return verb;
+}
+
+/** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
+function bimanual(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
+    return !!(game.objects?.[obj.otyp]?.oc_big);
 }
 
 /**
@@ -275,10 +383,17 @@ export function doname(obj) {
         bp += ' (on right hand)';
     if (obj.owornmask & W_RINGL)
         bp += ' (on left hand)';
-    // C: W_WEP → "(weapon in right/left hand)" for single non-ammo weapons
+    // C ref: objnam.c W_WEP — bimanual → "weapon in hands"; else right/left hand
     if ((obj.owornmask & W_WEP) && quan === 1) {
+        const twoweap = !!game.u?.twoweap && obj === game.u?.uwep;
         const right = (game.u?.uhandedness !== 1); // LEFT_HANDED=1
-        bp += ` (weapon in ${right ? 'right' : 'left'} hand)`;
+        if (bimanual(obj)) {
+            bp += ' (weapon in hands)';
+        } else if (twoweap) {
+            bp += ` (wielded in ${right ? 'right' : 'left'} hand)`;
+        } else {
+            bp += ` (weapon in ${right ? 'right' : 'left'} hand)`;
+        }
     }
     // C: W_SWAPWEP, !twoweap → "(alternate weapon(s); not wielded)"
     if (obj.owornmask & W_SWAPWEP) {
@@ -418,13 +533,14 @@ export function obj_typename(otyp) {
     default:
         if (nn) {
             buf += actualn;
-            // GemStone " stone" deferred
+            // C ref: objnam.c obj_typename / xname GemStone
+            if (GemStone(otyp)) buf += ' stone';
             if (un) buf += ` called ${un}`;
             if (dn) buf += ` (${dn})`;
         } else {
             buf += dn || actualn;
             if (ocl.oc_class === GEM_CLASS) {
-                buf += (ocl.oc_material === 21 /* MINERAL */) ? ' stone' : ' gem';
+                buf += (ocl.oc_material === MINERAL) ? ' stone' : ' gem';
             }
             if (un) buf += ` called ${un}`;
         }

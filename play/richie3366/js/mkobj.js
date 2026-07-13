@@ -36,9 +36,13 @@ import {
     ROT_CORPSE, REVIVE_MON, TIMER_OBJECT,
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT,
     G_GONE,
+    LOST_NONE, LOST_EXPLODING,
 } from './const.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const BOULDER = objectNames.indexOf('BOULDER');
+const STATUE = objectNames.indexOf('STATUE');
+const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
@@ -744,6 +748,89 @@ export function place_object(otmp, x, y) {
     const key = `${x},${y}`;
     otmp.nexthere = game._objects_at.get(key) || null;
     game._objects_at.set(key, otmp);
+}
+
+/**
+ * C ref: invent.c objects[].oc_merge — table field not yet extracted;
+ * approximate from C BITS defaults (ammo/gems/coins merge; boulder does not).
+ */
+function oc_merge_of(otyp) {
+    const od = game.objects?.[otyp];
+    if (od && typeof od.oc_merge === 'number') return od.oc_merge !== 0;
+    if (otyp === BOULDER || otyp === STATUE || otyp === BOOMERANG) return false;
+    const oc = od?.oc_class ?? 0;
+    return oc === WEAPON_CLASS || oc === GEM_CLASS || oc === FOOD_CLASS
+        || oc === POTION_CLASS || oc === SCROLL_CLASS || oc === SPBOOK_CLASS
+        || oc === WAND_CLASS || oc === COIN_CLASS;
+}
+
+/**
+ * C ref: invent.c mergable() — floor-stack subset (no shop/mail/globby/candle).
+ */
+export function mergable(otmp, obj) {
+    if (!obj || !otmp || obj === otmp || obj.otyp !== otmp.otyp) return false;
+    if (obj.nomerge || otmp.nomerge || !oc_merge_of(obj.otyp)) return false;
+    if (obj.oclass === COIN_CLASS) return true;
+    if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
+        return false;
+    const hl = obj.how_lost ?? LOST_NONE;
+    const ohl = otmp.how_lost ?? LOST_NONE;
+    if (hl === LOST_EXPLODING || ohl === LOST_EXPLODING) return false;
+    if (ohl !== LOST_NONE && hl !== ohl) return false;
+    if ((obj.spe | 0) !== (otmp.spe | 0)) return false;
+    if ((obj.corpsenm ?? -1) !== (otmp.corpsenm ?? -1)) return false;
+    // C: dknown must match; known may differ and is reconciled in merged()
+    if (!!obj.dknown !== !!otmp.dknown) return false;
+    if ((obj.owornmask | 0) || (otmp.owornmask | 0)) return false;
+    return true;
+}
+
+/**
+ * C ref: invent.c merged() — absorb *pobj into *potmp; free *pobj.
+ * stackobj passes (&newObj, &existing) so the newly placed object survives.
+ */
+function merged(potmp, pobj) {
+    let otmp = potmp.obj;
+    let obj = pobj.obj;
+    if (!mergable(otmp, obj)) return false;
+    if (!obj.lamplit && !obj.globby) {
+        const oq = otmp.quan || 1;
+        const nq = obj.quan || 1;
+        const oa = otmp.age ?? 0;
+        const na = obj.age ?? 0;
+        otmp.age = Math.trunc((oa * oq + na * nq) / (oq + nq));
+    }
+    if (!otmp.globby) otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
+    if (otmp.oclass === COIN_CLASS) {
+        otmp.owt = weight(otmp);
+        otmp.bknown = 0;
+    } else {
+        otmp.owt = weight(otmp);
+    }
+    obj_extract_self(obj);
+    if (obj.known !== otmp.known) otmp.known = 1;
+    if (obj.bknown !== otmp.bknown) otmp.bknown = 1;
+    if (obj.rknown !== otmp.rknown) otmp.rknown = 1;
+    if (obj.bypass) otmp.bypass = 1;
+    obj.where = OBJ_FREE;
+    potmp.obj = otmp;
+    pobj.obj = null;
+    return true;
+}
+
+/**
+ * C ref: invent.c stackobj() — merge newly placed floor object into pile.
+ */
+export function stackobj(obj) {
+    if (!obj || obj.where !== OBJ_FLOOR) return;
+    for (let otmp = objects_at(obj.ox, obj.oy); otmp; otmp = otmp.nexthere) {
+        if (otmp === obj) continue;
+        const potmp = { obj };
+        const pobj = { obj: otmp };
+        if (merged(potmp, pobj)) break;
+        // C may reassign *potmp; keep local binding current
+        obj = potmp.obj;
+    }
 }
 
 // C ref: mkobj.c add_to_buried — not on fobj; dog_goal only scans fobj

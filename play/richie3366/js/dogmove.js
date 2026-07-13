@@ -7,7 +7,7 @@ import {
     dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, ALLOW_M,
     ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
 } from './mon.js';
-import { objects_at, obj_extract_self, place_object, splitobj } from './mkobj.js';
+import { objects_at, obj_extract_self, place_object, splitobj, stackobj } from './mkobj.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
 import { newsym, pline } from './display.js';
 import { doname } from './objnam.js';
@@ -23,6 +23,7 @@ import {
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, objectNames } from './objects.js';
 import { monsterNames } from './monsters.js';
 import { m_cansee, couldsee, cansee } from './vision.js';
+import { Monnam, noit_Monnam } from './do_name.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
@@ -319,7 +320,7 @@ async function mdrop_obj(mon, obj, verbosely) {
     }
     // flooreffects omitted — ordinary missiles/items place on floor
     place_object(obj, omx, omy);
-    // stackobj merge omitted (C-JS-MAP)
+    stackobj(obj);
 }
 
 // C ref: steal.c relobj — is_pet uses droppables; vault-guard gold omitted
@@ -500,23 +501,7 @@ function pet_ranged_attk(mtmp, forced) {
     return MMOVE_NOTHING;
 }
 
-function mon_plain_name(m) {
-    const raw = m?.data?.name || monsterNames[m?.mnum] || 'monster';
-    return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-}
-
-// C ref: monnam.c Monnam — observed pet form in thitm/pickup is "The <type>"
-function Monnam(mtmp) {
-    return `The ${mon_plain_name(mtmp)}`;
-}
-
-// C ref: monnam.c noit_Monnam — cursemsg uses "Your <type>" for pets
-function noit_Monnam(mtmp) {
-    if (mtmp?.mtame) return `Your ${mon_plain_name(mtmp)}`;
-    return Monnam(mtmp);
-}
-
-// C: canseemon stub — visible pets in early sessions
+// canseemon stub — visible pets in early sessions
 function canseemon(mtmp) {
     return !!(mtmp && !mtmp.minvis && !mtmp.mundetected);
 }
@@ -571,7 +556,7 @@ export async function dog_move(mtmp, after) {
     let nidist = dist2(nix, niy, gg.gx, gg.gy);
     const cursemsg = new Array(cnt).fill(false);
 
-    for (let i = 0; i < cnt; i++) {
+    candloop: for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x;
         const ny = mfp.poss[i].y;
         cursemsg[i] = false;
@@ -662,12 +647,13 @@ export async function dog_move(mtmp, after) {
             && rn2(13 * uncursedcnt))
             continue;
 
+        // C: dogmove.c — mtrack backtrack skip uses goto nxti (candidate continue)
         if (!mtmp.mleashed && distmin(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) > 5) {
             const k = edog ? uncursedcnt : cnt;
             for (let j = 0; j < MTSZ && j < k - 1; j++) {
                 if (mtmp.mtrack?.[j]
                     && nx === mtmp.mtrack[j].x && ny === mtmp.mtrack[j].y) {
-                    if (rn2(MTSZ * (k - j))) continue;
+                    if (rn2(MTSZ * (k - j))) continue candloop;
                 }
             }
         }

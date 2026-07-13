@@ -5,16 +5,25 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, docrt } from './display.js';
 import { rnd } from './rng.js';
-import { place_object, splitobj } from './mkobj.js';
-import { WEAPON_CLASS, COIN_CLASS } from './objects.js';
+import { place_object, splitobj, stackobj } from './mkobj.js';
+import { WEAPON_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
+    P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
+    P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists } from './dogmove.js';
 import {
     ammo_and_launcher, is_ammo, doswapweapon,
 } from './wield.js';
+import { acurr, A_DEX } from './attrib.js';
+import {
+    PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_SAMURAI,
+    PM_WIZARD, PM_HEALER, PM_TOURIST, PM_CLERIC,
+    PM_ELF, PM_ORC, PM_GNOME,
+} from './generated/monsters_data.js';
+import { xname, singular } from './objnam.js';
 
 /** C ref: cmd.c cmdq_add_ec(CQ_CANNED, …) — shared with rhack via game._cmdq_canned */
 function cmdq_add_ec(fn) {
@@ -117,17 +126,132 @@ function freeinv(otmp) {
     // Also handle when otmp was split from a stack still in invent
 }
 
+function Role_if(pm) {
+    return game.urole?.mnum === pm;
+}
+function Race_if(pm) {
+    return game.urace?.mnum === pm;
+}
+
+/** C ref: weapon.c weapon_type — abs(oc_skill). */
+function weapon_type(obj) {
+    if (!obj) return 0;
+    const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
+    return sk < 0 ? -sk : sk;
+}
+
+/** C ref: skills.h P_SKILL — current skill rank (u.weapon_skills). */
+function P_SKILL(type) {
+    const slot = game.u?.weapon_skills?.[type];
+    if (slot == null) return P_UNSKILLED;
+    return typeof slot === 'object' ? (slot.skill ?? P_UNSKILLED) : (slot | 0);
+}
+
 /**
- * C ref: dothrow.c throw_obj — multishot rnd + split + throwit stub.
- * Enough RNG for seed1800 dart throw that lands without combat rolls.
+ * C ref: dothrow.c multishot_class_bonus — role volley extras.
  */
-async function throw_obj(obj, _shotlimit) {
+function multishot_class_bonus(pm, ammo, launcher) {
+    let multishot = 0;
+    const skill = game.objects?.[ammo.otyp]?.oc_skill ?? 0;
+    switch (pm) {
+    case PM_CAVE_DWELLER:
+        if (skill === -P_SLING || skill === P_SPEAR) multishot++;
+        break;
+    case PM_MONK:
+        if (skill === -P_SHURIKEN) multishot++;
+        break;
+    case PM_RANGER:
+        if (skill !== P_DAGGER) multishot++;
+        break;
+    case PM_ROGUE:
+        if (skill === P_DAGGER) multishot++;
+        break;
+    case PM_SAMURAI:
+        if (ammo.otyp != null
+            && objectNames[ammo.otyp] === 'YA'
+            && launcher && objectNames[launcher.otyp] === 'YUMI') {
+            multishot++;
+        }
+        break;
+    default:
+        break;
+    }
+    return multishot;
+}
+
+/**
+ * C ref: dothrow.c throw_obj — multishot + split + throwit.
+ * getdir is done by caller (dofire/dothrow) matching JS input boundary;
+ * C calls getdir inside throw_obj — same one prompt either way.
+ */
+async function throw_obj(obj, shotlimit) {
     // C: coin class → throw_gold (body deferred; `$` still in getobj suggest list)
     if (obj.oclass === COIN_CLASS) return 0;
-    // Multishot stays 1 for Tourist dart (no launcher skill bonus path)
+
+    // C ref: dothrow.c:158–237 Multishot calculations
     let multishot = 1;
-    multishot = rnd(multishot);
-    if (multishot > (obj.quan || 1)) multishot = obj.quan || 1;
+    const skill = game.objects?.[obj.otyp]?.oc_skill ?? 0;
+    const uwep = game.u?.uwep || null;
+    const quan = obj.quan || 1;
+    if (quan > 1
+        && (is_ammo(obj) ? ammo_and_launcher(obj, uwep)
+            : obj.oclass === WEAPON_CLASS)
+        && !(game.u?.Confusion || game.u?.Stunned
+            || game.Confusion || game.Stunned)) {
+        const weakmultishot = Role_if(PM_WIZARD) || Role_if(PM_CLERIC)
+            || (Role_if(PM_HEALER) && skill !== P_KNIFE)
+            || (Role_if(PM_TOURIST) && skill !== -P_DART)
+            || game.Fumbling || game.u?.Fumbling
+            || acurr(A_DEX) <= 6;
+
+        switch (P_SKILL(weapon_type(obj))) {
+        case P_EXPERT:
+            multishot++;
+            // FALLTHROUGH
+        case P_SKILLED:
+            if (!weakmultishot) multishot++;
+            break;
+        default:
+            break;
+        }
+        multishot += multishot_class_bonus(game.urole?.mnum, obj, uwep);
+
+        if (!weakmultishot) {
+            if (Race_if(PM_ELF)
+                && objectNames[obj.otyp] === 'ELVEN_ARROW'
+                && uwep && objectNames[uwep.otyp] === 'ELVEN_BOW') {
+                multishot++;
+            } else if (Race_if(PM_ORC)
+                && objectNames[obj.otyp] === 'ORCISH_ARROW'
+                && uwep && objectNames[uwep.otyp] === 'ORCISH_BOW') {
+                multishot++;
+            } else if (Race_if(PM_GNOME) && skill === -P_CROSSBOW) {
+                multishot++;
+            }
+            // quest artifact launcher bonus deferred
+        }
+
+        if (multishot > 1 && skill === -P_CROSSBOW
+            && ammo_and_launcher(obj, uwep)) {
+            // ACURRSTR gate deferred — still roll rnd when multishot>1
+            multishot = rnd(multishot);
+        }
+
+        multishot = rnd(multishot);
+        if (multishot > quan) multishot = quan;
+        if (shotlimit > 0 && multishot > shotlimit) multishot = shotlimit;
+    } else {
+        // C: no volley path — still no rnd when quan==1 / no launcher
+        multishot = 1;
+    }
+
+    const shot = ammo_and_launcher(obj, uwep);
+    if (multishot > 1 || shotlimit > 0) {
+        // C ref: dothrow.c throw_obj — You("%s %d %s.", shoot|throw, n,
+        //   (n==1) ? singular(obj, xname) : xname(obj));
+        const name = (multishot === 1) ? singular(obj, xname) : xname(obj);
+        await pline(`You ${shot ? 'shoot' : 'throw'} ${multishot} ${name}.`);
+    }
 
     for (let i = 1; i <= multishot; i++) {
         let otmp;
@@ -139,17 +263,10 @@ async function throw_obj(obj, _shotlimit) {
             obj = null;
         }
         if (!otmp) break;
-        // Detach split child from invent (parent stack remains)
-        if (obj) {
-            // split child was never in invent list as separate entry
-        } else {
-            freeinv(otmp);
-        }
         await throwit(otmp);
     }
     return 1;
 }
-
 /**
  * C ref: dothrow.c breaktest() — always rolls obj_resists; darts don't break.
  */
@@ -193,6 +310,8 @@ async function throwit(obj) {
     }
     obj.how_lost = LOST_THROWN;
     place_object(obj, x, y);
+    // C: throwit → stackobj after place_object
+    stackobj(obj);
 }
 
 
@@ -270,6 +389,8 @@ async function help_dir(msg) {
  * Returns {dx,dy} or null.
  */
 async function getdir_cmdassist(prompt) {
+    // C ref: cmd.c yn_function — flush pending topline --More-- before prompt
+    await flush_topl_more();
     // C: tty_yn_function — Sprintf(prompt, "%s ", query)
     const base = prompt || 'In what direction?';
     const msg = base.endsWith(' ') ? base : `${base} `;

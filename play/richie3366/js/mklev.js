@@ -639,39 +639,43 @@ function is_themeroom_eligible(room, difficulty) {
     return true;
 }
 
-// C ref: themerms.lua themerooms_generate()
-// Reservoir sampling picks one themed room. For seed8000 level 1,
-// 'ordinary' always wins (frequency 1000 vs others ~1-10).
+// C ref: themerms.lua themerooms_generate() + mklev.c makerooms wrapper
+// Reservoir sampling picks one themed room. Default (freq 1000) dominates.
+// C sets gi.in_mk_themerooms for the whole Lua call so check_room aborts
+// (no shrink) when it hits non-STONE.
 async function themerooms_generate(difficulty) {
-    let pick = null;
-    let total_frequency = 0;
-    for (const meta of THEMEROOM_META) {
-        if (!is_themeroom_eligible(meta, difficulty)) continue;
-        const this_frequency = meta.frequency || 1;
-        total_frequency += this_frequency;
-        if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
-            pick = meta;
+    const g = game;
+    g.in_mk_themerooms = true;
+    try {
+        let pick = null;
+        let total_frequency = 0;
+        for (const meta of THEMEROOM_META) {
+            if (!is_themeroom_eligible(meta, difficulty)) continue;
+            const this_frequency = meta.frequency || 1;
+            total_frequency += this_frequency;
+            if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
+                pick = meta;
+            }
         }
-    }
-    if (!pick) return false;
-    // For 'ordinary' rooms, create a standard room
-    // For themed rooms with dynamic dimensions, consume those rn2 calls first
-    const chance = 100;
-    if (pick.name !== 'ordinary') {
-        // Themed room — not expected for seed8000, but handle RNG correctly
-        rn2(100); // chance check (build_room)
-    }
-    // All themed rooms go through create_room for placement
-    const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
-    if (ok) {
-        // C ref: sp_lev.c:2824 — build_room calls topologize after create_room
-        const aroom = game.level.rooms[game.level.nroom - 1];
-        if (aroom) {
-            topologize(aroom);
-            aroom.needfill = FILL_NORMAL;
+        if (!pick) return false;
+        // C build_room: chance defaults to 100 → always burns rn2(100)
+        // (default themerms entry is named "default", not "ordinary")
+        if (pick.name !== 'ordinary') {
+            rn2(100);
         }
+        const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+        if (ok) {
+            // C ref: sp_lev.c:2824 — build_room calls topologize after create_room
+            const aroom = g.level.rooms[g.level.nroom - 1];
+            if (aroom) {
+                topologize(aroom);
+                aroom.needfill = FILL_NORMAL;
+            }
+        }
+        return ok;
+    } finally {
+        g.in_mk_themerooms = false;
     }
-    return ok;
 }
 
 // C ref: sp_lev.c check_room()

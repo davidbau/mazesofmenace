@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { mksobj, place_object, weight } from './mkobj.js';
+import { mksobj, place_object, weight, stackobj } from './mkobj.js';
 import { find_mac } from './mhitm.js';
 import { newsym, pline } from './display.js';
 import { doname } from './objnam.js';
@@ -159,10 +159,7 @@ function t_missile(otyp, trap) {
     return otmp;
 }
 
-// C ref: mkobj.c stackobj — merge omitted (no RNG on miss-path dart drop)
-function stackobj(_obj) {
-    /* named omission: merge same-otyp floor stacks */
-}
+// C ref: invent.c stackobj — imported from mkobj.js
 
 // C ref: monnam.c Monnam — trap miss/hit messages use "The <type>" for pets
 function Monnam(mon) {

@@ -16,6 +16,7 @@ import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, more,
+    mon_glyph, obj_glyph, look_shown_at,
 } from './display.js';
 import { getlin } from './getline.js';
 import {
@@ -24,9 +25,14 @@ import {
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import { getpos, LOOK_ONCE } from './getpos.js';
 import { mon_at } from './uhitm.js';
+import { objects_at } from './mkobj.js';
 import { doname, an } from './objnam.js';
 import { engr_at } from './engrave.js';
-import { BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE } from './const.js';
+import { option_help_lines } from './options.js';
+import {
+    BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE,
+    GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
+} from './const.js';
 import { IS_WALL } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 
@@ -47,7 +53,7 @@ function datPath(name) {
 function readDat(name) {
     const p = datPath(name);
     if (!existsSync(p)) return null;
-    return readFileSync(p, 'utf8');
+    return readFileSync(p, 'utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 /**
@@ -65,36 +71,226 @@ function get_lua_version_shuffle() {
     game._nhl_version_align = align;
 }
 
-/** NHW_TEXT-ish page: paint lines, --More-- or (end), wait one key. */
+/**
+ * C ref: hacklib.c tabexpand — expand tabs to 8-column stops in place.
+ */
+function tabexpand(s) {
+    let out = '';
+    let idx = 0;
+    for (const ch of String(s || '')) {
+        if (ch === '\t') {
+            do {
+                out += ' ';
+                idx++;
+            } while (idx % 8);
+        } else {
+            out += ch;
+            idx++;
+        }
+        if (idx >= 255) break; // BUFSZ-1ish truncate
+    }
+    return out;
+}
+
+/**
+ * C ref: wintty.c tty_display_nhwindow(NHW_TEXT) + process_text_window.
+ * NHW_TEXT forces maxcol=cols → offx=0 fullscreen; after lines, H2344
+ * cl_eos from cury+1; --More-- on rows-1; dmore offset 1 → cursor [8,23].
+ */
+/**
+ * C ref: wintty.c dmore → getline.c xwaitforspace(quitchars)
+ * quitchars = " \\r\\n\\033". Non-matching keys bell and stay on the page
+ * (each nhgetch is still a capture boundary). ESC cancels (WIN_CANCELLED).
+ * @returns {Promise<boolean>} true if ESC cancelled
+ */
+async function text_page_wait() {
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 27) return true;
+        if (c === 32 || c === 13 || c === 10) return false;
+        // tty_nhbell(); ignore
+    }
+}
+
+/**
+ * C ref: wintty.c process_text_window NHW_TEXT + H2344 putstr page-at-a-time.
+ * @returns {Promise<boolean>} true if ESC cancelled remaining pages
+ */
 async function show_text_pages(lines, { moreAtEnd = true } = {}) {
     const disp = game.nhDisplay;
     if (!disp) {
         await nhgetch();
-        return;
+        return false;
     }
-    const pageRows = 21; // leave status
+    const cols = disp.cols || 80;
+    const rows = 24;
+    const pageRows = rows - 1; // leave bottom for --More-- / (end)
     let offset = 0;
+    let cancelled = false;
     while (offset < lines.length || (offset === 0 && lines.length === 0)) {
         game._menu_overlay = true;
         game._pending_message = '';
         disp.clearScreen();
         const chunk = lines.slice(offset, offset + pageRows);
-        for (let r = 0; r < pageRows; r++) {
+        for (let r = 0; r < chunk.length; r++) {
             const text = chunk[r] || '';
-            for (let i = 0; i < text.length && i < disp.cols; i++)
+            for (let i = 0; i < text.length && i < cols; i++)
                 disp.setCell(i, r, text[i], NO_COLOR, 0);
         }
+        // C H2344: tty_curs(1, cury+1); cl_eos(); then more on rows-1
+        for (let r = chunk.length; r < rows - 1; r++) {
+            for (let c = 0; c < cols; c++)
+                disp.setCell(c, r, ' ', NO_COLOR, 0);
+        }
         const last = offset + pageRows >= lines.length;
-        const footer = last && !moreAtEnd ? '(end)' : '--More--';
-        const fr = Math.min(23, Math.max(chunk.length, 1));
-        for (let i = 0; i < footer.length && i < disp.cols; i++)
-            disp.setCell(i, fr > 20 ? 23 : fr, footer[i], NO_COLOR, 0);
-        disp.setCursor(footer.length, fr > 20 ? 23 : fr);
+        const footer = last && !moreAtEnd ? '(end) ' : '--More--';
+        const moreRow = rows - 1;
+        for (let c = 0; c < cols; c++)
+            disp.setCell(c, moreRow, ' ', NO_COLOR, 0);
+        for (let i = 0; i < footer.length && i < cols; i++)
+            disp.setCell(i, moreRow, footer[i], NO_COLOR, 0);
+        // C dmore NHW_TEXT: cursor after prompt; help_dir uses [8,23] for "--More--"
+        disp.setCursor(footer.startsWith('--More--') ? 8 : footer.length, moreRow);
         await flush_screen(1);
-        await nhgetch();
+        cancelled = await text_page_wait();
+        if (cancelled) break;
         offset += pageRows;
         if (last) break;
     }
+    game._menu_overlay = false;
+    await docrt();
+    await flush_screen(1);
+    return cancelled;
+}
+
+/**
+ * C ref: getpos.c coord_desc GPCOORDS_MAP — "<x,y>"; y<10 gets trailing
+ * space so %8s columns line up (pager.c look_all).
+ */
+function coord_desc(x, y, cmode = GPCOORDS_MAP) {
+    if (cmode === GPCOORDS_SCREEN) {
+        return `[${String(y + 2).padStart(2, '0')},${String(x).padStart(2, '0')}]`;
+    }
+    if (cmode === GPCOORDS_COMPASS || cmode === 'f') {
+        return '(here)'; // full compass deferred; look_all defaults to MAP
+    }
+    let s = `<${x},${y}>`;
+    if (cmode === GPCOORDS_MAP && y < 10) s += ' ';
+    return s;
+}
+
+function look_coord_prefix(x, y, cmode) {
+    const coordbuf = coord_desc(x, y, cmode);
+    if (cmode === GPCOORDS_SCREEN) return `${coordbuf}  `;
+    if (cmode === GPCOORDS_MAP) return `${coordbuf.padStart(8, ' ')}  `;
+    return `${coordbuf.padStart(12, ' ')}  `;
+}
+
+function look_getpos_cmode() {
+    const gpc = game.iflags?.getpos_coords;
+    if (gpc && gpc !== GPCOORDS_NONE) return gpc;
+    return GPCOORDS_MAP;
+}
+
+/** C ref: pager.c self_lookat — race adj + pmname + called plname. */
+function self_lookat() {
+    const race = (game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
+    const role = (game.urole?.name?.m || game.urole?.name || 'hero')
+        .toString()
+        .toLowerCase();
+    const plname = (game.plname || 'hero').toLowerCase();
+    const invis =
+        game.u?.Invis && (game.u?.senseself || !game.u?.Blind) ? 'invisible ' : '';
+    return `${invis}${race} ${role} called ${plname}`;
+}
+
+/**
+ * C ref: pager.c look_at_monster — distant_monnam ARTICLE_NONE + tame/peaceful.
+ * Hallucination / health / stuck / trapped / mhidden deferred.
+ */
+function look_at_monster_buf(mtmp) {
+    const raw = mtmp?.data?.name || mtmp?.mname || 'monster';
+    const name = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+    if (mtmp.mtame) return `tame ${name}`;
+    if (mtmp.mpeaceful) return `peaceful ${name}`;
+    return name;
+}
+
+/**
+ * C ref: pager.c checkfile → create_nhwindow(NHW_MENU) + putstr +
+ *        display_nhwindow → wintty process_text_window (cw->data path).
+ * H2344_BROKEN offx; leading pad at offx; text at offx+1; dmore
+ * defmorestr "--More--" with MENU offset 2 → prompt at offx+1;
+ * cursor past prompt at offx+1+strlen("--More--").
+ * Corner path keeps map/status (no term_clear_screen).
+ */
+async function show_nhw_menu_text(lines) {
+    const disp = game.nhDisplay;
+    if (!disp) {
+        await nhgetch();
+        return;
+    }
+    const cols = disp.cols || 80;
+    const rows = 24;
+    const morestr = '--More--';
+    let maxcol = 0;
+    for (const line of lines) {
+        const n0 = String(line || '').length + 1; // tty_putstr
+        if (n0 > maxcol) maxcol = n0;
+    }
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    const maxrow = lines.length;
+    if (maxrow >= rows || game.flags?.menu_overlay === false) offx = 0;
+
+    game._pending_message = '';
+    game._menu_overlay = false;
+    await flush_screen(1);
+
+    if (offx === 0) {
+        // Fullscreen NHW_MENU / tall entry — clear then paint col-0 text.
+        disp.clearScreen();
+        const pageRows = rows - 1;
+        let offset = 0;
+        while (offset < lines.length || (offset === 0 && lines.length === 0)) {
+            game._menu_overlay = true;
+            const chunk = lines.slice(offset, offset + pageRows);
+            disp.clearScreen();
+            for (let r = 0; r < chunk.length; r++) {
+                const text = chunk[r] || '';
+                for (let i = 0; i < text.length && i < cols; i++)
+                    disp.setCell(i, r, text[i], NO_COLOR, 0);
+            }
+            const last = offset + pageRows >= lines.length;
+            const fr = Math.min(rows - 1, Math.max(chunk.length, 1));
+            for (let i = 0; i < morestr.length && i < cols; i++)
+                disp.setCell(i, fr, morestr[i], NO_COLOR, 0);
+            disp.setCursor(morestr.length, fr);
+            await nhgetch();
+            offset += pageRows;
+            if (last) break;
+        }
+    } else {
+        // C process_text_window corner: cl_end from offx; putchar(' '); text.
+        for (let r = 0; r < lines.length; r++) {
+            for (let c = offx; c < cols; c++)
+                disp.setCell(c, r, ' ', NO_COLOR, 0);
+            disp.setCell(offx, r, ' ', NO_COLOR, 0);
+            const text = lines[r] || '';
+            for (let i = 0; i < text.length && offx + 1 + i < cols; i++)
+                disp.setCell(offx + 1 + i, r, text[i], NO_COLOR, 0);
+        }
+        const moreRow = lines.length;
+        for (let c = offx; c < cols; c++)
+            disp.setCell(c, moreRow, ' ', NO_COLOR, 0);
+        // dmore NHW_MENU: prompt at offx+1
+        for (let i = 0; i < morestr.length && offx + 1 + i < cols; i++)
+            disp.setCell(offx + 1 + i, moreRow, morestr[i], NO_COLOR, 0);
+        disp.setCursor(offx + 1 + morestr.length, moreRow);
+        game._menu_overlay = true;
+        await nhgetch();
+    }
+
     game._menu_overlay = false;
     await docrt();
     await flush_screen(1);
@@ -147,7 +343,17 @@ function lookup_data_base(query) {
             if (!b) { body.push(''); i++; continue; }
             if (b.startsWith('#')) { i++; continue; }
             if (!(b.startsWith('\t') || b.startsWith(' '))) break;
-            body.push(b.replace(/^\t/, ''));
+            // C checkfile: strip one leading tab (or up to 8 spaces), then
+            // tabexpand if any remaining tab (attribution indents).
+            let tp = b;
+            if (tp.startsWith('\t')) tp = tp.slice(1);
+            else if (tp.startsWith(' ')) {
+                let n = 0;
+                while (n < 8 && tp[n] === ' ') n++;
+                tp = tp.slice(n);
+            }
+            if (tp.includes('\t')) tp = tabexpand(tp);
+            body.push(tp);
             i++;
         }
         let matched = false;
@@ -220,7 +426,8 @@ async function checkfile(inp, flags = 0) {
         yes = ch === 'y' || ch === 'Y';
     }
     if (!yes) return true;
-    await show_text_pages(body.map(l => l || ''));
+    // C: NHW_MENU putstr + process_text_window — not NHW_TEXT fullscreen.
+    await show_nhw_menu_text(body.map(l => l || ''));
     return true;
 }
 
@@ -270,20 +477,14 @@ function is_stair_spot(x, y) {
 function brief_at(x, y) {
     const u = game.u || {};
     if (u.ux === x && u.uy === y) {
-        // C ref: pager.c self_lookat — race + role + "called" plname
-        const role = (game.urole?.name?.m || game.urole?.name || 'hero')
-            .toString().toLowerCase();
-        const race = (game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
-        const plname = (game.plname || 'hero').toLowerCase();
-        return `${race} ${role} called ${plname}`;
+        return self_lookat();
     }
     const mtmp = mon_at(x, y);
     if (mtmp) {
-        const nm = mtmp.data?.mname || mtmp.mname || 'monster';
-        return mtmp.mtame ? `tame ${nm}` : nm;
+        return look_at_monster_buf(mtmp);
     }
-    const objs = game.level?.objects_at?.(x, y) || game.level?.at?.(x, y)?.objects;
-    if (objs?.length) return doname(objs[0]);
+    const top = objects_at(x, y);
+    if (top) return doname(top);
     if (is_stair_spot(x, y)) return stair_cmap_explanation(x, y);
     const feat = dfeature_at(x, y);
     if (feat) return feat;
@@ -331,7 +532,7 @@ function describe_looked(x, y) {
     }
     const mtmp = mon_at(x, y);
     if (mtmp) {
-        const nm = mtmp.data?.mname || 'monster';
+        const nm = look_at_monster_buf(mtmp).replace(/^(tame|peaceful) /, '');
         const first = nm;
         return { out: `${nm[0] || '?'}        ${an(nm)}`, first, found: 1 };
     }
@@ -376,33 +577,45 @@ function describe_looked(x, y) {
     return { out: '        dark part of a room', first: 'dark part of a room', found: 1 };
 }
 
+/**
+ * C ref: pager.c look_all — NHW_TEXT list of monsters or objects.
+ * Filters via newsym-equivalent "currently shown" (glyph_at), not raw
+ * mon_at/objects_at. Invis/warning glyphs and object_from_map fakeobj deferred.
+ */
 async function look_all(nearby, do_mons) {
     const { lo_x, lo_y, hi_x, hi_y } = look_region(nearby);
     const lines = [];
     let count = 0;
     const u = game.u || {};
+    const cmode = look_getpos_cmode();
     for (let y = lo_y; y <= hi_y; y++) {
         for (let x = lo_x; x <= hi_x; x++) {
+            const shown = look_shown_at(x, y);
             let lookbuf = '';
+            let glyphCh = '';
             if (do_mons) {
-                if (u.ux === x && u.uy === y) {
-                    lookbuf = brief_at(x, y);
-                } else {
-                    const m = mon_at(x, y);
-                    if (m) lookbuf = brief_at(x, y);
+                if (shown?.kind === 'hero') {
+                    lookbuf = self_lookat();
+                    glyphCh = '@';
+                } else if (shown?.kind === 'mon') {
+                    lookbuf = look_at_monster_buf(shown.mtmp);
+                    glyphCh = mon_glyph(shown.mtmp).ch || '?';
                 }
-            } else {
-                const loc = game.level?.at?.(x, y);
-                const objs = loc?.objects || [];
-                if (objs.length) lookbuf = doname(objs[0]);
+            } else if (shown?.kind === 'obj') {
+                lookbuf = doname(shown.obj);
+                glyphCh = obj_glyph(shown.obj).ch || '?';
             }
             if (lookbuf) {
                 count++;
                 if (count === 1) {
                     const which = do_mons ? 'monsters' : 'objects';
                     if (nearby) {
+                        const where =
+                            cmode !== GPCOORDS_COMPASS
+                                ? coord_desc(u.ux, u.uy, cmode).replace(/ $/, '')
+                                : 'you';
                         lines.push(
-                            `${which[0].toUpperCase()}${which.slice(1)} currently shown near <${u.ux},${u.uy}>:`,
+                            `${which[0].toUpperCase()}${which.slice(1)} currently shown near ${where}:`,
                         );
                     } else {
                         lines.push(
@@ -411,7 +624,8 @@ async function look_all(nearby, do_mons) {
                     }
                     lines.push('    ');
                 }
-                lines.push(`    ${lookbuf}`);
+                const prefix = look_coord_prefix(x, y, cmode);
+                lines.push(`${prefix}${glyphCh}  ${lookbuf}`);
             }
         }
     }
@@ -469,24 +683,61 @@ async function look_traps(nearby) {
     }
 }
 
+/**
+ * C ref: pager.c look_engrs — NHW_TEXT; seenv + eread remembered text;
+ * covered by hero/mon/obj → ", obscured by <glyph>" and engraving_to_glyph
+ * '`' (S_engroom). Grave/headstone and S_engrcorr deferred.
+ */
 async function look_engrs(nearby) {
     const { lo_x, lo_y, hi_x, hi_y } = look_region(nearby);
     const lines = [];
     let count = 0;
+    const cmode = look_getpos_cmode();
     for (let y = lo_y; y <= hi_y; y++) {
         for (let x = lo_x; x <= hi_x; x++) {
+            const loc = game.level?.at?.(x, y);
+            if (!loc?.seenv) continue;
             const e = engr_at(x, y);
-            if (!e?.engr_txt) continue;
+            if (!e) continue;
+            const txt = e.engr_txt;
+            const remembered =
+                (typeof txt === 'string'
+                    ? txt
+                    : txt?.remembered_text || txt?.actual_text || '') || '';
+            // After C strsubst("(engraving with " → ""): leading space retained
+            let lookbuf = e.eread
+                ? ` remembered text: "${remembered}"`
+                : ' that you haven\'t read';
+
+            const shown = look_shown_at(x, y);
+            // Engraving cmap shown only when nothing covers; else obscured.
+            // JS map rarely paints S_engroom; treat cover as hero/mon/obj.
+            let glyphCh = '`'; // S_engroom / engraving_to_glyph
+            if (shown?.kind === 'hero') {
+                lookbuf += ', obscured by @';
+            } else if (shown?.kind === 'mon') {
+                lookbuf += `, obscured by ${mon_glyph(shown.mtmp).ch || '?'}`;
+            } else if (shown?.kind === 'obj') {
+                lookbuf += `, obscured by ${obj_glyph(shown.obj).ch || '?'}`;
+            }
+
             count++;
             if (count === 1) {
                 lines.push(
-                    nearby
-                        ? 'Nearby seen or remembered engravings:'
-                        : 'Seen or remembered engravings on this level:',
+                    `${nearby ? 'Nearby seen or remembered engravings' : 'Seen or remembered engravings on this level'}:`,
                 );
                 lines.push('    ');
             }
-            lines.push(`    "${e.engr_txt}"`);
+            // look_engrs: no y<10 kitten on coord_desc (unlike look_all)
+            const raw = `<${x},${y}>`;
+            const prefix =
+                cmode === GPCOORDS_SCREEN
+                    ? `${coord_desc(x, y, cmode)}  `
+                    : cmode === GPCOORDS_MAP
+                      ? `${raw.padStart(8, ' ')}  `
+                      : `${raw.padStart(12, ' ')}  `;
+            // C: "%s " after encglyph (one space); lookbuf already has leading space
+            lines.push(`${prefix}${glyphCh} ${lookbuf}`);
         }
     }
     if (count) await show_text_pages(lines);
@@ -680,14 +931,15 @@ export async function dowhatis() {
 }
 
 /**
- * C ref: version.c doextversion — version text + runtime options;
- * triggers get_lua_version → nhlib shuffle once.
+ * C ref: mdlib.c build_options + version.c doextversion OPTIONS_AT_RUNTIME
+ * path (do_runtime_info). Contest MacOS tty/nosound feature set; :PATMATCH:
+ * / :LUACOPYRIGHT: already substituted (posixregex / Lua copyright).
+ * Outdented headers get a blank separator; blank/prolog lines are skipped.
  */
-async function doextversion() {
-    get_lua_version_shuffle();
-    const lines = [
-        'MacOS NetHack Version 5.0.0 - last build May  2 2026 12:00:00.',
-        '',
+function doextversion_runtime_lines() {
+    // C putstr order after getversionstring; prolog "    NetHack version…"
+    // from build_options is skipped by doextversion's prolog flag.
+    const runtime = [
         'Options compiled into this edition:',
         '    I32LP64 data model, color, data file compression, deferred handling of',
         '    hangup signal, insurance files for recovering from crashes, live logging',
@@ -698,38 +950,168 @@ async function doextversion() {
         '    clipping, shell command, traditional status display, status via',
         '    windowport with highlighting, suspend command, terminal info library,',
         '    system configuration at run-time, show stack trace on error, launch',
-        '    prefix, Lua interpreter version: 5.4',
-        '',
+        '    browser to report issues, save and bones files accepted from version',
+        '    5.0.0 only, and basic NetHack features.',
+        'Supported windowing system:',
+        '    "tty" (traditional text with optional line-drawing).',
+        'Supported soundlib:',
+        '    "nosound".',
+        "NetHack 5.0.* uses the 'Lua' interpreter to process some data:",
+        '    Lua 5.4.8  Copyright (C) 1994-2025 Lua.org, PUC-Rio',
+        // mdlib.lua_info Permission block (5-space continuation indent)
         '    "Permission is hereby granted, free of charge, to any person obtaining',
-        'a copy of this software and associated documentation files (the',
-        '"Software"), to deal in the Software without restriction including',
-        'without limitation the rights to use, copy, modify, merge, publish,',
-        'distribute, sublicense, and/or sell copies of the Software, and to',
-        'permit persons to whom the Software is furnished to do so, subject to',
-        'the following conditions:',
-        'The above copyright notice and this permission notice shall be',
-        'included in all copies or substantial portions of the Software."',
+        '     a copy of this software and associated documentation files (the',
+        '     "Software"), to deal in the Software without restriction including',
+        '     without limitation the rights to use, copy, modify, merge, publish,',
+        '     distribute, sublicense, and/or sell copies of the Software, and to',
+        '     permit persons to whom the Software is furnished to do so, subject to',
+        '     the following conditions:',
+        '     The above copyright notice and this permission notice shall be',
+        '     included in all copies or substantial portions of the Software."',
     ];
-    // Two logical pages matching session (version then license) — page at 21
+    const out = [];
+    for (const buf of runtime) {
+        if (buf && buf[0] !== ' ') out.push(''); // outdented header separator
+        if (!buf) continue;
+        out.push(buf);
+    }
+    return out;
+}
+
+/**
+ * C ref: version.c doextversion — version text + runtime options;
+ * triggers get_lua_version → nhlib shuffle once.
+ */
+async function doextversion() {
+    get_lua_version_shuffle();
+    // C getversionstring → nomakedefs.version_id (runner normalizes date).
+    const lines = [
+        'MacOS NetHack Version 5.0.0 - last build May  2 2026 12:00:00.',
+        ...doextversion_runtime_lines(),
+    ];
     await show_text_pages(lines);
     return 0;
 }
 
-async function dowhatdoes_stub() {
-    // C: prompt for a key then show keyhelp; seed uses space then 'i' then '?'
-    game._pending_message = 'What command do you want to know about? ';
-    await flush_screen(1);
-    for (;;) {
-        const key = await nhgetch();
-        if (key === 27) {
-            game._pending_message = '';
-            return;
-        }
-        // After a command char, show a short stub page then return
-        game._pending_message = '';
-        await display_file('keyhelp', true);
+/**
+ * C ref: cmd.c key2txt — short label for one-byte key.
+ */
+function key2txt(c) {
+    if (c === 32) return '<space>';
+    if (c === 27) return '<esc>';
+    if (c === 10 || c === 13) return '<enter>';
+    if (c === 127) return '<del>';
+    if (c >= 1 && c <= 26) return `^${String.fromCharCode(c + 64)}`;
+    return String.fromCharCode(c);
+}
+
+/**
+ * C ref: cmd.c key2extcmddesc — description for a command key.
+ * Branch envelope: letters bound in rhack/cmd.js + common meta; full
+ * misc_keys / number_pad / rush-run prefixes deferred.
+ */
+function key2extcmddesc(key) {
+    const ch = typeof key === 'number' ? String.fromCharCode(key) : String(key);
+    /** @type {Record<string, [string, string]>} ef_desc, ef_txt */
+    const binds = {
+        i: ['show your inventory', 'inventory'],
+        ':': ['look here', 'look'],
+        ',': ['pick up things', 'pickup'],
+        '.': ['rest one move', 'wait'],
+        s: ['search for traps and secret doors', 'search'],
+        o: ['open a door', 'open'],
+        c: ['close a door', 'close'],
+        a: ['apply (use) something', 'apply'],
+        e: ['eat something', 'eat'],
+        q: ['quaff (drink) something', 'quaff'],
+        r: ['read a scroll or spellbook', 'read'],
+        z: ['zap a wand', 'zap'],
+        t: ['throw something', 'throw'],
+        f: ['fire ammunition', 'fire'],
+        w: ['wield a weapon', 'wield'],
+        W: ['wear armor', 'wear'],
+        T: ['take off armor', 'takeoff'],
+        P: ['put on an accessory', 'puton'],
+        R: ['remove an accessory', 'remove'],
+        E: ['engrave into the floor', 'engrave'],
+        d: ['drop an item', 'drop'],
+        '/': ['identify a glyph or creature', 'whatis'],
+        '?': ['get this help menu', 'help'],
+        '<': ['go up a staircase', 'up'],
+        '>': ['go down a staircase', 'down'],
+        '_': ['travel to a map location', 'travel'],
+        ' ': ['rest one move', 'wait'],
+    };
+    const b = binds[ch];
+    if (!b) return null;
+    return `${b[0]} (#${b[1]})`;
+}
+
+/**
+ * C ref: pager.c whatdoes_help — page KEYHELP with leading WS stripped.
+ */
+async function whatdoes_help() {
+    const raw = readDat('keyhelp');
+    if (!raw) {
+        await pline('Cannot open "keyhelp" data file!');
+        await more();
         return;
     }
+    const lines = [];
+    for (const line of raw.replace(/\r\n/g, '\n').split('\n')) {
+        if (line.startsWith('#')) continue;
+        let p = 0;
+        while (p < line.length && (line[p] === ' ' || line[p] === '\t')) p++;
+        lines.push(line.slice(p));
+    }
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    await show_text_pages(lines);
+}
+
+/**
+ * C ref: pager.c dowhatdoes_core — key2extcmddesc → "%-8s%s.".
+ */
+function dowhatdoes_core(q) {
+    const ec = key2extcmddesc(q);
+    if (!ec) return null;
+    const keybuf = key2txt(q).padEnd(8, ' ');
+    return `${keybuf}${ec}.`;
+}
+
+/**
+ * C ref: pager.c dowhatdoes — tip once, yn_function "What command?", describe.
+ */
+async function dowhatdoes() {
+    if (!game._whatdoes_once) {
+        await pline("Ask about '&' or '?' to get more info.");
+        // C: previous topline / yn_function path surfaces --More-- before prompt
+        await more();
+        game._whatdoes_once = true;
+    }
+    // C: yn_function("What command?", NULL, '\0', TRUE) — prompt + one key
+    game._pending_message = 'What command? ';
+    await flush_screen(1);
+    const disp = game.nhDisplay;
+    if (disp?.setCursor) disp.setCursor(14, 0); // after "What command? "
+    const q = await nhgetch();
+    game._pending_message = '';
+    const reslt = dowhatdoes_core(q);
+    if (reslt) {
+        if (q === 38 || q === 63) await whatdoes_help(); // '&' or '?'
+        const nl = reslt.indexOf('\n');
+        if (nl < 0) {
+            await pline(reslt);
+        } else {
+            await pline(`${reslt.slice(0, nl)},`);
+            await pline(`${reslt.slice(0, 8)}${reslt.slice(nl + 1)}`);
+        }
+    } else {
+        const label = key2txt(q);
+        await pline(
+            `No such command '${label}', char code ${q} (0${q.toString(8).padStart(3, '0')} or 0x${q.toString(16).padStart(2, '0')}).`,
+        );
+    }
+    return 0;
 }
 
 /**
@@ -743,10 +1125,10 @@ export async function dohelp() {
         { key: 'c', text: 'List of game commands.', fn: () => display_file('hh', true) },
         { key: 'd', text: 'Concise history of NetHack.', fn: () => display_file('history', true) },
         { key: 'e', text: 'Info on a character in the game display.', fn: dowhatis },
-        { key: 'f', text: 'Info on what a given key does.', fn: dowhatdoes_stub },
+        { key: 'f', text: 'Info on what a given key does.', fn: dowhatdoes },
+        // C ref: options.c option_help via pager.c dohelp help_menu
         { key: 'g', text: 'List of game options.', fn: async () => {
-            await pline('(option help stub)');
-            await more();
+            await show_text_pages(option_help_lines());
         } },
         { key: 'h', text: 'Longer explanation of game options.', fn: () => display_file('opthelp', true) },
         { key: 'i', text: "Using the '#optionsfull' or 'm O' command to set options.", fn: () => display_file('optmenu', true) },
