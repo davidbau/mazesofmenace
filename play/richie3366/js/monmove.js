@@ -15,13 +15,13 @@ import {
 } from './mon.js';
 import {
     is_wanderer, is_armed, passes_walls, nohands, verysmall,
-    monsterNames, M1_SEE_INVIS, M1_AMORPHOUS, tunnels, needspick,
+    monsterNames, M1_SEE_INVIS, M1_AMORPHOUS, M1_NOTAKE, tunnels, needspick,
     can_track, likes_gold, likes_gems, likes_objs, likes_magic,
     throws_rocks, mindless, is_animal, strongmonst, is_mercenary,
     mon_knows_traps,
 } from './monsters.js';
 import { gettrack } from './track.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, obj_extract_self, splitobj } from './mkobj.js';
 import {
     mintrap,
     NO_TRAP_FLAGS,
@@ -37,7 +37,7 @@ import {
     D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
     D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
-    P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO,
+    P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
 } from './const.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
@@ -46,6 +46,8 @@ import {
     objectNames,
 } from './objects.js';
 import { Monnam } from './do_name.js';
+import { doname } from './objnam.js';
+import { mpickobj } from './makemon.js';
 import { may_dig, mdig_tunnel } from './dig.js';
 import { MON_WEP, mon_wield_item } from './weapon.js';
 import { lined_up } from './mthrowu.js';
@@ -69,6 +71,7 @@ const MMOVE_MOVED = 1;
 const MMOVE_DIED = 2;
 const MMOVE_DONE = 3;
 const MMOVE_NOMOVES = 4;
+const AT_ENGL = 11; // monattk.h
 
 // C ref: monmove.c practical[] / magical[] for mon_would_take_item
 const PRACTICAL_CLASSES = [WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS];
@@ -115,14 +118,49 @@ function can_touch_safely(_mtmp, otmp) {
     return true;
 }
 
-/** C ref: mon.c can_carry — weight + touch; notake/quan specials partial. */
+/**
+ * C ref: mon.c can_carry — returns max quan the monster may take.
+ * quan>1 → return 1 only for M1_NOHANDS non-glompers (dragons gold/gems
+ * and AT_ENGL engulfer exceptions). Hands monsters take the full stack
+ * when weight allows (D-0186).
+ */
 function can_carry(mtmp, otmp) {
     if (!mtmp || !otmp) return 0;
+    const mdat = mtmp.data;
+    if ((mdat?.mflags1 ?? 0) & M1_NOTAKE) return 0;
     if (!can_touch_safely(mtmp, otmp)) return 0;
+
+    // C: huge quan clamp via rn2 deferred; ordinary stacks fit in int
     const iquan = otmp.quan || 1;
-    if (iquan > 1) return 1;
-    if ((otmp.owt || 0) > max_mon_load(mtmp)) return 0;
-    if (curr_mon_load(mtmp) + (otmp.owt || 0) > max_mon_load(mtmp)) return 0;
+    if (iquan > 1) {
+        let glomper = false;
+        if (mdat?.mlet === 'S_DRAGON'
+            && (otmp.oclass === COIN_CLASS || otmp.oclass === GEM_CLASS)) {
+            glomper = true;
+        } else {
+            const mattk = mdat?.mattk || [];
+            for (let nattk = 0; nattk < NATTK; nattk++) {
+                if (mattk[nattk]?.aatyp === AT_ENGL) {
+                    glomper = true;
+                    break;
+                }
+            }
+        }
+        if (nohands(mdat) && !glomper) return 1;
+    }
+
+    if (mtmp === game.u?.usteed) return 0;
+    if (mtmp.isshk) return iquan;
+    // C: peaceful non-pets refuse loot
+    if (mtmp.mpeaceful && !mtmp.mtame) return 0;
+
+    if (throws_rocks(mdat) && otmp.otyp === BOULDER) return iquan;
+    if (mdat?.mlet === 'S_NYMPH') {
+        return otmp.oclass === ROCK_CLASS ? 0 : iquan;
+    }
+
+    const newload = otmp.owt || 0;
+    if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp)) return 0;
     return iquan;
 }
 
@@ -170,10 +208,52 @@ function could_reach_item(_mtmp, _x, _y) {
 }
 
 /**
+ * C ref: mon.c mpickstuff — pick one wanted floor object underfoot.
+ * Named omissions: shopkeeper inhishop; in_rooms shop rn2(25); is_mines_prize/
+ * is_soko_prize; nymph/corpse specials; check_gear_next_turn; distant_name
+ * side-effects (doname stand-in).
+ */
+async function mpickstuff(mtmp) {
+    if (mtmp.isshk) return false;
+    // shop in_rooms + rn2(25) deferred (no shop rooms on Mines path)
+    if (!could_reach_item(mtmp, mtmp.mx, mtmp.my)) return false;
+
+    for (let otmp = objects_at(mtmp.mx, mtmp.my); otmp; otmp = otmp.nexthere) {
+        // is_mines_prize / is_soko_prize deferred
+        if (!mon_would_take_item(mtmp, otmp)) continue;
+        if (otmp.otyp === CORPSE && mtmp.data?.mlet !== 'S_NYMPH') {
+            // touch_petrifies / lizard / acidic corpse exceptions deferred
+            continue;
+        }
+        if (!can_touch_safely(mtmp, otmp)) continue;
+        const carryamt = can_carry(mtmp, otmp);
+        if (carryamt === 0) continue;
+        let otmp3 = otmp;
+        if (carryamt !== (otmp.quan || 1)) {
+            otmp3 = splitobj(otmp, carryamt) || otmp;
+        }
+        if (cansee(mtmp.mx, mtmp.my)) {
+            const otmpname = doname(otmp3);
+            if (game.flags?.verbose !== false) {
+                await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
+            }
+        }
+        obj_extract_self(otmp3);
+        mpickobj(mtmp, otmp3);
+        // check_gear_next_turn deferred
+        newsym(mtmp.mx, mtmp.my);
+        return true;
+    }
+    return false;
+}
+
+/**
  * C ref: monmove.c m_search_items — redirect gg toward interesting floor loot.
  * Named omissions: in_rooms shop rn2(25); hides_under; onscary; costly_spot
  * merchandise; is_mines_prize/is_soko_prize; helpless under-monster skip
- * beyond mcanmove/msleeping/mmove; searches_for_item via mon_would_take.
+ * beyond mcanmove/msleeping/mmove; searches_for_item via mon_would_take;
+ * underfoot MMOVE_DONE short-circuit (kept deferred — D-0183; postmov now
+ * has mpickstuff for MOVED/DONE).
  */
 function m_search_items(mtmp, gg) {
     let minr = SQSRCHRADIUS;
@@ -228,12 +308,17 @@ function m_search_items(mtmp, gg) {
                 // is_mines_prize / is_soko_prize deferred
                 if ((mon_would_take_item(mtmp, otmp) && can_carry(mtmp, otmp) > 0)
                     || mon_would_consume_item(mtmp, otmp)) {
+                    const ix = otmp.ox ?? xx;
+                    const iy = otmp.oy ?? yy;
+                    // Underfoot interesting loot: C returns TRUE → postmov →
+                    // mpickstuff (MMOVE_DONE). JS postmov still omits that
+                    // pickup path; returning TRUE skipped mfndpos/mtrack while
+                    // C kept approaching. Skip underfoot claim until DONE
+                    // pickup is wired; distant redirects still set gg.
+                    if (ix === omx && iy === omy) continue;
                     minr = distmin(omx, omy, xx, yy);
-                    gg.x = otmp.ox ?? xx;
-                    gg.y = otmp.oy ?? yy;
-                    if (gg.x === omx && gg.y === omy) {
-                        return true; // MMOVE_DONE caller
-                    }
+                    gg.x = ix;
+                    gg.y = iy;
                     break;
                 }
             }
@@ -535,19 +620,23 @@ function canspotmon(mtmp) {
 }
 
 /**
- * C ref: monmove.c postmov — after a successful step: traps then doors.
+ * C ref: monmove.c postmov — after a successful step: traps then doors,
+ * then shared OBJ_AT / mpickstuff for MOVED|DONE.
  * Branch envelope: D_CLOSED open / D_LOCKED unlock / smash doorbuster;
- * amorphous squeeze message; mb_trapped. Named omissions: vampshift fog
- * sequencing; iron bars; engulfing_u; shop add_damage;
- * has_magic_key disarm; full mondied from trap death; m_digweapon_check.
+ * amorphous squeeze message; mb_trapped; mpickstuff one-object pickup.
+ * Named omissions: vampshift fog; iron bars; engulfing_u; shop add_damage;
+ * has_magic_key disarm; metallivorous/cube/corpse_eater meat*; maybe_spin_web;
+ * hides_under; shk after_shk_move; check_gear_next_turn.
  */
 async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
-    if (mmoved !== MMOVE_MOVED) return mmoved;
+    if (mmoved !== MMOVE_MOVED && mmoved !== MMOVE_DONE) return mmoved;
 
+    const ptr = mtmp.data;
+
+    if (mmoved === MMOVE_MOVED) {
     // notice_mon deferred
     let canseeit = cansee(mtmp.mx, mtmp.my);
     const didseeit = canseeit;
-    const ptr = mtmp.data;
 
     newsym(omx, omy); // update the old position
     const trapret = await mintrap(mtmp, NO_TRAP_FLAGS);
@@ -636,6 +725,17 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
     }
 
     if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+    } // end MMOVE_MOVED
+
+    // C: shared MOVED|DONE floor pickup
+    if (objects_at(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
+        // metallivorous / gelatinous cube / corpse_eater meat* deferred
+        if (await mpickstuff(mtmp)) {
+            mmoved = MMOVE_DONE;
+        }
+        // minvis newsym / maybe_spin_web / hides_under / shk deferred
+    }
+
     return mmoved;
 }
 
@@ -659,7 +759,9 @@ export async function m_move(mtmp, after) {
             if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
             return MMOVE_DIED;
         }
-        if (i === Trap_Caught_Mon) return MMOVE_NOTHING;
+        if (i === Trap_Caught_Mon) {
+            return MMOVE_NOTHING;
+        }
     }
 
     // C: meating countdown — still eating skips dog_move / approach
@@ -737,7 +839,9 @@ export async function m_move(mtmp, after) {
     const flag = mon_allowflags(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
     const cnt = mfndpos(mtmp, mfp, flag);
-    if (cnt === 0) return MMOVE_NOMOVES;
+    if (cnt === 0) {
+        return MMOVE_NOMOVES;
+    }
 
     let nix = omx;
     let niy = omy;
@@ -745,6 +849,7 @@ export async function m_move(mtmp, after) {
     const jcnt = Math.min(MTSZ, cnt - 1);
     let nidist = dist2(nix, niy, ggx, ggy);
     let mmoved = MMOVE_NOTHING;
+
 
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x;
@@ -805,6 +910,7 @@ export async function dochug(mtmp) {
     if (!mtmp.mcanmove) return 0;
     if (mtmp.msleeping) return 0; // disturb not needed: fill mons start awake
 
+
     set_apparxy(mtmp);
     let { inrange, nearby, scared } = distfleeck(mtmp);
 
@@ -821,6 +927,7 @@ export async function dochug(mtmp) {
         || (!mtmp.mcansee && !rn2(4))
         || mtmp.mpeaceful
     );
+
 
     let status = MMOVE_NOTHING;
     // PHASE THREE: move if not adjacent-hostile (attack path)

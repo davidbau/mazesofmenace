@@ -93,12 +93,13 @@ export function losehp(n, knam, k_format = KILLED_BY) {
     const u = game.u || (game.u = {});
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
-    // end_running(TRUE) — clear rush/multi if active
+    // C: end_running(TRUE) — clear rush; do NOT force multi=0 (nomul owns that)
     if (game.context) {
         game.context.run = 0;
         game.context.mv = 0;
+        game.context.travel = 0;
     }
-    game.multi = 0;
+    if ((game.multi | 0) > 0) game.multi = 0;
 
     if (Upolyd(u)) {
         u.mh = (u.mh || 0) - n;

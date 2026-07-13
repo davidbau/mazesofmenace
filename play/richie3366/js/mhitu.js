@@ -9,6 +9,7 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
 } from './const.js';
 import { thrwmu } from './mthrowu.js';
+import { find_offensive, use_offensive } from './muse.js';
 import { nomul, losehp } from './hack.js';
 import { rnd, d } from './rng.js';
 import { pline } from './display.js';
@@ -153,6 +154,13 @@ export async function mattacku(mtmp) {
     let { ranged, range2, foundyou } = calc_mattacku_vars(mtmp);
     if (!ranged) nomul(0);
     if ((mtmp.mhp | 0) < 1) return 1;
+
+    // C: find_offensive / use_offensive before attack loop — potion throw
+    // spends the turn (return 2) without melee/ranged AT_WEAP.
+    if (find_offensive(mtmp)) {
+        const offended = use_offensive(mtmp);
+        if (offended !== 0) return offended === 1 ? 1 : 0;
+    }
 
     const u = game.u || {};
     // AC_VALUE(u.uac) + 10 + m_lev (+ helpless / invis / trap deferred deltas)

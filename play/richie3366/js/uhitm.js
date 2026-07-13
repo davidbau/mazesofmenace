@@ -3,23 +3,45 @@
 //         hack.c overexertion; mon.c killed / xkilled / corpse_chance.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import {
     IS_OBSTRUCTED, HMON_MELEE, STRAT_WAITMASK,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT,
+    M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
 } from './const.js';
 import { WEAPON_CLASS, objectNameStrs } from './objects.js';
-import { exercise, A_STR, A_DEX, acurr } from './attrib.js';
-import { overexertion } from './hack.js';
+import { exercise, A_STR, A_DEX, A_WIS, acurr } from './attrib.js';
+import { overexertion, nomul, losehp } from './hack.js';
 import { pline, newsym } from './display.js';
-import { dmgval, P_SKILL } from './weapon.js';
-import { find_mac, AT_WEAP, AD_PHYS } from './mhitm.js';
-import { verysmall, G_FREQ, bigmonst, thick_skinned } from './monsters.js';
+import { dmgval, P_SKILL, weapon_hit_bonus, martial_bonus } from './weapon.js';
+import {
+    find_mac, get_mattk, AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_TUCH,
+    AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AD_PHYS,
+} from './mhitm.js';
+import {
+    verysmall, G_FREQ, bigmonst, thick_skinned, monsterNames,
+} from './monsters.js';
 import { relobj_on_death } from './mkobj.js';
-import { record_mvitals_died } from './mon.js';
+import { monnear, record_mvitals_died } from './mon.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
+
+// C ref: monattk.h damage types used by passive / passive_obj
+const AD_MAGM = 1;
+const AD_FIRE = 2;
+const AD_COLD = 3;
+const AD_ELEC = 6;
+const AD_ACID = 8;
+const AD_STUN = 12;
+const AD_PLYS = 14;
+const AD_STON = 18;
+const AD_RUST = 24;
+const AD_ENCH = 41;
+const AD_CORR = 42;
+
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
 
 function mon_nam(mtmp) {
     // C mon_nam — ARTICLE_THE lowercase; named → bare
@@ -72,14 +94,6 @@ function abon() {
 }
 
 /**
- * C ref: weapon.c weapon_hit_bonus — skill bonus; skills stubbed → 0
- * (named omission: P_SKILL / restricted −4). Enough for L1 hit vs dieroll.
- */
-function weapon_hit_bonus(_weapon) {
-    return 0;
-}
-
-/**
  * C ref: weapon.c hitval — spe + type vs mon; silver/artifact deferred.
  */
 function hitval(otmp, _mon) {
@@ -91,6 +105,7 @@ function hitval(otmp, _mon) {
  * C ref: uhitm.c find_roll_to_hit — to-hit threshold before rnd(20).
  * check_caitiff / monk armor / encumbrance / trap penalties deferred when
  * they do not change RNG order for ordinary L1 melee.
+ * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1).
  */
 function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
     role_roll_penalty.v = 0;
@@ -226,8 +241,8 @@ function hmon_hitmon_stagger(mon, dmg) {
 async function hmon(mon, obj, thrown, _dieroll) {
     let dmg = 0;
     if (!obj) {
-        // bare hands: rnd(2) or martial rnd(4)
-        dmg = rnd(2);
+        // C hmon_hitmon_barehands: rnd(!martial_bonus() ? 2 : 4)
+        dmg = rnd(martial_bonus() ? 4 : 2);
     } else if (obj.oclass === WEAPON_CLASS
         || game.objects?.[obj.otyp]?.oc_skill != null) {
         dmg = dmgval(obj, mon);
@@ -306,11 +321,260 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
 }
 
 /**
+ * C ref: uhitm.c passive_obj — erosion/drain on the hitting object.
+ * erode_obj / drain_item bodies deferred; RNG order preserved.
+ */
+function passive_obj(mon, obj, mattk) {
+    const u = game.u || {};
+    let weapon = obj;
+    let atk = mattk;
+    if (!weapon) {
+        weapon = (u.twoweap && u.uswapwep && !rn2(2)) ? u.uswapwep : u.uwep;
+        if (!weapon && atk?.adtyp === AD_ENCH) weapon = u.uarmg;
+        if (!weapon) return;
+    }
+    if (!atk) {
+        let i = 0;
+        for (;; i++) {
+            if (i >= NATTK) return;
+            if (get_mattk(mon, i).aatyp === AT_NONE) break;
+        }
+        atk = get_mattk(mon, i);
+    }
+    switch (atk.adtyp | 0) {
+    case AD_FIRE:
+        if (!rn2(6) && !mon.mcan
+            && (mon.mnum ?? mon.data?.mndx ?? -1) !== PM_STEAM_VORTEX) {
+            // erode_obj ERODE_BURN deferred
+        }
+        break;
+    case AD_ACID:
+        if (!rn2(6)) {
+            // erode_obj ERODE_CORRODE deferred
+        }
+        break;
+    case AD_RUST:
+    case AD_CORR:
+        if (!mon.mcan) {
+            // erode_obj deferred
+        }
+        break;
+    case AD_ENCH:
+        if (!mon.mcan) {
+            // drain_item / Yobjnam2 deferred
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+/**
+ * C ref: uhitm.c passive — defender AT_NONE after hero melee.
+ * Finds first AT_NONE (incl. NO_ATTK fillers), rolls damage dice, applies
+ * even-if-dead effects, then live gate `malive && !mcan && rn2(3)`.
+ * Named omissions: full AD_PLYS gaze/cube / ugolemeffects / split_mon /
+ * erode_armor / done_in_by stone / attk_protection detail; dokick callers.
+ */
+async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
+    if (!mon) return (maliveb ? M_ATTK_HIT : M_ATTK_MISS)
+        | (mhitb ? M_ATTK_HIT : M_ATTK_MISS);
+    const mhit = mhitb ? M_ATTK_HIT : M_ATTK_MISS;
+    let malive = maliveb ? M_ATTK_HIT : M_ATTK_MISS;
+    let i = 0;
+    for (;; i++) {
+        if (i >= NATTK) return malive | mhit;
+        if (get_mattk(mon, i).aatyp === AT_NONE) break;
+    }
+    const mattk = get_mattk(mon, i);
+    let tmp;
+    if (mattk.damn) tmp = d(mattk.damn | 0, mattk.damd | 0);
+    else if (mattk.damd) {
+        const mlev = mon.m_lev ?? mon.data?.mlevel ?? 0;
+        tmp = d((mlev | 0) + 1, mattk.damd | 0);
+    } else tmp = 0;
+
+    const u = game.u || {};
+    const Free_action = !!(u.Free_action || u.HFree_action || u.EFree_action);
+    const Cold_resistance = !!(u.Cold_resistance || u.HCold_resistance
+        || u.ECold_resistance);
+    const Fire_resistance = !!(u.Fire_resistance || u.HFire_resistance
+        || u.EFire_resistance);
+    const Shock_resistance = !!(u.Shock_resistance || u.HShock_resistance
+        || u.EShock_resistance);
+    const Acid_resistance = !!(u.Acid_resistance || u.HAcid_resistance
+        || u.EAcid_resistance);
+    const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
+        || u.EStone_resistance);
+
+    switch (mattk.adtyp | 0) {
+    case AD_FIRE:
+        if (mhitb && !mon.mcan && weapon) {
+            if (aatyp === AT_KICK) {
+                if (u.uarmf && !rn2(6)) {
+                    // erode_obj uarmf burn deferred
+                }
+            } else if (aatyp === AT_WEAP || aatyp === AT_CLAW
+                || aatyp === AT_MAGC || aatyp === AT_TUCH) {
+                passive_obj(mon, weapon, mattk);
+            }
+        }
+        break;
+    case AD_ACID:
+        if (mhitb && rn2(2)) {
+            if (game.u?.Blind || !game.flags?.verbose) {
+                await pline('You are splashed!');
+            } else {
+                await pline(`You are splashed by ${mon_nam(mon)}'s acid!`);
+            }
+            if (!Acid_resistance) {
+                losehp(tmp, mon_nam(mon), 2);
+            }
+            if (!rn2(30)) {
+                // erode_armor ERODE_CORRODE deferred
+            }
+        }
+        if (mhitb && weapon) {
+            if (aatyp === AT_KICK) {
+                if (u.uarmf && !rn2(6)) {
+                    // erode_obj uarmf corrode deferred
+                }
+            } else if (aatyp === AT_WEAP || aatyp === AT_CLAW
+                || aatyp === AT_MAGC || aatyp === AT_TUCH) {
+                passive_obj(mon, weapon, mattk);
+            }
+        }
+        exercise(A_STR, false);
+        break;
+    case AD_STON:
+        if (mhitb) {
+            // attk_protection / done_in_by STONING deferred; no RNG here
+            void Stone_resistance;
+            void wep_was_destroyed;
+        }
+        break;
+    case AD_RUST:
+    case AD_CORR:
+        if (mhitb && !mon.mcan && weapon) {
+            if (aatyp === AT_KICK) {
+                if (u.uarmf) {
+                    // erode_obj uarmf deferred
+                }
+            } else if (aatyp === AT_WEAP || aatyp === AT_CLAW
+                || aatyp === AT_MAGC || aatyp === AT_TUCH) {
+                passive_obj(mon, weapon, mattk);
+            }
+        }
+        break;
+    case AD_MAGM:
+        if (Antimagic) {
+            await pline('A hail of magic missiles narrowly misses you!');
+        } else {
+            await pline('You are hit by magic missiles appearing from thin air!');
+            losehp(tmp, mon_nam(mon), 2);
+        }
+        break;
+    case AD_ENCH:
+        if (mhitb) {
+            if (aatyp === AT_KICK) {
+                if (!weapon) break;
+            } else if (aatyp === AT_BITE || aatyp === AT_BUTT
+                || (aatyp >= AT_STNG && aatyp < AT_WEAP)) {
+                break;
+            }
+            passive_obj(mon, weapon, mattk);
+        }
+        break;
+    default:
+        break;
+    }
+
+    // Live-only passives — C always burns rn2(3) even for NO_ATTK AD_PHYS
+    if (maliveb && !mon.mcan && rn2(3)) {
+        switch (mattk.adtyp | 0) {
+        case AD_PLYS: {
+            const mndx = mon.mnum ?? mon.data?.mndx ?? -1;
+            if (mndx === PM_FLOATING_EYE) {
+                // canseemon stub: present on map (full canspotmon deferred)
+                const see = !!(mon.mx != null);
+                if (!see) break;
+                if (mon.mcansee) {
+                    if (u.Hallucination && rn2(4)) {
+                        await pline(`${mon_nam(mon)} looks ${!rn2(2) ? '' : 'rather '}${!rn2(2) ? 'numb' : 'stupefied'}.`);
+                    } else if (Free_action) {
+                        await pline(`You momentarily stiffen under ${mon_nam(mon)}'s gaze!`);
+                    } else {
+                        await pline(`You are frozen by ${mon_nam(mon)}'s gaze!`);
+                        nomul((acurr(A_WIS) > 12 || rn2(4)) ? -tmp : -127);
+                    }
+                } else {
+                    await pline(`${mon_nam(mon)} cannot defend itself.`);
+                    if (!rn2(500)) {
+                        // change_luck(-1) deferred
+                    }
+                }
+            } else if (Free_action) {
+                await pline('You momentarily stiffen.');
+            } else {
+                await pline(`You are frozen by ${mon_nam(mon)}!`);
+                nomul(-tmp);
+                exercise(A_DEX, false);
+            }
+            break;
+        }
+        case AD_COLD:
+            if (monnear(mon, u.ux, u.uy)) {
+                if (Cold_resistance) {
+                    await pline('You feel a mild chill.');
+                    break;
+                }
+                await pline('You are suddenly very cold!');
+                losehp(tmp, mon_nam(mon), 2);
+                // healmon / split_mon deferred — still burn healmon rn2(2)
+                void ((tmp + rn2(2)) / 2);
+            }
+            break;
+        case AD_STUN:
+            if (!u.Stunned) {
+                // make_stunned(tmp, TRUE) deferred
+                u.Stunned = tmp | 0;
+            }
+            break;
+        case AD_FIRE:
+            if (monnear(mon, u.ux, u.uy)) {
+                if (Fire_resistance) {
+                    await pline('You feel mildly warm.');
+                    break;
+                }
+                await pline('You are suddenly very hot!');
+                losehp(tmp, mon_nam(mon), 2);
+            }
+            break;
+        case AD_ELEC:
+            if (Shock_resistance) {
+                await pline('You feel a mild tingle.');
+                break;
+            }
+            await pline('You are jolted with electricity!');
+            losehp(tmp, mon_nam(mon), 2);
+            break;
+        default:
+            break;
+        }
+    }
+    void AD_PHYS;
+    void M_ATTK_DEF_DIED;
+    return malive | mhit;
+}
+
+/**
  * C ref: uhitm.c hitum — find_roll_to_hit, rnd(20), known_hitum, passive.
  * Cleaver / twoweapon / double_punch deferred.
  */
 async function hitum(mon, uattk) {
     const uwep = game.u?.uwep || null;
+    const wepbefore = uwep;
     const attk_count = { v: 0 };
     const role_roll_penalty = { v: 0 };
     // twohits = 0 for single-weapon L1
@@ -323,8 +587,9 @@ async function hitum(mon, uattk) {
     const malive = await known_hitum(
         mon, uwep, mhit, tmp, role_roll_penalty.v, uattk, dieroll,
     );
-    // passive(mon, uwep, mhit, malive, AT_WEAP, …) — no RNG when dead / no passive
-    void malive;
+    const wep_was_destroyed = !!(wepbefore && !game.u?.uwep);
+    await passive(mon, game.u?.uwep || null, !!mhit.v, !!malive, AT_WEAP,
+        wep_was_destroyed);
     return malive;
 }
 

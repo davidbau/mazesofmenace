@@ -40,7 +40,8 @@ import {
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
-    acurr, acurrstr, get_strength_str, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
+    acurr, acurrstr, get_strength_str, exercise,
+    A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
 import { depth } from './hacklib.js';
 import {
@@ -432,9 +433,16 @@ export async function ddoinv() {
 }
 
 /**
- * C ref: o_init.c discover_object()
+ * C ref: o_init.c discover_object(oindx, mark_as_known, mark_as_encountered,
+ *                                credit_hero)
+ * credit_hero → exercise(A_WIS, TRUE) when newly naming the type.
  */
-export function discover_object(oindx, mark_as_known, mark_as_encountered = false) {
+export function discover_object(
+    oindx,
+    mark_as_known,
+    mark_as_encountered = false,
+    credit_hero = false,
+) {
     if (oindx == null || oindx < 0) return;
     const objects = game.objects;
     if (!objects?.[oindx]) return;
@@ -457,8 +465,15 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered = fals
     }
     if (dindx < game.disco.length) game.disco[dindx] = oindx;
     if (mark_as_encountered) objects[oindx].oc_encountered = 1;
-    if (mark_as_known && !objects[oindx].oc_name_known)
+    if (mark_as_known && !objects[oindx].oc_name_known) {
         objects[oindx].oc_name_known = 1;
+        if (credit_hero) exercise(A_WIS, true);
+    }
+}
+
+/** C ref: hack.h makeknown — discover_object(x, TRUE, TRUE, TRUE). */
+export function makeknown(otyp) {
+    discover_object(otyp, true, true, true);
 }
 
 /**

@@ -10,11 +10,13 @@ import {
 import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
+    POTHIT_MONST_THROW,
 } from './const.js';
 import { cansee, couldsee } from './vision.js';
 import {
     place_object, splitobj, stackobj, obj_extract_self, delobj,
 } from './mkobj.js';
+import { observe_object } from './invent.js';
 import {
     MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval,
     should_mulch_missile,
@@ -27,10 +29,11 @@ import { pline, mon_visible, see_with_infrared } from './display.js';
 import { Monnam } from './do_name.js';
 import { nohands, mons } from './monsters.js';
 import { xname, singular, an, vtense } from './objnam.js';
-import { VENOM_CLASS, objectNames } from './objects.js';
+import { VENOM_CLASS, POTION_CLASS, objectNames } from './objects.js';
 import {
     PM_MONK, PM_ROGUE, PM_HUMAN,
 } from './generated/monsters_data.js';
+import { potionhit } from './potion.js';
 
 function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
@@ -247,6 +250,8 @@ export function m_throw(mon, x, y, dx, dy, range, obj) {
         by += dy;
         singleobj.ox = bx;
         singleobj.oy = by;
+        // C: if (cansee(bhitpos)) observe_object(singleobj)
+        if (cansee(bx, by)) observe_object(singleobj);
 
         const mtmp = m_at(bx, by);
         if (mtmp) {
@@ -258,6 +263,11 @@ export function m_throw(mon, x, y, dx, dy, range, obj) {
         if (u.ux === bx && u.uy === by) {
             if (game.multi) nomul(0);
             if (!u_catch_thrown_obj(singleobj)) {
+                // C: POTION_CLASS → potionhit (before thitu / egg / pie)
+                if (singleobj.oclass === POTION_CLASS) {
+                    potionhit(null, singleobj, POTHIT_MONST_THROW);
+                    return;
+                }
                 let dam = dmgval(singleobj, null);
                 let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
                 if (hitv < -4) hitv = -4;

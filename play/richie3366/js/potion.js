@@ -6,19 +6,41 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
-import { weight } from './mkobj.js';
-import { A_WIS, exercise } from './attrib.js';
-import { discover_object } from './invent.js';
+import { weight, obj_extract_self } from './mkobj.js';
+import { A_WIS, A_DEX, A_CON, exercise } from './attrib.js';
+import { makeknown } from './invent.js';
 import { yn_function } from './getline.js';
-import { doname } from './objnam.js';
+import { doname, xname } from './objnam.js';
 import { dipfountain } from './fountain.js';
 import {
     IS_FOUNTAIN, IS_SINK, IS_POOL,
     ECMD_TIME, ECMD_CANCEL,
+    POTHIT_OTHER_THROW, KILLED_BY_AN,
 } from './const.js';
 import { hands_obj } from './weapon.js';
+import { rn2, rnd, d } from './rng.js';
+import { losehp, nomul, maybe_half_phys } from './hack.js';
+import { cansee } from './vision.js';
+import { mons } from './monsters.js';
+import { PM_HUMAN } from './generated/monsters_data.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
+const POT_ACID = objectNames.indexOf('POT_ACID');
+const POT_SLEEPING = objectNames.indexOf('POT_SLEEPING');
+const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
+const POT_CONFUSION = objectNames.indexOf('POT_CONFUSION');
+const POT_BLINDNESS = objectNames.indexOf('POT_BLINDNESS');
+const POT_BOOZE = objectNames.indexOf('POT_BOOZE');
+
+const BOTTLENAMES = [
+    'bottle', 'phial', 'flagon', 'carafe', 'flask', 'jar', 'vial',
+];
+const HBOTTLENAMES = [
+    'jug', 'pitcher', 'barrel', 'tin', 'bag', 'box', 'glass', 'beaker',
+    'tumbler', 'vase', 'flowerpot', 'pan', 'thingy', 'mug', 'teacup',
+    'teapot', 'keg', 'bucket', 'thermos', 'amphora', 'wineskin', 'parcel',
+    'bowl', 'ampoule',
+];
 
 /** Invent letters of drinkable potions (C drink_ok → GETOBJ_SUGGEST). */
 function drinkable_lets() {
@@ -327,3 +349,128 @@ export async function dodip() {
     await pline('Never mind.');
     return ECMD_CANCEL;
 }
+
+/** C ref: potion.c bottlename — ROLL_FROM bottlenames / hbottlenames. */
+function bottlename() {
+    const u = game.u || {};
+    const hallu = !!(u.Hallucination || u.HHallucination);
+    const names = hallu ? HBOTTLENAMES : BOTTLENAMES;
+    return names[rn2(names.length)];
+}
+
+/**
+ * C ref: potion.c potionbreathe — vapor on hero (thrown-potion distance 0).
+ * Envelope: paralysis / sleeping / confusion / blindness / acid exercise.
+ * Other otyps and towel / Free_action resist msgs deferred partially.
+ */
+function potionbreathe(obj) {
+    const u = game.u || {};
+    const Free_action = !!(u.Free_action || u.HFree_action || u.EFree_action);
+    const Sleep_resistance = !!(u.HSleep_resistance || u.ESleep_resistance);
+    let kn = 0;
+
+    switch (obj.otyp) {
+    case POT_CONFUSION:
+    case POT_BOOZE:
+        pline('You feel somewhat dizzy.');
+        // make_confused body deferred — set Confusion timeout stub
+        u.Confusion = (u.Confusion | 0) + rnd(5);
+        break;
+    case POT_PARALYSIS:
+        kn++;
+        if (!Free_action) {
+            pline('Something seems to be holding you.');
+            nomul(-rnd(5));
+            game.multi_reason = 'frozen by a potion';
+            game.nomovemsg = 'You can move again.';
+            exercise(A_DEX, false);
+        } else {
+            pline('You stiffen momentarily.');
+        }
+        break;
+    case POT_SLEEPING:
+        kn++;
+        if (!Free_action && !Sleep_resistance) {
+            pline('You feel rather tired.');
+            nomul(-rnd(5));
+            game.multi_reason = 'sleeping off a magical draught';
+            game.nomovemsg = 'You can move again.';
+            exercise(A_DEX, false);
+        } else {
+            pline('You yawn.');
+            // monstseesu(M_SEEN_SLEEP) deferred
+        }
+        break;
+    case POT_BLINDNESS:
+        kn++;
+        // make_blinded deferred — brief Blind stub
+        if (!(u.Blind || u.ublind)) pline('It suddenly gets dark.');
+        u.Blinded = (u.Blinded | 0) + rnd(5);
+        break;
+    case POT_ACID:
+        exercise(A_CON, false);
+        break;
+    default:
+        break;
+    }
+
+    // C: if (obj->dknown) { kn ? makeknown : trycall }
+    if (obj.dknown) {
+        if (kn) makeknown(obj.otyp);
+        // trycall deferred when !kn
+    }
+}
+
+/**
+ * C ref: potion.c potionhit — hero-hit path (mon == null → youmonst).
+ * Monster-target / saddle / shop unpaid deferred.
+ * @param {object|null} mon null = hero
+ * @param {object} obj potion missile (consumed)
+ * @param {number} how POTHIT_*
+ */
+export function potionhit(mon, obj, how) {
+    const isyou = mon == null;
+    if (!isyou) {
+        // Monster-target potionhit deferred — destroy missile via obfree
+        obj_extract_self(obj);
+        obj.quan = 0;
+        obj.where = 0;
+        return;
+    }
+
+    const botlnam = bottlename();
+    const u = game.u || {};
+    pline(`The ${botlnam} crashes on your head and breaks into shards.`);
+    const killer = (how === POTHIT_OTHER_THROW)
+        ? 'propelled potion'
+        : 'thrown potion';
+    losehp(maybe_half_phys(rnd(2)), killer, KILLED_BY_AN);
+
+    if (obj.otyp !== POT_OIL && cansee(u.ux, u.uy)) {
+        // Tobjnam(obj,"evaporate") stand-in
+        pline(`The ${xname(obj)} evaporates.`);
+    }
+
+    if (obj.otyp === POT_ACID) {
+        const Acid_resistance = !!(u.HAcid_resistance || u.EAcid_resistance);
+        if (!Acid_resistance) {
+            const burn = obj.blessed ? ' a little' : obj.cursed ? ' a lot' : '';
+            pline(`This burns${burn}!`);
+            const dmg = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
+            losehp(maybe_half_phys(dmg), 'potion of acid', KILLED_BY_AN);
+        }
+    }
+    // POT_OIL explode / POLYMORPH deferred
+
+    // distance == 0 for hero hit → always breathe if humanoid eyes/breath
+    // breathless/haseyes deferred — human start always qualifies
+    void mons(PM_HUMAN);
+    potionbreathe(obj);
+
+    // C: obfree — no obj_resists (delobj would burn rn2(100))
+    game._thrownobj = null;
+    obj_extract_self(obj);
+    obj.quan = 0;
+    obj.where = 0; // OBJ_FREE
+}
+
