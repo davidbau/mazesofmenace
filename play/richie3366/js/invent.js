@@ -42,10 +42,12 @@ import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     acurr, acurrstr, get_strength_str, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
+import { depth } from './hacklib.js';
 import {
     DOOR, STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, TREE, IRONBARS,
     D_NODOOR, D_ISOPEN, D_BROKEN,
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
+    ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     IS_DOOR,
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD,
     P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD,
@@ -689,8 +691,15 @@ export async function doattributes() {
     const turns = game.moves || 1;
     const hand = (u.uhandedness === 1 /* LEFT_HANDED */) ? 'left' : 'right';
     const gold = game._goldCount || 0;
-    // C ref: insight.c — omit gender when urole.name.f is set
-    const genderPart = hasFemaleName ? '' : `${gender} `;
+    // C ref: insight.c background_enlightenment — gender only when
+    // !name.f AND (both genders allowed OR innategend != initgend)
+    const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
+    const innategend = female ? 1 : 0;
+    const initgend = game.flags?.initgend ? 1 : 0;
+    const genderPart = (!hasFemaleName
+        && (allowGend === (ROLE_MALE | ROLE_FEMALE) || innategend !== initgend))
+        ? `${gender} `
+        : '';
 
     // C ref: insight.c — mission for u_gname(); opposed by other pantheon gods
     let opposed = '  who is opposed by';
@@ -729,6 +738,15 @@ export async function doattributes() {
         pwLine = `${pw} out of ${pwmax} ${Power}`;
     }
 
+    // C ref: insight.c background_enlightenment — dungeon line from
+    // dungeons[uz.dnum].dname + depth (quest/endgame/knox/rogue/bigroom deferred)
+    let dgnbuf = game.dungeons?.[u.uz?.dnum | 0]?.dname || 'The Dungeons of Doom';
+    if (/^The /i.test(dgnbuf)) {
+        dgnbuf = dgnbuf.charAt(0).toLowerCase() + dgnbuf.slice(1);
+    }
+    const dlev = depth(u.uz || { dnum: 0, dlevel: 1 });
+    const dungeonLine = `  You are in ${dgnbuf}, on level ${dlev}.`;
+
     // C ref: insight.c background_enlightenment — continuous stream; tty
     // pages at 23 content rows then "(k of n)". Moon/friday13 sit between
     // "entered" and experience. night()/midnight deferred.
@@ -740,7 +758,7 @@ export async function doattributes() {
         `  You are ${align}, on a mission for ${u_gname(game.urole, atype)}`,
         opposed,
         `  You are ${hand}-handed.`,
-        '  You are in the Dungeons of Doom, on level 1.',
+        dungeonLine,
         `  You entered the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago.`,
     ];
     const moon = game.flags?.moonphase;

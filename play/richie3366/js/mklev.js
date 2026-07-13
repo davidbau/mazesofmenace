@@ -337,7 +337,11 @@ function clear_level_structures() {
     const g = game;
     g.fmon = null;
     g.fobj = null;
+    // C: svl.level.objects[x][y] = 0 for all cells — JS spatial index
+    g._objects_at = new Map();
     g.ftrap = null;
+    // C savelev release_data clears head_engr when leaving a level
+    g.head_engr = null;
     g.level = new GameMap();
     g.level.nroom = 0;
     g.level.rooms = [];
@@ -398,6 +402,8 @@ async function makelevel() {
     const g = game;
     oinit();
     clear_level_structures();
+    // C: themerms.lua local postprocess = {} (fresh each Lua load / level)
+    themerms_postprocess.length = 0;
 
     // C ref: mklev.c:1295 — check for below-Medusa maze level
     // This rn2(5) is consumed even when the condition fails (short-circuit)
@@ -531,8 +537,8 @@ async function makelevel() {
         fill_special_room(g.level.rooms[i]);
 
     // C ref: mklev.c themerooms_post_level_generate() — after fill, Lua
-    // post_level_generate (no-op when postprocess empty for default rooms)
-    // then full-map wallification. JS has no Lua postprocess queue yet.
+    // post_level_generate then full-map wallification.
+    run_themerms_post_level_generate();
     wallification(1, 0, COLNO - 1, ROWNO - 1);
 }
 
@@ -1088,8 +1094,123 @@ function themeroom_fill_ghost(croom) {
     if (percent(20)) create_object_themed({ oclass: SCROLL_CLASS, ...buc }, loc.x, loc.y);
 }
 
+// C ref: themerms.lua postprocess queue (Teleportation hub / garden / dig)
+const themerms_postprocess = [];
+
+// C ref: selvar.c selection_filter_mapchar — lit default -2 (no lit RNG)
+function selection_filter_mapchar(sel, typ) {
+    const pts = new Set();
+    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+    if (!sel || !sel.pts.size) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
+    for (let x = sel.lx; x <= sel.hx; x++) {
+        for (let y = sel.ly; y <= sel.hy; y++) {
+            const key = `${x},${y}`;
+            if (!sel.pts.has(key)) continue;
+            const loc = game.level.at(x, y);
+            // match_maptyps(typ, levl.typ) for ROOM (".")
+            if (!loc || loc.typ !== typ) continue;
+            pts.add(key);
+            if (x < lx) lx = x;
+            if (y < ly) ly = y;
+            if (x > hx) hx = x;
+            if (y > hy) hy = y;
+        }
+    }
+    if (pts.size === 0) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
+    return { pts, lx, ly, hx, hy };
+}
+
+// C ref: selection.negate() with no args → all cells set, then filter_mapchar(".")
+function selection_all_room_floors() {
+    const pts = new Set();
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) pts.add(`${x},${y}`);
+    }
+    return selection_filter_mapchar(
+        { pts, lx: 1, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 },
+        ROOM,
+    );
+}
+
+// C ref: themerms.lua "Teleportation hub" contents
+// rndcoord returns room-relative; Lua stores abs via +region.x1-1 / +region.y1.
+// pos.x > 0 skips failed (-1) and leftmost room-relative column (rel==0).
+function themeroom_fill_teleport_hub(croom) {
+    const roomSel = selection_from_mkroom(croom);
+    const locs = selection_filter_mapchar(roomSel, ROOM);
+    const n = 2 + rn2(3);
+    for (let i = 0; i < n; i++) {
+        const abs = selection_rndcoord(locs, true);
+        if (!abs) continue;
+        const relX = abs.x - croom.lx;
+        if (!(relX > 0)) continue;
+        // Stored form matches Lua postprocess coords (xstart-relative later)
+        themerms_postprocess.push({
+            handler: 'make_a_trap',
+            data: {
+                type: 'teleport',
+                seen: true,
+                coord: { x: abs.x - 1, y: abs.y },
+                teledest: 1,
+            },
+        });
+    }
+}
+
+// C ref: themerms.lua make_a_trap — teledest pick then des.trap
+function make_a_trap_postprocess(data) {
+    if (!data || data.type !== 'teleport') return;
+    let teledest = data.teledest;
+    if (teledest === 1) {
+        const locs = selection_all_room_floors();
+        // Lua: until x differs AND y differs (both axes)
+        do {
+            const abs = selection_rndcoord(locs, true);
+            if (!abs) return;
+            // Relative to xstart=1, ystart=0 (reset_xystart_size)
+            teledest = { x: abs.x - 1, y: abs.y };
+        } while (!(teledest.x !== data.coord.x && teledest.y !== data.coord.y));
+    }
+    if (!teledest || typeof teledest !== 'object') return;
+
+    // get_location adds xstart/ystart to stored relative coords
+    const tx = data.coord.x + 1;
+    const ty = data.coord.y;
+    const dx = teledest.x + 1;
+    const dy = teledest.y;
+    if (!isok(tx, ty)) return;
+    const ttmp = maketrap(tx, ty, TELEP_TRAP);
+    if (!ttmp) return;
+    if (data.seen) ttmp.tseen = true;
+    ttmp.teledest = { x: dx, y: dy };
+
+    // C create_trap → mktrap: victim gate evaluates rnd(4) before
+    // (kind < HOLE || MAGIC_TRAP) rejects TELEP — burn must still happen.
+    const kind = TELEP_TRAP;
+    const lvl = level_difficulty();
+    if (game.in_mklev
+        && kind !== NO_TRAP
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP
+            && ttmp.launch?.x === ttmp.tx && ttmp.launch?.y === ttmp.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) { ttmp.ttyp = PIT; ttmp.tseen = true; }
+        mktrap_victim(ttmp);
+    }
+}
+
+// C ref: themerms.lua post_level_generate + mklev.c themerooms_post_level_generate
+function run_themerms_post_level_generate() {
+    for (const v of themerms_postprocess) {
+        if (v.handler === 'make_a_trap') make_a_trap_postprocess(v.data);
+    }
+    themerms_postprocess.length = 0;
+}
+
 const THEMEROOM_FILL_BODIES = {
     'Ghost of an Adventurer': themeroom_fill_ghost,
+    'Teleportation hub': themeroom_fill_teleport_hub,
 };
 
 // C ref: themerms.lua themeroom_fill() — reservoir + dispatched fill bodies

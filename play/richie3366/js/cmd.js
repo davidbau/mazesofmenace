@@ -21,7 +21,7 @@ import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { doread } from './read.js';
-import { doengrave } from './engrave.js';
+import { doengrave, maybe_smudge_engr } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
@@ -708,4 +708,7 @@ async function domove(dx, dy) {
     // C: if (u.umoved) spoteffects(TRUE) — autopickup / check_here look
     u.umoved = true;
     await spoteffects(true);
+    // C ref: hack.c domove — after domove_core (incl. spoteffects), on
+    // DOMOVE_RUSH|DOMOVE_WALK success: maybe_smudge_engr(ux0,uy0,ux,uy)
+    maybe_smudge_engr(oldx, oldy, newx, newy);
 }

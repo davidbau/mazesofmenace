@@ -2,9 +2,9 @@
 // C ref: monmove.c — distfleeck, dochug, m_move, postmov, set_apparxy, mon_track_add.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { dog_move } from './dogmove.js';
-import { newsym } from './display.js';
+import { rn2, rnd } from './rng.js';
+import { dog_move, finish_meating } from './dogmove.js';
+import { newsym, pline } from './display.js';
 import {
     dist2,
     monnear,
@@ -12,8 +12,8 @@ import {
     mfndpos,
 } from './mon.js';
 import {
-    is_wanderer, is_armed, passes_walls, monsterNames,
-    M1_SEE_INVIS, M1_AMORPHOUS,
+    is_wanderer, is_armed, passes_walls, nohands, verysmall,
+    monsterNames, M1_SEE_INVIS, M1_AMORPHOUS,
 } from './monsters.js';
 import {
     mintrap,
@@ -23,12 +23,19 @@ import {
     Trap_Caught_Mon,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
-import { couldsee } from './vision.js';
+import { cansee, couldsee, vision_recalc, recalc_block_point } from './vision.js';
 import {
-    isok, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, u_at, DISPLACED,
+    isok, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
+    D_BROKEN, D_TRAPPED, u_at, DISPLACED,
 } from './const.js';
-import { CLOAK_OF_DISPLACEMENT, COIN_CLASS } from './objects.js';
+import {
+    CLOAK_OF_DISPLACEMENT, COIN_CLASS, objectNames,
+} from './objects.js';
+import { Monnam } from './do_name.js';
 
+const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
+const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
+const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const MTSZ = 4;
 const BOLT_LIM = 8;
 const MMOVE_NOTHING = 0;
@@ -208,36 +215,180 @@ export function distfleeck(mtmp) {
     return { inrange: inrange ? 1 : 0, nearby: nearby ? 1 : 0, scared };
 }
 
-// C ref: monmove.c postmov() — after a successful step, trigger traps
-async function postmov(mtmp, omx, omy, mmoved) {
-    if (mmoved === MMOVE_MOVED) {
-        newsym(omx, omy); // update the old position
-        const trapret = await mintrap(mtmp, NO_TRAP_FLAGS);
-        if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
-            if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
-            return MMOVE_DIED;
-        }
-        // door open / tunnel / notice_mon / engulf deferred
-        // C: else of engulfing_u — always newsym new position after mintrap
-        if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+/**
+ * C ref: monmove.c monhaskey — locking/unlocking tool in minvent.
+ */
+function monhaskey(mon, for_unlocking) {
+    for (let otmp = mon?.minvent; otmp; otmp = otmp.nobj) {
+        if (for_unlocking && otmp.otyp === CREDIT_CARD) return true;
+        if (otmp.otyp === SKELETON_KEY || otmp.otyp === LOCK_PICK) return true;
     }
+    return false;
+}
+
+/**
+ * C ref: monmove.c mb_trapped — door trap explosion after open/smash.
+ * Named omission: wake_nearto; mon_learns_traps(TRAPPED_DOOR); full
+ * mondead/lifesave (HP≤0 clears mx and returns died).
+ */
+async function mb_trapped(mtmp, canseeit) {
+    if (game.flags?.verbose !== false) {
+        if (canseeit && !game.u?.Unaware) {
+            await pline('KABOOM!!  You see a door explode.');
+        } else if (!game.u?.Deaf) {
+            const far = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) > 7 * 7;
+            await pline(`You hear a ${far ? 'distant' : 'nearby'} explosion.`);
+        }
+    }
+    mtmp.mstun = 1;
+    mtmp.mhp -= rnd(15);
+    if ((mtmp.mhp | 0) < 1) {
+        mtmp.mhp = 0;
+        mtmp.mx = 0;
+        mtmp.my = 0;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C: UnblockDoor macro — set doormask, newsym, recalc vision, refresh cansee.
+ */
+function unblock_door(here, mtmp, what, didseeit) {
+    here.doormask = what;
+    if (here.flags !== undefined) here.flags = what;
+    newsym(mtmp.mx, mtmp.my);
+    recalc_block_point(mtmp.mx, mtmp.my);
+    vision_recalc(0);
+    return didseeit || cansee(mtmp.mx, mtmp.my);
+}
+
+/**
+ * C ref: display.h canseemon / canspotmon stubs for door feedback.
+ * infrared/invis/worm deferred — lit cansee + !minvis stand-in.
+ */
+function canseemon(mtmp) {
+    if (!mtmp?.mx) return false;
+    if (!cansee(mtmp.mx, mtmp.my)) return false;
+    return !mtmp.minvis;
+}
+
+function canspotmon(mtmp) {
+    return canseemon(mtmp);
+}
+
+/**
+ * C ref: monmove.c postmov — after a successful step: traps then doors.
+ * Branch envelope: D_CLOSED open / D_LOCKED unlock / smash doorbuster;
+ * amorphous squeeze message; mb_trapped. Named omissions: vampshift fog
+ * sequencing; iron bars; mdig_tunnel; engulfing_u; shop add_damage;
+ * has_magic_key disarm; full mondied from trap death.
+ */
+async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
+    if (mmoved !== MMOVE_MOVED) return mmoved;
+
+    // notice_mon deferred
+    let canseeit = cansee(mtmp.mx, mtmp.my);
+    const didseeit = canseeit;
+    const ptr = mtmp.data;
+
+    newsym(omx, omy); // update the old position
+    const trapret = await mintrap(mtmp, NO_TRAP_FLAGS);
+    if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
+        if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+        return MMOVE_DIED;
+    }
+
+    // open a door, or crash through it, if mtmp can
+    const loc = game.level?.at(mtmp.mx, mtmp.my);
+    if (loc && IS_DOOR(loc.typ)
+        && !passes_walls(ptr)
+        && !can_tunnel) {
+        const here = loc;
+        let btrapped = !!(here.doormask & D_TRAPPED);
+        // has_magic_key disarm deferred
+        const verbose = game.flags?.verbose !== false;
+        const dm = here.doormask || 0;
+
+        if ((dm & (D_LOCKED | D_CLOSED)) !== 0
+            && ((ptr?.mflags1 ?? 0) & M1_AMORPHOUS)) {
+            if (verbose && canseemon(mtmp)) {
+                const flows = (ptr?.mlet === 'S_LIGHT');
+                await pline(
+                    `${Monnam(mtmp)} ${flows ? 'flows' : 'oozes'} under the door.`,
+                );
+            }
+        } else if ((dm & D_LOCKED) !== 0 && can_unlock) {
+            canseeit = unblock_door(
+                here, mtmp, !btrapped ? D_ISOPEN : D_NODOOR, didseeit,
+            );
+            if (btrapped) {
+                if (await mb_trapped(mtmp, canseeit)) return MMOVE_DIED;
+            } else if (verbose) {
+                if (canseeit && canspotmon(mtmp)) {
+                    await pline(`${Monnam(mtmp)} unlocks and opens a door.`);
+                } else if (canseeit) {
+                    await pline('You see a door unlock and open.');
+                } else if (!game.u?.Deaf) {
+                    await pline('You hear a door unlock and open.');
+                }
+            }
+        } else if (dm === D_CLOSED && can_open) {
+            canseeit = unblock_door(
+                here, mtmp, !btrapped ? D_ISOPEN : D_NODOOR, didseeit,
+            );
+            if (btrapped) {
+                if (await mb_trapped(mtmp, canseeit)) return MMOVE_DIED;
+            } else if (verbose) {
+                if (canseeit && canspotmon(mtmp)) {
+                    await pline(`${Monnam(mtmp)} opens a door.`);
+                } else if (canseeit) {
+                    await pline('You see a door open.');
+                } else if (!game.u?.Deaf) {
+                    await pline('You hear a door open.');
+                }
+            }
+        } else if ((dm & (D_LOCKED | D_CLOSED)) !== 0) {
+            // mfndpos guarantees doorbuster
+            const mask = (btrapped
+                || ((dm & D_LOCKED) !== 0 && !rn2(2)))
+                ? D_NODOOR
+                : D_BROKEN;
+            canseeit = unblock_door(here, mtmp, mask, didseeit);
+            if (btrapped) {
+                if (await mb_trapped(mtmp, canseeit)) return MMOVE_DIED;
+            } else if (verbose) {
+                if (canseeit && canspotmon(mtmp)) {
+                    await pline(`${Monnam(mtmp)} smashes down a door.`);
+                } else if (canseeit) {
+                    await pline('You see a door crash open.');
+                } else if (!game.u?.Deaf) {
+                    await pline('You hear a door crash open.');
+                }
+            }
+            // shop add_damage deferred
+        }
+    }
+    // IRONBARS / mdig_tunnel / engulfing_u deferred
+
+    if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
     return mmoved;
 }
 
 // C ref: monmove.c m_move() — pets → postmov(dog_move); else approach / track path
 export async function m_move(mtmp, after) {
-    // C: if (mtmp->mtame) return postmov(..., dog_move(...), ...)
-    if (mtmp.mtame) {
-        const omx = mtmp.mx;
-        const omy = mtmp.my;
-        const mmoved = await dog_move(mtmp, after);
-        return postmov(mtmp, omx, omy, mmoved);
-    }
-
+    const ptr = mtmp.data;
+    // C: can_tunnel = tunnels(ptr) off Rogue level — deferred (always false)
+    const can_tunnel = false;
+    const can_open = !(nohands(ptr) || verysmall(ptr));
+    // C: can_unlock = (can_open && monhaskey) || iswiz || is_rider
+    const can_unlock = (can_open && monhaskey(mtmp, true))
+        || !!mtmp.iswiz;
+    // is_rider deferred
     const omx = mtmp.mx;
     const omy = mtmp.my;
 
-    // C: m_move starts with mtrapped → mintrap; still-caught → no move
+    // C: mtrapped → mintrap before meating / dog_move (pets included)
     if (mtmp.mtrapped) {
         const i = await mintrap(mtmp, NO_TRAP_FLAGS);
         if (i === Trap_Killed_Mon) {
@@ -246,6 +397,22 @@ export async function m_move(mtmp, after) {
         }
         if (i === Trap_Caught_Mon) return MMOVE_NOTHING;
     }
+
+    // C: meating countdown — still eating skips dog_move / approach
+    if (mtmp.meating) {
+        mtmp.meating--;
+        if ((mtmp.meating | 0) <= 0) finish_meating(mtmp);
+        return MMOVE_DONE;
+    }
+
+    // C: if (mtmp->mtame) return postmov(..., dog_move(...), ...)
+    if (mtmp.mtame) {
+        const mmoved = await dog_move(mtmp, after);
+        return postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open);
+    }
+
+    // C: m_move starts with mtrapped → mintrap; still-caught → no move
+    // (already handled above for all monsters)
 
     set_apparxy(mtmp);
 
@@ -321,7 +488,7 @@ export async function m_move(mtmp, after) {
     mtmp.mx = nix;
     mtmp.my = niy;
     mon_track_add(mtmp, omx, omy);
-    return postmov(mtmp, omx, omy, MMOVE_MOVED);
+    return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
 }
 
 // C ref: monmove.c dochug()

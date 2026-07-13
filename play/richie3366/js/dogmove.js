@@ -7,7 +7,9 @@ import {
     dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, ALLOW_M,
     ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
 } from './mon.js';
-import { objects_at, obj_extract_self, place_object, splitobj, stackobj } from './mkobj.js';
+import {
+    objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
+} from './mkobj.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
 import { newsym, pline } from './display.js';
 import { doname } from './objnam.js';
@@ -206,6 +208,100 @@ function cursed_object_at(x, y) {
         if (otmp.cursed) return true;
     }
     return false;
+}
+
+// C ref: dogmove.c dog_nutrition — meating/hungrytime; corpse uses cwt/cnutrit.
+// Full FOOD_CLASS oc_delay/oc_nutrition table still deferred.
+function dog_nutrition(mtmp, obj) {
+    if ((obj.oclass ?? 0) === FOOD_CLASS) {
+        if ((obj.otyp ?? -1) === CORPSE) {
+            const cwt = obj.cwt ?? mons_cwt(obj.corpsenm);
+            mtmp.meating = 3 + (cwt >> 6);
+            return obj.cnutrit ?? mons_cnutrit(obj.corpsenm);
+        }
+        mtmp.meating = obj.oc_delay ?? 1;
+        return obj.oc_nutrition ?? 0;
+    }
+    mtmp.meating = Math.max(1, Math.trunc((obj.owt || 1) / 2) + 1);
+    return Math.max(1, Math.trunc((obj.owt || 1) / 20) + 1);
+}
+
+function mons_cwt(corpsenm) {
+    // Generated tables omit cwt; newt-sized default keeps meating sane.
+    void corpsenm;
+    return 10;
+}
+
+function mons_cnutrit(corpsenm) {
+    void corpsenm;
+    return 20;
+}
+
+// C ref: mon.c m_consume_obj — pet heal omitted; delobj always rolls obj_resists(0,0).
+function m_consume_obj(_mtmp, otmp) {
+    // Has_contents/meatbox, uball/uchain, polyfood/slime deferred
+    delobj(otmp);
+}
+
+/**
+ * C ref: dogmove.c dog_eat()
+ * Returns 2 if pet died, 1 otherwise. Always re-rolls dogfood (obj_resists)
+ * for the DOGFOOD+invlet apport reward check; then m_consume_obj→delobj.
+ */
+async function dog_eat(mtmp, obj, x, y, devour) {
+    const edog = mtmp.edog;
+    if (!obj || !edog) return 1;
+
+    if ((edog.hungrytime || 0) < (game.moves ?? 1)) {
+        edog.hungrytime = game.moves ?? 1;
+    }
+    let nutrit = dog_nutrition(mtmp, obj);
+    if (devour) {
+        if ((mtmp.meating || 0) > 1) mtmp.meating = Math.trunc(mtmp.meating / 2);
+        if (nutrit > 1) nutrit = Math.trunc((nutrit * 3) / 4);
+    }
+    edog.hungrytime = (edog.hungrytime || 0) + nutrit;
+    mtmp.mconf = 0;
+    if (edog.mhpmax_penalty) {
+        mtmp.mhpmax = (mtmp.mhpmax || 0) + edog.mhpmax_penalty;
+        edog.mhpmax_penalty = 0;
+    }
+    if (mtmp.mflee && (mtmp.mfleetim || 0) > 1) {
+        mtmp.mfleetim = Math.trunc(mtmp.mfleetim / 2);
+    }
+    if ((mtmp.mtame || 0) < 20) mtmp.mtame = (mtmp.mtame || 0) + 1;
+
+    if (x !== mtmp.mx || y !== mtmp.my) {
+        newsym(x, y);
+        newsym(mtmp.mx, mtmp.my);
+    }
+
+    // bee jelly / unpaid shop / rust monster spit deferred
+    if ((obj.quan || 1) > 1 && (obj.oclass ?? 0) === FOOD_CLASS) {
+        obj = splitobj(obj, 1) || obj;
+    }
+
+    const seeobj = cansee(mtmp.mx, mtmp.my);
+    const sawpet = cansee(x, y) && canseemon(mtmp);
+    if (sawpet || (seeobj && canseemon(mtmp))) {
+        const obj_name = doname(obj);
+        await pline(
+            `${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${obj_name}.`,
+        );
+    } else if (seeobj) {
+        const obj_name = doname(obj);
+        await pline(`It ${devour ? 'devours' : 'eats'} ${obj_name}.`);
+    }
+
+    // C: dogfood again for DOGFOOD+invlet apport — always rolls obj_resists
+    if (dogfood(mtmp, obj) === DOGFOOD && obj.invlet) {
+        edog.apport = (edog.apport || 0)
+            + Math.trunc(200 / ((edog.dropdist || 0)
+                + (game.moves ?? 1) - (edog.droptime || 0)));
+        if (edog.apport <= 0) edog.apport = 1;
+    }
+    m_consume_obj(mtmp, obj);
+    return (mtmp.mhp | 0) <= 0 ? 2 : 1;
 }
 
 // C ref: dogmove.c dog_goal()
@@ -605,6 +701,8 @@ export async function dog_move(mtmp, after) {
     let chi = -1;
     let nidist = dist2(nix, niy, gg.gx, gg.gy);
     const cursemsg = new Array(cnt).fill(false);
+    let do_eat = false;
+    let eat_obj = null;
 
     candloop: for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x;
@@ -677,17 +775,14 @@ export async function dog_move(mtmp, after) {
                     const otyp = dogfood(mtmp, obj);
                     if (otyp < MANFOOD && (otyp < ACCFOOD
                         || (edog.hungrytime || 0) <= (game.moves ?? 1))) {
+                        // C: goto newdogpos — skip remaining candidates + ranged
                         nix = nx;
                         niy = ny;
                         chi = i;
                         cursemsg[i] = false;
-                        // newdogpos eat path still collapses to move (partial)
-                        mtmp.mx = nix;
-                        mtmp.my = niy;
-                        mon_track_add(mtmp, omx, omy);
-                        newsym(omx, omy);
-                        newsym(nix, niy);
-                        return MMOVE_MOVED;
+                        do_eat = true;
+                        eat_obj = obj;
+                        break candloop;
                     }
                 }
             }
@@ -722,8 +817,11 @@ export async function dog_move(mtmp, after) {
     }
 
     // C: after candidate loop, before newdogpos — ranged consider
-    const ranged = pet_ranged_attk(mtmp, false);
-    if (ranged !== MMOVE_NOTHING) return ranged;
+    // (skipped when do_eat via goto newdogpos)
+    if (!do_eat) {
+        const ranged = pet_ranged_attk(mtmp, false);
+        if (ranged !== MMOVE_NOTHING) return ranged;
+    }
 
     if (nix !== omx || niy !== omy) {
         // C: wasseen before place; cursemsg pline after place_monster
@@ -739,10 +837,31 @@ export async function dog_move(mtmp, after) {
         mon_track_add(mtmp, omx, omy);
         newsym(omx, omy);
         newsym(nix, niy);
+        // C: do_eat after move — dog_eat rolls dogfood again then delobj
+        if (do_eat && eat_obj) {
+            if ((await dog_eat(mtmp, eat_obj, omx, omy, false)) === 2) {
+                return MMOVE_DIED;
+            }
+        }
         return MMOVE_MOVED;
     }
     // C: dog_move ends with return MMOVE_MOVED even if nix/niy unchanged
     // (postmov still runs mintrap on the current square).
+    if (do_eat && eat_obj) {
+        // Same-cell eat (nix==omx): still consume
+        if ((await dog_eat(mtmp, eat_obj, omx, omy, false)) === 2) {
+            return MMOVE_DIED;
+        }
+    }
     void chi;
     return MMOVE_MOVED;
+}
+
+/**
+ * C ref: dogmove.c finish_meating — clear meal timer; mimic AP reset deferred.
+ */
+export function finish_meating(mtmp) {
+    if (!mtmp) return;
+    mtmp.meating = 0;
+    // M_AP_NOTHING / mappearance reset for non-mimic quickmimic deferred
 }

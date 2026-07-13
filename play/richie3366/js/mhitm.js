@@ -11,9 +11,18 @@ import {
     M_ATTK_HIT,
     M_ATTK_DEF_DIED,
     M_ATTK_AGR_DIED,
+    CORPSTAT_INIT,
+    CORPSTAT_FEMALE,
+    CORPSTAT_MALE,
+    CORPSTAT_NONE,
 } from './const.js';
-import { monsterNames, verysmall, G_FREQ } from './monsters.js';
-import { relobj_on_death } from './mkobj.js';
+import {
+    monsterNames, verysmall, G_FREQ, G_NOCORPSE, is_neuter,
+} from './monsters.js';
+import { objectNames } from './objects.js';
+import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
+
+const CORPSE = objectNames.indexOf('CORPSE');
 
 const NATTK = 6;
 const AT_NONE = 0;
@@ -176,6 +185,29 @@ function corpse_chance(mon) {
     return !rn2(tmp);
 }
 
+// C ref: mon.c make_corpse default_1 — ordinary corpse via mkcorpstat
+// Named omission: dragon scales/unicorn horn/worm tooth/undead specials;
+// accessible||is_pool gate deferred (trap path same); save_mtraits deferred.
+function make_corpse(mtmp) {
+    const mdat = mtmp.data;
+    const mndx = mtmp.mnum ?? mdat?.mndx;
+    const x = mtmp.mx, y = mtmp.my;
+    if (mndx == null || mndx < 0) return null;
+    if ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE) return null;
+
+    let corpstatflags = CORPSTAT_INIT | CORPSTAT_NONE;
+    if (mtmp.female) corpstatflags |= CORPSTAT_FEMALE;
+    else if (!is_neuter(mdat)) corpstatflags |= CORPSTAT_MALE;
+
+    const keep = !!(mtmp.mtame || mtmp.isshk);
+    const obj = mkcorpstat(CORPSE, keep ? mtmp : null, mdat, x, y, corpstatflags);
+    if (obj) {
+        stackobj(obj);
+        newsym(x, y);
+    }
+    return obj;
+}
+
 // C ref: mon.c mondead → m_detach(due_to_death) → relobj(mtmp, 1, FALSE)
 function mondead(mtmp) {
     mtmp.mhp = 0;
@@ -191,16 +223,14 @@ function mondead(mtmp) {
     if (mx > 0) newsym(mx, my);
 }
 
-// C ref: mon.c mondied() → mondead + maybe corpse
+// C ref: mon.c mondied() → mondead + maybe make_corpse
 async function mondied(mdef) {
     // C ref: monkilled — pline before mondead (triggers --More-- if needed)
     await pline(`${Monnam(mdef)} is killed!`);
     mondead(mdef);
-    // C: if (corpse_chance && (accessible || is_pool)) make_corpse(...)
-    // Burn corpse_chance RNG to match C call site; make_corpse body deferred
-    // (named omission). seed0060 newt roll was false → floor via newsym alone.
-    if (mdef.mhp == null || mdef.mhp < 1)
-        corpse_chance(mdef);
+    if ((mdef.mhp | 0) > 0) return; /* lifesaved */
+    // C: accessible||is_pool gate deferred — floor tiles take make_corpse
+    if (corpse_chance(mdef)) make_corpse(mdef);
 }
 
 // C ref: makemon.c grow_up() — HP gain from kill; transform later

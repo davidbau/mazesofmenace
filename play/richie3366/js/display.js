@@ -12,6 +12,7 @@ import {
     SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
     FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
+    LA_DOWN,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR,
@@ -29,6 +30,7 @@ import {
     DEC_TO_UNICODE,
 } from './terminal.js';
 import { update_lastseentyp } from './dungeon.js';
+import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
@@ -290,6 +292,15 @@ const TOPLINE_NEED_MORE = 1;
 let _toplines = '';
 let _toplin = TOPLINE_EMPTY;
 let _win_stop = false;
+
+/** Reset module topline/delay state for a fresh runSegment (not in C game
+ *  object; must not leak NEED_MORE across harness sessions). */
+export function reset_display_messages() {
+    _toplines = '';
+    _toplin = TOPLINE_EMPTY;
+    _win_stop = false;
+    _delay_flushing = false;
+}
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -611,12 +622,17 @@ function terrain_glyph(loc, x, y) {
             ? { ch: '~', color: NO_COLOR, dec: true }
             : { ch: '.', color: NO_COLOR, dec: false };
     case STAIRS: {
-        // C defsym.h: ordinary stairs CLR_GRAY; branch CLR_YELLOW.
-        // Recorded public sessions paint upstairs '<' as CLR_YELLOW and
-        // downstairs '>' as NO_COLOR (default fg) — match the fixture.
-        if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: CLR_YELLOW, dec: false };
-        return { ch: '>', color: NO_COLOR, dec: false };
+        // C ref: display.c back_to_glyph STAIRS + defsym.h PCHAR
+        // known_branch_stairs → S_br*stair CLR_YELLOW; else S_*stair
+        // CLR_GRAY (tty_map_color → NO_COLOR). Direction from ladder flag.
+        const sway = stairway_at(x, y);
+        const branch = known_branch_stairs(sway);
+        const down = !!(loc.ladder & LA_DOWN);
+        return {
+            ch: down ? '>' : '<',
+            color: branch ? CLR_YELLOW : CLR_GRAY,
+            dec: false,
+        };
     }
     // C ref: defsym.h PCHAR — furniture glyphs (display.c back_to_glyph)
     case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
@@ -832,8 +848,10 @@ export function newsym(x, y) {
 }
 
 // ── docrt ──
+// C ref: display.c docrt → cls (message flush / more) then redraw glyphs.
 export async function docrt() {
     if (!game.level) return;
+    await cls();
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++)
             newsym(x, y);
@@ -1116,16 +1134,68 @@ function _buildScreenOutput() {
     }
 }
 
+// C ref: display.c flush_screen(-1) toggles delay_flushing so map/status
+// stay on the physical screen while level-change plines run and cls/more
+// can still paint --More-- on the stale map (Dlvl:N before redraw).
+let _delay_flushing = false;
+
+/** Paint message rows only; leave map/status cells untouched. */
+function _paintToplineOnly() {
+    const display = game?.nhDisplay;
+    if (!display?.grid || !display.setCell) return;
+    const cols = display.cols || 80;
+    const msg = game._pending_message || '';
+    const msgLines = msg.split('\n');
+    // Row 0 is always the message window; only touch row 1 when --More-- wraps.
+    for (let c = 0; c < cols; c++) display.setCell(c, 0, ' ', NO_COLOR, 0);
+    for (let r = 0; r < msgLines.length && r < 2; r++) {
+        const line = msgLines[r];
+        for (let c = 0; c < Math.min(line.length, cols); c++)
+            display.setCell(c, r, line[c], NO_COLOR, 0);
+        if (r === 0) {
+            for (let c = line.length; c < cols; c++)
+                display.setCell(c, 0, ' ', NO_COLOR, 0);
+        }
+    }
+    if (msg.endsWith('--More--') && !msg.includes('\n')) {
+        display.setCursor?.(msg.length, 0);
+    } else if (msg.includes('\n--More--') || msgLines[1] === '--More--') {
+        display.setCursor?.(8, 1);
+    } else if (msgLines.length > 1) {
+        display.setCursor?.((msgLines[1] || '').length, 1);
+    } else {
+        display.setCursor?.(msg.length, 0);
+    }
+}
+
 // ── flush_screen ──
+// C ref: display.c flush_screen — mode -1 toggles postpone; while postponed,
+// map/botl flushes are no-ops (message paints still allowed for more()).
 export async function flush_screen(mode) {
     // Menu/text overlays paint the Terminal grid directly; don't clobber them.
     // C ref: invent display / NHW_MENU / NHW_TEXT stay until dismissed.
     if (game._menu_overlay) return;
+    if (mode === -1) {
+        _delay_flushing = !_delay_flushing;
+        if (_delay_flushing) return;
+        // Un-postpone: fall through and perform the deferred full flush.
+    }
+    if (_delay_flushing) {
+        _paintToplineOnly();
+        return;
+    }
     _buildScreenOutput();
 }
 
 // ── cls ──
+// C ref: display.c cls — display_nhwindow(WIN_MESSAGE) before clear_nhwindow(MAP).
+// NEED_MORE → more() while map flushes may still be postponed (goto_level).
 export async function cls() {
+    if (_toplin === TOPLINE_NEED_MORE && !_win_stop) {
+        await more();
+    } else {
+        _toplin = TOPLINE_EMPTY;
+    }
     const display = game?.nhDisplay;
     if (display?.clearScreen) display.clearScreen();
     game._pending_message = '';

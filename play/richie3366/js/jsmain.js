@@ -16,7 +16,7 @@ import { setStorageForTesting } from './storage.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
-import { flush_screen, serialize_for_scoring } from './display.js';
+import { flush_screen, serialize_for_scoring, reset_display_messages } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
@@ -94,6 +94,7 @@ export class NethackGame {
 
     async start() {
         const g = resetGame();
+        reset_display_messages();
         // Frozen VFS contract: the harness shares this handle across segments.
         setStorageForTesting(this._storage);
         // Stored now for future C time predicates; consumers remain incomplete.

@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { STAIRS, LADDER, ECMD_OK, ECMD_TIME } from './const.js';
-import { pline, docrt } from './display.js';
+import { pline, docrt, flush_screen } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import {
     stairway_at,
@@ -126,7 +126,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // Detach live map pointers; mklev/clear rebuilds them.
     game.fmon = null;
     game.fobj = null;
+    game._objects_at = new Map();
     game.ftrap = null;
+    game.head_engr = null;
     game.level = null;
 
     const info = game.level_info[new_ledger];
@@ -142,6 +144,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     vision_reset();
     game.vision_full_recalc = 0;
+    // C: flush_screen(-1) postpone map/botl until after arrival plines + docrt
+    await flush_screen(-1);
 
     if (at_stairs && !portal) {
         if (up) {
@@ -171,7 +175,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     vision_reset();
+    // C: docrt → cls flushes NEED_MORE (--More-- on stale Dlvl:N map) then redraws
     await docrt();
+    await flush_screen(-1); // un-postpone + flush new map/botl
     vision_recalc(0);
 }
 

@@ -1,7 +1,7 @@
 // trap.js — Trap creation + monster-step subset.
-// C ref: trap.c — maketrap/choose_trapnote/hole_destination,
-// t_at, t_missile, thitm, mintrap, trapeffect_dart_trap / trapeffect_pit
-// (monster), make_corpse ordinary path via thitm death.
+// C ref: trap.c — maketrap/choose_trapnote/hole_destination/trapnote,
+// t_at, t_missile, thitm, mintrap, trapeffect_dart_trap / trapeffect_pit /
+// trapeffect_sqky_board (monster), make_corpse ordinary path via thitm death.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -9,11 +9,14 @@ import {
     mksobj, place_object, weight, stackobj, mkcorpstat, relobj_on_death,
 } from './mkobj.js';
 import { find_mac } from './mhitm.js';
-import { newsym, pline } from './display.js';
-import { doname } from './objnam.js';
-import { Monnam } from './do_name.js';
+import { newsym, pline, mon_visible, see_with_infrared } from './display.js';
+import { doname, an } from './objnam.js';
+import { Monnam, x_monnam_tame } from './do_name.js';
+import { dist2 } from './mon.js';
+import { cansee, couldsee } from './vision.js';
 import {
-    G_NOCORPSE, G_FREQ, verysmall, grounded, passes_walls, is_neuter,
+    G_NOCORPSE, G_FREQ, G_UNIQ, verysmall, grounded, passes_walls, is_neuter,
+    is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
 } from './monsters.js';
 import {
@@ -22,7 +25,7 @@ import {
     PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, is_hole, In_quest,
     CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NONE,
     ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
-    LOW_PM,
+    LOW_PM, BOLT_LIM, STRAT_WAITMASK,
 } from './const.js';
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 
@@ -111,7 +114,8 @@ export function choose_trapnote(ttmp) {
 
 // C ref: trap.c maketrap — creation + SQKY_BOARD / HOLE|TRAPDOOR RNG path.
 // Named omissions: overwrite/furniture/terrain gates, statue/boulder launch,
-// pit conjoined/shop damage/terrain morph, tele dest, Sokoban finish.
+// pit conjoined/shop damage/terrain morph, Sokoban finish.
+// TELEP teledest may be set by caller after create (themerms make_a_trap).
 export function maketrap(x, y, typ) {
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
 
@@ -130,11 +134,13 @@ export function maketrap(x, y, typ) {
             tnote: 0,
             conjoined: 0,
             launch: { x: -1, y: -1 },
+            teledest: { x: -1, y: -1 },
             dst: { dnum: -1, dlevel: -1 },
             ntrap: null,
         };
     }
     ttmp.launch = { x: -1, y: -1 };
+    ttmp.teledest = { x: -1, y: -1 };
     ttmp.dst = { dnum: -1, dlevel: -1 };
     ttmp.madeby_u = 0;
     ttmp.once = 0;
@@ -182,13 +188,54 @@ function t_missile(otyp, trap) {
     return otmp;
 }
 
-// C: cansee stub — lit/visible early-session cells treated as seen
-function cansee(_x, _y) {
-    return true;
+// C ref: display.h _canseemon — real vision (was always-true stub).
+function canseemon(mtmp) {
+    if (!mtmp) return false;
+    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
+    return mon_visible(mtmp);
 }
 
-function canseemon(mtmp) {
-    return !!(mtmp && cansee(mtmp.mx, mtmp.my));
+// C ref: mon.c m_in_air — flyer/floater; cling+ceiling mundetected deferred
+function m_in_air(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr) return false;
+    if (is_flyer(ptr) || is_floater(ptr)) return true;
+    return !!(is_clinger(ptr) && mtmp.mundetected);
+}
+
+// C ref: trap.c trapnote — "an F note" / "a C note" (+ noprefix bare name)
+const TN_NAMES = [
+    'C note', 'D flat', 'D note', 'E flat',
+    'E note', 'F note', 'F sharp', 'G note',
+    'G sharp', 'A note', 'B flat', 'B note',
+];
+function trapnote(trap, noprefix) {
+    const tn = TN_NAMES[trap?.tnote | 0] || 'C note';
+    return noprefix ? tn : an(tn);
+}
+
+// C ref: pline.c You_hear — acoustics/Deaf gate; Unaware/Underwater deferred
+async function You_hear(line) {
+    const u = game.u || {};
+    const Unaware = (u.multi | 0) < 0 && !!u.usleep;
+    if ((u.Deaf && !Unaware) || game.flags?.acoustics === false) return;
+    if (u.Underwater) await pline(`You barely hear ${line}`);
+    else if (Unaware) await pline(`You dream that you hear ${line}`);
+    else await pline(`You hear ${line}`);
+}
+
+// C ref: mon.c wake_nearto — clear sleep/wait within dist2; zombies deferred
+function wake_nearto(x, y, distance) {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || mtmp.mx == null) continue;
+        if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
+            mtmp.msleeping = 0;
+            const geno = mtmp.data?.geno | 0;
+            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
+                mtmp.mstrategy &= ~STRAT_WAITMASK;
+            }
+        }
+    }
 }
 
 // C ref: mon.c corpse_chance — ordinary non-unique path
@@ -404,6 +451,41 @@ async function trapeffect_dart_trap(mtmp, trap) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
+/**
+ * C ref: trap.c trapeffect_sqky_board — monster branch (hero dotrap deferred).
+ * Envelope: in-sight pline+seetrap; out-of-sight You_hear nearby|distance;
+ * m_in_air skip; wake_nearto(40). Soundeffect no-op (no RNG).
+ * Deaf+mindless silent cringe and hero Levitation/Flying named omissions.
+ */
+async function trapeffect_sqky_board(mtmp, trap, _trflags) {
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    if (m_in_air(mtmp)) return Trap_Effect_Finished;
+
+    if (in_sight) {
+        if (!game.u?.Deaf) {
+            await pline(
+                `A board beneath ${x_monnam_tame(mtmp)} squeaks ${trapnote(trap, false)} loudly.`,
+            );
+            seetrap(trap);
+        } else {
+            await pline(
+                `${Monnam(mtmp)} stops momentarily and appears to cringe.`,
+            );
+        }
+    } else {
+        // same near/far threshold as mzapmsg()
+        const range = couldsee(mtmp.mx, mtmp.my)
+            ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+        const near = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy)
+            <= range * range;
+        await You_hear(
+            `${trapnote(trap, false)} squeak ${near ? 'nearby' : 'in the distance'}.`,
+        );
+    }
+    wake_nearto(mtmp.mx, mtmp.my, 40);
+    return Trap_Effect_Finished;
+}
+
 // C ref: trap.c trapeffect_selector — dart + pit + sqky; other types no-op
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
@@ -413,9 +495,7 @@ async function trapeffect_selector(mtmp, trap, trflags) {
     case SPIKED_PIT:
         return trapeffect_pit(mtmp, trap, trflags);
     case SQKY_BOARD:
-        // C: trapeffect_squeaky_board — wake_nearto / You_hear deferred
-        // (no RNG). Learning already done in mintrap via mon_learns_traps.
-        return Trap_Effect_Finished;
+        return trapeffect_sqky_board(mtmp, trap, trflags);
     default:
         // Named omission: arrow/bear/hole/… trap effects
         return Trap_Effect_Finished;

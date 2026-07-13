@@ -296,9 +296,20 @@ function just_an(str) {
     // skip leading spaces
     let i = 0;
     while (str[i] === ' ') i++;
-    const c = (str[i] || 'x').toLowerCase();
-    // C: single-letter / "the "/lava/bars/ice article suppression deferred
-    return 'aeiou'.includes(c) ? 'an ' : 'a ';
+    const s = str.slice(i);
+    if (!s) return 'a ';
+    const c0 = s[0].toLowerCase();
+    // C: single letter OR letter+' ' (fruit / musical note) → aefhilmnosx
+    if (!s[1] || s[1] === ' ') {
+        return 'aefhilmnosx'.includes(c0) ? 'an ' : 'a ';
+    }
+    // C: "the "/lava/bars/ice → no article (doname paths deferred for most)
+    if (/^the /i.test(s) || /^molten lava$/i.test(s)
+        || /^iron bars$/i.test(s) || /^ice$/i.test(s)) {
+        return '';
+    }
+    // normal vowel/consonant; named omissions: one-/eu-/uke-/unicorn exceptions
+    return 'aeiou'.includes(c0) ? 'an ' : 'a ';
 }
 
 /** C ref: objnam.c an() — article + string */

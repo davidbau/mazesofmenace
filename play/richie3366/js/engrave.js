@@ -1,6 +1,7 @@
 // engrave.js — Engrave command / floor inscriptions (partial).
 // C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at,
-//        read_engr_at, wipeout_text, wipe_engr_at, random_engraving.
+//        read_engr_at, wipeout_text, wipe_engr_at, random_engraving,
+//        can_reach_floor; hack.c maybe_smudge_engr.
 //
 // Branch envelope: u_can_engrave floor gate + getobj write-with (hands `-`
 // SUGGEST) + DUST fingertip You/getlin + literate bump + DUST/blood/
@@ -8,13 +9,15 @@
 // via make_engr_at (Elbereth → exercise(A_WIS,TRUE)); look_here/`:` via
 // read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); mklev niche age
 // via wipe_engr_at → wipeout_text (seed==0 RNG path); fill graffiti via
-// random_engraving → getrumor or get_rnd_text(ENGRAVEFILE).
+// random_engraving → getrumor or get_rnd_text(ENGRAVEFILE);
+// domove smudge via maybe_smudge_engr → wipe_engr_at(rnd(5)).
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
 // grave/altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
 // dulling occupation; del_engr/rloc_engr; u_wipe_engr body; livelog;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
-// (non-zero) path; maybe_smudge_engr; epitaph get_rnd_text.
+// (non-zero) path; epitaph get_rnd_text; can_reach_floor ustuck-hugs /
+// ceiling_hider / MZ_HUGE / uteetering_at_seen_pit / uescaped_shaft.
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
@@ -33,9 +36,10 @@ import {
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, ICE,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
-    Never_mind,
+    Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
 } from './const.js';
 import { nomul } from './hack.js';
+import { t_at } from './trap.js';
 
 const TOWEL = objectNames.indexOf('TOWEL');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
@@ -172,6 +176,49 @@ export function wipeout_text(engr, cnt, seed = 0) {
         s[--lth] = '';
     }
     return s.slice(0, lth).join('');
+}
+
+/**
+ * C ref: engrave.c can_reach_floor — whether hero can touch ground-level.
+ * Branch envelope: swallow / Levitation(+!air/water) / unskilled steed /
+ * Flying early-true; pit teeter/shaft, ustuck AT_HUGS, ceiling_hider,
+ * MZ_HUGE named omissions (treated as reachable when other gates pass).
+ */
+export function can_reach_floor(check_pit) {
+    const u = game.u || {};
+    if (u.uswallow) return false;
+    // ustuck + AT_HUGS + !sticks deferred
+    if (u.Levitation && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
+        return false;
+    }
+    if (u.usteed) {
+        const sk = u.weapon_skills?.[P_RIDING];
+        const rank = typeof sk === 'object' ? (sk.skill ?? 0) : (sk ?? 0);
+        if (rank < P_BASIC) return false;
+    }
+    // uundetected + ceiling_hider deferred
+    if (u.Flying) return true;
+    // youmonst msize >= MZ_HUGE deferred (would also return TRUE)
+    if (check_pit && t_at(u.ux, u.uy)) {
+        // uteetering_at_seen_pit / uescaped_shaft deferred → not blocked
+    }
+    return true;
+}
+
+/**
+ * C ref: hack.c maybe_smudge_engr — after a successful walk/rush, maybe
+ * erode engravings at the old and/or new hero cell via wipe_engr_at(rnd(5)).
+ */
+export function maybe_smudge_engr(x1, y1, x2, y2) {
+    if (!can_reach_floor(true)) return;
+    let ep = engr_at(x1, y1);
+    if (ep && ep.engr_type !== HEADSTONE) {
+        wipe_engr_at(x1, y1, rnd(5), false);
+    }
+    if ((x2 !== x1 || y2 !== y1)
+        && (ep = engr_at(x2, y2)) && ep.engr_type !== HEADSTONE) {
+        wipe_engr_at(x2, y2, rnd(5), false);
+    }
 }
 
 /**
