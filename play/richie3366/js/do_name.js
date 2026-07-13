@@ -131,7 +131,8 @@ export async function docallcmd() {
             return;
         }
         if (ch === 'a' || ch === 'l') {
-            // donamelevel deferred
+            const { donamelevel } = await import('./dungeon.js');
+            await donamelevel();
             return;
         }
         if (ch === 'm' || ch === 'C' || ch === 'o' || ch === 'n'

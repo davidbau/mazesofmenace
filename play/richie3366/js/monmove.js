@@ -11,13 +11,14 @@ import {
     mon_allowflags,
     mfndpos,
 } from './mon.js';
-import { is_wanderer } from './monsters.js';
+import { is_wanderer, is_armed } from './monsters.js';
 import {
     mintrap,
     NO_TRAP_FLAGS,
     Trap_Killed_Mon,
     Trap_Moved_Mon,
 } from './trap.js';
+import { mattacku } from './mhitu.js';
 
 const MTSZ = 4;
 const BOLT_LIM = 8;
@@ -192,28 +193,33 @@ export async function dochug(mtmp) {
         || mtmp.mpeaceful
     );
 
+    let status = MMOVE_NOTHING;
     // PHASE THREE: move if not adjacent-hostile (attack path)
     if (want_move) {
-        let status = MMOVE_NOTHING;
         status = await m_move(mtmp, 0);
         if (status !== MMOVE_DIED) {
             ({ inrange, nearby, scared } = distfleeck(mtmp));
         }
         if (status === MMOVE_MOVED) {
-            // can move then shoot — not on seed8000 commons at range
-            return 0;
+            // C: monsters can move then shoot — fall through when !nearby
+            // and AT_WEAP / ranged available (is_armed stand-in).
+            if (nearby || !is_armed(mdat)) {
+                return 0;
+            }
+            // else fall through to PHASE FOUR
         }
-        // fall through to attacks for NOTHING/DONE/NOMOVES
+        // NOTHING/DONE/NOMOVES also fall through to attacks
     }
 
-    // PHASE FOUR: attack hero if hostile + in range — stub (no RNG for miss)
+    // PHASE FOUR: attack hero if hostile + in range
+    // C: ((inrange && !scared) || panicattk) && !noattacks — no nearby gate
     if (
-        !mtmp.mpeaceful
+        status !== MMOVE_DONE
+        && !mtmp.mpeaceful
         && inrange
         && !scared
-        && nearby
     ) {
-        // mattacku stub — seed8000 starter never reaches melee with these mons
+        if (await mattacku(mtmp)) return 1;
     }
     return 0;
 }

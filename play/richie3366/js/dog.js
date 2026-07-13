@@ -49,7 +49,7 @@ function initedog(mtmp, everything) {
         // C: ACURR(A_CHA) at makedog — before init_attr, clamps to 3
         edogp.apport = acurr(A_CHA);
         edogp.whistletime = 0;
-        edogp.ogoal = { x: -1, y: -1 };
+        edogp.ogoal = { x: 0, y: 0 }; // C: ogoal.x==0 means unset
         edogp.abuse = 0;
         edogp.revivals = 0;
         edogp.mhpmax_penalty = 0;

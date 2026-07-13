@@ -12,8 +12,9 @@ import {
     DART_TRAP, FORCETRAP, FORCEBUNGLE,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
     is_hole, In_quest,
+    ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
 } from './const.js';
-import { objectNames } from './objects.js';
+import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { monsterNames } from './monsters.js';
 
 const DART = objectNames.indexOf('DART');
@@ -293,4 +294,66 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
 
     // mon_learns_traps / mons_see_trap / madeby_u rnl omitted (no RNG here)
     return await trapeffect_selector(mtmp, trap, mintrapflags);
+}
+
+const POT_WATER = objectNames.indexOf('POT_WATER');
+const POT_ACID = objectNames.indexOf('POT_ACID');
+const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
+const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
+const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
+const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
+
+/**
+ * C ref: trap.c water_damage
+ * Branch envelope: null / POT_WATER → ER_NOTHING; force skips luck rn2(20);
+ * potion dilute / scroll fade / spellbook fade; else ER_NOTHING (erode_obj
+ * rust body deferred — non-rustprone returns ER_NOTHING with no RNG).
+ * Grease / towel / container / acid explosion named omitted.
+ */
+export function water_damage(obj, _ostr, force) {
+    if (!obj) return ER_NOTHING;
+    // splash_lit / CAN_OF_GREASE / TOWEL / greased / container deferred
+
+    if (!force && ((game.u?.Luck | 0) + 5) > rn2(20)) {
+        return ER_NOTHING;
+    }
+
+    if (obj.oclass === SCROLL_CLASS) {
+        if (obj.otyp === SCR_BLANK_PAPER) return ER_NOTHING;
+        obj.otyp = SCR_BLANK_PAPER;
+        obj.dknown = 0;
+        obj.spe = 0;
+        return ER_DAMAGED;
+    }
+    if (obj.oclass === SPBOOK_CLASS) {
+        if (obj.otyp === SPE_BOOK_OF_THE_DEAD) return ER_NOTHING;
+        if (obj.otyp === SPE_BLANK_PAPER) return ER_NOTHING;
+        const otyp = obj.otyp;
+        obj.otyp = SPE_BLANK_PAPER;
+        if (obj.spestudied) obj.spestudied = rn2(obj.spestudied);
+        obj.dknown = 0;
+        void otyp; // SPE_NOVEL blank_novel deferred
+        void SPE_NOVEL;
+        return ER_DAMAGED;
+    }
+    if (obj.oclass === POTION_CLASS) {
+        if (obj.otyp === POT_ACID) {
+            // pot_acid_damage deferred
+            return ER_DESTROYED;
+        }
+        if (obj.odiluted) {
+            obj.otyp = POT_WATER;
+            obj.dknown = 0;
+            obj.blessed = obj.cursed = false;
+            obj.odiluted = 0;
+            return ER_DAMAGED;
+        }
+        if (obj.otyp !== POT_WATER) {
+            obj.odiluted = (obj.odiluted | 0) + 1;
+            return ER_DAMAGED;
+        }
+        return ER_NOTHING;
+    }
+    // erode_obj(ERODE_RUST) — non-rustprone / !erosion_matters → ER_NOTHING
+    return ER_NOTHING;
 }

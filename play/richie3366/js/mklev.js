@@ -467,10 +467,12 @@ async function makelevel() {
     await make_niches();
 
     // C ref: mklev.c do_vault() — secret treasure vault
+    // Outer rnd_rect() is only a null-check; create_vault() calls rnd_rect
+    // again inside create_room (up to trycnt 100). Do not stub that loop.
     if (g.vault_x !== -1) {
         const vw = { v: 1 }, vh = { v: 1 };
         const vx = { v: g.vault_x }, vy = { v: g.vault_y };
-        if (check_room(vx, vw, vy, vh, true)) {
+        const fill_vault = async () => {
             add_room(vx.v, vy.v, vx.v + vw.v, vy.v + vh.v, true, VAULT, false);
             g.level.flags.has_vault = true;
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
@@ -480,8 +482,20 @@ async function makelevel() {
             // C: if (!noteleport && !rn2(3)) makevtele();
             if (!g.level.flags.noteleport && !rn2(3))
                 await makeniche(TELEP_TRAP);
-        } else if (rnd_rect()) {
-            // Fallback vault attempt — simplified (create_vault path)
+        };
+        if (check_room(vx, vw, vy, vh, true)) {
+            await fill_vault();
+        } else if (rnd_rect() && create_vault()) {
+            // C: gv.vault_x/y = rooms[nroom].lx/ly; re-check then fill or hx=-1
+            g.vault_x = g.level.rooms[g.level.nroom]?.lx ?? -1;
+            g.vault_y = g.level.rooms[g.level.nroom]?.ly ?? -1;
+            vx.v = g.vault_x;
+            vy.v = g.vault_y;
+            if (check_room(vx, vw, vy, vh, true)) {
+                await fill_vault();
+            } else if (g.level.rooms[g.level.nroom]) {
+                g.level.rooms[g.level.nroom].hx = -1;
+            }
         }
     }
 
@@ -516,6 +530,11 @@ async function makelevel() {
     // C ref: mklev.c:1416-1418 — fill all special rooms
     for (let i = 0; i < g.level.nroom; i++)
         fill_special_room(g.level.rooms[i]);
+
+    // C ref: mklev.c themerooms_post_level_generate() — after fill, Lua
+    // post_level_generate (no-op when postprocess empty for default rooms)
+    // then full-map wallification. JS has no Lua postprocess queue yet.
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
 }
 
 function ROOM_IS_FILLABLE(croom) {

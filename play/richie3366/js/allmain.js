@@ -7,6 +7,7 @@ import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, flush_topl_more } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
+import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
@@ -19,6 +20,7 @@ import { A_DEX, A_STR, A_CON, acurr, exercise, change_luck, Fast, Very_fast, Sea
 import { dosearch0 } from './detect.js';
 import { nhgetch } from './input.js';
 import { unmul } from './hack.js';
+import { gethungry } from './eat.js';
 import { near_capacity, paint_corner_nhw_menu } from './invent.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
@@ -194,13 +196,6 @@ function dosounds() {
     }
 }
 
-// C ref: eat.c gethungry() — accessorytime roll
-function gethungry() {
-    const accessorytime = rn2(20);
-    void accessorytime;
-    // hunger side-effects omitted (no further RNG on seed8000 path)
-}
-
 function exerper() {
     const moves = game.moves || 0;
     if (!(moves % 10)) {
@@ -320,6 +315,7 @@ export async function newgame() {
 
     // Initial display BEFORE wear (C: docrt/bot then u_init_skills_discoveries)
     init_vision_globals();
+    initrack(); // C: allmain.c / cmd.c — clear hero track ring
     vision_reset();
     vision_recalc(0);
     await cls();
@@ -436,6 +432,8 @@ export async function moveloop_core() {
                 // C: mvl_wtcap = near_capacity() earlier; reuse for regen_hp/pw
                 let mvl_wtcap = near_capacity();
                 u_calc_moveamt(mvl_wtcap);
+                // C: settrack() before svm.moves++
+                settrack();
                 g.moves = (g.moves || 1) + 1;
 
                 // once-per-turn — C: regen_hp before dosounds when HP below max

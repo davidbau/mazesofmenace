@@ -18,6 +18,9 @@ import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
+import { askname_if_needed } from './askname.js';
+import { player_selection } from './player_selection.js';
+import { PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP } from './const.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -98,8 +101,16 @@ export class NethackGame {
 
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
-        g.plname = opts.name || 'Hero';
-        g.flags = { verbose: true, ...opts.flags };
+        // C: options.c initoptions_base — paranoia_bits default
+        g.plname = opts.name || '';
+        g.flags = {
+            verbose: true,
+            paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
+            ...opts.flags,
+        };
+        if (g.flags.paranoia_bits == null) {
+            g.flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
+        }
         g.iflags = { ...opts.iflags };
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
@@ -129,6 +140,13 @@ export class NethackGame {
 
         // Install capture hook
         this._installCaptureHook();
+
+        // C ref: unixmain → plnamesuffix → askname when no -u / OPTIONS=name
+        await askname_if_needed();
+        if (!g.plname) g.plname = 'Hero';
+
+        // C ref: unixmain → player_selection() before newgame
+        await player_selection();
 
         // Run game startup
         await newgame();

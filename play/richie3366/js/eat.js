@@ -1,7 +1,9 @@
 // eat.js — Eat command (getobj / doeat; fortune cookie for seed1800).
-// C ref: eat.c doeat / floorfood / is_edible / fprefx / fpostfx; invent.c getobj.
+// C ref: eat.c doeat / floorfood / is_edible / fprefx / fpostfx / gethungry;
+//         invent.c getobj.
 
 import { game } from './gstate.js';
+import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline } from './display.js';
 import { FOOD_CLASS, COIN_CLASS, objectNames } from './objects.js';
@@ -9,6 +11,15 @@ import { weight } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 
 const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
+
+/**
+ * C ref: eat.c gethungry — accessorytime = rn2(20); hunger side-effects
+ * beyond the roll deferred (ring/amulet nutrition, faint, etc.).
+ */
+export function gethungry() {
+    const accessorytime = rn2(20);
+    void accessorytime;
+}
 
 function is_edible(obj) {
     if (!obj) return false;

@@ -1350,12 +1350,23 @@ const ROLE_FILECODE = {
  * Call before init_dungeons (quest filecode) and u_init_inventory_attrs.
  */
 export function setup_role_race_from_rc(opts = {}) {
-    const roleName = typeof opts.role === 'string' ? opts.role : 'Tourist';
-    const raceName = typeof opts.race === 'string' ? opts.race : 'human';
-    const alignName = typeof opts.align === 'string' ? opts.align : 'neutral';
-    const role = findRole(roleName) || roles.find(r => r.name.m === 'Tourist');
-    const race = findRace(raceName) || races.find(r => r.name === 'human');
-    const align = findAlign(alignName) || aligns.find(a => a.name === 'neutral');
+    // Prefer flags from player_selection / rc (C: flags.init* already chosen)
+    const fr = game.flags || {};
+    let role = (fr.initrole >= 0 && roles[fr.initrole]) ? roles[fr.initrole] : null;
+    let race = (fr.initrace >= 0 && races[fr.initrace]) ? races[fr.initrace] : null;
+    let align = (fr.initalign >= 0 && aligns[fr.initalign]) ? aligns[fr.initalign] : null;
+    if (!role) {
+        const roleName = typeof opts.role === 'string' ? opts.role : 'Tourist';
+        role = findRole(roleName) || roles.find(r => r.name.m === 'Tourist');
+    }
+    if (!race) {
+        const raceName = typeof opts.race === 'string' ? opts.race : 'human';
+        race = findRace(raceName) || races.find(r => r.name === 'human');
+    }
+    if (!align) {
+        const alignName = typeof opts.align === 'string' ? opts.align : 'neutral';
+        align = findAlign(alignName) || aligns.find(a => a.name === 'neutral');
+    }
     game.urole = {
         name: role.name,
         rank: role.title?.[0] || { m: role.name.m, f: role.name.f },
@@ -1385,8 +1396,10 @@ export function setup_role_race_from_rc(opts = {}) {
         enadv: race.enadv || { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 },
     };
     game.flags = game.flags || {};
-    if (opts.gender === 'female' || opts.gender === 1) game.flags.female = true;
-    else if (opts.gender === 'male' || opts.gender === 0) game.flags.female = false;
+    if (fr.initgend === 1 || opts.gender === 'female' || opts.gender === 1)
+        game.flags.female = true;
+    else if (fr.initgend === 0 || opts.gender === 'male' || opts.gender === 0)
+        game.flags.female = false;
     // C: flags.initalign indexes aligns[]
     const alignIdx = aligns.indexOf(align);
     game.flags.initalign = alignIdx >= 0 ? alignIdx : 1;
@@ -1395,6 +1408,8 @@ export function setup_role_race_from_rc(opts = {}) {
     // C ref: role.c role_init() — pantheon (Priest) then nemesis gender
     const initrole = roles.indexOf(role);
     game.flags.initrole = initrole >= 0 ? initrole : 0;
+    if (fr.initrace >= 0) game.flags.initrace = fr.initrace;
+    if (fr.initgend >= 0) game.flags.initgend = fr.initgend;
     // setup_role_race_from_rc is newgame-only; pantheon always starts unset
     game.flags.pantheon = -1;
     role_init_pantheon();

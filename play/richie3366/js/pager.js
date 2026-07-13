@@ -981,8 +981,9 @@ function doextversion_runtime_lines() {
 /**
  * C ref: version.c doextversion — version text + runtime options;
  * triggers get_lua_version → nhlib shuffle once.
+ * Also `#version` via extcmdlist (cmd.c).
  */
-async function doextversion() {
+export async function doextversion() {
     get_lua_version_shuffle();
     // C getversionstring → nomakedefs.version_id (runner normalizes date).
     const lines = [

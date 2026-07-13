@@ -1,9 +1,20 @@
 // hack.js — Core hero damage / capacity helpers.
-// C ref: hack.c — losehp, nomul, unmul (and related). Other hack.c units remain elsewhere.
+// C ref: hack.c — losehp, nomul, unmul, overexertion (and related).
 
 import { game } from './gstate.js';
 import { Upolyd, KILLED_BY } from './const.js';
 import { pline } from './display.js';
+import { gethungry } from './eat.js';
+
+/**
+ * C ref: hack.c overexertion — melee hunger via gethungry; maybe faint.
+ * Encumber HP loss (near_capacity / overexert_hp) deferred — no RNG when
+ * not heavily encumbered.
+ */
+export function overexertion() {
+    gethungry();
+    return (game.multi | 0) < 0;
+}
 
 /**
  * C ref: hack.h Maybe_Half_Phys — Half_physical_damage halves ((dmg+1)/2).

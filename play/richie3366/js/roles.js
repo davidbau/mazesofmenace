@@ -64,6 +64,7 @@ export const roles = [
         // C: { 11, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(11, 0, 0, 8, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x306e,
     },
     {
         name: { m: 'Barbarian', f: 'Barbarian' },
@@ -85,6 +86,7 @@ export const roles = [
         // C: { 14, 0, 0, 10, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(14, 0, 0, 10, 2, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x308b,
     },
     {
         name: { m: 'Caveman', f: 'Cavewoman' },
@@ -107,6 +109,7 @@ export const roles = [
         // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(14, 0, 0, 8, 2, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x306e,
     },
     {
         name: { m: 'Healer', f: 'Healer' },
@@ -128,6 +131,7 @@ export const roles = [
         // C: { 11, 0, 0, 8, 1, 0 } / { 1, 4, 0, 1, 0, 2 }
         hpadv: adv(11, 0, 0, 8, 1, 0),
         enadv: adv(1, 4, 0, 1, 0, 2),
+        allow: 0x304a,
     },
     {
         name: { m: 'Knight', f: 'Knight' },
@@ -149,6 +153,7 @@ export const roles = [
         // C: { 14, 0, 0, 8, 2, 0 } / { 1, 4, 0, 1, 0, 2 }
         hpadv: adv(14, 0, 0, 8, 2, 0),
         enadv: adv(1, 4, 0, 1, 0, 2),
+        allow: 0x300c,
     },
     {
         name: { m: 'Monk', f: 'Monk' },
@@ -170,6 +175,7 @@ export const roles = [
         // C: { 12, 0, 0, 8, 1, 0 } / { 2, 2, 0, 2, 0, 2 }
         hpadv: adv(12, 0, 0, 8, 1, 0),
         enadv: adv(2, 2, 0, 2, 0, 2),
+        allow: 0x300f,
     },
     // C ref: role.c Priest — no fixed deities; pantheon via randrole
     {
@@ -191,6 +197,7 @@ export const roles = [
         // C: { 12, 0, 0, 8, 1, 0 } / { 4, 3, 0, 2, 0, 2 }
         hpadv: adv(12, 0, 0, 8, 1, 0),
         enadv: adv(4, 3, 0, 2, 0, 2),
+        allow: 0x301f,
     },
     // C: Rogue precedes Ranger (command-line -R tradition + pantheon indices)
     {
@@ -212,6 +219,7 @@ export const roles = [
         initrecord: 10,
         hpadv: adv(10, 0, 0, 8, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x3089,
     },
     {
         name: { m: 'Ranger', f: 'Ranger' },
@@ -233,6 +241,7 @@ export const roles = [
         // C: { 13, 0, 0, 6, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(13, 0, 0, 6, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x30db,
     },
     {
         name: { m: 'Samurai', f: 'Samurai' },
@@ -254,6 +263,7 @@ export const roles = [
         // C: { 13, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(13, 0, 0, 8, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x300c,
     },
     {
         name: { m: 'Tourist', f: 'Tourist' },
@@ -273,6 +283,7 @@ export const roles = [
         initrecord: 0,
         hpadv: adv(8, 0, 0, 8, 0, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x300a,
     },
     {
         name: { m: 'Valkyrie', f: 'Valkyrie' },
@@ -295,6 +306,7 @@ export const roles = [
         // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(14, 0, 0, 8, 2, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        allow: 0x202e,
     },
     {
         name: { m: 'Wizard', f: 'Wizard' },
@@ -314,6 +326,7 @@ export const roles = [
         initrecord: 0,
         hpadv: adv(10, 0, 0, 8, 1, 0),
         enadv: adv(4, 3, 0, 2, 0, 3),
+        allow: 0x30db,
     },
 ];
 
@@ -328,6 +341,8 @@ export const races = [
         attrmax: [STR18_100, 18, 18, 18, 18, 18],
         hpadv: adv(2, 0, 0, 2, 1, 0),
         enadv: adv(1, 0, 2, 0, 2, 0),
+        allow: 0x300f,
+        selfmask: 0x8,
     },
     {
         name: 'elf',
@@ -338,6 +353,8 @@ export const races = [
         attrmax: [18, 20, 20, 18, 16, 18],
         hpadv: adv(1, 0, 0, 1, 1, 0),
         enadv: adv(2, 0, 3, 0, 3, 0),
+        allow: 0x3011,
+        selfmask: 0x10,
     },
     {
         name: 'dwarf',
@@ -348,6 +365,8 @@ export const races = [
         attrmax: [STR18_100, 16, 16, 20, 20, 16],
         hpadv: adv(4, 0, 0, 3, 2, 0),
         enadv: adv(0, 0, 0, 0, 0, 0),
+        allow: 0x3024,
+        selfmask: 0x20,
     },
     {
         name: 'gnome',
@@ -358,6 +377,8 @@ export const races = [
         attrmax: [STR18_50, 19, 18, 18, 18, 18],
         hpadv: adv(1, 0, 0, 1, 0, 0),
         enadv: adv(2, 0, 2, 0, 2, 0),
+        allow: 0x3042,
+        selfmask: 0x40,
     },
     {
         name: 'orc',
@@ -369,18 +390,22 @@ export const races = [
         // Rogue+orc init HP = 10+1 = 11 (not human fallback 10+2 = 12)
         hpadv: adv(1, 0, 0, 1, 0, 0),
         enadv: adv(1, 0, 1, 0, 1, 0),
+        allow: 0x3081,
+        selfmask: 0x80,
     },
 ];
 
 export const aligns = [
-    { name: 'lawful', value: A_LAWFUL },
-    { name: 'neutral', value: A_NEUTRAL },
-    { name: 'chaotic', value: A_CHAOTIC },
+    // C: adj / filecode / allow / value — adj used in plsel headers
+    { name: 'lawful', adj: 'lawful', allow: 0x04, value: A_LAWFUL },
+    { name: 'neutral', adj: 'neutral', allow: 0x02, value: A_NEUTRAL },
+    { name: 'chaotic', adj: 'chaotic', allow: 0x01, value: A_CHAOTIC },
 ];
 
 export const genders = [
-    { name: 'male', value: 0 },
-    { name: 'female', value: 1 },
+    // C: adj / pronouns / filecode / allow — ROLE_MALE/FEMALE
+    { name: 'male', adj: 'male', allow: 0x1000, value: 0 },
+    { name: 'female', adj: 'female', allow: 0x2000, value: 1 },
 ];
 
 export function findRole(name) {

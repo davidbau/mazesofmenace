@@ -245,14 +245,32 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     const disp = display();
     if (!disp) return null;
     const { offx } = nhw_menu_geometry(entries, morestr);
-    if (offx === 0) {
-        // Fullscreen not implemented here — callers use paint_overlay.
-        return null;
-    }
-    // C clears WIN_MESSAGE before corner menu; keep map/status.
+    // C clears WIN_MESSAGE before menu; keep map/status for corner only.
     game._pending_message = '';
     game._menu_overlay = false;
-    await flush_screen(1);
+
+    if (offx === 0) {
+        // C H2344 fullscreen — clear then leading pad + text at col 1
+        const painted = entries.map(e => ({
+            text: ` ${typeof e === 'string' ? e : e.text}`,
+            attr: typeof e === 'string' ? 0 : (e.attr || 0),
+        }));
+        painted.push({ text: ` ${morestr}`, attr: 0 });
+        paint_overlay(painted, {
+            col: 0,
+            withStatus: false,
+            cursor: [morestr.length + 1, entries.length],
+        });
+        return { offx: 0, endRow: entries.length, cursorCol: morestr.length + 1 };
+    }
+
+    // Corner: during player_selection there is no map/botl yet — clear only.
+    // flush_screen would invent status lines (seed0077 race/gender menus).
+    if (game.program_state?.in_role_selection) {
+        if (disp.clearScreen) disp.clearScreen();
+    } else {
+        await flush_screen(1);
+    }
 
     const endRow = entries.length; // morestr row
     for (let r = 0; r < entries.length; r++) {

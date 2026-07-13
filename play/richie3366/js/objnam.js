@@ -156,6 +156,10 @@ function pretty_base(obj) {
             const jn = Japanese_item_name(obj.otyp, null);
             if (jn) return `potion of ${jn}`;
         }
+        // C: POT_WATER + bknown + blessed/cursed → "potion of [un]holy water"
+        if (n === 'POT_WATER' && obj.bknown && (obj.blessed || obj.cursed)) {
+            return `potion of ${obj.blessed ? 'holy' : 'unholy'} water`;
+        }
         return `potion of ${rest}`;
     }
     // C ref: objnam.c xname SCROLL_CLASS — "scroll of <actualn>" when known
@@ -332,7 +336,11 @@ export function doname(obj) {
         prefix += 'empty ';
     }
 
-    if (bknown && oclass !== COIN_CLASS) {
+    // C: skip BUC prefix for known holy/unholy water (name encodes BUC)
+    const potWaterKnownHoly = oname === 'POT_WATER'
+        && !!game.objects?.[otyp]?.oc_name_known
+        && (obj.cursed || obj.blessed);
+    if (bknown && oclass !== COIN_CLASS && !potWaterKnownHoly) {
         if (obj.cursed) prefix += 'cursed ';
         else if (obj.blessed) prefix += 'blessed ';
         else {

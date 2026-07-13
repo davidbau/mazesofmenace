@@ -19,11 +19,13 @@ import {
     MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_NOMOVES, MMOVE_DONE,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, ALLOW_MDISP,
+    MAGIC_PORTAL,
 } from './const.js';
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, objectNames } from './objects.js';
 import { monsterNames } from './monsters.js';
 import { m_cansee, couldsee, cansee } from './vision.js';
 import { Monnam, noit_Monnam } from './do_name.js';
+import { gettrack } from './track.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
@@ -286,12 +288,60 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
                         break;
                     }
                 }
+                // C: magic portal within distu <= 2
+                if (appr === 0) {
+                    for (let t = game.ftrap; t; t = t.ntrap) {
+                        if (t.ttyp === MAGIC_PORTAL) {
+                            if (dist2(t.tx, t.ty, game.u.ux, game.u.uy) <= 2) {
+                                appr = 1;
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         }
     } else {
         appr = 1;
     }
     if (mtmp.mconf) appr = 0;
+
+    // C: dog_goal gettrack / ogoal / FARAWAY when goal is hero and
+    // !couldsee(pet). Local FARAWAY = COLNO+2 (not const.js FARAWAY=127).
+    // view_from do_clear_area for non-hero wantdoor omitted — fall back
+    // to hero when gettrack/ogoal miss (C's final FARAWAY→hero case).
+    const DOG_GOAL_FARAWAY = COLNO + 2;
+    if (gg.gx === game.u.ux && gg.gy === game.u.uy && !in_masters_sight) {
+        const cp = gettrack(omx, omy);
+        if (cp) {
+            gg.gx = cp.x;
+            gg.gy = cp.y;
+            if (edog) {
+                if (!edog.ogoal) edog.ogoal = { x: 0, y: 0 };
+                edog.ogoal.x = 0;
+            }
+        } else if (edog && edog.ogoal?.x
+            && (edog.ogoal.x !== omx || edog.ogoal.y !== omy)) {
+            gg.gx = edog.ogoal.x;
+            gg.gy = edog.ogoal.y;
+            edog.ogoal.x = 0;
+        } else {
+            // C: do_clear_area(omx,omy,9,wantdoor) via view_from — omitted
+            gg.gx = DOG_GOAL_FARAWAY;
+            gg.gy = DOG_GOAL_FARAWAY;
+            if (gg.gx === DOG_GOAL_FARAWAY || (gg.gx === omx && gg.gy === omy)) {
+                gg.gx = game.u.ux;
+                gg.gy = game.u.uy;
+            } else if (edog) {
+                if (!edog.ogoal) edog.ogoal = { x: 0, y: 0 };
+                edog.ogoal.x = gg.gx;
+                edog.ogoal.y = gg.gy;
+            }
+        }
+    } else if (edog) {
+        if (!edog.ogoal) edog.ogoal = { x: 0, y: 0 };
+        edog.ogoal.x = 0;
+    }
     return appr;
 }
 

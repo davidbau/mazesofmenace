@@ -1,13 +1,22 @@
-// potion.js — Quaff command (dodrink / dopotion / peffects subset).
-// C ref: potion.c dodrink, dopotion, peffects, peffect_oil; invent.c getobj.
+// potion.js — Quaff / #dip commands (dodrink / dodip subset).
+// C ref: potion.c dodrink, dopotion, peffects, peffect_oil, dodip;
+//         invent.c getobj; fountain.c via dipfountain.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline } from './display.js';
-import { POTION_CLASS, objectNames } from './objects.js';
+import { flush_screen, flush_topl_more, pline } from './display.js';
+import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
 import { discover_object } from './invent.js';
+import { yn_function } from './getline.js';
+import { doname } from './objnam.js';
+import { dipfountain } from './fountain.js';
+import {
+    IS_FOUNTAIN, IS_SINK, IS_POOL,
+    ECMD_TIME, ECMD_CANCEL,
+} from './const.js';
+import { hands_obj } from './weapon.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 
@@ -20,6 +29,47 @@ function drinkable_lets() {
     }
     lets.sort();
     return lets.join('');
+}
+
+/** Compact consecutive invent letters (C invent.c compactify). */
+function compact_lets(lets) {
+    if (!lets.length) return '';
+    if (lets.length <= 5) return lets.join('');
+    let out = lets[0];
+    let runStart = lets[0];
+    let prev = lets[0];
+    for (let i = 1; i < lets.length; i++) {
+        const ch = lets[i];
+        if (ch.charCodeAt(0) === prev.charCodeAt(0) + 1) {
+            prev = ch;
+            continue;
+        }
+        if (prev !== runStart) {
+            out += prev === String.fromCharCode(runStart.charCodeAt(0) + 1)
+                ? prev
+                : `-${prev}`;
+        }
+        out += ch;
+        runStart = prev = ch;
+    }
+    if (prev !== runStart) {
+        out += prev === String.fromCharCode(runStart.charCodeAt(0) + 1)
+            ? prev
+            : `-${prev}`;
+    }
+    return out;
+}
+
+/** C ref: potion.c dip_ok — suggest non-coin invent. */
+function dippable_lets() {
+    const inv = game.invent || [];
+    const lets = [];
+    for (const o of inv) {
+        if (o.oclass === COIN_CLASS) continue;
+        if (o.invlet) lets.push(o.invlet);
+    }
+    lets.sort();
+    return compact_lets(lets);
 }
 
 /**
@@ -142,4 +192,103 @@ export async function dodrink() {
     otmp.in_use = true;
     // milky/smoky occupant paths deferred (no RNG when descr unmatched)
     return dopotion(otmp);
+}
+
+/**
+ * C ref: invent.c getobj("dip", dip_ok / dip_hands_ok, GETOBJ_PROMPT)
+ * Hands `-` only when Glib (dip_hands_ok); otherwise invent letters.
+ * Loop on missing letter.
+ */
+async function getobj_dip(at_here) {
+    void at_here; // Glib hands suggest deferred
+    for (;;) {
+        await flush_topl_more();
+        const lets = dippable_lets();
+        const query = lets
+            ? `What do you want to dip? [${lets} or ?*]`
+            : 'What do you want to dip? [*]';
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '-') {
+            // hands only meaningful with Glib; still accept letter
+            game._pending_message = '';
+            return hands_obj;
+        }
+        if (ch === '?' || ch === '*') {
+            await pline('Never mind.');
+            return null;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        if (otmp.oclass === COIN_CLASS) {
+            await pline('You cannot dip that!');
+            return null;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/**
+ * C ref: potion.c dodip — #dip
+ * Branch envelope: fountain-at-feet yn → dipfountain.
+ * Deferred: sink/pool dips, potion_dip alchemy, m-prefix skip floor,
+ * inaccessible_equipment, can_reach_floor false.
+ * @returns {number} ECMD_*
+ */
+export async function dodip() {
+    const u = game.u || {};
+    const loc = game.level?.at(u.ux, u.uy);
+    const here = loc?.typ ?? 0;
+    const at_fountain = IS_FOUNTAIN(here);
+    const at_sink = IS_SINK(here);
+    const at_pool = IS_POOL(here);
+    const at_here = !game.iflags?.menu_requested
+        && (at_pool || at_fountain || at_sink);
+
+    const obj = await getobj_dip(at_here);
+    if (!obj) return ECMD_CANCEL;
+    // inaccessible_equipment deferred
+
+    const is_hands = obj === hands_obj;
+    const shortestname = (is_hands || (obj.quan | 0) !== 1) ? 'them' : 'it';
+    const obuf = is_hands
+        ? 'your hands'
+        : doname(obj);
+
+    if (!game.iflags?.menu_requested) {
+        // can_reach_floor deferred — assume reachable when not levitating
+        if (u.Levitation) {
+            // leave floor prompts; potion getobj path deferred
+        } else if (at_fountain) {
+            const q = `Dip ${game.flags?.verbose !== false ? obuf : shortestname} into the fountain?`;
+            if ((await yn_function(q, 'yn', 'n')) === 'y') {
+                if (!is_hands) obj.pickup_prev = 0;
+                await dipfountain(obj);
+                return ECMD_TIME;
+            }
+            // drink_ok_extra++ then potion getobj — deferred cancel
+            return ECMD_CANCEL;
+        } else if (at_sink || at_pool) {
+            // dipsink / pool dip deferred
+            return ECMD_CANCEL;
+        }
+    }
+
+    // potion_dip getobj deferred
+    await pline('Never mind.');
+    return ECMD_CANCEL;
 }

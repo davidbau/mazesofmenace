@@ -1,12 +1,13 @@
 // dokick.js — #kick command.
-// C ref: dokick.c — dokick, kick_dumb, kick_nondoor (empty-space / open-floor
-// envelope). Monster, object, closed-door, secret-door, and furniture kicks
-// are named omissions in C-JS-MAP.md.
+// C ref: dokick.c — dokick, kick_dumb, kick_door, kick_nondoor (empty-space /
+// open-floor / closed-door envelope). Monster, object, secret-door, and
+// furniture kicks are named omissions in C-JS-MAP.md.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rnl } from './rng.js';
 import { acurr, A_DEX, A_STR, A_CON, exercise } from './attrib.js';
-import { pline } from './display.js';
+import { pline, newsym } from './display.js';
+import { vision_recalc } from './vision.js';
 import { getdir } from './lock.js';
 import { near_capacity } from './invent.js';
 import { objects_at } from './mkobj.js';
@@ -15,9 +16,9 @@ import { losehp, maybe_half_phys } from './hack.js';
 import {
     COLNO, ROWNO,
     SDOOR, SCORR, STAIRS, LADDER, IRONBARS, LAVAWALL,
-    D_ISOPEN, D_BROKEN, D_NODOOR, LA_DOWN, SLT_ENCUMBER,
+    D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED, LA_DOWN, SLT_ENCUMBER,
     IS_DOOR, IS_STWALL, IS_POOL, IS_THRONE, IS_FOUNTAIN, IS_SINK, IS_GRAVE,
-    IS_TREE, KILLED_BY,
+    IS_TREE, KILLED_BY, Upolyd,
 } from './const.js';
 
 function isok(x, y) {
@@ -77,18 +78,71 @@ async function kick_ouch(x, y, kickobjnam = '') {
 }
 
 /**
- * C ref: dokick.c kick_door — open/broken/nodoor → kick_dumb; else partial.
+ * C ref: dokick.c kick_door — open/broken/nodoor → kick_dumb; else
+ * CLOSED/LOCKED bust attempt (exercise DEX, rnl(35) vs avrg_attrib).
+ * Shop damage / town watchman / b_trapped body / Blind feel_location
+ * deferred (named in C-JS-MAP).
  */
-async function kick_door(x, y, _avrg_attrib) {
+async function kick_door(x, y, avrg_attrib) {
     const loc = game.level?.at(x, y);
-    const mask = loc?.doormask ?? D_NODOOR;
+    if (!loc) {
+        await kick_dumb(x, y);
+        return;
+    }
+    const mask = loc.doormask ?? D_NODOOR;
     if (mask === D_ISOPEN || mask === D_BROKEN || mask === D_NODOOR) {
         await kick_dumb(x, y);
         return;
     }
-    // Closed/locked door bust (Whammm / shop / trap) deferred — kick_ouch
-    // is only a stand-in so the command still consumes a turn.
-    await kick_ouch(x, y);
+
+    // C: not enough leverage while levitating
+    if (game.u?.Levitation) {
+        await kick_ouch(x, y);
+        return;
+    }
+
+    exercise(A_DEX, true);
+    // C: doorbuster = Upolyd && is_giant(youmonst.data) — giant poly deferred
+    const doorbuster = Upolyd(game.u) && !!game.youmonst?.data?.is_giant;
+    // C: rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX))
+    const chance = avrg_attrib + (!martial() ? 0 : acurr(A_DEX));
+    if (doorbuster || rnl(35) < chance) {
+        // shopdoor / in_rooms(SHOPBASE) deferred → treat as non-shop
+        const shopdoor = false;
+        if (mask & D_TRAPPED) {
+            if (game.flags?.verbose !== false) {
+                await pline('You kick the door.');
+            }
+            exercise(A_STR, false);
+            loc.doormask = D_NODOOR;
+            if (loc.flags !== undefined) loc.flags = loc.doormask;
+            // b_trapped("door", FOOT) deferred
+            newsym(x, y);
+            vision_recalc(1);
+        } else if (acurr(A_STR) > 18 && !rn2(5) && !shopdoor) {
+            await pline('As you kick the door, it shatters to pieces!');
+            exercise(A_STR, true);
+            loc.doormask = D_NODOOR;
+            if (loc.flags !== undefined) loc.flags = loc.doormask;
+            newsym(x, y);
+            vision_recalc(1);
+        } else {
+            await pline('As you kick the door, it crashes open!');
+            exercise(A_STR, true);
+            loc.doormask = D_BROKEN;
+            if (loc.flags !== undefined) loc.flags = loc.doormask;
+            newsym(x, y);
+            vision_recalc(1);
+        }
+        // add_damage / pay_for_damage / watchman_thief_arrest deferred
+    } else {
+        // Blind feel_location deferred
+        exercise(A_STR, true);
+        // C: (Deaf || !rn2(3)) ? "Thwack" : "Whammm"
+        const thud = (game.u?.Deaf || !rn2(3)) ? 'Thwack' : 'Whammm';
+        await pline(`${thud}!!`);
+        // in_town watchman_door_damage deferred
+    }
 }
 
 /**

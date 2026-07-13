@@ -47,7 +47,8 @@ export function ammo_and_launcher(ammo, launcher) {
     return ask === -lsk;
 }
 
-function is_missile(obj) {
+/** C ref: obj.h is_missile */
+export function is_missile(obj) {
     if (!obj) return false;
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;

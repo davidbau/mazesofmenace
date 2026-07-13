@@ -31,6 +31,7 @@ import {
     BR_NO_END1,
     BR_NO_END2,
     BR_PORTAL,
+    ECMD_OK,
 } from './const.js';
 
 const FLAG_MAP = {
@@ -625,4 +626,115 @@ export function init_dungeons() {
 
     init_castle_tune();
     fixup_level_locations();
+}
+
+/**
+ * Ensure a mapseen node exists for the given (or current) level.
+ * C always has one after init_mapseen on level entry; JS creates lazily.
+ */
+function ensure_mapseen(lev) {
+    const uz = lev || game.u?.uz || { dnum: 0, dlevel: 1 };
+    const dnum = uz.dnum | 0;
+    const dlevel = uz.dlevel | 0;
+    if (!game.mapseenchn) game.mapseenchn = [];
+    let mptr = game.mapseenchn.find(
+        (m) => (m.lev?.dnum | 0) === dnum && (m.lev?.dlevel | 0) === dlevel,
+    );
+    if (!mptr) {
+        mptr = {
+            lev: { dnum, dlevel },
+            custom: null,
+            custom_lth: 0,
+            flags: {},
+            feat: {},
+        };
+        game.mapseenchn.push(mptr);
+    }
+    return mptr;
+}
+
+/**
+ * C ref: dungeon.c query_annotation — getlin level name into mapseen.custom.
+ * Branch envelope: current-level annotate (no prior custom / no EDIT_GETLIN).
+ * Replace-annotation prompt and other-level describe_level deferred.
+ */
+async function query_annotation(lev) {
+    const { getlin } = await import('./getline.js');
+    const mptr = ensure_mapseen(lev);
+    let nbuf;
+    if (mptr.custom) {
+        // C non-EDIT_GETLIN replace prompt deferred → treat as fresh getlin
+        nbuf = await getlin(
+            `Replace annotation "${String(mptr.custom).slice(0, 30)}${String(mptr.custom).length > 30 ? '...' : ''}" with?`,
+        );
+    } else {
+        nbuf = await getlin('What do you want to call this dungeon level?');
+    }
+    if (!nbuf || nbuf === '\x1b') return;
+    // C mungspaces — trim + compress consecutive spaces
+    nbuf = nbuf.trim().replace(/\s+/g, ' ');
+    if (!nbuf || nbuf === ' ') {
+        mptr.custom = null;
+        mptr.custom_lth = 0;
+        return;
+    }
+    mptr.custom = nbuf;
+    mptr.custom_lth = nbuf.length;
+}
+
+/**
+ * C ref: dungeon.c donamelevel (#annotate).
+ * menu_requested → dooverview deferred (no 'm' prefix path here).
+ */
+export async function donamelevel() {
+    if (game.iflags?.menu_requested) {
+        game.iflags.menu_requested = false;
+        return dooverview();
+    }
+    await query_annotation(null);
+    return ECMD_OK;
+}
+
+/**
+ * C ref: dungeon.c dooverview / show_overview (#overview).
+ * Branch envelope: why=0 PICK_NONE current-level line + ESC/space dismiss.
+ * Full traverse_mapseenchn / interest_mapseen / print_mapseen features deferred.
+ */
+export async function dooverview() {
+    const { nhgetch } = await import('./input.js');
+    const { flush_screen, flush_topl_more, docrt } = await import('./display.js');
+    const { paint_corner_nhw_menu } = await import('./invent.js');
+    const { ATR_INVERSE } = await import('./terminal.js');
+
+    await flush_topl_more();
+    ensure_mapseen(null);
+    const u = game.u || {};
+    const dnum = u.uz?.dnum | 0;
+    const dlevel = u.uz?.dlevel | 0;
+    const dun = game.dungeons?.[dnum];
+    const dname = dun?.dname || 'The Dungeons of Doom';
+    const depthstart = (dun?.depth_start | 0) || 1;
+    const levnum = depthstart + dlevel - 1;
+    const mptr = game.mapseenchn.find(
+        (m) => (m.lev?.dnum | 0) === dnum && (m.lev?.dlevel | 0) === dlevel,
+    );
+    let levLine = `      Level ${levnum}:`;
+    if (mptr?.custom) levLine += ` "${mptr.custom}"`;
+    levLine += ' <- You are here.';
+
+    const entries = [
+        { text: `${dname}:`, attr: ATR_INVERSE },
+        { text: levLine, attr: 0 },
+    ];
+    // C select_menu PICK_NONE (why != -1)
+    for (;;) {
+        await paint_corner_nhw_menu(entries, '(end) ');
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+        if (key === 27 || key === 32 || key === 13 || key === 10) break;
+    }
+    if (game.iflags) game.iflags.menu_requested = false;
+    return ECMD_OK;
 }

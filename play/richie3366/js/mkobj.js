@@ -751,6 +751,25 @@ export function place_object(otmp, x, y) {
 }
 
 /**
+ * C ref: steal.c relobj(mtmp, show, FALSE) via mon.c m_detach(due_to_death).
+ * Drop entire minvent onto the map (non-pet death). Vault-guard gold and
+ * flooreffects omitted; caller issues newsym.
+ */
+export function relobj_on_death(mtmp) {
+    if (!mtmp) return;
+    const omx = mtmp.mx | 0;
+    const omy = mtmp.my | 0;
+    while (mtmp.minvent) {
+        const otmp = mtmp.minvent;
+        obj_extract_self(otmp);
+        if (otmp.owornmask) otmp.owornmask = 0;
+        if (mtmp.mw === otmp) mtmp.mw = null;
+        place_object(otmp, omx, omy);
+        stackobj(otmp);
+    }
+}
+
+/**
  * C ref: invent.c objects[].oc_merge — table field not yet extracted;
  * approximate from C BITS defaults (ammo/gems/coins merge; boulder does not).
  */
@@ -904,6 +923,27 @@ export function obj_extract_self(obj) {
     obj.where = OBJ_FREE;
     obj.ox = 0;
     obj.oy = 0;
+}
+
+/**
+ * C ref: invent.c delobj / delobj_core — obj_resists(0,0) then extract+free.
+ * Invocation-item protection deferred; always rolls rn2(100) like C.
+ */
+export function delobj(obj) {
+    if (!obj) return;
+    // C: obj_resists(obj, 0, 0) — rolls rn2(100); returns true only for
+    // Amulet / Book / Candelabrum / Bell / Rider corpse
+    const n = objectNames[obj.otyp];
+    const special = n === 'AMULET_OF_YENDOR'
+        || n === 'SPE_BOOK_OF_THE_DEAD'
+        || n === 'CANDELABRUM_OF_INVOCATION'
+        || n === 'BELL_OF_OPENING';
+    if (special) return;
+    rn2(100); // ochance 0 → never resists, but always consumes
+    obj_extract_self(obj);
+    // obfree — drop references; GC reclaim
+    obj.quan = 0;
+    obj.where = OBJ_FREE;
 }
 
 function g_at(x, y) {

@@ -420,9 +420,9 @@ export async function rhack(key) {
         await dohelp();
         game.context.move = 0;
     } else if (ch === '#') {
-        // C ref: cmd.c doextcmd — extended commands
-        await doextcmd();
-        game.context.move = 0;
+        // C ref: cmd.c doextcmd — returns callee ECMD_*; TIME keeps move
+        const extRes = await doextcmd();
+        game.context.move = (extRes & 0x01) ? 1 : 0; // ECMD_TIME
     } else if (key === 27) {
         // Esc — cancel run/count; no message
         // C ref: cmd.c / hack.c — ESC ends running and clears multi
@@ -483,7 +483,7 @@ async function domove(dx, dy) {
     const mtmp = mon_at(newx, newy);
     if (mtmp) {
         // C: domove_attackmon_at → do_attack
-        if (do_attack(mtmp)) {
+        if (await do_attack(mtmp)) {
             // Move consumed (stopped for pet in the way, or attacked)
             if (game.context?.run) end_running();
             return;

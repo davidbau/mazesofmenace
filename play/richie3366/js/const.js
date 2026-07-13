@@ -1272,6 +1272,17 @@ export const RS_ROLE = 1;
 export const RS_RACE = 2;
 export const RS_GENDER = 3;
 export const RS_ALGNMNT = 4;
+export const RS_filter = 5;
+// C: winprocs.h RS_menu_arg(x) — ROLE_RANDOM(-2) - ((x) + 1) → -3..-8
+export function RS_menu_arg(x) {
+    return -2 - (x + 1);
+}
+// C: monflag.h MH_* ≡ M2_* race bits (also ROLE_RACEMASK members)
+export const MH_HUMAN = 0x00000008;
+export const MH_ELF = 0x00000010;
+export const MH_DWARF = 0x00000020;
+export const MH_GNOME = 0x00000040;
+export const MH_ORC = 0x00000080;
 export const WININIT = 0;
 export const WININIT_UNDO = 1;
 export const WINCHAIN_ALLOC = 0;

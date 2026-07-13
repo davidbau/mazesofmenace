@@ -13,6 +13,7 @@ import {
     M_ATTK_AGR_DIED,
 } from './const.js';
 import { monsterNames, verysmall, G_FREQ } from './monsters.js';
+import { relobj_on_death } from './mkobj.js';
 
 const NATTK = 6;
 const AT_NONE = 0;
@@ -58,11 +59,16 @@ const FIRST_ATTK = (() => {
     return t;
 })();
 
-function get_mattk(magr, i) {
+/** First-slot mattk from compact table; later slots AT_NONE until full extract. */
+export function get_mattk(magr, i) {
     if (i > 0) return { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
     const mndx = magr.mnum ?? magr.data?.mndx;
     return FIRST_ATTK.get(mndx) || { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
 }
+
+export {
+    AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP, AD_PHYS,
+};
 
 function deadmonster(m) {
     return !m || (m.mhp != null && m.mhp < 1);
@@ -145,7 +151,7 @@ function passivemm(magr, mdef, mhitb, mdead) {
 }
 
 // C ref: uhitm.c mhitm_knockback — burn RNG in C order; no hurtle yet
-function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
+export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
     // C: knockdistance = rn2(3) ? 1 : 2; then rn2(chance)
     rn2(3);
     rn2(6);
@@ -153,9 +159,11 @@ function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
             || mattk.aatyp === AT_BUTT || mattk.aatyp === AT_WEAP)) {
         return false;
     }
+    void magr;
+    void mdef;
     void weapon_used;
     void hitflags;
-    return false; // full hurtle not needed for dlvl1 pet bites
+    return false; // full hurtle not needed for dlvl1 pet bites / kobold melee
 }
 
 // C ref: mon.c corpse_chance() — subset for ordinary dlvl1 kills
@@ -168,7 +176,7 @@ function corpse_chance(mon) {
     return !rn2(tmp);
 }
 
-// C ref: mon.c mondead() — remove from fmon + newsym; keep mx/my (C does)
+// C ref: mon.c mondead → m_detach(due_to_death) → relobj(mtmp, 1, FALSE)
 function mondead(mtmp) {
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
@@ -176,7 +184,8 @@ function mondead(mtmp) {
         const i = game.fmon.indexOf(mtmp);
         if (i >= 0) game.fmon.splice(i, 1);
     }
-    // C mon_leaving_level keeps mx/my for make_corpse; do not zero here
+    // Keep mx/my for drop + make_corpse (C mon_leaving_level).
+    relobj_on_death(mtmp);
     if (mx > 0) newsym(mx, my);
 }
 
