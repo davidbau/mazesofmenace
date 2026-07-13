@@ -2,9 +2,9 @@
 // C ref: getpos.c getpos / hack.c handle_tip(TIP_GETPOS).
 //
 // Branch envelope: verbose instruction pline, first-use getpos tip
-// (nhcore show_getpos_tip), hjklyubn walk + HJKLYUBN/Ctrl-dir rush
-// (8× step via truncate_to_map) + autodescribe topline,
-// '.' → LOOK_TRADITIONAL, ESC → -1. Menu/jump/hilite/valids/
+// (nhcore show_getpos_tip PICK_NONE loop), hjklyubn walk + HJKLYUBN/Ctrl-dir
+// rush (8× step via truncate_to_map) + autodescribe topline, force unknown-
+// direction pline, '.' → LOOK_TRADITIONAL, ESC → -1. Menu/jump/hilite/valids/
 // getloc_moveskip glyph-skip deferred.
 
 import { game } from './gstate.js';
@@ -68,6 +68,8 @@ function truncate_to_map(cx, cy, dx, dy) {
  */
 async function show_getpos_tip() {
     // Exact nhcore.lua [[...]] lines (nhl_text splits on \n; wrap at 76).
+    // C: nhl_text → select_menu(PICK_NONE) — Esc/Return/Space dismiss;
+    // other keys re-prompt (C xwaitforspace).
     const lines = [
         'Tip: Farlooking or selecting a map location',
         '',
@@ -78,19 +80,23 @@ async function show_getpos_tip() {
         'When in this mode, you can press ESC to return to normal game mode,',
         'and pressing ? will show the key help.',
     ];
-    await paint_corner_nhw_menu(lines, '(end) ');
-    await flush_screen(1);
-    await nhgetch();
+    for (;;) {
+        await paint_corner_nhw_menu(lines, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        if (key === 27 || key === 13 || key === 10 || key === 32) break;
+        // other keys: stay open (C xwaitforspace / PICK_NONE)
+    }
     game._menu_overlay = false;
     await docrt();
     await flush_screen(1);
 }
 
 /**
- * C ref: getpos.c getpos — force unused for whatis (!quick).
- * Returns LOOK_* (>=0) or -1 on cancel. Updates ccp.x/ccp.y.
+ * C ref: getpos.c getpos — force=TRUE (travel) keeps unknown keys in-loop;
+ * force=FALSE (whatis) may abort. Returns LOOK_* (>=0) or -1 on cancel.
  */
-export async function getpos(ccp, _force, goal, describeAt) {
+export async function getpos(ccp, force, goal, describeAt) {
     const g = game;
     if (!g.flags) g.flags = {};
     let cx = ccp.x | 0;
@@ -180,11 +186,22 @@ export async function getpos(ccp, _force, goal, describeAt) {
             continue;
         }
 
-        // Space / other: ignore for this subset (no menu jump)
+        // Space: ignore for this subset (no menu jump)
         if (ch === ' ' || ch === '\n' || ch === '\r') continue;
         if (ch === '?') {
             await pline('Move the cursor with hjklyubn; . selects; ESC cancels.');
             continue;
         }
+
+        // C ref: getpos.c unknown key — force keeps looping; !force aborts
+        const note = force
+            ? "use 'h', 'j', 'k', 'l' or '.'"
+            : 'aborted';
+        await pline(`Unknown direction: '${ch}' (${note}).`);
+        if (force) continue;
+        ccp.x = -1;
+        ccp.y = -1;
+        g._pending_message = '';
+        return -1;
     }
 }

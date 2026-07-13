@@ -11,14 +11,23 @@ import {
     mon_allowflags,
     mfndpos,
 } from './mon.js';
-import { is_wanderer, is_armed } from './monsters.js';
+import {
+    is_wanderer, is_armed, passes_walls, monsterNames,
+    M1_SEE_INVIS, M1_AMORPHOUS,
+} from './monsters.js';
 import {
     mintrap,
     NO_TRAP_FLAGS,
     Trap_Killed_Mon,
     Trap_Moved_Mon,
+    Trap_Caught_Mon,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
+import { couldsee } from './vision.js';
+import {
+    isok, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, u_at, DISPLACED,
+} from './const.js';
+import { CLOAK_OF_DISPLACEMENT, COIN_CLASS } from './objects.js';
 
 const MTSZ = 4;
 const BOLT_LIM = 8;
@@ -27,6 +36,10 @@ const MMOVE_MOVED = 1;
 const MMOVE_DIED = 2;
 const MMOVE_DONE = 3;
 const MMOVE_NOMOVES = 4;
+
+// C monsters.h indices (not exported from monsters_data)
+const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
+const PM_XORN = monsterNames.indexOf('PM_XORN');
 
 // C ref: monmove.c mon_track_add()
 export function mon_track_add(mtmp, x, y) {
@@ -44,11 +57,141 @@ export function mon_track_add(mtmp, x, y) {
     mtmp.mtrack[0] = { x, y };
 }
 
-// C ref: monmove.c set_apparxy() — visible, non-displaced path (no RNG)
+/** C ref: invent.c money_cnt — sum COIN_CLASS quan. */
+function money_cnt(invent) {
+    let sum = 0;
+    for (const o of invent || []) {
+        if (o.oclass === COIN_CLASS) sum += o.quan || 0;
+    }
+    return sum;
+}
+
+/** C ref: mondata.h perceives — M1_SEE_INVIS. */
+function perceives(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_SEE_INVIS);
+}
+
+/**
+ * C ref: youprop.h Displaced — HDisplaced || EDisplaced.
+ * Extrinsic from cloak: oc_oprop wiring deferred; match worn
+ * CLOAK_OF_DISPLACEMENT (Ranger kit / displacement cloak).
+ */
+function Displaced() {
+    const u = game.u || {};
+    if (u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic) return true;
+    if (u.uprops?.[DISPLACED]?.extrinsic) return true;
+    const cloak = u.uarmc;
+    return !!(cloak && cloak.otyp === CLOAK_OF_DISPLACEMENT);
+}
+
+/** C ref: monmove.c closed_door / mthrowu closed_door. */
+function closed_door(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/**
+ * C ref: monmove.c accessible — ACCESSIBLE(SURFACE_AT) && !closed_door.
+ * DRAWBRIDGE_UP under-typ deferred (named omission).
+ */
+function accessible(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    return ACCESSIBLE(loc.typ) && !closed_door(x, y);
+}
+
+/**
+ * C ref: monmove.c can_ooze — amorphous && !stuff_prevents_passage.
+ * stuff_prevents_passage body deferred → treat as empty invent (ok).
+ */
+function can_ooze(mtmp) {
+    return !!((mtmp?.data?.mflags1 ?? 0) & M1_AMORPHOUS);
+}
+
+/**
+ * C ref: monmove.c can_fog — vampshifter fog form.
+ * Named omission: full vampshifter / Protection_from_shape_changers.
+ */
+function can_fog(_mtmp) {
+    return false;
+}
+
+/**
+ * C ref: monmove.c set_apparxy — decide where monster thinks hero stands.
+ * Covers Displaced / Invis / Underwater / already-know early exits.
+ */
 export function set_apparxy(mtmp) {
-    // Pets / already-know / seen: mux/muy = hero. Seed8000 commons see hero.
-    mtmp.mux = game.u.ux;
-    mtmp.muy = game.u.uy;
+    const u = game.u || {};
+    let mx = mtmp.mux;
+    let my = mtmp.muy;
+    const umoney = money_cnt(game.invent);
+
+    // pet / grabber / still believes hero at current mux,muy
+    if (mtmp.mtame || mtmp === u.ustuck || u_at(mx, my)) {
+        mtmp.mux = u.ux;
+        mtmp.muy = u.uy;
+        return;
+    }
+
+    const Invis = !!(u.Invis);
+    const Underwater = !!(u.Underwater);
+    const notseen = (!mtmp.mcansee || (Invis && !perceives(mtmp.data)));
+    const notthere = (
+        Displaced() && mtmp.data?.mndx !== PM_DISPLACER_BEAST
+    );
+
+    let displ;
+    if (Underwater) {
+        displ = 1;
+    } else if (notseen) {
+        displ = (mtmp.data?.mndx === PM_XORN && umoney) ? 0 : 1;
+    } else if (notthere) {
+        displ = couldsee(mx, my) ? 2 : 1;
+    } else {
+        displ = 0;
+    }
+    if (!displ) {
+        mtmp.mux = u.ux;
+        mtmp.muy = u.uy;
+        return;
+    }
+
+    // gotu = notseen ? !rn2(3) : notthere ? !rn2(4) : FALSE
+    const gotu = notseen ? !rn2(3) : notthere ? !rn2(4) : false;
+
+    if (!gotu) {
+        let try_cnt = 0;
+        for (;;) {
+            if (++try_cnt > 200) {
+                mx = u.ux;
+                my = u.uy;
+                break;
+            }
+            mx = u.ux - displ + rn2(2 * displ + 1);
+            my = u.uy - displ + rn2(2 * displ + 1);
+            if (!isok(mx, my)) continue;
+            if (displ !== 2 && mx === mtmp.mx && my === mtmp.my) continue;
+            if (
+                (mx !== u.ux || my !== u.uy)
+                && !passes_walls(mtmp.data)
+                && !(
+                    accessible(mx, my)
+                    || (closed_door(mx, my) && (can_ooze(mtmp) || can_fog(mtmp)))
+                )
+            ) {
+                continue;
+            }
+            if (!couldsee(mx, my)) continue;
+            break;
+        }
+    } else {
+        mx = u.ux;
+        my = u.uy;
+    }
+
+    mtmp.mux = mx;
+    mtmp.muy = my;
 }
 
 // C ref: monmove.c distfleeck()
@@ -94,6 +237,16 @@ export async function m_move(mtmp, after) {
     const omx = mtmp.mx;
     const omy = mtmp.my;
 
+    // C: m_move starts with mtrapped → mintrap; still-caught → no move
+    if (mtmp.mtrapped) {
+        const i = await mintrap(mtmp, NO_TRAP_FLAGS);
+        if (i === Trap_Killed_Mon) {
+            if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+            return MMOVE_DIED;
+        }
+        if (i === Trap_Caught_Mon) return MMOVE_NOTHING;
+    }
+
     set_apparxy(mtmp);
 
     const ggx = mtmp.mux;
@@ -107,6 +260,7 @@ export async function m_move(mtmp, after) {
     }
 
     // Hostiles keep appr=1; peaceful wander uses !rn2(++chcnt) instead of track.
+    // Named omission: gettrack goal, shortsighted, m_search_items, balks.
 
     const flag = mon_allowflags(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
@@ -158,17 +312,16 @@ export async function m_move(mtmp, after) {
     if (mmoved === MMOVE_NOTHING) return MMOVE_NOTHING;
 
     // Attack-you square: leave in place for now (mattacku not ported)
+    // C returns MMOVE_NOTHING here; DONE is close enough for fall-through.
     if (nix === game.u.ux && niy === game.u.uy) {
         return MMOVE_DONE;
     }
 
-    // Actually step
+    // C: place_monster + mon_track_add then postmov (mintrap on new cell)
     mtmp.mx = nix;
     mtmp.my = niy;
     mon_track_add(mtmp, omx, omy);
-    newsym(omx, omy);
-    newsym(nix, niy);
-    return MMOVE_MOVED;
+    return postmov(mtmp, omx, omy, MMOVE_MOVED);
 }
 
 // C ref: monmove.c dochug()

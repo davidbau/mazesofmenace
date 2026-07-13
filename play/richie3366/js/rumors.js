@@ -37,18 +37,18 @@ function unpadline(line) {
  * C ref: rumors.c get_rnd_line for a single section buffer.
  * Landing mid-line: fgets rest-of-line; accept if strlen <= pad+1; then next line.
  */
-function get_rnd_line(buf) {
+function get_rnd_line(buf, rng = rn2, padlength = MD_PAD_RUMORS) {
     const filechunksize = buf.length;
     if (filechunksize < 1) return '';
 
     let accepted = '';
     for (let trylimit = 10; trylimit > 0; --trylimit) {
-        const chunkoffset = rn2(filechunksize);
+        const chunkoffset = rng(filechunksize);
         // Rest of current line from mid-line landing (like fgets after fseek)
         let i = chunkoffset;
         while (i < buf.length && buf[i] !== '\n') i++;
         const partialLen = i - chunkoffset + (i < buf.length ? 1 : 0); // include newline if present
-        if (!MD_PAD_RUMORS || partialLen <= MD_PAD_RUMORS + 1) {
+        if (!padlength || partialLen <= padlength + 1) {
             // Accept — use next line
             let start = i + 1;
             if (start >= buf.length) start = 0;
@@ -60,6 +60,15 @@ function get_rnd_line(buf) {
     }
     if (!accepted) return '';
     return unpadline(xcrypt(accepted));
+}
+
+/**
+ * C ref: rumors.c get_rnd_text — random line from a padded+xcrypt section buffer.
+ * `buf` is the post-comment chunk (as stored by extract-rumors / extract-engrave).
+ */
+export function get_rnd_text(buf, rng = rn2, padlength = MD_PAD_RUMORS) {
+    if (!buf) return '';
+    return get_rnd_line(buf, rng, padlength);
 }
 
 /**

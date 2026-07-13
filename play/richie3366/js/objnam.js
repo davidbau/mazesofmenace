@@ -51,6 +51,14 @@ function is_rustprone_obj(obj) {
 const GEMSTONE = 20;
 const MINERAL = 21;
 
+// C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
+const ARM_GLOVES = 3;
+const ARM_BOOTS = 4;
+
+// C ref: objects.h dragon scales window used by xname / obj_typename
+const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+
 /**
  * C ref: objnam.c GemStone(typ) — gems/rocks that append " stone".
  * FLINT always; GEMSTONE material except named crystal exceptions.
@@ -228,6 +236,18 @@ function pretty_base(obj) {
         const jn = Japanese_item_name(obj.otyp, null);
         if (jn) base = jn;
     }
+    // C ref: objnam.c xname TOOL LENSES / ARMOR gloves|boots / dragon scales
+    if (n === 'LENSES') return `pair of ${base}`;
+    if (obj.oclass === ARMOR_CLASS) {
+        const typ = obj.otyp;
+        if (typ >= GRAY_DRAGON_SCALES && typ <= YELLOW_DRAGON_SCALES) {
+            return `set of ${base}`;
+        }
+        const armcat = game.objects?.[typ]?.oc_skill ?? -1;
+        if (armcat === ARM_GLOVES || armcat === ARM_BOOTS) {
+            return `pair of ${base}`;
+        }
+    }
     return base;
 }
 
@@ -255,6 +275,8 @@ export function singular(obj, func = xname) {
 
 // C ref: objnam.c makeplural — enough for "X of Y" and simple nouns.
 export function makeplural(s) {
+    // C: skip "pair of " → "pairs of" (objects keep singular "pair")
+    if (/^pair of /i.test(s)) return s;
     const of = s.indexOf(' of ');
     if (of > 0) {
         return makeplural(s.slice(0, of)) + s.slice(of);
@@ -542,7 +564,13 @@ export function obj_typename(otyp) {
         if (dn) buf += ` (${dn})`;
         return buf;
     case ARMOR_CLASS:
-        // pair of / set of deferred (needs oc_armcat / dragon scales)
+        // C ref: objnam.c obj_typename ARMOR — pair of / set of prefixes
+        if ((ocl.oc_skill ?? -1) === ARM_GLOVES
+            || (ocl.oc_skill ?? -1) === ARM_BOOTS) {
+            buf = 'pair of ';
+        } else if (otyp >= GRAY_DRAGON_SCALES && otyp <= YELLOW_DRAGON_SCALES) {
+            buf = 'set of ';
+        }
         // FALLTHROUGH
     default:
         if (nn) {

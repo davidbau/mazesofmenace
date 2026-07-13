@@ -6,16 +6,17 @@ import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, docrt } from './display.js';
 import { rnd } from './rng.js';
 import { place_object, splitobj, stackobj } from './mkobj.js';
-import { WEAPON_CLASS, COIN_CLASS, objectNames } from './objects.js';
+import { WEAPON_CLASS, COIN_CLASS, GEM_CLASS, objectNames, objectNameStrs } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
     P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
+    P_BOW, P_BOOMERANG,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists } from './dogmove.js';
 import {
-    ammo_and_launcher, is_ammo, doswapweapon,
+    ammo_and_launcher, is_ammo, doswapweapon, doquiver_core, welded,
 } from './wield.js';
 import { acurr, A_DEX } from './attrib.js';
 import {
@@ -23,7 +24,7 @@ import {
     PM_WIZARD, PM_HEALER, PM_TOURIST, PM_CLERIC,
     PM_ELF, PM_ORC, PM_GNOME,
 } from './generated/monsters_data.js';
-import { xname, singular } from './objnam.js';
+import { xname, singular, an } from './objnam.js';
 
 /** C ref: cmd.c cmdq_add_ec(CQ_CANNED, …) — shared with rhack via game._cmdq_canned */
 function cmdq_add_ec(fn) {
@@ -36,24 +37,34 @@ function cmdq_add_ec(fn) {
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
+/** C invent getobj ranks used by throw_ok. */
+const THROW_SUGGEST = 1;
+const THROW_DOWNPLAY = 2;
+
 /**
- * C ref: dothrow.c throw_ok — GETOBJ_SUGGEST for coins + weapons (!uslinging).
- * DOWNPLAY / welded / AutoReturn / gem-sling branches deferred.
+ * C ref: dothrow.c throw_ok — SUGGEST coins + weapons (!uslinging);
+ * DOWNPLAY lone uwep / known-welded. AutoReturn / gem-sling deferred.
+ * @returns {0|1|2} 0 exclude, 1 suggest, 2 downplay
  */
 function throw_ok(obj) {
-    if (!obj) return false;
-    if (obj.oclass === COIN_CLASS) return true;
-    if (obj.oclass === WEAPON_CLASS) return true;
-    return false;
+    if (!obj) return 0;
+    const u = game.u || {};
+    if (obj.bknown && welded(obj)) return THROW_DOWNPLAY;
+    if ((obj.quan || 1) === 1
+        && (obj === u.uwep || (obj === u.uswapwep && u.twoweap))) {
+        return THROW_DOWNPLAY;
+    }
+    if (obj.oclass === COIN_CLASS) return THROW_SUGGEST;
+    if (obj.oclass === WEAPON_CLASS) return THROW_SUGGEST;
+    return THROW_DOWNPLAY;
 }
 
-/** Invent-order suggest letters (C getobj walks invent; gold `$` first). */
+/** Invent-order SUGGEST letters (C getobj; DOWNPLAY selectable but hidden). */
 function throwable_lets() {
     const lets = [];
     for (const o of game.invent || []) {
-        if (throw_ok(o) && o.invlet) lets.push(o.invlet);
+        if (o?.invlet && throw_ok(o) === THROW_SUGGEST) lets.push(o.invlet);
     }
-    if (!lets.length) return '';
     return lets.join('');
 }
 
@@ -288,6 +299,35 @@ async function throwit(obj) {
     const dy = u.dy || 0;
     // C: urange = ACURRSTR/2, then range capped; adjacent wall needs ≥1
     let range = 5;
+    // C: ammo without matching launcher → half range + hand-throw pline
+    if (is_ammo(obj) && !ammo_and_launcher(obj, u.uwep)
+        && obj.oclass !== GEM_CLASS) {
+        range = Math.max(1, Math.trunc(range / 2));
+        // C: an(skill_name(weapon_type)) + weapon_descr (P_BOW ammo → "arrow")
+        const skill = Math.abs(game.objects?.[obj.otyp]?.oc_skill ?? 0);
+        let skillName = 'bow';
+        let descr = 'arrow';
+        if (skill === P_CROSSBOW) {
+            skillName = 'crossbow';
+            descr = 'bolt';
+        } else if (skill === P_DART) {
+            skillName = 'dart';
+            descr = 'dart';
+        } else if (skill === P_BOOMERANG) {
+            skillName = 'boomerang';
+            descr = 'boomerang';
+        } else if (skill === P_BOW) {
+            skillName = 'bow';
+            descr = 'arrow';
+        } else {
+            const otyp = objectNames.indexOf('BOW');
+            if (otyp >= 0 && objectNameStrs[otyp]) skillName = objectNameStrs[otyp];
+            descr = skillName;
+        }
+        await pline(
+            `You aren't wielding ${an(skillName)}, so you throw your ${descr} by hand.`,
+        );
+    }
     let x = u.ux;
     let y = u.uy;
     while (range-- > 0) {
@@ -446,7 +486,7 @@ export async function dofire() {
     if (!obj) {
         // C: You("have no ammunition readied.") then doquiver_core("fire")
         await pline('You have no ammunition readied.');
-        return 0;
+        return await doquiver_core('fire');
     }
     const dir = await getdir_cmdassist('In what direction?');
     if (!dir) return 0;

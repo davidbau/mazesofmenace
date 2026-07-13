@@ -10,7 +10,8 @@ import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED,
-         IS_WALL, IS_OBSTRUCTED, IS_FURNITURE, isok } from './const.js';
+         IS_WALL, IS_OBSTRUCTED, IS_FURNITURE, isok,
+         ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH } from './const.js';
 import { dist2 } from './mon.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook,
@@ -24,17 +25,19 @@ import { doengrave } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
-import { donull } from './do.js';
+import { donull, dodown } from './do.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
 import { doopen_indir } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
 import { wiz_wish } from './wizcmds.js';
-import { dowield } from './wield.js';
+import { dowield, dowieldquiver } from './wield.js';
 import { dowhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
 import { spoteffects } from './pickup.js';
+import { getpos } from './getpos.js';
+import { nomul } from './hack.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -79,11 +82,14 @@ function closed_door_at(x, y) {
         && (loc.doormask & (D_CLOSED | D_LOCKED)));
 }
 
-// C ref: hack.c end_running()
+// C ref: hack.c end_running(and_travel) — JS always clears travel (TRUE path)
 function end_running() {
     if (!game.context) game.context = {};
     game.context.run = 0;
     game.context.mv = 0;
+    game.context.travel = 0;
+    game.context.travel1 = 0;
+    if (game.context.nopick) game.context.nopick = 0;
     game.multi = 0;
 }
 
@@ -212,6 +218,15 @@ export async function continue_run() {
     if (game.multi < COLNO && !--game.multi) {
         end_running();
     }
+    // C ref: hack.c domove_core — travel recomputes step each turn
+    if (game.context?.travel) {
+        if (!findtravelpath_travel()) {
+            end_running();
+            game.context.move = 0;
+            return false;
+        }
+        game.context.travel1 = 0;
+    }
     const dx = game.u.dx || 0;
     const dy = game.u.dy || 0;
     await domove(dx, dy);
@@ -226,6 +241,156 @@ export function run_active() {
 // Repeat a counted search (20s) without reading a new key
 export function search_repeat_active() {
     return !!(game._repeat_search && (game.multi || 0) > 0);
+}
+
+/**
+ * C ref: hack.c findtravelpath(TRAVP_TRAVEL) — adjacent short-circuit +
+ * one greedy BFS step toward u.tx/u.ty. Full TEST_TRAV / GUESS / travelmap
+ * / boulder-door delay named omitted in C-JS-MAP.
+ * Sets u.dx/u.dy when a step is found; returns true if path step ready.
+ */
+function findtravelpath_travel() {
+    const u = game.u;
+    const tx = u.tx | 0;
+    const ty = u.ty | 0;
+    if (!isok(tx, ty)) return false;
+
+    const ctx = game.context;
+    // Adjacent reachable → normal one-step move; clear travel destination
+    if (ctx?.travel1
+        && Math.abs(tx - u.ux) <= 1 && Math.abs(ty - u.uy) <= 1
+        && (tx !== u.ux || ty !== u.uy)
+        && !blocksMove(tx, ty)) {
+        end_running();
+        u.dx = tx - u.ux;
+        u.dy = ty - u.uy;
+        nomul(0);
+        if (!game.iflags) game.iflags = {};
+        if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+        game.iflags.travelcc.x = 0;
+        game.iflags.travelcc.y = 0;
+        return true;
+    }
+
+    if (tx === u.ux && ty === u.uy) return false;
+
+    // Greedy BFS from hero toward target (seen/walkable cells only).
+    // C expands from target; step selection dx/dy from neighbor of hero.
+    const visited = new Set();
+    const q = [{ x: u.ux, y: u.uy, px: 0, py: 0, first: true }];
+    visited.add(`${u.ux},${u.uy}`);
+    const dirs = [
+        [-1, 0], [1, 0], [0, -1], [0, 1],
+        [-1, -1], [-1, 1], [1, -1], [1, 1],
+    ];
+    while (q.length) {
+        const cur = q.shift();
+        for (const [dx, dy] of dirs) {
+            const nx = cur.x + dx;
+            const ny = cur.y + dy;
+            if (!isok(nx, ny) || blocksMove(nx, ny)) continue;
+            const key = `${nx},${ny}`;
+            if (visited.has(key)) continue;
+            visited.add(key);
+            const stepDx = cur.first ? dx : cur.px;
+            const stepDy = cur.first ? dy : cur.py;
+            if (nx === tx && ny === ty) {
+                u.dx = stepDx;
+                u.dy = stepDy;
+                return true;
+            }
+            const loc = game.level?.at(nx, ny);
+            // Prefer explored/seen like C seenv|couldsee — seenv gate soft
+            if (loc && (loc.seenv || loc.typ === ROOM || loc.typ === CORR
+                || loc.typ === DOOR || IS_FURNITURE(loc.typ))) {
+                q.push({
+                    x: nx, y: ny,
+                    px: stepDx, py: stepDy,
+                    first: false,
+                });
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: cmd.c dotravel_target — travel to iflags.travelcc / u.tx,u.ty.
+ * @returns {Promise<number>} ECMD_*
+ */
+async function dotravel_target() {
+    if (!game.iflags) game.iflags = {};
+    if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+    const tcc = game.iflags.travelcc;
+    if (!isok(tcc.x, tcc.y)) {
+        await pline('No travel destination set.');
+        return ECMD_OK;
+    }
+    const u = game.u;
+    if (u.ux === tcc.x && u.uy === tcc.y) {
+        await pline('You are already here.');
+        tcc.x = 0;
+        tcc.y = 0;
+        return ECMD_OK;
+    }
+
+    if (game.iflags) game.iflags.getloc_travelmode = false;
+    if (!game.context) game.context = {};
+    game.context.travel = 1;
+    game.context.travel1 = 1;
+    game.context.run = 8;
+    game.context.nopick = 1;
+    game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_RUSH;
+
+    if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
+    u.last_str_turn = 0;
+    game.context.mv = 1;
+
+    u.tx = tcc.x;
+    u.ty = tcc.y;
+
+    if (findtravelpath_travel()) {
+        await domove(u.dx || 0, u.dy || 0);
+        if (game.context) {
+            game.context.travel1 = 0;
+            if (game.context.move !== 0) game.context.move = 1;
+        }
+    } else {
+        end_running();
+        game.context.move = 0;
+    }
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: cmd.c dotravel — '_' / #travel getpos then dotravel_target.
+ * Branch envelope: cancel, already-here, adjacent step, greedy BFS step.
+ * Menu getpos / full TEST_TRAV / GUESS / travelmap deferred.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dotravel() {
+    if (!game.iflags) game.iflags = {};
+    if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+    const cc = {
+        x: game.iflags.travelcc.x | 0,
+        y: game.iflags.travelcc.y | 0,
+    };
+    if (cc.x === 0 && cc.y === 0) {
+        cc.x = game.u.ux;
+        cc.y = game.u.uy;
+    }
+    game.iflags.getloc_travelmode = true;
+
+    // menu_requested getpos_menu path deferred — always free getpos
+    await pline('Where do you want to travel to?');
+    if ((await getpos(cc, true, 'the desired destination')) < 0) {
+        game.iflags.getloc_travelmode = false;
+        return ECMD_CANCEL;
+    }
+
+    game.iflags.travelcc.x = game.u.tx = cc.x;
+    game.iflags.travelcc.y = game.u.ty = cc.y;
+    return dotravel_target();
 }
 
 export async function continue_search() {
@@ -318,6 +483,11 @@ export async function rhack(key) {
         const tookTime = donull();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '>') {
+        // C ref: do.c dodown / cmd.c — go down staircase
+        const downRes = await dodown();
+        game.context.move = (downRes & 0x01) ? 1 : 0;
+        if (downRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 's') {
         // C ref: detect.c dosearch — takes a turn; count from digit prefix
         const n = game.context?.command_count || 0;
@@ -341,6 +511,16 @@ export async function rhack(key) {
         const tookTime = await dowield();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'Q') {
+        // C ref: wield.c dowieldquiver / doquiver_core("ready")
+        const tookTime = await dowieldquiver();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '_') {
+        // C ref: cmd.c dotravel — #travel / getpos destination
+        const travelRes = await dotravel();
+        game.context.move = (travelRes & ECMD_TIME) ? 1 : 0;
+        if (travelRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'W') {
         // C ref: do_wear.c dowear — wear armor
         const tookTime = await dowear();

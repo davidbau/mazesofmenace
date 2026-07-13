@@ -1,33 +1,62 @@
 // zap.js — Zap command / wish helpers (partial).
-// C ref: zap.c dozap, zappable, weffects, zapnodir, learnwand, makewish
+// C ref: zap.c dozap, zappable, weffects, zapnodir, learnwand, makewish,
+//        zapyourself
 //
 // Branch envelope: getobj wand + zappable + cursed backfire gate +
-// NODIR weffects → zapnodir WAN_SECRET_DOOR_DETECTION → findit.
+// NODIR weffects → zapnodir WAN_SECRET_DOOR_DETECTION → findit;
+// directional getdir ('.' = self) → zapyourself SPE_HEALING /
+// SPE_EXTRA_HEALING / WAN_SLEEP / SPE_SLEEP.
 // Named omissions: IMMEDIATE/RAY weffects (bhit/ubuzz/zap_dig);
-// zapyourself beyond SPE_HEALING/EXTRA_HEALING; backfire body; other
-// NODIR (light/create/wish/enlighten/stasis); wrest pline;
+// other zapyourself otyps; backfire body; other NODIR
+// (light/create/wish/enlighten/stasis); wrest pline;
 // check_capacity/nohands poly; check_unpaid; more_experienced;
-// update_inventory; Blind glow on cancel-dir.
+// update_inventory; Blind glow The(xname) article edge cases;
+// shieldeff/monstunseesu display.
 
 import { game } from './gstate.js';
-import { rn1, rn2, d } from './rng.js';
+import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin } from './getline.js';
 import { flush_screen, pline, You_feel } from './display.js';
 import { nhgetch } from './input.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, discover_object } from './invent.js';
-import { doname } from './objnam.js';
+import { doname, xname } from './objnam.js';
 import { A_WIS, A_STR, exercise } from './attrib.js';
 import { findit } from './detect.js';
+import { fall_asleep, losehp, maybe_half_phys } from './hack.js';
 import {
     WAND_CLASS, SPBOOK_CLASS, NODIR, objectNames,
 } from './objects.js';
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
+    NO_KILLER_PREFIX,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
+const WAN_SLEEP = objectNames.indexOf('WAN_SLEEP');
+const SPE_SLEEP = objectNames.indexOf('SPE_SLEEP');
+
+const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
+const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
+
+/** C ref: youprop.h Sleep_resistance */
+function Sleep_resistance() {
+    const u = game.u || {};
+    return !!(u.HSleep_resistance || u.ESleep_resistance);
+}
+
+function Blind() {
+    return !!(game.u?.Blind || game.u?.ublind);
+}
+
+/** C ref: objnam.c The — capitalize the(str) for glow cancel pline. */
+function The_name(str) {
+    if (!str) return str;
+    // Most wand xnames are "wand of …" → "The wand of …"
+    if (/^[A-Z]/.test(str)) return str;
+    return `The ${str}`;
+}
 
 /**
  * C ref: potion.c healup — add HP; optional sick/blind cure.
@@ -72,6 +101,38 @@ function zap_lets() {
     }
     lets.sort();
     return lets.join('');
+}
+
+/**
+ * C ref: cmd.c getdir for zap — '.' is self (dx=dy=dz=0, success).
+ * Esc/space/return cancel. lock.js getdir still treats '.' as cancel.
+ */
+async function getdir_zap(prompt) {
+    const msg = prompt || 'In what direction?';
+    game._pending_message = `${msg} `;
+    await flush_screen(1);
+    const disp = game.nhDisplay;
+    if (disp?.setCursor) disp.setCursor(game._pending_message.length, 0);
+    const key = await nhgetch();
+    const ch = String.fromCharCode(key);
+    game._pending_message = '';
+    if (!game.u) game.u = {};
+    if (ch === '.') {
+        game.u.dx = game.u.dy = game.u.dz = 0;
+        return true;
+    }
+    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        game.u.dx = game.u.dy = game.u.dz = 0;
+        return false;
+    }
+    if (!(ch in DIR_DX)) {
+        game.u.dx = game.u.dy = game.u.dz = 0;
+        return false;
+    }
+    game.u.dx = DIR_DX[ch];
+    game.u.dy = DIR_DY[ch];
+    game.u.dz = 0;
+    return true;
 }
 
 /**
@@ -171,15 +232,20 @@ async function zapnodir(obj) {
 
 /**
  * C ref: zap.c zapyourself — self-directed wand/spell effects.
- * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING only; other otyps
- * named in C-JS-MAP.
- * @returns {number} damage (0 for healing)
+ * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / WAN_SLEEP /
+ * SPE_SLEEP; other otyps named in C-JS-MAP.
+ * @param {boolean} ordinary wand zap (TRUE) vs broken/spell (FALSE)
+ * @returns {number} damage (0 for healing/sleep)
  */
-export async function zapyourself(obj, _ordinary) {
+export async function zapyourself(obj, ordinary) {
     if (!obj) return 0;
+    let learn_it = false;
+    let damage = 0;
+
     switch (obj.otyp) {
     case SPE_HEALING:
     case SPE_EXTRA_HEALING:
+        learn_it = true;
         healup(
             d(6, obj.otyp === SPE_EXTRA_HEALING ? 8 : 4),
             0,
@@ -187,11 +253,29 @@ export async function zapyourself(obj, _ordinary) {
             !!(obj.blessed || obj.otyp === SPE_EXTRA_HEALING),
         );
         await You_feel(`${obj.otyp === SPE_EXTRA_HEALING ? 'much ' : ''}better.`);
-        return 0;
+        break;
+
+    case WAN_SLEEP:
+    case SPE_SLEEP:
+        learn_it = true;
+        if (Sleep_resistance()) {
+            // shieldeff / monstseesu deferred (no RNG)
+            await pline("You don't feel sleepy!");
+        } else {
+            if (ordinary) await pline('The sleep ray hits you!');
+            else await pline('You fall asleep!');
+            // monstunseesu deferred
+            fall_asleep(-rnd(50), true);
+        }
+        break;
+
     default:
         // Other zapyourself cases deferred
-        return 0;
+        break;
     }
+
+    if (learn_it) learnwand(obj);
+    return damage;
 }
 
 /**
@@ -229,10 +313,18 @@ export async function dozap() {
         // backfire body deferred — still exercise like C then stop
         exercise(A_STR, false);
         return 1;
-    } else if (need_dir) {
-        // getdir / zapyourself / directional weffects deferred
-        // Still call weffects only for NODIR; directional stub keeps turn
-        await pline(nothing_happens);
+    } else if (need_dir && !(await getdir_zap(null))) {
+        // cancel direction — still paid a charge via zappable
+        if (!Blind()) {
+            await pline(`${The_name(xname(obj))} glows and fades.`);
+        }
+    } else if (need_dir && !(game.u.dx || game.u.dy || game.u.dz)) {
+        const damage = await zapyourself(obj, true);
+        if (damage) {
+            // killer_xname deferred — xname sufficient for early kits
+            const buf = `zapped ${game.u?.female ? 'her' : 'him'}self with ${xname(obj)}`;
+            losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
+        }
     } else {
         game.current_wand = obj;
         await weffects(obj);

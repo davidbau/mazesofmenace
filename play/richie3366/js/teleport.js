@@ -158,3 +158,15 @@ export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
     return enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY | entflags)
         || enexto_core(cc, xx, yy, mdat, entflags);
 }
+
+/**
+ * C ref: teleport.c rloc_to — place monster at (x,y); RLOC_NOMSG path.
+ * Omits worm/shk/vision/message branches.
+ */
+export function rloc_to(mtmp, x, y) {
+    if (!mtmp) return;
+    mtmp.mx = x;
+    mtmp.my = y;
+    mtmp.mux = game.u?.ux ?? x;
+    mtmp.muy = game.u?.uy ?? y;
+}

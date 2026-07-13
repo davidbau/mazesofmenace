@@ -54,6 +54,8 @@ import {
     P_DART, P_SHURIKEN, P_BOOMERANG, P_UNICORN_HORN,
     P_BARE_HANDED_COMBAT,
     W_ARMOR,
+    NEW_MOON,
+    FULL_MOON,
 } from './const.js';
 import { align_str, align_gname, u_gname } from './roles.js';
 import {
@@ -727,7 +729,10 @@ export async function doattributes() {
         pwLine = `${pw} out of ${pwmax} ${Power}`;
     }
 
-    const page1 = [
+    // C ref: insight.c background_enlightenment — continuous stream; tty
+    // pages at 23 content rows then "(k of n)". Moon/friday13 sit between
+    // "entered" and experience. night()/midnight deferred.
+    const lines = [
         ` ${name} the ${role}'s attributes:`,
         '',
         ' Background:',
@@ -737,6 +742,16 @@ export async function doattributes() {
         `  You are ${hand}-handed.`,
         '  You are in the Dungeons of Doom, on level 1.',
         `  You entered the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago.`,
+    ];
+    const moon = game.flags?.moonphase;
+    if (moon === FULL_MOON || moon === NEW_MOON) {
+        const phase = moon === FULL_MOON ? 'full' : 'new';
+        lines.push(`  There is a ${phase} moon in effect.`);
+    }
+    if (game.flags?.friday13) {
+        lines.push(' Bad things can happen on Friday the 13th.');
+    }
+    lines.push(
         `  You have ${uexp} experience point${uexp === 1 ? '' : 's'}.`,
         '',
         ' Basics:',
@@ -747,42 +762,33 @@ export async function doattributes() {
         autopickup_enlightenment_line(),
         '',
         ' Characteristics:',
-        // C: bottom-line order STR DEX CON INT (WIS CHA on page 2)
         one_characteristic_line(A_STR),
         one_characteristic_line(A_DEX),
         one_characteristic_line(A_CON),
         one_characteristic_line(A_INT),
-        ' (1 of 2)',
-    ];
-
-    paint_overlay(page1.map(t => ({ text: t, attr: 0 })), { cursor: [9, 23] });
-    await flush_screen(1);
-    await nhgetch(); // space → page 2
-
-    const page2 = [
         one_characteristic_line(A_WIS),
         one_characteristic_line(A_CHA),
         '',
         ' Status:',
         "  You aren't hungry.",
         '  You are unencumbered.',
-    ];
+    );
     // C ref: insight.c weapon_insight — wielded weapon / bare hands + skill line
     const uwep = u.uwep || game.u?.uwep;
     if (!uwep) {
-        page2.push('  You are bare handed.');
-        page2.push('  You are unskilled in bare handed combat.');
+        lines.push('  You are bare handed.');
+        lines.push('  You are unskilled in bare handed combat.');
     } else {
         const wname = pretty_weapon_descr(uwep);
-        page2.push(`  You are wielding ${wname}.`);
+        lines.push(`  You are wielding ${wname}.`);
         // C: P_BASIC → "have basic skill with <skill_name>"; enhance suffix deferred
         const wtype = weapon_type(uwep);
-        page2.push(`  You have basic skill with ${skill_name(wtype)}.`);
+        lines.push(`  You have basic skill with ${skill_name(wtype)}.`);
     }
-    page2.push('');
+    lines.push('');
     // C: explore mode adds Attributes + explore/bones notes before misc.
     if (game.flags?.explore || game.flags?.discover) {
-        page2.push(
+        lines.push(
             ' Attributes:',
             '  You are nominally aligned.',
         );
@@ -792,30 +798,36 @@ export async function doattributes() {
         if (armpro > 0) {
             const mc_types = ['', 'warded', 'guarded', 'protected'];
             const idx = Math.min(armpro, mc_types.length - 1);
-            page2.push(`  You are ${mc_types[idx]}.`);
+            lines.push(`  You are ${mc_types[idx]}.`);
         }
-        page2.push(
+        lines.push(
             "  You can't safely pray.",
             '',
             ' Miscellaneous:',
             '  You are running in explore mode.',
             "  You haven't encountered any bones levels.",
             '  Total elapsed playing time is none.',
-            ' (2 of 2)',
         );
     } else {
-        page2.push(
+        lines.push(
             ' Miscellaneous:',
             '  Total elapsed playing time is none.',
-            ' (2 of 2)',
         );
     }
-    const endRow = page2.length - 1;
-    paint_overlay(page2.map(t => ({ text: t, attr: 0 })), {
-        cursor: [9, endRow],
-    });
-    await flush_screen(1);
-    await nhgetch(); // space → dismiss
+
+    // C tty enlightenment: 23 content rows + " (k of n)" footer per page.
+    const PAGE = 23;
+    const pageCount = Math.max(1, Math.ceil(lines.length / PAGE));
+    for (let p = 0; p < pageCount; p++) {
+        const chunk = lines.slice(p * PAGE, (p + 1) * PAGE);
+        chunk.push(` (${p + 1} of ${pageCount})`);
+        const endRow = chunk.length - 1;
+        paint_overlay(chunk.map(t => ({ text: t, attr: 0 })), {
+            cursor: [9, endRow],
+        });
+        await flush_screen(1);
+        await nhgetch();
+    }
     clear_overlay();
     await docrt();
     await flush_screen(1);

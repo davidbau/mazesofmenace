@@ -11,13 +11,15 @@ import {
 import { t_at } from './trap.js';
 import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
-    monsterNames, NON_PM, LOW_PM,
+    monsterNames, NON_PM, LOW_PM, mon_knows_traps,
 } from './monsters.js';
+import { m_harmless_trap } from './trap.js';
 import { little_to_big, big_to_little } from './mondata.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { G_GENOD } from './const.js';
+import { enexto, rloc_to } from './teleport.js';
 
 export const NORMAL_SPEED = 12;
 
@@ -183,6 +185,23 @@ export function m_at(x, y) {
     return null;
 }
 
+/**
+ * C ref: mon.c mnexto — place next to hero via enexto + rloc_to.
+ * Omits mon_telecontrol / overcrowding limbo.
+ */
+export function mnexto(mtmp, _rlocflags = 0) {
+    if (!mtmp) return;
+    const u = game.u;
+    if (mtmp === u?.usteed) {
+        mtmp.mx = u.ux;
+        mtmp.my = u.uy;
+        return;
+    }
+    const mm = { x: 0, y: 0 };
+    if (!enexto(mm, u.ux, u.uy, mtmp.data) || !isok_xy(mm.x, mm.y)) return;
+    rloc_to(mtmp, mm.x, mm.y);
+}
+
 // C ref: mon.c mon_allowflags() — hostile/peaceful subset for seed8000
 export function mon_allowflags(mtmp) {
     let allowflags = 0;
@@ -272,13 +291,14 @@ export function mfndpos(mon, data, flag) {
                 }
             }
 
-            // C: harmful traps → ALLOW_TRAPS (pets check tseen in dog_move)
+            // C: harmful traps → ALLOW_TRAPS; hostiles skip known types
+            // (mon.c mfndpos). Pets get ALLOW_TRAPS and check in dogmove.
             const ttmp = t_at(nx, ny);
             if (ttmp) {
-                // m_harmless_trap stub: dart/arrow/etc. are harmful
-                if (!(flag & ALLOW_TRAPS)) {
-                    // mon_knows_traps skip omitted — non-pets just omit the bit
-                } else {
+                if (!m_harmless_trap(mon, ttmp)) {
+                    if (!(flag & ALLOW_TRAPS)) {
+                        if (mon_knows_traps(mon, ttmp.ttyp)) continue;
+                    }
                     info |= ALLOW_TRAPS;
                 }
             }

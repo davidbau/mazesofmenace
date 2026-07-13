@@ -708,6 +708,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
         m_id: 0,
         mavenge: 0,
         mstrategy: 0,
+        mtrapseen: 0,
         mtrack: [
             { x: 0, y: 0 },
             { x: 0, y: 0 },

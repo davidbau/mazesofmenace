@@ -1,19 +1,20 @@
 // engrave.js — Engrave command / floor inscriptions (partial).
 // C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at,
-//        read_engr_at, wipeout_text, wipe_engr_at.
+//        read_engr_at, wipeout_text, wipe_engr_at, random_engraving.
 //
 // Branch envelope: u_can_engrave floor gate + getobj write-with (hands `-`
 // SUGGEST) + DUST fingertip You/getlin + literate bump + DUST/blood/
 // Blind/Confusion/Stunned/Hallu mix-up + set_occupation one-tick finish
 // via make_engr_at (Elbereth → exercise(A_WIS,TRUE)); look_here/`:` via
 // read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); mklev niche age
-// via wipe_engr_at → wipeout_text (seed==0 RNG path).
+// via wipe_engr_at → wipeout_text (seed==0 RNG path); fill graffiti via
+// random_engraving → getrumor or get_rnd_text(ENGRAVEFILE).
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
 // grave/altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
 // dulling occupation; del_engr/rloc_engr; u_wipe_engr body; livelog;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
-// (non-zero) path; maybe_smudge_engr.
+// (non-zero) path; maybe_smudge_engr; epitaph get_rnd_text.
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
@@ -23,6 +24,8 @@ import { flush_screen, flush_topl_more, pline, newsym } from './display.js';
 import { getlin } from './getline.js';
 import { HANDS_OBJ } from './readobjnam.js';
 import { A_WIS, exercise } from './attrib.js';
+import { getrumor, get_rnd_text } from './rumors.js';
+import { ENGRAVE_BUF, MD_PAD_ENGRAVE } from './generated/engrave_data.js';
 import {
     WEAPON_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS, TOOL_CLASS,
     objectNames,
@@ -105,6 +108,20 @@ const RUBOUTS = {
     ':': '.', ';': ',:', ',': '.', '=': '-', '+': '-|', '*': '+', '@': '0',
     '0': 'C(', '1': '|', '6': 'o', '7': '/', '8': '3o',
 };
+
+/**
+ * C ref: engrave.c random_engraving — rumor or ENGRAVEFILE line, then wipe 1/4.
+ * Branch envelope: !rn2(4) short-circuits past getrumor into get_rnd_text;
+ * empty getrumor also falls through. Epitaphfile path is separate (omitted).
+ */
+export function random_engraving() {
+    let pristine = '';
+    if (!rn2(4) || !(pristine = getrumor(0, true)) || !pristine) {
+        pristine = get_rnd_text(ENGRAVE_BUF, rn2, MD_PAD_ENGRAVE) || '';
+    }
+    const text = wipeout_text(pristine, Math.trunc(pristine.length / 4), 0);
+    return { text, pristine };
+}
 
 /**
  * C ref: engrave.c wipeout_text — degrade characters in-place (returns string).

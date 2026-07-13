@@ -44,6 +44,7 @@ import {
     NUMMONS, mons, G_UNIQ, M2_PNAME, monsterNames,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
+import { align_str } from './roles.js';
 
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 
@@ -542,4 +543,50 @@ export async function dogenocided() {
     await list_genocided(defq, false);
     if (game.iflags) game.iflags.menu_requested = false;
     return ECMD_OK;
+}
+
+/**
+ * C ref: insight.c piousness — alignment fervor adverb for ustatusline.
+ * showneg=false path used by stethoscope/self-probe.
+ */
+export function piousness(showneg, suffix) {
+    const record = game.u?.ualign?.record | 0;
+    let pio;
+    if (record >= 20) pio = 'piously';
+    else if (record > 13) pio = 'devoutly';
+    else if (record > 8) pio = 'fervently';
+    else if (record > 3) pio = 'stridently';
+    else if (record === 3) pio = '';
+    else if (record > 0) pio = 'haltingly';
+    else if (record === 0) pio = 'nominally';
+    else if (!showneg) pio = 'insufficiently';
+    else if (record >= -3) pio = 'strayed';
+    else if (record >= -8) pio = 'sinned';
+    else pio = 'transgressed';
+
+    let buf = pio;
+    if (suffix && (!showneg || record >= 0)) {
+        if (record !== 3) buf += ' ';
+        buf += suffix;
+    }
+    return buf;
+}
+
+/**
+ * C ref: insight.c ustatusline — one-line stethoscope/self-probe status.
+ * Status ailments (Sick/Stoned/…) deferred; info suffix empty for now.
+ */
+export async function ustatusline() {
+    const u = game.u || {};
+    const name = game.plname || 'Hero';
+    const atype = u.ualign?.type ?? 0;
+    const info = '';
+    const level = u.ulevel ?? 1;
+    const hp = u.uhp ?? 0;
+    const hpmax = u.uhpmax ?? hp;
+    const ac = u.uac ?? 10;
+    await pline(
+        `Status of ${name} (${piousness(false, align_str(atype))}):  `
+        + `Level ${level}  HP ${hp}(${hpmax})  AC ${ac}${info}.`,
+    );
 }

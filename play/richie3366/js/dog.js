@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { makemon } from './makemon.js';
 import { mons, NON_PM } from './monsters.js';
-import { MM_EDOG, NO_MINVENT } from './const.js';
+import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
 import {
     monsterNames,
     PM_CAVE_DWELLER,
@@ -15,6 +15,8 @@ import {
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
 import { christen_monst } from './do_name.js';
+import { monnear, m_at } from './mon.js';
+import { enexto, rloc_to } from './teleport.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -107,4 +109,88 @@ export function makedog() {
 
     initedog(mtmp, true);
     return mtmp;
+}
+
+/** C ref: mondata.c levl_follower — pets / wiz / stalkers follow across levels. */
+export function levl_follower(mtmp) {
+    if (mtmp === game.u?.usteed) return true;
+    if (mtmp.iswiz && mtmp.minvent) {
+        // mon_has_amulet deferred — wiz with amulet won't follow
+    }
+    if (mtmp.mtame || mtmp.iswiz) return true;
+    // M2_STALK / fleeing / amulet deferred
+    return false;
+}
+
+/**
+ * C ref: dog.c keepdogs — move nearby followers onto mydogs before level leave.
+ * pets_only path and migrate_to_level / leash / wizard chase deferred.
+ */
+export function keepdogs(pets_only = false) {
+    const u = game.u;
+    const list = game.fmon || [];
+    const stay = [];
+    if (!game.mydogs) game.mydogs = [];
+
+    for (const mtmp of list) {
+        if (mtmp.mhp != null && mtmp.mhp <= 0) {
+            stay.push(mtmp);
+            continue;
+        }
+        if (pets_only && !mtmp.mtame) {
+            stay.push(mtmp);
+            continue;
+        }
+        const near = monnear(mtmp, u.ux, u.uy);
+        const follow = levl_follower(mtmp);
+        const helpless = !mtmp.mcanmove || mtmp.msleeping || (mtmp.mfrozen | 0) > 0;
+        const waiting = !!(mtmp.mstrategy & STRAT_WAITFORU);
+        if (near && follow && (!helpless || mtmp === u.usteed) && !waiting) {
+            if (mtmp.meating || mtmp.mtrapped) {
+                stay.push(mtmp);
+                continue;
+            }
+            // Onto mydogs; mx=0 marks migrating
+            game.mydogs.push(mtmp);
+            mtmp.mx = 0;
+            mtmp.my = 0;
+            mtmp.mlstmv = game.moves | 0;
+        } else {
+            stay.push(mtmp);
+        }
+    }
+    game.fmon = stay;
+}
+
+/**
+ * C ref: dog.c mon_arrive(With_you) — place accompanying pet near hero.
+ */
+function mon_arrive_with_you(mtmp) {
+    const u = game.u;
+    if (!game.fmon) game.fmon = [];
+    game.fmon.unshift(mtmp);
+    mtmp.mux = u.ux;
+    mtmp.muy = u.uy;
+    if (mtmp === u.usteed) return;
+
+    const onSpot = m_at(u.ux, u.uy);
+    if (!onSpot && !rn2(mtmp.mtame ? 10 : mtmp.mpeaceful ? 5 : 2)) {
+        rloc_to(mtmp, u.ux, u.uy);
+    } else {
+        // C: mnexto — enexto near hero then rloc_to
+        const mm = { x: 0, y: 0 };
+        if (enexto(mm, u.ux, u.uy, mtmp.data)) rloc_to(mtmp, mm.x, mm.y);
+        else rloc_to(mtmp, u.ux, u.uy);
+    }
+}
+
+/**
+ * C ref: dog.c losedogs — place mydogs (With_you); migrating_mons deferred.
+ */
+export function losedogs() {
+    const dogs = game.mydogs || [];
+    game.mydogs = [];
+    for (const mtmp of dogs) {
+        mon_arrive_with_you(mtmp);
+    }
 }

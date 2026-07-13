@@ -1,23 +1,34 @@
 // trap.js — Trap creation + monster-step subset.
 // C ref: trap.c — maketrap/choose_trapnote/hole_destination,
-// t_at, t_missile, thitm, mintrap, trapeffect_dart_trap (monster).
+// t_at, t_missile, thitm, mintrap, trapeffect_dart_trap / trapeffect_pit
+// (monster), make_corpse ordinary path via thitm death.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { mksobj, place_object, weight, stackobj } from './mkobj.js';
+import {
+    mksobj, place_object, weight, stackobj, mkcorpstat, relobj_on_death,
+} from './mkobj.js';
 import { find_mac } from './mhitm.js';
 import { newsym, pline } from './display.js';
 import { doname } from './objnam.js';
+import { Monnam } from './do_name.js';
+import {
+    G_NOCORPSE, G_FREQ, verysmall, grounded, passes_walls, is_neuter,
+    mon_knows_traps, mon_learns_traps,
+} from './monsters.js';
 import {
     DART_TRAP, FORCETRAP, FORCEBUNGLE,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
-    is_hole, In_quest,
+    PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, is_hole, In_quest,
+    CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NONE,
     ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
+    LOW_PM,
 } from './const.js';
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
-import { monsterNames } from './monsters.js';
 
 const DART = objectNames.indexOf('DART');
+const CORPSE = objectNames.indexOf('CORPSE');
+const AD_PHYS = 0;
 
 // C ref: trap.h enum trap_result
 export const Trap_Effect_Finished = 0;
@@ -27,6 +38,17 @@ export const Trap_Caught_Mon = 3;
 export const Trap_Moved_Mon = 4;
 
 export const NO_TRAP_FLAGS = 0;
+
+/**
+ * C ref: trap.c m_harmless_trap — whether mfndpos may ignore this trap.
+ * Envelope: SQKY/PIT/DART/… harmful (false); STATUE/MAGIC usually true.
+ * Named omission: flyer/Sokoban/bear-size/resist per-type immunities.
+ */
+export function m_harmless_trap(_mtmp, ttmp) {
+    if (!ttmp) return true;
+    if (ttmp.ttyp === STATUE_TRAP || ttmp.ttyp === MAGIC_TRAP) return true;
+    return false;
+}
 
 // C ref: dungeon.c dunlev / dunlevs_in_dungeon / In_hell
 function dunlev(lev) {
@@ -160,22 +182,100 @@ function t_missile(otyp, trap) {
     return otmp;
 }
 
-// C ref: invent.c stackobj — imported from mkobj.js
-
-// C ref: monnam.c Monnam — trap miss/hit messages use "The <type>" for pets
-function Monnam(mon) {
-    const raw = mon?.data?.name || monsterNames[mon?.mnum] || 'monster';
-    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-    return `The ${plain}`;
-}
-
 // C: cansee stub — lit/visible early-session cells treated as seen
 function cansee(_x, _y) {
     return true;
 }
 
-// C ref: trap.c thitm() — monster hit by trap missile
-async function thitm(tlev, mon, obj, d_override, _nocorpse) {
+function canseemon(mtmp) {
+    return !!(mtmp && cansee(mtmp.mx, mtmp.my));
+}
+
+// C ref: mon.c corpse_chance — ordinary non-unique path
+function corpse_chance(mon) {
+    const mdat = mon.data;
+    if (!mdat) return false;
+    const tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
+        + (verysmall(mdat) ? 1 : 0);
+    return !rn2(tmp);
+}
+
+// C ref: mon.c make_corpse default_1 — ordinary corpse via mkcorpstat
+function make_corpse(mtmp) {
+    const mdat = mtmp.data;
+    const mndx = mtmp.mnum ?? mdat?.mndx;
+    const x = mtmp.mx, y = mtmp.my;
+    if (mndx == null || mndx < 0) return null;
+    if ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE) return null;
+
+    let corpstatflags = CORPSTAT_INIT | CORPSTAT_NONE;
+    if (mtmp.female) corpstatflags |= CORPSTAT_FEMALE;
+    else if (!is_neuter(mdat)) corpstatflags |= CORPSTAT_MALE;
+
+    // C KEEPTRAITS: pets/shk/unique keep mtmp for traits — save_mtraits deferred
+    const keep = !!(mtmp.mtame || mtmp.isshk);
+    const obj = mkcorpstat(CORPSE, keep ? mtmp : null, mdat, x, y, corpstatflags);
+    if (obj) {
+        stackobj(obj);
+        newsym(x, y);
+    }
+    return obj;
+}
+
+// C ref: mon.c mondead → m_detach(due_to_death) → relobj
+function mondead(mtmp) {
+    mtmp.mhp = 0;
+    const mx = mtmp.mx, my = mtmp.my;
+    const mndx = mtmp.mnum ?? mtmp.data?.mndx;
+    if (mndx != null && mndx >= LOW_PM) {
+        if (!game.mvitals) game.mvitals = [];
+        const slot = game.mvitals[mndx] || (game.mvitals[mndx] = {
+            mvflags: 0, born: 0, died: 0,
+        });
+        if ((slot.died | 0) < 255) slot.died = (slot.died | 0) + 1;
+    }
+    if (game.fmon) {
+        const i = game.fmon.indexOf(mtmp);
+        if (i >= 0) game.fmon.splice(i, 1);
+    }
+    relobj_on_death(mtmp);
+    if (mx > 0) newsym(mx, my);
+}
+
+// C ref: mon.c mondied → mondead + maybe make_corpse
+function mondied(mdef) {
+    mondead(mdef);
+    if ((mdef.mhp | 0) > 0) return; /* lifesaved */
+    if (corpse_chance(mdef)) make_corpse(mdef);
+}
+
+// C ref: mon.c monkilled — trap fltxt path
+async function monkilled(mdef, fltxt, _how) {
+    const mptr = mdef.data;
+    const txt = fltxt || '';
+    if (cansee(mdef.mx, mdef.my)) {
+        const verb = 'killed'; /* nonliving → destroyed deferred */
+        void mptr;
+        await pline(`${Monnam(mdef)} is ${verb}${txt ? ' by the ' : ''}${txt}!`);
+    } else if (mdef.mtame) {
+        game.iflags = game.iflags || {};
+        game.iflags.sad_feeling = true;
+    }
+    mondied(mdef);
+}
+
+// C ref: trap.c mselftouch — petrify-wield only; no-op for ordinary pets
+function mselftouch(_mon, _arg, _byplayer) {
+    /* MON_WEP CORPSE + touch_petrifies deferred — no RNG when unbound */
+}
+
+// C ref: trap.c wearing_iron_shoes
+function wearing_iron_shoes(_mtmp) {
+    return false; /* which_armor W_ARMF deferred */
+}
+
+// C ref: trap.c thitm() — monster hit by trap missile / pit fall damage
+async function thitm(tlev, mon, obj, d_override, nocorpse) {
     let strike;
     if (d_override) {
         strike = 1;
@@ -185,14 +285,13 @@ async function thitm(tlev, mon, obj, d_override, _nocorpse) {
         strike = (find_mac(mon) + tlev <= rnd(20)) ? 1 : 0;
     }
 
+    let trapkilled = false;
     if (!strike) {
         // C: pline before place_object — triggers --More-- after prior cursemsg
         if (obj && cansee(mon.mx, mon.my)) {
             await pline(`${Monnam(mon)} is almost hit by ${doname(obj)}!`);
         }
     } else {
-        // Hit path: apply damage; miss is the verified early-session path.
-        // Full dmgval/monkilled deferred.
         if (obj && cansee(mon.mx, mon.my)) {
             await pline(`${Monnam(mon)} is hit by ${doname(obj)}!`);
         }
@@ -205,13 +304,17 @@ async function thitm(tlev, mon, obj, d_override, _nocorpse) {
         }
         mon.mhp = (mon.mhp || 0) - dam;
         if (mon.mhp <= 0) {
-            mon.mhp = 0;
-            // monkilled omitted — mark dead for caller
+            const xx = mon.mx, yy = mon.my;
+            await monkilled(mon, '', nocorpse ? -AD_PHYS /* -AD_RBRE */ : AD_PHYS);
+            if ((mon.mhp | 0) <= 0) {
+                newsym(xx, yy);
+                trapkilled = true;
+            }
             if (obj) { /* dealloc_obj stub */ }
-            return true;
+            // place_object only when !strike || d_override — see below
+        } else if (obj) {
+            /* dealloc_obj stub — missile used up on hit */
         }
-        if (obj) { /* dealloc_obj stub — missile used up on hit */ }
-        return false;
     }
 
     // C: place missile on miss (or d_override path)
@@ -219,7 +322,7 @@ async function thitm(tlev, mon, obj, d_override, _nocorpse) {
         place_object(obj, mon.mx, mon.my);
         stackobj(obj);
     }
-    return false;
+    return trapkilled;
 }
 
 // C ref: trap.c seetrap()
@@ -228,6 +331,54 @@ export function seetrap(trap) {
         trap.tseen = true;
         newsym(trap.tx, trap.ty);
     }
+}
+
+/**
+ * C ref: trap.c trapeffect_pit — monster branch (hero dotrap path deferred).
+ * Envelope: grounded pets/monsters on PIT/SPIKED_PIT; Sokoban drag omitted;
+ * flyer avoid; iron shoes clear spikes; thitm(rnd(6|10)) fall damage.
+ */
+async function trapeffect_pit(mtmp, trap, trflags) {
+    const ttype = trap.ttyp;
+    let relevant_spikes = ttype === SPIKED_PIT;
+    const a_your = ['a', 'your'];
+
+    // Hero youmonst branch (dotrap) named omission — mintrap is monster-only
+
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    let trapkilled = false;
+    const forcetrap = (trflags & FORCETRAP) !== 0;
+    const Sokoban = !!(game.level?.flags?.sokoban || game.Sokoban);
+    const inescapable = forcetrap || (Sokoban && !trap.madeby_u);
+    const mptr = mtmp.data;
+    let fallverb = 'falls';
+
+    if (!grounded(mptr) || (mtmp.wormno && (mtmp.wormno | 0) > 5)) {
+        if (forcetrap && !Sokoban) {
+            if (in_sight) {
+                seetrap(trap);
+                await pline(`${Monnam(mtmp)} doesn't fall into the pit.`);
+            }
+            return Trap_Effect_Finished;
+        }
+        if (!inescapable) return Trap_Effect_Finished;
+        fallverb = 'is dragged';
+    }
+    if (!passes_walls(mptr)) mtmp.mtrapped = 1;
+    if (in_sight) {
+        await pline(
+            `${Monnam(mtmp)} ${fallverb} into ${a_your[trap.madeby_u ? 1 : 0]} pit!`,
+        );
+        seetrap(trap);
+    }
+    mselftouch(mtmp, 'Falling, ', false);
+    if (wearing_iron_shoes(mtmp)) relevant_spikes = false;
+    if ((mtmp.mhp | 0) <= 0
+        || await thitm(0, mtmp, null, rnd(relevant_spikes ? 10 : 6), false)) {
+        trapkilled = true;
+    }
+    return trapkilled ? Trap_Killed_Mon
+        : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
 // C ref: trap.c trapeffect_dart_trap — monster branch only
@@ -253,21 +404,28 @@ async function trapeffect_dart_trap(mtmp, trap) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c trapeffect_selector — dart only; other types no-op
-async function trapeffect_selector(mtmp, trap, _trflags) {
+// C ref: trap.c trapeffect_selector — dart + pit + sqky; other types no-op
+async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
         return trapeffect_dart_trap(mtmp, trap);
+    case PIT:
+    case SPIKED_PIT:
+        return trapeffect_pit(mtmp, trap, trflags);
+    case SQKY_BOARD:
+        // C: trapeffect_squeaky_board — wake_nearto / You_hear deferred
+        // (no RNG). Learning already done in mintrap via mon_learns_traps.
+        return Trap_Effect_Finished;
     default:
-        // Named omission: arrow/bear/pit/… monster trap effects
+        // Named omission: arrow/bear/hole/… trap effects
         return Trap_Effect_Finished;
     }
 }
 
 /**
  * C ref: trap.c mintrap() — monster steps on a trap.
- * Early-session envelope: unseen dart trap on a pet (no already_seen skip,
- * no madeby_u, not flying). Other trap types and escape paths deferred.
+ * Early-session envelope: dart / pit / sqky learn+effect; already_seen
+ * rn2(4) skip when mon_knows_traps. Other types and escape paths partial.
  */
 export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
     const trap = t_at(mtmp.mx, mtmp.my);
@@ -276,23 +434,27 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
         return Trap_Effect_Finished;
     }
     if (mtmp.mtrapped) {
-        // Already trapped escape path omitted
+        // Already trapped escape path: C burns rn2(40) / easy_escape;
+        // omit body — stay caught (named omission).
         return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
 
     const forcetrap = (mintrapflags & FORCETRAP) !== 0;
     const forcebungle = (mintrapflags & FORCEBUNGLE) !== 0;
-    // mon_knows_traps stub: pets start without trap knowledge
-    const already_seen = false;
+    const tt = trap.ttyp;
+    // C also treats HOLE && !mindless as already_seen — mindless helper deferred
+    const already_seen = mon_knows_traps(mtmp, tt);
 
     if (!forcetrap) {
-        // floor_trigger + check_in_air omitted (pets on floor)
+        // floor_trigger + check_in_air omitted (mons on floor)
         if (already_seen && rn2(4) && !forcebungle) {
             return Trap_Effect_Finished;
         }
     }
 
-    // mon_learns_traps / mons_see_trap / madeby_u rnl omitted (no RNG here)
+    // C: mon_learns_traps then mons_see_trap then trapeffect_selector
+    mon_learns_traps(mtmp, tt);
+    // mons_see_trap / madeby_u rnl omitted (no RNG on ordinary commons path)
     return await trapeffect_selector(mtmp, trap, mintrapflags);
 }
 

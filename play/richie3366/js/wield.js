@@ -1,10 +1,12 @@
 // wield.js — Wield / weapon slot (partial).
-// C ref: wield.c — setuwep, ready_weapon, dowield, welded.
+// C ref: wield.c — setuwep, ready_weapon, dowield, doquiver_core, welded.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
 import { xprname } from './objnam.js';
+import { yn_function } from './getline.js';
+import { hands_obj } from './weapon.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, objectNames,
 } from './objects.js';
@@ -14,6 +16,10 @@ import {
 } from './const.js';
 import { retouch_object } from './artifact.js';
 
+/** C invent getobj callback ranks (subset). */
+const GETOBJ_SUGGEST = 1;
+const GETOBJ_DOWNPLAY = 2;
+const GETOBJ_EXCLUDE = 3;
 /** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
 function is_weptool(obj) {
     if (!obj || obj.oclass !== TOOL_CLASS) return false;
@@ -141,6 +147,30 @@ export function setuswapwep(obj) {
     }
 }
 
+/**
+ * C ref: wield.c setuqwep — W_QUIVER slot.
+ */
+export function setuqwep(obj) {
+    const u = game.u || (game.u = {});
+    const old = u.uquiver || null;
+    if (obj === old) return;
+
+    if (old) old.owornmask = (old.owornmask || 0) & ~W_QUIVER;
+    if (obj) {
+        if (u.uwep === obj) {
+            u.uwep = null;
+            obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
+        }
+        if (u.uswapwep === obj) {
+            u.uswapwep = null;
+            obj.owornmask = (obj.owornmask || 0) & ~W_SWAPWEP;
+        }
+        obj.owornmask = (obj.owornmask || 0) | W_QUIVER;
+        u.uquiver = obj;
+    } else {
+        u.uquiver = null;
+    }
+}
 /**
  * C ref: wield.c doswapweapon — exchange uwep ↔ uswapwep (takes time on success).
  * @returns {number} 0 fail; 1 took time (ECMD_TIME)
@@ -316,4 +346,181 @@ export async function dowield() {
     // flags.pushweapon deferred
     if (u.twoweap) u.twoweap = false; // untwoweapon stub
     return result;
+}
+
+/**
+ * C ref: wield.c ready_ok — SUGGEST ammo matching launcher / weapons / coins;
+ * DOWNPLAY launchers and lone uwep; '-' when quiver non-empty is SUGGEST.
+ */
+function ready_ok(obj) {
+    const u = game.u || {};
+    if (!obj) return u.uquiver ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
+
+    if (obj === u.uwep || (obj === u.uswapwep && u.twoweap)) {
+        return (obj.quan || 1) === 1 ? GETOBJ_DOWNPLAY : GETOBJ_SUGGEST;
+    }
+    if (is_ammo(obj)) {
+        return ((u.uwep && ammo_and_launcher(obj, u.uwep))
+            || (u.uswapwep && ammo_and_launcher(obj, u.uswapwep)))
+            ? GETOBJ_SUGGEST
+            : GETOBJ_DOWNPLAY;
+    }
+    if (is_launcher(obj)) return GETOBJ_DOWNPLAY;
+    if (obj.oclass === WEAPON_CLASS || obj.oclass === COIN_CLASS) {
+        return GETOBJ_SUGGEST;
+    }
+    return GETOBJ_DOWNPLAY;
+}
+
+/** Invent-order SUGGEST letters for #quiver (C getobj; '-' space when SUGGEST). */
+function ready_suggest_lets() {
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (!o?.invlet) continue;
+        if (ready_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
+    }
+    return lets.join('');
+}
+
+/**
+ * C ref: invent.c getobj(verb, ready_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
+ * Count-split deferred; '-' → hands_obj; DOWNPLAY letters still accepted.
+ */
+async function getobj_ready(verb) {
+    for (;;) {
+        await flush_topl_more();
+        const lets = ready_suggest_lets();
+        const dash = ready_ok(null) === GETOBJ_SUGGEST
+            ? (lets ? '- ' : '-')
+            : '';
+        const inner = dash || lets
+            ? `${dash}${lets}`
+            : '';
+        const query = inner
+            ? `What do you want to ${verb}? [${inner} or ?*]`
+            : `What do you want to ${verb}? [*]` ;
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return undefined;
+        }
+        if (ch === '-') {
+            game._pending_message = '';
+            return hands_obj;
+        }
+        if (ch === '?' || ch === '*') {
+            await pline('Never mind.');
+            return undefined;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        const rank = ready_ok(otmp);
+        if (rank === GETOBJ_EXCLUDE) {
+            await pline(`You cannot ${verb} that!`);
+            return undefined;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/**
+ * C ref: wield.c doquiver_core — #quiver / Q and dofire refill.
+ * Branch envelope: empty invent; '-' clear; already quivered; worn reject;
+ * uwep/uswapwep ynq confirm (no quan-split); setuqwep + prinv.
+ * Deferred: count-split finish_splitting / unsplitobj / coin partial.
+ * @returns {number} 0 = ECMD_OK / cancel; 1 = ECMD_TIME
+ */
+export async function doquiver_core(verb) {
+    game.multi = 0;
+    if (!(game.invent || []).length) {
+        await pline('You have nothing to ready for firing.');
+        return 0;
+    }
+
+    const newquiver = await getobj_ready(verb);
+    if (newquiver === undefined) return 0; // cancel
+
+    const u = game.u || (game.u = {});
+    let was_uwep = false;
+    const was_twoweap = !!u.twoweap;
+
+    if (newquiver === hands_obj) {
+        if (u.uquiver) {
+            await pline('You now have no ammunition readied.');
+            setuqwep(null);
+        } else {
+            await pline('You already have no ammunition readied!');
+        }
+        return 0;
+    }
+
+    if (newquiver === u.uquiver) {
+        await pline('That ammunition is already readied!');
+        return 0;
+    }
+    if ((newquiver.owornmask || 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+        await pline(`You cannot ${verb} that!`);
+        return 0;
+    }
+
+    if (newquiver === u.uwep) {
+        if (welded(u.uwep)) {
+            await pline('Your weapon is welded to your hand!');
+            return u.uwep.bknown ? 0 : 1;
+        }
+        // quan>1 split path deferred — always confirm ready-all
+        const use_plural = (newquiver.quan || 1) > 1;
+        const qbuf = `You are wielding ${use_plural ? 'those' : 'that'}.  Ready ${use_plural ? 'them' : 'it'} instead?`;
+        if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
+            await pline(`Your ${use_plural ? 'weapons remain' : 'weapon remains'} wielded.`);
+            return 0;
+        }
+        setuwep(null);
+        u.twoweap = false;
+        was_uwep = true;
+    } else if (newquiver === u.uswapwep) {
+        // quan>1 split path deferred
+        const use_plural = (newquiver.quan || 1) > 1;
+        const qbuf = `${use_plural ? 'Those are' : 'That is'} your ${u.twoweap ? 'second' : 'alternate'} weapon.  Ready ${use_plural ? 'them' : 'it'} instead?`;
+        if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
+            await pline(`Your ${use_plural ? 'weapons remain' : 'weapon remains'} as secondary weapon.`);
+            return 0;
+        }
+        setuswapwep(null);
+        u.twoweap = false;
+    }
+
+    if (verb === 'ready') {
+        setuqwep(newquiver);
+        await pline(xprname(newquiver, undefined, true));
+    } else {
+        await pline(`You ready: ${xprname(newquiver, undefined, false)}`);
+        setuqwep(newquiver);
+    }
+
+    if (was_uwep) {
+        await pline('You are now empty handed.');
+        return 1;
+    }
+    if (was_twoweap && !u.twoweap) {
+        await pline('You are no longer fighting two-handed.');
+        return 1;
+    }
+    return 0;
+}
+
+/** C ref: wield.c dowieldquiver — #quiver / 'Q'. */
+export async function dowieldquiver() {
+    return doquiver_core('ready');
 }

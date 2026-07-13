@@ -47,6 +47,22 @@ export function nomul(nval) {
 }
 
 /**
+ * C ref: timeout.c fall_asleep — nomul(how_long) with sleeping reason.
+ * Deafness / Hear_again afternmv (#if 0 in C) deferred.
+ * @param {number} how_long negative multi turns
+ * @param {boolean} wakeup_msg if true, nomovemsg is "You wake up."
+ */
+export function fall_asleep(how_long, wakeup_msg) {
+    // stop_occupation — clear multi-turn occupation without message
+    if (typeof game.occupation === 'function') game.occupation = null;
+    nomul(how_long);
+    game.multi_reason = 'sleeping';
+    if (!game.u) game.u = {};
+    game.u.usleep = game.moves | 0;
+    game.nomovemsg = wakeup_msg ? 'You wake up.' : 'You can move again.';
+}
+
+/**
  * C ref: hack.c unmul — finish multi-turn action; run afternmv if set.
  * @param {string|null|undefined} msg_override
  */

@@ -91,6 +91,7 @@ const EXT_CMD_AC = [
     { name: 'therecmdmenu', wiz: false },
     { name: 'timeout', wiz: true },
     { name: 'tip', wiz: false },
+    { name: 'travel', wiz: false },
     { name: 'turn', wiz: false },
     { name: 'untrap', wiz: false },
     { name: 'vanquished', wiz: false },
@@ -258,6 +259,15 @@ const EXT_CMDS = [
         run: async () => {
             const { doterrain } = await import('./detect.js');
             return doterrain();
+        },
+    },
+    {
+        name: 'travel',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { dotravel } = await import('./cmd.js');
+            return dotravel();
         },
     },
     {

@@ -17,6 +17,8 @@ import {
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
     OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, NO_ROOM,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
+    SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
+    LEPREHALL, COCKNEST, ANTHOLE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
@@ -38,7 +40,7 @@ import {
     objectNames,
 } from './objects.js';
 import { setgemprobs } from './o_init.js';
-import { maketrap } from './trap.js';
+import { maketrap, t_at } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mkobj_at, mkgold, mkcorpstat, next_ident,
     curse, bless, blessorcurse, place_object, add_to_buried, weight, OBJ,
@@ -50,8 +52,7 @@ import {
     is_male, is_female, mons,
 } from './monsters.js';
 import { name_to_monplus } from './mondata.js';
-import { getrumor } from './rumors.js';
-import { make_engr_at, wipe_engr_at, wipeout_text } from './engrave.js';
+import { make_engr_at, wipe_engr_at, random_engraving } from './engrave.js';
 import { DUST, MARK as ENGRAVE_MARK } from './const.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
@@ -278,17 +279,6 @@ trap_engravings[TRAPDOOR] = 'Vlad was here';
 trap_engravings[TELEP_TRAP] = 'ad aerarium';
 trap_engravings[LEVEL_TELEP] = 'ad aerarium';
 
-function random_engraving() {
-    // C ref: engrave.c random_engraving()
-    let pristine;
-    if (!rn2(4) || !(pristine = getrumor(0, true)) || !pristine) {
-        // get_rnd_text(ENGRAVEFILE) fallback — rare; burn one chunk draw as stub
-        pristine = getrumor(0, true) || 'x'.repeat(40);
-    }
-    const text = wipeout_text(pristine, Math.trunc(pristine.length / 4), 0);
-    return { text, pristine };
-}
-
 // in_rooms stub
 function in_rooms(x, y, rtype) { return []; }
 
@@ -299,9 +289,11 @@ function in_rooms(x, y, rtype) { return []; }
 // C ref: bones.c getbones()
 function getbones() {
     const flags = game.flags || {};
-    if (flags.explore) return false;
+    // C: discover global; JS playmode explore/discover both set flags.explore
+    if (flags.explore || flags.discover) return false;
     if (flags.bones === false) return false;
-    if (rn2(3) && !game.flags?.debug) return false;
+    if (rn2(3) && !flags.debug && !flags.wizard) return false;
+    // Bones file load deferred — always fail open after the chance roll
     return false;
 }
 
@@ -344,6 +336,8 @@ function recount_level_features() {
 function clear_level_structures() {
     const g = game;
     g.fmon = null;
+    g.fobj = null;
+    g.ftrap = null;
     g.level = new GameMap();
     g.level.nroom = 0;
     g.level.rooms = [];
@@ -472,6 +466,38 @@ async function makelevel() {
         }
     }
 
+    // C ref: mklev.c:1344-1375 — up to one special room by depth
+    const u_depth = depth_of_level(g.u?.uz);
+    const medusaDepth = depth_of_level(g.medusa_level) || 999;
+    let room_threshold = branchp ? 4 : 3;
+    // Vault creation bumps room_threshold in C when filled
+    if (g.level.flags.has_vault) room_threshold++;
+
+    if (u_depth > 1 && u_depth < medusaDepth
+        && g.level.nroom >= room_threshold && rn2(u_depth) < 3) {
+        do_mkroom(SHOPBASE);
+    } else if (u_depth > 4 && !rn2(6)) {
+        do_mkroom(COURT);
+    } else if (u_depth > 5 && !rn2(8)) {
+        do_mkroom(LEPREHALL);
+    } else if (u_depth > 6 && !rn2(7)) {
+        do_mkroom(ZOO);
+    } else if (u_depth > 8 && !rn2(5)) {
+        do_mkroom(TEMPLE);
+    } else if (u_depth > 9 && !rn2(5)) {
+        do_mkroom(BEEHIVE);
+    } else if (u_depth > 11 && !rn2(6)) {
+        do_mkroom(MORGUE);
+    } else if (u_depth > 12 && !rn2(8)) {
+        do_mkroom(ANTHOLE);
+    } else if (u_depth > 14 && !rn2(4)) {
+        do_mkroom(BARRACKS);
+    } else if (u_depth > 15 && !rn2(6)) {
+        do_mkroom(SWAMP);
+    } else if (u_depth > 16 && !rn2(8)) {
+        do_mkroom(COCKNEST);
+    }
+
     // Place dungeon branch
     // C ref: mklev.c:1378-1387 — prevstairs + Dlvl1 branch stairs traversed
     const prevstairs = g.stairs;
@@ -508,6 +534,48 @@ async function makelevel() {
     // post_level_generate (no-op when postprocess empty for default rooms)
     // then full-map wallification. JS has no Lua postprocess queue yet.
     wallification(1, 0, COLNO - 1, ROWNO - 1);
+}
+
+/**
+ * C ref: mkroom.c do_mkroom — dispatch special room makers.
+ * Shop path: mkshop eligibility scan; stocking deferred when a room qualifies.
+ */
+function do_mkroom(roomtype) {
+    if (roomtype >= SHOPBASE) {
+        mkshop();
+        return;
+    }
+    // COURT/ZOO/… bodies deferred — named in C-JS-MAP.md
+}
+
+/**
+ * C ref: mkroom.c mkshop — find eligible OROOM with one door, no stairs.
+ * Full invalid_shop_shape + shtypes rnd(100) + rtype set deferred; candidates
+ * are skipped so we never claim a shop without burning shop-type RNG.
+ * seed0015 dlvl2: C also finds no eligible room → no RNG here.
+ */
+function mkshop() {
+    const g = game;
+    const nroom = g.level?.nroom | 0;
+    for (let i = 0; i < nroom; i++) {
+        const sroom = g.level.rooms[i];
+        if (!sroom || sroom.hx < 0) return;
+        if (sroom.rtype !== OROOM) continue;
+        let hasStairs = false;
+        for (let s = g.stairs; s; s = s.next) {
+            if (s.sx >= sroom.lx && s.sx <= sroom.hx
+                && s.sy >= sroom.ly && s.sy <= sroom.hy) {
+                hasStairs = true;
+                break;
+            }
+        }
+        if (hasStairs) continue;
+        if ((sroom.doorct | 0) === 1) {
+            // Eligible under doorct rule — invalid_shop_shape/shtypes omitted;
+            // skip rather than set rtype without rnd(100).
+            continue;
+        }
+    }
 }
 
 function ROOM_IS_FILLABLE(croom) {
@@ -1803,27 +1871,74 @@ function makecorridors() {
 function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
 function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
+// C ref: mkroom.c inside_room()
+function inside_room(croom, x, y) {
+    if (croom.irregular) {
+        const i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
+        const loc = game.level.at(x, y);
+        return !!(loc && !loc.edge && loc.roomno === i);
+    }
+    return x >= croom.lx - 1 && x <= croom.hx + 1
+        && y >= croom.ly - 1 && y <= croom.hy + 1;
+}
+
+// C ref: mkroom.c somexy() — irregular rejects bbox cells with edge/wrong roomno
 function somexy(croom, c) {
+    let try_cnt = 0;
+
+    if (croom.irregular) {
+        const i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
+        while (try_cnt++ < 100) {
+            c.x = somex(croom);
+            c.y = somey(croom);
+            const loc = game.level.at(c.x, c.y);
+            if (loc && !loc.edge && loc.roomno === i) return true;
+        }
+        for (c.x = croom.lx; c.x <= croom.hx; c.x++) {
+            for (c.y = croom.ly; c.y <= croom.hy; c.y++) {
+                const loc = game.level.at(c.x, c.y);
+                if (loc && !loc.edge && loc.roomno === i) return true;
+            }
+        }
+        return false;
+    }
+
     if (!croom.nsubrooms) {
         c.x = somex(croom);
         c.y = somey(croom);
         return true;
     }
-    let try_cnt = 0;
+
+    // Check that coords don't fall into a subroom or into a wall
     while (try_cnt++ < 100) {
         c.x = somex(croom);
         c.y = somey(croom);
         const loc = game.level.at(c.x, c.y);
         if (loc && IS_WALL(loc.typ)) continue;
-        return true;
+        let in_sub = false;
+        for (let i = 0; i < croom.nsubrooms; i++) {
+            if (inside_room(croom.sbrooms[i], c.x, c.y)) {
+                in_sub = true;
+                break;
+            }
+        }
+        if (in_sub) continue;
+        break;
     }
-    return false;
+    if (try_cnt >= 100) return false;
+    return true;
 }
 
+// C ref: mklev.c occupied() — traps/furniture/lava/pool/invocation
 function occupied(x, y) {
+    if (!isok(x, y)) return false;
     const loc = game.level.at(x, y);
     if (!loc) return false;
-    return !!(IS_FURNITURE(loc.typ) || loc.typ === LAVAPOOL || IS_POOL(loc.typ));
+    // invocation_pos: omitted until inv_pos/Invocation_lev exist (always false)
+    return !!(t_at(x, y)
+        || IS_FURNITURE(loc.typ)
+        || loc.typ === LAVAPOOL || loc.typ === LAVAWALL
+        || IS_POOL(loc.typ));
 }
 
 function somexyspace(croom, c) {
