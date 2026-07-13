@@ -9,13 +9,18 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
-         IS_WALL, IS_OBSTRUCTED, IS_FURNITURE } from './const.js';
+import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED,
+         IS_WALL, IS_OBSTRUCTED, IS_FURNITURE, isok } from './const.js';
+import { dist2 } from './mon.js';
 import {
     ddoinv, dodiscovered, doattributes, dovspell, dolook,
 } from './invent.js';
 import { doeat } from './eat.js';
-import { dothrow } from './dothrow.js';
+import { dodrink } from './potion.js';
+import { dozap } from './zap.js';
+import { doread } from './read.js';
+import { doengrave } from './engrave.js';
+import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull } from './do.js';
@@ -23,9 +28,23 @@ import { do_attack, mon_at, is_safemon } from './uhitm.js';
 import { doopen_indir } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch } from './detect.js';
-import { dotakeoff, dowear } from './do_wear.js';
+import { dotakeoff, dowear, doputon } from './do_wear.js';
 import { wiz_wish } from './wizcmds.js';
 import { dowield } from './wield.js';
+import { dowhatis, dohelp } from './pager.js';
+import { x_monnam_tame } from './do_name.js';
+
+/** C ref: cmd.c cmdq_clear(CQ_CANNED) */
+function cmdq_clear() {
+    game._cmdq_canned = [];
+}
+
+/** C ref: cmd.c cmdq_pop(CQ_CANNED) — next canned async command or null */
+function cmdq_pop() {
+    const q = game._cmdq_canned;
+    if (!q || !q.length) return null;
+    return q.shift();
+}
 
 
 // Direction deltas: y u k
@@ -66,22 +85,113 @@ function end_running() {
     game.multi = 0;
 }
 
-// C ref: hack.c lookaround() — minimal: stop for monster ahead or blocked path
+/**
+ * C ref: hack.c lookaround()
+ * Blind / traps / pools / NODIAG / mention_walls deferred.
+ * Ported: monster stop rules + run==1/3/8 corridor-follow turn (capital rush).
+ */
 function lookaround() {
-    if (!game.context?.run) return;
+    const ctx = game.context;
     const u = game.u;
-    const nx = u.ux + (u.dx || 0);
-    const ny = u.uy + (u.dy || 0);
-    // Monster in the square we're about to enter
-    const mtmp = mon_at(nx, ny);
-    if (mtmp) {
-        // C: (run != 1 && !safemon) || (infront && !travel)
-        // infront is true here; travel omitted → always stop
+    if (!ctx?.run) return;
+
+    let corrct = 0;
+    let noturn = 0;
+    let x0 = 0;
+    let y0 = 0;
+    let m0 = 1;
+    let i0 = 9;
+
+    for (let x = u.ux - 1; x <= u.ux + 1; x++) {
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            const infront = (x === u.ux + (u.dx || 0) && y === u.uy + (u.dy || 0));
+            if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
+
+            const mtmp = mon_at(x, y);
+            if (mtmp) {
+                // C: skip M_AP furniture/object; mon_visible deferred → assume seen
+                if ((ctx.run !== 1 && !is_safemon(mtmp))
+                    || (infront && !ctx.travel)) {
+                    end_running();
+                    return;
+                }
+            }
+
+            const loc = game.level?.at(x, y);
+            const typ = loc?.typ ?? STONE;
+            if (typ === STONE) continue;
+            if (x === u.ux - (u.dx || 0) && y === u.uy - (u.dy || 0)) continue;
+
+            // traps deferred (avoid_moving_on_trap)
+
+            if (IS_OBSTRUCTED(typ) || typ === ROOM) {
+                continue;
+            }
+
+            let asCorr = false;
+            if (closed_door_at(x, y)) {
+                if (x !== u.ux && y !== u.uy) continue;
+                if (ctx.run !== 1 && !ctx.travel) {
+                    end_running();
+                    return;
+                }
+                asCorr = true; // bcorr
+            } else if (typ === CORR) {
+                asCorr = true;
+            } else {
+                // pool/lava/objects/stairs: run==1 → bcorr; run==8 continue; else stop
+                if (ctx.run === 1) asCorr = true;
+                else if (ctx.run === 8) continue;
+                else {
+                    end_running();
+                    return;
+                }
+            }
+
+            if (asCorr) {
+                const here = game.level?.at(u.ux, u.uy);
+                if (here && here.typ !== ROOM) {
+                    if (ctx.run === 1 || ctx.run === 3 || ctx.run === 8) {
+                        const i = dist2(x, y, u.ux + (u.dx || 0), u.uy + (u.dy || 0));
+                        if (i > 2) continue;
+                        if (corrct === 1 && dist2(x, y, x0, y0) !== 1) noturn = 1;
+                        if (i < i0) {
+                            i0 = i;
+                            x0 = x;
+                            y0 = y;
+                            m0 = mtmp ? 1 : 0;
+                        }
+                    }
+                    corrct++;
+                }
+            }
+        }
+    }
+
+    if (corrct > 1 && ctx.run === 2) {
         end_running();
         return;
     }
-    if (blocksMove(nx, ny)) {
-        end_running();
+
+    if ((ctx.run === 1 || ctx.run === 3 || ctx.run === 8)
+        && !noturn && !m0 && i0
+        && (corrct === 1 || (corrct === 2 && i0 === 1))) {
+        let turn;
+        if (i0 === 2) {
+            turn = ((u.dx || 0) === y0 - u.uy && (u.dy || 0) === u.ux - x0) ? 2 : -2;
+        } else if ((u.dx || 0) && (u.dy || 0)) {
+            turn = (((u.dx || 0) === (u.dy || 0) && y0 === u.uy)
+                || ((u.dx || 0) !== (u.dy || 0) && y0 !== u.uy)) ? -1 : 1;
+        } else {
+            turn = ((x0 - u.ux === y0 - u.uy && !(u.dy || 0))
+                || (x0 - u.ux !== y0 - u.uy && (u.dy || 0))) ? 1 : -1;
+        }
+        turn += (u.last_str_turn || 0);
+        if (turn <= 2 && turn >= -2) {
+            u.last_str_turn = turn;
+            u.dx = x0 - u.ux;
+            u.dy = y0 - u.uy;
+        }
     }
 }
 
@@ -136,6 +246,21 @@ export async function continue_search() {
 
 // C ref: cmd.c rhack — main command dispatcher
 export async function rhack(key) {
+    // C: cmdq_pop before parse — fireassist swap/retry lives here
+    const canned = (key === 0) ? cmdq_pop() : null;
+    if (canned) {
+        const res = await canned();
+        // C: ECMD_TIME keeps remaining CQ_CANNED; cancel clears queue.
+        if (res === 1) {
+            game.context.move = 1;
+            game.kickedloc = { x: 0, y: 0 };
+        } else {
+            if (res !== 0) cmdq_clear(); // cancel/fail
+            game.context.move = 0;
+        }
+        return;
+    }
+
     if (key === 0) {
         // Read key from input
         await flush_screen(1);
@@ -219,6 +344,11 @@ export async function rhack(key) {
         const tookTime = await dowear();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'P') {
+        // C ref: do_wear.c doputon — put on accessory
+        const tookTime = await doputon();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'i') {
         // C ref: invent.c ddoinv / display_inventory
         await ddoinv();
@@ -228,9 +358,36 @@ export async function rhack(key) {
         const tookTime = await doeat();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'q') {
+        // C ref: potion.c dodrink / #quaff
+        const tookTime = await dodrink();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'z') {
+        // C ref: zap.c dozap / #zap
+        const tookTime = await dozap();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'r') {
+        // C ref: read.c doread / #read
+        const tookTime = await doread();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'E') {
+        // C ref: engrave.c doengrave / #engrave
+        // ECMD_OK setup; occupation consumes the following turn
+        const tookTime = await doengrave();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 't') {
         // C ref: dothrow.c dothrow
         const tookTime = await dothrow();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'f') {
+        // C ref: dothrow.c dofire — #fire / quiver shoot
+        const tookTime = await dofire();
+        // C: ECMD_OK after queueing fireassist keeps CQ_CANNED
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '+') {
@@ -252,6 +409,14 @@ export async function rhack(key) {
     } else if (ch === ':') {
         // C ref: invent.c dolook / lookat
         await dolook();
+        game.context.move = 0;
+    } else if (ch === '/') {
+        // C ref: pager.c dowhatis / do_look — ECMD_OK, no turn
+        await dowhatis();
+        game.context.move = 0;
+    } else if (ch === '?') {
+        // C ref: pager.c dohelp — ECMD_OK, no turn
+        await dohelp();
         game.context.move = 0;
     } else if (ch === '#') {
         // C ref: cmd.c doextcmd — extended commands
@@ -326,10 +491,9 @@ async function domove(dx, dy) {
         if (is_safemon(mtmp)) {
             mtmp.mx = oldx;
             mtmp.my = oldy;
-            const raw = mtmp.data?.name || 'monster';
-            const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-            // C: "You swap places with your little dog."
-            await pline(`You swap places with your ${plain}.`);
+            // C ref: hack.c domove_swap_with_pet — x_monnam ARTICLE_YOUR
+            // (named pet → bare MGIVENNAME, e.g. "Hachi")
+            await pline(`You swap places with ${x_monnam_tame(mtmp)}.`);
         }
     }
 

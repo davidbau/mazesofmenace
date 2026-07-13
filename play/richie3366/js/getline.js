@@ -56,6 +56,15 @@ export async function getlin(query) {
  */
 const EXT_CMDS = [
     {
+        name: 'name',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { docallcmd } = await import('./do_name.js');
+            return docallcmd();
+        },
+    },
+    {
         name: 'levelchange',
         wiz: true,
         autocomplete: true,
@@ -132,7 +141,7 @@ export async function get_ext_cmd() {
             // C: *bufp = c; bufp[1] = 0; then hook may Strcpy full name
             buf = buf.slice(0, cursor) + String.fromCharCode(c);
             cursor++;
-            const expanded = extCmdAutocomplete(buf);
+            const expanded = extCmdAutocomplete(buf.slice(0, cursor));
             if (expanded) buf = expanded;
             await paint();
         }

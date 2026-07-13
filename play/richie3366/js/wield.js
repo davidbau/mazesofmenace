@@ -24,17 +24,27 @@ function is_weptool(obj) {
         || n === 'AKLYS' || n === 'BULLWHIP';
 }
 
-function is_launcher(obj) {
+/** C ref: obj.h is_launcher */
+export function is_launcher(obj) {
     if (!obj || obj.oclass !== WEAPON_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
     return sk >= P_BOW && sk <= P_CROSSBOW;
 }
 
-function is_ammo(obj) {
+/** C ref: obj.h is_ammo */
+export function is_ammo(obj) {
     if (!obj) return false;
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== GEM_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
     return sk >= -P_CROSSBOW && sk <= -P_BOW;
+}
+
+/** C ref: obj.h matching_launcher / ammo_and_launcher */
+export function ammo_and_launcher(ammo, launcher) {
+    if (!ammo || !launcher || !is_ammo(ammo)) return false;
+    const ask = game.objects?.[ammo.otyp]?.oc_skill ?? 0;
+    const lsk = game.objects?.[launcher.otyp]?.oc_skill ?? 0;
+    return ask === -lsk;
 }
 
 function is_missile(obj) {
@@ -106,6 +116,62 @@ export function setuwep(obj) {
 }
 
 /**
+ * C ref: wield.c setuswapwep — W_SWAPWEP slot.
+ */
+export function setuswapwep(obj) {
+    const u = game.u || (game.u = {});
+    const old = u.uswapwep || null;
+    if (obj === old) return;
+
+    if (old) old.owornmask = (old.owornmask || 0) & ~W_SWAPWEP;
+    if (obj) {
+        if (u.uwep === obj) {
+            u.uwep = null;
+            obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
+        }
+        if (u.uquiver === obj) {
+            u.uquiver = null;
+            obj.owornmask = (obj.owornmask || 0) & ~W_QUIVER;
+        }
+        obj.owornmask = (obj.owornmask || 0) | W_SWAPWEP;
+        u.uswapwep = obj;
+    } else {
+        u.uswapwep = null;
+    }
+}
+
+/**
+ * C ref: wield.c doswapweapon — exchange uwep ↔ uswapwep (takes time on success).
+ * @returns {number} 0 fail; 1 took time (ECMD_TIME)
+ */
+export async function doswapweapon() {
+    game.multi = 0;
+    const u = game.u || (game.u = {});
+    if (welded(u.uwep)) {
+        await pline('Your weapon is welded to your hand!');
+        return 0;
+    }
+
+    const oldwep = u.uwep || null;
+    const oldswap = u.uswapwep || null;
+    setuswapwep(null);
+
+    const result = await ready_weapon(oldswap);
+
+    if (u.uwep === oldwep) {
+        setuswapwep(oldswap);
+    } else {
+        setuswapwep(oldwep);
+        // C: second prinv triggers more() on the ready_weapon message
+        if (u.uswapwep) await pline(xprname(u.uswapwep, undefined, true));
+        else await pline('You have no secondary weapon readied.');
+    }
+
+    if (u.twoweap) u.twoweap = false;
+    return result;
+}
+
+/**
  * C ref: wield.c ready_weapon — hero path without corpse/bimanual weld
  * messages beyond the common retouch + prinv + setuwep.
  * @returns {number} 0 fail/cancel semantics caller maps; 1 took time
@@ -138,7 +204,7 @@ async function ready_weapon(wep) {
 
     const dummy = wep.owornmask || 0;
     wep.owornmask = dummy | W_WEP;
-    await pline(xprname(wep));
+    await pline(xprname(wep, undefined, true)); // C: prinv → xprname(..., TRUE)
     wep.owornmask = dummy;
 
     setuwep(wep);
@@ -233,9 +299,7 @@ export async function dowield() {
 
     // uswapwep / uquiver confirm / worn-armor reject
     if (wep && wep === u.uswapwep) {
-        // C: return doswapweapon() — deferred; clear swap and wield
-        u.uswapwep = null;
-        wep.owornmask = (wep.owornmask || 0) & ~W_SWAPWEP;
+        return await doswapweapon();
     }
     if (wep && (wep.owornmask || 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         await pline('You cannot wield that!');

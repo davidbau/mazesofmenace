@@ -10,6 +10,7 @@ import {
     FROMOUTSIDE,
     INTRINSIC,
     MAXULEV,
+    STR18,
 } from './const.js';
 import { pline } from './display.js';
 import {
@@ -70,6 +71,23 @@ export function acurrstr() {
     if (str <= 18) return Math.max(str, 3);
     if (str <= 121) return 19 + Math.trunc(str / 50);
     return Math.min(str, 125) - 100;
+}
+
+// C ref: botl.c get_strength_str — 18/xx and 18/** for encoded STR
+export function get_strength_str() {
+    const st = acurr(A_STR);
+    if (st > 18) {
+        if (st > STR18(100)) {
+            // C: Sprintf(buf, "%2d", st - 100)
+            return String(st - 100).padStart(2, ' ');
+        }
+        if (st < STR18(100)) {
+            return `18/${String(st - 18).padStart(2, '0')}`;
+        }
+        return '18/**';
+    }
+    // C: Sprintf(buf, "%-1d", st)
+    return String(st);
 }
 
 // C ref: attrib.c exercise()

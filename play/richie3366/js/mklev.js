@@ -150,7 +150,7 @@ function stairway_find_special_dir(up) {
 }
 
 /** C ref: stairs.c known_branch_stairs */
-function known_branch_stairs(sway) {
+export function known_branch_stairs(sway) {
     return !!(sway && sway.tolev.dnum !== (game.u?.uz?.dnum ?? 0) && sway.u_traversed);
 }
 

@@ -9,10 +9,15 @@ import {
     ALLOW_ROCK,
 } from './const.js';
 import { t_at } from './trap.js';
-import { nohands, verysmall, throws_rocks, passes_walls, monsterNames } from './monsters.js';
+import {
+    nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
+    monsterNames, NON_PM, LOW_PM,
+} from './monsters.js';
+import { little_to_big, big_to_little } from './mondata.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
+import { G_GENOD } from './const.js';
 
 export const NORMAL_SPEED = 12;
 
@@ -25,6 +30,35 @@ function NODIAG(monnum) {
 
 function pm(name) {
     return monsterNames.indexOf(`PM_${name}`);
+}
+
+/**
+ * C ref: mon.c can_be_hatched — return corpsenm for a typed egg, or NON_PM.
+ * BREEDER_EGG (!rn2(77)) is evaluated left-to-right when lays_eggs is true
+ * (except the PM_KILLER_BEE / PM_GARGOYLE fast path).
+ */
+export function can_be_hatched(mnum) {
+    if (mnum === pm('SCORPIUS')) mnum = pm('SCORPION');
+
+    mnum = little_to_big(mnum);
+    if (mnum === pm('KILLER_BEE') || mnum === pm('GARGOYLE')
+        || (lays_eggs(mons(mnum))
+            && (!rn2(77)
+                || (mnum !== pm('QUEEN_BEE') && mnum !== pm('WINGED_GARGOYLE'))))) {
+        return mnum;
+    }
+    return NON_PM;
+}
+
+/**
+ * C ref: mon.c dead_species — genocided species (egg checks baby form too).
+ */
+export function dead_species(m_idx, egg) {
+    if (m_idx < LOW_PM) return true;
+    const alt_idx = egg ? big_to_little(m_idx) : m_idx;
+    const mv = game.mvitals || [];
+    return !!((mv[m_idx]?.mvflags ?? 0) & G_GENOD)
+        || !!((mv[alt_idx]?.mvflags ?? 0) & G_GENOD);
 }
 
 // C ref: mon.c undead_to_corpse — zombie/mummy/vampire → living species for corpses

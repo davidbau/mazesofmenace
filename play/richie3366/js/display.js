@@ -10,11 +10,13 @@ import {
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+    FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
+    HI_GOLD,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -22,9 +24,16 @@ import {
     WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
     VENOM_CLASS, objectNames,
 } from './objects.js';
-import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, DEC_TO_UNICODE } from './terminal.js';
+import {
+    NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+    DEC_TO_UNICODE,
+} from './terminal.js';
+import {
+    A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
+} from './attrib.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
+const STATUE_OTYP = objectNames.indexOf('STATUE');
 
 // C ref: defsym.h OBJCLASS_DRAWING — default object-class map symbols
 const DEF_OC_SYM = {
@@ -50,11 +59,66 @@ const DEF_OC_SYM = {
 // C ref: defsym.h MONSYM — letter from mlet; color from mons[].mcolor (not mlet).
 // HI_DOMESTIC (CLR_WHITE) for pets — color.h.
 const MLET_CH = {
+    S_ANT: 'a',
+    S_BLOB: 'b',
+    S_COCKATRICE: 'c',
     S_DOG: 'd',
+    S_EYE: 'e',
     S_FELINE: 'f',
+    S_GREMLIN: 'g',
+    S_HUMANOID: 'h',
+    S_IMP: 'i',
+    S_JELLY: 'j',
+    S_KOBOLD: 'k',
+    S_LEPRECHAUN: 'l',
+    S_MIMIC: 'm',
+    S_NYMPH: 'n',
+    S_ORC: 'o',
+    S_PIERCER: 'p',
+    S_QUADRUPED: 'q',
     S_RODENT: 'r',
-    S_LIZARD: ':',
+    S_SPIDER: 's',
+    S_TRAPPER: 't',
+    S_UNICORN: 'u',
+    S_VORTEX: 'v',
+    S_WORM: 'w',
+    S_XAN: 'x',
+    S_LIGHT: 'y',
+    S_ZRUTY: 'z',
+    S_ANGEL: 'A',
+    S_BAT: 'B',
+    S_CENTAUR: 'C',
+    S_DRAGON: 'D',
+    S_ELEMENTAL: 'E',
+    S_FUNGUS: 'F',
+    S_GNOME: 'G',
+    S_GIANT: 'H',
+    S_invisible: 'I',
+    S_JABBERWOCK: 'J',
+    S_KOP: 'K',
+    S_LICH: 'L',
+    S_MUMMY: 'M',
+    S_NAGA: 'N',
+    S_OGRE: 'O',
+    S_PUDDING: 'P',
+    S_QUANTMECH: 'Q',
+    S_RUSTMONST: 'R',
+    S_SNAKE: 'S',
+    S_TROLL: 'T',
+    S_UMBER: 'U',
+    S_VAMPIRE: 'V',
+    S_WRAITH: 'W',
+    S_XORN: 'X',
+    S_YETI: 'Y',
+    S_ZOMBIE: 'Z',
     S_HUMAN: '@',
+    S_GHOST: ' ',
+    S_GOLEM: "'",
+    S_DEMON: '&',
+    S_EEL: ';',
+    S_LIZARD: ':',
+    S_WORM_TAIL: '~',
+    S_MIMIC_DEF: ']',
 };
 
 function mon_at_display(x, y) {
@@ -114,9 +178,17 @@ function covers_objects(x, y) {
 }
 
 // C ref: display.c map_object / display.h obj_to_glyph + mon_color for corpses
+// C ref: display.h statue_to_glyph — statues use mons[corpsenm].mlet + obj_color(STATUE)
 function obj_glyph(obj) {
     const def = game.objects?.[obj.otyp];
     const oclass = obj.oclass ?? def?.oc_class ?? ILLOBJ_CLASS;
+    // C: STATUE → monster letter (not ROCK_CLASS '`'); color is statue white
+    if (obj.otyp === STATUE_OTYP && obj.corpsenm != null && obj.corpsenm >= 0) {
+        const ptr = mons(obj.corpsenm);
+        const ch = MLET_CH[ptr?.mlet] || '?';
+        const color = def?.oc_color ?? CLR_WHITE;
+        return { ch, color, dec: false };
+    }
     const ch = DEF_OC_SYM[oclass] || ']';
     // C: body glyphs use mon_color(corpsenm), not objects[CORPSE].oc_color
     if (obj.otyp === CORPSE_OTYP && obj.corpsenm != null && obj.corpsenm >= 0) {
@@ -413,6 +485,12 @@ function terrain_glyph(loc, x, y) {
             return { ch: '<', color: CLR_YELLOW, dec: false };
         return { ch: '>', color: NO_COLOR, dec: false };
     }
+    // C ref: defsym.h PCHAR — furniture glyphs (display.c back_to_glyph)
+    case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
+    case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
+    case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false };
+    case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
+    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     // C ref: display.c back_to_glyph — walls/SDOOR use wall_angle(seenv)
     case SDOOR:
     case HWALL:
@@ -440,6 +518,50 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
+}
+
+/**
+ * C ref: display.c magic_map_background(x, y, show)
+ * Remembers real background under hero_memory; show==0 is mapping path.
+ * Out-of-sight ROOM the hero does not remember as lit: with dark_room+color
+ * → DARKROOMSYM (showsyms[S_darkroom]=showsyms[S_room], floor ·); else
+ * GLYPH_NOTHING blank. Unlit lit-corr glyph → dark corr.
+ */
+export function magic_map_background(x, y, show) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return;
+
+    let tg = terrain_glyph(lev, x, y);
+
+    // C: out-of-sight lit rooms/corridors the hero does not remember as lit
+    if (!cansee(x, y) && !lev.waslit) {
+        if (lev.typ === ROOM && tg.ch === '~' && tg.dec) {
+            // C: (flags.dark_room && iflags.use_color) ? DARKROOMSYM
+            //    : GLYPH_NOTHING. Defaults On; showsyms equate darkroom to
+            //    room floor (reglyph_darkroom). Keep ·/NO_COLOR like S_room.
+            const darkRoom = game.flags?.dark_room !== false;
+            const useColor = game.flags?.color !== false
+                && game.iflags?.use_color !== false;
+            if (!(darkRoom && useColor)) {
+                tg = { ch: ' ', color: NO_COLOR, dec: false };
+            }
+            // else: leave floor glyph (S_darkroom paints as S_room)
+        } else if (lev.typ === CORR && tg.ch === '#'
+            && game.flags?.lit_corridor) {
+            tg = { ch: '#', color: NO_COLOR, dec: false };
+        }
+    }
+
+    if (game.level?.flags?.hero_memory) {
+        // C: only overwrite unexplored/cmap memory — JS remembered is cmap-like
+        lev.remembered_glyph = {
+            ch: tg.ch, color: tg.color, decgfx: tg.dec,
+        };
+    }
+    if (show) {
+        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
+    }
+    // update_lastseentyp deferred
 }
 
 // ── newsym ──
@@ -577,10 +699,9 @@ function _statusLine1() {
     }
     const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
     const title = `${name} the ${role}`;
-    // C botl order: St/Dx/Co/In/Wi/Ch ← STR/DEX/CON/INT/WIS/CHA (attrib.h)
-    const a = u.acurr?.a;
-    const stats = a
-        ? `St:${a[0]} Dx:${a[3]} Co:${a[4]} In:${a[1]} Wi:${a[2]} Ch:${a[5]}`
+    // C ref: botl.c do_statusline1 — get_strength_str + ACURR order
+    const stats = u.acurr?.a
+        ? `St:${get_strength_str()} Dx:${acurr(A_DEX)} Co:${acurr(A_CON)} In:${acurr(A_INT)} Wi:${acurr(A_WIS)} Ch:${acurr(A_CHA)}`
         : 'St:? Dx:? Co:? In:? Wi:? Ch:?';
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats
@@ -734,8 +855,18 @@ export async function more() {
     const { nhgetch } = await import('./input.js');
     const CO = game?.nhDisplay?.cols || 80;
     const base = (_toplines || game._pending_message || '').replace(/--More--$/, '');
-    // C ref: topl.c more() — if curx >= CO-8, newline before --More--
-    if (base.length >= CO - 8) {
+    // C ref: topl.c more() — if curx >= CO-8, put --More-- on the next row.
+    // Only word-wrap the message text when it exceeds CO (welcome lines are
+    // CO-8..CO-1 and stay intact with a bare "--More--" row).
+    if (base.length >= CO) {
+        let breakAt = base.lastIndexOf(' ', CO - 1);
+        if (breakAt < (CO >> 1)) breakAt = Math.min(base.length, CO - 1);
+        const line0 = base.slice(0, breakAt).trimEnd();
+        const rest = base.slice(breakAt).trimStart();
+        game._pending_message = rest
+            ? `${line0}\n${rest}--More--`
+            : `${line0}\n--More--`;
+    } else if (base.length >= CO - 8) {
         game._pending_message = `${base}\n--More--`;
     } else {
         game._pending_message = base + '--More--';
@@ -745,8 +876,10 @@ export async function more() {
     if (disp) {
         const msg = game._pending_message || '';
         if (msg.includes('\n')) {
-            // Second-line --More--; C seed0900 welcome-more cursor at col 8
-            disp.setCursor(8, 1);
+            const line1 = msg.split('\n')[1] || '';
+            // Bare "--More--" on row 1 (welcome): C cursor col 8; else end of text
+            if (line1 === '--More--') disp.setCursor(8, 1);
+            else disp.setCursor(line1.length, 1);
         } else {
             // Same-line --More—; cursor just past the prompt
             disp.setCursor(msg.length, 0);

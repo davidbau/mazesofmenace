@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, status_line_2 } from './display.js';
-import { xprname, an, vtense, doname, obj_typename } from './objnam.js';
+import { xprname, an, vtense, doname, disco_typename, Japanese_item_name } from './objnam.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -30,7 +30,7 @@ import {
 } from './objects.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
-    acurr, acurrstr, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
+    acurr, acurrstr, get_strength_str, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
 import {
     DOOR, STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, TREE, IRONBARS,
@@ -51,6 +51,7 @@ import {
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
+import { PM_SAMURAI } from './generated/monsters_data.js';
 
 // C ref: hack.c weight_cap()
 export function weight_cap() {
@@ -130,6 +131,9 @@ function appearance_of(otyp) {
 
 /** C ref: o_init.c interesting_to_discover — needs OBJ_DESCR (or uname). */
 function interesting_to_discover(otyp) {
+    // C: Samurai Japanese items always disclosed by '\'
+    if (game.urole?.mnum === PM_SAMURAI && Japanese_item_name(otyp, null))
+        return true;
     const oc = game.objects?.[otyp];
     if (!oc) return false;
     if (oc.oc_uname) return true;
@@ -163,9 +167,9 @@ function statusLine1() {
     }
     const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
     const title = `${name} the ${role}`;
-    const a = u.acurr?.a;
-    const stats = a
-        ? `St:${a[0]} Dx:${a[3]} Co:${a[4]} In:${a[1]} Wi:${a[2]} Ch:${a[5]}`
+    // C ref: botl.c do_statusline1 — get_strength_str + ACURR
+    const stats = u.acurr?.a
+        ? `St:${get_strength_str()} Dx:${acurr(A_DEX)} Co:${acurr(A_CON)} In:${acurr(A_INT)} Wi:${acurr(A_WIS)} Ch:${acurr(A_CHA)}`
         : 'St:? Dx:? Co:? In:? Wi:? Ch:?';
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     const gap = Math.max(1, 31 - title.length);
@@ -209,7 +213,9 @@ function clear_overlay() {
 
 /**
  * C ref: wintty.c tty_end_menu — cols = max(strlen(str)+2, morestr);
- *        tty_display_nhwindow(NHW_MENU) offx = max(10, cols - maxcol - 1).
+ *        tty_display_nhwindow(NHW_MENU) with H2344_BROKEN:
+ *        offx = min(min(82, cols/2), cols - maxcol - 1).
+ *        Fullscreen only when maxrow>=rows || !menu_overlay.
  * Returns { offx, maxcol }; offx===0 means fullscreen fallback.
  */
 export function nhw_menu_geometry(entries, morestr = '(end) ') {
@@ -219,9 +225,12 @@ export function nhw_menu_geometry(entries, morestr = '(end) ') {
         const len = text.length + 2; // leading + trailing pad
         if (len > maxcol) maxcol = len;
     }
-    let offx = Math.max(10, 80 - maxcol - 1);
-    // C: offx==10 || maxrow>=rows || !menu_overlay → fullscreen (offx=0)
-    if (offx === 10) offx = 0;
+    const cols = 80;
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    // C H2344: no offx==10 → fullscreen; only tall menus / !menu_overlay
+    const maxrow = entries.length + 1; // items + morestr row (approx)
+    if (maxrow >= 24 || game.flags?.menu_overlay === false) offx = 0;
     return { offx, maxcol };
 }
 
@@ -270,15 +279,28 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     return { offx, endRow, cursorCol };
 }
 
-function invent_lines() {
+/**
+ * C ref: o_init.c observe_object — dknown + discover_object(..., FALSE, TRUE).
+ */
+export function observe_object(obj) {
+    if (!obj || game.u?.Hallucination) return;
+    // FIRST_OBJECT / generic skip deferred
+    obj.dknown = 1;
+    discover_object(obj.otyp, false, true);
+}
+
+export function invent_lines() {
     const inv = game.invent || [];
     const lines = [];
     for (const oclass of DEF_INV_ORDER) {
         const items = inv.filter(o => o.oclass === oclass);
         if (!items.length) continue;
         lines.push({ text: CLASS_NAMES[oclass] || 'Items', attr: ATR_INVERSE });
-        for (const otmp of items)
+        for (const otmp of items) {
+            // C ref: invent.c sortloot_item — observe_object before naming
+            if (!game.u?.Blind) observe_object(otmp);
             lines.push({ text: xprname(otmp), attr: 0 });
+        }
     }
     lines.push({ text: '(end)', attr: 0 });
     return lines;
@@ -337,9 +359,12 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered = fals
     if (!objects?.[oindx]) return;
     if (!game.disco) game.disco = new Array(objects.length).fill(0);
 
+    const samuraiJp = game.urole?.mnum === PM_SAMURAI
+        && !!Japanese_item_name(oindx, null);
     const need =
         (mark_as_known && !objects[oindx].oc_name_known)
-        || (mark_as_encountered && !objects[oindx].oc_encountered);
+        || (mark_as_encountered && !objects[oindx].oc_encountered)
+        || samuraiJp;
     if (!need) return;
 
     const acls = objects[oindx].oc_class;
@@ -379,8 +404,8 @@ export async function dodiscovered() {
         for (const otyp of found) {
             const enc = !!game.objects?.[otyp]?.oc_encountered;
             const prefix = enc ? '  ' : '* ';
-            // C: disco_append_typename → obj_typename (includes " (descr)")
-            lines.push({ text: prefix + obj_typename(otyp), attr: 0 });
+            // C: disco_append_typename → disco_typename (Japanese brackets)
+            lines.push({ text: prefix + disco_typename(otyp), attr: 0 });
         }
     }
     // Pad so --More-- lands on row 23 like C tty text window.
@@ -808,8 +833,8 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 
     const held = addinv(obj);
     if (hold_msg || drop_fmt) {
-        // C: prinv(hold_msg, obj, oquan) with null prefix → "ilet - doname"
-        await pline(xprname(held));
+        // C: prinv(hold_msg, obj, oquan) with null prefix → "ilet - doname."
+        await pline(xprname(held, undefined, true));
     }
     return held;
 }

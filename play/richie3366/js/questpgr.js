@@ -8,10 +8,13 @@ import { docrt, flush_screen, status_line_2 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { align_gname, align_gtitle } from './roles.js';
 import { A_NEUTRAL } from './const.js';
+import {
+    A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
+} from './attrib.js';
 
 /**
  * C ref: quest.lua common.legacy + convert_arg %d/%G/%r.
- * Layout: tty NHW_MENU offx = max(10, cols - maxcol - 1).
+ * Layout: wintty.c H2344_BROKEN NHW_MENU offx.
  * Returns unpadded raw lines + geometry; caller paints corner vs fullscreen.
  */
 function legacy_lines() {
@@ -47,17 +50,25 @@ function legacy_lines() {
         '--More--',
     ];
 
-    // C ref: wintty.c tty_display_nhwindow NHW_MENU offx
+    // C ref: wintty.c tty_putstr NHW_MENU — n0 = strlen(str)+1 → maxcol;
+    //        tty_display_nhwindow with #define H2344_BROKEN (always on in
+    //        upstream wintty.c): offx = min(min(82, cols/2), cols-maxcol-1).
+    //        Fullscreen only when maxrow>=rows || !menu_overlay — NOT offx==10.
     const cols = 80;
+    const rows = 24;
     let maxcol = 0;
     for (const line of raw) {
-        if (line.length > maxcol) maxcol = line.length;
+        if (line === '--More--') continue; // C: dmore, not putstr
+        const n0 = line.length + 1;
+        if (n0 > maxcol) maxcol = n0;
     }
-    let offx = Math.max(10, cols - maxcol - 1);
-    // C: offx==10 or !menu_overlay → fullscreen; legacy maxcol keeps offx>10
-    if (offx === 10) offx = 0;
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    const maxrow = raw.length;
+    if (maxrow >= rows || game.flags?.menu_overlay === false) offx = 0;
     const moreRow = raw.length - 1;
-    const moreCol = offx + '--More--'.length;
+    // C: NHW_MENU dmore — leading pad at offx, --More-- at offx+1, cursor past it
+    const moreCol = offx + 1 + '--More--'.length;
     return { raw, offx, moreRow, moreCol };
 }
 
@@ -67,12 +78,15 @@ function write_status_to_grid(disp, statusSnap = null) {
         [s1, s2] = statusSnap;
     } else {
         const u = game.u || {};
-        const name = game.plname || 'Hero';
+        let name = game.plname || 'Hero';
+        if (name.length && name.charCodeAt(0) >= 97 && name.charCodeAt(0) <= 122) {
+            name = String.fromCharCode(name.charCodeAt(0) - 32) + name.slice(1);
+        }
         const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
         const title = `${name} the ${role}`;
-        const a = u.acurr?.a;
-        const stats = a
-            ? `St:${a[0]} Dx:${a[3]} Co:${a[4]} In:${a[1]} Wi:${a[2]} Ch:${a[5]}`
+        // C ref: botl.c do_statusline1 — get_strength_str + ACURR
+        const stats = u.acurr?.a
+            ? `St:${get_strength_str()} Dx:${acurr(A_DEX)} Co:${acurr(A_CON)} In:${acurr(A_INT)} Wi:${acurr(A_WIS)} Ch:${acurr(A_CHA)}`
             : 'St:? Dx:? Co:? In:? Wi:? Ch:?';
         const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
         const gap = Math.max(1, 31 - title.length);
@@ -113,18 +127,20 @@ export async function com_pager_legacy(statusSnap = null) {
         }
     } else {
         // C ref: wintty.c process_text_window — tty_curs(1,n)+cl_end from offx;
-        // columns < offx and rows below the text block keep the map.
+        // putchar(' ') then text; columns < offx and rows below keep the map.
         for (let r = 0; r < raw.length && r < 21; r++) {
             for (let c = offx; c < disp.cols; c++)
                 disp.setCell(c, r, ' ', NO_COLOR, 0);
             const text = raw[r];
-            for (let i = 0; i < text.length && offx + i < disp.cols; i++)
-                disp.setCell(offx + i, r, text[i], NO_COLOR, 0);
+            // C: leading pad space at offx, text at offx+1
+            disp.setCell(offx, r, ' ', NO_COLOR, 0);
+            for (let i = 0; i < text.length && offx + 1 + i < disp.cols; i++)
+                disp.setCell(offx + 1 + i, r, text[i], NO_COLOR, 0);
         }
     }
 
     write_status_to_grid(disp, statusSnap);
-    // C tty places cursor past "--More--" on the more row
+    // C tty places cursor past "--More--" on the more row (offx + 1 + len)
     disp.setCursor(moreCol, moreRow);
     await flush_screen(1);
 

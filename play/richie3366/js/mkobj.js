@@ -25,11 +25,12 @@ import {
 } from './objects.js';
 // objectNames used for known-flag heuristic (oc_uses_known not in table yet)
 import { rndmonnum } from './makemon.js';
-import { undead_to_corpse } from './mon.js';
+import { undead_to_corpse, can_be_hatched, dead_species } from './mon.js';
 import {
     mons, is_male, is_female, is_neuter, verysmall, PM_LICHEN, monsterNames,
-    G_NOCORPSE,
+    G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
+import { PM_SAMURAI } from './generated/monsters_data.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, TIMER_OBJECT,
@@ -42,7 +43,7 @@ const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
-const NON_PM = -1;
+const NON_PM = MON_NON_PM;
 
 // Material constants (objclass.h enum obj_material_types)
 const LIQUID = 1;
@@ -461,14 +462,15 @@ function mksobj_init(otmp, artif) {
                 && (--tryct > 0));
             if (tryct === 0) otmp.corpsenm = monsterNames.indexOf('PM_HUMAN');
         } else if (name === 'EGG') {
-            otmp.corpsenm = -1;
+            // C ref: mkobj.c mksobj_init FOOD EGG
+            otmp.corpsenm = NON_PM; /* generic egg */
             if (!rn2(3)) {
-                // can_be_hatched(rndmonnum()) loop — consume at least one rndmonst for stub
                 for (let tryct = 200; tryct > 0; --tryct) {
-                    rndmonnum();
-                    // Without hatch table, accept first pick and stop (RNG may diverge
-                    // if this branch is hit; seed8000 supply chest skipped it).
-                    break;
+                    const mndx = can_be_hatched(rndmonnum());
+                    if (mndx !== NON_PM && !dead_species(mndx, true)) {
+                        otmp.corpsenm = mndx; /* typed egg */
+                        break;
+                    }
                 }
             }
         } else if (name === 'KELP_FROND') {
@@ -566,6 +568,13 @@ function mksobj_init(otmp, artif) {
         }
         if (artif && !rn2(40)) {
             /* mk_artifact stub */
+        }
+        // C ref: mkobj.c ARMOR_CLASS — lacquered armor for Samurai
+        if (game.urole?.mnum === PM_SAMURAI
+            && otypName(otmp.otyp) === 'SPLINT_MAIL'
+            && ((game.moves ?? 0) <= 1 /* || In_quest deferred */)) {
+            otmp.oerodeproof = 1;
+            otmp.rknown = 1;
         }
         break;
     case RING_CLASS: {

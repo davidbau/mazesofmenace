@@ -79,6 +79,7 @@ export const M1_NOHANDS = 0x00002000;
 export const M1_NOEYES = 0x00001000;
 export const M1_MINDLESS = 0x00010000;
 export const M1_ANIMAL = 0x00040000;
+export const M1_OVIPAROUS = 0x00400000; /* monflag.h — can lay eggs */
 export const M1_ACID = 0x08000000;
 export const M1_POIS = 0x10000000;
 export const M1_CARNIVORE = 0x20000000;
@@ -129,6 +130,11 @@ export function verysmall(ptr) {
 // C ref: mondata.h nohands()
 export function nohands(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_NOHANDS);
+}
+
+/** C ref: mondata.h lays_eggs() */
+export function lays_eggs(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_OVIPAROUS);
 }
 
 // C ref: mondata.h passes_walls / throws_rocks

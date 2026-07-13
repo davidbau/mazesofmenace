@@ -1,18 +1,19 @@
-// do_wear.js — Wear / take-off (partial).
-// C ref: do_wear.c — dowear, canwearobj, accessory_or_armor_on, Armor_on,
-// dotakeoff, armor_or_accessory_off, armoroff, *_off.
+// do_wear.js — Wear / take-off / put-on (partial).
+// C ref: do_wear.c — dowear, doputon, canwearobj, accessory_or_armor_on,
+// Amulet_on, Armor_on, dotakeoff, armor_or_accessory_off, armoroff, *_off.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { an, doname } from './objnam.js';
+import { an, doname, xprname } from './objnam.js';
 import { find_ac } from './u_init.js';
 import { change_luck } from './attrib.js';
 import { nomul, unmul } from './hack.js';
 import { retouch_object } from './artifact.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
-    W_RING, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER,
+    W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
+    W_QUIVER, LEFT_RING, RIGHT_RING,
 } from './const.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -21,6 +22,18 @@ import {
 import { PM_ARCHEOLOGIST } from './monsters.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
+const MEAT_RING = objectNames.indexOf('MEAT_RING');
+const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
+const TOWEL = objectNames.indexOf('TOWEL');
+const LENSES = objectNames.indexOf('LENSES');
+const AMULET_OF_ESP = objectNames.indexOf('AMULET_OF_ESP');
+const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
+const AMULET_VERSUS_POISON = objectNames.indexOf('AMULET_VERSUS_POISON');
+const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
+const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat
 const ARM_SUIT = 0;
@@ -69,14 +82,31 @@ async function off_msg(otmp) {
     }
 }
 
-/** C ref: do_wear.c on_msg — armor/verbose path; rings/amulets deferred to prinv. */
+/** C ref: invent.c prinv(NULL, otmp, 0) — "ilet - doname." via xprname(dot) */
+async function prinv(otmp) {
+    await pline(xprname(otmp, undefined, true));
+}
+
+/** C ref: do_wear.c on_msg — rings/amulets use prinv; armor uses verbose You(). */
 async function on_msg(otmp) {
-    if ((otmp.owornmask || 0) & (W_RING | W_AMUL)) return;
-    if (((otmp.owornmask || 0) & W_TOOL) && game.flags?.verbose === false) return;
+    if ((otmp.owornmask || 0) & (W_RING | W_AMUL)) {
+        await prinv(otmp);
+        return;
+    }
+    if (((otmp.owornmask || 0) & W_TOOL) && game.flags?.verbose === false) {
+        await prinv(otmp);
+        return;
+    }
     if (game.flags?.verbose !== false) {
         const name = objectNameStrs[otmp.otyp] || doname(otmp);
         await pline(`You are now wearing ${an(name)}.`);
     }
+}
+
+/** C ref: do_wear.c already_wearing */
+async function already_wearing(cc) {
+    const punct = cc === 'that' ? '!' : '.';
+    await pline(`You are already wearing ${cc}${punct}`);
 }
 
 /** C ref: do_wear.c cursed — message + bknown when stuck */
@@ -203,12 +233,42 @@ export function setworn(obj, mask) {
         clearOne('uamul', W_AMUL);
         obj.owornmask = (obj.owornmask || 0) | W_AMUL;
         u.uamul = obj;
+    } else if (mask & W_RINGL) {
+        clearOne('uleft', W_RINGL);
+        obj.owornmask = (obj.owornmask || 0) | W_RINGL;
+        u.uleft = obj;
+    } else if (mask & W_RINGR) {
+        clearOne('uright', W_RINGR);
+        obj.owornmask = (obj.owornmask || 0) | W_RINGR;
+        u.uright = obj;
     } else if (mask & W_TOOL) {
         clearOne('ublindf', W_TOOL);
         obj.owornmask = (obj.owornmask || 0) | W_TOOL;
         u.ublindf = obj;
     }
     find_ac();
+}
+
+/**
+ * C ref: worn.c remove_worn_item — clear weapon/quiver wear before accessory don.
+ * Full prop/artifact/light paths deferred.
+ */
+function remove_worn_item(obj) {
+    if (!obj) return;
+    const u = game.u || {};
+    const mask = obj.owornmask || 0;
+    if (mask & W_WEP) {
+        if (u.uwep === obj) u.uwep = null;
+        obj.owornmask &= ~W_WEP;
+    }
+    if (mask & W_SWAPWEP) {
+        if (u.uswapwep === obj) u.uswapwep = null;
+        obj.owornmask &= ~W_SWAPWEP;
+    }
+    if (mask & W_QUIVER) {
+        if (u.uquiver === obj) u.uquiver = null;
+        obj.owornmask &= ~W_QUIVER;
+    }
 }
 
 /** Clear a worn slot (C setworn(NULL, mask) subset). */
@@ -582,67 +642,212 @@ async function getobj_wear() {
     }
 }
 
+async function puton_lets() {
+    // C puton_ok: suggest accessories; armor is DOWNPLAY (letter still works)
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (!o?.invlet) continue;
+        if ((o.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) continue;
+        if (
+            o.oclass === RING_CLASS
+            || o.oclass === AMULET_CLASS
+            || o.otyp === BLINDFOLD
+            || o.otyp === TOWEL
+            || o.otyp === LENSES
+            || o.otyp === MEAT_RING
+        ) {
+            lets.push(o.invlet);
+        } else if (o.oclass === ARMOR_CLASS) {
+            const dummy = { mask: 0 };
+            if (await canwearobj(o, dummy, false)) lets.push(o.invlet);
+        }
+    }
+    return lets.join('');
+}
+
+/** C ref: invent.c getobj("put on", puton_ok, GETOBJ_NOFLAGS) */
+async function getobj_puton() {
+    for (;;) {
+        await flush_topl_more();
+        const lets = await puton_lets();
+        const query = lets
+            ? `What do you want to put on? [${lets} or ?*]`
+            : 'What do you want to put on? [*?]';
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            await pline('Never mind.');
+            return null;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
 /**
- * C ref: do_wear.c accessory_or_armor_on — armor path with delay occupation.
- * Accessory put-on beyond a cancel message deferred to doputon.
+ * C ref: do_wear.c Amulet_on — setworn + on_msg for ordinary amulets.
+ * Special cases (change/strangle/sleep/flying/breathing/ESP see_monsters)
+ * deferred beyond setworn + default on_msg.
+ */
+async function Amulet_on(amul) {
+    remove_worn_item(amul);
+    setworn(amul, W_AMUL);
+    const otyp = amul.otyp;
+    // Life saving / reflection / poison / ESP / fake / Yendor: no extra body
+    if (
+        otyp === AMULET_OF_ESP
+        || otyp === AMULET_OF_LIFE_SAVING
+        || otyp === AMULET_VERSUS_POISON
+        || otyp === AMULET_OF_REFLECTION
+        || otyp === FAKE_AMULET_OF_YENDOR
+        || otyp === AMULET_OF_YENDOR
+        || otyp === AMULET_OF_UNCHANGING
+        || otyp === AMULET_OF_GUARDING
+    ) {
+        // Guarding would makeknown+find_ac in C; find_ac already via setworn
+        if (otyp === AMULET_OF_GUARDING) {
+            // makeknown deferred
+        }
+        await on_msg(amul);
+        return;
+    }
+    // Other otyps (change/strangle/sleep/flying/breathing): setworn done;
+    // side-effect bodies deferred — still emit on_msg like the default path.
+    await on_msg(amul);
+}
+
+/**
+ * Ask Right/Left for a ring when both hands free.
+ * C ref: do_wear.c accessory_or_armor_on yn_function(rightleftchars).
+ */
+async function choose_ring_hand() {
+    for (;;) {
+        const q = 'Which ring-finger, Right or Left? ';
+        game._pending_message = q;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(q.length, 0);
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        game._pending_message = '';
+        if (key === 27 || key === 0) return 0;
+        if (ch === 'l' || ch === 'L') return LEFT_RING;
+        if (ch === 'r' || ch === 'R') return RIGHT_RING;
+    }
+}
+
+/**
+ * C ref: do_wear.c accessory_or_armor_on — armor delay + accessory put-on.
+ * Ring Glib/cursed-gloves/welded gates, Blindf_on specials, and exotic
+ * amulet side effects deferred.
  * @returns {number} 0 = no turn / fail, 1 = took time
  */
 async function accessory_or_armor_on(obj) {
     if ((obj.owornmask || 0) & (W_ACCESSORY | W_ARMOR)) {
-        await pline('You are already wearing that.');
+        await already_wearing('that');
         return 0;
     }
 
+    const u = game.u || {};
     const armor = obj.oclass === ARMOR_CLASS;
-    if (!armor) {
-        // W on accessory: C still allows via accessory path; defer body to P
+    const ring = obj.oclass === RING_CLASS || obj.otyp === MEAT_RING;
+    const amulet = obj.oclass === AMULET_CLASS;
+    const eyewear = obj.otyp === BLINDFOLD || obj.otyp === TOWEL
+        || obj.otyp === LENSES;
+
+    let mask = 0;
+
+    if (armor) {
+        const maskBox = { mask: 0 };
+        if (!(await canwearobj(obj, maskBox, true))) return 0;
+        mask = maskBox.mask;
+    } else if (ring) {
+        if (u.uleft && u.uright) {
+            await pline('There are no more ring-fingers to fill.');
+            return 0;
+        }
+        if (u.uleft) mask = RIGHT_RING;
+        else if (u.uright) mask = LEFT_RING;
+        else {
+            mask = await choose_ring_hand();
+            if (!mask) return 0;
+        }
+        // Glib / cursed gloves / welded weapon gates deferred
+    } else if (amulet) {
+        if (u.uamul) {
+            await already_wearing('an amulet');
+            return 0;
+        }
+    } else if (eyewear) {
+        if (u.ublindf) {
+            await already_wearing(
+                u.ublindf.otyp === LENSES ? 'some lenses' : 'a blindfold',
+            );
+            return 0;
+        }
+    } else {
         await pline("You can't wear that!");
         return 0;
     }
-
-    const maskBox = { mask: 0 };
-    if (!(await canwearobj(obj, maskBox, true))) return 0;
-    const mask = maskBox.mask;
 
     if (!(await retouch_object(obj, false))) {
         return 1; // C: ECMD_TIME even when not worn
     }
 
-    // Release from weapon slots if needed
-    if ((obj.owornmask || 0) & W_WEAPONS) {
-        const u = game.u || {};
-        if (u.uwep === obj) {
-            u.uwep = null;
-            obj.owornmask &= ~W_WEP;
+    if (armor) {
+        // Release from weapon slots if needed
+        if ((obj.owornmask || 0) & W_WEAPONS) {
+            remove_worn_item(obj);
         }
-        if (u.uswapwep === obj) {
-            u.uswapwep = null;
-            obj.owornmask &= ~W_SWAPWEP;
+
+        setworn(obj, mask);
+        if (obj === u.uarm) game.afternmv = Armor_on;
+        else if (obj === u.uarmh) game.afternmv = Helmet_on;
+        else if (obj === u.uarmg) game.afternmv = Gloves_on;
+        else if (obj === u.uarmf) game.afternmv = Boots_on;
+        else if (obj === u.uarms) game.afternmv = Shield_on;
+        else if (obj === u.uarmc) game.afternmv = Cloak_on;
+        else if (obj === u.uarmu) game.afternmv = Shirt_on;
+        else game.afternmv = null;
+
+        const delay = -(game.objects?.[obj.otyp]?.oc_delay ?? 0);
+        if (delay) {
+            nomul(delay);
+            game.multi_reason = 'dressing up';
+            game.nomovemsg = 'You finish your dressing maneuver.';
+        } else {
+            await unmul('');
+            await on_msg(obj);
         }
-        if (u.uquiver === obj) {
-            u.uquiver = null;
-            obj.owornmask &= ~W_QUIVER;
-        }
+        return 1;
     }
 
-    setworn(obj, mask);
-    const u = game.u || {};
-    if (obj === u.uarm) game.afternmv = Armor_on;
-    else if (obj === u.uarmh) game.afternmv = Helmet_on;
-    else if (obj === u.uarmg) game.afternmv = Gloves_on;
-    else if (obj === u.uarmf) game.afternmv = Boots_on;
-    else if (obj === u.uarms) game.afternmv = Shield_on;
-    else if (obj === u.uarmc) game.afternmv = Cloak_on;
-    else if (obj === u.uarmu) game.afternmv = Shirt_on;
-    else game.afternmv = null;
-
-    const delay = -(game.objects?.[obj.otyp]?.oc_delay ?? 0);
-    if (delay) {
-        nomul(delay);
-        game.multi_reason = 'dressing up';
-        game.nomovemsg = 'You finish your dressing maneuver.';
-    } else {
-        await unmul('');
+    // Accessory
+    if (ring) {
+        setworn(obj, mask);
+        // Ring_on body (learnring / attribs) deferred
+        await on_msg(obj);
+    } else if (amulet) {
+        await Amulet_on(obj);
+    } else if (eyewear) {
+        // Blindf_on body deferred — setworn + on_msg only
+        remove_worn_item(obj);
+        setworn(obj, W_TOOL);
         await on_msg(obj);
     }
     return 1;
@@ -663,6 +868,26 @@ export async function dowear() {
         return 0;
     }
     const otmp = await getobj_wear();
+    if (!otmp) return 0;
+    return accessory_or_armor_on(otmp);
+}
+
+/**
+ * C ref: do_wear.c doputon — 'P' command.
+ * @returns {number} 0 = no turn / cancel, 1 = took time
+ */
+export async function doputon() {
+    const u = game.u || {};
+    if (
+        u.uleft && u.uright && u.uamul && u.ublindf
+        && u.uarm && u.uarmu && u.uarmc && u.uarmh && u.uarms && u.uarmg && u.uarmf
+    ) {
+        await pline(
+            "Your ring-fingers are full, and you're already wearing an amulet and a blindfold.",
+        );
+        return 0;
+    }
+    const otmp = await getobj_puton();
     if (!otmp) return 0;
     return accessory_or_armor_on(otmp);
 }

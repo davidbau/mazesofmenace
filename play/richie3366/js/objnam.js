@@ -20,10 +20,28 @@ import {
     objectDescrs,
 } from './objects.js';
 import { monsterNames } from './monsters.js';
+import { PM_SAMURAI } from './generated/monsters_data.js';
 import {
-    W_ARMOR, W_QUIVER, W_WEP, W_SWAPWEP,
-    Has_contents, Is_container,
+    W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
+    Has_contents, Is_container, P_BOW, P_CROSSBOW,
 } from './const.js';
+
+function Role_if_samurai() {
+    return game.urole?.mnum === PM_SAMURAI;
+}
+
+/** C ref: obj.h is_ammo — skill window for quiver wording. */
+function is_ammo_obj(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== GEM_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
+    return sk >= -P_CROSSBOW && sk <= -P_BOW;
+}
+
+/** C ref: obj.h is_rustprone — iron material. */
+function is_rustprone_obj(obj) {
+    return (game.objects?.[obj.otyp]?.oc_material ?? 0) === 11; // IRON
+}
 
 const PRETTY = {
     DART: 'dart',
@@ -110,9 +128,20 @@ function pretty_base(obj) {
     // C: xname potion — "potion of X" when oc_name_known (startup kits are)
     if (n && n.startsWith('POT_')) {
         const rest = n.slice(4).toLowerCase().replace(/_/g, ' ');
+        // C: Role_if(PM_SAMURAI) Japanese_item_name for POT_BOOZE → sake
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) return `potion of ${jn}`;
+        }
         return `potion of ${rest}`;
     }
-    return PRETTY[n] || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
+    let base = PRETTY[n] || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
+    // C ref: objnam.c xname — Samurai Japanese_item_name overrides actualn
+    if (Role_if_samurai()) {
+        const jn = Japanese_item_name(obj.otyp, null);
+        if (jn) base = jn;
+    }
+    return base;
 }
 
 // C ref: objnam.c makeplural — enough for "X of Y" and simple nouns.
@@ -121,6 +150,9 @@ function makeplural(s) {
     if (of > 0) {
         return makeplural(s.slice(0, of)) + s.slice(of);
     }
+    // C: "ya" stays "ya" (Samurai bamboo arrows)
+    if (s.length === 2 && s.toLowerCase() === 'ya') return s;
+    if (s.endsWith(' ya')) return s;
     if (s.endsWith('s') || s.endsWith('x') || s.endsWith('ch') || s.endsWith('sh'))
         return s + 'es';
     if (s.endsWith('y') && s.length > 1 && !'aeiou'.includes(s[s.length - 2]))
@@ -208,6 +240,14 @@ export function doname(obj) {
         }
     }
 
+    // C ref: objnam.c add_erosion_words — rknown + oerodeproof
+    if (obj.rknown && obj.oerodeproof) {
+        // Branch envelope: rustprone → "rustproof "; other proofs deferred
+        if (is_rustprone_obj(obj) || oclass === ARMOR_CLASS || oclass === WEAPON_CLASS) {
+            prefix += 'rustproof ';
+        }
+    }
+
     if (known && (oclass === WEAPON_CLASS || oclass === ARMOR_CLASS)) {
         const spe = obj.spe | 0;
         prefix += (spe >= 0 ? `+${spe} ` : `${spe} `);
@@ -229,6 +269,12 @@ export function doname(obj) {
 
     if (oclass === ARMOR_CLASS && (obj.owornmask & W_ARMOR))
         bp += ' (being worn)';
+    if (obj.owornmask & W_AMUL)
+        bp += ' (being worn)';
+    if (obj.owornmask & W_RINGR)
+        bp += ' (on right hand)';
+    if (obj.owornmask & W_RINGL)
+        bp += ' (on left hand)';
     // C: W_WEP → "(weapon in right/left hand)" for single non-ammo weapons
     if ((obj.owornmask & W_WEP) && quan === 1) {
         const right = (game.u?.uhandedness !== 1); // LEFT_HANDED=1
@@ -243,8 +289,24 @@ export function doname(obj) {
             bp += ` (alternate weapon${quan === 1 ? '' : 's'}; not wielded)`;
         }
     }
-    if (obj.owornmask & W_QUIVER)
-        bp += ' (at the ready)';
+    if (obj.owornmask & W_QUIVER) {
+        // C ref: objnam.c W_QUIVER — bow ammo → "in quiver"; else "at the ready"
+        let Qtyp = 3;
+        if (oclass === WEAPON_CLASS) {
+            if (!is_ammo_obj(obj)) Qtyp = 3;
+            else {
+                const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
+                Qtyp = (sk !== -P_BOW) ? 2 : 1;
+            }
+        } else if (oclass === RING_CLASS || oclass === AMULET_CLASS
+            || oclass === WAND_CLASS || oclass === COIN_CLASS
+            || oclass === GEM_CLASS) {
+            Qtyp = 2;
+        }
+        bp += ` (${Qtyp === 1 ? 'in quiver'
+            : Qtyp === 2 ? 'in quiver pouch'
+                : 'at the ready'})`;
+    }
 
     if (known && is_charged_otyp(otyp) && oclass === TOOL_CLASS)
         bp += ` (${obj.recharged | 0}:${obj.spe | 0})`;
@@ -256,11 +318,12 @@ export function doname(obj) {
 }
 
 /**
- * C ref: invent.c xprname() — "a - doname" / "$ - doname"
+ * C ref: invent.c xprname(obj, txt, let, dot, cost, quan)
+ * Message/prinv paths pass dot=true (trailing period); invent menus omit it.
  */
-export function xprname(obj, let_) {
+export function xprname(obj, let_, dot = false) {
     const ilet = let_ ?? obj.invlet ?? '?';
-    return `${ilet} - ${doname(obj)}`;
+    return `${ilet} - ${doname(obj)}${dot ? '.' : ''}`;
 }
 
 // C ref: objnam.c Japanese_items[] / Japanese_item_name()
@@ -299,17 +362,24 @@ export function Japanese_item_name(otyp, ordinaryname = null) {
 
 /**
  * C ref: objnam.c obj_typename(otyp) — disco / identify class names.
- * Covers known + description append; display-path Japanese names deferred.
+ * Covers known + description append + Samurai Japanese_item_name.
  */
 export function obj_typename(otyp) {
     const ocl = game.objects?.[otyp];
     if (!ocl) return objectNames[otyp] || 'object?';
-    const actualn = objectNameStrs[otyp]
+    let actualn = objectNameStrs[otyp]
         || (objectNames[otyp] || '').toLowerCase().replace(/_/g, ' ')
         || 'object?';
-    const dn = objectDescrs[ocl.oc_descr_idx ?? otyp] || null;
+    let dn = objectDescrs[ocl.oc_descr_idx ?? otyp] || null;
     const un = ocl.oc_uname || null;
     let nn = !!ocl.oc_name_known;
+
+    // C: Role_if(PM_SAMURAI) → Japanese_item_name; harp descr → "koto"
+    if (Role_if_samurai()) {
+        actualn = Japanese_item_name(otyp, actualn);
+        const n = objectNames[otyp];
+        if (n === 'WOODEN_HARP' || n === 'MAGIC_HARP') dn = 'koto';
+    }
     let buf = '';
 
     switch (ocl.oc_class) {
@@ -368,4 +438,28 @@ export function obj_typename(otyp) {
     if (un) buf += ` called ${un}`;
     if (dn) buf += ` (${dn})`;
     return buf;
+}
+
+/**
+ * C ref: o_init.c disco_typename — Samurai Japanese + English in brackets.
+ */
+export function disco_typename(otyp) {
+    let result = obj_typename(otyp);
+    if (!Role_if_samurai() || !Japanese_item_name(otyp, null)) return result;
+    const ordinary = objectNameStrs[otyp]
+        || (objectNames[otyp] || '').toLowerCase().replace(/_/g, ' ')
+        || 'object?';
+    const n = objectNames[otyp];
+    let actualn = ordinary;
+    if ((n === 'MAGIC_HARP' || n === 'WOODEN_HARP')
+        && !game.objects?.[otyp]?.oc_name_known) {
+        actualn = 'harp';
+    }
+    if (result.includes(' called')) {
+        return result.replace(' called', ` [${actualn}] called`);
+    }
+    if (result.includes(' (')) {
+        return result.replace(' (', ` [${actualn}] (`);
+    }
+    return `${result} [${actualn}]`;
 }

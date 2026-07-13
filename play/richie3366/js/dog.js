@@ -6,12 +6,23 @@ import { rn2 } from './rng.js';
 import { makemon } from './makemon.js';
 import { mons, NON_PM } from './monsters.js';
 import { MM_EDOG, NO_MINVENT } from './const.js';
-import { monsterNames } from './generated/monsters_data.js';
+import {
+    monsterNames,
+    PM_CAVE_DWELLER,
+    PM_SAMURAI,
+    PM_BARBARIAN,
+    PM_RANGER,
+} from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
+import { christen_monst } from './do_name.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
 const PM_PONY = monsterNames.indexOf('PM_PONY');
+
+function Role_if(pm) {
+    return game.urole?.mnum === pm;
+}
 
 // C ref: dog.c pet_type()
 function pet_type() {
@@ -61,16 +72,35 @@ export function makedog() {
     if (!game.context) game.context = {};
     game.context.startingpet_typ = pettype;
 
+    // C: option dogname / catname / horsename, else role defaults for dogs
+    let petname = (pettype === PM_LITTLE_DOG) ? (game.dogname || '')
+        : (pettype === PM_KITTEN) ? (game.catname || '')
+            : (pettype === PM_PONY) ? (game.horsename || '')
+                : '';
+    if (!petname && pettype === PM_LITTLE_DOG) {
+        if (Role_if(PM_CAVE_DWELLER)) petname = 'Slasher';
+        if (Role_if(PM_SAMURAI)) petname = 'Hachi';
+        if (Role_if(PM_BARBARIAN)) petname = 'Idefix';
+        if (Role_if(PM_RANGER)) petname = 'Sirius';
+    }
+
     const ptr = mons(pettype);
     if (!ptr) return null;
 
-    const mtmp = makemon(ptr, game.u?.ux ?? 0, game.u?.uy ?? 0, MM_EDOG | NO_MINVENT);
+    let mtmp = makemon(ptr, game.u?.ux ?? 0, game.u?.uy ?? 0, MM_EDOG | NO_MINVENT);
     if (!mtmp) return null;
 
     if (!game.context.startingpet_mid) {
         game.context.startingpet_mid = mtmp.m_id ?? 1;
+        // C: pony put_saddle_on_mon + see_monster_closeup deferred
         void PM_PONY;
     }
+
+    // C: if (!gp.petname_used++ && *petname) christen_monst
+    const used = game.petname_used || 0;
+    game.petname_used = used + 1;
+    if (!used && petname) mtmp = christen_monst(mtmp, petname);
+
     initedog(mtmp, true);
     return mtmp;
 }
