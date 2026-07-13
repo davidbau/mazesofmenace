@@ -56,6 +56,8 @@ import {
     P_SPEAR, P_TRIDENT, P_LANCE, P_BOW, P_SLING, P_CROSSBOW,
     P_DART, P_SHURIKEN, P_BOOMERANG, P_UNICORN_HORN,
     P_BARE_HANDED_COMBAT,
+    P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED,
+    P_EXPERT, P_MASTER, P_GRAND_MASTER,
     W_ARMOR,
     NEW_MOON,
     FULL_MOON,
@@ -67,7 +69,8 @@ import {
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
-import { PM_SAMURAI } from './generated/monsters_data.js';
+import { PM_SAMURAI, PM_MONK } from './generated/monsters_data.js';
+import { humanoid } from './monsters.js';
 
 // C ref: hack.c weight_cap()
 export function weight_cap() {
@@ -260,6 +263,9 @@ export function nhw_menu_geometry(entries, morestr = '(end) ') {
  * entries: {text, attr}[] or string[]; morestr default "(end) ".
  */
 export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
+    // C ref: wintty.c tty_display_nhwindow(NHW_MENU) — flush NEED_MORE
+    // before corner paint (travel pline → tip --More--).
+    await flush_topl_more();
     const disp = display();
     if (!disp) return null;
     const { offx } = nhw_menu_geometry(entries, morestr);
@@ -322,6 +328,8 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
  * Pages at lmax = rows-1 (23); ESC/Return dismiss; Space next page or done.
  */
 export async function select_menu_pick_none(entries) {
+    // C ref: wintty.c tty_display_nhwindow(NHW_MENU) NEED_MORE flush
+    await flush_topl_more();
     const rows = display()?.rows || 24;
     const lmax = Math.min(52, rows - 1);
     const nitems = entries.length;
@@ -632,7 +640,12 @@ function weapon_type(obj) {
 
 /** C ref: weapon.c skill_name / P_NAME — skill category, not otyp racial name. */
 function skill_name(skill) {
-    if (skill === P_BARE_HANDED_COMBAT) return 'bare handed combat';
+    if (skill === P_BARE_HANDED_COMBAT) {
+        // C: barehands_or_martial[martial_bonus()]
+        const m = game.urole?.mnum;
+        return (m === PM_SAMURAI || m === PM_MONK)
+            ? 'martial arts' : 'bare handed combat';
+    }
     const otyp = SKILL_NAME_OTYP[skill];
     if (otyp != null && otyp >= 0) {
         const s = objectNameStrs[otyp];
@@ -640,6 +653,38 @@ function skill_name(skill) {
     }
     // Odd skills (saber/hammer/whip/spells/…) deferred
     return 'weapon';
+}
+
+/**
+ * C ref: wield.c empty_handed — gloves imply "empty handed".
+ * Local copy avoids invent↔wield import cycle (weapon.js → invent).
+ * Missing youmonst.data (set_uasmon deferred) treated as humanoid start form.
+ */
+function empty_handed() {
+    if (game.u?.uarmg) return 'empty handed';
+    const ptr = game.youmonst?.data;
+    if (!ptr || humanoid(ptr)) return 'bare handed';
+    return 'not wielding anything';
+}
+
+/** C ref: skills.h P_SKILL — current skill rank. */
+function insight_P_SKILL(type) {
+    return game.u?.weapon_skills?.[type]?.skill ?? P_ISRESTRICTED;
+}
+
+/**
+ * C ref: weapon.c skill_level_name — title case; caller lowercases for insight.
+ */
+function insight_skill_level_name(skill) {
+    switch (insight_P_SKILL(skill)) {
+    case P_UNSKILLED: return 'Unskilled';
+    case P_BASIC: return 'Basic';
+    case P_SKILLED: return 'Skilled';
+    case P_EXPERT: return 'Expert';
+    case P_MASTER: return 'Master';
+    case P_GRAND_MASTER: return 'Grand Master';
+    default: return 'Unknown';
+    }
 }
 
 /**
@@ -806,17 +851,31 @@ export async function doattributes() {
         "  You aren't hungry.",
         '  You are unencumbered.',
     );
-    // C ref: insight.c weapon_insight — wielded weapon / bare hands + skill line
+    // C ref: insight.c weapon_insight — empty_handed / P_SKILL / skill_name
     const uwep = u.uwep || game.u?.uwep;
     if (!uwep) {
-        lines.push('  You are bare handed.');
-        lines.push('  You are unskilled in bare handed combat.');
+        lines.push(`  You are ${empty_handed()}.`);
+    } else if (u.twoweap || game.u?.twoweap) {
+        lines.push('  You are wielding two weapons at once.');
     } else {
         const wname = pretty_weapon_descr(uwep);
         lines.push(`  You are wielding ${wname}.`);
-        // C: P_BASIC → "have basic skill with <skill_name>"; enhance suffix deferred
-        const wtype = weapon_type(uwep);
-        lines.push(`  You have basic skill with ${skill_name(wtype)}.`);
+    }
+    // Skill line: weapon_type(uwep); skip P_NONE / ammo. Enhance suffix deferred.
+    const wtype = weapon_type(uwep);
+    if (wtype !== P_NONE) {
+        // ammo check deferred — start weapons rarely quiver-as-uwep
+        const sklvl = insight_P_SKILL(wtype);
+        let sklvlbuf;
+        if (sklvl === P_ISRESTRICTED) sklvlbuf = 'no';
+        else sklvlbuf = insight_skill_level_name(wtype).toLowerCase();
+        const hav = sklvl !== P_UNSKILLED && sklvl !== P_SKILLED;
+        const buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
+        // twoweap comparison branch deferred
+        if (!(u.twoweap || game.u?.twoweap)) {
+            if (hav) lines.push(`  You have ${buf}.`);
+            else lines.push(`  You are ${buf}.`);
+        }
     }
     lines.push('');
     // C: explore mode adds Attributes + explore/bones notes before misc.

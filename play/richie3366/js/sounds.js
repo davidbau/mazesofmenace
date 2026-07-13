@@ -1,5 +1,5 @@
 // sounds.js — Ambient sounds and #chat.
-// C ref: sounds.c — dotalk / dochat / domonnoise (MS_BARK subset).
+// C ref: sounds.c — dosounds / dotalk / dochat / domonnoise (MS_BARK subset).
 
 import { game } from './gstate.js';
 import { pline } from './display.js';
@@ -9,11 +9,239 @@ import { Monnam } from './do_name.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { rn2 } from './rng.js';
+import { dist2 } from './hacklib.js';
+import {
+    is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
+    monsterNames,
+} from './monsters.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
+    ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET,
+    COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
+    ESHK, Is_astralevel, Is_oracle_level,
 } from './const.js';
 
 const STATUE = objectNames.indexOf('STATUE');
+const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
+
+/**
+ * C ref: mkroom.c search_special — first room/subroom matching type.
+ * Sentinel: rooms terminated by hx < 0.
+ */
+function search_special(type) {
+    const lists = [game.level?.rooms, game.level?.subrooms];
+    for (const rooms of lists) {
+        if (!rooms) continue;
+        for (const croom of rooms) {
+            if (!croom || (croom.hx | 0) < 0) break;
+            const rt = croom.rtype | 0;
+            if ((type === ANY_TYPE && rt !== OROOM)
+                || (type === ANY_SHOP && rt >= SHOPBASE)
+                || rt === type) {
+                return croom;
+            }
+        }
+    }
+    return null;
+}
+
+/** C ref: sounds.c mon_in_room */
+function mon_in_room(mon, rmtyp) {
+    const loc = game.level?.at?.(mon.mx, mon.my);
+    const rno = loc?.roomno | 0;
+    if (rno >= ROOMOFFSET) {
+        const room = game.level.rooms[rno - ROOMOFFSET];
+        return !!(room && (room.rtype | 0) === rmtyp);
+    }
+    return false;
+}
+
+/**
+ * C ref: mon.c get_iter_mons — first living on-map mon where bfunc is true.
+ * Named omission: mon_offmap edge cases beyond mx/my null.
+ */
+function get_iter_mons(bfunc) {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || mtmp.mx == null || mtmp.my == null) continue;
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (bfunc(mtmp)) return mtmp;
+    }
+    return null;
+}
+
+/** C ref: shk.c inhishop — roomno match stand-in (full in_rooms deferred). */
+function inhishop(shkp) {
+    const eshk = ESHK(shkp);
+    if (!eshk || shkp.mx == null) return false;
+    const loc = game.level?.at?.(shkp.mx, shkp.my);
+    return !!loc && ((loc.roomno | 0) === (eshk.shoproom | 0));
+}
+
+/** C ref: shk.c tended_shop */
+function tended_shop(sroom) {
+    const mtmp = sroom?.resident;
+    return !!(mtmp && inhishop(mtmp));
+}
+
+/** C ref: shk.c noisy_shop / mon.c wake_nearto (zombie strat deferred). */
+function wake_nearto(x, y, distance) {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || mtmp.mx == null) continue;
+        if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
+            mtmp.msleeping = 0;
+        }
+    }
+}
+
+function noisy_shop(sroom) {
+    const mtmp = sroom?.resident;
+    if (mtmp && inhishop(mtmp)) {
+        wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+    }
+}
+
+/** Hero occupancy of shop room — C strchr(u.ushops, ROOM_INDEX+ROOMOFFSET). */
+function hero_in_shop(sroom) {
+    const rooms = game.level?.rooms || [];
+    const idx = rooms.indexOf(sroom);
+    if (idx < 0) return false;
+    const ch = String.fromCharCode(idx + ROOMOFFSET);
+    const ushops = game.u?.ushops || '';
+    return ushops.includes(ch);
+}
+
+/** C ref: sounds.c throne_mon_sound — RNG only; messages deferred. */
+function throne_mon_sound(mtmp) {
+    if ((mtmp.msleeping || is_lord(mtmp.data) || is_prince(mtmp.data))
+        && !is_animal(mtmp.data)
+        && mon_in_room(mtmp, COURT)) {
+        rn2(3); // which = rn2(3)+hallu; hallu deferred
+        return true;
+    }
+    return false;
+}
+
+/** C ref: sounds.c beehive_mon_sound — RNG only. */
+function beehive_mon_sound(mtmp) {
+    if (mtmp.data?.mlet === 'S_ANT' && is_flyer(mtmp.data)
+        && mon_in_room(mtmp, BEEHIVE)) {
+        rn2(2); // +hallu deferred
+        return true;
+    }
+    return false;
+}
+
+/** C ref: sounds.c morgue_mon_sound — undead only; vampshifter deferred. */
+function morgue_mon_sound(mtmp) {
+    if (is_undead(mtmp.data) && mon_in_room(mtmp, MORGUE)) {
+        rn2(2);
+        return true;
+    }
+    return false;
+}
+
+/** C ref: sounds.c zoo_mon_sound — RNG only. */
+function zoo_mon_sound(mtmp) {
+    if ((mtmp.msleeping || is_animal(mtmp.data)) && mon_in_room(mtmp, ZOO)) {
+        rn2(2);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: sounds.c temple_priest_sound — body deferred (inhistemple/altar).
+ * Always false until priest temple wiring exists; gate still burns.
+ */
+function temple_priest_sound(_mtmp) {
+    return false;
+}
+
+/**
+ * C ref: sounds.c oracle_sound — PM_ORACLE hear; canseemon/Hallu gate.
+ * Named omission: always takes hear path (canseemon deferred); may over-burn
+ * rn2 when oracle is clearly visible and !Hallucination.
+ */
+function oracle_sound(mtmp) {
+    if ((mtmp.data?.mndx | 0) !== PM_ORACLE) return false;
+    rn2(3); // C: ora_msg[rn2(3)+hallu*2] when Hallu || !canseemon
+    return true;
+}
+
+/**
+ * C ref: sounds.c dosounds — ambient feature rolls each EOT.
+ * Branch envelope: fountain/sink/court/swamp/vault/beehive/morgue/
+ * barracks/zoo/shop/temple/oracle gates; shop body search_special+
+ * tended_shop+rn2(2)+noisy_shop; mon_sound helpers RNG-only when match.
+ * Named omissions: You_hear plines; gd_sound vault body; vampshifter
+ * morgue; temple_priest body; oracle canseemon; Is_sanctum; Hallu index.
+ */
+export function dosounds() {
+    const lf = game.level?.flags;
+    if (!lf) return;
+    if (game.u?.Deaf || game.flags?.acoustics === false
+        || game.u?.uswallow || game.u?.Underwater) {
+        return;
+    }
+
+    if (lf.nfountains && !rn2(400)) {
+        rn2(3); // fountain_msg index
+    }
+    if (lf.nsinks && !rn2(300)) {
+        rn2(2); // sink_msg
+    }
+    if (lf.has_court && !rn2(200)) {
+        if (get_iter_mons(throne_mon_sound)) return;
+    }
+    if (lf.has_swamp && !rn2(200)) {
+        rn2(2); // swamp_msg; C returns after
+        return;
+    }
+    if (lf.has_vault && !rn2(200)) {
+        // gd_sound / vault messages — body deferred when rn2 hits 0
+        return;
+    }
+    if (lf.has_beehive && !rn2(200)) {
+        if (get_iter_mons(beehive_mon_sound)) return;
+    }
+    if (lf.has_morgue && !rn2(200)) {
+        if (get_iter_mons(morgue_mon_sound)) return;
+    }
+    if (lf.has_barracks && !rn2(200)) {
+        let count = 0;
+        for (const mtmp of game.fmon || []) {
+            if (!mtmp || (mtmp.mhp | 0) < 1) continue;
+            if (is_mercenary(mtmp.data)
+                && mon_in_room(mtmp, BARRACKS)
+                && (mtmp.msleeping || ++count > 5)) {
+                rn2(3); // barracks_msg
+                return;
+            }
+        }
+    }
+    if (lf.has_zoo && !rn2(200)) {
+        if (get_iter_mons(zoo_mon_sound)) return;
+    }
+    if (lf.has_shop && !rn2(200)) {
+        const sroom = search_special(ANY_SHOP);
+        if (!sroom) {
+            lf.has_shop = false;
+            return;
+        }
+        if (tended_shop(sroom) && !hero_in_shop(sroom)) {
+            rn2(2); // shop_msg; hallu index deferred
+            noisy_shop(sroom);
+        }
+        return;
+    }
+    if (lf.has_temple && !rn2(200) && !Is_astralevel(game.u?.uz)) {
+        // Is_sanctum deferred (always false → gate may open on sanctum)
+        if (get_iter_mons(temple_priest_sound)) return;
+    }
+    if (Is_oracle_level(game.u?.uz) && !rn2(400)) {
+        if (get_iter_mons(oracle_sound)) return;
+    }
+}
 
 /** C ref: sounds.c dochat Hallucination walltalk[]. */
 const WALLTALK = [

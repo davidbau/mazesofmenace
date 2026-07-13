@@ -434,6 +434,16 @@ function start_corpse_timeout(body) {
     start_timer(when, TIMER_OBJECT, action, body);
 }
 
+// C ref: read.c candy_wrappers[] — index 0 unused; SIZE-1 == 12 brands
+const CANDY_WRAPPER_COUNT = 12;
+
+// C ref: read.c assign_candy_wrapper — spe = 1 + rn2(SIZE(candy_wrappers)-1)
+function assign_candy_wrapper(obj) {
+    if (otypName(obj.otyp) === 'CANDY_BAR') {
+        obj.spe = 1 + rn2(CANDY_WRAPPER_COUNT);
+    }
+}
+
 // C ref: mkobj.c mksobj_init (partial — classes hit during fill/mineralize)
 function mksobj_init(otmp, artif) {
     const objects = objs();
@@ -500,6 +510,15 @@ function mksobj_init(otmp, artif) {
                 }
             }
             blessorcurse(otmp, 10);
+        } else if (name === 'SLIME_MOLD') {
+            // C ref: mkobj.c SLIME_MOLD — spe = current_fruit; fruit chain deferred
+            if (game.context?.current_fruit != null) {
+                otmp.spe = game.context.current_fruit;
+            }
+            if (game.flags) game.flags.made_fruit = true;
+        } else if (name === 'CANDY_BAR') {
+            // C ref: mkobj.c CANDY_BAR → read.c assign_candy_wrapper
+            assign_candy_wrapper(otmp);
         }
         if (name !== 'CORPSE' && name !== 'MEAT_RING' && name !== 'KELP_FROND'
             && !name.startsWith('GLOB_')) {
@@ -663,6 +682,34 @@ function mksobj_init(otmp, artif) {
     mkobj_erosions(otmp);
 }
 
+// C ref: do_name.c sir_Terry_novels[] / noveltitle
+const SIR_TERRY_NOVELS = [
+    'The Colour of Magic', 'The Light Fantastic', 'Equal Rites', 'Mort',
+    'Sourcery', 'Wyrd Sisters', 'Pyramids', 'Guards! Guards!', 'Eric',
+    'Moving Pictures', 'Reaper Man', 'Witches Abroad', 'Small Gods',
+    'Lords and Ladies', 'Men at Arms', 'Soul Music', 'Interesting Times',
+    'Maskerade', 'Feet of Clay', 'Hogfather', 'Jingo', 'The Last Continent',
+    'Carpe Jugulum', 'The Fifth Elephant', 'The Truth', 'Thief of Time',
+    'The Last Hero', 'The Amazing Maurice and His Educated Rodents',
+    'Night Watch', 'The Wee Free Men', 'Monstrous Regiment',
+    'A Hat Full of Sky', 'Going Postal', 'Thud!', 'Wintersmith',
+    'Making Money', 'Unseen Academicals', 'I Shall Wear Midnight', 'Snuff',
+    'Raising Steam', "The Shepherd's Crown",
+];
+
+/** C ref: do_name.c noveltitle — pick/store Discworld novel title index. */
+function noveltitle(otmp) {
+    const k = SIR_TERRY_NOVELS.length;
+    let j = rn2(k);
+    if (otmp) {
+        if ((otmp.novelidx | 0) === -1) otmp.novelidx = j;
+        else if ((otmp.novelidx | 0) >= 0 && (otmp.novelidx | 0) < k) {
+            j = otmp.novelidx | 0;
+        }
+    }
+    return SIR_TERRY_NOVELS[j];
+}
+
 // C ref: mkobj.c mksobj()
 export function mksobj(otyp, init, artif) {
     const objects = objs();
@@ -719,6 +766,11 @@ export function mksobj(otyp, init, artif) {
             rn2(2);
         }
         if (name === 'CORPSE') start_corpse_timeout(otmp);
+    } else if (name === 'SPE_NOVEL') {
+        // C ref: mkobj.c mksobj SPE_NOVEL — even when !init
+        otmp.novelidx = -1;
+        const title = noveltitle(otmp);
+        otmp.oname = title;
     }
     // C: otmp->owt = weight(otmp);
     otmp.owt = weight(otmp);

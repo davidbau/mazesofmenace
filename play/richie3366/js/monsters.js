@@ -16,6 +16,8 @@ import {
     mflags2s,
     mflags3s,
     msizes,
+    cwts,
+    cnutrits,
     mlets,
     has_at_weaps,
     mattks,
@@ -24,6 +26,7 @@ import {
     pmnames,
     PM_GIANT_SPIDER,
     PM_LICHEN,
+    PM_ACID_BLOB,
     PM_HUMAN,
     PM_ELF,
     PM_DWARF,
@@ -31,6 +34,7 @@ import {
     PM_GNOME,
     PM_ARCHEOLOGIST,
     PM_WIZARD,
+    PM_MONK,
 } from './generated/monsters_data.js';
 
 export {
@@ -40,6 +44,7 @@ export {
     NON_PM,
     PM_GIANT_SPIDER,
     PM_LICHEN,
+    PM_ACID_BLOB,
     PM_HUMAN,
     PM_ELF,
     PM_DWARF,
@@ -47,9 +52,12 @@ export {
     PM_GNOME,
     PM_ARCHEOLOGIST,
     PM_WIZARD,
+    PM_MONK,
     monsterNames,
     pmnames,
     mcolors,
+    cwts,
+    cnutrits,
 };
 
 /** C ref: monflag.h enum mgender */
@@ -82,6 +90,7 @@ export const M2_GREEDY = 0x10000000; /* monflag.h — likes gold */
 export const M2_JEWELS = 0x20000000; /* monflag.h — likes gems */
 export const M2_COLLECT = 0x40000000; /* monflag.h — picks up weapons/food */
 export const M2_MAGIC = 0x80000000; /* monflag.h — picks up magic items */
+export const M2_UNDEAD = 0x00000002; /* monflag.h — walking dead */
 export const M2_LORD = 0x00000400;
 export const M2_PRINCE = 0x00000800;
 export const M2_NASTY = 0x02000000;
@@ -96,6 +105,7 @@ export const M1_TUNNEL = 0x00000020; /* monflag.h — can tunnel through rock */
 export const M1_NEEDPICK = 0x00000040; /* monflag.h — needs pick to tunnel */
 export const M1_NOTAKE = 0x00000800; /* monflag.h — cannot pick up objects */
 export const M1_NOHANDS = 0x00002000;
+export const M1_HUMANOID = 0x00020000; /* monflag.h — humanoid head/arms/torso */
 export const M1_THICK_HIDE = 0x00200000; /* monflag.h — thick hide or scales */
 export const M1_SEE_INVIS = 0x01000000; /* monflag.h — sees invisible */
 export const M1_NOEYES = 0x00001000;
@@ -128,6 +138,8 @@ export function mons(mndx) {
         mflags2: mflags2s[mndx],
         mflags3: mflags3s[mndx],
         msize: msizes[mndx],
+        cwt: cwts[mndx],
+        cnutrit: cnutrits[mndx],
         mlet: mlets[mndx],
         mcolor: mcolors[mndx],
         mattk: mattks[mndx],
@@ -164,6 +176,11 @@ export function thick_skinned(ptr) {
 // C ref: mondata.h nohands()
 export function nohands(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_NOHANDS);
+}
+
+/** C ref: mondata.h humanoid — M1_HUMANOID */
+export function humanoid(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_HUMANOID);
 }
 
 /** C ref: mondata.h haseyes — !(M1_NOEYES) */
@@ -267,6 +284,11 @@ export function is_animal(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_ANIMAL);
 }
 
+/** C ref: mondata.h is_undead */
+export function is_undead(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_UNDEAD);
+}
+
 /** C ref: mondata.h strongmonst */
 export function strongmonst(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_STRONG);
@@ -334,4 +356,60 @@ export function is_placeholder(ptr) {
     const mndx = ptr?.mndx;
     return mndx === PM_ORC || mndx === PM_GIANT
         || mndx === PM_ELF || mndx === PM_HUMAN;
+}
+
+const PM_DEATH = monsterNames.indexOf('PM_DEATH');
+const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
+const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
+const PM_LEATHER_GOLEM = monsterNames.indexOf('PM_LEATHER_GOLEM');
+const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
+
+/** C ref: mondata.h is_rider */
+export function is_rider(ptr) {
+    const mndx = ptr?.mndx;
+    return mndx === PM_DEATH || mndx === PM_FAMINE || mndx === PM_PESTILENCE;
+}
+
+/** C ref: mondata.h noncorporeal */
+export function noncorporeal(ptr) {
+    return ptr?.mlet === 'S_GHOST';
+}
+
+/** C ref: mondata.h acidic / poisonous / carnivorous / herbivorous */
+export function acidic(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_ACID);
+}
+export function poisonous(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_POIS);
+}
+export function carnivorous(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_CARNIVORE);
+}
+export function herbivorous(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_HERBIVORE);
+}
+
+/**
+ * C ref: mondata.h vegan / vegetarian — corpse/tin conduct + eatcorpse.
+ */
+export function vegan(ptr) {
+    if (!ptr) return false;
+    const mlet = ptr.mlet;
+    if (mlet === 'S_BLOB' || mlet === 'S_JELLY' || mlet === 'S_FUNGUS'
+        || mlet === 'S_VORTEX' || mlet === 'S_LIGHT') {
+        return true;
+    }
+    if (mlet === 'S_ELEMENTAL' && ptr.mndx !== PM_STALKER) return true;
+    if (mlet === 'S_GOLEM' && ptr.mndx !== PM_FLESH_GOLEM
+        && ptr.mndx !== PM_LEATHER_GOLEM) {
+        return true;
+    }
+    return noncorporeal(ptr);
+}
+
+export function vegetarian(ptr) {
+    if (vegan(ptr)) return true;
+    return ptr?.mlet === 'S_PUDDING' && ptr.mndx !== PM_BLACK_PUDDING;
 }

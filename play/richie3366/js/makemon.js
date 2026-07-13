@@ -38,17 +38,71 @@ import {
     montoostrong,
     likes_gold,
     monsterNames,
+    is_animal,
+    mindless,
 } from './monsters.js';
 import {
-    NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME,
+    NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, In_mines,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE,
+    M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL,
+    SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, ROOMOFFSET,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
-import { mksobj, weight } from './mkobj.js';
-import { objectNames, WEAPON_CLASS, ARMOR_CLASS } from './objects.js';
+import { mksobj, mkobj, weight, objects_at } from './mkobj.js';
+import {
+    objectNames, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, WAND_CLASS,
+    FOOD_CLASS, COIN_CLASS, SCROLL_CLASS, POTION_CLASS, AMULET_CLASS,
+    TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS, MAXOCLASSES,
+    RANDOM_CLASS,
+} from './objects.js';
 import { cansee } from './vision.js';
 import { christen_monst } from './do_name.js';
+
+/** C ref: shknam.c neweshk — allocate eshk for MM_ESHK makemon. */
+export function neweshk(mtmp) {
+    if (!mtmp.mextra) mtmp.mextra = {};
+    if (!mtmp.mextra.eshk) {
+        mtmp.mextra.eshk = {
+            parentmid: mtmp.m_id | 0,
+            bill_p: null,
+            shoproom: 0,
+            shoptype: 0,
+            shoplevel: { dnum: 0, dlevel: 0 },
+            shd: { x: 0, y: 0 },
+            shk: { x: 0, y: 0 },
+            robbed: 0, credit: 0, debit: 0, loan: 0,
+            following: false, surcharge: false, dismiss_kops: false,
+            billct: 0, visitct: 0,
+            customer: '',
+            shknam: '',
+        };
+    }
+    return mtmp.mextra.eshk;
+}
+
+// C ref: makemon.c set_mimic_sym — S_MIMIC_DEF sentinel (MONSYMS_S_ENUM idx 60)
+const S_MIMIC_DEF_SYM = 60;
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const STATUE = objectNames.indexOf('STATUE');
+const FIGURINE = objectNames.indexOf('FIGURINE');
+const CORPSE = objectNames.indexOf('CORPSE');
+const EGG = objectNames.indexOf('EGG');
+const TIN = objectNames.indexOf('TIN');
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+const BOULDER = objectNames.indexOf('BOULDER');
+
+// C ref: makemon.c syms[] for ordinary-room mimic appearance
+const MIMIC_SYMS = [
+    MAXOCLASSES, MAXOCLASSES, RING_CLASS, WAND_CLASS, WEAPON_CLASS,
+    FOOD_CLASS, COIN_CLASS, SCROLL_CLASS, POTION_CLASS, ARMOR_CLASS,
+    AMULET_CLASS, TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
+    S_MIMIC_DEF_SYM, S_MIMIC_DEF_SYM,
+];
+// C ref: furnsyms[] — only need length for ROLL_FROM RNG; appear value unused
+// when appear_as overrides (Storeroom). Indices are pchar S_* stubs.
+const MIMIC_FURNSYMS = [0, 0, 1, 1, 2, 3, 4, 5];
 
 // C ref: do_name.c ghostnames[] / rndghostname
 const GHOSTNAMES = [
@@ -558,7 +612,7 @@ function findgold(argchain) {
 }
 
 // C ref: makemon.c mkmonmoney
-function mkmonmoney(mtmp, amount) {
+export function mkmonmoney(mtmp, amount) {
     if (amount > 0) {
         const gold = mksobj(otyp('GOLD_PIECE'), false, false);
         gold.quan = amount;
@@ -567,7 +621,40 @@ function mkmonmoney(mtmp, amount) {
     }
 }
 
-// C ref: makemon.c m_initinv — S_GNOME candle + trailing defensive/misc/gold
+/**
+ * C ref: muse.c rnd_misc_item — weak-monster misc inventory.
+ * Named omissions: See_invisible gate detail; vampshifter; nonliving table.
+ */
+function rnd_misc_item(mtmp) {
+    const pm = mtmp.data;
+    const difficulty = pm?.difficulty ?? 0;
+    if (is_animal(pm) || mindless(pm)
+        || pm?.mlet === 'S_GHOST' || pm?.mlet === 'S_KOP') {
+        return 0;
+    }
+    // attacktype(AT_EXPL) deferred — no shopkeeper/common path uses it here
+    if (difficulty < 6 && !rn2(30)) {
+        return rn2(6) ? otyp('POT_POLYMORPH') : otyp('WAN_POLYMORPH');
+    }
+    if (!rn2(40) /* && !nonliving && !vampshifter */) {
+        return otyp('AMULET_OF_LIFE_SAVING');
+    }
+    switch (rn2(3)) {
+    case 0:
+        if (mtmp.isgd) return 0;
+        return rn2(6) ? otyp('POT_SPEED') : otyp('WAN_SPEED_MONSTER');
+    case 1:
+        // C: mpeaceful && !See_invisible → 0; See_invisible deferred → treat false
+        if (mtmp.mpeaceful) return 0;
+        return rn2(6) ? otyp('POT_INVISIBILITY') : otyp('WAN_MAKE_INVISIBLE');
+    case 2:
+        return otyp('POT_GAIN_LEVEL');
+    default:
+        return 0;
+    }
+}
+
+// C ref: makemon.c m_initinv — S_GNOME candle, PM_SHOPKEEPER kit, trailing misc
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
     if (Is_rogue_level(game.u?.uz)) return;
@@ -587,17 +674,37 @@ function m_initinv(mtmp) {
             mpickobj(mtmp, otmp);
         }
         break;
+    case 'S_HUMAN':
+        if (ptr.mndx === pm('SHOPKEEPER')) {
+            mongets(mtmp, otyp('SKELETON_KEY'));
+            switch (rn2(4)) {
+            case 0:
+                mongets(mtmp, otyp('WAN_MAGIC_MISSILE'));
+                // FALLTHROUGH
+            case 1:
+                mongets(mtmp, otyp('POT_EXTRA_HEALING'));
+                // FALLTHROUGH
+            case 2:
+                mongets(mtmp, otyp('POT_HEALING'));
+                // FALLTHROUGH
+            case 3:
+                mongets(mtmp, otyp('WAN_STRIKING'));
+                break;
+            }
+        }
+        // mercenary / elf / priest / guardian arms deferred
+        break;
     default:
-        // Other m_initinv bodies (mercenary armor, nymph, …) deferred
+        // Other m_initinv bodies (nymph, giant, …) deferred
         break;
     }
 
     // C: PM_SOLDIER && rn2(13) early return — deferred (mercenary m_initinv)
     if (mtmp.m_lev > rn2(50)) {
-        /* rnd_defensive_item */
+        /* rnd_defensive_item — named omission until a gate-passing cohort */
     }
     if (mtmp.m_lev > rn2(100)) {
-        /* rnd_misc_item */
+        mongets(mtmp, rnd_misc_item(mtmp));
     }
     // C: likes_gold && !findgold(minvent) && !rn2(5) → mkmonmoney
     if (likes_gold(ptr) && !findgold(mtmp.minvent) && !rn2(5)) {
@@ -783,8 +890,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
         minvent: null,
     };
 
+    // C: MM_ESHK → neweshk before m_id assignment
+    if (mmflags & MM_ESHK) neweshk(mtmp);
+
     next_ident(); // m_id
     mtmp.m_id = game.context?.ident ? game.context.ident - 1 : 1;
+    if (mtmp.mextra?.eshk) mtmp.mextra.eshk.parentmid = mtmp.m_id;
     newmonhp(mtmp, ptr);
 
     const femaleok = !is_male(ptr) && !is_neuter(ptr);
@@ -813,6 +924,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
+    // C: switch (ptr->mlet) case S_MIMIC → set_mimic_sym before invent
+    if (ptr.mlet === 'S_MIMIC') set_mimic_sym(mtmp);
+
     // C: allow_minvent → is_armed? m_initweap; m_initinv; domestic saddle
     if (allow_minvent) {
         if (is_armed(ptr)) m_initweap(mtmp);
@@ -823,6 +937,108 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
 
     return mtmp;
+}
+
+/**
+ * C ref: makemon.c set_mimic_sym — ordinary THEMEROOM/OROOM path + traps.
+ * Named omissions: shop get_shop_item body, maze town/sokoban arms,
+ * altar Align2amask MCORPSENM, Protection_from_shape_changers early-out
+ * when hero wears the amulet (stubbed false at mklev).
+ */
+export function set_mimic_sym(mtmp) {
+    if (!mtmp) return;
+    // C: Protection_from_shape_changers → return (not active at mklev)
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    const loc = game.level?.at?.(mx, my);
+    const typ = loc?.typ ?? 0;
+    const roomno = (loc?.roomno ?? 0) - ROOMOFFSET;
+    let rt = 0;
+    if (roomno >= 0 && game.level?.rooms?.[roomno])
+        rt = game.level.rooms[roomno].rtype ?? 0;
+
+    let ap_type = M_AP_OBJECT;
+    let appear = STRANGE_OBJECT;
+
+    const floorObj = objects_at(mx, my);
+    if (floorObj) {
+        ap_type = M_AP_OBJECT;
+        appear = floorObj.otyp;
+    } else if (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR) {
+        ap_type = M_AP_FURNITURE;
+        // door/wall glyph pick has no RNG
+        appear = 0;
+    } else if (game.level?.flags?.is_maze_lev
+        && !(In_mines(game.u?.uz) /* && in_town */)
+        && !rn2(2)) {
+        // Sokoban gate omitted — not on ordinary themerms path
+        ap_type = M_AP_OBJECT;
+        appear = STATUE;
+    } else if (roomno < 0 && !game.ftrap?.some?.(t => t.tx === mx && t.ty === my)) {
+        // t_at stub: no trap → boulder. Named omission: full t_at.
+        ap_type = M_AP_OBJECT;
+        appear = BOULDER;
+    } else if (rt === ZOO || rt === VAULT) {
+        ap_type = M_AP_OBJECT;
+        appear = GOLD_PIECE;
+    } else if (rt === DELPHI) {
+        if (rn2(2)) {
+            ap_type = M_AP_OBJECT;
+            appear = STATUE;
+        } else {
+            ap_type = M_AP_FURNITURE;
+            appear = 0; // S_fountain stub
+        }
+    } else if (rt === TEMPLE) {
+        ap_type = M_AP_FURNITURE;
+        appear = 0; // S_altar stub
+    } else if (rt >= SHOPBASE) {
+        // Shop arms deferred — fall through burns like ordinary if reached
+        let s_sym = S_MIMIC_DEF_SYM;
+        if (rn2(10) >= (game.u?.uz?.dlevel ?? 1)) {
+            s_sym = S_MIMIC_DEF_SYM;
+        } else {
+            // get_shop_item deferred → mimic def
+            s_sym = S_MIMIC_DEF_SYM;
+        }
+        if (s_sym === S_MIMIC_DEF_SYM) {
+            ap_type = M_AP_OBJECT;
+            appear = STRANGE_OBJECT;
+        }
+    } else {
+        let s_sym = MIMIC_SYMS[rn2(MIMIC_SYMS.length)];
+        if (s_sym === MAXOCLASSES) {
+            ap_type = M_AP_FURNITURE;
+            appear = MIMIC_FURNSYMS[rn2(MIMIC_FURNSYMS.length)];
+        } else {
+            ap_type = M_AP_OBJECT;
+            if (s_sym === S_MIMIC_DEF_SYM) {
+                appear = STRANGE_OBJECT;
+            } else if (s_sym === COIN_CLASS) {
+                appear = GOLD_PIECE;
+            } else {
+                const otmp = mkobj(s_sym, false);
+                appear = otmp?.otyp ?? STRANGE_OBJECT;
+                // C: obfree — discard without floor/obj_resists
+            }
+        }
+    }
+
+    mtmp.m_ap_type = ap_type;
+    mtmp.mappearance = appear;
+
+    if (ap_type === M_AP_OBJECT
+        && (appear === STATUE || appear === FIGURINE
+            || appear === CORPSE || appear === EGG || appear === TIN)) {
+        let mndx = rndmonnum();
+        // nocorpse / hatch / tin Plan-B arms deferred
+        if (!mtmp.mextra) mtmp.mextra = {};
+        mtmp.mextra.mcorpsenm = mndx;
+    } else if (ap_type === M_AP_OBJECT && appear === SLIME_MOLD) {
+        if (!mtmp.mextra) mtmp.mextra = {};
+        mtmp.mextra.mcorpsenm = game.context?.current_fruit ?? 0;
+    }
+    // altar Align2amask / block_point deferred
 }
 
 export { MM_NOGRP };

@@ -5,7 +5,7 @@
 // ordinary path via thitm death.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import {
     mksobj, place_object, weight, stackobj, mkcorpstat, relobj_on_death,
 } from './mkobj.js';
@@ -23,7 +23,9 @@ import {
 import {
     DART_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
-    PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, is_hole, In_quest,
+    PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, ROLLING_BOULDER_TRAP,
+    is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
+    D_CLOSED, D_LOCKED,
     CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NONE,
     ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
@@ -33,7 +35,12 @@ import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects
 const DART = objectNames.indexOf('DART');
 const ROCK = objectNames.indexOf('ROCK');
 const CORPSE = objectNames.indexOf('CORPSE');
+const BOULDER = objectNames.indexOf('BOULDER');
 const AD_PHYS = 0;
+// C ref: hack.h xdir/ydir — 8 dirs W,NW,N,NE,E,SE,S,SW
+const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
+const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
+const N_DIRS = 8;
 
 // C ref: trap.h enum trap_result
 export const Trap_Effect_Finished = 0;
@@ -114,9 +121,144 @@ export function choose_trapnote(ttmp) {
     return tcnt > 0 ? tpick[rn2(tcnt)] : rn2(12);
 }
 
-// C ref: trap.c maketrap — creation + SQKY_BOARD / HOLE|TRAPDOOR RNG path.
-// Named omissions: overwrite/furniture/terrain gates, statue/boulder launch,
-// pit conjoined/shop damage/terrain morph, Sokoban finish.
+// C ref: dbridge.c is_pool_or_lava — drawbridge-under POOL/LAVA deferred.
+function is_pool_or_lava(x, y) {
+    if (!isok(x, y)) return false;
+    const typ = game.level?.at?.(x, y)?.typ;
+    if (typ == null) return false;
+    return IS_POOL(typ) || IS_LAVA(typ);
+}
+
+// C ref: monmove.c closed_door
+function closed_door(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/**
+ * C ref: trap.c isclearpath — walk distance steps; update cc to end cell.
+ * Blocks !ZAP_POS, closed doors, and pit/hole/xport traps along the path.
+ */
+function isclearpath(cc, distance, dx, dy) {
+    let x = cc.x;
+    let y = cc.y;
+    let dist = distance;
+    while (dist-- > 0) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) return false;
+        const typ = game.level?.at?.(x, y)?.typ;
+        if (typ == null || !ZAP_POS(typ) || closed_door(x, y)) return false;
+        const t = t_at(x, y);
+        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp) || is_xport(t.ttyp))) {
+            return false;
+        }
+    }
+    cc.x = x;
+    cc.y = y;
+    return true;
+}
+
+/**
+ * C ref: mthrowu.c linedup geometry only — used for launchplace early path.
+ * Full couldsee/clear_path boulderhandling deferred (mklev launchplace is 0,0).
+ */
+function linedup_geom(ax, ay, bx, by) {
+    const tbx = ax - bx;
+    const tby = ay - by;
+    if (!tbx && !tby) return false;
+    return (!tbx || !tby || Math.abs(tbx) === Math.abs(tby))
+        && Math.max(Math.abs(tbx), Math.abs(tby)) < BOLT_LIM;
+}
+
+/**
+ * C ref: trap.c find_random_launch_coord — place boulder/ammo launch cell.
+ * Sokoban always fails; launchplace offset tried first; else rn1(5,4)+rn2(8)
+ * direction spiral with isclearpath (both ways for ROLLING_BOULDER_TRAP).
+ */
+function find_random_launch_coord(ttmp, cc) {
+    if (!ttmp || !cc) return false;
+    const Sokoban = !!(game.level?.flags?.sokoban || game.Sokoban);
+    if (Sokoban) return false;
+
+    const x = ttmp.tx;
+    const y = ttmp.ty;
+    const lp = game.launchplace || { x: 0, y: 0 };
+    const bcc = { x: ttmp.tx + (lp.x | 0), y: ttmp.ty + (lp.y | 0) };
+    if (isok(bcc.x, bcc.y) && linedup_geom(ttmp.tx, ttmp.ty, bcc.x, bcc.y)) {
+        cc.x = bcc.x;
+        cc.y = bcc.y;
+        return true;
+    }
+
+    let mindist = 4;
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) mindist = 2;
+    let distance = rn1(5, 4); // 4..8 away
+    let tmp = rn2(N_DIRS);
+    let trycount = 0;
+    let success = false;
+    while (distance >= mindist) {
+        const dx = xdir[tmp];
+        const dy = ydir[tmp];
+        cc.x = x;
+        cc.y = y;
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP
+            && is_pool_or_lava(x + distance * dx, y + distance * dy)) {
+            success = false;
+        } else {
+            success = isclearpath(cc, distance, dx, dy);
+        }
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+            const other = { x, y };
+            const success_otherway = isclearpath(other, distance, -dx, -dy);
+            if (!success_otherway) success = false;
+        }
+        if (success) break;
+        if (++tmp > 7) tmp = 0;
+        if ((++trycount % 8) === 0) --distance;
+    }
+    return success;
+}
+
+/**
+ * C ref: trap.c mkroll_launch — set launch coords; place otyp ammo when path ok.
+ * Failure leaves launch at trap cell (no ammo). ROLLING_BOULDER sets launch2.
+ */
+function mkroll_launch(ttmp, x, y, otyp, ocount) {
+    const cc = { x: 0, y: 0 };
+    let success = find_random_launch_coord(ttmp, cc);
+    if (!success) {
+        cc.x = x;
+        cc.y = y;
+    } else {
+        const otmp = mksobj(otyp, true, false);
+        if (otmp) {
+            otmp.quan = ocount;
+            otmp.owt = weight(otmp);
+            place_object(otmp, cc.x, cc.y);
+            stackobj(otmp);
+        }
+    }
+    ttmp.launch = ttmp.launch || { x: -1, y: -1 };
+    ttmp.launch.x = cc.x;
+    ttmp.launch.y = cc.y;
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+        ttmp.launch2 = ttmp.launch2 || { x: -1, y: -1 };
+        ttmp.launch2.x = x - (cc.x - x);
+        ttmp.launch2.y = y - (cc.y - y);
+    } else {
+        ttmp.launch_otyp = otyp;
+    }
+    newsym(ttmp.launch.x, ttmp.launch.y);
+    return 1;
+}
+
+// C ref: trap.c maketrap — creation + SQKY_BOARD / HOLE|TRAPDOOR /
+// ROLLING_BOULDER_TRAP mkroll_launch RNG path.
+// Named omissions: overwrite/furniture/terrain gates, STATUE_TRAP living
+// statue, pit conjoined/shop damage/terrain morph, Sokoban finish,
+// drawbridge-under pool/lava in is_pool_or_lava, launch_obj trigger.
 // TELEP teledest may be set by caller after create (themerms make_a_trap).
 export function maketrap(x, y, typ) {
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
@@ -136,12 +278,14 @@ export function maketrap(x, y, typ) {
             tnote: 0,
             conjoined: 0,
             launch: { x: -1, y: -1 },
+            launch2: { x: -1, y: -1 },
             teledest: { x: -1, y: -1 },
             dst: { dnum: -1, dlevel: -1 },
             ntrap: null,
         };
     }
     ttmp.launch = { x: -1, y: -1 };
+    ttmp.launch2 = { x: -1, y: -1 };
     ttmp.teledest = { x: -1, y: -1 };
     ttmp.dst = { dnum: -1, dlevel: -1 };
     ttmp.madeby_u = 0;
@@ -152,6 +296,9 @@ export function maketrap(x, y, typ) {
     switch (typ) {
     case SQKY_BOARD:
         ttmp.tnote = choose_trapnote(ttmp);
+        break;
+    case ROLLING_BOULDER_TRAP:
+        mkroll_launch(ttmp, x, y, BOULDER, 1);
         break;
     case HOLE:
     case TRAPDOOR:

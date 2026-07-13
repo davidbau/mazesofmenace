@@ -24,13 +24,17 @@ import {
     MAGIC_PORTAL,
 } from './const.js';
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, objectNames } from './objects.js';
-import { monsterNames } from './monsters.js';
+import {
+    monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
+    PM_LICHEN,
+} from './monsters.js';
 import { m_cansee, couldsee, cansee } from './vision.js';
 import { Monnam, noit_Monnam } from './do_name.js';
 import { gettrack } from './track.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 
 const MTSZ = 4;
 const SQSRCHRADIUS = 5;
@@ -86,20 +90,24 @@ export function obj_resists(obj, ochance, achance) {
 }
 
 // C ref: dog.c dogfood() — quality; always rolls obj_resists first.
-// mflags1 not in monsters_data yet: treat domestic pets as carnivorous
-// (dogs/cats). Ponies (herbivore) need mflags1 before seed with pony pet.
 export function dogfood(mon, obj) {
     if (!obj) return UNDEF;
     if (obj.opoisoned) return POISON;
     if (obj_resists(obj, 0, 95)) return obj.cursed ? TABU : APPORT;
 
+    const mptr = mon?.data ?? mons(mon?.mnum);
     const oclass = obj.oclass ?? 0;
     const otyp = obj.otyp ?? -1;
-    const carni = true; // until mflags1 is extracted
-    const herbi = false;
+    const carni = carnivorous(mptr);
+    const herbi = herbivorous(mptr);
     const starving = !!(mon?.mtame && !mon?.isminion && mon?.edog?.mhpmax_penalty);
 
     if (oclass === FOOD_CLASS) {
+        // C: fx = corpsenm for CORPSE/TIN/EGG else NON_PM; fptr = &mons[fx|NUMMONS]
+        const fx = (otyp === CORPSE || otyp === TIN || otyp === EGG)
+            ? (obj.corpsenm ?? -1) : -1;
+        const fptr = (fx >= 0) ? mons(fx) : null;
+
         switch (otyp) {
             case TRIPE_RATION:
             case MEATBALL:
@@ -110,12 +118,21 @@ export function dogfood(mon, obj) {
             case EGG:
                 return carni ? CADAVER : MANFOOD;
             case CORPSE: {
-                // C: peek_at_iced_corpse_age(obj) + 50 <= moves → POISON
-                // (lizard/lichen/fungus-pet exceptions deferred)
+                // C ref: dog.c dogfood CORPSE — age/poison/acid → POISON;
+                // vegan(fptr) → herbi?CADAVER:MANFOOD (lichen etc.).
+                // polyfood / humanoid cannibalism / rider / petrify deferred.
                 const moves = game.moves ?? 1;
                 const corpseAge = obj.age ?? moves;
-                if (corpseAge + 50 <= moves) return POISON;
-                // poisonous/acidic need mflags1 — deferred; age covers tainted mklev corpses
+                const agePoison = corpseAge + 50 <= moves
+                    && fx !== PM_LIZARD && fx !== PM_LICHEN
+                    && mptr?.mlet !== 'S_FUNGUS';
+                // resists_poison/acid: Resists_Elem not ported — pets lack them
+                if (agePoison
+                    || (acidic(fptr) /* && !resists_acid(mon) */)
+                    || (poisonous(fptr) /* && !resists_poison(mon) */)) {
+                    return POISON;
+                }
+                if (vegan(fptr)) return herbi ? CADAVER : MANFOOD;
                 return carni ? CADAVER : MANFOOD;
             }
             case APPLE:
@@ -227,14 +244,11 @@ function dog_nutrition(mtmp, obj) {
 }
 
 function mons_cwt(corpsenm) {
-    // Generated tables omit cwt; newt-sized default keeps meating sane.
-    void corpsenm;
-    return 10;
+    return mons(corpsenm)?.cwt ?? 10;
 }
 
 function mons_cnutrit(corpsenm) {
-    void corpsenm;
-    return 20;
+    return mons(corpsenm)?.cnutrit ?? 20;
 }
 
 // C ref: mon.c m_consume_obj — pet heal omitted; delobj always rolls obj_resists(0,0).

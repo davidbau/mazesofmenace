@@ -16,8 +16,8 @@ import { overexertion, nomul, losehp } from './hack.js';
 import { pline, newsym } from './display.js';
 import { dmgval, P_SKILL, weapon_hit_bonus, martial_bonus } from './weapon.js';
 import {
-    find_mac, get_mattk, AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_TUCH,
-    AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AD_PHYS,
+    find_mac, get_mattk, make_corpse, AT_NONE, AT_WEAP, AT_KICK, AT_CLAW,
+    AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AD_PHYS,
 } from './mhitm.js';
 import {
     verysmall, G_FREQ, bigmonst, thick_skinned, monsterNames,
@@ -167,8 +167,9 @@ function first_weapon_hit(weapon) {
 }
 
 /**
- * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance.
- * make_corpse / mkobj body deferred (RNG burned).
+ * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance
+ * → make_corpse. Named omissions: mkobj treasure body, LEVEL_SPECIFIC_NOCORPSE,
+ * accessible||is_pool gate, wasinside/burycorpse/zombify, murder/luck rn2.
  */
 async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
@@ -199,7 +200,8 @@ async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         if (!rn2(6)) {
             // mkobj(RANDOM_CLASS) treasure drop deferred
         }
-        corpse_chance(mtmp);
+        // C: if (!wasinside && corpse_chance(...)) make_corpse(...)
+        if (corpse_chance(mtmp)) make_corpse(mtmp);
     }
     // C ref: mon.c xkilled cleanup — experience after corpse; murder/luck/
     // alignment adjust deferred when they would burn RNG (peaceful rn2)

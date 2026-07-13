@@ -15,6 +15,7 @@ import {
     CORPSTAT_FEMALE,
     CORPSTAT_MALE,
     CORPSTAT_NONE,
+    W_ARMOR,
 } from './const.js';
 import {
     monsterNames, verysmall, G_FREQ, G_NOCORPSE, is_neuter,
@@ -44,6 +45,7 @@ const AT_TENT = 16;
 const AT_WEAP = 254;
 const AT_MAGC = 255;
 const AD_PHYS = 0;
+const AD_ELEC = 6;
 const AD_STCK = 19;
 const AC_MAX = 99;
 
@@ -69,7 +71,7 @@ export function get_mattk(magr, i) {
 export {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
-    AT_WEAP, AT_MAGC, AD_PHYS,
+    AT_WEAP, AT_MAGC, AD_PHYS, AD_ELEC,
 };
 
 function deadmonster(m) {
@@ -147,6 +149,44 @@ function passivemm(magr, mdef, mhitb, mdead) {
     return mdead | mhit;
 }
 
+/**
+ * C ref: mhitu.c magic_negation — worn armor a_can max for hero.
+ * Amulet/extrinsic Protection bumps deferred (same as invent subset).
+ */
+function magic_negation_you() {
+    let mc = 0;
+    for (const o of game.invent || []) {
+        if (((o.owornmask || 0) & W_ARMOR) !== 0) {
+            const armpro = game.objects?.[o.otyp]?.oc_level ?? 0;
+            if (armpro > mc) mc = armpro;
+        }
+    }
+    return mc;
+}
+
+/**
+ * C ref: uhitm.c mhitm_mgc_atk_negated — cancellation / MC gate.
+ * Always burns rn2(10) unless attacker is cancelled (mcan → TRUE, no roll).
+ * mdef null = hero (&gy.youmonst). Verbose pline only when thwarted.
+ */
+export async function mhitm_mgc_atk_negated(magr, mdef, verbosely) {
+    // C: magr != &youmonst && magr->mcan → TRUE (no message)
+    if (magr != null && magr.mcan) return true;
+
+    const armpro = (mdef == null) ? magic_negation_you() : 0;
+    // Named omission: monster-defender magic_negation (minvent a_can) —
+    // not needed until m-vs-m elemental peels call this with mdef set.
+    const negated = !(rn2(10) >= 3 * armpro);
+    if (negated) {
+        if (verbosely) {
+            if (mdef == null) await pline('You avoid harm.');
+            // mon-visible "avoids harm" deferred
+        }
+        return true;
+    }
+    return false;
+}
+
 // C ref: uhitm.c mhitm_knockback — burn RNG in C order; no hurtle yet
 export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
     // C: knockdistance = rn2(3) ? 1 : 2; then rn2(chance)
@@ -176,7 +216,7 @@ function corpse_chance(mon) {
 // C ref: mon.c make_corpse default_1 — ordinary corpse via mkcorpstat
 // Named omission: dragon scales/unicorn horn/worm tooth/undead specials;
 // accessible||is_pool gate deferred (trap path same); save_mtraits deferred.
-function make_corpse(mtmp) {
+export function make_corpse(mtmp) {
     const mdat = mtmp.data;
     const mndx = mtmp.mnum ?? mdat?.mndx;
     const x = mtmp.mx, y = mtmp.my;

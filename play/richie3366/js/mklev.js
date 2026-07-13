@@ -41,9 +41,10 @@ import {
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
     FOOD_CLASS, SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS,
-    SPBOOK_CLASS,
+    SPBOOK_CLASS, WAND_CLASS,
     objectNames,
 } from './objects.js';
+import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
 import { maketrap, t_at } from './trap.js';
 import {
@@ -51,6 +52,7 @@ import {
     curse, bless, blessorcurse, place_object, add_to_buried, weight, OBJ,
 } from './mkobj.js';
 import { makemon, mkclass, MM_NOGRP } from './makemon.js';
+import { enexto } from './teleport.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER,
@@ -59,7 +61,7 @@ import {
 } from './monsters.js';
 import { name_to_monplus } from './mondata.js';
 import { make_engr_at, wipe_engr_at, random_engraving } from './engrave.js';
-import { DUST, MARK as ENGRAVE_MARK } from './const.js';
+import { DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT } from './const.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -1225,7 +1227,7 @@ async function makelevel_ordinary() {
 
 /**
  * C ref: mkroom.c do_mkroom — dispatch special room makers.
- * Shop path: mkshop eligibility scan; stocking deferred when a room qualifies.
+ * Shop path: mkshop sets rtype/needfill; stock_room deferred to fill_special_room.
  */
 function do_mkroom(roomtype) {
     if (roomtype >= SHOPBASE) {
@@ -1235,34 +1237,116 @@ function do_mkroom(roomtype) {
     // COURT/ZOO/… bodies deferred — named in C-JS-MAP.md
 }
 
+/** C ref: mkroom.c isbig() */
+function isbig(sroom) {
+    const area = (sroom.hx - sroom.lx + 1) * (sroom.hy - sroom.ly + 1);
+    return area > 20;
+}
+
+/** C ref: mkroom.c has_dnstairs() */
+function has_dnstairs(sroom) {
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (!stway.up && inside_room(sroom, stway.sx, stway.sy)) return true;
+    }
+    return false;
+}
+
+/** C ref: mkroom.c has_upstairs() */
+function has_upstairs(sroom) {
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (stway.up && inside_room(sroom, stway.sx, stway.sy)) return true;
+    }
+    return false;
+}
+
 /**
- * C ref: mkroom.c mkshop — find eligible OROOM with one door, no stairs.
- * Full invalid_shop_shape + shtypes rnd(100) + rtype set deferred; candidates
- * are skipped so we never claim a shop without burning shop-type RNG.
- * seed0015 dlvl2: C also finds no eligible room → no RNG here.
+ * C ref: mkroom.c invalid_shop_shape() — door-adjacent ROOM cells must leave
+ * the shopkeeper more than one escape square.
+ */
+function invalid_shop_shape(sroom) {
+    const doors = game.level?.doors;
+    if (!doors || sroom.fdoor == null || !doors[sroom.fdoor]) return true;
+    const doorx = doors[sroom.fdoor].x;
+    const doory = doors[sroom.fdoor].y;
+    let insidex = 0, insidey = 0, insidect = 0;
+
+    for (let x = Math.max(doorx - 1, sroom.lx);
+        x <= Math.min(doorx + 1, sroom.hx); x++) {
+        for (let y = Math.max(doory - 1, sroom.ly);
+            y <= Math.min(doory + 1, sroom.hy); y++) {
+            const loc = game.level.at(x, y);
+            if (loc && loc.typ === ROOM) {
+                insidex = x;
+                insidey = y;
+                insidect++;
+            }
+        }
+    }
+    if (insidect < 1) return true;
+    if (insidect === 1) {
+        insidect = 0;
+        for (let x = Math.max(insidex - 1, sroom.lx);
+            x <= Math.min(insidex + 1, sroom.hx); x++) {
+            for (let y = Math.max(insidey - 1, sroom.ly);
+                y <= Math.min(insidey + 1, sroom.hy); y++) {
+                if (x === insidex && y === insidey) continue;
+                const loc = game.level.at(x, y);
+                if (loc && loc.typ === ROOM) insidect++;
+            }
+        }
+        if (insidect === 1) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mkroom.c mkshop — find eligible OROOM (one door, no stairs, valid
+ * shape), light it, pick shtypes via rnd(100), set rtype/needfill/topologize.
+ * Wizard SHOPTYPE env and stock_room deferred (stocked in fill_special_room).
  */
 function mkshop() {
     const g = game;
     const nroom = g.level?.nroom | 0;
+    let sroom = null;
     for (let i = 0; i < nroom; i++) {
-        const sroom = g.level.rooms[i];
-        if (!sroom || sroom.hx < 0) return;
-        if (sroom.rtype !== OROOM) continue;
-        let hasStairs = false;
-        for (let s = g.stairs; s; s = s.next) {
-            if (s.sx >= sroom.lx && s.sx <= sroom.hx
-                && s.sy >= sroom.ly && s.sy <= sroom.hy) {
-                hasStairs = true;
-                break;
-            }
-        }
-        if (hasStairs) continue;
-        if ((sroom.doorct | 0) === 1) {
-            // Eligible under doorct rule — invalid_shop_shape/shtypes omitted;
-            // skip rather than set rtype without rnd(100).
-            continue;
+        const cand = g.level.rooms[i];
+        if (!cand || cand.hx < 0) return;
+        if (cand.rtype !== OROOM) continue;
+        if (has_dnstairs(cand) || has_upstairs(cand)) continue;
+        if ((cand.doorct | 0) === 1) {
+            if (invalid_shop_shape(cand)) continue;
+            sroom = cand;
+            break;
         }
     }
+    if (!sroom) return;
+
+    if (!sroom.rlit) {
+        for (let x = sroom.lx - 1; x <= sroom.hx + 1; x++) {
+            for (let y = sroom.ly - 1; y <= sroom.hy + 1; y++) {
+                const loc = g.level.at(x, y);
+                if (loc) loc.lit = 1;
+            }
+        }
+        sroom.rlit = 1;
+    }
+
+    let shopIdx = -1;
+    {
+        let j = rnd(100);
+        let i = 0;
+        for (; i < shtypes.length && (j -= shtypes[i].prob) > 0; i++)
+            continue;
+        shopIdx = i;
+        if (isbig(sroom) && (shtypes[shopIdx]?.symb === WAND_CLASS
+            || shtypes[shopIdx]?.symb === SPBOOK_CLASS)) {
+            shopIdx = 0;
+        }
+    }
+
+    sroom.rtype = SHOPBASE + shopIdx;
+    topologize(sroom);
+    sroom.needfill = FILL_NORMAL;
 }
 
 function ROOM_IS_FILLABLE(croom) {
@@ -1271,8 +1355,7 @@ function ROOM_IS_FILLABLE(croom) {
 }
 
 /**
- * C ref: sp_lev.c fill_special_room() — vault gold + zoo stubs.
- * Shops/zoos not yet ported; VAULT is enough for early Tourist seeds.
+ * C ref: sp_lev.c fill_special_room() — vault gold; shop stock_room.
  */
 function fill_special_room(croom) {
     if (!croom) return;
@@ -1284,6 +1367,12 @@ function fill_special_room(croom) {
         return;
 
     if (croom.needfill === FILL_NORMAL) {
+        // C: rtype >= SHOPBASE → stock_room(...); has_shop
+        if (croom.rtype >= SHOPBASE) {
+            stock_room(croom.rtype - SHOPBASE, croom);
+            if (game.level?.flags) game.level.flags.has_shop = true;
+            return;
+        }
         if (croom.rtype === VAULT) {
             const d = Math.abs(depth_of_level(game.u?.uz));
             for (let x = croom.lx; x <= croom.hx; x++) {
@@ -1747,6 +1836,90 @@ function find_montype_gender(name) {
     return { mndx: i, female };
 }
 
+// C ref: selvar.c selection_filter_percent — rn2(100) < pct per set cell
+function selection_filter_percent(sel, pct) {
+    const pts = new Set();
+    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+    if (!sel || !sel.pts.size) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
+    for (let x = sel.lx; x <= sel.hx; x++) {
+        for (let y = sel.ly; y <= sel.hy; y++) {
+            const key = `${x},${y}`;
+            if (!sel.pts.has(key)) continue;
+            if (rn2(100) < pct) {
+                pts.add(key);
+                if (x < lx) lx = x;
+                if (y < ly) ly = y;
+                if (x > hx) hx = x;
+                if (y > hy) hy = y;
+            }
+        }
+    }
+    if (pts.size === 0) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
+    return { pts, lx, ly, hx, hy };
+}
+
+// C ref: selection.room() iterate order — x-outer then y (same as filter_percent)
+function selection_iterate(sel, fn) {
+    if (!sel || !sel.pts.size) return;
+    for (let x = sel.lx; x <= sel.hx; x++) {
+        for (let y = sel.ly; y <= sel.hy; y++) {
+            if (sel.pts.has(`${x},${y}`)) fn(x, y);
+        }
+    }
+}
+
+// C ref: sp_lev.c get_location with croom → somexy for random room place
+function room_random_loc(croom) {
+    const c = { x: 0, y: 0 };
+    if (!somexy(croom, c)) return null;
+    return c;
+}
+
+// C ref: sp_lev.c create_monster class "m" + appear_as "obj:chest" in croom
+function create_mimic_as_chest(croom) {
+    // C: amask = sp_amask_to_amask(RANDOM) → induced_align(80)
+    induced_align(80);
+    const pm = mkclass('S_MIMIC', G_NOGEN);
+    let pos = room_random_loc(croom);
+    if (!pos) return null;
+    // C: if (MON_AT && enexto) relocate before makemon
+    if (game.fmon) {
+        for (const m of game.fmon) {
+            if (m.mx === pos.x && m.my === pos.y) {
+                const cc = { x: 0, y: 0 };
+                if (enexto(cc, pos.x, pos.y, pm)) {
+                    pos = { x: cc.x, y: cc.y };
+                } else {
+                    return null;
+                }
+                break;
+            }
+        }
+    }
+    const mtmp = makemon(pm, pos.x, pos.y, 0);
+    if (mtmp) {
+        // C create_monster appear_as overrides set_mimic_sym result
+        mtmp.m_ap_type = M_AP_OBJECT;
+        mtmp.mappearance = CHEST;
+    }
+    return mtmp;
+}
+
+// C ref: themerms.lua "Storeroom" contents
+function themeroom_fill_storeroom(croom) {
+    const roomSel = selection_from_mkroom(croom);
+    const locs = selection_filter_percent(roomSel, 30);
+    // Lua iterate ignores x,y and places via get_location(croom) each time
+    selection_iterate(locs, () => {
+        if (percent(25)) {
+            const pos = room_random_loc(croom);
+            if (pos) mksobj_at(CHEST, pos.x, pos.y, true, false);
+        } else {
+            create_mimic_as_chest(croom);
+        }
+    });
+}
+
 // C ref: themerms.lua "Ghost of an Adventurer" contents + sp_lev create_monster/object
 function themeroom_fill_ghost(croom) {
     const sel = selection_from_mkroom(croom);
@@ -1898,6 +2071,7 @@ function run_themerms_post_level_generate() {
 const THEMEROOM_FILL_BODIES = {
     'Ghost of an Adventurer': themeroom_fill_ghost,
     'Teleportation hub': themeroom_fill_teleport_hub,
+    'Storeroom': themeroom_fill_storeroom,
 };
 
 // C ref: themerms.lua themeroom_fill() — reservoir + dispatched fill bodies
@@ -2084,13 +2258,40 @@ async function themerooms_generate(difficulty) {
         if (pick.name !== 'ordinary') {
             rn2(100);
         }
-        const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+
+        // C themerms.lua rectangular rooms:
+        //  default → ordinary filled=1
+        //  Default/Unlit/Both themed fill → type=themed + themeroom_fill
+        let rtype = OROOM;
+        let rlit = -1;
+        let needfill = FILL_NORMAL;
+        let do_themed_fill = false;
+        if (pick.name === 'Default room with themed fill') {
+            rtype = THEMEROOM;
+            needfill = 0;
+            do_themed_fill = true;
+        } else if (pick.name === 'Unlit room with themed fill') {
+            rtype = THEMEROOM;
+            rlit = 0;
+            needfill = 0;
+            do_themed_fill = true;
+        } else if (pick.name === 'Room with both normal contents and themed fill') {
+            rtype = THEMEROOM;
+            needfill = FILL_NORMAL;
+            do_themed_fill = true;
+        }
+        // Named omission: Fake Delphi / Pillars / Mausoleum / nested des.room
+        // bodies still fall through as plain create_room.
+
+        const ok = create_room(-1, -1, -1, -1, -1, -1, rtype, rlit);
         if (ok) {
             // C ref: sp_lev.c:2824 — build_room calls topologize after create_room
             const aroom = g.level.rooms[g.level.nroom - 1];
             if (aroom) {
                 topologize(aroom);
-                aroom.needfill = FILL_NORMAL;
+                aroom.needfill = needfill;
+                // C lspo_room: contents(themeroom_fill) after build_room
+                if (do_themed_fill) themeroom_fill(aroom);
             }
         }
         return ok;

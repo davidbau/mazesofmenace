@@ -35,7 +35,7 @@ import { wiz_wish } from './wizcmds.js';
 import { dowield, dowieldquiver } from './wield.js';
 import { dowhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
-import { spoteffects } from './pickup.js';
+import { spoteffects, dopickup } from './pickup.js';
 import { getpos } from './getpos.js';
 import { nomul } from './hack.js';
 
@@ -483,6 +483,11 @@ export async function rhack(key) {
         const tookTime = donull();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === ',') {
+        // C ref: hack.c dopickup / cmd.c — `,` pickup
+        const pickRes = await dopickup();
+        game.context.move = (pickRes & ECMD_TIME) ? 1 : 0;
+        if (pickRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '>') {
         // C ref: do.c dodown / cmd.c — go down staircase
         const downRes = await dodown();

@@ -29,6 +29,7 @@ import { Hello, align_str } from './roles.js';
 import { livelog_printf } from './pline.js';
 import { phase_of_the_moon, friday_13th, FULL_MOON, NEW_MOON } from './calendar.js';
 import { ATR_INVERSE } from './terminal.js';
+import { dosounds } from './sounds.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
@@ -175,30 +176,6 @@ function regen_hp(wtcap) {
     if (reached_full) interrupt_multi('You are in full health.');
 }
 
-// C ref: sounds.c dosounds() — feature rolls; vault matters once has_vault
-function dosounds() {
-    const lf = game.level?.flags;
-    if (!lf) return;
-    // Deaf / !acoustics / uswallow / Underwater — skip (Tourist defaults ok)
-    if (lf.nfountains && !rn2(400)) {
-        rn2(3); // fountain_msg index
-    }
-    if (lf.nsinks && !rn2(300)) {
-        rn2(2); // sink_msg
-    }
-    if (lf.has_court && !rn2(200)) {
-        // throne_mon_sound — not hit on early Tourist peels
-    }
-    if (lf.has_swamp && !rn2(200)) {
-        rn2(2); // swamp_msg; C returns after
-        return;
-    }
-    if (lf.has_vault && !rn2(200)) {
-        // gd_sound / vault messages — only when rn2 hits 0; seed1800 burns the roll
-        // Full vault sound path TODO when a peel lands on 0
-    }
-}
-
 function exerper() {
     const moves = game.moves || 0;
     if (!(moves % 10)) {
@@ -259,6 +236,13 @@ async function welcome(new_game) {
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+
+    // C ref: allmain.c newgame — context.ident / tribute before init_objects
+    if (!g.context) g.context = {};
+    if (g.context.ident == null) g.context.ident = 2;
+    if (!g.context.tribute) g.context.tribute = {};
+    g.context.tribute.enabled = true;
+    g.context.tribute.bookstock = !!g.context.tribute.bookstock;
 
     // C ref: allmain.c — mvitals.mvflags = geno & G_NOCORPSE (before init_objects)
     if (!g.mvitals) g.mvitals = [];
@@ -429,6 +413,7 @@ export async function moveloop_core() {
         do {
             do {
                 monscanmove = await movemon();
+                if (g.program_state?.gameover) return;
                 if ((g.u.umovement || 0) >= NORMAL_SPEED) break;
             } while (monscanmove);
 
@@ -488,6 +473,7 @@ export async function moveloop_core() {
                     }
                 }
             }
+            if (g.program_state?.gameover) return;
         } while ((g.u.umovement || 0) < NORMAL_SPEED);
     }
 
@@ -504,7 +490,7 @@ export async function moveloop_core() {
     g.context.move = 1;
     if ((g.multi || 0) >= 0 && typeof g.occupation === 'function') {
         // C ref: allmain.c go.occupation — runs before rhack; return ends this tick
-        const cont = g.occupation();
+        const cont = await g.occupation();
         if (!cont) g.occupation = null;
         // monster_nearby stop_occupation deferred
         return;

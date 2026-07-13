@@ -56,33 +56,10 @@ export function MON_WEP(mon) {
     return mon?.mw || null;
 }
 
-/**
- * C objects.h WEAPON(…, sdam, …) — extractor omits oc_wsdam for now.
- * Values from upstream objects.h small-monster damage column.
- */
-const OC_WSDAM = Object.freeze({
-    ARROW: 6, ELVEN_ARROW: 7, ORCISH_ARROW: 5, SILVER_ARROW: 6, YA: 7,
-    CROSSBOW_BOLT: 4, DART: 3, SHURIKEN: 8, BOOMERANG: 9,
-    SPEAR: 6, ELVEN_SPEAR: 7, ORCISH_SPEAR: 5, DWARVISH_SPEAR: 8,
-    SILVER_SPEAR: 6, JAVELIN: 6, TRIDENT: 6,
-    DAGGER: 4, ELVEN_DAGGER: 5, ORCISH_DAGGER: 3, SILVER_DAGGER: 4,
-    KNIFE: 3, FLINT: 6, ROCK: 3, LOADSTONE: 6, LUCKSTONE: 6,
-    // melee (objects.h small-monster column) — hero hitum / dmgval
-    MACE: 6, SILVER_MACE: 6, WAR_HAMMER: 4, FLAIL: 6, CLUB: 6,
-    AKLYS: 6, MORNING_STAR: 4, QUARTERSTAFF: 6,
-    SHORT_SWORD: 6, ELVEN_SHORT_SWORD: 8, ORCISH_SHORT_SWORD: 5,
-    DWARVISH_SHORT_SWORD: 7, SCIMITAR: 8, SILVER_SABER: 8,
-    LONG_SWORD: 8, ELVEN_BROADSWORD: 6, BROADSWORD: 4,
-    RUNESWORD: 4, TWO_HANDED_SWORD: 12, KATANA: 10,
-    TSURUGI: 8, CRYSKNIFE: 10, AXE: 6, BATTLE_AXE: 6,
-    PICK_AXE: 6, DWARVISH_MATTOCK: 12,
-});
-
-function oc_wsdam(obj) {
-    const o = game.objects?.[obj.otyp];
-    if (o?.oc_wsdam != null) return o.oc_wsdam | 0;
-    const n = objectNames[obj.otyp];
-    return OC_WSDAM[n] ?? 1;
+/** C ref: obj.h is_weptool */
+function is_weptool(otmp) {
+    return otmp?.oclass === TOOL_CLASS
+        && ((game.objects?.[otmp.otyp]?.oc_skill | 0) !== P_NONE);
 }
 
 /** C hack.c rounddiv */
@@ -100,21 +77,58 @@ function rounddiv(x, y) {
 }
 
 /**
- * C ref: weapon.c dmgval — small-monster / thrown path (oc_wsdam + spe).
- * Large-monster table, silver/blessed/axe bonuses deferred.
+ * C ref: weapon.c dmgval — uses objects[].oc_wsdam / oc_wldam.
+ * Large-monster otyp switch, thick-skin/shade/silver/blessed/axe deferred.
  */
-export function dmgval(otmp, _mon) {
+export function dmgval(otmp, mon) {
     if (!otmp) return 0;
+    const otyp = otmp.otyp | 0;
+    const od = game.objects?.[otyp];
+    const n = objectNames[otyp];
+    if (n === 'CREAM_PIE') return 0;
+
     let tmp = 0;
-    const wsd = oc_wsdam(otmp);
-    if (wsd) tmp = rnd(wsd);
-    const n = objectNames[otmp.otyp];
-    if (n === 'CROSSBOW_BOLT' || n === 'IRON_CHAIN' || n === 'MACE'
-        || n === 'SILVER_MACE' || n === 'WAR_HAMMER' || n === 'FLAIL'
-        || n === 'SPETUM' || n === 'TRIDENT') {
-        tmp++;
+    // C: bigmonst(mon->data); callers that pass null treat as small (hero).
+    const big = !!(mon?.data && ((mon.data.msize | 0) >= 3 /* MZ_LARGE */));
+    if (big) {
+        const wld = od?.oc_wldam | 0;
+        if (wld) tmp = rnd(wld);
+        // large-monster otyp switch bonuses deferred
+    } else {
+        const wsd = od?.oc_wsdam | 0;
+        if (wsd) tmp = rnd(wsd);
+        switch (n) {
+        case 'IRON_CHAIN':
+        case 'CROSSBOW_BOLT':
+        case 'MACE':
+        case 'SILVER_MACE':
+        case 'WAR_HAMMER':
+        case 'FLAIL':
+        case 'SPETUM':
+        case 'TRIDENT':
+            tmp++;
+            break;
+        case 'BATTLE_AXE':
+        case 'BARDICHE':
+        case 'BILL_GUISARME':
+        case 'GUISARME':
+        case 'LUCERN_HAMMER':
+        case 'MORNING_STAR':
+        case 'RANSEUR':
+        case 'BROADSWORD':
+        case 'ELVEN_BROADSWORD':
+        case 'RUNESWORD':
+        case 'VOULGE':
+            tmp += rnd(4);
+            break;
+        case 'ACID_VENOM':
+            tmp += rnd(6);
+            break;
+        }
     }
-    if (otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS) {
+
+    const Is_weapon = otmp.oclass === WEAPON_CLASS || is_weptool(otmp);
+    if (Is_weapon) {
         tmp += otmp.spe | 0;
         if (tmp < 0) tmp = 0;
     }

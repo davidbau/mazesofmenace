@@ -276,6 +276,8 @@ export async function runSegment(input) {
             if (String(e?.message || '').includes('Input queue empty')) break;
             throw e;
         }
+        // C really_done is noreturn — stop driving gameplay after death
+        if (game.program_state?.gameover) break;
     }
 
     return nhGame;

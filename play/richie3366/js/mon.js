@@ -164,8 +164,16 @@ export function distmin(x0, y0, x1, y1) {
     return Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
 }
 
+/**
+ * C ref: mon.c monnear — close enough to move/attack into.
+ * Orthogonal (dist2==1) or same square; diagonal (dist2==2) only if
+ * not NODIAG (grid bugs cannot act on a diagonal).
+ */
 export function monnear(mtmp, x, y) {
-    return distmin(mtmp.mx, mtmp.my, x, y) <= 1;
+    const distance = dist2(mtmp.mx, mtmp.my, x, y);
+    const monnum = mtmp.mnum ?? mtmp.data?.mndx;
+    if (distance === 2 && NODIAG(monnum)) return false;
+    return distance < 3;
 }
 
 /** C ref: you.h next2u — squared dist to hero ≤ 2. */
@@ -382,9 +390,11 @@ async function movemon_singlemon(mtmp) {
 // C ref: mon.c movemon()
 export async function movemon() {
     game._somebody_can_move = false;
+    if (game.program_state?.gameover) return false;
     const list = game.fmon || [];
     // Snapshot — dochug may mutate list later
     for (const mtmp of list.slice()) {
+        if (game.program_state?.gameover) break;
         await movemon_singlemon(mtmp);
     }
     return game._somebody_can_move;

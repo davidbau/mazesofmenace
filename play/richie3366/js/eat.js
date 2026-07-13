@@ -1,7 +1,11 @@
-// eat.js — Eat command (getobj / doeat; fortune cookie + reqtime-1 food).
-// C ref: eat.c doeat / touchfood / fprefx / start_eating / bite / done_eating /
-//         lesshungry / obj_nutrition / floorfood / is_edible / gethungry
-//         (Unaware rn2(10) + accessorytime rn2(20)); invent.c getobj.
+// eat.js — Eat command (getobj / doeat; fortune cookie + reqtime-1 food +
+//           CORPSE eatcorpse / start_eating / eatfood occupation).
+// C ref: eat.c doeat / touchfood / fprefx / eatcorpse / start_eating / bite /
+//         eatfood / done_eating / lesshungry / obj_nutrition / is_edible /
+//         gethungry (Unaware rn2(10) + accessorytime rn2(20)); invent.c getobj.
+// Named omissions: floorfood floor; TIN; full cprefx/cpostfx; tainted Sick;
+// poison_strdmg; slime/stone; rottenfood body RNG; freeinv invent-full drop;
+// ?/* menu; multi-turn choke/newuhs.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -11,6 +15,11 @@ import { FOOD_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight, splitobj } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import { singular, xname, doname } from './objnam.js';
+import {
+    mons, acidic, poisonous, carnivorous, herbivorous, vegan, vegetarian,
+    is_rider, PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames,
+} from './monsters.js';
+import { set_occupation } from './engrave.js';
 
 const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
 const APPLE = objectNames.indexOf('APPLE');
@@ -21,6 +30,14 @@ const FOOD_RATION = objectNames.indexOf('FOOD_RATION');
 const TRIPE_RATION = objectNames.indexOf('TRIPE_RATION');
 const K_RATION = objectNames.indexOf('K_RATION');
 const C_RATION = objectNames.indexOf('C_RATION');
+const CORPSE = objectNames.indexOf('CORPSE');
+const TIN = objectNames.indexOf('TIN');
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
+const PM_COCKATRICE = monsterNames.indexOf('PM_COCKATRICE');
+const PM_CHICKATRICE = monsterNames.indexOf('PM_CHICKATRICE');
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 
 /**
  * C objects.h FOOD nutrition — extractor omits oc_nutrition (named omission).
@@ -110,10 +127,14 @@ export function lesshungry(num) {
 }
 
 /**
- * C ref: eat.c obj_nutrition — FOOD uses objects[].oc_nutrition.
+ * C ref: eat.c obj_nutrition — CORPSE uses mons[].cnutrit; FOOD oc_nutrition.
  */
 function obj_nutrition(otmp) {
     if (!otmp) return 0;
+    if (otmp.otyp === CORPSE) {
+        return mons(otmp.corpsenm)?.cnutrit ?? 0;
+    }
+    if (otmp.globby) return otmp.owt | 0;
     const oc = game.objects?.[otmp.otyp];
     if (oc?.oc_nutrition != null) return oc.oc_nutrition | 0;
     const name = objectNames[otmp.otyp];
@@ -123,6 +144,78 @@ function obj_nutrition(otmp) {
 /** C ref: eat.c nonrotting_food */
 function nonrotting_food(otyp) {
     return otyp === LEMBAS_WAFER || otyp === CRAM_RATION;
+}
+
+/** C ref: eat.c nonrotting_corpse macro */
+function nonrotting_corpse(mnum) {
+    if (mnum === PM_LIZARD || mnum === PM_LICHEN || mnum === PM_ACID_BLOB) {
+        return true;
+    }
+    return is_rider(mons(mnum));
+}
+
+/** C hack.c rounddiv — same as weapon.js */
+function rounddiv(x, y) {
+    if (!y) return 0;
+    let divsgn = 1;
+    let yy = y | 0;
+    let xx = x | 0;
+    if (yy < 0) { divsgn = -divsgn; yy = -yy; }
+    if (xx < 0) { divsgn = -divsgn; xx = -xx; }
+    let r = Math.trunc(xx / yy);
+    const m = xx % yy;
+    if (2 * m >= yy) r++;
+    return divsgn * r;
+}
+
+/** C ref: mkobj.c peek_at_iced_corpse_age — non-ice returns otmp.age */
+function peek_at_iced_corpse_age(otmp) {
+    // on_ice ROT_ICE_ADJUSTMENT deferred
+    return otmp?.age ?? 0;
+}
+
+/**
+ * C ref: eat.c food_xname — CORPSE → "[the ]newt corpse".
+ */
+function food_xname(food, the_pfx) {
+    if (!food) return 'food';
+    if (food.otyp === CORPSE) {
+        const neut = pmnames[food.corpsenm]?.[2] || 'creature';
+        const base = `${neut} corpse`;
+        return the_pfx ? `the ${base}` : base;
+    }
+    const base = singular(food, xname);
+    return the_pfx ? `the ${base}` : base;
+}
+
+/** C ref: eat.c violated_vegetarian — Monk feels guilty + adjalign(-1). */
+function violated_vegetarian() {
+    if (!game.u.uconduct) game.u.uconduct = {};
+    game.u.uconduct.unvegetarian = (game.u.uconduct.unvegetarian | 0) + 1;
+    if ((game.urole?.mnum ?? -1) === PM_MONK) {
+        // pline deferred to call site when async; sync bump for align
+        if (!game.u.ualign) game.u.ualign = { type: 0, record: 0 };
+        game.u.ualign.record = (game.u.ualign.record | 0) - 1;
+        return true;
+    }
+    return false;
+}
+
+/** C ref: eat.c consume_oeaten — amt>0 → >>= amt; amt<0 → += amt (floor 1). */
+function consume_oeaten(obj, amt) {
+    if (!obj) return;
+    if (!obj_nutrition(obj)) {
+        obj.oeaten = 0;
+        return;
+    }
+    if (amt > 0) {
+        obj.oeaten = (obj.oeaten | 0) >> amt;
+    } else if ((obj.oeaten | 0) > -amt) {
+        obj.oeaten = (obj.oeaten | 0) + amt;
+    } else {
+        obj.oeaten = 0;
+    }
+    if ((obj.oeaten | 0) === 0) obj.oeaten = 1;
 }
 
 function is_edible(obj) {
@@ -282,32 +375,250 @@ async function fprefx(otmp) {
 }
 
 /**
- * C ref: eat.c bite + done_eating subset for reqtime==1 (no occupation).
- * choke / fpostfx body / newuhs deferred beyond lesshungry.
+ * C ref: eat.c bite — nutrition per turn; choke deferred (canchoke always 0).
+ * @returns {number} 1 if choked (abort), else 0
  */
-async function finish_reqtime1(otmp) {
-    if (!game.context) game.context = {};
-    const victual = game.context.victual || {};
-    // C bite: nmod < 0 → lesshungry(adj_victual_nutrition())
-    if ((victual.nmod | 0) < 0) {
-        let nut = -(victual.nmod | 0);
+function bite() {
+    const v = game.context?.victual;
+    if (!v?.piece) return 0;
+    if (v.doreset) {
+        game.context.victual = {};
+        return 0;
+    }
+    if ((v.nmod | 0) < 0) {
+        let nut = -(v.nmod | 0);
         if (nut < 1) nut = 1;
         lesshungry(nut);
-    } else if ((victual.nmod | 0) > 0) {
+        consume_oeaten(v.piece, v.nmod | 0);
+    } else if ((v.nmod | 0) > 0 && ((v.usedtime | 0) % (v.nmod | 0))) {
         lesshungry(1);
+        consume_oeaten(v.piece, -1);
     }
-    // fpostfx: FORTUNE_COOKIE rumor; other APPLE/etc. deferred
-    if (otmp.otyp === FORTUNE_COOKIE) {
-        await outrumor(bcsign(otmp), BY_COOKIE);
-    }
-    useup(otmp);
-    game.context.victual = {};
+    return 0;
 }
 
 /**
- * C ref: eat.c doeat() — food-class path for reqtime==1 (apple/cookie/…).
- * Multi-turn occupation, corpses, tins, rotten rn2(7), floorfood floor,
- * and non-food deferred.
+ * C ref: eat.c done_eating — finish meal; cpostfx/fpostfx deferred.
+ */
+async function done_eating(message) {
+    const piece = game.context?.victual?.piece;
+    if (!piece) {
+        if (game.context) game.context.victual = {};
+        game.occupation = null;
+        return;
+    }
+    game.occupation = null;
+    if (message) {
+        await pline(`You finish eating ${food_xname(piece, true)}.`);
+    }
+    // cpostfx / fpostfx: FORTUNE_COOKIE rumor; other deferred
+    if (piece.otyp === FORTUNE_COOKIE) {
+        await outrumor(bcsign(piece), BY_COOKIE);
+    }
+    useup(piece);
+    if (game.context) game.context.victual = {};
+}
+
+/**
+ * C ref: eat.c eatfood — occupation each move while eating.
+ * Returns 1 to continue, 0 when done.
+ */
+async function eatfood() {
+    const food = game.context?.victual?.piece;
+    if (!food || !game.context?.victual?.eating) {
+        if (game.context) game.context.victual = {};
+        return 0;
+    }
+    // floor-moved food deferred — invent-only path keeps carried food
+    game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
+    if ((game.context.victual.usedtime | 0)
+        <= (game.context.victual.reqtime | 0)) {
+        if (bite()) return 0;
+        return 1;
+    }
+    await done_eating(true);
+    return 0;
+}
+
+/**
+ * C ref: eat.c start_eating — first bite; occupation if reqtime remains.
+ */
+async function start_eating(otmp, already_partly_eaten) {
+    if (!game.context?.victual) return;
+    game.context.victual.fullwarn = 0;
+    game.context.victual.doreset = 0;
+    game.context.victual.eating = 1;
+
+    // cprefx body deferred (maybe_cannibal no-op for newt; stone/slime omitted)
+    if (otmp.otyp === CORPSE || otmp.globby) {
+        // maybe_cannibal(pm, TRUE) returns false for non-race corpses — no RNG
+        void otmp.corpsenm;
+    }
+
+    if (bite()) {
+        game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
+        if ((game.context.victual.usedtime | 0)
+            >= (game.context.victual.reqtime | 0)) {
+            await done_eating(false);
+        }
+        return;
+    }
+
+    game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
+    if ((game.context.victual.usedtime | 0)
+        >= (game.context.victual.reqtime | 0)) {
+        await done_eating(
+            (game.context.victual.reqtime | 0) > 1 || already_partly_eaten,
+        );
+        return;
+    }
+
+    set_occupation(eatfood, `eating ${food_xname(otmp, true)}`);
+}
+
+/**
+ * C ref: eat.c eatcorpse — rotting / acid / poison / taste; sets reqtime.
+ * @returns {number} 0 ok, 1 dont_start, 2 used up
+ */
+async function eatcorpse(otmp) {
+    let retcode = 0;
+    let tp = 0;
+    const mnum = otmp.corpsenm | 0;
+    let rotted = 0;
+    const ptr = mons(mnum);
+    const glob = !!otmp.globby;
+    // flesh_petrifies / slimeable deferred — stoneable/slimeable stay false
+    // unless green slime without resistances (named omission beyond flag)
+    const slimeable = mnum === PM_GREEN_SLIME; // Unchanging/Slimed deferred
+    const stoneable = false;
+
+    if (!vegan(ptr)) {
+        if (!game.u.uconduct) game.u.uconduct = {};
+        game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
+    }
+    if (!vegetarian(ptr)) {
+        if (violated_vegetarian()) {
+            await pline('You feel guilty.');
+        }
+    }
+
+    if (!nonrotting_corpse(mnum)) {
+        const age = peek_at_iced_corpse_age(otmp);
+        const moves = game.moves ?? 0;
+        rotted = Math.trunc((moves - age) / (10 + rn2(20)));
+        if (otmp.cursed) rotted += 2;
+        else if (otmp.blessed) rotted -= 2;
+    }
+
+    if (!glob && !stoneable && !slimeable && rotted > 5) {
+        // tainted path — Sick_resistance / make_sick deferred; use up
+        await pline(
+            `Ulch - that ${
+                ptr?.mlet === 'S_FUNGUS' ? 'fungoid vegetation'
+                    : vegetarian(ptr) ? 'protoplasm' : 'meat'
+            } was tainted!`,
+        );
+        useup(otmp);
+        return 2;
+    } else if (acidic(ptr) && !(game.u?.HAcid_resistance || game.u?.EAcid_resistance
+        || game.u?.Acid_resistance)) {
+        tp++;
+        await pline('You have a very bad case of stomach acid.');
+        // C: losehp(rnd(15), ...) — inline to avoid eat↔hack import cycle
+        if (game.u) {
+            const dmg = 1 + rn2(15);
+            game.u.uhp = (game.u.uhp | 0) - dmg;
+        }
+    } else if (poisonous(ptr) && rn2(5)) {
+        tp++;
+        await pline('Ecch - that must have been poisonous!');
+        // poison_strdmg / Poison_resistance body deferred
+    } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
+        && !(game.u?.HSick_resistance || game.u?.ESick_resistance)) {
+        tp++;
+        await pline(`You feel ${game.u?.Sick ? 'very ' : ''}sick.`);
+        if (game.u) {
+            const dmg = 1 + rn2(8);
+            game.u.uhp = (game.u.uhp | 0) - dmg;
+        }
+    }
+
+    // delay is weight dependent
+    const cwt = glob ? (otmp.owt | 0) : (ptr?.cwt ?? 0);
+    if (!game.context) game.context = {};
+    if (!game.context.victual) game.context.victual = {};
+    game.context.victual.reqtime = 3 + (cwt >> 6);
+
+    if (!tp && !nonrotting_corpse(mnum) && (otmp.orotten || !rn2(7))) {
+        // rottenfood full body deferred — refuse RNG invent by stubbing
+        // the common non-faint return-0 path without extra rolls when
+        // we would need them; instead mark dont_start without consume.
+        // For faithfulness when this branch hits: burn rottenfood RNG
+        // subset (rn2(4), maybe more) — implement minimal:
+        await pline(`Blecch!  Rotten ${food_xname(otmp, false)}!`);
+        if (!rn2(4)) {
+            // confuse deferred
+        } else if (!rn2(4)) {
+            // blind deferred
+        } else if (!rn2(3)) {
+            // faint/nomul deferred — still dont_start
+            retcode = 1;
+        }
+        otmp.orotten = true;
+        otmp = touchfood(otmp);
+        if (!otmp) return 1;
+        if (game.context?.victual) game.context.victual.piece = otmp;
+        if (!(ptr?.cnutrit)) {
+            await pline('The corpse rots away completely.');
+            useup(otmp);
+            return 2;
+        }
+        if (!retcode) consume_oeaten(otmp, 2);
+        if (retcode) return retcode;
+        retcode = 1; // dont_start after rottenfood without faint
+    } else if ((mnum === PM_COCKATRICE || mnum === PM_CHICKATRICE)
+        && (game.u?.HStone_resistance || game.u?.Hallucination)) {
+        await pline('This tastes just like chicken!');
+    } else if (mnum === PM_FLOATING_EYE
+        && (game.u?.umonnum ?? -1) === PM_RAVEN) {
+        await pline('You peck the eyeball with delight.');
+    } else if (tp) {
+        // message already delivered
+    } else {
+        const youData = game.youmonst?.data;
+        const yummy = vegan(ptr)
+            ? (!carnivorous(youData) && herbivorous(youData))
+            : (carnivorous(youData) && !herbivorous(youData));
+        const palatable = (vegetarian(ptr)
+            ? herbivorous(youData)
+            : carnivorous(youData))
+            && rn2(10)
+            && (rotted < 1 || !rn2((rotted | 0) + 1));
+        const palatable_msgs = [
+            'Tokay', 'Istringy', 'Igamey', 'Ifatty', 'Itough',
+        ];
+        const idx = vegetarian(ptr) ? 0 : rn2(palatable_msgs.length);
+        const palat_msg = palatable_msgs[idx];
+        const use_is = !!(game.u?.Hallucination)
+            || (!!palatable && palat_msg[0] === 'I');
+        const pmxnam = food_xname(otmp, false);
+        const taste = game.u?.Hallucination
+            ? (yummy ? 'gnarly' : palatable ? 'copacetic' : 'grody')
+            : (yummy ? 'delicious' : palatable
+                ? palat_msg.slice(1) : 'terrible');
+        const bang = (yummy || !palatable) ? '!' : '.';
+        await pline(
+            `This ${pmxnam} ${use_is ? 'is' : 'tastes'} ${taste}${bang}`,
+        );
+    }
+
+    return retcode;
+}
+
+/**
+ * C ref: eat.c doeat() — food-class path for reqtime==1 and CORPSE.
+ * TIN, floorfood floor, multi-turn non-corpse occupation, rotten ordinary
+ * food still deferred.
  * @returns {number} 0 = no turn (ECMD_OK), 1 = took time
  */
 export async function doeat() {
@@ -329,9 +640,7 @@ export async function doeat() {
         return 0;
     }
 
-    // TIN / CORPSE / globby deferred
-    const name = objectNames[otmp0.otyp];
-    if (name === 'TIN' || name === 'CORPSE' || otmp0.globby) {
+    if (otmp0.otyp === TIN) {
         await pline('That food is not implemented yet.');
         return 0;
     }
@@ -357,43 +666,53 @@ export async function doeat() {
         nmod: 0,
     };
 
-    const oc = game.objects?.[otmp.otyp];
     let dont_start = false;
-    game.context.victual.reqtime = oc?.oc_delay ?? 1;
 
-    // C: rotten check — FORTUNE_COOKIE skipped; nonrotting_food skips age gate
-    const moves = game.moves ?? 0;
-    const age = otmp.age ?? moves;
-    if (otmp.otyp !== FORTUNE_COOKIE
-        && (otmp.cursed
-            || (!nonrotting_food(otmp.otyp)
-                && (moves - age) > (otmp.blessed ? 50 : 30)
-                && (otmp.orotten || !rn2(7))))) {
-        // rottenfood / consume_oeaten deferred — refuse rather than invent
-        await pline('That food is not implemented yet.');
-        game.context.victual = {};
-        return 0;
-    }
-    if (!already_partly_eaten) {
-        if (!(await fprefx(otmp))) {
+    if (otmp.otyp === CORPSE || otmp.globby) {
+        const tmp = await eatcorpse(otmp);
+        if (tmp === 2) {
             game.context.victual = {};
             return 1;
         }
+        if (tmp) dont_start = true;
+        // eatcorpse set reqtime / may have modified oeaten
     } else {
-        const req = game.context.victual.reqtime;
-        await pline(
-            `You ${req === 1 ? 'eat' : 'begin eating'} ${doname(otmp)}.`,
-        );
+        const oc = game.objects?.[otmp.otyp];
+        game.context.victual.reqtime = oc?.oc_delay ?? 1;
+
+        // C: rotten check — FORTUNE_COOKIE skipped; nonrotting_food skips age gate
+        const moves = game.moves ?? 0;
+        const age = otmp.age ?? moves;
+        if (otmp.otyp !== FORTUNE_COOKIE
+            && (otmp.cursed
+                || (!nonrotting_food(otmp.otyp)
+                    && (moves - age) > (otmp.blessed ? 50 : 30)
+                    && (otmp.orotten || !rn2(7))))) {
+            await pline('That food is not implemented yet.');
+            game.context.victual = {};
+            return 0;
+        }
+        if (!already_partly_eaten) {
+            if (!(await fprefx(otmp))) {
+                game.context.victual = {};
+                return 1;
+            }
+        } else {
+            const req = game.context.victual.reqtime;
+            await pline(
+                `You ${req === 1 ? 'eat' : 'begin eating'} ${doname(otmp)}.`,
+            );
+        }
     }
 
     const basenutrit = obj_nutrition(otmp) | 0;
     const oeaten = otmp.oeaten | 0;
-    // C: rounddiv(reqtime * oeaten, basenutrit)
     if (basenutrit === 0) {
         game.context.victual.reqtime = 0;
     } else {
-        game.context.victual.reqtime = Math.trunc(
-            (game.context.victual.reqtime * oeaten) / basenutrit,
+        game.context.victual.reqtime = rounddiv(
+            (game.context.victual.reqtime | 0) * oeaten,
+            basenutrit,
         );
     }
     const reqtime = game.context.victual.reqtime | 0;
@@ -406,20 +725,18 @@ export async function doeat() {
     }
     game.context.victual.canchoke = 0; // u.uhs == SATIATED deferred
 
-    // Multi-turn occupation deferred
     if (dont_start) {
         otmp.owt = weight(otmp);
         return 1;
     }
-    if (reqtime > 1) {
+
+    // Non-corpse multi-turn still deferred (cookie/apple are reqtime 1)
+    if (otmp.otyp !== CORPSE && !otmp.globby && reqtime > 1) {
         await pline('That food is not implemented yet.');
         game.context.victual = {};
         return 0;
     }
 
-    // start_eating for reqtime <= 1: first bite finishes immediately
-    game.context.victual.eating = 1;
-    game.context.victual.usedtime = 1;
-    await finish_reqtime1(otmp);
+    await start_eating(otmp, already_partly_eaten);
     return 1;
 }

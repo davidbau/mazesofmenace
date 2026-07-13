@@ -7,18 +7,21 @@ import { monnear } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
+    Upolyd, DIED,
 } from './const.js';
 import { thrwmu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
-import { nomul, losehp } from './hack.js';
-import { rnd, d } from './rng.js';
+import { nomul } from './hack.js';
+import { rnd, d, rn2 } from './rng.js';
 import { pline } from './display.js';
 import { Monnam } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval } from './weapon.js';
 import {
-    get_mattk, mhitm_knockback,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
+    AD_PHYS, AD_ELEC,
 } from './mhitm.js';
+import { done_in_by } from './end.js';
 
 /**
  * C ref: hack.h AC_VALUE — positive AC as-is; negative rolls -rnd(-AC).
@@ -73,18 +76,31 @@ async function missmu(mtmp, _nearmiss, _mattk) {
 }
 
 /**
- * C ref: mhitu.c mdamageu — subtract HP; done_in_by / rehumanize deferred.
+ * C ref: mhitu.c mdamageu — subtract HP; fatal → done_in_by (not losehp).
+ * showdamage / rehumanize deferred.
  */
-function mdamageu(mtmp, n) {
+async function mdamageu(mtmp, n) {
     let dmg = n | 0;
     if (dmg < 0) dmg = 0;
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
-    // showdamage deferred
-    losehp(dmg, Monnam(mtmp), /* KILLED_BY_AN */ 2);
-}
-
-/**
+    const u = game.u || (game.u = {});
+    if (Upolyd(u)) {
+        u.mh = (u.mh || 0) - dmg;
+        if ((u.mh || 0) > (u.mhmax || 0)) u.mh = u.mhmax;
+        if ((u.mh || 0) < 1) {
+            // rehumanize deferred
+            u.mh = 0;
+            if (game.program_state) game.program_state.gameover = true;
+        }
+        return;
+    }
+    u.uhp = (u.uhp || 0) - dmg;
+    if ((u.uhp || 0) > (u.uhpmax || 0)) u.uhp = u.uhpmax;
+    if ((u.uhp || 0) < 1) {
+        await done_in_by(mtmp, DIED);
+    }
+}/**
  * C ref: uhitm.c mhitm_ad_phys mhitu branch — bare hitmsg or weapon+dmgval.
  * Hugs / corpse / silver / poison / pudding clone deferred.
  */
@@ -103,7 +119,52 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
 }
 
 /**
- * C ref: mhitu.c hitmu — base d() + ad_phys + knockback + AC/Half + mdamageu.
+ * C ref: uhitm.c mhitm_ad_elec mhitu branch (mdef == youmonst).
+ * destroy_items body deferred when m_lev > rn2(20); gate always burns.
+ * monstseesu / monstunseesu deferred.
+ */
+async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
+    const orig_dmg = mhm.damage;
+    await hitmsg(mtmp, mattk);
+    if (!(await mhitm_mgc_atk_negated(mtmp, null, true))) {
+        await pline('You get zapped!');
+        const u = game.u || {};
+        const Shock_resistance = !!(u.Shock_resistance || u.HShock_resistance
+            || u.EShock_resistance);
+        if (Shock_resistance) {
+            await pline("The zap doesn't shock you!");
+            mhm.damage = 0;
+        }
+        // C: if ((int) magr->m_lev > rn2(20)) destroy_items(...)
+        if ((mtmp.m_lev | 0) > rn2(20)) {
+            // destroy_items(&youmonst, AD_ELEC, orig_dmg) body deferred
+            void orig_dmg;
+        }
+    } else {
+        mhm.damage = 0;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
+ * PHYS + ELEC ported; other adtyps zero damage until peeled.
+ */
+async function mhitm_adtyping_u(mtmp, mattk, mhm) {
+    switch (mattk.adtyp | 0) {
+    case AD_PHYS:
+        await mhitm_ad_phys_u(mtmp, mattk, mhm);
+        break;
+    case AD_ELEC:
+        await mhitm_ad_elec_u(mtmp, mattk, mhm);
+        break;
+    default:
+        mhm.damage = 0;
+        break;
+    }
+}
+
+/**
+ * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu.
  * Undead midnight extra, passiveum, permdmg, map_invisible deferred.
  */
 async function hitmu(mtmp, mattk) {
@@ -118,14 +179,14 @@ async function hitmu(mtmp, mattk) {
     mhm.damage = d(mattk.damn | 0, mattk.damd | 0);
     // midnight undead extra d() deferred
 
-    await mhitm_ad_phys_u(mtmp, mattk, mhm);
+    await mhitm_adtyping_u(mtmp, mattk, mhm);
     mhitm_knockback(mtmp, null, mattk, mhm.hitflags, MON_WEP(mtmp) != null);
 
     if (mhm.done) return mhm.hitflags;
 
     const u = game.u || {};
     if ((u.uhp | 0) < 1) {
-        mdamageu(mtmp, 1);
+        await mdamageu(mtmp, 1);
         mhm.damage = 0;
     }
 
@@ -136,7 +197,7 @@ async function hitmu(mtmp, mattk) {
 
     if (mhm.damage > 0) {
         // Half_physical_damage / Mitre deferred (maybe_half_phys when wired)
-        mdamageu(mtmp, mhm.damage);
+        await mdamageu(mtmp, mhm.damage);
     }
 
     // passiveum deferred — human L1 has no passive
@@ -235,6 +296,7 @@ export async function mattacku(mtmp) {
 
         if (sum[i] & M_ATTK_AGR_DIED) return 1;
         if (sum[i] & M_ATTK_AGR_DONE) break;
+        if (game.program_state?.gameover) return 1;
     }
     return (mtmp.mhp | 0) < 1 ? 1 : 0;
 }

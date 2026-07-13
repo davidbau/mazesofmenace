@@ -7,6 +7,7 @@ import { flush_screen, flush_topl_more, pline } from './display.js';
 import { xprname } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj } from './weapon.js';
+import { humanoid } from './monsters.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, objectNames,
 } from './objects.js';
@@ -15,6 +16,18 @@ import {
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
 } from './const.js';
 import { retouch_object } from './artifact.js';
+
+/**
+ * C ref: wield.c empty_handed — gloves → "empty handed"; else humanoid
+ * bare hands / non-humanoid "not wielding anything".
+ * Missing youmonst.data (set_uasmon deferred) → humanoid start form.
+ */
+export function empty_handed() {
+    if (game.u?.uarmg) return 'empty handed';
+    const ptr = game.youmonst?.data;
+    if (!ptr || humanoid(ptr)) return 'bare handed';
+    return 'not wielding anything';
+}
 
 /** C invent getobj callback ranks (subset). */
 const GETOBJ_SUGGEST = 1;
@@ -213,11 +226,11 @@ async function ready_weapon(wep) {
 
     if (!wep) {
         if (u.uwep) {
-            await pline('You are empty handed.');
+            await pline(`You are ${empty_handed()}.`);
             setuwep(null);
             return 1;
         }
-        await pline('You are already empty handed.');
+        await pline(`You are already ${empty_handed()}.`);
         return 0;
     }
 
@@ -510,7 +523,7 @@ export async function doquiver_core(verb) {
     }
 
     if (was_uwep) {
-        await pline('You are now empty handed.');
+        await pline(`You are now ${empty_handed()}.`);
         return 1;
     }
     if (was_twoweap && !u.twoweap) {

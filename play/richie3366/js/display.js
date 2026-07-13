@@ -289,6 +289,7 @@ export function obj_glyph(obj) {
 // C ref: wintty.h / topl.c — topline --More-- state
 const TOPLINE_EMPTY = 0;
 const TOPLINE_NEED_MORE = 1;
+const TOPLINE_NON_EMPTY = 2;
 let _toplines = '';
 let _toplin = TOPLINE_EMPTY;
 let _win_stop = false;
@@ -1274,9 +1275,9 @@ export function clear_win_stop() {
     _win_stop = false;
 }
 
-// C ref: tty_nhgetch — after key read, NEED_MORE → NON_EMPTY ("seen")
+// C ref: wintty.c tty_nhgetch — after key read, NEED_MORE → NON_EMPTY
 export function mark_topline_seen() {
-    if (_toplin === TOPLINE_NEED_MORE) _toplin = TOPLINE_EMPTY; // NON_EMPTY≈no more
+    if (_toplin === TOPLINE_NEED_MORE) _toplin = TOPLINE_NON_EMPTY;
 }
 
 export function get_win_stop() {
