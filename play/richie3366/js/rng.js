@@ -1,7 +1,7 @@
 // rng.js — PRNG wrappers around ISAAC64.
 // C ref: rnd.c — two ISAAC64 streams: core and display.
 // Lua nh.rn2/nh.random uses core; the recorder adds Lua caller provenance.
-// Current port only implements the core stream and remains partial (no rnl).
+// Display-stream wrappers still deferred.
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
@@ -31,6 +31,16 @@ function RND(x) {
     return Number(val % BigInt(x));
 }
 
+function sgn(n) {
+    return n < 0 ? -1 : n !== 0 ? 1 : 0;
+}
+
+// C ref: you.h Luck — u.uluck + u.moreluck
+function Luck() {
+    const u = game.u || {};
+    return (u.uluck || 0) + (u.moreluck || 0);
+}
+
 // C ref: rn2(x) — random number 0..x-1
 export function rn2(x) {
     if (x <= 0) return 0;
@@ -45,6 +55,24 @@ export function rnd(x) {
     const val = RND(x) + 1;
     if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}`);
     return val;
+}
+
+// C ref: rnd.c rnl(x) — 0..x-1 with Luck bias; RND unlogged, internal rn2 logged
+export function rnl(x) {
+    if (x <= 0) return 0;
+    let adjustment = Luck();
+    if (x <= 15) {
+        // C: (abs(adjustment) + 1) / 3 * sgn(adjustment)
+        adjustment = Math.trunc((Math.abs(adjustment) + 1) / 3) * sgn(adjustment);
+    }
+    let i = RND(x);
+    if (adjustment && rn2(37 + Math.abs(adjustment))) {
+        i -= adjustment;
+        if (i < 0) i = 0;
+        else if (i >= x) i = x - 1;
+    }
+    if (_rngLogEnabled) _rngLog.push(`rnl(${x})=${i}`);
+    return i;
 }
 
 // C ref: rn1(x, y) — random number y..y+x-1

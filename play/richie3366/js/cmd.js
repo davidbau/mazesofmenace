@@ -20,6 +20,12 @@ import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull } from './do.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
+import { doopen_indir } from './lock.js';
+import { doextcmd } from './getline.js';
+import { dosearch } from './detect.js';
+import { dotakeoff, dowear } from './do_wear.js';
+import { wiz_wish } from './wizcmds.js';
+import { dowield } from './wield.js';
 
 
 // Direction deltas: y u k
@@ -44,6 +50,12 @@ function blocksMove(x, y) {
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     return false;
+}
+
+function closed_door_at(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!(loc && loc.typ === DOOR
+        && (loc.doormask & (D_CLOSED | D_LOCKED)));
 }
 
 // C ref: hack.c end_running()
@@ -115,7 +127,10 @@ export async function continue_search() {
         game._repeat_search = false;
         game.multi = 0;
     }
+    // C: counted `Ns` re-invokes dosearch each multi tick
+    await dosearch();
     game.context.move = 1;
+    game.kickedloc = { x: 0, y: 0 };
     return true;
 }
 
@@ -177,7 +192,7 @@ export async function rhack(key) {
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 's') {
-        // C ref: search.c dosearch — takes a turn; count from digit prefix
+        // C ref: detect.c dosearch — takes a turn; count from digit prefix
         const n = game.context?.command_count || 0;
         if (game.context) game.context.command_count = 0;
         if (n > 1) {
@@ -186,8 +201,24 @@ export async function rhack(key) {
             game.context.mv = 0;
             game._repeat_search = true;
         }
+        await dosearch();
         game.context.move = 1;
         game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'T') {
+        // C ref: do_wear.c dotakeoff — take off armor/accessory
+        const tookTime = await dotakeoff();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'w') {
+        // C ref: wield.c dowield — wield a weapon
+        const tookTime = await dowield();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'W') {
+        // C ref: do_wear.c dowear — wear armor
+        const tookTime = await dowear();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'i') {
         // C ref: invent.c ddoinv / display_inventory
         await ddoinv();
@@ -214,9 +245,17 @@ export async function rhack(key) {
         // C ref: insight.c enlightenment / doattributes
         await doattributes();
         game.context.move = 0;
+    } else if (key === 23) { // ^W — C('w') wiz_wish
+        // C ref: wizcmds.c wiz_wish / cmd.c wizwish
+        await wiz_wish();
+        game.context.move = 0;
     } else if (ch === ':') {
         // C ref: invent.c dolook / lookat
         await dolook();
+        game.context.move = 0;
+    } else if (ch === '#') {
+        // C ref: cmd.c doextcmd — extended commands
+        await doextcmd();
         game.context.move = 0;
     } else if (key === 27) {
         // Esc — cancel run/count; no message
@@ -246,6 +285,23 @@ async function domove(dx, dy) {
     u.dy = dy;
     u.ux0 = u.ux;
     u.uy0 = u.uy;
+
+    // C ref: hack.c test_move — closed_door + flags.autoopen → doopen_indir
+    if (closed_door_at(newx, newy)) {
+        if (game.context?.run) end_running();
+        // C: autoopen default On; skip when run / Confusion / Stunned / Fumbling
+        const autoopen = game.flags?.autoopen !== false;
+        const impaired = !!(u.Confusion || u.Stunned || u.Fumbling);
+        if (autoopen && !game.context?.run && !impaired) {
+            await doopen_indir(newx, newy);
+            // C: door_opened = !closed_door; move = (pos changed) → usually 0.
+            // Both open and resist leave context.move false for autoopen.
+            game.context.move = 0;
+            return;
+        }
+        game.context.move = 0;
+        return;
+    }
 
     if (blocksMove(newx, newy)) {
         // Can't move there — end a run so lookaround/continue_run don't

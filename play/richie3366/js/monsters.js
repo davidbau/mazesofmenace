@@ -57,6 +57,8 @@ export const G_NOCORPSE = 0x0100;
 export const G_SGROUP = 0x0080; /* appear in small groups normally */
 export const G_LGROUP = 0x0040; /* appear in large groups normally */
 export const G_FREQ = 0x0007;
+/* monflag.h — mkclass may ignore G_GENOD|G_EXTINCT via this non-geno bit */
+export const G_IGNORE = 0x8000;
 
 export const M2_MALE = 0x00010000;
 export const M2_FEMALE = 0x00020000;
@@ -65,12 +67,14 @@ export const M2_HOSTILE = 0x00100000;
 export const M2_PEACEFUL = 0x00200000;
 export const M2_DOMESTIC = 0x00400000;
 export const M2_WANDER = 0x00800000;
+export const M2_ROCKTHROW = 0x08000000;
 export const M2_LORD = 0x00000400;
 export const M2_PRINCE = 0x00000800;
 export const M2_NASTY = 0x02000000;
 export const M2_STRONG = 0x04000000;
 export const M2_MERC = 0x00000200;
 
+export const M1_WALLWALK = 0x00000008;
 export const M1_NOHANDS = 0x00002000;
 export const M1_NOEYES = 0x00001000;
 export const M1_MINDLESS = 0x00010000;
@@ -125,6 +129,15 @@ export function verysmall(ptr) {
 // C ref: mondata.h nohands()
 export function nohands(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_NOHANDS);
+}
+
+// C ref: mondata.h passes_walls / throws_rocks
+export function passes_walls(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_WALLWALK);
+}
+
+export function throws_rocks(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_ROCKTHROW);
 }
 
 export function always_hostile(ptr) {
@@ -184,4 +197,12 @@ export function montoostrong(mndx, lev) {
 }
 export function montooweak(mndx, lev) {
     return difficulties[mndx] < lev;
+}
+
+// C ref: mondata.h is_placeholder — corpse stand-ins for races
+const PM_GIANT = monsterNames.indexOf('PM_GIANT');
+export function is_placeholder(ptr) {
+    const mndx = ptr?.mndx;
+    return mndx === PM_ORC || mndx === PM_GIANT
+        || mndx === PM_ELF || mndx === PM_HUMAN;
 }

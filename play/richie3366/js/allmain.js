@@ -14,8 +14,11 @@ import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_sk
 import { makedog } from './dog.js';
 import { makemon } from './makemon.js';
 import { mcalcmove, movemon, NORMAL_SPEED } from './mon.js';
-import { A_DEX, A_STR, A_CON, acurr, exercise, change_luck } from './attrib.js';
+import { LOW_PM, NUMMONS, mons, G_NOCORPSE } from './monsters.js';
+import { A_DEX, A_STR, A_CON, acurr, exercise, change_luck, Fast, Very_fast, Searching } from './attrib.js';
+import { dosearch0 } from './detect.js';
 import { nhgetch } from './input.js';
+import { unmul } from './hack.js';
 import { near_capacity, paint_corner_nhw_menu } from './invent.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
@@ -57,7 +60,23 @@ async function moveloop_preamble(_resuming) {
 
 // C ref: allmain.c u_calc_moveamt()
 function u_calc_moveamt(wtcap) {
-    let moveamt = NORMAL_SPEED; // human mmove; Fast/Very_fast omitted
+    let moveamt = 0;
+    // Steed path (mcalcmove) deferred until riding is live.
+    if (game.u?.usteed && game.u?.umoved) {
+        moveamt = mcalcmove(game.u.usteed, true);
+    } else {
+        // C: gy.youmonst.data->mmove — non-poly role form is NORMAL_SPEED.
+        const youData = game.youmonst?.data;
+        moveamt = youData?.mmove ?? NORMAL_SPEED;
+
+        if (Very_fast()) {
+            // gain a free action on 2/3 of turns
+            if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
+        } else if (Fast()) {
+            // gain a free action on 1/3 of turns
+            if (rn2(3) === 0) moveamt += NORMAL_SPEED;
+        }
+    }
     switch (wtcap) {
         case SLT_ENCUMBER:
             moveamt -= Math.trunc(moveamt / 4);
@@ -238,6 +257,18 @@ async function welcome(new_game) {
 export async function newgame() {
     const g = game;
 
+    // C ref: allmain.c — mvitals.mvflags = geno & G_NOCORPSE (before init_objects)
+    if (!g.mvitals) g.mvitals = [];
+    for (let i = LOW_PM; i < NUMMONS; i++) {
+        const ptr = mons(i);
+        g.mvitals[i] = {
+            ...(g.mvitals[i] || {}),
+            mvflags: (ptr?.geno ?? 0) & G_NOCORPSE,
+            born: g.mvitals[i]?.born ?? 0,
+            died: g.mvitals[i]?.died ?? 0,
+        };
+    }
+
     // C ref: allmain.c → init_objects() (o_init.c)
     init_objects();
 
@@ -254,7 +285,7 @@ export async function newgame() {
     // C ref: allmain.c → init_dungeons() (dungeon.c) — peels fastforward_pre_mklev
     init_dungeons();
     // C ref: allmain.c → u_init_misc() (u_init.c)
-    u_init_misc();
+    await u_init_misc();
     fastforward_pre_mklev(); // emptied — kept as delete-only hook
 
     // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua (second nhlib load)
@@ -418,6 +449,15 @@ export async function moveloop_core() {
                     regen_hp(mvl_wtcap);
                 }
                 // regen_pw / Teleportation / Polymorph deferred (no early RNG)
+                // C: Searching && !noautosearch && multi >= 0 → dosearch0(1)
+                if (
+                    Searching()
+                    && !game.level?.flags?.noautosearch
+                    && (game.multi == null || game.multi >= 0)
+                ) {
+                    await dosearch0(1);
+                }
+                // warnreveal deferred
                 dosounds();
                 gethungry();
                 exerchk();
@@ -430,6 +470,14 @@ export async function moveloop_core() {
                 // Clairvoyance timer
                 if ((g.moves || 0) >= (g.context.seer_turn || 0)) {
                     g.context.seer_turn = g.moves + rn1(31, 15);
+                }
+
+                // C: when immobile, count is in turns — multi < 0 occupation
+                if ((g.multi || 0) < 0) {
+                    g.multi++;
+                    if (g.multi === 0) {
+                        await unmul(null);
+                    }
                 }
             }
         } while ((g.u.umovement || 0) < NORMAL_SPEED);
@@ -444,8 +492,11 @@ export async function moveloop_core() {
     await flush_screen(1);
 
     // C: svc.context.move = 1; then rhack(0) — or continue DOMOVE_RUSH / counted s
+    // When multi < 0 (dressing etc.), skip input; leave move=1 for next turn.
     g.context.move = 1;
-    if (run_active()) {
+    if ((g.multi || 0) < 0) {
+        // occupation continues without nhgetch
+    } else if (run_active()) {
         await continue_run();
     } else if (search_repeat_active()) {
         await continue_search();

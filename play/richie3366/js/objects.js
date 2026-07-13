@@ -55,6 +55,8 @@ export {
     IMMEDIATE,
     RAY,
     objectNames,
+    objectNameStrs,
+    objectDescrs,
 } from './generated/objects_data.js';
 
 /** Install a fresh objects[] on game state (C: objects_globals_init). */

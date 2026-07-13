@@ -6,11 +6,60 @@ import { rn2 } from './rng.js';
 import { dochugw } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
+    ALLOW_ROCK,
 } from './const.js';
 import { t_at } from './trap.js';
-import { nohands, verysmall } from './monsters.js';
+import { nohands, verysmall, throws_rocks, passes_walls, monsterNames } from './monsters.js';
+import { objects_at } from './mkobj.js';
+import { objectNames } from './generated/objects_data.js';
+import { PM_GRID_BUG } from './generated/monsters_data.js';
 
 export const NORMAL_SPEED = 12;
+
+const BOULDER = objectNames.indexOf('BOULDER');
+
+// C ref: hack.h NODIAG — only grid bugs
+function NODIAG(monnum) {
+    return monnum === PM_GRID_BUG;
+}
+
+function pm(name) {
+    return monsterNames.indexOf(`PM_${name}`);
+}
+
+// C ref: mon.c undead_to_corpse — zombie/mummy/vampire → living species for corpses
+export function undead_to_corpse(mndx) {
+    switch (mndx) {
+    case pm('KOBOLD_ZOMBIE'):
+    case pm('KOBOLD_MUMMY'):
+        return pm('KOBOLD');
+    case pm('DWARF_ZOMBIE'):
+    case pm('DWARF_MUMMY'):
+        return pm('DWARF');
+    case pm('GNOME_ZOMBIE'):
+    case pm('GNOME_MUMMY'):
+        return pm('GNOME');
+    case pm('ORC_ZOMBIE'):
+    case pm('ORC_MUMMY'):
+        return pm('ORC');
+    case pm('ELF_ZOMBIE'):
+    case pm('ELF_MUMMY'):
+        return pm('ELF');
+    case pm('VAMPIRE'):
+    case pm('VAMPIRE_LEADER'):
+    case pm('HUMAN_ZOMBIE'):
+    case pm('HUMAN_MUMMY'):
+        return pm('HUMAN');
+    case pm('GIANT_ZOMBIE'):
+    case pm('GIANT_MUMMY'):
+        return pm('GIANT');
+    case pm('ETTIN_ZOMBIE'):
+    case pm('ETTIN_MUMMY'):
+        return pm('ETTIN');
+    default:
+        return mndx;
+    }
+}
 
 export const ALLOW_U = 0x00040000;
 export const ALLOW_M = 0x00080000;
@@ -21,6 +70,7 @@ export const ALLOW_SSM = 0x40000000;
 export const OPENDOOR = 0x00400000;
 export const UNLOCKDOOR = 0x00800000;
 export const BUSTDOOR = 0x01000000;
+// ALLOW_ROCK imported from const.js (mfndpos.h 0x02000000)
 
 // C ref: mon.c mcalcmove()
 export function mcalcmove(mon, m_moving) {
@@ -98,6 +148,10 @@ export function mon_allowflags(mtmp) {
     } else {
         allowflags |= ALLOW_U;
     }
+    // C: passes_walls → ALLOW_ROCK|ALLOW_WALL; throws_rocks / m_can_break_boulder → ALLOW_ROCK
+    // m_can_break_boulder (wielded dig tool) deferred — named in C-JS-MAP
+    if (passes_walls(mtmp.data)) allowflags |= ALLOW_ROCK; // ALLOW_WALL deferred
+    if (throws_rocks(mtmp.data)) allowflags |= ALLOW_ROCK;
     if (can_open) allowflags |= OPENDOOR;
     return allowflags;
 }
@@ -114,6 +168,7 @@ export function mfndpos(mon, data, flag) {
     const nowloc = game.level?.at(x, y);
     const nowtyp = nowloc?.typ;
     const nowdm = nowloc?.doormask || 0;
+    const nodiag = NODIAG(mon.mnum ?? mon.data?.mndx);
 
     const maxx = Math.min(x + 1, COLNO - 1);
     const maxy = Math.min(y + 1, ROWNO - 1);
@@ -129,10 +184,11 @@ export function mfndpos(mon, data, flag) {
                 if ((dm & D_CLOSED) && !(flag & OPENDOOR)) continue;
                 if ((dm & D_LOCKED) && !(flag & UNLOCKDOOR)) continue;
             }
-            // C: no diagonal into/out of non-broken doors (also NODIAG mons)
+            // C: first diagonal checks — NODIAG + non-broken doors
             if (nx !== x && ny !== y) {
                 const ndm = loc.doormask || 0;
-                if ((IS_DOOR(nowtyp) && (nowdm & ~D_BROKEN))
+                if (nodiag
+                    || (IS_DOOR(nowtyp) && (nowdm & ~D_BROKEN))
                     || (IS_DOOR(ntyp) && (ndm & ~D_BROKEN))) {
                     continue;
                 }
@@ -151,6 +207,22 @@ export function mfndpos(mon, data, flag) {
                 // hostiles lack ALLOW_M — cannot displace/attack other mons
                 if (!(flag & ALLOW_M)) continue;
                 info |= ALLOW_M;
+            }
+
+            // C: sobj_at(BOULDER) without ALLOW_ROCK → skip (mon.c mfndpos)
+            const obj = objects_at(nx, ny);
+            if (obj) {
+                let hasBoulder = false;
+                for (let o = obj; o; o = o.nexthere) {
+                    if (o.otyp === BOULDER) {
+                        hasBoulder = true;
+                        break;
+                    }
+                }
+                if (hasBoulder) {
+                    if (!(flag & ALLOW_ROCK)) continue;
+                    info |= ALLOW_ROCK;
+                }
             }
 
             // C: harmful traps → ALLOW_TRAPS (pets check tseen in dog_move)

@@ -32,14 +32,16 @@ import {
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
     FOOD_CLASS, SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS,
+    SPBOOK_CLASS,
     objectNames,
 } from './objects.js';
 import { setgemprobs } from './o_init.js';
+import { maketrap } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mkobj_at, mkgold, mkcorpstat, next_ident,
     curse, blessorcurse, place_object, add_to_buried, weight, OBJ,
 } from './mkobj.js';
-import { makemon, MM_NOGRP } from './makemon.js';
+import { makemon, mkclass, MM_NOGRP } from './makemon.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER,
@@ -54,7 +56,7 @@ const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
 const BELL = objectNames.indexOf('BELL');
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
-const SPBOOK_no_NOVEL = 11; // fake class used by supply chest (C: SPBOOK_no_NOVEL)
+const SPBOOK_no_NOVEL = 0 - SPBOOK_CLASS; // C: objclass.h -(int)SPBOOK_CLASS
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
 const POT_SPEED = objectNames.indexOf('POT_SPEED');
@@ -318,15 +320,6 @@ function random_engraving() {
 
 // in_rooms stub
 function in_rooms(x, y, rtype) { return []; }
-
-// maketrap stub
-async function maketrap(x, y, typ) {
-    const trap = { ttyp: typ, tx: x, ty: y, tseen: false, once: false, launch: { x: 0, y: 0 } };
-    if (!game.level) return trap;
-    if (!game.level.traps) game.level.traps = [];
-    game.level.traps.push(trap);
-    return trap;
-}
 
 // ============================================================
 // Core mklev functions (ported from main project's mklev.js)
@@ -1411,9 +1404,9 @@ async function makeniche(trap_type) {
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
                     loc.typ = IRONBARS;
                     if (rn2(3)) {
-                        // human corpse — consume rn2 for mkclass + mkcorpstat
-                        rn2(398); // mkclass(S_HUMAN)
-                        mkcorpstat(CORPSE, null, 0, xx, yy + dy, 1);
+                        // C ref: mklev.c makeniche → mkcorpstat(..., mkclass(S_HUMAN,0), ..., TRUE)
+                        const ptr = mkclass('S_HUMAN', 0);
+                        mkcorpstat(CORPSE, null, ptr, xx, yy + dy, 1);
                     }
                 }
                 if (!g.level.flags.noteleport) {
@@ -1822,18 +1815,17 @@ async function fill_ordinary_room(croom, bonus_items) {
                     if (++tryct2 >= 50) break;
                 } while (cursed_item || !rn2(5));
                 if (rn2(3)) {
-                    const SPBOOK_CLASS = 10;
                     const extra_classes = [FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
                         SCROLL_CLASS, POTION_CLASS, RING_CLASS,
                         SPBOOK_no_NOVEL, SPBOOK_no_NOVEL, SPBOOK_no_NOVEL];
                     const oclass = extra_classes[rn2(extra_classes.length)];
-                    const realClass = oclass === SPBOOK_no_NOVEL ? SPBOOK_CLASS : oclass;
-                    mkobj(realClass, false);
+                    // C: mkobj(SPBOOK_no_NOVEL) uses rnd_class through SPE_BLANK_PAPER
+                    mkobj(oclass, false);
                     if (oclass === SPBOOK_no_NOVEL) {
                         const depth = depth_of_level(g.u?.uz);
                         const maxpass = (depth > 2) ? 2 : 3;
                         for (let pass = 1; pass <= maxpass; pass++) {
-                            mkobj(realClass, false);
+                            mkobj(oclass, false);
                         }
                     }
                 }

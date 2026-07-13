@@ -1,0 +1,668 @@
+// do_wear.js — Wear / take-off (partial).
+// C ref: do_wear.c — dowear, canwearobj, accessory_or_armor_on, Armor_on,
+// dotakeoff, armor_or_accessory_off, armoroff, *_off.
+
+import { game } from './gstate.js';
+import { nhgetch } from './input.js';
+import { flush_screen, flush_topl_more, pline } from './display.js';
+import { an, doname } from './objnam.js';
+import { find_ac } from './u_init.js';
+import { change_luck } from './attrib.js';
+import { nomul, unmul } from './hack.js';
+import { retouch_object } from './artifact.js';
+import {
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
+    W_RING, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER,
+} from './const.js';
+import {
+    ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
+    objectNames, objectNameStrs,
+} from './objects.js';
+import { PM_ARCHEOLOGIST } from './monsters.js';
+
+const FEDORA = objectNames.indexOf('FEDORA');
+
+// C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat
+const ARM_SUIT = 0;
+const ARM_SHIELD = 1;
+const ARM_HELM = 2;
+const ARM_GLOVES = 3;
+const ARM_BOOTS = 4;
+const ARM_CLOAK = 5;
+const ARM_SHIRT = 6;
+
+const W_ACCESSORY = W_RING | W_AMUL | W_TOOL;
+
+let Narmorpieces = 0;
+let Naccessories = 0;
+
+function armcat(obj) {
+    return game.objects?.[obj?.otyp]?.oc_skill ?? -1;
+}
+
+function is_shirt(obj) {
+    return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_SHIRT;
+}
+function is_suit(obj) {
+    return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_SUIT;
+}
+function is_cloak(obj) {
+    return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_CLOAK;
+}
+function is_shield(obj) {
+    return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_SHIELD;
+}
+function is_helmet(obj) {
+    return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_HELM;
+}
+function is_gloves(obj) {
+    return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_GLOVES;
+}
+function is_boots(obj) {
+    return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_BOOTS;
+}
+
+/** C ref: do_wear.c off_msg */
+async function off_msg(otmp) {
+    if (game.flags?.verbose !== false) {
+        await pline(`You were wearing ${doname(otmp)}.`);
+    }
+}
+
+/** C ref: do_wear.c on_msg — armor/verbose path; rings/amulets deferred to prinv. */
+async function on_msg(otmp) {
+    if ((otmp.owornmask || 0) & (W_RING | W_AMUL)) return;
+    if (((otmp.owornmask || 0) & W_TOOL) && game.flags?.verbose === false) return;
+    if (game.flags?.verbose !== false) {
+        const name = objectNameStrs[otmp.otyp] || doname(otmp);
+        await pline(`You are now wearing ${an(name)}.`);
+    }
+}
+
+/** C ref: do_wear.c cursed — message + bknown when stuck */
+function cursed_check(otmp) {
+    if (!otmp) return false;
+    if (otmp.cursed) {
+        const plural = (otmp.quan || 1) > 1;
+        game._cursed_takeoff_msg = plural
+            ? "You can't.  They are cursed."
+            : "You can't.  It is cursed.";
+        otmp.bknown = 1;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: do_wear.c count_worn_stuff
+ * @returns {object|null} default single piece when count is 1
+ */
+function count_worn_stuff(accessorizing) {
+    const u = game.u || {};
+    Narmorpieces = 0;
+    Naccessories = 0;
+    let otmp = null;
+
+    const moreArmor = (x) => {
+        if (x) {
+            Narmorpieces++;
+            otmp = x;
+        }
+    };
+    moreArmor(u.uarmh);
+    moreArmor(u.uarms);
+    moreArmor(u.uarmg);
+    moreArmor(u.uarmf);
+    // outermost body layer only
+    if (u.uarmc) moreArmor(u.uarmc);
+    else if (u.uarm) moreArmor(u.uarm);
+    else if (u.uarmu) moreArmor(u.uarmu);
+
+    let armorDefault = accessorizing ? null : otmp;
+
+    otmp = null;
+    const moreAcc = (x) => {
+        if (x) {
+            Naccessories++;
+            otmp = x;
+        }
+    };
+    moreAcc(u.uleft);
+    moreAcc(u.uright);
+    moreAcc(u.uamul);
+    moreAcc(u.ublindf);
+
+    return accessorizing ? otmp : armorDefault;
+}
+
+/**
+ * C ref: worn.c setworn — slot pointer + owornmask; prop/oc_oprop deferred.
+ * @param {object|null} obj
+ * @param {number} mask
+ */
+export function setworn(obj, mask) {
+    const u = game.u || (game.u = {});
+    const clearOne = (slot, bit) => {
+        if (!(mask & bit)) return;
+        const old = u[slot];
+        if (old) old.owornmask = (old.owornmask || 0) & ~bit;
+        u[slot] = null;
+    };
+
+    if (!obj) {
+        clearOne('uarm', W_ARM);
+        clearOne('uarmc', W_ARMC);
+        clearOne('uarmh', W_ARMH);
+        clearOne('uarms', W_ARMS);
+        clearOne('uarmg', W_ARMG);
+        clearOne('uarmf', W_ARMF);
+        clearOne('uarmu', W_ARMU);
+        if (mask & W_RING) {
+            // caller clears specific left/right; both bits share W_RING in takeoff
+            if (mask === W_RING || (mask & W_RING) === W_RING) {
+                clearOne('uleft', W_RING);
+                clearOne('uright', W_RING);
+            }
+        }
+        clearOne('uamul', W_AMUL);
+        clearOne('ublindf', W_TOOL);
+        find_ac();
+        return;
+    }
+
+    // Place into the matching armor/accessory slot for this mask.
+    if (mask & W_ARM) {
+        clearOne('uarm', W_ARM);
+        obj.owornmask = (obj.owornmask || 0) | W_ARM;
+        u.uarm = obj;
+    } else if (mask & W_ARMC) {
+        clearOne('uarmc', W_ARMC);
+        obj.owornmask = (obj.owornmask || 0) | W_ARMC;
+        u.uarmc = obj;
+    } else if (mask & W_ARMH) {
+        clearOne('uarmh', W_ARMH);
+        obj.owornmask = (obj.owornmask || 0) | W_ARMH;
+        u.uarmh = obj;
+    } else if (mask & W_ARMS) {
+        clearOne('uarms', W_ARMS);
+        obj.owornmask = (obj.owornmask || 0) | W_ARMS;
+        u.uarms = obj;
+    } else if (mask & W_ARMG) {
+        clearOne('uarmg', W_ARMG);
+        obj.owornmask = (obj.owornmask || 0) | W_ARMG;
+        u.uarmg = obj;
+    } else if (mask & W_ARMF) {
+        clearOne('uarmf', W_ARMF);
+        obj.owornmask = (obj.owornmask || 0) | W_ARMF;
+        u.uarmf = obj;
+    } else if (mask & W_ARMU) {
+        clearOne('uarmu', W_ARMU);
+        obj.owornmask = (obj.owornmask || 0) | W_ARMU;
+        u.uarmu = obj;
+    } else if (mask & W_AMUL) {
+        clearOne('uamul', W_AMUL);
+        obj.owornmask = (obj.owornmask || 0) | W_AMUL;
+        u.uamul = obj;
+    } else if (mask & W_TOOL) {
+        clearOne('ublindf', W_TOOL);
+        obj.owornmask = (obj.owornmask || 0) | W_TOOL;
+        u.ublindf = obj;
+    }
+    find_ac();
+}
+
+/** Clear a worn slot (C setworn(NULL, mask) subset). */
+function clear_worn(mask) {
+    setworn(null, mask);
+}
+
+/** C ref: do_wear.c Armor_off — suit; dragon/arti deferred */
+function Armor_off() {
+    clear_worn(W_ARM);
+    return 0;
+}
+
+/** C ref: do_wear.c Helmet_off — fedora luck; other magic helms deferred */
+function Helmet_off() {
+    const u = game.u || {};
+    const helm = u.uarmh;
+    if (helm && helm.otyp === FEDORA && game.urole?.mnum === PM_ARCHEOLOGIST) {
+        change_luck(-1);
+    }
+    clear_worn(W_ARMH);
+    return 0;
+}
+
+function Cloak_off() {
+    clear_worn(W_ARMC);
+    return 0;
+}
+function Shield_off() {
+    clear_worn(W_ARMS);
+    return 0;
+}
+function Gloves_off() {
+    clear_worn(W_ARMG);
+    return 0;
+}
+function Boots_off() {
+    clear_worn(W_ARMF);
+    return 0;
+}
+function Shirt_off() {
+    clear_worn(W_ARMU);
+    return 0;
+}
+
+/**
+ * C ref: do_wear.c Armor_on — known + dragon handling deferred beyond AC.
+ * Reflection/etc from oc_oprop via setworn still deferred.
+ */
+async function Armor_on() {
+    const uarm = game.u?.uarm;
+    if (!uarm) return 0;
+    if (!uarm.known) {
+        uarm.known = 1;
+    }
+    // dragon_armor_handling / artifact_light deferred
+    find_ac();
+    return 0;
+}
+
+async function Helmet_on() {
+    const h = game.u?.uarmh;
+    if (h && !h.known) h.known = 1;
+    if (h && h.otyp === FEDORA && game.urole?.mnum === PM_ARCHEOLOGIST) {
+        change_luck(1);
+    }
+    find_ac();
+    return 0;
+}
+async function Cloak_on() {
+    const o = game.u?.uarmc;
+    if (o && !o.known) o.known = 1;
+    find_ac();
+    return 0;
+}
+async function Shield_on() {
+    const o = game.u?.uarms;
+    if (o && !o.known) o.known = 1;
+    find_ac();
+    return 0;
+}
+async function Gloves_on() {
+    const o = game.u?.uarmg;
+    if (o && !o.known) o.known = 1;
+    find_ac();
+    return 0;
+}
+async function Boots_on() {
+    const o = game.u?.uarmf;
+    if (o && !o.known) o.known = 1;
+    find_ac();
+    return 0;
+}
+async function Shirt_on() {
+    const o = game.u?.uarmu;
+    if (o && !o.known) o.known = 1;
+    find_ac();
+    return 0;
+}
+
+/**
+ * C ref: do_wear.c armoroff — delay-0 path only (oc_delay doff occupation deferred).
+ * Returns 1 on success (ECMD_TIME caller), 0 if cursed/blocked.
+ */
+async function armoroff(otmp) {
+    if (cursed_check(otmp)) {
+        await pline(game._cursed_takeoff_msg || "You can't.  It is cursed.");
+        return 0;
+    }
+    // Delay occupation path deferred — fedora/leather jacket are delay 0.
+    const u = game.u || {};
+    if (otmp === u.uarm) Armor_off();
+    else if (otmp === u.uarmc) Cloak_off();
+    else if (otmp === u.uarmh) Helmet_off();
+    else if (otmp === u.uarms) Shield_off();
+    else if (otmp === u.uarmg) Gloves_off();
+    else if (otmp === u.uarmf) Boots_off();
+    else if (otmp === u.uarmu) Shirt_off();
+    else {
+        otmp.owornmask = (otmp.owornmask || 0) & ~W_ARMOR;
+    }
+    await off_msg(otmp);
+    find_ac();
+    return 1;
+}
+
+/**
+ * C ref: do_wear.c armor_or_accessory_off — armor path; accessories partial.
+ * @returns {number} 0 = no time, 1 = took time
+ */
+async function armor_or_accessory_off(obj) {
+    const u = game.u || {};
+    const worn = (obj.owornmask || 0) & (W_ARMOR | W_ACCESSORY);
+    if (!worn) {
+        await pline('You are not wearing that.');
+        return 0;
+    }
+    // Layering: suit under cloak, shirt under suit/cloak
+    if (
+        (obj === u.uarm && u.uarmc)
+        || (obj === u.uarmu && (u.uarmc || u.uarm))
+    ) {
+        const parts = [];
+        if (u.uarmc) parts.push('cloak');
+        if (obj === u.uarmu && u.uarm) parts.push('suit');
+        await pline(
+            `You can't take that off without taking off your ${parts.join(' and ')} first.`,
+        );
+        return 0;
+    }
+
+    if ((obj.owornmask || 0) & W_ARMOR) {
+        return armoroff(obj);
+    }
+
+    // Accessory path (rings/amulet/eyewear) — cursed gate + clear slot
+    if (cursed_check(obj)) {
+        await pline(game._cursed_takeoff_msg || "You can't.  It is cursed.");
+        return 0;
+    }
+    if (obj === u.uleft || obj === u.uright) {
+        await off_msg(obj);
+        if (obj === u.uleft) {
+            obj.owornmask = (obj.owornmask || 0) & ~W_RING;
+            u.uleft = null;
+        } else {
+            obj.owornmask = (obj.owornmask || 0) & ~W_RING;
+            u.uright = null;
+        }
+        return 1;
+    }
+    if (obj === u.uamul) {
+        obj.owornmask = (obj.owornmask || 0) & ~W_AMUL;
+        u.uamul = null;
+        await off_msg(obj);
+        return 1;
+    }
+    if (obj === u.ublindf) {
+        obj.owornmask = (obj.owornmask || 0) & ~W_TOOL;
+        u.ublindf = null;
+        await off_msg(obj);
+        return 1;
+    }
+    return 0;
+}
+
+function takeoff_lets() {
+    const inv = game.invent || [];
+    const lets = [];
+    for (const o of inv) {
+        if (!o?.invlet) continue;
+        if ((o.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) lets.push(o.invlet);
+    }
+    lets.sort();
+    if (!lets.length) return '';
+    return lets.join('');
+}
+
+/** C ref: invent.c getobj("take off", takeoff_ok, …) */
+async function getobj_takeoff() {
+    const lets = takeoff_lets();
+    const query = lets
+        ? `What do you want to take off? [${lets} or ?*]`
+        : 'What do you want to take off? [*]';
+    const prompt = `${query} `;
+    game._pending_message = prompt;
+    await flush_screen(1);
+    const disp = game.nhDisplay;
+    if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+    const key = await nhgetch();
+    const ch = String.fromCharCode(key);
+    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        if (game.flags?.verbose !== false) await pline('Never mind.');
+        return null;
+    }
+    if (ch === '?' || ch === '*') {
+        await pline('Never mind.');
+        return null;
+    }
+    const otmp = (game.invent || []).find((o) => o.invlet === ch);
+    if (!otmp) {
+        await pline("You don't have that object.");
+        return null;
+    }
+    if (!((otmp.owornmask || 0) & (W_ARMOR | W_ACCESSORY))) {
+        await pline('You are not wearing that.');
+        return null;
+    }
+    return otmp;
+}
+
+/**
+ * C ref: do_wear.c dotakeoff — 'T' command.
+ * @returns {number} 0 = no turn, 1 = took time
+ */
+export async function dotakeoff() {
+    let otmp = count_worn_stuff(false);
+    if (!Narmorpieces && !Naccessories) {
+        await pline('Not wearing any armor or accessories.');
+        return 0;
+    }
+    const paranoid = !!(game.flags?.paranoid_confirm?.remove
+        || game.flags?.paranoid_remove);
+    if (Narmorpieces !== 1 || paranoid) {
+        otmp = await getobj_takeoff();
+    }
+    if (!otmp) return 0;
+    return armor_or_accessory_off(otmp);
+}
+
+/**
+ * C ref: do_wear.c canwearobj — slot/mask for armor; poly/weld/trap gates
+ * mostly deferred (human form always ok).
+ * @returns {Promise<number>} 1 ok (mask out), 0 fail
+ */
+export async function canwearobj(otmp, maskOut, noisy) {
+    const u = game.u || {};
+    let err = 0;
+    let mask = 0;
+
+    if ((otmp.owornmask || 0) & W_ARMOR) {
+        if (noisy) await pline('You are already wearing that.');
+        return 0;
+    }
+
+    if (is_helmet(otmp)) {
+        if (u.uarmh) {
+            if (noisy) await pline('You are already wearing a helmet.');
+            err++;
+        } else mask = W_ARMH;
+    } else if (is_shield(otmp)) {
+        if (u.uarms) {
+            if (noisy) await pline('You are already wearing a shield.');
+            err++;
+        } else mask = W_ARMS;
+    } else if (is_boots(otmp)) {
+        if (u.uarmf) {
+            if (noisy) await pline('You are already wearing boots.');
+            err++;
+        } else mask = W_ARMF;
+    } else if (is_gloves(otmp)) {
+        if (u.uarmg) {
+            if (noisy) await pline('You are already wearing gloves.');
+            err++;
+        } else mask = W_ARMG;
+    } else if (is_shirt(otmp)) {
+        if (u.uarm || u.uarmc || u.uarmu) {
+            if (noisy) {
+                if (u.uarmu) await pline('You are already wearing a shirt.');
+                else await pline("You can't wear that over your armor.");
+            }
+            err++;
+        } else mask = W_ARMU;
+    } else if (is_cloak(otmp)) {
+        if (u.uarmc) {
+            if (noisy) await pline('You are already wearing a cloak.');
+            err++;
+        } else mask = W_ARMC;
+    } else if (is_suit(otmp)) {
+        if (u.uarmc) {
+            if (noisy) await pline('You cannot wear armor over a cloak.');
+            err++;
+        } else if (u.uarm) {
+            if (noisy) await pline('You are already wearing some armor.');
+            err++;
+        } else mask = W_ARM;
+    } else {
+        if (noisy) await pline("You can't wear that.");
+        err++;
+    }
+
+    if (!err) maskOut.mask = mask;
+    return !err ? 1 : 0;
+}
+
+async function wear_lets() {
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (!o?.invlet) continue;
+        if ((o.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) continue;
+        if (o.oclass === ARMOR_CLASS) {
+            const dummy = { mask: 0 };
+            if (await canwearobj(o, dummy, false)) lets.push(o.invlet);
+        } else if (
+            o.oclass === RING_CLASS
+            || o.oclass === AMULET_CLASS
+            || objectNames[o.otyp] === 'BLINDFOLD'
+            || objectNames[o.otyp] === 'TOWEL'
+            || objectNames[o.otyp] === 'LENSES'
+            || objectNames[o.otyp] === 'MEAT_RING'
+        ) {
+            // accessories selectable via W (C DOWNPLAY) — letter still works
+            lets.push(o.invlet);
+        }
+    }
+    return lets.join('');
+}
+
+/** C ref: invent.c getobj("wear", wear_ok, GETOBJ_NOFLAGS) */
+async function getobj_wear() {
+    for (;;) {
+        await flush_topl_more();
+        const lets = await wear_lets();
+        const query = lets
+            ? `What do you want to wear? [${lets} or ?*]`
+            : 'What do you want to wear? [*?]';
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            await pline('Never mind.');
+            return null;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/**
+ * C ref: do_wear.c accessory_or_armor_on — armor path with delay occupation.
+ * Accessory put-on beyond a cancel message deferred to doputon.
+ * @returns {number} 0 = no turn / fail, 1 = took time
+ */
+async function accessory_or_armor_on(obj) {
+    if ((obj.owornmask || 0) & (W_ACCESSORY | W_ARMOR)) {
+        await pline('You are already wearing that.');
+        return 0;
+    }
+
+    const armor = obj.oclass === ARMOR_CLASS;
+    if (!armor) {
+        // W on accessory: C still allows via accessory path; defer body to P
+        await pline("You can't wear that!");
+        return 0;
+    }
+
+    const maskBox = { mask: 0 };
+    if (!(await canwearobj(obj, maskBox, true))) return 0;
+    const mask = maskBox.mask;
+
+    if (!(await retouch_object(obj, false))) {
+        return 1; // C: ECMD_TIME even when not worn
+    }
+
+    // Release from weapon slots if needed
+    if ((obj.owornmask || 0) & W_WEAPONS) {
+        const u = game.u || {};
+        if (u.uwep === obj) {
+            u.uwep = null;
+            obj.owornmask &= ~W_WEP;
+        }
+        if (u.uswapwep === obj) {
+            u.uswapwep = null;
+            obj.owornmask &= ~W_SWAPWEP;
+        }
+        if (u.uquiver === obj) {
+            u.uquiver = null;
+            obj.owornmask &= ~W_QUIVER;
+        }
+    }
+
+    setworn(obj, mask);
+    const u = game.u || {};
+    if (obj === u.uarm) game.afternmv = Armor_on;
+    else if (obj === u.uarmh) game.afternmv = Helmet_on;
+    else if (obj === u.uarmg) game.afternmv = Gloves_on;
+    else if (obj === u.uarmf) game.afternmv = Boots_on;
+    else if (obj === u.uarms) game.afternmv = Shield_on;
+    else if (obj === u.uarmc) game.afternmv = Cloak_on;
+    else if (obj === u.uarmu) game.afternmv = Shirt_on;
+    else game.afternmv = null;
+
+    const delay = -(game.objects?.[obj.otyp]?.oc_delay ?? 0);
+    if (delay) {
+        nomul(delay);
+        game.multi_reason = 'dressing up';
+        game.nomovemsg = 'You finish your dressing maneuver.';
+    } else {
+        await unmul('');
+        await on_msg(obj);
+    }
+    return 1;
+}
+
+/**
+ * C ref: do_wear.c dowear — 'W' command.
+ * @returns {number} 0 = no turn / cancel, 1 = took time
+ */
+export async function dowear() {
+    // verysmall/nohands deferred — humanoid always ok
+    const u = game.u || {};
+    if (
+        u.uarm && u.uarmu && u.uarmc && u.uarmh && u.uarms && u.uarmg && u.uarmf
+        && u.uleft && u.uright && u.uamul && u.ublindf
+    ) {
+        await pline('You are already wearing a full complement of armor.');
+        return 0;
+    }
+    const otmp = await getobj_wear();
+    if (!otmp) return 0;
+    return accessory_or_armor_on(otmp);
+}

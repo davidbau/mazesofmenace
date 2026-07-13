@@ -9,12 +9,15 @@ import {
     LOW_PM,
     SPECIAL_PM,
     NON_PM,
+    NUMMONS,
     G_UNIQ,
     G_NOGEN,
     G_HELL,
+    G_NOHELL,
     G_FREQ,
     G_SGROUP,
     G_LGROUP,
+    G_IGNORE,
     mons,
     always_hostile,
     always_peaceful,
@@ -27,6 +30,7 @@ import {
     is_prince,
     extra_nasty,
     strongmonst,
+    is_placeholder,
     mon_difficulty,
     monmin_difficulty,
     monmax_difficulty,
@@ -36,7 +40,7 @@ import {
 } from './monsters.js';
 import {
     NO_MINVENT, MM_NOGRP, GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level,
-    OBJ_MINVENT, COLNO, ROWNO,
+    OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
 import { mksobj, weight } from './mkobj.js';
@@ -126,6 +130,134 @@ export function rndmonnum() {
     if (ptr) return ptr.mndx;
     // Plan B not needed for seed8000 fill path
     return 0;
+}
+
+// C ref: defsym.h MONSYMS_S_ENUM — mlet ordinal for mongen_order sort key
+const MLET_ORD = Object.freeze({
+    S_ANT: 1, S_BLOB: 2, S_COCKATRICE: 3, S_DOG: 4, S_EYE: 5, S_FELINE: 6,
+    S_GREMLIN: 7, S_HUMANOID: 8, S_IMP: 9, S_JELLY: 10, S_KOBOLD: 11,
+    S_LEPRECHAUN: 12, S_MIMIC: 13, S_NYMPH: 14, S_ORC: 15, S_PIERCER: 16,
+    S_QUADRUPED: 17, S_RODENT: 18, S_SPIDER: 19, S_TRAPPER: 20, S_UNICORN: 21,
+    S_VORTEX: 22, S_WORM: 23, S_XAN: 24, S_LIGHT: 25, S_ZRUTY: 26, S_ANGEL: 27,
+    S_BAT: 28, S_CENTAUR: 29, S_DRAGON: 30, S_ELEMENTAL: 31, S_FUNGUS: 32,
+    S_GNOME: 33, S_GIANT: 34, S_invisible: 35, S_JABBERWOCK: 36, S_KOP: 37,
+    S_LICH: 38, S_MUMMY: 39, S_NAGA: 40, S_OGRE: 41, S_PUDDING: 42,
+    S_QUANTMECH: 43, S_RUSTMONST: 44, S_SNAKE: 45, S_TROLL: 46, S_UMBER: 47,
+    S_VAMPIRE: 48, S_WRAITH: 49, S_XORN: 50, S_YETI: 51, S_ZOMBIE: 52,
+    S_HUMAN: 53, S_GHOST: 54, S_GOLEM: 55, S_DEMON: 56, S_EEL: 57,
+    S_LIZARD: 58, S_WORM_TAIL: 59, S_MIMIC_DEF: 60,
+});
+
+let mongen_order = null;
+const mclass_maxf = Object.create(null);
+
+function sgn(x) {
+    return x < 0 ? -1 : x > 0 ? 1 : 0;
+}
+
+// C ref: makemon.c mk_gen_ok
+function mk_gen_ok(mndx, mvflagsmask, genomask) {
+    const ptr = mons(mndx);
+    if (!ptr) return false;
+    const mvflags = game.mvitals?.[mndx]?.mvflags ?? 0;
+    if (mvflags & mvflagsmask) return false;
+    if (ptr.geno & genomask) return false;
+    if (is_placeholder(ptr)) return false;
+    return true;
+}
+
+// C ref: makemon.c init_mongen_order — stable sort by (mlet<<8)|difficulty
+function init_mongen_order() {
+    if (mongen_order) return;
+    mongen_order = new Array(NUMMONS);
+    for (let i = LOW_PM; i < NUMMONS; i++) {
+        mongen_order[i] = i;
+        const ptr = mons(i);
+        if (!ptr) continue;
+        const mlet = ptr.mlet;
+        const freq = ptr.geno & G_FREQ;
+        if ((mclass_maxf[mlet] ?? 0) < freq) mclass_maxf[mlet] = freq;
+    }
+    // Contest uses stable qsort; Array.sort is stable in modern JS engines.
+    const prefix = mongen_order.slice(0, SPECIAL_PM);
+    prefix.sort((i1, i2) => {
+        const p1 = mons(i1);
+        const p2 = mons(i2);
+        const d1 = ((p1?.difficulty ?? 0) | (((MLET_ORD[p1?.mlet] ?? 0) << 8)));
+        const d2 = ((p2?.difficulty ?? 0) | (((MLET_ORD[p2?.mlet] ?? 0) << 8)));
+        return d1 - d2 || i1 - i2;
+    });
+    for (let i = 0; i < SPECIAL_PM; i++) mongen_order[i] = prefix[i];
+}
+
+function monSi(i) {
+    return mongen_order[i];
+}
+
+// C ref: makemon.c mkclass → mkclass_aligned(class, spc, A_NONE)
+export function mkclass(mletClass, spc = 0) {
+    return mkclass_aligned(mletClass, spc, A_NONE);
+}
+
+// C ref: makemon.c mkclass_aligned — pick permonst from class by geno/freq
+export function mkclass_aligned(mletClass, spc = 0, atyp = A_NONE) {
+    init_mongen_order();
+    const nums = new Array(SPECIAL_PM + 1).fill(0);
+    const maxmlev = level_difficulty() >> 1;
+    const gehennom = (game.u?.uz?.dnum === GEHENNOM);
+    const zero_freq_for_entire_class = (mclass_maxf[mletClass] ?? 0) === 0;
+
+    let first;
+    for (first = LOW_PM; first < SPECIAL_PM; first++) {
+        if (mons(monSi(first))?.mlet === mletClass) break;
+    }
+    if (first === SPECIAL_PM) return null;
+
+    let mv_mask = G_GONE;
+    let spcMask = spc;
+    if (spcMask & G_IGNORE) {
+        mv_mask = 0;
+        spcMask &= ~G_IGNORE;
+    }
+
+    let num = 0;
+    let last;
+    for (last = first;
+        last < SPECIAL_PM && mons(monSi(last))?.mlet === mletClass;
+        last++) {
+        const ptr = mons(monSi(last));
+        if (atyp !== A_NONE && sgn(ptr.maligntyp) !== sgn(atyp)) continue;
+
+        let gn_mask = (G_NOGEN | G_UNIQ);
+        if (rn2(9) || mletClass === 'S_LICH') {
+            gn_mask |= (gehennom ? G_NOHELL : G_HELL);
+        }
+        gn_mask &= ~spcMask;
+
+        if (mk_gen_ok(monSi(last), mv_mask, gn_mask)) {
+            if (num
+                && montoostrong(monSi(last), maxmlev)
+                && ptr.difficulty > mons(monSi(last - 1)).difficulty
+                && rn2(2)) {
+                break;
+            }
+            let k = ptr.geno & G_FREQ;
+            if (k > 0 || (k = (zero_freq_for_entire_class ? 1 : 0)) > 0) {
+                // C: k + 1 - (adj_lev(...) > (u.ulevel * 2))
+                nums[monSi(last)] = k + 1
+                    - (adj_lev(ptr) > ((game.u?.ulevel ?? 1) * 2) ? 1 : 0);
+                num += nums[monSi(last)];
+            }
+        }
+    }
+    if (!num) return null;
+
+    let pick = rnd(num);
+    for (first = first; first < last; first++) {
+        pick -= nums[monSi(first)];
+        if (pick <= 0) break;
+    }
+    return nums[monSi(first)] ? mons(monSi(first)) : null;
 }
 
 // C ref: makemon.c adj_lev() — no RNG

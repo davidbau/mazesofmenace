@@ -38,6 +38,7 @@ import {
     NODIR,
     IMMEDIATE,
 } from './objects.js';
+import { artifacts_globals_init } from './artifact.js';
 
 function objs() {
     return game.objects;
@@ -222,6 +223,7 @@ function init_oclass_probs() {
 // C ref: o_init.c init_objects
 export function init_objects() {
     objects_globals_init();
+    artifacts_globals_init();
     const objects = objs();
     const b = bases();
 

@@ -1,8 +1,9 @@
 // hack.js — Core hero damage / capacity helpers.
-// C ref: hack.c — losehp (and related). Other hack.c units remain elsewhere.
+// C ref: hack.c — losehp, nomul, unmul (and related). Other hack.c units remain elsewhere.
 
 import { game } from './gstate.js';
 import { Upolyd, KILLED_BY } from './const.js';
+import { pline } from './display.js';
 
 /**
  * C ref: hack.h Maybe_Half_Phys — Half_physical_damage halves ((dmg+1)/2).
@@ -13,6 +14,47 @@ export function maybe_half_phys(dmg) {
     const half = !!(u?.HHalf_physical_damage || u?.EHalf_physical_damage);
     if (half) return Math.trunc((dmg + 1) / 2);
     return dmg;
+}
+
+/**
+ * C ref: hack.c nomul — start/replace multi-turn inactivity (negative = occupation).
+ * end_running / cmdq_clear deferred.
+ */
+export function nomul(nval) {
+    if ((game.multi || 0) < nval) return;
+    if (!game.flags) game.flags = {};
+    if ((game.multi || 0) >= 0) game.flags.botl = true;
+    game.multi = nval;
+    if (nval === 0) {
+        game.multi_reason = null;
+        game.nomovemsg = null;
+    }
+    if (game.context) {
+        game.context.run = 0;
+        game.context.mv = 0;
+    }
+}
+
+/**
+ * C ref: hack.c unmul — finish multi-turn action; run afternmv if set.
+ * @param {string|null|undefined} msg_override
+ */
+export async function unmul(msg_override) {
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    game.multi = 0;
+    let msg = msg_override;
+    if (msg === undefined) msg = null;
+    if (msg != null) game.nomovemsg = msg;
+    else if (!game.nomovemsg) game.nomovemsg = 'You can move again.';
+    if (game.nomovemsg) {
+        if (game.nomovemsg.length) await pline(game.nomovemsg);
+        game.nomovemsg = null;
+    }
+    game.multi_reason = null;
+    const f = game.afternmv;
+    game.afternmv = null;
+    if (typeof f === 'function') await f();
 }
 
 /**

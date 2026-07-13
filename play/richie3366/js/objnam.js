@@ -12,7 +12,12 @@ import {
     SCROLL_CLASS,
     COIN_CLASS,
     WAND_CLASS,
+    SPBOOK_CLASS,
+    AMULET_CLASS,
+    GEM_CLASS,
     objectNames,
+    objectNameStrs,
+    objectDescrs,
 } from './objects.js';
 import { monsterNames } from './monsters.js';
 import {
@@ -216,6 +221,12 @@ export function doname(obj) {
 
     let bp = prefix + base;
 
+    // C: has_oname && dknown → " named Foo"
+    const onameStr = obj.oextra?.oname;
+    if (onameStr && obj.dknown) {
+        bp += ` named ${onameStr}`;
+    }
+
     if (oclass === ARMOR_CLASS && (obj.owornmask & W_ARMOR))
         bp += ' (being worn)';
     // C: W_WEP → "(weapon in right/left hand)" for single non-ammo weapons
@@ -250,4 +261,111 @@ export function doname(obj) {
 export function xprname(obj, let_) {
     const ilet = let_ ?? obj.invlet ?? '?';
     return `${ilet} - ${doname(obj)}`;
+}
+
+// C ref: objnam.c Japanese_items[] / Japanese_item_name()
+const JAPANESE_ITEMS = [
+    ['SHORT_SWORD', 'wakizashi'],
+    ['BROADSWORD', 'ninja-to'],
+    ['FLAIL', 'nunchaku'],
+    ['GLAIVE', 'naginata'],
+    ['LOCK_PICK', 'osaku'],
+    ['WOODEN_HARP', 'koto'],
+    ['MAGIC_HARP', 'magic koto'],
+    ['KNIFE', 'shito'],
+    ['PLATE_MAIL', 'tanko'],
+    ['HELMET', 'kabuto'],
+    ['LEATHER_GLOVES', 'yugake'],
+    ['FOOD_RATION', 'gunyoki'],
+    ['POT_BOOZE', 'sake'],
+];
+let _japaneseByOtyp = null;
+function japaneseByOtyp() {
+    if (_japaneseByOtyp) return _japaneseByOtyp;
+    _japaneseByOtyp = new Map();
+    for (const [name, jn] of JAPANESE_ITEMS) {
+        const otyp = objectNames.indexOf(name);
+        if (otyp >= 0) _japaneseByOtyp.set(otyp, jn);
+    }
+    return _japaneseByOtyp;
+}
+
+/** C ref: objnam.c Japanese_item_name — null ordinaryname → truthy iff mapped. */
+export function Japanese_item_name(otyp, ordinaryname = null) {
+    const jn = japaneseByOtyp().get(otyp);
+    if (jn) return jn;
+    return ordinaryname;
+}
+
+/**
+ * C ref: objnam.c obj_typename(otyp) — disco / identify class names.
+ * Covers known + description append; display-path Japanese names deferred.
+ */
+export function obj_typename(otyp) {
+    const ocl = game.objects?.[otyp];
+    if (!ocl) return objectNames[otyp] || 'object?';
+    const actualn = objectNameStrs[otyp]
+        || (objectNames[otyp] || '').toLowerCase().replace(/_/g, ' ')
+        || 'object?';
+    const dn = objectDescrs[ocl.oc_descr_idx ?? otyp] || null;
+    const un = ocl.oc_uname || null;
+    let nn = !!ocl.oc_name_known;
+    let buf = '';
+
+    switch (ocl.oc_class) {
+    case COIN_CLASS:
+        return actualn;
+    case POTION_CLASS:
+        buf = 'potion';
+        break;
+    case SCROLL_CLASS:
+        buf = 'scroll';
+        break;
+    case WAND_CLASS:
+        buf = 'wand';
+        break;
+    case SPBOOK_CLASS: {
+        const n = objectNames[otyp] || '';
+        if (n !== 'SPE_NOVEL') {
+            buf = 'spellbook';
+        } else {
+            buf = !nn ? 'book' : 'novel';
+            nn = false;
+        }
+        break;
+    }
+    case RING_CLASS:
+        buf = 'ring';
+        break;
+    case AMULET_CLASS:
+        buf = nn ? actualn : 'amulet';
+        if (un) buf += ` called ${un}`;
+        if (dn) buf += ` (${dn})`;
+        return buf;
+    case ARMOR_CLASS:
+        // pair of / set of deferred (needs oc_armcat / dragon scales)
+        // FALLTHROUGH
+    default:
+        if (nn) {
+            buf += actualn;
+            // GemStone " stone" deferred
+            if (un) buf += ` called ${un}`;
+            if (dn) buf += ` (${dn})`;
+        } else {
+            buf += dn || actualn;
+            if (ocl.oc_class === GEM_CLASS) {
+                buf += (ocl.oc_material === 21 /* MINERAL */) ? ' stone' : ' gem';
+            }
+            if (un) buf += ` called ${un}`;
+        }
+        return buf;
+    }
+    // ring/scroll/potion/wand/spellbook
+    if (nn) {
+        if (ocl.oc_unique) buf = actualn;
+        else buf += ` of ${actualn}`;
+    }
+    if (un) buf += ` called ${un}`;
+    if (dn) buf += ` (${dn})`;
+    return buf;
 }

@@ -2,6 +2,7 @@
 // C ref: role.c — roles[], races[], aligns[], genders[], Hello()
 //
 // mnum / race.mnum are monster-table IDs (PM_*), not roles[]/races[] indexes.
+// roles[] order must match C (Rogue before Ranger) for pantheon randrole().
 
 import {
     PM_ARCHEOLOGIST,
@@ -23,8 +24,14 @@ import {
     PM_GNOME,
     PM_ORC,
     NON_PM,
+    monsterNames,
 } from './generated/monsters_data.js';
 import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from './const.js';
+
+function pm(name) {
+    const i = monsterNames.indexOf(name);
+    return i >= 0 ? i : NON_PM;
+}
 
 // STR18(n) encoding used as racial Str max (attrib.h / role.c).
 const STR18_100 = 18 + 100;
@@ -36,19 +43,161 @@ function adv(infix, inrnd, lofix, lornd, hifix, hirnd) {
 }
 
 export const roles = [
-    { name: { m: 'Archeologist', f: 'Archeologist' }, mnum: PM_ARCHEOLOGIST, petnum: NON_PM },
-    { name: { m: 'Barbarian', f: 'Barbarian' }, mnum: PM_BARBARIAN, petnum: NON_PM },
-    { name: { m: 'Caveman', f: 'Cavewoman' }, mnum: PM_CAVE_DWELLER, petnum: NON_PM },
-    { name: { m: 'Healer', f: 'Healer' }, mnum: PM_HEALER, petnum: NON_PM },
-    { name: { m: 'Knight', f: 'Knight' }, mnum: PM_KNIGHT, petnum: NON_PM },
-    { name: { m: 'Monk', f: 'Monk' }, mnum: PM_MONK, petnum: NON_PM },
-    { name: { m: 'Priest', f: 'Priestess' }, mnum: PM_CLERIC, petnum: NON_PM },
-    { name: { m: 'Ranger', f: 'Ranger' }, mnum: PM_RANGER, petnum: NON_PM },
-    // C ref: role.c Rogue
+    // C: roles[] index 0..12 — pantheon randrole uses rn2(SIZE(roles)-1)
+    {
+        name: { m: 'Archeologist', f: 'Archeologist' },
+        mnum: PM_ARCHEOLOGIST,
+        petnum: NON_PM,
+        neminum: pm('PM_MINION_OF_HUHETOTL'),
+        title: [
+            { m: 'Digger', f: 'Digger' },
+            { m: 'Field Worker', f: 'Field Worker' },
+        ],
+        lgod: 'Quetzalcoatl',
+        ngod: 'Camaxtli',
+        cgod: 'Huhetotl',
+        // C: { 7, 10, 10, 7, 7, 7 } / { 20, 20, 20, 10, 20, 10 }
+        attrbase: [7, 10, 10, 7, 7, 7],
+        attrdist: [20, 20, 20, 10, 20, 10],
+        xlev: 14,
+        initrecord: 10,
+        // C: { 11, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(11, 0, 0, 8, 1, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+    },
+    {
+        name: { m: 'Barbarian', f: 'Barbarian' },
+        mnum: PM_BARBARIAN,
+        petnum: NON_PM,
+        neminum: pm('PM_THOTH_AMON'),
+        title: [
+            { m: 'Plunderer', f: 'Plunderess' },
+            { m: 'Pillager', f: 'Pillager' },
+        ],
+        lgod: 'Mitra',
+        ngod: 'Crom',
+        cgod: 'Set',
+        // C: { 16, 7, 7, 15, 16, 6 } / { 30, 6, 7, 20, 30, 7 }
+        attrbase: [16, 7, 7, 15, 16, 6],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        xlev: 10,
+        initrecord: 10,
+        // C: { 14, 0, 0, 10, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(14, 0, 0, 10, 2, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+    },
+    {
+        name: { m: 'Caveman', f: 'Cavewoman' },
+        mnum: PM_CAVE_DWELLER,
+        petnum: pm('PM_LITTLE_DOG'),
+        neminum: pm('PM_CHROMATIC_DRAGON'),
+        title: [
+            { m: 'Troglodyte', f: 'Troglodyte' },
+            { m: 'Aborigine', f: 'Aborigine' },
+        ],
+        lgod: 'Anu',
+        ngod: '_Ishtar',
+        cgod: 'Anshar',
+        // C: { 10, 7, 7, 7, 8, 6 } / { 30, 6, 7, 20, 30, 7 }
+        attrbase: [10, 7, 7, 7, 8, 6],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        // C: xlev 10, initrecord 0 (role.c after enadv)
+        xlev: 10,
+        initrecord: 0,
+        // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(14, 0, 0, 8, 2, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+    },
+    {
+        name: { m: 'Healer', f: 'Healer' },
+        mnum: PM_HEALER,
+        petnum: NON_PM,
+        neminum: pm('PM_CYCLOPS'),
+        title: [
+            { m: 'Rhizotomist', f: 'Rhizotomist' },
+            { m: 'Empiric', f: 'Empiric' },
+        ],
+        lgod: '_Athena',
+        ngod: 'Hermes',
+        cgod: 'Poseidon',
+        // C: { 7, 7, 13, 7, 11, 16 } / { 15, 20, 20, 15, 25, 5 }
+        attrbase: [7, 7, 13, 7, 11, 16],
+        attrdist: [15, 20, 20, 15, 25, 5],
+        xlev: 20,
+        initrecord: 10,
+        // C: { 11, 0, 0, 8, 1, 0 } / { 1, 4, 0, 1, 0, 2 }
+        hpadv: adv(11, 0, 0, 8, 1, 0),
+        enadv: adv(1, 4, 0, 1, 0, 2),
+    },
+    {
+        name: { m: 'Knight', f: 'Knight' },
+        mnum: PM_KNIGHT,
+        petnum: pm('PM_PONY'),
+        neminum: pm('PM_IXOTH'),
+        title: [
+            { m: 'Gallant', f: 'Gallant' },
+            { m: 'Esquire', f: 'Esquire' },
+        ],
+        lgod: 'Lugh',
+        ngod: '_Brigit',
+        cgod: 'Manannan Mac Lir',
+        // C: { 13, 7, 14, 8, 10, 17 } / { 30, 15, 15, 10, 20, 10 }
+        attrbase: [13, 7, 14, 8, 10, 17],
+        attrdist: [30, 15, 15, 10, 20, 10],
+        xlev: 10,
+        initrecord: 10,
+        // C: { 14, 0, 0, 8, 2, 0 } / { 1, 4, 0, 1, 0, 2 }
+        hpadv: adv(14, 0, 0, 8, 2, 0),
+        enadv: adv(1, 4, 0, 1, 0, 2),
+    },
+    {
+        name: { m: 'Monk', f: 'Monk' },
+        mnum: PM_MONK,
+        petnum: NON_PM,
+        neminum: pm('PM_MASTER_KAEN'),
+        title: [
+            { m: 'Candidate', f: 'Candidate' },
+            { m: 'Novice', f: 'Novice' },
+        ],
+        lgod: 'Shan Lai Ching',
+        ngod: 'Chih Sung-tzu',
+        cgod: 'Huan Ti',
+        // C: { 10, 7, 8, 8, 7, 7 } / { 25, 10, 20, 20, 15, 10 }
+        attrbase: [10, 7, 8, 8, 7, 7],
+        attrdist: [25, 10, 20, 20, 15, 10],
+        xlev: 10,
+        initrecord: 10,
+        // C: { 12, 0, 0, 8, 1, 0 } / { 2, 2, 0, 2, 0, 2 }
+        hpadv: adv(12, 0, 0, 8, 1, 0),
+        enadv: adv(2, 2, 0, 2, 0, 2),
+    },
+    // C ref: role.c Priest — no fixed deities; pantheon via randrole
+    {
+        name: { m: 'Priest', f: 'Priestess' },
+        mnum: PM_CLERIC,
+        petnum: NON_PM,
+        neminum: pm('PM_NALZOK'),
+        title: [
+            { m: 'Aspirant', f: 'Aspirant' },
+            { m: 'Acolyte', f: 'Acolyte' },
+        ],
+        lgod: null,
+        ngod: null,
+        cgod: null,
+        attrbase: [7, 7, 10, 7, 7, 7],
+        attrdist: [15, 10, 30, 15, 20, 10],
+        xlev: 10,
+        initrecord: 0,
+        // C: { 12, 0, 0, 8, 1, 0 } / { 4, 3, 0, 2, 0, 2 }
+        hpadv: adv(12, 0, 0, 8, 1, 0),
+        enadv: adv(4, 3, 0, 2, 0, 2),
+    },
+    // C: Rogue precedes Ranger (command-line -R tradition + pantheon indices)
     {
         name: { m: 'Rogue', f: 'Rogue' },
         mnum: PM_ROGUE,
         petnum: NON_PM,
+        neminum: pm('PM_MASTER_ASSASSIN'),
         title: [
             { m: 'Footpad', f: 'Footpad' },
             { m: 'Cutpurse', f: 'Cutpurse' },
@@ -58,34 +207,114 @@ export const roles = [
         cgod: 'Kos',
         attrbase: [7, 7, 7, 10, 7, 6],
         attrdist: [20, 10, 10, 30, 20, 10],
-        initrecord: 0,
-        // C: { 10, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
+        // C: xlev 11, initrecord 10
+        xlev: 11,
+        initrecord: 10,
         hpadv: adv(10, 0, 0, 8, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
     },
-    { name: { m: 'Samurai', f: 'Samurai' }, mnum: PM_SAMURAI, petnum: NON_PM },
-    // C ref: role.c Tourist — attrbase / attrdist / ranks
+    {
+        name: { m: 'Ranger', f: 'Ranger' },
+        mnum: PM_RANGER,
+        petnum: pm('PM_LITTLE_DOG'),
+        neminum: pm('PM_SCORPIUS'),
+        title: [
+            { m: 'Tenderfoot', f: 'Tenderfoot' },
+            { m: 'Lookout', f: 'Lookout' },
+        ],
+        lgod: 'Mercury',
+        ngod: '_Venus',
+        cgod: 'Mars',
+        // C: { 13, 13, 13, 9, 13, 7 } / { 30, 10, 10, 20, 20, 10 }
+        attrbase: [13, 13, 13, 9, 13, 7],
+        attrdist: [30, 10, 10, 20, 20, 10],
+        xlev: 12,
+        initrecord: 10,
+        // C: { 13, 0, 0, 6, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(13, 0, 0, 6, 1, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+    },
+    {
+        name: { m: 'Samurai', f: 'Samurai' },
+        mnum: PM_SAMURAI,
+        petnum: pm('PM_LITTLE_DOG'),
+        neminum: pm('PM_ASHIKAGA_TAKAUJI'),
+        title: [
+            { m: 'Hatamoto', f: 'Hatamoto' },
+            { m: 'Ronin', f: 'Ronin' },
+        ],
+        lgod: '_Amaterasu Omikami',
+        ngod: 'Raijin',
+        cgod: 'Susanowo',
+        // C: { 10, 8, 7, 10, 17, 6 } / { 30, 10, 8, 30, 14, 8 }
+        attrbase: [10, 8, 7, 10, 17, 6],
+        attrdist: [30, 10, 8, 30, 14, 8],
+        xlev: 11,
+        initrecord: 10,
+        // C: { 13, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(13, 0, 0, 8, 1, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+    },
     {
         name: { m: 'Tourist', f: 'Tourist' },
         mnum: PM_TOURIST,
         petnum: NON_PM,
+        neminum: pm('PM_MASTER_OF_THIEVES'),
         title: [
             { m: 'Rambler', f: 'Rambler' },
             { m: 'Sightseer', f: 'Sightseer' },
         ],
-        // C: leading '_' marks goddess; align_gname strips it
         lgod: 'Blind Io',
         ngod: '_The Lady',
         cgod: 'Offler',
         attrbase: [7, 10, 6, 7, 7, 10],
         attrdist: [15, 10, 10, 15, 30, 20],
+        xlev: 14,
         initrecord: 0,
-        // C: { 8, 0, 0, 8, 0, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(8, 0, 0, 8, 0, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
     },
-    { name: { m: 'Valkyrie', f: 'Valkyrie' }, mnum: PM_VALKYRIE, petnum: NON_PM },
-    { name: { m: 'Wizard', f: 'Wizard' }, mnum: PM_WIZARD, petnum: NON_PM },
+    {
+        name: { m: 'Valkyrie', f: 'Valkyrie' },
+        mnum: PM_VALKYRIE,
+        petnum: NON_PM,
+        neminum: pm('PM_LORD_SURTUR'),
+        title: [
+            { m: 'Stripling', f: 'Stripling' },
+            { m: 'Skirmisher', f: 'Skirmisher' },
+        ],
+        lgod: 'Tyr',
+        ngod: 'Odin',
+        cgod: 'Loki',
+        // C: { 10, 7, 7, 7, 10, 7 } / { 30, 6, 7, 20, 30, 7 }
+        attrbase: [10, 7, 7, 7, 10, 7],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        // C: xlev 10, initrecord 0
+        xlev: 10,
+        initrecord: 0,
+        // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(14, 0, 0, 8, 2, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+    },
+    {
+        name: { m: 'Wizard', f: 'Wizard' },
+        mnum: PM_WIZARD,
+        petnum: pm('PM_KITTEN'),
+        neminum: pm('PM_DARK_ONE'),
+        title: [
+            { m: 'Evoker', f: 'Evoker' },
+            { m: 'Conjurer', f: 'Conjurer' },
+        ],
+        lgod: 'Ptah',
+        ngod: 'Thoth',
+        cgod: 'Anhur',
+        attrbase: [7, 10, 7, 7, 7, 7],
+        attrdist: [10, 30, 10, 20, 20, 10],
+        xlev: 12,
+        initrecord: 0,
+        hpadv: adv(10, 0, 0, 8, 1, 0),
+        enadv: adv(4, 3, 0, 2, 0, 3),
+    },
 ];
 
 export const races = [
@@ -97,7 +326,6 @@ export const races = [
         mnum: PM_HUMAN,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_100, 18, 18, 18, 18, 18],
-        // C: { 2, 0, 0, 2, 1, 0 } / { 1, 0, 2, 0, 2, 0 }
         hpadv: adv(2, 0, 0, 2, 1, 0),
         enadv: adv(1, 0, 2, 0, 2, 0),
     },
@@ -108,7 +336,6 @@ export const races = [
         mnum: PM_ELF,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [18, 20, 20, 18, 16, 18],
-        // C: { 1, 0, 0, 1, 1, 0 } / { 2, 0, 3, 0, 3, 0 }
         hpadv: adv(1, 0, 0, 1, 1, 0),
         enadv: adv(2, 0, 3, 0, 3, 0),
     },
@@ -119,7 +346,6 @@ export const races = [
         mnum: PM_DWARF,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_100, 16, 16, 20, 20, 16],
-        // C: { 4, 0, 0, 3, 2, 0 } / { 0, 0, 0, 0, 0, 0 }
         hpadv: adv(4, 0, 0, 3, 2, 0),
         enadv: adv(0, 0, 0, 0, 0, 0),
     },
@@ -130,7 +356,6 @@ export const races = [
         mnum: PM_GNOME,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_50, 19, 18, 18, 18, 18],
-        // C: { 1, 0, 0, 1, 0, 0 } / { 2, 0, 2, 0, 2, 0 }
         hpadv: adv(1, 0, 0, 1, 0, 0),
         enadv: adv(2, 0, 2, 0, 2, 0),
     },
@@ -141,7 +366,6 @@ export const races = [
         mnum: PM_ORC,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_50, 16, 16, 18, 18, 16],
-        // C: { 1, 0, 0, 1, 0, 0 } / { 1, 0, 1, 0, 1, 0 }
         // Rogue+orc init HP = 10+1 = 11 (not human fallback 10+2 = 12)
         hpadv: adv(1, 0, 0, 1, 0, 0),
         enadv: adv(1, 0, 1, 0, 1, 0),

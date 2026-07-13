@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, status_line_2 } from './display.js';
-import { xprname, an, vtense, doname } from './objnam.js';
+import { xprname, an, vtense, doname, obj_typename } from './objnam.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -24,14 +24,25 @@ import {
     BALL_CLASS,
     CHAIN_CLASS,
     objectNames,
+    objectNameStrs,
+    objectDescrs,
+    objects,
 } from './objects.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
-import { acurr, A_STR, A_CON } from './attrib.js';
+import {
+    acurr, acurrstr, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
+} from './attrib.js';
 import {
     DOOR, STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, TREE, IRONBARS,
     D_NODOOR, D_ISOPEN, D_BROKEN,
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     IS_DOOR,
+    P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD,
+    P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD,
+    P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL, P_QUARTERSTAFF,
+    P_SPEAR, P_TRIDENT, P_LANCE, P_BOW, P_SLING, P_CROSSBOW,
+    P_DART, P_SHURIKEN, P_BOOMERANG, P_UNICORN_HORN,
+    P_BARE_HANDED_COMBAT,
 } from './const.js';
 import { align_str, align_gname, u_gname } from './roles.js';
 import {
@@ -40,14 +51,6 @@ import {
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
-
-// C ref: attrib.c acurrstr() — Tourist STR is ≤18 so equals ACURR(A_STR)
-function acurrstr() {
-    const str = acurr(A_STR);
-    if (str <= 18) return Math.max(str, 3);
-    if (str <= 121) return 19 + Math.trunc(str / 50);
-    return Math.min(str, 125) - 100;
-}
 
 // C ref: hack.c weight_cap()
 export function weight_cap() {
@@ -113,86 +116,16 @@ const CLASS_NAMES = {
 
 const GOLD_SYM = '$';
 
-// Appearance strings from objects.h SCROLL() second arg + XTRA_SCROLL_LABEL,
-// keyed by otyp (pre-shuffle); appearance_of() remaps via oc_descr_idx.
-const SCROLL_DESCS = (() => {
-    const texts = [
-        // Real scrolls (enchant armor … stinking cloud)
-        'ZELGO MER', 'JUYED AWK YACC', 'NR 9', 'XIXAXA XOXAXA XUXAXA',
-        'PRATYAVAYAH', 'DAIYEN FOOELS', 'LEP GEX VEN ZEA', 'PRIRUTSENIE',
-        'ELBIB YLOH', 'VERR YED HORRE', 'VENZAR BORGAVVE', 'THARR',
-        'YUM YUM', 'KERNOD WEL', 'ELAM EBOW', 'DUAM XNAHT',
-        'ANDOVA BEGARIN', 'KIRJE', 'VE FORBRYDERNE', 'HACKEM MUCHE',
-        'VELOX NEB',
-        // XTRA_SCROLL_LABEL
-        'FOOBIE BLETCH', 'TEMOV', 'GARVEN DEH', 'READ ME',
-        'ETAOIN SHRDLU', 'LOREM IPSUM', 'FNORD', 'KO BATE',
-        'ABRA KA DABRA', 'ASHPD SODALG', 'ZLORFIK', 'GNIK SISI VLE',
-        'HAPAX LEGOMENON', 'EIRIS SAZUN IDISI', 'PHOL ENDE WODAN', 'GHOTI',
-        'MAPIRO MAHAMA DIROMAT', 'VAS CORP BET MANI', 'XOR OTA',
-        'STRC PRST SKRZ KRK',
-    ];
-    const first = objectNames.indexOf('SCR_ENCHANT_ARMOR');
-    const m = {};
-    texts.forEach((t, i) => { m[first + i] = t; });
-    return m;
-})();
-
-const POTION_DESCS = (() => {
-    const texts = [
-        'ruby', 'pink', 'orange', 'yellow', 'emerald', 'dark green', 'cyan',
-        'sky blue', 'brilliant blue', 'magenta', 'purple-red', 'puce',
-        'milky', 'swirly', 'bubbly', 'smoky', 'cloudy', 'effervescent',
-        'black', 'golden', 'brown', 'fizzy', 'dark', 'white', 'murky', 'clear',
-    ];
-    const first = objectNames.indexOf('POT_GAIN_ABILITY');
-    const m = {};
-    texts.forEach((t, i) => { m[first + i] = t; });
-    return m;
-})();
-
-const WAND_DESCS = (() => {
-    // C ref: objects.h WAND() typ strings in enum order (incl. extras)
-    const texts = [
-        'glass', 'balsa', 'crystal', 'maple', 'pine', 'redwood', 'oak', 'ebony',
-        'marble', 'tin', 'brass', 'copper', 'silver', 'platinum', 'iridium',
-        'zinc', 'aluminum', 'uranium', 'iron', 'steel', 'hexagonal', 'short',
-        'runed', 'long', 'curved', 'forked', 'spiked', 'jeweled',
-    ];
-    const first = objectNames.indexOf('WAN_LIGHT');
-    const m = {};
-    texts.forEach((t, i) => { m[first + i] = t; });
-    return m;
-})();
-
-/** C ref: objects.h fixed description strings for disco display. */
-const FIXED_DESCRS = {
-    ELVEN_DAGGER: 'runed dagger',
-    ORCISH_DAGGER: 'crude dagger',
-    SACK: 'bag',
-    OILSKIN_SACK: 'bag',
-    BAG_OF_HOLDING: 'bag',
-    BAG_OF_TRICKS: 'bag',
-};
-
+/**
+ * C ref: objclass.h OBJ_DESCR(objects[otyp]) —
+ * obj_descr[objects[otyp].oc_descr_idx].oc_descr (post-shuffle for
+ * potions/scrolls/wands).
+ */
 function appearance_of(otyp) {
-    const idx = game.objects?.[otyp]?.oc_descr_idx ?? otyp;
-    const shuffled = SCROLL_DESCS[idx] || POTION_DESCS[idx] || WAND_DESCS[idx];
-    if (shuffled) return shuffled;
-    // Fixed OBJ_DESCR strings (not shuffled) — C interesting_to_discover gate
-    const n = objectNames[otyp] || '';
-    return FIXED_DESCRS[n] || null;
-}
-
-function pretty_known_name(otyp) {
-    const n = objectNames[otyp] || '';
-    if (n.startsWith('SCR_'))
-        return 'scroll of ' + n.slice(4).toLowerCase().replace(/_/g, ' ');
-    if (n.startsWith('POT_'))
-        return 'potion of ' + n.slice(4).toLowerCase().replace(/_/g, ' ');
-    if (n.startsWith('WAN_'))
-        return 'wand of ' + n.slice(4).toLowerCase().replace(/_/g, ' ');
-    return n.toLowerCase().replace(/_/g, ' ');
+    const oc = game.objects?.[otyp];
+    if (!oc) return null;
+    const idx = oc.oc_descr_idx ?? otyp;
+    return objectDescrs[idx] ?? null;
 }
 
 /** C ref: o_init.c interesting_to_discover — needs OBJ_DESCR (or uname). */
@@ -446,10 +379,8 @@ export async function dodiscovered() {
         for (const otyp of found) {
             const enc = !!game.objects?.[otyp]?.oc_encountered;
             const prefix = enc ? '  ' : '* ';
-            const app = appearance_of(otyp);
-            const nm = pretty_known_name(otyp);
-            const text = app ? `${prefix}${nm} (${app})` : `${prefix}${nm}`;
-            lines.push({ text, attr: 0 });
+            // C: disco_append_typename → obj_typename (includes " (descr)")
+            lines.push({ text: prefix + obj_typename(otyp), attr: 0 });
         }
     }
     // Pad so --More-- lands on row 23 like C tty text window.
@@ -464,22 +395,150 @@ export async function dodiscovered() {
     await flush_screen(1);
 }
 
+// C ref: attrib.c attrname[]
+const ATTR_NAMES = [
+    'strength', 'intelligence', 'wisdom', 'dexterity', 'constitution', 'charisma',
+];
+// C: STR18(100) — human strength ceiling used by interesting_alimit
+const STR18_100 = 18 + 100;
+
 /**
- * C ref: insight.c weapon_descr / an() — enough for starter weapons.
+ * C ref: insight.c attrval — Strength 18/xx encoding.
  */
-function pretty_weapon_descr(obj) {
-    const n = objectNames[obj.otyp];
-    const base = n ? n.toLowerCase().replace(/_/g, ' ') : 'weapon';
-    const quan = obj.quan || 1;
-    if (quan !== 1) return `${quan} ${base}s`;
-    const article = 'aeiou'.includes((base[0] || 'x').toLowerCase()) ? 'an' : 'a';
-    return `${article} ${base}`;
+function attrval(attrindx, attrvalue) {
+    if (attrindx !== A_STR || attrvalue <= 18) return String(attrvalue);
+    if (attrvalue > STR18_100) return String(attrvalue - 100);
+    return `18/${String(attrvalue - 18).padStart(2, '0')}`;
 }
 
-/** C ref: insight.c skill noun via weapon_type — starter weapons use otyp name. */
-function weapon_skill_noun(obj) {
-    const n = objectNames[obj.otyp];
-    return n ? n.toLowerCase().replace(/_/g, ' ') : 'weapon';
+/**
+ * C ref: insight.c one_characteristic — current; limit when race ≠ human 18.
+ * Branch envelope: no poly / Fixed_abil / cursed gauntlets hide path;
+ * base/peak suffixes deferred until acurr≠abase cases appear.
+ */
+function one_characteristic_line(attrindx) {
+    const u = game.u || {};
+    const acurrent = acurr(attrindx);
+    let valubuf = attrval(attrindx, acurrent);
+    const abase = u.acurr?.a?.[attrindx] ?? acurrent;
+    const apeak = u.amax?.a?.[attrindx] ?? abase;
+    const alimit = game.urace?.attrmax?.[attrindx]
+        ?? (attrindx === A_STR ? STR18_100 : 18);
+    const interesting_alimit = alimit !== (attrindx !== A_STR ? 18 : STR18_100);
+    let paren_pfx = ' (current; ';
+    if (acurrent !== abase) {
+        valubuf += `${paren_pfx}base:${attrval(attrindx, abase)}`;
+        paren_pfx = ', ';
+    }
+    if (abase !== apeak) {
+        valubuf += `${paren_pfx}peak:${attrval(attrindx, apeak)}`;
+        paren_pfx = ', ';
+    }
+    if (interesting_alimit) {
+        const innate = acurrent > alimit ? 'innate ' : '';
+        valubuf += `${paren_pfx}${innate}limit:${attrval(attrindx, alimit)}`;
+    }
+    if (acurrent !== abase || abase !== apeak || interesting_alimit) {
+        valubuf += ')';
+    }
+    return `  Your ${ATTR_NAMES[attrindx]} is ${valubuf}.`;
+}
+
+/**
+ * C ref: insight.c basics_enlightenment autopickup line.
+ * pickup_types in JS is already the symbol string from .nethackrc
+ * (C stores class indices and uses oc_to_str).
+ */
+function autopickup_enlightenment_line() {
+    const flags = game.flags || {};
+    let buf;
+    if (flags.pickup) {
+        const ocl = String(flags.pickup_types || '');
+        buf = 'on';
+        // costly_spot shop disable deferred
+        buf += ` for ${ocl ? `'${ocl}'` : 'all types'}`;
+        // C default pickup_thrown is On
+        if ((flags.pickup_thrown !== false) && ocl) buf += ' plus thrown';
+        // ga.apelist exceptions deferred
+    } else {
+        buf = 'off';
+    }
+    return `  Autopickup is ${buf}.`;
+}
+
+// C ref: weapon.c skill_names_indices — positive entries are object otyps
+const SKILL_NAME_OTYP = (() => {
+    const idx = (n) => objectNames.indexOf(n);
+    return {
+        [P_DAGGER]: idx('DAGGER'),
+        [P_KNIFE]: idx('KNIFE'),
+        [P_AXE]: idx('AXE'),
+        [P_PICK_AXE]: idx('PICK_AXE'),
+        [P_SHORT_SWORD]: idx('SHORT_SWORD'),
+        [P_BROAD_SWORD]: idx('BROADSWORD'),
+        [P_LONG_SWORD]: idx('LONG_SWORD'),
+        [P_TWO_HANDED_SWORD]: idx('TWO_HANDED_SWORD'),
+        [P_CLUB]: idx('CLUB'),
+        [P_MACE]: idx('MACE'),
+        [P_MORNING_STAR]: idx('MORNING_STAR'),
+        [P_FLAIL]: idx('FLAIL'),
+        [P_QUARTERSTAFF]: idx('QUARTERSTAFF'),
+        [P_SPEAR]: idx('SPEAR'),
+        [P_TRIDENT]: idx('TRIDENT'),
+        [P_LANCE]: idx('LANCE'),
+        [P_BOW]: idx('BOW'),
+        [P_SLING]: idx('SLING'),
+        [P_CROSSBOW]: idx('CROSSBOW'),
+        [P_DART]: idx('DART'),
+        [P_SHURIKEN]: idx('SHURIKEN'),
+        [P_BOOMERANG]: idx('BOOMERANG'),
+        [P_UNICORN_HORN]: idx('UNICORN_HORN'),
+    };
+})();
+
+/** C ref: weapon.c weapon_type — objects[].oc_skill (absolute value). */
+function weapon_type(obj) {
+    if (!obj) return P_BARE_HANDED_COMBAT;
+    const o = objects()?.[obj.otyp];
+    if (!o) return P_NONE;
+    if (o.oc_class !== WEAPON_CLASS && o.oc_class !== TOOL_CLASS
+        && o.oc_class !== GEM_CLASS) {
+        return P_NONE;
+    }
+    const type = o.oc_skill | 0;
+    return type < 0 ? -type : type;
+}
+
+/** C ref: weapon.c skill_name / P_NAME — skill category, not otyp racial name. */
+function skill_name(skill) {
+    if (skill === P_BARE_HANDED_COMBAT) return 'bare handed combat';
+    const otyp = SKILL_NAME_OTYP[skill];
+    if (otyp != null && otyp >= 0) {
+        const s = objectNameStrs[otyp];
+        if (s) return s;
+    }
+    // Odd skills (saber/hammer/whip/spells/…) deferred
+    return 'weapon';
+}
+
+/**
+ * C ref: weapon.c weapon_descr — P_NAME(weapon_type); special cases deferred
+ * (ammo, mattock, wet towel, shield of reflection).
+ */
+function weapon_descr(obj) {
+    const skill = weapon_type(obj);
+    return skill_name(skill);
+}
+
+/**
+ * C ref: insight.c weapon_insight wield line — an(weapon_descr(uwep)).
+ */
+function pretty_weapon_descr(obj) {
+    const what = weapon_descr(obj);
+    const quan = obj.quan || 1;
+    if (quan !== 1) return `${quan} ${what}s`;
+    const article = 'aeiou'.includes((what[0] || 'x').toLowerCase()) ? 'an' : 'a';
+    return `${article} ${what}`;
 }
 
 /**
@@ -487,7 +546,6 @@ function weapon_skill_noun(obj) {
  */
 export async function doattributes() {
     const u = game.u || {};
-    const a = u.acurr?.a || [];
     let name = game.plname || 'Hero';
     // C ref: insight.c / botl — capitalize first letter of plname for display
     if (name.length && name.charCodeAt(0) >= 97 && name.charCodeAt(0) <= 122) {
@@ -538,13 +596,14 @@ export async function doattributes() {
         '  You have both energy points (spell power).',
         `  Your armor class is ${u.uac ?? 10}.`,
         wallet,
-        '  Autopickup is off.',
+        autopickup_enlightenment_line(),
         '',
         ' Characteristics:',
-        `  Your strength is ${a[0] ?? '?'}.`,
-        `  Your dexterity is ${a[3] ?? '?'}.`,
-        `  Your constitution is ${a[4] ?? '?'}.`,
-        `  Your intelligence is ${a[1] ?? '?'}.`,
+        // C: bottom-line order STR DEX CON INT (WIS CHA on page 2)
+        one_characteristic_line(A_STR),
+        one_characteristic_line(A_DEX),
+        one_characteristic_line(A_CON),
+        one_characteristic_line(A_INT),
         ' (1 of 2)',
     ];
 
@@ -553,8 +612,8 @@ export async function doattributes() {
     await nhgetch(); // space → page 2
 
     const page2 = [
-        `  Your wisdom is ${a[2] ?? '?'}.`,
-        `  Your charisma is ${a[5] ?? '?'}.`,
+        one_characteristic_line(A_WIS),
+        one_characteristic_line(A_CHA),
         '',
         ' Status:',
         "  You aren't hungry.",
@@ -568,7 +627,9 @@ export async function doattributes() {
     } else {
         const wname = pretty_weapon_descr(uwep);
         page2.push(`  You are wielding ${wname}.`);
-        page2.push(`  You have basic skill with ${weapon_skill_noun(uwep)}.`);
+        // C: P_BASIC → "have basic skill with <skill_name>"; enhance suffix deferred
+        const wtype = weapon_type(uwep);
+        page2.push(`  You have basic skill with ${skill_name(wtype)}.`);
     }
     page2.push('');
     // C: explore mode adds Attributes + explore/bones notes before misc.
@@ -708,4 +769,47 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
 /** C ref: invent.c dolook() */
 export async function dolook() {
     await look_here(0, 0);
+}
+
+/**
+ * C ref: invent.c hold_another_object — wish/pickup into invent.
+ * Fumbling / encumbrance-drop / autoquiver / fatal-corpse paths deferred.
+ */
+export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
+    const { addinv } = await import('./u_init.js');
+    const {
+        place_object, obj_extract_self,
+    } = await import('./mkobj.js');
+    const {
+        touch_artifact, youmonst,
+    } = await import('./artifact.js');
+    const { xprname } = await import('./objnam.js');
+
+    if (!obj) return obj;
+    // C: if (!Blind) observe_object(obj)
+    if (!game.u?.Blind) obj.dknown = true;
+
+    if (obj.oartifact) {
+        const u = game.u || {};
+        place_object(obj, u.ux, u.uy);
+        if (!touch_artifact(obj, youmonst)) {
+            obj_extract_self(obj);
+            // dropy deferred — leave on floor
+            if (drop_fmt) {
+                const msg = drop_fmt.includes('%s')
+                    ? drop_fmt.replace('%s', drop_arg || 'it')
+                    : drop_fmt;
+                await pline(msg);
+            }
+            return obj;
+        }
+        obj_extract_self(obj);
+    }
+
+    const held = addinv(obj);
+    if (hold_msg || drop_fmt) {
+        // C: prinv(hold_msg, obj, oquan) with null prefix → "ilet - doname"
+        await pline(xprname(held));
+    }
+    return held;
 }

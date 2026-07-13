@@ -1,10 +1,17 @@
-// lock.js — Lock picking (apply lock pick / key / credit card).
-// C ref: lock.c pick_lock (door/container subset).
+// lock.js — Lock picking and door open.
+// C ref: lock.c pick_lock (door/container subset); doopen_indir (autoopen path).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline } from './display.js';
-import { COLNO, ROWNO, IS_DOOR } from './const.js';
+import { flush_screen, pline, newsym } from './display.js';
+import { vision_recalc } from './vision.js';
+import {
+    COLNO, ROWNO, IS_DOOR,
+    D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_TRAPPED,
+} from './const.js';
+import { rnl } from './rng.js';
+import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
+import { verysmall } from './monsters.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -53,6 +60,58 @@ async function get_adjacent_loc(prompt, emsg) {
         return null;
     }
     return { x, y };
+}
+
+/**
+ * C ref: lock.c doopen_indir — open a CLOSED door at (x,y).
+ * Autoopen callers pass the door coordinates (x > 0). Interactive
+ * getdir / loot-at-feet / portcullis / autounlock / b_trapped /
+ * feel_newsym mapseen gating deferred (named in C-JS-MAP).
+ * Returns true when C would return ECMD_TIME (open attempt ran).
+ */
+export async function doopen_indir(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) {
+        await pline('You see no door there.');
+        return false;
+    }
+
+    const mask = loc.doormask || 0;
+    if (!(mask & D_CLOSED)) {
+        let mesg;
+        if (mask === D_BROKEN) mesg = ' is broken';
+        else if (mask === D_NODOOR) mesg = 'way has no door';
+        else if (mask === D_ISOPEN) mesg = ' is already open';
+        else mesg = ' is locked';
+        await pline(`This door${mesg}.`);
+        // autounlock / canned kick deferred
+        return false;
+    }
+
+    if (verysmall(game.youmonst?.data)) {
+        await pline("You're too small to pull the door open.");
+        return false;
+    }
+
+    // C: rnl(20) < (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON)) / 3
+    const chance = Math.trunc(
+        (acurrstr() + acurr(A_DEX) + acurr(A_CON)) / 3,
+    );
+    if (rnl(20) < chance) {
+        await pline('The door opens.');
+        if (mask & D_TRAPPED) {
+            // b_trapped("door", FINGER) deferred — clear to D_NODOOR like C
+            loc.doormask = D_NODOOR;
+        } else {
+            loc.doormask = D_ISOPEN;
+        }
+        newsym(x, y);
+        vision_recalc(1); // C: feel_newsym + recalc_block_point
+    } else {
+        exercise(A_STR, true);
+        await pline('The door resists!');
+    }
+    return true;
 }
 
 /**
