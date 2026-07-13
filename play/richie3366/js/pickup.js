@@ -10,7 +10,7 @@ import { flush_screen } from './display.js';
 /**
  * C ref: pickup.c check_here — count floor objects and look_here / engr.
  * Named omissions: flags.mention_decor → describe_decor / LOOKHERE_SKIP_DFEATURE;
- * uchain skip; read_engr_at when ct==0.
+ * uchain skip.
  */
 export async function check_here(picked_some) {
     const u = game.u;
@@ -29,8 +29,11 @@ export async function check_here(picked_some) {
         if (game.context?.run) nomul(0);
         await flush_screen(1);
         await look_here(ct, lhflags);
+    } else {
+        // C: read_engr_at(u.ux, u.uy) when no floor objects
+        const { read_engr_at } = await import('./engrave.js');
+        await read_engr_at(u.ux, u.uy);
     }
-    // else read_engr_at deferred
 }
 
 /**

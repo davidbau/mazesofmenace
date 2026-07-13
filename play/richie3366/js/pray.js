@@ -10,7 +10,8 @@
 // Named omissions: full in_trouble body; ParanoidConfirm "yes" path /
 // wizard force; angrygods cases 4+ (curse/minion/zap); pleased / crown /
 // fix troubles; p_type -2/-1/1/2/3 outcome bodies beyond water_prayer scan;
-// pray_revive; floorfood sacrifice / #turn; livelog; is_demon/is_undead
+// pray_revive; floorfood sacrifice / #turn; other livelog paths;
+// is_demon/is_undead
 // poly paths; full losexp (adjabil/resists_drli/Upolyd); Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix.
 
@@ -22,9 +23,10 @@ import { A_WIS, change_luck, adjattrib } from './attrib.js';
 import { align_gname } from './roles.js';
 import { objects_at } from './mkobj.js';
 import { yn_function } from './getline.js';
+import { livelog_printf } from './pline.js';
 import {
     IS_ALTAR, Amask2align, AM_MASK, A_NONE, A_LAWFUL, A_NEUTRAL,
-    GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY,
+    GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY, LL_CONDUCT, LL_MINORAC,
 } from './const.js';
 import { POT_WATER, POTION_CLASS } from './objects.js';
 
@@ -213,9 +215,11 @@ function losexp_divine() {
     const u = game.u || (game.u = {});
     if ((u.ulevel | 0) > 1) {
         u.ulevel = (u.ulevel | 0) - 1;
-        // adjabil / livelog deferred
+        // adjabil / "lost experience level N" livelog deferred
     } else {
         u.uexp = 0;
+        // C: livelog_printf(LL_MINORAC, "lost all experience")
+        livelog_printf(LL_MINORAC, 'lost all experience');
     }
     const numHp = (u.uhpinc?.[u.ulevel] | 0);
     u.uhpmax = (u.uhpmax | 0) - numHp;
@@ -370,7 +374,13 @@ export async function dopray() {
     }
 
     if (!u.uconduct) u.uconduct = {};
-    u.uconduct.gnostic = (u.uconduct.gnostic | 0) + 1;
+    // C: if (!u.uconduct.gnostic++) livelog_printf(...)
+    if (!(u.uconduct.gnostic | 0)) {
+        u.uconduct.gnostic = 1;
+        livelog_printf(LL_CONDUCT, 'rejected atheism with a prayer');
+    } else {
+        u.uconduct.gnostic = (u.uconduct.gnostic | 0) + 1;
+    }
 
     if (!(await can_pray(true))) return ECMD_OK;
 

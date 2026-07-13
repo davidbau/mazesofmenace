@@ -28,6 +28,7 @@ import {
     NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
     DEC_TO_UNICODE,
 } from './terminal.js';
+import { update_lastseentyp } from './dungeon.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
@@ -669,7 +670,27 @@ export function magic_map_background(x, y, show) {
     if (show) {
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
     }
-    // update_lastseentyp deferred
+    // C: update_lastseentyp(x, y) after magic_map_background
+    update_lastseentyp(x, y);
+}
+
+// C ref: display.c _map_location(x,y,show=0) — remember non-living contents
+// (object / trap / background) without necessarily painting the screen.
+// Used under hero/monster so out-of-sight memory keeps the object glyph.
+function map_location_memory(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !game.level?.flags?.hero_memory) return;
+    const obj = objects_at(x, y);
+    if (obj && !covers_objects(x, y)) {
+        const og = obj_glyph(obj);
+        loc.remembered_glyph = { ch: og.ch, color: og.color, decgfx: og.dec };
+        update_lastseentyp(x, y);
+        return;
+    }
+    // traps / engravings deferred — fall through to background
+    const tg = terrain_glyph(loc, x, y);
+    loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+    update_lastseentyp(x, y);
 }
 
 // ── newsym ──
@@ -693,12 +714,12 @@ export function newsym(x, y) {
         // C: lev->waslit = (lev->lit != 0); /* remember lit condition */
         loc.waslit = !!loc.lit;
         if (mtmp && mon_visible(mtmp)) {
+            // C: _map_location(x, y, FALSE) then display_monster — memory
+            // keeps object under the monster so leaving sight does not
+            // replace ) with remembered corridor.
+            map_location_memory(x, y);
             const mg = mon_glyph(mtmp);
             show_glyph_cell(x, y, mg.ch, mg.color, false);
-            const tg = terrain_glyph(loc, x, y);
-            if (game.level?.flags?.hero_memory) {
-                loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
-            }
             return;
         }
         // C ref: display.c _map_location — vobj_at before trap/background
@@ -709,6 +730,8 @@ export function newsym(x, y) {
             if (game.level?.flags?.hero_memory) {
                 loc.remembered_glyph = { ch: og.ch, color: og.color, decgfx: og.dec };
             }
+            // C _map_location always updates lastseentyp after mapping
+            update_lastseentyp(x, y);
             return;
         }
         const tg = terrain_glyph(loc, x, y);
@@ -716,6 +739,7 @@ export function newsym(x, y) {
         if (game.level?.flags?.hero_memory) {
             loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
         }
+        update_lastseentyp(x, y);
         return;
     }
 
@@ -879,6 +903,87 @@ export function serialize_terminal_grid(display) {
         if (r < lastRow) output += '\n';
     }
     return output;
+}
+
+/**
+ * C-comparable tty serialize — like Terminal.serialize(), but leading
+ * spaces that carry visible attrs (inverse/underline) are emitted so
+ * decode preserves them. Frozen Terminal.serialize() cursor-forwards
+ * past all leading spaces and drops those attrs (D-0129 spell heading).
+ */
+export function serialize_for_scoring(term) {
+    if (!term?.grid) return term?.serialize?.() ?? '';
+    const colorToFg = (color) => {
+        if (color === 8 || color < 0 || color > 15) return 39;
+        return color < 8 ? 30 + color : 90 + (color - 8);
+    };
+    const sgrTransition = (curFg, curAttr, wantFg, wantAttr) => {
+        if (curFg === wantFg && curAttr === wantAttr) return '';
+        const wantBold = (wantAttr & 2) !== 0;
+        const wantUnder = (wantAttr & 4) !== 0;
+        const wantInv = (wantAttr & 1) !== 0;
+        const curBold = (curAttr & 2) !== 0;
+        const curUnder = (curAttr & 4) !== 0;
+        const curInv = (curAttr & 1) !== 0;
+        const needReset = (curBold && !wantBold) || (curUnder && !wantUnder)
+            || (curInv && !wantInv);
+        const codes = [];
+        if (needReset) {
+            codes.push(0);
+            if (wantBold) codes.push(1);
+            if (wantUnder) codes.push(4);
+            if (wantInv) codes.push(7);
+            if (wantFg !== 39) codes.push(wantFg);
+        } else {
+            if (wantBold && !curBold) codes.push(1);
+            if (wantUnder && !curUnder) codes.push(4);
+            if (wantInv && !curInv) codes.push(7);
+            if (wantFg !== curFg) codes.push(wantFg);
+        }
+        return codes.length ? `\x1b[${codes.join(';')}m` : '';
+    };
+    const rows = term.rows || 24;
+    const cols = term.cols || 80;
+    let lastRow = 0;
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (term.grid[r][c].ch !== ' ') { lastRow = r; break; }
+        }
+    }
+    let out = '';
+    let curFg = 39, curAttr = 0;
+    for (let r = 0; r <= lastRow; r++) {
+        let lastCol = -1;
+        for (let c = cols - 1; c >= 0; c--) {
+            if (term.grid[r][c].ch !== ' ') { lastCol = c; break; }
+        }
+        if (lastCol < 0) { if (r < lastRow) out += '\n'; continue; }
+        // Start at first non-space OR space with visible attr (inv/uline)
+        let firstCol = 0;
+        for (let c = 0; c <= lastCol; c++) {
+            const cell = term.grid[r][c];
+            if (cell.ch !== ' ' || (cell.attr & 0x5)) {
+                firstCol = c;
+                break;
+            }
+        }
+        if (firstCol > 4) out += `\x1b[${firstCol}C`;
+        else if (firstCol > 0) out += ' '.repeat(firstCol);
+        for (let c = firstCol; c <= lastCol; c++) {
+            const cell = term.grid[r][c];
+            const wantFg = colorToFg(cell.color);
+            const wantAttr = cell.attr | 0;
+            out += sgrTransition(curFg, curAttr, wantFg, wantAttr);
+            curFg = wantFg;
+            curAttr = wantAttr;
+            out += cell.ch;
+        }
+        out += sgrTransition(curFg, curAttr, 39, 0);
+        curFg = 39;
+        curAttr = 0;
+        if (r < lastRow) out += '\n';
+    }
+    return out;
 }
 
 // ── Build screen output ──

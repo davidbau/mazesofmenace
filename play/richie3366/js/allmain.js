@@ -21,15 +21,17 @@ import { dosearch0 } from './detect.js';
 import { nhgetch } from './input.js';
 import { unmul } from './hack.js';
 import { gethungry } from './eat.js';
+import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu } from './invent.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
 import { Hello, align_str } from './roles.js';
+import { livelog_printf } from './pline.js';
 import { phase_of_the_moon, friday_13th, FULL_MOON, NEW_MOON } from './calendar.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
-    NO_MM_FLAGS, Upolyd,
+    NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
 } from './const.js';
 
 // C ref: allmain.c moveloop_preamble() — moon/friday + new-game RNG leaves
@@ -243,6 +245,8 @@ async function welcome(new_game) {
     const plname = g.plname || 'Hero';
     if (new_game) {
         await pline(`${hello} ${plname}, welcome to NetHack!  You are a${buf}.`);
+        // C: livelog_printf(LL_ACHIEVE, "%s the%s entered the dungeon", plname, buf)
+        livelog_printf(LL_ACHIEVE, '%s the%s entered the dungeon', plname, buf);
     } else {
         await pline(`${hello} ${plname}, the${buf}, welcome back to NetHack!`);
     }
@@ -300,6 +304,7 @@ export async function newgame() {
     // Post-mklev placeholders that u_init_misc does not set
     g.u.ulevel = 1;
     g.u.uexp = 0;
+    g.u.urexp = 0;
     g.u.uhunger = g.u.uhunger ?? 900;
     g.moves = 1;
     g.flags.female = g.flags.female !== false;
@@ -458,6 +463,7 @@ export async function moveloop_core() {
                 // warnreveal deferred
                 dosounds();
                 gethungry();
+                age_spells();
                 exerchk();
 
                 // C: if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3));

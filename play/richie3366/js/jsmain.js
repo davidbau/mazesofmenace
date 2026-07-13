@@ -16,7 +16,7 @@ import { setStorageForTesting } from './storage.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
-import { flush_screen } from './display.js';
+import { flush_screen, serialize_for_scoring } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
@@ -184,7 +184,11 @@ export class NethackGame {
                 if (t.startsWith('Count:') || t.endsWith('--More--'))
                     disp.setCursor(t.length, 0);
             }
-            nhGame._screens.push(term?.serialize ? term.serialize() : '');
+            nhGame._screens.push(
+                term?.grid
+                    ? serialize_for_scoring(term)
+                    : (term?.serialize ? term.serialize() : ''),
+            );
             nhGame._rngSlices.push(slice);
 
             const cursor = term?.getCursor

@@ -13,8 +13,9 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED, IS_FURNITURE, isok } from './const.js';
 import { dist2 } from './mon.js';
 import {
-    ddoinv, dodiscovered, doattributes, dovspell, dolook,
+    ddoinv, dodiscovered, doattributes, dolook,
 } from './invent.js';
+import { dovspell } from './spell.js';
 import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';

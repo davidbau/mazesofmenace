@@ -26,7 +26,7 @@ import {
     NON_PM,
     monsterNames,
 } from './generated/monsters_data.js';
-import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from './const.js';
+import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS } from './const.js';
 
 function pm(name) {
     const i = monsterNames.indexOf(name);
@@ -64,6 +64,9 @@ export const roles = [
         // C: { 11, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(11, 0, 0, 8, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        // C: spelbase..spelsbon (role.c)
+        spelbase: 5, spelheal: 0, spelshld: 2, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_MAGIC_MAPPING', spelsbon: -4,
         allow: 0x306e,
     },
     {
@@ -86,6 +89,8 @@ export const roles = [
         // C: { 14, 0, 0, 10, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(14, 0, 0, 10, 2, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 14, spelheal: 0, spelshld: 0, spelarmr: 8,
+        spelstat: A_INT, spelspec: 'SPE_HASTE_SELF', spelsbon: -4,
         allow: 0x308b,
     },
     {
@@ -109,6 +114,8 @@ export const roles = [
         // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(14, 0, 0, 8, 2, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 12, spelheal: 0, spelshld: 1, spelarmr: 8,
+        spelstat: A_INT, spelspec: 'SPE_DIG', spelsbon: -4,
         allow: 0x306e,
     },
     {
@@ -131,6 +138,8 @@ export const roles = [
         // C: { 11, 0, 0, 8, 1, 0 } / { 1, 4, 0, 1, 0, 2 }
         hpadv: adv(11, 0, 0, 8, 1, 0),
         enadv: adv(1, 4, 0, 1, 0, 2),
+        spelbase: 3, spelheal: -3, spelshld: 2, spelarmr: 10,
+        spelstat: A_WIS, spelspec: 'SPE_CURE_SICKNESS', spelsbon: -4,
         allow: 0x304a,
     },
     {
@@ -153,6 +162,8 @@ export const roles = [
         // C: { 14, 0, 0, 8, 2, 0 } / { 1, 4, 0, 1, 0, 2 }
         hpadv: adv(14, 0, 0, 8, 2, 0),
         enadv: adv(1, 4, 0, 1, 0, 2),
+        spelbase: 8, spelheal: -2, spelshld: 0, spelarmr: 9,
+        spelstat: A_WIS, spelspec: 'SPE_TURN_UNDEAD', spelsbon: -4,
         allow: 0x300c,
     },
     {
@@ -175,6 +186,8 @@ export const roles = [
         // C: { 12, 0, 0, 8, 1, 0 } / { 2, 2, 0, 2, 0, 2 }
         hpadv: adv(12, 0, 0, 8, 1, 0),
         enadv: adv(2, 2, 0, 2, 0, 2),
+        spelbase: 8, spelheal: -2, spelshld: 2, spelarmr: 20,
+        spelstat: A_WIS, spelspec: 'SPE_RESTORE_ABILITY', spelsbon: -4,
         allow: 0x300f,
     },
     // C ref: role.c Priest — no fixed deities; pantheon via randrole
@@ -197,6 +210,8 @@ export const roles = [
         // C: { 12, 0, 0, 8, 1, 0 } / { 4, 3, 0, 2, 0, 2 }
         hpadv: adv(12, 0, 0, 8, 1, 0),
         enadv: adv(4, 3, 0, 2, 0, 2),
+        spelbase: 3, spelheal: -2, spelshld: 2, spelarmr: 10,
+        spelstat: A_WIS, spelspec: 'SPE_REMOVE_CURSE', spelsbon: -4,
         allow: 0x301f,
     },
     // C: Rogue precedes Ranger (command-line -R tradition + pantheon indices)
@@ -219,6 +234,8 @@ export const roles = [
         initrecord: 10,
         hpadv: adv(10, 0, 0, 8, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 8, spelheal: 0, spelshld: 1, spelarmr: 9,
+        spelstat: A_INT, spelspec: 'SPE_DETECT_TREASURE', spelsbon: -4,
         allow: 0x3089,
     },
     {
@@ -241,6 +258,8 @@ export const roles = [
         // C: { 13, 0, 0, 6, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(13, 0, 0, 6, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 9, spelheal: 2, spelshld: 1, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_INVISIBILITY', spelsbon: -4,
         allow: 0x30db,
     },
     {
@@ -263,6 +282,8 @@ export const roles = [
         // C: { 13, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(13, 0, 0, 8, 1, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 10, spelheal: 0, spelshld: 0, spelarmr: 8,
+        spelstat: A_INT, spelspec: 'SPE_CLAIRVOYANCE', spelsbon: -4,
         allow: 0x300c,
     },
     {
@@ -283,6 +304,8 @@ export const roles = [
         initrecord: 0,
         hpadv: adv(8, 0, 0, 8, 0, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 5, spelheal: 1, spelshld: 2, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_CHARM_MONSTER', spelsbon: -4,
         allow: 0x300a,
     },
     {
@@ -306,6 +329,8 @@ export const roles = [
         // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
         hpadv: adv(14, 0, 0, 8, 2, 0),
         enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 10, spelheal: -2, spelshld: 0, spelarmr: 9,
+        spelstat: A_WIS, spelspec: 'SPE_CONE_OF_COLD', spelsbon: -4,
         allow: 0x202e,
     },
     {
@@ -326,6 +351,8 @@ export const roles = [
         initrecord: 0,
         hpadv: adv(10, 0, 0, 8, 1, 0),
         enadv: adv(4, 3, 0, 2, 0, 3),
+        spelbase: 1, spelheal: 0, spelshld: 3, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_MAGIC_MISSILE', spelsbon: -4,
         allow: 0x30db,
     },
 ];

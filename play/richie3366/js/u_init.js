@@ -30,6 +30,7 @@ import { init_attr, vary_init_attr, adjabil, A_STR, A_CON, newhp } from './attri
 import { newpw } from './exper.js';
 import { roles, races, aligns, findRole, findRace, findAlign } from './roles.js';
 import { discover_object } from './invent.js';
+import { initialspell, init_spl_book } from './spell.js';
 import { otyp_uses_known, Japanese_item_name } from './objnam.js';
 import {
     W_ARMU, W_ARM, W_ARMC, W_ARMS, W_ARMH, W_ARMG, W_ARMF,
@@ -57,6 +58,7 @@ import {
     NON_PM,
 } from './generated/monsters_data.js';
 import { mons, is_male, is_female, is_neuter } from './monsters.js';
+import { skill_init } from './weapon.js';
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
 const ARM_SUIT = 0;
@@ -249,6 +251,69 @@ const Protection_book = [
 const Confuse_monster_book = [
     { trotyp: () => otypByName('SPE_CONFUSE_MONSTER'), trspe: UNDEF_SPE, trclass: SPBOOK_CLASS, trquan_min: 1, trquan_max: 1, trbless: 1 },
     { trotyp: () => 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 },
+];
+
+// C ref: u_init.c Skill_T[] — Tourist
+const Skill_T = [
+    { skill: P_DAGGER, max: P_EXPERT },
+    { skill: P_KNIFE, max: P_SKILLED },
+    { skill: P_AXE, max: P_BASIC },
+    { skill: P_PICK_AXE, max: P_BASIC },
+    { skill: P_SHORT_SWORD, max: P_EXPERT },
+    { skill: P_BROAD_SWORD, max: P_BASIC },
+    { skill: P_LONG_SWORD, max: P_BASIC },
+    { skill: P_TWO_HANDED_SWORD, max: P_BASIC },
+    { skill: P_SABER, max: P_SKILLED },
+    { skill: P_MACE, max: P_BASIC },
+    { skill: P_MORNING_STAR, max: P_BASIC },
+    { skill: P_FLAIL, max: P_BASIC },
+    { skill: P_HAMMER, max: P_BASIC },
+    { skill: P_QUARTERSTAFF, max: P_BASIC },
+    { skill: P_POLEARMS, max: P_BASIC },
+    { skill: P_SPEAR, max: P_BASIC },
+    { skill: P_TRIDENT, max: P_BASIC },
+    { skill: P_LANCE, max: P_BASIC },
+    { skill: P_BOW, max: P_BASIC },
+    { skill: P_SLING, max: P_BASIC },
+    { skill: P_CROSSBOW, max: P_BASIC },
+    { skill: P_DART, max: P_EXPERT },
+    { skill: P_SHURIKEN, max: P_BASIC },
+    { skill: P_BOOMERANG, max: P_BASIC },
+    { skill: P_WHIP, max: P_BASIC },
+    { skill: P_UNICORN_HORN, max: P_SKILLED },
+    { skill: P_DIVINATION_SPELL, max: P_BASIC },
+    { skill: P_ENCHANTMENT_SPELL, max: P_BASIC },
+    { skill: P_ESCAPE_SPELL, max: P_SKILLED },
+    { skill: P_RIDING, max: P_BASIC },
+    { skill: P_TWO_WEAPON_COMBAT, max: P_SKILLED },
+    { skill: P_BARE_HANDED_COMBAT, max: P_SKILLED },
+];
+
+// C ref: u_init.c Skill_R[] — Rogue
+const Skill_R = [
+    { skill: P_DAGGER, max: P_EXPERT },
+    { skill: P_KNIFE, max: P_EXPERT },
+    { skill: P_SHORT_SWORD, max: P_EXPERT },
+    { skill: P_BROAD_SWORD, max: P_SKILLED },
+    { skill: P_LONG_SWORD, max: P_SKILLED },
+    { skill: P_TWO_HANDED_SWORD, max: P_BASIC },
+    { skill: P_SABER, max: P_SKILLED },
+    { skill: P_CLUB, max: P_SKILLED },
+    { skill: P_MACE, max: P_SKILLED },
+    { skill: P_MORNING_STAR, max: P_BASIC },
+    { skill: P_FLAIL, max: P_BASIC },
+    { skill: P_HAMMER, max: P_BASIC },
+    { skill: P_POLEARMS, max: P_BASIC },
+    { skill: P_SPEAR, max: P_BASIC },
+    { skill: P_CROSSBOW, max: P_EXPERT },
+    { skill: P_DART, max: P_EXPERT },
+    { skill: P_SHURIKEN, max: P_SKILLED },
+    { skill: P_DIVINATION_SPELL, max: P_SKILLED },
+    { skill: P_ESCAPE_SPELL, max: P_SKILLED },
+    { skill: P_MATTER_SPELL, max: P_SKILLED },
+    { skill: P_RIDING, max: P_BASIC },
+    { skill: P_TWO_WEAPON_COMBAT, max: P_EXPERT },
+    { skill: P_BARE_HANDED_COMBAT, max: P_EXPERT },
 ];
 
 // C ref: u_init.c Skill_W[] — needed for restricted_spell_discipline in filter
@@ -600,8 +665,10 @@ function trquan(trop) {
     return trop.trquan_min + rn2(trop.trquan_max - trop.trquan_min + 1);
 }
 
-// C ref: u_init.c skills_for_role() — Wizard + Priest + Knight + Samurai + Healer + Valkyrie + Ranger + Monk + Archeologist + Barbarian + Caveman
+// C ref: u_init.c skills_for_role()
 function skills_for_role() {
+    if (game.urole?.mnum === PM_TOURIST) return Skill_T;
+    if (game.urole?.mnum === PM_ROGUE) return Skill_R;
     if (game.urole?.mnum === PM_WIZARD) return Skill_W;
     if (game.urole?.mnum === PM_CLERIC) return Skill_P;
     if (game.urole?.mnum === PM_KNIGHT) return Skill_K;
@@ -1010,6 +1077,11 @@ function ini_inv_use_obj(obj) {
             game.u.uswapwep = obj;
         }
     }
+    // C ref: u_init.c ini_inv_use_obj — SPBOOK → initialspell (not blank paper)
+    if (obj.oclass === SPBOOK_CLASS
+        && objectNames[obj.otyp] !== 'SPE_BLANK_PAPER') {
+        initialspell(obj);
+    }
 }
 
 // C ref: do_wear.c find_ac() — base human AC 10; ARM_BONUS via objects[].a_ac
@@ -1384,6 +1456,16 @@ export function setup_role_race_from_rc(opts = {}) {
         cgod: role.cgod ?? null,
         hpadv: role.hpadv || { infix: 8, inrnd: 0, lofix: 0, lornd: 8, hifix: 0, hirnd: 0 },
         enadv: role.enadv || { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+        // C: Role spel* — percent_success / Fail% (D-0129)
+        spelbase: role.spelbase ?? 0,
+        spelheal: role.spelheal ?? 0,
+        spelshld: role.spelshld ?? 0,
+        spelarmr: role.spelarmr ?? 0,
+        spelstat: role.spelstat ?? 0,
+        spelspec: typeof role.spelspec === 'string'
+            ? otypByName(role.spelspec)
+            : (role.spelspec ?? 0),
+        spelsbon: role.spelsbon ?? 0,
     };
     game.urace = {
         name: race.name,
@@ -1502,6 +1584,9 @@ export async function u_init_misc() {
     g.u.nv_range = 1;
     g.u.xray_range = -1;
 
+    // C: for (i = 0; i <= MAXSPELL; i++) svs.spl_book[i].sp_id = NO_SPELL;
+    init_spl_book();
+
     // C: u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
     g.u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
 }
@@ -1538,9 +1623,11 @@ export async function u_init_inventory_attrs() {
     u_init_carry_attr_boost();
 }
 
-// C ref: u_init.c u_init_skills_discoveries() — wear/wield/discover; skills stubbed.
+// C ref: u_init.c u_init_skills_discoveries() — wear/wield/discover + skill_init.
 export function u_init_skills_discoveries() {
     for (const otmp of game.invent || [])
         ini_inv_use_obj(otmp);
+    // C: skill_init(skills_for_role()); pauper_reinit / num_spells Pw deferred
+    skill_init(skills_for_role());
     find_ac();
 }

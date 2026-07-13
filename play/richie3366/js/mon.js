@@ -23,6 +23,19 @@ export const NORMAL_SPEED = 12;
 
 const BOULDER = objectNames.indexOf('BOULDER');
 
+/**
+ * C ref: mon.c mondead — svm.mvitals[mndx].died++ (cap 255).
+ * Called from uhitm/mhitm mondead after form restore would run in C.
+ */
+export function record_mvitals_died(mndx) {
+    if (mndx == null || mndx < LOW_PM) return;
+    if (!game.mvitals) game.mvitals = [];
+    const slot = game.mvitals[mndx] || (game.mvitals[mndx] = {
+        mvflags: 0, born: 0, died: 0,
+    });
+    if ((slot.died | 0) < 255) slot.died = (slot.died | 0) + 1;
+}
+
 // C ref: hack.h NODIAG — only grid bugs
 function NODIAG(monnum) {
     return monnum === PM_GRID_BUG;

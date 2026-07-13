@@ -376,6 +376,8 @@ function clear_level_structures() {
     g.level = new GameMap();
     g.level.nroom = 0;
     g.level.rooms = [];
+    // C init_mapseen memset svl.lastseentyp — reuse buffer per level
+    g.lastseentyp = null;
     g.made_branch = false;
     g.smeq = new Array(MAXNROFROOMS + 1).fill(0);
     g.level.doorindex = 0;

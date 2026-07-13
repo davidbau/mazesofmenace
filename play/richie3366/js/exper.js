@@ -1,11 +1,15 @@
 // exper.js — Experience / level-up.
-// C ref: exper.c — newpw, pluslvl (partial); callers in wizcmds / potion / eat.
+// C ref: exper.c — experience, more_experienced, newuexp, newexplevel,
+//         newpw, pluslvl (partial); callers in mon.c xkilled / wizcmds / …
 
 import { game } from './gstate.js';
 import { rn1, rnd } from './rng.js';
-import { MAXULEV } from './const.js';
+import { MAXULEV, NATTK } from './const.js';
 import { pline } from './display.js';
 import { acurr, A_WIS, newhp, adjabil } from './attrib.js';
+import { find_mac } from './mhitm.js';
+import { NORMAL_SPEED } from './mon.js';
+import { extra_nasty } from './monsters.js';
 import {
     PM_CLERIC,
     PM_WIZARD,
@@ -14,6 +18,25 @@ import {
     PM_BARBARIAN,
     PM_VALKYRIE,
 } from './generated/monsters_data.js';
+
+// C ref: monattk.h — experience() compares against these exact values
+const AT_BUTT = 4;
+const AT_WEAP = 254;
+const AT_MAGC = 255;
+const AD_PHYS = 0;
+const AD_BLND = 11;
+const AD_DRLI = 15;
+const AD_STON = 18;
+const AD_SLIM = 40;
+const AD_WRAP = 28;
+
+// C ref: exper.c newuexp()
+export function newuexp(lev) {
+    if (lev < 1) return 0;
+    if (lev < 10) return (10 * (1 << lev)) | 0;
+    if (lev < 20) return (10000 * (1 << (lev - 10))) | 0;
+    return (10000000 * ((lev - 19) | 0)) | 0;
+}
 
 // C ref: exper.c enermod()
 function enermod(en) {
@@ -85,7 +108,7 @@ function setuhpmax(newmax, _evenWhenPolyd) {
 /**
  * C ref: exper.c pluslvl(incr)
  * incr false: potion / #levelchange / wraith (You_feel + set xp).
- * Achievements / livelog / SoundAchievement / newuexp deferred.
+ * Achievements / livelog / SoundAchievement deferred.
  */
 export async function pluslvl(incr) {
     const u = game.u || (game.u = {});
@@ -112,4 +135,86 @@ export async function pluslvl(incr) {
     }
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
+}
+
+/**
+ * C ref: exper.c experience(mtmp, nk) — XP awarded for killing mtmp.
+ * Amphibious eel AD_WRAP +1000 and MAIL_DAEMON special deferred.
+ */
+export function experience(mtmp, nk) {
+    const ptr = mtmp?.data;
+    if (!ptr) return 1;
+    const m_lev = mtmp.m_lev | 0;
+    let tmp = 1 + m_lev * m_lev;
+    let i = find_mac(mtmp);
+    if (i < 3) tmp += (7 - i) * (i < 0 ? 2 : 1);
+
+    const mmove = ptr.mmove | 0;
+    if (mmove > NORMAL_SPEED) {
+        tmp += mmove > Math.trunc((3 * NORMAL_SPEED) / 2) ? 5 : 3;
+    }
+
+    const mattk = ptr.mattk || [];
+    for (i = 0; i < NATTK; i++) {
+        const tmp2 = mattk[i]?.aatyp | 0;
+        if (tmp2 > AT_BUTT) {
+            if (tmp2 === AT_WEAP) tmp += 5;
+            else if (tmp2 === AT_MAGC) tmp += 10;
+            else tmp += 3;
+        }
+    }
+    for (i = 0; i < NATTK; i++) {
+        const slot = mattk[i] || { adtyp: 0, damn: 0, damd: 0 };
+        const tmp2 = slot.adtyp | 0;
+        if (tmp2 > AD_PHYS && tmp2 < AD_BLND) tmp += 2 * m_lev;
+        else if (tmp2 === AD_DRLI || tmp2 === AD_STON || tmp2 === AD_SLIM) tmp += 50;
+        else if (tmp2 !== AD_PHYS) tmp += m_lev;
+        if (((slot.damd | 0) * (slot.damn | 0)) > 23) tmp += m_lev;
+        // AD_WRAP + S_EEL + !Amphibious → +1000 deferred (named omission)
+        void AD_WRAP;
+    }
+    if (extra_nasty(ptr)) tmp += 7 * m_lev;
+    if (m_lev > 8) tmp += 50;
+
+    if (mtmp.mrevived || mtmp.mcloned) {
+        let tmp2 = 20;
+        let nkLeft = nk | 0;
+        for (i = 0; nkLeft > tmp2 && tmp > 1; ++i) {
+            tmp = Math.trunc((tmp + 1) / 2);
+            nkLeft -= tmp2;
+            if (i & 1) tmp2 += 20;
+        }
+    }
+    return tmp;
+}
+
+/** C ref: exper.c more_experienced(exper, rexp) */
+export function more_experienced(exper, rexp) {
+    const u = game.u || (game.u = {});
+    if (!game.flags) game.flags = {};
+    const oldexp = u.uexp | 0;
+    const oldrexp = u.urexp | 0;
+    const newexp = oldexp + (exper | 0);
+    const rexpincr = 4 * (exper | 0) + (rexp | 0);
+    const newrexp = oldrexp + rexpincr;
+    // LONG_MAX wrap deferred — JS Number stays finite for early-game totals
+    if (newexp !== oldexp) {
+        u.uexp = newexp;
+        if (game.flags.showexp) game.flags.botl = true;
+        // exp_percent_changing deferred
+    }
+    if (newrexp !== oldrexp) {
+        u.urexp = newrexp;
+        // SCORE_ON_BOTL showscore deferred
+    }
+    const beginnerCap = game.urole?.mnum === PM_WIZARD ? 1000 : 2000;
+    if ((u.urexp | 0) >= beginnerCap) game.flags.beginner = false;
+}
+
+/** C ref: exper.c newexplevel() */
+export async function newexplevel() {
+    const u = game.u || {};
+    if ((u.ulevel | 0) < MAXULEV && (u.uexp | 0) >= newuexp(u.ulevel | 0)) {
+        await pluslvl(true);
+    }
 }

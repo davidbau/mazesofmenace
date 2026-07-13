@@ -32,6 +32,14 @@ import {
     BR_NO_END2,
     BR_PORTAL,
     ECMD_OK,
+    COLNO,
+    ROWNO,
+    TREE,
+    FOUNTAIN,
+    THRONE,
+    SINK,
+    GRAVE,
+    ALTAR,
 } from './const.js';
 
 const FLAG_MAP = {
@@ -646,11 +654,173 @@ function ensure_mapseen(lev) {
             custom: null,
             custom_lth: 0,
             flags: {},
-            feat: {},
+            feat: empty_feat(),
         };
         game.mapseenchn.push(mptr);
     }
     return mptr;
+}
+
+function empty_feat() {
+    return {
+        nfount: 0,
+        nsink: 0,
+        nthrone: 0,
+        naltar: 0,
+        ngrave: 0,
+        ntree: 0,
+        nshop: 0,
+        ntemple: 0,
+        shoptype: 0,
+        msalign: 0,
+    };
+}
+
+function OF_INTEREST(feat) {
+    return !!(feat.nfount || feat.nsink || feat.nthrone || feat.naltar
+        || feat.ngrave || feat.ntree || feat.nshop || feat.ntemple);
+}
+
+/** Ensure lastseentyp[COLNO][ROWNO]; C svl.lastseentyp. */
+function ensure_lastseentyp() {
+    if (!game.lastseentyp) {
+        const a = new Array(COLNO);
+        for (let x = 0; x < COLNO; x++) a[x] = new Array(ROWNO).fill(0);
+        game.lastseentyp = a;
+    }
+    return game.lastseentyp;
+}
+
+/**
+ * C ref: dungeon.c update_lastseentyp — remember terrain typ when mapped.
+ * DRAWBRIDGE_UP under-typ and furniture-mimic cmap_to_type deferred.
+ */
+export function update_lastseentyp(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const lst = ensure_lastseentyp();
+    lst[x][y] = loc.typ | 0;
+}
+
+/**
+ * C ref: dungeon.c count_feat_lastseentyp — bump mapseen.feat from lastseentyp.
+ * Cap at 3 ("many"); altar msalign / knox / drawbridge castle flags deferred.
+ */
+function count_feat_lastseentyp(mptr, x, y) {
+    const typ = game.lastseentyp?.[x]?.[y] | 0;
+    let count;
+    switch (typ) {
+    case TREE:
+        count = (mptr.feat.ntree | 0) + 1;
+        if (count <= 3) mptr.feat.ntree = count;
+        break;
+    case FOUNTAIN:
+        count = (mptr.feat.nfount | 0) + 1;
+        if (count <= 3) mptr.feat.nfount = count;
+        break;
+    case THRONE:
+        count = (mptr.feat.nthrone | 0) + 1;
+        if (count <= 3) mptr.feat.nthrone = count;
+        break;
+    case SINK:
+        count = (mptr.feat.nsink | 0) + 1;
+        if (count <= 3) mptr.feat.nsink = count;
+        break;
+    case GRAVE:
+        count = (mptr.feat.ngrave | 0) + 1;
+        if (count <= 3) mptr.feat.ngrave = count;
+        break;
+    case ALTAR:
+        count = (mptr.feat.naltar | 0) + 1;
+        if (count <= 3) mptr.feat.naltar = count;
+        // msalign / Amask2msa deferred
+        break;
+    default:
+        break;
+    }
+}
+
+/**
+ * C ref: dungeon.c recalc_mapseen — reset current-level feat counts from
+ * lastseentyp. Shop/temple room traversal, bones, valley/sanctum flags,
+ * and Blind bigroom deferred (named in C-JS-MAP).
+ */
+export function recalc_mapseen() {
+    const mptr = ensure_mapseen(null);
+    mptr.feat = empty_feat();
+    // C: if (!Levitation) update_lastseentyp(u.ux, u.uy);
+    const u = game.u;
+    if (u && !u.Levitation && u.ux > 0) {
+        update_lastseentyp(u.ux, u.uy);
+    }
+    ensure_lastseentyp();
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            count_feat_lastseentyp(mptr, x, y);
+        }
+    }
+    return mptr;
+}
+
+/** C ref: dungeon.c seen_string — 0/1/2/3 → no/a|an/some/many */
+function seen_string(n, obj) {
+    switch (n | 0) {
+    case 0: return 'no';
+    case 1: {
+        const c = (obj && obj[0] || 'x').toLowerCase();
+        return 'aeiou'.includes(c) ? 'an' : 'a';
+    }
+    case 2: return 'some';
+    case 3: return 'many';
+    default: return '(unknown)';
+    }
+}
+
+function plur(n) {
+    return (n | 0) === 1 ? '' : 's';
+}
+
+/**
+ * C ref: dungeon.c print_mapseen OF_INTEREST feature sentence (PREFIX +
+ * ADDNTOBUF). Shop/temple/altar-to-god deferred when counts are 0.
+ */
+function mapseen_feat_line(mptr) {
+    const feat = mptr.feat || empty_feat();
+    if (!OF_INTEREST(feat)) return null;
+    const PREFIX = '      ';
+    let buf = '';
+    let i = 0;
+    const COMMA = () => (i++ > 0 ? ', ' : PREFIX);
+    const ADDNTOBUF = (nam, v) => {
+        if (!v) return;
+        buf += `${COMMA()}${seen_string(v, nam)} ${nam}${plur(v)}`;
+    };
+    // Shop / temple+altar order matches C; shoptype/an(shop) deferred
+    if ((feat.nshop | 0) > 0) {
+        if ((feat.nshop | 0) > 1) ADDNTOBUF('shop', feat.nshop);
+        else buf += `${COMMA()}a shop`; // shop_string deferred
+    }
+    if ((feat.naltar | 0) > 0 || (feat.ntemple | 0) > 0) {
+        const nt = feat.ntemple | 0;
+        const na = feat.naltar | 0;
+        if (nt && na) {
+            buf += `${COMMA()}${seen_string(nt, 'temple')} temple${plur(nt)} and ${seen_string(na, 'altar')} altar${plur(na)}`;
+        } else if (nt) ADDNTOBUF('temple', nt);
+        else ADDNTOBUF('altar', na);
+        // " to <god>" when all altars coaligned deferred
+    }
+    ADDNTOBUF('throne', feat.nthrone);
+    ADDNTOBUF('fountain', feat.nfount);
+    ADDNTOBUF('sink', feat.nsink);
+    ADDNTOBUF('grave', feat.ngrave);
+    ADDNTOBUF('tree', feat.ntree);
+    if (!buf) return null;
+    // C: capitalize after PREFIX → sentence + '.'
+    const idx = PREFIX.length;
+    if (buf.length > idx) {
+        buf = buf.slice(0, idx) + buf[idx].toUpperCase() + buf.slice(idx + 1);
+    }
+    return `${buf}.`;
 }
 
 /**
@@ -697,8 +867,10 @@ export async function donamelevel() {
 
 /**
  * C ref: dungeon.c dooverview / show_overview (#overview).
- * Branch envelope: why=0 PICK_NONE current-level line + ESC/space dismiss.
- * Full traverse_mapseenchn / interest_mapseen / print_mapseen features deferred.
+ * Branch envelope: why=0 PICK_NONE current-level line + feature sentence
+ * (print_mapseen OF_INTEREST) + ESC/space dismiss.
+ * Full traverse_mapseenchn / interest_mapseen / shop_string / altar-god /
+ * auto-annotation flags deferred.
  */
 export async function dooverview() {
     const { nhgetch } = await import('./input.js');
@@ -707,7 +879,8 @@ export async function dooverview() {
     const { ATR_INVERSE } = await import('./terminal.js');
 
     await flush_topl_more();
-    ensure_mapseen(null);
+    // C show_overview: lazy recalc_mapseen()
+    const mptr = recalc_mapseen();
     const u = game.u || {};
     const dnum = u.uz?.dnum | 0;
     const dlevel = u.uz?.dlevel | 0;
@@ -715,10 +888,8 @@ export async function dooverview() {
     const dname = dun?.dname || 'The Dungeons of Doom';
     const depthstart = (dun?.depth_start | 0) || 1;
     const levnum = depthstart + dlevel - 1;
-    const mptr = game.mapseenchn.find(
-        (m) => (m.lev?.dnum | 0) === dnum && (m.lev?.dlevel | 0) === dlevel,
-    );
-    let levLine = `      Level ${levnum}:`;
+    // C print_mapseen: Level line uses TAB ("   "), not PREFIX ("      ")
+    let levLine = `   Level ${levnum}:`;
     if (mptr?.custom) levLine += ` "${mptr.custom}"`;
     levLine += ' <- You are here.';
 
@@ -726,6 +897,8 @@ export async function dooverview() {
         { text: `${dname}:`, attr: ATR_INVERSE },
         { text: levLine, attr: 0 },
     ];
+    const featLine = mapseen_feat_line(mptr);
+    if (featLine) entries.push({ text: featLine, attr: 0 });
     // C select_menu PICK_NONE (why != -1)
     for (;;) {
         await paint_corner_nhw_menu(entries, '(end) ');

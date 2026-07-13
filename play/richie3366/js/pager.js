@@ -5,8 +5,9 @@
 // Branch envelope: `/` menu (lootabc false) → map getpos / invent pick /
 // symbol-or-name getlin / look_all|traps|engrs; `?` help menu + About
 // (OPTIONS_AT_RUNTIME → get_lua_version nhlib shuffle) + display_file
-// dat/* pages; data.base lookups for checkfile. Full glyph encyclopedia,
-// whatdoes keyhelp body, and PORT_HELP deferred.
+// dat/* pages + dokeylist/domenucontrols/docontact; data.base lookups for
+// checkfile. Full glyph encyclopedia, whatdoes keyhelp body, and PORT_HELP
+// deferred.
 
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -29,6 +30,7 @@ import { objects_at } from './mkobj.js';
 import { doname, an } from './objnam.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
+import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import {
     BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
@@ -116,7 +118,7 @@ async function text_page_wait() {
  * C ref: wintty.c process_text_window NHW_TEXT + H2344 putstr page-at-a-time.
  * @returns {Promise<boolean>} true if ESC cancelled remaining pages
  */
-async function show_text_pages(lines, { moreAtEnd = true } = {}) {
+export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
     const disp = game.nhDisplay;
     if (!disp) {
         await nhgetch();
@@ -224,7 +226,11 @@ function look_at_monster_buf(mtmp) {
  * cursor past prompt at offx+1+strlen("--More--").
  * Corner path keeps map/status (no term_clear_screen).
  */
-async function show_nhw_menu_text(lines) {
+/**
+ * Exported for insight.c putstr NHW_MENU paths (#conduct, etc.).
+ * C ref: wintty.c process_text_window corner/fullscreen for NHW_MENU data.
+ */
+export async function show_nhw_menu_text(lines) {
     const disp = game.nhDisplay;
     if (!disp) {
         await nhgetch();
@@ -305,9 +311,10 @@ async function display_file(fname, _warn) {
         await pline(`Cannot open '${fname}' file!`);
         return;
     }
-    const lines = raw.replace(/\r\n/g, '\n').split('\n');
-    // Drop trailing empty
-    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    const lines = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    // C keeps intentional trailing blank lines (e.g. usagehlp ends with
+    // an empty putstr page). Only drop the split artifact from a final \n.
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
     await show_text_pages(lines);
 }
 
@@ -1133,20 +1140,26 @@ export async function dohelp() {
         } },
         { key: 'h', text: 'Longer explanation of game options.', fn: () => display_file('opthelp', true) },
         { key: 'i', text: "Using the '#optionsfull' or 'm O' command to set options.", fn: () => display_file('optmenu', true) },
+        // C ref: cmd.c dokeylist
         { key: 'j', text: 'Full list of keyboard commands.', fn: async () => {
-            await pline('(key list stub)');
-            await more();
+            await show_text_pages(dokeylist_lines());
         } },
         { key: 'k', text: 'List of extended commands.', fn: () => display_file('cmdhelp', true) },
+        // C ref: pager.c domenucontrols → options.c show_menu_controls
         { key: 'l', text: 'List menu control keys.', fn: async () => {
-            await pline('(menu controls stub)');
-            await more();
+            await show_text_pages(domenucontrols_lines());
         } },
         { key: 'm', text: "Description of NetHack's command line.", fn: () => display_file('usagehlp', true) },
         { key: 'n', text: 'The NetHack license.', fn: () => display_file('license', true) },
+        // C ref: pager.c docontact
         { key: 'o', text: 'Support information.', fn: async () => {
-            await pline('(contact stub)');
-            await more();
+            await show_text_pages([
+                'To contact the NetHack development team directly,',
+                "see the 'Contact' form on our website or email <devteam@nethack.org>.",
+                '',
+                'For more information on NetHack, or to report a bug,',
+                'visit our website "https://www.nethack.org/".',
+            ]);
         } },
     ];
     if (game.flags?.debug || game.wizard) {

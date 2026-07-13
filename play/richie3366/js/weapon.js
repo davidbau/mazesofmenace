@@ -5,23 +5,43 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, docrt } from './display.js';
-import { paint_corner_nhw_menu } from './invent.js';
-import { WEAPON_CLASS, GEM_CLASS, objectNames } from './objects.js';
+import { flush_topl_more } from './display.js';
+import { select_menu_pick_none } from './invent.js';
+import {
+    WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, objectNames, objectNameStrs,
+} from './objects.js';
 import {
     is_ammo, ammo_and_launcher, is_missile,
 } from './wield.js';
 import { is_lord, is_prince } from './monsters.js';
 import {
-    P_DAGGER, P_SPEAR, P_SLING, P_SHURIKEN, P_BOW, P_CROSSBOW,
+    P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE,
+    P_SHORT_SWORD, P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD,
+    P_SPEAR, P_SLING, P_SHURIKEN, P_BOW, P_CROSSBOW,
+    P_SABER, P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL,
+    P_HAMMER, P_QUARTERSTAFF, P_POLEARMS, P_TRIDENT, P_LANCE,
+    P_DART, P_BOOMERANG, P_WHIP, P_UNICORN_HORN,
+    P_ATTACK_SPELL, P_HEALING_SPELL, P_DIVINATION_SPELL,
+    P_ENCHANTMENT_SPELL, P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
+    P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_RIDING,
+    P_FIRST_WEAPON, P_LAST_WEAPON, P_FIRST_SPELL, P_LAST_SPELL,
+    P_FIRST_H_TO_H, P_LAST_H_TO_H, P_NUM_SKILLS,
+    P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
+    P_MASTER, P_GRAND_MASTER,
     NEED_WEAPON, NEED_RANGED_WEAPON, NO_WEAPON_WANTED, W_WEP,
     ECMD_OK,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
+    skill_based_spellbook_id, spell_skilltype,
+} from './spell.js';
+import {
     PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_SAMURAI,
+    PM_HEALER, PM_CLERIC, PM_WIZARD,
+    monsterNames,
 } from './generated/monsters_data.js';
+
+const PM_PONY = monsterNames.indexOf('PM_PONY');
 
 export { is_missile };
 
@@ -267,31 +287,235 @@ export function mon_wield_item(mon) {
 }
 
 /**
- * C ref: weapon.c enhance_weapon_skill (#enhance).
- * Branch envelope: non-wizard path with no advanceable skills → PICK_NONE
- * menu dismissed by ESC/space/return (0 RNG). Wizard speedy y_n,
- * skill_advance, can_advance / add_skills_to_menu body deferred.
+ * C ref: weapon.c enhance_weapon_skill (#enhance) + add_skills_to_menu.
+ * Branch envelope: non-wizard, no advanceable/annotated skills → PICK_NONE
+ * fullscreen paged menu. Wizard speedy y_n, skill_advance, can_advance /
+ * could_advance / peaked_skill annotations deferred.
  */
 export async function enhance_weapon_skill() {
     await flush_topl_more();
     // C: svc.context.tips |= (1 << TIP_ENHANCE); TIP_ENHANCE=0
     if (game.context) game.context.tips = (game.context.tips | 0) | (1 << 0);
     // wizard y_n("Advance skills without practice?") deferred
+
     const entries = [
+        // C tty_end_menu: prompt then blank prepended (reverse+prepend → prompt, blank, items)
         { text: 'Current skills:', attr: ATR_INVERSE },
         { text: '', attr: 0 },
-        { text: '(no skills ready to advance)', attr: 0 },
     ];
-    // C select_menu PICK_NONE: ESC / space / return dismiss
-    for (;;) {
-        await paint_corner_nhw_menu(entries, '(end) ');
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-        if (key === 27 || key === 32 || key === 13 || key === 10) break;
-    }
+    add_skills_to_menu(entries, false, false);
+    await select_menu_pick_none(entries);
     return ECMD_OK;
+}
+
+/** C ref: skills.h martial_bonus */
+function martial_bonus() {
+    const m = game.urole?.mnum;
+    return m === PM_SAMURAI || m === PM_MONK;
+}
+
+/** C ref: weapon.c P_NAME / skill_names_indices / odd_skill_names */
+function P_NAME(type) {
+    if (type === P_BARE_HANDED_COMBAT) {
+        return martial_bonus() ? 'martial arts' : 'bare handed combat';
+    }
+    const odd = {
+        [P_SABER]: 'saber',
+        [P_HAMMER]: 'hammer',
+        [P_POLEARMS]: 'polearms',
+        [P_WHIP]: 'whip',
+        [P_ATTACK_SPELL]: 'attack spells',
+        [P_HEALING_SPELL]: 'healing spells',
+        [P_DIVINATION_SPELL]: 'divination spells',
+        [P_ENCHANTMENT_SPELL]: 'enchantment spells',
+        [P_CLERIC_SPELL]: 'clerical spells',
+        [P_ESCAPE_SPELL]: 'escape spells',
+        [P_MATTER_SPELL]: 'matter spells',
+        [P_TWO_WEAPON_COMBAT]: 'two weapon combat',
+        [P_RIDING]: 'riding',
+    };
+    if (odd[type] != null) return odd[type];
+    // Positive skill_names_indices → OBJ_NAME
+    const otypNames = {
+        [P_DAGGER]: 'DAGGER', [P_KNIFE]: 'KNIFE', [P_AXE]: 'AXE',
+        [P_PICK_AXE]: 'PICK_AXE', [P_SHORT_SWORD]: 'SHORT_SWORD',
+        [P_BROAD_SWORD]: 'BROADSWORD', [P_LONG_SWORD]: 'LONG_SWORD',
+        [P_TWO_HANDED_SWORD]: 'TWO_HANDED_SWORD', [P_CLUB]: 'CLUB',
+        [P_MACE]: 'MACE', [P_MORNING_STAR]: 'MORNING_STAR',
+        [P_FLAIL]: 'FLAIL', [P_QUARTERSTAFF]: 'QUARTERSTAFF',
+        [P_SPEAR]: 'SPEAR', [P_TRIDENT]: 'TRIDENT', [P_LANCE]: 'LANCE',
+        [P_BOW]: 'BOW', [P_SLING]: 'SLING', [P_CROSSBOW]: 'CROSSBOW',
+        [P_DART]: 'DART', [P_SHURIKEN]: 'SHURIKEN',
+        [P_BOOMERANG]: 'BOOMERANG', [P_UNICORN_HORN]: 'UNICORN_HORN',
+    };
+    const on = otypNames[type];
+    if (on) {
+        const otyp = objectNames.indexOf(on);
+        if (otyp >= 0 && objectNameStrs[otyp]) return objectNameStrs[otyp];
+    }
+    return 'no skill';
+}
+
+/** C ref: weapon.c skill_level_name */
+function skill_level_name(skill) {
+    switch (P_SKILL(skill)) {
+    case P_UNSKILLED: return 'Unskilled';
+    case P_BASIC: return 'Basic';
+    case P_SKILLED: return 'Skilled';
+    case P_EXPERT: return 'Expert';
+    case P_MASTER: return 'Master';
+    case P_GRAND_MASTER: return 'Grand Master';
+    default: return 'Unknown';
+    }
+}
+
+function P_SKILL(type) {
+    return game.u?.weapon_skills?.[type]?.skill ?? P_ISRESTRICTED;
+}
+function P_MAX_SKILL(type) {
+    return game.u?.weapon_skills?.[type]?.max_skill ?? P_ISRESTRICTED;
+}
+function P_RESTRICTED(type) {
+    return P_SKILL(type) === P_ISRESTRICTED;
+}
+function set_P_SKILL(type, v) {
+    if (!game.u.weapon_skills) return;
+    game.u.weapon_skills[type].skill = v;
+}
+function set_P_MAX_SKILL(type, v) {
+    if (!game.u.weapon_skills) return;
+    game.u.weapon_skills[type].max_skill = v;
+}
+function set_P_ADVANCE(type, v) {
+    if (!game.u.weapon_skills) return;
+    game.u.weapon_skills[type].advance = v;
+}
+
+/** C ref: skills.h practice_needed_to_advance */
+function practice_needed_to_advance(level) {
+    return level * level * 20;
+}
+
+/** C ref: weapon.c weapon_type — abs(objects[].oc_skill). */
+function weapon_type(obj) {
+    if (!obj) return P_BARE_HANDED_COMBAT;
+    const o = game.objects?.[obj.otyp];
+    if (!o) return P_NONE;
+    if (o.oc_class !== WEAPON_CLASS && o.oc_class !== TOOL_CLASS
+        && o.oc_class !== GEM_CLASS) {
+        return P_NONE;
+    }
+    const type = o.oc_skill | 0;
+    return type < 0 ? -type : type;
+}
+
+const skill_ranges = [
+    { first: P_FIRST_H_TO_H, last: P_LAST_H_TO_H, name: 'Fighting Skills' },
+    { first: P_FIRST_WEAPON, last: P_LAST_WEAPON, name: 'Weapon Skills' },
+    { first: P_FIRST_SPELL, last: P_LAST_SPELL, name: 'Spellcasting Skills' },
+];
+
+/**
+ * C ref: weapon.c add_skills_to_menu — append skill lines into entries[].
+ * selectable/speedy annotations (* # / letters) deferred when unused.
+ */
+function add_skills_to_menu(entries, selectable, _speedy) {
+    let longest = 0;
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        if (P_RESTRICTED(i)) continue;
+        const len = P_NAME(i).length;
+        if (len > longest) longest = len;
+    }
+    for (const range of skill_ranges) {
+        for (let i = range.first; i <= range.last; i++) {
+            if (i === range.first) {
+                entries.push({ text: range.name, attr: ATR_INVERSE });
+            }
+            if (P_RESTRICTED(i)) continue;
+            const prefix = selectable ? '    ' : '';
+            const name = P_NAME(i).padEnd(longest);
+            const lvl = skill_level_name(i);
+            // C non-wizard: " %s %-*s [%s]" then paint putchar(' ')
+            entries.push({
+                text: ` ${prefix} ${name} [${lvl}]`,
+                attr: 0,
+            });
+        }
+    }
+}
+
+/**
+ * C ref: weapon.c unrestrict_weapon_skill — restricted → Unskilled/Basic max.
+ */
+export function unrestrict_weapon_skill(skill) {
+    if (skill < P_NUM_SKILLS && P_RESTRICTED(skill)) {
+        set_P_SKILL(skill, P_UNSKILLED);
+        set_P_MAX_SKILL(skill, P_BASIC);
+        set_P_ADVANCE(skill, 0);
+    }
+}
+
+/**
+ * C ref: weapon.c skill_init.
+ * Branch envelope: invent→Basic (skip ammo), role magic Basics, class_skill
+ * maxes, bare-hands Expert+, pony riding, advance fill, spelspec
+ * unrestrict, non-pauper skill_based_spellbook_id.
+ */
+export function skill_init(class_skill) {
+    if (!game.u) return;
+    game.u.weapon_skills = Array.from({ length: P_NUM_SKILLS }, () => ({
+        skill: P_ISRESTRICTED,
+        max_skill: P_ISRESTRICTED,
+        advance: 0,
+    }));
+
+    for (const obj of game.invent || []) {
+        if (is_ammo(obj)) continue;
+        const skill = weapon_type(obj);
+        if (skill !== P_NONE) set_P_SKILL(skill, P_BASIC);
+    }
+
+    const role = game.urole?.mnum;
+    if (role === PM_HEALER || role === PM_MONK) {
+        set_P_SKILL(P_HEALING_SPELL, P_BASIC);
+    } else if (role === PM_CLERIC) {
+        set_P_SKILL(P_CLERIC_SPELL, P_BASIC);
+    } else if (role === PM_WIZARD) {
+        set_P_SKILL(P_ATTACK_SPELL, P_BASIC);
+        set_P_SKILL(P_ENCHANTMENT_SPELL, P_BASIC);
+    }
+
+    if (class_skill) {
+        for (const entry of class_skill) {
+            if (entry.skill === P_NONE) break;
+            const skill = entry.skill;
+            const skmax = entry.max;
+            set_P_MAX_SKILL(skill, skmax);
+            if (P_SKILL(skill) === P_ISRESTRICTED) set_P_SKILL(skill, P_UNSKILLED);
+        }
+    }
+
+    if (P_MAX_SKILL(P_BARE_HANDED_COMBAT) > P_EXPERT) {
+        set_P_SKILL(P_BARE_HANDED_COMBAT, P_BASIC);
+    }
+    if (game.urole?.petnum === PM_PONY) {
+        set_P_SKILL(P_RIDING, P_BASIC);
+    }
+
+    for (let skill = 0; skill < P_NUM_SKILLS; skill++) {
+        if (P_RESTRICTED(skill)) continue;
+        if (P_MAX_SKILL(skill) < P_SKILL(skill)) {
+            set_P_MAX_SKILL(skill, P_SKILL(skill));
+        }
+        set_P_ADVANCE(skill, practice_needed_to_advance(P_SKILL(skill) - 1));
+    }
+
+    // C: each role has a special spell; allow at least Unskilled for its school
+    const spelspec = game.urole?.spelspec | 0;
+    if (spelspec) unrestrict_weapon_skill(spell_skilltype(spelspec));
+
+    // C: paupers lack advanced access to books
+    if (!game.u.uroleplay?.pauper) skill_based_spellbook_id();
 }
 
 /** C ref: mthrowu.c monmulti */

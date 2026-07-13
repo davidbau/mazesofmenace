@@ -58,6 +58,10 @@ function initedog(mtmp, everything) {
         edogp.apport = 1;
     }
     if ((edogp.hungrytime || 0) < minhungry) edogp.hungrytime = minhungry;
+    // C: u.uconduct.pets++ (livelog only when !pets && in_moveloop — deferred)
+    if (!game.u) game.u = {};
+    if (!game.u.uconduct) game.u.uconduct = {};
+    game.u.uconduct.pets = (game.u.uconduct.pets | 0) + 1;
 }
 
 // C ref: dog.c makedog()

@@ -1,14 +1,17 @@
 // engrave.js — Engrave command / floor inscriptions (partial).
-// C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at.
+// C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at,
+//        read_engr_at.
 //
 // Branch envelope: u_can_engrave floor gate + getobj write-with (hands `-`
 // SUGGEST) + DUST fingertip You/getlin + literate bump + DUST/blood/
 // Blind/Confusion/Stunned/Hallu mix-up + set_occupation one-tick finish
-// via make_engr_at (Elbereth → exercise(A_WIS,TRUE)).
+// via make_engr_at (Elbereth → exercise(A_WIS,TRUE)); look_here/`:` via
+// read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind).
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
 // grave/altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
 // dulling occupation; del_engr/rloc_engr; engraving glyphs in newsym;
-// u_wipe_engr body; livelog; demon/vampire blood default beyond type.
+// u_wipe_engr body; livelog; demon/vampire blood default beyond type;
+// Blind feel path for engrave/burn; full surface()/is_ice nouns.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -22,13 +25,17 @@ import {
     objectNames,
 } from './objects.js';
 import {
-    DUST, ENGR_BLOOD, HEADSTONE,
+    DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, ICE,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
     Never_mind,
 } from './const.js';
+import { nomul } from './hack.js';
 
 const TOWEL = objectNames.indexOf('TOWEL');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
+
+/** C: decl.h Something */
+const Something = 'Something';
 
 function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
@@ -45,6 +52,20 @@ function Stunned() {
 }
 function Hallucination() {
     return !!(game.u?.Hallucination);
+}
+
+/** C ref: hack.c is_ice — ice terrain check (partial). */
+function is_ice(x, y) {
+    const typ = game.level?.locations?.[x]?.[y]?.typ;
+    return typ === ICE;
+}
+
+/**
+ * C ref: description.c surface — floor noun under engraving.
+ * Branch envelope: room/corridor/door → floor; ice deferred via is_ice.
+ */
+function surface(_x, _y) {
+    return 'floor';
 }
 
 /** C ref: engrave.c engr_at */
@@ -66,6 +87,90 @@ export function del_engr(ep) {
             return;
         }
     }
+}
+
+/**
+ * C ref: engrave.c read_engr_at — sense engraving type + You read/feel text.
+ * Branch envelope: DUST/ENGRAVE/HEADSTONE/BURN/MARK/ENGR_BLOOD sighted
+ * (non-Blind); Blind feel for engrave/burn when can_reach deferred as
+ * non-Blind path only for now. Truncation + pristine endpunct rules.
+ */
+export async function read_engr_at(x, y) {
+    const ep = engr_at(x, y);
+    if (!ep) return;
+    const text = ep.engr_txt?.actual_text || '';
+    if (!text) return;
+
+    const blind = Blind();
+    const eloc = surface(x, y);
+    let sensed = false;
+
+    switch (ep.engr_type) {
+    case DUST:
+        if (!blind) {
+            sensed = true;
+            await pline(
+                `${Something} is written here in the ${is_ice(x, y) ? 'frost' : 'dust'}.`,
+            );
+        }
+        break;
+    case ENGRAVE:
+    case HEADSTONE:
+        if (!blind) {
+            sensed = true;
+            await pline(`${Something} is engraved here on the ${eloc}.`);
+        }
+        break;
+    case BURN:
+        if (!blind) {
+            sensed = true;
+            await pline(
+                `Some text has been ${is_ice(x, y) ? 'melted' : 'burned'} into the ${eloc} here.`,
+            );
+        }
+        break;
+    case MARK:
+        if (!blind) {
+            sensed = true;
+            await pline(`There's some graffiti on the ${eloc} here.`);
+        }
+        break;
+    case ENGR_BLOOD:
+        if (!blind) {
+            sensed = true;
+            await pline('You see a message scrawled in blood here.');
+        }
+        break;
+    default:
+        sensed = true;
+        await pline(`${Something} is written in a very strange way.`);
+        break;
+    }
+
+    if (!sensed) return;
+
+    // C: maxelen = sizeof buf - sizeof "You feel the words: \"\"."
+    const maxelen = 80 - 'You feel the words: "".'.length;
+    let et = text;
+    let elen = et.length;
+    if (elen > maxelen) {
+        et = et.slice(0, maxelen);
+        elen = maxelen;
+    }
+    const pristine = ep.engr_txt?.pristine_text || text;
+    let endpunct = '';
+    const last = et[elen - 1];
+    if (elen < 2
+        || !(pristine[elen - 1] === last && '.!?'.includes(last))) {
+        endpunct = '.';
+    }
+    await pline(
+        `You ${blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`,
+    );
+    if (ep.engr_txt) ep.engr_txt.remembered_text = text;
+    ep.eread = 1;
+    ep.erevealed = 1;
+    if ((game.context?.run | 0) > 0) nomul(0);
 }
 
 /**

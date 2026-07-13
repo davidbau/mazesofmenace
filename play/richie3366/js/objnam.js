@@ -20,14 +20,18 @@ import {
     objectDescrs,
 } from './objects.js';
 import { monsterNames } from './monsters.js';
-import { PM_SAMURAI } from './generated/monsters_data.js';
+import { PM_SAMURAI, PM_CLERIC } from './generated/monsters_data.js';
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
     Has_contents, Is_container, P_BOW, P_CROSSBOW,
 } from './const.js';
 
+function Role_if(pm) {
+    return game.urole?.mnum === pm;
+}
+
 function Role_if_samurai() {
-    return game.urole?.mnum === PM_SAMURAI;
+    return Role_if(PM_SAMURAI);
 }
 
 /** C ref: obj.h is_ammo — skill window for quiver wording. */
@@ -250,7 +254,7 @@ export function singular(obj, func = xname) {
 }
 
 // C ref: objnam.c makeplural — enough for "X of Y" and simple nouns.
-function makeplural(s) {
+export function makeplural(s) {
     const of = s.indexOf(' of ');
     if (of > 0) {
         return makeplural(s.slice(0, of)) + s.slice(of);
@@ -345,13 +349,15 @@ export function doname(obj) {
         else if (obj.blessed) prefix += 'blessed ';
         else {
             // C: flags.implicit_uncursed (default) — skip "uncursed" when
-            // known && oc_charged && not armor/ring (identified +/- implies BUC).
+            // known && oc_charged && not armor/ring (identified +/- implies BUC),
+            // or always for clerics (Role_if(PM_CLERIC) — BUC always known).
             const charged = is_charged_otyp(otyp);
             const implicit = game.flags?.implicit_uncursed !== false;
             const showUncursed = !implicit
-                || (!known || !charged
+                || ((!known || !charged
                     || oclass === ARMOR_CLASS
-                    || oclass === RING_CLASS);
+                    || oclass === RING_CLASS)
+                    && !Role_if(PM_CLERIC));
             if (showUncursed) prefix += 'uncursed ';
         }
     }

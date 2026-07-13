@@ -1,12 +1,14 @@
-// invent.js — Inventory / discoveries / attributes display.
-// C ref: invent.c display_inventory / ddoinv / let_to_name;
+// invent.js — Inventory / discoveries / attributes / #adjust.
+// C ref: invent.c display_inventory / ddoinv / let_to_name / doorganize;
 //        o_init.c dodiscovered / discover_object;
 //        insight.c enlightenment (BASICENLIGHTENMENT subset).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, status_line_2 } from './display.js';
+import { flush_screen, flush_topl_more, pline, docrt, status_line_2 } from './display.js';
 import { xprname, an, vtense, doname, disco_typename, Japanese_item_name } from './objnam.js';
+import { yn_function } from './getline.js';
+import { mergable } from './mkobj.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -28,6 +30,14 @@ import {
     objectDescrs,
     objects,
 } from './objects.js';
+import {
+    Never_mind,
+    ECMD_OK,
+    ECMD_CANCEL,
+    OBJ_INVENT,
+    has_oname,
+    ONAME,
+} from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     acurr, acurrstr, get_strength_str, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
@@ -200,8 +210,11 @@ function paint_overlay(lines, opts = {}) {
         const text = typeof entry === 'string' ? entry : entry.text;
         const attr = typeof entry === 'string' ? 0 : (entry.attr || 0);
         const col = opts.col || 0;
-        for (let i = 0; i < text.length && col + i < disp.cols; i++)
-            disp.setCell(col + i, r, text[i], NO_COLOR, attr);
+        // C tty: leading pad space is not part of item ATR_INVERSE/heading
+        for (let i = 0; i < text.length && col + i < disp.cols; i++) {
+            const a = (i === 0 && text[0] === ' ') ? 0 : attr;
+            disp.setCell(col + i, r, text[i], NO_COLOR, a);
+        }
     }
     if (withStatus) write_status_to_grid(disp);
     if (cursor) disp.setCursor(cursor[0], cursor[1]);
@@ -296,6 +309,51 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     disp.setCursor(cursorCol, endRow);
     game._menu_overlay = true;
     return { offx, endRow, cursorCol };
+}
+
+/**
+ * C ref: wintty.c tty_end_menu + process_menu_window select_menu(PICK_NONE).
+ * entries already include prompt/blank/items (as after tty_end_menu).
+ * Pages at lmax = rows-1 (23); ESC/Return dismiss; Space next page or done.
+ */
+export async function select_menu_pick_none(entries) {
+    const rows = display()?.rows || 24;
+    const lmax = Math.min(52, rows - 1);
+    const nitems = entries.length;
+    const npages = Math.max(1, Math.floor((nitems + lmax - 1) / lmax));
+    let curr_page = 0;
+
+    for (;;) {
+        const start = curr_page * lmax;
+        const page = entries.slice(start, start + lmax);
+        const morestr = npages > 1
+            ? `(${curr_page + 1} of ${npages})`
+            : '(end) ';
+        const painted = page.map(e => ({
+            text: ` ${typeof e === 'string' ? e : e.text}`,
+            attr: typeof e === 'string' ? 0 : (e.attr || 0),
+        }));
+        painted.push({ text: ` ${morestr}`, attr: 0 });
+        paint_overlay(painted, {
+            col: 0,
+            withStatus: false,
+            cursor: [morestr.length + 1, page.length],
+        });
+        await flush_screen(1);
+        const key = await nhgetch();
+        if (key === 27 || key === 13 || key === 10) break;
+        if (key === 32) {
+            if (curr_page < npages - 1) {
+                curr_page++;
+                continue;
+            }
+            break;
+        }
+        // other keys: re-prompt same page (C xwaitforspace)
+    }
+    clear_overlay();
+    await docrt();
+    await flush_screen(1);
 }
 
 /**
@@ -646,21 +704,40 @@ export async function doattributes() {
         ? `  Your wallet contains ${gold} zorkmids.`
         : '  Your wallet is empty.';
 
+    const uexp = u.uexp | 0;
+    const hp = u.uhp | 0;
+    const hpmax = u.uhpmax | 0;
+    const pw = u.uen | 0;
+    const pwmax = u.uenmax | 0;
+    // C ref: insight.c basics_enlightenment — hit / energy phrasing
+    let hpLine;
+    if (hp === hpmax && hpmax > 1) hpLine = `all ${hpmax} hit points`;
+    else hpLine = `${hp} out of ${hpmax} hit point${hpmax === 1 ? '' : 's'}`;
+    const Power = 'energy points (spell power)';
+    let pwLine;
+    if (pwmax === 0 || (pw === pwmax && pwmax === 2)) {
+        pwLine = `${!pwmax ? 'no' : 'both'} ${Power}`;
+    } else if (pw === pwmax && pwmax > 2) {
+        pwLine = `all ${pwmax} ${Power}`;
+    } else {
+        pwLine = `${pw} out of ${pwmax} ${Power}`;
+    }
+
     const page1 = [
         ` ${name} the ${role}'s attributes:`,
         '',
         ' Background:',
-        `  You are a ${rank}, a level ${u.ulevel || 1} ${genderPart}${race} ${role}.`,
+        `  You are ${an(rank)}, a level ${u.ulevel || 1} ${genderPart}${race} ${role}.`,
         `  You are ${align}, on a mission for ${u_gname(game.urole, atype)}`,
         opposed,
         `  You are ${hand}-handed.`,
         '  You are in the Dungeons of Doom, on level 1.',
         `  You entered the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago.`,
-        `  You have ${u.uexp || 0} experience point${(u.uexp || 0) === 1 ? '' : 's'}.`,
+        `  You have ${uexp} experience point${uexp === 1 ? '' : 's'}.`,
         '',
         ' Basics:',
-        `  You have all ${u.uhpmax || 0} hit points.`,
-        '  You have both energy points (spell power).',
+        `  You have ${hpLine}.`,
+        `  You have ${pwLine}.`,
         `  Your armor class is ${u.uac ?? 10}.`,
         wallet,
         autopickup_enlightenment_line(),
@@ -740,11 +817,6 @@ export async function doattributes() {
     await flush_screen(1);
 }
 
-/** C ref: spell.c dovspell() empty case */
-export async function dovspell() {
-    await pline("You don't know any spells right now.");
-}
-
 /**
  * C ref: invent.c dfeature_at — dungeon feature worth mentioning at <x,y>.
  * Branch envelope this iteration: doors, stairs (via stairs_description),
@@ -799,8 +871,8 @@ export function dfeature_at(x, y) {
 /**
  * C ref: invent.c look_here — feature + objects at hero feet.
  * Ported envelope: non-swallow, non-blind, no pile skip; dfeature pline;
- * no-objects message only when Blind || !dfeature. Object listing /
- * engraving / trap+region / Blind feel path deferred.
+ * read_engr_at; no-objects when Blind || !dfeature. Object listing /
+ * trap+region / Blind feel path deferred.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const u = game.u;
@@ -826,7 +898,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     if (!otmp) {
         if (dfeature && !skip_dfeature && fbuf)
             await pline(fbuf);
-        // read_engr_at deferred
+        const { read_engr_at } = await import('./engrave.js');
+        await read_engr_at(u?.ux, u?.uy);
+        // C: (!skip_objects && (Blind || !dfeature))
         if (!skip_objects && !dfeature)
             await pline(`You ${verb} no objects here.`);
         return;
@@ -835,6 +909,10 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     // Objects present — single-item / multi deferred beyond dfeature prefix
     if (dfeature && !skip_dfeature && fbuf)
         await pline(fbuf);
+    {
+        const { read_engr_at } = await import('./engrave.js');
+        await read_engr_at(u?.ux, u?.uy);
+    }
     if (!otmp.nexthere) {
         // single object: "You see here <doname>" — doname_with_price deferred
         await pline(`You ${verb} here ${doname(otmp)}.`);
@@ -889,4 +967,300 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         await pline(xprname(held, undefined, true));
     }
     return held;
+}
+
+const GOLD_SYM_ADJ = '$';
+const NOINVSYM = '#';
+const INVLET_BASIC = 52;
+const QUITCHARS = ' \r\n\x1b';
+
+/** C ref: invent.c compactify — dash runs of consecutive invent letters. */
+function compactify_invlets(buf) {
+    if (!buf || buf.length <= 5) return buf || '';
+    const chars = buf.split('');
+    let i1 = 1;
+    let i2 = 1;
+    let ilet2 = chars[0];
+    let ilet1 = chars[1];
+    chars[++i2] = chars[++i1];
+    let ilet = chars[i1];
+    while (ilet) {
+        const iletCode = ilet.charCodeAt(0);
+        const ilet1Code = ilet1.charCodeAt(0);
+        const ilet2Code = ilet2.charCodeAt(0);
+        if (iletCode === ilet1Code + 1) {
+            if (ilet1Code === ilet2Code + 1) {
+                chars[i2 - 1] = '-';
+                ilet1 = '-';
+            } else if (ilet2 === '-') {
+                chars[i2 - 1] = String.fromCharCode(ilet1Code + 1);
+                ilet1 = chars[i2 - 1];
+                chars[i2] = chars[++i1];
+                ilet = chars[i1];
+                continue;
+            }
+        } else if (ilet === NOINVSYM) {
+            if (i2 >= 2 && chars[i2 - 2] === NOINVSYM && chars[i2 - 1] === NOINVSYM) {
+                chars[i2 - 1] = '-';
+            } else if (
+                i2 >= 3 && chars[i2 - 3] === NOINVSYM
+                && chars[i2 - 2] === '-' && chars[i2 - 1] === NOINVSYM
+            ) {
+                --i2;
+            }
+        }
+        ilet2 = ilet1;
+        ilet1 = ilet;
+        chars[++i2] = chars[++i1];
+        ilet = chars[i1];
+    }
+    return chars.slice(0, i2 + 1).join('').replace(/\0/g, '');
+}
+
+/** Suggest letters for #adjust getobj (excludes gold). */
+function adjust_suggest_lets() {
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (!o || o.oclass === COIN_CLASS || !o.invlet) continue;
+        lets.push(o.invlet);
+    }
+    // C getobj sortloot SORTLOOT_INVLET
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    let s = lets.join('');
+    if (lets.length > 5) s = compactify_invlets(s);
+    return s;
+}
+
+/**
+ * C ref: invent.c getobj("adjust", adjust_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
+ * Count-split and ?/* invent menus deferred.
+ */
+async function getobj_adjust() {
+    for (;;) {
+        await flush_topl_more();
+        const lets = adjust_suggest_lets();
+        const query = lets
+            ? `What do you want to adjust? [${lets} or ?*]`
+            : 'What do you want to adjust? [*]';
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (QUITCHARS.includes(ch) || key === 27) {
+            if (game.flags?.verbose !== false) await pline(Never_mind);
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            // display_pickinv deferred
+            if (game.flags?.verbose !== false) await pline(Never_mind);
+            return null;
+        }
+        // digit → get_count / splitobj deferred (falls through as unknown letter)
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        if (otmp.oclass === COIN_CLASS) {
+            // C: adjust_ok → GETOBJ_EXCLUDE → "You cannot adjust gold."
+            await pline('You cannot adjust gold.');
+            return null;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/** C ref: invent.c prinv(prefix, obj, quan) — quan-split total deferred. */
+async function prinv_adjust(prefix, obj) {
+    const pfx = prefix || '';
+    await pline(`${pfx}${pfx ? ' ' : ''}${xprname(obj, undefined, true)}`);
+}
+
+function invent_obj_name(obj) {
+    return has_oname(obj) ? ONAME(obj) : null;
+}
+
+/** Inline extract from invent array (C extract_nobj from gi.invent). */
+function extract_invent(obj) {
+    const inv = game.invent || [];
+    const i = inv.indexOf(obj);
+    if (i >= 0) inv.splice(i, 1);
+}
+
+/** C ref: invent.c reorder_invent — bubble by invlet ^ 040. */
+function reorder_invent_adjust() {
+    const inv = game.invent;
+    if (!inv || inv.length < 2) return;
+    const rank = (o) => {
+        const ilet = o.invlet;
+        if (ilet === GOLD_SYM_ADJ) return -1;
+        if (typeof ilet === 'string' && ilet.length === 1) return ilet.charCodeAt(0) ^ 0x20;
+        return 999;
+    };
+    let need = true;
+    while (need) {
+        need = false;
+        for (let i = 0; i < inv.length - 1; i++) {
+            if (rank(inv[i + 1]) < rank(inv[i])) {
+                const t = inv[i];
+                inv[i] = inv[i + 1];
+                inv[i + 1] = t;
+                need = true;
+            }
+        }
+    }
+}
+
+/**
+ * Absorb obj into otmp (C invent.c merged for invent stacks).
+ * Returns survivor or null if not mergable.
+ */
+function invent_merged(otmp, obj) {
+    if (!mergable(otmp, obj)) return null;
+    otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
+    if (obj.known) otmp.known = 1;
+    if (obj.bknown) otmp.bknown = 1;
+    if (obj.rknown) otmp.rknown = 1;
+    extract_invent(obj);
+    return otmp;
+}
+
+function names_ok_for_adjust_merge(otmp, obj) {
+    const otmpname = invent_obj_name(otmp);
+    const objname = invent_obj_name(obj);
+    return !otmpname || (objname && objname === otmpname);
+}
+
+/**
+ * C ref: invent.c doorganize_core — destination pick + move/collect/swap/merge.
+ * Deferred: count-split, display_used_invlets, gold adjust, pack-full bump.
+ */
+async function doorganize_core(obj) {
+    if (!obj) return ECMD_CANCEL;
+
+    // Build candidate destination letters (C lets[] then blank used + compactify)
+    const letsArr = new Array(1 + INVLET_BASIC + 1).fill(' ');
+    letsArr[0] = obj.oclass === COIN_CLASS ? GOLD_SYM_ADJ : ' ';
+    for (let i = 0; i < 26; i++) letsArr[1 + i] = String.fromCharCode(97 + i);
+    for (let i = 0; i < 26; i++) letsArr[27 + i] = String.fromCharCode(65 + i);
+    letsArr[1 + INVLET_BASIC] = ' '; // overflow slot off by default
+
+    for (const otmp of game.invent || []) {
+        if (otmp === obj || mergable(otmp, obj)) continue;
+        const let_ = otmp.invlet;
+        if (let_ >= 'a' && let_ <= 'z') letsArr[1 + (let_.charCodeAt(0) - 97)] = ' ';
+        else if (let_ >= 'A' && let_ <= 'Z') {
+            letsArr[1 + (let_.charCodeAt(0) - 65) + 26] = ' ';
+        } else if (let_ === NOINVSYM) letsArr[1 + INVLET_BASIC] = NOINVSYM;
+    }
+
+    let lets = letsArr.filter((c) => c !== ' ').join('');
+    if (lets.length > 5) lets = compactify_invlets(lets);
+
+    let qbuf = `Adjust letter to what [${lets}]`;
+    if (game.invent?.length) qbuf += ' (? see used letters)';
+    qbuf += '?';
+
+    let ever_mind = false;
+    let let_;
+    for (let trycnt = 1; ; ++trycnt) {
+        let_ = await yn_function(qbuf, null, '\0');
+        if (let_ === '?' || let_ === '*') {
+            // display_used_invlets deferred
+            if (game.flags?.verbose !== false) await pline(Never_mind);
+            return ECMD_OK;
+        }
+        if (QUITCHARS.includes(let_)) {
+            if (!ever_mind) await pline(Never_mind);
+            return ECMD_OK;
+        }
+        if (let_ === GOLD_SYM_ADJ && obj.oclass !== COIN_CLASS) {
+            await pline(`Only gold coins may be moved into the '${GOLD_SYM_ADJ}' slot.`);
+            // C: ever_mind → noadjust skips Never_mind
+            return ECMD_OK;
+        }
+        const isLetter = /[a-zA-Z]/.test(let_) && let_ !== '@';
+        if (isLetter || (lets.includes(let_) && let_ !== '-')) break;
+        if (trycnt === 5) {
+            if (!ever_mind) await pline(Never_mind);
+            return ECMD_OK;
+        }
+        await pline('Select an inventory slot letter.');
+    }
+
+    const collect = let_ === obj.invlet;
+    let adj_type = collect ? 'Collecting:' : 'Moving:';
+    let bumped = null;
+
+    extract_invent(obj);
+
+    const invSnap = [...(game.invent || [])];
+    for (let i = 0; i < invSnap.length; ) {
+        const otmp = invSnap[i];
+        if (!otmp || (game.invent || []).indexOf(otmp) < 0) {
+            i++;
+            continue;
+        }
+        if (collect) {
+            if (names_ok_for_adjust_merge(otmp, obj) && invent_merged(otmp, obj)) {
+                obj = otmp;
+                extract_invent(obj);
+                // invent_merged removed obj (old); otmp survived then extracted
+                // refresh snap cursor: continue from same index with new invent order
+                invSnap.splice(0, invSnap.length, ...(game.invent || []));
+                i = 0;
+                continue;
+            }
+        } else if (otmp.invlet === let_) {
+            if (names_ok_for_adjust_merge(otmp, obj) && invent_merged(otmp, obj)) {
+                adj_type = 'Merging:';
+                obj = otmp;
+                extract_invent(obj);
+                break;
+            }
+            adj_type = 'Swapping:';
+            otmp.invlet = obj.invlet;
+            break;
+        }
+        i++;
+    }
+
+    obj.invlet = let_;
+    obj.where = OBJ_INVENT;
+    if (!game.invent) game.invent = [];
+    game.invent.unshift(obj);
+    reorder_invent_adjust();
+    if (bumped) {
+        // pack-full bump path deferred
+        void bumped;
+    }
+
+    await prinv_adjust(adj_type, obj);
+    return ECMD_OK;
+}
+
+/**
+ * C ref: invent.c doorganize — #adjust inventory letters.
+ * @returns {number} ECMD_OK / ECMD_CANCEL
+ */
+export async function doorganize() {
+    const inv = game.invent || [];
+    if (
+        !inv.length
+        || (inv.length === 1 && inv[0].oclass === COIN_CLASS
+            && inv[0].invlet === GOLD_SYM_ADJ)
+    ) {
+        await pline(
+            `You aren't carrying anything ${!inv.length ? 'to adjust' : 'adjustable'}.`,
+        );
+        return ECMD_OK;
+    }
+
+    const obj = await getobj_adjust();
+    return doorganize_core(obj);
 }

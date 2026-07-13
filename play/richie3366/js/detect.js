@@ -1,20 +1,25 @@
-// detect.js — Searching / dosearch0 / findit / do_mapping subset.
+// detect.js — Searching / dosearch0 / findit / do_mapping / #terrain.
 // C ref: detect.c — dosearch0, find_trap, cvt_sdoor_to_door, findit,
-// findone, show_map_spot, do_mapping; vision.c do_clear_area
-// (hero-centered).
+// findone, show_map_spot, do_mapping, reveal_terrain, browse_map;
+// cmd.c doterrain; vision.c do_clear_area (hero-centered).
 //
 // Branch envelope: 8-neighbour SDOOR/SCORR/trap search with fund
 // (lenses); findit clear-area reveal of SDOOR/SCORR/unseen traps +
 // empty "don't find anything" path; do_mapping hero_memory path
 // (no browse_map) + show_map_spot SCORR uncover / seenv=SVALL /
-// magic_map_background. Named omissions: feel_location /
-// visible_region_at / unmap_invisible / Blind feel; mfind0 body;
-// Hallucination/cls map_trap wait; activate_statue_trap; artifact
-// SPFX_SEARCH; cmd_safety_prevention; warnreveal; room_discovered;
-// map_trap/map_engraving restore after furniture; browse_map /
-// unconstrain underwater-buried-swallow; notice_mon_off/on;
-// findone flash_glyph / mimic / hider / invis / chest-trap detect;
-// trapped-door dummytrap; FOUND_FLASH_COUNT==0 tmp_at path.
+// magic_map_background; **#terrain / doterrain** View which? PICK_ONE
+// (a/b/c + explore/wizard extras) + Esc cancel; reveal_terrain
+// impairment gate + Showing pline + browse_map/getpos + docrt.
+// Named omissions: feel_location / visible_region_at /
+// unmap_invisible / Blind feel; mfind0 body; Hallucination/cls
+// map_trap wait; activate_statue_trap; artifact SPFX_SEARCH;
+// cmd_safety_prevention; warnreveal; room_discovered;
+// map_trap/map_engraving restore after furniture; unconstrain
+// underwater-buried-swallow; notice_mon_off/on; findone
+// flash_glyph / mimic / hider / invis / chest-trap detect;
+// trapped-door dummytrap; FOUND_FLASH_COUNT==0 tmp_at path;
+// reveal_terrain_getglyph / show_glyph map rewrite; wiz_map_levltyp /
+// wiz_levltyp_legend; TER_FULL explore-only map body.
 
 import { game } from './gstate.js';
 import { rnl, rn2 } from './rng.js';
@@ -29,6 +34,7 @@ import {
     isok, SDOOR, SCORR, DOOR, CORR, D_NODOOR, D_CLOSED, D_LOCKED, WM_MASK,
     STATUE_TRAP, NO_TRAP, TRAPNUM, Is_rogue_level, BOLT_LIM, COLNO, ROWNO,
     SVALL, IS_FURNITURE,
+    TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, ECMD_OK,
 } from './const.js';
 
 // C ref: vision.c circle_data[] / circle_start[] — radius→row half-width
@@ -384,4 +390,187 @@ export function do_mapping() {
     // reconstrain_map no-op when unconstrained was false
 
     exercise(A_WIS, true);
+}
+
+/**
+ * C ref: detect.c browse_map — getpos autodescribe over current map.
+ * terrainmode / describe-at-glyph deferred (getpos uses ordinary look).
+ */
+async function browse_map(ter_typ, ter_explain) {
+    const { getpos } = await import('./getpos.js');
+    const u = game.u || {};
+    const dummy = { x: u.ux | 0, y: u.uy | 0 };
+    if (!game.iflags) game.iflags = {};
+    const save_autodescribe = !!game.iflags.autodescribe;
+    game.iflags.autodescribe = true;
+    game.iflags.terrainmode = ter_typ | 0;
+    await getpos(dummy, false, ter_explain);
+    game.iflags.terrainmode = 0;
+    game.iflags.autodescribe = save_autodescribe;
+}
+
+/**
+ * C ref: detect.c map_redisplay — reconstrain + docrt.
+ * Underwater/buried under_* deferred with unconstrain.
+ */
+async function map_redisplay() {
+    // reconstrain_map no-op when unconstrain was not applied
+    const { docrt, flush_screen } = await import('./display.js');
+    await docrt();
+    await flush_screen(1);
+}
+
+/**
+ * C ref: detect.c reveal_terrain — known/full map without selected layers.
+ * Branch envelope: Hallucination/Stunned/Confusion gate; Showing pline;
+ * browse_map; map_redisplay. Map-cell rewrite via
+ * reveal_terrain_getglyph/show_glyph deferred (named omission).
+ */
+export async function reveal_terrain(which_subset) {
+    const full = (which_subset & TER_FULL) !== 0;
+    const u = game.u || {};
+    if ((u.Hallucination || u.Stunned || u.Confusion) && !full) {
+        await pline('You are too disoriented for this.');
+        return;
+    }
+
+    const keep_traps = (which_subset & TER_TRP) !== 0;
+    const keep_objs = (which_subset & TER_OBJ) !== 0;
+    const keep_mons = (which_subset & TER_MON) !== 0;
+    // unconstrain_map / docrt + reveal_terrain_getglyph loop deferred
+
+    let buf;
+    if (full) {
+        buf = 'underlying terrain';
+    } else {
+        buf = 'known terrain';
+        if (keep_traps) {
+            buf += `${(keep_objs || keep_mons) ? ',' : ' and'} traps`;
+        }
+        if (keep_objs) {
+            buf += `${(keep_traps || keep_mons) ? ',' : ''}${keep_mons ? '' : ' and'} objects`;
+        }
+        if (keep_mons) {
+            buf += `${(keep_traps || keep_objs) ? ',' : ''} and monsters`;
+        }
+    }
+    await pline(`Showing ${buf} only...`);
+
+    which_subset |= TER_MAP;
+    await browse_map(which_subset, 'anything of interest');
+    await map_redisplay();
+}
+
+/**
+ * C ref: cmd.c doterrain — #terrain View which? menu then reveal_terrain.
+ * Branch envelope: recalc_mapseen; normal a/b/c choices (a preselected *);
+ * explore/discover + wizard extras 4–6; Esc cancel (which=-1);
+ * space/return → preselected 1; letter pick. wiz_map_levltyp /
+ * wiz_levltyp_legend bodies deferred.
+ */
+export async function doterrain() {
+    const { nhgetch } = await import('./input.js');
+    const { flush_screen, flush_topl_more, docrt } = await import('./display.js');
+    const { paint_corner_nhw_menu } = await import('./invent.js');
+    const { ATR_INVERSE } = await import('./terminal.js');
+    const { recalc_mapseen } = await import('./dungeon.js');
+
+    await flush_topl_more();
+    recalc_mapseen();
+
+    const items = [
+        { which: 1, text: 'known map without monsters, objects, and traps', selected: true },
+        { which: 2, text: 'known map without monsters and objects', selected: false },
+        { which: 3, text: 'known map without monsters', selected: false },
+    ];
+    const discover = !!(game.flags?.explore || game.flags?.discover);
+    const wizard = !!(game.flags?.debug || game.flags?.wizard);
+    if (discover || wizard) {
+        items.push({
+            which: 4,
+            text: 'full map without monsters, objects, and traps',
+            selected: false,
+        });
+        if (wizard) {
+            items.push({
+                which: 5,
+                text: 'internal levl[][].typ codes in base-36',
+                selected: false,
+            });
+            items.push({
+                which: 6,
+                text: 'legend of base-36 levl[][].typ codes',
+                selected: false,
+            });
+        }
+    }
+
+    const choices = [];
+    const body = [];
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const letter = String.fromCharCode(97 + i); // a, b, c, …
+        const mark = it.selected ? '*' : '-'; // contest nomux: selected → '*'
+        body.push({ text: `${letter} ${mark} ${it.text}`, attr: 0 });
+        choices.push({
+            key: letter,
+            which: it.which,
+            preselected: !!it.selected,
+        });
+    }
+
+    const entries = [
+        { text: 'View which?', attr: ATR_INVERSE },
+        { text: '', attr: 0 },
+        ...body,
+    ];
+
+    let which = -1;
+    for (;;) {
+        await paint_corner_nhw_menu(entries, '(end) ');
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+        const ch = String.fromCharCode(key);
+        if (key === 27) {
+            which = -1; // C: n < 0
+            break;
+        }
+        // C: space/return with preselected still on → n==1 → sel[0]==1
+        //    or n==0 (toggled off) still maps to which=1
+        if (ch === ' ' || key === 13 || key === 10) {
+            const pre = choices.find((c) => c.preselected);
+            which = pre ? pre.which : 1;
+            break;
+        }
+        const hit = choices.find((c) => c.key === ch || c.key === ch.toLowerCase());
+        if (hit) {
+            which = hit.which;
+            break;
+        }
+        // invalid → re-prompt (C select_menu stays open)
+    }
+
+    switch (which) {
+    case 1:
+        await reveal_terrain(TER_MAP);
+        break;
+    case 2:
+        await reveal_terrain(TER_MAP | TER_TRP);
+        break;
+    case 3:
+        await reveal_terrain(TER_MAP | TER_TRP | TER_OBJ);
+        break;
+    case 4:
+        await reveal_terrain(TER_MAP | TER_FULL);
+        break;
+    case 5:
+    case 6:
+        // wiz_map_levltyp / wiz_levltyp_legend deferred
+        break;
+    default:
+        break;
+    }
+    return ECMD_OK;
 }

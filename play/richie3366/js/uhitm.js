@@ -6,9 +6,10 @@ import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
     IS_OBSTRUCTED, HMON_MELEE, STRAT_WAITMASK,
-    XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE,
+    XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
+    LL_CONDUCT,
 } from './const.js';
-import { WEAPON_CLASS } from './objects.js';
+import { WEAPON_CLASS, objectNameStrs } from './objects.js';
 import { exercise, A_STR, A_DEX, acurr } from './attrib.js';
 import { overexertion } from './hack.js';
 import { pline, newsym } from './display.js';
@@ -16,6 +17,9 @@ import { dmgval } from './weapon.js';
 import { find_mac, AT_WEAP, AD_PHYS } from './mhitm.js';
 import { verysmall, G_FREQ } from './monsters.js';
 import { relobj_on_death } from './mkobj.js';
+import { record_mvitals_died } from './mon.js';
+import { livelog_printf } from './pline.js';
+import { experience, more_experienced, newexplevel } from './exper.js';
 
 function mon_nam(mtmp) {
     // C mon_nam — ARTICLE_THE lowercase; named → bare
@@ -121,6 +125,8 @@ function corpse_chance(mon) {
 function mondead(mtmp) {
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
+    // C: after cham/were restore — mvitals[monsndx].died++
+    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
     if (game.fmon) {
         const i = game.fmon.indexOf(mtmp);
         if (i >= 0) game.fmon.splice(i, 1);
@@ -131,20 +137,48 @@ function mondead(mtmp) {
 }
 
 /**
+ * C ref: uhitm.c first_weapon_hit — livelog before kill so order is hit then kill.
+ * Artifact / cursed-bknown / ONAME paths deferred (simpleonames only).
+ */
+function first_weapon_hit(weapon) {
+    let buf = '';
+    if (weapon.cursed && weapon.bknown) buf += 'cursed ';
+    buf += objectNameStrs[weapon.otyp] || 'weapon';
+    livelog_printf(
+        LL_CONDUCT,
+        'hit with a wielded weapon (%s) for the first time',
+        buf,
+    );
+}
+
+/**
  * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance.
  * make_corpse / mkobj body deferred (RNG burned).
  */
 async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
     const nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
+    const noconduct = (xkill_flags & XKILL_NOCONDUCT) !== 0;
     const x = mtmp.mx, y = mtmp.my;
     mtmp.mhp = 0;
+    if (!noconduct) {
+        if (!game.u.uconduct) game.u.uconduct = {};
+        // C: if (!u.uconduct.killer++) livelog...
+        if (!(game.u.uconduct.killer | 0)) {
+            game.u.uconduct.killer = 1;
+            livelog_printf(LL_CONDUCT, 'killed for the first time');
+        } else {
+            game.u.uconduct.killer = (game.u.uconduct.killer | 0) + 1;
+        }
+    }
     if (!nomsg) {
         const verb = 'kill'; // nonliving → destroy deferred
         await pline(`You ${verb} ${mon_nam(mtmp)}!`);
     }
     mondead(mtmp);
     if ((mtmp.mhp | 0) >= 1) return; // lifesaved
+    const mdat = mtmp.data;
+    const mndx = mtmp.mnum ?? mdat?.mndx;
     if (!nocorpse) {
         // accessible/pool gate deferred — always attempt RNG like floor tile
         if (!rn2(6)) {
@@ -152,6 +186,12 @@ async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         }
         corpse_chance(mtmp);
     }
+    // C ref: mon.c xkilled cleanup — experience after corpse; murder/luck/
+    // alignment adjust deferred when they would burn RNG (peaceful rn2)
+    const died = game.mvitals?.[mndx]?.died | 0;
+    const tmp = experience(mtmp, died);
+    more_experienced(tmp, 0);
+    await newexplevel();
     void x;
     void y;
 }
@@ -180,6 +220,17 @@ async function hmon(mon, obj, thrown, _dieroll) {
     // dmg_recalc: udaminc + dbon + skill — dbon/skill 0 for early STR/skills
     dmg += (game.u?.udaminc | 0);
     if (dmg < 1) dmg = 1;
+
+    // C hmon_hitmon: first_weapon_hit before damage when weaphit just broke
+    if (obj
+        && (obj === game.u?.uwep || (obj === game.u?.uswapwep && game.u?.twoweap))
+        && (obj.oclass === WEAPON_CLASS
+            || game.objects?.[obj.otyp]?.oc_skill != null)
+        && thrown === HMON_MELEE
+        && dmg > 0
+        && (game.u?.uconduct?.weaphit | 0) <= 1) {
+        first_weapon_hit(obj);
+    }
 
     mon.mhp = (mon.mhp | 0) - dmg;
     const destroyed = (mon.mhp | 0) < 1;

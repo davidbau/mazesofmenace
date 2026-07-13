@@ -3,7 +3,7 @@
 //         uhitm.c mhitm_knockback (RNG order only).
 
 import { rn2, rnd, d } from './rng.js';
-import { distmin, m_at } from './mon.js';
+import { distmin, m_at, record_mvitals_died } from './mon.js';
 import { game } from './gstate.js';
 import { pline, newsym } from './display.js';
 import {
@@ -180,6 +180,8 @@ function corpse_chance(mon) {
 function mondead(mtmp) {
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
+    // C: after cham/were restore — mvitals[monsndx].died++
+    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
     if (game.fmon) {
         const i = game.fmon.indexOf(mtmp);
         if (i >= 0) game.fmon.splice(i, 1);
