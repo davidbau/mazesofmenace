@@ -9,7 +9,7 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+    SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
     FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
@@ -210,6 +210,32 @@ function covers_objects(x, y) {
     if (!loc) return false;
     const t = loc.typ;
     return t === POOL || t === MOAT || t === WATER || t === LAVAPOOL || t === LAVAWALL;
+}
+
+/** C ref: engrave.c engr_at — local walk (engrave.js imports display). */
+function engr_at(x, y) {
+    for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
+        if (ep.engr_x === x && ep.engr_y === y) return ep;
+    }
+    return null;
+}
+
+/** C ref: engrave.h spot_shows_engravings — ROOM / CORR / ICE. */
+function spot_shows_engravings(loc) {
+    const typ = loc?.typ;
+    return typ === ROOM || typ === CORR || typ === ICE;
+}
+
+/**
+ * C ref: engrave.h engraving_to_defsym + defsym S_engroom / S_engrcorr.
+ * Room: ASCII '`' CLR_BRIGHT_BLUE (DECgraphics does not remap).
+ * Corridor: '#' CLR_BRIGHT_BLUE.
+ */
+function engraving_glyph(loc) {
+    if (loc?.typ === CORR) {
+        return { ch: '#', color: CLR_BRIGHT_BLUE, dec: false };
+    }
+    return { ch: '`', color: CLR_BRIGHT_BLUE, dec: false };
 }
 
 // C ref: display.h obj_is_generic — !dknown potions/gems/spellbooks use
@@ -675,7 +701,7 @@ export function magic_map_background(x, y, show) {
 }
 
 // C ref: display.c _map_location(x,y,show=0) — remember non-living contents
-// (object / trap / background) without necessarily painting the screen.
+// (object / trap / engraving / background) without necessarily painting.
 // Used under hero/monster so out-of-sight memory keeps the object glyph.
 function map_location_memory(x, y) {
     const loc = game.level?.at(x, y);
@@ -687,7 +713,16 @@ function map_location_memory(x, y) {
         update_lastseentyp(x, y);
         return;
     }
-    // traps / engravings deferred — fall through to background
+    // traps deferred — engraving before background (C map_engraving)
+    if (spot_shows_engravings(loc)) {
+        const ep = engr_at(x, y);
+        if (ep && ep.erevealed) {
+            const eg = engraving_glyph(loc);
+            loc.remembered_glyph = { ch: eg.ch, color: eg.color, decgfx: eg.dec };
+            update_lastseentyp(x, y);
+            return;
+        }
+    }
     const tg = terrain_glyph(loc, x, y);
     loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
     update_lastseentyp(x, y);
@@ -702,9 +737,19 @@ export function newsym(x, y) {
         // Hero
         // C: cansee path still sets waslit before display_self
         loc.waslit = !!loc.lit;
+        // C: erevealed when cansee, even under hero
+        if (cansee(x, y)) {
+            const hep = engr_at(x, y);
+            if (hep) hep.erevealed = 1;
+        }
         show_glyph_cell(x, y, '@', CLR_WHITE, false);
-        const tg = terrain_glyph(loc, x, y);
-        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+        // Memory under hero: object / engraving / terrain (C _map_location)
+        if (game.level?.flags?.hero_memory) {
+            map_location_memory(x, y);
+        } else {
+            const tg = terrain_glyph(loc, x, y);
+            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+        }
         return;
     }
 
@@ -713,6 +758,9 @@ export function newsym(x, y) {
     if (cansee(x, y)) {
         // C: lev->waslit = (lev->lit != 0); /* remember lit condition */
         loc.waslit = !!loc.lit;
+        // C: erevealed = 1 even when covered by objects or a monster
+        const epSee = engr_at(x, y);
+        if (epSee) epSee.erevealed = 1;
         if (mtmp && mon_visible(mtmp)) {
             // C: _map_location(x, y, FALSE) then display_monster — memory
             // keeps object under the monster so leaving sight does not
@@ -722,7 +770,7 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, mg.ch, mg.color, false);
             return;
         }
-        // C ref: display.c _map_location — vobj_at before trap/background
+        // C ref: display.c _map_location — vobj_at before trap/engraving/bg
         const obj = objects_at(x, y);
         if (obj && !covers_objects(x, y)) {
             const og = obj_glyph(obj);
@@ -733,6 +781,21 @@ export function newsym(x, y) {
             // C _map_location always updates lastseentyp after mapping
             update_lastseentyp(x, y);
             return;
+        }
+        // C: spot_shows_engravings && engr_at && erevealed → map_engraving
+        if (spot_shows_engravings(loc)) {
+            const ep = engr_at(x, y);
+            if (ep && ep.erevealed) {
+                const eg = engraving_glyph(loc);
+                show_glyph_cell(x, y, eg.ch, eg.color, eg.dec);
+                if (game.level?.flags?.hero_memory) {
+                    loc.remembered_glyph = {
+                        ch: eg.ch, color: eg.color, decgfx: eg.dec,
+                    };
+                }
+                update_lastseentyp(x, y);
+                return;
+            }
         }
         const tg = terrain_glyph(loc, x, y);
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);

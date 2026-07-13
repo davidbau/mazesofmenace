@@ -15,7 +15,7 @@ import { dist2 } from './mon.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook,
 } from './invent.js';
-import { dovspell } from './spell.js';
+import { dovspell, docast } from './spell.js';
 import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
@@ -370,6 +370,11 @@ export async function rhack(key) {
         const tookTime = await dozap();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'Z') {
+        // C ref: spell.c docast / #cast
+        const castRes = await docast();
+        game.context.move = (castRes & 0x01) ? 1 : 0; // ECMD_TIME
+        if (castRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'r') {
         // C ref: read.c doread / #read
         const tookTime = await doread();

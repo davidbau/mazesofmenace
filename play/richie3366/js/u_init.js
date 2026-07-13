@@ -1445,6 +1445,8 @@ export function setup_role_race_from_rc(opts = {}) {
         mnum: role.mnum,
         petnum: role.petnum ?? NON_PM,
         neminum: role.neminum ?? NON_PM,
+        // C: roles[].allow — welcome gender adj + chargen filters
+        allow: role.allow ?? 0,
         filecode: ROLE_FILECODE[role.name.m] || 'Tou',
         attrbase: role.attrbase,
         attrdist: role.attrdist,

@@ -32,6 +32,7 @@ import { ATR_INVERSE } from './terminal.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
+    ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
 } from './const.js';
 
 // C ref: allmain.c moveloop_preamble() — moon/friday + new-game RNG leaves
@@ -225,21 +226,24 @@ function exerchk() {
 // C ref: allmain.c welcome() — new-game path only (restore deferred)
 async function welcome(new_game) {
     const g = game;
-    const female = !!g.flags?.female;
+    // C: currentgend = Upolyd ? u.mfemale : flags.female (poly deferred)
+    const currentgend = !!g.flags?.female;
     const role = g.urole || {};
     const race = g.urace || {};
     const atype = g.u?.ualign?.type ?? 0;
 
     // C builds buf as " <align> <gender?> <race> <role>"
     let buf = ` ${align_str(atype)}`;
-    // C: if (!urole.name.f && role allows both genders) add gender adj
-    // Tourist/Rogue use same male/female name string → treat as !name.f distinct
-    const distinctFemale = role.name?.f && role.name.f !== role.name.m;
-    if (!distinctFemale) {
-        buf += ` ${female ? 'female' : 'male'}`;
+    // C: if (!urole.name.f && both genders allowed on new_game) add gender adj
+    const allowGend = (role.allow ?? 0) & ROLE_GENDMASK;
+    if (!role.name?.f
+        && (new_game
+            ? allowGend === (ROLE_MALE | ROLE_FEMALE)
+            : currentgend !== !!g.flags?.initgend)) {
+        buf += ` ${currentgend ? 'female' : 'male'}`;
     }
     buf += ` ${race.adj || 'human'}`;
-    buf += ` ${(female && distinctFemale) ? role.name.f : (role.name?.m || 'Adventurer')}`;
+    buf += ` ${(currentgend && role.name?.f) ? role.name.f : (role.name?.m || 'Adventurer')}`;
 
     const hello = Hello(role.mnum);
     const plname = g.plname || 'Hero';

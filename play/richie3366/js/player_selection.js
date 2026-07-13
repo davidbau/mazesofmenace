@@ -480,7 +480,7 @@ async function pick_role_menu() {
         let thisch = roles[i].name.m[0].toLowerCase();
         if (thisch === lastch) thisch = thisch.toUpperCase();
         let rolename = roles[i].name.m;
-        if (roles[i].name.f && roles[i].name.f !== roles[i].name.m) {
+        if (roles[i].name.f) {
             if (GEND === 1) rolename = roles[i].name.f;
             else if (GEND < 0) rolename = `${roles[i].name.m}/${roles[i].name.f}`;
         }

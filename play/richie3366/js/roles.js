@@ -45,7 +45,8 @@ function adv(infix, inrnd, lofix, lornd, hifix, hirnd) {
 export const roles = [
     // C: roles[] index 0..12 — pantheon randrole uses rn2(SIZE(roles)-1)
     {
-        name: { m: 'Archeologist', f: 'Archeologist' },
+        // C: name.f is 0 unless a distinct female role name exists
+        name: { m: 'Archeologist', f: null },
         mnum: PM_ARCHEOLOGIST,
         petnum: NON_PM,
         neminum: pm('PM_MINION_OF_HUHETOTL'),
@@ -70,7 +71,7 @@ export const roles = [
         allow: 0x306e,
     },
     {
-        name: { m: 'Barbarian', f: 'Barbarian' },
+        name: { m: 'Barbarian', f: null },
         mnum: PM_BARBARIAN,
         petnum: NON_PM,
         neminum: pm('PM_THOTH_AMON'),
@@ -119,7 +120,7 @@ export const roles = [
         allow: 0x306e,
     },
     {
-        name: { m: 'Healer', f: 'Healer' },
+        name: { m: 'Healer', f: null },
         mnum: PM_HEALER,
         petnum: NON_PM,
         neminum: pm('PM_CYCLOPS'),
@@ -143,7 +144,7 @@ export const roles = [
         allow: 0x304a,
     },
     {
-        name: { m: 'Knight', f: 'Knight' },
+        name: { m: 'Knight', f: null },
         mnum: PM_KNIGHT,
         petnum: pm('PM_PONY'),
         neminum: pm('PM_IXOTH'),
@@ -167,7 +168,7 @@ export const roles = [
         allow: 0x300c,
     },
     {
-        name: { m: 'Monk', f: 'Monk' },
+        name: { m: 'Monk', f: null },
         mnum: PM_MONK,
         petnum: NON_PM,
         neminum: pm('PM_MASTER_KAEN'),
@@ -216,7 +217,7 @@ export const roles = [
     },
     // C: Rogue precedes Ranger (command-line -R tradition + pantheon indices)
     {
-        name: { m: 'Rogue', f: 'Rogue' },
+        name: { m: 'Rogue', f: null },
         mnum: PM_ROGUE,
         petnum: NON_PM,
         neminum: pm('PM_MASTER_ASSASSIN'),
@@ -239,7 +240,7 @@ export const roles = [
         allow: 0x3089,
     },
     {
-        name: { m: 'Ranger', f: 'Ranger' },
+        name: { m: 'Ranger', f: null },
         mnum: PM_RANGER,
         petnum: pm('PM_LITTLE_DOG'),
         neminum: pm('PM_SCORPIUS'),
@@ -263,7 +264,7 @@ export const roles = [
         allow: 0x30db,
     },
     {
-        name: { m: 'Samurai', f: 'Samurai' },
+        name: { m: 'Samurai', f: null },
         mnum: PM_SAMURAI,
         petnum: pm('PM_LITTLE_DOG'),
         neminum: pm('PM_ASHIKAGA_TAKAUJI'),
@@ -287,7 +288,7 @@ export const roles = [
         allow: 0x300c,
     },
     {
-        name: { m: 'Tourist', f: 'Tourist' },
+        name: { m: 'Tourist', f: null },
         mnum: PM_TOURIST,
         petnum: NON_PM,
         neminum: pm('PM_MASTER_OF_THIEVES'),
@@ -309,7 +310,7 @@ export const roles = [
         allow: 0x300a,
     },
     {
-        name: { m: 'Valkyrie', f: 'Valkyrie' },
+        name: { m: 'Valkyrie', f: null },
         mnum: PM_VALKYRIE,
         petnum: NON_PM,
         neminum: pm('PM_LORD_SURTUR'),
@@ -334,7 +335,7 @@ export const roles = [
         allow: 0x202e,
     },
     {
-        name: { m: 'Wizard', f: 'Wizard' },
+        name: { m: 'Wizard', f: null },
         mnum: PM_WIZARD,
         petnum: pm('PM_KITTEN'),
         neminum: pm('PM_DARK_ONE'),
@@ -438,7 +439,8 @@ export const genders = [
 export function findRole(name) {
     if (!name) return null;
     const lc = name.toLowerCase();
-    return roles.find(r => r.name.m.toLowerCase() === lc || r.name.f.toLowerCase() === lc);
+    return roles.find(r => r.name.m.toLowerCase() === lc
+        || (r.name.f && r.name.f.toLowerCase() === lc));
 }
 
 export function findRace(name) {

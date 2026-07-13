@@ -1,15 +1,14 @@
 // read.js — Read command / scroll effects (partial).
 // C ref: read.c doread, seffects, seffect_magic_mapping; invent.c getobj;
-// detect.c do_mapping.
+// detect.c do_mapping; spell.c study_book (via spell.js).
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks suggested) +
-// SCROLL_CLASS path for SCR_MAGIC_MAPPING (disappear pline, literate
-// conduct bump, seffects exercise(A_WIS) + seffect_magic_mapping +
-// do_mapping + learnscroll/useup). Named omissions: fortune/shirt/
-// credit-card/marker/coin/orb/candy/Braille Blind gates; study_book;
-// other seffect_*; nommap/Hallucination/blessed-SDOOR convert body;
-// notice_mon_off/on; trycall; can_chant silently; check_capacity;
-// SPE_MAGIC_MAPPING cast path.
+// SCROLL_CLASS path for SCR_MAGIC_MAPPING + SPBOOK_CLASS → study_book
+// (already-known refresh yn). Named omissions: fortune/shirt/
+// credit-card/marker/coin/orb/candy/Braille Blind gates;
+// study_book occupation/learn / novel / cursed_book; other seffect_*;
+// nommap/Hallucination/blessed-SDOOR convert body; notice_mon_off/on;
+// trycall; can_chant silently; check_capacity; SPE_MAGIC_MAPPING cast.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -19,6 +18,7 @@ import { weight } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
 import { discover_object } from './invent.js';
 import { do_mapping, cvt_sdoor_to_door } from './detect.js';
+import { study_book } from './spell.js';
 import {
     COLNO, ROWNO, SDOOR, Is_rogue_level,
 } from './const.js';
@@ -209,25 +209,24 @@ export async function doread() {
 
     // Blind formula gates deferred (starting Wizard not Blind)
 
-    if (scroll.oclass === SPBOOK_CLASS) {
-        // study_book deferred
-        await pline('That spellbook is not implemented yet.');
-        return 0;
-    }
-
-    // Gate unported scroll otyps before disappear/useup (C would seffect)
-    if (otyp !== SCR_MAGIC_MAPPING && otyp !== SCR_BLANK_PAPER) {
-        await pline('That scroll is not implemented yet.');
-        return 0;
-    }
-
-    // literate conduct (exclude Book of the Dead / novel / blank)
+    // C: literate conduct before SPBOOK study_book (exclude Dead/novel/blank)
     if (otyp !== SPE_BOOK_OF_THE_DEAD && otyp !== SPE_NOVEL
         && otyp !== SPE_BLANK_PAPER && otyp !== SCR_BLANK_PAPER) {
         if (!game.u) game.u = {};
         if (!game.u.uconduct) game.u.uconduct = {};
         game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
         // livelog deferred
+    }
+
+    if (scroll.oclass === SPBOOK_CLASS) {
+        // C: return study_book(scroll) ? ECMD_TIME : ECMD_OK
+        return (await study_book(scroll)) ? 1 : 0;
+    }
+
+    // Gate unported scroll otyps before disappear/useup (C would seffect)
+    if (otyp !== SCR_MAGIC_MAPPING && otyp !== SCR_BLANK_PAPER) {
+        await pline('That scroll is not implemented yet.');
+        return 0;
     }
 
     scroll.in_use = true;

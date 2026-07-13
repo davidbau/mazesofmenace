@@ -670,21 +670,25 @@ export async function doattributes() {
     if (name.length && name.charCodeAt(0) >= 97 && name.charCodeAt(0) <= 122) {
         name = String.fromCharCode(name.charCodeAt(0) - 32) + name.slice(1);
     }
-    const rank = game.urole?.rank?.m || 'Adventurer';
-    const role = game.urole?.name?.m || 'Tourist';
-    const gender = game.flags?.female ? 'female' : 'male';
+    const female = !!(game.flags?.female);
+    // C: insight.c — urole.name.f non-NULL (not same-string-as-m)
+    const hasFemaleName = !!game.urole?.name?.f;
+    // C: insight.c — role/rank from name.f / rank.f when female
+    const role = (female && game.urole?.name?.f)
+        ? game.urole.name.f
+        : (game.urole?.name?.m || 'Tourist');
+    const rank = (female && game.urole?.rank?.f)
+        ? game.urole.rank.f
+        : (game.urole?.rank?.m || 'Adventurer');
+    const gender = female ? 'female' : 'male';
     const race = game.urace?.adj || game.urace?.name || 'human';
     const atype = u.ualign?.type ?? A_NEUTRAL;
     const align = align_str(atype);
     const turns = game.moves || 1;
     const hand = (u.uhandedness === 1 /* LEFT_HANDED */) ? 'left' : 'right';
     const gold = game._goldCount || 0;
-    // C ref: insight.c — omit gender when urole.name.f is set (Caveman/
-    // Cavewoman, Priest/Priestess). JS stores null-f as same string as m
-    // (Tourist/Rogue); distinct f is the C non-null case (same as welcome()).
-    const distinctFemale = game.urole?.name?.f
-        && game.urole.name.f !== game.urole.name.m;
-    const genderPart = distinctFemale ? '' : `${gender} `;
+    // C ref: insight.c — omit gender when urole.name.f is set
+    const genderPart = hasFemaleName ? '' : `${gender} `;
 
     // C ref: insight.c — mission for u_gname(); opposed by other pantheon gods
     let opposed = '  who is opposed by';

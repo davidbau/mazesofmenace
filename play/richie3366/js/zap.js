@@ -4,14 +4,15 @@
 // Branch envelope: getobj wand + zappable + cursed backfire gate +
 // NODIR weffects → zapnodir WAN_SECRET_DOOR_DETECTION → findit.
 // Named omissions: IMMEDIATE/RAY weffects (bhit/ubuzz/zap_dig);
-// zapyourself; backfire body; other NODIR (light/create/wish/enlighten/
-// stasis); wrest pline; check_capacity/nohands poly; check_unpaid;
-// more_experienced; update_inventory; Blind glow on cancel-dir.
+// zapyourself beyond SPE_HEALING/EXTRA_HEALING; backfire body; other
+// NODIR (light/create/wish/enlighten/stasis); wrest pline;
+// check_capacity/nohands poly; check_unpaid; more_experienced;
+// update_inventory; Blind glow on cancel-dir.
 
 import { game } from './gstate.js';
-import { rn1, rn2 } from './rng.js';
+import { rn1, rn2, d } from './rng.js';
 import { getlin } from './getline.js';
-import { flush_screen, pline } from './display.js';
+import { flush_screen, pline, You_feel } from './display.js';
 import { nhgetch } from './input.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, discover_object } from './invent.js';
@@ -24,6 +25,39 @@ import {
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
 } from './const.js';
+
+const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
+const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
+
+/**
+ * C ref: potion.c healup — add HP; optional sick/blind cure.
+ * Kept here for zapyourself without potion.js → weapon.js cycle via spell.
+ */
+function healup(nhp, nxtra, curesick, cureblind) {
+    const u = game.u;
+    if (!u) return;
+    if (nhp) {
+        if (u.Upolyd) {
+            u.mh = (u.mh ?? 0) + nhp;
+            if (u.mh > (u.mhmax ?? 0)) {
+                u.mhmax = (u.mhmax ?? 0) + nxtra;
+                u.mh = u.mhmax;
+            }
+        } else {
+            u.uhp = (u.uhp ?? 0) + nhp;
+            if (u.uhp > (u.uhpmax ?? 0)) {
+                u.uhpmax = (u.uhpmax ?? 0) + nxtra;
+                u.uhp = u.uhpmax;
+                if ((u.uhppeak ?? 0) < u.uhpmax) u.uhppeak = u.uhpmax;
+            }
+        }
+    }
+    if (cureblind) {
+        u.ucreamed = 0;
+        u.Blinded = 0;
+    }
+    if (curesick) u.Sick = 0;
+}
 
 const MAXWISHTRY = 5;
 const WAN_SECRET_DOOR_DETECTION =
@@ -132,6 +166,31 @@ async function zapnodir(obj) {
             // more_experienced(0, 10) deferred
         }
         learnwand(obj);
+    }
+}
+
+/**
+ * C ref: zap.c zapyourself — self-directed wand/spell effects.
+ * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING only; other otyps
+ * named in C-JS-MAP.
+ * @returns {number} damage (0 for healing)
+ */
+export async function zapyourself(obj, _ordinary) {
+    if (!obj) return 0;
+    switch (obj.otyp) {
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING:
+        healup(
+            d(6, obj.otyp === SPE_EXTRA_HEALING ? 8 : 4),
+            0,
+            false,
+            !!(obj.blessed || obj.otyp === SPE_EXTRA_HEALING),
+        );
+        await You_feel(`${obj.otyp === SPE_EXTRA_HEALING ? 'much ' : ''}better.`);
+        return 0;
+    default:
+        // Other zapyourself cases deferred
+        return 0;
     }
 }
 

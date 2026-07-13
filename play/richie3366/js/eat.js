@@ -4,8 +4,8 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { nhgetch } from './input.js';
-import { flush_screen, pline } from './display.js';
+import { flush_topl_more, pline } from './display.js';
+import { yn_function } from './getline.js';
 import { FOOD_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
@@ -19,6 +19,15 @@ const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
 export function gethungry() {
     const accessorytime = rn2(20);
     void accessorytime;
+}
+
+/**
+ * C ref: eat.c morehungry — nutrition loss after feats of magic / vomit.
+ * newuhs body deferred (status transitions not needed for cast hunger).
+ */
+export function morehungry(num) {
+    if (!game.u) return;
+    game.u.uhunger = (game.u.uhunger ?? 900) - (num | 0);
 }
 
 function is_edible(obj) {
@@ -68,42 +77,42 @@ function edible_lets() {
 }
 
 /**
- * C ref: invent.c getobj("eat", ...) — prompt + pick letter.
- * Returns the chosen invent object, or null if cancelled / missing.
+ * C ref: invent.c getobj("eat", is_edible) — yn_function free-letter loop;
+ * missing letter → You("don't have that object.") + continue (next
+ * yn_function flushes NEED_MORE → --More--). Empty SUGGEST → early
+ * "don't have anything to eat."
  */
 async function getobj_eat() {
-    const lets = edible_lets();
-    // C: "What do you want to eat? [b-g or ?*]" + trailing space (yn_function)
-    const query = lets
-        ? `What do you want to eat? [${lets} or ?*]`
-        : 'What do you want to eat? [*]';
-    const prompt = `${query} `;
+    for (;;) {
+        await flush_topl_more();
+        const lets = edible_lets();
+        if (!lets) {
+            await pline("You don't have anything to eat.");
+            return null;
+        }
+        // C: yn_function(qbuf, NULL, '\0') — any char; leave prompt on line
+        const query = `What do you want to eat? [${lets} or ?*]`;
+        const ch = await yn_function(query, null, '\0');
 
-    game._pending_message = prompt;
-    const disp = game.nhDisplay;
-    await flush_screen(1);
-    if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+        // quitchars: space, Esc, etc.
+        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            // Menu path deferred
+            await pline('Never mind.');
+            return null;
+        }
 
-    const key = await nhgetch();
-    const ch = String.fromCharCode(key);
-
-    // quitchars: space, Esc, etc.
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-        if (game.flags?.verbose !== false) await pline('Never mind.');
-        return null;
+        const otmp = (game.invent || []).find(o => o.invlet === ch);
+        if (!otmp) {
+            // C: You("don't have that object."); continue;
+            await pline("You don't have that object.");
+            continue;
+        }
+        return otmp;
     }
-    if (ch === '?' || ch === '*') {
-        // Menu path not needed for seed0900 ea — treat as cancel-ish
-        await pline('Never mind.');
-        return null;
-    }
-
-    const otmp = (game.invent || []).find(o => o.invlet === ch);
-    if (!otmp) {
-        await pline("You don't have that object.");
-        return null;
-    }
-    return otmp;
 }
 
 /** C ref: invent.c useup() — consume one from a stack / remove if gone. */
@@ -120,7 +129,8 @@ function useup(otmp) {
 }
 
 /**
- * C ref: eat.c doeat() — fortune cookie path for seed1800; reject for seed0900.
+ * C ref: eat.c doeat() — fortune-cookie + getobj loop; ordinary food body
+ * deferred (nutrition/reqtime/occupation).
  * @returns {number} 0 = no turn (ECMD_OK), 1 = took time
  */
 export async function doeat() {
@@ -146,7 +156,7 @@ export async function doeat() {
         return 1;
     }
 
-    // Real eating not needed yet for seed0900's ea reject path / other foods
+    // Ordinary food nutrition/occupation deferred (C-JS-MAP)
     await pline('That food is not implemented yet.');
     return 0;
 }

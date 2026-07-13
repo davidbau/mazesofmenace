@@ -39,13 +39,30 @@ import {
     monsterNames,
 } from './monsters.js';
 import {
-    NO_MINVENT, MM_NOGRP, GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level,
+    NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME,
+    GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
 import { mksobj, weight } from './mkobj.js';
 import { objectNames, WEAPON_CLASS, ARMOR_CLASS } from './objects.js';
 import { cansee } from './vision.js';
+import { christen_monst } from './do_name.js';
+
+// C ref: do_name.c ghostnames[] / rndghostname
+const GHOSTNAMES = [
+    'Adri', 'Andries', 'Andreas', 'Bert', 'David', 'Dirk',
+    'Emile', 'Frans', 'Fred', 'Greg', 'Hether', 'Jay',
+    'John', 'Jon', 'Karnov', 'Kay', 'Kenny', 'Kevin',
+    'Maud', 'Michiel', 'Mike', 'Peter', 'Robert', 'Ron',
+    'Tom', 'Wilmar', 'Nick Danger', 'Phoenix', 'Jiro', 'Mizue',
+    'Stephan', 'Lance Braccus', 'Shadowhawk', 'Murphy',
+];
+
+function rndghostname() {
+    // C: rn2(7) ? ROLL_FROM(ghostnames) : plname
+    return rn2(7) ? GHOSTNAMES[rn2(GHOSTNAMES.length)] : (game.plname || 'Hero');
+}
 
 function otyp(name) {
     const i = objectNames.indexOf(name);
@@ -678,7 +695,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
         m_lev: 0,
         female: 0,
         mpeaceful: 0,
-        msleeping: 0,
+        msleeping: (mmflags & MM_ASLEEP) ? 1 : 0,
         mcanmove: 1,
         mcansee: 1,
         movement: 0,
@@ -690,6 +707,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mtame: 0,
         m_id: 0,
         mavenge: 0,
+        mstrategy: 0,
         mtrack: [
             { x: 0, y: 0 },
             { x: 0, y: 0 },
@@ -713,6 +731,11 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // C: link onto fmon before group/invent
     if (!game.fmon) game.fmon = [];
     game.fmon.unshift(mtmp);
+
+    // C: PM_GHOST && !(MM_NONAME) → christen_monst(rndghostname())
+    if (ptr.mndx === pm('GHOST') && !(mmflags & MM_NONAME)) {
+        christen_monst(mtmp, rndghostname());
+    }
 
     // C: anymon && !(mmflags & MM_NOGRP) → small/large group
     if (anymon && (mmflags & MM_NOGRP) === 0) {

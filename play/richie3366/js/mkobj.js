@@ -516,24 +516,51 @@ function mksobj_init(otmp, artif) {
         break;
     }
     case TOOL_CLASS: {
+        // C ref: mkobj.c mksobj_init TOOL_CLASS switch
         const name = otypName(otmp.otyp);
-        if (name === 'CHEST' || name === 'LARGE_BOX') {
+        if (name === 'TALLOW_CANDLE' || name === 'WAX_CANDLE') {
+            otmp.spe = 1;
+            // age = 20 * oc_cost deferred — oc_cost not in objects extract
+            otmp.lamplit = 0;
+            otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
+            blessorcurse(otmp, 5);
+        } else if (name === 'BRASS_LANTERN' || name === 'OIL_LAMP') {
+            otmp.spe = 1;
+            otmp.age = rn1(500, 1000);
+            otmp.lamplit = 0;
+            blessorcurse(otmp, 5);
+        } else if (name === 'MAGIC_LAMP') {
+            otmp.spe = 1;
+            otmp.lamplit = 0;
+            blessorcurse(otmp, 2);
+        } else if (name === 'CHEST' || name === 'LARGE_BOX') {
             otmp.olocked = !!rn2(5);
             otmp.otrapped = !rn2(10);
             if (otmp.otrapped && !rn2(100)) otmp.tknown = 1;
             mkbox_cnts(otmp);
         } else if (name === 'ICE_BOX' || name === 'SACK' || name === 'OILSKIN_SACK'
             || name === 'BAG_OF_HOLDING') {
-            // C ref: mkobj.c TOOL_CLASS — FALLTHROUGH into mkbox_cnts
+            // C FALLTHROUGH into mkbox_cnts
             mkbox_cnts(otmp);
-        } else if (name === 'TALLOW_CANDLE' || name === 'WAX_CANDLE') {
-            otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
-            blessorcurse(otmp, 5);
         } else if (name === 'EXPENSIVE_CAMERA' || name === 'TINNING_KIT'
             || name === 'MAGIC_MARKER') {
-            // C ref: mkobj.c — spe = rn1(70, 30)
             otmp.spe = rn1(70, 30);
+        } else if (name === 'CAN_OF_GREASE') {
+            otmp.spe = rn1(21, 5);
+            blessorcurse(otmp, 10);
+        } else if (name === 'CRYSTAL_BALL') {
+            otmp.spe = rn1(5, 3);
+            blessorcurse(otmp, 2);
+        } else if (name === 'HORN_OF_PLENTY' || name === 'BAG_OF_TRICKS') {
+            otmp.spe = rn1(18, 3);
+        } else if (name === 'BELL_OF_OPENING') {
+            otmp.spe = 3;
+        } else if (name === 'MAGIC_FLUTE' || name === 'MAGIC_HARP'
+            || name === 'FROST_HORN' || name === 'FIRE_HORN'
+            || name === 'DRUM_OF_EARTHQUAKE') {
+            otmp.spe = rn1(5, 4);
         }
+        // FIGURINE: needs rndmonnum_adj(5,10) + is_human — named omission
         break;
     }
     case AMULET_CLASS: {

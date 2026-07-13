@@ -1,17 +1,20 @@
 // engrave.js — Engrave command / floor inscriptions (partial).
 // C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at,
-//        read_engr_at.
+//        read_engr_at, wipeout_text, wipe_engr_at.
 //
 // Branch envelope: u_can_engrave floor gate + getobj write-with (hands `-`
 // SUGGEST) + DUST fingertip You/getlin + literate bump + DUST/blood/
 // Blind/Confusion/Stunned/Hallu mix-up + set_occupation one-tick finish
 // via make_engr_at (Elbereth → exercise(A_WIS,TRUE)); look_here/`:` via
-// read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind).
+// read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); mklev niche age
+// via wipe_engr_at → wipeout_text (seed==0 RNG path).
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
 // grave/altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
-// dulling occupation; del_engr/rloc_engr; engraving glyphs in newsym;
-// u_wipe_engr body; livelog; demon/vampire blood default beyond type;
-// Blind feel path for engrave/burn; full surface()/is_ice nouns.
+// dulling occupation; del_engr/rloc_engr; u_wipe_engr body; livelog;
+// demon/vampire blood default beyond type; Blind feel path for
+// engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
+// (non-zero) path; maybe_smudge_engr.
+// Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -87,6 +90,97 @@ export function del_engr(ep) {
             return;
         }
     }
+}
+
+/** C hack.h BUFSZ — seeded wipeout_text modulus only. */
+const BUFSZ = 256;
+
+/** C ref: engrave.c rubouts[] — partial character substitutes. */
+const RUBOUTS = {
+    A: '^', B: 'Pb[', C: '(', D: '|)[', E: '|FL[_', F: '|-', G: 'C(', H: '|-',
+    I: '|', K: '|<', L: '|_', M: '|', N: '|\\', O: 'C(', P: 'F', Q: 'C(', R: 'PF',
+    T: '|', U: 'J', V: '/\\', W: 'V/\\', Z: '/',
+    b: '|', d: 'c|', e: 'c', g: 'c', h: 'n', j: 'i', k: '|', l: '|', m: 'nr',
+    n: 'r', o: 'c', q: 'c', w: 'v', y: 'v',
+    ':': '.', ';': ',:', ',': '.', '=': '-', '+': '-|', '*': '+', '@': '0',
+    '0': 'C(', '1': '|', '6': 'o', '7': '/', '8': '3o',
+};
+
+/**
+ * C ref: engrave.c wipeout_text — degrade characters in-place (returns string).
+ * Branch envelope: seed==0 random path (rn2(lth), rn2(4), optional rn2(ln)).
+ * Named omission: non-zero seed deterministic path.
+ */
+export function wipeout_text(engr, cnt, seed = 0) {
+    const s = String(engr || '').split('');
+    let lth = s.length;
+    if (!lth || cnt <= 0) return s.join('');
+    let n = cnt;
+    let seedu = seed >>> 0;
+    while (n--) {
+        let nxt;
+        let use_rubout;
+        if (!seedu) {
+            nxt = rn2(lth);
+            use_rubout = rn2(4);
+        } else {
+            nxt = seedu % lth;
+            seedu = (seedu * 31) % (BUFSZ - 1);
+            use_rubout = seedu & 3;
+        }
+        if (s[nxt] === ' ') continue;
+        if ("?.,'`-|_".includes(s[nxt])) {
+            s[nxt] = ' ';
+            continue;
+        }
+        if (!use_rubout) {
+            s[nxt] = '?';
+            continue;
+        }
+        const wipeto = RUBOUTS[s[nxt]];
+        if (wipeto) {
+            let j;
+            if (!seedu) {
+                j = rn2(wipeto.length);
+            } else {
+                seedu = (seedu * 31) % (BUFSZ - 1);
+                j = seedu % wipeto.length;
+            }
+            s[nxt] = wipeto[j];
+        } else {
+            s[nxt] = '?';
+        }
+    }
+    while (lth && s[lth - 1] === ' ') {
+        s[--lth] = '';
+    }
+    return s.slice(0, lth).join('');
+}
+
+/**
+ * C ref: engrave.c wipe_engr_at — age/erode an existing engraving.
+ * Branch envelope: non-HEADSTONE, !nowipeout; DUST/blood keep full cnt;
+ * non-DUST/blood may rn2-gate cnt to 0/1; BURN needs ice or magical rn2.
+ */
+export function wipe_engr_at(x, y, cnt, magical = false) {
+    const ep = engr_at(x, y);
+    if (!ep || ep.engr_type === HEADSTONE || ep.nowipeout) return;
+    if (ep.engr_type === BURN && !is_ice(x, y)
+        && !(magical && !rn2(2))) {
+        return;
+    }
+    let n = cnt;
+    if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD) {
+        n = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
+    }
+    let txt = String(ep.engr_txt?.actual_text ?? '');
+    txt = wipeout_text(txt, n, 0);
+    while (txt.startsWith(' ')) txt = txt.slice(1);
+    if (!txt) {
+        del_engr(ep);
+        return;
+    }
+    ep.engr_txt.actual_text = txt;
 }
 
 /**

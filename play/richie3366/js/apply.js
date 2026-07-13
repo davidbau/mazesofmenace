@@ -11,7 +11,7 @@ const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 
-/** C ref: apply.c apply_ok — TOOL_CLASS suggested (enough for Rogue kit). */
+/** C ref: apply.c apply_ok — TOOL_CLASS SUGGEST subset; other classes deferred. */
 function apply_ok(obj) {
     return !!(obj && obj.oclass === TOOL_CLASS);
 }
@@ -28,14 +28,26 @@ function apply_lets() {
 /**
  * C ref: invent.c getobj("use or apply", apply_ok) — loop on missing letter;
  * flush_topl_more before re-prompt so "don't have" gets --More--.
+ * Empty SUGGEST set with no DOWNPLAY/hands → early "don't have anything"
+ * (C suggested==0 && !forceprompt && !allownone); do not prompt [*].
  */
 async function getobj_apply() {
+    const lets0 = apply_lets();
+    // C: apply_ok(NULL) is GETOBJ_EXCLUDE — no hands; DOWNPLAY (coins/
+    // unknown oil) not yet in apply_ok → forceprompt stays false.
+    if (!lets0) {
+        await pline("You don't have anything to use or apply.");
+        return null;
+    }
+
     for (;;) {
         await flush_topl_more();
         const lets = apply_lets();
-        const query = lets
-            ? `What do you want to use or apply? [${lets} or ?*]`
-            : 'What do you want to use or apply? [*]';
+        if (!lets) {
+            await pline("You don't have anything to use or apply.");
+            return null;
+        }
+        const query = `What do you want to use or apply? [${lets} or ?*]`;
         const prompt = `${query} `;
         game._pending_message = prompt;
         await flush_screen(1);
@@ -68,7 +80,9 @@ async function getobj_apply() {
 }
 
 /**
- * C ref: apply.c doapply()
+ * C ref: apply.c doapply() — TOOL_CLASS getobj; LOCK_PICK/key body.
+ * Named omissions: full apply_ok (wand/spbook/coin/weapon/potion/
+ * food/graystone); nohands/capacity; retouch; most otyp cases.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {

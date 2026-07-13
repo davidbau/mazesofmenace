@@ -6,9 +6,26 @@ import { pline } from './display.js';
 import { getdir } from './lock.js';
 import { mon_at } from './uhitm.js';
 import { Monnam } from './do_name.js';
+import { objects_at } from './mkobj.js';
+import { objectNames } from './generated/objects_data.js';
+import { rn2 } from './rng.js';
 import {
-    ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
 } from './const.js';
+
+const STATUE = objectNames.indexOf('STATUE');
+
+/** C ref: sounds.c dochat Hallucination walltalk[]. */
+const WALLTALK = [
+    'gripes about its job.',
+    'tells you a funny joke!',
+    'insults your heritage!',
+    'chuckles.',
+    'guffaws merrily!',
+    'deprecates your exploration efforts.',
+    'suggests a stint of rehab...',
+    "doesn't seem to be interested.",
+];
 
 /** C ref: monflag.h MS_BARK — dogs/canines (mlet S_DOG). */
 const MS_BARK = 1;
@@ -67,9 +84,11 @@ export async function domonnoise(mtmp) {
 }
 
 /**
- * C ref: sounds.c dochat — getdir + empty/no-monster ECMD_OK;
- * adjacent monster → domonnoise. Shop price_quote / steed / wall-
- * hallucination / priest wake / meating deferred.
+ * C ref: sounds.c dochat — getdir; statue; wall/SDOOR talk;
+ * adjacent monster → domonnoise.
+ * Named omissions: is_silent/Strangled/uswallow/Underwater;
+ * shop price_quote; usteed; priest wake; Deaf response; Hallu
+ * statue rndmonnam.
  */
 async function dochat() {
     // is_silent(you) / Strangled / uswallow / Underwater deferred
@@ -95,7 +114,31 @@ async function dochat() {
 
     const mtmp = mon_at(tx, ty);
     if (!mtmp || mtmp.mundetected) {
-        // statue / wall talk deferred — empty floor → ECMD_OK
+        // C: vobj_at STATUE → "The statue seems not to notice you."
+        const otmp = objects_at(tx, ty);
+        if (otmp && (otmp.otyp | 0) === STATUE) {
+            if (!u.Blind && !u.ublind) {
+                await pline('The statue seems not to notice you.');
+            }
+            return ECMD_OK;
+        }
+        // C: !Deaf && (IS_WALL || SDOOR) — secret door stays wall-like
+        const typ = game.level?.locations?.[tx]?.[ty]?.typ | 0;
+        if (!u.Deaf && (IS_WALL(typ) || typ === SDOOR)) {
+            const blind = !!(u.Blind || u.ublind);
+            const seenTyp = game.lastseentyp?.[tx]?.[ty] | 0;
+            if (blind && !IS_WALL(seenTyp)) {
+                // Blind + unmapped wall: silent
+            } else if (!u.Hallucination) {
+                await pline("It's like talking to a wall.");
+            } else {
+                // C: rn2(10); clamp to last walltalk[] entry
+                let idx = rn2(10);
+                if (idx >= SIZE(WALLTALK)) idx = SIZE(WALLTALK) - 1;
+                await pline(`The wall ${WALLTALK[idx]}`);
+            }
+            return ECMD_OK;
+        }
         return ECMD_OK;
     }
     // M_AP furniture/object deferred
