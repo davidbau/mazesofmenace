@@ -397,7 +397,7 @@ function mwelded(obj) {
  * C ref: monmove.c m_digweapon_check — spend turn wielding dig tool if needed.
  * Returns true when the monster used this move to wield (no place/dig yet).
  */
-function m_digweapon_check(mtmp, nix, niy) {
+async function m_digweapon_check(mtmp, nix, niy) {
     let can_tunnel = false;
     if (!Is_rogue_level(game.u?.uz)) can_tunnel = tunnels(mtmp.data);
     const mw_tmp = MON_WEP(mtmp);
@@ -416,7 +416,8 @@ function m_digweapon_check(mtmp, nix, niy) {
     } else if (here && IS_STWALL(here.typ)) {
         if (!mw_tmp || !is_pick(mw_tmp)) mtmp.weapon_check = NEED_PICK_AXE;
     }
-    if ((mtmp.weapon_check | 0) >= NEED_PICK_AXE && mon_wield_item(mtmp)) {
+    if ((mtmp.weapon_check | 0) >= NEED_PICK_AXE
+        && (await mon_wield_item(mtmp))) {
         return true;
     }
     return false;
@@ -1065,7 +1066,7 @@ export async function m_move(mtmp, after) {
     if (mmoved === MMOVE_NOTHING) return MMOVE_NOTHING;
 
     // C: m_digweapon_check before place — may spend turn wielding dig tool
-    if (m_digweapon_check(mtmp, nix, niy)) {
+    if (await m_digweapon_check(mtmp, nix, niy)) {
         return MMOVE_DONE;
     }
 
@@ -1112,7 +1113,7 @@ export async function dochug(mtmp) {
             && (mtmp.weapon_check | 0) === NEED_WEAPON
             && !(mtmp.mtrapped && !nearby && select_rwep(mtmp))) {
             mtmp.weapon_check = NEED_HTH_WEAPON;
-            if (mon_wield_item(mtmp) !== 0) return 0;
+            if ((await mon_wield_item(mtmp)) !== 0) return 0;
         }
     }
 

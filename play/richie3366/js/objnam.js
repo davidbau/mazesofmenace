@@ -197,23 +197,57 @@ function pretty_base(obj) {
         const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || 'clear';
         return `${buf}${dn} potion`;
     }
-    // C ref: objnam.c xname SCROLL_CLASS — "scroll of <actualn>" when known
-    if (n && n.startsWith('SCR_')) {
-        const actual = objectNameStrs[obj.otyp]
-            || n.slice(4).toLowerCase().replace(/_/g, ' ');
-        if (obj.dknown && (game.objects?.[obj.otyp]?.oc_name_known || obj.known))
-            return `scroll of ${actual}`;
-        return 'scroll';
+    // C ref: objnam.c xname_flags SCROLL_CLASS —
+    // !dknown → "scroll"; nn → "scroll of <actualn>"; un → "scroll called …";
+    // oc_magic → "scroll labeled <dn>"; else "<dn> scroll" (blank paper → unlabeled).
+    // nn is objects[].oc_name_known only (not obj.known).
+    if (obj.oclass === SCROLL_CLASS || (n && n.startsWith('SCR_'))) {
+        const ocl = game.objects?.[obj.otyp];
+        const nn = !!ocl?.oc_name_known;
+        const dknown = !!obj.dknown;
+        const un = ocl?.oc_uname || null;
+        let actual = objectNameStrs[obj.otyp]
+            || (n ? n.slice(4).toLowerCase().replace(/_/g, ' ') : 'scroll');
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
+        if (!dknown) return 'scroll';
+        if (nn) return `scroll of ${actual}`;
+        if (un) return `scroll called ${un}`;
+        if (ocl?.oc_magic) return `scroll labeled ${dn || 'something'}`;
+        return `${dn || 'unlabeled'} scroll`;
     }
-    // C ref: objnam.c xname SPBOOK_CLASS — "spellbook of <actualn>" when known
-    if (n && n.startsWith('SPE_')) {
-        if (n === 'SPE_NOVEL') return 'book';
-        const actual = objectNameStrs[obj.otyp]
-            || n.slice(4).toLowerCase().replace(/_/g, ' ');
-        if (n === 'SPE_BOOK_OF_THE_DEAD') return actual;
-        if (obj.dknown && (game.objects?.[obj.otyp]?.oc_name_known || obj.known))
+    // C ref: objnam.c xname_flags SPBOOK_CLASS —
+    // !dknown → "spellbook"; nn → "spellbook of <actualn>" (BOTD bare);
+    // un → called; else "<dn> spellbook". nn = oc_name_known only (not obj.known).
+    if (obj.oclass === SPBOOK_CLASS || (n && n.startsWith('SPE_'))) {
+        const ocl = game.objects?.[obj.otyp];
+        const nn = !!ocl?.oc_name_known;
+        const dknown = !!obj.dknown;
+        const un = ocl?.oc_uname || null;
+        let actual = objectNameStrs[obj.otyp]
+            || (n ? n.slice(4).toLowerCase().replace(/_/g, ' ') : 'spellbook');
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || actual;
+        if (n === 'SPE_NOVEL') {
+            // C: SPE_NOVEL tribute arms (partial — hallu/called polish deferred)
+            if (!dknown) return 'book';
+            if (nn) return actual;
+            if (un) return `novel called ${un}`;
+            return `${dn} book`;
+        }
+        if (!dknown) return 'spellbook';
+        if (nn) {
+            if (n === 'SPE_BOOK_OF_THE_DEAD') return actual;
             return `spellbook of ${actual}`;
-        return 'spellbook';
+        }
+        if (un) return `spellbook called ${un}`;
+        return `${dn} spellbook`;
     }
     // C ref: objnam.c xname RING_CLASS — "ring of <actualn>" when known
     if (n && n.startsWith('RIN_')) {
@@ -346,6 +380,8 @@ function pretty_base(obj) {
  */
 export function xname(obj) {
     if (!obj) return 'something';
+    // C: Role_if(PM_CLERIC) → obj->bknown = 1 (bypass set_bknown / invent update)
+    if (Role_if(PM_CLERIC)) obj.bknown = 1;
     let base = pretty_base(obj);
     if ((obj.quan || 1) !== 1) base = makeplural(base);
     return base;
@@ -436,9 +472,13 @@ function bimanual(obj) {
 
 /**
  * C ref: objnam.c doname() — invent-kit subset (Tourist/Rogue starter lines).
+ * C doname_base starts with xname(obj), which forces cleric bknown before
+ * the BUC prefix is read; JS doname uses pretty_base so apply the same force.
  */
 export function doname(obj) {
     if (!obj) return 'something';
+    // C: xname Role_if(PM_CLERIC) obj->bknown=1 before doname_base reads it
+    if (Role_if(PM_CLERIC)) obj.bknown = 1;
     const otyp = obj.otyp;
     const oclass = obj.oclass;
     const known = !!obj.known;

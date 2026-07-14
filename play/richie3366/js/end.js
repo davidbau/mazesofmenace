@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { depth } from './hacklib.js';
-import { pline, flush_topl_more } from './display.js';
+import { pline, flush_topl_more, bot } from './display.js';
 import { yn_function } from './getline.js';
 import { show_text_pages } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
@@ -13,7 +13,7 @@ import { Goodbye } from './roles.js';
 import { an } from './objnam.js';
 import { COIN_CLASS } from './objects.js';
 import {
-    DIED, GENOCIDED, STONING, QUIT, NON_PM, CORPSTAT_INIT, CORPSTAT_NONE,
+    DIED, GENOCIDED, STONING, QUIT, ESCAPED, NON_PM, CORPSTAT_INIT, CORPSTAT_NONE,
     OBJ_FREE, Upolyd, MM_NONAME, isok, ACCESSIBLE, MAGIC_PORTAL,
     ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED,
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
@@ -29,6 +29,8 @@ import { write_bonesfile } from './bones.js';
 import { topten, nh_terminate_capture } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
+import { paybill, money2mon } from './shk.js';
+import { shkname, shkname_is_pname } from './shknam.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
@@ -330,11 +332,12 @@ async function show_death_rip_and_summary(how, umoney) {
 }
 
 /**
- * C ref: end.c really_done — gameover; disclose; score; bones; rip; topten.
- * Named omissions: paybill/clearpriests; invent discover_object;
+ * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
+ * Named omissions: clearpriests/paygd; invent discover_object;
  * Schroedinger; dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT;
  * disclose beyond inventory yn; arise pline; wizard bones query;
- * inven_inuse / ball-chain arms of done_object_cleanup.
+ * inven_inuse / ball-chain arms of done_object_cleanup; unleash_all
+ * in finish_paybill.
  */
 async function really_done(how) {
     if (!game.program_state) game.program_state = {};
@@ -346,16 +349,26 @@ async function really_done(how) {
     // C: bones_ok = can_make_bones() before display_nhwindow(WIN_MESSAGE)
     const bones_ok = (how < GENOCIDED) && can_make_bones();
 
+    // C: paybill before display_nhwindow — may append to pending "You die..."
+    let taken = false;
+    if (how !== PANICKED) {
+        const silently = !!(game.program_state.done_stopprint);
+        // croaked: -1 escaped; 0 quit; 1 died (how != QUIT)
+        const croaked = how === ESCAPED ? -1 : (how !== QUIT ? 1 : 0);
+        taken = await paybill(croaked, silently);
+        // paygd / clearpriests deferred
+    }
+
     await flush_topl_more();
 
     // C: strcmp(flags.end_disclose, "none") — array never equals "none"
     // after optfn_disclose; always call disclose (modes inside may no-ask).
     const endDisclose = game.flags?.end_disclose;
     if (endDisclose !== 'none') {
-        await disclose(how, false);
+        await disclose(how, taken);
     }
 
-    // C: score before bones (invent still held)
+    // C: score before bones (invent still held; gold may already be money2mon'd)
     const u = game.u || {};
     let umoney = money_cnt(game.invent);
     // hidden_gold deferred
@@ -381,6 +394,9 @@ async function really_done(how) {
         make_grave(u.ux | 0, u.uy | 0, `${plname}, killed`);
     }
 
+    // C: finish_paybill after disclosure, before bones
+    if (bones_ok && taken) finish_paybill();
+
     if (bones_ok) {
         savebones(how, corpse);
     }
@@ -395,18 +411,56 @@ async function really_done(how) {
 }
 
 /**
+ * C ref: shk.c finish_paybill — drop invent at repo loc (no messages).
+ * Named omissions: unleash_all; impossible off-map arm.
+ */
+function finish_paybill() {
+    const repo = game.repo || {};
+    const shkp = repo.shopkeeper || null;
+    let ox = repo.location?.x | 0;
+    let oy = repo.location?.y | 0;
+    const u = game.u || {};
+    if (!isok(ox, oy)) {
+        ox = u.ux ? u.ux : (u.ux0 | 0);
+        oy = u.ux ? u.uy : (u.uy0 | 0);
+    }
+    // unleash_all deferred
+    if (shkp) {
+        const umoney = money_cnt(game.invent);
+        if (umoney) money2mon(shkp, umoney);
+    }
+    drop_upon_death(null, null, ox, oy);
+}
+
+/**
  * C ref: end.c done_in_by — "You die..." then done(how).
- * Ordinary monsters: pmname + KILLED_BY_AN (uniq/priest/hallu deferred).
+ * Ported: isshk → honorific + shkname + ", the shopkeeper" + KILLED_BY
+ * (D-0313). Named omissions: G_UNIQ / ghost / mimicker / vampshifter /
+ * priest|minion m_monnam / minvis / hallu-distort / monhealthdescr /
+ * multi_reason trim.
  */
 export async function done_in_by(mtmp, how = DIED) {
     await pline(how === STONING ? 'You turn to stone...' : 'You die...');
     if (!game.killer) game.killer = { name: '', format: 0 };
-    const mnum = mtmp?.mnum;
-    const names = (mnum != null) ? pmnames[mnum] : null;
-    game.killer.name = names
-        ? (names[2] || names[0] || names[1] || 'creature')
-        : '';
+    // C: svk.killer.format = KILLED_BY_AN; then branch may override
     game.killer.format = KILLED_BY_AN;
+    let buf = '';
+    if (mtmp?.isshk) {
+        // C end.c: isshk → "%s%s, the shopkeeper" + KILLED_BY
+        const shknm = shkname(mtmp);
+        const honorific = shkname_is_pname(mtmp)
+            ? ''
+            : (mtmp.female ? 'Ms. ' : 'Mr. ');
+        buf = `${honorific}${shknm}, the shopkeeper`;
+        game.killer.format = KILLED_BY;
+    } else {
+        const mnum = mtmp?.mnum;
+        const names = (mnum != null) ? pmnames[mnum] : null;
+        buf = names
+            ? (names[2] || names[0] || names[1] || 'creature')
+            : '';
+    }
+    game.killer.name = buf;
     await done(how);
 }
 
@@ -514,10 +568,14 @@ export async function done2() {
 /**
  * C ref: end.c done — Lifesaved / wizard·discover Die? deferred.
  * Ordinary deaths fall through to really_done.
+ * bot() before HP zero so You die more() (no bot) keeps prior botl when
+ * uhp was -1 at pline flush (D-0310/D-0314).
  */
 export async function done(how) {
-    const flags = game.flags || {};
-    void flags;
+    const flags = game.flags || (game.flags = {});
+    // C: force full status update unless panic/hangup/quit-stopprint
+    flags.botlx = true;
+    await bot();
     const u = game.u || {};
     // C: umortality++ when how < PANICKED (before really_done)
     if (how < PANICKED) {
@@ -525,6 +583,7 @@ export async function done(how) {
         if ((u.uhp | 0) !== 0 || (Upolyd(u) && (u.mh | 0) !== 0)) {
             u.uhp = 0;
             if (Upolyd(u)) u.mh = 0;
+            flags.botl = true;
         }
     }
     await really_done(how);

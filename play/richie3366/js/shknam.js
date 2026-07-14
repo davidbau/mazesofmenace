@@ -287,6 +287,16 @@ export function shkname(mtmp) {
     return shknm;
 }
 
+/**
+ * C ref: shknam.c shkname_is_pname — raw eshk.shknam starts with -/+/=.
+ * Those prefixes mark personal names (no Ms./Mr. honorific in done_in_by).
+ */
+export function shkname_is_pname(mtmp) {
+    const shknm = ESHK(mtmp)?.shknam || '';
+    const c = shknm[0];
+    return c === '-' || c === '+' || c === '=';
+}
+
 /** C ref: shknam.c Shknam — capitalized shkname. */
 export function Shknam(mtmp) {
     const nam = shkname(mtmp);

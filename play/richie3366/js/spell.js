@@ -713,6 +713,7 @@ async function spelleffects_check(spell) {
         await pline('Your knowledge of this spell is twisted.');
         await pline('It invokes nightmarish images in your mind...');
         game.u.uen = Math.max(0, (game.u.uen ?? 0) - rnd(energy));
+        if (game.flags) game.flags.botl = true;
         return { abort: true, res: ECMD_TIME, energy };
     } else if (spellknow(spell) <= Math.trunc(KEEN / 200)) {
         await pline('You strain to recall the spell.');
@@ -769,6 +770,7 @@ async function spelleffects_check(spell) {
     if (confused || (rnd(100) > chance)) {
         await pline('You fail to cast the spell correctly.');
         game.u.uen = (game.u.uen ?? 0) - Math.trunc(energy / 2);
+        if (game.flags) game.flags.botl = true;
         return { abort: true, res: ECMD_TIME, energy };
     }
     return { abort: false, res: ECMD_OK, energy };
@@ -790,6 +792,7 @@ async function spelleffects(spell_otyp, atme, force) {
     }
 
     game.u.uen = (game.u.uen ?? 0) - energy;
+    if (game.flags) game.flags.botl = true;
     exercise(A_WIS, true);
 
     // C: mksobj(force ? spell : spellid(spell), FALSE, FALSE)

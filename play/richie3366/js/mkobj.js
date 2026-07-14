@@ -774,12 +774,15 @@ function clear_dknown(obj) {
 export function mksobj(otyp, init, artif) {
     const objects = objs();
     // C ref: mkobj.c unknow_object — known = oc_uses_known ? 0 : 1
-    // Weapons/armor/charged tools use known for +/- / charges; scrolls/potions
-    // start known=1 so ini_inv_use_obj can discover_object them.
+    // Weapons/armor/wands/charged tools use known for +/- / charges;
+    // scrolls/potions start known=1 so ini_inv_use_obj can discover_object.
+    // C WAND() BITS uskn=1 (objects.h) — table lacks oc_uses_known yet.
     const uskn = (() => {
         const n = objectNames[otyp] || '';
         const cls = objects[otyp]?.oc_class ?? 0;
-        if (cls === WEAPON_CLASS || cls === ARMOR_CLASS) return true;
+        if (cls === WEAPON_CLASS || cls === ARMOR_CLASS || cls === WAND_CLASS)
+            return true;
+        if (n && n.startsWith('WAN_')) return true;
         if (['DART', 'SHURIKEN', 'BOOMERANG', 'EXPENSIVE_CAMERA',
             'MAGIC_MARKER', 'CRYSTAL_BALL'].includes(n)) return true;
         return false;

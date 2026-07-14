@@ -202,20 +202,23 @@ export async function thitu(tlev, dam, objp, name) {
     const dieroll = rnd(20);
     if (uac + tlev <= dieroll) {
         game._mesg_given = (game._mesg_given || 0) + 1;
+        // C: miss pline before return — await so --More-- keeps caller tmp_at
         if (Blind || !verbose) {
-            pline('It misses.');
+            await pline('It misses.');
         } else if (uac + tlev <= dieroll - 2) {
             const subj = upstart(onm);
-            pline(`${subj} ${vtense(onm, 'miss')} you.`);
+            await pline(`${subj} ${vtense(onm, 'miss')} you.`);
         } else {
-            pline(`You are almost hit by ${onm}.`);
+            await pline(`You are almost hit by ${onm}.`);
         }
         return 0;
     }
+    // C: You("are hit…") then losehp — await so --More-- on prior topline
+    // still shows m_throw tmp_at flash and pre-damage botl HP.
     if (Blind || !verbose) {
-        pline(`You are hit${exclam(dam)}`);
+        await pline(`You are hit${exclam(dam)}`);
     } else {
-        pline(`You are hit by ${onm}${exclam(dam)}`);
+        await pline(`You are hit by ${onm}${exclam(dam)}`);
     }
     // C: losehp → done(DIED) noreturn — skip exercise on fatal
     losehp(dam, onm, /* KILLED_BY */ 1);
@@ -402,7 +405,8 @@ async function monshoot(mtmp, otmp, mwep) {
             // C: singular then obj_is_pname ? the : an
             onm = an(singular(otmp, xname));
         }
-        pline(`${Monnam(mtmp)} ${shooting ? 'shoots' : 'throws'} ${onm}!`);
+        // C: pline before m_throw — await any --More-- before flight flash
+        await pline(`${Monnam(mtmp)} ${shooting ? 'shoots' : 'throws'} ${onm}!`);
     }
 
     for (let i = 1; i <= multishot; i++) {
@@ -439,7 +443,7 @@ export async function thrwmu(mtmp) {
 async function thrwmu_body(mtmp) {
     if (mtmp.weapon_check === NEED_WEAPON || !MON_WEP(mtmp)) {
         mtmp.weapon_check = NEED_RANGED_WEAPON;
-        if (mon_wield_item(mtmp) !== 0) return;
+        if ((await mon_wield_item(mtmp)) !== 0) return;
     }
 
     const otmp = select_rwep(mtmp);

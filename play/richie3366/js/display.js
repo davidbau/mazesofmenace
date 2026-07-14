@@ -443,6 +443,8 @@ export function reset_display_messages() {
     _toplin = TOPLINE_EMPTY;
     _win_stop = false;
     _delay_flushing = false;
+    _lastStatus1 = '';
+    _lastStatus2 = '';
 }
 
 // ── ANSI color codes ──
@@ -1236,6 +1238,11 @@ function _statusLine1() {
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
 }
 
+// Last bot()-committed status. C paints WIN_STATUS only in bot();
+// pline→flush_screen calls bot() when disp.botl before putmesg (D-0314).
+let _lastStatus1 = '';
+let _lastStatus2 = '';
+
 // C ref: botl.c describe_level — "Dlvl:%-2d" uses depth(&u.uz), not dunlev;
 // Xp:/T: gated by flags.showexp / flags.time (default off);
 // BL_CONDITION Ride when u.usteed (botl.c condtests[bl_ride]).
@@ -1245,7 +1252,7 @@ function _statusLine2() {
     if (!u) return '';
     const flags = game.flags || {};
     const dlvl = depth(u.uz) || 1;
-    // C botl.c bot1/bot2 + get_blstats: hp < 0 → 0 (gameover uhp=-1)
+    // C botl.c get_blstats: hp < 0 → 0 for display when bot() runs
     let hp = u.uhp | 0;
     if (hp < 0) hp = 0;
     if (hp > 9999) hp = 9999;
@@ -1257,6 +1264,20 @@ function _statusLine2() {
     // C windows.c BL_MASK_RIDE → " Ride" (leading space in strcat)
     if (u.usteed) s += ' Ride';
     return s;
+}
+
+/** C ref: botl.c bot — no-op when u.uhp == -1 (dosave / exact overkill). */
+function _botSuppressed() {
+    return (game.u?.uhp | 0) === -1;
+}
+
+/** Commit live status into the botl cache (C bot() putstr WIN_STATUS). */
+function _commitStatusLines() {
+    const s1raw = _statusLine1();
+    _lastStatus1 = s1raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
+        m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
+    _lastStatus2 = _statusLine2();
+    return s1raw;
 }
 
 export { _statusLine2 as status_line_2 };
@@ -1390,9 +1411,18 @@ function _buildScreenOutput() {
         output += render_map_row(y) + '\n';
     }
 
-    // Row 22-23: status
-    output += _statusLine1() + '\n';
-    output += _statusLine2();
+    // Row 22-23: status from last bot() commit (C never live-paints here)
+    let s1raw;
+    let s2;
+    if (_lastStatus2) {
+        s1raw = _lastStatus1;
+        s2 = _lastStatus2;
+    } else {
+        s1raw = _commitStatusLines();
+        s2 = _lastStatus2;
+    }
+    output += s1raw + '\n';
+    output += s2;
 
     game._screen_output = output;
 
@@ -1427,12 +1457,11 @@ function _buildScreenOutput() {
                 display.setCell(x - 1, sr, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
             }
         }
-        // Status lines
-        const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
-            m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+        // Status lines from last bot() (uhp==-1 skip keeps prior)
+        const s1 = _lastStatus1 || s1raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
+            m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
         for (let c = 0; c < Math.min(s1.length, display.cols); c++)
             display.setCell(c, 22, s1[c], NO_COLOR, 0);
-        const s2 = _statusLine2();
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
         // Cursor: prompts stay on topline; otherwise hero.
@@ -1487,6 +1516,7 @@ function _paintToplineOnly() {
 // ── flush_screen ──
 // C ref: display.c flush_screen — mode -1 toggles postpone; while postponed,
 // map/botl flushes are no-ops (message paints still allowed for more()).
+// Before painting, bot() when disp.botl|botlx (C display.c).
 export async function flush_screen(mode) {
     // Menu/text overlays paint the Terminal grid directly; don't clobber them.
     // C ref: invent display / NHW_MENU / NHW_TEXT stay until dismissed.
@@ -1500,6 +1530,12 @@ export async function flush_screen(mode) {
         _paintToplineOnly();
         return;
     }
+    const flags = game.flags || {};
+    if (flags.botl || flags.botlx) await bot();
+    else if (flags.time_botl) {
+        // timebot deferred — clear flag so it does not stick
+        flags.time_botl = false;
+    }
     _buildScreenOutput();
 }
 
@@ -1512,6 +1548,9 @@ export async function cls() {
     } else {
         _toplin = TOPLINE_EMPTY;
     }
+    // C display.c cls — force botl redraw on next flush/bot
+    if (!game.flags) game.flags = {};
+    game.flags.botlx = true;
     const display = game?.nhDisplay;
     if (display?.clearScreen) display.clearScreen();
     game._pending_message = '';
@@ -1520,13 +1559,20 @@ export async function cls() {
 }
 
 // ── bot ──
+// C ref: botl.c bot — no-op body when u.uhp == -1; always clear botl flags.
 export async function bot() {
-    // Status line updates happen in _buildScreenOutput
+    if (!_botSuppressed()) _commitStatusLines();
+    if (game.flags) {
+        game.flags.botl = false;
+        game.flags.botlx = false;
+        game.flags.time_botl = false;
+    }
 }
 
 // C ref: getline.c xwaitforspace("\033 ") — only ESC/space/return dismiss
 // Other keys are consumed (bell) and the wait continues. Each nhgetch is a
 // capture boundary, matching C session steps with 0 RNG at --More--.
+// C more() does not call flush_screen/bot — only message; paint cached botl.
 export async function more() {
     // Lazy import avoids display ↔ input cycle (nhgetch calls topline hooks).
     const { nhgetch } = await import('./input.js');
@@ -1553,7 +1599,10 @@ export async function more() {
     } else {
         game._pending_message = base + '--More--';
     }
-    await flush_screen(1);
+    // C more() does not flush_screen; when map flush is postponed
+    // (goto_level), only paint topline so the stale map remains.
+    if (_delay_flushing) _paintToplineOnly();
+    else _buildScreenOutput();
     const disp = game?.nhDisplay;
     if (disp) {
         const msg = game._pending_message || '';
@@ -1617,11 +1666,13 @@ export async function verbalize(msg) {
 }
 
 // ── pline ──
-// C ref: topl.c update_topl / addtopl / redotoplin — append if room, else
-// more() then replace; word-break `\n` when len≥CO; more() if cury>0.
+// C ref: pline.c vpline — flush_screen before putmesg; topl.c update_topl.
 export async function pline(msg) {
     if (msg == null || msg === '') return;
     const CO = game?.nhDisplay?.cols || 80;
+    // C: if (u.ux) flush_screen(...) before putmesg — botl update first
+    if (game.u?.ux) await flush_screen(1);
+
     // Capture skip before more(); C still paints the new line with the
     // pre-more skip flag even if ESC sets WIN_STOP during more().
     const skip = _win_stop;

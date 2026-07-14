@@ -356,8 +356,8 @@ export async function mattacku(mtmp) {
             } else {
                 if (mtmp.weapon_check === NEED_WEAPON || !MON_WEP(mtmp)) {
                     mtmp.weapon_check = NEED_HTH_WEAPON;
-                    // mon_wield_item HTH body still stub — returns 0
-                    if (mon_wield_item(mtmp) !== 0) break;
+                    // C: mon_wield_item spends turn when it switches weapon
+                    if ((await mon_wield_item(mtmp)) !== 0) break;
                 }
                 if (foundyou) {
                     const mon_currwep = MON_WEP(mtmp);

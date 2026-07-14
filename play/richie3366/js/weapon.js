@@ -5,8 +5,10 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { flush_topl_more } from './display.js';
+import { flush_topl_more, pline, canseemon } from './display.js';
 import { select_menu_pick_none } from './invent.js';
+import { Monnam } from './do_name.js';
+import { doname } from './objnam.js';
 import {
     WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
@@ -371,11 +373,14 @@ export function select_hwep(mtmp) {
 
 /**
  * C ref: weapon.c mon_wield_item — HTH + ranged + dig-tool pick/axe.
- * Named omissions: weld plines, artifact_light, mwelded refuse-wield body.
+ * Named omissions: mwelded refuse-wield plines, weld-on-wield, artifact_light,
+ * autoreturn tether pline.
  */
-export function mon_wield_item(mon) {
+export async function mon_wield_item(mon) {
     if (mon.weapon_check === NO_WEAPON_WANTED) return 0;
     let obj = null;
+    // C: dig tools use '.' (exclaim FALSE); HTH/ranged use '!'
+    let exclaim = true;
     switch (mon.weapon_check) {
     case NEED_HTH_WEAPON:
         obj = select_hwep(mon);
@@ -389,10 +394,12 @@ export function mon_wield_item(mon) {
         if (!obj && !mon_has_shield(mon)) {
             obj = m_carrying(mon, DWARVISH_MATTOCK);
         }
+        exclaim = false;
         break;
     case NEED_AXE:
         obj = m_carrying(mon, BATTLE_AXE);
         if (!obj || mon_has_shield(mon)) obj = m_carrying(mon, AXE);
+        exclaim = false;
         break;
     case NEED_PICK_OR_AXE:
         obj = m_carrying(mon, DWARVISH_MATTOCK);
@@ -401,6 +408,7 @@ export function mon_wield_item(mon) {
             obj = m_carrying(mon, PICK_AXE);
             if (!obj) obj = m_carrying(mon, AXE);
         }
+        exclaim = false;
         break;
     default:
         mon.weapon_check = NEED_WEAPON;
@@ -415,8 +423,15 @@ export function mon_wield_item(mon) {
         // mwelded refuse-wield deferred — treat as free switch
         mon.mw = obj;
         if (mw_tmp) mw_tmp.owornmask = (mw_tmp.owornmask || 0) & ~W_WEP;
-        obj.owornmask = (obj.owornmask || 0) | W_WEP;
         mon.weapon_check = NEED_WEAPON;
+        // C: canseemon → pline_mon("%s wields %s%c", Monnam, doname, !|.)
+        // before final owornmask (weld/artifact_light arms deferred)
+        if (canseemon(mon)) {
+            await pline(
+                `${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`,
+            );
+        }
+        obj.owornmask = (obj.owornmask || 0) | W_WEP;
         return 1;
     }
     mon.weapon_check = NEED_WEAPON;

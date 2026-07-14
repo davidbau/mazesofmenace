@@ -4,14 +4,15 @@
 import { game } from './gstate.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok,
-    IS_OBSTRUCTED, IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN,
+    IS_OBSTRUCTED, IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
+    is_pit,
 } from './const.js';
-import { pline, newsym } from './display.js';
+import { pline, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
 import { m_at } from './mon.js';
 import { cansee, recalc_block_point } from './vision.js';
-import { is_hider, throws_rocks } from './monsters.js';
+import { is_hider, throws_rocks, noncorporeal } from './monsters.js';
 import { objects_at, obj_extract_self, place_object } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { xname } from './objnam.js';
@@ -32,6 +33,72 @@ function doorless_door(x, y) {
     if (!loc || !IS_DOOR(loc.typ)) return false;
     const m = loc.doormask || 0;
     return m === D_NODOOR || m === D_BROKEN;
+}
+
+/** C ref: hack.c closed_door — D_CLOSED | D_LOCKED. */
+function closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/**
+ * Local t_at — trap.js imports hack.js, so avoid the cycle.
+ * C ref: trap.c t_at.
+ */
+function t_at_local(x, y) {
+    const traps = game.level?.traps;
+    if (!traps) return null;
+    for (const t of traps) {
+        if (t && (t.tx | 0) === (x | 0) && (t.ty | 0) === (y | 0)) return t;
+    }
+    return null;
+}
+
+/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
+async function You_hear(line) {
+    const u = game.u || {};
+    if (u.Deaf || game.flags?.acoustics === false) return;
+    await pline(`You hear ${line}`);
+}
+
+/**
+ * C ref: do_name.c a_monnam — ARTICLE_A subtype name (uhitm local twin).
+ * Hallu / invisible / named-pet arms deferred.
+ */
+function a_monnam(mtmp) {
+    if (!mtmp) return 'a monster';
+    if (mtmp.mextra?.mgivenname) return mtmp.mextra.mgivenname;
+    const raw = mtmp?.data?.name || 'monster';
+    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+    const an = /^[aeiou]/i.test(plain) ? 'an' : 'a';
+    return `${an} ${plain}`;
+}
+
+/**
+ * C ref: hack.c cannot_push_msg — vain-push topline (no monster-behind).
+ */
+async function cannot_push_msg(otmp, sx, sy) {
+    const what = `the ${xname(otmp)}`;
+    if (game.u?.usteed) {
+        await pline(`Your steed tries to move ${what}, but cannot.`);
+    } else {
+        await pline(`You try to move ${what}, but in vain.`);
+    }
+    // Blind feel_location deferred
+}
+
+/**
+ * C ref: hack.c cannot_push — giant/squeeze may return 0; else -1.
+ * Named omissions: throws_rocks pickup/maneuver arms, could_move_onto_boulder.
+ */
+async function cannot_push(otmp, sx, sy) {
+    if (throws_rocks(game.youmonst?.data)) {
+        // giant pickup / maneuver-over plines deferred — still abort push
+        return -1;
+    }
+    // could_move_onto_boulder squeeze deferred
+    return -1;
 }
 
 /**
@@ -81,6 +148,12 @@ async function dopush(sx, sy, rx, ry, otmp) {
     }
     bp.time = moves;
 
+    // C: if glyph_is_invisible(dest) → unmap_object before movobj/newsym
+    // (I from You_hear monster-behind must yield to the pushed boulder).
+    const dloc = game.level?.at(rx, ry);
+    if (dloc?.remembered_glyph?.invisible) {
+        dloc.remembered_glyph = null; // unmap_object trap/engr arms deferred
+    }
     otmp.next_boulder = 0;
     movobj(otmp, rx, ry);
     newsym(sx, sy);
@@ -88,10 +161,11 @@ async function dopush(sx, sy, rx, ry, otmp) {
 
 /**
  * C ref: hack.c moverock_core — push boulder(s) at (sx,sy) along u.dx/u.dy.
- * Branch envelope: clear-destination dopush + exercise. Named omissions:
- * Sokoban diagonal, shop costly, trap/teleport/pool arms, Blind feel,
- * Levitation leverage, giant/squeeze/nopick, tunneling chew, revive_nasty,
- * monster-behind, closed-door dest, next_boulder naming.
+ * Branch envelope: clear-dest dopush + monster-behind You_hear/canspotmon
+ * + closed_door cannot_push_msg (D-0317). Named omissions: Sokoban diagonal,
+ * shop costly, trap/teleport/pool arms, Blind feel, Levitation (present),
+ * verysmall, giant/squeeze/nopick, tunneling chew, revive_nasty,
+ * next_boulder naming, y_monnam steed wording, cannot_push giant arms.
  * Returns 0 to advance onto vacated cell, -1 to abort the move.
  */
 async function moverock_core(sx, sy) {
@@ -120,15 +194,53 @@ async function moverock_core(sx, sy) {
             && !sobj_at(BOULDER, rx, ry);
 
         if (clear) {
-            // Trap / monster-behind / closed_door / pool arms deferred
-            if (m_at(rx, ry)) {
-                await pline(`You try to move the ${xname(otmp)}, but in vain.`);
-                return -1;
+            const ttmp = t_at_local(rx, ry);
+            const mtmp = m_at(rx, ry);
+
+            // C: Sokoban diagonal / revive_nasty deferred
+
+            // C ref: hack.c moverock_core — monster on far side of boulder
+            if (mtmp && !noncorporeal(mtmp.data)
+                && (!mtmp.mtrapped || !(ttmp && is_pit(ttmp.ttyp)))) {
+                let deliver_part1 = false;
+                // Blind feel_location deferred
+                if (canspotmon(mtmp)) {
+                    await pline(`There's ${a_monnam(mtmp)} on the other side.`);
+                    deliver_part1 = true;
+                } else {
+                    // Soundeffect deferred
+                    await You_hear(`a monster behind the ${xname(otmp)}.`);
+                    if (!u.Deaf) deliver_part1 = true;
+                    map_invisible(rx, ry);
+                }
+                if (game.flags?.verbose !== false) {
+                    // y_monnam(usteed) deferred — rare on ordinary push
+                    const you_or_steed = u.usteed ? 'your steed' : 'you';
+                    if (deliver_part1) {
+                        await pline(
+                            `Perhaps that's why ${you_or_steed} cannot move it.`,
+                        );
+                    } else {
+                        const who = you_or_steed.charAt(0).toUpperCase()
+                            + you_or_steed.slice(1);
+                        await pline(
+                            `${who} cannot move the ${xname(otmp)}.`,
+                        );
+                    }
+                }
+                return cannot_push(otmp, sx, sy);
             }
+
+            if (closed_door(rx, ry)) {
+                await cannot_push_msg(otmp, sx, sy);
+                return cannot_push(otmp, sx, sy);
+            }
+
+            // Trap / pool / disturb_buried_zombies arms deferred
             await dopush(sx, sy, rx, ry, otmp);
         } else {
-            await pline(`You try to move the ${xname(otmp)}, but in vain.`);
-            return -1;
+            await cannot_push_msg(otmp, sx, sy);
+            return cannot_push(otmp, sx, sy);
         }
     }
     return 0;
@@ -308,8 +420,11 @@ export function losehp(n, knam, k_format = KILLED_BY) {
 
     u.uhp = (u.uhp || 0) - n;
     if ((u.uhp || 0) > (u.uhpmax || 0)) u.uhpmax = u.uhp;
+    // C hack.c losehp: do not clamp uhp on fatal — leave negative so bot()
+    // no-ops when uhp==-1 (exact overkill) and prior botl stays through the
+    // deferred hit --More-- before urgent_pline("You die...") / done().
+    // done() zeros uhp after its bot() call (end.c).
     if ((u.uhp || 0) < 1) {
-        u.uhp = 0;
         // C: urgent_pline("You die..."); done(DIED); — noreturn
         if (!game.program_state) game.program_state = {};
         game.program_state.gameover = true;
