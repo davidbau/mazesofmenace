@@ -331,6 +331,30 @@ export function is_undead(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_UNDEAD);
 }
 
+/** C ref: mondata.h is_golem */
+export function is_golem(ptr) {
+    return ptr?.mlet === 'S_GOLEM';
+}
+
+/** C ref: mondata.h weirdnonliving — golem or vortex */
+export function weirdnonliving(ptr) {
+    return is_golem(ptr) || ptr?.mlet === 'S_VORTEX';
+}
+
+// C: (ptr) == &mons[PM_MANES]
+const PM_MANES = monsterNames.indexOf('PM_MANES');
+
+/**
+ * C ref: mondata.h nonliving —
+ * is_undead || manes || weirdnonliving (golem/vortex).
+ */
+export function nonliving(ptr) {
+    if (!ptr) return false;
+    return is_undead(ptr)
+        || (ptr.mndx ?? -1) === PM_MANES
+        || weirdnonliving(ptr);
+}
+
 /** C ref: mondata.h strongmonst */
 export function strongmonst(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_STRONG);

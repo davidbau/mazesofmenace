@@ -56,12 +56,16 @@ const GEMSTONE = 20;
 const MINERAL = 21;
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
+const ARM_SHIELD = 1;
 const ARM_GLOVES = 3;
 const ARM_BOOTS = 4;
 
 // C ref: objects.h dragon scales window used by xname / obj_typename
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+const ELVEN_SHIELD = objectNames.indexOf('ELVEN_SHIELD');
+const ORCISH_SHIELD = objectNames.indexOf('ORCISH_SHIELD');
+const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 
 /**
  * C ref: objnam.c GemStone(typ) — gems/rocks that append " stone".
@@ -352,22 +356,46 @@ function pretty_base(obj) {
         else buf += dn;
         return buf;
     }
+    // C ref: objnam.c xname_flags ARMOR_CLASS —
+    // dragon scales → "set of <actualn>"; boots|gloves → "pair of " + fallthru;
+    // shield !dknown → elven…orcish "shield" / reflection "smooth shield";
+    // nn → actualn; un → "<simple> called …" (armor_simple_name deferred → dn);
+    // else → dn (OBJ_DESCR). Shared descrs need !oc_name_known (orcish helm).
+    if (obj.oclass === ARMOR_CLASS) {
+        const ocl = game.objects?.[obj.otyp];
+        const nn = !!ocl?.oc_name_known;
+        const dknown = !!obj.dknown;
+        const un = ocl?.oc_uname || null;
+        let actual = PRETTY[n] || objectNameStrs[obj.otyp]
+            || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        let dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
+        if (!dn) dn = actual;
+        const typ = obj.otyp;
+        if (typ >= GRAY_DRAGON_SCALES && typ <= YELLOW_DRAGON_SCALES) {
+            return `set of ${actual}`;
+        }
+        const armcat = ocl?.oc_skill ?? -1;
+        let buf = '';
+        if (armcat === ARM_BOOTS || armcat === ARM_GLOVES) {
+            buf = 'pair of ';
+        } else if (armcat === ARM_SHIELD && !dknown) {
+            if (typ >= ELVEN_SHIELD && typ <= ORCISH_SHIELD) return 'shield';
+            if (typ === SHIELD_OF_REFLECTION) return 'smooth shield';
+        }
+        if (nn) buf += actual;
+        else if (un) buf += `${dn} called ${un}`; // named omit: armor_simple_name
+        else buf += dn;
+        return buf;
+    }
     let base = PRETTY[n] || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
     // C ref: objnam.c xname — Samurai Japanese_item_name overrides actualn
     if (Role_if_samurai()) {
         const jn = Japanese_item_name(obj.otyp, null);
         if (jn) base = jn;
-    }
-    // C ref: objnam.c xname ARMOR gloves|boots / dragon scales
-    if (obj.oclass === ARMOR_CLASS) {
-        const typ = obj.otyp;
-        if (typ >= GRAY_DRAGON_SCALES && typ <= YELLOW_DRAGON_SCALES) {
-            return `set of ${base}`;
-        }
-        const armcat = game.objects?.[typ]?.oc_skill ?? -1;
-        if (armcat === ARM_GLOVES || armcat === ARM_BOOTS) {
-            return `pair of ${base}`;
-        }
     }
     return base;
 }

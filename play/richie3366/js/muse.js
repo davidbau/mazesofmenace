@@ -16,6 +16,7 @@ import {
 } from './objects.js';
 import { observe_object, makeknown } from './invent.js';
 import { losehp, nomul } from './hack.js';
+import { finish_losehp_done } from './end.js';
 import { m_seenres, monstseesu, monstunseesu } from './mondata.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
@@ -185,12 +186,18 @@ async function mbhitm(mtmp, otmp, hits_you) {
             && !(game._buzzer && !game._buzzer.mwandexp)
         ) {
             monstunseesu(M_SEEN_MAGR);
+            // C: pline then losehp — await hit --More-- before damage/death
             await pline('The wand hits you!');
             let tmp = d(2, 12);
             if (u.HHalf_spell_damage || u.EHalf_spell_damage || u.Half_spell_damage) {
                 tmp = Math.trunc((tmp + 1) / 2);
             }
+            // C losehp → done(DIED) noreturn — finish death before return
             losehp(tmp, 'wand', KILLED_BY_AN);
+            if (game.program_state?.gameover) {
+                await finish_losehp_done();
+                return 0;
+            }
             learnit = true;
         } else {
             await pline('The wand misses you.');
@@ -235,6 +242,8 @@ async function mbhit(mon, range, obj) {
         }
         if (u_at(x, y)) {
             await mbhitm(null, obj, true);
+            // C: fatal losehp never returns — stop beam after hero death
+            if (game.program_state?.gameover) return;
             r -= 3;
         } else {
             const mtmp = m_at(x, y);
@@ -279,6 +288,8 @@ export async function use_offensive(mtmp) {
         game._buzzer = mtmp;
         await mbhit(mtmp, rn1(8, 6), otmp);
         game._buzzer = null;
+        // C: mbhitm fatal losehp never returns to use_offensive
+        if (game.program_state?.gameover) return 1;
         mtmp.mwandexp = true;
         return (mtmp.mhp | 0) < 1 ? 1 : 2;
     }

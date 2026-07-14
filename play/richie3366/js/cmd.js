@@ -35,7 +35,7 @@ import { dosearch } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
 import { wiz_wish } from './wizcmds.js';
 import { dowield, dowieldquiver } from './wield.js';
-import { dowhatis, dohelp } from './pager.js';
+import { dowhatis, doquickwhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
 import { spoteffects, dopickup } from './pickup.js';
 import { getpos } from './getpos.js';
@@ -699,6 +699,10 @@ export async function rhack(key) {
     } else if (ch === '/') {
         // C ref: pager.c dowhatis / do_look — ECMD_OK, no turn
         await dowhatis();
+        game.context.move = 0;
+    } else if (ch === ';') {
+        // C ref: cmd.c ';' → glance / pager.c doquickwhatis → do_look(1)
+        await doquickwhatis();
         game.context.move = 0;
     } else if (ch === '?') {
         // C ref: pager.c dohelp — ECMD_OK, no turn

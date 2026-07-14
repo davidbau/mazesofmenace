@@ -116,10 +116,25 @@ export function write_bonesfile(lev) {
     const locations = [];
     if (lvl?.locations) {
         for (let x = 0; x < lvl.locations.length; x++) {
-            locations[x] = (lvl.locations[x] || []).map((cell) =>
-                cell ? { ...cell } : null);
+            // C bones.c savebones — clear seenv/waslit/glyph before save
+            locations[x] = (lvl.locations[x] || []).map((cell) => {
+                if (!cell) return null;
+                const out = { ...cell };
+                out.seenv = 0;
+                out.waslit = false;
+                out.remembered_glyph = undefined;
+                out.disp_ch = ' ';
+                out.disp_color = 8; // NO_COLOR
+                out.disp_decgfx = false;
+                out.disp_attr = 0;
+                out.gnew = 0;
+                out.glyph_symidx = -1;
+                return out;
+            });
         }
     }
+    // C: svl.lastseentyp[x][y] = 0
+    if (game.lastseentyp) game.lastseentyp = null;
 
     const fmon = [];
     for (const m of game.fmon || []) {
@@ -250,7 +265,21 @@ export function try_load_bones(lev) {
             const col = payload.locations[x];
             if (!col) continue;
             for (let y = 0; y < col.length; y++) {
-                if (col[y] && map.locations[x]) map.locations[x][y] = { ...col[y] };
+                if (col[y] && map.locations[x]) {
+                    const cell = { ...map.locations[x][y], ...col[y] };
+                    // C savebones cleared glyph memory; strip any stale
+                    // display/memory fields from older JS bones payloads.
+                    cell.seenv = 0;
+                    cell.waslit = false;
+                    cell.remembered_glyph = undefined;
+                    cell.disp_ch = ' ';
+                    cell.disp_color = 8;
+                    cell.disp_decgfx = false;
+                    cell.disp_attr = 0;
+                    cell.gnew = 0;
+                    cell.glyph_symidx = -1;
+                    map.locations[x][y] = cell;
+                }
             }
         }
     }

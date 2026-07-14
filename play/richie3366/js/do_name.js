@@ -11,8 +11,30 @@ import {
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { shkname } from './shknam.js';
+import { monsterNames } from './generated/monsters_data.js';
 
 const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
+const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+
+/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+function s_suffix(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+/**
+ * C ref: do_name.c x_monnam — named PM_GHOST → "<name>'s ghost" (ARTICLE_NONE).
+ * name_at_start clears article for mon_nam / Monnam / y_monnam callers.
+ */
+function named_ghost_monnam(mtmp) {
+    if (!mtmp || (mtmp.mnum | 0) !== PM_GHOST) return null;
+    if (!has_mgivenname(mtmp)) return null;
+    return `${s_suffix(MGIVENNAME(mtmp))} ghost`;
+}
 
 /**
  * C ref: do_name.c christen_monst — assign MGIVENNAME (pet / #name).
@@ -57,6 +79,8 @@ function saddle_adj(mtmp, suppress = 0) {
  */
 export function x_monnam_tame(mtmp) {
     if (!mtmp) return 'it';
+    const ghost = named_ghost_monnam(mtmp);
+    if (ghost) return ghost;
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     const plain = mon_plain_name(mtmp);
     const sad = saddle_adj(mtmp);
@@ -78,6 +102,18 @@ function x_monnam_do_it(mtmp) {
 }
 
 /**
+ * C ref: do_name.c distant_monnam(ARTICLE_NONE) — farlook / glance name.
+ * Astral high-cleric conceal deferred; hallu deferred.
+ */
+export function distant_monnam_none(mtmp) {
+    if (!mtmp) return 'it';
+    const ghost = named_ghost_monnam(mtmp);
+    if (ghost) return ghost;
+    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
+    return `${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
+}
+
+/**
  * C ref: do_name.c mon_nam — ARTICLE_THE; unseen → "it"; named → bare name.
  * Shopkeeper → shkname (D-0307). Hallu / invis adj / priest / AUGMENT_IT deferred.
  */
@@ -89,6 +125,9 @@ export function mon_nam(mtmp) {
         const nam = shkname(mtmp);
         if (nam) return nam;
     }
+    // C x_monnam: do_name && has_mgivenname && PM_GHOST → s_suffix(name)+" ghost"
+    const ghost = named_ghost_monnam(mtmp);
+    if (ghost) return ghost;
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     return `the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
 }
@@ -106,6 +145,8 @@ export function Monnam(mtmp) {
  */
 export function noit_Monnam(mtmp) {
     if (!mtmp) return 'It';
+    const ghost = named_ghost_monnam(mtmp);
+    if (ghost) return highc_name(ghost);
     if (has_mgivenname(mtmp)) return highc_name(MGIVENNAME(mtmp));
     if (mtmp.mtame) {
         return highc_name(`your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);

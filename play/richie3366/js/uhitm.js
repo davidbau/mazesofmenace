@@ -7,18 +7,20 @@ import { rn2, rnd, d } from './rng.js';
 import {
     IS_OBSTRUCTED, HMON_MELEE, STRAT_WAITMASK,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
-    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT,
+    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_WHIP,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MIM_REVEAL,
 } from './const.js';
 import {
-    WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS, objectNameStrs, objectNames,
+    WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
+    objectNameStrs, objectNames,
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
-import { pline, newsym } from './display.js';
+import { pline, newsym, canseemon } from './display.js';
 import { dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus } from './weapon.js';
+import { PM_BARBARIAN } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, mhitm_knockback,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW,
@@ -26,7 +28,7 @@ import {
 } from './mhitm.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
-    bigmonst, thick_skinned, monsterNames,
+    bigmonst, thick_skinned, monsterNames, nonliving,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
@@ -58,6 +60,37 @@ const AD_CORR = 42;
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const TOWEL = objectNames.indexOf('TOWEL');
+// C objclass.h ARM_SHIELD — armor oc_skill / oc_armcat
+const ARM_SHIELD = 1;
+
+/** C ref: zap.c exclam — punctuation by damage force. */
+function exclam(force) {
+    if (force < 0) return '?';
+    if (force <= 4) return '.';
+    return '!';
+}
+
+/**
+ * C ref: uhitm.c hmon_hitmon_msg_hit verb — bash/lash/smite/hit.
+ * is_shield via ARMOR + oc_skill==ARM_SHIELD; wet towel = TOWEL+spe>0.
+ */
+function hmon_hit_verb(obj) {
+    if (obj) {
+        const skill = game.objects?.[obj.otyp]?.oc_skill ?? -1;
+        if ((obj.oclass === ARMOR_CLASS && skill === ARM_SHIELD)
+            || obj.otyp === HEAVY_IRON_BALL) {
+            return 'bash';
+        }
+        if (skill === P_WHIP
+            || (obj.otyp === TOWEL && (obj.spe | 0) > 0)) {
+            return 'lash';
+        }
+    }
+    if (game.urole?.mnum === PM_BARBARIAN) return 'smite';
+    return 'hit';
+}
 
 // C ref: display.h _is_safemon — tame/peaceful, spotted, not conf/hallu/stun
 export function is_safemon(mon) {
@@ -249,7 +282,10 @@ async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         }
     }
     if (!nomsg) {
-        const verb = 'kill'; // nonliving → destroy deferred
+        // C mon.c xkilled: nonliving(mtmp->data) ? "destroy" : "kill"
+        // Named omissions: wasinside/canspotmon "it"; tame poor/named pet
+        // x_monnam ARTICLE arms (still mon_nam for all seen kills).
+        const verb = nonliving(mtmp.data) ? 'destroy' : 'kill';
         await pline(`You ${verb} ${mon_nam(mtmp)}!`);
     }
     mondead(mtmp);
@@ -346,11 +382,12 @@ async function hmon(mon, obj, thrown, _dieroll) {
     const destroyed = (mon.mhp | 0) < 1;
     if (destroyed) mon.mhp = 0;
 
-    // C: msg_hit only if !hittxt && (!destroyed || thrown-multishot)
+    // C: hmon_hitmon_msg_hit — !hittxt && (!destroyed || thrown-multishot)
     if (thrown === HMON_MELEE && !destroyed && !hittxt) {
         if (game.flags?.verbose !== false) {
-            // canseemon ? exclam(dmg) : "." — period stand-in; full exclam later
-            await pline(`You hit ${mon_nam(mon)}.`);
+            // C: You("%s %s%s", verb, mon_nam, canseemon ? exclam(dmg) : ".")
+            const punct = canseemon(mon) ? exclam(dmg) : '.';
+            await pline(`You ${hmon_hit_verb(obj)} ${mon_nam(mon)}${punct}`);
         } else {
             await pline('You hit it.');
         }

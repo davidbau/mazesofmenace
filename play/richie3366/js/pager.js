@@ -24,16 +24,18 @@ import {
     paint_corner_nhw_menu, dfeature_at, invent_lines,
 } from './invent.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
-import { getpos, LOOK_ONCE } from './getpos.js';
+import { getpos, LOOK_ONCE, LOOK_VERBOSE } from './getpos.js';
 import { mon_at } from './uhitm.js';
 import { objects_at } from './mkobj.js';
 import { doname, an } from './objnam.js';
+import { distant_monnam_none } from './do_name.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import {
     BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
+    STRAT_WAITMASK,
 } from './const.js';
 import { IS_WALL } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
@@ -207,15 +209,25 @@ function self_lookat() {
 }
 
 /**
- * C ref: pager.c look_at_monster — distant_monnam ARTICLE_NONE + tame/peaceful.
- * Hallucination / health / stuck / trapped / mhidden deferred.
+ * C ref: pager.c look_at_monster — distant_monnam ARTICLE_NONE + tame/peaceful
+ * + mfrozen/msleeping/STRAT_WAITMASK. Health / stuck / leashed / trapped /
+ * mhidden / hallu deferred.
  */
 function look_at_monster_buf(mtmp) {
-    const raw = mtmp?.data?.name || mtmp?.mname || 'monster';
-    const name = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-    if (mtmp.mtame) return `tame ${name}`;
-    if (mtmp.mpeaceful) return `peaceful ${name}`;
-    return name;
+    if (!mtmp) return 'monster';
+    const name = distant_monnam_none(mtmp);
+    let buf = '';
+    if (mtmp.mtame) buf = 'tame ';
+    else if (mtmp.mpeaceful) buf = 'peaceful ';
+    buf += name;
+    if (mtmp.mfrozen) {
+        buf += ", can't move (paralyzed or sleeping or busy)";
+    } else if (mtmp.msleeping) {
+        buf += ', asleep';
+    } else if ((mtmp.mstrategy || 0) & STRAT_WAITMASK) {
+        buf += ', meditating';
+    }
+    return buf;
 }
 
 /**
@@ -909,9 +921,10 @@ export async function do_look(mode = 0) {
             }
             // Force --More-- before getpos when message is long
             if ((game._pending_message || '').length > 40) await more();
+            // C: getpos(&cc, quick, …) — quick glance uses force=TRUE
             ans = await getpos(
                 cc,
-                false,
+                quick,
                 'a monster, object or location',
                 brief_at,
             );
@@ -922,9 +935,15 @@ export async function do_look(mode = 0) {
         if (from_screen) {
             const { out, first, found } = describe_looked(cc.x, cc.y);
             if (found) {
+                // C: putmixed(WIN_MESSAGE) — no forced more(); pline wrap
+                // already more()'s when out_str spans lines.
                 await pline(out);
-                await more();
-                if (ans !== LOOK_ONCE && game.flags?.help !== false) {
+                // C: checkfile only when !LOOK_QUICK/ONCE && (VERBOSE || (help && !quick))
+                if (
+                    found === 1
+                    && ans !== LOOK_ONCE
+                    && (ans === LOOK_VERBOSE || (game.flags?.help !== false && !quick))
+                ) {
                     await checkfile(first, 0);
                 }
             } else {
@@ -943,6 +962,11 @@ export async function do_look(mode = 0) {
 /** C ref: pager.c dowhatis */
 export async function dowhatis() {
     return do_look(0);
+}
+
+/** C ref: pager.c doquickwhatis — ';' glance */
+export async function doquickwhatis() {
+    return do_look(1);
 }
 
 /**

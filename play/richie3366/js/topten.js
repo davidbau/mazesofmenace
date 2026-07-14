@@ -197,8 +197,8 @@ function outheader(emit) {
 
 /**
  * C ref: topten.c outentry.
- * Named omissions: escaped/ascended/quit/starved/choked/poisoned/crushed/
- * petrified first-line arms; astral/knox plane text.
+ * Named omissions: escaped with-amulet paren fixup; astral plane text;
+ * choked/poisoned/crushed/petrified first-line arms.
  */
 function outentry(rank, t1, so, emit) {
     let second_line = true;
@@ -218,20 +218,33 @@ function outentry(rank, t1, so, emit) {
     } else if (death.startsWith('ascended')) {
         linebuf += `ascended to demigod${t1.plgend[0] === 'F' ? 'dess' : ''}-hood`;
         second_line = false;
-    } else if (death.startsWith('quit')) {
-        linebuf += 'quit';
-        second_line = false;
-    } else if (death.startsWith('died of st')) {
-        linebuf += 'starved to death';
-        second_line = false;
     } else {
-        linebuf += 'died';
+        // C: quit/starved/died share the dungeon/level append below
+        if (death.startsWith('quit')) {
+            linebuf += 'quit';
+            second_line = false;
+        } else if (death.startsWith('died of st')) {
+            linebuf += 'starved to death';
+            second_line = false;
+        } else {
+            linebuf += 'died';
+        }
+
+        // astral plane arm deferred — ordinary dungeon / knox
         const dname = game.dungeons?.[t1.deathdnum | 0]?.dname
             || 'The Dungeons of Doom';
         linebuf += ` in ${dname}`;
-        linebuf += ` on level ${t1.deathlev | 0}`;
+        const knoxDnum = game.knox_level?.dnum;
+        if (knoxDnum == null || (t1.deathdnum | 0) !== (knoxDnum | 0)) {
+            linebuf += ` on level ${t1.deathlev | 0}`;
+        }
         if ((t1.deathlev | 0) !== (t1.maxlvl | 0)) {
             linebuf += ` [max ${t1.maxlvl | 0}]`;
+        }
+
+        // C: kludge for "quit while already on Charon's boat"
+        if (death.startsWith('quit ')) {
+            linebuf += death.slice(4);
         }
     }
     linebuf += '.';

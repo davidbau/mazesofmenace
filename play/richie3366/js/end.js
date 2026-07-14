@@ -13,7 +13,8 @@ import { Goodbye } from './roles.js';
 import { an } from './objnam.js';
 import { COIN_CLASS } from './objects.js';
 import {
-    DIED, GENOCIDED, STONING, QUIT, ESCAPED, NON_PM, CORPSTAT_INIT, CORPSTAT_NONE,
+    DIED, GENOCIDED, STONING, QUIT, ESCAPED, ASCENDED, STARVING, BURNING,
+    NON_PM, CORPSTAT_INIT, CORPSTAT_NONE,
     OBJ_FREE, Upolyd, MM_NONAME, isok, ACCESSIBLE, MAGIC_PORTAL,
     ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED,
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
@@ -38,6 +39,14 @@ const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 
 /** C ref: decl.c disclosure_options */
 const DISCLOSURE_OPTIONS = 'iavgco';
+
+/** C ref: end.c deaths[] — killer.name when empty / how >= PANICKED */
+const DEATHS = [
+    'died', 'choked', 'poisoned', 'starvation', 'drowning', 'burning',
+    'dissolving under the heat and pressure', 'crushed', 'turned to stone',
+    'turned into slime', 'genocided', 'panic', 'trickery', 'quit',
+    'escaped', 'ascended',
+];
 
 /** C ref: end.c ends[] — "when you %s" / "You %s in …" */
 const ENDS = [
@@ -349,6 +358,22 @@ async function really_done(how) {
     // C: bones_ok = can_make_bones() before display_nhwindow(WIN_MESSAGE)
     const bones_ok = (how < GENOCIDED) && can_make_bones();
 
+    const u = game.u || {};
+    // C end.c really_done: QUIT → NO_KILLER_PREFIX; low HP → Charon's boat
+    if (how === QUIT) {
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.format = NO_KILLER_PREFIX;
+        if ((u.uhp | 0) < 1) {
+            how = DIED;
+            u.umortality = (u.umortality | 0) + 1;
+            game.killer.name = "quit while already on Charon's boat";
+        }
+    }
+    if (how === ESCAPED || how === PANICKED) {
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.format = NO_KILLER_PREFIX;
+    }
+
     // C: paybill before display_nhwindow — may append to pending "You die..."
     let taken = false;
     if (how !== PANICKED) {
@@ -369,7 +394,6 @@ async function really_done(how) {
     }
 
     // C: score before bones (invent still held; gold may already be money2mon'd)
-    const u = game.u || {};
     let umoney = money_cnt(game.invent);
     // hidden_gold deferred
     let tmp = umoney - (u.umoney0 | 0);
@@ -576,6 +600,19 @@ export async function done(how) {
     // C: force full status update unless panic/hangup/quit-stopprint
     flags.botlx = true;
     await bot();
+    if (!game.killer) game.killer = { name: '', format: 0 };
+    // C: ASCENDED / empty GENOCIDED → NO_KILLER_PREFIX
+    if (how === ASCENDED || (!game.killer.name && how === GENOCIDED)) {
+        game.killer.format = NO_KILLER_PREFIX;
+    }
+    // C: empty STARVING/BURNING → KILLED_BY (avoid "a" starvation)
+    if (!game.killer.name && (how === STARVING || how === BURNING)) {
+        game.killer.format = KILLED_BY;
+    }
+    // C: empty name or how >= PANICKED → deaths[how] (QUIT → "quit")
+    if (!game.killer.name || how >= PANICKED) {
+        game.killer.name = DEATHS[how] || 'died';
+    }
     const u = game.u || {};
     // C: umortality++ when how < PANICKED (before really_done)
     if (how < PANICKED) {
