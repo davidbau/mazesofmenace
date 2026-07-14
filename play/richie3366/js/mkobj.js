@@ -38,6 +38,7 @@ import {
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
 } from './const.js';
+import { recalc_block_point } from './vision.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -851,16 +852,29 @@ export function mkobj_at(oclass, x, y, artif) {
 // C ref: mkobj.c place_object — thread onto fobj + level.objects[x][y]
 export function place_object(otmp, x, y) {
     if (!otmp) return;
+    if (!game._objects_at) game._objects_at = new Map();
+    const key = `${x},${y}`;
+    let otmp2 = game._objects_at.get(key) || null;
+    const firstBoulder = otmp.otyp === BOULDER
+        && (!otmp2 || otmp2.otyp !== BOULDER);
     otmp.ox = x;
     otmp.oy = y;
     otmp.where = OBJ_FLOOR;
     otmp.nobj = game.fobj || null;
     game.fobj = otmp;
-    // nexthere pile at location
-    if (!game._objects_at) game._objects_at = new Map();
-    const key = `${x},${y}`;
-    otmp.nexthere = game._objects_at.get(key) || null;
-    game._objects_at.set(key, otmp);
+    // C: non-boulder goes under last consecutive boulder
+    if (otmp2 && otmp2.otyp === BOULDER && otmp.otyp !== BOULDER) {
+        while (otmp2.nexthere && otmp2.nexthere.otyp === BOULDER) {
+            otmp2 = otmp2.nexthere;
+        }
+        otmp.nexthere = otmp2.nexthere || null;
+        otmp2.nexthere = otmp;
+    } else {
+        otmp.nexthere = otmp2;
+        game._objects_at.set(key, otmp);
+    }
+    // C block_point is incremental; JS rebuilds via does_block after place
+    if (firstBoulder) recalc_block_point(x, y);
 }
 
 /**
@@ -990,7 +1004,10 @@ export function obj_extract_self(obj) {
     if (obj.where === OBJ_FLOOR
         || (obj.where == null && obj.ox != null && obj.oy != null
             && !(obj.ox === 0 && obj.oy === 0))) {
-        const key = `${obj.ox},${obj.oy}`;
+        const ox = obj.ox | 0;
+        const oy = obj.oy | 0;
+        const wasBoulder = obj.otyp === BOULDER;
+        const key = `${ox},${oy}`;
         if (game._objects_at) {
             let head = game._objects_at.get(key) || null;
             if (head === obj) {
@@ -1014,6 +1031,8 @@ export function obj_extract_self(obj) {
                 }
             }
         }
+        // C remove_object: boulder → recalc_block_point
+        if (wasBoulder) recalc_block_point(ox, oy);
     } else if (obj.where === OBJ_MINVENT || obj.where === 'MINVENT') {
         // C: extract_nobj(obj, &obj->ocarry->minvent); clear ocarry
         const mon = obj.ocarry;

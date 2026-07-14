@@ -8,16 +8,16 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
-    mksobj, place_object, weight, stackobj, mkcorpstat, relobj_on_death,
+    mksobj, place_object, weight, stackobj, relobj_on_death,
 } from './mkobj.js';
-import { find_mac } from './mhitm.js';
-import { newsym, pline, mon_visible, see_with_infrared } from './display.js';
+import { find_mac, make_corpse } from './mhitm.js';
+import { newsym, pline, mon_visible, see_with_infrared, You_feel } from './display.js';
 import { doname, an } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
-import { dist2 } from './mon.js';
+import { dist2, m_at } from './mon.js';
 import { cansee, couldsee } from './vision.js';
 import {
-    G_NOCORPSE, G_FREQ, G_UNIQ, verysmall, grounded, passes_walls, is_neuter,
+    G_FREQ, G_UNIQ, verysmall, grounded, passes_walls,
     is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
     amorphous, unsolid, is_whirly, breathless, MZ_SMALL, MZ_HUGE,
@@ -32,31 +32,36 @@ import {
     STONE_RES,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
     D_CLOSED, D_LOCKED,
-    CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NONE,
     ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
-    Can_fall_thru,
+    Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
+    KILLED_BY, KILLED_BY_AN,
 } from './const.js';
 import { mlevel_tele_trap } from './teleport.js';
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
-import { maybe_half_phys, nomul } from './hack.js';
+import { maybe_half_phys, nomul, losehp } from './hack.js';
 import { observe_object } from './invent.js';
+import { makemon } from './makemon.js';
+import { A_CHA, adjattrib } from './attrib.js';
+import { tamedog } from './dog.js';
 
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
 const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
 const PM_WOOD_GOLEM = monsterNames.indexOf('PM_WOOD_GOLEM');
 const PM_LEATHER_GOLEM = monsterNames.indexOf('PM_LEATHER_GOLEM');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const DART = objectNames.indexOf('DART');
 const ROCK = objectNames.indexOf('ROCK');
-const CORPSE = objectNames.indexOf('CORPSE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const AD_PHYS = 0;
 const AD_FIRE = 2; /* monattk.h */
 const TOWER_OF_FLAME = 'tower of flame';
+const VISION_CLEARS = 'vision clears.'; /* C c_vision_clears */
 // C ref: hack.h xdir/ydir — 8 dirs W,NW,N,NE,E,SE,S,SW
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
@@ -445,28 +450,6 @@ function corpse_chance(mon) {
     return !rn2(tmp);
 }
 
-// C ref: mon.c make_corpse default_1 — ordinary corpse via mkcorpstat
-function make_corpse(mtmp) {
-    const mdat = mtmp.data;
-    const mndx = mtmp.mnum ?? mdat?.mndx;
-    const x = mtmp.mx, y = mtmp.my;
-    if (mndx == null || mndx < 0) return null;
-    if ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE) return null;
-
-    let corpstatflags = CORPSTAT_INIT | CORPSTAT_NONE;
-    if (mtmp.female) corpstatflags |= CORPSTAT_FEMALE;
-    else if (!is_neuter(mdat)) corpstatflags |= CORPSTAT_MALE;
-
-    // C KEEPTRAITS: pets/shk/unique keep mtmp for traits — save_mtraits deferred
-    const keep = !!(mtmp.mtame || mtmp.isshk);
-    const obj = mkcorpstat(CORPSE, keep ? mtmp : null, mdat, x, y, corpstatflags);
-    if (obj) {
-        stackobj(obj);
-        newsym(x, y);
-    }
-    return obj;
-}
-
 // C ref: mon.c mondead → m_detach(due_to_death) → relobj
 function mondead(mtmp) {
     mtmp.mhp = 0;
@@ -652,7 +635,7 @@ function trapname(ttyp, _override) {
  * Envelope: nomul(0); floor_trigger+in_air skip; already_seen escape rn2(5);
  * trapeffect_selector(youmonst). Named omissions: Sokoban air-currents,
  * undestroyable/ANTI_MAGIC/Fumbling force, conj/adj pit, steed mon_learns,
- * mons_see_trap, FORCETRAP morph recursion, non-dart trapeffect hero arms.
+ * mons_see_trap, FORCETRAP morph recursion; hero pit/slp_gas/anti-magic/…
  */
 export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
     if (!trap) return;
@@ -975,7 +958,7 @@ function burnarmor(victim) {
  */
 async function trapeffect_fire_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
-        // dofiretrap deferred
+        await dofiretrap(null);
         return Trap_Effect_Finished;
     }
     const tx = trap.tx;
@@ -1041,15 +1024,267 @@ async function trapeffect_fire_trap(mtmp, trap, _trflags) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
+/** C youprop.h Blind / Deaf / Hallucination / Invis / See_invisible subset. */
+function Blind() {
+    const u = game.u || {};
+    if (u.Blind || u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+function Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+function Hallucination() {
+    const u = game.u || {};
+    if (u.Hallucination) return true;
+    return !!((u.HHallucination | 0) && !(u.Halluc_resistance | 0));
+}
+function HInvis_val() { return (game.u?.HInvis | 0); }
+function EInvis_val() { return (game.u?.EInvis | 0); }
+function Invis() {
+    const u = game.u || {};
+    if (u.Invis && !((u.HInvis | 0) || (u.EInvis | 0))) return true;
+    return !!(((u.HInvis | 0) || (u.EInvis | 0)) && !(u.BInvis | 0));
+}
+function See_invisible() {
+    const u = game.u || {};
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
+}
+function Fire_resistance() {
+    const u = game.u || {};
+    return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
+}
+function Unaware() {
+    const u = game.u || {};
+    return (u.multi | 0) < 0 && !!u.usleep;
+}
+/** C mondata.h pm_invisible */
+function pm_invisible(ptr) {
+    const mndx = ptr?.mndx ?? -1;
+    return mndx === PM_STALKER || mndx === PM_BLACK_LIGHT;
+}
+/** C potion.c itimeout / set_itimeout / incr_itimeout — TIMEOUT field only. */
+function itimeout(val) { return (val | 0) & TIMEOUT; }
+function set_itimeout_prop(key, val) {
+    const u = game.u || (game.u = {});
+    u[key] = ((u[key] | 0) & ~TIMEOUT) | itimeout(val);
+}
+function incr_itimeout_prop(key, incr) {
+    const u = game.u || (game.u = {});
+    const cur = u[key] | 0;
+    set_itimeout_prop(key, (cur & TIMEOUT) + (incr | 0));
+}
+/**
+ * C ref: potion.c make_blinded — talk=FALSE envelope for domagictrap.
+ * Named omission: Eyes override probe detail; toggle_blindness vision recalc;
+ * Punished set_bc; talk messages (always FALSE here).
+ */
+function make_blinded(xtime, _talk) {
+    const u = game.u || (game.u = {});
+    const old = (u.HBlinded | 0) & TIMEOUT;
+    const u_could_see = !Blind();
+    set_itimeout_prop('HBlinded', xtime ? 1 : 0);
+    const can_see_now = !Blind();
+    set_itimeout_prop('HBlinded', old);
+    set_itimeout_prop('HBlinded', xtime);
+    if (u_could_see !== can_see_now) {
+        u.Blind = !can_see_now;
+        if (game.flags) game.flags.botl = true;
+    }
+}
+/** C mondata.c resists_blnd — hero Blind/Unaware gate; arti/expl deferred. */
+function resists_blnd(mon) {
+    if (is_youmonst(mon)) return Blind() || Unaware();
+    return !!(mon?.mblinded || !mon?.mcansee || mon?.msleeping);
+}
+async function self_invis_message() {
+    // C ref: potion.c self_invis_message
+    const prefix = Hallucination()
+        ? 'Far out, man!  You'
+        : 'Gee!  All of a sudden, you';
+    const suffix = See_invisible()
+        ? 'can see right through yourself'
+        : "can't see yourself";
+    await pline(`${prefix} ${suffix}.`);
+}
+
+/**
+ * C ref: trap.c dofiretrap — null-box floor path.
+ * Envelope: d(2,4); Underwater boil; tower pline; Fire_resistance rn2(2);
+ * ordinary second d(2,4)+uhpmax rn2; losehp; burnarmor||rn2(3).
+ * Named omissions: box/carried; shieldeff/monstseesu; Upolyd golem alts;
+ * minuhpmax/setuhpmax/losexp; destroy_items/ignite_items bodies;
+ * burn_floor_objects/melt_ice/burn_away_slime; surface().
+ */
+async function dofiretrap(box) {
+    const u = game.u || (game.u = {});
+    const orig_dmg = d(2, 4);
+    let num = orig_dmg;
+
+    if (!box && u.Underwater) {
+        await pline('A cascade of steamy bubbles erupts from the floor!');
+        if (Fire_resistance()) await pline('You are uninjured.');
+        else losehp(rnd(3), 'boiling water', KILLED_BY);
+        return;
+    }
+    await pline(
+        `A ${TOWER_OF_FLAME} ${box ? 'bursts' : 'erupts'} from the floor!`,
+    );
+    if (Fire_resistance()) {
+        num = rn2(2);
+    } else if (Upolyd(u)) {
+        num = orig_dmg;
+    } else {
+        num = d(2, 4);
+        const uhpmin = 1;
+        if ((u.uhpmax | 0) > uhpmin) {
+            u.uhpmax = (u.uhpmax | 0) - rn2(Math.min(u.uhpmax | 0, num + 1));
+            if (game.flags) game.flags.botl = true;
+        }
+        if ((u.uhp | 0) > (u.uhpmax | 0)) {
+            u.uhp = u.uhpmax;
+            if (game.flags) game.flags.botl = true;
+        }
+    }
+    if (!num) await pline('You are uninjured.');
+    else losehp(num, TOWER_OF_FLAME, KILLED_BY_AN);
+    const you = game.youmonst || { _youmonst: true };
+    if (burnarmor(you) || rn2(3)) {
+        // destroy_items / ignite_items deferred
+    }
+}
+
+/**
+ * C ref: trap.c domagictrap
+ * Envelope: rnd(20) fate; <10 flash+deaf+makemon+wake; 10 noop; 11 HInvis
+ * toggle; 12 dofiretrap; 13–18 feel/hear; 19 adjattrib+tamedog; 20 seffects
+ * SPE_REMOVE_CURSE deferred.
+ */
+async function domagictrap() {
+    const u = game.u || (game.u = {});
+    const fate = rnd(20);
+
+    if (fate < 10) {
+        let cnt = rnd(4);
+        if (!resists_blnd(game.youmonst || { _youmonst: true })) {
+            await pline('You are momentarily blinded by a flash of light!');
+            make_blinded(rn1(5, 10), false);
+            if (!Blind()) await pline(`Your ${VISION_CLEARS}`);
+        } else if (!Blind()) {
+            await pline('You see a flash of light!');
+        }
+        if (!Deaf()) {
+            await You_hear('a deafening roar!');
+            incr_itimeout_prop('HDeaf', rn1(20, 30));
+            if (game.flags) game.flags.botl = true;
+        } else {
+            await You_feel('rankled.');
+            incr_itimeout_prop('HDeaf', rn1(5, 15));
+            if (game.flags) game.flags.botl = true;
+        }
+        while (cnt--) {
+            makemon(null, u.ux, u.uy, NO_MM_FLAGS);
+        }
+        wake_nearto(u.ux, u.uy, 7 * 7);
+    } else {
+        switch (fate) {
+        case 10:
+            break;
+        case 11: {
+            await You_hear('a low hum.');
+            if (!Invis()) {
+                if (!Blind()) await self_invis_message();
+            } else if (!EInvis_val() && !pm_invisible(game.youmonst?.data)) {
+                if (!Blind()) {
+                    if (!See_invisible()) {
+                        await pline('You can see yourself again!');
+                    } else {
+                        await pline("You can't see through yourself anymore.");
+                    }
+                }
+            } else {
+                await You_feel(
+                    `a little more ${HInvis_val() ? 'obvious' : 'hidden'} now.`,
+                );
+            }
+            u.HInvis = HInvis_val() ? 0 : (HInvis_val() | FROMOUTSIDE);
+            u.Invis = Invis();
+            newsym(u.ux, u.uy);
+            break;
+        }
+        case 12:
+            await dofiretrap(null);
+            break;
+        case 13:
+            await pline('A shiver runs up and down your spine!');
+            break;
+        case 14:
+            await You_hear(
+                Hallucination() ? 'the moon howling at you.' : 'distant howling.',
+            );
+            break;
+        case 15:
+            if (Hallucination()) {
+                await pline('You suddenly yearn for Cleveland.');
+            } else if (In_quest(u.uz)) {
+                await pline('You suddenly yearn for your nearby homeland.');
+            } else {
+                await pline('You suddenly yearn for your distant homeland.');
+            }
+            break;
+        case 16:
+            await pline('Your pack shakes violently!');
+            break;
+        case 17:
+            await pline(
+                Hallucination() ? 'You smell hamburgers.' : 'You smell charred flesh.',
+            );
+            break;
+        case 18:
+            await You_feel('tired.');
+            break;
+        case 19: {
+            await adjattrib(A_CHA, 1, false);
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    if (!isok(u.ux + i, u.uy + j)) continue;
+                    const mtmp = m_at(u.ux + i, u.uy + j);
+                    if (mtmp) await tamedog(mtmp, null, true);
+                }
+            }
+            break;
+        }
+        case 20:
+            // seffects(SPE_REMOVE_CURSE) deferred
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 /**
  * C ref: trap.c trapeffect_magic_trap
- * Envelope: monsters — rn2(21) then fire trap (usually immune); hero —
- * seetrap/rn2(30)/domagictrap deferred (PROGRESS: hero dotrap after monster
- * peels).
+ * Envelope: hero — seetrap; rn2(30) explosion else domagictrap. Monsters —
+ * rn2(21)→fire. steedintrap MAGIC_TRAP is default no-op without usteed.
  */
 async function trapeffect_magic_trap(mtmp, trap, trflags) {
     if (is_youmonst(mtmp)) {
-        // Hero magical explosion / domagictrap deferred
+        const u = game.u || (game.u = {});
+        seetrap(trap);
+        if (!rn2(30)) {
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+            await pline('You are caught in a magical explosion!');
+            losehp(rnd(10), 'magical explosion', KILLED_BY_AN);
+            await pline('Your body absorbs some of the magical energy!');
+            u.uenmax = (u.uenmax | 0) + 2;
+            u.uen = u.uenmax;
+            if ((u.uenmax | 0) > (u.uenpeak | 0)) u.uenpeak = u.uenmax;
+            return Trap_Effect_Finished;
+        }
+        await domagictrap();
+        void trflags;
         return Trap_Effect_Finished;
     }
     /* A magic trap.  Monsters usually immune. */

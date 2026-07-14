@@ -25,7 +25,7 @@
 import { game } from './gstate.js';
 import { rnl, rn2 } from './rng.js';
 import { newsym, pline, magic_map_background } from './display.js';
-import { vision_recalc, couldsee } from './vision.js';
+import { vision_recalc, couldsee, recalc_block_point } from './vision.js';
 import { an } from './objnam.js';
 import { A_WIS, exercise } from './attrib.js';
 import { t_at } from './trap.js';
@@ -164,7 +164,7 @@ export async function dosearch0(aflag) {
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund)) continue;
                 cvt_sdoor_to_door(loc);
-                vision_recalc(1); // C: recalc_block_point
+                recalc_block_point(x, y); // C: recalc_block_point
                 exercise(A_WIS, true);
                 nomul_clear();
                 newsym(x, y);
@@ -172,7 +172,7 @@ export async function dosearch0(aflag) {
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
-                vision_recalc(1); // C: unblock_point
+                recalc_block_point(x, y); // C: unblock_point
                 exercise(A_WIS, true);
                 nomul_clear();
                 newsym(x, y);
@@ -259,12 +259,12 @@ function findone(zx, zy, found) {
 
     if (lev.typ === SDOOR) {
         cvt_sdoor_to_door(lev);
-        vision_recalc(1);
+        recalc_block_point(zx, zy); // C: unblock_point / recalc
         newsym(zx, zy);
         found.num_sdoors++;
     } else if (lev.typ === SCORR) {
         lev.typ = CORR;
-        vision_recalc(1);
+        recalc_block_point(zx, zy); // C: unblock_point
         newsym(zx, zy);
         found.num_scorrs++;
     }
@@ -353,7 +353,7 @@ export function show_map_spot(x, y, cnf) {
     // Secret corridors are found, but not secret doors.
     if (lev.typ === SCORR) {
         lev.typ = CORR;
-        vision_recalc(1); // C: unblock_point
+        recalc_block_point(x, y); // C: unblock_point
     }
 
     if (game.level?.flags?.hero_memory) {

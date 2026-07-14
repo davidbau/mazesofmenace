@@ -13,7 +13,7 @@ import {
     MIM_REVEAL,
 } from './const.js';
 import {
-    WEAPON_CLASS, FOOD_CLASS, RANDOM_CLASS, objectNameStrs, objectNames,
+    WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS, objectNameStrs, objectNames,
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
@@ -106,11 +106,19 @@ function abon() {
 }
 
 /**
- * C ref: weapon.c hitval — spe + type vs mon; silver/artifact deferred.
+ * C ref: weapon.c hitval — spe (weapon/weptool) + oc_hitbon; silver/artifact/
+ * blessed/spear/trident/pick vs-mon bonuses deferred.
+ * objects[].oc_hitbon is the oc_oc1 union exported as a_ac.
  */
 function hitval(otmp, _mon) {
     if (!otmp) return 0;
-    return otmp.spe | 0;
+    const o = game.objects?.[otmp.otyp];
+    let tmp = 0;
+    const Is_weapon = otmp.oclass === WEAPON_CLASS
+        || (otmp.oclass === TOOL_CLASS && ((o?.oc_skill | 0) !== 0));
+    if (Is_weapon) tmp += otmp.spe | 0;
+    tmp += o?.a_ac | 0;
+    return tmp;
 }
 
 /**

@@ -40,7 +40,7 @@ import {
     D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
-    MON_POLE_DIST, AKLYS_LIM,
+    MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
 } from './const.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
@@ -62,10 +62,13 @@ const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
 const CORPSE = objectNames.indexOf('CORPSE');
 const AKLYS = objectNames.indexOf('AKLYS');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_LEPRECHAUN = monsterNames.indexOf('PM_LEPRECHAUN');
 const MINERAL = 21; // obj.h
 const MAX_CARR_CAP = 1000;
 const MZ_HUMAN = 3;
@@ -82,6 +85,30 @@ const AT_SPIT = 10;
 const AT_BREA = 12;
 const AT_GAZE = 15;
 const AT_MAGC = 255;
+
+/** C ref: monst.h is_obj_mappear */
+function is_obj_mappear(mon, otyp) {
+    return M_AP_TYPE(mon) === M_AP_OBJECT && mon?.mappearance === otyp;
+}
+
+/** C ref: steal.c findgold — first GOLD_PIECE on chain (no container walk). */
+function findgold(argchain) {
+    let chain = argchain;
+    while (chain && chain.otyp !== GOLD_PIECE) chain = chain.nobj;
+    return chain || null;
+}
+
+/**
+ * C ref: monmove.c leppie_avoidance — leprechaun flees if richer than hero.
+ */
+function leppie_avoidance(mtmp) {
+    if ((mtmp.data?.mndx ?? -1) !== PM_LEPRECHAUN) return false;
+    const lepgold = findgold(mtmp.minvent);
+    if (!lepgold) return false;
+    const ygold = findgold(game.invent);
+    const yquan = ygold ? (ygold.quan | 0) : 0;
+    return (lepgold.quan | 0) > yquan;
+}
 
 // C ref: monmove.c practical[] / magical[] for mon_would_take_item
 const PRACTICAL_CLASSES = [WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS];
@@ -838,6 +865,12 @@ export async function m_move(mtmp, after) {
         return MMOVE_DONE;
     }
 
+    // Named omission: hides_under + can_hide_under_obj + rn2(10) early return
+    // (C monmove.c before set_apparxy).
+
+    // C: set_apparxy before mtame / covetous / shk|gd|priest specials
+    set_apparxy(mtmp);
+
     // C: if (mtmp->mtame) return postmov(..., dog_move(...), ...)
     if (mtmp.mtame) {
         const mmoved = await dog_move(mtmp, after);
@@ -862,22 +895,15 @@ export async function m_move(mtmp, after) {
         // xm === -1: fall through to normal AI (follow outside shop)
     }
 
-    // C: m_move starts with mtrapped → mintrap; still-caught → no move
-    // (already handled above for all monsters)
-
-    set_apparxy(mtmp);
-
     let ggx = mtmp.mux;
     let ggy = mtmp.muy;
     let appr = mtmp.mflee ? -1 : 1;
     const preferredrange = { min: 0, max: 0 };
-    if (mtmp.mconf) {
-        appr = 0;
-    } else if (mtmp.mpeaceful && !mtmp.isshk) {
-        // C: peaceful (non-shk) → appr = 0
+    // C ref: monmove.c m_move not_special — appr / should_see / Invis rn2(11)
+    if (mtmp.mconf || engulfing_u(mtmp)) {
         appr = 0;
     } else {
-        // C ref: monmove.c m_move should_see + gettrack
+        const u = game.u;
         const goalLoc = game.level?.at(ggx, ggy);
         const monLoc = game.level?.at(omx, omy);
         const should_see = !!(
@@ -885,8 +911,21 @@ export async function m_move(mtmp, after) {
             && (!!goalLoc?.lit || !monLoc?.lit)
             && dist2(omx, omy, ggx, ggy) <= 36
         );
-        // Named omission: Invis rn2(11); stalker/bat rn2(3); leppie;
-        // shortsighted; !mcansee → appr 0.
+        const Invis = !!(u?.Invis);
+        const youmonst = game.youmonst;
+        // Short-circuit OR matches C: Invis rn2(11) before peaceful / stalker.
+        // Named omission: shortsighted → appr=0 after track selection.
+        if (!mtmp.mcansee
+            || (should_see && Invis && !perceives(ptr) && rn2(11))
+            || is_obj_mappear(youmonst, STRANGE_OBJECT) || u?.uundetected
+            || (is_obj_mappear(youmonst, GOLD_PIECE) && !likes_gold(ptr))
+            || (mtmp.mpeaceful && !mtmp.isshk)
+            || (((ptr?.mndx ?? -1) === PM_STALKER || ptr?.mlet === 'S_BAT'
+                || ptr?.mlet === 'S_LIGHT') && !rn2(3))) {
+            appr = 0;
+        }
+        if (appr === 1 && leppie_avoidance(mtmp)) appr = -1;
+        appr = m_balks_at_approaching(appr, mtmp, preferredrange);
         if (!should_see && can_track(ptr)) {
             const cp = gettrack(omx, omy);
             if (cp) {
@@ -894,10 +933,6 @@ export async function m_move(mtmp, after) {
                 ggy = cp.y;
             }
         }
-    }
-    // C: m_balks_at_approaching after appr setup (uses mux/muy, not track gg)
-    if (!mtmp.mconf) {
-        appr = m_balks_at_approaching(appr, mtmp, preferredrange);
     }
 
     // C ref: monmove.c m_move getitems + m_search_items
@@ -1042,7 +1077,6 @@ export async function dochug(mtmp) {
         || (!mtmp.mcansee && !rn2(4))
         || mtmp.mpeaceful
     );
-
 
     let status = MMOVE_NOTHING;
     // PHASE THREE: move if not adjacent-hostile (attack path)

@@ -2,9 +2,9 @@
 // C ref: dog.c — pet_type, makedog.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { makemon } from './makemon.js';
-import { mons, NON_PM } from './monsters.js';
+import { rn2, rnd } from './rng.js';
+import { makemon, set_malign } from './makemon.js';
+import { mons, NON_PM, is_human } from './monsters.js';
 import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
 import {
     monsterNames,
@@ -18,6 +18,7 @@ import { christen_monst } from './do_name.js';
 import { monnear, m_at } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
+import { newsym } from './display.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -163,6 +164,60 @@ export function keepdogs(pets_only = false) {
         }
     }
     game.fmon = stay;
+}
+
+/**
+ * C ref: dog.c tamedog — obj=null magic-trap / scroll envelope.
+ * Peaceful + edog for ordinary monsters; shop/gd/priest/human/covetous
+ * rejected. Named omissions: food thrown path; is_demon/is_covetous/
+ * is_minion full; mon_wield after tame; make_happy_shk; quest leader.
+ */
+export async function tamedog(mtmp, obj, givemsg = true) {
+    if (!mtmp) return false;
+    let msg = givemsg;
+
+    if (mtmp.mfrozen) mtmp.mfrozen = ((mtmp.mfrozen | 0) + 1) >> 1;
+    if (mtmp.msleeping) {
+        mtmp.msleeping = 0;
+    }
+
+    if (mtmp.iswiz || (mtmp.data?.mndx | 0) === monsterNames.indexOf('PM_MEDUSA')
+        || ((mtmp.data?.mflags3 | 0) & 0x0010)) { // M3_WANTSARTI
+        return false;
+    }
+
+    if (msg && !mtmp.mpeaceful && (mtmp.mhp == null || mtmp.mhp > 0)) {
+        // canspotmon deferred — still set peaceful
+        msg = false;
+    }
+    mtmp.mpeaceful = 1;
+    set_malign(mtmp);
+
+    mtmp.mflee = 0;
+    mtmp.mfleetim = 0;
+
+    // Already tame + low: maybe bump (scroll path); magic trap uses obj null
+    if (mtmp.mtame && (mtmp.mtame | 0) < 10) {
+        if ((mtmp.mtame | 0) < rnd(10)) mtmp.mtame = (mtmp.mtame | 0) + 1;
+        return false;
+    }
+    if (mtmp.isshk) return false;
+
+    if (!mtmp.mcanmove
+        || mtmp.isshk || mtmp.isgd || mtmp.ispriest || mtmp.isminion
+        || is_human(mtmp.data)) {
+        return false;
+    }
+
+    if (!mtmp.edog) mtmp.edog = {};
+    initedog(mtmp, !(mtmp.mtame));
+
+    if (givemsg) {
+        // pline deferred without display import cycle — caller may message
+    }
+    newsym(mtmp.mx, mtmp.my);
+    void obj;
+    return true;
 }
 
 /**

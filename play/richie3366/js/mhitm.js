@@ -3,7 +3,7 @@
 //         uhitm.c mhitm_knockback (RNG order only).
 
 import { rn2, rnd, d } from './rng.js';
-import { distmin, m_at, record_mvitals_died } from './mon.js';
+import { distmin, m_at, record_mvitals_died, undead_to_corpse } from './mon.js';
 import { game } from './gstate.js';
 import { pline, newsym, mon_visible, see_with_infrared } from './display.js';
 import { cansee } from './vision.js';
@@ -17,6 +17,7 @@ import {
     CORPSTAT_MALE,
     CORPSTAT_NONE,
     W_ARMOR,
+    TAINT_AGE,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, is_neuter, is_undead,
@@ -215,20 +216,38 @@ function corpse_chance(mon) {
     return !rn2(tmp);
 }
 
-// C ref: mon.c make_corpse default_1 — ordinary corpse via mkcorpstat
-// Named omission: dragon scales/unicorn horn/worm tooth/undead specials;
-// accessible||is_pool gate deferred (trap path same); save_mtraits deferred.
+// C ref: mon.c make_corpse — undead specials before G_NOCORPSE; else default_1.
+// Named omission: dragon scales, unicorn horn, worm tooth, golem drops,
+// lich dust, and other pre-G_NOCORPSE switch arms (D-0271 undead only).
 export function make_corpse(mtmp) {
     const mdat = mtmp.data;
     const mndx = mtmp.mnum ?? mdat?.mndx;
     const x = mtmp.mx, y = mtmp.my;
     if (mndx == null || mndx < 0) return null;
-    if ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE) return null;
 
-    let corpstatflags = CORPSTAT_INIT | CORPSTAT_NONE;
+    let corpstatflags = CORPSTAT_NONE;
     if (mtmp.female) corpstatflags |= CORPSTAT_FEMALE;
     else if (!is_neuter(mdat)) corpstatflags |= CORPSTAT_MALE;
 
+    // C: zombie/mummy/vampire arms precede G_NOCORPSE (geno has G_NOCORPSE
+    // so wishes cannot create those corpses, but kills still leave a mapped
+    // living-species corpse via undead_to_corpse).
+    const living = undead_to_corpse(mndx);
+    if (living !== mndx) {
+        corpstatflags |= CORPSTAT_INIT;
+        // C: always pass mtmp for undead (not KEEPTRAITS)
+        const obj = mkcorpstat(CORPSE, mtmp, living, x, y, corpstatflags);
+        if (obj) {
+            obj.age = (obj.age | 0) - (TAINT_AGE + 1);
+            stackobj(obj);
+            newsym(x, y);
+        }
+        return obj;
+    }
+
+    if ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE) return null;
+
+    corpstatflags |= CORPSTAT_INIT;
     const keep = !!(mtmp.mtame || mtmp.isshk);
     const obj = mkcorpstat(CORPSE, keep ? mtmp : null, mdat, x, y, corpstatflags);
     if (obj) {
