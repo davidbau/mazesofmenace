@@ -2930,6 +2930,19 @@ export function Is_botlevel(uz) {
     const dun = game?.dungeons?.[lev.dnum];
     return !!dun && lev.dlevel === dun.num_dunlevs;
 }
+/** C ref: dungeon.c Can_dig_down — !hardfloor && !botlevel && !invocation. */
+export function Can_dig_down(uz) {
+    const lev = uz ?? game?.u?.uz;
+    if (!lev) return false;
+    if (game?.level?.flags?.hardfloor) return false;
+    if (Is_botlevel(lev)) return false;
+    // Invocation_lev deferred — ordinary Dungeons of Doom never matches
+    return true;
+}
+/** C ref: dungeon.c Can_fall_thru — dig-down or castle stronghold. */
+export function Can_fall_thru(uz) {
+    return Can_dig_down(uz) || Is_stronghold(uz);
+}
 export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (uz ?? g?.u?.uz)?.dnum === g.rogue_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.rogue_level.dlevel; }
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }

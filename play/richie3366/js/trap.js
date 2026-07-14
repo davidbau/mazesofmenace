@@ -19,24 +19,30 @@ import {
     G_NOCORPSE, G_FREQ, G_UNIQ, verysmall, grounded, passes_walls, is_neuter,
     is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
+    amorphous, unsolid, is_whirly, MZ_SMALL, MZ_HUGE,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
     PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, ROLLING_BOULDER_TRAP,
+    BEAR_TRAP, WEB, RUST_TRAP, VIBRATING_SQUARE,
     ANTI_MAGIC, HURTLING, TOOKPLUNGE, VIASITTING,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
     D_CLOSED, D_LOCKED,
     CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NONE,
     ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
+    Can_fall_thru,
 } from './const.js';
+import { mlevel_tele_trap } from './teleport.js';
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
+import { monsterNames } from './generated/monsters_data.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
 import { maybe_half_phys, nomul } from './hack.js';
 import { observe_object } from './invent.js';
 
+const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const DART = objectNames.indexOf('DART');
 const ROCK = objectNames.indexOf('ROCK');
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -58,13 +64,42 @@ export const NO_TRAP_FLAGS = 0;
 
 /**
  * C ref: trap.c m_harmless_trap — whether mfndpos may ignore this trap.
- * Envelope: SQKY/PIT/DART/… harmful (false); STATUE/MAGIC usually true.
- * Named omission: flyer/Sokoban/bear-size/resist per-type immunities.
+ * Envelope: STATUE/MAGIC/VIBRATING always; BEAR_TRAP/WEB size·amorph·whirly·
+ * unsolid; RUST except iron golem; PIT/HOLE clinger (non-Sokoban).
+ * Named omission: flyer/Sokoban `check_in_air` preamble; sleep/fire/anti-magic
+ * resists; webmaker; defended().
  */
-export function m_harmless_trap(_mtmp, ttmp) {
+export function m_harmless_trap(mtmp, ttmp) {
     if (!ttmp) return true;
-    if (ttmp.ttyp === STATUE_TRAP || ttmp.ttyp === MAGIC_TRAP) return true;
-    return false;
+    const mdat = mtmp?.data;
+    switch (ttmp.ttyp) {
+    case STATUE_TRAP:
+    case MAGIC_TRAP:
+    case VIBRATING_SQUARE:
+        return true;
+    case BEAR_TRAP:
+        if ((mdat?.msize ?? 2) <= MZ_SMALL
+            || amorphous(mdat) || is_whirly(mdat) || unsolid(mdat)) {
+            return true;
+        }
+        return false;
+    case WEB:
+        if (amorphous(mdat) || is_whirly(mdat) || unsolid(mdat)) return true;
+        // webmaker deferred
+        return false;
+    case RUST_TRAP:
+        // C: only iron golem is harmed
+        return (mdat?.mndx ?? -1) !== PM_IRON_GOLEM;
+    case PIT:
+    case SPIKED_PIT:
+    case HOLE:
+    case TRAPDOOR:
+        // Sokoban flag: C `Sokoban` — JS uses level flag when present
+        if (is_clinger(mdat) && !game.level?.flags?.sokoban) return true;
+        return false;
+    default:
+        return false;
+    }
 }
 
 // C ref: dungeon.c dunlev / dunlevs_in_dungeon / In_hell
@@ -493,6 +528,8 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
             await pline(`${Monnam(mon)} is almost hit by ${doname(obj)}!`);
         }
     } else {
+        // C: stone_missile && passes_rocks → harmless (strike=0, keep missile)
+        // Named omission: stone_missile/harmless arm — not dart/arrow path.
         if (obj && cansee(mon.mx, mon.my)) {
             await pline(`${Monnam(mon)} is hit by ${doname(obj)}!`);
         }
@@ -500,8 +537,9 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
         if (d_override) {
             dam = d_override;
         } else if (obj) {
-            // C: dam = dmgval(obj, mon); clamp to >= 1 — stub 1 until dmgval ported
-            dam = 1;
+            // C ref: trap.c thitm — dam = dmgval(obj, mon); if (dam < 1) dam = 1
+            dam = dmgval(obj, mon);
+            if (dam < 1) dam = 1;
         }
         mon.mhp = (mon.mhp || 0) - dam;
         if (mon.mhp <= 0) {
@@ -815,7 +853,40 @@ async function trapeffect_sqky_board(mtmp, trap, _trflags) {
     return Trap_Effect_Finished;
 }
 
-// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky; other types no-op
+/**
+ * C ref: trap.c trapeffect_hole — HOLE/TRAPDOOR monster fall → level tele.
+ * Envelope: Can_fall_thru; grounded / !huge; then mlevel_tele_trap.
+ * Named omissions: hero fall_through; Sokoban yank; forcetrap openfalling.
+ */
+async function trapeffect_hole(mtmp, trap, trflags) {
+    if (is_youmonst(mtmp)) {
+        // Hero fall_through deferred
+        return Trap_Effect_Finished;
+    }
+    const tt = trap.ttyp;
+    const mptr = mtmp.data;
+    const forcetrap = (trflags & FORCETRAP) !== 0;
+    const Sokoban = !!(game.level?.flags?.sokoban || game.Sokoban);
+    const inescapable = forcetrap || (Sokoban && !trap.madeby_u);
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+
+    if (!Can_fall_thru(game.u?.uz)) {
+        return Trap_Effect_Finished;
+    }
+    if (!grounded(mptr)
+        || (mtmp.wormno && (mtmp.wormno | 0) > 5)
+        || (mptr?.msize | 0) >= MZ_HUGE) {
+        if (forcetrap && !Sokoban) {
+            if (in_sight) seetrap(trap);
+            return Trap_Effect_Finished;
+        }
+        if (!inescapable) return Trap_Effect_Finished;
+        // Sokoban yank still falls through
+    }
+    return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight ? 1 : 0);
+}
+
+// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole; other types no-op
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
@@ -827,16 +898,20 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_pit(mtmp, trap, trflags);
     case SQKY_BOARD:
         return trapeffect_sqky_board(mtmp, trap, trflags);
+    case HOLE:
+    case TRAPDOOR:
+        return trapeffect_hole(mtmp, trap, trflags);
     default:
-        // Named omission: arrow/bear/hole/… trap effects
+        // Named omission: arrow/bear/telep/… trap effects
         return Trap_Effect_Finished;
     }
 }
 
 /**
  * C ref: trap.c mintrap() — monster steps on a trap.
- * Early-session envelope: dart / rock / pit / sqky learn+effect; already_seen
- * rn2(4) skip when mon_knows_traps. Other types and escape paths partial.
+ * Early-session envelope: dart / rock / pit / sqky / hole|trapdoor learn+effect;
+ * already_seen rn2(4) skip when mon_knows_traps. Other types and escape paths
+ * partial.
  */
 export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
     const trap = t_at(mtmp.mx, mtmp.my);

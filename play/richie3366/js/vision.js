@@ -1,19 +1,20 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Stripped-down port for the contest skeleton: no light sources, boulders,
-// mimics, underwater, blindness, or pit handling.
-// Contestants should port the full vision.c for complete parity.
+// Partial: light sources, mimics, underwater, blindness, pits deferred.
+// BOULDER does_block is ported (linedup boulderhandling depends on it).
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
+    COLNO, ROWNO, DOOR, SDOOR, POOL, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
+    IS_WALL, IS_WATERWALL,
 } from './const.js';
 import { newsym } from './display.js';
+import { objectNames } from './objects.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
+const BOULDER = objectNames.indexOf('BOULDER');
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
@@ -71,15 +72,23 @@ function mark_visible_range(row, left, right) {
     if (game.cs_right[row] < right) game.cs_right[row] = right;
 }
 
-// Simplified blockage check: walls, closed doors, stone
+/**
+ * C ref: vision.c does_block — terrain/door + BOULDER (mimic/region deferred).
+ */
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
     if (!loc) return true;
     const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
+    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR, TREE
     if (typ === DOOR) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
+    }
+    if (typ === CLOUD || IS_WATERWALL(typ) || typ === LAVAWALL) return true;
+    // Boulders block light (level.objects nexthere chain)
+    const head = game._objects_at?.get?.(`${x},${y}`);
+    for (let obj = head; obj; obj = obj.nexthere) {
+        if (obj.otyp === BOULDER) return true;
     }
     return false;
 }

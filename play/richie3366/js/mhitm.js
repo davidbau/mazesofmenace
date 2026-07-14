@@ -5,7 +5,8 @@
 import { rn2, rnd, d } from './rng.js';
 import { distmin, m_at, record_mvitals_died } from './mon.js';
 import { game } from './gstate.js';
-import { pline, newsym } from './display.js';
+import { pline, newsym, mon_visible, see_with_infrared } from './display.js';
+import { cansee } from './vision.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -51,6 +52,18 @@ const AD_STCK = 19;
 const AC_MAX = 99;
 
 const NO_ATTK = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
+
+/** Per-attack visibility; set in mattackm like C gv.vis. */
+let _mm_vis = false;
+
+/**
+ * C ref: display.h canspotmon — cansee/infrared + mon_visible.
+ */
+function canspotmon(mtmp) {
+    if (!mtmp?.mx) return false;
+    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
+    return mon_visible(mtmp);
+}
 
 /**
  * C ref: mhitu.c getmattk — base mptr->mattk[indx] (substitutions deferred).
@@ -241,11 +254,14 @@ function mondead(mtmp) {
 }
 
 // C ref: mon.c mondied() → mondead + maybe make_corpse
-// C ref: mon.c monkilled — nonliving → "destroyed" else "killed"
+// C ref: mon.c monkilled — nonliving → "destroyed" else "killed";
+// pline only when cansee (worm_known deferred).
 async function mondied(mdef) {
     // C: monkilled pline before mondead (triggers --More-- if needed)
-    const verb = is_undead(mdef.data) ? 'destroyed' : 'killed';
-    await pline(`${Monnam(mdef)} is ${verb}!`);
+    if (cansee(mdef.mx, mdef.my)) {
+        const verb = is_undead(mdef.data) ? 'destroyed' : 'killed';
+        await pline(`${Monnam(mdef)} is ${verb}!`);
+    }
     mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
     // C: accessible||is_pool gate deferred — floor tiles take make_corpse
@@ -275,9 +291,11 @@ function grow_up(mtmp, victim) {
     return mtmp.data;
 }
 
-// C ref: mhitm.c missmm()
+// C ref: mhitm.c missmm() — pline only when gv.vis (noises deferred)
 async function missmm(magr, mdef, _mattk) {
-    await pline(`${Monnam(magr)} misses ${mon_nam(mdef)}.`);
+    if (_mm_vis) {
+        await pline(`${Monnam(magr)} misses ${mon_nam(mdef)}.`);
+    }
 }
 
 // C ref: mhitm.c mdamagem() — physical bite damage + knockback RNG
@@ -304,13 +322,16 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     return M_ATTK_HIT;
 }
 
+// C ref: mhitm.c hitmm() — hit pline only when gv.vis; else noises() deferred
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
-    let verb = 'hits';
-    if (mattk.aatyp === AT_BITE) verb = 'bites';
-    else if (mattk.aatyp === AT_STNG) verb = 'stings';
-    else if (mattk.aatyp === AT_BUTT) verb = 'butts';
-    else if (mattk.aatyp === AT_TUCH) verb = 'touches';
-    await pline(`${Monnam(magr)} ${verb} ${mon_nam(mdef)}.`);
+    if (_mm_vis) {
+        let verb = 'hits';
+        if (mattk.aatyp === AT_BITE) verb = 'bites';
+        else if (mattk.aatyp === AT_STNG) verb = 'stings';
+        else if (mattk.aatyp === AT_BUTT) verb = 'butts';
+        else if (mattk.aatyp === AT_TUCH) verb = 'touches';
+        await pline(`${Monnam(magr)} ${verb} ${mon_nam(mdef)}.`);
+    }
     return mdamagem(magr, mdef, mattk, mwep, dieroll);
 }
 
@@ -327,6 +348,10 @@ export async function mattackm(magr, mdef) {
         tmp += 4;
         mdef.msleeping = 0;
     }
+
+    // C: gv.vis — see attacker or defender (canspotmon)
+    _mm_vis = ((cansee(magr.mx, magr.my) && canspotmon(magr))
+        || (cansee(mdef.mx, mdef.my) && canspotmon(mdef)));
 
     let struck = 0;
     const res = new Array(NATTK).fill(M_ATTK_MISS);

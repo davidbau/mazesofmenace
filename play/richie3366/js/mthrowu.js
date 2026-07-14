@@ -5,16 +5,17 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    distmin, m_at,
+    distmin, m_at, m_carrying,
 } from './mon.js';
 import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
-    POTHIT_MONST_THROW,
+    POTHIT_MONST_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
+    M_AP_NOTHING, M_AP_MONSTER, u_at,
 } from './const.js';
-import { cansee, couldsee } from './vision.js';
+import { cansee, couldsee, clear_path } from './vision.js';
 import {
-    place_object, splitobj, stackobj, obj_extract_self, delobj,
+    place_object, splitobj, stackobj, obj_extract_self, delobj, objects_at,
 } from './mkobj.js';
 import { observe_object } from './invent.js';
 import {
@@ -27,13 +28,16 @@ import { calc_capacity } from './invent.js';
 import { losehp, nomul, maybe_half_phys } from './hack.js';
 import { pline, mon_visible, see_with_infrared } from './display.js';
 import { Monnam } from './do_name.js';
-import { nohands, mons } from './monsters.js';
+import { nohands, mons, throws_rocks } from './monsters.js';
 import { xname, singular, an, vtense } from './objnam.js';
 import { VENOM_CLASS, POTION_CLASS, objectNames } from './objects.js';
 import {
     PM_MONK, PM_ROGUE, PM_HUMAN,
 } from './generated/monsters_data.js';
 import { potionhit } from './potion.js';
+
+const BOULDER = objectNames.indexOf('BOULDER');
+const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 
 function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
@@ -49,12 +53,24 @@ function closed_door(x, y) {
     return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
 }
 
+/** C ref: mthrowu.c blocking_terrain — wall/door/waterwall/lavawall. */
 function blocking_terrain(x, y) {
     if (!isok(x, y)) return true;
     const loc = game.level?.at?.(x, y);
     const typ = loc?.typ ?? 0;
-    if (IS_OBSTRUCTED(typ) || closed_door(x, y)) return true;
+    if (IS_OBSTRUCTED(typ) || closed_door(x, y)
+        || IS_WATERWALL(typ) || typ === LAVAWALL) {
+        return true;
+    }
     return false;
+}
+
+function sobj_at(otyp, x, y) {
+    // objects_at returns nexthere chain head, not an array
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if (o.otyp === otyp) return o;
+    }
+    return null;
 }
 
 /**
@@ -93,27 +109,56 @@ function Role_if(pm) {
 }
 
 /**
- * C ref: mthrowu.c linedup — straight line + couldsee/clear_path.
+ * C ref: mthrowu.c linedup — straight line + couldsee/clear_path, then
+ * optional boulder walk with rn2(2+boulderspots) when boulderhandling≠0.
  * Sets game._tbx/_tby like gt.tbx/gt.tby.
+ * boulderhandling: 0=block, 1=ignore boulders, 2=conditionally block.
  */
-export function linedup(ax, ay, bx, by, _boulderhandling = 0) {
+export function linedup(ax, ay, bx, by, boulderhandling = 0) {
     game._tbx = ax - bx;
     game._tby = ay - by;
     if (!game._tbx && !game._tby) return false;
     if ((!game._tbx || !game._tby || Math.abs(game._tbx) === Math.abs(game._tby))
         && distmin(game._tbx, game._tby, 0, 0) < BOLT_LIM) {
-        // Hero target: couldsee from hero to monster; else clear_path stub→couldsee
-        const u = game.u || {};
-        if (u.ux === ax && u.uy === ay) return !!couldsee(bx, by);
-        return !!couldsee(bx, by);
+        // C: u_at(ax,ay) ? couldsee(bx,by) : clear_path(ax,ay,bx,by)
+        if (u_at(ax, ay) ? !!couldsee(bx, by) : !!clear_path(ax, ay, bx, by)) {
+            return true;
+        }
+        if (boulderhandling === 0) return false;
+        let cx = bx;
+        let cy = by;
+        const dx = sgn(ax - bx);
+        const dy = sgn(ay - by);
+        let boulderspots = 0;
+        do {
+            cx += dx;
+            cy += dy;
+            if (blocking_terrain(cx, cy)) return false;
+            if (sobj_at(BOULDER, cx, cy)) boulderspots++;
+        } while (cx !== ax || cy !== ay);
+        if (boulderhandling === 1 || rn2(2 + boulderspots) < 2) return true;
     }
     return false;
 }
 
-/** C ref: mthrowu.c m_lined_up / lined_up — vs hero. */
+/**
+ * C ref: mthrowu.c m_lined_up / lined_up — vs hero (mux/muy target).
+ * Upolyd concealment rn2(25); ignore_boulders via throws_rocks / WAN_STRIKING.
+ */
 export function lined_up(mtmp) {
     const u = game.u || {};
-    return linedup(u.ux, u.uy, mtmp.mx, mtmp.my, 2);
+    const tx = mtmp.mux ?? u.ux;
+    const ty = mtmp.muy ?? u.uy;
+    const ignore_boulders = throws_rocks(mtmp.data)
+        || !!m_carrying(mtmp, WAN_STRIKING);
+    // C: utarget && Upolyd && rn2(25) && (uundetected || unusual AP)
+    if (Upolyd(u) && rn2(25)) {
+        const ap = M_AP_TYPE(game.youmonst);
+        if (u.uundetected || (ap !== M_AP_NOTHING && ap !== M_AP_MONSTER)) {
+            return false;
+        }
+    }
+    return linedup(tx, ty, mtmp.mx, mtmp.my, ignore_boulders ? 1 : 2);
 }
 
 /**

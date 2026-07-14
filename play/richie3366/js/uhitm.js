@@ -15,7 +15,7 @@ import {
 import {
     WEAPON_CLASS, FOOD_CLASS, RANDOM_CLASS, objectNameStrs, objectNames,
 } from './objects.js';
-import { exercise, A_STR, A_DEX, A_WIS, acurr } from './attrib.js';
+import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
 import { pline, newsym } from './display.js';
 import { dmgval, P_SKILL, weapon_hit_bonus, martial_bonus } from './weapon.js';
@@ -213,7 +213,9 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
  * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance
  * → make_corpse. Named omissions: LEVEL_SPECIFIC_NOCORPSE,
  * accessible||is_pool gate, flooreffects non-floor arms, wasinside/
- * burycorpse/zombify, murder/luck rn2, artifact un-create on oversized.
+ * burycorpse/zombify, murder/luck rn2 (peaceful/tame change_luck),
+ * quest leader/nemesis/guardian/priest/tame special adjalign arms,
+ * artifact un-create on oversized.
  */
 async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
@@ -245,12 +247,16 @@ async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         // C: if (!wasinside && corpse_chance(...)) make_corpse(...)
         if (corpse_chance(mtmp)) make_corpse(mtmp);
     }
-    // C ref: mon.c xkilled cleanup — experience after corpse; murder/luck/
-    // alignment adjust deferred when they would burn RNG (peaceful rn2)
+    // C ref: mon.c xkilled cleanup — experience after corpse; murder/
+    // peaceful luck rn2 deferred (would burn RNG on peaceful/tame)
     const died = game.mvitals?.[mndx]?.died | 0;
     const tmp = experience(mtmp, died);
     more_experienced(tmp, 0);
     await newexplevel();
+    // C: special adjalign arms (quest/nemesis/guardian/priest/tame) deferred;
+    // peaceful-only -5 then always adjalign(mtmp->malign)
+    if (mtmp.mpeaceful && !mtmp.mtame && !mtmp.ispriest) adjalign(-5);
+    adjalign(mtmp.malign | 0);
 }
 
 async function killed(mtmp) {

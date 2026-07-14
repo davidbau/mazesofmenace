@@ -9,7 +9,7 @@ import {
 import { pline, newsym } from './display.js';
 import { gethungry } from './eat.js';
 import { m_at } from './mon.js';
-import { cansee } from './vision.js';
+import { cansee, recalc_block_point } from './vision.js';
 import { is_hider, throws_rocks } from './monsters.js';
 import { objects_at, obj_extract_self, place_object } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
@@ -35,16 +35,19 @@ function doorless_door(x, y) {
 
 /**
  * C ref: hack.c movobj — extract floor obj and place at (ox,oy).
- * maybe_unhide_at deferred.
+ * maybe_unhide_at deferred. Boulder → recalc_block_point both cells.
  */
 function movobj(obj, ox, oy) {
     if (!obj) return;
     const ox0 = obj.ox | 0;
     const oy0 = obj.oy | 0;
+    const wasBoulder = (obj.otyp | 0) === BOULDER;
     obj_extract_self(obj);
     newsym(ox0, oy0);
+    if (wasBoulder) recalc_block_point(ox0, oy0);
     place_object(obj, ox, oy);
     newsym(ox, oy);
+    if (wasBoulder) recalc_block_point(ox, oy);
 }
 
 /**

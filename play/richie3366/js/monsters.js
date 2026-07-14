@@ -97,6 +97,7 @@ export const M2_NASTY = 0x02000000;
 export const M2_STRONG = 0x04000000;
 export const M2_MERC = 0x00000200;
 export const M2_ORC = 0x00000080; /* monflag.h — is an orc (≡ MH_ORC) */
+export const M2_HUMAN = 0x00000008; /* monflag.h — is a human */
 
 export const M1_FLY = 0x00000001; /* monflag.h — can fly or float */
 export const M1_AMORPHOUS = 0x00000004; /* monflag.h — can flow under doors */
@@ -108,6 +109,7 @@ export const M1_HIDE = 0x00000100; /* monflag.h — mimics, blends with ceiling 
 export const M1_NOTAKE = 0x00000800; /* monflag.h — cannot pick up objects */
 export const M1_NOHANDS = 0x00002000;
 export const M1_HUMANOID = 0x00020000; /* monflag.h — humanoid head/arms/torso */
+export const M1_UNSOLID = 0x00100000; /* monflag.h — no solid/liquid body */
 export const M1_THICK_HIDE = 0x00200000; /* monflag.h — thick hide or scales */
 export const M1_SEE_INVIS = 0x01000000; /* monflag.h — sees invisible */
 export const M1_NOEYES = 0x00001000;
@@ -162,6 +164,7 @@ export const MZ_TINY = 0;
 export const MZ_SMALL = 1;
 export const MZ_MEDIUM = 2; /* monflag.h — 4-7' */
 export const MZ_LARGE = 3; /* monflag.h — 7-12' */
+export const MZ_HUGE = 4; /* monflag.h — 12-25' */
 export function verysmall(ptr) {
     return (ptr?.msize ?? 2) < MZ_SMALL;
 }
@@ -219,6 +222,21 @@ export function is_floater(ptr) {
 export function is_clinger(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_CLING);
 }
+/** C ref: mondata.h amorphous */
+export function amorphous(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_AMORPHOUS);
+}
+/** C ref: mondata.h unsolid */
+export function unsolid(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_UNSOLID);
+}
+/** C ref: mondata.h is_whirly — vortex letter or air elemental */
+const PM_AIR_ELEMENTAL = monsterNames.indexOf('PM_AIR_ELEMENTAL');
+export function is_whirly(ptr) {
+    if (!ptr) return false;
+    if (ptr.mlet === 'S_VORTEX') return true;
+    return (ptr.mndx ?? -1) === PM_AIR_ELEMENTAL;
+}
 /** C: grounded — not flyer/floater; clingers need ceiling (always assume has). */
 export function grounded(ptr) {
     if (!ptr) return true;
@@ -265,6 +283,11 @@ export function throws_rocks(ptr) {
 /** C ref: mondata.h is_orc */
 export function is_orc(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_ORC);
+}
+
+/** C ref: mondata.h is_human */
+export function is_human(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_HUMAN);
 }
 
 /** C ref: mondata.h likes_gold */

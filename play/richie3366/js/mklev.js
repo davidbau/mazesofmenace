@@ -37,6 +37,7 @@ import {
     BOOL_RANDOM,
     LVLINIT_SOLIDFILL, LVLINIT_MINES,
     In_mines,
+    ZOMBIFY_MON, TIMER_OBJECT,
 } from './const.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
@@ -50,6 +51,7 @@ import { maketrap, t_at } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mkobj_at, mkgold, mkcorpstat, next_ident,
     curse, bless, blessorcurse, place_object, add_to_buried, weight, OBJ,
+    set_corpsenm, obj_stop_timers, start_timer, obj_extract_self,
 } from './mkobj.js';
 import { makemon, mkclass, MM_NOGRP } from './makemon.js';
 import { enexto } from './teleport.js';
@@ -59,7 +61,7 @@ import {
     is_male, is_female, mons, G_NOGEN,
     MALE, FEMALE, NEUTRAL,
 } from './monsters.js';
-import { name_to_monplus } from './mondata.js';
+import { name_to_monplus, name_to_mon } from './mondata.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
 import { DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT } from './const.js';
 
@@ -1563,6 +1565,20 @@ const THEMEROOM_MAPS = {
         map: '-----x-----\n|...|x|...|\n|...---...|\n|.........|\n---.....---\nxx|.....|xx\n---.....---\n|.........|\n|...---...|\n|...|x|...|\n-----x-----',
         fx: 6, fy: 6,
     },
+    // C ref: themerms.lua 'Blocked center' — map + optional lava→wall/pool replace
+    'Blocked center': {
+        map: '-----------\n|.........|\n|.........|\n|.........|\n|...LLL...|\n|...LLL...|\n|...LLL...|\n|.........|\n|.........|\n|.........|\n-----------',
+        fx: 1, fy: 1,
+        contents() {
+            // percent(30) then shuffle({"-","P"}) then replace L in {1,1,9,9}
+            if (rn2(100) < 30) {
+                const terr = [HWALL, POOL];
+                nhlib_shuffle(terr);
+                lspo_replace_terrain_region(1, 1, 9, 9, LAVAPOOL, terr[0], 100);
+            }
+            filler_region(1, 1);
+        },
+    },
 };
 
 // C ref: nhlua.c char2typ[] / splev_chr2typ() — first match wins ('-' → HWALL).
@@ -1940,6 +1956,44 @@ function themeroom_fill_storeroom(croom) {
     });
 }
 
+// C ref: themerms.lua "Buried zombies" + sp_lev.c create_object buried CORPSE
+// Loop (width*height)/2: shuffle zombifiable → mksobj CORPSE → set_corpsenm →
+// bury_an_obj → stop rot-corpse → start zombify-mon(990+rn2(21)).
+function themeroom_fill_buried_zombies(croom) {
+    const diff = level_difficulty();
+    // C: start with [1..4]; expand at diff>3 / diff>6
+    const zombifiable = ['kobold', 'gnome', 'orc', 'dwarf'];
+    if (diff > 3) {
+        zombifiable.push('elf', 'human');
+        if (diff > 6) zombifiable.push('ettin', 'giant');
+    }
+    // C sp_lev mkroom table: width = 1+(hx-lx), height = 1+(hy-ly)
+    const width = 1 + (croom.hx - croom.lx);
+    const height = 1 + (croom.hy - croom.ly);
+    // Lua `/` is float; for-loop runs while i <= limit
+    const n = Math.floor((width * height) / 2);
+    for (let i = 0; i < n; i++) {
+        nhlib_shuffle(zombifiable);
+        const mndx = name_to_mon(zombifiable[0]);
+        if (mndx < 0 || mndx === NON_PM) continue;
+        const pos = room_random_loc(croom);
+        if (!pos) continue;
+        // C create_object: mksobj_at(id, x, y, TRUE, !named) with named=false
+        const otmp = mksobj_at(CORPSE, pos.x, pos.y, true, true);
+        if (!otmp) continue;
+        // Override random corpsenm (restarts corpse timeout like C set_corpsenm)
+        set_corpsenm(otmp, mndx);
+        // C bury_an_obj: obj_resists(0,0) then extract + add_to_buried
+        rn2(100);
+        obj_extract_self(otmp);
+        add_to_buried(otmp);
+        // Lua: o:stop_timer("rot-corpse"); o:start_timer("zombify-mon", math.random(990,1010))
+        // math.random(990,1010) → nh.random(990,21) → 990+rn2(21)
+        obj_stop_timers(otmp);
+        start_timer(990 + rn2(21), TIMER_OBJECT, ZOMBIFY_MON, otmp);
+    }
+}
+
 // C ref: themerms.lua "Ghost of an Adventurer" contents + sp_lev create_monster/object
 function themeroom_fill_ghost(croom) {
     const sel = selection_from_mkroom(croom);
@@ -2092,6 +2146,7 @@ const THEMEROOM_FILL_BODIES = {
     'Ghost of an Adventurer': themeroom_fill_ghost,
     'Teleportation hub': themeroom_fill_teleport_hub,
     'Storeroom': themeroom_fill_storeroom,
+    'Buried zombies': themeroom_fill_buried_zombies,
 };
 
 // C ref: themerms.lua themeroom_fill() — reservoir + dispatched fill bodies
@@ -2110,7 +2165,7 @@ function themeroom_fill(croom) {
     croom._themeroom_fill = pick.name;
     const body = THEMEROOM_FILL_BODIES[pick.name];
     if (body) body(croom);
-    // Named omission: other fill contents (Ice/Temple/Storeroom/…)
+    // Named omission: other fill contents (Ice/Trap room/Garden/Temple/…)
 }
 
 // C ref: themerms.lua filler_region + sp_lev.c lspo_region irregular path
@@ -2163,9 +2218,49 @@ function filler_region(rel_x, rel_y) {
     return true;
 }
 
-// C ref: sp_lev.c lspo_map — themerms random-placement path (lr=tb=-1, no croom)
-function lspo_map_themeroom(mapstr, filler_x, filler_y) {
+// C ref: nhlib.lua shuffle() — Fisher–Yates with math.random(i)=1+rn2(i)
+function nhlib_shuffle(list) {
+    for (let i = list.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const tmp = list[i - 1];
+        list[i - 1] = list[j - 1];
+        list[j - 1] = tmp;
+    }
+}
+
+// C ref: sp_lev.c lspo_replace_terrain — region arm (relative to map xystart)
+// Iterates x outer, y inner; rn2(100)<chance only after fromtyp match (clang &&).
+function lspo_replace_terrain_region(rx1, ry1, rx2, ry2, fromtyp, totyp, chance) {
     const g = game;
+    const mx = g.splev_xstart ?? 1;
+    const my = g.splev_ystart ?? 0;
+    const ax1 = mx + rx1;
+    const ay1 = my + ry1;
+    const ax2 = mx + rx2;
+    const ay2 = my + ry2;
+    const ch = chance == null ? 100 : chance;
+    for (let x = Math.max(1, ax1); x <= ax2; x++) {
+        for (let y = ay1; y <= ay2; y++) {
+            if (!isok(x, y)) continue;
+            const loc = g.level.at(x, y);
+            if (!loc) continue;
+            const match = (fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
+                || loc.typ === fromtyp;
+            if (match && rn2(100) < ch) {
+                // C set_levltyp_lit(..., SET_LIT_NOCHANGE) — typ only
+                sel_set_ter(x, y, totyp, false);
+            }
+        }
+    }
+}
+
+// C ref: sp_lev.c lspo_map — themerms random-placement path (lr=tb=-1, no croom)
+// mapdef: { map, fx, fy [, contents()] } — contents replaces default filler_region.
+function lspo_map_themeroom(mapdef) {
+    const g = game;
+    const mapstr = mapdef.map;
+    const contents_fn = mapdef.contents || null;
+
     const mf = mapfrag_fromstr(mapstr);
     if (!mf || mf.wid < 1 || mf.hei < 1) {
         g.themeroom_failed = true;
@@ -2229,7 +2324,8 @@ function lspo_map_themeroom(mapstr, filler_x, filler_y) {
             }
         }
 
-        filler_region(filler_x, filler_y);
+        if (contents_fn) contents_fn();
+        else filler_region(mapdef.fx, mapdef.fy);
         // C resets xystart after contents
         g.splev_xstart = 1;
         g.splev_ystart = 0;
@@ -2269,13 +2365,15 @@ async function themerooms_generate(difficulty) {
         const mapdef = THEMEROOM_MAPS[pick.name];
         if (mapdef) {
             // C: des.map → lspo_map (no build_room rn2(100) chance burn)
-            return lspo_map_themeroom(mapdef.map, mapdef.fx, mapdef.fy);
+            return lspo_map_themeroom(mapdef);
         }
 
         // C themerms.lua rectangular rooms:
-        //  default → ordinary filled=1
+        //  default → ordinary filled=1 (fully-random create_room)
+        //  sized outer rooms → create_room positioned (rnd(5)) when w/h set
         //  Nesting rooms → fixed w/h then build_room (D-0226)
         //  Default/Unlit/Both themed fill → type=themed + themeroom_fill
+        // Size RNG must run before build_room's rn2(100) (Lua table eval order).
         let rtype = OROOM;
         let rlit = -1;
         let needfill = FILL_NORMAL;
@@ -2287,6 +2385,39 @@ async function themerooms_generate(difficulty) {
             room_w = 9 + rn2(4);
             room_h = 9 + rn2(4);
             needfill = FILL_NORMAL;
+        } else if (pick.name === 'Fake Delphi') {
+            // C ref: themerms.lua:294 — outer w=11,h=9; nested create_subroom deferred
+            room_w = 11;
+            room_h = 9;
+            needfill = FILL_NORMAL;
+        } else if (pick.name === 'Huge room with another room inside') {
+            // C ref: themerms.lua:325 — w/h before des.room; nested body deferred
+            room_w = rn2(10) + 11;
+            room_h = rn2(5) + 8;
+            needfill = FILL_NORMAL;
+        } else if (pick.name === 'Pillars') {
+            // C ref: themerms.lua:402 — themed 10×10; pillar terrain deferred
+            rtype = THEMEROOM;
+            room_w = 10;
+            room_h = 10;
+            needfill = 0;
+        } else if (pick.name === 'Mausoleum') {
+            // C ref: themerms.lua:422 — themed odd size; nested 1×1 deferred
+            rtype = THEMEROOM;
+            room_w = 5 + rn2(3) * 2;
+            room_h = 5 + rn2(3) * 2;
+            needfill = 0;
+        } else if (pick.name === 'Random dungeon feature') {
+            // C ref: themerms.lua:448 — odd-sized ordinary; center terrain deferred
+            room_w = 3 + rn2(3) * 2;
+            room_h = 3 + rn2(3) * 2;
+            needfill = FILL_NORMAL;
+        } else if (pick.name === 'Twin businesses') {
+            // C ref: themerms.lua:824 — themed 9×5 aisle; nested shops deferred
+            rtype = THEMEROOM;
+            room_w = 9;
+            room_h = 5;
+            needfill = 0;
         } else if (pick.name === 'Default room with themed fill') {
             rtype = THEMEROOM;
             needfill = 0;
@@ -2301,9 +2432,10 @@ async function themerooms_generate(difficulty) {
             needfill = FILL_NORMAL;
             do_themed_fill = true;
         }
-        // Named omission: Fake Delphi / Huge / Room-in-room / Pillars /
-        // Mausoleum size+nested bodies still fall through as plain create_room.
-        // Nesting nested create_subroom/create_door deferred (outer often fails).
+        // Named omission: Room-in-room nested create_subroom/door; Fake Delphi /
+        // Huge / Nesting / Mausoleum / Twin nested bodies; Pillars terrain;
+        // Random-feature center terrain. Water vault is map-path. Blocked
+        // center map+replace_terrain done (D-0243).
 
         // C build_room: chance defaults to 100 → always burns rn2(100)
         // (after contents arg RNG such as Nesting rn2(4) size rolls)

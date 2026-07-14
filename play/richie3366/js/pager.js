@@ -230,10 +230,16 @@ function look_at_monster_buf(mtmp) {
  * Exported for insight.c putstr NHW_MENU paths (#conduct, etc.).
  * C ref: wintty.c process_text_window corner/fullscreen for NHW_MENU data.
  */
+/**
+ * C ref: wintty.c process_text_window + dmore(cw, quitchars) for NHW_MENU
+ * putstr windows (look_here, etc.). Corner (offx≠0) paints all rows then
+ * one dmore; fullscreen pages at rows-1. Both use xwaitforspace(quitchars)
+ * — only space/CR/ESC advance; hjklyubn stay on the page (capture still).
+ */
 export async function show_nhw_menu_text(lines) {
     const disp = game.nhDisplay;
     if (!disp) {
-        await nhgetch();
+        await text_page_wait();
         return;
     }
     const cols = disp.cols || 80;
@@ -272,12 +278,14 @@ export async function show_nhw_menu_text(lines) {
             for (let i = 0; i < morestr.length && i < cols; i++)
                 disp.setCell(i, fr, morestr[i], NO_COLOR, 0);
             disp.setCursor(morestr.length, fr);
-            await nhgetch();
+            const cancelled = await text_page_wait();
+            if (cancelled) break;
             offset += pageRows;
             if (last) break;
         }
     } else {
         // C process_text_window corner: cl_end from offx; putchar(' '); text.
+        // No mid-list page break when offx≠0 — all rows then one dmore.
         for (let r = 0; r < lines.length; r++) {
             for (let c = offx; c < cols; c++)
                 disp.setCell(c, r, ' ', NO_COLOR, 0);
@@ -294,7 +302,7 @@ export async function show_nhw_menu_text(lines) {
             disp.setCell(offx + 1 + i, moreRow, morestr[i], NO_COLOR, 0);
         disp.setCursor(offx + 1 + morestr.length, moreRow);
         game._menu_overlay = true;
-        await nhgetch();
+        await text_page_wait();
     }
 
     game._menu_overlay = false;

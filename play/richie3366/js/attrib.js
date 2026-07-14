@@ -278,6 +278,34 @@ export function change_luck(n) {
     u.uluck = luck;
 }
 
+/** C ref: align.h ALIGNLIM — (10 + moves/200) */
+export function ALIGNLIM() {
+    return 10 + Math.trunc((game.moves ?? 0) / 200);
+}
+
+/**
+ * C ref: attrib.c adjalign — clamp record; abuse/erinys on loss.
+ * Named omission: adj_erinys body (abuse counter still updated).
+ */
+export function adjalign(n) {
+    const u = game.u || (game.u = {});
+    if (!u.ualign) u.ualign = { type: 0, record: 0, abuse: 0 };
+    const cur = u.ualign.record | 0;
+    const newalign = cur + (n | 0);
+    if (n < 0) {
+        const newabuse = (u.ualign.abuse | 0) - (n | 0);
+        if (newalign < cur) u.ualign.record = newalign;
+        if (newabuse > (u.ualign.abuse | 0)) {
+            u.ualign.abuse = newabuse;
+            // adj_erinys(newabuse) deferred
+        }
+    } else if (newalign > cur) {
+        u.ualign.record = newalign;
+        const lim = ALIGNLIM();
+        if (u.ualign.record > lim) u.ualign.record = lim | 0;
+    }
+}
+
 /*
  * C ref: attrib.c innate tables + role_abil() / adjabil().
  * Prop names match the H* macros that C stores via long* ability.
