@@ -1010,7 +1010,7 @@ export async function dochug(mtmp) {
     if (find_defensive(mtmp, false)) {
         // use_defensive body deferred — treat as not spent
     } else if (find_misc(mtmp)) {
-        if (use_misc(mtmp) !== 0) return 1;
+        if ((await use_misc(mtmp)) !== 0) return 1;
     }
 
     const mdat = mtmp.data;

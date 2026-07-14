@@ -370,7 +370,32 @@ async function Shirt_on() {
 }
 
 /**
- * C ref: do_wear.c armoroff — delay-0 path only (oc_delay doff occupation deferred).
+ * C ref: objnam.c suit_simple_name — "mail"/"jacket"/"suit" (dragon deferred).
+ */
+function suit_simple_name(suit) {
+    if (!suit) return 'suit';
+    const suitnm = objectNameStrs[suit.otyp] || '';
+    if (suitnm.length > 5 && suitnm.endsWith(' mail')) return 'mail';
+    if (suitnm.length > 7 && suitnm.endsWith(' jacket')) return 'jacket';
+    return 'suit';
+}
+
+/** C ref: objnam.c cloak/helm/gloves/boots/shield/shirt_simple_name — subset */
+function armor_doff_simple_name(otmp) {
+    switch (armcat(otmp)) {
+        case ARM_SUIT: return suit_simple_name(otmp);
+        case ARM_SHIELD: return 'shield';
+        case ARM_HELM: return 'helmet'; // hard vs hat deferred
+        case ARM_GLOVES: return 'gloves';
+        case ARM_BOOTS: return 'boots';
+        case ARM_CLOAK: return 'cloak'; // robe/smock deferred
+        case ARM_SHIRT: return 'shirt';
+        default: return 'armor';
+    }
+}
+
+/**
+ * C ref: do_wear.c armoroff — oc_delay → nomul/afternmv; else immediate *_off.
  * Returns 1 on success (ECMD_TIME caller), 0 if cursed/blocked.
  */
 async function armoroff(otmp) {
@@ -378,7 +403,26 @@ async function armoroff(otmp) {
         await pline(game._cursed_takeoff_msg || "You can't.  It is cursed.");
         return 0;
     }
-    // Delay occupation path deferred — fedora/leather jacket are delay 0.
+    const delay = -(game.objects?.[otmp.otyp]?.oc_delay ?? 0);
+    const cat = armcat(otmp);
+    if (delay) {
+        // C: nomul(-oc_delay); afternmv = *_off; nomovemsg finish taking off
+        nomul(delay);
+        game.multi_reason = 'disrobing';
+        if (cat === ARM_SUIT) game.afternmv = Armor_off;
+        else if (cat === ARM_SHIELD) game.afternmv = Shield_off;
+        else if (cat === ARM_HELM) game.afternmv = Helmet_off;
+        else if (cat === ARM_GLOVES) game.afternmv = Gloves_off;
+        else if (cat === ARM_BOOTS) game.afternmv = Boots_off;
+        else if (cat === ARM_CLOAK) game.afternmv = Cloak_off;
+        else if (cat === ARM_SHIRT) game.afternmv = Shirt_off;
+        else game.afternmv = null;
+        const what = armor_doff_simple_name(otmp);
+        game.nomovemsg = `You finish taking off your ${what}.`;
+        // takeoff.mask clear deferred with full A-command path
+        return 1;
+    }
+    // No delay — immediate remove + off_msg (fedora/leather jacket)
     const u = game.u || {};
     if (otmp === u.uarm) Armor_off();
     else if (otmp === u.uarmc) Cloak_off();

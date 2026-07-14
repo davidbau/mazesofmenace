@@ -27,7 +27,7 @@ import { doengrave, maybe_smudge_engr } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
-import { donull, dodown } from './do.js';
+import { donull, dodown, dodrop } from './do.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
 import { doopen_indir } from './lock.js';
 import { doextcmd } from './getline.js';
@@ -66,6 +66,16 @@ function isMovementKey(ch) {
 
 function isRunKey(ch) {
     return 'HJKLYUBN'.includes(ch);
+}
+
+/** C ref: cmd.c reset_commands — C(dirchars[i]) → do_rush_* (!number_pad). */
+function rushDirFromCtrl(key) {
+    // Only real Ctrl-A..Ctrl-Z codes (1..26). Plain 'j' (106) must not match:
+    // (106 & 0x1f)+96 === 'j'. C('j')==10=='\n' is rush-south.
+    if (key < 1 || key > 26) return null;
+    const letter = String.fromCharCode(key + 96); // 1..26 → a..z
+    if (!isMovementKey(letter)) return null;
+    return letter;
 }
 
 // C ref: hack.c — check if a cell blocks movement
@@ -485,9 +495,11 @@ export async function rhack(key) {
     game._pending_message = '';
 
     const ch = String.fromCharCode(key);
+    // C ref: reset_commands bind C(dir) → do_rush_*; e.g. C('j')=='\n' south
+    const rushDir = rushDirFromCtrl(key);
 
     // C: non-prefix command after F drops the fight prefix (feedback deferred)
-    if (ch !== 'F' && !isMovementKey(ch) && !isRunKey(ch)
+    if (ch !== 'F' && !isMovementKey(ch) && !isRunKey(ch) && !rushDir
         && game.context?.forcefight) {
         game.context.forcefight = 0;
         game.domove_attempting = 0;
@@ -499,17 +511,18 @@ export async function rhack(key) {
         if (game.context) game.context.forcefight = 0;
         // domove sets context.move = 0 if blocked; else leave as 1 (allmain preset)
         if (game.context.move !== 0) game.context.move = 1;
-    } else if (isRunKey(ch)) {
-        // C ref: cmd.c do_run_* + DOMOVE_RUSH — multi = max(COLNO,ROWNO)
-        const low = ch.toLowerCase();
+    } else if (isRunKey(ch) || rushDir) {
+        // C ref: cmd.c do_run_* → run=1; do_rush_* (C(dir)) → run=3
+        const low = rushDir || ch.toLowerCase();
         if (!game.context) game.context = {};
-        // Pending F + capital dir: forcefight one step (not rush)
+        // Pending F + capital/ctrl dir: forcefight one step (not rush)
         if (game.context.forcefight) {
             await domove(DIR_DX[low], DIR_DY[low]);
             game.context.forcefight = 0;
             if (game.context.move !== 0) game.context.move = 1;
         } else {
-            game.context.run = 1;
+            // C: set_move_cmd(dir, run) — capital run=1, Ctrl-rush=3
+            game.context.run = rushDir ? 3 : 1;
             game.context.mv = 1;
             if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
             game.u.last_str_turn = 0;
@@ -582,6 +595,11 @@ export async function rhack(key) {
         const tookTime = await dosearch();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'd') {
+        // C ref: do.c dodrop — drop an item
+        const dropRes = await dodrop();
+        game.context.move = (dropRes & ECMD_TIME) ? 1 : 0;
+        if (dropRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'T') {
         // C ref: do_wear.c dotakeoff — take off armor/accessory
         const tookTime = await dotakeoff();

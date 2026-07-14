@@ -261,7 +261,13 @@ export async function runSegment(input) {
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
     nhGame._pendingDisplay = display;
 
-    for (const ch of moves) display.pushKey(ch.charCodeAt(0));
+    // C ref: scripts/record-session.mjs — tmux pty ICRNL maps CR→LF before
+    // NetHack reads the byte. Pipe/JS input has no line discipline, so
+    // replicate here. LF is C('j') = rush-south under !number_pad.
+    for (const ch of moves) {
+        const code = ch === '\r' ? 10 : ch.charCodeAt(0);
+        display.pushKey(code);
+    }
 
     await nhGame.start();
 

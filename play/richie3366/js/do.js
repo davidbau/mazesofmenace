@@ -1,11 +1,16 @@
 // do.js — miscellaneous hero actions from do.c.
 // C ref: do.c — donull, dodown, goto_level (ordinary stairs subset),
-//         cmd_safety_prevention.
+//         cmd_safety_prevention, dodrop/drop/dropx/dropy/dropz,
+//         canletgo.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { STAIRS, LADDER, ECMD_OK, ECMD_TIME } from './const.js';
-import { pline, docrt, flush_screen } from './display.js';
+import { nhgetch } from './input.js';
+import {
+    STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
+    W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_DROPPED,
+} from './const.js';
+import { pline, docrt, flush_screen, flush_topl_more, newsym } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import {
     stairway_at,
@@ -19,6 +24,13 @@ import { initrack } from './track.js';
 import { m_at, mnexto } from './mon.js';
 import { enexto } from './teleport.js';
 import { monster_nearby } from './hack.js';
+import { place_object, stackobj } from './mkobj.js';
+import { doname } from './objnam.js';
+import { can_reach_floor } from './engrave.js';
+import {
+    welded, setuwep, setuswapwep, setuqwep,
+} from './wield.js';
+import { objectNames } from './objects.js';
 
 /**
  * C ref: do.c danger_uprops — Stoned/Slimed/Strangled/Sick.
@@ -297,6 +309,195 @@ async function u_collide_m(mtmp) {
     }
     mtmp = m_at(u.ux, u.uy);
     if (mtmp) mnexto(mtmp, 0);
+}
+
+/**
+ * C ref: do.c canletgo — shared drop/throw worn/weld/loadstone gates.
+ * Named omissions: loadstone corpsenm count kludge detail; full weldmsg
+ * only when word non-empty (drop path uses canletgo before setuwep).
+ */
+export async function canletgo(obj, word) {
+    if (!obj) return false;
+    const mask = obj.owornmask || 0;
+    if (mask & (W_ARMOR | W_ACCESSORY)) {
+        if (word) {
+            await Norep(`You cannot ${word} something you are wearing.`);
+        }
+        return false;
+    }
+    const u = game.u || {};
+    if (obj === u.uwep && welded(u.uwep)) {
+        if (word) {
+            await Norep(`You cannot ${word} something welded to your hand.`);
+        }
+        return false;
+    }
+    // LOADSTONE cursed / LEASH / W_SADDLE — minimal gates
+    const LOADSTONE = objectNames.indexOf('LOADSTONE');
+    if (LOADSTONE >= 0 && (obj.otyp | 0) === LOADSTONE && obj.cursed) {
+        if (word) {
+            await pline(`For some reason, you cannot ${word} the stone!`);
+        }
+        obj.bknown = 1;
+        return false;
+    }
+    if (mask & W_SADDLE) {
+        if (word) {
+            await pline(`You cannot ${word} something you are sitting on.`);
+        }
+        return false;
+    }
+    return true;
+}
+
+function freeinv_drop(obj) {
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    obj.owornmask = 0;
+    obj.nobj = null;
+    // where left for place_object to set OBJ_FLOOR
+}
+
+/**
+ * C ref: do.c dropz — place at hero feet (engulf/flooreffects/shop/altar/
+ * ball/encumber deferred).
+ */
+export function dropz(obj, _with_impact) {
+    if (!obj) return;
+    const u = game.u || {};
+    if (obj === u.uwep) setuwep(null);
+    if (obj === u.uquiver) setuqwep(null);
+    if (obj === u.uswapwep) setuswapwep(null);
+
+    if (u.uswallow) {
+        // engulfer inventory deferred — leave free
+        return;
+    }
+    // flooreffects deferred — always place
+    place_object(obj, u.ux, u.uy);
+    stackobj(obj);
+    newsym(u.ux, u.uy);
+}
+
+/** C ref: do.c dropy */
+export function dropy(obj) {
+    dropz(obj, false);
+}
+
+/**
+ * C ref: do.c dropx — freeinv then dropy (ship_object/altar deferred).
+ */
+export function dropx(obj) {
+    if (!obj) return;
+    freeinv_drop(obj);
+    const u = game.u || {};
+    if (!u.uswallow) {
+        // ship_object / doaltarobj deferred
+    }
+    dropy(obj);
+}
+
+/**
+ * C ref: do.c drop — canletgo, unwield, verbose pline, dropx.
+ * Named omissions: corpse better_not_try; sink rings; levitation
+ * hitfloor/Heart of Ahriman; swallowed digests path; shop sell state.
+ */
+async function drop(obj) {
+    if (!obj) return ECMD_FAIL;
+    if (!(await canletgo(obj, 'drop'))) return ECMD_FAIL;
+
+    const u = game.u || {};
+    if (obj === u.uwep) {
+        // canletgo already rejected welded uwep
+        setuwep(null);
+    }
+    if (obj === u.uquiver) setuqwep(null);
+    if (obj === u.uswapwep) setuswapwep(null);
+
+    if (u.uswallow) {
+        if (game.flags?.verbose !== false) {
+            await pline(`You drop ${doname(obj)} into something.`);
+        }
+    } else {
+        if (!can_reach_floor(true)) {
+            // hitfloor deferred — still freeinv+place via dropx after pline
+            if (game.flags?.verbose !== false) {
+                await pline(`You drop ${doname(obj)}.`);
+            }
+            obj.how_lost = LOST_DROPPED;
+            dropx(obj);
+            return ECMD_TIME;
+        }
+        // altar skip verbose deferred
+        if (game.flags?.verbose !== false) {
+            await pline(`You drop ${doname(obj)}.`);
+        }
+    }
+    obj.how_lost = LOST_DROPPED;
+    dropx(obj);
+    return ECMD_TIME;
+}
+
+/** C invent getobj any_obj_ok — every invent letter is SUGGEST. */
+function drop_suggest_lets() {
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (o?.invlet) lets.push(o.invlet);
+    }
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    return lets.join('');
+}
+
+/**
+ * C ref: invent.c getobj("drop", any_obj_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
+ * Count-split and ?/* menus deferred.
+ */
+async function getobj_drop() {
+    for (;;) {
+        await flush_topl_more();
+        const lets = drop_suggest_lets();
+        const query = lets
+            ? `What do you want to drop? [${lets} or ?*]`
+            : 'What do you want to drop? [*]';
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/**
+ * C ref: do.c dodrop — getobj then drop (shop sellobj_state /
+ * reset_occupations deferred).
+ *
+ * Branch envelope: ordinary floor drop of invent item including uwep;
+ * cancel / missing letter / worn armor reject. Deferred: #droptype,
+ * count-split, shops, sinks, flooreffects, containers.
+ */
+export async function dodrop() {
+    const obj = await getobj_drop();
+    if (!obj) return ECMD_CANCEL;
+    return drop(obj);
 }
 
 /**

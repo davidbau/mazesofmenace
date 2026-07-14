@@ -306,8 +306,8 @@ function mkobj_erosions(otmp) {
     if (!rn2(1000)) otmp.greased = 1;
 }
 
-function rnd_class(first, last) {
-    // C ref: objnam.c rnd_class — weighted by oc_prob
+/** C ref: objnam.c rnd_class — weighted by oc_prob */
+export function rnd_class(first, last) {
     if (last <= first) return first;
     const objects = objs();
     let sum = 0;

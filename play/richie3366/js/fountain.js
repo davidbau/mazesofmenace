@@ -1,24 +1,25 @@
 // fountain.js — Fountain dryup / dip / drink effects.
-// C ref: fountain.c dryup, dipfountain, drinkfountain.
+// C ref: fountain.c dryup, dipfountain, drinkfountain, dofindgem.
 //
 // Branch envelope (drinkfountain): fate=rnd(30) before Levitation;
 // mgkftn restore+adjattrib; fate<10 refresh; switch default/19–30
-// message+RNG arms that do not need missing helpers.
-// Deferred: dowatersnakes/demon/nymph, dofindgem, dogushforth,
-// monster_detect body, enlightenment body, vomit body, town warn/
-// angry_guards, wizard yn, FOUNTAIN_IS_WARNED force dryup,
-// Excalibur LONG_SWORD body, wash_hands, dipfountain cases 17–29.
+// message+RNG arms; case 27 dofindgem when !FOUNTAIN_IS_LOOTED.
+// Deferred: dowatersnakes/demon/nymph (incl. case 27 fallthrough when
+// looted), dogushforth, monster_detect body, enlightenment body,
+// vomit body, town warn/angry_guards, wizard yn, FOUNTAIN_IS_WARNED
+// force dryup, Excalibur LONG_SWORD body, wash_hands, dipfountain
+// cases 17–23/25–29.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { pline, newsym, You_feel, flush_topl_more } from './display.js';
-import { curse } from './mkobj.js';
+import { curse, mksobj_at, rnd_class } from './mkobj.js';
 import { water_damage } from './trap.js';
 import { COIN_CLASS, objectNames } from './objects.js';
 import {
     ROOM, IS_FOUNTAIN,
     ER_NOTHING, ER_DESTROYED,
-    F_WARNED, FROMOUTSIDE,
+    F_LOOTED, F_WARNED, FROMOUTSIDE,
     nothing_seems_to_happen,
     KILLED_BY_AN,
 } from './const.js';
@@ -29,11 +30,47 @@ import { lesshungry, morehungry, poison_strdmg } from './eat.js';
 import { losehp } from './hack.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
+const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
+const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 
 /** C ref: rm.h FOUNTAIN_IS_WARNED */
 function FOUNTAIN_IS_WARNED(x, y) {
     const loc = game.level?.at(x, y);
     return !!((loc?.looted || 0) & F_WARNED);
+}
+
+/** C ref: rm.h FOUNTAIN_IS_LOOTED / SET_FOUNTAIN_LOOTED */
+function FOUNTAIN_IS_LOOTED(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!((loc?.looted || 0) & F_LOOTED);
+}
+
+function SET_FOUNTAIN_LOOTED(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc) loc.looted = (loc.looted || 0) | F_LOOTED;
+}
+
+/**
+ * C ref: fountain.c dofindgem — gem in sparkling waters.
+ * mksobj_at(..., FALSE, FALSE): next_ident only (no mksobj_init).
+ */
+async function dofindgem() {
+    const u = game.u || {};
+    const Blind = !!(u.Blind || u.ublind);
+    if (!Blind) {
+        await pline('You spot a gem in the sparkling waters!');
+    } else {
+        await You_feel('a gem here!');
+    }
+    // C: rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1)
+    mksobj_at(
+        rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1),
+        u.ux, u.uy,
+        false, false,
+    );
+    SET_FOUNTAIN_LOOTED(u.ux, u.uy);
+    newsym(u.ux, u.uy);
+    exercise(A_WIS, true);
 }
 
 /** C ref: hacklib / potion.hliquid — Hallucination synonym deferred. */
@@ -180,7 +217,13 @@ export async function drinkfountain() {
         case 26: // See Monsters — monster_detect body deferred
             exercise(A_WIS, true);
             break;
-        case 27: // Find a gem — dofindgem deferred (fallthrough to nymph)
+        case 27: // Find a gem in the sparkling waters
+            if (!FOUNTAIN_IS_LOOTED(u.ux, u.uy)) {
+                await dofindgem();
+                break;
+            }
+            // FALLTHROUGH — dowaternymph when already looted (deferred)
+            /* falls through */
         case 28: // Water Nymph — dowaternymph deferred
             break;
         case 29: { // Scare
@@ -250,14 +293,21 @@ export async function dipfountain(obj) {
     case 21:
     case 22:
     case 23:
-    case 24:
+        // Uncurse / demon / nymph / snakes — deferred
+        break;
+    case 24: // Find a gem
+        if (!FOUNTAIN_IS_LOOTED(u.ux, u.uy)) {
+            await dofindgem();
+            break;
+        }
+        // FALLTHROUGH — dogushforth when already looted (deferred)
+        /* falls through */
     case 25:
     case 26:
     case 27:
     case 28:
     case 29:
-        // Uncurse / demon / nymph / snakes / gem / gush / feelings /
-        // bath / coins — deferred
+        // Gush / feelings / bath / coins — deferred
         break;
     default:
         if (er === ER_NOTHING) {

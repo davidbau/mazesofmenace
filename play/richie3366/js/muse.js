@@ -165,7 +165,7 @@ export function find_offensive(mtmp) {
  * Teleport/undead-turning/cancel arms deferred; mon-target resist/hit
  * plines beyond dice burn deferred.
  */
-function mbhitm(mtmp, otmp, hits_you) {
+async function mbhitm(mtmp, otmp, hits_you) {
     if (!hits_you && otmp.otyp === WAN_STRIKING) {
         mtmp.msleeping = 0;
         // seemimic deferred
@@ -178,14 +178,14 @@ function mbhitm(mtmp, otmp, hits_you) {
         if (Antimagic()) {
             // C: monstseesu(M_SEEN_MAGR); shieldeff deferred
             monstseesu(M_SEEN_MAGR);
-            pline('Boing!');
+            await pline('Boing!');
             learnit = true;
         } else if (
             rnd(20) < 10 + (u.uac ?? 10)
             && !(game._buzzer && !game._buzzer.mwandexp)
         ) {
             monstunseesu(M_SEEN_MAGR);
-            pline('The wand hits you!');
+            await pline('The wand hits you!');
             let tmp = d(2, 12);
             if (u.HHalf_spell_damage || u.EHalf_spell_damage || u.Half_spell_damage) {
                 tmp = Math.trunc((tmp + 1) / 2);
@@ -193,7 +193,7 @@ function mbhitm(mtmp, otmp, hits_you) {
             losehp(tmp, 'wand', KILLED_BY_AN);
             learnit = true;
         } else {
-            pline('The wand misses you.');
+            await pline('The wand misses you.');
         }
         // stop_occupation deferred
         nomul(0);
@@ -215,7 +215,7 @@ function mbhitm(mtmp, otmp, hits_you) {
  * C ref: muse.c mbhit — mon wand beam toward mux/muy.
  * Named omissions: fhito_loc / drawbridge / doorlock; map_invisible.
  */
-function mbhit(mon, range, obj) {
+async function mbhit(mon, range, obj) {
     const bhitpos = game._bhitpos || (game._bhitpos = { x: 0, y: 0 });
     bhitpos.x = mon.mx;
     bhitpos.y = mon.my;
@@ -234,12 +234,12 @@ function mbhit(mon, range, obj) {
             break;
         }
         if (u_at(x, y)) {
-            mbhitm(null, obj, true);
+            await mbhitm(null, obj, true);
             r -= 3;
         } else {
             const mtmp = m_at(x, y);
             if (mtmp) {
-                mbhitm(mtmp, obj, false);
+                await mbhitm(mtmp, obj, false);
                 r -= 3;
             }
         }
@@ -274,9 +274,10 @@ export async function use_offensive(mtmp) {
     switch (m.has_offense) {
     case MUSE_WAN_STRIKING: {
         game._zap_oseen = oseen;
-        mzapwand(mtmp, otmp, false);
+        // Await zap/hit plines — unawaited more() races and steals keys (D-0261)
+        await mzapwand(mtmp, otmp, false);
         game._buzzer = mtmp;
-        mbhit(mtmp, rn1(8, 6), otmp);
+        await mbhit(mtmp, rn1(8, 6), otmp);
         game._buzzer = null;
         mtmp.mwandexp = true;
         return (mtmp.mhp | 0) < 1 ? 1 : 2;
@@ -288,7 +289,7 @@ export async function use_offensive(mtmp) {
     case MUSE_POT_ACID:
         if (cansee(mtmp.mx, mtmp.my)) {
             observe_object(otmp);
-            pline(`${Monnam(mtmp)} hurls ${singular(otmp, doname)}!`);
+            await pline(`${Monnam(mtmp)} hurls ${singular(otmp, doname)}!`);
         }
         await m_throw(
             mtmp, mtmp.mx, mtmp.my,
@@ -377,20 +378,20 @@ function precheck(mon, obj) {
 /**
  * C ref: muse.c mzapwand — message + charge--; unseen charge forget deferred.
  */
-function mzapwand(mtmp, otmp, self) {
+async function mzapwand(mtmp, otmp, self) {
     if ((otmp.spe | 0) < 1) return;
     if (!canseemon(mtmp)) {
         const range = couldsee(mtmp.mx, mtmp.my)
             ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
         const near = mdistu(mtmp) <= range * range;
-        pline(`You hear a ${near ? 'nearby' : 'distant'} zap.`);
+        await pline(`You hear a ${near ? 'nearby' : 'distant'} zap.`);
         // unknow_object deferred
     } else if (self) {
         // monverbself("zap") simplified
-        pline(`${Monnam(mtmp)} zaps ${doname(otmp)}!`);
+        await pline(`${Monnam(mtmp)} zaps ${doname(otmp)}!`);
     } else {
         // C: pline_mon("%s zaps %s!", Monnam, an(xname(otmp)))
-        pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
+        await pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
         // stop_occupation deferred
     }
     otmp.spe = (otmp.spe | 0) - 1;
@@ -441,7 +442,7 @@ export function mon_adjust_speed(mon, adjust, _obj) {
 /**
  * C ref: muse.c use_misc — WAN/POT_SPEED only (return 2 = spent turn).
  */
-export function use_misc(mtmp) {
+export async function use_misc(mtmp) {
     const m = museState();
     const otmp = m.misc;
     const i = precheck(mtmp, otmp);
@@ -450,7 +451,7 @@ export function use_misc(mtmp) {
 
     switch (m.has_misc) {
     case MUSE_WAN_SPEED_MONSTER:
-        mzapwand(mtmp, m.misc, true);
+        await mzapwand(mtmp, m.misc, true);
         mon_adjust_speed(mtmp, 1, m.misc);
         return 2;
     case MUSE_POT_SPEED:
