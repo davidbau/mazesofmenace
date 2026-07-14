@@ -7,7 +7,7 @@ import {
     objects_at, obj_extract_self, splitobj,
 } from './mkobj.js';
 import { look_here, observe_object } from './invent.js';
-import { nomul } from './hack.js';
+import { nomul, check_special_room } from './hack.js';
 import { flush_screen, pline, newsym } from './display.js';
 import { addinv } from './u_init.js';
 import { xprname } from './objnam.js';
@@ -197,13 +197,16 @@ export async function dopickup() {
 
 /**
  * C ref: hack.c spoteffects(pick).
- * Ported envelope: when !in_steed_dismounting — non-pit pickup then dotrap
- * then pit pickup. dotrap covers hero dart (D-0239); other hero trap types
- * still stub/no-op in trapeffect_selector. Deferred: recursion guards,
- * pool, special room, sink fall, levitation timeout, Warning ice, hidden
- * monster surprise.
+ * Ported envelope: check_special_room; when !in_steed_dismounting — non-pit
+ * pickup then dotrap then pit pickup. dotrap covers hero dart (D-0239); other
+ * hero trap types still stub/no-op in trapeffect_selector. Deferred: recursion
+ * guards, pool, sink fall, levitation timeout, Warning ice, hidden monster
+ * surprise.
  */
 export async function spoteffects(pick) {
+    // C: check_special_room(FALSE) before pickup/dotrap (after pooleffects)
+    await check_special_room(false);
+
     // C: entire pickup/dotrap block gated on !gi.in_steed_dismounting
     if (game.in_steed_dismounting) return;
     const u = game.u;

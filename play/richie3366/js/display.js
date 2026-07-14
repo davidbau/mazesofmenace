@@ -21,6 +21,9 @@ import {
     In_mines,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
+    M_AP_OBJECT, M_AP_TYPE,
+    MCORPSENM,
+    isok,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -37,10 +40,14 @@ import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
-import { depth } from './hacklib.js';
+import { depth, dist2 } from './hacklib.js';
+import { monsterNames } from './generated/monsters_data.js';
+import { observe_object } from './invent.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
+// C display_monster M_AP_OBJECT default corpsenm when !has_mcorpsenm
+const PM_TENGU = monsterNames.indexOf('PM_TENGU');
 // C ref: objects.h MARKER — obj_is_generic gem/spell ranges
 const FIRST_REAL_GEM_OTYP = objectNames.indexOf('DILITHIUM_CRYSTAL');
 const LAST_GLASS_GEM_OTYP = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
@@ -152,6 +159,55 @@ export function mon_visible(mon) {
     return true;
 }
 
+/**
+ * C ref: display.h _canseemon — location sight/infrared + mon_visible.
+ * Named omission: worm_known for long worms.
+ */
+export function canseemon(mon) {
+    if (!mon?.mx) return false;
+    if (!(cansee(mon.mx, mon.my) || see_with_infrared(mon))) return false;
+    return mon_visible(mon);
+}
+
+/**
+ * C ref: display.h _sensemon — Detect_monsters / telepathy / warn.
+ * Named omissions: tp_sensemon Blind_telepat/Unblind_telepat range,
+ * MATCH_WARN_OF_MON, Underwater pool adjacency gate.
+ */
+export function sensemon(mon) {
+    if (!mon) return false;
+    const u = game.u || {};
+    if (u.uswallow && mon !== u.ustuck) return false;
+    if (u.Detect_monsters) return true;
+    return false;
+}
+
+/** C ref: display.h canspotmon — canseemon || sensemon. */
+export function canspotmon(mon) {
+    return canseemon(mon) || sensemon(mon);
+}
+
+/**
+ * C ref: display.c map_invisible — remember/show 'I' for unseen monster.
+ * Persists in hero_memory until unmap_invisible / visible mon display.
+ */
+export function map_invisible(x, y) {
+    const u = game.u || {};
+    if (x === u.ux && y === u.uy) return; // never I under hero
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const g = { ch: 'I', color: NO_COLOR, decgfx: false, invisible: true };
+    if (game.level?.flags?.hero_memory) {
+        loc.remembered_glyph = g;
+    }
+    show_glyph_cell(x, y, 'I', NO_COLOR, false);
+}
+
+/** C ref: display.h glyph_is_invisible — remembered unseen-monster marker. */
+function glyph_is_invisible(loc) {
+    return !!loc?.remembered_glyph?.invisible;
+}
+
 // C ref: youprop.h Infravision — race intrinsic via set_uasmon/mons[urace]
 function hero_has_infravision() {
     if (game.u?.HInfravision || game.u?.EInfravision) return true;
@@ -213,6 +269,28 @@ export function mon_glyph(mtmp) {
     return { ch, color };
 }
 
+/**
+ * C ref: display.c display_monster — M_AP_OBJECT fake obj → map_object.
+ * When a mimic is PHYSICALLY_SEEN and not sensed as a monster, show the
+ * disguised object glyph (and remember it) instead of the mlet letter.
+ * Named omissions: M_AP_FURNITURE cmap_to_glyph + lastseentyp;
+ * M_AP_MONSTER what_mon + rn2_on_display_rng; Protection_from_shape_changers
+ * sensed overlay; Hallucination statue random_obj.
+ */
+function mimic_object_appearance_glyph(mtmp) {
+    if (M_AP_TYPE(mtmp) !== M_AP_OBJECT) return null;
+    // C: sensed = Protection_from_shape_changers || sensemon(mon)
+    // Protection stubbed false; when sensed, caller shows real mon_glyph.
+    if (sensemon(mtmp)) return null;
+    const corpsenm = (mtmp.mextra && mtmp.mextra.mcorpsenm != null)
+        ? MCORPSENM(mtmp)
+        : PM_TENGU;
+    return obj_glyph({
+        otyp: mtmp.mappearance | 0,
+        corpsenm,
+    });
+}
+
 /** C ref: display.h maybe_display_usteed / ridden_mon_to_glyph — mlet+mcolor. */
 function hero_display_glyph() {
     const steed = game.u?.usteed;
@@ -264,6 +342,56 @@ function obj_is_generic(obj) {
     if (otyp >= FIRST_REAL_GEM_OTYP && otyp <= LAST_GLASS_GEM_OTYP) return true;
     if (otyp >= FIRST_SPELL_OTYP && otyp <= LAST_SPELL_OTYP) return true;
     return false;
+}
+
+/** C ref: display.c map_object / see_nearby_objects — neardist from xray or 2. */
+function object_neardist() {
+    const xr = game.u?.xray_range | 0;
+    const r = xr > 2 ? xr : 2;
+    // neardist = (r*r)*2 - r  (rounded-corner square; matches distant_name)
+    return { r, neardist: (r * r) * 2 - r };
+}
+
+function distu(x, y) {
+    const u = game.u;
+    return dist2(u?.ux | 0, u?.uy | 0, x, y);
+}
+
+/**
+ * C ref: display.c map_object — if glyph would be generic and hero cansee
+ * within neardist, observe_object then recompute as specific (per-otyp color).
+ * Named omissions: Hallucination statue random_obj; pile-top glyph flags.
+ */
+function map_object_observe_near(obj, x, y) {
+    if (!obj || game.u?.Hallucination) return;
+    if (!obj_is_generic(obj)) return;
+    if (!cansee(x, y)) return;
+    const { neardist } = object_neardist();
+    if (distu(x, y) <= neardist) observe_object(obj);
+}
+
+/**
+ * C ref: display.c see_nearby_objects — after same-level u_on_newpos.
+ * Mark nearby unseen tops dknown and newsym when the map still showed
+ * a generic object. Caller gates Blind / Hallucination / uswallow.
+ */
+export function see_nearby_objects() {
+    const u = game.u;
+    if (!u || !game.level) return;
+    const { r, neardist } = object_neardist();
+    const x0 = u.ux | 0;
+    const y0 = u.uy | 0;
+    for (let iy = y0 - r; iy <= y0 + r; iy++) {
+        for (let ix = x0 - r; ix <= x0 + r; ix++) {
+            if (!isok(ix, iy)) continue;
+            const obj = objects_at(ix, iy);
+            if (!obj || obj.dknown) continue;
+            if (!cansee(ix, iy) || distu(ix, iy) > neardist) continue;
+            observe_object(obj);
+            // C: operate on remembered glyph; if generic → newsym_force
+            newsym(ix, iy);
+        }
+    }
 }
 
 // Contest nomux / tty ANSI_DEFAULT: CLR_GRAY hilite is empty → capture
@@ -656,8 +784,14 @@ function terrain_glyph(loc, x, y) {
             dec: false,
         };
     }
-    // C ref: defsym.h PCHAR — furniture glyphs (display.c back_to_glyph)
-    case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
+    // C ref: defsym.h PCHAR — furniture glyphs (display.c back_to_glyph).
+    // dat/symbols DECgraphics: S_altar \xfb meta-{ (pi); other furniture
+    // keep Primary ASCII unless listed in that symset. altar_color by
+    // altarmask deferred — defsym CLR_GRAY (tty → NO_COLOR) for now.
+    case ALTAR:
+        return dec
+            ? { ch: '{', color: CLR_GRAY, dec: true }
+            : { ch: '_', color: CLR_GRAY, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false };
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
@@ -854,6 +988,8 @@ function map_location_memory(x, y) {
     if (!loc || !game.level?.flags?.hero_memory) return;
     const obj = objects_at(x, y);
     if (obj && !covers_objects(x, y)) {
+        // C: map_object(obj, FALSE) — may observe_object when near
+        map_object_observe_near(obj, x, y);
         const og = obj_glyph(obj);
         loc.remembered_glyph = { ch: og.ch, color: og.color, decgfx: og.dec };
         update_lastseentyp(x, y);
@@ -912,14 +1048,39 @@ export function newsym(x, y) {
             // C: _map_location(x, y, FALSE) then display_monster — memory
             // keeps object under the monster so leaving sight does not
             // replace ) with remembered corridor.
-            map_location_memory(x, y);
+            // show_mon_or_warn clears invisible memory when showing mon
+            if (glyph_is_invisible(loc)) {
+                loc.remembered_glyph = null;
+                map_location_memory(x, y);
+            } else {
+                map_location_memory(x, y);
+            }
+            // C display_monster: M_AP_OBJECT → map_object(!sensed) before
+            // falling through to real mon_to_glyph when !mimic || sensed.
+            const apg = mimic_object_appearance_glyph(mtmp);
+            if (apg) {
+                show_glyph_cell(x, y, apg.ch, apg.color, !!apg.dec);
+                if (game.level?.flags?.hero_memory) {
+                    loc.remembered_glyph = {
+                        ch: apg.ch, color: apg.color, decgfx: !!apg.dec,
+                    };
+                }
+                return;
+            }
             const mg = mon_glyph(mtmp);
             show_glyph_cell(x, y, mg.ch, mg.color, false);
             return;
         }
+        // C: newsym cansee — keep remembered I when !displayable mon
+        if (glyph_is_invisible(loc)) {
+            map_invisible(x, y);
+            return;
+        }
         // C ref: display.c _map_location — vobj_at before trap/engraving/bg
+        // C: map_object(obj, show) — nearby generic → observe_object
         const obj = objects_at(x, y);
         if (obj && !covers_objects(x, y)) {
+            map_object_observe_near(obj, x, y);
             const og = obj_glyph(obj);
             show_glyph_cell(x, y, og.ch, og.color, og.dec);
             if (game.level?.flags?.hero_memory) {
@@ -975,6 +1136,11 @@ export function newsym(x, y) {
             loc.remembered_glyph = mem;
         }
         show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx);
+    } else {
+        // C: show_mem → show_glyph(x, y, lev->glyph); unexplored glyph
+        // paints blank. A no-op here left stale tty cells after a sensed
+        // monster left an unseen square (postmov newsym(omx,omy)).
+        show_glyph_cell(x, y, ' ', NO_COLOR, false);
     }
 }
 
@@ -1241,13 +1407,20 @@ function _buildScreenOutput() {
             for (let c = 0; c < Math.min(line.length, display.cols); c++)
                 display.setCell(c, r, line[c], NO_COLOR, 0);
         }
-        // Map — write characters to grid (DEC → Unicode for browser display)
-        // Row 1 may already hold --More--; only fill cells that have glyphs
+        // Map — write characters to grid (DEC → Unicode for browser display).
+        // Only convert glyphs that frozen screen-decode DEC_MAP equates back
+        // (walls/doors/floor ·). S_altar DECgraphics meta-{ is π in
+        // DEC_TO_UNICODE but NOT in that comparator map — keep raw '{' so
+        // serialize_for_scoring matches C SO+{ (renderCell leaves '{').
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
-                const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+                let ch = loc.disp_ch;
+                if (loc.disp_decgfx) {
+                    const uni = DEC_TO_UNICODE[ch];
+                    if (uni && ch !== '{') ch = uni;
+                }
                 const sr = y + 1;
                 // Don't clobber --More-- on row 1
                 if (sr === 1 && msgLines.length > 1) continue;

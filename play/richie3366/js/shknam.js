@@ -280,6 +280,20 @@ export function get_shop_item(type) {
 /** C ref: shknam.c neweshk — re-export from makemon (MM_ESHK allocator). */
 export { neweshk };
 
+/** C ref: shknam.c shkname — strip non-letter prefix; Hallu deferred. */
+export function shkname(mtmp) {
+    let shknm = ESHK(mtmp)?.shknam || '';
+    if (shknm && !/[A-Za-z]/.test(shknm[0])) shknm = shknm.slice(1);
+    return shknm;
+}
+
+/** C ref: shknam.c Shknam — capitalized shkname. */
+export function Shknam(mtmp) {
+    const nam = shkname(mtmp);
+    if (!nam) return nam;
+    return nam.charAt(0).toUpperCase() + nam.slice(1);
+}
+
 /** C ref: shknam.c nameshk */
 function nameshk(shk, nlpIn) {
     const eshk = ESHK(shk) || neweshk(shk);

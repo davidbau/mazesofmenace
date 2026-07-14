@@ -5,8 +5,9 @@
 import { rn2, rnd, d } from './rng.js';
 import { distmin, m_at, record_mvitals_died, undead_to_corpse } from './mon.js';
 import { game } from './gstate.js';
-import { pline, newsym, mon_visible, see_with_infrared } from './display.js';
+import { pline, newsym, canspotmon, map_invisible } from './display.js';
 import { cansee } from './vision.js';
+import { dist2 } from './hacklib.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -58,13 +59,39 @@ const NO_ATTK = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
 /** Per-attack visibility; set in mattackm like C gv.vis. */
 let _mm_vis = false;
 
+/** C ref: monmove.c / muse.c mdistu — squared distance to hero. */
+function mdistu(mtmp) {
+    const u = game.u;
+    if (!u || mtmp?.mx == null) return 0;
+    return dist2(mtmp.mx, mtmp.my, u.ux, u.uy);
+}
+
 /**
- * C ref: display.h canspotmon — cansee/infrared + mon_visible.
+ * C ref: pline.c You_hear — acoustics/Deaf gate; Unaware/Underwater deferred.
+ * Local copy for mhitm; trap.js has its own until shared export.
  */
-function canspotmon(mtmp) {
-    if (!mtmp?.mx) return false;
-    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
-    return mon_visible(mtmp);
+async function You_hear(line) {
+    const u = game.u || {};
+    if (u.Deaf || game.flags?.acoustics === false) return;
+    await pline(`You hear ${line}`);
+}
+
+/**
+ * C ref: mhitm.c noises — out-of-sight m-vs-m combat feedback.
+ * Rate-limited via gf.far_noise / gn.noisetime (stored on game).
+ * Named omission: explmm AT_EXPL path shares this helper when wired.
+ */
+async function noises(magr, mattk) {
+    const farq = mdistu(magr) > 15;
+    const far_noise = !!game.far_noise;
+    const noisetime = game.noisetime | 0;
+    const moves = game.moves | 0;
+    if (!game.u?.Deaf && (farq !== far_noise || moves - noisetime > 10)) {
+        game.far_noise = farq;
+        game.noisetime = moves;
+        const what = (mattk?.aatyp | 0) === AT_EXPL ? 'an explosion' : 'some noises';
+        await You_hear(`${what}${farq ? ' in the distance' : ''}.`);
+    }
 }
 
 /**
@@ -325,10 +352,21 @@ function grow_up(mtmp, victim) {
     return mtmp.data;
 }
 
-// C ref: mhitm.c missmm() — pline only when gv.vis (noises deferred)
-async function missmm(magr, mdef, _mattk) {
+// C ref: mhitm.c pre_mm_attack — reveal + map_invisible when gv.vis
+// Named omission: seemimic / mundetected clear + showit newsym arms
+function pre_mm_attack(magr, mdef) {
+    if (!_mm_vis) return;
+    if (!canspotmon(magr)) map_invisible(magr.mx, magr.my);
+    if (!canspotmon(mdef)) map_invisible(mdef.mx, mdef.my);
+}
+
+// C ref: mhitm.c missmm() — pline when gv.vis; else noises()
+async function missmm(magr, mdef, mattk) {
+    pre_mm_attack(magr, mdef);
     if (_mm_vis) {
         await pline(`${Monnam(magr)} misses ${mon_nam(mdef)}.`);
+    } else {
+        await noises(magr, mattk);
     }
 }
 
@@ -356,8 +394,10 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     return M_ATTK_HIT;
 }
 
-// C ref: mhitm.c hitmm() — hit pline only when gv.vis; else noises() deferred
+// C ref: mhitm.c hitmm() — hit pline when gv.vis; else noises()
+// Named omission: full hit verb/silver/seduce arms
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
+    pre_mm_attack(magr, mdef);
     if (_mm_vis) {
         let verb = 'hits';
         if (mattk.aatyp === AT_BITE) verb = 'bites';
@@ -365,6 +405,8 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
         else if (mattk.aatyp === AT_BUTT) verb = 'butts';
         else if (mattk.aatyp === AT_TUCH) verb = 'touches';
         await pline(`${Monnam(magr)} ${verb} ${mon_nam(mdef)}.`);
+    } else {
+        await noises(magr, mattk);
     }
     return mdamagem(magr, mdef, mattk, mwep, dieroll);
 }

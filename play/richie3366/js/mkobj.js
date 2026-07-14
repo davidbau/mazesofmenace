@@ -21,6 +21,7 @@ import {
     ROCK_CLASS,
     BALL_CLASS,
     CHAIN_CLASS,
+    VENOM_CLASS,
     objectNames,
 } from './objects.js';
 // objectNames used for known-flag heuristic (oc_uses_known not in table yet)
@@ -45,12 +46,21 @@ const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
+const ELVEN_SHIELD = objectNames.indexOf('ELVEN_SHIELD');
+const ORCISH_SHIELD = objectNames.indexOf('ORCISH_SHIELD');
+const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const LARGEST_INT = 32767; // C ref: global.h
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const NON_PM = MON_NON_PM;
+
+// C ref: mkobj.c dknowns[] — classes that start with dknown=0
+const DKNOWN_CLEAR_CLASSES = new Set([
+    WAND_CLASS, RING_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS,
+    SPBOOK_CLASS, WEAPON_CLASS, TOOL_CLASS, VENOM_CLASS,
+]);
 
 // Material constants (objclass.h enum obj_material_types)
 const LIQUID = 1;
@@ -745,6 +755,21 @@ function noveltitle(otmp) {
     return SIR_TERRY_NOVELS[j];
 }
 
+// C ref: mkobj.c clear_dknown — amulets/food/armor start dknown=1 unless
+// shield-range / oc_merge. oc_merge not extracted yet → deferred (food and
+// other mergeables may keep dknown=1 where C clears it).
+function clear_dknown(obj) {
+    if (!obj) return;
+    const cls = obj.oclass ?? 0;
+    obj.dknown = DKNOWN_CLEAR_CLASSES.has(cls) ? 0 : 1;
+    const otyp = obj.otyp ?? 0;
+    if ((ELVEN_SHIELD >= 0 && otyp >= ELVEN_SHIELD && otyp <= ORCISH_SHIELD)
+        || otyp === SHIELD_OF_REFLECTION) {
+        obj.dknown = 0;
+    }
+    // Is_pudding → dknown=1 deferred (globby path)
+}
+
 // C ref: mkobj.c mksobj()
 export function mksobj(otyp, init, artif) {
     const objects = objs();
@@ -774,7 +799,9 @@ export function mksobj(otyp, init, artif) {
         ox: 0,
         oy: 0,
     };
-    next_ident();
+    // C: unknow_object(otmp) — dknown + known; known heuristic above
+    clear_dknown(otmp);
+    otmp.o_id = next_ident();
     if (init) mksobj_init(otmp, artif);
 
     // Post-init regardless: CORPSE/STATUE gender + timer

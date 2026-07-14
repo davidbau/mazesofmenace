@@ -5,6 +5,7 @@ import { game } from './gstate.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok,
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN,
+    NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
 } from './const.js';
 import { pline, newsym } from './display.js';
 import { gethungry } from './eat.js';
@@ -318,4 +319,144 @@ export function losehp(n, knam, k_format = KILLED_BY) {
         game.killer.format = k_format;
     }
     // else if (n > 0 && u.uhp * 10 < u.uhpmax) maybe_wail() — deferred
+}
+
+/** C: IS_SHOP(x) — rooms[x].rtype >= SHOPBASE */
+function IS_SHOP(roomIdx) {
+    const rooms = game.level?.rooms || [];
+    return ((rooms[roomIdx]?.rtype | 0) >= SHOPBASE);
+}
+
+/**
+ * C ref: hack.c in_rooms — roomno chars at (x,y), optionally filtered by type.
+ * SHARED / SHARED_PLUS neighbor walk included; returns string of room chars.
+ */
+export function in_rooms(x, y, typewanted = 0) {
+    const level = game.level;
+    if (!level?.at) return '';
+    const loc0 = level.at(x, y);
+    if (!loc0) return '';
+
+    function goodtype(rno) {
+        if (!typewanted) return true;
+        const typefound = level.rooms?.[rno - ROOMOFFSET]?.rtype | 0;
+        return typefound === typewanted
+            || (typewanted === SHOPBASE && typefound > SHOPBASE);
+    }
+
+    const rno0 = loc0.roomno | 0;
+    if (rno0 === NO_ROOM) return '';
+    if (rno0 !== SHARED && rno0 !== SHARED_PLUS) {
+        return goodtype(rno0) ? String.fromCharCode(rno0) : '';
+    }
+
+    const step = rno0 === SHARED ? 2 : 1;
+    let min_x = x - 1;
+    let max_x = x + 1;
+    if (x < 1) min_x += step;
+    else if (x >= COLNO) max_x -= step;
+
+    let min_y = y - 1;
+    let max_y_offset = 2;
+    if (min_y < 0) {
+        min_y += step;
+        max_y_offset -= step;
+    } else if ((min_y + max_y_offset) >= ROWNO) {
+        max_y_offset -= step;
+    }
+
+    // C builds into buf[5] from the end; collect then reverse for stable order
+    const found = [];
+    for (let cx = min_x; cx <= max_x; cx += step) {
+        for (let dy = 0; dy <= max_y_offset; dy += step) {
+            const loc = level.at(cx, min_y + dy);
+            const rno = loc?.roomno | 0;
+            if (rno >= ROOMOFFSET && !found.includes(rno) && goodtype(rno)) {
+                found.push(rno);
+            }
+        }
+    }
+    // C prepends (--ptr), so later discoveries appear earlier in the string
+    found.reverse();
+    return found.map((r) => String.fromCharCode(r)).join('');
+}
+
+/** Ensure shop/room occupancy strings exist on u (C you.h char arrays). */
+function ensure_u_room_strings(u) {
+    if (u.urooms == null) u.urooms = '';
+    if (u.urooms0 == null) u.urooms0 = '';
+    if (u.uentered == null) u.uentered = '';
+    if (u.ushops == null) u.ushops = '';
+    if (u.ushops0 == null) u.ushops0 = '';
+    if (u.ushops_entered == null) u.ushops_entered = '';
+    if (u.ushops_left == null) u.ushops_left = '';
+}
+
+/**
+ * C ref: hack.c move_update — refresh urooms/ushops and enter/leave deltas.
+ */
+function move_update(newlev) {
+    const u = game.u;
+    if (!u) return;
+    ensure_u_room_strings(u);
+
+    u.urooms0 = u.urooms || '';
+    u.ushops0 = u.ushops || '';
+    if (newlev) {
+        u.urooms = '';
+        u.uentered = '';
+        u.ushops = '';
+        u.ushops_entered = '';
+        u.ushops_left = u.ushops0;
+        return;
+    }
+
+    u.urooms = in_rooms(u.ux, u.uy, 0);
+    let entered = '';
+    let shops = '';
+    let shopsEntered = '';
+    for (let i = 0; i < u.urooms.length; i++) {
+        const c = u.urooms[i];
+        const code = u.urooms.charCodeAt(i);
+        if (!u.urooms0.includes(c)) entered += c;
+        if (IS_SHOP(code - ROOMOFFSET)) {
+            shops += c;
+            if (!u.ushops0.includes(c)) shopsEntered += c;
+        }
+    }
+    u.uentered = entered;
+    u.ushops = shops;
+    u.ushops_entered = shopsEntered;
+
+    let left = '';
+    for (let i = 0; i < u.ushops0.length; i++) {
+        const c = u.ushops0[i];
+        if (!u.ushops.includes(c)) left += c;
+    }
+    u.ushops_left = left;
+}
+
+/**
+ * C ref: hack.c check_special_room — shop enter/leave + special-room messages.
+ * Named omissions: Mine Town ACH_TOWN; zoo/swamp/court/… plines; room_discovered
+ * mapseen; shop rtype→OROOM clear path (shops keep rtype via default).
+ */
+export async function check_special_room(newlev) {
+    const u = game.u;
+    if (!u) return;
+    move_update(!!newlev);
+
+    // Lazy import avoids hack → shk → mhitu → hack cycle.
+    const { u_entered_shop, u_left_shop } = await import('./shk.js');
+
+    if (u.ushops0) {
+        await u_left_shop(u.ushops_left || '', !!newlev);
+    }
+
+    if (!u.uentered && !u.ushops_entered) return;
+
+    if (u.ushops_entered) {
+        await u_entered_shop(u.ushops_entered);
+    }
+    // other special-room entrance plines deferred
 }

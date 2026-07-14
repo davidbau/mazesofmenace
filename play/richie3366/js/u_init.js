@@ -28,6 +28,7 @@ import {
 } from './objects.js';
 import { init_attr, vary_init_attr, adjabil, A_STR, A_CON, newhp } from './attrib.js';
 import { newpw } from './exper.js';
+import { getnow } from './calendar.js';
 import { roles, races, aligns, findRole, findRace, findAlign } from './roles.js';
 import { discover_object } from './invent.js';
 import { initialspell, init_spl_book } from './spell.js';
@@ -1488,6 +1489,7 @@ export function setup_role_race_from_rc(opts = {}) {
         name: race.name,
         adj: race.adj,
         noun: race.noun || race.name,
+        filecode: race.filecode || 'Hum',
         mnum: race.mnum,
         attrmin: race.attrmin,
         attrmax: race.attrmax,
@@ -1599,6 +1601,9 @@ export async function u_init_misc() {
     const atype = alignEnt?.value ?? A_NEUTRAL;
     g.u.ualign = { type: atype, record: g.urole?.initrecord ?? 0 };
     g.u.ualignbase = { current: atype, original: atype };
+
+    // C ref: u_init.c ubirthday = getnow() (contest patch 001)
+    g.ubirthday = getnow();
 
     g.u.uhunger = 900;
     g.u.ublesscnt = 300;

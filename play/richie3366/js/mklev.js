@@ -2199,7 +2199,10 @@ function filler_region(rel_x, rel_y) {
     if (g.smeq) g.smeq[g.level.nroom] = g.level.nroom;
     flood_fill_rm(ax, ay, rmno, rlit, true, bounds);
 
-    // C lspo_region: needjoining=TRUE (joined default), then add_room special
+    // C ref: sp_lev.c lspo_region irregular —
+    // flood_fill_rm(..., rlit, TRUE) then add_room(..., FALSE, rtype, TRUE).
+    // Lighting comes only from flood_fill_rm (room shape + edge walls), not
+    // from re-lighting the bounding box (that wrongly lit holes / niches).
     add_room(bounds.min_rx, bounds.min_ry, bounds.max_rx, bounds.max_ry,
         false, rtype, true);
     const troom = g.level.rooms[g.level.nroom - 1];
@@ -2208,14 +2211,6 @@ function filler_region(rel_x, rel_y) {
         troom.irregular = true;
         troom.needjoining = true;
         troom.needfill = FILL_NORMAL;
-        if (rlit) {
-            for (let x = troom.lx - 1; x <= troom.hx + 1; x++) {
-                for (let y = Math.max(troom.ly - 1, 0); y <= troom.hy + 1; y++) {
-                    const loc = g.level.at(x, y);
-                    if (loc) loc.lit = true;
-                }
-            }
-        }
         if (do_themed_fill) themeroom_fill(troom);
     }
     return true;

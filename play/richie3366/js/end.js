@@ -26,6 +26,7 @@ import { mkcorpstat, curse, place_object, stackobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon } from './makemon.js';
 import { write_bonesfile } from './bones.js';
+import { topten, nh_terminate_capture } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
 
@@ -283,8 +284,8 @@ async function disclose(how, taken) {
 /**
  * C ref: end.c really_done death summary + rip — NHW_TEXT via
  * display_nhwindow; wintty process_text_window paginates at rows-1.
- * Named omissions: topten/xlogfile; paybill; discover_object invent walk;
- * arise pline; quit/escape/ascend score arms; In_endgame/quest depth text.
+ * Named omissions: paybill; discover_object invent walk; arise pline;
+ * quit/escape/ascend score arms; In_endgame/quest depth text.
  */
 async function show_death_rip_and_summary(how, umoney) {
     const flags = game.flags || {};
@@ -329,9 +330,9 @@ async function show_death_rip_and_summary(how, umoney) {
 }
 
 /**
- * C ref: end.c really_done — gameover; disclose; score; bones; rip.
+ * C ref: end.c really_done — gameover; disclose; score; bones; rip; topten.
  * Named omissions: paybill/clearpriests; invent discover_object;
- * Schroedinger; dump/livelog; topten/record/outentry; nh_terminate;
+ * Schroedinger; dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT;
  * disclose beyond inventory yn; arise pline; wizard bones query;
  * inven_inuse / ball-chain arms of done_object_cleanup.
  */
@@ -386,6 +387,11 @@ async function really_done(how) {
 
     // C: outrip + goodbye into NHW_TEXT then display_nhwindow(TRUE)
     await show_death_rip_and_summary(how, umoney);
+
+    // C: !toptenwin → exit_nhwindows then topten raw_print; nh_terminate
+    // captures final screen (contest nomux input boundary, no nhgetch).
+    topten(how, 0, formatkiller(how, true));
+    nh_terminate_capture();
 }
 
 /**
@@ -512,5 +518,14 @@ export async function done2() {
 export async function done(how) {
     const flags = game.flags || {};
     void flags;
+    const u = game.u || {};
+    // C: umortality++ when how < PANICKED (before really_done)
+    if (how < PANICKED) {
+        u.umortality = (u.umortality | 0) + 1;
+        if ((u.uhp | 0) !== 0 || (Upolyd(u) && (u.mh | 0) !== 0)) {
+            u.uhp = 0;
+            if (Upolyd(u)) u.mh = 0;
+        }
+    }
     await really_done(how);
 }

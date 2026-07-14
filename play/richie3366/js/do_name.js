@@ -4,10 +4,13 @@
 import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, docrt } from './display.js';
+import { flush_screen, flush_topl_more, docrt, canspotmon } from './display.js';
 import { paint_corner_nhw_menu } from './invent.js';
-import { ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE } from './const.js';
+import {
+    ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE, engulfing_u,
+} from './const.js';
 import { ATR_INVERSE } from './terminal.js';
+import { shkname } from './shknam.js';
 
 const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
 
@@ -62,28 +65,44 @@ export function x_monnam_tame(mtmp) {
 }
 
 /**
- * C ref: do_name.c mon_nam — ARTICLE_THE; named → bare name.
- * Hallu / invis / priest / shk deferred; saddle adjective ported.
+ * C ref: do_name.c x_monnam do_it — !canspotmon → "it" before type/given name.
+ * ARTICLE_THE callers (mon_nam/Monnam). ARTICLE_YOUR never takes this arm.
+ */
+function x_monnam_do_it(mtmp) {
+    if (!mtmp) return true;
+    if (canspotmon(mtmp)) return false;
+    if (game.program_state?.gameover) return false;
+    if (mtmp === game.u?.usteed) return false;
+    if (engulfing_u(mtmp)) return false;
+    return true;
+}
+
+/**
+ * C ref: do_name.c mon_nam — ARTICLE_THE; unseen → "it"; named → bare name.
+ * Shopkeeper → shkname (D-0307). Hallu / invis adj / priest / AUGMENT_IT deferred.
  */
 export function mon_nam(mtmp) {
     if (!mtmp) return 'it';
+    if (x_monnam_do_it(mtmp)) return 'it';
+    // C x_monnam: isshk && !hallu && !mappear → shkname (ordinary PM_SHOPKEEPER)
+    if (mtmp.isshk) {
+        const nam = shkname(mtmp);
+        if (nam) return nam;
+    }
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     return `the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
 }
 
 /**
- * C ref: do_name.c mon_nam / Monnam — ARTICLE_THE; named → bare name.
- * Hallu / invis / priest / shk deferred; saddle adjective ported.
+ * C ref: do_name.c Monnam — highc(mon_nam()).
  */
 export function Monnam(mtmp) {
-    if (!mtmp) return 'It';
-    if (has_mgivenname(mtmp)) return highc_name(MGIVENNAME(mtmp));
-    return highc_name(`the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
+    return highc_name(mon_nam(mtmp));
 }
 
 /**
- * C ref: do_name.c noit_mon_nam / noit_Monnam — ARTICLE_YOUR; named → bare.
- * SUPPRESS_IT / hallu deferred.
+ * C ref: do_name.c noit_mon_nam / noit_Monnam — ARTICLE_YOUR + SUPPRESS_IT.
+ * Never "it"; named → bare; hallu deferred.
  */
 export function noit_Monnam(mtmp) {
     if (!mtmp) return 'It';
@@ -91,7 +110,8 @@ export function noit_Monnam(mtmp) {
     if (mtmp.mtame) {
         return highc_name(`your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
     }
-    return Monnam(mtmp);
+    // SUPPRESS_IT — type name even when !canspotmon
+    return highc_name(`the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
 }
 
 /**

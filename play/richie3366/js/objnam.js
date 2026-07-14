@@ -15,6 +15,7 @@ import {
     SPBOOK_CLASS,
     AMULET_CLASS,
     GEM_CLASS,
+    VENOM_CLASS,
     objectNames,
     objectNameStrs,
     objectDescrs,
@@ -33,6 +34,9 @@ function Role_if(pm) {
 function Role_if_samurai() {
     return Role_if(PM_SAMURAI);
 }
+
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 
 /** C ref: obj.h is_ammo — skill window for quiver wording. */
 function is_ammo_obj(obj) {
@@ -219,13 +223,25 @@ function pretty_base(obj) {
             return `ring of ${actual}`;
         return 'ring';
     }
-    // C ref: objnam.c xname WAND_CLASS — "wand of <actualn>" when known
-    if (n && n.startsWith('WAN_')) {
-        const actual = objectNameStrs[obj.otyp]
-            || n.slice(4).toLowerCase().replace(/_/g, ' ');
-        if (obj.dknown && (game.objects?.[obj.otyp]?.oc_name_known || obj.known))
-            return `wand of ${actual}`;
-        return 'wand';
+    // C ref: objnam.c xname WAND_CLASS —
+    // !dknown → "wand"; nn → "wand of <actualn>"; un → called; else "<descr> wand"
+    // nn is objects[].oc_name_known only (not obj.known).
+    if (obj.oclass === WAND_CLASS || (n && n.startsWith('WAN_'))) {
+        const ocl = game.objects?.[obj.otyp];
+        const nn = !!ocl?.oc_name_known;
+        const dknown = !!obj.dknown;
+        const un = ocl?.oc_uname || null;
+        let actual = objectNameStrs[obj.otyp]
+            || (n ? n.slice(4).toLowerCase().replace(/_/g, ' ') : 'wand');
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
+        if (!dknown) return 'wand';
+        if (nn) return `wand of ${actual}`;
+        if (un) return `wand called ${un}`;
+        return `${dn || 'iron'} wand`;
     }
     // C ref: objnam.c xname GEM_CLASS — stone/gem + GemStone " stone"
     if (obj.oclass === GEM_CLASS) {
@@ -249,14 +265,66 @@ function pretty_base(obj) {
         if (GemStone(obj.otyp)) return `${actual} stone`;
         return actual;
     }
+    // C ref: objnam.c xname AMULET_CLASS —
+    // !dknown → "amulet"; Yendor/fake → known?actualn:dn;
+    // nn → actualn; un → "amulet called …"; else "<descr> amulet"
+    if (obj.oclass === AMULET_CLASS) {
+        const ocl = game.objects?.[obj.otyp];
+        const nn = !!ocl?.oc_name_known;
+        const dknown = !!obj.dknown;
+        const known = !!obj.known;
+        const un = ocl?.oc_uname || null;
+        let actual = objectNameStrs[obj.otyp]
+            || (n ? n.toLowerCase().replace(/_/g, ' ') : 'amulet');
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || actual;
+        if (!dknown) return 'amulet';
+        if (obj.otyp === AMULET_OF_YENDOR || obj.otyp === FAKE_AMULET_OF_YENDOR) {
+            return known ? actual : dn;
+        }
+        if (nn) return actual;
+        if (un) return `amulet called ${un}`;
+        return `${dn} amulet`;
+    }
+    // C ref: objnam.c xname WEAPON/VENOM/TOOL —
+    // !dknown|!nn → dn (OBJ_DESCR else actualn); nn → actualn; un → called.
+    // Shared descrs (tin/magic whistle → "whistle") need !oc_name_known.
+    if (obj.oclass === WEAPON_CLASS || obj.oclass === VENOM_CLASS
+        || obj.oclass === TOOL_CLASS) {
+        const ocl = game.objects?.[obj.otyp];
+        const nn = !!ocl?.oc_name_known;
+        const dknown = !!obj.dknown;
+        const un = ocl?.oc_uname || null;
+        let actual = PRETTY[n] || objectNameStrs[obj.otyp]
+            || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        let dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
+        if (!dn) dn = actual;
+        if (Role_if_samurai() && (n === 'WOODEN_HARP' || n === 'MAGIC_HARP'))
+            dn = 'koto';
+        let buf = '';
+        // Named omission: poisoned weapon prefix; wet-towel moist/wet;
+        // figurine " of <pm>"; ConcUpdate side-effects.
+        if (n === 'LENSES') buf = 'pair of ';
+        if (!dknown) buf += dn;
+        else if (nn) buf += actual;
+        else if (un) buf += `${dn} called ${un}`;
+        else buf += dn;
+        return buf;
+    }
     let base = PRETTY[n] || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
     // C ref: objnam.c xname — Samurai Japanese_item_name overrides actualn
     if (Role_if_samurai()) {
         const jn = Japanese_item_name(obj.otyp, null);
         if (jn) base = jn;
     }
-    // C ref: objnam.c xname TOOL LENSES / ARMOR gloves|boots / dragon scales
-    if (n === 'LENSES') return `pair of ${base}`;
+    // C ref: objnam.c xname ARMOR gloves|boots / dragon scales
     if (obj.oclass === ARMOR_CLASS) {
         const typ = obj.otyp;
         if (typ >= GRAY_DRAGON_SCALES && typ <= YELLOW_DRAGON_SCALES) {
@@ -272,6 +340,9 @@ function pretty_base(obj) {
 
 /**
  * C ref: objnam.c xname — base name with quan pluralization (doname subset).
+ * Named omission: C xname_flags calls observe_object when !Blind &&
+ * !gd.distantname; JS callers must observe (or set dknown) where needed —
+ * blanket observe here breaks distant_name / map generic glyph paths.
  */
 export function xname(obj) {
     if (!obj) return 'something';

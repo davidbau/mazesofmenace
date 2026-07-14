@@ -391,6 +391,9 @@ async function mzapwand(mtmp, otmp, self) {
         await pline(`${Monnam(mtmp)} zaps ${doname(otmp)}!`);
     } else {
         // C: pline_mon("%s zaps %s!", Monnam, an(xname(otmp)))
+        // C xname_flags observe_object sets dknown before WAND descr arm.
+        // Full observe (discover_object) deferred — dknown alone for appearance.
+        if (!game.u?.Blind) otmp.dknown = 1;
         await pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
         // stop_occupation deferred
     }

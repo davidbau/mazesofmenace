@@ -109,6 +109,10 @@ export class NethackGame {
             // C options.c initoptions_base — disclose default 'n'*6; tombstone on
             end_disclose: 'n'.repeat(6),
             tombstone: true,
+            // C options.c initoptions_base — end_top=3, end_around=2, end_own=0
+            end_top: 3,
+            end_around: 2,
+            end_own: false,
             paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
             ...opts.flags,
         };
@@ -132,7 +136,12 @@ export class NethackGame {
         else if (opts.gender === 'male' || opts.gender === 'm') g.flags.female = false;
 
         // Initialize hero struct
-        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
+        g.u = {
+            ux: 0, uy: 0, ux0: 0, uy0: 0,
+            // C you.h room occupancy (hack.c move_update)
+            urooms: '', urooms0: '', uentered: '',
+            ushops: '', ushops0: '', ushops_entered: '', ushops_left: '',
+        };
         g.context = { move: 0 };
         g.program_state = {};
         g.moves = 1;
@@ -169,8 +178,9 @@ export class NethackGame {
 
     _installCaptureHook() {
         const nhGame = this;
-        game._preNhgetchHook = async () => {
+        const captureBoundary = () => {
             const keyIdx = nhGame._nhgetchCount++;
+            void keyIdx;
 
             // Capture RNG slice since last capture
             const fullLog = getRngLog() || [];
@@ -214,6 +224,11 @@ export class NethackGame {
             // snapshot and reset here so the next step starts empty.
             nhGame._animFramesByStep.push(nhGame._pendingAnimFrames);
             nhGame._pendingAnimFrames = [];
+        };
+        // C nhgetch capture; also nh_terminate post-topten (no key wait)
+        game._captureInputBoundary = captureBoundary;
+        game._preNhgetchHook = async () => {
+            captureBoundary();
         };
     }
 

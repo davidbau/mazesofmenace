@@ -8,6 +8,7 @@ import { mon_at } from './uhitm.js';
 import { Monnam } from './do_name.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
+import { COIN_CLASS } from './objects.js';
 import { rn2 } from './rng.js';
 import { dist2 } from './hacklib.js';
 import {
@@ -23,6 +24,21 @@ import {
 
 const STATUE = objectNames.indexOf('STATUE');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
+
+/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
+async function You_hear(line) {
+    const u = game.u || {};
+    if (u.Deaf || game.flags?.acoustics === false) return;
+    await pline(`You hear ${line}`);
+}
+
+/** C ref: invent.c g_at — first COIN_CLASS on pile (local for vault gold scan). */
+function gold_at(x, y) {
+    for (let obj = objects_at(x, y); obj; obj = obj.nexthere) {
+        if (obj.oclass === COIN_CLASS) return obj;
+    }
+    return null;
+}
 
 /**
  * C ref: mkroom.c search_special — first room/subroom matching type.
@@ -213,14 +229,15 @@ function oracle_sound(mtmp) {
 /**
  * C ref: sounds.c dosounds — ambient feature rolls each EOT.
  * Branch envelope: fountain/sink/court/swamp/vault/beehive/morgue/
- * barracks/zoo/shop/temple/oracle gates; vault body search_special+
- * gd_sound+rn2(2); shop body search_special+tended_shop+rn2(2)+
- * noisy_shop; mon_sound helpers RNG-only when match.
- * Named omissions: You_hear plines; gold_in_vault / vault_occupied
- * urooms maintenance; findgd migrating_mons; vampshifter morgue;
- * temple_priest body; oracle canseemon; Is_sanctum; Hallu index.
+ * barracks/zoo/shop/temple/oracle gates; vault body + You_hear
+ * (gd_sound / gold_in_vault / vault_occupied FALLTHROUGH); shop body
+ * search_special+tended_shop+You_hear(shop_msg)+noisy_shop;
+ * mon_sound RNG-only.
+ * Named omissions: swamp You1; barracks/court You_hear plines;
+ * findgd migrating_mons; vampshifter morgue; temple_priest body;
+ * oracle canseemon; Is_sanctum; Soundeffect.
  */
-export function dosounds() {
+export async function dosounds() {
     const lf = game.level?.flags;
     if (!lf) return;
     if (game.u?.Deaf || game.flags?.acoustics === false
@@ -230,28 +247,63 @@ export function dosounds() {
 
     const hallu = game.u?.Hallucination ? 1 : 0;
 
+    // C: fountain_msg[rn2(3)+hallu] → You_hear1
     if (lf.nfountains && !rn2(400)) {
-        rn2(3); // fountain_msg index; +hallu deferred in prior peels
+        const fountain_msg = [
+            'bubbling water.', 'water falling on coins.',
+            'the splashing of a naiad.', 'a soda fountain!',
+        ];
+        await You_hear(fountain_msg[rn2(3) + hallu]);
     }
+    // C: sink_msg[rn2(2)+hallu] → You_hear1
     if (lf.nsinks && !rn2(300)) {
-        rn2(2); // sink_msg
+        const sink_msg = [
+            'a slow drip.', 'a gurgling noise.', 'dishes being washed!',
+        ];
+        await You_hear(sink_msg[rn2(2) + hallu]);
     }
     if (lf.has_court && !rn2(200)) {
         if (get_iter_mons(throne_mon_sound)) return;
     }
     if (lf.has_swamp && !rn2(200)) {
-        rn2(2); // swamp_msg; C returns after
+        rn2(2); // swamp_msg; C returns after; You1 deferred
         return;
     }
     if (lf.has_vault && !rn2(200)) {
-        if (!search_special(VAULT)) {
+        const sroom = search_special(VAULT);
+        if (!sroom) {
             lf.has_vault = false;
             return;
         }
         // C: if (gd_sound()) switch (rn2(2) + hallu) { You_hear… }
-        // gold_in_vault / vault_occupied message arms — plines deferred
         if (gd_sound()) {
-            rn2(2) + hallu;
+            let which = rn2(2) + hallu;
+            if (which === 1) {
+                let gold_in_vault = false;
+                for (let vx = sroom.lx | 0; vx <= (sroom.hx | 0); vx++) {
+                    for (let vy = sroom.ly | 0; vy <= (sroom.hy | 0); vy++) {
+                        if (gold_at(vx, vy)) gold_in_vault = true;
+                    }
+                }
+                const rooms = game.level?.rooms || [];
+                const roomId = rooms.indexOf(sroom) + ROOMOFFSET;
+                if (vault_occupied(game.u?.urooms) !== roomId) {
+                    if (gold_in_vault) {
+                        await You_hear(!hallu
+                            ? 'someone counting gold coins.'
+                            : 'the quarterback calling the play.');
+                    } else {
+                        await You_hear('someone searching.');
+                    }
+                    return;
+                }
+                which = 0; // C FALLTHROUGH into case 0
+            }
+            if (which === 0) {
+                await You_hear('the footsteps of a guard on patrol.');
+            } else if (which === 2) {
+                await You_hear('Ebenezer Scrooge!');
+            }
         }
         return;
     }
@@ -283,7 +335,13 @@ export function dosounds() {
             return;
         }
         if (tended_shop(sroom) && !hero_in_shop(sroom)) {
-            rn2(2); // shop_msg; hallu index deferred
+            // C: You_hear1(shop_msg[rn2(2)+hallu]); noisy_shop(sroom)
+            const shop_msg = [
+                'someone cursing shoplifters.',
+                'the chime of a cash register.',
+                'Neiman and Marcus arguing!',
+            ];
+            await You_hear(shop_msg[rn2(2) + hallu]);
             noisy_shop(sroom);
         }
         return;

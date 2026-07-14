@@ -1,26 +1,183 @@
-// shk.js — Shopkeeper movement (partial).
-// C ref: shk.c shk_move / after_shk_move; priest.c move_special.
+// shk.js — Shopkeeper movement + shop enter/leave (partial).
+// C ref: shk.c shk_move / after_shk_move / u_entered_shop / u_left_shop;
+//        priest.c move_special.
 // Named omissions: shk_fixes_damage body; holetime dig follow; angry
 // Displaced pline; following verbalize/rile_shk; gd_move body;
 // pri_move altar mill rn1; m_break_boulder; m_move_aggress;
-// check_special_room on re-entry; Fast + sobj_at pickaxe doorway;
-// m_canseeu for angry chase; resist_conflict.
+// Fast + sobj_at pickaxe doorway block / dochug; m_canseeu for angry chase;
+// resist_conflict; deserted_shop body; ACH_SHOP mapseen; Hallu shkname;
+// angry/surcharge/robbed welcome arms; Invis welcome; leave-bill verbalize.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { dist2, online2 } from './hacklib.js';
-import { ESHK, IS_ROOM, NOTONL, u_at, isok } from './const.js';
-import { newsym } from './display.js';
+import {
+    ESHK, IS_ROOM, NOTONL, u_at, isok, ROOMOFFSET, SHOPBASE, ACH_SHOP,
+} from './const.js';
+import { newsym, pline, verbalize } from './display.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
+import { Hello } from './roles.js';
+import { shtypes, shkname } from './shknam.js';
 
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
+/** C monflag.h MS_ANIMAL — animal noises ceiling for muteshk. */
+const MS_ANIMAL = 17;
+/** C monflag.h MS_SELL — shopkeeper when tables omit msound. */
+const MS_SELL = 39;
 
 /** C: ANGRY(mon) ≡ !mpeaceful */
 function ANGRY(mon) {
     return !mon?.mpeaceful;
+}
+
+/** C: helpless — msleeping || !mcanmove */
+function helpless(mtmp) {
+    return !!(mtmp?.msleeping || mtmp?.mcanmove === 0);
+}
+
+/**
+ * C: muteshk — helpless or msound <= MS_ANIMAL.
+ * Generated tables often omit msound; isshk → MS_SELL.
+ */
+function muteshk(shkp) {
+    if (helpless(shkp)) return true;
+    let ms = shkp?.data?.msound;
+    if (ms == null) ms = shkp?.isshk ? MS_SELL : 0;
+    return (ms | 0) <= MS_ANIMAL;
+}
+
+/** C ref: hacklib.c s_suffix */
+function s_suffix(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+/** C ref: shk.c pacify_shk — peaceful + optional surcharge undo (bill deferred). */
+function pacify_shk(shkp, clear_surcharge) {
+    if (!shkp) return;
+    shkp.mpeaceful = 1;
+    const eshk = ESHK(shkp);
+    if (clear_surcharge && eshk?.surcharge) {
+        eshk.surcharge = false;
+        // bill price undo deferred (no bill_p walk yet)
+    }
+}
+
+/** C ref: insight/achieve record_achievement — ACH_SHOP stub (mapseen deferred). */
+function record_achievement(_ach) {
+    // full uachieved / livelog deferred
+}
+
+/**
+ * C ref: shk.c shop_keeper — rooms[rmno-ROOMOFFSET].resident with eshk.
+ * Angry surcharge rile_shk deferred.
+ */
+export function shop_keeper(rmno) {
+    const code = typeof rmno === 'string' ? rmno.charCodeAt(0) : (rmno | 0);
+    if (code < ROOMOFFSET) return null;
+    const shkp = game.level?.rooms?.[code - ROOMOFFSET]?.resident || null;
+    if (!shkp) return null;
+    if (!ESHK(shkp)) return null;
+    // ANGRY → rile_shk deferred
+    return shkp;
+}
+
+/**
+ * C ref: shk.c u_left_shop — leave/boundary bill prompts.
+ * Named omissions: rob_shop / call_kops; leave verbalize when billct/debit.
+ */
+export async function u_left_shop(leavestring, _newlev) {
+    const u = game.u;
+    if (!u) return;
+    const leave = leavestring || '';
+    const loc = game.level?.at?.(u.ux, u.uy);
+    const loc0 = game.level?.at?.(u.ux0, u.uy0);
+    // C: if (!*leavestring && (!edge || edge0)) return;
+    if (!leave && (!(loc?.edge) || loc0?.edge)) return;
+
+    const rmCh = leave ? leave.charCodeAt(0) : (u.ushops0 || '').charCodeAt(0);
+    const shkp = shop_keeper(rmCh);
+    if (!shkp || !inhishop(shkp)) return;
+
+    const eshkp = ESHK(shkp);
+    if (!((eshkp?.billct | 0) || (eshkp?.debit | 0))) return;
+
+    // bill unpaid arms (verbalize / rob_shop) deferred
+}
+
+/**
+ * C ref: shk.c u_entered_shop — welcome / deserted / blocking.
+ * Covered: tended peaceful first-visit Welcome verbalize.
+ * Deferred: deserted_shop; angry/surcharge/robbed/Invis arms; pickaxe/
+ * steed/Fast doorway block + dochug; inside_shop gate for those arms.
+ */
+export async function u_entered_shop(enterstring) {
+    if (!enterstring) return;
+    const u = game.u;
+    if (!u) return;
+
+    const enterCh = enterstring.charCodeAt(0);
+    const shkp = shop_keeper(enterCh);
+    if (!shkp) {
+        // deserted_shop deferred; clear ushops like C empty path
+        u.ushops = '';
+        return;
+    }
+
+    const eshkp = ESHK(shkp);
+    if (!inhishop(shkp)) {
+        u.ushops = '';
+        return;
+    }
+
+    record_achievement(ACH_SHOP);
+    eshkp.bill_p = eshkp.bill || null;
+
+    const plname = game.plname || '';
+    const cust = eshkp.customer || '';
+    if ((!eshkp.visitct || cust)
+        && cust.toLowerCase() !== plname.toLowerCase().slice(0, 32)) {
+        eshkp.visitct = 0;
+        eshkp.following = 0;
+        eshkp.customer = plname.slice(0, 32);
+        pacify_shk(shkp, true);
+    }
+
+    if (muteshk(shkp) || eshkp.following) return;
+
+    if (u.Invis) {
+        // Invis welcome arms deferred
+        return;
+    }
+
+    const rt = game.level?.rooms?.[enterCh - ROOMOFFSET]?.rtype | 0;
+    const shopName = shtypes[rt - SHOPBASE]?.name || 'shop';
+
+    if (ANGRY(shkp) || eshkp.surcharge || eshkp.robbed) {
+        // angry / surcharge / robbed welcome arms deferred
+        return;
+    }
+
+    const deaf = !!(u.Deaf || (u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf);
+    if (!deaf && !muteshk(shkp)) {
+        const again = eshkp.visitct++ ? ' again' : '';
+        await verbalize(
+            `${Hello(shkp)}, ${plname}!  Welcome${again} to ${s_suffix(shkname(shkp))} ${shopName}!`,
+        );
+    } else {
+        const again = eshkp.visitct++ ? ' again' : '';
+        await pline(
+            `You enter ${s_suffix(shkname(shkp))} ${shopName}${again}!`,
+        );
+    }
+    // doorway pickaxe / steed / Fast block + dochug deferred
 }
 
 /** C ref: shk.c inhishop — roomno match (full in_rooms / on_level deferred). */

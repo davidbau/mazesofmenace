@@ -14,7 +14,7 @@ import { thrwmu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { nomul } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
-import { pline, mon_visible } from './display.js';
+import { pline, mon_visible, canspotmon, map_invisible } from './display.js';
 import { Monnam } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
 import { is_pole } from './wield.js';
@@ -135,10 +135,15 @@ async function hitmsg(mtmp, mattk) {
 }
 
 /**
- * C ref: mhitu.c missmu — verbose near-miss / seduce deferred.
+ * C ref: mhitu.c missmu — map_invisible when unseen; "just " on near-miss
+ * when flags.verbose. Named omission: could_seduce pretend-friendly arm;
+ * stop_occupation; gh.hitmsg_mid / hitmsg_prev clear.
  */
-async function missmu(mtmp, _nearmiss, _mattk) {
-    await pline(`${Monnam(mtmp)} misses!`);
+async function missmu(mtmp, nearmiss, _mattk) {
+    if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+    // could_seduce pretend-friendly deferred
+    const just = nearmiss && game.flags?.verbose !== false ? 'just ' : '';
+    await pline(`${Monnam(mtmp)} ${just}misses!`);
 }
 
 /**

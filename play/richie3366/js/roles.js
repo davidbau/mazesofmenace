@@ -369,6 +369,7 @@ export const races = [
         name: 'human',
         adj: 'human',
         noun: 'human',
+        filecode: 'Hum',
         mnum: PM_HUMAN,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_100, 18, 18, 18, 18, 18],
@@ -383,6 +384,7 @@ export const races = [
         name: 'elf',
         adj: 'elven',
         noun: 'elf',
+        filecode: 'Elf',
         mnum: PM_ELF,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [18, 20, 20, 18, 16, 18],
@@ -397,6 +399,7 @@ export const races = [
         name: 'dwarf',
         adj: 'dwarven',
         noun: 'dwarf',
+        filecode: 'Dwa',
         mnum: PM_DWARF,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_100, 16, 16, 20, 20, 16],
@@ -411,6 +414,7 @@ export const races = [
         name: 'gnome',
         adj: 'gnomish',
         noun: 'gnome',
+        filecode: 'Gno',
         mnum: PM_GNOME,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_50, 19, 18, 18, 18, 18],
@@ -425,6 +429,7 @@ export const races = [
         name: 'orc',
         adj: 'orcish',
         noun: 'orc',
+        filecode: 'Orc',
         mnum: PM_ORC,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_50, 16, 16, 18, 18, 16],
@@ -440,15 +445,15 @@ export const races = [
 
 export const aligns = [
     // C: adj / filecode / allow / value — adj used in plsel headers
-    { name: 'lawful', adj: 'lawful', allow: 0x04, value: A_LAWFUL },
-    { name: 'neutral', adj: 'neutral', allow: 0x02, value: A_NEUTRAL },
-    { name: 'chaotic', adj: 'chaotic', allow: 0x01, value: A_CHAOTIC },
+    { name: 'lawful', adj: 'lawful', filecode: 'Law', allow: 0x04, value: A_LAWFUL },
+    { name: 'neutral', adj: 'neutral', filecode: 'Neu', allow: 0x02, value: A_NEUTRAL },
+    { name: 'chaotic', adj: 'chaotic', filecode: 'Cha', allow: 0x01, value: A_CHAOTIC },
 ];
 
 export const genders = [
     // C: adj / pronouns / filecode / allow — ROLE_MALE/FEMALE
-    { name: 'male', adj: 'male', allow: 0x1000, value: 0 },
-    { name: 'female', adj: 'female', allow: 0x2000, value: 1 },
+    { name: 'male', adj: 'male', filecode: 'Mal', allow: 0x1000, value: 0 },
+    { name: 'female', adj: 'female', filecode: 'Fem', allow: 0x2000, value: 1 },
 ];
 
 export function findRole(name) {
@@ -470,10 +475,19 @@ export function findAlign(name) {
     return aligns.find(a => a.name === lc);
 }
 
-// C ref: role.c Hello() — mnum from caller (game.urole.mnum)
-export function Hello(mnum) {
+// C ref: role.c Hello(mtmp) — Role_switch greeting; mtmp for Samurai shk /
+// Valkyrie mail. Also accepts numeric mnum (allmain welcome path).
+export function Hello(arg) {
+    const mtmp = (arg && typeof arg === 'object') ? arg : null;
+    const mnum = (typeof arg === 'number') ? arg : (game.urole?.mnum);
     if (mnum === PM_KNIGHT) return 'Salutations';
-    if (mnum === PM_SAMURAI) return 'Konnichi wa';
+    if (mnum === PM_SAMURAI) {
+        // C: mtmp && mtmp->data == &mons[PM_SHOPKEEPER]
+        if (mtmp && (mtmp.isshk || mtmp.data?.name === 'PM_SHOPKEEPER')) {
+            return 'Irasshaimase';
+        }
+        return 'Konnichi wa';
+    }
     if (mnum === PM_TOURIST) return 'Aloha';
     if (mnum === PM_VALKYRIE) return 'Velkommen';
     return 'Hello';

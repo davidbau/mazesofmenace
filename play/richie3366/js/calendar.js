@@ -5,6 +5,49 @@ import { game } from './gstate.js';
 import { NEW_MOON, FULL_MOON } from './const.js';
 
 /**
+ * Parse contest YYYYMMDDHHMMSS into civil components.
+ * @returns {{y:number,mo:number,d:number,h:number,mi:number,s:number}|null}
+ */
+function parseFixedDatetime(str) {
+    const d = String(str || '');
+    if (d.length !== 14) return null;
+    return {
+        y: parseInt(d.slice(0, 4), 10) || 1970,
+        mo: (parseInt(d.slice(4, 6), 10) || 1) - 1,
+        d: parseInt(d.slice(6, 8), 10) || 1,
+        h: parseInt(d.slice(8, 10), 10) || 0,
+        mi: parseInt(d.slice(10, 12), 10) || 0,
+        s: parseInt(d.slice(12, 14), 10) || 0,
+    };
+}
+
+/**
+ * C ref: calendar.c time_from_yyyymmddhhmmss + contest getnow path.
+ * Public sessions were recorded under TZ=America/New_York with patched
+ * getnow copying wall-clock tm_isdst (summer → 1) into mktime, so winter
+ * civil stamps are treated as EDT (UTC-4). Match that recorded quirk with
+ * a fixed UTC-4 interpretation (stable across host TZ).
+ */
+export function time_from_yyyymmddhhmmss(buf) {
+    const p = parseFixedDatetime(buf);
+    if (!p) return 0;
+    // Civil time as UTC-4 → unix seconds
+    return Math.floor(Date.UTC(p.y, p.mo, p.d, p.h, p.mi, p.s) / 1000) + 4 * 3600;
+}
+
+/**
+ * C ref: calendar.c getnow — NETHACK_FIXED_DATETIME via time_from_*.
+ */
+export function getnow() {
+    const fixed = game.datetime;
+    if (fixed) {
+        const parsed = time_from_yyyymmddhhmmss(fixed);
+        if (parsed) return parsed;
+    }
+    return Math.floor(Date.now() / 1000);
+}
+
+/**
  * C ref: calendar.c getlt() via getnow() + localtime.
  * Contest: game.datetime is YYYYMMDDHHMMSS (NETHACK_FIXED_DATETIME).
  * Components are treated as civil local date (no TZ shift).

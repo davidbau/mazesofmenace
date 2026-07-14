@@ -35,6 +35,7 @@ import { monnear, record_mvitals_died, seemimic, wakeup } from './mon.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { mon_explodes } from './explode.js';
+import { mon_nam } from './do_name.js';
 
 // C monflag.h — MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MZ_MEDIUM;
@@ -57,15 +58,6 @@ const AD_CORR = 42;
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
-
-function mon_nam(mtmp) {
-    // C mon_nam — ARTICLE_THE lowercase; named → bare
-    if (!mtmp) return 'it';
-    if (mtmp.mextra?.mgivenname) return mtmp.mextra.mgivenname;
-    const raw = mtmp?.data?.name || 'monster';
-    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-    return `the ${plain}`;
-}
 
 // C ref: display.h _is_safemon — tame/peaceful, spotted, not conf/hallu/stun
 export function is_safemon(mon) {
@@ -270,6 +262,9 @@ async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         // C: if (!wasinside && corpse_chance(...)) make_corpse(...)
         if (await corpse_chance(mtmp)) make_corpse(mtmp);
     }
+    // C mon.c xkilled: newsym after treasure/corpse — mondead's early
+    // newsym runs before drops, so treasure-only kills need this paint.
+    if (x > 0) newsym(x, y);
     // C ref: mon.c xkilled cleanup — experience after corpse; murder/
     // peaceful luck rn2 deferred (would burn RNG on peaceful/tame)
     const died = game.mvitals?.[mndx]?.died | 0;

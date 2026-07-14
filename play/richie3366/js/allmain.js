@@ -478,7 +478,7 @@ export async function moveloop_core() {
                     await dosearch0(1);
                 }
                 // warnreveal deferred
-                dosounds();
+                await dosounds();
                 gethungry();
                 age_spells();
                 exerchk();

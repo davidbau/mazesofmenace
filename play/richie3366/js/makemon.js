@@ -1028,8 +1028,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // C: MM_ESHK → neweshk before m_id assignment
     if (mmflags & MM_ESHK) neweshk(mtmp);
 
-    next_ident(); // m_id
-    mtmp.m_id = game.context?.ident ? game.context.ident - 1 : 1;
+    mtmp.m_id = next_ident();
     if (mtmp.mextra?.eshk) mtmp.mextra.eshk.parentmid = mtmp.m_id;
     newmonhp(mtmp, ptr);
 

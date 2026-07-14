@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline } from './display.js';
+import { newsym, flush_screen, pline, see_nearby_objects } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
@@ -843,6 +843,12 @@ async function domove(dx, dy) {
     if (u.usteed) {
         u.usteed.mx = newx;
         u.usteed.my = newy;
+    }
+
+    // C ref: dungeon.c u_on_newpos — same-level → see_nearby_objects
+    // (upgrade generic potion/gem/spellbook glyphs when within neardist).
+    if (!u.Blind && !u.Hallucination && !u.uswallow) {
+        see_nearby_objects();
     }
 
     // C ref: hack.c domove — clear kickedloc after a successful move
