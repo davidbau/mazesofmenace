@@ -1,5 +1,5 @@
-// weapon.js — Monster ranged weapon selection + damage (partial).
-// C ref: weapon.c select_rwep / dmgval / mon_wield_item (ranged subset);
+// weapon.js — Monster weapon selection + damage (partial).
+// C ref: weapon.c select_rwep / select_hwep / dmgval / mon_wield_item;
 //         enhance_weapon_skill (#enhance); dothrow.c should_mulch_missile /
 //         multishot_class_bonus.
 
@@ -13,7 +13,7 @@ import {
 import {
     is_ammo, ammo_and_launcher, is_missile,
 } from './wield.js';
-import { is_lord, is_prince } from './monsters.js';
+import { is_lord, is_prince, strongmonst } from './monsters.js';
 import {
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE,
     P_SHORT_SWORD, P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD,
@@ -30,7 +30,7 @@ import {
     P_MASTER, P_GRAND_MASTER,
     NEED_WEAPON, NEED_RANGED_WEAPON, NEED_HTH_WEAPON,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
-    NO_WEAPON_WANTED, W_WEP,
+    NO_WEAPON_WANTED, W_WEP, W_ARMS, W_ARMG,
     ECMD_OK,
 } from './const.js';
 import { m_carrying, mon_has_shield } from './mon.js';
@@ -278,15 +278,92 @@ const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
 const AXE = objectNames.indexOf('AXE');
 const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
+const CORPSE = objectNames.indexOf('CORPSE');
+const CLUB = objectNames.indexOf('CLUB');
+const SILVER = 14; // objclass.h
+const M2_GIANT = 0x00002000; // monflag.h
+const M2_WERE = 0x00000004;
+const M2_DEMON = 0x00000100;
+
+/** C hwep[] — weapon.c preference order */
+const HWEP_NAMES = [
+    'CORPSE',
+    'TSURUGI', 'RUNESWORD', 'DWARVISH_MATTOCK', 'TWO_HANDED_SWORD', 'BATTLE_AXE',
+    'KATANA', 'UNICORN_HORN', 'CRYSKNIFE', 'TRIDENT', 'LONG_SWORD', 'ELVEN_BROADSWORD',
+    'BROADSWORD', 'SCIMITAR', 'SILVER_SABER', 'MORNING_STAR', 'ELVEN_SHORT_SWORD',
+    'DWARVISH_SHORT_SWORD', 'SHORT_SWORD', 'ORCISH_SHORT_SWORD', 'SILVER_MACE', 'MACE',
+    'AXE', 'DWARVISH_SPEAR', 'SILVER_SPEAR', 'ELVEN_SPEAR', 'SPEAR', 'ORCISH_SPEAR', 'FLAIL',
+    'BULLWHIP', 'QUARTERSTAFF', 'JAVELIN', 'AKLYS', 'CLUB', 'PICK_AXE', 'RUBBER_HOSE',
+    'WAR_HAMMER', 'SILVER_DAGGER', 'ELVEN_DAGGER', 'DAGGER', 'ORCISH_DAGGER', 'ATHAME',
+    'SCALPEL', 'KNIFE', 'WORM_TOOTH',
+];
+
+/** C ref: mondata.h is_giant */
+function is_giant(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_GIANT);
+}
 
 /**
- * C ref: weapon.c mon_wield_item — ranged + dig-tool pick/axe envelope.
- * NEED_HTH_WEAPON / select_hwep, weld plines, artifact_light deferred.
+ * C ref: mondata.h hates_silver / mon_hates_silver — were/demon arms.
+ * Named omission: is_vampshifter + full hates_silver(ptr) body.
+ */
+function mon_hates_silver(mtmp) {
+    const f2 = mtmp?.data?.mflags2 ?? 0;
+    return !!(f2 & (M2_WERE | M2_DEMON));
+}
+
+/**
+ * C ref: weapon.c select_hwep — melee preference walk.
+ * Named omissions: cockatrice corpse/egg touch_petrifies gate beyond
+ * W_ARMG skip; can_touch_safely inside oselect; touch_artifact deny;
+ * Balrog bullwhip when hero wields.
+ */
+export function select_hwep(mtmp) {
+    const strong = strongmonst(mtmp.data);
+    const wearing_shield = ((mtmp.misc_worn_check | 0) & W_ARMS) !== 0;
+
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if (otmp.oclass === WEAPON_CLASS && otmp.oartifact
+            && ((strong && !wearing_shield)
+                || !game.objects?.[otmp.otyp]?.oc_big)) {
+            return otmp;
+        }
+    }
+
+    if (is_giant(mtmp.data)) {
+        const club = oselect(mtmp, CLUB);
+        if (club) return club;
+    }
+
+    for (const name of HWEP_NAMES) {
+        const i = otyp(name);
+        if (i < 0) continue;
+        if (i === CORPSE
+            && !((mtmp.misc_worn_check | 0) & W_ARMG)) {
+            // resists_ston / touch_petrifies body deferred — skip bare-hand corpse
+            continue;
+        }
+        const ocl = game.objects?.[i];
+        if (((strong && !wearing_shield) || !ocl?.oc_big)
+            && (ocl?.oc_material !== SILVER || !mon_hates_silver(mtmp))) {
+            const otmp = oselect(mtmp, i);
+            if (otmp) return otmp;
+        }
+    }
+    return null;
+}
+
+/**
+ * C ref: weapon.c mon_wield_item — HTH + ranged + dig-tool pick/axe.
+ * Named omissions: weld plines, artifact_light, mwelded refuse-wield body.
  */
 export function mon_wield_item(mon) {
     if (mon.weapon_check === NO_WEAPON_WANTED) return 0;
     let obj = null;
     switch (mon.weapon_check) {
+    case NEED_HTH_WEAPON:
+        obj = select_hwep(mon);
+        break;
     case NEED_RANGED_WEAPON:
         select_rwep(mon);
         obj = game._propellor;
@@ -309,10 +386,6 @@ export function mon_wield_item(mon) {
             if (!obj) obj = m_carrying(mon, AXE);
         }
         break;
-    case NEED_HTH_WEAPON:
-        // select_hwep deferred — keep prior stub (no spend)
-        mon.weapon_check = NEED_WEAPON;
-        return 0;
     default:
         mon.weapon_check = NEED_WEAPON;
         return 0;

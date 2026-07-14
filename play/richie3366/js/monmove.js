@@ -38,7 +38,7 @@ import {
     isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE,
     D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
     D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level,
-    NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
+    NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM,
 } from './const.js';
@@ -52,7 +52,7 @@ import { Monnam } from './do_name.js';
 import { doname } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { may_dig, mdig_tunnel } from './dig.js';
-import { MON_WEP, mon_wield_item } from './weapon.js';
+import { MON_WEP, mon_wield_item, select_rwep } from './weapon.js';
 import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
 import { is_pole } from './wield.js';
 import { acurrstr } from './attrib.js';
@@ -1014,6 +1014,21 @@ export async function dochug(mtmp) {
     }
 
     const mdat = mtmp.data;
+    const Conflict = !!(game.Conflict || game.flags?.Conflict);
+
+    // C ref: monmove.c dochug — nearby AT_WEAP may spend the turn wielding
+    if ((!mtmp.mpeaceful || Conflict) && inrange
+        && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8
+        && is_armed(mdat)) {
+        const mw_tmp = MON_WEP(mtmp);
+        if (!(scared && mw_tmp && is_pick(mw_tmp))
+            && (mtmp.weapon_check | 0) === NEED_WEAPON
+            && !(mtmp.mtrapped && !nearby && select_rwep(mtmp))) {
+            mtmp.weapon_check = NEED_HTH_WEAPON;
+            if (mon_wield_item(mtmp) !== 0) return 0;
+        }
+    }
+
     // C: short-circuit OR — wanderer rn2(4) is evaluated before mpeaceful
     const want_move = (
         !nearby
@@ -1023,6 +1038,7 @@ export async function dochug(mtmp) {
         || mtmp.mstun
         || (mtmp.minvis && !rn2(3))
         || (is_wanderer(mdat) && !rn2(4))
+        || (Conflict && !mtmp.iswiz)
         || (!mtmp.mcansee && !rn2(4))
         || mtmp.mpeaceful
     );
