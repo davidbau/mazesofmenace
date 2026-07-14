@@ -978,15 +978,23 @@ export function dfeature_at(x, y) {
 
 /**
  * C ref: invent.c look_here — feature + objects at hero feet.
- * Ported envelope: non-swallow, non-blind, no pile skip; dfeature pline;
- * read_engr_at; no-objects when Blind || !dfeature. Object listing /
- * trap+region / Blind feel path deferred.
+ * Ported envelope: non-swallow, non-blind; dfeature pline; single
+ * `You see here`; multi NHW_MENU "Things that are here:" via
+ * display_nhwindow(WIN_MESSAGE)+putstr (D-0220). Named omissions:
+ * pile_limit skip_objects, Blind feel, trap+region, doname_with_price,
+ * cockatrice feel, engulfer stomach.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const u = game.u;
     const verb = 'see'; // Blind feel path deferred
     const skip_dfeature = !!(lookhere_flags & 0x2); // LOOKHERE_SKIP_DFEATURE
-    const skip_objects = false; // pile_limit path deferred for obj_cnt===0
+    const picked_some = !!(lookhere_flags & 0x1); // LOOKHERE_PICKED_SOME
+    // C: skip_objects = (flags.pile_limit > 0 && obj_cnt >= flags.pile_limit)
+    // Default pile_limit 5; obj_cnt===0 (dolook) never skips. Full skip
+    // "several objects" arm deferred — treat as never-skip for now when
+    // pile_limit is unset or obj_cnt is below it.
+    const pile_limit = game.flags?.pile_limit ?? 5;
+    const skip_objects = pile_limit > 0 && obj_cnt >= pile_limit;
 
     const otmp = objects_at(u?.ux, u?.uy);
     let dfeature = dfeature_at(u?.ux, u?.uy);
@@ -1014,18 +1022,56 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         return;
     }
 
-    // Objects present — single-item / multi deferred beyond dfeature prefix
-    if (dfeature && !skip_dfeature && fbuf)
-        await pline(fbuf);
+    if (skip_objects) {
+        // C invent.c skip_objects arm — "There are several objects here."
+        if (dfeature && !skip_dfeature && fbuf)
+            await pline(fbuf);
+        const { read_engr_at } = await import('./engrave.js');
+        await read_engr_at(u?.ux, u?.uy);
+        if (obj_cnt === 1 && (otmp.quan || 1) === 1) {
+            await pline(`There is ${picked_some ? 'another' : 'an'} object here.`);
+        } else {
+            const how = obj_cnt === 2 ? 'two'
+                : obj_cnt < 5 ? 'a few'
+                    : obj_cnt < 10 ? 'several' : 'many';
+            await pline(
+                `There are ${how}${picked_some ? ' more' : ''} objects here.`,
+            );
+        }
+        return;
+    }
+
+    if (!otmp.nexthere) {
+        // single object
+        if (dfeature && !skip_dfeature && fbuf)
+            await pline(fbuf);
+        {
+            const { read_engr_at } = await import('./engrave.js');
+            await read_engr_at(u?.ux, u?.uy);
+        }
+        // doname_with_price deferred → doname
+        await pline(`You ${verb} here ${doname(otmp)}.`);
+        return;
+    }
+
+    // C: display_nhwindow(WIN_MESSAGE, FALSE) then NHW_MENU putstr list
+    await flush_topl_more();
+    const lines = [];
+    if (dfeature && !skip_dfeature && fbuf) {
+        lines.push(fbuf);
+        lines.push('');
+    }
+    lines.push(
+        `${picked_some ? 'Other things' : 'Things'} that are here:`,
+    );
+    for (let o = otmp; o; o = o.nexthere) {
+        lines.push(doname(o)); // doname_with_price deferred
+    }
+    const { show_nhw_menu_text } = await import('./pager.js');
+    await show_nhw_menu_text(lines);
     {
         const { read_engr_at } = await import('./engrave.js');
         await read_engr_at(u?.ux, u?.uy);
-    }
-    if (!otmp.nexthere) {
-        // single object: "You see here <doname>" — doname_with_price deferred
-        await pline(`You ${verb} here ${doname(otmp)}.`);
-    } else {
-        await pline(`You ${verb} several objects here.`);
     }
 }
 

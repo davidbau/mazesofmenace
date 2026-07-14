@@ -6,7 +6,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, docrt } from './display.js';
 import { paint_corner_nhw_menu } from './invent.js';
-import { ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname } from './const.js';
+import { ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 
 const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
@@ -36,6 +36,19 @@ function highc_name(name) {
 }
 
 /**
+ * C ref: do_name.c x_monnam — "saddled " when W_SADDLE && !Blind && !Hallu.
+ * Hallu / Blind checked; SUPPRESS_SADDLE callers pass suppress (hack.h 0x08).
+ */
+const SUPPRESS_SADDLE = 0x08;
+function saddle_adj(mtmp, suppress = 0) {
+    if (suppress & SUPPRESS_SADDLE) return '';
+    if (game.u?.Blind || game.u?.ublind) return '';
+    if (game.u?.Hallucination) return '';
+    if ((mtmp?.misc_worn_check || 0) & W_SADDLE) return 'saddled ';
+    return '';
+}
+
+/**
  * C ref: do_name.c x_monnam — tame/name subset for displace and pet plines.
  * ARTICLE_YOUR + named pet → bare given name (name_at_start clears article).
  */
@@ -43,18 +56,29 @@ export function x_monnam_tame(mtmp) {
     if (!mtmp) return 'it';
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     const plain = mon_plain_name(mtmp);
-    if (mtmp.mtame) return `your ${plain}`;
-    return `the ${plain}`;
+    const sad = saddle_adj(mtmp);
+    if (mtmp.mtame) return `your ${sad}${plain}`;
+    return `the ${sad}${plain}`;
+}
+
+/**
+ * C ref: do_name.c mon_nam — ARTICLE_THE; named → bare name.
+ * Hallu / invis / priest / shk deferred; saddle adjective ported.
+ */
+export function mon_nam(mtmp) {
+    if (!mtmp) return 'it';
+    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
+    return `the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
 }
 
 /**
  * C ref: do_name.c mon_nam / Monnam — ARTICLE_THE; named → bare name.
- * Hallu / invis / saddle / priest / shk deferred.
+ * Hallu / invis / priest / shk deferred; saddle adjective ported.
  */
 export function Monnam(mtmp) {
     if (!mtmp) return 'It';
     if (has_mgivenname(mtmp)) return highc_name(MGIVENNAME(mtmp));
-    return highc_name(`the ${mon_plain_name(mtmp)}`);
+    return highc_name(`the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
 }
 
 /**
@@ -64,7 +88,9 @@ export function Monnam(mtmp) {
 export function noit_Monnam(mtmp) {
     if (!mtmp) return 'It';
     if (has_mgivenname(mtmp)) return highc_name(MGIVENNAME(mtmp));
-    if (mtmp.mtame) return highc_name(`your ${mon_plain_name(mtmp)}`);
+    if (mtmp.mtame) {
+        return highc_name(`your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
+    }
     return Monnam(mtmp);
 }
 

@@ -196,10 +196,12 @@ export async function dopickup() {
 
 /**
  * C ref: hack.c spoteffects(pick).
- * Ported envelope: pick → pickup(1). Deferred: recursion guards, pool,
- * special room, sink fall, levitation timeout, pit/trap order, Warning ice,
- * hidden monster surprise.
+ * Ported envelope: pick → pickup(1) unless in_steed_dismounting (C:
+ * dismount teleds skips; float_down picks up once). Deferred: recursion
+ * guards, pool, special room, sink fall, levitation timeout, pit/trap
+ * order, Warning ice, hidden monster surprise.
  */
 export async function spoteffects(pick) {
-    if (pick) await pickup(1);
+    // C: if (!gi.in_steed_dismounting) { ... pickup(1); }
+    if (pick && !game.in_steed_dismounting) await pickup(1);
 }

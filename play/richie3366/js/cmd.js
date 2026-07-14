@@ -9,8 +9,9 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED,
-         IS_WALL, IS_OBSTRUCTED, IS_FURNITURE, isok,
+import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM,
+         D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
+         IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, isok,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH } from './const.js';
 import { dist2 } from './mon.js';
 import {
@@ -80,6 +81,20 @@ function closed_door_at(x, y) {
     const loc = game.level?.at(x, y);
     return !!(loc && loc.typ === DOOR
         && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+// C ref: hack.c doorless_door — only D_NODOOR / D_BROKEN (no intact door)
+function doorless_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    // Rogue-level override deferred (all rogue doors treated as present)
+    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
+}
+
+// C ref: shk.c block_door — shopkeeper blocks diagonal shop exit.
+// Stub false until shop ushops / ESHK wired for this path.
+function block_door(_x, _y) {
+    return false;
 }
 
 // C ref: hack.c end_running(and_travel) — JS always clears travel (TRUE path)
@@ -660,6 +675,26 @@ async function domove(dx, dy) {
         return;
     }
 
+    // C ref: hack.c test_move testdiag — no diagonal into intact doorway
+    // (open/closed/locked; only doorless D_NODOOR/D_BROKEN allowed).
+    if (dx && dy) {
+        const dest = game.level?.at(newx, newy);
+        if (dest && IS_DOOR(dest.typ)
+            && (!doorless_door(newx, newy) || block_door(newx, newy))) {
+            if (game.context?.run) end_running();
+            game.context.move = 0;
+            return;
+        }
+        // C: diagonal out of a doorway that still has a door
+        const here = game.level?.at(u.ux, u.uy);
+        if (here && IS_DOOR(here.typ)
+            && (!doorless_door(u.ux, u.uy) || false /* block_entry deferred */)) {
+            if (game.context?.run) end_running();
+            game.context.move = 0;
+            return;
+        }
+    }
+
     if (blocksMove(newx, newy)) {
         // Can't move there — end a run so lookaround/continue_run don't
         // keep going in the previous direction with stale multi.
@@ -689,9 +724,13 @@ async function domove(dx, dy) {
         }
     }
 
-    // Move the hero
+    // Move the hero (C u_on_newpos also updates usteed mx/my)
     u.ux = newx;
     u.uy = newy;
+    if (u.usteed) {
+        u.usteed.mx = newx;
+        u.usteed.my = newy;
+    }
 
     // C ref: hack.c domove — clear kickedloc after a successful move
     game.kickedloc = { x: 0, y: 0 };

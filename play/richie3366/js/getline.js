@@ -271,6 +271,15 @@ const EXT_CMDS = [
         },
     },
     {
+        name: 'ride',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { doride } = await import('./steed.js');
+            return doride();
+        },
+    },
+    {
         name: 'levelchange',
         wiz: true,
         autocomplete: true,

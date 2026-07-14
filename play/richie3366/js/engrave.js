@@ -1,7 +1,7 @@
 // engrave.js — Engrave command / floor inscriptions (partial).
 // C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at,
 //        read_engr_at, wipeout_text, wipe_engr_at, random_engraving,
-//        can_reach_floor; hack.c maybe_smudge_engr.
+//        make_grave, can_reach_floor; hack.c maybe_smudge_engr.
 //
 // Branch envelope: u_can_engrave floor gate + getobj write-with (hands `-`
 // SUGGEST) + DUST fingertip You/getlin + literate bump + DUST/blood/
@@ -10,13 +10,14 @@
 // read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); mklev niche age
 // via wipe_engr_at → wipeout_text (seed==0 RNG path); fill graffiti via
 // random_engraving → getrumor or get_rnd_text(ENGRAVEFILE);
+// mklev graves via make_grave → get_rnd_text(EPITAPHFILE) HEADSTONE;
 // domove smudge via maybe_smudge_engr → wipe_engr_at(rnd(5)).
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
-// grave/altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
+// altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
 // dulling occupation; del_engr/rloc_engr; u_wipe_engr body; livelog;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
-// (non-zero) path; epitaph get_rnd_text; can_reach_floor ustuck-hugs /
+// (non-zero) path; disturb_grave; can_reach_floor ustuck-hugs /
 // ceiling_hider / MZ_HUGE / uteetering_at_seen_pit / uescaped_shaft.
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
@@ -29,12 +30,14 @@ import { HANDS_OBJ } from './readobjnam.js';
 import { A_WIS, exercise } from './attrib.js';
 import { getrumor, get_rnd_text } from './rumors.js';
 import { ENGRAVE_BUF, MD_PAD_ENGRAVE } from './generated/engrave_data.js';
+import { EPITAPH_BUF, MD_PAD_EPITAPH } from './generated/epitaph_data.js';
 import {
     WEAPON_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS, TOOL_CLASS,
     objectNames,
 } from './objects.js';
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, ICE,
+    ROOM, GRAVE,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
 } from './const.js';
@@ -116,7 +119,7 @@ const RUBOUTS = {
 /**
  * C ref: engrave.c random_engraving — rumor or ENGRAVEFILE line, then wipe 1/4.
  * Branch envelope: !rn2(4) short-circuits past getrumor into get_rnd_text;
- * empty getrumor also falls through. Epitaphfile path is separate (omitted).
+ * empty getrumor also falls through.
  */
 export function random_engraving() {
     let pristine = '';
@@ -125,6 +128,25 @@ export function random_engraving() {
     }
     const text = wipeout_text(pristine, Math.trunc(pristine.length / 4), 0);
     return { text, pristine };
+}
+
+/**
+ * C ref: engrave.c make_grave — place GRAVE + HEADSTONE engraving.
+ * Branch envelope: ROOM/GRAVE + !trap; null str → get_rnd_text(EPITAPHFILE);
+ * fixed str (e.g. "Saved by the bell!") skips the epitaph draw.
+ * Named omission: full set_levltyp side effects beyond typ=GRAVE.
+ */
+export function make_grave(x, y, str) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    if ((loc.typ !== ROOM && loc.typ !== GRAVE) || t_at(x, y)) return;
+    loc.typ = GRAVE;
+    del_engr(engr_at(x, y));
+    let text = str;
+    if (!text) {
+        text = get_rnd_text(EPITAPH_BUF, rn2, MD_PAD_EPITAPH) || '';
+    }
+    make_engr_at(x, y, text, null, 0, HEADSTONE);
 }
 
 /**

@@ -60,7 +60,7 @@ import {
     MALE, FEMALE, NEUTRAL,
 } from './monsters.js';
 import { name_to_monplus } from './mondata.js';
-import { make_engr_at, wipe_engr_at, random_engraving } from './engrave.js';
+import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
 import { DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT } from './const.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
@@ -332,10 +332,7 @@ function dealloc_obj(_otmp) { /* stub */ }
 function add_to_container(_container, _otmp) { /* stub */ }
 function sobj_at(_otyp, _x, _y) { return false; }
 
-function make_grave(x, y, text) {
-    const loc = game.level?.at(x, y);
-    if (loc) loc.typ = GRAVE;
-}
+// make_grave imported from engrave.js (C engrave.c)
 
 // C ref: mklev.c trap_engravings[] — parallel to trap.h order
 const trap_engravings = new Array(TRAPNUM).fill(null);
@@ -3450,6 +3447,7 @@ function mkaltar(croom) {
     loc.flags = Align2amask(al);
 }
 
+// C ref: mklev.c mkgrave — grave + optional buried gold/loot + bell
 function mkgrave_room(croom) {
     if (croom.rtype !== OROOM) return;
     const dobell = !rn2(10);
@@ -3459,13 +3457,20 @@ function mkgrave_room(croom) {
     if (!rn2(3)) {
         const gold = mksobj(GOLD_PIECE, true, false);
         if (gold) {
-            const depth = game.u?.uz?.dlevel ?? 1;
-            gold.quan = rnd(20) + depth * rnd(5);
+            gold.quan = rnd(20) + level_difficulty() * rnd(5);
+            gold.owt = weight(gold);
+            gold.ox = pos.x;
+            gold.oy = pos.y;
+            add_to_buried(gold);
         }
     }
     for (let tryct = rn2(5); tryct > 0; tryct--) {
         const otmp = mkobj(RANDOM_CLASS, true);
+        if (!otmp) return;
         curse(otmp);
+        otmp.ox = pos.x;
+        otmp.oy = pos.y;
+        add_to_buried(otmp);
     }
     if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
 }

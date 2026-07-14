@@ -17,6 +17,7 @@ import { acurr, A_CHA } from './attrib.js';
 import { christen_monst } from './do_name.js';
 import { monnear, m_at } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
+import { put_saddle_on_mon } from './steed.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -98,8 +99,10 @@ export function makedog() {
 
     if (!game.context.startingpet_mid) {
         game.context.startingpet_mid = mtmp.m_id ?? 1;
-        // C: pony put_saddle_on_mon + see_monster_closeup deferred
-        void PM_PONY;
+        // C: initial horses wear a saddle (pauper excluded); see_monster_closeup deferred
+        if (!game.u?.uroleplay?.pauper && pettype === PM_PONY) {
+            put_saddle_on_mon(null, mtmp);
+        }
     }
 
     // C: if (!gp.petname_used++ && *petname) christen_monst

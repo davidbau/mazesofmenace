@@ -59,6 +59,11 @@ const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
 function mark_visible_range(row, left, right) {
     if (left > right) return;
+    // C: vis_func path (do_clear_area off-hero) vs set_cs COULD_SEE
+    if (game.vis_func) {
+        for (let i = left; i <= right; i++) game.vis_func(i, row, game.vis_arg);
+        return;
+    }
     const rowp = game.cs_rows?.[row];
     if (!rowp) return;
     for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
@@ -378,13 +383,16 @@ function left_side(row, left_mark, right, limitsIdx) {
     }
 }
 
-// C ref: vision.c view_from()
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
+// C ref: vision.c view_from() — optional func/arg for do_clear_area
+function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0,
+    func = null, arg = null) {
     game.vis_start_col = scol;
     game.vis_start_row = srow;
     game.cs_rows = cs_rows;
     game.cs_left = cs_left;
     game.cs_right = cs_right;
+    game.vis_func = func;
+    game.vis_arg = arg;
 
     let left, right;
     if (viz_clear[srow][scol]) {
@@ -404,7 +412,11 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
         limitsIdx = circle_start[range] + 1;
     }
 
-    mark_visible_range(srow, left, right);
+    if (func) {
+        for (let i = left; i <= right; i++) func(i, srow, arg);
+    } else {
+        mark_visible_range(srow, left, right);
+    }
 
     const nrow_down = srow + 1;
     if (nrow_down < ROWNO) {
@@ -417,6 +429,37 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
         game.vis_step = -1;
         if (scol < COLNO - 1) right_side(nrow_up, scol, right, limitsIdx);
         if (scol) left_side(nrow_up, left, scol, limitsIdx);
+    }
+    game.vis_func = null;
+    game.vis_arg = null;
+}
+
+/**
+ * C ref: vision.c do_clear_area — hero-centered uses couldsee; off-hero
+ * uses view_from(..., range, func, arg) for pet wantdoor / similar.
+ */
+export function do_clear_area(scol, srow, range, func, arg) {
+    const u = game.u || {};
+    if (scol !== u.ux || srow !== u.uy) {
+        view_from(srow, scol, null, null, null, range, func, arg);
+        return;
+    }
+    if (range < 1 || range >= circle_start.length) return;
+    if (game.vision_full_recalc) vision_recalc(0);
+    const limitsStart = circle_start[range];
+    let max_y = srow + range;
+    if (max_y >= ROWNO) max_y = ROWNO - 1;
+    let y = srow - range;
+    if (y < 0) y = 0;
+    for (; y <= max_y; y++) {
+        const offset = circle_data[limitsStart + Math.abs(y - srow)] | 0;
+        let min_x = scol - offset;
+        if (min_x < 1) min_x = 1;
+        let max_x = scol + offset;
+        if (max_x >= COLNO) max_x = COLNO - 1;
+        for (let x = min_x; x <= max_x; x++) {
+            if (couldsee(x, y)) func(x, y, arg);
+        }
     }
 }
 

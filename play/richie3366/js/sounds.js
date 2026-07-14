@@ -16,9 +16,9 @@ import {
 } from './monsters.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
-    ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET,
+    ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
-    ESHK, Is_astralevel, Is_oracle_level,
+    ESHK, EGD, Is_astralevel, Is_oracle_level,
 } from './const.js';
 
 const STATUE = objectNames.indexOf('STATUE');
@@ -110,6 +110,48 @@ function hero_in_shop(sroom) {
     return ushops.includes(ch);
 }
 
+/** C ref: vault.c vault_occupied — first urooms entry whose rtype is VAULT. */
+function vault_occupied(array) {
+    const rooms = game.level?.rooms || [];
+    const s = array || '';
+    for (let i = 0; i < s.length; i++) {
+        const ch = s.charCodeAt(i);
+        const idx = ch - ROOMOFFSET;
+        if (idx >= 0 && idx < rooms.length
+            && (rooms[idx]?.rtype | 0) === VAULT) {
+            return ch;
+        }
+    }
+    return 0;
+}
+
+/**
+ * C ref: vault.c findgd — first isgd on fmon for this level.
+ * Named omission: migrating_mons park-at-<0,0> arm; mx/gddone heal.
+ */
+function findgd() {
+    const uz = game.u?.uz;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp?.isgd) continue;
+        const gdlevel = EGD(mtmp)?.gdlevel;
+        if (gdlevel
+            && ((gdlevel.dnum | 0) !== (uz?.dnum | 0)
+                || (gdlevel.dlevel | 0) !== (uz?.dlevel | 0))) {
+            continue;
+        }
+        return mtmp;
+    }
+    return null;
+}
+
+/**
+ * C ref: vault.c gd_sound — true when ambient vault messages are allowed.
+ * False if hero occupies a vault room or a guard already exists.
+ */
+function gd_sound() {
+    return !(vault_occupied(game.u?.urooms) || findgd());
+}
+
 /** C ref: sounds.c throne_mon_sound — RNG only; messages deferred. */
 function throne_mon_sound(mtmp) {
     if ((mtmp.msleeping || is_lord(mtmp.data) || is_prince(mtmp.data))
@@ -171,10 +213,12 @@ function oracle_sound(mtmp) {
 /**
  * C ref: sounds.c dosounds — ambient feature rolls each EOT.
  * Branch envelope: fountain/sink/court/swamp/vault/beehive/morgue/
- * barracks/zoo/shop/temple/oracle gates; shop body search_special+
- * tended_shop+rn2(2)+noisy_shop; mon_sound helpers RNG-only when match.
- * Named omissions: You_hear plines; gd_sound vault body; vampshifter
- * morgue; temple_priest body; oracle canseemon; Is_sanctum; Hallu index.
+ * barracks/zoo/shop/temple/oracle gates; vault body search_special+
+ * gd_sound+rn2(2); shop body search_special+tended_shop+rn2(2)+
+ * noisy_shop; mon_sound helpers RNG-only when match.
+ * Named omissions: You_hear plines; gold_in_vault / vault_occupied
+ * urooms maintenance; findgd migrating_mons; vampshifter morgue;
+ * temple_priest body; oracle canseemon; Is_sanctum; Hallu index.
  */
 export function dosounds() {
     const lf = game.level?.flags;
@@ -184,8 +228,10 @@ export function dosounds() {
         return;
     }
 
+    const hallu = game.u?.Hallucination ? 1 : 0;
+
     if (lf.nfountains && !rn2(400)) {
-        rn2(3); // fountain_msg index
+        rn2(3); // fountain_msg index; +hallu deferred in prior peels
     }
     if (lf.nsinks && !rn2(300)) {
         rn2(2); // sink_msg
@@ -198,7 +244,15 @@ export function dosounds() {
         return;
     }
     if (lf.has_vault && !rn2(200)) {
-        // gd_sound / vault messages — body deferred when rn2 hits 0
+        if (!search_special(VAULT)) {
+            lf.has_vault = false;
+            return;
+        }
+        // C: if (gd_sound()) switch (rn2(2) + hallu) { You_hear… }
+        // gold_in_vault / vault_occupied message arms — plines deferred
+        if (gd_sound()) {
+            rn2(2) + hallu;
+        }
         return;
     }
     if (lf.has_beehive && !rn2(200)) {

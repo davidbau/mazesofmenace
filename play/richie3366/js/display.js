@@ -65,7 +65,7 @@ const DEF_OC_SYM = {
 };
 
 // C ref: defsym.h MONSYM — letter from mlet; color from mons[].mcolor (not mlet).
-// HI_DOMESTIC (CLR_WHITE) for pets — color.h.
+// pet_color ≡ mon_color (display.c); hilite_pet only sets tty attr, not color.
 const MLET_CH = {
     S_ANT: 'a',
     S_BLOB: 'b',
@@ -130,7 +130,10 @@ const MLET_CH = {
 };
 
 function mon_at_display(x, y) {
+    const steed = game.u?.usteed;
     for (const m of game.fmon || []) {
+        // C: remove_monster while mounted — steed not on the map grid
+        if (steed && m === steed) continue;
         if (m && m.mx === x && m.my === y && (m.mhp == null || m.mhp > 0))
             return m;
     }
@@ -193,17 +196,24 @@ export function look_shown_at(x, y) {
     return null;
 }
 
-// C ref: display.c map_glyph / mon_color(monsndx) — per-species mcolor.
+// C ref: display.c map_glyph / mon_color / pet_color — per-species mcolor.
 // Newt is CLR_YELLOW; gecko/lizard are CLR_GREEN — mlet-only color is wrong.
+// Dogs/cats are HI_DOMESTIC (white) in mons[]; ponies are CLR_BROWN.
 export function mon_glyph(mtmp) {
     const mlet = mtmp.data?.mlet || mtmp.mlet;
     const ch = MLET_CH[mlet] || '?';
-    if (mtmp.mtame) return { ch, color: CLR_WHITE };
     const mnum = mtmp.mnum ?? mtmp.data?.mndx;
     const color = (mnum != null && mnum >= 0)
         ? (mcolors[mnum] ?? CLR_GRAY)
         : CLR_GRAY;
     return { ch, color };
+}
+
+/** C ref: display.h maybe_display_usteed / ridden_mon_to_glyph — mlet+mcolor. */
+function hero_display_glyph() {
+    const steed = game.u?.usteed;
+    if (steed && mon_visible(steed)) return mon_glyph(steed);
+    return { ch: '@', color: CLR_WHITE };
 }
 
 // C ref: display.h covers_objects
@@ -751,7 +761,7 @@ export function newsym(x, y) {
     if (!loc) return;
 
     if (game.u?.ux === x && game.u?.uy === y) {
-        // Hero
+        // Hero — C display_self / maybe_display_usteed
         // C: cansee path still sets waslit before display_self
         loc.waslit = !!loc.lit;
         // C: erevealed when cansee, even under hero
@@ -759,7 +769,8 @@ export function newsym(x, y) {
             const hep = engr_at(x, y);
             if (hep) hep.erevealed = 1;
         }
-        show_glyph_cell(x, y, '@', CLR_WHITE, false);
+        const hg = hero_display_glyph();
+        show_glyph_cell(x, y, hg.ch, hg.color, false);
         // Memory under hero: object / engraving / terrain (C _map_location)
         if (game.level?.flags?.hero_memory) {
             map_location_memory(x, y);
@@ -940,7 +951,8 @@ function _statusLine1() {
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
 }
 
-// C ref: botl.c — Xp:/T: gated by flags.showexp / flags.time (default off)
+// C ref: botl.c — Xp:/T: gated by flags.showexp / flags.time (default off);
+// BL_CONDITION Ride when u.usteed (botl.c condtests[bl_ride]).
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
@@ -948,6 +960,8 @@ function _statusLine2() {
     let s = `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (flags.showexp) s += `/${u.uexp || 0}`;
     if (flags.time) s += ` T:${game.moves || 1}`;
+    // C windows.c BL_MASK_RIDE → " Ride" (leading space in strcat)
+    if (u.usteed) s += ' Ride';
     return s;
 }
 

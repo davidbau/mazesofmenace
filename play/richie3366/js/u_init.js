@@ -1335,15 +1335,18 @@ function u_init_race() {
         break;
 
     case PM_ELF: {
-        // Elves: non-warrior roles get a non-magic instrument (ROLL_FROM).
+        // Elves: non-warrior roles get a non-magic instrument (D-0210).
+        // C: ROLL_FROM(trotyp) runs when constructing Instrument[] — before
+        // ini_inv → trquan — so the rn2(SIZE) must be eager, not lazy in trotyp().
         if (rolePm === PM_CLERIC || rolePm === PM_WIZARD) {
             const trotyp = [
                 'WOODEN_FLUTE', 'TOOLED_HORN', 'WOODEN_HARP',
                 'BELL', 'BUGLE', 'LEATHER_DRUM',
             ].map(otypByName);
+            const chosen = trotyp[rn2(trotyp.length)]; // C ROLL_FROM before ini_inv
             const Instrument = [
                 {
-                    trotyp: () => trotyp[rn2(trotyp.length)],
+                    trotyp: () => chosen,
                     trspe: 0,
                     trclass: TOOL_CLASS,
                     trquan_min: 1,

@@ -18,10 +18,11 @@ import {
     W_ARMOR,
 } from './const.js';
 import {
-    monsterNames, verysmall, G_FREQ, G_NOCORPSE, is_neuter,
+    verysmall, G_FREQ, G_NOCORPSE, is_neuter, is_undead,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
+import { Monnam, mon_nam } from './do_name.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 
@@ -80,21 +81,6 @@ function deadmonster(m) {
 
 function helpless(m) {
     return !!(m.msleeping || !m.mcanmove);
-}
-
-function mon_plain_name(m) {
-    const raw = m?.data?.name || monsterNames[m?.mnum] || 'monster';
-    return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-}
-
-// C ref: monnam.c Monnam / mon_nam — enough for dlvl1 pet combat messages
-function Monnam(m) {
-    const s = mon_plain_name(m);
-    return `The ${s}`;
-}
-
-function mon_nam(m) {
-    return `the ${mon_plain_name(m)}`;
 }
 
 // C ref: worn.c find_mac() — base AC, no worn armor peel yet
@@ -252,9 +238,11 @@ function mondead(mtmp) {
 }
 
 // C ref: mon.c mondied() → mondead + maybe make_corpse
+// C ref: mon.c monkilled — nonliving → "destroyed" else "killed"
 async function mondied(mdef) {
-    // C ref: monkilled — pline before mondead (triggers --More-- if needed)
-    await pline(`${Monnam(mdef)} is killed!`);
+    // C: monkilled pline before mondead (triggers --More-- if needed)
+    const verb = is_undead(mdef.data) ? 'destroyed' : 'killed';
+    await pline(`${Monnam(mdef)} is ${verb}!`);
     mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
     // C: accessible||is_pool gate deferred — floor tiles take make_corpse

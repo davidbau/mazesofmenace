@@ -28,7 +28,7 @@ import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
     PM_LICHEN,
 } from './monsters.js';
-import { m_cansee, couldsee, cansee } from './vision.js';
+import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam } from './do_name.js';
 import { gettrack } from './track.js';
 
@@ -320,6 +320,9 @@ async function dog_eat(mtmp, obj, x, y, devour) {
 
 // C ref: dogmove.c dog_goal()
 function dog_goal(mtmp, edog, after, udist, whappr) {
+    // C: Steeds don't move on their own will
+    if (mtmp === game.u?.usteed) return -2;
+
     const omx = mtmp.mx, omy = mtmp.my;
     // C: in_masters_sight = couldsee(omx, omy) — viz_array COULD_SEE
     const in_masters_sight = couldsee(omx, omy);
@@ -416,10 +419,8 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
     }
     if (mtmp.mconf) appr = 0;
 
-    // C: dog_goal gettrack / ogoal / FARAWAY when goal is hero and
+    // C: dog_goal gettrack / ogoal / wantdoor when goal is hero and
     // !couldsee(pet). Local FARAWAY = COLNO+2 (not const.js FARAWAY=127).
-    // view_from do_clear_area for non-hero wantdoor omitted — fall back
-    // to hero when gettrack/ogoal miss (C's final FARAWAY→hero case).
     const DOG_GOAL_FARAWAY = COLNO + 2;
     if (gg.gx === game.u.ux && gg.gy === game.u.uy && !in_masters_sight) {
         const cp = gettrack(omx, omy);
@@ -436,9 +437,19 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
             gg.gy = edog.ogoal.y;
             edog.ogoal.x = 0;
         } else {
-            // C: do_clear_area(omx,omy,9,wantdoor) via view_from — omitted
+            // C: do_clear_area(omx,omy,9,wantdoor,&fardist) — closest
+            // clear cell to hero within pet's view_from range 9
+            const fardist = { v: DOG_GOAL_FARAWAY * DOG_GOAL_FARAWAY };
             gg.gx = DOG_GOAL_FARAWAY;
             gg.gy = DOG_GOAL_FARAWAY;
+            do_clear_area(omx, omy, 9, (x, y, distPtr) => {
+                const ndist = dist2(x, y, game.u.ux, game.u.uy);
+                if (distPtr.v > ndist) {
+                    gg.gx = x;
+                    gg.gy = y;
+                    distPtr.v = ndist;
+                }
+            }, fardist);
             if (gg.gx === DOG_GOAL_FARAWAY || (gg.gx === omx && gg.gy === omy)) {
                 gg.gx = game.u.ux;
                 gg.gy = game.u.uy;
@@ -676,7 +687,12 @@ export async function dog_move(mtmp, after) {
 
     const omx = mtmp.mx, omy = mtmp.my;
     let udist = dist2(omx, omy, game.u.ux, game.u.uy);
-    if (!udist) return MMOVE_NOTHING;
+    // C: steeds don't move on their own; Conflict throw deferred
+    if (mtmp === game.u?.usteed) {
+        udist = 1;
+    } else if (!udist) {
+        return MMOVE_NOTHING;
+    }
 
     let nix = omx, niy = omy;
     let whappr = 0;

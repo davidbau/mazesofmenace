@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { dog_move, finish_meating } from './dogmove.js';
+import { shk_move, gd_move, pri_move } from './shk.js';
 import { newsym, pline } from './display.js';
 import {
     dist2,
@@ -626,7 +627,7 @@ function canspotmon(mtmp) {
  * amorphous squeeze message; mb_trapped; mpickstuff one-object pickup.
  * Named omissions: vampshift fog; iron bars; engulfing_u; shop add_damage;
  * has_magic_key disarm; metallivorous/cube/corpse_eater meat*; maybe_spin_web;
- * hides_under; shk after_shk_move; check_gear_next_turn.
+ * hides_under; check_gear_next_turn. (shk/gd/priest via shk.js D-0205)
  */
 async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
     if (mmoved !== MMOVE_MOVED && mmoved !== MMOVE_DONE) return mmoved;
@@ -775,6 +776,24 @@ export async function m_move(mtmp, after) {
     if (mtmp.mtame) {
         const mmoved = await dog_move(mtmp, after);
         return postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open);
+    }
+
+    // C ref: monmove.c m_move — shopkeeper / guard / priest special
+    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
+        let xm;
+        if (mtmp.isshk) xm = await shk_move(mtmp);
+        else if (mtmp.isgd) xm = gd_move(mtmp);
+        else xm = pri_move(mtmp);
+
+        if (xm === -2) return MMOVE_DIED;
+        if (xm !== -1) {
+            return postmov(
+                mtmp, omx, omy,
+                (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED,
+                can_tunnel, can_unlock, can_open,
+            );
+        }
+        // xm === -1: fall through to normal AI (follow outside shop)
     }
 
     // C: m_move starts with mtrapped → mintrap; still-caught → no move

@@ -5,6 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
+import { put_saddle_on_mon } from './steed.js';
 import {
     LOW_PM,
     SPECIAL_PM,
@@ -932,7 +933,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
         if (is_armed(ptr)) m_initweap(mtmp);
         m_initinv(mtmp);
         if (!rn2(100) && is_domestic(ptr)) {
-            /* put_saddle_on_mon — not needed for RNG on fail path */
+            // C: put_saddle_on_mon(NULL) — mksobj(SADDLE) when eligible
+            put_saddle_on_mon(null, mtmp);
         }
     }
 

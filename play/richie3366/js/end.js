@@ -1,10 +1,11 @@
 // end.js — Hero death / bones feasibility (partial).
-// C ref: end.c done_in_by / done / really_done; bones.c can_make_bones.
+// C ref: end.c done_in_by / done / really_done / disclose; bones.c can_make_bones.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { depth } from './hacklib.js';
-import { pline } from './display.js';
+import { pline, flush_topl_more } from './display.js';
+import { yn_function } from './getline.js';
 import { DIED, GENOCIDED, STONING } from './const.js';
 import { Monnam } from './do_name.js';
 
@@ -48,6 +49,29 @@ export function can_make_bones() {
 }
 
 /**
+ * C ref: end.c disclose — inventory yn first; other categories deferred.
+ * C default end_disclose prompts with defquery 'n' for 'i'.
+ */
+async function disclose(how, taken) {
+    void how;
+    const invent = game.invent || [];
+    if (invent.length && !(game.program_state?.done_stopprint)) {
+        // taken→"see what you had when you died/quit" deferred (paybill path)
+        const qbuf = taken
+            ? 'Do you want to see what you had when you died?'
+            : 'Do you want your possessions identified?';
+        const c = await yn_function(qbuf, 'ynq', 'n');
+        // display_inventory / container_contents on 'y' deferred
+        if (c === 'q') {
+            if (!game.program_state) game.program_state = {};
+            game.program_state.done_stopprint =
+                (game.program_state.done_stopprint | 0) + 1;
+        }
+    }
+    // attributes / vanquished / genocided / conduct / overview deferred
+}
+
+/**
  * C ref: end.c done — Lifesaved / wizard·discover Die? deferred.
  * Ordinary deaths fall through to really_done.
  */
@@ -59,17 +83,27 @@ export async function done(how) {
 }
 
 /**
- * C ref: end.c really_done — set gameover; bones_ok via can_make_bones.
- * Named omissions: object cleanup, paybill, disclosure, topten, rip,
- * savebones body, nh_terminate.
+ * C ref: end.c really_done — set gameover; display_nhwindow(WIN_MESSAGE);
+ * disclose when end_disclose != "none"; bones_ok via can_make_bones.
+ * Named omissions: object cleanup, paybill, invent discover_object,
+ * topten, rip, savebones body, nh_terminate; disclose beyond inventory yn.
  */
 async function really_done(how) {
     if (!game.program_state) game.program_state = {};
     game.program_state.gameover = true;
 
+    // C: display_nhwindow(WIN_MESSAGE, FALSE) — wait for "You die..." --More--
+    await flush_topl_more();
+
     const bones_ok = (how < GENOCIDED) && can_make_bones();
     // savebones deferred — bones_ok false on dlvl1 after rn2 gate
     void bones_ok;
+
+    // C: if (strcmp(flags.end_disclose, "none")) disclose(how, taken);
+    const endDisclose = game.flags?.end_disclose;
+    if (endDisclose !== 'none') {
+        await disclose(how, false);
+    }
 }
 
 /**

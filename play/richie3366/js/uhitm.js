@@ -1,5 +1,5 @@
 // uhitm.js — Hero hitting monsters (partial).
-// C ref: uhitm.c — do_attack / hitum / known_hitum / find_roll_to_hit / hmon;
+// C ref: uhitm.c — do_attack / attack_checks mimic / stumble_onto_mimic / hitum / known_hitum / find_roll_to_hit / hmon;
 //         hack.c overexertion; mon.c killed / xkilled / corpse_chance.
 
 import { game } from './gstate.js';
@@ -9,6 +9,8 @@ import {
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
+    M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
+    MIM_REVEAL,
 } from './const.js';
 import { WEAPON_CLASS, objectNameStrs } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, acurr } from './attrib.js';
@@ -22,8 +24,8 @@ import {
 import {
     verysmall, G_FREQ, bigmonst, thick_skinned, monsterNames,
 } from './monsters.js';
-import { relobj_on_death } from './mkobj.js';
-import { monnear, record_mvitals_died } from './mon.js';
+import { mksobj, relobj_on_death } from './mkobj.js';
+import { monnear, record_mvitals_died, seemimic, wakeup } from './mon.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 
@@ -596,8 +598,84 @@ async function hitum(mon, uattk) {
 }
 
 /**
+ * C ref: do_name.c a_monnam — ARTICLE_A lowercase (hallu/invis deferred).
+ */
+function a_monnam(mtmp) {
+    if (!mtmp) return 'a monster';
+    if (mtmp.mextra?.mgivenname) return mtmp.mextra.mgivenname;
+    const raw = mtmp?.data?.name || 'monster';
+    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+    const an = /^[aeiou]/i.test(plain) ? 'an' : 'a';
+    return `${an} ${plain}`;
+}
+
+/**
+ * C ref: uhitm.c that_is_a_mimic — name fake object via object_from_map/mksobj.
+ * Blind / hallu / invis / cmap-furniture defsyms / trapped-chest glyph deferred.
+ */
+async function that_is_a_mimic(mtmp, mimic_flags) {
+    const reveal_it = (mimic_flags & MIM_REVEAL) !== 0;
+    let msg = null;
+
+    const ap = M_AP_TYPE(mtmp);
+    if (ap === M_AP_OBJECT && mtmp.mappearance) {
+        // C: object_from_map → mksobj(glyphotyp, FALSE, FALSE) → next_ident
+        const otmp = mksobj(mtmp.mappearance, false, false);
+        const otmp_name = objectNameStrs[otmp?.otyp] || 'strange object';
+        // is_plural deferred → singular That/is
+        let what;
+        if (mtmp.data?.mlet === 'S_MIMIC'
+            && (mtmp.msleeping || mtmp.mfrozen)) {
+            // C: x_monnam(..., "sleeping", ...)
+            const raw = mtmp?.data?.name || 'monster';
+            const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+            what = `a sleeping ${plain}`;
+        } else {
+            what = a_monnam(mtmp);
+        }
+        msg = `That ${otmp_name} is ${what}!`;
+        // dealloc fakeobj — no floor link
+    } else if (ap === M_AP_FURNITURE) {
+        // defsyms explanation deferred — generic Wait message
+        msg = `Wait!  That's ${a_monnam(mtmp)}!`;
+    } else if (ap === M_AP_MONSTER) {
+        msg = `Wait!  That's ${a_monnam(mtmp)}!`;
+    } else {
+        msg = `Wait!  That's ${a_monnam(mtmp)}!`;
+    }
+
+    if (msg) await pline(msg);
+    if (reveal_it) seemimic(mtmp);
+}
+
+/**
+ * C ref: uhitm.c stumble_onto_mimic — reveal + wakeup(FALSE).
+ * AD_STCK set_ustuck / map_invisible deferred.
+ */
+async function stumble_onto_mimic(mtmp) {
+    await that_is_a_mimic(mtmp, MIM_REVEAL);
+    wakeup(mtmp, false);
+}
+
+/**
+ * C ref: uhitm.c attack_checks — disguised-mimic arm only.
+ * Returns true when the attack attempt is consumed (stumble).
+ * Invis-marker / peaceful-confirm / Elbereth arms deferred.
+ */
+async function attack_checks_mimic(mtmp) {
+    // C: forcefight → return FALSE (allow real attack)
+    if (game.context?.forcefight) return false;
+    // Protection_from_shape_changers / sensemon / warning glyph deferred
+    if (!M_AP_TYPE(mtmp)) return false;
+    // glyph_is_invisible → seemimic + return FALSE deferred
+    await stumble_onto_mimic(mtmp);
+    return true;
+}
+
+/**
  * C ref: uhitm.c do_attack — safemon displace, else attack → hitum.
- * attack_checks invis/mimic/peaceful-confirm omitted for visible hostiles.
+ * attack_checks: disguised mimic stumble before overexertion; other arms
+ * (invis Wait, peaceful yn) still deferred for visible hostiles.
  */
 export async function do_attack(mtmp) {
     if (!mtmp) return false;
@@ -625,9 +703,13 @@ export async function do_attack(mtmp) {
         return false;
     }
 
-    // Hostile / forcefight path — C do_attack continues into attack body
-    // attack_checks: clear WAITMASK; return FALSE for visible hostiles
+    // Hostile / forcefight path — C do_attack → attack_checks then hitum
     if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+
+    // C: attack_checks mimic stumble before overexertion / hitum
+    if (await attack_checks_mimic(mtmp)) {
+        return true;
+    }
 
     // check_capacity / overexertion
     if (overexertion()) {

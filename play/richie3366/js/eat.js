@@ -1,25 +1,29 @@
 // eat.js — Eat command (getobj / doeat; fortune cookie + reqtime-1 food +
 //           CORPSE eatcorpse / start_eating / eatfood occupation).
-// C ref: eat.c doeat / touchfood / fprefx / eatcorpse / start_eating / bite /
-//         eatfood / done_eating / lesshungry / obj_nutrition / is_edible /
-//         gethungry (Unaware rn2(10) + accessorytime rn2(20)); invent.c getobj.
-// Named omissions: floorfood floor; TIN; full cprefx/cpostfx; tainted Sick;
-// poison_strdmg; slime/stone; rottenfood body RNG; freeinv invent-full drop;
-// ?/* menu; multi-turn choke/newuhs.
+// C ref: eat.c doeat / floorfood / touchfood / fprefx / eatcorpse /
+//         start_eating / bite / eatfood / done_eating / lesshungry /
+//         obj_nutrition / is_edible / gethungry (Unaware rn2(10) +
+//         accessorytime rn2(20)); invent.c getobj; attrib.c poison_strdmg.
+// Named omissions: floorfood metallivore/pool-lava/cockatrice-feel; TIN;
+// full cprefx/cpostfx; tainted Sick; slime/stone; rottenfood body RNG;
+// freeinv invent-full drop; ?/* menu; multi-turn choke/newuhs;
+// losestr setuhpmax / terminal-frailty full death path.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd, rn1 } from './rng.js';
 import { flush_topl_more, pline } from './display.js';
 import { yn_function } from './getline.js';
 import { FOOD_CLASS, COIN_CLASS, objectNames } from './objects.js';
-import { weight, splitobj } from './mkobj.js';
+import { weight, splitobj, objects_at, delobj } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import { singular, xname, doname } from './objnam.js';
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, vegan, vegetarian,
     is_rider, PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames,
 } from './monsters.js';
-import { set_occupation } from './engrave.js';
+import { set_occupation, can_reach_floor } from './engrave.js';
+import { OBJ_FLOOR, OBJ_FREE, OBJ_INVENT } from './const.js';
+import { adjattrib, A_STR } from './attrib.js';
 
 const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
 const APPLE = objectNames.indexOf('APPLE');
@@ -303,37 +307,127 @@ async function getobj_eat() {
     }
 }
 
-/** C ref: invent.c useup() — consume one from a stack / remove if gone. */
+/**
+ * C ref: eat.c floorfood("eat", 0) — yn floor edibles, else invent getobj.
+ * Branch envelope: can_reach_floor / !usteed / !menu_requested skip to
+ * invent; edible floor FOOD (non-coin) ynq; invent getobj_eat.
+ * Named omissions: metallivore beartrap/bars/gold; pool/lava reach gate;
+ * will_feel_cockatrice; safe_qbuf ansimpleoname fallback; getobj_else
+ * "else" wording; sacrifice/tin corpsecheck arms.
+ */
+async function floorfood_eat() {
+    const u = game.u || {};
+    // C: iflags.menu_requested || !can_reach_floor || usteed → skipfloor
+    // pool/lava + Wwalking/clinger/Flying deferred (named omission)
+    if (!game.flags?.menu_requested && can_reach_floor(true) && !u.usteed) {
+        const ux = u.ux | 0;
+        const uy = u.uy | 0;
+        for (let otmp = objects_at(ux, uy); otmp; otmp = otmp.nexthere) {
+            if (otmp.oclass === COIN_CLASS || !is_edible(otmp)) continue;
+            // will_feel_cockatrice deferred
+            const one = (otmp.quan || 1) === 1;
+            // C: "There is <doname> here; eat it?" (otense + safe_qbuf)
+            const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)} here; eat ${one ? 'it' : 'one'}?`;
+            const c = await yn_function(qbuf, 'ynq', 'n');
+            if (c === 'y') return otmp;
+            if (c === 'q') return null;
+            // 'n' → try next floor edible / fall through to invent
+        }
+    }
+    return getobj_eat();
+}
+
+/**
+ * C ref: invent.c useup / useupf — consume one; invent or floor.
+ * Floor path matches useupf(obj,1): maybe splitobj then delobj →
+ * obj_resists(0,0) always rolls rn2(100). Invent useup never rolls.
+ *
+ * Detect floor via where===OBJ_FLOOR or presence on the floor pile —
+ * invent-split children may copy where or be OBJ_FREE without addinv
+ * (touchfood freeinv/addinv_nomerge still deferred).
+ */
 function useup(otmp) {
     if (!otmp) return;
-    if ((otmp.quan || 1) > 1) {
-        otmp.quan--;
-        otmp.owt = weight(otmp);
+    const inInvent = otmp.where === OBJ_INVENT
+        || (game.invent || []).includes(otmp);
+    let onFloor = otmp.where === OBJ_FLOOR;
+    if (!onFloor && !inInvent && otmp.ox != null && otmp.oy != null) {
+        for (let o = objects_at(otmp.ox, otmp.oy); o; o = o.nexthere) {
+            if (o === otmp) { onFloor = true; break; }
+        }
+    }
+    if (!onFloor) {
+        // Invent / free invent-child: invent.c useup — no obj_resists
+        if ((otmp.quan || 1) > 1) {
+            otmp.quan--;
+            otmp.owt = weight(otmp);
+            return;
+        }
+        const inv = game.invent || [];
+        const idx = inv.indexOf(otmp);
+        if (idx >= 0) inv.splice(idx, 1);
+        otmp.quan = 0;
+        otmp.where = OBJ_FREE;
         return;
     }
-    const inv = game.invent || [];
-    const idx = inv.indexOf(otmp);
-    if (idx >= 0) inv.splice(idx, 1);
+    // Floor: invent.c useupf(otmp, 1L)
+    let victim = otmp;
+    if ((otmp.quan || 1) > 1) {
+        victim = splitobj(otmp, 1) || otmp;
+    }
+    delobj(victim);
 }
 
 /**
  * C ref: eat.c touchfood — split stack (next_ident via splitobj), set oeaten.
- * freeinv + addinv_nomerge deferred: invent-array split leaves parent reduced
- * and child OBJ_FREE; done_eating useup does not need reinsertion for
- * reqtime-1 finish.
+ * freeinv + addinv_nomerge deferred for invent child path.
  */
 function touchfood(otmp) {
     if ((otmp.quan || 1) > 1) {
         // C: floor → splitobj(otmp, quan-1); carried → otmp = splitobj(otmp, 1)
-        // Inventory-only path here (floorfood floor deferred).
-        const child = splitobj(otmp, 1);
-        if (child) otmp = child;
+        const carried = otmp.where === OBJ_INVENT
+            || (game.invent || []).includes(otmp);
+        if (!carried) {
+            splitobj(otmp, (otmp.quan | 0) - 1);
+        } else {
+            const child = splitobj(otmp, 1);
+            if (child) otmp = child;
+        }
     }
     if (!otmp.oeaten) {
         // costly_alteration deferred
         otmp.oeaten = obj_nutrition(otmp);
     }
     return otmp;
+}
+
+/**
+ * C ref: attrib.c poison_strdmg → losestr + losehp.
+ * losestr rn1(4,3) only when ABASE-strloss would go below ATTRMIN.
+ */
+async function poison_strdmg(strloss, dmg) {
+    const u = game.u || (game.u = {});
+    if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
+    const amin = game.urace?.attrmin?.[A_STR] ?? 3;
+    let n = strloss | 0;
+    let ustr = (u.acurr.a[A_STR] | 0) - n;
+    let frailty = 0;
+    while (ustr < amin) {
+        ustr++;
+        n--;
+        frailty += rn1(4, 3);
+    }
+    if (frailty) {
+        u.uhp = (u.uhp | 0) - frailty;
+    }
+    if (n > 0) await adjattrib(A_STR, -n, 1);
+    u.uhp = (u.uhp | 0) - (dmg | 0);
+    if ((u.uhp | 0) < 1) {
+        u.uhp = 0;
+        if (game.program_state) game.program_state.gameover = true;
+    }
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
 }
 
 /**
@@ -429,7 +523,8 @@ async function eatfood() {
         if (game.context) game.context.victual = {};
         return 0;
     }
-    // floor-moved food deferred — invent-only path keeps carried food
+    // floor-moved food: C checks ox/oy still under hero; deferred beyond
+    // leaving the square (occupation cancels). Same-cell floor OK.
     game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
     if ((game.context.victual.usedtime | 0)
         <= (game.context.victual.reqtime | 0)) {
@@ -532,7 +627,16 @@ async function eatcorpse(otmp) {
     } else if (poisonous(ptr) && rn2(5)) {
         tp++;
         await pline('Ecch - that must have been poisonous!');
-        // poison_strdmg / Poison_resistance body deferred
+        const poisRes = !!(game.u?.HPoison_resistance || game.u?.EPoison_resistance
+            || game.u?.Poison_resistance);
+        if (!poisRes) {
+            // C: poison_strdmg(rnd(4), rnd(15), ...) — clang LTR arg eval
+            const strloss = rnd(4);
+            const dmg = rnd(15);
+            await poison_strdmg(strloss, dmg);
+        } else {
+            await pline('You seem unaffected by the poison.');
+        }
     } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
         && !(game.u?.HSick_resistance || game.u?.ESick_resistance)) {
         tp++;
@@ -617,12 +721,12 @@ async function eatcorpse(otmp) {
 
 /**
  * C ref: eat.c doeat() — food-class path for reqtime==1 and CORPSE.
- * TIN, floorfood floor, multi-turn non-corpse occupation, rotten ordinary
- * food still deferred.
+ * TIN, multi-turn non-corpse occupation, rotten ordinary food still deferred.
  * @returns {number} 0 = no turn (ECMD_OK), 1 = took time
  */
 export async function doeat() {
-    const otmp0 = await getobj_eat();
+    // C: floorfood("eat", 0) — floor yn then invent getobj
+    const otmp0 = await floorfood_eat();
     if (!otmp0) return 0;
 
     if (otmp0.oclass === COIN_CLASS && !is_edible(otmp0)) {

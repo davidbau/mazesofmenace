@@ -96,6 +96,7 @@ export const M2_PRINCE = 0x00000800;
 export const M2_NASTY = 0x02000000;
 export const M2_STRONG = 0x04000000;
 export const M2_MERC = 0x00000200;
+export const M2_ORC = 0x00000080; /* monflag.h — is an orc (≡ MH_ORC) */
 
 export const M1_FLY = 0x00000001; /* monflag.h — can fly or float */
 export const M1_AMORPHOUS = 0x00000004; /* monflag.h — can flow under doors */
@@ -103,6 +104,7 @@ export const M1_WALLWALK = 0x00000008;
 export const M1_CLING = 0x00000010; /* monflag.h — cling to ceiling */
 export const M1_TUNNEL = 0x00000020; /* monflag.h — can tunnel through rock */
 export const M1_NEEDPICK = 0x00000040; /* monflag.h — needs pick to tunnel */
+export const M1_HIDE = 0x00000100; /* monflag.h — mimics, blends with ceiling */
 export const M1_NOTAKE = 0x00000800; /* monflag.h — cannot pick up objects */
 export const M1_NOHANDS = 0x00002000;
 export const M1_HUMANOID = 0x00020000; /* monflag.h — humanoid head/arms/torso */
@@ -158,6 +160,7 @@ export function infravisible(ptr) {
 // C ref: mondata.h / monflag.h — verysmall = msize < MZ_SMALL
 export const MZ_TINY = 0;
 export const MZ_SMALL = 1;
+export const MZ_MEDIUM = 2; /* monflag.h — 4-7' */
 export const MZ_LARGE = 3; /* monflag.h — 7-12' */
 export function verysmall(ptr) {
     return (ptr?.msize ?? 2) < MZ_SMALL;
@@ -176,6 +179,11 @@ export function thick_skinned(ptr) {
 // C ref: mondata.h nohands()
 export function nohands(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_NOHANDS);
+}
+
+/** C ref: mondata.h is_hider — M1_HIDE (mimics appear as something else). */
+export function is_hider(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_HIDE);
 }
 
 /** C ref: mondata.h humanoid — M1_HUMANOID */
@@ -252,6 +260,11 @@ export function mon_learns_traps(mtmp, ttyp) {
 
 export function throws_rocks(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_ROCKTHROW);
+}
+
+/** C ref: mondata.h is_orc */
+export function is_orc(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_ORC);
 }
 
 /** C ref: mondata.h likes_gold */

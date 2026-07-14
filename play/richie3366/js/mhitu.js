@@ -7,6 +7,7 @@ import { monnear } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
+    M_ATTK_DEF_DIED,
     Upolyd, DIED,
 } from './const.js';
 import { thrwmu } from './mthrowu.js';
@@ -17,11 +18,20 @@ import { pline } from './display.js';
 import { Monnam } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval } from './weapon.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AD_PHYS, AD_ELEC,
 } from './mhitm.js';
+import { is_orc } from './monsters.js';
 import { done_in_by } from './end.js';
+
+/** C ref: you.h m_next2u — squared dist to hero ≤ 2. */
+function m_next2u(mtmp) {
+    const u = game.u || {};
+    const dx = (mtmp.mx | 0) - (u.ux | 0);
+    const dy = (mtmp.my | 0) - (u.uy | 0);
+    return dx * dx + dy * dy <= 2;
+}
 
 /**
  * C ref: hack.h AC_VALUE — positive AC as-is; negative rolls -rnd(-AC).
@@ -206,7 +216,7 @@ async function hitmu(mtmp, mattk) {
 
 /**
  * C ref: mhitu.c mattacku — AT_WEAP ranged thrwmu + melee HTH / weapon hit.
- * Breath/spit/gulp/gaze/expl/hugs/magic/steed/swallow/undetected deferred.
+ * Breath/spit/gulp/gaze/expl/hugs/magic/swallow/undetected deferred.
  * Returns 1 if monster died, else 0.
  */
 export async function mattacku(mtmp) {
@@ -216,14 +226,30 @@ export async function mattacku(mtmp) {
     if (!ranged) nomul(0);
     if ((mtmp.mhp | 0) < 1) return 1;
 
+    const u = game.u || {};
+
+    // C: mhitu.c — while mounted, orcs (1/2) / others (1/4) may hit the steed
+    // instead; steed never attacks the rider.
+    if (u.usteed) {
+        if (mtmp === u.usteed) return 0;
+        if (!rn2(is_orc(mtmp.data) ? 2 : 4) && m_next2u(mtmp)) {
+            let i = await mattackm(mtmp, u.usteed);
+            if ((i & M_ATTK_AGR_DIED) !== 0) return 1;
+            if ((i & M_ATTK_DEF_DIED) !== 0 || !u.usteed || !m_next2u(mtmp)) {
+                return 0;
+            }
+            // Steed retaliation — bhitpos/notonhead omitted (no worm steed)
+            i = await mattackm(u.usteed, mtmp);
+            return (i & M_ATTK_DEF_DIED) !== 0 ? 1 : 0;
+        }
+    }
+
     // C: find_offensive / use_offensive before attack loop — potion throw
     // spends the turn (return 2) without melee/ranged AT_WEAP.
     if (find_offensive(mtmp)) {
         const offended = use_offensive(mtmp);
         if (offended !== 0) return offended === 1 ? 1 : 0;
     }
-
-    const u = game.u || {};
     // AC_VALUE(u.uac) + 10 + m_lev (+ helpless / invis / trap deferred deltas)
     let tmp = AC_VALUE(u.uac ?? 10) + 10;
     tmp += mtmp.m_lev | 0;
