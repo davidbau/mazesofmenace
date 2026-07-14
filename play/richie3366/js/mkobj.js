@@ -43,6 +43,8 @@ const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
+const CORPSE = objectNames.indexOf('CORPSE');
+const LARGEST_INT = 32767; // C ref: global.h
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
@@ -108,6 +110,14 @@ export function weight(obj) {
     if (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE) {
         wt = Math.trunc((quan + 50) / 100);
         return Math.max(wt, 1);
+    }
+    // C ref: mkobj.c weight — CORPSE uses mons[corpsenm].cwt (not oc_weight)
+    if (obj.otyp === CORPSE && (obj.corpsenm ?? -1) >= 0) {
+        const cwt = mons(obj.corpsenm)?.cwt ?? 0;
+        let longWt = quan * cwt;
+        if (longWt > LARGEST_INT) longWt = LARGEST_INT;
+        // oeaten/eaten_stat deferred
+        return longWt | 0;
     }
     if (!wt) return Math.trunc((quan + 1) / 2);
     return wt * quan;

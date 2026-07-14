@@ -873,6 +873,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mcansee: 1,
         movement: 0,
         mspeed: 0,
+        permspeed: 0,
+        seen_resistance: 0, // M_SEEN_* — saw hero resist (monst.h)
         mflee: 0,
         mconf: 0,
         mstun: 0,

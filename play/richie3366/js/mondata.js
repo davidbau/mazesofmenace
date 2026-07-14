@@ -1,10 +1,15 @@
 // mondata.js — Monster name lookup + growth (partial).
 // C ref: mondata.c name_to_mon / name_to_monplus / little_to_big / big_to_little
+// + monstseesu / monstunseesu (seen_resistance).
 
+import { game } from './gstate.js';
+import { couldsee } from './vision.js';
 import {
     monsterNames, pmnames, NON_PM, LOW_PM,
     MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
+    M1_SEE_INVIS,
 } from './monsters.js';
+import { M_SEEN_NOTHING } from './const.js';
 
 function pm(name) {
     return monsterNames.indexOf(`PM_${name}`);
@@ -197,6 +202,56 @@ export function name_to_monplus(in_str, remainder_p = null, gender_name_var = nu
 /** C ref: mondata.c name_to_mon */
 export function name_to_mon(in_str, gender_name_var = null) {
     return name_to_monplus(in_str, null, gender_name_var);
+}
+
+/** C ref: monst.h m_seenres */
+export function m_seenres(mon, mask) {
+    return ((mon?.seen_resistance | 0) & (mask | 0)) !== 0;
+}
+
+/** C ref: monst.h m_setseenres */
+export function m_setseenres(mon, mask) {
+    if (!mon) return;
+    mon.seen_resistance = (mon.seen_resistance | 0) | (mask | 0);
+}
+
+/** C ref: monst.h m_clearseenres */
+export function m_clearseenres(mon, mask) {
+    if (!mon) return;
+    mon.seen_resistance = (mon.seen_resistance | 0) & ~(mask | 0);
+}
+
+/** C ref: vision.h m_canseeu — buried arms deferred. */
+function m_canseeu(m) {
+    const u = game.u || {};
+    const Invis = !!(u.Hinvis || u.Einvis || u.Invis);
+    const perceives = ((m?.data?.mflags1 | 0) & M1_SEE_INVIS) !== 0;
+    if (Invis && !perceives) return false;
+    if (u.Underwater) return false;
+    return couldsee(m.mx, m.my);
+}
+
+/**
+ * C ref: mondata.c monstseesu — monsters that can see the hero remember
+ * resistance mask (M_SEEN_*).
+ */
+export function monstseesu(seenres) {
+    if ((seenres | 0) === M_SEEN_NOTHING || game.u?.uswallow) return;
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (m_canseeu(mtmp)) m_setseenres(mtmp, seenres);
+    }
+}
+
+/**
+ * C ref: mondata.c monstunseesu — LOS monsters forget resistance mask.
+ */
+export function monstunseesu(seenres) {
+    if ((seenres | 0) === M_SEEN_NOTHING || game.u?.uswallow) return;
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (m_canseeu(mtmp)) m_clearseenres(mtmp, seenres);
+    }
 }
 
 export { MALE, FEMALE, NEUTRAL, NUM_MGENDERS };

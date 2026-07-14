@@ -13,8 +13,9 @@ import { addinv } from './u_init.js';
 import { xprname } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
-    ECMD_OK, ECMD_TIME, OBJ_FLOOR,
+    ECMD_OK, ECMD_TIME, OBJ_FLOOR, is_pit,
 } from './const.js';
+import { t_at, dotrap, NO_TRAP_FLAGS } from './trap.js';
 
 /**
  * C ref: pickup.c check_here — count floor objects and look_here / engr.
@@ -196,12 +197,21 @@ export async function dopickup() {
 
 /**
  * C ref: hack.c spoteffects(pick).
- * Ported envelope: pick → pickup(1) unless in_steed_dismounting (C:
- * dismount teleds skips; float_down picks up once). Deferred: recursion
- * guards, pool, special room, sink fall, levitation timeout, pit/trap
- * order, Warning ice, hidden monster surprise.
+ * Ported envelope: when !in_steed_dismounting — non-pit pickup then dotrap
+ * then pit pickup. dotrap covers hero dart (D-0239); other hero trap types
+ * still stub/no-op in trapeffect_selector. Deferred: recursion guards,
+ * pool, special room, sink fall, levitation timeout, Warning ice, hidden
+ * monster surprise.
  */
 export async function spoteffects(pick) {
-    // C: if (!gi.in_steed_dismounting) { ... pickup(1); }
-    if (pick && !game.in_steed_dismounting) await pickup(1);
+    // C: entire pickup/dotrap block gated on !gi.in_steed_dismounting
+    if (game.in_steed_dismounting) return;
+    const u = game.u;
+    if (!u) return;
+
+    const trap = t_at(u.ux, u.uy);
+    const pit = !!(trap && is_pit(trap.ttyp));
+    if (pick && !pit) await pickup(1);
+    if (trap) await dotrap(trap, NO_TRAP_FLAGS);
+    if (pick && pit) await pickup(1);
 }

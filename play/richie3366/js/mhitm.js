@@ -173,9 +173,11 @@ export async function mhitm_mgc_atk_negated(magr, mdef, verbosely) {
     return false;
 }
 
-// C ref: uhitm.c mhitm_knockback — burn RNG in C order; no hurtle yet
+// C ref: uhitm.c mhitm_knockback — burn RNG in C order; hurtle body deferred.
+// Called from mhitu hitmu, mhitm mdamagem, and uhitm hmon (maybe_knockback).
 export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
-    // C: knockdistance = rn2(3) ? 1 : 2; then rn2(chance)
+    // C: knockdistance = rn2(3) ? 1 : 2; then if (rn2(chance)) return
+    // (chance=6 unless ART_OGRESMASHER; artifact arm deferred)
     rn2(3);
     rn2(6);
     if (!(mattk.aatyp === AT_CLAW || mattk.aatyp === AT_KICK
@@ -186,7 +188,8 @@ export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
     void mdef;
     void weapon_used;
     void hitflags;
-    return false; // full hurtle not needed for dlvl1 pet bites / kobold melee
+    // Named omission: size/weapon/steadfast gates + hurtle/mhurtle body
+    return false;
 }
 
 // C ref: mon.c corpse_chance() — subset for ordinary dlvl1 kills

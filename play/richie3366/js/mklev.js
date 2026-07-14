@@ -97,6 +97,13 @@ const WAX_CANDLE = objectNames.indexOf('WAX_CANDLE');
 const XLIM = 4;
 const YLIM = 3;
 
+// C ref: sp_lev.c local alignment macros (create_room positioned path)
+const SPLEV_LEFT = 1;
+const SPLEV_CENTER = 3;
+const SPLEV_RIGHT = 5;
+const SPLEV_TOP = 1;
+const SPLEV_BOTTOM = 5;
+
 // Direction deltas
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
@@ -159,6 +166,21 @@ function stairway_find_dir(up) {
     return null;
 }
 
+/** C ref: stairs.c stairway_find_from */
+export function stairway_find_from(fromdlev, isladder) {
+    const dnum = fromdlev?.dnum | 0;
+    const dlevel = fromdlev?.dlevel | 0;
+    const ladder = !!isladder;
+    for (let s = game.stairs; s; s = s.next) {
+        if ((s.tolev?.dnum | 0) === dnum
+            && (s.tolev?.dlevel | 0) === dlevel
+            && !!s.isladder === ladder) {
+            return s;
+        }
+    }
+    return null;
+}
+
 function stairway_find_special_dir(up) {
     for (let s = game.stairs; s; s = s.next)
         if (s.tolev.dnum !== (game.u?.uz?.dnum ?? 0) && s.up !== up) return s;
@@ -205,6 +227,7 @@ function u_on_newpos(x, y) {
     game.u.ux = x;
     game.u.uy = y;
 }
+export { u_on_newpos };
 
 // C ref: dungeon.h within_bounded_area
 function within_bounded_area(x, y, lx, ly, hx, hy) {
@@ -2249,21 +2272,22 @@ async function themerooms_generate(difficulty) {
             return lspo_map_themeroom(mapdef.map, mapdef.fx, mapdef.fy);
         }
 
-        // C build_room: chance defaults to 100 → always burns rn2(100)
-        // (default themerms entry is named "default", not "ordinary")
-        // Map-shaped rooms handled above; remaining still use create_room.
-        if (pick.name !== 'ordinary') {
-            rn2(100);
-        }
-
         // C themerms.lua rectangular rooms:
         //  default → ordinary filled=1
+        //  Nesting rooms → fixed w/h then build_room (D-0226)
         //  Default/Unlit/Both themed fill → type=themed + themeroom_fill
         let rtype = OROOM;
         let rlit = -1;
         let needfill = FILL_NORMAL;
         let do_themed_fill = false;
-        if (pick.name === 'Default room with themed fill') {
+        let room_w = -1;
+        let room_h = -1;
+        if (pick.name === 'Nesting rooms') {
+            // C ref: themerms.lua:346 — w/h evaluated before des.room/build_room
+            room_w = 9 + rn2(4);
+            room_h = 9 + rn2(4);
+            needfill = FILL_NORMAL;
+        } else if (pick.name === 'Default room with themed fill') {
             rtype = THEMEROOM;
             needfill = 0;
             do_themed_fill = true;
@@ -2277,10 +2301,15 @@ async function themerooms_generate(difficulty) {
             needfill = FILL_NORMAL;
             do_themed_fill = true;
         }
-        // Named omission: Fake Delphi / Pillars / Mausoleum / nested des.room
-        // bodies still fall through as plain create_room.
+        // Named omission: Fake Delphi / Huge / Room-in-room / Pillars /
+        // Mausoleum size+nested bodies still fall through as plain create_room.
+        // Nesting nested create_subroom/create_door deferred (outer often fails).
 
-        const ok = create_room(-1, -1, -1, -1, -1, -1, rtype, rlit);
+        // C build_room: chance defaults to 100 → always burns rn2(100)
+        // (after contents arg RNG such as Nesting rn2(4) size rolls)
+        rn2(100);
+
+        const ok = create_room(-1, -1, room_w, room_h, -1, -1, rtype, rlit);
         if (ok) {
             // C ref: sp_lev.c:2824 — build_room calls topologize after create_room
             const aroom = g.level.rooms[g.level.nroom - 1];
@@ -2289,7 +2318,10 @@ async function themerooms_generate(difficulty) {
                 aroom.needfill = needfill;
                 // C lspo_room: contents(themeroom_fill) after build_room
                 if (do_themed_fill) themeroom_fill(aroom);
+                // Nesting rooms nested contents deferred (create_subroom/door)
             }
+        } else if (g.in_mk_themerooms) {
+            g.themeroom_failed = true;
         }
         return ok;
     } finally {
@@ -2407,8 +2439,64 @@ function create_room(x, y, w, h, xal, yal, rtype, rlit) {
             htmp = ddy.v + 1;
             r2 = { lx: xabs - 1, ly: yabs - 1, hx: xabs + wtmp, hy: yabs + htmp };
         } else {
-            // positioned room (not used for seed8000)
-            return false;
+            // C ref: sp_lev.c:1580 — only some parameters are random
+            let rndpos = 0;
+            if (xtmp < 0 && ytmp < 0) {
+                xtmp = rnd(5);
+                ytmp = rnd(5);
+                rndpos = 1;
+            }
+            if (wtmp < 0 || htmp < 0) {
+                wtmp = rn1(15, 3);
+                htmp = rn1(8, 2);
+            }
+            if (xaltmp === -1) xaltmp = rnd(3);
+            if (yaltmp === -1) yaltmp = rnd(3);
+
+            xabs = Math.trunc(((xtmp - 1) * COLNO) / 5) + 1;
+            yabs = Math.trunc(((ytmp - 1) * ROWNO) / 5) + 1;
+            switch (xaltmp) {
+            case SPLEV_LEFT:
+                break;
+            case SPLEV_RIGHT:
+                xabs += Math.trunc(COLNO / 5) - wtmp;
+                break;
+            case SPLEV_CENTER:
+                xabs += Math.trunc((Math.trunc(COLNO / 5) - wtmp) / 2);
+                break;
+            }
+            switch (yaltmp) {
+            case SPLEV_TOP:
+                break;
+            case SPLEV_BOTTOM:
+                yabs += Math.trunc(ROWNO / 5) - htmp;
+                break;
+            case SPLEV_CENTER:
+                yabs += Math.trunc((Math.trunc(ROWNO / 5) - htmp) / 2);
+                break;
+            }
+
+            if (xabs + wtmp - 1 > COLNO - 2) xabs = COLNO - wtmp - 3;
+            if (xabs < 2) xabs = 2;
+            if (yabs + htmp - 1 > ROWNO - 2) yabs = ROWNO - htmp - 3;
+            if (yabs < 2) yabs = 2;
+
+            r2 = {
+                lx: xabs - 1,
+                ly: yabs - 1,
+                hx: xabs + wtmp + rndpos,
+                hy: yabs + htmp + rndpos,
+            };
+            r1 = get_rect(r2);
+            const ddx = { v: wtmp }, ddy = { v: htmp };
+            const lowx = { v: xabs }, lowy = { v: yabs };
+            if (r1 && !check_room(lowx, ddx, lowy, ddy, vault)) {
+                r1 = null;
+            } else if (r1) {
+                xabs = lowx.v;
+                yabs = lowy.v;
+                // C does not rewrite wtmp/htmp from dx/dy after check_room
+            }
         }
     } while (++trycnt <= 100 && !r1);
     if (!r1) return false;

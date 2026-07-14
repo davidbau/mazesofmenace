@@ -506,8 +506,11 @@ async function relobj(mtmp, show, is_pet) {
 }
 
 // C ref: dogmove.c dog_invent — udist is squared dist2 (same as dog_move)
+// Branch envelope: drop/APPORT pickup + underfoot DOGFOOD/CADAVER/
+// starving-ACCFOOD → dog_eat return; mines/soko prize + MAIL skip deferred.
 async function dog_invent(mtmp, edog, udist) {
-    if (mtmp.meating) return 0;
+    // C: helpless(mtmp) || meating → 0 (msleeping/mfrozen subset)
+    if (mtmp.msleeping || mtmp.mfrozen || mtmp.meating) return 0;
     // C: if (droppables(mtmp)) { assert(apport>0); maybe relobj }
     if (droppables(mtmp)) {
         if (!edog || !(edog.apport > 0)) return 0;
@@ -522,15 +525,20 @@ async function dog_invent(mtmp, edog, udist) {
         }
         return 0;
     }
-    const obj = objects_at(mtmp.mx, mtmp.my);
+    const omx = mtmp.mx, omy = mtmp.my;
+    const obj = objects_at(omx, omy);
     if (!obj) return 0;
     const oclass = obj.oclass ?? 0;
     if (oclass === BALL_CLASS || oclass === CHAIN_CLASS || oclass === ROCK_CLASS)
         return 0;
 
     const edible = dogfood(mtmp, obj);
-    // Eat path omitted (DOGFOOD/CADAVER) — dart pickup is the verified path
-    void edible;
+    // C: edible <= CADAVER, or starving ACCFOOD, before APPORT
+    if ((edible <= CADAVER
+            || (edog?.mhpmax_penalty && edible === ACCFOOD))
+        && could_reach_item(mtmp, obj.ox, obj.oy)) {
+        return await dog_eat(mtmp, obj, omx, omy, false);
+    }
 
     const carryamt = can_carry(mtmp, obj);
     if (carryamt > 0 && !obj.cursed && edog && could_reach_item(mtmp, obj.ox, obj.oy)) {
@@ -541,7 +549,6 @@ async function dog_invent(mtmp, edog, udist) {
                 if (carryamt !== (obj.quan || 1)) {
                     otmp = splitobj(obj, carryamt) || obj;
                 }
-                const omx = mtmp.mx, omy = mtmp.my;
                 // C: distant_name/doname side-effects only when cansee; then
                 // flags.verbose pline — silent pickup when out of sight
                 if (cansee(omx, omy)) {
@@ -699,7 +706,11 @@ export async function dog_move(mtmp, after) {
 
     if (edog) {
         // C: dog_invent(mtmp, edog, udist) — squared dist2, not Euclidean
+        // j==1 → goto newdogpos (invent already ate; nix==omx); j==2 died
         const j = await dog_invent(mtmp, edog, udist);
+        if (j === 2) {
+            return ((mtmp.mhp | 0) < 1) ? MMOVE_DIED : MMOVE_DONE;
+        }
         if (j === 1) {
             return MMOVE_MOVED;
         }

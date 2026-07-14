@@ -1,26 +1,32 @@
-// fountain.js — Fountain dryup / dip effects.
-// C ref: fountain.c dryup, dipfountain (fountain-at-feet subset).
+// fountain.js — Fountain dryup / dip / drink effects.
+// C ref: fountain.c dryup, dipfountain, drinkfountain.
 //
-// Branch envelope: water_damage ER_NOTHING → switch case 16 (curse) /
-// default (nothing_seems_to_happen) → dryup rn2(3) gate.
-// Deferred: Excalibur LONG_SWORD body (gate+rn2 order preserved),
-// wash_hands, cases 17–29, town warn / angry_guards, wizard yn,
-// FOUNTAIN_IS_WARNED force dryup.
+// Branch envelope (drinkfountain): fate=rnd(30) before Levitation;
+// mgkftn restore+adjattrib; fate<10 refresh; switch default/19–30
+// message+RNG arms that do not need missing helpers.
+// Deferred: dowatersnakes/demon/nymph, dofindgem, dogushforth,
+// monster_detect body, enlightenment body, vomit body, town warn/
+// angry_guards, wizard yn, FOUNTAIN_IS_WARNED force dryup,
+// Excalibur LONG_SWORD body, wash_hands, dipfountain cases 17–29.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
-import { pline, newsym } from './display.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { pline, newsym, You_feel, flush_topl_more } from './display.js';
 import { curse } from './mkobj.js';
 import { water_damage } from './trap.js';
 import { COIN_CLASS, objectNames } from './objects.js';
 import {
     ROOM, IS_FOUNTAIN,
     ER_NOTHING, ER_DESTROYED,
-    F_WARNED,
+    F_WARNED, FROMOUTSIDE,
     nothing_seems_to_happen,
+    KILLED_BY_AN,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT } from './generated/monsters_data.js';
+import { A_MAX, A_WIS, A_CON, adjattrib, exercise } from './attrib.js';
+import { lesshungry, morehungry, poison_strdmg } from './eat.js';
+import { losehp } from './hack.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 
@@ -28,6 +34,11 @@ const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 function FOUNTAIN_IS_WARNED(x, y) {
     const loc = game.level?.at(x, y);
     return !!((loc?.looted || 0) & F_WARNED);
+}
+
+/** C ref: hacklib / potion.hliquid — Hallucination synonym deferred. */
+function hliquid(waterword) {
+    return waterword || 'water';
 }
 
 /** C ref: fountain.c floating_above */
@@ -53,6 +64,143 @@ export async function dryup(x, y, isyou) {
     }
     newsym(x, y);
     void isyou;
+}
+
+/**
+ * C ref: fountain.c drinkfountain — quaff while standing on a fountain.
+ */
+export async function drinkfountain() {
+    const u = game.u || {};
+    const loc = game.level?.at(u.ux, u.uy);
+    const mgkftn = (loc?.blessedftn | 0) === 1;
+    // C: fate = rnd(30) before Levitation check
+    const fate = rnd(30);
+
+    if (u.Levitation) {
+        await floating_above('fountain');
+        return;
+    }
+
+    if (mgkftn && (u.uluck | 0) >= 0 && fate >= 10) {
+        const littleluck = (u.uluck | 0) < 4;
+        await pline('Wow!  This makes you feel great!');
+        // blessed restore ability
+        for (let ii = 0; ii < A_MAX; ii++) {
+            const base = u.acurr?.a?.[ii] | 0;
+            const mx = u.amax?.a?.[ii] | 0;
+            if (base < mx) {
+                u.acurr.a[ii] = mx;
+                if (!game.flags) game.flags = {};
+                game.flags.botl = true;
+            }
+        }
+        // gain ability; blessed if natural luck high
+        let i = rn2(A_MAX);
+        for (let ii = 0; ii < A_MAX; ii++) {
+            if (await adjattrib(i, 1, littleluck ? -1 : 0) && littleluck) break;
+            if (++i >= A_MAX) i = 0;
+        }
+        await flush_topl_more(); // display_nhwindow(WIN_MESSAGE, FALSE)
+        await pline('A wisp of vapor escapes the fountain...');
+        exercise(A_WIS, true);
+        if (loc) loc.blessedftn = 0;
+        return;
+    }
+
+    if (fate < 10) {
+        await pline('The cool draught refreshes you.');
+        lesshungry(rnd(10)); // u.uhunger += rnd(10); newuhs deferred
+        if (mgkftn) return;
+    } else {
+        switch (fate) {
+        case 19: // Self-knowledge — enlightenment body deferred
+            await You_feel('self-knowledgeable...');
+            await flush_topl_more();
+            // enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS) deferred
+            exercise(A_WIS, true);
+            await pline('The feeling subsides.');
+            break;
+        case 20: // Foul water
+            await pline('The water is foul!  You gag and vomit.');
+            morehungry(rn1(20, 11));
+            // vomit() body deferred (no RNG when not polymorphed)
+            break;
+        case 21: { // Poisonous
+            await pline('The water is contaminated!');
+            const poisRes = !!(u.HPoison_resistance || u.EPoison_resistance
+                || u.Poison_resistance);
+            if (poisRes) {
+                await pline(
+                    'Perhaps it is runoff from the nearby fruit farm.',
+                );
+                losehp(rnd(4), 'unrefrigerated sip of juice', KILLED_BY_AN);
+                break;
+            }
+            // clang LTR: poison_strdmg(rn1(4,3), rnd(10), ...)
+            const strloss = rn1(4, 3);
+            const dmg = rnd(10);
+            await poison_strdmg(strloss, dmg);
+            exercise(A_CON, false);
+            break;
+        }
+        case 22: // Fountain of snakes — dowatersnakes deferred
+            break;
+        case 23: // Water demon — dowaterdemon deferred
+            break;
+        case 24: { // Maybe curse some items
+            await pline("This water's no good!");
+            morehungry(rn1(20, 11));
+            exercise(A_CON, false);
+            let buc_changed = 0;
+            for (const obj of [...(game.invent || [])]) {
+                if (obj.oclass !== COIN_CLASS && !obj.cursed && !rn2(5)) {
+                    curse(obj);
+                    buc_changed++;
+                }
+            }
+            void buc_changed; // update_inventory deferred
+            break;
+        }
+        case 25: // See invisible
+            if (u.Blind || u.ublind) {
+                if (u.HInvis || u.EInvis || u.Invis) {
+                    await pline('You feel transparent.');
+                } else {
+                    await pline('You feel very self-conscious.');
+                    await pline('Then it passes.');
+                }
+            } else {
+                await pline('You see an image of someone stalking you.');
+                await pline('But it disappears.');
+            }
+            u.HSee_invisible = (u.HSee_invisible || 0) | FROMOUTSIDE;
+            newsym(u.ux, u.uy);
+            exercise(A_WIS, true);
+            break;
+        case 26: // See Monsters — monster_detect body deferred
+            exercise(A_WIS, true);
+            break;
+        case 27: // Find a gem — dofindgem deferred (fallthrough to nymph)
+        case 28: // Water Nymph — dowaternymph deferred
+            break;
+        case 29: { // Scare
+            await pline(`This ${hliquid('water')} gives you bad breath!`);
+            for (const mtmp of game.fmon || []) {
+                if (mtmp.mhp <= 0) continue;
+                // monflee(mtmp, 0, FALSE, FALSE) — fleetime 0, no RNG
+                mtmp.mflee = 1;
+                mtmp.mfleetim = 0;
+            }
+            break;
+        }
+        case 30: // Gushing forth — dogushforth deferred
+            break;
+        default:
+            await pline(`This tepid ${hliquid('water')} is tasteless.`);
+            break;
+        }
+    }
+    await dryup(u.ux, u.uy, true);
 }
 
 /**

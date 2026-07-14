@@ -23,6 +23,7 @@ import {
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { objects_at, obj_extract_self, splitobj } from './mkobj.js';
+import { find_defensive, find_misc, use_misc, find_offensive } from './muse.js';
 import {
     mintrap,
     NO_TRAP_FLAGS,
@@ -250,11 +251,11 @@ async function mpickstuff(mtmp) {
 
 /**
  * C ref: monmove.c m_search_items — redirect gg toward interesting floor loot.
+ * Returns true → caller postmov(MMOVE_DONE) for underfoot claim (mpickstuff).
  * Named omissions: in_rooms shop rn2(25); hides_under; onscary; costly_spot
  * merchandise; is_mines_prize/is_soko_prize; helpless under-monster skip
- * beyond mcanmove/msleeping/mmove; searches_for_item via mon_would_take;
- * underfoot MMOVE_DONE short-circuit (kept deferred — D-0183; postmov now
- * has mpickstuff for MOVED/DONE).
+ * beyond mcanmove/msleeping/mmove; searches_for_item; can_touch_safely in
+ * search loop (mpickstuff still gates).
  */
 function m_search_items(mtmp, gg) {
     let minr = SQSRCHRADIUS;
@@ -311,15 +312,11 @@ function m_search_items(mtmp, gg) {
                     || mon_would_consume_item(mtmp, otmp)) {
                     const ix = otmp.ox ?? xx;
                     const iy = otmp.oy ?? yy;
-                    // Underfoot interesting loot: C returns TRUE → postmov →
-                    // mpickstuff (MMOVE_DONE). JS postmov still omits that
-                    // pickup path; returning TRUE skipped mfndpos/mtrack while
-                    // C kept approaching. Skip underfoot claim until DONE
-                    // pickup is wired; distant redirects still set gg.
-                    if (ix === omx && iy === omy) continue;
                     minr = distmin(omx, omy, xx, yy);
                     gg.x = ix;
                     gg.y = iy;
+                    // C: underfoot → MMOVE_DONE → postmov → mpickstuff
+                    if (ix === omx && iy === omy) return true;
                     break;
                 }
             }
@@ -933,6 +930,13 @@ export async function dochug(mtmp) {
     set_apparxy(mtmp);
     let { inrange, nearby, scared } = distfleeck(mtmp);
 
+    // C: find_defensive / find_misc before movement phase
+    if (find_defensive(mtmp, false)) {
+        // use_defensive body deferred — treat as not spent
+    } else if (find_misc(mtmp)) {
+        if (use_misc(mtmp) !== 0) return 1;
+    }
+
     const mdat = mtmp.data;
     // C: short-circuit OR — wanderer rn2(4) is evaluated before mpeaceful
     const want_move = (
@@ -956,9 +960,10 @@ export async function dochug(mtmp) {
             ({ inrange, nearby, scared } = distfleeck(mtmp));
         }
         if (status === MMOVE_MOVED) {
-            // C: monsters can move then shoot — fall through when !nearby
-            // and AT_WEAP / ranged available (is_armed stand-in).
-            if (nearby || !is_armed(mdat)) {
+            /* Monsters can move and then shoot on same turn;
+               C: ranged_attk_available || AT_WEAP || find_offensive */
+            if (nearby
+                || !(is_armed(mdat) || find_offensive(mtmp))) {
                 return 0;
             }
             // else fall through to PHASE FOUR

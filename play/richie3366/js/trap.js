@@ -1,8 +1,8 @@
-// trap.js — Trap creation + monster-step subset.
+// trap.js — Trap creation + monster-step subset + hero dotrap dart.
 // C ref: trap.c — maketrap/choose_trapnote/hole_destination/trapnote,
-// t_at, t_missile, thitm, mintrap, trapeffect_dart_trap / trapeffect_pit /
-// trapeffect_rocktrap / trapeffect_sqky_board (monster), make_corpse
-// ordinary path via thitm death.
+// t_at, t_missile, thitm, mintrap, dotrap, trapeffect_dart_trap /
+// trapeffect_pit / trapeffect_rocktrap / trapeffect_sqky_board,
+// make_corpse ordinary path via thitm death.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -21,9 +21,10 @@ import {
     mon_knows_traps, mon_learns_traps,
 } from './monsters.js';
 import {
-    DART_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
+    DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
     PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, ROLLING_BOULDER_TRAP,
+    ANTI_MAGIC, HURTLING, TOOKPLUNGE, VIASITTING,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
     D_CLOSED, D_LOCKED,
     CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NONE,
@@ -31,6 +32,10 @@ import {
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
 } from './const.js';
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
+import { thitu } from './mthrowu.js';
+import { dmgval } from './weapon.js';
+import { maybe_half_phys, nomul } from './hack.js';
+import { observe_object } from './invent.js';
 
 const DART = objectNames.indexOf('DART');
 const ROCK = objectNames.indexOf('ROCK');
@@ -529,6 +534,118 @@ export function seetrap(trap) {
     }
 }
 
+// C ref: trap.c deltrap — remove from ftrap list (shop/region cleanup deferred)
+function deltrap(trap) {
+    const traps = game.level?.traps;
+    if (!traps || !trap) return;
+    const i = traps.indexOf(trap);
+    if (i >= 0) traps.splice(i, 1);
+}
+
+/** Hero sentinel: game.youmonst or explicit _youmonst flag from dotrap. */
+function is_youmonst(mtmp) {
+    return !!(mtmp && (mtmp === game.youmonst || mtmp._youmonst));
+}
+
+/**
+ * C ref: trap.c floor_trigger — types that fire when touching the floor.
+ * Envelope: dart/arrow/rock/sqky/pit/hole (+ common floor traps); others false.
+ */
+function floor_trigger(ttyp) {
+    switch (ttyp) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+    case SQKY_BOARD:
+    case PIT:
+    case SPIKED_PIT:
+    case HOLE:
+    case TRAPDOOR:
+    case ROLLING_BOULDER_TRAP:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * C ref: trap.c check_in_air — Levitation / Flying / HURTLING for youmonst.
+ * Named omission: monster floater/flyer arms used only from mintrap path.
+ */
+function check_in_air(mtmp, trflags) {
+    const is_you = is_youmonst(mtmp);
+    const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
+    if ((trflags & HURTLING) !== 0) return true;
+    const u = game.u || {};
+    if (is_you) {
+        if (u.Levitation) return true;
+        if (u.Flying && !plunged) return true;
+        return false;
+    }
+    return m_in_air(mtmp) && !plunged;
+}
+
+/** C ref: trap.c trapname — non-hallucination labels for dotrap escape msgs. */
+function trapname(ttyp, _override) {
+    switch (ttyp) {
+    case ARROW_TRAP: return 'arrow trap';
+    case DART_TRAP: return 'dart trap';
+    case ROCKTRAP: return 'falling rock trap';
+    case SQKY_BOARD: return 'squeaky board';
+    case PIT: return 'pit';
+    case SPIKED_PIT: return 'spiked pit';
+    case HOLE: return 'hole';
+    case TRAPDOOR: return 'trap door';
+    default: return 'trap';
+    }
+}
+
+/**
+ * C ref: trap.c dotrap — hero steps on a trap.
+ * Envelope: nomul(0); floor_trigger+in_air skip; already_seen escape rn2(5);
+ * trapeffect_selector(youmonst). Named omissions: Sokoban air-currents,
+ * undestroyable/ANTI_MAGIC/Fumbling force, conj/adj pit, steed mon_learns,
+ * mons_see_trap, FORCETRAP morph recursion, non-dart trapeffect hero arms.
+ */
+export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
+    if (!trap) return;
+    const u = game.u;
+    if (!u) return;
+    const ttype = trap.ttyp;
+    const already_seen = !!trap.tseen;
+    const forcetrap = (trflags & FORCETRAP) !== 0;
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    const a_your = ['a', 'your'];
+
+    nomul(0);
+
+    if (!forcetrap) {
+        if (floor_trigger(ttype)
+            && check_in_air(game.youmonst || { _youmonst: true }, trflags)) {
+            if (already_seen) {
+                const art = (ttype === ARROW_TRAP && !trap.madeby_u)
+                    ? 'an' : a_your[trap.madeby_u ? 1 : 0];
+                await pline(`You step over ${art} ${trapname(ttype, false)}.`);
+            }
+            return;
+        }
+        // undestroyable_trap / ANTI_MAGIC / Fumbling / plunge / conj_pit
+        // deferred — ordinary commons escape only
+        if (already_seen && !u.Fumbling && ttype !== ANTI_MAGIC
+            && !forcebungle
+            && !rn2(5)) {
+            const art = (ttype === ARROW_TRAP && !trap.madeby_u)
+                ? 'an' : a_your[trap.madeby_u ? 1 : 0];
+            await pline(`You escape ${art} ${trapname(ttype, false)}.`);
+            return;
+        }
+    }
+
+    // steed mon_learns_traps / mons_see_trap deferred (no RNG on commons)
+    const you = game.youmonst || { _youmonst: true };
+    await trapeffect_selector(you, trap, trflags);
+}
+
 /**
  * C ref: trap.c trapeffect_pit — monster branch (hero dotrap path deferred).
  * Envelope: grounded pets/monsters on PIT/SPIKED_PIT; Sokoban drag omitted;
@@ -539,7 +656,10 @@ async function trapeffect_pit(mtmp, trap, trflags) {
     let relevant_spikes = ttype === SPIKED_PIT;
     const a_your = ['a', 'your'];
 
-    // Hero youmonst branch (dotrap) named omission — mintrap is monster-only
+    if (is_youmonst(mtmp)) {
+        // Hero pit/spiked-pit body deferred (named omission)
+        return Trap_Effect_Finished;
+    }
 
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     let trapkilled = false;
@@ -577,16 +697,48 @@ async function trapeffect_pit(mtmp, trap, trflags) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c trapeffect_dart_trap — monster branch only
+// C ref: trap.c trapeffect_dart_trap — hero + monster branches
 async function trapeffect_dart_trap(mtmp, trap) {
-    // Hero branch omitted (named omission)
+    if (is_youmonst(mtmp)) {
+        const u = game.u;
+        if (trap.once && trap.tseen && !rn2(15)) {
+            await pline('You hear a soft click.');
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+            return Trap_Is_Gone;
+        }
+        trap.once = true;
+        seetrap(trap);
+        await pline('A little dart shoots out at you!');
+        let otmp = t_missile(DART, trap);
+        if (!rn2(6)) otmp.opoisoned = 1;
+        const dam = dmgval(otmp, game.youmonst || mtmp);
+        // steedintrap arm deferred (usteed rare at L1 commons)
+        const box = { obj: otmp };
+        // thitu plines are sync-append-safe after the shoot message
+        if (thitu(7, maybe_half_phys(dam), box, 'little dart')) {
+            otmp = box.obj;
+            if (otmp) {
+                // poisoned() body deferred — still consume dart (obfree)
+                // Named omission: poison attrib / HP when opoisoned
+                // obfree: no obj_resists (delobj would burn rn2)
+            }
+            return Trap_Effect_Finished;
+        }
+        otmp = box.obj;
+        if (otmp) {
+            place_object(otmp, u.ux, u.uy);
+            if (!u.Blind) observe_object(otmp);
+            stackobj(otmp);
+            newsym(u.ux, u.uy);
+        }
+        return Trap_Effect_Finished;
+    }
+
+    // Monster branch
     if (trap.once && trap.tseen && !rn2(15)) {
         // deltrap omitted visually; remove from list
-        const traps = game.level?.traps;
-        if (traps) {
-            const i = traps.indexOf(trap);
-            if (i >= 0) traps.splice(i, 1);
-        }
+        deltrap(trap);
         newsym(mtmp.mx, mtmp.my);
         return Trap_Is_Gone;
     }

@@ -9,10 +9,11 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM,
+import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
-         IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, isok,
-         ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH } from './const.js';
+         IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL,
+         ACCESSIBLE, isok,
+         ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH, DOMOVE_WALK } from './const.js';
 import { dist2 } from './mon.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook,
@@ -38,7 +39,7 @@ import { dowhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
 import { spoteffects, dopickup } from './pickup.js';
 import { getpos } from './getpos.js';
-import { nomul } from './hack.js';
+import { nomul, moverock, boulder_at } from './hack.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -68,11 +69,12 @@ function isRunKey(ch) {
 }
 
 // C ref: hack.c — check if a cell blocks movement
+// C test_move: IS_OBSTRUCTED(typ) || typ == IRONBARS (plus closed doors).
+// IS_OBSTRUCTED covers STONE..SCORR including TREE/SDOOR/SCORR (typ < POOL).
 function blocksMove(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    if (loc.typ === STONE) return true;
-    if (IS_WALL(loc.typ)) return true;
+    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     return false;
 }
@@ -106,6 +108,36 @@ function end_running() {
     game.context.travel1 = 0;
     if (game.context.nopick) game.context.nopick = 0;
     game.multi = 0;
+}
+
+/**
+ * C ref: hack.c domove_fight_empty — F into empty/solid wastes a turn.
+ * Branch envelope: thin air + simple solid; boulder/pick/explode/I-glyph
+ * deferred (C-JS-MAP).
+ */
+async function domove_fight_empty(x, y) {
+    const offEdge = !isok(x, y);
+    const loc = (!offEdge && game.level?.at(x, y)) || null;
+    const solid = offEdge
+        || !loc
+        || !ACCESSIBLE(loc.typ)
+        || IS_FURNITURE(loc.typ);
+    let target;
+    if (offEdge) {
+        target = 'an unknown obstacle';
+    } else if (solid) {
+        if (loc && (loc.seenv || IS_STWALL(loc.typ))) {
+            target = IS_STWALL(loc.typ) || loc.typ === STONE
+                ? 'the wall' : 'an unknown obstacle';
+        } else {
+            target = 'an unknown obstacle';
+        }
+    } else {
+        target = 'thin air';
+    }
+    const harmlessly = (solid && !offEdge) ? 'harmlessly ' : '';
+    await pline(`You ${harmlessly}attack ${target}.`);
+    return true;
 }
 
 /**
@@ -454,20 +486,49 @@ export async function rhack(key) {
 
     const ch = String.fromCharCode(key);
 
+    // C: non-prefix command after F drops the fight prefix (feedback deferred)
+    if (ch !== 'F' && !isMovementKey(ch) && !isRunKey(ch)
+        && game.context?.forcefight) {
+        game.context.forcefight = 0;
+        game.domove_attempting = 0;
+    }
+
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
+        // C: forcefight cleared after DOMOVE_WALK domove
+        if (game.context) game.context.forcefight = 0;
         // domove sets context.move = 0 if blocked; else leave as 1 (allmain preset)
         if (game.context.move !== 0) game.context.move = 1;
     } else if (isRunKey(ch)) {
         // C ref: cmd.c do_run_* + DOMOVE_RUSH — multi = max(COLNO,ROWNO)
         const low = ch.toLowerCase();
         if (!game.context) game.context = {};
-        game.context.run = 1;
-        game.context.mv = 1;
-        if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
-        game.u.last_str_turn = 0;
-        await domove(DIR_DX[low], DIR_DY[low]);
-        if (game.context.move !== 0) game.context.move = 1;
+        // Pending F + capital dir: forcefight one step (not rush)
+        if (game.context.forcefight) {
+            await domove(DIR_DX[low], DIR_DY[low]);
+            game.context.forcefight = 0;
+            if (game.context.move !== 0) game.context.move = 1;
+        } else {
+            game.context.run = 1;
+            game.context.mv = 1;
+            if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
+            game.u.last_str_turn = 0;
+            await domove(DIR_DX[low], DIR_DY[low]);
+            if (game.context.move !== 0) game.context.move = 1;
+        }
+    } else if (ch === 'F') {
+        // C ref: cmd.c do_fight — PREFIXCMD; no turn
+        if (!game.context) game.context = {};
+        if (game.context.forcefight) {
+            game.context.forcefight = 0;
+            game.domove_attempting = 0;
+            game.context.move = 0;
+            await pline('Double fight prefix, canceled.');
+        } else {
+            game.context.forcefight = 1;
+            game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_WALK;
+            game.context.move = 0;
+        }
     } else if (ch >= '0' && ch <= '9') {
         // C ref: cmd.c digit → get_count / command_count (no turn)
         // Echo "Count: N" once the value exceeds 9 (second digit).
@@ -495,7 +556,7 @@ export async function rhack(key) {
         // C: do NOT clear kickedloc after dokick — pets avoid it this turn
     } else if (ch === '.') {
         // C ref: do.c donull / cmd.c — wait; timed non-kick clears kickedloc
-        const tookTime = donull();
+        const tookTime = await donull();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === ',') {
@@ -509,7 +570,7 @@ export async function rhack(key) {
         game.context.move = (downRes & 0x01) ? 1 : 0;
         if (downRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 's') {
-        // C ref: detect.c dosearch — takes a turn; count from digit prefix
+        // C ref: detect.c dosearch — takes a turn unless safety cancels
         const n = game.context?.command_count || 0;
         if (game.context) game.context.command_count = 0;
         if (n > 1) {
@@ -518,9 +579,9 @@ export async function rhack(key) {
             game.context.mv = 0;
             game._repeat_search = true;
         }
-        await dosearch();
-        game.context.move = 1;
-        game.kickedloc = { x: 0, y: 0 };
+        const tookTime = await dosearch();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'T') {
         // C ref: do_wear.c dotakeoff — take off armor/accessory
         const tookTime = await dotakeoff();
@@ -638,6 +699,7 @@ export async function rhack(key) {
         game.context.move = 0;
     } else {
         // Unknown command (includes unbound space when !rest_on_space)
+        if (game.context?.forcefight) game.context.forcefight = 0;
         if (game.context?.run || (game.multi || 0) > 0) end_running();
         if (game.context) game.context.command_count = 0;
         game._repeat_search = false;
@@ -651,12 +713,34 @@ async function domove(dx, dy) {
     const u = game.u;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
+    const forcefight = !!game.context?.forcefight;
 
     // C sets u.dx/u.dy before the blocked-move check (used by lookaround/run)
     u.dx = dx;
     u.dy = dy;
     u.ux0 = u.ux;
     u.uy0 = u.uy;
+
+    // C ref: hack.c — F with no (attackable) monster → fight_empty, waste turn
+    // before closed-door / blocksMove early outs.
+    if (forcefight) {
+        const mtmp = mon_at(newx, newy);
+        if (mtmp) {
+            if (await do_attack(mtmp)) {
+                if (game.context?.run) end_running();
+                return;
+            }
+            // safemon + forcefight: do_attack proceeds to hit; if it returned
+            // false without attacking, fall through (rare)
+        } else {
+            await domove_fight_empty(newx, newy);
+            if (game.context?.run) end_running();
+            // Took a turn attacking empty/solid
+            game.context.move = 1;
+            game.kickedloc = { x: 0, y: 0 };
+            return;
+        }
+    }
 
     // C ref: hack.c test_move — closed_door + flags.autoopen → doopen_indir
     if (closed_door_at(newx, newy)) {
@@ -701,6 +785,17 @@ async function domove(dx, dy) {
         if (game.context?.run) end_running();
         game.context.move = 0;
         return;
+    }
+
+    // C ref: hack.c test_move — sobj_at(BOULDER) → moverock before advance
+    if (boulder_at(newx, newy)) {
+        const mr = await moverock();
+        if (mr < 0) {
+            if (game.context?.run) end_running();
+            game.context.move = 0;
+            return;
+        }
+        // moverock pushed boulder(s); fall through to occupy vacated cell
     }
 
     const oldx = u.ux, oldy = u.uy;

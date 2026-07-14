@@ -1,6 +1,6 @@
 // potion.js — Quaff / #dip commands (dodrink / dodip subset).
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil, dodip;
-//         invent.c getobj; fountain.c via dipfountain.
+//         invent.c getobj; fountain.c drinkfountain / dipfountain.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -11,7 +11,7 @@ import { A_WIS, A_DEX, A_CON, exercise } from './attrib.js';
 import { makeknown } from './invent.js';
 import { yn_function } from './getline.js';
 import { doname, xname } from './objnam.js';
-import { dipfountain } from './fountain.js';
+import { dipfountain, drinkfountain } from './fountain.js';
 import {
     IS_FOUNTAIN, IS_SINK, IS_POOL,
     ECMD_TIME, ECMD_CANCEL,
@@ -23,6 +23,7 @@ import { losehp, nomul, maybe_half_phys } from './hack.js';
 import { cansee } from './vision.js';
 import { mons } from './monsters.js';
 import { PM_HUMAN } from './generated/monsters_data.js';
+import { can_reach_floor } from './engrave.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const POT_ACID = objectNames.indexOf('POT_ACID');
@@ -96,7 +97,7 @@ function dippable_lets() {
 
 /**
  * C ref: invent.c getobj("drink", drink_ok, GETOBJ_NOFLAGS)
- * Fountain/sink/underwater prompts deferred (dodrink skips when not present).
+ * Called after fountain/sink prompts (or when menu_requested).
  */
 async function getobj_drink() {
     const lets = drinkable_lets();
@@ -237,14 +238,31 @@ async function dopotion(otmp) {
 
 /**
  * C ref: potion.c dodrink() / #quaff
- * Strangled / fountain / sink / underwater / milky-ghost / smoky-djinni
- * deferred. Worn-stack split deferred (starting oils are unworn).
+ * Fountain-at-feet yn → drinkfountain. Sink / underwater / Strangled /
+ * milky-ghost / smoky-djinni deferred. Worn-stack split deferred
+ * (starting oils are unworn).
  * @returns {number} 0 = cancel/no turn, 1 = took time
  */
 export async function dodrink() {
     // C: Strangled → message, ECMD_OK (no turn) — deferred unless needed
+    const u = game.u || {};
+    const loc = game.level?.at(u.ux, u.uy);
+    const here = loc?.typ ?? 0;
+
+    // C: !menu_requested → fountain / sink / underwater prompts first
+    if (!game.iflags?.menu_requested) {
+        if (IS_FOUNTAIN(here) && can_reach_floor(false)) {
+            if ((await yn_function('Drink from the fountain?', 'yn', 'n')) === 'y') {
+                await drinkfountain();
+                return ECMD_TIME;
+            }
+            // drink_ok_extra++ deferred (affects getobj empty-suggest only)
+        }
+        // sink / underwater prompts deferred
+    }
+
     const otmp = await getobj_drink();
-    if (!otmp) return 0;
+    if (!otmp) return ECMD_CANCEL;
 
     otmp.in_use = true;
     // milky/smoky occupant paths deferred (no RNG when descr unmatched)

@@ -7,7 +7,7 @@
 //         human/orc race kits; elf/dwarf/gnome partial).
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, rne } from './rng.js';
 import { mksobj, mkobj, weight } from './mkobj.js';
 import {
     WEAPON_CLASS,
@@ -783,8 +783,20 @@ function ini_inv_adjust_obj(trop, obj) {
         }
         if (trop.trspe !== UNDEF_SPE) {
             obj.spe = trop.trspe;
+            // C: trop->trotyp == MAGIC_MARKER (defined kit entry)
             if (objectNames[obj.otyp] === 'MAGIC_MARKER' && obj.spe < 96) {
                 obj.spe += rn2(4);
+            }
+        } else {
+            // C: Don't start with +0 or negative rings
+            // objects[].oc_charged not extracted yet — same charged-ring
+            // set as mkobj.js RING_CLASS (RIN_* with +n enchantment).
+            const n = objectNames[obj.otyp];
+            const oc_charged = n === 'RIN_ADORNMENT' || n === 'RIN_GAIN_STRENGTH'
+                || n === 'RIN_GAIN_CONSTITUTION' || n === 'RIN_INCREASE_ACCURACY'
+                || n === 'RIN_INCREASE_DAMAGE' || n === 'RIN_PROTECTION';
+            if (obj.oclass === RING_CLASS && oc_charged && (obj.spe | 0) <= 0) {
+                obj.spe = rne(3);
             }
         }
         if (trop.trbless !== UNDEF_BLESS) obj.blessed = !!trop.trbless;

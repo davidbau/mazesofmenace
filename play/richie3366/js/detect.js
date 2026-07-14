@@ -9,11 +9,12 @@
 // (no browse_map) + show_map_spot SCORR uncover / seenv=SVALL /
 // magic_map_background; **#terrain / doterrain** View which? PICK_ONE
 // (a/b/c + explore/wizard extras) + Esc cancel; reveal_terrain
-// impairment gate + Showing pline + browse_map/getpos + docrt.
+// impairment gate + Showing pline + browse_map/getpos + docrt;
+// **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
 // Named omissions: feel_location / visible_region_at /
 // unmap_invisible / Blind feel; mfind0 body; Hallucination/cls
 // map_trap wait; activate_statue_trap; artifact SPFX_SEARCH;
-// cmd_safety_prevention; warnreveal; room_discovered;
+// warnreveal; room_discovered;
 // map_trap/map_engraving restore after furniture; unconstrain
 // underwater-buried-swallow; notice_mon_off/on; findone
 // flash_glyph / mimic / hider / invis / chest-trap detect;
@@ -28,6 +29,7 @@ import { vision_recalc, couldsee } from './vision.js';
 import { an } from './objnam.js';
 import { A_WIS, exercise } from './attrib.js';
 import { t_at } from './trap.js';
+import { cmd_safety_prevention } from './do.js';
 import { m_at } from './mon.js';
 import { objectNames } from './objects.js';
 import {
@@ -207,7 +209,13 @@ export async function dosearch0(aflag) {
 
 /** C ref: detect.c dosearch — explicit `s` / #search */
 export async function dosearch() {
-    // cmd_safety_prevention deferred
+    if (await cmd_safety_prevention(
+        'Searching', 'another search',
+        'You already found a monster.',
+        'already_found_flag',
+    )) {
+        return false; // ECMD_OK — no time
+    }
     const took = await dosearch0(0);
     return !!took;
 }

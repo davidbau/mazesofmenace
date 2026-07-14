@@ -405,7 +405,7 @@ function touchfood(otmp) {
  * C ref: attrib.c poison_strdmg → losestr + losehp.
  * losestr rn1(4,3) only when ABASE-strloss would go below ATTRMIN.
  */
-async function poison_strdmg(strloss, dmg) {
+export async function poison_strdmg(strloss, dmg) {
     const u = game.u || (game.u = {});
     if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
     const amin = game.urace?.attrmin?.[A_STR] ?? 3;
