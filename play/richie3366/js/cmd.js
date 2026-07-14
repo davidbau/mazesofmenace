@@ -640,10 +640,10 @@ export async function rhack(key) {
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'q') {
-        // C ref: potion.c dodrink / #quaff
-        const tookTime = await dodrink();
-        game.context.move = tookTime ? 1 : 0;
-        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+        // C ref: potion.c dodrink / #quaff — ECMD_TIME bit only (CANCEL≠time)
+        const drinkRes = await dodrink();
+        game.context.move = (drinkRes & ECMD_TIME) ? 1 : 0;
+        if (drinkRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'z') {
         // C ref: zap.c dozap / #zap
         const tookTime = await dozap();

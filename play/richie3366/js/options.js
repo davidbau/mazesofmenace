@@ -6,6 +6,70 @@ import {
     optionHelpCompounds,
     optionHelpOthers,
 } from './generated/optlist_data.js';
+import {
+    NUM_DISCLOSURE_OPTIONS,
+    DISCLOSE_PROMPT_DEFAULT_YES,
+    DISCLOSE_PROMPT_DEFAULT_NO,
+    DISCLOSE_PROMPT_DEFAULT_SPECIAL,
+    DISCLOSE_YES_WITHOUT_PROMPT,
+    DISCLOSE_NO_WITHOUT_PROMPT,
+    DISCLOSE_SPECIAL_WITHOUT_PROMPT,
+} from './const.js';
+
+/** C ref: decl.c disclosure_options — invent/attribs/vanq/geno/conduct/overview */
+const DISCLOSURE_OPTIONS = 'iavgco';
+const DISCLOSE_VALID_PREFIX = new Set([
+    DISCLOSE_PROMPT_DEFAULT_YES,
+    DISCLOSE_PROMPT_DEFAULT_NO,
+    DISCLOSE_PROMPT_DEFAULT_SPECIAL,
+    DISCLOSE_YES_WITHOUT_PROMPT,
+    DISCLOSE_NO_WITHOUT_PROMPT,
+    DISCLOSE_SPECIAL_WITHOUT_PROMPT,
+]);
+
+/**
+ * C ref: options.c optfn_disclose do_set — fill flags.end_disclose[6].
+ * @returns {string} length-6 string of disclose mode chars
+ */
+export function parseDiscloseOption(val, negated = false) {
+    const out = Array(NUM_DISCLOSURE_OPTIONS).fill(DISCLOSE_PROMPT_DEFAULT_NO);
+    const op = String(val ?? '').trim();
+    if (!op || op.toLowerCase() === 'all' || op.toLowerCase() === 'none') {
+        const none = negated || op.toLowerCase() === 'none';
+        const fill = none
+            ? DISCLOSE_NO_WITHOUT_PROMPT
+            : DISCLOSE_PROMPT_DEFAULT_YES;
+        return fill.repeat(NUM_DISCLOSURE_OPTIONS);
+    }
+    let prefix = null;
+    for (let i = 0; i < op.length; i++) {
+        let c = op[i].toLowerCase();
+        if (c === 'k') c = 'v';
+        if (c === 'd') c = 'o';
+        const idx = DISCLOSURE_OPTIONS.indexOf(c);
+        if (idx >= 0) {
+            if (prefix != null) {
+                let pv = prefix;
+                if (c !== 'v' && c !== 'g') {
+                    if (pv === DISCLOSE_PROMPT_DEFAULT_SPECIAL) {
+                        pv = DISCLOSE_PROMPT_DEFAULT_YES;
+                    }
+                    if (pv === DISCLOSE_SPECIAL_WITHOUT_PROMPT) {
+                        pv = DISCLOSE_YES_WITHOUT_PROMPT;
+                    }
+                }
+                out[idx] = pv;
+                prefix = null;
+            } else {
+                out[idx] = DISCLOSE_YES_WITHOUT_PROMPT;
+            }
+        } else if (DISCLOSE_VALID_PREFIX.has(c)) {
+            prefix = c;
+        }
+        // spaces ignored (C); other chars skipped
+    }
+    return out.join('');
+}
 
 /**
  * C ref: cfgfiles.c configfile[] / get_configfile / set_configfile_name.
@@ -189,6 +253,9 @@ export function parseNethackrc(rc) {
                 else if (key === 'symset') result.symset = val;
                 else if (key === 'suppress_alert') result.flags.suppress_alert = val;
                 else if (key === 'msg_window') result.iflags.prevmsg_window = val;
+                else if (key === 'disclose') {
+                    result.flags.end_disclose = parseDiscloseOption(val, negated);
+                }
                 else result.flags[key] = val;
             } else {
                 // Boolean flag

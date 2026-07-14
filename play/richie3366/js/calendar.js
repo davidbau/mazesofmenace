@@ -48,4 +48,15 @@ export function friday_13th() {
     return lt.tm_wday === 5 && lt.tm_mday === 13;
 }
 
+/**
+ * C ref: calendar.c yyyymmdd — contest fixed datetime via getlt when date==0.
+ * @param {number} [date] unused (contest always uses getlt)
+ */
+export function yyyymmdd(date = 0) {
+    void date;
+    const lt = getlt();
+    let year = lt.tm_year < 70 ? lt.tm_year + 2000 : lt.tm_year + 1900;
+    return year * 10000 + (lt.tm_mon + 1) * 100 + lt.tm_mday;
+}
+
 export { NEW_MOON, FULL_MOON };

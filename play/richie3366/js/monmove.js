@@ -41,6 +41,7 @@ import {
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
+    M_AP_FURNITURE,
 } from './const.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
@@ -69,6 +70,8 @@ const CORPSE = objectNames.indexOf('CORPSE');
 const AKLYS = objectNames.indexOf('AKLYS');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const PM_LEPRECHAUN = monsterNames.indexOf('PM_LEPRECHAUN');
+const PM_ETTIN = monsterNames.indexOf('PM_ETTIN');
+const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
 const MINERAL = 21; // obj.h
 const MAX_CARR_CAP = 1000;
 const MZ_HUMAN = 3;
@@ -464,6 +467,52 @@ function Displaced() {
     if (u.uprops?.[DISPLACED]?.extrinsic) return true;
     const cloak = u.uarmc;
     return !!(cloak && cloak.otyp === CLOAK_OF_DISPLACEMENT);
+}
+
+/** C ref: youprop.h Stealth — (HStealth || EStealth) && !BStealth. */
+function Stealth() {
+    const u = game.u || {};
+    return !!(((u.HStealth | 0) || (u.EStealth | 0)) && !(u.BStealth | 0));
+}
+
+/** C ref: youprop.h Aggravate_monster — HAggravate_monster || EAggravate_monster. */
+function Aggravate_monster() {
+    const u = game.u || {};
+    return !!((u.HAggravate_monster | 0) || (u.EAggravate_monster | 0));
+}
+
+/** C ref: monmove.c / muse.c mdistu — squared distance to hero. */
+function mdistu(mtmp) {
+    const u = game.u;
+    if (!u || mtmp.mx == null) return 0;
+    return dist2(mtmp.mx, mtmp.my, u.ux, u.uy);
+}
+
+/**
+ * C ref: monmove.c disturb — possibly awaken a sleeping monster.
+ * Named omissions: wake_msg (canseemon sleep pline); Hallucination newsym
+ * already gated at dochug caller.
+ */
+function disturb(mtmp) {
+    const mdat = mtmp.data;
+    const mndx = mdat?.mndx ?? -1;
+    const mlet = mdat?.mlet;
+    // Short-circuit order matches C: couldsee → mdistu → Stealth/ettin
+    // → nymph|jabber|lep → Aggravate|dog|human|rn2(7)+mimic gate.
+    if (couldsee(mtmp.mx, mtmp.my) && mdistu(mtmp) <= 100
+        && (!Stealth() || (mndx === PM_ETTIN && rn2(10)))
+        && (!(mlet === 'S_NYMPH'
+            || mndx === PM_JABBERWOCK
+            || mlet === 'S_LEPRECHAUN') || !rn2(50))
+        && (Aggravate_monster()
+            || (mlet === 'S_DOG' || mlet === 'S_HUMAN')
+            || (!rn2(7) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+                && M_AP_TYPE(mtmp) !== M_AP_OBJECT))) {
+        // wake_msg deferred
+        mtmp.msleeping = 0;
+        return 1;
+    }
+    return 0;
 }
 
 /** C ref: monmove.c closed_door / mthrowu closed_door. */
@@ -1035,8 +1084,11 @@ export async function m_move(mtmp, after) {
 // C ref: monmove.c dochug()
 export async function dochug(mtmp) {
     if (!mtmp.mcanmove) return 0;
-    if (mtmp.msleeping) return 0; // disturb not needed: fill mons start awake
-
+    // C: there is a chance we will wake it
+    if (mtmp.msleeping && !disturb(mtmp)) {
+        if (game.u?.Hallucination) newsym(mtmp.mx, mtmp.my);
+        return 0;
+    }
 
     set_apparxy(mtmp);
     let { inrange, nearby, scared } = distfleeck(mtmp);

@@ -280,6 +280,16 @@ const EXT_CMDS = [
         },
     },
     {
+        name: 'quit',
+        wiz: false,
+        autocomplete: true,
+        // C ref: end.c done2 — GENERALCMD / ECMD_OK (lazy: end↔getline)
+        run: async () => {
+            const { done2 } = await import('./end.js');
+            return done2();
+        },
+    },
+    {
         name: 'levelchange',
         wiz: true,
         autocomplete: true,

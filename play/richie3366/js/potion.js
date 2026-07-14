@@ -241,7 +241,7 @@ async function dopotion(otmp) {
  * Fountain-at-feet yn → drinkfountain. Sink / underwater / Strangled /
  * milky-ghost / smoky-djinni deferred. Worn-stack split deferred
  * (starting oils are unworn).
- * @returns {number} 0 = cancel/no turn, 1 = took time
+ * @returns {number} ECMD_* — CANCEL on getobj abort; TIME after quaff
  */
 export async function dodrink() {
     // C: Strangled → message, ECMD_OK (no turn) — deferred unless needed
@@ -446,7 +446,7 @@ function potionbreathe(obj) {
  * @param {object} obj potion missile (consumed)
  * @param {number} how POTHIT_*
  */
-export function potionhit(mon, obj, how) {
+export async function potionhit(mon, obj, how) {
     const isyou = mon == null;
     if (!isyou) {
         // Monster-target potionhit deferred — destroy missile via obfree
@@ -458,22 +458,23 @@ export function potionhit(mon, obj, how) {
 
     const botlnam = bottlename();
     const u = game.u || {};
-    pline(`The ${botlnam} crashes on your head and breaks into shards.`);
+    // C: pline blocks through --More-- while m_throw tmp_at flash still shows
+    await pline(`The ${botlnam} crashes on your head and breaks into shards.`);
     const killer = (how === POTHIT_OTHER_THROW)
         ? 'propelled potion'
         : 'thrown potion';
     losehp(maybe_half_phys(rnd(2)), killer, KILLED_BY_AN);
 
     if (obj.otyp !== POT_OIL && cansee(u.ux, u.uy)) {
-        // Tobjnam(obj,"evaporate") stand-in
-        pline(`The ${xname(obj)} evaporates.`);
+        // C: pline("%s.", Tobjnam(obj, "evaporate"))
+        await pline(`The ${xname(obj)} evaporates.`);
     }
 
     if (obj.otyp === POT_ACID) {
         const Acid_resistance = !!(u.HAcid_resistance || u.EAcid_resistance);
         if (!Acid_resistance) {
             const burn = obj.blessed ? ' a little' : obj.cursed ? ' a lot' : '';
-            pline(`This burns${burn}!`);
+            await pline(`This burns${burn}!`);
             const dmg = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
             losehp(maybe_half_phys(dmg), 'potion of acid', KILLED_BY_AN);
         }

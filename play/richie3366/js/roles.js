@@ -26,6 +26,7 @@ import {
     NON_PM,
     monsterNames,
 } from './generated/monsters_data.js';
+import { game } from './gstate.js';
 import {
     A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS,
     MH_HUMAN, MH_ELF, MH_DWARF, MH_GNOME, MH_ORC,
@@ -476,6 +477,16 @@ export function Hello(mnum) {
     if (mnum === PM_TOURIST) return 'Aloha';
     if (mnum === PM_VALKYRIE) return 'Velkommen';
     return 'Hello';
+}
+
+/** C ref: role.c Goodbye — Role_switch farewell; uses game.urole.mnum. */
+export function Goodbye() {
+    const mnum = game.urole?.mnum;
+    if (mnum === PM_KNIGHT) return 'Fare thee well';
+    if (mnum === PM_SAMURAI) return 'Sayonara';
+    if (mnum === PM_TOURIST) return 'Aloha';
+    if (mnum === PM_VALKYRIE) return 'Farvel';
+    return 'Goodbye';
 }
 
 // C ref: align.c / extern align_str()

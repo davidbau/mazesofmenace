@@ -12,6 +12,7 @@ import {
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
     POTHIT_MONST_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
     M_AP_NOTHING, M_AP_MONSTER, u_at,
+    DISP_FLASH, DISP_END,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import {
@@ -27,7 +28,9 @@ import { acurr, A_DEX, A_STR, exercise } from './attrib.js';
 import { calc_capacity } from './invent.js';
 import { losehp, nomul, maybe_half_phys } from './hack.js';
 import { finish_losehp_done } from './end.js';
-import { pline, mon_visible, see_with_infrared } from './display.js';
+import {
+    pline, mon_visible, see_with_infrared, tmp_at, obj_glyph, nh_delay_output,
+} from './display.js';
 import { Monnam } from './do_name.js';
 import { nohands, mons, throws_rocks } from './monsters.js';
 import { xname, singular, an, vtense } from './objnam.js';
@@ -307,6 +310,10 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     let bx = x;
     let by = y;
     game._mesg_given = 0;
+    // C: sym = obj->oclass; if (sym) tmp_at(DISP_FLASH, obj_to_glyph(...))
+    // Hallucination rn2_on_display_rng path deferred — obj_glyph is non-hallu.
+    const sym = singleobj.oclass;
+    if (sym) tmp_at(DISP_FLASH, obj_glyph(singleobj));
 
     while (range-- > 0) {
         bx += dx;
@@ -320,7 +327,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         if (mtmp) {
             // ohitmon deferred — stop and drop
             drop_throw(singleobj, false, bx, by);
-            return;
+            break;
         }
         const u = game.u || {};
         if (u.ux === bx && u.uy === by) {
@@ -328,8 +335,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             if (!u_catch_thrown_obj(singleobj)) {
                 // C: POTION_CLASS → potionhit (before thitu / egg / pie)
                 if (singleobj.oclass === POTION_CLASS) {
-                    potionhit(null, singleobj, POTHIT_MONST_THROW);
-                    return;
+                    // C: await blocking pline/--More-- while flash still at prior cell
+                    await potionhit(null, singleobj, POTHIT_MONST_THROW);
+                    break;
                 }
                 let dam = dmgval(singleobj, null);
                 let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
@@ -340,12 +348,16 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                 const box = { obj: singleobj };
                 const hitu = await thitu(hitv, dam, box, null);
                 // C: losehp→done noreturn — no drop_throw / mulch after fatal
-                if (game.program_state?.gameover) return;
-                if (hitu) {
-                    drop_throw(singleobj, true, u.ux, u.uy);
+                if (game.program_state?.gameover) {
+                    if (sym) tmp_at(DISP_END, 0);
                     return;
                 }
+                if (hitu) {
+                    drop_throw(singleobj, true, u.ux, u.uy);
+                    break;
+                }
             } else {
+                if (sym) tmp_at(DISP_END, 0);
                 return; // caught
             }
         }
@@ -357,8 +369,19 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             || closed_door(bx + dx, by + dy);
         if (!range || nextBlocked) {
             drop_throw(singleobj, false, bx, by);
-            return;
+            break;
         }
+        // C: tmp_at(bhitpos); nh_delay_output() — only when flight continues
+        if (sym) {
+            tmp_at(bx, by);
+            await nh_delay_output();
+        }
+    }
+    // C: after loop always show final cell then DISP_END
+    if (sym) {
+        tmp_at(bx, by);
+        await nh_delay_output();
+        tmp_at(DISP_END, 0);
     }
 }
 

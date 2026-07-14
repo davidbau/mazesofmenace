@@ -18,7 +18,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
 import { pline, newsym } from './display.js';
-import { dmgval, P_SKILL, weapon_hit_bonus, martial_bonus } from './weapon.js';
+import { dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus } from './weapon.js';
 import {
     find_mac, get_mattk, make_corpse, mhitm_knockback,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW,
@@ -34,9 +34,12 @@ import {
 import { monnear, record_mvitals_died, seemimic, wakeup } from './mon.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
+import { mon_explodes } from './explode.js';
 
 // C monflag.h — MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MZ_MEDIUM;
+const AT_BOOM = 14; // monattk.h — explode on death
+const NATTK_CC = 6;
 const FIGURINE = objectNames.indexOf('FIGURINE');
 
 // C ref: monattk.h damage types used by passive / passive_obj
@@ -105,20 +108,10 @@ function abon() {
     return sbon + dex - 14;
 }
 
-/**
- * C ref: weapon.c hitval — spe (weapon/weptool) + oc_hitbon; silver/artifact/
- * blessed/spear/trident/pick vs-mon bonuses deferred.
- * objects[].oc_hitbon is the oc_oc1 union exported as a_ac.
- */
-function hitval(otmp, _mon) {
-    if (!otmp) return 0;
-    const o = game.objects?.[otmp.otyp];
-    let tmp = 0;
-    const Is_weapon = otmp.oclass === WEAPON_CLASS
-        || (otmp.oclass === TOOL_CLASS && ((o?.oc_skill | 0) !== 0));
-    if (Is_weapon) tmp += otmp.spe | 0;
-    tmp += o?.a_ac | 0;
-    return tmp;
+/** C ref: you.h Luck — u.uluck + u.moreluck */
+function Luck() {
+    const u = game.u || {};
+    return (u.uluck | 0) + (u.moreluck | 0);
 }
 
 /**
@@ -130,9 +123,13 @@ function hitval(otmp, _mon) {
 function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
     role_roll_penalty.v = 0;
     const u = game.u || {};
+    const luck = Luck();
+    // C: sgn(Luck) * ((abs(Luck) + 2) / 3) — trunc toward 0
+    const luckbon = (luck < 0 ? -1 : luck > 0 ? 1 : 0)
+        * Math.trunc((Math.abs(luck) + 2) / 3);
     let tmp = 1 + abon() + find_mac(mtmp) + (u.uhitinc | 0)
+        + luckbon
         + (u.ulevel | 0); // maybe_polyd → ulevel when not poly
-    // Luck sgn*(abs+2)/3 deferred (Luck 0 early)
     if (!attk_count.v++) {
         // check_caitiff deferred — no RNG for hostile kobold
     }
@@ -147,10 +144,28 @@ function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
     return tmp;
 }
 
-// C ref: mon.c corpse_chance — ordinary dlvl1
-function corpse_chance(mon) {
+/**
+ * C ref: mon.c corpse_chance — AT_BOOM then ordinary !rn2(tmp).
+ * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE;
+ * bigmonst/lizard/golem/mplayer/rider/isshk always-TRUE arms.
+ */
+async function corpse_chance(mon) {
     const mdat = mon.data;
     if (!mdat) return false;
+    // Gas spores always explode upon death
+    const slots = mdat.mattk;
+    if (slots) {
+        for (let i = 0; i < NATTK_CC; i++) {
+            const at = slots[i];
+            if (!at || (at.aatyp | 0) !== AT_BOOM) continue;
+            // C burns d(damn,damd) even when not swallowed (tmp unused outdoors)
+            if (at.damn) d(at.damn | 0, at.damd | 0);
+            else if (at.damd) d((mdat.mlevel | 0) + 1, at.damd | 0);
+            // swallowed boom deferred
+            await mon_explodes(mon, at);
+            return false;
+        }
+    }
     let tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
         + (verysmall(mdat) ? 1 : 0);
     return !rn2(tmp);
@@ -253,7 +268,7 @@ async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         // accessible/pool gate deferred — always attempt RNG like floor tile
         if (!rn2(6)) xkilled_treasure_drop(mtmp, mdat, mndx, x, y);
         // C: if (!wasinside && corpse_chance(...)) make_corpse(...)
-        if (corpse_chance(mtmp)) make_corpse(mtmp);
+        if (await corpse_chance(mtmp)) make_corpse(mtmp);
     }
     // C ref: mon.c xkilled cleanup — experience after corpse; murder/
     // peaceful luck rn2 deferred (would burn RNG on peaceful/tame)

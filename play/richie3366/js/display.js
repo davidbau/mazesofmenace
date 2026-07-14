@@ -18,6 +18,9 @@ import {
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     HI_GOLD,
+    In_mines,
+    DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
+    DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -34,6 +37,7 @@ import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
+import { depth } from './hacklib.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -591,7 +595,14 @@ function wall_glyph(loc) {
     // C: idx = ptr->seenv ? wall_angle(ptr) : S_stone
     const idx = (loc.seenv) ? wall_angle(loc) : S_STONE;
     const tab = wall_glyph_table();
-    return tab[idx] || tab[S_STONE];
+    const g = tab[idx] || tab[S_STONE];
+    if (idx === S_STONE) return g;
+    // C ref: display.h cmap_walls_to_glyph + display.c wallcolors[] /
+    // reset_glyphmap wall_color(mines_walls). Intended branch colors
+    // (commented beside wallcolors init): mines CLR_BROWN; main CLR_GRAY
+    // (tty_map_color → NO_COLOR). Gehennom/knox/sokoban deferred.
+    const color = In_mines(game.u?.uz) ? CLR_BROWN : CLR_GRAY;
+    return { ch: g.ch, color, dec: g.dec };
 }
 
 function terrain_glyph(loc, x, y) {
@@ -678,6 +689,114 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
+}
+
+// C ref: display.c tmp_at — transient missile/beam glyphs (DISP_FLASH first).
+// Nested alloc, DISP_BEAM/ALL/TETHER/ALWAYS/CHANGE/FREEMEM deferred.
+const TMP_AT_MAX_GLYPHS = COLNO * 2;
+const _tgfirst = { saved: [], sidx: 0, style: 0, glyph: null, prev: null };
+let _tglyph = null;
+
+/**
+ * C ref: display.c tmp_at(x, y)
+ * Open: tmp_at(DISP_FLASH, glyphObj) — glyphObj is {ch,color,dec} from obj_glyph.
+ * Step: tmp_at(map_x, map_y) — paint flash, erase previous.
+ * Close: tmp_at(DISP_END, 0).
+ */
+export function tmp_at(x, y) {
+    switch (x) {
+    case DISP_BEAM:
+    case DISP_ALL:
+    case DISP_TETHER:
+    case DISP_FLASH:
+    case DISP_ALWAYS: {
+        const tmp = _tglyph ? {
+            saved: [], sidx: 0, style: 0, glyph: null, prev: null,
+        } : _tgfirst;
+        tmp.prev = _tglyph;
+        _tglyph = tmp;
+        _tglyph.sidx = 0;
+        _tglyph.style = x;
+        _tglyph.glyph = y;
+        _tglyph.saved = [];
+        // C: flush_screen(0)
+        void flush_screen(0);
+        return;
+    }
+    case DISP_FREEMEM:
+        while (_tglyph) {
+            const tmp = _tglyph.prev;
+            _tglyph = tmp;
+        }
+        return;
+    default:
+        break;
+    }
+
+    if (!_tglyph) return;
+
+    switch (x) {
+    case DISP_CHANGE:
+        _tglyph.glyph = y;
+        break;
+    case DISP_END:
+        if (_tglyph.style === DISP_BEAM || _tglyph.style === DISP_ALL) {
+            for (let i = 0; i < _tglyph.sidx; i++) {
+                const p = _tglyph.saved[i];
+                if (p) newsym(p.x, p.y);
+            }
+        } else if (_tglyph.style === DISP_TETHER) {
+            // BACKTRACK tether return deferred
+            void BACKTRACK;
+            for (let i = 0; i < _tglyph.sidx; i++) {
+                const p = _tglyph.saved[i];
+                if (p) newsym(p.x, p.y);
+            }
+        } else if (_tglyph.sidx) {
+            // DISP_FLASH / DISP_ALWAYS
+            const p = _tglyph.saved[0];
+            if (p) newsym(p.x, p.y);
+        }
+        _tglyph = _tglyph.prev;
+        break;
+    default: {
+        // display glyph at (x, y)
+        if (x < 1 || y < 0 || x >= COLNO || y >= ROWNO) break;
+        if (_tglyph.style === DISP_BEAM || _tglyph.style === DISP_ALL) {
+            if (_tglyph.style !== DISP_ALL && !cansee(x, y)) break;
+            if (_tglyph.sidx >= TMP_AT_MAX_GLYPHS) break;
+            _tglyph.saved[_tglyph.sidx] = { x, y };
+            _tglyph.sidx += 1;
+        } else if (_tglyph.style === DISP_TETHER) {
+            // tether trail deferred — still record + show object glyph
+            if (_tglyph.sidx >= TMP_AT_MAX_GLYPHS) break;
+            _tglyph.saved[_tglyph.sidx] = { x, y };
+            _tglyph.sidx += 1;
+        } else {
+            // DISP_FLASH / DISP_ALWAYS
+            if (_tglyph.sidx) {
+                const p = _tglyph.saved[0];
+                if (p) newsym(p.x, p.y);
+                _tglyph.sidx = 0;
+            }
+            if (!cansee(x, y) && _tglyph.style !== DISP_ALWAYS) break;
+            _tglyph.saved[0] = { x, y };
+            _tglyph.sidx = 1;
+        }
+        const g = _tglyph.glyph;
+        if (g && typeof g === 'object') {
+            show_glyph_cell(x, y, g.ch, g.color ?? NO_COLOR, !!g.dec);
+        }
+        void flush_screen(0);
+        break;
+    }
+    }
+}
+
+/** C ref: display.c / wintty nh_delay_output — await contest animationFrame. */
+export async function nh_delay_output() {
+    const af = game?.animationFrame;
+    if (typeof af === 'function') await af.call(game);
 }
 
 /**
@@ -951,13 +1070,22 @@ function _statusLine1() {
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
 }
 
-// C ref: botl.c — Xp:/T: gated by flags.showexp / flags.time (default off);
+// C ref: botl.c describe_level — "Dlvl:%-2d" uses depth(&u.uz), not dunlev;
+// Xp:/T: gated by flags.showexp / flags.time (default off);
 // BL_CONDITION Ride when u.usteed (botl.c condtests[bl_ride]).
+// Named omissions: Knox/quest/endgame/tutorial describe_level arms.
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
     const flags = game.flags || {};
-    let s = `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
+    const dlvl = depth(u.uz) || 1;
+    // C botl.c bot1/bot2 + get_blstats: hp < 0 → 0 (gameover uhp=-1)
+    let hp = u.uhp | 0;
+    if (hp < 0) hp = 0;
+    if (hp > 9999) hp = 9999;
+    let hpmax = u.uhpmax | 0;
+    if (hpmax > 9999) hpmax = 9999;
+    let s = `Dlvl:${dlvl} $:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (flags.showexp) s += `/${u.uexp || 0}`;
     if (flags.time) s += ` T:${game.moves || 1}`;
     // C windows.c BL_MASK_RIDE → " Ride" (leading space in strcat)
@@ -1232,9 +1360,14 @@ export async function more() {
     const CO = game?.nhDisplay?.cols || 80;
     const base = (_toplines || game._pending_message || '').replace(/--More--$/, '');
     // C ref: topl.c more() — if curx >= CO-8, put --More-- on the next row.
-    // Only word-wrap the message text when it exceeds CO (welcome lines are
-    // CO-8..CO-1 and stay intact with a bare "--More--" row).
-    if (base.length >= CO) {
+    // Messages may already contain update_topl `\n` word-breaks (D-0282).
+    if (base.includes('\n')) {
+        const last = base.slice(base.lastIndexOf('\n') + 1);
+        game._pending_message = last.length >= CO - 8
+            ? `${base}\n--More--`
+            : `${base}--More--`;
+    } else if (base.length >= CO) {
+        // Fallback when a caller skipped update_topl-style pre-wrap.
         let breakAt = base.lastIndexOf(' ', CO - 1);
         if (breakAt < (CO >> 1)) breakAt = Math.min(base.length, CO - 1);
         const line0 = base.slice(0, breakAt).trimEnd();
@@ -1311,7 +1444,8 @@ export async function verbalize(msg) {
 }
 
 // ── pline ──
-// C ref: topl.c update_topl / addtopl — append if room, else more() then replace
+// C ref: topl.c update_topl / addtopl / redotoplin — append if room, else
+// more() then replace; word-break `\n` when len≥CO; more() if cury>0.
 export async function pline(msg) {
     if (msg == null || msg === '') return;
     const CO = game?.nhDisplay?.cols || 80;
@@ -1331,9 +1465,35 @@ export async function pline(msg) {
         await more();
     }
     if (!notdied) _win_stop = false;
-    _toplines = msg;
+
+    // C ref: topl.c update_topl — replace spaces with `\n` while n0 >= CO
+    let formatted = String(msg);
+    {
+        let n0 = formatted.length;
+        let tl = 0;
+        while (n0 >= CO) {
+            const otl = tl;
+            let i = tl + CO - 1;
+            for (; i !== otl; --i) {
+                if (formatted[i] === ' ') break;
+            }
+            if (i === otl) {
+                i = formatted.indexOf(' ', otl);
+                if (i < 0) break;
+            }
+            formatted = `${formatted.slice(0, i)}\n${formatted.slice(i + 1)}`;
+            tl = i + 1;
+            n0 = formatted.length - tl;
+        }
+    }
+
+    _toplines = formatted;
     if (!skip) {
-        game._pending_message = msg;
+        game._pending_message = formatted;
         _toplin = TOPLINE_NEED_MORE;
+        // C ref: topl.c redotoplin — more() when message wrapped (cury > 0)
+        if (formatted.includes('\n')) {
+            await more();
+        }
     }
 }

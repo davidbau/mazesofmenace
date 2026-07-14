@@ -77,6 +77,22 @@ function rounddiv(x, y) {
 }
 
 /**
+ * C ref: weapon.c hitval — spe (weapon/weptool) + oc_hitbon; silver/artifact/
+ * blessed/spear/trident/pick vs-mon bonuses deferred.
+ * objects[].oc_hitbon is the oc_oc1 union exported as a_ac.
+ */
+export function hitval(otmp, _mon) {
+    if (!otmp) return 0;
+    const o = game.objects?.[otmp.otyp];
+    let tmp = 0;
+    const Is_weapon = otmp.oclass === WEAPON_CLASS
+        || (otmp.oclass === TOOL_CLASS && ((o?.oc_skill | 0) !== P_NONE));
+    if (Is_weapon) tmp += otmp.spe | 0;
+    tmp += o?.a_ac | 0;
+    return tmp;
+}
+
+/**
  * C ref: weapon.c dmgval — uses objects[].oc_wsdam / oc_wldam.
  * Large-monster otyp switch, thick-skin/shade/silver/blessed/axe deferred.
  */

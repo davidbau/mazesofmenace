@@ -25,6 +25,7 @@ import {
 import { objectNames } from './objects.js';
 import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
 import { Monnam, mon_nam } from './do_name.js';
+import { mon_explodes } from './explode.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 
@@ -206,11 +207,25 @@ export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
     return false;
 }
 
-// C ref: mon.c corpse_chance() — subset for ordinary dlvl1 kills
-function corpse_chance(mon) {
+/**
+ * C ref: mon.c corpse_chance() — AT_BOOM then ordinary !rn2(tmp).
+ * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE;
+ * bigmonst/lizard/golem/mplayer/rider/isshk always-TRUE arms.
+ */
+async function corpse_chance(mon) {
     const mdat = mon.data;
     if (!mdat) return false;
-    // LEVEL_SPECIFIC_NOCORPSE / gas-spore / lich dust omitted
+    const slots = mdat.mattk;
+    if (slots) {
+        for (let i = 0; i < NATTK; i++) {
+            const at = slots[i];
+            if (!at || (at.aatyp | 0) !== AT_BOOM) continue;
+            if (at.damn) d(at.damn | 0, at.damd | 0);
+            else if (at.damd) d((mdat.mlevel | 0) + 1, at.damd | 0);
+            await mon_explodes(mon, at);
+            return false;
+        }
+    }
     let tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
         + (verysmall(mdat) ? 1 : 0);
     return !rn2(tmp);
@@ -284,7 +299,7 @@ async function mondied(mdef) {
     mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
     // C: accessible||is_pool gate deferred — floor tiles take make_corpse
-    if (corpse_chance(mdef)) make_corpse(mdef);
+    if (await corpse_chance(mdef)) make_corpse(mdef);
 }
 
 // C ref: makemon.c grow_up() — HP gain from kill; transform later

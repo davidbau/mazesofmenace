@@ -160,19 +160,38 @@ function pretty_base(obj) {
         const pm = mon_name(obj.corpsenm);
         return `statue of ${an(pm)}`;
     }
-    // C: xname potion — "potion of X" when oc_name_known (startup kits are)
-    if (n && n.startsWith('POT_')) {
-        const rest = n.slice(4).toLowerCase().replace(/_/g, ' ');
+    // C ref: objnam.c xname POTION_CLASS — known → "potion of X";
+    // dknown+!nn → "<descr> potion"; !dknown → "potion"
+    // nn is objects[].oc_name_known only (not obj.known).
+    if (obj.oclass === POTION_CLASS || (n && n.startsWith('POT_'))) {
+        const ocl = game.objects?.[obj.otyp];
+        const nn = !!ocl?.oc_name_known;
+        const dknown = !!obj.dknown;
+        const un = ocl?.oc_uname || null;
+        let actual = objectNameStrs[obj.otyp]
+            || (n ? n.slice(4).toLowerCase().replace(/_/g, ' ') : 'potion');
         // C: Role_if(PM_SAMURAI) Japanese_item_name for POT_BOOZE → sake
         if (Role_if_samurai()) {
             const jn = Japanese_item_name(obj.otyp, null);
-            if (jn) return `potion of ${jn}`;
+            if (jn) actual = jn;
         }
-        // C: POT_WATER + bknown + blessed/cursed → "potion of [un]holy water"
-        if (n === 'POT_WATER' && obj.bknown && (obj.blessed || obj.cursed)) {
-            return `potion of ${obj.blessed ? 'holy' : 'unholy'} water`;
+        let buf = '';
+        if (dknown && obj.odiluted) buf = 'diluted ';
+        if (nn || un || !dknown) {
+            buf += 'potion';
+            if (!dknown) return buf;
+            if (nn) {
+                // C: POT_WATER + bknown + blessed/cursed → "[un]holy water"
+                if (n === 'POT_WATER' && obj.bknown && (obj.blessed || obj.cursed)) {
+                    return `${buf} of ${obj.blessed ? 'holy' : 'unholy'} water`;
+                }
+                return `${buf} of ${actual}`;
+            }
+            // called-name: "potion called foo"
+            return un ? `${buf} called ${un}` : buf;
         }
-        return `potion of ${rest}`;
+        const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || 'clear';
+        return `${buf}${dn} potion`;
     }
     // C ref: objnam.c xname SCROLL_CLASS — "scroll of <actualn>" when known
     if (n && n.startsWith('SCR_')) {

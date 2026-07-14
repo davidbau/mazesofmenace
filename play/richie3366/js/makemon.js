@@ -433,7 +433,7 @@ function race_hostile(ptr) {
 }
 
 // C ref: makemon.c peace_minded()
-function peace_minded(ptr) {
+export function peace_minded(ptr) {
     if (always_peaceful(ptr)) return true;
     if (always_hostile(ptr)) return false;
     // MS_LEADER/GUARDIAN/NEMESIS, ERINYS, is_minion, amulet arms — deferred

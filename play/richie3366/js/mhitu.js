@@ -8,15 +8,18 @@ import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
-    Upolyd, DIED,
+    Upolyd, DIED, P_WHIP,
 } from './const.js';
 import { thrwmu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { nomul } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
-import { pline } from './display.js';
+import { pline, mon_visible } from './display.js';
 import { Monnam } from './do_name.js';
-import { MON_WEP, mon_wield_item, dmgval } from './weapon.js';
+import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
+import { is_pole } from './wield.js';
+import { xname } from './objnam.js';
+import { objectNames } from './objects.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
@@ -24,6 +27,9 @@ import {
 } from './mhitm.js';
 import { is_orc } from './monsters.js';
 import { done_in_by } from './end.js';
+
+/** C ref: objclass.h — weapon strike modes overload oc_dir. */
+const PIERCE = 1;
 
 /** C ref: you.h m_next2u — squared dist to hero ≤ 2. */
 function m_next2u(mtmp) {
@@ -60,6 +66,56 @@ function dist2u(mtmp) {
     const dx = mtmp.mx - u.ux;
     const dy = mtmp.my - u.uy;
     return dx * dx + dy * dy;
+}
+
+/**
+ * C ref: you.h mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his.
+ * Hallucination rn2(4) wired; canspotmon→its / is_neuter / non-humanoid→its
+ * deferred (mswings already requires mon_visible).
+ */
+function mhis(mtmp) {
+    if (game.u?.Hallucination) {
+        return ['his', 'her', 'its', 'their'][rn2(4)];
+    }
+    if (mtmp?.female) return 'her';
+    return 'his';
+}
+
+/**
+ * C ref: mhitu.c mswings_verb — thrust/swing/lash/bash; mixed-dir rn2(2).
+ * is_wet_towel (TOWEL+spe>0) treated as lash like C.
+ */
+export function mswings_verb(mwep, bash) {
+    if (!mwep) return 'swings';
+    const o = game.objects?.[mwep.otyp];
+    const otyp = mwep.otyp | 0;
+    const skill = o?.oc_skill | 0;
+    const oc_dir = o?.oc_dir | 0;
+    const lash = skill === P_WHIP
+        || (objectNames[otyp] === 'TOWEL' && (mwep.spe | 0) > 0);
+    const thrust = (oc_dir & PIERCE) !== 0
+        && ((oc_dir & ~PIERCE) === 0 || !rn2(2));
+    if (bash) return 'bashes with';
+    if (lash) return 'lashes';
+    if (thrust) return 'thrusts';
+    return 'swings';
+}
+
+/**
+ * C ref: mhitu.c mswings — verbose visible weapon swing pline before hit/miss.
+ * is_art(Snickersnee) bash exemption deferred (no pole+artifact here).
+ */
+async function mswings(mtmp, otemp, bash) {
+    const u = game.u || {};
+    const Blind = !!(u.Blind || u.ublind);
+    const verbose = game.flags?.verbose !== false;
+    if (verbose && !Blind && mon_visible(mtmp)) {
+        await pline(
+            `${Monnam(mtmp)} ${mswings_verb(otemp, bash)} `
+            + `${(otemp.quan | 0) > 1 ? 'one of ' : ''}`
+            + `${mhis(mtmp)} ${xname(otemp)}.`,
+        );
+    }
 }
 
 /**
@@ -302,9 +358,11 @@ export async function mattacku(mtmp) {
                     const mon_currwep = MON_WEP(mtmp);
                     let hittmp = 0;
                     if (mon_currwep) {
-                        // hitval / mswings (incl. mixed-dir rn2) deferred
-                        hittmp = mon_currwep.spe | 0;
+                        // C: bash = is_pole && !Snickersnee && m_next2u
+                        const bash = is_pole(mon_currwep) && m_next2u(mtmp);
+                        hittmp = hitval(mon_currwep, null);
                         tmp += hittmp;
+                        await mswings(mtmp, mon_currwep, bash);
                     }
                     const j = rnd(20 + i);
                     game._mhitu_dieroll = j;

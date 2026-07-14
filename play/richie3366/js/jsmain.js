@@ -106,11 +106,17 @@ export class NethackGame {
         g.plname = opts.name || '';
         g.flags = {
             verbose: true,
+            // C options.c initoptions_base — disclose default 'n'*6; tombstone on
+            end_disclose: 'n'.repeat(6),
+            tombstone: true,
             paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
             ...opts.flags,
         };
         if (g.flags.paranoia_bits == null) {
             g.flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
+        }
+        if (!g.flags.end_disclose || typeof g.flags.end_disclose !== 'string') {
+            g.flags.end_disclose = 'n'.repeat(6);
         }
         g.iflags = { ...opts.iflags };
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics
@@ -144,6 +150,8 @@ export class NethackGame {
             g.nhDisplay = this._pendingDisplay;
             this._pendingDisplay = null;
         }
+        // C nh_delay_output → contest animationFrame (throw/zap beams)
+        g.animationFrame = this.animationFrame.bind(this);
 
         // Install capture hook
         this._installCaptureHook();

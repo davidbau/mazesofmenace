@@ -102,7 +102,7 @@ export function del_engr(ep) {
     }
 }
 
-/** C hack.h BUFSZ — seeded wipeout_text modulus only. */
+/** C hack.h / global.h BUFSZ — wipeout_text modulus + read_engr_at buf. */
 const BUFSZ = 256;
 
 /** C ref: engrave.c rubouts[] — partial character substitutes. */
@@ -329,8 +329,10 @@ export async function read_engr_at(x, y) {
 
     if (!sensed) return;
 
-    // C: maxelen = sizeof buf - sizeof "You feel the words: \"\"."
-    const maxelen = 80 - 'You feel the words: "".'.length;
+    // C: maxelen = sizeof buf[BUFSZ] - sizeof "You feel the words: \"\"."
+    // (sizeof string literal includes the terminating NUL).
+    const feelLit = 'You feel the words: "".';
+    const maxelen = BUFSZ - (feelLit.length + 1);
     let et = text;
     let elen = et.length;
     if (elen > maxelen) {

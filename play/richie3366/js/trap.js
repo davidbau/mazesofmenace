@@ -11,6 +11,7 @@ import {
     mksobj, place_object, weight, stackobj, relobj_on_death,
 } from './mkobj.js';
 import { find_mac, make_corpse } from './mhitm.js';
+import { mon_explodes } from './explode.js';
 import { newsym, pline, mon_visible, see_with_infrared, You_feel } from './display.js';
 import { doname, an } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
@@ -441,10 +442,21 @@ function wake_nearto(x, y, distance) {
     }
 }
 
-// C ref: mon.c corpse_chance — ordinary non-unique path
-function corpse_chance(mon) {
+// C ref: mon.c corpse_chance — AT_BOOM then ordinary non-unique path
+async function corpse_chance(mon) {
     const mdat = mon.data;
     if (!mdat) return false;
+    const slots = mdat.mattk;
+    if (slots) {
+        for (let i = 0; i < 6; i++) {
+            const at = slots[i];
+            if (!at || (at.aatyp | 0) !== 14 /* AT_BOOM */) continue;
+            if (at.damn) d(at.damn | 0, at.damd | 0);
+            else if (at.damd) d((mdat.mlevel | 0) + 1, at.damd | 0);
+            await mon_explodes(mon, at);
+            return false;
+        }
+    }
     const tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
         + (verysmall(mdat) ? 1 : 0);
     return !rn2(tmp);
@@ -471,10 +483,10 @@ function mondead(mtmp) {
 }
 
 // C ref: mon.c mondied → mondead + maybe make_corpse
-function mondied(mdef) {
+async function mondied(mdef) {
     mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
-    if (corpse_chance(mdef)) make_corpse(mdef);
+    if (await corpse_chance(mdef)) make_corpse(mdef);
 }
 
 // C ref: mon.c monkilled — trap fltxt path
@@ -489,7 +501,7 @@ async function monkilled(mdef, fltxt, _how) {
         game.iflags = game.iflags || {};
         game.iflags.sad_feeling = true;
     }
-    mondied(mdef);
+    await mondied(mdef);
 }
 
 // C ref: trap.c mselftouch — petrify-wield only; no-op for ordinary pets

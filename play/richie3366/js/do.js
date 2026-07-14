@@ -6,6 +6,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
+import { depth } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
     W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_DROPPED,
@@ -31,6 +32,8 @@ import {
     welded, setuwep, setuswapwep, setuqwep,
 } from './wield.js';
 import { objectNames } from './objects.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { PM_TOURIST } from './generated/monsters_data.js';
 
 /**
  * C ref: do.c danger_uprops — Stoned/Slimed/Strangled/Sick.
@@ -221,6 +224,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     const info = game.level_info[new_ledger];
     const exists = !!(info && (info.flags & 2)); // LFILE_EXISTS
+    const madeNew = !exists;
     if (!exists) {
         await mklev();
         if (!game.level_info[new_ledger]) game.level_info[new_ledger] = { flags: 0 };
@@ -290,6 +294,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await docrt();
     await flush_screen(-1); // un-postpone + flush new map/botl
     vision_recalc(0);
+
+    // C: goto_level `if (new)` Tourist more_experienced(level_difficulty())
+    // level_difficulty ≈ depth(&u.uz) outside endgame/amulet/builds_up.
+    if (madeNew && game.urole?.mnum === PM_TOURIST) {
+        more_experienced(depth(u.uz) | 0, 0);
+        await newexplevel();
+    }
 }
 
 /**
