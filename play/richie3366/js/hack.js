@@ -272,8 +272,10 @@ export async function unmul(msg_override) {
 
 /**
  * C ref: hack.c losehp() — subtract HP (or mh when Upolyd).
- * showdamage / maybe_wail / done(DIED) bodies deferred; death still clamps
- * uhp and marks gameover so callers do not continue with negative HP.
+ * Fatal: set killer + gameover + `_losehp_needs_done` so callers must not
+ * continue (C `done(DIED)` is noreturn). Callers in async paths await
+ * `finish_losehp_done` from end.js; showdamage / maybe_wail / rehumanize
+ * deferred.
  */
 export function losehp(n, knam, k_format = KILLED_BY) {
     const u = game.u || (game.u = {});
@@ -293,7 +295,12 @@ export function losehp(n, knam, k_format = KILLED_BY) {
         if ((u.mh || 0) < 1) {
             // rehumanize deferred — treat as fatal for now
             u.mh = 0;
-            if (game.program_state) game.program_state.gameover = true;
+            if (!game.program_state) game.program_state = {};
+            game.program_state.gameover = true;
+            game._losehp_needs_done = true;
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.name = knam || '';
+            game.killer.format = k_format;
         }
         return;
     }
@@ -302,10 +309,13 @@ export function losehp(n, knam, k_format = KILLED_BY) {
     if ((u.uhp || 0) > (u.uhpmax || 0)) u.uhpmax = u.uhp;
     if ((u.uhp || 0) < 1) {
         u.uhp = 0;
-        // C: urgent_pline("You die..."); done(DIED); — full death path deferred
-        if (game.program_state) game.program_state.gameover = true;
-        void knam;
-        void k_format;
+        // C: urgent_pline("You die..."); done(DIED); — noreturn
+        if (!game.program_state) game.program_state = {};
+        game.program_state.gameover = true;
+        game._losehp_needs_done = true;
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.name = knam || '';
+        game.killer.format = k_format;
     }
     // else if (n > 0 && u.uhp * 10 < u.uhpmax) maybe_wail() — deferred
 }

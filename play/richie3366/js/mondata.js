@@ -222,7 +222,7 @@ export function m_clearseenres(mon, mask) {
 }
 
 /** C ref: vision.h m_canseeu — buried arms deferred. */
-function m_canseeu(m) {
+export function m_canseeu(m) {
     const u = game.u || {};
     const Invis = !!(u.Hinvis || u.Einvis || u.Invis);
     const perceives = ((m?.data?.mflags1 | 0) & M1_SEE_INVIS) !== 0;

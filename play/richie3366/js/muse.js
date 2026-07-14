@@ -97,8 +97,12 @@ function museState() {
 
 /**
  * C ref: muse.c find_offensive — potion throw + WAN_STRIKING subset.
- * Other wand/horn/scroll/camera offense deferred (C-JS-MAP); invent walk
- * keeps C's last-viable rule among implemented types.
+ * Other wand/horn/scroll/camera offense deferred (C-JS-MAP).
+ *
+ * C `#define nomore(x) if (has_offense == x) continue` — once a type is
+ * selected, later invent objects hit that nomore and skip the rest of their
+ * checks. Plain overwrite (JS old) let a later POT_* beat an earlier
+ * WAN_STRIKING; C keeps the wand (D-0258).
  */
 export function find_offensive(mtmp) {
     const m = museState();
@@ -116,30 +120,38 @@ export function find_offensive(mtmp) {
     if (!lined_up(mtmp)) return false;
 
     for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
-        // reflection_skip wand rays deferred; WAN_STRIKING is outside that block
+        // reflection_skip ray wands deferred (WAN_DEATH…MISSILE nomores)
+        // C: nomore(MUSE_WAN_STRIKING) before striking / teleport / potions
+        if (m.has_offense === MUSE_WAN_STRIKING) continue;
         if (obj.otyp === WAN_STRIKING && (obj.spe | 0) > 0
             && !m_seenres(mtmp, M_SEEN_MAGR)) {
             m.offensive = obj;
             m.has_offense = MUSE_WAN_STRIKING;
         }
+        // WAN_TELEPORTATION / undead-turning deferred (their nomores too)
+        if (m.has_offense === MUSE_POT_PARALYSIS) continue;
         if (obj.otyp === POT_PARALYSIS && (game.multi | 0) >= 0) {
             m.offensive = obj;
             m.has_offense = MUSE_POT_PARALYSIS;
         }
+        if (m.has_offense === MUSE_POT_BLINDNESS) continue;
         if (obj.otyp === POT_BLINDNESS) {
             // AT_GAZE deferral: still allow (gnome has no gaze)
             m.offensive = obj;
             m.has_offense = MUSE_POT_BLINDNESS;
         }
+        if (m.has_offense === MUSE_POT_CONFUSION) continue;
         if (obj.otyp === POT_CONFUSION) {
             m.offensive = obj;
             m.has_offense = MUSE_POT_CONFUSION;
         }
+        if (m.has_offense === MUSE_POT_SLEEPING) continue;
         if (obj.otyp === POT_SLEEPING) {
             // m_seenres(M_SEEN_SLEEP) deferred → always eligible
             m.offensive = obj;
             m.has_offense = MUSE_POT_SLEEPING;
         }
+        if (m.has_offense === MUSE_POT_ACID) continue;
         if (obj.otyp === POT_ACID) {
             m.offensive = obj;
             m.has_offense = MUSE_POT_ACID;
@@ -248,7 +260,7 @@ function mbhit(mon, range, obj) {
  * C ref: muse.c use_offensive — potion hurls + WAN_STRIKING mbhit
  * (return 2 = spent turn). Other wand/horn/scroll cases deferred.
  */
-export function use_offensive(mtmp) {
+export async function use_offensive(mtmp) {
     const m = museState();
     const otmp = m.offensive;
     if (!otmp) return 0;
@@ -278,7 +290,7 @@ export function use_offensive(mtmp) {
             observe_object(otmp);
             pline(`${Monnam(mtmp)} hurls ${singular(otmp, doname)}!`);
         }
-        m_throw(
+        await m_throw(
             mtmp, mtmp.mx, mtmp.my,
             sgn((mtmp.mux ?? game.u?.ux) - mtmp.mx),
             sgn((mtmp.muy ?? game.u?.uy) - mtmp.my),

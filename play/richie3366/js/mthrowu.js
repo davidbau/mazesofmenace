@@ -22,10 +22,11 @@ import {
     MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval,
     should_mulch_missile,
 } from './weapon.js';
-import { ammo_and_launcher } from './wield.js';
+import { ammo_and_launcher, is_launcher } from './wield.js';
 import { acurr, A_DEX, A_STR, exercise } from './attrib.js';
 import { calc_capacity } from './invent.js';
 import { losehp, nomul, maybe_half_phys } from './hack.js';
+import { finish_losehp_done } from './end.js';
 import { pline, mon_visible, see_with_infrared } from './display.js';
 import { Monnam } from './do_name.js';
 import { nohands, mons, throws_rocks } from './monsters.js';
@@ -38,6 +39,18 @@ import { potionhit } from './potion.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
+
+/**
+ * C ref: mthrowu.c m_has_launcher_and_ammo — wielded launcher + matching ammo.
+ */
+export function m_has_launcher_and_ammo(mtmp) {
+    const mwep = MON_WEP(mtmp);
+    if (!mwep || !is_launcher(mwep)) return false;
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if (ammo_and_launcher(otmp, mwep)) return true;
+    }
+    return false;
+}
 
 function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
@@ -165,7 +178,7 @@ export function lined_up(mtmp) {
  * C ref: mthrowu.c thitu — hit/miss vs hero AC; onm via an(xname)/mshot.
  * Multishot mshot_xname "the Nth" prefix deferred (single-shot path).
  */
-export function thitu(tlev, dam, objp, name) {
+export async function thitu(tlev, dam, objp, name) {
     const obj = objp ? objp.obj : null;
     const u = game.u || {};
     const Blind = !!(u.Blind || u.ublind);
@@ -201,7 +214,12 @@ export function thitu(tlev, dam, objp, name) {
     } else {
         pline(`You are hit by ${onm}${exclam(dam)}`);
     }
+    // C: losehp → done(DIED) noreturn — skip exercise on fatal
     losehp(dam, onm, /* KILLED_BY */ 1);
+    if (game.program_state?.gameover) {
+        await finish_losehp_done();
+        return 1;
+    }
     exercise(A_STR, false);
     return 1;
 }
@@ -251,7 +269,7 @@ function drop_throw(obj, ohit, x, y) {
 /**
  * C ref: mthrowu.c m_throw — flight loop; hero hit / forcehit rn2(5).
  */
-export function m_throw(mon, x, y, dx, dy, range, obj) {
+export async function m_throw(mon, x, y, dx, dy, range, obj) {
     let singleobj;
     if ((obj.quan || 1) === 1) {
         if (MON_WEP(mon) === obj) {
@@ -320,7 +338,9 @@ export function m_throw(mon, x, y, dx, dy, range, obj) {
                 if (dam < 1) dam = 1;
                 dam = maybe_half_phys(dam);
                 const box = { obj: singleobj };
-                const hitu = thitu(hitv, dam, box, null);
+                const hitu = await thitu(hitv, dam, box, null);
+                // C: losehp→done noreturn — no drop_throw / mulch after fatal
+                if (game.program_state?.gameover) return;
                 if (hitu) {
                     drop_throw(singleobj, true, u.ux, u.uy);
                     return;
@@ -345,7 +365,7 @@ export function m_throw(mon, x, y, dx, dy, range, obj) {
 /**
  * C ref: mthrowu.c monshoot — multishot + pline + m_throw loop.
  */
-function monshoot(mtmp, otmp, mwep) {
+async function monshoot(mtmp, otmp, mwep) {
     const u = game.u || {};
     const dm = distmin(mtmp.mx, mtmp.my, mtmp.mux ?? u.ux, mtmp.muy ?? u.uy);
     const multishot = monmulti(mtmp, otmp, mwep);
@@ -363,11 +383,12 @@ function monshoot(mtmp, otmp, mwep) {
     }
 
     for (let i = 1; i <= multishot; i++) {
-        m_throw(
+        await m_throw(
             mtmp, mtmp.mx, mtmp.my,
             sgn(game._tbx || 0), sgn(game._tby || 0),
             dm, otmp,
         );
+        if (game.program_state?.gameover) break;
         if ((mtmp.mhp | 0) < 1) break;
         // After first shot, otmp may be depleted; stop if stack gone
         if (!otmp.where && !otmp.nobj && (otmp.quan | 0) < 1 && i < multishot) {
@@ -380,19 +401,19 @@ function monshoot(mtmp, otmp, mwep) {
  * C ref: mthrowu.c thrwmu — select missile, line up, monshoot.
  * Polearm / autoreturn deferred.
  */
-export function thrwmu(mtmp) {
+export async function thrwmu(mtmp) {
     if (Is_rogue_level(game.u?.uz)) return;
 
     if (!game.context) game.context = {};
     game.context.mon_moving = true;
     try {
-        thrwmu_body(mtmp);
+        await thrwmu_body(mtmp);
     } finally {
         game.context.mon_moving = false;
     }
 }
 
-function thrwmu_body(mtmp) {
+async function thrwmu_body(mtmp) {
     if (mtmp.weapon_check === NEED_WEAPON || !MON_WEP(mtmp)) {
         mtmp.weapon_check = NEED_RANGED_WEAPON;
         if (mon_wield_item(mtmp) !== 0) return;
@@ -414,6 +435,6 @@ function thrwmu_body(mtmp) {
     }
 
     const mwep = MON_WEP(mtmp);
-    monshoot(mtmp, otmp, mwep);
+    await monshoot(mtmp, otmp, mwep);
     nomul(0);
 }

@@ -247,7 +247,7 @@ export async function mattacku(mtmp) {
     // C: find_offensive / use_offensive before attack loop — potion throw
     // spends the turn (return 2) without melee/ranged AT_WEAP.
     if (find_offensive(mtmp)) {
-        const offended = use_offensive(mtmp);
+        const offended = await use_offensive(mtmp);
         if (offended !== 0) return offended === 1 ? 1 : 0;
     }
     // AC_VALUE(u.uac) + 10 + m_lev (+ helpless / invis / trap deferred deltas)
@@ -291,7 +291,7 @@ export async function mattacku(mtmp) {
 
         case AT_WEAP:
             if (range2) {
-                if (!Is_rogue_level(u.uz)) thrwmu(mtmp);
+                if (!Is_rogue_level(u.uz)) await thrwmu(mtmp);
             } else {
                 if (mtmp.weapon_check === NEED_WEAPON || !MON_WEP(mtmp)) {
                     mtmp.weapon_check = NEED_HTH_WEAPON;

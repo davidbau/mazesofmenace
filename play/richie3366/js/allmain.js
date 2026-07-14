@@ -14,7 +14,7 @@ import { init_dungeons } from './dungeon.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries } from './u_init.js';
 import { makedog } from './dog.js';
 import { makemon } from './makemon.js';
-import { mcalcmove, movemon, NORMAL_SPEED } from './mon.js';
+import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { LOW_PM, NUMMONS, mons, G_NOCORPSE } from './monsters.js';
 import { A_DEX, A_STR, A_CON, acurr, exercise, change_luck, Fast, Very_fast, Searching } from './attrib.js';
 import { dosearch0 } from './detect.js';
@@ -443,7 +443,10 @@ export async function moveloop_core() {
             } while (monscanmove);
 
             if (!monscanmove && (g.u.umovement || 0) < NORMAL_SPEED) {
-                // End of turn: reallocate movement, maybe spawn, hero regen clock
+                // End of turn: C mcalcdistress before movement reallocation
+                // (mfrozen/mblinded/mfleetim timeouts; mon_regen)
+                if (g.were_changes != null) g.were_changes = 0;
+                mcalcdistress();
                 for (const mtmp of g.fmon || []) {
                     mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
                 }

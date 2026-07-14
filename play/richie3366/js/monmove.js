@@ -40,6 +40,7 @@ import {
     D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
+    MON_POLE_DIST, AKLYS_LIM,
 } from './const.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
@@ -52,8 +53,10 @@ import { doname } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { may_dig, mdig_tunnel } from './dig.js';
 import { MON_WEP, mon_wield_item } from './weapon.js';
-import { lined_up } from './mthrowu.js';
+import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
+import { is_pole } from './wield.js';
 import { acurrstr } from './attrib.js';
+import { m_canseeu } from './mondata.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -62,6 +65,7 @@ const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
 const CORPSE = objectNames.indexOf('CORPSE');
+const AKLYS = objectNames.indexOf('AKLYS');
 const MINERAL = 21; // obj.h
 const MAX_CARR_CAP = 1000;
 const MZ_HUMAN = 3;
@@ -74,6 +78,10 @@ const MMOVE_DIED = 2;
 const MMOVE_DONE = 3;
 const MMOVE_NOMOVES = 4;
 const AT_ENGL = 11; // monattk.h
+const AT_SPIT = 10;
+const AT_BREA = 12;
+const AT_GAZE = 15;
+const AT_MAGC = 255;
 
 // C ref: monmove.c practical[] / magical[] for mon_would_take_item
 const PRACTICAL_CLASSES = [WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS];
@@ -737,6 +745,67 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
     return mmoved;
 }
 
+/**
+ * C ref: weapon.c autoreturn_weapon — AKLYS only (boomerang row commented out in C).
+ */
+function autoreturn_weapon(otmp) {
+    if (!otmp || otmp.otyp !== AKLYS) return null;
+    return { otyp: AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 };
+}
+
+/**
+ * C ref: mhitu.c ranged_attk_available — DISTANCE_ATTK_TYPE with m_seenres gate
+ * deferred (treat distance AD as available).
+ */
+function ranged_attk_available(mtmp) {
+    const mattk = mtmp.data?.mattk;
+    if (!mattk) return false;
+    for (let i = 0; i < NATTK && i < mattk.length; i++) {
+        const aatyp = mattk[i]?.aatyp | 0;
+        if (aatyp === AT_SPIT || aatyp === AT_BREA || aatyp === AT_MAGC
+            || aatyp === AT_GAZE) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: monmove.c m_balks_at_approaching — ranged hostiles keep distance.
+ * Returns oldappr, -1 (flee), or -2 (preferred range band).
+ */
+function m_balks_at_approaching(oldappr, mtmp, pdist) {
+    const mwep = MON_WEP(mtmp);
+    const x = mtmp.mx;
+    const y = mtmp.my;
+    const ux = mtmp.mux;
+    const uy = mtmp.muy;
+    const edist = dist2(x, y, ux, uy);
+    if (pdist) {
+        pdist.min = 0;
+        pdist.max = 0;
+    }
+    if (mtmp.mpeaceful || edist >= 5 * 5 || !m_canseeu(mtmp)) {
+        return oldappr;
+    }
+    if (m_has_launcher_and_ammo(mtmp)) return -1;
+    if (mwep && is_pole(mwep) && edist <= MON_POLE_DIST) return -1;
+    const arw = mwep ? autoreturn_weapon(mwep) : null;
+    if (arw) {
+        if (pdist) {
+            pdist.min = 2 * 2;
+            pdist.max = arw.range;
+        }
+        return -2;
+    }
+    if (ranged_attk_available(mtmp)
+        && ((mtmp.mhp < Math.trunc((mtmp.mhpmax + 1) / 3))
+            || !mtmp.mspec_used)) {
+        return -1;
+    }
+    return oldappr;
+}
+
 // C ref: monmove.c m_move() — pets → postmov(dog_move); else approach / track path
 export async function m_move(mtmp, after) {
     const ptr = mtmp.data;
@@ -801,6 +870,7 @@ export async function m_move(mtmp, after) {
     let ggx = mtmp.mux;
     let ggy = mtmp.muy;
     let appr = mtmp.mflee ? -1 : 1;
+    const preferredrange = { min: 0, max: 0 };
     if (mtmp.mconf) {
         appr = 0;
     } else if (mtmp.mpeaceful && !mtmp.isshk) {
@@ -815,8 +885,8 @@ export async function m_move(mtmp, after) {
             && (!!goalLoc?.lit || !monLoc?.lit)
             && dist2(omx, omy, ggx, ggy) <= 36
         );
-        // Named omission: Invis rn2(11); stalker/bat rn2(3); balks;
-        // shortsighted.
+        // Named omission: Invis rn2(11); stalker/bat rn2(3); leppie;
+        // shortsighted; !mcansee → appr 0.
         if (!should_see && can_track(ptr)) {
             const cp = gettrack(omx, omy);
             if (cp) {
@@ -824,6 +894,10 @@ export async function m_move(mtmp, after) {
                 ggy = cp.y;
             }
         }
+    }
+    // C: m_balks_at_approaching after appr setup (uses mux/muy, not track gg)
+    if (!mtmp.mconf) {
+        appr = m_balks_at_approaching(appr, mtmp, preferredrange);
     }
 
     // C ref: monmove.c m_move getitems + m_search_items
@@ -866,7 +940,6 @@ export async function m_move(mtmp, after) {
     let nidist = dist2(nix, niy, ggx, ggy);
     let mmoved = MMOVE_NOTHING;
 
-
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x;
         const ny = mfp.poss[i].y;
@@ -893,6 +966,9 @@ export async function m_move(mtmp, after) {
             (appr === 1 && nearer)
             || (appr === -1 && !nearer)
             || (!appr && !rn2(++chcnt))
+            || (appr === -2
+                && ((ndist <= preferredrange.min && !nearer)
+                    || (ndist >= preferredrange.max && nearer)))
             || mmoved === MMOVE_NOTHING
         ) {
             nix = nx;

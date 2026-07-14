@@ -106,6 +106,7 @@ export const M1_CLING = 0x00000010; /* monflag.h — cling to ceiling */
 export const M1_TUNNEL = 0x00000020; /* monflag.h — can tunnel through rock */
 export const M1_NEEDPICK = 0x00000040; /* monflag.h — needs pick to tunnel */
 export const M1_HIDE = 0x00000100; /* monflag.h — mimics, blends with ceiling */
+export const M1_BREATHLESS = 0x00000400; /* monflag.h — doesn't need to breathe */
 export const M1_NOTAKE = 0x00000800; /* monflag.h — cannot pick up objects */
 export const M1_NOHANDS = 0x00002000;
 export const M1_HUMANOID = 0x00020000; /* monflag.h — humanoid head/arms/torso */
@@ -116,6 +117,7 @@ export const M1_NOEYES = 0x00001000;
 export const M1_MINDLESS = 0x00010000;
 export const M1_ANIMAL = 0x00040000;
 export const M1_OVIPAROUS = 0x00400000; /* monflag.h — can lay eggs */
+export const M1_REGEN = 0x00800000; /* monflag.h — regenerates hit points */
 export const M1_ACID = 0x08000000;
 export const M1_POIS = 0x10000000;
 export const M1_CARNIVORE = 0x20000000;
@@ -229,6 +231,10 @@ export function amorphous(ptr) {
 /** C ref: mondata.h unsolid */
 export function unsolid(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_UNSOLID);
+}
+/** C ref: mondata.h breathless — M1_BREATHLESS */
+export function breathless(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_BREATHLESS);
 }
 /** C ref: mondata.h is_whirly — vortex letter or air elemental */
 const PM_AIR_ELEMENTAL = monsterNames.indexOf('PM_AIR_ELEMENTAL');
@@ -425,6 +431,11 @@ export function carnivorous(ptr) {
 }
 export function herbivorous(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_HERBIVORE);
+}
+
+/** C ref: mondata.h regenerates — M1_REGEN */
+export function regenerates(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_REGEN);
 }
 
 /**

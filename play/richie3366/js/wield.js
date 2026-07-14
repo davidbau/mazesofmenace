@@ -74,7 +74,8 @@ export function is_missile(obj) {
     return sk >= -P_BOOMERANG && sk <= -P_DART;
 }
 
-function is_pole(obj) {
+/** C ref: obj.h is_pole — polearms/lance (Snickersnee artifact deferred). */
+export function is_pole(obj) {
     if (!obj) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
     return sk === P_POLEARMS || sk === P_LANCE;

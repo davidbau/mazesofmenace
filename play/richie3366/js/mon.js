@@ -14,7 +14,7 @@ import { t_at } from './trap.js';
 import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
     monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
-    is_hider, M1_SEE_INVIS, humanoid,
+    is_hider, M1_SEE_INVIS, humanoid, regenerates,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import { little_to_big, big_to_little } from './mondata.js';
@@ -174,6 +174,47 @@ export function mcalcmove(mon, m_moving) {
         if (rn2(NORMAL_SPEED) < mmove_adj) mmove += NORMAL_SPEED;
     }
     return mmove;
+}
+
+/**
+ * C ref: monmove.c mon_regen — HP tick + mspec_used; digest_meal=false from
+ * mcalcdistress (meating countdown lives in m_move).
+ */
+function mon_regen(mon, digest_meal) {
+    const moves = game.moves | 0;
+    if (moves % 20 === 0 || regenerates(mon.data)) {
+        // healmon(mon, 1, 0) subset — bump HP only
+        if ((mon.mhp | 0) < (mon.mhpmax | 0)) mon.mhp = (mon.mhp | 0) + 1;
+    }
+    if (mon.mspec_used) mon.mspec_used = (mon.mspec_used | 0) - 1;
+    if (digest_meal && mon.meating) {
+        mon.meating = (mon.meating | 0) - 1;
+        // finish_meating deferred here (m_move path owns it)
+    }
+}
+
+/**
+ * C ref: mon.c m_calcdistress — once-per-turn mon timeouts / regen.
+ * Named omissions: mmove==0 minliquid; decide_to_shapeshift; were_change
+ * (no RNG unless cham/were present — early-return stubs).
+ */
+function m_calcdistress(mtmp) {
+    if (!mtmp || (mtmp.mhp | 0) < 1) return;
+    // mmove==0 minliquid deferred
+    mon_regen(mtmp, false);
+    // decide_to_shapeshift / were_change deferred (only RNG for cham/were)
+    if (mtmp.mblinded && !(--mtmp.mblinded)) mtmp.mcansee = 1;
+    if (mtmp.mfrozen && !(--mtmp.mfrozen)) mtmp.mcanmove = 1;
+    if (mtmp.mfleetim && !(--mtmp.mfleetim)) mtmp.mflee = 0;
+}
+
+/**
+ * C ref: mon.c mcalcdistress — iter_mons over fmon.
+ */
+export function mcalcdistress() {
+    for (const mtmp of game.fmon || []) {
+        m_calcdistress(mtmp);
+    }
 }
 
 export function dist2(x0, y0, x1, y1) {
