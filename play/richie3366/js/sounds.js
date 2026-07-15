@@ -19,8 +19,9 @@ import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
-    ESHK, EGD, Is_astralevel, Is_oracle_level,
+    ESHK, Is_astralevel, Is_oracle_level,
 } from './const.js';
+import { vault_occupied, findgd } from './vault.js';
 
 const STATUE = objectNames.indexOf('STATUE');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
@@ -124,40 +125,6 @@ function hero_in_shop(sroom) {
     const ch = String.fromCharCode(idx + ROOMOFFSET);
     const ushops = game.u?.ushops || '';
     return ushops.includes(ch);
-}
-
-/** C ref: vault.c vault_occupied — first urooms entry whose rtype is VAULT. */
-function vault_occupied(array) {
-    const rooms = game.level?.rooms || [];
-    const s = array || '';
-    for (let i = 0; i < s.length; i++) {
-        const ch = s.charCodeAt(i);
-        const idx = ch - ROOMOFFSET;
-        if (idx >= 0 && idx < rooms.length
-            && (rooms[idx]?.rtype | 0) === VAULT) {
-            return ch;
-        }
-    }
-    return 0;
-}
-
-/**
- * C ref: vault.c findgd — first isgd on fmon for this level.
- * Named omission: migrating_mons park-at-<0,0> arm; mx/gddone heal.
- */
-function findgd() {
-    const uz = game.u?.uz;
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp?.isgd) continue;
-        const gdlevel = EGD(mtmp)?.gdlevel;
-        if (gdlevel
-            && ((gdlevel.dnum | 0) !== (uz?.dnum | 0)
-                || (gdlevel.dlevel | 0) !== (uz?.dlevel | 0))) {
-            continue;
-        }
-        return mtmp;
-    }
-    return null;
 }
 
 /**

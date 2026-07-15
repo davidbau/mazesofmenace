@@ -2,7 +2,7 @@
 // C ref: shk.c shk_move / after_shk_move / u_entered_shop / u_left_shop;
 //        paybill / inherits / set_repo_loc / money2mon; priest.c move_special.
 // Named omissions: shk_fixes_damage body; holetime dig follow; angry
-// Displaced pline; following verbalize; gd_move body;
+// Displaced pline; following verbalize;
 // pri_move altar mill rn1; m_break_boulder; m_move_aggress;
 // Fast + sobj_at pickaxe doorway block / dochug; m_canseeu for angry chase;
 // resist_conflict; deserted_shop body; ACH_SHOP mapseen; Hallu shkname;
@@ -381,12 +381,13 @@ export async function shk_move(shkp) {
     return z;
 }
 
+import { gd_move as vault_gd_move } from './vault.js';
+
 /**
- * C ref: vault.c gd_move — stub: stay put (no RNG).
- * Named omission: full guard escort / corridor logic.
+ * C ref: vault.c gd_move — re-export peaceful escort subset from vault.js.
  */
-export function gd_move(_grd) {
-    return 0;
+export function gd_move(grd) {
+    return vault_gd_move(grd);
 }
 
 /**

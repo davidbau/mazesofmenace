@@ -121,7 +121,7 @@ function Is_container(obj) {
 /**
  * C ref: mkobj.c add_to_container — prepend; merge deferred.
  */
-function add_to_container(container, obj) {
+export function add_to_container(container, obj) {
     if (!container || !obj) return null;
     if (obj.where && obj.where !== OBJ_FREE) obj_extract_self(obj);
     obj.where = OBJ_CONTAINED;
@@ -1124,6 +1124,23 @@ export function obj_extract_self(obj) {
             }
         }
         obj.ocarry = null;
+    } else if (obj.where === OBJ_CONTAINED) {
+        // C: extract_nobj(obj, &obj->ocontainer->cobj); container_weight
+        const cont = obj.ocontainer;
+        if (cont) {
+            if (cont.cobj === obj) {
+                cont.cobj = obj.nobj || null;
+            } else {
+                for (let p = cont.cobj; p; p = p.nobj) {
+                    if (p.nobj === obj) {
+                        p.nobj = obj.nobj || null;
+                        break;
+                    }
+                }
+            }
+            cont.owt = weight(cont);
+        }
+        obj.ocontainer = null;
     }
     obj.nobj = null;
     obj.nexthere = null;

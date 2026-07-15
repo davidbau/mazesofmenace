@@ -31,6 +31,7 @@ import { livelog_printf } from './pline.js';
 import { phase_of_the_moon, friday_13th, FULL_MOON, NEW_MOON } from './calendar.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dosounds } from './sounds.js';
+import { invault } from './vault.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
@@ -511,6 +512,8 @@ export async function moveloop_core() {
                 gethungry();
                 age_spells();
                 exerchk();
+                // C: invault() before wipe_engr / amulet
+                await invault();
 
                 // C: if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3));
                 if (!rn2(40 + (acurr(A_DEX) * 3))) {

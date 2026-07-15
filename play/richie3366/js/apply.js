@@ -26,6 +26,13 @@ const TOUCHSTONE = objectNames.indexOf('TOUCHSTONE');
 const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const FLINT = objectNames.indexOf('FLINT');
+const SACK = objectNames.indexOf('SACK');
+const OILSKIN_SACK = objectNames.indexOf('OILSKIN_SACK');
+const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
+const CHEST = objectNames.indexOf('CHEST');
+const ICE_BOX = objectNames.indexOf('ICE_BOX');
 
 /** C invent getobj callback ranks (hack.h). */
 const GETOBJ_EXCLUDE = -3;
@@ -167,8 +174,26 @@ async function getobj_apply() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return null;
+            // C: display_pickinv(lets or all, want_reply) → selected invlet
+            const { display_pickinv_reply } = await import('./invent.js');
+            const ilet = await display_pickinv_reply(ch === '*' ? '*' : lets);
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue; // Space/Return → re-prompt getobj
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            const rank = apply_ok(picked);
+            if (rank === GETOBJ_EXCLUDE) {
+                await pline('That is a silly thing to apply.');
+                return null;
+            }
+            game._pending_message = '';
+            return picked;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
         if (!otmp) {
@@ -245,11 +270,10 @@ async function use_stethoscope(_obj) {
 }
 
 /**
- * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE body.
- * Named omissions: nohands/capacity; retouch; do_break_wand;
- * flip_through_book; flip_coin; sack/bag/container; cream pie/jelly;
- * whip/grapple/blindfold/lenses; use_stone; use_pole/use_pick_axe;
- * traps; oil; most tool otyps.
+ * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE + sack/bag
+ * use_container. Named omissions: nohands/capacity; retouch; do_break_wand;
+ * flip_through_book; flip_coin; cream pie/jelly; whip/grapple/blindfold/
+ * lenses; use_stone; use_pole/use_pick_axe; traps; oil; BoT; most tools.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {
@@ -268,7 +292,22 @@ export async function doapply() {
         return res > 0; // ECMD_TIME only
     }
 
-    // Other apply otyps deferred (wand break / spellbook flip / …)
+    // C: SACK / BAG_OF_HOLDING / OILSKIN_SACK → use_container(&obj, TRUE, FALSE)
+    if (obj.otyp === SACK || obj.otyp === OILSKIN_SACK
+        || obj.otyp === BAG_OF_HOLDING
+        || obj.otyp === LARGE_BOX || obj.otyp === CHEST
+        || obj.otyp === ICE_BOX) {
+        const { use_container } = await import('./pickup.js');
+        const { ECMD_TIME } = await import('./const.js');
+        const res = await use_container(obj, true, false);
+        return res === ECMD_TIME;
+    }
+    if (obj.otyp === BAG_OF_TRICKS) {
+        await pline("Sorry, I don't know how to use that.");
+        return false;
+    }
+
+    // Other apply otyps deferred
     await pline("Sorry, I don't know how to use that.");
     return false;
 }

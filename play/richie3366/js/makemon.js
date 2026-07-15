@@ -42,9 +42,10 @@ import {
     is_animal,
     mindless,
     is_floater,
+    is_mercenary,
 } from './monsters.js';
 import {
-    NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK,
+    NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, In_mines,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE,
     M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL,
@@ -53,12 +54,12 @@ import {
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
-import { mksobj, mkobj, weight, objects_at } from './mkobj.js';
+import { mksobj, mkobj, weight, objects_at, curse } from './mkobj.js';
 import {
     objectNames, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, WAND_CLASS,
     FOOD_CLASS, COIN_CLASS, SCROLL_CLASS, POTION_CLASS, AMULET_CLASS,
     TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS, MAXOCLASSES,
-    RANDOM_CLASS,
+    RANDOM_CLASS, objects,
 } from './objects.js';
 import { cansee } from './vision.js';
 import { christen_monst } from './do_name.js';
@@ -78,12 +79,39 @@ export function neweshk(mtmp) {
             shk: { x: 0, y: 0 },
             robbed: 0, credit: 0, debit: 0, loan: 0,
             following: false, surcharge: false, dismiss_kops: false,
-            billct: 0, visitct: 0,
+            billct: 0, invoicect: 0,
             customer: '',
             shknam: '',
         };
     }
     return mtmp.mextra.eshk;
+}
+
+/**
+ * C ref: vault.c newegd — allocate egd for MM_EGD makemon.
+ * Named omission: FCSIZ-sized fakecorr prealloc (grown on demand).
+ */
+export function newegd(mtmp) {
+    if (!mtmp.mextra) mtmp.mextra = {};
+    if (!mtmp.mextra.egd) {
+        mtmp.mextra.egd = {
+            parentmid: mtmp.m_id | 0,
+            fcbeg: 0,
+            fcend: 0,
+            vroom: 0,
+            gdx: 0,
+            gdy: 0,
+            ogx: 0,
+            ogy: 0,
+            gdlevel: { dnum: 0, dlevel: 0 },
+            warncnt: 0,
+            dropgoldcnt: 0,
+            gddone: 0,
+            witness: 0,
+            fakecorr: [],
+        };
+    }
+    return mtmp.mextra.egd;
 }
 
 // C ref: makemon.c set_mimic_sym — S_MIMIC_DEF sentinel (MONSYMS_S_ENUM idx 60)
@@ -643,6 +671,44 @@ function m_initweap(mtmp) {
         }
         break;
     case 'S_HUMAN':
+        // C: is_mercenary / is_elf / priest / ninja / guardian arms.
+        // Envelope: mercenary weapon kit (guard default path exercised).
+        if (is_mercenary(ptr)) {
+            let w1 = 0;
+            let w2 = 0;
+            switch (mm) {
+            case pm('WATCHMAN'):
+            case pm('SOLDIER'):
+                if (!rn2(3)) {
+                    // polearm pick — P_POLEARMS skill filter deferred → PARTISAN
+                    w1 = otyp('PARTISAN');
+                    w2 = rn2(2) ? otyp('DAGGER') : otyp('KNIFE');
+                } else {
+                    w1 = rn2(2) ? otyp('SPEAR') : otyp('SHORT_SWORD');
+                }
+                break;
+            case pm('SERGEANT'):
+                w1 = rn2(2) ? otyp('FLAIL') : otyp('MACE');
+                break;
+            case pm('LIEUTENANT'):
+                w1 = rn2(2) ? otyp('BROADSWORD') : otyp('LONG_SWORD');
+                break;
+            case pm('CAPTAIN'):
+            case pm('WATCH_CAPTAIN'):
+                w1 = rn2(2) ? otyp('LONG_SWORD') : otyp('SILVER_SABER');
+                break;
+            default:
+                // PM_GUARD and other mercs
+                if (!rn2(4)) w1 = otyp('DAGGER');
+                if (!rn2(7)) w2 = otyp('SPEAR');
+                break;
+            }
+            if (w1) mongets(mtmp, w1);
+            if (!w2 && w1 !== otyp('DAGGER') && !rn2(4)) w2 = otyp('KNIFE');
+            if (w2) mongets(mtmp, w2);
+        }
+        // is_elf / MS_PRIEST / ninja / MS_GUARDIAN deferred
+        break;
     case 'S_ANGEL':
     case 'S_KOP':
     case 'S_DEMON':
@@ -829,7 +895,84 @@ function m_initinv(mtmp) {
         }
         break;
     case 'S_HUMAN':
-        if (ptr.mndx === pm('SHOPKEEPER')) {
+        if (is_mercenary(ptr)) {
+            // C ref: makemon.c m_initinv mercenary armor rounds
+            let mac = 0;
+            switch (ptr.mndx) {
+            case pm('GUARD'): mac = -1; break;
+            case pm('SOLDIER'): mac = 3; break;
+            case pm('SERGEANT'): mac = 0; break;
+            case pm('LIEUTENANT'): mac = -2; break;
+            case pm('CAPTAIN'): mac = -3; break;
+            case pm('WATCHMAN'): mac = 3; break;
+            case pm('WATCH_CAPTAIN'): mac = -2; break;
+            default: mac = 0; break;
+            }
+            const armBonus = (otmp) => {
+                if (!otmp) return 0;
+                const a_ac = objects()?.[otmp.otyp]?.a_ac
+                    ?? game.objects?.[otmp.otyp]?.a_ac
+                    ?? 0;
+                return (a_ac | 0) + (otmp.spe | 0);
+            };
+            let otmp = null;
+            // round 1: body armor
+            if (mac < -1 && rn2(5)) {
+                otmp = mongets(mtmp, rn2(5)
+                    ? otyp('PLATE_MAIL') : otyp('CRYSTAL_PLATE_MAIL'));
+            } else if (mac < 3 && rn2(5)) {
+                otmp = mongets(mtmp, rn2(3)
+                    ? otyp('SPLINT_MAIL') : otyp('BANDED_MAIL'));
+            } else if (rn2(5)) {
+                otmp = mongets(mtmp, rn2(3)
+                    ? otyp('RING_MAIL') : otyp('STUDDED_LEATHER_ARMOR'));
+            } else {
+                otmp = mongets(mtmp, otyp('LEATHER_ARMOR'));
+            }
+            mac += armBonus(otmp);
+
+            // round 2: helmets
+            otmp = null;
+            if (mac < 10 && rn2(3)) otmp = mongets(mtmp, otyp('HELMET'));
+            else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, otyp('DENTED_POT'));
+            mac += armBonus(otmp);
+
+            // round 3: shields
+            otmp = null;
+            if (mac < 10 && rn2(3)) otmp = mongets(mtmp, otyp('SMALL_SHIELD'));
+            else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, otyp('LARGE_SHIELD'));
+            mac += armBonus(otmp);
+
+            // round 4: boots
+            otmp = null;
+            if (mac < 10 && rn2(3)) otmp = mongets(mtmp, otyp('LOW_BOOTS'));
+            else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, otyp('HIGH_BOOTS'));
+            mac += armBonus(otmp);
+
+            // round 5: gloves + cloak
+            otmp = null;
+            if (mac < 10 && rn2(3)) otmp = mongets(mtmp, otyp('LEATHER_GLOVES'));
+            else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, otyp('LEATHER_CLOAK'));
+            // add_ac(otmp) — mac unused after
+
+            if (ptr.mndx === pm('WATCH_CAPTAIN')) {
+                // better weapon rather than extra gear
+            } else if (ptr.mndx === pm('WATCHMAN')) {
+                if (rn2(3)) mongets(mtmp, otyp('TIN_WHISTLE'));
+            } else if (ptr.mndx === pm('GUARD')) {
+                // C: cursed tin whistle (TRUE,FALSE mksobj → next_ident + erosions)
+                otmp = mksobj(otyp('TIN_WHISTLE'), true, false);
+                curse(otmp);
+                mpickobj(mtmp, otmp);
+            } else {
+                // soldiers and officers
+                if (!rn2(3)) mongets(mtmp, otyp('K_RATION'));
+                if (!rn2(2)) mongets(mtmp, otyp('C_RATION'));
+                if (ptr.mndx !== pm('SOLDIER') && !rn2(3)) {
+                    mongets(mtmp, otyp('BUGLE'));
+                }
+            }
+        } else if (ptr.mndx === pm('SHOPKEEPER')) {
             mongets(mtmp, otyp('SKELETON_KEY'));
             switch (rn2(4)) {
             case 0:
@@ -846,7 +989,7 @@ function m_initinv(mtmp) {
                 break;
             }
         }
-        // mercenary / elf / priest / guardian arms deferred
+        // elf / priest / guardian arms deferred
         break;
     default:
         // Other m_initinv bodies (nymph, giant, …) deferred
@@ -1049,10 +1192,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
         minvent: null,
     };
 
-    // C: MM_ESHK → neweshk before m_id assignment
+    // C: MM_EGD / MM_ESHK → new* before m_id assignment
+    if (mmflags & MM_EGD) newegd(mtmp);
     if (mmflags & MM_ESHK) neweshk(mtmp);
 
     mtmp.m_id = next_ident();
+    if (mtmp.mextra?.egd) mtmp.mextra.egd.parentmid = mtmp.m_id;
     if (mtmp.mextra?.eshk) mtmp.mextra.eshk.parentmid = mtmp.m_id;
     newmonhp(mtmp, ptr);
 

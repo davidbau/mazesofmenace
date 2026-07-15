@@ -21,6 +21,7 @@ import { objectNames } from './objects.js';
 import { amorphous, throws_rocks } from './monsters.js';
 import { newsym } from './display.js';
 import { vision_recalc } from './vision.js';
+import { in_rooms } from './hack.js';
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
 const Trap_Effect_Finished = 0;
@@ -421,7 +422,9 @@ function teleok(x, y, trapok) {
 /**
  * C ref: teleport.c teleds — hero placement subset for vault_tele.
  * Named omissions: ball/chain, swallow, vault_guard uleftvault, regions,
- * drag_ball, full check_special_room / spoteffects re-entry.
+ * drag_ball, full check_special_room / spoteffects re-entry (shop enter
+ * plines, pickup, dotrap). Occupancy: sync in_rooms refresh so invault
+ * sees VAULT (C spoteffects → move_update).
  */
 export function teleds(nux, nuy, _teleds_flags) {
     const u = game.u;
@@ -439,6 +442,9 @@ export function teleds(nux, nuy, _teleds_flags) {
     // u.utrap clear on teleport
     u.utrap = 0;
     u.utraptype = 0;
+    // C: spoteffects → move_update refreshes urooms; sync subset here
+    u.urooms0 = u.urooms || '';
+    u.urooms = in_rooms(u.ux, u.uy, 0);
     newsym(ox, oy);
     newsym(u.ux, u.uy);
     vision_recalc(1);

@@ -4,23 +4,35 @@
 
 import { game } from './gstate.js';
 import {
-    objects_at, obj_extract_self, splitobj,
+    objects_at, obj_extract_self, splitobj, weight, add_to_container,
 } from './mkobj.js';
 import { look_here, observe_object, dfeature_at, paint_corner_nhw_menu } from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava } from './hack.js';
 import { flush_screen, pline, newsym, docrt } from './display.js';
 import { addinv } from './u_init.js';
-import { xprname, an, doname } from './objnam.js';
+import { xprname, an, doname, xname, the as theArt } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, OBJ_FLOOR, is_pit,
     STONE, ICE, DRAWBRIDGE_UP,
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
+    Has_contents,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
 import { nhgetch } from './input.js';
 import { oclass_to_sym } from './options.js';
+import { objectNames, COIN_CLASS } from './objects.js';
+
+/** C-ish thesimpleoname — sack → "bag". */
+function thesimpleoname(obj) {
+    const n = objectNames[obj?.otyp];
+    if (n === 'SACK' || n === 'OILSKIN_SACK' || n === 'BAG_OF_HOLDING'
+        || n === 'BAG_OF_TRICKS') {
+        return 'the bag';
+    }
+    return theArt(xname(obj));
+}
 
 /** C ref: hacklib.c upstart — capitalize first letter. */
 function upstart(str) {
@@ -451,37 +463,359 @@ async function container_contents(box) {
 }
 
 /**
- * C ref: pickup.c use_container — TRADITIONAL prompt loop subset.
- * Branch envelope: unlocked floor container; ':' look (cknown→ECMD_TIME);
- * 'q'/ESC abort. in/out/stash/both/reversed/chest-trap/BoT deferred.
+ * C ref: pickup.c out_container — remove one object from current_container
+ * into invent. Branch envelope: gold / ordinary; lift always ok. Named
+ * omissions: artifact touch; fatal corpse; split count; icebox; shop bill;
+ * pick_pick.
+ * @returns {number} -1 stop, 1 removed, 0 not removed
  */
-async function use_container(obj) {
+async function out_container(obj) {
+    if (!obj || !game._current_container) return -1;
+    const is_gold = obj.oclass === COIN_CLASS;
+    if (is_gold) obj.owt = weight(obj);
+
+    // lift_object deferred — always allow
+    obj_extract_self(obj);
+    game._current_container.owt = weight(game._current_container);
+
+    const otmp = addinv(obj);
+    await pickup_prinv(otmp, otmp.quan || 1);
+    if (is_gold) {
+        // C: bot() — gold count; botl refreshed on next flush
+        if (game.botl != null) game.botl = 1;
+    }
+    return 1;
+}
+
+/**
+ * C ref: pickup.c in_or_out_menu — NHW_MENU PICK_ONE for bag actions.
+ * Branch envelope: look/take-out/put-in/both/reversed/stash/done; lootabc
+ * deferred (use :oibrsq letters).
+ */
+async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
+    const entries = [{ text: prompt, attr: 0 }, { text: '', attr: 0 }];
+    const simple = thesimpleoname(obj); // "the bag"
+    entries.push({ text: `: - Look inside ${simple}`, attr: 0, sel: ':' });
+    if (outokay) {
+        entries.push({ text: 'o - take something out', attr: 0, sel: 'o' });
+    }
+    if (inokay) {
+        entries.push({ text: 'i - put something in', attr: 0, sel: 'i' });
+    }
+    if (outokay) {
+        entries.push({
+            text: inokay
+                ? 'b - both; take out, then put in'
+                : 'b - take out, then put in',
+            attr: 0,
+            sel: 'b',
+        });
+    }
+    if (inokay) {
+        entries.push({
+            text: outokay
+                ? 'r - both reversed; put in, then take out'
+                : 'r - put in, then take out',
+            attr: 0,
+            sel: 'r',
+        });
+        entries.push({
+            text: `s - stash one item into ${simple}`,
+            attr: 0,
+            sel: 's',
+        });
+    }
+    entries.push({ text: '', attr: 0 });
+    entries.push({
+        text: `q - ${alreadyused ? 'done' : 'do nothing'}`,
+        attr: 0,
+        sel: 'q',
+    });
+
+    const bySel = new Map();
+    for (const e of entries) {
+        if (e.sel) bySel.set(e.sel, e.sel);
+    }
+
+    for (;;) {
+        await paint_corner_nhw_menu(
+            entries.map((e) => ({ text: e.text, attr: e.attr || 0 })),
+            '(end) ',
+        );
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) return 'q';
+        const ch = String.fromCharCode(key);
+        if (bySel.has(ch)) return ch;
+    }
+}
+
+/**
+ * C ref: pickup.c menu_loot(0, FALSE) — take out via PICK_ANY object menu.
+ * Branch envelope: MENU_PARTIAL-style (no category filter); letter toggle;
+ * Return confirms; ESC cancels. put_in / FULL category / autopick deferred.
+ */
+async function menu_loot_takeout(container) {
+    const items = [];
+    for (let obj = container.cobj; obj; obj = obj.nobj) {
+        let letch = obj.invlet;
+        if (obj.oclass === COIN_CLASS) letch = '$';
+        if (typeof letch !== 'string' || letch.length !== 1) {
+            letch = obj.oclass === COIN_CLASS ? '$' : '?';
+        }
+        items.push({ obj, letch, selected: false });
+    }
+    if (!items.length) return ECMD_OK;
+
+    container.cknown = 1;
+    let n_looted = 0;
+    for (;;) {
+        const entries = [
+            { text: 'Take out what?', attr: 0 },
+            { text: '', attr: 0 },
+        ];
+        // Group coins header like C INVORDER_SORT
+        let coinHdr = false;
+        for (const it of items) {
+            if (it.obj.oclass === COIN_CLASS && !coinHdr) {
+                entries.push({ text: 'Coins', attr: 0 });
+                coinHdr = true;
+            }
+            const mark = it.selected ? '+' : '-';
+            entries.push({
+                text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                attr: 0,
+            });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) break;
+        if (key === 13 || key === 10 || key === 32) {
+            const chosen = items.filter((it) => it.selected);
+            for (const it of chosen) {
+                const res = await out_container(it.obj);
+                if (res < 0) break;
+                n_looted += res;
+            }
+            break;
+        }
+        const ch = String.fromCharCode(key);
+        const hit = items.find((it) => it.letch === ch);
+        if (hit) hit.selected = !hit.selected;
+    }
+    return n_looted ? ECMD_TIME : ECMD_OK;
+}
+
+/**
+ * C ref: pickup.c in_container — move invent obj into current_container.
+ * Envelope: held bag only; gold/ordinary; quest/mbag explosion deferred.
+ * @returns {number} 1 stashed, 0 refused, -1 stop
+ */
+async function in_container(obj) {
+    const cont = game._current_container;
+    if (!cont || !obj) return 0;
+    if (obj === cont) {
+        await pline('That would be an interesting topological exercise.');
+        return 0;
+    }
+    if (obj.owornmask) {
+        await pline('You cannot stash something you are wearing.');
+        return 0;
+    }
+
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx < 0) return 0;
+    inv.splice(idx, 1);
+
+    const is_gold = obj.oclass === COIN_CLASS;
+    if (is_gold) {
+        game._goldCount = Math.max(0, (game._goldCount || 0) - (obj.quan || 0));
+        if (game.botl != null) game.botl = 1;
+    }
+
+    await pline(`You put ${doname(obj)} into ${thesimpleoname(cont)}.`);
+    add_to_container(cont, obj);
+    cont.owt = weight(cont);
+    return 1;
+}
+
+/**
+ * C ref: pickup.c query_category subset for MENU_FULL put-in.
+ * Envelope: coins `$` toggle; Return confirms; ESC cancels. Other classes
+ * / ALL_TYPES / unpaid / BUCX deferred.
+ * @returns {Set<number>|null} selected oclasses, or null if canceled/empty
+ */
+async function query_putin_category() {
+    const selected = new Set();
+    for (;;) {
+        const mark = selected.has(COIN_CLASS) ? '+' : '-';
+        const entries = [
+            { text: 'Put in what type of objects?', attr: 0 },
+            { text: '', attr: 0 },
+            { text: `$ ${mark} Coins`, attr: 0 },
+            { text: '', attr: 0 },
+            { text: '(end) ', attr: 0 },
+        ];
+        await paint_corner_nhw_menu(entries, '');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) return null;
+        if (key === 13 || key === 10 || key === 32) {
+            return selected.size ? selected : null;
+        }
+        const ch = String.fromCharCode(key);
+        if (ch === '$') {
+            if (selected.has(COIN_CLASS)) selected.delete(COIN_CLASS);
+            else selected.add(COIN_CLASS);
+        }
+    }
+}
+
+/**
+ * C ref: pickup.c menu_loot(0, TRUE) — put in via category + PICK_ANY.
+ * Branch envelope: MENU_FULL coins category; invent letter toggle; Return
+ * confirms → in_container. Named omissions: ALL_TYPES/unpaid/BUCX;
+ * autopick 'A'; justpicked; non-coin classes; mbag explosion.
+ */
+async function menu_loot_putin(container) {
+    if (!container) return ECMD_OK;
+    const cats = await query_putin_category();
+    if (!cats) return ECMD_OK;
+
+    const items = [];
+    for (const obj of game.invent || []) {
+        if (!obj || obj === container) continue;
+        if (!cats.has(obj.oclass)) continue;
+        let letch = obj.invlet;
+        if (obj.oclass === COIN_CLASS) letch = '$';
+        if (typeof letch !== 'string' || letch.length !== 1) {
+            letch = obj.oclass === COIN_CLASS ? '$' : '?';
+        }
+        items.push({ obj, letch, selected: false });
+    }
+    if (!items.length) return ECMD_OK;
+
+    let n_looted = 0;
+    for (;;) {
+        const entries = [
+            { text: 'Put in what?', attr: 0 },
+            { text: '', attr: 0 },
+        ];
+        let coinHdr = false;
+        for (const it of items) {
+            if (it.obj.oclass === COIN_CLASS && !coinHdr) {
+                entries.push({ text: 'Coins', attr: 0 });
+                coinHdr = true;
+            }
+            const mark = it.selected ? '+' : '-';
+            entries.push({
+                text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                attr: 0,
+            });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) break;
+        if (key === 13 || key === 10 || key === 32) {
+            const chosen = items.filter((it) => it.selected);
+            for (const it of chosen) {
+                // re-check still in invent (prior put may have merged)
+                if (!(game.invent || []).includes(it.obj)) continue;
+                const res = await in_container(it.obj);
+                if (res < 0) break;
+                n_looted += res;
+            }
+            break;
+        }
+        const ch = String.fromCharCode(key);
+        const hit = items.find((it) => it.letch === ch);
+        if (hit) hit.selected = !hit.selected;
+    }
+    return n_looted ? ECMD_TIME : ECMD_OK;
+}
+
+/**
+ * C ref: pickup.c use_container — held/floor container loot.
+ * Branch envelope: unlocked; in_or_out_menu; ':' look; 'o' menu_loot take-out;
+ * 'i' menu_loot put-in; 'q' abort. Named omissions: chest trap; BoT;
+ * stash/both/reversed; traditional_loot; MENU_FULL non-coin categories;
+ * more_containers 'n'.
+ *
+ * @param {object} obj container
+ * @param {boolean} [held=false] applied from invent
+ * @param {boolean} [_more=false] multiple #loot (deferred)
+ */
+export async function use_container(obj, held = false, _more = false) {
     if (!obj) return ECMD_OK;
-    const { yn_function } = await import('./getline.js');
-    const { xname, the: theArt } = await import('./objnam.js');
 
     obj.lknown = 1;
     if (obj.olocked) {
         await pline(`${theArt(xname(obj))} is locked.`);
         return ECMD_OK;
     }
-    // otrapped / BAG_OF_TRICKS deferred
 
+    game._current_container = obj;
     let used = ECMD_OK;
-    const qbuf = `Do what with ${theArt(xname(obj))}?`;
-    // C: pbuf ":oibrs q" (+ "n" when more containers); ESC→q
-    const resp = ':oibrs q';
+    const inokay = (game.invent || []).some((o) => o && o !== obj);
+    const outokay = !!obj.cobj;
+
+    let c = 'q';
     for (;;) {
-        const c = await yn_function(qbuf, resp, 'q');
+        const qbuf = outokay
+            ? `Do what with ${theArt(xname(obj))}?`
+            : `${theArt(xname(obj))} is empty.  Do what with it?`;
+        c = await in_or_out_menu(
+            qbuf, obj, outokay || !obj.cknown, inokay, used !== ECMD_OK,
+        );
         if (c === ':') {
             if (!obj.cknown) used = ECMD_TIME;
             await container_contents(obj);
             continue;
         }
-        if (c === 'q' || c === 'n') break;
-        // o/i/b/r/s: named omission — abort without further RNG
         break;
     }
+
+    if (c === 'q' || c === 'n') {
+        game._current_container = null;
+        return used;
+    }
+
+    const loot_out = (c === 'o' || c === 'b');
+    if (loot_out) {
+        if (!Has_contents(obj)) {
+            await pline(`${theArt(xname(obj))} is empty.`);
+            if (!obj.cknown) used = ECMD_TIME;
+            obj.cknown = 1;
+        } else {
+            used |= await menu_loot_takeout(obj);
+        }
+    }
+    // 'i' put-in; 'b' take-out then put-in. 'r' reversed / stash deferred.
+    if (c === 'i' || c === 'b') {
+        used |= await menu_loot_putin(obj);
+    }
+
+    game._current_container = null;
+    void held;
     return used;
 }
 

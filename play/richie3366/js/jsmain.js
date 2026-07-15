@@ -147,6 +147,7 @@ export class NethackGame {
             // C you.h room occupancy (hack.c move_update)
             urooms: '', urooms0: '', uentered: '',
             ushops: '', ushops0: '', ushops_entered: '', ushops_left: '',
+            uinvault: 0,
         };
         g.context = { move: 0 };
         g.program_state = {};

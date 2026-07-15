@@ -427,6 +427,55 @@ export function invent_lines() {
 }
 
 /**
+ * C ref: invent.c display_pickinv(lets, …, want_reply=TRUE) subset for getobj `?`/`*`.
+ * Shows invent filtered to `lets` (or all when lets null/'*'), PICK_ONE by
+ * invlet; ESC cancels; Space/Return with no pick → null (getobj re-prompts).
+ * Named omissions: hands/xtra_choice; count; sortloot inuse_only; wizid.
+ * @returns {string|null} selected invlet, or null if cancelled / no pick
+ */
+export async function display_pickinv_reply(lets) {
+    const allowAll = !lets || lets === '*';
+    const allow = allowAll ? null : new Set([...lets]);
+    const inv = game.invent || [];
+    const entries = [];
+    const byLet = new Map();
+    for (const oclass of DEF_INV_ORDER) {
+        const items = inv.filter((o) => {
+            if (o.oclass !== oclass) return false;
+            if (!allow) return true;
+            return allow.has(o.invlet);
+        });
+        if (!items.length) continue;
+        entries.push({ text: CLASS_NAMES[oclass] || 'Items', attr: ATR_INVERSE });
+        for (const otmp of items) {
+            if (!game.u?.Blind) observe_object(otmp);
+            const letch = otmp.invlet || '?';
+            byLet.set(letch, otmp);
+            entries.push({ text: xprname(otmp), attr: 0 });
+        }
+    }
+    if (!byLet.size) {
+        await pline('Not carrying anything appropriate.');
+        return null;
+    }
+
+    for (;;) {
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) return '\x1b';
+        if (key === 13 || key === 10 || key === 32) return null;
+        const ch = String.fromCharCode(key);
+        if (byLet.has(ch)) return ch;
+        // invalid → re-prompt
+    }
+}
+
+/**
  * C ref: invent.c display_inventory(NULL, FALSE) / display_pickinv PICK_NONE.
  * C ref: wintty.c tty_display_nhwindow(NHW_MENU) corner vs fullscreen.
  * Shows invent and waits for a dismiss key.
