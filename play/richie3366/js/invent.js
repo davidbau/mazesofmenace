@@ -61,6 +61,7 @@ import {
     W_ARMOR, W_TOOL, W_SADDLE,
     NEW_MOON,
     FULL_MOON,
+    Upolyd,
 } from './const.js';
 import { align_str, align_gname, u_gname } from './roles.js';
 import {
@@ -754,7 +755,307 @@ function magic_negation_you() {
 }
 
 /**
+ * C ref: insight.c enlght_line — " %s%s%s%s." + not-contractions.
+ */
+function enlght_line_txt(start, middle, end, ps = '') {
+    let buf = ` ${start}${middle}${end}${ps}.`;
+    const contra = [
+        [' are not ', " aren't "],
+        [' were not ', " weren't "],
+        [' have not ', " haven't "],
+        [' had not ', " hadn't "],
+        [' can not ', " can't "],
+        [' could not ', " couldn't "],
+    ];
+    if (buf.includes(' not ')) {
+        for (const [from, to] of contra) {
+            if (buf.includes(from)) buf = buf.split(from).join(to);
+        }
+    }
+    return buf;
+}
+
+/**
+ * C ref: insight.c enlightenment — BASIC|MAGIC; final → putstr NHW_MENU
+ * (--More-- pages), not ^X menu "(k of n)".
+ * Named omissions: poly/vamp; night/midnight; SCORE_ON_BOTL; most
+ * status troubles; resistances/vision beyond Searching/Infravision;
+ * from_what suffixes; wizard alignment number.
+ * @param {number} mode BASICENLIGHTENMENT | MAGICENLIGHTENMENT
+ * @param {number} final ENL_GAMEINPROGRESS / GAMEOVERALIVE / GAMEOVERDEAD
+ */
+export async function enlightenment(mode, final = 0) {
+    if (!final) {
+        await doattributes();
+        return;
+    }
+    const { show_nhw_menu_text } = await import('./pager.js');
+    const { newuexp } = await import('./exper.js');
+    const { Searching } = await import('./attrib.js');
+    const { piousness } = await import('./insight.js');
+    const {
+        BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERDEAD,
+    } = await import('./const.js');
+
+    const u = game.u || {};
+    let name = game.plname || 'Hero';
+    if (name.length && name.charCodeAt(0) >= 97 && name.charCodeAt(0) <= 122) {
+        name = String.fromCharCode(name.charCodeAt(0) - 32) + name.slice(1);
+    }
+    const female = !!(game.flags?.female);
+    const hasFemaleName = !!game.urole?.name?.f;
+    const role = (female && game.urole?.name?.f)
+        ? game.urole.name.f
+        : (game.urole?.name?.m || 'Adventurer');
+    const rank = (female && game.urole?.rank?.f)
+        ? game.urole.rank.f
+        : (game.urole?.rank?.m || 'Adventurer');
+    const gender = female ? 'female' : 'male';
+    const raceAdj = game.urace?.adj || game.urace?.name || 'human';
+    const atype = u.ualign?.type ?? A_NEUTRAL;
+    const align = align_str(atype);
+    const turns = game.moves || 1;
+    const hand = (u.uhandedness === 1) ? 'left' : 'right';
+    const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
+    const innategend = female ? 1 : 0;
+    const initgend = game.flags?.initgend ? 1 : 0;
+    const genderPart = (!hasFemaleName
+        && (allowGend === (ROLE_MALE | ROLE_FEMALE) || innategend !== initgend))
+        ? `${gender} `
+        : '';
+
+    const are = 'are ';
+    const were = 'were ';
+    const have = 'have ';
+    const had = 'had ';
+    const You_ = 'You ';
+    const you_are = (attr) => enlght_line_txt(You_, final ? were : are, attr, '');
+    const you_have = (attr) => enlght_line_txt(You_, final ? had : have, attr, '');
+
+    const lines = [];
+    lines.push(`${name} the ${role}'s attributes:`);
+    lines.push('');
+
+    if (mode & BASICENLIGHTENMENT) {
+        lines.push('Background:');
+        lines.push(you_are(
+            `${an(rank)}, a level ${u.ulevel || 1} ${genderPart}${raceAdj} ${role}`,
+        ));
+        // mission line has no period; pantheon continuation finishes it
+        lines.push(
+            ` ${You_}${final ? were : are}${align}, on a mission for ${u_gname(game.urole, atype)}`,
+        );
+        let opposed = ` who ${final ? 'was' : 'is'} opposed by`;
+        if (atype !== A_LAWFUL) {
+            opposed += ` ${align_gname(game.urole, A_LAWFUL)} (${align_str(A_LAWFUL)}) and`;
+        }
+        if (atype !== A_NEUTRAL) {
+            opposed += ` ${align_gname(game.urole, A_NEUTRAL)} (${align_str(A_NEUTRAL)})`;
+            if (atype !== A_CHAOTIC) opposed += ' and';
+        }
+        if (atype !== A_CHAOTIC) {
+            opposed += ` ${align_gname(game.urole, A_CHAOTIC)} (${align_str(A_CHAOTIC)})`;
+        }
+        opposed += '.';
+        lines.push(opposed);
+        lines.push(you_are(`${hand}-handed`));
+
+        let dgnbuf = game.dungeons?.[u.uz?.dnum | 0]?.dname || 'The Dungeons of Doom';
+        if (/^The /i.test(dgnbuf)) {
+            dgnbuf = dgnbuf.charAt(0).toLowerCase() + dgnbuf.slice(1);
+        }
+        const dlev = depth(u.uz || { dnum: 0, dlevel: 1 });
+        lines.push(you_are(`in ${dgnbuf}, on level ${dlev}`));
+        lines.push(enlght_line_txt(You_, 'entered ', `the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago`, ''));
+
+        const uexp = u.uexp | 0;
+        const ulvl = u.ulevel | 0;
+        let xpbuf = `${uexp} experience point${uexp === 1 ? '' : 's'}`;
+        if (ulvl < 30) {
+            const nxtlvl = newuexp(ulvl);
+            const delta = nxtlvl - uexp;
+            xpbuf += `, ${delta} ${uexp > 0 ? 'more ' : ''}`;
+            if (final) xpbuf += (delta === 1) ? 'was ' : 'were ';
+            xpbuf += `${ulvl < 18 ? 'needed to attain' : 'needed for'} level ${ulvl + 1}`;
+        }
+        lines.push(you_have(xpbuf));
+
+        lines.push('');
+        lines.push('Basics:');
+        let hp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
+        const hpmax = Upolyd(u) ? (u.mhmax | 0) : (u.uhpmax | 0);
+        if (hp < 0) hp = 0;
+        let hpLine;
+        if (hp === hpmax && hpmax > 1) hpLine = `all ${hpmax} hit points`;
+        else hpLine = `${hp} out of ${hpmax} hit point${hpmax === 1 ? '' : 's'}`;
+        lines.push(you_have(hpLine));
+        const pw = u.uen | 0;
+        const pwmax = u.uenmax | 0;
+        const Power = 'energy points (spell power)';
+        let pwLine;
+        if (pwmax === 0 || (pw === pwmax && pwmax === 2)) {
+            pwLine = `${!pwmax ? 'no' : 'both'} ${Power}`;
+        } else if (pw === pwmax && pwmax > 2) {
+            pwLine = `all ${pwmax} ${Power}`;
+        } else {
+            pwLine = `${pw} out of ${pwmax} ${Power}`;
+        }
+        lines.push(you_have(pwLine));
+        lines.push(enlght_line_txt(
+            'Your armor class ',
+            final ? 'was ' : 'is ',
+            String(u.uac ?? 10),
+            '',
+        ));
+        const umoney = money_cnt_local();
+        if (!umoney) {
+            lines.push(` Your wallet ${final ? 'was' : 'is'} empty.`);
+        } else {
+            lines.push(
+                ` Your wallet contain${final ? 'ed' : 's'} ${umoney} zorkmid${umoney === 1 ? '' : 's'}.`,
+            );
+        }
+        lines.push(autopickup_enlightenment_line_final(!!final));
+
+        lines.push('');
+        lines.push(`${final ? 'Final ' : ''}Characteristics:`);
+        for (const a of [A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA]) {
+            lines.push(one_characteristic_line_final(a, !!final));
+        }
+    }
+
+    // Status (BASIC + MAGIC both include this in C)
+    lines.push('');
+    lines.push(final ? 'Final Status:' : 'Status:');
+    lines.push(you_are('not hungry')); // hunger stub; detailed hunger deferred
+    lines.push(you_are('unencumbered'));
+    const uwep = u.uwep || game.u?.uwep;
+    if (!uwep) {
+        lines.push(you_are(empty_handed()));
+    } else {
+        lines.push(you_are(`wielding ${pretty_weapon_descr(uwep)}`));
+    }
+    const wtype = weapon_type(uwep);
+    if (wtype !== P_NONE) {
+        const sklvl = insight_P_SKILL(wtype);
+        let sklvlbuf;
+        if (sklvl === P_ISRESTRICTED) sklvlbuf = 'no';
+        else sklvlbuf = insight_skill_level_name(wtype).toLowerCase();
+        const hav = sklvl !== P_UNSKILLED && sklvl !== P_SKILLED;
+        const buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
+        if (hav) lines.push(you_have(buf));
+        else lines.push(you_are(buf));
+    }
+    if (!wearing_armor()) {
+        lines.push(you_are('not wearing any armor'));
+    }
+
+    if (mode & MAGICENLIGHTENMENT) {
+        lines.push('');
+        lines.push(final ? 'Final Attributes:' : 'Attributes:');
+        const pio = piousness(true, 'aligned');
+        const record = u.ualign?.record | 0;
+        if (record >= 0) lines.push(you_are(pio));
+        else lines.push(you_have(pio));
+        if (Searching()) lines.push(you_have('automatic searching'));
+        if (u.HInfravision || u.EInfravision) {
+            lines.push(you_have('infravision'));
+        }
+        // C attributes_enlightenment mortality: past-slot holds "are dead"
+        if (final === ENL_GAMEOVERDEAD) {
+            lines.push(enlght_line_txt(You_, 'are dead', '', ''));
+        }
+    }
+
+    lines.push('');
+    lines.push('Miscellaneous:');
+    if ((mode & BASICENLIGHTENMENT) && final) {
+        const bonesOn = game.flags?.bones !== false;
+        if (!bonesOn) {
+            lines.push(you_have(
+                `disabled loading${final === ENL_GAMEOVERDEAD ? ' and storing' : ''} of bones levels`,
+            ));
+        } else if (!(u.uroleplay?.numbones | 0)) {
+            lines.push(enlght_line_txt(
+                You_,
+                final ? "didn't encounter" : "haven't encountered",
+                ' any bones levels',
+                '',
+            ));
+        }
+    }
+    lines.push(enlght_line_txt(
+        'Total elapsed playing time ',
+        final ? 'was' : 'is',
+        ' none',
+        '',
+    ));
+
+    await show_nhw_menu_text(lines);
+}
+
+/** Local money_cnt — invent gold sum (end.js has its own). */
+function money_cnt_local() {
+    let sum = 0;
+    for (const o of game.invent || []) {
+        if (o.oclass === COIN_CLASS) sum += o.quan | 0;
+    }
+    return sum;
+}
+
+function autopickup_enlightenment_line_final(final) {
+    const flags = game.flags || {};
+    let buf;
+    if (flags.pickup) {
+        const ocl = String(flags.pickup_types || '');
+        buf = 'on';
+        buf += ` for ${ocl ? `'${ocl}'` : 'all types'}`;
+        if ((flags.pickup_thrown !== false) && ocl) buf += ' plus thrown';
+    } else {
+        buf = 'off';
+    }
+    return enlght_line_txt('Autopickup ', final ? 'was ' : 'is ', buf, '');
+}
+
+function one_characteristic_line_final(attrindx, final) {
+    const u = game.u || {};
+    const acurrent = acurr(attrindx);
+    let valubuf = attrval(attrindx, acurrent);
+    const abase = u.acurr?.a?.[attrindx] ?? acurrent;
+    const apeak = u.amax?.a?.[attrindx] ?? abase;
+    const alimit = game.urace?.attrmax?.[attrindx]
+        ?? (attrindx === A_STR ? STR18_100 : 18);
+    // C: final → always show limit; in-progress → only if ≠ human default
+    const interesting_alimit = final
+        ? true
+        : (alimit !== (attrindx !== A_STR ? 18 : STR18_100));
+    let paren_pfx = final ? ' (' : ' (current; ';
+    if (acurrent !== abase) {
+        valubuf += `${paren_pfx}base:${attrval(attrindx, abase)}`;
+        paren_pfx = ', ';
+    }
+    if (abase !== apeak) {
+        valubuf += `${paren_pfx}peak:${attrval(attrindx, apeak)}`;
+        paren_pfx = ', ';
+    }
+    if (interesting_alimit) {
+        const innate = acurrent > alimit ? 'innate ' : '';
+        valubuf += `${paren_pfx}${innate}limit:${attrval(attrindx, alimit)}`;
+    }
+    if (acurrent !== abase || abase !== apeak || interesting_alimit) {
+        valubuf += ')';
+    }
+    return enlght_line_txt(
+        `Your ${ATTR_NAMES[attrindx]} `,
+        final ? 'was ' : 'is ',
+        valubuf,
+        '',
+    );
+}
+
+/**
  * C ref: insight.c enlightenment(BASICENLIGHTENMENT) — pantheon/wallet from C.
+ * ^X path (ENL_GAMEINPROGRESS); gameover uses enlightenment(..., final).
  */
 export async function doattributes() {
     const u = game.u || {};

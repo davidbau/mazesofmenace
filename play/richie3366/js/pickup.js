@@ -6,11 +6,11 @@ import { game } from './gstate.js';
 import {
     objects_at, obj_extract_self, splitobj,
 } from './mkobj.js';
-import { look_here, observe_object, dfeature_at } from './invent.js';
+import { look_here, observe_object, dfeature_at, paint_corner_nhw_menu } from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava } from './hack.js';
-import { flush_screen, pline, newsym } from './display.js';
+import { flush_screen, pline, newsym, docrt } from './display.js';
 import { addinv } from './u_init.js';
-import { xprname, an } from './objnam.js';
+import { xprname, an, doname } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, OBJ_FLOOR, is_pit,
@@ -19,6 +19,7 @@ import {
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
+import { nhgetch } from './input.js';
 
 /** C ref: hacklib.c upstart — capitalize first letter. */
 function upstart(str) {
@@ -176,12 +177,60 @@ export async function pickup_object(obj, count, telekinesis) {
 }
 
 /**
+ * C ref: invent.c query_objlist + select_menu(PICK_ANY) — floor pickup menu.
+ * Letter toggles selection; Return/Enter confirms; ESC cancels.
+ * Invlet used when a–z/A–Z; else sequential a,b,… Deferred: FEEL_COCKATRICE,
+ * INVORDER_SORT, count-N, BY_NEXTHERE filters, traditional query_classes.
+ */
+async function query_objlist_pickup(objList) {
+    const items = [];
+    let nextLet = 'a'.charCodeAt(0);
+    for (const obj of objList) {
+        let letch = obj.invlet;
+        if (typeof letch === 'number') letch = String.fromCharCode(letch);
+        if (typeof letch !== 'string' || letch.length !== 1
+            || !/[a-zA-Z]/.test(letch)) {
+            letch = String.fromCharCode(nextLet++);
+            if (nextLet > 'z'.charCodeAt(0)) nextLet = 'A'.charCodeAt(0);
+        }
+        items.push({ obj, letch, selected: false });
+    }
+
+    for (;;) {
+        const entries = [{ text: 'Pick up what?', attr: 0 }, { text: '', attr: 0 }];
+        for (const it of items) {
+            const mark = it.selected ? '+' : '-';
+            entries.push({
+                text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                attr: 0,
+            });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) return [];
+        if (key === 13 || key === 10 || key === 32) {
+            return items.filter((it) => it.selected).map((it) => it.obj);
+        }
+        const ch = String.fromCharCode(key);
+        const hit = items.find((it) => it.letch === ch);
+        if (hit) hit.selected = !hit.selected;
+        // invalid → re-prompt
+    }
+}
+
+/**
  * C ref: pickup.c pickup(what).
  * Ported envelope: autopickup && (nopick / !OBJ_AT / pool / lava) →
  * describe_decor + read_engr_at; autopickup && !flags.pickup →
- * check_here(FALSE); manual `,` AUTOSELECT_SINGLE one object.
- * Deferred: unconscious skip, notake, autopick()/query_objlist multi,
- * traditional yn/query_classes, hideunder, newsym_force, full is_pool.
+ * check_here(FALSE); manual `,` AUTOSELECT_SINGLE one object;
+ * multi → query_objlist PICK_ANY (D-0365).
+ * Deferred: unconscious skip, notake, autopick() filter, traditional
+ * yn/query_classes, hideunder, newsym_force, full is_pool.
  */
 export async function pickup(what) {
     const autopickup = what > 0;
@@ -221,17 +270,17 @@ export async function pickup(what) {
         return 0;
     }
 
-    let ct = 0;
-    let first = null;
+    const objList = [];
     for (let obj = objects_at(u.ux, u.uy); obj; obj = obj.nexthere) {
-        ct++;
-        if (!first) first = obj;
+        objList.push(obj);
     }
+    const ct = objList.length;
     if (ct === 0) return 0;
 
     // C: menu_style != TRADITIONAL → query_objlist + AUTOSELECT_SINGLE
     // One eligible object: auto-select without menu (no extra keys).
     if (ct === 1) {
+        const first = objList[0];
         const lcount = count > 0
             ? Math.min(first.quan || 1, count)
             : 0;
@@ -239,9 +288,22 @@ export async function pickup(what) {
         return res > 0 ? 1 : 0; // n_tried > 0
     }
 
-    // Multi-object query_objlist / traditional path deferred
-    await pline('There are several objects here.');
-    return 0;
+    // C: query_objlist("Pick up what?", …, PICK_ANY) then pickup_object each
+    // Traditional query_classes path deferred (default menu ≠ TRADITIONAL).
+    const pickList = await query_objlist_pickup(objList);
+    if (!pickList.length) return 0;
+    let nTried = 0;
+    for (const obj of pickList) {
+        // Object may already be gone if prior pick extracted a stack sibling
+        if (!obj || obj.where !== OBJ_FLOOR) continue;
+        const lcount = count > 0
+            ? Math.min(obj.quan || 1, count)
+            : 0;
+        const res = await pickup_object(obj, lcount, false);
+        if (res < 0) break;
+        nTried += res;
+    }
+    return nTried > 0 ? 1 : 0;
 }
 
 /**
@@ -336,4 +398,82 @@ export async function spoteffects(pick) {
     if (pick && !pit) await pickup(1);
     if (trap) await dotrap(trap, NO_TRAP_FLAGS);
     if (pick && pit) await pickup(1);
+}
+
+/**
+ * C ref: end.c container_contents — NHW_MENU "Contents of %s:" + doname lines;
+ * display_nhwindow(TRUE) wait. Nested containers / Schroedinger / empty pline
+ * deferred beyond reportempty=false callers.
+ */
+async function container_contents(box) {
+    if (!box) return;
+    box.cknown = 1;
+    const { doname, xname, the: theArt } = await import('./objnam.js');
+    const { show_nhw_menu_text } = await import('./pager.js');
+    const lines = [`Contents of ${theArt(xname(box))}:`, ''];
+    if (box.cobj) {
+        for (let obj = box.cobj; obj; obj = obj.nobj) {
+            lines.push(`  ${doname(obj)}`);
+        }
+    }
+    await show_nhw_menu_text(lines);
+}
+
+/**
+ * C ref: pickup.c use_container — TRADITIONAL prompt loop subset.
+ * Branch envelope: unlocked floor container; ':' look (cknown→ECMD_TIME);
+ * 'q'/ESC abort. in/out/stash/both/reversed/chest-trap/BoT deferred.
+ */
+async function use_container(obj) {
+    if (!obj) return ECMD_OK;
+    const { yn_function } = await import('./getline.js');
+    const { xname, the: theArt } = await import('./objnam.js');
+
+    obj.lknown = 1;
+    if (obj.olocked) {
+        await pline(`${theArt(xname(obj))} is locked.`);
+        return ECMD_OK;
+    }
+    // otrapped / BAG_OF_TRICKS deferred
+
+    let used = ECMD_OK;
+    const qbuf = `Do what with ${theArt(xname(obj))}?`;
+    // C: pbuf ":oibrs q" (+ "n" when more containers); ESC→q
+    const resp = ':oibrs q';
+    for (;;) {
+        const c = await yn_function(qbuf, resp, 'q');
+        if (c === ':') {
+            if (!obj.cknown) used = ECMD_TIME;
+            await container_contents(obj);
+            continue;
+        }
+        if (c === 'q' || c === 'n') break;
+        // o/i/b/r/s: named omission — abort without further RNG
+        break;
+    }
+    return used;
+}
+
+/**
+ * C ref: pickup.c doloot / doloot_core — loot container underfoot.
+ * Branch envelope: single unlocked floor container → use_container.
+ * Named omissions: capacity/nohands/Confusion reverse_loot; multi-cont
+ * menu; directional lootmon/get_adjacent_loc; grave; saddle; cockatrice.
+ */
+export async function doloot() {
+    const u = game.u;
+    if (!u) return ECMD_OK;
+
+    const { Is_container } = await import('./const.js');
+    let cobj = null;
+    for (let o = objects_at(u.ux, u.uy); o; o = o.nexthere) {
+        if (Is_container(o)) {
+            cobj = o;
+            break;
+        }
+    }
+    if (!cobj) return ECMD_OK;
+
+    // C: do_loot_cont → use_container for unlocked non-BoT
+    return use_container(cobj);
 }

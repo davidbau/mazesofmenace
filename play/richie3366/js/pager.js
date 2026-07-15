@@ -273,6 +273,8 @@ export async function show_nhw_menu_text(lines) {
 
     if (offx === 0) {
         // Fullscreen NHW_MENU / tall entry — clear then paint col-0 text.
+        // C process_text_window + dmore(NHW_MENU): --More-- at col 1
+        // (leading blank), cursor at 1+strlen (tty_curs offx+1 then +offset).
         disp.clearScreen();
         const pageRows = rows - 1;
         let offset = 0;
@@ -287,9 +289,10 @@ export async function show_nhw_menu_text(lines) {
             }
             const last = offset + pageRows >= lines.length;
             const fr = Math.min(rows - 1, Math.max(chunk.length, 1));
-            for (let i = 0; i < morestr.length && i < cols; i++)
-                disp.setCell(i, fr, morestr[i], NO_COLOR, 0);
-            disp.setCursor(morestr.length, fr);
+            disp.setCell(0, fr, ' ', NO_COLOR, 0);
+            for (let i = 0; i < morestr.length && 1 + i < cols; i++)
+                disp.setCell(1 + i, fr, morestr[i], NO_COLOR, 0);
+            disp.setCursor(1 + morestr.length, fr);
             const cancelled = await text_page_wait();
             if (cancelled) break;
             offset += pageRows;

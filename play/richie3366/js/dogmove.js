@@ -23,10 +23,10 @@ import {
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, ALLOW_MDISP,
     MAGIC_PORTAL,
 } from './const.js';
-import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, objectNames } from './objects.js';
+import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
-    PM_LICHEN,
+    PM_LICHEN, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam } from './do_name.js';
@@ -227,20 +227,82 @@ function cursed_object_at(x, y) {
     return false;
 }
 
+// C objects.h FOOD nutrition — extractor omits oc_nutrition (same map as eat.js).
+const FOOD_NUTRITION = {
+    FORTUNE_COOKIE: 40,
+    APPLE: 50,
+    PEAR: 50,
+    ORANGE: 80,
+    MELON: 100,
+    BANANA: 80,
+    CARROT: 50,
+    FOOD_RATION: 800,
+    TRIPE_RATION: 200,
+    LEMBAS_WAFER: 800,
+    CRAM_RATION: 600,
+    K_RATION: 400,
+    C_RATION: 300,
+    EGG: 80,
+    CLOVE_OF_GARLIC: 40,
+    SPRIG_OF_WOLFSBANE: 40,
+    EUCALYPTUS_LEAF: 1,
+    CANDY_BAR: 100,
+    CREAM_PIE: 100,
+    PANCAKE: 200,
+    SLIME_MOLD: 250,
+    LUMP_OF_ROYAL_JELLY: 200,
+    MEATBALL: 5,
+    MEAT_STICK: 5,
+    MEAT_RING: 5,
+    ENORMOUS_MEATBALL: 5,
+};
+
+function food_oc_nutrition(otyp) {
+    const oc = game.objects?.[otyp];
+    if (oc?.oc_nutrition != null) return oc.oc_nutrition | 0;
+    const name = objectNames[otyp];
+    return FOOD_NUTRITION[name] ?? 0;
+}
+
 // C ref: dogmove.c dog_nutrition — meating/hungrytime; corpse uses cwt/cnutrit.
-// Full FOOD_CLASS oc_delay/oc_nutrition table still deferred.
 function dog_nutrition(mtmp, obj) {
-    if ((obj.oclass ?? 0) === FOOD_CLASS) {
-        if ((obj.otyp ?? -1) === CORPSE) {
+    const oclass = obj.oclass ?? 0;
+    const otyp = obj.otyp ?? -1;
+    const oc = game.objects?.[otyp];
+
+    if (oclass === FOOD_CLASS) {
+        let nutrit;
+        if (otyp === CORPSE) {
             const cwt = obj.cwt ?? mons_cwt(obj.corpsenm);
             mtmp.meating = 3 + (cwt >> 6);
-            return obj.cnutrit ?? mons_cnutrit(obj.corpsenm);
+            nutrit = obj.cnutrit ?? mons_cnutrit(obj.corpsenm);
+        } else {
+            // C: objects[obj->otyp].oc_delay / oc_nutrition — table, not instance
+            mtmp.meating = oc?.oc_delay ?? 1;
+            nutrit = food_oc_nutrition(otyp);
         }
-        mtmp.meating = obj.oc_delay ?? 1;
-        return obj.oc_nutrition ?? 0;
+        // C: pet gets more nutrition by msize (little dog MZ_SMALL → ×6)
+        const msize = mtmp.data?.msize ?? MZ_MEDIUM;
+        if (msize === MZ_TINY) nutrit *= 8;
+        else if (msize === MZ_SMALL) nutrit *= 6;
+        else if (msize === MZ_LARGE) nutrit *= 4;
+        else if (msize === MZ_HUGE) nutrit *= 3;
+        else if (msize > MZ_HUGE) nutrit *= 2; // MZ_GIGANTIC
+        else nutrit *= 5; // MZ_MEDIUM default
+        // oeaten/eaten_stat deferred
+        return nutrit;
     }
-    mtmp.meating = Math.max(1, Math.trunc((obj.owt || 1) / 2) + 1);
-    return Math.max(1, Math.trunc((obj.owt || 1) / 20) + 1);
+    if (oclass === COIN_CLASS) {
+        mtmp.meating = Math.trunc((obj.quan || 0) / 2000) + 1;
+        if (mtmp.meating < 1) mtmp.meating = 1;
+        let nutrit = Math.trunc((obj.quan || 0) / 20);
+        if (nutrit < 0) nutrit = 0;
+        return nutrit;
+    }
+    // C: unusual non-food — meating = owt/20+1 (not /2)
+    mtmp.meating = Math.trunc((obj.owt || 0) / 20) + 1;
+    if (mtmp.meating < 1) mtmp.meating = 1;
+    return 5 * food_oc_nutrition(otyp);
 }
 
 function mons_cwt(corpsenm) {

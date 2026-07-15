@@ -35,7 +35,7 @@ import { PM_SAMURAI } from './generated/monsters_data.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
-    OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT,
+    OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
 } from './const.js';
@@ -109,8 +109,30 @@ function otypName(otyp) {
     return objectNames[otyp] || '';
 }
 
+/** C ref: obj.h Is_container — LARGE_BOX..BAG_OF_TRICKS inclusive. */
+function Is_container(obj) {
+    if (!obj) return false;
+    const n = otypName(obj.otyp);
+    return n === 'LARGE_BOX' || n === 'CHEST' || n === 'ICE_BOX'
+        || n === 'SACK' || n === 'OILSKIN_SACK' || n === 'BAG_OF_HOLDING'
+        || n === 'BAG_OF_TRICKS';
+}
+
 /**
- * C ref: mkobj.c weight() — subset for carried loot (no BoH / corpse cwt).
+ * C ref: mkobj.c add_to_container — prepend; merge deferred.
+ */
+function add_to_container(container, obj) {
+    if (!container || !obj) return null;
+    if (obj.where && obj.where !== OBJ_FREE) obj_extract_self(obj);
+    obj.where = OBJ_CONTAINED;
+    obj.ocontainer = container;
+    obj.nobj = container.cobj || null;
+    container.cobj = obj;
+    return obj;
+}
+
+/**
+ * C ref: mkobj.c weight() — subset; containers sum cobj; BoH factor deferred.
  */
 export function weight(obj) {
     if (!obj) return 0;
@@ -118,6 +140,14 @@ export function weight(obj) {
     let wt = objects[obj.otyp]?.oc_weight ?? 0;
     const quan = obj.quan || 1;
     if (quan < 1) return 0;
+    // C: Is_container || STATUE — contents weight (BoH cursed/blessed factor deferred)
+    if (Is_container(obj) || obj.otyp === STATUE) {
+        let cwt = 0;
+        for (let contents = obj.cobj; contents; contents = contents.nobj) {
+            cwt += weight(contents);
+        }
+        return wt + cwt;
+    }
     if (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE) {
         wt = Math.trunc((quan + 50) / 100);
         return Math.max(wt, 1);
@@ -336,10 +366,12 @@ export function rnd_class(first, last) {
 const SPBOOK_no_NOVEL = 0 - SPBOOK_CLASS;
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 
-// C ref: mkobj.c mkbox_cnts
+// C ref: mkobj.c mkbox_cnts — ICE_BOX → mksobj(CORPSE); else boxiprobs.
+// Deferred: BAG_OF_HOLDING Is_mbag→SACK / WAN_CANCELLATION re-roll.
 function mkbox_cnts(box) {
     let n;
     const name = otypName(box.otyp);
+    box.cobj = null;
     switch (name) {
     case 'ICE_BOX':
         n = 20;
@@ -368,21 +400,34 @@ function mkbox_cnts(box) {
     const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
     const LOADSTONE = objectNames.indexOf('LOADSTONE');
     for (n = rn2(n + 1); n > 0; n--) {
-        let tprob = rnd(100);
-        let ip = 0;
-        for (; (tprob -= BOX_PROBS[ip].iprob) > 0; ip++) /* advance */;
-        const otmp = mkobj(BOX_PROBS[ip].iclass, false);
-        if (!otmp) continue;
-        if (otmp.oclass === COIN_CLASS) {
-            otmp.quan = rnd(level_difficulty() + 2) * rnd(75);
+        let otmp;
+        if (name === 'ICE_BOX') {
+            // C: mksobj(CORPSE, TRUE, FALSE); age=0; stop rot/revive timers
+            otmp = mksobj(CORPSE, true, false);
+            if (!otmp) continue;
+            otmp.age = 0;
+            if (otmp.timed) obj_stop_timers(otmp);
         } else {
-            while (otypName(otmp.otyp) === 'ROCK') {
-                otmp.otyp = rnd_class(DILITHIUM_CRYSTAL, LOADSTONE);
-                if ((otmp.quan || 1) > 2) otmp.quan = 1;
+            let tprob = rnd(100);
+            let ip = 0;
+            for (; (tprob -= BOX_PROBS[ip].iprob) > 0; ip++) /* advance */;
+            otmp = mkobj(BOX_PROBS[ip].iclass, false);
+            if (!otmp) continue;
+            if (otmp.oclass === COIN_CLASS) {
+                otmp.quan = rnd(level_difficulty() + 2) * rnd(75);
+                otmp.owt = weight(otmp);
+            } else {
+                while (otypName(otmp.otyp) === 'ROCK') {
+                    otmp.otyp = rnd_class(DILITHIUM_CRYSTAL, LOADSTONE);
+                    if ((otmp.quan || 1) > 2) otmp.quan = 1;
+                    otmp.owt = weight(otmp);
+                }
             }
+            // BAG_OF_HOLDING nested-bag / cancellation wand rewrite deferred
         }
-        // contents discarded for stub; RNG already consumed
+        add_to_container(box, otmp);
     }
+    // caller (mksobj) updates box.owt via weight()
 }
 
 // C ref: mondata.h is_rider

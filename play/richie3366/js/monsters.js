@@ -105,6 +105,7 @@ export const M1_WALLWALK = 0x00000008;
 export const M1_CLING = 0x00000010; /* monflag.h — cling to ceiling */
 export const M1_TUNNEL = 0x00000020; /* monflag.h — can tunnel through rock */
 export const M1_NEEDPICK = 0x00000040; /* monflag.h — needs pick to tunnel */
+export const M1_CONCEAL = 0x00000080; /* monflag.h — hides under objects */
 export const M1_HIDE = 0x00000100; /* monflag.h — mimics, blends with ceiling */
 export const M1_BREATHLESS = 0x00000400; /* monflag.h — doesn't need to breathe */
 export const M1_NOTAKE = 0x00000800; /* monflag.h — cannot pick up objects */
@@ -190,6 +191,11 @@ export function nohands(ptr) {
 /** C ref: mondata.h is_hider — M1_HIDE (mimics appear as something else). */
 export function is_hider(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_HIDE);
+}
+
+/** C ref: mondata.h hides_under — M1_CONCEAL (needs an object to hide under). */
+export function hides_under(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_CONCEAL);
 }
 
 /** C ref: mondata.h humanoid — M1_HUMANOID */

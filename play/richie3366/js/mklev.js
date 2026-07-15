@@ -448,6 +448,9 @@ export function l_nhcore_init() {
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
+    // C: init_mapseen before getbones
+    const { init_mapseen } = await import('./dungeon.js');
+    init_mapseen(g.u?.uz);
     if (getbones()) return;
     g.in_mklev = true;
     await makelevel();

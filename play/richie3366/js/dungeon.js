@@ -40,6 +40,8 @@ import {
     SINK,
     GRAVE,
     ALTAR,
+    ASCENDED,
+    ESCAPED,
 } from './const.js';
 
 const FLAG_MAP = {
@@ -647,28 +649,55 @@ export function init_dungeons() {
 }
 
 /**
- * Ensure a mapseen node exists for the given (or current) level.
- * C always has one after init_mapseen on level entry; JS creates lazily.
+ * C ref: dungeon.c init_mapseen — create mapseen node sorted by
+ * dnum then dlevel; clear lastseentyp for the new level.
  */
-function ensure_mapseen(lev) {
+export function init_mapseen(lev) {
     const uz = lev || game.u?.uz || { dnum: 0, dlevel: 1 };
     const dnum = uz.dnum | 0;
     const dlevel = uz.dlevel | 0;
     if (!game.mapseenchn) game.mapseenchn = [];
-    let mptr = game.mapseenchn.find(
+    // Already present (re-entry) — C always allocates; JS dedupes
+    const existing = game.mapseenchn.find(
         (m) => (m.lev?.dnum | 0) === dnum && (m.lev?.dlevel | 0) === dlevel,
     );
-    if (!mptr) {
-        mptr = {
-            lev: { dnum, dlevel },
-            custom: null,
-            custom_lth: 0,
-            flags: {},
-            feat: empty_feat(),
-        };
-        game.mapseenchn.push(mptr);
+    if (existing) {
+        game.lastseentyp = null;
+        return existing;
     }
-    return mptr;
+    const init = {
+        lev: { dnum, dlevel },
+        custom: null,
+        custom_lth: 0,
+        flags: {},
+        feat: empty_feat(),
+        br: null,
+        final_resting_place: null,
+    };
+    // C: memset lastseentyp on each init_mapseen
+    game.lastseentyp = null;
+    let inserted = false;
+    for (let i = 0; i < game.mapseenchn.length; i++) {
+        const m = game.mapseenchn[i];
+        const md = m.lev?.dnum | 0;
+        const ml = m.lev?.dlevel | 0;
+        if (md > dnum || (md === dnum && ml > dlevel)) {
+            game.mapseenchn.splice(i, 0, init);
+            inserted = true;
+            break;
+        }
+    }
+    if (!inserted) game.mapseenchn.push(init);
+    return init;
+}
+
+/**
+ * Ensure a mapseen node exists for the given (or current) level.
+ * C always has one after init_mapseen on level entry; JS creates lazily
+ * for overview/annotation when mklev path was skipped.
+ */
+function ensure_mapseen(lev) {
+    return init_mapseen(lev);
 }
 
 function empty_feat() {
@@ -876,40 +905,83 @@ export async function donamelevel() {
 }
 
 /**
- * C ref: dungeon.c dooverview / show_overview (#overview).
- * Branch envelope: why=0 PICK_NONE current-level line + feature sentence
- * (print_mapseen OF_INTEREST) + ESC/space dismiss.
- * Full traverse_mapseenchn / interest_mapseen / shop_string / altar-god /
- * auto-annotation flags deferred.
+ * C ref: dungeon.c show_overview / print_mapseen (subset).
+ * why: 0 #overview; 1/2 end disclosure (lived/died); -1 menu deferred.
+ * End disclosure uses select_menu PICK_NONE → corner "(end)", not
+ * display_nhwindow --More-- (unlike enlightenment putstr path).
+ * Named omissions: interest_mapseen filter for why==0 beyond current;
+ * endgame traverse; builds_up range headers; OF_INTEREST features;
+ * branches; cemetery bones list beyond dead hero; wizard proto names;
+ * PICK_ONE annotation menu (why==-1).
+ * @param {number} why
+ * @param {number} reason how-died when why>0
  */
-export async function dooverview() {
+export async function show_overview(why = 0, reason = 0) {
+    const { formatkiller } = await import('./end.js');
+    const { ATR_INVERSE } = await import('./terminal.js');
     const { nhgetch } = await import('./input.js');
     const { flush_screen, flush_topl_more, docrt } = await import('./display.js');
     const { paint_corner_nhw_menu } = await import('./invent.js');
-    const { ATR_INVERSE } = await import('./terminal.js');
+
+    recalc_mapseen();
+    const u = game.u || {};
+    const entries = [];
+    let lastdun = -1;
+
+    const chain = game.mapseenchn || [];
+    for (const mptr of chain) {
+        if (why === 0) {
+            const cur = (mptr.lev?.dnum | 0) === (u.uz?.dnum | 0)
+                && (mptr.lev?.dlevel | 0) === (u.uz?.dlevel | 0);
+            if (!cur) continue;
+        }
+        const dnum = mptr.lev?.dnum | 0;
+        const printdun = dnum !== lastdun;
+        lastdun = dnum;
+        const dun = game.dungeons?.[dnum];
+        const dname = dun?.dname || 'The Dungeons of Doom';
+        if (printdun) {
+            // C end disclosure: menu heading highlight suppressed (ATR_NONE);
+            // in-progress #overview uses menu_headings (inverse).
+            entries.push({
+                text: `${dname}:`,
+                attr: why > 0 ? 0 : ATR_INVERSE,
+            });
+        }
+        const depthstart = (dun?.depth_start | 0) || 1;
+        const levnum = depthstart + (mptr.lev?.dlevel | 0) - 1;
+        const TAB = '   ';
+        let levLine = `${why !== -1 ? TAB : ''}Level ${levnum}:`;
+        if (mptr.custom) levLine += ` "${mptr.custom}"`;
+        const onHere = (mptr.lev?.dnum | 0) === (u.uz?.dnum | 0)
+            && (mptr.lev?.dlevel | 0) === (u.uz?.dlevel | 0);
+        if (onHere) {
+            const verb = (why <= 0 || (why === 1 && reason === ASCENDED))
+                ? 'are'
+                : (why === 1 && reason === ESCAPED)
+                    ? 'left from'
+                    : 'were';
+            levLine += ` <- You ${verb} here.`;
+        }
+        entries.push({ text: levLine, attr: 0 });
+
+        if (why > 0 && onHere) {
+            const PREFIX = '      ';
+            entries.push({ text: `${PREFIX}Final resting place for`, attr: 0 });
+            let killer = formatkiller(reason, true);
+            killer = killer.replace(/ himself/g, ' yourself')
+                .replace(/ herself/g, ' yourself')
+                .replace(/ his /g, ' your ')
+                .replace(/ her /g, ' your ');
+            entries.push({ text: `${PREFIX}${TAB}you, ${killer}.`, attr: 0 });
+        } else if (why === 0) {
+            const featLine = mapseen_feat_line(mptr);
+            if (featLine) entries.push({ text: featLine, attr: 0 });
+        }
+    }
 
     await flush_topl_more();
-    // C show_overview: lazy recalc_mapseen()
-    const mptr = recalc_mapseen();
-    const u = game.u || {};
-    const dnum = u.uz?.dnum | 0;
-    const dlevel = u.uz?.dlevel | 0;
-    const dun = game.dungeons?.[dnum];
-    const dname = dun?.dname || 'The Dungeons of Doom';
-    const depthstart = (dun?.depth_start | 0) || 1;
-    const levnum = depthstart + dlevel - 1;
-    // C print_mapseen: Level line uses TAB ("   "), not PREFIX ("      ")
-    let levLine = `   Level ${levnum}:`;
-    if (mptr?.custom) levLine += ` "${mptr.custom}"`;
-    levLine += ' <- You are here.';
-
-    const entries = [
-        { text: `${dname}:`, attr: ATR_INVERSE },
-        { text: levLine, attr: 0 },
-    ];
-    const featLine = mapseen_feat_line(mptr);
-    if (featLine) entries.push({ text: featLine, attr: 0 });
-    // C select_menu PICK_NONE (why != -1)
+    // C select_menu PICK_NONE (why != -1) → "(end)"
     for (;;) {
         await paint_corner_nhw_menu(entries, '(end) ');
         const key = await nhgetch();
@@ -919,5 +991,16 @@ export async function dooverview() {
         if (key === 27 || key === 32 || key === 13 || key === 10) break;
     }
     if (game.iflags) game.iflags.menu_requested = false;
+}
+
+/**
+ * C ref: dungeon.c dooverview / show_overview (#overview).
+ * Branch envelope: why=0 PICK_NONE current-level line + feature sentence
+ * (print_mapseen OF_INTEREST) + ESC/space dismiss.
+ * Full traverse_mapseenchn / interest_mapseen / shop_string / altar-god /
+ * auto-annotation flags deferred.
+ */
+export async function dooverview() {
+    await show_overview(0, 0);
     return ECMD_OK;
 }

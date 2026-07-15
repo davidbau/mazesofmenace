@@ -337,6 +337,16 @@ const EXT_CMDS = [
         },
     },
     {
+        name: 'loot',
+        wiz: false,
+        autocomplete: true,
+        // C ref: pickup.c doloot — #loot floor container
+        run: async () => {
+            const { doloot } = await import('./pickup.js');
+            return doloot();
+        },
+    },
+    {
         name: 'levelchange',
         wiz: true,
         autocomplete: true,

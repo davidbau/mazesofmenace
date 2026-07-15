@@ -1,10 +1,10 @@
 // do.js — miscellaneous hero actions from do.c.
-// C ref: do.c — donull, dodown, goto_level (ordinary stairs subset),
+// C ref: do.c — donull, dodown, doup, goto_level (ordinary stairs subset),
 //         cmd_safety_prevention, dodrop/drop/dropx/dropy/dropz,
 //         canletgo.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
 import { depth } from './hacklib.js';
 import {
@@ -12,6 +12,7 @@ import {
     W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_DROPPED,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
+    VISITED, LFILE_EXISTS,
 } from './const.js';
 import { pline, docrt, flush_screen, flush_topl_more, newsym } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
@@ -24,9 +25,9 @@ import {
     mklev,
 } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
-import { keepdogs, losedogs } from './dog.js';
+import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { initrack } from './track.js';
-import { m_at, mnexto } from './mon.js';
+import { m_at, mnexto, hide_monst } from './mon.js';
 import { enexto } from './teleport.js';
 import { monster_nearby } from './hack.js';
 import { place_object, stackobj } from './mkobj.js';
@@ -201,14 +202,66 @@ export async function next_level(at_stairs) {
 }
 
 /**
- * C ref: do.c goto_level — first-visit ordinary down stairs path.
+ * C ref: dungeon.c prev_level — ordinary upstairs / rise-through-ceiling.
+ */
+export async function prev_level(at_stairs) {
+    const u = game.u;
+    const stway = stairway_at(u.ux, u.uy);
+    if (at_stairs && stway) stway.u_traversed = true;
+
+    const newlevel = { dnum: 0, dlevel: 1 };
+    if (at_stairs && stway && (stway.tolev.dnum | 0) !== (u.uz?.dnum | 0)) {
+        // Up dungeon branch — amulet/escape arms deferred
+        newlevel.dnum = stway.tolev.dnum | 0;
+        newlevel.dlevel = stway.tolev.dlevel | 0;
+    } else {
+        newlevel.dnum = u.uz?.dnum | 0;
+        newlevel.dlevel = (u.uz?.dlevel | 0) - 1;
+    }
+    await goto_level(newlevel, at_stairs, false, false);
+}
+
+/** Rebuild floor object index after in-memory getlev restore. */
+function rebuildObjectsAt(fobj) {
+    game._objects_at = new Map();
+    const stack = [];
+    for (let o = fobj; o; o = o.nobj) stack.push(o);
+    for (let i = stack.length - 1; i >= 0; i--) {
+        const otmp = stack[i];
+        otmp.nexthere = null;
+        const key = `${otmp.ox},${otmp.oy}`;
+        const cur = game._objects_at.get(key) || null;
+        otmp.nexthere = cur;
+        game._objects_at.set(key, otmp);
+    }
+}
+
+/**
+ * C ref: restore.c getlev — non-bones monster catchup + hide_monst rnd(10).
+ * In-memory stash path (no NHFILE). Named omissions: ghostly peace remap,
+ * restore_cham, worm/timer/region restore, steed/ustuck mid remap.
+ */
+function getlev_catchup_monsters(elapsed) {
+    const u = game.u;
+    const list = game.fmon || [];
+    for (const mtmp of list) {
+        // C: if (!u.uz.dlevel || restoring==REST_LEVELS) continue
+        if (!(u?.uz?.dlevel | 0)) continue;
+        if (elapsed > 0) mon_catchup_elapsed_time(mtmp, elapsed);
+        // restore_cham deferred
+        if (elapsed > 0 && elapsed > rnd(10)) hide_monst(mtmp);
+    }
+}
+
+/**
+ * C ref: do.c goto_level — ordinary stairs + in-memory savelev/getlev.
  *
- * Ported: keepdogs → assign uz → mklev (getbones+makelevel) →
- * stairway_find_from(uz0) / u_on_upstairs → descend pline → losedogs →
- * vision/docrt.
- * Deferred: savelev/getlev file restore, mysterious force, quest gate,
- * portals, endgame, fall damage, Lua NHCB_LVL_LEAVE, familiar_level_msg,
- * temperature/hellish messages, u_collide_m full limbo, climb pline.
+ * Ported: keepdogs → stash (VISITED|LFILE_EXISTS + omoves) → assign uz →
+ * mklev or restore stash + getlev catchup → stairway_find_from →
+ * climb/descend pline → losedogs → vision/docrt → pickup(1).
+ * Deferred: binary NHFILE, mysterious force, quest gate, portals, endgame,
+ * fall damage, Lua NHCB_LVL_LEAVE, familiar_level_msg, temperature/hellish,
+ * Flying/Punished climb variants, u_collide_m full limbo.
  */
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
@@ -237,17 +290,20 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (!game.iflags?.nofollowers) keepdogs(false);
     vision_recalc(2);
 
-    // In-memory stash of the level we're leaving (restore deferred).
+    // C: savelev — in-memory stash + VISITED|LFILE_EXISTS + omoves timestamp
     if (!game.level_info) game.level_info = [];
     const old_ledger = ledger_no(u.uz);
     if (old_ledger > 0) {
+        const prev = game.level_info[old_ledger] || { flags: 0 };
         game.level_info[old_ledger] = {
-            flags: (game.level_info[old_ledger]?.flags | 0) | 1, // VISITED-ish
+            flags: (prev.flags | 0) | VISITED | LFILE_EXISTS,
+            omoves: game.moves | 0,
             level: game.level,
             fmon: game.fmon,
             fobj: game.fobj,
             ftrap: game.ftrap,
             stairs: game.stairs,
+            head_engr: game.head_engr,
         };
     }
 
@@ -270,7 +326,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     stairway_free_all();
-    // Detach live map pointers; mklev/clear rebuilds them.
+    // Detach live map pointers; mklev/getlev restores them.
     game.fmon = null;
     game.fobj = null;
     game._objects_at = new Map();
@@ -282,15 +338,23 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     game.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
 
     const info = game.level_info[new_ledger];
-    const exists = !!(info && (info.flags & 2)); // LFILE_EXISTS
+    const exists = !!(info && ((info.flags | 0) & LFILE_EXISTS));
     const madeNew = !exists;
     if (!exists) {
         await mklev();
         if (!game.level_info[new_ledger]) game.level_info[new_ledger] = { flags: 0 };
-        game.level_info[new_ledger].flags |= 2; // created
+        // C: LFILE_EXISTS is set on savelev leave, not on first mklev
     } else {
-        // Returning to a saved level — restore deferred; regenerate for now.
-        await mklev();
+        // C: getlev — restore in-memory stash + catchup/hide_monst
+        game.level = info.level;
+        game.fmon = info.fmon || [];
+        game.fobj = info.fobj || null;
+        game.ftrap = info.ftrap || null;
+        game.stairs = info.stairs || null;
+        game.head_engr = info.head_engr || null;
+        rebuildObjectsAt(game.fobj);
+        const elapsed = (game.moves | 0) - (info.omoves | 0);
+        getlev_catchup_monsters(elapsed);
     }
 
     vision_reset();
@@ -317,7 +381,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 if (dnst) u_on_newpos(dnst.sx, dnst.sy);
                 else u_on_upstairs();
             }
-            // climb pline deferred beyond ordinary-down focus
+            // C: ordinary climb (Flying/Punished "great effort" deferred)
+            if (game.flags?.verbose !== false) {
+                await pline(atLadder
+                    ? 'You climb up the ladder.'
+                    : 'You climb up the stairs.');
+            }
         } else {
             // C ordinary descent: find_from(uz0) else sstairs/upstairs
             const stway = stairway_find_from(u.uz0, atLadder);
@@ -671,6 +740,41 @@ export async function dodown() {
         || !!(stway && stway.isladder);
 
     await next_level(true);
+    game.at_ladder = false;
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: do.c doup — '<' go up staircase (ordinary stairs path).
+ *
+ * Omits: rooted, pit climb_pit, stucksteed, u_stuck_cannot_go, encumbrance
+ * load gate, ledger 1 escape yn, next_to_u leash.
+ */
+export async function doup() {
+    const u = game.u;
+    if (!u) return ECMD_OK;
+
+    u.dz = -1;
+    u.dx = 0;
+    u.dy = 0;
+
+    const stway = stairway_at(u.ux, u.uy);
+    if (!stway || !stway.up) {
+        await pline("You can't go up here.");
+        return ECMD_OK;
+    }
+
+    // C: ledger_no(&u.uz) == 1 → escape yn — not taken when climbing to Dlvl1
+    // from below; surface escape deferred.
+    if (ledger_no(u.uz) === 1) {
+        await pline("You can't go up here.");
+        return ECMD_OK;
+    }
+
+    game.at_ladder = !!(game.level?.at(u.ux, u.uy)?.typ === LADDER)
+        || !!(stway && stway.isladder);
+
+    await prev_level(true);
     game.at_ladder = false;
     return ECMD_TIME;
 }

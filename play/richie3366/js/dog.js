@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { makemon, set_malign } from './makemon.js';
-import { mons, NON_PM, is_human } from './monsters.js';
+import { mons, NON_PM, is_human, regenerates } from './monsters.js';
 import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
 import {
     monsterNames,
@@ -251,4 +251,62 @@ export function losedogs() {
     for (const mtmp of dogs) {
         mon_arrive_with_you(mtmp);
     }
+}
+
+const LARGEST_INT = 2147483647;
+
+/**
+ * C ref: dog.c mon_catchup_elapsed_time — heal/status for time spent elsewhere.
+ * Named omissions: full edog hungry→wild, leash impossible, regenerates path
+ * polish; finish_meating mimic AP reset.
+ */
+export function mon_catchup_elapsed_time(mtmp, nmv) {
+    if (!mtmp) return;
+    let imv = 0;
+    if (nmv >= LARGEST_INT) imv = LARGEST_INT - 1;
+    else imv = nmv | 0;
+    if (imv < 0) imv = 0;
+
+    if (mtmp.mblinded) {
+        if (imv >= (mtmp.mblinded | 0)) mtmp.mblinded = 1;
+        else mtmp.mblinded = (mtmp.mblinded | 0) - imv;
+    }
+    if (mtmp.mfrozen) {
+        if (imv >= (mtmp.mfrozen | 0)) mtmp.mfrozen = 1;
+        else mtmp.mfrozen = (mtmp.mfrozen | 0) - imv;
+    }
+    if (mtmp.mfleetim) {
+        if (imv >= (mtmp.mfleetim | 0)) mtmp.mfleetim = 1;
+        else mtmp.mfleetim = (mtmp.mfleetim | 0) - imv;
+    }
+
+    if (mtmp.mtrapped && rn2(imv + 1) > 40 / 2) mtmp.mtrapped = 0;
+    if (mtmp.mconf && rn2(imv + 1) > 50 / 2) mtmp.mconf = 0;
+    if (mtmp.mstun && rn2(imv + 1) > 10 / 2) mtmp.mstun = 0;
+
+    if (mtmp.meating) {
+        if (imv > (mtmp.meating | 0)) mtmp.meating = 0;
+        else mtmp.meating = (mtmp.meating | 0) - imv;
+    }
+    if (imv > (mtmp.mspec_used | 0)) mtmp.mspec_used = 0;
+    else mtmp.mspec_used = (mtmp.mspec_used | 0) - imv;
+
+    if (mtmp.mtame) {
+        const wilder = Math.trunc((imv + 75) / 150);
+        if ((mtmp.mtame | 0) > wilder) mtmp.mtame = (mtmp.mtame | 0) - wilder;
+        else if ((mtmp.mtame | 0) > rn2(wilder || 1) && wilder > 0) mtmp.mtame = 0;
+        else if (wilder > 0) {
+            mtmp.mtame = 0;
+            mtmp.mpeaceful = 0;
+        }
+    }
+
+    // C: healmon — recover lost HP; non-regen divides by 20
+    let heal = imv;
+    if (!regenerates(mtmp.data)) heal = Math.trunc(imv / 20);
+    const max = mtmp.mhpmax | 0;
+    if (max > 0) {
+        mtmp.mhp = Math.min(max, (mtmp.mhp | 0) + heal);
+    }
+    mtmp.mlstmv = game.moves | 0;
 }

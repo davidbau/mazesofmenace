@@ -20,6 +20,8 @@ import {
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_YES,
     DISCLOSE_PROMPT_DEFAULT_SPECIAL, NUM_DISCLOSURE_OPTIONS,
+    BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
+    ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
 } from './const.js';
 import { G_NOCORPSE, mons } from './monsters.js';
 import { oname, christen_monst } from './do_name.js';
@@ -32,6 +34,11 @@ import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
 import { paybill, money2mon } from './shk.js';
 import { shkname, shkname_is_pname } from './shknam.js';
+import { enlightenment } from './invent.js';
+import {
+    list_vanquished, list_genocided, show_conduct,
+} from './insight.js';
+import { show_overview } from './dungeon.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
@@ -269,13 +276,16 @@ export function can_make_bones() {
 }
 
 /**
- * C ref: end.c disclose — inventory yn first when should_query; other
- * categories deferred. Honor flags.end_disclose `-i` etc. (D-0288).
+ * C ref: end.c disclose — invent, attributes, vanquished, genocided,
+ * conduct, overview (each gated by should_query / done_stopprint).
+ * Named omissions: invent 'y' display_inventory / container_contents;
+ * vanquished ask yn body when ntypes>0 (list_vanquished still skips empty).
  */
 async function disclose(how, taken) {
-    void how;
+    const stop = () => !!(game.program_state?.done_stopprint);
+
     const invent = game.invent || [];
-    if (invent.length && !(game.program_state?.done_stopprint)) {
+    if (invent.length && !stop()) {
         const qbuf = taken
             ? 'Do you want to see what you had when you died?'
             : 'Do you want your possessions identified?';
@@ -289,6 +299,85 @@ async function disclose(how, taken) {
                 (game.program_state.done_stopprint | 0) + 1;
         }
         // 'y' → display_inventory deferred
+    }
+
+    if (!stop()) {
+        const { ask, defquery } = should_query_disclose_option('a');
+        const c = ask
+            ? await yn_function(
+                'Do you want to see your attributes?',
+                'ynq',
+                defquery,
+            )
+            : defquery;
+        if (c === 'y') {
+            const final = (how >= PANICKED)
+                ? ENL_GAMEOVERALIVE
+                : ENL_GAMEOVERDEAD;
+            await enlightenment(
+                BASICENLIGHTENMENT | MAGICENLIGHTENMENT,
+                final,
+            );
+        }
+        if (c === 'q') {
+            if (!game.program_state) game.program_state = {};
+            game.program_state.done_stopprint =
+                (game.program_state.done_stopprint | 0) + 1;
+        }
+    }
+
+    if (!stop()) {
+        const { ask, defquery } = should_query_disclose_option('v');
+        await list_vanquished(defquery, ask);
+    }
+
+    if (!stop()) {
+        const { ask, defquery } = should_query_disclose_option('g');
+        await list_genocided(defquery, ask);
+    }
+
+    if (!stop()) {
+        const { ask, defquery } = should_query_disclose_option('c');
+        // count_achievements deferred — always "conduct" not "and achievements"
+        const c = ask
+            ? await yn_function(
+                'Do you want to see your conduct?',
+                'ynq',
+                defquery,
+            )
+            : defquery;
+        if (c === 'y') {
+            await show_conduct(
+                (how >= PANICKED) ? ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD,
+            );
+        }
+        if (c === 'q') {
+            if (!game.program_state) game.program_state = {};
+            game.program_state.done_stopprint =
+                (game.program_state.done_stopprint | 0) + 1;
+        }
+    }
+
+    if (!stop()) {
+        const { ask, defquery } = should_query_disclose_option('o');
+        const c = ask
+            ? await yn_function(
+                'Do you want to see the dungeon overview?',
+                'ynq',
+                defquery,
+            )
+            : defquery;
+        if (c === 'y') {
+            await show_overview(
+                (how >= PANICKED) ? 1 : 2,
+                how,
+            );
+        }
+        if (c === 'q') {
+            if (!game.program_state) game.program_state = {};
+            game.program_state.done_stopprint =
+                (game.program_state.done_stopprint | 0) + 1;
+        }
     }
 }
 

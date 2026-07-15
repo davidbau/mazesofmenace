@@ -13,7 +13,7 @@ import {
 import { find_mac, make_corpse } from './mhitm.js';
 import { mon_explodes } from './explode.js';
 import { newsym, pline, mon_visible, see_with_infrared, You_feel } from './display.js';
-import { doname, an } from './objnam.js';
+import { doname, an, the, xname } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
 import { dist2, m_at } from './mon.js';
 import { cansee, couldsee } from './vision.js';
@@ -32,6 +32,7 @@ import {
     ANTI_MAGIC, HURTLING, TOOKPLUNGE, VIASITTING, FIRE_RES, SLEEP_RES,
     STONE_RES,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
+    IS_ROOM, IS_WALL, IS_AIR, SDOOR,
     D_CLOSED, D_LOCKED,
     ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
@@ -44,14 +45,14 @@ import {
 } from './hack.js';
 import { goodpos } from './teleport.js';
 import { mlevel_tele_trap } from './teleport.js';
-import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
+import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
 import { maybe_half_phys, nomul, losehp } from './hack.js';
 import { observe_object } from './invent.js';
 import { makemon } from './makemon.js';
-import { A_CHA, adjattrib } from './attrib.js';
+import { A_CHA, A_STR, adjattrib, exercise } from './attrib.js';
 import { tamedog } from './dog.js';
 
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
@@ -521,6 +522,9 @@ function wearing_iron_shoes(_mtmp) {
 
 // C ref: trap.c thitm() — monster hit by trap missile / pit fall damage
 async function thitm(tlev, mon, obj, d_override, nocorpse) {
+    // C mon_leaving_level keeps stale mx/my after death for place_object
+    const place_x = mon?.mx;
+    const place_y = mon?.my;
     let strike;
     if (d_override) {
         strike = 1;
@@ -565,9 +569,9 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
         }
     }
 
-    // C: place missile on miss (or d_override path)
+    // C: place missile on miss (or d_override path); uses stale mon mx/my
     if (obj && (!strike || d_override)) {
-        place_object(obj, mon.mx, mon.my);
+        place_object(obj, place_x, place_y);
         stackobj(obj);
     }
     return trapkilled;
@@ -799,23 +803,109 @@ async function trapeffect_dart_trap(mtmp, trap) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
+// C ref: trap.c feeltrap — mark seen + redisplay (map_trap deferred)
+function feeltrap(trap) {
+    if (!trap) return;
+    trap.tseen = true;
+    newsym(trap.tx, trap.ty);
+}
+
 /**
- * C ref: trap.c trapeffect_rocktrap — monster branch (hero dotrap deferred).
- * Envelope: once+tseen empty-door rn2(15)/deltrap; else t_missile(ROCK) +
- * thitm(..., d(2,6)); seetrap only when canseemon. Named omissions: hero
- * helmet/passes_rocks path; empty-door pline_mon text; stone_missile
- * harmless arm in thitm.
+ * C ref: dungeon.c ceiling — room/air/cavern labels for trap plines.
+ * Named omissions: vault/temple/shop in_rooms; water/fire/quest/Underwater.
+ */
+function ceiling(x, y) {
+    const typ = game.level?.at(x, y)?.typ ?? 0;
+    if (IS_AIR(typ)) return 'sky';
+    if (IS_ROOM(typ) || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR)
+        return 'ceiling';
+    return 'rock cavern';
+}
+
+/** C ref: mondata.h passes_rocks */
+function passes_rocks(ptr) {
+    return !!(passes_walls(ptr) && !unsolid(ptr));
+}
+
+/**
+ * C ref: do_wear.c hard_helmet — metallic or glass armor helm.
+ * is_helmet gate approximated by worn uarmh (caller only passes helm).
+ */
+function hard_helmet(obj) {
+    if (!obj) return false;
+    const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
+    const IRON = 11, MITHRIL = 15, GLASS = 19;
+    if (mat >= IRON && mat <= MITHRIL) return true;
+    if (mat === GLASS && (obj.oclass === ARMOR_CLASS
+        || game.objects?.[obj.otyp]?.oc_class === ARMOR_CLASS)) return true;
+    return false;
+}
+
+/** C ref: objnam.c helm_simple_name — "helmet" / "hat" polish deferred */
+function helm_simple_name(_obj) {
+    return 'helmet';
+}
+
+/**
+ * C ref: trap.c trapeffect_rocktrap — hero + monster branches.
+ * Envelope: hero feeltrap + place ROCK at u.ux/uy + losehp; monster
+ * once+tseen empty rn2(15)/deltrap else t_missile+thitm(d(2,6)).
+ * Named omissions: vault/shop ceiling labels; helm_simple_name "hat";
+ * Yname2 soft-helm verbose; empty-door pline_mon text; stone_missile
+ * harmless arm in thitm; full body_part poly table (HEAD→"head").
  */
 async function trapeffect_rocktrap(mtmp, trap, _trflags) {
-    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    if (is_youmonst(mtmp)) {
+        const u = game.u || {};
+        if (trap.once && trap.tseen && !rn2(15)) {
+            await pline(
+                `A trap door in ${the(ceiling(u.ux, u.uy))} opens, but nothing falls out!`,
+            );
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+            return Trap_Is_Gone;
+        }
+        let dmg = d(2, 6);
+        let harmless = false;
+        trap.once = true;
+        feeltrap(trap);
+        const otmp = t_missile(ROCK, trap);
+        place_object(otmp, u.ux, u.uy);
+        await pline(
+            `A trap door in ${the(ceiling(u.ux, u.uy))} opens and ${an(xname(otmp))} falls on your head!`,
+        );
+        const uarmh = u.uarmh;
+        const youdata = game.youmonst?.data;
+        if (uarmh) {
+            if (passes_rocks(youdata)) {
+                await pline(`Unfortunately, you are wearing ${an(helm_simple_name(uarmh))}.`);
+                dmg = 2;
+            } else if (hard_helmet(uarmh)) {
+                await pline('Fortunately, you are wearing a hard helmet.');
+                dmg = 2;
+            } else if (game.flags?.verbose !== false) {
+                // C: Yname2(uarmh) — soft helm does not protect
+                await pline('Your helmet does not protect you.');
+            }
+        } else if (passes_rocks(youdata)) {
+            await pline('It passes harmlessly through you.');
+            harmless = true;
+        }
+        if (!(u.Blind || u.ublind)) observe_object(otmp);
+        stackobj(otmp);
+        newsym(u.ux, u.uy);
+        if (!harmless) {
+            losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
+            exercise(A_STR, false);
+        }
+        return Trap_Effect_Finished;
+    }
 
+    // Monster branch
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     if (trap.once && trap.tseen && !rn2(15)) {
         // C: pline_mon when in_sight && cansee — display only; omit body
-        const traps = game.level?.traps;
-        if (traps) {
-            const i = traps.indexOf(trap);
-            if (i >= 0) traps.splice(i, 1);
-        }
+        deltrap(trap);
         newsym(mtmp.mx, mtmp.my);
         return Trap_Is_Gone;
     }

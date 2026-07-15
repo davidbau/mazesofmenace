@@ -33,8 +33,9 @@ import {
     NEED_WEAPON, NEED_RANGED_WEAPON, NEED_HTH_WEAPON,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
     NO_WEAPON_WANTED, W_WEP, W_ARMS, W_ARMG,
-    ECMD_OK,
+    ECMD_OK, STR18, Upolyd,
 } from './const.js';
+import { acurr, A_STR } from './attrib.js';
 import { m_carrying, mon_has_shield } from './mon.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
@@ -550,7 +551,7 @@ function practice_needed_to_advance(level) {
 }
 
 /** C ref: weapon.c weapon_type — abs(objects[].oc_skill). */
-function weapon_type(obj) {
+export function weapon_type(obj) {
     if (!obj) return P_BARE_HANDED_COMBAT;
     const o = game.objects?.[obj.otyp];
     if (!o) return P_NONE;
@@ -560,6 +561,106 @@ function weapon_type(obj) {
     }
     const type = o.oc_skill | 0;
     return type < 0 ? -type : type;
+}
+
+/**
+ * C ref: weapon.c dbon — strength damage bonus (0 when Upolyd).
+ * Named omission: none for ordinary STR bands.
+ */
+export function dbon() {
+    if (Upolyd(game.u)) return 0;
+    const str = acurr(A_STR);
+    if (str < 6) return -1;
+    if (str < 16) return 0;
+    if (str < 18) return 1;
+    if (str === 18) return 2;
+    if (str <= STR18(75)) return 3;
+    if (str <= STR18(90)) return 4;
+    if (str < STR18(100)) return 5;
+    return 6;
+}
+
+/**
+ * C ref: weapon.c weapon_dam_bonus — skill damage for hmon_hitmon_dmg_recalc.
+ * weapon null → bare-handed / martial arts (Basic m.a. = +3).
+ * Named omission: none for ordinary skill ranks; steed riding bonus included.
+ */
+export function weapon_dam_bonus(weapon) {
+    const wep_type = weapon_type(weapon);
+    const type = (game.u?.twoweap
+        && (weapon === game.u?.uwep || weapon === game.u?.uswapwep))
+        ? P_TWO_WEAPON_COMBAT
+        : wep_type;
+    let bonus = 0;
+    if (type === P_NONE) {
+        bonus = 0;
+    } else if (type <= P_LAST_WEAPON) {
+        switch (P_SKILL(type)) {
+        default:
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -2;
+            break;
+        case P_BASIC:
+            bonus = 0;
+            break;
+        case P_SKILLED:
+            bonus = 1;
+            break;
+        case P_EXPERT:
+            bonus = 2;
+            break;
+        }
+    } else if (type === P_TWO_WEAPON_COMBAT) {
+        let skill = P_SKILL(P_TWO_WEAPON_COMBAT);
+        const wskill = P_SKILL(wep_type);
+        if (wskill < skill) skill = wskill;
+        switch (skill) {
+        default:
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -3;
+            break;
+        case P_BASIC:
+            bonus = -1;
+            break;
+        case P_SKILLED:
+            bonus = 0;
+            break;
+        case P_EXPERT:
+            bonus = 1;
+            break;
+        }
+    } else if (type === P_BARE_HANDED_COMBAT) {
+        // C: unskl 0; basic +1/+3; skild +1/+4; exprt +2/+6; …
+        bonus = P_SKILL(type);
+        if (bonus < P_UNSKILLED) bonus = P_UNSKILLED;
+        bonus -= 1; // unskilled => 0
+        bonus = Math.trunc(((bonus + 1) * (martial_bonus() ? 3 : 1)) / 2);
+    }
+    if (game.u?.usteed && type !== P_TWO_WEAPON_COMBAT) {
+        switch (P_SKILL(P_RIDING)) {
+        case P_SKILLED:
+            bonus += 1;
+            break;
+        case P_EXPERT:
+            bonus += 2;
+            break;
+        default:
+            break;
+        }
+    }
+    return bonus;
+}
+
+/**
+ * C ref: weapon.c use_skill — advance practice; may-advance msg deferred.
+ */
+export function use_skill(skill, degree) {
+    if (skill === P_NONE) return;
+    const ws = game.u?.weapon_skills?.[skill];
+    if (!ws || ws.skill === P_ISRESTRICTED) return;
+    ws.advance = (ws.advance || 0) + (degree | 0);
 }
 
 /**

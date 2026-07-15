@@ -14,7 +14,7 @@ import { t_at } from './trap.js';
 import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
     monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
-    is_hider, M1_SEE_INVIS, humanoid, regenerates,
+    is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import { little_to_big, big_to_little } from './mondata.js';
@@ -549,4 +549,16 @@ export async function movemon() {
         await movemon_singlemon(mtmp);
     }
     return game._somebody_can_move;
+}
+
+/**
+ * C ref: mon.c hide_monst — called from getlev when returning to a level.
+ * Gate matches C; restrap / hideunder bodies deferred (named omission).
+ */
+export function hide_monst(mon) {
+    if (!mon?.data) return;
+    const hider_under = hides_under(mon.data) || mon.data.mlet === 'S_EEL';
+    if (!(is_hider(mon.data) || hider_under)) return;
+    if (mon.mundetected || M_AP_TYPE(mon) !== M_AP_NOTHING) return;
+    // Named omission: viz_array override + restrap (+ mimic retry) + hideunder
 }

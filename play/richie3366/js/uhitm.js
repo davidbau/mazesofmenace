@@ -5,9 +5,9 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import {
-    IS_OBSTRUCTED, HMON_MELEE, STRAT_WAITMASK,
+    IS_OBSTRUCTED, HMON_MELEE, HMON_THROWN, STRAT_WAITMASK,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
-    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_BASIC, P_WHIP,
+    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MIM_REVEAL,
@@ -19,7 +19,11 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
 import { pline, newsym, canseemon } from './display.js';
-import { dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus } from './weapon.js';
+import {
+    dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
+    dbon, weapon_dam_bonus, use_skill, weapon_type,
+} from './weapon.js';
+import { ammo_and_launcher } from './wield.js';
 import { PM_BARBARIAN } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, mhitm_knockback,
@@ -335,27 +339,83 @@ function hmon_hitmon_stagger(mon, dmg) {
 }
 
 /**
+ * C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big).
+ */
+function bimanual(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
+    return !!(game.objects?.[obj.otyp]?.oc_big);
+}
+
+/**
+ * C ref: uhitm.c hmon_hitmon_dmg_recalc — udaminc + dbon + weapon_dam_bonus.
+ * Named omissions: special_dmgval gloves/silver; PROJECTILE→launcher
+ * skillwep swap (ammo uses weapon_type(obj) until shot path ports).
+ */
+function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skill,
+    train_weapon_skill) {
+    let dmgbonus = game.u?.udaminc | 0;
+    const u = game.u || {};
+    // thrown launcher ammo: udaminc yes, dbon no
+    if (thrown !== HMON_THROWN
+        || !obj || !u.uwep || !ammo_and_launcher(obj, u.uwep)) {
+        let strbonus = dbon();
+        const absbonus = Math.abs(strbonus);
+        const sgn = strbonus < 0 ? -1 : (strbonus > 0 ? 1 : 0);
+        if (twohits) {
+            strbonus = Math.trunc((3 * absbonus + 2) / 4) * sgn;
+        } else if (thrown === HMON_MELEE && u.uwep && bimanual(u.uwep)) {
+            strbonus = Math.trunc((3 * absbonus + 1) / 2) * sgn;
+        }
+        dmgbonus += strbonus;
+    }
+    if (use_weapon_skill) {
+        let skillwep = obj;
+        // C: PROJECTILE(obj) && ammo_and_launcher → skillwep = uwep deferred
+        dmgbonus += weapon_dam_bonus(skillwep);
+        if (train_weapon_skill) {
+            // C: thrown ? weapon_type(skillwep) : uwep_skill_type()
+            const wtype = thrown
+                ? weapon_type(skillwep)
+                : (u.twoweap ? P_TWO_WEAPON_COMBAT : weapon_type(u.uwep));
+            use_skill(wtype, 1);
+        }
+    }
+    dmg += dmgbonus;
+    if (dmg < 1) dmg = 1;
+    return dmg;
+}
+
+/**
  * C ref: uhitm.c hmon / hmon_hitmon — melee weapon or bare-hand physical.
  * Poison / joust / hurtle body / pudding split deferred.
  * Hit pline: hmon_hitmon_msg_hit skips when destroyed (melee); thrown
  * multishot exception deferred.
  */
 async function hmon(mon, obj, thrown, _dieroll) {
-    // C: hmd.twohits = thrown ? 0 : gt.twohits — dbon/silver arms deferred
-    void (thrown ? 0 : gt_twohits);
+    // C: hmd.twohits = thrown ? 0 : gt.twohits
+    const twohits = thrown ? 0 : gt_twohits;
     let dmg = 0;
+    let use_weapon_skill = false;
+    let train_weapon_skill = false;
     if (!obj) {
         // C hmon_hitmon_barehands: rnd(!martial_bonus() ? 2 : 4)
         dmg = rnd(martial_bonus() ? 4 : 2);
+        use_weapon_skill = true;
+        train_weapon_skill = dmg > 1;
     } else if (obj.oclass === WEAPON_CLASS
         || game.objects?.[obj.otyp]?.oc_skill != null) {
         dmg = dmgval(obj, mon);
+        use_weapon_skill = true;
+        train_weapon_skill = dmg > 1;
     } else {
         dmg = dmgval(obj, mon);
     }
-    // dmg_recalc: udaminc + dbon + skill — dbon/skill 0 for early STR/skills
-    dmg += (game.u?.udaminc | 0);
-    if (dmg < 1) dmg = 1;
+    // C: if (hmd.dmg > 0) hmon_hitmon_dmg_recalc — before stagger
+    if (dmg > 0) {
+        dmg = hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits,
+            use_weapon_skill, train_weapon_skill);
+    }
 
     // C: unarmed = !uwep && !uarm && !uarms; stagger before mhp -= dmg
     const unarmed = !game.u?.uwep && !game.u?.uarm && !game.u?.uarms;

@@ -28,7 +28,7 @@ import { doengrave, maybe_smudge_engr } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
-import { donull, dodown, dodrop } from './do.js';
+import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
 import { doopen_indir } from './lock.js';
@@ -546,6 +546,10 @@ export async function rhack(key) {
     }
 
     if (isMovementKey(ch)) {
+        // C ref: cmd.c set_move_cmd(dir, 0) — DOMOVE_WALK unless prefix already set
+        if (!game.domove_attempting) {
+            game.domove_attempting = DOMOVE_WALK;
+        }
         await domove(DIR_DX[ch], DIR_DY[ch]);
         // C: forcefight cleared after DOMOVE_WALK domove
         if (game.context) game.context.forcefight = 0;
@@ -562,6 +566,11 @@ export async function rhack(key) {
             if (game.context.move !== 0) game.context.move = 1;
         } else {
             // C: set_move_cmd(dir, run) — capital run=1, Ctrl-rush=3
+            // First step carries DOMOVE_RUSH; continue_run clears attempting
+            // after each domove so later steps do not maybe_smudge_engr.
+            if (!game.domove_attempting) {
+                game.domove_attempting = DOMOVE_RUSH;
+            }
             game.context.run = rushDir ? 3 : 1;
             game.context.mv = 1;
             if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
@@ -633,6 +642,11 @@ export async function rhack(key) {
         const downRes = await dodown();
         game.context.move = (downRes & 0x01) ? 1 : 0;
         if (downRes & 0x01) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '<') {
+        // C ref: do.c doup / cmd.c — go up staircase
+        const upRes = await doup();
+        game.context.move = (upRes & 0x01) ? 1 : 0;
+        if (upRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 's') {
         // C ref: detect.c dosearch — takes a turn unless safety cancels
         const n = game.context?.command_count || 0;
@@ -819,7 +833,11 @@ async function domove(dx, dy) {
     const newx = u.ux + dx;
     const newy = u.uy + dy;
     const forcefight = !!game.context?.forcefight;
+    // C ref: hack.c domove — clear succeeded; clear attempting in finally
+    game.domove_succeeded = 0;
+    let smudgeCoords = null;
 
+    try {
     // C ref: hack.c set_move_cmd — #reqmenu / m-prefix → nopick for this move
     if (game.iflags?.menu_requested) {
         if (!game.context) game.context = {};
@@ -953,6 +971,11 @@ async function domove(dx, dy) {
         u.usteed.my = newy;
     }
 
+    // C: ux changed → record DOMOVE_RUSH|WALK from attempting (hack.c:2964)
+    game.domove_succeeded |= (game.domove_attempting || 0)
+        & (DOMOVE_RUSH | DOMOVE_WALK);
+    smudgeCoords = { oldx, oldy, newx, newy };
+
     // C ref: dungeon.c u_on_newpos — same-level → see_nearby_objects
     // (upgrade generic potion/gem/spellbook glyphs when within neardist).
     if (!u.Blind && !u.Hallucination && !u.uswallow) {
@@ -979,7 +1002,16 @@ async function domove(dx, dy) {
     // C: if (u.umoved) spoteffects(TRUE) — autopickup / check_here look
     u.umoved = true;
     await spoteffects(true);
-    // C ref: hack.c domove — after domove_core (incl. spoteffects), on
-    // DOMOVE_RUSH|DOMOVE_WALK success: maybe_smudge_engr(ux0,uy0,ux,uy)
-    maybe_smudge_engr(oldx, oldy, newx, newy);
+    } finally {
+        // C ref: hack.c domove — smudge only when RUSH|WALK succeeded this step;
+        // continue_run steps have attempting cleared → no rnd(5) (D-0359)
+        if (smudgeCoords
+            && ((game.domove_succeeded || 0) & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0) {
+            maybe_smudge_engr(
+                smudgeCoords.oldx, smudgeCoords.oldy,
+                smudgeCoords.newx, smudgeCoords.newy,
+            );
+        }
+        game.domove_attempting = 0;
+    }
 }
