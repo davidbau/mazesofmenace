@@ -31,6 +31,7 @@ import {
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam } from './do_name.js';
 import { gettrack } from './track.js';
+import { hero_conflict, resist_conflict } from './mondata.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
@@ -756,8 +757,12 @@ export async function dog_move(mtmp, after) {
 
     const omx = mtmp.mx, omy = mtmp.my;
     let udist = dist2(omx, omy, game.u.ux, game.u.uy);
-    // C: steeds don't move on their own; Conflict throw deferred
+    // C: steed may throw rider under Conflict; dismount_steed body deferred
     if (mtmp === game.u?.usteed) {
+        if (hero_conflict() && !resist_conflict(mtmp)) {
+            // dismount_steed(DISMOUNT_THROWN) deferred — still consume rnd(20)
+            return MMOVE_MOVED;
+        }
         udist = 1;
     } else if (!udist) {
         return MMOVE_NOTHING;
@@ -781,6 +786,14 @@ export async function dog_move(mtmp, after) {
 
     const appr = dog_goal(mtmp, edog, after, udist, whappr);
     if (appr === -2) return MMOVE_NOTHING;
+
+    // C: Conflict && !resist_conflict — edog falls through; !edog lose_guardian
+    if (hero_conflict() && !resist_conflict(mtmp)) {
+        if (!edog) {
+            // lose_guardian_angel deferred
+            return MMOVE_DIED;
+        }
+    }
 
     const allowflags = mon_allowflags(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
@@ -816,7 +829,7 @@ export async function dog_move(mtmp, after) {
             const mtmp2 = m_at(nx, ny);
             const balk = (mtmp.m_lev || 0)
                 + Math.trunc((5 * mtmp.mhp) / (mtmp.mhpmax || 1)) - 2;
-            const Conflict = !!(game.Conflict || game.flags?.Conflict);
+            const Conflict = hero_conflict();
 
             if ((mtmp2.m_lev || 0) >= balk
                 || (mtmp2.mtame && mtmp.mtame && !Conflict)
@@ -938,8 +951,7 @@ export async function dog_move(mtmp, after) {
             await pline(`${noit_Monnam(mtmp)} steps reluctantly onto ${what}.`);
         }
         mon_track_add(mtmp, omx, omy);
-        newsym(omx, omy);
-        newsym(nix, niy);
+        // C: no newsym here — postmov updates omx then mx after dog_move returns
         // C: do_eat after move — dog_eat rolls dogfood again then delobj
         if (do_eat && eat_obj) {
             if ((await dog_eat(mtmp, eat_obj, omx, omy, false)) === 2) {

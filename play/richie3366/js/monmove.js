@@ -934,7 +934,7 @@ export async function m_move(mtmp, after) {
     if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
         let xm;
         if (mtmp.isshk) xm = await shk_move(mtmp);
-        else if (mtmp.isgd) xm = gd_move(mtmp);
+        else if (mtmp.isgd) xm = await gd_move(mtmp);
         else xm = pri_move(mtmp);
 
         if (xm === -2) return MMOVE_DIED;

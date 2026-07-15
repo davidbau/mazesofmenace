@@ -500,7 +500,7 @@ export async function dismount_steed(reason) {
         break;
     }
 
-    // heal_legs deferred when Wounded_legs
+    // C: heal_legs(1) when Wounded_legs — dismount path deferred (how==1)
     u.usteed = null;
     u.ugallop = 0;
     steed_vs_stealth();

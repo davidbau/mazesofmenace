@@ -1,14 +1,16 @@
 // read.js — Read command / scroll effects (partial).
-// C ref: read.c doread, seffects, seffect_magic_mapping; invent.c getobj;
-// detect.c do_mapping; spell.c study_book (via spell.js).
+// C ref: read.c doread, seffects, seffect_magic_mapping, seffect_teleportation;
+// invent.c getobj; detect.c do_mapping; spell.c study_book (via spell.js);
+// teleport.c scrolltele/safe_teleds.
 //
-// Branch envelope: getobj read loop (scrolls/spellbooks suggested) +
-// SCROLL_CLASS path for SCR_MAGIC_MAPPING + SPBOOK_CLASS → study_book
-// (already-known refresh yn). Named omissions: fortune/shirt/
+// Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
+// SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION + SPBOOK_CLASS
+// → study_book (already-known refresh yn). Named omissions: fortune/shirt/
 // credit-card/marker/coin/orb/candy/Braille Blind gates;
 // study_book occupation/learn / novel / cursed_book; other seffect_*;
 // nommap/Hallucination/blessed-SDOOR convert body; notice_mon_off/on;
-// trycall; can_chant silently; check_capacity; SPE_MAGIC_MAPPING cast.
+// trycall; can_chant silently; check_capacity; SPE_MAGIC_MAPPING cast;
+// cursed/confused level_tele; Teleport_control getpos.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -16,15 +18,18 @@ import { flush_screen, flush_topl_more, pline, newsym } from './display.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, objectNames } from './objects.js';
 import { weight } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
-import { discover_object } from './invent.js';
+import { makeknown, display_pickinv_reply } from './invent.js';
+import { more_experienced } from './exper.js';
 import { do_mapping, cvt_sdoor_to_door } from './detect.js';
 import { study_book } from './spell.js';
+import { scrolltele } from './teleport.js';
 import {
     COLNO, ROWNO, SDOOR, Is_rogue_level,
 } from './const.js';
 import { vision_recalc } from './vision.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
+const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
@@ -47,7 +52,7 @@ function read_lets() {
 
 /**
  * C ref: invent.c getobj("read", read_ok, GETOBJ_PROMPT)
- * Loop on missing letter; Esc/space/return → Never mind.
+ * Loop on missing letter; Esc/space/return → Never mind; ?/* → pickinv.
  */
 async function getobj_read() {
     for (;;) {
@@ -71,9 +76,24 @@ async function getobj_read() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            // menu deferred
-            await pline('Never mind.');
-            return null;
+            // C: display_pickinv(lets or all, want_reply) → selected invlet
+            const ilet = await display_pickinv_reply(ch === '*' ? '*' : lets);
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue; // Space/Return → re-prompt getobj
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            if (picked.oclass !== SCROLL_CLASS && picked.oclass !== SPBOOK_CLASS) {
+                await pline('That is a silly thing to read.');
+                return null;
+            }
+            game._pending_message = '';
+            return picked;
         }
 
         const otmp = (game.invent || []).find(o => o.invlet === ch);
@@ -104,13 +124,19 @@ function useup(otmp) {
     if (idx >= 0) inv.splice(idx, 1);
 }
 
-/** C ref: read.c learnscroll → makeknown + dknown */
+/**
+ * C ref: read.c learnscrolltyp / learnscroll — makeknown + XP when new.
+ */
 function learnscroll(scroll) {
-    if (!scroll) return;
-    const oc = game.objects?.[scroll.otyp];
+    if (!scroll || scroll.oclass === SPBOOK_CLASS) return;
+    const otyp = scroll.otyp | 0;
+    const oc = game.objects?.[otyp];
     if (!oc) return;
     if (!game.u?.Blind) scroll.dknown = true;
-    if (!oc.oc_name_known) discover_object(scroll.otyp, true, true);
+    if (!oc.oc_name_known) {
+        makeknown(otyp);
+        more_experienced(0, 10);
+    }
 }
 
 /**
@@ -166,6 +192,23 @@ async function seffect_magic_mapping(sobj) {
 }
 
 /**
+ * C ref: read.c seffect_teleportation
+ * Uncursed unconfused → scrolltele (learnscroll inside).
+ * Cursed/confused level_tele deferred (named omission).
+ */
+async function seffect_teleportation(sobj) {
+    const scursed = !!sobj.cursed;
+    const confused = !!(game.u?.Confusion);
+    if (confused || scursed) {
+        // level_tele deferred (named omission)
+        known = true;
+        return;
+    }
+    await scrolltele(sobj);
+    // learnscroll handled inside scrolltele; do not set known here
+}
+
+/**
  * C ref: read.c seffects — oc_magic exercise + otyp dispatch.
  * @returns {number} 0 = caller useup/learn; 1 = already used up;
  *   -1 = unimplemented (caller must not useup)
@@ -174,13 +217,18 @@ async function seffects(sobj) {
     const otyp = sobj.otyp;
     const oc = game.objects?.[otyp];
 
+    // C: exercise before switch for any oc_magic
+    if (oc?.oc_magic) exercise(A_WIS, true);
+
     switch (otyp) {
     case SCR_MAGIC_MAPPING:
-        if (oc?.oc_magic) exercise(A_WIS, true);
         await seffect_magic_mapping(sobj);
         break;
+    case SCR_TELEPORTATION:
+        await seffect_teleportation(sobj);
+        break;
     default:
-        // Other seffect_* deferred — do not exercise/useup
+        // Other seffect_* deferred — do not useup
         await pline('That scroll is not implemented yet.');
         return -1;
     }
@@ -224,7 +272,8 @@ export async function doread() {
     }
 
     // Gate unported scroll otyps before disappear/useup (C would seffect)
-    if (otyp !== SCR_MAGIC_MAPPING && otyp !== SCR_BLANK_PAPER) {
+    if (otyp !== SCR_MAGIC_MAPPING && otyp !== SCR_BLANK_PAPER
+        && otyp !== SCR_TELEPORTATION) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }

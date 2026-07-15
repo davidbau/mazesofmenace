@@ -555,7 +555,20 @@ export function an(str) {
  * Enough for look_here "There is/are … here." (a/an → singular).
  */
 export function vtense(subj, verb) {
-    if (subj && (/^a /i.test(subj) || /^an /i.test(subj))) {
+    // C ref: objnam.c vtense — plural verb → 3rd-person present for subject.
+    // Plural if ends in 's' (not *us/*ss); a/an prefix → singular; else singular.
+    let plural = false;
+    if (subj) {
+        if (/^a /i.test(subj) || /^an /i.test(subj)) {
+            plural = false;
+        } else {
+            const len = subj.length;
+            const spot = len ? subj[len - 1].toLowerCase() : '';
+            const prev = len > 1 ? subj[len - 2].toLowerCase() : '';
+            // C: ends in 's' and not *us/*ss → plural
+            plural = spot === 's' && len > 1 && prev !== 'u' && prev !== 's';
+        }
+        if (plural) return verb;
         // singular
         if (verb === 'are') return 'is';
         if (verb === 'have') return 'has';

@@ -2,25 +2,25 @@
 // C ref: vault.c — vault_occupied, findgd, newegd, find_guard_dest, invault,
 //        clear_fcorr, restfakecorr, gd_move dig + restore.
 // Named omissions: migrating_mons findgd park; vault_summon_gd;
-// uleftvault; wallify_vault; Croesus mon_wield; fracture_rock
-// boulder shatter; reset_faint; SetVoice; spot_stop_timers; xy_set_wall_state;
-// mimic_obj_name; full Deaf/Blind message variants that need noit_mhis;
-// gd_move hostile/witness/goldincorridor;
-// !u_in_vault look-around exit; gd_mv_monaway; mpickgold; dig del_engr_at;
-// clear_fcorr: Punished/uball, yelp/rloc/m_into_limbo,
-// corridor-disappears / encased-in-rock pline (sync gd_move).
+// uleftvault; wallify_vault body (cleanup calls stub); Croesus mon_wield;
+// fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
+// xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
+// need noit_mhis; gd_move hostile/witness/goldincorridor;
+// gd_mv_monaway; mpickgold; dig del_engr_at; confused-disappears arms;
+// Well begone verbalize; clear_fcorr: Punished/uball, yelp/rloc/m_into_limbo,
+// corridor-disappears / encased-in-rock pline.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { makemon, set_malign, newegd } from './makemon.js';
 import {
-    pline, newsym, canspotmon, map_invisible, verbalize,
+    pline, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
     map_location, unset_seenv,
 } from './display.js';
 import { getlin } from './getline.js';
-import { Monnam, noit_Monnam } from './do_name.js';
+import { Monnam, noit_Monnam, noit_mon_nam } from './do_name.js';
 import { adjalign } from './attrib.js';
-import { nomul } from './hack.js';
+import { nomul, in_rooms } from './hack.js';
 import { makeplural } from './objnam.js';
 import { cansee, couldsee, recalc_block_point } from './vision.js';
 import { COIN_CLASS } from './objects.js';
@@ -28,11 +28,11 @@ import { del_engr_at } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
-    ROOM, CORR, STONE, HWALL, VWALL, DOOR, D_NODOOR,
+    ROOM, CORR, SCORR, STONE, HWALL, VWALL, DOOR, D_NODOOR,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER,
-    MM_EGD, MM_NOMSG, IS_WALL, IS_DOOR, IS_STWALL,
+    MM_EGD, MM_NOMSG, IS_WALL, IS_DOOR, IS_STWALL, IS_POOL,
     M_AP_OBJECT, M_AP_TYPE, EGD, u_at,
-    A_LAWFUL, Has_contents, IS_ROOM, isok,
+    A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
 } from './const.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
 import { objectNames } from './generated/objects_data.js';
@@ -217,7 +217,7 @@ function clear_fcorr(grd, forceshow) {
         }
         egrd.fcbeg = fcbeg + 1;
     }
-    // pline_The("corridor disappears.") / encased deferred (sync gd_move)
+    // pline_The("corridor disappears.") / encased deferred
     void sawcorridor;
     return true;
 }
@@ -230,6 +230,59 @@ function restfakecorr(grd) {
         grd.isgd = 0;
         mongone_guard(grd);
     }
+}
+
+/**
+ * C ref: vault.c parkguard — park escort at <0,0> until corridor clears.
+ * Named omission: polearm.hitmon clear; level.monsters[][] grid.
+ */
+function parkguard(grd) {
+    if (!grd) return;
+    const ox = grd.mx | 0;
+    const oy = grd.my | 0;
+    grd.mx = 0;
+    grd.my = 0;
+    if (ox) newsym(ox, oy);
+    const egrd = EGD(grd);
+    if (egrd) {
+        egrd.ogx = 0;
+        egrd.ogy = 0;
+    }
+}
+
+/**
+ * C ref: vault.c wallify_vault — restore vault-room boundary walls.
+ * Stub: cleanup still parks + restfakecorr + Suddenly; wall repair /
+ * whisper / distant-chant / gold-move plines deferred.
+ */
+function wallify_vault(_grd) {
+    /* deferred */
+}
+
+/**
+ * C ref: vault.c gd_move_cleanup — park, wallify, restfakecorr, Suddenly.
+ * @returns {Promise<number>} 1 moved/cleanup msg, -2 died/gone silent
+ */
+async function gd_move_cleanup(grd, semi_dead, disappear_msg_seen) {
+    const x = grd.mx | 0;
+    const y = grd.my | 0;
+    const see_guard = canspotmon(grd);
+    parkguard(grd);
+    wallify_vault(grd);
+    restfakecorr(grd);
+    const u = game.u;
+    if (!semi_dead && u
+        && (in_fcorridor(grd, u.ux, u.uy) || cansee(x, y))) {
+        if (!disappear_msg_seen && see_guard) {
+            await pline(`Suddenly, ${noit_mon_nam(grd)} disappears.`);
+            // C capture shows --More-- at this nhgetch (cursor on topline).
+            // Equivalent to display_nhwindow(WIN_MESSAGE) when NEED_MORE
+            // (wintty.c); vault.c only plines — tty blocks before next cmd.
+            await flush_topl_more();
+        }
+        return 1;
+    }
+    return -2;
 }
 
 /**
@@ -572,17 +625,21 @@ function um_dist(x, y, n) {
 /**
  * C ref: vault.c gd_move — peaceful vault escort subset.
  * Branch envelope: on-level peaceful; fcend==1 warn when gold or not
- * adjacent; um_dist rn2(10) + restfakecorr; adjacent + no gold +
- * u_in_vault → nextpos dig while-loop (wall→DOOR if beyond ROOM, else
- * ortho redirect, else STONE→CORR) + place guard + restfakecorr.
- * Named omissions: hostile/witness/goldincorridor; wallify; rloc;
- * verbalize body; gd_mv_monaway; mpickgold; !u_in_vault look-around;
- * stuck find_guard_dest retry; dig del_engr_at; clear_fcorr Punished/
- * rloc/yelp arms; corridor-disappears / encased pline.
+ * adjacent; um_dist rn2(10) + Move along! verbalize + restfakecorr;
+ * !u_in_vault look-around → gddone + gd_move_cleanup Suddenly;
+ * adjacent dig while-loop (wall→DOOR if beyond ROOM, else ortho
+ * redirect, else STONE→CORR) + place guard + restfakecorr;
+ * early/gddone/begone → gd_move_cleanup.
+ * Named omissions: hostile/witness/goldincorridor; wallify body;
+ * other verbalize arms; gd_mv_monaway; mpickgold; stuck
+ * find_guard_dest retry / confused disappears; dig del_engr_at;
+ * clear_fcorr Punished/rloc/yelp arms; corridor-disappears /
+ * encased pline; sticks() on ustuck (treat ustuck as blocking Move
+ * along! like !sticks); Well begone verbalize.
  *
- * @returns {number} 1 moved, 0 stayed, -1 normal AI, -2 died
+ * @returns {Promise<number>} 1 moved, 0 stayed, -1 normal AI, -2 died
  */
-export function gd_move(grd) {
+export async function gd_move(grd) {
     if (!grd?.isgd) return -1;
     const egrd = EGD(grd);
     if (!egrd) return -1;
@@ -595,9 +652,10 @@ export function gd_move(grd) {
         return -1;
     }
 
-    if ((grd.mhp | 0) < 1 || !(grd.mx | 0) || egrd.gddone) {
+    const semi_dead = (grd.mhp | 0) < 1;
+    if (semi_dead || !(grd.mx | 0) || egrd.gddone) {
         egrd.gddone = 1;
-        return 0;
+        return await gd_move_cleanup(grd, semi_dead, false);
     }
 
     const u_in_vault = !!vault_occupied(u.urooms);
@@ -631,93 +689,150 @@ export function gd_move(grd) {
                 grd.mpeaceful = 0;
                 return -1;
             }
+            // C: verbalize("Well, begone.") deferred
             egrd.gddone = 1;
-            return 0;
+            return await gd_move_cleanup(grd, semi_dead, false);
         }
     }
 
     if (um_dist(grd.mx, grd.my, 1) || egrd.gddone) {
-        // C: !gddone && !rn2(10) && !Deaf && !swallowed/ustuck →
-        // verbalize "Move along!"; then restfakecorr.
-        if (!egrd.gddone && !rn2(10) && !Deaf()) {
-            // verbalize("Move along!") deferred (gd_move is sync)
+        // C vault.c ~1066–1071: !gddone && !rn2(10) && !Deaf &&
+        // !uswallow && !(ustuck && !sticks) → verbalize; then restfakecorr.
+        if (!egrd.gddone && !rn2(10) && !Deaf()
+            && !u.uswallow && !u.ustuck) {
+            await verbalize('Move along!');
         }
         restfakecorr(grd);
         return 0;
     }
 
-    // C nextpos: one step toward gdx,gdy, then dig while-loop may
-    // redirect onto an alternate orthogonal cell (vault.c ~1111–1155).
     const x = grd.mx | 0;
     const y = grd.my | 0;
-    const ggx = egrd.gdx | 0;
-    const ggy = egrd.gdy | 0;
-    let dx = (ggx > x) ? 1 : (ggx < x) ? -1 : 0;
-    let dy = (ggy > y) ? 1 : (ggy < y) ? -1 : 0;
     let nx = x;
     let ny = y;
-    if (Math.abs(ggx - x) >= Math.abs(ggy - y)) nx += dx;
-    else ny += dy;
-
-    // Resolve final (nx,ny) + action without mutating yet (C mutates at
-    // end of while / proceed; collision after redirect still rare).
     let typ = 0;
     let action = 'corr'; // 'corr' | 'door'
-    for (let guard_iters = 0; guard_iters < 8; guard_iters++) {
-        if (!isok(nx, ny)) return 0;
-        const crm = game.level?.at?.(nx, ny);
-        if (!crm) return 0;
-        typ = crm.typ | 0;
-        if (typ === STONE) {
+    let skip_dig = false;
+
+    // C vault.c ~1078–1110: !u_in_vault look-around (ortho only)
+    if (!u_in_vault) {
+        look: for (let lx = x - 1; lx <= x + 1; lx++) {
+            for (let ly = y - 1; ly <= y + 1; ly++) {
+                if ((lx === x || ly === y) && (lx !== x || ly !== y)
+                    && isok(lx, ly)) {
+                    const crm = game.level?.at?.(lx, ly);
+                    if (!crm) continue;
+                    const ltyp = crm.typ | 0;
+                    if (!IS_STWALL(ltyp) && !IS_POOL(ltyp)) {
+                        if (in_fcorridor(grd, lx, ly)) continue;
+                        if (in_rooms(lx, ly, VAULT)) continue;
+                        egrd.gddone = 1;
+                        if (ACCESSIBLE(ltyp)) {
+                            // C: goto newpos → gd_mv_monaway + cleanup
+                            return await gd_move_cleanup(
+                                grd, semi_dead, false,
+                            );
+                        }
+                        // Non-accessible: convert SCORR→CORR else DOOR
+                        // then fall into proceed (C goto proceed).
+                        typ = ltyp;
+                        nx = lx;
+                        ny = ly;
+                        if (ltyp === SCORR) {
+                            crm.typ = CORR;
+                            crm.flags = 0;
+                            action = 'corr';
+                        } else {
+                            crm.typ = DOOR;
+                            crm.doormask = D_NODOOR;
+                            action = 'door';
+                        }
+                        del_engr_at(lx, ly);
+                        skip_dig = true;
+                        break look;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!skip_dig) {
+        // C nextpos: one step toward gdx,gdy, then dig while-loop may
+        // redirect onto an alternate orthogonal cell (vault.c ~1111–1155).
+        const ggx = egrd.gdx | 0;
+        const ggy = egrd.gdy | 0;
+        let dx = (ggx > x) ? 1 : (ggx < x) ? -1 : 0;
+        let dy = (ggy > y) ? 1 : (ggy < y) ? -1 : 0;
+        nx = x;
+        ny = y;
+        if (Math.abs(ggx - x) >= Math.abs(ggy - y)) nx += dx;
+        else ny += dy;
+
+        // Resolve final (nx,ny) + action without mutating yet (C mutates at
+        // end of while / proceed; collision after redirect still rare).
+        action = 'corr';
+        for (let guard_iters = 0; guard_iters < 8; guard_iters++) {
+            if (!isok(nx, ny)) return 0;
+            const crm = game.level?.at?.(nx, ny);
+            if (!crm) return 0;
+            typ = crm.typ | 0;
+            if (typ === STONE) {
+                action = 'corr';
+                break;
+            }
+            const ex = nx + nx - x;
+            const ey = ny + ny - y;
+            if (isok(ex, ey) && IS_ROOM(game.level?.at?.(ex, ey)?.typ | 0)) {
+                action = 'door';
+                break;
+            }
+            if (dy && nx !== x) {
+                nx = x;
+                ny = y + dy;
+                continue;
+            }
+            if (dx && ny !== y) {
+                ny = y;
+                nx = x + dx;
+                dy = 0;
+                continue;
+            }
+            if (IS_ROOM(typ)) {
+                action = 'door';
+                break;
+            }
             action = 'corr';
             break;
         }
-        const ex = nx + nx - x;
-        const ey = ny + ny - y;
-        if (isok(ex, ey) && IS_ROOM(game.level?.at?.(ex, ey)?.typ | 0)) {
-            action = 'door';
-            break;
-        }
-        if (dy && nx !== x) {
-            nx = x;
-            ny = y + dy;
-            continue;
-        }
-        if (dx && ny !== y) {
-            ny = y;
-            nx = x + dx;
-            dy = 0;
-            continue;
-        }
-        if (IS_ROOM(typ)) {
-            action = 'door';
-            break;
-        }
-        action = 'corr';
-        break;
     }
 
-    if (u.ux === nx && u.uy === ny) return 0;
-    // avoid importing m_at (mon→monmove→shk→vault cycle)
-    for (const m of game.fmon || []) {
-        if (m !== grd && (m.mx | 0) === nx && (m.my | 0) === ny
-            && (m.mhp | 0) > 0) {
-            return 0;
+    if (!egrd.gddone) {
+        if (u.ux === nx && u.uy === ny) return 0;
+        // avoid importing m_at (mon→monmove→shk→vault cycle)
+        for (const m of game.fmon || []) {
+            if (m !== grd && (m.mx | 0) === nx && (m.my | 0) === ny
+                && (m.mhp | 0) > 0) {
+                return 0;
+            }
         }
     }
 
     const loc = game.level?.at?.(nx, ny);
     if (!loc) return 0;
     const ftyp = typ;
-    if (action === 'door') {
-        loc.typ = DOOR;
-        loc.doormask = D_NODOOR;
-    } else {
-        loc.typ = CORR;
-        loc.flags = 0;
+    if (!skip_dig) {
+        if (action === 'door') {
+            loc.typ = DOOR;
+            loc.doormask = D_NODOOR;
+        } else {
+            loc.typ = CORR;
+            loc.flags = 0;
+        }
     }
     recalc_block_point(nx, ny);
     if (!egrd.fakecorr) egrd.fakecorr = [];
+    const ggx = egrd.gdx | 0;
+    const ggy = egrd.gdy | 0;
     const fi = egrd.fcend | 0;
     if (fi < 40 && ((nx !== ggx || ny !== ggy)
         || ((grd.mx | 0) !== ggx || (grd.my | 0) !== ggy))) {
@@ -729,6 +844,11 @@ export function gd_move(grd) {
             flags: action === 'door' ? (loc.doormask | 0) : (loc.flags | 0),
         };
         egrd.fcend = fi + 1;
+    }
+
+    // C newpos: if gddone after look-around proceed → cleanup, no place
+    if (egrd.gddone) {
+        return await gd_move_cleanup(grd, semi_dead, false);
     }
 
     egrd.ogx = grd.mx;

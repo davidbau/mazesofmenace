@@ -2,7 +2,7 @@
 // C ref: teleport.c — collect_coords, enexto_core (NEW_ENEXTO), goodpos (partial).
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, rnd } from './rng.js';
 import {
     COLNO, ROWNO,
     CC_NO_FLAGS, CC_INCL_CENTER, CC_UNSHUFFLED, CC_RING_PAIRS,
@@ -17,11 +17,13 @@ import {
     is_hole, Is_stronghold, Is_botlevel,
 } from './const.js';
 import { objects_at } from './mkobj.js';
-import { objectNames } from './objects.js';
+import { objectNames, SPBOOK_CLASS } from './objects.js';
 import { amorphous, throws_rocks } from './monsters.js';
 import { newsym, pline } from './display.js';
 import { vision_recalc } from './vision.js';
 import { in_rooms, nomul } from './hack.js';
+import { makeknown } from './invent.js';
+import { more_experienced } from './exper.js';
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
 const Trap_Effect_Finished = 0;
@@ -463,6 +465,100 @@ export async function teleds(nux, nuy, teleds_flags) {
     // C: spoteffects(TRUE) — vault gold / traps at landing
     const { spoteffects } = await import('./pickup.js');
     await spoteffects(true);
+}
+
+/**
+ * C ref: read.c learnscrolltyp / learnscroll — makeknown + XP when new.
+ * Local copy so teleport.js does not import read.js (cycle).
+ */
+function learnscroll(sobj) {
+    if (!sobj || sobj.oclass === SPBOOK_CLASS) return;
+    const otyp = sobj.otyp | 0;
+    const oc = game.objects?.[otyp];
+    if (!oc || oc.oc_name_known) return;
+    makeknown(otyp);
+    more_experienced(0, 10);
+}
+
+/**
+ * C ref: teleport.c safe_teleds — random teleok spots then collect_coords.
+ * Envelope: 40× rnd(COLNO-1)/rn2(ROWNO) + candy teleok(FALSE) with first
+ * trap backup via teleok(TRUE).
+ * @returns {Promise<boolean>}
+ */
+export async function safe_teleds(teleds_flags) {
+    let nux; let nuy;
+    for (let tcnt = 0; tcnt < 40; ++tcnt) {
+        nux = rnd(COLNO - 1);
+        nuy = rn2(ROWNO);
+        if (teleok(nux, nuy, false)) {
+            await teleds(nux, nuy, teleds_flags);
+            return true;
+        }
+    }
+
+    let cc_flags = CC_RING_PAIRS | CC_SKIP_MONS;
+    const Passes_walls = !!(game.u?.Passes_walls || game.u?.HPasses_walls
+        || game.u?.EPasses_walls);
+    if (!Passes_walls) cc_flags |= CC_SKIP_INACCS;
+    const candy = [];
+    const candycount = collect_coords(
+        candy, game.u.ux | 0, game.u.uy | 0, 0, cc_flags, null,
+    );
+    const backupspot = { x: 0, y: 0 };
+    for (let tcnt = 0; tcnt < candycount; ++tcnt) {
+        nux = candy[tcnt].x;
+        nuy = candy[tcnt].y;
+        if (teleok(nux, nuy, false)) {
+            await teleds(nux, nuy, teleds_flags);
+            return true;
+        }
+        if (!backupspot.x && trap_at(nux, nuy) && teleok(nux, nuy, true)) {
+            backupspot.x = nux;
+            backupspot.y = nuy;
+        }
+    }
+    if (backupspot.x) {
+        await teleds(backupspot.x, backupspot.y, teleds_flags);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: teleport.c scrolltele — scroll/intrinsic teleport placement.
+ * Envelope: noteleport pline; uncontrolled → learnscroll + safe_teleds.
+ * Named omissions: make_blinded clear; W-tower half of amulet gate;
+ * Teleport_control/blessed getpos controlled path; wizard override.
+ */
+export async function scrolltele(scroll) {
+    if (noteleport_level(game.youmonst) && !game.flags?.debug) {
+        await pline('A mysterious force prevents you from teleporting!');
+        if (scroll) learnscroll(scroll);
+        return;
+    }
+    // make_blinded(0, FALSE) deferred
+    const u = game.u || {};
+    if ((u.uhave?.amulet || u.uhave_amulet) && !rn2(3)) {
+        await pline('You feel disoriented for a moment.');
+        return;
+    }
+    const Teleport_control = !!(u.HTeleport_control || u.ETeleport_control
+        || u.Teleport_control);
+    const Stunned = !!(u.Stunned || u.HStun || u.EStun);
+    if ((Teleport_control || (scroll && scroll.blessed)) && !Stunned) {
+        // controlled getpos path deferred — fall through to random
+    }
+
+    if (scroll) learnscroll(scroll);
+    await safe_teleds(TELEDS_TELEPORT);
+}
+
+/**
+ * C ref: teleport.c tele — non-scroll teleport via scrolltele(NULL).
+ */
+export async function tele() {
+    await scrolltele(null);
 }
 
 /**

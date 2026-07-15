@@ -17,7 +17,9 @@ import {
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
-import { little_to_big, big_to_little } from './mondata.js';
+import {
+    little_to_big, big_to_little, hero_conflict, resist_conflict,
+} from './mondata.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
@@ -368,13 +370,14 @@ export function mnexto(mtmp, _rlocflags = 0) {
 // C ref: mon.c mon_allowflags() — hostile/peaceful + dig/tunnel flags
 export function mon_allowflags(mtmp) {
     let allowflags = 0;
+    const Conflict = hero_conflict();
     // C: can_open = !(nohands(data) || verysmall(data))
     const can_open = !(nohands(mtmp.data) || verysmall(mtmp.data));
     // C: can_tunnel = tunnels && !Is_rogue_level; needspick hostiles close
     // enough prefer weapon over dig (same gate as m_move).
     let can_tunnel = tunnels(mtmp.data) && !Is_rogue_level(game.u?.uz);
     if (can_tunnel && needspick(mtmp.data)
-        && ((!mtmp.mpeaceful || game.Conflict || game.flags?.Conflict)
+        && ((!mtmp.mpeaceful || Conflict)
             && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8)) {
         can_tunnel = false;
     }
@@ -383,6 +386,10 @@ export function mon_allowflags(mtmp) {
     } else if (mtmp.mpeaceful) {
         allowflags |= ALLOW_SANCT | ALLOW_SSM;
     } else {
+        allowflags |= ALLOW_U;
+    }
+    // C: Conflict && !resist_conflict → ALLOW_U (attacks hero)
+    if (Conflict && !resist_conflict(mtmp)) {
         allowflags |= ALLOW_U;
     }
     // C: passes_walls → ALLOW_ROCK|ALLOW_WALL; throws_rocks / m_can_break_boulder → ALLOW_ROCK

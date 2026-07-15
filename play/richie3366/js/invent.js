@@ -73,17 +73,26 @@ import { align_str, align_gname, u_gname } from './roles.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     OVERLOADED, WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, MAX_CARR_CAP,
+    WT_WOUNDEDLEG_REDUCT, LEFT_SIDE, RIGHT_SIDE,
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { PM_SAMURAI, PM_MONK } from './generated/monsters_data.js';
 import { humanoid } from './monsters.js';
 
-// C ref: hack.c weight_cap()
+// C ref: hack.c weight_cap() — STR+CON base; wounded-leg reduct when !Flying.
+// Named omissions: Boots_on Lev defer; Upolyd msize/cwt; Lev/air/steed MAX.
 export function weight_cap() {
     let carrcap = WT_WEIGHTCAP_STRCON * (acurrstr() + acurr(A_CON))
         + WT_WEIGHTCAP_SPARE;
     if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
+    const u = game.u || {};
+    // C: Levitation || airlevel || strong steed → MAX; else wounded legs
+    if (!(u.Levitation || u.Flying)) {
+        const ew = u.EWounded_legs | 0;
+        if (ew & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+        if (ew & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+    }
     return Math.max(carrcap, 1);
 }
 
@@ -113,6 +122,56 @@ export function calc_capacity(xtra_wt = 0) {
 
 export function near_capacity() {
     return calc_capacity(0);
+}
+
+/**
+ * C ref: pickup.c encumber_msg — pline when near_capacity crosses go.oldcap.
+ * Envelope: all SLT..OVERLOADED up/down arms; stagger() poly deferred
+ * (humanoid uses verb as-is).
+ */
+export async function encumber_msg() {
+    const newcap = near_capacity();
+    const oldcap = game.oldcap | 0;
+    if (oldcap < newcap) {
+        switch (newcap) {
+        case SLT_ENCUMBER:
+            await pline('Your movements are slowed slightly because of your load.');
+            break;
+        case MOD_ENCUMBER:
+            await pline('You rebalance your load.  Movement is difficult.');
+            break;
+        case HVY_ENCUMBER:
+            await pline('You stagger under your heavy load.  Movement is very hard.');
+            break;
+        default:
+            await pline(
+                `You ${newcap === EXT_ENCUMBER ? 'can barely' : "can't even"} move a handspan with this load!`,
+            );
+            break;
+        }
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    } else if (oldcap > newcap) {
+        switch (newcap) {
+        case UNENCUMBERED:
+            await pline('Your movements are now unencumbered.');
+            break;
+        case SLT_ENCUMBER:
+            await pline('Your movements are only slowed slightly by your load.');
+            break;
+        case MOD_ENCUMBER:
+            await pline('You rebalance your load.  Movement is still difficult.');
+            break;
+        case HVY_ENCUMBER:
+            await pline('You stagger under your load.  Movement is still very hard.');
+            break;
+        default:
+            break;
+        }
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    }
+    game.oldcap = newcap;
 }
 
 /**
@@ -1744,10 +1803,12 @@ export function dfeature_at(x, y) {
  * C ref: invent.c look_here — feature + objects at hero feet.
  * Ported envelope: non-swallow, non-blind; dfeature pline; single
  * `You see here`; multi NHW_MENU "Things that are here:" via
- * display_nhwindow(WIN_MESSAGE)+putstr (D-0220). Named omissions:
+ * display_nhwindow(WIN_MESSAGE)+putstr (D-0220); **observe_object
+ * before doname** (D-0399; C xname_flags). Named omissions:
  * pile_limit skip_objects, Blind feel, trap+region, doname_with_price,
- * cockatrice feel, engulfer stomach. Furniture with ct==0 uses
- * pickup.describe_decor (D-0356), not this path.
+ * cockatrice feel, engulfer stomach; blanket xname observe /
+ * distant_name. Furniture with ct==0 uses pickup.describe_decor
+ * (D-0356), not this path.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const u = game.u;
@@ -1814,6 +1875,10 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
             const { read_engr_at } = await import('./engrave.js');
             await read_engr_at(u?.ux, u?.uy);
         }
+        // C: doname → xname_flags observe_object when !Blind && !distantname
+        // (JS xname/doname omit blanket observe; look_here must set dknown
+        // for buried pile items see_nearby_objects never touches).
+        if (!game.u?.Blind) observe_object(otmp);
         // doname_with_price deferred → doname
         await pline(`You ${verb} here ${doname(otmp)}.`);
         return;
@@ -1830,6 +1895,8 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         `${picked_some ? 'Other things' : 'Things'} that are here:`,
     );
     for (let o = otmp; o; o = o.nexthere) {
+        // C: doname_with_price → xname observe_object (dknown for gem color)
+        if (!game.u?.Blind) observe_object(o);
         lines.push(doname(o)); // doname_with_price deferred
     }
     const { show_nhw_menu_text } = await import('./pager.js');

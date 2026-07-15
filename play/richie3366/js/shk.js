@@ -386,7 +386,7 @@ import { gd_move as vault_gd_move } from './vault.js';
 /**
  * C ref: vault.c gd_move — re-export peaceful escort subset from vault.js.
  */
-export function gd_move(grd) {
+export async function gd_move(grd) {
     return vault_gd_move(grd);
 }
 

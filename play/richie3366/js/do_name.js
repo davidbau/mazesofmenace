@@ -161,6 +161,18 @@ export function noit_Monnam(mtmp) {
     return highc_name(`the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
 }
 
+/** C ref: do_name.c noit_mon_nam — lowercase noit_Monnam. */
+export function noit_mon_nam(mtmp) {
+    if (!mtmp) return 'it';
+    const ghost = named_ghost_monnam(mtmp);
+    if (ghost) return ghost;
+    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
+    if (mtmp.mtame) {
+        return `your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
+    }
+    return `the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
+}
+
 /**
  * C ref: do_name.c oname — assign name; may create artifact via artifact_exists.
  */

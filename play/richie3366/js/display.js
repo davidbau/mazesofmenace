@@ -27,6 +27,7 @@ import {
     SVALL,
     TER_TRP, TER_OBJ, TER_MON, TER_FULL,
     OBJ_FLOOR,
+    UNENCUMBERED,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -46,7 +47,7 @@ import {
 } from './attrib.js';
 import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { observe_object } from './invent.js';
+import { observe_object, near_capacity } from './invent.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -473,6 +474,8 @@ const TOPLINE_NON_EMPTY = 2;
 let _toplines = '';
 let _toplin = TOPLINE_EMPTY;
 let _win_stop = false;
+// C ref: pline.c gp.prevmsg — last message that actually reached putmesg
+let _prevmsg = '';
 
 /** Reset module topline/delay state for a fresh runSegment (not in C game
  *  object; must not leak NEED_MORE across harness sessions). */
@@ -483,6 +486,7 @@ export function reset_display_messages() {
     _delay_flushing = false;
     _lastStatus1 = '';
     _lastStatus2 = '';
+    _prevmsg = '';
 }
 
 /**
@@ -1590,10 +1594,16 @@ let _lastStatus2 = '';
 /** When true, paint blank status (fullscreen menu cleared WIN_STATUS). */
 let _statusSuppressed = false;
 
+// C ref: botl.c enc_stat[] — also used in insight.c
+const ENC_STAT = [
+    '', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded',
+];
+
 // C ref: botl.c describe_level — "Dlvl:%-2d" / "Tutorial:%-2d" uses
 // depth(&u.uz), not dunlev; Xp:/T: gated by flags.showexp / flags.time;
 // BL_CONDITION Ride when u.usteed (botl.c condtests[bl_ride]).
-// Named omissions: Knox/quest/endgame describe_level arms.
+// Named omissions: Knox/quest/endgame describe_level arms; full condition
+// list (Stone/Slime/hunger/Blind/…); Upolyd HD.
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
@@ -1609,6 +1619,11 @@ function _statusLine2() {
     let s = `${levtag}:${dlvl} $:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (flags.showexp) s += `/${u.uexp || 0}`;
     if (flags.time) s += ` T:${game.moves || 1}`;
+    // C do_statusline2 cond: hunger then enc_stat then Blind… then Ride
+    const cap = near_capacity();
+    if (cap > UNENCUMBERED) {
+        s += ` ${ENC_STAT[cap] || ''}`;
+    }
     // C windows.c BL_MASK_RIDE → " Ride" (leading space in strcat)
     if (u.usteed) s += ' Ride';
     return s;
@@ -2055,6 +2070,17 @@ export async function verbalize(msg) {
     await pline(`"${msg}"`);
 }
 
+/**
+ * C ref: pline.c Norep — PLINE_NOREPEAT → MSGTYP_NOREP; suppress when
+ * identical to gp.prevmsg (last shown pline), not a Norep-only cache.
+ * Msgtype-pattern table deferred.
+ */
+export async function Norep(msg) {
+    if (msg == null || msg === '') return;
+    if (_prevmsg === String(msg)) return;
+    await pline(msg);
+}
+
 // ── pline ──
 // C ref: pline.c vpline — flush_screen before putmesg; topl.c update_topl.
 export async function pline(msg) {
@@ -2067,12 +2093,15 @@ export async function pline(msg) {
     // pre-more skip flag even if ESC sets WIN_STOP during more().
     const skip = _win_stop;
     const notdied = !String(msg).startsWith('You die');
+    const line = String(msg);
 
     if ((_toplin === TOPLINE_NEED_MORE || skip)
-        && _toplines.length + 3 + msg.length < CO - 8
+        && _toplines.length + 3 + line.length < CO - 8
         && notdied) {
-        _toplines = _toplines ? `${_toplines}  ${msg}` : msg;
+        _toplines = _toplines ? `${_toplines}  ${line}` : line;
         if (!skip) game._pending_message = _toplines;
+        // C: gp.prevmsg = line (new text only, not the concatenated topline)
+        _prevmsg = line;
         return;
     }
     if (!skip && _toplin === TOPLINE_NEED_MORE) {
@@ -2081,7 +2110,7 @@ export async function pline(msg) {
     if (!notdied) _win_stop = false;
 
     // C ref: topl.c update_topl — replace spaces with `\n` while n0 >= CO
-    let formatted = String(msg);
+    let formatted = line;
     {
         let n0 = formatted.length;
         let tl = 0;
@@ -2102,6 +2131,8 @@ export async function pline(msg) {
     }
 
     _toplines = formatted;
+    // C: strncpy(gp.prevmsg, line, BUFSZ) after putmesg
+    _prevmsg = line;
     if (!skip) {
         game._pending_message = formatted;
         _toplin = TOPLINE_NEED_MORE;

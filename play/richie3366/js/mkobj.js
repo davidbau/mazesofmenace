@@ -453,20 +453,110 @@ function special_corpse(num) {
     return !!(ptr && (ptr.mlet === 'S_TROLL' || is_rider(ptr)));
 }
 
-// Timer stubs — enough for corpse timeout restart semantics (no fire yet)
-export function obj_stop_timers(obj) {
-    if (!obj) return;
-    obj.timed = 0;
-    obj._timer_action = 0;
-    obj._timer_when = 0;
+/**
+ * C ref: timeout.c timer queue (gt.timer_base) — object timers only.
+ * start_timer inserts by absolute timeout (moves+when); run_timers fires
+ * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract;
+ * REVIVE_MON / ZOMBIFY_MON / burn / hatch / fig / melt deferred (no-op
+ * fire clears the queue entry).
+ */
+function timer_base() {
+    if (!game._timer_base) game._timer_base = null;
+    return game;
 }
 
-export function start_timer(when, _kind, action, obj) {
+export function obj_stop_timers(obj) {
+    if (!obj) return;
+    const g = timer_base();
+    let prev = null;
+    let curr = g._timer_base;
+    while (curr) {
+        const next = curr.next;
+        if (curr.kind === TIMER_OBJECT && curr.obj === obj) {
+            if (prev) prev.next = next;
+            else g._timer_base = next;
+            // cleanup_burn deferred
+        } else {
+            prev = curr;
+        }
+        curr = next;
+    }
+    obj.timed = 0;
+}
+
+/**
+ * C ref: timeout.c start_timer — queue object timer; timeout = moves+when.
+ * Duplicate (same obj + action) aborted like C (no second insert).
+ */
+export function start_timer(when, kind, action, obj) {
     if (!obj) return 0;
-    obj.timed = 1;
-    obj._timer_action = action;
-    obj._timer_when = when;
+    const g = timer_base();
+    for (let dup = g._timer_base; dup; dup = dup.next) {
+        if (dup.kind === kind && dup.action === action && dup.obj === obj) {
+            return 0;
+        }
+    }
+    const moves = game.moves | 0;
+    const gnu = {
+        next: null,
+        timeout: moves + (when | 0),
+        kind: kind | 0,
+        action: action | 0,
+        obj,
+    };
+    let prev = null;
+    let curr = g._timer_base;
+    while (curr && curr.timeout < gnu.timeout) {
+        prev = curr;
+        curr = curr.next;
+    }
+    gnu.next = curr;
+    if (prev) prev.next = gnu;
+    else g._timer_base = gnu;
+    if (kind === TIMER_OBJECT) obj.timed = (obj.timed | 0) + 1;
     return when;
+}
+
+/**
+ * C ref: dig.c rot_corpse — corpse finished rotting.
+ * Envelope: OBJ_FLOOR extract + newsym; invent/minvent/worn plines deferred.
+ */
+async function rot_corpse(obj) {
+    if (!obj) return;
+    const onFloor = obj.where === OBJ_FLOOR;
+    const x = obj.ox | 0;
+    const y = obj.oy | 0;
+    // C: rot_organic — contents bury deferred; extract + obfree
+    obj_extract_self(obj);
+    obj.quan = 0;
+    obj.where = OBJ_FREE;
+    obj.timed = 0;
+    if (onFloor) {
+        // hideunder / mundetected expose deferred
+        // Dynamic import avoids display.js ↔ mkobj.js cycle (objects_at).
+        const { newsym } = await import('./display.js');
+        newsym(x, y);
+    }
+}
+
+/**
+ * C ref: timeout.c run_timers — fire due timers at start of list.
+ * Called from nh_timeout after intrinsic TIMEOUT handling.
+ */
+export async function run_timers() {
+    const g = timer_base();
+    const moves = game.moves | 0;
+    while (g._timer_base && g._timer_base.timeout <= moves) {
+        const curr = g._timer_base;
+        g._timer_base = curr.next;
+        if (curr.kind === TIMER_OBJECT && curr.obj) {
+            curr.obj.timed = Math.max(0, (curr.obj.timed | 0) - 1);
+        }
+        if (curr.action === ROT_CORPSE) {
+            await rot_corpse(curr.obj);
+        }
+        // REVIVE_MON / ZOMBIFY_MON / BURN_OBJECT / … deferred — entry dropped
+    }
 }
 
 // C ref: mkobj.c set_corpsenm — stop timers, set id, restart CORPSE timeout

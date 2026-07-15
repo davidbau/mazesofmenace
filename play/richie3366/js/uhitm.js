@@ -10,7 +10,7 @@ import {
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
-    MIM_REVEAL,
+    MIM_REVEAL, engulfing_u,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
@@ -494,7 +494,10 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
         }
         malive = await hmon(mon, weapon, HMON_MELEE, dieroll);
         if (malive) {
-            if (!rn2(25) && (mon.mhp | 0) < (mon.mhpmax | 0) / 2) {
+            // C: !rn2(25) && mhp < mhpmax/2 && !engulfing_u — integer /
+            if (!rn2(25)
+                && (mon.mhp | 0) < Math.trunc((mon.mhpmax | 0) / 2)
+                && !engulfing_u(mon)) {
                 // monflee — duration !rn2(3)?rnd(100):0 deferred body
                 if (!rn2(3)) rnd(100);
             }

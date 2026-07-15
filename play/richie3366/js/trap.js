@@ -2,8 +2,9 @@
 // C ref: trap.c — maketrap/choose_trapnote/hole_destination/trapnote,
 // t_at, t_missile, thitm, mintrap, dotrap, trapeffect_dart_trap /
 // trapeffect_pit / trapeffect_rocktrap / trapeffect_sqky_board /
-// trapeffect_hole / trapeffect_magic_trap / trapeffect_fire_trap /
-// trapeffect_slp_gas_trap, make_corpse ordinary path via thitm death.
+// trapeffect_bear_trap / trapeffect_hole / trapeffect_magic_trap /
+// trapeffect_fire_trap / trapeffect_slp_gas_trap, make_corpse ordinary
+// path via thitm death.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -13,7 +14,7 @@ import {
 import { find_mac, make_corpse } from './mhitm.js';
 import { mon_explodes } from './explode.js';
 import { newsym, pline, mon_visible, see_with_infrared, You_feel } from './display.js';
-import { doname, an, the, xname } from './objnam.js';
+import { doname, an, the, xname, makeplural, vtense } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
 import { dist2, m_at } from './mon.js';
 import { cansee, couldsee } from './vision.js';
@@ -28,9 +29,9 @@ import {
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
     PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, FIRE_TRAP, SLP_GAS_TRAP,
     TELEP_TRAP, ROLLING_BOULDER_TRAP,
-    BEAR_TRAP, WEB, RUST_TRAP, VIBRATING_SQUARE,
+    BEAR_TRAP, WEB, RUST_TRAP, VIBRATING_SQUARE, LANDMINE,
     ANTI_MAGIC, HURTLING, TOOKPLUNGE, VIASITTING, FIRE_RES, SLEEP_RES,
-    STONE_RES,
+    STONE_RES, FAILEDUNTRAP,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
     IS_ROOM, IS_WALL, IS_AIR, SDOOR,
     D_CLOSED, D_LOCKED,
@@ -39,6 +40,7 @@ import {
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
     KILLED_BY, KILLED_BY_AN,
     WATER, BURNING,
+    TT_NONE, TT_BEARTRAP, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
@@ -49,9 +51,9 @@ import { monsterNames } from './generated/monsters_data.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
 import { maybe_half_phys, nomul, losehp } from './hack.js';
-import { observe_object } from './invent.js';
+import { observe_object, encumber_msg } from './invent.js';
 import { makemon } from './makemon.js';
-import { A_CHA, A_STR, adjattrib, exercise } from './attrib.js';
+import { A_CHA, A_STR, A_DEX, adjattrib, exercise } from './attrib.js';
 import { tamedog } from './dog.js';
 
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
@@ -61,6 +63,8 @@ const PM_WOOD_GOLEM = monsterNames.indexOf('PM_WOOD_GOLEM');
 const PM_LEATHER_GOLEM = monsterNames.indexOf('PM_LEATHER_GOLEM');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
+const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
+const PM_BUGBEAR = monsterNames.indexOf('PM_BUGBEAR');
 const DART = objectNames.indexOf('DART');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -599,7 +603,7 @@ function is_youmonst(mtmp) {
 
 /**
  * C ref: trap.c floor_trigger — types that fire when touching the floor.
- * Envelope: dart/arrow/rock/sqky/pit/hole (+ common floor traps); others false.
+ * Envelope matches C switch (incl. bear/landmine/gas/rust/fire).
  */
 function floor_trigger(ttyp) {
     switch (ttyp) {
@@ -607,11 +611,16 @@ function floor_trigger(ttyp) {
     case DART_TRAP:
     case ROCKTRAP:
     case SQKY_BOARD:
+    case BEAR_TRAP:
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+    case SLP_GAS_TRAP:
+    case RUST_TRAP:
+    case FIRE_TRAP:
     case PIT:
     case SPIKED_PIT:
     case HOLE:
     case TRAPDOOR:
-    case ROLLING_BOULDER_TRAP:
         return true;
     default:
         return false;
@@ -642,6 +651,7 @@ function trapname(ttyp, _override) {
     case DART_TRAP: return 'dart trap';
     case ROCKTRAP: return 'falling rock trap';
     case SQKY_BOARD: return 'squeaky board';
+    case BEAR_TRAP: return 'bear trap';
     case PIT: return 'pit';
     case SPIKED_PIT: return 'spiked pit';
     case HOLE: return 'hole';
@@ -807,6 +817,208 @@ function feeltrap(trap) {
     if (!trap) return;
     trap.tseen = true;
     newsym(trap.tx, trap.ty);
+}
+
+/** C ref: hacklib.c s_suffix — steed foot msg in trapeffect_bear_trap. */
+function s_suffix(s) {
+    if (!s) return 'the';
+    if (s === 'it') return 'its';
+    if (s === 'you') return 'your';
+    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
+        || s.endsWith('sh') || s.endsWith('ch')) {
+        return `${s}'`;
+    }
+    return `${s}'s`;
+}
+
+/**
+ * C ref: trap.c set_utrap — set hero trap timer/type; botl when armed↔clear.
+ * Named omission: float_vs_flight Lev/Fly block.
+ */
+function set_utrap(tim, typ) {
+    const u = game.u || (game.u = {});
+    const was = !!(u.utrap | 0);
+    const now = !!(tim | 0);
+    if (was !== now) {
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    }
+    u.utrap = tim | 0;
+    u.utraptype = now ? (typ | 0) : TT_NONE;
+}
+
+/**
+ * C ref: trap.c reset_utrap — clear utrap; optional Lev/Fly restore msgs deferred.
+ */
+function reset_utrap(_msg) {
+    set_utrap(0, 0);
+}
+
+/**
+ * C ref: do.c set_wounded_legs — timeout + side bits + ATEMP(DEX)--
+ * then encumber_msg (carrcap drops via WT_WOUNDEDLEG_REDUCT).
+ * Named omission: steed-leg messaging is caller's job.
+ */
+async function set_wounded_legs(side, timex) {
+    const u = game.u || (game.u = {});
+    if (game.flags) game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+    const wounded = !!(u.Wounded_legs || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0));
+    if (!wounded) {
+        if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
+        u.atemp.a[A_DEX] = (u.atemp.a[A_DEX] | 0) - 1;
+    }
+    const hw = u.HWounded_legs | 0;
+    if (!wounded || (hw & TIMEOUT) < (timex | 0)) {
+        set_itimeout_prop('HWounded_legs', timex | 0);
+    }
+    u.EWounded_legs = (u.EWounded_legs | 0) | (side | 0);
+    u.Wounded_legs = true;
+    // C: encumber_msg() after EWounded_legs |= side
+    await encumber_msg();
+}
+
+/**
+ * C ref: do.c heal_legs(how) — clear wounded-leg timeout/side bits,
+ * restore ATEMP(DEX), feel-better pline, encumber_msg when how==0.
+ * how: 0 ordinary (nh_timeout), 1 dismount, 2 petrify limbs.
+ * Named omissions: steed-leg suppress path polish beyond usteed check.
+ */
+export async function heal_legs(how) {
+    const u = game.u || (game.u = {});
+    const wounded = !!(u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0));
+    if (!wounded) return;
+    if (game.flags) game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+    if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
+    if ((u.atemp.a[A_DEX] | 0) < 0) {
+        u.atemp.a[A_DEX] = (u.atemp.a[A_DEX] | 0) + 1;
+    }
+    // C: when mounted / petrify how==2, suppress feel-better message
+    if (!u.usteed && (how | 0) !== 2) {
+        let legs = body_part(LEG);
+        if (((u.EWounded_legs | 0) & BOTH_SIDES) === BOTH_SIDES) {
+            legs = makeplural(legs);
+        }
+        await pline(`Your ${legs} ${vtense(legs, 'feel')} better.`);
+    }
+    u.HWounded_legs = 0;
+    u.EWounded_legs = 0;
+    u.Wounded_legs = false;
+    // C: encumber_msg only for ordinary heal (how==0), not dismount
+    if ((how | 0) === 0) await encumber_msg();
+}
+
+/** C ref: mondata.c body_part — FOOT→"foot", LEG→"leg"; full poly deferred. */
+function body_part(part) {
+    if (part === FOOT) return 'foot';
+    if (part === LEG) return 'leg';
+    return 'body';
+}
+
+/** C ref: mondata.c mbodypart — FOOT→"foot"; full poly table deferred. */
+function mbodypart(_mon, part) {
+    return body_part(part);
+}
+
+/**
+ * C ref: trap.c trapeffect_bear_trap — hero + monster branches.
+ * Envelope: hero d(2,4) then Lev/Fly skip; feeltrap; amorph/whirly/unsolid
+ * /small harmlessly; set_utrap(rn1(4,4)); steed thitm or wounded-legs+losehp;
+ * exercise DEX. Monster: size/amorph/air catch + thitm(d(2,4)).
+ * Named omissions: float_vs_flight; Yname2 iron-shoe msg; full body_part
+ * poly; Soundeffect roar; which_armor wearing_iron_shoes body.
+ */
+async function trapeffect_bear_trap(mtmp, trap, trflags) {
+    const A_Your = ['A', 'Your'];
+    const a_your = ['a', 'your'];
+    const forcetrap = ((trflags & FORCETRAP) !== 0
+        || (trflags & FAILEDUNTRAP) !== 0
+        || (is_youmonst(mtmp) && (trflags & VIASITTING) !== 0));
+
+    if (is_youmonst(mtmp)) {
+        const u = game.u || {};
+        const dmg = d(2, 4);
+        if ((u.Levitation || u.Flying) && !forcetrap) {
+            return Trap_Effect_Finished;
+        }
+        feeltrap(trap);
+        const youdata = game.youmonst?.data;
+        if (amorphous(youdata) || is_whirly(youdata) || unsolid(youdata)) {
+            await pline(
+                `${A_Your[trap.madeby_u ? 1 : 0]} bear trap closes harmlessly through you.`,
+            );
+            return Trap_Effect_Finished;
+        }
+        if (!u.usteed && (youdata?.msize ?? 2) <= MZ_SMALL) {
+            await pline(
+                `${A_Your[trap.madeby_u ? 1 : 0]} bear trap closes harmlessly over you.`,
+            );
+            return Trap_Effect_Finished;
+        }
+        set_utrap(rn1(4, 4), TT_BEARTRAP);
+        if (u.usteed) {
+            await pline(
+                `${A_Your[trap.madeby_u ? 1 : 0]} bear trap closes on ${s_suffix(mon_nam(u.usteed))} ${mbodypart(u.usteed, FOOT)}!`,
+            );
+            if (await thitm(0, u.usteed, null, dmg, false)) {
+                reset_utrap(true);
+            }
+        } else {
+            await pline(
+                `${A_Your[trap.madeby_u ? 1 : 0]} bear trap closes on your ${body_part(FOOT)}!`,
+            );
+            const umonnum = u.umonnum | 0;
+            if (umonnum === PM_OWLBEAR || umonnum === PM_BUGBEAR) {
+                await pline('You howl in anger!');
+            }
+            if (wearing_iron_shoes(mtmp)) {
+                // C: Yname2(uarmf) — iron shoes protect; which_armor deferred
+                await pline('Your boots protect your leg.');
+            } else {
+                await set_wounded_legs(
+                    rn2(2) ? RIGHT_SIDE : LEFT_SIDE, rn1(10, 10),
+                );
+                losehp(maybe_half_phys(dmg), 'bear trap', KILLED_BY_AN);
+            }
+        }
+        exercise(A_DEX, false);
+        return Trap_Effect_Finished;
+    }
+
+    // Monster branch
+    const mptr = mtmp.data;
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    let trapkilled = false;
+
+    if ((mptr?.msize ?? 0) > MZ_SMALL && !amorphous(mptr) && !m_in_air(mtmp)
+        && !is_whirly(mptr) && !unsolid(mptr)) {
+        mtmp.mtrapped = 1;
+        if (in_sight) {
+            await pline(
+                `${Monnam(mtmp)} is caught in ${a_your[trap.madeby_u ? 1 : 0]} bear trap!`,
+            );
+            seetrap(trap);
+        } else if ((mptr?.mndx ?? -1) === PM_OWLBEAR
+            || (mptr?.mndx ?? -1) === PM_BUGBEAR) {
+            await You_hear('the roaring of an angry bear!');
+        }
+    } else if (forcetrap) {
+        if (in_sight) {
+            await pline(
+                `${Monnam(mtmp)} evades ${a_your[trap.madeby_u ? 1 : 0]} bear trap!`,
+            );
+            seetrap(trap);
+        }
+    }
+    if (mtmp.mtrapped && !wearing_iron_shoes(mtmp)) {
+        trapkilled = await thitm(0, mtmp, null, d(2, 4), false);
+    }
+    return trapkilled ? Trap_Killed_Mon
+        : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
 /**
@@ -1456,7 +1668,7 @@ async function trapeffect_telep_trap(mtmp, trap, _trflags) {
     return Trap_Moved_Mon;
 }
 
-// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep
+// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep/bear
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
@@ -1468,6 +1680,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_pit(mtmp, trap, trflags);
     case SQKY_BOARD:
         return trapeffect_sqky_board(mtmp, trap, trflags);
+    case BEAR_TRAP:
+        return trapeffect_bear_trap(mtmp, trap, trflags);
     case HOLE:
     case TRAPDOOR:
         return trapeffect_hole(mtmp, trap, trflags);
@@ -1480,7 +1694,7 @@ async function trapeffect_selector(mtmp, trap, trflags) {
     case TELEP_TRAP:
         return trapeffect_telep_trap(mtmp, trap, trflags);
     default:
-        // Named omission: arrow/bear/anti-magic/rust/… trap effects
+        // Named omission: arrow/anti-magic/rust/web/landmine/… trap effects
         return Trap_Effect_Finished;
     }
 }
@@ -1498,8 +1712,26 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
         return Trap_Effect_Finished;
     }
     if (mtmp.mtrapped) {
-        // Already trapped escape path: C burns rn2(40) / easy_escape;
-        // omit body — stay caught (named omission).
+        // C trap.c mintrap — already in trap: maybe reveal, then rn2(40)
+        // escape (or easy pit). Boulder-in-pit / metallivorous chew deferred.
+        if (!trap.tseen && cansee(mtmp.mx, mtmp.my) && canseemon(mtmp)
+            && (is_pit(trap.ttyp) || trap.ttyp === BEAR_TRAP
+                || trap.ttyp === HOLE || trap.ttyp === WEB)) {
+            seetrap(trap);
+        }
+        // m_easy_escape_pit arm deferred — only rn2(40) gate for now
+        if (!rn2(40)) {
+            if (canseemon(mtmp)) {
+                if (is_pit(trap.ttyp)) {
+                    await pline(`${Monnam(mtmp)} climbs out of the pit.`);
+                } else if (trap.ttyp === BEAR_TRAP || trap.ttyp === WEB) {
+                    await pline(
+                        `${Monnam(mtmp)} pulls free of the ${trapname(trap.ttyp, false)}.`,
+                    );
+                }
+            }
+            mtmp.mtrapped = 0;
+        }
         return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
 

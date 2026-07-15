@@ -9,8 +9,9 @@ import {
     is_pit,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
+    TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
 } from './const.js';
-import { pline, newsym, canspotmon, map_invisible } from './display.js';
+import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
 import { m_at } from './mon.js';
 import { cansee, recalc_block_point } from './vision.js';
@@ -19,6 +20,7 @@ import { objects_at, obj_extract_self, place_object } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { xname } from './objnam.js';
 import { A_STR, exercise } from './attrib.js';
+import { rn2 } from './rng.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 
@@ -759,6 +761,104 @@ export function crawl_destination(x, y) {
     // diagonal: intact doorway ban
     if (IS_DOOR(loc.typ) && !doorless_door(x, y)) return false;
     return true;
+}
+
+/**
+ * C ref: hack.c trapmove — try to escape u.utrap by walking; return true iff
+ * movement should continue toward destination. Always false for bear trap
+ * (escape still leaves hero on the trap square this turn).
+ *
+ * Branch envelope this iteration: TT_BEARTRAP full (no steed); TT_WEB
+ * decrement+msgs; TT_PIT adjacent-pit continue + climb_pit stub; TT_LAVA /
+ * TT_INFLOOR / TT_BURIEDBALL / steed / Sting / buried_ball_to_punishment /
+ * surface() culprit text deferred.
+ *
+ * @param {number} x destination x
+ * @param {number} y destination y
+ * @param {object|null} desttrap trap at destination or null
+ * @returns {Promise<boolean>}
+ */
+export async function trapmove(x, y, desttrap) {
+    const u = game.u;
+    if (!u || !(u.utrap | 0)) return true;
+
+    const verbose = game.flags?.verbose !== false;
+    let anchored = false;
+
+    switch (u.utraptype | 0) {
+    case TT_BEARTRAP: {
+        if (verbose) {
+            // steed Norep deferred
+            await Norep('You are caught in a bear trap.');
+        }
+        // C: diagonal or !rn2(5) decrements escape counter
+        if ((u.dx && u.dy) || !rn2(5)) {
+            u.utrap = (u.utrap | 0) - 1;
+        }
+        if (!(u.utrap | 0)) {
+            // wriggle_free — steed / wrench-ball arms deferred
+            await pline('You finally wriggle free.');
+        }
+        break;
+    }
+    case TT_PIT: {
+        if (desttrap && desttrap.tseen && is_pit(desttrap.ttyp)) {
+            return true; // move into adjacent pit
+        }
+        // climb_pit() body deferred — still consume the attempt
+        break;
+    }
+    case TT_WEB: {
+        // u_wield_art(ART_STING) cut-through deferred
+        u.utrap = (u.utrap | 0) - 1;
+        if (u.utrap | 0) {
+            if (verbose) {
+                await Norep('You are stuck to the web.');
+            }
+        } else {
+            await pline('You disentangle yourself.');
+        }
+        break;
+    }
+    case TT_LAVA: {
+        if (verbose) {
+            await Norep('You are stuck in the lava.');
+        }
+        if (!is_lava(x, y)) {
+            u.utrap = (u.utrap | 0) - 1;
+            if (((u.utrap | 0) & 0xff) === 0) {
+                u.utrap = 0;
+                await pline('You pull yourself to the edge of the lava.');
+            }
+        }
+        u.umoved = true;
+        break;
+    }
+    case TT_INFLOOR:
+    case TT_BURIEDBALL: {
+        anchored = (u.utraptype | 0) === TT_BURIEDBALL;
+        // buried_ball radius-1 free-move arm deferred
+        u.utrap = (u.utrap | 0) - 1;
+        if (u.utrap | 0) {
+            if (verbose) {
+                const msg = anchored
+                    ? 'You are chained to the buried ball.'
+                    : 'You are stuck in the floor.';
+                await Norep(msg);
+            }
+        } else if (anchored) {
+            await pline('You finally wrench the ball free.');
+            // buried_ball_to_punishment deferred
+        } else {
+            await pline('You finally wriggle free.');
+        }
+        break;
+    }
+    case TT_NONE:
+    default:
+        break;
+    }
+    return false;
 }
 
 /**

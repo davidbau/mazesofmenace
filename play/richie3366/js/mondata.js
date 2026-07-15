@@ -1,15 +1,50 @@
 // mondata.js — Monster name lookup + growth (partial).
 // C ref: mondata.c name_to_mon / name_to_monplus / little_to_big / big_to_little
-// + monstseesu / monstunseesu (seen_resistance).
+// + monstseesu / monstunseesu (seen_resistance) + resist_conflict.
 
 import { game } from './gstate.js';
 import { couldsee } from './vision.js';
+import { rnd } from './rng.js';
+import { acurr, A_CHA } from './attrib.js';
+import { objectNames } from './objects.js';
 import {
     monsterNames, pmnames, NON_PM, LOW_PM,
     MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
     M1_SEE_INVIS,
 } from './monsters.js';
-import { M_SEEN_NOTHING } from './const.js';
+import { M_SEEN_NOTHING, CONFLICT } from './const.js';
+
+const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
+
+/**
+ * C ref: youprop.h Conflict — HConflict || EConflict.
+ * setworn oc_oprop deferred: worn RIN_CONFLICT confers extrinsic.
+ */
+export function hero_conflict() {
+    const u = game.u || {};
+    if (u.HConflict || u.EConflict || game.Conflict || game.flags?.Conflict) {
+        return true;
+    }
+    const prop = u.uprops?.[CONFLICT];
+    if (prop?.intrinsic || prop?.extrinsic) return true;
+    if ((u.uleft && u.uleft.otyp === RIN_CONFLICT)
+        || (u.uright && u.uright.otyp === RIN_CONFLICT)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mondata.c resist_conflict — always rolls rnd(20).
+ * High CHA / low m_lev → harder for mon to resist (fight for hero).
+ */
+export function resist_conflict(mtmp) {
+    const resist_chance = Math.min(
+        19,
+        (acurr(A_CHA) - (mtmp.m_lev | 0) + (game.u?.ulevel | 0)),
+    );
+    return rnd(20) > resist_chance;
+}
 
 function pm(name) {
     return monsterNames.indexOf(`PM_${name}`);

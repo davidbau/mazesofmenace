@@ -43,7 +43,9 @@ import { x_monnam_tame } from './do_name.js';
 import { an } from './objnam.js';
 import { spoteffects, dopickup } from './pickup.js';
 import { getpos } from './getpos.js';
-import { nomul, moverock, boulder_at, swim_move_danger } from './hack.js';
+import {
+    nomul, moverock, boulder_at, swim_move_danger, trapmove,
+} from './hack.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -940,6 +942,21 @@ async function domove(dx, dy) {
             return;
         }
         // safemon displace: fall through; swap after test_move succeeds
+    }
+
+    // C ref: hack.c domove_core — u.utrap → trapmove before test_move
+    // (attack already handled above; displaceu false when trapped).
+    // Stuck / same-spot escape: return without context.move=0 (turn spends).
+    if (u.utrap) {
+        const moved = await trapmove(newx, newy, null);
+        if (!(u.utrap | 0)) {
+            if (game.disp) game.disp.botl = true;
+            if (game.flags) game.flags.botl = true;
+            // C: reset_utrap(TRUE) — Lev/Fly restore msgs deferred
+            u.utrap = 0;
+            u.utraptype = 0;
+        }
+        if (!moved) return;
     }
 
     // C ref: hack.c test_move — closed_door + flags.autoopen → doopen_indir
