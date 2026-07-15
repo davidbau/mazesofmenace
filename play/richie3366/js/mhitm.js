@@ -3,11 +3,12 @@
 //         uhitm.c mhitm_knockback (RNG order only).
 
 import { rn2, rnd, d } from './rng.js';
-import { distmin, m_at, record_mvitals_died, undead_to_corpse } from './mon.js';
+import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear } from './mon.js';
 import { game } from './gstate.js';
 import { pline, newsym, canspotmon, map_invisible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
+import { resist_conflict } from './mondata.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -19,6 +20,8 @@ import {
     CORPSTAT_NONE,
     W_ARMOR,
     TAINT_AGE,
+    NORMAL_SPEED,
+    engulfing_u,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, is_neuter, is_undead,
@@ -480,4 +483,39 @@ export async function mattackm(magr, mdef) {
     }
 
     return struck ? M_ATTK_HIT : M_ATTK_MISS;
+}
+
+/**
+ * C ref: mhitm.c fightm — Conflict-induced mon-vs-mon.
+ * Always rolls resist_conflict first. ustuck/itsstuck release deferred.
+ * Returns 1 if mtmp made an attack (movemon skips dochug); 0 otherwise.
+ */
+export async function fightm(mtmp) {
+    if (resist_conflict(mtmp)) return 0;
+
+    // C: u.ustuck == mtmp → itsstuck / maybe release — deferred
+    const has_u_swallowed = engulfing_u(mtmp);
+    const fmon = game.fmon || [];
+
+    for (let i = 0; i < fmon.length; i++) {
+        const mon = fmon[i];
+        if (!mon || mon === mtmp || (mon.mhp | 0) < 1) continue;
+        if (!monnear(mtmp, mon.mx, mon.my)) continue;
+
+        // C: grabber release rn2(4) when mtmp == ustuck && !uswallow — deferred
+        const result = await mattackm(mtmp, mon);
+        if (result & M_ATTK_AGR_DIED) return 1;
+        if (has_u_swallowed) return 0;
+
+        // allow attacked monsters a chance to hit back
+        if ((result & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+            && rn2(4)
+            && (mon.movement | 0) > rn2(NORMAL_SPEED)) {
+            if ((mon.movement | 0) > NORMAL_SPEED) mon.movement -= NORMAL_SPEED;
+            else mon.movement = 0;
+            await mattackm(mon, mtmp);
+        }
+        return (result & M_ATTK_HIT) ? 1 : 0;
+    }
+    return 0;
 }

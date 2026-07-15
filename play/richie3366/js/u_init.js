@@ -1593,6 +1593,19 @@ export async function u_init_misc() {
     g.u.uz0 = { dnum: 0, dlevel: 0 };
     g.u.utolev = { dnum: 0, dlevel: 1 };
 
+    // C: u.umonnum = u.umonster = gu.urole.mnum; set_uasmon();
+    // Basic youmonst.data only — full FROMFORM prop set deferred (D-0409).
+    const roleMnum = g.urole?.mnum;
+    if (roleMnum != null) {
+        g.u.umonnum = roleMnum;
+        g.u.umonster = roleMnum;
+        if (g.u.ulycn == null) g.u.ulycn = NON_PM;
+        g.youmonst = g.youmonst || {};
+        g.youmonst.data = mons(roleMnum);
+        g.youmonst.mnum = roleMnum;
+        g.youmonst.m_id = 1;
+    }
+
     // C: u.ulevel = 0; newhp()/newpw(); adjabil(0,1); u.ulevel = u.ulevelmax = 1;
     g.u.ulevel = 0;
     const hp = newhp();

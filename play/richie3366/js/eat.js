@@ -3,11 +3,12 @@
 // C ref: eat.c doeat / floorfood / touchfood / fprefx / eatcorpse /
 //         start_eating / bite / eatfood / done_eating / lesshungry /
 //         morehungry / vomit / obj_nutrition / is_edible / gethungry
-//         (Unaware rn2(10) + accessorytime rn2(20)); invent.c getobj;
-//         attrib.c poison_strdmg.
+//         (metabolic uhunger-- + accessorytime Regen/encumb/Hunger/Conflict);
+//         invent.c getobj; attrib.c poison_strdmg.
 // Named omissions: floorfood metallivore/pool-lava/cockatrice-feel; TIN;
 // full cprefx/cpostfx; tainted Sick; slime/stone; rottenfood body RNG;
 // freeinv invent-full drop; ?/* menu; multi-turn choke/newuhs;
+// gethungry ring/amulet accessorytime cases + newuhs;
 // losestr setuhpmax / terminal-frailty full death path;
 // vomit cantvomit/Sick/FAINTING/acid-breath.
 
@@ -20,13 +21,30 @@ import { weight, splitobj, objects_at, delobj } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import { singular, xname, doname } from './objnam.js';
 import {
-    mons, acidic, poisonous, carnivorous, herbivorous, vegan, vegetarian,
+    mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
+    vegan, vegetarian,
     is_rider, PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames,
 } from './monsters.js';
 import { set_occupation, can_reach_floor } from './engrave.js';
-import { OBJ_FLOOR, OBJ_FREE, OBJ_INVENT } from './const.js';
+import {
+    OBJ_FLOOR, OBJ_FREE, OBJ_INVENT,
+    SLT_ENCUMBER, FROMFORM, W_ARTI, W_WEP,
+    HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION,
+} from './const.js';
 import { adjattrib, A_STR } from './attrib.js';
 import { nomul } from './hack.js';
+import { near_capacity } from './invent.js';
+
+/**
+ * C ref: gy.youmonst.data via set_uasmon / invent.c basic assign.
+ * Full set_uasmon (FROMFORM props) still deferred — diet predicates need
+ * role/race form when youmonst is unset (same fallback as wield.js).
+ */
+function hero_form_data() {
+    if (game.youmonst?.data) return game.youmonst.data;
+    const mndx = game.u?.umonnum ?? game.urole?.mnum;
+    return mons(mndx);
+}
 
 const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
 const APPLE = objectNames.indexOf('APPLE');
@@ -96,24 +114,72 @@ function Unaware() {
     return (game.multi || 0) < 0 && unconscious();
 }
 
+/** C ref: youprop.h Slow_digestion */
+function Slow_digestion() {
+    const u = game.u || {};
+    if (u.HSlow_digestion || u.ESlow_digestion) return true;
+    const prop = u.uprops?.[SLOW_DIGESTION];
+    return !!(prop?.intrinsic || prop?.extrinsic);
+}
+
+/** C ref: youprop.h Hunger */
+function Hunger() {
+    const u = game.u || {};
+    if (u.HHunger || u.EHunger) return true;
+    const prop = u.uprops?.[HUNGER];
+    return !!(prop?.intrinsic || prop?.extrinsic);
+}
+
 /**
- * C ref: eat.c gethungry — Unaware metabolic rn2(10) then accessorytime rn2(20).
- * Hunger side-effects beyond the rolls deferred (ring/amulet nutrition, faint).
+ * C ref: eat.c gethungry — metabolic uhunger--, accessorytime burns, newuhs.
+ * Branch envelope: ordinary diet burn via hero_form_data; odd/even
+ * Regen/encumbrance/Hunger/Conflict burns.
+ * Named omissions: ring/amulet accessorytime switch cases; newuhs body.
  */
 export function gethungry() {
     if (game.u?.uinvulnerable) return;
+    const u = game.u;
 
     // C: (!Unaware || !rn2(10)) && eats && !Slow_digestion → uhunger--
-    // rn2(10) is evaluated whenever Unaware (|| short-circuit); food checks
-    // after that are deferred — RNG order only needs the Unaware roll.
-    if (Unaware()) {
-        rn2(10);
-        // uhunger-- when !rn2(10) && carnivorous/… deferred
+    // rn2(10) only when Unaware (|| short-circuit).
+    const metabolic_tick = !Unaware() || !rn2(10);
+    if (metabolic_tick) {
+        const youData = hero_form_data();
+        if ((carnivorous(youData) || herbivorous(youData)
+                || metallivorous(youData))
+            && !Slow_digestion()) {
+            u.uhunger = (u.uhunger ?? 900) - 1;
+        }
     }
-    // else non-Unaware: no rn2(10); ordinary uhunger-- deferred
 
     const accessorytime = rn2(20);
-    void accessorytime;
+    if (accessorytime % 2) {
+        // odd — Regeneration / encumbrance
+        const HRegen = (u.HRegeneration | 0)
+            || (u.uprops?.[REGENERATION]?.intrinsic | 0);
+        const ERegen = (u.ERegeneration | 0)
+            || (u.uprops?.[REGENERATION]?.extrinsic | 0);
+        if ((HRegen & ~FROMFORM) || (ERegen & ~(W_ARTI | W_WEP))) {
+            u.uhunger = (u.uhunger ?? 900) - 1;
+        }
+        if (near_capacity() > SLT_ENCUMBER) {
+            u.uhunger = (u.uhunger ?? 900) - 1;
+        }
+    } else {
+        // even — Hunger / Conflict; ring+amulet switch deferred
+        if (Hunger()) {
+            u.uhunger = (u.uhunger ?? 900) - 1;
+        }
+        const HConf = (u.HConflict | 0)
+            || (u.uprops?.[CONFLICT]?.intrinsic | 0);
+        const EConf = (u.EConflict | 0)
+            || (u.uprops?.[CONFLICT]?.extrinsic | 0);
+        if (HConf || (EConf & ~W_ARTI)) {
+            u.uhunger = (u.uhunger ?? 900) - 1;
+        }
+        void accessorytime; // ring/amulet cases 0/4/8/12/16 deferred
+    }
+    // newuhs(TRUE) deferred
 }
 
 /**
@@ -707,7 +773,9 @@ async function eatcorpse(otmp) {
     } else if (tp) {
         // message already delivered
     } else {
-        const youData = game.youmonst?.data;
+        // C: gy.youmonst.data — herbivorous must be true for omnivores so
+        // palatable's rn2(10) is not short-circuited away (D-0409).
+        const youData = hero_form_data();
         const yummy = vegan(ptr)
             ? (!carnivorous(youData) && herbivorous(youData))
             : (carnivorous(youData) && !herbivorous(youData));

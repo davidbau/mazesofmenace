@@ -9,6 +9,7 @@ import {
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, G_GENOD,
+    BOLT_LIM,
 } from './const.js';
 import { t_at } from './trap.js';
 import {
@@ -19,6 +20,7 @@ import {
 import { m_harmless_trap } from './trap.js';
 import {
     little_to_big, big_to_little, hero_conflict, resist_conflict,
+    m_canseeu,
 } from './mondata.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
@@ -28,6 +30,8 @@ import { may_dig } from './dig.js';
 import { newsym, pline } from './display.js';
 import { online2 } from './hacklib.js';
 import { Monnam } from './do_name.js';
+import { cansee } from './vision.js';
+import { fightm } from './mhitm.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -539,6 +543,18 @@ async function movemon_singlemon(mtmp) {
         const ap = M_AP_TYPE(mtmp);
         if (ap === M_AP_FURNITURE || ap === M_AP_OBJECT) return false;
         if (mtmp.mundetected) return false;
+    }
+
+    // C: Conflict → fightm before dochugw (always rolls resist_conflict).
+    // m_everyturn_effect / restrap post-path deferred.
+    if (hero_conflict() && !mtmp.iswiz && m_canseeu(mtmp)) {
+        const u = game.u;
+        if (cansee(mtmp.mx, mtmp.my)
+            && u
+            && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) <= BOLT_LIM * BOLT_LIM
+            && (await fightm(mtmp))) {
+            return false;
+        }
     }
 
     await dochugw(mtmp, true);

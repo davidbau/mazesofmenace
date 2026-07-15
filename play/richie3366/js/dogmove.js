@@ -5,12 +5,13 @@ import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
     dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, ALLOW_M,
-    ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
+    ALLOW_U, ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
 } from './mon.js';
 import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
 } from './mkobj.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
+import { mattacku } from './mhitu.js';
 import { newsym, pline } from './display.js';
 import { doname } from './objnam.js';
 import { mpickobj } from './makemon.js';
@@ -940,6 +941,19 @@ export async function dog_move(mtmp, after) {
     }
 
     if (nix !== omx || niy !== omy) {
+        // C ref: dogmove.c newdogpos — Conflict/ALLOW_U prefers attacking
+        // the hero over stepping onto mux/muy (mattacku, then MMOVE_DONE).
+        if (chi >= 0 && (mfp.info[chi] & ALLOW_U)) {
+            if (mtmp.mleashed) {
+                // C: m_unleash(mtmp, FALSE) — full leash bookkeeping deferred
+                await pline(
+                    `${Monnam(mtmp)} breaks loose of ${mtmp.female ? 'her' : 'his'} leash!`,
+                );
+                mtmp.mleashed = 0;
+            }
+            await mattacku(mtmp);
+            return MMOVE_DONE;
+        }
         // C: wasseen before place; cursemsg pline after place_monster
         const wasseen = canseemon(mtmp);
         mtmp.mx = nix;

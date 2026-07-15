@@ -26,6 +26,7 @@ import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
 import { objects_at, obj_extract_self, splitobj } from './mkobj.js';
 import { find_defensive, find_misc, use_misc, find_offensive } from './muse.js';
+import { hero_conflict, resist_conflict } from './mondata.js';
 import {
     mintrap,
     NO_TRAP_FLAGS,
@@ -45,6 +46,7 @@ import {
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
     M_AP_FURNITURE,
     STRAT_WAITFORU, STRAT_WAITMASK,
+    Upolyd,
 } from './const.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
@@ -1008,8 +1010,9 @@ export async function m_move(mtmp, after) {
     }
 
     // C: don't tunnel if hostile and close enough to prefer a weapon
+    // Conflict = youprop.h HConflict||EConflict (hero_conflict for worn ring)
     if (can_tunnel && needspick(ptr)
-        && ((!mtmp.mpeaceful || game.Conflict || game.flags?.Conflict)
+        && ((!mtmp.mpeaceful || hero_conflict())
             && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8)) {
         can_tunnel = false;
     }
@@ -1123,7 +1126,9 @@ export async function dochug(mtmp) {
     }
 
     const mdat = mtmp.data;
-    const Conflict = !!(game.Conflict || game.flags?.Conflict);
+    // C: youprop.h Conflict (HConflict||EConflict) — worn RIN_CONFLICT via
+    // hero_conflict until setworn oc_oprop is ported (D-0406/D-0413).
+    const Conflict = hero_conflict();
 
     // C ref: monmove.c dochug — nearby AT_WEAP may spend the turn wielding
     if ((!mtmp.mpeaceful || Conflict) && inrange
@@ -1153,12 +1158,14 @@ export async function dochug(mtmp) {
     );
 
     let status = MMOVE_NOTHING;
+    let panicattk = false;
     // PHASE THREE: move if not adjacent-hostile (attack path)
     if (want_move) {
         status = await m_move(mtmp, 0);
         if (status !== MMOVE_DIED) {
             ({ inrange, nearby, scared } = distfleeck(mtmp));
         }
+        if (status === MMOVE_NOMOVES && scared) panicattk = true;
         if (status === MMOVE_MOVED) {
             /* Monsters can move and then shoot on same turn;
                C: ranged_attk_available || AT_WEAP || find_offensive */
@@ -1171,15 +1178,19 @@ export async function dochug(mtmp) {
         // NOTHING/DONE/NOMOVES also fall through to attacks
     }
 
-    // PHASE FOUR: attack hero if hostile + in range
-    // C: ((inrange && !scared) || panicattk) && !noattacks — no nearby gate
+    // PHASE FOUR: C monmove.c — peaceful under Conflict still rolls
+    // resist_conflict; then ((inrange && !scared) || panicattk) && !noattacks
+    const u = game.u || {};
+    const uhp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
     if (
         status !== MMOVE_DONE
-        && !mtmp.mpeaceful
-        && inrange
-        && !scared
+        && (!mtmp.mpeaceful || (Conflict && !resist_conflict(mtmp)))
     ) {
-        if (await mattacku(mtmp)) return 1;
+        if (((inrange && !scared) || panicattk)
+            && !noattacks(mdat)
+            && uhp > 0) {
+            if (await mattacku(mtmp)) return 1;
+        }
     }
     return 0;
 }

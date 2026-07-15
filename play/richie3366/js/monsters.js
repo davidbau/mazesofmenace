@@ -125,6 +125,7 @@ export const M1_POIS = 0x10000000;
 export const M1_CARNIVORE = 0x20000000;
 export const M1_HERBIVORE = 0x40000000;
 export const M1_OMNIVORE = 0x60000000;
+export const M1_METALLIVORE = 0x80000000; /* monflag.h — eats metal */
 
 // C ref: monflag.h M3_*
 export const M3_INFRAVISION = 0x0100;
@@ -462,6 +463,10 @@ export function carnivorous(ptr) {
 }
 export function herbivorous(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_HERBIVORE);
+}
+/** C ref: mondata.h metallivorous */
+export function metallivorous(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_METALLIVORE);
 }
 
 /** C ref: mondata.h regenerates — M1_REGEN */

@@ -507,12 +507,19 @@ export async function moveloop_core() {
         g.u.umovement = (g.u.umovement || 0) - NORMAL_SPEED;
 
         let monscanmove = false;
+        let mvl_wtcap = UNENCUMBERED;
         do {
+            // C: encumber_msg() at top of hero-can't-move loop
+            await encumber_msg();
+
             do {
                 monscanmove = await movemon();
                 if (g.program_state?.gameover) return;
                 if ((g.u.umovement || 0) >= NORMAL_SPEED) break;
             } while (monscanmove);
+
+            // C: after monster loop (burden may have changed)
+            mvl_wtcap = near_capacity();
 
             if (!monscanmove && (g.u.umovement || 0) < NORMAL_SPEED) {
                 // End of turn: C mcalcdistress before movement reallocation
@@ -523,8 +530,6 @@ export async function moveloop_core() {
                     mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
                 }
                 maybe_generate_rnd_mon();
-                // C: mvl_wtcap = near_capacity() earlier; reuse for regen_hp/pw
-                let mvl_wtcap = near_capacity();
                 u_calc_moveamt(mvl_wtcap);
                 // C: settrack() before svm.moves++
                 settrack();

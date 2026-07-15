@@ -3,9 +3,10 @@
 //
 // Branch envelope: verbose instruction pline, first-use getpos tip
 // (nhcore show_getpos_tip PICK_NONE loop), hjklyubn walk + HJKLYUBN/Ctrl-dir
-// rush (8× step via truncate_to_map) + autodescribe topline, force unknown-
-// direction pline, '.' → LOOK_TRADITIONAL, ESC → -1. Menu/jump/hilite/valids/
-// getloc_moveskip glyph-skip deferred.
+// rush (8× step via truncate_to_map) + autodescribe topline, '>'/'<' stairs
+// feature scan (getpos.c cmap match subset), force unknown-direction pline,
+// '.' → LOOK_TRADITIONAL, ESC → -1. Menu/mMoOdDxX jump/hilite/valids/
+// getloc_moveskip glyph-skip / full defsyms feature table deferred.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -13,6 +14,7 @@ import { flush_screen, pline, docrt } from './display.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_DETECT,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, STRAT_WAITMASK,
+    STAIRS, LADDER, LA_DOWN,
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
 import { distant_monnam_none } from './do_name.js';
@@ -36,6 +38,50 @@ const CTRL_DIR = {
     2: 'b', // C('b')
     14: 'n', // C('n')
 };
+
+/**
+ * C ref: getpos.c feature-char match — defsyms/showsyms for stairs/ladder
+ * glyphs ('>' / '<'). Fountain/altar/trap/engraving cmap table deferred.
+ */
+function terrain_feature_matches(x, y, ch) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    // C: prefer visible/remembered; require seenv for raw terrain fallback
+    const typ = loc.typ | 0;
+    if (typ !== STAIRS && typ !== LADDER) return false;
+    if (!(loc.seenv | 0) && !(loc.disp_ch)) return false;
+    const down = !!(loc.ladder & LA_DOWN);
+    if (ch === '>') return down;
+    if (ch === '<') return !down;
+    return false;
+}
+
+/**
+ * C ref: getpos.c unknown-key feature scan — two passes from cursor:
+ * pass0 past current to SE; pass1 NW corner through current.
+ * Returns {x,y} or null.
+ */
+function find_dungeon_feature(cx, cy, ch) {
+    for (let pass = 0; pass <= 1; pass++) {
+        const loY = pass === 0 ? cy : 0;
+        const hiY = pass === 0 ? ROWNO - 1 : cy;
+        for (let ty = loY; ty <= hiY; ty++) {
+            const loX = (pass === 0 && ty === loY) ? cx + 1 : 1;
+            const hiX = (pass === 1 && ty === hiY) ? cx : COLNO - 1;
+            for (let tx = loX; tx <= hiX; tx++) {
+                if (!isok(tx, ty)) continue;
+                // C: glyph_at cmap, then memory glyph, then seenv terrain.
+                // Subset: displayed stairs char or terrain STAIRS/LADDER.
+                const loc = game.level?.at?.(tx, ty);
+                if (loc?.disp_ch === ch) return { x: tx, y: ty };
+                if (terrain_feature_matches(tx, ty, ch)) {
+                    return { x: tx, y: ty };
+                }
+            }
+        }
+    }
+    return null;
+}
 
 function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
@@ -318,6 +364,25 @@ export async function getpos(ccp, force, goal, describeAt) {
 
         if (ch === '?') {
             await pline('Move the cursor with hjklyubn; . selects; ESC cancels.');
+            msg_given = true;
+            continue;
+        }
+
+        // C ref: getpos.c — non-dir key may match dungeon-feature symbols
+        // (defsyms/showsyms); '>'/'<' → next stairs/ladder. Full matching[]
+        // over MAXPCHARS (fountain/altar/trap/engraving) deferred.
+        if (ch === '>' || ch === '<') {
+            const found = find_dungeon_feature(cx, cy, ch);
+            if (found) {
+                cx = found.x;
+                cy = found.y;
+                if (msg_given) {
+                    g._pending_message = '';
+                    msg_given = false;
+                }
+                continue;
+            }
+            await pline(`Can't find dungeon feature '${ch}'.`);
             msg_given = true;
             continue;
         }
