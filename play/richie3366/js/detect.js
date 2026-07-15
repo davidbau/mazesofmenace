@@ -9,7 +9,8 @@
 // (no browse_map) + show_map_spot SCORR uncover / seenv=SVALL /
 // magic_map_background; **#terrain / doterrain** View which? PICK_ONE
 // (a/b/c + explore/wizard extras) + Esc cancel; reveal_terrain
-// impairment gate + Showing pline + browse_map/getpos + docrt;
+// impairment gate + getglyph/show rewrite + Showing pline +
+// browse_map/getpos + docrt;
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
 // Named omissions: feel_location / visible_region_at /
 // unmap_invisible / Blind feel; mfind0 body; Hallucination/cls
@@ -19,8 +20,9 @@
 // underwater-buried-swallow; notice_mon_off/on; findone
 // flash_glyph / mimic / hider / invis / chest-trap detect;
 // trapped-door dummytrap; FOUND_FLASH_COUNT==0 tmp_at path;
-// reveal_terrain_getglyph / show_glyph map rewrite; wiz_map_levltyp /
-// wiz_levltyp_legend; TER_FULL explore-only map body.
+// reveal_terrain region/gascloud / trap keep restore /
+// M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
+// TER_FULL explore-only map body; arboreal default tree.
 
 import { game } from './gstate.js';
 import { rnl, rn2 } from './rng.js';
@@ -430,9 +432,11 @@ async function map_redisplay() {
 
 /**
  * C ref: detect.c reveal_terrain — known/full map without selected layers.
- * Branch envelope: Hallucination/Stunned/Confusion gate; Showing pline;
- * browse_map; map_redisplay. Map-cell rewrite via
- * reveal_terrain_getglyph/show_glyph deferred (named omission).
+ * Branch envelope: Hallucination/Stunned/Confusion gate; getglyph/show_glyph
+ * rewrite; flush; Showing pline; browse_map; map_redisplay.
+ * Named omissions: unconstrain_map underwater/buried/swallow; region/
+ * gascloud; trap_to_glyph keep_traps restore; M_AP_FURNITURE; TER_FULL
+ * explore body beyond getglyph; arboreal default tree.
  */
 export async function reveal_terrain(which_subset) {
     const full = (which_subset & TER_FULL) !== 0;
@@ -445,7 +449,12 @@ export async function reveal_terrain(which_subset) {
     const keep_traps = (which_subset & TER_TRP) !== 0;
     const keep_objs = (which_subset & TER_OBJ) !== 0;
     const keep_mons = (which_subset & TER_MON) !== 0;
-    // unconstrain_map / docrt + reveal_terrain_getglyph loop deferred
+    // C: swallowed captured before unconstrain_map (unconstrain deferred)
+    const swallowed = !!(u.uswallow);
+
+    const { reveal_terrain_show_map, flush_screen } = await import('./display.js');
+    reveal_terrain_show_map(which_subset, swallowed);
+    await flush_screen(1);
 
     let buf;
     if (full) {

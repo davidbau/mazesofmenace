@@ -88,8 +88,15 @@ async function show_getpos_tip() {
         // other keys: stay open (C xwaitforspace / PICK_NONE)
     }
     game._menu_overlay = false;
-    await docrt();
-    await flush_screen(1);
+    // C: closing tip NHW_MENU does not docrt — gbuf still holds whatever
+    // show_glyph wrote (reveal_terrain map). docrt would newsym hero `@`
+    // back over TER_MAP browse. Rebuild tty from loc.disp_* instead.
+    if (game.iflags?.terrainmode) {
+        await flush_screen(1);
+    } else {
+        await docrt();
+        await flush_screen(1);
+    }
 }
 
 /**
@@ -186,8 +193,16 @@ export async function getpos(ccp, force, goal, describeAt) {
             continue;
         }
 
-        // Space: ignore for this subset (no menu jump)
-        if (ch === ' ' || ch === '\n' || ch === '\r') continue;
+        // C: quitchars (space / CR / LF) — !force → "Done." and leave;
+        // force (travel) keeps looping (goto nxtc).
+        if (ch === ' ' || key === 13 || key === 10) {
+            if (force) continue;
+            await pline('Done.');
+            ccp.x = -1;
+            ccp.y = 0;
+            return 0; // C: result = 0 (not -1)
+        }
+
         if (ch === '?') {
             await pline('Move the cursor with hjklyubn; . selects; ESC cancels.');
             continue;

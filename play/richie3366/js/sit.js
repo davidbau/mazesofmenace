@@ -1,10 +1,11 @@
-// sit.js — #sit command (floor / fountain subset).
+// sit.js — #sit command (floor / fountain / OBJ_AT subset).
 // C ref: sit.c dosit; dungeon.c surface (fountain branch).
 //
-// Branch envelope: reachable floor, no steed/trap/pool specials →
-// default "Having fun sitting on the <surface>?" + ECMD_TIME.
-// Deferred: steed, hider, ustuck, OBJ_AT picnic, traps, water/gremlin,
-// sink/altar/grave/stairs/ladder/lava/ice/drawbridge/throne, lay_an_egg.
+// Branch envelope: reachable floor (Levitation only), OBJ_AT picnic body
+// (dragon/towel/slithy/sit+comfort/squishy/cream-pie), default having-fun.
+// Deferred: steed name, hider, can_reach_floor full, ustuck, uteetering/
+// uescaped_shaft gate, traps, water/gremlin, sink/altar/grave/stairs/
+// ladder/lava/ice/drawbridge/throne, lay_an_egg, money_cnt meager coil.
 
 import { game } from './gstate.js';
 import { pline } from './display.js';
@@ -13,7 +14,27 @@ import {
     IS_FOUNTAIN, IS_AIR, IS_ALTAR, IS_GRAVE, IS_ROOM, IS_WALL, IS_DOOR,
     CLOUD,
 } from './const.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, delobj } from './mkobj.js';
+import { objectNames, COIN_CLASS } from './objects.js';
+import { xname, the } from './objnam.js';
+import { amorphous, mons, M1_SLITHY } from './monsters.js';
+
+const CORPSE = objectNames.indexOf('CORPSE');
+const TOWEL = objectNames.indexOf('TOWEL');
+const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
+const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
+const CHEST = objectNames.indexOf('CHEST');
+const CLOTH = 6; // objclass.h obj_material_types
+
+/** C ref: obj.h Is_box */
+function Is_box(obj) {
+    return obj && (obj.otyp === LARGE_BOX || obj.otyp === CHEST);
+}
+
+/** C ref: mondata.h slithy */
+function slithy(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_SLITHY);
+}
 
 /**
  * C ref: dungeon.c surface — enough for fountain / room floor.
@@ -44,14 +65,34 @@ export async function dosit() {
         await pline('You tumble in place.');
         return ECMD_OK;
     }
-    // can_reach_floor / uswallow / ustuck deferred
+    // can_reach_floor / uswallow / ustuck / pool / gremlin deferred
 
-    // OBJ_AT sit-on-object path: only when a pile exists; fountain sit in
-    // seed0106 has none → having-fun. If objects present, still take time
-    // with a simple sit message (full picnic body deferred).
-    const otmp = objects_at(u.ux, u.uy);
-    if (otmp) {
-        await pline(`You sit on ${otmp.quan > 1 ? 'them' : 'it'}.`);
+    // C: OBJ_AT && !(uteetering_at_seen_pit || uescaped_shaft) — pit gates deferred
+    const obj = objects_at(u.ux, u.uy);
+    if (obj) {
+        const youdata = game.youmonst?.data;
+        if (youdata?.mlet === 'S_DRAGON' && obj.oclass === COIN_CLASS) {
+            // money_cnt meager-hoard threshold deferred → always bare "hoard"
+            await pline('You coil up around your hoard.');
+        } else if (obj.otyp === TOWEL) {
+            await pline("It's probably not a good time for a picnic...");
+        } else {
+            if (slithy(youdata)) {
+                await pline(`You coil up around ${the(xname(obj))}.`);
+            } else {
+                await pline(`You sit on ${the(xname(obj))}.`);
+            }
+            if (obj.otyp === CORPSE && amorphous(mons(obj.corpsenm))) {
+                await pline("It's squishy...");
+            } else if (obj.otyp === CREAM_PIE) {
+                if (!u.Deaf) await pline('Squelch!');
+                // C: useupf(obj, obj->quan) — full floor consume ≡ delobj after resists
+                delobj(obj);
+            } else if (!(Is_box(obj)
+                || (game.objects?.[obj.otyp]?.oc_material ?? 0) === CLOTH)) {
+                await pline("It's not very comfortable...");
+            }
+        }
         return ECMD_TIME;
     }
 

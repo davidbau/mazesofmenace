@@ -110,6 +110,7 @@ export const M1_BREATHLESS = 0x00000400; /* monflag.h — doesn't need to breath
 export const M1_NOTAKE = 0x00000800; /* monflag.h — cannot pick up objects */
 export const M1_NOHANDS = 0x00002000;
 export const M1_HUMANOID = 0x00020000; /* monflag.h — humanoid head/arms/torso */
+export const M1_SLITHY = 0x00080000; /* monflag.h — has serpent body */
 export const M1_UNSOLID = 0x00100000; /* monflag.h — no solid/liquid body */
 export const M1_THICK_HIDE = 0x00200000; /* monflag.h — thick hide or scales */
 export const M1_SEE_INVIS = 0x01000000; /* monflag.h — sees invisible */

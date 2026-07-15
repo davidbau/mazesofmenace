@@ -4,6 +4,39 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
+import { COLNO } from './const.js';
+
+/**
+ * C ref: topl.c topl_putsym — before writing when curx == CO-1, emit `\n`
+ * (curx=0, cury++). Paint getlin/extcmd echo the same way so long prompts
+ * wrap onto message row 1 instead of stopping at column 80.
+ * @returns {{ text: string, col: number, row: number }}
+ */
+function topl_wrap_echo(str, nChars) {
+    const CO = game?.nhDisplay?.cols || COLNO;
+    let text = '';
+    let curx = 0;
+    let cury = 0;
+    for (let i = 0; i < str.length; i++) {
+        if (curx === CO - 1) {
+            text += '\n';
+            curx = 0;
+            cury++;
+        }
+        text += str[i];
+        curx++;
+    }
+    let col = 0;
+    let row = 0;
+    for (let i = 0; i < nChars; i++) {
+        if (col === CO - 1) {
+            col = 0;
+            row++;
+        }
+        col++;
+    }
+    return { text, col, row };
+}
 
 /**
  * C ref: windows.c getlin → tty_getlin — prompt + echo until Enter/ESC.
@@ -13,12 +46,15 @@ export async function getlin(query) {
     await flush_topl_more();
     let buf = '';
     const paint = async () => {
-        game._pending_message = `${query} ${buf}`;
+        const raw = `${query} ${buf}`;
+        const { text, col, row } = topl_wrap_echo(
+            raw,
+            query.length + 1 + buf.length,
+        );
+        game._pending_message = text;
         await flush_screen(1);
         const disp = game.nhDisplay;
-        if (disp?.setCursor) {
-            disp.setCursor((query.length + 1 + buf.length), 0);
-        }
+        if (disp?.setCursor) disp.setCursor(col, row);
     };
     await paint();
     for (;;) {
@@ -43,7 +79,8 @@ export async function getlin(query) {
             }
             continue;
         }
-        if (c >= 32 && c < 127 && buf.length < 78) {
+        // C: bufp - obufp < BUFSZ-1 && bufp - obufp < COLNO
+        if (c >= 32 && c < 127 && buf.length < COLNO) {
             buf += String.fromCharCode(c);
             await paint();
         }
@@ -226,6 +263,16 @@ const EXT_CMDS = [
         },
     },
     {
+        name: 'twoweapon',
+        wiz: false,
+        autocomplete: true,
+        // C ref: wield.c dotwoweapon / cmd.c extcmdlist "twoweapon"
+        run: async () => {
+            const { dotwoweapon } = await import('./wield.js');
+            return dotwoweapon();
+        },
+    },
+    {
         name: 'annotate',
         wiz: false,
         autocomplete: true,
@@ -341,14 +388,14 @@ export async function get_ext_cmd() {
     let buf = '';
     let cursor = 0; // index after last typed character
     const paint = async () => {
-        // C hooked_tty_getlin("#", …) shows "# " + buffer (expanded name)
-        game._pending_message = buf ? `# ${buf}` : '#';
+        // C hooked_tty_getlin("#", …) shows "# " + buffer (expanded name);
+        // empty prompt is still "# " (custompline "%s ") with cursor at col 2.
+        const raw = `# ${buf}`;
+        const { text, col, row } = topl_wrap_echo(raw, 2 + cursor);
+        game._pending_message = text;
         await flush_screen(1);
         const disp = game.nhDisplay;
-        if (disp?.setCursor) {
-            // Cursor after "# " + typed prefix (not end of expansion)
-            disp.setCursor(2 + cursor, 0);
-        }
+        if (disp?.setCursor) disp.setCursor(col, row);
     };
     await paint();
     for (;;) {
@@ -372,7 +419,8 @@ export async function get_ext_cmd() {
             }
             continue;
         }
-        if (c >= 32 && c < 127 && cursor < 78) {
+        // C: bufp - obufp < BUFSZ-1 && bufp - obufp < COLNO
+        if (c >= 32 && c < 127 && cursor < COLNO) {
             // C: *bufp = c; bufp[1] = 0; then hook may Strcpy full name
             buf = buf.slice(0, cursor) + String.fromCharCode(c);
             cursor++;

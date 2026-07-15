@@ -55,10 +55,10 @@ import {
     P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL, P_QUARTERSTAFF,
     P_SPEAR, P_TRIDENT, P_LANCE, P_BOW, P_SLING, P_CROSSBOW,
     P_DART, P_SHURIKEN, P_BOOMERANG, P_UNICORN_HORN,
-    P_BARE_HANDED_COMBAT,
+    P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT,
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED,
     P_EXPERT, P_MASTER, P_GRAND_MASTER,
-    W_ARMOR,
+    W_ARMOR, W_TOOL, W_SADDLE,
     NEW_MOON,
     FULL_MOON,
 } from './const.js';
@@ -257,6 +257,28 @@ export function nhw_menu_geometry(entries, morestr = '(end) ') {
 }
 
 /**
+ * C ref: wintty.c erase_menu_or_text — destroy prior NHW_MENU before the
+ * next. Fullscreen (offx==0): term_clear_screen. Corner: docorner cl_end
+ * from offx for maxrow+1 rows. Only needed when flush_screen is skipped
+ * (chargen — no map/botl yet).
+ */
+function erase_prior_nhw_menu_chargen() {
+    const g = game._tty_menu_geom;
+    if (!g) return;
+    const disp = display();
+    if (!disp) return;
+    if (g.offx === 0) {
+        disp.clearScreen?.();
+    } else {
+        for (let r = 0; r <= g.endRow; r++) {
+            for (let c = g.offx; c < disp.cols; c++)
+                disp.setCell(c, r, ' ', NO_COLOR, 0);
+        }
+    }
+    game._tty_menu_geom = null;
+}
+
+/**
  * C ref: wintty.c process_menu_window corner path — tty_curs(1)+offx, cl_end,
  *        putchar(' '), then item text; morestr on final row; cursor at
  *        strlen(morestr)+2 (+offx). Does not clear the map (unlike fullscreen).
@@ -273,6 +295,19 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     game._pending_message = '';
     game._menu_overlay = false;
 
+    // Corner chargen: C clears WIN_MESSAGE only — BASE splash (copyright /
+    // Who are you?) stays under the menu (seed0009 confirm). Do not
+    // term_clear_screen here. Prior menu destroy via erase_menu_or_text
+    // (fullscreen clear / corner docorner) so seed0077 race≠role leftover.
+    // flush_screen during chargen would invent botl before map exists.
+    if (game.program_state?.in_role_selection) {
+        erase_prior_nhw_menu_chargen();
+        for (let c = 0; c < disp.cols; c++)
+            disp.setCell(c, 0, ' ', NO_COLOR, 0);
+    } else {
+        await flush_screen(1);
+    }
+
     if (offx === 0) {
         // C H2344 fullscreen — clear then leading pad + text at col 1
         const painted = entries.map(e => ({
@@ -285,15 +320,8 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
             withStatus: false,
             cursor: [morestr.length + 1, entries.length],
         });
+        game._tty_menu_geom = { offx: 0, endRow: entries.length };
         return { offx: 0, endRow: entries.length, cursorCol: morestr.length + 1 };
-    }
-
-    // Corner: during player_selection there is no map/botl yet — clear only.
-    // flush_screen would invent status lines (seed0077 race/gender menus).
-    if (game.program_state?.in_role_selection) {
-        if (disp.clearScreen) disp.clearScreen();
-    } else {
-        await flush_screen(1);
     }
 
     const endRow = entries.length; // morestr row
@@ -319,6 +347,7 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     const cursorCol = offx + morestr.length + 1;
     disp.setCursor(cursorCol, endRow);
     game._menu_overlay = true;
+    game._tty_menu_geom = { offx, endRow };
     return { offx, endRow, cursorCol };
 }
 
@@ -827,7 +856,9 @@ export async function doattributes() {
         lines.push(`  There is a ${phase} moon in effect.`);
     }
     if (game.flags?.friday13) {
-        lines.push(' Bad things can happen on Friday the 13th.');
+        // C insight.c: Sprintf(buf, " Bad things %s…") then enlght_out;
+        // menu/tty paints one more leading space like enlght_line body rows.
+        lines.push('  Bad things can happen on Friday the 13th.');
     }
     lines.push(
         `  You have ${uexp} experience point${uexp === 1 ? '' : 's'}.`,
@@ -861,7 +892,7 @@ export async function doattributes() {
         const wname = pretty_weapon_descr(uwep);
         lines.push(`  You are wielding ${wname}.`);
     }
-    // Skill line: weapon_type(uwep); skip P_NONE / ammo. Enhance suffix deferred.
+    // C ref: insight.c weapon_insight skill lines; can_advance enhance suffix deferred.
     const wtype = weapon_type(uwep);
     if (wtype !== P_NONE) {
         // ammo check deferred — start weapons rarely quiver-as-uwep
@@ -870,11 +901,87 @@ export async function doattributes() {
         if (sklvl === P_ISRESTRICTED) sklvlbuf = 'no';
         else sklvlbuf = insight_skill_level_name(wtype).toLowerCase();
         const hav = sklvl !== P_UNSKILLED && sklvl !== P_SKILLED;
-        const buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
-        // twoweap comparison branch deferred
-        if (!(u.twoweap || game.u?.twoweap)) {
+        let buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
+        const twoweap = !!(u.twoweap || game.u?.twoweap);
+        if (!twoweap) {
             if (hav) lines.push(`  You have ${buf}.`);
             else lines.push(`  You are ${buf}.`);
+        } else {
+            // C: two-weapon comparison vs primary / uswapwep / P_TWO_WEAPON_COMBAT
+            const uswapwep = u.uswapwep || game.u?.uswapwep;
+            const wtype2 = weapon_type(uswapwep);
+            const sklvl2 = insight_P_SKILL(wtype2);
+            let twoskl = insight_P_SKILL(P_TWO_WEAPON_COMBAT);
+            let twobuf;
+            if (twoskl === P_ISRESTRICTED) {
+                twoskl = P_UNSKILLED;
+                twobuf = 'restricted';
+            } else {
+                twobuf = insight_skill_level_name(P_TWO_WEAPON_COMBAT).toLowerCase();
+            }
+            const hav2 = sklvl2 !== P_UNSKILLED && sklvl2 !== P_SKILLED;
+            let also = '';
+            let also2 = '';
+            let also3 = null;
+            // C enlght_line adds " %s%s%s%s." then menu pad; at COLNO the
+            // trailing '.' is clipped — bake two spaces and drop '.' at 80.
+            const enl = (body) => {
+                const withDot = `  ${body}.`;
+                return withDot.length >= 80 ? `  ${body}` : withDot;
+            };
+            if (twoskl < sklvl) {
+                lines.push(enl(
+                    `Your skill in ${skill_name(wtype)}`
+                    + ` is limited by being ${twobuf} with two weapons`,
+                ));
+                also = 'also ';
+            } else if (twoskl > sklvl) {
+                let lim = sklvl > P_ISRESTRICTED
+                    ? `being ${sklvlbuf}`
+                    : 'having no skill';
+                lines.push(enl(
+                    `Your two weapon skill is limited by ${lim}`
+                    + ` with ${skill_name(wtype)}`,
+                ));
+                also2 = 'also ';
+            } else {
+                buf += ' and two weapons';
+                also3 = 'also ';
+                if (hav) lines.push(enl(`You have ${buf}`));
+                else lines.push(enl(`You are ${buf}`));
+            }
+            if (wtype2 !== wtype) {
+                const sknambuf2 = skill_name(wtype2);
+                let sklvlbuf2;
+                if (sklvl2 === P_ISRESTRICTED) sklvlbuf2 = 'no';
+                else sklvlbuf2 = insight_skill_level_name(wtype2).toLowerCase();
+                if (twoskl < sklvl2) {
+                    lines.push(enl(
+                        `Your skill in ${sknambuf2}`
+                        + ` is ${also}limited by being ${twobuf} with two weapons`,
+                    ));
+                } else if (twoskl > sklvl2) {
+                    let lim = sklvl2 > P_ISRESTRICTED
+                        ? `being ${sklvlbuf2}`
+                        : 'having no skill';
+                    lines.push(enl(
+                        `Your two weapon skill is ${also2}limited by ${lim}`
+                        + ` with ${sknambuf2}`,
+                    ));
+                } else {
+                    let buf2 = `${sklvlbuf2} ${hav2 ? 'skill with' : 'in'} ${sknambuf2}`
+                        + ' and two weapons';
+                    if (also3) {
+                        const verb = hav2 ? 'have' : 'are';
+                        lines.push(enl(`You also ${verb} ${buf2}`));
+                    } else if (hav2) {
+                        lines.push(enl(`You have ${buf2}`));
+                    } else {
+                        lines.push(enl(`You are ${buf2}`));
+                    }
+                }
+            }
+            // can_advance primary/secondary/twoweap enhance tips deferred
         }
     }
     lines.push('');
@@ -908,6 +1015,8 @@ export async function doattributes() {
     }
 
     // C tty enlightenment: 23 content rows + " (k of n)" footer per page.
+    // C dmore → xwaitforspace(quitchars): only space/CR/LF advance; ESC
+    // cancels remaining pages; other keys (e.g. ^O) bell and stay.
     const PAGE = 23;
     const pageCount = Math.max(1, Math.ceil(lines.length / PAGE));
     for (let p = 0; p < pageCount; p++) {
@@ -918,11 +1027,189 @@ export async function doattributes() {
             cursor: [9, endRow],
         });
         await flush_screen(1);
-        await nhgetch();
+        let cancelled = false;
+        for (;;) {
+            const c = await nhgetch();
+            if (c === 27) { cancelled = true; break; }
+            if (c === 32 || c === 13 || c === 10) break;
+            // tty_nhbell — stay on this page (still a capture boundary)
+        }
+        if (cancelled) break;
     }
     clear_overlay();
     await docrt();
     await flush_screen(1);
+}
+
+/**
+ * C ref: invent.c doprgold / #showgold / '$'.
+ * Named omissions: hidden_gold stashed message; shopper_financial_report;
+ * menu_requested dispinv; non-verbose "no money" / total arms.
+ */
+export async function doprgold() {
+    let umoney = 0;
+    for (const o of game.invent || []) {
+        if (o.oclass === COIN_CLASS) umoney += o.quan | 0;
+    }
+    if (game.flags?.verbose !== false) {
+        if (!umoney) await pline('Your wallet is empty.');
+        else await pline(`Your wallet contains ${umoney} zorkmid${umoney === 1 ? '' : 's'}.`);
+    } else if (umoney) {
+        await pline(`You are carrying a total of ${umoney} zorkmid${umoney === 1 ? '' : 's'}.`);
+    } else {
+        await pline('You have no money.');
+    }
+    return ECMD_OK;
+}
+
+/**
+ * C ref: invent.c doprwep / #seeweapon / ')'.
+ * Named omissions: menu_requested → dispinv_with_action(lets) for
+ * uwep/uswapwep/uquiver (falls through to prinv until that lands);
+ * quan-split total_of in prinv.
+ */
+export async function doprwep() {
+    const u = game.u || {};
+    if (!u.uwep) {
+        // C: You("are %s.", empty_handed());
+        await pline(`You are ${empty_handed()}.`);
+        return ECMD_OK;
+    }
+    if (game.iflags?.menu_requested) {
+        // dispinv_with_action deferred — clear sticky m-prefix
+        game.iflags.menu_requested = false;
+    }
+    // C: prinv(NULL, uwep, 0L); if (twoweap) prinv(uswapwep)
+    await pline(xprname(u.uwep, undefined, true));
+    if (u.twoweap) {
+        await pline(xprname(u.uswapwep, undefined, true));
+    }
+    return ECMD_OK;
+}
+
+/** C ref: invent.c wearing_armor */
+function wearing_armor() {
+    const u = game.u || {};
+    return !!(u.uarm || u.uarmc || u.uarmf || u.uarmg
+        || u.uarmh || u.uarms || u.uarmu);
+}
+
+/**
+ * C ref: invent.c noarmor(report_uskin).
+ * Named omit: uskin dragon-scale shorten + "embedded in your skin" pline.
+ */
+async function noarmor(report_uskin) {
+    if (!game.u?.uskin || !report_uskin) {
+        await pline('You are not wearing any armor.');
+    } else {
+        // uskin path deferred — still acknowledge empty armor slots
+        await pline('You are not wearing any armor.');
+    }
+}
+
+/**
+ * C ref: invent.c doprarm / #seearmor / '['.
+ * Single worn piece → display_pickinv n==1 → tty_message_menu(PICK_NONE)
+ * → pline(xprname(..., TRUE)). Multi-piece / menu_requested →
+ * dispinv_with_action menu deferred (sequential prinv interim).
+ */
+export async function doprarm() {
+    const u = game.u || {};
+    if (!wearing_armor()) {
+        await noarmor(true);
+        return ECMD_OK;
+    }
+    // C SORTPACK_INUSE slot order for lets[]
+    const pieces = [];
+    if (u.uarm) pieces.push(u.uarm);
+    if (u.uarmc) pieces.push(u.uarmc);
+    if (u.uarms) pieces.push(u.uarms);
+    if (u.uarmh) pieces.push(u.uarmh);
+    if (u.uarmg) pieces.push(u.uarmg);
+    if (u.uarmf) pieces.push(u.uarmf);
+    if (u.uarmu) pieces.push(u.uarmu);
+
+    if (game.iflags?.menu_requested) {
+        // dispinv_with_action menu deferred — clear sticky m-prefix
+        game.iflags.menu_requested = false;
+    }
+    // len==1 && !menu → message_menu PICK_NONE; else menu (deferred)
+    for (const otmp of pieces) {
+        await pline(xprname(otmp, undefined, true));
+    }
+    return ECMD_OK;
+}
+
+/**
+ * C ref: invent.c doprring / #seerings / '='.
+ * Empty → "not wearing any rings."; worn → dispinv path (single-item
+ * pline; multi/menu deferred). Meat-ring / Ring header label deferred.
+ */
+export async function doprring() {
+    const u = game.u || {};
+    if (!u.uleft && !u.uright) {
+        await pline('You are not wearing any rings.');
+        return ECMD_OK;
+    }
+    const pieces = [];
+    // C: uright then uleft for lets[]
+    if (u.uright) pieces.push(u.uright);
+    if (u.uleft) pieces.push(u.uleft);
+    if (game.iflags?.menu_requested) {
+        game.iflags.menu_requested = false;
+    }
+    for (const otmp of pieces) {
+        await pline(xprname(otmp, undefined, true));
+    }
+    return ECMD_OK;
+}
+
+/**
+ * C ref: invent.c dopramulet / #seeamulet / '"'.
+ * Named omit: menu_requested / Amulet header via dispinv_with_action.
+ */
+export async function dopramulet() {
+    const u = game.u || {};
+    if (!u.uamul) {
+        await pline('You are not wearing an amulet.');
+        return ECMD_OK;
+    }
+    if (game.iflags?.menu_requested) {
+        game.iflags.menu_requested = false;
+    }
+    await pline(xprname(u.uamul, undefined, true));
+    return ECMD_OK;
+}
+
+/** C ref: invent.c tool_being_used */
+function tool_being_used(obj) {
+    if (((obj.owornmask || 0) & (W_TOOL | W_SADDLE)) !== 0) return true;
+    if (obj.oclass !== TOOL_CLASS) return false;
+    const LEASH = objectNames.indexOf('LEASH');
+    return obj === game.u?.uwep || !!obj.lamplit
+        || (obj.otyp === LEASH && !!obj.leashmon);
+}
+
+/**
+ * C ref: invent.c doprtool / #seetools / '('.
+ * Named omit: multi-tool dispinv_with_action menu.
+ */
+export async function doprtool() {
+    const pieces = [];
+    for (const otmp of game.invent || []) {
+        if (tool_being_used(otmp)) pieces.push(otmp);
+    }
+    if (!pieces.length) {
+        await pline('You are not using any tools.');
+        return ECMD_OK;
+    }
+    if (game.iflags?.menu_requested) {
+        game.iflags.menu_requested = false;
+    }
+    for (const otmp of pieces) {
+        await pline(xprname(otmp, undefined, true));
+    }
+    return ECMD_OK;
 }
 
 /**
@@ -1129,7 +1416,7 @@ const INVLET_BASIC = 52;
 const QUITCHARS = ' \r\n\x1b';
 
 /** C ref: invent.c compactify — dash runs of consecutive invent letters. */
-function compactify_invlets(buf) {
+export function compactify_invlets(buf) {
     if (!buf || buf.length <= 5) return buf || '';
     const chars = buf.split('');
     let i1 = 1;

@@ -405,14 +405,56 @@ function pretty_base(obj) {
  * Named omission: C xname_flags calls observe_object when !Blind &&
  * !gd.distantname; JS callers must observe (or set dknown) where needed —
  * blanket observe here breaks distant_name / map generic glyph paths.
+ * C: xname omits monster type for CORPSE ("corpse"); cxname/doname use
+ * corpse_xname — pretty_base still carries mon name for doname.
  */
 export function xname(obj) {
     if (!obj) return 'something';
     // C: Role_if(PM_CLERIC) → obj->bknown = 1 (bypass set_bknown / invent update)
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
+    const n = objectNames[obj.otyp];
+    if (n === 'CORPSE') {
+        let base = 'corpse';
+        if ((obj.quan || 1) !== 1) base = makeplural(base);
+        return base;
+    }
     let base = pretty_base(obj);
     if ((obj.quan || 1) !== 1) base = makeplural(base);
     return base;
+}
+
+/**
+ * C ref: objnam.c the() — definite article for non-proper names.
+ * Named omissions: CapitalMon, fruit_from_name, artifact "of"/named arms,
+ * Platinum Yendorian Express Card special-case.
+ */
+export function the(str) {
+    if (!str) return 'the []';
+    if (/^the /i.test(str)) {
+        return `the${str.slice(3)}`;
+    }
+    const c0 = str.charCodeAt(0);
+    // lowercase / non-A–Z → always "the "
+    if (c0 < 65 || c0 > 90) return `the ${str}`;
+    // Capitalized: insert "the" when last word/hyphen segment is lowercase
+    // (Unique's corpse apostrophe → no article). Full CapitalMon deferred.
+    const sp = str.lastIndexOf(' ');
+    const hy = str.lastIndexOf('-');
+    const tmp = Math.max(sp, hy);
+    if (tmp >= 0) {
+        const next = str.charCodeAt(tmp + 1);
+        if (next < 65 || next > 90) {
+            if (!str.includes("'")) return `the ${str}`;
+        } else if (sp >= 0 && sp < tmp) {
+            const of = str.toLowerCase().indexOf(' of ');
+            const named = str.toLowerCase().indexOf(' named ');
+            const called = str.toLowerCase().indexOf(' called ');
+            let namedAt = named >= 0 ? named : -1;
+            if (called >= 0 && (namedAt < 0 || called < namedAt)) namedAt = called;
+            if (of >= 0 && (namedAt < 0 || of < namedAt)) return `the ${str}`;
+        }
+    }
+    return str;
 }
 
 /**

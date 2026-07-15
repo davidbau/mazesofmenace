@@ -7,7 +7,7 @@ import { rn2, rnd, d } from './rng.js';
 import {
     IS_OBSTRUCTED, HMON_MELEE, STRAT_WAITMASK,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
-    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_WHIP,
+    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_BASIC, P_WHIP,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MIM_REVEAL,
@@ -341,6 +341,8 @@ function hmon_hitmon_stagger(mon, dmg) {
  * multishot exception deferred.
  */
 async function hmon(mon, obj, thrown, _dieroll) {
+    // C: hmd.twohits = thrown ? 0 : gt.twohits — dbon/silver arms deferred
+    void (thrown ? 0 : gt_twohits);
     let dmg = 0;
     if (!obj) {
         // C hmon_hitmon_barehands: rnd(!martial_bonus() ? 2 : 4)
@@ -691,27 +693,88 @@ async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
 }
 
 /**
- * C ref: uhitm.c hitum — find_roll_to_hit, rnd(20), known_hitum, passive.
- * Cleaver / twoweapon / double_punch deferred.
+ * C ref: uhitm.c mon_maybe_unparalyze — rn2(10) thaw when !mcanmove.
+ */
+function mon_maybe_unparalyze(mtmp) {
+    if (!mtmp?.mcanmove) {
+        if (!rn2(10)) {
+            mtmp.mcanmove = 1;
+            mtmp.mfrozen = 0;
+        }
+    }
+}
+
+/**
+ * C ref: uhitm.c double_punch — second bare-hand hit when skill > P_BASIC.
+ */
+function double_punch() {
+    const skl_lvl = P_SKILL(P_BARE_HANDED_COMBAT);
+    const u = game.u || {};
+    if (!u.uwep && !u.uarms && skl_lvl > P_BASIC) {
+        return (skl_lvl - P_BASIC) > rn2(5);
+    }
+    return false;
+}
+
+/** C gt.twohits — copied into hmon strength/silver arms when those land. */
+let gt_twohits = 0;
+
+/**
+ * C ref: uhitm.c hitum — find_roll_to_hit, rnd(20), known_hitum, passive;
+ *         twoweapon / double_punch second swing. Cleaver hitum_cleave deferred.
  */
 async function hitum(mon, uattk) {
-    const uwep = game.u?.uwep || null;
+    const u = game.u || {};
+    const uwep = u.uwep || null;
     const wepbefore = uwep;
+    const secondwep = u.twoweap ? (u.uswapwep || null) : null;
     const attk_count = { v: 0 };
     const role_roll_penalty = { v: 0 };
-    // twohits = 0 for single-weapon L1
-    const tmp = find_roll_to_hit(mon, uattk.aatyp, uwep, attk_count, role_roll_penalty);
-    // mon_maybe_unparalyze deferred
-    const dieroll = rnd(20);
-    const mhit = { v: (tmp > dieroll || !!game.u?.uswallow) ? 1 : 0 };
+    const x = (u.ux | 0) + (u.dx | 0);
+    const y = (u.uy | 0) + (u.dy | 0);
+    const oldumort = u.umortality | 0;
+
+    // Cleaver: u_wield_art(ART_CLEAVER) && !twoweap → hitum_cleave deferred
+
+    // 0: single; 1: first of two — hmon copies into hmd.twohits
+    gt_twohits = (uwep ? !!u.twoweap : double_punch()) ? 1 : 0;
+
+    let tmp = find_roll_to_hit(mon, uattk.aatyp, uwep, attk_count, role_roll_penalty);
+    mon_maybe_unparalyze(mon);
+    let dieroll = rnd(20);
+    let mhit = { v: (tmp > dieroll || !!u.uswallow) ? 1 : 0 };
     if (tmp > dieroll) exercise(A_DEX, true);
 
-    const malive = await known_hitum(
+    let malive = await known_hitum(
         mon, uwep, mhit, tmp, role_roll_penalty.v, uattk, dieroll,
     );
-    const wep_was_destroyed = !!(wepbefore && !game.u?.uwep);
-    await passive(mon, game.u?.uwep || null, !!mhit.v, !!malive, AT_WEAP,
+    const wep_was_destroyed = !!(wepbefore && !u.uwep);
+    await passive(mon, u.uwep || null, !!mhit.v, !!malive, AT_WEAP,
         wep_was_destroyed);
+
+    // Second swing: twoweapon or skilled bare-hand; skip if Stormbringer
+    // override, paralyzed, life-saved, or target dead/moved.
+    if (gt_twohits && !(game.override_confirmation
+        || (game.multi | 0) < 0
+        || (u.umortality | 0) > oldumort
+        || !malive
+        || m_at(x, y) !== mon)) {
+        gt_twohits = 2;
+        tmp = find_roll_to_hit(
+            mon, uattk.aatyp, u.uswapwep || null, attk_count, role_roll_penalty,
+        );
+        mon_maybe_unparalyze(mon);
+        dieroll = rnd(20);
+        mhit = { v: (tmp > dieroll || !!u.uswallow) ? 1 : 0 };
+        malive = await known_hitum(
+            mon, secondwep, mhit, tmp, role_roll_penalty.v, uattk, dieroll,
+        );
+        if (mhit.v) {
+            await passive(mon, secondwep, !!mhit.v, !!malive, AT_WEAP,
+                !!(secondwep && !u.uswapwep));
+        }
+    }
+    gt_twohits = 0;
     return malive;
 }
 

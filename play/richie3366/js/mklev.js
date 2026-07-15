@@ -40,6 +40,8 @@ import {
     LVLINIT_SOLIDFILL, LVLINIT_MINES,
     In_mines,
     ZOMBIFY_MON, TIMER_OBJECT,
+    Is_rogue_level,
+    DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, ENGRAVE,
 } from './const.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
@@ -65,7 +67,6 @@ import {
 } from './monsters.js';
 import { name_to_monplus, name_to_mon } from './mondata.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
-import { DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT } from './const.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -494,7 +495,7 @@ const MKMAP_HEIGHT = ROWNO - 1; // 20
 
 /**
  * C ref: mkmaze.c makemaz — load special proto/fill, else maze fallback.
- * Ported: fill_lvl "minefill" via JS minefill.lua body.
+ * Ported: fill_lvl "minefill" via JS minefill.lua body; tut-1 skeleton.
  */
 async function makemaz(s) {
     const protofile = s ? String(s) : '';
@@ -502,7 +503,96 @@ async function makemaz(s) {
         load_minefill();
         return;
     }
+    if (protofile === 'tut-1') {
+        load_tut1();
+        return;
+    }
     // Other protos / empty-maze create_maze deferred (C-JS-MAP)
+}
+
+/**
+ * C ref: dat/tut-1.lua via load_special — skeleton through map + teleport.
+ * Named omissions: engravings/doors/traps/objects/monsters, parse_config
+ * newbie options, percent/shuffle content arms, water_has_kelp tail
+ * (full 165-call RNG slice before Entering --More--).
+ */
+function load_tut1() {
+    // C: load_special loads nhlib.lua → shuffle(align) then runs tut-1.lua
+    nhlib_shuffle_align();
+    // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
+    splev_initlev({
+        init_style: LVLINIT_SOLIDFILL,
+        filling: STONE,
+        lit: BOOL_RANDOM,
+        icedpools: false,
+    });
+    if (!game.level.flags) game.level.flags = {};
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.nomongen = true;
+    game.level.flags.nodeathdrops = true;
+    game.level.flags.noautosearch = true;
+
+    // des.map — fixed full-level placement (xstart=1, ystart=0)
+    const TUT1_MAP = `
+---------------------------------------------------------------------------
+|-.--|.......|......|..S....|.F.......|.............|.......|.............|
+|.-..........|......|--|....|.F.....|.|S-------.....|.....................|
+||.--|.......|..T......|....|.F.....|.|.......|.....|.......|.............|
+||.|.|.......|......|-.|....|.F.....|.|.......|.....|--------.............|
+||.|.|.......|......||.|-.-----------.-.......|-S----.....................|
+|-+-S---------..---.||........................|...|.......................|
+|......|          |.-------------------.......|...|....--S----............|
+|......|  ######  |.........|      |..S.......|...|....|.....|............|
+|----.-| -+-   #  |.....---.|######+..|.......S...|....|.....|............|
+|----+----.----+---.|.--|.|.|#     ------------...|....|.....F............|
+|........|.|......|.|...F...|#  ........|.....+...|....|.....|............|
+|.P......-S|......|------.---# .........|.....|LLL|..................|..| |
+|..........|......+.|...|.|.S# ..--S-----.....|LLL|..................|..--|
+|.W......---......|.|.|.|.|.|# ..|......|.....|...|..................|..|.|
+|....Z.L.S.F......|.|.|.|.---#   |......+.....|...|..................||...|
+|........|--......|...|.....|####+......|.....|...+..................||...|
+---------------------------------------------------------------------------
+`.replace(/^\n/, '');
+    const mf = mapfrag_fromstr(TUT1_MAP);
+    const xstart = 1;
+    const ystart = 0;
+    game.splev_xstart = xstart;
+    game.splev_ystart = ystart;
+    game.splev_xsize = mf.wid;
+    game.splev_ysize = mf.hei;
+    for (let yy = ystart; yy < Math.min(ROWNO, ystart + mf.hei); yy++) {
+        for (let xx = xstart; xx < Math.min(COLNO, xstart + mf.wid); xx++) {
+            const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
+            if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            sel_set_ter(xx, yy, mptyp, false);
+        }
+    }
+    // des.region lit area(01,01,73,16) — map-relative + xstart/ystart
+    for (let y = ystart + 1; y <= ystart + 16 && y < ROWNO; y++) {
+        for (let x = xstart + 1; x <= xstart + 73 && x < COLNO; x++) {
+            const loc = game.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
+    // des.non_diggable — mark all as nondiggable
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level.at(x, y);
+            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+        }
+    }
+    // des.teleport_region — hero at map (9,3); place_lregion RNG deferred
+    // to end of full tut-1 load (after water_has_kelp). Position only here.
+    u_on_newpos(xstart + 9, ystart + 3);
+
+    // First engraving underfoot (tut-1.lua movekeys with default h j k l).
+    // Full tut_key/eckey + remaining des.* content deferred (RNG peel).
+    make_engr_at(
+        xstart + 9, ystart + 3,
+        'Move around with h j k l',
+        null, 0, ENGRAVE,
+    );
+    // Remainder of tut-1.lua deferred.
 }
 
 /** C ref: nhlib.lua top-level shuffle(align) on special-level load */
@@ -1095,7 +1185,12 @@ async function makelevel() {
     const fill = dun?.fill_lvl || '';
     // C ref: mklev.c:1267-1289 — Is_special / proto / fill_lvl before ordinary.
     // Medusa rn2(5) only in hell/medusa else-if — NOT before fill_lvl.
-    if (fill) {
+    const slev = (g.sp_levchn || []).find(s =>
+        (s.dlevel?.dnum | 0) === (g.u?.uz?.dnum | 0)
+        && (s.dlevel?.dlevel | 0) === (g.u?.uz?.dlevel | 0));
+    if (slev && !Is_rogue_level(g.u?.uz)) {
+        await makemaz(slev.proto);
+    } else if (fill) {
         await makemaz(fill);
     } else {
         await makelevel_ordinary();

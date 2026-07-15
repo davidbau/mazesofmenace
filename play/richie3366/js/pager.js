@@ -19,7 +19,7 @@ import {
     flush_screen, flush_topl_more, pline, docrt, more,
     mon_glyph, obj_glyph, look_shown_at,
 } from './display.js';
-import { getlin } from './getline.js';
+import { getlin, yn_function } from './getline.js';
 import {
     paint_corner_nhw_menu, dfeature_at, invent_lines,
 } from './invent.js';
@@ -429,6 +429,8 @@ function simplify_for_db(inp) {
 
 /**
  * C ref: pager.c checkfile — lookup + optional yn + display entry.
+ * Ask path uses y_n → tty_yn_function, which more()'s when toplin is
+ * NEED_MORE (look putmixed) before painting the yn prompt (D-0334).
  */
 async function checkfile(inp, flags = 0) {
     const userTyped = !!(flags & CHK_USR);
@@ -442,14 +444,8 @@ async function checkfile(inp, flags = 0) {
     }
     let yes = dontAsk;
     if (!dontAsk) {
-        const q = `More info about "${dbase}"? [yn] (n) `;
-        game._pending_message = q;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(q.length, 0);
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        game._pending_message = '';
+        // C: y_n("More info about \"…\"?") — ynchars + def 'n'
+        const ch = await yn_function(`More info about "${dbase}"?`, 'yn', 'n');
         yes = ch === 'y' || ch === 'Y';
     }
     if (!yes) return true;
@@ -535,6 +531,8 @@ function brief_at(x, y) {
 /**
  * C ref: pager.c do_screen_description + lookat for looked stairs.
  * Ambiguous '<'/'>' → "a staircase … or a branch staircase … (lookat)".
+ * After lookat parenthetical, C sets found=1 so checkfile can look up
+ * firstmatch (e.g. "branch staircase up") — D-0334.
  * Ladder showsyms deferred (ASCII where ladders share '<' would add two more).
  */
 function describe_stairs_looked(x, y) {
@@ -544,7 +542,8 @@ function describe_stairs_looked(x, y) {
     const branch = up ? 'branch staircase up' : 'branch staircase down';
     const ch = up ? '<' : '>';
     const out = `${ch}        ${an(ordinary)} or ${an(branch)} (${look})`;
-    return { out, first: look, found: 2 };
+    // C: found = 1 after lookat supplies firstmatch for checkfile
+    return { out, first: look, found: 1 };
 }
 
 function describe_looked(x, y) {
@@ -573,20 +572,23 @@ function describe_looked(x, y) {
     // C ref: pager.c do_screen_description — DECgraphics shares showsym
     // \xfe among S_ndoor/S_room/S_darkroom/S_ice; lookat parenthetical.
     // Full showsyms-driven cmap scan deferred (ASCII ladders/rooms differ).
+    // C: when lookat fills firstmatch, found = 1 for checkfile (even if
+    // the cmap symbol matched multiple defsyms).
     if (loc?.typ === ROOM) {
         const look = 'floor of a room';
         // C encglyph of DECgraphics S_room is SO+'~'+SI → middle dot ·
         // (frozen serialize has no decgfx; paint Unicode like map glyphs).
         const ch = '\u00b7';
         const out = `${ch}        a doorway or the floor of a room or the dark part of a room or ice (${look})`;
-        return { out, first: look, found: 4 };
+        return { out, first: look, found: 1 };
     }
     if (loc?.typ === CORR) {
         // C: found > 4 under DECgraphics '#' (corr/bars/tree/bridges/…)
-        // → "can be many things"; lookat still supplies (corridor).
+        // → "can be many things"; lookat still supplies (corridor) and
+        // forces found=1 for checkfile.
         const look = 'corridor';
         const out = `#        can be many things (${look})`;
-        return { out, first: look, found: 5 };
+        return { out, first: look, found: 1 };
     }
     const feat = dfeature_at(x, y);
     if (feat) {

@@ -24,6 +24,8 @@ import {
     M_AP_OBJECT, M_AP_TYPE,
     MCORPSENM,
     isok,
+    SVALL,
+    TER_TRP, TER_OBJ, TER_MON, TER_FULL,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -825,6 +827,182 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
+}
+
+/**
+ * C ref: detect.c reveal_terrain_getglyph — dirty cmap hack at end.
+ * S_darkroom already paints as S_room in JS; S_litcorr → S_corr.
+ */
+function reveal_terrain_cmap_hack(g) {
+    if (!g) return g;
+    if (g.ch === '#' && g.color === CLR_WHITE) {
+        return { ch: '#', color: NO_COLOR, dec: false };
+    }
+    return g;
+}
+
+/** Copy remembered / terrain glyph into a plain {ch,color,dec[,invisible]}. */
+function copy_glyph(g) {
+    if (!g) return null;
+    return {
+        ch: g.ch,
+        color: g.color ?? NO_COLOR,
+        dec: !!(g.dec ?? g.decgfx),
+        invisible: !!g.invisible,
+    };
+}
+
+/**
+ * C ref: detect.c reveal_terrain_getglyph
+ * Branch envelope: hero_memory / seenv; strip mon/obj/trap/invisible per
+ * TER_* bits; lastseentyp vs typ → back_to_glyph; litcorr→corr hack.
+ * Named omissions: visible_region_at / gascloud; keep_traps trap_to_glyph
+ * restore; M_AP_FURNITURE lastseentyp fake; swallowed ustuck mon glyph;
+ * warning glyphs; TER_FULL seenv temp already covered; arboreal default.
+ */
+export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return default_glyph;
+
+    const keep_traps = (which_subset & TER_TRP) !== 0;
+    const keep_objs = (which_subset & TER_OBJ) !== 0;
+    const keep_mons = (which_subset & TER_MON) !== 0;
+    const full = (which_subset & TER_FULL) !== 0;
+    const hero_memory = !!game.level?.flags?.hero_memory;
+
+    const seenv = (full || hero_memory)
+        ? (loc.seenv | 0)
+        : (cansee(x, y) ? SVALL : 0);
+
+    if (full) {
+        const save = loc.seenv;
+        loc.seenv = SVALL;
+        const g = terrain_glyph(loc, x, y);
+        loc.seenv = save;
+        return reveal_terrain_cmap_hack(g);
+    }
+
+    // C: levl_glyph = hero_memory ? levl.glyph : seenv ? back_to_glyph : default
+    let levl_glyph;
+    if (hero_memory) {
+        levl_glyph = loc.remembered_glyph
+            ? copy_glyph(loc.remembered_glyph)
+            : copy_glyph(default_glyph);
+    } else {
+        levl_glyph = seenv
+            ? terrain_glyph(loc, x, y)
+            : copy_glyph(default_glyph);
+    }
+
+    // Classify displayed layer (C glyph_at) without integer glyph IDs.
+    let kind = 'other'; // mon | obj | trap | invisible | other
+    let glyph;
+    let was_mon = false;
+
+    if (swallowed) {
+        glyph = copy_glyph(levl_glyph);
+    } else {
+        const u = game.u || {};
+        if (u.ux === x && u.uy === y && canspotself()) {
+            kind = 'mon';
+            glyph = hero_display_glyph();
+        } else {
+            const mtmp = mon_at_display(x, y);
+            if (mtmp && mon_visible(mtmp)
+                && (cansee(x, y) || see_with_infrared(mtmp) || sensemon(mtmp))) {
+                kind = 'mon';
+                const apg = mimic_object_appearance_glyph(mtmp);
+                glyph = apg || mon_glyph(mtmp);
+            } else if (glyph_is_invisible(loc)) {
+                kind = 'invisible';
+                glyph = { ch: 'I', color: NO_COLOR, dec: false, invisible: true };
+            } else {
+                const obj = objects_at(x, y);
+                if (obj && !covers_objects(x, y)) {
+                    // Shown object: cansee path, or remembered matches obj
+                    const og = obj_glyph(obj);
+                    const rg = loc.remembered_glyph;
+                    if (cansee(x, y)
+                        || (rg && rg.ch === og.ch)) {
+                        kind = 'obj';
+                        glyph = og;
+                    }
+                }
+                if (kind === 'other') {
+                    // C glyph_at for terrain/engraving — prefer memory / back_to_glyph
+                    // over disp_* (disp_color is already tty-mapped).
+                    if (hero_memory && loc.remembered_glyph && !loc.remembered_glyph.invisible) {
+                        glyph = copy_glyph(loc.remembered_glyph);
+                    } else if (seenv) {
+                        glyph = terrain_glyph(loc, x, y);
+                    } else {
+                        glyph = copy_glyph(levl_glyph);
+                    }
+                }
+            }
+        }
+    }
+
+    // C: !keep_mons && (monster|warning) || swallow → levl_glyph
+    if ((!keep_mons && kind === 'mon')) {
+        glyph = copy_glyph(levl_glyph);
+        was_mon = true;
+        if (glyph?.invisible) kind = 'invisible';
+        else {
+            const obj = objects_at(x, y);
+            if (obj && !covers_objects(x, y)) {
+                const og = obj_glyph(obj);
+                if (glyph && glyph.ch === og.ch) kind = 'obj';
+                else kind = 'other';
+            } else {
+                kind = 'other';
+            }
+        }
+    }
+
+    // C: keep_traps && !keep_objs && object → trap_to_glyph — traps deferred
+
+    // C: strip objects / traps / invisible / (region && was_mon)
+    if (((!keep_objs && kind === 'obj')
+        || (!keep_traps && kind === 'trap')
+        || kind === 'invisible'
+        || (was_mon && false /* region deferred */))) {
+        if (!seenv) {
+            glyph = copy_glyph(default_glyph);
+        } else {
+            const last = game.lastseentyp?.[x]?.[y] | 0;
+            if (last === (loc.typ | 0) || !last) {
+                glyph = terrain_glyph(loc, x, y);
+            } else {
+                // C: temp typ = lastseentyp; back_to_glyph; restore
+                // wall_info recalc deferred
+                const saveTyp = loc.typ;
+                loc.typ = last;
+                glyph = terrain_glyph(loc, x, y);
+                loc.typ = saveTyp;
+            }
+        }
+    }
+
+    return reveal_terrain_cmap_hack(glyph || default_glyph);
+}
+
+/**
+ * C ref: detect.c reveal_terrain show_glyph loop — rewrite map then flush.
+ * Does not pline / browse / map_redisplay (caller).
+ */
+export function reveal_terrain_show_map(which_subset, swallowed) {
+    // C: default_sym = arboreal ? S_tree : S_stone — tree cmap deferred
+    const default_glyph = { ch: ' ', color: NO_COLOR, dec: false };
+
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const g = reveal_terrain_getglyph(
+                x, y, swallowed, default_glyph, which_subset,
+            );
+            show_glyph_cell(x, y, g.ch, g.color ?? NO_COLOR, !!g.dec);
+        }
+    }
 }
 
 // C ref: display.c tmp_at — transient missile/beam glyphs (DISP_FLASH first).

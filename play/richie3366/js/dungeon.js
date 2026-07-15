@@ -521,7 +521,8 @@ function init_castle_tune() {
     game.tune = tune.join('');
 }
 
-function find_level(name) {
+/** C ref: dungeon.c find_level — match proto name in sp_levchn. */
+export function find_level(name) {
     const want = name.toLowerCase();
     for (const curr of game.sp_levchn || []) {
         if ((curr.proto || '').toLowerCase() === want) return curr;

@@ -14,9 +14,12 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { setStorageForTesting } from './storage.js';
 import { pushKey, nhgetch } from './input.js';
-import { newgame, moveloop_core } from './allmain.js';
+import { newgame, moveloop_core, welcome, moveloop_preamble } from './allmain.js';
+import { try_restore_save } from './save.js';
+import { l_nhcore_init } from './mklev.js';
+import { vision_recalc, init_vision_globals } from './vision.js';
 import { parseNethackrc } from './options.js';
-import { flush_screen, serialize_for_scoring, reset_display_messages } from './display.js';
+import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
@@ -168,6 +171,19 @@ export class NethackGame {
         // C ref: unixmain → plnamesuffix → askname when no -u / OPTIONS=name
         await askname_if_needed();
         if (!g.plname) g.plname = 'Hero';
+
+        // C ref: unixmain attempt_restore — try save before player_selection/newgame
+        if (try_restore_save()) {
+            init_vision_globals();
+            // C welcome → l_nhcore_call(RESTORE) → nhlib.lua shuffle(align)
+            l_nhcore_init();
+            vision_recalc(0);
+            await docrt();
+            await bot();
+            await welcome(false);
+            await moveloop_preamble(true);
+            return;
+        }
 
         // C ref: unixmain → player_selection() before newgame
         await player_selection();

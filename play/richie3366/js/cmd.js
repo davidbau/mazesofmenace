@@ -16,7 +16,8 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH, DOMOVE_WALK } from './const.js';
 import { dist2 } from './mon.js';
 import {
-    ddoinv, dodiscovered, doattributes, dolook,
+    ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
+    doprring, dopramulet, doprtool,
 } from './invent.js';
 import { dovspell, docast } from './spell.js';
 import { doeat } from './eat.js';
@@ -28,10 +29,11 @@ import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull, dodown, dodrop } from './do.js';
+import { dosave } from './save.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
 import { doopen_indir } from './lock.js';
 import { doextcmd } from './getline.js';
-import { dosearch } from './detect.js';
+import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
 import { wiz_wish } from './wizcmds.js';
 import { dowield, dowieldquiver } from './wield.js';
@@ -610,6 +612,38 @@ export async function rhack(key) {
         const tookTime = await dowield();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'S') {
+        // C ref: save.c dosave / cmd.c — #save (GENERALCMD, ECMD_OK)
+        await dosave();
+        game.context.move = 0;
+    } else if (ch === '$') {
+        // C ref: invent.c doprgold / cmd.c — #showgold (GENERALCMD)
+        await doprgold();
+        game.context.move = 0;
+    } else if (ch === ')') {
+        // C ref: invent.c doprwep / cmd.c — #seeweapon (GENERALCMD, WEAPON_SYM)
+        await doprwep();
+        game.context.move = 0;
+    } else if (ch === '[') {
+        // C ref: invent.c doprarm / cmd.c — #seearmor (GENERALCMD, ARMOR_SYM)
+        await doprarm();
+        game.context.move = 0;
+    } else if (ch === '=') {
+        // C ref: invent.c doprring / cmd.c — #seerings (GENERALCMD, RING_SYM)
+        await doprring();
+        game.context.move = 0;
+    } else if (ch === '"') {
+        // C ref: invent.c dopramulet / cmd.c — #seeamulet (GENERALCMD, AMULET_SYM)
+        await dopramulet();
+        game.context.move = 0;
+    } else if (ch === '(') {
+        // C ref: invent.c doprtool / cmd.c — #seetools (GENERALCMD, TOOL_SYM)
+        await doprtool();
+        game.context.move = 0;
+    } else if (ch === '\x7f') {
+        // C ref: cmd.c doterrain / #terrain — DEL key (\177)
+        await doterrain();
+        game.context.move = 0;
     } else if (ch === 'Q') {
         // C ref: wield.c dowieldquiver / doquiver_core("ready")
         const tookTime = await dowieldquiver();

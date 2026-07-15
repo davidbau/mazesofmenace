@@ -1,21 +1,29 @@
 // wield.js — Wield / weapon slot (partial).
-// C ref: wield.c — setuwep, ready_weapon, dowield, doquiver_core, welded.
+// C ref: wield.c — setuwep, ready_weapon, dowield, doquiver_core, welded,
+//         can_twoweapon, dotwoweapon, set_twoweap, untwoweapon.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname } from './objnam.js';
+import { xprname, xname, makeplural, vtense } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj } from './weapon.js';
-import { humanoid } from './monsters.js';
+import { humanoid, mons } from './monsters.js';
+import { AT_WEAP } from './mhitm.js';
+import { acurr, A_DEX } from './attrib.js';
+import { rnd } from './rng.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, objectNames,
 } from './objects.js';
 import {
     W_WEP, W_SWAPWEP, W_QUIVER, W_ARMOR, W_ACCESSORY, W_SADDLE,
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
+    ECMD_OK, ECMD_TIME, Upolyd,
 } from './const.js';
 import { retouch_object } from './artifact.js';
+
+/** C: can_no_longer_twoweap */
+const can_no_longer_twoweap = 'can no longer wield two weapons at once';
 
 /**
  * C ref: wield.c empty_handed — gloves → "empty handed"; else humanoid
@@ -212,7 +220,7 @@ export async function doswapweapon() {
         else await pline('You have no secondary weapon readied.');
     }
 
-    if (u.twoweap) u.twoweap = false;
+    if (u.twoweap) await untwoweapon();
     return result;
 }
 
@@ -358,7 +366,7 @@ export async function dowield() {
 
     const result = await ready_weapon(wep);
     // flags.pushweapon deferred
-    if (u.twoweap) u.twoweap = false; // untwoweapon stub
+    if (u.twoweap) await untwoweapon();
     return result;
 }
 
@@ -537,4 +545,160 @@ export async function doquiver_core(verb) {
 /** C ref: wield.c dowieldquiver — #quiver / 'Q'. */
 export async function dowieldquiver() {
     return doquiver_core('ready');
+}
+
+/**
+ * C ref: mondata.h could_twoweap — >1 AT_WEAP among first three mattk slots.
+ */
+export function could_twoweap(ptr) {
+    const mattk = ptr?.mattk;
+    if (!mattk) return false;
+    let n = 0;
+    for (let i = 0; i < 3; i++) {
+        if ((mattk[i]?.aatyp | 0) === AT_WEAP) n++;
+    }
+    return n > 1;
+}
+
+/** Hero form for could_twoweap — C youmonst.data; set_uasmon deferred → role. */
+function hero_form_data() {
+    if (game.youmonst?.data) return game.youmonst.data;
+    const mndx = game.u?.umonnum ?? game.urole?.mnum;
+    return mons(mndx);
+}
+
+/**
+ * C ref: wield.c TWOWEAPOK — weapon (not launcher/ammo/missile) or weptool.
+ */
+function TWOWEAPOK(obj) {
+    if (!obj) return false;
+    if (obj.oclass === WEAPON_CLASS) {
+        return !(is_launcher(obj) || is_ammo(obj) || is_missile(obj));
+    }
+    return is_weptool(obj);
+}
+
+/** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
+function bimanual(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
+    return !!(game.objects?.[obj.otyp]?.oc_big);
+}
+
+/**
+ * C ref: wield.c set_twoweap — toggle u.twoweap; botl when weaponstatus.
+ */
+export function set_twoweap(on_off) {
+    const u = game.u;
+    if (!u) return;
+    const want = !!on_off;
+    if (want !== !!u.twoweap) {
+        u.twoweap = want;
+        if (game.flags?.weaponstatus) game.flags.botl = true;
+    }
+}
+
+/**
+ * C ref: wield.c drop_uswapwep — Glib/cursed secondary while dual-wielding.
+ * Yobjnam2/otense polish deferred; dropx via dynamic import (do↔wield).
+ */
+async function drop_uswapwep() {
+    const u = game.u;
+    const obj = u?.uswapwep;
+    if (!obj) return;
+    const left_hand = 'left hand';
+    if (!obj.cursed) {
+        await pline(`${xname(obj)} slips from your ${left_hand}!`);
+    } else if (!u.twoweap) {
+        await pline(`${xname(obj)} evades your grasp and drops from your ${left_hand}!`);
+    } else {
+        await pline(`Your ${left_hand} spasms and drops ${xname(obj)}!`);
+    }
+    const { dropx } = await import('./do.js');
+    dropx(obj);
+}
+
+/**
+ * C ref: wield.c can_twoweapon — dual-wield eligibility + failure plines.
+ * Named omissions: full Yname2/Yobjnam2/body_part/cant_wield_corpse; Glib
+ * prop may be incomplete until timeout wiring.
+ */
+export async function can_twoweapon() {
+    const u = game.u || {};
+    const uwep = u.uwep;
+    const uswapwep = u.uswapwep;
+    const ptr = hero_form_data();
+
+    if (!could_twoweap(ptr)) {
+        if (Upolyd(u)) {
+            await pline("You can't use two weapons in your current form.");
+        } else {
+            const female = !!(game.flags?.female);
+            const nm = (female && game.urole?.name?.f)
+                ? game.urole.name.f
+                : (game.urole?.name?.m || 'hero');
+            await pline(`${makeplural(nm)} aren't able to use two weapons at once.`);
+        }
+    } else if (!uwep || !uswapwep) {
+        let hand_s = 'hand';
+        if (!uwep && !uswapwep) hand_s = makeplural(hand_s);
+        const which = uwep ? 'left ' : uswapwep ? 'right ' : '';
+        await pline(`Your ${which}${hand_s} ${vtense(hand_s, 'are')} empty.`);
+    } else if (!TWOWEAPOK(uwep) || !TWOWEAPOK(uswapwep)) {
+        const otmp = !TWOWEAPOK(uwep) ? uwep : uswapwep;
+        const plural = (otmp.quan || 1) !== 1;
+        const suit = plural ? "aren't" : "isn't a";
+        const slot = otmp === uwep ? 'primary' : 'secondary';
+        const plur = plural ? 's' : '';
+        await pline(`${xname(otmp)} ${suit} suitable ${slot} weapon${plur}.`);
+    } else if (bimanual(uwep) || bimanual(uswapwep)) {
+        const otmp = bimanual(uwep) ? uwep : uswapwep;
+        await pline(`${xname(otmp)} isn't one-handed.`);
+    } else if (u.uarms) {
+        await pline("You can't use two weapons while wearing a shield.");
+    } else if (uswapwep.oartifact) {
+        await pline(`${xname(uswapwep)} resists being held second to another weapon!`);
+    } else if (u.Glib || uswapwep.cursed) {
+        if (!u.Glib) uswapwep.bknown = 1;
+        await drop_uswapwep();
+    } else {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: wield.c untwoweapon — end dual-wield with can_no_longer message.
+ */
+export async function untwoweapon() {
+    const u = game.u;
+    if (u?.twoweap) {
+        await pline(`You ${can_no_longer_twoweap}.`);
+        set_twoweap(false);
+        // update_inventory deferred
+    }
+}
+
+/**
+ * C ref: wield.c dotwoweapon — #twoweapon toggle.
+ * @returns {Promise<number>} ECMD_OK or ECMD_TIME
+ */
+export async function dotwoweapon() {
+    const u = game.u;
+    if (!u) return ECMD_OK;
+
+    if (u.twoweap) {
+        await pline('You switch to your primary weapon.');
+        set_twoweap(false);
+        // update_inventory deferred
+        return ECMD_OK;
+    }
+
+    if (await can_twoweapon()) {
+        await pline('You begin two-weapon combat.');
+        set_twoweap(true);
+        // update_inventory deferred
+        return (rnd(20) > acurr(A_DEX)) ? ECMD_TIME : ECMD_OK;
+    }
+    return ECMD_OK;
 }

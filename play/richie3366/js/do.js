@@ -10,6 +10,8 @@ import { depth } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
     W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_DROPPED,
+    UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
+    UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
 } from './const.js';
 import { pline, docrt, flush_screen, flush_topl_more, newsym } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
@@ -27,7 +29,9 @@ import { enexto } from './teleport.js';
 import { monster_nearby } from './hack.js';
 import { place_object, stackobj } from './mkobj.js';
 import { doname } from './objnam.js';
+import { compactify_invlets } from './invent.js';
 import { can_reach_floor } from './engrave.js';
+import { pickup } from './pickup.js';
 import {
     welded, setuwep, setuswapwep, setuqwep,
 } from './wield.js';
@@ -177,8 +181,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     if (on_level(newlevel, u.uz)) return;
 
-    // C: keepdogs(FALSE) before leaving the map
-    keepdogs(false);
+    // C: if (!iflags.nofollowers) keepdogs(FALSE)
+    if (!game.iflags?.nofollowers) keepdogs(false);
     vision_recalc(2);
 
     // In-memory stash of the level we're leaving (restore deferred).
@@ -301,6 +305,55 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         more_experienced(depth(u.uz) | 0, 0);
         await newexplevel();
     }
+
+    // C: goto_level ends with pickup(1) — autopick or check_here/engr
+    await pickup(1);
+}
+
+/**
+ * C ref: do.c schedule_goto — defer level change + optional pre/post msgs.
+ */
+export function schedule_goto(tolev, utotype_flags, pre_msg, post_msg) {
+    const u = game.u;
+    if (!u) return;
+    u.utotype = (utotype_flags | 0) | UTOTYPE_DEFERRED;
+    if (!u.utolev) u.utolev = { dnum: 0, dlevel: 0 };
+    assign_level(u.utolev, tolev);
+    game.dfr_pre_msg = pre_msg ? String(pre_msg) : null;
+    game.dfr_post_msg = post_msg ? String(post_msg) : null;
+}
+
+/**
+ * C ref: do.c deferred_goto — pline pre_msg, goto_level, optional post_msg.
+ * Portal-remove and full typmask arms beyond ATSTAIRS/FALLING/PORTAL deferred.
+ */
+export async function deferred_goto() {
+    const u = game.u;
+    if (!u?.uz || !u.utolev) {
+        u && (u.utotype = UTOTYPE_NONE);
+        game.dfr_pre_msg = null;
+        game.dfr_post_msg = null;
+        return;
+    }
+    if (!on_level(u.uz, u.utolev)) {
+        const dest = { dnum: u.utolev.dnum | 0, dlevel: u.utolev.dlevel | 0 };
+        const oldlev = { dnum: u.uz.dnum | 0, dlevel: u.uz.dlevel | 0 };
+        const typmask = u.utotype | 0;
+        if (game.dfr_pre_msg) await pline(game.dfr_pre_msg);
+        await goto_level(
+            dest,
+            !!(typmask & UTOTYPE_ATSTAIRS),
+            !!(typmask & UTOTYPE_FALLING),
+            !!(typmask & UTOTYPE_PORTAL),
+        );
+        // UTOTYPE_RMPORTAL deltrap deferred
+        if (game.dfr_post_msg && !on_level(u.uz, oldlev)) {
+            await pline(game.dfr_post_msg);
+        }
+    }
+    u.utotype = UTOTYPE_NONE;
+    game.dfr_pre_msg = null;
+    game.dfr_post_msg = null;
 }
 
 /**
@@ -450,14 +503,19 @@ async function drop(obj) {
     return ECMD_TIME;
 }
 
-/** C invent getobj any_obj_ok — every invent letter is SUGGEST. */
+/**
+ * C invent getobj any_obj_ok — every invent letter is SUGGEST;
+ * suggested > 5 → compactify (invent.c).
+ */
 function drop_suggest_lets() {
     const lets = [];
     for (const o of game.invent || []) {
         if (o?.invlet) lets.push(o.invlet);
     }
     lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
+    let s = lets.join('');
+    if (lets.length > 5) s = compactify_invlets(s);
+    return s;
 }
 
 /**
