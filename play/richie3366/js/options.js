@@ -5,6 +5,9 @@ import {
     optionHelpBools,
     optionHelpCompounds,
     optionHelpOthers,
+    dosetSimpleOpts,
+    dosetSimpleNameWidth,
+    dosetSimpleSections,
 } from './generated/optlist_data.js';
 import {
     NUM_DISCLOSURE_OPTIONS,
@@ -15,11 +18,16 @@ import {
     DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT,
     ECMD_OK,
+    AUTOUNLOCK_UNTRAP,
+    AUTOUNLOCK_APPLY_KEY,
+    AUTOUNLOCK_KICK,
+    AUTOUNLOCK_FORCE,
 } from './const.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt } from './display.js';
+import { flush_screen, pline, docrt, clear_committed_status } from './display.js';
 import { paint_corner_nhw_menu } from './invent.js';
+import { ATR_INVERSE } from './terminal.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
     FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS,
@@ -368,7 +376,11 @@ async function choose_classes_menu(prompt, priorSelect) {
     }
 
     for (;;) {
-        const entries = [{ text: prompt, attr: 0 }, { text: '', attr: 0 }];
+        // C: tty_end_menu prompt uses menu_headings (ATR_INVERSE)
+        const entries = [
+            { text: prompt, attr: ATR_INVERSE },
+            { text: '', attr: 0 },
+        ];
         for (const it of items) {
             const mark = it.selected ? '+' : '-';
             entries.push({
@@ -394,12 +406,19 @@ async function choose_classes_menu(prompt, priorSelect) {
         await paint_corner_nhw_menu(entries, '(end) ');
         await flush_screen(1);
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
 
-        if (key === 27) return priorSelect ?? '';
+        // C process_menu_window: letter toggles stay inside the menu —
+        // no dismiss/docrt until the menu returns.
+        if (key === 27) {
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
+            return priorSelect ?? '';
+        }
         if (key === 13 || key === 10) {
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
             const sel = items.filter((it) => it.selected).map((it) => it.sym);
             return sel.join('');
         }
@@ -407,10 +426,14 @@ async function choose_classes_menu(prompt, priorSelect) {
         const ch = String.fromCharCode(key);
         if (ch === 'A') {
             for (const it of items) it.selected = false;
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
             return '';
         }
         const hit = items.find((it) => it.letch === ch || it.sym === ch);
         if (hit) hit.selected = !hit.selected;
+        // invalid / toggle → re-paint same menu (keep overlay; no docrt)
     }
 }
 
@@ -429,86 +452,276 @@ function pickup_types_display() {
     return ocl || 'all';
 }
 
+/** C ref: options.c n_currently_set / count_apes — ape list deferred. */
+function currently_set_val(n) {
+    return `(${n} currently set)`;
+}
+
 /**
- * C ref: options.c doset_simple — subset for Behavior/Map pages used by
- * Options path that sets pickup_types. Page flip via space; empty pick exits.
- * Named omissions: full allopt table, fruit/number_pad handlers, help,
- * exceptions, status rules, most Map/Status toggles beyond hilite_pile.
+ * C ref: options.c optfn_* get_val for doset_simple_menu compound/othr rows.
+ * Named omissions: full handlers for fruit/number_pad/autounlock/symset/
+ * statuslines/exceptions/menu colors/status rules — display values only
+ * until those handlers are ported.
+ */
+function simple_opt_get_val(opt) {
+    const name = opt.name;
+    if (name === 'fruit') {
+        return String(game.pl_fruit || game.flags?.fruit || 'slime mold');
+    }
+    if (name === 'number_pad') {
+        // C: Cmd.num_pad / phone / pcHack / swap_yz → numpadmodes[]
+        const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
+        if (!numPad) {
+            return game.Cmd?.swap_yz ? '-1=off, y & z swapped' : '0=off';
+        }
+        const phone = !!(game.Cmd?.phone_layout);
+        const pc = !!(game.Cmd?.pcHack_compat);
+        if (phone) return pc ? '4=on, phone layout, MSDOS compatible' : '3=on, phone-style layout';
+        if (pc) return '2=on, MSDOS compatible';
+        return '1=on';
+    }
+    if (name === 'autounlock') {
+        // C: flags.autounlock default AUTOUNLOCK_APPLY_KEY; get_val joins names
+        const au = game.flags?.autounlock;
+        if (au === 0) return 'none';
+        if (au == null || au === undefined) return 'apply-key';
+        const parts = [];
+        const bits = Number(au);
+        if (bits & AUTOUNLOCK_UNTRAP) parts.push('untrap');
+        if (bits & AUTOUNLOCK_APPLY_KEY) parts.push('apply-key');
+        if (bits & AUTOUNLOCK_KICK) parts.push('kick');
+        if (bits & AUTOUNLOCK_FORCE) parts.push('force');
+        return parts.length ? parts.join(' + ') : 'apply-key';
+    }
+    if (name === 'pickup_types') return pickup_types_display();
+    if (name === 'autopickup exceptions') {
+        return currently_set_val(game.flags?.ape_count ?? 0);
+    }
+    if (name === 'symset') {
+        // C: gs.symset[PRIMARYSET].name + ", active" + ", handler=DEC"
+        // jsmain stores OPTIONS=symset:Name on game.symset; boolean
+        // DECgraphics also implies the DECgraphics set name.
+        let nm = game.symset || game._parsed_rc?.symset || game.flags?.symset;
+        if (!nm && game.iflags?.decgraphics) nm = 'DECgraphics';
+        if (!nm) return 'default';
+        let s = String(nm);
+        s += ', active';
+        if (String(nm).toLowerCase() === 'decgraphics' || game.iflags?.decgraphics) {
+            s += ', handler=DEC';
+        }
+        return s;
+    }
+    if (name === 'statuslines') {
+        const n = game.iflags?.wc2_statuslines;
+        return (n != null && n >= 3) ? '3' : '2';
+    }
+    if (name === 'menu colors') {
+        return currently_set_val(game.iflags?.menu_colors_count ?? 0);
+    }
+    if (name === 'status highlight rules') {
+        return currently_set_val(game.iflags?.status_hilite_count ?? 0);
+    }
+    if (name === 'status condition fields') {
+        // C: condopt defaults → 16 fields selected
+        return currently_set_val(game.iflags?.status_cond_count ?? 16);
+    }
+    return 'unknown';
+}
+
+function simple_bool_value(opt) {
+    const bag = game[opt.addr.obj] || {};
+    const v = bag[opt.addr.key];
+    if (v === undefined) return !!opt.init;
+    return !!v;
+}
+
+function simple_bool_toggle(opt) {
+    if (!game[opt.addr.obj]) game[opt.addr.obj] = {};
+    const bag = game[opt.addr.obj];
+    bag[opt.addr.key] = !simple_bool_value(opt);
+}
+
+function format_simple_opt_line(opt, nameWidth) {
+    const name = opt.name;
+    let val;
+    if (opt.opttyp === 'Bool') {
+        val = simple_bool_value(opt) ? 'X' : ' ';
+    } else {
+        val = simple_opt_get_val(opt);
+    }
+    // C: Sprintf(fmtstr, "%%-%us [%%s]", longest_option_name(...))
+    let line = `${name.padEnd(nameWidth)} [${val}]`;
+    if (opt.autopickupSuffix) line += '  (for autopickup)';
+    return line;
+}
+
+/**
+ * C ref: wintty.c tty_end_menu letter assign + process_menu_window PICK_ONE.
+ * Per-page 'a'..'z' for items without a fixed selector; space → next page
+ * or cancel on last; Return/ESC cancel; letter → that item.
+ * @returns {Promise<{kind:'pick'|'cancel', item?:object}>}
+ */
+async function select_menu_pick_one(rawItems) {
+    const rows = 24;
+    const lmax = Math.min(52, rows - 1);
+    // Clone and assign selectors like C tty_end_menu
+    const items = rawItems.map((it) => ({ ...it }));
+    let menuCh = 'a';
+    for (let n = 0; n < items.length; n++) {
+        if (n % lmax === 0) menuCh = 'a';
+        const it = items[n];
+        if (it.selectable && !it.selector) {
+            it.selector = menuCh;
+            if (menuCh === 'z') menuCh = 'A';
+            else menuCh = String.fromCharCode(menuCh.charCodeAt(0) + 1);
+        }
+    }
+    const npages = Math.max(1, Math.floor((items.length + lmax - 1) / lmax));
+    let currPage = 0;
+
+    // C tty_end_menu: multi-page → maxrow = lmax+1 ≥ rows → fullscreen.
+    // Force via menu_overlay false for the paint geometry check.
+    const prevOverlay = game.flags?.menu_overlay;
+    if (npages > 1) {
+        if (!game.flags) game.flags = {};
+        game.flags.menu_overlay = false;
+    }
+
+    try {
+    for (;;) {
+        const start = currPage * lmax;
+        const page = items.slice(start, start + lmax);
+        const entries = page.map((it) => {
+            if (it.selectable) {
+                return {
+                    text: `${it.selector} - ${it.text}`,
+                    attr: it.attr || 0,
+                };
+            }
+            return { text: it.text, attr: it.attr || 0 };
+        });
+        const morestr = npages > 1
+            ? `(${currPage + 1} of ${npages})`
+            : '(end) ';
+        await paint_corner_nhw_menu(entries, morestr);
+        await flush_screen(1);
+        const key = await nhgetch();
+        const wasFullscreen = game._tty_menu_geom?.offx === 0;
+        game._menu_overlay = false;
+        await docrt();
+        const ch = String.fromCharCode(key);
+        const hit = (key !== 27 && key !== 13 && key !== 10 && key !== 32)
+            ? page.find((it) => it.selectable && it.selector === ch)
+            : null;
+        if (hit && wasFullscreen) {
+            // C: fullscreen NHW_MENU clear leaves status blank across the
+            // Options → choose_classes submenu; restore on final dismiss.
+            clear_committed_status();
+        }
+        await flush_screen(1);
+
+        if (key === 27 || key === 13 || key === 10) {
+            return { kind: 'cancel' };
+        }
+        if (key === 32) {
+            if (currPage < npages - 1) {
+                currPage++;
+                continue;
+            }
+            return { kind: 'cancel' };
+        }
+        if (hit) return { kind: 'pick', item: hit };
+        // invalid → re-prompt same page (C nhbell)
+    }
+    } finally {
+        if (npages > 1) {
+            if (prevOverlay === undefined) delete game.flags.menu_overlay;
+            else game.flags.menu_overlay = prevOverlay;
+        }
+    }
+}
+
+/**
+ * C ref: options.c doset_simple_menu — NHW_MENU from allopt[] OptS_General
+ * …Status, title "Options", PICK_ONE. Returns pick_cnt (0 = done).
+ */
+async function doset_simple_menu() {
+    const nameWidth = dosetSimpleNameWidth;
+
+    for (;;) {
+        // C: tty_end_menu prepends prompt then blank (via reverse+prepend)
+        const raw = [
+            { text: 'Options', attr: ATR_INVERSE, selectable: false },
+            { text: '', attr: 0, selectable: false },
+        ];
+        if (game.simple_options_help) {
+            raw.push({
+                text: "Use command '#optionsfull' to get the complete options list.",
+                attr: 0,
+                selectable: false,
+            });
+        }
+        raw.push({
+            text: game.simple_options_help ? 'hide help' : 'show help',
+            attr: 0,
+            selectable: true,
+            selector: '?',
+            opt: { kind: 'help' },
+        });
+
+        for (const section of dosetSimpleSections) {
+            raw.push({ text: '', attr: 0, selectable: false });
+            // C: Sprintf(buf, " %-30s ", OptS_type[section])
+            const heading = ` ${section.padEnd(30)} `;
+            raw.push({ text: heading, attr: ATR_INVERSE, selectable: false });
+            for (const opt of dosetSimpleOpts) {
+                if (opt.section !== section) continue;
+                raw.push({
+                    text: format_simple_opt_line(opt, nameWidth),
+                    attr: 0,
+                    selectable: true,
+                    opt,
+                });
+            }
+        }
+
+        const res = await select_menu_pick_one(raw);
+        if (res.kind !== 'pick') return 0;
+
+        const opt = res.item.opt;
+        if (opt?.kind === 'help') {
+            game.simple_options_help = !game.simple_options_help;
+            // C: goto redo_opt_help — rebuild without returning to doset_simple
+            continue;
+        }
+        if (opt?.opttyp === 'Bool') {
+            simple_bool_toggle(opt);
+            return 1;
+        }
+        if (opt?.name === 'pickup_types' && opt.hasHandler) {
+            await handler_pickup_types();
+            return 1;
+        }
+        // Other compound/othr handlers deferred — still count as a pick so
+        // C loops (getlin/ESC still returns pickedone).
+        return 1;
+    }
+}
+
+/**
+ * C ref: options.c doset_simple — loop doset_simple_menu until no pick.
+ * Named omissions: #optionsfull / doset / fruit/number_pad/autounlock/
+ * symset/status handlers; help descr lines under simple_options_help.
  */
 export async function doset_simple() {
     if (!game.flags) game.flags = {};
     if (!game.iflags) game.iflags = {};
-    let page = 0; // 0 = Behavior-heavy, 1 = Map/Status
-
-    for (;;) {
-        const entries = [{ text: 'Options', attr: 0 }, { text: '', attr: 0 }];
-        if (page === 0) {
-            entries.push({ text: ' ? - show help', attr: 0 });
-            entries.push({ text: '', attr: 0 });
-            entries.push({ text: '  General', attr: 0 });
-            entries.push({ text: ' a - fruit                   [slime mold]', attr: 0 });
-            entries.push({ text: ' b - number_pad              [0=off]', attr: 0 });
-            entries.push({ text: ' c - price_quotes            [ ]', attr: 0 });
-            entries.push({ text: '', attr: 0 });
-            entries.push({ text: '  Behavior', attr: 0 });
-            entries.push({
-                text: ` e - autoopen                [${game.flags.autoopen !== false ? 'X' : ' '}]`,
-                attr: 0,
-            });
-            entries.push({
-                text: ` f - autopickup              [${game.flags.pickup ? 'X' : ' '}]`,
-                attr: 0,
-            });
-            entries.push({
-                text: ` o - pickup_types            [${pickup_types_display()}]  (for autopickup)`,
-                attr: 0,
-            });
-            entries.push({ text: ' (1 of 2)', attr: 0 });
-        } else {
-            entries.push({ text: '  Map', attr: 0 });
-            entries.push({
-                text: ` f - hilite_pile             [${game.iflags.hilite_pile ? 'X' : ' '}]`,
-                attr: 0,
-            });
-            entries.push({ text: ' (2 of 2)', attr: 0 });
-        }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-
-        if (key === 27) return ECMD_OK;
-        if (key === 32) {
-            if (page === 0) {
-                page = 1;
-                continue;
-            }
-            return ECMD_OK;
-        }
-        if (key === 13 || key === 10) return ECMD_OK;
-        const ch = String.fromCharCode(key);
-        if (page === 0) {
-            if (ch === 'f') {
-                game.flags.pickup = !game.flags.pickup;
-                page = 0;
-                continue;
-            }
-            if (ch === 'o') {
-                await handler_pickup_types();
-                page = 0;
-                continue;
-            }
-            continue;
-        }
-        if (ch === 'f') {
-            // C: after toggle, doset_simple rebuilds from the first page
-            game.iflags.hilite_pile = !game.iflags.hilite_pile;
-            page = 0;
-            continue;
-        }
-    }
+    // C: iflags.menu_requested → doset(); deferred
+    do {
+        const picked = await doset_simple_menu();
+        if (picked <= 0) break;
+    } while (true);
+    return ECMD_OK;
 }
 
 /** Map object oclass → default class symbol for autopick_testobj. */

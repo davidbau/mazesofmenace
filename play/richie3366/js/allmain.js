@@ -20,7 +20,8 @@ import { LOW_PM, NUMMONS, mons, G_NOCORPSE } from './monsters.js';
 import { A_DEX, A_STR, A_CON, acurr, exercise, change_luck, Fast, Very_fast, Searching } from './attrib.js';
 import { dosearch0 } from './detect.js';
 import { nhgetch } from './input.js';
-import { unmul } from './hack.js';
+import { unmul, monster_nearby, stop_occupation } from './hack.js';
+import { reset_justpicked } from './pickup.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu } from './invent.js';
@@ -67,6 +68,8 @@ export async function moveloop_preamble(resuming) {
         game.u.umovement = NORMAL_SPEED;
         // C: initrack() on new game only
         initrack();
+        // C: set_wear then reset_justpicked(invent) after starting gear
+        reset_justpicked(game.invent);
     } else {
         // C: read_engr_at / fix_shop_damage deferred
     }
@@ -557,7 +560,8 @@ export async function moveloop_core() {
         // C ref: allmain.c go.occupation — runs before rhack; return ends this tick
         const cont = await g.occupation();
         if (!cont) g.occupation = null;
-        // monster_nearby stop_occupation deferred
+        // C: monster_nearby() → stop_occupation(); reset_eat deferred
+        if (monster_nearby()) await stop_occupation();
         return;
     }
     if ((g.multi || 0) < 0) {

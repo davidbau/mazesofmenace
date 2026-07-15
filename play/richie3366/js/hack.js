@@ -348,6 +348,26 @@ export function nomul(nval) {
 }
 
 /**
+ * C ref: allmain.c stop_occupation — interrupt multi-turn occupation.
+ * maybe_finished_meal / reset_eat callers deferred at call sites.
+ */
+export async function stop_occupation() {
+    if (typeof game.occupation === 'function') {
+        const txt = game.occtxt;
+        if (txt) await pline(`You stop ${txt}.`);
+        game.occupation = null;
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+        nomul(0);
+    } else if ((game.multi || 0) >= 0) {
+        nomul(0);
+    }
+    game._repeat_search = false;
+    // C: cmdq_clear(CQ_CANNED) — avoid importing cmd.js
+    if (game._cmdq_canned) game._cmdq_canned = [];
+}
+
+/**
  * C ref: timeout.c fall_asleep — nomul(how_long) with sleeping reason.
  * Deafness / Hear_again afternmv (#if 0 in C) deferred.
  * @param {number} how_long negative multi turns

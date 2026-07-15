@@ -1435,7 +1435,7 @@ async function trapeffect_telep_trap(mtmp, trap, _trflags) {
             // C: deltrap then vault_tele (keep trap off before landing)
             deltrap(trap);
             newsym(game.u.ux, game.u.uy);
-            tele_trap_once_vault();
+            await tele_trap_once_vault();
             return Trap_Effect_Finished;
         }
         // teledest / tele() hero arms deferred

@@ -1,6 +1,6 @@
 // AUTO-GENERATED from nethack-c/upstream/include/optlist.h
 // Regenerate: python3 scripts/extract-optlist.py
-// C ref: options.c option_help / allopt[] (contest MacOS tty flags).
+// C ref: options.c option_help / allopt[] / doset_simple_menu.
 export const optionHelpBools = [
   "accessiblemsg",
   "acoustics",
@@ -385,3 +385,319 @@ export const optionHelpOthers = [
   "status condition fields",
   "status highlight rules"
 ];
+export const dosetSimpleNameWidth = 23;
+export const dosetSimpleOpts = [
+  {
+    "name": "autodig",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "flags",
+      "key": "autodig"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "autoopen",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "flags",
+      "key": "autoopen"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "autopickup",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "flags",
+      "key": "pickup"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "autopickup exceptions",
+    "section": "Behavior",
+    "opttyp": "Othr",
+    "hasHandler": true,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "autoquiver",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "flags",
+      "key": "autoquiver"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "autounlock",
+    "section": "Behavior",
+    "opttyp": "Comp",
+    "hasHandler": true,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "bgcolors",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "iflags",
+      "key": "bgcolors"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "cmdassist",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "iflags",
+      "key": "cmdassist"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "color",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "iflags",
+      "key": "wc_color"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "customcolors",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "iflags",
+      "key": "customcolors"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "customsymbols",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "iflags",
+      "key": "customsymbols"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "dropped_nopick",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "flags",
+      "key": "nopick_dropped"
+    },
+    "autopickupSuffix": true
+  },
+  {
+    "name": "fireassist",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "iflags",
+      "key": "fireassist"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "fruit",
+    "section": "General",
+    "opttyp": "Comp",
+    "hasHandler": false,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "hilite_pet",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "iflags",
+      "key": "wc_hilite_pet"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "hilite_pile",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "iflags",
+      "key": "hilite_pile"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "hitpointbar",
+    "section": "Status",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "iflags",
+      "key": "wc2_hitpointbar"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "menu colors",
+    "section": "Status",
+    "opttyp": "Othr",
+    "hasHandler": true,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "number_pad",
+    "section": "General",
+    "opttyp": "Comp",
+    "hasHandler": true,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "pickup_stolen",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "flags",
+      "key": "pickup_stolen"
+    },
+    "autopickupSuffix": true
+  },
+  {
+    "name": "pickup_thrown",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "flags",
+      "key": "pickup_thrown"
+    },
+    "autopickupSuffix": true
+  },
+  {
+    "name": "pickup_types",
+    "section": "Behavior",
+    "opttyp": "Comp",
+    "hasHandler": true,
+    "autopickupSuffix": true
+  },
+  {
+    "name": "price_quotes",
+    "section": "General",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "iflags",
+      "key": "pricequotes"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "pushweapon",
+    "section": "Behavior",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "flags",
+      "key": "pushweapon"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "showexp",
+    "section": "Status",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "flags",
+      "key": "showexp"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "showrace",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "flags",
+      "key": "showrace"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "sparkle",
+    "section": "Map",
+    "opttyp": "Bool",
+    "init": true,
+    "addr": {
+      "obj": "flags",
+      "key": "sparkle"
+    },
+    "autopickupSuffix": false
+  },
+  {
+    "name": "status condition fields",
+    "section": "Status",
+    "opttyp": "Othr",
+    "hasHandler": true,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "status highlight rules",
+    "section": "Status",
+    "opttyp": "Othr",
+    "hasHandler": true,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "statuslines",
+    "section": "Status",
+    "opttyp": "Comp",
+    "hasHandler": false,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "symset",
+    "section": "Map",
+    "opttyp": "Comp",
+    "hasHandler": true,
+    "autopickupSuffix": false
+  },
+  {
+    "name": "time",
+    "section": "Status",
+    "opttyp": "Bool",
+    "init": false,
+    "addr": {
+      "obj": "flags",
+      "key": "time"
+    },
+    "autopickupSuffix": false
+  }
+];
+export const dosetSimpleSections = ["General", "Behavior", "Map", "Status"];

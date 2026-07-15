@@ -19,9 +19,9 @@ import {
 import { objects_at } from './mkobj.js';
 import { objectNames } from './objects.js';
 import { amorphous, throws_rocks } from './monsters.js';
-import { newsym } from './display.js';
+import { newsym, pline } from './display.js';
 import { vision_recalc } from './vision.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, nomul } from './hack.js';
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
 const Trap_Effect_Finished = 0;
@@ -421,14 +421,16 @@ function teleok(x, y, trapok) {
 
 /**
  * C ref: teleport.c teleds — hero placement subset for vault_tele.
+ * Envelope: place + vision; TELEDS_TELEPORT+verbose materialize pline;
+ * spoteffects(TRUE) after (nested ok — C does the same).
  * Named omissions: ball/chain, swallow, vault_guard uleftvault, regions,
- * drag_ball, full check_special_room / spoteffects re-entry (shop enter
- * plines, pickup, dotrap). Occupancy: sync in_rooms refresh so invault
- * sees VAULT (C spoteffects → move_update).
+ * drag_ball, switch_terrain, notice_mon_*; shop-enter plines beyond
+ * spoteffects subset. Occupancy: sync in_rooms so invault sees VAULT.
  */
-export function teleds(nux, nuy, _teleds_flags) {
+export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
     if (!u) return;
+    const is_teleport = ((teleds_flags | 0) & TELEDS_TELEPORT) !== 0;
     const ox = u.ux | 0;
     const oy = u.uy | 0;
     u.ux0 = ox;
@@ -447,21 +449,31 @@ export function teleds(nux, nuy, _teleds_flags) {
     u.urooms = in_rooms(u.ux, u.uy, 0);
     newsym(ox, oy);
     newsym(u.ux, u.uy);
-    vision_recalc(1);
+    // C: vision_recalc(0) before materialize so --More-- shows new map
+    game.vision_full_recalc = 1;
+    nomul(0);
+    vision_recalc(0);
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
-    game.vision_full_recalc = 1;
+    /* C: after vision so --More-- paints the destination map */
+    if (is_teleport && game.flags.verbose !== false) {
+        const same = (nux === u.ux0 && nuy === u.uy0);
+        await pline(`You materialize in ${same ? 'the same' : 'a different'} location!`);
+    }
+    // C: spoteffects(TRUE) — vault gold / traps at landing
+    const { spoteffects } = await import('./pickup.js');
+    await spoteffects(true);
 }
 
 /**
  * C ref: teleport.c vault_tele — somexyspace into VAULT then teleds.
  * Named omission: tele() fallback RNG when no vault/space.
  */
-export function vault_tele() {
+export async function vault_tele() {
     const croom = search_special(VAULT);
     const c = { x: 0, y: 0 };
     if (croom && somexyspace(croom, c) && teleok(c.x, c.y, false)) {
-        teleds(c.x, c.y, TELEDS_TELEPORT);
+        await teleds(c.x, c.y, TELEDS_TELEPORT);
         return true;
     }
     // tele() deferred — no vault room / no free cell
@@ -474,7 +486,7 @@ export function vault_tele() {
  * Antimagic / noteleport / next_to_u / teledest / tele() named partial.
  * Returns true if once-vault path ran (caller should deltrap).
  */
-export function tele_trap_once_vault() {
+export async function tele_trap_once_vault() {
     const u = game.u;
     if (!u) return false;
     // In_endgame deferred

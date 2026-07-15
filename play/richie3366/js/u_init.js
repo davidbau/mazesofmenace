@@ -40,6 +40,7 @@ import {
     A_NEUTRAL,
     Is_container,
     FROMOUTSIDE,
+    OBJ_INVENT,
     P_NONE,
     P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD,
     P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD, P_SABER,
@@ -881,6 +882,8 @@ export function addinv(obj) {
         if (mergable(otmp, obj)) {
             otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
             otmp.owt = weight(otmp);
+            // C: addinv_core1 merge + added: → pickup_prev = 1
+            otmp.pickup_prev = 1;
             if (otmp.oclass === COIN_CLASS || objectNames[otmp.otyp] === 'GOLD_PIECE') {
                 game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
             }
@@ -888,6 +891,9 @@ export function addinv(obj) {
         }
     }
     assigninvlet(obj);
+    obj.where = OBJ_INVENT;
+    // C: addinv_core0 added: → pickup_prev = 1
+    obj.pickup_prev = 1;
     if (obj.oclass === COIN_CLASS) {
         game.invent.unshift(obj);
     } else {

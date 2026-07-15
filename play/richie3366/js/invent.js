@@ -35,6 +35,9 @@ import {
     ECMD_OK,
     ECMD_CANCEL,
     OBJ_INVENT,
+    OBJ_CONTAINED,
+    OBJ_FLOOR,
+    Has_contents,
     has_oname,
     ONAME,
     SORTLOOT_PACK,
@@ -476,6 +479,34 @@ export async function select_menu_pick_none(entries) {
     clear_overlay();
     await docrt();
     await flush_screen(1);
+}
+
+/**
+ * C ref: invent.c count_contents — stacks or quan inside a container.
+ * Named omissions: shoppy via get_obj_location + costly_spot when
+ * !everything && !newdrop (shop-owned floor contents); treat shoppy=false.
+ */
+export function count_contents(container, nested, quantity, everything, newdrop) {
+    let count = 0;
+    let shoppy = false;
+    if (!everything && !newdrop) {
+        // C: walk ocontainer to top; OBJ_FLOOR + costly_spot → shoppy
+        // costly_spot / get_obj_location deferred → shoppy stays false
+        let topc = container;
+        while (topc && topc.where === OBJ_CONTAINED) topc = topc.ocontainer;
+        if (topc && topc.where === OBJ_FLOOR) {
+            shoppy = false; // deferred costly_spot
+        }
+    }
+    for (let otmp = container?.cobj; otmp; otmp = otmp.nobj) {
+        if (nested && Has_contents(otmp)) {
+            count += count_contents(otmp, nested, quantity, everything, newdrop);
+        }
+        if (everything || otmp.unpaid || (shoppy && !otmp.no_charge)) {
+            count += quantity ? (otmp.quan || 1) : 1;
+        }
+    }
+    return count;
 }
 
 /**
@@ -1492,10 +1523,27 @@ export async function doprgold() {
 }
 
 /**
+ * C ref: invent.c prinv(prefix, obj, quan)
+ * When quan != 0 and quan < obj.quan (e.g. gold merged after pickup),
+ * name the lifted amount and append " (N in total)." if verbose.
+ * Named omissions: encumbrance verb prefixes belong to pickup_prinv.
+ */
+export async function prinv(prefix, obj, quan = 0) {
+    const q = quan | 0;
+    const totalOf = q !== 0 && q < (obj.quan || 1);
+    let totalbuf = '';
+    if (totalOf) totalbuf = ` (${obj.quan} in total).`;
+    const pfx = prefix || '';
+    // C: xprname(..., !total_of, 0L, quan) — no trailing '.' when total_of
+    const body = xprname(obj, undefined, !totalOf, q);
+    const verb = game.flags?.verbose !== false ? totalbuf : '';
+    await pline(`${pfx}${pfx ? ' ' : ''}${body}${verb}`);
+}
+
+/**
  * C ref: invent.c doprwep / #seeweapon / ')'.
  * Named omissions: menu_requested → dispinv_with_action(lets) for
- * uwep/uswapwep/uquiver (falls through to prinv until that lands);
- * quan-split total_of in prinv.
+ * uwep/uswapwep/uquiver (falls through to prinv until that lands).
  */
 export async function doprwep() {
     const u = game.u || {};
@@ -1509,9 +1557,9 @@ export async function doprwep() {
         game.iflags.menu_requested = false;
     }
     // C: prinv(NULL, uwep, 0L); if (twoweap) prinv(uswapwep)
-    await pline(xprname(u.uwep, undefined, true));
+    await prinv(null, u.uwep, 0);
     if (u.twoweap) {
-        await pline(xprname(u.uswapwep, undefined, true));
+        await prinv(null, u.uswapwep, 0);
     }
     return ECMD_OK;
 }
@@ -1809,7 +1857,6 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     const {
         touch_artifact, youmonst,
     } = await import('./artifact.js');
-    const { xprname } = await import('./objnam.js');
 
     if (!obj) return obj;
     // C: if (!Blind) observe_object(obj)
@@ -1832,10 +1879,11 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         obj_extract_self(obj);
     }
 
+    const oquan = obj.quan || 1;
     const held = addinv(obj);
     if (hold_msg || drop_fmt) {
-        // C: prinv(hold_msg, obj, oquan) with null prefix → "ilet - doname."
-        await pline(xprname(held, undefined, true));
+        // C: prinv(hold_msg, obj, oquan) — oquan before merge
+        await prinv(hold_msg || null, held, oquan);
     }
     return held;
 }
@@ -1946,10 +1994,9 @@ async function getobj_adjust() {
     }
 }
 
-/** C ref: invent.c prinv(prefix, obj, quan) — quan-split total deferred. */
+/** C ref: invent.c prinv via doorganize — quan 0 (full stack). */
 async function prinv_adjust(prefix, obj) {
-    const pfx = prefix || '';
-    await pline(`${pfx}${pfx ? ' ' : ''}${xprname(obj, undefined, true)}`);
+    await prinv(prefix || null, obj, 0);
 }
 
 function invent_obj_name(obj) {

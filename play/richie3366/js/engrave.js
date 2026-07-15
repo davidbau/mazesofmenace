@@ -463,9 +463,28 @@ function u_can_engrave() {
     return true;
 }
 
-/** C ref: cmd.c set_occupation */
-export function set_occupation(fn, txt) {
-    game.occupation = fn;
+/** C ref: cmd.c timed_occupation — wrap fn; count down multi each tick. */
+let timed_occ_fn = null;
+async function timed_occupation() {
+    const fn = timed_occ_fn;
+    if (typeof fn === 'function') await fn();
+    if ((game.multi || 0) > 0) game.multi--;
+    return (game.multi || 0) > 0;
+}
+
+/**
+ * C ref: cmd.c set_occupation — if xtime, occupation is timed_occupation.
+ * @param {Function} fn
+ * @param {string} txt occtxt for stop_occupation ("searching", …)
+ * @param {number} [xtime=0] non-zero → timed wrapper (C counted Ns)
+ */
+export function set_occupation(fn, txt, xtime = 0) {
+    if (xtime) {
+        timed_occ_fn = fn;
+        game.occupation = timed_occupation;
+    } else {
+        game.occupation = fn;
+    }
     game.occtxt = txt;
     game.occtime = 0;
 }

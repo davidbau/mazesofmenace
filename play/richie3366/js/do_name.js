@@ -102,11 +102,17 @@ function x_monnam_do_it(mtmp) {
 }
 
 /**
- * C ref: do_name.c distant_monnam(ARTICLE_NONE) — farlook / glance name.
- * Astral high-cleric conceal deferred; hallu deferred.
+ * C ref: do_name.c distant_monnam(ARTICLE_NONE) → x_monnam.
+ * Shopkeeper → shkname (same arm as mon_nam / D-0307). Astral high-cleric
+ * conceal deferred; hallu / mappear / invis+non-PM_SHOPKEEPER suffix deferred.
  */
 export function distant_monnam_none(mtmp) {
     if (!mtmp) return 'it';
+    // C x_monnam: isshk && !hallu && !mappear → shkname
+    if (mtmp.isshk) {
+        const nam = shkname(mtmp);
+        if (nam) return nam;
+    }
     const ghost = named_ghost_monnam(mtmp);
     if (ghost) return ghost;
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);

@@ -6,6 +6,7 @@ import { rn2, rnd } from './rng.js';
 import { dog_move, finish_meating } from './dogmove.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { newsym, pline } from './display.js';
+import { stop_occupation, noattacks } from './hack.js';
 import {
     dist2,
     distmin,
@@ -1183,8 +1184,28 @@ export async function dochug(mtmp) {
     return 0;
 }
 
-// C ref: monmove.c dochugw()
+/**
+ * C ref: monmove.c dochugw — move mon; stop occupation if newly spotted threat.
+ * onscary stubbed false (Elbereth / sanctuary deferred).
+ */
 export async function dochugw(mtmp, chug) {
-    if (chug) await dochug(mtmp);
-    return 0;
+    const x = mtmp.mx;
+    const y = mtmp.my;
+    // C: skip canspotmon if occupation is Null
+    const already_saw_mon = (chug && game.occupation) ? canspotmon(mtmp) : false;
+    const rd = chug ? await dochug(mtmp) : 0;
+
+    if (
+        game.occupation && !rd
+        && (game.u?.Hallucination || (!mtmp.mpeaceful && !noattacks(mtmp.data)))
+        && mdistu(mtmp) <= (BOLT_LIM + 1) * (BOLT_LIM + 1)
+        && (!already_saw_mon || !couldsee(x, y)
+            || dist2(x, y, game.u.ux, game.u.uy) > (BOLT_LIM + 1) * (BOLT_LIM + 1))
+        && canspotmon(mtmp) && couldsee(mtmp.mx, mtmp.my)
+        && mtmp.mcanmove
+        // onscary(u.ux, u.uy, mtmp) deferred → treat as not scary
+    ) {
+        await stop_occupation();
+    }
+    return rd;
 }

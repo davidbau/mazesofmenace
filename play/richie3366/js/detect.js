@@ -478,7 +478,7 @@ export async function monster_detect(otmp, mclass) {
 
 /**
  * C ref: detect.c browse_map — getpos autodescribe over current map.
- * terrainmode / describe-at-glyph deferred (getpos uses ordinary look).
+ * Sets terrainmode + autodescribe; getpos auto_describe uses display glyphs.
  */
 async function browse_map(ter_typ, ter_explain) {
     const { getpos } = await import('./getpos.js');

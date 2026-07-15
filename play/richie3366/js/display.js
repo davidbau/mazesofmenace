@@ -26,6 +26,7 @@ import {
     isok,
     SVALL,
     TER_TRP, TER_OBJ, TER_MON, TER_FULL,
+    OBJ_FLOOR,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -36,7 +37,7 @@ import {
 import {
     NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
     CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN,
-    DEC_TO_UNICODE,
+    DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
 import { update_lastseentyp, In_tutorial } from './dungeon.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
@@ -49,6 +50,7 @@ import { observe_object } from './invent.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
+const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 // C display_monster M_AP_OBJECT default corpsenm when !has_mcorpsenm
 const PM_TENGU = monsterNames.indexOf('PM_TENGU');
 // C ref: objects.h MARKER — obj_is_generic gem/spell ranges
@@ -56,6 +58,39 @@ const FIRST_REAL_GEM_OTYP = objectNames.indexOf('DILITHIUM_CRYSTAL');
 const LAST_GLASS_GEM_OTYP = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
 const FIRST_SPELL_OTYP = objectNames.indexOf('SPE_DIG');
 const LAST_SPELL_OTYP = objectNames.indexOf('SPE_BLANK_PAPER');
+
+/**
+ * C ref: display.h obj_is_piletop — floor top with nexthere (boulder
+ * exception: boulder hides pile unless next is also boulder).
+ */
+function obj_is_piletop(obj) {
+    if (!obj || obj.where !== OBJ_FLOOR) return false;
+    const next = objects_at(obj.ox, obj.oy)?.nexthere;
+    if (!next) return false;
+    if (obj.otyp === BOULDER_OTYP && next.otyp !== BOULDER_OTYP) return false;
+    return true;
+}
+
+/**
+ * C ref: flag.h use_inverse ≡ wc_inverse; optlist.h NHOPTB default On.
+ */
+function use_inverse_opt() {
+    const v = game.iflags?.wc_inverse ?? game.iflags?.use_inverse;
+    return v === undefined ? true : !!v;
+}
+
+/**
+ * C ref: wintty.c tty_print_glyph — MG_OBJPILE && hilite_pile && use_inverse
+ * → ATR_INVERSE. Named omissions: MG_DETECT / BW_* / MG_FEMALE; hilite_pet
+ * petattr (separate branch).
+ */
+function obj_map_attr(obj, rememberedPile = false) {
+    const pile = rememberedPile || obj_is_piletop(obj);
+    if (pile && game.iflags?.hilite_pile && use_inverse_opt()) {
+        return ATR_INVERSE;
+    }
+    return 0;
+}
 
 // C ref: defsym.h OBJCLASS_DRAWING — default object-class map symbols
 const DEF_OC_SYM = {
@@ -448,6 +483,17 @@ export function reset_display_messages() {
     _delay_flushing = false;
     _lastStatus1 = '';
     _lastStatus2 = '';
+}
+
+/**
+ * C ref: wintty.c tty_clear_nhwindow(WIN_MESSAGE) — blank topline when
+ * toplin != EMPTY. Used by cmd.c parse() after get_count returns.
+ */
+export function clear_nhwindow_message() {
+    if (_toplin === TOPLINE_EMPTY) return;
+    _toplines = '';
+    _toplin = TOPLINE_EMPTY;
+    game._pending_message = '';
 }
 
 // ── ANSI color codes ──
@@ -1252,7 +1298,17 @@ export function map_location(x, y, show) {
         // C: map_object(obj, show) — may observe_object when near
         map_object_observe_near(obj, x, y);
         const og = obj_glyph(obj);
-        g = { ch: og.ch, color: og.color, decgfx: !!og.dec };
+        const attr = obj_map_attr(obj);
+        const pile = obj_is_piletop(obj);
+        g = { ch: og.ch, color: og.color, decgfx: !!og.dec, objpile: pile };
+        if (mem) {
+            loc.remembered_glyph = {
+                ch: g.ch, color: g.color, decgfx: g.decgfx, objpile: pile,
+            };
+        }
+        if (show) show_glyph_cell(x, y, g.ch, g.color, g.decgfx, attr);
+        update_lastseentyp(x, y);
+        return;
     } else if (spot_shows_engravings(loc)) {
         // traps deferred — engraving before background (C map_engraving)
         const ep = engr_at(x, y);
@@ -1350,9 +1406,13 @@ export function newsym(x, y) {
         if (obj && !covers_objects(x, y)) {
             map_object_observe_near(obj, x, y);
             const og = obj_glyph(obj);
-            show_glyph_cell(x, y, og.ch, og.color, og.dec);
+            const attr = obj_map_attr(obj);
+            const pile = obj_is_piletop(obj);
+            show_glyph_cell(x, y, og.ch, og.color, og.dec, attr);
             if (game.level?.flags?.hero_memory) {
-                loc.remembered_glyph = { ch: og.ch, color: og.color, decgfx: og.dec };
+                loc.remembered_glyph = {
+                    ch: og.ch, color: og.color, decgfx: og.dec, objpile: pile,
+                };
             }
             // C _map_location always updates lastseentyp after mapping
             update_lastseentyp(x, y);
@@ -1403,7 +1463,16 @@ export function newsym(x, y) {
             mem = { ch: '#', color: NO_COLOR, decgfx: false };
             loc.remembered_glyph = mem;
         }
-        show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx);
+        // C: piletop glyph carries MG_OBJPILE; hilite applied at print
+        // from current iflags. JS may lack objpile on older memory — also
+        // detect live floor pile (still present under remembered glyph).
+        const floorObj = objects_at(x, y);
+        const livePile = !!(floorObj && !covers_objects(x, y)
+            && obj_is_piletop(floorObj));
+        const attr = (livePile || mem.objpile)
+            ? obj_map_attr(floorObj, !livePile)
+            : 0;
+        show_glyph_cell(x, y, mem.ch, mem.color, mem.decgfx, attr);
     } else {
         // C: show_mem → show_glyph(x, y, lev->glyph); unexplored glyph
         // paints blank. A no-op here left stale tty cells after a sensed
@@ -1518,6 +1587,8 @@ function _statusLine1() {
 // pline→flush_screen calls bot() when disp.botl before putmesg (D-0314).
 let _lastStatus1 = '';
 let _lastStatus2 = '';
+/** When true, paint blank status (fullscreen menu cleared WIN_STATUS). */
+let _statusSuppressed = false;
 
 // C ref: botl.c describe_level — "Dlvl:%-2d" / "Tutorial:%-2d" uses
 // depth(&u.uz), not dunlev; Xp:/T: gated by flags.showexp / flags.time;
@@ -1546,6 +1617,19 @@ function _statusLine2() {
 /** C ref: botl.c bot — no-op when u.uhp == -1 (dosave / exact overkill). */
 function _botSuppressed() {
     return (game.u?.uhp | 0) === -1;
+}
+
+/**
+ * Suppress status paint after fullscreen NHW_MENU clear. C leaves status
+ * blank until the next bot(); used for Options → choose_classes.
+ */
+export function clear_committed_status() {
+    _statusSuppressed = true;
+    if (game.flags) {
+        game.flags.botl = false;
+        game.flags.botlx = false;
+        game.flags.time_botl = false;
+    }
 }
 
 /** Commit live status into the botl cache (C bot() putstr WIN_STATUS). */
@@ -1691,7 +1775,10 @@ function _buildScreenOutput() {
     // Row 22-23: status from last bot() commit (C never live-paints here)
     let s1raw;
     let s2;
-    if (_lastStatus2) {
+    if (_statusSuppressed) {
+        s1raw = '';
+        s2 = '';
+    } else if (_lastStatus2) {
         s1raw = _lastStatus1;
         s2 = _lastStatus2;
     } else {
@@ -1736,12 +1823,14 @@ function _buildScreenOutput() {
             }
         }
         // Status lines from last bot() (uhp==-1 skip keeps prior)
-        const s1 = _lastStatus1 || s1raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
-            m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
-        for (let c = 0; c < Math.min(s1.length, display.cols); c++)
-            display.setCell(c, 22, s1[c], NO_COLOR, 0);
-        for (let c = 0; c < Math.min(s2.length, display.cols); c++)
-            display.setCell(c, 23, s2[c], NO_COLOR, 0);
+        if (!_statusSuppressed) {
+            const s1 = _lastStatus1 || s1raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
+                m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
+            for (let c = 0; c < Math.min(s1.length, display.cols); c++)
+                display.setCell(c, 22, s1[c], NO_COLOR, 0);
+            for (let c = 0; c < Math.min(s2.length, display.cols); c++)
+                display.setCell(c, 23, s2[c], NO_COLOR, 0);
+        }
         // Cursor: prompts stay on topline; otherwise hero.
         if (msg.startsWith('Count:')) {
             display.setCursor(msg.length, 0);
@@ -1820,6 +1909,26 @@ export async function flush_screen(mode) {
 // ── cls ──
 // C ref: display.c cls — display_nhwindow(WIN_MESSAGE) before clear_nhwindow(MAP).
 // NEED_MORE → more() while map flushes may still be postponed (goto_level).
+/**
+ * C ref: display.c clear_glyph_buffer — force gbuf to unexplored (blank).
+ * JS display buffer is loc.disp_*; remembered_glyph (map memory) stays.
+ */
+export function clear_glyph_buffer() {
+    const level = game.level;
+    if (!level?.at) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = level.at(x, y);
+            if (!loc) continue;
+            loc.disp_ch = ' ';
+            loc.disp_color = NO_COLOR;
+            loc.disp_decgfx = false;
+            loc.disp_attr = 0;
+            loc.gnew = 0;
+        }
+    }
+}
+
 export async function cls() {
     if (_toplin === TOPLINE_NEED_MORE && !_win_stop) {
         await more();
@@ -1831,6 +1940,8 @@ export async function cls() {
     game.flags.botlx = true;
     const display = game?.nhDisplay;
     if (display?.clearScreen) display.clearScreen();
+    // C: clear_glyph_buffer() after clear_nhwindow(WIN_MAP)
+    clear_glyph_buffer();
     game._pending_message = '';
     _toplines = '';
     _toplin = TOPLINE_EMPTY;
@@ -1839,6 +1950,7 @@ export async function cls() {
 // ── bot ──
 // C ref: botl.c bot — no-op body when u.uhp == -1; always clear botl flags.
 export async function bot() {
+    _statusSuppressed = false;
     if (!_botSuppressed()) _commitStatusLines();
     if (game.flags) {
         game.flags.botl = false;

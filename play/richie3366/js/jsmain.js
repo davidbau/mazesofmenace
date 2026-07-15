@@ -135,6 +135,9 @@ export class NethackGame {
         g.iflags.decgraphics = sym === 'decgraphics'
             || opts.flags?.DECgraphics === true
             || opts.flags?.decgraphics === true;
+        // C: gs.symset[PRIMARYSET].name for doset_simple get_val
+        if (opts.symset) g.symset = String(opts.symset);
+        else if (g.iflags.decgraphics) g.symset = 'DECgraphics';
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
         g._parsed_rc = opts;

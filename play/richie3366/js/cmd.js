@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, see_nearby_objects } from './display.js';
+import { newsym, flush_screen, pline, see_nearby_objects, clear_nhwindow_message } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
@@ -24,7 +24,7 @@ import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { doread } from './read.js';
-import { doengrave, maybe_smudge_engr } from './engrave.js';
+import { doengrave, maybe_smudge_engr, set_occupation } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
@@ -500,6 +500,55 @@ export async function continue_search() {
     return true;
 }
 
+/**
+ * C ref: cmd.c get_count — accumulate digit prefix; return next non-digit.
+ * Does not clear the message window between digits (parse clears once after).
+ * Echo "Count: N" when cnt > 9 (second digit), matching C clear+custompline.
+ */
+async function get_count() {
+    if (!game.context) game.context = {};
+    let cnt = 0;
+    let showzero = false;
+    let backspaced = false;
+    for (;;) {
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (ch >= '0' && ch <= '9') {
+            cnt = cnt * 10 + (key - 48);
+            if (cnt > 500) cnt = 500;
+            showzero = (ch === '0');
+            backspaced = false;
+        } else if (key === 8 || key === 127) {
+            if (!cnt) {
+                game.context.command_count = 0;
+                return key;
+            }
+            showzero = false;
+            cnt = Math.trunc(cnt / 10);
+            backspaced = true;
+        } else if (key === 27) {
+            game.context.command_count = 0;
+            return key;
+        } else {
+            game.context.command_count = cnt;
+            return key;
+        }
+
+        // C: cnt > 9 || backspaced → clear + "Count: N"
+        if (cnt > 9 || backspaced) {
+            clear_nhwindow_message();
+            const qbuf = (backspaced && !cnt && !showzero)
+                ? 'Count: '
+                : `Count: ${cnt}`;
+            game._pending_message = qbuf;
+            await flush_screen(1);
+            const disp = game.nhDisplay;
+            if (disp?.setCursor) disp.setCursor(qbuf.length, 0);
+            backspaced = false;
+        }
+    }
+}
+
 // C ref: cmd.c rhack — main command dispatcher
 export async function rhack(key) {
     // C: cmdq_pop before parse — fireassist swap/retry lives here
@@ -518,13 +567,20 @@ export async function rhack(key) {
     }
 
     if (key === 0) {
-        // Read key from input
+        // C ref: cmd.c parse — flush, get_count (digits without clear), then
+        // clear_nhwindow(WIN_MESSAGE) once before dispatching the command key.
         await flush_screen(1);
-        key = await nhgetch();
+        if (!game.context) game.context = {};
+        game.context.command_count = 0;
+        key = await get_count();
+        clear_nhwindow_message();
+        if (key === 27) {
+            // C: ESC cancels count
+            game.context.command_count = 0;
+            game.context.move = 0;
+            return;
+        }
     }
-
-    // Clear prior message when a new command begins (after screen capture).
-    game._pending_message = '';
 
     // C ref: cmd.c rhack — clear nopick each command; menu_requested kept
     // across PREFIXCMD (m) until the following movement consumes it.
@@ -604,8 +660,9 @@ export async function rhack(key) {
             game.context.move = 0;
         }
     } else if (ch >= '0' && ch <= '9') {
-        // C ref: cmd.c digit → get_count / command_count (no turn)
-        // Echo "Count: N" once the value exceeds 9 (second digit).
+        // Digits are consumed by get_count in parse (rhack(0)); reaching
+        // here means rhack(key) with an explicit digit — treat as count
+        // bump without a turn (rare multi/canned path).
         if (!game.context) game.context = {};
         const d = ch.charCodeAt(0) - 48;
         game.context.command_count = (game.context.command_count || 0) * 10 + d;
@@ -613,6 +670,7 @@ export async function rhack(key) {
         game.context.move = 0;
         if (game.context.command_count > 9) {
             const qbuf = `Count: ${game.context.command_count}`;
+            clear_nhwindow_message();
             game._pending_message = qbuf;
             await flush_screen(1);
             const disp = game.nhDisplay;
@@ -649,14 +707,15 @@ export async function rhack(key) {
         game.context.move = (upRes & 0x01) ? 1 : 0;
         if (upRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 's') {
-        // C ref: detect.c dosearch — takes a turn unless safety cancels
+        // C ref: detect.c dosearch + cmd.c set_occupation(f_text "searching")
+        // parse already set multi = count-1; counted Ns → timed occupation.
         const n = game.context?.command_count || 0;
         if (game.context) game.context.command_count = 0;
         if (n > 1) {
-            // C: multi = command_count; first search is this turn, rest via multi
             game.multi = n - 1;
-            game.context.mv = 0;
-            game._repeat_search = true;
+            if (game.context) game.context.mv = 0;
+            // C: if (f_text && !occupation && multi) set_occupation(dosearch,…)
+            if (!game.occupation) set_occupation(dosearch, 'searching', game.multi);
         }
         const tookTime = await dosearch();
         game.context.move = tookTime ? 1 : 0;

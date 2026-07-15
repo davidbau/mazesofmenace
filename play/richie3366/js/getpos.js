@@ -1,5 +1,5 @@
 // getpos.js — Cursor-position selection (partial).
-// C ref: getpos.c getpos / hack.c handle_tip(TIP_GETPOS).
+// C ref: getpos.c getpos / auto_describe / hack.c handle_tip(TIP_GETPOS).
 //
 // Branch envelope: verbose instruction pline, first-use getpos tip
 // (nhcore show_getpos_tip PICK_NONE loop), hjklyubn walk + HJKLYUBN/Ctrl-dir
@@ -10,8 +10,12 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt } from './display.js';
-import { COLNO, ROWNO, isok } from './const.js';
+import {
+    COLNO, ROWNO, isok, TER_MON, TER_DETECT,
+    M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, STRAT_WAITMASK,
+} from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
+import { distant_monnam_none } from './do_name.js';
 
 export const LOOK_TRADITIONAL = 0;
 export const LOOK_QUICK = 1;
@@ -59,6 +63,96 @@ function truncate_to_map(cx, cy, dx, dy) {
         dy = (ROWNO - 1) - y;
     }
     return { x: x + dx, y: y + dy };
+}
+
+function mon_at_xy(x, y) {
+    for (const m of game.fmon || []) {
+        if ((m.mhp | 0) < 1) continue;
+        if ((m.mx | 0) === x && (m.my | 0) === y) return m;
+    }
+    return null;
+}
+
+/** C ref: pager.c self_lookat — race adj + role + called plname. */
+function self_lookat_brief() {
+    const race = (game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
+    const role = (game.urole?.name?.m || game.urole?.name || 'hero')
+        .toString()
+        .toLowerCase();
+    const plname = (game.plname || 'hero').toLowerCase();
+    const invis =
+        game.u?.Invis && (game.u?.senseself || !game.u?.Blind) ? 'invisible ' : '';
+    return `${invis}${race} ${role} called ${plname}`;
+}
+
+/**
+ * C ref: pager.c look_at_monster + mhidden_description subset.
+ * Detect browse shows mon glyphs; M_AP_OBJECT without object glyph →
+ * ", mimicking something".
+ */
+function look_at_monster_brief(mtmp) {
+    if (!mtmp) return 'monster';
+    const name = distant_monnam_none(mtmp);
+    let buf = '';
+    if (mtmp.mtame) buf = 'tame ';
+    else if (mtmp.mpeaceful) buf = 'peaceful ';
+    buf += name;
+    if (mtmp.mfrozen) {
+        buf += ", can't move (paralyzed or sleeping or busy)";
+    } else if (mtmp.msleeping) {
+        buf += ', asleep';
+    } else if ((mtmp.mstrategy || 0) & STRAT_WAITMASK) {
+        buf += ', meditating';
+    }
+    const ap = M_AP_TYPE(mtmp);
+    if (ap === M_AP_OBJECT || ap === M_AP_FURNITURE) {
+        // Full object_from_map / defsyms furniture names deferred
+        buf += ', mimicking something';
+    } else if (mtmp.mundetected) {
+        buf += ', hiding';
+    }
+    return buf;
+}
+
+/**
+ * C ref: getpos.c auto_describe → do_screen_description firstmatch /
+ * pager.c lookat. Uses displayed glyph (loc.disp_*), not map memory —
+ * required for TER_DETECT after clear_glyph_buffer.
+ *
+ * Named omissions: full do_screen_description symbol table, coord_desc,
+ * getpos_getvalid / travel invalid suffixes, underwater unreconnoitered.
+ */
+function auto_describe_text(cx, cy) {
+    const u = game.u || {};
+    const terrainmode = game.iflags?.terrainmode | 0;
+
+    if (
+        (u.ux | 0) === cx && (u.uy | 0) === cy
+        && (!terrainmode || (terrainmode & TER_MON) !== 0)
+    ) {
+        return self_lookat_brief();
+    }
+
+    const mtmp = mon_at_xy(cx, cy);
+    if (mtmp && (!terrainmode || (terrainmode & TER_MON) !== 0)) {
+        const loc = game.level?.at?.(cx, cy);
+        const ch = loc?.disp_ch;
+        // Detect/map may blank a cell while mon still exists in fmon —
+        // only describe when the mon glyph is actually shown (or no TER_DETECT).
+        if (!(terrainmode & TER_DETECT) || (ch && ch !== ' ')) {
+            return look_at_monster_brief(mtmp);
+        }
+    }
+
+    const loc = game.level?.at?.(cx, cy);
+    const ch = loc?.disp_ch;
+    if (!ch || ch === ' ') {
+        // C lookat glyph_is_unexplored → "unexplored area"
+        return 'unexplored area';
+    }
+
+    // Non-blank without mon (objects/cmap under TER_* browse) deferred
+    return 'unexplored area';
 }
 
 /**
@@ -113,27 +207,41 @@ export async function getpos(ccp, force, goal, describeAt) {
         cy = g.u?.uy || 0;
     }
 
-    let showGoalAfterTip = false;
+    // C: msg_given = TRUE (clear message window by default)
+    let msg_given = true;
+    let show_goal_msg = false;
     if (!g.context) g.context = {};
     if (!g.context.tips_given) g.context.tips_given = {};
     if (!g.context.tips_given.TIP_GETPOS) {
         g.context.tips_given.TIP_GETPOS = true;
         await show_getpos_tip();
-        showGoalAfterTip = true;
+        // C handle_tip → show_goal_msg = TRUE
+        show_goal_msg = true;
     }
 
     if (g.flags.verbose !== false) {
         await pline("(For instructions type a '?')");
-        // C: msg_given forces clear; whatis already may have pending --More--
-    }
-
-    if (showGoalAfterTip) {
-        await pline(`Move cursor to ${goal || 'desired location'}:`);
+        msg_given = true;
     }
 
     const disp = g.nhDisplay;
     for (;;) {
-        // C getpos: auto_describe / goal pline then curs(WIN_MAP) then readchar.
+        // C getpos: show_goal_msg / auto_describe then curs then readchar.
+        if (show_goal_msg) {
+            await pline(`Move cursor to ${goal || 'desired location'}:`);
+            show_goal_msg = false;
+            msg_given = true;
+        } else if (g.iflags?.autodescribe && !msg_given) {
+            // C auto_describe — firstmatch via lookat / do_screen_description
+            let brief = '';
+            if (typeof describeAt === 'function' && !(g.iflags.terrainmode | 0)) {
+                // Ordinary whatis: keep caller brief_at when not terrain browse
+                brief = describeAt(cx, cy) || '';
+            }
+            if (!brief) brief = auto_describe_text(cx, cy);
+            g._pending_message = brief || '';
+        }
+
         // flush_screen/_buildScreenOutput resets cursor to hero for ordinary
         // topline messages — set getpos cursor *after* flush, like C curs().
         if (disp?.setCursor) {
@@ -144,6 +252,9 @@ export async function getpos(ccp, force, goal, describeAt) {
         }
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
+
+        // C: if (iflags.autodescribe) msg_given = FALSE;
+        if (g.iflags?.autodescribe) msg_given = false;
 
         if (key === 27) {
             ccp.x = -1;
@@ -186,7 +297,9 @@ export async function getpos(ccp, force, goal, describeAt) {
             const next = truncate_to_map(cx, cy, dx, dy);
             cx = next.x;
             cy = next.y;
-            if (typeof describeAt === 'function') {
+            // C: describe at loop top via auto_describe; when that option
+            // is off, keep caller describeAt (whatis brief_at) as fallback.
+            if (!g.iflags?.autodescribe && typeof describeAt === 'function') {
                 const brief = describeAt(cx, cy);
                 if (brief) g._pending_message = brief;
             }
@@ -205,6 +318,7 @@ export async function getpos(ccp, force, goal, describeAt) {
 
         if (ch === '?') {
             await pline('Move the cursor with hjklyubn; . selects; ESC cancels.');
+            msg_given = true;
             continue;
         }
 
@@ -213,6 +327,7 @@ export async function getpos(ccp, force, goal, describeAt) {
             ? "use 'h', 'j', 'k', 'l' or '.'"
             : 'aborted';
         await pline(`Unknown direction: '${ch}' (${note}).`);
+        msg_given = true;
         if (force) continue;
         ccp.x = -1;
         ccp.y = -1;
