@@ -6,6 +6,7 @@ import { rn2, rnd } from './rng.js';
 import { makemon, set_malign } from './makemon.js';
 import { mons, NON_PM, is_human, regenerates } from './monsters.js';
 import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
+import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import {
     monsterNames,
     PM_CAVE_DWELLER,
@@ -167,14 +168,19 @@ export function keepdogs(pets_only = false) {
 }
 
 /**
- * C ref: dog.c tamedog — obj=null magic-trap / scroll envelope.
+ * C ref: dog.c tamedog — obj=null magic-trap / scroll envelope, or thrown food.
  * Peaceful + edog for ordinary monsters; shop/gd/priest/human/covetous
- * rejected. Named omissions: food thrown path; is_demon/is_covetous/
- * is_minion full; mon_wield after tame; make_happy_shk; quest leader.
+ * rejected. Named omissions: is_demon/is_covetous/is_minion full;
+ * mon_wield after tame; make_happy_shk; quest leader; scroll/spell bless bump.
  */
 export async function tamedog(mtmp, obj, givemsg = true) {
     if (!mtmp) return false;
     let msg = givemsg;
+
+    // C: scroll/spellbook → blessed_scroll then obj=NULL (bless bump deferred)
+    if (obj && (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS)) {
+        obj = null;
+    }
 
     if (mtmp.mfrozen) mtmp.mfrozen = ((mtmp.mfrozen | 0) + 1) >> 1;
     if (mtmp.msleeping) {
@@ -196,6 +202,38 @@ export async function tamedog(mtmp, obj, givemsg = true) {
     mtmp.mflee = 0;
     mtmp.mfleetim = 0;
 
+    // C: feeding treats makes already-tame pets tamer (before mtame<10 bump)
+    if (mtmp.mtame && obj) {
+        const { dogfood, dog_eat } = await import('./dogmove.js');
+        const { DOGFOOD, ACCFOOD } = await import('./const.js');
+        const { place_object } = await import('./mkobj.js');
+        const { pline, canseemon } = await import('./display.js');
+        const { xname, the } = await import('./objnam.js');
+        const { Monnam } = await import('./do_name.js');
+        const { cansee } = await import('./vision.js');
+
+        const canmove = mtmp.mcanmove !== false && !(mtmp.mfrozen > 0);
+        if (canmove && !mtmp.mconf && !mtmp.meating) {
+            const tasty = dogfood(mtmp, obj);
+            if (tasty === DOGFOOD
+                || (tasty <= ACCFOOD
+                    && (mtmp.edog?.hungrytime || 0) <= (game.moves || 1))) {
+                // C: canseemon → catches; else cansee → Tobjnam stop
+                if (canseemon(mtmp)) {
+                    await pline(
+                        `${Monnam(mtmp)} catches ${the(xname(obj))}.`,
+                    );
+                } else if (cansee(mtmp.mx, mtmp.my)) {
+                    await pline(`${the(xname(obj))} stops.`);
+                }
+                place_object(obj, mtmp.mx, mtmp.my);
+                await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, false);
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Already tame + low: maybe bump (scroll path); magic trap uses obj null
     if (mtmp.mtame && (mtmp.mtame | 0) < 10) {
         if ((mtmp.mtame | 0) < rnd(10)) mtmp.mtame = (mtmp.mtame | 0) + 1;
@@ -212,11 +250,20 @@ export async function tamedog(mtmp, obj, givemsg = true) {
     if (!mtmp.edog) mtmp.edog = {};
     initedog(mtmp, !(mtmp.mtame));
 
+    // C: thrown food for newly tamed — place_object + dog_eat(devour)
+    if (obj) {
+        const { dog_eat } = await import('./dogmove.js');
+        const { place_object } = await import('./mkobj.js');
+        place_object(obj, mtmp.mx, mtmp.my);
+        if ((await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, true)) === 2) {
+            return true;
+        }
+    }
+
     if (givemsg) {
         // pline deferred without display import cycle — caller may message
     }
     newsym(mtmp.mx, mtmp.my);
-    void obj;
     return true;
 }
 

@@ -477,11 +477,13 @@ export async function doextcmd() {
  */
 export async function yn_function(query, resp = 'yn', def = 'n') {
     await flush_topl_more();
+    // C: char def — '\0' is falsy (no " (c)" suffix). JS '\0' is truthy.
+    const hasDef = !!(def && def !== '\0');
     let prompt;
     if (resp) {
         const shown = resp.replace(/\x1b[\s\S]*$/, ''); // hide after ESC
         prompt = `${query} [${shown}]`;
-        if (def) prompt += ` (${def})`;
+        if (hasDef) prompt += ` (${def})`;
         prompt += ' ';
     } else {
         prompt = `${query} `;
@@ -500,9 +502,10 @@ export async function yn_function(query, resp = 'yn', def = 'n') {
         if (c === 27) {
             if (resp.includes('q')) return 'q';
             if (resp.includes('n')) return 'n';
-            return def || 'n';
+            // C: else q = def (may be '\0', e.g. rightleftchars)
+            return def;
         }
-        if (ch === ' ' || c === 13 || c === 10) return def || 'n';
+        if (ch === ' ' || c === 13 || c === 10) return def;
         if (resp.includes(ch)) return ch;
         // invalid — C tty_nhbell + retry
     }

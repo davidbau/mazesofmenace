@@ -31,14 +31,19 @@ import { oclass_to_sym } from './options.js';
 import { objectNames, COIN_CLASS } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
 
-/** C-ish thesimpleoname — sack → "bag". */
-function thesimpleoname(obj) {
+/** C-ish simpleonames — sack family → "bag". */
+function simpleonames(obj) {
     const n = objectNames[obj?.otyp];
     if (n === 'SACK' || n === 'OILSKIN_SACK' || n === 'BAG_OF_HOLDING'
         || n === 'BAG_OF_TRICKS') {
-        return 'the bag';
+        return 'bag';
     }
-    return theArt(xname(obj));
+    return cxname(obj);
+}
+
+/** C ref: objnam.c thesimpleoname — "the" + simpleonames. */
+function thesimpleoname(obj) {
+    return `the ${simpleonames(obj)}`;
 }
 
 /**
@@ -49,6 +54,21 @@ function yname(obj) {
     const carried = obj?.where === OBJ_INVENT
         || (game.invent || []).includes(obj);
     return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
+}
+
+/**
+ * C ref: objnam.c ysimple_name — shk_your + minimal_xname.
+ * Named omissions: full minimal_xname / shopkeeper ownership.
+ */
+function ysimple_name(obj) {
+    const carried = obj?.where === OBJ_INVENT
+        || (game.invent || []).includes(obj);
+    return `${carried ? 'your' : 'the'} ${simpleonames(obj)}`;
+}
+
+/** C ref: objnam.c Ysimple_name2 — capitalized ysimple_name. */
+function Ysimple_name2(obj) {
+    return upstart(ysimple_name(obj));
 }
 
 /** C ref: pickup.c reset_justpicked — clear pickup_prev on invent chain. */
@@ -1058,6 +1078,12 @@ export async function use_container(obj, held = false, _more = false) {
     const inokay = (game.invent || []).some((o) => o && o !== obj);
     // C: outokay = Has_contents; outmaybe = outokay || !cknown
     const outokay = Has_contents(obj);
+    // C: preformat emptymsg when !outokay — Ysimple_name2 + optional "now "
+    // (quantum_cat / cursed_mbag "now " deferred).
+    let emptymsg = '';
+    if (!outokay) {
+        emptymsg = `${Ysimple_name2(obj)} is empty.`;
+    }
     let c = 'q';
     for (;;) {
         // C: prompt uses outmaybe, not bare outokay (empty+!cknown →
@@ -1085,7 +1111,8 @@ export async function use_container(obj, held = false, _more = false) {
     const loot_out = (c === 'o' || c === 'b');
     if (loot_out) {
         if (!Has_contents(obj)) {
-            await pline(`${theArt(xname(obj))} is empty.`);
+            // C: pline1(emptymsg) — Ysimple_name2 ("The bag is empty.")
+            await pline(emptymsg || `${Ysimple_name2(obj)} is empty.`);
             if (!obj.cknown) used = ECMD_TIME;
             obj.cknown = 1;
         } else {

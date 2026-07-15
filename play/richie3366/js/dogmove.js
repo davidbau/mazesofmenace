@@ -12,7 +12,7 @@ import {
 } from './mkobj.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
 import { mattacku } from './mhitu.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, canseemon } from './display.js';
 import { doname } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { t_at } from './trap.js';
@@ -325,8 +325,9 @@ function m_consume_obj(_mtmp, otmp) {
  * C ref: dogmove.c dog_eat()
  * Returns 2 if pet died, 1 otherwise. Always re-rolls dogfood (obj_resists)
  * for the DOGFOOD+invlet apport reward check; then m_consume_obj→delobj.
+ * Exported for dog.c tamedog thrown-food path (D-0415).
  */
-async function dog_eat(mtmp, obj, x, y, devour) {
+export async function dog_eat(mtmp, obj, x, y, devour) {
     const edog = mtmp.edog;
     if (!obj || !edog) return 1;
 
@@ -743,14 +744,11 @@ function pet_ranged_attk(mtmp, forced) {
     return MMOVE_NOTHING;
 }
 
-// canseemon stub — visible pets in early sessions
-function canseemon(mtmp) {
-    return !!(mtmp && !mtmp.minvis && !mtmp.mundetected);
-}
-
 /**
  * C ref: dogmove.c dog_move()
  * Pet movement with food-goal obj_resists + approach selection.
+ * cursemsg pline gates on display.canseemon (LOS+mon_visible), not a
+ * always-true minvis stub — out-of-sight cursed steps must stay silent.
  */
 export async function dog_move(mtmp, after) {
     const edog = mtmp.edog;

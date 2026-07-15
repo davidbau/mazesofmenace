@@ -5,6 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
+import { yn_function } from './getline.js';
 import { an, doname, xprname } from './objnam.js';
 import { find_ac } from './u_init.js';
 import { change_luck } from './attrib.js';
@@ -777,21 +778,20 @@ async function Amulet_on(amul) {
 
 /**
  * Ask Right/Left for a ring when both hands free.
- * C ref: do_wear.c accessory_or_armor_on yn_function(rightleftchars).
+ * C ref: do_wear.c accessory_or_armor_on —
+ *   yn_function(qbuf, rightleftchars, '\0', TRUE).
+ * Deferred: poly/non-humanoid body_part(FINGER) / nolimbs; query_menu.
  */
 async function choose_ring_hand() {
+    // C: Sprintf(qbuf, "Which %s%s, Right or Left?", "ring-", finger)
+    // yn_function / tty_yn_function appends " [rl] " (no (def) when '\0').
+    const q = 'Which ring-finger, Right or Left?';
     for (;;) {
-        const q = 'Which ring-finger, Right or Left? ';
-        game._pending_message = q;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(q.length, 0);
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        game._pending_message = '';
-        if (key === 27 || key === 0) return 0;
-        if (ch === 'l' || ch === 'L') return LEFT_RING;
-        if (ch === 'r' || ch === 'R') return RIGHT_RING;
+        const answer = await yn_function(q, 'rl', '\0');
+        if (!answer || answer === '\0') return 0;
+        if (answer === 'l') return LEFT_RING;
+        if (answer === 'r') return RIGHT_RING;
+        // C: while (!mask) — only reachable if yn returns unexpected
     }
 }
 

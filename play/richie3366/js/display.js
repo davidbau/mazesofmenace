@@ -17,7 +17,8 @@ import {
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    HI_GOLD,
+    HI_GOLD, HI_METAL, HI_ZAP,
+    WEB, VIBRATING_SQUARE, TRAPNUM,
     In_mines,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
@@ -38,6 +39,7 @@ import {
 import {
     NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
     CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN,
+    CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN,
     DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
 import { update_lastseentyp, In_tutorial } from './dungeon.js';
@@ -345,6 +347,80 @@ function covers_objects(x, y) {
     return t === POOL || t === MOAT || t === WATER || t === LAVAPOOL || t === LAVAWALL;
 }
 
+// C ref: display.h covers_traps — same as covers_objects
+function covers_traps(x, y) {
+    return covers_objects(x, y);
+}
+
+/** C ref: trap.c t_at — local walk (trap.js imports newsym from display). */
+function t_at_display(x, y) {
+    const traps = game.level?.traps;
+    if (!traps) return null;
+    for (const t of traps) {
+        if (t && t.tx === x && t.ty === y) return t;
+    }
+    return null;
+}
+
+/**
+ * C ref: defsym.h trap PCHARs + rm.h trap_to_defsym + display.h trap_to_glyph.
+ * Hallucination / random_trap_to_glyph deferred.
+ */
+function trap_glyph(trap) {
+    const ttyp = trap?.ttyp | 0;
+    // Indexed by trap_types; NO_TRAP=0 unused. ch '^' except WEB '"' / VS '~'.
+    const colors = [
+        NO_COLOR,           // NO_TRAP
+        HI_METAL,           // ARROW_TRAP
+        HI_METAL,           // DART_TRAP
+        CLR_GRAY,           // ROCKTRAP
+        CLR_BROWN,           // SQKY_BOARD
+        HI_METAL,           // BEAR_TRAP
+        CLR_RED,            // LANDMINE
+        CLR_GRAY,            // ROLLING_BOULDER_TRAP
+        HI_ZAP,             // SLP_GAS_TRAP
+        CLR_BLUE,           // RUST_TRAP
+        CLR_ORANGE,          // FIRE_TRAP
+        CLR_BLACK,           // PIT
+        CLR_BLACK,           // SPIKED_PIT
+        CLR_BROWN,          // HOLE
+        CLR_BROWN,          // TRAPDOOR
+        CLR_MAGENTA,         // TELEP_TRAP
+        CLR_MAGENTA,         // LEVEL_TELEP
+        CLR_BRIGHT_MAGENTA,  // MAGIC_PORTAL
+        CLR_GRAY,            // WEB
+        CLR_GRAY,            // STATUE_TRAP
+        HI_ZAP,             // MAGIC_TRAP
+        HI_ZAP,             // ANTI_MAGIC
+        CLR_BRIGHT_GREEN,   // POLY_TRAP
+        CLR_MAGENTA,         // VIBRATING_SQUARE
+        CLR_ORANGE,          // TRAPPED_DOOR
+        CLR_ORANGE,          // TRAPPED_CHEST
+    ];
+    let ch = '^';
+    if (ttyp === WEB) ch = '"';
+    else if (ttyp === VIBRATING_SQUARE) ch = '~';
+    const color = (ttyp > 0 && ttyp < TRAPNUM) ? colors[ttyp] : HI_METAL;
+    return { ch, color, dec: false };
+}
+
+/**
+ * C ref: display.c map_trap(trap, show) — remember + optionally paint.
+ */
+function map_trap(trap, show) {
+    if (!trap) return;
+    const x = trap.tx | 0;
+    const y = trap.ty | 0;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const tg = trap_glyph(trap);
+    const g = { ch: tg.ch, color: tg.color, decgfx: !!tg.dec };
+    if (game.level?.flags?.hero_memory) {
+        loc.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.decgfx };
+    }
+    if (show) show_glyph_cell(x, y, g.ch, g.color, g.decgfx);
+}
+
 /** C ref: engrave.c engr_at — local walk (engrave.js imports display). */
 function engr_at(x, y) {
     for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
@@ -476,6 +552,10 @@ let _toplin = TOPLINE_EMPTY;
 let _win_stop = false;
 // C ref: pline.c gp.prevmsg — last message that actually reached putmesg
 let _prevmsg = '';
+// C ref: wintty.h ttyDisplay->dismiss_more / getline.c morc — extra key
+// accepted at --More-- (message_menu selection letter).
+let _dismiss_more = 0;
+let _morc = 0;
 
 /** Reset module topline/delay state for a fresh runSegment (not in C game
  *  object; must not leak NEED_MORE across harness sessions). */
@@ -487,6 +567,8 @@ export function reset_display_messages() {
     _lastStatus1 = '';
     _lastStatus2 = '';
     _prevmsg = '';
+    _dismiss_more = 0;
+    _morc = 0;
 }
 
 /**
@@ -1291,7 +1373,7 @@ export function unset_seenv(lev, x0, y0, x1, y1) {
 // C ref: display.c _map_location(x,y,show) — remember non-living contents
 // (object / trap / engraving / background); paint when show.
 // Used under hero/monster so out-of-sight memory keeps the object glyph.
-// Named omissions: tseen traps; visible_region_at after show.
+// Named omissions: Hallucination trap glyphs; visible_region_at after show.
 export function map_location(x, y, show) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -1313,10 +1395,17 @@ export function map_location(x, y, show) {
         if (show) show_glyph_cell(x, y, g.ch, g.color, g.decgfx, attr);
         update_lastseentyp(x, y);
         return;
-    } else if (spot_shows_engravings(loc)) {
-        // traps deferred — engraving before background (C map_engraving)
+    }
+    // C: t_at && tseen && !covers_traps → map_trap
+    const trap = t_at_display(x, y);
+    if (trap && trap.tseen && !covers_traps(x, y)) {
+        map_trap(trap, show);
+        update_lastseentyp(x, y);
+        return;
+    }
+    if (spot_shows_engravings(loc)) {
         const ep = engr_at(x, y);
-        if (ep && ep.erevealed) {
+        if (ep && ep.erevealed && !covers_traps(x, y)) {
             const eg = engraving_glyph(loc);
             g = { ch: eg.ch, color: eg.color, decgfx: !!eg.dec };
         }
@@ -1422,10 +1511,17 @@ export function newsym(x, y) {
             update_lastseentyp(x, y);
             return;
         }
+        // C: t_at && tseen && !covers_traps → map_trap
+        const trap = t_at_display(x, y);
+        if (trap && trap.tseen && !covers_traps(x, y)) {
+            map_trap(trap, true);
+            update_lastseentyp(x, y);
+            return;
+        }
         // C: spot_shows_engravings && engr_at && erevealed → map_engraving
         if (spot_shows_engravings(loc)) {
             const ep = engr_at(x, y);
-            if (ep && ep.erevealed) {
+            if (ep && ep.erevealed && !covers_traps(x, y)) {
                 const eg = engraving_glyph(loc);
                 show_glyph_cell(x, y, eg.ch, eg.color, eg.dec);
                 if (game.level?.flags?.hero_memory) {
@@ -2022,19 +2118,61 @@ export async function more() {
         }
     }
 
+    _morc = 0;
     for (;;) {
         const c = await nhgetch();
+        // C ref: getline.c xwaitforspace("\033 ") + dismiss_more
         if (c === 27) { // ESC → WIN_STOP
             _win_stop = true;
+            _morc = 27;
             break;
         }
-        if (c === 32 || c === 13 || c === 10) break;
+        if (c === 32 || c === 13 || c === 10) {
+            _morc = c;
+            break;
+        }
+        if (_dismiss_more && c === _dismiss_more) {
+            _morc = c;
+            break;
+        }
         // tty_nhbell(); discard
     }
 
     _toplines = '';
     _toplin = TOPLINE_EMPTY;
     game._pending_message = '';
+}
+
+/**
+ * C ref: wintty.c tty_message_menu(let, how, mesg).
+ * PICK_NONE → pline only. PICK_ONE → putstr/pline + more() with
+ * dismiss_more=let so the inventory letter selects at --More--.
+ * @param {string|number} letch invlet (or HANDS_SYM)
+ * @param {number} how PICK_NONE (0) or PICK_ONE (1)
+ * @param {string} mesg already-formatted xprname line
+ * @returns {Promise<string|null>} selected let / ESC / null (space etc.)
+ */
+export async function message_menu(letch, how, mesg) {
+    const PICK_NONE = 0;
+    const PICK_ONE = 1;
+    if (how === PICK_NONE) {
+        await pline(mesg);
+        return null;
+    }
+    const letCode = typeof letch === 'string' ? letch.charCodeAt(0) : (letch | 0);
+    _dismiss_more = letCode;
+    _morc = 0;
+    // C: tty_putstr(WIN_MESSAGE) — redotoplin sets NEED_MORE; more() if
+    // already wrapped. JS pline matches that envelope.
+    await pline(mesg);
+    if (_toplin === TOPLINE_NEED_MORE && !_win_stop) {
+        await more();
+    }
+    _dismiss_more = 0;
+    if ((how === PICK_ONE && _morc === letCode) || _morc === 27) {
+        return _morc === 27 ? '\x1b' : String.fromCharCode(_morc);
+    }
+    return null;
 }
 
 /** C ref: flush pending topline --More-- before menus / non-pline UI */

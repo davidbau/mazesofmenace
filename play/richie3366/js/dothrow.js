@@ -6,15 +6,19 @@ import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, docrt } from './display.js';
 import { rnd } from './rng.js';
 import { place_object, splitobj, stackobj } from './mkobj.js';
-import { WEAPON_CLASS, COIN_CLASS, GEM_CLASS, objectNames, objectNameStrs } from './objects.js';
+import {
+    WEAPON_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS,
+    objectNames, objectNameStrs,
+} from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
     P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
     P_BOW, P_BOOMERANG,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
+    ACCFOOD,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
-import { obj_resists } from './dogmove.js';
+import { obj_resists, dogfood } from './dogmove.js';
 import {
     ammo_and_launcher, is_ammo, doswapweapon, doquiver_core, welded,
 } from './wield.js';
@@ -23,8 +27,17 @@ import {
     PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_SAMURAI,
     PM_WIZARD, PM_HEALER, PM_TOURIST, PM_CLERIC,
     PM_ELF, PM_ORC, PM_GNOME,
+    monsterNames,
 } from './generated/monsters_data.js';
 import { xname, singular, an } from './objnam.js';
+import { m_at } from './mon.js';
+import { is_domestic } from './monsters.js';
+import { tamedog } from './dog.js';
+
+const PM_MONKEY = monsterNames.indexOf('PM_MONKEY');
+const PM_APE = monsterNames.indexOf('PM_APE');
+const PM_LICHEN = monsterNames.indexOf('PM_LICHEN');
+const VEGGY = 3; // objclass.h
 
 /** C ref: cmd.c cmdq_add_ec(CQ_CANNED, …) — shared with rhack via game._cmdq_canned */
 function cmdq_add_ec(fn) {
@@ -71,6 +84,7 @@ function throwable_lets() {
 /**
  * C ref: invent.c getobj("throw", throw_ok) — loop on missing letter;
  * re-prompt after more() when prior topline still needs acknowledgment.
+ * `?`/`*` → display_pickinv_reply (DOWNPLAY food selectable via `*`).
  */
 async function getobj_throw() {
     for (;;) {
@@ -92,8 +106,24 @@ async function getobj_throw() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return null;
+            const { display_pickinv_reply } = await import('./invent.js');
+            const ilet = await display_pickinv_reply(ch === '*' ? '*' : lets);
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue;
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            if (!throw_ok(picked)) {
+                await pline('You cannot throw that!');
+                return null;
+            }
+            game._pending_message = '';
+            return picked;
         }
         const otmp = (game.invent || []).find(o => o.invlet === ch);
         if (!otmp) {
@@ -135,6 +165,41 @@ function freeinv(otmp) {
     const idx = inv.indexOf(otmp);
     if (idx >= 0) inv.splice(idx, 1);
     // Also handle when otmp was split from a stack still in invent
+}
+
+/** C ref: mondata.h befriend_with_obj — banana→monkey/ape; domestic+food. */
+function befriend_with_obj(ptr, obj) {
+    if (!ptr || !obj) return false;
+    const mndx = ptr.mndx ?? ptr.pmidx;
+    if (mndx === PM_MONKEY || mndx === PM_APE) {
+        return objectNames[obj.otyp] === 'BANANA';
+    }
+    if (!is_domestic(ptr) || obj.oclass !== FOOD_CLASS) return false;
+    // C: unicorn/horse class needs VEGGY (or lichen corpse)
+    if (ptr.mlet === 'S_UNICORN') {
+        const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
+        if (mat === VEGGY) return true;
+        const CORPSE = objectNames.indexOf('CORPSE');
+        return obj.otyp === CORPSE && (obj.corpsenm | 0) === PM_LICHEN;
+    }
+    return true;
+}
+
+/**
+ * C ref: dothrow.c thitmonst food/treat arm — dieroll then befriend/dogfood
+ * → tamedog. Weapon/gem/potion hit arms deferred.
+ * @returns {boolean} true if obj was consumed
+ */
+async function thitmonst_food(mon, obj) {
+    // C: dieroll = rnd(20) before class branches (unused for food, still rolls)
+    rnd(20);
+    if (befriend_with_obj(mon.data, obj)
+        || (mon.mtame && dogfood(mon, obj) <= ACCFOOD)) {
+        if (await tamedog(mon, obj, true)) return true;
+        mon.msleeping = 0;
+        if (mon.mstrategy != null) mon.mstrategy &= ~0x07; // STRAT_WAITMASK approx
+    }
+    return false;
 }
 
 function Role_if(pm) {
@@ -268,6 +333,8 @@ async function throw_obj(obj, shotlimit) {
         let otmp;
         if ((obj.quan || 1) > 1) {
             otmp = splitobj(obj, 1);
+            // C: freeinv(otmp) after split — child may sit on invent nobj chain
+            if (otmp) freeinv(otmp);
         } else {
             otmp = obj;
             freeinv(otmp);
@@ -292,6 +359,7 @@ function breaktest(obj) {
 /**
  * C ref: zap.c bhit + dothrow.c throwit — fly along dx/dy; stop before
  * !ZAP_POS / closed door (bhit backs up one step), then place / breaktest.
+ * Monster hit → thitmonst food/treat arm (D-0415); weapon hit deferred.
  */
 async function throwit(obj) {
     const u = game.u;
@@ -328,8 +396,10 @@ async function throwit(obj) {
             `You aren't wielding ${an(skillName)}, so you throw your ${descr} by hand.`,
         );
     }
+    obj.how_lost = LOST_THROWN;
     let x = u.ux;
     let y = u.uy;
+    let hitmon = null;
     while (range-- > 0) {
         const nx = x + dx;
         const ny = y + dy;
@@ -342,13 +412,24 @@ async function throwit(obj) {
         if (!ZAP_POS(typ) || closed) break;
         x = nx;
         y = ny;
+        // C bhit THROWN_WEAPON: stop on monster
+        const mon = m_at(x, y);
+        if (mon) {
+            hitmon = mon;
+            break;
+        }
+    }
+    if (hitmon) {
+        if (await thitmonst_food(hitmon, obj)) return;
+        // miss / not consumed — fall through to place at mon cell
+        x = hitmon.mx;
+        y = hitmon.my;
     }
     const loc = game.level?.at?.(x, y);
     if (loc && !IS_SOFT(loc.typ) && breaktest(obj)) {
         // Broken — darts usually survive via obj_resists
         return;
     }
-    obj.how_lost = LOST_THROWN;
     place_object(obj, x, y);
     // C: throwit → stackobj after place_object
     stackobj(obj);

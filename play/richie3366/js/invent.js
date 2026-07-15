@@ -5,7 +5,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, docrt, status_line_2 } from './display.js';
+import {
+    flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
+} from './display.js';
 import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular } from './objnam.js';
 import { yn_function } from './getline.js';
 import { mergable } from './mkobj.js';
@@ -43,6 +45,7 @@ import {
     SORTLOOT_PACK,
     SORTLOOT_LOOT,
     SORTLOOT_INVLET,
+    PICK_ONE,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -599,13 +602,53 @@ export function invent_lines() {
  * C ref: invent.c display_pickinv(lets, …, want_reply=TRUE) subset for getobj `?`/`*`.
  * Shows invent filtered to `lets` (or all when lets null/'*'), PICK_ONE by
  * invlet; ESC cancels; Space/Return with no pick → null (getobj re-prompts).
- * Named omissions: hands/xtra_choice; count; sortloot inuse_only; wizid.
+ * C n==1 && !force_invmenu && !menu_requested && lets set →
+ * tty_message_menu(PICK_ONE) topline xprname+--More-- (not corner menu).
+ * Named omissions: hands/xtra_choice; count; sortloot inuse_only; wizid;
+ * force_invmenu / menu_requested menu path polish.
  * @returns {string|null} selected invlet, or null if cancelled / no pick
  */
 export async function display_pickinv_reply(lets) {
     const allowAll = !lets || lets === '*';
-    const allow = allowAll ? null : new Set([...lets]);
     const inv = game.invent || [];
+
+    // C: n = lets ? strlen(lets) : invent 0/1/2+; then
+    // if (usextra || (n==1 && (!lets || wizid))) ++n — so bare invent
+    // with one item skips message_menu; getobj "?" with one letter does not.
+    let n;
+    if (!allowAll) {
+        n = lets.length;
+    } else {
+        n = !inv.length ? 0 : inv.length === 1 ? 1 : 2;
+        if (n === 1) n++; // !lets → bump
+    }
+
+    if (n === 0) {
+        await pline('Not carrying anything appropriate.');
+        return null;
+    }
+
+    if (
+        n === 1
+        && !game.iflags?.force_invmenu
+        && !game.iflags?.menu_requested
+    ) {
+        // C: first invent whose invlet == lets[0] (lets non-null here)
+        const want = lets[0];
+        const otmp = inv.find((o) => o && o.invlet === want);
+        if (!otmp) {
+            await pline('Not carrying anything appropriate.');
+            return null;
+        }
+        // C: message_menu(otmp->invlet, PICK_ONE, xprname(..., lets[0], TRUE))
+        return await message_menu(
+            otmp.invlet,
+            PICK_ONE,
+            xprname(otmp, want, true),
+        );
+    }
+
+    const allow = allowAll ? null : new Set([...lets]);
     const entries = [];
     const byLet = new Map();
     for (const oclass of DEF_INV_ORDER) {

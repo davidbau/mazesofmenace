@@ -812,7 +812,7 @@ async function trapeffect_dart_trap(mtmp, trap) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c feeltrap — mark seen + redisplay (map_trap deferred)
+// C ref: trap.c feeltrap — mark seen + redisplay via newsym → map_trap
 function feeltrap(trap) {
     if (!trap) return;
     trap.tseen = true;
