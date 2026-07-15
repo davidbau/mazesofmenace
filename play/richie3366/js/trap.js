@@ -27,7 +27,7 @@ import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
     PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, FIRE_TRAP, SLP_GAS_TRAP,
-    ROLLING_BOULDER_TRAP,
+    TELEP_TRAP, ROLLING_BOULDER_TRAP,
     BEAR_TRAP, WEB, RUST_TRAP, VIBRATING_SQUARE,
     ANTI_MAGIC, HURTLING, TOOKPLUNGE, VIASITTING, FIRE_RES, SLEEP_RES,
     STONE_RES,
@@ -43,8 +43,7 @@ import {
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
 } from './hack.js';
-import { goodpos } from './teleport.js';
-import { mlevel_tele_trap } from './teleport.js';
+import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap_once_vault } from './teleport.js';
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { thitu } from './mthrowu.js';
@@ -1422,7 +1421,42 @@ async function trapeffect_slp_gas_trap(mtmp, trap, _trflags) {
     return Trap_Effect_Finished;
 }
 
-// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp
+/**
+ * C ref: trap.c trapeffect_telep_trap — hero tele_trap once→vault_tele;
+ * monster mtele_trap.
+ * Envelope: once vault deltrap+vault_tele; mon in_sight pline+seetrap.
+ * Named omissions: Antimagic wrenching pline; teledest/tele hero arms;
+ * fixed-dest mon displace; seetrap before hero vault_tele.
+ */
+async function trapeffect_telep_trap(mtmp, trap, _trflags) {
+    if (is_youmonst(mtmp)) {
+        seetrap(trap);
+        if (trap.once) {
+            // C: deltrap then vault_tele (keep trap off before landing)
+            deltrap(trap);
+            newsym(game.u.ux, game.u.uy);
+            tele_trap_once_vault();
+            return Trap_Effect_Finished;
+        }
+        // teledest / tele() hero arms deferred
+        return Trap_Effect_Finished;
+    }
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    const monname = Monnam(mtmp);
+    if (mtele_trap(mtmp, trap)) {
+        if (in_sight) {
+            if (canseemon(mtmp)) {
+                await pline(`${monname} seems disoriented.`);
+            } else {
+                await pline(`${monname} suddenly disappears!`);
+            }
+            seetrap(trap);
+        }
+    }
+    return Trap_Moved_Mon;
+}
+
+// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
@@ -1443,8 +1477,10 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_magic_trap(mtmp, trap, trflags);
     case SLP_GAS_TRAP:
         return trapeffect_slp_gas_trap(mtmp, trap, trflags);
+    case TELEP_TRAP:
+        return trapeffect_telep_trap(mtmp, trap, trflags);
     default:
-        // Named omission: arrow/bear/telep/anti-magic/rust/… trap effects
+        // Named omission: arrow/bear/anti-magic/rust/… trap effects
         return Trap_Effect_Finished;
     }
 }

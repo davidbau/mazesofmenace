@@ -2,12 +2,14 @@
 //           CORPSE eatcorpse / start_eating / eatfood occupation).
 // C ref: eat.c doeat / floorfood / touchfood / fprefx / eatcorpse /
 //         start_eating / bite / eatfood / done_eating / lesshungry /
-//         obj_nutrition / is_edible / gethungry (Unaware rn2(10) +
-//         accessorytime rn2(20)); invent.c getobj; attrib.c poison_strdmg.
+//         morehungry / vomit / obj_nutrition / is_edible / gethungry
+//         (Unaware rn2(10) + accessorytime rn2(20)); invent.c getobj;
+//         attrib.c poison_strdmg.
 // Named omissions: floorfood metallivore/pool-lava/cockatrice-feel; TIN;
 // full cprefx/cpostfx; tainted Sick; slime/stone; rottenfood body RNG;
 // freeinv invent-full drop; ?/* menu; multi-turn choke/newuhs;
-// losestr setuhpmax / terminal-frailty full death path.
+// losestr setuhpmax / terminal-frailty full death path;
+// vomit cantvomit/Sick/FAINTING/acid-breath.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -24,6 +26,7 @@ import {
 import { set_occupation, can_reach_floor } from './engrave.js';
 import { OBJ_FLOOR, OBJ_FREE, OBJ_INVENT } from './const.js';
 import { adjattrib, A_STR } from './attrib.js';
+import { nomul } from './hack.js';
 
 const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
 const APPLE = objectNames.indexOf('APPLE');
@@ -120,6 +123,21 @@ export function gethungry() {
 export function morehungry(num) {
     if (!game.u) return;
     game.u.uhunger = (game.u.uhunger ?? 900) - (num | 0);
+}
+
+/**
+ * C ref: eat.c vomit — side effects of vomiting (fountain foul water, etc.).
+ * Branch envelope: nomul(-2) when multi >= -2 + You_can_move_again.
+ * Named omissions: cantvomit jaw-gape; Sick SICK_VOMITABLE cure; FAINTING
+ * dry-heave message; yellow-dragon AT_BREA AD_ACID spew (RNG when poly).
+ */
+export function vomit() {
+    // cantvomit / Sick / uhs FAINTING / acid-breath deferred
+    if ((game.multi || 0) >= -2) {
+        nomul(-2);
+        game.multi_reason = 'vomiting';
+        game.nomovemsg = 'You can move again.';
+    }
 }
 
 /**

@@ -1,7 +1,8 @@
-// detect.js — Searching / dosearch0 / findit / do_mapping / #terrain.
+// detect.js — Searching / dosearch0 / findit / do_mapping / #terrain /
+// monster_detect.
 // C ref: detect.c — dosearch0, find_trap, cvt_sdoor_to_door, findit,
-// findone, show_map_spot, do_mapping, reveal_terrain, browse_map;
-// cmd.c doterrain; vision.c do_clear_area (hero-centered).
+// findone, show_map_spot, do_mapping, reveal_terrain, browse_map,
+// monster_detect; cmd.c doterrain; vision.c do_clear_area (hero-centered).
 //
 // Branch envelope: 8-neighbour SDOOR/SCORR/trap search with fund
 // (lenses); findit clear-area reveal of SDOOR/SCORR/unseen traps +
@@ -11,6 +12,8 @@
 // (a/b/c + explore/wizard extras) + Esc cancel; reveal_terrain
 // impairment gate + getglyph/show rewrite + Showing pline +
 // browse_map/getpos + docrt;
+// **monster_detect** (fountain case 26) live-fmon + map_monst +
+// browse_map(TER_DETECT|TER_MON) (D-0370);
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
 // Named omissions: feel_location / visible_region_at /
 // unmap_invisible / Blind feel; mfind0 body; Hallucination/cls
@@ -22,7 +25,9 @@
 // trapped-door dummytrap; FOUND_FLASH_COUNT==0 tmp_at path;
 // reveal_terrain region/gascloud / trap keep restore /
 // M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
-// TER_FULL explore-only map body; arboreal default tree.
+// TER_FULL explore-only map body; arboreal default tree;
+// monster_detect strange_feeling / cursed wake / blessed WIN_MAP /
+// worm segs / pet_to_glyph / TER_DETECT autodescribe.
 
 import { game } from './gstate.js';
 import { rnl, rn2 } from './rng.js';
@@ -38,8 +43,10 @@ import {
     isok, SDOOR, SCORR, DOOR, CORR, D_NODOOR, D_CLOSED, D_LOCKED, WM_MASK,
     STATUE_TRAP, NO_TRAP, TRAPNUM, Is_rogue_level, BOLT_LIM, COLNO, ROWNO,
     SVALL, IS_FURNITURE,
-    TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, ECMD_OK,
+    TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, ECMD_OK,
+    I_SPECIAL,
 } from './const.js';
+import { CLR_WHITE } from './terminal.js';
 
 // C ref: vision.c circle_data[] / circle_start[] — radius→row half-width
 const CIRCLE_DATA = [
@@ -400,6 +407,73 @@ export function do_mapping() {
     // reconstrain_map no-op when unconstrained was false
 
     exercise(A_WIS, true);
+}
+
+/**
+ * C ref: detect.c map_monst — show_glyph mon/pet/detected; worm segs deferred.
+ */
+function map_monst(mtmp, mon_glyph, show_glyph_cell) {
+    const g = mon_glyph(mtmp);
+    show_glyph_cell(mtmp.mx, mtmp.my, g.ch, g.color, false);
+}
+
+/**
+ * C ref: detect.c monster_detect — crystal balls / potions / fountains.
+ * Returns 1 if nothing detected, 0 if something was.
+ * Branch envelope: live-fmon scan + cls + map_monst + You sense +
+ * browse_map(TER_DETECT|TER_MON) when !blessed-otmp; map_redisplay.
+ * Named omissions: strange_feeling when !mcnt+otmp; cursed-otmp wake;
+ * blessed persistent display_nhwindow; unconstrain underwater/buried/
+ * swallow; worm detect_wsegs; pet_to_glyph / detected_mon_to_glyph
+ * (plain mon_glyph); Hallucination strange_feeling text.
+ */
+export async function monster_detect(otmp, mclass) {
+    const { cls, pline, mon_glyph, show_glyph_cell, flush_topl_more } =
+        await import('./display.js');
+
+    let mcnt = 0;
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (mtmp.isgd && !(mtmp.mx | 0)) continue;
+        mcnt++;
+        break;
+    }
+
+    if (!mcnt) {
+        // strange_feeling(otmp, ...) deferred — fountain uses return 1 only
+        void otmp;
+        return 1;
+    }
+
+    const u = game.u || {};
+    const swallowed = !!(u.uswallow);
+    await cls();
+    // unconstrain_map deferred (ordinary start not underwater/buried)
+
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (mtmp.isgd && !(mtmp.mx | 0)) continue;
+        const mlet = mtmp.data?.mlet;
+        if (!mclass || mlet === mclass) {
+            map_monst(mtmp, mon_glyph, show_glyph_cell);
+        }
+        // cursed otmp helpless wake deferred
+    }
+    if (!swallowed) {
+        // C: display_self() — hero '@' (usteed deferred)
+        show_glyph_cell(u.ux | 0, u.uy | 0, '@', CLR_WHITE, false);
+    }
+    await pline('You sense the presence of monsters.');
+    // C session: sense message --More-- before getpos tip
+    await flush_topl_more();
+
+    // otmp&&blessed && !unconstrained → display_nhwindow(WIN_MAP) deferred
+    u.EDetect_monsters = (u.EDetect_monsters | 0) | I_SPECIAL;
+    await browse_map(TER_DETECT | TER_MON, 'monster of interest');
+    u.EDetect_monsters = (u.EDetect_monsters | 0) & ~I_SPECIAL;
+
+    await map_redisplay();
+    return 0;
 }
 
 /**

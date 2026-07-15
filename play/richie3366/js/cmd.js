@@ -30,6 +30,7 @@ import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
+import { doset_simple, dotogglepickup } from './options.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
 import { doopen_indir } from './lock.js';
 import { doextcmd } from './getline.js';
@@ -679,6 +680,14 @@ export async function rhack(key) {
         // C ref: save.c dosave / cmd.c — #save (GENERALCMD, ECMD_OK)
         await dosave();
         game.context.move = 0;
+    } else if (ch === 'O') {
+        // C ref: options.c doset_simple / cmd.c — O options menu
+        await doset_simple();
+        game.context.move = 0;
+    } else if (ch === '@') {
+        // C ref: options.c dotogglepickup / cmd.c — @ autopickup toggle
+        await dotogglepickup();
+        game.context.move = 0;
     } else if (ch === '$') {
         // C ref: invent.c doprgold / cmd.c — #showgold (GENERALCMD)
         await doprgold();
@@ -851,25 +860,27 @@ async function domove(dx, dy) {
     u.ux0 = u.ux;
     u.uy0 = u.uy;
 
-    // C ref: hack.c — F with no (attackable) monster → fight_empty, waste turn
-    // before closed-door / blocksMove early outs.
-    if (forcefight) {
-        const mtmp = mon_at(newx, newy);
-        if (mtmp) {
-            if (await do_attack(mtmp)) {
-                if (game.context?.run) end_running();
-                return;
-            }
-            // safemon + forcefight: do_attack proceeds to hit; if it returned
-            // false without attacking, fall through (rare)
-        } else {
-            await domove_fight_empty(newx, newy);
+    // C ref: hack.c domove_core — m_at / domove_attackmon_at BEFORE test_move
+    // (closed_door / testdiag / rock). Diagonal intact-doorway bans must not
+    // suppress attacking a monster on an adjacent cell (seed0012 @12439).
+    // Named omissions: run-into-visible-hostile stop; displacer swap;
+    // domove_bump_mon; mundetected hide-under Wait! arms.
+    let mtmp = mon_at(newx, newy);
+    if (forcefight && !mtmp) {
+        // C: F with no monster → fight_empty, waste turn
+        await domove_fight_empty(newx, newy);
+        if (game.context?.run) end_running();
+        game.context.move = 1;
+        game.kickedloc = { x: 0, y: 0 };
+        return;
+    }
+    if (mtmp) {
+        // C: domove_attackmon_at → do_attack (safemon may return false → swap)
+        if (await do_attack(mtmp)) {
             if (game.context?.run) end_running();
-            // Took a turn attacking empty/solid
-            game.context.move = 1;
-            game.kickedloc = { x: 0, y: 0 };
             return;
         }
+        // safemon displace: fall through; swap after test_move succeeds
     }
 
     // C ref: hack.c test_move — closed_door + flags.autoopen → doopen_indir
@@ -944,23 +955,14 @@ async function domove(dx, dy) {
 
     const oldx = u.ux, oldy = u.uy;
 
-    // C ref: hack.c — monster at destination → do_attack (pets via safemon)
-    const mtmp = mon_at(newx, newy);
-    if (mtmp) {
-        // C: domove_attackmon_at → do_attack
-        if (await do_attack(mtmp)) {
-            // Move consumed (stopped for pet in the way, or attacked)
-            if (game.context?.run) end_running();
-            return;
-        }
-        // do_attack returned false → displace/swap with safemon
-        if (is_safemon(mtmp)) {
-            mtmp.mx = oldx;
-            mtmp.my = oldy;
-            // C ref: hack.c domove_swap_with_pet — x_monnam ARTICLE_YOUR
-            // (named pet → bare MGIVENNAME, e.g. "Hachi")
-            await pline(`You swap places with ${x_monnam_tame(mtmp)}.`);
-        }
+    // C: after test_move — safemon displace/swap (attack already tried above)
+    mtmp = mon_at(newx, newy);
+    if (mtmp && is_safemon(mtmp)) {
+        mtmp.mx = oldx;
+        mtmp.my = oldy;
+        // C ref: hack.c domove_swap_with_pet — x_monnam ARTICLE_YOUR
+        // (named pet → bare MGIVENNAME, e.g. "Hachi")
+        await pline(`You swap places with ${x_monnam_tame(mtmp)}.`);
     }
 
     // Move the hero (C u_on_newpos also updates usteed mx/my)

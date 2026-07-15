@@ -14,7 +14,17 @@ import {
     DISCLOSE_YES_WITHOUT_PROMPT,
     DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT,
+    ECMD_OK,
 } from './const.js';
+import { game } from './gstate.js';
+import { nhgetch } from './input.js';
+import { flush_screen, pline, docrt } from './display.js';
+import { paint_corner_nhw_menu } from './invent.js';
+import {
+    WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
+    FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS,
+    COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
+} from './objects.js';
 
 /** C ref: decl.c disclosure_options — invent/attribs/vanq/geno/conduct/overview */
 const DISCLOSURE_OPTIONS = 'iavgco';
@@ -278,4 +288,230 @@ export function parseNethackrc(rc) {
         }
     }
     return result;
+}
+
+/** C def_oc_syms[].sym by oclass index (ILLOBJ unused). */
+const OC_SYM = {
+    [WEAPON_CLASS]: ')',
+    [ARMOR_CLASS]: '[',
+    [RING_CLASS]: '=',
+    [AMULET_CLASS]: '"',
+    [TOOL_CLASS]: '(',
+    [FOOD_CLASS]: '%',
+    [POTION_CLASS]: '!',
+    [SCROLL_CLASS]: '?',
+    [SPBOOK_CLASS]: '+',
+    [WAND_CLASS]: '/',
+    [COIN_CLASS]: '$',
+    [GEM_CLASS]: '*',
+    [ROCK_CLASS]: '`',
+    [BALL_CLASS]: '0',
+    [CHAIN_CLASS]: '_',
+};
+
+/** Default inv_order symbols for choose_classes_menu (matches C session menu). */
+const DEFAULT_PICKUP_CLASS_SYMS = '$")[%?+!=/(*`0_';
+
+const OC_EXPLAIN = {
+    $: 'pile of coins',
+    '"': 'amulet',
+    ')': 'weapon',
+    '[': 'suit or piece of armor',
+    '%': 'piece of food',
+    '?': 'scroll',
+    '+': 'spellbook',
+    '!': 'potion',
+    '=': 'ring',
+    '/': 'wand',
+    '(': 'useful item (pick-axe, key, lamp...)',
+    '*': 'gem or rock',
+    '`': 'boulder or statue',
+    '0': 'iron ball',
+    _: 'iron chain',
+};
+
+/**
+ * C ref: options.c dotogglepickup — @ command.
+ * JS stores pickup_types as the display-symbol string (invent.js convention).
+ */
+export async function dotogglepickup() {
+    if (!game.flags) game.flags = {};
+    game.flags.pickup = !game.flags.pickup;
+    let buf;
+    if (game.flags.pickup) {
+        const ocl = String(game.flags.pickup_types || '');
+        buf = `ON, for ${ocl || 'all'} objects`;
+    } else {
+        buf = 'OFF';
+    }
+    await pline(`Autopickup: ${buf}.`);
+    return ECMD_OK;
+}
+
+/**
+ * C ref: windows.c choose_classes_menu(category=1, way=TRUE) — PICK_ANY.
+ * Letter a–o and class-symbol group accelerators toggle; Enter confirms.
+ * Returns symbol string (empty ⇒ all). Esc restores prior selection.
+ */
+async function choose_classes_menu(prompt, priorSelect) {
+    const classList = DEFAULT_PICKUP_CLASS_SYMS;
+    const items = [];
+    let nextAcc = 'a'.charCodeAt(0);
+    for (const sym of classList) {
+        const letch = String.fromCharCode(nextAcc++);
+        items.push({
+            sym,
+            letch,
+            selected: !!(priorSelect && priorSelect.includes(sym)),
+            explain: OC_EXPLAIN[sym] || sym,
+        });
+    }
+
+    for (;;) {
+        const entries = [{ text: prompt, attr: 0 }, { text: '', attr: 0 }];
+        for (const it of items) {
+            const mark = it.selected ? '+' : '-';
+            entries.push({
+                text: `${it.letch} ${mark} ${it.sym}  ${it.explain}`,
+                attr: 0,
+            });
+        }
+        entries.push({ text: '', attr: 0 });
+        entries.push({
+            text: 'A -    All classes of objects',
+            attr: 0,
+        });
+        entries.push({
+            text: 'Note: when no choices are selected, "all" is implied.',
+            attr: 0,
+        });
+        entries.push({
+            text: game.flags?.pickup
+                ? "Toggle off 'autopickup' to not pick up anything."
+                : "Toggle on 'autopickup' to automatically pick these things up.",
+            attr: 0,
+        });
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) return priorSelect ?? '';
+        if (key === 13 || key === 10) {
+            const sel = items.filter((it) => it.selected).map((it) => it.sym);
+            return sel.join('');
+        }
+        if (key === 32) continue;
+        const ch = String.fromCharCode(key);
+        if (ch === 'A') {
+            for (const it of items) it.selected = false;
+            return '';
+        }
+        const hit = items.find((it) => it.letch === ch || it.sym === ch);
+        if (hit) hit.selected = !hit.selected;
+    }
+}
+
+/**
+ * C ref: options.c optfn_pickup_types do_handler → choose_classes_menu.
+ */
+async function handler_pickup_types() {
+    if (!game.flags) game.flags = {};
+    const prior = String(game.flags.pickup_types || '');
+    const next = await choose_classes_menu('Autopickup what?', prior);
+    game.flags.pickup_types = next;
+}
+
+function pickup_types_display() {
+    const ocl = String(game.flags?.pickup_types || '');
+    return ocl || 'all';
+}
+
+/**
+ * C ref: options.c doset_simple — subset for Behavior/Map pages used by
+ * Options path that sets pickup_types. Page flip via space; empty pick exits.
+ * Named omissions: full allopt table, fruit/number_pad handlers, help,
+ * exceptions, status rules, most Map/Status toggles beyond hilite_pile.
+ */
+export async function doset_simple() {
+    if (!game.flags) game.flags = {};
+    if (!game.iflags) game.iflags = {};
+    let page = 0; // 0 = Behavior-heavy, 1 = Map/Status
+
+    for (;;) {
+        const entries = [{ text: 'Options', attr: 0 }, { text: '', attr: 0 }];
+        if (page === 0) {
+            entries.push({ text: ' ? - show help', attr: 0 });
+            entries.push({ text: '', attr: 0 });
+            entries.push({ text: '  General', attr: 0 });
+            entries.push({ text: ' a - fruit                   [slime mold]', attr: 0 });
+            entries.push({ text: ' b - number_pad              [0=off]', attr: 0 });
+            entries.push({ text: ' c - price_quotes            [ ]', attr: 0 });
+            entries.push({ text: '', attr: 0 });
+            entries.push({ text: '  Behavior', attr: 0 });
+            entries.push({
+                text: ` e - autoopen                [${game.flags.autoopen !== false ? 'X' : ' '}]`,
+                attr: 0,
+            });
+            entries.push({
+                text: ` f - autopickup              [${game.flags.pickup ? 'X' : ' '}]`,
+                attr: 0,
+            });
+            entries.push({
+                text: ` o - pickup_types            [${pickup_types_display()}]  (for autopickup)`,
+                attr: 0,
+            });
+            entries.push({ text: ' (1 of 2)', attr: 0 });
+        } else {
+            entries.push({ text: '  Map', attr: 0 });
+            entries.push({
+                text: ` f - hilite_pile             [${game.iflags.hilite_pile ? 'X' : ' '}]`,
+                attr: 0,
+            });
+            entries.push({ text: ' (2 of 2)', attr: 0 });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) return ECMD_OK;
+        if (key === 32) {
+            if (page === 0) {
+                page = 1;
+                continue;
+            }
+            return ECMD_OK;
+        }
+        if (key === 13 || key === 10) return ECMD_OK;
+        const ch = String.fromCharCode(key);
+        if (page === 0) {
+            if (ch === 'f') {
+                game.flags.pickup = !game.flags.pickup;
+                page = 0;
+                continue;
+            }
+            if (ch === 'o') {
+                await handler_pickup_types();
+                page = 0;
+                continue;
+            }
+            continue;
+        }
+        if (ch === 'f') {
+            // C: after toggle, doset_simple rebuilds from the first page
+            game.iflags.hilite_pile = !game.iflags.hilite_pile;
+            page = 0;
+            continue;
+        }
+    }
+}
+
+/** Map object oclass → default class symbol for autopick_testobj. */
+export function oclass_to_sym(oclass) {
+    return OC_SYM[oclass] || '';
 }

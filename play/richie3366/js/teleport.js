@@ -2,7 +2,7 @@
 // C ref: teleport.c — collect_coords, enexto_core (NEW_ENEXTO), goodpos (partial).
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
 import {
     COLNO, ROWNO,
     CC_NO_FLAGS, CC_INCL_CENTER, CC_UNSHUFFLED, CC_RING_PAIRS,
@@ -12,11 +12,15 @@ import {
     ACCESSIBLE, IS_POOL, IS_LAVA, ZAP_POS, IS_DOOR,
     D_CLOSED, D_LOCKED,
     MIGR_RANDOM, MON_MIGRATING, NO_TRAP,
+    ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP,
+    LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT,
     is_hole, Is_stronghold, Is_botlevel,
 } from './const.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './objects.js';
 import { amorphous, throws_rocks } from './monsters.js';
+import { newsym } from './display.js';
+import { vision_recalc } from './vision.js';
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
 const Trap_Effect_Finished = 0;
@@ -240,6 +244,240 @@ export function rloc_to(mtmp, x, y) {
     mtmp.my = y;
     mtmp.mux = game.u?.ux ?? x;
     mtmp.muy = game.u?.uy ?? y;
+}
+
+/**
+ * C ref: teleport.c noteleport_level — ordinary flags; hell court deferred.
+ */
+function noteleport_level(_mon) {
+    if (game.level?.flags?.noteleport) return true;
+    if ((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0)) return true;
+    return false;
+}
+
+/** C ref: mkroom.c search_special — first room/subroom matching type. */
+function search_special(type) {
+    const lists = [game.level?.rooms, game.level?.subrooms];
+    for (const rooms of lists) {
+        if (!rooms) continue;
+        for (const croom of rooms) {
+            if (!croom || (croom.hx | 0) < 0) break;
+            const rt = croom.rtype | 0;
+            if ((type === ANY_SHOP && rt >= SHOPBASE) || rt === type) {
+                return croom;
+            }
+        }
+    }
+    return null;
+}
+
+/** Local trap-at check — avoid importing trap.js (cycle). */
+function trap_at(x, y) {
+    const ftrap = game.ftrap;
+    if (Array.isArray(ftrap)) {
+        for (const t of ftrap) {
+            if (t && (t.tx | 0) === x && (t.ty | 0) === y) return t;
+        }
+    } else {
+        for (let t = ftrap; t; t = t.ntrap) {
+            if ((t.tx | 0) === x && (t.ty | 0) === y) return t;
+        }
+    }
+    const traps = game.level?.traps;
+    if (Array.isArray(traps)) {
+        for (const t of traps) {
+            if (t && (t.tx | 0) === x && (t.ty | 0) === y) return t;
+        }
+    }
+    return null;
+}
+
+/** C ref: mklev.c occupied — trap/furniture/lava/pool (invocation deferred). */
+function occupied(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return !!(trap_at(x, y)
+        || IS_FURNITURE(loc.typ)
+        || loc.typ === LAVAPOOL || loc.typ === LAVAWALL
+        || IS_POOL(loc.typ));
+}
+
+function somex(croom) {
+    return rn1((croom.hx | 0) - (croom.lx | 0) + 1, croom.lx | 0);
+}
+function somey(croom) {
+    return rn1((croom.hy | 0) - (croom.ly | 0) + 1, croom.ly | 0);
+}
+
+/**
+ * C ref: mkroom.c somexy — vault/ordinary: !irregular && !nsubrooms → one
+ * somex+somey. Irregular/subroom reject loops deferred (named omission).
+ */
+function somexy(croom, c) {
+    if (croom.irregular || (croom.nsubrooms | 0)) {
+        // Named omission: irregular edge/roomno + subroom inside_room reject
+        c.x = somex(croom);
+        c.y = somey(croom);
+        return true;
+    }
+    c.x = somex(croom);
+    c.y = somey(croom);
+    return true;
+}
+
+/** C ref: mkroom.c somexyspace */
+function somexyspace(croom, c) {
+    let trycnt = 0;
+    let okay;
+    do {
+        okay = somexy(croom, c) && isok(c.x, c.y) && !occupied(c.x, c.y);
+        if (okay) {
+            const loc = game.level?.at(c.x, c.y);
+            okay = !!(loc && (loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE));
+        }
+    } while (trycnt++ < 100 && !okay);
+    return okay;
+}
+
+/**
+ * C ref: teleport.c rloc — random reposition (RLOC_NONE / RLOC_MSG subset).
+ * Envelope: collect_coords ring from current/hero + goodpos; wizard/steed
+ * /rloc_pos_ok shop-priest arms deferred.
+ */
+export function rloc(mtmp, _rlocflags = 0) {
+    if (!mtmp) return false;
+    if (mtmp === game.u?.usteed) return false;
+    const candy = [];
+    const cx = (mtmp.mx | 0) || (game.u?.ux | 0) || 1;
+    const cy = (mtmp.my | 0) || (game.u?.uy | 0) || 0;
+    const candycount = collect_coords(
+        candy, cx, cy, 0,
+        CC_RING_PAIRS | CC_SKIP_MONS | CC_SKIP_INACCS,
+        null,
+    );
+    for (let i = 0; i < candycount; i++) {
+        const x = candy[i].x | 0;
+        const y = candy[i].y | 0;
+        if (goodpos(x, y, mtmp, 0)) {
+            rloc_to(mtmp, x, y);
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: teleport.c mvault_tele — place mon into VAULT via somexyspace.
+ */
+function mvault_tele(mtmp) {
+    const croom = search_special(VAULT);
+    const c = { x: 0, y: 0 };
+    if (croom && somexyspace(croom, c) && goodpos(c.x, c.y, mtmp, 0)) {
+        rloc_to(mtmp, c.x, c.y);
+        return;
+    }
+    rloc(mtmp, 0);
+}
+
+/**
+ * C ref: teleport.c mtele_trap — monster TELEP_TRAP.
+ * Envelope: noteleport_level; teleport_pet; once → mvault_tele; else
+ * teledest rloc_to if free; else rloc. Caller handles in_sight pline/seetrap.
+ * Named omission: RLOC_MSG vanish text inside rloc_to_core.
+ */
+export function mtele_trap(mtmp, trap) {
+    if (!mtmp || !trap) return false;
+    if (noteleport_level(mtmp)) return false;
+    if (!teleport_pet(mtmp, false)) return false;
+
+    if (trap.once) {
+        mvault_tele(mtmp);
+    } else if (isok(trap.teledest?.x, trap.teledest?.y)) {
+        const dx = trap.teledest.x | 0;
+        const dy = trap.teledest.y | 0;
+        if (!(m_at(dx, dy) || u_at(dx, dy))) {
+            rloc_to(mtmp, dx, dy);
+        }
+    } else {
+        rloc(mtmp, 0);
+    }
+    return true;
+}
+
+/**
+ * C ref: teleport.c teleok — trapok/goodpos subset; tele_jump_ok /
+ * in_out_region named omitted (always allow for ordinary vault dest).
+ */
+function teleok(x, y, trapok) {
+    if (!trapok) {
+        if (trap_at(x, y)) return false;
+    }
+    const you = game.youmonst || null;
+    if (!goodpos(x, y, you, 0)) return false;
+    return true;
+}
+
+/**
+ * C ref: teleport.c teleds — hero placement subset for vault_tele.
+ * Named omissions: ball/chain, swallow, vault_guard uleftvault, regions,
+ * drag_ball, full check_special_room / spoteffects re-entry.
+ */
+export function teleds(nux, nuy, _teleds_flags) {
+    const u = game.u;
+    if (!u) return;
+    const ox = u.ux | 0;
+    const oy = u.uy | 0;
+    u.ux0 = ox;
+    u.uy0 = oy;
+    u.ux = nux | 0;
+    u.uy = nuy | 0;
+    if (u.usteed) {
+        u.usteed.mx = u.ux;
+        u.usteed.my = u.uy;
+    }
+    // u.utrap clear on teleport
+    u.utrap = 0;
+    u.utraptype = 0;
+    newsym(ox, oy);
+    newsym(u.ux, u.uy);
+    vision_recalc(1);
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    game.vision_full_recalc = 1;
+}
+
+/**
+ * C ref: teleport.c vault_tele — somexyspace into VAULT then teleds.
+ * Named omission: tele() fallback RNG when no vault/space.
+ */
+export function vault_tele() {
+    const croom = search_special(VAULT);
+    const c = { x: 0, y: 0 };
+    if (croom && somexyspace(croom, c) && teleok(c.x, c.y, false)) {
+        teleds(c.x, c.y, TELEDS_TELEPORT);
+        return true;
+    }
+    // tele() deferred — no vault room / no free cell
+    return false;
+}
+
+/**
+ * C ref: teleport.c tele_trap — hero TELEP_TRAP.
+ * Envelope: once → deltrap handled by caller + vault_tele; endgame /
+ * Antimagic / noteleport / next_to_u / teledest / tele() named partial.
+ * Returns true if once-vault path ran (caller should deltrap).
+ */
+export function tele_trap_once_vault() {
+    const u = game.u;
+    if (!u) return false;
+    // In_endgame deferred
+    const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    if (Antimagic || noteleport_level(game.youmonst)) {
+        return false; // wrenching — no RNG
+    }
+    // next_to_u leash gate — always true without leash wiring
+    return vault_tele();
 }
 
 /**

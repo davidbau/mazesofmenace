@@ -22,6 +22,7 @@ import {
     mon_knows_traps,
 } from './monsters.js';
 import { gettrack } from './track.js';
+import { wipe_engr_at } from './engrave.js';
 import { objects_at, obj_extract_self, splitobj } from './mkobj.js';
 import { find_defensive, find_misc, use_misc, find_offensive } from './muse.js';
 import {
@@ -1103,6 +1104,12 @@ export async function dochug(mtmp) {
         if (game.u?.Hallucination) newsym(mtmp.mx, mtmp.my);
         return 0;
     }
+
+    // C: not frozen or sleeping — wipe dust engravings under the mon
+    // before set_apparxy / distfleeck (monmove.c dochug).
+    wipe_engr_at(mtmp.mx, mtmp.my, 1, false);
+    // C: mconf rn2(50) / mstun rn2(10) / flee-teleport / m_respond /
+    // courage rn2(25) deferred (only fire when those flags are set).
 
     set_apparxy(mtmp);
     let { inrange, nearby, scared } = distfleeck(mtmp);

@@ -26,7 +26,7 @@ import {
 } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
-import { initrack } from './track.js';
+import { initrack, save_track, rest_track } from './track.js';
 import { m_at, mnexto, hide_monst } from './mon.js';
 import { enexto } from './teleport.js';
 import { monster_nearby } from './hack.js';
@@ -256,9 +256,10 @@ function getlev_catchup_monsters(elapsed) {
 /**
  * C ref: do.c goto_level — ordinary stairs + in-memory savelev/getlev.
  *
- * Ported: keepdogs → stash (VISITED|LFILE_EXISTS + omoves) → assign uz →
- * mklev or restore stash + getlev catchup → stairway_find_from →
- * climb/descend pline → losedogs → vision/docrt → pickup(1).
+ * Ported: keepdogs → stash (VISITED|LFILE_EXISTS + omoves + track) →
+ * assign uz → mklev or restore stash + getlev catchup + rest_track →
+ * stairway_find_from → climb/descend pline → losedogs → vision/docrt →
+ * pickup(1).
  * Deferred: binary NHFILE, mysterious force, quest gate, portals, endgame,
  * fall damage, Lua NHCB_LVL_LEAVE, familiar_level_msg, temperature/hellish,
  * Flying/Punished climb variants, u_collide_m full limbo.
@@ -291,8 +292,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     vision_recalc(2);
 
     // C: savelev — in-memory stash + VISITED|LFILE_EXISTS + omoves timestamp
+    // C: save_track before release/initrack (track.c) — per-level utrack.
     if (!game.level_info) game.level_info = [];
     const old_ledger = ledger_no(u.uz);
+    const trackSnap = save_track(); // clears live ring (C release_data arm)
     if (old_ledger > 0) {
         const prev = game.level_info[old_ledger] || { flags: 0 };
         game.level_info[old_ledger] = {
@@ -304,13 +307,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             ftrap: game.ftrap,
             stairs: game.stairs,
             head_engr: game.head_engr,
+            track: trackSnap,
         };
     }
-
-    // C: savelev → save_track → release_data → initrack (do.c/save.c/track.c).
-    // Clears hero footstep ring so gettrack cannot see prior-level cells.
-    // Named omission: per-level save/rest of utrack on return visits.
-    initrack();
 
     assign_level(u.uz0 || (u.uz0 = { dnum: 0, dlevel: 0 }), u.uz);
     assign_level(u.uz, newlevel);
@@ -344,8 +343,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await mklev();
         if (!game.level_info[new_ledger]) game.level_info[new_ledger] = { flags: 0 };
         // C: LFILE_EXISTS is set on savelev leave, not on first mklev
+        // Ring already cleared by save_track on leave (new level has no rest).
+        initrack();
     } else {
-        // C: getlev — restore in-memory stash + catchup/hide_monst
+        // C: getlev — restore in-memory stash + catchup/hide_monst + rest_track
         game.level = info.level;
         game.fmon = info.fmon || [];
         game.fobj = info.fobj || null;
@@ -353,6 +354,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.stairs = info.stairs || null;
         game.head_engr = info.head_engr || null;
         rebuildObjectsAt(game.fobj);
+        rest_track(info.track);
         const elapsed = (game.moves | 0) - (info.omoves | 0);
         getlev_catchup_monsters(elapsed);
     }

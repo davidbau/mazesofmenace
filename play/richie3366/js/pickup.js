@@ -20,6 +20,7 @@ import {
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
 import { nhgetch } from './input.js';
+import { oclass_to_sym } from './options.js';
 
 /** C ref: hacklib.c upstart — capitalize first letter. */
 function upstart(str) {
@@ -224,13 +225,26 @@ async function query_objlist_pickup(objList) {
 }
 
 /**
+ * C ref: pickup.c autopick_testobj — pickup_types symbol filter.
+ * JS pickup_types is the display-symbol string; empty ⇒ all classes.
+ * Deferred: costly_spot shop reject, pickup_thrown/stolen/nopick_dropped,
+ * how_lost, autopickup exceptions.
+ */
+function autopick_testobj(otmp) {
+    const otypes = String(game.flags?.pickup_types || '');
+    if (!otypes) return true;
+    const sym = oclass_to_sym(otmp.oclass);
+    return !!(sym && otypes.includes(sym));
+}
+
+/**
  * C ref: pickup.c pickup(what).
  * Ported envelope: autopickup && (nopick / !OBJ_AT / pool / lava) →
  * describe_decor + read_engr_at; autopickup && !flags.pickup →
- * check_here(FALSE); manual `,` AUTOSELECT_SINGLE one object;
- * multi → query_objlist PICK_ANY (D-0365).
- * Deferred: unconscious skip, notake, autopick() filter, traditional
- * yn/query_classes, hideunder, newsym_force, full is_pool.
+ * check_here(FALSE); autopick filter (D-0368); manual `,`
+ * AUTOSELECT_SINGLE one object; multi → query_objlist PICK_ANY (D-0365).
+ * Deferred: unconscious skip, notake, traditional yn/query_classes,
+ * hideunder, newsym_force, full is_pool.
  */
 export async function pickup(what) {
     const autopickup = what > 0;
@@ -274,23 +288,40 @@ export async function pickup(what) {
     for (let obj = objects_at(u.ux, u.uy); obj; obj = obj.nexthere) {
         objList.push(obj);
     }
-    const ct = objList.length;
-    if (ct === 0) return 0;
+    // C: autopick → filter by pickup_types before picking
+    const eligible = autopickup
+        ? objList.filter((o) => autopick_testobj(o))
+        : objList;
+    const ct = eligible.length;
+    if (ct === 0) {
+        if (autopickup && objList.length > 0) {
+            // Objects present but filtered out — C still may check_here? No:
+            // autopick returns 0 picks and pickup continues to query path
+            // only when !autopickup. With autopickup and n==0, done.
+            return 0;
+        }
+        return 0;
+    }
 
     // C: menu_style != TRADITIONAL → query_objlist + AUTOSELECT_SINGLE
     // One eligible object: auto-select without menu (no extra keys).
-    if (ct === 1) {
-        const first = objList[0];
-        const lcount = count > 0
-            ? Math.min(first.quan || 1, count)
-            : 0;
-        const res = await pickup_object(first, lcount, false);
-        return res > 0 ? 1 : 0; // n_tried > 0
+    if (ct === 1 || autopickup) {
+        let nTried = 0;
+        for (const first of eligible) {
+            const lcount = (!autopickup && count > 0)
+                ? Math.min(first.quan || 1, count)
+                : 0;
+            const res = await pickup_object(first, lcount, false);
+            if (res < 0) break;
+            nTried += res;
+            if (!autopickup) break; // manual single-object AUTOSELECT
+        }
+        return nTried > 0 ? 1 : 0;
     }
 
     // C: query_objlist("Pick up what?", …, PICK_ANY) then pickup_object each
     // Traditional query_classes path deferred (default menu ≠ TRADITIONAL).
-    const pickList = await query_objlist_pickup(objList);
+    const pickList = await query_objlist_pickup(eligible);
     if (!pickList.length) return 0;
     let nTried = 0;
     for (const obj of pickList) {
