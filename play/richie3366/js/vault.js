@@ -7,13 +7,16 @@
 // mimic_obj_name; full Deaf/Blind message variants that need noit_mhis;
 // gd_move hostile/witness/goldincorridor;
 // !u_in_vault look-around exit; gd_mv_monaway; mpickgold; dig del_engr_at;
-// clear_fcorr: Punished/uball, yelp/rloc/m_into_limbo, deltrap, blackout,
-// del_engr_at, map_location bypass (uses newsym), encased-in-rock pline.
+// clear_fcorr: Punished/uball, yelp/rloc/m_into_limbo,
+// corridor-disappears / encased-in-rock pline (sync gd_move).
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { makemon, set_malign, newegd } from './makemon.js';
-import { pline, newsym, canspotmon, map_invisible, verbalize } from './display.js';
+import {
+    pline, newsym, canspotmon, map_invisible, verbalize,
+    map_location, unset_seenv,
+} from './display.js';
 import { getlin } from './getline.js';
 import { Monnam, noit_Monnam } from './do_name.js';
 import { adjalign } from './attrib.js';
@@ -21,11 +24,13 @@ import { nomul } from './hack.js';
 import { makeplural } from './objnam.js';
 import { cansee, couldsee, recalc_block_point } from './vision.js';
 import { COIN_CLASS } from './objects.js';
+import { del_engr_at } from './engrave.js';
+import { t_at, deltrap } from './trap.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
     ROOM, CORR, STONE, HWALL, VWALL, DOOR, D_NODOOR,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER,
-    MM_EGD, MM_NOMSG, IS_WALL, IS_DOOR,
+    MM_EGD, MM_NOMSG, IS_WALL, IS_DOOR, IS_STWALL,
     M_AP_OBJECT, M_AP_TYPE, EGD, u_at,
     A_LAWFUL, Has_contents, IS_ROOM, isok,
 } from './const.js';
@@ -130,6 +135,25 @@ function on_level(a, b) {
 }
 
 /**
+ * C ref: vault.c blackout — unlit STONE + clear seenv from restored cell
+ * and its 8-neighbourhood (scroll/wand of light must not linger).
+ */
+function blackout(x, y) {
+    for (let i = (x | 0) - 1; i <= (x | 0) + 1; i++) {
+        for (let j = (y | 0) - 1; j <= (y | 0) + 1; j++) {
+            if (!isok(i, j)) continue;
+            const lev = game.level?.at?.(i, j);
+            if (!lev) continue;
+            if ((lev.typ | 0) === STONE) {
+                lev.lit = 0;
+                lev.waslit = 0;
+            }
+            unset_seenv(lev, x, y, i, j);
+        }
+    }
+}
+
+/**
  * C ref: vault.c clear_fcorr — restore fakecorr cells to saved typ/flags.
  * @returns {boolean} true if fully cleared
  */
@@ -180,8 +204,14 @@ function clear_fcorr(grd, forceshow) {
             lev.typ = ftyp;
             if (IS_DOOR(ftyp)) lev.doormask = fc.flags | 0;
             else lev.flags = fc.flags | 0;
-            // deltrap / blackout / del_engr_at deferred
-            newsym(fcx, fcy);
+            if (IS_STWALL(ftyp)) {
+                const trap = t_at(fcx, fcy);
+                if (trap) deltrap(trap);
+                if (ftyp === STONE) blackout(fcx, fcy);
+            }
+            del_engr_at(fcx, fcy);
+            // C: map_location(..., 1) — bypass vision (not newsym)
+            map_location(fcx, fcy, 1);
             recalc_block_point(fcx, fcy);
             game.vision_full_recalc = 1;
         }
@@ -548,7 +578,7 @@ function um_dist(x, y, n) {
  * Named omissions: hostile/witness/goldincorridor; wallify; rloc;
  * verbalize body; gd_mv_monaway; mpickgold; !u_in_vault look-around;
  * stuck find_guard_dest retry; dig del_engr_at; clear_fcorr Punished/
- * rloc/deltrap/blackout/del_engr arms.
+ * rloc/yelp arms; corridor-disappears / encased pline.
  *
  * @returns {number} 1 moved, 0 stayed, -1 normal AI, -2 died
  */

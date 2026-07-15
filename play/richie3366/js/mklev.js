@@ -57,6 +57,7 @@ import {
     mkobj, mksobj, mksobj_at, mkobj_at, mkgold, mkcorpstat, next_ident,
     curse, bless, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, obj_extract_self,
+    add_to_container,
 } from './mkobj.js';
 import { makemon, mkclass, MM_NOGRP } from './makemon.js';
 import { enexto } from './teleport.js';
@@ -394,18 +395,8 @@ function level_difficulty() {
     return d;
 }
 
-// place_object / weight imported from mkobj.js
+// place_object / weight / add_to_container imported from mkobj.js
 function dealloc_obj(_otmp) { /* stub */ }
-/** C ref: mkobj.c add_to_container — prepend; merge deferred. */
-function add_to_container(container, obj) {
-    if (!container || !obj) return null;
-    if (obj.where !== OBJ_FREE) obj_extract_self(obj);
-    obj.where = OBJ_CONTAINED;
-    obj.ocontainer = container;
-    obj.nobj = container.cobj || null;
-    container.cobj = obj;
-    return obj;
-}
 function sobj_at(_otyp, _x, _y) { return false; }
 
 // make_grave imported from engrave.js (C engrave.c)
@@ -576,8 +567,7 @@ function splev_map_center_start(wid, hei) {
 /**
  * C ref: dat/tut-1.lua via load_special — map + des.* through end of file.
  * Named omissions: tut_key/eckey (hardcoded defaults), Knight jump,
- * leave-tutorial invent restore, map_location tseen traps, real
- * add_to_container merge path.
+ * leave-tutorial invent restore, map_location tseen traps.
  */
 function load_tut1() {
     // C: load_special loads nhlib.lua → shuffle(align) then runs tut-1.lua

@@ -585,7 +585,7 @@ export function seetrap(trap) {
 }
 
 // C ref: trap.c deltrap — remove from ftrap list (shop/region cleanup deferred)
-function deltrap(trap) {
+export function deltrap(trap) {
     const traps = game.level?.traps;
     if (!traps || !trap) return;
     const i = traps.indexOf(trap);

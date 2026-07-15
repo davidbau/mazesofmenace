@@ -424,6 +424,42 @@ export function xname(obj) {
 }
 
 /**
+ * C ref: objnam.c corpse_xname — "<monster> corpse" (CXN_SINGULAR / article deferred).
+ */
+function corpse_xname(obj, _adjective, singular) {
+    const omndx = obj?.corpsenm;
+    const mnam = (omndx == null || omndx < 0) ? 'thing' : mon_name(omndx);
+    let base = `${mnam} corpse`;
+    if (!singular && (obj.quan || 1) !== 1) base = makeplural(base);
+    return base;
+}
+
+/**
+ * C ref: objnam.c cxname — corpse_xname for CORPSE, else xname.
+ */
+export function cxname(obj) {
+    if (obj && objectNames[obj.otyp] === 'CORPSE') {
+        return corpse_xname(obj, null, false);
+    }
+    return xname(obj);
+}
+
+/**
+ * C ref: objnam.c cxname_singular — ignore quantity (sortloot / loot_xname).
+ */
+export function cxname_singular(obj) {
+    if (obj && objectNames[obj.otyp] === 'CORPSE') {
+        return corpse_xname(obj, null, true);
+    }
+    if (!obj) return xname(obj);
+    const saveq = obj.quan;
+    obj.quan = 1;
+    const nam = xname(obj);
+    obj.quan = saveq;
+    return nam;
+}
+
+/**
  * C ref: objnam.c the() — definite article for non-proper names.
  * Named omissions: CapitalMon, fruit_from_name, artifact "of"/named arms,
  * Platinum Yendorian Express Card special-case.

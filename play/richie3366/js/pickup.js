@@ -6,7 +6,10 @@ import { game } from './gstate.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
 } from './mkobj.js';
-import { look_here, observe_object, dfeature_at, paint_corner_nhw_menu } from './invent.js';
+import {
+    look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
+    let_to_name, DEF_INV_ORDER,
+} from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava } from './hack.js';
 import { flush_screen, pline, newsym, docrt } from './display.js';
 import { addinv } from './u_init.js';
@@ -18,11 +21,13 @@ import {
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
     Has_contents,
+    SORTLOOT_PACK, SORTLOOT_LOOT,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
 import { nhgetch } from './input.js';
 import { oclass_to_sym } from './options.js';
 import { objectNames, COIN_CLASS } from './objects.js';
+import { ATR_INVERSE } from './terminal.js';
 
 /** C-ish thesimpleoname — sack → "bag". */
 function thesimpleoname(obj) {
@@ -190,33 +195,78 @@ export async function pickup_object(obj, count, telekinesis) {
 }
 
 /**
- * C ref: invent.c query_objlist + select_menu(PICK_ANY) — floor pickup menu.
+ * C ref: pickup.c query_objlist + select_menu(PICK_ANY) — floor pickup menu.
  * Letter toggles selection; Return/Enter confirms; ESC cancels.
- * Invlet used when a–z/A–Z; else sequential a,b,… Deferred: FEEL_COCKATRICE,
- * INVORDER_SORT, count-N, BY_NEXTHERE filters, traditional query_classes.
+ * INVORDER_SORT (sortpack): pack-order class headings via let_to_name;
+ * menu letters assigned in that display order (no USE_INVLET on floor).
+ * Named omissions: FEEL_COCKATRICE; count-N; BY_NEXTHERE allow-filter;
+ * menu_head_objsym; INCLUDE_VENOM; traditional query_classes; engulfer.
  */
 async function query_objlist_pickup(objList) {
+    const flags = game.flags || {};
+    const doSort = flags.sortpack !== false;
+    const invOrder = (flags.inv_order?.length ? flags.inv_order : DEF_INV_ORDER);
+
+    // C: sortloot(SORTLOOT_LOOT|PACK) then walk inv_order — sort array only
+    // (floor piles use nexthere; do not touch nobj). Within-class loot_xname
+    // strcmpi deferred (named omission).
+    const ranked = objList.map((obj, indx) => ({ obj, indx }));
+    if (doSort) {
+        ranked.sort((a, b) => {
+            const ia = invOrder.indexOf(a.obj.oclass);
+            const ib = invOrder.indexOf(b.obj.oclass);
+            const oa = ia >= 0 ? ia : invOrder.length;
+            const ob = ib >= 0 ? ib : invOrder.length;
+            if (oa !== ob) return oa - ob;
+            return a.indx - b.indx;
+        });
+    }
+
     const items = [];
     let nextLet = 'a'.charCodeAt(0);
-    for (const obj of objList) {
-        let letch = obj.invlet;
-        if (typeof letch === 'number') letch = String.fromCharCode(letch);
-        if (typeof letch !== 'string' || letch.length !== 1
-            || !/[a-zA-Z]/.test(letch)) {
+    let coinLetterUsed = false;
+    for (const { obj } of ranked) {
+        let letch;
+        // C: !USE_INVLET → first coin '$', else menu a,b,…
+        if (obj.oclass === COIN_CLASS && !coinLetterUsed) {
+            letch = '$';
+            coinLetterUsed = true;
+        } else {
             letch = String.fromCharCode(nextLet++);
             if (nextLet > 'z'.charCodeAt(0)) nextLet = 'A'.charCodeAt(0);
         }
-        items.push({ obj, letch, selected: false });
+        items.push({ obj, letch, selected: false, oclass: obj.oclass });
     }
 
     for (;;) {
-        const entries = [{ text: 'Pick up what?', attr: 0 }, { text: '', attr: 0 }];
-        for (const it of items) {
-            const mark = it.selected ? '+' : '-';
-            entries.push({
-                text: `${it.letch} ${mark} ${doname(it.obj)}`,
-                attr: 0,
-            });
+        const entries = [
+            { text: 'Pick up what?', attr: ATR_INVERSE },
+            { text: '', attr: 0 },
+        ];
+        if (doSort) {
+            let lastClass = null;
+            for (const it of items) {
+                if (it.oclass !== lastClass) {
+                    entries.push({
+                        text: let_to_name(it.oclass, false, false),
+                        attr: ATR_INVERSE,
+                    });
+                    lastClass = it.oclass;
+                }
+                const mark = it.selected ? '+' : '-';
+                entries.push({
+                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                    attr: 0,
+                });
+            }
+        } else {
+            for (const it of items) {
+                const mark = it.selected ? '+' : '-';
+                entries.push({
+                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                    attr: 0,
+                });
+            }
         }
         await paint_corner_nhw_menu(entries, '(end) ');
         await flush_screen(1);
@@ -444,9 +494,11 @@ export async function spoteffects(pick) {
 }
 
 /**
- * C ref: end.c container_contents — NHW_MENU "Contents of %s:" + doname lines;
- * display_nhwindow(TRUE) wait. Nested containers / Schroedinger / empty pline
- * deferred beyond reportempty=false callers.
+ * C ref: end.c container_contents — NHW_MENU "Contents of %s:" + doname lines
+ * via invent.c sortloot(SORTLOOT_LOOT|SORTLOOT_PACK). display_nhwindow(TRUE).
+ * Named omissions: identified discover path; doname_with_price shop;
+ * nested containers / Schroedinger / empty pline beyond reportempty=false;
+ * sortloot subclass/disco/BUCX.
  */
 async function container_contents(box) {
     if (!box) return;
@@ -455,8 +507,15 @@ async function container_contents(box) {
     const { show_nhw_menu_text } = await import('./pager.js');
     const lines = [`Contents of ${theArt(xname(box))}:`, ''];
     if (box.cobj) {
-        for (let obj = box.cobj; obj; obj = obj.nobj) {
-            lines.push(`  ${doname(obj)}`);
+        // C: flags.sortloot 'l'/'f' → SORTLOOT_LOOT; sortpack → SORTLOOT_PACK
+        const flags = game.flags || {};
+        const sortlootOpt = flags.sortloot ?? 'l';
+        let sortflags = 0;
+        if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
+        if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
+        const sorted = sortloot(box.cobj, sortflags, false);
+        for (const srtc of sorted) {
+            lines.push(`  ${doname(srtc.obj)}`);
         }
     }
     await show_nhw_menu_text(lines);
@@ -493,7 +552,9 @@ async function out_container(obj) {
  * deferred (use :oibrsq letters).
  */
 async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
-    const entries = [{ text: prompt, attr: 0 }, { text: '', attr: 0 }];
+    // C tty_end_menu: prompt uses tty_menu_promptstyle (= menu_headings,
+    // default ATR_INVERSE); blank separator; then add_menu items.
+    const entries = [{ text: prompt, attr: ATR_INVERSE }, { text: '', attr: 0 }];
     const simple = thesimpleoname(obj); // "the bag"
     entries.push({ text: `: - Look inside ${simple}`, attr: 0, sel: ':' });
     if (outokay) {
@@ -526,8 +587,10 @@ async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
         });
     }
     entries.push({ text: '', attr: 0 });
+    // C: MENU_ITEMFLAGS_SELECTED on default → process_menu_window paints
+    // '*' at the '-' slot (wintty.c n==2 && selected).
     entries.push({
-        text: `q - ${alreadyused ? 'done' : 'do nothing'}`,
+        text: `q * ${alreadyused ? 'done' : 'do nothing'}`,
         attr: 0,
         sel: 'q',
     });
@@ -767,9 +830,14 @@ async function menu_loot_putin(container) {
 export async function use_container(obj, held = false, _more = false) {
     if (!obj) return ECMD_OK;
 
-    obj.lknown = 1;
     if (obj.olocked) {
-        await pline(`${theArt(xname(obj))} is locked.`);
+        // C ref: pickup.c use_container — lknown vs discover-lock pline
+        if (obj.lknown)
+            await pline(`${upstart(theArt(xname(obj)))} is locked.`);
+        else
+            await pline(`Hmmm, ${theArt(xname(obj))} turns out to be locked.`);
+        obj.lknown = 1;
+        // autounlock / pick_lock deferred
         return ECMD_OK;
     }
 

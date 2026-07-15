@@ -38,6 +38,7 @@ import {
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
+    CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
 } from './const.js';
 import { recalc_block_point } from './vision.js';
 
@@ -119,11 +120,19 @@ function Is_container(obj) {
 }
 
 /**
- * C ref: mkobj.c add_to_container — prepend; merge deferred.
+ * C ref: mkobj.c add_to_container — merge via invent.c merged(), else prepend.
+ * Named omissions: shop obj_no_longer_held beyond free extract.
  */
 export function add_to_container(container, obj) {
     if (!container || !obj) return null;
     if (obj.where && obj.where !== OBJ_FREE) obj_extract_self(obj);
+    // C: for (otmp = container->cobj; otmp; otmp = otmp->nobj)
+    //        if (merged(&otmp, &obj)) return otmp;
+    for (let otmp = container.cobj; otmp; otmp = otmp.nobj) {
+        const potmp = { obj: otmp };
+        const pobj = { obj };
+        if (merged(potmp, pobj)) return potmp.obj;
+    }
     obj.where = OBJ_CONTAINED;
     obj.ocontainer = container;
     obj.nobj = container.cobj || null;
@@ -865,17 +874,18 @@ export function mksobj(otyp, init, artif) {
         } else if (otmp.corpsenm < 0) {
             otmp.corpsenm = rndmonnum();
         }
-        const ptr = mons(otmp.corpsenm);
-        if (ptr) {
-            if (is_neuter(ptr) || is_female(ptr) || is_male(ptr)) {
-                /* fixed gender — no rn2 */
-            } else {
-                rn2(2);
-            }
-        } else {
-            rn2(2);
+        // C: otmp->spe = neuter/female/male / rn2(2)?FEMALE:MALE;
+        // then set_corpsenm (timer). Gender must be on spe so mergable()
+        // keeps same-species opposite-sex corpses as separate stacks.
+        if ((otmp.corpsenm ?? NON_PM) !== NON_PM) {
+            const ptr = mons(otmp.corpsenm);
+            otmp.spe = is_neuter(ptr) ? CORPSTAT_NEUTER
+                : is_female(ptr) ? CORPSTAT_FEMALE
+                    : is_male(ptr) ? CORPSTAT_MALE
+                        : (rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE);
         }
-        if (name === 'CORPSE') start_corpse_timeout(otmp);
+        // C FALLTHROUGH → set_corpsenm (CORPSE starts rot timer)
+        set_corpsenm(otmp, otmp.corpsenm);
     } else if (name === 'SPE_NOVEL') {
         // C ref: mkobj.c mksobj SPE_NOVEL — even when !init
         otmp.novelidx = -1;

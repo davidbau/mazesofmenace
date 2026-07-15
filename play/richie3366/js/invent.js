@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, docrt, status_line_2 } from './display.js';
-import { xprname, an, vtense, doname, disco_typename, Japanese_item_name } from './objnam.js';
+import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular } from './objnam.js';
 import { yn_function } from './getline.js';
 import { mergable } from './mkobj.js';
 import {
@@ -37,6 +37,9 @@ import {
     OBJ_INVENT,
     has_oname,
     ONAME,
+    SORTLOOT_PACK,
+    SORTLOOT_LOOT,
+    SORTLOOT_INVLET,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -109,8 +112,74 @@ export function near_capacity() {
     return calc_capacity(0);
 }
 
+/**
+ * C ref: invent.c loot_xname → objnam.c cxname_singular.
+ * Diluted/towel/glob/oname/wizard deferred.
+ */
+function loot_xname(obj) {
+    return cxname_singular(obj) || '';
+}
+
+/**
+ * C ref: invent.c sortloot — build Loot[] sorted view; does not relink.
+ * Branch envelope: SORTLOOT_PACK class order + SORTLOOT_LOOT name;
+ * named omissions: subclass/disco/BUCX/erosion/INVLET/INUSE/filter/
+ * SORTLOOT_PETRIFY; loot_classify armor/weapon/tool detail.
+ *
+ * @param {object|null} olist head of nobj (or nexthere) chain
+ * @param {number} mode SORTLOOT_* flags
+ * @param {boolean} [by_nexthere=false]
+ * @returns {{obj: object, indx: number}[]}
+ */
+export function sortloot(olist, mode, by_nexthere = false) {
+    const items = [];
+    let i = 0;
+    for (let o = olist; o; o = by_nexthere ? o.nexthere : o.nobj) {
+        items.push({
+            obj: o, indx: i++, orderclass: 0, subclass: 0, disco: 0, str: null,
+        });
+    }
+    if (!mode || items.length <= 1) return items;
+
+    // C: flags.sortpack ? flags.inv_order : def_srt_order — inv_order subset
+    const classorder = DEF_INV_ORDER;
+
+    items.sort((sli1, sli2) => {
+        const obj1 = sli1.obj;
+        const obj2 = sli2.obj;
+        // C: order by class unless SORTLOOT_INVLET alone
+        if ((mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {
+            if (!sli1.orderclass) {
+                const ix = classorder.indexOf(obj1.oclass);
+                sli1.orderclass = ix >= 0 ? ix + 1 : classorder.length + 2;
+            }
+            if (!sli2.orderclass) {
+                const ix = classorder.indexOf(obj2.oclass);
+                sli2.orderclass = ix >= 0 ? ix + 1 : classorder.length + 2;
+            }
+            if (sli1.orderclass !== sli2.orderclass) {
+                return sli1.orderclass - sli2.orderclass;
+            }
+            // subclass / disco deferred (all ice-box corpses share FOOD/CORPSE)
+        }
+        if (mode & SORTLOOT_LOOT) {
+            if (!sli1.str) sli1.str = loot_xname(obj1);
+            if (!sli2.str) sli2.str = loot_xname(obj2);
+            // C strcmpi
+            const nam1 = sli1.str.toLowerCase();
+            const nam2 = sli2.str.toLowerCase();
+            if (nam1 < nam2) return -1;
+            if (nam1 > nam2) return 1;
+            // BUCX / grease / erosion deferred
+        }
+        // C tiebreak: stable by original index
+        return sli1.indx - sli2.indx;
+    });
+    return items;
+}
+
 // C ref: options.c def_inv_order
-const DEF_INV_ORDER = [
+export const DEF_INV_ORDER = [
     COIN_CLASS, AMULET_CLASS, WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS,
     SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, RING_CLASS, WAND_CLASS,
     TOOL_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
@@ -134,6 +203,16 @@ const CLASS_NAMES = {
     [BALL_CLASS]: 'Iron balls',
     [CHAIN_CLASS]: 'Chains',
 };
+
+/**
+ * C ref: invent.c let_to_name — class heading for INVORDER_SORT menus.
+ * Named omissions: unpaid prefix; showsym "  ('%c')" padding; CONTAINED_SYM;
+ * Venom / Illegal objects.
+ */
+export function let_to_name(letch, unpaid = false, _showsym = false) {
+    const name = CLASS_NAMES[letch] || 'Items';
+    return unpaid ? `Unpaid ${name}` : name;
+}
 
 const GOLD_SYM = '$';
 

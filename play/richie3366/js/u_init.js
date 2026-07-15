@@ -31,7 +31,7 @@ import { newpw } from './exper.js';
 import { getnow } from './calendar.js';
 import { roles, races, aligns, findRole, findRace, findAlign } from './roles.js';
 import { discover_object } from './invent.js';
-import { initialspell, init_spl_book } from './spell.js';
+import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
 import { otyp_uses_known, Japanese_item_name } from './objnam.js';
 import {
     W_ARMU, W_ARM, W_ARMC, W_ARMS, W_ARMH, W_ARMG, W_ARMF,
@@ -1653,7 +1653,15 @@ export async function u_init_inventory_attrs() {
 export function u_init_skills_discoveries() {
     for (const otmp of game.invent || [])
         ini_inv_use_obj(otmp);
-    // C: skill_init(skills_for_role()); pauper_reinit / num_spells Pw deferred
+    // C: skill_init(skills_for_role()); pauper_reinit deferred
     skill_init(skills_for_role());
+    // C: if num_spells && uenmax < SPELL_LEV_PW(1) → bump starter Pw
+    const u = game.u || (game.u = {});
+    const minPw = SPELL_LEV_PW(1);
+    if (num_spells() && (u.uenmax | 0) < minPw) {
+        u.uen = u.uenmax = u.uenpeak = minPw;
+        if (!u.ueninc) u.ueninc = [];
+        u.ueninc[u.ulevel | 0] = minPw;
+    }
     find_ac();
 }

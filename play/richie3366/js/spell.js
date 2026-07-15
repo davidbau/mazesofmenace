@@ -50,7 +50,7 @@ import { PM_KNIGHT, PM_WIZARD } from './generated/monsters_data.js';
 /** C ref: spell.h NO_SPELL / UNKNOWN_SPELL / SPELL_LEV_PW */
 export const NO_SPELL = 0;
 const UNKNOWN_SPELL = -1;
-function SPELL_LEV_PW(lvl) {
+export function SPELL_LEV_PW(lvl) {
     return (lvl | 0) * 5;
 }
 
@@ -492,7 +492,7 @@ function rejectcasting() {
 }
 
 /** C ref: spell.c num_spells */
-function num_spells() {
+export function num_spells() {
     let i;
     for (i = 0; i < MAXSPELL; i++) {
         if (spellid(i) === NO_SPELL) break;

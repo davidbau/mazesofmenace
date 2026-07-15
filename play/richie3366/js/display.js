@@ -1220,11 +1220,29 @@ function canspotself() {
     return canseeself() || senseself();
 }
 
+/**
+ * C ref: display.c unset_seenv — clear the seenv bit for direction
+ * from (x0,y0) toward adjacent (x1,y1). Used by vault blackout.
+ */
+export function unset_seenv(lev, x0, y0, x1, y1) {
+    if (!lev) return;
+    const dx = (x1 | 0) - (x0 | 0);
+    const dy = (y0 | 0) - (y1 | 0);
+    // C display.c seenv_matrix (SVALL at center, unlike vision.js copy)
+    const seenv_matrix = [
+        [SV2, SV1, SV0],
+        [SV3, SVALL, SV7],
+        [SV4, SV5, SV6],
+    ];
+    const bit = seenv_matrix[dy + 1]?.[dx + 1];
+    if (bit != null) lev.seenv = (lev.seenv | 0) & ~bit;
+}
+
 // C ref: display.c _map_location(x,y,show) — remember non-living contents
 // (object / trap / engraving / background); paint when show.
 // Used under hero/monster so out-of-sight memory keeps the object glyph.
 // Named omissions: tseen traps; visible_region_at after show.
-function map_location(x, y, show) {
+export function map_location(x, y, show) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     const mem = !!game.level?.flags?.hero_memory;

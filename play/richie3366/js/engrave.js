@@ -89,6 +89,12 @@ export function engr_at(x, y) {
     return null;
 }
 
+/** C ref: engrave.c del_engr_at — delete any engraving at <x,y>. */
+export function del_engr_at(x, y) {
+    const ep = engr_at(x, y);
+    if (ep) del_engr(ep);
+}
+
 /** C ref: engrave.c del_engr — unlink one engraving. */
 export function del_engr(ep) {
     if (!ep) return;

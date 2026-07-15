@@ -462,15 +462,44 @@ async function menu_pick(title, bodyLines, choices) {
     }
 }
 
+/**
+ * C ref: role.c maybe_skip_seps — count role-menu lines vs tty rows;
+ * excess 1–2 means squeeze blank separator(s) so the menu fits on one page.
+ * Counts only roles compatible with current RACE/GEND/ALGN (not roles.length).
+ */
+function maybe_skip_seps(rows, aspect) {
+    if (aspect !== RS_ROLE) return 0;
+    const flags = f();
+    const RACE = flags.initrace;
+    const GEND = flags.initgend;
+    const ALGN = flags.initalign;
+    let n = 4; // title+sep, aspect header+sep
+    for (let i = 0; i < roles.length; i++) {
+        if (ok_role(i, RACE, GEND, ALGN) && ok_race(i, RACE, GEND, ALGN)
+            && ok_gend(i, RACE, GEND, ALGN) && ok_align(i, RACE, GEND, ALGN)) {
+            n++;
+        }
+    }
+    n += 2; // random + separator
+    n += 5; // race/gender/align first, filter, quit
+    n += 1; // footer/prompt
+    if (rows > 0 && n > rows) return n - rows;
+    return 0;
+}
+
 async function pick_role_menu() {
     const flags = f();
     rigid_role_checks();
     const RACE = flags.initrace;
     const GEND = flags.initgend;
     const ALGN = flags.initalign;
-    const choices = [];
-    const body = [{ text: aspect_header(), attr: 0 }, { text: '', attr: 0 }];
+    const rows = game.nhDisplay?.rows || 24;
+    const excess = maybe_skip_seps(rows, RS_ROLE);
+    // C plsel_startmenu: omit blank after aspect header when excess == 2
+    const body = [{ text: aspect_header(), attr: 0 }];
+    if (excess !== 2) body.push({ text: '', attr: 0 });
     let lastch = '';
+    const choices = [];
     for (let i = 0; i < roles.length; i++) {
         if (!(ok_role(i, RACE, GEND, ALGN)
             && ok_race(i, RACE, GEND, ALGN)
@@ -492,11 +521,7 @@ async function pick_role_menu() {
         body.push(line);
         if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
     }
-    // C maybe_skip_seps(RS_ROLE): on 24-row tty excess is usually 1–2 →
-    // omit blank between Random and Pick-race-first (seed0077 layout).
-    const rows = game.nhDisplay?.rows || 24;
-    const roleLines = 4 + roles.length + 2 + 5 + 1;
-    const excess = rows > 0 && roleLines > rows ? roleLines - rows : 0;
+    // C: if (excess < 1 || excess > 2) add_menu_str("") between Random and extras
     if (excess < 1 || excess > 2)
         body.push({ text: '', attr: 0 });
     for (const which of [RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter, ROLE_NONE]) {
