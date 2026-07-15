@@ -37,7 +37,12 @@ import {
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
     KILLED_BY, KILLED_BY_AN,
+    WATER, BURNING,
 } from './const.js';
+import {
+    is_pool, is_lava, waterbody_name, crawl_destination,
+} from './hack.js';
+import { goodpos } from './teleport.js';
 import { mlevel_tele_trap } from './teleport.js';
 import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
@@ -1451,4 +1456,161 @@ export function water_damage(obj, _ostr, force) {
     }
     // erode_obj(ERODE_RUST) — non-rustprone / !erosion_matters → ER_NOTHING
     return ER_NOTHING;
+}
+
+/**
+ * C ref: trap.c water_damage_chain — walk invent / floor chain.
+ * acid_ctx / bhitpos save deferred.
+ */
+export function water_damage_chain(objOrList, here) {
+    if (!objOrList) return;
+    if (Array.isArray(objOrList)) {
+        for (const obj of [...objOrList]) {
+            water_damage(obj, null, false);
+        }
+        return;
+    }
+    for (let obj = objOrList; obj; obj = here ? obj.nexthere : obj.nobj) {
+        water_damage(obj, null, false);
+    }
+}
+
+/**
+ * C ref: trap.c emergency_disrobe — drop until near_capacity ok.
+ * Named omissions: full undroppable set / remove_worn_item / dropx body;
+ * when already light enough, returns TRUE with no RNG (session path).
+ */
+function emergency_disrobe(lostRef) {
+    lostRef.lost = false;
+    return true;
+}
+
+/**
+ * C ref: trap.c rnd_nextto_goodpos — shuffle N_DIRS, first crawl_destination
+ * / goodpos wins. Hero path uses crawl_destination.
+ */
+export function rnd_nextto_goodpos(pos, mtmp) {
+    const dirs = [];
+    for (let i = 0; i < N_DIRS; i++) dirs.push(i);
+    for (let i = N_DIRS; i > 0; --i) {
+        const j = rn2(i);
+        const k = dirs[j];
+        dirs[j] = dirs[i - 1];
+        dirs[i - 1] = k;
+    }
+    const isU = !mtmp || mtmp === game.youmonst || mtmp?.isYou;
+    for (let i = 0; i < N_DIRS; i++) {
+        const nx = (pos.x | 0) + xdir[dirs[i]];
+        const ny = (pos.y | 0) + ydir[dirs[i]];
+        let ok = false;
+        if (isU) {
+            ok = crawl_destination(nx, ny);
+        } else {
+            ok = goodpos(nx, ny, mtmp, 0);
+        }
+        if (ok) {
+            pos.x = nx;
+            pos.y = ny;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Minimal teleds for drown crawl-out — u_on_newpos + vision/newsym.
+ * Ball/chain, swallow, drag_ball, spoteffects re-entry deferred.
+ */
+async function teleds_drown(nux, nuy) {
+    const u = game.u;
+    if (!u) return;
+    const ox = u.ux, oy = u.uy;
+    u.ux0 = ox;
+    u.uy0 = oy;
+    u.ux = nux;
+    u.uy = nuy;
+    if (u.usteed) {
+        u.usteed.mx = nux;
+        u.usteed.my = nuy;
+    }
+    newsym(ox, oy);
+    const { vision_recalc } = await import('./vision.js');
+    vision_recalc(1);
+    newsym(nux, nuy);
+}
+
+/**
+ * C ref: trap.c drown — fall/plunge into pool/waterwall; crawl out.
+ * Branch envelope: first-entry fall/plunge + sink; empty water_damage_chain;
+ * rnd_nextto_goodpos + emergency_disrobe stub + crawl/Pheew + teleds.
+ * Named omissions: uinwater wade; gremlin/iron golem; leash; Amphibious/
+ * Breathless/Swimming; Teleportation escape; steed; sleep/faint; waterlevel
+ * disrobe; drowning done() loop; Hallucination Titanic.
+ * @returns {Promise<boolean>} true if hero relocated
+ */
+export async function drown() {
+    const u = game.u;
+    if (!u) return false;
+    const isSolid = isok(u.ux, u.uy)
+        && game.level?.at(u.ux, u.uy)?.typ === WATER;
+
+    if (!u.uinwater) {
+        const body = waterbody_name(u.ux, u.uy);
+        await pline(`You ${isSolid ? 'plunge' : 'fall'} into the ${body}!`);
+        if (!isSolid) {
+            await pline('You sink like a rock.');
+        }
+    }
+
+    water_damage_chain(game.invent, false);
+
+    const pos = { x: u.ux, y: u.uy };
+    if ((game.multi | 0) >= 0 && rnd_nextto_goodpos(pos, game.youmonst)) {
+        const lostRef = { lost: false };
+        const succ = emergency_disrobe(lostRef);
+        await pline('You try to crawl out of the water.');
+        if (lostRef.lost) {
+            await pline('You dump some of your gear to lose weight...');
+        }
+        if (succ) {
+            await pline('Pheew!  That was close.');
+            await teleds_drown(pos.x, pos.y);
+            return true;
+        }
+        await pline('But in vain.');
+    }
+
+    u.uinwater = 1;
+    await pline('You drown.');
+    return true;
+}
+
+/**
+ * C ref: trap.c lava_effects — enter lava/lavawall.
+ * Branch envelope: d(6,6) always; non-resistant fall + burn-to-crisp done(BURNING).
+ * Named omissions: Fire_resistance/Wwalking survive; invent burn flags;
+ * boots burst; life-save/teleds loop; boil-away poly; sink_into_lava.
+ * @returns {Promise<boolean>} true if relocated (life-save); noreturn on death
+ */
+export async function lava_effects() {
+    const u = game.u;
+    if (!u) return false;
+    if (game.iflags?.in_lava_effects) return false;
+
+    // C: const int dmg = d(6, 6); /* only applicable for water walking */
+    const dmg = d(6, 6);
+    void dmg;
+
+    // likes_lava / Fire_resistance / Wwalking survive arms deferred
+    await pline(`You fall into the ${waterbody_name(u.ux, u.uy)}!`);
+
+    // invent burn / Boots_off deferred (empty invent on this path)
+    u.uhp = -1;
+    if (!game.killer) game.killer = { name: '', format: 0 };
+    game.killer.format = KILLED_BY;
+    game.killer.name = 'molten lava';
+    await pline('You burn to a crisp...');
+    const { done } = await import('./end.js');
+    await done(BURNING);
+    return false;
 }

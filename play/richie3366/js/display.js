@@ -34,10 +34,11 @@ import {
     VENOM_CLASS, objectNames,
 } from './objects.js';
 import {
-    NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+    NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
+    CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN,
     DEC_TO_UNICODE,
 } from './terminal.js';
-import { update_lastseentyp } from './dungeon.js';
+import { update_lastseentyp, In_tutorial } from './dungeon.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
@@ -800,6 +801,31 @@ function terrain_glyph(loc, x, y) {
     case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false };
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    // C ref: display.c back_to_glyph + defsym.h PCHAR — pool/moat/water/lava/ice.
+    // Primary: '}' (pool/lava/water) / '.' (ice). DECgraphics: S_pool/S_lava/
+    // S_lavawall/S_water \xe0 meta-` diamond; S_ice \xfe meta-~.
+    // DRAWBRIDGE_UP under-typ deferred (still default '?').
+    case POOL:
+    case MOAT:
+        return dec
+            ? { ch: '`', color: CLR_BLUE, dec: true }
+            : { ch: '}', color: CLR_BLUE, dec: false };
+    case WATER:
+        return dec
+            ? { ch: '`', color: CLR_BRIGHT_BLUE, dec: true }
+            : { ch: '}', color: CLR_BRIGHT_BLUE, dec: false };
+    case LAVAPOOL:
+        return dec
+            ? { ch: '`', color: CLR_RED, dec: true }
+            : { ch: '}', color: CLR_RED, dec: false };
+    case LAVAWALL:
+        return dec
+            ? { ch: '`', color: CLR_ORANGE, dec: true }
+            : { ch: '}', color: CLR_ORANGE, dec: false };
+    case ICE:
+        return dec
+            ? { ch: '~', color: CLR_CYAN, dec: true }
+            : { ch: '.', color: CLR_CYAN, dec: false };
     // C ref: display.c back_to_glyph — walls/SDOOR use wall_angle(seenv)
     case SDOOR:
     case HWALL:
@@ -1475,10 +1501,10 @@ function _statusLine1() {
 let _lastStatus1 = '';
 let _lastStatus2 = '';
 
-// C ref: botl.c describe_level — "Dlvl:%-2d" uses depth(&u.uz), not dunlev;
-// Xp:/T: gated by flags.showexp / flags.time (default off);
+// C ref: botl.c describe_level — "Dlvl:%-2d" / "Tutorial:%-2d" uses
+// depth(&u.uz), not dunlev; Xp:/T: gated by flags.showexp / flags.time;
 // BL_CONDITION Ride when u.usteed (botl.c condtests[bl_ride]).
-// Named omissions: Knox/quest/endgame/tutorial describe_level arms.
+// Named omissions: Knox/quest/endgame describe_level arms.
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
@@ -1490,7 +1516,8 @@ function _statusLine2() {
     if (hp > 9999) hp = 9999;
     let hpmax = u.uhpmax | 0;
     if (hpmax > 9999) hpmax = 9999;
-    let s = `Dlvl:${dlvl} $:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
+    const levtag = In_tutorial(u.uz) ? 'Tutorial' : 'Dlvl';
+    let s = `${levtag}:${dlvl} $:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (flags.showexp) s += `/${u.uexp || 0}`;
     if (flags.time) s += ` T:${game.moves || 1}`;
     // C windows.c BL_MASK_RIDE → " Ride" (leading space in strcat)
@@ -1671,9 +1698,9 @@ function _buildScreenOutput() {
         }
         // Map — write characters to grid (DEC → Unicode for browser display).
         // Only convert glyphs that frozen screen-decode DEC_MAP equates back
-        // (walls/doors/floor ·). S_altar DECgraphics meta-{ is π in
-        // DEC_TO_UNICODE but NOT in that comparator map — keep raw '{' so
-        // serialize_for_scoring matches C SO+{ (renderCell leaves '{').
+        // (walls/doors/floor ·). S_altar meta-{ and S_pool/S_lava/S_water
+        // meta-` are in DEC_TO_UNICODE but NOT in DEC_MAP — keep raw so
+        // serialize_for_scoring matches C SO+ch (renderCell leaves them).
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
@@ -1681,7 +1708,8 @@ function _buildScreenOutput() {
                 let ch = loc.disp_ch;
                 if (loc.disp_decgfx) {
                     const uni = DEC_TO_UNICODE[ch];
-                    if (uni && ch !== '{') ch = uni;
+                    // DEC_MAP: walls/doors/a/~ only — not '{' or '`'
+                    if (uni && ch !== '{' && ch !== '`') ch = uni;
                 }
                 const sr = y + 1;
                 // Don't clobber --More-- on row 1

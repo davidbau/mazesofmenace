@@ -20,8 +20,10 @@ import {
     stairway_find_from,
     u_on_upstairs,
     u_on_newpos,
+    u_on_rndspot,
     mklev,
 } from './mklev.js';
+import { In_tutorial } from './dungeon.js';
 import { keepdogs, losedogs } from './dog.js';
 import { initrack } from './track.js';
 import { m_at, mnexto } from './mon.js';
@@ -38,6 +40,44 @@ import {
 import { objectNames } from './objects.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { PM_TOURIST } from './generated/monsters_data.js';
+
+/**
+ * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
+ * Stash invent (preserve owornmask as restore flag) and clear worn slots
+ * so find_ac → base 10. Named omissions: u/disco/mvitals/spl_book backup;
+ * leave-tutorial restore path.
+ */
+function tutorial_enter_gamestate() {
+    if (game.gmst_stored) return;
+    game.gmst_moves = game.moves | 0;
+    const stash = [];
+    const inv = game.invent || [];
+    const u = game.u || {};
+    while (inv.length) {
+        const otmp = inv[0];
+        const wornmask = otmp.owornmask || 0;
+        // C: setnotworn(otmp) — clear slots; does NOT call find_ac
+        if (wornmask) {
+            otmp.owornmask = 0;
+            for (const slot of [
+                'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
+                'uleft', 'uright', 'uamul', 'ublindf',
+            ]) {
+                if (u[slot] === otmp) u[slot] = null;
+            }
+            if (u.uwep === otmp) u.uwep = null;
+            if (u.uswapwep === otmp) u.uswapwep = null;
+            if (u.uqwep === otmp) u.uqwep = null;
+        }
+        inv.shift();
+        otmp.owornmask = wornmask;
+        stash.push(otmp);
+    }
+    game.invent = [];
+    game.gmst_invent = stash;
+    // C: u.uac stays stale until allmain once-per-input find_ac()
+    game.gmst_stored = true;
+}
 
 /**
  * C ref: do.c danger_uprops — Stoned/Slimed/Strangled/Sick.
@@ -174,12 +214,24 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
     if (!u?.uz) return;
 
-    const up = depth_of(newlevel) < depth_of(u.uz);
+    let up = depth_of(newlevel) < depth_of(u.uz);
     const newdungeon = (u.uz.dnum | 0) !== (newlevel.dnum | 0);
     const new_ledger = ledger_no(newlevel);
     if (new_ledger <= 0) return; // C: done(ESCAPED)
 
     if (on_level(newlevel, u.uz)) return;
+
+    // C: do.c — tutorial(TRUE/FALSE) via nhcore when crossing tutorial branch.
+    if (newdungeon) {
+        if (In_tutorial(newlevel)) {
+            game.flags = game.flags || {};
+            game.flags.in_tutorial_branch = true;
+            tutorial_enter_gamestate();
+        } else if (In_tutorial(u.uz)) {
+            game.flags && (game.flags.in_tutorial_branch = false);
+            up = false; // C: re-enter level 1 as if starting new game
+        }
+    }
 
     // C: if (!iflags.nofollowers) keepdogs(FALSE)
     if (!game.iflags?.nofollowers) keepdogs(false);
@@ -225,6 +277,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     game.ftrap = null;
     game.head_engr = null;
     game.level = null;
+    // C: memset updest/dndest before getlev/mklev; fixup_special re-fills.
+    game.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+    game.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
 
     const info = game.level_info[new_ledger];
     const exists = !!(info && (info.flags & 2)); // LFILE_EXISTS
@@ -280,6 +335,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                     : 'You descend the stairs.');
             }
         }
+    } else if (!at_stairs) {
+        // C: trap door / level_tele / tutorial UTOTYPE_NONE → u_on_rndspot
+        // Portal MAGIC_PORTAL find deferred (falls through when portal=true).
+        if (!portal) u_on_rndspot(up ? 1 : 0);
     }
 
     game.at_ladder = false;

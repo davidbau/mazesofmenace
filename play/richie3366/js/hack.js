@@ -7,6 +7,8 @@ import {
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
     is_pit,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM,
+    IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
 } from './const.js';
 import { pline, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
@@ -549,6 +551,194 @@ function move_update(newlev) {
         if (!u.ushops.includes(c)) left += c;
     }
     u.ushops_left = left;
+}
+
+// --- swim / liquid move danger (hack.c swim_move_danger) -----------------
+
+/** C ref: dbridge.c is_waterwall — drawbridge under deferred. */
+function is_waterwall_at(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    return !!(loc && IS_WATERWALL(loc.typ));
+}
+
+/**
+ * C ref: dbridge.c is_pool — POOL/MOAT/WATER; juiblex/drawbridge arms deferred.
+ */
+export function is_pool(x, y) {
+    if (!isok(x, y)) return false;
+    const typ = game.level?.at(x, y)?.typ;
+    return typ === POOL || typ === MOAT || typ === WATER;
+}
+
+/**
+ * C ref: dbridge.c is_lava — LAVAPOOL/LAVAWALL; drawbridge-under deferred.
+ */
+export function is_lava(x, y) {
+    if (!isok(x, y)) return false;
+    const typ = game.level?.at(x, y)?.typ;
+    return typ === LAVAPOOL || typ === LAVAWALL;
+}
+
+/** C ref: hacklib.c / pline.h hliquid — Hallucination rename deferred. */
+function hliquid(waterish) {
+    return waterish;
+}
+
+/**
+ * C ref: pager.c waterbody_name — pool/moat/lava/wall; medusa/juiblex/
+ * samurai pond / Hallucination / SURFACE_AT drawbridge deferred.
+ */
+export function waterbody_name(x, y) {
+    if (!isok(x, y)) return 'drink';
+    const typ = game.level?.at(x, y)?.typ;
+    if (typ === LAVAPOOL) return `molten ${hliquid('lava')}`;
+    if (typ === POOL) return `pool of ${hliquid('water')}`;
+    if (typ === MOAT) return 'moat';
+    if (IS_WATERWALL(typ)) return `wall of ${hliquid('water')}`;
+    if (typ === LAVAWALL) return `wall of ${hliquid('lava')}`;
+    return 'water';
+}
+
+/**
+ * C ref: hacklib.c ing_suffix — gerund; on/off/with split + full vowel
+ * doubling kept for "step"→"stepping".
+ */
+function ing_suffix(s) {
+    let buf = String(s);
+    const vowel = 'aeiouwy';
+    let onoff = '';
+    if (/\s+on$/i.test(buf) || /\s+off$/i.test(buf) || /\s+with$/i.test(buf)) {
+        const sp = buf.lastIndexOf(' ');
+        onoff = buf.slice(sp);
+        buf = buf.slice(0, sp);
+    }
+    const n = buf.length;
+    if (n >= 2 && buf.slice(-2).toLowerCase() === 'er') {
+        // slither + ing
+    } else if (n >= 3
+        && !vowel.includes(buf[n - 1].toLowerCase())
+        && vowel.includes(buf[n - 2].toLowerCase())
+        && !vowel.includes(buf[n - 3].toLowerCase())) {
+        buf += buf[n - 1]; // tip → tipp
+    } else if (n >= 2 && buf.slice(-2).toLowerCase() === 'ie') {
+        buf = `${buf.slice(0, -2)}y`;
+    } else if (n >= 1 && buf[n - 1].toLowerCase() === 'e') {
+        buf = buf.slice(0, -1);
+    }
+    return `${buf}ing${onoff}`;
+}
+
+/**
+ * C ref: hack.c u_locomotion — Lev/Fly capitalize path; poly locomotion deferred.
+ */
+function u_locomotion(defWord) {
+    const u = game.u || {};
+    if (u.Levitation) return 'float';
+    if (u.Flying) return 'fly';
+    return defWord;
+}
+
+/**
+ * C ref: hack.c u_simple_floortyp — grounded pool/lava vs air; poly
+ * !grounded flyer arm deferred (treat as grounded unless Lev/Fly).
+ */
+function u_simple_floortyp(x, y) {
+    const u = game.u || {};
+    const uInAir = !!(u.Levitation || u.Flying);
+    if (is_waterwall_at(x, y)) return WATER;
+    const loc = game.level?.at(x, y);
+    if (loc?.typ === LAVAWALL) return LAVAWALL;
+    if (!uInAir) {
+        if (is_pool(x, y)) return POOL;
+        if (is_lava(x, y)) return LAVAPOOL;
+    }
+    return ROOM;
+}
+
+/**
+ * C ref: hack.c handle_tip — tips option + once-per-bit context.tips.
+ * TIP_ENHANCE / TIP_UNTRAP_MON / TIP_GETPOS deferred (callers elsewhere).
+ */
+export async function handle_tip(tip) {
+    if (game.flags?.tips === false) return false;
+    if (tip < 0 || tip >= 4 /* NUM_TIPS */) return false;
+    if (!game.context) game.context = {};
+    const bits = game.context.tips | 0;
+    if (bits & (1 << tip)) return false;
+    game.context.tips = bits | (1 << tip);
+    if (tip === TIP_SWIM) {
+        // C: visctrl(cmd_from_func(do_reqmenu)) → 'm' under default binds
+        await pline("(Tip: use 'm' prefix to step in if you really want to.)");
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: hack.c swim_move_danger — ParanoidSwim / liquid-wall avoid pline.
+ * Known_wwalking / Known_lwalking / steed / Underwater pool stay deferred
+ * beyond the seenv + nopick + ParanoidSwim|liquid_wall envelope used here.
+ * @returns {Promise<boolean>} true → stop move (dangerous)
+ */
+export async function swim_move_danger(x, y) {
+    const u = game.u || {};
+    const newtyp = u_simple_floortyp(x, y);
+    const liquidWall = IS_WATERWALL(newtyp) || newtyp === LAVAWALL;
+    const loc = game.level?.at(x, y);
+
+    if (u.Underwater && (is_pool(x, y) || IS_WATERWALL(newtyp))) return false;
+
+    if (newtyp !== u_simple_floortyp(u.ux, u.uy)
+        && !u.Stunned && !u.Confusion && loc?.seenv
+        && (is_pool(x, y) || is_lava(x, y) || liquidWall)) {
+        // Known_wwalking / Known_lwalking deferred → treat as unknown
+        if ((is_pool(x, y) /* && !Known_wwalking */)
+            || (is_lava(x, y) && !is_lava(u.ux, u.uy))
+            || liquidWall) {
+            if (game.context?.nopick) {
+                // m-prefix: allow step; suppress future tip
+                game.context.tips = (game.context.tips | 0) | (1 << TIP_SWIM);
+                return false;
+            }
+            const bits = game.flags?.paranoia_bits;
+            const paranoidSwim = bits == null
+                ? true
+                : (bits & PARANOID_SWIM) !== 0;
+            if (paranoidSwim || liquidWall) {
+                await pline(`You avoid ${ing_suffix(u_locomotion('step'))} into the ${waterbody_name(x, y)}.`);
+                await handle_tip(TIP_SWIM);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: hack.c crawl_destination — orthogonal always; diagonal door/
+ * squeeze checks. NODIAG / Passes_walls / bad_rock squeeze deferred →
+ * diagonal allowed when goodpos.
+ */
+export function crawl_destination(x, y) {
+    const u = game.u;
+    if (!u) return false;
+    // Lazy goodpos via teleport to avoid hack→teleport→… cycles at load
+    // Inline ACCESSIBLE floor check approximating goodpos for hero crawl.
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    // C: goodpos(x,y,&youmonst,0) — pool/lava not good for grounded hero
+    if (is_pool(x, y) || is_lava(x, y) || IS_WATERWALL(loc.typ)
+        || loc.typ === LAVAWALL) return false;
+    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) return false;
+    if (IS_DOOR(loc.typ) && closed_door(x, y)) return false;
+    // occupied by monster
+    if (m_at(x, y)) return false;
+    if (x === u.ux || y === u.uy) return true;
+    // diagonal: intact doorway ban
+    if (IS_DOOR(loc.typ) && !doorless_door(x, y)) return false;
+    return true;
 }
 
 /**

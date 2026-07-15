@@ -117,11 +117,14 @@ export class NethackGame {
             end_around: 2,
             end_own: false,
             paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
+            // C options.c / optlist.h — tips default On
+            tips: true,
             ...opts.flags,
         };
         if (g.flags.paranoia_bits == null) {
             g.flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
         }
+        if (g.flags.tips == null) g.flags.tips = true;
         if (!g.flags.end_disclose || typeof g.flags.end_disclose !== 'string') {
             g.flags.end_disclose = 'n'.repeat(6);
         }

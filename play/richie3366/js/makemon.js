@@ -50,6 +50,7 @@ import {
     M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET,
+    AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
 import { mksobj, mkobj, weight, objects_at } from './mkobj.js';
@@ -159,13 +160,36 @@ function uncommon(mndx) {
     return !!(ptr.geno & G_HELL);
 }
 
-// C ref: makemon.c align_shift — DoD is unaligned → always 0
-function align_shift(_ptr) {
-    return 0;
+// C ref: makemon.c align_shift — special-level then dungeon align bias.
+// Named omission: static oldmoves cache (recomputes Is_special each call).
+function align_shift(ptr) {
+    const uz = game.u?.uz;
+    const slev = (game.sp_levchn || []).find(s =>
+        s?.dlevel
+        && (s.dlevel.dnum | 0) === (uz?.dnum | 0)
+        && (s.dlevel.dlevel | 0) === (uz?.dlevel | 0));
+    const align = slev?.flags?.align
+        || game.dungeons?.[uz?.dnum | 0]?.flags?.align
+        || AM_NONE;
+    const mal = ptr?.maligntyp | 0;
+    switch (align) {
+    case AM_LAWFUL:
+        return Math.trunc((mal + 20) / (2 * ALIGNWEIGHT));
+    case AM_NEUTRAL:
+        return Math.trunc((20 - Math.abs(mal)) / ALIGNWEIGHT);
+    case AM_CHAOTIC:
+        return Math.trunc(-(mal - 20) / (2 * ALIGNWEIGHT));
+    default:
+        return 0;
+    }
 }
 
 // C ref: makemon.c temperature_shift
-function temperature_shift(_ptr) {
+function temperature_shift(ptr) {
+    const temp = game.level?.flags?.temperature | 0;
+    if (!temp) return 0;
+    // pm_resistance fire/cold — MR bits deferred; temperature rare on tut-1
+    void ptr;
     return 0;
 }
 

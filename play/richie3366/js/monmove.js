@@ -42,6 +42,7 @@ import {
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
     M_AP_FURNITURE,
+    STRAT_WAITFORU, STRAT_WAITMASK,
 } from './const.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
@@ -1084,7 +1085,19 @@ export async function m_move(mtmp, after) {
 
 // C ref: monmove.c dochug()
 export async function dochug(mtmp) {
-    if (!mtmp.mcanmove) return 0;
+    // C: STRAT_ARRIVE m_arrival deferred
+    // C: clear WAITFORU when hero seen or wounded
+    if ((mtmp.mstrategy & STRAT_WAITFORU)
+        && (m_canseeu(mtmp) || (mtmp.mhp | 0) < (mtmp.mhpmax | 0))) {
+        mtmp.mstrategy &= ~STRAT_WAITFORU;
+    }
+    // C: frozen or still waiting — no distfleeck / movement RNG
+    if (!mtmp.mcanmove || (mtmp.mstrategy & STRAT_WAITMASK)) {
+        if (game.u?.Hallucination) newsym(mtmp.mx, mtmp.my);
+        // STRAT_CLOSE quest_talk deferred
+        return 0;
+    }
+
     // C: there is a chance we will wake it
     if (mtmp.msleeping && !disturb(mtmp)) {
         if (game.u?.Hallucination) newsym(mtmp.mx, mtmp.my);

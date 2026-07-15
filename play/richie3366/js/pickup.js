@@ -1,39 +1,116 @@
 // pickup.js — Floor look / autopickup / manual `,` pickup.
-// C ref: pickup.c — check_here(), pickup(), pickup_object(), pick_obj();
-//        hack.c — spoteffects(), dopickup(), pickup_checks().
+// C ref: pickup.c — check_here(), pickup(), pickup_object(), pick_obj(),
+//        describe_decor(); hack.c — spoteffects(), dopickup(), pickup_checks().
 
 import { game } from './gstate.js';
 import {
     objects_at, obj_extract_self, splitobj,
 } from './mkobj.js';
-import { look_here, observe_object } from './invent.js';
-import { nomul, check_special_room } from './hack.js';
+import { look_here, observe_object, dfeature_at } from './invent.js';
+import { nomul, check_special_room, is_pool, is_lava } from './hack.js';
 import { flush_screen, pline, newsym } from './display.js';
 import { addinv } from './u_init.js';
-import { xprname } from './objnam.js';
+import { xprname, an } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, OBJ_FLOOR, is_pit,
+    STONE, ICE, DRAWBRIDGE_UP,
+    IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL,
+    LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
 } from './const.js';
-import { t_at, dotrap, NO_TRAP_FLAGS } from './trap.js';
+import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
+
+/** C ref: hacklib.c upstart — capitalize first letter. */
+function upstart(str) {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * C ref: rm.h SURFACE_AT — under-typ for DRAWBRIDGE_UP deferred → raw typ.
+ */
+function surface_at(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return STONE;
+    // C: DRAWBRIDGE_UP → db_under_typ(drawbridgemask); deferred
+    if (lev.typ === DRAWBRIDGE_UP) return lev.typ;
+    return lev.typ;
+}
+
+/**
+ * C ref: pickup.c describe_decor — mention_decor feedback for features.
+ * Branch envelope: dfeature_at + skip open door/doorway; furniture/typ
+ * change gate; verbose "There is %s here." Named omissions: Fumbling
+ * deferred_decor, waterbody_name swamp/pool rename, ice Norep,
+ * back_on_ground after pool/lava/ice, decor_fumble/levitate overrides.
+ */
+export async function describe_decor() {
+    const u = game.u;
+    if (!u) return false;
+
+    if (!game.iflags) game.iflags = {};
+    const iflags = game.iflags;
+    if (iflags.prev_decor == null) iflags.prev_decor = STONE;
+
+    const ltyp = surface_at(u.ux, u.uy);
+    let dfeature = dfeature_at(u.ux, u.uy);
+
+    // C: skip ordinary open door / doorway (broken/closed still mentioned)
+    const doorhere = !!(dfeature && (dfeature === 'open door'
+        || dfeature === 'doorway'));
+    const waterhere = !!(dfeature && dfeature === 'pool of water');
+    if (doorhere || u.Underwater
+        || (ltyp === ICE && IS_POOL(iflags.prev_decor))) {
+        dfeature = null;
+    }
+
+    let res = true;
+    if (ltyp === iflags.prev_decor && !IS_FURNITURE(ltyp)) {
+        res = false;
+    } else if (dfeature) {
+        // waterbody_name deferred — keep "pool of water"
+        void waterhere;
+        if (dfeature !== 'swamp' && ltyp !== ICE) {
+            dfeature = an(dfeature);
+        }
+        let outbuf;
+        if (game.flags?.verbose !== false) {
+            outbuf = `There is ${dfeature} here.`;
+        } else {
+            outbuf = `${upstart(dfeature)}.`;
+        }
+        // C: ICE + mention_decor → Norep; use pline for all (Norep deferred)
+        await pline(outbuf);
+    } else if (!u.Underwater) {
+        // C: back_on_ground when leaving pool/lava/ice — deferred
+    }
+
+    // C: only persist prev_decor when mention_decor is On
+    iflags.prev_decor = game.flags?.mention_decor ? ltyp : STONE;
+    return res;
+}
 
 /**
  * C ref: pickup.c check_here — count floor objects and look_here / engr.
- * Named omissions: flags.mention_decor → describe_decor / LOOKHERE_SKIP_DFEATURE;
- * uchain skip.
+ * Named omissions: uchain skip.
  */
 export async function check_here(picked_some) {
     const u = game.u;
     if (!u) return;
+
+    let lhflags = picked_some ? LOOKHERE_PICKED_SOME : 0;
+    // C: flags.mention_decor → describe_decor; may set LOOKHERE_SKIP_DFEATURE
+    if (game.flags?.mention_decor) {
+        if (await describe_decor()) {
+            lhflags |= LOOKHERE_SKIP_DFEATURE;
+        }
+    }
 
     let ct = 0;
     for (let obj = objects_at(u.ux, u.uy); obj; obj = obj.nexthere) {
         // C: if (obj != uchain) ct++;
         ct++;
     }
-
-    let lhflags = picked_some ? 0x1 : 0; // LOOKHERE_PICKED_SOME
-    // mention_decor / describe_decor → LOOKHERE_SKIP_DFEATURE deferred
 
     if (ct) {
         if (game.context?.run) nomul(0);
@@ -100,21 +177,36 @@ export async function pickup_object(obj, count, telekinesis) {
 
 /**
  * C ref: pickup.c pickup(what).
- * Ported envelope: autopickup && !flags.pickup → check_here(FALSE);
- * manual `,` with non-traditional menu + AUTOSELECT_SINGLE: one floor
- * object → pickup_object without prompt (returns n_tried>0 → time).
- * Deferred: unconscious skip, pool/lava/reach gates beyond can_reach_floor,
- * notake, run-stop before autopick, autopick()/query_objlist multi,
- * traditional yn/query_classes, hideunder, newsym_force.
+ * Ported envelope: autopickup && (nopick / !OBJ_AT / pool / lava) →
+ * describe_decor + read_engr_at; autopickup && !flags.pickup →
+ * check_here(FALSE); manual `,` AUTOSELECT_SINGLE one object.
+ * Deferred: unconscious skip, notake, autopick()/query_objlist multi,
+ * traditional yn/query_classes, hideunder, newsym_force, full is_pool.
  */
 export async function pickup(what) {
     const autopickup = what > 0;
     const count = what < 0 ? -what : 0;
+    const u = game.u;
+    if (!u) return 0;
+
+    // C: autopickup && (nopick || !OBJ_AT || pool || lava)
+    if (autopickup) {
+        const loc = game.level?.at(u.ux, u.uy);
+        const typ = loc?.typ;
+        const poolish = IS_POOL(typ) && !u.Underwater;
+        const lavaish = IS_LAVA(typ);
+        if (game.context?.nopick || !objects_at(u.ux, u.uy)
+            || poolish || lavaish) {
+            if (game.flags?.mention_decor) await describe_decor();
+            const { read_engr_at } = await import('./engrave.js');
+            await read_engr_at(u.ux, u.uy);
+            return 0;
+        }
+    }
 
     // C: autopickup && !flags.pickup → check_here(FALSE); return 0
     if (autopickup && !game.flags?.pickup) {
-        const u = game.u;
-        if (u && objects_at(u.ux, u.uy)
+        if (objects_at(u.ux, u.uy)
             && game.context?.run && game.context.run !== 8
             && !game.context?.nopick) {
             nomul(0);
@@ -123,11 +215,9 @@ export async function pickup(what) {
         return 0;
     }
 
-    const u = game.u;
-    if (!u) return 0;
-
     if (!can_reach_floor(true)) {
-        // C: describe_decor / read_engr_at arms deferred
+        // C: describe_decor even when !mention_decor; read_engr arms partial
+        await describe_decor();
         return 0;
     }
 
@@ -196,15 +286,44 @@ export async function dopickup() {
 }
 
 /**
+ * C ref: hack.c pooleffects(newspot).
+ * Branch envelope: enter pool/lava → drown/lava_effects; leave-water /
+ * steed / ceiling_hider / Wwalking arms deferred.
+ * @returns {Promise<boolean>} true → skip rest of spoteffects
+ */
+export async function pooleffects(newspot) {
+    const u = game.u;
+    if (!u) return false;
+
+    // leaving-water arm deferred
+
+    if (!u.ustuck && !u.Levitation && !u.Flying
+        && (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy))) {
+        // steed / ceiling_hider deferred
+        if (is_lava(u.ux, u.uy)) {
+            if (await lava_effects()) return true;
+        } else {
+            // C: (!Wwalking || waterwall) && (newspot || !uinwater || !(Swim|…))
+            const typ = game.level?.at(u.ux, u.uy)?.typ;
+            const waterwall = IS_WATERWALL(typ);
+            if (waterwall || newspot || !u.uinwater) {
+                if (await drown()) return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
  * C ref: hack.c spoteffects(pick).
- * Ported envelope: check_special_room; when !in_steed_dismounting — non-pit
- * pickup then dotrap then pit pickup. dotrap covers hero dart (D-0239); other
- * hero trap types still stub/no-op in trapeffect_selector. Deferred: recursion
- * guards, pool, sink fall, levitation timeout, Warning ice, hidden monster
- * surprise.
+ * Ported envelope: pooleffects; check_special_room; when
+ * !in_steed_dismounting — non-pit pickup then dotrap then pit pickup.
+ * Deferred: recursion guards, sink fall, levitation timeout, Warning ice,
+ * hidden monster surprise.
  */
 export async function spoteffects(pick) {
-    // C: check_special_room(FALSE) before pickup/dotrap (after pooleffects)
+    if (await pooleffects(true)) return;
+
     await check_special_room(false);
 
     // C: entire pickup/dotrap block gated on !gi.in_steed_dismounting

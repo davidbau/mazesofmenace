@@ -1269,7 +1269,8 @@ export function dfeature_at(x, y) {
  * `You see here`; multi NHW_MENU "Things that are here:" via
  * display_nhwindow(WIN_MESSAGE)+putstr (D-0220). Named omissions:
  * pile_limit skip_objects, Blind feel, trap+region, doname_with_price,
- * cockatrice feel, engulfer stomach.
+ * cockatrice feel, engulfer stomach. Furniture with ct==0 uses
+ * pickup.describe_decor (D-0356), not this path.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const u = game.u;

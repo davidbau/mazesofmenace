@@ -12,7 +12,7 @@ import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons, find_level } from './dungeon.js';
 import { schedule_goto, deferred_goto } from './do.js';
-import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries } from './u_init.js';
+import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
 import { makedog } from './dog.js';
 import { makemon } from './makemon.js';
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
@@ -535,6 +535,8 @@ export async function moveloop_core() {
     }
 
     // Vision + display (before getch — screen capture in nhgetch)
+    // C: allmain.c once-per-player-input find_ac() before bot/flush/rhack
+    find_ac();
     if (g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;

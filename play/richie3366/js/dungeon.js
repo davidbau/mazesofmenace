@@ -530,6 +530,13 @@ export function find_level(name) {
     return null;
 }
 
+/** C ref: dungeon.h In_tutorial — dnum == tutorial_dnum. */
+export function In_tutorial(lev) {
+    const td = game.tutorial_dnum;
+    if (td == null || td < 0) return false;
+    return (lev?.dnum | 0) === (td | 0);
+}
+
 function dname_to_dnum(s) {
     for (let i = 0; i < game.n_dgns; i++) {
         if (game.dungeons[i].dname === s) return i;
