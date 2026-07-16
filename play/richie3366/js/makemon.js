@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { depth as depth_of_level } from './hacklib.js';
+import { depth as depth_of_level, level_difficulty as level_difficulty_of } from './hacklib.js';
 import { put_saddle_on_mon } from './steed.js';
 import {
     LOW_PM,
@@ -44,18 +44,43 @@ import {
     mindless,
     is_floater,
     is_mercenary,
+    is_ndemon,
+    is_shapeshifter,
+    is_vampire,
+    is_vampshifter,
+    vampshifted,
 } from './monsters.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
-    GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, In_mines,
-    OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE,
-    M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL,
+    GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, In_mines, In_sokoban,
+    OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
+    M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
-import { mksobj, mkobj, weight, objects_at, curse } from './mkobj.js';
+import { mksobj, mkobj, mkobj_at, weight, objects_at, curse } from './mkobj.js';
+
+/** Local t_at — avoid makemon↔trap import cycle; matches trap.js t_at. */
+function t_at_local(x, y) {
+    const traps = game.level?.traps;
+    if (traps) {
+        for (const t of traps) {
+            if (t && t.tx === x && t.ty === y) return t;
+        }
+    }
+    if (Array.isArray(game.ftrap)) {
+        for (const t of game.ftrap) {
+            if (t && t.tx === x && t.ty === y) return t;
+        }
+    } else {
+        for (let t = game.ftrap; t; t = t.ntrap) {
+            if (t.tx === x && t.ty === y) return t;
+        }
+    }
+    return null;
+}
 import {
     objectNames, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, WAND_CLASS,
     FOOD_CLASS, COIN_CLASS, SCROLL_CLASS, POTION_CLASS, AMULET_CLASS,
@@ -182,7 +207,7 @@ function pm(name) {
 }
 
 function level_difficulty() {
-    return depth_of_level(game.u?.uz) || 1;
+    return level_difficulty_of(game.u?.uz) || 1;
 }
 
 // C ref: mkobj.c next_ident — duplicated here to avoid mkobj↔makemon cycle
@@ -493,6 +518,125 @@ function newmonhp(mon, ptr) {
     }
 }
 
+/** C ref: mon.c pm_to_cham — shapeshifter species index else NON_PM */
+function pm_to_cham(mndx) {
+    if (mndx < LOW_PM || mndx >= NUMMONS) return NON_PM;
+    return is_shapeshifter(mons(mndx)) ? mndx : NON_PM;
+}
+
+/** C ref: mon.c is_pool_or_lava — terrain under mon for vamp wolf gate */
+function is_pool_or_lava_at(x, y) {
+    const typ = game.level?.at(x, y)?.typ ?? 0;
+    return IS_POOL(typ) || IS_LAVA(typ);
+}
+
+/**
+ * C ref: mon.c pickvampshape — Vlad/leader/vampire alternate forms.
+ * Named omissions: mon_has_special Vlad stay-form (makemon skips newcham
+ * for Vlad); already covered geno / already-alt rn2(4) return-to-cham.
+ */
+function pickvampshape(mon) {
+    let mndx = mon.cham | 0;
+    let wolfchance = 10;
+    const uppercase_only = Is_rogue_level(game.u?.uz);
+    const PM_VLAD = pm('VLAD_THE_IMPALER');
+    const PM_VLED = pm('VAMPIRE_LEADER');
+    const PM_VAMP = pm('VAMPIRE');
+    const PM_WOLF = pm('WOLF');
+    const PM_FOG = pm('FOG_CLOUD');
+    const PM_VBAT = pm('VAMPIRE_BAT');
+
+    if (mndx === PM_VLAD) wolfchance = 3;
+    if (mndx === PM_VLAD || mndx === PM_VLED) {
+        if (!rn2(wolfchance) && !uppercase_only
+            && !is_pool_or_lava_at(mon.mx, mon.my)) {
+            mndx = PM_WOLF;
+        } else {
+            mndx = (!rn2(4) && !uppercase_only) ? PM_FOG : PM_VBAT;
+        }
+    } else if (mndx === PM_VAMP) {
+        mndx = (!rn2(4) && !uppercase_only) ? PM_FOG : PM_VBAT;
+    }
+
+    if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0
+        || ((mon.data?.mndx | 0) !== (mon.cham | 0) && !rn2(4))) {
+        return mon.cham;
+    }
+    return mndx;
+}
+
+/**
+ * C ref: mon.c select_newcham_form — vampshifter arm only.
+ * Named omissions: sandestin/doppel/chameleon/dragon-armor/random arms.
+ */
+function select_newcham_form(mon) {
+    const cham = mon.cham | 0;
+    if (cham === pm('VLAD_THE_IMPALER')
+        || cham === pm('VAMPIRE_LEADER')
+        || cham === pm('VAMPIRE')) {
+        return pickvampshape(mon);
+    }
+    return NON_PM;
+}
+
+/**
+ * C ref: mon.c mgender_from_permonst — sex from new form.
+ */
+function mgender_from_permonst(mtmp, mdat) {
+    if (is_male(mdat)) mtmp.female = 0;
+    else if (is_female(mdat)) mtmp.female = 1;
+    else if (!is_neuter(mdat)) {
+        if (!rn2(10) && !(is_vampire(mdat) || is_vampshifter(mtmp)))
+            mtmp.female = mtmp.female ? 0 : 1;
+    }
+}
+
+/**
+ * C ref: mon.c newcham — vampshifter subset for makemon / waiting revert.
+ * Named omissions: message/polyspot/worm/mimic/leash/light/inventory arms;
+ * non-vamp select_newcham_form; Protection_from_shape_changers cancel path.
+ * @returns {boolean} true if form changed
+ */
+export function newcham(mtmp, mdat, _ncflags = 0) {
+    if (!mtmp) return false;
+    const olddata = mtmp.data;
+    if (mtmp.cham === NON_PM || mtmp.cham == null) {
+        // cancelled→uncancel shapeshifter path deferred
+        return false;
+    }
+    let target = mdat;
+    if (!target) {
+        let tryct = 20;
+        do {
+            const mndx = select_newcham_form(mtmp);
+            if (mndx !== NON_PM && mndx >= LOW_PM
+                && ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) === 0) {
+                target = mons(mndx);
+                break;
+            }
+        } while (--tryct > 0);
+        if (!target) return false;
+    } else {
+        const mndx = target.mndx ?? NON_PM;
+        if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0)
+            return false;
+    }
+    if (target === olddata) return false;
+
+    mgender_from_permonst(mtmp, target);
+    const hpn = mtmp.mhp | 0;
+    const hpd = mtmp.mhpmax | 0;
+    newmonhp(mtmp, target);
+    mtmp.mhp = Math.trunc((hpn * mtmp.mhp) / hpd);
+    if (mtmp.mhp < 0 || mtmp.mhp > mtmp.mhpmax) mtmp.mhp = mtmp.mhpmax;
+    if (!mtmp.mhp) mtmp.mhp = 1;
+    mtmp.data = target;
+    mtmp.mnum = target.mndx;
+    return true;
+}
+
+export { vampshifted, is_vampshifter };
+
 // C ref: mondata.h race_peaceful / race_hostile
 function race_peaceful(ptr) {
     const mask = game.urace?.lovemask ?? 0;
@@ -758,8 +902,77 @@ function m_initweap(mtmp) {
             if (w1) mongets(mtmp, w1);
             if (!w2 && w1 !== otyp('DAGGER') && !rn2(4)) w2 = otyp('KNIFE');
             if (w2) mongets(mtmp, w2);
+        } else if (
+            // C: ptr->msound == MS_GUARDIAN — tables omit msound; gate by mndx
+            mm === pm('STUDENT') || mm === pm('ATTENDANT')
+            || mm === pm('ABBOT') || mm === pm('ACOLYTE')
+            || mm === pm('GUIDE') || mm === pm('APPRENTICE')
+            || mm === pm('CHIEFTAIN') || mm === pm('PAGE')
+            || mm === pm('ROSHI') || mm === pm('WARRIOR')
+            || mm === pm('HUNTER') || mm === pm('THUG')
+            || mm === pm('NEANDERTHAL')
+        ) {
+            // C: makemon.c m_initweap MS_GUARDIAN switch
+            switch (mm) {
+            case pm('STUDENT'):
+            case pm('ATTENDANT'):
+            case pm('ABBOT'):
+            case pm('ACOLYTE'):
+            case pm('GUIDE'):
+            case pm('APPRENTICE'):
+                if (rn2(2)) mongets(mtmp, rn2(3) ? otyp('DAGGER') : otyp('KNIFE'));
+                if (rn2(5)) {
+                    mongets(mtmp, rn2(3)
+                        ? otyp('LEATHER_JACKET')
+                        : otyp('LEATHER_CLOAK'));
+                }
+                if (rn2(3)) {
+                    mongets(mtmp, rn2(3) ? otyp('LOW_BOOTS') : otyp('HIGH_BOOTS'));
+                }
+                if (rn2(3)) mongets(mtmp, otyp('POT_HEALING'));
+                break;
+            case pm('CHIEFTAIN'):
+            case pm('PAGE'):
+            case pm('ROSHI'):
+            case pm('WARRIOR'):
+                mongets(mtmp, rn2(3) ? otyp('LONG_SWORD') : otyp('SHORT_SWORD'));
+                mongets(mtmp, rn2(3) ? otyp('CHAIN_MAIL') : otyp('LEATHER_ARMOR'));
+                if (rn2(2)) {
+                    mongets(mtmp, rn2(2) ? otyp('LOW_BOOTS') : otyp('HIGH_BOOTS'));
+                }
+                if (!rn2(3)) mongets(mtmp, otyp('LEATHER_CLOAK'));
+                if (!rn2(3)) {
+                    mongets(mtmp, otyp('BOW'));
+                    m_initthrow(mtmp, otyp('ARROW'), 12);
+                }
+                break;
+            case pm('HUNTER'):
+                mongets(mtmp, rn2(3) ? otyp('SHORT_SWORD') : otyp('DAGGER'));
+                if (rn2(2)) {
+                    mongets(mtmp, rn2(2)
+                        ? otyp('LEATHER_JACKET')
+                        : otyp('LEATHER_ARMOR'));
+                }
+                mongets(mtmp, otyp('BOW'));
+                m_initthrow(mtmp, otyp('ARROW'), 12);
+                break;
+            case pm('THUG'):
+                mongets(mtmp, otyp('CLUB'));
+                mongets(mtmp, rn2(3) ? otyp('DAGGER') : otyp('KNIFE'));
+                if (rn2(2)) mongets(mtmp, otyp('LEATHER_GLOVES'));
+                mongets(mtmp, rn2(2)
+                    ? otyp('LEATHER_JACKET')
+                    : otyp('LEATHER_ARMOR'));
+                break;
+            case pm('NEANDERTHAL'):
+                mongets(mtmp, otyp('CLUB'));
+                mongets(mtmp, otyp('LEATHER_ARMOR'));
+                break;
+            default:
+                break;
+            }
         }
-        // is_elf / MS_PRIEST / ninja / MS_GUARDIAN deferred
+        // is_elf / MS_PRIEST / ninja deferred
         break;
     case 'S_DEMON':
         // C: named demon specials then is_demon → FALLTHROUGH default
@@ -786,10 +999,20 @@ function m_initweap(mtmp) {
         if (!is_demon(ptr)) break;
         m_initweap_default(mtmp, ptr);
         break;
+    case 'S_TROLL':
+        // C: makemon.c m_initweap S_TROLL — 50% polearm kit
+        if (!rn2(2)) {
+            switch (rn2(4)) {
+            case 0: mongets(mtmp, otyp('RANSEUR')); break;
+            case 1: mongets(mtmp, otyp('PARTISAN')); break;
+            case 2: mongets(mtmp, otyp('GLAIVE')); break;
+            case 3: mongets(mtmp, otyp('SPETUM')); break;
+            }
+        }
+        break;
     case 'S_ANGEL':
     case 'S_KOP':
     case 'S_LIZARD':
-    case 'S_TROLL':
         // Deferred special cases (C-JS-MAP).
         break;
     default:
@@ -831,14 +1054,17 @@ function attacktype(ptr, aatyp) {
 // C ref: teleport.c noteleport_level — ordinary flags; hell court deferred
 function noteleport_level(mon) {
     // In_hell demon-court m_blocks_teleporting deferred (ordinary mklev rare)
-    if (game.level?.flags?.noteleport /* && !is_covetous */) return true;
+    // C: noteleport && !is_covetous(mon->data) — covetous bypass tower flags
+    const M3_COVETOUS = 0x001f;
+    const covetous = !!((mon?.data?.mflags3 ?? 0) & M3_COVETOUS);
+    if (game.level?.flags?.noteleport && !covetous) return true;
     if ((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0)) return true;
     return false;
 }
 
 /**
  * C ref: muse.c rnd_defensive_item
- * Named omissions: hell-court noteleport_level; is_covetous bypass.
+ * Named omissions: hell-court noteleport_level body.
  */
 function rnd_defensive_item(mtmp) {
     const pm_ = mtmp.data;
@@ -940,6 +1166,15 @@ function m_initinv(mtmp) {
             // begin_burn when mpickobj fails and tile unlit — deferred (no RNG)
             mpickobj(mtmp, otmp);
         }
+        break;
+    case 'S_NYMPH':
+        // C ref: makemon.c m_initinv S_NYMPH — mirror + potion of object detection
+        if (!rn2(2)) mongets(mtmp, otyp('MIRROR'));
+        if (!rn2(2)) mongets(mtmp, otyp('POT_OBJECT_DETECTION'));
+        break;
+    case 'S_LEPRECHAUN':
+        // C ref: makemon.c m_initinv S_LEPRECHAUN — mkmonmoney(d(level_difficulty(),30))
+        mkmonmoney(mtmp, d(level_difficulty(), 30));
         break;
     case 'S_HUMAN':
         if (is_mercenary(ptr)) {
@@ -1286,15 +1521,57 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
-    // C: switch (ptr->mlet) case S_MIMIC → set_mimic_sym before invent
+    // C: switch (ptr->mlet) before invent — mimic + sleepers + spider/snake.
+    // Named omissions: eel hideunder; orc/elf peace; unicorn align peace;
+    // bat hell speed; elemental invis.
     if (ptr.mlet === 'S_MIMIC') set_mimic_sym(mtmp);
+    else if (ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') {
+        // C: in_mklev → mkobj_at(RANDOM) then hideunder
+        if (game.in_mklev) {
+            if (mtmp.mx && mtmp.my) mkobj_at(RANDOM_CLASS, mtmp.mx, mtmp.my, true);
+            // hideunder deferred (no RNG at creation)
+        }
+    } else if (ptr.mlet === 'S_LEPRECHAUN') mtmp.msleeping = 1;
+    else if (ptr.mlet === 'S_JABBERWOCK' || ptr.mlet === 'S_NYMPH') {
+        // C: if (rn2(5) && !u.uhave.amulet) msleeping = 1
+        if (rn2(5) && !(game.u?.uhave?.amulet || game.u?.uhave_amulet))
+            mtmp.msleeping = 1;
+    }
+
+    // C ref: makemon.c — cham / Vlad candelabrum / newcham before invent.
+    // Named omissions: Wizard/Croesus/nemesis/pestilence mitem arms;
+    // Protection_from_shape_changers; chameleon non-vamp newcham.
+    let allow_minvent_local = allow_minvent;
+    let mitem = -1; // STRANGE_OBJECT
+    const PM_VLAD = pm('VLAD_THE_IMPALER');
+    if (ptr.mndx === PM_VLAD) mitem = otyp('CANDELABRUM_OF_INVOCATION');
+    mtmp.cham = NON_PM;
+    {
+        const mcham = pm_to_cham(ptr.mndx);
+        if (mcham !== NON_PM) {
+            mtmp.cham = mcham;
+            // Vlad stays in normal shape to carry the Candelabrum
+            if (ptr.mndx !== PM_VLAD && newcham(mtmp, null, 0))
+                allow_minvent_local = false;
+        }
+    }
+    if (mitem >= 0 && allow_minvent_local) mongets(mtmp, mitem);
+
+    // C: in_mklev ndemon/wumpus/long worm/giant eel sleep — before invent
+    if (game.in_mklev) {
+        if ((is_ndemon(ptr) || ptr.mndx === pm('WUMPUS')
+            || ptr.mndx === pm('LONG_WORM') || ptr.mndx === pm('GIANT_EEL'))
+            && !(game.u?.uhave?.amulet || game.u?.uhave_amulet)
+            && rn2(5)) {
+            mtmp.msleeping = 1;
+        }
+    }
 
     // C: allow_minvent → is_armed? m_initweap; m_initinv; domestic saddle
-    if (allow_minvent) {
+    if (allow_minvent_local) {
         if (is_armed(ptr)) m_initweap(mtmp);
         m_initinv(mtmp);
         if (!rn2(100) && is_domestic(ptr)) {
-            // C: put_saddle_on_mon(NULL) — mksobj(SADDLE) when eligible
             put_saddle_on_mon(null, mtmp);
         }
     }
@@ -1302,7 +1579,6 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)
     if (!game.in_mklev) {
         newsym(mtmp.mx, mtmp.my);
-        // MM_NOMSG appear-pline arm deferred (callers emit their own msgs)
     }
 
     return mtmp;
@@ -1310,9 +1586,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
 /**
  * C ref: makemon.c set_mimic_sym — ordinary + shop (get_shop_item) paths.
- * Named omissions: maze town/sokoban arms, altar Align2amask MCORPSENM,
+ * Named omissions: maze town arms, altar Align2amask MCORPSENM,
  * Protection_from_shape_changers early-out when hero wears the amulet
- * (stubbed false at mklev), full t_at for corridor boulder.
+ * (stubbed false at mklev).
  */
 export function set_mimic_sym(mtmp) {
     if (!mtmp) return;
@@ -1341,12 +1617,12 @@ export function set_mimic_sym(mtmp) {
         appear = 0;
     } else if (game.level?.flags?.is_maze_lev
         && !(In_mines(game.u?.uz) /* && in_town */)
-        && !rn2(2)) {
-        // Sokoban gate omitted — not on ordinary themerms path
+        && !In_sokoban(game.u?.uz) && rn2(2)) {
+        // C: !In_sokoban before rn2(2) — Sokoban must not burn this roll
         ap_type = M_AP_OBJECT;
         appear = STATUE;
-    } else if (roomno < 0 && !game.ftrap?.some?.(t => t.tx === mx && t.ty === my)) {
-        // t_at stub: no trap → boulder. Named omission: full t_at.
+    } else if (roomno < 0 && !t_at_local(mx, my)) {
+        // C: roomno < 0 && !t_at → boulder
         ap_type = M_AP_OBJECT;
         appear = BOULDER;
     } else if (rt === ZOO || rt === VAULT) {

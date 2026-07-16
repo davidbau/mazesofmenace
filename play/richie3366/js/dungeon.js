@@ -617,7 +617,8 @@ function fixup_level_locations() {
 
 // C ref: nhl_init() loads nhlib.lua which shuffles align[].
 // nhlib math.random(i) → 1+nh.rn2(i); Fisher-Yates with rn2(i) matches logged calls.
-function nhl_nhlib_align_shuffle() {
+// Also used by questpgr.com_pager_core nhl_init before loading quest.lua.
+export function nhl_nhlib_align_shuffle() {
     const align = ['law', 'neutral', 'chaos'];
     for (let i = align.length; i > 1; i--) {
         const j = rn2(i);
@@ -1041,4 +1042,205 @@ export async function show_overview(why = 0, reason = 0) {
 export async function dooverview() {
     await show_overview(0, 0);
     return ECMD_OK;
+}
+
+/** C ref: dungeon.c br_string — branch type label for print_dungeon. */
+function br_string(type) {
+    switch (type) {
+        case BR_PORTAL: return 'Portal';
+        case BR_NO_END1: return 'Connection';
+        case BR_NO_END2: return 'One way stair';
+        case BR_STAIR: return 'Stair';
+        default: return ' (unknown)';
+    }
+}
+
+/** C ref: dungeon.c chr_u_on_lvl — '*' when hero is on this d_level. */
+function chr_u_on_lvl(dlev) {
+    const u = game.u?.uz;
+    return (u?.dnum | 0) === (dlev?.dnum | 0)
+        && (u?.dlevel | 0) === (dlev?.dlevel | 0)
+        ? '*'
+        : ' ';
+}
+
+/**
+ * C ref: dungeon.c unplaced_floater — Knox still floating off n_dgns.
+ */
+function unplaced_floater(dptr, idx) {
+    if (!game.knox_level || idx !== (game.knox_level.dnum | 0)) return false;
+    const n = game.n_dgns | 0;
+    for (const br of game.branches || []) {
+        if ((br.end1?.dnum | 0) === n && (br.end2?.dnum | 0) === idx) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: dungeon.c unreachable_level — unplaced / endgame / dummy.
+ */
+function unreachable_level(lvl, unplaced) {
+    if (unplaced) return true;
+    const astral = game.astral_level;
+    const uz = game.u?.uz;
+    const heroEnd = !!(uz && astral && (uz.dnum | 0) === (astral.dnum | 0));
+    const levEnd = !!(lvl && astral && (lvl.dnum | 0) === (astral.dnum | 0));
+    if (heroEnd && !levEnd) return true;
+    const dummy = find_level('dummy');
+    if (dummy && (lvl?.dnum | 0) === (dummy.dlevel?.dnum | 0)
+        && (lvl?.dlevel | 0) === (dummy.dlevel?.dlevel | 0)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: dungeon.c tport_menu — record choice + add selectable/unreachable row.
+ * Continuous a..z then A.. menuletter; unreachable still consumes a letter.
+ */
+function tport_menu(raw, entry, lchoices, lvl, cannotreach) {
+    const idx = lchoices.idx;
+    lchoices.lev[idx] = lvl.dlevel | 0;
+    lchoices.dgn[idx] = lvl.dnum | 0;
+    lchoices.playerlev[idx] = depth_of(lvl);
+    if (cannotreach) {
+        raw.push({
+            text: `    ${entry}`,
+            selectable: false,
+            attr: 0,
+        });
+    } else {
+        raw.push({
+            text: entry,
+            selectable: true,
+            selector: lchoices.menuletter,
+            attr: 0,
+            choiceIdx: idx,
+        });
+    }
+    if (lchoices.menuletter === 'z') lchoices.menuletter = 'A';
+    else {
+        lchoices.menuletter = String.fromCharCode(
+            lchoices.menuletter.charCodeAt(0) + 1,
+        );
+    }
+    lchoices.idx++;
+}
+
+/**
+ * C ref: dungeon.c print_branch — child branches in (lower, upper] for dnum.
+ */
+function print_branch(raw, dnum, lowerBound, upperBound, bymenu, lchoices) {
+    for (const br of game.branches || []) {
+        if ((br.end1?.dnum | 0) !== dnum) continue;
+        const ed = br.end1.dlevel | 0;
+        if (!(lowerBound < ed && ed <= upperBound)) continue;
+        const destName = game.dungeons?.[br.end2?.dnum | 0]?.dname || '?';
+        const buf = `${bymenu ? chr_u_on_lvl(br.end1) : ' '} ${br_string(br.type)} to ${destName}: ${depth_of(br.end1)}`;
+        if (bymenu) {
+            tport_menu(
+                raw,
+                buf,
+                lchoices,
+                br.end1,
+                unreachable_level(br.end1, false),
+            );
+        }
+        // non-bymenu putstr deferred
+    }
+}
+
+/**
+ * C ref: dungeon.c print_dungeon — wizard ^V `?` level-teleport menu.
+ *
+ * Ported: bymenu=TRUE PICK_ONE path (headings + specials + branches +
+ * continuous selectors + unreachable Knox letter skip). Sets dest.lev /
+ * dest.dgn and returns logical depth (playerlev), or 0 on cancel.
+ * Named omissions: bymenu=FALSE putstr/display path (wizwhere); floating
+ * branches listing; Invocation/portal debug lines; endgame amulet grant
+ * after pick (level_tele).
+ *
+ * @param {boolean} bymenu
+ * @param {{ lev?: number, dgn?: number } | null} dest
+ * @returns {Promise<number>}
+ */
+export async function print_dungeon(bymenu, dest = null) {
+    if (!bymenu) {
+        // putstr overview deferred
+        return 0;
+    }
+
+    const { ATR_INVERSE } = await import('./terminal.js');
+    const { select_menu_pick_one } = await import('./options.js');
+    const { makeplural } = await import('./objnam.js');
+    const { Is_stronghold } = await import('./const.js');
+
+    const raw = [
+        { text: 'Level teleport to where:', attr: ATR_INVERSE, selectable: false },
+    ];
+    const lchoices = {
+        idx: 0,
+        lev: [],
+        playerlev: [],
+        dgn: [],
+        menuletter: 'a',
+    };
+
+    const nDgns = game.n_dgns | 0;
+    const astral = game.astral_level;
+    const uz = game.u?.uz;
+    const inEndgame = !!(uz && astral && (uz.dnum | 0) === (astral.dnum | 0));
+
+    for (let i = 0; i < nDgns; i++) {
+        const dptr = game.dungeons[i];
+        if (!dptr) continue;
+        if (bymenu && inEndgame && astral && i !== (astral.dnum | 0)) continue;
+
+        const unplaced = unplaced_floater(dptr, i);
+        const descr = unplaced ? 'depth' : 'level';
+        const nlev = dptr.num_dunlevs | 0;
+        const depthStart = dptr.depth_start | 0;
+        let buf;
+        if (nlev > 1) {
+            buf = `${dptr.dname}: ${makeplural(descr)} ${depthStart} to ${depthStart + nlev - 1}`;
+        } else {
+            buf = `${dptr.dname}: ${descr} ${depthStart}`;
+        }
+        const entryLev = dptr.entry_lev | 0;
+        if (entryLev !== 1) {
+            if (entryLev === nlev) buf += ', entrance from below';
+            else buf += `, entrance on ${depthStart + entryLev - 1}`;
+        }
+        raw.push({ text: buf, attr: ATR_INVERSE, selectable: false });
+
+        let lastLevel = 0;
+        for (const slev of game.sp_levchn || []) {
+            if ((slev.dlevel?.dnum | 0) !== i) continue;
+            print_branch(raw, i, lastLevel, slev.dlevel.dlevel | 0, true, lchoices);
+            let line = `${chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${depth_of(slev.dlevel)}`;
+            if (Is_stronghold(slev.dlevel) && game.tune) {
+                line += ` (tune ${game.tune})`;
+            }
+            tport_menu(
+                raw,
+                line,
+                lchoices,
+                slev.dlevel,
+                unreachable_level(slev.dlevel, unplaced),
+            );
+            lastLevel = slev.dlevel.dlevel | 0;
+        }
+        print_branch(raw, i, lastLevel, MAXLEVEL, true, lchoices);
+    }
+
+    const res = await select_menu_pick_one(raw);
+    if (res.kind !== 'pick' || res.item?.choiceIdx == null) return 0;
+    const idx = res.item.choiceIdx | 0;
+    if (dest) {
+        dest.lev = lchoices.lev[idx];
+        dest.dgn = lchoices.dgn[idx];
+    }
+    return lchoices.playerlev[idx] | 0;
 }

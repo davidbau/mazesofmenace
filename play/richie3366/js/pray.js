@@ -2,35 +2,35 @@
 // C ref: pray.c — can_pray, dopray, prayer_done, gods_upset, angrygods,
 // water_prayer, on_altar / a_align helpers; dosacrifice (#offer).
 //
-// Branch envelope: ParanoidPray yn confirm (default on) + noninteractive
-// #pray with ublesscnt-too-soon (p_type 0) → nomul(-3)/afternmv →
-// prayer_done rnz(250)+change_luck+gods_upset → angrygods cases 0–3
-// (displeased / godvoice+pline+verbalize+adjattrib You_feel) + trailing
-// rnz(300); #offer not-on-altar.
-// Named omissions: full in_trouble body; ParanoidConfirm "yes" path /
-// wizard force; angrygods cases 4+ (curse/minion/zap); pleased / crown /
-// fix troubles; p_type -2/-1/1/2/3 outcome bodies beyond water_prayer scan;
+// Branch envelope: ParanoidPray yn confirm (default on) + wizard Force
+// (D-0517) + #pray ublesscnt-too-soon (p_type 0) → angrygods; p_type 3 →
+// pleased You_feel + action rn1 + ublesscnt rnz(350) (gift/trouble bodies
+// deferred); #offer not-on-altar.
+// Named omissions: full in_trouble/fix_worst_trouble; ParanoidConfirm "yes";
+// angrygods cases 4+; pleased pat_on_head gifts / crown / give_spell;
+// p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
 // pray_revive; floorfood sacrifice / #turn; other livelog paths;
 // is_demon/is_undead
 // poly paths; full losexp (adjabil/resists_drli/Upolyd); Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix.
 
 import { game } from './gstate.js';
-import { rn2, rnz } from './rng.js';
-import { pline, verbalize } from './display.js';
+import { rn2, rn1, rnl, rnz } from './rng.js';
+import { pline, verbalize, You_feel } from './display.js';
 import { nomul } from './hack.js';
-import { A_WIS, change_luck, adjattrib } from './attrib.js';
+import { A_WIS, change_luck, adjattrib, adjalign } from './attrib.js';
 import { align_gname } from './roles.js';
 import { objects_at } from './mkobj.js';
 import { yn_function } from './getline.js';
 import { livelog_printf } from './pline.js';
 import {
-    IS_ALTAR, Amask2align, AM_MASK, A_NONE, A_LAWFUL, A_NEUTRAL,
+    IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, A_NONE, A_LAWFUL, A_NEUTRAL,
     GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY, LL_CONDUCT, LL_MINORAC,
 } from './const.js';
 import { POT_WATER, POTION_CLASS } from './objects.js';
 
 const STRIDENT = 4; // pray.c
+const DEVOUT = 14; // pray.c
 // C: pray.c godvoices[]
 const GODVOICES = ['booms out', 'thunders', 'rings out', 'booms'];
 
@@ -56,6 +56,15 @@ function on_altar() {
     const u = game.u;
     const loc = game.level?.at(u?.ux, u?.uy);
     return !!(loc && IS_ALTAR(loc.typ));
+}
+
+/** C: pray.c on_shrine — altarmask AM_SHRINE */
+function on_shrine() {
+    const u = game.u;
+    const loc = game.level?.at(u?.ux, u?.uy);
+    if (!loc) return false;
+    const mask = (loc.altarmask != null ? loc.altarmask : loc.flags) | 0;
+    return (mask & AM_SHRINE) !== 0;
 }
 
 /** C: pray.c a_align — altarmask overlays rm.flags in C; JS mkaltar uses flags */
@@ -306,8 +315,65 @@ async function gods_upset(g_align) {
 }
 
 /**
+ * C ref: pray.c pleased — successful prayer favor.
+ * Branch envelope: You_feel align msg; off-altar/low-record adjalign;
+ * action rn1 + STRIDENT clamp; ublesscnt rnz(350) (+udemigod kick).
+ * Named omissions: fix_worst_trouble / in_trouble body; pat_on_head
+ * gift switch (repair/uncurse/spellbook/intrinsic/crown/give_spell);
+ * moves>100000 ublesscnt incr; on_altar wrong-god early return polish.
+ */
+async function pleased(g_align) {
+    const u = game.u || (game.u = {});
+    const trouble = in_trouble();
+    let pat_on_head = 0;
+
+    const record = u.ualign?.record | 0;
+    const feel = record >= DEVOUT
+        ? (Hallucination() ? 'pleased as punch' : 'well-pleased')
+        : record >= STRIDENT
+            ? (Hallucination() ? 'ticklish' : 'pleased')
+            : (Hallucination() ? 'full' : 'satisfied');
+    await You_feel(`that ${align_gname(game.urole, g_align)} is ${feel}.`);
+
+    // C: on_altar && p_aligntyp != ualign → adjalign(-1); return
+    if (on_altar() && (pray_state().p_aligntyp | 0) !== (u.ualign?.type ?? 0)) {
+        adjalign(-1);
+        return;
+    } else if (record < 2 && trouble <= 0) {
+        adjalign(1);
+    }
+
+    if (!trouble && record >= DEVOUT) {
+        if ((pray_state().p_trouble | 0) === 0) pat_on_head = 1;
+    } else {
+        // C: prayer_luck = max(Luck, -1); action = rn1(luck + altar?3+shrine:2, 1)
+        const prayer_luck = Math.max(Luck(), -1);
+        let action = rn1(
+            prayer_luck + (on_altar() ? 3 + (on_shrine() ? 1 : 0) : 2),
+            1,
+        );
+        if (!on_altar()) action = Math.min(action, 3);
+        if (record < STRIDENT) {
+            // use post-adjalign record
+            const rec = u.ualign?.record | 0;
+            action = (rec > 0 || !rnl(2)) ? 1 : 0;
+        }
+        // fix_worst_trouble / in_trouble loops deferred (trouble stub 0)
+        void action;
+    }
+
+    // pat_on_head gift switch deferred
+    void pat_on_head;
+    u.ublesscnt = rnz(350);
+    let kick_on_butt = u.uevent?.udemigod ? 1 : 0;
+    if (u.uevent?.uhand_of_elbereth) kick_on_butt++;
+    if (kick_on_butt) u.ublesscnt += kick_on_butt * rnz(1000);
+}
+
+/**
  * C ref: pray.c prayer_done — afternmv after nomul(-3).
- * Ported: p_type 0 (too soon) full path; other p_types partial/stub.
+ * Ported: p_type 0 (too soon) full path; p_type 3 → pleased envelope;
+ * other p_types partial/stub.
  */
 export async function prayer_done() {
     const u = game.u || (game.u = {});
@@ -344,11 +410,13 @@ export async function prayer_done() {
             u.ublesscnt = (u.ublesscnt | 0) + rnz(250);
             change_luck(-3);
             await gods_upset(u.ualign?.type ?? 0);
+        } else {
+            await pleased(alignment);
         }
-        // else pleased() deferred
     } else {
-        // p_type 3 coaligned — water_prayer/pray_revive/pleased deferred
+        // p_type 3 coaligned — pray_revive deferred
         if (on_altar()) water_prayer(true);
+        await pleased(alignment);
     }
     return 1;
 }
@@ -356,7 +424,8 @@ export async function prayer_done() {
 /**
  * C ref: pray.c dopray — #pray
  * ParanoidPray (default) → paranoid_query(ParanoidConfirm, …);
- * wizard Force-the-gods omitted.
+ * wizard Force-the-gods (D-0517) → may raise p_type to 3 + clear
+ * ublesscnt so uinvulnerable gates gethungry during nomul(-3).
  */
 export async function dopray() {
     const u = game.u || (game.u = {});
@@ -384,12 +453,29 @@ export async function dopray() {
 
     if (!(await can_pray(true))) return ECMD_OK;
 
+    const gp = pray_state();
+    // C: if (wizard && gp.p_type >= 0) Force the gods to be pleased?
+    const wizard = !!(game.flags?.debug || game.flags?.wizard);
+    if (wizard && (gp.p_type | 0) >= 0) {
+        // C: YN() when ParanoidPray (no do-again); else y_n() — both yn/'n'
+        const forceOk = (await yn_function(
+            'Force the gods to be pleased?', 'yn', 'n',
+        )) === 'y';
+        if (forceOk) {
+            u.ublesscnt = 0;
+            if ((u.uluck | 0) < 0) u.uluck = 0;
+            if (!u.ualign) u.ualign = { type: 0, record: 0 };
+            if ((u.ualign.record | 0) <= 0) u.ualign.record = 1;
+            u.ugangr = 0;
+            if ((gp.p_type | 0) < 2) gp.p_type = 3;
+        }
+    }
+
     nomul(-3);
     game.multi_reason = 'praying';
     game.nomovemsg = 'You finish your prayer.';
     game.afternmv = prayer_done;
 
-    const gp = pray_state();
     if (gp.p_type === 3 && !Inhell()) {
         if (!Blind()) {
             await pline('You are surrounded by a shimmering light.');

@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
-import { depth as depth_of_level } from './hacklib.js';
+import { depth as depth_of_level, level_difficulty as level_difficulty_of } from './hacklib.js';
 import {
     RANDOM_CLASS,
     WEAPON_CLASS,
@@ -256,7 +256,7 @@ export function blessorcurse(otmp, chance) {
 }
 
 function level_difficulty() {
-    return depth_of_level(game.u?.uz) || 1;
+    return level_difficulty_of(game.u?.uz) || 1;
 }
 
 function otypByName(name) {

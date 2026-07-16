@@ -256,9 +256,12 @@ export function rloc_to(mtmp, x, y) {
 
 /**
  * C ref: teleport.c noteleport_level — ordinary flags; hell court deferred.
+ * Covetous monsters bypass level.flags.noteleport (Vlad on tower1).
  */
-function noteleport_level(_mon) {
-    if (game.level?.flags?.noteleport) return true;
+function noteleport_level(mon) {
+    const M3_COVETOUS = 0x001f;
+    const covetous = !!((mon?.data?.mflags3 ?? 0) & M3_COVETOUS);
+    if (game.level?.flags?.noteleport && !covetous) return true;
     if ((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0)) return true;
     return false;
 }
@@ -570,12 +573,13 @@ export async function tele() {
  * C ref: teleport.c level_tele — controlled/wizard dungeon-level port.
  *
  * Ported: wizard/Teleport_control getlin numeric path → get_level →
- * schedule_goto (deferred_goto after rhack). "?" menu returns cancel
- * (print_dungeon deferred). Named omissions: lev_by_name; print_dungeon
- * menu; random_teleport_level / involuntary; heaven/escape negative;
- * endgame dest; single_level_branch Knox; Quest depth remap polish;
- * find_hell; invocation Gehennom clamp; Nowhere suicide yn; next_to_u
- * leash body; buried ball; debug_fuzzer.
+ * schedule_goto (deferred_goto after rhack); wizard `?` /
+ * menu_requested → print_dungeon(TRUE) force_dest. Named omissions:
+ * lev_by_name; bymenu=FALSE print_dungeon; random_teleport_level /
+ * involuntary; heaven/escape negative; endgame dest + amulet grant;
+ * single_level_branch Knox; Quest depth remap polish; find_hell;
+ * invocation Gehennom clamp; Nowhere suicide yn; next_to_u leash body;
+ * buried ball; debug_fuzzer.
  */
 export async function level_tele() {
     const u = game.u || {};
@@ -599,13 +603,23 @@ export async function level_tele() {
         let qbuf = 'To what level do you want to teleport?';
         let trycnt = 0;
         let buf = '';
+        let menuNow = false;
         do {
             if (game.iflags?.menu_requested) {
                 game.iflags.menu_requested = false;
-                if (wizard) {
-                    // print_dungeon menu deferred → cancel
-                    return;
-                }
+                if (wizard) menuNow = true;
+            }
+            if (menuNow || (wizard && buf === '?')) {
+                // C levTport_menu: print_dungeon(TRUE) → force_dest
+                const { print_dungeon } = await import('./dungeon.js');
+                const dest = { lev: 0, dgn: 0 };
+                newlev = await print_dungeon(true, dest);
+                if (!newlev) return;
+                newlevel.dnum = dest.dgn | 0;
+                newlevel.dlevel = dest.lev | 0;
+                force_dest = true;
+                // endgame amulet grant deferred
+                break;
             }
             if (++trycnt === 2) {
                 qbuf += wizard
@@ -624,13 +638,10 @@ export async function level_tele() {
                 await pline('You shudder for a moment.');
                 return;
             }
-            if (buf === '\x1b' || buf === '') {
-                // C: empty after cancel path; ESC returns
-                if (buf === '\x1b') return;
-            }
+            if (buf === '\x1b') return;
             if (wizard && buf === '?') {
-                // print_dungeon(TRUE) deferred — treat as cancel
-                return;
+                // loop → print_dungeon on next iteration
+                continue;
             }
             // lev_by_name deferred → atoi only
             const trimmed = String(buf).trim();
@@ -646,21 +657,23 @@ export async function level_tele() {
             && trycnt < 10
         );
 
-        if (newlev === 0) {
-            if (trycnt >= 10) {
-                await pline('You shudder for a moment.');
+        if (!force_dest) {
+            if (newlev === 0) {
+                if (trycnt >= 10) {
+                    await pline('You shudder for a moment.');
+                    return;
+                }
+                // Nowhere suicide yn deferred — cancel
                 return;
             }
-            // Nowhere suicide yn deferred — cancel
-            return;
-        }
 
-        // single_level_branch Knox gate deferred
+            // single_level_branch Knox gate deferred
 
-        // Quest Home-N status → logical depth
-        if (In_quest(u.uz) && newlev > 0) {
-            const dun = game.dungeons?.[u.uz.dnum | 0];
-            newlev = newlev + ((dun?.depth_start | 0) || 1) - 1;
+            // Quest Home-N status → logical depth
+            if (In_quest(u.uz) && newlev > 0) {
+                const dun = game.dungeons?.[u.uz.dnum | 0];
+                newlev = newlev + ((dun?.depth_start | 0) || 1) - 1;
+            }
         }
     } else {
         // involuntary random_teleport_level deferred
@@ -682,12 +695,14 @@ export async function level_tele() {
         return;
     }
 
-    get_level(newlevel, newlev);
-    if ((newlevel.dnum | 0) === (u.uz?.dnum | 0)
-        && (newlevel.dlevel | 0) === (u.uz?.dlevel | 0)
-        && newlev !== depth(u.uz)) {
-        await pline("You can't get there from here.");
-        return;
+    if (!force_dest) {
+        get_level(newlevel, newlev);
+        if ((newlevel.dnum | 0) === (u.uz?.dnum | 0)
+            && (newlevel.dlevel | 0) === (u.uz?.dlevel | 0)
+            && newlev !== depth(u.uz)) {
+            await pline("You can't get there from here.");
+            return;
+        }
     }
 
     // Dynamic import avoids do.js ↔ teleport.js cycle (do imports enexto).

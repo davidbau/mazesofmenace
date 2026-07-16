@@ -1520,6 +1520,10 @@ export function setup_role_race_from_rc(opts = {}) {
         lgod: role.lgod ?? null,
         ngod: role.ngod ?? null,
         cgod: role.cgod ?? null,
+        // C roles[] homebase/intermed/ldrnum — questpgr convert_arg
+        homebase: role.homebase ?? null,
+        intermed: role.intermed ?? null,
+        ldrnum: role.ldrnum ?? NON_PM,
         hpadv: role.hpadv || { infix: 8, inrnd: 0, lofix: 0, lornd: 8, hifix: 0, hirnd: 0 },
         enadv: role.enadv || { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
         // C: Role spel* — percent_success / Fail% (D-0129)

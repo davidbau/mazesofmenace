@@ -44,6 +44,8 @@ import { objectNames } from './objects.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { PM_TOURIST } from './generated/monsters_data.js';
 import { dismount_steed } from './steed.js';
+import { onquest } from './quest.js';
+import { In_quest } from './const.js';
 
 /**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
@@ -268,7 +270,7 @@ async function selftouch_stair_fall(_arg) {
  * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
  * familiar_level_msg, temperature/hellish, Flying/Punished climb variants,
  * Punished `drag_down`/`ballrelease`, full `selftouch` petrify, u_collide_m
- * full limbo.
+ * full limbo. Ported: In_quest `onquest`/`qt_pager("firsttime")` nhl shuffle.
  */
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
@@ -478,6 +480,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await flush_screen(-1); // un-postpone + flush new map/botl
     vision_recalc(0);
 
+    // C: do.c goto_level — maybe_lvltport_feedback before onquest.
+    // Short pline sets NEED_MORE without awaiting; qt_pager flushes it.
+    if (game.dfr_post_msg) {
+        const msg = game.dfr_post_msg;
+        game.dfr_post_msg = null;
+        await pline(msg);
+    }
+    // C: else if (In_quest(&u.uz)) onquest();
+    if (In_quest(u.uz)) await onquest();
+
     // C: goto_level `if (new)` Tourist more_experienced(level_difficulty())
     // level_difficulty ≈ depth(&u.uz) outside endgame/amulet/builds_up.
     if (madeNew && game.urole?.mnum === PM_TOURIST) {
@@ -526,6 +538,8 @@ export async function deferred_goto() {
             !!(typmask & UTOTYPE_PORTAL),
         );
         // UTOTYPE_RMPORTAL deltrap deferred
+        // C: dfr_post_msg delivered inside goto_level (maybe_lvltport_feedback)
+        // before onquest; only leftover non-materialize msgs land here.
         if (game.dfr_post_msg && !on_level(u.uz, oldlev)) {
             await pline(game.dfr_post_msg);
         }

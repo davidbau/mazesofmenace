@@ -32,6 +32,7 @@ import { online2 } from './hacklib.js';
 import { Monnam } from './do_name.js';
 import { cansee } from './vision.js';
 import { fightm } from './mhitm.js';
+import { were_change } from './were.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -201,14 +202,14 @@ function mon_regen(mon, digest_meal) {
 
 /**
  * C ref: mon.c m_calcdistress — once-per-turn mon timeouts / regen.
- * Named omissions: mmove==0 minliquid; decide_to_shapeshift; were_change
- * (no RNG unless cham/were present — early-return stubs).
+ * Named omissions: mmove==0 minliquid; decide_to_shapeshift (cham only).
  */
 function m_calcdistress(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) < 1) return;
     // mmove==0 minliquid deferred
     mon_regen(mtmp, false);
-    // decide_to_shapeshift / were_change deferred (only RNG for cham/were)
+    // decide_to_shapeshift deferred (cham); were_change from were.c
+    were_change(mtmp);
     if (mtmp.mblinded && !(--mtmp.mblinded)) mtmp.mcansee = 1;
     if (mtmp.mfrozen && !(--mtmp.mfrozen)) mtmp.mcanmove = 1;
     if (mtmp.mfleetim && !(--mtmp.mfleetim)) mtmp.mflee = 0;
@@ -268,10 +269,25 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
 }
 
 /**
- * C ref: monmove.c m_avoid_soko_push_loc — Sokoban boulder-line skip.
- * Deferred until Sokoban; always false for now.
+ * C ref: monmove.c m_avoid_soko_push_loc — Sokoban: peaceful/tame skip a
+ * cell when a boulder sits between it and the hero (dist2 == 4).
  */
-export function m_avoid_soko_push_loc(_mtmp, _nx, _ny) {
+export function m_avoid_soko_push_loc(mtmp, nx, ny) {
+    const Sokoban = !!(game.level?.flags?.sokoban_rules
+        || game.level?.flags?.sokoban
+        || game.Sokoban);
+    if (!Sokoban) return false;
+    if (!(mtmp.mpeaceful || mtmp.mtame)) return false;
+    if (mtmp.mconf || mtmp.mstun) return false;
+    if (hero_conflict()) return false;
+    const u = game.u;
+    if (!u) return false;
+    if (dist2(nx, ny, u.ux, u.uy) !== 4) return false;
+    const bx = nx + Math.sign(u.ux - nx);
+    const by = ny + Math.sign(u.uy - ny);
+    for (let o = objects_at(bx, by); o; o = o.nexthere) {
+        if (o.otyp === BOULDER) return true;
+    }
     return false;
 }
 

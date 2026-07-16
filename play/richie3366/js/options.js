@@ -582,9 +582,11 @@ function format_simple_opt_line(opt, nameWidth) {
  * C ref: wintty.c tty_end_menu letter assign + process_menu_window PICK_ONE.
  * Per-page 'a'..'z' for items without a fixed selector; space → next page
  * or cancel on last; Return/ESC cancel; letter → that item.
+ * Pre-assigned `selector` on selectable items is kept (print_dungeon
+ * continuous a..z/A.. letters).
  * @returns {Promise<{kind:'pick'|'cancel', item?:object}>}
  */
-async function select_menu_pick_one(rawItems) {
+export async function select_menu_pick_one(rawItems) {
     const rows = 24;
     const lmax = Math.min(52, rows - 1);
     // Clone and assign selectors like C tty_end_menu

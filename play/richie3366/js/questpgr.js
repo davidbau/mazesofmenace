@@ -4,13 +4,17 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, status_line_2 } from './display.js';
+import { docrt, flush_screen, flush_topl_more, status_line_2 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { align_gname, align_gtitle } from './roles.js';
 import { A_NEUTRAL } from './const.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
+import { nhl_nhlib_align_shuffle } from './dungeon.js';
+import { show_text_pages } from './pager.js';
+import { mons, M2_PNAME } from './monsters.js';
+import { NON_PM, pmnames } from './generated/monsters_data.js';
 
 /**
  * C ref: quest.lua common.legacy + convert_arg %d/%G/%r.
@@ -151,4 +155,102 @@ export async function com_pager_legacy(statusSnap = null) {
 
     game._menu_overlay = false;
     await docrt();
+}
+
+/**
+ * C ref: dat/quest.lua firsttime texts (Barbarian exercised by seed0373).
+ * Other roles deferred — qt_pager still burns nhl_init shuffle when called.
+ */
+const QUEST_FIRSTTIME = {
+    Bar: `Warily you scan your surroundings, all of your senses alert for signs
+of possible danger.  Off in the distance, you can %x the familiar shapes
+of %H.
+
+But why, you think, should %l be there?
+
+Suddenly, the hairs on your neck stand on end as you detect the aura of
+evil magic in the air.
+
+Without thought, you ready your weapon, and mutter under your breath:
+
+    "By %d, there will be blood spilt today."`,
+};
+
+/** C ref: questpgr.c ldrname */
+function ldrname() {
+    const i = game.urole?.ldrnum ?? NON_PM;
+    if (i === NON_PM || i == null) return '';
+    const ptr = mons(i);
+    const names = pmnames[i];
+    const nm = names?.[2] || names?.[0] || names?.[1] || '';
+    const pname = !!((ptr?.mflags2 ?? 0) & M2_PNAME);
+    return pname ? nm : `the ${nm}`;
+}
+
+/**
+ * C ref: questpgr.c convert_arg — subset used by firsttime (%x/%H/%l/%d).
+ * Named omission: full convert_arg catalogue + %c/%n/%o/… pronoun arms.
+ */
+function convert_arg(c) {
+    const urole = game.urole || {};
+    const u = game.u || {};
+    const Blind = !!(u.Blind || u.HBlind || u.EBlind);
+    switch (c) {
+    case 'l':
+        return ldrname();
+    case 'H':
+        return urole.homebase || '';
+    case 'i':
+        return urole.intermed || '';
+    case 'd': {
+        const aOrig = u.ualignbase?.original ?? u.ualign?.type ?? A_NEUTRAL;
+        return align_gname(urole, aOrig);
+    }
+    case 'x':
+        return Blind ? 'sense' : 'see';
+    case 'p':
+        return game.plname || '';
+    case '%':
+        return '%';
+    default:
+        return '';
+    }
+}
+
+/** C ref: questpgr.c convert_line — %X substitution (no %lC/%nC yet). */
+function convert_line(inLine) {
+    let out = '';
+    for (let i = 0; i < inLine.length; i++) {
+        if (inLine[i] === '%' && i + 1 < inLine.length) {
+            out += convert_arg(inLine[++i]);
+        } else {
+            out += inLine[i];
+        }
+    }
+    return out;
+}
+
+/**
+ * C ref: questpgr.c qt_pager / com_pager_core.
+ * nhl_init → nhlib.lua shuffle(align) then load quest text + deliver.
+ * Named omissions: common fallback; pline/menu outputs; array rn2 picks;
+ * convert_line pronoun/%cC arms; synopsis putmsghistory.
+ */
+export async function qt_pager(msgid) {
+    // C: com_pager_core → nhl_init → nhlib.lua top-level shuffle(align)
+    nhl_nhlib_align_shuffle();
+
+    const code = game.urole?.filecode || 'Tou';
+    let raw = null;
+    if (msgid === 'firsttime') raw = QUEST_FIRSTTIME[code] || null;
+    // Other msgid bodies deferred (C-JS-MAP)
+    if (!raw) return;
+
+    // C: deliver_by_window(NHW_TEXT) — pending WIN_MESSAGE (materialize)
+    // more() before the text window paints.
+    await flush_topl_more();
+
+    const converted = convert_line(raw);
+    const lines = converted.split('\n');
+    await show_text_pages(lines);
 }

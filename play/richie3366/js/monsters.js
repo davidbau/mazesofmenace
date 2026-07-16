@@ -101,6 +101,7 @@ export const M2_MERC = 0x00000200;
 export const M2_DEMON = 0x00000100; /* monflag.h — is a demon */
 export const M2_ORC = 0x00000080; /* monflag.h — is an orc (≡ MH_ORC) */
 export const M2_HUMAN = 0x00000008; /* monflag.h — is a human */
+export const M2_SHAPESHIFTER = 0x00004000; /* monflag.h — shapeshifting species */
 
 export const M1_FLY = 0x00000001; /* monflag.h — can fly or float */
 export const M1_AMORPHOUS = 0x00000004; /* monflag.h — can flow under doors */
@@ -415,6 +416,27 @@ export function is_demon(ptr) {
 /** C ref: mondata.h is_were */
 export function is_were(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_WERE);
+}
+/** C ref: mondata.h is_shapeshifter — M2_SHAPESHIFTER */
+export function is_shapeshifter(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_SHAPESHIFTER);
+}
+/** C ref: mondata.h is_vampire — mlet S_VAMPIRE */
+export function is_vampire(ptr) {
+    return ptr?.mlet === 'S_VAMPIRE';
+}
+/**
+ * C ref: mondata.h is_vampshifter — cham is a vampire species.
+ * Named omission: full mondata.h body beyond cham index check.
+ */
+export function is_vampshifter(mon) {
+    const cham = mon?.cham ?? NON_PM;
+    if (cham < LOW_PM) return false;
+    return is_vampire(mons(cham));
+}
+/** C ref: mondata.h vampshifted — vampshifter currently not in vampire form */
+export function vampshifted(mon) {
+    return is_vampshifter(mon) && mon?.data?.mlet !== 'S_VAMPIRE';
 }
 /** C ref: mondata.h is_ndemon — demon neither lord nor prince */
 export function is_ndemon(ptr) {

@@ -86,6 +86,10 @@ export const roles = [
         lgod: 'Mitra',
         ngod: 'Crom',
         cgod: 'Set',
+        // C role.c: homebase / intermed / ldrnum for questpgr convert_arg
+        homebase: 'the Camp of the Duali Tribe',
+        intermed: 'the Duali Oasis',
+        ldrnum: pm('PM_PELIAS'),
         // C: { 16, 7, 7, 15, 16, 6 } / { 30, 6, 7, 20, 30, 7 }
         attrbase: [16, 7, 7, 15, 16, 6],
         attrdist: [30, 6, 7, 20, 30, 7],
