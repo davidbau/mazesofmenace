@@ -4,13 +4,13 @@
 //
 // Branch envelope (drinkfountain): fate=rnd(30) before Levitation;
 // mgkftn restore+adjattrib; fate<10 refresh; switch default/19–30
-// message+RNG arms; case 26 monster_detect + browse_map; case 27
-// dofindgem when !FOUNTAIN_IS_LOOTED.
-// Deferred: dowatersnakes/demon/nymph (incl. case 27 fallthrough when
+// message+RNG arms; case 23 dowaterdemon; case 26 monster_detect +
+// browse_map; case 27 dofindgem when !FOUNTAIN_IS_LOOTED.
+// Deferred: dowatersnakes/nymph (incl. case 27 fallthrough when
 // looted), dogushforth, enlightenment body, vomit cantvomit/Sick/acid
 // poly arms, town warn/angry_guards, wizard yn, FOUNTAIN_IS_WARNED force
 // dryup, Excalibur LONG_SWORD body, wash_hands, dipfountain cases
-// 17–23/25–29.
+// 17–23/25–29; mongrantswish tmp_at glyph hide.
 //
 // Branch envelope (drinksink): Levitation floating_above; rn2(20)
 // switch cases 0–13 + 19/default sip; case 4 faucet → mkobj+dopotion;
@@ -28,7 +28,7 @@ import {
 import {
     curse, mksobj_at, rnd_class, mkobj, mkobj_at, obj_extract_self,
 } from './mkobj.js';
-import { water_damage } from './trap.js';
+import { water_damage, t_at, mintrap, NO_TRAP_FLAGS } from './trap.js';
 import {
     COIN_CLASS, RING_CLASS, POTION_CLASS, POT_WATER,
     objectNames, objectDescrs,
@@ -45,6 +45,7 @@ import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, adjattrib, exercise, acurr } from './attrib.js';
 import { lesshungry, morehungry, poison_strdmg, vomit } from './eat.js';
 import { losehp } from './hack.js';
+import { depth as depth_of_level } from './hacklib.js';
 import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { makemon } from './makemon.js';
@@ -58,6 +59,7 @@ const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
 const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 const PM_SEWER_RAT = monsterNames.indexOf('PM_SEWER_RAT');
 const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
+const PM_WATER_DEMON = monsterNames.indexOf('PM_WATER_DEMON');
 
 /** C ref: rm.h FOUNTAIN_IS_WARNED */
 function FOUNTAIN_IS_WARNED(x, y) {
@@ -303,6 +305,74 @@ export async function drinksink() {
 }
 
 /**
+ * C ref: fountain.c level_difficulty via depth(u.uz) (endgame/amulet deferred).
+ */
+function level_difficulty() {
+    return depth_of_level(game.u?.uz) || 1;
+}
+
+/** C ref: you.h mhe / mhis — hallu pronoun rn2 deferred (wish msg path rare). */
+function mhe(mtmp) {
+    if (!canspotmon(mtmp)) return 'it';
+    return mtmp?.female ? 'she' : 'he';
+}
+function mhis(mtmp) {
+    if (!canspotmon(mtmp)) return 'its';
+    return mtmp?.female ? 'her' : 'his';
+}
+
+/**
+ * C ref: potion.c mongrantswish — mongone then makewish.
+ * tmp_at DISP_ALWAYS glyph hide deferred.
+ */
+async function mongrantswish(mtmp) {
+    if (!mtmp) return;
+    const list = game.fmon || [];
+    const i = list.indexOf(mtmp);
+    if (i >= 0) list.splice(i, 1);
+    const ox = mtmp.mx | 0;
+    const oy = mtmp.my | 0;
+    mtmp.mx = 0;
+    mtmp.my = 0;
+    if (ox || oy) newsym(ox, oy);
+    const { makewish } = await import('./zap.js');
+    await makewish();
+}
+
+/**
+ * C ref: fountain.c dowaterdemon — makemon water demon; maybe wish / mintrap.
+ */
+async function dowaterdemon() {
+    const u = game.u || {};
+    const gone = ((game.mvitals?.[PM_WATER_DEMON]?.mvflags ?? 0) & G_GONE) !== 0;
+    if (!gone) {
+        const mtmp = makemon(mons(PM_WATER_DEMON), u.ux, u.uy, MM_NOMSG);
+        if (mtmp) {
+            const Blind = !!(u.Blind || u.ublind);
+            if (!Blind) {
+                await pline(`You unleash ${a_monnam(mtmp)}!`);
+            } else {
+                await You_feel('the presence of evil.');
+            }
+            // C: rnd(100) > (80 + level_difficulty()) → wish
+            if (rnd(100) > (80 + level_difficulty())) {
+                await pline(
+                    `Grateful for ${mhis(mtmp)} release, ${mhe(mtmp)}`
+                    + ' grants you a wish!',
+                );
+                await mongrantswish(mtmp);
+            } else if (t_at(mtmp.mx, mtmp.my)) {
+                await mintrap(mtmp, NO_TRAP_FLAGS);
+            }
+        }
+    } else {
+        await pline(
+            'The fountain bubbles furiously for a moment, then calms.',
+        );
+    }
+}
+
+/**
  * C ref: fountain.c dryup
  * Town warn / wizard yn / angry_guards deferred.
  */
@@ -402,7 +472,8 @@ export async function drinkfountain() {
         }
         case 22: // Fountain of snakes — dowatersnakes deferred
             break;
-        case 23: // Water demon — dowaterdemon deferred
+        case 23: // Water demon
+            await dowaterdemon();
             break;
         case 24: { // Maybe curse some items
             await pline("This water's no good!");

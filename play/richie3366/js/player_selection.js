@@ -6,9 +6,10 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
-import { paint_corner_nhw_menu } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_chargen_nhw_menu } from './invent.js';
 import { an } from './objnam.js';
 import { roles, races, aligns, genders, findRole, findRace, findAlign } from './roles.js';
+import { tty_askname } from './askname.js';
 import {
     ROLE_NONE,
     ROLE_RANDOM,
@@ -28,7 +29,7 @@ import {
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 
-/** C: gr.rfilter — empty until filter menu is ported. */
+/** C: gr.rfilter — role/race/gend/align exclusion masks for chargen. */
 const rfilter = { roles: [], mask: 0 };
 
 function f() {
@@ -63,6 +64,187 @@ function init_role_flags_from_rc() {
         flags.initalign = a ? aligns.indexOf(a) : ROLE_NONE;
     } else {
         flags.initalign = ROLE_NONE;
+    }
+}
+
+/** C ref: role.c gotrolefilter */
+function gotrolefilter() {
+    if (rfilter.mask) return true;
+    for (let i = 0; i < roles.length; i++) {
+        if (rfilter.roles[i]) return true;
+    }
+    return false;
+}
+
+/** C ref: role.c clearrolefilter */
+function clearrolefilter(which) {
+    if (which === RS_filter || which === RS_ROLE) {
+        if (which === RS_filter) rfilter.mask = 0;
+        for (let i = 0; i < roles.length; i++) rfilter.roles[i] = false;
+    }
+    if (which === RS_RACE) rfilter.mask &= ~ROLE_RACEMASK;
+    if (which === RS_GENDER) rfilter.mask &= ~ROLE_GENDMASK;
+    if (which === RS_ALGNMNT) rfilter.mask &= ~ROLE_ALIGNMASK;
+}
+
+/** C ref: role.c setrolefilter — buf is role name.m / race noun / gend|align adj. */
+function setrolefilter(bufp) {
+    const role = findRole(bufp);
+    if (role) {
+        rfilter.roles[roles.indexOf(role)] = true;
+        return true;
+    }
+    const race = findRace(bufp);
+    if (race) {
+        rfilter.mask |= race.selfmask;
+        return true;
+    }
+    const g = genders.find(x => x.adj === bufp || x.name === bufp);
+    if (g) {
+        rfilter.mask |= g.allow;
+        return true;
+    }
+    const a = aligns.find(x => x.adj === bufp || x.name === bufp);
+    if (a) {
+        rfilter.mask |= a.allow;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: role.c reset_role_filtering — PICK_ANY unacceptable role/race/&c.
+ * Letter toggles; Enter confirms (n>=0 clears then applies); ESC cancels.
+ * Returns true when n>0 (at least one filter selected).
+ */
+async function reset_role_filtering() {
+    const flags = f();
+    const items = [];
+
+    const pushHdr = (text) => { items.push({ kind: 'hdr', text }); };
+    const pushBlank = () => { items.push({ kind: 'blank', text: '' }); };
+
+    pushHdr('Unacceptable roles');
+    for (let i = 0; i < roles.length; i++) {
+        const role_ok = (ok_role(i, ROLE_NONE, ROLE_NONE, ROLE_NONE)
+            && ok_race(i, ROLE_NONE, ROLE_NONE, ROLE_NONE)
+            && ok_gend(i, ROLE_NONE, ROLE_NONE, ROLE_NONE)
+            && ok_align(i, ROLE_NONE, ROLE_NONE, ROLE_NONE));
+        let thisch = roles[i].name.m[0].toLowerCase();
+        if (items.some(it => it.key === thisch)) thisch = thisch.toUpperCase();
+        let rolename = roles[i].name.m;
+        if (roles[i].name.f) rolename = `${roles[i].name.m}/${roles[i].name.f}`;
+        items.push({
+            kind: 'item',
+            key: thisch,
+            filterStr: roles[i].name.m,
+            textBase: an(rolename),
+            selected: !role_ok,
+        });
+    }
+    pushBlank();
+    pushHdr('Unacceptable races');
+    for (let i = 0; i < races.length; i++) {
+        const race_ok = (ok_race(ROLE_NONE, i, ROLE_NONE, ROLE_NONE)
+            && ok_role(ROLE_NONE, i, ROLE_NONE, ROLE_NONE)
+            && ok_align(ROLE_NONE, i, ROLE_NONE, ROLE_NONE));
+        const thisch = races[i].noun[0].toUpperCase();
+        items.push({
+            kind: 'item',
+            key: thisch,
+            filterStr: races[i].noun,
+            textBase: races[i].noun,
+            selected: !race_ok,
+        });
+    }
+    pushBlank();
+    pushHdr('Unacceptable genders');
+    for (let i = 0; i < ROLE_GENDERS; i++) {
+        const gend_ok = (ok_gend(ROLE_NONE, ROLE_NONE, i, ROLE_NONE)
+            && ok_role(ROLE_NONE, ROLE_NONE, i, ROLE_NONE)
+            && ok_race(ROLE_NONE, ROLE_NONE, i, ROLE_NONE));
+        items.push({
+            kind: 'item',
+            key: genders[i].adj[0].toUpperCase(),
+            filterStr: genders[i].adj,
+            textBase: genders[i].adj,
+            selected: !gend_ok,
+        });
+    }
+    pushBlank();
+    pushHdr('Unacceptable alignments');
+    for (let i = 0; i < ROLE_ALIGNS; i++) {
+        const algn_ok = (ok_align(ROLE_NONE, ROLE_NONE, ROLE_NONE, i)
+            && ok_role(ROLE_NONE, ROLE_NONE, ROLE_NONE, i)
+            && ok_race(ROLE_NONE, ROLE_NONE, ROLE_NONE, i));
+        items.push({
+            kind: 'item',
+            key: aligns[i].adj[0].toUpperCase(),
+            filterStr: aligns[i].adj,
+            textBase: aligns[i].adj,
+            selected: !algn_ok,
+        });
+    }
+
+    const title = gotrolefilter()
+        ? 'Pick all that apply and/or unpick any that no longer apply'
+        : 'Pick all that apply';
+    const rows = game.nhDisplay?.rows || 24;
+    // C ref: wintty.c tty_end_menu — lmax = min(52, rows-1); prompt+blank
+    // are part of nitems (end_menu prepends them), not re-added per page.
+    const lmax = Math.min(52, rows - 1);
+    const allEntries = () => [
+        { text: title, attr: ATR_INVERSE },
+        { text: '', attr: 0 },
+        ...items.map(it => {
+            if (it.kind !== 'item') return { text: it.text, attr: 0 };
+            const mark = it.selected ? '+' : '-';
+            return { text: `${it.key} ${mark} ${it.textBase}`, attr: 0 };
+        }),
+    ];
+    let currPage = 0;
+
+    for (;;) {
+        const entries = allEntries();
+        const nitems = entries.length;
+        const pages = Math.max(1, Math.floor((nitems + lmax - 1) / lmax));
+        if (currPage >= pages) currPage = pages - 1;
+        const start = currPage * lmax;
+        const page = entries.slice(start, start + lmax);
+        const morestr = pages > 1
+            ? `(${currPage + 1} of ${pages})`
+            : '(end) ';
+        await paint_corner_nhw_menu(page, morestr);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        if (key === 27) return false; // cancel — leave filters unchanged
+        if (key === 13 || key === 10) {
+            // C: n>=0 → clear then apply current selections; n==0 clears only
+            clearrolefilter(RS_filter);
+            let n = 0;
+            for (const it of items) {
+                if (it.kind !== 'item' || !it.selected) continue;
+                setrolefilter(it.filterStr);
+                n++;
+            }
+            flags.initrole = flags.initrace = flags.initgend =
+                flags.initalign = ROLE_NONE;
+            return n > 0;
+        }
+        if (key === 32) {
+            // Space: next page when multi-page, else confirm empty like Enter
+            if (pages > 1) {
+                currPage = (currPage + 1) % pages;
+                continue;
+            }
+            clearrolefilter(RS_filter);
+            flags.initrole = flags.initrace = flags.initgend =
+                flags.initalign = ROLE_NONE;
+            return false;
+        }
+        const ch = String.fromCharCode(key);
+        const hit = items.find(it => it.kind === 'item' && it.key === ch);
+        if (hit) hit.selected = !hit.selected;
     }
 }
 
@@ -344,8 +526,9 @@ function menu_extra_lines(which, preselectRandom = false) {
         return lines;
     }
     if (which === RS_filter) {
+        const verb = gotrolefilter() ? 'Reset' : 'Set';
         lines.push({
-            text: '~ - Set role/race/&c filtering',
+            text: `~ - ${verb} role/race/&c filtering`,
             attr: 0,
             key: '~',
             value: RS_menu_arg(RS_filter),
@@ -545,8 +728,9 @@ async function pick_role_menu() {
         return { next: RS_RACE };
     }
     if (choice === RS_menu_arg(RS_filter)) {
-        // Omit full filter UI — restart role pick (named omission).
+        // C: ROLE = NONE; reset_role_filtering(); nextpick = RS_ROLE
         flags.initrole = ROLE_NONE;
+        await reset_role_filtering();
         return { next: RS_ROLE };
     }
     let k;
@@ -628,7 +812,8 @@ async function pick_race_menu() {
     }
     if (choice === RS_menu_arg(RS_filter)) {
         flags.initrace = ROLE_NONE;
-        return { next: RS_RACE };
+        const filtered = await reset_role_filtering();
+        return { next: filtered ? RS_ROLE : RS_RACE };
     }
     if (choice === ROLE_RANDOM) {
         k = pick_race(ROLE, GEND, ALGN, PICK_RANDOM);
@@ -708,7 +893,8 @@ async function pick_gend_menu() {
     }
     if (choice === RS_menu_arg(RS_filter)) {
         flags.initgend = ROLE_NONE;
-        return { next: RS_GENDER };
+        const filtered = await reset_role_filtering();
+        return { next: filtered ? RS_ROLE : RS_GENDER };
     }
     if (choice === ROLE_RANDOM) {
         k = pick_gend(ROLE, RACE, ALGN, PICK_RANDOM);
@@ -788,7 +974,8 @@ async function pick_align_menu() {
     }
     if (choice === RS_menu_arg(RS_filter)) {
         flags.initalign = ROLE_NONE;
-        return { next: RS_ALGNMNT };
+        const filtered = await reset_role_filtering();
+        return { next: filtered ? RS_ROLE : RS_ALGNMNT };
     }
     if (choice === ROLE_RANDOM) {
         k = pick_align(ROLE, RACE, GEND, PICK_RANDOM);
@@ -867,7 +1054,7 @@ async function confirm_selection() {
 /**
  * C ref: role.c genl_player_setup — interactive role/race/gender/align.
  * Branch envelope: already-specified skip; Shall I pick y/n/a/q; manual
- * menus; random facets; confirmation. Filter UI body deferred.
+ * menus; random facets; confirmation; rename; role filter UI.
  */
 export async function genl_player_setup() {
     init_role_flags_from_rc();
@@ -1013,8 +1200,27 @@ export async function genl_player_setup() {
             continue; // makepicks
         }
         if (choice === 3) {
-            // Rename deferred — treat as re-confirm for now.
-            continue;
+            // C ref: role.c genl_player_setup case 3 — rename via askname;
+            // honor only the new name (restore role facets after plnamesuffix).
+            // C: destroy_nhwindow(confirm) → erase_menu_or_text corner
+            // docorner (not term_clear_screen); tty_askname blank+who at
+            // BASE cury left by docorner (D-0475).
+            const saveROLE = flags.initrole;
+            const saveRACE = flags.initrace;
+            const saveGEND = flags.initgend;
+            const saveALGN = flags.initalign;
+            game.iflags = game.iflags || {};
+            game.iflags.renameinprogress = true;
+            game.plname = '';
+            game._menu_overlay = false;
+            dismiss_chargen_nhw_menu();
+            await tty_askname();
+            flags.initrole = saveROLE;
+            flags.initrace = saveRACE;
+            flags.initgend = saveGEND;
+            flags.initalign = saveALGN;
+            game.iflags.renameinprogress = false;
+            continue; // getconfirmation still true
         }
         break;
     }

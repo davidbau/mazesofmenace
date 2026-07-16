@@ -13,7 +13,7 @@ import {
 import { mattackm, max_passive_dmg } from './mhitm.js';
 import { mattacku } from './mhitu.js';
 import { newsym, pline, canseemon } from './display.js';
-import { doname } from './objnam.js';
+import { doname, distant_name } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { t_at } from './trap.js';
 import {
@@ -545,8 +545,8 @@ function droppables(mon) {
 // C ref: steal.c mdrop_obj — pet drop subset (worn/saddle/shop/extrinsics omitted)
 async function mdrop_obj(mon, obj, verbosely) {
     const omx = mon.mx, omy = mon.my;
-    // C: distant_name before extract; side-effects omitted → doname
-    const obj_name = doname(obj);
+    // C: distant_name(obj, doname) before extract — near observe side-effects
+    const obj_name = distant_name(obj, doname);
     // C: extract_from_minvent(mon, obj, FALSE, TRUE) → core is obj_extract_self
     obj_extract_self(obj);
     if (obj.owornmask) obj.owornmask = 0;
@@ -614,10 +614,10 @@ async function dog_invent(mtmp, edog, udist) {
                 if (carryamt !== (obj.quan || 1)) {
                     otmp = splitobj(obj, carryamt) || obj;
                 }
-                // C: distant_name/doname side-effects only when cansee; then
-                // flags.verbose pline — silent pickup when out of sight
+                // C: distant_name(otmp, doname) even when !verbose — near
+                // path observes; then flags.verbose pline
                 if (cansee(omx, omy)) {
-                    const otmpname = doname(otmp);
+                    const otmpname = distant_name(otmp, doname);
                     if (game.flags?.verbose !== false) {
                         await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
                     }

@@ -25,6 +25,7 @@ import { PM_SAMURAI, PM_CLERIC } from './generated/monsters_data.js';
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
     Has_contents, Is_container, Is_box, P_BOW, P_CROSSBOW, P_SHURIKEN,
+    OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
 } from './const.js';
 
 function Role_if(pm) {
@@ -429,9 +430,9 @@ function pretty_base(obj) {
 
 /**
  * C ref: objnam.c xname — base name with quan pluralization (doname subset).
- * Named omission: C xname_flags calls observe_object when !Blind &&
- * !gd.distantname; JS callers must observe (or set dknown) where needed —
- * blanket observe here breaks distant_name / map generic glyph paths.
+ * C xname_flags: observe_object when !Blind && !gd.distantname (D-0469).
+ * Distant formatting must go through distant_name so the flag suppresses
+ * discovery; map generic glyphs still observe via display.map_object.
  * C: xname omits monster type for CORPSE ("corpse"); cxname/doname use
  * corpse_xname — pretty_base still carries mon name for doname.
  */
@@ -439,6 +440,10 @@ export function xname(obj) {
     if (!obj) return 'something';
     // C: Role_if(PM_CLERIC) → obj->bknown = 1 (bypass set_bknown / invent update)
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
+    // C: if (!Blind && !gd.distantname) observe_object(obj);
+    if (!game.u?.Blind && !(game.distantname | 0) && _xname_observe) {
+        _xname_observe(obj);
+    }
     const n = objectNames[obj.otyp];
     if (n === 'CORPSE') {
         let base = 'corpse';
@@ -448,6 +453,66 @@ export function xname(obj) {
     let base = pretty_base(obj);
     if ((obj.quan || 1) !== 1) base = makeplural(base);
     return base;
+}
+
+/**
+ * C ref: objnam.c distant_name — format via func; near+cansee uses ordinary
+ * xname/doname (observe side-effects); far sets gd.distantname.
+ * Named omissions: gameover o_id wipe; artifact find via near path only
+ * covered by observe/dknown; get_obj_location buried.
+ */
+export function distant_name(obj, func) {
+    if (!obj || typeof func !== 'function') return func ? func(obj) : '';
+    const loc = get_obj_loc_for_distant(obj);
+    const canSeeLoc = loc && cansee_xy(loc.x, loc.y);
+    const near = canSeeLoc && (obj.oartifact || distu_xy(loc.x, loc.y) <= object_neardist());
+    if (near) {
+        return func(obj);
+    }
+    game.distantname = (game.distantname | 0) + 1;
+    try {
+        return func(obj);
+    } finally {
+        game.distantname = (game.distantname | 0) - 1;
+    }
+}
+
+/** C ref: display.c / distant_name neardist = (r*r)*2 - r, r = max(xray,2). */
+function object_neardist() {
+    const xr = game.u?.xray_range | 0;
+    const r = xr > 2 ? xr : 2;
+    return (r * r) * 2 - r;
+}
+
+function distu_xy(x, y) {
+    const u = game.u;
+    const dx = (x | 0) - (u?.ux | 0);
+    const dy = (y | 0) - (u?.uy | 0);
+    return dx * dx + dy * dy;
+}
+
+function cansee_xy(x, y) {
+    return !!_distant_cansee?.(x, y);
+}
+
+/**
+ * Floor / invent / minvent location for distant_name (zap.c get_obj_location
+ * subset, locflags=0 — no buried/contained).
+ */
+function get_obj_loc_for_distant(obj) {
+    if (!obj) return null;
+    const where = obj.where;
+    if (where === OBJ_INVENT || where === 'INVENT') {
+        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
+    }
+    if (where === OBJ_FLOOR || where === 'FLOOR') {
+        return { x: obj.ox | 0, y: obj.oy | 0 };
+    }
+    if (where === OBJ_MINVENT || where === 'MINVENT') {
+        const mon = obj.ocarry;
+        if (mon?.mx) return { x: mon.mx | 0, y: mon.my | 0 };
+    }
+    return null;
 }
 
 /**
@@ -617,13 +682,27 @@ function bimanual(obj) {
 }
 
 /**
-/**
  * Late-bound from shk.js — C doname_base unpaid / (with_price) shop suffix.
  * Avoids static objnam↔shk import cycle (shk already imports doname).
  */
 let _doname_shop_suffix = null;
 export function set_doname_shop_suffix(fn) {
     _doname_shop_suffix = fn;
+}
+
+/**
+ * Late-bound from invent.js — C xname_flags observe_object.
+ * Avoids static objnam↔invent cycle (invent imports doname/xname).
+ */
+let _xname_observe = null;
+export function set_xname_observe(fn) {
+    _xname_observe = fn;
+}
+
+/** Late-bound cansee for distant_name (vision↔objnam cycle). */
+let _distant_cansee = null;
+export function set_distant_cansee(fn) {
+    _distant_cansee = fn;
 }
 
 /**
@@ -635,6 +714,10 @@ export function doname(obj) {
     if (!obj) return 'something';
     // C: xname Role_if(PM_CLERIC) obj->bknown=1 before doname_base reads it
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
+    // C: doname_base → xname → observe_object when !Blind && !distantname
+    if (!game.u?.Blind && !(game.distantname | 0) && _xname_observe) {
+        _xname_observe(obj);
+    }
     const otyp = obj.otyp;
     const oclass = obj.oclass;
     const known = !!obj.known;

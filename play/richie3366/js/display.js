@@ -84,8 +84,7 @@ function use_inverse_opt() {
 
 /**
  * C ref: wintty.c tty_print_glyph — MG_OBJPILE && hilite_pile && use_inverse
- * → ATR_INVERSE. Named omissions: MG_DETECT / BW_* / MG_FEMALE; hilite_pet
- * petattr (separate branch).
+ * → ATR_INVERSE. Named omissions: MG_DETECT / BW_* / MG_FEMALE.
  */
 function obj_map_attr(obj, rememberedPile = false) {
     const pile = rememberedPile || obj_is_piletop(obj);
@@ -93,6 +92,24 @@ function obj_map_attr(obj, rememberedPile = false) {
         return ATR_INVERSE;
     }
     return 0;
+}
+
+/**
+ * C ref: wintty.c tty_print_glyph — (special & MG_PET) && hilite_pet
+ * → term_start_attr(wc2_petattr). flag.h hilite_pet ≡ wc_hilite_pet;
+ * options.c init_options wc2_petattr = ATR_INVERSE; enable hilite_pet
+ * also sets petattr when unset. Named omissions: accessibility
+ * SYM_PET_OVERRIDE; remembered MG_PET glyph when pet left the square.
+ */
+function hilite_pet_opt() {
+    return !!(game.iflags?.wc_hilite_pet ?? game.iflags?.hilite_pet);
+}
+
+function mon_map_attr(mtmp) {
+    if (!mtmp?.mtame || !hilite_pet_opt()) return 0;
+    const a = game.iflags?.wc2_petattr;
+    // C: ATR_NONE is 0; init + enable path keep Inverse when hilite is on.
+    return (a == null || a === 0) ? ATR_INVERSE : (a | 0);
 }
 
 // C ref: defsym.h OBJCLASS_DRAWING — default object-class map symbols
@@ -117,7 +134,7 @@ const DEF_OC_SYM = {
 };
 
 // C ref: defsym.h MONSYM — letter from mlet; color from mons[].mcolor (not mlet).
-// pet_color ≡ mon_color (display.c); hilite_pet only sets tty attr, not color.
+// pet_color ≡ mon_color (display.c); hilite_pet sets tty attr via mon_map_attr.
 const MLET_CH = {
     S_ANT: 'a',
     S_BLOB: 'b',
@@ -1562,7 +1579,7 @@ export function newsym(x, y) {
                 return;
             }
             const mg = mon_glyph(mtmp);
-            show_glyph_cell(x, y, mg.ch, mg.color, false);
+            show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
             return;
         }
         // C: newsym cansee — keep remembered I when !displayable mon
@@ -1622,7 +1639,7 @@ export function newsym(x, y) {
     // C: !cansee — still show sensed monsters (infrared / telepathy / detect)
     if (mtmp && mon_visible(mtmp) && see_with_infrared(mtmp)) {
         const mg = mon_glyph(mtmp);
-        show_glyph_cell(x, y, mg.ch, mg.color, false);
+        show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
         return;
     }
 

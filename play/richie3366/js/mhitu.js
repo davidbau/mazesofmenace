@@ -8,13 +8,13 @@ import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
-    Upolyd, DIED, P_WHIP,
+    Upolyd, DIED, P_WHIP, NON_PM,
 } from './const.js';
 import { thrwmu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { nomul } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
-import { pline, mon_visible, canspotmon, map_invisible } from './display.js';
+import { pline, mon_visible, canspotmon, map_invisible, canseemon } from './display.js';
 import { Monnam } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
 import { is_pole } from './wield.js';
@@ -25,8 +25,13 @@ import {
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AD_PHYS, AD_ELEC,
 } from './mhitm.js';
-import { is_orc } from './monsters.js';
+import { is_orc, is_demon, is_were } from './monsters.js';
 import { done_in_by } from './end.js';
+import { msummon, Inhell } from './minion.js';
+import { monsterNames } from './generated/monsters_data.js';
+
+const PM_BALROG = monsterNames.indexOf('PM_BALROG');
+const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 
 /** C ref: objclass.h — weapon strike modes overload oc_dir. */
 const PIERCE = 1;
@@ -49,7 +54,8 @@ function AC_VALUE(ac) {
 }
 
 /**
- * C ref: mhitu.c calc_mattacku_vars — range2 = !monnear(mux,muy).
+ * C ref: mhitu.c calc_mattacku_vars — range2 = !monnear(mux,muy);
+ * youseeit = canseemon(mtmp).
  */
 function calc_mattacku_vars(mtmp) {
     const u = game.u || {};
@@ -58,7 +64,8 @@ function calc_mattacku_vars(mtmp) {
     const ranged = dist2u(mtmp) > 3;
     const range2 = !monnear(mtmp, mux, muy);
     const foundyou = (u.ux === mux && u.uy === muy);
-    return { ranged, range2, foundyou };
+    const youseeit = canseemon(mtmp);
+    return { ranged, range2, foundyou, youseeit };
 }
 
 function dist2u(mtmp) {
@@ -280,10 +287,29 @@ async function hitmu(mtmp, mattk) {
  * Breath/spit/gulp/gaze/expl/hugs/magic/swallow/undetected deferred.
  * Returns 1 if monster died, else 0.
  */
+/**
+ * C ref: mhitu.c summonmu — demon help / were change+summon.
+ * Caller verified !mcan, cham==NON_PM, !range2.
+ * Named omissions: were new_were / were_summon / Protection_from_shape_changers /
+ * night() / Deaf growl plines (demon arm returns first).
+ */
+async function summonmu(mtmp, youseeit) {
+    let mdat = mtmp.data;
+    if (is_demon(mdat)) {
+        const mndx = mdat?.mndx ?? mtmp.mnum;
+        if (mndx !== PM_BALROG && mndx !== PM_AMOROUS_DEMON) {
+            if (!rn2(Inhell() ? 10 : 16)) await msummon(mtmp);
+        }
+        return; // no demon were
+    }
+    // is_were arm deferred
+    void youseeit;
+}
+
 export async function mattacku(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) < 1) return 1;
 
-    let { ranged, range2, foundyou } = calc_mattacku_vars(mtmp);
+    let { ranged, range2, foundyou, youseeit } = calc_mattacku_vars(mtmp);
     if (!ranged) nomul(0);
     if ((mtmp.mhp | 0) < 1) return 1;
 
@@ -305,12 +331,6 @@ export async function mattacku(mtmp) {
         }
     }
 
-    // C: find_offensive / use_offensive before attack loop — potion throw
-    // spends the turn (return 2) without melee/ranged AT_WEAP.
-    if (find_offensive(mtmp)) {
-        const offended = await use_offensive(mtmp);
-        if (offended !== 0) return offended === 1 ? 1 : 0;
-    }
     // AC_VALUE(u.uac) + 10 + m_lev (+ helpless / invis / trap deferred deltas)
     let tmp = AC_VALUE(u.uac ?? 10) + 10;
     tmp += mtmp.m_lev | 0;
@@ -319,6 +339,24 @@ export async function mattacku(mtmp) {
     if (mtmp.mtrapped) tmp -= 2;
     if (tmp <= 0) tmp = 1;
 
+    // C: mhitu.c summonmu before find_offensive — demon/were help
+    let mdat = mtmp.data;
+    if ((mtmp.cham ?? NON_PM) === NON_PM && !mtmp.mcan && !range2
+        && (is_demon(mdat) || is_were(mdat))) {
+        const already_fleeing = !!(mtmp.mflee | 0);
+        await summonmu(mtmp, youseeit);
+        if ((mtmp.mflee | 0) && !already_fleeing) return 0;
+        mdat = mtmp.data;
+    }
+    void mdat;
+
+    // C: find_offensive / use_offensive before attack loop — potion throw
+    // spends the turn (return 2) without melee/ranged AT_WEAP.
+    if (find_offensive(mtmp)) {
+        const offended = await use_offensive(mtmp);
+        if (offended !== 0) return offended === 1 ? 1 : 0;
+    }
+
     const sum = new Array(NATTK).fill(M_ATTK_MISS);
     const firstfoundyou = foundyou;
 
@@ -326,7 +364,8 @@ export async function mattacku(mtmp) {
         sum[i] = M_ATTK_MISS;
         if ((mtmp.mhp | 0) < 1) return 1;
         if (i > 0) {
-            ({ ranged, range2, foundyou } = calc_mattacku_vars(mtmp));
+            ({ ranged, range2, foundyou, youseeit } = calc_mattacku_vars(mtmp));
+            void youseeit;
             if (firstfoundyou && !foundyou) continue;
         }
 

@@ -9,9 +9,6 @@
 // checkfile. Full glyph encyclopedia, whatdoes keyhelp body, and PORT_HELP
 // deferred.
 
-import { readFileSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
@@ -39,27 +36,21 @@ import {
     STRAT_WAITMASK, IS_WALL,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
-
-const DAT_DIR = join(
-    dirname(fileURLToPath(import.meta.url)),
-    '../nethack-c/upstream/dat',
-);
+import { DAT_TEXT } from './generated/dat_text.js';
 
 const CHK_USR = 1;
 const CHK_DONT_ASK = 2;
-/** C ref: pager.c chkfilIaCheck — lookup only, no display (itemactions `/`). */
+/** C ref: pager.c chkfilIaCheck — lookup only, no display (itemed `/`). */
 const CHK_IA_CHECK = 4;
 
-function datPath(name) {
-    // C DATAFILE "data" is built from data.base; use source for lookup text.
-    if (name === 'data') return join(DAT_DIR, 'data.base');
-    return join(DAT_DIR, name);
-}
-
+/**
+ * Contest Rule #2: no runtime filesystem. Texts are embedded via
+ * scripts/extract-dat-text.py → js/generated/dat_text.js.
+ * C DATAFILE "data" is built from data.base; key "data" holds that source.
+ */
 function readDat(name) {
-    const p = datPath(name);
-    if (!existsSync(p)) return null;
-    return readFileSync(p, 'utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const raw = DAT_TEXT[name];
+    return raw == null ? null : raw;
 }
 
 /**

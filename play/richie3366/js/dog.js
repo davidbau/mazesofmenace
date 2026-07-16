@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { makemon, set_malign } from './makemon.js';
-import { mons, NON_PM, is_human, regenerates } from './monsters.js';
+import { mons, NON_PM, is_human, regenerates, M2_STALK } from './monsters.js';
 import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import {
@@ -116,20 +116,23 @@ export function makedog() {
     return mtmp;
 }
 
-/** C ref: mondata.c levl_follower — pets / wiz / stalkers follow across levels. */
+/**
+ * C ref: mondata.c levl_follower — pets / wiz / following-shk / M2_STALK.
+ * Named omissions: mon_has_amulet short-circuit for iswiz; is_fshk.
+ */
 export function levl_follower(mtmp) {
     if (mtmp === game.u?.usteed) return true;
-    if (mtmp.iswiz && mtmp.minvent) {
-        // mon_has_amulet deferred — wiz with amulet won't follow
-    }
+    // C: iswiz && mon_has_amulet → FALSE (mon_has_amulet deferred)
     if (mtmp.mtame || mtmp.iswiz) return true;
-    // M2_STALK / fleeing / amulet deferred
-    return false;
+    // C: is_fshk(mtmp) deferred
+    // C: (mflags2 & M2_STALK) && (!mflee || u.uhave.amulet)
+    return !!((mtmp.data?.mflags2 | 0) & M2_STALK)
+        && (!mtmp.mflee || !!(game.u?.uhave?.amulet));
 }
 
 /**
  * C ref: dog.c keepdogs — move nearby followers onto mydogs before level leave.
- * pets_only path and migrate_to_level / leash / wizard chase deferred.
+ * pets_only path; migrate_to_level / leash / mon_has_amulet stay_behind deferred.
  */
 export function keepdogs(pets_only = false) {
     const u = game.u;
@@ -148,15 +151,18 @@ export function keepdogs(pets_only = false) {
         }
         const near = monnear(mtmp, u.ux, u.uy);
         const follow = levl_follower(mtmp);
+        // C: (monnear && levl_follower) || (uhave.amulet && iswiz)
+        const chase = near && follow
+            || (!!(game.u?.uhave?.amulet) && mtmp.iswiz);
         const helpless = !mtmp.mcanmove || mtmp.msleeping || (mtmp.mfrozen | 0) > 0;
         const waiting = !!(mtmp.mstrategy & STRAT_WAITFORU);
-        if (near && follow && (!helpless || mtmp === u.usteed) && !waiting) {
+        if (chase && (!helpless || mtmp === u.usteed) && !waiting) {
             if (mtmp.meating || mtmp.mtrapped) {
                 stay.push(mtmp);
                 continue;
             }
-            // Onto mydogs; mx=0 marks migrating
-            game.mydogs.push(mtmp);
+            // C: relmon(mtmp, &mydogs) prepends — LIFO so last kept arrives first
+            game.mydogs.unshift(mtmp);
             mtmp.mx = 0;
             mtmp.my = 0;
             mtmp.mlstmv = game.moves | 0;

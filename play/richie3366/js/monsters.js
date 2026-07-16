@@ -85,17 +85,20 @@ export const M2_HOSTILE = 0x00100000;
 export const M2_PEACEFUL = 0x00200000;
 export const M2_DOMESTIC = 0x00400000;
 export const M2_WANDER = 0x00800000;
+export const M2_STALK = 0x01000000; /* monflag.h — follows across levels */
 export const M2_ROCKTHROW = 0x08000000;
 export const M2_GREEDY = 0x10000000; /* monflag.h — likes gold */
 export const M2_JEWELS = 0x20000000; /* monflag.h — likes gems */
 export const M2_COLLECT = 0x40000000; /* monflag.h — picks up weapons/food */
 export const M2_MAGIC = 0x80000000; /* monflag.h — picks up magic items */
 export const M2_UNDEAD = 0x00000002; /* monflag.h — walking dead */
+export const M2_WERE = 0x00000004; /* monflag.h — is a lycanthrope */
 export const M2_LORD = 0x00000400;
 export const M2_PRINCE = 0x00000800;
 export const M2_NASTY = 0x02000000;
 export const M2_STRONG = 0x04000000;
 export const M2_MERC = 0x00000200;
+export const M2_DEMON = 0x00000100; /* monflag.h — is a demon */
 export const M2_ORC = 0x00000080; /* monflag.h — is an orc (≡ MH_ORC) */
 export const M2_HUMAN = 0x00000008; /* monflag.h — is a human */
 
@@ -404,6 +407,26 @@ export function is_prince(ptr) {
 }
 export function extra_nasty(ptr) {
     return !!(ptr?.mflags2 & M2_NASTY);
+}
+/** C ref: mondata.h is_demon */
+export function is_demon(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_DEMON);
+}
+/** C ref: mondata.h is_were */
+export function is_were(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_WERE);
+}
+/** C ref: mondata.h is_ndemon — demon neither lord nor prince */
+export function is_ndemon(ptr) {
+    return is_demon(ptr)
+        && ((ptr?.mflags2 ?? 0) & (M2_LORD | M2_PRINCE)) === 0;
+}
+/** C ref: mondata.h is_dlord / is_dprince */
+export function is_dlord(ptr) {
+    return is_demon(ptr) && is_lord(ptr);
+}
+export function is_dprince(ptr) {
+    return is_demon(ptr) && is_prince(ptr);
 }
 export function is_mercenary(ptr) {
     return !!(ptr?.mflags2 & M2_MERC);

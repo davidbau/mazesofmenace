@@ -539,6 +539,10 @@ function simple_bool_toggle(opt) {
     if (!game[opt.addr.obj]) game[opt.addr.obj] = {};
     const bag = game[opt.addr.obj];
     bag[opt.addr.key] = !simple_bool_value(opt);
+    // C options.c opt_hilite_pet: enabling with unset petattr → ATR_INVERSE
+    if (opt.name === 'hilite_pet' && bag[opt.addr.key] && !bag.wc2_petattr) {
+        bag.wc2_petattr = ATR_INVERSE;
+    }
 }
 
 function format_simple_opt_line(opt, nameWidth) {

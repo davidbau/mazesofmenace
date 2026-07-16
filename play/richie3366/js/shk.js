@@ -15,7 +15,7 @@
 // mnearto home_shk; paygd; M1_NOHEAD has_head (assume headed for shk path);
 // container bill_box_content / contained_cost; remote_burglary; gem glass
 // pseudo-ID in get_cost; arti_cost; Hallu currency ROLL_FROM; costly_gold;
-// pricequotes; get_obj_location buried/minvent;
+// get_obj_location buried (minvent via distant_name); sell-side quotes partial;
 // dopay: debit/robbed/angry appease; used-up/container bill arms;
 // traditional itemize ynq; observe_object/makeknown in shk_names_obj;
 // getpos pay-whom; container paydoname rewrite; contained_cost.
@@ -353,9 +353,57 @@ export function unpaid_cost(unp_obj, cost_type) {
 }
 
 /**
+ * C ref: shk.c record_price_quote — remember buy/sell quote range for otyp.
+ */
+export function record_price_quote(otyp, price, buyprice) {
+    const oc = objects()?.[otyp | 0];
+    if (!oc) return;
+    const p = price >>> 0; // unsigned long
+    if (buyprice) {
+        if (p > (oc.oc_buy_maxseen >>> 0)) oc.oc_buy_maxseen = p;
+        if (p < (oc.oc_buy_minseen >>> 0)) oc.oc_buy_minseen = p;
+    } else {
+        if (p > (oc.oc_sell_maxseen >>> 0)) oc.oc_sell_maxseen = p;
+        if (p < (oc.oc_sell_minseen >>> 0)) oc.oc_sell_minseen = p;
+    }
+}
+
+/**
+ * C ref: shk.c append_price_quote — " {buy N}" / " {sell N}" on discoveries.
+ * Returns buf (possibly extended). BUFSZ truncate deferred (JS strings).
+ */
+export function append_price_quote(buf, otyp) {
+    const oc = objects()?.[otyp | 0];
+    if (!oc) return buf;
+    const buyMin = oc.oc_buy_minseen >>> 0;
+    const buyMax = oc.oc_buy_maxseen >>> 0;
+    const sellMin = oc.oc_sell_minseen >>> 0;
+    const sellMax = oc.oc_sell_maxseen >>> 0;
+    // C: no quotes recorded yet when minseen > maxseen for both
+    if (sellMin > sellMax && buyMin > buyMax) return buf;
+
+    let inner = '{';
+    let sep = '';
+    if (buyMin < buyMax) {
+        inner += `buy ${buyMin}-${buyMax}`;
+        sep = ' ';
+    } else if (buyMin === buyMax) {
+        inner += `buy ${buyMin}`;
+        sep = ' ';
+    }
+    if (sellMin < sellMax) {
+        inner += `${sep}sell ${sellMin}-${sellMax}`;
+    } else if (sellMin === sellMax) {
+        inner += `${sep}sell ${sellMin}`;
+    }
+    inner += '}';
+    return `${buf} ${inner}`;
+}
+
+/**
  * C ref: objnam.c doname_base unpaid arm (is_unpaid → unpaid_cost).
  * Wired into plain doname via set_doname_shop_suffix(…, with_price ignored).
- * Named omissions: record_price_quote; contained_cost contents label path
+ * Named omissions: contained_cost contents label path
  * still uses unpaid_cost amt without nested walk.
  */
 function append_doname_unpaid_suffix(obj, bp, _with_price) {
@@ -366,6 +414,9 @@ function append_doname_unpaid_suffix(obj, bp, _with_price) {
     const quotedprice = unpaid_cost(obj, COST_CONTENTS);
     const pricebuf = `${quotedprice} ${currency(quotedprice)}`;
     const label = obj.unpaid ? 'unpaid' : 'contents';
+    // C: record_price_quote(otyp, quotedprice / quan, TRUE)
+    const quan = (obj.quan | 0) || 1;
+    record_price_quote(obj.otyp, Math.trunc(quotedprice / quan), true);
     return `${bp} (${label}, ${pricebuf})`;
 }
 
@@ -416,7 +467,7 @@ export function get_cost_of_shop_item(obj) {
  * C ref: objnam.c doname_with_price → doname_base(DONAME_WITH_PRICE).
  * Plain doname already applies unpaid (C first else-if); this only adds
  * for-sale / no-charge when !is_unpaid.
- * Named omissions: pricequotes append; contained_cost contents bill.
+ * Named omissions: pricequotes append when !oc_name_known; contained_cost.
  */
 export function doname_with_price(obj) {
     let bp = doname(obj);
@@ -429,8 +480,15 @@ export function doname_with_price(obj) {
     if (price > 0) {
         const pricebuf = `${price} ${currency(price)}`;
         bp += ` (${nochrg ? 'contents' : 'for sale'}, ${pricebuf})`;
+        // C: record_price_quote(otyp, price / quan, TRUE)
+        const quan = (obj.quan | 0) || 1;
+        record_price_quote(obj.otyp, Math.trunc(price / quan), true);
     } else if (nochrg > 0) {
         bp += ' (no charge)';
+    } else if (game.iflags?.pricequotes
+        && !game.objects?.[obj.otyp | 0]?.oc_name_known) {
+        // C: append_price_quote when pricequotes && !oc_name_known
+        bp = append_price_quote(bp, obj.otyp);
     }
     return bp;
 }
@@ -583,7 +641,7 @@ export function billable(shkHolder, obj, roomno, reset_nocharge) {
 
 /**
  * C ref: shk.c add_one_tobill.
- * Named omissions: dummy→billobjs; globby OMID; record_price_quote.
+ * Named omissions: dummy→billobjs; globby OMID.
  */
 function add_one_tobill(obj, dummy, shkp) {
     const eshkp = ESHK(shkp);
