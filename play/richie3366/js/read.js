@@ -1,15 +1,16 @@
 // read.js — Read command / scroll effects (partial).
 // C ref: read.c doread, seffects, seffect_magic_mapping, seffect_teleportation,
 // seffect_light / litroom / set_lit, seffect_remove_curse,
-// seffect_enchant_weapon; invent.c getobj; detect.c do_mapping; spell.c
-// study_book (via spell.js); teleport.c scrolltele/safe_teleds; zap.c
-// lightdamage (non-gremlin stub); do_name.c trycall; mkobj.c uncurse/
-// blessorcurse; wield.c chwepon.
+// seffect_enchant_weapon, create_particular; invent.c getobj; detect.c
+// do_mapping; spell.c study_book (via spell.js); teleport.c
+// scrolltele/safe_teleds; zap.c lightdamage (non-gremlin stub); do_name.c
+// trycall; mkobj.c uncurse/blessorcurse; wield.c chwepon.
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
 // SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
 // SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR + SPBOOK_CLASS →
-// study_book (already-known refresh yn).
+// study_book (already-known refresh yn) + create_particular named-monster
+// path for #wizgenesis.
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
 // Blind gates; study_book occupation/learn / novel / cursed_book; other
 // seffect_*; SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
@@ -22,12 +23,14 @@
 // costly_alteration; Punished/unpunish; buried_ball_to_freedom; steed saddle
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
-// proof strip.
+// proof strip; create_particular class-letter / * random / cant_revive yn /
+// tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
+// makemon MM_NOMSG appear arm (caller emits next-to-you pline).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, newsym, You_feel } from './display.js';
-import { xname } from './objnam.js';
+import { xname, an } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, objectNames,
@@ -45,9 +48,14 @@ import { destroy_arm, some_armor } from './do_wear.js';
 import { rn2, rnd } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
-    W_BALL, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM,
+    W_BALL, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM, NO_MM_FLAGS,
+    thats_enough_tries,
 } from './const.js';
 import { vision_recalc, do_clear_area } from './vision.js';
+import { getlin } from './getline.js';
+import { name_to_mon } from './mondata.js';
+import { mons, NON_PM } from './monsters.js';
+import { makemon } from './makemon.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
@@ -769,4 +777,93 @@ export async function doread() {
         if (otyp !== SCR_BLANK_PAPER) useup(scroll);
     }
     return 1;
+}
+
+function mungspaces(s) {
+    return String(s || '').trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * C ref: read.c create_particular_parse — named-monster subset.
+ * Envelope: name_to_mon only. Deferred: quan digit prefix, saddled/
+ * sleeping/invisible/hidden/female/male/tame/peaceful/hostile,
+ * * / random, name_to_monclass class letters.
+ * @returns {object|null}
+ */
+function create_particular_parse(str) {
+    const bufp = mungspaces(str);
+    if (!bufp) return null;
+    const which = name_to_mon(bufp);
+    if (which === NON_PM || which < 0) return null;
+    return {
+        quan: 1 + ((game.multi > 0) ? (game.multi | 0) : 0),
+        which,
+        fem: -1,
+        genderconf: -1,
+        randmonst: false,
+        monclass: -1, // C MAXMCLASSES — named path
+    };
+}
+
+/**
+ * C ref: read.c create_particular_creation — named MM_NOEXCLAM path.
+ * Appear pline is caller-side (makemon MM_NOMSG arm still deferred).
+ */
+async function create_particular_creation(d) {
+    if (!d || d.randmonst) return false;
+    const whichpm = mons(d.which);
+    if (!whichpm) return false;
+    let madeany = false;
+    for (let i = 0; i < d.quan; i++) {
+        let mmflags = NO_MM_FLAGS | MM_NOEXCLAM;
+        const mtmp = makemon(whichpm, game.u.ux | 0, game.u.uy | 0, mmflags);
+        if (!mtmp) break;
+        // C Norep appear: Amonnam + " appears next to you." when next2u
+        const plain = String(whichpm.name || 'monster')
+            .replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+        const what = an(plain);
+        const What = what.charAt(0).toUpperCase() + what.slice(1);
+        const dx = Math.abs((mtmp.mx | 0) - (game.u.ux | 0));
+        const dy = Math.abs((mtmp.my | 0) - (game.u.uy | 0));
+        const next2u = dx <= 1 && dy <= 1 && (dx || dy);
+        const where = next2u ? ' next to you' : ' close by';
+        await pline(`${What} appears${where}.`);
+        madeany = true;
+    }
+    return madeany;
+}
+
+/**
+ * C ref: read.c create_particular — wizard ^G / #wizgenesis getlin loop.
+ * Envelope: named monster via name_to_mon + makemon(u.ux,u.uy,MM_NOEXCLAM).
+ */
+export async function create_particular() {
+    const CP_TRYLIM = 5;
+    let tryct = CP_TRYLIM;
+    let altmsg = 0;
+    let prompt = 'Create what kind of monster?';
+    let d = null;
+    do {
+        const buf = await getlin(prompt);
+        if (buf === '\x1b') return false;
+        const bufp = mungspaces(buf);
+        if (bufp === '\x1b') return false;
+        d = create_particular_parse(bufp);
+        if (d) break;
+        if (bufp || altmsg || tryct < 2) {
+            await pline("I've never heard of such monsters.");
+        } else {
+            await pline('Try again (type * for random, ESC to cancel).');
+            ++altmsg;
+        }
+        if (tryct === CP_TRYLIM) {
+            prompt = 'Create what kind of monster? [type name or symbol]';
+        }
+    } while (--tryct > 0);
+
+    if (!tryct) {
+        await pline(thats_enough_tries);
+        return false;
+    }
+    return create_particular_creation(d);
 }

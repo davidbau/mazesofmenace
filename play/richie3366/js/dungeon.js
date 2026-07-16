@@ -524,6 +524,35 @@ function init_castle_tune() {
 }
 
 /** C ref: dungeon.c find_level — match proto name in sp_levchn. */
+/**
+ * C ref: dungeon.c get_level — map logical depth to d_level in current
+ * dungeon tree (walk parents via branches when above depth_start).
+ */
+export function get_level(newlevel, levnum) {
+    let dgn = game.u?.uz?.dnum | 0;
+    const dungeons = game.dungeons || [];
+    const dun = () => dungeons[dgn];
+    if (levnum <= 0) {
+        // C: can only currently happen in endgame
+        levnum = game.u?.uz?.dlevel | 0;
+    } else if (levnum > ((dun()?.depth_start | 0) + (dun()?.num_dunlevs | 0) - 1)) {
+        levnum = dun()?.num_dunlevs | 0;
+    } else {
+        if (levnum < (dun()?.depth_start | 0)) {
+            do {
+                const br = (game.branches || []).find(
+                    (b) => (b.end2?.dnum | 0) === dgn,
+                );
+                if (!br) break; // C panics; soft-fail keeps current dgn
+                dgn = br.end1?.dnum | 0;
+            } while (levnum < (dun()?.depth_start | 0));
+        }
+        levnum = levnum - (dun()?.depth_start | 0) + 1;
+    }
+    newlevel.dnum = dgn;
+    newlevel.dlevel = levnum;
+}
+
 export function find_level(name) {
     const want = name.toLowerCase();
     for (const curr of game.sp_levchn || []) {

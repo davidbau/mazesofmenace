@@ -30,7 +30,7 @@ import { mkcorpstat, curse, place_object, stackobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon } from './makemon.js';
 import { write_bonesfile } from './bones.js';
-import { topten, nh_terminate_capture } from './topten.js';
+import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
 import { paybill, money2mon } from './shk.js';
@@ -495,7 +495,9 @@ async function disclose(how, taken) {
 async function show_death_rip_and_summary(how, umoney) {
     const flags = game.flags || {};
     const done_stopprint = game.program_state?.done_stopprint | 0;
-    if (done_stopprint && !flags.tombstone) return;
+    // C: dump_forward_putstr(..., done_stopprint) + display_nhwindow
+    // skipped when stopprint — visible output suppressed even if tombstone.
+    if (done_stopprint) return;
 
     const lines = [];
     // C genl_outrip: leading blank then stone then two blanks
@@ -634,6 +636,10 @@ async function really_done(how) {
     // C: !toptenwin → exit_nhwindows then topten raw_print; nh_terminate
     // captures final screen (contest nomux input boundary, no nhgetch).
     topten(how, 0, formatkiller(how, true));
+    // C: if (done_stopprint) { raw_print(""); raw_print(""); }
+    if (game.program_state?.done_stopprint) {
+        raw_print_blanks(2);
+    }
     nh_terminate_capture();
 }
 
@@ -779,7 +785,7 @@ export async function finish_losehp_done() {
  * C ref: end.c done2 — `#quit` (GENERALCMD, ECMD_OK; no turn).
  * Named omissions: In_tutorial abandon / schedule_goto; ParanoidQuit
  * getlin "yes" (uses yn when !ParanoidQuit, matching default bits);
- * wizard Dump-core ynq.
+ * Dump-core 'y' → NH_abort / sound_exit (treated as stopprint quit).
  */
 export async function done2() {
     // C: paranoid_query(ParanoidQuit, …). Default paranoia_bits omit
@@ -788,6 +794,18 @@ export async function done2() {
         'Really quit without saving?', 'yn', 'n',
     )) === 'y';
     if (!ok) return ECMD_OK;
+
+    // C: wizard → ynq("Dump core?") — wizard ≡ flags.debug
+    if (game.flags?.debug || game.flags?.wizard) {
+        const c = await yn_function('Dump core?', 'ynq', 'q');
+        if (c === 'y' || c === 'q') {
+            // C: 'y' → NH_abort (deferred); 'q' → done_stopprint++
+            if (!game.program_state) game.program_state = {};
+            game.program_state.done_stopprint =
+                (game.program_state.done_stopprint | 0) + 1;
+        }
+    }
+
     await done(QUIT);
     return ECMD_OK;
 }
@@ -800,9 +818,15 @@ export async function done2() {
  */
 export async function done(how) {
     const flags = game.flags || (game.flags = {});
-    // C: force full status update unless panic/hangup/quit-stopprint
-    flags.botlx = true;
-    await bot();
+    // C: skip bot when panicking / hangup / QUIT with done_stopprint
+    const stopprint = game.program_state?.done_stopprint | 0;
+    if (game.program_state?.panicking || (how === QUIT && stopprint)) {
+        flags.botl = false;
+        flags.botlx = false;
+    } else {
+        flags.botlx = true;
+        await bot();
+    }
     if (!game.killer) game.killer = { name: '', format: 0 };
     // C: ASCENDED / empty GENOCIDED → NO_KILLER_PREFIX
     if (how === ASCENDED || (!game.killer.name && how === GENOCIDED)) {

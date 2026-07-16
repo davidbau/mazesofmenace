@@ -29,6 +29,7 @@ import {
     TER_TRP, TER_OBJ, TER_MON, TER_FULL,
     OBJ_FLOOR,
     UNENCUMBERED,
+    NOT_HUNGRY,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -619,11 +620,25 @@ export function reset_display_messages() {
 }
 
 /**
+ * C ref: topl.c / wintty — yn_function and getobj leave TOPLINE_NON_EMPTY
+ * so parse()'s clear_nhwindow(WIN_MESSAGE) can blank the leftover prompt
+ * (critical with !verbose silent drop).
+ */
+export function mark_topline_prompt(text) {
+    const t = text == null ? (game._pending_message || '') : String(text);
+    _toplines = t.replace(/\n--More--$/, '').replace(/--More--$/, '');
+    _toplin = TOPLINE_NON_EMPTY;
+    game._pending_message = t;
+}
+
+/**
  * C ref: wintty.c tty_clear_nhwindow(WIN_MESSAGE) — blank topline when
  * toplin != EMPTY. Used by cmd.c parse() after get_count returns.
+ * Also clear when only `_pending_message` is set (yn/getobj painted
+ * without going through pline's NEED_MORE path).
  */
 export function clear_nhwindow_message() {
-    if (_toplin === TOPLINE_EMPTY) return;
+    if (_toplin === TOPLINE_EMPTY && !(game._pending_message)) return;
     _toplines = '';
     _toplin = TOPLINE_EMPTY;
     game._pending_message = '';
@@ -1819,11 +1834,17 @@ const ENC_STAT = [
     '', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded',
 ];
 
+// C ref: eat.c hu_stat[] — trailing spaces preserved for botl %s (D-0500).
+const HU_STAT = [
+    'Satiated', '        ', 'Hungry  ', 'Weak    ',
+    'Fainting', 'Fainted ', 'Starved ',
+];
+
 // C ref: botl.c describe_level — "Dlvl:%-2d" / "Tutorial:%-2d" uses
 // depth(&u.uz), not dunlev; Xp:/T: gated by flags.showexp / flags.time;
-// do_statusline2 conditions after enc_stat: Blind…Conf…Hallu…Lev/Fly then Ride.
+// do_statusline2: hunger then enc_stat then Blind…Conf…Hallu…Lev/Fly then Ride.
 // Named omissions: Knox/quest/endgame describe_level; Stone/Slime/Strngl/
-// Sick/hunger conditions (before enc_stat); Halluc_resistance; Upolyd HD.
+// Sick (before hunger); Halluc_resistance; Upolyd HD.
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
@@ -1839,8 +1860,13 @@ function _statusLine2() {
     let s = `${levtag}:${dlvl} $:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (flags.showexp) s += `/${u.uexp || 0}`;
     if (flags.time) s += ` T:${game.moves || 1}`;
+    // C do_statusline2: u.uhs != NOT_HUNGRY → hu_stat before enc_stat
+    const uhs = u.uhs ?? NOT_HUNGRY;
+    if (uhs !== NOT_HUNGRY) {
+        s += ` ${HU_STAT[uhs] || ''}`;
+    }
     // C do_statusline2: enc_stat then Blind/Deaf/Stun/Conf/Hallu/Lev/Fly/Ride
-    // (Stone…hunger before enc_stat deferred)
+    // (Stone/Slime/Strngl/Sick before hunger deferred)
     const cap = near_capacity();
     if (cap > UNENCUMBERED) {
         s += ` ${ENC_STAT[cap] || ''}`;
@@ -2092,15 +2118,16 @@ function _buildScreenOutput() {
             for (let c = 0; c < Math.min(s2.length, display.cols); c++)
                 display.setCell(c, 23, s2[c], NO_COLOR, 0);
         }
-        // Cursor: prompts stay on topline; otherwise hero.
+        // Cursor: prompts that actively await input set cursor via their
+        // callers (yn_function / more / Count). Leftover getobj text on
+        // the topline after a silent (!verbose) action must NOT steal the
+        // cursor — C leaves gt.toplines but parse() positions on the hero.
         if (msg.startsWith('Count:')) {
             display.setCursor(msg.length, 0);
         } else if (msg.endsWith('--More--') && !msg.includes('\n')) {
             display.setCursor(msg.length, 0);
         } else if (msg.includes('\n--More--')) {
             display.setCursor(8, 1);
-        } else if (msg.match(/^What do you want to /)) {
-            display.setCursor(msg.length, 0);
         } else if (game.u?.ux > 0) {
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
         }

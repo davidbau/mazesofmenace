@@ -3,8 +3,8 @@
 // t_at, t_missile, thitm, mintrap, dotrap, trapeffect_dart_trap /
 // trapeffect_pit / trapeffect_rocktrap / trapeffect_sqky_board /
 // trapeffect_bear_trap / trapeffect_hole / trapeffect_magic_trap /
-// trapeffect_fire_trap / trapeffect_slp_gas_trap, make_corpse ordinary
-// path via thitm death.
+// trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap,
+// make_corpse ordinary path via thitm death.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d, rnl } from './rng.js';
@@ -47,12 +47,17 @@ import {
     KILLED_BY, KILLED_BY_AN,
     WATER, BURNING,
     TT_NONE, TT_BEARTRAP, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
+    HEAD, ARM,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMU, W_WEP, W_SWAPWEP,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap_once_vault } from './teleport.js';
-import { objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS } from './objects.js';
+import {
+    objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
+    WEAPON_CLASS, TOOL_CLASS,
+} from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
@@ -71,6 +76,10 @@ const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
 const PM_BUGBEAR = monsterNames.indexOf('PM_BUGBEAR');
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const AD_RUST = 24; /* monattk.h */
+// C ref: trap.c A_gush_of_water_hits
+const A_gush_of_water_hits = 'A gush of water hits';
 const DART = objectNames.indexOf('DART');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -946,10 +955,12 @@ export async function heal_legs(how) {
     if ((how | 0) === 0) await encumber_msg();
 }
 
-/** C ref: mondata.c body_part — FOOT→"foot", LEG→"leg"; full poly deferred. */
+/** C ref: mondata.c body_part — FOOT/LEG/HEAD/ARM; full poly deferred. */
 function body_part(part) {
     if (part === FOOT) return 'foot';
     if (part === LEG) return 'leg';
+    if (part === HEAD) return 'head';
+    if (part === ARM) return 'arm';
     return 'body';
 }
 
@@ -1089,6 +1100,203 @@ function hard_helmet(obj) {
 /** C ref: objnam.c helm_simple_name — "helmet" / "hat" polish deferred */
 function helm_simple_name(_obj) {
     return 'helmet';
+}
+
+/** C ref: objnam.c cloak_simple_name — robe/smock polish deferred */
+function cloak_simple_name(_obj) {
+    return 'cloak';
+}
+
+/** C ref: objnam.c gloves_simple_name */
+function gloves_simple_name(_obj) {
+    return 'gloves';
+}
+
+/** C ref: objnam.c suit_simple_name — mail/jacket polish deferred */
+function suit_simple_name(_obj) {
+    return 'suit';
+}
+
+/** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
+function bimanual(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
+    return !!(game.objects?.[obj.otyp]?.oc_big);
+}
+
+/**
+ * C ref: worn.c which_armor — first minvent obj with owornmask bit.
+ */
+function which_armor(mtmp, mask) {
+    if (!mtmp) return null;
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if ((otmp.owornmask || 0) & mask) return otmp;
+    }
+    return null;
+}
+
+/** C ref: mon.h MON_WEP */
+function MON_WEP(mtmp) {
+    return which_armor(mtmp, W_WEP);
+}
+
+/**
+ * C ref: apply.c splash_lit — extinguish lit object hit by water.
+ * Named omission: brass lantern crackle/flicker/dunk age drain; full
+ * snuff_lit light-source bookkeeping.
+ */
+function splash_lit(obj) {
+    if (!obj?.lamplit) return false;
+    obj.lamplit = 0;
+    return true;
+}
+
+/**
+ * C ref: trap.c trapeffect_rust_trap — hero + monster branches.
+ * Envelope: seetrap; rn2(5) aim switch; water_damage / splash_lit on
+ * targeted slots; iron-golem rust death; gremlin rn2(3)→split_mon
+ * (split body deferred). Named omissions: update_inventory; lantern
+ * dunk; mlifesaver "starts to fall"; poly body_part table.
+ */
+async function trapeffect_rust_trap(mtmp, trap, _trflags) {
+    if (is_youmonst(mtmp)) {
+        const u = game.u || {};
+        seetrap(trap);
+        switch (rn2(5)) {
+        case 0:
+            await pline(
+                `${A_gush_of_water_hits} you on the ${body_part(HEAD)}!`,
+            );
+            water_damage(u.uarmh, helm_simple_name(u.uarmh), true);
+            break;
+        case 1:
+            await pline(
+                `${A_gush_of_water_hits} your left ${body_part(ARM)}!`,
+            );
+            if (water_damage(u.uarms, 'shield', true) !== ER_NOTHING) break;
+            if (u.twoweap || (u.uwep && bimanual(u.uwep))) {
+                water_damage(u.twoweap ? u.uswapwep : u.uwep, null, true);
+            }
+            water_damage(u.uarmg, gloves_simple_name(u.uarmg), true);
+            break;
+        case 2:
+            await pline(
+                `${A_gush_of_water_hits} your right ${body_part(ARM)}!`,
+            );
+            water_damage(u.uwep, null, true);
+            water_damage(u.uarmg, gloves_simple_name(u.uarmg), true);
+            break;
+        default:
+            await pline(`${A_gush_of_water_hits} you!`);
+            for (const otmp of game.invent || []) {
+                if (otmp.lamplit && otmp !== u.uwep
+                    && (otmp !== u.uswapwep || !u.twoweap)) {
+                    splash_lit(otmp);
+                }
+            }
+            if (u.uarmc) {
+                water_damage(u.uarmc, cloak_simple_name(u.uarmc), true);
+            } else if (u.uarm) {
+                water_damage(u.uarm, suit_simple_name(u.uarm), true);
+            } else if (u.uarmu) {
+                water_damage(u.uarmu, 'shirt', true);
+            }
+            break;
+        }
+        // update_inventory deferred
+        if ((u.umonnum | 0) === PM_IRON_GOLEM) {
+            const dam = u.mhmax | 0;
+            await pline('You are covered with rust!');
+            losehp(maybe_half_phys(dam), 'rusting away', KILLED_BY);
+        } else if ((u.umonnum | 0) === PM_GREMLIN && rn2(3)) {
+            // split_mon deferred — still consume the rn2(3) gate
+        }
+        return Trap_Effect_Finished;
+    }
+
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    let trapkilled = false;
+    const mptr = mtmp.data;
+
+    if (in_sight) seetrap(trap);
+    switch (rn2(5)) {
+    case 0:
+        if (in_sight) {
+            await pline(
+                `${A_gush_of_water_hits} ${mon_nam(mtmp)} on the ${mbodypart(mtmp, HEAD)}!`,
+            );
+        }
+        {
+            const target = which_armor(mtmp, W_ARMH);
+            water_damage(target, helm_simple_name(target), true);
+        }
+        break;
+    case 1:
+        if (in_sight) {
+            await pline(
+                `${A_gush_of_water_hits} ${mon_nam(mtmp)}'s left ${mbodypart(mtmp, ARM)}!`,
+            );
+        }
+        {
+            let target = which_armor(mtmp, W_ARMS);
+            if (water_damage(target, 'shield', true) !== ER_NOTHING) break;
+            target = MON_WEP(mtmp);
+            if (target && bimanual(target)) {
+                water_damage(target, null, true);
+            }
+            target = which_armor(mtmp, W_ARMG);
+            water_damage(target, gloves_simple_name(target), true);
+        }
+        break;
+    case 2:
+        if (in_sight) {
+            await pline(
+                `${A_gush_of_water_hits} ${mon_nam(mtmp)}'s right ${mbodypart(mtmp, ARM)}!`,
+            );
+        }
+        water_damage(MON_WEP(mtmp), null, true);
+        water_damage(
+            which_armor(mtmp, W_ARMG),
+            gloves_simple_name(which_armor(mtmp, W_ARMG)),
+            true,
+        );
+        break;
+    default:
+        if (in_sight) {
+            await pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)}!`);
+        }
+        for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+            if (otmp.lamplit
+                && ((otmp.owornmask || 0) & (W_WEP | W_SWAPWEP)) === 0) {
+                splash_lit(otmp);
+            }
+        }
+        {
+            let target = which_armor(mtmp, W_ARMC);
+            if (target) {
+                water_damage(target, cloak_simple_name(target), true);
+            } else if ((target = which_armor(mtmp, W_ARM))) {
+                water_damage(target, suit_simple_name(target), true);
+            } else if ((target = which_armor(mtmp, W_ARMU))) {
+                water_damage(target, 'shirt', true);
+            }
+        }
+        break;
+    }
+
+    // C: completelyrusts(ptr) ≡ iron golem
+    if ((mptr?.mndx ?? -1) === PM_IRON_GOLEM) {
+        if (in_sight) {
+            await pline(`${Monnam(mtmp)} falls to pieces!`);
+        }
+        await monkilled(mtmp, null, AD_RUST);
+        if (!(mtmp.mhp | 0) || !mtmp.mx) trapkilled = true;
+    } else if ((mptr?.mndx ?? -1) === PM_GREMLIN && rn2(3)) {
+        // split_mon deferred
+    }
+
+    return trapkilled ? Trap_Killed_Mon
+        : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
 /**
@@ -1806,7 +2014,7 @@ async function trapeffect_telep_trap(mtmp, trap, _trflags) {
     return Trap_Moved_Mon;
 }
 
-// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep/bear
+// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep/bear/rust
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
@@ -1831,8 +2039,10 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_slp_gas_trap(mtmp, trap, trflags);
     case TELEP_TRAP:
         return trapeffect_telep_trap(mtmp, trap, trflags);
+    case RUST_TRAP:
+        return trapeffect_rust_trap(mtmp, trap, trflags);
     default:
-        // Named omission: arrow/anti-magic/rust/web/landmine/… trap effects
+        // Named omission: arrow/anti-magic/web/landmine/… trap effects
         return Trap_Effect_Finished;
     }
 }

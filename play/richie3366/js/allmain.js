@@ -699,6 +699,8 @@ export async function moveloop_core() {
     } else {
         await rhack(0);
     }
+    // C: if (u.utotype) deferred_goto() after rhack()
+    if (g.u?.utotype) await deferred_goto();
     // Message cleared at start of next rhack so pline() survives until the
     // following nhgetch capture (C keeps topline until next command).
 }

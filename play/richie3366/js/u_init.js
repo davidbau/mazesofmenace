@@ -52,6 +52,8 @@ import {
     P_RIDING, P_TWO_WEAPON_COMBAT, P_BARE_HANDED_COMBAT, P_MARTIAL_ARTS,
     P_BASIC, P_SKILLED, P_EXPERT, P_MASTER, P_GRAND_MASTER,
     NOT_HUNGRY,
+    INTRINSIC,
+    PROTECTION,
 } from './const.js';
 import {
     PM_TOURIST, PM_ROGUE, PM_CLERIC, PM_WIZARD, PM_MONK, PM_KNIGHT,
@@ -1104,19 +1106,58 @@ function ini_inv_use_obj(obj) {
     }
 }
 
-// C ref: do_wear.c find_ac() — base human AC 10; ARM_BONUS via objects[].a_ac
+// C ref: obj.h greatest_erosion — max(oeroded, oeroded2)
+function greatest_erosion(otmp) {
+    const a = otmp.oeroded | 0;
+    const b = otmp.oeroded2 | 0;
+    return a > b ? a : b;
+}
+
+// C ref: hack.h ARM_BONUS — a_ac + spe - min(greatest_erosion, a_ac)
+function ARM_BONUS(obj) {
+    const a_ac = game.objects?.[obj.otyp]?.a_ac | 0;
+    const spe = obj.spe | 0;
+    const erode = Math.min(greatest_erosion(obj), a_ac);
+    return a_ac + spe - erode;
+}
+
+// C ref: do_wear.c find_ac() — mons[umonnum].ac + ARM_BONUS gear +
+// rings/amulet/HProtection/uspellprot; AC_MAX cap; set botl on change
 export function find_ac() {
-    let uac = 10; // mons[PM_HUMAN].ac
-    const pieces = [game.u?.uarm, game.u?.uarmc, game.u?.uarmh, game.u?.uarmf,
-        game.u?.uarms, game.u?.uarmg, game.u?.uarmu];
-    for (const obj of pieces) {
-        if (!obj) continue;
-        const a_ac = game.objects?.[obj.otyp]?.a_ac ?? 0;
-        uac -= a_ac + (obj.spe || 0);
-    }
+    const u = game.u;
+    if (!u) return;
+    const umon = u.umonnum;
+    const form = (umon != null && umon >= 0) ? mons(umon) : null;
+    let uac = form?.ac ?? 10;
+
+    if (u.uarm) uac -= ARM_BONUS(u.uarm);
+    if (u.uarmc) uac -= ARM_BONUS(u.uarmc);
+    if (u.uarmh) uac -= ARM_BONUS(u.uarmh);
+    if (u.uarmf) uac -= ARM_BONUS(u.uarmf);
+    if (u.uarms) uac -= ARM_BONUS(u.uarms);
+    if (u.uarmg) uac -= ARM_BONUS(u.uarmg);
+    if (u.uarmu) uac -= ARM_BONUS(u.uarmu);
+
+    const rinProt = otypByName('RIN_PROTECTION');
+    const amulGuard = otypByName('AMULET_OF_GUARDING');
+    if (u.uleft && u.uleft.otyp === rinProt) uac -= u.uleft.spe | 0;
+    if (u.uright && u.uright.otyp === rinProt) uac -= u.uright.spe | 0;
+    if (u.uamul && u.uamul.otyp === amulGuard) uac -= 2;
+
+    // C: if (HProtection & INTRINSIC) uac -= u.ublessed;
+    const hProt = (u.HProtection | 0)
+        || (u.uprops?.[PROTECTION]?.intrinsic | 0);
+    if (hProt & INTRINSIC) uac -= u.ublessed | 0;
+    uac -= u.uspellprot | 0;
+
+    // C: AC_MAX 99
     if (Math.abs(uac) > 99) uac = Math.sign(uac) * 99;
-    if (uac !== game.u.uac) {
-        game.u.uac = uac;
+
+    if (uac !== u.uac) {
+        u.uac = uac;
+        // C: disp.botl = TRUE
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
     }
 }
 
@@ -1515,7 +1556,8 @@ export function setup_role_race_from_rc(opts = {}) {
     // C: flags.initalign indexes aligns[]
     const alignIdx = aligns.indexOf(align);
     game.flags.initalign = alignIdx >= 0 ? alignIdx : 1;
-    if (opts.name) game.plname = opts.name;
+    // C: setup does not rewrite plname — unixmain set_playmode / askname
+    // already applied OPTIONS=name (and debug → "wizard").
 
     // C ref: role.c role_init() — pantheon (Priest) then nemesis gender
     const initrole = roles.indexOf(role);

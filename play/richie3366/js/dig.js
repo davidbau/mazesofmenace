@@ -1,17 +1,23 @@
-// dig.js — Monster tunneling / terrain dig.
-// C ref: dig.c mdig_tunnel / draft_message; hack.c may_dig.
+// dig.js — Monster tunneling / terrain dig / wand dig.
+// C ref: dig.c mdig_tunnel / zap_dig / draft_message; hack.c may_dig.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
-import { newsym, pline, You_feel } from './display.js';
+import { rn1, rn2, rnd } from './rng.js';
+import {
+    newsym, pline, You_feel, tmp_at, nh_delay_output,
+} from './display.js';
 import { cansee, recalc_block_point } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { mksobj_at, objects_at } from './mkobj.js';
+import { in_rooms } from './hack.js';
 import { objectNames } from './generated/objects_data.js';
+import { CLR_WHITE } from './terminal.js';
 import {
     IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR,
-    W_NONDIGGABLE, SDOOR, SCORR, CORR, ROOM, DOOR, TREE,
+    W_NONDIGGABLE, SDOOR, SCORR, CORR, ROOM, DOOR, TREE, STONE,
     D_NODOOR, D_BROKEN, D_TRAPPED, D_CLOSED, D_LOCKED,
+    SHOPBASE, TT_PIT, isok, Is_earthlevel,
+    DISP_BEAM, DISP_END,
 } from './const.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -60,6 +66,15 @@ function canseemon(mtmp) {
 
 function Unaware() {
     return ((game.u?.multi | 0) < 0) && !!game.u?.usleep;
+}
+
+function Blind() {
+    return !!(game.u?.Blind || game.u?.ublind);
+}
+
+/** C: cmap_to_glyph(S_digbeam) — defsym '*' CLR_WHITE. */
+function digbeam_glyph() {
+    return { ch: '*', color: CLR_WHITE, dec: false };
 }
 
 /** C ref: dig.c draft_message — Hallucination branches deferred. */
@@ -190,4 +205,135 @@ export async function mdig_tunnel(mtmp) {
         recalc_block_point(mtmp.mx, mtmp.my);
     }
     return false;
+}
+
+/**
+ * C ref: dig.c zap_dig — wand/spell dig beam across the level.
+ * Branch envelope: horizontal digdepth=rn1(18,8) + door/SDOOR + maze_dig
+ * wall/tree/stone + ordinary IS_OBSTRUCTED dig; DISP_BEAM trail.
+ * Named omissions: swallowed pierce; u.dz falling-rock / dighole;
+ * pitdig conjoined / adj_pit_checks / pit_flow; watch_dig town arrest;
+ * shop add_damage / pay_for_damage; in_town cavernous gate.
+ */
+export async function zap_dig() {
+    const u = game.u;
+    if (!u) return;
+
+    if (u.uswallow) {
+        // pierce / expels deferred
+        return;
+    }
+
+    if (u.dz) {
+        // ceiling rock / dighole deferred
+        return;
+    }
+
+    let shopdoor = false;
+    let shopwall = false;
+    const maze_dig = !!(game.level?.flags?.is_maze_lev) && !Is_earthlevel(u.uz);
+    let zx = (u.ux | 0) + (u.dx | 0);
+    let zy = (u.uy | 0) + (u.dy | 0);
+    const pitdig = !!(u.utrap && u.utraptype === TT_PIT);
+    // trap_with_u / xytodir used only by deferred pitdig body
+
+    let digdepth = rn1(18, 8);
+    tmp_at(DISP_BEAM, digbeam_glyph());
+    try {
+        while (--digdepth >= 0) {
+            if (!isok(zx, zy)) break;
+            const room = game.level?.at(zx, zy);
+            if (!room) break;
+            tmp_at(zx, zy);
+            await nh_delay_output();
+
+            if (pitdig) {
+                // conjoined pits / dighole deferred — one adjacent only
+                break;
+            } else if (closed_door(zx, zy) || room.typ === SDOOR) {
+                if (in_rooms(zx, zy, SHOPBASE)) {
+                    // add_damage(SHOP_DOOR_COST) deferred
+                    shopdoor = true;
+                }
+                if (room.typ === SDOOR) {
+                    room.typ = DOOR;
+                } else if (cansee(zx, zy)) {
+                    await pline('The door is razed!');
+                }
+                // watch_dig deferred
+                room.doormask = D_NODOOR;
+                if (room.flags !== undefined) room.flags = D_NODOOR;
+                recalc_block_point(zx, zy);
+                digdepth -= 2;
+                if (maze_dig) break;
+            } else if (maze_dig) {
+                if (IS_WALL(room.typ)) {
+                    if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                        if (in_rooms(zx, zy, SHOPBASE)) {
+                            shopwall = true;
+                        }
+                        room.typ = ROOM;
+                        room.flags = 0;
+                        recalc_block_point(zx, zy);
+                    } else if (!Blind()) {
+                        await pline('The wall glows then fades.');
+                    }
+                    break;
+                } else if (IS_TREE(room.typ)) {
+                    if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                        room.typ = ROOM;
+                        room.flags = 0;
+                        recalc_block_point(zx, zy);
+                    } else if (!Blind()) {
+                        await pline('The tree shudders but is unharmed.');
+                    }
+                    break;
+                } else if (room.typ === STONE || room.typ === SCORR) {
+                    if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                        room.typ = CORR;
+                        room.flags = 0;
+                        recalc_block_point(zx, zy);
+                    } else if (!Blind()) {
+                        await pline('The rock glows then fades.');
+                    }
+                    break;
+                }
+            } else if (IS_OBSTRUCTED(room.typ)) {
+                if (!may_dig(zx, zy)) break;
+                if (IS_WALL(room.typ) || room.typ === SDOOR) {
+                    if (in_rooms(zx, zy, SHOPBASE)) {
+                        shopwall = true;
+                    }
+                    // watch_dig deferred
+                    if (game.level?.flags?.is_cavernous_lev /* !in_town */) {
+                        room.typ = CORR;
+                        room.flags = 0;
+                    } else {
+                        room.typ = DOOR;
+                        room.doormask = D_NODOOR;
+                        if (room.flags !== undefined) room.flags = D_NODOOR;
+                    }
+                    digdepth -= 2;
+                } else if (IS_TREE(room.typ)) {
+                    room.typ = ROOM;
+                    room.flags = 0;
+                    digdepth -= 2;
+                } else {
+                    room.typ = CORR;
+                    room.flags = 0;
+                    digdepth--;
+                }
+                recalc_block_point(zx, zy);
+            }
+            zx += u.dx | 0;
+            zy += u.dy | 0;
+        }
+    } finally {
+        tmp_at(DISP_END, 0);
+    }
+
+    // pit_flow deferred
+    if (shopdoor || shopwall) {
+        // pay_for_damage deferred
+    }
 }

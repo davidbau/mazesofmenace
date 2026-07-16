@@ -1,54 +1,76 @@
 // zap.js — Zap command / wish helpers (partial).
 // C ref: zap.c dozap, zappable, weffects, zapnodir, learnwand, makewish,
-//        zapyourself, ubuzz, dobuzz
+//        zapyourself, ubuzz, dobuzz, bhit, bhito, poly_obj, obj_shudders
 //
 // Branch envelope: getobj wand + zappable + cursed backfire gate +
 // NODIR weffects → zapnodir WAN_SECRET_DOOR_DETECTION → findit;
 // directional getdir ('.' = self) → zapyourself SPE_HEALING /
 // SPE_EXTRA_HEALING / WAN_SLEEP / SPE_SLEEP;
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
-// for WAN_MAGIC_MISSILE..WAN_LIGHTNING (sleep + bounce + Reflecting).
-// Named omissions: IMMEDIATE/bhit/zap_dig; spell ubuzz; mon_reflects;
-// fireball/gas/Hallucination hdmgtype rn2; full zap_over_floor; zhitu
-// non-sleep; shopdamage; map_invisible/unmap during buzz; backfire body;
-// other NODIR; wrest pline; check_capacity/nohands; check_unpaid;
-// more_experienced; update_inventory; shieldeff/monstunseesu; setworn
-// EReflecting bits (worn SHIELD_OF_REFLECTION stands in); ureflects
-// W_WEP/W_AMUL/W_ARM/silver-dragon arms beyond shield makeknown.
+// for WAN_MAGIC_MISSILE..WAN_LIGHTNING (sleep + bounce + Reflecting);
+// IMMEDIATE weffects → bhit(rn1(8,6)) + bhito WAN_POLYMORPH pile
+// (obj_unpolyable / obj_shudders / poly_obj floor / zapwrapup You_feel);
+// RAY WAN_DIGGING/SPE_DIG → zap_dig (dig.c).
+// Named omissions: zap_updown/uswallow bhitm; bhitm poly body; zap_map;
+// spell ubuzz; mon_reflects; fireball/gas/Hallucination
+// hdmgtype rn2; full zap_over_floor; zhitu non-sleep; shopdamage;
+// map_invisible/unmap during buzz; backfire body; other NODIR; wrest
+// pline; check_capacity/nohands; check_unpaid; more_experienced;
+// update_inventory; shieldeff/monstunseesu; setworn EReflecting bits
+// (worn SHIELD_OF_REFLECTION stands in); ureflects W_WEP/W_AMUL/W_ARM/
+// silver-dragon arms beyond shield makeknown; create_polymon after
+// poly_zapped; do_osshock shop bill; invent/worn poly_obj arms;
+// boxlock on Is_box; other bhito otyps.
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin } from './getline.js';
 import {
-    flush_screen, flush_topl_more, pline, You_feel,
+    flush_screen, flush_topl_more, pline, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output,
 } from './display.js';
 import { cansee } from './vision.js';
 import { nhgetch } from './input.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
-import { hold_another_object, discover_object, makeknown } from './invent.js';
+import { hold_another_object, makeknown } from './invent.js';
 import { doname, xname } from './objnam.js';
 import { A_WIS, A_STR, exercise } from './attrib.js';
 import { findit } from './detect.js';
 import { fall_asleep, losehp, maybe_half_phys, nomul } from './hack.js';
 import { m_at } from './mon.js';
 import { find_mac } from './mhitm.js';
+import { obj_resists } from './dogmove.js';
+import { zap_dig } from './dig.js';
 import {
-    WAND_CLASS, SPBOOK_CLASS, NODIR, IMMEDIATE, objectNames,
+    mkobj, delobj, objects_at, replace_object, rnd_class, weight, splitobj,
+    oc_merge_of,
+} from './mkobj.js';
+import {
+    WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, POTION_CLASS,
+    TOOL_CLASS, GEM_CLASS, NODIR, IMMEDIATE, objectNames,
 } from './objects.js';
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
     NO_KILLER_PREFIX, isok, ZAP_POS, STONE, IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED,
-    DISP_BEAM, DISP_CHANGE, DISP_END,
+    DISP_BEAM, DISP_CHANGE, DISP_END, OBJ_FLOOR, Has_contents, ZAPPED_WAND,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
 const WAN_MAGIC_MISSILE = objectNames.indexOf('WAN_MAGIC_MISSILE');
 const WAN_SLEEP = objectNames.indexOf('WAN_SLEEP');
+const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
 const WAN_LIGHTNING = objectNames.indexOf('WAN_LIGHTNING');
+const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
+const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
+const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
+const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
+const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const SPE_SLEEP = objectNames.indexOf('SPE_SLEEP');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
+const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
+const SPE_DIG = objectNames.indexOf('SPE_DIG');
 
 const ZT_SLEEP = 3; // AD_SLEE - 1
 
@@ -500,16 +522,18 @@ export function zappable(wand) {
 
 /**
  * C ref: zap.c learnwand — discover type when effect observed + dknown.
+ * makeknown → discover_object(..., credit_hero=TRUE) → exercise(A_WIS).
  */
 export function learnwand(obj) {
     if (!obj || obj.oclass === SPBOOK_CLASS) return;
     const oc = game.objects?.[obj.otyp];
     if (!oc) return;
     if (oc.oc_name_known) {
-        if (!game.u?.Blind) obj.dknown = true;
+        // observe_object — dknown even if Blind when already known
+        obj.dknown = true;
     } else {
         if (!game.u?.Blind) obj.dknown = true;
-        if (obj.dknown) discover_object(obj.otyp, true, true);
+        if (obj.dknown) makeknown(obj.otyp);
     }
     // update_inventory deferred
 }
@@ -588,9 +612,315 @@ export async function zapyourself(obj, ordinary) {
     return damage;
 }
 
+/** C ref: obj.h unpolyable */
+function unpolyable(obj) {
+    if (!obj) return true;
+    const t = obj.otyp | 0;
+    return t === WAN_POLYMORPH || t === SPE_POLYMORPH
+        || t === POT_POLYMORPH || t === AMULET_OF_UNCHANGING;
+}
+
+/**
+ * C ref: zap.c obj_unpolyable — type gate then obj_resists(5, 95).
+ */
+function obj_unpolyable(obj) {
+    if (unpolyable(obj) || obj === game.u?.uball || obj === game.u?.uskin) {
+        return true;
+    }
+    return obj_resists(obj, 5, 95);
+}
+
+/**
+ * C ref: zap.c obj_shudders — half-life by class/BUC/quan.
+ */
+function obj_shudders(obj) {
+    if (!obj) return false;
+    if (game.context?.bypasses && obj.bypass) return false;
+
+    let zap_odds;
+    if (obj.oclass === WAND_CLASS) zap_odds = 3;
+    else if (obj.cursed) zap_odds = 3;
+    else if (obj.blessed) zap_odds = 12;
+    else zap_odds = 8;
+
+    if ((obj.quan | 0) > 4) zap_odds = Math.trunc(zap_odds / 2);
+    return !rn2(zap_odds);
+}
+
+/**
+ * C ref: zap.c do_osshock — destroy via shudder; poly_zapped material roll.
+ * Shop bill / hideunder cover deferred.
+ */
+function do_osshock(obj) {
+    if (!obj) return;
+    game._obj_zapped = true;
+
+    if ((game._poly_zapped ?? -1) < 0) {
+        const luck = game.u?.uluck | 0;
+        for (let i = obj.quan | 0; i; i--) {
+            if (!rn2(luck + 45)) {
+                const mat = game.objects?.[obj.otyp]?.oc_material;
+                game._poly_zapped = mat ?? 0;
+                break;
+            }
+        }
+    }
+
+    // C: split off rnd(quan-1), then delobj the split portion
+    let victim = obj;
+    if ((obj.quan | 0) > 1) {
+        const q = obj.quan | 0;
+        victim = splitobj(obj, rnd(q - 1)) || obj;
+    }
+    // costly_spot / addtobill deferred
+    delobj(victim);
+}
+
+/**
+ * C ref: invent.c / shk.c delete_contents — obfree chain (no obj_resists).
+ */
+function delete_contents(obj) {
+    while (obj?.cobj) {
+        const curr = obj.cobj;
+        // extract from container
+        obj.cobj = curr.nobj || null;
+        curr.nobj = null;
+        curr.ocontainer = null;
+        curr.where = 0; // OBJ_FREE — obfree, no resist roll
+        if (Has_contents(curr)) delete_contents(curr);
+    }
+}
+
+/**
+ * C ref: zap.c poly_obj — floor STRANGE_OBJECT path (wand/pile zap).
+ * Invent/worn/boulder/shop/egg/leash arms deferred.
+ */
+function poly_obj(obj, id) {
+    if (!obj) return null;
+    const can_merge = id === STRANGE_OBJECT;
+    const obj_location = obj.where;
+    let otmp;
+
+    if (id === STRANGE_OBJECT) {
+        let try_limit = 3;
+        const magic_obj = game.objects?.[obj.otyp]?.oc_magic | 0;
+        // degraded unicorn horn → magic_obj=0 deferred
+        otmp = null;
+        do {
+            if (otmp) delobj(otmp);
+            otmp = mkobj(obj.oclass, false);
+        } while (--try_limit > 0
+            && ((game.objects?.[otmp.otyp]?.oc_magic | 0) !== magic_obj));
+    } else {
+        // mksobj(id) path deferred — callers use STRANGE_OBJECT
+        otmp = mkobj(obj.oclass, false);
+    }
+
+    otmp.quan = obj.quan | 0;
+    otmp.no_charge = obj.no_charge;
+    if (obj_location === 1 /* OBJ_INVENT */) otmp.invlet = obj.invlet;
+
+    // charged_objs: WAND / WEAPON / ARMOR keep spe
+    const oc = otmp.oclass;
+    if (oc === WAND_CLASS || oc === WEAPON_CLASS || oc === ARMOR_CLASS) {
+        otmp.spe = obj.spe | 0;
+    }
+    otmp.recharged = obj.recharged | 0;
+    otmp.cursed = !!obj.cursed;
+    otmp.blessed = !!obj.blessed;
+    // erosion / traps / poison deferred
+
+    if (Has_contents(otmp)) delete_contents(otmp);
+
+    // fuse n→1 — C: !oc_merge || (can_merge && quan > rn2(1000))
+    if ((otmp.quan | 0) > 1) {
+        if (!oc_merge_of(otmp.otyp)
+            || (can_merge && (otmp.quan | 0) > rn2(1000))) {
+            otmp.quan = 1;
+        }
+    }
+
+    switch (otmp.oclass) {
+    case TOOL_CLASS:
+        // MAGIC_LAMP / MAGIC_MARKER polish deferred
+        break;
+    case WAND_CLASS:
+        while (otmp.otyp === WAN_WISHING || otmp.otyp === WAN_POLYMORPH) {
+            otmp.otyp = rnd_class(WAN_LIGHT, WAN_LIGHTNING);
+        }
+        if ((otmp.recharged | 0) < rn2(7)) otmp.recharged = (otmp.recharged | 0) + 1;
+        break;
+    case POTION_CLASS: {
+        const POT_WATER = objectNames.indexOf('POT_WATER');
+        const POT_GAIN = objectNames.indexOf('POT_GAIN_ABILITY');
+        while (otmp.otyp === POT_POLYMORPH) {
+            otmp.otyp = rnd_class(POT_GAIN, POT_WATER);
+        }
+        break;
+    }
+    case SPBOOK_CLASS: {
+        const SPE_BLANK = objectNames.indexOf('SPE_BLANK_PAPER');
+        const bases = game.bases || [];
+        while (otmp.otyp === SPE_POLYMORPH) {
+            otmp.otyp = rnd_class(bases[SPBOOK_CLASS] | 0, SPE_BLANK);
+        }
+        // spestudied degrade deferred
+        break;
+    }
+    case GEM_CLASS:
+        // mineral→ROCK backfire deferred
+        break;
+    default:
+        break;
+    }
+
+    otmp.owt = weight(otmp);
+
+    if (obj_location === OBJ_FLOOR) {
+        replace_object(obj, otmp);
+        // boulder block_point deferred
+    } else {
+        // invent/minvent — extract+free old; leave otmp free
+        delobj(obj);
+        return otmp;
+    }
+    delobj(obj);
+    return otmp;
+}
+
+/**
+ * C ref: zap.c bhito — floor object hit by wand. WAN_POLYMORPH only.
+ * @returns {number} 1 if affected
+ */
+function bhito(obj, otmp) {
+    if (!obj || !otmp || obj === otmp) return 0;
+    if (obj.bypass && game.context?.bypasses) return 0;
+
+    let res = 1;
+    let learn_it = false;
+
+    if (obj === game.u?.uball || obj === game.u?.uchain) {
+        return 0;
+    }
+
+    switch (otmp.otyp) {
+    case WAN_POLYMORPH:
+    case SPE_POLYMORPH:
+        if (obj_unpolyable(obj)) {
+            res = 0;
+            break;
+        }
+        // uconduct.polypiles / boxlock deferred
+        if (obj_shudders(obj)) {
+            if (cansee(obj.ox, obj.oy)) learn_it = true;
+            do_osshock(obj);
+            break;
+        }
+        {
+            const neu = poly_obj(obj, STRANGE_OBJECT);
+            if (neu) newsym(neu.ox, neu.oy);
+        }
+        break;
+    default:
+        // other bhito otyps deferred
+        res = 0;
+        break;
+    }
+
+    if (learn_it) learnwand(otmp);
+    return res;
+}
+
+/**
+ * C ref: zap.c bhitpile — walk floor pile with fhito.
+ * create_polymon / recreate_pile / fill_pit deferred.
+ */
+function bhitpile(wand, fhito, tx, ty, _zz) {
+    let hitanything = 0;
+    if (!objects_at(tx, ty)) return 0;
+
+    game._poly_zapped = -1;
+    for (let otmp = objects_at(tx, ty); otmp; ) {
+        const next_obj = otmp.nexthere;
+        if (otmp.where !== OBJ_FLOOR
+            || (otmp.ox | 0) !== (tx | 0) || (otmp.oy | 0) !== (ty | 0)) {
+            otmp = next_obj;
+            continue;
+        }
+        hitanything += fhito(otmp, wand) | 0;
+        otmp = next_obj;
+    }
+    // create_polymon when poly_zapped >= 0 deferred
+    return hitanything;
+}
+
+/**
+ * C ref: zap.c bhit — ZAPPED_WAND lateral path only.
+ * Thrown/kicked/flash/tmp_at / zap_map / doorlock deferred.
+ * bhitm returns 0 (no stop) — mon poly body deferred.
+ */
+function bhit(ddx, ddy, range, weapon, _fhitm, fhito, pobj) {
+    const obj = pobj?.obj;
+    const bhitpos = game._bhitpos || (game._bhitpos = { x: 0, y: 0 });
+    bhitpos.x = game.u?.ux | 0;
+    bhitpos.y = game.u?.uy | 0;
+    let r = range | 0;
+
+    while (r-- > 0) {
+        bhitpos.x += ddx;
+        bhitpos.y += ddy;
+        const x = bhitpos.x | 0;
+        const y = bhitpos.y | 0;
+        if (!isok(x, y)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+
+        const loc = game.level?.at?.(x, y);
+        let typ = loc?.typ;
+
+        // zap_map deferred (poly lateral has no RNG there)
+        const mtmp = m_at(x, y);
+        if (mtmp && weapon === ZAPPED_WAND) {
+            // bhitm body deferred — treat as non-stopping (range -= 3)
+            r -= 3;
+        }
+
+        if (fhito) {
+            if (bhitpile(obj, fhito, x, y, 0)) r--;
+        }
+
+        if (weapon === ZAPPED_WAND && (IS_DOOR(typ) || typ === STONE)) {
+            // doorlock for opening/locking/striking deferred
+        }
+        if (!ZAP_POS(typ) || closed_door(x, y)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+    }
+    return null;
+}
+
+function zapsetup() {
+    game._obj_zapped = false;
+}
+
+/**
+ * C ref: zap.c zapwrapup — feedback after do_osshock set obj_zapped.
+ */
+async function zapwrapup() {
+    if (game._obj_zapped) {
+        await You_feel('shuddering vibrations.');
+    }
+    game._obj_zapped = false;
+}
+
 /**
  * C ref: zap.c weffects — exercise + effect dispatch.
- * NODIR + RAY wand ubuzz; IMMEDIATE/dig/spell ubuzz deferred.
+ * NODIR + RAY wand ubuzz; IMMEDIATE bhit WAN_POLYMORPH;
+ * WAN_DIGGING/SPE_DIG → zap_dig; spell ubuzz / zap_updown / steed deferred.
  */
 async function weffects(obj) {
     const otyp = obj.otyp;
@@ -604,17 +934,32 @@ async function weffects(obj) {
     if (oc?.oc_dir === NODIR) {
         await zapnodir(obj);
     } else if (oc?.oc_dir === IMMEDIATE) {
-        // bhit / zap_updown deferred
+        zapsetup();
+        if (game.u?.uswallow) {
+            // bhitm(u.ustuck) deferred
+        } else if (game.u?.dz) {
+            // zap_updown deferred
+        } else {
+            const range = rn1(8, 6);
+            const pref = { obj };
+            bhit(game.u.dx | 0, game.u.dy | 0, range, ZAPPED_WAND,
+                null, bhito, pref);
+            // C may null *pobj if destroyed — wand is hero's, keep
+        }
+        await zapwrapup();
     } else {
         // RAY — neither immediate nor directionless
-        if (otyp >= WAN_MAGIC_MISSILE && otyp <= WAN_LIGHTNING) {
+        if (otyp === WAN_DIGGING || otyp === SPE_DIG) {
+            await zap_dig();
+            disclose = true;
+        } else if (otyp >= WAN_MAGIC_MISSILE && otyp <= WAN_LIGHTNING) {
             await ubuzz(
                 BZ_U_WAND(BZ_OFS_WAN(otyp)),
                 otyp === WAN_MAGIC_MISSILE ? 2 : 6,
             );
             disclose = true;
         }
-        // SPE_* ubuzz / zap_dig deferred
+        // SPE_* ubuzz deferred
     }
     if (disclose) {
         learnwand(obj);

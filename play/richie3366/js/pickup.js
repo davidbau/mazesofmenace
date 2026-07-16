@@ -11,7 +11,7 @@ import {
     let_to_name, DEF_INV_ORDER, prinv, near_capacity,
 } from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava, in_rooms } from './hack.js';
-import { flush_screen, pline, newsym, docrt } from './display.js';
+import { flush_screen, pline, newsym, docrt, bot } from './display.js';
 import { addinv } from './u_init.js';
 import { an, doname, xname, cxname, the as theArt } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
@@ -713,8 +713,8 @@ async function out_container(obj) {
     // C: pickup_prinv(otmp, count, "removing")
     await pickup_prinv(otmp, count, 'removing');
     if (is_gold) {
-        // C: bot() — gold count; botl refreshed on next flush
-        if (game.botl != null) game.botl = 1;
+        // C: bot() — update gold piece count immediately (before later More)
+        await bot();
     }
     return 1;
 }
@@ -722,16 +722,23 @@ async function out_container(obj) {
 /**
  * C ref: pickup.c in_or_out_menu — NHW_MENU PICK_ONE for bag actions.
  * Branch envelope: look/take-out/put-in/both/reversed/stash/done;
- * flags.lootabc → a/b/c/d/e selectors (still returns :oibrsnq codes).
+ * flags.lootabc → display a/b/c/d/e else o/i/b/r/s; returns :oibrsnq.
+ * Named omissions: more_containers 'n' default.
  */
 async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
     // C: lootchars[] = "_:oibrsnq", abc_chars[] = "_:abcdenq"
-    // Display classic o/i/b (C BSS lootabc false). Also accept a/b/c/d/e
-    // so contest sessions recorded with lootabc On still drive take-out.
-    const accel = {
-        look: ':', out: 'o', in: 'i', both: 'b', rev: 'r', stash: 's',
-        next: 'n', quit: 'q',
-    };
+    // menuselector = flags.lootabc ? abc_chars : lootchars
+    const lootabc = !!(game.flags && game.flags.lootabc);
+    const accel = lootabc
+        ? {
+            look: ':', out: 'a', in: 'b', both: 'c', rev: 'd', stash: 'e',
+            next: 'n', quit: 'q',
+        }
+        : {
+            look: ':', out: 'o', in: 'i', both: 'b', rev: 'r', stash: 's',
+            next: 'n', quit: 'q',
+        };
+    // C maps menu index → :oibrsnq regardless of displayed selectors.
     const ret = {
         look: ':', out: 'o', in: 'i', both: 'b', rev: 'r', stash: 's',
         next: 'n', quit: 'q',
@@ -789,13 +796,6 @@ async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
     for (const e of entries) {
         if (e.sel) bySel.set(e.sel, e.ret || e.sel);
     }
-    // lootabc a/b/c/d/e aliases (contest seed0007 screens use these)
-    bySel.set('a', 'o');
-    bySel.set('c', 'b');
-    bySel.set('d', 'r');
-    bySel.set('e', 's');
-    // When lootabc, 'b' means put-in; classic 'b' means both. Prefer
-    // classic mapping from entries ('b'→both); put-in stays 'i'.
 
     for (;;) {
         await paint_corner_nhw_menu(
@@ -931,8 +931,10 @@ async function query_loot_category(olist, prompt) {
 
 /**
  * C ref: pickup.c menu_loot(0, FALSE) — take out via MENU_FULL category
- * then PICK_ANY object menu. `@` invert-all; Return → out_container.
- * Named omissions: autopick 'A'; MENU_PARTIAL direct path; traditional_loot.
+ * then query_objlist(INVORDER_SORT, !USE_INVLET) PICK_ANY.
+ * `@` invert-all; Return → out_container.
+ * Named omissions: autopick 'A'; MENU_PARTIAL; traditional_loot;
+ * menu_head_objsym; INCLUDE_VENOM; FEEL_COCKATRICE.
  */
 async function menu_loot_takeout(container) {
     // C: gp.pickup_encumbrance = 0 — limit out_container load verbosity
@@ -956,24 +958,37 @@ async function menu_loot_takeout(container) {
     }
 
     const allTypes = cats.has(ALL_TYPES_SELECTED);
+    const allow = new Set(
+        olist.filter((o) => allTypes || cats.has(o.oclass)),
+    );
+    if (!allow.size) return ECMD_OK;
+
+    // C query_objlist: INVORDER_SORT | INCLUDE_VENOM; !USE_INVLET for take-out.
+    // sortflags: sortloot 'l'/'f' + !USE_INVLET → SORTLOOT_LOOT; sortpack → PACK.
+    const flags = game.flags || {};
+    const doSort = flags.sortpack !== false;
+    const sortlootOpt = flags.sortloot ?? 'l';
+    let sortflags = 0;
+    if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
+    if (doSort) sortflags |= SORTLOOT_PACK;
+
+    const ranked = sortloot(container.cobj, sortflags, false)
+        .filter((s) => allow.has(s.obj));
+
     const items = [];
-    for (let obj = container.cobj; obj; obj = obj.nobj) {
-        if (!allTypes && !cats.has(obj.oclass)) continue;
-        items.push({ obj, letch: '?', selected: false });
-    }
-    // C query_objlist !USE_INVLET for take-out: `$` then a,b,c…
-    {
-        let nextLet = 'a'.charCodeAt(0);
-        let first = true;
-        for (const it of items) {
-            if (first && it.obj.oclass === COIN_CLASS) {
-                it.letch = '$';
-            } else {
-                it.letch = String.fromCharCode(nextLet++);
-                if (nextLet > 'z'.charCodeAt(0)) nextLet = 'A'.charCodeAt(0);
-            }
-            first = false;
+    let nextLet = 'a'.charCodeAt(0);
+    let first = true;
+    for (const { obj } of ranked) {
+        let letch;
+        // C: !USE_INVLET → '$' only when the first menu item is a coin
+        if (first && obj.oclass === COIN_CLASS) {
+            letch = '$';
+        } else {
+            letch = String.fromCharCode(nextLet++);
+            if (nextLet > 'z'.charCodeAt(0)) nextLet = 'A'.charCodeAt(0);
         }
+        first = false;
+        items.push({ obj, letch, selected: false, oclass: obj.oclass });
     }
     if (!items.length) return ECMD_OK;
 
@@ -984,18 +999,33 @@ async function menu_loot_takeout(container) {
             { text: 'Take out what?', attr: ATR_INVERSE },
             { text: '', attr: 0 },
         ];
-        let coinHdr = false;
-        for (const it of items) {
-            if (it.obj.where === OBJ_INVENT) continue;
-            if (it.obj.oclass === COIN_CLASS && !coinHdr) {
-                entries.push({ text: 'Coins', attr: ATR_INVERSE });
-                coinHdr = true;
+        // C INVORDER_SORT: let_to_name heading once per class in pack order
+        if (doSort) {
+            let lastClass = null;
+            for (const it of items) {
+                if (it.obj.where === OBJ_INVENT) continue;
+                if (it.oclass !== lastClass) {
+                    entries.push({
+                        text: let_to_name(it.oclass, false, false),
+                        attr: ATR_INVERSE,
+                    });
+                    lastClass = it.oclass;
+                }
+                const mark = it.selected ? '+' : '-';
+                entries.push({
+                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                    attr: 0,
+                });
             }
-            const mark = it.selected ? '+' : '-';
-            entries.push({
-                text: `${it.letch} ${mark} ${doname(it.obj)}`,
-                attr: 0,
-            });
+        } else {
+            for (const it of items) {
+                if (it.obj.where === OBJ_INVENT) continue;
+                const mark = it.selected ? '+' : '-';
+                entries.push({
+                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                    attr: 0,
+                });
+            }
         }
         await paint_corner_nhw_menu(entries, '(end) ');
         await flush_screen(1);

@@ -18,7 +18,7 @@ import { newgame, moveloop_core, welcome, moveloop_preamble } from './allmain.js
 import { try_restore_save } from './save.js';
 import { l_nhcore_init } from './mklev.js';
 import { vision_recalc, init_vision_globals } from './vision.js';
-import { parseNethackrc } from './options.js';
+import { parseNethackrc, set_playmode } from './options.js';
 import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
@@ -177,6 +177,10 @@ export class NethackGame {
 
         // Install capture hook
         this._installCaptureHook();
+
+        // C ref: unixmain set_playmode before plnamesuffix — wizard mode
+        // overwrites OPTIONS=name with "wizard" (options.c set_playmode).
+        set_playmode();
 
         // C ref: unixmain → plnamesuffix → askname when no -u / OPTIONS=name
         await askname_if_needed();

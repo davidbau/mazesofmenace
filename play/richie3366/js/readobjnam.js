@@ -11,6 +11,15 @@ import {
     MAXOCLASSES,
     ARMOR_CLASS,
     WEAPON_CLASS,
+    WAND_CLASS,
+    RING_CLASS,
+    POTION_CLASS,
+    SCROLL_CLASS,
+    GEM_CLASS,
+    AMULET_CLASS,
+    SPBOOK_CLASS,
+    TOOL_CLASS,
+    FOOD_CLASS,
 } from './objects.js';
 import { mksobj, weight, curse } from './mkobj.js';
 import { artifact_name, nartifact_exist } from './artifact.js';
@@ -26,6 +35,19 @@ const GRAY_DSM = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
 const GRAY_DS = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const SCALE_MAIL = objectNames.indexOf('SCALE_MAIL');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
+
+/** C ref: objnam.c wrp[] / wrpsym[] — class words for wishing. */
+const WRP = [
+    'wand', 'ring', 'potion', 'scroll', 'gem',
+    'amulet', 'spellbook', 'spell book',
+    'weapon', 'armor', 'tool', 'food', 'comestible',
+];
+const WRPSYMS = [
+    WAND_CLASS, RING_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS,
+    AMULET_CLASS, SPBOOK_CLASS, SPBOOK_CLASS, WEAPON_CLASS,
+    ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, FOOD_CLASS,
+];
 
 /** Sentinels matching C &hands_obj / &nothing */
 export const HANDS_OBJ = { _hands_obj: true };
@@ -122,6 +144,102 @@ export function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
 }
 
 /**
+ * C ref: objnam.c readobjnam_parse_charges — strip trailing "(N)" / "(R:S)".
+ */
+function readobjnam_parse_charges(d) {
+    if (!d.bp || d.bp.length <= 1) return;
+    const paren = d.bp.lastIndexOf('(');
+    if (paren < 0) return;
+    let keeptrailing = true;
+    let cut = paren;
+    if (paren > 0 && d.bp[paren - 1] === ' ') cut = paren - 1;
+    let p = d.bp.slice(paren + 1); // past '('
+    const head = d.bp.slice(0, cut);
+    if (/^lit\)/i.test(p)) {
+        d.islit = 1;
+        p = p.slice(4); // after "lit)"
+    } else {
+        let i = 0;
+        while (i < p.length && p[i] >= '0' && p[i] <= '9') i++;
+        d.spe = parseInt(p.slice(0, i) || '0', 10) || 0;
+        p = p.slice(i);
+        if (p[0] === ':') {
+            p = p.slice(1);
+            d.rechrg = d.spe;
+            i = 0;
+            while (i < p.length && p[i] >= '0' && p[i] <= '9') i++;
+            d.spe = parseInt(p.slice(0, i) || '0', 10) || 0;
+            p = p.slice(i);
+        }
+        if (p[0] !== ')') {
+            d.spe = 0;
+            d.rechrg = 0;
+            keeptrailing = false;
+            p = '';
+        } else {
+            d.spesgn = 1;
+            p = p.slice(1); // past ')'
+        }
+    }
+    d.bp = keeptrailing ? head + p : head;
+    if (d.spe < 0) {
+        d.spesgn = -1;
+        d.spe = Math.abs(d.spe);
+    }
+    if (d.spe > SPE_LIM) d.spe = SPE_LIM;
+    if (d.rechrg < 0 || d.rechrg > 7) d.rechrg = 7;
+}
+
+/**
+ * C ref: objnam.c postparse1 wrp[] loop — "wand of X" / "X wand" → oclass.
+ * Returns true when actualn/oclass are set for srch (rnd_otyp_by_namedesc).
+ */
+function readobjnam_parse_class_words(d) {
+    const bp = d.bp;
+    if (!bp) return false;
+    // C false-hit guards before wrp scan
+    if (/^enchant /i.test(bp) || /^destroy /i.test(bp)
+        || /^detect food/i.test(bp) || /^food detection/i.test(bp)
+        || /^ring mail/i.test(bp) || /^studded leather armor/i.test(bp)
+        || /^leather armor/i.test(bp) || /^tooled horn/i.test(bp)
+        || /^food ration/i.test(bp) || /^meat ring/i.test(bp)) {
+        return false;
+    }
+    const lower = bp.toLowerCase();
+    for (let i = 0; i < WRP.length; i++) {
+        const word = WRP[i];
+        const j = word.length;
+        if (lower.startsWith(word)
+            && (bp.length === j || bp[j] === ' ')) {
+            d.oclass = WRPSYMS[i];
+            if (d.oclass !== AMULET_CLASS) {
+                let rest = bp.slice(j);
+                if (/^ of /i.test(rest)) d.actualn = rest.slice(4);
+                // else leave actualn unset (C: /* else if(*bp) ?? */)
+            } else {
+                d.actualn = bp;
+            }
+            return true;
+        }
+        // trailing " <class>"
+        if (lower.endsWith(word)
+            && (bp.length === j || bp[bp.length - j - 1] === ' ')) {
+            d.oclass = WRPSYMS[i];
+            if (d.oclass !== AMULET_CLASS) {
+                let cut = bp.length - j;
+                if (cut > 0 && bp[cut - 1] === ' ') cut -= 1;
+                d.bp = bp.slice(0, cut);
+                d.actualn = d.dn = d.bp;
+            } else {
+                d.actualn = d.dn = bp;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * C ref: objnam.c readobjnam — wish subset for artifact / named armor / amulet.
  */
 export function readobjnam(bp, no_wish) {
@@ -136,6 +254,7 @@ export function readobjnam(bp, no_wish) {
         cnt: 0,
         spe: 0,
         spesgn: 0,
+        rechrg: 0,
         typ: 0,
         blessed: 0,
         uncursed: 0,
@@ -147,6 +266,7 @@ export function readobjnam(bp, no_wish) {
         name: null,
         mntmp: NON_PM,
         otmp: null,
+        islit: 0,
     };
 
     for (;;) {
@@ -184,6 +304,9 @@ export function readobjnam(bp, no_wish) {
     }
     if (!d.cnt) d.cnt = 1;
 
+    // C: readobjnam_parse_charges before postparse
+    readobjnam_parse_charges(d);
+
     {
         const rem = { rest: null };
         if (d.mntmp < LOW_PM && d.bp.length > 2) {
@@ -208,11 +331,17 @@ export function readobjnam(bp, no_wish) {
         d.mntmp = NON_PM;
     }
 
+    // C: postparse1 wrp[] — "wand of polymorph" → WAND_CLASS + "polymorph"
+    if (!d.typ && !d.oclass) {
+        readobjnam_parse_class_words(d);
+    }
+
     if (!d.typ) {
-        d.actualn = d.bp;
+        if (!d.actualn) d.actualn = d.bp;
         if (!d.dn) d.dn = d.actualn;
 
-        if (!d.oclass && d.actualn) {
+        // C: postparse3 — search even when oclass is set (srch path)
+        if (d.actualn) {
             let typ = rnd_otyp_by_namedesc(d.actualn, d.oclass, 1);
             if (typ === STRANGE_OBJECT && d.dn !== d.actualn) {
                 typ = rnd_otyp_by_namedesc(d.dn, d.oclass, 1);
@@ -253,6 +382,13 @@ export function readobjnam(bp, no_wish) {
     if (d.spe > SPE_LIM) d.spe = SPE_LIM;
     if (d.spe < -SPE_LIM) d.spe = -SPE_LIM;
     d.otmp.spe = d.spe;
+
+    // C: set otmp->recharged for WAND_CLASS
+    if (d.oclass === WAND_CLASS) {
+        let rechrg = d.rechrg | 0;
+        if (d.otmp.otyp === WAN_WISHING && !wizardMode()) rechrg = 1;
+        d.otmp.recharged = rechrg;
+    }
 
     if (d.mntmp >= GRAY_DRAGON && d.mntmp <= YELLOW_DRAGON
         && d.otmp.otyp === SCALE_MAIL) {

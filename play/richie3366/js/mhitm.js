@@ -54,6 +54,9 @@ const AT_WEAP = 254;
 const AT_MAGC = 255;
 const AD_PHYS = 0;
 const AD_ELEC = 6;
+const AD_DRST = 7; /* drains str (poison) — monattk.h */
+const AD_DRDX = 8;
+const AD_DRCO = 9;
 const AD_STCK = 19;
 const AC_MAX = 99;
 
@@ -117,7 +120,7 @@ export function get_mattk(magr, i) {
 export {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
-    AT_WEAP, AT_MAGC, AD_PHYS, AD_ELEC,
+    AT_WEAP, AT_MAGC, AD_PHYS, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO,
 };
 
 function deadmonster(m) {

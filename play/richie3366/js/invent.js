@@ -68,10 +68,11 @@ import {
     P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT,
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED,
     P_EXPERT, P_MASTER, P_GRAND_MASTER,
-    W_ARMOR, W_TOOL, W_SADDLE,
+    W_ARMOR, W_AMUL, W_RING, W_TOOL, W_SADDLE,
     NEW_MOON,
     FULL_MOON,
     Upolyd,
+    MAGICENLIGHTENMENT,
 } from './const.js';
 import { align_str, align_gname, u_gname } from './roles.js';
 import {
@@ -1203,14 +1204,49 @@ function status_encumbrance_attr(final = 0) {
 }
 
 /**
- * C ref: insight.c status_enlightenment — Deaf + hunger + encumbrance
- * subset (poly/ride/troubles/weapon deferred to callers).
+ * C ref: insight.c cause_known(SLEEPY) — worn item with oc_oprop SLEEPY
+ * when name known + dknown. oc_oprop not in objects table; RESTFUL_SLEEP
+ * is the only SLEEPY conveyer in practice.
+ */
+function cause_known_sleepy() {
+    const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
+    const mask = W_ARMOR | W_AMUL | W_RING | W_TOOL;
+    const objs = objects();
+    for (const o of game.invent || []) {
+        if (!((o.owornmask || 0) & mask)) continue;
+        if (o.otyp !== AMULET_OF_RESTFUL_SLEEP) continue;
+        const oc = objs?.[o.otyp];
+        if (oc?.oc_name_known && o.dknown) return true;
+    }
+    return false;
+}
+
+/** C ref: youprop.h Sleepy — HSleepy || ESleepy. */
+function hero_Sleepy(u = game.u || {}) {
+    return !!((u.HSleepy | 0) || (u.ESleepy | 0) || u.Sleepy);
+}
+
+/** C ref: youprop.h Poison_resistance — H || E. */
+function hero_Poison_resistance(u = game.u || {}) {
+    return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
+        || u.Poison_resistance);
+}
+
+/** C ref: youprop.h Stealth — (H || E) && !B. */
+function hero_Stealth(u = game.u || {}) {
+    return !!(((u.HStealth | 0) || (u.EStealth | 0)) && !((u.BStealth | 0)));
+}
+
+/**
+ * C ref: insight.c status_enlightenment — Deaf + Sleepy + hunger +
+ * encumbrance subset (poly/ride/other troubles/weapon deferred to callers).
  * Overlay (^X) lines need one extra leading space vs enlght_line.
  * @param {number} final
- * @param {{ overlay?: boolean }} opts
+ * @param {{ overlay?: boolean, magic?: boolean }} opts
  */
 function status_core_lines(final = 0, opts = {}) {
     const overlay = !!opts.overlay;
+    const magic = !!opts.magic;
     const You_ = 'You ';
     const are = 'are ';
     const were = 'were ';
@@ -1222,6 +1258,17 @@ function status_core_lines(final = 0, opts = {}) {
     const out = [];
     // C: if (Deaf) you_are("deaf", from_what(DEAF)); from_what wizard-only
     if (hero_Deaf()) out.push(wrap('deaf'));
+    // C: if (Sleepy) if (magic || cause_known(SLEEPY))
+    //    enl_msg("You ", "fall", "fell", " asleep uncontrollably", …)
+    if (hero_Sleepy() && (magic || cause_known_sleepy())) {
+        const line = enlght_line_txt(
+            You_,
+            final ? 'fell' : 'fall',
+            ' asleep uncontrollably',
+            '',
+        );
+        out.push(overlay ? ` ${line}` : line);
+    }
     out.push(wrap(status_hunger_attr()));
     out.push(wrap(status_encumbrance_attr(final)));
     return out;
@@ -1231,8 +1278,9 @@ function status_core_lines(final = 0, opts = {}) {
  * C ref: insight.c enlightenment — BASIC|MAGIC; final → putstr NHW_MENU
  * (--More-- pages), not ^X menu "(k of n)".
  * Named omissions: poly/vamp; night/midnight; SCORE_ON_BOTL; most
- * status troubles; resistances/vision beyond Searching/Infravision;
- * from_what suffixes; wizard alignment number.
+ * status troubles beyond Deaf/Sleepy; resistances/vision beyond
+ * Poison_resistance/Searching/Infravision/Stealth; from_what suffixes;
+ * wizard alignment number; blocked-Stealth / other appearance props.
  * @param {number} mode BASICENLIGHTENMENT | MAGICENLIGHTENMENT
  * @param {number} final ENL_GAMEINPROGRESS / GAMEOVERALIVE / GAMEOVERDEAD
  */
@@ -1402,8 +1450,11 @@ export async function enlightenment(mode, final = 0) {
     // Status (BASIC + MAGIC both include this in C)
     lines.push('');
     lines.push(final ? 'Final Status:' : 'Status:');
-    // C ref: insight.c status_enlightenment Deaf/hunger/encumbrance
-    lines.push(...status_core_lines(final, { overlay: false }));
+    // C ref: insight.c status_enlightenment Deaf/Sleepy/hunger/encumbrance
+    lines.push(...status_core_lines(final, {
+        overlay: false,
+        magic: !!(mode & MAGICENLIGHTENMENT),
+    }));
     const uwep = u.uwep || game.u?.uwep;
     if (!uwep) {
         lines.push(you_are(empty_handed()));
@@ -1442,6 +1493,9 @@ export async function enlightenment(mode, final = 0) {
             || u.uprops?.[ANTIMAGIC]?.extrinsic
             || (u.uarmc && u.uarmc.otyp === CLOAK_MR));
         if (antimagic) lines.push(you_are('magic-protected'));
+        // C: Poison_resistance after Antimagic / other resists (from_what
+        // deferred). Fire/cold/sleep/… resistance arms still deferred.
+        if (hero_Poison_resistance(u)) lines.push(you_are('poison resistant'));
         if (Searching()) lines.push(you_have('automatic searching'));
         // C Infravision via set_uasmon FROMRACE; port falls back to race mons
         // like display.js hero_has_infravision (set_uasmon still deferred).
@@ -1452,6 +1506,9 @@ export async function enlightenment(mode, final = 0) {
             if (racePm != null) hasInfra = infraFn(monsFn(racePm));
         }
         if (hasInfra) lines.push(you_have('infravision'));
+        // C: Stealth after Infravision / appearance block (blocked-Stealth
+        // "would be stealthy" arm deferred).
+        if (hero_Stealth(u)) lines.push(you_are('stealthy'));
         // C: magic_negation → warded/guarded/protected
         const armpro = magic_negation_you();
         if (armpro > 0) {
@@ -1686,8 +1743,10 @@ export async function doattributes() {
         '',
         ' Status:',
     );
-    // C ref: insight.c status_enlightenment — Deaf before hunger/encumbrance
-    lines.push(...status_core_lines(0, { overlay: true }));
+    // C ref: insight.c status_enlightenment — Deaf/Sleepy before hunger
+    // (^X is BASIC-only unless wizard/explore → magic false; Sleepy then
+    // needs cause_known).
+    lines.push(...status_core_lines(0, { overlay: true, magic: false }));
     // C ref: insight.c weapon_insight — empty_handed / P_SKILL / skill_name
     const uwep = u.uwep || game.u?.uwep;
     if (!uwep) {

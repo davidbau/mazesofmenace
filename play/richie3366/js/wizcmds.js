@@ -5,8 +5,10 @@ import { game } from './gstate.js';
 import { pline } from './display.js';
 import { getlin } from './getline.js';
 import { pluslvl } from './exper.js';
-import { MAXULEV } from './const.js';
 import { makewish } from './zap.js';
+import { create_particular } from './read.js';
+import { level_tele } from './teleport.js';
+import { ECMD_OK, MAXULEV } from './const.js';
 
 /**
  * C ref: wizcmds.c wiz_level_change — #levelchange
@@ -67,4 +69,36 @@ export async function wiz_wish() {
     await makewish();
     game.flags.verbose = save_verbose;
     // encumber_msg deferred
+}
+
+/**
+ * C ref: wizcmds.c wiz_genesis — #wizgenesis / ^G
+ * Envelope: create_particular named-monster path (MM_NOEXCLAM).
+ * Named omissions: debug_mongen toggle; count-prefix quan beyond multi;
+ * class-letter / * random arms inside create_particular.
+ */
+export async function wiz_genesis() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("You can't do that.");
+        return ECMD_OK;
+    }
+    // C: iflags.debug_mongen = FALSE around create_particular
+    const saved = game.iflags?.debug_mongen;
+    if (game.iflags) game.iflags.debug_mongen = false;
+    await create_particular();
+    if (game.iflags) game.iflags.debug_mongen = saved;
+    return ECMD_OK;
+}
+
+/**
+ * C ref: wizcmds.c wiz_level_tele — #wizlevelport / ^V
+ * Envelope: wizard → level_tele(); else unavailcmd pline.
+ */
+export async function wiz_level_tele() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("You can't do that.");
+        return ECMD_OK;
+    }
+    await level_tele();
+    return ECMD_OK;
 }

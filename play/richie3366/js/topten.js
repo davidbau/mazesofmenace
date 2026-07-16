@@ -9,6 +9,7 @@ import { genders, aligns } from './roles.js';
 import {
     COLNO, VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL,
     PERSMAX, POINTSMIN, ENTRYMAX, PERS_IS_UID,
+    PANICKED,
 } from './const.js';
 import { ATR_BOLD, NO_COLOR } from './terminal.js';
 
@@ -188,6 +189,19 @@ function render_topten_lines(lines) {
     disp.setCursor(0, row);
 }
 
+/**
+ * C ref: end.c really_done trailing raw_print("") x2 when done_stopprint.
+ */
+export function raw_print_blanks(n) {
+    const disp = game.nhDisplay;
+    if (!disp?.setCursor) return;
+    // Prefer cursorRow (GameDisplay delegates); getCursor may be absent.
+    const row = (disp.cursorRow != null)
+        ? (disp.cursorRow | 0)
+        : (disp.getCursor?.()?.[1] | 0);
+    disp.setCursor(0, row + (n | 0));
+}
+
 function outheader(emit) {
     let line = ' No  Points     Name';
     while (line.length < COLNO - 9) line += ' ';
@@ -295,18 +309,35 @@ function outentry(rank, t1, so, emit) {
  * @param {number} when unused time_t; contest yyyymmdd via getlt
  * @param {string} deathStr formatkiller(how, TRUE) from caller (avoid cycle)
  *
- * Named omissions: LOGFILE/XLOGFILE; wizard/discover; lock_file;
- * toptenwin NHW_TEXT; UPDATE_RECORD_IN_PLACE; prscore; hangup;
- * full escape/ascend/quit outentry arms; ordin() for rank>10 message.
+ * Named omissions: LOGFILE/XLOGFILE; lock_file; toptenwin NHW_TEXT;
+ * UPDATE_RECORD_IN_PLACE; prscore; hangup; full escape/ascend/quit
+ * outentry arms; ordin() for rank>10 message.
  */
 export function topten(how, when = 0, deathStr = '') {
-    void how;
     if (game.program_state?.panicking) return;
 
     const opt = sysopt();
     const done_stopprint = game.program_state?.done_stopprint | 0;
     const flags = game.flags || {};
     const u = game.u || {};
+
+    // C: wizard || discover → raw message then goto showwin (no RECORD)
+    const wizard = !!(flags.debug || flags.wizard);
+    const discover = !!(flags.explore || flags.discover);
+    if (wizard || discover) {
+        if (how !== PANICKED) {
+            const mode = wizard ? 'wizard' : 'discover';
+            // C topten_print is not gated by done_stopprint; showwin is.
+            render_topten_lines([
+                { text: '', bold: false },
+                {
+                    text: `Since you were in ${mode} mode, the score list will not be checked.`,
+                    bold: false,
+                },
+            ]);
+        }
+        return;
+    }
 
     const end_top = flags.end_top != null ? (flags.end_top | 0) : 3;
     const end_around = flags.end_around != null ? (flags.end_around | 0) : 2;

@@ -5,7 +5,6 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { nhgetch } from './input.js';
 import { depth } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
@@ -16,7 +15,8 @@ import {
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL,
 } from './const.js';
 import { COIN_CLASS } from './objects.js';
-import { pline, Norep, docrt, flush_screen, flush_topl_more, newsym } from './display.js';
+import { pline, Norep, docrt, flush_screen, flush_topl_more, newsym, mark_topline_prompt } from './display.js';
+import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import {
     stairway_at,
@@ -710,7 +710,7 @@ function drop_suggest_lets() {
 
 /**
  * C ref: invent.c getobj("drop", any_obj_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * Count-split and ?/* menus deferred.
+ * via yn_function(qbuf, NULL, '\0'). Count-split and ?/* menus deferred.
  */
 async function getobj_drop() {
     for (;;) {
@@ -719,19 +719,14 @@ async function getobj_drop() {
         const query = lets
             ? `What do you want to drop? [${lets} or ?*]`
             : 'What do you want to drop? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        // C invent.c getobj → yn_function(qbuf, (char *)0, '\0', FALSE)
+        const ch = await yn_function(query, null, '\0');
+        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return null;
         }
         if (ch === '?' || ch === '*') {
+            // ?/* pickinv deferred — cancel like quitchars for now
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return null;
         }
@@ -740,7 +735,8 @@ async function getobj_drop() {
             await pline("You don't have that object.");
             continue;
         }
-        game._pending_message = '';
+        // C: leave gt.toplines; !verbose drop stays silent until parse clear.
+        mark_topline_prompt(game._pending_message);
         return otmp;
     }
 }

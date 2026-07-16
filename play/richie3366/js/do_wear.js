@@ -17,6 +17,7 @@ import {
     W_QUIVER, LEFT_RING, RIGHT_RING,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
+    TIMEOUT,
 } from './const.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -28,7 +29,7 @@ import {
     erosion_matters, is_damageable,
 } from './mkobj.js';
 import { erode_obj } from './trap.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
@@ -43,6 +44,7 @@ const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
 const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
+const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat
 const ARM_SUIT = 0;
@@ -771,16 +773,26 @@ async function getobj_puton() {
 }
 
 /**
- * C ref: do_wear.c Amulet_on — setworn + on_msg for ordinary amulets.
- * Special cases (change/strangle/sleep/flying/breathing/ESP see_monsters)
- * deferred beyond setworn + default on_msg.
+ * C ref: do_wear.c Amulet_on — setworn + on_msg; RESTFUL_SLEEP sets HSleepy.
+ * Deferred: change/strangle/flying/breathing bodies; ESP see_monsters;
+ * Guarding makeknown; Amulet_off RESTFUL clear; nh_timeout SLEEPY dialogue.
  */
 async function Amulet_on(amul) {
     remove_worn_item(amul);
     setworn(amul, W_AMUL);
     const otyp = amul.otyp;
-    // Life saving / reflection / poison / ESP / fake / Yendor: no extra body
-    if (
+    let on_msg_done = false;
+
+    if (otyp === AMULET_OF_RESTFUL_SLEEP) {
+        // C: newnap = rnd(98)+2; oldnap = HSleepy & TIMEOUT;
+        // if (newnap < oldnap || oldnap == 0) HSleepy = (HSleepy & ~TIMEOUT) | newnap;
+        const u = game.u || (game.u = {});
+        const newnap = rnd(98) + 2;
+        const oldnap = (u.HSleepy | 0) & TIMEOUT;
+        if (newnap < oldnap || oldnap === 0) {
+            u.HSleepy = ((u.HSleepy | 0) & ~TIMEOUT) | newnap;
+        }
+    } else if (
         otyp === AMULET_OF_ESP
         || otyp === AMULET_OF_LIFE_SAVING
         || otyp === AMULET_VERSUS_POISON
@@ -791,15 +803,10 @@ async function Amulet_on(amul) {
         || otyp === AMULET_OF_GUARDING
     ) {
         // Guarding would makeknown+find_ac in C; find_ac already via setworn
-        if (otyp === AMULET_OF_GUARDING) {
-            // makeknown deferred
-        }
-        await on_msg(amul);
-        return;
+        // change/strangle/flying/breathing side-effect bodies deferred
     }
-    // Other otyps (change/strangle/sleep/flying/breathing): setworn done;
-    // side-effect bodies deferred — still emit on_msg like the default path.
-    await on_msg(amul);
+    // C: if (!on_msg_done) on_msg(uamul);
+    if (!on_msg_done) await on_msg(amul);
 }
 
 /**

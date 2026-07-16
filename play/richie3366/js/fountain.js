@@ -4,13 +4,15 @@
 //
 // Branch envelope (drinkfountain): fate=rnd(30) before Levitation;
 // mgkftn restore+adjattrib; fate<10 refresh; switch default/19–30
-// message+RNG arms; case 23 dowaterdemon; case 26 monster_detect +
-// browse_map; case 27 dofindgem when !FOUNTAIN_IS_LOOTED.
-// Deferred: dowatersnakes/nymph (incl. case 27 fallthrough when
-// looted), dogushforth, enlightenment body, vomit cantvomit/Sick/acid
-// poly arms, town warn/angry_guards, wizard yn, FOUNTAIN_IS_WARNED force
+// message+RNG arms; case 22 dowatersnakes; case 23 dowaterdemon;
+// case 26 monster_detect + browse_map; case 27 dofindgem when
+// !FOUNTAIN_IS_LOOTED.
+// Deferred: dowaternymph (incl. case 27 fallthrough when looted),
+// dogushforth, enlightenment body, vomit cantvomit/Sick/acid poly
+// arms, town warn/angry_guards, wizard yn, FOUNTAIN_IS_WARNED force
 // dryup, Excalibur LONG_SWORD body, wash_hands, dipfountain cases
-// 17–23/25–29; mongrantswish tmp_at glyph hide.
+// 17–22/25–29; Hallucination rndmonnam in snakes pline;
+// mongrantswish tmp_at glyph hide.
 //
 // Branch envelope (drinksink): Levitation floating_above; rn2(20)
 // switch cases 0–13 + 19/default sip; case 4 faucet → mkobj+dopotion;
@@ -60,6 +62,7 @@ const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 const PM_SEWER_RAT = monsterNames.indexOf('PM_SEWER_RAT');
 const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 const PM_WATER_DEMON = monsterNames.indexOf('PM_WATER_DEMON');
+const PM_WATER_MOCCASIN = monsterNames.indexOf('PM_WATER_MOCCASIN');
 
 /** C ref: rm.h FOUNTAIN_IS_WARNED */
 function FOUNTAIN_IS_WARNED(x, y) {
@@ -340,6 +343,36 @@ async function mongrantswish(mtmp) {
 }
 
 /**
+ * C ref: fountain.c dowatersnakes — rn1(5,2) then makemon water moccasins.
+ * Hallucination makeplural(rndmonnam) deferred (uses "snakes").
+ */
+async function dowatersnakes() {
+    const u = game.u || {};
+    // C: num = rn1(5, 2) before G_GONE gate
+    let num = rn1(5, 2);
+    const gone = ((game.mvitals?.[PM_WATER_MOCCASIN]?.mvflags ?? 0) & G_GONE) !== 0;
+    if (!gone) {
+        const Blind = !!(u.Blind || u.ublind);
+        if (!Blind) {
+            // C: Hallucination ? makeplural(rndmonnam(NULL)) : "snakes"
+            await pline('An endless stream of snakes pours forth!');
+        } else {
+            await You_hear('something hissing!');
+        }
+        while (num-- > 0) {
+            const mtmp = makemon(mons(PM_WATER_MOCCASIN), u.ux, u.uy, MM_NOMSG);
+            if (mtmp && t_at(mtmp.mx, mtmp.my)) {
+                await mintrap(mtmp, NO_TRAP_FLAGS);
+            }
+        }
+    } else {
+        await pline(
+            'The fountain bubbles furiously for a moment, then calms.',
+        );
+    }
+}
+
+/**
  * C ref: fountain.c dowaterdemon — makemon water demon; maybe wish / mintrap.
  */
 async function dowaterdemon() {
@@ -470,7 +503,8 @@ export async function drinkfountain() {
             exercise(A_CON, false);
             break;
         }
-        case 22: // Fountain of snakes — dowatersnakes deferred
+        case 22: // Fountain of snakes
+            await dowatersnakes();
             break;
         case 23: // Water demon
             await dowaterdemon();
@@ -587,8 +621,10 @@ export async function dipfountain(obj) {
     case 20:
     case 21:
     case 22:
-    case 23:
-        // Uncurse / demon / nymph / snakes — deferred
+        // Uncurse / demon / nymph — deferred
+        break;
+    case 23: // Endless stream of snakes
+        await dowatersnakes();
         break;
     case 24: // Find a gem
         if (!FOUNTAIN_IS_LOOTED(u.ux, u.uy)) {

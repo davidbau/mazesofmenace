@@ -20,13 +20,74 @@ import {
     objectNameStrs,
     objectDescrs,
 } from './objects.js';
-import { monsterNames } from './monsters.js';
-import { PM_SAMURAI, PM_CLERIC } from './generated/monsters_data.js';
+import { monsterNames, mons, vegetarian, is_rider } from './monsters.js';
+import {
+    PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB,
+} from './generated/monsters_data.js';
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
     Has_contents, Is_container, Is_box, P_BOW, P_CROSSBOW, P_SHURIKEN,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
+    ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
 } from './const.js';
+
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+
+/**
+ * C ref: eat.c tintxts[] — variety adjectives (TTSZ-1 fodder entries + "").
+ * Only txt is needed for display naming.
+ */
+const tintxts = [
+    { txt: 'rotten' },
+    { txt: 'homemade' },
+    { txt: 'soup made from' },
+    { txt: 'french fried' },
+    { txt: 'pickled' },
+    { txt: 'boiled' },
+    { txt: 'smoked' },
+    { txt: 'dried' },
+    { txt: 'deep fried' },
+    { txt: 'szechuan' },
+    { txt: 'broiled' },
+    { txt: 'stir fried' },
+    { txt: 'sauteed' },
+    { txt: 'candied' },
+    { txt: 'pureed' },
+    { txt: '' },
+];
+
+/** C ref: eat.c nonrotting_corpse — local copy (objnam↔eat cycle). */
+function nonrotting_corpse_tin(mnum) {
+    if (mnum === PM_LIZARD || mnum === PM_LICHEN || mnum === PM_ACID_BLOB) {
+        return true;
+    }
+    return is_rider(mons(mnum));
+}
+
+/**
+ * C ref: eat.c tin_variety(obj, TRUE) — display path only (no rn2 side
+ * effects). Named omission: non-display tin_variety RNG when spe>=0.
+ */
+function tin_variety_display(obj) {
+    let r;
+    const mnum = obj.corpsenm;
+    const spe = obj.spe | 0;
+    if (spe === 1) {
+        r = SPINACH_TIN;
+    } else if (obj.cursed) {
+        r = ROTTEN_TIN;
+    } else if (spe < 0) {
+        r = -spe;
+        --r;
+    } else {
+        // C: rn2(TTSZ-1) when displ; unused below when spe>=0 (no tintxt).
+        r = HOMEMADE_TIN;
+    }
+    if (r === ROTTEN_TIN && ismnum(mnum) && nonrotting_corpse_tin(mnum)) {
+        r = HOMEMADE_TIN;
+    }
+    return r;
+}
 
 function Role_if(pm) {
     return game.urole?.mnum === pm;
@@ -56,9 +117,87 @@ function is_poisonable_obj(obj) {
     return sk >= -P_SHURIKEN && sk <= -P_BOW;
 }
 
-/** C ref: obj.h is_rustprone — iron material. */
+// C ref: objclass.h enum obj_material_types (subset for erosion naming)
+const MAT_LIQUID = 1;
+const MAT_WOOD = 8;
+const MAT_DRAGON_HIDE = 10;
+const MAT_IRON = 11;
+const MAT_COPPER = 13;
+const MAT_PLASTIC = 18;
+const MAT_GLASS = 19;
+
+/** C ref: objclass.h is_rustprone — iron material. */
 function is_rustprone_obj(obj) {
-    return (game.objects?.[obj.otyp]?.oc_material ?? 0) === 11; // IRON
+    return (game.objects?.[obj.otyp]?.oc_material ?? 0) === MAT_IRON;
+}
+
+/** C ref: mkobj.c is_flammable — local copy (objnam↔mkobj cycle). */
+function is_flammable_obj(obj) {
+    const n = objectNames[obj.otyp];
+    if (n === 'TALLOW_CANDLE' || n === 'WAX_CANDLE' || n === 'WAN_FIRE') return false;
+    const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
+    return (mat <= MAT_WOOD && mat !== MAT_LIQUID) || mat === MAT_PLASTIC;
+}
+
+/** C ref: mkobj.c is_rottable — local copy. */
+function is_rottable_obj(obj) {
+    const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
+    return (mat <= MAT_WOOD && mat !== MAT_LIQUID) || mat === MAT_DRAGON_HIDE;
+}
+
+/** C ref: objclass.h is_corrodeable — local copy. */
+function is_corrodeable_obj(obj) {
+    const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
+    return mat === MAT_COPPER || mat === MAT_IRON;
+}
+
+/** C ref: objclass.h is_crackable — glass armor only. */
+function is_crackable_obj(obj) {
+    return (game.objects?.[obj.otyp]?.oc_material ?? 0) === MAT_GLASS
+        && obj.oclass === ARMOR_CLASS;
+}
+
+/** C ref: objclass.h is_damageable. */
+function is_damageable_obj(obj) {
+    return is_rustprone_obj(obj) || is_flammable_obj(obj) || is_rottable_obj(obj)
+        || is_corrodeable_obj(obj) || is_crackable_obj(obj);
+}
+
+/**
+ * C ref: objnam.c add_erosion_words — oeroded/oeroded2 degrees + rknown proof.
+ * Returns prefix fragment (may be empty). Caller gates by oclass.
+ */
+function add_erosion_words(obj) {
+    const iscrys = objectNames[obj.otyp] === 'CRYSKNIFE';
+    // C: rknown = (iflags.override_ID == 0) ? obj->rknown : TRUE
+    const rknown = (game.iflags?.override_ID | 0) === 0 ? !!obj.rknown : true;
+    if (!is_damageable_obj(obj) && !iscrys) return '';
+
+    let s = '';
+    const er = obj.oeroded | 0;
+    if (er && !iscrys) {
+        if (er === 2) s += 'very ';
+        else if (er === 3) s += 'thoroughly ';
+        s += is_rustprone_obj(obj) ? 'rusty '
+            : is_crackable_obj(obj) ? 'cracked '
+                : 'burnt ';
+    }
+    const er2 = obj.oeroded2 | 0;
+    if (er2 && !iscrys) {
+        if (er2 === 2) s += 'very ';
+        else if (er2 === 3) s += 'thoroughly ';
+        s += is_corrodeable_obj(obj) ? 'corroded ' : 'rotted ';
+    }
+    if (rknown && obj.oerodeproof) {
+        s += iscrys ? 'fixed '
+            : is_rustprone_obj(obj) ? 'rustproof '
+                : is_corrodeable_obj(obj) ? 'corrodeproof '
+                    : is_flammable_obj(obj) ? 'fireproof '
+                        : is_crackable_obj(obj) ? 'tempered '
+                            : is_rottable_obj(obj) ? 'rotproof '
+                                : '';
+    }
+    return s;
 }
 
 // C ref: objclass.h enum obj_material_types
@@ -141,7 +280,14 @@ function uses_known_otyp(otyp) {
     const oc = game.objects?.[otyp];
     if (oc?.oc_uses_known) return true;
     const cls = oc?.oc_class ?? 0;
-    return cls === WEAPON_CLASS || cls === ARMOR_CLASS || is_charged_otyp(otyp);
+    if (cls === WEAPON_CLASS || cls === ARMOR_CLASS || is_charged_otyp(otyp))
+        return true;
+    // C objects.h FOOD(..., unk=1, ...) → oc_uses_known; generated table
+    // omits the bit (same debt as D-0316 WAND). Egg/tin contents stay
+    // hidden until obj.known (open/eat / starter ini_inv).
+    const n = objectNames[otyp];
+    if (n === 'TIN' || n === 'EGG') return true;
+    return false;
 }
 
 export function otyp_uses_known(otyp) {
@@ -159,27 +305,42 @@ function mon_name(mndx) {
 }
 
 /**
- * C ref: eat.c tin_details() — spinach / "of X meat" / vegetarian bare name.
+ * C ref: eat.c tin_details() — spinach / empty / tintxts + meat/veg.
+ * Caller must already have decided known (C: xname_flags FOOD TIN && known).
+ * Assumes result replaces the bare word "tin" (C mutates buf that holds it).
  */
-function tin_base(obj) {
-    // spinach: corpsenm unset and spe == 1 (set_tin_variety)
-    if ((obj.corpsenm == null || obj.corpsenm < 0) && (obj.spe | 0) === 1)
-        return 'tin of spinach';
-    if (obj.corpsenm == null || obj.corpsenm < 0)
-        return 'empty tin';
-    const mname = mon_name(obj.corpsenm);
-    // C: vegetarian monsters omit " meat"; newt is not vegetarian
-    const vegetarian = /^(lichen|fungus|mold|jelly|pudding|blob|jelly)$/i
-        .test(mname) || mname.includes('fungus') || mname.includes('mold');
-    // Minimal: only the Tourist spinach/newt cases matter for now.
-    // Newt → "newt meat"; spinach handled above.
-    if (vegetarian) return `tin of ${mname}`;
-    return `tin of ${mname} meat`;
+function tin_details(obj) {
+    const r = tin_variety_display(obj);
+    if (r === SPINACH_TIN) return 'tin of spinach';
+    const mnum = obj.corpsenm;
+    if (mnum == null || mnum < 0) return 'empty tin';
+
+    // C: (cknown || iflags.override_ID) && spe < 0 → tintxt adjective
+    const showVariety = !!(obj.cknown || game.iflags?.override_ID)
+        && (obj.spe | 0) < 0;
+    let buf = 'tin';
+    if (showVariety) {
+        const txt = tintxts[r]?.txt ?? '';
+        if (r === ROTTEN_TIN || r === HOMEMADE_TIN) {
+            // put before the word tin: "homemade tin of "
+            buf = `${txt} ${buf} of `;
+        } else {
+            buf = `${buf} of ${txt} `;
+        }
+    } else {
+        buf = `${buf} of `;
+    }
+    const mname = mon_name(mnum);
+    // C: vegetarian(&mons[mnum]) omits " meat"
+    if (vegetarian(mons(mnum))) return buf + mname;
+    return `${buf}${mname} meat`;
 }
 
 function pretty_base(obj) {
     const n = objectNames[obj.otyp];
-    if (n === 'TIN') return tin_base(obj);
+    // C ref: objnam.c xname_flags FOOD_CLASS — Concat(actualn);
+    // if (typ == TIN && known) tin_details(...). Unidentified → bare "tin".
+    if (n === 'TIN') return obj.known ? tin_details(obj) : 'tin';
     // C: corpse → "<monster> corpse" when corpsenm known
     if (n === 'CORPSE' && obj.corpsenm != null && obj.corpsenm >= 0)
         return `${mon_name(obj.corpsenm)} corpse`;
@@ -794,12 +955,11 @@ export function doname(obj) {
     // C: WEAPON_CLASS — re-insert stripped "poisoned " before erosion/spe
     if (oclass === WEAPON_CLASS && ispoisoned) prefix += 'poisoned ';
 
-    // C ref: objnam.c add_erosion_words — rknown + oerodeproof
-    if (obj.rknown && obj.oerodeproof) {
-        // Branch envelope: rustprone → "rustproof "; other proofs deferred
-        if (is_rustprone_obj(obj) || oclass === ARMOR_CLASS || oclass === WEAPON_CLASS) {
-            prefix += 'rustproof ';
-        }
+    // C ref: objnam.c doname_base — ARMOR falls through to WEAPON for
+    // add_erosion_words + spe; BALL/CHAIN also call add_erosion_words.
+    // Weptool-as-WEAPON_CLASS class remap deferred.
+    if (oclass === WEAPON_CLASS || oclass === ARMOR_CLASS) {
+        prefix += add_erosion_words(obj);
     }
 
     if (known && (oclass === WEAPON_CLASS || oclass === ARMOR_CLASS

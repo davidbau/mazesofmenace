@@ -2,7 +2,7 @@
 // C ref: teleport.c — collect_coords, enexto_core (NEW_ENEXTO), goodpos (partial).
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnd } from './rng.js';
+import { rn2, rn1, rnd, rnl } from './rng.js';
 import {
     COLNO, ROWNO,
     CC_NO_FLAGS, CC_INCL_CENTER, CC_UNSHUFFLED, CC_RING_PAIRS,
@@ -14,16 +14,21 @@ import {
     MIGR_RANDOM, MON_MIGRATING, NO_TRAP,
     ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT,
+    UTOTYPE_NONE,
     is_hole, Is_stronghold, Is_botlevel,
+    In_endgame, In_sokoban, In_quest,
 } from './const.js';
 import { objects_at } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
 import { amorphous, throws_rocks } from './monsters.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, You_feel } from './display.js';
 import { vision_recalc } from './vision.js';
 import { in_rooms, nomul } from './hack.js';
 import { makeknown } from './invent.js';
 import { more_experienced } from './exper.js';
+import { getlin } from './getline.js';
+import { get_level } from './dungeon.js';
+import { depth } from './hacklib.js';
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
 const Trap_Effect_Finished = 0;
@@ -559,6 +564,140 @@ export async function scrolltele(scroll) {
  */
 export async function tele() {
     await scrolltele(null);
+}
+
+/**
+ * C ref: teleport.c level_tele — controlled/wizard dungeon-level port.
+ *
+ * Ported: wizard/Teleport_control getlin numeric path → get_level →
+ * schedule_goto (deferred_goto after rhack). "?" menu returns cancel
+ * (print_dungeon deferred). Named omissions: lev_by_name; print_dungeon
+ * menu; random_teleport_level / involuntary; heaven/escape negative;
+ * endgame dest; single_level_branch Knox; Quest depth remap polish;
+ * find_hell; invocation Gehennom clamp; Nowhere suicide yn; next_to_u
+ * leash body; buried ball; debug_fuzzer.
+ */
+export async function level_tele() {
+    const u = game.u || {};
+    const flags = game.flags || {};
+    const wizard = !!(flags.debug || flags.wizard);
+    const Teleport_control = !!(u.HTeleport_control || u.ETeleport_control
+        || u.Teleport_control);
+    const Stunned = !!(u.Stunned || u.HStun || u.EStun);
+
+    if (((u.uhave?.amulet || u.uhave_amulet) || In_endgame(u.uz) || In_sokoban(u.uz))
+        && !wizard) {
+        await You_feel('very disoriented for a moment.');
+        return;
+    }
+
+    let newlev = 0;
+    const newlevel = { dnum: 0, dlevel: 0 };
+    let force_dest = false;
+
+    if ((Teleport_control && !Stunned) || wizard) {
+        let qbuf = 'To what level do you want to teleport?';
+        let trycnt = 0;
+        let buf = '';
+        do {
+            if (game.iflags?.menu_requested) {
+                game.iflags.menu_requested = false;
+                if (wizard) {
+                    // print_dungeon menu deferred → cancel
+                    return;
+                }
+            }
+            if (++trycnt === 2) {
+                qbuf += wizard
+                    ? ' [type a number, name, or ? for a menu]'
+                    : ' [type a number or name]';
+            }
+            buf = await getlin(qbuf);
+            if (buf == null) buf = '';
+            if (buf === '*') {
+                // random_teleport_level deferred
+                await pline('You shudder for a moment.');
+                return;
+            }
+            if ((u.HConfusion || u.Confusion) && rnl(5)) {
+                await pline('Oops...');
+                await pline('You shudder for a moment.');
+                return;
+            }
+            if (buf === '\x1b' || buf === '') {
+                // C: empty after cancel path; ESC returns
+                if (buf === '\x1b') return;
+            }
+            if (wizard && buf === '?') {
+                // print_dungeon(TRUE) deferred — treat as cancel
+                return;
+            }
+            // lev_by_name deferred → atoi only
+            const trimmed = String(buf).trim();
+            if (/^-?\d+$/.test(trimmed)) {
+                newlev = parseInt(trimmed, 10) | 0;
+            } else {
+                newlev = 0;
+            }
+        } while (
+            !newlev
+            && !(buf.length && buf[0] >= '0' && buf[0] <= '9')
+            && !(buf[0] === '-' && buf.length > 1 && buf[1] >= '0' && buf[1] <= '9')
+            && trycnt < 10
+        );
+
+        if (newlev === 0) {
+            if (trycnt >= 10) {
+                await pline('You shudder for a moment.');
+                return;
+            }
+            // Nowhere suicide yn deferred — cancel
+            return;
+        }
+
+        // single_level_branch Knox gate deferred
+
+        // Quest Home-N status → logical depth
+        if (In_quest(u.uz) && newlev > 0) {
+            const dun = game.dungeons?.[u.uz.dnum | 0];
+            newlev = newlev + ((dun?.depth_start | 0) || 1) - 1;
+        }
+    } else {
+        // involuntary random_teleport_level deferred
+        await pline('You shudder for a moment.');
+        return;
+    }
+
+    // next_to_u leash gate — always true without leash wiring
+
+    if (In_endgame(u.uz)) {
+        // endgame wizard dest deferred
+        await pline("You can't get there from here.");
+        return;
+    }
+
+    if (newlev < 0 && !force_dest) {
+        // heaven / escape deferred
+        await pline('You shudder for a moment.');
+        return;
+    }
+
+    get_level(newlevel, newlev);
+    if ((newlevel.dnum | 0) === (u.uz?.dnum | 0)
+        && (newlevel.dlevel | 0) === (u.uz?.dlevel | 0)
+        && newlev !== depth(u.uz)) {
+        await pline("You can't get there from here.");
+        return;
+    }
+
+    // Dynamic import avoids do.js ↔ teleport.js cycle (do imports enexto).
+    const { schedule_goto } = await import('./do.js');
+    schedule_goto(
+        newlevel,
+        UTOTYPE_NONE,
+        null,
+        flags.verbose ? 'You materialize on a different level!' : null,
+    );
 }
 
 /**

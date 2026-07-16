@@ -1078,7 +1078,7 @@ export function relobj_on_death(mtmp) {
  * C ref: invent.c objects[].oc_merge — table field not yet extracted;
  * approximate from C BITS defaults (ammo/gems/coins merge; boulder does not).
  */
-function oc_merge_of(otyp) {
+export function oc_merge_of(otyp) {
     const od = game.objects?.[otyp];
     if (od && typeof od.oc_merge === 'number') return od.oc_merge !== 0;
     if (otyp === BOULDER || otyp === STATUE || otyp === BOOMERANG) return false;
@@ -1173,6 +1173,58 @@ export function add_to_buried(obj) {
 export function objects_at(x, y) {
     if (!game._objects_at) return null;
     return game._objects_at.get(`${x},${y}`) || null;
+}
+
+/**
+ * C ref: mkobj.c replace_object — swap otmp into obj's chain position.
+ * Floor arm used by zap.c poly_obj; invent/minvent/contained deferred.
+ */
+export function replace_object(obj, otmp) {
+    if (!obj || !otmp) return;
+    const where = obj.where;
+    otmp.where = where;
+    if (where === OBJ_FLOOR) {
+        otmp.nobj = obj.nobj || null;
+        otmp.nexthere = obj.nexthere || null;
+        otmp.ox = obj.ox | 0;
+        otmp.oy = obj.oy | 0;
+        // C: splice otmp after obj, then extract obj from both chains
+        obj.nobj = otmp;
+        obj.nexthere = otmp;
+        // extract from fobj (nobj chain) — skip otmp which is obj.nobj
+        if (game.fobj === obj) {
+            game.fobj = otmp;
+        } else {
+            for (let p = game.fobj; p; p = p.nobj) {
+                if (p.nobj === obj) {
+                    p.nobj = otmp;
+                    break;
+                }
+            }
+        }
+        obj.nobj = null;
+        // extract from nexthere pile — skip otmp which is obj.nexthere
+        const key = `${otmp.ox},${otmp.oy}`;
+        if (!game._objects_at) game._objects_at = new Map();
+        const head = game._objects_at.get(key) || null;
+        if (head === obj) {
+            game._objects_at.set(key, otmp);
+        } else {
+            for (let p = head; p; p = p.nexthere) {
+                if (p.nexthere === obj) {
+                    p.nexthere = otmp;
+                    break;
+                }
+            }
+        }
+        obj.nexthere = null;
+        obj.where = OBJ_FREE;
+        obj.ox = 0;
+        obj.oy = 0;
+    } else {
+        // invent/minvent/contained — place as free until callers need them
+        otmp.where = OBJ_FREE;
+    }
 }
 
 // C ref: mkobj.c obj_extract_self — floor / minvent (invent/contained omitted)

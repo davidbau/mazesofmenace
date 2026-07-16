@@ -20,7 +20,7 @@ import {
     monsterNames, M1_SEE_INVIS, M1_AMORPHOUS, M1_NOTAKE, tunnels, needspick,
     can_track, likes_gold, likes_gems, likes_objs, likes_magic,
     throws_rocks, mindless, is_animal, strongmonst, is_mercenary,
-    mon_knows_traps, can_teleport,
+    mon_knows_traps, can_teleport, hides_under,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -46,8 +46,9 @@ import {
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
     M_AP_FURNITURE,
     STRAT_WAITFORU, STRAT_WAITMASK,
-    Upolyd,
+    Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
 } from './const.js';
+import { is_pool, is_lava } from './hack.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -708,14 +709,82 @@ function canspotmon(mtmp) {
     return canseemon(mtmp);
 }
 
+/** C ref: monst.h helpless — msleeping || !mcanmove */
+function helpless_mon(mtmp) {
+    return !!(mtmp?.msleeping || !mtmp?.mcanmove);
+}
+
+/**
+ * C ref: monmove.c can_hide_under_obj — floor obj; non-pit trap blocks;
+ * <10 coins alone cannot hide under. NO_HIDING_UNDER_STATUES off in C.
+ */
+function can_hide_under_obj(obj) {
+    if (!obj || obj.where !== OBJ_FLOOR) return false;
+    const t = t_at(obj.ox, obj.oy);
+    if (t && !is_pit(t.ttyp)) return false;
+    if (obj.oclass === COIN_CLASS) {
+        let coinquan = 0;
+        let o = obj;
+        do {
+            coinquan += o.quan | 0;
+            if (coinquan >= 10) break;
+            o = o.nexthere;
+            if (!o) return false;
+        } while (o.oclass === COIN_CLASS);
+    }
+    return true;
+}
+
+/**
+ * C ref: mon.c hideunder — set mundetected under object / pool for eels.
+ * Named omissions: You_see hide pline; in_mklev; pet cursed_object_at;
+ * cockatrice corpse skip; youmonst path; non-pit trap when already trapped.
+ */
+function hideunder(mtmp) {
+    if (!mtmp?.mx) return false;
+    const u = game.u || {};
+    const x = mtmp.mx;
+    const y = mtmp.my;
+    let undetected = false;
+
+    if (mtmp === u.ustuck) {
+        // holding / held — cannot hide
+    } else if (mtmp.mtrapped) {
+        // trapped — cannot hide
+    } else {
+        const t = t_at(x, y);
+        if (t && !is_pit(t.ttyp)) {
+            // non-pit trap site — cannot hide
+        } else if (mtmp.data?.mlet === 'S_EEL') {
+            undetected = !!(is_pool(x, y) && !Is_waterlevel(u.uz)
+                && (!(u.Underwater) || !couldsee(x, y)));
+        } else if (hides_under(mtmp.data)) {
+            const otmp = objects_at(x, y);
+            if (otmp && can_hide_under_obj(otmp)
+                && !is_pool(x, y) && !is_lava(x, y)
+                /* pet cursed_object_at deferred */) {
+                // cockatrice corpse skip deferred — any hideable obj counts
+                undetected = true;
+            }
+        }
+    }
+
+    const oldundetctd = !!mtmp.mundetected;
+    mtmp.mundetected = undetected ? 1 : 0;
+    // You_see "%s hide under %s" deferred (can insert --More--)
+    if (undetected !== oldundetctd) newsym(x, y);
+    return undetected;
+}
+
 /**
  * C ref: monmove.c postmov — after a successful step: traps then doors,
  * then shared OBJ_AT / mpickstuff for MOVED|DONE.
  * Branch envelope: D_CLOSED open / D_LOCKED unlock / smash doorbuster;
- * amorphous squeeze message; mb_trapped; mpickstuff one-object pickup.
+ * amorphous squeeze message; mb_trapped; mpickstuff one-object pickup;
+ * hides_under / S_EEL rn2(5) → hideunder (D-0496).
  * Named omissions: vampshift fog; iron bars; engulfing_u; shop add_damage;
  * has_magic_key disarm; metallivorous/cube/corpse_eater meat*; maybe_spin_web;
- * hides_under; check_gear_next_turn. (shk/gd/priest via shk.js D-0205)
+ * hideunder You_see; check_gear_next_turn. (shk/gd/priest via shk.js D-0205)
  */
 async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
     if (mmoved !== MMOVE_MOVED && mmoved !== MMOVE_DONE) return mmoved;
@@ -822,8 +891,19 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
         if (await mpickstuff(mtmp)) {
             mmoved = MMOVE_DONE;
         }
-        // minvis newsym / maybe_spin_web / hides_under / shk deferred
+        // minvis newsym deferred
     }
+
+    // C: maybe_spin_web deferred (webmaker rn2(1000) only)
+
+    // C: postmov hides_under / S_EEL — outside OBJ_AT (monmove.c ≈1692)
+    if (hides_under(ptr) || ptr?.mlet === 'S_EEL') {
+        if (mtmp.mundetected || (!helpless_mon(mtmp) && rn2(5))) {
+            hideunder(mtmp);
+        }
+        newsym(mtmp.mx, mtmp.my);
+    }
+    // after_shk_move deferred
 
     return mmoved;
 }
