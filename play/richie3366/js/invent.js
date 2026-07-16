@@ -607,10 +607,12 @@ set_distant_cansee(cansee);
 export function invent_lines() {
     const inv = game.invent || [];
     const lines = [];
+    // C ref: windows.c add_menu_heading — suppress highlight when gameover
+    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
     for (const oclass of DEF_INV_ORDER) {
         const items = inv.filter(o => o.oclass === oclass);
         if (!items.length) continue;
-        lines.push({ text: CLASS_NAMES[oclass] || 'Items', attr: ATR_INVERSE });
+        lines.push({ text: CLASS_NAMES[oclass] || 'Items', attr: headingAttr });
         for (const otmp of items) {
             // C ref: invent.c sortloot_item — observe_object before naming
             if (!game.u?.Blind) observe_object(otmp);
@@ -1318,6 +1320,29 @@ export async function enlightenment(mode, final = 0) {
         lines.push(you_are(`in ${dgnbuf}, on level ${dlev}`));
         lines.push(enlght_line_txt(You_, 'entered ', `the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago`, ''));
 
+        // C ref: insight.c background_enlightenment — night/moon/friday
+        // between "entered" and experience (final uses iflags.at_*).
+        if (game.iflags?.at_midnight) {
+            lines.push(enlght_line_txt('It ', 'was ', 'the midnight hour', ''));
+        } else if (game.iflags?.at_night) {
+            lines.push(enlght_line_txt('It ', 'was ', 'nighttime', ''));
+        }
+        const moon = game.flags?.moonphase;
+        if (moon === FULL_MOON || moon === NEW_MOON) {
+            const phase = moon === FULL_MOON ? 'full' : 'new';
+            lines.push(enlght_line_txt(
+                'There ',
+                'was ',
+                `a ${phase} moon in effect when your adventure ended`,
+                '',
+            ));
+        }
+        if (game.flags?.friday13) {
+            lines.push(
+                ` Bad things ${final === ENL_GAMEOVERDEAD ? 'happened' : 'could have happened'} on Friday the 13th.`,
+            );
+        }
+
         const uexp = u.uexp | 0;
         const ulvl = u.ulevel | 0;
         let xpbuf = `${uexp} experience point${uexp === 1 ? '' : 's'}`;
@@ -1407,9 +1432,39 @@ export async function enlightenment(mode, final = 0) {
         const record = u.ualign?.record | 0;
         if (record >= 0) lines.push(you_are(pio));
         else lines.push(you_have(pio));
+        // C attributes_enlightenment: Antimagic early among resistances
+        // (from_what deferred). Cloak MR via setworn oc_oprop still deferred.
+        const { ANTIMAGIC } = await import('./const.js');
+        const { objectNames: onames } = await import('./objects.js');
+        const CLOAK_MR = onames.indexOf('CLOAK_OF_MAGIC_RESISTANCE');
+        const antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic
+            || u.uprops?.[ANTIMAGIC]?.intrinsic
+            || u.uprops?.[ANTIMAGIC]?.extrinsic
+            || (u.uarmc && u.uarmc.otyp === CLOAK_MR));
+        if (antimagic) lines.push(you_are('magic-protected'));
         if (Searching()) lines.push(you_have('automatic searching'));
-        if (u.HInfravision || u.EInfravision) {
-            lines.push(you_have('infravision'));
+        // C Infravision via set_uasmon FROMRACE; port falls back to race mons
+        // like display.js hero_has_infravision (set_uasmon still deferred).
+        let hasInfra = !!(u.HInfravision || u.EInfravision);
+        if (!hasInfra) {
+            const { mons: monsFn, infravision: infraFn } = await import('./monsters.js');
+            const racePm = game.urace?.mnum;
+            if (racePm != null) hasInfra = infraFn(monsFn(racePm));
+        }
+        if (hasInfra) lines.push(you_have('infravision'));
+        // C: magic_negation → warded/guarded/protected
+        const armpro = magic_negation_you();
+        if (armpro > 0) {
+            const mc_types = ['', 'warded', 'guarded', 'protected'];
+            const idx = Math.min(armpro, mc_types.length - 1);
+            lines.push(you_are(mc_types[idx]));
+        }
+        // C: Luck → lucky / unlucky
+        const luck = (u.uluck | 0) + (u.moreluck | 0);
+        if (luck) {
+            const ltmp = Math.abs(luck);
+            const pref = ltmp >= 10 ? 'extremely ' : ltmp >= 5 ? 'very ' : '';
+            lines.push(you_are(`${pref}${luck < 0 ? 'un' : ''}lucky`));
         }
         // C attributes_enlightenment mortality: past-slot holds "are dead"
         if (final === ENL_GAMEOVERDEAD) {

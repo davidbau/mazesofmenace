@@ -3,7 +3,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, docrt, newsym } from './display.js';
+import {
+    flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
+} from './display.js';
 import { cansee } from './vision.js';
 import { rnd } from './rng.js';
 import { place_object, splitobj, stackobj } from './mkobj.js';
@@ -575,10 +577,23 @@ export async function dofire() {
     }
 
     if (!obj) {
-        // C: You("have no ammunition readied.") then doquiver_core("fire")
-        await pline('You have no ammunition readied.');
-        return await doquiver_core('fire');
+        // C: !autoquiver → You("have no ammunition readied.") then
+        // doquiver_core("fire"); autoquiver/polearm/bullwhip/swap deferred.
+        if (!game.flags?.autoquiver) {
+            await pline('You have no ammunition readied.');
+            // C getobj uses yn_function which more()s on NEED_MORE. Session
+            // keystream has invent letter immediately after `f` (no dismiss).
+            // mark_topline_seen ≡ tty_nhgetch NEED_MORE→NON_EMPTY so getobj
+            // can read the letter (D-0484).
+            mark_topline_seen();
+        }
+        const res = await doquiver_core('fire');
+        // C: ECMD_OK / ECMD_TIME continue; other → return. JS uses 0/1.
+        if (res !== 0 && res !== 1) return res;
+        obj = game.u?.uquiver || null;
+        if (!obj) return res | 0;
     }
+    // C: post-quiver fireassist launcher swap deferred for non-ammo
     const dir = await getdir_cmdassist('In what direction?');
     if (!dir) return 0;
     game.u.dx = dir.dx;

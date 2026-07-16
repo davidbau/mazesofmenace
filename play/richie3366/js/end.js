@@ -7,10 +7,10 @@ import { rn2 } from './rng.js';
 import { depth } from './hacklib.js';
 import { pline, flush_topl_more, bot } from './display.js';
 import { yn_function } from './getline.js';
-import { show_text_pages } from './pager.js';
+import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
-import { an } from './objnam.js';
+import { an, doname, xname, the as theArt } from './objnam.js';
 import { COIN_CLASS } from './objects.js';
 import {
     DIED, GENOCIDED, STONING, QUIT, ESCAPED, ASCENDED, STARVING, BURNING,
@@ -22,6 +22,7 @@ import {
     DISCLOSE_PROMPT_DEFAULT_SPECIAL, NUM_DISCLOSURE_OPTIONS,
     BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
+    Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
 } from './const.js';
 import { G_NOCORPSE, mons } from './monsters.js';
 import { oname, christen_monst } from './do_name.js';
@@ -34,7 +35,9 @@ import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
 import { paybill, money2mon } from './shk.js';
 import { shkname, shkname_is_pname } from './shknam.js';
-import { enlightenment } from './invent.js';
+import {
+    enlightenment, display_inventory, discover_object, sortloot,
+} from './invent.js';
 import {
     list_vanquished, list_genocided, show_conduct,
 } from './insight.js';
@@ -42,6 +45,8 @@ import { show_overview } from './dungeon.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
+const TIN = objectNames.indexOf('TIN');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 
 /** C ref: decl.c disclosure_options */
@@ -276,10 +281,105 @@ export function can_make_bones() {
 }
 
 /**
+ * C ref: invent.c set_cknown_lknown — containers/statue/tin flags.
+ */
+function set_cknown_lknown(obj) {
+    if (!obj) return;
+    if (Is_container(obj) || obj.otyp === STATUE) {
+        obj.cknown = obj.lknown = 1;
+    } else if (obj.otyp === TIN) {
+        obj.cknown = 1;
+    }
+}
+
+/**
+ * C ref: end.c really_done invent walk before disclose — ID everything
+ * for inventory disclosure / dumplog. Named omissions: SchroedingersBox
+ * observe_quantum_cat / Schroedingers_cat.
+ */
+function identify_invent_for_disclose() {
+    const invent = game.invent || [];
+    for (const obj of invent) {
+        if (!obj) continue;
+        discover_object(obj.otyp, true, true, false);
+        obj.known = obj.bknown = obj.dknown = obj.rknown = 1;
+        set_cknown_lknown(obj);
+        // SchroedingersBox deferred
+    }
+}
+
+/**
+ * C ref: end.c container_contents — walk invent/container list after
+ * disclose invent 'y'. Named omissions: SchroedingersBox live-cat line;
+ * nested identify polish beyond discover_object; update_inventory.
+ * @param {object[]|object|null} list invent array or cobj chain head
+ * @param {boolean} identified
+ * @param {boolean} all_containers
+ * @param {boolean} reportempty
+ */
+async function container_contents(list, identified, all_containers, reportempty) {
+    const boxes = Array.isArray(list)
+        ? list
+        : (() => {
+            const out = [];
+            for (let box = list; box; box = box.nobj) out.push(box);
+            return out;
+        })();
+
+    for (const box of boxes) {
+        if (!box) continue;
+        if (!(Is_container(box) || box.otyp === STATUE)) {
+            if (!all_containers) break;
+            continue;
+        }
+        if (!box.cknown || (identified && !box.lknown)) {
+            box.cknown = 1;
+            if (identified) box.lknown = 1;
+            // update_inventory deferred
+        }
+        if (box.otyp === BAG_OF_TRICKS) {
+            if (!all_containers) break;
+            continue;
+        }
+        if (box.cobj) {
+            const lines = [`Contents of ${theArt(xname(box))}:`, ''];
+            const flags = game.flags || {};
+            const sortlootOpt = flags.sortloot ?? 'l';
+            let sortflags = 0;
+            if (sortlootOpt === 'l' || sortlootOpt === 'f') {
+                sortflags |= SORTLOOT_LOOT;
+            }
+            if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
+            const sorted = sortloot(box.cobj, sortflags, false);
+            for (const srtc of sorted) {
+                const obj = srtc.obj;
+                if (identified && obj) {
+                    discover_object(obj.otyp, true, true, false);
+                    obj.dknown = 1;
+                    obj.known = obj.bknown = obj.rknown = 1;
+                    if (Is_container(obj) || obj.otyp === STATUE) {
+                        obj.cknown = obj.lknown = 1;
+                    }
+                }
+                lines.push(`  ${doname(obj)}`);
+            }
+            await show_nhw_menu_text(lines);
+            if (all_containers) {
+                await container_contents(box.cobj, identified, true, reportempty);
+            }
+        } else if (reportempty) {
+            // C: pline("%s is empty.", …) — rarely used on disclose (FALSE)
+            await pline(`${theArt(xname(box))} is empty.`);
+        }
+        if (!all_containers) break;
+    }
+}
+
+/**
  * C ref: end.c disclose — invent, attributes, vanquished, genocided,
  * conduct, overview (each gated by should_query / done_stopprint).
- * Named omissions: invent 'y' display_inventory / container_contents;
- * vanquished ask yn body when ntypes>0 (list_vanquished still skips empty).
+ * Named omissions: vanquished ask yn body when ntypes>0
+ * (list_vanquished still skips empty); force_invmenu clear is no-op.
  */
 async function disclose(how, taken) {
     const stop = () => !!(game.program_state?.done_stopprint);
@@ -293,12 +393,17 @@ async function disclose(how, taken) {
         const c = ask
             ? await yn_function(qbuf, 'ynq', defquery)
             : defquery;
+        if (c === 'y') {
+            // C: iflags.force_invmenu = FALSE; display_inventory(NULL, TRUE)
+            if (game.iflags) game.iflags.force_invmenu = false;
+            await display_inventory();
+            await container_contents(invent, true, true, false);
+        }
         if (c === 'q') {
             if (!game.program_state) game.program_state = {};
             game.program_state.done_stopprint =
                 (game.program_state.done_stopprint | 0) + 1;
         }
-        // 'y' → display_inventory deferred
     }
 
     if (!stop()) {
@@ -431,9 +536,8 @@ async function show_death_rip_and_summary(how, umoney) {
 
 /**
  * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
- * Named omissions: clearpriests/paygd; invent discover_object;
- * Schroedinger; dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT;
- * disclose beyond inventory yn; arise pline; wizard bones query;
+ * Named omissions: clearpriests/paygd; SchroedingersBox; dump/livelog;
+ * logfile/xlogfile; toptenwin NHW_TEXT; arise pline; wizard bones query;
  * inven_inuse / ball-chain arms of done_object_cleanup; unleash_all
  * in finish_paybill.
  */
@@ -475,10 +579,20 @@ async function really_done(how) {
 
     await flush_topl_more();
 
+    // C: invent discover_object walk before disclose (and dumplog)
+    if (how !== PANICKED) {
+        // C: collect at_night/at_midnight before disclosure prompts
+        const { night, midnight } = await import('./calendar.js');
+        if (!game.iflags) game.iflags = {};
+        game.iflags.at_night = night() ? 1 : 0;
+        game.iflags.at_midnight = midnight() ? 1 : 0;
+        identify_invent_for_disclose();
+    }
+
     // C: strcmp(flags.end_disclose, "none") — array never equals "none"
     // after optfn_disclose; always call disclose (modes inside may no-ask).
     const endDisclose = game.flags?.end_disclose;
-    if (endDisclose !== 'none') {
+    if (how !== PANICKED && endDisclose !== 'none') {
         await disclose(how, taken);
     }
 

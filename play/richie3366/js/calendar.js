@@ -102,4 +102,15 @@ export function yyyymmdd(date = 0) {
     return year * 10000 + (lt.tm_mon + 1) * 100 + lt.tm_mday;
 }
 
+/** C ref: calendar.c night — hour < 6 || hour > 21. */
+export function night() {
+    const hour = getlt().tm_hour;
+    return hour < 6 || hour > 21;
+}
+
+/** C ref: calendar.c midnight — hour == 0. */
+export function midnight() {
+    return getlt().tm_hour === 0;
+}
+
 export { NEW_MOON, FULL_MOON };

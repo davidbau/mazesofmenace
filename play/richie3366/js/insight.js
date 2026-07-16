@@ -22,6 +22,7 @@
 //              genocided."; ngone>0 NHW_MENU / extinctions deferred.
 
 import { game } from './gstate.js';
+import { yn_function } from './getline.js';
 import {
     ACH_SOKO,
     ECMD_OK,
@@ -448,10 +449,22 @@ export async function list_vanquished(defquery, ask) {
     if (ntypes !== 0) {
         let c;
         if (ask) {
-            // disclose yn_function path deferred — treat as defquery
-            c = defquery;
+            // C: ntypes>1 → ynaq; else ynq (+ allow 'a' via ESC pad)
+            let allow = ntypes > 1 ? 'ynaq' : 'ynq';
+            let dq = defquery;
+            if (ntypes === 1 && dq === 'a') dq = 'y';
+            c = await yn_function(
+                'Do you want an account of creatures vanquished?',
+                allow,
+                dq,
+            );
         } else {
             c = defquery;
+        }
+        if (c === 'q') {
+            if (!game.program_state) game.program_state = {};
+            game.program_state.done_stopprint =
+                (game.program_state.done_stopprint | 0) + 1;
         }
         if (c === 'y' || c === 'a') {
             // c=='a' set_vanq_order deferred

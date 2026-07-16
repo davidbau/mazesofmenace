@@ -32,6 +32,7 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
+import { otyp_uses_known } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
@@ -930,19 +931,9 @@ function clear_dknown(obj) {
 export function mksobj(otyp, init, artif) {
     const objects = objs();
     // C ref: mkobj.c unknow_object — known = oc_uses_known ? 0 : 1
-    // Weapons/armor/wands/charged tools use known for +/- / charges;
+    // Weapons/armor/wands/charged tools/rings use known for +/- / charges;
     // scrolls/potions start known=1 so ini_inv_use_obj can discover_object.
-    // C WAND() BITS uskn=1 (objects.h) — table lacks oc_uses_known yet.
-    const uskn = (() => {
-        const n = objectNames[otyp] || '';
-        const cls = objects[otyp]?.oc_class ?? 0;
-        if (cls === WEAPON_CLASS || cls === ARMOR_CLASS || cls === WAND_CLASS)
-            return true;
-        if (n && n.startsWith('WAN_')) return true;
-        if (['DART', 'SHURIKEN', 'BOOMERANG', 'EXPENSIVE_CAMERA',
-            'MAGIC_MARKER', 'CRYSTAL_BALL'].includes(n)) return true;
-        return false;
-    })();
+    const uskn = otyp_uses_known(otyp);
     const otmp = {
         otyp,
         oclass: objects[otyp]?.oc_class ?? 0,

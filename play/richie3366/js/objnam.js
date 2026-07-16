@@ -109,8 +109,10 @@ const PRETTY = {
     LOCK_PICK: 'lock pick',
 };
 
-// Tools/weapons/wands that use oc_charged-style display.
-// C: objects[].oc_charged — WEAPON() macros set chrg=1; table lacks field yet.
+// Tools/weapons/wands/charged-rings that use oc_charged-style display.
+// C: objects[].oc_charged — WEAPON() macros set chrg=1; generated table
+// omits the bit, so ring/tool names are listed explicitly (objects.h RING
+// `spec` / TOOL charged).
 function is_charged_otyp(otyp) {
     const n = objectNames[otyp];
     const oc = game.objects?.[otyp];
@@ -124,6 +126,14 @@ function is_charged_otyp(otyp) {
     // Wands always show (recharged:spe) when known (C: WAND_CLASS → charges)
     if (oc?.oc_class === WAND_CLASS) return true;
     if (n && n.startsWith('WAN_')) return true;
+    // C objects.h RING(..., spec=1, ...) → oc_charged
+    if (n === 'RIN_ADORNMENT'
+        || n === 'RIN_GAIN_STRENGTH'
+        || n === 'RIN_GAIN_CONSTITUTION'
+        || n === 'RIN_INCREASE_ACCURACY'
+        || n === 'RIN_INCREASE_DAMAGE'
+        || n === 'RIN_PROTECTION')
+        return true;
     return false;
 }
 
@@ -792,7 +802,8 @@ export function doname(obj) {
         }
     }
 
-    if (known && (oclass === WEAPON_CLASS || oclass === ARMOR_CLASS)) {
+    if (known && (oclass === WEAPON_CLASS || oclass === ARMOR_CLASS
+        || (oclass === RING_CLASS && is_charged_otyp(otyp)))) {
         const spe = obj.spe | 0;
         prefix += (spe >= 0 ? `+${spe} ` : `${spe} `);
     }

@@ -63,6 +63,7 @@ import {
     RANDOM_CLASS, objects,
 } from './objects.js';
 import { cansee } from './vision.js';
+import { newsym } from './display.js';
 import { christen_monst } from './do_name.js';
 import { get_shop_item } from './shknam.js';
 
@@ -1268,6 +1269,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // C: set_malign after peaceful changes (orc/unicorn/emin deferred)
     set_malign(mtmp);
 
+    // C: !in_mklev && byyou → newsym + set_apparxy before invent
+    // Named omission: set_apparxy here (circular monmove↔makemon; dochug
+    // calls it before combat — mux/muy init to spawn until then).
+    if (!game.in_mklev && byyou) {
+        newsym(mtmp.mx, mtmp.my);
+    }
+
     // C: anymon && !(mmflags & MM_NOGRP) → small/large group
     if (anymon && (mmflags & MM_NOGRP) === 0) {
         if ((ptr.geno & G_SGROUP) && rn2(2)) {
@@ -1289,6 +1297,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
             // C: put_saddle_on_mon(NULL) — mksobj(SADDLE) when eligible
             put_saddle_on_mon(null, mtmp);
         }
+    }
+
+    // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)
+    if (!game.in_mklev) {
+        newsym(mtmp.mx, mtmp.my);
+        // MM_NOMSG appear-pline arm deferred (callers emit their own msgs)
     }
 
     return mtmp;

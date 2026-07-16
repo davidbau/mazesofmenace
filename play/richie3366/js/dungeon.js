@@ -941,10 +941,19 @@ export async function show_overview(why = 0, reason = 0) {
         const dun = game.dungeons?.[dnum];
         const dname = dun?.dname || 'The Dungeons of Doom';
         if (printdun) {
+            // C print_mapseen: entry-only → "Name:"; else "Name: levels A to B"
+            const depthstart = (dun?.depth_start | 0) || 1;
+            const ureached = dun?.dunlev_ureached | 0;
+            const entry = dun?.entry_lev | 0;
+            let hdr = `${dname}:`;
+            if (ureached && entry && ureached !== entry) {
+                // builds_up deferred — ordinary descending DoD
+                hdr = `${dname}: levels ${depthstart} to ${depthstart + ureached - 1}`;
+            }
             // C end disclosure: menu heading highlight suppressed (ATR_NONE);
             // in-progress #overview uses menu_headings (inverse).
             entries.push({
-                text: `${dname}:`,
+                text: hdr,
                 attr: why > 0 ? 0 : ATR_INVERSE,
             });
         }

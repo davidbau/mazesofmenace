@@ -1939,6 +1939,10 @@ export function serialize_terminal_grid(display) {
  *
  * D-0293: S_altar stays raw `{` in the grid (frozen DEC_MAP omits it) so
  * decodeScreen matches C whether the recorder emitted SO+`{` or bare `{`.
+ *
+ * D-0480 serialize space/NO_COLOR + tty_map_color-on-glyphs was reverted
+ * (D-0483): it rewrote most screens' SGR, stayed local-PASS, but correlated
+ * with judge 23→22 PASS (seed0013-rogue 59→58). Keep grid colors as stored.
  */
 export function serialize_for_scoring(term) {
     if (!term?.grid) return term?.serialize?.() ?? '';
@@ -2000,13 +2004,8 @@ export function serialize_for_scoring(term) {
         else if (firstCol > 0) out += ' '.repeat(firstCol);
         for (let c = firstCol; c <= lastCol; c++) {
             const cell = term.grid[r][c];
+            const wantFg = colorToFg(cell.color);
             const wantAttr = cell.attr | 0;
-            // clearScreen fills CLR_GRAY spaces; C tty leaves default fg.
-            // Glyphless spaces without inv/uline: emit as NO_COLOR.
-            let cellColor = cell.color;
-            if (cell.ch === ' ' && !(wantAttr & 0x5)) cellColor = NO_COLOR;
-            else cellColor = tty_map_color(cellColor);
-            const wantFg = colorToFg(cellColor);
             out += sgrTransition(curFg, curAttr, wantFg, wantAttr);
             curFg = wantFg;
             curAttr = wantAttr;
