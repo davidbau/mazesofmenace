@@ -26,6 +26,7 @@ import {
     u_on_rndspot,
     mklev,
     fumaroles,
+    movebubbles,
 } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { Is_waterlevel, Is_airlevel } from './const.js';
@@ -47,7 +48,8 @@ import { more_experienced, newexplevel } from './exper.js';
 import { PM_TOURIST } from './generated/monsters_data.js';
 import { dismount_steed } from './steed.js';
 import { onquest } from './quest.js';
-import { In_quest } from './const.js';
+import { In_quest, In_endgame } from './const.js';
+import { resurrect } from './wizard.js';
 
 /**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
@@ -268,15 +270,20 @@ async function selftouch_stair_fall(_arg) {
  * stairway_find_from → climb/descend pline (Flying / encumber|Punished|
  * Fumbling fall `rnd(3)` losehp / ordinary) → losedogs → vision/docrt →
  * pickup(1).
- * Deferred: binary NHFILE, mysterious force, quest gate, portals, endgame,
- * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
- * familiar_level_msg, temperature/hellish, Flying/Punished climb variants,
- * Punished `drag_down`/`ballrelease`, full `selftouch` petrify, u_collide_m
- * full limbo. Ported: In_quest `onquest`/`qt_pager("firsttime")` nhl shuffle.
+ * Deferred: binary NHFILE, mysterious force, quest gate, portals, endgame
+ * astral `final_level` / migrating-Wizard resurrect arm, trap-door fall
+ * damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE, familiar_level_msg,
+ * temperature_change_msg / hellish_smoke (D-0559 hot/cold); Flying/Punished
+ * climb variants, Punished `drag_down`/`ballrelease`, full `selftouch`
+ * petrify, u_collide_m full limbo. Ported: In_quest `onquest`; In_endgame
+ * `newdungeon`+amulet `resurrect` new-Wizard makemon + appear Norep.
  */
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
     if (!u?.uz) return;
+
+    // C: prev_temperature before mklev mutates level.flags.temperature
+    const prev_temperature = (game.level?.flags?.temperature | 0);
 
     let up = depth_of(newlevel) < depth_of(u.uz);
     const newdungeon = (u.uz.dnum | 0) !== (newlevel.dnum | 0);
@@ -371,6 +378,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.head_engr = info.head_engr || null;
         rebuildObjectsAt(game.fobj);
         rest_track(info.track);
+        // C: Sokoban ≡ level.flags.sokoban_rules — sync JS alias after getlev
+        // (clear_level_structures only runs on mklev, not stash restore).
+        game.Sokoban = !!(game.level?.flags?.sokoban_rules
+            || game.level?.flags?.sokoban);
         const elapsed = (game.moves | 0) - (info.omoves | 0);
         getlev_catchup_monsters(elapsed);
     }
@@ -478,7 +489,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // C: do.c goto_level — movebubbles / fumaroles before vision_recalc
     if (Is_waterlevel(u.uz) || Is_airlevel(u.uz)) {
-        // movebubbles deferred
+        movebubbles();
     } else if (game.level?.flags?.fumaroles) {
         fumaroles();
     }
@@ -496,8 +507,21 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.dfr_post_msg = null;
         await pline(msg);
     }
-    // C: else if (In_quest(&u.uz)) onquest();
-    if (In_quest(u.uz)) await onquest();
+    // C: deliver_splev_message() before endgame/quest arrival arms
+    await deliver_splev_message();
+    // C: if (In_endgame) { … else if (newdungeon && amulet) resurrect(); }
+    //     else if (In_quest) onquest();
+    if (In_endgame(u.uz)) {
+        // ACH_ENDG / astral final_level deferred
+        if (newdungeon && (u.uhave?.amulet || u.uhave_amulet)) {
+            await resurrect();
+        }
+    } else if (In_quest(u.uz)) {
+        await onquest();
+    }
+
+    // C: temperature_change_msg(prev_temperature) after special arrival
+    await temperature_change_msg(prev_temperature);
 
     // C: goto_level `if (new)` Tourist more_experienced(level_difficulty())
     // level_difficulty ≈ depth(&u.uz) outside endgame/amulet/builds_up.
@@ -508,6 +532,45 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // C: goto_level ends with pickup(1) — autopick or check_here/engr
     await pickup(1);
+}
+
+/**
+ * C ref: questpgr.c deliver_splev_message — pline lev_message lines then free.
+ */
+async function deliver_splev_message() {
+    const msg = game.lev_message;
+    if (!msg) return;
+    game.lev_message = null;
+    for (const line of String(msg).split('\n')) {
+        if (line) await pline(line);
+    }
+}
+
+/**
+ * C ref: do.c hellish_smoke_mesg — temperature hot/cold pline (+ Gehennom smoke).
+ */
+async function hellish_smoke_mesg() {
+    const temp = game.level?.flags?.temperature | 0;
+    if (temp) {
+        await pline(`It is ${temp > 0 ? 'hot' : 'cold'} here.`);
+    }
+    // C: In_hell && temperature > 0 → smell/sense smoke — deferred for endgame
+}
+
+/**
+ * C ref: do.c temperature_change_msg — pline when level temperature changes.
+ */
+async function temperature_change_msg(prev_temperature) {
+    const temp = game.level?.flags?.temperature | 0;
+    if ((prev_temperature | 0) === temp) return;
+    if (temp) {
+        await hellish_smoke_mesg();
+    } else if (prev_temperature > 0) {
+        // C: In_hell(&u.uz0) ? "and smoke are" : "is" — endgame leaves use "is"
+        await pline('The heat is gone.');
+    } else if (prev_temperature < 0) {
+        await pline('You are out of the cold.');
+    }
 }
 
 /**

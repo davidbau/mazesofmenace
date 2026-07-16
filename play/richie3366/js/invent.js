@@ -74,7 +74,7 @@ import {
     Upolyd,
     MAGICENLIGHTENMENT,
 } from './const.js';
-import { align_str, align_gname, u_gname } from './roles.js';
+import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     OVERLOADED, WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, MAX_CARR_CAP,
@@ -1307,9 +1307,8 @@ export async function enlightenment(mode, final = 0) {
     const role = (female && game.urole?.name?.f)
         ? game.urole.name.f
         : (game.urole?.name?.m || 'Adventurer');
-    const rank = (female && game.urole?.rank?.f)
-        ? game.urole.rank.f
-        : (game.urole?.rank?.m || 'Adventurer');
+    // C insight.c enlightenment — rank_of(u.ulevel, Role_switch, innategend)
+    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, female);
     const gender = female ? 'female' : 'male';
     const raceAdj = game.urace?.adj || game.urace?.name || 'human';
     const atype = u.ualign?.type ?? A_NEUTRAL;
@@ -1629,13 +1628,11 @@ export async function doattributes() {
     const female = !!(game.flags?.female);
     // C: insight.c — urole.name.f non-NULL (not same-string-as-m)
     const hasFemaleName = !!game.urole?.name?.f;
-    // C: insight.c — role/rank from name.f / rank.f when female
+    // C: insight.c — role from name.f; rank via rank_of(u.ulevel, …)
     const role = (female && game.urole?.name?.f)
         ? game.urole.name.f
         : (game.urole?.name?.m || 'Tourist');
-    const rank = (female && game.urole?.rank?.f)
-        ? game.urole.rank.f
-        : (game.urole?.rank?.m || 'Adventurer');
+    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, female);
     const gender = female ? 'female' : 'male';
     const race = game.urace?.adj || game.urace?.name || 'human';
     const atype = u.ualign?.type ?? A_NEUTRAL;

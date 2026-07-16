@@ -21,7 +21,7 @@ import {
     TOOL_CLASS,
     FOOD_CLASS,
 } from './objects.js';
-import { mksobj, weight, curse } from './mkobj.js';
+import { mksobj, mkobj, weight, curse } from './mkobj.js';
 import { artifact_name, nartifact_exist } from './artifact.js';
 import { oname } from './do_name.js';
 import { name_to_monplus } from './mondata.js';
@@ -240,13 +240,47 @@ function readobjnam_parse_class_words(d) {
 }
 
 /**
+ * C ref: objnam.c readobjnam `any:` — wrpsym[rn2(sizeof)] then mkobj(oclass, FALSE).
+ * Used when bp is NULL (makewish after MAXWISHTRY) or empty after preparse
+ * (ESC/empty wish → makewish clears ESC to "" → preparse returns 1).
+ */
+function readobjnam_any(d) {
+    if (!d.oclass) {
+        d.oclass = WRPSYMS[rn2(WRPSYMS.length)];
+    }
+    if (d.typ) {
+        d.oclass = game.objects?.[d.typ]?.oc_class ?? d.oclass;
+        d.otmp = mksobj(d.typ, true, false);
+    } else {
+        d.otmp = mkobj(d.oclass, false);
+    }
+    if (!d.otmp) return null;
+    d.typ = d.otmp.otyp;
+    d.oclass = d.otmp.oclass;
+    d.otmp.owt = weight(d.otmp);
+    return d.otmp;
+}
+
+/**
  * C ref: objnam.c readobjnam — wish subset for artifact / named armor / amulet.
+ * Empty/NULL → `any` (D-0559); qualifier-only empty (blessed/rustproof/…) deferred.
  */
 export function readobjnam(bp, no_wish) {
-    if (bp == null) return null;
+    // C: readobjnam_init + if (!bp) goto any
+    if (bp == null) {
+        return readobjnam_any({
+            typ: 0, oclass: 0, otmp: null,
+        });
+    }
     bp = mungspaces(bp);
-    if (!bp || bp === '\x1b') return no_wish || null;
+    // C: "nothing"/"nil"/"none" → return no_wish (wishless conduct)
     if (/^(nothing|nil|none)$/i.test(bp)) return no_wish || NOTHING_OBJ;
+    // C: empty bp (or ESC already cleared by makewish) → preparse returns 1 → any
+    if (!bp || bp === '\x1b') {
+        return readobjnam_any({
+            typ: 0, oclass: 0, otmp: null,
+        });
+    }
 
     const d = {
         bp,

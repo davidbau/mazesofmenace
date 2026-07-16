@@ -667,6 +667,20 @@ export async function moveloop_core() {
     }
 
     // Vision + display (before getch — screen capture in nhgetch)
+    // C: allmain.c once-per-player-input — Amulet wish before find_ac
+    // (D-0559). display_nhwindow(WIN_MESSAGE,TRUE) ≈ flush pending More.
+    {
+        const u = g.u;
+        if (u && (u.uhave?.amulet || u.uhave_amulet)
+            && !(u.uevent?.amulet_wish)) {
+            if (!u.uevent) u.uevent = {};
+            u.uevent.amulet_wish = 1;
+            await flush_topl_more();
+            await pline('The Amulet is bestowing a wish upon you!');
+            const { makewish } = await import('./zap.js');
+            await makewish();
+        }
+    }
     // C: allmain.c once-per-player-input find_ac() before bot/flush/rhack
     find_ac();
     if (g.vision_full_recalc) {

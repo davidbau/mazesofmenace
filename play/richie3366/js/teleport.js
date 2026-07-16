@@ -581,11 +581,13 @@ export async function tele() {
  * Ported: wizard/Teleport_control getlin numeric path → get_level →
  * schedule_goto (deferred_goto after rhack); wizard `?` /
  * menu_requested → print_dungeon(TRUE) force_dest; endgame dest
- * AMULET_OF_YENDOR grant via mksobj+addinv (D-0549). Named omissions:
- * lev_by_name; bymenu=FALSE print_dungeon; random_teleport_level /
- * involuntary; heaven/escape negative; single_level_branch Knox;
- * Quest depth remap polish; find_hell; invocation Gehennom clamp;
- * Nowhere suicide yn; next_to_u leash body; buried ball; debug_fuzzer.
+ * AMULET_OF_YENDOR grant via mksobj+addinv (D-0549); In_endgame
+ * wizard negative dest → dlevel = dunlevs + newlev (D-0560). Named
+ * omissions: lev_by_name; bymenu=FALSE print_dungeon;
+ * random_teleport_level / involuntary; heaven/escape outside endgame;
+ * single_level_branch Knox; Quest depth remap polish; find_hell;
+ * invocation Gehennom clamp; Nowhere suicide yn; next_to_u leash body;
+ * buried ball; debug_fuzzer.
  */
 export async function level_tele() {
     const u = game.u || {};
@@ -702,9 +704,18 @@ export async function level_tele() {
 
     // next_to_u leash gate — always true without leash wiring
 
+    // C: In_endgame — wizard relative planes: dlevel = llimit + newlev
+    // (newlev in (-llimit, 0)); no materialize post_msg.
     if (In_endgame(u.uz)) {
-        // endgame wizard dest deferred
-        await pline("You can't get there from here.");
+        const llimit = (game.dungeons?.[u.uz.dnum | 0]?.num_dunlevs | 0) || 1;
+        if (newlev >= 0 || newlev <= -llimit) {
+            await pline("You can't get there from here.");
+            return;
+        }
+        newlevel.dnum = u.uz.dnum | 0;
+        newlevel.dlevel = llimit + newlev;
+        const { schedule_goto } = await import('./do.js');
+        schedule_goto(newlevel, UTOTYPE_NONE, null, null);
         return;
     }
 

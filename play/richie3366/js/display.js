@@ -2,11 +2,12 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
+import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { objects_at } from './mkobj.js';
 import { mcolors, mons, infravision, infravisible } from './monsters.js';
 import {
-    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
+    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, TREE, IRONBARS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
@@ -20,6 +21,10 @@ import {
     HI_GOLD, HI_METAL, HI_ZAP,
     WEB, VIBRATING_SQUARE, TRAPNUM,
     In_mines,
+    In_sokoban,
+    In_quest,
+    In_endgame,
+    Is_knox_level,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
     M_AP_OBJECT, M_AP_TYPE,
@@ -455,7 +460,7 @@ function trap_glyph(trap) {
 /**
  * C ref: display.c map_trap(trap, show) — remember + optionally paint.
  */
-function map_trap(trap, show) {
+export function map_trap(trap, show) {
     if (!trap) return;
     const x = trap.tx | 0;
     const y = trap.ty | 0;
@@ -925,10 +930,14 @@ function wall_glyph(loc) {
     const g = tab[idx] || tab[S_STONE];
     if (idx === S_STONE) return g;
     // C ref: display.h cmap_walls_to_glyph + display.c wallcolors[] /
-    // reset_glyphmap wall_color(mines_walls). Intended branch colors
-    // (commented beside wallcolors init): mines CLR_BROWN; main CLR_GRAY
-    // (tty_map_color → NO_COLOR). Gehennom/knox/sokoban deferred.
-    const color = In_mines(game.u?.uz) ? CLR_BROWN : CLR_GRAY;
+    // reset_glyphmap wall_color(...). Default wallcolors[] are all
+    // CLR_GRAY (tty → NO_COLOR). Intended branch colors (commented
+    // beside wallcolors init): mines CLR_BROWN; gehennom CLR_RED;
+    // knox CLR_GRAY; sokoban CLR_BRIGHT_BLUE. Recorder emits SGR 34
+    // (CLR_BLUE) for Sokoban walls — match that observable.
+    let color = CLR_GRAY;
+    if (In_mines(game.u?.uz)) color = CLR_BROWN;
+    else if (In_sokoban(game.u?.uz)) color = CLR_BLUE;
     return { ch: g.ch, color, dec: g.dec };
 }
 
@@ -996,6 +1005,18 @@ export function terrain_glyph(loc, x, y) {
     case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false };
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    // C ref: display.c back_to_glyph TREE → S_tree; defsym.h PCHAR '#'/CLR_GREEN;
+    // dat/symbols DECgraphics S_tree \xe7 meta-g. Arboreal STONE→tree deferred.
+    case TREE:
+        return dec
+            ? { ch: 'g', color: CLR_GREEN, dec: true }
+            : { ch: '#', color: CLR_GREEN, dec: false };
+    // C ref: display.c back_to_glyph IRONBARS → S_bars; defsym.h '#'/HI_METAL;
+    // dat/symbols DECgraphics S_bars \xfc meta-| (tty SO + '|').
+    case IRONBARS:
+        return dec
+            ? { ch: '|', color: HI_METAL, dec: true }
+            : { ch: '#', color: HI_METAL, dec: false };
     // C ref: display.c back_to_glyph + defsym.h PCHAR — pool/moat/water/lava/ice.
     // Primary: '}' (pool/lava/water) / '.' (ice). DECgraphics: S_pool/S_lava/
     // S_lavawall/S_water \xe0 meta-` diamond; S_ice \xfe meta-~.
@@ -1255,7 +1276,8 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
  * Does not pline / browse / map_redisplay (caller).
  */
 export function reveal_terrain_show_map(which_subset, swallowed) {
-    // C: default_sym = arboreal ? S_tree : S_stone — tree cmap deferred
+    // C: default_sym = arboreal ? S_tree : S_stone — arboreal STONE→tree deferred
+    // (TREE typ itself via terrain_glyph D-0565)
     const default_glyph = { ch: ' ', color: NO_COLOR, dec: false };
 
     for (let x = 1; x < COLNO; x++) {
@@ -1808,8 +1830,13 @@ function _statusLine1() {
     if (name.length && name.charCodeAt(0) >= 97 && name.charCodeAt(0) <= 122) {
         name = String.fromCharCode(name.charCodeAt(0) - 32) + name.slice(1);
     }
-    const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
-    const title = `${name} the ${role}`;
+    // C ref: botl.c rank() → rank_of(u.ulevel, Role_switch, flags.female)
+    const roleTitle = rank_of(
+        u.ulevel | 0,
+        game.urole?.mnum,
+        !!(game.flags?.female),
+    );
+    const title = `${name} the ${roleTitle}`;
     // C ref: botl.c do_statusline1 — get_strength_str + ACURR order
     const stats = u.acurr?.a
         ? `St:${get_strength_str()} Dx:${acurr(A_DEX)} Co:${acurr(A_CON)} In:${acurr(A_INT)} Wi:${acurr(A_WIS)} Ch:${acurr(A_CHA)}`
@@ -1840,24 +1867,78 @@ const HU_STAT = [
     'Fainting', 'Fainted ', 'Starved ',
 ];
 
-// C ref: botl.c describe_level — "Dlvl:%-2d" / "Tutorial:%-2d" uses
-// depth(&u.uz), not dunlev; Xp:/T: gated by flags.showexp / flags.time;
-// do_statusline2: hunger then enc_stat then Blind…Conf…Hallu…Lev/Fly then Ride.
-// Named omissions: Knox/quest/endgame describe_level; Stone/Slime/Strngl/
-// Sick (before hunger); Halluc_resistance; Upolyd HD.
+/**
+ * C ref: dungeon.c endgamelevelname — Astral / Elemental plane names.
+ * Named omissions: callers outside botl (insight ^X) still assemble copy.
+ */
+function endgamelevelname(indx) {
+    switch (indx | 0) {
+    case -5: return 'Astral Plane';
+    case -4: return 'Plane of Water';
+    case -3: return 'Plane of Fire';
+    case -2: return 'Plane of Air';
+    case -1: return 'Plane of Earth';
+    default: return `unknown plane #${indx | 0}`;
+    }
+}
+
+/**
+ * C ref: botl.c describe_level — Knox dname / quest "Home %d" /
+ * endgame plane / else "Dlvl:%d"|"Tutorial:%d" via depth (not dunlev).
+ * dflgs&1 trailing space; dflgs&2 branch name (livelog). Returns text;
+ * C int ret (0=ordinary Dlvl) unused by botl caller.
+ * Named omissions: livelog addbranch consumers; %-2d gold-field pad
+ * already matched by single trailing space + `$:` join (seed screens).
+ */
+export function describe_level(dflgs = 1) {
+    let addspace = (dflgs & 1) !== 0;
+    let addbranch = (dflgs & 2) !== 0;
+    const uz = game.u?.uz;
+    let buf = '';
+
+    if (Is_knox_level(uz)) {
+        buf = game.dungeons?.[uz.dnum | 0]?.dname || '';
+        addbranch = false;
+    } else if (In_quest(uz)) {
+        // C: Sprintf(buf, "Home %d", dunlev(&u.uz));
+        buf = `Home ${uz?.dlevel | 0}`;
+    } else if (In_endgame(uz)) {
+        buf = endgamelevelname(depth(uz));
+        // C: !addbranch → strsubst(buf, "Plane of ", "");
+        if (!addbranch) buf = buf.replace('Plane of ', '');
+        addbranch = false;
+    } else if (!addbranch) {
+        const tag = In_tutorial(uz) ? 'Tutorial' : 'Dlvl';
+        buf = `${tag}:${depth(uz) || 1}`;
+    } else {
+        buf = `level ${depth(uz) || 1}`;
+    }
+    if (addbranch) {
+        let dname = game.dungeons?.[uz?.dnum | 0]?.dname || '';
+        if (dname.startsWith('The ')) dname = `the ${dname.slice(4)}`;
+        buf += `, ${dname}`;
+    }
+    if (addspace) buf += ' ';
+    return buf;
+}
+
+// C ref: botl.c do_statusline2 — describe_level(dloc,1) then `$:` gold;
+// Xp:/T: gated by flags.showexp / flags.time; hunger then enc_stat then
+// Blind…Conf…Hallu…Lev/Fly then Ride.
+// Named omissions: Stone/Slime/Strngl/Sick (before hunger);
+// Halluc_resistance; Upolyd HD.
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
     const flags = game.flags || {};
-    const dlvl = depth(u.uz) || 1;
     // C botl.c get_blstats: hp < 0 → 0 for display when bot() runs
     let hp = u.uhp | 0;
     if (hp < 0) hp = 0;
     if (hp > 9999) hp = 9999;
     let hpmax = u.uhpmax | 0;
     if (hpmax > 9999) hpmax = 9999;
-    const levtag = In_tutorial(u.uz) ? 'Tutorial' : 'Dlvl';
-    let s = `${levtag}:${dlvl} $:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
+    // C: describe_level(dloc, 1) includes trailing space; gold via eos
+    let s = `${describe_level(1)}$:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (flags.showexp) s += `/${u.uexp || 0}`;
     if (flags.time) s += ` T:${game.moves || 1}`;
     // C do_statusline2: u.uhs != NOT_HUNGRY → hu_stat before enc_stat
@@ -2090,9 +2171,10 @@ function _buildScreenOutput() {
         }
         // Map — write characters to grid (DEC → Unicode for browser display).
         // Only convert glyphs that frozen screen-decode DEC_MAP equates back
-        // (walls/doors/floor ·). S_altar meta-{ and S_pool/S_lava/S_water
-        // meta-` are in DEC_TO_UNICODE but NOT in DEC_MAP — keep raw so
-        // serialize_for_scoring matches C SO+ch (renderCell leaves them).
+        // (walls/doors/a/~). S_altar meta-{, S_pool/S_lava/S_water meta-`,
+        // S_tree meta-g, and S_bars meta-| are in DEC_TO_UNICODE but NOT in
+        // DEC_MAP — keep raw so serialize_for_scoring matches C (renderCell
+        // leaves them).
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
@@ -2100,8 +2182,9 @@ function _buildScreenOutput() {
                 let ch = loc.disp_ch;
                 if (loc.disp_decgfx) {
                     const uni = DEC_TO_UNICODE[ch];
-                    // DEC_MAP: walls/doors/a/~ only — not '{' or '`'
-                    if (uni && ch !== '{' && ch !== '`') ch = uni;
+                    // DEC_MAP: walls/doors/a/~ only — not '{', '`', 'g', or '|'
+                    if (uni && ch !== '{' && ch !== '`' && ch !== 'g' && ch !== '|')
+                        ch = uni;
                 }
                 const sr = y + 1;
                 // Don't clobber --More-- on row 1

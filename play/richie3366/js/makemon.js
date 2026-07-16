@@ -45,6 +45,7 @@ import {
     is_floater,
     is_mercenary,
     is_elf,
+    is_giant,
     is_ndemon,
     is_shapeshifter,
     is_vampire,
@@ -54,6 +55,7 @@ import {
     unsolid,
     passes_walls,
     noncorporeal,
+    is_golem,
 } from './monsters.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
@@ -65,12 +67,12 @@ import {
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
-    In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE,
+    In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
 import {
     mksobj, mkobj, mkobj_at, weight, objects_at, curse, is_crackable,
-    set_corpsenm, stop_timer, add_to_container,
+    set_corpsenm, stop_timer, add_to_container, rnd_class,
 } from './mkobj.js';
 
 /** Local t_at — avoid makemon↔trap import cycle; matches trap.js t_at. */
@@ -525,6 +527,13 @@ export function mkclass_aligned(mletClass, spc = 0, atyp = A_NONE) {
 
 // C ref: makemon.c adj_lev() — no RNG
 function adj_lev(ptr) {
+    // C: Wizard level = base + times killed (capped 49); independent of depth
+    if ((ptr?.mndx | 0) === pm('WIZARD_OF_YENDOR')) {
+        let tmp = (ptr.mlevel | 0)
+            + ((game.mvitals?.[ptr.mndx]?.died | 0));
+        if (tmp > 49) tmp = 49;
+        return tmp;
+    }
     let tmp = ptr.mlevel;
     if (tmp > 49) return 50;
     let tmp2 = level_difficulty() - tmp;
@@ -538,6 +547,36 @@ function adj_lev(ptr) {
     return tmp > 0 ? tmp : 0;
 }
 
+// C ref: makemon.c golemhp() — fixed HP by golem type; no RNG.
+function golemhp(type) {
+    switch (type) {
+    case pm('STRAW_GOLEM'):
+        return 20;
+    case pm('PAPER_GOLEM'):
+        return 20;
+    case pm('ROPE_GOLEM'):
+        return 30;
+    case pm('LEATHER_GOLEM'):
+        return 40;
+    case pm('GOLD_GOLEM'):
+        return 60;
+    case pm('WOOD_GOLEM'):
+        return 50;
+    case pm('FLESH_GOLEM'):
+        return 40;
+    case pm('CLAY_GOLEM'):
+        return 70;
+    case pm('STONE_GOLEM'):
+        return 100;
+    case pm('GLASS_GOLEM'):
+        return 80;
+    case pm('IRON_GOLEM'):
+        return 120;
+    default:
+        return 0;
+    }
+}
+
 // C ref: makemon.c newmonhp()
 // After rolling HP, if result equals basehp (all 1s / rnd(4)=1), boost +1 so
 // level-0 and level-1 monsters always start with mhpmax >= 2.
@@ -545,8 +584,11 @@ function newmonhp(mon, ptr) {
     mon.m_lev = adj_lev(ptr);
     let basehp = 0;
     const mndx = ptr.mndx | 0;
-    // Named omission: is_golem golemhp; is_rider d(10,8); mlevel>49 fixed HP
-    if (ptr.mlet === 'S_DRAGON' && mndx >= pm('GRAY_DRAGON')) {
+    // Named omission: is_rider d(10,8); mlevel>49 fixed HP; is_home_elemental
+    if (is_golem(ptr)) {
+        // C: golems have fixed HP via golemhp(mndx) — no d(m_lev,8)
+        mon.mhpmax = mon.mhp = golemhp(mndx);
+    } else if (ptr.mlet === 'S_DRAGON' && mndx >= pm('GRAY_DRAGON')) {
         // C: adult dragons — N*(4+rnd(4)) before endgame, N*8 once there
         basehp = mon.m_lev | 0;
         mon.mhpmax = mon.mhp = In_endgame(game.u?.uz)
@@ -558,7 +600,6 @@ function newmonhp(mon, ptr) {
     } else {
         basehp = mon.m_lev | 0;
         mon.mhpmax = mon.mhp = d(basehp, 8);
-        // Named omission: is_home_elemental mhp*=3
     }
     if (mon.mhpmax === basehp) {
         mon.mhpmax += 1;
@@ -1135,8 +1176,14 @@ function m_initweap(mtmp) {
         break;
     case 'S_ANGEL':
     case 'S_KOP':
-    case 'S_LIZARD':
         // Deferred special cases (C-JS-MAP).
+        break;
+    case 'S_LIZARD':
+        // C: makemon.c m_initweap S_LIZARD — salamander weapon kit
+        if (mm === pm('SALAMANDER')) {
+            mongets(mtmp, rn2(7) ? otyp('SPEAR')
+                : rn2(3) ? otyp('TRIDENT') : otyp('STILETTO'));
+        }
         break;
     default:
         m_initweap_default(mtmp, ptr);
@@ -1224,7 +1271,9 @@ function rnd_defensive_item(mtmp) {
                 ? otyp('POT_FULL_HEALING')
                 : otyp('POT_SICKNESS');
         case 7: {
-            const Sokoban = !!(game.level?.flags?.sokoban || game.Sokoban);
+            // C: #define Sokoban svl.level.flags.sokoban_rules
+            const Sokoban = !!(game.level?.flags?.sokoban_rules
+                || game.level?.flags?.sokoban);
             if (Sokoban && rn2(4)) continue;
             if (is_floater(pm_) || mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
                 return 0;
@@ -1271,7 +1320,7 @@ function rnd_misc_item(mtmp) {
 }
 
 // C ref: makemon.c m_initinv — S_GNOME candle, S_MUMMY wrap, S_QUANTMECH box,
-//   PM_SHOPKEEPER, trailing misc
+//   S_GIANT gems, PM_SHOPKEEPER, trailing misc
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
     if (Is_rogue_level(game.u?.uz)) return;
@@ -1295,6 +1344,25 @@ function m_initinv(mtmp) {
         // C ref: makemon.c m_initinv S_NYMPH — mirror + potion of object detection
         if (!rn2(2)) mongets(mtmp, otyp('MIRROR'));
         if (!rn2(2)) mongets(mtmp, otyp('POT_OBJECT_DETECTION'));
+        break;
+    case 'S_GIANT':
+        // C ref: makemon.c m_initinv S_GIANT — minotaur wand / giant gem stack
+        if (ptr.mndx === pm('MINOTAUR')) {
+            if (!rn2(8) || (game.in_mklev && Is_earthlevel(game.u?.uz))) {
+                mongets(mtmp, otyp('WAN_DIGGING'));
+            }
+        } else if (is_giant(ptr)) {
+            for (let cnt = rn2((mtmp.m_lev / 2) | 0); cnt; cnt--) {
+                const otmp = mksobj(
+                    rnd_class(otyp('DILITHIUM_CRYSTAL'), otyp('LUCKSTONE') - 1),
+                    false,
+                    false,
+                );
+                otmp.quan = rn1(2, 3);
+                otmp.owt = weight(otmp);
+                mpickobj(mtmp, otmp);
+            }
+        }
         break;
     case 'S_LEPRECHAUN':
         // C ref: makemon.c m_initinv S_LEPRECHAUN — mkmonmoney(d(level_difficulty(),30))
@@ -1417,7 +1485,7 @@ function m_initinv(mtmp) {
         // elf / priest / guardian arms deferred
         break;
     default:
-        // Other m_initinv bodies (S_DEMON, S_GIANT, S_WRAITH, S_LICH, …) deferred
+        // Other m_initinv bodies (S_DEMON, S_WRAITH, S_LICH, …) deferred
         break;
     }
 
@@ -1682,15 +1750,36 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
-    // C: switch (ptr->mlet) before invent — mimic + sleepers + spider/snake.
-    // Named omissions: eel hideunder; orc/elf peace; unicorn align peace;
-    // bat hell speed; elemental invis.
+    // C: switch (ptr->mlet) before invent — mimic + sleepers + spider/snake/eel.
+    // Named omissions: orc/elf peace; unicorn align peace; bat hell speed.
     if (ptr.mlet === 'S_MIMIC') set_mimic_sym(mtmp);
     else if (ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') {
-        // C: in_mklev → mkobj_at(RANDOM) then hideunder
+        // C: in_mklev → mkobj_at(RANDOM) then hideunder (mon.c hides_under arm)
         if (game.in_mklev) {
             if (mtmp.mx && mtmp.my) mkobj_at(RANDOM_CLASS, mtmp.mx, mtmp.my, true);
-            // hideunder deferred (no RNG at creation)
+            // Inline hideunder hides_under path: seeit=0 in mklev; object just placed.
+            const hx = mtmp.mx, hy = mtmp.my;
+            const typ = game.level?.at(hx, hy)?.typ ?? 0;
+            if (!IS_POOL(typ) && !IS_LAVA(typ) && objects_at(hx, hy)) {
+                mtmp.mundetected = 1;
+            }
+        }
+    } else if (ptr.mlet === 'S_EEL') {
+        // C: makemon.c case S_EEL → hideunder(mtmp) when in_mklev.
+        // Inline eel arm of mon.c hideunder (seeit=0 during mklev; no pline).
+        if (game.in_mklev && mtmp.mx) {
+            const hx = mtmp.mx, hy = mtmp.my;
+            const typ = game.level?.at(hx, hy)?.typ ?? 0;
+            if (IS_POOL(typ) && !Is_waterlevel(game.u?.uz)
+                && !game.u?.Underwater) {
+                mtmp.mundetected = 1;
+            }
+        }
+    } else if (ptr.mlet === 'S_LIGHT' || ptr.mlet === 'S_ELEMENTAL') {
+        // C: makemon.c S_LIGHT/S_ELEMENTAL — stalker & black light perminvis
+        if (ptr.mndx === pm('STALKER') || ptr.mndx === pm('BLACK_LIGHT')) {
+            mtmp.perminvis = 1;
+            mtmp.minvis = 1;
         }
     } else if (ptr.mlet === 'S_LEPRECHAUN') mtmp.msleeping = 1;
     else if (ptr.mlet === 'S_JABBERWOCK' || ptr.mlet === 'S_NYMPH') {
@@ -1699,12 +1788,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
             mtmp.msleeping = 1;
     }
 
-    // C ref: makemon.c — cham / Vlad candelabrum / newcham before invent.
-    // Named omissions: Wizard/Croesus/nemesis/pestilence mitem arms;
-    // Protection_from_shape_changers; chameleon non-vamp newcham.
+    // C ref: makemon.c — cham / Vlad candelabrum / Wizard iswiz / newcham.
+    // Named omissions: Croesus/nemesis/pestilence mitem; first-Wizard
+    // SPE_DIG on earth; Protection_from_shape_changers; non-vamp newcham.
     let allow_minvent_local = allow_minvent;
     let mitem = -1; // STRANGE_OBJECT
     const PM_VLAD = pm('VLAD_THE_IMPALER');
+    const PM_WIZ = pm('WIZARD_OF_YENDOR');
     if (ptr.mndx === PM_VLAD) mitem = otyp('CANDELABRUM_OF_INVOCATION');
     mtmp.cham = NON_PM;
     {
@@ -1715,6 +1805,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
             if (ptr.mndx !== PM_VLAD && newcham(mtmp, null, 0))
                 allow_minvent_local = false;
         }
+    }
+    if (ptr.mndx === PM_WIZ) {
+        // C: mtmp->iswiz = TRUE; context.no_of_wizards++
+        mtmp.iswiz = true;
+        if (!game.context) game.context = {};
+        game.context.no_of_wizards = (game.context.no_of_wizards | 0) + 1;
+        // SPE_DIG when first Wizard on earth — deferred (fire/air/water first)
     }
     if (mitem >= 0 && allow_minvent_local) mongets(mtmp, mitem);
 

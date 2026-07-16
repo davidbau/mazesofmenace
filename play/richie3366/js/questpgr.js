@@ -6,7 +6,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { docrt, flush_screen, flush_topl_more, status_line_2 } from './display.js';
 import { NO_COLOR } from './terminal.js';
-import { align_gname, align_gtitle } from './roles.js';
+import { align_gname, align_gtitle, rank_of } from './roles.js';
 import { A_NEUTRAL } from './const.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
@@ -28,8 +28,12 @@ function legacy_lines() {
     const aOrig = game.u?.ualignbase?.original ?? game.u?.ualign?.type ?? A_NEUTRAL;
     const deity = align_gname(urole, aOrig);
     const gtitle = align_gtitle(urole, aOrig);
-    const rankEnt = urole.rank || urole.title?.[0];
-    const rank = (female && rankEnt?.f) ? rankEnt.f : (rankEnt?.m || urole.name?.m || 'Adventurer');
+    // C questpgr.c convert_arg %r → rank_of(u.ulevel, Role_switch, female)
+    const rank = rank_of(
+        game.u?.ulevel | 0,
+        urole.mnum,
+        female,
+    );
 
     // Raw lines as after convert_line (lua paragraph indent is 4 spaces).
     // C dmore() appends --More--; include as final row for tty cursor match.

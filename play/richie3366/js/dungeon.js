@@ -1156,8 +1156,9 @@ function print_branch(raw, dnum, lowerBound, upperBound, bymenu, lchoices) {
  * C ref: dungeon.c print_dungeon — wizard ^V `?` level-teleport menu.
  *
  * Ported: bymenu=TRUE PICK_ONE path (headings + specials + branches +
- * continuous selectors + unreachable Knox letter skip). Sets dest.lev /
- * dest.dgn and returns logical depth (playerlev), or 0 on cancel.
+ * continuous selectors + unreachable Knox letter skip) + tty_end_menu
+ * prompt/blank row (D-0563). Sets dest.lev / dest.dgn and returns
+ * logical depth (playerlev), or 0 on cancel.
  * Named omissions: bymenu=FALSE putstr/display path (wizwhere); floating
  * branches listing; Invocation/portal debug lines; endgame amulet grant
  * after pick (level_tele).
@@ -1177,8 +1178,11 @@ export async function print_dungeon(bymenu, dest = null) {
     const { makeplural } = await import('./objnam.js');
     const { Is_stronghold } = await import('./const.js');
 
+    // C tty_end_menu(prompt): prepends blank then prompt onto reversed
+    // mlist → display order is prompt, "", items (wintty.c).
     const raw = [
         { text: 'Level teleport to where:', attr: ATR_INVERSE, selectable: false },
+        { text: '', attr: 0, selectable: false },
     ];
     const lchoices = {
         idx: 0,

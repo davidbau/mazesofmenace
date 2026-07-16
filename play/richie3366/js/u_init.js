@@ -1505,6 +1505,9 @@ export function setup_role_race_from_rc(opts = {}) {
     }
     game.urole = {
         name: role.name,
+        // C gu.urole.rank[9]; botl rank_of indexes by xlev_to_rank(ulevel).
+        // Keep `rank` as title[0] for legacy callers; prefer rank_of().
+        title: role.title || null,
         rank: role.title?.[0] || { m: role.name.m, f: role.name.f },
         mnum: role.mnum,
         petnum: role.petnum ?? NON_PM,

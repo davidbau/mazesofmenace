@@ -60,8 +60,15 @@ export const roles = [
         enemy1sym: 'S_SNAKE',
         enemy2sym: 'S_MUMMY',
         title: [
-            { m: 'Digger', f: 'Digger' },
-            { m: 'Field Worker', f: 'Field Worker' },
+            { m: 'Digger', f: null },
+            { m: 'Field Worker', f: null },
+            { m: 'Investigator', f: null },
+            { m: 'Exhumer', f: null },
+            { m: 'Excavator', f: null },
+            { m: 'Spelunker', f: null },
+            { m: 'Speleologist', f: null },
+            { m: 'Collector', f: null },
+            { m: 'Curator', f: null },
         ],
         lgod: 'Quetzalcoatl',
         ngod: 'Camaxtli',
@@ -90,7 +97,14 @@ export const roles = [
         enemy2sym: 'S_TROLL',
         title: [
             { m: 'Plunderer', f: 'Plunderess' },
-            { m: 'Pillager', f: 'Pillager' },
+            { m: 'Pillager', f: null },
+            { m: 'Bandit', f: null },
+            { m: 'Brigand', f: null },
+            { m: 'Raider', f: null },
+            { m: 'Reaver', f: null },
+            { m: 'Slayer', f: null },
+            { m: 'Chieftain', f: 'Chieftainess' },
+            { m: 'Conqueror', f: 'Conqueress' },
         ],
         lgod: 'Mitra',
         ngod: 'Crom',
@@ -121,8 +135,15 @@ export const roles = [
         enemy1sym: 'S_HUMANOID',
         enemy2sym: 'S_GIANT',
         title: [
-            { m: 'Troglodyte', f: 'Troglodyte' },
-            { m: 'Aborigine', f: 'Aborigine' },
+            { m: 'Troglodyte', f: null },
+            { m: 'Aborigine', f: null },
+            { m: 'Wanderer', f: null },
+            { m: 'Vagrant', f: null },
+            { m: 'Wayfarer', f: null },
+            { m: 'Roamer', f: null },
+            { m: 'Nomad', f: null },
+            { m: 'Rover', f: null },
+            { m: 'Pioneer', f: null },
         ],
         lgod: 'Anu',
         ngod: '_Ishtar',
@@ -150,8 +171,15 @@ export const roles = [
         enemy1sym: 'S_RODENT',
         enemy2sym: 'S_YETI',
         title: [
-            { m: 'Rhizotomist', f: 'Rhizotomist' },
-            { m: 'Empiric', f: 'Empiric' },
+            { m: 'Rhizotomist', f: null },
+            { m: 'Empiric', f: null },
+            { m: 'Embalmer', f: null },
+            { m: 'Dresser', f: null },
+            { m: 'Medicus ossium', f: 'Medica ossium' },
+            { m: 'Herbalist', f: null },
+            { m: 'Magister', f: 'Magistra' },
+            { m: 'Physician', f: null },
+            { m: 'Chirurgeon', f: null },
         ],
         lgod: '_Athena',
         ngod: 'Hermes',
@@ -178,8 +206,15 @@ export const roles = [
         enemy1sym: 'S_IMP',
         enemy2sym: 'S_JELLY',
         title: [
-            { m: 'Gallant', f: 'Gallant' },
-            { m: 'Esquire', f: 'Esquire' },
+            { m: 'Gallant', f: null },
+            { m: 'Esquire', f: null },
+            { m: 'Bachelor', f: null },
+            { m: 'Sergeant', f: null },
+            { m: 'Knight', f: null },
+            { m: 'Banneret', f: null },
+            { m: 'Chevalier', f: 'Chevaliere' },
+            { m: 'Seignieur', f: 'Dame' },
+            { m: 'Paladin', f: null },
         ],
         lgod: 'Lugh',
         ngod: '_Brigit',
@@ -206,8 +241,15 @@ export const roles = [
         enemy1sym: 'S_ELEMENTAL',
         enemy2sym: 'S_XORN',
         title: [
-            { m: 'Candidate', f: 'Candidate' },
-            { m: 'Novice', f: 'Novice' },
+            { m: 'Candidate', f: null },
+            { m: 'Novice', f: null },
+            { m: 'Initiate', f: null },
+            { m: 'Student of Stones', f: null },
+            { m: 'Student of Waters', f: null },
+            { m: 'Student of Metals', f: null },
+            { m: 'Student of Winds', f: null },
+            { m: 'Student of Fire', f: null },
+            { m: 'Master', f: null },
         ],
         lgod: 'Shan Lai Ching',
         ngod: 'Chih Sung-tzu',
@@ -235,8 +277,15 @@ export const roles = [
         enemy1sym: 'S_ZOMBIE',
         enemy2sym: 'S_WRAITH',
         title: [
-            { m: 'Aspirant', f: 'Aspirant' },
-            { m: 'Acolyte', f: 'Acolyte' },
+            { m: 'Aspirant', f: null },
+            { m: 'Acolyte', f: null },
+            { m: 'Adept', f: null },
+            { m: 'Priest', f: 'Priestess' },
+            { m: 'Curate', f: null },
+            { m: 'Canon', f: 'Canoness' },
+            { m: 'Lama', f: null },
+            { m: 'Patriarch', f: 'Matriarch' },
+            { m: 'High Priest', f: 'High Priestess' },
         ],
         lgod: null,
         ngod: null,
@@ -263,8 +312,15 @@ export const roles = [
         enemy1sym: 'S_NYMPH',
         enemy2sym: 'S_NAGA',
         title: [
-            { m: 'Footpad', f: 'Footpad' },
-            { m: 'Cutpurse', f: 'Cutpurse' },
+            { m: 'Footpad', f: null },
+            { m: 'Cutpurse', f: null },
+            { m: 'Rogue', f: null },
+            { m: 'Pilferer', f: null },
+            { m: 'Robber', f: null },
+            { m: 'Burglar', f: null },
+            { m: 'Filcher', f: null },
+            { m: 'Magsman', f: 'Magswoman' },
+            { m: 'Thief', f: null },
         ],
         lgod: 'Issek',
         ngod: 'Mog',
@@ -290,8 +346,15 @@ export const roles = [
         enemy1sym: 'S_CENTAUR',
         enemy2sym: 'S_SPIDER',
         title: [
-            { m: 'Tenderfoot', f: 'Tenderfoot' },
-            { m: 'Lookout', f: 'Lookout' },
+            { m: 'Tenderfoot', f: null },
+            { m: 'Lookout', f: null },
+            { m: 'Trailblazer', f: null },
+            { m: 'Reconnoiterer', f: 'Reconnoiteress' },
+            { m: 'Scout', f: null },
+            { m: 'Arbalester', f: null },
+            { m: 'Archer', f: null },
+            { m: 'Sharpshooter', f: null },
+            { m: 'Marksman', f: 'Markswoman' },
         ],
         lgod: 'Mercury',
         ngod: '_Venus',
@@ -318,8 +381,15 @@ export const roles = [
         enemy1sym: 'S_DOG',
         enemy2sym: 'S_ELEMENTAL',
         title: [
-            { m: 'Hatamoto', f: 'Hatamoto' },
-            { m: 'Ronin', f: 'Ronin' },
+            { m: 'Hatamoto', f: null },
+            { m: 'Ronin', f: null },
+            { m: 'Ninja', f: 'Kunoichi' },
+            { m: 'Joshu', f: null },
+            { m: 'Ryoshu', f: null },
+            { m: 'Kokushu', f: null },
+            { m: 'Daimyo', f: null },
+            { m: 'Kuge', f: null },
+            { m: 'Shogun', f: null },
         ],
         lgod: '_Amaterasu Omikami',
         ngod: 'Raijin',
@@ -346,8 +416,15 @@ export const roles = [
         enemy1sym: 'S_SPIDER',
         enemy2sym: 'S_CENTAUR',
         title: [
-            { m: 'Rambler', f: 'Rambler' },
-            { m: 'Sightseer', f: 'Sightseer' },
+            { m: 'Rambler', f: null },
+            { m: 'Sightseer', f: null },
+            { m: 'Excursionist', f: null },
+            { m: 'Peregrinator', f: 'Peregrinatrix' },
+            { m: 'Traveler', f: null },
+            { m: 'Journeyer', f: null },
+            { m: 'Voyager', f: null },
+            { m: 'Explorer', f: null },
+            { m: 'Adventurer', f: null },
         ],
         lgod: 'Blind Io',
         ngod: '_The Lady',
@@ -372,8 +449,15 @@ export const roles = [
         enemy1sym: 'S_ANT',
         enemy2sym: 'S_GIANT',
         title: [
-            { m: 'Stripling', f: 'Stripling' },
-            { m: 'Skirmisher', f: 'Skirmisher' },
+            { m: 'Stripling', f: null },
+            { m: 'Skirmisher', f: null },
+            { m: 'Fighter', f: null },
+            { m: 'Man-at-arms', f: 'Woman-at-arms' },
+            { m: 'Warrior', f: null },
+            { m: 'Swashbuckler', f: null },
+            { m: 'Hero', f: 'Heroine' },
+            { m: 'Champion', f: null },
+            { m: 'Lord', f: 'Lady' },
         ],
         lgod: 'Tyr',
         ngod: 'Odin',
@@ -401,8 +485,15 @@ export const roles = [
         enemy1sym: 'S_BAT',
         enemy2sym: 'S_WRAITH',
         title: [
-            { m: 'Evoker', f: 'Evoker' },
-            { m: 'Conjurer', f: 'Conjurer' },
+            { m: 'Evoker', f: null },
+            { m: 'Conjurer', f: null },
+            { m: 'Thaumaturge', f: null },
+            { m: 'Magician', f: null },
+            { m: 'Enchanter', f: 'Enchantress' },
+            { m: 'Sorcerer', f: 'Sorceress' },
+            { m: 'Necromancer', f: null },
+            { m: 'Wizard', f: null },
+            { m: 'Mage', f: null },
         ],
         lgod: 'Ptah',
         ngod: 'Thoth',
@@ -558,6 +649,38 @@ export function Goodbye() {
     if (mnum === PM_TOURIST) return 'Aloha';
     if (mnum === PM_VALKYRIE) return 'Farvel';
     return 'Goodbye';
+}
+
+
+// C ref: botl.c xlev_to_rank — experience level (1..30) → rank index (0..8)
+export function xlev_to_rank(xlev) {
+    const lev = xlev | 0;
+    return (lev <= 2) ? 0 : (lev <= 30) ? Math.trunc((lev + 2) / 4) : 8;
+}
+
+/**
+ * C ref: botl.c rank_of(lev, monnum, female)
+ * Title for experience level from roles[].title / gu.urole.title.
+ */
+export function rank_of(lev, monnum, female) {
+    let role = null;
+    if (monnum != null) {
+        role = roles.find(r => r.mnum === monnum) || null;
+    }
+    if (!role?.name?.m) role = game.urole || null;
+    const titles = role?.title || role?.rank;
+    // game.urole.rank may still be a single {m,f} for legacy saves
+    const list = Array.isArray(titles) ? titles
+        : (titles ? [titles] : (role?.name ? [{ m: role.name.m, f: role.name.f }] : []));
+    for (let i = xlev_to_rank(lev | 0); i >= 0; i--) {
+        const ent = list[i];
+        if (!ent) continue;
+        if (female && ent.f) return ent.f;
+        if (ent.m) return ent.m;
+    }
+    if (female && role?.name?.f) return role.name.f;
+    if (role?.name?.m) return role.name.m;
+    return 'Player';
 }
 
 // C ref: align.c / extern align_str()

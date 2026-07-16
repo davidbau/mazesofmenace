@@ -14,6 +14,7 @@
 // browse_map/getpos + docrt;
 // **monster_detect** (fountain case 26) live-fmon + map_monst +
 // browse_map(TER_DETECT|TER_MON) (D-0370);
+// **premap_detect** Sokoban premapped levels (D-0567);
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
 // Named omissions: feel_location / visible_region_at /
 // unmap_invisible / Blind feel; mfind0 body; Hallucination/cls
@@ -31,7 +32,7 @@
 
 import { game } from './gstate.js';
 import { rnl, rn2 } from './rng.js';
-import { newsym, pline, magic_map_background } from './display.js';
+import { newsym, pline, magic_map_background, terrain_glyph, obj_glyph, show_glyph_cell, map_trap } from './display.js';
 import { vision_recalc, couldsee, recalc_block_point } from './vision.js';
 import { an } from './objnam.js';
 import { A_WIS, exercise } from './attrib.js';
@@ -39,14 +40,25 @@ import { t_at } from './trap.js';
 import { cmd_safety_prevention } from './do.js';
 import { m_at } from './mon.js';
 import { objectNames } from './objects.js';
+import { objects_at } from './mkobj.js';
 import {
     isok, SDOOR, SCORR, DOOR, CORR, D_NODOOR, D_CLOSED, D_LOCKED, WM_MASK,
     STATUE_TRAP, NO_TRAP, TRAPNUM, Is_rogue_level, BOLT_LIM, COLNO, ROWNO,
-    SVALL, IS_FURNITURE,
+    SVALL, IS_FURNITURE, STONE, W_NONDIGGABLE, W_NONPASSWALL,
     TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, ECMD_OK,
     I_SPECIAL,
 } from './const.js';
 import { CLR_WHITE } from './terminal.js';
+
+const BOULDER = objectNames.indexOf('BOULDER');
+
+/** C ref: mkobj.c sobj_at — first floor object of otyp at (x,y). */
+function sobj_at(otyp, x, y) {
+    for (let obj = objects_at(x, y); obj; obj = obj.nexthere) {
+        if (obj.otyp === otyp) return obj;
+    }
+    return null;
+}
 
 // C ref: vision.c circle_data[] / circle_start[] — radius→row half-width
 const CIRCLE_DATA = [
@@ -346,6 +358,87 @@ export async function findit() {
 
     if (!num) await pline("You don't find anything.");
     return num;
+}
+
+/**
+ * C ref: detect.c skip_premap_detect — skip solidified outside-map stone.
+ */
+function skip_premap_detect(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev || lev.typ !== STONE) return false;
+    const wi = (lev.wall_info | 0) || (lev.flags | 0);
+    return (wi & (W_NONDIGGABLE | W_NONPASSWALL)) !== 0;
+}
+
+/**
+ * C ref: display.c map_background — remember real terrain; show if directed.
+ */
+function map_background(x, y, show) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return;
+    const tg = terrain_glyph(lev, x, y);
+    if (game.level?.flags?.hero_memory) {
+        lev.remembered_glyph = {
+            ch: tg.ch, color: tg.color, decgfx: !!tg.dec,
+        };
+    }
+    if (show) show_glyph_cell(x, y, tg.ch, tg.color, !!tg.dec);
+}
+
+/**
+ * C ref: display.c map_object — remember boulder glyph for premap path.
+ */
+function map_object_premap(obj, show) {
+    if (!obj) return;
+    const x = obj.ox | 0;
+    const y = obj.oy | 0;
+    const lev = game.level?.at(x, y);
+    if (!lev) return;
+    const og = obj_glyph(obj);
+    if (game.level?.flags?.hero_memory) {
+        lev.remembered_glyph = {
+            ch: og.ch, color: og.color, decgfx: !!og.dec,
+        };
+    }
+    if (show) show_glyph_cell(x, y, og.ch, og.color, !!og.dec);
+}
+
+/**
+ * C ref: detect.c premap_detect — Sokoban (and other premapped) levels.
+ * Sets seenv/waslit, maps background + boulders, marks traps seen.
+ * Caller must solidify_map first so outside STONE is skipped.
+ */
+export function premap_detect() {
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            if (skip_premap_detect(x, y)) continue;
+            const lev = game.level?.at(x, y);
+            if (!lev) continue;
+            lev.seenv = SVALL;
+            lev.waslit = true;
+            if (lev.typ === SDOOR) {
+                // C: wall_info = 0 so door orientation is visible once found
+                lev.wall_info = 0;
+            }
+            map_background(x, y, 1);
+            const boulder = sobj_at(BOULDER, x, y);
+            if (boulder) map_object_premap(boulder, 1);
+        }
+    }
+    const ftrap = game.ftrap;
+    const trapList = [];
+    if (Array.isArray(game.level?.traps)) {
+        trapList.push(...game.level.traps);
+    } else if (Array.isArray(ftrap)) {
+        trapList.push(...ftrap);
+    } else {
+        for (let ttmp = ftrap; ttmp; ttmp = ttmp.ntrap) trapList.push(ttmp);
+    }
+    for (const ttmp of trapList) {
+        if (!ttmp) continue;
+        ttmp.tseen = 1;
+        map_trap(ttmp, 1);
+    }
 }
 
 /**
