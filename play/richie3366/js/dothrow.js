@@ -3,7 +3,8 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, docrt } from './display.js';
+import { flush_screen, flush_topl_more, pline, docrt, newsym } from './display.js';
+import { cansee } from './vision.js';
 import { rnd } from './rng.js';
 import { place_object, splitobj, stackobj } from './mkobj.js';
 import {
@@ -433,6 +434,8 @@ async function throwit(obj) {
     place_object(obj, x, y);
     // C: throwit → stackobj after place_object
     stackobj(obj);
+    // C dothrow.c throwit: if (cansee(bhitpos)) newsym — land glyph
+    if (cansee(x, y)) newsym(x, y);
 }
 
 

@@ -51,6 +51,7 @@ import {
     P_ENCHANTMENT_SPELL, P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
     P_RIDING, P_TWO_WEAPON_COMBAT, P_BARE_HANDED_COMBAT, P_MARTIAL_ARTS,
     P_BASIC, P_SKILLED, P_EXPERT, P_MASTER, P_GRAND_MASTER,
+    NOT_HUNGRY,
 } from './const.js';
 import {
     PM_TOURIST, PM_ROGUE, PM_CLERIC, PM_WIZARD, PM_MONK, PM_KNIGHT,
@@ -1624,7 +1625,9 @@ export async function u_init_misc() {
     // C ref: u_init.c ubirthday = getnow() (contest patch 001)
     g.ubirthday = getnow();
 
+    // C: init_uhunger() — 900 / NOT_HUNGRY (ATEMP repair deferred)
     g.u.uhunger = 900;
+    g.u.uhs = NOT_HUNGRY;
     g.u.ublesscnt = 300;
     g.u.nv_range = 1;
     g.u.xray_range = -1;

@@ -32,6 +32,7 @@ import {
     BEAR_TRAP, WEB, RUST_TRAP, VIBRATING_SQUARE, LANDMINE,
     ANTI_MAGIC, HURTLING, TOOKPLUNGE, VIASITTING, FIRE_RES, SLEEP_RES,
     STONE_RES, FAILEDUNTRAP,
+    NO_TRAP, TRAPNUM,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
     IS_ROOM, IS_WALL, IS_AIR, SDOOR,
     D_CLOSED, D_LOCKED,
@@ -644,20 +645,44 @@ function check_in_air(mtmp, trflags) {
     return m_in_air(mtmp) && !plunged;
 }
 
-/** C ref: trap.c trapname — non-hallucination labels for dotrap escape msgs. */
-function trapname(ttyp, _override) {
-    switch (ttyp) {
-    case ARROW_TRAP: return 'arrow trap';
-    case DART_TRAP: return 'dart trap';
-    case ROCKTRAP: return 'falling rock trap';
-    case SQKY_BOARD: return 'squeaky board';
-    case BEAR_TRAP: return 'bear trap';
-    case PIT: return 'pit';
-    case SPIKED_PIT: return 'spiked pit';
-    case HOLE: return 'hole';
-    case TRAPDOOR: return 'trap door';
-    default: return 'trap';
-    }
+/**
+ * C ref: trap.c trapname / defsym.h trap PCHAR explanations.
+ * Hallucination override deferred (always FALSE path).
+ */
+const TRAP_EXPLANATIONS = [
+    '', // NO_TRAP
+    'arrow trap',
+    'dart trap',
+    'falling rock trap',
+    'squeaky board',
+    'bear trap',
+    'land mine',
+    'rolling boulder trap',
+    'sleeping gas trap',
+    'rust trap',
+    'fire trap',
+    'pit',
+    'spiked pit',
+    'hole',
+    'trap door',
+    'teleportation trap',
+    'level teleporter',
+    'magic portal',
+    'web',
+    'statue trap',
+    'magic trap',
+    'anti-magic field',
+    'polymorph trap',
+    'vibrating square',
+    'trapped door',
+    'trapped chest',
+];
+
+/** C ref: trap.c trapname(ttyp, override) — non-hallucination only. */
+export function trapname(ttyp, _override) {
+    const t = ttyp | 0;
+    if (t > NO_TRAP && t < TRAPNUM) return TRAP_EXPLANATIONS[t] || 'trap';
+    return 'trap';
 }
 
 /**

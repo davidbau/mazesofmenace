@@ -1,5 +1,6 @@
-// fountain.js — Fountain dryup / dip / drink effects.
-// C ref: fountain.c dryup, dipfountain, drinkfountain, dofindgem.
+// fountain.js — Fountain dryup / dip / drink effects; sink drink.
+// C ref: fountain.c dryup, dipfountain, drinkfountain, dofindgem,
+//         breaksink, drinksink.
 //
 // Branch envelope (drinkfountain): fate=rnd(30) before Levitation;
 // mgkftn restore+adjattrib; fate<10 refresh; switch default/19–30
@@ -10,30 +11,53 @@
 // poly arms, town warn/angry_guards, wizard yn, FOUNTAIN_IS_WARNED force
 // dryup, Excalibur LONG_SWORD body, wash_hands, dipfountain cases
 // 17–23/25–29.
+//
+// Branch envelope (drinksink): Levitation floating_above; rn2(20)
+// switch cases 0–13 + 19/default sip; case 4 faucet → mkobj+dopotion;
+// case 5 S_LRING ring; case 6 breaksink; case 8 more_experienced;
+// case 9 sewage morehungry+vomit.
+// Deferred: case 10 polyself body; case 13 create_gas_cloud region;
+// dipsink; Hallucination hliquid/hcolor synonyms; monstseesu when
+// Fire_resistance already set.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { pline, newsym, You_feel, flush_topl_more } from './display.js';
-import { curse, mksobj_at, rnd_class } from './mkobj.js';
-import { water_damage } from './trap.js';
-import { COIN_CLASS, objectNames } from './objects.js';
 import {
-    ROOM, IS_FOUNTAIN,
+    pline, newsym, You_feel, flush_topl_more, canspotmon,
+} from './display.js';
+import {
+    curse, mksobj_at, rnd_class, mkobj, mkobj_at, obj_extract_self,
+} from './mkobj.js';
+import { water_damage } from './trap.js';
+import {
+    COIN_CLASS, RING_CLASS, POTION_CLASS, POT_WATER,
+    objectNames, objectDescrs,
+} from './objects.js';
+import {
+    ROOM, FOUNTAIN, IS_FOUNTAIN,
     ER_NOTHING, ER_DESTROYED,
-    F_LOOTED, F_WARNED, FROMOUTSIDE,
+    F_LOOTED, F_WARNED, FROMOUTSIDE, S_LRING, MM_NOMSG,
     nothing_seems_to_happen,
-    KILLED_BY_AN,
+    KILLED_BY, G_GONE, M_SEEN_FIRE,
 } from './const.js';
 import { hands_obj } from './weapon.js';
-import { PM_KNIGHT } from './generated/monsters_data.js';
-import { A_MAX, A_WIS, A_CON, adjattrib, exercise } from './attrib.js';
+import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
+import { A_MAX, A_WIS, A_CON, adjattrib, exercise, acurr } from './attrib.js';
 import { lesshungry, morehungry, poison_strdmg, vomit } from './eat.js';
 import { losehp } from './hack.js';
 import { monster_detect } from './detect.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { makemon } from './makemon.js';
+import { mons } from './monsters.js';
+import { cansee } from './vision.js';
+import { monstseesu, monstunseesu } from './mondata.js';
+import { observe_object } from './invent.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
 const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
+const PM_SEWER_RAT = monsterNames.indexOf('PM_SEWER_RAT');
+const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 
 /** C ref: rm.h FOUNTAIN_IS_WARNED */
 function FOUNTAIN_IS_WARNED(x, y) {
@@ -83,6 +107,199 @@ function hliquid(waterword) {
 /** C ref: fountain.c floating_above */
 async function floating_above(what) {
     await pline(`You are floating high above the ${what}.`);
+}
+
+/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
+async function You_hear(line) {
+    const u = game.u || {};
+    if (u.Deaf || u.HDeaf) return;
+    await pline(`You hear ${line}`);
+}
+
+/** C ref: do_name.c a_monnam — ARTICLE_A (hallu deferred). */
+function a_monnam(mtmp) {
+    if (!mtmp) return 'a monster';
+    if (mtmp.mextra?.mgivenname) return mtmp.mextra.mgivenname;
+    const raw = mtmp?.data?.name || 'monster';
+    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+    const art = /^[aeiou]/i.test(plain) ? 'an' : 'a';
+    return `${art} ${plain}`;
+}
+
+/** C ref: potion.c hcolor — Hallucination synonym deferred. */
+function hcolor(colorword) {
+    return colorword || 'odd';
+}
+
+/** Potion appearance string for faucet liquid (OBJ_DESCR). */
+function potion_descr(otyp) {
+    const oc = game.objects?.[otyp];
+    if (!oc) return 'odd';
+    const idx = oc.oc_descr_idx ?? otyp;
+    return objectDescrs[idx] || 'odd';
+}
+
+function Fire_resistance() {
+    const u = game.u || {};
+    return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
+}
+
+/**
+ * C ref: fountain.c breaksink — sink → looted fountain; update nsinks/nfountains.
+ */
+export async function breaksink(x, y) {
+    const u = game.u || {};
+    if (cansee(x, y) || (u.ux === x && u.uy === y)) {
+        await pline('The pipes break!  Water spurts out!');
+    }
+    const loc = game.level?.at(x, y);
+    if (loc) {
+        loc.typ = FOUNTAIN;
+        loc.looted = 0;
+        loc.blessedftn = 0;
+        SET_FOUNTAIN_LOOTED(x, y);
+    }
+    if (game.level?.flags) {
+        if ((game.level.flags.nsinks | 0) > 0) game.level.flags.nsinks--;
+        game.level.flags.nfountains = (game.level.flags.nfountains | 0) + 1;
+    }
+    newsym(x, y);
+}
+
+/**
+ * C ref: fountain.c drinksink — quaff while standing on a sink.
+ */
+export async function drinksink() {
+    const u = game.u || {};
+    if (u.Levitation) {
+        await floating_above('sink');
+        return;
+    }
+
+    switch (rn2(20)) {
+    case 0:
+        await pline(`You take a sip of very cold ${hliquid('water')}.`);
+        break;
+    case 1:
+        await pline(`You take a sip of very warm ${hliquid('water')}.`);
+        break;
+    case 2:
+        await pline(`You take a sip of scalding hot ${hliquid('water')}.`);
+        if (Fire_resistance()) {
+            await pline('It seems quite tasty.');
+            monstseesu(M_SEEN_FIRE);
+        } else {
+            losehp(rnd(6), 'sipping boiling water', KILLED_BY);
+            monstunseesu(M_SEEN_FIRE);
+        }
+        break;
+    case 3: {
+        const gone = ((game.mvitals?.[PM_SEWER_RAT]?.mvflags ?? 0) & G_GONE) !== 0;
+        if (gone) {
+            await pline('The sink seems quite dirty.');
+        } else {
+            const mtmp = makemon(mons(PM_SEWER_RAT), u.ux, u.uy, MM_NOMSG);
+            if (mtmp) {
+                const Blind = !!(u.Blind || u.ublind);
+                const what = (Blind || !canspotmon(mtmp))
+                    ? 'something squirmy'
+                    : a_monnam(mtmp);
+                await pline(`Eek!  There's ${what} in the sink!`);
+            }
+        }
+        break;
+    }
+    case 4: {
+        // Faucet potion — reject POT_WATER and retry (mkobj RNG each try)
+        let otmp;
+        for (;;) {
+            otmp = mkobj(POTION_CLASS, false);
+            if (otmp && otmp.otyp !== POT_WATER) break;
+            if (otmp) {
+                obj_extract_self(otmp);
+                otmp.quan = 0;
+            }
+        }
+        otmp.cursed = 0;
+        otmp.blessed = 0;
+        const Blind = !!(u.Blind || u.ublind);
+        const liquid = Blind ? 'odd' : hcolor(potion_descr(otmp.otyp));
+        await pline(`Some ${liquid} liquid flows from the faucet.`);
+        if (!(Blind || u.Hallucination)) observe_object(otmp);
+        otmp.quan = (otmp.quan | 0) + 1; // Avoid panic upon useup()
+        otmp.fromsink = 1;
+        // Dynamic import avoids potion↔fountain cycle; peffect_* partial
+        const { dopotion } = await import('./potion.js');
+        await dopotion(otmp);
+        obj_extract_self(otmp);
+        otmp.quan = 0;
+        break;
+    }
+    case 5: {
+        const loc = game.level?.at(u.ux, u.uy);
+        if (!((loc?.looted || 0) & S_LRING)) {
+            await pline('You find a ring in the sink!');
+            mkobj_at(RING_CLASS, u.ux, u.uy, true);
+            if (loc) loc.looted = (loc.looted || 0) | S_LRING;
+            exercise(A_WIS, true);
+            newsym(u.ux, u.uy);
+        } else {
+            await pline(`Some dirty ${hliquid('water')} backs up in the drain.`);
+        }
+        break;
+    }
+    case 6:
+        await breaksink(u.ux, u.uy);
+        break;
+    case 7: {
+        await pline(`The ${hliquid('water')} moves as though of its own will!`);
+        const gone = ((game.mvitals?.[PM_WATER_ELEMENTAL]?.mvflags ?? 0) & G_GONE) !== 0;
+        if (gone || !makemon(mons(PM_WATER_ELEMENTAL), u.ux, u.uy, MM_NOMSG)) {
+            await pline('But it quiets down.');
+        }
+        break;
+    }
+    case 8:
+        await pline(`Yuk, this ${hliquid('water')} tastes awful.`);
+        more_experienced(1, 0);
+        await newexplevel();
+        break;
+    case 9:
+        await pline('Gaggg... this tastes like sewage!  You vomit.');
+        // C: morehungry(rn1(30 - ACURR(A_CON), 11))
+        morehungry(rn1(30 - acurr(A_CON), 11));
+        vomit();
+        break;
+    case 10:
+        await pline(`This ${hliquid('water')} contains toxic wastes!`);
+        if (!(u.Unchanging || u.HUnchanging)) {
+            await pline('You undergo a freakish metamorphosis!');
+            // polyself(POLY_NOFLAGS) deferred — no poly RNG yet
+        }
+        break;
+    case 11:
+        await You_hear('clanking from the pipes...');
+        break;
+    case 12:
+        await You_hear('snatches of song from among the sewers...');
+        break;
+    case 13:
+        await pline('Ew, what a stench!');
+        // create_gas_cloud(ux,uy,1,4) deferred (size-1: no expand RNG)
+        break;
+    case 19:
+        if (u.Hallucination) {
+            await pline('From the murky drain, a hand reaches up... --oops--');
+            break;
+        }
+        /* FALLTHROUGH */
+    default: {
+        // C: rn2(3) ? (rn2(2) ? "cold" : "warm") : "hot"
+        const temp = rn2(3) ? (rn2(2) ? 'cold' : 'warm') : 'hot';
+        await pline(`You take a sip of ${temp} ${hliquid('water')}.`);
+        break;
+    }
+    }
 }
 
 /**

@@ -1,26 +1,30 @@
 // wield.js — Wield / weapon slot (partial).
 // C ref: wield.c — setuwep, ready_weapon, dowield, doquiver_core, welded,
-//         can_twoweapon, dotwoweapon, set_twoweap, untwoweapon.
+//         can_twoweapon, dotwoweapon, set_twoweap, untwoweapon, chwepon.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, makeplural, vtense } from './objnam.js';
+import { xprname, xname, makeplural, vtense, an } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj } from './weapon.js';
 import { humanoid, mons } from './monsters.js';
 import { AT_WEAP } from './mhitm.js';
-import { acurr, A_DEX } from './attrib.js';
-import { rnd } from './rng.js';
+import { acurr, A_DEX, exercise } from './attrib.js';
+import { rn2, rnd } from './rng.js';
 import {
-    WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, objectNames,
+    WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, SCROLL_CLASS,
+    objectNames,
 } from './objects.js';
 import {
     W_WEP, W_SWAPWEP, W_QUIVER, W_ARMOR, W_ACCESSORY, W_SADDLE,
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
-    ECMD_OK, ECMD_TIME, Upolyd,
+    ECMD_OK, ECMD_TIME, Upolyd, HAND,
 } from './const.js';
 import { retouch_object } from './artifact.js';
+import { makeknown, encumber_msg } from './invent.js';
+import { uncurse, weight } from './mkobj.js';
+import { trycall } from './do_name.js';
 
 /** C: can_no_longer_twoweap */
 const can_no_longer_twoweap = 'can no longer wield two weapons at once';
@@ -677,6 +681,187 @@ export async function untwoweapon() {
         set_twoweap(false);
         // update_inventory deferred
     }
+}
+
+/** C ref: mondata.c body_part — HAND → "hand"; full poly table deferred. */
+function body_part(part) {
+    if (part === HAND) return 'hand';
+    return 'body part';
+}
+
+/** C ref: potion.c hcolor — Hallucination synonym deferred. */
+function hcolor(colorword) {
+    return colorword || 'odd';
+}
+
+/**
+ * C ref: objnam.c Yobjnam2 — "Your <xname> <otense verb>".
+ * shk_your / pname / artifact article arms deferred.
+ */
+function Yobjnam2(obj, verb) {
+    const nam = xname(obj);
+    return `Your ${nam} ${vtense(nam, verb)}`;
+}
+
+/** C ref: objnam.c simpleonames — base type name without spe/BUC. */
+function simpleonames(obj) {
+    return xname(obj);
+}
+
+/**
+ * C ref: potion.c strange_feeling — pline + optional trycall/useup.
+ * Beginner/Hallucination default text; caller nulls sobj when used up.
+ */
+async function strange_feeling(obj, txt) {
+    const beginner = !!(game.flags?.beginner);
+    const Hallucination = !!(game.u?.Hallucination);
+    if (beginner || !txt) {
+        await pline(
+            `You have a ${Hallucination ? 'normal' : 'strange'} feeling for a moment, then it passes.`,
+        );
+    } else {
+        await pline(txt);
+    }
+    if (!obj) return;
+    if (obj.dknown) await trycall(obj);
+    // useup one
+    if ((obj.quan || 1) > 1) {
+        obj.quan--;
+        obj.owt = weight(obj);
+    } else {
+        const inv = game.invent || [];
+        const idx = inv.indexOf(obj);
+        if (idx >= 0) inv.splice(idx, 1);
+        if (game.u?.uwep === obj) setuwep(null);
+    }
+}
+
+const WORM_TOOTH = objectNames.indexOf('WORM_TOOTH');
+const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+
+/** C ref: obj.h is_elven_weapon — name prefix check (full table deferred). */
+function is_elven_weapon(obj) {
+    const n = objectNames[obj?.otyp];
+    return !!(n && n.startsWith('ELVEN_'));
+}
+
+/**
+ * C ref: wield.c chwepon — enchant / disenchant wielded weapon.
+ * Named omissions: full body_part poly; Hallucination hcolor; Magicbane
+ * clue polish; artifact restrict_name faint-glow; shop costly_alteration /
+ * alter_cost unpaid; useupall multi evaporate inventory sync; encumber_msg
+ * after stack fuse only when quan split.
+ * @returns {Promise<number>} 1 = enchanted (caller useup); 0 = strange_feeling used up scroll
+ */
+export async function chwepon(otmp, amount) {
+    const u = game.u || {};
+    const uwep = u.uwep;
+    const Blind = !!(u.Blind || u.ublind);
+    const Hallucination = !!(u.Hallucination);
+    const color = hcolor(amount < 0 ? 'black' : 'blue');
+    let otyp = STRANGE_OBJECT;
+
+    if (!uwep || (uwep.oclass !== WEAPON_CLASS && !is_weptool(uwep))) {
+        let buf;
+        if (amount >= 0 && uwep && will_weld(uwep)) {
+            if (!Blind) {
+                buf = `${Yobjnam2(uwep, 'glow')} with ${an(hcolor('amber'))} aura.`;
+                uwep.bknown = Hallucination ? 0 : 1;
+            } else {
+                buf = `Your right ${body_part(HAND)} tingles.`;
+            }
+            uncurse(uwep);
+            // update_inventory deferred
+        } else {
+            buf = `Your ${makeplural(body_part(HAND))} ${amount >= 0 ? 'twitch' : 'itch'}.`;
+        }
+        await strange_feeling(otmp, buf);
+        exercise(A_DEX, amount >= 0);
+        return 0;
+    }
+
+    if (otmp && otmp.oclass === SCROLL_CLASS) otyp = otmp.otyp | 0;
+
+    if (WORM_TOOTH >= 0 && (uwep.otyp | 0) === WORM_TOOTH && amount >= 0) {
+        const multiple = (uwep.quan || 1) > 1;
+        await pline(
+            `Your ${simpleonames(uwep)} ${multiple ? 'fuse, and become' : 'is'} much sharper now.`,
+        );
+        uwep.otyp = CRYSKNIFE;
+        uwep.oerodeproof = 0;
+        if (multiple) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        if (uwep.cursed) uncurse(uwep);
+        // alter_cost unpaid deferred
+        if (otyp !== STRANGE_OBJECT) makeknown(otyp);
+        if (multiple) await encumber_msg();
+        return 1;
+    }
+    if (CRYSKNIFE >= 0 && (uwep.otyp | 0) === CRYSKNIFE && amount < 0) {
+        const multiple = (uwep.quan || 1) > 1;
+        await pline(
+            `Your ${simpleonames(uwep)} ${multiple ? 'fuse, and become' : 'is'} much duller now.`,
+        );
+        // costly_alteration COST_DEGRD deferred
+        uwep.otyp = WORM_TOOTH;
+        uwep.oerodeproof = 0;
+        if (multiple) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        if (otyp !== STRANGE_OBJECT && otmp?.bknown) makeknown(otyp);
+        if (multiple) await encumber_msg();
+        return 1;
+    }
+
+    // artifact restrict_name faint-glow deferred
+    if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0))
+        && rn2(3)) {
+        if (!Blind) {
+            await pline(
+                `${Yobjnam2(uwep, 'violently glow')} ${color} for a while and then ${vtense(xname(uwep), 'evaporate')}.`,
+            );
+        } else {
+            await pline(`${Yobjnam2(uwep, 'evaporate')}.`);
+        }
+        // useupall — remove wielded stack
+        const inv = game.invent || [];
+        const idx = inv.indexOf(uwep);
+        if (idx >= 0) inv.splice(idx, 1);
+        setuwep(null);
+        return 1;
+    }
+
+    if (!Blind) {
+        const xtime = (amount * amount === 1) ? 'moment' : 'while';
+        await pline(
+            `${Yobjnam2(uwep, amount === 0 ? 'violently glow' : 'glow')} ${color} for a ${xtime}.`,
+        );
+        if (otyp !== STRANGE_OBJECT && uwep.known
+            && (amount > 0 || (amount < 0 && otmp?.bknown))) {
+            makeknown(otyp);
+        }
+    }
+    if (amount < 0) {
+        // costly_alteration COST_DECHNT deferred
+    }
+    uwep.spe = (uwep.spe | 0) + (amount | 0);
+    if (amount > 0) {
+        if (uwep.cursed) uncurse(uwep);
+        // alter_cost unpaid deferred
+    }
+
+    // Magicbane hand itch deferred (u_wield_art ART_MAGICBANE)
+
+    if ((uwep.spe | 0) > 5
+        && (is_elven_weapon(uwep) || uwep.oartifact || !rn2(7))) {
+        await pline(`${Yobjnam2(uwep, 'suddenly vibrate')} unexpectedly.`);
+    }
+
+    return 1;
 }
 
 /**

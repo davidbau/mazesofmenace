@@ -128,7 +128,8 @@ export class NethackGame {
         if (!g.flags.end_disclose || typeof g.flags.end_disclose !== 'string') {
             g.flags.end_disclose = 'n'.repeat(6);
         }
-        g.iflags = { ...opts.iflags };
+        // C optlist.h — autodescribe default On (opt_out); rc may negate.
+        g.iflags = { autodescribe: true, ...opts.iflags };
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics
         // (or boolean DECgraphics) loads H_DEC showsyms. Never assume DEC.
         const sym = String(opts.symset || '').toLowerCase();

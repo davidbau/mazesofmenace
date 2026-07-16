@@ -1,17 +1,17 @@
 // mthrowu.js — Monster ranged throw/shoot (partial).
-// C ref: mthrowu.c thrwmu / monshoot / m_throw / thitu / lined_up /
-//         u_catch_thrown_obj / drop_throw.
+// C ref: mthrowu.c thrwmu / monshoot / m_throw / ohitmon / thitu /
+//         lined_up / u_catch_thrown_obj / drop_throw.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    distmin, m_at, m_carrying,
+    distmin, m_at, m_carrying, record_mvitals_died, seemimic,
 } from './mon.js';
 import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
-    POTHIT_MONST_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
-    M_AP_NOTHING, M_AP_MONSTER, u_at,
+    POTHIT_MONST_THROW, POTHIT_OTHER_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
+    M_AP_NOTHING, M_AP_MONSTER, u_at, P_NONE,
     DISP_FLASH, DISP_END,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
@@ -20,27 +20,33 @@ import {
 } from './mkobj.js';
 import { observe_object } from './invent.js';
 import {
-    MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval,
+    MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval, hitval,
     should_mulch_missile,
 } from './weapon.js';
+import { find_mac } from './mhitm.js';
 import { ammo_and_launcher, is_launcher } from './wield.js';
 import { acurr, A_DEX, A_STR, exercise } from './attrib.js';
 import { calc_capacity } from './invent.js';
 import { losehp, nomul, maybe_half_phys } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
-    pline, mon_visible, see_with_infrared, tmp_at, obj_glyph, nh_delay_output,
+    pline, mon_visible, see_with_infrared, tmp_at, obj_glyph,
+    nh_delay_output, newsym, canspotmon,
 } from './display.js';
-import { Monnam } from './do_name.js';
-import { nohands, mons, throws_rocks } from './monsters.js';
-import { xname, singular, an, vtense } from './objnam.js';
-import { VENOM_CLASS, POTION_CLASS, objectNames } from './objects.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { nohands, mons, throws_rocks, MZ_MEDIUM, nonliving } from './monsters.js';
+import { xname, singular, an, vtense, the } from './objnam.js';
+import {
+    VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
+    objectNames,
+} from './objects.js';
 import {
     PM_MONK, PM_ROGUE, PM_HUMAN,
 } from './generated/monsters_data.js';
 import { potionhit } from './potion.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 
 /**
@@ -272,6 +278,179 @@ function drop_throw(obj, ohit, x, y) {
     return broken;
 }
 
+/** C ref: obj.h is_weptool */
+function is_weptool(otmp) {
+    return otmp?.oclass === TOOL_CLASS
+        && ((game.objects?.[otmp.otyp]?.oc_skill | 0) !== P_NONE);
+}
+
+/**
+ * C ref: dothrow.c omon_adj — size/sleep/immobile/otyp to-hit adjust.
+ * Named omissions: mon_notices rn2(10) unfreeze when immobilized.
+ */
+function omon_adj(mon, obj, mon_notices) {
+    let tmp = 0;
+    tmp += ((mon.data?.msize ?? MZ_MEDIUM) - MZ_MEDIUM);
+    if (mon.msleeping) tmp += 2;
+    if (!mon.mcanmove || !(mon.data?.mmove)) {
+        tmp += 4;
+        // C: mon_notices && mmove && !rn2(10) → unfreeze; deferred
+        void mon_notices;
+    }
+    const n = objectNames[obj.otyp];
+    if (obj.otyp === HEAVY_IRON_BALL) {
+        if (obj !== game.u?.uball) tmp += 2;
+    } else if (n === 'BOULDER' || obj.otyp === BOULDER) {
+        tmp += 6;
+    } else if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+        || obj.oclass === GEM_CLASS) {
+        tmp += hitval(obj, mon);
+    }
+    return tmp;
+}
+
+function The(str) {
+    const t = the(str);
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
+/** C ref: zap.c miss — missile miss message. */
+async function miss(str, mtmp) {
+    const bx = game.bhitpos?.x ?? mtmp.mx;
+    const by = game.bhitpos?.y ?? mtmp.my;
+    const whom = ((cansee(bx, by) || canspotmon(mtmp))
+        && game.flags?.verbose !== false)
+        ? mon_nam(mtmp) : 'it';
+    await pline(`${The(str)} ${vtense(str, 'miss')} ${whom}.`);
+}
+
+/** C ref: zap.c hit — missile hit message. */
+async function hit(str, mtmp, force) {
+    const bx = game.bhitpos?.x ?? mtmp.mx;
+    const by = game.bhitpos?.y ?? mtmp.my;
+    const verbosely = game.flags?.verbose !== false
+        && (cansee(bx, by) || canspotmon(mtmp));
+    const whom = verbosely ? mon_nam(mtmp) : 'it';
+    await pline(`${The(str)} ${vtense(str, 'hit')} ${whom}${force}`);
+}
+
+/**
+ * C ref: mon.c mondead — remove from fmon; corpse/relobj deferred.
+ */
+function ohitmon_mondead(mtmp) {
+    mtmp.mhp = 0;
+    const mx = mtmp.mx;
+    const my = mtmp.my;
+    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
+    if (game.fmon) {
+        const i = game.fmon.indexOf(mtmp);
+        if (i >= 0) game.fmon.splice(i, 1);
+    }
+    if (mx > 0) newsym(mx, my);
+}
+
+/**
+ * C ref: mthrowu.c ohitmon — missile hits another monster.
+ * Returns true if missile is done (stop flight); false to keep going.
+ *
+ * Named omissions: shade_miss (caller); distant_name/mshot_xname;
+ * spec_abon; stone_missile/passes_rocks; poison/silver/acid/egg
+ * petrify; can_blnd; setmangry; xkilled treasure; corpse_chance;
+ * mon_notices unfreeze in omon_adj.
+ */
+async function ohitmon(mtmp, otmp, range, verbose) {
+    const bx = game.bhitpos?.x ?? mtmp.mx;
+    const by = game.bhitpos?.y ?? mtmp.my;
+    game.notonhead = (bx !== mtmp.mx || by !== mtmp.my);
+
+    const ismimic = M_AP_TYPE(mtmp) && M_AP_TYPE(mtmp) !== M_AP_MONSTER;
+    const vis = cansee(bx, by);
+    if (vis) observe_object(otmp);
+
+    let tmp = 5 + find_mac(mtmp) + omon_adj(mtmp, otmp, false);
+    const marcher = game.marcher;
+    if (marcher && game.mtarget === mtmp) {
+        if ((marcher.m_lev | 0) > 5) tmp += (marcher.m_lev | 0) - 5;
+        // mon_launcher artifact spec_abon deferred
+    }
+
+    // C: if (tmp < rnd(20)) miss; else hit
+    if (tmp < rnd(20)) {
+        if (!ismimic) {
+            if (vis) {
+                await miss(xname(otmp), mtmp);
+            } else if (verbose && !game.mtarget) {
+                await pline('It is missed.');
+            }
+        }
+        if (!range) {
+            drop_throw(otmp, false, mtmp.mx, mtmp.my);
+            return true;
+        }
+        return false;
+    }
+
+    if (otmp.oclass === POTION_CLASS) {
+        if (ismimic) seemimic(mtmp);
+        mtmp.msleeping = 0;
+        await potionhit(mtmp, otmp, POTHIT_OTHER_THROW);
+        return true;
+    }
+
+    // stone_missile && passes_rocks → harmless deferred
+    const harmless = false;
+    let damage = dmgval(otmp, mtmp);
+    const n = objectNames[otmp.otyp];
+    if (n === 'ACID_VENOM' /* && resists_acid */) {
+        // resists_acid → damage=0 deferred
+    }
+
+    if (ismimic) seemimic(mtmp);
+    mtmp.msleeping = 0;
+
+    if (vis) {
+        if (n === 'EGG') {
+            await pline(`Splat!  ${Monnam(mtmp)} is hit with an egg!`);
+        } else {
+            const how = harmless
+                ? ` but passes harmlessly through ${mhim(mtmp)}.`
+                : exclam(damage);
+            await hit(xname(otmp), mtmp, how);
+        }
+    } else if (verbose && !game.mtarget) {
+        const punct = exclam(damage);
+        await pline(
+            `${n === 'EGG' ? 'Splat!  ' : ''}${Monnam(mtmp)} is hit${punct}`,
+        );
+    }
+
+    // poison / silver / acid burn / egg petrify / can_blnd deferred
+
+    if (!harmless && (mtmp.mhp | 0) > 0) {
+        mtmp.mhp = (mtmp.mhp | 0) - damage;
+        if ((mtmp.mhp | 0) < 1) {
+            if (vis || (verbose && !game.mtarget)) {
+                const verb = (nonliving(mtmp.data) || !canspotmon(mtmp))
+                    ? 'destroyed' : 'killed';
+                await pline(`${Monnam(mtmp)} is ${verb}!`);
+            }
+            // C: mon_moving → mondied (corpse_chance deferred)
+            ohitmon_mondead(mtmp);
+        }
+    }
+
+    // setmangry when !mon_moving deferred
+    drop_throw(otmp, true, bx, by);
+    // range === -1 rolling boulder re-extract deferred
+    return true;
+}
+
+function mhim(mtmp) {
+    // C: mhim — "him"/"her"/"it"; sex deferred → "it"
+    void mtmp;
+    return 'it';
+}
+
 /**
  * C ref: mthrowu.c m_throw — flight loop; hero hit / forcehit rn2(5).
  */
@@ -313,6 +492,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     let bx = x;
     let by = y;
     game._mesg_given = 0;
+    if (!game.bhitpos) game.bhitpos = {};
+    game.bhitpos.x = x;
+    game.bhitpos.y = y;
     // C: sym = obj->oclass; if (sym) tmp_at(DISP_FLASH, obj_to_glyph(...))
     // Hallucination rn2_on_display_rng path deferred — obj_glyph is non-hallu.
     const sym = singleobj.oclass;
@@ -321,6 +503,8 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     while (range-- > 0) {
         bx += dx;
         by += dy;
+        game.bhitpos.x = bx;
+        game.bhitpos.y = by;
         singleobj.ox = bx;
         singleobj.oy = by;
         // C: if (cansee(bhitpos)) observe_object(singleobj)
@@ -328,42 +512,45 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
 
         const mtmp = m_at(bx, by);
         if (mtmp) {
-            // ohitmon deferred — stop and drop
-            drop_throw(singleobj, false, bx, by);
-            break;
-        }
-        const u = game.u || {};
-        if (u.ux === bx && u.uy === by) {
-            if (game.multi) nomul(0);
-            if (!u_catch_thrown_obj(singleobj)) {
-                // C: POTION_CLASS → potionhit (before thitu / egg / pie)
-                if (singleobj.oclass === POTION_CLASS) {
-                    // C: await blocking pline/--More-- while flash still at prior cell
-                    await potionhit(null, singleobj, POTHIT_MONST_THROW);
-                    break;
-                }
-                let dam = dmgval(singleobj, null);
-                let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
-                if (hitv < -4) hitv = -4;
-                hitv += 8 + (singleobj.spe | 0);
-                if (dam < 1) dam = 1;
-                dam = maybe_half_phys(dam);
-                const box = { obj: singleobj };
-                const hitu = await thitu(hitv, dam, box, null);
-                // C: losehp→done noreturn — no drop_throw / mulch after fatal
-                if (game.program_state?.gameover) {
-                    if (sym) tmp_at(DISP_END, 0);
-                    return;
-                }
-                if (hitu) {
-                    drop_throw(singleobj, true, u.ux, u.uy);
-                    break;
-                }
-            } else {
-                if (sym) tmp_at(DISP_END, 0);
-                return; // caught
+            // C: shade_miss → clear mtmp and keep going (deferred)
+            if (await ohitmon(mtmp, singleobj, range, true)) {
+                break;
             }
-        }
+            // miss with remaining range — keep flying past the monster
+        } else {
+            const u = game.u || {};
+            if (u.ux === bx && u.uy === by) {
+                if (game.multi) nomul(0);
+                if (!u_catch_thrown_obj(singleobj)) {
+                    // C: POTION_CLASS → potionhit (before thitu / egg / pie)
+                    if (singleobj.oclass === POTION_CLASS) {
+                        // C: await blocking pline/--More-- while flash still at prior cell
+                        await potionhit(null, singleobj, POTHIT_MONST_THROW);
+                        break;
+                    }
+                    let dam = dmgval(singleobj, null);
+                    let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
+                    if (hitv < -4) hitv = -4;
+                    hitv += 8 + (singleobj.spe | 0);
+                    if (dam < 1) dam = 1;
+                    dam = maybe_half_phys(dam);
+                    const box = { obj: singleobj };
+                    const hitu = await thitu(hitv, dam, box, null);
+                    // C: losehp→done noreturn — no drop_throw / mulch after fatal
+                    if (game.program_state?.gameover) {
+                        if (sym) tmp_at(DISP_END, 0);
+                        return;
+                    }
+                    if (hitu) {
+                        drop_throw(singleobj, true, u.ux, u.uy);
+                        break;
+                    }
+                } else {
+                    if (sym) tmp_at(DISP_END, 0);
+                    return; // caught
+                }
+            }
+        } // end else !mtmp (hero / empty cell)
 
         const forcehit = !rn2(5);
         void forcehit;

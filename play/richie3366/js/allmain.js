@@ -235,12 +235,17 @@ function exerper() {
     // status checks every 5 moves
     if (!(moves % 5)) {
         // HClairvoyant / HRegeneration deferred
+        // C: Confusion ≡ HConfusion; Hallucination ≡ HHallucination
         if (u.Sick || u.Vomiting) exercise(A_CON, false);
-        if (u.Confusion || u.Hallucination) exercise(A_WIS, false);
+        if ((u.HConfusion | u.Confusion)
+            || (u.HHallucination | u.Hallucination)) {
+            exercise(A_WIS, false);
+        }
+        // C: (Wounded_legs && !usteed) || Fumbling || HStun
         const wounded = !!(u.Wounded_legs
             || ((u.HWounded_legs | 0) & TIMEOUT)
             || (u.EWounded_legs | 0));
-        if ((wounded && !u.usteed) || u.Fumbling || u.HStun || u.Stunned) {
+        if ((wounded && !u.usteed) || u.Fumbling || (u.HStun | 0)) {
             exercise(A_DEX, false);
         }
     }

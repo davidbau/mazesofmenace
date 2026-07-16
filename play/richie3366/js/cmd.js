@@ -7,14 +7,18 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, see_nearby_objects, clear_nhwindow_message } from './display.js';
+import {
+    newsym, flush_screen, pline, see_nearby_objects, clear_nhwindow_message,
+    mon_visible, sensemon,
+} from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
          ACCESSIBLE, isok,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH, DOMOVE_WALK,
          xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
-         DIR_NW, DIR_NE, DIR_SE, DIR_SW } from './const.js';
+         DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
 import { dist2 } from './mon.js';
 import { vision_recalc, couldsee } from './vision.js';
 import {
@@ -47,7 +51,9 @@ import { spoteffects, dopickup } from './pickup.js';
 import { getpos } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
+    impaired_movement,
 } from './hack.js';
+import { acurr, exercise, A_DEX } from './attrib.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -971,8 +977,6 @@ export async function rhack(key) {
 // C ref: hack.c domove — execute a movement
 async function domove(dx, dy) {
     const u = game.u;
-    const newx = u.ux + dx;
-    const newy = u.uy + dy;
     const forcefight = !!game.context?.forcefight;
     // C ref: hack.c domove — clear succeeded; clear attempting in finally
     game.domove_succeeded = 0;
@@ -992,11 +996,21 @@ async function domove(dx, dy) {
     u.ux0 = u.ux;
     u.uy0 = u.uy;
 
-    // C ref: hack.c domove_core — m_at / domove_attackmon_at BEFORE test_move
+    // C ref: hack.c domove_core — impaired_movement after ux+dx (Confusion/
+    // Stunned may rn2(5) then confdir). Named omissions ahead of this call:
+    // carrying_too_much, uswallow, air_turbulence, slippery_ice_fumbling.
+    if (impaired_movement()) {
+        if (game.context?.run) end_running();
+        return;
+    }
+    let newx = (u.ux | 0) + (u.dx | 0);
+    let newy = (u.uy | 0) + (u.dy | 0);
+
+    // C ref: hack.c domove_core — m_at / run-stop / attackmon BEFORE test_move
     // (closed_door / testdiag / rock). Diagonal intact-doorway bans must not
     // suppress attacking a monster on an adjacent cell (seed0012 @12439).
-    // Named omissions: run-into-visible-hostile stop; displacer swap;
-    // domove_bump_mon; mundetected hide-under Wait! arms.
+    // Named omissions: displacer swap; domove_bump_mon; mundetected Wait!;
+    // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
     let mtmp = mon_at(newx, newy);
     if (forcefight && !mtmp) {
         // C: F with no monster → fight_empty, waste turn
@@ -1005,6 +1019,22 @@ async function domove(dx, dy) {
         game.context.move = 1;
         game.kickedloc = { x: 0, y: 0 };
         return;
+    }
+    // C: don't attack if running and can see the non-safemon (pets ok).
+    // forcefight never reaches this arm. Confdir into a visible hostile
+    // must stop the run here — else JS burns a hit-roll rn2(20) while C
+    // returns for nhgetch (seed0002 @11309).
+    if (mtmp && !is_safemon(mtmp) && game.context?.run && !forcefight) {
+        const Blind = !!(u.Blind || u.ublind
+            || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+        const ap = M_AP_TYPE(mtmp);
+        const seenAsMon = (ap !== M_AP_FURNITURE && ap !== M_AP_OBJECT)
+            || !!(u.Protection_from_shape_changers);
+        if ((!Blind && mon_visible(mtmp) && seenAsMon) || sensemon(mtmp)) {
+            nomul(0);
+            game.context.move = 0;
+            return;
+        }
     }
     if (mtmp) {
         // C: domove_attackmon_at → do_attack (safemon may return false → swap)
@@ -1030,26 +1060,46 @@ async function domove(dx, dy) {
         if (!moved) return;
     }
 
-    // C ref: hack.c test_move — closed_door + flags.autoopen → doopen_indir
+    // C ref: hack.c test_move — closed_door autoopen / orthogonal bump
+    // Passes_walls / ooze / Underwater / tunnels / Blind feel_location /
+    // steed lead-through deferred (named in c-js-map turns).
     if (closed_door_at(newx, newy)) {
-        if (game.context?.run) end_running();
-        // C: autoopen default On; skip when run / Confusion / Stunned / Fumbling
+        if (!game.context) game.context = {};
+        game.context.door_opened = false;
+        // C: check !context.run BEFORE clearing run — rush must bump, not autoopen
         const autoopen = game.flags?.autoopen !== false;
         const impaired = !!(u.Confusion || u.Stunned || u.Fumbling);
-        if (autoopen && !game.context?.run && !impaired) {
+        if (autoopen && !game.context.run && !impaired) {
             await doopen_indir(newx, newy);
             // C: door_opened = !closed_door; move = (pos changed) → usually 0.
-            // Both open and resist leave context.move false for autoopen.
+            game.context.door_opened = !closed_door_at(newx, newy);
             game.context.move = 0;
             return;
         }
+        // C: else if (x == ux || y == uy) — orthogonal only
+        if (newx === u.ux || newy === u.uy) {
+            const Blind = !!(u.Blind || u.ublind
+                || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+            if (Blind || u.Stunned || acurr(A_DEX) < 10 || u.Fumbling) {
+                await pline('Ouch!  You bump into a door.');
+                exercise(A_DEX, false);
+                // C: door_opened = move = TRUE; nomul(0) stops running
+                game.context.door_opened = true;
+                game.context.move = 1;
+                nomul(0);
+                return;
+            }
+            await pline('That door is closed.');
+        }
+        // C domove_core: !door_opened → move=0; nomul(0)
         game.context.move = 0;
+        nomul(0);
         return;
     }
 
     // C ref: hack.c test_move testdiag — no diagonal into intact doorway
     // (open/closed/locked; only doorless D_NODOOR/D_BROKEN allowed).
-    if (dx && dy) {
+    if (u.dx && u.dy) {
         const dest = game.level?.at(newx, newy);
         if (dest && IS_DOOR(dest.typ)
             && (!doorless_door(newx, newy) || block_door(newx, newy))) {

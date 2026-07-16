@@ -10,6 +10,8 @@ import {
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
+    xdir, ydir, N_DIRS,
+    DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
 } from './const.js';
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
@@ -21,6 +23,12 @@ import { objectNames } from './generated/objects_data.js';
 import { xname } from './objnam.js';
 import { A_STR, exercise } from './attrib.js';
 import { rn2 } from './rng.js';
+import { PM_GRID_BUG } from './generated/monsters_data.js';
+
+/** C ref: decl.c dirs_ord — cardinals first. */
+const DIRS_ORD = [
+    DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+];
 
 const BOULDER = objectNames.indexOf('BOULDER');
 
@@ -858,6 +866,68 @@ export async function trapmove(x, y, desttrap) {
     default:
         break;
     }
+    return false;
+}
+
+/**
+ * C ref: hack.c u_maybe_impaired — Stunned always; Confusion rolls !rn2(5).
+ * Short-circuit matches C: no rn2 when Stunned or when not Confused.
+ */
+export function u_maybe_impaired() {
+    const u = game.u || {};
+    if (u.Stunned) return true;
+    // C: Confusion ≡ HConfusion
+    if (u.Confusion || u.HConfusion) return !rn2(5);
+    return false;
+}
+
+/**
+ * C ref: cmd.c confdir(force_impairment) — randomize u.dx/u.dy when impaired.
+ * NODIAG (grid bug) uses cardinals only (N_DIRS/2 via dirs_ord prefix).
+ */
+export function confdir(force_impairment) {
+    if (force_impairment || u_maybe_impaired()) {
+        const u = game.u;
+        if (!u) return;
+        const kmax = ((u.umonnum | 0) === PM_GRID_BUG) ? (N_DIRS / 2) : N_DIRS;
+        const k = DIRS_ORD[rn2(kmax)] | 0;
+        u.dx = xdir[k];
+        u.dy = ydir[k];
+    }
+}
+
+/**
+ * C ref: hack.c bad_rock — obstructed tile the form cannot dig/pass.
+ * Named omissions: Sokoban boulder; tunnels/needspick/may_dig;
+ * passes_walls/may_passwall (hero rarely applies here).
+ */
+function bad_rock_hero(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    return IS_OBSTRUCTED(loc.typ);
+}
+
+/**
+ * C ref: hack.c impaired_movement — if impaired, confdir until isok+!bad_rock.
+ * Returns true when movement is aborted (tries>50 → nomul(0)).
+ * Mutates u.dx/u.dy on successful redirect; caller recomputes destination.
+ */
+export function impaired_movement() {
+    const u = game.u;
+    if (!u) return false;
+    if (!u_maybe_impaired()) return false;
+    let tries = 0;
+    let x;
+    let y;
+    do {
+        if (++tries > 50) {
+            nomul(0);
+            return true;
+        }
+        confdir(true);
+        x = (u.ux | 0) + (u.dx | 0);
+        y = (u.uy | 0) + (u.dy | 0);
+    } while (!isok(x, y) || bad_rock_hero(x, y));
     return false;
 }
 

@@ -601,11 +601,13 @@ export function invent_lines() {
 /**
  * C ref: invent.c display_pickinv(lets, …, want_reply=TRUE) subset for getobj `?`/`*`.
  * Shows invent filtered to `lets` (or all when lets null/'*'), PICK_ONE by
- * invlet; ESC cancels; Space/Return with no pick → null (getobj re-prompts).
+ * invlet; ESC cancels; Space next page or null on last; Return → null.
+ * Multi-page (nitems>lmax): fullscreen "(N of M)" like tty process_menu_window;
+ * only current-page selectors accepted (C resp).
  * C n==1 && !force_invmenu && !menu_requested && lets set →
  * tty_message_menu(PICK_ONE) topline xprname+--More-- (not corner menu).
  * Named omissions: hands/xtra_choice; count; sortloot inuse_only; wizid;
- * force_invmenu / menu_requested menu path polish.
+ * force_invmenu / menu_requested menu path polish; MENU_PREV/FIRST/LAST.
  * @returns {string|null} selected invlet, or null if cancelled / no pick
  */
 export async function display_pickinv_reply(lets) {
@@ -671,30 +673,108 @@ export async function display_pickinv_reply(lets) {
         return null;
     }
 
+    // C ref: wintty.c tty_end_menu / process_menu_window PICK_ONE —
+    // lmax=rows-1; npages>1 → "(N of M)"; Space next page; letter on
+    // current page selects (resp collects page selectors only).
+    const rows = display()?.rows || 24;
+    const lmax = Math.min(52, rows - 1);
+    const npages = Math.max(1, Math.floor((entries.length + lmax - 1) / lmax));
+    let curr_page = 0;
+
     for (;;) {
-        await paint_corner_nhw_menu(entries, '(end) ');
+        const start = curr_page * lmax;
+        const page = entries.slice(start, start + lmax);
+        const morestr = npages > 1
+            ? `(${curr_page + 1} of ${npages})`
+            : '(end) ';
+
+        if (npages > 1) {
+            // C fullscreen when maxrow >= rows (multi-page invent)
+            const painted = page.map((e) => ({
+                text: ` ${typeof e === 'string' ? e : e.text}`,
+                attr: typeof e === 'string' ? 0 : (e.attr || 0),
+            }));
+            painted.push({ text: ` ${morestr}`, attr: 0 });
+            paint_overlay(painted, {
+                col: 0,
+                withStatus: false,
+                cursor: [morestr.length + 1, page.length],
+            });
+        } else {
+            await paint_corner_nhw_menu(entries, morestr);
+        }
         await flush_screen(1);
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
 
-        if (key === 27) return '\x1b';
-        if (key === 13 || key === 10 || key === 32) return null;
+        if (key === 27) {
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
+            return '\x1b';
+        }
+        // C: Space → next page, or finish (no pick) on last page
+        if (key === 32) {
+            if (curr_page < npages - 1) {
+                curr_page++;
+                continue;
+            }
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
+            return null;
+        }
+        if (key === 13 || key === 10) {
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
+            return null;
+        }
         const ch = String.fromCharCode(key);
-        if (byLet.has(ch)) return ch;
-        // invalid → re-prompt
+        // C: only current-page selectors are in resp (PICK_ONE)
+        if (npages > 1) {
+            const onPage = page.some((e) => {
+                const t = typeof e === 'string' ? e : e.text;
+                return t.length >= 3 && t[1] === ' ' && t[0] === ch;
+            });
+            if (onPage && byLet.has(ch)) {
+                game._menu_overlay = false;
+                await docrt();
+                await flush_screen(1);
+                return ch;
+            }
+        } else if (byLet.has(ch)) {
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
+            return ch;
+        }
+        // invalid / other-page letter → re-prompt same page
     }
 }
 
 /**
  * C ref: invent.c display_inventory(NULL, FALSE) / display_pickinv PICK_NONE.
- * C ref: wintty.c tty_display_nhwindow(NHW_MENU) corner vs fullscreen.
- * Shows invent and waits for a dismiss key.
+ * C ref: wintty.c tty_end_menu — lmax=rows-1; npages>1 → process_menu_window
+ *        "(N of M)" paging (select_menu PICK_NONE). Single-page corner vs
+ *        fullscreen still uses "(end) ".
+ * Shows invent and waits for a dismiss key (Space advances pages).
  */
 export async function display_inventory() {
     const lines = invent_lines(); // includes trailing "(end)"
     const menuItems = lines.slice(0, -1);
+    const rows = display()?.rows || 24;
+    // C ref: wintty.c tty_end_menu lmax = min(52, rows-1)
+    const lmax = Math.min(52, rows - 1);
+    const nitems = menuItems.length;
+    const npages = Math.max(1, Math.floor((nitems + lmax - 1) / lmax));
+
+    // C: npages>1 → process_menu_window pages with "(1 of 2)" etc.
+    // select_menu_pick_none already matches that path (D-0122).
+    if (npages > 1) {
+        await select_menu_pick_none(menuItems);
+        return;
+    }
+
     const morestr = '(end) ';
     const { offx } = nhw_menu_geometry(menuItems, morestr);
     const maxrow = menuItems.length + 1;

@@ -5,13 +5,16 @@ import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, docrt, canspotmon } from './display.js';
-import { paint_corner_nhw_menu } from './invent.js';
+import { paint_corner_nhw_menu, discover_object } from './invent.js';
 import {
     ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE, engulfing_u,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { getlin } from './getline.js';
+import { an, xname } from './objnam.js';
+import { POTION_CLASS } from './objects.js';
 
 const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
@@ -274,4 +277,62 @@ async function namefloorobj_stub() {
             return;
         }
     }
+}
+
+/**
+ * C ref: do_name.c docall_xname — quan=1, clear b/c/odiluted for potions.
+ */
+function docall_xname(obj) {
+    const otemp = {
+        ...obj,
+        quan: 1,
+        blessed: 0,
+        cursed: 0,
+        odiluted: 0,
+        oextra: null,
+    };
+    return an(xname(otemp));
+}
+
+export async function trycall(obj) {
+    if (!obj) return;
+    const ocl = game.objects?.[obj.otyp];
+    if (!ocl) return;
+    if (!ocl.oc_name_known && !ocl.oc_uname) await docall(obj);
+}
+
+/**
+ * C ref: do_name.c docall — prompt "Call <xname>:" then getlin → oc_uname.
+ * Sink-fluid prompt and safe_qbuf fallbacks deferred.
+ */
+export async function docall(obj) {
+    if (!obj?.dknown) return;
+    await flush_screen(1);
+    let qbuf;
+    if (obj.oclass === POTION_CLASS && obj.fromsink) {
+        const descr = game.objects?.[obj.otyp]?.oc_descr
+            || game.objects?.[obj.otyp]?.descr
+            || 'clear';
+        qbuf = `Call a stream of ${descr} fluid:`;
+    } else {
+        qbuf = `Call ${docall_xname(obj)}:`;
+    }
+    const buf = await getlin(qbuf);
+    if (!buf || buf === '\x1b') return;
+
+    const ocl = game.objects?.[obj.otyp];
+    if (!ocl) return;
+    const hadName = !!ocl.oc_uname;
+    ocl.oc_uname = null;
+
+    const name = buf.trim().replace(/\s+/g, ' ');
+    if (!name) {
+        // undiscover_object deferred when clearing a prior call name
+        void hadName;
+    } else {
+        ocl.oc_uname = name.length >= PL_PSIZ ? name.slice(0, PL_PSIZ - 1) : name;
+        // C: discover_object(otyp, FALSE, TRUE, TRUE)
+        discover_object(obj.otyp, false, true, true);
+    }
+    // update_inventory deferred
 }

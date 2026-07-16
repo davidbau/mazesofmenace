@@ -234,6 +234,17 @@ export function bless(otmp) {
     otmp.cursed = false;
 }
 
+/**
+ * C ref: mkobj.c uncurse — clear cursed; bag weight / luck / figurine /
+ * lamplit adjust deferred beyond BAG_OF_HOLDING owt.
+ */
+export function uncurse(otmp) {
+    if (!otmp) return;
+    otmp.cursed = false;
+    const bag = objectNames.indexOf('BAG_OF_HOLDING');
+    if (bag >= 0 && (otmp.otyp | 0) === bag) otmp.owt = weight(otmp);
+}
+
 // C ref: mkobj.c blessorcurse()
 export function blessorcurse(otmp, chance) {
     if (!otmp || otmp.blessed || otmp.cursed) return;

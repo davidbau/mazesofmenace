@@ -18,6 +18,8 @@ import {
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
 import { distant_monnam_none } from './do_name.js';
+import { stairway_at, known_branch_stairs } from './mklev.js';
+import { t_at, trapname } from './trap.js';
 
 export const LOOK_TRADITIONAL = 0;
 export const LOOK_QUICK = 1;
@@ -161,12 +163,34 @@ function look_at_monster_brief(mtmp) {
 }
 
 /**
+ * C ref: pager.c lookat cmap → defsyms[].explanation for stairs/ladder
+ * (S_*stair / S_*ladder / S_br*). Same strings as display back_to_glyph.
+ */
+function stair_ladder_explanation(x, y) {
+    const sway = stairway_at(x, y);
+    const loc = game.level?.at?.(x, y);
+    if (!sway && !(loc && (loc.typ === STAIRS || loc.typ === LADDER))) {
+        return '';
+    }
+    const up = sway ? !!sway.up : !!(loc && !(loc.ladder & LA_DOWN));
+    const isLadder = !!(sway?.isladder) || (loc?.typ === LADDER);
+    if (known_branch_stairs(sway)) {
+        if (isLadder) return up ? 'branch ladder up' : 'branch ladder down';
+        return up ? 'branch staircase up' : 'branch staircase down';
+    }
+    if (isLadder) return up ? 'ladder up' : 'ladder down';
+    return up ? 'staircase up' : 'staircase down';
+}
+
+/**
  * C ref: getpos.c auto_describe → do_screen_description firstmatch /
  * pager.c lookat. Uses displayed glyph (loc.disp_*), not map memory —
  * required for TER_DETECT after clear_glyph_buffer.
  *
  * Named omissions: full do_screen_description symbol table, coord_desc,
- * getpos_getvalid / travel invalid suffixes, underwater unreconnoitered.
+ * getpos_getvalid / travel "(no travel path)" / "(invalid target)"
+ * suffixes, underwater unreconnoitered, object/wall cmap arms.
+ * Trap: tseen `trapname` only (trapped_chest/door / Hallucination deferred).
  */
 function auto_describe_text(cx, cy) {
     const u = game.u || {};
@@ -197,7 +221,15 @@ function auto_describe_text(cx, cy) {
         return 'unexplored area';
     }
 
-    // Non-blank without mon (objects/cmap under TER_* browse) deferred
+    // C lookat glyph_is_cmap stairs/ladder → defsyms explanation (firstmatch)
+    const stair = stair_ladder_explanation(cx, cy);
+    if (stair) return stair;
+
+    // C lookat glyph_is_trap → trap_description (seen map_trap glyph)
+    const trap = t_at(cx, cy);
+    if (trap && trap.tseen) return trapname(trap.ttyp, false);
+
+    // Non-blank without mon (objects/other cmap under TER_* browse) deferred
     return 'unexplored area';
 }
 

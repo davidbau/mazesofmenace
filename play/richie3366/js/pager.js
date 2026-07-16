@@ -17,7 +17,7 @@ import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, more,
-    mon_glyph, obj_glyph, look_shown_at,
+    mon_glyph, obj_glyph, look_shown_at, terrain_glyph,
 } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import {
@@ -32,13 +32,13 @@ import { distant_monnam_none } from './do_name.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
+import { t_at, trapname } from './trap.js';
 import {
     BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
-    STRAT_WAITMASK,
+    STRAT_WAITMASK, IS_WALL,
 } from './const.js';
-import { IS_WALL } from './const.js';
-import { ATR_INVERSE, NO_COLOR } from './terminal.js';
+import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 
 const DAT_DIR = join(
     dirname(fileURLToPath(import.meta.url)),
@@ -497,8 +497,9 @@ function is_stair_spot(x, y) {
  * ≤/≥, so cmap match is ordinary+branch staircase only; lookat overwrites
  * firstmatch with S_br* / S_*stair explanation.
  *
- * C ref: pager.c lookat cmap default — defsyms[].explanation for walls/
- * floors (not stairs_description / dfeature_at destination text).
+ * C ref: pager.c lookat — trap glyph before cmap; cmap default
+ * defsyms[].explanation for walls/floors (not stairs_description /
+ * dfeature_at destination text).
  */
 function brief_at(x, y) {
     const u = game.u || {};
@@ -511,6 +512,12 @@ function brief_at(x, y) {
     }
     const top = objects_at(x, y);
     if (top) return doname(top);
+    // C lookat glyph_is_trap → trap_description (seen map_trap glyph)
+    const trap = t_at(x, y);
+    if (trap && trap.tseen) {
+        // Named omit: trapped_chest_at / trapped_door_at; Hallucination
+        return trapname(trap.ttyp, false);
+    }
     if (is_stair_spot(x, y)) return stair_cmap_explanation(x, y);
     const feat = dfeature_at(x, y);
     if (feat) return feat;
@@ -549,6 +556,48 @@ function describe_stairs_looked(x, y) {
     return { out, first: look, found: 1 };
 }
 
+/**
+ * C ref: pager.c is_swallow_sym — gs.showsyms[S_sw_tl..S_sw_br].
+ * Full showsyms table deferred; match dat/symbols DECgraphics overrides
+ * (tc/ml/mr/bc) plus Primary defaults for unset swallow corners.
+ */
+function is_swallow_sym(c) {
+    if (c == null || c === '') return false;
+    if (game.iflags?.decgraphics) {
+        // DEC: S_sw_ml/mr \xf8→'x', S_sw_tc \xef→'o', S_sw_bc \xf3→'s';
+        // corners keep Primary '/' '\'.
+        return c === 'x' || c === 'o' || c === 's' || c === '/' || c === '\\';
+    }
+    // Primary defsym.h: / - \ | | \ - /
+    return c === '|' || c === '-' || c === '/' || c === '\\';
+}
+
+/**
+ * C ref: pager.c do_screen_description cmap walls + lookat defsyms "wall".
+ * DECgraphics S_vwall ('x') shares showsym with S_sw_ml/mr → swallow
+ * "the interior of a monster" then "a wall" + lookat "(wall)".
+ * Message prefix: C putmixed encglyph uses SO+letter+SI; JS topline has
+ * no decgfx flag, so paint DEC_TO_UNICODE like ROOM's · (D-0083).
+ */
+function describe_wall_looked(loc, x, y) {
+    const look = 'wall';
+    const tg = terrain_glyph(loc, x, y);
+    const raw = tg?.ch || (game.iflags?.decgraphics ? 'x' : '|');
+    // Unseen wall_angle → S_stone space; treat as not a seen wall glyph.
+    if (!raw || raw === ' ') {
+        return { out: '        dark part of a room', first: 'dark part of a room', found: 1 };
+    }
+    const ch = (tg?.dec && DEC_TO_UNICODE[raw]) ? DEC_TO_UNICODE[raw] : raw;
+    if (is_swallow_sym(raw)) {
+        // found>1 → lookat parenthetical; firstmatch = look_buf ("wall")
+        const out = `${ch}        the interior of a monster or a wall (${look})`;
+        return { out, first: look, found: 1 };
+    }
+    // found==1 && !need_to_look → no parenthetical
+    const out = `${ch}        ${an(look)}`;
+    return { out, first: look, found: 1 };
+}
+
 function describe_looked(x, y) {
     const u = game.u || {};
     const plname = game.plname || 'hero';
@@ -571,7 +620,16 @@ function describe_looked(x, y) {
         const nm = doname(pile[0]);
         return { out: `?        ${nm}`, first: simplify_for_db(nm), found: 1 };
     }
+    // C lookat glyph_is_trap → trap_description before cmap
+    const trap = t_at(x, y);
+    if (trap && trap.tseen) {
+        const nm = trapname(trap.ttyp, false);
+        return { out: `^        ${an(nm)}`, first: nm, found: 1 };
+    }
     if (is_stair_spot(x, y)) return describe_stairs_looked(x, y);
+    // C ref: pager.c do_screen_description — walls before room/corr
+    // (cmap order); DECgraphics S_vwall↔swallow mid (D-0425).
+    if (loc && IS_WALL(loc.typ)) return describe_wall_looked(loc, x, y);
     // C ref: pager.c do_screen_description — DECgraphics shares showsym
     // \xfe among S_ndoor/S_room/S_darkroom/S_ice; lookat parenthetical.
     // Full showsyms-driven cmap scan deferred (ASCII ladders/rooms differ).

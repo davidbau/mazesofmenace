@@ -870,7 +870,8 @@ function wall_glyph(loc) {
     return { ch: g.ch, color, dec: g.dec };
 }
 
-function terrain_glyph(loc, x, y) {
+/** C ref: display.c back_to_glyph — terrain ttychar (+ DEC letter). */
+export function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
     const dec = use_decgraphics();
     switch (typ) {
