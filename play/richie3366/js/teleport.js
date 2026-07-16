@@ -18,17 +18,20 @@ import {
     is_hole, Is_stronghold, Is_botlevel,
     In_endgame, In_sokoban, In_quest,
 } from './const.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, mksobj } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
 import { amorphous, throws_rocks } from './monsters.js';
 import { newsym, pline, You_feel } from './display.js';
 import { vision_recalc } from './vision.js';
 import { in_rooms, nomul } from './hack.js';
-import { makeknown } from './invent.js';
+import { makeknown, prinv } from './invent.js';
 import { more_experienced } from './exper.js';
 import { getlin } from './getline.js';
 import { get_level } from './dungeon.js';
 import { depth } from './hacklib.js';
+import { addinv } from './u_init.js';
+
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
 const Trap_Effect_Finished = 0;
@@ -45,6 +48,9 @@ function u_at(x, y) {
 }
 
 function m_at(x, y) {
+    // C: level.monsters[][] — include worm body segs (place_worm_seg).
+    const seg = game._level_monsters?.get(`${x},${y}`);
+    if (seg) return seg;
     const list = game.fmon || [];
     for (const m of list) {
         if (m.mx === x && m.my === y) return m;
@@ -574,12 +580,12 @@ export async function tele() {
  *
  * Ported: wizard/Teleport_control getlin numeric path → get_level →
  * schedule_goto (deferred_goto after rhack); wizard `?` /
- * menu_requested → print_dungeon(TRUE) force_dest. Named omissions:
+ * menu_requested → print_dungeon(TRUE) force_dest; endgame dest
+ * AMULET_OF_YENDOR grant via mksobj+addinv (D-0549). Named omissions:
  * lev_by_name; bymenu=FALSE print_dungeon; random_teleport_level /
- * involuntary; heaven/escape negative; endgame dest + amulet grant;
- * single_level_branch Knox; Quest depth remap polish; find_hell;
- * invocation Gehennom clamp; Nowhere suicide yn; next_to_u leash body;
- * buried ball; debug_fuzzer.
+ * involuntary; heaven/escape negative; single_level_branch Knox;
+ * Quest depth remap polish; find_hell; invocation Gehennom clamp;
+ * Nowhere suicide yn; next_to_u leash body; buried ball; debug_fuzzer.
  */
 export async function level_tele() {
     const u = game.u || {};
@@ -617,8 +623,21 @@ export async function level_tele() {
                 if (!newlev) return;
                 newlevel.dnum = dest.dgn | 0;
                 newlevel.dlevel = dest.lev | 0;
+                // C: In_endgame(&newlevel) && !In_endgame(&u.uz) →
+                // mksobj(AMULET_OF_YENDOR) + addinv + prinv
+                if (In_endgame(newlevel) && !In_endgame(u.uz)) {
+                    if (!(u.uhave?.amulet || u.uhave_amulet)) {
+                        const amu = mksobj(AMULET_OF_YENDOR, true, false);
+                        if (amu) {
+                            const held = addinv(amu);
+                            if (!u.uhave) u.uhave = {};
+                            u.uhave.amulet = 1;
+                            u.uhave_amulet = 1;
+                            await prinv('Endgame prerequisite:', held, 0);
+                        }
+                    }
+                }
                 force_dest = true;
-                // endgame amulet grant deferred
                 break;
             }
             if (++trycnt === 2) {

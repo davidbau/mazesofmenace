@@ -101,11 +101,14 @@ export const M2_MERC = 0x00000200;
 export const M2_DEMON = 0x00000100; /* monflag.h — is a demon */
 export const M2_ORC = 0x00000080; /* monflag.h — is an orc (≡ MH_ORC) */
 export const M2_HUMAN = 0x00000008; /* monflag.h — is a human */
+export const M2_ELF = 0x00000010; /* monflag.h — is an elf */
 export const M2_SHAPESHIFTER = 0x00004000; /* monflag.h — shapeshifting species */
 
 export const M1_FLY = 0x00000001; /* monflag.h — can fly or float */
+export const M1_SWIM = 0x00000002; /* monflag.h — can traverse water */
 export const M1_AMORPHOUS = 0x00000004; /* monflag.h — can flow under doors */
 export const M1_WALLWALK = 0x00000008;
+export const M1_AMPHIBIOUS = 0x00000200; /* monflag.h — survive underwater */
 export const M1_CLING = 0x00000010; /* monflag.h — cling to ceiling */
 export const M1_TUNNEL = 0x00000020; /* monflag.h — can tunnel through rock */
 export const M1_NEEDPICK = 0x00000040; /* monflag.h — needs pick to tunnel */
@@ -235,6 +238,26 @@ export function is_floater(ptr) {
     const mlet = ptr?.mlet;
     return mlet === 'S_EYE' || mlet === 'S_LIGHT';
 }
+/** C ref: mondata.h is_swimmer / amphibious */
+export function is_swimmer(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_SWIM);
+}
+export function amphibious(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_AMPHIBIOUS);
+}
+/** C ref: mondata.h likes_lava / likes_fire */
+const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
+const PM_SALAMANDER = monsterNames.indexOf('PM_SALAMANDER');
+const PM_FIRE_VORTEX = monsterNames.indexOf('PM_FIRE_VORTEX');
+const PM_FLAMING_SPHERE = monsterNames.indexOf('PM_FLAMING_SPHERE');
+export function likes_lava(ptr) {
+    const mndx = ptr?.mndx ?? -1;
+    return mndx === PM_FIRE_ELEMENTAL || mndx === PM_SALAMANDER;
+}
+export function likes_fire(ptr) {
+    const mndx = ptr?.mndx ?? -1;
+    return mndx === PM_FIRE_VORTEX || mndx === PM_FLAMING_SPHERE || likes_lava(ptr);
+}
 export function is_clinger(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_CLING);
 }
@@ -308,6 +331,11 @@ export function is_orc(ptr) {
 /** C ref: mondata.h is_human */
 export function is_human(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_HUMAN);
+}
+
+/** C ref: mondata.h is_elf */
+export function is_elf(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_ELF);
 }
 
 /** C ref: mondata.h likes_gold */

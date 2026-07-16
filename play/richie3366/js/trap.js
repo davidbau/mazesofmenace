@@ -11,7 +11,7 @@ import { rn2, rnd, rn1, d, rnl } from './rng.js';
 import {
     mksobj, place_object, weight, stackobj, relobj_on_death,
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
-    erosion_matters, delobj,
+    erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
 } from './mkobj.js';
 import { find_mac, make_corpse } from './mhitm.js';
 import { mon_explodes } from './explode.js';
@@ -25,6 +25,7 @@ import {
     is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
     amorphous, unsolid, is_whirly, breathless, MZ_SMALL, MZ_HUGE,
+    likes_gems, mons,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
@@ -49,6 +50,7 @@ import {
     TT_NONE, TT_BEARTRAP, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
     HEAD, ARM,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMU, W_WEP, W_SWAPWEP,
+    CORPSTAT_NONE, MM_NOCOUNTBIRTH, MM_NOMSG,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
@@ -63,7 +65,7 @@ import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
 import { maybe_half_phys, nomul, losehp } from './hack.js';
 import { observe_object, encumber_msg } from './invent.js';
-import { makemon } from './makemon.js';
+import { makemon, rndmonnum_adj } from './makemon.js';
 import { A_CHA, A_STR, A_DEX, adjattrib, exercise } from './attrib.js';
 import { tamedog } from './dog.js';
 
@@ -77,7 +79,59 @@ const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
 const PM_BUGBEAR = monsterNames.indexOf('PM_BUGBEAR');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const STATUE = objectNames.indexOf('STATUE');
 const AD_RUST = 24; /* monattk.h */
+
+function sgn(n) {
+    return n < 0 ? -1 : n > 0 ? 1 : 0;
+}
+
+/** C ref: mondata.h is_unicorn — mlet unicorn + likes_gems */
+function is_unicorn(ptr) {
+    return ptr?.mlet === 'S_UNICORN' && likes_gems(ptr);
+}
+
+/**
+ * C ref: trap.c mongone subset — drop from fmon after invent emptied.
+ * Full mongone (timers, worm, shop, light) deferred.
+ */
+function mongone_statue_donor(mtmp) {
+    if (!mtmp) return;
+    const list = game.fmon;
+    if (list) {
+        const i = list.indexOf(mtmp);
+        if (i >= 0) list.splice(i, 1);
+    }
+    mtmp.mx = 0;
+    mtmp.my = 0;
+}
+
+/**
+ * C ref: trap.c mk_trap_statue — living statue under STATUE_TRAP.
+ * rndmonnum_adj(3,6) + unicorn co-align retry; mkcorpstat CORPSTAT_NONE;
+ * temp makemon for invent → add_to_container; mongone.
+ */
+function mk_trap_statue(x, y) {
+    let mptr = null;
+    let trycount = 10;
+    do {
+        mptr = mons(rndmonnum_adj(3, 6));
+    } while (--trycount > 0 && is_unicorn(mptr)
+        && sgn(game.u?.ualign?.type ?? 0) === sgn(mptr?.maligntyp ?? 0));
+    const statue = mkcorpstat(STATUE, null, mptr, x, y, CORPSTAT_NONE);
+    if (!statue) return;
+    const mtmp = makemon(mons(statue.corpsenm), 0, 0,
+        MM_NOCOUNTBIRTH | MM_NOMSG);
+    if (!mtmp) return;
+    while (mtmp.minvent) {
+        const otmp = mtmp.minvent;
+        otmp.owornmask = 0;
+        obj_extract_self(otmp);
+        add_to_container(statue, otmp);
+    }
+    statue.owt = weight(statue);
+    mongone_statue_donor(mtmp);
+}
 // C ref: trap.c A_gush_of_water_hits
 const A_gush_of_water_hits = 'A gush of water hits';
 const DART = objectNames.indexOf('DART');
@@ -334,10 +388,10 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
 }
 
 // C ref: trap.c maketrap — creation + SQKY_BOARD / HOLE|TRAPDOOR /
-// ROLLING_BOULDER_TRAP mkroll_launch RNG path.
-// Named omissions: overwrite/furniture/terrain gates, STATUE_TRAP living
-// statue, pit conjoined/shop damage/terrain morph, Sokoban finish,
-// drawbridge-under pool/lava in is_pool_or_lava, launch_obj trigger.
+// ROLLING_BOULDER_TRAP mkroll_launch / STATUE_TRAP mk_trap_statue.
+// Named omissions: overwrite/furniture/terrain gates, pit conjoined/
+// shop damage/terrain morph, Sokoban finish, drawbridge-under
+// pool/lava in is_pool_or_lava, launch_obj trigger; mongone full body.
 // TELEP teledest may be set by caller after create (themerms make_a_trap).
 export function maketrap(x, y, typ) {
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
@@ -375,6 +429,9 @@ export function maketrap(x, y, typ) {
     switch (typ) {
     case SQKY_BOARD:
         ttmp.tnote = choose_trapnote(ttmp);
+        break;
+    case STATUE_TRAP: /* create a "living" statue */
+        mk_trap_statue(x, y);
         break;
     case ROLLING_BOULDER_TRAP:
         mkroll_launch(ttmp, x, y, BOULDER, 1);

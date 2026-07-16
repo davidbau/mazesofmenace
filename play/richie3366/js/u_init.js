@@ -1509,6 +1509,11 @@ export function setup_role_race_from_rc(opts = {}) {
         mnum: role.mnum,
         petnum: role.petnum ?? NON_PM,
         neminum: role.neminum ?? NON_PM,
+        // C: roles[] enemy1/2 — rndmonst_adj → qt_montype
+        enemy1num: role.enemy1num ?? NON_PM,
+        enemy2num: role.enemy2num ?? NON_PM,
+        enemy1sym: role.enemy1sym ?? null,
+        enemy2sym: role.enemy2sym ?? null,
         // C: roles[].allow — welcome gender adj + chargen filters
         allow: role.allow ?? 0,
         filecode: ROLE_FILECODE[role.name.m] || 'Tou',

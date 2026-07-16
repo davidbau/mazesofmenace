@@ -2,6 +2,7 @@
 // C ref: hacklib.c, dungeon.c helpers
 
 import { game } from './gstate.js';
+import { In_endgame } from './const.js';
 
 export function isok(x, y) {
     const { COLNO, ROWNO } = await_const();
@@ -60,11 +61,18 @@ export function builds_up(uz) {
 
 /**
  * C ref: dungeon.c level_difficulty — depth, with builds_up adjustment.
- * Named omissions: In_endgame sanctum+ulevel/2; amulet deepest_lev_reached;
- * W_tower #if0 arm.
+ * Ported: In_endgame → depth(sanctum)+ulevel/2. Named omissions:
+ * amulet deepest_lev_reached; W_tower #if0 arm.
  */
 export function level_difficulty(uz) {
     const lev = uz || game?.u?.uz;
+    // C: if (In_endgame(&u.uz)) res = depth(&sanctum_level) + u.ulevel / 2;
+    if (In_endgame(lev)) {
+        const sanctum = game?.sanctum_level;
+        const sdepth = sanctum ? (depth(sanctum) || 1) : (depth(lev) || 1);
+        const ulev = (game?.u?.ulevel | 0) || 1;
+        return sdepth + Math.trunc(ulev / 2);
+    }
     let res = depth(lev) || 1;
     if (builds_up(lev)) {
         const dptr = game?.dungeons?.[lev.dnum | 0];

@@ -1,6 +1,7 @@
 // quest.js — quest branch arrival hooks.
 // C ref: quest.c onquest / on_start / on_locate / on_goal.
-// Named omissions: locate/goal messages; nexttime/othertime; chat paths.
+// Named omissions: on_goal; nexttime/othertime; locate_next beyond Bar;
+// chat paths.
 
 import { game } from './gstate.js';
 import { In_quest } from './const.js';
@@ -50,6 +51,23 @@ async function on_start() {
 }
 
 /**
+ * C ref: quest.c on_locate — locate_first/next only when arriving from above.
+ * Always marks first_locate on first visit (even from below).
+ */
+async function on_locate() {
+    const u = game.u;
+    const qs = game.quest_status || (game.quest_status = {});
+    if (qs.killed_nemesis) return;
+    const from_above = (u.uz0?.dlevel | 0) < (u.uz?.dlevel | 0);
+    if (!qs.first_locate) {
+        if (from_above) await qt_pager('locate_first');
+        qs.first_locate = true;
+    } else if (from_above) {
+        await qt_pager('locate_next');
+    }
+}
+
+/**
  * C ref: quest.c onquest — special quest level arrival messages.
  * Not_firsttime = on_level(uz0, uz); skipped when staying on same level.
  */
@@ -63,9 +81,8 @@ export async function onquest() {
     if (!Is_special(u.uz)) return;
 
     if (Is_qstart(u.uz)) await on_start();
-    else if (Is_qlocate(u.uz)) {
-        // on_locate deferred (C-JS-MAP)
-    } else if (Is_nemesis(u.uz)) {
+    else if (Is_qlocate(u.uz)) await on_locate();
+    else if (Is_nemesis(u.uz)) {
         // on_goal deferred (C-JS-MAP)
     }
 }

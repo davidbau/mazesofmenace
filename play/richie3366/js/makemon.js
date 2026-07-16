@@ -44,23 +44,34 @@ import {
     mindless,
     is_floater,
     is_mercenary,
+    is_elf,
     is_ndemon,
     is_shapeshifter,
     is_vampire,
     is_vampshifter,
     vampshifted,
+    amorphous,
+    unsolid,
+    passes_walls,
+    noncorporeal,
 } from './monsters.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
-    GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, In_mines, In_sokoban,
+    MM_ADJACENTOK, MM_NOTAIL,
+    GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
+    In_mines, In_sokoban, In_endgame,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
     M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
+    In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
-import { mksobj, mkobj, mkobj_at, weight, objects_at, curse } from './mkobj.js';
+import {
+    mksobj, mkobj, mkobj_at, weight, objects_at, curse, is_crackable,
+    set_corpsenm, stop_timer, add_to_container,
+} from './mkobj.js';
 
 /** Local t_at — avoid makemon↔trap import cycle; matches trap.js t_at. */
 function t_at_local(x, y) {
@@ -91,6 +102,10 @@ import { cansee } from './vision.js';
 import { newsym } from './display.js';
 import { christen_monst } from './do_name.js';
 import { get_shop_item } from './shknam.js';
+import {
+    get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
+    worm_mon_at,
+} from './worm.js';
 
 /** C ref: shknam.c neweshk — allocate eshk for MM_ESHK makemon. */
 export function neweshk(mtmp) {
@@ -266,7 +281,32 @@ function temperature_shift(ptr) {
 }
 
 // C ref: makemon.c rndmonst_adj()
+// C: quest_dnum gate → questpgr.c qt_montype() before ordinary weights
+export function qt_montype() {
+    const urole = game.urole || {};
+    if (rn2(5)) {
+        const qpm = urole.enemy1num ?? NON_PM;
+        if (qpm !== NON_PM && rn2(5)
+            && !((game.mvitals?.[qpm]?.mvflags ?? 0) & G_GENOD)) {
+            return mons(qpm);
+        }
+        return mkclass(urole.enemy1sym, 0);
+    }
+    const qpm = urole.enemy2num ?? NON_PM;
+    if (qpm !== NON_PM && rn2(5)
+        && !((game.mvitals?.[qpm]?.mvflags ?? 0) & G_GENOD)) {
+        return mons(qpm);
+    }
+    return mkclass(urole.enemy2sym, 0);
+}
+
 export function rndmonst_adj(minadj = 0, maxadj = 0) {
+    // C: if (u.uz.dnum == quest_dnum && rn2(7) && (ptr = qt_montype()) != 0)
+    if (In_quest(game.u?.uz) && rn2(7)) {
+        const qptr = qt_montype();
+        if (qptr) return qptr;
+    }
+
     const zlevel = level_difficulty();
     const ulevel = game.u?.ulevel ?? 1;
     const minmlev = monmin_difficulty(zlevel) + minadj;
@@ -503,14 +543,22 @@ function adj_lev(ptr) {
 // level-0 and level-1 monsters always start with mhpmax >= 2.
 function newmonhp(mon, ptr) {
     mon.m_lev = adj_lev(ptr);
-    let basehp;
-    if (!mon.m_lev) {
+    let basehp = 0;
+    const mndx = ptr.mndx | 0;
+    // Named omission: is_golem golemhp; is_rider d(10,8); mlevel>49 fixed HP
+    if (ptr.mlet === 'S_DRAGON' && mndx >= pm('GRAY_DRAGON')) {
+        // C: adult dragons — N*(4+rnd(4)) before endgame, N*8 once there
+        basehp = mon.m_lev | 0;
+        mon.mhpmax = mon.mhp = In_endgame(game.u?.uz)
+            ? (8 * basehp)
+            : (4 * basehp + d(basehp, 4));
+    } else if (!mon.m_lev) {
         basehp = 1; /* minimum is 1, increased to 2 below when rnd(4)=1 */
         mon.mhpmax = mon.mhp = rnd(4);
     } else {
         basehp = mon.m_lev | 0;
         mon.mhpmax = mon.mhp = d(basehp, 8);
-        // Named omission: is_home_elemental mhp*=3; golem/rider/dragon arms
+        // Named omission: is_home_elemental mhp*=3
     }
     if (mon.mhpmax === basehp) {
         mon.mhpmax += 1;
@@ -690,18 +738,50 @@ function m_initthrow(mtmp, otyp_, oquan) {
     mpickobj(mtmp, otmp);
 }
 
+// C ref: worn.c which_armor — avoid makemon↔trap cycle
+function which_armor_local(mtmp, mask) {
+    if (!mtmp) return null;
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if ((otmp.owornmask || 0) & mask) return otmp;
+    }
+    return null;
+}
+
+// C ref: do_wear.c hard_helmet — metallic or glass helmet
+function hard_helmet_local(obj) {
+    if (!obj) return false;
+    const oc = objects[obj.otyp] ?? game.objects?.[obj.otyp];
+    if (!oc || (obj.oclass ?? oc.oc_class) !== ARMOR_CLASS) return false;
+    // ARM_HELM = 2 (objclass.h oc_armcat / oc_skill for helms)
+    if ((oc.oc_skill ?? oc.oc_armcat ?? -1) !== 2) return false;
+    const mat = oc.oc_material ?? 0;
+    const IRON = 11, MITHRIL = 15;
+    if (mat >= IRON && mat <= MITHRIL) return true;
+    return is_crackable(obj);
+}
+
 // C ref: muse.c rnd_offensive_item — ordinary non-animal path only
 function rnd_offensive_item(mtmp) {
     const pm_ = mtmp.data;
     const difficulty = mon_difficulty(pm_.mndx);
-    // animal / expl / mindless / ghost / kop → 0 (no RNG); early armed mlets skip
-    if (pm_.mlet === 'S_GHOST' || pm_.mlet === 'S_KOP') return 0;
+    const AT_EXPL = 13;
+    // animal / expl / mindless / ghost / kop → 0 (no RNG)
+    if (is_animal(pm_) || attacktype(pm_, AT_EXPL) || mindless(pm_)
+        || pm_.mlet === 'S_GHOST' || pm_.mlet === 'S_KOP') {
+        return 0;
+    }
     if (difficulty > 7 && !rn2(35)) return otyp('WAN_DEATH');
     switch (rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0))) {
-    case 0:
-        // hard_helmet / amorphous omitted → C FALLTHROUGH to case 1 when soft helm;
-        // for mklev commons without helmet, C returns SCR_EARTH. Match that.
-        return otyp('SCR_EARTH');
+    case 0: {
+        // C: SCR_EARTH only if hard helm / amorphous / walls / noncorporeal / unsolid;
+        // else FALLTHROUGH → WAN_STRIKING (D-0535)
+        const helmet = which_armor_local(mtmp, W_ARMH);
+        if (hard_helmet_local(helmet) || amorphous(pm_)
+            || passes_walls(pm_) || noncorporeal(pm_) || unsolid(pm_)) {
+            return otyp('SCR_EARTH');
+        }
+    }
+    // FALLTHROUGH
     case 1: return otyp('WAN_STRIKING');
     case 2: return otyp('POT_ACID');
     case 3: return otyp('POT_CONFUSION');
@@ -876,8 +956,14 @@ function m_initweap(mtmp) {
             case pm('WATCHMAN'):
             case pm('SOLDIER'):
                 if (!rn2(3)) {
-                    // polearm pick — P_POLEARMS skill filter deferred → PARTISAN
-                    w1 = otyp('PARTISAN');
+                    // C: makemon.c m_initweap — rn1(BEC_DE_CORBIN-PARTISAN+1,
+                    // PARTISAN) until objects[w1].oc_skill == P_POLEARMS
+                    // (lance/mattock historically mid-range; excluded by skill)
+                    const partisan = otyp('PARTISAN');
+                    const bec = otyp('BEC_DE_CORBIN');
+                    do {
+                        w1 = rn1(bec - partisan + 1, partisan);
+                    } while ((game.objects[w1]?.oc_skill ?? 0) !== P_POLEARMS);
                     w2 = rn2(2) ? otyp('DAGGER') : otyp('KNIFE');
                 } else {
                     w1 = rn2(2) ? otyp('SPEAR') : otyp('SHORT_SWORD');
@@ -902,6 +988,43 @@ function m_initweap(mtmp) {
             if (w1) mongets(mtmp, w1);
             if (!w2 && w1 !== otyp('DAGGER') && !rn2(4)) w2 = otyp('KNIFE');
             if (w2) mongets(mtmp, w2);
+        } else if (is_elf(ptr)) {
+            // C: makemon.c m_initweap S_HUMAN is_elf kit
+            if (rn2(2)) {
+                mongets(mtmp, rn2(2)
+                    ? otyp('ELVEN_MITHRIL_COAT')
+                    : otyp('ELVEN_CLOAK'));
+            }
+            if (rn2(2)) {
+                mongets(mtmp, otyp('ELVEN_LEATHER_HELM'));
+            } else if (!rn2(4)) {
+                mongets(mtmp, otyp('ELVEN_BOOTS'));
+            }
+            if (rn2(2)) mongets(mtmp, otyp('ELVEN_DAGGER'));
+            switch (rn2(3)) {
+            case 0:
+                if (!rn2(4)) mongets(mtmp, otyp('ELVEN_SHIELD'));
+                if (rn2(3)) mongets(mtmp, otyp('ELVEN_SHORT_SWORD'));
+                mongets(mtmp, otyp('ELVEN_BOW'));
+                m_initthrow(mtmp, otyp('ELVEN_ARROW'), 12);
+                break;
+            case 1:
+                mongets(mtmp, otyp('ELVEN_BROADSWORD'));
+                if (rn2(2)) mongets(mtmp, otyp('ELVEN_SHIELD'));
+                break;
+            case 2:
+                if (rn2(2)) {
+                    mongets(mtmp, otyp('ELVEN_SPEAR'));
+                    mongets(mtmp, otyp('ELVEN_SHIELD'));
+                }
+                break;
+            }
+            if (mm === pm('ELVEN_MONARCH')) {
+                if (rn2(3) || (game.in_mklev && Is_earthlevel(game.u?.uz))) {
+                    mongets(mtmp, otyp('PICK_AXE'));
+                }
+                if (!rn2(50)) mongets(mtmp, otyp('CRYSTAL_BALL'));
+            }
         } else if (
             // C: ptr->msound == MS_GUARDIAN — tables omit msound; gate by mndx
             mm === pm('STUDENT') || mm === pm('ATTENDANT')
@@ -972,7 +1095,7 @@ function m_initweap(mtmp) {
                 break;
             }
         }
-        // is_elf / MS_PRIEST / ninja deferred
+        // MS_PRIEST / quest cleric / PM_NINJA deferred (C-JS-MAP)
         break;
     case 'S_DEMON':
         // C: named demon specials then is_demon → FALLTHROUGH default
@@ -1147,7 +1270,8 @@ function rnd_misc_item(mtmp) {
     }
 }
 
-// C ref: makemon.c m_initinv — S_GNOME candle, PM_SHOPKEEPER kit, trailing misc
+// C ref: makemon.c m_initinv — S_GNOME candle, S_MUMMY wrap, S_QUANTMECH box,
+//   PM_SHOPKEEPER, trailing misc
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
     if (Is_rogue_level(game.u?.uz)) return;
@@ -1175,6 +1299,25 @@ function m_initinv(mtmp) {
     case 'S_LEPRECHAUN':
         // C ref: makemon.c m_initinv S_LEPRECHAUN — mkmonmoney(d(level_difficulty(),30))
         mkmonmoney(mtmp, d(level_difficulty(), 30));
+        break;
+    case 'S_MUMMY':
+        // C ref: makemon.c m_initinv S_MUMMY — rn2(7) → MUMMY_WRAPPING
+        if (rn2(7)) mongets(mtmp, otyp('MUMMY_WRAPPING'));
+        break;
+    case 'S_QUANTMECH':
+        // C ref: makemon.c m_initinv S_QUANTMECH — rare SchroedingersBox
+        if (!rn2(20) && ptr.mndx === pm('QUANTUM_MECHANIC')) {
+            const otmp = mksobj(otyp('LARGE_BOX'), false, false);
+            const catcorpse = mksobj(otyp('CORPSE'), true, false);
+            if (catcorpse) {
+                otmp.spe = 1; // flag for special SchroedingersBox
+                set_corpsenm(catcorpse, pm('HOUSECAT'));
+                stop_timer(ROT_CORPSE, catcorpse);
+                add_to_container(otmp, catcorpse);
+                otmp.owt = weight(otmp);
+            }
+            mpickobj(mtmp, otmp);
+        }
         break;
     case 'S_HUMAN':
         if (is_mercenary(ptr)) {
@@ -1274,7 +1417,7 @@ function m_initinv(mtmp) {
         // elf / priest / guardian arms deferred
         break;
     default:
-        // Other m_initinv bodies (nymph, giant, …) deferred
+        // Other m_initinv bodies (S_DEMON, S_GIANT, S_WRAITH, S_LICH, …) deferred
         break;
     }
 
@@ -1396,6 +1539,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
     let ptr = mdat;
     const anymon = !ptr;
     const allow_minvent = (mmflags & NO_MINVENT) === 0;
+    const allowtail = (mmflags & MM_NOTAIL) === 0;
     const byyou = !!(game.u && x === game.u.ux && y === game.u.uy);
     const gpflags = GP_CHECKSCARY | GP_AVOID_MONPOS;
 
@@ -1418,10 +1562,26 @@ export function makemon(mdat, x, y, mmflags = 0) {
         y = cc.y;
     }
 
-    // Does monster already exist at the position?
-    if (game.fmon) {
-        for (const m of game.fmon) {
-            if (m.mx === x && m.my === y) return null;
+    // C: MON_AT(x,y) via level.monsters[][] — includes worm body segs
+    // (rm.h place_worm_seg). Heads are on fmon; segs on _level_monsters.
+    {
+        let occupied = false;
+        if (game.fmon) {
+            for (const m of game.fmon) {
+                if (m.mx === x && m.my === y) {
+                    occupied = true;
+                    break;
+                }
+            }
+        }
+        // D-0545: worm tail cells must reject like C MON_AT (no rndmonst burn)
+        if (!occupied && worm_mon_at(x, y)) occupied = true;
+        if (occupied) {
+            if (!(mmflags & MM_ADJACENTOK)) return null;
+            const cc = { x: 0, y: 0 };
+            if (!enexto_core(cc, x, y, ptr, gpflags)) return null;
+            x = cc.x;
+            y = cc.y;
         }
     }
 
@@ -1472,6 +1632,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
             { x: 0, y: 0 },
         ],
         minvent: null,
+        wormno: 0,
     };
 
     // C: MM_EGD / MM_ESHK / MM_EMIN → new* before m_id assignment
@@ -1564,6 +1725,19 @@ export function makemon(mdat, x, y, mmflags = 0) {
             && !(game.u?.uhave?.amulet || game.u?.uhave_amulet)
             && rn2(5)) {
             mtmp.msleeping = 1;
+        }
+    }
+
+    // C: PM_LONG_WORM → get_wormno / initworm / place_worm_tail_randomly
+    // Named omissions: dprince bribe peace; raven BEC_DE_CORBIN; emin/angel
+    // roaming after worm (still before invent in C — deferred).
+    if (ptr.mndx === pm('LONG_WORM')) {
+        mtmp.wormno = get_wormno();
+        if (mtmp.wormno) {
+            initworm(mtmp, allowtail ? rn2(5) : 0);
+            if (count_wsegs(mtmp)) {
+                place_worm_tail_randomly(mtmp, x, y);
+            }
         }
     }
 

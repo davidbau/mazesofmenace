@@ -36,6 +36,7 @@ import { otyp_uses_known } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
+    HATCH_EGG, MAX_EGG_HATCH_TIME,
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
@@ -469,8 +470,9 @@ function special_corpse(num) {
  * C ref: timeout.c timer queue (gt.timer_base) — object timers only.
  * start_timer inserts by absolute timeout (moves+when); run_timers fires
  * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract;
- * REVIVE_MON / ZOMBIFY_MON / burn / hatch / fig / melt deferred (no-op
- * fire clears the queue entry).
+ * HATCH_EGG queued via attach_egg_hatch_timeout (D-0533) but hatch_egg
+ * callback deferred; REVIVE_MON / ZOMBIFY_MON / burn / fig / melt deferred
+ * (no-op fire clears the queue entry).
  */
 function timer_base() {
     if (!game._timer_base) game._timer_base = null;
@@ -494,6 +496,30 @@ export function obj_stop_timers(obj) {
         curr = next;
     }
     obj.timed = 0;
+}
+
+/**
+ * C ref: timeout.c stop_timer — remove one (action,obj) timer; return
+ * remaining turns (timeout − moves), or 0 if none. cleanup_burn deferred.
+ */
+export function stop_timer(action, obj) {
+    if (!obj) return 0;
+    const g = timer_base();
+    const moves = game.moves | 0;
+    let prev = null;
+    let curr = g._timer_base;
+    while (curr) {
+        const next = curr.next;
+        if (curr.kind === TIMER_OBJECT && curr.action === action && curr.obj === obj) {
+            if (prev) prev.next = next;
+            else g._timer_base = next;
+            obj.timed = Math.max(0, (obj.timed | 0) - 1);
+            return (curr.timeout | 0) - moves;
+        }
+        prev = curr;
+        curr = next;
+    }
+    return 0;
 }
 
 /**
@@ -527,6 +553,26 @@ export function start_timer(when, kind, action, obj) {
     else g._timer_base = gnu;
     if (kind === TIMER_OBJECT) obj.timed = (obj.timed | 0) + 1;
     return when;
+}
+
+/**
+ * C ref: timeout.c attach_egg_hatch_timeout — stop prior HATCH_EGG; if
+ * when==0 roll rnd(i)>150 for i in 151..MAX_EGG_HATCH_TIME; queue timer.
+ * hatch_egg body deferred (run_timers drops HATCH_EGG entries).
+ */
+export function attach_egg_hatch_timeout(egg, when = 0) {
+    if (!egg) return;
+    stop_timer(HATCH_EGG, egg);
+    when = when | 0;
+    if (!when) {
+        for (let i = (MAX_EGG_HATCH_TIME - 50) + 1; i <= MAX_EGG_HATCH_TIME; i++) {
+            if (rnd(i) > 150) {
+                when = i;
+                break;
+            }
+        }
+    }
+    if (when) start_timer(when, TIMER_OBJECT, HATCH_EGG, egg);
 }
 
 /**
@@ -571,20 +617,29 @@ export async function run_timers() {
     }
 }
 
-// C ref: mkobj.c set_corpsenm — stop timers, set id, restart CORPSE timeout
+// C ref: mkobj.c set_corpsenm — stop timers, set id, restart CORPSE/EGG timeouts
 export function set_corpsenm(obj, id) {
     if (!obj) return;
+    let when = 0;
     if (obj.timed) {
-        // EGG hatch-preserve deferred; corpse/figurine clear all
-        obj_stop_timers(obj);
+        // C: EGG preserves remaining hatch via stop_timer(HATCH_EGG); else clear all
+        if (otypName(obj.otyp) === 'EGG') {
+            when = stop_timer(HATCH_EGG, obj);
+        } else {
+            obj_stop_timers(obj);
+        }
     }
     obj.corpsenm = id;
     const name = otypName(obj.otyp);
     if (name === 'CORPSE') {
         start_corpse_timeout(obj);
         obj.owt = weight(obj);
-    } else if (name === 'STATUE' || name === 'FIGURINE' || name === 'TIN'
-        || name === 'EGG') {
+    } else if (name === 'EGG') {
+        // C: attach_egg_hatch_timeout when typed + !dead_species; no owt here
+        if (id !== NON_PM && !dead_species(id, true)) {
+            attach_egg_hatch_timeout(obj, when);
+        }
+    } else if (name === 'STATUE' || name === 'FIGURINE' || name === 'TIN') {
         obj.owt = weight(obj);
     }
 }
@@ -785,8 +840,13 @@ function mksobj_init(otmp, artif) {
         break;
     }
     case AMULET_CLASS: {
-        // C: if (rn2(10) && special) curse; else blessorcurse(10)
+        // C ref: mkobj.c mksobj_init AMULET_CLASS
         const n = otypName(otmp.otyp);
+        if (n === 'AMULET_OF_YENDOR') {
+            if (!game.context) game.context = {};
+            game.context.made_amulet = true;
+        }
+        // C: if (rn2(10) && special) curse; else blessorcurse(10)
         if (rn2(10) && (n === 'AMULET_OF_STRANGULATION' || n === 'AMULET_OF_CHANGE'
             || n === 'AMULET_OF_RESTFUL_SLEEP')) {
             curse(otmp);
@@ -954,8 +1014,8 @@ export function mksobj(otyp, init, artif) {
     otmp.o_id = next_ident();
     if (init) mksobj_init(otmp, artif);
 
-    // Post-init regardless: CORPSE/STATUE gender + timer
-    // C ref: mkobj.c mksobj after mksobj_init
+    // Post-init regardless: CORPSE/STATUE/FIGURINE gender + timer; EGG hatch
+    // C ref: mkobj.c mksobj after mksobj_init — FALLTHROUGH to set_corpsenm
     const name = otypName(otyp);
     if (name === 'CORPSE' || name === 'STATUE' || name === 'FIGURINE') {
         if (name === 'CORPSE' && otmp.corpsenm < 0) {
@@ -978,6 +1038,9 @@ export function mksobj(otyp, init, artif) {
                         : (rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE);
         }
         // C FALLTHROUGH → set_corpsenm (CORPSE starts rot timer)
+        set_corpsenm(otmp, otmp.corpsenm);
+    } else if (name === 'EGG') {
+        // C: case EGG: set_corpsenm → attach_egg_hatch_timeout for typed eggs
         set_corpsenm(otmp, otmp.corpsenm);
     } else if (name === 'SPE_NOVEL') {
         // C ref: mkobj.c mksobj SPE_NOVEL — even when !init

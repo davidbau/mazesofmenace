@@ -360,7 +360,10 @@ export function wakeup(mtmp, via_attack) {
 }
 
 export function m_at(x, y) {
-    // C: level.monsters[][] — steed is remove_monster'd while mounted
+    // C: level.monsters[][] — worm segs via place_worm_seg; heads on fmon.
+    // Steed is remove_monster'd while mounted.
+    const seg = game._level_monsters?.get(`${x},${y}`);
+    if (seg) return seg;
     const list = game.fmon || [];
     const steed = game.u?.usteed;
     for (const m of list) {

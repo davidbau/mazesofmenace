@@ -25,8 +25,10 @@ import {
     u_on_newpos,
     u_on_rndspot,
     mklev,
+    fumaroles,
 } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
+import { Is_waterlevel, Is_airlevel } from './const.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { initrack, save_track, rest_track } from './track.js';
 import { m_at, mnexto, hide_monst } from './mon.js';
@@ -472,6 +474,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let mtmp = m_at(u.ux, u.uy);
     if (mtmp && mtmp !== u.usteed) {
         await u_collide_m(mtmp);
+    }
+
+    // C: do.c goto_level — movebubbles / fumaroles before vision_recalc
+    if (Is_waterlevel(u.uz) || Is_airlevel(u.uz)) {
+        // movebubbles deferred
+    } else if (game.level?.flags?.fumaroles) {
+        fumaroles();
     }
 
     vision_reset();

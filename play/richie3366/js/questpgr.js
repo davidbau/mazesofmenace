@@ -176,6 +176,17 @@ Without thought, you ready your weapon, and mutter under your breath:
     "By %d, there will be blood spilt today."`,
 };
 
+/** C ref: dat/quest.lua locate_first (Barbarian exercised by seed0373). */
+const QUEST_LOCATE_FIRST = {
+    Bar: `The scent of water comes to you in the desert breeze.  You know that
+you have located %i.`,
+};
+
+/** C ref: dat/quest.lua locate_next (Barbarian). */
+const QUEST_LOCATE_NEXT = {
+    Bar: `Yet again you have a chance to infiltrate %i.`,
+};
+
 /** C ref: questpgr.c ldrname */
 function ldrname() {
     const i = game.urole?.ldrnum ?? NON_PM;
@@ -243,6 +254,8 @@ export async function qt_pager(msgid) {
     const code = game.urole?.filecode || 'Tou';
     let raw = null;
     if (msgid === 'firsttime') raw = QUEST_FIRSTTIME[code] || null;
+    else if (msgid === 'locate_first') raw = QUEST_LOCATE_FIRST[code] || null;
+    else if (msgid === 'locate_next') raw = QUEST_LOCATE_NEXT[code] || null;
     // Other msgid bodies deferred (C-JS-MAP)
     if (!raw) return;
 
