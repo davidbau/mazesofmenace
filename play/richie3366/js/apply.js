@@ -11,6 +11,7 @@ import {
 import { P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline } from './insight.js';
+import { compactify_invlets } from './invent.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -33,6 +34,16 @@ const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
 const ICE_BOX = objectNames.indexOf('ICE_BOX');
+const WOODEN_FLUTE = objectNames.indexOf('WOODEN_FLUTE');
+const MAGIC_FLUTE = objectNames.indexOf('MAGIC_FLUTE');
+const TOOLED_HORN = objectNames.indexOf('TOOLED_HORN');
+const FROST_HORN = objectNames.indexOf('FROST_HORN');
+const FIRE_HORN = objectNames.indexOf('FIRE_HORN');
+const WOODEN_HARP = objectNames.indexOf('WOODEN_HARP');
+const MAGIC_HARP = objectNames.indexOf('MAGIC_HARP');
+const BUGLE = objectNames.indexOf('BUGLE');
+const LEATHER_DRUM = objectNames.indexOf('LEATHER_DRUM');
+const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
 
 /** C invent getobj callback ranks (hack.h). */
 const GETOBJ_EXCLUDE = -3;
@@ -129,6 +140,12 @@ function apply_lets() {
     return lets.join('');
 }
 
+/** C invent.c getobj: if (suggested > 5) compactify(bp) for prompt only. */
+function apply_prompt_lets(raw) {
+    if (!raw || raw.length <= 5) return raw;
+    return compactify_invlets(raw);
+}
+
 /** True when invent has DOWNPLAY (forces prompt even if SUGGEST empty). */
 function apply_has_downplay() {
     for (const o of game.invent || []) {
@@ -153,11 +170,13 @@ async function getobj_apply() {
 
     for (;;) {
         await flush_topl_more();
-        const lets = apply_lets();
-        if (!lets && !apply_has_downplay()) {
+        const rawLets = apply_lets();
+        if (!rawLets && !apply_has_downplay()) {
             await pline("You don't have anything to use or apply.");
             return null;
         }
+        // C: Strcpy(lets, bp); if (suggested > 5) compactify(bp); prompt uses bp
+        const lets = apply_prompt_lets(rawLets);
         const query = lets
             ? `What do you want to use or apply? [${lets} or ?*]`
             : 'What do you want to use or apply? [*]';
@@ -174,9 +193,9 @@ async function getobj_apply() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            // C: display_pickinv(lets or all, want_reply) → selected invlet
+            // C: display_pickinv uses non-compacted lets[]
             const { display_pickinv_reply } = await import('./invent.js');
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : lets);
+            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
@@ -271,9 +290,10 @@ async function use_stethoscope(_obj) {
 
 /**
  * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE + sack/bag
- * use_container. Named omissions: nohands/capacity; retouch; do_break_wand;
- * flip_through_book; flip_coin; cream pie/jelly; whip/grapple/blindfold/
- * lenses; use_stone; use_pole/use_pick_axe; traps; oil; BoT; most tools.
+ * use_container + musical instruments (do_play_instrument). Named omissions:
+ * nohands/capacity; retouch; do_break_wand; flip_through_book; flip_coin;
+ * cream pie/jelly; whip/grapple/blindfold/lenses; use_stone; use_pole/
+ * use_pick_axe; traps; oil; BoT; most non-instrument tools.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {
@@ -305,6 +325,18 @@ export async function doapply() {
     if (obj.otyp === BAG_OF_TRICKS) {
         await pline("Sorry, I don't know how to use that.");
         return false;
+    }
+
+    // C apply.c: WOODEN_FLUTE..DRUM_OF_EARTHQUAKE → do_play_instrument
+    if (obj.otyp === WOODEN_FLUTE || obj.otyp === MAGIC_FLUTE
+        || obj.otyp === TOOLED_HORN || obj.otyp === FROST_HORN
+        || obj.otyp === FIRE_HORN || obj.otyp === WOODEN_HARP
+        || obj.otyp === MAGIC_HARP || obj.otyp === BUGLE
+        || obj.otyp === LEATHER_DRUM || obj.otyp === DRUM_OF_EARTHQUAKE) {
+        const { do_play_instrument } = await import('./music.js');
+        const { ECMD_TIME } = await import('./const.js');
+        const res = await do_play_instrument(obj);
+        return res === ECMD_TIME;
     }
 
     // Other apply otyps deferred

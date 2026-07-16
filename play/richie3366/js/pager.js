@@ -27,7 +27,7 @@ import { stairway_at, known_branch_stairs } from './mklev.js';
 import { getpos, LOOK_ONCE, LOOK_VERBOSE } from './getpos.js';
 import { mon_at } from './uhitm.js';
 import { objects_at } from './mkobj.js';
-import { doname, an } from './objnam.js';
+import { doname, an, xname, singular } from './objnam.js';
 import { distant_monnam_none } from './do_name.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
@@ -47,6 +47,8 @@ const DAT_DIR = join(
 
 const CHK_USR = 1;
 const CHK_DONT_ASK = 2;
+/** C ref: pager.c chkfilIaCheck — lookup only, no display (itemactions `/`). */
+const CHK_IA_CHECK = 4;
 
 function datPath(name) {
     // C DATAFILE "data" is built from data.base; use source for lookup text.
@@ -438,13 +440,16 @@ function simplify_for_db(inp) {
 async function checkfile(inp, flags = 0) {
     const userTyped = !!(flags & CHK_USR);
     const dontAsk = !!(flags & CHK_DONT_ASK);
+    const iaChecking = !!(flags & CHK_IA_CHECK);
     const dbase = simplify_for_db(inp);
     if (!dbase) return false;
     const body = lookup_data_base(dbase);
     if (!body || !body.length) {
-        if (userTyped) await pline("I don't recognize that.");
+        if (userTyped && !iaChecking) await pline("I don't recognize that.");
         return false;
     }
+    // C: chkfilIaCheck — found entry, skip yn/display
+    if (iaChecking) return true;
     let yes = dontAsk;
     if (!dontAsk) {
         // C: y_n("More info about \"…\"?") — ynchars + def 'n'
@@ -455,6 +460,19 @@ async function checkfile(inp, flags = 0) {
     // C: NHW_MENU putstr + process_text_window — not NHW_TEXT fullscreen.
     await show_nhw_menu_text(body.map(l => l || ''));
     return true;
+}
+
+/**
+ * C ref: pager.c ia_checkfile — singular(xname) lookup with chkfilIaCheck.
+ * True when data.base has an entry (offers `/` in itemactions).
+ */
+export function ia_checkfile(otmp) {
+    if (!otmp) return false;
+    const itemnam = singular(otmp, xname);
+    const dbase = simplify_for_db(itemnam);
+    if (!dbase) return false;
+    const body = lookup_data_base(dbase);
+    return !!(body && body.length);
 }
 
 function look_region(nearby) {

@@ -297,6 +297,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (!game.iflags?.nofollowers) keepdogs(false);
     vision_recalc(2);
 
+    // C: do.c goto_level — discard level-local travel destination cache
+    if (!game.iflags) game.iflags = {};
+    if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+    game.iflags.travelcc.x = 0;
+    game.iflags.travelcc.y = 0;
+
     // C: savelev — in-memory stash + VISITED|LFILE_EXISTS + omoves timestamp
     // C: save_track before release/initrack (track.c) — per-level utrack.
     if (!game.level_info) game.level_info = [];

@@ -8,7 +8,7 @@ import {
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
-    let_to_name, DEF_INV_ORDER, prinv,
+    let_to_name, DEF_INV_ORDER, prinv, near_capacity,
 } from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava, in_rooms } from './hack.js';
 import { flush_screen, pline, newsym, docrt } from './display.js';
@@ -25,13 +25,21 @@ import {
     ALL_TYPES_SELECTED, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN,
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
     SHOPBASE,
+    SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
 import { nhgetch } from './input.js';
+import { m_at } from './mon.js';
 import { oclass_to_sym } from './options.js';
 import { objectNames, COIN_CLASS } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
 import { addtobill, costly_spot } from './shk.js';
+
+/* C ref: pickup.c static load-prefix strings for pickup_prinv / lift_object */
+const slightloadpfx = 'You have a little trouble';
+const moderateloadpfx = 'You have trouble';
+const nearloadpfx = 'You have much trouble';
+const overloadpfx = 'You have extreme difficulty';
 
 /** C-ish simpleonames — sack family → "bag". */
 function simpleonames(obj) {
@@ -254,12 +262,26 @@ export async function pick_obj(otmp) {
 
 /**
  * C ref: pickup.c pickup_prinv — encumbrance-prefix prinv.
- * Overload/nearload prefix deferred; bare prinv when capacity unchanged.
+ * Limits load-verb feedback to the first item that changes
+ * gp.pickup_encumbrance within one pickup/loot operation.
  * Passes lifted `count` so invent.c prinv can show partial + "(N in total)".
+ * Named omissions: lift_object yn Continue? arms that reuse these pfx strings.
  */
-async function pickup_prinv(obj, count) {
-    // C: prinv(prefix, obj, count) — null prefix when encumbrance unchanged
-    await prinv(null, obj, count | 0);
+async function pickup_prinv(obj, count, verb) {
+    // C: nearload = near_capacity(); limit feedback via gp.pickup_encumbrance
+    const nearload = near_capacity();
+    let prefix = null;
+    if (nearload !== (game.pickup_encumbrance | 0)) {
+        prefix = nearload >= EXT_ENCUMBER ? overloadpfx
+            : nearload >= HVY_ENCUMBER ? nearloadpfx
+            : nearload >= MOD_ENCUMBER ? moderateloadpfx
+            : nearload >= SLT_ENCUMBER ? slightloadpfx
+            : null;
+        game.pickup_encumbrance = nearload;
+    }
+    // C: if (prefix) Sprintf(pbuf, "%s %s", prefix, verb); else pbuf=""
+    const pbuf = prefix ? `${prefix} ${verb}` : '';
+    await prinv(pbuf, obj, count | 0);
 }
 
 /**
@@ -292,7 +314,8 @@ export async function pickup_object(obj, count, telekinesis) {
     }
 
     obj = await pick_obj(obj);
-    await pickup_prinv(obj, quan);
+    // C: pickup_prinv(obj, count, "lifting")
+    await pickup_prinv(obj, quan, 'lifting');
     return 1;
 }
 
@@ -429,6 +452,9 @@ export async function pickup(what) {
     const u = game.u;
     if (!u) return 0;
 
+    // C: gp.pickup_encumbrance = 0 — used by pickup_object for load feedback
+    game.pickup_encumbrance = 0;
+
     // C: autopickup && (nopick || !OBJ_AT || pool || lava)
     if (autopickup) {
         const loc = game.level?.at(u.ux, u.uy);
@@ -494,10 +520,15 @@ export async function pickup(what) {
             // hideunder / newsym_force deferred
             await check_here(nPicked > 0);
         }
+        // C: pickupdone — gp.pickup_encumbrance = 0
+        game.pickup_encumbrance = 0;
         return nTried > 0 ? 1 : 0;
     }
 
-    if (ct === 0) return 0;
+    if (ct === 0) {
+        game.pickup_encumbrance = 0;
+        return 0;
+    }
 
     // C: menu_style != TRADITIONAL → query_objlist + AUTOSELECT_SINGLE
     // One eligible object: auto-select without menu (no extra keys).
@@ -509,13 +540,17 @@ export async function pickup(what) {
         // C: if (n > 0) reset_justpicked before pickup_object
         reset_justpicked(game.invent);
         const res = await pickup_object(first, lcount, false);
+        game.pickup_encumbrance = 0;
         return res > 0 ? 1 : 0;
     }
 
     // C: query_objlist("Pick up what?", …, PICK_ANY) then pickup_object each
     // Traditional query_classes path deferred (default menu ≠ TRADITIONAL).
     const pickList = await query_objlist_pickup(eligible);
-    if (!pickList.length) return 0;
+    if (!pickList.length) {
+        game.pickup_encumbrance = 0;
+        return 0;
+    }
     // C: if (n > 0) reset_justpicked(invent)
     reset_justpicked(game.invent);
     let nTried = 0;
@@ -529,6 +564,7 @@ export async function pickup(what) {
         if (res < 0) break;
         nTried += res;
     }
+    game.pickup_encumbrance = 0;
     return nTried > 0 ? 1 : 0;
 }
 
@@ -629,7 +665,7 @@ export async function spoteffects(pick) {
 /**
  * C ref: end.c container_contents — NHW_MENU "Contents of %s:" + doname lines
  * via invent.c sortloot(SORTLOOT_LOOT|SORTLOOT_PACK). display_nhwindow(TRUE).
- * Named omissions: identified discover path; doname_with_price shop;
+ * Named omissions: identified discover path; unpaid doname (D-0461);
  * nested containers / Schroedinger / empty pline beyond reportempty=false;
  * sortloot subclass/disco/BUCX.
  */
@@ -673,7 +709,8 @@ async function out_container(obj) {
     game._current_container.owt = weight(game._current_container);
 
     const otmp = addinv(obj);
-    await pickup_prinv(otmp, count);
+    // C: pickup_prinv(otmp, count, "removing")
+    await pickup_prinv(otmp, count, 'removing');
     if (is_gold) {
         // C: bot() — gold count; botl refreshed on next flush
         if (game.botl != null) game.botl = 1;
@@ -758,6 +795,8 @@ async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
  * Return confirms; ESC cancels. put_in / FULL category / autopick deferred.
  */
 async function menu_loot_takeout(container) {
+    // C: gp.pickup_encumbrance = 0 — limit out_container load verbosity
+    game.pickup_encumbrance = 0;
     const items = [];
     for (let obj = container.cobj; obj; obj = obj.nobj) {
         let letch = obj.invlet;
@@ -995,6 +1034,8 @@ async function query_putin_category() {
  */
 async function menu_loot_putin(container) {
     if (!container) return ECMD_OK;
+    // C: gp.pickup_encumbrance = 0 (menu_loot; no harm before in_container)
+    game.pickup_encumbrance = 0;
     const cats = await query_putin_category();
     if (!cats) return ECMD_OK;
 
@@ -1171,8 +1212,43 @@ export async function doloot() {
             break;
         }
     }
-    if (!cobj) return ECMD_OK;
+    if (cobj) {
+        return use_container(cobj);
+    }
 
-    // C: do_loot_cont → use_container for unlocked non-BoT
-    return use_container(cobj);
+    // C: doloot_core lootmon — get_adjacent_loc when mon_beside
+    if (mon_beside(u.ux, u.uy) || game.flags?.menu_requested) {
+        const { getdir_cmdassist } = await import('./dothrow.js');
+        const dir = await getdir_cmdassist('Loot in what direction?');
+        if (!dir) {
+            await pline('Never mind.');
+            return ECMD_OK;
+        }
+        const cc = { x: u.ux + dir.dx, y: u.uy + dir.dy };
+        const underfoot = cc.x === u.ux && cc.y === u.uy;
+        for (let o = objects_at(cc.x, cc.y); o; o = o.nexthere) {
+            if (Is_container(o)) {
+                if (underfoot) return use_container(o);
+                await pline('You have to be at a container to loot it.');
+                return ECMD_OK;
+            }
+        }
+        await pline(
+            `You don't find anything ${underfoot ? 'here' : 'there'} to loot.`,
+        );
+        return ECMD_OK;
+    }
+
+    await pline("You don't find anything here to loot.");
+    return ECMD_OK;
+}
+
+/** C ref: pickup.c mon_beside */
+function mon_beside(x, y) {
+    for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+            if (m_at(x + i, y + j)) return true;
+        }
+    }
+    return false;
 }

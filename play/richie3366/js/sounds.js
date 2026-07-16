@@ -207,8 +207,11 @@ function oracle_sound(mtmp) {
 export async function dosounds() {
     const lf = game.level?.flags;
     if (!lf) return;
-    if (game.u?.Deaf || game.flags?.acoustics === false
-        || game.u?.uswallow || game.u?.Underwater) {
+    const u = game.u || {};
+    // C youprop.h Deaf ≡ HDeaf|EDeaf|uroleplay.deaf (plus u.Deaf flag)
+    const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+    if (Deaf || game.flags?.acoustics === false
+        || u.uswallow || u.Underwater) {
         return;
     }
 

@@ -357,6 +357,16 @@ const EXT_CMDS = [
         },
     },
     {
+        name: 'force',
+        wiz: false,
+        autocomplete: true,
+        // C ref: lock.c doforce — #force chest/weapon
+        run: async () => {
+            const { doforce } = await import('./lock.js');
+            return doforce();
+        },
+    },
+    {
         name: 'levelchange',
         wiz: true,
         autocomplete: true,

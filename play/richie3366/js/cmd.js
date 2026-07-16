@@ -465,6 +465,19 @@ function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode) {
                     // Path reached hero from neighbor (x,y) → step onto it
                     u.dx = x - toX;
                     u.dy = y - toY;
+                    // C: hack.c findtravelpath — when the step cell is the
+                    // travel destination, stop after this step and clear
+                    // travelcc (visited/travelmap "unsure" arm deferred).
+                    if (!guessMode && x === fromX && y === fromY) {
+                        nomul(0);
+                        if (game.context) game.context.run = 8;
+                        if (!game.iflags) game.iflags = {};
+                        if (!game.iflags.travelcc) {
+                            game.iflags.travelcc = { x: 0, y: 0 };
+                        }
+                        game.iflags.travelcc.x = 0;
+                        game.iflags.travelcc.y = 0;
+                    }
                     return true;
                 }
                 const key = `${nx},${ny}`;

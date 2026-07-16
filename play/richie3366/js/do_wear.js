@@ -6,7 +6,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
 import { yn_function } from './getline.js';
-import { an, doname, xprname } from './objnam.js';
+import { an, doname, the, xname, xprname } from './objnam.js';
 import { find_ac } from './u_init.js';
 import { change_luck } from './attrib.js';
 import { nomul, unmul } from './hack.js';
@@ -88,6 +88,17 @@ async function prinv(otmp) {
     await pline(xprname(otmp, undefined, true));
 }
 
+/**
+ * C ref: objnam.c obj_is_pname — artifact + oname; full ID required unless
+ * gameover/override_ID. Named omit: not_fully_identified detail / iflags.
+ */
+function obj_is_pname(obj) {
+    if (!obj?.oartifact || !obj.oextra?.oname) return false;
+    // C: !gameover && !override_ID → require fully identified
+    if (obj.known && obj.dknown && obj.bknown) return true;
+    return false;
+}
+
 /** C ref: do_wear.c on_msg — rings/amulets use prinv; armor uses verbose You(). */
 async function on_msg(otmp) {
     if ((otmp.owornmask || 0) & (W_RING | W_AMUL)) {
@@ -99,8 +110,15 @@ async function on_msg(otmp) {
         return;
     }
     if (game.flags?.verbose !== false) {
-        const name = objectNameStrs[otmp.otyp] || doname(otmp);
-        await pline(`You are now wearing ${an(name)}.`);
+        // C: xname before obj_is_pname (formatting may set dknown)
+        const otmp_name = xname(otmp);
+        let how = '';
+        if (otmp.otyp === TOWEL) {
+            // C: body_part(HEAD); human "head" — poly deferred
+            how = ' around your head';
+        }
+        const named = obj_is_pname(otmp) ? the(otmp_name) : an(otmp_name);
+        await pline(`You are now wearing ${named}${how}.`);
     }
 }
 

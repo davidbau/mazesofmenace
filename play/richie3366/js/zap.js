@@ -9,20 +9,24 @@
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
 // for WAN_MAGIC_MISSILE..WAN_LIGHTNING (sleep + bounce + Reflecting).
 // Named omissions: IMMEDIATE/bhit/zap_dig; spell ubuzz; mon_reflects;
-// fireball/gas/Hallucination hdmgtype; full zap_over_floor; zhitu
-// non-sleep; shopdamage; beam glyphs/tmp_at; backfire body; other NODIR;
-// wrest pline; check_capacity/nohands; check_unpaid; more_experienced;
-// update_inventory; shieldeff/monstunseesu; setworn EReflecting bits
-// (worn SHIELD_OF_REFLECTION stands in).
+// fireball/gas/Hallucination hdmgtype rn2; full zap_over_floor; zhitu
+// non-sleep; shopdamage; map_invisible/unmap during buzz; backfire body;
+// other NODIR; wrest pline; check_capacity/nohands; check_unpaid;
+// more_experienced; update_inventory; shieldeff/monstunseesu; setworn
+// EReflecting bits (worn SHIELD_OF_REFLECTION stands in); ureflects
+// W_WEP/W_AMUL/W_ARM/silver-dragon arms beyond shield makeknown.
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin } from './getline.js';
-import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
+import {
+    flush_screen, flush_topl_more, pline, You_feel,
+    tmp_at, zapdir_to_glyph, nh_delay_output,
+} from './display.js';
 import { cansee } from './vision.js';
 import { nhgetch } from './input.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
-import { hold_another_object, discover_object } from './invent.js';
+import { hold_another_object, discover_object, makeknown } from './invent.js';
 import { doname, xname } from './objnam.js';
 import { A_WIS, A_STR, exercise } from './attrib.js';
 import { findit } from './detect.js';
@@ -35,6 +39,7 @@ import {
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
     NO_KILLER_PREFIX, isok, ZAP_POS, STONE, IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED,
+    DISP_BEAM, DISP_CHANGE, DISP_END,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -104,11 +109,18 @@ function flash_str(fltyp) {
     return names[zaptype(fltyp) % 10] || 'ray';
 }
 
-/** C ref: muse.c ureflects — shield slot only. */
+/**
+ * C ref: muse.c ureflects — shield slot only (W_WEP/W_AMUL/W_ARM/dragon
+ * deferred). When fmt+str given, makeknown like C so first observed
+ * reflection discovers the type and may exercise(A_WIS) (D-0452).
+ */
 async function ureflects(fmt, str) {
     if (game.u?.uarms?.otyp === SHIELD_OF_REFLECTION) {
-        // C: pline(fmt, str, "shield") with fmt "But %s reflects from your %s!"
-        await pline(`But ${str} reflects from your shield!`);
+        if (fmt && str) {
+            // C: pline(fmt, str, "shield") with fmt "But %s reflects from your %s!"
+            await pline(`But ${str} reflects from your shield!`);
+            makeknown(SHIELD_OF_REFLECTION);
+        }
         return true;
     }
     return false;
@@ -211,13 +223,15 @@ async function zhitu_sleep(nd) {
 }
 
 /**
- * C ref: zap.c dobuzz — hero wand ray subset (sleep).
- * Hallucination hdmgtype, fireball/gas, mon_reflects, shopdamage,
- * tmp_at glyphs deferred.
+ * C ref: zap.c dobuzz — hero wand ray subset (sleep) + DISP_BEAM trail.
+ * Hallucination hdmgtype rn2, fireball/gas, mon_reflects, shopdamage,
+ * map_invisible/unmap during buzz deferred.
  */
 async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss) {
     const fltyp = zaptype(type);
     const damgtype = fltyp % 10;
+    // C: Hallucination ? rn2(6) : damgtype — Hallu path deferred
+    const hdmgtype = damgtype;
     let sx = sx0;
     let sy = sy0;
     let dx = dx0;
@@ -225,74 +239,97 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
     let range = rn1(7, 7);
     if (dx === 0 && dy === 0) range = 1;
 
-    while (range-- > 0) {
-        const lsx = sx;
-        const lsy = sy;
-        sx += dx;
-        sy += dy;
-        const loc = game.level?.at?.(sx, sy);
-        const typ = loc?.typ;
-        let do_bounce = false;
+    // C: tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype))
+    tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype));
+    try {
+        while (range-- > 0) {
+            const lsx = sx;
+            const lsy = sy;
+            sx += dx;
+            sy += dy;
+            const loc = game.level?.at?.(sx, sy);
+            const typ = loc?.typ;
+            let do_bounce = false;
 
-        if (!isok(sx, sy) || typ === STONE) {
-            do_bounce = true;
-        } else {
-            // zap_over_floor sleep: closed door absorbs (rangemod -1000)
-            if (closed_door(sx, sy)) {
-                await pline('The door absorbs your bolt!');
-                range += -1000;
-            }
-
-            const mon = m_at(sx, sy);
-            if (mon) {
-                if (!forcemiss && zap_hit(find_mac(mon), 0)) {
-                    // mon_reflects deferred
-                    if (damgtype === ZT_SLEEP) {
-                        zhitm_sleep(mon, type, nd);
-                        if (sayhit) {
-                            await pline(`The ${flash_str(fltyp)} hits it.`);
-                        }
-                    }
-                    range -= 2;
-                }
-            } else if (u_at(sx, sy) && range >= 0) {
-                nomul(0);
-                if (!forcemiss && zap_hit(game.u?.uac ?? 10, 0)) {
-                    range -= 2;
-                    await pline(`The ${flash_str(fltyp)} hits you!`);
-                    if (Reflecting()) {
-                        if (!Blind()) {
-                            await ureflects('But %s reflects from your %s!', 'it');
-                        } else {
-                            await pline('For some reason you are not affected.');
-                        }
-                        dx = -dx;
-                        dy = -dy;
-                    } else if (damgtype === ZT_SLEEP) {
-                        await zhitu_sleep(nd);
-                    }
-                } else if (!Blind()) {
-                    await pline(`The ${flash_str(fltyp)} whizzes by you!`);
-                }
-                nomul(0);
-            }
-
-            if (!ZAP_POS(typ) || (closed_door(sx, sy) && range >= 0)) {
+            if (!isok(sx, sy) || typ === STONE) {
                 do_bounce = true;
-            }
-        }
+            } else {
+                // C: reveal/unreveal invisible before tmp_at — deferred;
+                // paint beam when ZAP_POS or previous cell was visible.
+                if (cansee(sx, sy)) {
+                    if (ZAP_POS(typ)
+                        || (isok(lsx, lsy) && cansee(lsx, lsy))) {
+                        tmp_at(sx, sy);
+                    }
+                    await nh_delay_output();
+                }
 
-        if (do_bounce) {
-            // C: bounce_dir always runs once in make_bounce; pline only when
-            // (--range > 0 && cansee previous). Cardinal bounce uses no rn2.
-            const bchance = (!isok(sx, sy) || typ === STONE) ? 10 : 75;
-            if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy))) {
-                await pline(`The ${flash_str(fltyp)} bounces!`);
+                // zap_over_floor sleep: closed door absorbs (rangemod -1000)
+                if (closed_door(sx, sy)) {
+                    await pline('The door absorbs your bolt!');
+                    range += -1000;
+                }
+
+                const mon = m_at(sx, sy);
+                if (mon) {
+                    if (!forcemiss && zap_hit(find_mac(mon), 0)) {
+                        // mon_reflects deferred
+                        if (damgtype === ZT_SLEEP) {
+                            zhitm_sleep(mon, type, nd);
+                            if (sayhit) {
+                                await pline(`The ${flash_str(fltyp)} hits it.`);
+                            }
+                        }
+                        range -= 2;
+                    }
+                } else if (u_at(sx, sy) && range >= 0) {
+                    nomul(0);
+                    if (!forcemiss && zap_hit(game.u?.uac ?? 10, 0)) {
+                        range -= 2;
+                        await pline(`The ${flash_str(fltyp)} hits you!`);
+                        if (Reflecting()) {
+                            if (!Blind()) {
+                                await ureflects(
+                                    'But %s reflects from your %s!',
+                                    'it',
+                                );
+                            } else {
+                                await pline(
+                                    'For some reason you are not affected.',
+                                );
+                            }
+                            dx = -dx;
+                            dy = -dy;
+                        } else if (damgtype === ZT_SLEEP) {
+                            await zhitu_sleep(nd);
+                        }
+                    } else if (!Blind()) {
+                        await pline(`The ${flash_str(fltyp)} whizzes by you!`);
+                    }
+                    nomul(0);
+                }
+
+                if (!ZAP_POS(typ) || (closed_door(sx, sy) && range >= 0)) {
+                    do_bounce = true;
+                }
             }
-            const bd = bounce_dir(sx, sy, dx, dy, bchance);
-            dx = bd.dx;
-            dy = bd.dy;
+
+            if (do_bounce) {
+                // C: bounce_dir always runs once in make_bounce; pline only when
+                // (--range > 0 && cansee previous). Cardinal bounce uses no rn2.
+                const bchance = (!isok(sx, sy) || typ === STONE) ? 10 : 75;
+                if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy))) {
+                    await pline(`The ${flash_str(fltyp)} bounces!`);
+                }
+                const bd = bounce_dir(sx, sy, dx, dy, bchance);
+                dx = bd.dx;
+                dy = bd.dy;
+                // C: tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype))
+                tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype));
+            }
         }
+    } finally {
+        tmp_at(DISP_END, 0);
     }
 }
 

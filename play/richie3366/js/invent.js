@@ -805,10 +805,13 @@ export async function display_inventory() {
     await flush_screen(1);
 }
 
-/** C ref: invent.c ddoinv() */
+/**
+ * C ref: invent.c ddoinv → dispinv_with_action(NULL, FALSE, NULL).
+ * PICK_ONE invent letter → itemactions (D-0467).
+ */
 export async function ddoinv() {
-    await display_inventory();
-    return 0;
+    const { dispinv_with_action } = await import('./iactions.js');
+    return await dispinv_with_action(null, false, null);
 }
 
 /**
@@ -1708,7 +1711,7 @@ export async function doprgold() {
  * C ref: invent.c prinv(prefix, obj, quan)
  * When quan != 0 and quan < obj.quan (e.g. gold merged after pickup),
  * name the lifted amount and append " (N in total)." if verbose.
- * Named omissions: encumbrance verb prefixes belong to pickup_prinv.
+ * Named omissions: none for prefix — pickup_prinv builds load+verb.
  */
 export async function prinv(prefix, obj, quan = 0) {
     const q = quan | 0;
@@ -1927,13 +1930,15 @@ export function dfeature_at(x, y) {
  * Ported envelope: non-swallow, non-blind; dfeature pline; single
  * `You see here`; multi NHW_MENU "Things that are here:" via
  * display_nhwindow(WIN_MESSAGE)+putstr (D-0220); **observe_object
- * before doname** (D-0399; C xname_flags). Named omissions:
- * pile_limit skip_objects, Blind feel, trap+region, doname_with_price,
- * cockatrice feel, engulfer stomach; blanket xname observe /
- * distant_name. Furniture with ct==0 uses pickup.describe_decor
- * (D-0356), not this path.
+ * before doname** (D-0399; C xname_flags). **doname_with_price**
+ * (D-0460). Named omissions: pile_limit skip_objects, Blind feel,
+ * trap+region, cockatrice feel, engulfer stomach; blanket xname
+ * observe / distant_name. Furniture with ct==0 uses
+ * pickup.describe_decor (D-0356), not this path.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
+    // Dynamic import avoids invent↔shk cycle (shk imports paint_corner).
+    const { doname_with_price } = await import('./shk.js');
     const u = game.u;
     const verb = 'see'; // Blind feel path deferred
     const skip_dfeature = !!(lookhere_flags & 0x2); // LOOKHERE_SKIP_DFEATURE
@@ -2002,8 +2007,8 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         // (JS xname/doname omit blanket observe; look_here must set dknown
         // for buried pile items see_nearby_objects never touches).
         if (!game.u?.Blind) observe_object(otmp);
-        // doname_with_price deferred → doname
-        await pline(`You ${verb} here ${doname(otmp)}.`);
+        // C: You("%s here %s.", verb, doname_with_price(otmp))
+        await pline(`You ${verb} here ${doname_with_price(otmp)}.`);
         return;
     }
 
@@ -2020,7 +2025,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     for (let o = otmp; o; o = o.nexthere) {
         // C: doname_with_price → xname observe_object (dknown for gem color)
         if (!game.u?.Blind) observe_object(o);
-        lines.push(doname(o)); // doname_with_price deferred
+        lines.push(doname_with_price(o));
     }
     const { show_nhw_menu_text } = await import('./pager.js');
     await show_nhw_menu_text(lines);

@@ -10,7 +10,7 @@ import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight, obj_extract_self } from './mkobj.js';
 import { A_WIS, A_DEX, A_CON, exercise } from './attrib.js';
-import { makeknown } from './invent.js';
+import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
 import { doname, xname } from './objnam.js';
 import { dipfountain, drinkfountain, drinksink } from './fountain.js';
@@ -56,15 +56,26 @@ const HBOTTLENAMES = [
     'bowl', 'ampoule',
 ];
 
-/** Invent letters of drinkable potions (C drink_ok → GETOBJ_SUGGEST). */
+/**
+ * Invent letters of drinkable potions (C drink_ok → GETOBJ_SUGGEST).
+ * Returns non-compacted string for `?` menus (C `lets[]`).
+ * Prompt uses compactify when suggested > 5 (C `buf` / D-0455).
+ */
 function drinkable_lets() {
     const inv = game.invent || [];
     const lets = [];
     for (const o of inv) {
         if (o.oclass === POTION_CLASS && o.invlet) lets.push(o.invlet);
     }
-    lets.sort();
+    // C getobj sortloot SORTLOOT_INVLET
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
     return lets.join('');
+}
+
+/** C invent.c getobj: if (suggested > 5) compactify(bp) for prompt only. */
+function drink_prompt_lets(raw) {
+    if (!raw || raw.length <= 5) return raw;
+    return compactify_invlets(raw);
 }
 
 /** Compact consecutive invent letters (C invent.c compactify). */
@@ -116,7 +127,8 @@ function dippable_lets() {
 async function getobj_drink() {
     const { display_pickinv_reply } = await import('./invent.js');
     for (;;) {
-        const lets = drinkable_lets();
+        const rawLets = drinkable_lets();
+        const lets = drink_prompt_lets(rawLets);
         const query = lets
             ? `What do you want to drink? [${lets} or ?*]`
             : 'What do you want to drink? [*]';
@@ -135,7 +147,8 @@ async function getobj_drink() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            const picked = await display_pickinv_reply(ch === '*' ? '*' : lets);
+            // C: display_pickinv(lets, ...) uses non-compacted lets[]
+            const picked = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
             if (picked === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;

@@ -24,7 +24,7 @@ import { monsterNames } from './monsters.js';
 import { PM_SAMURAI, PM_CLERIC } from './generated/monsters_data.js';
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
-    Has_contents, Is_container, P_BOW, P_CROSSBOW, P_SHURIKEN,
+    Has_contents, Is_container, Is_box, P_BOW, P_CROSSBOW, P_SHURIKEN,
 } from './const.js';
 
 function Role_if(pm) {
@@ -617,6 +617,16 @@ function bimanual(obj) {
 }
 
 /**
+/**
+ * Late-bound from shk.js — C doname_base unpaid / (with_price) shop suffix.
+ * Avoids static objnam↔shk import cycle (shk already imports doname).
+ */
+let _doname_shop_suffix = null;
+export function set_doname_shop_suffix(fn) {
+    _doname_shop_suffix = fn;
+}
+
+/**
  * C ref: objnam.c doname() — invent-kit subset (Tourist/Rogue starter lines).
  * C doname_base starts with xname(obj), which forces cleric bknown before
  * the BUC prefix is read; JS doname uses pretty_base so apply the same force.
@@ -676,6 +686,16 @@ export function doname(obj) {
                     && !Role_if(PM_CLERIC));
             if (showUncursed) prefix += 'uncursed ';
         }
+    }
+
+    // C ref: objnam.c doname_base — box trap/lock prefixes (before greased)
+    if (Is_box(obj) && obj.otrapped && obj.tknown && obj.dknown) {
+        prefix += 'trapped ';
+    }
+    if (obj.lknown && Is_box(obj)) {
+        if (obj.obroken) prefix += 'broken ';
+        else if (obj.olocked) prefix += 'locked ';
+        else prefix += 'unlocked ';
     }
 
     // C: WEAPON_CLASS — re-insert stripped "poisoned " before erosion/spe
@@ -771,7 +791,22 @@ export function doname(obj) {
     if (known && oclass === WAND_CLASS)
         bp += ` (${obj.recharged | 0}:${obj.spe | 0})`;
 
+    // C doname_base: is_unpaid → unpaid_cost suffix (D-0461); with_price=0
+    if (_doname_shop_suffix) bp = _doname_shop_suffix(obj, bp, false);
     return bp;
+}
+
+/**
+ * C ref: objnam.c paydoname — doname with invent-style price suppressed
+ * (billing menus / shk_names_obj). Named omissions: Has_contents cknown
+ * dance; "an unpaid "/"your " container rewrite; wizweight toggle.
+ */
+export function paydoname(obj) {
+    if (!game.iflags) game.iflags = {};
+    game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
+    const p = doname(obj);
+    game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+    return p;
 }
 
 /**

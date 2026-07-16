@@ -6,12 +6,17 @@ import { nhgetch } from './input.js';
 import { flush_screen, pline, newsym } from './display.js';
 import { vision_recalc, recalc_block_point } from './vision.js';
 import {
-    COLNO, ROWNO, IS_DOOR,
+    COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_TRAPPED,
+    P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
 } from './const.js';
 import { rnl } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
 import { verysmall } from './monsters.js';
+import { objects_at } from './mkobj.js';
+import { can_reach_floor } from './engrave.js';
+import { WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, objectNames } from './objects.js';
+import { doname, xname } from './objnam.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -158,4 +163,117 @@ export async function pick_lock(pick) {
         await pline('This doorway has no door.');
         return PICKLOCK_LEARNED_SOMETHING;
     }
+}
+
+/** C ref: obj.h Is_box — LARGE_BOX / CHEST. */
+function Is_box(obj) {
+    const n = objectNames[obj?.otyp];
+    return n === 'LARGE_BOX' || n === 'CHEST';
+}
+
+/** C ref: obj.h is_weptool */
+function is_weptool(obj) {
+    if (!obj || obj.oclass !== TOOL_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill;
+    return sk != null && sk !== P_NONE;
+}
+
+/** C ref: obj.h is_pick */
+function is_pick(obj) {
+    return (game.objects?.[obj?.otyp]?.oc_skill ?? 0) === P_PICK_AXE;
+}
+
+/** C ref: obj.h is_blade */
+function is_blade(obj) {
+    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
+    return sk >= P_DAGGER && sk <= P_SABER;
+}
+
+/** C ref: lock.c u_have_forceable_weapon */
+function u_have_forceable_weapon() {
+    const uwep = game.u?.uwep;
+    if (!uwep) return false;
+    if (uwep.oclass === WEAPON_CLASS || is_weptool(uwep)) {
+        const sk = game.objects?.[uwep.otyp]?.oc_skill ?? 0;
+        if (sk < P_DAGGER || sk === P_FLAIL || sk > P_LANCE) return false;
+        return true;
+    }
+    return uwep.oclass === ROCK_CLASS;
+}
+
+/**
+ * C ref: lock.c doforce — #force chest lock with wielded weapon.
+ * Branch envelope: swallow / no-weapon / can't-reach → ECMD_OK; scan
+ * underfoot boxes; no box → "You decide not to force the issue." +
+ * ECMD_TIME. forcelock occupation / resume deferred (C-JS-MAP).
+ */
+export async function doforce() {
+    const u = game.u;
+    if (!u) return ECMD_OK;
+
+    if (u.uswallow) {
+        await pline("You can't force anything from inside here.");
+        return ECMD_OK;
+    }
+    if (!u_have_forceable_weapon()) {
+        const uwep = u.uwep;
+        const use_plural = !!(uwep && (uwep.quan || 1) > 1);
+        let mid;
+        if (!uwep) mid = 'when not wielding a';
+        else if (uwep.oclass !== WEAPON_CLASS && !is_weptool(uwep)) {
+            mid = use_plural ? 'without proper' : 'without a proper';
+        } else {
+            mid = use_plural ? 'with those' : 'with that';
+        }
+        await pline(
+            `You can't force anything ${mid} weapon${use_plural ? 's' : ''}.`,
+        );
+        return ECMD_OK;
+    }
+    if (!can_reach_floor(true)) {
+        await pline("You can't reach the floor.");
+        return ECMD_OK;
+    }
+
+    const uwep = u.uwep;
+    const picktyp = is_blade(uwep) && !is_pick(uwep);
+
+    let box = null;
+    for (let otmp = objects_at(u.ux, u.uy); otmp; otmp = otmp.nexthere) {
+        if (!Is_box(otmp)) continue;
+        if (otmp.obroken || !otmp.olocked) {
+            otmp.lknown = 0;
+            await pline(
+                `There is ${doname(otmp)} here, but its lock is already ${
+                    otmp.obroken ? 'broken' : 'unlocked'
+                }.`,
+            );
+            otmp.lknown = 1;
+            continue;
+        }
+        otmp.lknown = 1;
+        const { yn_function } = await import('./getline.js');
+        const c = await yn_function(
+            `There is ${doname(otmp)} here; force its lock?`,
+            'ynq',
+            'n',
+        );
+        if (c === 'q') return ECMD_OK;
+        if (c === 'n') continue;
+        if (picktyp) {
+            await pline(`You force your ${xname(uwep)} into a crack and pry.`);
+        } else {
+            await pline(`You start bashing it with your ${xname(uwep)}.`);
+        }
+        box = otmp;
+        break;
+    }
+
+    if (box) {
+        // set_occupation(forcelock) deferred — still ECMD_TIME
+        return ECMD_TIME;
+    }
+    await pline('You decide not to force the issue.');
+    return ECMD_TIME;
 }

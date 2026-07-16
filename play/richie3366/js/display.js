@@ -38,7 +38,7 @@ import {
 } from './objects.js';
 import {
     NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
-    CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN,
+    CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_GREEN,
     CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN,
     DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
@@ -1012,12 +1012,25 @@ function copy_glyph(g) {
 }
 
 /**
+ * C ref: display.h glyph_is_trap — JS has no integer glyph IDs; match
+ * tseen trap_to_glyph / map_trap remembered ch at (x,y).
+ */
+function glyph_is_trap_at(glyph, x, y) {
+    if (!glyph) return false;
+    const trap = t_at_display(x, y);
+    if (!(trap && trap.tseen && !covers_traps(x, y))) return false;
+    const tg = trap_glyph(trap);
+    return glyph.ch === tg.ch;
+}
+
+/**
  * C ref: detect.c reveal_terrain_getglyph
  * Branch envelope: hero_memory / seenv; strip mon/obj/trap/invisible per
  * TER_* bits; lastseentyp vs typ → back_to_glyph; litcorr→corr hack.
  * Named omissions: visible_region_at / gascloud; keep_traps trap_to_glyph
- * restore; M_AP_FURNITURE lastseentyp fake; swallowed ustuck mon glyph;
- * warning glyphs; TER_FULL seenv temp already covered; arboreal default.
+ * restore when stripping objs; M_AP_FURNITURE lastseentyp fake; swallowed
+ * ustuck mon glyph; warning glyphs; TER_FULL seenv temp already covered;
+ * arboreal default.
  */
 export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
     const loc = game.level?.at(x, y);
@@ -1087,6 +1100,18 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
                         glyph = og;
                     }
                 }
+                // C map_location order: object → trap → engraving → terrain
+                if (kind === 'other') {
+                    const trap = t_at_display(x, y);
+                    if (trap && trap.tseen && !covers_traps(x, y)) {
+                        const tg = trap_glyph(trap);
+                        const rg = loc.remembered_glyph;
+                        if (cansee(x, y) || (rg && rg.ch === tg.ch)) {
+                            kind = 'trap';
+                            glyph = { ch: tg.ch, color: tg.color, dec: !!tg.dec };
+                        }
+                    }
+                }
                 if (kind === 'other') {
                     // C glyph_at for terrain/engraving — prefer memory / back_to_glyph
                     // over disp_* (disp_color is already tty-mapped).
@@ -1112,14 +1137,31 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
             if (obj && !covers_objects(x, y)) {
                 const og = obj_glyph(obj);
                 if (glyph && glyph.ch === og.ch) kind = 'obj';
+                else if (glyph_is_trap_at(glyph, x, y)) kind = 'trap';
                 else kind = 'other';
+            } else if (glyph_is_trap_at(glyph, x, y)) {
+                kind = 'trap';
             } else {
                 kind = 'other';
             }
         }
     }
 
-    // C: keep_traps && !keep_objs && object → trap_to_glyph — traps deferred
+    // C glyph_is_trap after memory/terrain pick (levl.glyph may be trap)
+    if (kind === 'other' && glyph_is_trap_at(glyph, x, y)) {
+        kind = 'trap';
+    }
+
+    // C: keep_traps && (!keep_objs object | invisible) → trap_to_glyph
+    if (((!keep_objs && kind === 'obj') || kind === 'invisible')
+        && keep_traps && !covers_traps(x, y)) {
+        const t = t_at_display(x, y);
+        if (t && t.tseen) {
+            const tg = trap_glyph(t);
+            glyph = { ch: tg.ch, color: tg.color, dec: !!tg.dec };
+            kind = 'trap';
+        }
+    }
 
     // C: strip objects / traps / invisible / (region && was_mon)
     if (((!keep_objs && kind === 'obj')
@@ -1164,17 +1206,51 @@ export function reveal_terrain_show_map(which_subset, swallowed) {
     }
 }
 
-// C ref: display.c tmp_at — transient missile/beam glyphs (DISP_FLASH first).
-// Nested alloc, DISP_BEAM/ALL/TETHER/ALWAYS/CHANGE/FREEMEM deferred.
+// C ref: display.c tmp_at — transient missile/beam glyphs.
+// Nested alloc polish, DISP_TETHER BACKTRACK, DISP_ALWAYS edge cases deferred.
 const TMP_AT_MAX_GLYPHS = COLNO * 2;
 const _tgfirst = { saved: [], sidx: 0, style: 0, glyph: null, prev: null };
 let _tglyph = null;
 
 /**
+ * C ref: display.c zapdir_to_glyph — beam glyph for tmp_at DISP_BEAM.
+ * Returns {ch,color,dec} (JS show path); C packs GLYPH_ZAP_OFF + dir|type.
+ * Dir: | (0,±1), - (±1,0), \ (dx==dy), / (dx&&dy).
+ * DECgraphics: S_vbeam/S_hbeam → meta-x / meta-q (dat/symbols).
+ */
+export function zapdir_to_glyph(dx0, dy0, beam_type) {
+    let bt = beam_type | 0;
+    if (bt < 0 || bt >= 8) bt = 0;
+    const dx = dx0 | 0;
+    const dy = dy0 | 0;
+    // C: dx = (dx == dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0
+    const dir = (dx === dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0;
+    const useColor = game.iflags?.use_color !== false;
+    // C display.c zapcolors[NUM_ZAP] / display.h zap_color_*
+    const zapcolors = [
+        HI_ZAP, CLR_ORANGE, CLR_WHITE, HI_ZAP,
+        CLR_BLACK, CLR_WHITE, CLR_GREEN, CLR_YELLOW,
+    ];
+    const color = useColor ? (zapcolors[bt] ?? HI_ZAP) : NO_COLOR;
+    if (use_decgraphics()) {
+        // S_vbeam \xb3→x, S_hbeam \xc4→q; slants stay ASCII
+        const dec = [
+            { ch: 'x', dec: true },
+            { ch: 'q', dec: true },
+            { ch: '\\', dec: false },
+            { ch: '/', dec: false },
+        ][dir];
+        return { ch: dec.ch, color, dec: dec.dec };
+    }
+    const ascii = ['|', '-', '\\', '/'][dir];
+    return { ch: ascii, color, dec: false };
+}
+
+/**
  * C ref: display.c tmp_at(x, y)
- * Open: tmp_at(DISP_FLASH, glyphObj) — glyphObj is {ch,color,dec} from obj_glyph.
- * Step: tmp_at(map_x, map_y) — paint flash, erase previous.
- * Close: tmp_at(DISP_END, 0).
+ * Open: tmp_at(DISP_FLASH|DISP_BEAM|…, glyphObj) — glyphObj is {ch,color,dec}.
+ * Step: tmp_at(map_x, map_y) — paint; BEAM accumulates, FLASH replaces.
+ * Close: tmp_at(DISP_END, 0); DISP_CHANGE updates glyph mid-beam.
  */
 export function tmp_at(x, y) {
     switch (x) {
@@ -1698,9 +1774,9 @@ const ENC_STAT = [
 
 // C ref: botl.c describe_level — "Dlvl:%-2d" / "Tutorial:%-2d" uses
 // depth(&u.uz), not dunlev; Xp:/T: gated by flags.showexp / flags.time;
-// BL_CONDITION Ride when u.usteed (botl.c condtests[bl_ride]).
-// Named omissions: Knox/quest/endgame describe_level arms; full condition
-// list (Stone/Slime/hunger/Blind/…); Upolyd HD.
+// do_statusline2 conditions after enc_stat: Blind…Conf…Hallu…Lev/Fly then Ride.
+// Named omissions: Knox/quest/endgame describe_level; Stone/Slime/Strngl/
+// Sick/hunger conditions (before enc_stat); Halluc_resistance; Upolyd HD.
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
@@ -1716,12 +1792,31 @@ function _statusLine2() {
     let s = `${levtag}:${dlvl} $:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (flags.showexp) s += `/${u.uexp || 0}`;
     if (flags.time) s += ` T:${game.moves || 1}`;
-    // C do_statusline2 cond: hunger then enc_stat then Blind… then Ride
+    // C do_statusline2: enc_stat then Blind/Deaf/Stun/Conf/Hallu/Lev/Fly/Ride
+    // (Stone…hunger before enc_stat deferred)
     const cap = near_capacity();
     if (cap > UNENCUMBERED) {
         s += ` ${ENC_STAT[cap] || ''}`;
     }
-    // C windows.c BL_MASK_RIDE → " Ride" (leading space in strcat)
+    // C youprop.h Blind / Deaf / Stunned / Confusion / Hallucination
+    if (hero_Blind()) s += ' Blind';
+    if ((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf) {
+        s += ' Deaf';
+    }
+    if ((u.HStun | 0) || u.Stunned) s += ' Stun';
+    // C: Confusion ≡ HConfusion
+    if ((u.HConfusion | 0) || u.Confusion) s += ' Conf';
+    if ((u.HHallucination | 0) || u.Hallucination) s += ' Hallu';
+    // C: Levitation / Flying mutually exclusive via props; Ride is not
+    if (u.Levitation
+        || (((u.HLevitation | 0) || (u.ELevitation | 0))
+            && !(u.BLevitation | 0))) {
+        s += ' Lev';
+    }
+    if (u.Flying
+        || (((u.HFlying | 0) || (u.EFlying | 0)) && !(u.BFlying | 0))) {
+        s += ' Fly';
+    }
     if (u.usteed) s += ' Ride';
     return s;
 }

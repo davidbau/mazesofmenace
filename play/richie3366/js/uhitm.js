@@ -41,7 +41,7 @@ import { monnear, record_mvitals_died, seemimic, wakeup } from './mon.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { mon_explodes } from './explode.js';
-import { mon_nam } from './do_name.js';
+import { mon_nam, x_monnam_tame } from './do_name.js';
 
 // C monflag.h — MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MZ_MEDIUM;
@@ -933,12 +933,12 @@ export async function do_attack(mtmp) {
         const foo = !!(game.u?.Punished || !rn2(7)
             || (mtmp.wormno && /* longworm */ false)
             || (obstructed /* && !passes_walls(mtmp) */));
-        // inshop check skipped when foo (no RNG)
+        // inshop check skipped when foo (no RNG); deferred when !foo
         if (foo) {
-            // C: monflee(mtmp, rnd(6), FALSE, FALSE) when tame; end_running
-            // (caller); return TRUE. Does NOT clear context.move — turn still
-            // spends so moveloop runs movemon/distfleeck. Setting move=0
-            // here skipped monmove while C advanced (D-0442).
+            // C: !travel && !run && canspotmon && isshk → dopay (deferred)
+            // C: monflee(mtmp, rnd(6), FALSE, FALSE) when tame. Does NOT
+            // clear context.move — turn still spends so moveloop runs
+            // movemon/distfleeck (D-0442). Then stop pline + end_running.
             if (mtmp.mtame) {
                 let fleetime = rnd(6);
                 if (!fleetime) {
@@ -951,9 +951,20 @@ export async function do_attack(mtmp) {
                 mtmp.mflee = 1;
                 // mon_track_clear / fleemsg / Vrock gas deferred
             }
+            // C: Strcpy(buf, y_monnam); buf[0]=highc; You("stop.  %s is in the way!", buf)
+            let buf = x_monnam_tame(mtmp);
+            if (buf.length) buf = buf.charAt(0).toUpperCase() + buf.slice(1);
+            await pline(`You stop.  ${buf} is in the way!`);
+            // C: end_running(TRUE) — clear run/travel/mv/multi
+            if (!game.context) game.context = {};
+            if (game.context.run) game.context.run = 0;
+            game.context.travel = 0;
+            game.context.travel1 = 0;
+            game.context.mv = 0;
+            if ((game.multi | 0) > 0) game.multi = 0;
             return true;
         }
-        // Frozen / helpless check — no RNG for normal pet
+        // Frozen / helpless / mmove==0 rn2(6) pline deferred
         // C: else return FALSE → allow swap
         return false;
     }

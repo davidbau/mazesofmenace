@@ -464,7 +464,9 @@ function show_direction_keys_lines(nodiag) {
 
 /**
  * C ref: cmd.c help_dir — NHW_TEXT cmdassist for invalid getdir / '?'.
- * display_nhwindow blocking; --More-- on row 23. Returns true if shown.
+ * C tty: display_nhwindow TEXT is blocking; dmore → xwaitforspace(quitchars)
+ * so only space/CR/LF/ESC dismiss — other keys bell and keep waiting.
+ * Returns true if shown.
  * Prefix-key / ^letter Guidebook branches deferred.
  */
 async function help_dir(msg) {
@@ -500,7 +502,12 @@ async function help_dir(msg) {
     }
     disp.setCursor(8, 23);
     await flush_screen(1);
-    await nhgetch(); // dmore / xwaitforspace
+    // C: xwaitforspace(quitchars) — space/CR/LF/ESC only; else bell+retry
+    for (;;) {
+        const k = await nhgetch();
+        if (k === 27 || k === 32 || k === 13 || k === 10) break;
+        // tty_nhbell — no-op in this port
+    }
     game._menu_overlay = false;
     await docrt();
     return true;
@@ -512,7 +519,7 @@ async function help_dir(msg) {
  * Other invalid keys: cmdassist NHW_TEXT then return cancel (no retry).
  * Returns {dx,dy} or null.
  */
-async function getdir_cmdassist(prompt) {
+export async function getdir_cmdassist(prompt) {
     // C ref: cmd.c yn_function — flush pending topline --More-- before prompt
     await flush_topl_more();
     // C: tty_yn_function — Sprintf(prompt, "%s ", query)

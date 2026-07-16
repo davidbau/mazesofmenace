@@ -22,7 +22,7 @@ import {
     ECMD_OK, ECMD_TIME, Upolyd, HAND,
 } from './const.js';
 import { retouch_object } from './artifact.js';
-import { makeknown, encumber_msg } from './invent.js';
+import { makeknown, encumber_msg, compactify_invlets } from './invent.js';
 import { uncurse, weight } from './mkobj.js';
 import { trycall } from './do_name.js';
 
@@ -270,35 +270,50 @@ async function ready_weapon(wep) {
     return 1;
 }
 
-/** C ref: wield.c wield_ok — SUGGEST weapons/weptools; exclude coins. */
+/**
+ * C ref: wield.c wield_ok — SUGGEST weapons/weptools; EXCLUDE coins;
+ * DOWNPLAY other invent (selectable but not listed in prompt).
+ */
 function wield_ok(obj) {
-    if (!obj) return true; // '-'
-    if (obj.oclass === COIN_CLASS) return false;
-    if (obj.oclass === WEAPON_CLASS || is_weptool(obj)) return true;
-    return true; // C DOWNPLAY — still selectable
+    if (!obj) return GETOBJ_SUGGEST; // '-'
+    if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj)) return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
 }
 
-function wield_lets() {
+/**
+ * Invent letters with GETOBJ_SUGGEST only (C getobj `bp` / `lets[]`).
+ * Sorted by invlet like C sortloot(SORTLOOT_INVLET).
+ */
+function wield_suggest_lets() {
     const lets = [];
     for (const o of game.invent || []) {
         if (!o?.invlet) continue;
-        if (o.oclass === COIN_CLASS) continue;
-        if (wield_ok(o)) lets.push(o.invlet);
+        if (wield_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
     }
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
     return lets.join('');
+}
+
+/** C invent.c getobj: if (suggested > 5) compactify(bp) for prompt only. */
+function wield_prompt_lets(raw) {
+    if (!raw || raw.length <= 5) return raw;
+    return compactify_invlets(raw);
 }
 
 /**
  * C ref: invent.c getobj("wield", wield_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * Count-split path deferred; '-' → empty hands sentinel.
+ * Hands GETOBJ_SUGGEST → buf prefix "- "; invent SUGGEST letters after;
+ * compactify when suggested > 5. Count-split / ?/* pickinv deferred.
  */
 async function getobj_wield() {
     for (;;) {
         await flush_topl_more();
-        const lets = wield_lets();
-        const query = lets
-            ? `What do you want to wield? [-${lets} or ?*]`
-            : 'What do you want to wield? [- or ?*]';
+        const rawLets = wield_suggest_lets();
+        const lets = wield_prompt_lets(rawLets);
+        // C: allownone → "- " then invent letters → "[%s or ?*]"
+        const buf = lets ? `- ${lets}` : '-';
+        const query = `What do you want to wield? [${buf} or ?*]`;
         const prompt = `${query} `;
         game._pending_message = prompt;
         await flush_screen(1);
@@ -316,6 +331,7 @@ async function getobj_wield() {
             return null; // hands
         }
         if (ch === '?' || ch === '*') {
+            // C display_pickinv(lets/altlets) deferred
             await pline('Never mind.');
             return undefined;
         }
@@ -324,10 +340,12 @@ async function getobj_wield() {
             await pline("You don't have that object.");
             continue;
         }
-        if (otmp.oclass === COIN_CLASS) {
+        const ok = wield_ok(otmp);
+        if (ok === GETOBJ_EXCLUDE) {
             await pline('You cannot wield that!');
             return undefined;
         }
+        // SUGGEST + DOWNPLAY both selectable (C getobj)
         game._pending_message = '';
         return otmp;
     }
