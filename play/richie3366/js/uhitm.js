@@ -18,7 +18,7 @@ import {
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
-import { pline, newsym, canseemon } from './display.js';
+import { pline, newsym, canseemon, unmap_object, glyph_is_invisible } from './display.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
     dbon, weapon_dam_bonus, use_skill, weapon_type,
@@ -212,6 +212,10 @@ function mondead(mtmp) {
     }
     // Keep mx/my for drop coords (C mon_leaving_level).
     relobj_on_death(mtmp);
+    // C mon.c mondead: glyph_is_invisible → unmap_object
+    if (mx > 0 && glyph_is_invisible(game.level?.at?.(mx, my))) {
+        unmap_object(mx, my);
+    }
     if (mx > 0) newsym(mx, my);
 }
 

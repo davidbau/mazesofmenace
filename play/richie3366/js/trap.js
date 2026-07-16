@@ -13,7 +13,7 @@ import {
 } from './mkobj.js';
 import { find_mac, make_corpse } from './mhitm.js';
 import { mon_explodes } from './explode.js';
-import { newsym, pline, mon_visible, see_with_infrared, You_feel } from './display.js';
+import { newsym, pline, mon_visible, see_with_infrared, You_feel, unmap_object, glyph_is_invisible } from './display.js';
 import { doname, an, the, xname, makeplural, vtense } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
 import { dist2, m_at } from './mon.js';
@@ -489,6 +489,10 @@ function mondead(mtmp) {
         if (i >= 0) game.fmon.splice(i, 1);
     }
     relobj_on_death(mtmp);
+    // C mon.c mondead: glyph_is_invisible → unmap_object
+    if (mx > 0 && glyph_is_invisible(game.level?.at?.(mx, my))) {
+        unmap_object(mx, my);
+    }
     if (mx > 0) newsym(mx, my);
 }
 

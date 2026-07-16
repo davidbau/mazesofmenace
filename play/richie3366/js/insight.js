@@ -391,9 +391,10 @@ function vanqsort_cmp(indx1, indx2) {
     }
     // FALLTHROUGH
     case VANQ_ALPHA_MIX: {
-        const name1 = pmname_neutral(indx1);
-        const name2 = pmname_neutral(indx2);
-        res = name1.toLowerCase().localeCompare(name2.toLowerCase());
+        // C strcmpi — byte order, not ICU localeCompare (Linux vs macOS).
+        const nam1 = pmname_neutral(indx1).toLowerCase();
+        const nam2 = pmname_neutral(indx2).toLowerCase();
+        res = nam1 < nam2 ? -1 : nam1 > nam2 ? 1 : 0;
         break;
     }
     case VANQ_MCLS_HTOL:

@@ -5,7 +5,7 @@
 import { rn2, rnd, d } from './rng.js';
 import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear } from './mon.js';
 import { game } from './gstate.js';
-import { pline, newsym, canspotmon, map_invisible } from './display.js';
+import { pline, newsym, canspotmon, map_invisible, unmap_object, glyph_is_invisible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict } from './mondata.js';
@@ -314,6 +314,10 @@ function mondead(mtmp) {
     }
     // Keep mx/my for drop + make_corpse (C mon_leaving_level).
     relobj_on_death(mtmp);
+    // C mon.c mondead: glyph_is_invisible → unmap_object before detach display
+    if (mx > 0 && glyph_is_invisible(game.level?.at?.(mx, my))) {
+        unmap_object(mx, my);
+    }
     if (mx > 0) newsym(mx, my);
 }
 

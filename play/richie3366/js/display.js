@@ -262,8 +262,38 @@ export function map_invisible(x, y) {
 }
 
 /** C ref: display.h glyph_is_invisible — remembered unseen-monster marker. */
-function glyph_is_invisible(loc) {
+export function glyph_is_invisible(loc) {
     return !!loc?.remembered_glyph?.invisible;
+}
+
+/**
+ * C ref: display.c unmap_object — replace remembered glyph with trap /
+ * engraving / background (no show). Clears invisible-monster memory.
+ * Named omissions: dark-room S_room→S_stone waslit tweak when !waslit.
+ */
+export function unmap_object(x, y) {
+    if (!game.level?.flags?.hero_memory) return;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    // C: tseen trap → map_trap(,0); else seenv → engraving/background;
+    // else default S_stone. map_location(show=false) covers the seenv path.
+    if (loc.seenv) {
+        map_location(x, y, false);
+    } else {
+        loc.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false };
+    }
+}
+
+/**
+ * C ref: display.c unmap_invisible — clear I memory then newsym.
+ * Returns true when an invisible glyph was present.
+ */
+export function unmap_invisible(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !glyph_is_invisible(loc)) return false;
+    unmap_object(x, y);
+    newsym(x, y);
+    return true;
 }
 
 // C ref: youprop.h Infravision — race intrinsic via set_uasmon/mons[urace]
@@ -1906,6 +1936,9 @@ export function serialize_terminal_grid(display) {
  * spaces that carry visible attrs (inverse/underline) are emitted so
  * decode preserves them. Frozen Terminal.serialize() cursor-forwards
  * past all leading spaces and drops those attrs (D-0129 spell heading).
+ *
+ * D-0293: S_altar stays raw `{` in the grid (frozen DEC_MAP omits it) so
+ * decodeScreen matches C whether the recorder emitted SO+`{` or bare `{`.
  */
 export function serialize_for_scoring(term) {
     if (!term?.grid) return term?.serialize?.() ?? '';
@@ -1967,8 +2000,13 @@ export function serialize_for_scoring(term) {
         else if (firstCol > 0) out += ' '.repeat(firstCol);
         for (let c = firstCol; c <= lastCol; c++) {
             const cell = term.grid[r][c];
-            const wantFg = colorToFg(cell.color);
             const wantAttr = cell.attr | 0;
+            // clearScreen fills CLR_GRAY spaces; C tty leaves default fg.
+            // Glyphless spaces without inv/uline: emit as NO_COLOR.
+            let cellColor = cell.color;
+            if (cell.ch === ' ' && !(wantAttr & 0x5)) cellColor = NO_COLOR;
+            else cellColor = tty_map_color(cellColor);
+            const wantFg = colorToFg(cellColor);
             out += sgrTransition(curFg, curAttr, wantFg, wantAttr);
             curFg = wantFg;
             curAttr = wantAttr;
