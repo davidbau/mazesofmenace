@@ -282,7 +282,7 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
 
 /**
  * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu.
- * Undead midnight extra, passiveum, permdmg, map_invisible deferred.
+ * Undead midnight extra, passiveum, permdmg deferred.
  */
 async function hitmu(mtmp, mattk) {
     const mhm = {
@@ -292,6 +292,9 @@ async function hitmu(mtmp, mattk) {
         done: false,
         damage: 0,
     };
+
+    // C: if (!canspotmon(mtmp)) map_invisible — Blind / unseen attacker
+    if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
 
     mhm.damage = d(mattk.damn | 0, mattk.damd | 0);
     // midnight undead extra d() deferred

@@ -1157,7 +1157,8 @@ function print_branch(raw, dnum, lowerBound, upperBound, bymenu, lchoices) {
  *
  * Ported: bymenu=TRUE PICK_ONE path (headings + specials + branches +
  * continuous selectors + unreachable Knox letter skip) + tty_end_menu
- * prompt/blank row (D-0563). Sets dest.lev / dest.dgn and returns
+ * prompt/blank row (D-0563) + bot() after dismiss (D-0568). Sets dest.lev /
+ * dest.dgn and returns
  * logical depth (playerlev), or 0 on cancel.
  * Named omissions: bymenu=FALSE putstr/display path (wizwhere); floating
  * branches listing; Invocation/portal debug lines; endgame amulet grant
@@ -1240,6 +1241,12 @@ export async function print_dungeon(bymenu, dest = null) {
     }
 
     const res = await select_menu_pick_one(raw);
+    // C wintty: dismissing a fullscreen menu that covered WIN_STATUS sets
+    // disp.botlx and calls bot() immediately. select_menu_pick_one still
+    // clear_committed_status for Options→submenu blanking (D-0385); restore
+    // here so the next pline/--More-- (e.g. Endgame prerequisite) shows botl.
+    const { bot } = await import('./display.js');
+    await bot();
     if (res.kind !== 'pick' || res.item?.choiceIdx == null) return 0;
     const idx = res.item.choiceIdx | 0;
     if (dest) {

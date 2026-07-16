@@ -7,11 +7,19 @@ import { rn2, rnd } from './rng.js';
 import {
     FROMEXPER,
     FROMRACE,
+    FROMFORM,
     FROMOUTSIDE,
     INTRINSIC,
     MAXULEV,
     STR18,
     Upolyd,
+    POISON_RES,
+    STEALTH,
+    FAST,
+    JUMPING,
+    DRAIN_RES,
+    BLINDED,
+    BLND_RES,
 } from './const.js';
 import { pline } from './display.js';
 import {
@@ -482,4 +490,104 @@ export function Searching() {
 export function Very_fast() {
     const u = game.u || {};
     return !!(((u.HFast || 0) & ~INTRINSIC) || u.EFast);
+}
+
+/* C ref: attrib.c innately() reason codes */
+const FROM_NONE = 0;
+const FROM_ROLE_REASON = 1; /* experience at level 1 */
+const FROM_RACE_REASON = 2;
+const FROM_INTR = 3;
+const FROM_EXP = 4;
+const FROM_FORM_REASON = 5;
+const FROM_LYCN = 6;
+
+/** Map enlightenment prop index → H* field used by adjabil. */
+const PROP_HFIELD = {
+    [POISON_RES]: 'HPoison_resistance',
+    [STEALTH]: 'HStealth',
+    [FAST]: 'HFast',
+    [JUMPING]: 'HJumping',
+    [DRAIN_RES]: 'HDrain_resistance',
+    [BLINDED]: 'HBlinded',
+    [BLND_RES]: 'HBlnd_resist',
+};
+
+/**
+ * C ref: attrib.c check_innate_abil — role/race table entry if active.
+ * @param {string} propField
+ * @param {number} frommask FROMEXPER | FROMRACE
+ */
+function check_innate_abil(propField, frommask) {
+    let abil = null;
+    if (frommask === FROMEXPER) {
+        abil = role_abil(game.urole?.mnum);
+    } else if (frommask === FROMRACE) {
+        const racePm = game.urace?.mnum;
+        if (racePm === PM_ELF) abil = elf_abil;
+        else if (racePm === PM_ORC) abil = orc_abil;
+        // dwa/gno/hum tables empty or unused for current seeds
+    }
+    if (!abil) return null;
+    const ulevel = game.u?.ulevel | 0;
+    for (const entry of abil) {
+        if (entry.prop === propField && ulevel >= entry.ulevel) return entry;
+    }
+    return null;
+}
+
+/**
+ * C ref: attrib.c innately(long *ability)
+ * @param {string} propField
+ */
+function innately(propField) {
+    const ability = game.u?.[propField] | 0;
+    let iptr = check_innate_abil(propField, FROMEXPER);
+    if (iptr) return iptr.ulevel === 1 ? FROM_ROLE_REASON : FROM_EXP;
+    iptr = check_innate_abil(propField, FROMRACE);
+    if (iptr) return FROM_RACE_REASON;
+    if ((ability & FROMOUTSIDE) !== 0) return FROM_INTR;
+    if ((ability & FROMFORM) !== 0) return FROM_FORM_REASON;
+    return FROM_NONE;
+}
+
+/**
+ * C ref: attrib.c is_innate(propidx)
+ * Named omissions: knight JUMPING extrinsic override; !haseyes BLINDED /
+ * BLND_RES FROMFORM arms beyond H-field; lycanthrope DRAIN_RES only when
+ * ulycn set.
+ */
+export function is_innate(propidx) {
+    if (propidx === DRAIN_RES && (game.u?.ulycn | 0) > 0) return FROM_LYCN;
+    if (propidx === FAST && Very_fast()) return FROM_NONE;
+    const field = PROP_HFIELD[propidx];
+    if (!field) return FROM_NONE;
+    const innateness = innately(field);
+    if (innateness !== FROM_NONE) return innateness;
+    if (
+        propidx === JUMPING
+        && game.urole?.mnum === PM_KNIGHT
+        && !(game.u?.EJumping | 0)
+    ) {
+        return FROM_ROLE_REASON;
+    }
+    return FROM_NONE;
+}
+
+/**
+ * C ref: attrib.c from_what — wizard-mode intrinsic source suffix.
+ * Named omissions: birth blind/deaf; Very_fast potion/boots; what_gives
+ * extrinsic equipment; Blindfolded_only / cream; negative prop blocking.
+ */
+export function from_what(propidx) {
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
+    if (!wizard || propidx < 0) return '';
+    const innateness = is_innate(propidx);
+    if (innateness === FROM_ROLE_REASON || innateness === FROM_RACE_REASON) {
+        return ' innately';
+    }
+    if (innateness === FROM_INTR) return ' intrinsically';
+    if (innateness === FROM_EXP) return ' because of your experience';
+    if (innateness === FROM_LYCN) return ' due to your lycanthropy';
+    if (innateness === FROM_FORM_REASON) return ' from your creature form';
+    return '';
 }

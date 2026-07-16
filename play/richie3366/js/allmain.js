@@ -41,7 +41,7 @@ import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
-    UTOTYPE_NONE, TIMEOUT,
+    UTOTYPE_NONE, TIMEOUT, REGENERATION,
 } from './const.js';
 
 // C ref: allmain.c moveloop_preamble() — moon/friday; new-game RNG only when !resuming
@@ -130,10 +130,13 @@ function maybe_generate_rnd_mon() {
     }
 }
 
-/** C: U_CAN_REGEN() — Regeneration || (Sleepy && u.usleep). Props deferred. */
+/** C: U_CAN_REGEN() — Regeneration || (Sleepy && u.usleep). */
 function u_can_regen() {
     const u = game.u || {};
-    const regen = !!(u.HRegeneration || u.ERegeneration);
+    // C youprop.h Regeneration ≡ HRegeneration || ERegeneration (uprops)
+    const regen = !!(u.HRegeneration || u.ERegeneration
+        || (u.uprops?.[REGENERATION]?.intrinsic | 0)
+        || (u.uprops?.[REGENERATION]?.extrinsic | 0));
     const sleepy = !!(u.HSleepy || u.ESleepy);
     return regen || (sleepy && !!u.usleep);
 }

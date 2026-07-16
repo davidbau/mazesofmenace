@@ -8,9 +8,11 @@ import {
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, IS_WATERWALL, ROOMOFFSET, Is_rogue_level,
+    TEMP_LIT,
 } from './const.js';
 import { newsym } from './display.js';
 import { objectNames } from './objects.js';
+import { do_light_sources } from './light.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -546,8 +548,42 @@ export function vision_recalc(control = 0) {
         next_rmax[y] = 0;
     }
 
-    if (control !== 2) {
-        // C: Blind → view_from then old-sight newsym (deferred);
+    // C youprop.h Blind — used before sighted/rogue branches
+    const heroBlind = !!(u.Blind || u.ublind
+        || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+
+    if (control === 2 || u.uswallow) {
+        // C: swallow / refresh — leave next empty (hero sees nothing)
+    } else if (heroBlind) {
+        // C Blind: still compute COULD_SEE so monsters can see you, but
+        // never OR IN_SIGHT; only newsym cells that were previously seen.
+        view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+
+        const old_array = game.viz_array;
+        game.viz_array = next;
+        game.active_buf = game.active_buf === 0 ? 1 : 0;
+
+        const old_rmin = game._viz_rmin;
+        const old_rmax = game._viz_rmax;
+        if (old_array) {
+            for (let row = 0; row < ROWNO; row++) {
+                const old_row = old_array[row];
+                const start = old_rmin
+                    ? Math.min(old_rmin[row], next_rmin[row])
+                    : next_rmin[row];
+                const stop = old_rmax
+                    ? Math.max(old_rmax[row], next_rmax[row])
+                    : next_rmax[row];
+                if (start > stop) continue;
+                for (let col = start; col <= stop; col++) {
+                    if (old_row[col] & IN_SIGHT) newsym(col, row);
+                }
+            }
+        }
+        game._viz_rmin = next_rmin;
+        game._viz_rmax = next_rmax;
+        return;
+    } else if (control !== 2) {
         // Is_rogue_level → rogue_vision; else Algorithm-C view_from.
         if (Is_rogue_level(u.uz)) {
             rogue_vision(next, next_rmin, next_rmax);
@@ -555,6 +591,9 @@ export function vision_recalc(control = 0) {
             view_from(u.uy, u.ux, next, next_rmin, next_rmax);
         }
     }
+
+    // C: do_light_sources(next_array) before IN_SIGHT from lit|TEMP_LIT
+    do_light_sources(next);
 
     // Compute IN_SIGHT from COULD_SEE + lighting (non-rogue primary path;
     // rogue_vision already ORs IN_SIGHT for room/adjacent — loop is idempotent)
@@ -574,14 +613,15 @@ export function vision_recalc(control = 0) {
                 continue;
             }
 
-            // Lit cells
-            if (loc.lit) {
+            // Lit cells (permanent or TEMP_LIT from light sources)
+            if (loc.lit || (next[row][col] & TEMP_LIT)) {
                 if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
                     && !viz_clear[row]?.[col]) {
                     // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
                     const dx = Math.sign(ux - col);
                     const flev = level?.at(col + dx, row + dy);
-                    if (flev?.lit) {
+                    const ftmp = next[row + dy]?.[col + dx];
+                    if (flev?.lit || (ftmp & TEMP_LIT)) {
                         next[row][col] |= IN_SIGHT;
                     }
                 } else {
@@ -623,12 +663,12 @@ export function vision_recalc(control = 0) {
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.lit) {
+                } else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
                         && !viz_clear[row][col]) {
                         const dx = Math.sign(ux - col);
                         const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit) {
+                        if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];

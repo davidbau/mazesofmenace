@@ -475,7 +475,7 @@ function freehand() {
 }
 
 /** C ref: mondata.c can_chant — hero subset (Strangled / silent / head). */
-function can_chant() {
+export function can_chant() {
     if (game.u?.Strangled) return false;
     // Poly silent/headless deferred — starting human/priest always ok
     return true;

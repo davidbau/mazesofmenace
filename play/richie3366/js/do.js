@@ -18,6 +18,7 @@ import { COIN_CLASS } from './objects.js';
 import { pline, Norep, docrt, flush_screen, flush_topl_more, newsym, mark_topline_prompt } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset } from './vision.js';
+import { clear_light_sources, relight_monsters } from './light.js';
 import {
     stairway_at,
     stairway_find_from,
@@ -31,7 +32,7 @@ import {
 import { In_tutorial } from './dungeon.js';
 import { Is_waterlevel, Is_airlevel } from './const.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
-import { initrack, save_track, rest_track } from './track.js';
+import { save_track, rest_track } from './track.js';
 import { m_at, mnexto, hide_monst } from './mon.js';
 import { enexto } from './teleport.js';
 import { monster_nearby, losehp, maybe_half_phys } from './hack.js';
@@ -50,6 +51,42 @@ import { dismount_steed } from './steed.js';
 import { onquest } from './quest.js';
 import { In_quest, In_endgame } from './const.js';
 import { resurrect } from './wizard.js';
+import { bones_include_name } from './bones.js';
+
+function Blind() {
+    const u = game.u || {};
+    if (u.Blind) return true;
+    return !!((u.HBlinded | 0) || (u.EBlinded | 0) || u.uroleplay?.blind);
+}
+function Hallucination() {
+    const u = game.u || {};
+    if (u.Hallucination) return true;
+    return !!((u.HHallucination | 0) && !(u.Halluc_resistance | 0));
+}
+
+/**
+ * C ref: do.c familiar_level_msg — rn2(4) deja-vu / hallu variants.
+ */
+async function familiar_level_msg() {
+    const fam_msgs = [
+        'You have a sense of deja vu.',
+        "You feel like you've been here before.",
+        'This place %s familiar...',
+        null,
+    ];
+    const halu_fam_msgs = [
+        'Whoa!  Everything %s different.',
+        'You are surrounded by twisty little passages, all alike.',
+        'Gee, this %s like uncle Conan\'s place...',
+        null,
+    ];
+    const which = rn2(4);
+    let mesg = Hallucination() ? halu_fam_msgs[which] : fam_msgs[which];
+    if (mesg && mesg.includes('%')) {
+        mesg = mesg.replace('%s', Blind() ? 'seems' : 'looks');
+    }
+    if (mesg) await pline(mesg);
+}
 
 /**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
@@ -272,11 +309,12 @@ async function selftouch_stair_fall(_arg) {
  * pickup(1).
  * Deferred: binary NHFILE, mysterious force, quest gate, portals, endgame
  * astral `final_level` / migrating-Wizard resurrect arm, trap-door fall
- * damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE, familiar_level_msg,
+ * damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE, Gehennom valley plines,
  * temperature_change_msg / hellish_smoke (D-0559 hot/cold); Flying/Punished
  * climb variants, Punished `drag_down`/`ballrelease`, full `selftouch`
  * petrify, u_collide_m full limbo. Ported: In_quest `onquest`; In_endgame
- * `newdungeon`+amulet `resurrect` new-Wizard makemon + appear Norep.
+ * `newdungeon`+amulet `resurrect` new-Wizard makemon + appear Norep;
+ * `familiar_level_msg` via `bones_include_name` (D-0577).
  */
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
@@ -355,6 +393,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     game.ftrap = null;
     game.head_engr = null;
     game.level = null;
+    clear_light_sources();
     // C: memset updest/dndest before getlev/mklev; fixup_special re-fills.
     game.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
     game.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
@@ -362,12 +401,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const info = game.level_info[new_ledger];
     const exists = !!(info && ((info.flags | 0) & LFILE_EXISTS));
     const madeNew = !exists;
+    let familiar = false;
     if (!exists) {
         await mklev();
         if (!game.level_info[new_ledger]) game.level_info[new_ledger] = { flags: 0 };
-        // C: LFILE_EXISTS is set on savelev leave, not on first mklev
-        // Ring already cleared by save_track on leave (new level has no rest).
-        initrack();
+        // C: LFILE_EXISTS is set on savelev leave, not on first mklev.
+        // Track ring: leave-path save_track already cleared; getbones
+        // (inside mklev) rest_track's dead-hero utrack — do NOT initrack
+        // here (C goto_level has no initrack after mklev; wiping would
+        // drop bones gettrack for hostiles — D-0578).
+        // C: familiar = bones_include_name(plname) after first-time mklev
+        familiar = bones_include_name(game.plname || '');
     } else {
         // C: getlev — restore in-memory stash + catchup/hide_monst + rest_track
         game.level = info.level;
@@ -377,6 +421,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.stairs = info.stairs || null;
         game.head_engr = info.head_engr || null;
         rebuildObjectsAt(game.fobj);
+        relight_monsters();
         rest_track(info.track);
         // C: Sokoban ≡ level.flags.sokoban_rules — sync JS alias after getlev
         // (clear_level_structures only runs on mklev, not stash restore).
@@ -509,6 +554,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
     // C: deliver_splev_message() before endgame/quest arrival arms
     await deliver_splev_message();
+    // C: Gehennom Valley plines deferred; familiar before endgame/quest
+    if (familiar) await familiar_level_msg();
     // C: if (In_endgame) { … else if (newdungeon && amulet) resurrect(); }
     //     else if (In_quest) onquest();
     if (In_endgame(u.uz)) {

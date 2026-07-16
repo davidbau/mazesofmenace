@@ -65,7 +65,7 @@ import {
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
     M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
-    ROOMOFFSET,
+    ROOMOFFSET, LS_MONSTER,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
     In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
 } from './const.js';
@@ -102,6 +102,7 @@ import {
 } from './objects.js';
 import { cansee } from './vision.js';
 import { newsym } from './display.js';
+import { emits_light, new_light_source } from './light.js';
 import { christen_monst } from './do_name.js';
 import { get_shop_item } from './shknam.js';
 import {
@@ -1845,6 +1846,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
         if (!rn2(100) && is_domestic(ptr)) {
             put_saddle_on_mon(null, mtmp);
         }
+    }
+
+    // C: emits_light → new_light_source(LS_MONSTER) (before invent in C;
+    // after invent here — same for non-shapechanger fire emitters)
+    {
+        const ct = emits_light(ptr);
+        if (ct > 0) new_light_source(mtmp.mx, mtmp.my, ct, LS_MONSTER, mtmp);
     }
 
     // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)

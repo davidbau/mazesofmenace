@@ -10,7 +10,7 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, TREE, IRONBARS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
+    SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, AIR, CLOUD,
     FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     LA_DOWN,
@@ -314,7 +314,12 @@ function hero_has_infravision() {
 // C ref: display.h _see_with_infrared
 export function see_with_infrared(mon) {
     if (!mon) return false;
-    if (game.u?.Blind || game.u?.ublind) return false;
+    const u = game.u || {};
+    // C: !Blind && Infravision && …
+    if (u.Blind || u.ublind
+        || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0))) {
+        return false;
+    }
     if (!hero_has_infravision()) return false;
     const ptr = mon.data || mons(mon.mnum);
     if (!infravisible(ptr)) return false;
@@ -1042,6 +1047,11 @@ export function terrain_glyph(loc, x, y) {
         return dec
             ? { ch: '~', color: CLR_CYAN, dec: true }
             : { ch: '.', color: CLR_CYAN, dec: false };
+    // C ref: display.c back_to_glyph + defsym.h — S_air ' '/CLR_CYAN; S_cloud '#'/CLR_GRAY.
+    case AIR:
+        return { ch: ' ', color: CLR_CYAN, dec: false };
+    case CLOUD:
+        return { ch: '#', color: CLR_GRAY, dec: false };
     // C ref: display.c back_to_glyph — walls/SDOOR use wall_angle(seenv)
     case SDOOR:
     case HWALL:
@@ -1869,9 +1879,9 @@ const HU_STAT = [
 
 /**
  * C ref: dungeon.c endgamelevelname — Astral / Elemental plane names.
- * Named omissions: callers outside botl (insight ^X) still assemble copy.
+ * Used by botl describe_level and insight background_enlightenment.
  */
-function endgamelevelname(indx) {
+export function endgamelevelname(indx) {
     switch (indx | 0) {
     case -5: return 'Astral Plane';
     case -4: return 'Plane of Water';

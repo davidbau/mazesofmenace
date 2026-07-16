@@ -4,8 +4,9 @@
 //
 // Branch envelope: getobj wand + zappable + cursed backfire gate +
 // NODIR weffects → zapnodir WAN_SECRET_DOOR_DETECTION → findit;
-// directional getdir ('.' = self) → zapyourself SPE_HEALING /
-// SPE_EXTRA_HEALING / WAN_SLEEP / SPE_SLEEP;
+// directional getdir ('.' = self) → confdir + zapyourself SPE_HEALING /
+// SPE_EXTRA_HEALING / WAN_SLEEP / SPE_SLEEP / WAN_DEATH /
+// SPE_FINGER_OF_DEATH;
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
 // for WAN_MAGIC_MISSILE..WAN_LIGHTNING (sleep + bounce + Reflecting);
 // IMMEDIATE weffects → bhit(rn1(8,6)) + bhito WAN_POLYMORPH pile
@@ -36,7 +37,10 @@ import { hold_another_object, makeknown } from './invent.js';
 import { doname, xname } from './objnam.js';
 import { A_WIS, A_STR, exercise } from './attrib.js';
 import { findit } from './detect.js';
-import { fall_asleep, losehp, maybe_half_phys, nomul } from './hack.js';
+import {
+    confdir, fall_asleep, losehp, maybe_half_phys, nomul,
+} from './hack.js';
+import { nonliving, is_demon } from './monsters.js';
 import { m_at } from './mon.js';
 import { find_mac } from './mhitm.js';
 import { obj_resists } from './dogmove.js';
@@ -51,8 +55,9 @@ import {
 } from './objects.js';
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
-    NO_KILLER_PREFIX, isok, ZAP_POS, STONE, IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED,
-    DISP_BEAM, DISP_CHANGE, DISP_END, OBJ_FLOOR, Has_contents, ZAPPED_WAND,
+    NO_KILLER_PREFIX, DIED, isok, ZAP_POS, STONE, IS_DOOR, IS_ROOM,
+    D_CLOSED, D_LOCKED, DISP_BEAM, DISP_CHANGE, DISP_END, OBJ_FLOOR,
+    Has_contents, ZAPPED_WAND,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -71,6 +76,8 @@ const SPE_SLEEP = objectNames.indexOf('SPE_SLEEP');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
 const SPE_DIG = objectNames.indexOf('SPE_DIG');
+const WAN_DEATH = objectNames.indexOf('WAN_DEATH');
+const SPE_FINGER_OF_DEATH = objectNames.indexOf('SPE_FINGER_OF_DEATH');
 
 const ZT_SLEEP = 3; // AD_SLEE - 1
 
@@ -418,6 +425,11 @@ function zap_lets() {
  * C ref: cmd.c getdir for zap — '.' is self (dx=dy=dz=0, success).
  * Esc/space/return cancel. lock.js getdir still treats '.' as cancel.
  */
+/**
+ * C ref: cmd.c getdir — direction for zap; '.' / 's' = self.
+ * After a successful horizontal dir (including self dz==0), C always
+ * calls confdir(FALSE) which may roll u_maybe_impaired.
+ */
 async function getdir_zap(prompt) {
     const msg = prompt || 'In what direction?';
     game._pending_message = `${msg} `;
@@ -428,21 +440,21 @@ async function getdir_zap(prompt) {
     const ch = String.fromCharCode(key);
     game._pending_message = '';
     if (!game.u) game.u = {};
-    if (ch === '.') {
+    if (ch === '.' || ch === 's') {
         game.u.dx = game.u.dy = game.u.dz = 0;
-        return true;
-    }
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+    } else if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
         game.u.dx = game.u.dy = game.u.dz = 0;
         return false;
-    }
-    if (!(ch in DIR_DX)) {
+    } else if (!(ch in DIR_DX)) {
         game.u.dx = game.u.dy = game.u.dz = 0;
         return false;
+    } else {
+        game.u.dx = DIR_DX[ch];
+        game.u.dy = DIR_DY[ch];
+        game.u.dz = 0;
     }
-    game.u.dx = DIR_DX[ch];
-    game.u.dy = DIR_DY[ch];
-    game.u.dz = 0;
+    // C getdir: if (!u.dz) confdir(FALSE);
+    if (!game.u.dz) confdir(false);
     return true;
 }
 
@@ -567,9 +579,10 @@ async function zapnodir(obj) {
 /**
  * C ref: zap.c zapyourself — self-directed wand/spell effects.
  * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / WAN_SLEEP /
- * SPE_SLEEP; other otyps named in C-JS-MAP.
+ * SPE_SLEEP / WAN_DEATH / SPE_FINGER_OF_DEATH; other otyps named in
+ * C-JS-MAP.
  * @param {boolean} ordinary wand zap (TRUE) vs broken/spell (FALSE)
- * @returns {number} damage (0 for healing/sleep)
+ * @returns {number} damage (0 for healing/sleep/death)
  */
 export async function zapyourself(obj, ordinary) {
     if (!obj) return 0;
@@ -602,6 +615,29 @@ export async function zapyourself(obj, ordinary) {
             fall_asleep(-rnd(50), true);
         }
         break;
+
+    case WAN_DEATH:
+    case SPE_FINGER_OF_DEATH: {
+        // C: nonliving / demon → harmless beam; else learn + done(DIED)
+        const youdata = game.youmonst?.data;
+        if (nonliving(youdata) || is_demon(youdata)) {
+            await pline(obj.otyp === WAN_DEATH
+                ? 'The wand shoots an apparently harmless beam at you.'
+                : 'You seem no deader than before.');
+            break;
+        }
+        learn_it = true;
+        const him = game.u?.female ? 'her' : 'him';
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.name = `shot ${him}self with a death ray`;
+        game.killer.format = NO_KILLER_PREFIX;
+        // C urgent_pline — same more() ownership as pline here
+        await pline('You irradiate yourself with pure energy!');
+        await pline('You die.');
+        const { done } = await import('./end.js');
+        await done(DIED);
+        break;
+    }
 
     default:
         // Other zapyourself cases deferred

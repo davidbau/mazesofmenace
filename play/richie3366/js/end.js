@@ -30,6 +30,7 @@ import { mkcorpstat, curse, place_object, stackobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon } from './makemon.js';
 import { write_bonesfile } from './bones.js';
+import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
@@ -272,8 +273,10 @@ export function can_make_bones() {
     }
 
     const dep = depth(uz);
+    // C: wizard global — JS playmode:debug sets flags.debug (not .wizard)
+    const wizard = !!(flags.wizard || flags.debug);
     if (dep <= 0
-        || (!rn2(1 + (dep >> 2)) && !flags.wizard)) {
+        || (!rn2(1 + (dep >> 2)) && !wizard)) {
         return false;
     }
     if (flags.discover || flags.explore) return false;
@@ -743,8 +746,10 @@ function drop_upon_death(mtmp, cont, x, y) {
  * MM_NONAME. Skips write when bones file already exists (open_bonesfile hit).
  * Named omissions: file replace/compress; unleash_all/unpunish/dismount;
  * remove_mon_from_bones/dmonsfree/forget_engravings; fruit fid;
- * set_ghostly_objlist/resetobjs(FALSE); map memory clear; cemetery;
- * arise/statue arms; ebones; m_dowear; obj_attach_mid; binary savelev.
+ * set_ghostly_objlist/resetobjs(FALSE); map memory clear;
+ * arise/statue arms; ebones; m_dowear; obj_attach_mid; binary savelev;
+ * formatkiller body / yyyymmddhhmmss polish (how/when stubs OK for
+ * bones_include_name).
  */
 function savebones(how, corpse) {
     void how;
@@ -766,6 +771,30 @@ function savebones(how, corpse) {
     mtmp.female = game.flags?.female ? 1 : 0;
     mtmp.msleeping = 1;
     void corpse;
+
+    // C: bones.c savebones — attach cemetery before create_bonesfile
+    // who = plname-ROL-RAC-GEN-ALI (playmode:debug → plname "wizard")
+    const gidx = game.flags?.female ? 1 : 0;
+    const atype = u.ualign?.type | 0;
+    const who = [
+        game.plname || 'Player',
+        (game.urole?.filecode || 'Tou').slice(0, 3),
+        (game.urace?.filecode || 'Hum').slice(0, 3),
+        (genders[gidx]?.filecode || (gidx ? 'Fem' : 'Mal')).slice(0, 3),
+        (aligns[1 - atype]?.filecode || 'Neu').slice(0, 3),
+    ].join('-');
+    const newbones = {
+        who,
+        how: '', // formatkiller deferred
+        when: '', // yyyymmddhhmmss deferred
+        frpx: u.ux0 | u.ux | 0,
+        frpy: u.uy0 | u.uy | 0,
+        bonesknown: false,
+        next: game.level?.bonesinfo || null,
+    };
+    if (!game.level) game.level = {};
+    game.level.bonesinfo = newbones;
+
     // C: create_bonesfile + savelev after ghost envelope
     write_bonesfile(u.uz);
 }

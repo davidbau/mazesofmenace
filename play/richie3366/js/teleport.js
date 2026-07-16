@@ -15,7 +15,7 @@ import {
     ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT,
     UTOTYPE_NONE,
-    is_hole, Is_stronghold, Is_botlevel,
+    is_hole, Is_stronghold, Is_botlevel, Is_knox_level,
     In_endgame, In_sokoban, In_quest,
 } from './const.js';
 import { objects_at, mksobj } from './mkobj.js';
@@ -575,6 +575,72 @@ export async function tele() {
     await scrolltele(null);
 }
 
+/** C ref: dungeon.c single_level_branch — Is_knox only (Ludios). */
+function single_level_branch(lev) {
+    return Is_knox_level(lev);
+}
+
+/** C ref: dungeon.c dunlevs_in_dungeon. */
+function dunlevs_in_dungeon(lev) {
+    return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;
+}
+
+/** C ref: dungeon.h Inhell — hellish dungeon flag. */
+function Inhell() {
+    return !!(game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish);
+}
+
+/**
+ * C ref: teleport.c random_teleport_level — absolute depth for random
+ * levelport. Ported: rn2(5)/single_level/endgame stay; quest locate
+ * clamp; Gehennom !invoked max-1; rn2 range + botlevel/min rnd polish.
+ */
+export function random_teleport_level() {
+    const u = game.u || {};
+    const uz = u.uz || { dnum: 0, dlevel: 1 };
+    const cur_depth = depth(uz) | 0;
+
+    // C: !rn2(5) || single_level_branch || In_endgame → stay
+    if (!rn2(5) || single_level_branch(uz) || In_endgame(uz)) {
+        return cur_depth;
+    }
+
+    let min_depth;
+    let max_depth;
+    if (In_quest(uz)) {
+        let bottom = dunlevs_in_dungeon(uz);
+        const qlocate_depth = game.qlocate_level?.dlevel;
+        const reached = game.dungeons?.[uz.dnum]?.dunlev_ureached ?? 0;
+        if (qlocate_depth != null && reached < qlocate_depth) {
+            bottom = qlocate_depth;
+        }
+        min_depth = (game.dungeons?.[uz.dnum]?.depth_start | 0) || 1;
+        max_depth = bottom + (((game.dungeons?.[uz.dnum]?.depth_start | 0) || 1) - 1);
+    } else {
+        min_depth = 1;
+        max_depth = dunlevs_in_dungeon(uz)
+            + (((game.dungeons?.[uz.dnum]?.depth_start | 0) || 1) - 1);
+        if (Inhell() && !u.uevent?.invoked) max_depth -= 1;
+    }
+
+    // Range is 1 to current+3, current not counting
+    let nlev = rn2(cur_depth + 3 - min_depth) + min_depth;
+    if (nlev >= cur_depth) nlev++;
+
+    if (nlev > max_depth) {
+        nlev = max_depth;
+        if (Is_botlevel(uz)) nlev -= rnd(3);
+    }
+    if (nlev < min_depth) {
+        nlev = min_depth;
+        if (nlev === cur_depth) {
+            nlev += rnd(3);
+            if (nlev > max_depth) nlev = max_depth;
+        }
+    }
+    return nlev;
+}
+
 /**
  * C ref: teleport.c level_tele — controlled/wizard dungeon-level port.
  *
@@ -582,12 +648,11 @@ export async function tele() {
  * schedule_goto (deferred_goto after rhack); wizard `?` /
  * menu_requested → print_dungeon(TRUE) force_dest; endgame dest
  * AMULET_OF_YENDOR grant via mksobj+addinv (D-0549); In_endgame
- * wizard negative dest → dlevel = dunlevs + newlev (D-0560). Named
- * omissions: lev_by_name; bymenu=FALSE print_dungeon;
- * random_teleport_level / involuntary; heaven/escape outside endgame;
- * single_level_branch Knox; Quest depth remap polish; find_hell;
- * invocation Gehennom clamp; Nowhere suicide yn; next_to_u leash body;
- * buried ball; debug_fuzzer.
+ * wizard negative dest → dlevel = dunlevs + newlev (D-0560);
+ * Confusion/`*` / involuntary → random_teleport_level (D-0575). Named
+ * omissions: lev_by_name; bymenu=FALSE print_dungeon; heaven/escape
+ * outside endgame; Quest depth remap polish; find_hell; Nowhere
+ * suicide yn; next_to_u leash body; buried ball; debug_fuzzer.
  */
 export async function level_tele() {
     const u = game.u || {};
@@ -606,6 +671,7 @@ export async function level_tele() {
     let newlev = 0;
     const newlevel = { dnum: 0, dlevel: 0 };
     let force_dest = false;
+    let use_random = false;
 
     if ((Teleport_control && !Stunned) || wizard) {
         let qbuf = 'To what level do you want to teleport?';
@@ -650,14 +716,15 @@ export async function level_tele() {
             buf = await getlin(qbuf);
             if (buf == null) buf = '';
             if (buf === '*') {
-                // random_teleport_level deferred
-                await pline('You shudder for a moment.');
-                return;
+                // C: goto random_levtport
+                use_random = true;
+                break;
             }
+            // C: Confusion && rnl(5) → Oops → random_levtport
             if ((u.HConfusion || u.Confusion) && rnl(5)) {
                 await pline('Oops...');
-                await pline('You shudder for a moment.');
-                return;
+                use_random = true;
+                break;
             }
             if (buf === '\x1b') return;
             if (wizard && buf === '?') {
@@ -672,34 +739,44 @@ export async function level_tele() {
                 newlev = 0;
             }
         } while (
-            !newlev
+            !use_random
+            && !newlev
             && !(buf.length && buf[0] >= '0' && buf[0] <= '9')
             && !(buf[0] === '-' && buf.length > 1 && buf[1] >= '0' && buf[1] <= '9')
             && trycnt < 10
         );
 
-        if (!force_dest) {
+        if (!use_random && !force_dest) {
             if (newlev === 0) {
                 if (trycnt >= 10) {
-                    await pline('You shudder for a moment.');
+                    // C: goto random_levtport
+                    use_random = true;
+                } else {
+                    // Nowhere suicide yn deferred — cancel
                     return;
                 }
-                // Nowhere suicide yn deferred — cancel
+            } else if (single_level_branch(u.uz) && newlev > 0) {
+                await pline('You shudder for a moment.');
                 return;
-            }
-
-            // single_level_branch Knox gate deferred
-
-            // Quest Home-N status → logical depth
-            if (In_quest(u.uz) && newlev > 0) {
+            } else if (In_quest(u.uz) && newlev > 0) {
+                // Quest Home-N status → logical depth
                 const dun = game.dungeons?.[u.uz.dnum | 0];
                 newlev = newlev + ((dun?.depth_start | 0) || 1) - 1;
             }
         }
     } else {
-        // involuntary random_teleport_level deferred
-        await pline('You shudder for a moment.');
-        return;
+        // involuntary level tele
+        use_random = true;
+    }
+
+    // C random_levtport:
+    if (use_random) {
+        newlev = random_teleport_level();
+        if (newlev === depth(u.uz)) {
+            await pline('You shudder for a moment.');
+            return;
+        }
+        force_dest = false;
     }
 
     // next_to_u leash gate — always true without leash wiring
@@ -744,7 +821,6 @@ export async function level_tele() {
         flags.verbose ? 'You materialize on a different level!' : null,
     );
 }
-
 /**
  * C ref: teleport.c vault_tele — somexyspace into VAULT then teleds.
  * Named omission: tele() fallback RNG when no vault/space.

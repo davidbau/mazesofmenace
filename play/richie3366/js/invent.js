@@ -7,6 +7,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
+    endgamelevelname,
 } from './display.js';
 import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee } from './objnam.js';
 import { yn_function } from './getline.js';
@@ -47,6 +48,10 @@ import {
     SORTLOOT_LOOT,
     SORTLOOT_INVLET,
     PICK_ONE,
+    In_endgame,
+    In_quest,
+    Is_knox_level,
+    Is_rogue_level,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -54,6 +59,7 @@ import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
 import { depth } from './hacklib.js';
+import { newuexp } from './exper.js';
 import {
     DOOR, STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, TREE, IRONBARS,
     D_NODOOR, D_ISOPEN, D_BROKEN,
@@ -73,12 +79,15 @@ import {
     FULL_MOON,
     Upolyd,
     MAGICENLIGHTENMENT,
+    Is_airlevel,
+    LEFT_SIDE,
+    RIGHT_SIDE,
 } from './const.js';
 import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     OVERLOADED, WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, MAX_CARR_CAP,
-    WT_WOUNDEDLEG_REDUCT, LEFT_SIDE, RIGHT_SIDE,
+    WT_WOUNDEDLEG_REDUCT,
     NOT_HUNGRY,
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
@@ -86,18 +95,24 @@ import { objects_at } from './mkobj.js';
 import { PM_SAMURAI, PM_MONK } from './generated/monsters_data.js';
 import { humanoid } from './monsters.js';
 
-// C ref: hack.c weight_cap() — STR+CON base; wounded-leg reduct when !Flying.
-// Named omissions: Boots_on Lev defer; Upolyd msize/cwt; Lev/air/steed MAX.
+// C ref: hack.c weight_cap() — STR+CON base; Air/Lev/steed → MAX;
+// wounded-leg reduct when !Flying (non-MAX branch).
+// Named omissions: Boots_on Lev defer; Upolyd msize/cwt; strong steed.
 export function weight_cap() {
     let carrcap = WT_WEIGHTCAP_STRCON * (acurrstr() + acurr(A_CON))
         + WT_WEIGHTCAP_SPARE;
-    if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
     const u = game.u || {};
-    // C: Levitation || airlevel || strong steed → MAX; else wounded legs
-    if (!(u.Levitation || u.Flying)) {
-        const ew = u.EWounded_legs | 0;
-        if (ew & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
-        if (ew & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+    // C: Levitation || Is_airlevel || (usteed && strongmonst) → MAX
+    // Named omission: strong steed MAX branch.
+    if (u.Levitation || Is_airlevel(u.uz)) {
+        carrcap = MAX_CARR_CAP;
+    } else {
+        if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
+        if (!u.Flying) {
+            const ew = u.EWounded_legs | 0;
+            if (ew & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+            if (ew & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+        }
     }
     return Math.max(carrcap, 1);
 }
@@ -1149,6 +1164,33 @@ function enlght_line_txt(start, middle, end, ps = '') {
     return buf;
 }
 
+/**
+ * C ref: insight.c background_enlightenment location clause (you_are arg).
+ * Ported: In_endgame + endgamelevelname / Elemental prefix; Is_knox;
+ * quest dunlev vs depth; Is_rogue_level annotation.
+ * Named omissions: Is_bigroom + !Blind ", a very big room".
+ * observable_depth ≡ depth (C #if0 plane remap unused).
+ */
+function background_dungeon_clause(uz = game.u?.uz) {
+    const lev = uz || { dnum: 0, dlevel: 1 };
+    if (In_endgame(lev)) {
+        const tmpbuf = endgamelevelname(depth(lev));
+        const elemental = tmpbuf.startsWith('Plane') ? 'Elemental ' : '';
+        return `in the endgame, on the ${elemental}${tmpbuf}`;
+    }
+    if (Is_knox_level(lev)) {
+        const dname = game.dungeons?.[lev.dnum | 0]?.dname || 'Fort Knox';
+        return `on the ${dname} level`;
+    }
+    let dgnbuf = game.dungeons?.[lev.dnum | 0]?.dname || 'The Dungeons of Doom';
+    if (/^The /i.test(dgnbuf)) {
+        dgnbuf = dgnbuf.charAt(0).toLowerCase() + dgnbuf.slice(1);
+    }
+    let tmpbuf = `level ${In_quest(lev) ? (lev.dlevel | 0) : depth(lev)}`;
+    if (Is_rogue_level(lev)) tmpbuf += ', a primitive area';
+    return `in ${dgnbuf}, on ${tmpbuf}`;
+}
+
 /** C youprop.h Deaf ≡ HDeaf || EDeaf || uroleplay.deaf */
 function hero_Deaf(u = game.u || {}) {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
@@ -1166,7 +1208,7 @@ const ENC_STAT_NAME = [
 
 /**
  * C ref: insight.c status_enlightenment hunger arm — hu_stat + not hungry.
- * Wizard `<%d>` uhunger suffix deferred.
+ * Wizard appends ` <%d>` u.uhunger.
  */
 function status_hunger_attr(u = game.u || {}) {
     const uhs = u.uhs ?? NOT_HUNGRY;
@@ -1175,15 +1217,18 @@ function status_hunger_attr(u = game.u || {}) {
     buf = buf.charAt(0).toLowerCase() + buf.slice(1);
     if (buf === 'weak') buf += ' from severe hunger';
     else if (buf.startsWith('faint')) buf += ' due to starvation';
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
+    if (wizard) buf += ` <${u.uhunger | 0}>`;
     return buf;
 }
 
 /**
  * C ref: insight.c status_enlightenment encumbrance arm.
- * Wizard `<%d>` inv_weight suffix deferred.
+ * Wizard appends ` <%d>` inv_weight() (before movement clause when laden).
  * @param {number} final ENL_* (0 = in progress)
  */
 function status_encumbrance_attr(final = 0) {
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
     const cap = near_capacity();
     if (cap > UNENCUMBERED) {
         let buf = (ENC_STAT_NAME[cap] || '?_?').toLowerCase();
@@ -1196,11 +1241,14 @@ function status_encumbrance_attr(final = 0) {
         case OVERLOADED: adj = 'not possible'; break;
         default: break;
         }
+        if (wizard) buf += ` <${inv_weight()}>`;
         buf += `; movement ${!final ? 'is' : 'was'} ${adj}`;
         if (cap < OVERLOADED) buf += ' slowed';
         return buf;
     }
-    return 'unencumbered';
+    let buf = 'unencumbered';
+    if (wizard) buf += ` <${inv_weight()}>`;
+    return buf;
 }
 
 /**
@@ -1313,7 +1361,7 @@ export async function enlightenment(mode, final = 0) {
     const raceAdj = game.urace?.adj || game.urace?.name || 'human';
     const atype = u.ualign?.type ?? A_NEUTRAL;
     const align = align_str(atype);
-    const turns = game.moves || 1;
+    const turns = game.moves | 0;
     const hand = (u.uhandedness === 1) ? 'left' : 'right';
     const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
     const innategend = female ? 1 : 0;
@@ -1359,13 +1407,15 @@ export async function enlightenment(mode, final = 0) {
         lines.push(opposed);
         lines.push(you_are(`${hand}-handed`));
 
-        let dgnbuf = game.dungeons?.[u.uz?.dnum | 0]?.dname || 'The Dungeons of Doom';
-        if (/^The /i.test(dgnbuf)) {
-            dgnbuf = dgnbuf.charAt(0).toLowerCase() + dgnbuf.slice(1);
+        // C ref: insight.c background_enlightenment — In_endgame /
+        // Is_knox / quest dunlev / rogue annotation
+        lines.push(you_are(background_dungeon_clause(u.uz)));
+        // C: moves==1 → just started; else entered N turns ago
+        if (turns === 1) {
+            lines.push(you_have('just started your adventure'));
+        } else {
+            lines.push(enlght_line_txt(You_, 'entered ', `the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago`, ''));
         }
-        const dlev = depth(u.uz || { dnum: 0, dlevel: 1 });
-        lines.push(you_are(`in ${dgnbuf}, on level ${dlev}`));
-        lines.push(enlght_line_txt(You_, 'entered ', `the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago`, ''));
 
         // C ref: insight.c background_enlightenment — night/moon/friday
         // between "entered" and experience (final uses iflags.at_*).
@@ -1637,7 +1687,7 @@ export async function doattributes() {
     const race = game.urace?.adj || game.urace?.name || 'human';
     const atype = u.ualign?.type ?? A_NEUTRAL;
     const align = align_str(atype);
-    const turns = game.moves || 1;
+    const turns = game.moves | 0;
     const hand = (u.uhandedness === 1 /* LEFT_HANDED */) ? 'left' : 'right';
     const gold = game._goldCount || 0;
     // C ref: insight.c background_enlightenment — gender only when
@@ -1668,7 +1718,6 @@ export async function doattributes() {
         ? `  Your wallet contains ${gold} zorkmids.`
         : '  Your wallet is empty.';
 
-    const uexp = u.uexp | 0;
     const hp = u.uhp | 0;
     const hpmax = u.uhpmax | 0;
     const pw = u.uen | 0;
@@ -1687,14 +1736,26 @@ export async function doattributes() {
         pwLine = `${pw} out of ${pwmax} ${Power}`;
     }
 
-    // C ref: insight.c background_enlightenment — dungeon line from
-    // dungeons[uz.dnum].dname + depth (quest/endgame/knox/rogue/bigroom deferred)
-    let dgnbuf = game.dungeons?.[u.uz?.dnum | 0]?.dname || 'The Dungeons of Doom';
-    if (/^The /i.test(dgnbuf)) {
-        dgnbuf = dgnbuf.charAt(0).toLowerCase() + dgnbuf.slice(1);
+    // C ref: insight.c background_enlightenment — In_endgame /
+    // Is_knox / quest dunlev / rogue (Is_bigroom deferred)
+    const dungeonLine = `  You are ${background_dungeon_clause(u.uz)}.`;
+    // C: moves==1 → "just started"; else "entered … N turn(s) ago"
+    const adventureLine = turns === 1
+        ? '  You have just started your adventure.'
+        : `  You entered the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago.`;
+    // C: wizard||final → ", N more needed for/to attain level M"
+    const uexp = u.uexp | 0;
+    const ulvl = u.ulevel | 0;
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
+    let xpLine = `  You have ${uexp} experience point${uexp === 1 ? '' : 's'}`;
+    if (!Upolyd(u) && ulvl < 30 && wizard) {
+        const nxtlvl = newuexp(ulvl);
+        const delta = nxtlvl - uexp;
+        xpLine += `, ${delta} ${uexp > 0 ? 'more ' : ''}needed ${
+            ulvl < 18 ? 'to attain' : 'for'
+        } level ${ulvl + 1}`;
     }
-    const dlev = depth(u.uz || { dnum: 0, dlevel: 1 });
-    const dungeonLine = `  You are in ${dgnbuf}, on level ${dlev}.`;
+    xpLine += '.';
 
     // C ref: insight.c background_enlightenment — continuous stream; tty
     // pages at 23 content rows then "(k of n)". Moon/friday13 sit between
@@ -1708,7 +1769,7 @@ export async function doattributes() {
         opposed,
         `  You are ${hand}-handed.`,
         dungeonLine,
-        `  You entered the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago.`,
+        adventureLine,
     ];
     const moon = game.flags?.moonphase;
     if (moon === FULL_MOON || moon === NEW_MOON) {
@@ -1721,7 +1782,7 @@ export async function doattributes() {
         lines.push('  Bad things can happen on Friday the 13th.');
     }
     lines.push(
-        `  You have ${uexp} experience point${uexp === 1 ? '' : 's'}.`,
+        xpLine,
         '',
         ' Basics:',
         `  You have ${hpLine}.`,
@@ -1740,10 +1801,12 @@ export async function doattributes() {
         '',
         ' Status:',
     );
-    // C ref: insight.c status_enlightenment — Deaf/Sleepy before hunger
-    // (^X is BASIC-only unless wizard/explore → magic false; Sleepy then
-    // needs cause_known).
-    lines.push(...status_core_lines(0, { overlay: true, magic: false }));
+    // C ref: insight.c doattributes — wizard|discover → MAGICENLIGHTENMENT
+    const discover = !!(game.flags?.explore || game.flags?.discover);
+    const magic = wizard || discover;
+    // C ref: insight.c status_enlightenment — Deaf/Sleepy before hunger;
+    // Sleepy needs magic || cause_known; wizard hunger/weight suffixes.
+    lines.push(...status_core_lines(0, { overlay: true, magic }));
     // C ref: insight.c weapon_insight — empty_handed / P_SKILL / skill_name
     const uwep = u.uwep || game.u?.uwep;
     if (!uwep) {
@@ -1847,33 +1910,94 @@ export async function doattributes() {
         }
     }
     lines.push('');
-    // C: explore mode adds Attributes + explore/bones notes before misc.
-    if (game.flags?.explore || game.flags?.discover) {
-        lines.push(
-            ' Attributes:',
-            '  You are nominally aligned.',
-        );
-        // C ref: insight.c attributes_enlightenment — magic_negation after
-        // piousness, before pray (resistances omitted when absent)
+    // C: attributes_enlightenment when MAGICENLIGHTENMENT (wizard/explore ^X)
+    if (magic) {
+        const { piousness } = await import('./insight.js');
+        const {
+            from_what, Fast, Very_fast,
+        } = await import('./attrib.js');
+        const { POISON_RES, STEALTH, FAST } = await import('./const.js');
+        const { can_pray } = await import('./pray.js');
+        const o = (txt) => ` ${txt}`; // overlay body: enlght_line already has 1 space
+        lines.push(' Attributes:');
+        const pio = piousness(true, 'aligned');
+        const record = u.ualign?.record | 0;
+        if (record >= 0) {
+            lines.push(o(enlght_line_txt('You ', 'are ', pio, '')));
+        } else {
+            lines.push(o(enlght_line_txt('You ', 'have ', pio, '')));
+        }
+        if (wizard) {
+            lines.push(o(enlght_line_txt(
+                'Your alignment ', 'is', ` ${record}`, '',
+            )));
+        }
+        // Resistances — poison only for now (other resists deferred)
+        if (hero_Poison_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'poison resistant', from_what(POISON_RES),
+            )));
+        }
+        // Appearance — Stealth (blocked-Stealth arm deferred)
+        if (hero_Stealth(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'stealthy', from_what(STEALTH),
+            )));
+        }
+        // Physical — magic_negation then Fast
         const armpro = magic_negation_you();
         if (armpro > 0) {
             const mc_types = ['', 'warded', 'guarded', 'protected'];
             const idx = Math.min(armpro, mc_types.length - 1);
-            lines.push(`  You are ${mc_types[idx]}.`);
+            lines.push(o(enlght_line_txt('You ', 'are ', mc_types[idx], '')));
         }
-        lines.push(
-            "  You can't safely pray.",
-            '',
-            ' Miscellaneous:',
-            '  You are running in explore mode.',
-            "  You haven't encountered any bones levels.",
-            '  Total elapsed playing time is none.',
-        );
-    } else {
-        lines.push(
-            ' Miscellaneous:',
-            '  Total elapsed playing time is none.',
-        );
+        if (Fast()) {
+            const fastAttr = Very_fast() ? 'very fast' : 'fast';
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', fastAttr, from_what(FAST),
+            )));
+        }
+        // Luck — zero line is wizard-only; nonzero lucky/unlucky for all magic
+        const luck = (u.uluck | 0) + (u.moreluck | 0);
+        if (luck) {
+            const ltmp = Math.abs(luck);
+            const pref = ltmp >= 10 ? 'extremely ' : ltmp >= 5 ? 'very ' : '';
+            let luckAttr = `${pref}${luck < 0 ? 'un' : ''}lucky`;
+            if (wizard) luckAttr += ` (${luck})`;
+            lines.push(o(enlght_line_txt('You ', 'are ', luckAttr, '')));
+        } else if (wizard) {
+            lines.push(o(enlght_line_txt('Your luck ', 'is', ' zero', '')));
+        }
+        // Pray — in-progress only; wizard appends (ublesscnt)
+        let prayAttr = `${(await can_pray(false)) ? '' : 'not '}safely pray`;
+        if (wizard) prayAttr += ` (${u.ublesscnt | 0})`;
+        lines.push(o(enlght_line_txt('You ', 'can ', prayAttr, '')));
+        lines.push(''); // separator before Miscellaneous
+    }
+    // C: Miscellaneous — debug/explore + bones when wizard|discover
+    {
+        const o = (txt) => ` ${txt}`;
+        lines.push(' Miscellaneous:');
+        if (wizard || discover) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ',
+                `running in ${wizard ? 'debug' : 'explore'} mode`,
+                '',
+            )));
+            const bonesOn = game.flags?.bones !== false;
+            if (!bonesOn) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'have', ' disabled loading of bones levels', '',
+                )));
+            } else if (!(u.uroleplay?.numbones | 0)) {
+                lines.push(o(enlght_line_txt(
+                    'You ', "haven't encountered", ' any bones levels', '',
+                )));
+            }
+        }
+        lines.push(o(enlght_line_txt(
+            'Total elapsed playing time ', 'is', ' none', '',
+        )));
     }
 
     // C tty enlightenment: 23 content rows + " (k of n)" footer per page.

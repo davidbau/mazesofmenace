@@ -10,6 +10,7 @@ import { mons } from './monsters.js';
 import { GameMap } from './game.js';
 import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED } from './const.js';
 import { peace_minded, set_malign } from './makemon.js';
+import { save_track, rest_track } from './track.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 
@@ -173,9 +174,68 @@ export function write_bonesfile(lev) {
             : null,
         upstair: lvl?.upstair ? { ...lvl.upstair } : null,
         dnstair: lvl?.dnstair ? { ...lvl.dnstair } : null,
+        // C: savecemetery / level.bonesinfo — who[] for bones_include_name
+        bonesinfo: serCemetery(lvl?.bonesinfo),
+        // C ref: save.c savelev → save_track; restore.c getlev → rest_track.
+        // Dead hero's utrack (often on/near the grave) must persist so
+        // hostile can_track monsters gettrack() after getbones.
+        track: save_track(),
     };
 
     return vfsWriteFile(vfsPath(filename), JSON.stringify(payload));
+}
+
+/** C ref: bones.c cemetery chain → JSON list (newest first). */
+function serCemetery(head) {
+    const out = [];
+    for (let bp = head; bp; bp = bp.next) {
+        out.push({
+            who: String(bp.who || ''),
+            how: String(bp.how || ''),
+            when: String(bp.when || ''),
+            frpx: bp.frpx | 0,
+            frpy: bp.frpy | 0,
+            bonesknown: !!bp.bonesknown,
+        });
+    }
+    return out;
+}
+
+/** C ref: restore restcemetery — JSON list → linked cemetery. */
+function deserCemetery(arr) {
+    let head = null;
+    let prev = null;
+    for (const raw of arr || []) {
+        if (!raw) continue;
+        const bp = {
+            who: String(raw.who || ''),
+            how: String(raw.how || ''),
+            when: String(raw.when || ''),
+            frpx: raw.frpx | 0,
+            frpy: raw.frpy | 0,
+            bonesknown: !!raw.bonesknown,
+            next: null,
+        };
+        if (!head) head = bp;
+        else prev.next = bp;
+        prev = bp;
+    }
+    return head;
+}
+
+/**
+ * C ref: bones.c bones_include_name — cemetery who[] prefix "name-".
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function bones_include_name(name) {
+    const buf = `${name || ''}-`;
+    const len = buf.length;
+    for (let bp = game.level?.bonesinfo; bp; bp = bp.next) {
+        const who = String(bp.who || '');
+        if (who.length >= len && who.slice(0, len) === buf) return true;
+    }
+    return false;
 }
 
 function deserObjChain(arr, where) {
@@ -342,7 +402,11 @@ export function try_load_bones(lev) {
     game.ftrap = payload.ftrap || [];
     game.head_engr = payload.head_engr || null;
     game.stairs = payload.stairs || null;
+    // C: restcemetery → level.bonesinfo (bones_include_name / familiar)
+    map.bonesinfo = deserCemetery(payload.bonesinfo);
     rebuildObjectsAt(fobj);
+    // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
+    rest_track(payload.track);
 
     if (!game.u) game.u = {};
     if (!game.u.uroleplay) game.u.uroleplay = {};

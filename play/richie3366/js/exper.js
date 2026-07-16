@@ -126,6 +126,13 @@ export async function pluslvl(incr) {
 
     if ((u.ulevel | 0) < MAXULEV) {
         const oldlevel = u.ulevel | 0;
+        // C: increase experience points to reflect new level BEFORE ++ulevel
+        if (incr) {
+            const tmp = newuexp(oldlevel + 1);
+            if ((u.uexp | 0) >= tmp) u.uexp = tmp - 1;
+        } else {
+            u.uexp = newuexp(oldlevel);
+        }
         u.ulevel = oldlevel + 1;
         const back = (u.ulevelmax | 0) < (u.ulevel | 0) ? '' : 'back ';
         await pline(`Welcome ${back}to experience level ${u.ulevel}.`);

@@ -877,6 +877,32 @@ export function set_distant_cansee(fn) {
 }
 
 /**
+ * C ref: objnam.c the_unique_obj — "the unique_item" vs "a unique_item".
+ * Named omissions: iflags.override_ID ID-reveal paths.
+ */
+export function the_unique_obj(obj) {
+    if (!obj) return false;
+    const known = !!(obj.known || game.iflags?.override_ID);
+    if (!obj.dknown && !game.iflags?.override_ID) return false;
+    if (obj.otyp === FAKE_AMULET_OF_YENDOR && !known) return true; // lie
+    const ocl = game.objects?.[obj.otyp];
+    return !!(ocl?.oc_unique && (known || obj.otyp === AMULET_OF_YENDOR));
+}
+
+/**
+ * C ref: objnam.c obj_is_pname — fully identified artifact with oname.
+ * Named omissions: program_state.gameover; full not_fully_identified.
+ */
+export function obj_is_pname(obj) {
+    if (!obj?.oartifact || !obj.oextra?.oname) return false;
+    if (!game.program_state?.gameover && !game.iflags?.override_ID) {
+        // not_fully_identified subset: known + dknown + bknown
+        if (!obj.known || !obj.dknown || !obj.bknown) return false;
+    }
+    return true;
+}
+
+/**
  * C ref: objnam.c doname() — invent-kit subset (Tourist/Rogue starter lines).
  * C doname_base starts with xname(obj), which forces cleric bknown before
  * the BUC prefix is read; JS doname uses pretty_base so apply the same force.
@@ -907,11 +933,19 @@ export function doname(obj) {
     // C ref: objnam.c doname_base — COIN_CLASS uses the same quan/article
     // path as other objects ("a gold piece", "25 gold pieces"), not a bare
     // numeric string. xname for coins is just "gold piece".
-    // Build prefix like C: start with "a "/count, then empty, then BUC, then +spe;
-    // finally recompute a/an from the remainder (so "an empty uncursed …").
+    // Article: quan / the_unique_obj|obj_is_pname → "the " / else "a "
+    // (then just_an redo). C skips article for CORPSE (corpse_xname owns
+    // it) — deferred until callers stop relying on doname's "a "/"an ".
+    // Slime-mold fake_arti deferred.
     let prefix = '';
-    if (quan !== 1) prefix = `${quan} `;
-    else prefix = 'a ';
+    if (quan !== 1) {
+        prefix = `${quan} `;
+    } else if (obj_is_pname(obj) || the_unique_obj(obj)) {
+        if (/^the /i.test(base)) base = base.slice(4);
+        prefix = 'the ';
+    } else {
+        prefix = 'a ';
+    }
 
     // C: cknown + (Is_container || STATUE) + !Has_contents → "empty "
     const oname = objectNames[otyp];
@@ -930,13 +964,15 @@ export function doname(obj) {
         else {
             // C: flags.implicit_uncursed (default) — skip "uncursed" when
             // known && oc_charged && not armor/ring (identified +/- implies BUC),
-            // or always for clerics (Role_if(PM_CLERIC) — BUC always known).
+            // or always for clerics / real|fake Amulet of Yendor.
             const charged = is_charged_otyp(otyp);
             const implicit = game.flags?.implicit_uncursed !== false;
             const showUncursed = !implicit
                 || ((!known || !charged
                     || oclass === ARMOR_CLASS
                     || oclass === RING_CLASS)
+                    && otyp !== FAKE_AMULET_OF_YENDOR
+                    && otyp !== AMULET_OF_YENDOR
                     && !Role_if(PM_CLERIC));
             if (showUncursed) prefix += 'uncursed ';
         }

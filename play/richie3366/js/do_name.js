@@ -12,6 +12,7 @@ import {
 import { ATR_INVERSE } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames } from './monsters.js';
 import { getlin } from './getline.js';
 import { an, xname } from './objnam.js';
 import { POTION_CLASS } from './objects.js';
@@ -53,14 +54,44 @@ export function christen_monst(mtmp, name) {
     return mtmp;
 }
 
-function mon_plain_name(mtmp) {
+/** C ref: mondata.h type_is_pname — M2_PNAME proper-name monsters. */
+function type_is_pname(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_PNAME);
+}
+
+/**
+ * C ref: do_name.c Mgender / pmname / mon_pmname — gender-aware pmnames[].
+ * Preserves table casing (e.g. "Wizard of Yendor", not lowercased PM_).
+ */
+function mon_pmname(mtmp) {
+    const mndx = mtmp?.mnum ?? mtmp?.data?.mndx;
+    if (mndx != null && mndx >= 0 && pmnames[mndx]) {
+        const names = pmnames[mndx];
+        let g = mtmp?.female ? FEMALE : MALE;
+        if (g < MALE || g >= 3 || !names[g]) g = NEUTRAL;
+        if (names[g]) return names[g];
+        return names[NEUTRAL] || names[MALE] || names[FEMALE] || 'monster';
+    }
     const raw = mtmp?.data?.name || 'monster';
     return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+}
+
+function mon_plain_name(mtmp) {
+    return mon_pmname(mtmp);
 }
 
 function highc_name(name) {
     if (!name) return 'It';
     return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
+ * C ref: do_name.c x_monnam — M2_PNAME + !adjectives → ARTICLE_NONE.
+ * Wizard of Yendor is not M2_PNAME, so mon_nam stays "the Wizard of Yendor".
+ */
+function article_the_prefix(mtmp, has_adjectives) {
+    if (type_is_pname(mtmp?.data) && !has_adjectives) return '';
+    return 'the ';
 }
 
 /**
@@ -88,7 +119,8 @@ export function x_monnam_tame(mtmp) {
     const plain = mon_plain_name(mtmp);
     const sad = saddle_adj(mtmp);
     if (mtmp.mtame) return `your ${sad}${plain}`;
-    return `the ${sad}${plain}`;
+    // ARTICLE_YOUR demotes to ARTICLE_THE for non-tame; pname → no article
+    return `${article_the_prefix(mtmp, !!sad)}${sad}${plain}`;
 }
 
 /**
@@ -138,7 +170,8 @@ export function mon_nam(mtmp) {
     const ghost = named_ghost_monnam(mtmp);
     if (ghost) return ghost;
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
-    return `the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
+    const sad = saddle_adj(mtmp);
+    return `${article_the_prefix(mtmp, !!sad)}${sad}${mon_plain_name(mtmp)}`;
 }
 
 /**
@@ -161,7 +194,10 @@ export function noit_Monnam(mtmp) {
         return highc_name(`your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
     }
     // SUPPRESS_IT — type name even when !canspotmon
-    return highc_name(`the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
+    const sad = saddle_adj(mtmp);
+    return highc_name(
+        `${article_the_prefix(mtmp, !!sad)}${sad}${mon_plain_name(mtmp)}`,
+    );
 }
 
 /** C ref: do_name.c noit_mon_nam — lowercase noit_Monnam. */
@@ -173,7 +209,8 @@ export function noit_mon_nam(mtmp) {
     if (mtmp.mtame) {
         return `your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
     }
-    return `the ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
+    const sad = saddle_adj(mtmp);
+    return `${article_the_prefix(mtmp, !!sad)}${sad}${mon_plain_name(mtmp)}`;
 }
 
 /**

@@ -17,7 +17,7 @@ import {
     W_QUIVER, LEFT_RING, RIGHT_RING,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
-    TIMEOUT,
+    TIMEOUT, BLINDED,
 } from './const.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -30,6 +30,7 @@ import {
 } from './mkobj.js';
 import { erode_obj } from './trap.js';
 import { rn2, rnd } from './rng.js';
+import { vision_recalc } from './vision.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
@@ -138,12 +139,16 @@ async function already_wearing(cc) {
     await pline(`You are already wearing ${cc}${punct}`);
 }
 
-/** C ref: do_wear.c cursed — message + bknown when stuck */
+/**
+ * C ref: do_wear.c cursed — message + bknown when stuck.
+ * Plural when boots/gloves/lenses or quan>1 (not quan alone).
+ */
 function cursed_check(otmp) {
     if (!otmp) return false;
     if (otmp.cursed) {
-        const plural = (otmp.quan || 1) > 1;
-        game._cursed_takeoff_msg = plural
+        const use_plural = is_boots(otmp) || is_gloves(otmp)
+            || otmp.otyp === LENSES || (otmp.quan || 1) > 1;
+        game._cursed_takeoff_msg = use_plural
             ? "You can't.  They are cursed."
             : "You can't.  It is cursed.";
         otmp.bknown = 1;
@@ -195,7 +200,31 @@ function count_worn_stuff(accessorizing) {
 }
 
 /**
- * C ref: worn.c setworn — slot pointer + owornmask; prop/oc_oprop deferred.
+ * C ref: worn.c setworn — confer/clear objects[].oc_oprop extrinsic bit.
+ * Named omissions: w_blocks, artifact intrinsics, monstunseesu_prop,
+ * SWAPWEP/QUIVER skip (not in this setworn path), skin/nudist/tux;
+ * mirror of most E* flat fields (BLINDED→EBlinded only so far).
+ */
+function confer_oc_oprop(obj, mask, on) {
+    if (!obj) return;
+    // C: prop #0 unused; items with no conferred property use 0
+    const p = (game.objects?.[obj.otyp]?.oc_oprop | 0);
+    if (!p) return;
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    if (on) u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) | mask;
+    else u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) & ~mask;
+    // C youprop.h EBlinded ≡ uprops[BLINDED].extrinsic — Blind() readers
+    // still use the flat field (D-0574 named mirror omission for others).
+    if (p === BLINDED) {
+        if (on) u.EBlinded = (u.EBlinded | 0) | mask;
+        else u.EBlinded = (u.EBlinded | 0) & ~mask;
+    }
+}
+
+/**
+ * C ref: worn.c setworn — slot pointer + owornmask + oc_oprop extrinsic.
  * @param {object|null} obj
  * @param {number} mask
  */
@@ -204,7 +233,10 @@ export function setworn(obj, mask) {
     const clearOne = (slot, bit) => {
         if (!(mask & bit)) return;
         const old = u[slot];
-        if (old) old.owornmask = (old.owornmask || 0) & ~bit;
+        if (old) {
+            confer_oc_oprop(old, bit, false);
+            old.owornmask = (old.owornmask || 0) & ~bit;
+        }
         u[slot] = null;
     };
 
@@ -230,51 +262,64 @@ export function setworn(obj, mask) {
     }
 
     // Place into the matching armor/accessory slot for this mask.
+    let slotBit = 0;
     if (mask & W_ARM) {
         clearOne('uarm', W_ARM);
+        slotBit = W_ARM;
         obj.owornmask = (obj.owornmask || 0) | W_ARM;
         u.uarm = obj;
     } else if (mask & W_ARMC) {
         clearOne('uarmc', W_ARMC);
+        slotBit = W_ARMC;
         obj.owornmask = (obj.owornmask || 0) | W_ARMC;
         u.uarmc = obj;
     } else if (mask & W_ARMH) {
         clearOne('uarmh', W_ARMH);
+        slotBit = W_ARMH;
         obj.owornmask = (obj.owornmask || 0) | W_ARMH;
         u.uarmh = obj;
     } else if (mask & W_ARMS) {
         clearOne('uarms', W_ARMS);
+        slotBit = W_ARMS;
         obj.owornmask = (obj.owornmask || 0) | W_ARMS;
         u.uarms = obj;
     } else if (mask & W_ARMG) {
         clearOne('uarmg', W_ARMG);
+        slotBit = W_ARMG;
         obj.owornmask = (obj.owornmask || 0) | W_ARMG;
         u.uarmg = obj;
     } else if (mask & W_ARMF) {
         clearOne('uarmf', W_ARMF);
+        slotBit = W_ARMF;
         obj.owornmask = (obj.owornmask || 0) | W_ARMF;
         u.uarmf = obj;
     } else if (mask & W_ARMU) {
         clearOne('uarmu', W_ARMU);
+        slotBit = W_ARMU;
         obj.owornmask = (obj.owornmask || 0) | W_ARMU;
         u.uarmu = obj;
     } else if (mask & W_AMUL) {
         clearOne('uamul', W_AMUL);
+        slotBit = W_AMUL;
         obj.owornmask = (obj.owornmask || 0) | W_AMUL;
         u.uamul = obj;
     } else if (mask & W_RINGL) {
         clearOne('uleft', W_RINGL);
+        slotBit = W_RINGL;
         obj.owornmask = (obj.owornmask || 0) | W_RINGL;
         u.uleft = obj;
     } else if (mask & W_RINGR) {
         clearOne('uright', W_RINGR);
+        slotBit = W_RINGR;
         obj.owornmask = (obj.owornmask || 0) | W_RINGR;
         u.uright = obj;
     } else if (mask & W_TOOL) {
         clearOne('ublindf', W_TOOL);
+        slotBit = W_TOOL;
         obj.owornmask = (obj.owornmask || 0) | W_TOOL;
         u.ublindf = obj;
     }
+    if (slotBit) confer_oc_oprop(obj, slotBit, true);
     find_ac();
 }
 
@@ -468,6 +513,80 @@ async function armoroff(otmp) {
     return 1;
 }
 
+/** C youprop.h Blind — HBlinded || EBlinded, not blocked. */
+function Blind() {
+    const u = game.u || {};
+    if (u.Blind || u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C ref: do_wear.c Blindf_on — setworn + on_msg + see-any-more / toggle.
+ * Named omissions: Punished set_bc; Eyes of Overworld birth-blind clear;
+ * full toggle_blindness see_monsters / Sting / learn_unseen_invent.
+ */
+async function Blindf_on(otmp) {
+    const already_blind = Blind();
+    remove_worn_item(otmp);
+    setworn(otmp, W_TOOL);
+    await on_msg(otmp);
+
+    let changed = false;
+    if (Blind() && !already_blind) {
+        changed = true;
+        if (game.flags?.verbose !== false) {
+            await pline("You can't see any more.");
+        }
+    } else if (already_blind && !Blind()) {
+        changed = true;
+        if (game.u?.uroleplay?.blind) {
+            await pline('For the first time in your life, you can see!');
+            game.u.uroleplay.blind = false;
+        } else {
+            await pline('You can see!');
+        }
+    }
+    if (changed) {
+        if (game.flags) game.flags.botl = true;
+        // C toggle_blindness → vision_recalc(0) immediately
+        vision_recalc(0);
+    }
+}
+
+/**
+ * C ref: do_wear.c Blindf_off — clear eyewear + see-again / still-blind.
+ * Named omissions: gulp_blnd_check; Punished set_bc; full toggle_blindness
+ * see_monsters / Sting / learn_unseen_invent.
+ */
+async function Blindf_off(otmp) {
+    const u = game.u || (game.u = {});
+    const was_blind = Blind();
+    if (!otmp) otmp = u.ublindf;
+    if (!otmp) return;
+
+    setworn(null, W_TOOL);
+    await off_msg(otmp);
+
+    let changed = false;
+    if (Blind()) {
+        if (was_blind) {
+            if (otmp.otyp !== LENSES) {
+                await pline('You still cannot see.');
+            }
+        } else {
+            changed = true;
+            await pline("You can't see anything now!");
+        }
+    } else if (was_blind) {
+        changed = true;
+        await pline('You can see again.');
+    }
+    if (changed) {
+        if (game.flags) game.flags.botl = true;
+        vision_recalc(0);
+    }
+}
+
 /**
  * C ref: do_wear.c armor_or_accessory_off — armor path; accessories partial.
  * @returns {number} 0 = no time, 1 = took time
@@ -505,35 +624,38 @@ async function armor_or_accessory_off(obj) {
     if (obj === u.uleft || obj === u.uright) {
         await off_msg(obj);
         if (obj === u.uleft) {
+            confer_oc_oprop(obj, W_RINGL, false);
             obj.owornmask = (obj.owornmask || 0) & ~W_RING;
             u.uleft = null;
         } else {
+            confer_oc_oprop(obj, W_RINGR, false);
             obj.owornmask = (obj.owornmask || 0) & ~W_RING;
             u.uright = null;
         }
         return 1;
     }
     if (obj === u.uamul) {
+        confer_oc_oprop(obj, W_AMUL, false);
         obj.owornmask = (obj.owornmask || 0) & ~W_AMUL;
         u.uamul = null;
         await off_msg(obj);
         return 1;
     }
     if (obj === u.ublindf) {
-        obj.owornmask = (obj.owornmask || 0) & ~W_TOOL;
-        u.ublindf = null;
-        await off_msg(obj);
+        await Blindf_off(obj);
         return 1;
     }
     return 0;
 }
 
 function takeoff_lets() {
+    // C takeoff_ok / equip_ok(removing, accessory=FALSE): SUGGEST worn
+    // armor only; accessories are GETOBJ_DOWNPLAY (selectable, not listed).
     const inv = game.invent || [];
     const lets = [];
     for (const o of inv) {
         if (!o?.invlet) continue;
-        if ((o.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) lets.push(o.invlet);
+        if ((o.owornmask || 0) & W_ARMOR) lets.push(o.invlet);
     }
     lets.sort();
     if (!lets.length) return '';
@@ -659,6 +781,8 @@ export async function canwearobj(otmp, maskOut, noisy) {
 }
 
 async function wear_lets() {
+    // C wear_ok / equip_ok(FALSE, accessory=FALSE): SUGGEST wearable armor;
+    // accessories are GETOBJ_DOWNPLAY (letter still works, not in prompt).
     const lets = [];
     for (const o of game.invent || []) {
         if (!o?.invlet) continue;
@@ -666,19 +790,9 @@ async function wear_lets() {
         if (o.oclass === ARMOR_CLASS) {
             const dummy = { mask: 0 };
             if (await canwearobj(o, dummy, false)) lets.push(o.invlet);
-        } else if (
-            o.oclass === RING_CLASS
-            || o.oclass === AMULET_CLASS
-            || objectNames[o.otyp] === 'BLINDFOLD'
-            || objectNames[o.otyp] === 'TOWEL'
-            || objectNames[o.otyp] === 'LENSES'
-            || objectNames[o.otyp] === 'MEAT_RING'
-        ) {
-            // accessories selectable via W (C DOWNPLAY) — letter still works
-            lets.push(o.invlet);
         }
     }
-    return lets.join('');
+    return lets.sort().join('');
 }
 
 /** C ref: invent.c getobj("wear", wear_ok, GETOBJ_NOFLAGS) */
@@ -716,7 +830,8 @@ async function getobj_wear() {
 }
 
 async function puton_lets() {
-    // C puton_ok: suggest accessories; armor is DOWNPLAY (letter still works)
+    // C puton_ok / equip_ok(FALSE, accessory=TRUE): SUGGEST accessories;
+    // armor is GETOBJ_DOWNPLAY (letter still works, not in prompt).
     const lets = [];
     for (const o of game.invent || []) {
         if (!o?.invlet) continue;
@@ -730,12 +845,9 @@ async function puton_lets() {
             || o.otyp === MEAT_RING
         ) {
             lets.push(o.invlet);
-        } else if (o.oclass === ARMOR_CLASS) {
-            const dummy = { mask: 0 };
-            if (await canwearobj(o, dummy, false)) lets.push(o.invlet);
         }
     }
-    return lets.join('');
+    return lets.sort().join('');
 }
 
 /** C ref: invent.c getobj("put on", puton_ok, GETOBJ_NOFLAGS) */
@@ -830,8 +942,9 @@ async function choose_ring_hand() {
 
 /**
  * C ref: do_wear.c accessory_or_armor_on — armor delay + accessory put-on.
- * Ring Glib/cursed-gloves/welded gates, Blindf_on specials, and exotic
- * amulet side effects deferred.
+ * Ring Glib/cursed-gloves/welded gates, and exotic amulet side effects
+ * deferred. Blindf_on / Blindf_off ported (Punished set_bc / full
+ * toggle_blindness see_monsters still deferred).
  * @returns {number} 0 = no turn / fail, 1 = took time
  */
 async function accessory_or_armor_on(obj) {
@@ -917,15 +1030,13 @@ async function accessory_or_armor_on(obj) {
     // Accessory
     if (ring) {
         setworn(obj, mask);
-        // Ring_on body (learnring / attribs) deferred
+        // Ring_on learnring / attrib deltas deferred; oc_oprop via setworn
         await on_msg(obj);
     } else if (amulet) {
         await Amulet_on(obj);
     } else if (eyewear) {
-        // Blindf_on body deferred — setworn + on_msg only
-        remove_worn_item(obj);
-        setworn(obj, W_TOOL);
-        await on_msg(obj);
+        // C: Blindf_on handles setworn + on_msg + blindness toggle
+        await Blindf_on(obj);
     }
     return 1;
 }
