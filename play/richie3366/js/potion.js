@@ -1,7 +1,8 @@
 // potion.js — Quaff / #dip commands (dodrink / dodip subset).
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil,
-//         peffect_confusion, peffect_booze, make_confused, dodip;
-//         invent.c getobj; fountain.c drinkfountain / dipfountain.
+//         peffect_confusion, peffect_booze, peffect_healing,
+//         make_confused, dodip; invent.c getobj;
+//         fountain.c drinkfountain / dipfountain.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -39,6 +40,7 @@ const POT_BLINDNESS = objectNames.indexOf('POT_BLINDNESS');
 const POT_BOOZE = objectNames.indexOf('POT_BOOZE');
 const POT_FRUIT_JUICE = objectNames.indexOf('POT_FRUIT_JUICE');
 const POT_SEE_INVISIBLE = objectNames.indexOf('POT_SEE_INVISIBLE');
+const POT_HEALING = objectNames.indexOf('POT_HEALING');
 
 /** C: gp.potion_nothing / gp.potion_unkn for dopotion trycall gate. */
 let potion_nothing = 0;
@@ -334,6 +336,22 @@ async function peffect_confusion(otmp) {
 }
 
 /**
+ * C ref: potion.c peffect_healing
+ * You_feel better; healup(8+d(4+2*bcsign,4), !cursed?1:0, !!blessed, !cursed);
+ * exercise CON. peffect_extra_healing / peffect_full_healing deferred.
+ */
+async function peffect_healing(otmp) {
+    await You_feel('better.');
+    healup(
+        8 + d(4 + 2 * bcsign(otmp), 4),
+        !otmp.cursed ? 1 : 0,
+        !!otmp.blessed,
+        !otmp.cursed,
+    );
+    exercise(A_CON, true);
+}
+
+/**
  * C ref: potion.c peffect_booze
  * potion_unkn + taste pline; !blessed → make_confused(d(2+uhs,8));
  * !odiluted → healup(1); hunger + newuhs; exercise WIS; cursed pass-out.
@@ -367,7 +385,7 @@ async function peffect_booze(otmp) {
 
 /**
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
- * paralysis / confusion / booze; other otyps named in C-JS-MAP.
+ * paralysis / confusion / booze / healing; other otyps named in C-JS-MAP.
  */
 async function peffects(otmp) {
     switch (otmp.otyp) {
@@ -386,6 +404,9 @@ async function peffects(otmp) {
         return -1;
     case POT_BOOZE:
         await peffect_booze(otmp);
+        return -1;
+    case POT_HEALING:
+        await peffect_healing(otmp);
         return -1;
     default:
         // Other peffect_* deferred — do not useup
@@ -458,6 +479,8 @@ export function healup(nhp, nxtra, curesick, cureblind) {
         // make_vomiting / make_sick deferred
         u.Sick = 0;
     }
+    // C: disp.botl = TRUE
+    if (game.flags) game.flags.botl = true;
 }
 
 /**

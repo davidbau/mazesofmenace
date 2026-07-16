@@ -48,6 +48,7 @@ import { dowhatis, doquickwhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
 import { an } from './objnam.js';
 import { spoteffects, dopickup } from './pickup.js';
+import { dopay } from './shk.js';
 import { getpos } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
@@ -775,6 +776,11 @@ export async function rhack(key) {
         const pickRes = await dopickup();
         game.context.move = (pickRes & ECMD_TIME) ? 1 : 0;
         if (pickRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'p') {
+        // C ref: shk.c dopay / cmd.c — `p` pay shopping bill
+        const payRes = await dopay();
+        game.context.move = (payRes & ECMD_TIME) ? 1 : 0;
+        if (payRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '>') {
         // C ref: do.c dodown / cmd.c — go down staircase
         const downRes = await dodown();

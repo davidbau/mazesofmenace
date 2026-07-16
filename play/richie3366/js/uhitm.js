@@ -935,11 +935,22 @@ export async function do_attack(mtmp) {
             || (obstructed /* && !passes_walls(mtmp) */));
         // inshop check skipped when foo (no RNG)
         if (foo) {
-            // C: if tame → monflee(rnd(6)); stop
+            // C: monflee(mtmp, rnd(6), FALSE, FALSE) when tame; end_running
+            // (caller); return TRUE. Does NOT clear context.move — turn still
+            // spends so moveloop runs movemon/distfleeck. Setting move=0
+            // here skipped monmove while C advanced (D-0442).
             if (mtmp.mtame) {
-                rnd(6); // monflee duration — flee body stubbed
+                let fleetime = rnd(6);
+                if (!fleetime) {
+                    mtmp.mfleetim = 0;
+                } else if (!mtmp.mflee || mtmp.mfleetim) {
+                    fleetime += (mtmp.mfleetim | 0);
+                    if (fleetime === 1) fleetime++;
+                    mtmp.mfleetim = Math.min(fleetime, 127);
+                }
+                mtmp.mflee = 1;
+                // mon_track_clear / fleemsg / Vrock gas deferred
             }
-            game.context.move = 0;
             return true;
         }
         // Frozen / helpless check — no RNG for normal pet

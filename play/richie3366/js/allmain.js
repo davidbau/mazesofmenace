@@ -17,7 +17,10 @@ import { makedog } from './dog.js';
 import { makemon } from './makemon.js';
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { LOW_PM, NUMMONS, mons, G_NOCORPSE } from './monsters.js';
-import { A_DEX, A_STR, A_CON, A_WIS, acurr, exercise, change_luck, Fast, Very_fast, Searching } from './attrib.js';
+import {
+    A_DEX, A_STR, A_CON, A_WIS, A_MAX, acurr, exercise, adjattrib,
+    change_luck, Fast, Very_fast, Searching,
+} from './attrib.js';
 import { dosearch0 } from './detect.js';
 import { nhgetch } from './input.js';
 import { unmul, monster_nearby, stop_occupation } from './hack.js';
@@ -251,9 +254,75 @@ function exerper() {
     }
 }
 
-function exerchk() {
+/* exercise/abuse text — C attrib.c exertext[A_MAX][2] */
+const EXERTEXT = [
+    ['exercising diligently', 'exercising properly'],           // Str
+    [null, null],                                               // Int
+    ['very observant', 'paying attention'],                     // Wis
+    ['working on your reflexes', 'working on reflexes lately'], // Dex
+    ['leading a healthy life-style', 'watching your health'],   // Con
+    [null, null],                                               // Cha
+];
+
+/**
+ * C ref: attrib.c exerchk — periodic exercise/abuse resolve.
+ * Named omissions: Fixed_abil/Dunce via adjattrib; encumber_msg after
+ * STR/CON change in adjattrib when in_moveloop.
+ */
+async function exerchk() {
     exerper();
-    // next_attrib_check tests not hit early in seed8000
+    const g = game;
+    const moves = g.moves || 0;
+    if (!g.context) g.context = {};
+    // C: next_attrib_check defaults to 600 at newgame
+    if (g.context.next_attrib_check == null) g.context.next_attrib_check = 600;
+    if (moves < g.context.next_attrib_check || (g.multi || 0)) return;
+
+    const AVAL = 50;
+    const u = g.u || {};
+    if (!u.aexe) u.aexe = { a: [0, 0, 0, 0, 0, 0] };
+    const race = g.urace || {};
+
+    for (let i = 0; i < A_MAX; ++i) {
+        let ax = u.aexe.a[i] || 0;
+        if (!ax) continue; // C: skip nextattrib when no exercise/abuse
+
+        const mod_val = ax > 0 ? 1 : -1;
+        let lolim = race.attrmin?.[i] ?? 3;
+        let hilim = race.attrmax?.[i] ?? 18;
+        if (hilim > 18) hilim = 18;
+        const abase = u.acurr?.a?.[i] ?? 0;
+        // C: goto nextattrib — still halves AEXE
+        let skipChange = false;
+        if ((ax < 0) ? (abase <= lolim) : (abase >= hilim)) {
+            skipChange = true;
+        } else if (Upolyd(u) && i !== A_WIS) {
+            skipChange = true;
+        } else {
+            // C: rn2(AVAL) > ((i != A_WIS) ? (abs(ax)*2/3) : abs(ax))
+            const thresh = (i !== A_WIS)
+                ? Math.trunc(Math.abs(ax) * 2 / 3)
+                : Math.abs(ax);
+            if (rn2(AVAL) > thresh) skipChange = true;
+        }
+
+        if (!skipChange) {
+            if (await adjattrib(i, mod_val, -1)) {
+                ax = 0;
+                u.aexe.a[i] = 0;
+                const phrase = EXERTEXT[i][mod_val > 0 ? 0 : 1];
+                if (phrase) {
+                    await pline(
+                        `You ${mod_val > 0 ? 'must have been' : "haven't been"} ${phrase}.`,
+                    );
+                }
+            }
+        }
+        // C: AEXE(i) = (abs(ax) / 2) * mod_val
+        u.aexe.a[i] = Math.trunc(Math.abs(ax) / 2) * mod_val;
+    }
+    // C: svc.context.next_attrib_check += rn1(200, 800);
+    g.context.next_attrib_check += rn1(200, 800);
 }
 
 // C ref: allmain.c welcome() — new_game false → restore path
@@ -304,6 +373,8 @@ export async function newgame() {
     // C ref: allmain.c newgame — context.ident / tribute before init_objects
     if (!g.context) g.context = {};
     if (g.context.ident == null) g.context.ident = 2;
+    // C: svc.context.next_attrib_check = 600L
+    if (g.context.next_attrib_check == null) g.context.next_attrib_check = 600;
     if (!g.context.tribute) g.context.tribute = {};
     g.context.tribute.enabled = true;
     g.context.tribute.bookstock = !!g.context.tribute.bookstock;
@@ -567,18 +638,13 @@ export async function moveloop_core() {
                 await dosounds();
                 gethungry();
                 age_spells();
-                exerchk();
+                await exerchk();
                 // C: invault() before wipe_engr / amulet
                 await invault();
 
                 // C: if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3));
                 if (!rn2(40 + (acurr(A_DEX) * 3))) {
                     rnd(3);
-                }
-
-                // Clairvoyance timer
-                if ((g.moves || 0) >= (g.context.seer_turn || 0)) {
-                    g.context.seer_turn = g.moves + rn1(31, 15);
                 }
 
                 // C: when immobile, count is in turns — multi < 0 occupation
@@ -591,6 +657,13 @@ export async function moveloop_core() {
             }
             if (g.program_state?.gameover) return;
         } while ((g.u.umovement || 0) < NORMAL_SPEED);
+
+        // C: once-per-hero-took-time — seer_turn after umovement loop
+        // (not inside once-per-turn EOT). Always rolls rn1 even without
+        // Clairvoyant; do_vicinity_map deferred.
+        if ((g.moves || 0) >= (g.context.seer_turn || 0)) {
+            g.context.seer_turn = g.moves + rn1(31, 15);
+        }
     }
 
     // Vision + display (before getch — screen capture in nhgetch)

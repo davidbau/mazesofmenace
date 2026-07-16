@@ -13,6 +13,7 @@ import {
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS,
+    UNENCUMBERED, KILLED_BY, DISMOUNT_FELL,
 } from './const.js';
 import { COIN_CLASS } from './objects.js';
 import { pline, Norep, docrt, flush_screen, flush_topl_more, newsym } from './display.js';
@@ -30,10 +31,10 @@ import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { initrack, save_track, rest_track } from './track.js';
 import { m_at, mnexto, hide_monst } from './mon.js';
 import { enexto } from './teleport.js';
-import { monster_nearby } from './hack.js';
+import { monster_nearby, losehp, maybe_half_phys } from './hack.js';
 import { place_object, stackobj } from './mkobj.js';
 import { doname } from './objnam.js';
-import { compactify_invlets } from './invent.js';
+import { compactify_invlets, near_capacity } from './invent.js';
 import { can_reach_floor } from './engrave.js';
 import { pickup } from './pickup.js';
 import {
@@ -42,6 +43,7 @@ import {
 import { objectNames } from './objects.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { PM_TOURIST } from './generated/monsters_data.js';
+import { dismount_steed } from './steed.js';
 
 /**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
@@ -246,15 +248,27 @@ function getlev_catchup_monsters(elapsed) {
 }
 
 /**
+ * C ref: trap.c selftouch — stair-fall call site only.
+ * Full cockatrice-corpse / twoweapon petrify deferred (no RNG unbound).
+ * @param {string} _arg
+ */
+async function selftouch_stair_fall(_arg) {
+    /* no-op until touch_petrifies + instapetrify wired */
+}
+
+/**
  * C ref: do.c goto_level — ordinary stairs + in-memory savelev/getlev.
  *
  * Ported: keepdogs → stash (VISITED|LFILE_EXISTS + omoves + track) →
  * assign uz → mklev or restore stash + getlev catchup + rest_track →
- * stairway_find_from → climb/descend pline → losedogs → vision/docrt →
+ * stairway_find_from → climb/descend pline (Flying / encumber|Punished|
+ * Fumbling fall `rnd(3)` losehp / ordinary) → losedogs → vision/docrt →
  * pickup(1).
  * Deferred: binary NHFILE, mysterious force, quest gate, portals, endgame,
- * fall damage, Lua NHCB_LVL_LEAVE, familiar_level_msg, temperature/hellish,
- * Flying/Punished climb variants, u_collide_m full limbo.
+ * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
+ * familiar_level_msg, temperature/hellish, Flying/Punished climb variants,
+ * Punished `drag_down`/`ballrelease`, full `selftouch` petrify, u_collide_m
+ * full limbo.
  */
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
@@ -392,7 +406,44 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             } else {
                 u_on_upstairs();
             }
-            if (game.flags?.verbose !== false) {
+            // C: do.c goto_level descend — Flying / encumber|Punished|Fumbling
+            // fall (rnd(3) losehp) / ordinary verbose climb-down.
+            if (!(u.dz | 0)) {
+                ; // stayed on same level? (no transit effects)
+            } else if (u.Flying) {
+                if (game.flags?.verbose !== false) {
+                    await pline(atLadder
+                        ? 'You fly down along the ladder.'
+                        : 'You fly down the stairs.');
+                }
+            } else if (
+                near_capacity() > UNENCUMBERED
+                || u.Punished
+                || u.Fumbling
+            ) {
+                await pline(atLadder
+                    ? 'You fall down the ladder.'
+                    : 'You fall down the stairs.');
+                if (u.Punished) {
+                    // C: drag_down(); if (!welded(uball)) ballrelease(FALSE);
+                    // ball.c not ported — named omission (no RNG when unbound).
+                }
+                if (u.usteed) {
+                    await dismount_steed(DISMOUNT_FELL);
+                } else {
+                    // C: losehp(Maybe_Half_Phys(rnd(3)), …, KILLED_BY)
+                    losehp(
+                        maybe_half_phys(rnd(3)),
+                        atLadder
+                            ? 'falling off a ladder'
+                            : 'tumbling down a flight of stairs',
+                        KILLED_BY,
+                    );
+                }
+                // C: selftouch("Falling, you") — cockatrice corpse petrify
+                // deferred (no-op unless uwep corpse + touch_petrifies wired).
+                await selftouch_stair_fall('Falling, you');
+            } else if (game.flags?.verbose !== false) {
                 await pline(atLadder
                     ? 'You climb down the ladder.'
                     : 'You descend the stairs.');

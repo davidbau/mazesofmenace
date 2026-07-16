@@ -477,6 +477,7 @@ function shkinit(shp, sroom) {
     eshkp.robbed = eshkp.credit = eshkp.debit = eshkp.loan = 0;
     eshkp.following = eshkp.surcharge = eshkp.dismiss_kops = false;
     eshkp.billct = eshkp.visitct = 0;
+    if (!eshkp.bill) eshkp.bill = [];
     eshkp.bill_p = null;
     eshkp.customer = '';
 

@@ -273,6 +273,15 @@ const EXT_CMDS = [
         },
     },
     {
+        name: 'pay',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { dopay } = await import('./shk.js');
+            return dopay();
+        },
+    },
+    {
         name: 'annotate',
         wiz: false,
         autocomplete: true,
@@ -281,6 +290,7 @@ const EXT_CMDS = [
             return donamelevel();
         },
     },
+
     {
         name: 'overview',
         wiz: false,

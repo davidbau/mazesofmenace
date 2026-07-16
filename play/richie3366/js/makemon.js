@@ -72,6 +72,7 @@ export function neweshk(mtmp) {
         mtmp.mextra.eshk = {
             parentmid: mtmp.m_id | 0,
             bill_p: null,
+            bill: [],
             shoproom: 0,
             shoptype: 0,
             shoplevel: { dnum: 0, dlevel: 0 },

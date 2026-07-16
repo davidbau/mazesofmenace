@@ -10,7 +10,7 @@ import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
     let_to_name, DEF_INV_ORDER, prinv,
 } from './invent.js';
-import { nomul, check_special_room, is_pool, is_lava } from './hack.js';
+import { nomul, check_special_room, is_pool, is_lava, in_rooms } from './hack.js';
 import { flush_screen, pline, newsym, docrt } from './display.js';
 import { addinv } from './u_init.js';
 import { an, doname, xname, cxname, the as theArt } from './objnam.js';
@@ -24,12 +24,14 @@ import {
     SORTLOOT_PACK, SORTLOOT_LOOT,
     ALL_TYPES_SELECTED, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN,
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
+    SHOPBASE,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
 import { nhgetch } from './input.js';
 import { oclass_to_sym } from './options.js';
 import { objectNames, COIN_CLASS } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
+import { addtobill, costly_spot } from './shk.js';
 
 /** C-ish simpleonames — sack family → "bag". */
 function simpleonames(obj) {
@@ -220,16 +222,34 @@ export async function check_here(picked_some) {
 
 /**
  * C ref: pickup.c pick_obj — extract from floor/minvent, addinv.
- * Named omissions: shop addtobill / remote_burglary; engulfer minvent path.
+ * Shop robshop: temporary ushops → addtobill → restore; remote_burglary deferred.
+ * Named omissions: engulfer minvent path; remote_burglary body.
  */
 export async function pick_obj(otmp) {
     if (!otmp) return otmp;
+    const u = game.u;
     const ox = otmp.ox | 0;
     const oy = otmp.oy | 0;
     const fromfloor = otmp.where === OBJ_FLOOR;
+    let robshop = !!(u && !u.uswallow && otmp !== u.uball && costly_spot(ox, oy));
+
     obj_extract_self(otmp);
     if (fromfloor) newsym(ox, oy);
-    return addinv(otmp);
+
+    if (robshop) {
+        const saveushops = u.ushops || '';
+        const fakeshop = in_rooms(ox, oy, SHOPBASE).charAt(0) || '';
+        u.ushops = fakeshop;
+        await addtobill(otmp, true, false, false);
+        u.ushops = saveushops;
+        robshop = !!(otmp.unpaid && fakeshop && !saveushops.includes(fakeshop));
+    }
+
+    const result = addinv(otmp);
+    if (robshop) {
+        // remote_burglary(ox, oy) deferred
+    }
+    return result;
 }
 
 /**

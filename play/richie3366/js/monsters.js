@@ -115,6 +115,8 @@ export const M1_SLITHY = 0x00080000; /* monflag.h — has serpent body */
 export const M1_UNSOLID = 0x00100000; /* monflag.h — no solid/liquid body */
 export const M1_THICK_HIDE = 0x00200000; /* monflag.h — thick hide or scales */
 export const M1_SEE_INVIS = 0x01000000; /* monflag.h — sees invisible */
+export const M1_TPORT = 0x02000000; /* monflag.h — can teleport */
+export const M1_TPORT_CNTRL = 0x04000000; /* monflag.h — controls teleport */
 export const M1_NOEYES = 0x00001000;
 export const M1_MINDLESS = 0x00010000;
 export const M1_ANIMAL = 0x00040000;
@@ -472,6 +474,11 @@ export function metallivorous(ptr) {
 /** C ref: mondata.h regenerates — M1_REGEN */
 export function regenerates(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_REGEN);
+}
+
+/** C ref: mondata.h can_teleport — M1_TPORT */
+export function can_teleport(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_TPORT);
 }
 
 /**

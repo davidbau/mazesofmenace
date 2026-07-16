@@ -733,7 +733,8 @@ function mksobj_init(otmp, artif) {
         const name = otypName(otmp.otyp);
         if (name === 'TALLOW_CANDLE' || name === 'WAX_CANDLE') {
             otmp.spe = 1;
-            // age = 20 * oc_cost deferred — oc_cost not in objects extract
+            // age = 20 * oc_cost available on objects[] (D-0447); candle
+            // start-age wiring still deferred
             otmp.lamplit = 0;
             otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
             blessorcurse(otmp, 5);

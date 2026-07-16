@@ -20,7 +20,7 @@ import {
     monsterNames, M1_SEE_INVIS, M1_AMORPHOUS, M1_NOTAKE, tunnels, needspick,
     can_track, likes_gold, likes_gems, likes_objs, likes_magic,
     throws_rocks, mindless, is_animal, strongmonst, is_mercenary,
-    mon_knows_traps,
+    mon_knows_traps, can_teleport,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -63,6 +63,7 @@ import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
 import { is_pole } from './wield.js';
 import { acurrstr } from './attrib.js';
 import { m_canseeu } from './mondata.js';
+import { rloc } from './teleport.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -1112,8 +1113,29 @@ export async function dochug(mtmp) {
     // C: not frozen or sleeping — wipe dust engravings under the mon
     // before set_apparxy / distfleeck (monmove.c dochug).
     wipe_engr_at(mtmp.mx, mtmp.my, 1, false);
-    // C: mconf rn2(50) / mstun rn2(10) / flee-teleport / m_respond /
-    // courage rn2(25) deferred (only fire when those flags are set).
+
+    // C: confused / stunned recovery rolls before flee-teleport
+    if (mtmp.mconf && !rn2(50)) mtmp.mconf = 0;
+    if (mtmp.mstun && !rn2(10)) mtmp.mstun = 0;
+
+    // C: mflee && !rn2(40) && can_teleport && !iswiz && !noteleport_level
+    // — teleport costs a turn. rn2(40) always runs when mflee is set.
+    if (mtmp.mflee && !rn2(40) && can_teleport(mtmp.data)
+        && !mtmp.iswiz
+        && !(game.level?.flags?.noteleport
+            || ((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0)))) {
+        if (rloc(mtmp, 0)) {
+            // leppie_stash deferred
+            return 0;
+        }
+    }
+
+    // C: m_respond deferred (gaze / nymph / etc.)
+    // C: courage — mflee && !mfleetim && full HP && !rn2(25)
+    if (mtmp.mflee && !(mtmp.mfleetim | 0)
+        && (mtmp.mhp | 0) === (mtmp.mhpmax | 0) && !rn2(25)) {
+        mtmp.mflee = 0;
+    }
 
     set_apparxy(mtmp);
     let { inrange, nearby, scared } = distfleeck(mtmp);

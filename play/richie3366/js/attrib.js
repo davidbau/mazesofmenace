@@ -11,6 +11,7 @@ import {
     INTRINSIC,
     MAXULEV,
     STR18,
+    Upolyd,
 } from './const.js';
 import { pline } from './display.js';
 import {
@@ -91,9 +92,12 @@ export function get_strength_str() {
 }
 
 // C ref: attrib.c exercise()
+// Named omissions: encumber_msg after STR/CON when moves>0.
 export function exercise(i, inc_or_dec) {
     if (i === A_INT || i === A_CHA) return;
     const u = game.u;
+    // C: no physical exercise while polymorphed (WIS still allowed)
+    if (Upolyd(u) && i !== A_WIS) return;
     if (!u.aexe) u.aexe = { a: [0, 0, 0, 0, 0, 0] };
     const ax = u.aexe.a[i] || 0;
     const AVAL = 50; // attrib.h

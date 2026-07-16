@@ -6,14 +6,14 @@
 //         (metabolic uhunger-- + accessorytime Regen/encumb/Hunger/Conflict);
 //         invent.c getobj; attrib.c poison_strdmg.
 // Named omissions: floorfood metallivore/pool-lava/cockatrice-feel; TIN;
-// full cprefx/cpostfx; tainted Sick; slime/stone; rottenfood body RNG;
-// freeinv invent-full drop; ?/* menu; multi-turn choke/newuhs;
-// gethungry ring/amulet accessorytime cases + newuhs;
+// full cprefx/cpostfx; tainted Sick; slime/stone; make_blinded body /
+// Hear_again afternmv / foodword poly; freeinv invent-full drop; ?/* menu;
+// multi-turn choke/newuhs; gethungry ring/amulet accessorytime + newuhs;
 // losestr setuhpmax / terminal-frailty full death path;
 // vomit cantvomit/Sick/FAINTING/acid-breath.
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import { flush_topl_more, pline } from './display.js';
 import { yn_function } from './getline.js';
 import { FOOD_CLASS, COIN_CLASS, objectNames } from './objects.js';
@@ -31,10 +31,12 @@ import {
     SLT_ENCUMBER, FROMFORM, W_ARTI, W_WEP,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING,
+    TIMEOUT,
 } from './const.js';
 import { adjattrib, A_STR } from './attrib.js';
 import { nomul } from './hack.js';
 import { near_capacity } from './invent.js';
+import { make_confused } from './potion.js';
 
 /**
  * C ref: gy.youmonst.data via set_uasmon / invent.c basic assign.
@@ -696,6 +698,41 @@ async function start_eating(otmp, already_partly_eaten) {
 }
 
 /**
+ * C ref: eat.c rottenfood — first bite of rotten food.
+ * @returns {number} 1 if fainted (dont_start), else 0
+ */
+async function rottenfood(obj) {
+    // C: "Blecch!  Rotten/Awful foodword!" — foodword poly deferred
+    await pline('Blecch!  Rotten food!');
+    if (!rn2(4)) {
+        const u = game.u || {};
+        if (u.Hallucination || u.HHallucination) {
+            await pline('You feel rather trippy.');
+        } else {
+            await pline('You feel rather light headed.');
+        }
+        // C: make_confused(HConfusion + d(2, 4), FALSE)
+        await make_confused((u.HConfusion | 0) + d(2, 4), false);
+    } else if (!rn2(4) && !(game.u?.Blind || ((game.u?.HBlinded | 0) & TIMEOUT))) {
+        await pline('Everything suddenly goes dark.');
+        // C: make_blinded(BlindedTimeout + d(2, 10), FALSE) — body deferred
+        d(2, 10);
+    } else if (!rn2(3)) {
+        const duration = rnd(10);
+        await pline('The world spins and goes dark.');
+        // C: incr_itimeout(&HDeaf, duration); nomul(-duration); afternmv=Hear_again
+        const u = game.u || (game.u = {});
+        u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | (((u.HDeaf | 0) & TIMEOUT) + duration);
+        nomul(-duration);
+        game.multi_reason = 'unconscious from rotten food';
+        game.nomovemsg = 'You are conscious again.';
+        // Hear_again afternmv deferred
+        return 1;
+    }
+    return 0;
+}
+
+/**
  * C ref: eat.c eatcorpse — rotting / acid / poison / taste; sets reqtime.
  * @returns {number} 0 ok, 1 dont_start, 2 used up
  */
@@ -780,32 +817,23 @@ async function eatcorpse(otmp) {
     game.context.victual.reqtime = 3 + (cwt >> 6);
 
     if (!tp && !nonrotting_corpse(mnum) && (otmp.orotten || !rn2(7))) {
-        // rottenfood full body deferred — refuse RNG invent by stubbing
-        // the common non-faint return-0 path without extra rolls when
-        // we would need them; instead mark dont_start without consume.
-        // For faithfulness when this branch hits: burn rottenfood RNG
-        // subset (rn2(4), maybe more) — implement minimal:
-        await pline(`Blecch!  Rotten ${food_xname(otmp, false)}!`);
-        if (!rn2(4)) {
-            // confuse deferred
-        } else if (!rn2(4)) {
-            // blind deferred
-        } else if (!rn2(3)) {
-            // faint/nomul deferred — still dont_start
+        // C: if (rottenfood(otmp)) { orotten; touchfood; retcode=1; }
+        // Non-faint still eats — only faint sets dont_start (D-0443).
+        if (await rottenfood(otmp)) {
+            otmp.orotten = true;
+            otmp = touchfood(otmp);
+            if (!otmp) return 1;
+            if (game.context?.victual) game.context.victual.piece = otmp;
             retcode = 1;
         }
-        otmp.orotten = true;
-        otmp = touchfood(otmp);
-        if (!otmp) return 1;
-        if (game.context?.victual) game.context.victual.piece = otmp;
-        if (!(ptr?.cnutrit)) {
-            await pline('The corpse rots away completely.');
+
+        const cm = mons(otmp.corpsenm);
+        if (!(cm?.cnutrit)) {
+            if (!retcode) await pline('The corpse rots away completely.');
             useup(otmp);
             return 2;
         }
-        if (!retcode) consume_oeaten(otmp, 2);
-        if (retcode) return retcode;
-        retcode = 1; // dont_start after rottenfood without faint
+        if (!retcode) consume_oeaten(otmp, 2); /* oeaten >>= 2 */
     } else if ((mnum === PM_COCKATRICE || mnum === PM_CHICKATRICE)
         && (game.u?.HStone_resistance || game.u?.Hallucination)) {
         await pline('This tastes just like chicken!');
