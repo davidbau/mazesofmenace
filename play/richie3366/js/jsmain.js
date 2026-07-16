@@ -23,7 +23,7 @@ import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
-import { PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP } from './const.js';
+import { PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP, AUTOUNLOCK_APPLY_KEY } from './const.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -119,6 +119,8 @@ export class NethackGame {
             paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
             // C options.c / optlist.h — tips default On
             tips: true,
+            // C options.c initoptions_base — autounlock default apply-key
+            autounlock: AUTOUNLOCK_APPLY_KEY,
             ...opts.flags,
         };
         if (g.flags.paranoia_bits == null) {

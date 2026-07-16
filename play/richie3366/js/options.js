@@ -713,14 +713,398 @@ async function doset_simple_menu() {
 }
 
 /**
+ * C ref: wintty.c process_menu_window PICK_ANY — letter toggles stay on
+ * the menu; space → next page or finish on last; Enter/CR finish; ESC cancel.
+ * Returns selected selectable items (may be empty).
+ */
+async function select_menu_pick_any(rawItems) {
+    const rows = 24;
+    const lmax = Math.min(52, rows - 1);
+    const items = rawItems.map((it) => ({ ...it, selected: !!it.selected }));
+    let menuCh = 'a';
+    for (let n = 0; n < items.length; n++) {
+        if (n % lmax === 0) menuCh = 'a';
+        const it = items[n];
+        if (it.selectable && !it.selector) {
+            it.selector = menuCh;
+            if (menuCh === 'z') menuCh = 'A';
+            else menuCh = String.fromCharCode(menuCh.charCodeAt(0) + 1);
+        }
+    }
+    const npages = Math.max(1, Math.floor((items.length + lmax - 1) / lmax));
+    let currPage = 0;
+    const prevOverlay = game.flags?.menu_overlay;
+    if (npages > 1) {
+        if (!game.flags) game.flags = {};
+        game.flags.menu_overlay = false;
+    }
+    try {
+        for (;;) {
+            const start = currPage * lmax;
+            const page = items.slice(start, start + lmax);
+            const entries = page.map((it) => {
+                if (it.selectable) {
+                    const mark = it.selected ? '+' : '-';
+                    return {
+                        text: `${it.selector} ${mark} ${it.text}`,
+                        attr: it.attr || 0,
+                    };
+                }
+                return { text: it.text, attr: it.attr || 0 };
+            });
+            const morestr = npages > 1
+                ? `(${currPage + 1} of ${npages})`
+                : '(end) ';
+            await paint_corner_nhw_menu(entries, morestr);
+            await flush_screen(1);
+            const key = await nhgetch();
+            if (key === 27) {
+                game._menu_overlay = false;
+                await docrt();
+                await flush_screen(1);
+                return [];
+            }
+            if (key === 13 || key === 10) {
+                game._menu_overlay = false;
+                await docrt();
+                await flush_screen(1);
+                return items.filter((it) => it.selectable && it.selected);
+            }
+            if (key === 32) {
+                if (currPage < npages - 1) {
+                    currPage++;
+                    continue;
+                }
+                // C: space on last page finishes PICK_ANY
+                game._menu_overlay = false;
+                await docrt();
+                await flush_screen(1);
+                return items.filter((it) => it.selectable && it.selected);
+            }
+            const ch = String.fromCharCode(key);
+            const hit = page.find((it) => it.selectable && it.selector === ch);
+            if (hit) {
+                hit.selected = !hit.selected;
+                continue;
+            }
+        }
+    } finally {
+        if (npages > 1) {
+            if (prevOverlay === undefined) delete game.flags.menu_overlay;
+            else game.flags.menu_overlay = prevOverlay;
+        }
+    }
+}
+
+/** Bool option name → {obj,key} for doset toggles (C allopt[].addr). */
+const DOSET_BOOL_ADDR = {
+    accessiblemsg: { obj: 'flags', key: 'accessiblemsg' },
+    acoustics: { obj: 'flags', key: 'acoustics' },
+    altmeta: { obj: 'iflags', key: 'altmeta' },
+    armorstatus: { obj: 'iflags', key: 'armorstatus' },
+    autodescribe: { obj: 'iflags', key: 'autodescribe' },
+    autodig: { obj: 'flags', key: 'autodig' },
+    autoopen: { obj: 'flags', key: 'autoopen' },
+    autopickup: { obj: 'flags', key: 'pickup' },
+    autoquiver: { obj: 'flags', key: 'autoquiver' },
+    bgcolors: { obj: 'iflags', key: 'bgcolors' },
+    checkpoint: { obj: 'flags', key: 'checkpoint' },
+    cmdassist: { obj: 'iflags', key: 'cmdassist' },
+    color: { obj: 'iflags', key: 'color' },
+    confirm: { obj: 'flags', key: 'confirm' },
+    customcolors: { obj: 'iflags', key: 'customcolors' },
+    customsymbols: { obj: 'iflags', key: 'customsymbols' },
+    dark_room: { obj: 'flags', key: 'dark_room' },
+    dropped_nopick: { obj: 'flags', key: 'nopick_dropped' },
+    eight_bit_tty: { obj: 'iflags', key: 'eight_bit_tty' },
+    extmenu: { obj: 'iflags', key: 'extmenu' },
+    fireassist: { obj: 'flags', key: 'fireassist' },
+    fixinv: { obj: 'flags', key: 'fixinv' },
+    force_invmenu: { obj: 'flags', key: 'force_invmenu' },
+    goldX: { obj: 'flags', key: 'goldX' },
+    help: { obj: 'flags', key: 'help' },
+    herecmd_menu: { obj: 'flags', key: 'herecmd_menu' },
+    hilite_pet: { obj: 'iflags', key: 'hilite_pet' },
+    hilite_pile: { obj: 'iflags', key: 'hilite_pile' },
+    hitpointbar: { obj: 'iflags', key: 'hitpointbar' },
+    idlecheckpoint: { obj: 'flags', key: 'idlecheckpoint' },
+    ignintr: { obj: 'flags', key: 'ignintr' },
+    implicit_uncursed: { obj: 'flags', key: 'implicit_uncursed' },
+    lit_corridor: { obj: 'flags', key: 'lit_corridor' },
+    lootabc: { obj: 'flags', key: 'lootabc' },
+    mail: { obj: 'flags', key: 'mail' },
+    mention_decor: { obj: 'flags', key: 'mention_decor' },
+    mention_map: { obj: 'flags', key: 'mention_map' },
+    mention_walls: { obj: 'flags', key: 'mention_walls' },
+    menu_overlay: { obj: 'flags', key: 'menu_overlay' },
+    menucolors: { obj: 'iflags', key: 'use_menu_colors' },
+    mon_movement: { obj: 'flags', key: 'mon_movement' },
+    null: { obj: 'flags', key: 'null' },
+    pickup_stolen: { obj: 'flags', key: 'pickup_stolen' },
+    pickup_thrown: { obj: 'flags', key: 'pickup_thrown' },
+    price_quotes: { obj: 'iflags', key: 'pricequotes' },
+    pushweapon: { obj: 'flags', key: 'pushweapon' },
+    query_menu: { obj: 'flags', key: 'query_menu' },
+    quick_farsight: { obj: 'flags', key: 'quick_farsight' },
+    rest_on_space: { obj: 'flags', key: 'rest_on_space' },
+    safe_pet: { obj: 'flags', key: 'safe_pet' },
+    safe_wait: { obj: 'flags', key: 'safe_wait' },
+    showdamage: { obj: 'flags', key: 'showdamage' },
+    showexp: { obj: 'flags', key: 'showexp' },
+    showrace: { obj: 'flags', key: 'showrace' },
+    showvers: { obj: 'flags', key: 'showvers' },
+    silent: { obj: 'flags', key: 'silent' },
+    sortpack: { obj: 'flags', key: 'sortpack' },
+    sounds: { obj: 'flags', key: 'sounds' },
+    sparkle: { obj: 'flags', key: 'sparkle' },
+    spot_monsters: { obj: 'flags', key: 'spot_monsters' },
+    standout: { obj: 'flags', key: 'standout' },
+    terrainstatus: { obj: 'iflags', key: 'terrainstatus' },
+    time: { obj: 'flags', key: 'time' },
+    tips: { obj: 'flags', key: 'tips' },
+    tombstone: { obj: 'flags', key: 'tombstone' },
+    toptenwin: { obj: 'iflags', key: 'toptenwin' },
+    travel: { obj: 'flags', key: 'travel' },
+    use_inverse: { obj: 'iflags', key: 'use_inverse' },
+    verbose: { obj: 'flags', key: 'verbose' },
+    weaponstatus: { obj: 'iflags', key: 'weaponstatus' },
+    whatis_menu: { obj: 'iflags', key: 'whatis_menu' },
+    whatis_moveskip: { obj: 'iflags', key: 'whatis_moveskip' },
+};
+
+/** Non-modifiable (pass-0) bools shown on doset page 1. */
+const DOSET_BOOL_NONMOD = [
+    'blind', 'bones', 'deaf', 'legacy', 'news', 'nudist', 'pauper', 'reroll',
+    'selectsaved', 'status_updates', 'tutorial', 'use_darkgray', 'use_truecolor',
+    'voices',
+];
+
+/**
+ * Modifiable bools in contest doset order (accessiblemsg + pages 2–4).
+ * Letter positions must match C mO menus for pickup_types config.
+ */
+const DOSET_BOOL_MOD = [
+    'accessiblemsg',
+    'acoustics', 'altmeta', 'armorstatus', 'autodescribe', 'autodig', 'autoopen',
+    'autopickup', 'autoquiver', 'bgcolors', 'checkpoint', 'cmdassist', 'color',
+    'confirm', 'customcolors', 'customsymbols', 'dark_room', 'dropped_nopick',
+    'eight_bit_tty', 'extmenu', 'fireassist', 'fixinv', 'force_invmenu', 'goldX',
+    'help', 'herecmd_menu', 'hilite_pet', 'hilite_pile', 'hitpointbar',
+    'idlecheckpoint', 'ignintr', 'implicit_uncursed', 'lit_corridor', 'lootabc',
+    'mail', 'mention_decor', 'mention_map', 'mention_walls', 'menu_overlay',
+    'menucolors', 'mon_movement', 'null', 'pickup_stolen', 'pickup_thrown',
+    'price_quotes', 'pushweapon', 'query_menu',
+    'quick_farsight', 'rest_on_space', 'safe_pet', 'safe_wait', 'showdamage',
+    'showexp', 'showrace', 'showvers', 'silent', 'sortpack', 'sounds', 'sparkle',
+    'spot_monsters', 'standout', 'terrainstatus', 'time', 'tips', 'tombstone',
+    'toptenwin', 'travel', 'use_inverse', 'verbose', 'weaponstatus',
+    'whatis_menu', 'whatis_moveskip',
+];
+
+function doset_bool_value(name) {
+    const addr = DOSET_BOOL_ADDR[name];
+    if (!addr) return false;
+    const bag = game[addr.obj] || {};
+    const v = bag[addr.key];
+    if (v === undefined) {
+        if (name === 'bgcolors') return true;
+        return false;
+    }
+    return !!v;
+}
+
+function doset_bool_term(name) {
+    if (name === 'bgcolors' || name === 'idlecheckpoint' || name === 'sounds') {
+        return doset_bool_value(name) ? 'on' : 'off';
+    }
+    if (name === 'voices') return 'excluded from build';
+    return doset_bool_value(name) ? 'true' : 'false';
+}
+
+/**
+ * C ref: options.c doset — full options PICK_ANY (mO / menu_requested).
+ * Branch envelope: help + nonmod bools + mod bools + compounds + others;
+ * apply bool toggles then handlers (pickup_types). Named omissions: full
+ * compound getlin arms, WC filters, wizard-only, PREFIXES, help file.
+ */
+export async function doset() {
+    if (!game.flags) game.flags = {};
+    if (!game.iflags) game.iflags = {};
+    if (game.iflags.menu_requested) {
+        game.iflags.menu_requested = false;
+        return doset_simple();
+    }
+
+    const raw = [];
+    raw.push({ text: 'Set what options?', selectable: false, attr: ATR_INVERSE });
+    raw.push({ text: '', selectable: false });
+    if (game.iflags.cmdassist !== false) {
+        raw.push({
+            text: 'For a brief explanation of how this works, type \'?\' to select',
+            selectable: false,
+        });
+        raw.push({
+            text: 'the next menu choice, then press <enter> or <return>.',
+            selectable: false,
+        });
+        raw.push({
+            text: 'view help for options menu',
+            selectable: true,
+            selector: '?',
+            kind: 'help',
+        });
+        raw.push({
+            text: '[To suppress this menu help, toggle off the \'cmdassist\' option.]',
+            selectable: false,
+        });
+        raw.push({ text: '', selectable: false });
+    }
+    raw.push({
+        text: 'Booleans (selecting will toggle value):',
+        selectable: false,
+        attr: ATR_INVERSE,
+    });
+    for (const name of DOSET_BOOL_NONMOD) {
+        raw.push({
+            text: `${name}[${doset_bool_term(name)}]`,
+            selectable: false,
+        });
+    }
+    for (const name of DOSET_BOOL_MOD) {
+        raw.push({
+            text: `${name}[${doset_bool_term(name)}]`,
+            selectable: true,
+            kind: 'bool',
+            name,
+        });
+    }
+    raw.push({ text: '', selectable: false });
+    raw.push({
+        text: 'Compounds (selecting will prompt for new value):',
+        selectable: false,
+        attr: ATR_INVERSE,
+    });
+    for (const t of [
+        'windowtype[tty]', 'playmode[normal]',
+        `name[${game.plname || 'Hero'}]`,
+        'role[Rogue]', 'race[orc]', 'gender[male]', 'alignment[chaotic]',
+        'catname[(none)]', 'dogname[(none)]', 'horsename[(none)]',
+        'msghistory[20]', 'pettype[random]', 'soundlib[nosound]',
+    ]) {
+        raw.push({ text: t, selectable: false });
+    }
+    const compounds = [
+        { name: 'autounlock', text: 'autounlock[apply-key]' },
+        { name: 'boulder', text: 'boulder[`]' },
+        { name: 'crash_email', text: 'crash_email[unknown]' },
+        { name: 'crash_name', text: 'crash_name[unknown]' },
+        { name: 'crash_urlmax', text: 'crash_urlmax[-1]' },
+        { name: 'disclose', text: 'disclose[ni na nv ng nc no]' },
+        { name: 'fruit', text: 'fruit[slime mold]' },
+        { name: 'glyph', text: 'glyph[(to be done)]' },
+        { name: 'hilite_status', text: 'hilite_status[(none)]' },
+        { name: 'menu_headings', text: 'menu_headings[no-color&inverse]' },
+        { name: 'menu_objsyms', text: 'menu_objsyms[conditional]' },
+        { name: 'menuinvertmode', text: 'menuinvertmode[1]' },
+        { name: 'menustyle', text: 'menustyle[full]' },
+        { name: 'msg_window', text: 'msg_window[single]' },
+        { name: 'number_pad', text: 'number_pad[0=off]' },
+        { name: 'packorder', text: 'packorder[$")[%?+!=/(*`0_]' },
+        { name: 'paranoid_confirmation', text: 'paranoid_confirmation   [pray trap swim]' },
+        { name: 'petattr', text: 'petattr[inverse]' },
+        { name: 'pickup_burden', text: 'pickup_burden[stressed]' },
+        { name: 'pickup_types', text: `pickup_types[${pickup_types_display()}]`, handler: true },
+        { name: 'pile_limit', text: 'pile_limit[5]' },
+        { name: 'roguesymset', text: 'roguesymset[default]' },
+        { name: 'runmode', text: 'runmode[run]' },
+        { name: 'scores', text: 'scores[3 top/2 around]' },
+        { name: 'sortdiscoveries', text: 'sortdiscoveries[by order of discovery within each class]' },
+        { name: 'sortloot', text: 'sortloot[loot]' },
+        { name: 'sortvanquished', text: 'sortvanquished[t: traditional: by monster level]' },
+        { name: 'statushilites', text: 'statushilites[0 (off: don\'t highlight status fields)]' },
+        { name: 'statuslines', text: 'statuslines[2]' },
+        { name: 'suppress_alert', text: 'suppress_alert[(none)]' },
+        { name: 'symset', text: 'symset[DECgraphics, active, handler=DEC]' },
+        { name: 'versinfo', text: 'versinfo[1: number (5.0.0)]' },
+        { name: 'whatis_coord', text: 'whatis_coord[none]' },
+        { name: 'whatis_filter', text: 'whatis_filter[none]' },
+    ];
+    for (const c of compounds) {
+        raw.push({
+            text: c.text,
+            selectable: true,
+            kind: 'comp',
+            name: c.name,
+            handler: !!c.handler,
+        });
+    }
+    raw.push({ text: '', selectable: false });
+    raw.push({
+        text: 'Other settings:',
+        selectable: false,
+        attr: ATR_INVERSE,
+    });
+    for (const t of [
+        { name: 'autocompletions', text: 'autocompletions[(0 currently set)]' },
+        { name: 'autopickup exceptions', text: 'autopickup exceptions   [(0 currently set)]' },
+        { name: 'bind keys', text: 'bind keys[(0 currently set)]' },
+        { name: 'menu colors', text: 'menu colors[(0 currently set)]' },
+        { name: 'message types', text: 'message types[(0 currently set)]' },
+        { name: 'status condition fields', text: 'status condition fields [(16 currently set)]' },
+        { name: 'status highlight rules', text: 'status highlight rules  [(0 currently set)]' },
+    ]) {
+        raw.push({
+            text: t.text,
+            selectable: true,
+            kind: 'othr',
+            name: t.name,
+        });
+    }
+
+    const selected = await select_menu_pick_any(raw);
+    const boolPicks = [];
+    const handlerPicks = [];
+    for (const it of selected) {
+        if (it.kind === 'bool') boolPicks.push(it.name);
+        else if (it.kind === 'comp' && it.handler) handlerPicks.push(it.name);
+    }
+    let msgBuf = [];
+    const flushMsg = async () => {
+        if (!msgBuf.length) return;
+        await pline(msgBuf.join('  '));
+        msgBuf = [];
+    };
+    for (const name of boolPicks) {
+        const addr = DOSET_BOOL_ADDR[name];
+        if (!addr) continue;
+        if (!game[addr.obj]) game[addr.obj] = {};
+        const on = !doset_bool_value(name);
+        game[addr.obj][addr.key] = on;
+        msgBuf.push(`'${name}' option toggled ${on ? 'on' : 'off'}.`);
+        if (msgBuf.length >= 2) await flushMsg();
+    }
+    await flushMsg();
+    for (const name of handlerPicks) {
+        if (name === 'pickup_types') {
+            await handler_pickup_types();
+        }
+    }
+    return ECMD_OK;
+}
+
+/**
  * C ref: options.c doset_simple — loop doset_simple_menu until no pick.
- * Named omissions: #optionsfull / doset / fruit/number_pad/autounlock/
- * symset/status handlers; help descr lines under simple_options_help.
+ * Named omissions: fruit/number_pad/autounlock/symset/status handlers;
+ * help descr lines under simple_options_help.
  */
 export async function doset_simple() {
     if (!game.flags) game.flags = {};
     if (!game.iflags) game.iflags = {};
-    // C: iflags.menu_requested → doset(); deferred
+    // C: iflags.menu_requested → doset()
+    if (game.iflags.menu_requested) {
+        game.iflags.menu_requested = false;
+        return doset();
+    }
     do {
         const picked = await doset_simple_menu();
         if (picked <= 0) break;

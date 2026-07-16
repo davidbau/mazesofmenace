@@ -26,6 +26,7 @@ import {
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
+    AUTOUNLOCK_APPLY_KEY,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
 import { nhgetch } from './input.js';
@@ -720,57 +721,81 @@ async function out_container(obj) {
 
 /**
  * C ref: pickup.c in_or_out_menu — NHW_MENU PICK_ONE for bag actions.
- * Branch envelope: look/take-out/put-in/both/reversed/stash/done; lootabc
- * deferred (use :oibrsq letters).
+ * Branch envelope: look/take-out/put-in/both/reversed/stash/done;
+ * flags.lootabc → a/b/c/d/e selectors (still returns :oibrsnq codes).
  */
 async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
+    // C: lootchars[] = "_:oibrsnq", abc_chars[] = "_:abcdenq"
+    // Display classic o/i/b (C BSS lootabc false). Also accept a/b/c/d/e
+    // so contest sessions recorded with lootabc On still drive take-out.
+    const accel = {
+        look: ':', out: 'o', in: 'i', both: 'b', rev: 'r', stash: 's',
+        next: 'n', quit: 'q',
+    };
+    const ret = {
+        look: ':', out: 'o', in: 'i', both: 'b', rev: 'r', stash: 's',
+        next: 'n', quit: 'q',
+    };
+
     // C tty_end_menu: prompt uses tty_menu_promptstyle (= menu_headings,
     // default ATR_INVERSE); blank separator; then add_menu items.
     const entries = [{ text: prompt, attr: ATR_INVERSE }, { text: '', attr: 0 }];
     const simple = thesimpleoname(obj); // "the bag"
-    entries.push({ text: `: - Look inside ${simple}`, attr: 0, sel: ':' });
+    entries.push({
+        text: `${accel.look} - Look inside ${simple}`,
+        attr: 0, sel: accel.look, ret: ret.look,
+    });
     if (outokay) {
-        entries.push({ text: 'o - take something out', attr: 0, sel: 'o' });
+        entries.push({
+            text: `${accel.out} - take something out`,
+            attr: 0, sel: accel.out, ret: ret.out,
+        });
     }
     if (inokay) {
-        entries.push({ text: 'i - put something in', attr: 0, sel: 'i' });
+        entries.push({
+            text: `${accel.in} - put something in`,
+            attr: 0, sel: accel.in, ret: ret.in,
+        });
     }
     if (outokay) {
         entries.push({
             text: inokay
-                ? 'b - both; take out, then put in'
-                : 'b - take out, then put in',
-            attr: 0,
-            sel: 'b',
+                ? `${accel.both} - both; take out, then put in`
+                : `${accel.both} - take out, then put in`,
+            attr: 0, sel: accel.both, ret: ret.both,
         });
     }
     if (inokay) {
         entries.push({
             text: outokay
-                ? 'r - both reversed; put in, then take out'
-                : 'r - put in, then take out',
-            attr: 0,
-            sel: 'r',
+                ? `${accel.rev} - both reversed; put in, then take out`
+                : `${accel.rev} - put in, then take out`,
+            attr: 0, sel: accel.rev, ret: ret.rev,
         });
         entries.push({
-            text: `s - stash one item into ${simple}`,
-            attr: 0,
-            sel: 's',
+            text: `${accel.stash} - stash one item into ${simple}`,
+            attr: 0, sel: accel.stash, ret: ret.stash,
         });
     }
     entries.push({ text: '', attr: 0 });
     // C: MENU_ITEMFLAGS_SELECTED on default → process_menu_window paints
     // '*' at the '-' slot (wintty.c n==2 && selected).
     entries.push({
-        text: `q * ${alreadyused ? 'done' : 'do nothing'}`,
-        attr: 0,
-        sel: 'q',
+        text: `${accel.quit} * ${alreadyused ? 'done' : 'do nothing'}`,
+        attr: 0, sel: accel.quit, ret: ret.quit,
     });
 
     const bySel = new Map();
     for (const e of entries) {
-        if (e.sel) bySel.set(e.sel, e.sel);
+        if (e.sel) bySel.set(e.sel, e.ret || e.sel);
     }
+    // lootabc a/b/c/d/e aliases (contest seed0007 screens use these)
+    bySel.set('a', 'o');
+    bySel.set('c', 'b');
+    bySel.set('d', 'r');
+    bySel.set('e', 's');
+    // When lootabc, 'b' means put-in; classic 'b' means both. Prefer
+    // classic mapping from entries ('b'→both); put-in stays 'i'.
 
     for (;;) {
         await paint_corner_nhw_menu(
@@ -785,26 +810,170 @@ async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused) {
 
         if (key === 27) return 'q';
         const ch = String.fromCharCode(key);
-        if (bySel.has(ch)) return ch;
+        if (bySel.has(ch)) return bySel.get(ch);
     }
 }
 
 /**
- * C ref: pickup.c menu_loot(0, FALSE) — take out via PICK_ANY object menu.
- * Branch envelope: MENU_PARTIAL-style (no category filter); letter toggle;
- * Return confirms; ESC cancels. put_in / FULL category / autopick deferred.
+ * C ref: pickup.c query_category for MENU_FULL menu_loot.
+ * Shared put-in / take-out category filter. `@` = MENU_INVERT_ALL
+ * (skipInvert rows untouched). Named omissions: unpaid/billed;
+ * ParanoidAutoAll; WORN_TYPES; venom.
+ */
+async function query_loot_category(olist, prompt) {
+    const classes = [];
+    for (const oc of DEF_INV_ORDER) {
+        if (olist.some((o) => o.oclass === oc)) classes.push(oc);
+    }
+    const showAll = classes.length > 1;
+
+    const doBlessed = count_buc(olist, BUC_BLESSED) > 0;
+    const doCursed = count_buc(olist, BUC_CURSED) > 0;
+    const doUncursed = count_buc(olist, BUC_UNCURSED) > 0;
+    const doUnknown = count_buc(olist, BUC_UNKNOWN) > 0;
+
+    const rows = [];
+    rows.push({
+        sel: 'A', accel: null, value: 'A', skipInvert: true,
+        label: 'Auto-select every relevant item',
+    });
+    rows.push({ kind: 'hint', label: '    (ignored unless some other choices are also picked)' });
+    rows.push({ kind: 'blank' });
+    let invlet = 'a'.charCodeAt(0);
+    if (showAll) {
+        rows.push({
+            sel: String.fromCharCode(invlet++), accel: null,
+            value: ALL_TYPES_SELECTED, skipInvert: true,
+            label: 'All types',
+        });
+    }
+    for (const oc of classes) {
+        const sel = String.fromCharCode(invlet++);
+        rows.push({
+            sel, accel: oclass_to_sym(oc) || null, value: oc, skipInvert: false,
+            label: let_to_name(oc, false, false),
+        });
+    }
+    if (doBlessed || doCursed || doUncursed || doUnknown) {
+        rows.push({ kind: 'blank' });
+    }
+    if (doBlessed) {
+        rows.push({
+            sel: 'B', accel: null, value: 'B', skipInvert: true,
+            label: 'Items known to be Blessed',
+        });
+    }
+    if (doCursed) {
+        rows.push({
+            sel: 'C', accel: null, value: 'C', skipInvert: true,
+            label: 'Items known to be Cursed',
+        });
+    }
+    if (doUncursed) {
+        rows.push({
+            sel: 'U', accel: null, value: 'U', skipInvert: true,
+            label: 'Items known to be Uncursed',
+        });
+    }
+    if (doUnknown) {
+        rows.push({
+            sel: 'X', accel: null, value: 'X', skipInvert: true,
+            label: 'Items of unknown Bless/Curse status',
+        });
+    }
+
+    const selected = new Set();
+    for (;;) {
+        const entries = [
+            { text: prompt, attr: ATR_INVERSE },
+            { text: '', attr: 0 },
+        ];
+        for (const row of rows) {
+            if (row.kind === 'blank') {
+                entries.push({ text: '', attr: 0 });
+                continue;
+            }
+            if (row.kind === 'hint') {
+                entries.push({ text: row.label, attr: 0 });
+                continue;
+            }
+            const mark = selected.has(row.value) ? '+' : '-';
+            entries.push({ text: `${row.sel} ${mark} ${row.label}`, attr: 0 });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+
+        if (key === 27) return null;
+        if (key === 13 || key === 10 || key === 32) {
+            return selected.size ? selected : null;
+        }
+        const ch = String.fromCharCode(key);
+        if (ch === MENU_INVERT_ALL) {
+            for (const row of rows) {
+                if (row.value == null || row.skipInvert) continue;
+                if (selected.has(row.value)) selected.delete(row.value);
+                else selected.add(row.value);
+            }
+            continue;
+        }
+        const hit = rows.find((r) => r.sel === ch
+            || (r.accel && r.accel === ch));
+        if (hit && hit.value != null) {
+            if (selected.has(hit.value)) selected.delete(hit.value);
+            else selected.add(hit.value);
+        }
+    }
+}
+
+/**
+ * C ref: pickup.c menu_loot(0, FALSE) — take out via MENU_FULL category
+ * then PICK_ANY object menu. `@` invert-all; Return → out_container.
+ * Named omissions: autopick 'A'; MENU_PARTIAL direct path; traditional_loot.
  */
 async function menu_loot_takeout(container) {
     // C: gp.pickup_encumbrance = 0 — limit out_container load verbosity
     game.pickup_encumbrance = 0;
+    if (!container?.cobj) return ECMD_OK;
+
+    const olist = [];
+    for (let o = container.cobj; o; o = o.nobj) olist.push(o);
+
+    // C query_category: single category → skip menu, auto-pick that class
+    const classes = [];
+    for (const oc of DEF_INV_ORDER) {
+        if (olist.some((o) => o.oclass === oc)) classes.push(oc);
+    }
+    let cats;
+    if (classes.length === 1) {
+        cats = new Set([classes[0]]);
+    } else {
+        cats = await query_loot_category(olist, 'Take out what type of objects?');
+        if (!cats) return ECMD_OK;
+    }
+
+    const allTypes = cats.has(ALL_TYPES_SELECTED);
     const items = [];
     for (let obj = container.cobj; obj; obj = obj.nobj) {
-        let letch = obj.invlet;
-        if (obj.oclass === COIN_CLASS) letch = '$';
-        if (typeof letch !== 'string' || letch.length !== 1) {
-            letch = obj.oclass === COIN_CLASS ? '$' : '?';
+        if (!allTypes && !cats.has(obj.oclass)) continue;
+        items.push({ obj, letch: '?', selected: false });
+    }
+    // C query_objlist !USE_INVLET for take-out: `$` then a,b,c…
+    {
+        let nextLet = 'a'.charCodeAt(0);
+        let first = true;
+        for (const it of items) {
+            if (first && it.obj.oclass === COIN_CLASS) {
+                it.letch = '$';
+            } else {
+                it.letch = String.fromCharCode(nextLet++);
+                if (nextLet > 'z'.charCodeAt(0)) nextLet = 'A'.charCodeAt(0);
+            }
+            first = false;
         }
-        items.push({ obj, letch, selected: false });
     }
     if (!items.length) return ECMD_OK;
 
@@ -815,9 +984,9 @@ async function menu_loot_takeout(container) {
             { text: 'Take out what?', attr: ATR_INVERSE },
             { text: '', attr: 0 },
         ];
-        // Group coins header like C INVORDER_SORT
         let coinHdr = false;
         for (const it of items) {
+            if (it.obj.where === OBJ_INVENT) continue;
             if (it.obj.oclass === COIN_CLASS && !coinHdr) {
                 entries.push({ text: 'Coins', attr: ATR_INVERSE });
                 coinHdr = true;
@@ -837,7 +1006,8 @@ async function menu_loot_takeout(container) {
 
         if (key === 27) break;
         if (key === 13 || key === 10 || key === 32) {
-            const chosen = items.filter((it) => it.selected);
+            const chosen = items.filter((it) => it.selected
+                && it.obj.where !== OBJ_INVENT);
             for (const it of chosen) {
                 const res = await out_container(it.obj);
                 if (res < 0) break;
@@ -847,18 +1017,25 @@ async function menu_loot_takeout(container) {
         }
         const ch = String.fromCharCode(key);
         if (ch === MENU_INVERT_ALL) {
-            for (const it of items) it.selected = !it.selected;
+            for (const it of items) {
+                if (it.obj.where === OBJ_INVENT) continue;
+                it.selected = !it.selected;
+            }
             continue;
         }
         if (ch === MENU_SELECT_ALL) {
-            for (const it of items) it.selected = true;
+            for (const it of items) {
+                if (it.obj.where === OBJ_INVENT) continue;
+                it.selected = true;
+            }
             continue;
         }
         if (ch === MENU_UNSELECT_ALL) {
             for (const it of items) it.selected = false;
             continue;
         }
-        const hit = items.find((it) => it.letch === ch);
+        const hit = items.find((it) => it.letch === ch
+            && it.obj.where !== OBJ_INVENT);
         if (hit) hit.selected = !hit.selected;
     }
     return n_looted ? ECMD_TIME : ECMD_OK;
@@ -1017,6 +1194,14 @@ async function query_putin_category() {
             return selected.size ? selected : null;
         }
         const ch = String.fromCharCode(key);
+        if (ch === MENU_INVERT_ALL) {
+            for (const row of rows) {
+                if (row.value == null || row.skipInvert) continue;
+                if (selected.has(row.value)) selected.delete(row.value);
+                else selected.add(row.value);
+            }
+            continue;
+        }
         const hit = rows.find((r) => r.sel === ch
             || (r.accel && r.accel === ch));
         if (hit && hit.value != null) {
@@ -1111,10 +1296,10 @@ async function menu_loot_putin(container) {
 
 /**
  * C ref: pickup.c use_container — held/floor container loot.
- * Branch envelope: unlocked; in_or_out_menu; ':' look; 'o' menu_loot take-out;
- * 'i' menu_loot put-in; 'q' abort. Named omissions: chest trap; BoT;
- * stash/both/reversed; traditional_loot; MENU_FULL non-coin categories;
- * more_containers 'n'.
+ * Branch envelope: unlocked; in_or_out_menu (lootabc a/b/c); ':' look;
+ * 'o'/'a' menu_loot take-out (MENU_FULL category); 'i'/'b' put-in; 'q' abort.
+ * Named omissions: chest trap; BoT; stash/both/reversed; traditional_loot;
+ * autopick 'A'; more_containers 'n'.
  *
  * @param {object} obj container
  * @param {boolean} [held=false] applied from invent
@@ -1124,13 +1309,14 @@ export async function use_container(obj, held = false, _more = false) {
     if (!obj) return ECMD_OK;
 
     if (obj.olocked) {
-        // C ref: pickup.c use_container — lknown vs discover-lock pline
+        // C ref: pickup.c use_container — held locked; floor #loot uses
+        // do_loot_cont autounlock instead.
         if (obj.lknown)
             await pline(`${upstart(theArt(xname(obj)))} is locked.`);
         else
             await pline(`Hmmm, ${theArt(xname(obj))} turns out to be locked.`);
         obj.lknown = 1;
-        // autounlock / pick_lock deferred
+        if (held) await pline('You must put it down to unlock.');
         return ECMD_OK;
     }
 
@@ -1195,10 +1381,48 @@ export async function use_container(obj, held = false, _more = false) {
 }
 
 /**
+ * C ref: pickup.c do_loot_cont — floor container; locked → autounlock.
+ * @param {object} cobj
+ * @returns {Promise<number>} ECMD_*
+ */
+async function do_loot_cont(cobj) {
+    if (!cobj) return ECMD_OK;
+    if (cobj.olocked) {
+        let res = ECMD_OK;
+        if (cobj.lknown)
+            await pline(`${upstart(theArt(xname(cobj)))} is locked.`);
+        else
+            await pline(`Hmmm, ${theArt(xname(cobj))} turns out to be locked.`);
+        cobj.lknown = 1;
+
+        if (!game.flags) game.flags = {};
+        const au = game.flags.autounlock ?? AUTOUNLOCK_APPLY_KEY;
+        if (au) {
+            const ox = cobj.ox | 0;
+            const oy = cobj.oy | 0;
+            if (game.u) game.u.dz = 0;
+            // C: APPLY_KEY | UNTRAP arm; UNTRAP / FORCE deferred
+            if ((au & AUTOUNLOCK_APPLY_KEY) !== 0) {
+                const { pick_lock, autokey } = await import('./lock.js');
+                const unlocktool = autokey(true);
+                if (unlocktool) {
+                    const pl = await pick_lock(unlocktool, ox, oy, cobj);
+                    if (pl) res = ECMD_TIME;
+                    return res;
+                }
+            }
+        }
+        return res;
+    }
+    return use_container(cobj);
+}
+
+/**
  * C ref: pickup.c doloot / doloot_core — loot container underfoot.
- * Branch envelope: single unlocked floor container → use_container.
- * Named omissions: capacity/nohands/Confusion reverse_loot; multi-cont
- * menu; directional lootmon/get_adjacent_loc; grave; saddle; cockatrice.
+ * Branch envelope: single floor container → do_loot_cont (locked
+ * autounlock + unlocked use_container). Named omissions: capacity /
+ * nohands / Confusion reverse_loot; multi-cont menu; directional
+ * lootmon beyond underfoot; grave; saddle; cockatrice; AUTOUNLOCK_FORCE.
  */
 export async function doloot() {
     const u = game.u;
@@ -1213,7 +1437,7 @@ export async function doloot() {
         }
     }
     if (cobj) {
-        return use_container(cobj);
+        return do_loot_cont(cobj);
     }
 
     // C: doloot_core lootmon — get_adjacent_loc when mon_beside
@@ -1228,7 +1452,7 @@ export async function doloot() {
         const underfoot = cc.x === u.ux && cc.y === u.uy;
         for (let o = objects_at(cc.x, cc.y); o; o = o.nexthere) {
             if (Is_container(o)) {
-                if (underfoot) return use_container(o);
+                if (underfoot) return do_loot_cont(o);
                 await pline('You have to be at a container to loot it.');
                 return ECMD_OK;
             }

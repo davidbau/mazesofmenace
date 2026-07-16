@@ -7,9 +7,11 @@
 // path via thitm death.
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn2, rnd, rn1, d, rnl } from './rng.js';
 import {
     mksobj, place_object, weight, stackobj, relobj_on_death,
+    is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
+    erosion_matters, delobj,
 } from './mkobj.js';
 import { find_mac, make_corpse } from './mhitm.js';
 import { mon_explodes } from './explode.js';
@@ -36,7 +38,10 @@ import {
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
     IS_ROOM, IS_WALL, IS_AIR, SDOOR,
     D_CLOSED, D_LOCKED,
-    ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
+    ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
+    ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
+    EF_GREASE, EF_DESTROY, EF_VERBOSE, EF_PAY,
+    MAX_ERODE,
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
     KILLED_BY, KILLED_BY_AN,
@@ -1278,6 +1283,110 @@ function sleep_monst(mon, amt, how) {
         return 1;
     }
     return 0;
+}
+
+/**
+ * C ref: trap.c erode_obj — generic erode / destroy worn or free objects.
+ * Envelope for destroy_arm / burn paths: grease short-circuit, erosion_matters,
+ * vulnerable by type, oerodeproof/blessed rnl(4), oeroded++ to MAX_ERODE, then
+ * EF_DESTROY delobj. Named omissions: inventory_resistance_check AD_FIRE/ACID;
+ * grease_protect body; costly_alteration EF_PAY; monster/floor visobj arms;
+ * remove_worn_item before delobj (caller destroy_arm stops on ER_DESTROYED);
+ * Blind feel-completely messages.
+ *
+ * @returns {Promise<number>} ER_* 
+ */
+export async function erode_obj(otmp, ostr, type, ef_flags) {
+    const action = ['smoulder', 'rust', 'rot', 'corrode', 'crack'];
+    if (!otmp) return ER_NOTHING;
+
+    const carried = Array.isArray(game.invent) && game.invent.includes(otmp);
+    const uvictim = carried; // hero invent only for this envelope
+    const check_grease = !!(ef_flags & EF_GREASE);
+    const print = !!(ef_flags & EF_VERBOSE);
+
+    let vulnerable = false;
+    let is_primary = true;
+    let checkGrease = check_grease;
+    switch (type) {
+    case ERODE_BURN:
+        // inventory_resistance_check(AD_FIRE) deferred
+        vulnerable = is_flammable(otmp);
+        checkGrease = false;
+        break;
+    case ERODE_RUST:
+        vulnerable = is_rustprone(otmp);
+        break;
+    case ERODE_ROT:
+        vulnerable = is_rottable(otmp);
+        checkGrease = false;
+        is_primary = false;
+        break;
+    case ERODE_CORRODE:
+        // inventory_resistance_check(AD_ACID) deferred
+        vulnerable = is_corrodeable(otmp);
+        is_primary = false;
+        break;
+    case ERODE_CRACK:
+        vulnerable = is_crackable(otmp);
+        is_primary = true;
+        break;
+    default:
+        return ER_NOTHING;
+    }
+
+    const erosion = is_primary ? (otmp.oeroded | 0) : (otmp.oeroded2 | 0);
+    if (!ostr) ostr = xname(otmp);
+
+    if (checkGrease && otmp.greased) {
+        // grease_protect deferred — treat as greased resist without wear-off RNG
+        return ER_GREASED;
+    }
+    if (!erosion_matters(otmp)) return ER_NOTHING;
+    if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
+        void print;
+        return ER_NOTHING;
+    }
+    // C: oerodeproof || (blessed && !rnl(4))
+    if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
+        if (otmp.oerodeproof) otmp.rknown = true;
+        return ER_NOTHING;
+    }
+    if (erosion < MAX_ERODE) {
+        const adverb = (erosion + 1 === MAX_ERODE) ? ' completely'
+            : erosion ? ' further' : '';
+        if (uvictim) {
+            await pline(
+                `Your ${ostr} ${vtense(ostr, action[type])}${adverb}!`,
+            );
+        }
+        // costly_alteration EF_PAY deferred
+        void (ef_flags & EF_PAY);
+        if (is_primary) otmp.oeroded = (otmp.oeroded | 0) + 1;
+        else otmp.oeroded2 = (otmp.oeroded2 | 0) + 1;
+        return ER_DAMAGED;
+    }
+    if (ef_flags & EF_DESTROY) {
+        otmp.in_use = 1;
+        if (uvictim) {
+            await pline(
+                `Your ${ostr} ${vtense(ostr, action[type])} away!`,
+            );
+        }
+        // remove_worn_item deferred — delobj clears worn slot via owornmask
+        if (otmp.owornmask) {
+            const u = game.u || {};
+            for (const slot of [
+                'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
+            ]) {
+                if (u[slot] === otmp) u[slot] = null;
+            }
+            otmp.owornmask = 0;
+        }
+        delobj(otmp);
+        return ER_DESTROYED;
+    }
+    return ER_NOTHING;
 }
 
 /**

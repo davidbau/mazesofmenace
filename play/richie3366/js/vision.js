@@ -6,8 +6,8 @@ import { game } from './gstate.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR, POOL, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
-    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL, IS_WATERWALL,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
+    IS_WALL, IS_WATERWALL, ROOMOFFSET, Is_rogue_level,
 } from './const.js';
 import { newsym } from './display.js';
 import { objectNames } from './objects.js';
@@ -472,6 +472,62 @@ export function do_clear_area(scol, srow, range, func, arg) {
     }
 }
 
+/**
+ * C ref: vision.c rogue_vision — Rogue-level could-see / in-sight.
+ * Room (if any): bounds get COULD_SEE (+ IN_SIGHT when rlit); always
+ * see the 3×3 adjacent to the hero. Replaces Algorithm-C view_from.
+ * Named omissions (vision_recalc): Blind old-sight newsym path;
+ * do_light_sources; pit/underwater COULD_SEE clamps.
+ */
+function rogue_vision(next, rmin, rmax) {
+    const u = game.u;
+    const level = game.level;
+    if (!u || !level) return;
+
+    const locHere = level.at(u.ux, u.uy);
+    const rnum = ((locHere?.roomno | 0) - ROOMOFFSET) | 0;
+    const rooms = level.rooms || [];
+
+    if (rnum >= 0 && rooms[rnum]) {
+        const rm = rooms[rnum];
+        const start = (rm.lx | 0) - 1;
+        const stop = (rm.hx | 0) + 1;
+        const rlit = !!(rm.rlit);
+        for (let zy = (rm.ly | 0) - 1; zy <= (rm.hy | 0) + 1; zy++) {
+            if (zy < 0 || zy >= ROWNO) continue;
+            rmin[zy] = start;
+            rmax[zy] = stop;
+            for (let zx = start; zx <= stop; zx++) {
+                if (zx < 1 || zx >= COLNO) continue;
+                if (rlit) {
+                    next[zy][zx] = COULD_SEE | IN_SIGHT;
+                    const loc = level.at(zx, zy);
+                    if (loc) loc.seenv = SVALL;
+                } else {
+                    next[zy][zx] = COULD_SEE;
+                }
+            }
+        }
+    }
+
+    const in_door = (locHere?.typ === DOOR);
+    const ylo = Math.max(u.uy - 1, 0);
+    const yhi = Math.min(u.uy + 1, ROWNO - 1);
+    const xlo = Math.max(u.ux - 1, 1);
+    const xhi = Math.min(u.ux + 1, COLNO - 1);
+    for (let zy = ylo; zy <= yhi; zy++) {
+        if (xlo < rmin[zy]) rmin[zy] = xlo;
+        if (xhi > rmax[zy]) rmax[zy] = xhi;
+        for (let zx = xlo; zx <= xhi; zx++) {
+            next[zy][zx] = COULD_SEE | IN_SIGHT;
+            // C: doorway ortho newsym so newly-seen room walls refresh
+            if (in_door && (zx === u.ux || zy === u.uy)) {
+                newsym(zx, zy);
+            }
+        }
+    }
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
@@ -491,10 +547,17 @@ export function vision_recalc(control = 0) {
     }
 
     if (control !== 2) {
-        view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        // C: Blind → view_from then old-sight newsym (deferred);
+        // Is_rogue_level → rogue_vision; else Algorithm-C view_from.
+        if (Is_rogue_level(u.uz)) {
+            rogue_vision(next, next_rmin, next_rmax);
+        } else {
+            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        }
     }
 
-    // Compute IN_SIGHT from COULD_SEE + lighting
+    // Compute IN_SIGHT from COULD_SEE + lighting (non-rogue primary path;
+    // rogue_vision already ORs IN_SIGHT for room/adjacent — loop is idempotent)
     const level = game.level;
     const ux = u.ux, uy = u.uy;
 

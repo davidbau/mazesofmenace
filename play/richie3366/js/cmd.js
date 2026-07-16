@@ -689,9 +689,15 @@ export async function rhack(key) {
         game.context.forcefight = 0;
         game.domove_attempting = 0;
     }
-    // JS adaptation of C PREFIXCMD loop: drop pending m across rhack calls
-    if (ch !== 'm' && !isMovementKey(ch) && !isRunKey(ch) && !rushDir
-        && game.iflags?.menu_requested) {
+    // C rhack: keep menu_requested for CMD_M_PREFIX commands (O→doset_simple
+    // reads it to call doset). Drop only when the next command rejects 'm'.
+    // Named omission: full accept_menu_prefix table — O/,/e/q/a/s/p/>/< enough
+    // for current sessions; expand when m-prefix + other cmds desync.
+    const accepts_m_prefix = ch === 'O' || ch === ',' || ch === 'e'
+        || ch === 'q' || ch === 'a' || ch === 's' || ch === 'p'
+        || ch === '>' || ch === '<';
+    if (ch !== 'm' && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
+        && !rushDir && game.iflags?.menu_requested) {
         game.iflags.menu_requested = false;
     }
 

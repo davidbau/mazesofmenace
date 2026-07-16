@@ -6,15 +6,16 @@
 //         (metabolic uhunger-- + accessorytime Regen/encumb/Hunger/Conflict);
 //         invent.c getobj; attrib.c poison_strdmg.
 // Named omissions: floorfood metallivore/pool-lava/cockatrice-feel; TIN;
-// full cprefx/cpostfx; tainted Sick; slime/stone; make_blinded body /
-// Hear_again afternmv / foodword poly; freeinv invent-full drop; ?/* menu;
-// multi-turn choke/newuhs; gethungry ring/amulet accessorytime + newuhs;
+// full cprefx; cpostfx specials (wraith/were/nurse/stalker/…); corpse_intrinsic
+// / givit; hallu from AD_STUN/AD_HALU; tainted Sick; slime/stone; make_blinded
+// body / Hear_again afternmv / foodword poly; freeinv invent-full drop; ?/* menu;
+// multi-turn choke/newuhs messages; gethungry ring/amulet accessorytime + newuhs;
 // losestr setuhpmax / terminal-frailty full death path;
 // vomit cantvomit/Sick/FAINTING/acid-breath.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { flush_topl_more, pline } from './display.js';
+import { flush_topl_more, pline, You_feel } from './display.js';
 import { yn_function } from './getline.js';
 import { FOOD_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight, splitobj, objects_at, delobj } from './mkobj.js';
@@ -66,6 +67,22 @@ const PM_COCKATRICE = monsterNames.indexOf('PM_COCKATRICE');
 const PM_CHICKATRICE = monsterNames.indexOf('PM_CHICKATRICE');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
+const PM_NEWT = monsterNames.indexOf('PM_NEWT');
+// C ref: monattk.h AT_MAGC
+const AT_MAGC = 255;
+
+/**
+ * C ref: mondata.h attacktype — true if any mattk slot has aatyp.
+ * Local copy to avoid makemon export / import cycles.
+ */
+function attacktype(ptr, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < slots.length; i++) {
+        if (slots[i]?.aatyp === aatyp) return true;
+    }
+    return false;
+}
 
 /**
  * C objects.h FOOD nutrition — extractor omits oc_nutrition (named omission).
@@ -618,7 +635,51 @@ function bite() {
 }
 
 /**
- * C ref: eat.c done_eating — finish meal; cpostfx/fpostfx deferred.
+ * C ref: eat.c eye_of_newt_buzz — small Pw boost from newt / AT_MAGC corpse.
+ */
+async function eye_of_newt_buzz() {
+    const u = game.u || (game.u = {});
+    // C: if (rn2(3) || 3 * u.uen <= 2 * u.uenmax)
+    if (rn2(3) || 3 * (u.uen | 0) <= 2 * (u.uenmax | 0)) {
+        const old_uen = u.uen | 0;
+        u.uen = (u.uen | 0) + rnd(3);
+        if ((u.uen | 0) > (u.uenmax | 0)) {
+            if (!rn2(3)) {
+                u.uenmax = (u.uenmax | 0) + 1;
+                if ((u.uenmax | 0) > (u.uenpeak | 0)) u.uenpeak = u.uenmax;
+            }
+            u.uen = u.uenmax;
+        }
+        if (old_uen !== (u.uen | 0)) {
+            await You_feel('a mild buzz.');
+            if (game.disp) game.disp.botl = true;
+            if (game.flags) game.flags.botl = true;
+        }
+    }
+}
+
+/**
+ * C ref: eat.c cpostfx — post-corpse effects.
+ * Branch envelope (D-0492): default check_intrinsics → eye_of_newt_buzz
+ * for AT_MAGC || PM_NEWT. Special switch cases, AD_STUN/AD_HALU hallu,
+ * corpse_intrinsic / givit deferred.
+ */
+async function cpostfx(pm) {
+    // Ordinary corpses (incl. newt) take C's default check_intrinsics path.
+    // Named deferred specials (wraith, were*, nurse body, stalker/bat/mimic,
+    // quantum, lizard body, chameleon/doppel/genetic, displacer,
+    // disenchanter, riders, mind flayer INT) are no-ops until ported —
+    // they must not set check_intrinsics when their bodies land.
+    const ptr = mons(pm);
+    // C: dmgtype AD_STUN/AD_HALU / violet fungus → make_hallucinated deferred
+    if (attacktype(ptr, AT_MAGC) || pm === PM_NEWT) {
+        await eye_of_newt_buzz();
+    }
+    // C: corpse_intrinsic → givit / gainstr deferred (newt conveys none)
+}
+
+/**
+ * C ref: eat.c done_eating — finish meal; cpostfx for CORPSE; fpostfx cookie.
  */
 async function done_eating(message) {
     const piece = game.context?.victual?.piece;
@@ -627,12 +688,16 @@ async function done_eating(message) {
         game.occupation = null;
         return;
     }
+    // C: occupation = 0 early so newuhs knows we're done
     game.occupation = null;
+    newuhs(false);
     if (message) {
         await pline(`You finish eating ${food_xname(piece, true)}.`);
     }
-    // cpostfx / fpostfx: FORTUNE_COOKIE rumor; other deferred
-    if (piece.otyp === FORTUNE_COOKIE) {
+    if (piece.otyp === CORPSE || piece.globby) {
+        await cpostfx(piece.corpsenm | 0);
+    } else if (piece.otyp === FORTUNE_COOKIE) {
+        // C: fpostfx — cookie rumor only (other fpostfx deferred)
         await outrumor(bcsign(piece), BY_COOKIE);
     }
     useup(piece);

@@ -53,6 +53,25 @@ function cmdq_add_ec(fn) {
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
+/**
+ * C ref: cmd.c movecmd(sym, MV_ANY) — walk/run/rush bindings all yield a
+ * direction. Capital HJKLYUBN (run) and Ctrl-dir (rush) count like h/j/…
+ * @returns {{dx:number,dy:number}|null}
+ */
+function dir_from_key(key, ch) {
+    if (ch in DIR_DX) return { dx: DIR_DX[ch], dy: DIR_DY[ch] };
+    const low = typeof ch === 'string' ? ch.toLowerCase() : '';
+    if (low in DIR_DX && ch === low.toUpperCase()) {
+        return { dx: DIR_DX[low], dy: DIR_DY[low] };
+    }
+    // rush: C(dir) — keys 1..26 (ICRNL maps CR→LF = C('j'))
+    if (typeof key === 'number' && key >= 1 && key <= 26) {
+        const rushCh = String.fromCharCode(key + 96);
+        if (rushCh in DIR_DX) return { dx: DIR_DX[rushCh], dy: DIR_DY[rushCh] };
+    }
+    return null;
+}
+
 /** C invent getobj ranks used by throw_ok. */
 const THROW_SUGGEST = 1;
 const THROW_DOWNPLAY = 2;
@@ -156,11 +175,12 @@ async function getdir(prompt) {
     game._pending_message = '';
     if (key === 27 || ch === '.' || ch === ' ' || ch === '\n' || ch === '\r')
         return null;
-    if (!(ch in DIR_DX)) {
+    const dir = dir_from_key(key, ch);
+    if (!dir) {
         await pline('Never mind.');
         return null;
     }
-    return { dx: DIR_DX[ch], dy: DIR_DY[ch] };
+    return dir;
 }
 
 function freeinv(otmp) {
@@ -538,7 +558,9 @@ export async function getdir_cmdassist(prompt) {
         // C: quitchars + getdir self ('.') cancel without help
         if (key === 27 || ch === '.' || ch === ' ' || ch === '\n' || ch === '\r')
             return null;
-        if (ch in DIR_DX) return { dx: DIR_DX[ch], dy: DIR_DY[ch] };
+        // C: movecmd(dirsym, MV_ANY) — walk/run/rush all ok
+        const dir = dir_from_key(key, ch);
+        if (dir) return dir;
         // C: NHKF_GETDIR_HELP '?' → help_dir then retry
         if (ch === '?') {
             await help_dir(null);
@@ -592,6 +614,11 @@ export async function dofire() {
         if (res !== 0 && res !== 1) return res;
         obj = game.u?.uquiver || null;
         if (!obj) return res | 0;
+        // C: ready pline may leave NEED_MORE; tty_nhgetch/getdir yn_function
+        // does not More-eat the next direction/cancel keys when the prompt
+        // replaces the message. Without this, flush_topl_more eats `=/\r`
+        // and capital `H` is misread as getdir (D-0485 / D-0484 pattern).
+        mark_topline_seen();
     }
     // C: post-quiver fireassist launcher swap deferred for non-ammo
     const dir = await getdir_cmdassist('In what direction?');

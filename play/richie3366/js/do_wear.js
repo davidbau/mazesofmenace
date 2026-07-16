@@ -9,18 +9,26 @@ import { yn_function } from './getline.js';
 import { an, doname, the, xname, xprname } from './objnam.js';
 import { find_ac } from './u_init.js';
 import { change_luck } from './attrib.js';
-import { nomul, unmul } from './hack.js';
+import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object } from './artifact.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
     W_QUIVER, LEFT_RING, RIGHT_RING,
+    ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
+    ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
 } from './const.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
     objectNames, objectNameStrs,
 } from './objects.js';
 import { PM_ARCHEOLOGIST } from './monsters.js';
+import {
+    is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
+    erosion_matters, is_damageable,
+} from './mkobj.js';
+import { erode_obj } from './trap.js';
+import { rn2 } from './rng.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
@@ -952,4 +960,72 @@ export async function doputon() {
     const otmp = await getobj_puton();
     if (!otmp) return 0;
     return accessory_or_armor_on(otmp);
+}
+
+/**
+ * C ref: do_wear.c some_armor — pick a worn armor piece (cloak/suit/shirt
+ * preferred; helm/gloves/boots/shield may steal via rn2(4)).
+ * Hero-only envelope (which_armor monster path deferred).
+ */
+export function some_armor(_victim) {
+    const u = game.u || {};
+    let otmph = u.uarmc || u.uarm || u.uarmu || null;
+    let otmp = u.uarmh;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    otmp = u.uarmg;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    otmp = u.uarmf;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    otmp = u.uarms;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    return otmph;
+}
+
+/** C ref: do_wear.c obj_erode_type */
+function obj_erode_type(otmp) {
+    if (is_flammable(otmp)) return ERODE_BURN;
+    if (is_rustprone(otmp)) return ERODE_RUST;
+    if (is_crackable(otmp)) return ERODE_CRACK;
+    if (is_rottable(otmp)) return ERODE_ROT;
+    if (is_corrodeable(otmp)) return ERODE_CORRODE;
+    return ERODE_NONE;
+}
+
+/**
+ * C ref: do_wear.c destroy_arm — erode rn2(4)+1 random worn armor pieces;
+ * stop early on ER_DESTROYED. Named omissions: none for the gather/hit loop.
+ *
+ * @returns {Promise<number>} 1 if any damage/destroy, else 0
+ */
+export async function destroy_arm() {
+    const u = game.u || {};
+    const armors = [];
+    if (u.uarm) armors.push(u.uarm);
+    if (u.uarmc) armors.push(u.uarmc);
+    if (u.uarmh) armors.push(u.uarmh);
+    if (u.uarms) armors.push(u.uarms);
+    if (u.uarmg) armors.push(u.uarmg);
+    if (u.uarmf) armors.push(u.uarmf);
+    if (u.uarmu) armors.push(u.uarmu);
+    const idx = armors.length;
+    if (!idx) return 0;
+
+    const hits = rn2(4) + 1;
+    let ret = 0;
+    for (let i = 0; i < hits; i++) {
+        const otmp = armors[rn2(idx)];
+        if (!otmp) continue;
+        if (erosion_matters(otmp) && is_damageable(otmp) && !otmp.oerodeproof) {
+            const erosion = obj_erode_type(otmp);
+            if (erosion !== ERODE_NONE) {
+                const r = await erode_obj(
+                    otmp, xname(otmp), erosion, EF_PAY | EF_DESTROY,
+                );
+                if (r !== ER_NOTHING) ret = 1;
+                if (r === ER_DESTROYED) break;
+            }
+        }
+    }
+    if (ret) await stop_occupation();
+    return ret;
 }

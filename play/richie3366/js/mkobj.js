@@ -298,11 +298,11 @@ function is_poisonable(otmp) {
     return is_multigen(otmp);
 }
 
-function is_rustprone(otmp) {
+export function is_rustprone(otmp) {
     return objs()[otmp.otyp]?.oc_material === IRON;
 }
 // C ref: mkobj.c is_flammable()
-function is_flammable(otmp) {
+export function is_flammable(otmp) {
     const n = otypName(otmp.otyp);
     if (n === 'TALLOW_CANDLE' || n === 'WAX_CANDLE') return false;
     // FIRE_RES / WAN_FIRE rare on mklev loot; skip full prop table for now
@@ -311,17 +311,17 @@ function is_flammable(otmp) {
     return (mat <= WOOD && mat !== LIQUID) || mat === PLASTIC;
 }
 // C ref: mkobj.c is_rottable()
-function is_rottable(otmp) {
+export function is_rottable(otmp) {
     const mat = objs()[otmp.otyp]?.oc_material;
     return (mat <= WOOD && mat !== LIQUID) || mat === DRAGON_HIDE;
 }
 // C ref: objclass.h is_corrodeable
-function is_corrodeable(otmp) {
+export function is_corrodeable(otmp) {
     const mat = objs()[otmp.otyp]?.oc_material;
     return mat === COPPER || mat === IRON;
 }
 // C ref: objclass.h is_crackable — glass armor only
-function is_crackable(otmp) {
+export function is_crackable(otmp) {
     return objs()[otmp.otyp]?.oc_material === GLASS
         && objs()[otmp.otyp]?.oc_class === ARMOR_CLASS;
 }
@@ -333,13 +333,13 @@ function is_weptool(otmp) {
     return n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN'
         || n === 'AKLYS' || n === 'BULLWHIP';
 }
-function erosion_matters(otmp) {
+export function erosion_matters(otmp) {
     const c = objs()[otmp.otyp]?.oc_class;
     if (c === TOOL_CLASS) return is_weptool(otmp);
     return c === WEAPON_CLASS || c === ARMOR_CLASS
         || c === BALL_CLASS || c === CHAIN_CLASS;
 }
-function is_damageable(otmp) {
+export function is_damageable(otmp) {
     return is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp)
         || is_corrodeable(otmp) || is_crackable(otmp);
 }
