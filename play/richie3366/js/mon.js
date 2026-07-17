@@ -9,7 +9,7 @@ import {
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL,
     IS_WATERWALL, LAVAWALL, Is_waterlevel, POOL, MOAT, WATER, LAVAPOOL,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
-    MSLOW, MFAST, STRAT_WAITMASK, G_GENOD,
+    MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
     ismnum,
@@ -21,7 +21,7 @@ import {
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
     is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
-    is_vampshifter,
+    is_vampshifter, is_male, is_female, is_neuter,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -33,16 +33,29 @@ import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { enexto, rloc_to } from './teleport.js';
 import { may_dig } from './dig.js';
-import { newsym, pline, sensemon } from './display.js';
+import { newsym, pline, sensemon, canseemon } from './display.js';
 import { online2 } from './hacklib.js';
 import { Monnam } from './do_name.js';
 import { cansee } from './vision.js';
 import { fightm } from './mhitm.js';
 import { were_change } from './were.js';
-import { set_mimic_sym, newcham } from './makemon.js';
+import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const NC_SHOW_MSG = 1;
+
+/** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
+function closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/** C ref: mon.c mdistu — squared distance to hero. */
+function mdistu(mtmp) {
+    return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy);
+}
 
 /** Local is_pool/is_lava — avoid mon.js ↔ hack.js cycle. */
 function mfndpos_is_pool(x, y) {
@@ -276,28 +289,72 @@ function mon_regen(mon, digest_meal) {
 
 /**
  * C ref: mon.c decide_to_shapeshift — cham once-per-turn form change.
- * Regular shapeshifter: !mspec_used && !rn2(6) → mspec_used + newcham(NULL).
- * Named omissions: vampshifter arms (hp/fog/door enexto / gender restore);
- * NC_SHOW_MSG display polish.
+ * Regular + vampshifter (low-hp revert / fog pickvampshape / vamp shift).
+ * Named omissions: mon_has_special Vlad stay in pickvampshape; NC_SHOW_MSG
+ * display polish; canseemon worm_known.
  */
 function decide_to_shapeshift(mon) {
     let ptr = null;
+    let mndx;
+    const was_female = mon.female ? 1 : 0;
     let dochng = false;
+
     if (!is_vampshifter(mon)) {
+        // regular shapeshifter; ptr stays null
         if (!mon.mspec_used && !rn2(6)) {
             dochng = true;
             mon.mspec_used = 3 + rn2(10);
         }
+    } else if (!((mon.mstrategy || 0) & STRAT_WAITFORU)) {
+        if (mon.data?.mlet !== 'S_VAMPIRE') {
+            const mhp = mon.mhp | 0;
+            const mhpmax = mon.mhpmax | 0;
+            if (mhp <= Math.trunc((mhpmax + 5) / 6) && rn2(4)
+                && ismnum(mon.cham)) {
+                ptr = mons(mon.cham);
+                dochng = true;
+            } else if ((mon.data?.mndx | 0) === PM_FOG_CLOUD
+                && mhp === mhpmax && !rn2(4)
+                && (!canseemon(mon)
+                    || mdistu(mon) > BOLT_LIM * BOLT_LIM)) {
+                mndx = pickvampshape(mon);
+                if (ismnum(mndx)) {
+                    ptr = mons(mndx);
+                    dochng = ptr !== mon.data;
+                }
+            }
+            if (dochng && amorphous(mon.data)
+                && closed_door(mon.mx, mon.my)) {
+                const new_xy = { x: 0, y: 0 };
+                if (enexto(new_xy, mon.mx, mon.my, ptr)) {
+                    rloc_to(mon, new_xy.x, new_xy.y);
+                }
+            }
+        } else {
+            const mhp = mon.mhp | 0;
+            const mhpmax = mon.mhpmax | 0;
+            if (mhp >= Math.trunc((9 * mhpmax) / 10) && !rn2(6)
+                && (!canseemon(mon)
+                    || mdistu(mon) > BOLT_LIM * BOLT_LIM)) {
+                dochng = true; // ptr stays null
+            }
+        }
     }
-    // vampshifter STRAT_WAITFORU / hp / fog pickvampshape deferred
     if (dochng) {
-        newcham(mon, ptr, NC_SHOW_MSG);
+        if (newcham(mon, ptr, NC_SHOW_MSG)) {
+            if (is_vampshifter(mon)) {
+                ptr = mon.data;
+                if (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr)) {
+                    mon.female = was_female;
+                }
+            }
+        }
     }
 }
 
 /**
  * C ref: mon.c m_calcdistress — once-per-turn mon timeouts / regen.
- * Named omissions: mmove==0 minliquid; vamp decide_to_shapeshift arms.
+ * Named omissions: mmove==0 minliquid.
  */
 function m_calcdistress(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) < 1) return;

@@ -6,7 +6,8 @@ import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok,
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
-    is_pit, TEMPLE,
+    is_pit, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
+    LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
@@ -23,6 +24,7 @@ import { objectNames } from './generated/objects_data.js';
 import { xname } from './objnam.js';
 import { A_STR, exercise } from './attrib.js';
 import { rn2 } from './rng.js';
+import { midnight } from './calendar.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
@@ -933,9 +935,12 @@ export function impaired_movement() {
 
 /**
  * C ref: hack.c check_special_room — shop enter/leave + special-room messages.
- * Named omissions: Mine Town ACH_TOWN; zoo/swamp/court/… plines; room_discovered
- * mapseen; shop rtype→OROOM clear path (shops keep rtype via default);
- * non-TEMPLE special-room first-entry plines (ZOO/SWAMP/…).
+ * Ported: ZOO/SWAMP/COURT/LEPREHALL/MORGUE/BEEHIVE/COCKNEST/ANTHOLE plines;
+ * TEMPLE→intemple; rtype→OROOM + has_* clear; COURT/SWAMP/MORGUE/ZOO
+ * wake `!Stealth && !rn2(3)` (wake_msg pline deferred).
+ * Named omissions: Mine Town ACH_TOWN; furniture_present throne detail;
+ * BARRACKS monstinroom occupied vs abandoned; DELPHI oracle verbalize;
+ * room_discovered mapseen; wake_msg canseemon text.
  */
 export async function check_special_room(newlev) {
     const u = game.u;
@@ -949,22 +954,120 @@ export async function check_special_room(newlev) {
         await u_left_shop(u.ushops_left || '', !!newlev);
     }
 
+    // C: ACH_TOWN before early return — deferred
+
     if (!u.uentered && !u.ushops_entered) return;
 
     if (u.ushops_entered) {
         await u_entered_shop(u.ushops_entered);
     }
 
-    // C: for each newly entered room; TEMPLE → intemple (keeps rtype).
     const { intemple } = await import('./priest.js');
     const rooms = game.level?.rooms;
     const entered = u.uentered || '';
+    const Blind = !!(u.Blind || u.HBlind || u.EBlind);
+    const Stealth = !!(((u.HStealth | 0) || (u.EStealth | 0))
+        && !(u.BStealth | 0));
+
     for (let i = 0; i < entered.length; i++) {
-        const roomno = entered.charCodeAt(i) - ROOMOFFSET;
-        const rt = rooms?.[roomno]?.rtype | 0;
-        if (rt === TEMPLE) {
+        let roomno = entered.charCodeAt(i) - ROOMOFFSET;
+        let rt = rooms?.[roomno]?.rtype | 0;
+        let msg_given = true;
+
+        switch (rt) {
+        case ZOO:
+            await pline("Welcome to David's treasure zoo!");
+            break;
+        case SWAMP:
+            await pline(`It ${Blind ? 'feels' : 'looks'} rather ${
+                Blind ? 'humid' : 'muddy'} down here.`);
+            break;
+        case COURT:
+            // furniture_present(THRONE) deferred — omit " throne" suffix
+            await pline('You enter an opulent room!');
+            break;
+        case LEPREHALL:
+            await pline('You enter a leprechaun hall!');
+            break;
+        case MORGUE:
+            if (midnight()) {
+                const run = u_locomotion('Run');
+                await pline(`${run} away!  ${run} away!`);
+            } else {
+                await pline('You have an uncanny feeling...');
+            }
+            break;
+        case BEEHIVE:
+            await pline('You enter a giant beehive!');
+            break;
+        case COCKNEST:
+            await pline('You enter a disgusting nest!');
+            break;
+        case ANTHOLE:
+            await pline('You enter an anthole!');
+            break;
+        case BARRACKS:
+            // monstinroom soldier check deferred — treat as occupied
+            await pline('You enter a military barracks!');
+            break;
+        case DELPHI:
+            // oracle verbalize deferred
+            msg_given = false;
+            break;
+        case TEMPLE:
             await intemple(roomno + ROOMOFFSET);
+            // FALLTHROUGH
+        default:
+            msg_given = (rt === TEMPLE || rt >= SHOPBASE);
+            rt = 0;
+            break;
         }
-        // other special-room entrance plines deferred
+
+        // room_discovered deferred
+        void msg_given;
+
+        if (rt !== 0) {
+            if (rooms?.[roomno]) rooms[roomno].rtype = OROOM;
+            if (!search_special_rtype(rt)) {
+                const flags = game.level?.flags;
+                if (flags) {
+                    if (rt === COURT) flags.has_court = 0;
+                    else if (rt === SWAMP) flags.has_swamp = 0;
+                    else if (rt === MORGUE) flags.has_morgue = 0;
+                    else if (rt === ZOO) flags.has_zoo = 0;
+                    else if (rt === BARRACKS) flags.has_barracks = 0;
+                    else if (rt === TEMPLE) flags.has_temple = 0;
+                    else if (rt === BEEHIVE) flags.has_beehive = 0;
+                }
+            }
+            if (rt === COURT || rt === SWAMP || rt === MORGUE || rt === ZOO) {
+                for (const mtmp of game.fmon || []) {
+                    if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
+                    const mx = mtmp.mx | 0;
+                    const my = mtmp.my | 0;
+                    if (!isok(mx, my)) continue;
+                    const mroom = game.level?.at(mx, my)?.roomno | 0;
+                    // C: roomno (0-based) != levl[].roomno (same compare)
+                    if (roomno !== mroom) continue;
+                    if (!Stealth && !rn2(3)) {
+                        // wake_msg deferred — still clear sleep
+                        mtmp.msleeping = 0;
+                    }
+                }
+            }
+        }
     }
+}
+
+/**
+ * C ref: mkroom.c search_special — any remaining room/subroom of type.
+ */
+function search_special_rtype(type) {
+    const rooms = game.level?.rooms;
+    if (!rooms) return false;
+    const n = (game.level.nroom | 0) + (game.level.nsubroom | 0);
+    for (let i = 0; i < n; i++) {
+        if ((rooms[i]?.rtype | 0) === type) return true;
+    }
+    return false;
 }

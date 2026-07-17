@@ -25,15 +25,15 @@ import { getpos, LOOK_ONCE, LOOK_VERBOSE } from './getpos.js';
 import { mon_at } from './uhitm.js';
 import { objects_at } from './mkobj.js';
 import { doname, an, xname, singular } from './objnam.js';
-import { distant_monnam_none } from './do_name.js';
+import { distant_monnam_none, pmname, Ugender } from './do_name.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import { t_at, trapname } from './trap.js';
 import {
-    BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE,
+    BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, TREE,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
-    STRAT_WAITMASK, IS_WALL,
+    STRAT_WAITMASK, IS_WALL, Upolyd,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -189,16 +189,22 @@ function look_getpos_cmode() {
     return GPCOORDS_MAP;
 }
 
-/** C ref: pager.c self_lookat — race adj + pmname + called plname. */
+/** C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called plname. */
 function self_lookat() {
-    const race = (game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
-    const role = (game.urole?.name?.m || game.urole?.name || 'hero')
-        .toString()
-        .toLowerCase();
-    const plname = (game.plname || 'hero').toLowerCase();
+    const u = game.u || {};
+    // C: race only when !Upolyd; Sprintf(race, "%s ", urace.adj)
+    let race = '';
+    if (!Upolyd(u)) {
+        const adj = game.urace?.adj || game.urace?.noun || 'human';
+        race = `${String(adj)} `;
+    }
+    const mndx = u.umonnum ?? game.urole?.mnum;
+    const form = pmname(mndx, Ugender());
+    const plname = game.plname || 'hero';
     const invis =
-        game.u?.Invis && (game.u?.senseself || !game.u?.Blind) ? 'invisible ' : '';
-    return `${invis}${race} ${role} called ${plname}`;
+        u.Invis && (u.senseself || !u.Blind) ? 'invisible ' : '';
+    // Steed / mhidden / Punished / utrap arms deferred
+    return `${invis}${race}${form} called ${plname}`;
 }
 
 /**
@@ -540,6 +546,8 @@ function brief_at(x, y) {
     if (loc.typ === CORR) {
         return loc.lit || game.flags?.lit_corridor ? 'lit corridor' : 'corridor';
     }
+    // C defsym.h PCHAR S_tree → "tree" (lookat default arm)
+    if (loc.typ === TREE) return 'tree';
     if (loc.typ === STONE) {
         if (!loc.seenv) return 'unexplored';
         return 'stone';
@@ -611,10 +619,9 @@ function describe_looked(x, y) {
     const u = game.u || {};
     const plname = game.plname || 'hero';
     if (u.ux === x && u.uy === y) {
-        const role = (game.urole?.name?.m || 'wizard').toString().toLowerCase();
-        const race = (game.urace?.noun || 'human').toLowerCase();
-        const first = `${race} ${role}`;
-        const out = `@        a human or elf (${first} called ${plname.toLowerCase()})`;
+        // C lookat → self_lookat firstmatch (pmname + Ugender)
+        const first = self_lookat();
+        const out = `@        a human or elf (${first})`;
         return { out, first, found: 1 };
     }
     const mtmp = mon_at(x, y);

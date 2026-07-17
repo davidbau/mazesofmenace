@@ -5,13 +5,14 @@ import { game } from './gstate.js';
 import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { objects_at } from './mkobj.js';
-import { mcolors, mons, infravision, infravisible } from './monsters.js';
+import { mcolors, mons, infravision, infravisible, mindless } from './monsters.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, TREE, IRONBARS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, AIR, CLOUD,
     FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
+    AM_MASK, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_SANCTUM,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     LA_DOWN,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
@@ -35,6 +36,10 @@ import {
     OBJ_FLOOR,
     UNENCUMBERED,
     NOT_HUNGRY,
+    WARNCOUNT,
+    def_warnsyms,
+    TELEPAT,
+    BOLT_LIM,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -234,16 +239,102 @@ export function canseemon(mon) {
 }
 
 /**
+ * C ref: youprop.h Blind_telepat / Unblind_telepat.
+ * Blind_telepat = HTelepat || ETelepat; Unblind_telepat = ETelepat only.
+ */
+function hero_ETelepat() {
+    const u = game.u || {};
+    return (u.ETelepat | 0) || (u.uprops?.[TELEPAT]?.extrinsic | 0);
+}
+function hero_HTelepat() {
+    const u = game.u || {};
+    return (u.HTelepat | 0) || (u.uprops?.[TELEPAT]?.intrinsic | 0);
+}
+function hero_Blind_telepat() {
+    return !!(hero_HTelepat() || hero_ETelepat());
+}
+function hero_Unblind_telepat() {
+    return !!hero_ETelepat();
+}
+
+/**
+ * C ref: display.h _tp_sensemon — non-mindless + blind/intrinsic or
+ * unblind extrinsic telepathy within unblind_telepat_range (squared).
+ * Named omission: MATCH_WARN_OF_MON is a separate sensemon arm.
+ */
+export function tp_sensemon(mon) {
+    if (!mon?.mx) return false;
+    const ptr = mon.data || mons(mon.mnum);
+    if (!ptr || mindless(ptr)) return false;
+    const u = game.u || {};
+    const blind = !!(u.Blind || u.ublind
+        || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+    if (blind && hero_Blind_telepat()) return true;
+    if (hero_Unblind_telepat()) {
+        let range = u.unblind_telepat_range;
+        // C worn.c recalc_telepat_range — -1 means no ESP objects.
+        // If extrinsic is set but range was never recalculated (restore /
+        // older setworn), treat as one BOLT_LIM² source.
+        if (range == null || range < 0) {
+            range = BOLT_LIM * BOLT_LIM;
+        }
+        const d = dist2(u.ux | 0, u.uy | 0, mon.mx | 0, mon.my | 0);
+        return d <= (range | 0);
+    }
+    return false;
+}
+
+/**
  * C ref: display.h _sensemon — Detect_monsters / telepathy / warn.
- * Named omissions: tp_sensemon Blind_telepat/Unblind_telepat range,
- * MATCH_WARN_OF_MON, Underwater pool adjacency gate.
+ * Named omissions: MATCH_WARN_OF_MON; Underwater pool adjacency gate.
  */
 export function sensemon(mon) {
     if (!mon) return false;
     const u = game.u || {};
     if (u.uswallow && mon !== u.ustuck) return false;
-    if (u.Detect_monsters) return true;
-    return false;
+    if (u.Detect_monsters
+        || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0)) {
+        return true;
+    }
+    return tp_sensemon(mon);
+}
+
+/**
+ * C ref: display.h _mon_warning — Warning + hostile + near + m_lev gate.
+ * Named omission: MATCH_WARN_OF_MON race-specific warn (separate path).
+ */
+export function mon_warning(mon) {
+    if (!mon) return false;
+    const u = game.u || {};
+    const Warning = !!((u.HWarning | 0) || (u.EWarning | 0) || u.Warning);
+    if (!Warning || mon.mpeaceful) return false;
+    const d = dist2(u.ux | 0, u.uy | 0, mon.mx | 0, mon.my | 0);
+    if (d >= 100) return false;
+    const warnlevel = game.context?.warnlevel ?? 1;
+    return ((mon.m_lev | 0) / 4 | 0) >= (warnlevel | 0);
+}
+
+/**
+ * C ref: display.c warning_of — m_lev/4 clamped to WARNCOUNT-1.
+ */
+export function warning_of(mon) {
+    if (!mon_warning(mon)) return 0;
+    let tmp = (mon.m_lev | 0) / 4 | 0;
+    if (tmp > WARNCOUNT - 1) tmp = WARNCOUNT - 1;
+    return tmp;
+}
+
+/**
+ * C ref: display.c display_warning — float warnsym above map (not memory).
+ * Named omissions: Hallucination rn2_on_display_rng; MATCH_WARN_OF_MON
+ * mon_to_glyph arm; worm tails (caller must not invoke).
+ */
+function display_warning(mon) {
+    if (!mon) return;
+    const wl = warning_of(mon);
+    const sym = def_warnsyms[wl] || def_warnsyms[0];
+    if (!sym) return;
+    show_glyph_cell(mon.mx, mon.my, sym.ch, sym.color, false);
 }
 
 /** C ref: display.h canspotmon — canseemon || sensemon. */
@@ -946,6 +1037,26 @@ function wall_glyph(loc) {
     return { ch: g.ch, color, dec: g.dec };
 }
 
+/**
+ * C ref: display.h altar_to_glyph + display.c altarcolors / altar_color.
+ * Offset enum: unaligned, chaotic, neutral, lawful, other.
+ * No USE_GENERAL_ALTAR_COLORS in this build (aligned → CLR_GRAY).
+ */
+function altar_glyph_color(loc) {
+    const amsk = (loc?.altarmask != null ? loc.altarmask : loc?.flags) | 0;
+    let idx = 0; // altar_unaligned
+    if ((amsk & AM_SANCTUM) === AM_SANCTUM) idx = 4; // altar_other
+    else if ((amsk & AM_MASK) === AM_LAWFUL) idx = 3;
+    else if ((amsk & AM_MASK) === AM_NEUTRAL) idx = 2;
+    else if ((amsk & AM_MASK) === AM_CHAOTIC) idx = 1;
+    const altarcolors = [
+        CLR_RED, CLR_GRAY, CLR_GRAY, CLR_GRAY, CLR_BRIGHT_MAGENTA,
+    ];
+    // C: altar_color(n) → iflags.use_color ? altarcolors[n] : NO_COLOR
+    if (game.iflags?.use_color === false) return NO_COLOR;
+    return altarcolors[idx];
+}
+
 /** C ref: display.c back_to_glyph — terrain ttychar (+ DEC letter). */
 export function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
@@ -998,14 +1109,17 @@ export function terrain_glyph(loc, x, y) {
             dec: false,
         };
     }
-    // C ref: defsym.h PCHAR — furniture glyphs (display.c back_to_glyph).
-    // dat/symbols DECgraphics: S_altar \xfb meta-{ (pi); other furniture
-    // keep Primary ASCII unless listed in that symset. altar_color by
-    // altarmask deferred — defsym CLR_GRAY (tty → NO_COLOR) for now.
-    case ALTAR:
+    // C ref: display.c back_to_glyph ALTAR → altar_to_glyph(altarmask);
+    // mapglyph altar_color(offset). dat/symbols DECgraphics S_altar \xfb
+    // meta-{. Contest build has no USE_GENERAL_ALTAR_COLORS → chaotic/
+    // neutral/lawful stay CLR_GRAY (tty → NO_COLOR); unaligned CLR_RED;
+    // AM_SANCTUM altar_other CLR_BRIGHT_MAGENTA (D-0666).
+    case ALTAR: {
+        const color = altar_glyph_color(loc);
         return dec
-            ? { ch: '{', color: CLR_GRAY, dec: true }
-            : { ch: '_', color: CLR_GRAY, dec: false };
+            ? { ch: '{', color, dec: true }
+            : { ch: '_', color, dec: false };
+    }
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false };
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
@@ -1122,7 +1236,7 @@ function glyph_is_trap_at(glyph, x, y) {
  * TER_* bits; lastseentyp vs typ → back_to_glyph; litcorr→corr hack.
  * Named omissions: visible_region_at / gascloud; keep_traps trap_to_glyph
  * restore when stripping objs; M_AP_FURNITURE lastseentyp fake; swallowed
- * ustuck mon glyph; warning glyphs; TER_FULL seenv temp already covered;
+ * ustuck mon glyph; TER_FULL seenv temp already covered;
  * arboreal default.
  */
 export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
@@ -1632,11 +1746,12 @@ export function newsym(x, y) {
         // C: erevealed = 1 even when covered by objects or a monster
         const epSee = engr_at(x, y);
         if (epSee) epSee.erevealed = 1;
-        if (mtmp && mon_visible(mtmp)) {
+        if (mtmp && (mon_visible(mtmp) || tp_sensemon(mtmp))) {
             // C: _map_location(x, y, FALSE) then display_monster — memory
             // keeps object under the monster so leaving sight does not
             // replace ) with remembered corridor.
             // show_mon_or_warn clears invisible memory when showing mon
+            // Named omission: MATCH_WARN_OF_MON in see_it; Detect_monsters arm.
             if (glyph_is_invisible(loc)) {
                 loc.remembered_glyph = null;
                 map_location_memory(x, y);
@@ -1657,6 +1772,11 @@ export function newsym(x, y) {
             }
             const mg = mon_glyph(mtmp);
             show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
+            return;
+        }
+        // C: else if (mon && mon_warning(mon) && !worm_tail) display_warning
+        if (mtmp && mon_warning(mtmp)) {
+            display_warning(mtmp);
             return;
         }
         // C: newsym cansee — keep remembered I when !displayable mon
@@ -1714,9 +1834,26 @@ export function newsym(x, y) {
     }
 
     // C: !cansee — still show sensed monsters (infrared / telepathy / detect)
-    if (mtmp && mon_visible(mtmp) && see_with_infrared(mtmp)) {
+    // C order: see_it (tp_sensemon / MATCH_WARN / infrared+visible) then
+    // Detect_monsters, then mon_warning, then invisible glyph, else memory.
+    // Named omission: MATCH_WARN_OF_MON; worm tails.
+    if (mtmp && (tp_sensemon(mtmp)
+        || (mon_visible(mtmp) && see_with_infrared(mtmp)))) {
         const mg = mon_glyph(mtmp);
         show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
+        return;
+    }
+    {
+        const u = game.u || {};
+        if (mtmp && (u.Detect_monsters
+            || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0))) {
+            const mg = mon_glyph(mtmp);
+            show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
+            return;
+        }
+    }
+    if (mtmp && mon_warning(mtmp)) {
+        display_warning(mtmp);
         return;
     }
 
@@ -1757,6 +1894,26 @@ export function newsym(x, y) {
 // vision_recalc(0). Shutting down sight first matters: vision_reset only
 // rebuilds block maps and leaves stale IN_SIGHT, so newsym would paint/
 // remember terrain for the previous level's visible coordinates.
+/**
+ * C ref: display.c see_monsters — refresh every live mon cell (+ hero).
+ * Clears stale Warning float glyphs when mon_warning no longer applies
+ * (e.g. after teleds moves the hero out of range).
+ * Named omissions: worm see_wsegs; Warn_of_mon / Sting_effects;
+ * defer_see_monsters; MON_STILL_ARRIVING skip.
+ */
+export function see_monsters() {
+    if (game.defer_see_monsters) return;
+    const u = game.u;
+    if (u?.usteed) u.usteed.meverseen = 1;
+    if (u?.ustuck) u.ustuck.meverseen = 1;
+    for (const mon of game.fmon || []) {
+        if (!mon || (mon.mhp != null && mon.mhp <= 0)) continue;
+        if (!mon.mx) continue;
+        newsym(mon.mx, mon.my);
+    }
+    if (!u?.usteed && u?.ux) newsym(u.ux, u.uy);
+}
+
 export async function docrt() {
     if (!game.u?.ux || !game.level) return;
     // C: vision_recalc(2) — hero sees nothing during refresh
@@ -1768,7 +1925,9 @@ export async function docrt() {
             newsym(x, y);
     // C: vision_recalc(0) — see what is to be seen (+ newsym updates)
     vision_recalc(0);
-    // Named omission: see_monsters() overlay; swallowed/underwater/buried;
+    // C docrt also see_monsters() after vision — floating warns / sensed mons
+    see_monsters();
+    // Named omission: swallowed/underwater/buried;
     // docrt_flags maponly/redrawonly/nocls; disp.botlx + update_inventory.
 }
 

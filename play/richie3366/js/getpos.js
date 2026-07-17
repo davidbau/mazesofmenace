@@ -14,11 +14,11 @@ import { flush_screen, pline, docrt } from './display.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_DETECT,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, STRAT_WAITMASK,
-    STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, IS_WALL,
-    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
+    STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, TREE, IS_WALL,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, Upolyd,
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
-import { distant_monnam_none } from './do_name.js';
+import { distant_monnam_none, pmname, Ugender } from './do_name.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import { t_at, trapname } from './trap.js';
 import { waterbody_name } from './hack.js';
@@ -123,16 +123,20 @@ function mon_at_xy(x, y) {
     return null;
 }
 
-/** C ref: pager.c self_lookat — race adj + role + called plname. */
+/** C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called plname. */
 function self_lookat_brief() {
-    const race = (game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
-    const role = (game.urole?.name?.m || game.urole?.name || 'hero')
-        .toString()
-        .toLowerCase();
-    const plname = (game.plname || 'hero').toLowerCase();
+    const u = game.u || {};
+    let race = '';
+    if (!Upolyd(u)) {
+        const adj = game.urace?.adj || game.urace?.noun || 'human';
+        race = `${String(adj)} `;
+    }
+    const mndx = u.umonnum ?? game.urole?.mnum;
+    const form = pmname(mndx, Ugender());
+    const plname = game.plname || 'hero';
     const invis =
-        game.u?.Invis && (game.u?.senseself || !game.u?.Blind) ? 'invisible ' : '';
-    return `${invis}${race} ${role} called ${plname}`;
+        u.Invis && (u.senseself || !u.Blind) ? 'invisible ' : '';
+    return `${invis}${race}${form} called ${plname}`;
 }
 
 /**
@@ -188,8 +192,9 @@ function stair_ladder_explanation(x, y) {
  * C ref: pager.c lookat glyph_is_cmap → defsyms[].explanation (default
  * arm) + S_pool/S_water/S_lava/S_ice → waterbody_name. Used by getpos
  * auto_describe firstmatch after stairs/traps.
- * Named omissions: altar/ndoor/cloud/engraving special cases;
- * underwater unreconnoitered; object glyphs; Hallucination waterbody.
+ * Named omissions: altar/ndoor/cloud/engraving/iron bars/fountain
+ * special cases; underwater unreconnoitered; object glyphs;
+ * Hallucination waterbody; arboreal STONE→S_tree.
  */
 function cmap_defsym_explanation(x, y, loc) {
     if (!loc) return '';
@@ -205,6 +210,8 @@ function cmap_defsym_explanation(x, y, loc) {
     if (typ === CORR) {
         return loc.lit || game.flags?.lit_corridor ? 'lit corridor' : 'corridor';
     }
+    // C defsym.h PCHAR S_tree → "tree" (lookat default arm)
+    if (typ === TREE) return 'tree';
     if (typ === STONE) {
         // C lookat S_stone: !seenv → "unexplored"; else stone/SCORR
         if (!loc.seenv) return 'unexplored';
@@ -227,7 +234,6 @@ function cmap_defsym_explanation(x, y, loc) {
 function auto_describe_text(cx, cy) {
     const u = game.u || {};
     const terrainmode = game.iflags?.terrainmode | 0;
-
     if (
         (u.ux | 0) === cx && (u.uy | 0) === cy
         && (!terrainmode || (terrainmode & TER_MON) !== 0)

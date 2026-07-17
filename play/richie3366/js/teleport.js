@@ -24,7 +24,7 @@ import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
     monsterNames,
 } from './monsters.js';
-import { newsym, pline, You_feel } from './display.js';
+import { newsym, pline, You_feel, see_monsters } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './hack.js';
 import { makeknown, prinv } from './invent.js';
@@ -491,6 +491,8 @@ export async function teleds(nux, nuy, teleds_flags) {
     u.utraptype = 0;
     newsym(ox, oy);
     newsym(u.ux, u.uy);
+    // C: see_monsters() before vision — refresh warns at new distu
+    see_monsters();
     // C: vision_recalc(0) before materialize so --More-- shows new map
     game.vision_full_recalc = 1;
     nomul(0);

@@ -168,8 +168,8 @@ export async function com_pager_legacy(statusSnap = null) {
 }
 
 /**
- * C ref: dat/quest.lua firsttime texts (Arc seed0361; Bar seed0373).
- * Arc+Bar exercised; other roles burn nhl_init shuffle only.
+ * C ref: dat/quest.lua firsttime texts (Arc/Bar/Pri exercised).
+ * Other roles burn nhl_init shuffle only until ported.
  */
 const QUEST_FIRSTTIME = {
     // C ref: dat/quest.lua Arc firsttime (output=text)
@@ -194,6 +194,13 @@ evil magic in the air.
 Without thought, you ready your weapon, and mutter under your breath:
 
     "By %d, there will be blood spilt today."`,
+    // C ref: dat/quest.lua Pri firsttime (output=text) — seed0367 @148
+    Pri: `You find yourself standing in sight of %H.  Something
+is obviously wrong here.  The doors to %H, which usually
+stand open, are closed.  Strange human shapes shamble around
+outside.
+
+You realize that %l needs your assistance!`,
 };
 
 /** C ref: dat/quest.lua leader_first (Arc + Pri). */

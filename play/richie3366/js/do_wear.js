@@ -14,11 +14,12 @@ import { retouch_object } from './artifact.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
-    W_QUIVER, LEFT_RING, RIGHT_RING,
+    W_QUIVER, LEFT_RING, RIGHT_RING, W_ART,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
-    TIMEOUT, BLINDED, FAST,
+    TIMEOUT, BLINDED, FAST, TELEPAT,
     DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
+    BOLT_LIM,
 } from './const.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -232,14 +233,39 @@ function confer_oc_oprop(obj, mask, on) {
     if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     if (on) u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) | mask;
     else u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) & ~mask;
-    // C youprop.h EBlinded/EFast ≡ uprops[].extrinsic — flat-field readers.
+    // C youprop.h EBlinded/EFast/ETelepat ≡ uprops[].extrinsic — flat readers.
     if (p === BLINDED) {
         if (on) u.EBlinded = (u.EBlinded | 0) | mask;
         else u.EBlinded = (u.EBlinded | 0) & ~mask;
     } else if (p === FAST) {
         if (on) u.EFast = (u.EFast | 0) | mask;
         else u.EFast = (u.EFast | 0) & ~mask;
+    } else if (p === TELEPAT) {
+        if (on) u.ETelepat = (u.ETelepat | 0) | mask;
+        else u.ETelepat = (u.ETelepat | 0) & ~mask;
     }
+}
+
+/**
+ * C ref: worn.c recalc_telepat_range — BOLT_LIM² per worn TELEPAT object
+ * (+1 if artifact ESP via ETelepat & W_ART). Sets u.unblind_telepat_range
+ * to -1 when no sources.
+ */
+export function recalc_telepat_range() {
+    const u = game.u || (game.u = {});
+    const objs = game.objects || {};
+    let nobjs = 0;
+    const slots = [
+        u.uarm, u.uarmc, u.uarmh, u.uarms, u.uarmg, u.uarmf, u.uarmu,
+        u.uleft, u.uright, u.uwep, u.uswapwep, u.uquiver, u.uamul, u.ublindf,
+    ];
+    for (const o of slots) {
+        if (o && (objs[o.otyp]?.oc_oprop | 0) === TELEPAT) nobjs++;
+    }
+    // C: artifacts with SPFX_ESP counted once via ETelepat & W_ART
+    if ((u.ETelepat | 0) & W_ART) nobjs++;
+    if (nobjs) u.unblind_telepat_range = (BOLT_LIM * BOLT_LIM) * nobjs;
+    else u.unblind_telepat_range = -1;
 }
 
 /**
@@ -368,6 +394,7 @@ export function setworn(obj, mask) {
         clearOne('uamul', W_AMUL);
         clearOne('ublindf', W_TOOL);
         find_ac();
+        recalc_telepat_range();
         return;
     }
 
@@ -431,6 +458,8 @@ export function setworn(obj, mask) {
     }
     if (slotBit) confer_oc_oprop(obj, slotBit, true);
     find_ac();
+    // C worn.c setworn — recalc_telepat_range after prop updates
+    recalc_telepat_range();
 }
 
 /**

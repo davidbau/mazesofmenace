@@ -2033,9 +2033,11 @@ function load_pri_strt() {
 /**
  * C ref: dat/Pri-loca.lua via load_special — Priest quest locate
  * (Temple of Nalzok). Mines init is a lit-field kludge (fg=bg=".");
- * des.map overlays the temple; morgue regions stock undead.
+ * des.map overlays with C lspo_map lit=FALSE (D-0668 clears SpLev_Map
+ * .lit); morgue regions stock undead; temple flood re-lights.
  * Named omissions: humidity-aware get_location; flip_level (noflip);
- * spo_end_moninvent m_dowear.
+ * spo_end_moninvent m_dowear; add_doors_to_room mid-region (doors are
+ * linked once via link_doors_rooms before wallify, ≡ C load_special).
  */
 function load_pri_loca() {
     const g = game;
@@ -2078,6 +2080,22 @@ function load_pri_loca() {
 ........................................
 `.replace(/^\n/, '');
     splev_apply_centered_map(PRI_LOCA_MAP);
+    // C lspo_map defaults lit=FALSE → set_levltyp_lit clears mines-init
+    // lit=1 on every map cell (sel_set_ter(...,false) is still nochange
+    // for other loaders; Pri-loca needs the C clear so morgue stays dark).
+    {
+        const sp = g.SpLev_Map;
+        if (sp) {
+            for (const key of sp) {
+                const comma = key.indexOf(',');
+                const x = Number(key.slice(0, comma));
+                const y = Number(key.slice(comma + 1));
+                const loc = g.level.at(x, y);
+                if (!loc) continue;
+                loc.lit = IS_LAVA(loc.typ) ? true : false;
+            }
+        }
+    }
     const mx = g.splev_xstart ?? 1;
     const my = g.splev_ystart ?? 0;
 
@@ -2093,17 +2111,12 @@ function load_pri_loca() {
         return troom;
     };
 
-    // des.region morgue rects (filled=1)
-    // C room[3] is map cols 31-39 → abs (52,5)-(60,18) (D-0657 DIAG).
-    // fill_zoo door-adjacency skips lx col 31 (doors at map 30); stocks
-    // 32-39. D-0645 clipped hx to 35 after @15167 morguemon/place_lregion
-    // drift — that under-stocks 36-39 so getlev put_lregion accepts
-    // (59,14) instead of m_at-reject. Restoring hx=39 needs link_doors
-    // + fill parity first (reopens @15167 without them).
+    // des.region morgue rects (filled=1) — lua x2=39 (D-0657/D-0658).
+    // fill_zoo skips lx edge when doorct>0 (doors linked below).
     priAddRectRoom(0, 0, 9, 13, false, MORGUE, FILL_NORMAL);
     priAddRectRoom(9, 0, 30, 1, false, MORGUE, FILL_NORMAL);
     priAddRectRoom(9, 12, 30, 13, false, MORGUE, FILL_NORMAL);
-    priAddRectRoom(31, 0, 35, 13, false, MORGUE, FILL_NORMAL);
+    priAddRectRoom(31, 0, 39, 13, false, MORGUE, FILL_NORMAL);
 
     // des.region temple irregular filled=1 — flood from region x1,y1
     let templeRoom = null;
@@ -2212,6 +2225,11 @@ function load_pri_loca() {
         mktrap_seen_victim(ttmp, {});
     }
     for (let i = 0; i < 2; i++) splev_create_trap();
+
+    // C load_special: link_doors_rooms before wallify/fixup (sp_lev.c).
+    // Door linkage makes fill_zoo skip morgue door-edges → fill count
+    // matches lua hx=39 (D-0645 hx=35 clip removed; D-0658).
+    link_doors_rooms();
 
     // des.level_flags noflip — wallify then fixup (skip flip_level_rnd)
     if (!g.level.flags.corrmaze)
@@ -4899,6 +4917,107 @@ function add_doors_to_room(croom) {
     }
     for (let i = 0; i < (croom.nsubrooms || 0); i++)
         add_doors_to_room(croom.sbrooms[i]);
+}
+
+/** C ref: rm.h IS_DOORJOIN — obstructed or iron bars. */
+function IS_DOORJOIN(typ) {
+    return IS_OBSTRUCTED(typ) || typ === IRONBARS;
+}
+
+/**
+ * C ref: sp_lev.c set_door_orientation — MAP '+'/'S' door axis from
+ * adjacent walls (also used by link_doors_rooms).
+ */
+function set_door_orientation(x, y) {
+    const lev = (xx, yy) => game.level.at(xx, yy);
+    let wleft = isok(x - 1, y) && (() => {
+        const t = lev(x - 1, y)?.typ;
+        return IS_WALL(t) || IS_DOOR(t) || t === SDOOR;
+    })();
+    let wright = isok(x + 1, y) && (() => {
+        const t = lev(x + 1, y)?.typ;
+        return IS_WALL(t) || IS_DOOR(t) || t === SDOOR;
+    })();
+    let wup = isok(x, y - 1) && (() => {
+        const t = lev(x, y - 1)?.typ;
+        return IS_WALL(t) || IS_DOOR(t) || t === SDOOR;
+    })();
+    let wdown = isok(x, y + 1) && (() => {
+        const t = lev(x, y + 1)?.typ;
+        return IS_WALL(t) || IS_DOOR(t) || t === SDOOR;
+    })();
+    if (!wleft && !wright && !wup && !wdown) {
+        wleft = !isok(x - 1, y) || IS_DOORJOIN(lev(x - 1, y)?.typ);
+        wright = !isok(x + 1, y) || IS_DOORJOIN(lev(x + 1, y)?.typ);
+        wup = !isok(x, y - 1) || IS_DOORJOIN(lev(x, y - 1)?.typ);
+        wdown = !isok(x, y + 1) || IS_DOORJOIN(lev(x, y + 1)?.typ);
+    }
+    const loc = lev(x, y);
+    if (loc) loc.horizontal = ((wleft || wright) && !(wup && wdown)) ? 1 : 0;
+}
+
+/**
+ * C ref: sp_lev.c shared_with_room — door cell adjacent to room interior.
+ */
+function shared_with_room(x, y, droom) {
+    const rmno = ((droom.roomnoidx ?? 0) | 0) + ROOMOFFSET;
+    if (!isok(x, y)) return false;
+    const here = game.level.at(x, y);
+    if ((here?.roomno | 0) === rmno && !here.edge) return false;
+    if (isok(x - 1, y)) {
+        const loc = game.level.at(x - 1, y);
+        if ((loc?.roomno | 0) === rmno && x - 1 <= droom.hx) return true;
+    }
+    if (isok(x + 1, y)) {
+        const loc = game.level.at(x + 1, y);
+        if ((loc?.roomno | 0) === rmno && x + 1 >= droom.lx) return true;
+    }
+    if (isok(x, y - 1)) {
+        const loc = game.level.at(x, y - 1);
+        if ((loc?.roomno | 0) === rmno && y - 1 <= droom.hy) return true;
+    }
+    if (isok(x, y + 1)) {
+        const loc = game.level.at(x, y + 1);
+        if ((loc?.roomno | 0) === rmno && y + 1 >= droom.ly) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: sp_lev.c maybe_add_door — attach door to room if inside/shared.
+ */
+function maybe_add_door(x, y, droom) {
+    if (!droom || (droom.hx | 0) < 0) return;
+    const rmno = ((droom.roomnoidx ?? 0) | 0) + ROOMOFFSET;
+    const loc = game.level.at(x, y);
+    if ((!droom.irregular && inside_room(droom, x, y))
+        || (loc && (loc.roomno | 0) === rmno)
+        || shared_with_room(x, y, droom)) {
+        add_door(x, y, droom);
+    }
+}
+
+/**
+ * C ref: sp_lev.c link_doors_rooms — full-map door→room linkage after
+ * special content (before wallify/fixup in load_special).
+ */
+function link_doors_rooms() {
+    const rooms = game.level?.rooms || [];
+    const nroom = game.level?.nroom | 0;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 0; x < COLNO; x++) {
+            const loc = game.level.at(x, y);
+            if (!loc || (!IS_DOOR(loc.typ) && loc.typ !== SDOOR)) continue;
+            set_door_orientation(x, y);
+            for (let tmpi = 0; tmpi < nroom; tmpi++) {
+                const droom = rooms[tmpi];
+                if (!droom || (droom.hx | 0) < 0) continue;
+                maybe_add_door(x, y, droom);
+                for (let m = 0; m < (droom.nsubrooms | 0); m++)
+                    maybe_add_door(x, y, droom.sbrooms[m]);
+            }
+        }
+    }
 }
 
 /**
@@ -7667,7 +7786,8 @@ function mk_zoo_thronemon(x, y) {
 /**
  * C ref: mkroom.c fill_zoo — COURT throne/courtmon/chest ported; ZOO/
  * LEPREHALL gold; MORGUE morguemon + corpse/chest/grave (D-0642);
- * rectangular roomno gate for overlapping special rects (D-0643);
+ * rectangular fill matches C (no roomno gate; D-0643 gate removed once
+ * link_doors_rooms door-edge skips cover Pri-loca overlaps — D-0658);
  * COCKNEST typed mon. Named omissions: BEEHIVE queen; BARRACKS/ANTHOLE
  * loot + squadmon/antholemon.
  */
@@ -7728,10 +7848,6 @@ function fill_zoo(sroom) {
                     && distmin(sx, sy, doors[sh].x, doors[sh].y) <= 1)
                     continue;
             } else if (!SPACE_POS(game.level.at(sx, sy)?.typ)
-                // After overlapping topologize (Pri-loca morgue rects share
-                // an edge), bbox cells may belong to another room's roomno.
-                // Same roomno gate as the irregular arm / mkswamp (mkroom.c).
-                || ((game.level.at(sx, sy)?.roomno | 0) !== rmno)
                 || ((sroom.doorct | 0) && doors[sh] && (
                     (sx === sroom.lx && doors[sh].x === sx - 1)
                     || (sx === sroom.hx && doors[sh].x === sx + 1)

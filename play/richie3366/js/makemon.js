@@ -912,7 +912,7 @@ export function newcham(mtmp, mdat, _ncflags = 0) {
     return true;
 }
 
-export { vampshifted, is_vampshifter };
+export { vampshifted, is_vampshifter, pickvampshape };
 
 // C ref: mondata.h race_peaceful / race_hostile
 function race_peaceful(ptr) {

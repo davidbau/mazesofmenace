@@ -1711,6 +1711,7 @@ export async function u_init_misc() {
     g.u.ublesscnt = 300;
     g.u.nv_range = 1;
     g.u.xray_range = -1;
+    g.u.unblind_telepat_range = -1;
 
     // C: for (i = 0; i <= MAXSPELL; i++) svs.spl_book[i].sp_id = NO_SPELL;
     init_spl_book();

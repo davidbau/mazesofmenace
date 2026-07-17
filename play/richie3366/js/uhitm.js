@@ -925,7 +925,7 @@ async function stumble_onto_mimic(mtmp) {
 async function attack_checks_mimic(mtmp) {
     // C: forcefight → return FALSE (allow real attack)
     if (game.context?.forcefight) return false;
-    // Protection_from_shape_changers / sensemon / warning glyph deferred
+    // Protection_from_shape_changers / sensemon deferred
     if (!M_AP_TYPE(mtmp)) return false;
     // glyph_is_invisible → seemimic + return FALSE deferred
     await stumble_onto_mimic(mtmp);

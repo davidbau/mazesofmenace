@@ -27,6 +27,7 @@ import {
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
     Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
+    P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
 } from './const.js';
@@ -100,12 +101,20 @@ function Role_if_samurai() {
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 
-/** C ref: obj.h is_ammo — skill window for quiver wording. */
+/** C ref: obj.h is_ammo — skill window for quiver wording / W_WEP. */
 function is_ammo_obj(obj) {
     if (!obj) return false;
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== GEM_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
     return sk >= -P_CROSSBOW && sk <= -P_BOW;
+}
+
+/** C ref: obj.h is_missile — W_WEP "(wielded)" vs hand phrasing. */
+function is_missile_obj(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
+    return sk >= -P_BOOMERANG && sk <= -P_DART;
 }
 
 /**
@@ -1054,16 +1063,27 @@ export function doname(obj) {
         bp += ' (on right hand)';
     if (obj.owornmask & W_RINGL)
         bp += ' (on left hand)';
-    // C ref: objnam.c W_WEP — bimanual → "weapon in hands"; else right/left hand
-    if ((obj.owornmask & W_WEP) && quan === 1) {
-        const twoweap = !!game.u?.twoweap && obj === game.u?.uwep;
-        const right = (game.u?.uhandedness !== 1); // LEFT_HANDED=1
-        if (bimanual(obj)) {
-            bp += ' (weapon in hands)';
-        } else if (twoweap) {
-            bp += ` (wielded in ${right ? 'right' : 'left'} hand)`;
+    // C ref: objnam.c doname_base W_WEP — stack/ammo/missile/non-weptool →
+    // "(wielded)"; else "weapon in"/"wielded in" hand(s). mrg_to_wielded,
+    // AKLYS tethered, warn_obj/artifact_light paren rewrite deferred.
+    if (obj.owornmask & W_WEP) {
+        const twoweap_primary = !!(obj === game.u?.uwep && game.u?.twoweap);
+        const alt_wielded = (quan !== 1
+            || ((oclass === WEAPON_CLASS)
+                ? (is_ammo_obj(obj) || is_missile_obj(obj))
+                : !is_weptool(obj)))
+            && !twoweap_primary;
+        if (alt_wielded) {
+            bp += ' (wielded)';
         } else {
-            bp += ` (weapon in ${right ? 'right' : 'left'} hand)`;
+            const right = (game.u?.uhandedness !== 1); // LEFT_HANDED=1
+            if (bimanual(obj)) {
+                bp += ' (weapon in hands)';
+            } else if (twoweap_primary) {
+                bp += ` (wielded in ${right ? 'right' : 'left'} hand)`;
+            } else {
+                bp += ` (weapon in ${right ? 'right' : 'left'} hand)`;
+            }
         }
     }
     // C: W_SWAPWEP, !twoweap → "(alternate weapon(s); not wielded)"

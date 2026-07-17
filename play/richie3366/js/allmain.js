@@ -381,6 +381,8 @@ export async function newgame() {
     // C ref: allmain.c newgame — context.ident / tribute before init_objects
     if (!g.context) g.context = {};
     if (g.context.ident == null) g.context.ident = 2;
+    // C: svc.context.warnlevel = 1
+    if (g.context.warnlevel == null) g.context.warnlevel = 1;
     // C: svc.context.next_attrib_check = 600L
     if (g.context.next_attrib_check == null) g.context.next_attrib_check = 600;
     if (!g.context.tribute) g.context.tribute = {};

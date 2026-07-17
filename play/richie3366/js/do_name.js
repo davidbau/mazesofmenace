@@ -8,6 +8,7 @@ import { flush_screen, flush_topl_more, docrt, canspotmon } from './display.js';
 import { paint_corner_nhw_menu, discover_object } from './invent.js';
 import {
     ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE, engulfing_u,
+    Upolyd,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { shkname } from './shknam.js';
@@ -60,17 +61,36 @@ function type_is_pname(ptr) {
 }
 
 /**
- * C ref: do_name.c Mgender / pmname / mon_pmname — gender-aware pmnames[].
+ * C ref: you.h Ugender — (Upolyd ? u.mfemale : flags.female) ? FEMALE : MALE.
+ */
+export function Ugender() {
+    const u = game.u || {};
+    const female = Upolyd(u) ? !!u.mfemale : !!game.flags?.female;
+    return female ? FEMALE : MALE;
+}
+
+/**
+ * C ref: do_name.c pmname / mondata.h pmname macro — gender-aware pmnames[].
+ * `pm` is mndx or { mndx|mnum }. Preserves table casing.
+ */
+export function pmname(pm, mgender) {
+    const mndx = typeof pm === 'number' ? pm : (pm?.mndx ?? pm?.mnum);
+    if (mndx == null || mndx < 0 || !pmnames[mndx]) return 'monster';
+    const names = pmnames[mndx];
+    let g = mgender | 0;
+    if (g < MALE || g >= 3 || !names[g]) g = NEUTRAL;
+    return names[g] || names[NEUTRAL] || names[MALE] || names[FEMALE] || 'monster';
+}
+
+/**
+ * C ref: do_name.c Mgender / mon_pmname — gender-aware pmnames[].
  * Preserves table casing (e.g. "Wizard of Yendor", not lowercased PM_).
  */
 function mon_pmname(mtmp) {
     const mndx = mtmp?.mnum ?? mtmp?.data?.mndx;
     if (mndx != null && mndx >= 0 && pmnames[mndx]) {
-        const names = pmnames[mndx];
-        let g = mtmp?.female ? FEMALE : MALE;
-        if (g < MALE || g >= 3 || !names[g]) g = NEUTRAL;
-        if (names[g]) return names[g];
-        return names[NEUTRAL] || names[MALE] || names[FEMALE] || 'monster';
+        const g = mtmp?.female ? FEMALE : MALE;
+        return pmname(mndx, g);
     }
     const raw = mtmp?.data?.name || 'monster';
     return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
