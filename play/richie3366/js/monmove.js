@@ -2,7 +2,7 @@
 // C ref: monmove.c — distfleeck, dochug, m_move, postmov, set_apparxy, mon_track_add.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { dog_move, finish_meating } from './dogmove.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { newsym, pline } from './display.js';
@@ -20,12 +20,12 @@ import {
     monsterNames, M1_SEE_INVIS, M1_AMORPHOUS, M1_NOTAKE, tunnels, needspick,
     can_track, likes_gold, likes_gems, likes_objs, likes_magic,
     throws_rocks, mindless, is_animal, strongmonst, is_mercenary,
-    mon_knows_traps, can_teleport, hides_under,
+    mon_knows_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
 import { objects_at, obj_extract_self, splitobj } from './mkobj.js';
-import { find_defensive, find_misc, use_misc, find_offensive } from './muse.js';
+import { find_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
 import { hero_conflict, resist_conflict } from './mondata.js';
 import {
     mintrap,
@@ -34,11 +34,13 @@ import {
     Trap_Moved_Mon,
     Trap_Caught_Mon,
     t_at,
+    maketrap,
+    count_traps,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
 import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from './vision.js';
 import {
-    isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE,
+    isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
     D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
@@ -47,6 +49,7 @@ import {
     M_AP_FURNITURE,
     STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
+    STAIRS, LADDER, IRONBARS, WEB,
 } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import {
@@ -66,6 +69,7 @@ import { acurrstr } from './attrib.js';
 import { m_canseeu } from './mondata.js';
 import { rloc } from './teleport.js';
 import { quest_talk, quest_stat_check } from './quest.js';
+import { stairway_at } from './mklev.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -80,7 +84,8 @@ const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const PM_LEPRECHAUN = monsterNames.indexOf('PM_LEPRECHAUN');
 const PM_ETTIN = monsterNames.indexOf('PM_ETTIN');
 const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
-const MINERAL = 21; // obj.h
+const GEMSTONE = 20; // objclass.h
+const MINERAL = 21; // objclass.h
 const MAX_CARR_CAP = 1000;
 const MZ_HUMAN = 3;
 const WT_HUMAN = 1450;
@@ -214,12 +219,22 @@ function can_carry(mtmp, otmp) {
 
 /**
  * C ref: monmove.c mon_would_take_item
- * Named omission: searches_for_item; unicorn GEMSTONE; uball/uchain.
+ * Named omissions: uball/uchain; unicorn GEMSTONE material gate partial
+ * (mlet check only); FOOD searches_for_item corpse/tin/egg arms.
  */
 function mon_would_take_item(mtmp, otmp) {
     const ptr = mtmp.data;
     const pctload = Math.trunc((curr_mon_load(mtmp) * 100) / max_mon_load(mtmp));
     if (mtmp.mtame && otmp.cursed) return false;
+    // C: is_unicorn && oc_material != GEMSTONE
+    if (ptr?.mlet === 'S_UNICORN') {
+        const mat = game.objects?.[otmp.otyp]?.oc_material ?? 0;
+        if (mat !== GEMSTONE) return false;
+    }
+    if (!mindless(ptr) && !is_animal(ptr) && pctload < 75
+        && searches_for_item(mtmp, otmp)) {
+        return true;
+    }
     if (likes_gold(ptr) && otmp.otyp === GOLD_PIECE && pctload < 95) return true;
     const mat = game.objects?.[otmp.otyp]?.oc_material ?? 0;
     if (likes_gems(ptr) && otmp.oclass === GEM_CLASS
@@ -300,8 +315,8 @@ async function mpickstuff(mtmp) {
  * Returns true → caller postmov(MMOVE_DONE) for underfoot claim (mpickstuff).
  * Named omissions: in_rooms shop rn2(25); hides_under; onscary; costly_spot
  * merchandise; is_mines_prize/is_soko_prize; helpless under-monster skip
- * beyond mcanmove/msleeping/mmove; searches_for_item; can_touch_safely in
- * search loop (mpickstuff still gates).
+ * beyond mcanmove/msleeping/mmove; can_touch_safely in search loop
+ * (mpickstuff/can_carry still gates).
  */
 function m_search_items(mtmp, gg) {
     let minr = SQSRCHRADIUS;
@@ -778,13 +793,87 @@ function hideunder(mtmp) {
 }
 
 /**
+ * C ref: monmove.c holds_up_web — obstructed / up-stairs / iron bars hold a web.
+ */
+function holds_up_web(x, y) {
+    if (!isok(x, y)) return true;
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    if (IS_OBSTRUCTED(loc.typ)) return true;
+    if ((loc.typ === STAIRS || loc.typ === LADDER)
+        && stairway_at(x, y)?.up) {
+        return true;
+    }
+    if (loc.typ === IRONBARS) return true;
+    return false;
+}
+
+/** C ref: monmove.c count_webbing_walls — cardinal neighbors that hold a web. */
+function count_webbing_walls(x, y) {
+    return (holds_up_web(x, y - 1) ? 1 : 0)
+        + (holds_up_web(x + 1, y) ? 1 : 0)
+        + (holds_up_web(x, y + 1) ? 1 : 0)
+        + (holds_up_web(x - 1, y) ? 1 : 0);
+}
+
+/**
+ * C ref: monmove.c soko_allow_web — non-Sokoban always; else spinner must
+ * see upstairs. Named omission: chamber-of-stairs-up (C uses see only).
+ */
+function soko_allow_web(mon) {
+    const Sokoban = !!(game.level?.flags?.sokoban_rules || game.Sokoban);
+    if (!Sokoban) return true;
+    let stway = null;
+    for (let s = game.stairs; s; s = s.next) {
+        if (s.up) {
+            stway = s;
+            break;
+        }
+    }
+    if (stway && m_cansee(mon, stway.sx, stway.sy)) return true;
+    return false;
+}
+
+/**
+ * C ref: monmove.c maybe_spin_web — webmaker postmov chance rn2(1000)<prob.
+ * Named omissions: shop add_damage; y_monnam/something pline polish.
+ */
+async function maybe_spin_web(mtmp) {
+    if (!webmaker(mtmp?.data)
+        || helpless_mon(mtmp)
+        || mtmp.mspec_used
+        || t_at(mtmp.mx, mtmp.my)
+        || !soko_allow_web(mtmp)) {
+        return;
+    }
+    const base = (mtmp.data?.mndx === PM_GIANT_SPIDER) ? 15 : 5;
+    const prob = (base * (count_webbing_walls(mtmp.mx, mtmp.my) + 1))
+        - (3 * count_traps(WEB));
+    if (rn2(1000) < prob) {
+        const trap = maketrap(mtmp.mx, mtmp.my, WEB);
+        if (trap) {
+            mtmp.mspec_used = d(4, 4); // 4..16
+            if (cansee(mtmp.mx, mtmp.my)) {
+                if (canspotmon(mtmp)) {
+                    await pline(`${Monnam(mtmp)} spins a web.`);
+                } else {
+                    await pline('Something spins a web.');
+                }
+                trap.tseen = 1;
+            }
+            // shop add_damage deferred
+        }
+    }
+}
+
+/**
  * C ref: monmove.c postmov — after a successful step: traps then doors,
  * then shared OBJ_AT / mpickstuff for MOVED|DONE.
  * Branch envelope: D_CLOSED open / D_LOCKED unlock / smash doorbuster;
  * amorphous squeeze message; mb_trapped; mpickstuff one-object pickup;
- * hides_under / S_EEL rn2(5) → hideunder (D-0496).
+ * hides_under / S_EEL rn2(5) → hideunder (D-0496); maybe_spin_web (D-0595).
  * Named omissions: vampshift fog; iron bars; engulfing_u; shop add_damage;
- * has_magic_key disarm; metallivorous/cube/corpse_eater meat*; maybe_spin_web;
+ * has_magic_key disarm; metallivorous/cube/corpse_eater meat*;
  * hideunder You_see; check_gear_next_turn. (shk/gd/priest via shk.js D-0205)
  */
 async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
@@ -895,7 +984,8 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
         // minvis newsym deferred
     }
 
-    // C: maybe_spin_web deferred (webmaker rn2(1000) only)
+    // C: maybe_spin_web (monmove.c) before hides_under
+    await maybe_spin_web(mtmp);
 
     // C: postmov hides_under / S_EEL — outside OBJ_AT (monmove.c ≈1692)
     if (hides_under(ptr) || ptr?.mlet === 'S_EEL') {
@@ -1031,7 +1121,7 @@ export async function m_move(mtmp, after) {
         let xm;
         if (mtmp.isshk) xm = await shk_move(mtmp);
         else if (mtmp.isgd) xm = await gd_move(mtmp);
-        else xm = pri_move(mtmp);
+        else xm = await pri_move(mtmp);
 
         if (xm === -2) return MMOVE_DIED;
         if (xm !== -1) {

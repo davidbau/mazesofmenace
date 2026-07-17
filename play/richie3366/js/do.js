@@ -13,7 +13,9 @@ import {
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL,
+    MAGIC_PORTAL,
 } from './const.js';
+import { seetrap } from './trap.js';
 import { COIN_CLASS } from './objects.js';
 import { pline, Norep, docrt, flush_screen, flush_topl_more, newsym, mark_topline_prompt } from './display.js';
 import { yn_function } from './getline.js';
@@ -307,7 +309,8 @@ async function selftouch_stair_fall(_arg) {
  * stairway_find_from → climb/descend pline (Flying / encumber|Punished|
  * Fumbling fall `rnd(3)` losehp / ordinary) → losedogs → vision/docrt →
  * pickup(1).
- * Deferred: binary NHFILE, mysterious force, quest gate, portals, endgame
+ * Ported: portal MAGIC_PORTAL find / missing → u_on_rndspot (D-0594).
+ * Deferred: binary NHFILE, mysterious force, quest gate seal RMPORTAL, endgame
  * astral `final_level` / migrating-Wizard resurrect arm, trap-door fall
  * damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE, Gehennom valley plines,
  * temperature_change_msg / hellish_smoke (D-0559 hot/cold); Flying/Punished
@@ -452,7 +455,34 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: flush_screen(-1) postpone map/botl until after arrival plines + docrt
     await flush_screen(-1);
 
-    if (at_stairs && !portal) {
+    // C: do.c goto_level — portal arm before stairs / rndspot
+    if (portal && !In_endgame(u.uz)) {
+        let ttrap = null;
+        const traps = game.level?.traps;
+        if (Array.isArray(traps)) {
+            for (const t of traps) {
+                if (t && (t.ttyp | 0) === MAGIC_PORTAL) {
+                    ttrap = t;
+                    break;
+                }
+            }
+        }
+        if (!ttrap) {
+            for (let t = game.ftrap; t; t = t.ntrap) {
+                if ((t.ttyp | 0) === MAGIC_PORTAL) {
+                    ttrap = t;
+                    break;
+                }
+            }
+        }
+        if (!ttrap) {
+            // C: qexpelled quest return / missing portal → u_on_rndspot(0)
+            u_on_rndspot(0);
+        } else {
+            seetrap(ttrap);
+            u_on_newpos(ttrap.tx, ttrap.ty);
+        }
+    } else if (at_stairs && !In_endgame(u.uz)) {
         const atLadder = !!game.at_ladder;
         if (up) {
             // C: stairway_find_from(&u.uz0, at_ladder) else sstairs/dnstairs
@@ -533,8 +563,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     } else if (!at_stairs) {
         // C: trap door / level_tele / tutorial UTOTYPE_NONE → u_on_rndspot
-        // Portal MAGIC_PORTAL find deferred (falls through when portal=true).
-        if (!portal) u_on_rndspot(up ? 1 : 0);
+        u_on_rndspot(up ? 1 : 0);
     }
 
     game.at_ladder = false;

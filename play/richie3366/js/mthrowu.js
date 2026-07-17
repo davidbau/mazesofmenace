@@ -358,7 +358,7 @@ function ohitmon_mondead(mtmp) {
  * petrify; can_blnd; setmangry; xkilled treasure; corpse_chance;
  * mon_notices unfreeze in omon_adj.
  */
-async function ohitmon(mtmp, otmp, range, verbose) {
+export async function ohitmon(mtmp, otmp, range, verbose) {
     const bx = game.bhitpos?.x ?? mtmp.mx;
     const by = game.bhitpos?.y ?? mtmp.my;
     game.notonhead = (bx !== mtmp.mx || by !== mtmp.my);

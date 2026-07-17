@@ -10,9 +10,10 @@ import { Monnam } from './do_name.js';
 import { doname, singular, an, xname } from './objnam.js';
 import { dist2, distmin, m_at } from './mon.js';
 import { lined_up, m_throw } from './mthrowu.js';
-import { is_animal, mindless, nohands } from './monsters.js';
+import { is_animal, mindless, nohands, is_floater, needspick, nonliving, is_vampshifter, monsterNames } from './monsters.js';
 import {
     objectNames, POTION_CLASS, WAND_CLASS, SPEED_BOOTS,
+    SCROLL_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS,
 } from './objects.js';
 import { observe_object, makeknown } from './invent.js';
 import { losehp, nomul } from './hack.js';
@@ -21,6 +22,7 @@ import { m_seenres, monstseesu, monstunseesu } from './mondata.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
     D_LOCKED, D_CLOSED, KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR,
+    OBJ_FLOOR,
 } from './const.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
@@ -29,11 +31,39 @@ const POT_CONFUSION = objectNames.indexOf('POT_CONFUSION');
 const POT_SLEEPING = objectNames.indexOf('POT_SLEEPING');
 const POT_ACID = objectNames.indexOf('POT_ACID');
 const POT_SPEED = objectNames.indexOf('POT_SPEED');
+const POT_HEALING = objectNames.indexOf('POT_HEALING');
+const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
+const POT_FULL_HEALING = objectNames.indexOf('POT_FULL_HEALING');
+const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
+const POT_GAIN_LEVEL = objectNames.indexOf('POT_GAIN_LEVEL');
+const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
 const WAN_SPEED_MONSTER = objectNames.indexOf('WAN_SPEED_MONSTER');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
+const WAN_MAKE_INVISIBLE = objectNames.indexOf('WAN_MAKE_INVISIBLE');
+const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
+const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
+const WAN_UNDEAD_TURNING = objectNames.indexOf('WAN_UNDEAD_TURNING');
+const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
+const WAN_CREATE_MONSTER = objectNames.indexOf('WAN_CREATE_MONSTER');
+const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
+const SCR_CREATE_MONSTER = objectNames.indexOf('SCR_CREATE_MONSTER');
+const SCR_EARTH = objectNames.indexOf('SCR_EARTH');
+const SCR_FIRE = objectNames.indexOf('SCR_FIRE');
+const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
+const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
+const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
+const PICK_AXE = objectNames.indexOf('PICK_AXE');
+const UNICORN_HORN = objectNames.indexOf('UNICORN_HORN');
+const FROST_HORN = objectNames.indexOf('FROST_HORN');
+const FIRE_HORN = objectNames.indexOf('FIRE_HORN');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const CLOAK_OF_MAGIC_RESISTANCE = objectNames.indexOf('CLOAK_OF_MAGIC_RESISTANCE');
 const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
+const AT_GAZE = 15;
+const RAY = 3; // objclass.h oc_dir
 
 /** C muse.c offense codes (subset). */
 const MUSE_WAN_STRIKING = 7;
@@ -58,6 +88,104 @@ function canseemon(mtmp) {
     if (!mtmp) return false;
     if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
     return mon_visible(mtmp);
+}
+
+function attacktype(ptr, aatyp) {
+    const mattk = ptr?.mattk || [];
+    for (let i = 0; i < mattk.length; i++) {
+        if (mattk[i]?.aatyp === aatyp) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: muse.c searches_for_item — intelligent non-animals seek useful loot.
+ * Named omissions: onscary underfoot floor gate; FOOD_CLASS corpse/tin/egg
+ * bodies; Is_container/Is_mbag/can_blow polish; touch_petrifies paths.
+ */
+export function searches_for_item(mon, obj) {
+    if (!mon || !obj) return false;
+    const typ = obj.otyp;
+    const ptr = mon.data;
+
+    // C: protected floor item onscary — deferred (onscary stub elsewhere)
+    if (obj.where === OBJ_FLOOR
+        && obj.ox === mon.mx && obj.oy === mon.my) {
+        // onscary(obj.ox, obj.oy, mon) deferred → treat as not scary
+    }
+
+    if (is_animal(ptr) || mindless(ptr)
+        || (ptr?.mndx ?? -1) === PM_GHOST) {
+        return false;
+    }
+
+    if (typ === WAN_MAKE_INVISIBLE || typ === POT_INVISIBILITY) {
+        return !mon.minvis && !mon.invis_blkd && !attacktype(ptr, AT_GAZE);
+    }
+    if (typ === WAN_SPEED_MONSTER || typ === POT_SPEED) {
+        return (mon.mspeed | 0) !== MFAST;
+    }
+
+    switch (obj.oclass) {
+    case WAND_CLASS: {
+        if ((obj.spe | 0) <= 0) return false;
+        if (typ === WAN_DIGGING) return !is_floater(ptr);
+        if (typ === WAN_POLYMORPH) {
+            return (ptr?.difficulty | 0) < 6;
+        }
+        const oc = game.objects?.[typ];
+        if ((oc?.oc_dir | 0) === RAY
+            || typ === WAN_STRIKING
+            || typ === WAN_UNDEAD_TURNING
+            || typ === WAN_TELEPORTATION
+            || typ === WAN_CREATE_MONSTER) {
+            return true;
+        }
+        break;
+    }
+    case POTION_CLASS:
+        if (typ === POT_HEALING || typ === POT_EXTRA_HEALING
+            || typ === POT_FULL_HEALING || typ === POT_POLYMORPH
+            || typ === POT_GAIN_LEVEL || typ === POT_PARALYSIS
+            || typ === POT_SLEEPING || typ === POT_ACID || typ === POT_CONFUSION) {
+            return true;
+        }
+        if (typ === POT_BLINDNESS && !attacktype(ptr, AT_GAZE)) return true;
+        break;
+    case SCROLL_CLASS:
+        if (typ === SCR_TELEPORTATION || typ === SCR_CREATE_MONSTER
+            || typ === SCR_EARTH || typ === SCR_FIRE) {
+            return true;
+        }
+        break;
+    case AMULET_CLASS:
+        if (typ === AMULET_OF_LIFE_SAVING) {
+            return !(nonliving(ptr) || is_vampshifter(mon));
+        }
+        if (typ === AMULET_OF_REFLECTION || typ === AMULET_OF_GUARDING) {
+            return true;
+        }
+        break;
+    case TOOL_CLASS:
+        if (typ === PICK_AXE) return needspick(ptr);
+        if (typ === UNICORN_HORN) {
+            return !obj.cursed && ptr?.mlet !== 'S_UNICORN'
+                && (ptr?.mndx ?? -1) !== PM_KI_RIN;
+        }
+        if (typ === FROST_HORN || typ === FIRE_HORN) {
+            // can_blow deferred → allow when charged
+            return (obj.spe | 0) > 0;
+        }
+        // Is_container / camera deferred
+        if (typ === EXPENSIVE_CAMERA) return (obj.spe | 0) > 0;
+        break;
+    case FOOD_CLASS:
+        // corpse/tin/egg arms deferred
+        break;
+    default:
+        break;
+    }
+    return false;
 }
 
 function mdistu(mtmp) {

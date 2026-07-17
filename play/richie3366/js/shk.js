@@ -6,10 +6,10 @@
 //        is_unpaid / unpaid_cost + doname unpaid suffix (D-0461);
 //        dopay / pay_billed_items / dopayobj / menu_pick_pay_items (subset).
 // Named omissions: shk_fixes_damage body; holetime dig follow; angry
-// Displaced pline; following verbalize;
-// pri_move altar mill rn1; m_break_boulder; m_move_aggress;
+// Displaced pline (shk path); following verbalize;
+// m_break_boulder; m_move_aggress; inhistemple/has_shrine; intemple;
 // Fast + sobj_at pickaxe doorway block / dochug; m_canseeu for angry chase;
-// resist_conflict; deserted_shop body; ACH_SHOP mapseen; Hallu shkname;
+// deserted_shop body; ACH_SHOP mapseen; Hallu shkname;
 // angry/surcharge/robbed welcome arms; Invis welcome; leave-bill verbalize;
 // addupbill body; clear_unpaid/no_charge walks in setpaid; mongone full;
 // mnearto home_shk; paygd; M1_NOHEAD has_head (assume headed for shk path);
@@ -21,15 +21,17 @@
 // getpos pay-whom; container paydoname rewrite; contained_cost.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
 import { dist2, online2 } from './hacklib.js';
 import { in_rooms } from './hack.js';
 import {
-    ESHK, IS_ROOM, NOTONL, u_at, isok, ROOMOFFSET, SHOPBASE, ACH_SHOP,
-    OBJ_MINVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, NO_ROOM,
-    LOW_PM, Has_contents, MAXULEV, ECMD_OK, ECMD_TIME,
+    ESHK, EPRI, IS_ROOM, NOTONL, u_at, isok, ROOMOFFSET, SHOPBASE, ACH_SHOP,
+    OBJ_MINVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, NO_ROOM, TEMPLE,
+    DISPLACED, LOW_PM, Has_contents, MAXULEV, ECMD_OK, ECMD_TIME,
     COST_CONTENTS, COST_SINGLEOBJ,
 } from './const.js';
+import { hero_conflict, resist_conflict, m_canseeu } from './mondata.js';
+import { mon_nam } from './do_name.js';
 import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, objects, POT_WATER,
@@ -52,6 +54,7 @@ import { ATR_INVERSE } from './terminal.js';
 
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
+const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
 /** C monflag.h MS_ANIMAL — animal noises ceiling for muteshk. */
 const MS_ANIMAL = 17;
 /** C monflag.h MS_SELL — shopkeeper when tables omit msound. */
@@ -970,12 +973,73 @@ export async function gd_move(grd) {
     return vault_gd_move(grd);
 }
 
+/** C ref: youprop.h Displaced — HDisplaced || EDisplaced (cloak extrinsic). */
+function Displaced() {
+    const u = game.u || {};
+    if (u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic) return true;
+    if (u.uprops?.[DISPLACED]?.extrinsic) return true;
+    const cloak = u.uarmc;
+    return !!(cloak && cloak.otyp === CLOAK_OF_DISPLACEMENT);
+}
+
 /**
- * C ref: priest.c pri_move — stub: stay put without altar mill rn1.
- * Named omission: histemple_at / Conflict chase / rn1(3,-1) mill.
+ * C ref: priest.c histemple_at — priest on shrine level inside temple room.
  */
-export function pri_move(_priest) {
-    return 0;
+function histemple_at(priest, x, y) {
+    if (!priest || !priest.ispriest) return false;
+    const epri = EPRI(priest);
+    if (!epri) return false;
+    const rooms = in_rooms(x, y, TEMPLE);
+    if (!rooms || (rooms.charCodeAt(0) | 0) !== (epri.shroom | 0)) return false;
+    return on_level(epri.shrlevel, game.u?.uz);
+}
+
+/**
+ * C ref: priest.c pri_move — return 1 moved, 0 didn't, -1 let m_move, -2 died.
+ * Named omissions: inhistemple/has_shrine callers; intemple greetings.
+ */
+export async function pri_move(priest) {
+    let avoid = true;
+    const omx = priest.mx | 0;
+    const omy = priest.my | 0;
+
+    if (!histemple_at(priest, omx, omy)) return -1;
+
+    const epri = EPRI(priest);
+    const temple = epri.shroom | 0;
+    let ggx = epri.shrpos?.x | 0;
+    let ggy = epri.shrpos?.y | 0;
+
+    ggx += rn1(3, -1); /* mill around the altar */
+    ggy += rn1(3, -1);
+
+    const Conflict = hero_conflict();
+    if (!priest.mpeaceful || (Conflict && !resist_conflict(priest))) {
+        const { monnear } = await import('./mon.js');
+        const u = game.u;
+        if (monnear(priest, u.ux, u.uy)) {
+            if (Displaced()) {
+                await pline(
+                    `Your displaced image doesn't fool ${mon_nam(priest)}!`,
+                );
+            }
+            await mattacku(priest);
+            return 0;
+        } else if ((u.urooms || '').includes(String.fromCharCode(temple))) {
+            /* chase player if inside temple & can see him */
+            if (priest.mcansee && m_canseeu(priest)) {
+                ggx = u.ux;
+                ggy = u.uy;
+            }
+            avoid = false;
+        }
+    } else if (game.u?.Invis) {
+        avoid = false;
+    }
+
+    return move_special(
+        priest, false, true, false, avoid, omx, omy, ggx, ggy,
+    );
 }
 
 /** C: has_head — !(mflags1 & M1_NOHEAD); M1_NOHEAD not in JS tables. */

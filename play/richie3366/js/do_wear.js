@@ -444,6 +444,40 @@ async function Shirt_on() {
 }
 
 /**
+ * C ref: do_wear.c set_wear — side-effects of already-worn gear.
+ * Called from moveloop_preamble (!resuming) after ini_inv slots are set;
+ * also poly_obj path when a worn item transforms (obj != null).
+ * Named omissions: Ring_on learnring/attrib/float bodies; gi.initial_don
+ * only used by C toggle_stealth/displacement (Ring_on/cloak still deferred);
+ * Blindf_on Punished set_bc; Amulet_on exotic bodies beyond RESTFUL_SLEEP.
+ * @param {object|null} [obj=null] Null → all worn slots; else that object only.
+ */
+export async function set_wear(obj = null) {
+    const u = game.u || {};
+    const all = !obj;
+    // C: gi.initial_don = !obj;
+    game._initial_don = all;
+
+    if ((all ? u.ublindf : obj === u.ublindf) && u.ublindf) {
+        await Blindf_on(u.ublindf);
+    }
+    // Ring_on(uright/uleft) deferred — learnring / attrib / stealth messages
+    if ((all ? u.uamul : obj === u.uamul) && u.uamul) {
+        await Amulet_on(u.uamul);
+    }
+
+    if ((all ? u.uarmu : obj === u.uarmu) && u.uarmu) await Shirt_on();
+    if ((all ? u.uarm : obj === u.uarm) && u.uarm) await Armor_on();
+    if ((all ? u.uarmc : obj === u.uarmc) && u.uarmc) await Cloak_on();
+    if ((all ? u.uarmf : obj === u.uarmf) && u.uarmf) await Boots_on();
+    if ((all ? u.uarmg : obj === u.uarmg) && u.uarmg) await Gloves_on();
+    if ((all ? u.uarmh : obj === u.uarmh) && u.uarmh) await Helmet_on();
+    if ((all ? u.uarms : obj === u.uarms) && u.uarms) await Shield_on();
+
+    game._initial_don = false;
+}
+
+/**
  * C ref: objnam.c suit_simple_name — "mail"/"jacket"/"suit" (dragon deferred).
  */
 function suit_simple_name(suit) {

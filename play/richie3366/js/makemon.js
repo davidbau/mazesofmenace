@@ -60,7 +60,7 @@ import {
 } from './monsters.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
-    MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
+    MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     In_mines, In_sokoban, In_endgame,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
@@ -176,6 +176,24 @@ export function newemin(mtmp) {
         };
     }
     return mtmp.mextra.emin;
+}
+
+/**
+ * C ref: priest.c newepri — allocate epri for MM_EPRI makemon.
+ * Fields filled by priestini after makemon returns.
+ */
+export function newepri(mtmp) {
+    if (!mtmp.mextra) mtmp.mextra = {};
+    if (!mtmp.mextra.epri) {
+        mtmp.mextra.epri = {
+            parentmid: mtmp.m_id | 0,
+            shralign: 0,
+            shroom: 0,
+            shrpos: { x: 0, y: 0 },
+            shrlevel: { dnum: 0, dlevel: 0 },
+        };
+    }
+    return mtmp.mextra.epri;
 }
 
 // C ref: makemon.c set_mimic_sym — S_MIMIC_DEF sentinel (MONSYMS_S_ENUM idx 60)
@@ -1070,6 +1088,16 @@ function m_initweap(mtmp) {
                 if (!rn2(50)) mongets(mtmp, otyp('CRYSTAL_BALL'));
             }
         } else if (
+            // C: ptr->msound == MS_PRIEST || quest_mon_represents_role(ptr, PM_CLERIC)
+            // tables omit msound; only ALIGNED/HIGH_CLERIC carry MS_PRIEST
+            mm === pm('ALIGNED_CLERIC') || mm === pm('HIGH_CLERIC')
+        ) {
+            // C: makemon.c m_initweap MS_PRIEST — mksobj(MACE,FALSE,FALSE)
+            const otmp = mksobj(otyp('MACE'), false, false);
+            otmp.spe = rnd(3);
+            if (!rn2(2)) curse(otmp);
+            mpickobj(mtmp, otmp);
+        } else if (
             // C: ptr->msound == MS_GUARDIAN — tables omit msound; gate by mndx
             mm === pm('STUDENT') || mm === pm('ATTENDANT')
             || mm === pm('ABBOT') || mm === pm('ACOLYTE')
@@ -1139,7 +1167,7 @@ function m_initweap(mtmp) {
                 break;
             }
         }
-        // MS_PRIEST / quest cleric / PM_NINJA deferred (C-JS-MAP)
+        // quest_mon_represents_role(PM_CLERIC) + PM_NINJA deferred (C-JS-MAP)
         break;
     case 'S_DEMON':
         // C: named demon specials then is_demon → FALLTHROUGH default
@@ -1484,8 +1512,18 @@ function m_initinv(mtmp) {
                 mongets(mtmp, otyp('WAN_STRIKING'));
                 break;
             }
+        } else if (
+            // C: ptr->msound == MS_PRIEST || quest_mon_represents_role(ptr, PM_CLERIC)
+            ptr.mndx === pm('ALIGNED_CLERIC') || ptr.mndx === pm('HIGH_CLERIC')
+        ) {
+            // C: makemon.c m_initinv MS_PRIEST — robe/cloak, shield, gold
+            mongets(mtmp, rn2(7) ? otyp('ROBE')
+                : rn2(3) ? otyp('CLOAK_OF_PROTECTION')
+                         : otyp('CLOAK_OF_MAGIC_RESISTANCE'));
+            mongets(mtmp, otyp('SMALL_SHIELD'));
+            mkmonmoney(mtmp, rn1(10, 20));
         }
-        // elf / priest / guardian arms deferred
+        // elf / quest_mon_represents_role / guardian invent arms deferred
         break;
     default:
         // Other m_initinv bodies (S_DEMON, S_WRAITH, S_LICH, …) deferred
@@ -1706,15 +1744,17 @@ export function makemon(mdat, x, y, mmflags = 0) {
         wormno: 0,
     };
 
-    // C: MM_EGD / MM_ESHK / MM_EMIN → new* before m_id assignment
+    // C: MM_EGD / MM_ESHK / MM_EMIN / MM_EPRI → new* before m_id assignment
     if (mmflags & MM_EGD) newegd(mtmp);
     if (mmflags & MM_ESHK) neweshk(mtmp);
     if (mmflags & MM_EMIN) newemin(mtmp);
+    if (mmflags & MM_EPRI) newepri(mtmp);
 
     mtmp.m_id = next_ident();
     if (mtmp.mextra?.egd) mtmp.mextra.egd.parentmid = mtmp.m_id;
     if (mtmp.mextra?.eshk) mtmp.mextra.eshk.parentmid = mtmp.m_id;
     if (mtmp.mextra?.emin) mtmp.mextra.emin.parentmid = mtmp.m_id;
+    if (mtmp.mextra?.epri) mtmp.mextra.epri.parentmid = mtmp.m_id;
 
     // C: ptr->msound == MS_LEADER && quest_info(MS_LEADER) == mndx
     const ldr = game.urole?.ldrnum ?? NON_PM;

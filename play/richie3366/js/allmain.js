@@ -25,6 +25,7 @@ import { dosearch0 } from './detect.js';
 import { nhgetch } from './input.js';
 import { unmul, monster_nearby, stop_occupation } from './hack.js';
 import { reset_justpicked } from './pickup.js';
+import { set_wear } from './do_wear.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu, encumber_msg } from './invent.js';
@@ -64,16 +65,16 @@ export async function moveloop_preamble(resuming) {
     }
 
     if (!resuming) {
-        // svc.context.rndencode = rnd(9000);
+        // C order: rndencode → set_wear → reset_justpicked → pickup(1) →
+        // seer_turn → umovement → initrack (pickup deferred).
         game.context.rndencode = rnd(9000);
-        // svc.context.seer_turn = (long) rnd(30);
-        game.context.seer_turn = rnd(30);
-        // C: u.umovement = NORMAL_SPEED on new game
-        game.u.umovement = NORMAL_SPEED;
-        // C: initrack() on new game only
-        initrack();
-        // C: set_wear then reset_justpicked(invent) after starting gear
+        // C: set_wear(NULL) — Helmet_on fedora luck, Blindf_on, etc.
+        await set_wear(null);
         reset_justpicked(game.invent);
+        // C: (void) pickup(1) — autopickup at initial location deferred
+        game.context.seer_turn = rnd(30);
+        game.u.umovement = NORMAL_SPEED;
+        initrack();
     } else {
         // C: read_engr_at / fix_shop_damage deferred
     }

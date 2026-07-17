@@ -7,6 +7,7 @@ import { dochugw } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL,
+    IS_WATERWALL, LAVAWALL, Is_waterlevel, POOL, MOAT, WATER, LAVAPOOL,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, G_GENOD,
     BOLT_LIM,
@@ -16,6 +17,7 @@ import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
     monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
+    is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -33,6 +35,18 @@ import { Monnam } from './do_name.js';
 import { cansee } from './vision.js';
 import { fightm } from './mhitm.js';
 import { were_change } from './were.js';
+
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+
+/** Local is_pool/is_lava — avoid mon.js ↔ hack.js cycle. */
+function mfndpos_is_pool(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return typ === POOL || typ === MOAT || typ === WATER;
+}
+function mfndpos_is_lava(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return typ === LAVAPOOL || typ === LAVAWALL;
+}
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -162,6 +176,7 @@ export const ALLOW_SSM = 0x40000000;
 export const OPENDOOR = 0x00400000;
 export const UNLOCKDOOR = 0x00800000;
 export const BUSTDOOR = 0x01000000;
+export const ALLOW_WALL = 0x04000000;
 // ALLOW_ROCK imported from const.js (mfndpos.h 0x02000000)
 
 // C ref: mon.c mcalcmove()
@@ -418,14 +433,24 @@ export function mon_allowflags(mtmp) {
     }
     // C: passes_walls → ALLOW_ROCK|ALLOW_WALL; throws_rocks / m_can_break_boulder → ALLOW_ROCK
     // m_can_break_boulder (wielded dig tool) deferred — named in C-JS-MAP
-    if (passes_walls(mtmp.data)) allowflags |= ALLOW_ROCK; // ALLOW_WALL deferred
+    if (passes_walls(mtmp.data)) allowflags |= ALLOW_ROCK | ALLOW_WALL;
     if (throws_rocks(mtmp.data)) allowflags |= ALLOW_ROCK;
     if (can_tunnel) allowflags |= ALLOW_DIG;
     if (can_open) allowflags |= OPENDOOR;
     return allowflags;
 }
 
+// C ref: mon.c m_in_air — flyer/floater; cling+ceiling mundetected deferred
+function m_in_air(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr) return false;
+    if (is_flyer(ptr) || is_floater(ptr)) return true;
+    return !!(is_clinger(ptr) && mtmp.mundetected);
+}
+
 // C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
+// Named omissions still: onscary/garlic/iron bars/poison-gas/squeeze/
+// mm_aggression/MDISP/temple ALLOW_SANCT; eel nexttry; ALLOW_WALL thrudoor.
 export function mfndpos(mon, data, flag) {
     const x = mon.mx;
     const y = mon.my;
@@ -440,9 +465,17 @@ export function mfndpos(mon, data, flag) {
     const nodiag = NODIAG(mon.mnum ?? mon.data?.mndx);
     const mdat = mon.data;
 
+    // C: wantpool / poolok / lavaok — land monsters skip pool/lava neighbours
+    const wantpool = mdat?.mlet === 'S_EEL';
+    const poolok = ((!Is_waterlevel(game.u?.uz) && m_in_air(mon))
+        || (is_swimmer(mdat) && !wantpool));
+    let lavaok = m_in_air(mon) || likes_lava(mdat);
+    if ((mdat?.mndx ?? -1) === PM_FLOATING_EYE) lavaok = false;
+
     let rockok = false;
     let treeok = false;
-    let thrudoor = false;
+    // C: thrudoor = (flag & (ALLOW_WALL|BUSTDOOR)) != 0; dig may set too
+    let thrudoor = !!(flag & (ALLOW_WALL | BUSTDOOR));
     if (flag & ALLOW_DIG) {
         // C: !needspick → both; else carrying pick/axe (cursed-mwep gate deferred)
         if (!needspick(mdat)) {
@@ -470,9 +503,12 @@ export function mfndpos(mon, data, flag) {
             const ntyp = loc.typ;
             // C: obstructed unless ALLOW_WALL passwall or diggable rock/tree
             if (IS_OBSTRUCTED(ntyp)
+                && !((flag & ALLOW_WALL) && false /* may_passwall deferred */)
                 && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny))) {
                 continue;
             }
+            // C: IS_WATERWALL && !is_swimmer
+            if (IS_WATERWALL(ntyp) && !is_swimmer(mdat)) continue;
             // peaceful shop/temple dig avoid deferred
             if (IS_DOOR(ntyp)) {
                 const dm = loc.doormask || 0;
@@ -490,6 +526,15 @@ export function mfndpos(mon, data, flag) {
                     continue;
                 }
             }
+            // C: LAVAWALL — needs lavaok and ALLOW_WALL
+            if ((!lavaok || !(flag & ALLOW_WALL)) && ntyp === LAVAWALL) {
+                continue;
+            }
+            // C: poolok/lavaok outer gate
+            if (!((poolok || mfndpos_is_pool(nx, ny) === wantpool)
+                && (lavaok || !mfndpos_is_lava(nx, ny)))) {
+                continue;
+            }
 
             let info = 0;
             if ((nx === game.u.ux && ny === game.u.uy)
@@ -502,6 +547,7 @@ export function mfndpos(mon, data, flag) {
                 info |= ALLOW_U;
             } else if (m_at(nx, ny)) {
                 // hostiles lack ALLOW_M — cannot displace/attack other mons
+                // mm_aggression / ALLOW_MDISP deferred
                 if (!(flag & ALLOW_M)) continue;
                 info |= ALLOW_M;
             }

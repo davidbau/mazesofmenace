@@ -1,7 +1,9 @@
-// trap.js — Trap creation + monster-step subset + hero dotrap dart.
+// trap.js — Trap creation + monster-step subset + hero dotrap dart /
+// rolling boulder.
 // C ref: trap.c — maketrap/choose_trapnote/hole_destination/trapnote,
 // t_at, t_missile, thitm, mintrap, dotrap, trapeffect_dart_trap /
-// trapeffect_pit / trapeffect_rocktrap / trapeffect_sqky_board /
+// trapeffect_pit / trapeffect_rocktrap / trapeffect_rolling_boulder_trap /
+// launch_obj / trapeffect_sqky_board /
 // trapeffect_bear_trap / trapeffect_hole / trapeffect_magic_trap /
 // trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap,
 // make_corpse ordinary path via thitm death.
@@ -12,20 +14,21 @@ import {
     mksobj, place_object, weight, stackobj, relobj_on_death,
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
+    objects_at, splitobj,
 } from './mkobj.js';
 import { find_mac, make_corpse } from './mhitm.js';
 import { mon_explodes } from './explode.js';
 import { newsym, pline, mon_visible, see_with_infrared, You_feel, unmap_object, glyph_is_invisible } from './display.js';
 import { doname, an, the, xname, makeplural, vtense } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
-import { dist2, m_at } from './mon.js';
+import { dist2, distmin, m_at } from './mon.js';
 import { cansee, couldsee } from './vision.js';
 import {
     G_FREQ, G_UNIQ, verysmall, grounded, passes_walls,
     is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
     amorphous, unsolid, is_whirly, breathless, MZ_SMALL, MZ_HUGE,
-    likes_gems, mons,
+    likes_gems, mons, webmaker, throws_rocks,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
@@ -38,7 +41,7 @@ import {
     NO_TRAP, TRAPNUM,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
     IS_ROOM, IS_WALL, IS_AIR, SDOOR,
-    D_CLOSED, D_LOCKED,
+    D_CLOSED, D_LOCKED, D_BROKEN,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     EF_GREASE, EF_DESTROY, EF_VERBOSE, EF_PAY,
@@ -51,6 +54,8 @@ import {
     HEAD, ARM,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMU, W_WEP, W_SWAPWEP,
     CORPSTAT_NONE, MM_NOCOUNTBIRTH, MM_NOMSG,
+    ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at,
+    IS_OBSTRUCTED, IS_STWALL, IS_TREE,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
@@ -61,11 +66,11 @@ import {
     WEAPON_CLASS, TOOL_CLASS,
 } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { thitu } from './mthrowu.js';
+import { thitu, ohitmon } from './mthrowu.js';
 import { dmgval } from './weapon.js';
-import { maybe_half_phys, nomul, losehp } from './hack.js';
+import { maybe_half_phys, nomul, losehp, stop_occupation } from './hack.js';
 import { observe_object, encumber_msg } from './invent.js';
-import { makemon, rndmonnum_adj } from './makemon.js';
+import { makemon, rndmonnum_adj, mpickobj } from './makemon.js';
 import { A_CHA, A_STR, A_DEX, adjattrib, exercise } from './attrib.js';
 import { tamedog } from './dog.js';
 
@@ -158,9 +163,9 @@ export const NO_TRAP_FLAGS = 0;
 /**
  * C ref: trap.c m_harmless_trap — whether mfndpos may ignore this trap.
  * Envelope: STATUE/MAGIC/VIBRATING always; BEAR_TRAP/WEB size·amorph·whirly·
- * unsolid; RUST except iron golem; PIT/HOLE clinger (non-Sokoban).
+ * unsolid·webmaker; RUST except iron golem; PIT/HOLE clinger (non-Sokoban).
  * Named omission: flyer/Sokoban `check_in_air` preamble; sleep/fire/anti-magic
- * resists; webmaker; defended().
+ * resists; defended().
  */
 export function m_harmless_trap(mtmp, ttmp) {
     if (!ttmp) return true;
@@ -177,8 +182,10 @@ export function m_harmless_trap(mtmp, ttmp) {
         }
         return false;
     case WEB:
-        if (amorphous(mdat) || is_whirly(mdat) || unsolid(mdat)) return true;
-        // webmaker deferred
+        if (amorphous(mdat) || is_whirly(mdat) || unsolid(mdat)
+            || webmaker(mdat)) {
+            return true;
+        }
         return false;
     case RUST_TRAP:
         // C: only iron golem is harmed
@@ -460,6 +467,17 @@ export function t_at(x, y) {
         if (t && t.tx === x && t.ty === y) return t;
     }
     return null;
+}
+
+/** C ref: trap.c count_traps — number of traps of type ttyp on this level. */
+export function count_traps(ttyp) {
+    let ret = 0;
+    const traps = game.level?.traps;
+    if (!traps) return 0;
+    for (const t of traps) {
+        if (t && (t.ttyp | 0) === (ttyp | 0)) ret++;
+    }
+    return ret;
 }
 
 // C ref: trap.c t_missile() — single arrow/dart/rock for a trap
@@ -919,7 +937,188 @@ function feeltrap(trap) {
     newsym(trap.tx, trap.ty);
 }
 
-/** C ref: hacklib.c s_suffix — steed foot msg in trapeffect_bear_trap. */
+/** C ref: mkobj.c sobj_at — first floor object of otyp at (x,y). */
+function sobj_at(otyp, x, y) {
+    // objects_at returns nexthere chain head, not an array
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if ((o.otyp | 0) === (otyp | 0)) return o;
+    }
+    return null;
+}
+
+/**
+ * C ref: trap.c launch_obj — roll/fly ammo from (x1,y1) toward (x2,y2).
+ * Envelope: find otyp (BOULDER also tries otherside); extract/split; ROLL
+ * path with hero dmgval+thitu and mon ohitmon/throws_rocks snatch; stop on
+ * obstructed/tree/door; place at rest. Named omissions: LAUNCH_UNSEEN
+ * bowling msgs; display-rng tmp_at flash; dig context clear; launch_drop_spot
+ * bones; mid-roll landmine/telep/pit flooreffects; iron bars hits_bars;
+ * boulder-on-boulder chain; ship_object down_gate; wake_nearto polish.
+ * @returns {Promise<number>} 0 none, 1 placed, 2 used up
+ */
+async function launch_obj(otyp, x1, y1, x2, y2, style) {
+    let otmp = sobj_at(otyp, x1, y1);
+    let otherside = false;
+    if (!otmp && otyp === BOULDER) {
+        otherside = true;
+        otmp = sobj_at(otyp, x2, y2);
+    }
+    if (!otmp) return 0;
+    if (otherside) {
+        const tx = x1, ty = y1;
+        x1 = x2; y1 = y2;
+        x2 = tx; y2 = ty;
+    }
+
+    let singleobj;
+    if ((otmp.quan | 0) === 1) {
+        obj_extract_self(otmp);
+        singleobj = otmp;
+        otmp = null;
+    } else {
+        singleobj = splitobj(otmp, 1);
+        obj_extract_self(singleobj);
+    }
+    newsym(x1, y1);
+
+    if ((style & (ROLL | LAUNCH_KNOWN)) === (ROLL | LAUNCH_KNOWN)) {
+        singleobj.otrapped = 1;
+        style &= ~LAUNCH_KNOWN;
+    }
+    // LAUNCH_UNSEEN rumble msgs deferred
+
+    let dist = distmin(x1, y1, x2, y2);
+    let x = x1;
+    let y = y1;
+    if (!game.bhitpos) game.bhitpos = {};
+    game.bhitpos.x = x1;
+    game.bhitpos.y = y1;
+    const dx = sgn(x2 - x1);
+    const dy = sgn(y2 - y1);
+    let used_up = false;
+    let xRest = x2;
+    let yRest = y2;
+
+    while (dist-- > 0 && !used_up) {
+        if (!isok(game.bhitpos.x + dx, game.bhitpos.y + dy)) {
+            xRest = x;
+            yRest = y;
+            break;
+        }
+        x = (game.bhitpos.x += dx);
+        y = (game.bhitpos.y += dy);
+
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            if (otyp === BOULDER && throws_rocks(mtmp.data) && rn2(3)) {
+                if (cansee(x, y)) {
+                    await pline(`${Monnam(mtmp)} snatches the boulder.`);
+                }
+                singleobj.otrapped = 0;
+                mpickobj(mtmp, singleobj);
+                used_up = true;
+                break;
+            }
+            if (await ohitmon(mtmp, singleobj, style === ROLL ? -1 : dist, false)) {
+                used_up = true;
+                break;
+            }
+        } else if (u_at(x, y)) {
+            let dam = dmgval(singleobj, game.youmonst || null);
+            if (game.multi) nomul(0);
+            const box = { obj: singleobj };
+            if (await thitu(9 + (singleobj.spe | 0), maybe_half_phys(dam), box, null)) {
+                await stop_occupation();
+            }
+            if (box.obj) singleobj = box.obj;
+            else {
+                used_up = true;
+                break;
+            }
+        }
+
+        // Mid-roll trap interactions (landmine/telep/pit) deferred
+        if (dist > 0 && isok(x + dx, y + dy)) {
+            const typ = game.level?.at?.(x + dx, y + dy)?.typ ?? 0;
+            if (IS_STWALL(typ) || IS_TREE(typ) || IS_OBSTRUCTED(typ)) {
+                xRest = x;
+                yRest = y;
+                break;
+            }
+            if (IS_DOOR(typ)) {
+                const loc = game.level.at(x + dx, y + dy);
+                const dm = loc?.doormask ?? loc?.flags ?? 0;
+                if ((dm & (D_CLOSED | D_LOCKED)) !== 0) {
+                    // C: boulder crashes through closed door — continue
+                    if (loc) loc.doormask = D_BROKEN;
+                }
+            }
+        }
+    }
+
+    if (!used_up) {
+        singleobj.otrapped = 0;
+        place_object(singleobj, xRest, yRest);
+        stackobj(singleobj);
+        newsym(xRest, yRest);
+        return 1;
+    }
+    return 2;
+}
+
+/**
+ * C ref: trap.c trapeffect_rolling_boulder_trap — hero + monster.
+ * Envelope: hero feeltrap + Click pline + launch_obj(BOULDER, ROLL);
+ * monster grounded in_sight pline + launch. Named omissions: steed;
+ * Deaf-only silent click already gated; full LAUNCH_UNSEEN style for far mon.
+ */
+async function trapeffect_rolling_boulder_trap(mtmp, trap, _trflags) {
+    if (is_youmonst(mtmp)) {
+        const style = ROLL | (trap.tseen ? LAUNCH_KNOWN : 0);
+        feeltrap(trap);
+        const click = Deaf() ? '' : 'Click!  ';
+        await pline(`${click}You trigger a rolling boulder trap!`);
+        const lx = trap.launch?.x ?? trap.tx;
+        const ly = trap.launch?.y ?? trap.ty;
+        const l2x = trap.launch2?.x ?? trap.tx;
+        const l2y = trap.launch2?.y ?? trap.ty;
+        if (!(await launch_obj(BOULDER, lx, ly, l2x, l2y, style))) {
+            if (style & LAUNCH_KNOWN) {
+                await pline('No boulder was released.');
+            } else {
+                await pline('Fortunately for you, no boulder was released.');
+            }
+        }
+    } else if (!m_in_air(mtmp)) {
+        const in_sight = (mtmp === game.u?.usteed)
+            || (cansee(mtmp.mx, mtmp.my) && canseemon(mtmp));
+        const style = ROLL | (in_sight ? 0 : LAUNCH_UNSEEN);
+        newsym(mtmp.mx, mtmp.my);
+        if (in_sight) {
+            const click = Deaf() ? '' : 'Click!  ';
+            await pline(
+                `${click}${Monnam(mtmp)} triggers ${
+                    trap.tseen ? 'a rolling boulder trap' : 'something'
+                }.`,
+            );
+        }
+        if (await launch_obj(
+            BOULDER,
+            trap.launch?.x ?? trap.tx, trap.launch?.y ?? trap.ty,
+            trap.launch2?.x ?? trap.tx, trap.launch2?.y ?? trap.ty,
+            style,
+        )) {
+            if (in_sight) trap.tseen = true;
+            if ((mtmp.mhp | 0) < 1) {
+                return Trap_Killed_Mon;
+            }
+        }
+        return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+    return Trap_Effect_Finished;
+}
+
+/** C hacklib.c s_suffix — steed foot msg in trapeffect_bear_trap. */
 function s_suffix(s) {
     if (!s) return 'the';
     if (s === 'it') return 'its';
@@ -2078,6 +2277,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_dart_trap(mtmp, trap);
     case ROCKTRAP:
         return trapeffect_rocktrap(mtmp, trap, trflags);
+    case ROLLING_BOULDER_TRAP:
+        return trapeffect_rolling_boulder_trap(mtmp, trap, trflags);
     case PIT:
     case SPIKED_PIT:
         return trapeffect_pit(mtmp, trap, trflags);

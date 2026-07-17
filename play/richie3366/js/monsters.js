@@ -562,6 +562,13 @@ export function can_teleport(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_TPORT);
 }
 
+/** C ref: mondata.h webmaker — cave/giant spider only (keep in sync with mons). */
+const PM_CAVE_SPIDER = monsterNames.indexOf('PM_CAVE_SPIDER');
+export function webmaker(ptr) {
+    const mndx = ptr?.mndx;
+    return mndx === PM_CAVE_SPIDER || mndx === PM_GIANT_SPIDER;
+}
+
 /**
  * C ref: mondata.h vegan / vegetarian — corpse/tin conduct + eatcorpse.
  */
