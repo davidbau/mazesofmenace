@@ -42,6 +42,7 @@ import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { mon_explodes } from './explode.js';
 import { mon_nam, x_monnam_tame } from './do_name.js';
+import { artifact_hit, youmonst } from './artifact.js';
 
 // C monflag.h — MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MZ_MEDIUM;
@@ -402,6 +403,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
     let dmg = 0;
     let use_weapon_skill = false;
     let train_weapon_skill = false;
+    let hittxt = false;
     if (!obj) {
         // C hmon_hitmon_barehands: rnd(!martial_bonus() ? 2 : 4)
         dmg = rnd(martial_bonus() ? 4 : 2);
@@ -412,6 +414,15 @@ async function hmon(mon, obj, thrown, _dieroll) {
         dmg = dmgval(obj, mon);
         use_weapon_skill = true;
         train_weapon_skill = dmg > 1;
+        // C hmon_hitmon_weapon_melee: artifact_hit after dmgval, before
+        // hmon_hitmon_dmg_recalc (Grayswandir spec_dbon max(tmp,1)).
+        if (obj.oartifact) {
+            const dmgBox = { dmg };
+            if (artifact_hit(youmonst, mon, obj, dmgBox, _dieroll | 0)) {
+                hittxt = true;
+            }
+            dmg = dmgBox.dmg | 0;
+        }
     } else {
         dmg = dmgval(obj, mon);
     }
@@ -423,7 +434,6 @@ async function hmon(mon, obj, thrown, _dieroll) {
 
     // C: unarmed = !uwep && !uarm && !uarms; stagger before mhp -= dmg
     const unarmed = !game.u?.uwep && !game.u?.uarm && !game.u?.uarms;
-    let hittxt = false;
     // C: weapon melee with dmg>1 may knock back (RNG always burned if set)
     let maybe_knockback = false;
     if (unarmed && dmg > 1 && !thrown && !obj && !Upolyd(game.u)) {

@@ -1,10 +1,11 @@
 // quest.js — quest branch arrival hooks + leader talk.
 // C ref: quest.c onquest / on_start / on_locate / on_goal /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
-// Named omissions: on_goal; nexttime/othertime; locate_next beyond Bar/Arc;
+// Named omissions: on_goal; locate_next beyond Bar/Arc;
 // chat_with_nemesis/guardian; prisoner_speaks; finish_quest; got_thanks/
 // questart arms; banished com_pager; livelog; exercise side-effects beyond
 // call; full convert_arg catalogue for assignquest.
+// nexttime/othertime texts: Arc+Bar only (other roles burn nhl shuffle only).
 
 import { game } from './gstate.js';
 import {
@@ -48,16 +49,25 @@ function Is_nemesis(lev) {
 }
 
 /**
- * C ref: quest.c on_start — firsttime qt_pager + first_start.
- * nexttime/othertime when re-entering deferred.
+ * C ref: quest.c on_start — firsttime qt_pager + first_start;
+ * re-entry from other dnum or from above → nexttime/othertime.
  */
 async function on_start() {
     const qs = game.quest_status || (game.quest_status = {});
+    const u = game.u;
     if (!qs.first_start) {
         await qt_pager('firsttime');
         qs.first_start = true;
+    } else if (
+        (u?.uz0?.dnum | 0) !== (u?.uz?.dnum | 0)
+        || (u?.uz0?.dlevel | 0) < (u?.uz?.dlevel | 0)
+    ) {
+        // C: not_ready <= 2 → nexttime, else othertime (nhl_init shuffle)
+        if ((qs.not_ready | 0) <= 2)
+            await qt_pager('nexttime');
+        else
+            await qt_pager('othertime');
     }
-    // C: else if dnum/dlevel change → nexttime/othertime deferred
 }
 
 /**

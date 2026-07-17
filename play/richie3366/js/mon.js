@@ -10,7 +10,7 @@ import {
     IS_WATERWALL, LAVAWALL, Is_waterlevel, POOL, MOAT, WATER, LAVAPOOL,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, G_GENOD,
-    BOLT_LIM,
+    BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
 } from './const.js';
 import { t_at } from './trap.js';
 import {
@@ -18,6 +18,7 @@ import {
     monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
     is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
+    bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -46,6 +47,59 @@ function mfndpos_is_pool(x, y) {
 function mfndpos_is_lava(x, y) {
     const typ = game.level?.at(x, y)?.typ;
     return typ === LAVAPOOL || typ === LAVAWALL;
+}
+
+/** C ref: hack.c may_passwall — STWALL + W_NONPASSWALL blocks. */
+function may_passwall(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return !(IS_STWALL(loc.typ) && (loc.wall_info & W_NONPASSWALL));
+}
+
+/**
+ * C ref: hack.c bad_rock — obstructed (or Sokoban boulder) the form
+ * cannot dig or pass through.
+ */
+function bad_rock(mdat, x, y) {
+    const Sokoban = !!(game.level?.flags?.sokoban_rules
+        || game.level?.flags?.sokoban
+        || game.Sokoban);
+    if (Sokoban) {
+        for (let o = objects_at(x, y); o; o = o.nexthere) {
+            if (o.otyp === BOULDER) return true;
+        }
+    }
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_OBSTRUCTED(loc.typ)) return false;
+    if ((!tunnels(mdat) || needspick(mdat) || !may_dig(x, y))
+        && !(passes_walls(mdat) && may_passwall(x, y))) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: hack.c cant_squeeze_thru — nonzero = cannot fit a tight diagonal.
+ * 1=too big, 2=load, 3=Sokoban (hero only). can_fog vampshifter deferred.
+ */
+function cant_squeeze_thru(mon) {
+    const ptr = mon?.data;
+    if (passes_walls(ptr)) return 0;
+    const slithy = !!((ptr?.mflags1 ?? 0) & M1_SLITHY);
+    // Named omission: can_fog (vampshifter) — treat as false.
+    if (bigmonst(ptr)
+        && !(amorphous(ptr) || is_whirly(ptr) || noncorporeal(ptr)
+            || slithy /* || can_fog(mon) */)) {
+        return 1;
+    }
+    let curload = 0;
+    for (let obj = mon.minvent; obj; obj = obj.nobj) {
+        if (obj.otyp !== BOULDER || !throws_rocks(ptr)) {
+            curload += obj.owt || 0;
+        }
+    }
+    if (curload > WT_TOOMUCH_DIAGONAL) return 2;
+    return 0;
 }
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
@@ -449,8 +503,9 @@ function m_in_air(mtmp) {
 }
 
 // C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
-// Named omissions still: onscary/garlic/iron bars/poison-gas/squeeze/
-// mm_aggression/MDISP/temple ALLOW_SANCT; eel nexttry; ALLOW_WALL thrudoor.
+// Named omissions still: onscary/garlic/iron bars/poison-gas/
+// mm_aggression/MDISP/temple ALLOW_SANCT; eel nexttry; ALLOW_WALL thrudoor;
+// can_fog in cant_squeeze_thru.
 export function mfndpos(mon, data, flag) {
     const x = mon.mx;
     const y = mon.my;
@@ -572,6 +627,15 @@ export function mfndpos(mon, data, flag) {
             if (monseeu && monlineu(mon, nx, ny)) {
                 if (flag & NOTONL) continue;
                 info |= NOTONL;
+            }
+
+            // C: diagonal tight squeeze — bad_rock flanks + cant_squeeze_thru
+            // (mon.c mfndpos; D-0612). Giant spider through wall corner.
+            if (nx !== x && ny !== y
+                && bad_rock(mdat, x, ny)
+                && bad_rock(mdat, nx, y)
+                && cant_squeeze_thru(mon)) {
+                continue;
             }
 
             // C: harmful traps → ALLOW_TRAPS; hostiles skip known types

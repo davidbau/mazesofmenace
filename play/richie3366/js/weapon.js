@@ -46,6 +46,7 @@ import {
     PM_HEALER, PM_CLERIC, PM_WIZARD,
     monsterNames,
 } from './generated/monsters_data.js';
+import { spec_abon } from './artifact.js';
 
 const PM_PONY = monsterNames.indexOf('PM_PONY');
 
@@ -80,11 +81,11 @@ function rounddiv(x, y) {
 }
 
 /**
- * C ref: weapon.c hitval — spe (weapon/weptool) + oc_hitbon; silver/artifact/
- * blessed/spear/trident/pick vs-mon bonuses deferred.
+ * C ref: weapon.c hitval — spe (weapon/weptool) + oc_hitbon + oartifact
+ * spec_abon (D-0611). Blessed/spear/trident/pick/silver vs-mon deferred.
  * objects[].oc_hitbon is the oc_oc1 union exported as a_ac.
  */
-export function hitval(otmp, _mon) {
+export function hitval(otmp, mon) {
     if (!otmp) return 0;
     const o = game.objects?.[otmp.otyp];
     let tmp = 0;
@@ -92,6 +93,8 @@ export function hitval(otmp, _mon) {
         || (otmp.oclass === TOOL_CLASS && ((o?.oc_skill | 0) !== P_NONE));
     if (Is_weapon) tmp += otmp.spe | 0;
     tmp += o?.a_ac | 0;
+    // C: if (otmp->oartifact) tmp += spec_abon(otmp, mon);
+    if (otmp.oartifact) tmp += spec_abon(otmp, mon);
     return tmp;
 }
 

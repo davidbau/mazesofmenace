@@ -6,23 +6,29 @@ import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, mon_visible, see_with_infrared } from './display.js';
-import { Monnam } from './do_name.js';
+import { Monnam, mon_nam } from './do_name.js';
 import { doname, singular, an, xname } from './objnam.js';
-import { dist2, distmin, m_at } from './mon.js';
+import { dist2, distmin, m_at, m_carrying } from './mon.js';
 import { lined_up, m_throw } from './mthrowu.js';
-import { is_animal, mindless, nohands, is_floater, needspick, nonliving, is_vampshifter, monsterNames } from './monsters.js';
 import {
-    objectNames, POTION_CLASS, WAND_CLASS, SPEED_BOOTS,
+    is_animal, mindless, nohands, is_floater, needspick, nonliving,
+    is_vampshifter, monsterNames, mons, haseyes,
+} from './monsters.js';
+import {
+    objectNames, objectDescrs, POTION_CLASS, WAND_CLASS, SPEED_BOOTS,
     SCROLL_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS,
 } from './objects.js';
 import { observe_object, makeknown } from './invent.js';
 import { losehp, nomul } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import { m_seenres, monstseesu, monstunseesu } from './mondata.js';
+import { bcsign } from './rumors.js';
+import { enexto } from './teleport.js';
+import { makemon } from './makemon.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
     D_LOCKED, D_CLOSED, KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR,
-    OBJ_FLOOR,
+    OBJ_FLOOR, G_GONE, MM_NOMSG,
 } from './const.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
@@ -34,6 +40,7 @@ const POT_SPEED = objectNames.indexOf('POT_SPEED');
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
 const POT_FULL_HEALING = objectNames.indexOf('POT_FULL_HEALING');
+const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
 const POT_GAIN_LEVEL = objectNames.indexOf('POT_GAIN_LEVEL');
 const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
@@ -61,9 +68,16 @@ const CLOAK_OF_MAGIC_RESISTANCE = objectNames.indexOf('CLOAK_OF_MAGIC_RESISTANCE
 const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
 const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
+const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const AT_GAZE = 15;
 const RAY = 3; // objclass.h oc_dir
+
+/** C muse.c defense codes (healing subset). */
+const MUSE_POT_HEALING = 3;
+const MUSE_POT_EXTRA_HEALING = 4;
+const MUSE_POT_FULL_HEALING = 18;
 
 /** C muse.c offense codes (subset). */
 const MUSE_WAN_STRIKING = 7;
@@ -77,8 +91,11 @@ const MUSE_POT_SLEEPING = 16;
 const MUSE_WAN_SPEED_MONSTER = 7;
 const MUSE_POT_SPEED = 8;
 
-/** C hack.h WAND_BACKFIRE_CHANCE */
+/** C hack.h WAND_BACKFIRE_CHANCE / POTION_OCCUPANT_CHANCE(n) */
 const WAND_BACKFIRE_CHANCE = 100;
+function POTION_OCCUPANT_CHANCE(n) {
+    return 13 + 2 * (n | 0);
+}
 
 function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
@@ -403,7 +420,7 @@ export async function use_offensive(mtmp) {
     if (!otmp) return 0;
 
     if (otmp.oclass !== POTION_CLASS) {
-        const i = precheck(mtmp, otmp);
+        const i = await precheck(mtmp, otmp);
         if (i !== 0) return i;
     }
 
@@ -444,8 +461,111 @@ export async function use_offensive(mtmp) {
 }
 
 /**
- * C ref: muse.c find_defensive — early gates only.
- * Healing / unicorn horn / flee stairs / tryescape arms deferred.
+ * C ref: o_init.c objdescr_is — OBJ_DESCR(objects[otyp]) vs descr.
+ */
+function objdescr_is(obj, descr) {
+    if (!obj) return false;
+    const oc = game.objects?.[obj.otyp];
+    if (!oc) return false;
+    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
+    return dn != null && dn === descr;
+}
+
+/**
+ * C ref: mon.c healmon — monster HP bump (+ optional max overheal).
+ */
+function healmon(mtmp, amt, overheal) {
+    if (!mtmp) return 0;
+    const oldhp = mtmp.mhp | 0;
+    amt |= 0;
+    overheal |= 0;
+    if (oldhp + amt > (mtmp.mhpmax | 0) + overheal) {
+        mtmp.mhpmax = (mtmp.mhpmax | 0) + overheal;
+        mtmp.mhp = mtmp.mhpmax | 0;
+    } else {
+        mtmp.mhp = oldhp + amt;
+        if ((mtmp.mhp | 0) > (mtmp.mhpmax | 0)) mtmp.mhpmax = mtmp.mhp | 0;
+    }
+    return (mtmp.mhp | 0) - oldhp;
+}
+
+/**
+ * C ref: mthrowu.c m_useup — consume one from monster invent.
+ */
+function m_useup(mon, obj) {
+    if (!mon || !obj) return;
+    if ((obj.quan | 0) > 1) {
+        obj.quan = (obj.quan | 0) - 1;
+        return;
+    }
+    if (mon.minvent === obj) mon.minvent = obj.nobj;
+    else {
+        for (let p = mon.minvent; p; p = p.nobj) {
+            if (p.nobj === obj) {
+                p.nobj = obj.nobj;
+                break;
+            }
+        }
+    }
+}
+
+/**
+ * C ref: muse.c mquaffmsg.
+ */
+async function mquaffmsg(mtmp, otmp) {
+    if (canseemon(mtmp)) {
+        observe_object(otmp);
+        await pline(`${Monnam(mtmp)} drinks ${singular(otmp, doname)}!`);
+    } else {
+        const u = game.u || {};
+        const deaf = (u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf;
+        if (!deaf) await pline('You hear a chugging sound.');
+    }
+}
+
+/**
+ * C ref: muse.c mcureblindness.
+ */
+async function mcureblindness(mon, verbos) {
+    if (!mon?.mcansee) {
+        mon.mcansee = 1;
+        mon.mblinded = 0;
+        if (verbos && haseyes(mon.data)) {
+            await pline(`${Monnam(mon)} can see again.`);
+        }
+    }
+}
+
+/**
+ * C ref: muse.c m_use_healing — full/extra/healing potion select.
+ */
+function m_use_healing(mtmp) {
+    const m = museState();
+    let obj = m_carrying(mtmp, POT_FULL_HEALING);
+    if (obj) {
+        m.defensive = obj;
+        m.has_defense = MUSE_POT_FULL_HEALING;
+        return true;
+    }
+    obj = m_carrying(mtmp, POT_EXTRA_HEALING);
+    if (obj) {
+        m.defensive = obj;
+        m.has_defense = MUSE_POT_EXTRA_HEALING;
+        return true;
+    }
+    obj = m_carrying(mtmp, POT_HEALING);
+    if (obj) {
+        m.defensive = obj;
+        m.has_defense = MUSE_POT_HEALING;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: muse.c find_defensive — wound gate + healing invent subset.
+ * Named omission: mconf/mstun horn/lizard; blindness healing;
+ * undead-turning; flee stairs/traps/bugle; dig/tele/create invent arms.
  */
 export function find_defensive(mtmp, tryescape) {
     const m = museState();
@@ -459,9 +579,52 @@ export function find_defensive(mtmp, tryescape) {
         return false;
     }
     if (game.u?.uswallow && mtmp === game.u?.ustuck) return false;
-    // Named omission: mconf/mstun horn/lizard; blindness healing;
-    // undead-turning; wounded peaceful m_use_healing; flee stairs/traps.
-    return false;
+
+    // Blindness-only healing (before wound gate) deferred
+    if (!tryescape) {
+        const ulevel = game.u?.ulevel | 0;
+        const fraction = ulevel < 10 ? 5 : ulevel < 14 ? 4 : 3;
+        const mhp = mtmp.mhp | 0;
+        const mhpmax = mtmp.mhpmax | 0;
+        if (mhp >= mhpmax
+            || (mhp >= 10 && mhp * fraction >= mhpmax)) {
+            return false;
+        }
+        if (mtmp.mpeaceful) {
+            if (!nohands(mtmp.data)) return m_use_healing(mtmp);
+            return false;
+        }
+    }
+
+    // stairs / traps / bugle deferred — fall through to invent
+    if (nohands(mtmp.data)) return false;
+
+    const isPest = (mtmp.mnum ?? mtmp.data?.mndx) === PM_PESTILENCE;
+    for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+        if (m.has_defense && !rn2(3)) break;
+        if (!isPest) {
+            if (m.has_defense === MUSE_POT_FULL_HEALING) continue;
+            if (obj.otyp === POT_FULL_HEALING) {
+                m.defensive = obj;
+                m.has_defense = MUSE_POT_FULL_HEALING;
+            }
+            if (m.has_defense === MUSE_POT_EXTRA_HEALING) continue;
+            if (obj.otyp === POT_EXTRA_HEALING) {
+                m.defensive = obj;
+                m.has_defense = MUSE_POT_EXTRA_HEALING;
+            }
+            if (m.has_defense === MUSE_POT_HEALING) continue;
+            if (obj.otyp === POT_HEALING) {
+                m.defensive = obj;
+                m.has_defense = MUSE_POT_HEALING;
+            }
+        } else if (obj.otyp === POT_SICKNESS) {
+            if (m.has_defense === MUSE_POT_FULL_HEALING) continue;
+            m.defensive = obj;
+            m.has_defense = MUSE_POT_FULL_HEALING;
+        }
+    }
+    return m.has_defense !== 0;
 }
 
 /**
@@ -496,12 +659,61 @@ export function find_misc(mtmp) {
 }
 
 /**
- * C ref: muse.c precheck — cursed wand backfire gate (potion milky/smoky deferred).
- * Non-fatal backfire clears muse selection and returns 0 like C; death/m_useup
- * body named omission (still burns d(spe+2,6)).
+ * C ref: muse.c precheck — milky/smoky potion occupant + cursed wand backfire.
+ * Ghost/djinni spawn body partial (enexto + makemon + messages);
+ * non-fatal wand backfire clears muse selection like C.
  */
-function precheck(mon, obj) {
+async function precheck(mon, obj) {
     if (!obj) return 0;
+    const vis = cansee(mon.mx, mon.my);
+
+    if (obj.oclass === POTION_CLASS) {
+        if (objdescr_is(obj, 'milky')) {
+            const mv = game.mvitals?.[PM_GHOST];
+            if (!((mv?.mvflags ?? 0) & G_GONE)
+                && !rn2(POTION_OCCUPANT_CHANCE(mv?.born ?? 0))) {
+                const cc = { x: 0, y: 0 };
+                if (!enexto(cc, mon.mx, mon.my, mons(PM_GHOST))) return 0;
+                await mquaffmsg(mon, obj);
+                m_useup(mon, obj);
+                const mtmp = makemon(mons(PM_GHOST), cc.x, cc.y, MM_NOMSG);
+                if (!mtmp) {
+                    if (vis) await pline('The potion turns out to be empty.');
+                } else {
+                    if (vis) {
+                        await pline(
+                            `As ${mon_nam(mon)} opens the bottle, an enormous ghost emerges!`,
+                        );
+                        await pline(
+                            `${Monnam(mon)} is frightened to death, and unable to move.`,
+                        );
+                    }
+                    mon.mfrozen = (mon.mfrozen | 0) + 3;
+                    mon.mcanmove = 0;
+                }
+                return 2;
+            }
+        }
+        if (objdescr_is(obj, 'smoky')
+            && !((game.mvitals?.[PM_DJINNI]?.mvflags ?? 0) & G_GONE)
+            && !rn2(POTION_OCCUPANT_CHANCE(game.mvitals?.[PM_DJINNI]?.born ?? 0))) {
+            // Djinni occupant — enexto/makemon/wish deferred; burn like empty
+            const cc = { x: 0, y: 0 };
+            if (!enexto(cc, mon.mx, mon.my, mons(PM_DJINNI))) return 0;
+            await mquaffmsg(mon, obj);
+            m_useup(mon, obj);
+            const mtmp = makemon(mons(PM_DJINNI), cc.x, cc.y, MM_NOMSG);
+            if (!mtmp) {
+                if (vis) await pline('The potion turns out to be empty.');
+            } else {
+                // verbalize / rn2(2) peaceful — named omission beyond makemon
+                if (!rn2(2)) {
+                    mtmp.mpeaceful = 1;
+                }
+            }
+            return 2;
+        }
+    }
     if (obj.oclass === WAND_CLASS && obj.cursed
         && !rn2(WAND_BACKFIRE_CHANCE)) {
         d((obj.spe | 0) + 2, 6);
@@ -512,6 +724,62 @@ function precheck(mon, obj) {
         return 0;
     }
     return 0;
+}
+
+/**
+ * C ref: muse.c use_defensive — healing potions (D-0610).
+ * Teleport/stairs/traps/bugle/horn/create arms deferred.
+ */
+export async function use_defensive(mtmp) {
+    const m = museState();
+    const otmp = m.defensive;
+    const i = await precheck(mtmp, otmp);
+    if (i !== 0) return i;
+    const vismon = canseemon(mtmp);
+    const oseen = !!(otmp && vismon);
+
+    switch (m.has_defense) {
+    case MUSE_POT_HEALING: {
+        if (!otmp) return 0;
+        await mquaffmsg(mtmp, otmp);
+        const heal = d(6 + 2 * bcsign(otmp), 4);
+        healmon(mtmp, heal, 1);
+        if (!otmp.cursed && !mtmp.mcansee) await mcureblindness(mtmp, vismon);
+        if (vismon) await pline(`${Monnam(mtmp)} looks better.`);
+        if (oseen) makeknown(POT_HEALING);
+        m_useup(mtmp, otmp);
+        return 2;
+    }
+    case MUSE_POT_EXTRA_HEALING: {
+        if (!otmp) return 0;
+        await mquaffmsg(mtmp, otmp);
+        const heal = d(6 + 2 * bcsign(otmp), 8);
+        healmon(mtmp, heal, otmp.blessed ? 5 : 2);
+        if (!mtmp.mcansee) await mcureblindness(mtmp, vismon);
+        if (vismon) await pline(`${Monnam(mtmp)} looks much better.`);
+        if (oseen) makeknown(POT_EXTRA_HEALING);
+        m_useup(mtmp, otmp);
+        return 2;
+    }
+    case MUSE_POT_FULL_HEALING: {
+        if (!otmp) return 0;
+        await mquaffmsg(mtmp, otmp);
+        // Pestilence sickness unbless deferred
+        healmon(mtmp, mtmp.mhpmax | 0, otmp.blessed ? 8 : 4);
+        if (!mtmp.mcansee && otmp.otyp !== POT_SICKNESS) {
+            await mcureblindness(mtmp, vismon);
+        }
+        if (vismon) await pline(`${Monnam(mtmp)} looks completely healed.`);
+        if (oseen) makeknown(otmp.otyp);
+        m_useup(mtmp, otmp);
+        return 2;
+    }
+    case 0:
+        return 0;
+    default:
+        // Selected but body deferred — spend the turn like a successful use
+        return 2;
+    }
 }
 
 /**
@@ -587,7 +855,7 @@ export function mon_adjust_speed(mon, adjust, _obj) {
 export async function use_misc(mtmp) {
     const m = museState();
     const otmp = m.misc;
-    const i = precheck(mtmp, otmp);
+    const i = await precheck(mtmp, otmp);
     if (i !== 0) return i;
     if (!m.has_misc || !m.misc) return 0;
 

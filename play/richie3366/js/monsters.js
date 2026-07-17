@@ -91,6 +91,7 @@ export const M2_GREEDY = 0x10000000; /* monflag.h — likes gold */
 export const M2_JEWELS = 0x20000000; /* monflag.h — likes gems */
 export const M2_COLLECT = 0x40000000; /* monflag.h — picks up weapons/food */
 export const M2_MAGIC = 0x80000000; /* monflag.h — picks up magic items */
+export const M2_NOPOLY = 0x00000001; /* monflag.h — players mayn't poly into */
 export const M2_UNDEAD = 0x00000002; /* monflag.h — walking dead */
 export const M2_WERE = 0x00000004; /* monflag.h — is a lycanthrope */
 export const M2_LORD = 0x00000400;
@@ -453,6 +454,17 @@ export function is_demon(ptr) {
 export function is_were(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_WERE);
 }
+/** C ref: mondata.h polyok — !(mflags2 & M2_NOPOLY) */
+export function polyok(ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_NOPOLY) === 0;
+}
+
+/** C ref: mondata.h is_mplayer — role monsters Archeologist..Wizard */
+export function is_mplayer(ptr) {
+    const mndx = ptr?.mndx ?? NON_PM;
+    return mndx >= PM_ARCHEOLOGIST && mndx <= PM_WIZARD;
+}
+
 /** C ref: mondata.h is_shapeshifter — M2_SHAPESHIFTER */
 export function is_shapeshifter(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_SHAPESHIFTER);

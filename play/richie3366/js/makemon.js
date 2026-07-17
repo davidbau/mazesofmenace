@@ -56,8 +56,12 @@ import {
     passes_walls,
     noncorporeal,
     is_golem,
+    humanoid,
+    polyok,
+    is_mplayer,
     M3_CLOSE, M3_WAITFORU,
 } from './monsters.js';
+import { big_to_little } from './mondata.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
     MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
@@ -676,17 +680,161 @@ function pickvampshape(mon) {
 }
 
 /**
- * C ref: mon.c select_newcham_form — vampshifter arm only.
- * Named omissions: sandestin/doppel/chameleon/dragon-armor/random arms.
+ * C ref: wizard.c nasties[] — pick_nasty ROLL_FROM pool.
+ */
+const NASTIES = [
+    pm('COCKATRICE'), pm('ETTIN'), pm('STALKER'), pm('MINOTAUR'),
+    pm('OWLBEAR'), pm('PURPLE_WORM'), pm('XAN'), pm('UMBER_HULK'),
+    pm('XORN'), pm('ZRUTY'), pm('LEOCROTTA'), pm('BALUCHITHERIUM'),
+    pm('CARNIVOROUS_APE'), pm('FIRE_ELEMENTAL'), pm('JABBERWOCK'),
+    pm('IRON_GOLEM'), pm('OCHRE_JELLY'), pm('GREEN_SLIME'),
+    pm('DISPLACER_BEAST'), pm('GENETIC_ENGINEER'),
+    pm('BLACK_DRAGON'), pm('RED_DRAGON'), pm('ARCH_LICH'),
+    pm('VAMPIRE_LEADER'), pm('MASTER_MIND_FLAYER'), pm('DISENCHANTER'),
+    pm('WINGED_GARGOYLE'), pm('STORM_GIANT'), pm('OLOG_HAI'),
+    pm('ELF_NOBLE'), pm('ELVEN_MONARCH'), pm('OGRE_TYRANT'),
+    pm('CAPTAIN'), pm('GREMLIN'),
+    pm('SILVER_DRAGON'), pm('ORANGE_DRAGON'), pm('GREEN_DRAGON'),
+    pm('YELLOW_DRAGON'), pm('GUARDIAN_NAGA'), pm('FIRE_GIANT'),
+    pm('ALEAX'), pm('COUATL'), pm('HORNED_DEVIL'), pm('BARBED_DEVIL'),
+];
+
+/**
+ * C ref: wizard.c pick_nasty — ROLL_FROM(nasties) + geno/difcap/hell alt.
+ * Named omissions: rogue monsym uppercase retry; juvenile name-string gate
+ * on big_to_little alt (always accept non-geno alt).
+ */
+function pick_nasty(difcap) {
+    let res = NASTIES[rn2(NASTIES.length)];
+    // Rogue uppercase re-ROLL deferred (monsym table not wired here)
+    let alt = res;
+    const inHell = (game.u?.uz?.dnum | 0) === GEHENNOM;
+    if (((game.mvitals?.[res]?.mvflags ?? 0) & G_GENOD) !== 0
+        || (difcap > 0 && (mons(res)?.difficulty ?? 0) >= difcap)
+        || ((mons(res)?.geno ?? 0) & (inHell ? G_NOHELL : G_HELL)) !== 0) {
+        alt = big_to_little(res);
+    }
+    if (alt !== res && ((game.mvitals?.[alt]?.mvflags ?? 0) & G_GENOD) === 0) {
+        res = alt;
+    }
+    return res;
+}
+
+/**
+ * C ref: topten.c get_rnd_toptenentry — no RECORD VFS; consume rnd(10) then
+ * null (empty-scorefile footprint after successful open).
+ */
+function get_rnd_toptenentry() {
+    rnd(10); // sysopt.tt_oname_maxrank default
+    return null;
+}
+
+/**
+ * C ref: topten.c tt_doppel — role form from topten or rn1 Archeologist..Wizard.
+ * Named omissions: plgend/classmon/christen when RECORD has entries.
+ */
+function tt_doppel(_mon) {
+    const tt = rn2(13) ? get_rnd_toptenentry() : null;
+    if (!tt) {
+        return rn1(pm('WIZARD') - pm('ARCHEOLOGIST') + 1, pm('ARCHEOLOGIST'));
+    }
+    return pm('ARCHEOLOGIST'); // unreachable until RECORD stub returns entries
+}
+
+/** Lazy animal_list for pick_animal — C mon.c mon_animal_list. */
+let animal_list = null;
+
+function ensure_animal_list() {
+    if (animal_list) return;
+    const tmp = [];
+    for (let i = LOW_PM; i < SPECIAL_PM; i++) {
+        if (is_animal(mons(i))) tmp.push(i);
+    }
+    animal_list = tmp;
+}
+
+/**
+ * C ref: mon.c pick_animal — animal_list[rn2(count)]; rogue retry deferred.
+ */
+function pick_animal() {
+    ensure_animal_list();
+    return animal_list[rn2(animal_list.length)] ?? NON_PM;
+}
+
+/**
+ * C ref: mon.c accept_newcham_form — geno/placeholder/mplayer/shapeshifter/polyok.
+ */
+function accept_newcham_form(mon, mndx) {
+    if (mndx === NON_PM) return null;
+    const mdat = mons(mndx);
+    if (!mdat) return null;
+    if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0) return null;
+    if (is_placeholder(mdat)) return null;
+    if (is_mplayer(mdat)) return mdat;
+    if (is_shapeshifter(mdat)
+        && (mon.cham | 0) >= LOW_PM
+        && mdat.mndx === (mon.cham | 0)) {
+        return mdat;
+    }
+    return polyok(mdat) ? mdat : null;
+}
+
+/**
+ * C ref: mon.c validspecmon — accept_newcham_form; isspecmon notake/nohead
+ * named omission (ordinary doppel at mklev is never isspecmon).
+ */
+function validspecmon(mon, mndx) {
+    if (mndx === NON_PM) return true;
+    return !!accept_newcham_form(mon, mndx);
+}
+
+/**
+ * C ref: mon.c select_newcham_form — sandestin/doppel/cham/vamp + random.
+ * Named omissions: dragon-armor ordinary arm (which_armor); wizard
+ * mon_polycontrol; rogue uppercase bias in random loop.
  */
 function select_newcham_form(mon) {
+    let mndx = NON_PM;
     const cham = mon.cham | 0;
-    if (cham === pm('VLAD_THE_IMPALER')
+
+    if (cham === pm('SANDESTIN')) {
+        if (rn2(7)) {
+            mndx = pick_nasty((mons(pm('ARCHON'))?.difficulty ?? 0) - 1);
+        }
+    } else if (cham === pm('DOPPELGANGER')) {
+        if (!rn2(7)) {
+            mndx = pick_nasty((mons(pm('JABBERWOCK'))?.difficulty ?? 0) - 1);
+        } else if (rn2(3)) {
+            mndx = tt_doppel(mon);
+        } else if (!rn2(3)) {
+            mndx = rn1(pm('APPRENTICE') - pm('STUDENT') + 1, pm('STUDENT'));
+            const guard = game.urole?.guardnum ?? NON_PM;
+            if (mndx === guard) mndx = NON_PM;
+        } else {
+            let tryct = 5;
+            do {
+                mndx = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+                const md = mons(mndx);
+                if (md && humanoid(md) && polyok(md)) break;
+            } while (--tryct > 0);
+            if (!tryct) mndx = NON_PM;
+        }
+    } else if (cham === pm('CHAMELEON')) {
+        if (!rn2(3)) mndx = pick_animal();
+    } else if (cham === pm('VLAD_THE_IMPALER')
         || cham === pm('VAMPIRE_LEADER')
         || cham === pm('VAMPIRE')) {
-        return pickvampshape(mon);
+        mndx = pickvampshape(mon);
     }
-    return NON_PM;
+    // NON_PM ordinary / dragon armor — deferred (which_armor)
+
+    if (mndx === NON_PM) {
+        let tryct = 50;
+        do {
+            mndx = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+        } while (--tryct > 0 && !validspecmon(mon, mndx));
+    }
+    return mndx;
 }
 
 /**
@@ -702,9 +850,9 @@ function mgender_from_permonst(mtmp, mdat) {
 }
 
 /**
- * C ref: mon.c newcham — vampshifter subset for makemon / waiting revert.
+ * C ref: mon.c newcham — random form via select_newcham_form/accept.
  * Named omissions: message/polyspot/worm/mimic/leash/light/inventory arms;
- * non-vamp select_newcham_form; Protection_from_shape_changers cancel path.
+ * Protection_from_shape_changers cancel path; endgame mplayer rank strip.
  * @returns {boolean} true if form changed
  */
 export function newcham(mtmp, mdat, _ncflags = 0) {
@@ -719,11 +867,9 @@ export function newcham(mtmp, mdat, _ncflags = 0) {
         let tryct = 20;
         do {
             const mndx = select_newcham_form(mtmp);
-            if (mndx !== NON_PM && mndx >= LOW_PM
-                && ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) === 0) {
-                target = mons(mndx);
-                break;
-            }
+            target = accept_newcham_form(mtmp, mndx);
+            // Rogue uppercase bias on first tries — deferred (monsym)
+            if (target) break;
         } while (--tryct > 0);
         if (!target) return false;
     } else {
@@ -1758,6 +1904,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
     // C: ptr->msound == MS_LEADER && quest_info(MS_LEADER) == mndx
     const ldr = game.urole?.ldrnum ?? NON_PM;
+    const nem = game.urole?.neminum ?? NON_PM;
     if (ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0)) {
         if (!game.quest_status) game.quest_status = {};
         game.quest_status.leader_m_id = mtmp.m_id;
@@ -1768,6 +1915,11 @@ export function makemon(mdat, x, y, mmflags = 0) {
     const femaleok = !is_male(ptr) && !is_neuter(ptr);
     if (is_female(ptr)) mtmp.female = 1;
     else if (is_male(ptr)) mtmp.female = 0;
+    // C: MS_LEADER/MS_NEMESIS gender from role_init (quest_status)
+    else if (ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0))
+        mtmp.female = game.quest_status?.ldrgend | 0;
+    else if (nem !== NON_PM && nem != null && (ptr.mndx | 0) === (nem | 0))
+        mtmp.female = game.quest_status?.nemgend | 0;
     else mtmp.female = femaleok ? rn2(2) : 0;
 
     mtmp.mpeaceful = peace_minded(ptr) ? 1 : 0;
@@ -1846,13 +1998,15 @@ export function makemon(mdat, x, y, mmflags = 0) {
             mtmp.msleeping = 1;
     }
 
-    // C ref: makemon.c — cham / Vlad candelabrum / Wizard iswiz / newcham.
-    // Named omissions: Croesus/nemesis/pestilence mitem; first-Wizard
-    // SPE_DIG on earth; Protection_from_shape_changers; non-vamp newcham.
+    // C ref: makemon.c — cham / Vlad candelabrum / Wizard iswiz / newcham /
+    // Croesus / MS_NEMESIS bell / Pestilence. Named omissions: first-Wizard
+    // SPE_DIG on earth; Protection_from_shape_changers.
     let allow_minvent_local = allow_minvent;
     let mitem = -1; // STRANGE_OBJECT
     const PM_VLAD = pm('VLAD_THE_IMPALER');
     const PM_WIZ = pm('WIZARD_OF_YENDOR');
+    const PM_CROESUS = pm('CROESUS');
+    const PM_PESTILENCE = pm('PESTILENCE');
     if (ptr.mndx === PM_VLAD) mitem = otyp('CANDELABRUM_OF_INVOCATION');
     mtmp.cham = NON_PM;
     {
@@ -1870,6 +2024,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
         if (!game.context) game.context = {};
         game.context.no_of_wizards = (game.context.no_of_wizards | 0) + 1;
         // SPE_DIG when first Wizard on earth — deferred (fire/air/water first)
+    } else if (ptr.mndx === PM_CROESUS) {
+        mitem = otyp('TWO_HANDED_SWORD');
+    } else if (nem !== NON_PM && nem != null && (ptr.mndx | 0) === (nem | 0)) {
+        // C: ptr->msound == MS_NEMESIS (tables omit msound → urole.neminum)
+        mitem = otyp('BELL_OF_OPENING');
+    } else if (ptr.mndx === PM_PESTILENCE) {
+        mitem = otyp('POT_SICKNESS');
     }
     if (mitem >= 0 && allow_minvent_local) mongets(mtmp, mitem);
 

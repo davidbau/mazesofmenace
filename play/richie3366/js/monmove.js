@@ -25,7 +25,7 @@ import {
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
 import { objects_at, obj_extract_self, splitobj } from './mkobj.js';
-import { find_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
+import { find_defensive, use_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
 import { hero_conflict, resist_conflict } from './mondata.js';
 import {
     mintrap,
@@ -1204,9 +1204,14 @@ export async function m_move(mtmp, after) {
     const flag = mon_allowflags(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
     const cnt = mfndpos(mtmp, mfp, flag);
-    if (cnt === 0) {
+    // C ref: monmove.c m_move — cnt==0 tryescape defensive use (not unicorns)
+    if (cnt === 0 && !(ptr?.mlet === 'S_UNICORN' && likes_gems(ptr))) {
+        if (find_defensive(mtmp, true) && (await use_defensive(mtmp))) {
+            return MMOVE_DONE;
+        }
         return MMOVE_NOMOVES;
     }
+    if (cnt === 0) return MMOVE_NOMOVES;
 
     let nix = omx;
     let niy = omy;
@@ -1332,7 +1337,7 @@ export async function dochug(mtmp) {
 
     // C: find_defensive / find_misc before movement phase
     if (find_defensive(mtmp, false)) {
-        // use_defensive body deferred — treat as not spent
+        if ((await use_defensive(mtmp)) !== 0) return 1;
     } else if (find_misc(mtmp)) {
         if ((await use_misc(mtmp)) !== 0) return 1;
     }
@@ -1382,7 +1387,10 @@ export async function dochug(mtmp) {
             /* Monsters can move and then shoot on same turn;
                C: ranged_attk_available || AT_WEAP || find_offensive */
             if (nearby
-                || !(is_armed(mdat) || find_offensive(mtmp))) {
+                || !(ranged_attk_available(mtmp)
+                    || is_armed(mdat)
+                    || find_offensive(mtmp))) {
+                // C: engulfing_u → mattacku deferred
                 return 0;
             }
             // else fall through to PHASE FOUR
