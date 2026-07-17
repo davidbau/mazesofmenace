@@ -33,7 +33,7 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
-import { otyp_uses_known } from './objnam.js';
+import { otyp_uses_known, distant_name, doname } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
@@ -1122,9 +1122,12 @@ export function place_object(otmp, x, y) {
 }
 
 /**
- * C ref: steal.c relobj(mtmp, show, FALSE) via mon.c m_detach(due_to_death).
- * Drop entire minvent onto the map (non-pet death). Vault-guard gold and
- * flooreffects omitted; caller issues newsym.
+ * C ref: steal.c relobj(mtmp, show, FALSE) via mon.c m_detach(due_to_death)
+ * → mdrop_obj per minvent head. Vault-guard gold and flooreffects omitted;
+ * caller issues newsym.
+ *
+ * C mdrop_obj calls distant_name(obj, doname) *before* extract for observe
+ * side-effects (disco order = minvent order, not reverse pile order).
  */
 export function relobj_on_death(mtmp) {
     if (!mtmp) return;
@@ -1132,6 +1135,8 @@ export function relobj_on_death(mtmp) {
     const omy = mtmp.my | 0;
     while (mtmp.minvent) {
         const otmp = mtmp.minvent;
+        // C: distant_name even when !verbosely — observe while still MINVENT
+        distant_name(otmp, doname);
         obj_extract_self(otmp);
         if (otmp.owornmask) otmp.owornmask = 0;
         if (mtmp.mw === otmp) mtmp.mw = null;

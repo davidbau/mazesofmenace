@@ -21,7 +21,7 @@ import {
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, Upolyd, HAND,
 } from './const.js';
-import { retouch_object } from './artifact.js';
+import { retouch_object, set_artifact_intrinsic } from './artifact.js';
 import { makeknown, encumber_msg, compactify_invlets } from './invent.js';
 import { uncurse, weight } from './mkobj.js';
 import { trycall } from './do_name.js';
@@ -112,8 +112,8 @@ export function welded(obj) {
 }
 
 /**
- * C ref: wield.c setuwep — W_WEP slot only; Ogresmasher/Sunsword light
- * and full setworn prop wiring deferred.
+ * C ref: wield.c setuwep — W_WEP slot + set_artifact_intrinsic on/off.
+ * Ogresmasher/Sunsword light deferred.
  */
 export function setuwep(obj) {
     const u = game.u || (game.u = {});
@@ -121,6 +121,8 @@ export function setuwep(obj) {
     if (obj === olduwep) return;
 
     if (olduwep) {
+        // C worn.c setworn: set_artifact_intrinsic(oobj, 0, mask) before clear
+        if (olduwep.oartifact) set_artifact_intrinsic(olduwep, false, W_WEP);
         olduwep.owornmask = (olduwep.owornmask || 0) & ~W_WEP;
     }
     if (obj) {
@@ -135,6 +137,8 @@ export function setuwep(obj) {
         }
         obj.owornmask = (obj.owornmask || 0) | W_WEP;
         u.uwep = obj;
+        // C: set_artifact_intrinsic(obj, 1, W_WEP) after wear
+        if (obj.oartifact) set_artifact_intrinsic(obj, true, W_WEP);
         // C: gu.unweapon for launchers/ammo/missiles/poles/non-weptools
         if (!game.gu) game.gu = {};
         game.gu.unweapon = (obj.oclass === WEAPON_CLASS)

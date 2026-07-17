@@ -38,6 +38,7 @@ import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
 } from './mkobj.js';
 import { monnear, record_mvitals_died, seemimic, wakeup } from './mon.js';
+import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { mon_explodes } from './explode.js';
@@ -512,8 +513,9 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
             if (!rn2(25)
                 && (mon.mhp | 0) < Math.trunc((mon.mhpmax | 0) / 2)
                 && !engulfing_u(mon)) {
-                // monflee — duration !rn2(3)?rnd(100):0 deferred body
-                if (!rn2(3)) rnd(100);
+                // C: monflee(mon, !rn2(3) ? rnd(100) : 0, FALSE, TRUE)
+                await monflee(mon, !rn2(3) ? rnd(100) : 0, false, true);
+                // C: ustuck release when !uswallow && !sticks — deferred
             }
         }
     }

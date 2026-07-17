@@ -67,11 +67,13 @@ import {
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     IS_DOOR,
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD,
-    P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD,
-    P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL, P_QUARTERSTAFF,
-    P_SPEAR, P_TRIDENT, P_LANCE, P_BOW, P_SLING, P_CROSSBOW,
-    P_DART, P_SHURIKEN, P_BOOMERANG, P_UNICORN_HORN,
-    P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT,
+    P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD, P_SABER,
+    P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL, P_HAMMER, P_QUARTERSTAFF,
+    P_POLEARMS, P_SPEAR, P_TRIDENT, P_LANCE, P_BOW, P_SLING, P_CROSSBOW,
+    P_DART, P_SHURIKEN, P_BOOMERANG, P_WHIP, P_UNICORN_HORN,
+    P_ATTACK_SPELL, P_HEALING_SPELL, P_DIVINATION_SPELL,
+    P_ENCHANTMENT_SPELL, P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
+    P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_RIDING,
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED,
     P_EXPERT, P_MASTER, P_GRAND_MASTER,
     W_ARMOR, W_AMUL, W_RING, W_TOOL, W_SADDLE,
@@ -83,6 +85,7 @@ import {
     LEFT_SIDE,
     RIGHT_SIDE,
     TELEPORT_CONTROL,
+    HALLUC_RES, SEARCHING, REFLECTING, LIFESAVED,
 } from './const.js';
 import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
@@ -1066,12 +1069,28 @@ function skill_name(skill) {
         return (m === PM_SAMURAI || m === PM_MONK)
             ? 'martial arts' : 'bare handed combat';
     }
+    // C: odd_skill_names[] for skills without a representative otyp
+    const odd = {
+        [P_SABER]: 'saber',
+        [P_HAMMER]: 'hammer',
+        [P_POLEARMS]: 'polearms',
+        [P_WHIP]: 'whip',
+        [P_ATTACK_SPELL]: 'attack spells',
+        [P_HEALING_SPELL]: 'healing spells',
+        [P_DIVINATION_SPELL]: 'divination spells',
+        [P_ENCHANTMENT_SPELL]: 'enchantment spells',
+        [P_CLERIC_SPELL]: 'clerical spells',
+        [P_ESCAPE_SPELL]: 'escape spells',
+        [P_MATTER_SPELL]: 'matter spells',
+        [P_TWO_WEAPON_COMBAT]: 'two weapon combat',
+        [P_RIDING]: 'riding',
+    };
+    if (odd[skill] != null) return odd[skill];
     const otyp = SKILL_NAME_OTYP[skill];
     if (otyp != null && otyp >= 0) {
         const s = objectNameStrs[otyp];
         if (s) return s;
     }
-    // Odd skills (saber/hammer/whip/spells/…) deferred
     return 'weapon';
 }
 
@@ -1279,6 +1298,25 @@ function hero_Sleepy(u = game.u || {}) {
 function hero_Poison_resistance(u = game.u || {}) {
     return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
         || u.Poison_resistance);
+}
+
+/** C ref: youprop.h Halluc_resistance — H || E via uprops[HALLUC_RES]. */
+function hero_Halluc_resistance(u = game.u || {}) {
+    const e = u.uprops?.[HALLUC_RES];
+    return !!((e?.intrinsic | 0) || (e?.extrinsic | 0)
+        || (u.HHalluc_resistance | 0) || (u.EHalluc_resistance | 0));
+}
+
+/** C ref: youprop.h Reflecting — H || E via uprops[REFLECTING]. */
+function hero_Reflecting(u = game.u || {}) {
+    const e = u.uprops?.[REFLECTING];
+    return !!((e?.intrinsic | 0) || (e?.extrinsic | 0)
+        || (u.HReflecting | 0) || (u.EReflecting | 0));
+}
+
+/** C ref: youprop.h Lifesaved — uprops[LIFESAVED].extrinsic nonzero. */
+function hero_Lifesaved(u = game.u || {}) {
+    return !!((u.uprops?.[LIFESAVED]?.extrinsic | 0));
 }
 
 /** C ref: youprop.h Stealth — (H || E) && !B. */
@@ -1939,7 +1977,7 @@ export async function doattributes() {
     if (magic) {
         const { piousness } = await import('./insight.js');
         const {
-            from_what, Fast, Very_fast,
+            from_what, Fast, Very_fast, Searching,
         } = await import('./attrib.js');
         const { POISON_RES, STEALTH, FAST, TELEPORT_CONTROL } = await import('./const.js');
         const { can_pray } = await import('./pray.js');
@@ -1957,10 +1995,22 @@ export async function doattributes() {
                 'Your alignment ', 'is', ` ${record}`, '',
             )));
         }
-        // Resistances — poison only for now (other resists deferred)
+        // Resistances — poison + Halluc_resistance (other resists deferred)
         if (hero_Poison_resistance(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', 'poison resistant', from_what(POISON_RES),
+            )));
+        }
+        // C: if (Halluc_resistance) enl_msg(You_, "resist", … " hallucinations", …)
+        if (hero_Halluc_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'resist', ' hallucinations', from_what(HALLUC_RES),
+            )));
+        }
+        // Vision — Searching (other senses deferred)
+        if (Searching()) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'have ', 'automatic searching', from_what(SEARCHING),
             )));
         }
         // Appearance — Stealth (blocked-Stealth arm deferred)
@@ -1976,7 +2026,7 @@ export async function doattributes() {
                 'You ', 'have ', 'teleport control', from_what(TELEPORT_CONTROL),
             )));
         }
-        // Physical — magic_negation then Fast
+        // Physical — magic_negation then Fast then Reflecting / Lifesaved
         const armpro = magic_negation_you();
         if (armpro > 0) {
             const mc_types = ['', 'warded', 'guarded', 'protected'];
@@ -1988,6 +2038,16 @@ export async function doattributes() {
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', fastAttr, from_what(FAST),
             )));
+        }
+        // C: if (Reflecting) you_have("reflection", from_what(REFLECTING));
+        if (hero_Reflecting(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'have ', 'reflection', from_what(REFLECTING),
+            )));
+        }
+        // C: if (Lifesaved) enl_msg("Your life ", "will be", … " saved", "");
+        if (hero_Lifesaved(u)) {
+            lines.push(o(enlght_line_txt('Your life ', 'will be', ' saved', '')));
         }
         // Luck — zero line is wizard-only; nonzero lucky/unlucky for all magic
         const luck = (u.uluck | 0) + (u.moreluck | 0);

@@ -29,8 +29,8 @@ import {
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     AIR, CLOUD, THRONE, TREE, DRAWBRIDGE_UP, LADDER, LA_DOWN, LA_UP,
     MAX_TYPE, INVALID_TYPE, MATCH_WALL,
-    A_LAWFUL, A_NONE, Align2amask, Amask2align, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC,
-    AM_SHRINE, MM_EPRI, N_DIRS, W_ARMC, RLOC_NOMSG,
+    A_LAWFUL, A_NONE, Align2amask, Amask2align, AM_NONE, AM_LAWFUL, AM_NEUTRAL,
+    AM_CHAOTIC, AM_SHRINE, MM_EPRI, N_DIRS, W_ARMC, RLOC_NOMSG,
     FILL_LVFLAGS, STRAT_WAITFORU, NON_PM, ONAME_LEVEL_DEF,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH,
     LR_TELE, LR_UPTELE, LR_DOWNTELE,
@@ -94,6 +94,7 @@ import { christen_monst, oname } from './do_name.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
 import { find_level } from './dungeon.js';
 import { premap_detect } from './detect.js';
+import { create_gas_cloud } from './region.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -120,6 +121,7 @@ const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
 const MACE = objectNames.indexOf('MACE');
+const ROBE = objectNames.indexOf('ROBE');
 const RUNESWORD = objectNames.indexOf('RUNESWORD');
 const CHAIN_MAIL = objectNames.indexOf('CHAIN_MAIL');
 const FEDORA = objectNames.indexOf('FEDORA');
@@ -655,12 +657,12 @@ function reset_xystart_size() {
 
 /**
  * C ref: mkmaze.c makemaz — build protofile (rndlevs → rnd), load_special,
- * else maze fallback. Ported loaders: minefill, tut-1, bigrm-2, bigrm-8,
- * Bar-strt, Bar-loca, Bar-fila, Bar-filb, Arc-strt, Arc-loca, Arc-fila,
- * Arc-filb, Arc-goal, soko1-1, soko1-2, soko2-1, soko3-1, soko3-2, soko4-2,
- * tower1, fire, air, minend-1.
+ * else maze fallback. Ported loaders: minefill, tut-1, bigrm-2, bigrm-7,
+ * bigrm-8, Bar-strt, Bar-loca, Bar-fila, Bar-filb, Arc-strt, Arc-loca,
+ * Arc-fila, Arc-filb, Arc-goal, soko1-1, soko1-2, soko2-1, soko3-1, soko3-2,
+ * soko4-2, tower1, fire, air, minend-1.
  * Named omissions: other bigrm-N / soko2-2 / soko4-1 / quest
- * protos (Bar-goal, Pri-*); minend-2/3; tower2/3;
+ * protos (Bar-goal, Pri-fila/filb/loca/goal); minend-2/3; tower2/3;
  * water/earth/astral; create_maze fallback; check_ransacked side
  * effects beyond ransacked flag; dmonsfree.
  */
@@ -732,12 +734,20 @@ function load_special_proto(protofile) {
         load_bigrm_2();
         return true;
     }
+    if (protofile === 'bigrm-7') {
+        load_bigrm_7();
+        return true;
+    }
     if (protofile === 'bigrm-8') {
         load_bigrm_8();
         return true;
     }
     if (protofile === 'Bar-strt') {
         load_bar_strt();
+        return true;
+    }
+    if (protofile === 'Pri-strt') {
+        load_pri_strt();
         return true;
     }
     if (protofile === 'Arc-strt') {
@@ -954,6 +964,84 @@ function load_bigrm_2() {
     // C load_special: wallification when !corrmaze; fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
+    fixup_special();
+}
+
+/**
+ * C ref: dat/bigrm-7.lua via load_special.
+ * Named omissions: ensure_way_out / solidify / premap; other bigrm-N.
+ */
+function load_bigrm_7() {
+    const g = game;
+    nhlib_shuffle_align();
+    splev_initlev({
+        init_style: LVLINIT_SOLIDFILL,
+        filling: STONE,
+        lit: BOOL_RANDOM,
+        icedpools: false,
+    });
+    if (!g.level.flags) g.level.flags = {};
+    g.level.flags.is_maze_lev = true;
+    // des.level_flags("mazelevel") — allow_flips stays default 3 (no noflip)
+
+    // Exact dat/bigrm-7.lua des.map (19×75, trailing spaces pad width)
+    const BIGRM7_MAP = [
+        '                                                        -----              ',
+        '                                                ---------...---            ',
+        '                                        ---------.........L...---          ',
+        '                                ---------.......................---        ',
+        '                        ---------.................................---      ',
+        '                ---------...........................................---    ',
+        '        ---------.....................................................---  ',
+        '---------...............................................................---',
+        '|.........................................................................|',
+        '|.L.....................................................................L.|',
+        '|.........................................................................|',
+        '---...............................................................---------',
+        '  ---.....................................................---------        ',
+        '    ---...........................................---------                ',
+        '      ---.................................---------                        ',
+        '        ---.......................---------                                ',
+        '          ---...L.........---------                                        ',
+        '            ---...---------                                                ',
+        '              -----                                                        ',
+    ].join('\n');
+    splev_apply_centered_map(BIGRM7_MAP);
+
+    // terrain = { "L", "T", "{", "." }; tidx = math.random(1, #terrain)
+    // replace_terrain region {00,00,74,18} fromterrain L → terrain[tidx]
+    {
+        const terrain = [LAVAPOOL, TREE, FOUNTAIN, ROOM];
+        const tidx = lua_random2(1, terrain.length) - 1;
+        lspo_replace_terrain_region(0, 0, 74, 18, LAVAPOOL, terrain[tidx], 100);
+    }
+
+    // des.region(selection.area(01,01,73,17),"lit")
+    {
+        const mx = g.splev_xstart ?? 1;
+        const my = g.splev_ystart ?? 0;
+        light_region(mx + 1, my + 1, mx + 73, my + 17, true);
+    }
+
+    splev_create_stair(true);
+    splev_create_stair(false);
+
+    // des.non_diggable()
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
+        }
+    }
+
+    for (let i = 0; i < 15; i++) splev_create_object(null);
+    for (let i = 0; i < 6; i++) splev_create_trap();
+    for (let i = 0; i < 28; i++) splev_create_monster(null);
+
+    // C load_special: wallification → flip_level_rnd → fixup_special
+    if (!g.level.flags.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
     fixup_special();
 }
 
@@ -1234,6 +1322,213 @@ function load_bar_strt() {
     // C levregion_add then fixup place_lregion oneshot (rn2(1) x2).
     place_lregion(
         mx + 62, my + 2, mx + 62, my + 2,
+        0, 0, 0, 0, LR_BRANCH, null,
+    );
+    fixup_special();
+}
+
+/**
+ * C ref: dat/Pri-strt.lua via load_special — Priest quest start.
+ * Named omissions: spo_end_moninvent m_dowear after Arch Priest invent;
+ * flip_level lregion coord update (same shortcut as Bar-strt);
+ * fill_special_room TEMPLE beyond FILL_LVFLAGS has_temple.
+ */
+function load_pri_strt() {
+    const g = game;
+    nhlib_shuffle_align();
+    splev_initlev({
+        init_style: LVLINIT_SOLIDFILL,
+        filling: STONE,
+        lit: BOOL_RANDOM,
+        icedpools: false,
+    });
+    if (!g.level.flags) g.level.flags = {};
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.noteleport = true;
+    g.level.flags.hardfloor = true;
+
+    const PRI_STRT_MAP = `
+............................................................................
+............................................................................
+............................................................................
+....................------------------------------------....................
+....................|................|.....|.....|.....|....................
+....................|..------------..|--+-----+-----+--|....................
+....................|..|..........|..|.................|....................
+....................|..|..........|..|+---+---+-----+--|....................
+..................---..|..........|......|...|...|.....|....................
+..................+....|..........+......|...|...|.....|....................
+..................+....|..........+......|...|...|.....|....................
+..................---..|..........|......|...|...|.....|....................
+....................|..|..........|..|+-----+---+---+--|....................
+....................|..|..........|..|.................|....................
+....................|..------------..|--+-----+-----+--|....................
+....................|................|.....|.....|.....|....................
+....................------------------------------------....................
+............................................................................
+............................................................................
+............................................................................
+`.replace(/^\n/, '');
+    splev_apply_centered_map(PRI_STRT_MAP);
+
+    const mx = g.splev_xstart ?? 1;
+    const my = g.splev_ystart ?? 0;
+
+    // des.region(selection.area(00,00,75,19), "lit")
+    for (let y = my; y <= my + 19 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    }
+
+    // des.region({ region={24,06, 33,13}, lit=1, type="temple", filled=2 })
+    {
+        const dx1 = mx + 24, dy1 = my + 6, dx2 = mx + 33, dy2 = my + 13;
+        if ((g.level.nroom | 0) < MAXNROFROOMS) {
+            add_room(dx1, dy1, dx2, dy2, true, TEMPLE, true);
+            const troom = g.level.rooms[g.level.nroom - 1];
+            if (troom) {
+                troom.needfill = FILL_LVFLAGS;
+                troom.needjoining = true;
+                topologize(troom);
+            }
+        }
+    }
+
+    // des.replace_terrain forest strips (chance 10)
+    lspo_replace_terrain_region(0, 0, 10, 19, ROOM, TREE, 10);
+    lspo_replace_terrain_region(65, 0, 75, 19, ROOM, TREE, 10);
+
+    // des.terrain({05,04}, ".") — portal/floodfill seed
+    sel_set_ter(mx + 5, my + 4, ROOM, SET_LIT_NOCHANGE);
+
+    // local spacelocs = selection.floodfill(05,04)
+    const spacelocs = selection_new();
+    {
+        const fx = mx + 5, fy = my + 4;
+        const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
+        selection_floodfill(spacelocs, fx, fy, false, matchTyp);
+    }
+
+    // des.stair("down", 52,09)
+    mkstairs(mx + 52, my + 9, 0, null);
+
+    // des.door — C lspo_door → sel_set_door
+    const priDoor = (rx, ry, mask) => {
+        const loc = g.level.at(mx + rx, my + ry);
+        if (!loc) return;
+        if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        loc.doormask = mask;
+        loc.flags = mask;
+    };
+    priDoor(18, 9, D_LOCKED);
+    priDoor(18, 10, D_LOCKED);
+    priDoor(34, 9, D_CLOSED);
+    priDoor(34, 10, D_CLOSED);
+    priDoor(40, 5, D_CLOSED);
+    priDoor(46, 5, D_CLOSED);
+    priDoor(52, 5, D_CLOSED);
+    priDoor(38, 7, D_LOCKED);
+    priDoor(42, 7, D_CLOSED);
+    priDoor(46, 7, D_CLOSED);
+    priDoor(52, 7, D_CLOSED);
+    priDoor(38, 12, D_LOCKED);
+    priDoor(44, 12, D_CLOSED);
+    priDoor(48, 12, D_CLOSED);
+    priDoor(52, 12, D_CLOSED);
+    priDoor(40, 14, D_CLOSED);
+    priDoor(46, 14, D_CLOSED);
+    priDoor(52, 14, D_CLOSED);
+
+    // des.altar({ x=28, y=09, align="noalign", type="altar" })
+    {
+        const loc = g.level.at(mx + 28, my + 9);
+        if (loc) {
+            loc.typ = ALTAR;
+            loc.flags = AM_NONE;
+            loc.altarmask = AM_NONE;
+        }
+    }
+
+    // des.monster({ id = "Arch Priest", coord = {28, 10}, inventory = ... })
+    {
+        find_montype_gender('Arch Priest');
+        induced_align(80);
+        const pmIdx = name_to_mon('Arch Priest');
+        const mtmp = pmIdx >= 0
+            ? makemon(mons(pmIdx), mx + 28, my + 10, 0)
+            : null;
+        if (mtmp) {
+            splev_discard_default_minvent(mtmp);
+            for (const [otyp, spe] of [[ROBE, 4], [MACE, 4]]) {
+                const pos = get_location_random(null);
+                const otmp = mksobj_at(otyp, pos.x, pos.y, true, true);
+                if (!otmp) continue;
+                otmp.spe = spe;
+                otmp.oeroded = 0;
+                otmp.oeroded2 = 0;
+                otmp.oerodeproof = 0;
+                obj_extract_self(otmp);
+                mpickobj(mtmp, otmp);
+            }
+            // spo_end_moninvent → m_dowear deferred
+        }
+    }
+
+    // des.object("chest", 27, 10)
+    mksobj_at(CHEST, mx + 27, my + 10, true, true);
+
+    // des.monster("acolyte", ...)
+    for (const [rx, ry] of [
+        [32, 7], [32, 8], [32, 11], [32, 12],
+        [33, 7], [33, 8], [33, 11], [33, 12],
+    ]) {
+        const { mndx, female } = find_montype_gender('acolyte');
+        induced_align(80);
+        if (mndx < 0 || mndx === NON_PM) continue;
+        const mtmp = makemon(mons(mndx), mx + rx, my + ry, 0);
+        if (mtmp) mtmp.female = female;
+    }
+
+    // des.non_diggable(selection.area(18,03,55,16)) — STWALL/TREE/IRONBARS
+    for (let y = my + 3; y <= my + 16 && y < ROWNO; y++) {
+        for (let x = mx + 18; x <= mx + 55 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (!loc) continue;
+            if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS) {
+                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+            }
+        }
+    }
+
+    // des.trap("dart", spacelocs:rndcoord(1)) × 2
+    for (let i = 0; i < 2; i++) {
+        const pos = selection_rndcoord(spacelocs, true);
+        if (!pos) continue;
+        const ttmp = maketrap(pos.x, pos.y, DART_TRAP);
+        mktrap_seen_victim(ttmp, {});
+    }
+    // des.trap() × 4
+    for (let i = 0; i < 4; i++) splev_create_trap();
+
+    // des.monster("human zombie", spacelocs:rndcoord(1)) × 12
+    for (let i = 0; i < 12; i++) {
+        const pos = selection_rndcoord(spacelocs, true);
+        const { mndx, female } = find_montype_gender('human zombie');
+        induced_align(80);
+        if (!pos || mndx < 0 || mndx === NON_PM) continue;
+        const mtmp = makemon(mons(mndx), pos.x, pos.y, 0);
+        if (mtmp) mtmp.female = female;
+    }
+
+    // C load_special: wallification → flip_level_rnd → fixup_special
+    if (!g.level.flags.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
+    // des.levregion({ region={05,04,05,04}, type="branch" })
+    place_lregion(
+        mx + 5, my + 4, mx + 5, my + 4,
         0, 0, 0, 0, LR_BRANCH, null,
     );
     fixup_special();
@@ -2838,9 +3133,8 @@ function load_soko4_2() {
 
 /**
  * C ref: dat/fire.lua via load_special — Plane of Fire.
- * Named omissions: create_gas_cloud region body (fumaroles burns coords);
- * solidify/premap; water/earth/astral planes. Map load uses SpLev_Map lit
- * epilogue (D-0569) so solidfill BOOL_RANDOM lit does not stick on ROOM.
+ * Named omissions: solidify/premap; water/earth/astral planes; Norep whoosh
+ * on fumaroles. Map load uses SpLev_Map lit epilogue (D-0569).
  */
 function load_fire() {
     const g = game;
@@ -3566,7 +3860,7 @@ function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax) {
 
 /**
  * C ref: mkmaze.c fumaroles — gas-cloud bursts on lava (arrival / moveloop).
- * Named omission: create_gas_cloud region body / Norep whoosh (coord RNG only).
+ * Named omission: Norep whoosh; clear_heros_fault.
  */
 export function fumaroles() {
     const g = game;
@@ -3586,10 +3880,8 @@ export function fumaroles() {
         const x = rn1(COLNO - 4, 3);
         const y = rn1(ROWNO - 4, 3);
         if (g.level.at(x, y)?.typ === LAVAPOOL) {
-            // C: create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5))
-            rn1(10, sizemin);
-            rn1(10, 5);
-            // Norep whoosh deferred
+            create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
+            // Norep whoosh / clear_heros_fault deferred
         }
     }
 }

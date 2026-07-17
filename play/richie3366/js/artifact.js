@@ -32,6 +32,8 @@ import {
     W_ART,
     W_ARTI,
     W_SWAPWEP,
+    W_WEP,
+    HALLUC_RES,
 } from './const.js';
 import { rn2, rnd } from './rng.js';
 
@@ -132,6 +134,59 @@ export function get_artifact(obj) {
     const a = obj.oartifact | 0;
     if (a <= 0 || a > NROFARTIFACTS) return list[0];
     return list[a];
+}
+
+/**
+ * C ref: objnam.c bare_artifactname — artiname with leading "The "→"the ".
+ * Non-artifact falls back to xname-like minimal name via artilist miss.
+ */
+export function bare_artifactname(obj) {
+    if (!obj?.oartifact) return 'something';
+    const art = get_artifact(obj);
+    let name = art?.name || 'something';
+    if (name.length >= 4 && name.slice(0, 4) === 'The ') {
+        name = `the ${name.slice(4)}`;
+    }
+    return name;
+}
+
+/**
+ * C ref: artifact.c set_artifact_intrinsic — SPFX_HALRES subset.
+ * C uses make_hallucinated(xtime=!on, talk, wp_mask) which sets
+ * EHalluc_resistance |= mask when conferring (xtime==0).
+ * Named omissions: defn resist masks; SPFX_SEARCH/ESP/STLTH/REGEN/TCTRL/
+ * WARN/EREGEN/HSPDAM/HPHDAM/REFLECT; see_monsters; message paths.
+ * @param {object} otmp
+ * @param {boolean} on
+ * @param {number} wp_mask
+ */
+export function set_artifact_intrinsic(otmp, on, wp_mask) {
+    if (!otmp?.oartifact) return;
+    const list = artilist();
+    const oart = get_artifact(otmp);
+    if (oart === list[0]) return;
+    // C: spfx = (wp_mask != W_ART) ? oart->spfx : oart->cspfx
+    // cspfx not extracted yet — carried-only props deferred.
+    const spfx = (wp_mask !== W_ART) ? (oart.spfx | 0) : 0;
+    if (spfx & SPFX_HALRES) {
+        // C potion.c make_hallucinated mask arm: !xtime → |= ; xtime → &=~
+        const u = game.u || (game.u = {});
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[HALLUC_RES]) {
+            u.uprops[HALLUC_RES] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        if (on) {
+            u.uprops[HALLUC_RES].extrinsic =
+                (u.uprops[HALLUC_RES].extrinsic | 0) | (wp_mask | 0);
+            u.EHalluc_resistance =
+                (u.EHalluc_resistance | 0) | (wp_mask | 0);
+        } else {
+            u.uprops[HALLUC_RES].extrinsic =
+                (u.uprops[HALLUC_RES].extrinsic | 0) & ~(wp_mask | 0);
+            u.EHalluc_resistance =
+                (u.EHalluc_resistance | 0) & ~(wp_mask | 0);
+        }
+    }
 }
 
 /**
@@ -467,9 +522,10 @@ export function artifact_hit(magr, mdef, otmp, dmgBox, dieroll) {
 
 /**
  * C ref: artifact.c what_gives — first invent item conveying extrinsic.
- * Ported: non-artifact wornmask match (rings/armor/amulet/tool).
- * Named omissions: artifact cary/defn/cspfx/spfx arms; Sunsword EBlnd;
- * abil_to_adtyp / abil_to_spfx.
+ * Ported: artifact SPFX_HALRES when wielded/worn; non-artifact wornmask
+ * match (rings/armor/amulet/tool).
+ * Named omissions: other abil_to_spfx / abil_to_adtyp arms; Sunsword EBlnd;
+ * cary/defn/cspfx beyond HALRES.
  * @param {number} extrinsicBits u.uprops[prop].extrinsic
  * @returns {object|null}
  */
@@ -482,12 +538,26 @@ export function what_gives(extrinsicBits) {
         | W_ART | W_ARTI;
     if (game.u?.twoweap) wornmask |= W_SWAPWEP;
     const wornbits = wornmask & bits;
-    if (!wornbits) return null;
+    // C: abil_to_spfx(&EHalluc_resistance) → SPFX_HALRES; other props 0 here
+    const needSpfx = (bits & (W_WEP | W_SWAPWEP | W_ART | W_ARTI))
+        ? SPFX_HALRES
+        : 0;
+    const list = artilist();
     for (const obj of game.invent || []) {
         if (!obj) continue;
-        // Artifact convey arms deferred — skip so ordinary worn match wins.
-        if (obj.oartifact) continue;
-        if (wornbits === (wornmask & (obj.owornmask | 0))) return obj;
+        if (obj.oartifact) {
+            const art = get_artifact(obj);
+            if (art === list[0]) continue;
+            // C: (art->spfx & spfx) == spfx && obj->owornmask
+            if (needSpfx && ((art.spfx | 0) & needSpfx) === needSpfx
+                && (obj.owornmask | 0)) {
+                return obj;
+            }
+            continue;
+        }
+        if (wornbits && wornbits === (wornmask & (obj.owornmask | 0))) {
+            return obj;
+        }
     }
     return null;
 }

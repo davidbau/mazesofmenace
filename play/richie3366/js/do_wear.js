@@ -8,7 +8,7 @@ import { flush_screen, flush_topl_more, pline } from './display.js';
 import { yn_function } from './getline.js';
 import { an, doname, the, xname, xprname } from './objnam.js';
 import { find_ac } from './u_init.js';
-import { change_luck } from './attrib.js';
+import { change_luck, Fast, Very_fast } from './attrib.js';
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object } from './artifact.js';
 import {
@@ -17,7 +17,8 @@ import {
     W_QUIVER, LEFT_RING, RIGHT_RING,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
-    TIMEOUT, BLINDED,
+    TIMEOUT, BLINDED, FAST,
+    DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
 } from './const.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -46,6 +47,22 @@ const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
 const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
 const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
+const BLACK_DRAGON_SCALES = objectNames.indexOf('BLACK_DRAGON_SCALES');
+const BLACK_DRAGON_SCALE_MAIL = objectNames.indexOf('BLACK_DRAGON_SCALE_MAIL');
+const BLUE_DRAGON_SCALES = objectNames.indexOf('BLUE_DRAGON_SCALES');
+const BLUE_DRAGON_SCALE_MAIL = objectNames.indexOf('BLUE_DRAGON_SCALE_MAIL');
+const GREEN_DRAGON_SCALES = objectNames.indexOf('GREEN_DRAGON_SCALES');
+const GREEN_DRAGON_SCALE_MAIL = objectNames.indexOf('GREEN_DRAGON_SCALE_MAIL');
+const RED_DRAGON_SCALES = objectNames.indexOf('RED_DRAGON_SCALES');
+const RED_DRAGON_SCALE_MAIL = objectNames.indexOf('RED_DRAGON_SCALE_MAIL');
+const GOLD_DRAGON_SCALES = objectNames.indexOf('GOLD_DRAGON_SCALES');
+const GOLD_DRAGON_SCALE_MAIL = objectNames.indexOf('GOLD_DRAGON_SCALE_MAIL');
+const ORANGE_DRAGON_SCALES = objectNames.indexOf('ORANGE_DRAGON_SCALES');
+const ORANGE_DRAGON_SCALE_MAIL = objectNames.indexOf('ORANGE_DRAGON_SCALE_MAIL');
+const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
+const WHITE_DRAGON_SCALES = objectNames.indexOf('WHITE_DRAGON_SCALES');
+const WHITE_DRAGON_SCALE_MAIL = objectNames.indexOf('WHITE_DRAGON_SCALE_MAIL');
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat
 const ARM_SUIT = 0;
@@ -215,11 +232,104 @@ function confer_oc_oprop(obj, mask, on) {
     if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     if (on) u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) | mask;
     else u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) & ~mask;
-    // C youprop.h EBlinded ≡ uprops[BLINDED].extrinsic — Blind() readers
-    // still use the flat field (D-0574 named mirror omission for others).
+    // C youprop.h EBlinded/EFast ≡ uprops[].extrinsic — flat-field readers.
     if (p === BLINDED) {
         if (on) u.EBlinded = (u.EBlinded | 0) | mask;
         else u.EBlinded = (u.EBlinded | 0) & ~mask;
+    } else if (p === FAST) {
+        if (on) u.EFast = (u.EFast | 0) | mask;
+        else u.EFast = (u.EFast | 0) & ~mask;
+    }
+}
+
+/**
+ * C ref: youprop.h E* macros — write uprops[prop].extrinsic + flat mirror.
+ * @param {number} propIdx
+ * @param {string} flatField
+ * @param {number} mask
+ * @param {boolean} on
+ */
+function set_extrinsic_bit(propIdx, flatField, mask, on) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[propIdx]) {
+        u.uprops[propIdx] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    if (on) {
+        u.uprops[propIdx].extrinsic = (u.uprops[propIdx].extrinsic | 0) | mask;
+        u[flatField] = (u[flatField] | 0) | mask;
+    } else {
+        u.uprops[propIdx].extrinsic = (u.uprops[propIdx].extrinsic | 0) & ~mask;
+        u[flatField] = (u[flatField] | 0) & ~mask;
+    }
+}
+
+/**
+ * C ref: do_wear.c dragon_armor_handling — suit/scales special extrinsics.
+ * Named omissions: gold make_hallucinated; red see_monsters; yellow
+ * wielding_corpse on doff; artifact_light begin_burn/end_burn in Armor_*.
+ * @param {object|null} otmp
+ * @param {boolean} puton
+ * @param {boolean} [_on_purpose=true]
+ */
+async function dragon_armor_handling(otmp, puton, _on_purpose = true) {
+    if (!otmp) return;
+    const otyp = otmp.otyp | 0;
+    switch (otyp) {
+        case BLACK_DRAGON_SCALES:
+        case BLACK_DRAGON_SCALE_MAIL:
+            set_extrinsic_bit(DRAIN_RES, 'EDrain_resistance', W_ARM, puton);
+            break;
+        case BLUE_DRAGON_SCALES:
+        case BLUE_DRAGON_SCALE_MAIL:
+            if (puton) {
+                // C: if (!Very_fast) You("speed up%s.", Fast ? " a bit more" : "");
+                if (!Very_fast()) {
+                    await pline(`You speed up${Fast() ? ' a bit more' : ''}.`);
+                }
+                set_extrinsic_bit(FAST, 'EFast', W_ARM, true);
+            } else {
+                set_extrinsic_bit(FAST, 'EFast', W_ARM, false);
+                // C: if (!Very_fast && !takeoff.cancelled_don) You("slow down.");
+                if (!Very_fast() && !game.context?.takeoff?.cancelled_don) {
+                    await pline('You slow down.');
+                }
+            }
+            break;
+        case GREEN_DRAGON_SCALES:
+        case GREEN_DRAGON_SCALE_MAIL:
+            set_extrinsic_bit(SICK_RES, 'ESick_resistance', W_ARM, puton);
+            break;
+        case RED_DRAGON_SCALES:
+        case RED_DRAGON_SCALE_MAIL:
+            set_extrinsic_bit(INFRAVISION, 'EInfravision', W_ARM, puton);
+            // see_monsters() deferred
+            break;
+        case GOLD_DRAGON_SCALES:
+        case GOLD_DRAGON_SCALE_MAIL:
+            // make_hallucinated(!puton, …, W_ARM) deferred
+            break;
+        case ORANGE_DRAGON_SCALES:
+        case ORANGE_DRAGON_SCALE_MAIL:
+            set_extrinsic_bit(FREE_ACTION, 'EFree_action', W_ARM, puton);
+            // C Free_action macro is extrinsic-only; also mirror flat Free_action
+            {
+                const u = game.u || (game.u = {});
+                if (puton) u.Free_action = (u.Free_action | 0) | W_ARM;
+                else u.Free_action = (u.Free_action | 0) & ~W_ARM;
+            }
+            break;
+        case YELLOW_DRAGON_SCALES:
+        case YELLOW_DRAGON_SCALE_MAIL:
+            set_extrinsic_bit(STONE_RES, 'EStone_resistance', W_ARM, puton);
+            // wielding_corpse on doff deferred
+            break;
+        case WHITE_DRAGON_SCALES:
+        case WHITE_DRAGON_SCALE_MAIL:
+            set_extrinsic_bit(SLOW_DIGESTION, 'ESlow_digestion', W_ARM, puton);
+            break;
+        default:
+            break;
     }
 }
 
@@ -350,9 +460,12 @@ function clear_worn(mask) {
     setworn(null, mask);
 }
 
-/** C ref: do_wear.c Armor_off — suit; dragon/arti deferred */
-function Armor_off() {
+/** C ref: do_wear.c Armor_off — suit; arti_light end_burn deferred */
+async function Armor_off() {
+    const otmp = game.u?.uarm;
     clear_worn(W_ARM);
+    // C: setworn(NULL) then dragon_armor_handling(otmp, FALSE, TRUE)
+    await dragon_armor_handling(otmp, false, true);
     return 0;
 }
 
@@ -389,8 +502,8 @@ function Shirt_off() {
 }
 
 /**
- * C ref: do_wear.c Armor_on — known + dragon handling deferred beyond AC.
- * Reflection/etc from oc_oprop via setworn still deferred.
+ * C ref: do_wear.c Armor_on — known + dragon_armor_handling.
+ * Named omission: artifact_light begin_burn (gold DSM light).
  */
 async function Armor_on() {
     const uarm = game.u?.uarm;
@@ -398,7 +511,8 @@ async function Armor_on() {
     if (!uarm.known) {
         uarm.known = 1;
     }
-    // dragon_armor_handling / artifact_light deferred
+    await dragon_armor_handling(uarm, true, true);
+    // artifact_light begin_burn deferred
     find_ac();
     return 0;
 }
@@ -532,7 +646,7 @@ async function armoroff(otmp) {
     }
     // No delay — immediate remove + off_msg (fedora/leather jacket)
     const u = game.u || {};
-    if (otmp === u.uarm) Armor_off();
+    if (otmp === u.uarm) await Armor_off();
     else if (otmp === u.uarmc) Cloak_off();
     else if (otmp === u.uarmh) Helmet_off();
     else if (otmp === u.uarms) Shield_off();
@@ -698,36 +812,41 @@ function takeoff_lets() {
 
 /** C ref: invent.c getobj("take off", takeoff_ok, …) */
 async function getobj_takeoff() {
-    const lets = takeoff_lets();
-    const query = lets
-        ? `What do you want to take off? [${lets} or ?*]`
-        : 'What do you want to take off? [*]';
-    const prompt = `${query} `;
-    game._pending_message = prompt;
-    await flush_screen(1);
-    const disp = game.nhDisplay;
-    if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+    for (;;) {
+        await flush_topl_more();
+        const lets = takeoff_lets();
+        const query = lets
+            ? `What do you want to take off? [${lets} or ?*]`
+            : 'What do you want to take off? [*]';
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
 
-    const key = await nhgetch();
-    const ch = String.fromCharCode(key);
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-        if (game.flags?.verbose !== false) await pline('Never mind.');
-        return null;
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            await pline('Never mind.');
+            return null;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            // C invent.c getobj: You("don't have that object."); continue;
+            await pline("You don't have that object.");
+            continue;
+        }
+        if (!((otmp.owornmask || 0) & (W_ARMOR | W_ACCESSORY))) {
+            await pline('You are not wearing that.');
+            return null;
+        }
+        game._pending_message = '';
+        return otmp;
     }
-    if (ch === '?' || ch === '*') {
-        await pline('Never mind.');
-        return null;
-    }
-    const otmp = (game.invent || []).find((o) => o.invlet === ch);
-    if (!otmp) {
-        await pline("You don't have that object.");
-        return null;
-    }
-    if (!((otmp.owornmask || 0) & (W_ARMOR | W_ACCESSORY))) {
-        await pline('You are not wearing that.');
-        return null;
-    }
-    return otmp;
 }
 
 /**

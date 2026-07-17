@@ -1,16 +1,17 @@
 // quest.js — quest branch arrival hooks + leader talk.
 // C ref: quest.c onquest / on_start / on_locate / on_goal /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
-// Named omissions: on_goal; locate_next beyond Bar/Arc;
-// chat_with_nemesis/guardian; prisoner_speaks; finish_quest; got_thanks/
-// questart arms; banished com_pager; livelog; exercise side-effects beyond
-// call; full convert_arg catalogue for assignquest.
-// nexttime/othertime texts: Arc+Bar only (other roles burn nhl shuffle only).
+// Named omissions: locate_next beyond Bar/Arc; chat_with_nemesis/guardian;
+// prisoner_speaks; finish_quest; got_thanks/questart arms; banished
+// com_pager; livelog; exercise side-effects beyond call; full convert_arg
+// catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
+// nexttime/othertime/goal_* texts: Arc+Bar only (other roles burn nhl only).
 
 import { game } from './gstate.js';
 import {
     In_quest, MIN_QUEST_ALIGN, MIN_QUEST_LEVEL,
     UTOTYPE_NONE, UTOTYPE_PORTAL, STRAT_WAITMASK,
+    OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED,
 } from './const.js';
 import { qt_pager } from './questpgr.js';
 import { pline } from './display.js';
@@ -88,6 +89,58 @@ async function on_locate() {
 }
 
 /**
+ * C ref: questpgr.c is_quest_artifact / find_qarti — oartifact == questarti.
+ */
+function find_qarti(objChainHead) {
+    const want = game.urole?.questarti | 0;
+    if (!want) return null;
+    for (let otmp = objChainHead; otmp; otmp = otmp.nobj) {
+        if ((otmp.oartifact | 0) === want) return otmp;
+    }
+    return null;
+}
+
+/**
+ * C ref: questpgr.c find_quest_artifact — floor / minvent / buried subset.
+ * Named omission: OBJ_INVENT and OBJ_MIGRATING chains (C also skips invent
+ * when on_goal builds whichobjchains without OBJ_INVENT).
+ */
+function find_quest_artifact(whichchains) {
+    let qarti = null;
+    if ((whichchains & (1 << OBJ_FLOOR)) !== 0)
+        qarti = find_qarti(game.fobj);
+    if (!qarti && (whichchains & (1 << OBJ_MINVENT)) !== 0) {
+        for (const mtmp of game.fmon || []) {
+            if (mtmp?.mhp != null && mtmp.mhp <= 0) continue;
+            qarti = find_qarti(mtmp.minvent);
+            if (qarti) break;
+        }
+    }
+    if (!qarti && (whichchains & (1 << OBJ_BURIED)) !== 0)
+        qarti = find_qarti(game.level?.buriedobjlist || game.buriedobjlist);
+    return qarti;
+}
+
+/**
+ * C ref: quest.c on_goal — first visit goal_first; re-entry goal_next/alt.
+ * qt_pager burns nhl_init align shuffle before delivering text.
+ */
+async function on_goal() {
+    const qs = game.quest_status || (game.quest_status = {});
+    if (qs.killed_nemesis) return;
+    if (!qs.made_goal) {
+        await qt_pager('goal_first');
+        qs.made_goal = 1;
+    } else {
+        // C: invent omitted — carrying questarti counts as absent for msg
+        const which = (1 << OBJ_FLOOR) | (1 << OBJ_MINVENT) | (1 << OBJ_BURIED);
+        const qarti = find_quest_artifact(which);
+        await qt_pager(qarti ? 'goal_next' : 'goal_alt');
+        if ((qs.made_goal | 0) < 7) qs.made_goal = (qs.made_goal | 0) + 1;
+    }
+}
+
+/**
  * C ref: quest.c onquest — special quest level arrival messages.
  * Not_firsttime = on_level(uz0, uz); skipped when staying on same level.
  */
@@ -102,9 +155,7 @@ export async function onquest() {
 
     if (Is_qstart(u.uz)) await on_start();
     else if (Is_qlocate(u.uz)) await on_locate();
-    else if (Is_nemesis(u.uz)) {
-        // on_goal deferred (C-JS-MAP)
-    }
+    else if (Is_nemesis(u.uz)) await on_goal();
 }
 
 /** C ref: align.h / botl align_str subset for wizard is_pure talk. */
@@ -128,7 +179,9 @@ async function is_pure(talk) {
     if (!u?.ualign) return 0;
     const original = u.ualignbase?.original ?? u.ualign.type ?? 0;
     const currentBase = u.ualignbase?.current ?? u.ualign.type ?? 0;
-    if (game.flags?.wizard && talk) {
+    // C: #define wizard flags.debug (flag.h) — playmode:debug sets flags.debug
+    const wizard = !!(game.flags?.debug || game.flags?.wizard);
+    if (wizard && talk) {
         if ((u.ualign.type | 0) !== (original | 0)) {
             await pline(
                 `You are currently ${align_str(u.ualign.type)} instead of ${align_str(original)}.`,

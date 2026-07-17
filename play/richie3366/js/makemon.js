@@ -59,6 +59,7 @@ import {
     humanoid,
     polyok,
     is_mplayer,
+    hides_under,
     M3_CLOSE, M3_WAITFORU,
 } from './monsters.js';
 import { big_to_little } from './mondata.js';
@@ -73,7 +74,7 @@ import {
     ROOMOFFSET, LS_MONSTER,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
     In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
-    STRAT_CLOSE, STRAT_WAITFORU,
+    STRAT_CLOSE, STRAT_WAITFORU, is_pit,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
 import {
@@ -1053,6 +1054,19 @@ function m_initweap_default(mtmp, ptr) {
     }
 }
 
+/**
+ * C ref: makemon.c quest_mon_represents_role — human quest leader/nemesis
+ * as archetype of the hero's role. Tables omit msound; gate by urole
+ * ldrnum/neminum (set in role_init).
+ */
+function quest_mon_represents_role(ptr, role_pm) {
+    if (!ptr || ptr.mlet !== 'S_HUMAN') return false;
+    if ((game.urole?.mnum | 0) !== (role_pm | 0)) return false;
+    const mndx = ptr.mndx | 0;
+    return mndx === (game.urole?.ldrnum | 0)
+        || mndx === (game.urole?.neminum | 0);
+}
+
 // C ref: makemon.c m_initweap — ordinary-level armed-mlet envelope
 function m_initweap(mtmp) {
     const ptr = mtmp.data;
@@ -1235,8 +1249,9 @@ function m_initweap(mtmp) {
             }
         } else if (
             // C: ptr->msound == MS_PRIEST || quest_mon_represents_role(ptr, PM_CLERIC)
-            // tables omit msound; only ALIGNED/HIGH_CLERIC carry MS_PRIEST
+            // tables omit msound; ALIGNED/HIGH_CLERIC + Arch Priest / nemesis
             mm === pm('ALIGNED_CLERIC') || mm === pm('HIGH_CLERIC')
+            || quest_mon_represents_role(ptr, pm('CLERIC'))
         ) {
             // C: makemon.c m_initweap MS_PRIEST — mksobj(MACE,FALSE,FALSE)
             const otmp = mksobj(otyp('MACE'), false, false);
@@ -1313,7 +1328,7 @@ function m_initweap(mtmp) {
                 break;
             }
         }
-        // quest_mon_represents_role(PM_CLERIC) + PM_NINJA deferred (C-JS-MAP)
+        // PM_NINJA + quest_mon_represents_role(PM_MONK) deferred (C-JS-MAP)
         break;
     case 'S_DEMON':
         // C: named demon specials then is_demon → FALLTHROUGH default
@@ -1661,6 +1676,7 @@ function m_initinv(mtmp) {
         } else if (
             // C: ptr->msound == MS_PRIEST || quest_mon_represents_role(ptr, PM_CLERIC)
             ptr.mndx === pm('ALIGNED_CLERIC') || ptr.mndx === pm('HIGH_CLERIC')
+            || quest_mon_represents_role(ptr, pm('CLERIC'))
         ) {
             // C: makemon.c m_initinv MS_PRIEST — robe/cloak, shield, gold
             mongets(mtmp, rn2(7) ? otyp('ROBE')
@@ -1668,8 +1684,12 @@ function m_initinv(mtmp) {
                          : otyp('CLOAK_OF_MAGIC_RESISTANCE'));
             mongets(mtmp, otyp('SMALL_SHIELD'));
             mkmonmoney(mtmp, rn1(10, 20));
+        } else if (quest_mon_represents_role(ptr, pm('MONK'))) {
+            // C: makemon.c m_initinv quest_mon_represents_role(PM_MONK)
+            mongets(mtmp, rn2(11) ? otyp('ROBE')
+                : otyp('CLOAK_OF_MAGIC_RESISTANCE'));
         }
-        // elf / quest_mon_represents_role / guardian invent arms deferred
+        // elf / guardian invent arms deferred
         break;
     default:
         // Other m_initinv bodies (S_DEMON, S_WRAITH, S_LICH, …) deferred
@@ -1964,14 +1984,24 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // Named omissions: orc/elf peace; unicorn align peace; bat hell speed.
     if (ptr.mlet === 'S_MIMIC') set_mimic_sym(mtmp);
     else if (ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') {
-        // C: in_mklev → mkobj_at(RANDOM) then hideunder (mon.c hides_under arm)
+        // C: in_mklev → mkobj_at(RANDOM) then hideunder(mtmp).
+        // hideunder only sets mundetected when hides_under(data) (M1_CONCEAL);
+        // python is S_SNAKE but !M1_CONCEAL so stays visible (D-0628).
+        // Non-pit trap at site blocks hide (mon.c hideunder; Arc-goal traps
+        // before monsters — D-0630). pet cursed / can_hide_under_obj coins /
+        // cockatrice skip still deferred (inline; mon.js hideunder has trap).
         if (game.in_mklev) {
             if (mtmp.mx && mtmp.my) mkobj_at(RANDOM_CLASS, mtmp.mx, mtmp.my, true);
             // Inline hideunder hides_under path: seeit=0 in mklev; object just placed.
-            const hx = mtmp.mx, hy = mtmp.my;
-            const typ = game.level?.at(hx, hy)?.typ ?? 0;
-            if (!IS_POOL(typ) && !IS_LAVA(typ) && objects_at(hx, hy)) {
-                mtmp.mundetected = 1;
+            if (hides_under(ptr)) {
+                const hx = mtmp.mx, hy = mtmp.my;
+                const t = t_at_local(hx, hy);
+                const typ = game.level?.at(hx, hy)?.typ ?? 0;
+                if (!(t && !is_pit(t.ttyp))
+                    && !IS_POOL(typ) && !IS_LAVA(typ)
+                    && objects_at(hx, hy)) {
+                    mtmp.mundetected = 1;
+                }
             }
         }
     } else if (ptr.mlet === 'S_EEL') {

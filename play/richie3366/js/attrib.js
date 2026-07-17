@@ -21,11 +21,12 @@ import {
     BLINDED,
     BLND_RES,
     TELEPORT_CONTROL,
+    SEARCHING,
     OBJ_INVENT,
 } from './const.js';
 import { pline } from './display.js';
 import { cxname } from './objnam.js';
-import { what_gives } from './artifact.js';
+import { what_gives, bare_artifactname } from './artifact.js';
 import {
     PM_ARCHEOLOGIST,
     PM_BARBARIAN,
@@ -478,10 +479,12 @@ export async function adjabil(oldlevel, newlevel) {
     // C: if (oldlevel > 0) add/lose_weapon_skill — deferred
 }
 
-/** C ref: youprop.h Fast */
+/** C ref: youprop.h Fast — HFast||EFast ≡ uprops[FAST].intrinsic||extrinsic */
 export function Fast() {
     const u = game.u || {};
-    return !!(u.HFast || u.EFast);
+    const prop = u.uprops?.[FAST];
+    return !!((u.HFast | 0) || (u.EFast | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0));
 }
 
 /** C ref: youprop.h Searching */
@@ -490,10 +493,16 @@ export function Searching() {
     return !!(u.HSearching || u.ESearching);
 }
 
-/** C ref: youprop.h Very_fast — timeout bits or extrinsic */
+/**
+ * C ref: youprop.h Very_fast — (HFast & ~INTRINSIC) || EFast
+ * Timeout/potion bits and worn extrinsic (speed boots / blue DSM).
+ */
 export function Very_fast() {
     const u = game.u || {};
-    return !!(((u.HFast || 0) & ~INTRINSIC) || u.EFast);
+    const prop = u.uprops?.[FAST];
+    const h = (u.HFast | 0) | (prop?.intrinsic | 0);
+    const e = (u.EFast | 0) | (prop?.extrinsic | 0);
+    return !!((h & ~INTRINSIC) || e);
 }
 
 /* C ref: attrib.c innately() reason codes */
@@ -515,6 +524,7 @@ const PROP_HFIELD = {
     [BLINDED]: 'HBlinded',
     [BLND_RES]: 'HBlnd_resist',
     [TELEPORT_CONTROL]: 'HTeleport_control',
+    [SEARCHING]: 'HSearching',
 };
 
 /**
@@ -591,10 +601,9 @@ export function is_innate(propidx) {
 
 /**
  * C ref: attrib.c from_what — wizard-mode intrinsic source suffix.
- * Ported: innate reasons + what_gives extrinsic worn equipment.
+ * Ported: innate reasons + what_gives extrinsic worn/artifact equipment.
  * Named omissions: birth blind/deaf; Very_fast potion/boots;
- * Blindfolded_only / cream; negative prop blocking; artifact bare name;
- * "pair of " strip.
+ * Blindfolded_only / cream; negative prop blocking; "pair of " strip.
  */
 export function from_what(propidx) {
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
@@ -611,8 +620,11 @@ export function from_what(propidx) {
     const extrinsic = game.u?.uprops?.[propidx]?.extrinsic | 0;
     const obj = what_gives(extrinsic);
     if (obj) {
-        // Artifact bare_artifactname deferred → ysimple_name for all.
-        return ` because of ${ysimple_name(obj)}`;
+        // C: obj->oartifact ? bare_artifactname(obj) : ysimple_name(obj)
+        const because = obj.oartifact
+            ? bare_artifactname(obj)
+            : ysimple_name(obj);
+        return ` because of ${because}`;
     }
     return '';
 }

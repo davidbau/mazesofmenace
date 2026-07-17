@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { dochugw } from './monmove.js';
+import { dochugw, m_everyturn_effect } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL,
@@ -11,6 +11,8 @@ import {
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
+    ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
+    ismnum,
 } from './const.js';
 import { t_at } from './trap.js';
 import {
@@ -19,6 +21,7 @@ import {
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
     is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
+    is_vampshifter,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -30,14 +33,16 @@ import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { enexto, rloc_to } from './teleport.js';
 import { may_dig } from './dig.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, sensemon } from './display.js';
 import { online2 } from './hacklib.js';
 import { Monnam } from './do_name.js';
 import { cansee } from './vision.js';
 import { fightm } from './mhitm.js';
 import { were_change } from './were.js';
+import { set_mimic_sym, newcham } from './makemon.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const NC_SHOW_MSG = 1;
 
 /** Local is_pool/is_lava — avoid mon.js ↔ hack.js cycle. */
 function mfndpos_is_pool(x, y) {
@@ -270,14 +275,35 @@ function mon_regen(mon, digest_meal) {
 }
 
 /**
+ * C ref: mon.c decide_to_shapeshift — cham once-per-turn form change.
+ * Regular shapeshifter: !mspec_used && !rn2(6) → mspec_used + newcham(NULL).
+ * Named omissions: vampshifter arms (hp/fog/door enexto / gender restore);
+ * NC_SHOW_MSG display polish.
+ */
+function decide_to_shapeshift(mon) {
+    let ptr = null;
+    let dochng = false;
+    if (!is_vampshifter(mon)) {
+        if (!mon.mspec_used && !rn2(6)) {
+            dochng = true;
+            mon.mspec_used = 3 + rn2(10);
+        }
+    }
+    // vampshifter STRAT_WAITFORU / hp / fog pickvampshape deferred
+    if (dochng) {
+        newcham(mon, ptr, NC_SHOW_MSG);
+    }
+}
+
+/**
  * C ref: mon.c m_calcdistress — once-per-turn mon timeouts / regen.
- * Named omissions: mmove==0 minliquid; decide_to_shapeshift (cham only).
+ * Named omissions: mmove==0 minliquid; vamp decide_to_shapeshift arms.
  */
 function m_calcdistress(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) < 1) return;
     // mmove==0 minliquid deferred
     mon_regen(mtmp, false);
-    // decide_to_shapeshift deferred (cham); were_change from were.c
+    if (ismnum(mtmp.cham)) decide_to_shapeshift(mtmp);
     were_change(mtmp);
     if (mtmp.mblinded && !(--mtmp.mblinded)) mtmp.mcansee = 1;
     if (mtmp.mfrozen && !(--mtmp.mfrozen)) mtmp.mcanmove = 1;
@@ -662,21 +688,25 @@ export function mfndpos(mon, data, flag) {
 // C ref: mon.c movemon_singlemon()
 async function movemon_singlemon(mtmp) {
     if (!mtmp || mtmp.mhp <= 0) return false;
+
+    // C: m_everyturn_effect before movement gate (fog vapor even if idle)
+    m_everyturn_effect(mtmp);
+
     if ((mtmp.movement | 0) < NORMAL_SPEED) return false;
 
     mtmp.movement -= NORMAL_SPEED;
     if (mtmp.movement >= NORMAL_SPEED) game._somebody_can_move = true;
 
-    // C: is_hider — disguised mimics spend the turn without dochug
-    // (restrap / eel hideunder / minliquid / equip I_SPECIAL deferred)
+    // C: is_hider — restrap may hide again; disguised/undetected skip dochug
+    // (eel hideunder / minliquid / equip I_SPECIAL deferred)
     if (is_hider(mtmp.data)) {
+        if (restrap(mtmp)) return false;
         const ap = M_AP_TYPE(mtmp);
         if (ap === M_AP_FURNITURE || ap === M_AP_OBJECT) return false;
         if (mtmp.mundetected) return false;
     }
 
     // C: Conflict → fightm before dochugw (always rolls resist_conflict).
-    // m_everyturn_effect / restrap post-path deferred.
     if (hero_conflict() && !mtmp.iswiz && m_canseeu(mtmp)) {
         const u = game.u;
         if (cansee(mtmp.mx, mtmp.my)
@@ -713,14 +743,126 @@ export async function movemon() {
     return game._somebody_can_move;
 }
 
+/** C ref: you.h m_next2u — squared distu ≤ 2. */
+function m_next2u(mtmp) {
+    const u = game.u || {};
+    const dx = (mtmp.mx | 0) - (u.ux | 0);
+    const dy = (mtmp.my | 0) - (u.uy | 0);
+    return dx * dx + dy * dy <= 2;
+}
+
+/**
+ * C ref: mondata.h ceiling_hider — hider that clings/flies (not mimic).
+ */
+function ceiling_hider(ptr) {
+    if (!is_hider(ptr)) return false;
+    return (is_clinger(ptr) && ptr.mlet !== 'S_MIMIC') || is_flyer(ptr);
+}
+
+/**
+ * C ref: dungeon.c has_ceiling — endgame non-earth has no ceiling.
+ */
+function has_ceiling(lev) {
+    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
+    return true;
+}
+
+/**
+ * C ref: mon.c restrap — unwatched hiders may hide again; True if hid.
+ * Short-circuit order matches C (rn2(3) after cansee). Called from
+ * movemon_singlemon (pre-dochug) and hide_monst (getlev).
+ */
+export function restrap(mtmp) {
+    if (!mtmp?.data) return false;
+    const u = game.u || {};
+    if (mtmp.mcan || M_AP_TYPE(mtmp) || cansee(mtmp.mx, mtmp.my)
+        || rn2(3) || mtmp === u.ustuck) {
+        return false;
+    }
+    if (mtmp.mtrapped) {
+        const t = t_at(mtmp.mx, mtmp.my);
+        if (t && !is_pit(t.ttyp)) return false;
+    }
+    if (ceiling_hider(mtmp.data) && !has_ceiling(u.uz)) return false;
+    if (sensemon(mtmp) && m_next2u(mtmp)) return false;
+
+    if (mtmp.data.mlet === 'S_MIMIC') {
+        if (mtmp.msleeping || mtmp.mfrozen) return false;
+        set_mimic_sym(mtmp);
+        return true;
+    }
+    if (game.level?.at?.(mtmp.mx, mtmp.my)?.typ === ROOM) {
+        mtmp.mundetected = 1;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mon.c hideunder — set mundetected under object / pool for eels.
+ * Used by hide_monst; monmove.js keeps a parallel local for postmov.
+ * Named omissions: You_see pline; pet cursed_object_at; cockatrice skip;
+ * youmonst path; can_hide_under_obj filter.
+ */
+function hideunder(mtmp) {
+    if (!mtmp?.data) return false;
+    const u = game.u || {};
+    const is_u = mtmp === game.youmonst;
+    const x = is_u ? (u.ux | 0) : (mtmp.mx | 0);
+    const y = is_u ? (u.uy | 0) : (mtmp.my | 0);
+    let undetected = false;
+    const t = t_at(x, y);
+
+    if (mtmp === u.ustuck) {
+        // cannot hide while holding / held
+    } else if ((is_u ? u.utrap : mtmp.mtrapped)
+        || (t && !is_pit(t.ttyp))) {
+        // trapped or non-pit trap site
+    } else if (mtmp.data.mlet === 'S_EEL') {
+        const typ = game.level?.at?.(x, y)?.typ;
+        const pool = typ === POOL || typ === MOAT || typ === WATER;
+        undetected = !!(pool && !Is_waterlevel(u.uz)
+            && (!(u.Underwater) || !cansee(x, y)));
+    } else if (hides_under(mtmp.data)) {
+        const otmp = objects_at(x, y);
+        if (otmp) {
+            const typ = game.level?.at?.(x, y)?.typ;
+            const poolOrLava = typ === POOL || typ === MOAT || typ === WATER
+                || typ === LAVAPOOL || typ === LAVAWALL;
+            if (!poolOrLava) undetected = true;
+        }
+    }
+
+    if (is_u) {
+        u.uundetected = undetected ? 1 : 0;
+    } else {
+        const oldundetctd = !!mtmp.mundetected;
+        mtmp.mundetected = undetected ? 1 : 0;
+        if (undetected !== oldundetctd) newsym(x, y);
+    }
+    return undetected;
+}
+
 /**
  * C ref: mon.c hide_monst — called from getlev when returning to a level.
- * Gate matches C; restrap / hideunder bodies deferred (named omission).
+ * Viz override forces cansee false so restrap may roll rn2(3).
  */
 export function hide_monst(mon) {
     if (!mon?.data) return;
     const hider_under = hides_under(mon.data) || mon.data.mlet === 'S_EEL';
     if (!(is_hider(mon.data) || hider_under)) return;
     if (mon.mundetected || M_AP_TYPE(mon) !== M_AP_NOTHING) return;
-    // Named omission: viz_array override + restrap (+ mimic retry) + hideunder
+
+    const x = mon.mx | 0;
+    const y = mon.my | 0;
+    const viz = game.viz_array;
+    const save_viz = viz?.[y]?.[x] ?? 0;
+    if (viz?.[y]) viz[y][x] = save_viz & ~(IN_SIGHT | COULD_SEE);
+
+    if (is_hider(mon.data)) restrap(mon);
+    // try again if mimic missed its 1/3 chance to hide
+    if (mon.data.mlet === 'S_MIMIC' && !M_AP_TYPE(mon)) restrap(mon);
+
+    if (viz?.[y]) viz[y][x] = save_viz;
+    if (hider_under) hideunder(mon);
 }

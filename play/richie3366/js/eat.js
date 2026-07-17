@@ -17,20 +17,23 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { flush_topl_more, pline, You_feel } from './display.js';
 import { yn_function } from './getline.js';
-import { FOOD_CLASS, COIN_CLASS, objectNames } from './objects.js';
+import { FOOD_CLASS, COIN_CLASS, objectNames, objects } from './objects.js';
 import { weight, splitobj, objects_at, delobj } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import { singular, xname, doname } from './objnam.js';
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
     vegan, vegetarian,
-    is_rider, PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames,
+    is_rider, is_undead, olfaction,
+    PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames,
 } from './monsters.js';
+import { monflee } from './monmove.js';
+import { dist2 } from './mon.js';
 import { set_occupation, can_reach_floor } from './engrave.js';
 import {
     OBJ_FLOOR, OBJ_FREE, OBJ_INVENT,
-    SLT_ENCUMBER, FROMFORM, W_ARTI, W_WEP,
-    HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION,
+    SLT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
+    HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING,
     TIMEOUT,
 } from './const.js';
@@ -38,6 +41,11 @@ import { adjattrib, A_STR } from './attrib.js';
 import { nomul } from './hack.js';
 import { near_capacity } from './invent.js';
 import { make_confused } from './potion.js';
+
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const MEAT_RING = objectNames.indexOf('MEAT_RING');
+const RIN_SLOW_DIGESTION = objectNames.indexOf('RIN_SLOW_DIGESTION');
+const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
 
 /**
  * C ref: gy.youmonst.data via set_uasmon / invent.c basic assign.
@@ -61,6 +69,7 @@ const K_RATION = objectNames.indexOf('K_RATION');
 const C_RATION = objectNames.indexOf('C_RATION');
 const CORPSE = objectNames.indexOf('CORPSE');
 const TIN = objectNames.indexOf('TIN');
+const CLOVE_OF_GARLIC = objectNames.indexOf('CLOVE_OF_GARLIC');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const PM_COCKATRICE = monsterNames.indexOf('PM_COCKATRICE');
@@ -187,10 +196,10 @@ export function newuhs(_incr) {
 
 /**
  * C ref: eat.c gethungry — metabolic uhunger--, accessorytime burns, newuhs.
- * Branch envelope: ordinary diet burn via hero_form_data; odd/even
- * Regen/encumbrance/Hunger/Conflict burns; field-only newuhs(TRUE).
- * Named omissions: ring/amulet accessorytime switch cases; newuhs
- * messages / faint / ATEMP.
+ * Branch envelope: ordinary diet burn; odd Regen/encumb; even Hunger/
+ * Conflict + ring/amulet accessorytime cases 0/4/8/12/16.
+ * Named omissions: newuhs messages / faint / ATEMP; +0 RIN_PROTECTION
+ * dual-ring MC polish when EProtection unset; meat-ring edge cases.
  */
 export function gethungry() {
     if (game.u?.uinvulnerable) return;
@@ -222,7 +231,7 @@ export function gethungry() {
             u.uhunger = (u.uhunger ?? 900) - 1;
         }
     } else {
-        // even — Hunger / Conflict; ring+amulet switch deferred
+        // even — Hunger / Conflict + ring/amulet cases
         if (Hunger()) {
             u.uhunger = (u.uhunger ?? 900) - 1;
         }
@@ -233,7 +242,56 @@ export function gethungry() {
         if (HConf || (EConf & ~W_ARTI)) {
             u.uhunger = (u.uhunger ?? 900) - 1;
         }
-        void accessorytime; // ring/amulet cases 0/4/8/12/16 deferred
+        // C: switch (accessorytime) even cases 0/4/8/12/16
+        const uleft = u.uleft;
+        const uright = u.uright;
+        const uamul = u.uamul;
+        const objs = objects();
+        const EProt = (u.EProtection | 0)
+            || (u.uprops?.[PROTECTION]?.extrinsic | 0);
+        switch (accessorytime) {
+        case 0:
+            // Slow_digestion from non-ring source (e.g. white DSM) burns
+            if (Slow_digestion()
+                && (!uright || uright.otyp !== RIN_SLOW_DIGESTION)
+                && (!uleft || uleft.otyp !== RIN_SLOW_DIGESTION)) {
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            }
+            break;
+        case 4:
+            if (uleft && uleft.otyp !== MEAT_RING
+                && ((uleft.spe | 0)
+                    || !objs?.[uleft.otyp]?.oc_charged
+                    || (uleft.otyp === RIN_PROTECTION
+                        && ((EProt & ~W_RINGL) === 0
+                            || ((EProt & ~W_RINGL) === W_RINGR
+                                && uright && uright.otyp === RIN_PROTECTION
+                                && !(uright.spe | 0)))))) {
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            }
+            break;
+        case 8:
+            if (uamul && uamul.otyp !== FAKE_AMULET_OF_YENDOR) {
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            }
+            break;
+        case 12:
+            if (uright && uright.otyp !== MEAT_RING
+                && ((uright.spe | 0)
+                    || !objs?.[uright.otyp]?.oc_charged
+                    || (uright.otyp === RIN_PROTECTION
+                        && (EProt & ~W_RINGR) === 0))) {
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            }
+            break;
+        case 16:
+            if (u.uhave?.amulet || u.uhave_amulet) {
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            }
+            break;
+        default:
+            break;
+        }
     }
     newuhs(true);
 }
@@ -574,6 +632,18 @@ export async function poison_strdmg(strloss, dmg) {
 }
 
 /**
+ * C ref: eat.c garlic_breath — nearby smelling mons flee (untimed).
+ */
+async function garlic_breath(mtmp) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = game.u || {};
+    const d2 = dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0);
+    if (olfaction(mtmp.data) && d2 < 7) {
+        await monflee(mtmp, 0, false, false);
+    }
+}
+
+/**
  * C ref: eat.c fprefx — first-bite messages for non-rotten non-tin food.
  * Contest recorder is MACOS → APPLE "Macintosh!"; UNIX Core dumped deferred.
  * Returns false if eating should abort (egg explode etc. deferred → true).
@@ -591,6 +661,17 @@ async function fprefx(otmp) {
     if (otmp.otyp === TRIPE_RATION) {
         await pline('Yak - dog food!');
         return true;
+    }
+    // C: CLOVE_OF_GARLIC — undead vomit; else scare nearby then fall through
+    if (otmp.otyp === CLOVE_OF_GARLIC) {
+        if (is_undead(hero_form_data())) {
+            // make_vomiting(rn1(reqtime,5)) deferred for undead poly hero
+            return true;
+        }
+        for (const mtmp of game.fmon || []) {
+            await garlic_breath(mtmp);
+        }
+        // FALLTHROUGH to default delicious feedback
     }
     // Contest C build defines MACOS (recorder on macOS).
     if (otmp.otyp === APPLE && !otmp.cursed) {

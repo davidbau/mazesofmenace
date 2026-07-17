@@ -26,7 +26,7 @@ import {
 } from './generated/monsters_data.js';
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
-    Has_contents, Is_container, Is_box, P_BOW, P_CROSSBOW, P_SHURIKEN,
+    Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
 } from './const.js';
@@ -260,7 +260,15 @@ function is_charged_otyp(otyp) {
     if ((oc?.oc_class ?? 0) === WEAPON_CLASS) return true;
     if (n === 'DART' || n === 'SHURIKEN' || n === 'BOOMERANG'
         || n === 'EXPENSIVE_CAMERA' || n === 'MAGIC_MARKER'
-        || n === 'CRYSTAL_BALL')
+        || n === 'CRYSTAL_BALL'
+        // C objects.h TOOL/CONTAINER chg=1 (generated table omits oc_charged)
+        || n === 'TINNING_KIT' || n === 'CAN_OF_GREASE' || n === 'BAG_OF_TRICKS'
+        || n === 'MAGIC_FLUTE' || n === 'FROST_HORN' || n === 'FIRE_HORN'
+        || n === 'HORN_OF_PLENTY' || n === 'MAGIC_HARP'
+        || n === 'DRUM_OF_EARTHQUAKE'
+        // C WEPTOOL BITS(..., chg=1, ...) — BUC/implicit_uncursed; doname
+        // remaps to WEAPON_CLASS for +spe (not (recharged:spe))
+        || n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN')
         return true;
     // Wands always show (recharged:spe) when known (C: WAND_CLASS → charges)
     if (oc?.oc_class === WAND_CLASS) return true;
@@ -274,6 +282,15 @@ function is_charged_otyp(otyp) {
         || n === 'RIN_PROTECTION')
         return true;
     return false;
+}
+
+/** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
+function is_weptool(obj) {
+    if (!obj || obj.oclass !== TOOL_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill;
+    if (sk != null && sk !== P_NONE) return true;
+    const n = objectNames[obj.otyp];
+    return n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN';
 }
 
 function uses_known_otyp(otyp) {
@@ -909,6 +926,7 @@ export function obj_is_pname(obj) {
  */
 export function doname(obj) {
     if (!obj) return 'something';
+
     // C: xname Role_if(PM_CLERIC) obj->bknown=1 before doname_base reads it
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
     // C: doname_base → xname → observe_object when !Blind && !distantname
@@ -917,6 +935,8 @@ export function doname(obj) {
     }
     const otyp = obj.otyp;
     const oclass = obj.oclass;
+    // C doname_base: switch (is_weptool(obj) ? WEAPON_CLASS : obj->oclass)
+    const donameClass = is_weptool(obj) ? WEAPON_CLASS : oclass;
     const known = !!obj.known;
     const bknown = !!obj.bknown;
     const quan = obj.quan || 1;
@@ -988,18 +1008,17 @@ export function doname(obj) {
         else prefix += 'unlocked ';
     }
 
-    // C: WEAPON_CLASS — re-insert stripped "poisoned " before erosion/spe
-    if (oclass === WEAPON_CLASS && ispoisoned) prefix += 'poisoned ';
+    // C: WEAPON_CLASS (incl. weptool remap) — poisoned before erosion/spe
+    if (donameClass === WEAPON_CLASS && ispoisoned) prefix += 'poisoned ';
 
     // C ref: objnam.c doname_base — ARMOR falls through to WEAPON for
     // add_erosion_words + spe; BALL/CHAIN also call add_erosion_words.
-    // Weptool-as-WEAPON_CLASS class remap deferred.
-    if (oclass === WEAPON_CLASS || oclass === ARMOR_CLASS) {
+    if (donameClass === WEAPON_CLASS || donameClass === ARMOR_CLASS) {
         prefix += add_erosion_words(obj);
     }
 
-    if (known && (oclass === WEAPON_CLASS || oclass === ARMOR_CLASS
-        || (oclass === RING_CLASS && is_charged_otyp(otyp)))) {
+    if (known && (donameClass === WEAPON_CLASS || donameClass === ARMOR_CLASS
+        || (donameClass === RING_CLASS && is_charged_otyp(otyp)))) {
         const spe = obj.spe | 0;
         prefix += (spe >= 0 ? `+${spe} ` : `${spe} `);
     }
@@ -1075,10 +1094,11 @@ export function doname(obj) {
                 : 'at the ready'})`;
     }
 
-    if (known && is_charged_otyp(otyp) && oclass === TOOL_CLASS)
+    // C TOOL_CLASS charges — weptools remapped to WEAPON so they get +spe
+    if (known && is_charged_otyp(otyp) && donameClass === TOOL_CLASS)
         bp += ` (${obj.recharged | 0}:${obj.spe | 0})`;
     // C ref: objnam.c WAND_CLASS → charges
-    if (known && oclass === WAND_CLASS)
+    if (known && donameClass === WAND_CLASS)
         bp += ` (${obj.recharged | 0}:${obj.spe | 0})`;
 
     // C doname_base: is_unpaid → unpaid_cost suffix (D-0461); with_price=0

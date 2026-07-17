@@ -14,12 +14,14 @@ import { flush_screen, pline, docrt } from './display.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_DETECT,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, STRAT_WAITMASK,
-    STAIRS, LADDER, LA_DOWN,
+    STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, IS_WALL,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
 import { distant_monnam_none } from './do_name.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import { t_at, trapname } from './trap.js';
+import { waterbody_name } from './hack.js';
 
 export const LOOK_TRADITIONAL = 0;
 export const LOOK_QUICK = 1;
@@ -183,13 +185,43 @@ function stair_ladder_explanation(x, y) {
 }
 
 /**
+ * C ref: pager.c lookat glyph_is_cmap → defsyms[].explanation (default
+ * arm) + S_pool/S_water/S_lava/S_ice → waterbody_name. Used by getpos
+ * auto_describe firstmatch after stairs/traps.
+ * Named omissions: altar/ndoor/cloud/engraving special cases;
+ * underwater unreconnoitered; object glyphs; Hallucination waterbody.
+ */
+function cmap_defsym_explanation(x, y, loc) {
+    if (!loc) return '';
+    const typ = loc.typ;
+    // C lookat case S_pool/S_water/S_lava/S_lavawall/S_ice → waterbody_name
+    if (typ === POOL || typ === MOAT || typ === WATER
+        || typ === LAVAPOOL || typ === LAVAWALL || typ === ICE) {
+        return waterbody_name(x, y);
+    }
+    // C lookat cmap default → defsyms[symidx].explanation
+    if (IS_WALL(typ)) return 'wall';
+    if (typ === ROOM) return 'floor of a room';
+    if (typ === CORR) {
+        return loc.lit || game.flags?.lit_corridor ? 'lit corridor' : 'corridor';
+    }
+    if (typ === STONE) {
+        // C lookat S_stone: !seenv → "unexplored"; else stone/SCORR
+        if (!loc.seenv) return 'unexplored';
+        return 'stone';
+    }
+    return '';
+}
+
+/**
  * C ref: getpos.c auto_describe → do_screen_description firstmatch /
  * pager.c lookat. Uses displayed glyph (loc.disp_*), not map memory —
  * required for TER_DETECT after clear_glyph_buffer.
  *
  * Named omissions: full do_screen_description symbol table, coord_desc,
  * getpos_getvalid / travel "(no travel path)" / "(invalid target)"
- * suffixes, underwater unreconnoitered, object/wall cmap arms.
+ * suffixes, underwater unreconnoitered, object / special cmap arms
+ * (altar/ndoor/cloud/waterbody).
  * Trap: tseen `trapname` only (trapped_chest/door / Hallucination deferred).
  */
 function auto_describe_text(cx, cy) {
@@ -229,7 +261,11 @@ function auto_describe_text(cx, cy) {
     const trap = t_at(cx, cy);
     if (trap && trap.tseen) return trapname(trap.ttyp, false);
 
-    // Non-blank without mon (objects/other cmap under TER_* browse) deferred
+    // C lookat glyph_is_cmap → defsyms / waterbody_name (ROOM/moat/wall…)
+    const cmap = cmap_defsym_explanation(cx, cy, loc);
+    if (cmap) return cmap;
+
+    // Object / remaining special cmap under TER_* browse still deferred
     return 'unexplored area';
 }
 

@@ -70,6 +70,7 @@ import { m_canseeu } from './mondata.js';
 import { rloc } from './teleport.js';
 import { quest_talk, quest_stat_check } from './quest.js';
 import { stairway_at } from './mklev.js';
+import { create_gas_cloud, visible_region_at } from './region.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -84,6 +85,9 @@ const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const PM_LEPRECHAUN = monsterNames.indexOf('PM_LEPRECHAUN');
 const PM_ETTIN = monsterNames.indexOf('PM_ETTIN');
 const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
+const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
+const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
+const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
 const GEMSTONE = 20; // objclass.h
 const MINERAL = 21; // objclass.h
 const MAX_CARR_CAP = 1000;
@@ -649,6 +653,39 @@ export function set_apparxy(mtmp) {
     mtmp.muy = my;
 }
 
+/**
+ * C ref: monmove.c monflee — set mflee; optional fleetime / fleemsg.
+ * Named omissions: release_hero on ustuck; flees_light rn2(10)/verbalize /
+ * light-source pline; Vrock gas cloud; mon_track_clear; Adjmonnam
+ * immobile flinch wording.
+ */
+export async function monflee(mtmp, fleetime, first, fleemsg) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    // C: if (mtmp == u.ustuck) release_hero(mtmp) — deferred
+    if (!first || !mtmp.mflee) {
+        if (!fleetime) {
+            mtmp.mfleetim = 0;
+        } else if (!mtmp.mflee || mtmp.mfleetim) {
+            fleetime += mtmp.mfleetim | 0;
+            if (fleetime === 1) fleetime++;
+            mtmp.mfleetim = Math.min(fleetime, 127);
+        }
+        if (!mtmp.mflee && fleemsg
+            && canseemon(mtmp)
+            && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+            && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
+            if (!mtmp.mcanmove || !(mtmp.data?.mmove | 0)) {
+                await pline(`${Monnam(mtmp)} seems to flinch.`);
+            } else {
+                // flees_light arm deferred (no extra rn2(10))
+                await pline(`${Monnam(mtmp)} turns to flee.`);
+            }
+        }
+        mtmp.mflee = 1;
+    }
+    // mon_track_clear deferred
+}
+
 // C ref: monmove.c distfleeck()
 export function distfleeck(mtmp) {
     // bravegremlin roll always happens even if unused
@@ -863,6 +900,37 @@ async function maybe_spin_web(mtmp) {
             }
             // shop add_damage deferred
         }
+    }
+}
+
+/**
+ * C ref: monmove.c m_everyturn_effect — fog leaves size-1 vapor each visit.
+ * Named omission: polyed-hero path (is_u).
+ */
+export function m_everyturn_effect(mtmp) {
+    if (!mtmp) return;
+    const mnum = mtmp.mnum ?? mtmp.data?.mndx ?? -1;
+    if (mnum !== PM_FOG_CLOUD) return;
+    const x = mtmp.mx | 0;
+    const y = mtmp.my | 0;
+    if (!closed_door(x, y) && !visible_region_at(x, y)) {
+        create_gas_cloud(x, y, 1, 0);
+    }
+}
+
+/**
+ * C ref: monmove.c m_postmove_effect — Hezrou stench / Steam vortex vapor
+ * at pre-move cell. Called before place_monster in C.
+ */
+export function m_postmove_effect(mtmp) {
+    if (!mtmp) return;
+    const mnum = mtmp.mnum ?? mtmp.data?.mndx ?? -1;
+    const x = mtmp.mx | 0;
+    const y = mtmp.my | 0;
+    if (mnum === PM_HEZROU) {
+        create_gas_cloud(x, y, 1, 8);
+    } else if (mnum === PM_STEAM_VORTEX && !mtmp.mcan) {
+        create_gas_cloud(x, y, 1, 0);
     }
 }
 
@@ -1269,6 +1337,9 @@ export async function m_move(mtmp, after) {
     if (nix === game.u.ux && niy === game.u.uy) {
         return MMOVE_NOTHING;
     }
+
+    // C: m_postmove_effect before place (Hezrou/Steam at old cell)
+    m_postmove_effect(mtmp);
 
     // C: place_monster + mon_track_add then postmov (mintrap on new cell)
     mtmp.mx = nix;

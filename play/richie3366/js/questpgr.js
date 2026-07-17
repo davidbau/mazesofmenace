@@ -9,7 +9,9 @@ import {
 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { align_gname, align_gtitle, rank_of } from './roles.js';
-import { A_NEUTRAL, A_LAWFUL, A_CHAOTIC } from './const.js';
+import {
+    A_NEUTRAL, A_LAWFUL, A_CHAOTIC, MIN_QUEST_LEVEL,
+} from './const.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
@@ -17,6 +19,8 @@ import { nhl_nhlib_align_shuffle } from './dungeon.js';
 import { show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
+import { artilistRaw } from './generated/artifacts_data.js';
+import { an, the } from './objnam.js';
 
 /**
  * C ref: quest.lua common.legacy + convert_arg %d/%G/%r.
@@ -164,10 +168,20 @@ export async function com_pager_legacy(statusSnap = null) {
 }
 
 /**
- * C ref: dat/quest.lua firsttime texts (Barbarian exercised by seed0373).
- * Other roles deferred — qt_pager still burns nhl_init shuffle when called.
+ * C ref: dat/quest.lua firsttime texts (Arc seed0361; Bar seed0373).
+ * Arc+Bar exercised; other roles burn nhl_init shuffle only.
  */
 const QUEST_FIRSTTIME = {
+    // C ref: dat/quest.lua Arc firsttime (output=text)
+    Arc: `You are suddenly in familiar surroundings.  The buildings in the distance
+seem to be those of your old alma mater, but something is wrong.  It feels
+as if there has been a riot recently, or %H has
+been under siege.
+
+All of the windows are boarded up, and there are objects scattered around
+the entrance.
+
+Strange forbidding shapes seem to be moving in the distance.`,
     Bar: `Warily you scan your surroundings, all of your senses alert for signs
 of possible danger.  Off in the distance, you can %x the familiar shapes
 of %H.
@@ -229,6 +243,28 @@ You have an odd feeling this may be the last time you ever come here.`,
 %H.`,
 };
 
+/** C ref: dat/quest.lua goal_first (Arc + Bar; output=text). */
+const QUEST_GOAL_FIRST = {
+    Arc: `A strange feeling washes over you, and you think back to things you
+learned during the many lectures of %l.
+
+You realize the feeling must be the presence of %o.`,
+    Bar: `The hairs on the nape of your neck lift as you sense an energy in the
+very air around you.  You fight down a primordial panic that seeks to
+make you turn and run.  This is surely the lair of %n.`,
+};
+
+/** C ref: dat/quest.lua goal_next (Arc + Bar). */
+const QUEST_GOAL_NEXT = {
+    Arc: `The familiar presence of %o is in the ether.`,
+    Bar: `Yet again you feel the air around you heavy with malevolent magical energy.`,
+};
+
+/** C ref: dat/quest.lua goal_alt (Arc; Bar falls back to goal_next in C). */
+const QUEST_GOAL_ALT = {
+    Arc: `You have returned to %ns lair.`,
+};
+
 /** C ref: questpgr.c ldrname */
 function ldrname() {
     const i = game.urole?.ldrnum ?? NON_PM;
@@ -241,8 +277,8 @@ function ldrname() {
 }
 
 /**
- * C ref: questpgr.c convert_arg — subset used by firsttime (%x/%H/%l/%d).
- * Named omission: full convert_arg catalogue + %c/%n/%o/… pronoun arms.
+ * C ref: questpgr.c convert_arg — subset used by firsttime/goal (%x/%H/%l/%d/%o/%n).
+ * Named omission: full convert_arg catalogue + %c/%g/… pronoun arms.
  */
 function convert_arg(c) {
     const urole = game.urole || {};
@@ -270,7 +306,33 @@ function convert_arg(c) {
         return 'neutral';
     }
     case 'r':
-        return urole.rank?.m || urole.name?.m || '';
+        // C: rank_of(u.ulevel, Role_switch, flags.female) — not sticky urole.rank
+        return rank_of(u.ulevel | 0, urole.mnum, !!game.flags?.female);
+    case 'R':
+        // C: rank_of(MIN_QUEST_LEVEL, Role_switch, flags.female)
+        return rank_of(MIN_QUEST_LEVEL, urole.mnum, !!game.flags?.female);
+    case 'o':
+    case 'O': {
+        // C: the(artiname(urole.questarti)); %O shortens "the Foo of Bar"
+        const qi = urole.questarti | 0;
+        const raw = (artilistRaw[qi]?.name) || '';
+        let str = raw ? the(raw) : '';
+        if (c === 'O') {
+            const p = str.toLowerCase().indexOf(' of ');
+            if (p >= 0) str = str.slice(0, p);
+        }
+        return str;
+    }
+    case 'n': {
+        // C: neminame() — proper-name vs "the <name>"
+        const i = urole.neminum ?? NON_PM;
+        if (i === NON_PM || i == null) return '';
+        const ptr = mons(i);
+        const names = pmnames[i];
+        const nm = names?.[2] || names?.[0] || names?.[1] || '';
+        const pname = !!((ptr?.mflags2 ?? 0) & M2_PNAME);
+        return pname ? nm : `the ${nm}`;
+    }
     case '%':
         return '%';
     default:
@@ -278,25 +340,35 @@ function convert_arg(c) {
     }
 }
 
-/** C ref: questpgr.c convert_line — %X substitution; %pC capitalizes %p. */
+/**
+ * C ref: questpgr.c convert_line — %X then optional modifier.
+ * Covered: %Xa → an(), %XA → An(), %XC capitalize. Pronoun/plural deferred.
+ */
 function convert_line(inLine) {
     let out = '';
     for (let i = 0; i < inLine.length; i++) {
         if (inLine[i] === '%' && i + 1 < inLine.length) {
-            let code = inLine[++i];
-            let capitalize = false;
-            if (i + 1 < inLine.length && inLine[i + 1] === 'C') {
-                capitalize = true;
-                i++;
-            }
-            // %ra = rank + 'a' literal suffix used in Arc badalign
-            if (code === 'r' && i + 1 < inLine.length && inLine[i + 1] === 'a'
-                && (i + 2 >= inLine.length || !/[A-Za-z]/.test(inLine[i + 2]))) {
-                // keep as %r then literal 'a' — handled by falling through
-            }
+            const code = inLine[++i];
             let piece = convert_arg(code);
-            if (capitalize && piece)
-                piece = piece.charAt(0).toUpperCase() + piece.slice(1);
+            if (i + 1 < inLine.length) {
+                const mod = inLine[i + 1];
+                if (mod === 'a') {
+                    i++;
+                    piece = an(piece);
+                } else if (mod === 'A') {
+                    i++;
+                    // C: An() — capitalized article
+                    const withArt = an(piece);
+                    piece = withArt
+                        ? withArt.charAt(0).toUpperCase() + withArt.slice(1)
+                        : withArt;
+                } else if (mod === 'C') {
+                    i++;
+                    if (piece)
+                        piece = piece.charAt(0).toUpperCase() + piece.slice(1);
+                }
+                // %Xh/%XP/… pronoun + plural deferred
+            }
             out += piece;
         } else {
             out += inLine[i];
@@ -317,7 +389,7 @@ function convert_line(inLine) {
  *
  * Named omissions: common fallback; explicit single-line output=text;
  * menu output; array rn2 picks; convert_line pronoun/%cC arms;
- * synopsis putmsghistory.
+ * synopsis putmsghistory; other-role goal/nexttime bodies.
  */
 export async function qt_pager(msgid) {
     // C: com_pager_core → nhl_init → nhlib.lua top-level shuffle(align)
@@ -332,6 +404,12 @@ export async function qt_pager(msgid) {
     else if (msgid === 'locate_next') raw = QUEST_LOCATE_NEXT[code] || null;
     else if (msgid === 'nexttime') raw = QUEST_NEXTTIME[code] || null;
     else if (msgid === 'othertime') raw = QUEST_OTHERTIME[code] || null;
+    else if (msgid === 'goal_first') raw = QUEST_GOAL_FIRST[code] || null;
+    else if (msgid === 'goal_next') raw = QUEST_GOAL_NEXT[code] || null;
+    else if (msgid === 'goal_alt') {
+        // C: qt_pager reverts to QT_NEXTGOAL when role lacks QT_ALTGOAL
+        raw = QUEST_GOAL_ALT[code] || QUEST_GOAL_NEXT[code] || null;
+    }
     // Other msgid bodies deferred (C-JS-MAP)
     if (!raw) return;
 

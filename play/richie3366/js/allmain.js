@@ -616,8 +616,10 @@ export async function moveloop_core() {
                 g.moves = (g.moves || 1) + 1;
 
                 // once-per-turn — C: nh_timeout before regen_hp / wipe_engr
-                // (Glib/run_regions/ublesscnt deferred)
+                // (Glib / run_regions deferred)
                 await nh_timeout();
+                // C allmain.c moveloop: if (u.ublesscnt) u.ublesscnt--;
+                if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1;
 
                 // once-per-turn — C: regen_hp before dosounds when HP below max
                 if (g.u.uinvulnerable) {

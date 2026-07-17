@@ -387,6 +387,19 @@ export function is_golem(ptr) {
     return ptr?.mlet === 'S_GOLEM';
 }
 
+/**
+ * C ref: mondata.c olfaction — false for golem / eye / jelly / pudding /
+ * blob / vortex / elemental / fungus / light.
+ */
+export function olfaction(mdat) {
+    if (!mdat) return false;
+    if (is_golem(mdat)) return false;
+    const mlet = mdat.mlet;
+    return mlet !== 'S_EYE' && mlet !== 'S_JELLY' && mlet !== 'S_PUDDING'
+        && mlet !== 'S_BLOB' && mlet !== 'S_VORTEX' && mlet !== 'S_ELEMENTAL'
+        && mlet !== 'S_FUNGUS' && mlet !== 'S_LIGHT';
+}
+
 /** C ref: mondata.h weirdnonliving — golem or vortex */
 export function weirdnonliving(ptr) {
     return is_golem(ptr) || ptr?.mlet === 'S_VORTEX';
