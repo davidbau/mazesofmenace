@@ -138,6 +138,8 @@ export const M1_OMNIVORE = 0x60000000;
 export const M1_METALLIVORE = 0x80000000; /* monflag.h — eats metal */
 
 // C ref: monflag.h M3_*
+export const M3_WAITFORU = 0x0040;
+export const M3_CLOSE = 0x0080;
 export const M3_INFRAVISION = 0x0100;
 export const M3_INFRAVISIBLE = 0x0200;
 

@@ -27,6 +27,7 @@ import {
 // objectNames used for known-flag heuristic (oc_uses_known not in table yet)
 import { rndmonnum, rndmonnum_adj } from './makemon.js';
 import { undead_to_corpse, can_be_hatched, dead_species } from './mon.js';
+import { nartifact_exist } from './artifact.js';
 import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
     G_NOCORPSE, NON_PM as MON_NON_PM,
@@ -711,7 +712,8 @@ function mksobj_init(otmp, artif) {
             blessorcurse(otmp, 10);
         }
         if (is_poisonable(otmp) && !rn2(100)) otmp.opoisoned = 1;
-        if (artif && !rn2(20)) {
+        // C: artif && !rn2(20 + 10 * nartifact_exist())
+        if (artif && !rn2(20 + (10 * nartifact_exist()))) {
             /* mk_artifact stub — rare */
         }
         break;
@@ -878,7 +880,8 @@ function mksobj_init(otmp, artif) {
         } else {
             blessorcurse(otmp, 10);
         }
-        if (artif && !rn2(40)) {
+        // C: artif && !rn2(40 + 10 * nartifact_exist())
+        if (artif && !rn2(40 + (10 * nartifact_exist()))) {
             /* mk_artifact stub */
         }
         // C ref: mkobj.c ARMOR_CLASS — lacquered armor for Samurai

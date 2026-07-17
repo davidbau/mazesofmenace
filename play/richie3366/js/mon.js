@@ -299,7 +299,8 @@ export function seemimic(mtmp) {
     // has_mcorpsenm / freemcorpsenm deferred
     mtmp.m_ap_type = M_AP_NOTHING;
     mtmp.mappearance = 0;
-    // is_lightblocker_mappear / unblock_point deferred
+    // is_lightblocker unblock_point on discover deferred (vision_reset covers
+    // does_block; D-0585 ports is_lightblocker_mappear into _blocks)
     if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
 }
 
@@ -589,6 +590,15 @@ export async function movemon() {
     for (const mtmp of list.slice()) {
         if (game.program_state?.gameover) break;
         await movemon_singlemon(mtmp);
+    }
+    // C: after last mon — if (u.utotype) deferred_goto(); somebody_can_move=FALSE
+    // Lazy import avoids mon.js ↔ do.js cycle (do.js imports m_at/mnexto).
+    // Named omissions: any_light_source vision_full_recalc; clear_bypasses;
+    // clear_splitobjs; dmonsfree before the utotype check.
+    if (game.u?.utotype) {
+        const { deferred_goto } = await import('./do.js');
+        await deferred_goto();
+        game._somebody_can_move = false;
     }
     return game._somebody_can_move;
 }

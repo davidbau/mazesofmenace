@@ -1,6 +1,6 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Partial: light sources, mimics, underwater, blindness, pits deferred.
-// BOULDER does_block is ported (linedup boulderhandling depends on it).
+// Partial: underwater, blindness pits deferred.
+// BOULDER + is_lightblocker_mappear (mimic boulder/door/wall) in does_block.
 
 import { game } from './gstate.js';
 import {
@@ -8,7 +8,7 @@ import {
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, IS_WATERWALL, ROOMOFFSET, Is_rogue_level,
-    TEMP_LIT,
+    TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE,
 } from './const.js';
 import { newsym } from './display.js';
 import { objectNames } from './objects.js';
@@ -17,6 +17,11 @@ import { do_light_sources } from './light.js';
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 const BOULDER = objectNames.indexOf('BOULDER');
+// C ref: defsym.h cmap indices used by is_lightblocker_mappear
+const S_ndoor = 12;
+const S_vcdoor = 15;
+const S_hcdoor = 16;
+const S_tree = 18;
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
@@ -75,7 +80,21 @@ function mark_visible_range(row, left, right) {
 }
 
 /**
- * C ref: vision.c does_block — terrain/door + BOULDER (mimic/region deferred).
+ * C ref: monst.h is_lightblocker_mappear — boulder / closed-door / wall / tree
+ * disguise blocks light like the real feature.
+ */
+function is_lightblocker_mappear(mon) {
+    if (!mon) return false;
+    const ap = M_AP_TYPE(mon);
+    if (ap === M_AP_OBJECT) return (mon.mappearance | 0) === BOULDER;
+    if (ap !== M_AP_FURNITURE) return false;
+    const app = mon.mappearance | 0;
+    return app === S_hcdoor || app === S_vcdoor || app < S_ndoor || app === S_tree;
+}
+
+/**
+ * C ref: vision.c does_block — terrain/door + BOULDER + lightblocker mimic.
+ * Named omission: opaque gas-cloud region return 2.
  */
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
@@ -91,6 +110,14 @@ function _blocks(level, x, y) {
     const head = game._objects_at?.get?.(`${x},${y}`);
     for (let obj = head; obj; obj = obj.nexthere) {
         if (obj.otyp === BOULDER) return true;
+    }
+    // C: mimics mimicking boulder/door/wall/tree block light
+    const steed = game.u?.usteed;
+    for (const mon of game.fmon || []) {
+        if (!mon || mon === steed) continue;
+        if (mon.mx !== x || mon.my !== y) continue;
+        if (mon.minvis && !game.u?.See_invisible) continue;
+        if (is_lightblocker_mappear(mon)) return true;
     }
     return false;
 }
@@ -638,6 +665,11 @@ export function vision_recalc(control = 0) {
 
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
+    // C: control==2 falls through to the main update loop (clears live
+    // mon glyphs in gbuf). JS gbuf is loc.disp_* and full flushes paint it
+    // immediately — running that loop here regresses mid-goto / getpos
+    // screens that C still shows from an unflushed tty. Leave-level gbuf
+    // flush for Get bones? is handled in bones.js (D-0583).
     if (old_array && control !== 2 && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
@@ -723,4 +755,40 @@ export function init_vision_globals() {
     game.cs_rows = null;
     game.cs_left = null;
     game.cs_right = null;
+}
+
+/**
+ * C vision_recalc(2) main update loop only — newsym previously IN_SIGHT
+ * cells while cansee is false (mon→memory in gbuf). Used by getbones yn
+ * flush because JS cannot run that loop inside ordinary vision_recalc(2)
+ * without painting cleared gbuf on later full flushes (D-0583).
+ * Caller must set game.level (and fmon if mon_at matters) to the leave level.
+ * Uses game._leave_viz_snapshot when present (pre-vision_recalc(2) sight).
+ */
+export function vision_off_newsym_gbuf() {
+    const u = game.u;
+    if (!u || !game.level) return;
+    const snap = game._leave_viz_snapshot;
+    const old_array = snap?.array || game.viz_array;
+    const old_rmin = snap?.rmin || game._viz_rmin;
+    const old_rmax = snap?.rmax || game._viz_rmax;
+    const next = game.active_buf === 0 ? cs_buf1 : cs_buf0;
+    for (let y = 0; y < ROWNO; y++) next[y].fill(0);
+    // cansee() reads viz_array — empty ⇒ !cansee ⇒ mon cells show memory
+    const savedViz = game.viz_array;
+    game.viz_array = next;
+    if (old_array) {
+        for (let row = 0; row < ROWNO; row++) {
+            const old_row = old_array[row];
+            const start = old_rmin ? old_rmin[row] : 1;
+            const stop = old_rmax ? old_rmax[row] : COLNO - 1;
+            if (start > stop) continue;
+            for (let col = start; col <= stop; col++) {
+                if (col === 0) continue;
+                if (old_row[col] & IN_SIGHT) newsym(col, row);
+            }
+        }
+    }
+    if ((u.ux | 0) > 0) newsym(u.ux, u.uy);
+    game.viz_array = savedViz;
 }

@@ -11,6 +11,7 @@
 // Named omissions: study occupation/learn; novel/tribute; dull sleep;
 // cursed_book/confused_book bodies; swap/sort; other spelleffects otyps;
 // directional weffects; spell_backfire; amulet drain; CQ_REPEAT.
+// Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -560,14 +561,21 @@ async function getdir_spell() {
  * CAST: letter returns ok:true with splnum.
  */
 async function dospellmenu(prompt, splaction) {
+    // C: wizard ≡ flags.debug (#define wizard flags.debug)
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
     // C tty menu_headings: ATR_INVERSE on label words; padding between
     // %-20 / %-12 columns stays normal (observed seed0106 recording).
+    // C dospellmenu: if (wizard) Sprintf(eos(buf), "%c%6s", sep, "turns")
+    // — "turns" is 5 chars so %6s adds a leading pad → "  turns".
     const headingParts = [
         { text: '    Name', attr: ATR_INVERSE },
         { text: '                 ', attr: 0 }, // rest of %-20s + ' ' before Level
         { text: 'Level Category', attr: ATR_INVERSE },
         { text: '     ', attr: 0 }, // Category pad + ' ' before Fail
-        { text: 'Fail Retention', attr: ATR_INVERSE },
+        {
+            text: wizard ? 'Fail Retention  turns' : 'Fail Retention',
+            attr: ATR_INVERSE,
+        },
     ];
     const heading = headingParts.map((p) => p.text).join('');
     const entries = [
@@ -580,9 +588,12 @@ async function dospellmenu(prompt, splaction) {
     for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
         const splnum = i; // no spl_orderindx yet
         const fail = 100 - percent_success(splnum);
-        const line = `${padR(20, spellname(splnum))}  ${padL(2, spellev(splnum))}   `
+        let line = `${padR(20, spellname(splnum))}  ${padL(2, spellev(splnum))}   `
             + `${padR(12, spelltypemnemonic(spell_skilltype(spellid(splnum))))} `
             + `${padL(3, fail)}% ${padL(9, spellretention(splnum))}`;
+        // C: if (wizard) Sprintf(eos(buf), "%c%6d", sep, spellknow(i));
+        // uses loop index i (not splnum) when orderindx is active
+        if (wizard) line += ` ${padL(6, spellknow(i))}`;
         const letter = spellet(splnum);
         entries.push({ text: `${letter} - ${line}`, attr: 0 });
         choices.push({ key: letter, splnum });

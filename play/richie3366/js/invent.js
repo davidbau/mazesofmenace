@@ -82,6 +82,7 @@ import {
     Is_airlevel,
     LEFT_SIDE,
     RIGHT_SIDE,
+    TELEPORT_CONTROL,
 } from './const.js';
 import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
@@ -1286,6 +1287,20 @@ function hero_Stealth(u = game.u || {}) {
 }
 
 /**
+ * C ref: youprop.h Teleport_control —
+ * HTeleport_control || ETeleport_control (uprops + flat mirrors).
+ */
+function hero_Teleport_control(u = game.u || {}) {
+    return !!(
+        (u.HTeleport_control | 0)
+        || (u.ETeleport_control | 0)
+        || u.Teleport_control
+        || (u.uprops?.[TELEPORT_CONTROL]?.intrinsic | 0)
+        || (u.uprops?.[TELEPORT_CONTROL]?.extrinsic | 0)
+    );
+}
+
+/**
  * C ref: insight.c status_enlightenment — Deaf + Sleepy + hunger +
  * encumbrance subset (poly/ride/other troubles/weapon deferred to callers).
  * Overlay (^X) lines need one extra leading space vs enlght_line.
@@ -1909,6 +1924,16 @@ export async function doattributes() {
             // can_advance primary/secondary/twoweap enhance tips deferred
         }
     }
+    // C ref: insight.c status_enlightenment — report nudity after
+    // weapon_insight (+ tux_penalty deferred).
+    if (!wearing_armor()) {
+        // Overlay body rows: enlght_line + one more leading space.
+        if (u.uroleplay?.nudist) {
+            lines.push(` ${enlght_line_txt('You ', 'do', ' not wear any armor', '')}`);
+        } else {
+            lines.push(` ${enlght_line_txt('You ', 'are ', 'not wearing any armor', '')}`);
+        }
+    }
     lines.push('');
     // C: attributes_enlightenment when MAGICENLIGHTENMENT (wizard/explore ^X)
     if (magic) {
@@ -1916,7 +1941,7 @@ export async function doattributes() {
         const {
             from_what, Fast, Very_fast,
         } = await import('./attrib.js');
-        const { POISON_RES, STEALTH, FAST } = await import('./const.js');
+        const { POISON_RES, STEALTH, FAST, TELEPORT_CONTROL } = await import('./const.js');
         const { can_pray } = await import('./pray.js');
         const o = (txt) => ` ${txt}`; // overlay body: enlght_line already has 1 space
         lines.push(' Attributes:');
@@ -1942,6 +1967,13 @@ export async function doattributes() {
         if (hero_Stealth(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', 'stealthy', from_what(STEALTH),
+            )));
+        }
+        // C attributes_enlightenment Transportation — Teleport_control
+        // after Stealth / before magic_negation + Fast (Jumping/Teleportation deferred).
+        if (hero_Teleport_control(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'have ', 'teleport control', from_what(TELEPORT_CONTROL),
             )));
         }
         // Physical — magic_negation then Fast

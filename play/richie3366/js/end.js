@@ -14,7 +14,7 @@ import { an, doname, xname, the as theArt } from './objnam.js';
 import { COIN_CLASS } from './objects.js';
 import {
     DIED, GENOCIDED, STONING, QUIT, ESCAPED, ASCENDED, STARVING, BURNING,
-    NON_PM, CORPSTAT_INIT, CORPSTAT_NONE,
+    CHOKING, NON_PM, CORPSTAT_INIT, CORPSTAT_NONE,
     OBJ_FREE, Upolyd, MM_NONAME, isok, ACCESSIBLE, MAGIC_PORTAL,
     ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED,
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
@@ -23,17 +23,18 @@ import {
     BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
     Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
+    PARANOID_DIE, PARANOID_BONES, TT_LAVA, Has_contents,
 } from './const.js';
 import { G_NOCORPSE, mons } from './monsters.js';
 import { oname, christen_monst } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon } from './makemon.js';
-import { write_bonesfile } from './bones.js';
+import { write_bonesfile, bones_file_exists, delete_bonesfile } from './bones.js';
 import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
-import { monsterNames, pmnames } from './generated/monsters_data.js';
+import { monsterNames, pmnames, PM_TOURIST } from './generated/monsters_data.js';
 import { paybill, money2mon } from './shk.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
@@ -43,6 +44,8 @@ import {
     list_vanquished, list_genocided, show_conduct,
 } from './insight.js';
 import { show_overview } from './dungeon.js';
+import { A_CON, acurr } from './attrib.js';
+import { init_uhunger } from './eat.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
@@ -88,6 +91,36 @@ function money_cnt(invent) {
         if (o.oclass === COIN_CLASS) sum += o.quan | 0;
     }
     return sum;
+}
+
+/**
+ * C ref: shk.c contained_gold — recurse cobj for COIN_CLASS.
+ * @param {object} obj container
+ * @param {boolean} even_if_unknown
+ */
+function contained_gold(obj, even_if_unknown) {
+    let value = 0;
+    for (let otmp = obj?.cobj; otmp; otmp = otmp.nobj) {
+        if (otmp.oclass === COIN_CLASS) value += otmp.quan | 0;
+        else if (Has_contents(otmp) && (otmp.cknown || even_if_unknown)) {
+            value += contained_gold(otmp, even_if_unknown);
+        }
+    }
+    return value;
+}
+
+/**
+ * C ref: vault.c hidden_gold — invent containers' gold.
+ * @param {boolean} even_if_unknown
+ */
+function hidden_gold(even_if_unknown) {
+    let value = 0;
+    for (const obj of game.invent || []) {
+        if (Has_contents(obj) && (obj.cknown || even_if_unknown)) {
+            value += contained_gold(obj, even_if_unknown);
+        }
+    }
+    return value;
 }
 
 /**
@@ -542,9 +575,9 @@ async function show_death_rip_and_summary(how, umoney) {
 /**
  * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
  * Named omissions: clearpriests/paygd; SchroedingersBox; dump/livelog;
- * logfile/xlogfile; toptenwin NHW_TEXT; arise pline; wizard bones query;
+ * logfile/xlogfile; toptenwin NHW_TEXT; arise pline;
  * inven_inuse / ball-chain arms of done_object_cleanup; unleash_all
- * in finish_paybill.
+ * in finish_paybill; launch_in_progress abort; ParanoidBones getlin.
  */
 async function really_done(how) {
     if (!game.program_state) game.program_state = {};
@@ -603,7 +636,8 @@ async function really_done(how) {
 
     // C: score before bones (invent still held; gold may already be money2mon'd)
     let umoney = money_cnt(game.invent);
-    // hidden_gold deferred
+    // C: umoney += hidden_gold(TRUE)
+    umoney += hidden_gold(true);
     let tmp = umoney - (u.umoney0 | 0);
     if (tmp < 0) tmp = 0;
     if (how < PANICKED) tmp -= (tmp / 10) | 0;
@@ -630,7 +664,13 @@ async function really_done(how) {
     if (bones_ok && taken) finish_paybill();
 
     if (bones_ok) {
-        savebones(how, corpse);
+        // C: if (!wizard || paranoid_query(ParanoidBones, "Save bones?"))
+        const flags = game.flags || {};
+        const wizard = !!(flags.wizard || flags.debug);
+        const paranoidBones = ((flags.paranoia_bits | 0) & PARANOID_BONES) !== 0;
+        if (!wizard || (await paranoid_query(paranoidBones, 'Save bones?'))) {
+            await savebones(how, corpse);
+        }
     }
 
     // C: outrip + goodbye into NHW_TEXT then display_nhwindow(TRUE)
@@ -743,17 +783,39 @@ function drop_upon_death(mtmp, cont, x, y) {
 /**
  * C ref: bones.c savebones — ghost envelope + VFS bones file (D-0274).
  * Branch: ordinary `ugrave_arise` NON_PM → drop_upon_death + PM_GHOST
- * MM_NONAME. Skips write when bones file already exists (open_bonesfile hit).
- * Named omissions: file replace/compress; unleash_all/unpunish/dismount;
+ * MM_NONAME. Wizard Replace when bones file already exists (D-0581).
+ * Named omissions: file compress; unleash_all/unpunish/dismount;
  * remove_mon_from_bones/dmonsfree/forget_engravings; fruit fid;
  * set_ghostly_objlist/resetobjs(FALSE); map memory clear;
  * arise/statue arms; ebones; m_dowear; obj_attach_mid; binary savelev;
  * formatkiller body / yyyymmddhhmmss polish (how/when stubs OK for
  * bones_include_name).
  */
-function savebones(how, corpse) {
+async function savebones(how, corpse) {
     void how;
     const u = game.u || {};
+    const flags = game.flags || {};
+    const wizard = !!(flags.wizard || flags.debug);
+
+    // C: open_bonesfile hit → wizard Replace? before make_bones mutations
+    if (bones_file_exists(u.uz)) {
+        if (wizard) {
+            if ((await yn_function(
+                'Bones file already exists.  Replace it?', 'yn', 'n',
+            )) === 'y') {
+                if (!delete_bonesfile(u.uz)) {
+                    await pline('Cannot unlink old bones.');
+                    return;
+                }
+                // fall through to make_bones
+            } else {
+                return;
+            }
+        } else {
+            return;
+        }
+    }
+
     const arise = u.ugrave_arise;
     if (arise != null && arise !== NON_PM && arise >= 0) {
         drop_upon_death(null, null, u.ux, u.uy);
@@ -840,7 +902,61 @@ export async function done2() {
 }
 
 /**
- * C ref: end.c done — Lifesaved / wizard·discover Die? deferred.
+ * C ref: cmd.c paranoid_query — True for 'y'. Paranoid getlin "yes"
+ * deferred; when be_paranoid, still uses yn_function (same as default
+ * ParanoidDie/Bones off path for seed traces).
+ */
+async function paranoid_query(be_paranoid, prompt) {
+    void be_paranoid;
+    return (await yn_function(prompt, 'yn', 'n')) === 'y';
+}
+
+/**
+ * C ref: end.c savelife — restore viable state after wizard/discover
+ * decline-to-die (or Lifesaved). Named omissions: make_sick TIMEOUT==1;
+ * endmultishot; curs_on_u; uswallow expels / ustuck release; livelog.
+ */
+function savelife(how) {
+    const u = game.u || (game.u = {});
+    const flags = game.flags || (game.flags = {});
+    if ((u.ulevel | 0) < 1) u.ulevel = 1;
+    // C: minuhpmax(10) ≡ max(ulevel, 10)
+    const uhpmin = Math.max(u.ulevel | 0, 10);
+    if ((u.uhpmax | 0) < uhpmin) {
+        u.uhpmax = uhpmin;
+        if ((u.uhppeak | 0) < u.uhpmax) u.uhppeak = u.uhpmax;
+        flags.botl = true;
+    }
+    // C: givehp = 50 + 10 * (ACURR(A_CON) / 2)
+    const givehp = 50 + 10 * ((acurr(A_CON) / 2) | 0);
+    u.uhp = Math.min(u.uhpmax | 0, givehp);
+    if (Upolyd(u)) u.mh = Math.min(u.mhmax | 0, givehp);
+    if ((u.uhunger | 0) < 500 || how === CHOKING) init_uhunger();
+    game.nomovemsg = 'You survived that attempt on your life.';
+    if (!game.context) game.context = {};
+    game.context.move = 0;
+    // C: gm.multi = -1 (direct, not nomul); Tourist multi_reason differs
+    game.multi = -1;
+    const rolePm = game.urole?.malenum;
+    game.multi_reason = (rolePm === PM_TOURIST)
+        ? 'being toyed with by Fate'
+        : 'attempting to cheat Death';
+    if (game.context) {
+        game.context.run = 0;
+        game.context.mv = 0;
+    }
+    if (u.utrap && (u.utraptype | 0) === TT_LAVA) {
+        u.utrap = 0;
+        u.utraptype = 0;
+    }
+    flags.botl = true;
+    u.ugrave_arise = NON_PM;
+    u.HUnchanging = 0;
+    // uswallow / ustuck / endmultishot / curs_on_u deferred
+}
+
+/**
+ * C ref: end.c done — wizard·discover Die?; Lifesaved deferred.
  * Ordinary deaths fall through to really_done.
  * bot() before HP zero so You die more() (no bot) keeps prior botl when
  * uhp was -1 at pline flush (D-0310/D-0314).
@@ -878,6 +994,28 @@ export async function done(how) {
             if (Upolyd(u)) u.mh = 0;
             flags.botl = true;
         }
+    }
+
+    let survive = false;
+    // Lifesaved amulet arm deferred
+    // C: explore and wizard modes offer player the option to keep playing
+    const wizard = !!(flags.wizard || flags.debug);
+    const discover = !!(flags.explore || flags.discover);
+    if (!survive && (wizard || discover) && how <= GENOCIDED) {
+        const paranoidDie = ((flags.paranoia_bits | 0) & PARANOID_DIE) !== 0;
+        if (!(await paranoid_query(paranoidDie, 'Die?'))) {
+            await pline(
+                `OK, so you don't ${how === CHOKING ? 'choke' : 'die'}.`,
+            );
+            savelife(how);
+            survive = true;
+        }
+    }
+
+    if (survive) {
+        game.killer.name = '';
+        game.killer.format = KILLED_BY_AN;
+        return;
     }
     await really_done(how);
 }

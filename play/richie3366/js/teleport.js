@@ -541,12 +541,15 @@ export async function safe_teleds(teleds_flags) {
 
 /**
  * C ref: teleport.c scrolltele — scroll/intrinsic teleport placement.
- * Envelope: noteleport pline; uncontrolled → learnscroll + safe_teleds.
+ * Envelope: noteleport pline; wizard/Teleport_control getpos path;
+ * uncontrolled → learnscroll + safe_teleds.
  * Named omissions: make_blinded clear; W-tower half of amulet gate;
- * Teleport_control/blessed getpos controlled path; wizard override.
+ * unconscious controlled fail; steed whobuf; travelcc pre-suggest polish.
  */
 export async function scrolltele(scroll) {
-    if (noteleport_level(game.youmonst) && !game.flags?.debug) {
+    const flags = game.flags || {};
+    const wizard = !!(flags.debug || flags.wizard);
+    if (noteleport_level(game.youmonst) && !wizard) {
         await pline('A mysterious force prevents you from teleporting!');
         if (scroll) learnscroll(scroll);
         return;
@@ -555,13 +558,30 @@ export async function scrolltele(scroll) {
     const u = game.u || {};
     if ((u.uhave?.amulet || u.uhave_amulet) && !rn2(3)) {
         await pline('You feel disoriented for a moment.');
-        return;
+        if (!wizard) return;
+        // wizard Override? yn deferred — treat as accept for now
     }
     const Teleport_control = !!(u.HTeleport_control || u.ETeleport_control
         || u.Teleport_control);
     const Stunned = !!(u.Stunned || u.HStun || u.EStun);
-    if ((Teleport_control || (scroll && scroll.blessed)) && !Stunned) {
-        // controlled getpos path deferred — fall through to random
+    if (((Teleport_control || (scroll && scroll.blessed)) && !Stunned)
+        || wizard) {
+        // unconscious deferred
+        await pline('Where do you want to be teleported?');
+        if (scroll) learnscroll(scroll);
+        const cc = { x: u.ux | 0, y: u.uy | 0 };
+        const travel = game.iflags?.travelcc;
+        if (travel && isok(travel.x, travel.y)) {
+            cc.x = travel.x | 0;
+            cc.y = travel.y | 0;
+        }
+        const { getpos } = await import('./getpos.js');
+        if ((await getpos(cc, true, 'the desired position')) < 0) return;
+        if (teleok(cc.x, cc.y, false)) {
+            await teleds(cc.x, cc.y, TELEDS_TELEPORT);
+            return;
+        }
+        await pline('Sorry...');
     }
 
     if (scroll) learnscroll(scroll);
@@ -573,6 +593,51 @@ export async function scrolltele(scroll) {
  */
 export async function tele() {
     await scrolltele(null);
+}
+
+/**
+ * C ref: teleport.c dotele — #teleport / ^T body.
+ * Ported: wizard break_the_rules → tele() + morehungry;
+ * trap/vault/energy/spellcast arms deferred.
+ */
+export async function dotele(break_the_rules) {
+    // trap-at-feet arms deferred
+    if (!break_the_rules) {
+        // energy / Teleportation / spellcast gate deferred — fail closed
+        const u = game.u || {};
+        const Teleportation = !!(u.HTeleportation || u.ETeleportation
+            || u.Teleportation);
+        if (!Teleportation) {
+            await pline('You are not able to teleport at will.');
+            return false;
+        }
+    }
+    // next_to_u leash gate — always true without leash wiring
+    await tele();
+    // C: if (!trap) morehungry(100)
+    const { morehungry } = await import('./eat.js');
+    morehungry(100);
+    return true;
+}
+
+/**
+ * C ref: teleport.c dotelecmd — ^T command.
+ * Wizard without menu_requested → ignore restrictions (debug ^T).
+ * Named omissions: m-prefix mode menu; tport_spell hide/add.
+ */
+export async function dotelecmd() {
+    const flags = game.flags || {};
+    const wizard = !!(flags.debug || flags.wizard);
+    if (!wizard) {
+        return (await dotele(false)) ? 1 : 0; // ECMD_TIME : ECMD_OK
+    }
+    let ignore = true;
+    if (game.iflags?.menu_requested) {
+        // m ^T mode menu deferred — fall back to ignore restrictions
+        game.iflags.menu_requested = false;
+        ignore = true;
+    }
+    return (await dotele(ignore)) ? 1 : 0;
 }
 
 /** C ref: dungeon.c single_level_branch — Is_knox only (Ludios). */

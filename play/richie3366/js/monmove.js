@@ -45,7 +45,7 @@ import {
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
     M_AP_FURNITURE,
-    STRAT_WAITFORU, STRAT_WAITMASK,
+    STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
 } from './const.js';
 import { is_pool, is_lava } from './hack.js';
@@ -65,6 +65,7 @@ import { is_pole } from './wield.js';
 import { acurrstr } from './attrib.js';
 import { m_canseeu } from './mondata.js';
 import { rloc } from './teleport.js';
+import { quest_talk, quest_stat_check } from './quest.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -971,13 +972,12 @@ function m_balks_at_approaching(oldappr, mtmp, pdist) {
 
 // C ref: monmove.c m_move() — pets → postmov(dog_move); else approach / track path
 export async function m_move(mtmp, after) {
-    const ptr = mtmp.data;
-    // C: can_tunnel = tunnels(ptr) off Rogue level
-    let can_tunnel = tunnels(ptr) && !Is_rogue_level(game.u?.uz);
-    const can_open = !(nohands(ptr) || verysmall(ptr));
-    // C: can_unlock = (can_open && monhaskey) || iswiz || is_rider
-    const can_unlock = (can_open && monhaskey(mtmp, true))
-        || !!mtmp.iswiz;
+    // ptr / can_* set after mintrap (C: mintrap can change mtmp->data;
+    // can_tunnel after hide-under early return — same predicates).
+    let ptr;
+    let can_tunnel;
+    let can_open;
+    let can_unlock;
     // is_rider deferred
     const omx = mtmp.mx;
     const omy = mtmp.my;
@@ -993,6 +993,11 @@ export async function m_move(mtmp, after) {
             return MMOVE_NOTHING;
         }
     }
+    // C: ptr = mtmp->data after mintrap (may polymorph)
+    ptr = mtmp.data;
+    can_tunnel = tunnels(ptr) && !Is_rogue_level(game.u?.uz);
+    can_open = !(nohands(ptr) || verysmall(ptr));
+    can_unlock = (can_open && monhaskey(mtmp, true)) || !!mtmp.iswiz;
 
     // C: meating countdown — still eating skips dog_move / approach
     if (mtmp.meating) {
@@ -1001,8 +1006,16 @@ export async function m_move(mtmp, after) {
         return MMOVE_DONE;
     }
 
-    // Named omission: hides_under + can_hide_under_obj + rn2(10) early return
-    // (C monmove.c before set_apparxy).
+    // C ref: monmove.c m_move — hides_under stay-put before set_apparxy
+    // (D-0589): OBJ_AT + can_hide_under_obj + rn2(10) → MMOVE_NOTHING
+    {
+        const floorObj = objects_at(mtmp.mx, mtmp.my);
+        if (hides_under(ptr) && floorObj
+            && can_hide_under_obj(floorObj)
+            && rn2(10)) {
+            return MMOVE_NOTHING;
+        }
+    }
 
     // C: set_apparxy before mtame / covetous / shk|gd|priest specials
     set_apparxy(mtmp);
@@ -1177,10 +1190,17 @@ export async function dochug(mtmp) {
         && (m_canseeu(mtmp) || (mtmp.mhp | 0) < (mtmp.mhpmax | 0))) {
         mtmp.mstrategy &= ~STRAT_WAITFORU;
     }
+    // C: quest_stat_check before waitmask early-out
+    quest_stat_check(mtmp);
     // C: frozen or still waiting — no distfleeck / movement RNG
     if (!mtmp.mcanmove || (mtmp.mstrategy & STRAT_WAITMASK)) {
         if (game.u?.Hallucination) newsym(mtmp.mx, mtmp.my);
-        // STRAT_CLOSE quest_talk deferred
+        // C: STRAT_CLOSE + monnear → quest_talk (leader speaks)
+        if (mtmp.mcanmove && (mtmp.mstrategy & STRAT_CLOSE)
+            && !mtmp.msleeping
+            && monnear(mtmp, game.u?.ux, game.u?.uy)) {
+            await quest_talk(mtmp);
+        }
         return 0;
     }
 

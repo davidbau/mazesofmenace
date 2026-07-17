@@ -11,6 +11,9 @@ import { GameMap } from './game.js';
 import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED } from './const.js';
 import { peace_minded, set_malign } from './makemon.js';
 import { save_track, rest_track } from './track.js';
+import { yn_function } from './getline.js';
+import { paint_gbuf_level_to_terminal } from './display.js';
+import { vision_off_newsym_gbuf } from './vision.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 
@@ -31,6 +34,18 @@ export function set_bonesfile_name(lev) {
 
 function vfsPath(filename) {
     return BONES_VFS_PREFIX + filename;
+}
+
+/** C ref: files.c open_bonesfile existence probe (no NHFILE). */
+export function bones_file_exists(lev) {
+    const { filename } = set_bonesfile_name(lev);
+    return vfsReadFile(vfsPath(filename)) != null;
+}
+
+/** C ref: files.c delete_bonesfile — VFS unlink. */
+export function delete_bonesfile(lev) {
+    const { filename } = set_bonesfile_name(lev);
+    return vfsDeleteFile(vfsPath(filename));
 }
 
 /** Serialize one object; cobj as nobj-order array. Drop back-pointers. */
@@ -299,9 +314,10 @@ function rebuildObjectsAt(fobj) {
 
 /**
  * C ref: bones.c getbones open + getlev + ghostly id remap + delete.
- * @returns {boolean} true if bones loaded (mklev should return).
+ * Wizard Get bones? / Unlink bones? via y_n (D-0581).
+ * @returns {Promise<boolean>} true if bones loaded (mklev should return).
  */
-export function try_load_bones(lev) {
+export async function try_load_bones(lev) {
     const { filename, bonesid } = set_bonesfile_name(lev);
     const raw = vfsReadFile(vfsPath(filename));
     if (raw == null) return false;
@@ -319,7 +335,41 @@ export function try_load_bones(lev) {
         return false;
     }
 
-    const map = new GameMap();
+    const flags = game.flags || {};
+    const wizard = !!(flags.wizard || flags.debug);
+    // Keep stale terminal map through Get/Unlink yn like C gbuf (display
+    // redraw waits until goto_level flush_screen(-1) / docrt).
+    // C: vision_recalc(2) newsyms leave-level into gbuf; Get bones? yn
+    // flush_screen paints that gbuf before postpone. JS applies the same
+    // mon→memory newsym pass on the stashed leave-level, then paints dirty
+    // cells (ordinary vision_recalc(2) skips the loop — see vision.js).
+    game._stale_map_flush = true;
+    if (game._leave_gbuf_level) {
+        const savedLevel = game.level;
+        const savedFmon = game.fmon;
+        let leaveFmon = null;
+        for (const info of game.level_info || []) {
+            if (info?.level === game._leave_gbuf_level) {
+                leaveFmon = info.fmon;
+                break;
+            }
+        }
+        game.level = game._leave_gbuf_level;
+        game.fmon = leaveFmon;
+        vision_off_newsym_gbuf();
+        paint_gbuf_level_to_terminal(game._leave_gbuf_level);
+        game.level = savedLevel;
+        game.fmon = savedFmon;
+    }
+    try {
+        // C: after validate OK — wizard y_n("Get bones?"); 'n' → leave file
+        if (wizard) {
+            if ((await yn_function('Get bones?', 'yn', 'n')) === 'n') {
+                return false;
+            }
+        }
+
+        const map = new GameMap();
     if (payload.locations) {
         for (let x = 0; x < payload.locations.length; x++) {
             const col = payload.locations[x];
@@ -412,6 +462,17 @@ export function try_load_bones(lev) {
     if (!game.u.uroleplay) game.u.uroleplay = {};
     game.u.uroleplay.numbones = (game.u.uroleplay.numbones | 0) + 1;
 
-    vfsDeleteFile(vfsPath(filename));
-    return true;
+    // C: wizard y_n("Unlink bones?"); 'n' → keep file
+        if (wizard) {
+            if ((await yn_function('Unlink bones?', 'yn', 'n')) === 'n') {
+                return true;
+            }
+        }
+        vfsDeleteFile(vfsPath(filename));
+        return true;
+    } finally {
+        game._stale_map_flush = false;
+        game._leave_gbuf_level = null;
+        game._leave_viz_snapshot = null;
+    }
 }

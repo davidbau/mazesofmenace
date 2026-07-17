@@ -344,6 +344,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // C: if (!iflags.nofollowers) keepdogs(FALSE)
     if (!game.iflags?.nofollowers) keepdogs(false);
+    // Snapshot sight before vision_recalc(2) clears viz — getbones yn
+    // needs prior IN_SIGHT to mon→memory newsym the leave-level gbuf.
+    if (game.viz_array) {
+        game._leave_viz_snapshot = {
+            array: game.viz_array.map((row) => Uint8Array.from(row)),
+            rmin: game._viz_rmin ? Array.from(game._viz_rmin) : null,
+            rmax: game._viz_rmax ? Array.from(game._viz_rmax) : null,
+        };
+    } else {
+        game._leave_viz_snapshot = null;
+    }
     vision_recalc(2);
 
     // C: do.c goto_level — discard level-local travel destination cache
@@ -377,6 +388,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (!u.utolev) u.utolev = { dnum: 0, dlevel: 0 };
     assign_level(u.utolev, newlevel);
     u.utotype = 0;
+    // C: depth change → status refresh on next flush (getbones yn sees new Dlvl)
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
 
     // C: dunlev_reached for non-builds_up
     const dun = game.dungeons?.[u.uz.dnum | 0];
@@ -387,6 +401,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     stairway_free_all();
     // Detach live map pointers; mklev/getlev restores them.
+    // C gbuf survives teardown; remember leave-level for getbones yn flush.
+    game._leave_gbuf_level = game.level;
     game.fmon = null;
     game.fobj = null;
     game._objects_at = new Map();

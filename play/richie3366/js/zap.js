@@ -16,9 +16,9 @@
 // spell ubuzz; mon_reflects; fireball/gas/Hallucination
 // hdmgtype rn2; full zap_over_floor; zhitu non-sleep; shopdamage;
 // map_invisible/unmap during buzz; backfire body; other NODIR; wrest
-// pline; check_capacity/nohands; check_unpaid; more_experienced;
-// update_inventory; shieldeff/monstunseesu; setworn EReflecting bits
-// (worn SHIELD_OF_REFLECTION stands in); ureflects W_WEP/W_AMUL/W_ARM/
+// pline; check_capacity/nohands; check_unpaid; update_inventory;
+// shieldeff/monstunseesu; setworn EReflecting bits (worn
+// SHIELD_OF_REFLECTION stands in); ureflects W_WEP/W_AMUL/W_ARM/
 // silver-dragon arms beyond shield makeknown; create_polymon after
 // poly_zapped; do_osshock shop bill; invent/worn poly_obj arms;
 // boxlock on Is_box; other bhito otyps.
@@ -43,6 +43,7 @@ import {
 import { nonliving, is_demon } from './monsters.js';
 import { m_at } from './mon.js';
 import { find_mac } from './mhitm.js';
+import { more_experienced } from './exper.js';
 import { obj_resists } from './dogmove.js';
 import { zap_dig } from './dig.js';
 import {
@@ -570,7 +571,8 @@ async function zapnodir(obj) {
     if (known) {
         const oc = game.objects?.[obj.otyp];
         if (oc && !oc.oc_name_known) {
-            // more_experienced(0, 10) deferred
+            // C: zap.c zapnodir — score for discovering the type
+            more_experienced(0, 10);
         }
         learnwand(obj);
     }
@@ -627,7 +629,8 @@ export async function zapyourself(obj, ordinary) {
             break;
         }
         learn_it = true;
-        const him = game.u?.female ? 'her' : 'him';
+        // C: uhim() → genders[flags.female ? 1 : 0].him (not u.female)
+        const him = game.flags?.female ? 'her' : 'him';
         if (!game.killer) game.killer = { name: '', format: 0 };
         game.killer.name = `shot ${him}self with a death ray`;
         game.killer.format = NO_KILLER_PREFIX;
@@ -1000,7 +1003,8 @@ async function weffects(obj) {
     if (disclose) {
         learnwand(obj);
         if (was_unkn) {
-            // more_experienced(0, 10) deferred
+            // C: zap.c weffects — score for discovering the type
+            more_experienced(0, 10);
         }
     }
 }

@@ -20,8 +20,12 @@ import {
     DRAIN_RES,
     BLINDED,
     BLND_RES,
+    TELEPORT_CONTROL,
+    OBJ_INVENT,
 } from './const.js';
 import { pline } from './display.js';
+import { cxname } from './objnam.js';
+import { what_gives } from './artifact.js';
 import {
     PM_ARCHEOLOGIST,
     PM_BARBARIAN,
@@ -510,7 +514,19 @@ const PROP_HFIELD = {
     [DRAIN_RES]: 'HDrain_resistance',
     [BLINDED]: 'HBlinded',
     [BLND_RES]: 'HBlnd_resist',
+    [TELEPORT_CONTROL]: 'HTeleport_control',
 };
+
+/**
+ * C ref: objnam.c ysimple_name — "your|the" + minimal_xname via cxname.
+ * Named omissions: full minimal_xname bareobj suppress; shk ownership.
+ */
+function ysimple_name(obj) {
+    if (!obj) return 'something';
+    const carried = obj.where === OBJ_INVENT
+        || (game.invent || []).includes(obj);
+    return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
+}
 
 /**
  * C ref: attrib.c check_innate_abil — role/race table entry if active.
@@ -575,8 +591,10 @@ export function is_innate(propidx) {
 
 /**
  * C ref: attrib.c from_what — wizard-mode intrinsic source suffix.
- * Named omissions: birth blind/deaf; Very_fast potion/boots; what_gives
- * extrinsic equipment; Blindfolded_only / cream; negative prop blocking.
+ * Ported: innate reasons + what_gives extrinsic worn equipment.
+ * Named omissions: birth blind/deaf; Very_fast potion/boots;
+ * Blindfolded_only / cream; negative prop blocking; artifact bare name;
+ * "pair of " strip.
  */
 export function from_what(propidx) {
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
@@ -589,5 +607,12 @@ export function from_what(propidx) {
     if (innateness === FROM_EXP) return ' because of your experience';
     if (innateness === FROM_LYCN) return ' due to your lycanthropy';
     if (innateness === FROM_FORM_REASON) return ' from your creature form';
+    // C: wizard && (obj = what_gives(&u.uprops[propidx].extrinsic))
+    const extrinsic = game.u?.uprops?.[propidx]?.extrinsic | 0;
+    const obj = what_gives(extrinsic);
+    if (obj) {
+        // Artifact bare_artifactname deferred → ysimple_name for all.
+        return ` because of ${ysimple_name(obj)}`;
+    }
     return '';
 }

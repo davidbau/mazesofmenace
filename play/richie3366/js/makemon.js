@@ -56,10 +56,11 @@ import {
     passes_walls,
     noncorporeal,
     is_golem,
+    M3_CLOSE, M3_WAITFORU,
 } from './monsters.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
-    MM_ADJACENTOK, MM_NOTAIL,
+    MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     In_mines, In_sokoban, In_endgame,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
@@ -68,6 +69,7 @@ import {
     ROOMOFFSET, LS_MONSTER,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
     In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
+    STRAT_CLOSE, STRAT_WAITFORU,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
 import {
@@ -1713,6 +1715,14 @@ export function makemon(mdat, x, y, mmflags = 0) {
     if (mtmp.mextra?.egd) mtmp.mextra.egd.parentmid = mtmp.m_id;
     if (mtmp.mextra?.eshk) mtmp.mextra.eshk.parentmid = mtmp.m_id;
     if (mtmp.mextra?.emin) mtmp.mextra.emin.parentmid = mtmp.m_id;
+
+    // C: ptr->msound == MS_LEADER && quest_info(MS_LEADER) == mndx
+    const ldr = game.urole?.ldrnum ?? NON_PM;
+    if (ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0)) {
+        if (!game.quest_status) game.quest_status = {};
+        game.quest_status.leader_m_id = mtmp.m_id;
+    }
+
     newmonhp(mtmp, ptr);
 
     const femaleok = !is_male(ptr) && !is_neuter(ptr);
@@ -1721,6 +1731,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
     else mtmp.female = femaleok ? rn2(2) : 0;
 
     mtmp.mpeaceful = peace_minded(ptr) ? 1 : 0;
+
+    // C: ptr->mflags3 && !(mmflags & MM_NOWAIT) → STRAT_WAITFORU / STRAT_CLOSE
+    if ((ptr.mflags3 | 0) && !(mmflags & MM_NOWAIT)) {
+        if (ptr.mflags3 & M3_WAITFORU) mtmp.mstrategy |= STRAT_WAITFORU;
+        if (ptr.mflags3 & M3_CLOSE) mtmp.mstrategy |= STRAT_CLOSE;
+        // STRAT_APPEARMSG for WAITMASK|COVETOUS deferred
+    }
 
     // C: link onto fmon before group/invent
     if (!game.fmon) game.fmon = [];

@@ -7,7 +7,7 @@ import { nhgetch } from './input.js';
 import { docrt, flush_screen, flush_topl_more, status_line_2 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { align_gname, align_gtitle, rank_of } from './roles.js';
-import { A_NEUTRAL } from './const.js';
+import { A_NEUTRAL, A_LAWFUL, A_CHAOTIC } from './const.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
@@ -180,15 +180,36 @@ Without thought, you ready your weapon, and mutter under your breath:
     "By %d, there will be blood spilt today."`,
 };
 
-/** C ref: dat/quest.lua locate_first (Barbarian exercised by seed0373). */
+/** C ref: dat/quest.lua leader_first (Arc). */
+const QUEST_LEADER_FIRST = {
+    Arc: `"Finally you have returned, %p.  You were always
+my most promising student.  Allow me to see if you are ready for the
+most difficult task of your career."`,
+};
+
+/** C ref: dat/quest.lua badalign (Arc). */
+const QUEST_BADALIGN = {
+    Arc: `"%pC!  I've heard that you've been using sloppy techniques.  Your
+results lately can hardly be called suitable for %ra!
+
+"How could you have strayed from the %a path?  Go from here, and come
+back only when you have purified yourself."`,
+};
+
+/** C ref: dat/quest.lua locate_first (Bar + Arc exercised). */
 const QUEST_LOCATE_FIRST = {
     Bar: `The scent of water comes to you in the desert breeze.  You know that
 you have located %i.`,
+    Arc: `A plain opens before you.  Beyond the plain lies a foreboding edifice.
+
+You have the feeling that you will soon find the entrance to
+%i.`,
 };
 
-/** C ref: dat/quest.lua locate_next (Barbarian). */
+/** C ref: dat/quest.lua locate_next (Bar + Arc). */
 const QUEST_LOCATE_NEXT = {
     Bar: `Yet again you have a chance to infiltrate %i.`,
+    Arc: `Once again, you are near the entrance to %i.`,
 };
 
 /** C ref: questpgr.c ldrname */
@@ -225,6 +246,14 @@ function convert_arg(c) {
         return Blind ? 'sense' : 'see';
     case 'p':
         return game.plname || '';
+    case 'a': {
+        const aOrig = u.ualignbase?.original ?? u.ualign?.type ?? A_NEUTRAL;
+        if (aOrig === A_LAWFUL) return 'lawful';
+        if (aOrig === A_CHAOTIC) return 'chaotic';
+        return 'neutral';
+    }
+    case 'r':
+        return urole.rank?.m || urole.name?.m || '';
     case '%':
         return '%';
     default:
@@ -232,12 +261,26 @@ function convert_arg(c) {
     }
 }
 
-/** C ref: questpgr.c convert_line — %X substitution (no %lC/%nC yet). */
+/** C ref: questpgr.c convert_line — %X substitution; %pC capitalizes %p. */
 function convert_line(inLine) {
     let out = '';
     for (let i = 0; i < inLine.length; i++) {
         if (inLine[i] === '%' && i + 1 < inLine.length) {
-            out += convert_arg(inLine[++i]);
+            let code = inLine[++i];
+            let capitalize = false;
+            if (i + 1 < inLine.length && inLine[i + 1] === 'C') {
+                capitalize = true;
+                i++;
+            }
+            // %ra = rank + 'a' literal suffix used in Arc badalign
+            if (code === 'r' && i + 1 < inLine.length && inLine[i + 1] === 'a'
+                && (i + 2 >= inLine.length || !/[A-Za-z]/.test(inLine[i + 2]))) {
+                // keep as %r then literal 'a' — handled by falling through
+            }
+            let piece = convert_arg(code);
+            if (capitalize && piece)
+                piece = piece.charAt(0).toUpperCase() + piece.slice(1);
+            out += piece;
         } else {
             out += inLine[i];
         }
@@ -258,6 +301,8 @@ export async function qt_pager(msgid) {
     const code = game.urole?.filecode || 'Tou';
     let raw = null;
     if (msgid === 'firsttime') raw = QUEST_FIRSTTIME[code] || null;
+    else if (msgid === 'leader_first') raw = QUEST_LEADER_FIRST[code] || null;
+    else if (msgid === 'badalign') raw = QUEST_BADALIGN[code] || null;
     else if (msgid === 'locate_first') raw = QUEST_LOCATE_FIRST[code] || null;
     else if (msgid === 'locate_next') raw = QUEST_LOCATE_NEXT[code] || null;
     // Other msgid bodies deferred (C-JS-MAP)

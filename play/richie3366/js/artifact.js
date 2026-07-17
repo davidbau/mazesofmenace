@@ -18,6 +18,20 @@ import {
     ONAME_BONES,
     ONAME_RANDOM,
     ONAME_KNOW_ARTI,
+    W_ARM,
+    W_ARMC,
+    W_ARMH,
+    W_ARMS,
+    W_ARMG,
+    W_ARMF,
+    W_ARMU,
+    W_AMUL,
+    W_RINGL,
+    W_RINGR,
+    W_TOOL,
+    W_ART,
+    W_ARTI,
+    W_SWAPWEP,
 } from './const.js';
 import { rn2 } from './rng.js';
 
@@ -239,4 +253,31 @@ export function retouch_object(obj, _loseit) {
     }
     // remove_worn_item / dropx deferred
     return 0;
+}
+
+/**
+ * C ref: artifact.c what_gives — first invent item conveying extrinsic.
+ * Ported: non-artifact wornmask match (rings/armor/amulet/tool).
+ * Named omissions: artifact cary/defn/cspfx/spfx arms; Sunsword EBlnd;
+ * abil_to_adtyp / abil_to_spfx.
+ * @param {number} extrinsicBits u.uprops[prop].extrinsic
+ * @returns {object|null}
+ */
+export function what_gives(extrinsicBits) {
+    const bits = extrinsicBits | 0;
+    if (!bits) return null;
+    let wornmask = W_ARM | W_ARMC | W_ARMH | W_ARMS
+        | W_ARMG | W_ARMF | W_ARMU
+        | W_AMUL | W_RINGL | W_RINGR | W_TOOL
+        | W_ART | W_ARTI;
+    if (game.u?.twoweap) wornmask |= W_SWAPWEP;
+    const wornbits = wornmask & bits;
+    if (!wornbits) return null;
+    for (const obj of game.invent || []) {
+        if (!obj) continue;
+        // Artifact convey arms deferred — skip so ordinary worn match wins.
+        if (obj.oartifact) continue;
+        if (wornbits === (wornmask & (obj.owornmask | 0))) return obj;
+    }
+    return null;
 }

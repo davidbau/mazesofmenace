@@ -43,6 +43,7 @@ import { doextcmd } from './getline.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele } from './wizcmds.js';
+import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
@@ -960,6 +961,10 @@ export async function rhack(key) {
         // C ref: o_init.c dodiscovered
         await dodiscovered();
         game.context.move = 0;
+    } else if (key === 20) { // ^T — C('t') dotelecmd
+        // C ref: teleport.c dotelecmd / cmd.c teleport
+        const teleRes = await dotelecmd();
+        game.context.move = (teleRes & 0x01) ? 1 : 0; // ECMD_TIME
     } else if (key === 24) { // ^X
         // C ref: insight.c enlightenment / doattributes
         await doattributes();

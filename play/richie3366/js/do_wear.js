@@ -800,9 +800,11 @@ async function getobj_wear() {
     for (;;) {
         await flush_topl_more();
         const lets = await wear_lets();
+        // C invent.c getobj: empty suggested buf → " [*]" (not "[*?]");
+        // DOWNPLAY accessories set forceprompt so the prompt still appears.
         const query = lets
             ? `What do you want to wear? [${lets} or ?*]`
-            : 'What do you want to wear? [*?]';
+            : 'What do you want to wear? [*]';
         const prompt = `${query} `;
         game._pending_message = prompt;
         await flush_screen(1);
@@ -855,9 +857,10 @@ async function getobj_puton() {
     for (;;) {
         await flush_topl_more();
         const lets = await puton_lets();
+        // C invent.c getobj: empty suggested buf → " [*]" (not "[*?]")
         const query = lets
             ? `What do you want to put on? [${lets} or ?*]`
-            : 'What do you want to put on? [*?]';
+            : 'What do you want to put on? [*]';
         const prompt = `${query} `;
         game._pending_message = prompt;
         await flush_screen(1);

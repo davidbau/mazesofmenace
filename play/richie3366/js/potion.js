@@ -28,6 +28,7 @@ import { mons } from './monsters.js';
 import { PM_HUMAN } from './generated/monsters_data.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
+import { more_experienced } from './exper.js';
 import { trycall } from './do_name.js';
 import { newuhs } from './eat.js';
 
@@ -450,7 +451,8 @@ export async function dopotion(otmp) {
     if (otmp.dknown && oc && !oc.oc_name_known) {
         if (!potion_unkn) {
             makeknown(otmp.otyp);
-            // more_experienced(0, 10) deferred
+            // C: potion.c dopotion — score for discovering the type
+            more_experienced(0, 10);
         } else {
             await trycall(otmp);
         }
