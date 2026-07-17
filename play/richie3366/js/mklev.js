@@ -53,6 +53,7 @@ import {
     Is_medusa_level,
     DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, ENGRAVE,
     MM_ASLEEP, MM_NOCOUNTBIRTH, MM_NOMSG, IS_TREE, G_GENOD,
+    G_EXTINCT, MAXMONNO,
     MKTRAP_NOSPIDERONWEB,
     MKTRAP_NOVICTIM,
     Is_firelevel,
@@ -88,11 +89,12 @@ import { obj_resists } from './dogmove.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER, PM_MONK, PM_LICHEN,
-    is_male, is_female, mons, G_NOGEN, monsterNames,
+    is_male, is_female, mons, G_NOGEN, G_UNIQ, monsterNames,
     MALE, FEMALE, NEUTRAL,
     is_flyer, is_floater, is_swimmer, amphibious,
     passes_walls, noncorporeal, likes_fire,
     mon_learns_traps,
+    resists_ston, poly_when_stoned,
 } from './monsters.js';
 import { name_to_monplus, name_to_mon } from './mondata.js';
 import { christen_monst, oname } from './do_name.js';
@@ -703,9 +705,10 @@ function reset_xystart_size() {
  * else maze fallback. Ported loaders: minefill, tut-1, bigrm-2, bigrm-3,
  * bigrm-7, bigrm-8, Bar-strt, Bar-loca, Bar-fila, Bar-filb, Arc-strt, Arc-loca,
  * Arc-fila, Arc-filb, Arc-goal, soko1-1, soko1-2, soko2-1, soko3-1, soko3-2,
- * soko4-2, tower1, fire, air, minend-1, minetn-2, medusa-1.
+ * soko4-2, tower1, fire, air, minend-1, minetn-2, medusa-1,
+ * Pri-fila, Pri-filb.
  * Named omissions: other bigrm-N / soko2-2 / soko4-1 / quest
- * protos (Bar-goal, Pri-fila/filb); minetn-1/3–7; minend-2/3; tower2/3;
+ * protos (Bar-goal); minetn-1/3–7; minend-2/3; tower2/3;
  * medusa-2/3/4; water/earth/astral; create_maze fallback; check_ransacked side
  * effects beyond ransacked flag; dmonsfree.
  */
@@ -807,6 +810,14 @@ function load_special_proto(protofile) {
     }
     if (protofile === 'Pri-goal') {
         load_pri_goal();
+        return true;
+    }
+    if (protofile === 'Pri-fila') {
+        load_pri_fila();
+        return true;
+    }
+    if (protofile === 'Pri-filb') {
+        load_pri_filb();
         return true;
     }
     if (protofile === 'Arc-strt') {
@@ -1126,10 +1137,42 @@ function load_bigrm_3() {
 }
 
 /**
+ * C ref: makemon.c propagate + mbirth_limit — Medusa statue accept tally.
+ * Named omission: full makemon-path propagate on every birth.
+ */
+function medusa_statue_propagate(mndx) {
+    const g = game;
+    if (!g.mvitals) g.mvitals = [];
+    if (!g.mvitals[mndx]) g.mvitals[mndx] = { mvflags: 0, born: 0, died: 0 };
+    const ptr = mons(mndx);
+    const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
+    const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
+    const lim = mndx === PM_NAZGUL ? 9
+        : mndx === PM_ERINYS ? 3
+            : MAXMONNO;
+    const gone = ((g.mvitals[mndx].mvflags | 0) & G_GONE) !== 0;
+    const result = ((g.mvitals[mndx].born | 0) < lim && !gone);
+    if (ptr && (ptr.geno & G_UNIQ) !== 0
+        && mndx !== monsterNames.indexOf('PM_HIGH_CLERIC')) {
+        g.mvitals[mndx].mvflags = (g.mvitals[mndx].mvflags | 0) | G_EXTINCT;
+    }
+    // C: tally && (!ghostly || result) with tally=TRUE ghostly=FALSE → always
+    if ((g.mvitals[mndx].born | 0) < 255) {
+        g.mvitals[mndx].born = (g.mvitals[mndx].born | 0) + 1;
+    }
+    if ((g.mvitals[mndx].born | 0) >= lim
+        && ptr && (ptr.geno & G_NOGEN) === 0
+        && ((g.mvitals[mndx].mvflags | 0) & G_EXTINCT) === 0) {
+        g.mvitals[mndx].mvflags = (g.mvitals[mndx].mvflags | 0) | G_EXTINCT;
+    }
+    return result;
+}
+
+/**
  * C ref: dat/medusa-1.lua via load_special.
- * Named omissions: resists_ston/poly_when_stoned/propagate on empty
- * statues (mresists not extracted — accept first makemon); medusa-2/3/4;
- * flip_level lregion coord update (same shortcut as Bar-strt/fire).
+ * Named omissions: worn/artifact STONE_RES in resists_ston; medusa-2/3/4;
+ * flip_level lregion coord update (same shortcut as Bar-strt/fire);
+ * full mongone invent teardown beyond fmon unlink.
  */
 function load_medusa_1() {
     const g = game;
@@ -1286,20 +1329,35 @@ function load_medusa_1() {
     }
 
     // des.object({ id="statue", contents=0 }) × 7 — empty + Medusa invent fill
+    // C ref: sp_lev.c create_object Medusa special when o->corpsenm == NON_PM
     for (let i = 0; i < 7; i++) {
         const pos = get_location_random(null);
         const otmp = mksobj_at(STATUE, pos.x, pos.y, true, true);
         if (!otmp) continue;
         otmp.cobj = null;
         otmp.owt = weight(otmp);
-        // C create_object Medusa special when template corpsenm == NON_PM
         let wastyp = otmp.corpsenm;
         let was = null;
         for (let j = 0; j < 1000; j++, wastyp = rndmonnum()) {
             was = makemon(mons(wastyp), 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
             if (!was) continue;
-            // Named omission: resists_ston / poly_when_stoned / propagate
-            break;
+            // C: !resists_ston(was) && !poly_when_stoned(&mons[wastyp])
+            if (!resists_ston(was)
+                && !poly_when_stoned(mons(wastyp), g.mvitals)) {
+                // C: propagate(wastyp, TRUE, FALSE) — MM_NOCOUNTBIRTH skipped tally
+                medusa_statue_propagate(wastyp);
+                break;
+            }
+            // C: mongone(was) — reject stone-resistant / poly-when-stoned
+            const list = g.fmon;
+            if (Array.isArray(list)) {
+                const ix = list.indexOf(was);
+                if (ix >= 0) list.splice(ix, 1);
+            }
+            was.mx = 0;
+            was.my = 0;
+            was.minvent = null;
+            was = null;
         }
         if (was) {
             set_corpsenm(otmp, wastyp);
@@ -1977,7 +2035,7 @@ function load_pri_strt() {
  * (Temple of Nalzok). Mines init is a lit-field kludge (fg=bg=".");
  * des.map overlays the temple; morgue regions stock undead.
  * Named omissions: humidity-aware get_location; flip_level (noflip);
- * Pri-fila/filb; spo_end_moninvent m_dowear.
+ * spo_end_moninvent m_dowear.
  */
 function load_pri_loca() {
     const g = game;
@@ -2036,10 +2094,12 @@ function load_pri_loca() {
     };
 
     // des.region morgue rects (filled=1)
-    // C fill stocks the eastern morgue as map cols 31-35 (70 cells), not
-    // 31-39 (126): after rooms 0-2 (212 cells) C has exactly 282 morguemon
-    // calls then place_lregion. Lua lists x2=39; observed C fill extent is
-    // x2=35 (D-0645). Keep roomno/topologize aligned with that hx.
+    // C room[3] is map cols 31-39 → abs (52,5)-(60,18) (D-0657 DIAG).
+    // fill_zoo door-adjacency skips lx col 31 (doors at map 30); stocks
+    // 32-39. D-0645 clipped hx to 35 after @15167 morguemon/place_lregion
+    // drift — that under-stocks 36-39 so getlev put_lregion accepts
+    // (59,14) instead of m_at-reject. Restoring hx=39 needs link_doors
+    // + fill parity first (reopens @15167 without them).
     priAddRectRoom(0, 0, 9, 13, false, MORGUE, FILL_NORMAL);
     priAddRectRoom(9, 0, 30, 1, false, MORGUE, FILL_NORMAL);
     priAddRectRoom(9, 12, 30, 13, false, MORGUE, FILL_NORMAL);
@@ -6335,6 +6395,7 @@ function splev_roomtype(name, defval = OROOM) {
     const map = {
         ordinary: OROOM,
         temple: TEMPLE,
+        morgue: MORGUE,
         shop: SHOPBASE,
         'tool shop': TOOLSHOP,
         'food shop': FOODSHOP,
@@ -6852,6 +6913,111 @@ function load_arc_filb() {
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'S');
+    });
+
+    makecorridors();
+
+    if (!g.level.flags?.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
+    fixup_special();
+}
+
+/**
+ * C ref: dat/Pri-fila.lua via load_special — quest filler above locate.
+ * Ordinary + morgue des.room + des.random_corridors. Named omissions:
+ * other-role *-fila room scripts; failed-room skip fidelity beyond
+ * create_room false; ensure_way_out / link_doors_rooms extras.
+ */
+function load_pri_fila() {
+    const g = game;
+    nhlib_shuffle_align();
+
+    // des.room contents mirror Pri-fila.lua order
+    splev_des_room({ type: 'ordinary' }, null, (r) => {
+        splev_room_stair(r, true);
+        splev_room_object(r);
+        splev_room_monster(r, 'human zombie');
+    });
+    splev_des_room({ type: 'ordinary' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_object(r);
+    });
+    splev_des_room({ type: 'ordinary' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_trap(r);
+        splev_room_object(r);
+        splev_room_monster(r, 'human zombie');
+    });
+    splev_des_room({ type: 'morgue' }, null, (r) => {
+        splev_room_stair(r, false);
+        splev_room_object(r);
+        splev_room_trap(r);
+    });
+    splev_des_room({ type: 'ordinary' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_object(r);
+        splev_room_trap(r);
+        splev_room_monster(r, 'wraith');
+    });
+    splev_des_room({ type: 'morgue' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_trap(r);
+    });
+
+    // des.random_corridors → create_corridor all -1 → makecorridors
+    makecorridors();
+
+    // C load_special: wallification → flip_level_rnd(allow_flips=3) → fixup
+    if (!g.level.flags?.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
+    fixup_special();
+}
+
+/**
+ * C ref: dat/Pri-filb.lua via load_special — quest filler below locate.
+ * Ordinary + morgue des.room + des.random_corridors. Named omissions:
+ * other-role *-filb; failed-room / ensure_way_out.
+ */
+function load_pri_filb() {
+    const g = game;
+    nhlib_shuffle_align();
+
+    splev_des_room({ type: 'ordinary' }, null, (r) => {
+        splev_room_stair(r, true);
+        splev_room_object(r);
+        splev_room_monster(r, 'human zombie');
+        splev_room_monster(r, 'wraith');
+    });
+    splev_des_room({ type: 'morgue' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_object(r);
+        splev_room_object(r);
+    });
+    splev_des_room({ type: 'ordinary' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_trap(r);
+        splev_room_object(r);
+        splev_room_monster(r, 'human zombie');
+        splev_room_monster(r, 'wraith');
+    });
+    splev_des_room({ type: 'morgue' }, null, (r) => {
+        splev_room_stair(r, false);
+        splev_room_object(r);
+        splev_room_object(r);
+        splev_room_trap(r);
+    });
+    splev_des_room({ type: 'ordinary' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_object(r);
+        splev_room_trap(r);
+        splev_room_monster(r, 'human zombie');
+        splev_room_monster(r, 'wraith');
+    });
+    splev_des_room({ type: 'morgue' }, null, (r) => {
+        splev_room_object(r);
+        splev_room_trap(r);
     });
 
     makecorridors();

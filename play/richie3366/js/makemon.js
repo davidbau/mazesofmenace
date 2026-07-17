@@ -72,7 +72,7 @@ import {
     M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET, LS_MONSTER,
-    AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
+    AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
     In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
@@ -277,16 +277,35 @@ function uncommon(mndx) {
 }
 
 // C ref: makemon.c align_shift — special-level then dungeon align bias.
-// Named omission: static oldmoves cache (recomputes Is_special each call).
+// C caches Is_special(&u.uz) while svm.moves is unchanged; goto_level /
+// mklev can change u.uz without bumping moves, so statue rndmonst on a
+// new special may still see the prior level's (often NULL) special.
+let _align_shift_oldmoves = 0; // C: static NEARDATA long oldmoves = 0L
+let _align_shift_lev = null; // C: static NEARDATA s_level *lev
+
+/** Reset statics for a new game (C process start; JS reuses the module). */
+export function reset_align_shift_cache() {
+    _align_shift_oldmoves = 0;
+    _align_shift_lev = null;
+}
+
 function align_shift(ptr) {
+    const moves = game.moves | 0;
+    if (_align_shift_oldmoves !== moves) {
+        const uz = game.u?.uz;
+        _align_shift_lev = (game.sp_levchn || []).find(s =>
+            s?.dlevel
+            && (s.dlevel.dnum | 0) === (uz?.dnum | 0)
+            && (s.dlevel.dlevel | 0) === (uz?.dlevel | 0)) || null;
+        _align_shift_oldmoves = moves;
+    }
+    const lev = _align_shift_lev;
     const uz = game.u?.uz;
-    const slev = (game.sp_levchn || []).find(s =>
-        s?.dlevel
-        && (s.dlevel.dnum | 0) === (uz?.dnum | 0)
-        && (s.dlevel.dlevel | 0) === (uz?.dlevel | 0));
-    const align = slev?.flags?.align
-        || game.dungeons?.[uz?.dnum | 0]?.flags?.align
-        || AM_NONE;
+    // C: (lev) ? lev->flags.align : dungeons[u.uz.dnum].flags.align
+    // (do not ||-fallback when lev exists but align==0)
+    const align = lev
+        ? (lev.flags?.align | 0)
+        : (game.dungeons?.[uz?.dnum | 0]?.flags?.align | 0);
     const mal = ptr?.maligntyp | 0;
     switch (align) {
     case AM_LAWFUL:

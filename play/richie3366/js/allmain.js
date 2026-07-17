@@ -14,7 +14,7 @@ import { init_dungeons, find_level } from './dungeon.js';
 import { schedule_goto, deferred_goto } from './do.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
 import { makedog } from './dog.js';
-import { makemon } from './makemon.js';
+import { makemon, reset_align_shift_cache } from './makemon.js';
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { LOW_PM, NUMMONS, mons, G_NOCORPSE } from './monsters.js';
 import {
@@ -374,6 +374,10 @@ export async function welcome(new_game) {
 export async function newgame() {
     const g = game;
 
+    // C: moves starts 0 until u_init_role; reset align_shift statics
+    g.moves = 0;
+    reset_align_shift_cache();
+
     // C ref: allmain.c newgame — context.ident / tribute before init_objects
     if (!g.context) g.context = {};
     if (g.context.ident == null) g.context.ident = 2;
@@ -433,7 +437,7 @@ export async function newgame() {
     g.u.uexp = 0;
     g.u.urexp = 0;
     g.u.uhunger = g.u.uhunger ?? 900;
-    g.moves = 1;
+    // C: svm.moves = 1 in u_init_role via u_init_inventory_attrs (after mklev)
     g.flags.female = g.flags.female !== false;
     g.plname = g.plname || 'Contestant';
 

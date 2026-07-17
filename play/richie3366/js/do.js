@@ -378,6 +378,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const trackSnap = save_track(); // clears live ring (C release_data arm)
     if (old_ledger > 0) {
         const prev = game.level_info[old_ledger] || { flags: 0 };
+        // C save.c savelev — Sfo_dest_area updest/dndest with the level.
+        const snapDest = (d) => ({
+            lx: d?.lx | 0, ly: d?.ly | 0, hx: d?.hx | 0, hy: d?.hy | 0,
+            nlx: d?.nlx | 0, nly: d?.nly | 0, nhx: d?.nhx | 0, nhy: d?.nhy | 0,
+        });
         game.level_info[old_ledger] = {
             flags: (prev.flags | 0) | VISITED | LFILE_EXISTS,
             omoves: game.moves | 0,
@@ -388,6 +393,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             stairs: game.stairs,
             head_engr: game.head_engr,
             track: trackSnap,
+            updest: snapDest(game.updest),
+            dndest: snapDest(game.dndest),
         };
     }
 
@@ -438,12 +445,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         familiar = bones_include_name(game.plname || '');
     } else {
         // C: getlev — restore in-memory stash + catchup/hide_monst + rest_track
+        // C restore.c Sfi_dest_area updest/dndest after rest_stairs.
         game.level = info.level;
         game.fmon = info.fmon || [];
         game.fobj = info.fobj || null;
         game.ftrap = info.ftrap || null;
         game.stairs = info.stairs || null;
         game.head_engr = info.head_engr || null;
+        if (info.updest) game.updest = { ...info.updest };
+        if (info.dndest) game.dndest = { ...info.dndest };
         rebuildObjectsAt(game.fobj);
         relight_monsters();
         rest_track(info.track);

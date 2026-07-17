@@ -24,6 +24,7 @@ import {
     mcolors,
     monsterNames,
     pmnames,
+    mresists,
     PM_GIANT_SPIDER,
     PM_LICHEN,
     PM_ACID_BLOB,
@@ -76,6 +77,16 @@ export const G_LGROUP = 0x0040; /* appear in large groups normally */
 export const G_FREQ = 0x0007;
 /* monflag.h — mkclass may ignore G_GENOD|G_EXTINCT via this non-geno bit */
 export const G_IGNORE = 0x8000;
+
+/* C ref: monflag.h MR_* — permonst.mresists bits */
+export const MR_FIRE = 0x01;
+export const MR_COLD = 0x02;
+export const MR_SLEEP = 0x04;
+export const MR_DISINT = 0x08;
+export const MR_ELEC = 0x10;
+export const MR_POISON = 0x20;
+export const MR_ACID = 0x40;
+export const MR_STONE = 0x80;
 
 export const M2_MALE = 0x00010000;
 export const M2_FEMALE = 0x00020000;
@@ -156,6 +167,7 @@ export function mons(mndx) {
         maligntyp: maligntyps[mndx],
         geno: genos[mndx],
         difficulty: difficulties[mndx],
+        mresists: mresists[mndx],
         mflags1: mflags1s[mndx],
         mflags2: mflags2s[mndx],
         mflags3: mflags3s[mndx],
@@ -385,6 +397,41 @@ export function is_undead(ptr) {
 /** C ref: mondata.h is_golem */
 export function is_golem(ptr) {
     return ptr?.mlet === 'S_GOLEM';
+}
+
+/**
+ * C ref: mondata.h pm_resistance — (ptr->mresists & typ) != 0.
+ */
+export function pm_resistance(ptr, typ) {
+    return !!((ptr?.mresists ?? 0) & typ);
+}
+
+const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
+
+/**
+ * C ref: mondata.c poly_when_stoned — non-stone golem → stone golem unless
+ * latter genocided (G_EXTINCT still allowed).
+ * `mvitals` optional; omit → treat stone golem as not genocided.
+ */
+export function poly_when_stoned(ptr, mvitals = null) {
+    if (!is_golem(ptr)) return false;
+    if (PM_STONE_GOLEM < 0 || (ptr.mndx | 0) === PM_STONE_GOLEM) return false;
+    // C: !(svm.mvitals[PM_STONE_GOLEM].mvflags & G_GENOD) — G_GENOD=0x02
+    const genod = ((mvitals?.[PM_STONE_GOLEM]?.mvflags ?? 0) & 0x02) !== 0;
+    return !genod;
+}
+
+/**
+ * C ref: monst.h resists_ston → Resists_Elem(STONE_RES) subset:
+ * mon_resistancebits = data->mresists | mextrinsics | mintrinsics.
+ * Named omission: artifact weapon / worn-item STONE_RES grants.
+ */
+export function resists_ston(mon) {
+    if (!mon) return false;
+    const bits = (mon.data?.mresists | 0)
+        | (mon.mextrinsics | 0)
+        | (mon.mintrinsics | 0);
+    return !!(bits & MR_STONE);
 }
 
 /**

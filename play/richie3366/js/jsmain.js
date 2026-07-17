@@ -157,7 +157,8 @@ export class NethackGame {
         };
         g.context = { move: 0 };
         g.program_state = {};
-        g.moves = 1;
+        // C: moves starts 0; u_init_role sets 1 after mklev (see u_init.c)
+        g.moves = 0;
 
         // Role/race filled by setup_role_race_from_rc in newgame
         g.urole = { name: { m: 'Tourist', f: 'Tourist' } };

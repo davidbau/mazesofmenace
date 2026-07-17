@@ -1225,6 +1225,11 @@ function u_init_role() {
     const role = game.urole;
     const mnum = role?.mnum;
 
+    // C: moves starts 0; set to 1 here (after mklev) so align_shift's
+    // static oldmoves==0 skips refresh during starting mklev, then the
+    // first post-mklev call (e.g. tutorial) refreshes Is_special.
+    game.moves = 1;
+
     // C: reset nocreate before role kit
     const strange = strangeObject();
     game.nocreate = strange;

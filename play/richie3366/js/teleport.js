@@ -9,18 +9,21 @@ import {
     CC_SKIP_MONS, CC_SKIP_INACCS,
     GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, GP_ALLOW_XY,
     MM_IGNOREWATER, MM_IGNORELAVA,
-    ACCESSIBLE, IS_POOL, IS_LAVA, ZAP_POS, IS_DOOR,
+    ACCESSIBLE, IS_POOL, IS_LAVA, ZAP_POS, IS_DOOR, IS_WATERWALL,
     D_CLOSED, D_LOCKED,
     MIGR_RANDOM, MON_MIGRATING, NO_TRAP,
     ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT,
     UTOTYPE_NONE,
     is_hole, Is_stronghold, Is_botlevel, Is_knox_level,
-    In_endgame, In_sokoban, In_quest,
+    In_endgame, In_sokoban, In_quest, Is_waterlevel,
 } from './const.js';
 import { objects_at, mksobj } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
-import { amorphous, throws_rocks } from './monsters.js';
+import {
+    amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
+    monsterNames,
+} from './monsters.js';
 import { newsym, pline, You_feel } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './hack.js';
@@ -30,7 +33,6 @@ import { getlin } from './getline.js';
 import { get_level } from './dungeon.js';
 import { depth } from './hacklib.js';
 import { addinv } from './u_init.js';
-
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
@@ -38,6 +40,7 @@ const Trap_Effect_Finished = 0;
 const Trap_Moved_Mon = 4;
 
 const BOULDER = objectNames.indexOf('BOULDER');
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 
 function isok(x, y) {
     return x >= 1 && x < COLNO && y >= 0 && y < ROWNO;
@@ -93,9 +96,19 @@ function goodpos_onscary(_x, _y, mptr) {
 }
 
 /**
+ * C ref: mon.c m_in_air — flyer/floater; cling+ceiling mundetected deferred.
+ * Local copy avoids mon.js ↔ teleport cycle.
+ */
+function m_in_air(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr) return false;
+    return !!(is_flyer(ptr) || is_floater(ptr));
+}
+
+/**
  * C ref: teleport.c goodpos() — placement / enexto suitability.
- * Pool/lava swimmer·flyer arms and passes_walls early-out deferred beyond
- * closed-door / boulder / occupied / accessible gates needed for pets.
+ * Named omissions: youmonst swim/levitate pool·lava arms; passes_walls /
+ * may_passwall early-out; GP_AVOID_MONPOS exclusion zones.
  */
 export function goodpos(x, y, mtmp, gpflags = 0) {
     if (!isok(x, y)) return false;
@@ -118,8 +131,20 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
         // C: occupied by another mon (fakemon mx=0 never equals occupant)
         if (mtmp2 && (mtmp2 !== mtmp || mtmp.wormno)) return false;
 
-        if (IS_POOL(typ) && !ignorewater) return false;
-        if (IS_LAVA(typ) && !ignorelava) return false;
+        // C: is_pool / is_swimmer / m_in_air — D-0653 (was blanket reject)
+        if (IS_POOL(typ) && !ignorewater) {
+            return !!(is_swimmer(mdat)
+                || (!Is_waterlevel(game.u?.uz)
+                    && !IS_WATERWALL(typ)
+                    && m_in_air(mtmp)));
+        } else if (mdat?.mlet === 'S_EEL' && rn2(13) && !ignorewater) {
+            return false;
+        } else if (IS_LAVA(typ) && !ignorelava) {
+            // C: PM_FLOATING_EYE avoids lava heat
+            if (mdat && (mdat.mndx ?? -1) === PM_FLOATING_EYE) return false;
+            return !!(m_in_air(mtmp) || likes_lava(mdat));
+        }
+        // passes_walls + may_passwall deferred
         // C: amorphous may ooze through closed doors before accessible()
         if (amorphous(mdat) && closed_door(x, y)) return true;
         if (checkscary && goodpos_onscary(x, y, mdat)) return false;
