@@ -934,8 +934,8 @@ function mksobj_init(otmp, artif) {
             const ptr = mons(otmp.corpsenm);
             const thr = Math.trunc(level_difficulty() / 2) + 10;
             if (ptr && !verysmall(ptr) && rn2(thr) > 10) {
-                // C: mkobj(SPBOOK_no_NOVEL) — novels excluded via rnd_class
-                mkobj(SPBOOK_no_NOVEL, false);
+                // C: add_to_container(otmp, mkobj(SPBOOK_no_NOVEL, FALSE))
+                add_to_container(otmp, mkobj(SPBOOK_no_NOVEL, false));
             }
         }
         break;

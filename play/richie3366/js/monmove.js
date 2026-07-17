@@ -38,6 +38,7 @@ import {
     count_traps,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
+import { castmu, AD_SPEL, AD_CLRC } from './mcastu.js';
 import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from './vision.js';
 import {
     isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE, IS_OBSTRUCTED,
@@ -50,6 +51,7 @@ import {
     STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
     STAIRS, LADDER, IRONBARS, WEB,
+    M_ATTK_HIT,
 } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import {
@@ -1449,7 +1451,26 @@ export async function dochug(mtmp) {
     let panicattk = false;
     // PHASE THREE: move if not adjacent-hostile (attack path)
     if (want_move) {
-        status = await m_move(mtmp, 0);
+        // C ref: monmove.c dochug — undirected castmu before m_move
+        const uxy = game.u || {};
+        if (!mtmp.mspec_used
+            && dist2(mtmp.mx, mtmp.my, uxy.ux, uxy.uy) <= 49) {
+            const slots = mdat?.mattk || [];
+            for (let i = 0; i < NATTK && i < slots.length; i++) {
+                const a = slots[i];
+                if ((a?.aatyp | 0) === AT_MAGC
+                    && ((a.adtyp | 0) === AD_SPEL
+                        || (a.adtyp | 0) === AD_CLRC)) {
+                    if ((castmu(mtmp, a, false, false) & M_ATTK_HIT) !== 0) {
+                        status = MMOVE_DONE;
+                        break;
+                    }
+                }
+            }
+        }
+        if (status === MMOVE_NOTHING) {
+            status = await m_move(mtmp, 0);
+        }
         if (status !== MMOVE_DIED) {
             ({ inrange, nearby, scared } = distfleeck(mtmp));
         }

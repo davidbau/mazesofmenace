@@ -339,6 +339,10 @@ const WALLTALK = [
 
 /** C ref: monflag.h MS_BARK — dogs/canines (mlet S_DOG). */
 const MS_BARK = 1;
+/** C ref: monflag.h MS_ANIMAL — animal noises ceiling. */
+const MS_ANIMAL = 17;
+/** C ref: monflag.h MS_LEADER — quest class leader. */
+const MS_LEADER = 36;
 
 /**
  * Infer msound when generated tables omit it.
@@ -353,20 +357,36 @@ function mon_msound(mtmp) {
 }
 
 /**
- * C ref: sounds.c domonnoise — MS_BARK tame/peaceful bark path.
+ * C ref: sounds.c domonnoise — MS_BARK + MS_LEADER quest_chat path.
  * Other MS_* named omitted in C-JS-MAP; unknown → ECMD_OK (silent).
  * FULL_MOON howl needs night() — deferred; falls through to bark.
+ * MS_PRIEST priest_talk deferred (non-leader temple priests).
  */
 export async function domonnoise(mtmp) {
     if (!mtmp) return ECMD_OK;
     if (game.u?.Deaf) return ECMD_OK;
-    const msound = mon_msound(mtmp);
+    let msound = mon_msound(mtmp);
+    // C: leader_m_id && msound > MS_ANIMAL → MS_LEADER (poly-safe).
+    // JS tables omit msound; treat known quest leader as speakable LEADER.
+    const qs = game.quest_status;
+    if (qs?.leader_m_id
+        && (mtmp.m_id | 0) === (qs.leader_m_id | 0)
+        && (msound === 0 || msound > MS_ANIMAL)) {
+        msound = MS_LEADER;
+    }
     if (msound === 0 && !mtmp.isshk) return ECMD_OK;
 
     let pline_msg = null;
     const ptr = mtmp.data;
     const moves = game.moves | 0;
     const hungrytime = mtmp.edog?.hungrytime | 0;
+
+    if (msound === MS_LEADER) {
+        // C: MS_LEADER/NEMESIS/GUARDIAN → quest_chat; then ECMD_TIME
+        const { quest_chat } = await import('./quest.js');
+        await quest_chat(mtmp);
+        return ECMD_TIME;
+    }
 
     if (msound === MS_BARK) {
         // C: FULL_MOON && night() → "howls." — night() deferred

@@ -296,6 +296,21 @@ async function leader_speaks(mtmp) {
 }
 
 /**
+ * C ref: quest.c quest_chat — player #chat with quest character.
+ * Named omissions: setmangry on pissed_off; nemesis/guardian chat.
+ */
+export async function quest_chat(mtmp) {
+    if (!mtmp) return;
+    const qs = game.quest_status || (game.quest_status = {});
+    if ((mtmp.m_id | 0) === (qs.leader_m_id | 0) && qs.leader_m_id) {
+        await chat_with_leader(mtmp);
+        // C: pissed_off → setmangry deferred
+        return;
+    }
+    // MS_NEMESIS / MS_GUARDIAN deferred
+}
+
+/**
  * C ref: quest.c quest_talk — leader by m_id; nemesis/djinn deferred.
  */
 export async function quest_talk(mtmp) {

@@ -174,7 +174,8 @@ export const RACE_ORC = 4;
 // player.roleMnum stores the monster-table index (matching C's urole.mnum)
 // player.roleIndex remains as the roles[] array index (0-12) for chargen/iteration
 
-// Monster spell ids (src/mcastu.c: choose_magic_spell/choose_clerical_spell)
+// Monster spell ids — legacy MGC_/CLC_ kept for older refs; live port uses
+// MCAST_* in mcastu.js (mcastu.h MONSPELL order).
 export const MGC_PSI_BOLT = 0;
 export const MGC_CURE_SELF = 1;
 export const MGC_HASTE_SELF = 2;
@@ -198,6 +199,13 @@ export const CLC_CURSE_ITEMS = 6;
 export const CLC_LIGHTNING = 7;
 export const CLC_FIRE_PILLAR = 8;
 export const CLC_GEYSER = 9;
+
+// C ref: monattk.h — sparse high adtyp codes
+export const AD_CLRC = 240;
+export const AD_SPEL = 241;
+export const AD_RBRE = 242;
+export const AD_SAMU = 252;
+export const AD_CURS = 253;
 
 // Achievements enum (include/you.h, used by src/insight.c)
 export const ACH_BELL = 1;
@@ -2951,5 +2959,6 @@ export function Can_fall_thru(uz) {
 }
 export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (uz ?? g?.u?.uz)?.dnum === g.rogue_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.rogue_level.dlevel; }
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
+export function Is_medusa_level(uz) { const g = game; return g?.medusa_level && (uz ?? g?.u?.uz)?.dnum === g.medusa_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.medusa_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
 export function Is_juiblex_level(uz) { return false; /* TODO */ }

@@ -23,7 +23,7 @@ import { objectNames, SPBOOK_CLASS } from './objects.js';
 import { amorphous, throws_rocks } from './monsters.js';
 import { newsym, pline, You_feel } from './display.js';
 import { vision_recalc } from './vision.js';
-import { in_rooms, nomul } from './hack.js';
+import { nomul } from './hack.js';
 import { makeknown, prinv } from './invent.js';
 import { more_experienced } from './exper.js';
 import { getlin } from './getline.js';
@@ -441,7 +441,11 @@ function teleok(x, y, trapok) {
  * spoteffects(TRUE) after (nested ok — C does the same).
  * Named omissions: ball/chain, swallow, vault_guard uleftvault, regions,
  * drag_ball, switch_terrain, notice_mon_*; shop-enter plines beyond
- * spoteffects subset. Occupancy: sync in_rooms so invault sees VAULT.
+ * spoteffects subset.
+ *
+ * Do NOT set u.urooms before spoteffects — C only temporarily fakes
+ * urooms for vault_guard exit, then restores so move_update can detect
+ * newly entered TEMPLE/shop rooms (D-0639).
  */
 export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
@@ -460,9 +464,6 @@ export async function teleds(nux, nuy, teleds_flags) {
     // u.utrap clear on teleport
     u.utrap = 0;
     u.utraptype = 0;
-    // C: spoteffects → move_update refreshes urooms; sync subset here
-    u.urooms0 = u.urooms || '';
-    u.urooms = in_rooms(u.ux, u.uy, 0);
     newsym(ox, oy);
     newsym(u.ux, u.uy);
     // C: vision_recalc(0) before materialize so --More-- shows new map
@@ -476,7 +477,8 @@ export async function teleds(nux, nuy, teleds_flags) {
         const same = (nux === u.ux0 && nuy === u.uy0);
         await pline(`You materialize in ${same ? 'the same' : 'a different'} location!`);
     }
-    // C: spoteffects(TRUE) — vault gold / traps at landing
+    // C: vault_guard temporary urooms fake then restore — deferred (no guard)
+    // C: spoteffects(TRUE) → move_update detects temple/shop entry
     const { spoteffects } = await import('./pickup.js');
     await spoteffects(true);
 }

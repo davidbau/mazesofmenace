@@ -575,6 +575,28 @@ function dname_to_dnum(s) {
     throw new Error(`Couldn't resolve dungeon number for name "${s}"`);
 }
 
+/**
+ * C ref: dungeon.c dungeon_branch — branch whose end2 (child) is named dungeon.
+ * Assumes end1 is always the parent.
+ */
+export function dungeon_branch(s) {
+    const dnum = dname_to_dnum(s);
+    const br = (game.branches || []).find(b => (b.end2?.dnum | 0) === dnum);
+    if (!br) throw new Error(`dgn_entrance: can't find entrance to ${s}`);
+    return br;
+}
+
+/**
+ * C ref: dungeon.c at_dgn_entrance — hero on parent end1 of named branch.
+ */
+export function at_dgn_entrance(s) {
+    const br = dungeon_branch(s);
+    const uz = game.u?.uz;
+    return !!uz
+        && (uz.dnum | 0) === (br.end1.dnum | 0)
+        && (uz.dlevel | 0) === (br.end1.dlevel | 0);
+}
+
 function assign_level(destName, dlevel) {
     game[destName] = { dnum: dlevel.dnum, dlevel: dlevel.dlevel };
 }

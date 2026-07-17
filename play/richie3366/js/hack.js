@@ -6,7 +6,7 @@ import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok,
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
-    is_pit,
+    is_pit, TEMPLE,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
@@ -934,7 +934,8 @@ export function impaired_movement() {
 /**
  * C ref: hack.c check_special_room — shop enter/leave + special-room messages.
  * Named omissions: Mine Town ACH_TOWN; zoo/swamp/court/… plines; room_discovered
- * mapseen; shop rtype→OROOM clear path (shops keep rtype via default).
+ * mapseen; shop rtype→OROOM clear path (shops keep rtype via default);
+ * non-TEMPLE special-room first-entry plines (ZOO/SWAMP/…).
  */
 export async function check_special_room(newlev) {
     const u = game.u;
@@ -953,5 +954,17 @@ export async function check_special_room(newlev) {
     if (u.ushops_entered) {
         await u_entered_shop(u.ushops_entered);
     }
-    // other special-room entrance plines deferred
+
+    // C: for each newly entered room; TEMPLE → intemple (keeps rtype).
+    const { intemple } = await import('./priest.js');
+    const rooms = game.level?.rooms;
+    const entered = u.uentered || '';
+    for (let i = 0; i < entered.length; i++) {
+        const roomno = entered.charCodeAt(i) - ROOMOFFSET;
+        const rt = rooms?.[roomno]?.rtype | 0;
+        if (rt === TEMPLE) {
+            await intemple(roomno + ROOMOFFSET);
+        }
+        // other special-room entrance plines deferred
+    }
 }

@@ -1549,6 +1549,8 @@ export function setup_role_race_from_rc(opts = {}) {
         homebase: role.homebase ?? null,
         intermed: role.intermed ?? null,
         ldrnum: role.ldrnum ?? NON_PM,
+        // C: gu.urole.guardnum → guardname() for %g/%gP
+        guardnum: role.guardnum ?? NON_PM,
         // C: gu.urole.questarti → artiname for %o/%O (D-0629)
         questarti: role.questarti ?? 0,
         hpadv: role.hpadv || { infix: 8, inrnd: 0, lofix: 0, lornd: 8, hifix: 0, hirnd: 0 },

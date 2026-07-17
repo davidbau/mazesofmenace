@@ -7,7 +7,7 @@
 //        dopay / pay_billed_items / dopayobj / menu_pick_pay_items (subset).
 // Named omissions: shk_fixes_damage body; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
-// m_break_boulder; m_move_aggress; inhistemple/has_shrine; intemple;
+// m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
 // Fast + sobj_at pickaxe doorway block / dochug; m_canseeu for angry chase;
 // deserted_shop body; ACH_SHOP mapseen; Hallu shkname;
 // angry/surcharge/robbed welcome arms; Invis welcome; leave-bill verbalize;
@@ -996,7 +996,7 @@ function histemple_at(priest, x, y) {
 
 /**
  * C ref: priest.c pri_move — return 1 moved, 0 didn't, -1 let m_move, -2 died.
- * Named omissions: inhistemple/has_shrine callers; intemple greetings.
+ * Named omissions: inhistemple callers beyond pri_move; mapseen_temple.
  */
 export async function pri_move(priest) {
     let avoid = true;

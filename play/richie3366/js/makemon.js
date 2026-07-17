@@ -75,10 +75,11 @@ import {
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
     In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, is_pit,
+    A_LAWFUL, ONAME_RANDOM, EMIN,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
 import {
-    mksobj, mkobj, mkobj_at, weight, objects_at, curse, is_crackable,
+    mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless, is_crackable,
     set_corpsenm, stop_timer, add_to_container, rnd_class,
 } from './mkobj.js';
 
@@ -110,7 +111,7 @@ import {
 import { cansee } from './vision.js';
 import { newsym } from './display.js';
 import { emits_light, new_light_source } from './light.js';
-import { christen_monst } from './do_name.js';
+import { christen_monst, oname } from './do_name.js';
 import { get_shop_item } from './shknam.js';
 import {
     get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
@@ -1367,6 +1368,38 @@ function m_initweap(mtmp) {
         }
         break;
     case 'S_ANGEL':
+        // C: makemon.c m_initweap S_ANGEL — humanoid minion kit
+        if (humanoid(ptr)) {
+            const typ = rn2(3) ? otyp('LONG_SWORD') : otyp('SILVER_MACE');
+            const nam = typ === otyp('LONG_SWORD') ? 'Sunsword' : 'Demonbane';
+            let otmp = mksobj(typ, false, false);
+            // maybe promote weapon to an artifact
+            {
+                const mal = mtmp.isminion
+                    ? (EMIN(mtmp)?.min_align | 0)
+                    : (ptr.maligntyp | 0);
+                if ((!rn2(20) || is_lord(ptr)) && sgn(mal) === A_LAWFUL) {
+                    otmp = oname(otmp, nam, ONAME_RANDOM);
+                }
+            }
+            bless(otmp);
+            otmp.oerodeproof = 1;
+            otmp.spe = rn2(4);
+            if (typ === otyp('SILVER_MACE')) otmp.spe += 3;
+            mpickobj(mtmp, otmp);
+
+            otmp = mksobj(
+                (!rn2(4) || is_lord(ptr))
+                    ? otyp('SHIELD_OF_REFLECTION')
+                    : otyp('LARGE_SHIELD'),
+                false,
+                false,
+            );
+            otmp.oerodeproof = 1;
+            otmp.spe = 0;
+            mpickobj(mtmp, otmp);
+        }
+        break;
     case 'S_KOP':
         // Deferred special cases (C-JS-MAP).
         break;
@@ -1512,7 +1545,7 @@ function rnd_misc_item(mtmp) {
 }
 
 // C ref: makemon.c m_initinv — S_GNOME candle, S_MUMMY wrap, S_QUANTMECH box,
-//   S_GIANT gems, PM_SHOPKEEPER, trailing misc
+//   S_GIANT gems, S_WRAITH/S_LICH/S_DEMON, PM_SHOPKEEPER, trailing misc
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
     if (Is_rogue_level(game.u?.uz)) return;
@@ -1577,6 +1610,39 @@ function m_initinv(mtmp) {
                 otmp.owt = weight(otmp);
             }
             mpickobj(mtmp, otmp);
+        }
+        break;
+    case 'S_WRAITH':
+        // C ref: makemon.c m_initinv S_WRAITH — Nazgul cursed RIN_INVISIBILITY
+        if (ptr.mndx === pm('NAZGUL')) {
+            const otmp = mksobj(otyp('RIN_INVISIBILITY'), false, false);
+            curse(otmp);
+            mpickobj(mtmp, otmp);
+        }
+        break;
+    case 'S_LICH':
+        // C ref: makemon.c m_initinv S_LICH — Master/Arch Lich gear
+        if (ptr.mndx === pm('MASTER_LICH') && !rn2(13)) {
+            mongets(mtmp, rn2(7) ? otyp('ATHAME') : otyp('WAN_NOTHING'));
+        } else if (ptr.mndx === pm('ARCH_LICH') && !rn2(3)) {
+            const otmp = mksobj(
+                rn2(3) ? otyp('ATHAME') : otyp('QUARTERSTAFF'),
+                true,
+                rn2(13) ? false : true,
+            );
+            if ((otmp.spe | 0) < 2) otmp.spe = rnd(3);
+            if (!rn2(4)) otmp.oerodeproof = 1;
+            mpickobj(mtmp, otmp);
+        }
+        break;
+    case 'S_DEMON':
+        // C ref: makemon.c m_initinv S_DEMON — ice devil spear / Asmodeus wands
+        // (moved from m_initweap: no AT_WEAP so m_initweap is not called)
+        if (ptr.mndx === pm('ICE_DEVIL') && !rn2(4)) {
+            mongets(mtmp, otyp('SPEAR'));
+        } else if (ptr.mndx === pm('ASMODEUS')) {
+            mongets(mtmp, otyp('WAN_COLD'));
+            mongets(mtmp, otyp('WAN_FIRE'));
         }
         break;
     case 'S_HUMAN':
@@ -1692,7 +1758,6 @@ function m_initinv(mtmp) {
         // elf / guardian invent arms deferred
         break;
     default:
-        // Other m_initinv bodies (S_DEMON, S_WRAITH, S_LICH, …) deferred
         break;
     }
 

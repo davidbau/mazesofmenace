@@ -301,10 +301,11 @@ export const roles = [
         lgod: null,
         ngod: null,
         cgod: null,
-        // C role.c: homebase / intermed / ldrnum / questarti
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
         homebase: 'the Great Temple',
         intermed: 'the Temple of Nalzok',
         ldrnum: pm('PM_ARCH_PRIEST'),
+        guardnum: pm('PM_ACOLYTE'),
         questarti: ART_MITRE_OF_HOLINESS,
         attrbase: [7, 7, 10, 7, 7, 7],
         attrdist: [15, 10, 30, 15, 20, 10],
