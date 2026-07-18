@@ -58,6 +58,9 @@ const AD_DRST = 7; /* drains str (poison) — monattk.h */
 const AD_DRDX = 8;
 const AD_DRCO = 9;
 const AD_STCK = 19;
+const AD_SITM = 21; /* steals item (nymphs) — monattk.h */
+const AD_SEDU = 22; /* seduces & steals multiple items */
+const AD_SSEX = 35; /* Succubus seduction (extended) */
 const AC_MAX = 99;
 
 const NO_ATTK = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
@@ -121,6 +124,7 @@ export {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO,
+    AD_SITM, AD_SEDU, AD_SSEX,
 };
 
 function deadmonster(m) {

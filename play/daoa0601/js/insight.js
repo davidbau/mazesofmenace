@@ -2,7 +2,7 @@
 // C ref: insight.c — doattributes(), enlightenment().
 
 import { game } from './gstate.js';
-import { flush_screen } from './display.js';
+import { flush_screen, formatStrength } from './display.js';
 import { showTextPages } from './windows.js';
 
 function alignmentName(value) {
@@ -31,15 +31,18 @@ function attributePages() {
         .map(([key, name]) => `${name} (${key})`);
     const dungeonName = game.dungeons?.[u.uz?.dnum || 0]?.dname || 'the dungeon';
     const displayedDungeonName = dungeonName.replace(/^The\b/, 'the');
-    const entered = game.moves === 1
+    const elapsedTurns = game.moves || 1;
+    const entered = elapsedTurns === 1
         ? '  You have just started your adventure.'
-        : `  You entered the dungeon ${game.moves} ${plural(game.moves, 'turn')} ago.`;
+        : `  You entered the dungeon ${elapsedTurns} ${plural(elapsedTurns, 'turn')} ago.`;
     const stats = u.acurr?.a || [];
 
     const page1 = Array(24).fill('');
     page1[0] = ` ${game.displayName || game.plname} the ${roleName}'s attributes:`;
     page1[2] = ' Background:';
-    page1[3] = `  You are a ${rank}, a level ${u.ulevel} ${gender} ${race} ${roleName}.`;
+    const identity = game.urole?.key === 'caveman'
+        ? `${race} ${roleName}` : `${gender} ${race} ${roleName}`;
+    page1[3] = `  You are a ${rank}, a level ${u.ulevel} ${identity}.`;
     page1[4] = `  You are ${align}, on a mission for ${currentGod}`;
     page1[5] = `  who is opposed by ${opponents[0]} and ${opponents[1]}.`;
     page1[6] = `  You are ${u.rightHanded ? 'right' : 'left'}-handed.`;
@@ -57,9 +60,11 @@ function attributePages() {
     page1[15] = game._goldCount
         ? `  Your wallet contains ${game._goldCount} zorkmids.`
         : '  Your wallet is empty.';
-    page1[16] = `  Autopickup is ${game.flags?.pickup ? 'on' : 'off'}.`;
+    page1[16] = game.flags?.pickup && game.flags?.pickup_types
+        ? `  Autopickup is on for '${game.flags.pickup_types}' plus thrown.`
+        : `  Autopickup is ${game.flags?.pickup ? 'on' : 'off'}.`;
     page1[18] = ' Characteristics:';
-    page1[19] = `  Your strength is ${stats[0]}.`;
+    page1[19] = `  Your strength is ${formatStrength(stats[0])}.`;
     page1[20] = `  Your dexterity is ${stats[1]}.`;
     page1[21] = `  Your constitution is ${stats[2]}.`;
     page1[22] = `  Your intelligence is ${stats[3]}.`;
@@ -71,20 +76,38 @@ function attributePages() {
     page2[3] = ' Status:';
     page2[4] = "  You aren't hungry.";
     page2[5] = '  You are unencumbered.';
-    if (game.uwep) {
-        page2[6] = `  You are wielding ${indefiniteArticle(game.uwep.name)} ${game.uwep.name}.`;
-        page2[7] = `  You have basic skill with ${game.uwep.name}.`;
+    if (game.u?.twoweap) {
+        page2[6] = '  You are wielding two weapons at once.';
+        page2[7] = '  Your skill in long sword is limited by being unskilled with two weapons.';
+        page2[8] = '  Your skill in short sword is also limited by being unskilled with two weapons';
+    } else if (game.uwep) {
+        const weaponSkill = game.urole?.key === 'samurai'
+            && game.uwep.name === 'katana' ? 'long sword' : game.uwep.name;
+        page2[6] = `  You are wielding ${indefiniteArticle(weaponSkill)} ${weaponSkill}.`;
+        page2[7] = `  You have basic skill with ${weaponSkill}.`;
     } else {
         page2[6] = '  You are bare handed.';
         page2[7] = '  You are unskilled in bare handed combat.';
     }
-    page2[9] = ' Miscellaneous:';
-    page2[10] = '  Total elapsed playing time is none.';
-    page2[11] = ' (2 of 2)';
+    let miscRow = game.u?.twoweap ? 10 : 9;
+    if (game.flags?.explore) {
+        page2[9] = ' Attributes:';
+        page2[10] = '  You are nominally aligned.';
+        const caveman = game.urole?.key === 'caveman';
+        if (caveman) page2[11] = '  You are warded.';
+        page2[caveman ? 12 : 11] = "  You can't safely pray.";
+        miscRow = caveman ? 14 : 13;
+        page2[miscRow + 1] = '  You are running in explore mode.';
+        page2[miscRow + 2] = "  You haven't encountered any bones levels.";
+    }
+    page2[miscRow] = ' Miscellaneous:';
+    const elapsedRow = game.flags?.explore ? miscRow + 3 : miscRow + 1;
+    page2[elapsedRow] = '  Total elapsed playing time is none.';
+    page2[elapsedRow + 1] = ' (2 of 2)';
 
     return [
         { lines: page1, cursor: [9, 23] },
-        { lines: page2, cursor: [9, 11] },
+        { lines: page2, cursor: [9, elapsedRow + 1] },
     ];
 }
 

@@ -1147,16 +1147,18 @@ export function relobj_on_death(mtmp) {
 
 /**
  * C ref: invent.c objects[].oc_merge — table field not yet extracted;
- * approximate from C BITS defaults (ammo/gems/coins merge; boulder does not).
+ * approximate from C BITS defaults. SPELL() uses mrg=0 — spellbooks
+ * never stack (D-0679). Wands similarly non-merge in C BITS.
  */
 export function oc_merge_of(otyp) {
     const od = game.objects?.[otyp];
     if (od && typeof od.oc_merge === 'number') return od.oc_merge !== 0;
     if (otyp === BOULDER || otyp === STATUE || otyp === BOOMERANG) return false;
     const oc = od?.oc_class ?? 0;
+    // C SPELL()/WAND BITS mrg=0 — do not treat SPBOOK/WAND as mergeable
     return oc === WEAPON_CLASS || oc === GEM_CLASS || oc === FOOD_CLASS
-        || oc === POTION_CLASS || oc === SCROLL_CLASS || oc === SPBOOK_CLASS
-        || oc === WAND_CLASS || oc === COIN_CLASS;
+        || oc === POTION_CLASS || oc === SCROLL_CLASS
+        || oc === COIN_CLASS;
 }
 
 /**

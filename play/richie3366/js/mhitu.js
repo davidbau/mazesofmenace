@@ -20,16 +20,19 @@ import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
 import { is_pole } from './wield.js';
 import { xname } from './objnam.js';
 import { objectNames } from './objects.js';
-import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
-    AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
-    AD_PHYS, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO,
-} from './mhitm.js';
-import { A_STR, A_DEX, A_CON } from './attrib.js';
-import { is_orc, is_demon, is_were } from './monsters.js';
+import { steal } from './steal.js';
+import { rloc, tele_restrict } from './teleport.js';
+import { monflee } from './monmove.js';
+import { is_orc, is_demon, is_were, is_animal } from './monsters.js';
 import { done_in_by } from './end.js';
 import { msummon, Inhell } from './minion.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { A_STR, A_DEX, A_CON } from './attrib.js';
+import {
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
+    AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
+    AD_PHYS, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_SITM, AD_SEDU, AD_SSEX,
+} from './mhitm.js';
 
 const PM_BALROG = monsterNames.indexOf('PM_BALROG');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
@@ -258,8 +261,84 @@ async function mhitm_ad_drst_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: mondata.h dmgtype — any mattk slot matches adtyp.
+ */
+function dmgtype(ptr, adtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a.adtyp | 0) === (adtyp | 0)) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_sedu — mhitu (monster→you) arm only.
+ * Named omissions: uhitm steal_it; mhitm minvent steal; SYSOPT_SEDUCE
+ * doseduce; Adjmonnam charm polish; animal locomotion flee pline.
+ */
+async function mhitm_ad_sedu(mtmp, mattk, mhm) {
+    if (is_animal(mtmp.data)) {
+        await hitmsg(mtmp, mattk);
+        if (mtmp.mcan) return;
+        // Continue to steal below
+    } else {
+        const youdat = game.youmonst?.data;
+        if (dmgtype(youdat, AD_SEDU) || dmgtype(youdat, AD_SSEX)) {
+            const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
+            await pline(
+                `${Monnam(mtmp)} ${Deaf
+                    ? "says something but you can't hear it"
+                    : mtmp.minvent
+                        ? 'brags about the goods some dungeon explorer provided'
+                        : 'makes some remarks about how difficult theft is lately'}.`,
+            );
+            if (!tele_restrict(mtmp)) rloc(mtmp, 0);
+            mhm.hitflags = M_ATTK_AGR_DONE;
+            mhm.done = true;
+            return;
+        }
+        if (mtmp.mcan) {
+            const Blind = !!(game.u?.Blind || game.u?.ublind);
+            if (!Blind) {
+                const female = !!(game.flags?.female);
+                await pline(
+                    `${Monnam(mtmp)} tries to ${female ? 'charm' : 'seduce'} you, `
+                    + `but you seem ${female ? 'unaffected' : 'uninterested'}.`,
+                );
+            }
+            if (rn2(3)) {
+                if (!tele_restrict(mtmp)) rloc(mtmp, 0);
+                mhm.hitflags = M_ATTK_AGR_DONE;
+                mhm.done = true;
+            }
+            return;
+        }
+    }
+
+    const buf = { value: '' };
+    switch (await steal(mtmp, buf)) {
+    case -1:
+        mhm.hitflags = M_ATTK_AGR_DIED;
+        mhm.done = true;
+        return;
+    case 0:
+        return;
+    default:
+        if (!is_animal(mtmp.data) && !tele_restrict(mtmp)) {
+            rloc(mtmp, 0);
+        }
+        // animal flee-with-buf pline deferred
+        await monflee(mtmp, 0, false, false);
+        mhm.hitflags = M_ATTK_AGR_DONE;
+        mhm.done = true;
+        return;
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
- * PHYS + ELEC + DRST/DRDX/DRCO ported; other adtyps zero damage until peeled.
+ * PHYS + ELEC + DRST/DRDX/DRCO + SITM/SEDU ported; other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -273,6 +352,10 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_DRDX:
     case AD_DRCO:
         await mhitm_ad_drst_u(mtmp, mattk, mhm);
+        break;
+    case AD_SITM:
+    case AD_SEDU:
+        await mhitm_ad_sedu(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;

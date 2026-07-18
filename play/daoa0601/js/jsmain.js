@@ -11,12 +11,12 @@
 
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
-import { pushKey, nhgetch } from './input.js';
+import { nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
 import { findRole, findRace, findAlignment, findGender, roles, races } from './roles.js';
-import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
+import { NO_COLOR } from './terminal.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -88,7 +88,19 @@ export class NethackGame {
 
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
-        const configuredName = opts.name || 'Hero';
+
+        // Install the terminal and capture hook before character creation:
+        // an unset OPTIONS=name invokes tty's editable "Who are you?" prompt,
+        // and every keystroke in that prompt is a scored input boundary.
+        if (this._pendingDisplay) {
+            g.nhDisplay = this._pendingDisplay;
+            this._pendingDisplay = null;
+        }
+        initRng(this._seed);
+        enableRngLog();
+        this._installCaptureHook();
+
+        const configuredName = opts.name || await this._readPlayerName();
         // NetHack keeps the configured player name verbatim for prose, while
         // the status line and menu headings capitalize it for display.
         g.plname = configuredName;
@@ -101,6 +113,7 @@ export class NethackGame {
             ...opts.flags,
         };
         g.iflags = { ...opts.iflags };
+        g.symset = opts.symset || null;
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
 
@@ -114,6 +127,10 @@ export class NethackGame {
         // invalid/missing values use stable NetHack-style defaults here and
         // can later be extended with the interactive role-selection prompt.
         g.urole = findRole(opts.role) || roles[0];
+        if (g.urole?.key === 'samurai'
+            && !Object.prototype.hasOwnProperty.call(opts.flags, 'pickup')) {
+            g.flags.pickup = false;
+        }
         g.urace = findRace(opts.race) || races[0];
         const gender = findGender(opts.gender) || { name: 'male', value: 0 };
         const alignment = findAlignment(opts.align) || { name: 'neutral', value: 0 };
@@ -122,21 +139,38 @@ export class NethackGame {
         g.flags.initalign = alignment.value;
         g.initAlignment = alignment;
 
-        // Initialize PRNG
-        initRng(this._seed);
-        enableRngLog();
-
-        // Install display
-        if (this._pendingDisplay) {
-            g.nhDisplay = this._pendingDisplay;
-            this._pendingDisplay = null;
-        }
-
-        // Install capture hook
-        this._installCaptureHook();
-
         // Run game startup
         await newgame();
+    }
+
+    async _readPlayerName() {
+        const display = game.nhDisplay;
+        display.clearScreen();
+        display.putstr(0, 4, 'NetHack, Copyright 1985-2026', NO_COLOR);
+        display.putstr(9, 5,
+            'By Stichting Mathematisch Centrum and M. Stephenson.', NO_COLOR);
+        display.putstr(9, 6, 'Version 5.0.0 Teleport JS.', NO_COLOR);
+        display.putstr(9, 7, 'See license for details.', NO_COLOR);
+        const prompt = 'Who are you? ';
+        display.putstr(0, 12, prompt, NO_COLOR);
+
+        let name = '';
+        for (;;) {
+            display.setCursor(prompt.length + name.length, 12);
+            const key = await nhgetch();
+            if (key === 10 || key === 13) break;
+            if (key === 8 || key === 127) {
+                if (name) {
+                    name = name.slice(0, -1);
+                    display.putstr(prompt.length + name.length, 12, ' ', NO_COLOR);
+                }
+            } else if (key >= 32 && key <= 126 && name.length < 31) {
+                name += String.fromCharCode(key);
+                display.putstr(prompt.length + name.length - 1, 12,
+                    String.fromCharCode(key), NO_COLOR);
+            }
+        }
+        return name || 'player';
     }
 
     _installCaptureHook() {

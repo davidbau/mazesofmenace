@@ -341,26 +341,39 @@ const WALLTALK = [
 const MS_BARK = 1;
 /** C ref: monflag.h MS_ANIMAL — animal noises ceiling. */
 const MS_ANIMAL = 17;
+/** C ref: monflag.h MS_SEDUCE — nymphs / incubus ("cajoles you"). */
+const MS_SEDUCE = 31;
 /** C ref: monflag.h MS_LEADER — quest class leader. */
 const MS_LEADER = 36;
 
 /**
  * Infer msound when generated tables omit it.
- * S_DOG → MS_BARK (little dog / dog / wolf / …).
+ * S_DOG → MS_BARK; S_NYMPH → MS_SEDUCE.
  */
 function mon_msound(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr) return 0;
     if (ptr.msound != null) return ptr.msound | 0;
     if (ptr.mlet === 'S_DOG') return MS_BARK;
+    if (ptr.mlet === 'S_NYMPH') return MS_SEDUCE;
     return 0; // MS_SILENT — other sounds deferred
 }
 
 /**
- * C ref: sounds.c domonnoise — MS_BARK + MS_LEADER quest_chat path.
+ * C ref: polyself.c poly_gender — 0/1 ≡ flags.female, 2=none.
+ * Named omission: is_neuter non-humanoid → 2 (poly forms deferred).
+ */
+function poly_gender() {
+    const u = game.u || {};
+    return game.flags?.female ? 1 : 0;
+}
+
+/**
+ * C ref: sounds.c domonnoise — MS_BARK + MS_SEDUCE + MS_LEADER.
  * Other MS_* named omitted in C-JS-MAP; unknown → ECMD_OK (silent).
  * FULL_MOON howl needs night() — deferred; falls through to bark.
  * MS_PRIEST priest_talk deferred (non-leader temple priests).
+ * MS_SEDUCE doseduce (SYSOPT non-nymph) deferred.
  */
 export async function domonnoise(mtmp) {
     if (!mtmp) return ECMD_OK;
@@ -377,6 +390,7 @@ export async function domonnoise(mtmp) {
     if (msound === 0 && !mtmp.isshk) return ECMD_OK;
 
     let pline_msg = null;
+    let verbl_msg = null;
     const ptr = mtmp.data;
     const moves = game.moves | 0;
     const hungrytime = mtmp.edog?.hungrytime | 0;
@@ -403,9 +417,28 @@ export async function domonnoise(mtmp) {
         } else {
             pline_msg = 'growls.';
         }
+    } else if (msound === MS_SEDUCE) {
+        // C sounds.c MS_SEDUCE — nymph chat; doseduce non-nymph deferred.
+        // SYSOPT_SEDUCE: opposite-gender rn2(3); else male-only rn2(3).
+        // Same-gender / female under !SEDUCE → swval 0 → "cajoles you."
+        let swval;
+        const seduce = !!(game.sysopt?.seduce);
+        if (seduce) {
+            // could_seduce + doseduce for non-nymph deferred
+            swval = (poly_gender() !== (mtmp.female | 0)) ? rn2(3) : 0;
+        } else {
+            swval = (poly_gender() === 0) ? rn2(3) : 0;
+        }
+        if (swval === 2) verbl_msg = 'Hello, sailor.';
+        else if (swval === 1) pline_msg = 'comes on to you.';
+        else pline_msg = 'cajoles you.';
     }
     // Other msound cases deferred
 
+    if (verbl_msg) {
+        await pline(`${Monnam(mtmp)} says: "${verbl_msg}"`);
+        return ECMD_TIME;
+    }
     if (pline_msg) {
         await pline(`${Monnam(mtmp)} ${pline_msg}`);
         return ECMD_TIME;

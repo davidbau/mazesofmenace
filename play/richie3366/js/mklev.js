@@ -101,7 +101,7 @@ import { christen_monst, oname } from './do_name.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
 import { find_level } from './dungeon.js';
 import { premap_detect } from './detect.js';
-import { create_gas_cloud } from './region.js';
+import { create_gas_cloud, clear_regions } from './region.js';
 import { ndemon } from './minion.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
@@ -672,6 +672,8 @@ function clear_level_structures() {
     lf.fumaroles = false;
     lf.stormy = false;
     lf.stasis_until = 0;
+    // C: clear_regions() — gas must not survive into a freshly mklev'd map
+    clear_regions();
     init_rect();
 }
 
@@ -10494,41 +10496,64 @@ async function fill_ordinary_room(croom, bonus_items) {
                 pos.x, pos.y, true, false);
         } else if ((g.u?.uz?.dnum ?? 0) === oracle_dnum
             && (g.u?.uz?.dlevel ?? 1) < oracle_dlevel && rn2(3)) {
-            // Supply chest
-            const supply_chest = mksobj_at(rn2(3) ? CHEST : LARGE_BOX, pos.x, pos.y, false, false);
+            // C ref: mklev.c make_niche / fill_room — supply chest before Oracle
+            // mksobj_at(..., FALSE, FALSE) skips mkbox_cnts; fill via add_to_container.
+            const supply_chest = mksobj_at(
+                rn2(3) ? CHEST : LARGE_BOX, pos.x, pos.y, false, false,
+            );
             if (supply_chest) {
                 supply_chest.olocked = !!rn2(6);
                 let tryct2 = 0;
                 let cursed_item;
                 do {
-                    let otyp;
-                    const supply_items = [POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
+                    const supply_items = [
+                        POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
                         SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER,
-                        SCR_SCARE_MONSTER, WAN_DIGGING, SPE_HEALING];
-                    if (rn2(2)) otyp = POT_HEALING;
-                    else otyp = supply_items[rn2(supply_items.length)];
+                        SCR_SCARE_MONSTER, WAN_DIGGING, SPE_HEALING,
+                    ];
+                    // C: rn2(2) ? POT_HEALING : ROLL_FROM(supply_items)
+                    const otyp = rn2(2)
+                        ? POT_HEALING
+                        : supply_items[rn2(supply_items.length)];
                     const otmp = mksobj(otyp, true, false);
                     if (otmp && otyp === POT_HEALING && rn2(2)) {
                         otmp.quan = 2;
+                        otmp.owt = weight(otmp);
                     }
                     cursed_item = otmp?.cursed ?? false;
+                    if (otmp) add_to_container(supply_chest, otmp);
                     if (++tryct2 >= 50) break;
                 } while (cursed_item || !rn2(5));
                 if (rn2(3)) {
-                    const extra_classes = [FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
+                    const extra_classes = [
+                        FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
                         SCROLL_CLASS, POTION_CLASS, RING_CLASS,
-                        SPBOOK_no_NOVEL, SPBOOK_no_NOVEL, SPBOOK_no_NOVEL];
+                        SPBOOK_no_NOVEL, SPBOOK_no_NOVEL, SPBOOK_no_NOVEL,
+                    ];
                     const oclass = extra_classes[rn2(extra_classes.length)];
-                    // C: mkobj(SPBOOK_no_NOVEL) uses rnd_class through SPE_BLANK_PAPER
-                    mkobj(oclass, false);
-                    if (oclass === SPBOOK_no_NOVEL) {
+                    let otmp = mkobj(oclass, false);
+                    if (oclass === SPBOOK_no_NOVEL && otmp) {
                         const depth = depth_of_level(g.u?.uz);
                         const maxpass = (depth > 2) ? 2 : 3;
                         for (let pass = 1; pass <= maxpass; pass++) {
-                            mkobj(oclass, false);
+                            const otmp2 = mkobj(oclass, false);
+                            if (!otmp2) continue;
+                            const lv1 = (g.objects?.[otmp.otyp]?.oc_level) | 0;
+                            const lv2 = (g.objects?.[otmp2.otyp]?.oc_level) | 0;
+                            // C: keep lower-level book; dealloc the other
+                            if (lv1 <= lv2) {
+                                otmp2.quan = 0;
+                            } else {
+                                otmp.quan = 0;
+                                otmp = otmp2;
+                            }
                         }
                     }
+                    if (otmp && (otmp.quan | 0) > 0) {
+                        add_to_container(supply_chest, otmp);
+                    }
                 }
+                supply_chest.owt = weight(supply_chest);
             }
             skip_chests = true;
         }

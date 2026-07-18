@@ -1,15 +1,35 @@
 // wizard.js — Wizard of Yendor harassment from wizard.c.
-// C ref: wizard.c resurrect (new-Wizard makemon arm).
+// C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate.
 
 import { game } from './gstate.js';
 import { makemon, set_malign } from './makemon.js';
 import { mons } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { MM_NOWAIT, STRAT_WAITMASK } from './const.js';
+import { MM_NOWAIT, STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG } from './const.js';
 import { pline, verbalize, Norep } from './display.js';
 import { Monnam } from './do_name.js';
+import { rn2 } from './rng.js';
 
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+
+/**
+ * C ref: wizard.c aggravate — wake/unfreeze monsters on this W-tower side.
+ * Named omission: In_W_tower filter (always treat same side until W-tower
+ * regions exist) — both hero and mon treated as non-tower.
+ */
+export function aggravate() {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
+        // In_W_tower mismatch skip deferred (always same side)
+        mtmp.mstrategy = (mtmp.mstrategy | 0)
+            & ~(STRAT_WAITFORU | STRAT_APPEARMSG);
+        mtmp.msleeping = 0;
+        if (!mtmp.mcanmove && !rn2(5)) {
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+        }
+    }
+}
 
 /**
  * C ref: wizard.c resurrect — confront hero with Wizard on endgame entry.

@@ -6,18 +6,24 @@ import { nhgetch } from './input.js';
 import { flush_screen, pline, newsym } from './display.js';
 import { vision_recalc, recalc_block_point } from './vision.js';
 import {
-    COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR,
+    COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
-    AUTOUNLOCK_APPLY_KEY,
+    AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK,
 } from './const.js';
 import { rnl, rn2 } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
 import { verysmall, nohands } from './monsters.js';
-import { objects_at } from './mkobj.js';
+import {
+    objects_at, place_object, stackobj, obj_extract_self, delobj,
+} from './mkobj.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
-import { WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, objectNames } from './objects.js';
+import {
+    WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, POTION_CLASS, objectNames,
+} from './objects.js';
 import { doname, xname, cxname } from './objnam.js';
+import { obj_resists } from './dogmove.js';
+import { setuwep } from './wield.js';
 import { PM_ROGUE } from './generated/monsters_data.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
@@ -547,6 +553,172 @@ function is_blade(obj) {
     return sk >= P_DAGGER && sk <= P_SABER;
 }
 
+/** C ref: obj.h greatest_erosion — max(oeroded, oeroded2). */
+function greatest_erosion(obj) {
+    const a = obj?.oeroded | 0;
+    const b = obj?.oeroded2 | 0;
+    return a > b ? a : b;
+}
+
+/**
+ * C ref: invent.c useup — invent/wield consume one (no obj_resists).
+ * Floor useupf deferred; #force blade-break only hits wielded invent.
+ */
+function useup_invent(otmp) {
+    if (!otmp) return;
+    if ((otmp.quan || 1) > 1) {
+        otmp.quan--;
+        return;
+    }
+    if (game.u?.uwep === otmp) setuwep(null);
+    const inv = game.invent || [];
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+    otmp.quan = 0;
+    otmp.where = OBJ_FREE;
+}
+
+/**
+ * C ref: mon.c wake_nearby — clear sleep/wait within ulevel*20.
+ * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
+ */
+function wake_nearby(_petcall) {
+    const u = game.u || {};
+    const x = u.ux | 0;
+    const y = u.uy | 0;
+    const distance = ((u.ulevel | 0) * 20) | 0;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || mtmp.mx == null) continue;
+        const dx = (mtmp.mx | 0) - x;
+        const dy = (mtmp.my | 0) - y;
+        if (distance === 0 || dx * dx + dy * dy < distance) {
+            mtmp.msleeping = 0;
+            if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+        }
+    }
+    void _petcall;
+}
+
+/**
+ * C ref: lock.c chest_shatter_msg — destroy-path content messages.
+ * potionbreathe / Blind hear-vs-see polish deferred (pline only).
+ */
+async function chest_shatter_msg(otmp) {
+    if (otmp.oclass === POTION_CLASS) {
+        await pline(`You see ${an(xname(otmp))} shatter!`);
+        return;
+    }
+    const mat = game.objects?.[otmp.otyp]?.oc_material | 0;
+    // C materials.h PAPER=1 WAX=2 VEGGY=3 FLESH=4 GLASS=11 WOOD=13 (subset)
+    let disposition = 'is destroyed';
+    if (mat === 1) disposition = 'is torn to shreds';
+    else if (mat === 2) disposition = 'is crushed';
+    else if (mat === 3) disposition = 'is pulped';
+    else if (mat === 4) disposition = 'is mashed';
+    else if (mat === 11) disposition = 'shatters';
+    else if (mat === 13) disposition = 'splinters to fragments';
+    await pline(`${an(xname(otmp)).replace(/^./, (c) => c.toUpperCase())} ${disposition}!`);
+}
+
+/**
+ * C ref: lock.c breakchestlock — unlock+break or destroy box + spill.
+ * Named omissions: costly_alteration / stolen_value shop bill; ice-box
+ * corpse age / start_corpse_timeout; potionbreathe on shatter.
+ */
+async function breakchestlock(box, destroyit) {
+    if (!destroyit) {
+        // C: costly_alteration(COST_BRKLCK) deferred
+        box.olocked = 0;
+        box.obroken = 1;
+        box.lknown = 1;
+        return;
+    }
+    const u = game.u || {};
+    await pline(`In fact, you've totally destroyed ${the(xname(box))}.`);
+    while (box.cobj) {
+        const otmp = box.cobj;
+        obj_extract_self(otmp);
+        if (!rn2(3) || otmp.oclass === POTION_CLASS) {
+            await chest_shatter_msg(otmp);
+            // shop stolen_value deferred
+            if ((otmp.quan || 1) === 1) {
+                // C: obfree — no obj_resists
+                otmp.quan = 0;
+                otmp.where = OBJ_FREE;
+                continue;
+            }
+            useup_invent(otmp);
+            // remaining stack still placed below when quan>1 after useup
+            if ((otmp.quan || 0) <= 0) continue;
+        }
+        // ICE_BOX corpse age deferred
+        place_object(otmp, u.ux | 0, u.uy | 0);
+        stackobj(otmp);
+    }
+    delobj(box);
+}
+
+/**
+ * C ref: lock.c forcelock — occupation; rn2(100) vs xlock.chance.
+ * Blade erosion break + blunt wake_nearby; then breakchestlock.
+ * @returns {number} 1 = still busy, 0 = done
+ */
+async function forcelock() {
+    const xl = game.xlock || {};
+    const u = game.u || {};
+    const box = xl.box;
+    if (!box
+        || (box.ox | 0) !== (u.ux | 0)
+        || (box.oy | 0) !== (u.uy | 0)) {
+        xl.usedtime = 0;
+        return 0;
+    }
+
+    xl.usedtime = (xl.usedtime || 0) + 1;
+    const uwep = u.uwep;
+    if (xl.usedtime >= 50 || !uwep || nohands(game.youmonst?.data)) {
+        await pline('You give up your attempt to force the lock.');
+        if (xl.usedtime >= 50) {
+            exercise(xl.picktyp ? A_DEX : A_STR, true);
+        }
+        xl.usedtime = 0;
+        return 0;
+    }
+
+    if (xl.picktyp) {
+        // C: blade — may break weapon (rn2 then cursed short-circuit then resist)
+        if (rn2(1000 - (uwep.spe | 0)) > (992 - greatest_erosion(uwep) * 10)
+            && !uwep.cursed
+            && !obj_resists(uwep, 0, 99)) {
+            const plural = (uwep.quan || 1) > 1;
+            await pline(
+                `${plural ? 'One of y' : 'Y'}our ${xname(uwep)} broke!`,
+            );
+            useup_invent(uwep);
+            await pline('You give up your attempt to force the lock.');
+            exercise(A_DEX, true);
+            xl.usedtime = 0;
+            return 0;
+        }
+    } else {
+        // blunt — hammering wakes nearby monsters (no RNG)
+        wake_nearby(false);
+    }
+
+    // C ref: lock.c forcelock — if (rn2(100) >= gx.xlock.chance) still busy
+    if (rn2(100) >= (xl.chance | 0)) {
+        return 1;
+    }
+
+    await pline('You succeed in forcing the lock.');
+    exercise(xl.picktyp ? A_DEX : A_STR, true);
+    // C: destroyit = !picktyp && !rn2(3) — rn2 only when blunt
+    const destroyit = !xl.picktyp && !rn2(3);
+    await breakchestlock(box, destroyit);
+    reset_pick();
+    return 0;
+}
+
 /** C ref: lock.c u_have_forceable_weapon */
 function u_have_forceable_weapon() {
     const uwep = game.u?.uwep;
@@ -561,9 +733,10 @@ function u_have_forceable_weapon() {
 
 /**
  * C ref: lock.c doforce — #force chest lock with wielded weapon.
- * Branch envelope: swallow / no-weapon / can't-reach → ECMD_OK; scan
- * underfoot boxes; no box → "You decide not to force the issue." +
- * ECMD_TIME. forcelock occupation / resume deferred (C-JS-MAP).
+ * Branch envelope: swallow / no-weapon / can't-reach → ECMD_OK; resume
+ * interrupted forcelock; scan underfoot boxes; set_occupation(forcelock);
+ * no box → "You decide not to force the issue." + ECMD_TIME.
+ * Named omissions: door force with edged weapon (C TODO).
  */
 export async function doforce() {
     const u = game.u;
@@ -594,9 +767,18 @@ export async function doforce() {
     }
 
     const uwep = u.uwep;
-    const picktyp = is_blade(uwep) && !is_pick(uwep);
+    const picktyp = !!(is_blade(uwep) && !is_pick(uwep));
 
-    let box = null;
+    // C: resume interrupted attempt when usedtime && same picktyp
+    if ((game.xlock?.usedtime | 0) && game.xlock.box && picktyp === !!game.xlock.picktyp) {
+        await pline('You resume your attempt to force the lock.');
+        set_occupation(forcelock, 'forcing the lock', 0);
+        return ECMD_TIME;
+    }
+
+    if (!game.xlock) game.xlock = {};
+    game.xlock.box = null;
+
     for (let otmp = objects_at(u.ux, u.uy); otmp; otmp = otmp.nexthere) {
         if (!Is_box(otmp)) continue;
         if (otmp.obroken || !otmp.olocked) {
@@ -619,18 +801,24 @@ export async function doforce() {
         if (c === 'q') return ECMD_OK;
         if (c === 'n') continue;
         if (picktyp) {
-            await pline(`You force your ${xname(uwep)} into a crack and pry.`);
+            await pline(`You force ${yname(uwep)} into a crack and pry.`);
         } else {
-            await pline(`You start bashing it with your ${xname(uwep)}.`);
+            await pline(`You start bashing it with ${yname(uwep)}.`);
         }
-        box = otmp;
+        game.xlock.box = otmp;
+        // C: chance = objects[uwep->otyp].oc_wldam * 2
+        game.xlock.chance = ((game.objects?.[uwep.otyp]?.oc_wldam | 0) * 2) | 0;
+        game.xlock.picktyp = picktyp;
+        game.xlock.magic_key = false;
+        game.xlock.usedtime = 0;
+        game.xlock.door = null;
         break;
     }
 
-    if (box) {
-        // set_occupation(forcelock) deferred — still ECMD_TIME
-        return ECMD_TIME;
+    if (game.xlock.box) {
+        set_occupation(forcelock, 'forcing the lock', 0);
+    } else {
+        await pline('You decide not to force the issue.');
     }
-    await pline('You decide not to force the issue.');
     return ECMD_TIME;
 }

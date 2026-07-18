@@ -23,7 +23,9 @@ import { age_spells } from './spell.js';
 import { find_ac, u_init_skills_discoveries } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
-import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON } from './const.js';
+import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON,
+    SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER } from './const.js';
+import { near_capacity } from './invent.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { settrack } from './track.js';
 import { genTutorialLevel } from './tutorial.js';
@@ -638,9 +640,11 @@ function youHaveSearching() {
 // (rolls rn2(NORMAL_SPEED)); otherwise moveamt = youmonst.data->mmove
 // (== NORMAL_SPEED for a human) plus a possible Fast free-action bonus
 // (Fast: +NORMAL_SPEED on rn2(3)==0; Very_fast not modeled — never set here).
-// The result is added to u.umovement; encumbrance is UNENCUMBERED for the
-// starter sessions (no moveamt reduction).
-function u_calc_moveamt() {
+// The base amount is then reduced by encumbrance (Burdened -1/4, Stressed -1/2,
+// Strained -3/4, Overtaxed -7/8) — this is why a Burdened hero (e.g. after a
+// bear trap wounds a leg) moves slower and monsters get more moves per hero
+// command.  The result is added to u.umovement.
+function u_calc_moveamt(wtcap) {
     const u = game.u;
     if (!u) return;
     let moveamt;
@@ -655,6 +659,14 @@ function u_calc_moveamt() {
         } else if (youHaveFast()) {
             if (rn2(3) === 0) moveamt += NORMAL_SPEED;
         }
+    }
+    // C ref: allmain.c u_calc_moveamt() switch (wtcap) — encumbrance penalty.
+    switch (wtcap) {
+    case SLT_ENCUMBER: moveamt -= Math.trunc(moveamt / 4); break;
+    case MOD_ENCUMBER: moveamt -= Math.trunc(moveamt / 2); break;
+    case HVY_ENCUMBER: moveamt -= Math.trunc((moveamt * 3) / 4); break;
+    case EXT_ENCUMBER: moveamt -= Math.trunc((moveamt * 7) / 8); break;
+    default: break; // UNENCUMBERED / OVERLOADED: no reduction
     }
     u.umovement = (u.umovement || 0) + moveamt;
     if (u.umovement < 0) u.umovement = 0;
@@ -747,6 +759,11 @@ export async function moveloop_turn() {
         } while (monscanmove);
         g.context.mon_moving = false;
 
+        // C ref: allmain.c moveloop_core():220 — mvl_wtcap = near_capacity();
+        // recomputed after the monster-movement loop (monster actions can change
+        // the hero's burden), and used below to scale the hero's movement ration.
+        const mvl_wtcap = near_capacity();
+
         if (!monscanmove && g.u.umovement < NORMAL_SPEED) {
             // Both hero and all monsters are out of steam -> advance a turn.
             mcalcdistress();
@@ -757,10 +774,10 @@ export async function moveloop_turn() {
             maybe_generate_rnd_mon();
 
             // C ref: allmain.c — u_calc_moveamt(mvl_wtcap); settrack();  The
-            // hero's movement-point reallocation (Fast roll / steed mcalcmove)
-            // happens here, between maybe_generate_rnd_mon and the once-per-turn
-            // block (matches the recorded RNG position).
-            u_calc_moveamt();
+            // hero's movement-point reallocation (Fast roll / steed mcalcmove /
+            // encumbrance penalty) happens here, between maybe_generate_rnd_mon
+            // and the once-per-turn block (matches the recorded RNG position).
+            u_calc_moveamt(mvl_wtcap);
 
             // C ref: allmain.c — settrack() records the hero's footprint each
             // turn so out-of-sight pets can follow the hero's trail (dog_goal).

@@ -25,6 +25,7 @@ import { rn2 } from './rng.js';
 import {
     objects,
     mksobj,
+    weight,
     STRANGE_OBJECT,
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -700,6 +701,14 @@ function finalize(d, anyRandom) {
         const n = nartifact_exist();
         if (n > 0) rn2(n); /* @ readobjnam(objnam.c:5374) */
     }
+
+    // C ref: objnam.c:5395 — d.otmp->owt = weight(d.otmp).  readobjnam recomputes
+    // the final weight after any otyp/quantity change: the SCALE_MAIL -> colored
+    // dragon-scale-mail promotion above changes owt from 250 (scale mail) to 40
+    // (dragon scale mail), and a multi-count wish (otmp.quan = d.cnt) scales the
+    // per-unit weight.  Without this a wished dragon scale mail keeps the scale
+    // mail's weight and wrongly encumbers the hero.
+    otmp.owt = weight(otmp);
 
     return { kind: 'obj', obj: otmp };
 }

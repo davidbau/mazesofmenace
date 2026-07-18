@@ -228,6 +228,50 @@ function losedogs_place(kept) {
     }
 }
 
+// C ref: you.h next2u(px,py) — distu(px,py) <= 2 (within one step of hero).
+function next2u(x, y) {
+    const u = game.u;
+    const dx = x - u.ux, dy = y - u.uy;
+    return (dx * dx + dy * dy) <= 2;
+}
+
+// C ref: mon.c mnexto(mtmp, rlocflags) — relocate mtmp to a free spot next to
+// the hero via enexto(); on failure the monster goes to limbo (off-map).  The
+// enexto() near-ring scan consumes the same collect_coords rn2() draws as C.
+function mnexto(mtmp) {
+    const cc = enexto(game.u.ux, game.u.uy); // enexto(&mm, u.ux, u.uy, mtmp->data)
+    if (!cc) {
+        // deal_with_overcrowding -> m_into_limbo: remove from the live level.
+        const mons = game.level?.monsters;
+        if (mons) { const i = mons.indexOf(mtmp); if (i >= 0) mons.splice(i, 1); }
+        return;
+    }
+    mtmp.mx = cc.x; mtmp.my = cc.y; // rloc_to(mtmp, mm.x, mm.y)
+}
+
+// C ref: do.c u_collide_m() — on level arrival a monster shares the hero's
+// square (typically the pet that accompanied the hero and landed on the hero's
+// exact spot in mon_arrive()).  Randomly move the hero to an adjacent spot or,
+// far more often, move the monster to any nearby location.
+function u_collide_m(mtmp) {
+    const u = game.u;
+    // C: if (!rn2(2) && enexto(&cc, u.ux, u.uy, youmonst.data) && next2u(cc.x, cc.y))
+    //        u_on_newpos(cc.x, cc.y);  else  mnexto(mtmp, RLOC_NOMSG);
+    // The && short-circuits: rn2(2) is always drawn; enexto only when !rn2(2).
+    let cc;
+    if (!rn2(2) && (cc = enexto(u.ux, u.uy)) && next2u(cc.x, cc.y)) {
+        u.ux = cc.x; u.uy = cc.y; // u_on_newpos
+    } else {
+        mnexto(mtmp);
+    }
+    // C: if still a monster in the hero's way, rloc it; if that fails, limbo it.
+    const still = m_at(u.ux, u.uy);
+    if (still) {
+        const mons = game.level?.monsters;
+        if (mons) { const i = mons.indexOf(still); if (i >= 0) mons.splice(i, 1); }
+    }
+}
+
 // ── goto_level (C ref: do.c goto_level) ──
 //
 // Restricted to the level-teleport / first-visit-makelevel path used by the
@@ -307,6 +351,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // Bring the pet(s) along.  C ref: do.c goto_level() -> losedogs().
     losedogs_place(kept);
+
+    // C ref: do.c goto_level() ~1827 — the hero might be arriving at a spot that
+    // now holds a monster (commonly the pet that accompanied the hero and landed
+    // on the hero's exact square in mon_arrive()); if so move one or the other.
+    {
+        const mtmp = m_at(game.u.ux, game.u.uy);
+        if (mtmp && mtmp !== game.u.usteed) u_collide_m(mtmp);
+    }
 
     // Reset the screen and draw the new level.  C ref: do.c goto_level()
     // lines ~1837-1841: vision_reset() (clear old level's line-of-sight),

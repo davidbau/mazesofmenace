@@ -9,7 +9,7 @@ import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight, obj_extract_self } from './mkobj.js';
-import { A_WIS, A_DEX, A_CON, exercise } from './attrib.js';
+import { A_WIS, A_DEX, A_CON, A_MAX, adjattrib, exercise } from './attrib.js';
 import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
 import { doname, xname } from './objnam.js';
@@ -17,7 +17,7 @@ import { dipfountain, drinkfountain, drinksink } from './fountain.js';
 import {
     IS_FOUNTAIN, IS_SINK, IS_POOL,
     ECMD_TIME, ECMD_CANCEL,
-    POTHIT_OTHER_THROW, KILLED_BY_AN,
+    POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT,
 } from './const.js';
 import { hands_obj } from './weapon.js';
@@ -25,7 +25,7 @@ import { rn2, rnd, d, rn1 } from './rng.js';
 import { losehp, nomul, maybe_half_phys } from './hack.js';
 import { cansee } from './vision.js';
 import { mons } from './monsters.js';
-import { PM_HUMAN } from './generated/monsters_data.js';
+import { PM_HUMAN, PM_HEALER } from './generated/monsters_data.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
 import { more_experienced } from './exper.js';
@@ -42,6 +42,7 @@ const POT_BOOZE = objectNames.indexOf('POT_BOOZE');
 const POT_FRUIT_JUICE = objectNames.indexOf('POT_FRUIT_JUICE');
 const POT_SEE_INVISIBLE = objectNames.indexOf('POT_SEE_INVISIBLE');
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
+const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 
 /** C: gp.potion_nothing / gp.potion_unkn for dopotion trycall gate. */
 let potion_nothing = 0;
@@ -270,6 +271,82 @@ async function peffect_see_invisible(otmp) {
 }
 
 /**
+ * C ref: youprop.h Poison_resistance — H || E || flag.
+ * Named omission: intrinsic race/role props beyond uprops bits.
+ */
+function Poison_resistance() {
+    const u = game.u || {};
+    return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
+        || u.Poison_resistance);
+}
+
+/** C ref: role.h Role_if(PM_HEALER) */
+function Role_if_healer() {
+    return (game.urole?.mnum | 0) === PM_HEALER;
+}
+
+/**
+ * C ref: potion.c peffect_sickness
+ * Blessed: stale-fruit pline + losehp(1) (non-healer). Uncursed/cursed:
+ * attr drain + HP. Does not set potion_unkn → dopotion makeknown may
+ * exercise(A_WIS) via discover_object. Named omissions: poisontell
+ * wording / Fixed_abil gate; full make_hallucinated body (flag clear only).
+ */
+async function peffect_sickness(otmp) {
+    await pline('Yecch!  This stuff tastes like poison.');
+    if (otmp.blessed) {
+        await pline(`(But in fact it was mildly stale ${fruitname(true)}.)`);
+        if (!Role_if_healer()) {
+            // C: losehp(1, "mildly contaminated potion", KILLED_BY_AN)
+            losehp(1, 'mildly contaminated potion', KILLED_BY_AN);
+        }
+    } else {
+        if (Poison_resistance()) {
+            await pline(
+                `(But in fact it was biologically contaminated ${fruitname(true)}.)`,
+            );
+        }
+        if (Role_if_healer()) {
+            await pline('Fortunately, you have been immunized.');
+        } else {
+            const typ = rn2(A_MAX);
+            const contaminant =
+                (Poison_resistance() ? 'mildly ' : '')
+                + (otmp.fromsink ? 'contaminated tap water' : 'contaminated potion');
+            // Fixed_abil deferred — always adjattrib like !Fixed_abil
+            // poisontell(typ, FALSE) wording deferred
+            await adjattrib(
+                typ,
+                Poison_resistance() ? -1 : -rn1(4, 3),
+                1,
+            );
+            if (!Poison_resistance()) {
+                const dmg = rnd(10) + 5 * (otmp.cursed ? 1 : 0);
+                losehp(
+                    dmg,
+                    contaminant,
+                    otmp.fromsink ? KILLED_BY : KILLED_BY_AN,
+                );
+            } else {
+                losehp(
+                    1 + rn2(2),
+                    contaminant,
+                    otmp.fromsink ? KILLED_BY : KILLED_BY_AN,
+                );
+            }
+            exercise(A_CON, false);
+        }
+    }
+    const u = game.u || {};
+    if (u.Hallucination || (u.HHallucination | 0)) {
+        await pline('You are shocked back to your senses!');
+        // make_hallucinated(0L, FALSE, 0L) body deferred — clear flags
+        u.Hallucination = false;
+        u.HHallucination = 0;
+    }
+}
+
+/**
  * C ref: potion.c peffect_paralysis
  * Free_action resist; else freeze msg + nomul(-(rn1(10, 25-12*bcsign))).
  * Levitation/air/water/steed messages deferred → floor feet msg.
@@ -399,7 +476,7 @@ async function peffect_booze(otmp) {
 
 /**
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
- * paralysis / confusion / booze / healing; other otyps named in C-JS-MAP.
+ * paralysis / confusion / booze / healing / sickness; other otyps in map.
  */
 async function peffects(otmp) {
     switch (otmp.otyp) {
@@ -421,6 +498,9 @@ async function peffects(otmp) {
         return -1;
     case POT_HEALING:
         await peffect_healing(otmp);
+        return -1;
+    case POT_SICKNESS:
+        await peffect_sickness(otmp);
         return -1;
     default:
         // Other peffect_* deferred — do not useup

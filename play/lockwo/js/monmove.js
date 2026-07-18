@@ -12,6 +12,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     COLNO, ROWNO, MTSZ, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
+    D_ISOPEN, D_NODOOR, D_TRAPPED,
     IS_OBSTRUCTED, IS_DOOR, IS_POOL, IS_LAVA, isok, OBJ_AT, is_pit,
     IS_STWALL, W_NONPASSWALL,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
@@ -24,7 +25,7 @@ import { DEADMONSTER } from './mon.js';
 import { dog_move } from './dogmove.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph } from './display.js';
 import { place_object, next_ident } from './mkobj.js';
-import { clear_path, couldsee, cansee } from './vision.js';
+import { clear_path, couldsee, cansee, vision_recalc } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, canspotmon } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
@@ -497,6 +498,67 @@ function mon_trapeffect(mtmp, trap) {
     }
 }
 
+// C ref: monmove.c postmov() — the door-opening block run after a monster
+// steps onto a door square (the sequencing quirk: the monster is moved onto
+// the door first, then the door is dealt with).  Opens a closed door,
+// unlocks+opens a locked one (key-carriers / Wizard / Riders), or smashes it
+// down (doorbusters), announcing the result to a hero who can see it
+// ("<mon> opens a door.") or, failing that, hear it ("You hear a door
+// open.").  UnblockDoor mirrors the hero's doopen() side effects: set the
+// doormask, redraw the square, and vision_recalc(0).  The amorphous
+// flow-under case and the D_TRAPPED explosion (mb_trapped) don't occur at the
+// depths these sessions reach, so they're left as documented no-ops.
+async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
+    const here = game.level?.at(mtmp.mx, mtmp.my);
+    // C: IS_DOOR(...) && !passes_walls(ptr) && !can_tunnel  (tunnellers dig
+    // through below instead of opening).
+    if (!here || !IS_DOOR(here.typ) || passes_walls(ptr) || can_tunnel) return;
+    const btrapped = (here.doormask & D_TRAPPED) !== 0;
+    const verbose = game.flags?.verbose !== false;
+    const Deaf = !!game.u?.Deaf;
+    // canseeit: is the door square visible to the hero?  didseeit caches the
+    // pre-open value; UnblockDoor refreshes canseeit after vision_recalc().
+    const didseeit = cansee(mtmp.mx, mtmp.my);
+    let canseeit = didseeit;
+    // C ref: UnblockDoor(where,who,what)
+    const UnblockDoor = (what) => {
+        here.doormask = what;
+        newsym(mtmp.mx, mtmp.my);
+        vision_recalc(0);
+        canseeit = didseeit || cansee(mtmp.mx, mtmp.my);
+    };
+    // amorphous monsters (fog cloud / oozes) flow under a shut door without
+    // opening it; none appear at these depths.
+    const amorphous = false;
+    if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0 && amorphous) {
+        /* flows/oozes under the door — message only; unreached here */
+    } else if ((here.doormask & D_LOCKED) !== 0 && can_unlock) {
+        UnblockDoor(!btrapped ? D_ISOPEN : D_NODOOR);
+        if (!btrapped && verbose) {
+            if (canseeit && canspotmon(mtmp)) await emitU(`${Monnam(mtmp)} unlocks and opens a door.`);
+            else if (canseeit) await emitU('You see a door unlock and open.');
+            else if (!Deaf) await emitU('You hear a door unlock and open.');
+        }
+    } else if (here.doormask === D_CLOSED && can_open) {
+        UnblockDoor(!btrapped ? D_ISOPEN : D_NODOOR);
+        if (!btrapped && verbose) {
+            if (canseeit && canspotmon(mtmp)) await emitU(`${Monnam(mtmp)} opens a door.`);
+            else if (canseeit) await emitU('You see a door open.');
+            else if (!Deaf) await emitU('You hear a door open.');
+        }
+    } else if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0) {
+        // doorbuster (is_giant): the resulting state is D_NODOOR when trapped
+        // or (locked and rn2(2)), else D_BROKEN.
+        const mask = (btrapped || (((here.doormask & D_LOCKED) !== 0) && !rn2(2))) ? D_NODOOR : D_BROKEN;
+        UnblockDoor(mask);
+        if (!btrapped && verbose) {
+            if (canseeit && canspotmon(mtmp)) await emitU(`${Monnam(mtmp)} smashes down a door.`);
+            else if (canseeit) await emitU('You see a door crash open.');
+            else if (!Deaf) await emitU('You hear a door crash open.');
+        }
+    }
+}
+
 // C ref: monmove.c m_move(mtmp, after).  Returns one of the MMOVE_* codes;
 // we only need the RNG side-effects (the mtrack-avoidance rn2(4*(cnt-j))
 // rolls at monmove.c:1963) and the resulting move, so we implement the
@@ -506,6 +568,21 @@ const MMOVE_NOTHING = 0, MMOVE_NOMOVES = 1, MMOVE_MOVED = 2, MMOVE_DIED = 3;
 async function m_move(mtmp) {
     const ptr = mtmp.data;
     let omx = mtmp.mx, omy = mtmp.my;
+
+    // C ref: monmove.c:1764 — door-handling capability flags, consumed by
+    // postmov() when the monster ends its move on a door square.
+    //   can_open   = !(nohands(ptr) || verysmall(ptr))       [OPENDOOR]
+    //   can_unlock = (can_open && monhaskey) || iswiz || is_rider
+    //   can_tunnel = !Is_rogue_level && tunnels(ptr)
+    // mon_can_open_door() already encodes C's can_open (CAN_OPEN_DOOR_PMIDX =
+    // hands-bearing, not-tiny monsters).  No dlvl monster in the recorded runs
+    // carries a key / is the Wizard / is a Rider, and monster tunnelling
+    // (mdig_tunnel) is a separate unported subsystem, so can_unlock reduces to
+    // iswiz and can_tunnel is FALSE here — matching every monster these
+    // sessions drive through m_move.
+    const can_open = mon_can_open_door(mtmp);
+    const can_unlock = !!mtmp.iswiz;
+    const can_tunnel = false;
 
     // C ref: monmove.c:1745 — a monster busy eating (meating > 0, e.g. a pet that
     // just ate a corpse via dog_eat) decrements its digesting counter and forgoes
@@ -633,6 +710,11 @@ async function m_move(mtmp) {
         // right place in the stream.
         const trapret = mon_mintrap(mtmp);
         if (trapret === Trap_Killed_Mon) { newsym(nix, niy); return MMOVE_DIED; }
+        // C ref: monmove.c postmov() — "open a door, or crash through it, if
+        // 'mtmp' can".  The monster has already been stepped onto (nix,niy);
+        // if that square is a door it can open/unlock/smash, do so now and
+        // announce it (pline when spotted, "You see"/"You hear" otherwise).
+        await m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel);
         // C ref: monmove.c postmov():1696 — a concealing (M1_CONCEAL) monster or
         // an eel that just moved re-hides: `if (mtmp->mundetected || (!helpless
         // && rn2(5))) hideunder(mtmp);`.  The rn2(5) fires whenever the monster

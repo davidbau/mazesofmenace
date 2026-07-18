@@ -10,8 +10,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, topl_more, update_topl, m_at, vobj_at } from './display.js';
+import { pline, topl_more, update_topl, m_at, vobj_at, render_map_to_grid, statusLine1Text, statusLine2Text } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
+import { obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
 import { create_particular_monster } from './makemon.js';
@@ -810,10 +811,154 @@ function floor_box_here() {
     return objs.length ? objs[0] : null;
 }
 
-// C ref: pickup.c doloot()/do_loot_cont().  Scoped to the locked-floor-container
-// case the recorded sessions exercise: announce "Hmmm, <the box> turns out to be
-// locked." and set lknown.  With autounlock=apply-key and no key in inventory,
-// no unlock occurs and no game time passes (do_loot_cont returns ECMD_OK).
+// Status-line text for the modal container renders (mirrors invent.js's
+// putStatusLines: statusLine1Text carries cursor-forward escapes that must be
+// expanded to spaces for the direct putstr path).
+function _container_status1() {
+    return statusLine1Text().replace(/\x1b\[[0-9;]*[A-Za-z]/g, (m) =>
+        m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10)) : '');
+}
+function _container_status2() { return statusLine2Text(); }
+
+// C ref: win/tty/wintty.c tty_display_nhwindow NHW_MENU (H2344_BROKEN offx) +
+// process_menu_window()/process_text_window().  Draw a partial-width corner
+// window over the map: clear the screen, lay the map + status back down, blank
+// the window's column band, draw the lines (each already "selector - text" or a
+// header), then the morestr, and park the cursor after it.
+//   lines   : [{ text, attr }] (attr defaults to normal; the title is inverse)
+//   maxcol  : window width for the offx calc (add_menu uses len+2; putstr len+1)
+//   morestr : "(end)" for a menu, "--More--" for a text window
+//   curPad  : extra columns past the morestr where the cursor parks (the menu's
+//             "(end) " has a trailing space -> +1; the text "--More--" -> +0)
+function draw_corner_window(lines, maxcol, morestr, curPad) {
+    const disp = game?.nhDisplay;
+    if (!disp?.clearScreen) return;
+    const cols = disp.cols || 80;
+    // H2344_BROKEN: offx = min(min(82, cols/2), cols - maxcol - 1); text at offx+1.
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    const textCol = offx + 1;
+    disp.clearScreen();
+    render_map_to_grid();
+    const moreRow = lines.length;
+    for (let r = 0; r <= moreRow && r < 22; r++)
+        for (let c = offx; c < cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
+    for (let r = 0; r < lines.length; r++) {
+        const ln = lines[r];
+        if (ln && ln.text) disp.putstr(textCol, r, ln.text, NO_COLOR, ln.attr || 0);
+    }
+    disp.putstr(textCol, moreRow, morestr, NO_COLOR, 0);
+    disp.putstr(0, 22, _container_status1(), NO_COLOR, 0);
+    disp.putstr(0, 23, _container_status2(), NO_COLOR, 0);
+    disp.setCursor(textCol + morestr.length + (curPad || 0), moreRow);
+    game._modal_screen = 'container';
+}
+
+// C ref: pickup.c in_or_out_menu().  Build and render the "Do what with <box>?"
+// PICK_ONE corner menu.  The menu always offers ':' (look inside) and 'q'
+// (quit, pre-selected default when there is no next container); 'o'/'b' appear
+// when the container has contents (outokay) and 'i'/'r'/'s' when the hero
+// carries other inventory (inokay).
+function render_in_or_out_menu(box, outokay, inokay, alreadyused, more_containers) {
+    const name = `the ${box_basename(box.otyp)}`;
+    const title = `Do what with ${name}?`;
+    const lines = [{ text: title, attr: ATR_INVERSE }, { text: '' }];
+    lines.push({ text: `: - Look inside ${name}` });
+    if (outokay) lines.push({ text: 'o - take something out' });
+    if (inokay) lines.push({ text: 'i - put something in' });
+    if (outokay) lines.push({ text: `b - ${inokay ? 'both; ' : ''}take out, then put in` });
+    if (inokay) {
+        lines.push({ text: `r - ${outokay ? 'both reversed; ' : ''}put in, then take out` });
+        lines.push({ text: `s - stash one item into ${name}` });
+    }
+    lines.push({ text: '' }); // C: add_menu_str(win, "") — blank separator
+    if (more_containers) lines.push({ text: 'n - loot next container' });
+    // The 'q' entry is the pre-selected PICK_ONE default (no next container),
+    // so process_menu_window renders its selection indicator '*' (count == -1).
+    lines.push({ text: `q * ${alreadyused ? 'done' : 'do nothing'}` });
+    // add_menu width convention: cw.maxcol = max(str.length + 2), vs "(end) ".
+    let maxcol = '(end) '.length;
+    for (const ln of lines) maxcol = Math.max(maxcol, ln.text.length + 2);
+    draw_corner_window(lines, maxcol, '(end)', 1);
+}
+
+// Reproduce C's add_to_container() content chain (mkobj.c) on shallow display
+// copies WITHOUT mutating the real objects: each object is prepended to the
+// head of the list and merged into an existing mergable stack when possible.
+// This yields the same cobj ordering C holds, so sortloot's stable-by-index
+// tiebreak (e.g. "2 jackal corpses" before "a jackal corpse") lands
+// identically.  (The live cobj chain stays in creation/push order because the
+// force-lock chest-destruction path elsewhere depends on that ordering.)
+function container_display_stacks(box) {
+    const stacks = [];
+    for (const o of (box.cobj || [])) {
+        let hit = null;
+        for (const s of stacks) if (mergable(s, o)) { hit = s; break; }
+        if (hit) hit.quan = (hit.quan || 1) + (o.quan || 1);
+        else stacks.unshift({ ...o });
+    }
+    return stacks;
+}
+
+// C ref: end.c container_contents(box, FALSE, FALSE, TRUE) + win/tty
+// process_text_window().  Render "Contents of <box>:", a blank line, then the
+// sorted content stacks (each with two leading spaces), as a corner window with
+// a "--More--" footer.  Sets cknown (we're looking at the contents now).
+function render_container_contents(box) {
+    box.cknown = 1;
+    const name = `the ${box_basename(box.otyp)}`;
+    const lines = [{ text: `Contents of ${name}:` }, { text: '' }];
+    // sortflags mirror the default options (sortloot=loot, sortpack=on).
+    const sorted = sortloot(container_display_stacks(box), SORTLOOT_LOOT | SORTLOOT_PACK, false, null);
+    for (const sli of sorted) {
+        if (!sli.obj) break;
+        lines.push({ text: '  ' + obj_doname(sli.obj) });
+    }
+    // putstr width convention: cw.maxcol = max(str.length + 1).
+    let maxcol = 0;
+    for (const ln of lines) maxcol = Math.max(maxcol, ln.text.length + 1);
+    draw_corner_window(lines, maxcol, '--More--', 0);
+}
+
+// C ref: pickup.c use_container().  Loot an unlocked, untrapped floor container.
+// Loops the in/out menu: ':' shows the contents (costs a turn to gain the info),
+// 'q'/ESC quits.  The take-out ('o'/'b') and put-in ('i'/'r'/'s') actions are
+// not yet modelled — selecting them ends the loop without moving items, which
+// leaves the container state untouched (no false RNG/screen divergence).
+// Returns 1 (ECMD_TIME) iff the command elapsed a turn, else 0.
+async function use_container(box, more_containers) {
+    let used = 0;
+    box.lknown = 1;
+    const outokay = !!(box.cobj && box.cobj.length);
+    const inv = Array.isArray(game.invent) ? game.invent : [];
+    // inokay: hero carries anything besides the container itself (the box is on
+    // the floor, so any inventory qualifies).
+    const inokay = inv.length > 0;
+    let c = 'q';
+    for (;;) { // repeats iff ':' (look inside) gets chosen
+        render_in_or_out_menu(box, outokay, inokay, used !== 0, !!more_containers);
+        const key = await nhgetch();
+        const ch = (key === 27) ? '\x1b' : String.fromCharCode(key);
+        if (ch === ':') {
+            if (!box.cknown) used = 1; // gaining info costs a turn
+            render_container_contents(box);
+            await nhgetch(); // --More-- (any key dismisses)
+            continue;
+        }
+        // ':' loops; anything else (a valid action, 'q', or ESC) ends the menu.
+        c = (ch === '\x1b') ? 'q' : ch;
+        break;
+    }
+    // Only the look-inside path is modelled; other selections elapse no time
+    // beyond what looking inside already charged.
+    delete game._modal_screen;
+    void c;
+    return used ? 1 : 0;
+}
+
+// C ref: pickup.c doloot()/do_loot_cont().  Floor container under the hero:
+// locked -> "Hmmm, <the box> turns out to be locked." (no time, per the
+// apply-key autounlock path with no key); unlocked -> use_container().
 async function doloot() {
     const box = floor_box_here();
     if (!box) {
@@ -830,9 +975,7 @@ async function doloot() {
         // autounlock apply-key with no key -> nothing further; no time passes.
         return 0;
     }
-    // Unlocked container looting (open/take-out menus) is not exercised here.
-    box.lknown = 1;
-    return 0;
+    return await use_container(box, false);
 }
 
 // C ref: lock.c doforce().  Scoped to the recorded path: a forceable weapon

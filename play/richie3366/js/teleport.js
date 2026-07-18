@@ -22,7 +22,7 @@ import { objects_at, mksobj } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
 import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
-    monsterNames,
+    monsterNames, passes_walls,
 } from './monsters.js';
 import { newsym, pline, You_feel, see_monsters } from './display.js';
 import { vision_recalc } from './vision.js';
@@ -297,6 +297,19 @@ function noteleport_level(mon) {
     return false;
 }
 
+/**
+ * C ref: teleport.c tele_restrict — noteleport_level gate with optional pline.
+ * Named omission: canseemon message polish (caller may suppress).
+ */
+export function tele_restrict(mon) {
+    if (noteleport_level(mon)) {
+        // Message deferred when display imports would cycle; callers that
+        // need the pline pass RLOC_MSG / handle visibility themselves.
+        return true;
+    }
+    return false;
+}
+
 /** C ref: mkroom.c search_special — first room/subroom matching type. */
 function search_special(type) {
     const lists = [game.level?.rooms, game.level?.subrooms];
@@ -383,30 +396,96 @@ function somexyspace(croom, c) {
 }
 
 /**
- * C ref: teleport.c rloc — random reposition (RLOC_NONE / RLOC_MSG subset).
- * Envelope: collect_coords ring from current/hero + goodpos; wizard/steed
- * /rloc_pos_ok shop-priest arms deferred.
+ * C ref: teleport.c tele_jump_ok — restricted updest/dndest region gate.
+ */
+function tele_jump_ok(x1, y1, x2, y2) {
+    if (!isok(x2, y2)) return false;
+    const within = (x, y, d) => {
+        if (!d || !(d.nlx > 0)) return false;
+        return x >= (d.nlx | 0) && x <= (d.nhx | 0)
+            && y >= (d.nly | 0) && y <= (d.nhy | 0);
+    };
+    const dndest = game.dndest || {};
+    if ((dndest.nlx | 0) > 0) {
+        const in1 = within(x1, y1, dndest);
+        const in2 = within(x2, y2, dndest);
+        if (in1 !== in2) return false;
+    }
+    const updest = game.updest || {};
+    if ((updest.nlx | 0) > 0) {
+        const in1 = within(x1, y1, updest);
+        const in2 = within(x2, y2, updest);
+        if (in1 !== in2) return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: teleport.c rloc_pos_ok — goodpos(GP_CHECKSCARY) + tele_jump_ok.
+ * Named omissions: migrating mx==0 updest/dndest bit flags; shk/priest
+ * room lock.
+ */
+function rloc_pos_ok(x, y, mtmp) {
+    if (!goodpos(x, y, mtmp, GP_CHECKSCARY)) return false;
+    const xx = mtmp?.mx | 0;
+    const yy = mtmp?.my | 0;
+    if (xx) {
+        // isshk/ispriest room arms deferred
+        if (!tele_jump_ok(xx, yy, x, y)) return false;
+    }
+    // migrating mx==0 restricted-arrival arms deferred
+    return true;
+}
+
+/**
+ * C ref: teleport.c rloc — 50× rnd/rn2 then unshuffled candy shuffle.
+ * Named omissions: Wizard stair preference; mon_telecontrol; steed→tele();
+ * RLOC_MSG vanish; shop bill on leave.
  */
 export function rloc(mtmp, _rlocflags = 0) {
     if (!mtmp) return false;
-    if (mtmp === game.u?.usteed) return false;
-    const candy = [];
-    const cx = (mtmp.mx | 0) || (game.u?.ux | 0) || 1;
-    const cy = (mtmp.my | 0) || (game.u?.uy | 0) || 0;
-    const candycount = collect_coords(
-        candy, cx, cy, 0,
-        CC_RING_PAIRS | CC_SKIP_MONS | CC_SKIP_INACCS,
-        null,
-    );
-    for (let i = 0; i < candycount; i++) {
-        const x = candy[i].x | 0;
-        const y = candy[i].y | 0;
-        if (goodpos(x, y, mtmp, 0)) {
+    if (mtmp === game.u?.usteed) return false; // tele() deferred
+
+    // Wizard / mon_telecontrol arms deferred
+
+    for (let trycount = 0; trycount < 50; ++trycount) {
+        const x = rnd(COLNO - 1); // 1..COLNO-1
+        const y = rn2(ROWNO); // 0..ROWNO-1
+        if (rloc_pos_ok(x, y, mtmp)) {
             rloc_to(mtmp, x, y);
             return true;
         }
     }
-    return false;
+
+    let cc_flags = CC_INCL_CENTER | CC_UNSHUFFLED | CC_SKIP_MONS;
+    if (!passes_walls(mtmp.data)) cc_flags |= CC_SKIP_INACCS;
+    const candy = [];
+    const candycount = collect_coords(
+        candy, (COLNO / 2) | 0, (ROWNO / 2) | 0, 0, cc_flags, null,
+    );
+    let backupx = 0;
+    let backupy = 0;
+    for (let i = 0; i < candycount; ++i) {
+        const j = rn2(candycount - i);
+        if (j > 0) {
+            const tmp = candy[i];
+            candy[i] = candy[i + j];
+            candy[i + j] = tmp;
+        }
+        const x = candy[i].x | 0;
+        const y = candy[i].y | 0;
+        if (rloc_pos_ok(x, y, mtmp)) {
+            rloc_to(mtmp, x, y);
+            return true;
+        }
+        if (!backupx && goodpos(x, y, mtmp, 0)) {
+            backupx = x;
+            backupy = y;
+        }
+    }
+    if (!backupx) return false;
+    rloc_to(mtmp, backupx, backupy);
+    return true;
 }
 
 /**

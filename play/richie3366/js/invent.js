@@ -11,7 +11,7 @@ import {
 } from './display.js';
 import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee } from './objnam.js';
 import { yn_function } from './getline.js';
-import { mergable } from './mkobj.js';
+import { mergable, is_damageable } from './mkobj.js';
 import { cansee } from './vision.js';
 import {
     WEAPON_CLASS,
@@ -42,6 +42,8 @@ import {
     OBJ_CONTAINED,
     OBJ_FLOOR,
     Has_contents,
+    Is_container,
+    Is_box,
     has_oname,
     ONAME,
     SORTLOOT_PACK,
@@ -52,6 +54,7 @@ import {
     In_quest,
     Is_knox_level,
     Is_rogue_level,
+    thats_enough_tries,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -77,6 +80,8 @@ import {
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED,
     P_EXPERT, P_MASTER, P_GRAND_MASTER,
     W_ARMOR, W_AMUL, W_RING, W_TOOL, W_SADDLE,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
+    W_WEP, W_ART, W_ACCESSORY,
     NEW_MOON,
     FULL_MOON,
     Upolyd,
@@ -86,6 +91,7 @@ import {
     RIGHT_SIDE,
     TELEPORT_CONTROL,
     HALLUC_RES, SEARCHING, REFLECTING, LIFESAVED,
+    FIRE_RES, SHOCK_RES, TELEPAT, WARNING,
 } from './const.js';
 import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
@@ -620,6 +626,206 @@ export function observe_object(obj) {
     discover_object(obj.otyp, false, true);
 }
 
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
+const EGG = objectNames.indexOf('EGG');
+const STATUE = objectNames.indexOf('STATUE');
+
+/** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
+function is_weptool_obj(obj) {
+    if (!obj || obj.oclass !== TOOL_CLASS) return false;
+    const skill = game.objects?.[obj.otyp]?.oc_skill | 0;
+    if (skill !== 0 && skill !== P_NONE) return true;
+    const n = objectNames[obj.otyp];
+    return n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN'
+        || n === 'AKLYS' || n === 'BULLWHIP';
+}
+
+/**
+ * C ref: objnam.c not_fully_identified.
+ * Named omissions: undiscovered_artifact (always treated discovered);
+ * MAIL_STRUCTURES SCR_MAIL bknown skip when SCR_MAIL absent.
+ */
+export function not_fully_identified(otmp) {
+    if (!otmp) return false;
+    if (otmp.oclass === COIN_CLASS) return false;
+    const oc = game.objects?.[otmp.otyp];
+    const bknownOk = otmp.bknown
+        || (SCR_MAIL >= 0 && (otmp.otyp | 0) === SCR_MAIL);
+    if (!otmp.known || !otmp.dknown || !bknownOk || !oc?.oc_name_known) {
+        return true;
+    }
+    if ((!otmp.cknown && (Is_container(otmp) || (otmp.otyp | 0) === STATUE))
+        || (!otmp.lknown && Is_box(otmp))) {
+        return true;
+    }
+    // oartifact undiscovered_artifact deferred — skip artifact gate
+    if (otmp.rknown
+        || (otmp.oclass !== ARMOR_CLASS && otmp.oclass !== WEAPON_CLASS
+            && !is_weptool_obj(otmp)
+            && otmp.oclass !== BALL_CLASS)) {
+        return false;
+    }
+    // lack of rknown only matters for damageable objects
+    return is_damageable(otmp);
+}
+
+/** C ref: invent.c set_cknown_lknown */
+function set_cknown_lknown(obj) {
+    if (!obj) return;
+    if (Is_container(obj) || (obj.otyp | 0) === STATUE) {
+        obj.cknown = obj.lknown = 1;
+    } else if ((obj.otyp | 0) === objectNames.indexOf('TIN')) {
+        obj.cknown = 1;
+    }
+}
+
+/**
+ * C ref: invent.c fully_identify_obj.
+ * Named omissions: discover_artifact; learn_egg_type.
+ */
+export function fully_identify_obj(otmp) {
+    if (!otmp) return;
+    makeknown(otmp.otyp);
+    // discover_artifact deferred
+    observe_object(otmp);
+    otmp.known = otmp.bknown = otmp.rknown = 1;
+    set_cknown_lknown(otmp);
+    // learn_egg_type deferred (EGG + corpsenm)
+}
+
+/** C ref: invent.c identify — fully_identify_obj + prinv. */
+export async function identify(otmp) {
+    fully_identify_obj(otmp);
+    await prinv(null, otmp, 0);
+    return 1;
+}
+
+/** C ref: invent.c count_unidentified */
+export function count_unidentified(objchn) {
+    let unid_cnt = 0;
+    if (Array.isArray(objchn)) {
+        for (const obj of objchn) {
+            if (obj && not_fully_identified(obj)) unid_cnt++;
+        }
+        return unid_cnt;
+    }
+    for (let obj = objchn; obj; obj = obj.nobj) {
+        if (not_fully_identified(obj)) unid_cnt++;
+    }
+    return unid_cnt;
+}
+
+/**
+ * C ref: invent.c menu_identify — query_objlist USE_INVLET PICK_ANY.
+ * Envelope: invent-letter toggle menu of not_fully_identified items.
+ * Named omissions: SIGNAL_NOMENU polish; wait_synch between loops;
+ * traditional ggetobj path.
+ */
+async function menu_identify(id_limit) {
+    let first = true;
+    let tryct = 5;
+    while (id_limit > 0) {
+        const eligible = (game.invent || []).filter(not_fully_identified);
+        if (!eligible.length) {
+            await pline('That was all.');
+            break;
+        }
+        const items = eligible.map((obj) => ({
+            obj,
+            letch: obj.invlet
+                || (obj.oclass === COIN_CLASS ? '$' : '?'),
+            selected: false,
+        }));
+        const prompt = `What would you like to identify ${first ? 'first' : 'next'}?`;
+        const entries = [
+            { text: prompt, attr: ATR_INVERSE },
+            { text: '', attr: 0 },
+        ];
+        for (const it of items) {
+            const mark = it.selected ? '+' : '-';
+            entries.push({
+                text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                attr: 0,
+            });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        let n = 0;
+        for (;;) {
+            const key = await nhgetch();
+            if (key === 27) {
+                n = -2;
+                break;
+            }
+            if (key === 13 || key === 10 || key === 32) {
+                const chosen = items.filter((it) => it.selected);
+                n = chosen.length;
+                if (n > id_limit) n = id_limit;
+                for (let i = 0; i < n; i++, id_limit--) {
+                    await identify(chosen[i].obj);
+                }
+                break;
+            }
+            const ch = typeof key === 'number' ? String.fromCharCode(key) : key;
+            const hit = items.find((it) => it.letch === ch);
+            if (hit) {
+                hit.selected = !hit.selected;
+                // refresh marks
+                for (let ei = 2; ei < entries.length; ei++) {
+                    const it = items[ei - 2];
+                    if (!it) continue;
+                    const mark = it.selected ? '+' : '-';
+                    entries[ei] = {
+                        text: `${it.letch} ${mark} ${doname(it.obj)}`,
+                        attr: 0,
+                    };
+                }
+                await paint_corner_nhw_menu(entries, '(end) ');
+                await flush_screen(1);
+                continue;
+            }
+            // unmatched — ignore for now
+        }
+        game._menu_overlay = false;
+        await docrt();
+        await flush_screen(1);
+        if (n === -2) break;
+        if (n === 0) {
+            if (!--tryct) {
+                await pline(thats_enough_tries);
+                break;
+            }
+            await pline('Choose an item; use ESC to decline.');
+            continue;
+        }
+        first = false;
+    }
+}
+
+/**
+ * C ref: invent.c identify_pack(id_limit, learning_id).
+ * id_limit 0 = identify all unidentified invent items.
+ * Named omissions: update_inventory; MENU_TRADITIONAL ggetobj.
+ */
+export async function identify_pack(id_limit, learning_id) {
+    let unid_cnt = count_unidentified(game.invent);
+    if (!unid_cnt) {
+        await pline(
+            `You have already identified ${!learning_id ? 'all' : 'the rest'} of your possessions.`,
+        );
+    } else if (!id_limit || id_limit >= unid_cnt) {
+        for (const obj of game.invent || []) {
+            if (!obj || !not_fully_identified(obj)) continue;
+            await identify(obj);
+            if (--unid_cnt < 1) break;
+        }
+    } else {
+        // flags.menu_style == MENU_TRADITIONAL ggetobj deferred → menu
+        await menu_identify(id_limit);
+    }
+    // update_inventory deferred
+}
+
 // C: xname_flags observe + distant_name cansee (wired late to break cycles)
 set_xname_observe(observe_object);
 set_distant_cansee(cansee);
@@ -1127,11 +1333,34 @@ function insight_skill_level_name(skill) {
 }
 
 /**
- * C ref: weapon.c weapon_descr — P_NAME(weapon_type); special cases deferred
- * (ammo, mattock, wet towel, shield of reflection).
+ * C ref: weapon.c weapon_descr — P_NAME(weapon_type); P_NONE → oclass name
+ * (def_oc_syms[].name). Named omissions: ammo/sling/bow/crossbow/flail
+ * hook/mattock specials; wet towel; shield of reflection.
  */
 function weapon_descr(obj) {
     const skill = weapon_type(obj);
+    if (skill === P_NONE && obj) {
+        // C: corpses/tin/egg/statue/boulder/towel/opener → OBJ_NAME;
+        // else def_oc_syms[oclass].name. Spellbook path is the live peel.
+        const OC_NAME = {
+            [WEAPON_CLASS]: 'weapon',
+            [ARMOR_CLASS]: 'armor',
+            [RING_CLASS]: 'ring',
+            [AMULET_CLASS]: 'amulet',
+            [TOOL_CLASS]: 'tool',
+            [FOOD_CLASS]: 'food',
+            [POTION_CLASS]: 'potion',
+            [SCROLL_CLASS]: 'scroll',
+            [SPBOOK_CLASS]: 'spellbook',
+            [WAND_CLASS]: 'wand',
+            [COIN_CLASS]: 'coin',
+            [GEM_CLASS]: 'gem',
+            [ROCK_CLASS]: 'rock',
+            [BALL_CLASS]: 'iron ball',
+            [CHAIN_CLASS]: 'chain',
+        };
+        return OC_NAME[obj.oclass] || 'weapon';
+    }
     return skill_name(skill);
 }
 
@@ -1300,6 +1529,40 @@ function hero_Poison_resistance(u = game.u || {}) {
         || u.Poison_resistance);
 }
 
+/** C ref: youprop.h Fire_resistance — H || E via flat + uprops[FIRE_RES]. */
+function hero_Fire_resistance(u = game.u || {}) {
+    const e = u.uprops?.[FIRE_RES];
+    return !!((u.HFire_resistance | 0) || (u.EFire_resistance | 0)
+        || u.Fire_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Shock_resistance — H || E via flat + uprops[SHOCK_RES]. */
+function hero_Shock_resistance(u = game.u || {}) {
+    const e = u.uprops?.[SHOCK_RES];
+    return !!((u.HShock_resistance | 0) || (u.EShock_resistance | 0)
+        || u.Shock_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/**
+ * C ref: youprop.h Blind_telepat — HTelepat || ETelepat
+ * (uprops[TELEPAT] mirrors).
+ */
+function hero_Blind_telepat(u = game.u || {}) {
+    const e = u.uprops?.[TELEPAT];
+    return !!((u.HTelepat | 0) || (u.ETelepat | 0)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Warning — HWarning || EWarning. */
+function hero_Warning(u = game.u || {}) {
+    const e = u.uprops?.[WARNING];
+    return !!((u.HWarning | 0) || (u.EWarning | 0)
+        || u.Warning
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
 /** C ref: youprop.h Halluc_resistance — H || E via uprops[HALLUC_RES]. */
 function hero_Halluc_resistance(u = game.u || {}) {
     const e = u.uprops?.[HALLUC_RES];
@@ -1336,6 +1599,96 @@ function hero_Teleport_control(u = game.u || {}) {
         || (u.uprops?.[TELEPORT_CONTROL]?.intrinsic | 0)
         || (u.uprops?.[TELEPORT_CONTROL]?.extrinsic | 0)
     );
+}
+
+/* C monattk.h — local for item_resistance_message / adtyp_to_prop */
+const AD_FIRE = 2;
+const AD_ELEC = 6;
+
+/** C ref: zap.c adtyp_to_prop — subset used by item resistance enl. */
+function adtyp_to_prop(dmgtyp) {
+    if (dmgtyp === AD_FIRE) return FIRE_RES;
+    if (dmgtyp === AD_ELEC) return SHOCK_RES;
+    return 0;
+}
+
+/**
+ * C ref: zap.c u_adtyp_resistance_obj — extrinsic armor/accessory/wep/art
+ * → 99; dwarvish cloak cold/fire 90 deferred.
+ */
+function u_adtyp_resistance_obj(dmgtyp) {
+    const prop = adtyp_to_prop(dmgtyp);
+    if (!prop) return 0;
+    const x = game.u?.uprops?.[prop]?.extrinsic | 0;
+    if (x & (W_ARMOR | W_ACCESSORY | W_WEP | W_ART)) return 99;
+    return 0;
+}
+
+/**
+ * C ref: objnam.c suit_simple_name — dragon mail/scales + mail/jacket.
+ * Local copy for item_what (do_wear.js suit_simple_name still defers dragon).
+ */
+function enl_suit_simple_name(suit) {
+    if (!suit) return 'suit';
+    const otyp = suit.otyp | 0;
+    const grayMail = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
+    const yellowMail = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
+    const grayScales = objectNames.indexOf('GRAY_DRAGON_SCALES');
+    const yellowScales = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+    if (grayMail >= 0 && otyp >= grayMail && otyp <= yellowMail) {
+        return 'dragon mail';
+    }
+    if (grayScales >= 0 && otyp >= grayScales && otyp <= yellowScales) {
+        return 'dragon scales';
+    }
+    const suitnm = objectNameStrs[otyp] || '';
+    if (suitnm.length > 5 && suitnm.endsWith(' mail')) return 'mail';
+    if (suitnm.length > 7 && suitnm.endsWith(' jacket')) return 'jacket';
+    return 'suit';
+}
+
+/**
+ * C ref: zap.c item_what — wizard suffix " by your <slot simple name>".
+ * Ported: W_ARM → suit_simple_name (dragon mail). Other slots deferred
+ * until a seed needs them (cloak/helm/…/amulet/ring/wep).
+ */
+function item_what(dmgtyp) {
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
+    if (!wizard) return '';
+    const prop = adtyp_to_prop(dmgtyp);
+    const x = game.u?.uprops?.[prop]?.extrinsic | 0;
+    if (!prop || !x) return '';
+    const u = game.u || {};
+    let what = null;
+    if (x & W_ARMC) what = 'cloak';
+    else if (x & W_ARM) what = enl_suit_simple_name(u.uarm);
+    else if (x & W_ARMU) what = 'shirt';
+    else if (x & W_ARMH) what = 'helmet';
+    else if (x & W_ARMG) what = 'gloves';
+    else if (x & W_ARMF) what = 'boots';
+    else if (x & W_ARMS) what = 'shield';
+    else if (x & (W_AMUL | W_TOOL)) {
+        const o = (x & W_AMUL) ? u.uamul : u.ublindf;
+        what = o ? (objectNameStrs[o.otyp] || 'item').toLowerCase().replace(/_/g, ' ') : null;
+    } else if (x & W_RING) what = 'ring';
+    else if (x & W_WEP) what = 'weapon';
+    return what ? ` by your ${what}` : '';
+}
+
+/**
+ * C ref: insight.c item_resistance_message — "Your items are [somewhat]
+ * protected from …" + item_what.
+ */
+function item_resistance_message_lines(adtyp, prot_message, final, o) {
+    const protection = u_adtyp_resistance_obj(adtyp);
+    if (!protection) return [];
+    const somewhat = protection < 99;
+    const mid = final
+        ? (somewhat ? 'were somewhat' : 'were')
+        : (somewhat ? 'are somewhat' : 'are');
+    return [o(enlght_line_txt(
+        'Your items ', mid, prot_message, item_what(adtyp),
+    ))];
 }
 
 /**
@@ -1995,6 +2348,22 @@ export async function doattributes() {
                 'Your alignment ', 'is', ` ${record}`, '',
             )));
         }
+        // C attributes_enlightenment Resistances — Fire before Cold/…/Shock
+        // before Poison. Cold/Sleep/Disint/Acid/Drain/Sick/Stone deferred.
+        if (hero_Fire_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'fire resistant', from_what(FIRE_RES),
+            )));
+        }
+        // item_resistance AD_FIRE deferred (no fire-extrinsic on this peel)
+        if (hero_Shock_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'shock resistant', from_what(SHOCK_RES),
+            )));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_ELEC, ' protected from electric shocks', 0, o,
+        ));
         // Resistances — poison + Halluc_resistance (other resists deferred)
         if (hero_Poison_resistance(u)) {
             lines.push(o(enlght_line_txt(
@@ -2005,6 +2374,18 @@ export async function doattributes() {
         if (hero_Halluc_resistance(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'resist', ' hallucinations', from_what(HALLUC_RES),
+            )));
+        }
+        // Vision — Blind_telepat + Warning before Searching (See_invisible /
+        // Warn_of_mon / Clairvoyant / Infravision deferred)
+        if (hero_Blind_telepat(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'telepathic', from_what(TELEPAT),
+            )));
+        }
+        if (hero_Warning(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'warned', from_what(WARNING),
             )));
         }
         // Vision — Searching (other senses deferred)

@@ -4,16 +4,17 @@
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import {
-    COLNO, ROWNO, STONE, ROOM, CORR, SDOOR, DOOR, STAIRS,
+    COLNO, ROWNO, STONE, ROOM, CORR, SDOOR, DOOR, STAIRS, FOUNTAIN, ALTAR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
 } from './const.js';
 import {
     NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_CYAN, CLR_WHITE, CLR_YELLOW,
+    CLR_BRIGHT_BLUE,
     DEC_TO_UNICODE,
 } from './terminal.js';
-import { LARGE_BOX, CHEST, GOLD_PIECE } from './object_data.js';
+import { LARGE_BOX, CHEST, GOLD_PIECE, FOOD_RATION } from './object_data.js';
 
 const OBJECT_SYMBOLS = ['', ']', ')', '[', '=', '"', '(', '%', '!', '?',
     '+', '/', '$', '*', '`', '0', '_', '.'];
@@ -21,6 +22,7 @@ const OBJECT_SYMBOLS = ['', ']', ')', '[', '=', '"', '(', '%', '!', '?',
 function objectColor(object) {
     if (Number.isInteger(object?.color)) return object.color;
     if (object?.otyp === LARGE_BOX || object?.otyp === CHEST) return CLR_BROWN;
+    if (object?.otyp === FOOD_RATION) return CLR_BROWN;
     if (object?.otyp === GOLD_PIECE) return CLR_YELLOW;
     // Most ordinary weapons use HI_METAL in objects.h.  Other object classes
     // remain neutral until their generated color metadata is ported.
@@ -53,37 +55,49 @@ const ANSI_COLOR = [
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
+    const dec = /^DECgraphics$/i.test(game.symset || '');
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
-    case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
+    case ROOM:      return dec
+        ? { ch: '~', color: NO_COLOR, dec: true }
+        : { ch: '.', color: NO_COLOR, dec: false };
     case CORR:      return { ch: '#', color: NO_COLOR, dec: false };
     case SDOOR:
+        if (!dec) return loc.horizontal
+            ? { ch: '-', color: NO_COLOR, dec: false }
+            : { ch: '|', color: NO_COLOR, dec: false };
         return loc.horizontal
             ? { ch: 'q', color: NO_COLOR, dec: true }
             : { ch: 'x', color: NO_COLOR, dec: true };
     case DOOR:
         if (loc.doormask & D_ISOPEN)
-            return { ch: 'a', color: CLR_BROWN, dec: true };
+            return dec
+                ? { ch: 'a', color: CLR_BROWN, dec: true }
+                : { ch: '-', color: CLR_BROWN, dec: false };
         if (loc.doormask & (D_CLOSED | D_LOCKED))
             return { ch: '+', color: CLR_BROWN, dec: false };
-        return { ch: '~', color: NO_COLOR, dec: true };  // D_NODOOR = floor
+        return dec
+            ? { ch: '~', color: NO_COLOR, dec: true }
+            : { ch: '.', color: NO_COLOR, dec: false };  // D_NODOOR = floor
     case STAIRS:
         // Check upstair vs downstair
         if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
             return { ch: '<', color: CLR_YELLOW, dec: false };
         return { ch: '>', color: CLR_YELLOW, dec: false };
+    case FOUNTAIN:   return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case ALTAR:      return { ch: '_', color: NO_COLOR, dec: false };
     // Wall types → DEC line-drawing characters
-    case HWALL:     return { ch: 'q', color: NO_COLOR, dec: true };  // ─
-    case VWALL:     return { ch: 'x', color: NO_COLOR, dec: true };  // │
-    case TLCORNER:  return { ch: 'l', color: NO_COLOR, dec: true };  // ┌
-    case TRCORNER:  return { ch: 'k', color: NO_COLOR, dec: true };  // ┐
-    case BLCORNER:  return { ch: 'm', color: NO_COLOR, dec: true };  // └
-    case BRCORNER:  return { ch: 'j', color: NO_COLOR, dec: true };  // ┘
-    case CROSSWALL: return { ch: 'n', color: NO_COLOR, dec: true };  // ┼
-    case TUWALL:    return { ch: 'v', color: NO_COLOR, dec: true };  // ┴
-    case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true };  // ┬
-    case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true };  // ┤
-    case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true };  // ├
+    case HWALL:     return dec ? { ch: 'q', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
+    case VWALL:     return dec ? { ch: 'x', color: NO_COLOR, dec: true } : { ch: '|', color: NO_COLOR, dec: false };
+    case TLCORNER:
+    case TRCORNER:
+    case BLCORNER:
+    case BRCORNER:  return dec ? { ch: ({ [TLCORNER]: 'l', [TRCORNER]: 'k', [BLCORNER]: 'm', [BRCORNER]: 'j' })[typ], color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
+    case CROSSWALL:
+    case TUWALL:
+    case TDWALL:
+    case TLWALL:
+    case TRWALL:    return dec ? { ch: ({ [CROSSWALL]: 'n', [TUWALL]: 'v', [TDWALL]: 'w', [TLWALL]: 'u', [TRWALL]: 't' })[typ], color: NO_COLOR, dec: true } : { ch: '|', color: NO_COLOR, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
 }
@@ -224,13 +238,22 @@ export function _statusLine1() {
     const name = game.displayName || game.plname || 'Hero';
     const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
     const title = `${name} the ${role}`;
-    const stats = `St:${u.acurr?.a?.[0] || '?'} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
+    const stats = `St:${formatStrength(u.acurr?.a?.[0])} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats
     // C pads to align stats starting at a fixed column
     const gap = Math.max(1, 31 - title.length);
     if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
+}
+
+// C ref: botl.c strbuf(): strength values above 18 encode the exceptional
+// 18/xx range; 118 is the traditional 18/** maximum.
+export function formatStrength(value) {
+    if (value == null) return '?';
+    if (value <= 18) return String(value);
+    if (value >= 118) return '18/**';
+    return `18/${String(value - 18).padStart(2, '0')}`;
 }
 
 export function _statusLine2() {

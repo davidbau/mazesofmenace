@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl } from './display.js';
-import { vision_recalc, cansee } from './vision.js';
+import { vision_recalc, cansee, recalc_block_point } from './vision.js';
 import { do_attack, is_safemon, x_monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
@@ -540,12 +540,18 @@ export async function rhack(key) {
         game.context.move = (await dodown()) === 1 ? 1 : 0;
     } else if (ch === '.') {
         // C ref: cmd.c command table { '.', "wait", donull } -> do.c donull():
-        // "rest one move while doing nothing".  donull() returns ECMD_TIME with
-        // no top-line message, so the hero's turn elapses (monsters move) but
-        // nothing is printed.  cmd_safety_prevention only fires under attack/
-        // safety conditions absent in these recordings, so we take the plain
-        // ECMD_TIME path.
-        game.context.move = 1;
+        // "rest one move while doing nothing".  donull() first runs
+        // cmd_safety_prevention("Waiting", "a no-op (to rest)", "Are you waiting
+        // to get hit?"): with the (default-On) safe_wait option, no 'm' prefix
+        // and no multi, a hostile monster adjacent to the hero refuses the wait —
+        // it prints "Are you waiting to get hit?  Use 'm' prefix to force a no-op
+        // (to rest)." and returns ECMD_OK (no turn elapses).  Otherwise the wait
+        // returns ECMD_TIME and the hero's turn elapses (monsters move).
+        if (await cmd_safety_prevention('Waiting', 'a no-op (to rest)',
+                                        'Are you waiting to get hit?'))
+            game.context.move = 0;
+        else
+            game.context.move = 1;
     } else {
         // Unknown command
         game.context.move = 0;
@@ -893,6 +899,12 @@ export async function doopen_indir(x, y) {
     // verysmall(youmonst): false for the starter roles.
     // door is known to be CLOSED.
     if (rnl(20) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
+        // C ref: lock.c doopen_indir() — message first, then set the door open,
+        // feel_newsym, and recalc_block_point (which requests vision_full_recalc
+        // so the move loop's end-of-turn vision_recalc reveals the room beyond
+        // the now-open doorway).  NOT a direct vision_recalc: the reveal must
+        // happen AFTER this turn's monster moves, matching C.
+        await pline('The door opens.');
         if (door.doormask & D_TRAPPED) {
             // b_trapped path not exercised by these sessions.
             door.doormask = D_NODOOR;
@@ -900,8 +912,7 @@ export async function doopen_indir(x, y) {
             door.doormask = D_ISOPEN;
         }
         newsym(cx, cy);
-        vision_recalc(0);
-        await pline('The door opens.');
+        recalc_block_point(cx, cy);
     } else {
         exercise(A_STR, true); // -> rn2(19)
         await pline('The door resists!');

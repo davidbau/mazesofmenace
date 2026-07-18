@@ -44,7 +44,7 @@ import {
     D_CLOSED, D_LOCKED, D_BROKEN,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
-    EF_GREASE, EF_DESTROY, EF_VERBOSE, EF_PAY,
+    EF_NONE, EF_GREASE, EF_DESTROY, EF_VERBOSE, EF_PAY,
     MAX_ERODE,
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
@@ -1423,24 +1423,28 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
             await pline(
                 `${A_gush_of_water_hits} you on the ${body_part(HEAD)}!`,
             );
-            water_damage(u.uarmh, helm_simple_name(u.uarmh), true);
+            await water_damage(u.uarmh, helm_simple_name(u.uarmh), true);
             break;
         case 1:
             await pline(
                 `${A_gush_of_water_hits} your left ${body_part(ARM)}!`,
             );
-            if (water_damage(u.uarms, 'shield', true) !== ER_NOTHING) break;
-            if (u.twoweap || (u.uwep && bimanual(u.uwep))) {
-                water_damage(u.twoweap ? u.uswapwep : u.uwep, null, true);
+            if ((await water_damage(u.uarms, 'shield', true)) !== ER_NOTHING) {
+                break;
             }
-            water_damage(u.uarmg, gloves_simple_name(u.uarmg), true);
+            if (u.twoweap || (u.uwep && bimanual(u.uwep))) {
+                await water_damage(
+                    u.twoweap ? u.uswapwep : u.uwep, null, true,
+                );
+            }
+            await water_damage(u.uarmg, gloves_simple_name(u.uarmg), true);
             break;
         case 2:
             await pline(
                 `${A_gush_of_water_hits} your right ${body_part(ARM)}!`,
             );
-            water_damage(u.uwep, null, true);
-            water_damage(u.uarmg, gloves_simple_name(u.uarmg), true);
+            await water_damage(u.uwep, null, true);
+            await water_damage(u.uarmg, gloves_simple_name(u.uarmg), true);
             break;
         default:
             await pline(`${A_gush_of_water_hits} you!`);
@@ -1451,11 +1455,11 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
                 }
             }
             if (u.uarmc) {
-                water_damage(u.uarmc, cloak_simple_name(u.uarmc), true);
+                await water_damage(u.uarmc, cloak_simple_name(u.uarmc), true);
             } else if (u.uarm) {
-                water_damage(u.uarm, suit_simple_name(u.uarm), true);
+                await water_damage(u.uarm, suit_simple_name(u.uarm), true);
             } else if (u.uarmu) {
-                water_damage(u.uarmu, 'shirt', true);
+                await water_damage(u.uarmu, 'shirt', true);
             }
             break;
         }
@@ -1484,7 +1488,7 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
         }
         {
             const target = which_armor(mtmp, W_ARMH);
-            water_damage(target, helm_simple_name(target), true);
+            await water_damage(target, helm_simple_name(target), true);
         }
         break;
     case 1:
@@ -1495,13 +1499,15 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
         }
         {
             let target = which_armor(mtmp, W_ARMS);
-            if (water_damage(target, 'shield', true) !== ER_NOTHING) break;
+            if ((await water_damage(target, 'shield', true)) !== ER_NOTHING) {
+                break;
+            }
             target = MON_WEP(mtmp);
             if (target && bimanual(target)) {
-                water_damage(target, null, true);
+                await water_damage(target, null, true);
             }
             target = which_armor(mtmp, W_ARMG);
-            water_damage(target, gloves_simple_name(target), true);
+            await water_damage(target, gloves_simple_name(target), true);
         }
         break;
     case 2:
@@ -1510,8 +1516,8 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
                 `${A_gush_of_water_hits} ${mon_nam(mtmp)}'s right ${mbodypart(mtmp, ARM)}!`,
             );
         }
-        water_damage(MON_WEP(mtmp), null, true);
-        water_damage(
+        await water_damage(MON_WEP(mtmp), null, true);
+        await water_damage(
             which_armor(mtmp, W_ARMG),
             gloves_simple_name(which_armor(mtmp, W_ARMG)),
             true,
@@ -1530,11 +1536,11 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
         {
             let target = which_armor(mtmp, W_ARMC);
             if (target) {
-                water_damage(target, cloak_simple_name(target), true);
+                await water_damage(target, cloak_simple_name(target), true);
             } else if ((target = which_armor(mtmp, W_ARM))) {
-                water_damage(target, suit_simple_name(target), true);
+                await water_damage(target, suit_simple_name(target), true);
             } else if ((target = which_armor(mtmp, W_ARMU))) {
-                water_damage(target, 'shirt', true);
+                await water_damage(target, 'shirt', true);
             }
         }
         break;
@@ -2369,12 +2375,12 @@ const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 
 /**
  * C ref: trap.c water_damage
- * Branch envelope: null / POT_WATER → ER_NOTHING; force skips luck rn2(20);
- * potion dilute / scroll fade / spellbook fade; else ER_NOTHING (erode_obj
- * rust body deferred — non-rustprone returns ER_NOTHING with no RNG).
- * Grease / towel / container / acid explosion named omitted.
+ * Branch envelope: null → ER_NOTHING; force skips luck rn2(20);
+ * potion dilute / scroll fade / spellbook fade; else
+ * `erode_obj(..., ERODE_RUST, EF_NONE)` (D-0683).
+ * Grease / towel / container / acid explosion / splash_lit named omitted.
  */
-export function water_damage(obj, _ostr, force) {
+export async function water_damage(obj, _ostr, force) {
     if (!obj) return ER_NOTHING;
     // splash_lit / CAN_OF_GREASE / TOWEL / greased / container deferred
 
@@ -2418,24 +2424,24 @@ export function water_damage(obj, _ostr, force) {
         }
         return ER_NOTHING;
     }
-    // erode_obj(ERODE_RUST) — non-rustprone / !erosion_matters → ER_NOTHING
-    return ER_NOTHING;
+    // C: return erode_obj(obj, ostr, ERODE_RUST, EF_NONE);
+    return await erode_obj(obj, _ostr, ERODE_RUST, EF_NONE);
 }
 
 /**
  * C ref: trap.c water_damage_chain — walk invent / floor chain.
  * acid_ctx / bhitpos save deferred.
  */
-export function water_damage_chain(objOrList, here) {
+export async function water_damage_chain(objOrList, here) {
     if (!objOrList) return;
     if (Array.isArray(objOrList)) {
         for (const obj of [...objOrList]) {
-            water_damage(obj, null, false);
+            await water_damage(obj, null, false);
         }
         return;
     }
     for (let obj = objOrList; obj; obj = here ? obj.nexthere : obj.nobj) {
-        water_damage(obj, null, false);
+        await water_damage(obj, null, false);
     }
 }
 
@@ -2526,7 +2532,7 @@ export async function drown() {
         }
     }
 
-    water_damage_chain(game.invent, false);
+    await water_damage_chain(game.invent, false);
 
     const pos = { x: u.ux, y: u.uy };
     if ((game.multi | 0) >= 0 && rnd_nextto_goodpos(pos, game.youmonst)) {

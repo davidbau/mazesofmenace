@@ -12,10 +12,11 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
-import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs } from './mkroom.js';
+import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
-         name_to_pmidx, monster_by_pmidx } from './makemon.js';
+         name_to_pmidx, monster_by_pmidx, enexto_spawn } from './makemon.js';
+import { m_at } from './display.js';
 import { set_corpsenm } from './mkobj.js';
 import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph } from './engrave.js';
 import {
@@ -2593,10 +2594,10 @@ async function makemaz_oracle() {
                 oracle_create_door(delphi, 15 /*W_ANY*/, D_NODOOR);
             }
             // des.monster(); des.monster() — two random monsters in room 1.
+            // Uses the same create_monster() collision->enexto relocation as the
+            // random rooms below (oracle_monster).
             for (let i = 0; i < 2; i++) {
-                oracle_induced_align();
-                const c = oracle_get_free_room_loc(room1);
-                make_monster(null, c.x, c.y, 0);
+                oracle_monster(room1);
             }
         }
 
@@ -2670,9 +2671,21 @@ function oracle_object(croom) {
 }
 
 // des.monster() fully random: induced_align, somexy, makemon(rndmonst).
+// C ref: sp_lev.c create_monster() — a random des.monster() resolves pm==NULL,
+// picks a spot via get_location_coord(random)->somexy, then, if that spot is
+// already occupied by a monster, relocates to a close free spot via enexto()
+// (which shuffles collect_coords rings, consuming rn2 exactly as the C engine
+// does).  If the relocated spot falls outside croom the monster is skipped.
 function oracle_monster(croom) {
     oracle_induced_align();
     const c = oracle_get_free_room_loc(croom);
+    // C: if (MON_AT(x, y) && enexto(&cc, x, y, pm)) x = cc.x, y = cc.y;  (pm==NULL)
+    if (m_at(c.x, c.y)) {
+        const cc = enexto_spawn(c.x, c.y, null);
+        if (cc) { c.x = cc.x; c.y = cc.y; }
+    }
+    // C: if (croom && !inside_room(croom, x, y)) return;
+    if (croom && !inside_room(croom, c.x, c.y)) return;
     make_monster(null, c.x, c.y, 0);
 }
 

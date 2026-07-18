@@ -1203,6 +1203,14 @@ const CLASS_OC_WEIGHT = Object.freeze({
 function base_oc_weight(otmp) {
     const b = BASE_OC_WEIGHT[otmp.otyp];
     if (b != null) return b;
+    // C ref: objects.h — the RING/AMULET/POTION/SCROLL/SPBOOK/WAND class macros
+    // hard-code a single class-uniform oc_weight (3/20/20/5/50/7) for every
+    // member.  Resolve these from CLASS_OC_WEIGHT *before* the per-otyp OC_WEIGHT
+    // table, whose class-uniform entries are unreliable (e.g. POT_HEALING/
+    // POT_EXTRA_HEALING listed as 50 rather than the correct 20), which would
+    // otherwise over-weight starting inventories and mis-trigger encumbrance.
+    const cu = CLASS_OC_WEIGHT[otmp.oclass];
+    if (cu != null) return cu;
     // Authoritative per-otyp oc_weight from objects.h (nonzero entries only;
     // zero entries — dummies / corpse — fall through to the dynamic logic).
     const ocw = OC_WEIGHT[otmp.otyp];

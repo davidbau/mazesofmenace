@@ -22,6 +22,9 @@ import {
     BLND_RES,
     TELEPORT_CONTROL,
     SEARCHING,
+    FIRE_RES,
+    WARNING,
+    TIMEOUT,
     OBJ_INVENT,
 } from './const.js';
 import { pline } from './display.js';
@@ -525,6 +528,8 @@ const PROP_HFIELD = {
     [BLND_RES]: 'HBlnd_resist',
     [TELEPORT_CONTROL]: 'HTeleport_control',
     [SEARCHING]: 'HSearching',
+    [FIRE_RES]: 'HFire_resistance',
+    [WARNING]: 'HWarning',
 };
 
 /**
@@ -601,9 +606,10 @@ export function is_innate(propidx) {
 
 /**
  * C ref: attrib.c from_what — wizard-mode intrinsic source suffix.
- * Ported: innate reasons + what_gives extrinsic worn/artifact equipment.
- * Named omissions: birth blind/deaf; Very_fast potion/boots;
- * Blindfolded_only / cream; negative prop blocking; "pair of " strip.
+ * Ported: innate reasons; FAST+Very_fast worn-equipment arm; what_gives
+ * extrinsic worn/artifact equipment.
+ * Named omissions: birth blind/deaf; Blindfolded_only / cream;
+ * negative prop blocking; "pair of " strip; known speed-boots name.
  */
 export function from_what(propidx) {
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
@@ -616,6 +622,17 @@ export function from_what(propidx) {
     if (innateness === FROM_EXP) return ' because of your experience';
     if (innateness === FROM_LYCN) return ' due to your lycanthropy';
     if (innateness === FROM_FORM_REASON) return ' from your creature form';
+    // C attrib.c: propidx == FAST && Very_fast — before what_gives.
+    // Blue DSM sets EFast|W_ARM → "worn equipment" (not ysimple_name suit).
+    if (propidx === FAST && Very_fast()) {
+        const u = game.u || {};
+        const h = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
+        const e = (u.EFast | 0) | (u.uprops?.[FAST]?.extrinsic | 0);
+        if ((h & TIMEOUT) !== 0) return ' because of a potion or spell';
+        // known speed boots → ysimple_name(uarmf) deferred (needs dknown)
+        if (e) return ' because of worn equipment';
+        return ' because of something';
+    }
     // C: wizard && (obj = what_gives(&u.uprops[propidx].extrinsic))
     const extrinsic = game.u?.uprops?.[propidx]?.extrinsic | 0;
     const obj = what_gives(extrinsic);

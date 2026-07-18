@@ -1,10 +1,10 @@
 // region.js — gas-cloud / NhRegion subset.
-// C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at;
-// read.c valid_cloud_pos.
+// C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at /
+// clear_regions; read.c valid_cloud_pos.
 // Named omissions: inside_f damage callbacks; dissipation plines;
 // region glyphs; hero enveloped pline; create_gas_cloud_selection;
-// save/rest_regions; force fields; incremental fill_point (JS uses
-// vision_reset).
+// binary save_regions format; force fields; incremental fill_point
+// (JS uses vision_reset). Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -97,6 +97,15 @@ function remove_region(reg) {
             game.vision_full_recalc = 1;
         }
     }
+}
+
+/**
+ * C ref: region.c clear_regions — free all NhRegions (mklev clear_level_structures;
+ * rest_regions security wipe). Named omissions: free_region field teardown;
+ * save_regions binary format (JS stashes the array on level_info).
+ */
+export function clear_regions() {
+    game.regions = [];
 }
 
 /**

@@ -323,7 +323,7 @@ async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     adjalign(mtmp.malign | 0);
 }
 
-async function killed(mtmp) {
+export async function killed(mtmp) {
     await xkilled(mtmp, XKILL_GIVEMSG);
 }
 

@@ -672,6 +672,7 @@ function maybe_skip_seps(rows, aspect) {
 
 async function pick_role_menu() {
     const flags = f();
+    // C ref: role.c plsel_startmenu — always opens a menu → rigid here
     rigid_role_checks();
     const RACE = flags.initrace;
     const GEND = flags.initgend;
@@ -746,10 +747,11 @@ async function pick_role_menu() {
 
 async function pick_race_menu() {
     const flags = f();
-    rigid_role_checks();
+    // C: count ok_race first; n<=1 auto-assigns without plsel_startmenu /
+    // rigid_role_checks (no pick_* RNG). n>1 → plsel_startmenu → rigid.
     const ROLE = flags.initrole;
-    const GEND = flags.initgend;
-    const ALGN = flags.initalign;
+    let GEND = flags.initgend;
+    let ALGN = flags.initalign;
     let n = 0;
     let k = 0;
     for (let i = 0; i < races.length; i++) {
@@ -770,6 +772,10 @@ async function pick_race_menu() {
         flags.initrace = k;
         return { next: RS_GENDER };
     }
+    // C ref: role.c plsel_startmenu — rigid before building the menu
+    rigid_role_checks();
+    GEND = flags.initgend;
+    ALGN = flags.initalign;
     const choices = [];
     const body = [{ text: aspect_header(), attr: 0 }, { text: '', attr: 0 }];
     for (let i = 0; i < races.length; i++) {
@@ -827,10 +833,10 @@ async function pick_race_menu() {
 
 async function pick_gend_menu() {
     const flags = f();
-    rigid_role_checks();
+    // C: n<=1 skips plsel_startmenu / rigid (D-0677)
     const ROLE = flags.initrole;
     const RACE = flags.initrace;
-    const ALGN = flags.initalign;
+    let ALGN = flags.initalign;
     let n = 0;
     let k = 0;
     for (let i = 0; i < ROLE_GENDERS; i++) {
@@ -851,6 +857,8 @@ async function pick_gend_menu() {
         flags.initgend = k;
         return { next: RS_ALGNMNT };
     }
+    rigid_role_checks();
+    ALGN = flags.initalign;
     const choices = [];
     const body = [{ text: aspect_header(), attr: 0 }, { text: '', attr: 0 }];
     for (let i = 0; i < ROLE_GENDERS; i++) {
@@ -908,7 +916,8 @@ async function pick_gend_menu() {
 
 async function pick_align_menu() {
     const flags = f();
-    rigid_role_checks();
+    // C: n<=1 auto-assign without rigid — Valkyrie+dwarf lawful alone must
+    // not rn2(1) via pick_align PICK_RIGID (seed0014 / D-0677).
     const ROLE = flags.initrole;
     const RACE = flags.initrace;
     const GEND = flags.initgend;
@@ -932,6 +941,7 @@ async function pick_align_menu() {
         flags.initalign = k;
         return { next: RS_ROLE };
     }
+    rigid_role_checks();
     const choices = [];
     const body = [{ text: aspect_header(), attr: 0 }, { text: '', attr: 0 }];
     for (let i = 0; i < ROLE_ALIGNS; i++) {

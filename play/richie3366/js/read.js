@@ -8,12 +8,14 @@
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
 // SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
-// SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR + SPBOOK_CLASS →
-// study_book (already-known refresh yn) + create_particular named-monster
-// path for #wizgenesis.
+// SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR / SCR_IDENTIFY +
+// SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
+// named-monster path for #wizgenesis.
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
 // Blind gates; study_book occupation/learn / novel / cursed_book; other
-// seffect_*; SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
+// seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
+// ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
+// SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; nommap/Hallucination/
 // blessed-SDOOR convert body; notice_mon_off/on; can_chant poly silent/
 // headless/buzz/burble; check_capacity; SPE_MAGIC_MAPPING /
@@ -38,7 +40,7 @@ import {
 } from './objects.js';
 import { weight, uncurse, blessorcurse } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
-import { makeknown, display_pickinv_reply } from './invent.js';
+import { makeknown, display_pickinv_reply, identify_pack } from './invent.js';
 import { more_experienced } from './exper.js';
 import { do_mapping, cvt_sdoor_to_door } from './detect.js';
 import { study_book, can_chant } from './spell.js';
@@ -64,6 +66,7 @@ const SCR_LIGHT = objectNames.indexOf('SCR_LIGHT');
 const SCR_REMOVE_CURSE = objectNames.indexOf('SCR_REMOVE_CURSE');
 const SCR_ENCHANT_WEAPON = objectNames.indexOf('SCR_ENCHANT_WEAPON');
 const SCR_DESTROY_ARMOR = objectNames.indexOf('SCR_DESTROY_ARMOR');
+const SCR_IDENTIFY = objectNames.indexOf('SCR_IDENTIFY');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
@@ -657,6 +660,52 @@ async function seffect_destroy_armor(sobj) {
 }
 
 /**
+ * C ref: read.c seffect_identify.
+ * Scroll: useup first, self-ID messages, learnscrolltyp, then
+ * identify_pack(cval). SPE_IDENTIFY cast path deferred (wired if seffects).
+ */
+async function seffect_identify(sobj) {
+    const otyp = sobj.otyp | 0;
+    const is_scroll = sobj.oclass === SCROLL_CLASS;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const u = game.u || {};
+    const confused = !!(u.HConfusion || u.Confusion);
+    const already_known = sobj.oclass === SPBOOK_CLASS
+        || !!game.objects?.[otyp]?.oc_name_known;
+
+    if (is_scroll) {
+        useup(sobj);
+        // scroll gone — caller must not useup again
+        if (confused || (scursed && !already_known)) {
+            await pline('You identify this as an identify scroll.');
+        } else if (!already_known) {
+            await pline('This is an identify scroll.');
+        }
+        if (!already_known) learnscrolltyp(SCR_IDENTIFY);
+        if (confused || (scursed && !already_known)) return null;
+    }
+
+    const invent = game.invent || [];
+    if (invent.length) {
+        let cval = 1;
+        if (sblessed || (!scursed && !rn2(5))) {
+            cval = rn2(5);
+            // note: if cval==0, identify all items
+            if (cval === 1 && sblessed && ((u.uluck | 0) > 0)) {
+                ++cval;
+            }
+        }
+        await identify_pack(cval, !already_known);
+    } else {
+        await pline(
+            `You're not carrying anything${is_scroll ? ' else' : ''} to be identified.`,
+        );
+    }
+    return null; // used up when scroll
+}
+
+/**
  * C ref: read.c seffects — oc_magic exercise + otyp dispatch.
  * @returns {number} 0 = caller useup/learn; 1 = already used up;
  *   -1 = unimplemented (caller must not useup)
@@ -681,6 +730,11 @@ async function seffects(sobj) {
     case SCR_REMOVE_CURSE:
         await seffect_remove_curse(sobj);
         break;
+    case SCR_IDENTIFY: {
+        const kept = await seffect_identify(sobj);
+        if (!kept) return 1;
+        break;
+    }
     case SCR_ENCHANT_WEAPON: {
         const kept = await seffect_enchant_weapon(sobj);
         if (!kept) return 1;
@@ -739,7 +793,7 @@ export async function doread() {
     if (otyp !== SCR_MAGIC_MAPPING && otyp !== SCR_BLANK_PAPER
         && otyp !== SCR_TELEPORTATION && otyp !== SCR_LIGHT
         && otyp !== SCR_REMOVE_CURSE && otyp !== SCR_ENCHANT_WEAPON
-        && otyp !== SCR_DESTROY_ARMOR) {
+        && otyp !== SCR_DESTROY_ARMOR && otyp !== SCR_IDENTIFY) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }

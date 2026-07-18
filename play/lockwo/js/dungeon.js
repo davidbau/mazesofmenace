@@ -2,6 +2,7 @@
 // C ref: dungeon.c - init_dungeons, init_dungeon_dungeons, place_level.
 
 import { game } from './gstate.js';
+import { roles } from './role.js';
 import { rn2, rn1 } from './rng.js';
 import { nhgetch } from './input.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
@@ -617,11 +618,30 @@ const level_map = [
     [X_GOAL, 'nemesis_level'],
 ];
 
+// C ref: dungeon.c fixup_level_locations — the quest dungeon's levels are
+// stored generically as "x-strt"/"x-loca"/"x-goal"; the "x" is replaced by the
+// current role's filecode (gu.urole.filecode) so the overview/level-teleport
+// listing shows e.g. "Arc-strt" for an Archeologist.
+function urole_filecode() {
+    if (Number.isInteger(game.initrole) && game.initrole >= 0)
+        return roles[game.initrole]?.filecode || null;
+    const name = String(game.initrole || '').toLowerCase();
+    const r = roles.find((rr) => rr.name?.m?.toLowerCase() === name);
+    return r?.filecode || null;
+}
+
 function fixup_level_locations() {
+    const filecode = urole_filecode();
     for (const [lev_name, lev_spec] of level_map) {
         const x = find_level(lev_name);
         if (x) {
             game[lev_spec] = { ...x.dlevel };
+            // C ref: dungeon.c fixup_level_locations — name substitution on the
+            // quest dungeon's levels: proto = urole.filecode + &lev_name[1]
+            // ("x-strt" -> "Arc-strt").
+            if (lev_name.startsWith('x-') && filecode) {
+                x.proto = filecode + lev_name.slice(1);
+            }
             // C ref: dungeon.c init_dungeons() — Kludge to allow a floating
             // Knox (Fort Ludios) entrance: the branch reaching Knox has its
             // parent end (end1) marked with the bogus dnum n_dgns so it sorts
@@ -879,7 +899,10 @@ export async function print_dungeon(bymenu, _rlev, _rdgn) {
             clearRow(row);
             if (e.blank) continue;
             if (e.title) { disp.putstr(1, row, e.text, NO_COLOR, ATR_INVERSE); continue; }
-            const line = e.heading ? e.text : `${e.menuletter} - ${e.text}`;
+            // C ref: tport_menu — an unreachable level is added with a_int==0
+            // (zeroany), so the tty windowport shows no accelerator; its entry
+            // text already carries the 4-space padding in place of "X - ".
+            const line = (e.heading || !e.reachable) ? e.text : `${e.menuletter} - ${e.text}`;
             disp.putstr(1, row, line, NO_COLOR, e.heading ? ATR_INVERSE : 0);
         }
         const morestr = npages > 1 ? `(${pageNo} of ${npages})` : '(end) ';

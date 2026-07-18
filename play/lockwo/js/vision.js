@@ -156,6 +156,156 @@ export function vision_reset() {
     game._viz_rmax = null;
 }
 
+// C ref: vision.c dig_point(row, col) — incrementally make a single point
+// transparent to light, fixing up the row's left/right pointer chains without a
+// full vision_reset().  Called (via unblock_point) when e.g. a door opens so the
+// LOS scan can now see through that square.  Note the C convention here uses
+// (row, col) == (y, x); our left_ptrs/right_ptrs/viz_clear are indexed [row][col].
+function dig_point(row, col) {
+    if (viz_clear[row][col]) return; /* already done */
+
+    viz_clear[row][col] = 1;
+
+    if (col === 0) { /* left edge */
+        if (viz_clear[row][1]) {
+            right_ptrs[row][0] = right_ptrs[row][1];
+        } else {
+            right_ptrs[row][0] = 1;
+            for (let i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 1;
+        }
+    } else if (col === COLNO - 1) { /* right edge */
+        if (viz_clear[row][COLNO - 2]) {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+        } else {
+            left_ptrs[row][COLNO - 1] = COLNO - 2;
+            for (let i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 2;
+        }
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i]) continue; /* catch non-end case */
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+        }
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i]) continue; /* catch non-end case */
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+        }
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (let i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i]) continue; /* catch non-end case */
+            right_ptrs[row][i] = col + 1;
+        }
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (let i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i]) continue; /* catch non-end case */
+            left_ptrs[row][i] = col - 1;
+        }
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+    } else {
+        /* Both sides blocked */
+        for (let i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+        for (let i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+        left_ptrs[row][col] = col - 1;
+        right_ptrs[row][col] = col + 1;
+    }
+}
+
+// C ref: vision.c fill_point(row, col) — incrementally make a single point
+// opaque, the inverse of dig_point (used e.g. when a door closes).
+function fill_point(row, col) {
+    if (!viz_clear[row][col]) return;
+
+    viz_clear[row][col] = 0;
+
+    if (col === 0) {
+        if (viz_clear[row][1]) { /* adjacent is clear */
+            right_ptrs[row][0] = 0;
+        } else {
+            right_ptrs[row][0] = right_ptrs[row][1];
+            for (let i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 0;
+        }
+    } else if (col === COLNO - 1) {
+        if (viz_clear[row][COLNO - 2]) { /* adjacent is clear */
+            left_ptrs[row][COLNO - 1] = COLNO - 1;
+        } else {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+            for (let i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 1;
+        }
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (let i = left_ptrs[row][col - 1] + 1; i <= col; i++)
+            right_ptrs[row][i] = col;
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][0] = col;
+        for (let i = col; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][COLNO - 1] = col;
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+        let i;
+        for (i = left_ptrs[row][col - 1] + 1; i < col; i++)
+            right_ptrs[row][i] = col;
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][i] = col;
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = col;
+        let i;
+        for (i = col + 1; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][i] = col;
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+    } else {
+        /* Both sides blocked */
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+    }
+}
+
+// C ref: vision.c block_point(x, y) — make a location opaque to light; if the
+// hero could-see it, request a full vision recalc so any newly-hidden area
+// updates.  (x, y) here is column, row.
+export function block_point(x, y) {
+    fill_point(y, x);
+    if (game.viz_array?.[y]?.[x]) game.vision_full_recalc = 1;
+}
+
+// C ref: vision.c unblock_point(x, y) — make a location transparent to light;
+// if the hero could-see it, request a full vision recalc (so e.g. a lit room
+// beyond a just-opened door out of night-vision range is suddenly revealed).
+export function unblock_point(x, y) {
+    dig_point(y, x);
+    if (game.viz_array?.[y]?.[x]) game.vision_full_recalc = 1;
+}
+
+// C ref: vision.c recalc_block_point(x, y) — recompute whether a point should be
+// blocked or unblocked from its current terrain/contents.
+export function recalc_block_point(x, y) {
+    if (_blocks(game.level, x, y)) block_point(x, y);
+    else unblock_point(x, y);
+}
+
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
 function q1_path(srow, scol, y2, x2) {
     let x = scol, y = srow;

@@ -1,30 +1,38 @@
 // spell.js — Known spells / + menu / cast / initial inventory learning.
-// C ref: spell.c initialspell, study_book, dovspell, dospellmenu,
-//        percent_success, spellretention, spelltypemnemonic,
+// C ref: spell.c initialspell, study_book, cursed_book, dovspell,
+//        dospellmenu, percent_success, spellretention, spelltypemnemonic,
 //        spell_skilltype, skill_based_spellbook_id, docast, getspell,
 //        rejectcasting, spelleffects_check, spelleffects.
 //
 // Branch envelope: spl_book init; initialspell from ini_inv_use_obj;
-// study_book blank + already-known refresh yn + delay/too_hard gate +
-// begin-memorize; dovspell VIEW menu; Wizard skill_based_spellbook_id;
-// Z/#cast → getspell CAST → spelleffects_check + SPE_HEALING self-zap.
+// study_book blank + already-known refresh yn + delay/too_hard +
+// cursed_book (D-0681) + begin-memorize; dovspell VIEW menu; Wizard
+// skill_based_spellbook_id; Z/#cast → getspell CAST → spelleffects_check
+// + SPE_HEALING self-zap.
 // Named omissions: study occupation/learn; novel/tribute; dull sleep;
-// cursed_book/confused_book bodies; swap/sort; other spelleffects otyps;
-// directional weffects; spell_backfire; amulet drain; CQ_REPEAT.
+// confused_book body; swap/sort; other spelleffects otyps; directional
+// weffects; spell_backfire; amulet drain; CQ_REPEAT; cursed_book
+// rndcurse/shieldeff polish; In_W_tower in aggravate.
 // Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt } from './display.js';
+import { flush_screen, pline, docrt, You_feel } from './display.js';
 import { paint_corner_nhw_menu, discover_object } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
-import { weight, mksobj } from './mkobj.js';
+import { weight, mksobj, delobj } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
-import { SPBOOK_CLASS } from './objects.js';
-import { rnd } from './rng.js';
-import { morehungry } from './eat.js';
+import { SPBOOK_CLASS, COIN_CLASS } from './objects.js';
+import { rnd, rn2, rn1 } from './rng.js';
+import { morehungry, poison_strdmg } from './eat.js';
 import { zapyourself } from './zap.js';
+import { tele } from './teleport.js';
+import { aggravate } from './wizard.js';
+import { make_confused } from './potion.js';
+import { trycall } from './do_name.js';
+import { nomul, losehp, maybe_half_phys } from './hack.js';
+import { erode_obj } from './trap.js';
 import {
     P_NONE,
     P_ATTACK_SPELL,
@@ -44,9 +52,17 @@ import {
     ECMD_OK,
     ECMD_TIME,
     ECMD_FAIL,
+    TIMEOUT,
+    ERODE_CORRODE,
+    EF_GREASE,
+    EF_VERBOSE,
+    KILLED_BY_AN,
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
 import { PM_KNIGHT, PM_WIZARD } from './generated/monsters_data.js';
+
+/** C: spell.c explodes[] */
+const EXPLODES = 'radiates explosive energy';
 
 /** C ref: spell.h NO_SPELL / UNKNOWN_SPELL / SPELL_LEV_PW */
 export const NO_SPELL = 0;
@@ -246,13 +262,152 @@ export function initialspell(obj) {
     game.spl_book[i].sp_know = KEEN;
 }
 
+/** C ref: youprop.h BlindedTimeout — HBlinded & TIMEOUT. */
+function BlindedTimeout() {
+    return (game.u?.HBlinded | 0) & TIMEOUT;
+}
+
+/**
+ * C ref: potion.c make_blinded — TIMEOUT set + Blind mirror.
+ * Eyes override / toggle_blindness vision / Punished set_bc / talk
+ * messages deferred (talk unused for cursed_book case 2 path polish).
+ */
+function make_blinded(xtime, _talk) {
+    const u = game.u || (game.u = {});
+    const wasBlind = !!(u.Blind || ((u.HBlinded | 0) && !(u.BBlinded | 0)));
+    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (xtime ? (xtime & TIMEOUT) : 0);
+    const nowBlind = !!((u.HBlinded | 0) && !(u.BBlinded | 0));
+    if (wasBlind !== nowBlind) {
+        u.Blind = nowBlind;
+        if (game.flags) game.flags.botl = true;
+    }
+}
+
+/** C ref: youprop.h Poison_resistance. */
+function Poison_resistance() {
+    const u = game.u || {};
+    return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
+        || u.Poison_resistance);
+}
+
+/** C ref: invent.c useup — one from stack / remove. */
+function useup(otmp) {
+    if (!otmp) return;
+    if ((otmp.quan || 1) > 1) {
+        otmp.quan--;
+        otmp.owt = weight(otmp);
+        return;
+    }
+    const inv = game.invent || [];
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+}
+
+/**
+ * C ref: sit.c take_gold — strip COIN_CLASS from invent.
+ * remove_worn_item deferred (coins rarely worn).
+ */
+async function take_gold() {
+    let lost = false;
+    const inv = game.invent || [];
+    for (let i = inv.length - 1; i >= 0; i--) {
+        const otmp = inv[i];
+        if (otmp?.oclass === COIN_CLASS) {
+            lost = true;
+            inv.splice(i, 1);
+            delobj(otmp);
+        }
+    }
+    if (!lost) {
+        await You_feel('a strange sensation.');
+    } else {
+        await pline('You notice you have no gold!');
+        if (game.flags) game.flags.botl = true;
+        if (game._goldCount != null) game._goldCount = 0;
+    }
+}
+
+/**
+ * C ref: spell.c cursed_book — rn2(oc_level) effect; TRUE → destroy book.
+ * Named omissions: shieldeff flash; rndcurse body (default stub burns
+ * Magicbane rn2(20) only); body_part(FACE) → "face".
+ * @returns {Promise<boolean>}
+ */
+async function cursed_book(bp) {
+    if (!bp) return false;
+    const lev = game.objects?.[bp.otyp]?.oc_level | 0;
+    let dmg = 0;
+    switch (rn2(lev)) {
+    case 0:
+        await You_feel('a wrenching sensation.');
+        await tele();
+        break;
+    case 1:
+        await You_feel('threatened.');
+        aggravate();
+        break;
+    case 2:
+        make_blinded(BlindedTimeout() + rn1(100, 250), true);
+        break;
+    case 3:
+        await take_gold();
+        break;
+    case 4:
+        await pline('These runes were just too much to comprehend.');
+        await make_confused(
+            ((game.u?.HConfusion | 0) & TIMEOUT) + rn1(7, 16),
+            false,
+        );
+        break;
+    case 5: {
+        await pline('The book was coated with contact poison!');
+        const uarmg = game.u?.uarmg;
+        if (uarmg) {
+            await erode_obj(uarmg, 'gloves', ERODE_CORRODE,
+                EF_GREASE | EF_VERBOSE);
+            break;
+        }
+        const was_in_use = !!bp.in_use;
+        bp.in_use = false;
+        // clang LTR: rn1 then rnd before poison_strdmg
+        const strloss = Poison_resistance() ? rn1(2, 1) : rn1(4, 3);
+        const pdmg = rnd(Poison_resistance() ? 6 : 10);
+        await poison_strdmg(strloss, pdmg);
+        bp.in_use = was_in_use;
+        break;
+    }
+    case 6: {
+        const u = game.u || {};
+        const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+        if (Antimagic) {
+            // shieldeff deferred
+            await pline(`The book ${EXPLODES}, but you are unharmed!`);
+        } else {
+            await pline(
+                `As you read the book, it ${EXPLODES} in your face!`,
+            );
+            dmg = 2 * rnd(10) + 5;
+            losehp(maybe_half_phys(dmg), 'exploding rune', KILLED_BY_AN);
+        }
+        return true;
+    }
+    default:
+        // rndcurse body deferred (spellbook oc_level ≤7 never hits default
+        // via rn2(lev); keep message for completeness)
+        await pline('You feel a malignant aura surround you.');
+        break;
+    }
+    return false;
+}
+
 /**
  * C ref: spell.c study_book()
  * Branch envelope: blank paper; already-known refresh yn (KEEN/10);
- * delay by oc_level; uncursed rnd(20) fail gate; begin-memorize return.
+ * delay by oc_level; uncursed rnd(20) fail gate; too_hard → cursed_book
+ * + nomul + !rn2(3) crumble; begin-memorize return.
  * Named omissions: dull-book sleep; interrupted continue; novel/tribute;
- * cursed_book / confused_book bodies; set_occupation(learn) multi-turn
- * study (refresh/accept and first learn return TIME without occupation).
+ * confused_book body; set_occupation(learn) multi-turn study
+ * (refresh/accept and first learn return TIME without occupation).
  * @returns {Promise<number>} 1 = took time, 0 = cancel / no time
  */
 export async function study_book(spellbook) {
@@ -340,9 +495,19 @@ export async function study_book(spellbook) {
     }
 
     if (too_hard) {
-        // cursed_book / useup / nomul deferred
-        spellbook.in_use = false;
+        // C: gone = cursed_book; nomul(delay); maybe useup
+        const gone = await cursed_book(spellbook);
+        nomul(game.context.spbook.delay);
+        game.multi_reason = 'reading a book';
+        game.nomovemsg = null;
         game.context.spbook.delay = 0;
+        if (gone || !rn2(3)) {
+            if (!gone) await pline('The spellbook crumbles to dust!');
+            await trycall(spellbook);
+            useup(spellbook);
+        } else {
+            spellbook.in_use = false;
+        }
         return 1;
     }
     if (confused) {

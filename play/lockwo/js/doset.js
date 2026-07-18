@@ -23,7 +23,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { update_topl, topl_more } from './display.js';
+import { update_topl, topl_more, render_map_to_grid } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 
 const COLS = 80;
@@ -58,7 +58,7 @@ const NAMEW = 23;
 // adds "  (for autopickup)".  Page 1 (a..p) is the only page the sessions show.
 const SIMPLE_SECTIONS = [
     { name: 'General', items: [
-        { a: 'a', name: 'fruit',        kind: 'compound', val: () => 'slime mold' },
+        { a: 'a', name: 'fruit',        kind: 'compound', val: () => (game.flags?.pl_fruit) || 'slime mold' },
         { a: 'b', name: 'number_pad',   kind: 'compound', val: () => '0=off' },
         { a: 'c', name: 'price_quotes', kind: 'bool',     val: () => ' ' },
     ] },
@@ -415,6 +415,40 @@ async function runPickupTypesHandler() {
     }
 }
 
+// Run the fruit compound option: a `compound`-without-handler entry, so
+// doset_simple_menu() prompts "Set %s to what?" via getlin() and passes the
+// answer back through parseoptions ("fruit:mango").  C ref: options.c
+// doset_simple_menu() lines 8663-8683.
+//
+// Before the top-line getlin prompt is drawn, the full-screen "Options" menu is
+// torn down and the map is restored (tty repaints the glyph/map window); the
+// status line is NOT repainted here (bot() is not called), so it stays blank
+// until the menu fully exits.  We reproduce that: clear the menu, redraw just
+// the map rows from the current glyph buffer (no dungeon RNG, no state change),
+// blank the status rows, then run getlin() over the top line.
+async function runFruitHandler() {
+    const d = disp();
+    if (d?.setCell) {
+        d.clearScreen();
+        render_map_to_grid();
+        // The getlin-over-menu redraw restores the map only; the status window
+        // is left blank (see step-237 capture: rows 22-23 are empty).
+        for (let c = 0; c < COLS; c++) {
+            d.setCell(c, 22, ' ', NO_COLOR, 0);
+            d.setCell(c, 23, ' ', NO_COLOR, 0);
+        }
+    }
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    const ans = await hooked_tty_getlin('Set fruit to what?', null);
+    if (ans !== '\x1b') {
+        // parseoptions("fruit:<name>") — set pl_fruit.  Fruit naming is purely
+        // cosmetic (it does not touch the dungeon RNG or the map), so we only
+        // record the new name for the menu's redisplayed value.
+        game.flags = game.flags || {};
+        game.flags.pl_fruit = ans;
+    }
+}
+
 // --- doset_simple() "Options" menu rendering ---------------------------------
 
 // Build the flat page-1 entry list (matches the recorded layout: ? help line,
@@ -520,6 +554,9 @@ export async function dosetSimple() {
         } else if (it.name === 'pickup_types') {
             await runPickupTypesHandler();
             // loop: re-show menu (pickup_types value updated)
+        } else if (it.name === 'fruit') {
+            await runFruitHandler();
+            // loop: re-show menu (fruit value updated)
         }
         // Other compound/other entries aren't exercised; re-show the menu.
     }
