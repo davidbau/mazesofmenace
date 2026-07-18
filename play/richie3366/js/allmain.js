@@ -5,7 +5,9 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline, flush_topl_more } from './display.js';
+import {
+    docrt, cls, bot, flush_screen, pline, flush_topl_more, see_monsters,
+} from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
@@ -38,6 +40,7 @@ import { ATR_INVERSE } from './terminal.js';
 import { dosounds } from './sounds.js';
 import { invault } from './vault.js';
 import { nh_timeout } from './timeout.js';
+import { run_regions } from './region.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
@@ -621,9 +624,9 @@ export async function moveloop_core() {
                 settrack();
                 g.moves = (g.moves || 1) + 1;
 
-                // once-per-turn — C: nh_timeout before regen_hp / wipe_engr
-                // (Glib / run_regions deferred)
+                // once-per-turn — C: nh_timeout then run_regions
                 await nh_timeout();
+                run_regions();
                 // C allmain.c moveloop: if (u.ublesscnt) u.ublesscnt--;
                 if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1;
 
@@ -695,6 +698,23 @@ export async function moveloop_core() {
     }
     // C: allmain.c once-per-player-input find_ac() before bot/flush/rhack
     find_ac();
+    // C: if (!context.mv || Blind) { Hallu | Unblind_telepat|Warning|… }
+    // Refreshes Warning floats / ESP glyphs when hero steps change mdistu.
+    // Named omissions: Hallucination see_objects/see_traps/swallowed;
+    // Warn_of_mon; any_visible_region(); Blind forces the arm during run.
+    {
+        const u = g.u || {};
+        const Blind = !!(u.Blind || u.ublind
+            || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+        if (!g.context.mv || Blind) {
+            const Unblind_telepat = !!(u.ETelepat | 0);
+            const Warning = !!((u.HWarning | 0) || (u.EWarning | 0)
+                || u.Warning);
+            if (Unblind_telepat || Warning) {
+                see_monsters();
+            }
+        }
+    }
     if (g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;

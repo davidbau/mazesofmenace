@@ -13,6 +13,7 @@ import {
 import { newsym } from './display.js';
 import { objectNames } from './objects.js';
 import { do_light_sources } from './light.js';
+import { visible_region_at } from './region.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -93,8 +94,8 @@ function is_lightblocker_mappear(mon) {
 }
 
 /**
- * C ref: vision.c does_block — terrain/door + BOULDER + lightblocker mimic.
- * Named omission: opaque gas-cloud region return 2.
+ * C ref: vision.c does_block — terrain/door + BOULDER + lightblocker mimic
+ * + visible_region_at gas cloud (return 2). Underwater moat deferred.
  */
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
@@ -119,6 +120,8 @@ function _blocks(level, x, y) {
         if (mon.minvis && !game.u?.See_invisible) continue;
         if (is_lightblocker_mappear(mon)) return true;
     }
+    // C: visible_region_at → return 2 (opaque gas cloud)
+    if (visible_region_at(x, y)) return true;
     return false;
 }
 

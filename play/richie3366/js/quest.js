@@ -5,7 +5,8 @@
 // prisoner_speaks; finish_quest; got_thanks/questart arms; banished
 // com_pager; livelog; exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
-// nexttime/othertime/goal_* texts: Arc+Bar only (other roles burn nhl only).
+// nexttime/othertime: Arc+Bar (+Pri locate/firsttime/goal via questpgr).
+// Other-role goal_* bodies still burn nhl only when text missing.
 
 import { game } from './gstate.js';
 import {

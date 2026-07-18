@@ -9,7 +9,7 @@ import {
     EPRI, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE,
     Amask2align, ACH_TMPL, In_endgame,
 } from './const.js';
-import { pline, You_feel, canspotmon, verbalize } from './display.js';
+import { pline, You_feel, canseemon, canspotmon, verbalize } from './display.js';
 import { makemon, set_malign } from './makemon.js';
 import { mons } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
@@ -139,7 +139,8 @@ export async function intemple(roomno) {
         if (can_speak && !Deaf && moves >= (epri.intone_time | 0)) {
             const save_priest = priest.ispriest;
             if (sanctum && !u.Hallucination) priest.ispriest = 0;
-            const who = canspotmon(priest)
+            // C: canseemon (not canspotmon) — ESP alone → "A nearby voice"
+            const who = canseemon(priest)
                 ? (await import('./do_name.js')).Monnam(priest)
                 : 'A nearby voice';
             await pline(`${who} intones:`);

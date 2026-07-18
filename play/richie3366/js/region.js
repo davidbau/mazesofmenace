@@ -1,14 +1,16 @@
 // region.js — gas-cloud / NhRegion subset.
 // C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at;
 // read.c valid_cloud_pos.
-// Named omissions: run_regions damage/expire callbacks; region glyphs /
-// vision block_point; hero enveloped pline; create_gas_cloud_selection;
-// save/rest_regions; force fields.
+// Named omissions: inside_f damage callbacks; dissipation plines;
+// region glyphs; hero enveloped pline; create_gas_cloud_selection;
+// save/rest_regions; force fields; incremental fill_point (JS uses
+// vision_reset).
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import { isok, ACCESSIBLE, u_at } from './const.js';
 import { is_pool, is_lava } from './hack.js';
+import { recalc_block_point } from './vision.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // callback index stand-in
@@ -57,14 +59,71 @@ function is_hero_inside_gas_cloud() {
 
 /**
  * C ref: region.c make_gas_cloud — register region; hero message deferred.
+ * C add_region calls block_point on each visible cell; JS rebuilds via
+ * recalc_block_point (full vision_reset).
  */
 function make_gas_cloud(cloud, damage, _inside_cloud) {
     cloud.inside_f = INSIDE_GAS_CLOUD;
+    cloud.expire_f = INSIDE_GAS_CLOUD; // gas expire marker (damage/pline deferred)
     cloud.arg = damage | 0;
     cloud.visible = true;
     // glyph / set_heros_fault / enveloped pline deferred
     if (!game.regions) game.regions = [];
     game.regions.push(cloud);
+    // C add_region: if (reg->visible) block_point per inside cell
+    const rects = cloud.rects || [];
+    if (rects.length) {
+        recalc_block_point(rects[0].lx | 0, rects[0].ly | 0);
+    } else {
+        game.vision_full_recalc = 1;
+    }
+}
+
+/**
+ * C ref: region.c remove_region — drop region; unblock vision for gas.
+ * Named omissions: newsym pass, hero_inside clear, free_region details.
+ */
+function remove_region(reg) {
+    const regs = game.regions || [];
+    const i = regs.indexOf(reg);
+    if (i < 0) return;
+    regs.splice(i, 1);
+    // C expire_gas_cloud / remove_region → unblock_point; JS rebuilds
+    if (reg.visible) {
+        const rects = reg.rects || [];
+        if (rects.length) {
+            recalc_block_point(rects[0].lx | 0, rects[0].ly | 0);
+        } else {
+            game.vision_full_recalc = 1;
+        }
+    }
+}
+
+/**
+ * C ref: region.c run_regions — ttl expiry then age remaining regions.
+ * Envelope: gas-cloud ttl only. Named omissions: inside_f damage
+ * callbacks on hero/monsters; dissipation plines; thick-cloud ttl reset.
+ */
+export function run_regions() {
+    const regs = game.regions || [];
+    // End of life — backward because remove mutates the array
+    for (let i = regs.length - 1; i >= 0; i--) {
+        const reg = regs[i];
+        if ((reg.ttl | 0) !== 0) continue;
+        // C: expire_f callback; gas with damage<5 unblocks and returns TRUE
+        const dmg = reg.arg | 0;
+        if (dmg >= 5) {
+            // C: thick cloud dissipates — halve damage, ttl=2, keep
+            reg.arg = (dmg / 2) | 0;
+            reg.ttl = 2;
+            continue;
+        }
+        remove_region(reg);
+    }
+    // Age remaining
+    for (const reg of game.regions || []) {
+        if ((reg.ttl | 0) > 0) reg.ttl = (reg.ttl | 0) - 1;
+    }
 }
 
 /**

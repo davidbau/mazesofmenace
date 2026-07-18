@@ -15,7 +15,7 @@ import { make_confused } from './potion.js';
  * CONFUSION → set_itimeout(1) + make_confused(0,TRUE) + stop_occupation.
  * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues; FAST/
  * STUNNED/BLINDED/DEAF/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… cases;
- * Glib; run_regions; ublesscnt; mtimedone; usptime; ugallop; delayed
+ * Glib; ublesscnt (in allmain); mtimedone; usptime; ugallop; delayed
  * killers; uinvulnerable early return polish.
  */
 export async function nh_timeout() {

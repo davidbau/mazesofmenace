@@ -2290,12 +2290,8 @@ xxxxx...xxxxxx....xxxxxxxx
     const [px, py] = place[placeidx];
 
     // des.region(selection.area(00,00,25,10), "unlit")
-    for (let y = 0; y <= 10; y++) {
-        for (let x = 0; x <= 25; x++) {
-            const loc = g.level.at(mx + x, my + y);
-            if (loc) loc.lit = false;
-        }
-    }
+    // C sp_lev.c light_region: lava stays lit (IS_LAVA → lit=1).
+    light_region(mx + 0, my + 0, mx + 25, my + 10, false);
 
     // des.stair("up", 20,05)
     mkstairs(mx + 20, my + 5, 1, null);
@@ -3136,6 +3132,7 @@ function splev_map_aligned_start(wid, hei, halign) {
  * Named omissions: tower2/3; SpLev_Map fidelity beyond solidify set;
  * map_cleanup lava/pool sweep; mon_has_special Vlad gate (makemon skips
  * newcham for Vlad); full nh.is_genocided beyond mvitals G_GENOD.
+ * D-0673: map lit=FALSE clear after solidfill (≡ C lspo_map).
  */
 function load_tower1() {
     const g = game;
@@ -3178,6 +3175,17 @@ function load_tower1() {
             sel_set_ter(xx, yy, mptyp, false);
             spLevMap.add(`${xx},${yy}`);
         }
+    }
+    // C lspo_map defaults lit=FALSE → set_levltyp_lit clears solidfill
+    // BOOL_RANDOM lit on map cells (sel_set_ter(...,false) is nochange).
+    // Same envelope as Pri-loca D-0668 / fire D-0569.
+    for (const key of spLevMap) {
+        const comma = key.indexOf(',');
+        const x = Number(key.slice(0, comma));
+        const y = Number(key.slice(comma + 1));
+        const loc = g.level.at(x, y);
+        if (!loc) continue;
+        loc.lit = IS_LAVA(loc.typ) ? true : false;
     }
     const mx = xstart;
     const my = ystart;

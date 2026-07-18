@@ -267,22 +267,25 @@ const QUEST_LOCATE_NEXT = {
     Pri: `Again, you stand before %i.`,
 };
 
-/** C ref: dat/quest.lua nexttime (Arc + Bar). */
+/** C ref: dat/quest.lua nexttime (Arc + Bar + Pri). */
 const QUEST_NEXTTIME = {
     Arc: `Once again, you are back at %H.`,
     Bar: `Once again, you near %H.  You know that %l
 will be waiting.`,
+    Pri: `Once again, you stand before %H.`,
 };
 
-/** C ref: dat/quest.lua othertime (Arc + Bar). */
+/** C ref: dat/quest.lua othertime (Arc + Bar + Pri). */
 const QUEST_OTHERTIME = {
     Arc: `You are back at %H.
 You have an odd feeling this may be the last time you ever come here.`,
     Bar: `Again, and you think possibly for the last time, you approach
 %H.`,
+    Pri: `Again you face %H.  Your intuition hints that this may be
+the final time you come here.`,
 };
 
-/** C ref: dat/quest.lua goal_first (Arc + Bar; output=text). */
+/** C ref: dat/quest.lua goal_first (Arc + Bar + Pri; output=text). */
 const QUEST_GOAL_FIRST = {
     Arc: `A strange feeling washes over you, and you think back to things you
 learned during the many lectures of %l.
@@ -291,12 +294,18 @@ You realize the feeling must be the presence of %o.`,
     Bar: `The hairs on the nape of your neck lift as you sense an energy in the
 very air around you.  You fight down a primordial panic that seeks to
 make you turn and run.  This is surely the lair of %n.`,
+    // C ref: dat/quest.lua Pri goal_first (output=text) — seed0367 @209
+    Pri: `The stench of brimstone is all about you, and the shrieks and moans
+of tortured souls assault your psyche.
+
+Ahead, there is a small clearing amidst the bubbling pits of lava...`,
 };
 
-/** C ref: dat/quest.lua goal_next (Arc + Bar). */
+/** C ref: dat/quest.lua goal_next (Arc + Bar + Pri). */
 const QUEST_GOAL_NEXT = {
     Arc: `The familiar presence of %o is in the ether.`,
     Bar: `Yet again you feel the air around you heavy with malevolent magical energy.`,
+    Pri: `Again, you have invaded %ns domain.`,
 };
 
 /** C ref: dat/quest.lua goal_alt (Arc; Bar falls back to goal_next in C). */
@@ -464,7 +473,21 @@ You couldn't quite make out that last message.`,
 };
 
 /**
+ * C ref: questpgr.c deliver_by_pline — split on `\n`, convert_line each, pline.
+ * Used when lua sets output="pline" (quest_portal), which must NOT promote
+ * to NHW_TEXT despite embedded newlines.
+ */
+async function deliver_by_pline(raw) {
+    if (!raw) return;
+    for (const line of String(raw).split('\n')) {
+        await pline(convert_line(line));
+    }
+}
+
+/**
  * C ref: questpgr.c deliver after convert_line — pline vs NHW_TEXT.
+ * Default/output omitted: newline or len≥255 → by_window (C output==0 promote).
+ * Explicit output="text" bodies use newlines so they take the window path.
  */
 async function deliver_quest_text(raw) {
     if (!raw) return;
@@ -486,7 +509,15 @@ async function deliver_quest_text(raw) {
  */
 export async function com_pager(msgid) {
     nhl_nhlib_align_shuffle();
-    await deliver_quest_text(QUEST_COMMON[msgid] || null);
+    const raw = QUEST_COMMON[msgid] || null;
+    if (!raw) return;
+    // C: quest.lua common.quest_portal output="pline" → deliver_by_pline
+    // even with embedded newlines (must not become NHW_TEXT).
+    if (msgid === 'quest_portal') {
+        await deliver_by_pline(raw);
+        return;
+    }
+    await deliver_quest_text(raw);
 }
 
 /**
@@ -501,7 +532,7 @@ export async function com_pager(msgid) {
  *
  * Named omissions: common fallback; explicit single-line output=text;
  * menu output; array rn2 picks; convert_line pronoun/%cC arms;
- * synopsis putmsghistory; other-role goal/nexttime bodies.
+ * synopsis putmsghistory; other-role goal/nexttime (non-Arc/Bar/Pri) bodies.
  */
 export async function qt_pager(msgid) {
     // C: com_pager_core → nhl_init → nhlib.lua top-level shuffle(align)
