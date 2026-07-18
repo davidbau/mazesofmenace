@@ -343,6 +343,8 @@ async function hit(str, mtmp, force) {
  * spec_abon; stone_missile/passes_rocks; poison/silver/acid/egg
  * petrify; can_blnd; setmangry; vampshifter destroy verb;
  * mon_notices unfreeze in omon_adj.
+ * Rolling boulder (range==-1): after drop_throw, re-extract and return
+ * false so launch_obj keeps rolling (D-0700 / mthrowu.c ohitmon).
  */
 export async function ohitmon(mtmp, otmp, range, verbose) {
     const bx = game.bhitpos?.x ?? mtmp.mx;
@@ -434,8 +436,13 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
     }
 
     // setmangry when !mon_moving deferred
-    drop_throw(otmp, true, bx, by);
-    // range === -1 rolling boulder re-extract deferred
+    // C: objgone = drop_throw(...); if (!objgone && range == -1) {
+    //    obj_extract_self(otmp); return FALSE; } — rolling boulder keeps going
+    const objgone = drop_throw(otmp, true, bx, by);
+    if (!objgone && (range | 0) === -1) {
+        obj_extract_self(otmp);
+        return false;
+    }
     return true;
 }
 

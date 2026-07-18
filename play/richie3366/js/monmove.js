@@ -14,6 +14,7 @@ import {
     mon_allowflags,
     mfndpos,
     m_at,
+    m_avoid_kicked_loc,
 } from './mon.js';
 import {
     is_wanderer, is_armed, passes_walls, nohands, verysmall,
@@ -43,7 +44,7 @@ import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from '.
 import {
     isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
-    D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level,
+    D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level, NOTONL,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
@@ -1223,7 +1224,6 @@ export async function m_move(mtmp, after) {
         const Invis = !!(u?.Invis);
         const youmonst = game.youmonst;
         // Short-circuit OR matches C: Invis rn2(11) before peaceful / stalker.
-        // Named omission: shortsighted → appr=0 after track selection.
         if (!mtmp.mcansee
             || (should_see && Invis && !perceives(ptr) && rn2(11))
             || is_obj_mappear(youmonst, STRANGE_OBJECT) || u?.uundetected
@@ -1288,12 +1288,33 @@ export async function m_move(mtmp, after) {
     let chcnt = 0;
     const jcnt = Math.min(MTSZ, cnt - 1);
     let nidist = dist2(nix, niy, ggx, ggy);
+    // C: shortsighted hostiles stop approaching at long range
+    if (!mtmp.mpeaceful && game.level?.flags?.shortsighted
+        && nidist > (couldsee(nix, niy) ? 144 : 36) && appr === 1) {
+        appr = 0;
+    }
+    // C: unicorn noteleport — avoid NOTONL squares when any alt exists
+    // (noteleport_level: level.flags.noteleport; hell-court deferred)
+    let avoid = false;
+    if (ptr?.mlet === 'S_UNICORN' && likes_gems(ptr)
+        && !!game.level?.flags?.noteleport) {
+        for (let i = 0; i < cnt; i++) {
+            if (!(mfp.info[i] & NOTONL)) { avoid = true; break; }
+        }
+    }
     let mmoved = MMOVE_NOTHING;
 
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x;
         const ny = mfp.poss[i].y;
         let skip = false;
+
+        // C ref: monmove.c m_move — unicorn NOTONL avoid before kicked
+        if (avoid && (mfp.info[i] & NOTONL)) continue;
+
+        // C ref: monmove.c m_move — skip kicked loc before chcnt rn2
+        if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
+        // Named: ALLOW_MDISP displace gate still deferred
 
         if (appr !== 0) {
             for (let j = 0; j < jcnt; j++) {

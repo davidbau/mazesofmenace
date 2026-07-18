@@ -18,12 +18,13 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH, DOMOVE_WALK,
          xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
-         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
+         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
+         WT_TOOMUCH_DIAGONAL } from './const.js';
 import { dist2 } from './mon.js';
 import { vision_recalc, couldsee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
-    doprring, dopramulet, doprtool,
+    doprring, dopramulet, doprtool, inv_weight, weight_cap,
 } from './invent.js';
 import { dovspell, docast } from './spell.js';
 import { doeat } from './eat.js';
@@ -53,7 +54,7 @@ import { dopay } from './shk.js';
 import { getpos } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
-    impaired_movement,
+    impaired_movement, is_pool, is_lava,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 
@@ -109,6 +110,52 @@ function closed_door_at(x, y) {
     const loc = game.level?.at(x, y);
     return !!(loc && loc.typ === DOOR
         && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+/** Local t_at — avoid cmd.js ↔ trap.js cycle. */
+function travel_t_at(x, y) {
+    const traps = game.level?.traps;
+    if (!traps) return null;
+    for (const t of traps) {
+        if (t && (t.tx | 0) === (x | 0) && (t.ty | 0) === (y | 0)) return t;
+    }
+    return null;
+}
+
+/**
+ * C ref: hack.c test_move TEST_TRAV + run==8 — travel path avoids seen traps
+ * and known pool/lava (except hero cell). VIBRATING_SQUARE allowed.
+ * Named omissions: Known_wwalking / Known_lwalking / WATERWALL / LAVAWALL.
+ */
+function travel_avoids_cell(x, y) {
+    const u = game.u;
+    if (u && (x | 0) === (u.ux | 0) && (y | 0) === (u.uy | 0)) return false;
+    const t = travel_t_at(x, y);
+    if (t && t.tseen && (t.ttyp | 0) !== VIBRATING_SQUARE) return true;
+    const loc = game.level?.at(x, y);
+    if (loc?.seenv && (is_pool(x, y) || is_lava(x, y))) {
+        const fly = !!(u?.Flying || u?.HFlying || u?.EFlying
+            || u?.Levitation || u?.HLevitation || u?.ELevitation);
+        if (!fly) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: hack.c test_move — diagonal through bad_rock flanks needs
+ * cant_squeeze_thru. Hero load: inv_weight()+weight_cap() > WT_TOOMUCH_DIAGONAL.
+ * Named omissions: Passes_walls / amorphous / Sokoban case 3 / worm_cross.
+ */
+function travel_blocks_tight_diag(ux, uy, nx, ny) {
+    const dx = (nx - ux) | 0;
+    const dy = (ny - uy) | 0;
+    if (!dx || !dy) return false;
+    const flankA = game.level?.at(ux, ny);
+    const flankB = game.level?.at(nx, uy);
+    if (!flankA || !IS_OBSTRUCTED(flankA.typ)) return false;
+    if (!flankB || !IS_OBSTRUCTED(flankB.typ)) return false;
+    const load = inv_weight() + weight_cap();
+    return load > WT_TOOMUCH_DIAGONAL;
 }
 
 // C ref: hack.c doorless_door — only D_NODOOR / D_BROKEN (no intact door)
@@ -202,6 +249,7 @@ async function domove_fight_empty(x, y) {
 function lookaround() {
     const ctx = game.context;
     const u = game.u;
+    // C: Blind || run==0 → return (Blind path deferred — still gate run==0)
     if (!ctx?.run) return;
 
     let corrct = 0;
@@ -217,8 +265,13 @@ function lookaround() {
             if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
 
             const mtmp = mon_at(x, y);
-            if (mtmp) {
-                // C: skip M_AP furniture/object; mon_visible deferred → assume seen
+            // C: only stop for mon_visible (not M_AP furniture/object).
+            // Invisible hostiles must not end a run — hero walks in and
+            // attack_checks prints Wait! (D-0705 seed0014 yank More).
+            if (mtmp
+                && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+                && M_AP_TYPE(mtmp) !== M_AP_OBJECT
+                && mon_visible(mtmp)) {
                 if ((ctx.run !== 1 && !is_safemon(mtmp))
                     || (infront && !ctx.travel)) {
                     end_running();
@@ -351,14 +404,77 @@ const DIRS_ORD = [
 ];
 
 /**
- * C ref: hack.c findtravelpath(TRAVP_TRAVEL) — BFS from destination back to
- * hero; next step is the neighbor that reached u.ux/u.uy.
- * Envelope: boulder delay (skip boulder cells as path nodes for non-giant
- * tourist), seenv|couldsee gate, dirs_ord. travelmap / TEST_TRAP /
- * closed-door delay / could_move_onto_boulder / Passes_walls still deferred.
- * Sets u.dx/u.dy; returns true if a step is ready.
+ * C-style BFS from (fromX,fromY) until (toX,toY)=hero is adjacent.
+ * Sets u.dx/u.dy to step from hero onto the connecting neighbor.
+ * @param {boolean} [couldseeOnly] — sighted: require couldsee (ignore seenv)
  */
-function findtravelpath_travel() {
+function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = false) {
+    const u = game.u;
+    const travel = new Map();
+    let cur = [{ x: fromX, y: fromY }];
+    travel.set(`${fromX},${fromY}`, 1);
+    let radius = 1;
+
+    while (cur.length) {
+        const next = [];
+        for (const { x, y } of cur) {
+            // C: closed door / boulder on *current* cell → delay (skip expand)
+            if (closed_door_at(x, y) || boulder_at(x, y)) continue;
+
+            for (const dir of DIRS_ORD) {
+                const nx = x + xdir[dir];
+                const ny = y + ydir[dir];
+                if (!isok(nx, ny)) continue;
+                if (guessMode && !couldsee(nx, ny)) continue;
+                if (blocksMove(nx, ny)) continue;
+                // C TEST_TRAV: tourists never enter boulder as a path node
+                if (boulder_at(nx, ny)) continue;
+                // C test_move TEST_TRAV + run==8: seen traps / known liquids
+                if (travel_avoids_cell(nx, ny)) continue;
+                // C test_move: tight diagonal + cant_squeeze_thru (load)
+                if (travel_blocks_tight_diag(x, y, nx, ny)) continue;
+
+                if (nx === toX && ny === toY) {
+                    // Path reached hero from neighbor (x,y) → step onto it
+                    u.dx = x - toX;
+                    u.dy = y - toY;
+                    // C: when step cell is the travel destination, stop after
+                    // this step and clear travelcc (visited arm deferred).
+                    if (!guessMode && x === fromX && y === fromY) {
+                        nomul(0);
+                        if (game.context) game.context.run = 8;
+                        if (!game.iflags) game.iflags = {};
+                        if (!game.iflags.travelcc) {
+                            game.iflags.travelcc = { x: 0, y: 0 };
+                        }
+                        game.iflags.travelcc.x = 0;
+                        game.iflags.travelcc.y = 0;
+                    }
+                    return true;
+                }
+                const key = `${nx},${ny}`;
+                if (travel.has(key)) continue;
+                const loc = game.level?.at(nx, ny);
+                if (!loc) continue;
+                // C: seenv || (!Blind && couldsee). couldseeOnly ignores seenv
+                // (D-0702 workaround for over-broad JS seenv).
+                if (couldseeOnly && !u.Blind) {
+                    if (!couldsee(nx, ny)) continue;
+                } else if (!(loc.seenv || (!u.Blind && couldsee(nx, ny)))) {
+                    continue;
+                }
+                travel.set(key, radius);
+                next.push({ x: nx, y: ny });
+            }
+        }
+        cur = next;
+        radius++;
+        if (radius > COLNO * ROWNO) break;
+    }
+    return false;
+}
+
+function findtravelpath_travel(couldseeOnly = false) {
     const u = game.u;
     const destX = u.tx | 0;
     const destY = u.ty | 0;
@@ -384,7 +500,7 @@ function findtravelpath_travel() {
 
     if (destX === u.ux && destY === u.uy) return false;
 
-    return findtravelpath_bfs(destX, destY, u.ux, u.uy, false);
+    return findtravelpath_bfs(destX, destY, u.ux, u.uy, false, couldseeOnly);
 }
 
 /**
@@ -399,8 +515,6 @@ function findtravelpath_guess() {
     if (!isok(destX, destY)) return false;
     if (destX === u.ux && destY === u.uy) return false;
 
-    // If a normal path exists, GUESS is unused — caller already tried TRAVEL.
-    // Pick nearest couldsee walkable cell toward the target.
     let bestX = u.ux;
     let bestY = u.uy;
     let bestDist = Math.max(Math.abs(destX - u.ux), Math.abs(destY - u.uy));
@@ -408,6 +522,7 @@ function findtravelpath_guess() {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
             if (!couldsee(x, y) || blocksMove(x, y) || boulder_at(x, y)) continue;
+            if (travel_avoids_cell(x, y)) continue;
             const nd = Math.max(Math.abs(destX - x), Math.abs(destY - y));
             const nd2 = dist2(x, y, destX, destY);
             if (nd < bestDist || (nd === bestDist && nd2 < bestD2)) {
@@ -419,7 +534,6 @@ function findtravelpath_guess() {
         }
     }
     if (bestX === u.ux && bestY === u.uy) {
-        // C: general direction sgn step if TEST_MOVE ok
         const dx = Math.sign(destX - u.ux);
         const dy = Math.sign(destY - u.uy);
         if (!dx && !dy) return false;
@@ -431,70 +545,6 @@ function findtravelpath_guess() {
         return true;
     }
     return findtravelpath_bfs(bestX, bestY, u.ux, u.uy, true);
-}
-
-/**
- * C-style BFS from (fromX,fromY) until (toX,toY)=hero is adjacent.
- * Sets u.dx/u.dy to step from hero onto the connecting neighbor.
- */
-function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode) {
-    const u = game.u;
-    // travel[x][y] = radius when first reached (0 = unseen)
-    const travel = new Map();
-    let cur = [{ x: fromX, y: fromY }];
-    travel.set(`${fromX},${fromY}`, 1);
-    let radius = 1;
-
-    while (cur.length) {
-        const next = [];
-        for (const { x, y } of cur) {
-            // C: closed door / boulder on *current* cell → delay (skip expand)
-            if (closed_door_at(x, y) || boulder_at(x, y)) continue;
-
-            for (const dir of DIRS_ORD) {
-                const nx = x + xdir[dir];
-                const ny = y + ydir[dir];
-                if (!isok(nx, ny)) continue;
-                if (guessMode && !couldsee(nx, ny)) continue;
-                if (blocksMove(nx, ny)) continue;
-                // C TEST_TRAV: avoid pathing onto boulders when source also
-                // has one; for tourists never enter boulder as a node so the
-                // next hero step is never a push (C delays boulder cells).
-                if (boulder_at(nx, ny)) continue;
-
-                if (nx === toX && ny === toY) {
-                    // Path reached hero from neighbor (x,y) → step onto it
-                    u.dx = x - toX;
-                    u.dy = y - toY;
-                    // C: hack.c findtravelpath — when the step cell is the
-                    // travel destination, stop after this step and clear
-                    // travelcc (visited/travelmap "unsure" arm deferred).
-                    if (!guessMode && x === fromX && y === fromY) {
-                        nomul(0);
-                        if (game.context) game.context.run = 8;
-                        if (!game.iflags) game.iflags = {};
-                        if (!game.iflags.travelcc) {
-                            game.iflags.travelcc = { x: 0, y: 0 };
-                        }
-                        game.iflags.travelcc.x = 0;
-                        game.iflags.travelcc.y = 0;
-                    }
-                    return true;
-                }
-                const key = `${nx},${ny}`;
-                if (travel.has(key)) continue;
-                const loc = game.level?.at(nx, ny);
-                if (!loc) continue;
-                if (!(loc.seenv || (!u.Blind && couldsee(nx, ny)))) continue;
-                travel.set(key, radius);
-                next.push({ x: nx, y: ny });
-            }
-        }
-        cur = next;
-        radius++;
-        if (radius > COLNO * ROWNO) break;
-    }
-    return false;
 }
 
 /**
@@ -532,15 +582,42 @@ async function dotravel_target() {
     u.tx = tcc.x;
     u.ty = tcc.y;
 
-    if (findtravelpath_travel() || findtravelpath_guess()) {
+    // C: always domove(); findtravelpath inside may leave dx=dy=0 (rest).
+    // Prefer a couldsee-reachable path. If only a seenv-only detour exists
+    // (JS seenv overmark), quiet-rest like C when TEST_TRAV finds nothing
+    // (D-0702).
+    let stepped = false;
+    if (findtravelpath_travel(true) || findtravelpath_guess()) {
         await domove(u.dx || 0, u.dy || 0);
+        stepped = true;
+    } else if (findtravelpath_travel(false)) {
+        // seenv-only path — take it only if first step does not worsen dist
+        const nx = (u.ux | 0) + (u.dx | 0);
+        const ny = (u.uy | 0) + (u.dy | 0);
+        const before = Math.max(
+            Math.abs((u.tx | 0) - (u.ux | 0)),
+            Math.abs((u.ty | 0) - (u.uy | 0)),
+        );
+        const after = Math.max(
+            Math.abs((u.tx | 0) - nx),
+            Math.abs((u.ty | 0) - ny),
+        );
+        if (after <= before) {
+            await domove(u.dx || 0, u.dy || 0);
+            stepped = true;
+        }
+    }
+    if (stepped) {
         if (game.context) {
             game.context.travel1 = 0;
             if (game.context.move !== 0) game.context.move = 1;
         }
     } else {
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
         end_running();
-        game.context.move = 0;
+        game.context.move = 1;
     }
     return ECMD_TIME;
 }

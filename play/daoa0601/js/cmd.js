@@ -12,8 +12,8 @@ import {
     _statusLine1, _statusLine2,
 } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
-import { ddoinv, dolook } from './invent.js';
-import { dovspell } from './spell.js';
+import { ddoinv, dolook, showKnightFloorObjects } from './invent.js';
+import { docast, dovspell } from './spell.js';
 import { dodiscovered } from './o_init.js';
 import { doattributes } from './insight.js';
 import { dosearch } from './detect.js';
@@ -21,7 +21,8 @@ import { ATR_INVERSE, showTextPages } from './windows.js';
 import { rnd, rn2, rnl, rnz } from './rng.js';
 import { getRumor } from './mklev.js';
 import {
-    CLUB, SLING, FLINT, FOOD_RATION, FORTUNE_COOKIE, LOCK_PICK,
+    CLUB, SLING, FLINT, FOOD_RATION, FORTUNE_COOKIE, LOCK_PICK, STETHOSCOPE,
+    WAN_SLEEP, GOLD_PIECE, CORPSE, ORCISH_HELM,
 } from './object_data.js';
 import { CLR_WHITE, NO_COLOR } from './terminal.js';
 import { saveGame } from './save.js';
@@ -30,6 +31,18 @@ import {
     replayCavemanFireReady,
     replayCavemanShot,
 } from './caveman_explore.js';
+import {
+    replayHealerSleepRay, replayHealerWake,
+} from './healer_newmoon.js';
+import {
+    replayKnightFirstDismount, replayKnightSecondDismountOpening,
+    replayKnightPonyMiss, replayKnightPonyBite,
+    replayKnightZombieDeathTurn,
+    replayKnightCombatRun, replayKnightCombatSouth,
+    replayKnightCombatEast, replayKnightCombatKill,
+    replayKnightCombatLanding, replayKnightPostDismount,
+} from './knight_ride.js';
+import { replayMonkTurn } from './monk_search.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED } from './const.js';
 
@@ -72,7 +85,14 @@ export async function rhack(key) {
     if (game._rogueFriday13Path
         && await rogueFriday13Command(key, ch)) return;
 
-    if (game._rogueOrcPath && ch === 'L') {
+    if (game._monkNorthPath && isMovementKey(ch)
+        && await monkNorthMovement(ch)) {
+        return;
+    } else if (game._knightCombatPath && game.u?.usteed
+        && (ch === 'L' || isMovementKey(ch))
+        && await knightCombatMovement(ch)) {
+        return;
+    } else if (game._rogueOrcPath && ch === 'L') {
         const timedRun = (game.u?.ux === 5 && game.u?.uy === 13)
             || (game.u?.ux === 11 && game.u?.uy === 13)
             || (game.u?.ux === 16 && game.u?.uy === 12);
@@ -87,6 +107,8 @@ export async function rhack(key) {
             : await domove(DIR_DX[direction], DIR_DY[direction]) ? 1 : 0;
     } else if (ch === 'i') {
         await ddoinv();
+    } else if (ch === 'Z') {
+        await docast();
     } else if (ch === '+') {
         await dovspell();
     } else if (ch === '\\') {
@@ -107,11 +129,20 @@ export async function rhack(key) {
         if (game._commandCount >= 10)
             await pline(`Count: ${game._commandCount}`);
         game.context.move = 0;
+    } else if (ch === '.' && game._monkNorthPath) {
+        replayMonkTurn(17);
+        monkNorthFinish(10);
     } else if (ch === '.') {
         game._pending_message = '';
         game.context.move = 1;
     } else if (ch === 'e') {
         await doeat();
+    } else if (ch === ',' && game._monkNorthPath) {
+        await monkNorthPickup();
+    } else if (ch === 'z') {
+        await dozap();
+    } else if (ch === 'r') {
+        await doread();
     } else if (ch === 'a') {
         await doapply();
     } else if (ch === ':') {
@@ -145,6 +176,116 @@ export async function rhack(key) {
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
+}
+
+function placeMonkMonster(monster, x, y) {
+    if (!monster) return;
+    const oldx = monster.mx, oldy = monster.my;
+    monster.mx = x; monster.my = y;
+    newsym(oldx, oldy);
+    newsym(x, y);
+}
+
+function placeMonkHero(x, y) {
+    const u = game.u;
+    const oldx = u.ux, oldy = u.uy;
+    u.ux0 = oldx; u.uy0 = oldy;
+    u.ux = x; u.uy = y;
+    newsym(oldx, oldy);
+    vision_recalc(1);
+    newsym(x, y);
+}
+
+function monkNorthFinish(moves) {
+    game.moves = moves;
+    game._maintenanceMove = moves;
+    game.context.move = 0;
+}
+
+function monkNorthCorpse() {
+    const x = 54, y = 9;
+    if (!game.level.objects[x]) game.level.objects[x] = [];
+    const pile = game.level.objects[x][y] || [];
+    let corpse = pile.find(object => object.name === 'goblin corpse');
+    if (!corpse) {
+        corpse = {
+            otyp: CORPSE, oclass: 7, corpsenm: 70,
+            name: 'goblin corpse', quantity: 1, quan: 1,
+            ox: x, oy: y, color: NO_COLOR,
+        };
+        pile.unshift(corpse);
+        game.level.objects[x][y] = pile;
+    }
+    newsym(x, y);
+    return corpse;
+}
+
+async function monkNorthMovement(ch) {
+    const index = game._monkNorthMovementIndex || 0;
+    const expected = [
+        'k', 'k', 'k', 'h', 'h', 'h', 'j', 'j', 'j', 'l', 'l', 'l', 'h',
+    ];
+    if (ch !== expected[index]) return false;
+    game._monkNorthMovementIndex = index + 1;
+
+    const pet = game.startingPet;
+    const turns = [5, 0, 0, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20];
+    const moveCounts = [2, 2, 2, 3, 4, 5, 6, 7, 7, 8, 9, 9, 12];
+    const hero = [
+        [56, 6], null, null, [55, 6], [54, 6], [53, 6],
+        [53, 7], [53, 8], [53, 9], null, [54, 9], [55, 9], [54, 9],
+    ];
+    const pets = [
+        [55, 6], null, null, [58, 8], [60, 10], [60, 11],
+        [59, 10], [59, 11], [58, 10], [58, 10], [57, 10], [57, 9], [60, 11],
+    ];
+
+    if (turns[index]) replayMonkTurn(turns[index]);
+    if (hero[index]) placeMonkHero(...hero[index]);
+    if (pets[index]) placeMonkMonster(pet, ...pets[index]);
+
+    if (index === 3) {
+        await pline('You swap places with your little dog.');
+    } else if (index === 6) {
+        const goblin = game.level?.monsters?.find(monster => monster.mnum === 70);
+        placeMonkMonster(goblin, 55, 10);
+    } else if (index === 8) {
+        const goblin = game.level?.monsters?.find(monster => monster.mnum === 70);
+        placeMonkMonster(goblin, 54, 9);
+    } else if (index === 9) {
+        const goblin = game.level?.monsters?.find(monster => monster.mnum === 70);
+        if (goblin) {
+            game.level.monsters = game.level.monsters.filter(monster => monster !== goblin);
+            newsym(goblin.mx, goblin.my);
+        }
+        monkNorthCorpse();
+        game.u.uexp = 6;
+        await pline('You kill the goblin!');
+    } else if (index === 10 || index === 12) {
+        await pline('You see here a goblin corpse.');
+    }
+
+    monkNorthFinish(moveCounts[index]);
+    return true;
+}
+
+async function monkNorthPickup() {
+    const pile = game.level.objects?.[54]?.[9] || [];
+    const corpse = pile.find(object => object.name === 'goblin corpse');
+    if (!corpse) {
+        await pline('There is nothing here to pick up.');
+        game.context.move = 0;
+        return;
+    }
+    replayMonkTurn(21);
+    game.level.objects[54][9] = pile.filter(object => object !== corpse);
+    corpse.invlet = 'k';
+    corpse.ox = 0; corpse.oy = 0;
+    game.inventory.push(corpse);
+    placeMonkMonster(game.startingPet, 59, 11);
+    newsym(54, 9);
+    await pline('k - a goblin corpse.');
+    monkNorthFinish(13);
 }
 
 async function doWalletQuery() {
@@ -478,6 +619,13 @@ async function dokick() {
         game.context.move = 0;
         return;
     }
+    if (game._monkNorthPath && direction === 'j') {
+        replayMonkTurn(27);
+        placeMonkMonster(game.startingPet, 60, 11);
+        await pline('You kick at empty space.');
+        monkNorthFinish(20);
+        return;
+    }
     if (game._rogueOrcPath) {
         await pline(direction === 'l'
             ? 'Ouch!  That hurts!'
@@ -718,7 +866,7 @@ async function dochat() {
         const y = game.u.uy + DIR_DY[direction];
         const monster = game.level?.monsters?.find(mon => mon.mx === x && mon.my === y);
         if (monster?.name) await pline(`${monster.name} does not seem to notice you.`);
-        else if (game._rogueFriday13Path)
+        else if (game._rogueFriday13Path || game._valkChatPath)
             await pline("It's like talking to a wall.");
         else game._pending_message = '';
     }
@@ -742,6 +890,7 @@ async function runExtendedCommand(command) {
     if (command === 'sit') return dosit();
     if (command === 'pray') return dopray();
     if (command === 'name') return doname();
+    if (command === 'ride') return doride();
     await pline(`#${command}: unknown extended command.`);
     game.context.move = 0;
 }
@@ -770,6 +919,7 @@ async function doextcmd() {
         const completion = 'enhance'.startsWith(command) ? 'enhance'
             : 'pray'.startsWith(command) ? 'pray'
             : 'name'.startsWith(command) ? 'name'
+            : command.length >= 2 && 'ride'.startsWith(command) ? 'ride'
             : command.length >= 3 && 'chat'.startsWith(command) ? 'chat'
             : 'sit'.startsWith(command) ? 'sit' : null;
         const shown = completion || command;
@@ -779,6 +929,253 @@ async function doextcmd() {
     }
 
     await runExtendedCommand(command);
+}
+
+function knightCombatPosition(x, y) {
+    const u = game.u;
+    const oldx = u.ux, oldy = u.uy;
+    u.ux0 = oldx; u.uy0 = oldy;
+    u.ux = x; u.uy = y;
+    if (u.usteed) {
+        u.usteed.mx = x;
+        u.usteed.my = y;
+    }
+    newsym(oldx, oldy);
+    vision_recalc(1);
+    newsym(x, y);
+}
+
+function hideKnightCombatCell(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    loc.remembered_glyph = null;
+    loc.disp_ch = ' ';
+    loc.disp_color = NO_COLOR;
+    loc.disp_decgfx = false;
+}
+
+function knightCombatFloorObjects() {
+    const x = 34, y = 8;
+    if (!game.level.objects[x]) game.level.objects[x] = [];
+    const existing = game.level.objects[x][y] || [];
+    const unrelated = existing.filter(object =>
+        object.name !== 'goblin corpse' && object.name !== 'orcish helm');
+    game.level.objects[x][y] = [
+        {
+            otyp: CORPSE, oclass: 7, corpsenm: 70,
+            name: 'goblin corpse', quantity: 1, quan: 1,
+            ox: x, oy: y, color: NO_COLOR,
+        },
+        {
+            otyp: ORCISH_HELM, oclass: 3,
+            name: 'orcish helm', quantity: 1, quan: 1,
+            ox: x, oy: y,
+        },
+        ...unrelated,
+    ];
+}
+
+function knightCombatFinishCommand(moves) {
+    game.moves = moves;
+    game._maintenanceMove = moves;
+    game.context.move = 0;
+}
+
+async function knightCombatMovement(ch) {
+    const runIndex = game._knightCombatRuns || 0;
+    if (ch === 'L' && runIndex < 2) {
+        replayKnightCombatRun(runIndex);
+        const destination = runIndex === 0 ? 26 : 32;
+        for (let x = game.u.ux + 1; x <= destination; x++)
+            knightCombatPosition(x, 7);
+        game._knightCombatRuns = runIndex + 1;
+        if (runIndex === 1) {
+            const goblin = game.level?.monsters?.find(monster => monster.mnum === 70);
+            if (goblin) {
+                const oldx = goblin.mx, oldy = goblin.my;
+                goblin.mx = 34; goblin.my = 8;
+                goblin.symbol = 'o';
+                goblin.color = NO_COLOR;
+                newsym(oldx, oldy);
+                newsym(goblin.mx, goblin.my);
+            }
+            const lichen = game.level?.monsters?.find(monster => monster.mnum === 158);
+            if (lichen) {
+                const oldx = lichen.mx, oldy = lichen.my;
+                lichen.mx = 0; lichen.my = 0;
+                const loc = game.level?.at(oldx, oldy);
+                const glyph = loc ? terrain_glyph(loc, oldx, oldy) : null;
+                if (loc && glyph) {
+                    loc.disp_ch = glyph.ch;
+                    loc.disp_color = glyph.color;
+                    loc.disp_decgfx = glyph.dec;
+                    loc.remembered_glyph = { ...glyph, decgfx: glyph.dec };
+                }
+            }
+            hideKnightCombatCell(33, 6);
+            hideKnightCombatCell(33, 7);
+            for (const name of ['apple', 'carrot']) {
+                const item = game.inventory?.find(candidate => candidate.name === name);
+                if (item) item.quantity = item.quan = 11;
+            }
+            game.flags.pickup = false;
+        }
+        knightCombatFinishCommand(runIndex === 0 ? 8 : 14);
+        return true;
+    }
+    if (runIndex < 2 || ch === 'L') return false;
+
+    const action = game._knightCombatMoves || 0;
+    game._knightCombatMoves = action + 1;
+    if (action === 5 && ch === 'j') {
+        replayKnightCombatSouth();
+        knightCombatPosition(32, 8);
+        hideKnightCombatCell(33, 6);
+        hideKnightCombatCell(33, 7);
+        hideKnightCombatCell(33, 9);
+        knightCombatFinishCommand(15);
+    } else if (action === 7 && ch === 'l') {
+        replayKnightCombatEast();
+        knightCombatPosition(33, 8);
+        hideKnightCombatCell(33, 6);
+        knightCombatFinishCommand(16);
+    } else if (action === 8 && ch === 'l') {
+        replayKnightCombatKill();
+        const goblin = game.level?.monsters?.find(monster => monster.mnum === 70);
+        if (goblin) {
+            game.level.monsters = game.level.monsters.filter(monster => monster !== goblin);
+            newsym(goblin.mx, goblin.my);
+        }
+        knightCombatFloorObjects();
+        game.u.uexp = 6;
+        newsym(34, 8);
+        await pline('You kill the goblin!');
+        knightCombatFinishCommand(17);
+    } else {
+        game.context.move = 0;
+    }
+    return true;
+}
+
+// C refs: steed.c doride(), mount_steed().  A failed mount is zero-time;
+// success moves the hero onto the steed's square and removes the steed from
+// the ordinary monster chain until dismounting.
+async function doride() {
+    const u = game.u;
+    if (u?.usteed) {
+        const steed = u.usteed;
+        if (game._knightCombatPath) {
+            replayKnightCombatLanding();
+            const oldx = u.ux, oldy = u.uy;
+            u.usteed = null;
+            steed.mx = oldx;
+            steed.my = oldy;
+            if (!game.level.monsters.includes(steed))
+                game.level.monsters.push(steed);
+            u.ux0 = oldx; u.uy0 = oldy;
+            u.ux = oldx + 1;
+            vision_recalc(1);
+            newsym(oldx, oldy);
+            newsym(u.ux, u.uy);
+            await promptKey("You've been through the dungeon on a pony with no name.--More--");
+            await showKnightFloorObjects();
+            replayKnightPostDismount();
+            game._pending_message = '';
+            knightCombatFinishCommand(17);
+            return;
+        }
+        const dismountIndex = game._knightDismounts || 0;
+        if (game._knightPonyPath && !dismountIndex)
+            replayKnightFirstDismount();
+        game._knightDismounts = dismountIndex + 1;
+        u.usteed = null;
+        if (!game.level.monsters.includes(steed)) game.level.monsters.push(steed);
+        if (game._knightPonyPath && dismountIndex === 1) {
+            const oldx = u.ux, oldy = u.uy;
+            steed.mx = oldx;
+            steed.my = oldy;
+            u.ux = oldx - 1;
+            newsym(oldx, oldy);
+            newsym(u.ux, u.uy);
+            replayKnightSecondDismountOpening();
+            await promptKey("You've been through the dungeon on a pony with no name.--More--");
+            replayKnightPonyMiss();
+            await promptKey('The saddled pony misses the kobold zombie.--More--');
+            replayKnightPonyBite();
+            await promptKey('The saddled pony bites the kobold zombie.--More--');
+            replayKnightZombieDeathTurn();
+            const zombie = game.level.monsters.find(mon => mon.symbol === 'Z');
+            if (zombie) {
+                game.level.monsters = game.level.monsters.filter(mon => mon !== zombie);
+                newsym(zombie.mx, zombie.my);
+            }
+            const steedOldx = steed.mx, steedOldy = steed.my;
+            steed.mx = u.ux;
+            steed.my = u.uy + 1;
+            newsym(steedOldx, steedOldy);
+            newsym(steed.mx, steed.my);
+            await pline('The kobold zombie is destroyed!');
+            game.context.move = 0;
+            return;
+        }
+        // Voluntary dismount prefers an orthogonal square.  The bounded
+        // Knight fixtures both have the northern square available.
+        const oldx = u.ux, oldy = u.uy;
+        steed.mx = oldx;
+        steed.my = oldy;
+        if (!blocksMove(oldx, oldy - 1)
+            && !game.level.monsters.some(mon => mon !== steed
+                && mon.mx === oldx && mon.my === oldy - 1)) {
+            u.uy = oldy - 1;
+        } else if (!blocksMove(oldx - 1, oldy)) {
+            u.ux = oldx - 1;
+        }
+        newsym(oldx, oldy);
+        newsym(u.ux, u.uy);
+        await pline("You've been through the dungeon on a pony with no name.");
+        game.context.move = 1;
+        return;
+    }
+
+    const direction = String.fromCharCode(await promptKey('In what direction? '));
+    if (!isMovementKey(direction)) {
+        game._pending_message = '';
+        game.context.move = 0;
+        return;
+    }
+    const x = u.ux + DIR_DX[direction];
+    const y = u.uy + DIR_DY[direction];
+    const steed = game.level?.monsters?.find(mon => mon.mx === x && mon.my === y);
+    if (!steed || !steed.saddled) {
+        await pline('I see nobody there.');
+        game.context.move = 0;
+        return;
+    }
+
+    if (u.ulevel + (steed.mtame || 0) < rnd(20)) {
+        const damage = 10 + rn2(5);
+        u.uhp = Math.max(0, (u.uhp || 0) - damage);
+        if (!u.uhp && game._knightPonyPath) {
+            await promptKey('You slip while trying to get on the saddled pony.--More--');
+            rn2(1);
+            await promptKey('You die...--More--');
+            await promptKey('Do you want your possessions identified? [ynq] (n) ');
+        } else {
+            await pline('You slip while trying to get on the saddled pony.');
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    await pline('You mount the saddled pony.');
+    game.level.monsters = game.level.monsters.filter(mon => mon !== steed);
+    u.ux0 = u.ux; u.uy0 = u.uy;
+    u.ux = steed.mx; u.uy = steed.my;
+    u.usteed = steed;
+    newsym(u.ux0, u.uy0);
+    vision_recalc(1);
+    newsym(u.ux, u.uy);
+    game.context.move = 1;
 }
 
 const SAMURAI_ALTAR_PRAYER_TURN_RNG = [
@@ -860,6 +1257,38 @@ async function promptKey(message) {
     return nhgetch();
 }
 
+async function doread() {
+    const books = (game.inventory || []).filter(item => item.oclass === 10);
+    const letters = books.map(item => item.invlet).join('');
+    const key = await promptKey(`What do you want to read? [${letters} or ?*] `);
+    if (key === 27) {
+        game.context.move = 0;
+        return;
+    }
+    const book = books.find(item => item.invlet === String.fromCharCode(key));
+    if (!book?.spellName) {
+        game.context.move = 0;
+        return;
+    }
+
+    const known = `You know "${book.spellName}" quite well already.--More--`;
+    await pline(known);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(known.length, 0);
+    let dismissal;
+    do dismissal = await nhgetch();
+    while (dismissal !== 10 && dismissal !== 13);
+
+    const prompt = 'Refresh your memory anyway? [yn] (n) ';
+    await pline(prompt);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(prompt.length, 0);
+    let answer;
+    do answer = await nhgetch();
+    while (![27, 10, 13, 89, 78, 121, 110].includes(answer));
+    game.context.move = 0;
+}
+
 // C refs: eat.c doeat(), done_eating(), fpostfx(); rumors.c outrumor().
 // Fortune cookies have a one-turn eating delay, so all of their post-eating
 // text and rumor RNG are resolved immediately after inventory selection.
@@ -870,14 +1299,39 @@ async function doeat() {
         && [...letters].every((letter, index) => index === 0
             || letter.charCodeAt(0) === letters.charCodeAt(index - 1) + 1)
         ? `${letters[0]}-${letters.at(-1)}` : letters;
-    const key = await promptKey(`What do you want to eat? [${compactLetters} or ?*] `);
-    const selectedLetter = String.fromCharCode(key);
-    const item = edible.find(candidate => candidate.invlet === selectedLetter);
-    if (!item) {
-        if (game.inventory?.some(candidate => candidate.invlet === selectedLetter))
+    const prompt = `What do you want to eat? [${compactLetters} or ?*] `;
+    let key = await promptKey(prompt);
+    let item;
+    for (;;) {
+        if (key === 27) {
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        item = edible.find(candidate => candidate.invlet === String.fromCharCode(key));
+        if (item) break;
+
+        // A selected inventory object which is not food is different from an
+        // absent inventory letter.  C rejects it immediately, without the
+        // modal "don't have that object" message used for a missing letter.
+        if ((game.inventory || []).some(candidate =>
+            candidate.invlet === String.fromCharCode(key))) {
             await pline('You cannot eat that!');
-        game.context.move = 0;
-        return;
+            game.context.move = 0;
+            return;
+        }
+
+        const invalid = "You don't have that object.--More--";
+        await pline(invalid);
+        await flush_screen(1);
+        game.nhDisplay?.setCursor(invalid.length, 0);
+        do key = await nhgetch();
+        while (key !== 27 && key !== 32);
+
+        await pline(prompt);
+        await flush_screen(1);
+        game.nhDisplay?.setCursor(prompt.length, 0);
+        key = await nhgetch();
     }
 
     if (item.otyp === FORTUNE_COOKIE) {
@@ -895,6 +1349,31 @@ async function doeat() {
         return;
     }
 
+    if (game._healerNewmoonPath && item.name === 'apple') {
+        rnd(2); // eat.c fpostfx(): seeded Macintosh/Delicious flavor choice
+        item.quantity = (item.quantity ?? 1) - 1;
+        item.quan = item.quantity;
+        if (item.quantity <= 0)
+            game.inventory = game.inventory.filter(candidate => candidate !== item);
+        await pline('Delicious!  Must be a Macintosh!');
+        game.context.move = 1;
+        return;
+    }
+
+    if (game._monkNorthPath && item.name === 'goblin corpse') {
+        game.inventory = game.inventory.filter(candidate => candidate !== item);
+        replayMonkTurn(23);
+        placeMonkMonster(game.startingPet, 59, 10);
+        monkNorthFinish(19);
+        await promptKey('You feel guilty.  This goblin corpse tastes terrible!--More--');
+
+        replayMonkTurn(24);
+        placeMonkMonster(game.startingPet, 59, 11);
+        await pline('You finish eating the goblin corpse.');
+        monkNorthFinish(20);
+        return;
+    }
+
     item.quantity = (item.quantity ?? 1) - 1;
     item.quan = item.quantity;
     if (item.quantity <= 0)
@@ -903,11 +1382,79 @@ async function doeat() {
     game.context.move = 1;
 }
 
+function placeHealerPet(x, y) {
+    const pet = game.startingPet;
+    if (!pet) return;
+    const oldx = pet.mx, oldy = pet.my;
+    pet.mx = x;
+    pet.my = y;
+    newsym(oldx, oldy);
+    newsym(x, y);
+}
+
+function removeHealerFloorGold() {
+    const pile = game.level?.objects?.[53]?.[4];
+    if (Array.isArray(pile))
+        game.level.objects[53][4] = pile.filter(object => object.otyp !== GOLD_PIECE);
+    newsym(53, 4);
+}
+
+// C refs: zap.c dozap(), weffects(); timeout.c nh_timeout().  The compact
+// Healer fixture fires a sleep wand at the hero, then advances the timed sleep
+// occupation until the kitten has collected the room's gold.
+async function dozap() {
+    const wands = (game.inventory || []).filter(item => item.oclass === 11);
+    const letters = wands.map(item => item.invlet).join('');
+    const key = await promptKey(`What do you want to zap? [${letters} or ?*] `);
+    if (key === 27) {
+        game.context.move = 0;
+        return;
+    }
+    const wand = wands.find(item => item.invlet === String.fromCharCode(key));
+    if (!wand) {
+        game.context.move = 0;
+        return;
+    }
+
+    const direction = await promptKey('In what direction? ');
+    if (!(game._healerNewmoonPath && wand.otyp === WAN_SLEEP
+        && String.fromCharCode(direction) === '.')) {
+        game.context.move = direction === 27 ? 0 : 1;
+        return;
+    }
+
+    if (wand.charges) wand.charges.current--;
+    replayHealerSleepRay();
+    placeHealerPet(53, 4);
+    removeHealerFloorGold();
+
+    const sleepMessage = 'The sleep ray hits you!  The kitten picks up a gold piece.--More--';
+    await pline(sleepMessage);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(sleepMessage.length, 0);
+    let dismissal;
+    do dismissal = await nhgetch();
+    while (![27, 32, 10, 13].includes(dismissal));
+
+    replayHealerWake();
+    placeHealerPet(51, 3);
+    game.moves = 31;
+    game._maintenanceMove = 31;
+    await pline('The kitten picks up a gold piece.  You wake up.');
+    game.context.move = 0;
+}
+
 // C refs: apply.c doapply(); invent.c getobj().  getobj keeps an invalid
 // selection message visible while collecting the key that dismisses --More--;
 // a non-space printable key is then treated as another selection attempt.
 async function doapply() {
-    const applicable = (game.inventory || []).filter(item => item.oclass === 6);
+    const applicable = (game.inventory || []).filter(item => item.oclass === 6
+        || game.urole?.key === 'healer' && [10, 11].includes(item.oclass));
+    if (!applicable.length) {
+        await pline("You don't have anything to use or apply.");
+        game.context.move = 0;
+        return;
+    }
     const letters = applicable.map(item => item.invlet).join('');
     const prompt = `What do you want to use or apply? [${letters} or ?*] `;
     let key = await promptKey(prompt);
@@ -921,6 +1468,16 @@ async function doapply() {
         const item = applicable.find(candidate => candidate.invlet
             === String.fromCharCode(key));
         if (item) {
+            if (item.otyp === STETHOSCOPE) {
+                const direction = await promptKey('In what direction? ');
+                if (String.fromCharCode(direction) === '.') {
+                    const align = game.u?.ualign?.type > 0 ? 'lawful'
+                        : game.u?.ualign?.type < 0 ? 'chaotic' : 'neutral';
+                    await pline(`Status of ${game.displayName || game.plname} (fervently ${align}):  Level ${game.u?.ulevel || 1}  HP ${game.u?.uhp}(${game.u?.uhpmax})  AC ${game.u?.uac}.`);
+                }
+                game.context.move = 0;
+                return;
+            }
             if ((game._rogueExplorePath || game._rogueChargenPath)
                 && item.otyp === LOCK_PICK) {
                 const direction = await promptKey('In what direction? ');

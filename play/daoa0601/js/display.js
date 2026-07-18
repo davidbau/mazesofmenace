@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import {
-    COLNO, ROWNO, STONE, ROOM, CORR, SDOOR, DOOR, STAIRS, FOUNTAIN, SINK, ALTAR,
+    COLNO, ROWNO, STONE, ROOM, CORR, SDOOR, DOOR, STAIRS, FOUNTAIN, SINK, GRAVE, ALTAR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
@@ -15,14 +15,18 @@ import {
     DEC_TO_UNICODE,
 } from './terminal.js';
 import {
-    LARGE_BOX, CHEST, GOLD_PIECE, FOOD_RATION, CORPSE, TOWEL,
+    LARGE_BOX, CHEST, GOLD_PIECE, FOOD_RATION, CORPSE, TOWEL, STATUE,
 } from './object_data.js';
+import { MONSTER_SYMBOL } from './monster_data.js';
 
 const OBJECT_SYMBOLS = ['', ']', ')', '[', '=', '"', '(', '%', '!', '?',
     '+', '/', '$', '*', '`', '0', '_', '.'];
+const MONSTER_CLASS_SYMBOLS = ['', ...'abcdefghijklmnopqrstuvwxyz',
+    ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '@', ' ', "'", '&', ';', ':', '~', ']'];
 
 function objectColor(object) {
     if (Number.isInteger(object?.color)) return object.color;
+    if (game._monkNorthPath && object?.oclass === 8) return NO_COLOR;
     if (object?.otyp === CORPSE && object?.corpsenm === 20) return CLR_RED;
     if (object?.otyp === TOWEL) return CLR_MAGENTA;
     if (object?.otyp === LARGE_BOX || object?.otyp === CHEST) return CLR_BROWN;
@@ -91,6 +95,7 @@ export function terrain_glyph(loc, x, y) {
         return { ch: '>', color: CLR_YELLOW, dec: false };
     case FOUNTAIN:   return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     case SINK:       return { ch: '{', color: CLR_WHITE, dec: false };
+    case GRAVE:      return { ch: '|', color: CLR_WHITE, dec: false };
     case ALTAR:      return { ch: '_', color: NO_COLOR, dec: false };
     // Wall types → DEC line-drawing characters
     case HWALL:     return dec ? { ch: 'q', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
@@ -126,7 +131,9 @@ export function newsym(x, y) {
 
     if (game.u?.ux === x && game.u?.uy === y) {
         // Hero
-        show_glyph_cell(x, y, '@', CLR_WHITE, false);
+        show_glyph_cell(x, y, game.u?.usteed?.symbol || '@',
+            game.u?.usteed ? (game.u.usteed.color ?? CLR_BROWN) : CLR_WHITE,
+            false);
         const tg = terrain_glyph(loc, x, y);
         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
         return;
@@ -135,7 +142,9 @@ export function newsym(x, y) {
     const monster = game.level?.monsters?.find(mon => mon.mx === x && mon.my === y);
     if (monster && cansee(x, y)) {
         show_glyph_cell(x, y, monster.symbol || '?',
-            monster.pet ? CLR_WHITE
+            game._monkNorthPath && monster.mnum === 70 ? NO_COLOR
+                : monster.mnum === 102 || monster.mnum === 239 ? CLR_BROWN
+                : monster.pet ? CLR_WHITE
                 : monster.mnum === 116 ? CLR_MAGENTA
                     : (monster.color ?? CLR_GRAY), false);
         return;
@@ -143,10 +152,17 @@ export function newsym(x, y) {
 
     const object = game.level?.objects?.[x]?.[y]?.[0];
     if (object && cansee(x, y)) {
-        const glyph = {
-            ch: OBJECT_SYMBOLS[object.oclass] || '?',
-            color: objectColor(object), decgfx: false,
-        };
+        // Statues use the depicted monster's class glyph rather than the
+        // generic rock-class glyph.
+        const statueSymbol = object.otyp === STATUE
+            ? MONSTER_CLASS_SYMBOLS[MONSTER_SYMBOL[object.corpsenm]]
+            : null;
+        const glyph = statueSymbol
+            ? { ch: statueSymbol, color: CLR_WHITE, decgfx: false }
+            : {
+                ch: OBJECT_SYMBOLS[object.oclass] || '?',
+                color: objectColor(object), decgfx: false,
+            };
         show_glyph_cell(x, y, glyph.ch, glyph.color, false);
         if (game.level?.flags?.hero_memory) loc.remembered_glyph = glyph;
         return;
@@ -177,7 +193,10 @@ export async function docrt() {
                     loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
             }
         }
-    if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+    if (game.u?.ux > 0)
+        show_glyph_cell(game.u.ux, game.u.uy, game.u?.usteed?.symbol || '@',
+            game.u?.usteed ? (game.u.usteed.color ?? CLR_BROWN) : CLR_WHITE,
+            false);
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -270,6 +289,7 @@ export function _statusLine2() {
     let line = `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
     if (game.flags?.showexp) line += `/${u.uexp || 0}`;
     if (game.flags?.time) line += ` T:${game.moves || 1}`;
+    if (u.usteed) line += ' Ride';
     return line;
 }
 

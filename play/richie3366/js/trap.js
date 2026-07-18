@@ -22,13 +22,14 @@ import { newsym, pline, mon_visible, see_with_infrared, You_feel, unmap_object, 
 import { doname, an, the, xname, makeplural, vtense } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
 import { dist2, distmin, m_at } from './mon.js';
-import { cansee, couldsee } from './vision.js';
+import { cansee, couldsee, m_cansee } from './vision.js';
 import {
     G_FREQ, G_UNIQ, verysmall, grounded, passes_walls,
     is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
     amorphous, unsolid, is_whirly, breathless, MZ_SMALL, MZ_HUGE,
     likes_gems, mons, webmaker, throws_rocks,
+    is_animal, mindless, haseyes,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
@@ -159,6 +160,29 @@ export const Trap_Caught_Mon = 3;
 export const Trap_Moved_Mon = 4;
 
 export const NO_TRAP_FLAGS = 0;
+
+/**
+ * C ref: mondata.c mons_see_trap — nearby sighted non-mindless monsters
+ * remember this trap type (feeds mfndpos mon_knows_traps skips).
+ * No RNG. Lit cell radius 7² else 2 (Chebyshev-squared via dist2).
+ */
+export function mons_see_trap(ttmp) {
+    if (!ttmp) return;
+    const tx = ttmp.tx | 0;
+    const ty = ttmp.ty | 0;
+    const loc = game.level?.at(tx, ty);
+    const maxdist = loc?.lit ? 7 * 7 : 2;
+    for (const mtmp of game.fmon || []) {
+        const ptr = mtmp?.data;
+        if (!ptr) continue;
+        if (is_animal(ptr) || mindless(ptr) || !haseyes(ptr) || !mtmp.mcansee) {
+            continue;
+        }
+        if (dist2(mtmp.mx, mtmp.my, tx, ty) > maxdist) continue;
+        if (!m_cansee(mtmp, tx, ty)) continue;
+        mon_learns_traps(mtmp, ttmp.ttyp);
+    }
+}
 
 /**
  * C ref: trap.c m_harmless_trap — whether mfndpos may ignore this trap.
@@ -781,9 +805,9 @@ export function trapname(ttyp, _override) {
 /**
  * C ref: trap.c dotrap — hero steps on a trap.
  * Envelope: nomul(0); floor_trigger+in_air skip; already_seen escape rn2(5);
- * trapeffect_selector(youmonst). Named omissions: Sokoban air-currents,
- * undestroyable/ANTI_MAGIC/Fumbling force, conj/adj pit, steed mon_learns,
- * mons_see_trap, FORCETRAP morph recursion; hero pit/slp_gas/anti-magic/…
+ * mons_see_trap; trapeffect_selector(youmonst). Named omissions: Sokoban
+ * air-currents, undestroyable/ANTI_MAGIC/Fumbling force, conj/adj pit,
+ * steed mon_learns; FORCETRAP morph recursion; hero pit/slp_gas/anti-magic/…
  */
 export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
     if (!trap) return;
@@ -819,7 +843,8 @@ export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
         }
     }
 
-    // steed mon_learns_traps / mons_see_trap deferred (no RNG on commons)
+    // C: steed mon_learns_traps deferred; mons_see_trap before effect
+    mons_see_trap(trap);
     const you = game.youmonst || { _youmonst: true };
     await trapeffect_selector(you, trap, trflags);
 }
@@ -2314,8 +2339,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
 /**
  * C ref: trap.c mintrap() — monster steps on a trap.
  * Early-session envelope: dart / rock / pit / sqky / hole|trapdoor /
- * magic|fire learn+effect; already_seen rn2(4) skip when mon_knows_traps.
- * Other types and escape paths partial.
+ * magic|fire learn+effect; already_seen rn2(4) skip when mon_knows_traps
+ * or HOLE && !mindless (D-0703). Other types and escape paths partial.
  */
 export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
     const trap = t_at(mtmp.mx, mtmp.my);
@@ -2350,11 +2375,14 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
     const forcetrap = (mintrapflags & FORCETRAP) !== 0;
     const forcebungle = (mintrapflags & FORCEBUNGLE) !== 0;
     const tt = trap.ttyp;
-    // C also treats HOLE && !mindless as already_seen — mindless helper deferred
-    const already_seen = mon_knows_traps(mtmp, tt);
+    const mptr = mtmp.data;
+    // C: mon_knows_traps || (HOLE && !mindless) — holes are obvious
+    const already_seen = mon_knows_traps(mtmp, tt)
+        || (tt === HOLE && !mindless(mptr));
 
     if (!forcetrap) {
-        // floor_trigger + check_in_air omitted (mons on floor)
+        // floor_trigger + check_in_air omitted (mons on floor);
+        // Sokoban pit/hole inescapable branch deferred
         if (already_seen && rn2(4) && !forcebungle) {
             return Trap_Effect_Finished;
         }
@@ -2362,7 +2390,8 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
 
     // C: mon_learns_traps then mons_see_trap then trapeffect_selector
     mon_learns_traps(mtmp, tt);
-    // mons_see_trap / madeby_u rnl omitted (no RNG on ordinary commons path)
+    mons_see_trap(trap);
+    // madeby_u rnl setmangry deferred (RNG on that arm only)
     return await trapeffect_selector(mtmp, trap, mintrapflags);
 }
 

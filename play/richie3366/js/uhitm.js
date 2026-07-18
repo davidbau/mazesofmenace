@@ -18,7 +18,7 @@ import {
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
-import { pline, newsym, canseemon, unmap_object, glyph_is_invisible } from './display.js';
+import { pline, newsym, canseemon, canspotmon, map_invisible, unmap_object, glyph_is_invisible } from './display.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
     dbon, weapon_dam_bonus, use_skill, weapon_type,
@@ -664,7 +664,8 @@ function passive_obj(mon, obj, mattk) {
  * Named omissions: full AD_PLYS gaze/cube / ugolemeffects / split_mon /
  * erode_armor / done_in_by stone / attk_protection detail; dokick callers.
  */
-async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
+/** C ref: uhitm.c passive — mon AT_NONE after hero hit (kick/melee). */
+export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
     if (!mon) return (maliveb ? M_ATTK_HIT : M_ATTK_MISS)
         | (mhitb ? M_ATTK_HIT : M_ATTK_MISS);
     const mhit = mhitb ? M_ATTK_HIT : M_ATTK_MISS;
@@ -1003,24 +1004,41 @@ async function stumble_onto_mimic(mtmp) {
 }
 
 /**
- * C ref: uhitm.c attack_checks — disguised-mimic arm only.
- * Returns true when the attack attempt is consumed (stumble).
- * Invis-marker / peaceful-confirm / Elbereth arms deferred.
+ * C ref: uhitm.c attack_checks — invis Wait + disguised-mimic arms.
+ * Returns true when the attack attempt is consumed (no hitum).
+ * Peaceful-confirm / Elbereth / warning-glyph arms deferred.
  */
-async function attack_checks_mimic(mtmp) {
-    // C: forcefight → return FALSE (allow real attack)
+export async function attack_checks(mtmp) {
+    // C: forcefight → return FALSE (allow real attack; skip Wait!)
     if (game.context?.forcefight) return false;
-    // Protection_from_shape_changers / sensemon deferred
+
+    // C: !canspotmon && !glyph_is_warning && !glyph_is_invisible
+    //    && !(!Blind && mundetected && hides_under) → Wait! + map_invisible
+    const loc = game.level?.at(mtmp.mx, mtmp.my);
+    const Blind = !!(game.u?.Blind || game.u?.ublind
+        || (((game.u?.HBlinded | 0) || (game.u?.EBlinded | 0))
+            && !(game.u?.BBlinded | 0)));
+    if (!canspotmon(mtmp)
+        && !glyph_is_invisible(loc)
+        && !( !Blind && mtmp.mundetected /* && hides_under deferred */)) {
+        // C: "Wait!  There's %s there you can't see!" / something
+        await pline("Wait!  There's something there you can't see!");
+        map_invisible(mtmp.mx, mtmp.my);
+        // mimic AD_STCK ustuck deferred
+        wakeup(mtmp, true);
+        return true;
+    }
+
+    // Disguised mimic
     if (!M_AP_TYPE(mtmp)) return false;
-    // glyph_is_invisible → seemimic + return FALSE deferred
+    // Protection_from_shape_changers / sensemon / glyph_is_invisible→seemimic deferred
     await stumble_onto_mimic(mtmp);
     return true;
 }
 
 /**
  * C ref: uhitm.c do_attack — safemon displace, else attack → hitum.
- * attack_checks: disguised mimic stumble before overexertion; other arms
- * (invis Wait, peaceful yn) still deferred for visible hostiles.
+ * attack_checks: invis Wait + mimic stumble before overexertion.
  */
 export async function do_attack(mtmp) {
     if (!mtmp) return false;
@@ -1073,8 +1091,8 @@ export async function do_attack(mtmp) {
     // Hostile / forcefight path — C do_attack → attack_checks then hitum
     if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
 
-    // C: attack_checks mimic stumble before overexertion / hitum
-    if (await attack_checks_mimic(mtmp)) {
+    // C: attack_checks before overexertion / hitum
+    if (await attack_checks(mtmp)) {
         return true;
     }
 

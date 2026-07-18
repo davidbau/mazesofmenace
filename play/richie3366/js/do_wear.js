@@ -11,6 +11,7 @@ import { find_ac } from './u_init.js';
 import { change_luck, Fast, Very_fast } from './attrib.js';
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object } from './artifact.js';
+import { welded } from './wield.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
@@ -19,10 +20,10 @@ import {
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
     TIMEOUT, BLINDED, FAST, TELEPAT, WORN_BOOTS,
     DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
-    BOLT_LIM,
+    BOLT_LIM, LEFT_HANDED, GLIB,
 } from './const.js';
 import {
-    ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
+    ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs,
 } from './objects.js';
 import { PM_ARCHEOLOGIST } from './monsters.js';
@@ -385,13 +386,11 @@ export function setworn(obj, mask) {
         clearOne('uarmg', W_ARMG);
         clearOne('uarmf', W_ARMF);
         clearOne('uarmu', W_ARMU);
-        if (mask & W_RING) {
-            // caller clears specific left/right; both bits share W_RING in takeoff
-            if (mask === W_RING || (mask & W_RING) === W_RING) {
-                clearOne('uleft', W_RING);
-                clearOne('uright', W_RING);
-            }
-        }
+        // C worn.c setworn — clear left/right independently (D-0699).
+        // Prior JS only cleared when mask==W_RING (both bits), so
+        // setworn(null, W_RINGL|R) from steal left u.uright dangling.
+        if (mask & W_RINGL) clearOne('uleft', W_RINGL);
+        if (mask & W_RINGR) clearOne('uright', W_RINGR);
         clearOne('uamul', W_AMUL);
         clearOne('ublindf', W_TOOL);
         find_ac();
@@ -1148,17 +1147,29 @@ async function choose_ring_hand() {
     for (;;) {
         const answer = await yn_function(q, 'rl', '\0');
         if (!answer || answer === '\0') return 0;
-        if (answer === 'l') return LEFT_RING;
-        if (answer === 'r') return RIGHT_RING;
+        if (answer === 'l' || answer === 'L') return LEFT_RING;
+        if (answer === 'r' || answer === 'R') return RIGHT_RING;
         // C: while (!mask) — only reachable if yn returns unexpected
     }
 }
 
+/** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
+function ring_bimanual(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
+    return !!(game.objects?.[obj.otyp]?.oc_big);
+}
+
+/** C ref: youprop.h Glib — uprops[GLIB].intrinsic. */
+function hero_glib() {
+    return !!((game.u?.uprops?.[GLIB]?.intrinsic | 0)
+        || (game.u?.Glib | 0));
+}
+
 /**
  * C ref: do_wear.c accessory_or_armor_on — armor delay + accessory put-on.
- * Ring Glib/cursed-gloves/welded gates, and exotic amulet side effects
- * deferred. Blindf_on / Blindf_off ported (Punished set_bc / full
- * toggle_blindness see_monsters still deferred).
+ * Exotic amulet side effects deferred. Blindf_on / Blindf_off ported
+ * (Punished set_bc / full toggle_blindness see_monsters still deferred).
  * @returns {number} 0 = no turn / fail, 1 = took time
  */
 async function accessory_or_armor_on(obj) {
@@ -1191,7 +1202,35 @@ async function accessory_or_armor_on(obj) {
             mask = await choose_ring_hand();
             if (!mask) return 0;
         }
-        // Glib / cursed gloves / welded weapon gates deferred
+        // C ref: do_wear.c accessory_or_armor_on — Glib / cursed gloves /
+        // welded uwep gates after hand choice (D-0699).
+        if (u.uarmg && hero_glib()) {
+            await pline(
+                'Your gloves are too slippery to remove, so you cannot put on the ring.',
+            );
+            return 1; // C: always ECMD_TIME
+        }
+        if (u.uarmg && u.uarmg.cursed) {
+            const learned = !u.uarmg.bknown;
+            u.uarmg.bknown = 1;
+            await pline('You cannot remove your gloves to put on the ring.');
+            return learned ? 1 : 0;
+        }
+        if (u.uwep) {
+            const learned = !u.uwep.bknown;
+            const urighty = (u.uhandedness | 0) !== LEFT_HANDED;
+            const ulefty = (u.uhandedness | 0) === LEFT_HANDED;
+            if (((mask === RIGHT_RING && urighty)
+                    || (mask === LEFT_RING && ulefty)
+                    || ring_bimanual(u.uwep))
+                && welded(u.uwep)) {
+                const hand = ring_bimanual(u.uwep) ? 'hands' : 'hand';
+                await pline(
+                    `You cannot free your weapon ${hand} to put on the ring.`,
+                );
+                return learned ? 1 : 0;
+            }
+        }
     } else if (amulet) {
         if (u.uamul) {
             await already_wearing('an amulet');

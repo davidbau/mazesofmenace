@@ -7,12 +7,12 @@ import { rn2, rn1, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, mon_visible, see_with_infrared } from './display.js';
 import { Monnam, mon_nam } from './do_name.js';
-import { doname, singular, an, xname } from './objnam.js';
+import { doname, singular, an, xname, the, makeplural } from './objnam.js';
 import { dist2, distmin, m_at, m_carrying } from './mon.js';
 import { lined_up, m_throw } from './mthrowu.js';
 import {
     is_animal, mindless, nohands, is_floater, needspick, nonliving,
-    is_vampshifter, monsterNames, mons, haseyes,
+    is_vampshifter, monsterNames, mons, haseyes, M2_WERE, M2_DEMON,
 } from './monsters.js';
 import {
     objectNames, objectDescrs, POTION_CLASS, WAND_CLASS, SPEED_BOOTS,
@@ -23,13 +23,21 @@ import { losehp, nomul } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import { m_seenres, monstseesu, monstunseesu } from './mondata.js';
 import { bcsign } from './rumors.js';
-import { enexto } from './teleport.js';
-import { makemon } from './makemon.js';
+import { enexto, migrate_to_level } from './teleport.js';
+import { makemon, mpickobj } from './makemon.js';
+import { place_object } from './mkobj.js';
+import { dropy } from './do.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
     D_LOCKED, D_CLOSED, KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR,
     OBJ_FLOOR, G_GONE, MM_NOMSG,
+    W_ARMOR, W_ACCESSORY, W_SADDLE,
+    MIGR_RANDOM, In_endgame, In_sokoban,
 } from './const.js';
+import { MON_WEP } from './weapon.js';
+import { welded, setuwep, setuswapwep } from './wield.js';
+import { depth } from './hacklib.js';
+import { get_level } from './dungeon.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
 const POT_BLINDNESS = objectNames.indexOf('POT_BLINDNESS');
@@ -87,9 +95,80 @@ const MUSE_POT_CONFUSION = 11;
 const MUSE_POT_ACID = 14;
 const MUSE_POT_SLEEPING = 16;
 
-/** C muse.c misc codes used here. */
+/** C muse.c misc codes used here (muse.c #define MUSE_*). */
+const MUSE_POT_GAIN_LEVEL = 1;
+const MUSE_WAN_MAKE_INVISIBLE = 2;
+const MUSE_POT_INVISIBILITY = 3;
+const MUSE_POT_SPEED = 6;
 const MUSE_WAN_SPEED_MONSTER = 7;
-const MUSE_POT_SPEED = 8;
+const MUSE_BULLWHIP = 8;
+
+const BULLWHIP = objectNames.indexOf('BULLWHIP');
+const LOADSTONE = objectNames.indexOf('LOADSTONE');
+const LEASH = objectNames.indexOf('LEASH');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const SILVER = 14; // objclass.h
+
+/** C ref: you.h m_next2u — squared dist to hero ≤ 2. */
+function m_next2u(mtmp) {
+    const u = game.u || {};
+    const dx = (mtmp.mx | 0) - (u.ux | 0);
+    const dy = (mtmp.my | 0) - (u.uy | 0);
+    return dx * dx + dy * dy <= 2;
+}
+
+/**
+ * C ref: invent.c freeinv subset — unlink from hero invent array.
+ */
+function freeinv_hero(obj) {
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    obj.nobj = null;
+}
+
+/** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
+function bimanual(obj) {
+    if (!obj) return false;
+    const ocl = game.objects?.[obj.otyp];
+    return !!(ocl?.oc_bimanual || ocl?.oc_big);
+}
+
+/** C ref: mondata.h mon_hates_silver */
+function mon_hates_silver(mtmp) {
+    const f2 = mtmp?.data?.mflags2 ?? 0;
+    return !!(f2 & (M2_WERE | M2_DEMON));
+}
+
+/**
+ * C ref: worn.c remove_worn_item — weapon slots before freeinv.
+ */
+function remove_worn_weapon(obj) {
+    const u = game.u || {};
+    if (obj === u.uwep) setuwep(null);
+    else if (obj === u.uswapwep) setuswapwep(null);
+}
+
+/**
+ * C ref: do.c canletgo with word="" — boolean gates only (no messages).
+ * Used from sync find_misc; LEASH/corpsenm count kludge deferred.
+ */
+function canletgo_silent(obj) {
+    if (!obj) return false;
+    const mask = obj.owornmask || 0;
+    if (mask & (W_ARMOR | W_ACCESSORY)) return false;
+    const u = game.u || {};
+    if (obj === u.uwep && welded(u.uwep)) return false;
+    if (LOADSTONE >= 0 && (obj.otyp | 0) === LOADSTONE && obj.cursed) {
+        obj.bknown = 1;
+        return false;
+    }
+    if (LEASH >= 0 && (obj.otyp | 0) === LEASH && (obj.leashmon | 0) !== 0) {
+        return false;
+    }
+    if (mask & W_SADDLE) return false;
+    return true;
+}
 
 /** C hack.h WAND_BACKFIRE_CHANCE / POTION_OCCUPANT_CHANCE(n) */
 const WAND_BACKFIRE_CHANCE = 100;
@@ -628,9 +707,57 @@ export function find_defensive(mtmp, tryescape) {
 }
 
 /**
- * C ref: muse.c find_misc — speed self-buff subset.
- * Named omission: poly trap, gain-level, invis, poly wand/potion,
- * bullwhip rn2(5), bag rn2(5)/loot.
+ * C ref: dungeon.c Can_rise_up — cursed gain-level escape upward.
+ * Named omission: Is_wiz1_level && In_W_tower; entry_lev special stair.
+ */
+function Can_rise_up(_x, _y, lev) {
+    if (In_endgame(lev) || In_sokoban(lev)) return false;
+    return (lev?.dlevel | 0) > 1;
+}
+
+function ledger_no(lev) {
+    const dnum = lev?.dnum | 0;
+    const dlevel = lev?.dlevel | 0;
+    const dun = game.dungeons?.[dnum];
+    return ((dun?.ledger_start | 0) + dlevel) | 0;
+}
+
+function on_level(a, b) {
+    return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
+}
+
+/**
+ * C ref: makemon.c grow_up(mtmp, NULL) — potion/wraith envelope.
+ * Named omission: little_to_big form change / geno death.
+ */
+function grow_up_potion(mtmp) {
+    const gain = rnd(8);
+    mtmp.mhpmax = (mtmp.mhpmax | 0) + gain;
+    mtmp.mhp = (mtmp.mhp | 0) + gain;
+    mtmp.m_lev = (mtmp.m_lev | 0) + 1;
+    return true;
+}
+
+/**
+ * C ref: worn.c mon_set_minvis — permanent invis from potion/wand.
+ * Worm segments / newsym polish deferred.
+ */
+function mon_set_minvis(mon, cursed_potion) {
+    mon.perminvis = cursed_potion ? 0 : 1;
+    if (!mon.invis_blkd) {
+        mon.minvis = mon.perminvis;
+    }
+}
+
+/** C youprop.h See_invisible */
+function See_invisible() {
+    const u = game.u || {};
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
+}
+
+/**
+ * C ref: muse.c find_misc — gain-level, bullwhip rn2(5), invis, speed.
+ * Named omission: poly trap, poly wand/potion, bag rn2(5)/loot.
  */
 export function find_misc(mtmp) {
     const m = museState();
@@ -643,7 +770,49 @@ export function find_misc(mtmp) {
     if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > 36) return false;
     if (nohands(mtmp.data)) return false;
 
+    const u = game.u || {};
+    const uwep = u.uwep;
+
     for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+        /* Monsters shouldn't recognize cursed items; this kludge is
+           necessary to prevent serious problems though... */
+        if (obj.otyp === POT_GAIN_LEVEL
+            && (!obj.cursed
+                || (!mtmp.isgd && !mtmp.isshk && !mtmp.ispriest))) {
+            m.misc = obj;
+            m.has_misc = MUSE_POT_GAIN_LEVEL;
+        }
+        // C: nomore(MUSE_BULLWHIP)
+        if (m.has_misc !== MUSE_BULLWHIP
+            && obj.otyp === BULLWHIP && !mtmp.mpeaceful
+            /* C short-circuit: uwep && !rn2(5) before MON_WEP / adjacency */
+            && uwep && !rn2(5) && obj === MON_WEP(mtmp)
+            && u_at(mtmp.mux, mtmp.muy)
+            && m_next2u(mtmp)
+            && !u.uswallow
+            && (canletgo_silent(uwep)
+                || (u.twoweap && canletgo_silent(u.uswapwep)))) {
+            m.misc = obj;
+            m.has_misc = MUSE_BULLWHIP;
+        }
+        /* Note: peaceful/tame monsters won't make themselves
+         * invisible unless you can see them.  Not really right, but... */
+        if (m.has_misc !== MUSE_WAN_MAKE_INVISIBLE
+            && obj.otyp === WAN_MAKE_INVISIBLE && (obj.spe | 0) > 0
+            && !mtmp.minvis && !mtmp.invis_blkd
+            && (!mtmp.mpeaceful || See_invisible())
+            && (!attacktype(mtmp.data, AT_GAZE) || mtmp.mcan)) {
+            m.misc = obj;
+            m.has_misc = MUSE_WAN_MAKE_INVISIBLE;
+        }
+        if (m.has_misc !== MUSE_POT_INVISIBILITY
+            && obj.otyp === POT_INVISIBILITY
+            && !mtmp.minvis && !mtmp.invis_blkd
+            && (!mtmp.mpeaceful || See_invisible())
+            && (!attacktype(mtmp.data, AT_GAZE) || mtmp.mcan)) {
+            m.misc = obj;
+            m.has_misc = MUSE_POT_INVISIBILITY;
+        }
         if (obj.otyp === WAN_SPEED_MONSTER && (obj.spe | 0) > 0
             && mtmp.mspeed !== MFAST && !mtmp.isgd) {
             m.misc = obj;
@@ -850,7 +1019,8 @@ export function mon_adjust_speed(mon, adjust, _obj) {
 }
 
 /**
- * C ref: muse.c use_misc — WAN/POT_SPEED only (return 2 = spent turn).
+ * C ref: muse.c use_misc — gain-level / invis / bullwhip / speed.
+ * Poly / bag / you_aggravate cursed-invis display deferred.
  */
 export async function use_misc(mtmp) {
     const m = museState();
@@ -858,8 +1028,147 @@ export async function use_misc(mtmp) {
     const i = await precheck(mtmp, otmp);
     if (i !== 0) return i;
     if (!m.has_misc || !m.misc) return 0;
+    const vismon = canseemon(mtmp);
+    const oseen = !!(otmp && vismon);
+    const vis = cansee(mtmp.mx, mtmp.my);
 
     switch (m.has_misc) {
+    case MUSE_POT_GAIN_LEVEL: {
+        if (!otmp) return 0;
+        await mquaffmsg(mtmp, otmp);
+        if (otmp.cursed) {
+            const u = game.u || {};
+            if (Can_rise_up(mtmp.mx, mtmp.my, u.uz)) {
+                const tolev = depth(u.uz) - 1;
+                const tolevel = { dnum: 0, dlevel: 0 };
+                get_level(tolevel, tolev);
+                if (!on_level(tolevel, u.uz)) {
+                    if (vismon) {
+                        await pline(
+                            `${Monnam(mtmp)} rises up, through the ceiling!`,
+                        );
+                    }
+                    m_useup(mtmp, otmp);
+                    migrate_to_level(
+                        mtmp, ledger_no(tolevel), MIGR_RANDOM, null,
+                    );
+                    return 2;
+                }
+            }
+            if (vismon) await pline(`${Monnam(mtmp)} looks uneasy.`);
+            m_useup(mtmp, otmp);
+            return 2;
+        }
+        if (vismon) {
+            await pline(`${Monnam(mtmp)} seems more experienced.`);
+        }
+        if (oseen) makeknown(POT_GAIN_LEVEL);
+        m_useup(mtmp, otmp);
+        if (!grow_up_potion(mtmp)) return 1;
+        return 2;
+    }
+    case MUSE_WAN_MAKE_INVISIBLE:
+    case MUSE_POT_INVISIBILITY: {
+        if (!otmp) return 0;
+        if (otmp.otyp === WAN_MAKE_INVISIBLE) {
+            await mzapwand(mtmp, otmp, true);
+        } else {
+            await mquaffmsg(mtmp, otmp);
+        }
+        const nambuf = mon_nam(mtmp);
+        mon_set_minvis(mtmp, !!otmp.cursed);
+        if (vismon && mtmp.minvis) {
+            if (canseemon(mtmp)) {
+                await pline(
+                    `${nambuf}'s body takes on a strange transparency.`,
+                );
+            } else {
+                await pline(`Suddenly you cannot see ${nambuf}.`);
+            }
+            if (oseen) makeknown(otmp.otyp);
+        } else if (vismon && !mtmp.minvis) {
+            await pline(
+                `${Monnam(mtmp)} briefly seems to be transparent.`,
+            );
+        } else if (!vismon && canseemon(mtmp)) {
+            await pline(`${Monnam(mtmp)} suddenly appears!`);
+        }
+        void vis;
+        if (otmp.otyp === POT_INVISIBILITY) {
+            // cursed → you_aggravate deferred (display/cls)
+            m_useup(mtmp, otmp);
+        }
+        return 2;
+    }
+    case MUSE_BULLWHIP: {
+        /* attempt to disarm hero — C muse.c use_misc MUSE_BULLWHIP */
+        const The_whip = vismon ? 'The bullwhip' : 'A whip';
+        let where_to = rn2(4);
+        const u = game.u || {};
+        let obj = u.uwep;
+        if (!obj || !canletgo_silent(obj)
+            || (u.twoweap && canletgo_silent(u.uswapwep) && rn2(2))) {
+            obj = u.uswapwep;
+        }
+        if (!obj) break;
+
+        const the_weapon = the(xname(obj));
+        let hand = 'hand';
+        if (bimanual(obj)) hand = makeplural(hand);
+
+        if (vismon) {
+            await pline(
+                `${Monnam(mtmp)} flicks a bullwhip towards your ${hand}!`,
+            );
+        }
+        if (obj.otyp === HEAVY_IRON_BALL) {
+            await pline(
+                `${The_whip} fails to wrap around ${the_weapon}.`,
+            );
+            return 1;
+        }
+        await pline(
+            `${The_whip} wraps around ${the_weapon} you're wielding!`,
+        );
+        if (welded(obj)) {
+            const plural = (obj.quan | 0) !== 1;
+            await pline(
+                `${plural ? 'They are' : 'It is'} welded to your ${hand}${!obj.bknown ? '!' : '.'}`,
+            );
+            where_to = 0;
+        }
+        if (!where_to) {
+            await pline('The whip slips free.');
+            return 1;
+        }
+        if (where_to === 3 && mon_hates_silver(mtmp)
+            && (game.objects?.[obj.otyp]?.oc_material | 0) === SILVER) {
+            where_to = 2;
+        }
+        remove_worn_weapon(obj);
+        freeinv_hero(obj);
+        switch (where_to) {
+        case 1:
+            await pline(
+                `${Monnam(mtmp)} yanks ${the_weapon} from your ${hand}!`,
+            );
+            place_object(obj, mtmp.mx, mtmp.my);
+            break;
+        case 2:
+            await pline(
+                `${Monnam(mtmp)} yanks ${the_weapon} to the floor!`,
+            );
+            dropy(obj);
+            break;
+        case 3:
+            await pline(`${Monnam(mtmp)} snatches ${the_weapon}!`);
+            mpickobj(mtmp, obj);
+            break;
+        default:
+            break;
+        }
+        return 1;
+    }
     case MUSE_WAN_SPEED_MONSTER:
         await mzapwand(mtmp, m.misc, true);
         mon_adjust_speed(mtmp, 1, m.misc);
@@ -883,4 +1192,5 @@ export async function use_misc(mtmp) {
     default:
         return 0;
     }
+    return 0;
 }

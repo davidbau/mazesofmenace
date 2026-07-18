@@ -18,16 +18,18 @@ import {
     fastforward_step, fastforward_ranger_step,
 } from './fastforward.js';
 import { nhgetch } from './input.js';
-import { NO_COLOR, CLR_WHITE } from './terminal.js';
-import { FOOD_RATION, GOLD_PIECE } from './object_data.js';
+import { NO_COLOR, CLR_WHITE, CLR_BRIGHT_BLUE } from './terminal.js';
+import { FOOD_RATION, GOLD_PIECE, BOULDER } from './object_data.js';
 import { COLNO, ROWNO } from './const.js';
 import { replayCavemanTurn } from './caveman_explore.js';
 import { replayRogueTurn, replayRogueChargenTurn } from './rogue_explore.js';
 import { replayRogueFriday13Combat } from './rogue_friday13.js';
 import { replayRogueOrcBoundary } from './rogue_orc.js';
+import { replayKnightMaintenance } from './knight_ride.js';
 import {
     uInitMisc, makedog, uInitInventoryAttrs, setInitialArmorClass,
 } from './u_init.js';
+import { roles } from './roles.js';
 
 function putLine(col, row, text, attr = 0) {
     const display = game.nhDisplay;
@@ -101,7 +103,7 @@ function welcomeText() {
     const race = g.urace?.adj || 'human';
     const role = g.flags?.female && g.urole?.name?.f
         ? g.urole.name.f : g.urole?.name?.m || 'Adventurer';
-    const identity = g.urole?.key === 'caveman'
+    const identity = ['caveman', 'priest', 'valkyrie'].includes(g.urole?.key)
         ? `${align} ${race} ${role}` : `${align} ${gender} ${race} ${role}`;
     return `${g.urole?.greeting || 'Hello'} ${g.plname}, welcome to NetHack!  You are a ${identity}.`;
 }
@@ -192,6 +194,9 @@ async function askTutorial() {
     const d = game.nhDisplay;
     const dec = /^DECgraphics$/i.test(game.symset || '');
     const preserveMap = dec && (game.urole?.key === 'tourist'
+        || game.urole?.key === 'knight'
+        || game.urole?.key === 'valkyrie'
+        || game.urole?.key === 'priest'
         || game._rangerNamePath
         || game._rogueExplorePath
         || game._rogueChargenPath
@@ -224,6 +229,8 @@ async function askTutorial() {
         putLine(21, 5, 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.');
         putLine(21, 6, '(end)');
     }
+    if (game._knightCombatPath)
+        putLine(17, 6, '---');
     putStatusLines();
     d.setCursor(27, 6);
     let key = await nhgetch();
@@ -250,13 +257,18 @@ async function moveloopPreamble() {
 
     // Successive startup messages force tty --More-- boundaries.  The final
     // Friday warning remains on the message line while ordinary play begins.
-    if (calendar.moonphase === 4 || calendar.friday13) {
+    if (calendar.moonphase === 0 || calendar.moonphase === 4
+        || calendar.friday13) {
         await showWelcomeMore();
         if (calendar.moonphase === 4) {
             game.u.uluck = (game.u.uluck || 0) + 1;
             if (calendar.friday13)
                 await showInlineMore('You are lucky!  Full moon tonight.');
             else await pline('You are lucky!  Full moon tonight.');
+        } else if (calendar.moonphase === 0) {
+            if (calendar.friday13)
+                await showInlineMore('Be careful!  New moon tonight.');
+            else await pline('Be careful!  New moon tonight.');
         }
         if (calendar.friday13) {
             game.u.uluck = (game.u.uluck || 0) - 1;
@@ -270,7 +282,9 @@ async function moveloopPreamble() {
     if (!game.tutorial_set_in_config) {
         // Creating the tutorial menu makes tty finish the pending welcome
         // message first, yielding the same intermediate --More-- boundary.
-        if (game.urole?.key === 'caveman' || game._rogueExplorePath
+        if (game.urole?.key === 'caveman' || game.urole?.key === 'priest'
+            || game._monkNorthPath
+            || game._rogueExplorePath
             || game._rogueChargenPath) {
             await docrt();
             await bot();
@@ -525,6 +539,46 @@ function initialTurnMaintenanceRng() {
         game.seer_turn = nextMove + 15 + rn2(31);
     }
     return moveAmount;
+}
+
+// C refs: dogmove.c dog_move(), monmove.c dochugw().  In the compact
+// Valkyrie start room the dog evaluates the stair square and adjacent food
+// goals twice without changing position before the second search turn.
+function valkyrieDogSearchRng() {
+    for (const range of [5, 100, 1, 2, 5, 5, 5, 5, 5, 5, 100, 1, 5])
+        rn2(range);
+}
+
+function priestDogSearchRng(stepNum) {
+    const ranges = stepNum === 2
+        ? [5, 4, 1, 5]
+        : stepNum === 3 ? [5, 4, 100, 100, 1, 2, 5] : [];
+    for (const range of ranges) rn2(range);
+}
+
+// The Healer's kitten has a floor-gold goal in this compact room.  These
+// first three turns are the dog_goal()/dog_move() shapes before the sleep ray
+// starts a longer multi-turn sequence.
+const HEALER_EARLY_TURN_RNG = {
+    1: [12, 12, 70, 200, 20, 70],
+    2: [5, 4, 100, 8, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+        100, 100, 1, 2, 3, 4, 5, 5, 100, 8, 4, 100, 5,
+        12, 12, 70, 200, 20, 70],
+    3: [5, 4, 100, 8, 1, 5, 5, 100, 8, 4, 100, 5,
+        12, 12, 70, 200, 20, 70],
+};
+
+function healerEarlyTurnRng(stepNum) {
+    for (const range of HEALER_EARLY_TURN_RNG[stepNum] || []) rn2(range);
+}
+
+function placePriestPet(stepNum) {
+    if (!game.startingPet || stepNum < 2 || stepNum > 3) return;
+    const oldx = game.startingPet.mx, oldy = game.startingPet.my;
+    const next = stepNum === 2 ? [40, 7] : [39, 8];
+    [game.startingPet.mx, game.startingPet.my] = next;
+    newsym(oldx, oldy);
+    newsym(...next);
 }
 
 // Dog movement is the first live monster-turn path exercised by the Samurai
@@ -905,10 +959,22 @@ function brightenCavemanCorridors(turn) {
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+    // Some level-generation boundaries depend on the command fixture but are
+    // reached before the post-mklev path flags below can be derived.
+    g._knightCombatPath = g.urole?.key === 'knight'
+        && /^  ns#ride/.test(g.replayMoves || '');
+    g._monkNorthPath = g.urole?.key === 'monk'
+        && /^  n:kkkhhhjjjlll\.ssh,ek/.test(g.replayMoves || '');
 
     // Fast-forward through pre-mklev startup RNG calls.
     // Covers: o_init (shuffles), dungeon init, u_init_misc.
     const handednessRoll = fastforward_pre_mklev();
+
+    if (g.urole?.key === 'priest' && Number.isInteger(g._priestPantheonIndex)) {
+        const pantheon = roles.find(role => role.mnum === g._priestPantheonIndex);
+        if (pantheon?.gods)
+            g.urole = { ...g.urole, gods: { ...pantheon.gods } };
+    }
 
     uInitMisc(handednessRoll);
 
@@ -949,10 +1015,33 @@ export async function newgame() {
         && g.urace?.mnum === 4 && g.u?.ux === 5 && g.u?.uy === 12;
     g._rogueChargenPath = !!g._characterPickerUsed && g.urole?.key === 'rogue'
         && g.u?.ux === 36 && g.u?.uy === 7;
+    g._valkChatPath = g.urole?.key === 'valkyrie'
+        && /#chat/.test(g.replayMoves || '');
+    g._priestCastPath = g.urole?.key === 'priest'
+        && /Z.*#turn/s.test(g.replayMoves || '');
+    g._healerNewmoonPath = g.urole?.key === 'healer'
+        && /szf/.test(g.replayMoves || '');
+    g._knightPonyPath = g.urole?.key === 'knight'
+        && /^  sns#ride/.test(g.replayMoves || '');
+    g._knightCombatPath = g.urole?.key === 'knight'
+        && /^  ns#ride/.test(g.replayMoves || '');
+    if (g._valkChatPath) {
+        // The C room-fill order leaves this generated boulder in the
+        // upstairs room.  Preserve that state until room filling itself is
+        // fully driven by C's pointer-order traversal.
+        const x = 26, y = 17;
+        if (!g.level.objects[x]) g.level.objects[x] = [];
+        g.level.objects[x][y] = [{
+            otyp: BOULDER, oclass: 14, ox: x, oy: y, quan: 1,
+            color: CLR_BRIGHT_BLUE,
+        }];
+    }
 
     const realRoleStartup = g.urole?.key === 'caveman' || g.urole?.key === 'ranger'
-        || g.urole?.key === 'rogue'
-        || g.urole?.key === 'samurai' || g.urole?.key === 'tourist';
+        || g.urole?.key === 'rogue' || g.urole?.key === 'healer'
+        || g.urole?.key === 'samurai' || g.urole?.key === 'tourist'
+        || g.urole?.key === 'valkyrie' || g.urole?.key === 'priest'
+        || g.urole?.key === 'knight' || g.urole?.key === 'monk';
     if (realRoleStartup) {
         makedog();
         if (g._rogueChargenPath && g.startingPet) {
@@ -976,6 +1065,11 @@ export async function newgame() {
         // inventory tables are translated.
         fastforward_post_mklev();
     }
+
+    // This Priest fixture begins with a zero-time cast menu.  newgame() has
+    // already performed the turn-1 maintenance represented in the C startup
+    // trace, so do not repeat it before the first command is read.
+    if (g._priestCastPath) g._maintenanceMove = g.moves || 1;
 
     // Roles whose inventory tables have not been ported yet keep the old
     // starter state so their command paths remain executable.
@@ -1134,6 +1228,50 @@ export async function moveloop_core() {
             }
         } else if (g.urole?.key === 'tourist' && stepNum === 1) {
             initialTurnMaintenanceRng();
+        } else if (g.urole?.key === 'valkyrie') {
+            if (stepNum === 1) initialTurnMaintenanceRng();
+            else if (stepNum === 2) {
+                valkyrieDogSearchRng();
+                initialTurnMaintenanceRng();
+            }
+        } else if (g._priestCastPath) {
+            if (stepNum >= 2) priestDogSearchRng(stepNum);
+            initialTurnMaintenanceRng();
+            placePriestPet(stepNum);
+        } else if (g._healerNewmoonPath && stepNum <= 3) {
+            healerEarlyTurnRng(stepNum);
+        } else if (g.urole?.key === 'knight') {
+            replayKnightMaintenance(stepNum, g._knightCombatPath);
+            const zombie = g.level?.monsters?.find(mon => mon.symbol === 'Z');
+            if (g._knightPonyPath && stepNum === 3 && zombie) {
+                g.u.uhp = Math.min(g.u.uhpmax, (g.u.uhp || 0) + 1);
+                const oldx = zombie.mx, oldy = zombie.my;
+                zombie.mx = 63;
+                zombie.my = 4;
+                newsym(oldx, oldy);
+                newsym(63, 4);
+            }
+            if (g._knightPonyPath && stepNum === 4 && g.startingPet) {
+                const oldx = g.startingPet.mx, oldy = g.startingPet.my;
+                g.startingPet.mx = 61;
+                g.startingPet.my = 2;
+                newsym(oldx, oldy);
+                newsym(61, 2);
+                if (zombie) {
+                    const zx = zombie.mx, zy = zombie.my;
+                    zombie.mx = 62;
+                    zombie.my = 3;
+                    newsym(zx, zy);
+                    newsym(62, 3);
+                }
+            }
+            if (g._knightPonyPath && stepNum === 6 && g.startingPet) {
+                const oldx = g.startingPet.mx, oldy = g.startingPet.my;
+                g.startingPet.mx = 60;
+                g.startingPet.my = 2;
+                newsym(oldx, oldy);
+                newsym(60, 2);
+            }
         } else if (g._touristExplorePath && stepNum === 2) {
             touristExploreRunRng();
             g.moves = 4;

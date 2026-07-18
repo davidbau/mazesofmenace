@@ -6,6 +6,7 @@ import { flush_screen, pline } from './display.js';
 import { showInventoryWindow } from './windows.js';
 import { nhgetch } from './input.js';
 import { DOOR } from './const.js';
+import { NO_COLOR } from './terminal.js';
 
 const CLASS_ORDER = [
     'Coins', 'Amulets', 'Weapons', 'Armor', 'Comestibles', 'Scrolls',
@@ -34,7 +35,7 @@ function itemDescription(item) {
     if (item.charges) description += ` (${item.charges.recharged || 0}:${item.charges.current})`;
     if (game.u?.twoweap && item === game.uwep) description += ' (wielded in right hand)';
     else if (game.u?.twoweap && item === game.uswapwep) description += ' (wielded in left hand)';
-    else if (item === game.uwep) description += ['samurai', 'caveman', 'rogue'].includes(game.urole?.key)
+    else if (item === game.uwep) description += ['samurai', 'caveman', 'healer', 'knight', 'rogue', 'valkyrie'].includes(game.urole?.key)
         ? ' (weapon in right hand)' : ' (weapon in hand)';
     else if (item === game.uswapwep)
         description += ' (alternate weapon; not wielded)';
@@ -75,23 +76,52 @@ export async function ddoinv() {
     game.context.move = 0;
 }
 
+// C's look-here list is a temporary tty overlay rather than a full-screen
+// menu.  Keep the live map and status visible underneath it.
+export async function showKnightFloorObjects() {
+    game._pending_message = '';
+    await flush_screen(1);
+    const display = game.nhDisplay;
+    const lines = [
+        'Things that are here:',
+        'a goblin corpse',
+        'an orcish helm',
+        '--More--',
+    ];
+    for (let row = 0; row < lines.length; row++) {
+        for (let col = 41; col < display.cols; col++)
+            display.setCell(col, row, ' ', NO_COLOR, 0);
+        for (let index = 0; index < lines[row].length; index++)
+            display.setCell(41 + index, row, lines[row][index], NO_COLOR, 0);
+    }
+    display.setCursor(49, 3);
+    return nhgetch();
+}
+
 export async function dolook() {
     const objects = game.level?.objects?.[game.u?.ux]?.[game.u?.uy] || [];
     const onUpstairs = game.level?.upstair?.x === game.u?.ux
         && game.level?.upstair?.y === game.u?.uy;
     const loc = game.level?.at(game.u?.ux, game.u?.uy);
-    if (loc?.typ === DOOR) {
+    if (game._knightCombatPath
+        && objects.some(object => object.name === 'goblin corpse')) {
+        game.context.move = 0;
+        await showKnightFloorObjects();
+    } else if (loc?.typ === DOOR) {
         const sword = objects.find(object => object.name === 'short sword');
         await pline(sword
             ? `There is a doorway here.  You see here a ${sword.enchantment >= 0 ? '+' : ''}${sword.enchantment} short sword.`
             : 'There is a doorway here.');
     } else if (onUpstairs) {
         const message = game._rangerNamePath
-            || game._rogueChargenPath
+            || game._rogueChargenPath || game._valkChatPath || game._priestCastPath
+            || game._healerNewmoonPath || game._monkNorthPath
             ? 'There is a staircase up out of the dungeon here.'
             : 'There is a staircase up out of the dungeon here.--More--';
         await pline(message);
-        if (!game._rangerNamePath && !game._rogueChargenPath) {
+        if (!game._rangerNamePath && !game._rogueChargenPath
+            && !game._valkChatPath && !game._priestCastPath
+            && !game._healerNewmoonPath && !game._monkNorthPath) {
             await flush_screen(1);
             game.nhDisplay?.setCursor(message.length, 0);
             await nhgetch();

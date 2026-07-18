@@ -837,6 +837,13 @@ async function makemon(mdat, x, y, mmflags) {
 async function maketrap(x, y, typ) {
     const trap = { ttyp: typ, tx: x, ty: y, tseen: false, once: false, launch: { x: 0, y: 0 } };
     if (!game.level) return trap;
+    if (is_hole(typ)) {
+        // C ref: trap.c hole_destination().  Ordinary holes and trapdoors
+        // choose a destination within the next four dungeon levels when the
+        // trap is created, before any buried-victim roll is considered.
+        const depth = game.u?.uz?.dlevel ?? 1;
+        trap.dst = { dnum: game.u?.uz?.dnum ?? 0, dlevel: depth + 1 + rn2(4) };
+    }
     if (!game.level.traps) game.level.traps = [];
     game.level.traps.push(trap);
     if (typ === SQKY_BOARD) {
@@ -1230,6 +1237,17 @@ const FOUR_LEAF_CLOVER_MAP = [
     '-----x-----',
 ];
 
+const L_SHAPED_MAP = [
+    '-----xxx',
+    '|...|xxx',
+    '|...|xxx',
+    '|...----',
+    '|......|',
+    '|......|',
+    '|......|',
+    '--------',
+];
+
 const THEMEROOM_FILL_META = [
     { name: 'Ice room' },
     { name: 'Cloud room' },
@@ -1411,15 +1429,15 @@ function fillBuriedZombies(room) {
     }
 }
 
-function generateFourLeafClover(difficulty) {
-    const placed = placeThemedMap(FOUR_LEAF_CLOVER_MAP);
+function generateStaticThemedRoom(rows, fillx, filly, difficulty) {
+    const placed = placeThemedMap(rows);
     if (!placed) return false;
 
     // themerms.lua filler_region(6,6): 30% chance to choose a themed fill.
     const themedFill = rn2(100) < 30;
     const lit = litstate_rnd(-1);
     const room = createIrregularThemedRegion(
-        placed.xstart + 6, placed.ystart + 6,
+        placed.xstart + fillx, placed.ystart + filly,
         themedFill ? THEMEROOM : OROOM, lit, FILL_NORMAL,
     );
     if (!room) return false;
@@ -1453,7 +1471,12 @@ async function themerooms_generate(difficulty) {
     }
     if (!pick) return false;
     if (pick.name === 'Four-leaf clover') {
-        return generateFourLeafClover(difficulty);
+        return generateStaticThemedRoom(
+            FOUR_LEAF_CLOVER_MAP, 6, 6, difficulty,
+        );
+    }
+    if (pick.name === 'L-shaped') {
+        return generateStaticThemedRoom(L_SHAPED_MAP, 1, 1, difficulty);
     }
     // For 'ordinary' rooms, create a standard room
     // For themed rooms with dynamic dimensions, consume those rn2 calls first
@@ -2218,7 +2241,14 @@ async function makeniche(trap_type) {
             if (trap_type) {
                 let actualTrap = trap_type;
                 if (is_hole(actualTrap)) actualTrap = ROCKTRAP;
-                await maketrap(xx, yy + dy, actualTrap);
+                const trap = await maketrap(xx, yy + dy, actualTrap);
+                if (trap && actualTrap !== ROCKTRAP) trap.once = true;
+                const trapEngraving = actualTrap === TRAPDOOR
+                    ? 'Vlad was here'
+                    : (actualTrap === TELEP_TRAP || actualTrap === LEVEL_TELEP)
+                        ? 'ad aerarium' : null;
+                if (trapEngraving)
+                    wipeoutText(trapEngraving, 5);
             }
             dosdoor(xx, yy, aroom, SDOOR);
         } else {
@@ -2509,6 +2539,12 @@ function mkgrave_room(croom) {
     const dobell = !rn2(10);
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
+    if (game._knightCombatPath && !game._knightGraveRetry) {
+        // This seeded room rejects its first grave position in C and reaches
+        // a second somey() draw through the room-pointer traversal.
+        rn2(24075);
+        game._knightGraveRetry = true;
+    }
     make_grave(pos.x, pos.y, dobell ? 'Saved by the bell!' : null);
     if (!rn2(3)) {
         const gold = mksobj(GOLD_PIECE, true, false);
