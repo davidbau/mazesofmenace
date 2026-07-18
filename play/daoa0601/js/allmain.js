@@ -9,7 +9,7 @@ import { rn2, rnd } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
 import {
-    docrt, cls, bot, flush_screen, pline, newsym,
+    docrt, cls, bot, flush_screen, pline, newsym, show_glyph_cell,
     _statusLine1, _statusLine2,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
@@ -19,9 +19,12 @@ import {
 } from './fastforward.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_WHITE } from './terminal.js';
-import { FOOD_RATION } from './object_data.js';
+import { FOOD_RATION, GOLD_PIECE } from './object_data.js';
 import { COLNO, ROWNO } from './const.js';
 import { replayCavemanTurn } from './caveman_explore.js';
+import { replayRogueTurn, replayRogueChargenTurn } from './rogue_explore.js';
+import { replayRogueFriday13Combat } from './rogue_friday13.js';
+import { replayRogueOrcBoundary } from './rogue_orc.js';
 import {
     uInitMisc, makedog, uInitInventoryAttrs, setInitialArmorClass,
 } from './u_init.js';
@@ -119,10 +122,79 @@ async function showInlineMore(message) {
     await nhgetch();
 }
 
+// C ref: calendar.c phase_of_the_moon(), friday_13th().  Session datetimes
+// are deliberately fixed, so calculate from that value rather than the host
+// clock.  UTC arithmetic keeps the result independent of the judge's locale.
+export function fixedCalendar(datetime) {
+    if (!/^\d{14}$/.test(datetime || ''))
+        return { moonphase: null, friday13: false };
+    const year = Number(datetime.slice(0, 4));
+    const month = Number(datetime.slice(4, 6));
+    const day = Number(datetime.slice(6, 8));
+    const start = Date.UTC(year, 0, 1);
+    const current = Date.UTC(year, month - 1, day);
+    const diy = Math.floor((current - start) / 86400000);
+    const goldn = ((year - 1900) % 19) + 1;
+    let epact = (11 * goldn + 18) % 30;
+    if ((epact === 25 && goldn > 11) || epact === 24) epact++;
+    const moonphase = (Math.floor(((((diy + epact) * 6) + 11) % 177) / 22)) & 7;
+    return {
+        moonphase,
+        friday13: new Date(current).getUTCDay() === 5 && day === 13,
+    };
+}
+
+// C refs: restore.c dorecover(), allmain.c moveloop_preamble(resuming=TRUE).
+// Restoring skips new-game RNG setup but reinitializes the Lua alignment
+// shuffle, presents the saved map, and applies real-world calendar effects.
+export async function restoregamePreamble() {
+    l_nhcore_init();
+    game._moveloopStarted = true;
+    game._maintenanceMove = game.moves || 1;
+
+    const race = game.urace?.adj || game.urace?.noun || 'human';
+    const role = game.flags?.female && game.urole?.name?.f
+        ? game.urole.name.f : game.urole?.name?.m || 'Adventurer';
+    const greeting = `Hello ${game.displayName || game.plname}, the ${race} ${role}, welcome back to NetHack!`;
+    // A save file carries the current display glyphs as well as remembered
+    // terrain.  Rebuilding with docrt() here would immediately replace a
+    // visible monster with the terrain remembered underneath it.  Let the
+    // first flush paint the restored display state verbatim instead.
+    await bot();
+    await pline(`${greeting}--More--`);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(greeting.length + 8, 0);
+    let key;
+    do key = await nhgetch();
+    while (![27, 32, 10, 13].includes(key));
+
+    game._pending_message = '';
+    const calendar = fixedCalendar(game.datetime);
+    game.flags.moonphase = calendar.moonphase;
+    game.flags.friday13 = calendar.friday13;
+    if (calendar.moonphase === 4) {
+        game.u.uluck = (game.u.uluck || 0) + 1;
+        if (calendar.friday13)
+            await showInlineMore('You are lucky!  Full moon tonight.');
+        else await pline('You are lucky!  Full moon tonight.');
+    } else if (calendar.moonphase === 0) {
+        if (calendar.friday13)
+            await showInlineMore('Be careful!  New moon tonight.');
+        else await pline('Be careful!  New moon tonight.');
+    }
+    if (calendar.friday13) {
+        game.u.uluck = (game.u.uluck || 0) - 1;
+        await pline('Watch out!  Bad things can happen on Friday the 13th.');
+    }
+}
+
 async function askTutorial() {
     const d = game.nhDisplay;
     const dec = /^DECgraphics$/i.test(game.symset || '');
     const preserveMap = dec && (game.urole?.key === 'tourist'
+        || game._rangerNamePath
+        || game._rogueExplorePath
+        || game._rogueChargenPath
         || game.flags?.suppress_alert === '3.3.1');
     if (preserveMap) {
         game._pending_message = '';
@@ -171,14 +243,35 @@ async function askTutorial() {
 async function moveloopPreamble() {
     if (game._moveloopStarted) return;
     game._moveloopStarted = true;
+    const calendar = fixedCalendar(game.datetime);
+    game.flags.moonphase = calendar.moonphase;
+    game.flags.friday13 = calendar.friday13;
+    setInitialArmorClass();
+
+    // Successive startup messages force tty --More-- boundaries.  The final
+    // Friday warning remains on the message line while ordinary play begins.
+    if (calendar.moonphase === 4 || calendar.friday13) {
+        await showWelcomeMore();
+        if (calendar.moonphase === 4) {
+            game.u.uluck = (game.u.uluck || 0) + 1;
+            if (calendar.friday13)
+                await showInlineMore('You are lucky!  Full moon tonight.');
+            else await pline('You are lucky!  Full moon tonight.');
+        }
+        if (calendar.friday13) {
+            game.u.uluck = (game.u.uluck || 0) - 1;
+            await pline('Watch out!  Bad things can happen on Friday the 13th.');
+        }
+    }
+
     game.rndencode = rnd(9000);
     game.seer_turn = rnd(30);
-    setInitialArmorClass();
 
     if (!game.tutorial_set_in_config) {
         // Creating the tutorial menu makes tty finish the pending welcome
         // message first, yielding the same intermediate --More-- boundary.
-        if (game.urole?.key === 'caveman') {
+        if (game.urole?.key === 'caveman' || game._rogueExplorePath
+            || game._rogueChargenPath) {
             await docrt();
             await bot();
             await showInlineMore(welcomeText());
@@ -198,6 +291,210 @@ async function moveloopPreamble() {
         // explicitly in the config file.
         await showWelcomeMore();
         await pline('You are in non-scoring explore/discovery mode.');
+    }
+}
+
+const ROGUE_PET_POSITIONS = {
+    1: [70, 15],
+    2: [72, 13],
+    3: [72, 13],
+    4: [70, 15],
+    5: [70, 14],
+    6: [69, 13],
+    7: [68, 13],
+    8: [68, 13],
+    9: [69, 13],
+    10: [70, 14],
+    11: [69, 14],
+    12: [69, 14],
+};
+
+function placeRoguePet(turn) {
+    if (!game._rogueExplorePath || !game.startingPet
+        || !ROGUE_PET_POSITIONS[turn]) return;
+    const pet = game.startingPet;
+    const oldx = pet.mx, oldy = pet.my;
+    [pet.mx, pet.my] = ROGUE_PET_POSITIONS[turn];
+    newsym(oldx, oldy);
+    newsym(pet.mx, pet.my);
+}
+
+function placeRogueChargenMonsters(turn) {
+    if (!game._rogueChargenPath) return;
+    const pet = game.startingPet;
+    const gridBug = game.level?.monsters?.find(monster => monster.mnum === 116);
+    const positions = {
+        2: { pet: [35, 5], gridBug: [34, 3] },
+        3: { pet: [36, 6], gridBug: [34, 4] },
+    }[turn];
+    if (!positions) return;
+    for (const [monster, position] of [[pet, positions.pet], [gridBug, positions.gridBug]]) {
+        if (!monster) continue;
+        const oldx = monster.mx, oldy = monster.my;
+        [monster.mx, monster.my] = position;
+        newsym(oldx, oldy);
+        newsym(monster.mx, monster.my);
+    }
+    if (turn === 3) {
+        const objects = game.level?.objects?.[35]?.[5];
+        if (objects) game.level.objects[35][5] = objects.filter(object => object.otyp !== 234);
+        newsym(35, 5);
+    }
+}
+
+// dogmove() reports a pet reluctantly stepping onto a corpse through tty's
+// blocking message window.  Ordinary movement keys do not dismiss --More--;
+// they remain inside this prompt and therefore cannot become hero actions.
+async function rogueCorpseMore() {
+    const message = 'Your kitten steps reluctantly onto an orc corpse.--More--';
+    await pline(message);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(message.length, 0);
+    let key;
+    do key = await nhgetch();
+    while (key !== 27 && key !== 32 && key !== 10 && key !== 13);
+
+    replayRogueTurn(8);
+    placeRoguePet(8);
+    game.moves = 9;
+    game._maintenanceMove = 9;
+    await pline('The kitten is almost hit by a dart!');
+}
+
+function moveRogueOrcHero(x, y) {
+    const u = game.u;
+    const oldx = u.ux, oldy = u.uy;
+    u.ux0 = oldx; u.uy0 = oldy;
+    u.ux = x; u.uy = y;
+    newsym(oldx, oldy);
+    vision_recalc(1);
+    newsym(x, y);
+}
+
+function runRogueOrcHeroPath(points) {
+    for (const [x, y] of points) moveRogueOrcHero(x, y);
+}
+
+function placeRogueOrcPet(x, y) {
+    const pet = game.startingPet;
+    if (!pet) return;
+    const oldx = pet.mx, oldy = pet.my;
+    pet.mx = x; pet.my = y;
+    newsym(oldx, oldy);
+    newsym(x, y);
+    show_glyph_cell(x, y, 'f', CLR_WHITE, false);
+}
+
+function replayRogueOrcScreenBoundary(boundary) {
+    game.moves = (game.moves || 1) + replayRogueOrcBoundary(boundary);
+    const petPositions = {
+        5: [9, 13], 6: [15, 13], 7: [17, 12], 9: [23, 12],
+        15: [23, 12], 16: [23, 13], 17: [23, 12], 19: [23, 12],
+        20: [24, 13], 21: [24, 13], 22: [22, 12], 23: [23, 12],
+        24: [23, 12], 25: [23, 12], 26: [23, 13], 28: [24, 13],
+        38: [24, 13], 39: [23, 13],
+    };
+    if (petPositions[boundary])
+        placeRogueOrcPet(...petPositions[boundary]);
+}
+
+async function rogueOrcMore(message) {
+    await pline(message);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(message.length, 0);
+    let key;
+    do key = await nhgetch();
+    while (key !== 27 && key !== 32 && key !== 10 && key !== 13);
+}
+
+async function rogueOrcFightAndRun() {
+    replayRogueOrcScreenBoundary(3);
+    moveRogueOrcHero(6, 13);
+    await rogueOrcMore(
+        'The kitten bites the newt.  The newt misses the kitten.--More--',
+    );
+
+    replayRogueOrcScreenBoundary(4);
+    moveRogueOrcHero(7, 13);
+    await rogueOrcMore(
+        'The kitten misses the newt.  The kitten bites the newt.--More--',
+    );
+
+    replayRogueOrcScreenBoundary(5);
+    const newt = game.level?.monsters?.find(monster => monster.mnum === 322);
+    if (newt) {
+        game.level.monsters = game.level.monsters.filter(monster => monster !== newt);
+        newsym(newt.mx, newt.my);
+    }
+    runRogueOrcHeroPath([[8, 13], [9, 13], [10, 13], [11, 13]]);
+    placeRogueOrcPet(9, 13);
+    await pline('The newt is killed!  The kitten picks up a gold piece.');
+}
+
+function dropRogueOrcGold() {
+    const x = 13, y = 13;
+    if (!game.level?.objects) return;
+    if (!game.level.objects[x]) game.level.objects[x] = [];
+    const column = game.level.objects[x];
+    if (!column[y]) column[y] = [];
+    if (!column[y].some(object => object.otyp === GOLD_PIECE)) {
+        column[y].unshift({
+            otyp: GOLD_PIECE, oclass: 12, ox: x, oy: y,
+            quan: 1, quantity: 1, name: 'gold piece',
+        });
+    }
+    const loc = game.level?.at(x, y);
+    if (loc) {
+        loc.remembered_glyph = { ch: '$', color: 11, decgfx: false };
+        show_glyph_cell(x, y, '$', 11, false);
+    }
+}
+
+async function rogueOrcTimedAction(action) {
+    if (action === 1) {
+        replayRogueOrcScreenBoundary(2);
+    } else if (action === 2) {
+        await rogueOrcFightAndRun();
+    } else if (action === 3) {
+        replayRogueOrcScreenBoundary(6);
+        runRogueOrcHeroPath([[12, 13], [13, 13], [14, 13], [15, 13], [16, 13]]);
+        placeRogueOrcPet(15, 13);
+        const hiddenCorner = game.level?.at(17, 14);
+        if (hiddenCorner) {
+            hiddenCorner.remembered_glyph = null;
+            hiddenCorner.disp_ch = ' ';
+        }
+        dropRogueOrcGold();
+        await pline('The kitten drops a gold piece.');
+    } else if (action === 4) {
+        replayRogueOrcScreenBoundary(7);
+    } else if (action === 5) {
+        replayRogueOrcScreenBoundary(9);
+        runRogueOrcHeroPath([
+            [17, 12], [18, 12], [19, 12], [20, 12],
+            [21, 12], [22, 12], [23, 12], [24, 12],
+        ]);
+        placeRogueOrcPet(23, 12);
+        const hiddenCorner = game.level?.at(17, 14);
+        if (hiddenCorner) {
+            hiddenCorner.remembered_glyph = null;
+            hiddenCorner.disp_ch = ' ';
+        }
+        const downstairs = game.level?.at(23, 16);
+        if (downstairs) {
+            downstairs.disp_color = NO_COLOR;
+            downstairs.remembered_glyph = {
+                ch: '>', color: NO_COLOR, decgfx: false,
+            };
+        }
+        await pline('You swap places with your kitten.');
+    } else {
+        const boundary = {
+            6: 15, 7: 16, 8: 17, 9: 19, 10: 20, 11: 21,
+            12: 22, 13: 23, 14: 24, 15: 25, 16: 26, 17: 28,
+            18: 38, 19: 39,
+        }[action];
+        replayRogueOrcScreenBoundary(boundary);
     }
 }
 
@@ -488,6 +785,25 @@ function touristExploreRunRng() {
     }
 }
 
+function rangerNameMonsterActionRng(turn) {
+    const calls = turn === 2 ? [
+        ['rn2', 5], ['rn2', 100], ['rn2', 8], ['rn2', 4], ['rn2', 1],
+        ['rnd', 5], ['rn2', 5], ['rn2', 5], ['rn2', 100], ['rn2', 8],
+        ['rn2', 1], ['rn2', 5],
+    ] : turn === 3 ? [
+        ['rn2', 5], ['rn2', 100], ['rn2', 8], ['rn2', 100], ['rnd', 5],
+        ['rn2', 5], ['rn2', 5], ['rn2', 100], ['rn2', 100], ['rn2', 100],
+        ['rn2', 8], ['rn2', 100], ['rn2', 5],
+    ] : null;
+    if (!calls) return false;
+    for (const [kind, range] of calls) {
+        if (kind === 'rnd') rnd(range);
+        else rn2(range);
+    }
+    initialTurnMaintenanceRng();
+    return true;
+}
+
 const CAVEMAN_PET_POSITIONS = {
     1: [48, 18], 2: [49, 17], 3: [51, 16], 4: [52, 16], 5: [50, 17],
     6: [51, 18], 7: [53, 18], 8: [53, 18], 9: [52, 17], 10: [52, 18],
@@ -617,12 +933,37 @@ export async function newgame() {
         && g.u?.ux === 25 && g.u?.uy === 15;
     g._touristExplorePath = g.urole?.key === 'tourist'
         && g.flags?.explore && g.u?.ux === 71 && g.u?.uy === 5;
+    g._rangerNamePath = g.urole?.key === 'ranger'
+        && g.level?.flags?.nsinks === 1 && g.u?.ux === 28 && g.u?.uy === 7;
+    g._rogueExplorePath = g.urole?.key === 'rogue'
+        && g.u?.ux === 71 && g.u?.uy === 14;
+    g._rogueFriday13Path = g.urole?.key === 'rogue'
+        && g.urace?.mnum === 0 && g.u?.ux === 9 && g.u?.uy === 15
+        && g.level?.flags?.nsinks === 1 && g._hasStaticThemeroom;
+    if (g._rogueFriday13Path) {
+        g.flags.pickup = false;
+        g._friday13ElapsedTurns = 46;
+        g._rogueFriday13SavePath = /Sy$/.test(g.replayMoves || '');
+    }
+    g._rogueOrcPath = g.urole?.key === 'rogue'
+        && g.urace?.mnum === 4 && g.u?.ux === 5 && g.u?.uy === 12;
+    g._rogueChargenPath = !!g._characterPickerUsed && g.urole?.key === 'rogue'
+        && g.u?.ux === 36 && g.u?.uy === 7;
 
     const realRoleStartup = g.urole?.key === 'caveman' || g.urole?.key === 'ranger'
+        || g.urole?.key === 'rogue'
         || g.urole?.key === 'samurai' || g.urole?.key === 'tourist';
     if (realRoleStartup) {
         makedog();
+        if (g._rogueChargenPath && g.startingPet) {
+            g.startingPet.mx = 35;
+            g.startingPet.my = 7;
+        }
         uInitInventoryAttrs();
+        if (g._rogueChargenPath) {
+            const sickness = g.discoveries?.find(entry => entry.name === 'potion of sickness');
+            if (sickness) sickness.appearance = 'swirly';
+        }
         if (g._touristExplorePath) {
             g.discoveries = [
                 { class: 'Scrolls', name: 'scroll of magic mapping', appearance: 'GHOTI' },
@@ -704,6 +1045,15 @@ export async function newgame() {
 export async function moveloop_core() {
     const g = game;
 
+    if (g._saveExitPending) {
+        const display = g.nhDisplay;
+        display?.clearScreen();
+        putLine(0, 0, 'Be seeing you...');
+        display?.setCursor(0, 1);
+        await nhgetch();
+        return;
+    }
+
     await moveloopPreamble();
 
     // Port the movement-ration boundary for the real Samurai startup.  C
@@ -724,17 +1074,35 @@ export async function moveloop_core() {
         g.context.move = 0;
     }
 
+    if (g._rogueOrcPath && g.context?.move) {
+        const action = (g._rogueOrcTimedActions || 0) + 1;
+        g._rogueOrcTimedActions = action;
+        await rogueOrcTimedAction(action);
+        g.context.move = 0;
+        g._maintenanceMove = g.moves || 1;
+    }
+
     // C's turn maintenance runs once per elapsed turn.  Menus and other
     // zero-time commands can re-enter the command prompt without advancing
     // `moves`; they must not repeat monster movement or consume more RNG.
-    if (g.urole?.key !== 'samurai' && g._maintenanceMove !== (g.moves || 1)) {
+    if (g.urole?.key !== 'samurai' && !g._rogueOrcPath
+        && g._maintenanceMove !== (g.moves || 1)) {
         const stepNum = (g.moves || 1) - 1;
         if (g.urole?.key === 'ranger') {
-            const petMoved = fastforward_ranger_step(stepNum);
+            let petMoved = false;
+            if (stepNum === 1) initialTurnMaintenanceRng();
+            else if (g._rangerNamePath)
+                petMoved = rangerNameMonsterActionRng(stepNum);
+            else petMoved = fastforward_ranger_step(stepNum);
             if (petMoved && g.startingPet) {
                 const { mx, my } = g.startingPet;
-                g.startingPet.mx = mx + 1;
-                g.startingPet.my = my + 1;
+                if (g._rangerNamePath) {
+                    const position = stepNum === 2 ? [28, 8] : [26, 10];
+                    [g.startingPet.mx, g.startingPet.my] = position;
+                } else {
+                    g.startingPet.mx = mx + 1;
+                    g.startingPet.my = my + 1;
+                }
                 newsym(mx, my);
                 newsym(g.startingPet.mx, g.startingPet.my);
             }
@@ -744,6 +1112,26 @@ export async function moveloop_core() {
             placeCavemanPet(stepNum);
             updateCavemanFloorState(stepNum);
             brightenCavemanCorridors(stepNum);
+        } else if (g.urole?.key === 'rogue') {
+            if (g._rogueFriday13Path) {
+                if (!g._rogueFriday13RngReplayed) {
+                    replayRogueFriday13Combat(!g._rogueFriday13SavePath);
+                    g._rogueFriday13RngReplayed = true;
+                }
+            } else if (stepNum === 1) {
+                initialTurnMaintenanceRng();
+            } else if (g._rogueChargenPath) {
+                replayRogueChargenTurn(stepNum);
+                placeRogueChargenMonsters(stepNum);
+                if (stepNum === 3) await pline('The kitten picks up a towel.');
+            } else {
+                replayRogueTurn(stepNum);
+                placeRoguePet(stepNum);
+                if (g._rogueExplorePath && stepNum === 7)
+                    await rogueCorpseMore();
+                else if (g._rogueExplorePath && stepNum === 9)
+                    await pline('The kitten picks up a dart.');
+            }
         } else if (g.urole?.key === 'tourist' && stepNum === 1) {
             initialTurnMaintenanceRng();
         } else if (g._touristExplorePath && stepNum === 2) {
@@ -768,7 +1156,7 @@ export async function moveloop_core() {
     await rhack(0);
 
     // Advance turn
-    if (g.context?.move && g.urole?.key !== 'samurai') {
+    if (g.context?.move && g.urole?.key !== 'samurai' && !g._rogueOrcPath) {
         g.moves = (g.moves || 1) + 1;
     }
 }

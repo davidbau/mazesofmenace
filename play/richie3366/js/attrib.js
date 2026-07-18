@@ -24,6 +24,7 @@ import {
     SEARCHING,
     FIRE_RES,
     WARNING,
+    FUMBLING,
     TIMEOUT,
     OBJ_INVENT,
 } from './const.js';
@@ -494,6 +495,18 @@ export function Fast() {
 export function Searching() {
     const u = game.u || {};
     return !!(u.HSearching || u.ESearching);
+}
+
+/**
+ * C ref: youprop.h Fumbling — HFumbling || EFumbling
+ * (uprops[FUMBLING].intrinsic || .extrinsic; flat H/E mirrors).
+ */
+export function Fumbling() {
+    const u = game.u || {};
+    const prop = u.uprops?.[FUMBLING];
+    const h = (u.HFumbling | 0) | (prop?.intrinsic | 0);
+    const e = (u.EFumbling | 0) | (prop?.extrinsic | 0);
+    return !!(h || e);
 }
 
 /**

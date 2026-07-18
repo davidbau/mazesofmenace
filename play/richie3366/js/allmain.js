@@ -21,7 +21,7 @@ import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { LOW_PM, NUMMONS, mons, G_NOCORPSE } from './monsters.js';
 import {
     A_DEX, A_STR, A_CON, A_WIS, A_MAX, acurr, exercise, adjattrib,
-    change_luck, Fast, Very_fast, Searching,
+    change_luck, Fast, Very_fast, Searching, Fumbling,
 } from './attrib.js';
 import { dosearch0 } from './detect.js';
 import { nhgetch } from './input.js';
@@ -252,10 +252,11 @@ function exerper() {
             exercise(A_WIS, false);
         }
         // C: (Wounded_legs && !usteed) || Fumbling || HStun
+        // Fumbling ≡ HFumbling || EFumbling (youprop.h), not a boolean flag.
         const wounded = !!(u.Wounded_legs
             || ((u.HWounded_legs | 0) & TIMEOUT)
             || (u.EWounded_legs | 0));
-        if ((wounded && !u.usteed) || u.Fumbling || (u.HStun | 0)) {
+        if ((wounded && !u.usteed) || Fumbling() || (u.HStun | 0)) {
             exercise(A_DEX, false);
         }
     }

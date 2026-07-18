@@ -60,7 +60,8 @@ export async function showInventoryWindow(sections) {
     // the map with two blank columns at the edge.
     const left = fullPage ? 1 : Math.max(0, d.cols - widest - 2);
     if (fullPage) d.clearScreen();
-    else clearRect(left, 0, d.cols, Math.min(22, rows.length));
+    else clearRect(game._rogueOrcPath ? left - 1 : left,
+        0, d.cols, Math.min(22, rows.length));
     for (let row = 0; row < rows.length && row < d.rows; row++) {
         putLine(left, row, rows[row].text, rows[row].attr);
     }
@@ -75,7 +76,7 @@ export async function showInventoryWindow(sections) {
  * `{ lines, cursor }`; a line is either a string or `{ text, attr }`.
  * Escape closes the window, while any other key advances to the next page.
  */
-export async function showTextPages(pages) {
+export async function showTextPages(pages, { validKeys = null } = {}) {
     const d = display();
     if (!d) return 27;
 
@@ -90,7 +91,9 @@ export async function showTextPages(pages) {
         }
         const cursor = page.cursor || [0, 0];
         d.setCursor(cursor[0], cursor[1]);
-        key = await nhgetch();
+        do {
+            key = await nhgetch();
+        } while (validKeys && !validKeys.includes(key));
         if (key === 27) break;
     }
     return key;

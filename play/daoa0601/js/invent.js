@@ -19,6 +19,7 @@ function indefiniteArticle(text) {
 function itemDescription(item) {
     const quantity = item.quantity ?? 1;
     const parts = [];
+    if (item.empty) parts.push('empty');
     if (item.buc) parts.push(item.buc);
     if (item.rustproof) parts.push('rustproof');
     if (Number.isInteger(item.enchantment)) {
@@ -33,11 +34,13 @@ function itemDescription(item) {
     if (item.charges) description += ` (${item.charges.recharged || 0}:${item.charges.current})`;
     if (game.u?.twoweap && item === game.uwep) description += ' (wielded in right hand)';
     else if (game.u?.twoweap && item === game.uswapwep) description += ' (wielded in left hand)';
-    else if (item === game.uwep) description += ['samurai', 'caveman'].includes(game.urole?.key)
+    else if (item === game.uwep) description += ['samurai', 'caveman', 'rogue'].includes(game.urole?.key)
         ? ' (weapon in right hand)' : ' (weapon in hand)';
     else if (item === game.uswapwep)
         description += ' (alternate weapon; not wielded)';
-    if (item.ready) description += game.urole?.key === 'samurai'
+    if (item.ready) description += game.urole?.key === 'rogue'
+        ? ' (alternate weapons; not wielded)'
+        : game.urole?.key === 'samurai'
         ? ' (in quiver)' : game.urole?.key === 'caveman'
             ? ' (in quiver pouch)' : ' (at the ready)';
     if (item.worn) description += ' (being worn)';
@@ -78,13 +81,21 @@ export async function dolook() {
         && game.level?.upstair?.y === game.u?.uy;
     const loc = game.level?.at(game.u?.ux, game.u?.uy);
     if (loc?.typ === DOOR) {
-        await pline('There is a doorway here.');
+        const sword = objects.find(object => object.name === 'short sword');
+        await pline(sword
+            ? `There is a doorway here.  You see here a ${sword.enchantment >= 0 ? '+' : ''}${sword.enchantment} short sword.`
+            : 'There is a doorway here.');
     } else if (onUpstairs) {
-        const message = 'There is a staircase up out of the dungeon here.--More--';
+        const message = game._rangerNamePath
+            || game._rogueChargenPath
+            ? 'There is a staircase up out of the dungeon here.'
+            : 'There is a staircase up out of the dungeon here.--More--';
         await pline(message);
-        await flush_screen(1);
-        game.nhDisplay?.setCursor(message.length, 0);
-        await nhgetch();
+        if (!game._rangerNamePath && !game._rogueChargenPath) {
+            await flush_screen(1);
+            game.nhDisplay?.setCursor(message.length, 0);
+            await nhgetch();
+        }
     } else if (objects.some(object => object.name === 'lichen corpse')) {
         await pline('You see here a lichen corpse.');
     } else if (!objects.length) {

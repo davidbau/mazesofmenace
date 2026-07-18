@@ -17,7 +17,7 @@ import {
     W_QUIVER, LEFT_RING, RIGHT_RING, W_ART,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
-    TIMEOUT, BLINDED, FAST, TELEPAT,
+    TIMEOUT, BLINDED, FAST, TELEPAT, WORN_BOOTS,
     DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
     BOLT_LIM,
 } from './const.js';
@@ -48,6 +48,7 @@ const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
 const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
 const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
+const FUMBLE_BOOTS = objectNames.indexOf('FUMBLE_BOOTS');
 const BLACK_DRAGON_SCALES = objectNames.indexOf('BLACK_DRAGON_SCALES');
 const BLACK_DRAGON_SCALE_MAIL = objectNames.indexOf('BLACK_DRAGON_SCALE_MAIL');
 const BLUE_DRAGON_SCALES = objectNames.indexOf('BLUE_DRAGON_SCALES');
@@ -573,9 +574,37 @@ async function Gloves_on() {
     find_ac();
     return 0;
 }
+/**
+ * C ref: do_wear.c Boots_on — known + FUMBLE_BOOTS incr_itimeout(HFumbling,rnd(20)).
+ * Named omissions: water-walking/speed/elven/levitation cases; makeknown;
+ * update_inventory; float_up/spoteffects.
+ */
 async function Boots_on() {
     const o = game.u?.uarmf;
-    if (o && !o.known) o.known = 1;
+    if (!o) return 0;
+    const u = game.u || (game.u = {});
+    const oprop = game.objects?.[o.otyp]?.oc_oprop | 0;
+    const extr = u.uprops?.[oprop]?.extrinsic | 0;
+    // C: oldprop = uprops[oc_oprop].extrinsic & ~WORN_BOOTS
+    const oldprop = extr & ~WORN_BOOTS;
+
+    if (o.otyp === FUMBLE_BOOTS) {
+        // C: if (!oldprop && !(HFumbling & ~TIMEOUT)) incr_itimeout(&HFumbling, rnd(20));
+        // HFumbling ≡ uprops[FUMBLING].intrinsic — keep flat + uprops in sync.
+        if (!u.uprops) u.uprops = {};
+        const prop = u.uprops[oprop] || (u.uprops[oprop] = {
+            intrinsic: 0, extrinsic: 0, blocked: 0,
+        });
+        const hCur = (u.HFumbling | 0) | (prop.intrinsic | 0);
+        if (!oldprop && !(hCur & ~TIMEOUT)) {
+            const next = (hCur & TIMEOUT) + rnd(20);
+            const hNext = (hCur & ~TIMEOUT) | (next & TIMEOUT);
+            u.HFumbling = hNext;
+            prop.intrinsic = hNext;
+        }
+    }
+    // SPEED/ELVEN/WATER_WALKING/LEVITATION cases deferred
+    if (!o.known) o.known = 1;
     find_ac();
     return 0;
 }

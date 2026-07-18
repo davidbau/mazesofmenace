@@ -24,7 +24,7 @@ import {
     engulfing_u,
 } from './const.js';
 import {
-    verysmall, G_FREQ, G_NOCORPSE, is_neuter, is_undead,
+    verysmall, G_FREQ, G_NOCORPSE, is_neuter, nonliving,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
@@ -328,19 +328,33 @@ function mondead(mtmp) {
     if (mx > 0) newsym(mx, my);
 }
 
-// C ref: mon.c mondied() → mondead + maybe make_corpse
-// C ref: mon.c monkilled — nonliving → "destroyed" else "killed";
-// pline only when cansee (worm_known deferred).
-async function mondied(mdef) {
-    // C: monkilled pline before mondead (triggers --More-- if needed)
-    if (cansee(mdef.mx, mdef.my)) {
-        const verb = is_undead(mdef.data) ? 'destroyed' : 'killed';
-        await pline(`${Monnam(mdef)} is ${verb}!`);
-    }
+/**
+ * C ref: mon.c mondied() — mondead + maybe make_corpse (no kill pline).
+ * Named omission: accessible||is_pool gate (floor tiles always attempt).
+ */
+export async function mondied(mdef) {
     mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
-    // C: accessible||is_pool gate deferred — floor tiles take make_corpse
     if (await corpse_chance(mdef)) make_corpse(mdef);
+}
+
+/**
+ * C ref: mon.c monkilled — pline then mondied (or mondead if disintegested).
+ * Named omissions: worm_known; AD_DGST/RBRE/FIRE disintegested; pet roast.
+ */
+async function monkilled(mdef, fltxt, _how) {
+    const txt = fltxt || '';
+    if (cansee(mdef.mx, mdef.my)) {
+        const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
+        await pline(
+            `${Monnam(mdef)} is ${verb}${txt ? ' by the ' : ''}${txt}!`,
+        );
+    } else if (mdef.mtame) {
+        game.iflags = game.iflags || {};
+        game.iflags.sad_feeling = true;
+    }
+    // disintegested → mondead-only deferred; ordinary path uses mondied
+    await mondied(mdef);
 }
 
 // C ref: makemon.c grow_up() — HP gain from kill; transform later
@@ -401,7 +415,8 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     mdef.mhp -= damage;
     if (mdef.mhp < 1) {
         mdef.mhp = 0;
-        await mondied(mdef);
+        // C: mdamagem → monkilled(mdef, "", mattk->adtyp)
+        await monkilled(mdef, '', mattk.adtyp | 0);
         const grew = grow_up(magr, mdef);
         return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
     }

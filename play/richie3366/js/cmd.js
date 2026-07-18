@@ -55,7 +55,7 @@ import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement,
 } from './hack.js';
-import { acurr, exercise, A_DEX } from './attrib.js';
+import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -1108,12 +1108,13 @@ async function domove(dx, dy) {
     // C ref: hack.c test_move — closed_door autoopen / orthogonal bump
     // Passes_walls / ooze / Underwater / tunnels / Blind feel_location /
     // steed lead-through deferred (named in c-js-map turns).
+    // Fumbling ≡ Fumbling() H||E (D-0691/D-0696) — not sticky u.Fumbling.
     if (closed_door_at(newx, newy)) {
         if (!game.context) game.context = {};
         game.context.door_opened = false;
         // C: check !context.run BEFORE clearing run — rush must bump, not autoopen
         const autoopen = game.flags?.autoopen !== false;
-        const impaired = !!(u.Confusion || u.Stunned || u.Fumbling);
+        const impaired = !!(u.Confusion || u.Stunned || Fumbling());
         if (autoopen && !game.context.run && !impaired) {
             await doopen_indir(newx, newy);
             // C: door_opened = !closed_door; move = (pos changed) → usually 0.
@@ -1125,7 +1126,7 @@ async function domove(dx, dy) {
         if (newx === u.ux || newy === u.uy) {
             const Blind = !!(u.Blind || u.ublind
                 || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
-            if (Blind || u.Stunned || acurr(A_DEX) < 10 || u.Fumbling) {
+            if (Blind || u.Stunned || acurr(A_DEX) < 10 || Fumbling()) {
                 await pline('Ouch!  You bump into a door.');
                 exercise(A_DEX, false);
                 // C: door_opened = move = TRUE; nomul(0) stops running

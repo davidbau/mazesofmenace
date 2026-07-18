@@ -3,14 +3,14 @@
 //         hack.c overexertion; mon.c killed / xkilled / corpse_chance.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, d, rn1 } from './rng.js';
 import {
     IS_OBSTRUCTED, HMON_MELEE, HMON_THROWN, STRAT_WAITMASK,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
-    MIM_REVEAL, engulfing_u,
+    MIM_REVEAL, engulfing_u, OBJ_FREE,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
@@ -27,23 +27,24 @@ import { ammo_and_launcher } from './wield.js';
 import { PM_BARBARIAN } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, mhitm_knockback,
-    AT_NONE, AT_WEAP, AT_KICK, AT_CLAW,
+    AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AD_PHYS,
 } from './mhitm.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
-    bigmonst, thick_skinned, monsterNames, nonliving,
+    bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
 } from './mkobj.js';
-import { monnear, record_mvitals_died, seemimic, wakeup } from './mon.js';
+import { monnear, record_mvitals_died, seemimic, wakeup, setmangry } from './mon.js';
 import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { mon_explodes } from './explode.js';
 import { mon_nam, x_monnam_tame } from './do_name.js';
 import { artifact_hit, youmonst } from './artifact.js';
+import { xname, vtense } from './objnam.js';
 
 // C monflag.h — MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MZ_MEDIUM;
@@ -68,8 +69,47 @@ const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const TOWEL = objectNames.indexOf('TOWEL');
+const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
+const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 // C objclass.h ARM_SHIELD — armor oc_skill / oc_armcat
 const ARM_SHIELD = 1;
+
+/** C ref: hacklib.c s_suffix — local for cream-pie splash whom. */
+function s_suffix(s) {
+    if (!s) return s;
+    if (s === 'it' || s === 'It') return 'its';
+    if (s === 'you' || s === 'You') return 'your';
+    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
+        || s.endsWith('ch') || s.endsWith('sh')) {
+        return `${s}'`;
+    }
+    return `${s}'s`;
+}
+
+/**
+ * C ref: mondata.c can_blnd — cream pie / blinding venom AT_WEAP|AT_SPIT subset.
+ * Named omissions: mon_perma_blind; raven-vs-raven; Blindfolded/ublindf you
+ * arms; visored helmet scan; other aatyp (gaze/engl/claw).
+ */
+function can_blnd(magr, mdef, aatyp, obj) {
+    if (!haseyes(mdef?.data)) return false;
+    const is_you = mdef === game.youmonst;
+    if (aatyp === AT_WEAP || aatyp === AT_SPIT || aatyp === AT_NONE) {
+        const otyp = obj?.otyp | 0;
+        if (otyp === CREAM_PIE) {
+            // Blindfolded you-defense deferred
+            void is_you;
+        } else if (otyp === BLINDING_VENOM) {
+            // ublindf / ucreamed / visor deferred
+            void is_you;
+        } else {
+            return false;
+        }
+        if (magr === game.youmonst && game.u?.uswallow) return false;
+        return true;
+    }
+    return true;
+}
 
 /** C ref: zap.c exclam — punctuation by damage force. */
 function exclam(force) {
@@ -275,7 +315,7 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
  * quest leader/nemesis/guardian/priest/tame special adjalign arms,
  * artifact un-create on oversized.
  */
-async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
+export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
     const nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
     const noconduct = (xkill_flags & XKILL_NOCONDUCT) !== 0;
@@ -398,7 +438,50 @@ function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skill,
  * Hit pline: hmon_hitmon_msg_hit skips when destroyed (melee); thrown
  * multishot exception deferred.
  */
+/**
+ * C ref: uhitm.c hmon → hmon_hitmon.
+ * Thrown cream pie / blinding venom misc_obj arm (D-0693); melee weapon path.
+ */
 async function hmon(mon, obj, thrown, _dieroll) {
+    // C hmon_hitmon_misc_obj CREAM_PIE / BLINDING_VENOM before weapon dmg
+    if (obj && (obj.otyp === CREAM_PIE || obj.otyp === BLINDING_VENOM)) {
+        mon.msleeping = 0;
+        const aatyp = obj.otyp === BLINDING_VENOM ? AT_SPIT : AT_WEAP;
+        if (can_blnd(game.youmonst || youmonst, mon, aatyp, obj)) {
+            const Blind = !!(game.Blind || game.u?.Blind);
+            if (Blind) {
+                await pline(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+            } else if (obj.otyp === BLINDING_VENOM) {
+                await pline(
+                    `The venom blinds ${mon_nam(mon)}${mon.mcansee ? '' : ' further'}!`,
+                );
+            } else {
+                let whom = mon_nam(mon);
+                let what = xname(obj);
+                if (what) what = what.charAt(0).toUpperCase() + what.slice(1);
+                if (haseyes(mon.data) && (mon.mnum | 0) !== PM_FLOATING_EYE) {
+                    whom = `${s_suffix(whom)} face`;
+                }
+                await pline(`${what} ${vtense(what, 'splash')} over ${whom}!`);
+            }
+            setmangry(mon, true);
+            mon.mcansee = 0;
+            const blind_dmg = rn1(25, 21);
+            const sum = (mon.mblinded | 0) + blind_dmg;
+            mon.mblinded = sum > 127 ? 127 : sum;
+        } else {
+            await pline(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+            setmangry(mon, true);
+        }
+        // C: thrown → obfree (no obj_resists); melee useup deferred
+        if (thrown) {
+            obj.quan = 0;
+            obj.where = OBJ_FREE;
+        }
+        wakeup(mon, true);
+        return true; // mon alive (dmg forced 0)
+    }
+
     // C: hmd.twohits = thrown ? 0 : gt.twohits
     const twohits = thrown ? 0 : gt_twohits;
     let dmg = 0;
@@ -487,6 +570,8 @@ async function hmon(mon, obj, thrown, _dieroll) {
     }
     return true;
 }
+
+export { hmon };
 
 /**
  * C ref: uhitm.c known_hitum — missum or hmon; flee rn2(25) if survives low.

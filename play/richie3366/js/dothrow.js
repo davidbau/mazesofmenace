@@ -18,7 +18,7 @@ import {
     P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
     P_BOW, P_BOOMERANG,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
-    ACCFOOD,
+    ACCFOOD, HMON_THROWN, engulfing_u,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -36,11 +36,16 @@ import { xname, singular, an } from './objnam.js';
 import { m_at } from './mon.js';
 import { is_domestic } from './monsters.js';
 import { tamedog } from './dog.js';
+import { hmon } from './uhitm.js';
 
 const PM_MONKEY = monsterNames.indexOf('PM_MONKEY');
 const PM_APE = monsterNames.indexOf('PM_APE');
 const PM_LICHEN = monsterNames.indexOf('PM_LICHEN');
 const VEGGY = 3; // objclass.h
+const EGG = objectNames.indexOf('EGG');
+const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
+const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
+const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
 
 /** C ref: cmd.c cmdq_add_ec(CQ_CANNED, …) — shared with rhack via game._cmdq_canned */
 function cmdq_add_ec(fn) {
@@ -209,13 +214,30 @@ function befriend_with_obj(ptr, obj) {
 }
 
 /**
- * C ref: dothrow.c thitmonst food/treat arm — dieroll then befriend/dogfood
- * → tamedog. Weapon/gem/potion hit arms deferred.
- * @returns {boolean} true if obj was consumed
+ * C ref: dothrow.c thitmonst — mon-hit after bhit.
+ * Ported: dieroll; EGG/CREAM_PIE/VENOM DEX `rnd(25)` → hmon; food befriend.
+ * Deferred: weapon/gem/ball/boulder hit, potionhit, unicorn gems, leader catch,
+ * guaranteed_hit swallow arms, tmiss wakeup polish.
+ * @returns {boolean} true if obj was consumed / taken care of
  */
-async function thitmonst_food(mon, obj) {
-    // C: dieroll = rnd(20) before class branches (unused for food, still rolls)
-    rnd(20);
+async function thitmonst(mon, obj) {
+    const otyp = obj.otyp | 0;
+    const guaranteed_hit = engulfing_u(mon);
+    // C: dieroll = rnd(20) before class branches
+    const dieroll = rnd(20);
+
+    // weapon / weptool / gem / iron ball / boulder arms deferred
+
+    // C dothrow.c:2256 — pie/egg/venom hit vs DEX (or swallow)
+    if ((otyp === EGG || otyp === CREAM_PIE
+            || otyp === BLINDING_VENOM || otyp === ACID_VENOM)
+        && (guaranteed_hit || acurr(A_DEX) > rnd(25))) {
+        await hmon(mon, obj, HMON_THROWN, dieroll);
+        return true; // C: hmon used it up
+    }
+
+    // potionhit arm deferred (same DEX rnd(25) gate when reached)
+
     if (befriend_with_obj(mon.data, obj)
         || (mon.mtame && dogfood(mon, obj) <= ACCFOOD)) {
         if (await tamedog(mon, obj, true)) return true;
@@ -382,7 +404,7 @@ function breaktest(obj) {
 /**
  * C ref: zap.c bhit + dothrow.c throwit — fly along dx/dy; stop before
  * !ZAP_POS / closed door (bhit backs up one step), then place / breaktest.
- * Monster hit → thitmonst food/treat arm (D-0415); weapon hit deferred.
+ * Monster hit → thitmonst (D-0415 food; D-0693 pie/egg DEX); weapon deferred.
  */
 async function throwit(obj) {
     const u = game.u;
@@ -443,7 +465,7 @@ async function throwit(obj) {
         }
     }
     if (hitmon) {
-        if (await thitmonst_food(hitmon, obj)) return;
+        if (await thitmonst(hitmon, obj)) return;
         // miss / not consumed — fall through to place at mon cell
         x = hitmon.mx;
         y = hitmon.my;

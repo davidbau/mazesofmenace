@@ -2,21 +2,156 @@
 // C ref: timeout.c nh_timeout — once-per-turn intrinsic TIMEOUT decrement.
 
 import { game } from './gstate.js';
-import { TIMEOUT } from './const.js';
+import { TIMEOUT, FROMOUTSIDE, FUMBLING, FOOT, ICE, STRAT_WAITMASK } from './const.js';
 import { heal_legs } from './trap.js';
-import { stop_occupation } from './hack.js';
-import { run_timers } from './mkobj.js';
+import { stop_occupation, nomul, is_pool } from './hack.js';
+import { run_timers, objects_at } from './mkobj.js';
 import { make_confused } from './potion.js';
+import { Fumbling } from './attrib.js';
+import { pline } from './display.js';
+import { inv_weight } from './invent.js';
+import { doname, makeplural } from './objnam.js';
+import { rn2, rnd } from './rng.js';
+import { objectNames } from './objects.js';
+
+/** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
+const WT_NOISY_INV = 500;
+const ROCK = objectNames.indexOf('ROCK');
+
+/**
+ * C ref: mon.c wake_nearby — clear sleep/wait within ulevel*20.
+ * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
+ */
+function wake_nearby(_petcall) {
+    const u = game.u || {};
+    const x = u.ux | 0;
+    const y = u.uy | 0;
+    const distance = ((u.ulevel | 0) * 20) | 0;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || mtmp.mx == null) continue;
+        const dx = (mtmp.mx | 0) - x;
+        const dy = (mtmp.my | 0) - y;
+        if (distance === 0 || dx * dx + dy * dy < distance) {
+            mtmp.msleeping = 0;
+            if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+        }
+    }
+    void _petcall;
+}
+
+/** C ref: dbridge.c / rm.h is_ice — ICE terrain; drawbridge-under deferred. */
+function is_ice(x, y) {
+    return game.level?.at?.(x, y)?.typ === ICE;
+}
+
+/** C ref: mondata.c body_part — FOOT; full poly deferred. */
+function body_part(part) {
+    if (part === FOOT) return 'foot';
+    return 'body';
+}
+
+/**
+ * C ref: timeout.c slip_or_trip — fumble message + optional ice/mount arms.
+ * Envelope: floor-object trip (no RNG); ice/FROMOUTSIDE path with rn2(3);
+ * on_foot stumble `rn2(4)` messages. Named omissions: Hallu highc bite;
+ * corpse touch_petrifies; mounted rn2(4)+dismount_steed; ice hurtle/
+ * confdir/`rn2(10+DEX)`; PLNMSG_ONE_ITEM_HERE pronoun; Blind/dknown polish.
+ */
+async function slip_or_trip() {
+    const u = game.u || {};
+    const on_foot = !u.usteed;
+    let otmp = objects_at(u.ux | 0, u.uy | 0);
+    if (otmp && on_foot && !u.uinwater && is_pool(u.ux | 0, u.uy | 0)) {
+        otmp = null;
+    }
+
+    if (otmp && on_foot) {
+        // C: trip over particular floor object — no rn2(4)
+        let what;
+        if (otmp.dknown || !u.Blind) {
+            what = doname(otmp);
+        } else {
+            let rock = null;
+            for (let o = otmp; o; o = o.nexthere) {
+                if (o.otyp === ROCK) { rock = o; break; }
+            }
+            if (!rock) what = 'something';
+            else what = ((rock.quan | 0) === 1) ? 'a rock' : 'some rocks';
+        }
+        if (u.Hallucination) {
+            await pline(`Egads!  ${what} bites your ${body_part(FOOT)}!`);
+        } else {
+            await pline(`You trip over ${what}.`);
+        }
+        // touch_petrifies corpse arm deferred
+    } else if (((u.HFumbling | 0) & FROMOUTSIDE)
+        || (is_ice(u.ux | 0, u.uy | 0) && !rn2(3))) {
+        // Ice / FROMOUTSIDE slip — mounted dismount + hurtle deferred
+        const verb = rn2(2) ? 'slip' : 'slide';
+        const prep = is_ice(u.ux | 0, u.uy | 0) ? 'on' : 'off';
+        await pline(`You ${verb} ${prep} the ice.`);
+        // !on_foot dismount / !rn2(10+DEX) hurtle deferred (no further RNG here)
+    } else if (on_foot) {
+        // C: timeout.c:1302 switch (rn2(4))
+        switch (rn2(4)) {
+        case 1:
+            await pline(`You trip over your own ${
+                u.Hallucination ? 'elbow' : makeplural(body_part(FOOT))
+            }.`);
+            break;
+        case 2:
+            await pline(`You slip ${
+                u.Hallucination ? 'on a banana peel' : 'and nearly fall'
+            }.`);
+            break;
+        case 3:
+            await pline('You flounder.');
+            break;
+        default:
+            await pline('You stumble.');
+            break;
+        }
+    } else {
+        // Mounted saddle messages + dismount_steed deferred; still burn rn2(4)
+        rn2(4);
+    }
+}
+
+/**
+ * Sync flat HFumbling with uprops[FUMBLING].intrinsic (Boots_on mirror).
+ */
+function set_HFumbling(val) {
+    const u = game.u || (game.u = {});
+    u.HFumbling = val | 0;
+    if (!u.uprops) u.uprops = {};
+    const prop = u.uprops[FUMBLING] || (u.uprops[FUMBLING] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
+    prop.intrinsic = u.HFumbling;
+}
+
+/**
+ * C ref: potion.c incr_itimeout — add to TIMEOUT field only.
+ */
+function incr_itimeout_HFumbling(incr) {
+    const u = game.u || {};
+    const cur = (u.HFumbling | 0) | (u.uprops?.[FUMBLING]?.intrinsic | 0);
+    let val = (cur & TIMEOUT) + (incr | 0);
+    if (val > TIMEOUT) val = TIMEOUT;
+    set_HFumbling((cur & ~TIMEOUT) | (val & TIMEOUT));
+}
 
 /**
  * C ref: timeout.c nh_timeout — decrement timed intrinsics; on TIMEOUT
  * expiry run property-specific handlers.
  * Envelope: WOUNDED_LEGS → heal_legs(0) + stop_occupation;
- * CONFUSION → set_itimeout(1) + make_confused(0,TRUE) + stop_occupation.
+ * CONFUSION → set_itimeout(1) + make_confused(0,TRUE) + stop_occupation;
+ * FUMBLING → slip_or_trip + nomul(-2) + incr_itimeout rnd(20) (D-0692).
  * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues; FAST/
  * STUNNED/BLINDED/DEAF/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… cases;
  * Glib; ublesscnt (in allmain); mtimedone; usptime; ugallop; delayed
- * killers; uinvulnerable early return polish.
+ * killers; uinvulnerable early return polish; defer_decor; full ice/
+ * mount slip_or_trip arms.
  */
 export async function nh_timeout() {
     const u = game.u || (game.u = {});
@@ -49,6 +184,35 @@ export async function nh_timeout() {
             if (!(u.HConfusion | 0) && !(u.Confusion | 0)) {
                 await stop_occupation();
             }
+        }
+    }
+
+    // C case FUMBLING — timeout.c:902
+    const hf = (u.HFumbling | 0) | (u.uprops?.[FUMBLING]?.intrinsic | 0);
+    if (hf & TIMEOUT) {
+        const next = hf - 1;
+        set_HFumbling(next);
+        if (!(next & TIMEOUT)) {
+            // C: if (u.umoved && !(Levitation || Flying))
+            if (u.umoved && !(u.Levitation || u.Flying)) {
+                await slip_or_trip();
+                nomul(-2);
+                game.multi_reason = 'fumbling';
+                game.nomovemsg = '';
+                // C: inv_weight() > (WT_NOISY_INV * -1)
+                if (inv_weight() > -WT_NOISY_INV) {
+                    if (!(u.HDeaf | u.Deaf)) {
+                        await pline('You make a lot of noise!');
+                    }
+                    wake_nearby(false);
+                }
+            }
+            // C: HFumbling &= ~FROMOUTSIDE; if (Fumbling) incr_itimeout rnd(20)
+            set_HFumbling((u.HFumbling | 0) & ~FROMOUTSIDE);
+            if (Fumbling()) {
+                incr_itimeout_HFumbling(rnd(20));
+            }
+            // defer_decor deferred
         }
     }
 

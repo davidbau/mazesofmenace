@@ -45,6 +45,7 @@ import { doname } from './objnam.js';
 import { compactify_invlets, near_capacity } from './invent.js';
 import { can_reach_floor } from './engrave.js';
 import { pickup } from './pickup.js';
+import { Fumbling } from './attrib.js';
 import {
     welded, setuwep, setuswapwep, setuqwep,
 } from './wield.js';
@@ -555,7 +556,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             } else if (
                 near_capacity() > UNENCUMBERED
                 || u.Punished
-                || u.Fumbling
+                // C: youprop.h Fumbling ≡ HFumbling || EFumbling (not sticky bool)
+                || Fumbling()
             ) {
                 await pline(atLadder
                     ? 'You fall down the ladder.'

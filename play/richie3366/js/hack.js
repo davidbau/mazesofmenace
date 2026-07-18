@@ -405,12 +405,17 @@ export async function unmul(msg_override) {
     game.multi = 0;
     let msg = msg_override;
     if (msg === undefined) msg = null;
+    // C: if (msg_override) gn.nomovemsg = msg_override;
+    //    else if (!gn.nomovemsg) gn.nomovemsg = You_can_move_again;
+    //    if (*gn.nomovemsg) pline(...);
+    // Pointer NULL vs "" — fumbling sets nomovemsg="" (timeout.c) so unmul
+    // must NOT treat empty string as missing (JS !"" would wrongly default).
     if (msg != null) game.nomovemsg = msg;
-    else if (!game.nomovemsg) game.nomovemsg = 'You can move again.';
-    if (game.nomovemsg) {
-        if (game.nomovemsg.length) await pline(game.nomovemsg);
-        game.nomovemsg = null;
+    else if (game.nomovemsg == null) game.nomovemsg = 'You can move again.';
+    if (game.nomovemsg != null && game.nomovemsg.length) {
+        await pline(game.nomovemsg);
     }
+    game.nomovemsg = null;
     game.multi_reason = null;
     const f = game.afternmv;
     game.afternmv = null;

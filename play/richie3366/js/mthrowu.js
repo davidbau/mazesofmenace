@@ -5,14 +5,14 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    distmin, m_at, m_carrying, record_mvitals_died, seemimic,
+    distmin, m_at, m_carrying, seemimic,
 } from './mon.js';
 import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
     POTHIT_MONST_THROW, POTHIT_OTHER_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
     M_AP_NOTHING, M_AP_MONSTER, u_at, P_NONE,
-    DISP_FLASH, DISP_END,
+    DISP_FLASH, DISP_END, XKILL_NOMSG,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import {
@@ -23,7 +23,8 @@ import {
     MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval, hitval,
     should_mulch_missile,
 } from './weapon.js';
-import { find_mac } from './mhitm.js';
+import { find_mac, mondied } from './mhitm.js';
+import { xkilled } from './uhitm.js';
 import { ammo_and_launcher, is_launcher } from './wield.js';
 import { acurr, A_DEX, A_STR, exercise } from './attrib.js';
 import { calc_capacity } from './invent.js';
@@ -335,27 +336,12 @@ async function hit(str, mtmp, force) {
 }
 
 /**
- * C ref: mon.c mondead — remove from fmon; corpse/relobj deferred.
- */
-function ohitmon_mondead(mtmp) {
-    mtmp.mhp = 0;
-    const mx = mtmp.mx;
-    const my = mtmp.my;
-    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
-    if (game.fmon) {
-        const i = game.fmon.indexOf(mtmp);
-        if (i >= 0) game.fmon.splice(i, 1);
-    }
-    if (mx > 0) newsym(mx, my);
-}
-
-/**
  * C ref: mthrowu.c ohitmon — missile hits another monster.
  * Returns true if missile is done (stop flight); false to keep going.
  *
  * Named omissions: shade_miss (caller); distant_name/mshot_xname;
  * spec_abon; stone_missile/passes_rocks; poison/silver/acid/egg
- * petrify; can_blnd; setmangry; xkilled treasure; corpse_chance;
+ * petrify; can_blnd; setmangry; vampshifter destroy verb;
  * mon_notices unfreeze in omon_adj.
  */
 export async function ohitmon(mtmp, otmp, range, verbose) {
@@ -434,8 +420,16 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
                     ? 'destroyed' : 'killed';
                 await pline(`${Monnam(mtmp)} is ${verb}!`);
             }
-            // C: mon_moving → mondied (corpse_chance deferred)
-            ohitmon_mondead(mtmp);
+            // C: !mon_moving && (otyp!=BOULDER || range>=0 || otrapped)
+            //    → xkilled(NOMSG); else mondied (corpse_chance)
+            if (!game.context?.mon_moving
+                && ((otmp.otyp | 0) !== BOULDER
+                    || (range | 0) >= 0
+                    || otmp.otrapped)) {
+                await xkilled(mtmp, XKILL_NOMSG);
+            } else {
+                await mondied(mtmp);
+            }
         }
     }
 

@@ -4,26 +4,31 @@
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import {
-    COLNO, ROWNO, STONE, ROOM, CORR, SDOOR, DOOR, STAIRS, FOUNTAIN, ALTAR,
+    COLNO, ROWNO, STONE, ROOM, CORR, SDOOR, DOOR, STAIRS, FOUNTAIN, SINK, ALTAR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
 } from './const.js';
 import {
-    NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_CYAN, CLR_WHITE, CLR_YELLOW,
+    NO_COLOR, CLR_RED, CLR_GRAY, CLR_BROWN, CLR_MAGENTA, CLR_CYAN, CLR_WHITE, CLR_YELLOW,
     CLR_BRIGHT_BLUE,
     DEC_TO_UNICODE,
 } from './terminal.js';
-import { LARGE_BOX, CHEST, GOLD_PIECE, FOOD_RATION } from './object_data.js';
+import {
+    LARGE_BOX, CHEST, GOLD_PIECE, FOOD_RATION, CORPSE, TOWEL,
+} from './object_data.js';
 
 const OBJECT_SYMBOLS = ['', ']', ')', '[', '=', '"', '(', '%', '!', '?',
     '+', '/', '$', '*', '`', '0', '_', '.'];
 
 function objectColor(object) {
     if (Number.isInteger(object?.color)) return object.color;
+    if (object?.otyp === CORPSE && object?.corpsenm === 20) return CLR_RED;
+    if (object?.otyp === TOWEL) return CLR_MAGENTA;
     if (object?.otyp === LARGE_BOX || object?.otyp === CHEST) return CLR_BROWN;
     if (object?.otyp === FOOD_RATION) return CLR_BROWN;
     if (object?.otyp === GOLD_PIECE) return CLR_YELLOW;
+    if (object?.oclass === 5) return CLR_CYAN; // amulets use HI_METAL
     // Most ordinary weapons use HI_METAL in objects.h.  Other object classes
     // remain neutral until their generated color metadata is ported.
     return object?.oclass === 2 ? CLR_CYAN : CLR_GRAY;
@@ -53,7 +58,7 @@ const ANSI_COLOR = [
 ];
 
 // ── Terrain to display character + color + DEC flag ──
-function terrain_glyph(loc, x, y) {
+export function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
     const dec = /^DECgraphics$/i.test(game.symset || '');
     switch (typ) {
@@ -85,6 +90,7 @@ function terrain_glyph(loc, x, y) {
             return { ch: '<', color: CLR_YELLOW, dec: false };
         return { ch: '>', color: CLR_YELLOW, dec: false };
     case FOUNTAIN:   return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case SINK:       return { ch: '{', color: CLR_WHITE, dec: false };
     case ALTAR:      return { ch: '_', color: NO_COLOR, dec: false };
     // Wall types → DEC line-drawing characters
     case HWALL:     return dec ? { ch: 'q', color: NO_COLOR, dec: true } : { ch: '-', color: NO_COLOR, dec: false };
@@ -129,7 +135,9 @@ export function newsym(x, y) {
     const monster = game.level?.monsters?.find(mon => mon.mx === x && mon.my === y);
     if (monster && cansee(x, y)) {
         show_glyph_cell(x, y, monster.symbol || '?',
-            monster.pet ? CLR_WHITE : (monster.color ?? CLR_GRAY), false);
+            monster.pet ? CLR_WHITE
+                : monster.mnum === 116 ? CLR_MAGENTA
+                    : (monster.color ?? CLR_GRAY), false);
         return;
     }
 

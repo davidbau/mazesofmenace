@@ -103,6 +103,7 @@ import { find_level } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import { create_gas_cloud, clear_regions } from './region.js';
 import { ndemon } from './minion.js';
+import { readobjnam } from './readobjnam.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -6301,6 +6302,25 @@ function splev_resolve_occupied(x, y, pm) {
     return { x, y };
 }
 
+/** C ref: mondata.h your_race — (ptr->mflags2 & urace.selfmask) != 0 */
+function your_race(ptr) {
+    const mask = game.urace?.selfmask ?? 0;
+    return !!(ptr && mask && ((ptr.mflags2 ?? 0) & mask));
+}
+
+/**
+ * C ref: sp_lev.c create_monster — In_mines && your_race && (dwarf|gnome)
+ * && rn2(3) → clear pm (random monster placement instead).
+ */
+function splev_mines_maybe_clear_your_race(pm) {
+    if (In_mines(game.u?.uz) && pm && your_race(pm)
+        && (game.urace?.mnum === PM_DWARF || game.urace?.mnum === PM_GNOME)
+        && rn2(3)) {
+        return null;
+    }
+    return pm;
+}
+
 // C ref: sp_lev.c create_monster — sp_amask_to_amask before mkclass / makemon
 // optional peaceful (> BOOL_RANDOM) overrides after makemon (quest fills).
 function splev_create_monster(id_or_class, peaceful) {
@@ -6320,6 +6340,7 @@ function splev_create_monster(id_or_class, peaceful) {
         const mlet = monclass_letter_to_mlet(id_or_class);
         pm = mlet ? mkclass(mlet, G_NOGEN) : null;
     }
+    pm = splev_mines_maybe_clear_your_race(pm);
     // C: pm_to_humidity then get_location_coord(loc|NO_LOC_WARN); on fail |= DRY
     // get_location_coord itself retries get_location once on random miss.
     let pos;
@@ -6455,6 +6476,7 @@ function splev_room_monster(croom, id_or_class, peaceful) {
         const mlet = monclass_letter_to_mlet(id_or_class);
         pm = mlet ? mkclass(mlet, G_NOGEN) : null;
     }
+    pm = splev_mines_maybe_clear_your_race(pm);
     let pos;
     if (pm) {
         let loc = pm_to_humidity(pm);
@@ -8107,6 +8129,13 @@ const THEMEROOM_MAPS = {
             filler_region(1, 1);
         },
     },
+    // C ref: themerms.lua 'Water-surrounded vault' — moat map + region/chests/undead
+    'Water-surrounded vault': {
+        map: '}}}}}}\n}----}\n}|..|}\n}|..|}\n}----}\n}}}}}}',
+        contents() {
+            water_vault_contents();
+        },
+    },
 };
 
 // C ref: nhlua.c char2typ[] / splev_chr2typ() — first match wins ('-' → HWALL).
@@ -8945,6 +8974,102 @@ function filler_region(rel_x, rel_y) {
     return true;
 }
 
+/**
+ * C ref: themerms.lua Water-surrounded vault des.region —
+ * type=themed irregular filled=0 joined=false at map-relative (3,3).
+ */
+function water_vault_region(rel_x, rel_y) {
+    const g = game;
+    const ax = (g.splev_xstart ?? 1) + rel_x;
+    const ay = (g.splev_ystart ?? 0) + rel_y;
+    const rlit = litstate_rnd(-1);
+    if (g.level.nroom >= MAXNROFROOMS) return false;
+    const bounds = {
+        min_rx: ax, max_rx: ax, min_ry: ay, max_ry: ay,
+    };
+    const rmno = g.level.nroom + ROOMOFFSET;
+    if (g.smeq) g.smeq[g.level.nroom] = g.level.nroom;
+    flood_fill_rm(ax, ay, rmno, rlit, true, bounds);
+    add_room(bounds.min_rx, bounds.min_ry, bounds.max_rx, bounds.max_ry,
+        false, THEMEROOM, true);
+    const troom = g.level.rooms[g.level.nroom - 1];
+    if (troom) {
+        troom.rlit = rlit ? 1 : 0;
+        troom.irregular = true;
+        troom.needjoining = false;
+        troom.needfill = 0;
+        add_doors_to_room(troom);
+    }
+    return true;
+}
+
+/**
+ * C ref: themerms.lua Water-surrounded vault map contents —
+ * region + escape-item chest + undead + teleport exclusion.
+ * Named omissions: none for this room body (glass unlock via oc_material).
+ */
+function water_vault_contents() {
+    const g = game;
+    const mx = g.splev_xstart ?? 1;
+    const my = g.splev_ystart ?? 0;
+
+    // des.region({ region={3,3,3,3}, type="themed", irregular=true,
+    //              filled=0, joined=false })
+    water_vault_region(3, 3);
+
+    const nasty_undead = ['giant zombie', 'ettin zombie', 'vampire lord'];
+    const chest_spots = [[2, 2], [3, 2], [2, 3], [3, 3]];
+    nhlib_shuffle(chest_spots);
+
+    // C: math.random(#escape_items) → 1+rn2(4); Lua 1-based index
+    const escape_items = [
+        'scroll of teleportation', 'ring of teleportation',
+        'wand of teleportation', 'wand of digging',
+    ];
+    const itm = readobjnam(escape_items[rn2(4)], null);
+    const GLASS = 19; // C materials.h
+    const isGlass = !!(itm && (g.objects?.[itm.otyp]?.oc_material === GLASS));
+
+    {
+        const [rx, ry] = chest_spots[0];
+        const box = mksobj_at(CHEST, mx + rx, my + ry, true, true);
+        if (box) {
+            // C create_object: olocked=0 when locked opt is "no"
+            if (isGlass) box.olocked = 0;
+            if (itm && !itm._hands_obj && !itm._nothing_obj) {
+                obj_extract_self(itm);
+                add_to_container(box, itm);
+                box.owt = weight(box);
+            }
+        }
+    }
+    for (let i = 1; i < chest_spots.length; i++) {
+        const [rx, ry] = chest_spots[i];
+        mksobj_at(CHEST, mx + rx, my + ry, true, true);
+    }
+
+    nhlib_shuffle(nasty_undead);
+    // des.monster(nasty_undead[1], 2, 2) — map-relative
+    {
+        const r = find_montype_gender(nasty_undead[0]);
+        induced_align(80);
+        let x = mx + 2;
+        let y = my + 2;
+        const pm = (r.mndx >= 0 && r.mndx !== NON_PM) ? mons(r.mndx) : null;
+        ({ x, y } = splev_resolve_occupied(x, y, pm));
+        const mtmp = makemon(pm, x, y, 0);
+        if (mtmp) mtmp.female = r.female;
+    }
+
+    // des.exclusion({ type="teleport", region={2,2,3,3} })
+    g.exclusion_zones = {
+        zonetype: LR_TELE,
+        lx: mx + 2, ly: my + 2,
+        hx: mx + 3, hy: my + 3,
+        next: g.exclusion_zones || null,
+    };
+}
+
 // C ref: nhlib.lua shuffle() — Fisher–Yates with math.random(i)=1+rn2(i)
 function nhlib_shuffle(list) {
     for (let i = list.length; i >= 2; i--) {
@@ -9161,8 +9286,8 @@ async function themerooms_generate(difficulty) {
         }
         // Named omission: Room-in-room nested create_subroom/door; Fake Delphi /
         // Huge / Nesting / Mausoleum / Twin nested bodies; Pillars terrain;
-        // Random-feature center terrain. Water vault is map-path. Blocked
-        // center map+replace_terrain done (D-0243).
+        // Random-feature center terrain. Water vault map+contents done (D-0690).
+        // Blocked center map+replace_terrain done (D-0243).
 
         // C build_room: chance defaults to 100 → always burns rn2(100)
         // (after contents arg RNG such as Nesting rn2(4) size rolls)

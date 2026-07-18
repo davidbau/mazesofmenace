@@ -821,7 +821,9 @@ function mergable(a, b) {
     return true;
 }
 
-// C ref: invent.c assigninvlet()
+// C ref: invent.c assigninvlet() — keep existing a-z/A-Z letter when free
+// (e.g. steal → freeinv → later addinv of the same obj). Named omissions:
+// display_used_invlets; NOINVSYM edge polish when pack full.
 function assigninvlet(otmp) {
     if (otmp.oclass === COIN_CLASS) {
         otmp.invlet = GOLD_SYM;
@@ -835,6 +837,16 @@ function assigninvlet(otmp) {
             const c = i.charCodeAt(0);
             if (c >= 97 && c <= 122) inuse[c - 97] = true;
             else if (c >= 65 && c <= 90) inuse[c - 65 + 26] = true;
+            // C: if another invent item holds otmp's letter, clear it
+            if (i === otmp.invlet) otmp.invlet = 0;
+        }
+    }
+    // C: preserve prior letter when still a free a-z/A-Z slot
+    {
+        const ilet = otmp.invlet;
+        if (typeof ilet === 'string' && ilet.length === 1) {
+            const c = ilet.charCodeAt(0);
+            if ((c >= 97 && c <= 122) || (c >= 65 && c <= 90)) return;
         }
     }
     let last = game._lastinvnr ?? 51;

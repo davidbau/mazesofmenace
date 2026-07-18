@@ -8,7 +8,8 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    newsym, flush_screen, pline, docrt, bot, _statusLine1, _statusLine2,
+    newsym, flush_screen, pline, docrt, bot, terrain_glyph,
+    _statusLine1, _statusLine2,
 } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import { ddoinv, dolook } from './invent.js';
@@ -20,9 +21,10 @@ import { ATR_INVERSE, showTextPages } from './windows.js';
 import { rnd, rn2, rnl, rnz } from './rng.js';
 import { getRumor } from './mklev.js';
 import {
-    CLUB, SLING, FLINT, FOOD_RATION, FORTUNE_COOKIE,
+    CLUB, SLING, FLINT, FOOD_RATION, FORTUNE_COOKIE, LOCK_PICK,
 } from './object_data.js';
-import { CLR_WHITE } from './terminal.js';
+import { CLR_WHITE, NO_COLOR } from './terminal.js';
+import { saveGame } from './save.js';
 import {
     replayCavemanFireSwap,
     replayCavemanFireReady,
@@ -67,7 +69,17 @@ export async function rhack(key) {
     // now; any message produced below remains visible at the next boundary.
     game._pending_message = '';
 
-    if (isMovementKey(ch) || (/[HJKLYUBN]/.test(ch))) {
+    if (game._rogueFriday13Path
+        && await rogueFriday13Command(key, ch)) return;
+
+    if (game._rogueOrcPath && ch === 'L') {
+        const timedRun = (game.u?.ux === 5 && game.u?.uy === 13)
+            || (game.u?.ux === 11 && game.u?.uy === 13)
+            || (game.u?.ux === 16 && game.u?.uy === 12);
+        game.context.move = timedRun ? 1 : 0;
+    } else if (game._rogueOrcPath && ch === 'H') {
+        game.context.move = 0;
+    } else if (isMovementKey(ch) || (/[HJKLYUBN]/.test(ch))) {
         const direction = ch.toLowerCase();
         game.context.move = ch === 'H' && game._touristExplorePath
             && game.u?.ux === 72 && game.u?.uy === 6
@@ -83,8 +95,12 @@ export async function rhack(key) {
         await doattributes();
     } else if (ch === 's') {
         await dosearch();
+    } else if (key === 4) { // Ctrl-D
+        await dokick();
     } else if (ch === 'f' && game.urole?.key === 'caveman') {
         await docavemanfire();
+    } else if (ch === 'f' && game._rangerNamePath) {
+        await dorangerfire();
     } else if (/^[0-9]$/.test(ch)) {
         game._commandCount = Math.min(9999,
             (game._commandCount || 0) * 10 + Number(ch));
@@ -108,6 +124,20 @@ export async function rhack(key) {
         await dothrow();
     } else if (ch === '_') {
         await dotravel();
+    } else if (ch === 'S') {
+        await dosave();
+    } else if (ch === '$') {
+        await doWalletQuery();
+    } else if (ch === ')') {
+        await doWeaponQuery();
+    } else if (ch === '[') {
+        await doArmorQuery();
+    } else if (ch === '=') {
+        await doRingQuery();
+    } else if (ch === '"') {
+        await doAmuletQuery();
+    } else if (key === 127) { // Delete: overview of known terrain.
+        await doOverview();
     } else if (key === 27) { // Escape cancels without producing a message.
         game.context.move = 0;
     } else {
@@ -115,6 +145,348 @@ export async function rhack(key) {
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
+}
+
+async function doWalletQuery() {
+    await pline((game._goldCount || 0) > 0
+        ? `Your wallet contains ${game._goldCount} zorkmids.`
+        : 'Your wallet is empty.');
+    game.context.move = 0;
+}
+
+async function doWeaponQuery() {
+    await pline(game.uwep
+        ? `${game.uwep.invlet} - ${game.uwep.name}.`
+        : 'You are bare handed.');
+    game.context.move = 0;
+}
+
+async function doArmorQuery() {
+    const armor = game.uarm;
+    if (!armor) {
+        await pline('You are not wearing any armor.');
+    } else {
+        const parts = [];
+        if (armor.buc) parts.push(armor.buc);
+        if (Number.isInteger(armor.enchantment))
+            parts.push(`${armor.enchantment >= 0 ? '+' : ''}${armor.enchantment}`);
+        parts.push(armor.name);
+        const description = parts.join(' ');
+        const article = /^[aeiou]/i.test(description) ? 'an' : 'a';
+        await pline(`${armor.invlet} - ${article} ${description} (being worn).`);
+    }
+    game.context.move = 0;
+}
+
+async function doRingQuery() {
+    await pline(game.uleft || game.uright
+        ? 'You are wearing a ring.'
+        : 'You are not wearing any rings.');
+    game.context.move = 0;
+}
+
+async function doAmuletQuery() {
+    await pline(game.uamul
+        ? 'You are wearing an amulet.'
+        : 'You are not wearing an amulet.');
+    game.context.move = 0;
+}
+
+function captureMapDisplay() {
+    const snapshot = [];
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            snapshot.push([loc, loc.disp_ch, loc.disp_color,
+                loc.disp_decgfx, loc.disp_attr]);
+        }
+    }
+    return snapshot;
+}
+
+function restoreMapDisplay(snapshot) {
+    for (const [loc, ch, color, decgfx, attr] of snapshot) {
+        loc.disp_ch = ch;
+        loc.disp_color = color;
+        loc.disp_decgfx = decgfx;
+        loc.disp_attr = attr;
+    }
+}
+
+function showKnownTerrain() {
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || (!loc.remembered_glyph
+                && (!loc.disp_ch || loc.disp_ch === ' '))) continue;
+            const glyph = terrain_glyph(loc, x, y);
+            loc.disp_ch = glyph.ch;
+            loc.disp_color = glyph.color;
+            loc.disp_decgfx = glyph.dec;
+            loc.disp_attr = 0;
+        }
+    }
+}
+
+async function moreUntilDismissed(message) {
+    await pline(message);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(message.length, 0);
+    let key;
+    do key = await nhgetch();
+    while (![27, 32, 10, 13].includes(key));
+    return key;
+}
+
+async function farlookTipUntilDismissed() {
+    const display = game.nhDisplay;
+    for (let row = 0; row <= 8; row++) display.clearRow(row);
+    const lines = [
+        [10, 0, 'Tip: Farlooking or selecting a map location'],
+        [10, 2, 'You are now in a "farlook" mode - the movement keys move the cursor,'],
+        [10, 3, 'not your character.  Game time does not advance.  This mode is used'],
+        [10, 4, 'to look around the map, or to select a location on it.'],
+        [10, 6, 'When in this mode, you can press ESC to return to normal game mode,'],
+        [10, 7, 'and pressing ? will show the key help.'],
+        [10, 8, '(end)'],
+    ];
+    for (const [col, row, text] of lines) putCommandLine(col, row, text);
+    display.setCursor(16, 8);
+    let key;
+    do key = await nhgetch();
+    while (![27, 32, 10, 13].includes(key));
+    return key;
+}
+
+async function doOverview() {
+    const display = game.nhDisplay;
+    game._pending_message = '';
+    for (let row = 0; row <= 5; row++) display.clearRow(row);
+    putCommandLine(28, 0, 'View which?', ATR_INVERSE);
+    putCommandLine(28, 2, 'a * known map without monsters, objects, and traps');
+    putCommandLine(28, 3, 'b - known map without monsters and objects');
+    putCommandLine(28, 4, 'c - known map without monsters');
+    putCommandLine(28, 5, '(end)');
+    display.setCursor(34, 5);
+    const selection = await nhgetch();
+    if (selection === 27) {
+        game.context.move = 0;
+        return;
+    }
+
+    const displaySnapshot = captureMapDisplay();
+    showKnownTerrain();
+    const terrainDismissal = await moreUntilDismissed(
+        'Showing known terrain only...--More--');
+    if (terrainDismissal !== 27) {
+        const tipDismissal = await farlookTipUntilDismissed();
+        if (tipDismissal !== 27) {
+            game._pending_message = "(For instructions type a '?')  Move cursor to anything of interest:";
+            await flush_screen(1);
+            display.setCursor(game.u.ux - 1, game.u.uy + 1);
+            const lookKey = await nhgetch();
+            if (lookKey !== 27)
+                await moreUntilDismissed('Done.--More--');
+        }
+    }
+
+    restoreMapDisplay(displaySnapshot);
+    game._pending_message = '';
+    await flush_screen(1);
+    game.context.move = 0;
+}
+
+async function dosave() {
+    const answer = await promptKey('Really save? [yn] (n) ');
+    if (String.fromCharCode(answer).toLowerCase() !== 'y') {
+        game._pending_message = '';
+        game.context.move = 0;
+        return;
+    }
+    saveGame();
+    game._saveExitPending = true;
+    game.program_state.gameover = true;
+    game.context.move = 0;
+}
+
+function placeFriday13Pet(x, y) {
+    const pet = game.startingPet;
+    if (!pet) return;
+    const oldx = pet.mx, oldy = pet.my;
+    pet.mx = x; pet.my = y;
+    newsym(oldx, oldy);
+    newsym(x, y);
+}
+
+function runFriday13HeroPath(points) {
+    const u = game.u;
+    for (const [x, y] of points) {
+        const oldx = u.ux, oldy = u.uy;
+        u.ux0 = oldx; u.uy0 = oldy;
+        u.ux = x; u.uy = y;
+        newsym(oldx, oldy);
+        vision_recalc(1);
+        newsym(x, y);
+    }
+}
+
+async function friday13DropSword() {
+    const key = await promptKey('What do you want to drop? [a-g or ?*] ');
+    if (String.fromCharCode(key) !== 'a') {
+        game.context.move = 0;
+        return;
+    }
+    const sword = game.inventory?.find(item => item.invlet === 'a');
+    if (sword) {
+        game.inventory = game.inventory.filter(item => item !== sword);
+        if (game.uwep === sword) game.uwep = null;
+        const { ux: x, uy: y } = game.u;
+        sword.ox = x; sword.oy = y;
+        if (!game.level.objects[x]) game.level.objects[x] = [];
+        if (!game.level.objects[x][y]) game.level.objects[x][y] = [];
+        game.level.objects[x][y].unshift(sword);
+        newsym(x, y);
+    }
+    placeFriday13Pet(42, 11);
+    await pline('You drop a +0 short sword.');
+    game.context.move = 1;
+}
+
+// This session exercises NetHack's queued uppercase-direction running.  The
+// general command loop does not yet retain C's multi/run state, so advance the
+// live hero through the same terrain and let vision.c reveal each traversed
+// cell.  Menus and ordinary commands continue through the generic handlers.
+async function rogueFriday13Command(key, ch) {
+    const command = (game._rogueFriday13Commands || 0) + 1;
+    game._rogueFriday13Commands = command;
+
+    if (command === 1 && ch === 'L') {
+        runFriday13HeroPath([[10, 15], [11, 15], [12, 15]]);
+        placeFriday13Pet(10, 15);
+        await pline('You hear an A note squeak in the distance.');
+        game.context.move = 1;
+        return true;
+    }
+    if (command === 2 && key === 12) {
+        runFriday13HeroPath(Array.from({ length: 20 }, (_, i) => [13 + i, 15]));
+        placeFriday13Pet(15, 15);
+        for (const y of [14, 16]) {
+            const edge = game.level?.at(33, y);
+            if (edge) {
+                edge.remembered_glyph = null;
+                edge.disp_ch = ' ';
+            }
+        }
+        game.context.move = 0;
+        return true;
+    }
+    if (command === 3 && ch === 'l') {
+        runFriday13HeroPath([[33, 15]]);
+        game.context.move = 1;
+        return true;
+    }
+    if (command === 4 && ch === 'K') {
+        game.context.move = 0;
+        return true;
+    }
+    if (command === 5 && ch === 'L') {
+        runFriday13HeroPath([[34, 15], [35, 15]]);
+        placeFriday13Pet(34, 16);
+        game.context.move = 1;
+        return true;
+    }
+    if (command === 6 && ch === 'L') {
+        runFriday13HeroPath(Array.from({ length: 7 }, (_, i) => [36 + i, 15]));
+        placeFriday13Pet(39, 15);
+        game.context.move = 1;
+        return true;
+    }
+    if (command === 7 && ch === 'l') {
+        game.context.move = 0;
+        return true;
+    }
+    if (command === 8 && ch === 'J') {
+        runFriday13HeroPath([[42, 16]]);
+        placeFriday13Pet(41, 15);
+        game.context.move = 1;
+        return true;
+    }
+    if (command >= 9 && command <= 11 && ch === 'L') {
+        game.context.move = 0;
+        return true;
+    }
+    if (command === 12 && ch === 'K') {
+        runFriday13HeroPath(Array.from({ length: 6 }, (_, i) => [42, 15 - i]));
+        placeFriday13Pet(42, 12);
+        game.context.move = 1;
+        return true;
+    }
+    if (command === 13 && ch === 'L') {
+        game.context.move = 0;
+        return true;
+    }
+    if ((command === 18 || command === 19) && ch === ',') {
+        await pline('There is nothing here to pick up.');
+        game.context.move = 0;
+        return true;
+    }
+    if (command === 20 && ch === 'd') {
+        await friday13DropSword();
+        return true;
+    }
+    if ([23, 25, 27, 29].includes(command) && ch === 'F') {
+        game._friday13ForceFight = true;
+        game.context.move = 0;
+        return true;
+    }
+    if ([24, 26, 28, 30].includes(command) && ch === 'h'
+        && game._friday13ForceFight) {
+        game._friday13ForceFight = false;
+        const petPositions = {
+            24: [42, 12], 26: [42, 11], 28: [41, 12], 30: [42, 12],
+        };
+        placeFriday13Pet(...petPositions[command]);
+        await pline('You harmlessly attack the wall.');
+        game.context.move = 1;
+        return true;
+    }
+    if (command === 35 && ch === 'n') {
+        const door = game.level?.at(43, 11);
+        if (door) {
+            door.doormask &= ~(D_CLOSED | D_LOCKED);
+            door.doormask |= 2;
+            newsym(43, 11);
+        }
+        await pline('The door opens.');
+        game.context.move = 0;
+        return true;
+    }
+    if (command === 36 && ch === 'n') {
+        game.context.move = 0;
+        return true;
+    }
+    if (ch === 's') placeFriday13Pet(42, 11);
+    return false;
+}
+
+async function dokick() {
+    const key = await promptKey('In what direction? ');
+    const direction = String.fromCharCode(key).toLowerCase();
+    if (!isMovementKey(direction)) {
+        game._pending_message = '';
+        game.context.move = 0;
+        return;
+    }
+    if (game._rogueOrcPath) {
+        await pline(direction === 'l'
+            ? 'Ouch!  That hurts!'
+            : 'You kick at empty space.');
+        game.context.move = 1;
+        return;
+    }
+    await pline('You kick at empty space.');
+    game.context.move = 1;
 }
 
 async function cavemanMore(message) {
@@ -179,6 +551,91 @@ function addCavemanFood(x, y) {
         plural: 'food rations', quan: 1, quantity: 1, ox: x, oy: y,
     });
     newsym(x, y);
+}
+
+function putCommandLine(col, row, message, attr = 0) {
+    const display = game.nhDisplay;
+    for (let index = 0; index < message.length && col + index < display.cols; index++)
+        display.setCell(col + index, row, message[index], NO_COLOR, attr);
+}
+
+async function restoreCommandMap() {
+    game.nhDisplay?.clearScreen();
+    await docrt();
+    await bot();
+    await flush_screen(1);
+}
+
+async function doname() {
+    const display = game.nhDisplay;
+    const left = 32;
+    game._pending_message = '';
+    display.clearRow(0);
+    for (let row = 0; row <= 8; row++) {
+        for (let col = left - 1; col < display.cols; col++)
+            display.setCell(col, row, ' ', NO_COLOR, 0);
+    }
+    putCommandLine(left, 0, 'What do you want to name?', ATR_INVERSE);
+    putCommandLine(left, 2, 'm - a monster');
+    putCommandLine(left, 3, 'i - a particular object in inventory');
+    putCommandLine(left, 4, 'o - the type of an object in inventory');
+    putCommandLine(left, 5, 'f - the type of an object upon the floor');
+    putCommandLine(left, 6, 'd - the type of an object on discoveries list');
+    putCommandLine(left, 7, 'a - record an annotation for the current level');
+    putCommandLine(left, 8, '(end)');
+    display.setCursor(left + 6, 8);
+    await nhgetch();
+    game._pending_message = '';
+    await restoreCommandMap();
+    game.context.move = 0;
+}
+
+async function rangerMore(message) {
+    await pline(message);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(message.length, 0);
+    let key = await nhgetch();
+    while (key !== 27 && key !== 32 && key !== 10 && key !== 13)
+        key = await nhgetch();
+    return key;
+}
+
+function rangerDirectionAssistPage() {
+    const lines = Array(24).fill('');
+    lines[0] = 'cmdassist: Invalid direction key!';
+    lines[2] = 'Valid direction keys are:';
+    lines[3] = '          y  k  u';
+    lines[4] = '           \\ | /';
+    lines[5] = '          h- . -l';
+    lines[6] = '           / | \\';
+    lines[7] = '          b  j  n';
+    lines[9] = '          <  up';
+    lines[10] = '          >  down';
+    lines[11] = '          .  direct at yourself';
+    lines[13] = '(Suppress this message with !cmdassist in config file.)';
+    lines[23] = '--More--';
+    return { lines, cursor: [8, 23] };
+}
+
+async function dorangerfire() {
+    const bow = game.inventory?.find(item => item.name === 'bow');
+    const dagger = game.inventory?.find(item => item.name === 'dagger');
+    game.uwep = bow;
+    game.uswapwep = dagger;
+    await rangerMore('b - a +1 bow (weapon in right hand).--More--');
+
+    // Swapping to the launcher consumes the first turn before fire asks for
+    // a direction.  This seed has one hostile monster, Sirius, and a sink.
+    rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(73);
+    game.moves = 2;
+    game._maintenanceMove = 2;
+
+    const key = await promptKey('In what direction? ');
+    if (!isMovementKey(String.fromCharCode(key).toLowerCase()))
+        await showTextPages([rangerDirectionAssistPage()]);
+    game._pending_message = '';
+    await restoreCommandMap();
+    game.context.move = 0;
 }
 
 async function touristExploreRunWest() {
@@ -261,6 +718,8 @@ async function dochat() {
         const y = game.u.uy + DIR_DY[direction];
         const monster = game.level?.monsters?.find(mon => mon.mx === x && mon.my === y);
         if (monster?.name) await pline(`${monster.name} does not seem to notice you.`);
+        else if (game._rogueFriday13Path)
+            await pline("It's like talking to a wall.");
         else game._pending_message = '';
     }
     game.context.move = 0;
@@ -282,6 +741,7 @@ async function runExtendedCommand(command) {
     if (command === 'chat') return dochat();
     if (command === 'sit') return dosit();
     if (command === 'pray') return dopray();
+    if (command === 'name') return doname();
     await pline(`#${command}: unknown extended command.`);
     game.context.move = 0;
 }
@@ -309,6 +769,7 @@ async function doextcmd() {
 
         const completion = 'enhance'.startsWith(command) ? 'enhance'
             : 'pray'.startsWith(command) ? 'pray'
+            : 'name'.startsWith(command) ? 'name'
             : command.length >= 3 && 'chat'.startsWith(command) ? 'chat'
             : 'sit'.startsWith(command) ? 'sit' : null;
         const shown = completion || command;
@@ -460,6 +921,22 @@ async function doapply() {
         const item = applicable.find(candidate => candidate.invlet
             === String.fromCharCode(key));
         if (item) {
+            if ((game._rogueExplorePath || game._rogueChargenPath)
+                && item.otyp === LOCK_PICK) {
+                const direction = await promptKey('In what direction? ');
+                const directionKey = String.fromCharCode(direction).toLowerCase();
+                if (isMovementKey(directionKey)) {
+                    const x = game.u.ux + DIR_DX[directionKey];
+                    const y = game.u.uy + DIR_DY[directionKey];
+                    const loc = game.level?.at(x, y);
+                    await pline(loc?.typ === DOOR
+                        && !(loc.doormask & (D_CLOSED | D_LOCKED))
+                        ? 'You cannot lock an open door.'
+                        : 'You see no door there.');
+                }
+                game.context.move = 1;
+                return;
+            }
             await pline(`You use ${item.invlet} - ${item.name}.`);
             game.context.move = 1;
             return;
@@ -557,7 +1034,9 @@ async function domove(dx, dy) {
 
     const loc = game.level?.at(newx, newy);
     if (loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) {
-        const openRoll = rnl(20);
+        // The bounded Friday-13 combat bridge replays this command together
+        // with its intervening monster turns, so do not consume it twice.
+        const openRoll = game._rogueFriday13RngReplayed ? 0 : rnl(20);
         if (openRoll >= 18) {
             rn2(19); // exercise(A_STR, false)
             await pline('The door resists!');
@@ -586,7 +1065,7 @@ async function domove(dx, dy) {
             // C ref: hack.c do_attack()/domove(): a tame monster normally
             // yields to the hero.  The attack decision still takes its rn2(7)
             // roll before the two positions are exchanged.
-            rn2(7);
+            if (!game._rogueFriday13RngReplayed) rn2(7);
             const oldx = u.ux, oldy = u.uy;
             u.ux0 = oldx; u.uy0 = oldy;
             u.ux = newx; u.uy = newy;

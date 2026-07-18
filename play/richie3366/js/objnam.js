@@ -795,8 +795,42 @@ export function singular(obj, func = xname) {
 }
 
 // C ref: objnam.c makeplural — enough for "X of Y" and simple nouns.
+// C ref: objnam.c one_off[] — irregular sing↔plur (word or suffix).
+const ONE_OFF_PLURALS = [
+    ['child', 'children'],
+    ['cubus', 'cubi'],
+    ['culus', 'culi'],
+    ['Cyclops', 'Cyclopes'],
+    ['djinni', 'djinn'],
+    ['erinys', 'erinyes'],
+    ['foot', 'feet'],
+    ['fungus', 'fungi'],
+    ['goose', 'geese'],
+    ['knife', 'knives'],
+    ['labrum', 'labra'],
+    ['louse', 'lice'],
+    ['mouse', 'mice'],
+    ['mumak', 'mumakil'],
+    ['nemesis', 'nemeses'],
+    ['ovum', 'ova'],
+    ['ox', 'oxen'],
+    ['passerby', 'passersby'],
+    ['rtex', 'rtices'],
+    ['serum', 'sera'],
+    ['staff', 'staves'],
+    ['tooth', 'teeth'],
+];
+
+/**
+ * C ref: objnam.c makeplural — irregular one_off + compound "of" + ya.
+ * Named omissions: pronoun genders; already_plural ae/eaux; man→men;
+ * as_is collective; singplur_lookup mongoose/slice edges;
+ * full case-preserve polish beyond matched-suffix first letter.
+ */
 export function makeplural(s) {
-    // C: skip "pair of " → "pairs of" (objects keep singular "pair")
+    if (s == null || s === '') return 's';
+    while (s.startsWith(' ')) s = s.slice(1);
+    // C: skip "pair of " → keep as-is (objects use collective "pair")
     if (/^pair of /i.test(s)) return s;
     const of = s.indexOf(' of ');
     if (of > 0) {
@@ -805,6 +839,28 @@ export function makeplural(s) {
     // C: "ya" stays "ya" (Samurai bamboo arrows)
     if (s.length === 2 && s.toLowerCase() === 'ya') return s;
     if (s.endsWith(' ya')) return s;
+
+    // C: fox → foxes (not oxen); muskox still reaches one_off ox→oxen
+    const lower = s.toLowerCase();
+    if (lower.length > 2 && lower.endsWith('ox')
+        && !(lower.length > 5 && lower.endsWith('muskox'))) {
+        return s + 'es';
+    }
+
+    for (const [sing, plur] of ONE_OFF_PLURALS) {
+        const sl = sing.toLowerCase();
+        // C singplur_lookup: suffix match on one_off; "ox" alone is len 2
+        if (lower === sl || lower.endsWith(sl)) {
+            const stem = s.slice(0, s.length - sing.length);
+            const matched = s.slice(s.length - sing.length);
+            let pl = plur;
+            if (matched[0] >= 'A' && matched[0] <= 'Z') {
+                pl = plur[0].toUpperCase() + plur.slice(1);
+            }
+            return stem + pl;
+        }
+    }
+
     if (s.endsWith('s') || s.endsWith('x') || s.endsWith('ch') || s.endsWith('sh'))
         return s + 'es';
     if (s.endsWith('y') && s.length > 1 && !'aeiou'.includes(s[s.length - 2]))
