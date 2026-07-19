@@ -43,7 +43,7 @@ import { Monnam } from './do_name.js';
 import { cansee } from './vision.js';
 import { fightm } from './mhitm.js';
 import { engr_at } from './engrave.js';
-import { visible_region_at } from './region.js';
+import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
 import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
 import { in_your_sanctuary } from './priest.js';
@@ -749,8 +749,9 @@ export function mfndpos(mon, data, flag) {
     }
 
     // C: poisongas_ok / in_poisongas at mon's current cell
+    // (visible_region_at && glyph == cmap_to_glyph(S_poisoncloud))
     const poisongas_ok = m_poisongas_ok(mon) === M_POISONGAS_OK;
-    const in_poisongas = !!visible_region_at(x, y);
+    const in_poisongas = is_poisoncloud_region(visible_region_at(x, y));
 
     // C: mconf → ALLOW_ALL and clear NOTONL; blind → ALLOW_SSM
     if (mon.mconf) {
@@ -793,9 +794,12 @@ export function mfndpos(mon, data, flag) {
                     if (!thrudoor) continue;
                 }
             }
-            // C: avoid poison gas when not already in it
-            if (!poisongas_ok && !in_poisongas && visible_region_at(nx, ny)) {
-                continue;
+            // C: avoid poison gas when not already in it (glyph == S_poisoncloud)
+            {
+                const gas_reg = visible_region_at(nx, ny);
+                if (!poisongas_ok && !in_poisongas && is_poisoncloud_region(gas_reg)) {
+                    continue;
+                }
             }
             // C: first diagonal checks — NODIAG + non-broken doors + rogue
             // door-cut + worm_cross consecutive segs (mon.c mfndpos)

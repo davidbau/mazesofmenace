@@ -2,9 +2,10 @@
 // C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at /
 // clear_regions; read.c valid_cloud_pos.
 // Named omissions: inside_f damage callbacks; dissipation plines;
-// region glyphs; hero enveloped pline; create_gas_cloud_selection;
-// binary save_regions format; force fields; incremental fill_point
-// (JS uses vision_reset). Level leave stashes the regions array (D-0675).
+// numeric cmap glyph ints (JS tags 'S_poisoncloud'/'S_cloud'); hero
+// enveloped pline; create_gas_cloud_selection; binary save_regions
+// format; force fields; incremental fill_point (JS uses vision_reset).
+// Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -37,6 +38,14 @@ export function visible_region_at(x, y) {
     return null;
 }
 
+/**
+ * C ref: mon.c mfndpos gas_glyph — cmap_to_glyph(S_poisoncloud).
+ * make_gas_cloud tags damage clouds 'S_poisoncloud', fog/steam 'S_cloud'.
+ */
+export function is_poisoncloud_region(reg) {
+    return !!reg && reg.glyph === 'S_poisoncloud';
+}
+
 function inside_region(reg, x, y) {
     const rects = reg.rects || [];
     for (const r of rects) {
@@ -66,8 +75,11 @@ function make_gas_cloud(cloud, damage, _inside_cloud) {
     cloud.inside_f = INSIDE_GAS_CLOUD;
     cloud.expire_f = INSIDE_GAS_CLOUD; // gas expire marker (damage/pline deferred)
     cloud.arg = damage | 0;
+    // C: cmap_to_glyph(damage ? S_poisoncloud : S_cloud) — mfndpos only
+    // avoids poisoncloud (damage>0). Numeric cmap deferred; tag suffices.
+    cloud.glyph = damage ? 'S_poisoncloud' : 'S_cloud';
     cloud.visible = true;
-    // glyph / set_heros_fault / enveloped pline deferred
+    // set_heros_fault / enveloped pline deferred
     if (!game.regions) game.regions = [];
     game.regions.push(cloud);
     // C add_region: if (reg->visible) block_point per inside cell

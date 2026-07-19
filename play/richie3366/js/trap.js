@@ -191,14 +191,20 @@ export function mons_see_trap(ttmp) {
 
 /**
  * C ref: trap.c m_harmless_trap — whether mfndpos may ignore this trap.
- * Envelope: STATUE/MAGIC/VIBRATING always; BEAR_TRAP/WEB size·amorph·whirly·
- * unsolid·webmaker; RUST except iron golem; PIT/HOLE clinger (non-Sokoban).
- * Named omission: flyer/Sokoban `check_in_air` preamble; sleep/fire/anti-magic
- * resists; defended().
+ * Envelope: !Sokoban floor_trigger+check_in_air; STATUE/MAGIC/VIBRATING;
+ * BEAR_TRAP/WEB size·amorph·whirly·unsolid·webmaker; SLP_GAS resists_sleep;
+ * RUST except iron golem; FIRE resists_fire; PIT/HOLE clinger (!Sokoban).
+ * Named omission: defended(AD_SLEE/AD_FIRE); anti-magic resist arm.
  */
 export function m_harmless_trap(mtmp, ttmp) {
     if (!ttmp) return true;
     const mdat = mtmp?.data;
+    // C: Sokoban = level.flags.sokoban_rules
+    const Sokoban = !!(game.level?.flags?.sokoban_rules || game.Sokoban);
+    // C: flyers/floaters ignore floor-trigger traps outside Sokoban
+    if (!Sokoban && floor_trigger(ttmp.ttyp) && check_in_air(mtmp, 0)) {
+        return true;
+    }
     switch (ttmp.ttyp) {
     case STATUE_TRAP:
     case MAGIC_TRAP:
@@ -216,15 +222,20 @@ export function m_harmless_trap(mtmp, ttmp) {
             return true;
         }
         return false;
+    case SLP_GAS_TRAP:
+        // defended(AD_SLEE) deferred
+        return !!resists_sleep(mtmp);
     case RUST_TRAP:
         // C: only iron golem is harmed
         return (mdat?.mndx ?? -1) !== PM_IRON_GOLEM;
+    case FIRE_TRAP:
+        // defended(AD_FIRE) deferred
+        return !!resists_fire(mtmp);
     case PIT:
     case SPIKED_PIT:
     case HOLE:
     case TRAPDOOR:
-        // Sokoban flag: C `Sokoban` — JS uses level flag when present
-        if (is_clinger(mdat) && !game.level?.flags?.sokoban) return true;
+        if (is_clinger(mdat) && !Sokoban) return true;
         return false;
     default:
         return false;
@@ -756,20 +767,23 @@ function floor_trigger(ttyp) {
 }
 
 /**
- * C ref: trap.c check_in_air — Levitation / Flying / HURTLING for youmonst.
- * Named omission: monster floater/flyer arms used only from mintrap path.
+ * C ref: trap.c check_in_air — HURTLING / Levitation·floater /
+ * Flying·flyer (!plunged). Clinger mundetected is m_in_air only, not here.
  */
 function check_in_air(mtmp, trflags) {
     const is_you = is_youmonst(mtmp);
     const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
     if ((trflags & HURTLING) !== 0) return true;
-    const u = game.u || {};
     if (is_you) {
+        const u = game.u || {};
         if (u.Levitation) return true;
         if (u.Flying && !plunged) return true;
         return false;
     }
-    return m_in_air(mtmp) && !plunged;
+    // C: is_floater(data) || (is_flyer(data) && !plunged)
+    if (is_floater(mtmp?.data)) return true;
+    if (is_flyer(mtmp?.data) && !plunged) return true;
+    return false;
 }
 
 /**
@@ -2444,8 +2458,10 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
         || (tt === HOLE && !mindless(mptr));
 
     if (!forcetrap) {
-        // floor_trigger + check_in_air omitted (mons on floor);
-        // Sokoban pit/hole inescapable branch deferred
+        // C: Sokoban pit/hole messaging deferred; floor_trigger+in_air skip
+        if (floor_trigger(tt) && check_in_air(mtmp, mintrapflags)) {
+            return Trap_Effect_Finished;
+        }
         if (already_seen && rn2(4) && !forcebungle) {
             return Trap_Effect_Finished;
         }
