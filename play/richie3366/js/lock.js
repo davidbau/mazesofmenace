@@ -247,18 +247,52 @@ async function get_adjacent_loc(prompt, emsg) {
 }
 
 /**
+ * C ref: lock.c doopen — #open / `o` command.
+ * @returns {Promise<boolean>} true when C would return ECMD_TIME
+ */
+export async function doopen() {
+    return doopen_indir(0, 0);
+}
+
+/**
  * C ref: lock.c doopen_indir — open a CLOSED door at (x,y).
- * Autoopen callers pass the door coordinates (x > 0). Interactive
- * getdir / loot-at-feet / portcullis / canned-kick / b_trapped /
- * feel_newsym mapseen gating deferred (named in C-JS-MAP).
+ * Autoopen callers pass door coordinates (x > 0). Interactive `o`
+ * uses get_adjacent_loc → getdir ("In what direction?").
+ * Named omissions: loot-at-feet (u_at → doloot); pit reach; door-mimic
+ * stumble; Confusion/Stunned always-TIME; portcullis/drawbridge;
+ * feel_newsym mapseen gating; AUTOUNLOCK_KICK canned dokick.
  * Returns true when C would return ECMD_TIME (open attempt / lock setup).
  */
 export async function doopen_indir(x, y) {
-    const loc = game.level?.at(x, y);
+    // C: nohands(gy.youmonst.data) before getdir
+    if (nohands(game.youmonst?.data)) {
+        await pline("You can't open anything -- you have no hands!");
+        return false;
+    }
+
+    let cc;
+    // C: x > 0 && y >= 0 → caller supplied coords (autoopen); else getdir
+    if (x > 0 && y >= 0) {
+        cc = { x, y };
+    } else {
+        // C: get_adjacent_loc(dirprompt, NULL, u.ux, u.uy, &cc)
+        // dirprompt NULL unless pit+container ("Open where? [.>]") — deferred
+        cc = await get_adjacent_loc(null, null);
+        if (!cc) return false; // Never mind. already plined
+    }
+
+    // C: u_at(cc) && (u.dz > 0 || !closed_door) → doloot() — deferred
+    // C: u.utrap TT_PIT reach — deferred
+    // C: stumble_on_door_mimic — deferred
+
+    const loc = game.level?.at(cc.x, cc.y);
     if (!loc || !IS_DOOR(loc.typ)) {
         await pline('You see no door there.');
         return false;
     }
+    // Rebind for door body below (autoopen used bare x,y)
+    x = cc.x;
+    y = cc.y;
 
     const mask = loc.doormask || 0;
     if (!(mask & D_CLOSED)) {
@@ -796,7 +830,7 @@ export async function doforce() {
         const c = await yn_function(
             `There is ${doname(otmp)} here; force its lock?`,
             'ynq',
-            'n',
+            'q', // C: ynq() → yn_function(..., 'q', TRUE)
         );
         if (c === 'q') return ECMD_OK;
         if (c === 'n') continue;

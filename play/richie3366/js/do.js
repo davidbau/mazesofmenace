@@ -60,8 +60,10 @@ import { bones_include_name } from './bones.js';
 
 function Blind() {
     const u = game.u || {};
-    if (u.Blind) return true;
-    return !!((u.HBlinded | 0) || (u.EBlinded | 0) || u.uroleplay?.blind);
+    // C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded
+    // Do not trust sticky u.Blind — wipe/make_blinded must derive from props (D-0716).
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 function Hallucination() {
     const u = game.u || {};
@@ -1081,13 +1083,14 @@ function incr_itimeout_HBlinded(incr) {
 }
 
 /**
- * C ref: potion.c make_blinded — talk subset for wipeoff clear.
- * Eyes override / Punished / Hallucination talk / toggle_blindness body
- * deferred (Blind sticky + botl only).
+ * C ref: potion.c make_blinded — talk + toggle_blindness subset for wipeoff.
+ * Named omissions: Eyes override probe detail; Punished set_bc; Hallucination
+ * talk variants; Blindfolded itch/twitch; Sting_effects / learn_unseen_invent.
  */
 async function make_blinded(xtime, talk) {
     const u = game.u || (game.u = {});
     const old = BlindedTimeout();
+    // C probes Blind via props (H/E/BBlinded), not a sticky mirror.
     const u_could_see = !Blind();
     set_itimeout_HBlinded(xtime ? 1 : 0);
     const can_see_now = !Blind();
@@ -1100,9 +1103,14 @@ async function make_blinded(xtime, talk) {
     }
 
     set_itimeout_HBlinded(xtime);
+    // Sync sticky mirror used by display/status Blind checks.
+    u.Blind = Blind();
+    u.ublind = false;
     if (u_could_see !== can_see_now) {
-        u.Blind = !can_see_now;
+        // C: toggle_blindness — botl + vision_recalc(0)
         if (game.flags) game.flags.botl = true;
+        game.vision_full_recalc = 1;
+        vision_recalc(0);
     }
 }
 

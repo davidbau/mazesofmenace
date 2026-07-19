@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { addinv as invent_addinv } from './invent.js';
-import { initialspell, num_spells } from './spell.js';
+import { initialspell, num_spells, skill_based_spellbook_id } from './spell.js';
 import {
     ARMOR_CLASS,
     COIN_CLASS,
@@ -1361,21 +1361,7 @@ function ini_inv_use_obj_discover(obj) {
     // small shield; a carried oil lamp).  This consumes no RNG and only affects
     // how items are *named* in the inventory/discoveries displays.
     //
-    // Applying the full condition to every role flips coincidentally-matching
-    // late frames in several already-heavily-diverged public sessions
-    // (seed0030 ten-diverse-deaths, seed5002 wizard, seed5006 tourist) whose
-    // level geometry has already diverged — dropping their screen counts below
-    // baseline.  Those roles already match every frame the displays touch with
-    // the narrower (shield/lamp) scope, so apply the full faithful discovery
-    // for the Monk (the role whose starting scroll/potion/spellbook the
-    // inventory display actually exercises) and the Healer (whose starting
-    // wand of sleep — appearance e.g. "crystal" — and healing potions become
-    // type-known at start, so a floor "You see here a wand of sleep." names
-    // the identified type rather than the random appearance), and keep the
-    // narrow scope for the other roles, preserving their public floors.
-    const fullDiscover = role_is(PM_MONK) || role_is(PM_HEALER)
-        || otyp === SMALL_SHIELD || otyp === OIL_LAMP;
-    if (fullDiscover && DESCR_BY_OTYP[otyp] != null && obj.known)
+    if (DESCR_BY_OTYP[otyp] != null && obj.known)
         discover_object(otyp, true, true);
     if (otyp === OIL_LAMP)
         discover_object(POT_OIL, true, true);
@@ -1391,6 +1377,7 @@ export function u_init_skills_discoveries() {
     if (Array.isArray(game.invent))
         for (const obj of game.invent)
             ini_inv_use_obj_discover(obj);
+    skill_based_spellbook_id();
     if (num_spells() && (game.u.uenmax ?? 0) < SPELL_LEV_PW_1) {
         game.u.uen = game.u.uenmax = game.u.uenpeak = SPELL_LEV_PW_1;
         if (Array.isArray(game.u.ueninc) && game.u.ulevel != null)

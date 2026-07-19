@@ -234,6 +234,27 @@ export async function adjattrib(ndx, incr, msgflg = 1) {
     return true;
 }
 
+/**
+ * C ref: attrib.c redist_attr — newman / poly attr shake.
+ * Skips INT/WIS; each other attr gets AMAX += rn2(5)-2 clamped to
+ * race ATTRMAX/ATTRMIN, then ABASE scaled by new/old max.
+ * encumber_msg is caller's job.
+ */
+export function redist_attr() {
+    for (let i = 0; i < A_MAX; i++) {
+        if (i === A_INT || i === A_WIS) continue;
+        const tmp = amax(i) | 0;
+        let nm = tmp + (rn2(5) - 2);
+        if (nm > attrMax(i)) nm = attrMax(i);
+        if (nm < attrMin(i)) nm = attrMin(i);
+        setAmax(i, nm);
+        // C: ABASE(i) = ABASE(i) * AMAX(i) / tmp; trunc toward 0
+        let nb = tmp ? Math.trunc((abase(i) | 0) * nm / tmp) : abase(i) | 0;
+        if (nb < attrMin(i)) nb = attrMin(i);
+        setAbase(i, nb);
+    }
+}
+
 // C ref: attrib.c vary_init_attr()
 export async function vary_init_attr() {
     for (let i = 0; i < A_MAX; i++) {

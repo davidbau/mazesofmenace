@@ -21,7 +21,7 @@ import {
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
     is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
-    is_vampshifter, is_male, is_female, is_neuter,
+    is_vampshifter, is_male, is_female, is_neuter, likes_gems,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -574,6 +574,13 @@ export function mon_allowflags(mtmp) {
     if (throws_rocks(mtmp.data)) allowflags |= ALLOW_ROCK;
     if (can_tunnel) allowflags |= ALLOW_DIG;
     if (can_open) allowflags |= OPENDOOR;
+    // C: unicorn && !noteleport_level → NOTONL (mfndpos skips online cells).
+    // noteleport_level: level.flags.noteleport (covetous/hell-court deferred).
+    if (mtmp.data?.mlet === 'S_UNICORN' && likes_gems(mtmp.data)
+        && !game.level?.flags?.noteleport
+        && !((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0))) {
+        allowflags |= NOTONL;
+    }
     return allowflags;
 }
 

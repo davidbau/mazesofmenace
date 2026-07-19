@@ -59,6 +59,7 @@ export function parseNethackrc(rc) {
                 else if (lname === 'showexp') result.flags.showexp = value;
                 else if (lname === 'time') result.flags.time = value;
                 else if (lname === 'verbose') result.flags.verbose = value;
+                else if (lname === 'fixinv') result.flags.invlet_constant = value;
                 else result.flags[lname] = value;
             }
         }

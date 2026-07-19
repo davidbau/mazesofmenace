@@ -96,7 +96,7 @@ async function zapnodir(obj) {
         break;
     }
     if (known) {
-        if (!objects[obj.otyp]?.known) {
+        if (!objects[obj.otyp]?.oc_name_known) {
             // more_experienced(0, 10): no RNG.
         }
         learnwand(obj);

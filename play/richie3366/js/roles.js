@@ -535,6 +535,8 @@ export const races = [
         adj: 'human',
         noun: 'human',
         filecode: 'Hum',
+        // C: races[].individual { "man", "woman" } — newman form strings
+        individual: { m: 'man', f: 'woman' },
         mnum: PM_HUMAN,
         attrmin: [3, 3, 3, 3, 3, 3],
         attrmax: [STR18_100, 18, 18, 18, 18, 18],

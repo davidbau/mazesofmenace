@@ -55,15 +55,22 @@ const AT_TENT = 16;
 const AT_WEAP = 254;
 const AT_MAGC = 255;
 const AD_PHYS = 0;
+const AD_FIRE = 2;
+const AD_COLD = 3;
 const AD_ELEC = 6;
 const AD_DRST = 7; /* drains str (poison) — monattk.h */
-const AD_DRDX = 8;
-const AD_DRCO = 9;
+const AD_ACID = 8; /* acid damage — monattk.h (was wrongly AD_DRDX=8) */
 const AD_STCK = 19;
 const AD_SITM = 21; /* steals item (nymphs) — monattk.h */
 const AD_SEDU = 22; /* seduces & steals multiple items */
+const AD_DRDX = 30; /* drains dexterity (quasit) — monattk.h */
+const AD_DRCO = 31; /* drains constitution — monattk.h */
 const AD_SSEX = 35; /* Succubus seduction (extended) */
 const AC_MAX = 99;
+const MR_FIRE = 0x01;
+const MR_COLD = 0x02;
+const MR_ELEC = 0x10;
+const MR_ACID = 0x40;
 
 const NO_ATTK = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
 
@@ -125,8 +132,8 @@ export function get_mattk(magr, i) {
 export {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
-    AT_WEAP, AT_MAGC, AD_PHYS, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO,
-    AD_SITM, AD_SEDU, AD_SSEX,
+    AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
+    AD_DRDX, AD_DRCO, AD_SITM, AD_SEDU, AD_SSEX,
 };
 
 function deadmonster(m) {
@@ -144,29 +151,43 @@ export function find_mac(mon) {
     return base;
 }
 
-// C ref: mondata.c max_passive_dmg() — AT_NONE AD_PHYS/elemental only
+// C ref: mondata.c max_passive_dmg() — AT_NONE/AT_BOOM passives × magr hits.
+// Elemental AD_ACID/FIRE/COLD/ELEC + AD_PHYS; complete-burn/rot/rust deferred.
 function max_passive_dmg(mdef, magr) {
-    const md = mdef.data;
+    const md = mdef?.data;
     if (!md) return 0;
     let multi2 = 0;
     for (let i = 0; i < NATTK; i++) {
         const a = get_mattk(magr, i).aatyp;
+        // C: CLAR/BITE/KICK/BUTT/TUCH/STNG/HUGS/ENGL/TENT/WEAP
         if (a === AT_CLAW || a === AT_BITE || a === AT_KICK || a === AT_BUTT
-            || a === AT_TUCH || a === AT_STNG || a === AT_WEAP) multi2++;
+            || a === AT_TUCH || a === AT_STNG || a === AT_HUGS || a === AT_ENGL
+            || a === AT_TENT || a === AT_WEAP) {
+            multi2++;
+        }
     }
-    // Defender passives: AT_NONE slots; NO_ATTK is AT_NONE 0,0 → dmg 0.
+    const mres = (magr?.data?.mresists | 0)
+        | (magr?.mextrinsics | 0)
+        | (magr?.mintrinsics | 0);
+    let dmg = 0;
     for (let i = 0; i < NATTK; i++) {
         const at = get_mattk(mdef, i);
-        if (at.aatyp !== AT_NONE) continue;
-        if (at.adtyp === AD_PHYS) {
-            let dmg = at.damn;
-            if (!dmg) dmg = (md.mlevel ?? 0) + 1;
-            dmg *= at.damd;
-            return dmg * multi2;
+        if (at.aatyp !== AT_NONE && at.aatyp !== AT_BOOM) continue;
+        const adtyp = at.adtyp | 0;
+        // Named omission: completelyburns/rots/rusts → dmg = magr.mhp
+        if ((adtyp === AD_ACID && !(mres & MR_ACID))
+            || (adtyp === AD_COLD && !(mres & MR_COLD))
+            || (adtyp === AD_FIRE && !(mres & MR_FIRE))
+            || (adtyp === AD_ELEC && !(mres & MR_ELEC))
+            || adtyp === AD_PHYS) {
+            dmg = at.damn | 0;
+            if (!dmg) dmg = (md.mlevel | 0) + 1;
+            dmg *= at.damd | 0;
         }
+        dmg *= multi2;
         break;
     }
-    return 0;
+    return dmg;
 }
 
 export { max_passive_dmg };

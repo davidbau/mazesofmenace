@@ -668,6 +668,8 @@ export async function moveloop_core() {
                     g.multi++;
                     if (g.multi === 0) {
                         await unmul(null);
+                        // C: if unmul caused a level change, take it now
+                        if (g.u?.utotype) await deferred_goto();
                     }
                 }
             }

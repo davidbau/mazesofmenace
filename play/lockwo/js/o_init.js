@@ -47,12 +47,10 @@ const SPEED_BOOTS = 166, LEVITATION_BOOTS = 172;
 const WAN_NOTHING = 415;
 const NODIR = 0, IMMEDIATE = 1;
 
-// ── material indices (C ref: obj.h) ──
-const MAT_IRON = 11, MAT_GLASS = 19, MAT_PAPER = 22, MAT_LEATHER = 22;
-const MAT_CLOTH = 22, MAT_ORGANIC = 22;
-// (material is only swapped within a class where every member shares the same
-//  material, so the precise enum value never affects observable behaviour;
-//  the table below keeps faithful per-object values where the C source varies.)
+// Keep the immutable object-table colors so init_objects() can restore them
+// before each new game.  The shared objects[] entries are mutated by shuffling.
+const DECLARED_COLOR = objects.map((o) => o?.oc_color ?? CLR_GRAY);
+const DECLARED_TOUGH = objects.map((o) => o?.oc_tough ?? 0);
 
 // Per-object appearance data (oc_color / oc_tough / oc_material) for the
 // objects that participate in shuffling.  Only the shuffle ranges need this:
@@ -125,30 +123,18 @@ function seedAppearance() {
     for (let i = 0; i < objects.length; i++) {
         const o = objects[i];
         if (!o) continue;
-        if (o.oc_descr_idx == null) o.oc_descr_idx = i;
-        if (o.oc_name_idx == null) o.oc_name_idx = i;
-        if (o.oc_color == null) o.oc_color = CLR_GRAY;
-        if (o.oc_tough == null) o.oc_tough = 0;
-        if (o.oc_material == null) o.oc_material = o.material ?? 0;
-        // oc_name_known / oc_encountered: C init_objects() re-initialises the
-        // per-game discovery state every time it runs (once per new game).  This
-        // MUST reset unconditionally for every discoverable (description-bearing)
-        // object each game: knows_class()/knows_object() during chargen mark
-        // types known, and the appearance shuffle skips already-known objects —
-        // so a leaked "known" flag from a previous game (e.g. in a multi-game
-        // "ten deaths" replay) would shift the shuffle RNG and desync level
-        // generation.  Objects without a randomized description (NoDes) keep
-        // their preset flag (they are always type-known and are never shuffled).
-        // C ref: o_init.c init_objects().
-        if (DESCR_BY_OTYP[i] != null) {
-            o.oc_name_known = 0;
-        } else if (o.oc_name_known == null) {
-            o.oc_name_known = 0;
-        }
+        o.oc_descr_idx = o.oc_name_idx = i;
+        o.oc_color = DECLARED_COLOR[i];
+        o.oc_tough = DECLARED_TOUGH[i];
+        o.oc_material = o.material ?? 0;
+        // C's object table pre-marks types without alternate descriptions and
+        // leaves description-bearing types unidentified.
+        o.oc_name_known = DESCR_BY_OTYP[i] == null ? 1 : 0;
         o.oc_encountered = 0;
+        o.oc_uname = null;
     }
     // Apply the per-appearance color/tough overrides for shuffle ranges.
-    const apply = (base, table, materialEnum) => {
+    const apply = (base, table) => {
         for (let k = 0; k < table.length; k++) {
             const o = objects[base + k];
             if (!o) continue;
@@ -159,22 +145,19 @@ function seedAppearance() {
             } else {
                 o.oc_color = cell;
             }
-            if (materialEnum != null) o.oc_material = materialEnum;
         }
     };
-    apply(297, POTION_COLOR, MAT_GLASS);
-    apply(173, RING_DATA, null);
-    // Scrolls 323..363 are uniformly HI_PAPER / PAPER.
-    for (let i = 323; i <= 363; i++) {
-        if (objects[i]) { objects[i].oc_color = HI_PAPER; objects[i].oc_material = MAT_PAPER; }
-    }
-    apply(365, SPBOOK_COLOR, MAT_PAPER);
-    apply(409, WAND_COLOR, null);
-    apply(HELMET, HELMET_COLOR, MAT_IRON);
-    apply(LEATHER_GLOVES, GLOVES_COLOR, null);
-    apply(CLOAK_OF_PROTECTION, CLOAK_COLOR, MAT_CLOTH);
-    apply(SPEED_BOOTS, BOOTS_COLOR, null);
-    apply(478, VENOM_COLOR, MAT_ORGANIC);
+    apply(297, POTION_COLOR);
+    apply(173, RING_DATA);
+    for (let i = 323; i <= 363; i++)
+        if (objects[i]) objects[i].oc_color = HI_PAPER;
+    apply(365, SPBOOK_COLOR);
+    apply(409, WAND_COLOR);
+    apply(HELMET, HELMET_COLOR);
+    apply(LEATHER_GLOVES, GLOVES_COLOR);
+    apply(CLOAK_OF_PROTECTION, CLOAK_COLOR);
+    apply(SPEED_BOOTS, BOOTS_COLOR);
+    apply(478, VENOM_COLOR);
 
     // oc_magic / oc_unique flags needed by obj_shuffle_range() to find the
     // hi boundary for AMULET / SCROLL / SPBOOK classes.  The loop walks from
@@ -219,12 +202,23 @@ function computeBases() {
 }
 
 // some gems can have different colors.  C ref: o_init.c randomize_gem_colors().
-// Emits rn2(2), rn2(2), rn2(4) in that order.  The gem color copies are inert
-// here (gem rendering uses material defaults), but the RNG draws must occur.
+// Emits rn2(2), rn2(2), rn2(4) in that order and copies both description and
+// color from the selected source gem.
 function randomize_gem_colors() {
-    rn2(2);            /* turquoise green->blue? */
-    rn2(2);            /* aquamarine green->blue? */
-    rn2(4);            /* fluorite recolor */
+    const TURQUOISE = 445, AQUAMARINE = 447, FLUORITE = 456;
+    const SAPPHIRE = 442, DIAMOND = 439, EMERALD = 444;
+    const copyDescr = (dst, src) => {
+        objects[dst].oc_descr_idx = objects[src].oc_descr_idx;
+        objects[dst].oc_color = objects[src].oc_color;
+    };
+    if (rn2(2)) copyDescr(TURQUOISE, SAPPHIRE);
+    if (rn2(2)) copyDescr(AQUAMARINE, SAPPHIRE);
+    switch (rn2(4)) {
+    case 1: copyDescr(FLUORITE, SAPPHIRE); break;
+    case 2: copyDescr(FLUORITE, DIAMOND); break;
+    case 3: copyDescr(FLUORITE, EMERALD); break;
+    default: break;
+    }
 }
 
 // shuffle descriptions on objects o_low..o_high.  C ref: o_init.c shuffle().
@@ -329,6 +323,7 @@ export function init_objects() {
     seedAppearance();
     const bases = computeBases();
     discoBases = bases;
+    discoveryOrder.clear();
 
     // The class loop: only the GEM_CLASS branch consumes RNG (via
     // randomize_gem_colors), and it runs exactly once at the gem class.
@@ -355,6 +350,7 @@ export function init_objects() {
 // ─────────────────────────────────────────────────────────────────────────
 
 let discoBases = null;
+const discoveryOrder = new Map();
 function getBases() {
     if (!discoBases) discoBases = computeBases();
     return discoBases;
@@ -411,6 +407,11 @@ export function discover_object(oindx, markKnown, markEncountered, creditHero) {
     if ((!o.oc_name_known && markKnown)
         || (!o.oc_encountered && markEncountered)
         || disco_japanese_name(oindx)) {
+        const order = discoveryOrder.get(o.oclass) || [];
+        if (!order.includes(oindx)) {
+            order.push(oindx);
+            discoveryOrder.set(o.oclass, order);
+        }
         if (markEncountered) o.oc_encountered = 1;
         if (!o.oc_name_known && markKnown) {
             o.oc_name_known = 1;
@@ -477,10 +478,7 @@ function interesting_to_discover(i) {
               || ((o.oc_name_known || o.oc_encountered) && OBJ_DESCR(i) != null));
 }
 
-// C ref: objnam.c obj_typename() restricted to the discoveries display.  For
-// the '\' list only weapons/armor (and a few tool/food/potion items) ever
-// reach here pre-discovered, all of which take the default branch:
-//   name-known -> "<actualn>[ (descr)]"; otherwise -> "<descr-or-actualn>".
+// C ref: objnam.c obj_typename().
 function disco_obj_typename(otyp) {
     const o = objects[otyp];
     let actualn = disco_japanese_name(otyp) || o.name;
@@ -488,15 +486,63 @@ function disco_obj_typename(otyp) {
     if (disco_is_samurai() && (otyp === 253 || otyp === 254)) dn = 'koto';
     const nn = o.oc_name_known;
     const un = o.oc_uname != null ? o.oc_uname : null;
-    let buf;
-    if (nn) {
-        buf = actualn;
+    let buf = '';
+
+    switch (o.oclass) {
+    case COIN_CLASS:
+        return actualn;
+    case POTION_CLASS:
+        buf = 'potion';
+        break;
+    case SCROLL_CLASS:
+        buf = 'scroll';
+        break;
+    case WAND_CLASS:
+        buf = 'wand';
+        break;
+    case SPBOOK_CLASS:
+        if (otyp === 407) {
+            buf = nn ? 'novel' : 'book';
+            if (un) buf += ` called ${un}`;
+            if (dn) buf += ` (${dn})`;
+            return buf;
+        }
+        buf = 'spellbook';
+        break;
+    case RING_CLASS:
+        buf = 'ring';
+        break;
+    case AMULET_CLASS:
+        buf = nn ? actualn : 'amulet';
         if (un) buf += ` called ${un}`;
         if (dn) buf += ` (${dn})`;
-    } else {
-        buf = dn ? dn : actualn;
-        if (un) buf += ` called ${un}`;
+        return buf;
+    case ARMOR_CLASS:
+        if ((otyp >= LEATHER_GLOVES && otyp <= GAUNTLETS_OF_DEXTERITY)
+            || (otyp >= 163 && otyp <= LEVITATION_BOOTS))
+            buf = 'pair of ';
+        else if (otyp >= 111 && otyp <= 120)
+            buf = 'set of ';
+        // fall through to the ordinary known/unknown formatting
+        break;
+    default:
+        break;
     }
+
+    if ([POTION_CLASS, SCROLL_CLASS, WAND_CLASS, SPBOOK_CLASS, RING_CLASS]
+        .includes(o.oclass)) {
+        if (nn) buf = o.oc_unique ? actualn : `${buf} of ${actualn}`;
+        if (un) buf += ` called ${un}`;
+        if (dn) buf += ` (${dn})`;
+        return buf;
+    }
+
+    buf += nn ? actualn : (dn || actualn);
+    if (nn && un) buf += ` called ${un}`;
+    if (nn && dn) buf += ` (${dn})`;
+    if (!nn && o.oclass === GEM_CLASS)
+        buf += o.oc_material === 21 ? ' stone' : ' gem';
+    if (!nn && un) buf += ` called ${un}`;
     return buf;
 }
 
@@ -529,14 +575,12 @@ const DISCO_INV_ORDER = [
 // null when nothing is discovered (caller prints the "haven't discovered…"
 // message).  C ref: o_init.c dodiscovered().
 export function build_discoveries_rows() {
-    const bases = getBases();
+    getBases();
     const rows = [];
     let ct = 0;
     for (const oclass of DISCO_INV_ORDER) {
         let printedHeader = false;
-        for (let i = bases[oclass];
-             i < objects.length && objects[i] && objects[i].oc_class === oclass;
-             i++) {
+        for (const i of discoveryOrder.get(oclass) || []) {
             if (!interesting_to_discover(i)) continue;
             ct++;
             if (!printedHeader) {

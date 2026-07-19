@@ -5,6 +5,7 @@
 import { game } from './gstate.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
+    place_object,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
@@ -16,11 +17,11 @@ import { addinv } from './u_init.js';
 import { an, doname, xname, cxname, the as theArt } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
-    ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_INVENT, is_pit,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, is_pit,
     STONE, ICE, DRAWBRIDGE_UP,
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
-    Has_contents,
+    Has_contents, Is_container,
     SORTLOOT_PACK, SORTLOOT_LOOT,
     ALL_TYPES_SELECTED, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN,
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
@@ -35,6 +36,8 @@ import { oclass_to_sym } from './options.js';
 import { objectNames, COIN_CLASS } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
 import { addtobill, costly_spot } from './shk.js';
+import { nohands } from './monsters.js';
+import { welded } from './wield.js';
 
 /* C ref: pickup.c static load-prefix strings for pickup_prinv / lift_object */
 const slightloadpfx = 'You have a little trouble';
@@ -1325,9 +1328,44 @@ async function menu_loot_putin(container) {
 }
 
 /**
+ * C ref: engrave.c freehand — free hand for loot/tip gates.
+ */
+function freehand() {
+    const u = game.u || {};
+    const uwep = u.uwep;
+    // C: (!uwep || !welded(uwep) || (!bimanual(uwep) && (!uarms || !uarms->cursed)))
+    if (!uwep || !welded(uwep)) return true;
+    const bimanual = !!(game.objects?.[uwep.otyp]?.oc_big);
+    if (!bimanual && (!u.uarms || !u.uarms.cursed)) return true;
+    return false;
+}
+
+/** C ref: mondata.c body_part(HAND) — poly table deferred → "hand". */
+function body_part_hand() {
+    return 'hand';
+}
+
+/**
+ * C ref: pickup.c u_handsy — nohands / freehand gate for containers.
+ * @returns {Promise<boolean>}
+ */
+async function u_handsy() {
+    if (nohands(game.youmonst?.data)) {
+        // C: You("have no hands!"); /* not body_part(HAND) */
+        await pline('You have no hands!');
+        return false;
+    }
+    if (!freehand()) {
+        await pline(`You have no free ${body_part_hand()}.`);
+        return false;
+    }
+    return true;
+}
+
+/**
  * C ref: pickup.c use_container — held/floor container loot.
- * Branch envelope: unlocked; in_or_out_menu (lootabc a/b/c); ':' look;
- * 'o'/'a' menu_loot take-out (MENU_FULL category); 'i'/'b' put-in; 'q' abort.
+ * Branch envelope: u_handsy; unlocked; in_or_out_menu (lootabc a/b/c);
+ * ':' look; 'o'/'a' menu_loot take-out; 'i'/'b' put-in; 'q' abort.
  * Named omissions: chest trap; BoT; stash/both/reversed; traditional_loot;
  * autopick 'A'; more_containers 'n'.
  *
@@ -1337,6 +1375,9 @@ async function menu_loot_putin(container) {
  */
 export async function use_container(obj, held = false, _more = false) {
     if (!obj) return ECMD_OK;
+
+    // C: if (!u_handsy()) return ECMD_OK;
+    if (!(await u_handsy())) return ECMD_OK;
 
     if (obj.olocked) {
         // C ref: pickup.c use_container — held locked; floor #loot uses
@@ -1449,16 +1490,30 @@ async function do_loot_cont(cobj) {
 
 /**
  * C ref: pickup.c doloot / doloot_core — loot container underfoot.
- * Branch envelope: single floor container → do_loot_cont (locked
- * autounlock + unlocked use_container). Named omissions: capacity /
- * nohands / Confusion reverse_loot; multi-cont menu; directional
- * lootmon beyond underfoot; grave; saddle; cockatrice; AUTOUNLOCK_FORCE.
+ * Branch envelope: capacity; nohands; single floor container →
+ * do_loot_cont (locked autounlock + unlocked use_container).
+ * Named omissions: capacity pline path; Confusion reverse_loot;
+ * multi-cont menu; directional lootmon beyond underfoot; grave;
+ * saddle; cockatrice; AUTOUNLOCK_FORCE.
  */
 export async function doloot() {
     const u = game.u;
     if (!u) return ECMD_OK;
 
-    const { Is_container } = await import('./const.js');
+    // C: check_capacity(NULL) then nohands → "You have no hands!"
+    if (check_capacity(null)) {
+        await pline(
+            game._check_capacity_msg
+            || "You can't do that while carrying so much stuff.",
+        );
+        game._check_capacity_msg = null;
+        return ECMD_OK;
+    }
+    if (nohands(game.youmonst?.data)) {
+        await pline('You have no hands!');
+        return ECMD_OK;
+    }
+
     let cobj = null;
     for (let o = objects_at(u.ux, u.uy); o; o = o.nexthere) {
         if (Is_container(o)) {
@@ -1505,4 +1560,145 @@ function mon_beside(x, y) {
         }
     }
     return false;
+}
+
+/**
+ * C ref: hack.c check_capacity — near_capacity >= EXT_ENCUMBER blocks.
+ * @param {string|null} [str]
+ * @returns {boolean} true when overloaded (C returns 1)
+ */
+function check_capacity(str) {
+    if (near_capacity() >= EXT_ENCUMBER) {
+        // caller may await pline; sync path uses fire-and-forget via game
+        game._check_capacity_msg = str
+            || "You can't do that while carrying so much stuff.";
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: pickup.c able_to_loot — tip/loot reachability gates.
+ * Named omissions: usteed rider_cant_reach; Underwater tip carve-out;
+ * freehand for looting; body_part(HAND) wording.
+ * @param {number} x
+ * @param {number} y
+ * @param {boolean} looting true=loot, false=tip
+ */
+async function able_to_loot(x, y, looting) {
+    const verb = looting ? 'loot' : 'tip';
+    const t = t_at(x, y);
+    if (!can_reach_floor(!!(t && is_pit(t.ttyp)))) {
+        await pline(`You can't reach the floor.`);
+        return false;
+    }
+    if ((is_pool(x, y) && looting) || is_lava(x, y)) {
+        await pline(
+            `You cannot ${verb} things that are deep in the ${
+                is_lava(x, y) ? 'lava' : 'water'
+            }.`,
+        );
+        return false;
+    }
+    try {
+        const md = await import('./mondata.js');
+        if (md.nolimbs?.(game.youmonst?.data)) {
+            await pline(`Without limbs, you cannot ${verb} anything.`);
+            return false;
+        }
+    } catch {
+        /* mondata optional */
+    }
+    return true;
+}
+
+/**
+ * C ref: pickup.c tipcontainer — empty box onto floor (no target bag).
+ * Named omissions: tipcontainer_gettarget menu; bag-of-holding explode;
+ * ice-box thaw; shop billing; altar/highdrop; cursed mbag item-gone;
+ * horn/bag-of-tricks tipcontainer_checks arms.
+ * @param {object} box
+ */
+async function tipcontainer(box) {
+    if (!box) return;
+    const ox = (box.ox | 0) || (game.u?.ux | 0);
+    const oy = (box.oy | 0) || (game.u?.uy | 0);
+    // C tipcontainer_checks: discover lock, refuse locked/empty
+    if (!box.lknown) box.lknown = 1;
+    if (box.olocked) {
+        await pline(`${upstart(thesimpleoname(box))} is locked.`);
+        return;
+    }
+    if (!Has_contents(box)) {
+        box.cknown = 1;
+        await pline(`${upstart(thesimpleoname(box))} is empty.`);
+        return;
+    }
+    box.cknown = 1;
+    const multi = !!(box.cobj?.nobj);
+    await pline(`${multi ? 'Objects spill' : 'An object spills'} out:`);
+    let next = box.cobj;
+    while (next) {
+        const otmp = next;
+        next = otmp.nobj;
+        obj_extract_self(otmp);
+        place_object(otmp, ox, oy);
+        await pline(`${doname(otmp)}.`);
+    }
+    box.cobj = null;
+    if (typeof box.owt === 'number') box.owt = weight(box);
+    newsym(ox, oy);
+}
+
+/**
+ * C ref: pickup.c dotip — #tip empty container onto floor.
+ * Ported: single floor-container ynq (def q) → tipcontainer / ECMD_OK.
+ * Named omissions: multi-box choose_tip_container_menu; m-prefix invent
+ * skip; getobj invent tip; candle/oil/grease/food/venom spill; tiphat;
+ * tipcontainer_gettarget destination menu.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dotip() {
+    const u = game.u;
+    if (!u) return ECMD_OK;
+
+    const ccx = u.ux | 0;
+    const ccy = u.uy | 0;
+    let boxes = 0;
+    for (let o = objects_at(ccx, ccy); o; o = o.nexthere) {
+        if (Is_container(o)) boxes++;
+    }
+
+    // C: floor first unless menu_requested (m-prefix) skips to invent
+    if (boxes > 0 && !game.iflags?.menu_requested) {
+        const overloaded = check_capacity(
+            `You can't tip ${boxes > 1 ? 'one' : 'it'} while carrying so much.`,
+        );
+        if (overloaded) {
+            await pline(game._check_capacity_msg);
+            game._check_capacity_msg = null;
+        } else if (await able_to_loot(ccx, ccy, false)) {
+            if (boxes > 1) {
+                // choose_tip_container_menu deferred → invent getobj path
+            } else {
+                for (let cobj = objects_at(ccx, ccy); cobj; cobj = cobj.nexthere) {
+                    if (!Is_container(cobj)) continue;
+                    const { yn_function } = await import('./getline.js');
+                    const c = await yn_function(
+                        `There is ${doname(cobj)} here, tip it?`,
+                        'ynq',
+                        'q',
+                    );
+                    if (c === 'q') return ECMD_OK;
+                    if (c === 'n') continue;
+                    await tipcontainer(cobj);
+                    return ECMD_TIME;
+                }
+            }
+        }
+    }
+
+    // getobj("tip") invent path deferred
+    await pline('Tip what?');
+    return ECMD_CANCEL;
 }

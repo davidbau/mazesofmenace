@@ -31,6 +31,7 @@ import {
     likes_gems, mons, webmaker, throws_rocks,
     is_animal, mindless, haseyes,
     bigmonst, is_golem, is_mplayer, is_rider,
+    nohands,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
@@ -58,6 +59,7 @@ import {
     CORPSTAT_NONE, MM_NOCOUNTBIRTH, MM_NOMSG,
     ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE,
+    HVY_ENCUMBER, ECMD_OK,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
@@ -71,10 +73,11 @@ import { monsterNames } from './generated/monsters_data.js';
 import { thitu, ohitmon } from './mthrowu.js';
 import { dmgval } from './weapon.js';
 import { maybe_half_phys, nomul, losehp, stop_occupation } from './hack.js';
-import { observe_object, encumber_msg } from './invent.js';
+import { observe_object, encumber_msg, near_capacity } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj } from './makemon.js';
 import { A_CHA, A_STR, A_DEX, adjattrib, exercise } from './attrib.js';
 import { tamedog } from './dog.js';
+import { welded } from './wield.js';
 
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
@@ -2619,4 +2622,55 @@ export async function lava_effects() {
     const { done } = await import('./end.js');
     await done(BURNING);
     return false;
+}
+
+/**
+ * C ref: trap.c could_untrap — preliminary #untrap / autounlock gates.
+ * Named omissions: sticks/ustuck busy-hands wording; check_floor reach
+ * surface; full untrap() arms.
+ * @param {boolean} verbosely
+ * @param {boolean} [check_floor=false]
+ * @returns {Promise<boolean>} true when allowed (C returns 1)
+ */
+export async function could_untrap(verbosely, check_floor = false) {
+    let buf = '';
+    if (near_capacity() >= HVY_ENCUMBER) {
+        buf = "You're too strained to do that.";
+    } else if (
+        (nohands(game.youmonst?.data) && !webmaker(game.youmonst?.data))
+        || !(game.youmonst?.data?.mmove | 0)
+    ) {
+        buf = 'And just how do you expect to do that?';
+    } else if (game.u?.ustuck) {
+        // sticks() / mon_nam wording deferred — block with busy-hands stub
+        buf = 'Your hands seem to be too busy for that.';
+    } else {
+        const uwep = game.u?.uwep;
+        const bimanual = !!(uwep && game.objects?.[uwep.otyp]?.oc_big);
+        if (uwep && welded(uwep) && bimanual) {
+            buf = 'Your hands seem to be too busy for that.';
+        } else if (check_floor) {
+            const { can_reach_floor } = await import('./engrave.js');
+            if (!can_reach_floor(false)) {
+                buf = "You can't reach the floor.";
+            }
+        }
+    }
+    if (buf) {
+        if (verbosely) await pline(buf);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: trap.c dountrap — #untrap disarm.
+ * Branch envelope: could_untrap(TRUE,FALSE) gate only.
+ * Named omissions: full untrap() trap/box/door arms.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dountrap() {
+    if (!(await could_untrap(true, false))) return ECMD_OK;
+    // Full untrap() deferred — C untrap() returns 0 → ECMD_OK
+    return ECMD_OK;
 }

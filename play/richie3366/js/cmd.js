@@ -14,32 +14,34 @@ import {
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
-         ACCESSIBLE, isok,
+         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR,
+         ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH, DOMOVE_WALK,
          xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          WT_TOOMUCH_DIAGONAL } from './const.js';
+import { FOOD_CLASS } from './objects.js';
 import { dist2 } from './mon.js';
 import { vision_recalc, couldsee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
     doprring, dopramulet, doprtool, inv_weight, weight_cap,
 } from './invent.js';
-import { dovspell, docast } from './spell.js';
+import { dovspell, docast, num_spells } from './spell.js';
 import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { doread } from './read.js';
-import { doengrave, maybe_smudge_engr, set_occupation } from './engrave.js';
+import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
 import { doapply } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
-import { doset_simple, dotogglepickup } from './options.js';
+import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
-import { doopen_indir } from './lock.js';
+import { doopen, doopen_indir } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
@@ -48,8 +50,11 @@ import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
 import { x_monnam_tame } from './do_name.js';
-import { an } from './objnam.js';
-import { spoteffects, dopickup } from './pickup.js';
+import { an, doname } from './objnam.js';
+import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
+import { objects_at } from './mkobj.js';
+import { stairway_at } from './mklev.js';
+import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
 import { getpos } from './getpos.js';
 import {
@@ -68,6 +73,237 @@ function cmdq_pop() {
     const q = game._cmdq_canned;
     if (!q || !q.length) return null;
     return q.shift();
+}
+
+/** C ref: cmd.c cmdq_add_ec(CQ_CANNED, fn) — queue async command for next rhack(0). */
+function cmdq_add_ec(fn) {
+    if (!game._cmdq_canned) game._cmdq_canned = [];
+    game._cmdq_canned.push(fn);
+}
+
+/* C ref: cmd.c enum menucmd — [t]herecmdmenu action ids */
+const MCMD_NOTHING = 0;
+const MCMD_QUAFF = 15;
+const MCMD_DIP = 16;
+const MCMD_SIT = 17;
+const MCMD_UP = 18;
+const MCMD_DOWN = 19;
+const MCMD_DISMOUNT = 20;
+const MCMD_MONABILITY = 21;
+const MCMD_PICKUP = 22;
+const MCMD_LOOT = 23;
+const MCMD_TIP = 24;
+const MCMD_EAT = 25;
+const MCMD_DROP = 26;
+const MCMD_REST = 27;
+const MCMD_LOOK_HERE = 28;
+const MCMD_LOOK_AT = 29;
+const MCMD_UNTRAP_HERE = 31;
+const MCMD_OFFER = 32;
+const MCMD_INVENTORY = 33;
+const MCMD_CAST_SPELL = 34;
+const MCMD_SEARCH = 6;
+
+/**
+ * C ref: cmd.c act_on_act — self / here actions (queue CQ_CANNED).
+ * Named omissions: next2u/far arms; CMDQ_KEY/DIR follow-ups for tip/eat/
+ * dip/offer (caller still queues the ec; yn/getobj consume interactively).
+ */
+function act_on_act_here(act) {
+    switch (act) {
+    case MCMD_QUAFF: cmdq_add_ec(dodrink); break;
+    case MCMD_DIP: cmdq_add_ec(async () => {
+        const { dodip } = await import('./potion.js');
+        return dodip();
+    }); break;
+    case MCMD_SIT: cmdq_add_ec(async () => {
+        const { dosit } = await import('./sit.js');
+        return dosit();
+    }); break;
+    case MCMD_UP: cmdq_add_ec(doup); break;
+    case MCMD_DOWN: cmdq_add_ec(dodown); break;
+    case MCMD_DISMOUNT: cmdq_add_ec(async () => {
+        const { doride } = await import('./steed.js');
+        return doride();
+    }); break;
+    case MCMD_MONABILITY: cmdq_add_ec(async () => {
+        const { domonability } = await import('./polyself.js');
+        return domonability();
+    }); break;
+    case MCMD_PICKUP: cmdq_add_ec(dopickup); break;
+    case MCMD_LOOT: cmdq_add_ec(doloot); break;
+    case MCMD_TIP: cmdq_add_ec(dotip); break;
+    case MCMD_EAT: cmdq_add_ec(doeat); break;
+    case MCMD_DROP: cmdq_add_ec(dodrop); break;
+    case MCMD_INVENTORY: cmdq_add_ec(ddoinv); break;
+    case MCMD_REST: cmdq_add_ec(donull); break;
+    case MCMD_SEARCH: cmdq_add_ec(dosearch); break;
+    case MCMD_LOOK_HERE: cmdq_add_ec(dolook); break;
+    case MCMD_UNTRAP_HERE: cmdq_add_ec(async () => {
+        const { dountrap } = await import('./trap.js');
+        return dountrap();
+    }); break;
+    case MCMD_OFFER: cmdq_add_ec(async () => {
+        const { dosacrifice } = await import('./pray.js');
+        return dosacrifice();
+    }); break;
+    case MCMD_CAST_SPELL: cmdq_add_ec(docast); break;
+    case MCMD_LOOK_AT:
+        // C: doclicklook via clicklook_cc — deferred with therecmdmenu
+        break;
+    default:
+        break;
+    }
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu_self — entries when targeting hero cell.
+ * @returns {{act:number, text:string}[]}
+ */
+function there_cmd_menu_self_items(x, y) {
+    const items = [];
+    const u = game.u;
+    if (!u || (u.ux | 0) !== (x | 0) || (u.uy | 0) !== (y | 0)) return items;
+
+    const loc = game.level?.at(x, y);
+    const typ = loc?.typ | 0;
+
+    if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(false)) {
+        const feat = IS_FOUNTAIN(typ) ? 'fountain' : 'sink';
+        items.push({ act: MCMD_QUAFF, text: `Drink from the ${feat}` });
+    }
+    if (IS_FOUNTAIN(typ) && can_reach_floor(false)) {
+        items.push({ act: MCMD_DIP, text: 'Dip something into the fountain' });
+    }
+    if (IS_THRONE(typ)) {
+        items.push({ act: MCMD_SIT, text: 'Sit on the throne' });
+    }
+    if (IS_ALTAR(typ)) {
+        items.push({ act: MCMD_OFFER, text: 'Sacrifice something on the altar' });
+    }
+
+    const stway = stairway_at(x, y);
+    if (stway?.up) {
+        items.push({
+            act: MCMD_UP,
+            text: `Go up the ${stway.isladder ? 'ladder' : 'stairs'}`,
+        });
+    }
+    if (stway && !stway.up) {
+        items.push({
+            act: MCMD_DOWN,
+            text: `Go down the ${stway.isladder ? 'ladder' : 'stairs'}`,
+        });
+    }
+    // C: u.usteed dismount — named omission: x_monnam SUPPRESS_SADDLE polish
+    if (u.usteed) {
+        items.push({ act: MCMD_DISMOUNT, text: 'Dismount your steed' });
+    }
+
+    const otmp = objects_at(x, y);
+    if (otmp) {
+        items.push({
+            act: MCMD_PICKUP,
+            text: `Pick up ${otmp.nexthere ? 'items' : doname(otmp)}`,
+        });
+        if (Is_container(otmp)) {
+            items.push({ act: MCMD_LOOT, text: `Loot ${doname(otmp)}` });
+            items.push({ act: MCMD_TIP, text: `Tip ${doname(otmp)}` });
+        }
+        if ((otmp.oclass | 0) === FOOD_CLASS) {
+            items.push({ act: MCMD_EAT, text: `Eat ${doname(otmp)}` });
+        }
+    }
+
+    if (game.invent) {
+        items.push({ act: MCMD_INVENTORY, text: 'Inventory' });
+        items.push({ act: MCMD_DROP, text: 'Drop items' });
+    }
+    items.push({ act: MCMD_REST, text: 'Rest one turn' });
+    items.push({ act: MCMD_SEARCH, text: 'Search around you' });
+    items.push({ act: MCMD_LOOK_HERE, text: 'Look at what is here' });
+
+    if (num_spells() > 0) {
+        items.push({ act: MCMD_CAST_SPELL, text: 'Cast a spell' });
+    }
+
+    const ttmp = travel_t_at(x, y);
+    if (ttmp && ttmp.tseen && (ttmp.ttyp | 0) !== VIBRATING_SQUARE) {
+        items.push({ act: MCMD_UNTRAP_HERE, text: 'Attempt to disarm trap' });
+    }
+    return items;
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu_common — "Look at map symbol" for self when
+ * Upolyd (glyph≠hero_glyph / steed arms deferred).
+ */
+function there_cmd_menu_common_items(x, y, mod) {
+    const items = [];
+    if (mod !== CLICK_1 && mod !== 2 /* CLICK_2 */) return items;
+    const u = game.u;
+    const atSelf = u && (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0);
+    // C: !u_at || Upolyd || glyph_at != hero_glyph
+    if (!atSelf || Upolyd(u)) {
+        items.push({ act: MCMD_LOOK_AT, text: 'Look at map symbol' });
+    }
+    return items;
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu — NHW_MENU "What do you want to do?"
+ * Ported: u_at self path + common. Named omissions: next2u / far /
+ * K==0 travel/move fallback; K==1 auto-act without menu.
+ * @returns {Promise<string>} '\0' after act / ESC cancel (C ch)
+ */
+async function there_cmd_menu(x, y, mod) {
+    let items = [];
+    const u = game.u;
+    const atSelf = u && (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0);
+    if (atSelf) {
+        items = items.concat(there_cmd_menu_self_items(x, y));
+    }
+    // next2u / far deferred
+    items = items.concat(there_cmd_menu_common_items(x, y, mod));
+
+    if (!items.length) return '\0';
+
+    const raw = [
+        { text: 'What do you want to do?', attr: ATR_INVERSE, selectable: false },
+        { text: '', attr: 0, selectable: false },
+        ...items.map((it) => ({
+            text: it.text,
+            attr: 0,
+            selectable: true,
+            act: it.act,
+        })),
+    ];
+    const res = await select_menu_pick_one(raw);
+    if (res.kind !== 'pick' || res.item?.act == null) return '\x1b';
+    act_on_act_here(res.item.act | 0);
+    return '\0';
+}
+
+/**
+ * C ref: cmd.c here_cmd_menu — always returns '\0' (discards there_cmd_menu ch).
+ */
+async function here_cmd_menu() {
+    const u = game.u;
+    if (!u) return '\0';
+    await there_cmd_menu(u.ux | 0, u.uy | 0, CLICK_1);
+    return '\0';
+}
+
+/**
+ * C ref: cmd.c doherecmdmenu — #herecmdmenu.
+ * here_cmd_menu always returns '\0' → always ECMD_OK; actions via CQ_CANNED.
+ * C `(ch && ch != '\033')`: NUL is falsy — do not treat JS '\0' as TIME.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function doherecmdmenu() {
+    const ch = await here_cmd_menu();
+    if (!ch || ch === '\0' || ch === '\x1b') return ECMD_OK;
+    return ECMD_TIME;
 }
 
 
@@ -863,6 +1099,11 @@ export async function rhack(key) {
     } else if (ch === 'a') {
         // C ref: apply.c doapply
         const tookTime = await doapply();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'o') {
+        // C ref: lock.c doopen / cmd.c `o` — getdir then open door
+        const tookTime = await doopen();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (key === 4) { // Ctrl-D

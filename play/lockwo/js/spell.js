@@ -12,6 +12,7 @@ import { objects, mksobj, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
 import { SPELL_META } from './u_init.js';
 import { A_WIS, P_UNSKILLED, P_EXPERT, P_SKILLED, P_BASIC } from './const.js';
 import { p_skill_of } from './enhance.js';
+import { discover_object } from './o_init.js';
 
 // C ref: objclass.h obj_material_types — is_metallic() = material in [IRON,MITHRIL].
 const MAT_IRON = 11, MAT_MITHRIL = 17;
@@ -106,6 +107,23 @@ export function initialspell(obj) {
     book[i].sp_id = otyp;
     book[i].sp_lev = spell_level_of(otyp); // C: objects[otyp].oc_level
     book[i].sp_know = KEEN;
+}
+
+// C ref: spell.c skill_based_spellbook_id() — Wizards recognize spellbook
+// appearances according to their current skill in each spell school.
+export function skill_based_spellbook_id() {
+    const rolemnum = game.urole?.mnum ?? game.u?.umonnum;
+    if (rolemnum !== 12) return;
+    for (const [otyp, meta] of SPELL_META) {
+        if (!meta.skill) continue;
+        const skill = p_skill_of(meta.skill);
+        const maxLevel = skill === P_BASIC ? 3
+            : skill === P_SKILLED ? 5
+                : skill >= P_EXPERT ? 7
+                    : game.u?.uroleplay?.pauper ? 0 : 1;
+        if (meta.level <= maxLevel)
+            discover_object(otyp, true, false, false);
+    }
 }
 
 // C ref: spell.c docast — the 'Z' command.

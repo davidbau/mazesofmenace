@@ -3,18 +3,21 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline } from './display.js';
-import { newsym } from './display.js';
+import { pline, newsym, see_monsters } from './display.js';
 import { getlin } from './getline.js';
 import { an } from './objnam.js';
 import { pmname } from './do_name.js';
-import { name_to_mon } from './mondata.js';
-import { exercise, A_STR, A_CON, A_WIS } from './attrib.js';
+import { name_to_mon, set_mon_data } from './mondata.js';
+import {
+    exercise, A_STR, A_CON, A_WIS, adjabil, redist_attr, newhp,
+} from './attrib.js';
+import { newpw, rndexp, setuhpmax } from './exper.js';
 import { find_ac } from './u_init.js';
 import { setworn } from './do_wear.js';
 import { dropx, canletgo } from './do.js';
 import { setuwep, setuswapwep } from './wield.js';
 import { races } from './roles.js';
+import { encumber_msg } from './invent.js';
 import {
     mons,
     polyok,
@@ -34,6 +37,8 @@ import {
     noncorporeal,
     nohands,
     verysmall,
+    is_flyer,
+    is_floater,
     MZ_SMALL,
 } from './monsters.js';
 import {
@@ -52,6 +57,9 @@ import {
     W_ARMC,
     W_ARMU,
     In_endgame,
+    MAXULEV,
+    FROMFORM,
+    FLYING,
 } from './const.js';
 import {
     PM_HUMAN,
@@ -67,8 +75,29 @@ const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
 const PM_URUK_HAI = monsterNames.indexOf('PM_URUK_HAI');
 const PM_ORC_CAPTAIN = monsterNames.indexOf('PM_ORC_CAPTAIN');
 
+// C ref: monattk.h AT_BREA — breath attack type
+const AT_BREA = 12;
+
 function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * C ref: mondata.c attacktype — any mattk slot with aatyp.
+ * Local copy to avoid makemon import cycles.
+ */
+function attacktype(ptr, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < slots.length; i++) {
+        if (slots[i]?.aatyp === aatyp) return true;
+    }
+    return false;
+}
+
+/** C ref: mondata.h can_breathe — attacktype(ptr, AT_BREA) */
+function can_breathe(ptr) {
+    return attacktype(ptr, AT_BREA);
 }
 
 /** C ref: mondata.c sliparm — whirly / small / noncorporeal */
@@ -116,25 +145,197 @@ function uasmon_maxStr() {
 }
 
 /**
- * C ref: polyself.c set_uasmon — point youmonst.data at mons[umonnum].
- * Named omissions: FROMFORM resistance PROPSET catalogue; vamp cham;
- * polysense; light-source bookkeeping.
+ * C ref: polyself.c set_uasmon PROPSET — toggle FROMFORM on uprops + H*.
+ * Mirrors C `u.uprops[PropIndx].intrinsic |= / &= ~FROMFORM`.
+ */
+function propset_fromform(propIdx, hField, on) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[propIdx]) {
+        u.uprops[propIdx] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    if (on) {
+        u.uprops[propIdx].intrinsic = (u.uprops[propIdx].intrinsic | 0) | FROMFORM;
+        u[hField] = (u[hField] | 0) | FROMFORM;
+    } else {
+        u.uprops[propIdx].intrinsic = (u.uprops[propIdx].intrinsic | 0) & ~FROMFORM;
+        u[hField] = (u[hField] | 0) & ~FROMFORM;
+    }
+}
+
+/**
+ * C ref: polyself.c set_uasmon — point youmonst.data at mons[umonnum]
+ * via set_mon_data (prorates u.umovement when new form is slower).
+ * Named omissions: resistance/movement PROPSET beyond FLYING; vamp cham;
+ * float_vs_flight; polysense; light-source bookkeeping.
  */
 export function set_uasmon() {
     const u = game.u || (game.u = {});
     const mndx = u.umonnum | 0;
     const mdat = mons(mndx);
     if (!game.youmonst) game.youmonst = {};
-    game.youmonst.data = mdat;
+    // C: set_mon_data(&gy.youmonst, mdat) — umovement prorate on slowdown
+    set_mon_data(game.youmonst, mdat);
     game.youmonst.mnum = mndx;
     game.youmonst.m_id = 1;
     // Protection_from_shape_changers / vampire cham deferred
     if (game.youmonst.cham == null) game.youmonst.cham = NON_PM;
     u.mcham = game.youmonst.cham;
+
+    // C: PROPSET(FLYING, is_flyer(mdat) && !is_floater(mdat)) — D-0724
+    // floating eye is flyer+floater; suppress Flying under Levitation.
+    propset_fromform(FLYING, 'HFlying', is_flyer(mdat) && !is_floater(mdat));
 }
 
 function copyAttrBundle(src) {
     return { a: [...(src?.a || [0, 0, 0, 0, 0, 0])] };
+}
+
+/** C hack.c rounddiv — trunc with round-half-up on abs values. */
+function rounddiv(x, y) {
+    if (!y) return 0;
+    let divsgn = 1;
+    let yy = y;
+    let xx = x;
+    if (yy < 0) { divsgn = -divsgn; yy = -yy; }
+    if (xx < 0) { divsgn = -divsgn; xx = -xx; }
+    let r = Math.trunc(xx / yy);
+    const m = xx % yy;
+    if (2 * m >= yy) r++;
+    return divsgn * r;
+}
+
+/**
+ * C ref: polyself.c poly_gender — 0/1 ≡ flags.female, 2=none.
+ */
+function poly_gender() {
+    const ptr = game.youmonst?.data;
+    if (is_neuter(ptr) || !humanoid(ptr)) return 2;
+    return game.flags?.female ? 1 : 0;
+}
+
+/**
+ * C ref: polyself.c change_sex — flip flags.female / mfemale.
+ * Named omissions: pl_character rename; amorous-demon set_uasmon.
+ */
+function change_sex() {
+    const u = game.u || (game.u = {});
+    const flags = game.flags || (game.flags = {});
+    const ptr = game.youmonst?.data;
+    if (!Upolyd(u)
+        || (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr))) {
+        flags.female = !flags.female;
+    }
+    if (Upolyd(u)) u.mfemale = !u.mfemale;
+    if (!Upolyd(u)) u.umonnum = u.umonster | 0;
+    // PM_AMOROUS_DEMON arm deferred
+}
+
+/**
+ * C ref: polyself.c polyman — revert to original race form after newman.
+ * Envelope: restore macurr/mamax; clear mh/mtimedone; set_uasmon; find_ac;
+ * newsym; pline; see_monsters.
+ * Named omissions: skinback; ugenocided; stick/mimic/twoweapon; Blind
+ * restore; strangling; pool spoteffects; retouch_equipment/selftouch.
+ */
+async function polyman(fmt, arg) {
+    const u = game.u || (game.u = {});
+    const flags = game.flags || (game.flags = {});
+    if (Upolyd(u)) {
+        u.acurr = copyAttrBundle(u.macurr);
+        u.amax = copyAttrBundle(u.mamax);
+        u.umonnum = u.umonster | 0;
+        flags.female = !!u.mfemale;
+    }
+    set_uasmon();
+    u.mh = 0;
+    u.mhmax = 0;
+    u.mtimedone = 0;
+    // skinback deferred
+    u.uundetected = 0;
+    find_ac();
+    newsym(u.ux, u.uy);
+    // C urgent_pline(fmt, arg) — fmt has one %s
+    await pline(String(fmt).replace('%s', arg));
+    see_monsters();
+}
+
+/**
+ * C ref: polyself.c newman — fail-to-poly / force-human: level±2, sex
+ * rn2(10), rndexp, redist_attr, HP/EN rebuild, hunger rn1(500,500),
+ * then polyman.
+ * Named omissions: Sick/Stoned clear; Slimed residual; death/lifesave;
+ * livelog; retouch_equipment/selftouch; Polymorph_control uhp clamp.
+ */
+async function newman() {
+    const u = game.u || (game.u = {});
+    const flags = game.flags || (game.flags = {});
+    const oldlvl = u.ulevel | 0;
+    let newlvl = oldlvl + rn1(5, -2); // rn2(5)+(-2)
+    if (newlvl > 127 || newlvl < 1) {
+        // dead: unsuccessful polymorph — deferred; keep old level
+        await pline("Your new form doesn't seem healthy enough to survive.");
+        return;
+    }
+    if (newlvl > MAXULEV) newlvl = MAXULEV;
+    if (newlvl < oldlvl) u.ulevelmax = (u.ulevelmax | 0) - (oldlvl - newlvl);
+    if ((u.ulevelmax | 0) < newlvl) u.ulevelmax = newlvl;
+    u.ulevel = newlvl;
+
+    // oldgend unused until livelog; still match C call order
+    void poly_gender();
+    if (game.sex_change_ok && !rn2(10)) change_sex();
+
+    await adjabil(oldlvl, u.ulevel | 0);
+    u.uexp = rndexp(false);
+    redist_attr();
+
+    // New hit points (C newman hpmax rebuild)
+    if (!u.uhpinc) u.uhpinc = [];
+    let hpmax = u.uhpmax | 0;
+    for (let i = 0; i < oldlvl; i++) hpmax -= (u.uhpinc[i] | 0);
+    hpmax = rounddiv(hpmax * rn1(4, 8), 10);
+    for (let i = 0; (u.ulevel = i) < newlvl; i++) hpmax += newhp();
+    if (hpmax < (u.ulevel | 0)) hpmax = u.ulevel | 0;
+    const oldHpmax = u.uhpmax | 0;
+    u.uhp = rounddiv((u.uhp | 0) * hpmax, oldHpmax || 1);
+    setuhpmax(hpmax, true);
+
+    // Spell power
+    if (!u.ueninc) u.ueninc = [];
+    let enmax = u.uenmax | 0;
+    for (let i = 0; i < oldlvl; i++) enmax -= (u.ueninc[i] | 0);
+    enmax = rounddiv(enmax * rn1(4, 8), 10);
+    for (let i = 0; (u.ulevel = i) < newlvl; i++) enmax += newpw();
+    if (enmax < (u.ulevel | 0)) enmax = u.ulevel | 0;
+    const oldEnmax = (u.uenmax | 0) < 1 ? 1 : (u.uenmax | 0);
+    u.uen = rounddiv((u.uen | 0) * enmax, oldEnmax);
+    u.uenmax = enmax;
+
+    u.uhunger = rn1(500, 500);
+    // Sick/Stoned clear deferred (no-op when unset)
+
+    if ((u.uhp | 0) <= 0) {
+        // Poly_control clamp / done(DIED) deferred — keep 1 hp
+        u.uhp = 1;
+    }
+
+    const female = Upolyd(u) ? !!u.mfemale : !!flags.female;
+    const race = game.urace || {};
+    // C: ((Upolyd ? u.mfemale : flags.female) && urace.individual.f)
+    //    ? individual.f : individual.m ? individual.m : urace.noun
+    const newform = (female && race.individual?.f)
+        ? race.individual.f
+        : (race.individual?.m)
+            ? race.individual.m
+            : (race.noun || race.adj || 'human');
+    await polyman('You feel like a new %s!', newform);
+
+    // Slimed residual / livelog deferred
+    flags.botl = true;
+    see_monsters();
+    await encumber_msg();
+    // retouch_equipment(2) / selftouch deferred
 }
 
 /**
@@ -210,6 +411,8 @@ async function drop_weapon(alone) {
 
 /**
  * C ref: polyself.c break_armor — sliparm / breakarm gear shedding.
+ * setworn(..., {skip_find_ac}) matches C worn.c (no find_ac); polymon
+ * calls find_ac after encumber_msg so --More-- keeps cached AC.
  * Named omissions: mummy wrapping / alchemy smock / horns / gloves /
  * boots / shield / racial_exception; donning cancel; end_burn DSM.
  */
@@ -217,33 +420,34 @@ async function break_armor() {
     const u = game.u || {};
     const uptr = game.youmonst?.data;
     if (!uptr) return;
+    const noAc = { skip_find_ac: true };
 
     if (breakarm(uptr)) {
         const otmp = u.uarm;
         if (otmp) {
             await pline('You break out of your armor!');
             exercise(A_STR, false);
-            setworn(null, W_ARM);
+            setworn(null, W_ARM, noAc);
             // useup deferred — drop to floor like sliparm dropp
             dropx(otmp);
         }
         const cloak = u.uarmc;
         if (cloak) {
             await pline('The clasp on your cloak breaks open!');
-            setworn(null, W_ARMC);
+            setworn(null, W_ARMC, noAc);
             dropx(cloak);
         }
         if (u.uarmu) {
             const shirt = u.uarmu;
             await pline('Your shirt rips to shreds!');
-            setworn(null, W_ARMU);
+            setworn(null, W_ARMU, noAc);
             dropx(shirt);
         }
     } else if (sliparm(uptr)) {
         const otmp = u.uarm;
         if (otmp) {
             await pline('Your armor falls around you!');
-            setworn(null, W_ARM);
+            setworn(null, W_ARM, noAc);
             dropx(otmp);
         }
         const cloak = u.uarmc;
@@ -253,7 +457,7 @@ async function break_armor() {
             } else {
                 await pline('You shrink out of your cloak!');
             }
-            setworn(null, W_ARMC);
+            setworn(null, W_ARMC, noAc);
             dropx(cloak);
         }
         if (u.uarmu) {
@@ -263,7 +467,7 @@ async function break_armor() {
             } else {
                 await pline('You become much too small for your shirt!');
             }
-            setworn(null, W_ARMU);
+            setworn(null, W_ARMU, noAc);
             dropx(shirt);
         }
     }
@@ -273,11 +477,13 @@ async function break_armor() {
  * C ref: polyself.c polymon — become mntmp.
  * Envelope: geno abort; conduct; CON/WIS exercise; sex_change_ok rn2(10);
  * turn-into pline; rn1(500,500) mtimedone; set_uasmon; STR clamp;
- * mhmax (dragon / golem / d(mlvl,8)); break_armor; find_ac; newsym.
+ * mhmax (dragon / golem / d(mlvl,8)); break_armor; drop_weapon;
+ * find_ac; newsym; botl; see_monsters; encumber_msg; verbose breath tip.
  * Named omissions: Stoned/Sick/Slimed/strangle/glib; hideunder; utrap;
  * Blind restore; egg learn; swallow expel; light sources;
  * full skinback; livelog first-poly text; break_armor horns/gloves/
- * boots/shield; drop_weapon twoweapon/in_use arms.
+ * boots/shield; drop_weapon twoweapon/in_use arms; retouch_equipment;
+ * non-breath verbose tips; vision_full_recalc.
  * @param {number} mntmp
  * @returns {Promise<number>} 1 on success, 0 on geno abort
  */
@@ -373,15 +579,38 @@ export async function polymon(mntmp) {
     await break_armor();
     // C: drop_weapon(1) — cantwield (dragon/nohands) must drop uwep
     await drop_weapon(1);
-    find_ac();
-    newsym(u.ux, u.uy);
+    // hideunder / Blind / egg / swallow / steed arms deferred
+    newsym(u.ux, u.uy); /* Change symbol */
+    // spoteffects / Passes_walls / amorphous / webmaker deferred
+    // C: find_ac() before encumber_msg; tty more() paints *cached* botl
+    // from the prior bot() (AC still stale at 9 after Cloak_off/setworn).
+    // JS flush before encumber more would bot post-find_ac AC:10 and
+    // poison that cache — defer find_ac until after encumber_msg so the
+    // More capture matches C (AC:9) then next screen gets AC:10.
     flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+    // vision_full_recalc deferred
+    see_monsters();
+    await encumber_msg();
+    find_ac();
+    find_ac(); /* C repeats */
+    // retouch_equipment / selftouch deferred
+    // C: polyself.c polymon — flags.verbose ability tips after encumber
+    // (breath tip forces --More-- on the encumber pline; D-0725).
+    if (flags.verbose !== false) {
+        const uptr = game.youmonst?.data;
+        if (can_breathe(uptr)) {
+            await pline('Use the command #monster to use your breath weapon.');
+        }
+        // spit/nymph/gaze/hide/web/were/gremlin/unicorn/mindflayer/
+        // shriek/vampire/sit-egg tips deferred
+    }
     return 1;
 }
 
 /**
- * C ref: polyself.c polyself — POLY_CONTROLLED getlin → polymon envelope.
- * Named omissions: Unchanging; system-shock !Poly_control path; newman;
+ * C ref: polyself.c polyself — POLY_CONTROLLED getlin → polymon/newman.
+ * Named omissions: Unchanging (handled); system-shock !Poly_control path;
  * random rn1(SPECIAL_PM) pick; were/vamp/dragon-merge; placeholder orc/elf/
  * giant substitutes; mkclass_poly; wizard rehumanize own-role; light sources.
  * @param {number} [psflags=POLY_NOFLAGS]
@@ -453,10 +682,10 @@ export async function polyself(psflags = 0) {
             && ((ptr?.mflags2 | 0) & yourRaceBit) !== 0;
         // C: !polyok || (!forcecontrol && !rn2(5)) || your_race → newman()
         if (!polyok(ptr) || (!forcecontrol && !rn2(5)) || isYourRace) {
-            // newman() deferred
-            return;
+            await newman();
+        } else {
+            await polymon(mntmp);
         }
-        await polymon(mntmp);
     } finally {
         game.sex_change_ok = (game.sex_change_ok | 0) - 1;
     }
@@ -472,5 +701,47 @@ export async function wiz_polyself() {
         return ECMD_OK;
     }
     await polyself(POLY_CONTROLLED);
+    return ECMD_OK;
+}
+
+/**
+ * C ref: polyself.c dobreathe — hero breath weapon while poly'd.
+ * Envelope: Strangled refuse; u.uen < 15 energy pline.
+ * Named omissions: uen drain + getdir; ubreatheu / ubuzz BZ_U_BREATH.
+ * @returns {Promise<number>} ECMD_OK | ECMD_CANCEL | ECMD_TIME
+ */
+export async function dobreathe() {
+    const u = game.u || (game.u = {});
+    if (u.Strangled) {
+        await pline("You can't breathe.  Sorry.");
+        return ECMD_OK;
+    }
+    if ((u.uen | 0) < 15) {
+        await pline("You don't have enough energy to breathe!");
+        return ECMD_OK;
+    }
+    // C: u.uen -= 15; botl; getdir; attacktype_fordmg AT_BREA;
+    // ubreatheu / ubuzz(BZ_U_BREATH) — deferred (seed0108 hits uen < 15).
+    return ECMD_OK;
+}
+
+/**
+ * C ref: cmd.c domonability — #monster special ability while poly'd.
+ * Envelope: can_breathe → dobreathe; Upolyd reflexive; !Upolyd normal.
+ * Named omissions: spit/nymph/gaze/were/hide/web/mindflayer/gremlin/
+ * unicorn/shriek/vampire/steed-breath; hide+web yn_function.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function domonability() {
+    const u = game.u || {};
+    const uptr = game.youmonst?.data;
+    if (can_breathe(uptr)) {
+        return dobreathe();
+    }
+    if (Upolyd(u)) {
+        await pline('Any special ability you may have is purely reflexive.');
+    } else {
+        await pline("You don't have a special ability in your normal form!");
+    }
     return ECMD_OK;
 }

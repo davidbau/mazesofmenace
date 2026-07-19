@@ -10,6 +10,7 @@ import {
 import { monsterNames, pmnames } from './generated/monsters_data.js';
 import { canseemon, newsym, pline } from './display.js';
 import { Monnam } from './do_name.js';
+import { set_mon_data } from './mondata.js';
 
 const PM_WEREWOLF = monsterNames.indexOf('PM_WEREWOLF');
 const PM_HUMAN_WEREWOLF = monsterNames.indexOf('PM_HUMAN_WEREWOLF');
@@ -40,22 +41,6 @@ export function counter_were(pm) {
 }
 
 /**
- * C ref: mondata.c set_mon_data — data/mnum + prorate unused movement.
- * Named omission: youmonst umovement path (hero poly).
- */
-function set_mon_data(mon, ptr) {
-    const old_speed = mon.data?.mmove | 0;
-    mon.data = ptr;
-    mon.mnum = ptr?.mndx ?? NON_PM;
-    if (mon.movement) {
-        const new_speed = ptr?.mmove | 0;
-        if (new_speed < old_speed && old_speed > 0) {
-            mon.movement = ((mon.movement | 0) * new_speed) / old_speed | 0;
-        }
-    }
-}
-
-/**
  * C ref: were.c new_were — flip human ↔ beast form.
  * Named omissions: mon_break_armor; possibly_unwield; monflee onscary
  * (svc.context.mon_moving + mux/muy scary near); Soundeffect.
@@ -82,6 +67,7 @@ export function new_were(mon) {
         void pline(`${Monnam(mon)} changes into a ${form}.`);
     }
 
+    // C: set_mon_data — shared with hero poly (D-0717 umovement prorate)
     set_mon_data(mon, newptr);
     // C: helpless → wake/unfreeze
     if (mon.msleeping || !mon.mcanmove || (mon.mfrozen | 0) > 0) {

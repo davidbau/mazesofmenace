@@ -70,7 +70,7 @@ import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
 import { is_pole } from './wield.js';
 import { acurrstr } from './attrib.js';
 import { m_canseeu } from './mondata.js';
-import { rloc } from './teleport.js';
+import { rloc, tele_restrict } from './teleport.js';
 import { quest_talk, quest_stat_check } from './quest.js';
 import { stairway_at } from './mklev.js';
 import { create_gas_cloud, visible_region_at } from './region.js';
@@ -1349,7 +1349,14 @@ export async function m_move(mtmp, after) {
         }
     }
 
-    if (mmoved === MMOVE_NOTHING) return MMOVE_NOTHING;
+    if (mmoved === MMOVE_NOTHING) {
+        // C ref: monmove.c m_move — unicorn failed-move teleport then postmov
+        if (ptr?.mlet === 'S_UNICORN' && likes_gems(ptr)
+            && rn2(2) && !tele_restrict(mtmp)) {
+            if (rloc(mtmp, 0)) return MMOVE_MOVED;
+        }
+        return postmov(mtmp, omx, omy, MMOVE_NOTHING, can_tunnel, can_unlock, can_open);
+    }
 
     // C: m_digweapon_check before place — may spend turn wielding dig tool
     if (await m_digweapon_check(mtmp, nix, niy)) {

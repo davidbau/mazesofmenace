@@ -97,21 +97,36 @@ import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     OVERLOADED, WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, MAX_CARR_CAP,
-    WT_WOUNDEDLEG_REDUCT,
+    WT_WOUNDEDLEG_REDUCT, WT_HUMAN,
     NOT_HUNGRY,
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { PM_SAMURAI, PM_MONK } from './generated/monsters_data.js';
-import { humanoid } from './monsters.js';
+import { humanoid, strongmonst } from './monsters.js';
 
-// C ref: hack.c weight_cap() — STR+CON base; Air/Lev/steed → MAX;
-// wounded-leg reduct when !Flying (non-MAX branch).
-// Named omissions: Boots_on Lev defer; Upolyd msize/cwt; strong steed.
+// C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
+const MZ_HUMAN = 2;
+
+// C ref: hack.c weight_cap() — STR+CON base; Upolyd msize/cwt scale;
+// Air/Lev/steed → MAX; wounded-leg reduct when !Flying (non-MAX branch).
+// Named omissions: Boots_on Lev defer; strong steed MAX branch.
 export function weight_cap() {
     let carrcap = WT_WEIGHTCAP_STRCON * (acurrstr() + acurr(A_CON))
         + WT_WEIGHTCAP_SPARE;
     const u = game.u || {};
+    // C: Upolyd → nymph MAX / !cwt msize scale / else cwt scale
+    if (Upolyd(u)) {
+        const ptr = game.youmonst?.data;
+        if (ptr?.mlet === 'S_NYMPH') {
+            carrcap = MAX_CARR_CAP;
+        } else if (!(ptr?.cwt | 0)) {
+            carrcap = Math.trunc((carrcap * (ptr?.msize | 0)) / MZ_HUMAN);
+        } else if (!strongmonst(ptr)
+            || ((ptr?.cwt | 0) > WT_HUMAN)) {
+            carrcap = Math.trunc((carrcap * (ptr?.cwt | 0)) / WT_HUMAN);
+        }
+    }
     // C: Levitation || Is_airlevel || (usteed && strongmonst) → MAX
     // Named omission: strong steed MAX branch.
     if (u.Levitation || Is_airlevel(u.uz)) {

@@ -23,6 +23,7 @@ import {
     GLOB_OF_BLACK_PUDDING,
     WEAPON_CLASS,
 } from './mkobj.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 
 const NUM_OBJECTS = objects.length;
 
@@ -34,18 +35,16 @@ const NUM_OBJECTS = objects.length;
 //    objects[i].oc_uname = player's call-name for that type
 //
 // In the JS port the canonical (never-shuffled) object name lives directly on
-// objects[i].name, and oc_name_idx == i for every object, so OBJ_NAME is just
-// the name field.  Per-appearance description strings (OBJ_DESCR) are not
-// carried by the port's objects[] table (o_init only tracks oc_descr_idx for
-// colour/appearance), so OBJ_DESCR resolves to null unless a description
-// string has been explicitly attached.  oc_uname is read if present.
+// objects[i].name.  The appearance text is keyed by the shuffled oc_descr_idx,
+// matching C's obj_descr[objects[i].oc_descr_idx].oc_descr.
 // ─────────────────────────────────────────────────────────────────────────
 function OBJ_NAME(obj) {
     return obj && obj.name ? obj.name : null;
 }
 function OBJ_DESCR(obj) {
-    // null when the port has no description string for this appearance.
-    return obj && obj.oc_descr != null ? obj.oc_descr : null;
+    if (!obj) return null;
+    const idx = obj.oc_descr_idx != null ? obj.oc_descr_idx : obj.otyp;
+    return DESCR_BY_OTYP[idx] ?? null;
 }
 function OBJ_UNAME(obj) {
     return obj && obj.oc_uname != null ? obj.oc_uname : null;

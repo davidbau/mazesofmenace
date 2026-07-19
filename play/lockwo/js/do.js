@@ -372,6 +372,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     vision_recalc(0);
     await docrt();
     await flush_screen(-1);
+    const annotation = game._level_annotations?.[ledger];
+    if (annotation) await update_topl(`You remember this level as ${annotation}.`);
     // The on-foot transit message + its --More-- frame were already delivered
     // above (before the level switch) so that the captured frame shows the OLD
     // level, exactly as the deferred-docrt() tty does.

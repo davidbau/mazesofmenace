@@ -279,6 +279,12 @@ export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
  */
 export function rloc_to(mtmp, x, y) {
     if (!mtmp) return;
+    // C ref: teleport.c rloc_to — mon_track_clear before place
+    if (mtmp.mtrack) {
+        for (let j = 0; j < mtmp.mtrack.length; j++) {
+            mtmp.mtrack[j] = { x: 0, y: 0 };
+        }
+    }
     mtmp.mx = x;
     mtmp.my = y;
     mtmp.mux = game.u?.ux ?? x;

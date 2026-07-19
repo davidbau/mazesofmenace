@@ -163,7 +163,7 @@ export async function doread() {
     }
 
     if (!(await seffects(scroll))) {
-        if (!objects[otyp]?.known) {
+        if (!objects[otyp]?.oc_name_known) {
             if (game.known) makeknown(otyp);
             // trycall(scroll): naming prompt, not modeled.
         }

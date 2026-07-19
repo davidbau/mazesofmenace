@@ -3,8 +3,8 @@
 //         newpw, pluslvl (partial); callers in mon.c xkilled / wizcmds / …
 
 import { game } from './gstate.js';
-import { rn1, rnd } from './rng.js';
-import { MAXULEV, NATTK } from './const.js';
+import { rn1, rn2, rnd } from './rng.js';
+import { MAXULEV, NATTK, LARGEST_INT, Upolyd } from './const.js';
 import { pline } from './display.js';
 import { acurr, A_WIS, newhp, adjabil } from './attrib.js';
 import { find_mac } from './mhitm.js';
@@ -90,19 +90,56 @@ export function newpw() {
     return en;
 }
 
-// C ref: attrib.c setuhpmax() — non-polyd path used by pluslvl
-function setuhpmax(newmax, _evenWhenPolyd) {
-    const u = game.u;
-    if ((u.uhpmax || 0) !== newmax) {
-        u.uhpmax = newmax;
-        if ((u.uhppeak || 0) < u.uhpmax) u.uhppeak = u.uhpmax;
-        if (!game.flags) game.flags = {};
-        game.flags.botl = true;
+/**
+ * C ref: attrib.c setuhpmax(newmax, even_when_polyd).
+ * When Upolyd && !even_when_polyd, updates mhmax/mh instead of uhpmax/uhp.
+ */
+export function setuhpmax(newmax, evenWhenPolyd) {
+    const u = game.u || (game.u = {});
+    if (!game.flags) game.flags = {};
+    if (!Upolyd(u) || evenWhenPolyd) {
+        if ((u.uhpmax || 0) !== newmax) {
+            u.uhpmax = newmax;
+            if ((u.uhppeak || 0) < u.uhpmax) u.uhppeak = u.uhpmax;
+            game.flags.botl = true;
+        }
+        if ((u.uhp || 0) > (u.uhpmax || 0)) {
+            u.uhp = u.uhpmax;
+            game.flags.botl = true;
+        }
+    } else {
+        if ((u.mhmax || 0) !== newmax) {
+            u.mhmax = newmax;
+            game.flags.botl = true;
+        }
+        if ((u.mh || 0) > (u.mhmax || 0)) {
+            u.mh = u.mhmax;
+            game.flags.botl = true;
+        }
     }
-    if ((u.uhp || 0) > (u.uhpmax || 0)) {
-        u.uhp = u.uhpmax;
-        game.flags.botl = true;
+}
+
+/**
+ * C ref: exper.c rndexp(gaining) — XP for newman / potion-of-gain-level.
+ * Named omission: MAXULEV+gaining wrap-guard path rarely hit here.
+ */
+export function rndexp(gaining) {
+    const u = game.u || {};
+    const ulev = u.ulevel | 0;
+    const minexp = (ulev === 1) ? 0 : newuexp(ulev - 1);
+    const maxexp = newuexp(ulev);
+    let diff = maxexp - minexp;
+    let factor = 1;
+    while (diff >= LARGEST_INT) {
+        diff = Math.trunc(diff / 2);
+        factor *= 2;
     }
+    let result = minexp + factor * rn2(diff | 0);
+    if (ulev === MAXULEV && gaining) {
+        result += ((u.uexp | 0) - minexp);
+        if (result < (u.uexp | 0)) result = u.uexp | 0;
+    }
+    return result;
 }
 
 /**

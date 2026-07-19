@@ -167,6 +167,10 @@ async function getobj_throw() {
     }
 }
 
+/**
+ * C ref: cmd.c getdir — '.' / 's' = self (dx=dy=dz=0, success);
+ * ESC/space/CR cancel (quitchars).
+ */
 async function getdir(prompt) {
     if (prompt) {
         game._pending_message = prompt;
@@ -178,7 +182,10 @@ async function getdir(prompt) {
     const ch = String.fromCharCode(key);
     // Clear yn prompt before returning to the command loop (next capture).
     game._pending_message = '';
-    if (key === 27 || ch === '.' || ch === ' ' || ch === '\n' || ch === '\r')
+    // C: NHKF_GETDIR_SELF / SELF2 → u.dx=u.dy=u.dz=0, return 1
+    if (ch === '.' || ch === 's') return { dx: 0, dy: 0 };
+    // C: strchr(quitchars, dirsym) → return 0 without "strange direction"
+    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r')
         return null;
     const dir = dir_from_key(key, ch);
     if (!dir) {
@@ -308,6 +315,13 @@ function multishot_class_bonus(pm, ammo, launcher) {
 async function throw_obj(obj, shotlimit) {
     // C: coin class → throw_gold (body deferred; `$` still in getobj suggest list)
     if (obj.oclass === COIN_CLASS) return 0;
+
+    // C ref: dothrow.c throw_obj — after getdir, self (dx=dy=dz=0) refuses
+    const u = game.u || {};
+    if (!(u.dx || 0) && !(u.dy || 0) && !(u.dz || 0)) {
+        await pline('You cannot throw an object at yourself.');
+        return 0; // ECMD_OK — no time
+    }
 
     // C ref: dothrow.c:158–237 Multishot calculations
     let multishot = 1;
@@ -577,8 +591,10 @@ export async function getdir_cmdassist(prompt) {
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
         game._pending_message = '';
-        // C: quitchars + getdir self ('.') cancel without help
-        if (key === 27 || ch === '.' || ch === ' ' || ch === '\n' || ch === '\r')
+        // C: NHKF_GETDIR_SELF / SELF2 → dx=dy=dz=0, success (not cancel)
+        if (ch === '.' || ch === 's') return { dx: 0, dy: 0 };
+        // C: strchr(quitchars, dirsym) → return 0 without help_dir
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r')
             return null;
         // C: movecmd(dirsym, MV_ANY) — walk/run/rush all ok
         const dir = dir_from_key(key, ch);

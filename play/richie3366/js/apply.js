@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
+import { vision_recalc } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, objectNames,
@@ -300,10 +301,10 @@ async function use_stethoscope(_obj) {
     return 0; // ECMD_OK — match C isok-fail path rather than invent TIME
 }
 
-/** C youprop.h Blind — (H||E) && !B; also sticky u.Blind. */
+/** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky). */
 function Blind() {
     const u = game.u || {};
-    if (u.Blind || u.ublind) return true;
+    if (u.uroleplay?.blind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
@@ -313,18 +314,27 @@ function BlindedTimeout() {
 }
 
 /**
- * C ref: potion.c make_blinded — TIMEOUT set + Blind mirror.
- * Eyes override / toggle_blindness / Punished / talk messages deferred.
+ * C ref: potion.c make_blinded + toggle_blindness subset.
+ * Sets HBlinded TIMEOUT; on sight toggle → botl + vision_recalc(0).
+ * Eyes override / Punished set_bc / Blind_telepat see_monsters / talk deferred.
  */
 function make_blinded(xtime, _talk) {
     const u = game.u || (game.u = {});
-    const wasBlind = Blind();
+    const old = BlindedTimeout();
+    // C probes Blind via props before committing xtime
+    const u_could_see = !Blind();
+    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (xtime ? 1 : 0);
+    const can_see_now = !Blind();
+    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (old & TIMEOUT);
+
     u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (xtime ? (xtime & TIMEOUT) : 0);
-    const nowBlind = !!((u.HBlinded | 0) && !(u.BBlinded | 0))
-        || !!(u.EBlinded | 0);
-    if (wasBlind !== nowBlind) {
-        u.Blind = nowBlind;
+    u.Blind = Blind();
+    if (u_could_see !== can_see_now) {
+        // C: toggle_blindness — botl + vision_full_recalc + vision_recalc(0)
         if (game.flags) game.flags.botl = true;
+        game.vision_full_recalc = 1;
+        vision_recalc(0);
+        // Blind_telepat / Infravision / Sting see_monsters deferred
     }
 }
 

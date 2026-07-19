@@ -647,8 +647,16 @@ export function xname(obj) {
         if ((obj.quan || 1) !== 1) base = makeplural(base);
         return base;
     }
+    // C: obj_is_pname → goto nameit (bare ONAME) — deferred; partial ID
+    // artifacts fall through to actualn + " named ONAME" below.
     let base = pretty_base(obj);
     if ((obj.quan || 1) !== 1) base = makeplural(base);
+    // C xname_flags: has_oname && dknown → " named " ONAME
+    const onameStr = obj.oextra?.oname;
+    if (onameStr && obj.dknown) {
+        base += ` named ${onameStr}`;
+        // C: artifact "The …" → downcase leading T — deferred
+    }
     return base;
 }
 

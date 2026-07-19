@@ -1588,6 +1588,10 @@ export function setup_role_race_from_rc(opts = {}) {
         adj: race.adj,
         noun: race.noun || race.name,
         filecode: race.filecode || 'Hum',
+        // C: gu.urace.individual.m/f — newman "new man"/"new woman"
+        individual: race.individual
+            ? { m: race.individual.m || null, f: race.individual.f || null }
+            : { m: null, f: null },
         mnum: race.mnum,
         attrmin: race.attrmin,
         attrmax: race.attrmax,

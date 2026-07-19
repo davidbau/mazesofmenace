@@ -578,9 +578,9 @@ export function vision_recalc(control = 0) {
         next_rmax[y] = 0;
     }
 
-    // C youprop.h Blind — used before sighted/rogue branches
-    const heroBlind = !!(u.Blind || u.ublind
-        || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+    // C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky)
+    const heroBlind = !!(u.uroleplay?.blind
+        || ((((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0))));
 
     if (control === 2 || u.uswallow) {
         // C: swallow / refresh — leave next empty (hero sees nothing)

@@ -220,26 +220,11 @@ function OMAILCMD(obj) { return obj?.omailcmd || ''; }
 // (the latter feeds the '\' discoveries list).  Delegates the encountered
 // bookkeeping to o_init.js so the discovery state lives in one place.
 function observe_object(obj) { if (obj) { obj.dknown = 1; disco_observe_object(obj); } }
-// C ref: hack.h `#define makeknown(x) discover_object((x), TRUE, TRUE, TRUE)`.
-// The credit_hero=TRUE arg means that, the FIRST time a type is identified this
-// way during play, the hero earns a Wisdom exercise (exercise(A_WIS, TRUE) ->
-// rn2(19)).  Most makeknown() call sites (quaff / read / zap) still use this
-// legacy flag-only form because their JS oc_name_known state isn't yet kept in
-// lockstep with C, so crediting them would mis-fire the exercise (seed2200
-// regressed -27 that way).  The boots-wear path uses makeknown_credit() below,
-// whose discovery RNG is verified against the seed0360 C trace.
-export function makeknown(otyp) { if (objects[otyp]) objects[otyp].known = true; }
-
-// C ref: hack.h makeknown(x) == discover_object(x, TRUE, TRUE, TRUE).  The
-// faithful form that credits the hero with a Wisdom exercise on first discovery
-// (o_init.c discover_object -> exercise(A_WIS, TRUE) -> rn2(19)).  Used by the
-// boots dressing maneuver (Boots_on -> makeknown_credit(SPEED_BOOTS)); donning
-// speed boots identifies them and the C trace shows the rn2(19) firing at the
-// maneuver's completion (unmul -> Boots_on -> discover_object).
-export function makeknown_credit(otyp) {
-    if (objects[otyp]) objects[otyp].known = true;
+// C ref: hack.h makeknown(x) == discover_object(x, TRUE, TRUE, TRUE).
+export function makeknown(otyp) {
     discover_object(otyp, true, true, true);
 }
+export function makeknown_credit(otyp) { makeknown(otyp); }
 function discover_artifact(_id) {}
 function learn_egg_type(_mnum) {}
 // C ref: include/you.h Role_if(pm) — TRUE when the hero's role matches the
@@ -326,13 +311,13 @@ function pudding_merge_message(_otmp, _obj) {}
 function maybereleaseobuf(_str) {}
 function dupstr(s) { return String(s ?? ''); }
 function cxname_singular(obj) { return simple_obj_name(obj, { article: false, quantity: false }); }
-function xname(obj) { if (obj) obj.dknown = 1; return simple_obj_name(obj); }
+function xname(obj) { observe_object(obj); return simple_obj_name(obj); }
 function yname(obj) { return simple_obj_name(obj); }
 function ansimpleoname(obj) { return with_article(simple_obj_name(obj, { quantity: false, buc: false })); }
 function simpleonames(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
 function distant_name(obj, fn = doname) { return fn(obj); }
 function short_oname(obj) { return simple_obj_name(obj, { quantity: false }); }
-function doname(obj) { return simple_obj_name(obj); }
+function doname(obj) { observe_object(obj); return simple_obj_name(obj); }
 function doname_with_price(obj) { return doname(obj); }
 // C ref: invent.c doname() — full floor-object name (with quantity/article) for
 // the "You see here ..." auto-announcement after a step.  Exported for cmd.js.
@@ -405,12 +390,12 @@ export async function docall(obj) {
     if (game._pending_message) await topl_more();
     const qbuf = `Call ${docall_xname(obj)}:`;
     const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
-    let buf = await hooked_tty_getlin(qbuf, null);
+    const raw = await hooked_tty_getlin(qbuf, null);
     // The taste message was acknowledged (--More--) and getlin overwrote the
     // top line; C leaves the message window empty afterward (TOPLINE_EMPTY).
     game._pending_message = '';
-    if (buf === '\x1b') buf = '';
-    buf = mungspaces(buf);
+    if (!raw || raw === '\x1b') return;
+    const buf = mungspaces(raw);
     const ocl = objects[obj.otyp];
     if (!buf) {
         if (ocl?.oc_uname) ocl.oc_uname = null;   // undiscover (clear call-name)
@@ -419,6 +404,69 @@ export async function docall(obj) {
         discover_object(obj.otyp, false, true, true);
     }
     update_inventory();
+}
+
+// C ref: do_name.c objtyp_is_callable()/name_ok()/call_ok().
+function objtyp_is_callable(otyp) {
+    const ocl = objects[otyp];
+    if (!ocl) return false;
+    if (ocl.oc_uname) return true;
+    if (otyp === AMULET_OF_YENDOR || otyp === FAKE_AMULET_OF_YENDOR_OTYP)
+        return false;
+    return [AMULET_CLASS, SCROLL_CLASS, POTION_CLASS, WAND_CLASS, RING_CLASS,
+        GEM_CLASS, SPBOOK_CLASS, ARMOR_CLASS, TOOL_CLASS, VENOM_CLASS]
+        .includes(ocl.oclass) && DESCR_BY_OTYP[otyp] != null;
+}
+
+function name_ok(obj) {
+    if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    if (!obj.dknown || obj.oartifact || obj.otyp === SPE_NOVEL)
+        return GETOBJ_DOWNPLAY;
+    return GETOBJ_SUGGEST;
+}
+
+function call_ok(obj) {
+    if (!obj || !objtyp_is_callable(obj.otyp)) return GETOBJ_EXCLUDE;
+    const ocl = objects[obj.otyp];
+    if (!obj.dknown || (ocl.oc_name_known && !ocl.oc_uname))
+        return GETOBJ_DOWNPLAY;
+    return GETOBJ_SUGGEST;
+}
+
+async function do_oname(obj) {
+    if (obj.otyp === SPE_NOVEL) {
+        await pline(`${simple_obj_name(obj)} already has a published name.`);
+        return;
+    }
+    if (!(game.u?.blinded > 0) && !game.ublindf) observe_object(obj);
+    const target = simple_obj_name(obj, { article: false, quantity: false, buc: false });
+    const which = (obj.quan || 1) > 1 ? 'these' : 'this';
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    let buf = await hooked_tty_getlin(`What do you want to name ${which} ${target}?`, null);
+    game._pending_message = '';
+    if (!buf || buf === '\x1b') return;
+    buf = mungspaces(buf).slice(0, 62);
+    if (obj.oartifact) {
+        await pline(`${ONAME(obj) || 'The artifact'} resists the attempt.`);
+        return;
+    }
+    oname(obj, buf);
+    update_inventory();
+}
+
+export async function name_inventory_object() {
+    const obj = await getobj('name', name_ok, GETOBJ_PROMPT);
+    if (obj) await do_oname(obj);
+}
+
+export async function call_inventory_object() {
+    const obj = await getobj('call', call_ok, GETOBJ_NOFLAGS);
+    if (!obj) return;
+    if (!(game.u?.blinded > 0) && !game.ublindf) observe_object(obj);
+    if (!obj.dknown)
+        await pline('You would never recognize another one.');
+    else
+        await docall(obj);
 }
 
 // C ref: do.c trycall(obj) — offer to name an unidentified object type after
@@ -1101,7 +1149,7 @@ function objectBaseName(obj) {
         if (un) return `spellbook called ${un}`;
         return `${dn} spellbook`;
     case GEM_CLASS: {
-        const rock = (ocl?.oc_material === 9 /* MINERAL */) ? 'stone' : 'gem';
+        const rock = (ocl?.oc_material === 21 /* MINERAL */) ? 'stone' : 'gem';
         if (!dknown) return rock;
         if (!nn) {
             if (un) return `${rock} called ${un}`;
@@ -1109,7 +1157,9 @@ function objectBaseName(obj) {
         }
         return actualn; /* GemStone " stone" suffix handled by callers as needed */
     }
+    case WEAPON_CLASS:
     case TOOL_CLASS:
+    case VENOM_CLASS:
         // C ref: objnam.c xname_flags TOOL_CLASS — when the type is not
         // name-known the unidentified *appearance* is shown, not the real name:
         //   if (!dknown) dn; else if (nn) actualn; else if (un) "dn called un";
@@ -1117,9 +1167,6 @@ function objectBaseName(obj) {
         // For instruments this matters: an unidentified "leather drum" (or
         // "drum of earthquake") both display as their shared appearance "drum".
         // For un-shuffled tools dn === actualn, so this is a no-op there.
-        // (WEAPON_CLASS is left to the default actualn path: its names — e.g.
-        // the samurai's Japanese-renamed katana — equal their appearance and
-        // the broader change regressed the weapon-bearing sessions.)
         if (!dknown) return dn;
         if (nn) return actualn;
         if (un) return `${dn} called ${un}`;
@@ -1130,7 +1177,7 @@ function objectBaseName(obj) {
         // suits) takes the actualn path unchanged.
         if (pair_of(obj))
             return `pair of ${nn ? actualn : (dn ?? actualn)}`;
-        return actualn;
+        return nn ? actualn : dn;
     default:
         // WEAPON / FOOD / ROCK / CHAIN / BALL etc.: these are not
         // appearance-shuffled in a way the recorded sessions exercise, so
@@ -1300,6 +1347,7 @@ function worn_status_suffix(obj) {
 // classes outside this scope so unrelated callers are unaffected.
 function doname_invent(obj) {
     if (!obj) return 'nothing';
+    observe_object(obj);
     const oc = obj.oclass;
     if (oc !== WEAPON_CLASS && oc !== ARMOR_CLASS)
         return simple_obj_name(obj) + worn_status_suffix(obj);
@@ -1500,47 +1548,18 @@ export function renderWindowScreen(lines, opts = {}) {
 // C ref: o_init.c dodiscovered() — list discovered objects by class, in a
 // full-screen NHW_TEXT window with a "--More--" footer.  The discovery state
 // (objects[].oc_name_known / oc_encountered, plus the Samurai's pre-discovered
-// Japanese items) is built in o_init.js::build_discoveries_rows.  The tourist
-// starter (seed8000) discovers scrolls/potions during play, which the current
-// port still represents with the recorded hardcoded list.
+// Japanese items) is built in o_init.js::build_discoveries_rows.
 function discoveriesRows() {
-    // The Samurai is the only public-session role that pre-discovers object
-    // types at character creation (knows_class WEAPON/ARMOR + the Japanese
-    // items), so its '\' list is reproduced faithfully from the discovery
-    // state.  Other roles' discoveries come from in-play identification, which
-    // the port does not yet track; those keep their recorded fallback list.
-    const roleMnum = game.urole?.mnum ?? game.u?.umonnum;
-    const samurai = (roleMnum === 9 || game.urole?.name?.m === 'Samurai');
-    const ranger = (roleMnum === 7 || game.urole?.name?.m === 'Ranger');
-    if (samurai || ranger) {
-        // Mark carried items as encountered (C: observe_object runs as each is
-        // xname'd during the inventory window that precedes '\').  Combined with
-        // the role's knows_class() pre-discoveries, build_discoveries_rows()
-        // reproduces the '\' list faithfully.
-        for (const obj of inventoryArray()) disco_observe_object(obj);
-        const classRows = build_discoveries_rows();
-        if (classRows) {
-            const rows = [
-                { text: 'Discoveries, by order of discovery within each class' },
-                { text: '' },
-            ];
-            for (const r of classRows)
-                rows.push(r.header ? { text: r.text, attr: ATR_INVERSE }
-                                   : { text: r.text });
-            return rows;
-        }
-    }
-
-    if (touristFallbackRows())
-        return [
-            { text: 'Discoveries, by order of discovery within each class' },
-            { text: '' },
-            { text: 'Scrolls', attr: ATR_INVERSE },
-            { text: '  scroll of magic mapping (ANDOVA BEGARIN)' },
-            { text: 'Potions', attr: ATR_INVERSE },
-            { text: '  potion of extra healing (murky)' },
-        ];
-    return null;
+    const classRows = build_discoveries_rows();
+    if (!classRows) return null;
+    const rows = [
+        { text: 'Discoveries, by order of discovery within each class' },
+        { text: '' },
+    ];
+    for (const r of classRows)
+        rows.push(r.header ? { text: r.text, attr: ATR_INVERSE }
+                           : { text: r.text });
+    return rows;
 }
 
 export function dodiscovered() {
@@ -4912,9 +4931,100 @@ export function check_invent_gold(why) {
 
 export function adjust_ok(obj) { return !obj || obj.oclass === COIN_CLASS ? GETOBJ_EXCLUDE : GETOBJ_SUGGEST; }
 export function adjust_gold_ok(obj) { return obj ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE; }
-export function doorganize() { if (!inventoryArray().length) game._pending_message = "You aren't carrying anything to adjust."; return ECMD_OK; }
+export async function doorganize() {
+    const inv = inventoryArray();
+    if (!inv.length || (inv.length === 1 && inv[0].oclass === COIN_CLASS
+        && inv[0].invlet === GOLD_SYM)) {
+        game._pending_message = `You aren't carrying anything ${inv.length ? 'adjustable' : 'to adjust'}.`;
+        return ECMD_OK;
+    }
+    if (!flags().invlet_constant) reassign();
+    const filter = check_invent_gold('adjust') ? adjust_gold_ok : adjust_ok;
+    const obj = await getobj('adjust', filter, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    return doorganize_core(obj);
+}
 export function adjust_split() { return ECMD_FAIL; }
-export function doorganize_core(obj) { return obj ? ECMD_OK : ECMD_CANCEL; }
+
+function merge_equipped_references(from, to) {
+    const primary = game.uwep === from || game.uwep === to;
+    const alternate = game.uswapwep === from || game.uswapwep === to;
+    const quivered = game.uquiver === from || game.uquiver === to;
+    if (primary) setuwep_slot(null);
+    if (alternate) setuswapwep(null);
+    if (quivered) setuqwep(null);
+    if (primary) setuwep_slot(to);
+    else if (alternate) setuswapwep(to);
+    else if (quivered) setuqwep(to);
+    if (game.u?.twoweap && !game.uswapwep) game.u.twoweap = 0;
+}
+
+export async function doorganize_core(obj) {
+    if (!obj) return ECMD_CANCEL;
+
+    const inv = inventoryArray();
+    const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const available = [...alphabet].filter((letter) => {
+        const occupant = inv.find((other) => other !== obj && other.invlet === letter);
+        return !occupant || mergable(occupant, obj);
+    });
+    const choices = compactify(available.join(''));
+    const prompt = `Adjust letter to what [${choices}] (? see used letters)?`;
+    const isgold = obj.oclass === COIN_CLASS;
+
+    for (let trycnt = 1; ; ++trycnt) {
+        const key = isgold ? GOLD_SYM
+            : String.fromCharCode(await topline_query(prompt));
+        if (QUITCHARS.includes(key)) {
+            await pline('Never mind.');
+            return ECMD_OK;
+        }
+        if (key === GOLD_SYM && !isgold) {
+            await pline(`Only gold coins may be moved into the '${GOLD_SYM}' slot.`);
+            return ECMD_OK;
+        }
+        if (!/^[A-Za-z#]$/.test(key) && key !== GOLD_SYM) {
+            await pline('Select an inventory slot letter.');
+            if (trycnt >= 5) {
+                await pline('Never mind.');
+                return ECMD_OK;
+            }
+            continue;
+        }
+
+        const oldlet = obj.invlet;
+        const destination = inv.find((other) => other !== obj && other.invlet === key);
+        let result = obj;
+        let action = key === oldlet ? 'Collecting:' : 'Moving:';
+
+        if (key === oldlet) {
+            for (const other of [...inv]) {
+                if (other === result || other.invlet === oldlet) continue;
+                if (!has_oname(other) || (has_oname(result) && ONAME(other) === ONAME(result))) {
+                    if (mergable(result, other)) {
+                        merge_equipped_references(other, result);
+                        merged(result, other);
+                    }
+                }
+            }
+        } else if (destination && mergable(destination, obj)) {
+            merge_equipped_references(obj, destination);
+            merged(destination, obj);
+            result = destination;
+            action = 'Merging:';
+        } else {
+            if (destination) {
+                destination.invlet = oldlet;
+                action = 'Swapping:';
+            }
+            obj.invlet = key;
+        }
+
+        reorder_invent();
+        prinv(action, result, 0);
+        update_inventory();
+        return ECMD_OK;
+    }
+}
 
 export function invdisp_nothing(hdr, txt) {
     renderMenuScreen([[hdr, '', txt]], [0, 0]);

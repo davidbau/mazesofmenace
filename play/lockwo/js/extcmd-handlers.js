@@ -10,9 +10,12 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, topl_more, update_topl, m_at, vobj_at, render_map_to_grid, statusLine1Text, statusLine2Text } from './display.js';
+import { pline, topl_more, update_topl, flush_screen, m_at, vobj_at, render_map_to_grid, statusLine1Text, statusLine2Text } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
-import { obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable } from './invent.js';
+import {
+    obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
+    name_inventory_object, call_inventory_object, doorganize,
+} from './invent.js';
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
 import { create_particular_monster } from './makemon.js';
@@ -743,13 +746,35 @@ function render_corner_menu(disp, title, items) {
     return offx;
 }
 
+function current_level_annotation_key() {
+    const uz = game.u?.uz || { dnum: 0, dlevel: 1 };
+    return `${uz.dnum}:${uz.dlevel}`;
+}
+
+// C ref: dungeon.c query_annotation()/donamelevel().
+async function donamelevel() {
+    const annotations = game._level_annotations || (game._level_annotations = {});
+    const key = current_level_annotation_key();
+    const current = annotations[key] || '';
+    const query = current
+        ? `Replace annotation "${current.slice(0, 30)}${current.length > 30 ? '...' : ''}" with?`
+        : 'What do you want to call this dungeon level?';
+    await flush_screen(1);
+    const raw = await hooked_tty_getlin(query, null);
+    game._pending_message = '';
+    if (!raw || raw === '\x1b') return 0;
+    const annotation = mungspaces(raw);
+    if (annotation) annotations[key] = annotation;
+    else delete annotations[key];
+    return 0;
+}
+
 // C ref: do_name.c docallcmd.  Present the name/call menu, read a single
 // PICK_ONE selection (ESC/space cancels), then dispatch the sub-action.
 async function docallcmd() {
     const disp = game?.nhDisplay;
-    // C: the inventory branches ('i','o') are only added when gi.invent is
-    // non-empty; the hero always carries starting inventory, so include them.
-    const haveInvent = true;
+    // C: inventory branches are only present when the pack is non-empty.
+    const haveInvent = (game.invent || game.gi?.invent || []).length > 0;
     const items = [{ ch: 'm', desc: 'a monster' }];
     if (haveInvent) {
         items.push({ ch: 'i', desc: 'a particular object in inventory' });
@@ -760,34 +785,44 @@ async function docallcmd() {
     items.push({ ch: 'a', desc: 'record an annotation for the current level' });
 
     render_corner_menu(disp, 'What do you want to name?', items);
-    const key = await nhgetch();
-
-    // Map the key to a menu selection.  A direct accelerator letter selects
-    // that item; ESC / space / return with no selection cancels (-> 'q').
-    let ch = 'q';
-    const c = String.fromCharCode(key);
-    if (key !== 27 && key !== 32 && key !== 13 && key !== 10
-        && items.some((it) => it.ch === c)) {
-        ch = c;
+    // Direct accelerators and the historical group accelerators both select;
+    // invalid input leaves the PICK_ONE menu active.
+    const aliases = { C: 'm', y: 'i', n: 'o', ',': 'f', '\\': 'd', l: 'a' };
+    let ch;
+    for (;;) {
+        const key = await nhgetch();
+        if (key === 27 || key === 32 || key === 13 || key === 10) {
+            ch = 'q';
+            break;
+        }
+        const c = String.fromCharCode(key);
+        const selected = aliases[c] || c;
+        if (items.some((it) => it.ch === selected)) {
+            ch = selected;
+            break;
+        }
     }
 
     // The menu is left on the grid; the next rhack() iteration's
     // flush_screen(1) clears it and redraws the map with the cursor parked at
     // the hero (matching tty_dismiss_nhwindow -> docorner/docrt).
 
-    // C: switch(ch) — dispatch the chosen sub-action.  The recorded sessions
-    // only take the cancel path; the individual naming sub-commands (getlin
-    // prompts / monster targeting) are not modelled and behave as no-ops.
     switch (ch) {
     case 'q':
     default:
         break;
     case 'm': // name a visible monster (do_mgivenname)
-    case 'i': // name an individual object (do_oname)
-    case 'o': // name a type of object (docall)
     case 'f': // name a type of object on the floor (namefloorobj)
     case 'd': // rename a discovered type (rename_disco)
+        break;
+    case 'i': // name an individual object (do_oname)
+        await name_inventory_object();
+        break;
+    case 'o': // name a type of object (docall)
+        await call_inventory_object();
+        break;
     case 'a': // annotate the level (donamelevel)
+        await donamelevel();
         break;
     }
     return 0;
@@ -1162,6 +1197,8 @@ export async function forcelock() {
 // Map extcmdlist index -> handler.  Unimplemented commands fall through to
 // a no-op (no message), which keeps RNG/state untouched.
 const HANDLERS = {
+    adjust: doorganize_extcmd,
+    annotate: donamelevel,
     jump: dojump,
     levelchange: wiz_level_change,
     twoweapon: dotwoweapon,
@@ -1184,6 +1221,10 @@ const HANDLERS = {
 async function dorub_extcmd() {
     const res = await dorub();
     return res === APPLY_ECMD.ECMD_TIME ? 1 : 0;
+}
+async function doorganize_extcmd() {
+    await doorganize();
+    return 0;
 }
 async function dowipe_extcmd() {
     const res = await dowipe();

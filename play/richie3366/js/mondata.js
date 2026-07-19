@@ -17,6 +17,39 @@ import { M_SEEN_NOTHING, CONFLICT } from './const.js';
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
 
 /**
+ * C ref: mondata.c set_mon_data — assign data/mnum; when new form is
+ * slower, prorate unused movement so leftover from a faster form cannot
+ * grant extra moves (hero uses u.umovement; monsters use mon.movement).
+ * @param {object} mon
+ * @param {object|null|undefined} ptr
+ */
+export function set_mon_data(mon, ptr) {
+    if (!mon) return;
+    const old_speed = mon.data?.mmove | 0;
+    const isYou = mon === game.youmonst;
+    const cur = isYou
+        ? ((game.u?.umovement | 0))
+        : ((mon.movement | 0));
+
+    mon.data = ptr;
+    mon.mnum = ptr?.mndx ?? ptr?.pm ?? NON_PM;
+
+    if (cur) {
+        const new_speed = ptr?.mmove | 0;
+        // C: if new form slower, movement *= new/old (trunc toward 0)
+        if (new_speed < old_speed && old_speed > 0) {
+            const next = Math.trunc((cur * new_speed) / old_speed);
+            if (isYou) {
+                if (!game.u) game.u = {};
+                game.u.umovement = next;
+            } else {
+                mon.movement = next;
+            }
+        }
+    }
+}
+
+/**
  * C ref: youprop.h Conflict — HConflict || EConflict.
  * setworn oc_oprop deferred: worn RIN_CONFLICT confers extrinsic.
  */

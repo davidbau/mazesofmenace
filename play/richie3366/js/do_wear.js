@@ -366,8 +366,9 @@ async function dragon_armor_handling(otmp, puton, _on_purpose = true) {
  * @param {object|null} obj
  * @param {number} mask
  */
-export function setworn(obj, mask) {
+export function setworn(obj, mask, opts = null) {
     const u = game.u || (game.u = {});
+    const skipFindAc = !!(opts && opts.skip_find_ac);
     const clearOne = (slot, bit) => {
         if (!(mask & bit)) return;
         const old = u[slot];
@@ -393,7 +394,8 @@ export function setworn(obj, mask) {
         if (mask & W_RINGR) clearOne('uright', W_RINGR);
         clearOne('uamul', W_AMUL);
         clearOne('ublindf', W_TOOL);
-        find_ac();
+        // C worn.c setworn does not call find_ac — callers do
+        if (!skipFindAc) find_ac();
         recalc_telepat_range();
         return;
     }
@@ -457,7 +459,7 @@ export function setworn(obj, mask) {
         u.ublindf = obj;
     }
     if (slotBit) confer_oc_oprop(obj, slotBit, true);
-    find_ac();
+    if (!skipFindAc) find_ac();
     // C worn.c setworn — recalc_telepat_range after prop updates
     recalc_telepat_range();
 }

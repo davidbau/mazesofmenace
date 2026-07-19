@@ -367,6 +367,26 @@ const EXT_CMDS = [
         },
     },
     {
+        name: 'untrap',
+        wiz: false,
+        autocomplete: true,
+        // C ref: trap.c dountrap — #untrap disarm
+        run: async () => {
+            const { dountrap } = await import('./trap.js');
+            return dountrap();
+        },
+    },
+    {
+        name: 'tip',
+        wiz: false,
+        autocomplete: true,
+        // C ref: pickup.c dotip — #tip floor/invent container
+        run: async () => {
+            const { dotip } = await import('./pickup.js');
+            return dotip();
+        },
+    },
+    {
         name: 'levelchange',
         wiz: true,
         autocomplete: true,
@@ -435,6 +455,26 @@ const EXT_CMDS = [
         run: async () => {
             const { wiz_polyself } = await import('./polyself.js');
             return wiz_polyself();
+        },
+    },
+    {
+        name: 'monster',
+        wiz: false,
+        autocomplete: true,
+        // C: cmd.c "monster" IFBURIED|AUTOCOMPLETE → domonability (D-0722)
+        run: async () => {
+            const { domonability } = await import('./polyself.js');
+            return domonability();
+        },
+    },
+    {
+        // C: cmd.c "herecmdmenu" IFBURIED|AUTOCOMPLETE|GENERALCMD → doherecmdmenu
+        name: 'herecmdmenu',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { doherecmdmenu } = await import('./cmd.js');
+            return doherecmdmenu();
         },
     },
 ];
