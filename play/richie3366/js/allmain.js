@@ -13,6 +13,7 @@ import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons, find_level } from './dungeon.js';
+import { depth } from './hacklib.js';
 import { schedule_goto, deferred_goto } from './do.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
 import { makedog } from './dog.js';
@@ -131,9 +132,16 @@ function u_calc_moveamt(wtcap) {
 }
 
 // C ref: allmain.c maybe_generate_rnd_mon()
+// C: !rn2(udemigod ? 25 : (depth(&u.uz) > depth(&stronghold_level)) ? 50 : 70)
 function maybe_generate_rnd_mon() {
-    // depth 1, not udemigod, not past stronghold → rn2(70)
-    if (!rn2(70)) {
+    const u = game.u || {};
+    let rate = 70;
+    if (u.uevent?.udemigod) {
+        rate = 25;
+    } else if (depth(u.uz) > depth(game.stronghold_level)) {
+        rate = 50;
+    }
+    if (!rn2(rate)) {
         makemon(null, 0, 0, NO_MM_FLAGS);
     }
 }

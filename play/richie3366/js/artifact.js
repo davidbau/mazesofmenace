@@ -58,6 +58,7 @@ import {
 export { ART_NONARTIFACT, ART_GRIMTOOTH, ART_GRAYSWANDIR };
 
 // C ref: include/artifact.h — subset used by touch/wish / spec_applies
+export const SPFX_NOGEN = 0x00000001;
 export const SPFX_RESTR = 0x00000002;
 export const SPFX_INTEL = 0x00000004;
 export const SPFX_ATTK = 0x00000040;
@@ -242,6 +243,54 @@ export function nartifact_exist() {
         if (ax[i]?.exists) a++;
     }
     return a;
+}
+
+/**
+ * C ref: artifact.c mk_artifact — A_NONE converts otmp to matching artifact.
+ * Named omissions: by_align gift path (mksobj + role/skill checks);
+ * gift_value / gen_spe (extractor lacks gv/gs; max_giftvalue=99 covers
+ * normal arts; gen_spe defaults 0 → spe adjust no-op); permapoisoned.
+ */
+export function mk_artifact(otmp, alignment = A_NONE, max_giftvalue = 99,
+    adjust_spe = true) {
+    const list = artilist();
+    const by_align = alignment !== A_NONE;
+    if (by_align) {
+        // Gift / altar path deferred — return otmp unchanged
+        return otmp;
+    }
+    if (!otmp) return otmp;
+    const objects = game.objects;
+    const o_typ = otmp.otyp | 0;
+    const unique = !!(objects?.[o_typ]?.oc_unique);
+    const ax = game.artiexist || [];
+    const eligible = [];
+    for (let m = 1; m < list.length; m++) {
+        const a = list[m];
+        if (!a || !a.otyp) break;
+        if (ax[m]?.exists) continue;
+        if ((a.spfx & SPFX_NOGEN) || unique) continue;
+        // gift_value deferred (max_giftvalue=99 always passes for known arts)
+        void max_giftvalue;
+        if (a.otyp === o_typ) eligible.push(m);
+    }
+    if (eligible.length) {
+        const m = eligible[rn2(eligible.length)];
+        const a = list[m];
+        if (!otmp.oextra) otmp.oextra = {};
+        otmp.oextra.oname = a.name;
+        artifact_exists(otmp, a.name, true, 0);
+        otmp.oartifact = m;
+        artifact_origin(otmp, ONAME_RANDOM);
+        otmp.oeroded = 0;
+        otmp.oeroded2 = 0;
+        if (adjust_spe) {
+            const genSpe = a.gen_spe | 0;
+            const newSpe = (otmp.spe | 0) + genSpe;
+            if (newSpe >= -10 && newSpe < 10) otmp.spe = newSpe;
+        }
+    }
+    return otmp;
 }
 
 /** C ref: artifact.c exist_artifact */

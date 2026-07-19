@@ -22,6 +22,7 @@ import {
     mons,
     always_hostile,
     always_peaceful,
+    is_minion,
     is_male,
     is_female,
     is_neuter,
@@ -40,6 +41,9 @@ import {
     montoostrong,
     likes_gold,
     monsterNames,
+    pm_resistance,
+    MR_FIRE,
+    MR_COLD,
     is_animal,
     mindless,
     is_floater,
@@ -51,6 +55,7 @@ import {
     is_vampire,
     is_vampshifter,
     vampshifted,
+    nonliving,
     amorphous,
     unsolid,
     passes_walls,
@@ -263,16 +268,15 @@ function next_ident() {
     return res;
 }
 
-// C ref: makemon.c uncommon()
+// C ref: makemon.c uncommon() — Inhell via dungeon hellish flag (not dnum).
 function uncommon(mndx) {
     const ptr = mons(mndx);
     if (!ptr) return true;
     if (ptr.geno & (G_NOGEN | G_UNIQ)) return true;
     // mvitals G_GONE not tracked yet
-    // Inhell → reject maligntyp > neutral; else reject G_HELL
-    if (game.u?.uz?.dnum === 1 /* Gehennom stub */) {
-        return ptr.maligntyp > 0; // A_NEUTRAL=0
-    }
+    // C: Inhell → reject maligntyp > A_NEUTRAL; else reject G_HELL
+    const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
+    if (inhell) return ptr.maligntyp > 0; // A_NEUTRAL=0
     return !!(ptr.geno & G_HELL);
 }
 
@@ -319,13 +323,12 @@ function align_shift(ptr) {
     }
 }
 
-// C ref: makemon.c temperature_shift
+// C ref: makemon.c temperature_shift — +3 when ptr resists level hot/cold.
 function temperature_shift(ptr) {
     const temp = game.level?.flags?.temperature | 0;
     if (!temp) return 0;
-    // pm_resistance fire/cold — MR bits deferred; temperature rare on tut-1
-    void ptr;
-    return 0;
+    // C: pm_resistance(ptr, temperature > 0 ? MR_FIRE : MR_COLD)
+    return pm_resistance(ptr, temp > 0 ? MR_FIRE : MR_COLD) ? 3 : 0;
 }
 
 // C ref: makemon.c rndmonst_adj()
@@ -359,6 +362,9 @@ export function rndmonst_adj(minadj = 0, maxadj = 0) {
     const ulevel = game.u?.ulevel ?? 1;
     const minmlev = monmin_difficulty(zlevel) + minadj;
     const maxmlev = monmax_difficulty(zlevel, ulevel) + maxadj;
+    // C: upper / elemlevel filters — rogue uppercase + elemental planes
+    // deferred (valley is neither). Inhell = dungeon hellish flag.
+    const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
 
     let totalweight = 0;
     let selected_mndx = NON_PM;
@@ -367,6 +373,8 @@ export function rndmonst_adj(minadj = 0, maxadj = 0) {
         const ptr = mons(mndx);
         if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev)) continue;
         if (uncommon(mndx)) continue;
+        // C: if (Inhell && (ptr->geno & G_NOHELL)) continue;
+        if (inhell && (ptr.geno & G_NOHELL)) continue;
 
         let weight_ = (ptr.geno & G_FREQ) + align_shift(ptr);
         weight_ += temperature_shift(ptr);
@@ -515,7 +523,8 @@ export function mkclass_aligned(mletClass, spc = 0, atyp = A_NONE) {
     init_mongen_order();
     const nums = new Array(SPECIAL_PM + 1).fill(0);
     const maxmlev = level_difficulty() >> 1;
-    const gehennom = (game.u?.uz?.dnum === GEHENNOM);
+    // C: gehennom = Inhell != 0 — dungeon hellish flag, not dnum===GEHENNOM
+    const gehennom = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
     const zero_freq_for_entire_class = (mclass_maxf[mletClass] ?? 0) === 0;
 
     let first;
@@ -928,14 +937,17 @@ function race_hostile(ptr) {
 export function peace_minded(ptr) {
     if (always_peaceful(ptr)) return true;
     if (always_hostile(ptr)) return false;
-    // MS_LEADER/GUARDIAN/NEMESIS, ERINYS, is_minion, amulet arms — deferred
+    // Named omissions: MS_LEADER/GUARDIAN/NEMESIS msound; ERINYS abuse.
     if (race_peaceful(ptr)) return true;
     if (race_hostile(ptr)) return false;
     const mal = ptr.maligntyp;
     const ual = game.u?.ualign?.type ?? 0;
     const sgn = (x) => (x < 0 ? -1 : x > 0 ? 1 : 0);
     if (sgn(mal) !== sgn(ual)) return false;
+    // C: mal < A_NEUTRAL && uhave.amulet
     if (mal < 0 && game.u?.uhave?.amulet) return false;
+    // C: is_minion → record>=0 (no rn2); High Cleric is M2_MINION (D-0750)
+    if (is_minion(ptr)) return (game.u?.ualign?.record ?? 0) >= 0;
     const record = game.u?.ualign?.record ?? 0;
     const recClamp = record < -15 ? -15 : record;
     return !!rn2(16 + recClamp) && !!rn2(2 + Math.abs(mal));
@@ -1532,7 +1544,7 @@ function rnd_defensive_item(mtmp) {
 
 /**
  * C ref: muse.c rnd_misc_item — weak-monster misc inventory.
- * Named omissions: See_invisible gate detail; vampshifter; nonliving table.
+ * Named omissions: See_invisible on peaceful invis arm (treat as false).
  */
 function rnd_misc_item(mtmp) {
     const pm_ = mtmp.data;
@@ -1545,7 +1557,8 @@ function rnd_misc_item(mtmp) {
     if (difficulty < 6 && !rn2(30)) {
         return rn2(6) ? otyp('POT_POLYMORPH') : otyp('WAN_POLYMORPH');
     }
-    if (!rn2(40) /* && !nonliving && !vampshifter */) {
+    // C: !rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp)
+    if (!rn2(40) && !nonliving(pm_) && !is_vampshifter(mtmp)) {
         return otyp('AMULET_OF_LIFE_SAVING');
     }
     switch (rn2(3)) {
@@ -2040,32 +2053,14 @@ export function makemon(mdat, x, y, mmflags = 0) {
     game.fmon.unshift(mtmp);
 
     // C: PM_GHOST && !(MM_NONAME) → christen_monst(rndghostname())
+    // (C places this after mlet switch; no RNG for ordinary ghosts at mklev)
     if (ptr.mndx === pm('GHOST') && !(mmflags & MM_NONAME)) {
         christen_monst(mtmp, rndghostname());
     }
 
-    // C: set_malign after peaceful changes (orc/unicorn/emin deferred)
-    set_malign(mtmp);
-
-    // C: !in_mklev && byyou → newsym + set_apparxy before invent
-    // Named omission: set_apparxy here (circular monmove↔makemon; dochug
-    // calls it before combat — mux/muy init to spawn until then).
-    if (!game.in_mklev && byyou) {
-        newsym(mtmp.mx, mtmp.my);
-    }
-
-    // C: anymon && !(mmflags & MM_NOGRP) → small/large group
-    if (anymon && (mmflags & MM_NOGRP) === 0) {
-        if ((ptr.geno & G_SGROUP) && rn2(2)) {
-            m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
-        } else if (ptr.geno & G_LGROUP) {
-            if (rn2(3)) m_initlgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
-            else m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
-        }
-    }
-
-    // C: switch (ptr->mlet) before invent — mimic + sleepers + spider/snake/eel.
-    // Named omissions: orc/elf peace; unicorn align peace; bat hell speed.
+    // C: switch (ptr->mlet) BEFORE set_malign / G_SGROUP (makemon.c:1303).
+    // Cave spider is G_SGROUP — mkobj_at(RANDOM) must burn before group rn2(2)
+    // (D-0761). Named omissions: orc/elf peace; unicorn align peace; bat hell speed.
     if (ptr.mlet === 'S_MIMIC') set_mimic_sym(mtmp);
     else if (ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') {
         // C: in_mklev → mkobj_at(RANDOM) then hideunder(mtmp).
@@ -2110,6 +2105,26 @@ export function makemon(mdat, x, y, mmflags = 0) {
         // C: if (rn2(5) && !u.uhave.amulet) msleeping = 1
         if (rn2(5) && !(game.u?.uhave?.amulet || game.u?.uhave_amulet))
             mtmp.msleeping = 1;
+    }
+
+    // C: set_malign after peaceful changes (orc/unicorn/emin deferred)
+    set_malign(mtmp);
+
+    // C: !in_mklev && byyou → newsym + set_apparxy before invent
+    // Named omission: set_apparxy here (circular monmove↔makemon; dochug
+    // calls it before combat — mux/muy init to spawn until then).
+    if (!game.in_mklev && byyou) {
+        newsym(mtmp.mx, mtmp.my);
+    }
+
+    // C: anymon && !(mmflags & MM_NOGRP) → small/large group (after mlet)
+    if (anymon && (mmflags & MM_NOGRP) === 0) {
+        if ((ptr.geno & G_SGROUP) && rn2(2)) {
+            m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+        } else if (ptr.geno & G_LGROUP) {
+            if (rn2(3)) m_initlgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+            else m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+        }
     }
 
     // C ref: makemon.c — cham / Vlad candelabrum / Wizard iswiz / newcham /
