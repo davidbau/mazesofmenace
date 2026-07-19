@@ -1748,6 +1748,20 @@ async function trapeffect_sqky_board(mtmp, trap, _trflags) {
 }
 
 /**
+ * C ref: trap.c trapeffect_level_telep / trapeffect_magic_portal —
+ * monster path both call mlevel_tele_trap. Hero arms deferred.
+ */
+async function trapeffect_level_telep(mtmp, trap, trflags) {
+    if (is_youmonst(mtmp)) {
+        // level_tele_trap / domagicportal deferred
+        return Trap_Effect_Finished;
+    }
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    const forcetrap = (trflags & FORCETRAP) !== 0;
+    return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight ? 1 : 0);
+}
+
+/**
  * C ref: trap.c trapeffect_hole — HOLE/TRAPDOOR monster fall → level tele.
  * Envelope: Can_fall_thru; grounded / !huge; then mlevel_tele_trap.
  * Named omissions: hero fall_through; Sokoban yank; forcetrap openfalling.
@@ -2428,6 +2442,10 @@ async function trapeffect_selector(mtmp, trap, trflags) {
     case HOLE:
     case TRAPDOOR:
         return trapeffect_hole(mtmp, trap, trflags);
+    case LEVEL_TELEP:
+    case MAGIC_PORTAL:
+        // C: MAGIC_PORTAL mon path → trapeffect_level_telep (D-0782)
+        return trapeffect_level_telep(mtmp, trap, trflags);
     case FIRE_TRAP:
         return trapeffect_fire_trap(mtmp, trap, trflags);
     case MAGIC_TRAP:

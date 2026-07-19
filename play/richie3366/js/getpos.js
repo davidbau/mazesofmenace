@@ -3,10 +3,10 @@
 //
 // Branch envelope: verbose instruction pline, first-use getpos tip
 // (nhcore show_getpos_tip PICK_NONE loop), hjklyubn walk + HJKLYUBN/Ctrl-dir
-// rush (8× step via truncate_to_map) + autodescribe topline, '>'/'<' stairs
-// feature scan (getpos.c cmap match subset), force unknown-direction pline,
-// '.' → LOOK_TRADITIONAL, ESC → -1. Menu/mMoOdDxX jump/hilite/valids/
-// getloc_moveskip glyph-skip / full defsyms feature table deferred.
+// rush (8×; '\n'==C('j') rushes — movecmd before quitchars), seenv-gated
+// '>'/'<' stairs (D-0779), autodescribe topline, force unknown-direction
+// pline, '.' → LOOK_TRADITIONAL, ESC → -1. Menu/mMoOdDxX jump/hilite/
+// valids/getloc_moveskip glyph-skip / full defsyms feature table deferred.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -50,10 +50,11 @@ const CTRL_DIR = {
 function terrain_feature_matches(x, y, ch) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false;
-    // C: prefer visible/remembered; require seenv for raw terrain fallback
+    // C: prefer visible/remembered; terrain fallback only when seenv.
+    // Do not treat blank disp_ch as "known" (D-0779).
     const typ = loc.typ | 0;
     if (typ !== STAIRS && typ !== LADDER) return false;
-    if (!(loc.seenv | 0) && !(loc.disp_ch)) return false;
+    if (!(loc.seenv | 0)) return false;
     const down = !!(loc.ladder & LA_DOWN);
     if (ch === '>') return down;
     if (ch === '<') return !down;
@@ -390,8 +391,9 @@ export async function getpos(ccp, force, goal, describeAt) {
             return ch === ',' ? LOOK_ONCE : LOOK_TRADITIONAL;
         }
 
-        // C ref: getpos.c movecmd(c, MV_WALK) → one step; MV_RUN (highc)
-        // / MV_RUSH (C(dir)) → dx=8*u.dx (getloc_moveskip Off path).
+        // C ref: getpos.c movecmd before quitchars. C('j')=='\n' is bound
+        // to rush-south (cmd.c bind_key_fn); Enter therefore rushes +8 when
+        // it reaches getpos (D-0779). Quitchars still apply when movecmd fails.
         let walk = null;
         let rush = false;
         if (ch in DIR_DX) {
@@ -401,7 +403,7 @@ export async function getpos(ccp, force, goal, describeAt) {
             walk = ch.toLowerCase();
             rush = true;
         } else if (key in CTRL_DIR) {
-            // C(dirchars) → MV_RUSH (same 8-step path)
+            // C(dirchars) → MV_RUSH (same 8-step path); includes '\n' as C('j')
             walk = CTRL_DIR[key];
             rush = true;
         }
@@ -426,9 +428,9 @@ export async function getpos(ccp, force, goal, describeAt) {
             continue;
         }
 
-        // C: quitchars (space / CR / LF) — !force → "Done." and leave;
-        // force (travel) keeps looping (goto nxtc).
-        if (ch === ' ' || key === 13 || key === 10) {
+        // C: quitchars (" \r\n\033") — only when not a movecmd. '\n' already
+        // handled as C('j') rush above; space/CR still force-continue.
+        if (ch === ' ' || key === 13) {
             if (force) continue;
             await pline('Done.');
             ccp.x = -1;

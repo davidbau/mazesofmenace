@@ -221,13 +221,21 @@ export async function getdir(prompt) {
     const ch = String.fromCharCode(key);
     // Clear yn prompt before returning to the command loop (next capture).
     game._pending_message = '';
-    if (key === 27 || ch === '.' || ch === ' ' || ch === '\n' || ch === '\r') {
+    // C ref: cmd.c getdir — NHKF_GETDIR_SELF / SELF2 → dx=dy=dz=0
+    // (JS previously treated '.' like ESC/cancel; that desynced #chat.)
+    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
         return false;
+    }
+    if (!game.u) game.u = {};
+    if (ch === '.') {
+        game.u.dx = 0;
+        game.u.dy = 0;
+        game.u.dz = 0;
+        return true;
     }
     if (!(ch in DIR_DX)) {
         return false;
     }
-    if (!game.u) game.u = {};
     game.u.dx = DIR_DX[ch];
     game.u.dy = DIR_DY[ch];
     game.u.dz = 0;

@@ -54,6 +54,7 @@ import {
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
     STAIRS, LADDER, IRONBARS, WEB,
     M_ATTK_HIT,
+    MON_FLOOR,
 } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import {
@@ -110,6 +111,11 @@ const AT_SPIT = 10;
 const AT_BREA = 12;
 const AT_GAZE = 15;
 const AT_MAGC = 255;
+
+/** C ref: monst.h mon_offmap — mstate != MON_FLOOR */
+function mon_offmap(mon) {
+    return ((mon?.mstate | 0) !== MON_FLOOR);
+}
 
 /** C ref: monst.h is_obj_mappear */
 function is_obj_mappear(mon, otyp) {
@@ -982,6 +988,9 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
     if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
         if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
         return MMOVE_DIED;
+    } else if (mon_offmap(mtmp)) {
+        // C ref: monmove.c postmov — migrated/off-map after mintrap
+        return MMOVE_DONE;
     }
 
     // open a door, or crash through it, if mtmp can
@@ -1541,6 +1550,8 @@ export async function dochug(mtmp) {
         if (status === MMOVE_NOTHING) {
             status = await m_move(mtmp, 0);
         }
+        // C ref: monmove.c dochug — off-map after m_move skips 2nd distfleeck
+        if (mon_offmap(mtmp)) return 1;
         if (status !== MMOVE_DIED) {
             ({ inrange, nearby, scared } = distfleeck(mtmp));
         }

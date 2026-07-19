@@ -2459,10 +2459,10 @@ function load_bar_strt() {
 /**
  * C ref: dat/Wiz-strt.lua via load_special — Wizard quest start (Neferet).
  * solidfill + cloud replace_terrain + tower clear + leader invent.
- * Named omissions: spo_end_moninvent m_dowear; flip_level lregion remap
- * still shortcut via post-flip place_lregion; count_level_features /
+ * Named omissions: spo_end_moninvent m_dowear; count_level_features /
  * level_finalize_topology / fill_special_room / makemap_prepost deferred;
  * Wiz-loca/goal/fila/filb deferred.
+ * Branch levregion stored pre-flip (D-0782) so FlipY remaps MAGIC_PORTAL.
  */
 function load_wiz_strt() {
     const g = game;
@@ -2484,7 +2484,7 @@ function load_wiz_strt() {
 ..........CCC.....................CCC.......................................
 ........CC........-----------.......C.C...C...C....C........................
 .......C.....---------------------...C..C..C..C.............................
-......C..C...------....\....------....C.....C...............................
+......C..C...------....\\....------....C.....C...............................
 ........C...||....|.........|....||.........................................
 .......C....||....|.........+....||.........................................
 .......C...||---+--.........|....|||........................................
@@ -2546,8 +2546,18 @@ function load_wiz_strt() {
     // des.stair("down", 30,10)
     mkstairs(mx + 30, my + 10, 0, null);
 
-    // Portal arrival point
+    // Portal arrival point + branch levregion (pre-flip; flip remaps inarea)
     sel_set_ter(mx + 63, my + 6, ROOM, SET_LIT_NOCHANGE);
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: {
+            x1: mx + 63, y1: my + 6,
+            x2: mx + 63, y2: my + 6,
+        },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
 
     // Doors
     const wizDoor = (rx, ry, mask) => {
@@ -2655,18 +2665,26 @@ function load_wiz_strt() {
     placeClassAt('B', 10, 19, 0);
 
     // C load_special epilogue: link_doors_rooms → remove_boundary_syms →
-    // map_cleanup → wallification → flip_level_rnd → fixup_special
+    // map_cleanup → wallification → flip_level_rnd → lregions → fixup
     link_doors_rooms();
     remove_boundary_syms();
     map_cleanup();
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion branch at portal arrival (after flip; same shortcut as Pri-strt)
-    place_lregion(
-        mx + 63, my + 6, mx + 63, my + 6,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
+    {
+        const lregions = g.lregions || [];
+        g.lregions = [];
+        for (const r of lregions) {
+            if (r.rtype === LR_BRANCH) {
+                place_lregion(
+                    r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
+                    r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
+                    LR_BRANCH, null,
+                );
+            }
+        }
+    }
     fixup_special();
 }
 

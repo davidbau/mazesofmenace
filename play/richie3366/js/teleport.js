@@ -11,12 +11,14 @@ import {
     MM_IGNOREWATER, MM_IGNORELAVA,
     ACCESSIBLE, IS_POOL, IS_LAVA, ZAP_POS, IS_DOOR, IS_WATERWALL,
     D_CLOSED, D_LOCKED,
-    MIGR_RANDOM, MON_MIGRATING, NO_TRAP,
+    MIGR_RANDOM, MIGR_PORTAL, MON_MIGRATING, NO_TRAP,
+    is_xport,
     ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT,
     UTOTYPE_NONE,
     is_hole, Is_stronghold, Is_botlevel, Is_knox_level,
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
+    MAGIC_PORTAL,
 } from './const.js';
 import { objects_at, mksobj } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
@@ -1148,7 +1150,10 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
 /**
  * C ref: teleport.c mlevel_tele_trap — monster hole/trapdoor/portal migrate.
  * Envelope: HOLE/TRAPDOOR → trap.dst (+ stronghold/botlevel gates);
- * MAGIC_PORTAL / LEVEL_TELEP / NO_TRAP named omissions beyond hole path.
+ * MAGIC_PORTAL → trap.dst + MIGR_PORTAL (D-0782); LEVEL_TELEP / NO_TRAP
+ * still deferred. Named omissions: mon_has_amulet / is_home_elemental
+ * endgame shimmer gates (rn2(7) still runs when In_endgame); in_sight
+ * plines; control_teleport (portal always sets mconf).
  */
 export function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
     const tt = trap ? (trap.ttyp | 0) : NO_TRAP;
@@ -1179,14 +1184,26 @@ export function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
             let bottom = dun?.num_dunlevs | 0;
             if (bottom > 0 && tolevel.dlevel > bottom) tolevel.dlevel = bottom;
         }
+    } else if (tt === MAGIC_PORTAL) {
+        // C: endgame amulet/elemental/rn2(7) shimmer stay; else portal migrate
+        if (In_endgame(game.u?.uz)
+            && (/* mon_has_amulet / is_home_elemental deferred */ rn2(7))) {
+            void in_sight;
+            return Trap_Effect_Finished;
+        }
+        const dst = trap.dst || {};
+        tolevel.dnum = dst.dnum | 0;
+        tolevel.dlevel = dst.dlevel | 0;
+        migrate_typ = MIGR_PORTAL;
     } else {
-        // MAGIC_PORTAL / LEVEL_TELEP / NO_TRAP deferred
+        // LEVEL_TELEP / NO_TRAP deferred
         return Trap_Effect_Finished;
     }
 
-    // in_sight pline deferred (screen-only; hole fall has no RNG)
+    // in_sight pline deferred (screen-only)
     void in_sight;
-    // is_xport conf deferred (holes are not is_xport)
+    // C: is_xport && !control_teleport → mconf; control_teleport deferred
+    if (is_xport(tt)) mtmp.mconf = 1;
     migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
     return Trap_Moved_Mon;
 }
