@@ -6,13 +6,14 @@ import { rn2 } from './rng.js';
 import { dochugw, m_everyturn_effect } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
-    ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL,
+    ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
+    NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED,
     IS_WATERWALL, LAVAWALL, Is_waterlevel, POOL, MOAT, WATER, LAVAPOOL,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
-    ismnum,
+    ismnum, M_POISONGAS_OK, u_at, TEMPLE,
 } from './const.js';
 import { t_at } from './trap.js';
 import {
@@ -22,6 +23,8 @@ import {
     is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
+    is_rider, nonliving, breathless, is_giant, is_minion, is_human,
+    is_undead,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -35,11 +38,16 @@ import { enexto, rloc_to } from './teleport.js';
 import { may_dig } from './dig.js';
 import { newsym, pline, sensemon, canseemon } from './display.js';
 import { online2 } from './hacklib.js';
+import { worm_cross } from './worm.js';
 import { Monnam } from './do_name.js';
 import { cansee } from './vision.js';
 import { fightm } from './mhitm.js';
+import { engr_at } from './engrave.js';
+import { visible_region_at } from './region.js';
 import { were_change } from './were.js';
 import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
+import { in_your_sanctuary } from './priest.js';
+import { in_rooms } from './hack.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
@@ -137,6 +145,77 @@ const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
 const AXE = objectNames.indexOf('AXE');
 const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
+const CLOVE_OF_GARLIC = objectNames.indexOf('CLOVE_OF_GARLIC');
+const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
+const OTYP_SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
+const OTYP_LOCK_PICK = objectNames.indexOf('LOCK_PICK');
+const OTYP_CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
+const PM_ANGEL = monsterNames.indexOf('PM_ANGEL');
+const PM_MINOTAUR = monsterNames.indexOf('PM_MINOTAUR');
+
+/**
+ * C ref: mon.c m_poisongas_ok — subset for mfndpos avoid-gas gate.
+ * Named omissions: vampshifter; eel/waterlevel pool; breath AD_DRST/RBRE;
+ * resists_poison → MINOR (treated as not OK so gas still avoided).
+ */
+function m_poisongas_ok(mtmp) {
+    const ptr = mtmp?.data;
+    if (nonliving(ptr) || breathless(ptr)) return M_POISONGAS_OK;
+    // immune_poisongas deferred → false
+    return 0; // M_POISONGAS_BAD
+}
+
+/**
+ * C ref: monmove.c onscary — mfndpos Elbereth / scare-scroll / altar-vamp.
+ * Named omissions: is_lminion; unique_corpstat human-resist; auditory
+ * <0,0> only used from music; shopkeeper/priest own-shop temple resist;
+ * sengr_at fuzzy match (exact "Elbereth"); Inhell (dungeon hellish).
+ */
+function onscary(x, y, mtmp) {
+    const auditory_scare = (x === 0 && y === 0);
+    const magical_scare = !auditory_scare;
+    const ptr = mtmp?.data;
+    if (mtmp.iswiz || is_rider(ptr)
+        || (ptr?.mndx ?? mtmp.mnum) === PM_ANGEL) {
+        return false;
+    }
+    // is_lminion / unique_corpstat / S_HUMAN magical resist deferred
+    if (magical_scare && ptr?.mlet === 'S_HUMAN') return false;
+    if ((mtmp.isshk /* && inhishop */) || (mtmp.ispriest /* && inhistemple */)) {
+        // own-shop / own-temple resist deferred → fall through
+    }
+    if (auditory_scare) return true;
+    const loc = game.level?.at(x, y);
+    if (loc && IS_ALTAR(loc.typ)
+        && (ptr?.mlet === 'S_VAMPIRE' || is_vampshifter(mtmp))) {
+        return true;
+    }
+    if (sobj_at_otyp(SCR_SCARE_MONSTER, x, y)) return true;
+    const ep = engr_at(x, y);
+    if (ep && String(ep.engr_txt || '') === 'Elbereth') {
+        const u = game.u || {};
+        const displaced = !!(u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic
+            || u.uprops?.[DISPLACED]?.extrinsic);
+        const hero_or_image = u_at(x, y)
+            || (displaced && mtmp.mux === x && mtmp.muy === y)
+            || (!!(ep.guardobjects) && !!objects_at(x, y));
+        if (hero_or_image
+            && !(mtmp.isshk || mtmp.isgd || !mtmp.mcansee || mtmp.mpeaceful
+                || (ptr?.mndx ?? mtmp.mnum) === PM_MINOTAUR
+                || In_endgame(u.uz))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** C ref: mkobj.c sobj_at — first floor object of otyp. */
+function sobj_at_otyp(otyp, x, y) {
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if (o.otyp === otyp) return o;
+    }
+    return null;
+}
 
 /** C ref: invent.c m_carrying — first matching otyp in minvent chain. */
 export function m_carrying(mon, otyp) {
@@ -549,6 +628,17 @@ export function mon_allowflags(mtmp) {
     const Conflict = hero_conflict();
     // C: can_open = !(nohands(data) || verysmall(data))
     const can_open = !(nohands(mtmp.data) || verysmall(mtmp.data));
+    // C: can_unlock = (can_open && monhaskey) || wiz || rider
+    let has_key = false;
+    for (let o = mtmp.minvent; o; o = o.nobj) {
+        if (o.otyp === OTYP_CREDIT_CARD || o.otyp === OTYP_SKELETON_KEY
+            || o.otyp === OTYP_LOCK_PICK) {
+            has_key = true;
+            break;
+        }
+    }
+    const can_unlock = (can_open && has_key) || !!mtmp.iswiz || is_rider(mtmp.data);
+    const doorbuster = is_giant(mtmp.data);
     // C: can_tunnel = tunnels && !Is_rogue_level; needspick hostiles close
     // enough prefer weapon over dig (same gate as m_move).
     let can_tunnel = tunnels(mtmp.data) && !Is_rogue_level(game.u?.uz);
@@ -568,18 +658,40 @@ export function mon_allowflags(mtmp) {
     if (Conflict && !resist_conflict(mtmp)) {
         allowflags |= ALLOW_U;
     }
+    if (mtmp.isshk) allowflags |= ALLOW_SSM;
+    if (mtmp.ispriest) allowflags |= ALLOW_SSM | ALLOW_SANCT;
     // C: passes_walls → ALLOW_ROCK|ALLOW_WALL; throws_rocks / m_can_break_boulder → ALLOW_ROCK
     // m_can_break_boulder (wielded dig tool) deferred — named in C-JS-MAP
     if (passes_walls(mtmp.data)) allowflags |= ALLOW_ROCK | ALLOW_WALL;
     if (throws_rocks(mtmp.data)) allowflags |= ALLOW_ROCK;
     if (can_tunnel) allowflags |= ALLOW_DIG;
+    if (doorbuster) allowflags |= BUSTDOOR;
     if (can_open) allowflags |= OPENDOOR;
+    if (can_unlock) allowflags |= UNLOCKDOOR;
+    // C: passes_bars → ALLOW_BARS (rust/corr/metallivorous/slithy subset deferred)
+    if (passes_walls(mtmp.data) || amorphous(mtmp.data) || is_whirly(mtmp.data)
+        || verysmall(mtmp.data)) {
+        allowflags |= ALLOW_BARS;
+        // Named: unsolid; dmgtype RUST/CORR; metallivorous; slithy&&!big;
+        // ustuck engulfer gate
+    }
+    if (is_minion(mtmp.data) || is_rider(mtmp.data)) {
+        allowflags |= ALLOW_SANCT;
+    }
     // C: unicorn && !noteleport_level → NOTONL (mfndpos skips online cells).
     // noteleport_level: level.flags.noteleport (covetous/hell-court deferred).
     if (mtmp.data?.mlet === 'S_UNICORN' && likes_gems(mtmp.data)
         && !game.level?.flags?.noteleport
         && !((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0))) {
         allowflags |= NOTONL;
+    }
+    if (is_human(mtmp.data) || (mtmp.data?.mndx ?? -1) === PM_MINOTAUR) {
+        allowflags |= ALLOW_SSM;
+    }
+    // C: undead (not ghost) or vampshifter → NOGARLIC
+    if ((is_undead(mtmp.data) && mtmp.data?.mlet !== 'S_GHOST')
+        || is_vampshifter(mtmp)) {
+        allowflags |= NOGARLIC;
     }
     return allowflags;
 }
@@ -593,9 +705,10 @@ function m_in_air(mtmp) {
 }
 
 // C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
-// Named omissions still: onscary/garlic/iron bars/poison-gas/
-// mm_aggression/MDISP/temple ALLOW_SANCT; eel nexttry; ALLOW_WALL thrudoor;
-// can_fog in cant_squeeze_thru.
+// Named omissions still: mm_aggression/MDISP;
+// eel nexttry; can_fog in cant_squeeze_thru;
+// peaceful shop/temple dig avoid; Inhell Elbereth;
+// passes_bars full (rust/corr/metallivorous/slithy); m_can_break_boulder.
 export function mfndpos(mon, data, flag) {
     const x = mon.mx;
     const y = mon.my;
@@ -635,11 +748,27 @@ export function mfndpos(mon, data, flag) {
         if (rockok || treeok) thrudoor = true;
     }
 
+    // C: poisongas_ok / in_poisongas at mon's current cell
+    const poisongas_ok = m_poisongas_ok(mon) === M_POISONGAS_OK;
+    const in_poisongas = !!visible_region_at(x, y);
+
+    // C: mconf → ALLOW_ALL and clear NOTONL; blind → ALLOW_SSM
+    if (mon.mconf) {
+        flag |= ALLOW_ALL;
+        flag &= ~NOTONL;
+    }
+    if (!mon.mcansee) flag |= ALLOW_SSM;
+
     const maxx = Math.min(x + 1, COLNO - 1);
     const maxy = Math.min(y + 1, ROWNO - 1);
     // C: monseeu is constant across the neighbour scan
     const Invis = !!(game.u?.Invis);
     const monseeu = !!(mon.mcansee && (!Invis || perceives(mdat)));
+    // Displacement for onscary hero-image arm
+    const u = game.u || {};
+    const DisplacedHero = !!(u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic
+        || u.uprops?.[DISPLACED]?.extrinsic);
+
     for (let nx = Math.max(1, x - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, y - 1); ny <= maxy; ny++) {
             if (nx === x && ny === y) continue;
@@ -655,6 +784,8 @@ export function mfndpos(mon, data, flag) {
             // C: IS_WATERWALL && !is_swimmer
             if (IS_WATERWALL(ntyp) && !is_swimmer(mdat)) continue;
             // peaceful shop/temple dig avoid deferred
+            // C: IRONBARS — need ALLOW_BARS; nondiggable+rust/corr deferred
+            if (ntyp === IRONBARS && !(flag & ALLOW_BARS)) continue;
             if (IS_DOOR(ntyp)) {
                 const dm = loc.doormask || 0;
                 if (((dm & D_CLOSED) && !(flag & OPENDOOR))
@@ -662,12 +793,23 @@ export function mfndpos(mon, data, flag) {
                     if (!thrudoor) continue;
                 }
             }
-            // C: first diagonal checks — NODIAG + non-broken doors
+            // C: avoid poison gas when not already in it
+            if (!poisongas_ok && !in_poisongas && visible_region_at(nx, ny)) {
+                continue;
+            }
+            // C: first diagonal checks — NODIAG + non-broken doors + rogue
+            // door-cut + worm_cross consecutive segs (mon.c mfndpos)
             if (nx !== x && ny !== y) {
                 const ndm = loc.doormask || 0;
                 if (nodiag
                     || (IS_DOOR(nowtyp) && (nowdm & ~D_BROKEN))
-                    || (IS_DOOR(ntyp) && (ndm & ~D_BROKEN))) {
+                    || (IS_DOOR(ntyp) && (ndm & ~D_BROKEN))
+                    || ((IS_DOOR(nowtyp) || IS_DOOR(ntyp))
+                        && Is_rogue_level(game.u?.uz))
+                    || (m_at(x, ny) && m_at(nx, y)
+                        && worm_cross(x, y, nx, ny)
+                        && !m_at(nx, ny)
+                        && (nx !== game.u?.ux || ny !== game.u?.uy))) {
                     continue;
                 }
             }
@@ -681,7 +823,19 @@ export function mfndpos(mon, data, flag) {
                 continue;
             }
 
+            // C: Displacement remaps onscary check to hero cell
+            let dispx = nx;
+            let dispy = ny;
+            if (DisplacedHero && monseeu && mon.mux === nx && mon.muy === ny) {
+                dispx = u.ux;
+                dispy = u.uy;
+            }
+
             let info = 0;
+            if (onscary(dispx, dispy, mon)) {
+                if (!(flag & ALLOW_SSM)) continue;
+                info |= ALLOW_SSM;
+            }
             if ((nx === game.u.ux && ny === game.u.uy)
                 || (nx === mon.mux && ny === mon.muy)) {
                 if (nx === game.u.ux && ny === game.u.uy) {
@@ -695,17 +849,29 @@ export function mfndpos(mon, data, flag) {
                 // mm_aggression / ALLOW_MDISP deferred
                 if (!(flag & ALLOW_M)) continue;
                 info |= ALLOW_M;
+            } else {
+                // C: ALLOW_SANCT only prevents movement (not attack) into temple
+                if (game.level?.flags?.has_temple
+                    && in_rooms(nx, ny, TEMPLE)
+                    && !in_rooms(x, y, TEMPLE)
+                    && in_your_sanctuary(null, nx, ny)) {
+                    if (!(flag & ALLOW_SANCT)) continue;
+                    info |= ALLOW_SANCT;
+                }
             }
 
-            // C: sobj_at(BOULDER) without ALLOW_ROCK → skip (mon.c mfndpos)
+            // C: sobj_at garlic / boulder
             const obj = objects_at(nx, ny);
             if (obj) {
                 let hasBoulder = false;
+                let hasGarlic = false;
                 for (let o = obj; o; o = o.nexthere) {
-                    if (o.otyp === BOULDER) {
-                        hasBoulder = true;
-                        break;
-                    }
+                    if (o.otyp === BOULDER) hasBoulder = true;
+                    if (o.otyp === CLOVE_OF_GARLIC) hasGarlic = true;
+                }
+                if (hasGarlic) {
+                    if (flag & NOGARLIC) continue;
+                    info |= NOGARLIC;
                 }
                 if (hasBoulder) {
                     if (!(flag & ALLOW_ROCK)) continue;

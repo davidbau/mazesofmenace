@@ -2,7 +2,7 @@
 // C ref: worm.c — get_wormno, initworm, create_worm_tail, count_wsegs,
 //   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h).
 // Named omissions: worm_move/grow/shrink, cutworm, wormgone save/restore,
-//   remove_worm full, worm_known/cross, detect_wsegs display.
+//   remove_worm full, worm_known, detect_wsegs display.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -194,4 +194,42 @@ export function clear_wormdata() {
         wgrowtime[i] = 0;
     }
     game._level_monsters = new Map();
+}
+
+/**
+ * C ref: worm.c worm_cross — true if diagonal between (x1,y1)-(x2,y2) would
+ * pass through consecutive segments of the same long worm (flank cells).
+ * Uses level.monsters occupancy (same as C m_at on worm segs).
+ */
+export function worm_cross(x1, y1, x2, y2) {
+    const distmin = Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+    if (distmin !== 1) return false;
+    if (x1 === x2 || y1 === y2) return false;
+    const worm = worm_mon_at(x1, y2) || _fmon_at(x1, y2);
+    if (!worm) return false;
+    const other = worm_mon_at(x2, y1) || _fmon_at(x2, y1);
+    if (other !== worm) return false;
+    const wnum = worm.wormno | 0;
+    if (!wnum) return false;
+    for (let curr = wtails[wnum]; curr; curr = curr.nseg) {
+        const wnxt = curr.nseg;
+        if (!wnxt) break;
+        if (curr.wx === x1 && curr.wy === y2) {
+            return wnxt.wx === x2 && wnxt.wy === y1;
+        }
+        if (curr.wx === x2 && curr.wy === y1) {
+            return wnxt.wx === x1 && wnxt.wy === y2;
+        }
+    }
+    return false;
+}
+
+/** Head-only occupancy (worm body segs already via worm_mon_at). */
+function _fmon_at(x, y) {
+    const steed = game.u?.usteed;
+    for (const m of game.fmon || []) {
+        if (m === steed) continue;
+        if (m.mx === x && m.my === y) return m;
+    }
+    return null;
 }

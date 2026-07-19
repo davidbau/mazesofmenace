@@ -117,6 +117,7 @@ export const M2_ELF = 0x00000010; /* monflag.h — is an elf */
 export const M2_DWARF = 0x00000020; /* monflag.h — is a dwarf */
 export const M2_GNOME = 0x00000040; /* monflag.h — is a gnome */
 export const M2_GIANT = 0x00002000; /* monflag.h — is a giant */
+export const M2_MINION = 0x00001000; /* monflag.h — is a minion of a deity */
 export const M2_SHAPESHIFTER = 0x00004000; /* monflag.h — shapeshifting species */
 
 export const M1_FLY = 0x00000001; /* monflag.h — can fly or float */
@@ -369,6 +370,11 @@ export function is_gnome(ptr) {
 /** C ref: mondata.h is_giant */
 export function is_giant(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_GIANT);
+}
+
+/** C ref: mondata.h is_minion */
+export function is_minion(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_MINION);
 }
 
 /** C ref: mondata.h likes_gold */

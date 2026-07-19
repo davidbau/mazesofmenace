@@ -1900,13 +1900,15 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
  * always returns TRUE even with no armor). Named omission: erode_obj burn
  * on worn pieces; towel drying.
  */
-function burnarmor(victim) {
+/** C ref: trap.c burnarmor — armor-slot burn picker (naked/erode stub). */
+export function burnarmor(victim) {
     if (!victim) return false;
     // Towel dry_a_towel rn2 deferred (m_carrying TOWEL rare)
     for (;;) {
         // case 1 → return TRUE (cloak/armor/shirt attempts, then TRUE)
         if (rn2(5) === 1) return true;
         // other cases: erode_obj(null) → ER_NOTHING → continue
+        // Full erode_obj worn-slot arms deferred (still named).
     }
 }
 

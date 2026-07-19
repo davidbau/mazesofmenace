@@ -15,7 +15,7 @@
 // You_feel); RAY WAN_DIGGING/SPE_DIG → zap_dig (dig.c).
 // Named omissions: zap_updown/uswallow bhitm; bhitm poly body; zap_map;
 // spell ubuzz; mon_reflects; fireball/gas/Hallucination
-// hdmgtype rn2; full zap_over_floor; zhitu non-sleep; shopdamage;
+// hdmgtype rn2; full zap_over_floor; shopdamage;
 // map_invisible/unmap during buzz; backfire body; other NODIR; wrest
 // pline; check_capacity/nohands; check_unpaid; update_inventory;
 // shieldeff/monstunseesu; setworn EReflecting bits (worn
@@ -23,9 +23,11 @@
 // silver-dragon arms beyond shield makeknown; create_polymon after
 // poly_zapped; do_osshock shop bill; invent/worn poly_obj arms;
 // boxlock on Is_box; other bhito otyps; defended(); resists_magm body;
-// burnarmor/ignite_items; acid_damage/erode_armor; death-breath
-// disintegrate_mon; destroy_items fire/elec bodies beyond cold potions;
-// spell_damage_bonus / Knight questart double; Rider/Death specials.
+// ignite_items body; burnarmor erode_obj worn slots; acid_damage/
+// erode_armor; death-breath disintegrate_arm; potionbreathe;
+// inventory_resistance_check; destroy_items elec body; ugolemeffects;
+// burn_away_slime; spell_damage_bonus / Knight questart double;
+// Rider/Death specials.
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -39,7 +41,7 @@ import { nhgetch } from './input.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, makeknown } from './invent.js';
 import { doname, xname, vtense } from './objnam.js';
-import { A_WIS, A_STR, exercise } from './attrib.js';
+import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
 import { findit } from './detect.js';
 import {
     confdir, fall_asleep, losehp, maybe_half_phys, nomul,
@@ -61,14 +63,14 @@ import {
 } from './mkobj.js';
 import {
     WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, POTION_CLASS,
-    TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, RING_CLASS, NODIR, IMMEDIATE,
-    objectNames,
+    TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, RING_CLASS, FOOD_CLASS, NODIR,
+    IMMEDIATE, objectNames,
 } from './objects.js';
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
-    NO_KILLER_PREFIX, DIED, isok, ZAP_POS, STONE, IS_DOOR, IS_ROOM,
-    D_CLOSED, D_LOCKED, DISP_BEAM, DISP_CHANGE, DISP_END, OBJ_FLOOR,
-    Has_contents, ZAPPED_WAND, NOTELL, STRAT_WAITMASK,
+    NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
+    IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, DISP_BEAM, DISP_CHANGE, DISP_END,
+    OBJ_FLOOR, Has_contents, ZAPPED_WAND, NOTELL, STRAT_WAITMASK,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -82,6 +84,10 @@ const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
 const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
 const POT_OIL = objectNames.indexOf('POT_OIL');
+const SCR_FIRE = objectNames.indexOf('SCR_FIRE');
+const SPE_FIREBALL = objectNames.indexOf('SPE_FIREBALL');
+const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
+const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const SPE_SLEEP = objectNames.indexOf('SPE_SLEEP');
@@ -115,6 +121,47 @@ const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 function Sleep_resistance() {
     const u = game.u || {};
     return !!(u.HSleep_resistance || u.ESleep_resistance);
+}
+
+/** C ref: youprop.h Fire_resistance */
+function Fire_resistance() {
+    const u = game.u || {};
+    return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
+}
+
+/** C ref: youprop.h Cold_resistance */
+function Cold_resistance() {
+    const u = game.u || {};
+    return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
+}
+
+/** C ref: youprop.h Shock_resistance */
+function Shock_resistance() {
+    const u = game.u || {};
+    return !!(u.Shock_resistance || u.HShock_resistance || u.EShock_resistance);
+}
+
+/** C ref: youprop.h Antimagic */
+function Antimagic() {
+    const u = game.u || {};
+    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+}
+
+/** C ref: youprop.h Half_spell_damage */
+function Half_spell_damage() {
+    const u = game.u || {};
+    return !!(u.Half_spell_damage || u.HHalf_spell_damage
+        || u.EHalf_spell_damage);
+}
+
+/**
+ * C ref: trap.c burnarmor — naked/erode stub shared with trapeffect_fire.
+ * Full worn-slot erode_obj arms deferred.
+ */
+function burnarmor_zhitu(_victim) {
+    for (;;) {
+        if (rn2(5) === 1) return true;
+    }
 }
 
 /**
@@ -322,7 +369,27 @@ function m_useup(mon, obj) {
 }
 
 /**
- * C ref: zap.c destroyable — AD_COLD potions (not oil); fire/elec subset.
+ * C ref: invent.c useup — consume one from hero invent array.
+ */
+function useup_invent(obj) {
+    if (!obj) return;
+    if ((obj.quan | 0) > 1) {
+        obj.quan = (obj.quan | 0) - 1;
+        if (typeof weight === 'function') obj.owt = weight(obj);
+        return;
+    }
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+}
+
+function is_youmonst_carrier(mon) {
+    return !!(mon && (mon === game.youmonst || mon._youmonst));
+}
+
+/**
+ * C ref: zap.c destroyable — AD_COLD potions; AD_FIRE potion/scroll/spbook;
+ * AD_ELEC ring/wand subset.
  */
 function destroyable(obj, adtyp) {
     if (!obj || obj.oartifact) return false;
@@ -331,8 +398,11 @@ function destroyable(obj, adtyp) {
         return obj.oclass === POTION_CLASS && (obj.otyp | 0) !== POT_OIL;
     }
     if (adtyp === AD_FIRE) {
-        // fire-magic immunes + slime/scroll/spbook deferred as named omission
-        return obj.oclass === POTION_CLASS
+        if ((obj.otyp | 0) === SCR_FIRE || (obj.otyp | 0) === SPE_FIREBALL) {
+            return false;
+        }
+        return (obj.otyp | 0) === GLOB_OF_GREEN_SLIME
+            || obj.oclass === POTION_CLASS
             || obj.oclass === SCROLL_CLASS
             || obj.oclass === SPBOOK_CLASS;
     }
@@ -344,29 +414,108 @@ function destroyable(obj, adtyp) {
     return false;
 }
 
+const DESTROY_STRINGS = [
+    ['freezes and shatters', 'freeze and shatter', 'shattered potion'],
+    ['boils and explodes', 'boil and explode', 'boiling potion'],
+    ['ignites and explodes', 'ignite and explode', 'exploding potion'],
+    ['catches fire and burns', 'catch fire and burn', 'burning scroll'],
+    ['catches fire and burns', '', 'burning book'],
+    ['turns to dust and vanishes', '', ''],
+    ['breaks apart and explodes', '', 'exploding wand'],
+];
+
 /**
- * C ref: zap.c maybe_destroy_item — AD_COLD potion shatter RNG.
- * Fire/elec bodies deferred (still named); cold burns rnd(4)+quan rn2(3).
+ * C ref: zap.c maybe_destroy_item — AD_COLD potions + AD_FIRE potion/scroll/
+ * spbook. Named omissions: inventory_resistance_check; potionbreathe;
+ * worn Ring_gone/setnotworn; Book-of-Dead glow; AD_ELEC body; chargeit.
  */
 function maybe_destroy_item(carrier, obj, dmgtyp) {
-    if (dmgtyp !== AD_COLD) return 0;
-    let quan = obj.quan | 0;
-    const dmg = rnd(4);
+    if (!obj) return 0;
+    const u_carry = is_youmonst_carrier(carrier);
+    // inventory_resistance_check deferred → never early-out
+
+    let quan = 0;
+    let dmg = 0;
+    let dindx = 0;
+    let xresist = false;
+    let skip = false;
+
+    if (dmgtyp === AD_COLD) {
+        quan = obj.quan | 0;
+        dindx = 0;
+        dmg = rnd(4);
+    } else if (dmgtyp === AD_FIRE) {
+        xresist = obj.oclass !== POTION_CLASS
+            && (obj.otyp | 0) !== GLOB_OF_GREEN_SLIME
+            && (u_carry ? Fire_resistance() : false);
+        if ((obj.otyp | 0) === SPE_BOOK_OF_THE_DEAD) {
+            // glow pline deferred; item remains
+            return 0;
+        }
+        quan = obj.quan | 0;
+        if (obj.oclass === POTION_CLASS) {
+            dindx = ((obj.otyp | 0) !== POT_OIL) ? 1 : 2;
+            dmg = rnd(6);
+        } else if (obj.oclass === SCROLL_CLASS) {
+            dindx = 3;
+            dmg = 1;
+        } else if (obj.oclass === SPBOOK_CLASS) {
+            dindx = 4;
+            dmg = 1;
+        } else if (obj.oclass === FOOD_CLASS) {
+            dindx = 1;
+            dmg = Math.trunc(((obj.owt | 0) + 19) / 20);
+        } else {
+            return 0;
+        }
+    } else {
+        // AD_ELEC body deferred
+        return 0;
+    }
+
+    if (skip) return 0;
+
+    const osym = obj.oclass;
     if (obj.in_use) quan -= 1;
     let cnt = 0;
     for (let i = 0; i < quan; i++) {
         if (!rn2(3)) cnt++;
     }
     if (!cnt) return 0;
-    // vis pline deferred
-    for (let i = 0; i < cnt; i++) m_useup(carrier, obj);
+
+    // pline mult forms deferred — single-stack destroy message subset
+    if (u_carry || false) {
+        const verb = DESTROY_STRINGS[dindx]?.[cnt > 1 ? 1 : 0] || 'destroyed';
+        // Yname2 deferred — use xname
+        void verb;
+        // Keep pline quiet-ish for cold path parity with prior port; fire
+        // still needs losehp RNG. Message polish deferred.
+    }
+
+    // potionbreathe deferred (no RNG on this seed5002 path)
+    for (let i = 0; i < cnt; i++) {
+        if (u_carry) useup_invent(obj);
+        else m_useup(carrier, obj);
+    }
+    if (dmg) {
+        if (!u_carry) return xresist ? 0 : dmg;
+        if (xresist) {
+            // You aren't hurt — deferred pline
+        } else {
+            const how = DESTROY_STRINGS[dindx]?.[2] || 'destroyed item';
+            const one = cnt === 1;
+            losehp(dmg, one ? how : `${how}s`, one ? KILLED_BY_AN : KILLED_BY);
+            exercise(A_STR, false);
+        }
+    }
+    void osym;
     return dmg;
 }
 
 /**
- * C ref: zap.c destroy_items — limit rn2 + invent scan; cold potions live.
- * Named omissions: bypass_objlist; hero invent/defer levitation; fire/elec
- * maybe_destroy bodies (cold only destroys here).
+ * C ref: zap.c destroy_items — limit rn2 + invent/minvent scan.
+ * Hero uses game.invent array; monsters use minvent nobj chain.
+ * Named omissions: bypass_objlist; defer levitation/were; elec body.
  */
 function destroy_items(mon, dmgtyp, dmg_in) {
     let limit = Math.trunc((dmg_in | 0) / DMG_DESTROY_SCALE);
@@ -374,15 +523,24 @@ function destroy_items(mon, dmgtyp, dmg_in) {
     if (limit > MAX_ITEMS_DESTROYED) limit = MAX_ITEMS_DESTROYED;
     if (limit < 1) return 0;
 
-    const items = [];
+    const u_carry = is_youmonst_carrier(mon);
+    const items = new Array(MAX_ITEMS_DESTROYED).fill(null);
     let elig_stacks = 0;
-    for (let obj = mon?.minvent; obj; obj = obj.nobj) {
-        if (!destroyable(obj, dmgtyp)) continue;
+
+    const visit = (obj) => {
+        if (!destroyable(obj, dmgtyp)) return;
         const i = (elig_stacks < limit) ? elig_stacks : rn2(elig_stacks);
         elig_stacks++;
-        if (i < 0 || i >= limit) continue;
+        if (i < 0 || i >= limit) return;
         items[i] = obj;
+    };
+
+    if (u_carry) {
+        for (const obj of game.invent || []) visit(obj);
+    } else {
+        for (let obj = mon?.minvent; obj; obj = obj.nobj) visit(obj);
     }
+
     if (elig_stacks > limit) elig_stacks = limit;
     let dmg_out = 0;
     for (let i = 0; i < elig_stacks; i++) {
@@ -390,6 +548,11 @@ function destroy_items(mon, dmgtyp, dmg_in) {
         if (obj) dmg_out += maybe_destroy_item(mon, obj, dmgtyp);
     }
     return dmg_out;
+}
+
+/** C ref: zap.c ignite_items — body deferred (RNG gate still called). */
+function ignite_items(_objchn) {
+    // oil lamp / candle ignition deferred
 }
 
 /**
@@ -527,20 +690,123 @@ function zhitm(mon, type, nd, ootmp) {
 }
 
 /**
- * C ref: zap.c zhitu ZT_SLEEP only.
+ * C ref: zap.c zhitu — hero hit by ray (wand/spell/breath).
+ * Envelope: ZT_MAGIC_MISSILE..ZT_LIGHTNING damage + ZT_FIRE burnarmor/
+ * destroy_items/ignite gate + ZT_COLD/ELEC destroy_items + losehp.
+ * Named omissions: shieldeff/monstunseesu/ugolemeffects; burn_away_slime;
+ * death/disintegrate arms; poison/acid; ignite_items body; killer buzzer
+ * verb polish.
  */
-async function zhitu_sleep(nd) {
-    if (Sleep_resistance()) {
-        await pline("You don't feel sleepy.");
-    } else {
-        fall_asleep(-d(nd, 25), true);
+async function zhitu(type, nd, fltxt, _sx, _sy) {
+    let dam = 0;
+    const abstyp = zaptype(type);
+    let orig_dam = 0;
+
+    switch (abstyp % 10) {
+    case ZT_MAGIC_MISSILE:
+        if (Antimagic()) {
+            await pline('The missiles bounce off!');
+        } else {
+            dam = d(nd, 6);
+            exercise(A_STR, false);
+        }
+        break;
+    case ZT_FIRE:
+        orig_dam = d(nd, 6);
+        if (Fire_resistance()) {
+            await pline("You don't feel hot!");
+            // ugolemeffects deferred
+        } else {
+            dam = orig_dam;
+        }
+        // burn_away_slime deferred
+        if (burnarmor_zhitu(game.youmonst || { _youmonst: true })) {
+            if (!rn2(3)) {
+                destroy_items(
+                    game.youmonst || { _youmonst: true },
+                    AD_FIRE,
+                    orig_dam,
+                );
+            }
+            if (!rn2(3)) ignite_items(game.invent);
+        }
+        break;
+    case ZT_COLD:
+        orig_dam = d(nd, 6);
+        if (Cold_resistance()) {
+            await pline("You don't feel cold.");
+        } else {
+            dam = orig_dam;
+        }
+        if (!rn2(3)) {
+            destroy_items(
+                game.youmonst || { _youmonst: true },
+                AD_COLD,
+                orig_dam,
+            );
+        }
+        break;
+    case ZT_SLEEP:
+        if (Sleep_resistance()) {
+            await pline("You don't feel sleepy.");
+        } else {
+            fall_asleep(-d(nd, 25), true);
+        }
+        break;
+    case ZT_DEATH:
+        // breath/disintegrate + nonliving/Antimagic arms deferred
+        if (nonliving(game.youmonst?.data) || is_demon(game.youmonst?.data)) {
+            await pline('You seem unaffected.');
+            break;
+        }
+        if (Antimagic()) {
+            await pline("You aren't affected.");
+            break;
+        }
+        {
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY_AN;
+            game.killer.name = fltxt || '';
+            losehp((game.u?.uhp | 0) + 1, fltxt || 'death ray', KILLED_BY_AN);
+            return;
+        }
+    case ZT_LIGHTNING:
+        orig_dam = d(nd, 6);
+        if (Shock_resistance()) {
+            await pline("You aren't affected.");
+        } else {
+            dam = orig_dam;
+            exercise(A_CON, false);
+        }
+        if (!rn2(3)) {
+            destroy_items(
+                game.youmonst || { _youmonst: true },
+                AD_ELEC,
+                orig_dam,
+            );
+        }
+        break;
+    case ZT_POISON_GAS:
+    case ZT_ACID:
+        // poisoned/acid arms deferred
+        break;
+    default:
+        break;
+    }
+
+    if (dam && Half_spell_damage() && abstyp < 20) {
+        dam = Math.trunc((dam + 1) / 2);
+    }
+    if (dam) {
+        const kbuf = fltxt || 'ray';
+        losehp(dam, kbuf, KILLED_BY_AN);
     }
 }
 
 /**
  * C ref: zap.c dobuzz — hero wand ray + DISP_BEAM trail + zhitm.
  * Hallucination hdmgtype rn2, fireball/gas, mon_reflects, shopdamage,
- * map_invisible/unmap during buzz, zhitu non-sleep deferred.
+ * map_invisible/unmap during buzz deferred.
  */
 async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss) {
     const fltyp = zaptype(type);
@@ -640,10 +906,9 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                             }
                             dx = -dx;
                             dy = -dy;
-                        } else if (damgtype === ZT_SLEEP) {
-                            await zhitu_sleep(nd);
+                        } else {
+                            await zhitu(type, nd, flash_str(fltyp), sx, sy);
                         }
-                        // zhitu non-sleep deferred
                     } else if (!Blind()) {
                         await pline(`The ${flash_str(fltyp)} whizzes by you!`);
                     }

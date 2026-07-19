@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline } from './display.js';
+import { flush_screen, flush_topl_more, pline, canseemon } from './display.js';
 import { vision_recalc } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
@@ -11,22 +11,33 @@ import {
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
-    ECMD_OK, ECMD_TIME, ECMD_CANCEL, nothing_happens,
-    FACE, TIMEOUT, OBJ_FREE,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, nothing_happens, nothing_seems_to_happen,
+    FACE, TIMEOUT, OBJ_FREE, isok, SDOOR, SCORR,
+    COLNO, DOOR, D_CLOSED, D_LOCKED, ZAP_POS, MAXULEV, WEAK,
 } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline } from './insight.js';
+import { m_at, dist2, setmangry } from './mon.js';
 import { compactify_invlets, makeknown } from './invent.js';
-import { rn2, rn1, rnd } from './rng.js';
-import { nohands, haseyes } from './monsters.js';
+import { rn2, rn1, rnd, d } from './rng.js';
+import {
+    nohands, haseyes, humanoid, is_demon, is_vampire, is_vampshifter,
+    likes_gems, M1_SEE_INVIS, monsterNames,
+} from './monsters.js';
 import { wield_tool } from './wield.js';
 import { splitobj, delobj } from './mkobj.js';
 import { xname, the, makeplural } from './objnam.js';
+import { acurr, A_CHA } from './attrib.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { monflee } from './monmove.js';
+import { nomul } from './hack.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const STETHOSCOPE = objectNames.indexOf('STETHOSCOPE');
+const MIRROR = objectNames.indexOf('MIRROR');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const BULLWHIP = objectNames.indexOf('BULLWHIP');
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
@@ -57,6 +68,16 @@ const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
 const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
+
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_UMBER_HULK = monsterNames.indexOf('PM_UMBER_HULK');
+const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
+const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
+/** C mon.h howmonseen bits — NORMAL suffices for lit-room pets. */
+const MONSEEN_NORMAL = 0x01;
+const MONSEEN_SEEINVIS = 0x02;
+const MONSEEN_INFRAVIS = 0x04;
+const SEENMON = MONSEEN_NORMAL | MONSEEN_SEEINVIS | MONSEEN_INFRAVIS;
 
 /** C invent getobj callback ranks (hack.h). */
 const GETOBJ_EXCLUDE = -3;
@@ -275,8 +296,9 @@ async function getdir_self_ok(prompt) {
 
 /**
  * C ref: apply.c use_stethoscope — one free use per hero_seq; '.' → ustatusline.
- * Branch envelope: self (dx=dy=0) only. Deferred: swallow/steed/dz/cursed
- * heartbeat rn2(2), adjacent mstatusline/SDOOR/SCORR, confdir, Deaf/nohands.
+ * Adjacent: isok / m_at / empty → "hear nothing special", return res (D-0735).
+ * Deferred: swallow/steed/dz/cursed heartbeat rn2(2), full mstatusline,
+ * SDOOR/SCORR reveal, its_dead, confdir, Deaf/nohands/freehand gates.
  * @returns {number} 1 = ECMD_TIME, 0 = ECMD_OK, -1 = ECMD_CANCEL
  */
 async function use_stethoscope(_obj) {
@@ -286,7 +308,8 @@ async function use_stethoscope(_obj) {
     if (!game.context) game.context = {};
     if (game.hero_seq == null) game.hero_seq = (game.moves || 1) << 3;
     const seq = game.hero_seq;
-    const tookTime = seq === (game.context.stethoscope_seq ?? 0) ? 1 : 0;
+    // C: res = (hero_seq == stethoscope_seq) ? ECMD_TIME : ECMD_OK
+    const res = seq === (game.context.stethoscope_seq ?? 0) ? ECMD_TIME : ECMD_OK;
     game.context.stethoscope_seq = seq;
 
     // confdir deferred (not Confused at starter)
@@ -294,11 +317,475 @@ async function use_stethoscope(_obj) {
     const dy = game.u.dy | 0;
     if (!dx && !dy) {
         await ustatusline();
-        return tookTime;
+        return res;
     }
-    // Adjacent monster / terrain stethoscope deferred
-    await pline("You hear a faint typing noise.");
-    return 0; // ECMD_OK — match C isok-fail path rather than invent TIME
+
+    // C: rx = u.ux + u.dx; ry = u.uy + u.dy
+    const rx = (game.u.ux | 0) + dx;
+    const ry = (game.u.uy | 0) + dy;
+    if (!isok(rx, ry)) {
+        // C: You_hear("a faint typing noise."); return ECMD_OK
+        await pline("You hear a faint typing noise.");
+        return ECMD_OK;
+    }
+
+    // C: m_at(rx,ry) → mstatusline(mtmp); return res
+    // Named omission: full mstatusline body (tame/hungry/apport wizard info,
+    // worm segments, mimic reveal, ailment flags). Still spend `res` so
+    // hero_seq TIME matches C (D-0735: anh must movemon before mirror).
+    const mtmp = m_at(rx, ry);
+    if (mtmp) {
+        const nm = mtmp.data?.mname || 'monster';
+        const tame = mtmp.mtame ? ', tame' : (mtmp.mpeaceful ? ', peaceful' : '');
+        await pline(`Status of ${nm}${tame}:  Level ${mtmp.m_lev | 0}  `
+            + `HP ${mtmp.mhp | 0}(${mtmp.mhpmax | 0}).`);
+        return res;
+    }
+
+    // C: SDOOR/SCORR reveal + its_dead deferred → "hear nothing special"
+    const lev = game.level?.at(rx, ry);
+    if (lev && (lev.typ === SDOOR || lev.typ === SCORR)) {
+        // Named omission: hollow_str reveal + cvt_sdoor / unblock_point
+        await pline('You hear nothing special.');
+        return res;
+    }
+
+    // C: if (!its_dead(...)) You("hear nothing special."); return res
+    await pline('You hear nothing special.');
+    return res;
+}
+
+/** C mondata.h perceives — M1_SEE_INVIS. */
+function perceives(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_SEE_INVIS);
+}
+
+/** C mondata.h is_unicorn — S_UNICORN && likes_gems. */
+function is_unicorn(ptr) {
+    return ptr?.mlet === 'S_UNICORN' && likes_gems(ptr);
+}
+
+/** C hack.c closed_door — DOOR with CLOSED|LOCKED mask. */
+function closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || loc.typ !== DOOR) return false;
+    return !!((loc.doormask | 0) & (D_CLOSED | D_LOCKED));
+}
+
+/**
+ * C polyself.c poly_gender — 0 male / 1 female / 2 none.
+ * Named omission: neuter poly forms always 2.
+ */
+function poly_gender() {
+    return game.flags?.female ? 1 : 0;
+}
+
+/**
+ * C apply.c beautiful — CHA adjective for mirror self-look.
+ */
+function beautiful() {
+    const cha = acurr(A_CHA);
+    if (cha >= 25) return 'sublime';
+    if (cha >= 19) return 'splendorous';
+    if (cha >= 16) return poly_gender() === 1 ? 'beautiful' : 'handsome';
+    if (cha >= 14) return poly_gender() === 1 ? 'winsome' : 'amiable';
+    if (cha >= 11) return 'cute';
+    if (cha >= 9) return 'plain';
+    if (cha >= 6) return 'homely';
+    if (cha >= 4) return 'ugly';
+    return 'hideous';
+}
+
+/** C objnam.c simpleonames — known mirror → "mirror". */
+function simpleonames_mirror(obj) {
+    const oc = game.objects?.[obj?.otyp];
+    return oc?.oc_name || 'mirror';
+}
+
+/**
+ * C zap.c bhit INVIS_BEAM arm — walk until mon / !ZAP_POS / closed_door.
+ * Continues through minvis unless perceives; returns first usable mon.
+ * Named omissions: FLASHED_LIGHT tmp_at; throw/kick paths; fhito pile.
+ */
+function bhit_invis_beam(ddx, ddy, range) {
+    const bhitpos = game.bhitpos || (game.bhitpos = { x: 0, y: 0 });
+    bhitpos.x = game.u?.ux | 0;
+    bhitpos.y = game.u?.uy | 0;
+    game.notonhead = false;
+    let r = range | 0;
+    while (r-- > 0) {
+        bhitpos.x += ddx;
+        bhitpos.y += ddy;
+        const x = bhitpos.x | 0;
+        const y = bhitpos.y | 0;
+        if (!isok(x, y)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+        const typ = game.level?.at(x, y)?.typ;
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            game.notonhead = (x !== (mtmp.mx | 0) || y !== (mtmp.my | 0));
+            // C: if (!mtmp->minvis || perceives(mtmp->data)) return
+            if (!mtmp.minvis || perceives(mtmp.data)) return mtmp;
+        }
+        if (!ZAP_POS(typ) || closed_door(x, y)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+    }
+    return null;
+}
+
+/**
+ * C apply.c use_mirror — getdir then reflect self / beam mon reactions.
+ * Named omissions: Hallucination hcolor self; full howmonseen bits;
+ * mon_reflects Medusa; nymph steal+rloc; monverbself polish; Underwater /
+ * swallow / dz surface|ceiling wording; See_invisible / Invis edge cases.
+ * @returns {number} ECMD_*
+ */
+async function use_mirror(obj) {
+    if (!(await getdir_self_ok(null))) return ECMD_CANCEL;
+
+    const u = game.u || (game.u = {});
+    const invis_mirror = !!(u.Invis || u.HInvis || u.EInvis);
+    const See_invisible = !!(u.See_invisible || u.HSee_invisible
+        || u.ESee_invisible);
+    const useeit = !Blind() && (!invis_mirror || See_invisible);
+    const uvisage = beautiful();
+    const mirror = simpleonames_mirror(obj);
+
+    // C: if (obj->cursed && !rn2(2))
+    if (obj.cursed && !rn2(2)) {
+        if (!Blind()) {
+            await pline(`The ${mirror} fogs up and doesn't reflect!`);
+        } else {
+            await pline(nothing_seems_to_happen);
+        }
+        return ECMD_TIME;
+    }
+
+    const dx = u.dx | 0;
+    const dy = u.dy | 0;
+    const dz = u.dz | 0;
+
+    // C: self (!dx && !dy && !dz)
+    if (!dx && !dy && !dz) {
+        if (!useeit) {
+            await pline(`You can't see your ${uvisage} ${body_part(FACE)}.`);
+        } else {
+            const umonnum = u.umonnum | 0;
+            const Free_action = !!(u.Free_action || u.HFree_action
+                || u.EFree_action);
+            if (umonnum === PM_FLOATING_EYE) {
+                if (Free_action) {
+                    await pline('You stiffen momentarily under your gaze.');
+                } else {
+                    if (u.Hallucination) {
+                        await pline(`Yow!  The ${mirror} stares back!`);
+                    } else {
+                        await pline("Yikes!  You've frozen yourself!");
+                    }
+                    if (!u.Hallucination || !rn2(4)) {
+                        nomul(-rnd(MAXULEV + 6 - (u.ulevel | 0)));
+                        game.multi_reason = 'gazing into a mirror';
+                    }
+                    game.nomovemsg = null;
+                }
+            } else if (is_vampire(game.youmonst?.data)
+                || is_vampshifter(game.youmonst)) {
+                await pline("You don't have a reflection.");
+            } else if (umonnum === PM_UMBER_HULK) {
+                await pline("Huh?  That doesn't look like you!");
+                const { make_confused } = await import('./potion.js');
+                await make_confused((u.HConfusion | 0) + d(3, 4), false);
+            } else if (u.Hallucination) {
+                // hcolor deferred → generic
+                await pline('You look scintillating.');
+            } else if (u.Sick) {
+                await pline('You look peaked.');
+            } else if ((u.uhs | 0) >= WEAK) {
+                await pline('You look undernourished.');
+            } else if (u.Upolyd) {
+                const nm = game.youmonst?.data?.mname || 'a monster';
+                await pline(`You look like ${nm}.`);
+            } else {
+                await pline(`You look as ${uvisage} as ever.`);
+            }
+        }
+        return ECMD_TIME;
+    }
+
+    if (u.uswallow) {
+        if (useeit) {
+            await pline(`You reflect ${mon_nam(u.ustuck)}'s stomach.`);
+        }
+        return ECMD_TIME;
+    }
+    if (u.Underwater) {
+        if (useeit) {
+            await pline(u.Hallucination
+                ? 'You give the fish a chance to fix their makeup.'
+                : 'You reflect the murky water.');
+        }
+        return ECMD_TIME;
+    }
+    if (dz) {
+        if (useeit) {
+            await pline(`You reflect the ${dz > 0 ? 'floor' : 'ceiling'}.`);
+        }
+        return ECMD_TIME;
+    }
+
+    // C: mtmp = bhit(..., INVIS_BEAM, ...)
+    const mtmp = bhit_invis_beam(dx, dy, COLNO);
+    if (!mtmp || !haseyes(mtmp.data) || game.notonhead) return ECMD_TIME;
+
+    const vis = canseemon(mtmp);
+    // howmonseen deferred — lit canseemon ≡ NORMAL (not INFRAVIS-only)
+    const how_seen = vis ? MONSEEN_NORMAL : 0;
+    const monable = !mtmp.mcan
+        && (!mtmp.minvis || perceives(mtmp.data));
+    const mlet = mtmp.data?.mlet;
+    const mndx = mtmp.data?.mndx ?? mtmp.mnum;
+
+    if (mtmp.msleeping) {
+        if (vis) {
+            await pline(`${Monnam(mtmp)} is too tired to look at your ${mirror}.`);
+        }
+    } else if (!mtmp.mcansee) {
+        if (vis) {
+            await pline(`${Monnam(mtmp)} can't see anything right now.`);
+        }
+    } else if (invis_mirror && !perceives(mtmp.data)) {
+        if (vis) {
+            await pline(`${Monnam(mtmp)} fails to notice your ${mirror}.`);
+        }
+    } else if ((how_seen & SEENMON) === MONSEEN_INFRAVIS) {
+        if (vis) {
+            await pline(`${Monnam(mtmp)} is too far away to see in the dark.`);
+        }
+    } else if (mlet === 'S_VAMPIRE' || mlet === 'S_GHOST'
+        || is_vampshifter(mtmp)) {
+        if (vis) {
+            await pline(`${Monnam(mtmp)} doesn't have a reflection.`);
+        }
+    } else if (monable && mndx === PM_MEDUSA) {
+        // mon_reflects / stoned/killed deferred — still spend TIME
+        if (vis) await pline(`${Monnam(mtmp)} is turned to stone!`);
+    } else if (monable && mndx === PM_FLOATING_EYE) {
+        let tmp = d(mtmp.m_lev | 0, mtmp.data?.mattk?.[0]?.damd | 0 || 1);
+        if (!rn2(4)) tmp = 120;
+        if (vis) {
+            await pline(`${Monnam(mtmp)} is frozen by its reflection.`);
+        } else {
+            await pline('You hear something stop moving.');
+        }
+        mtmp.mfrozen = (mtmp.mfrozen | 0) + tmp;
+        mtmp.mcanmove = 0;
+    } else if (monable && mndx === PM_UMBER_HULK) {
+        if (vis) await pline(`${Monnam(mtmp)} confuses itself!`);
+        mtmp.mconf = 1;
+    } else if (monable && (mlet === 'S_NYMPH' || mndx === PM_AMOROUS_DEMON)) {
+        // steal + rloc deferred — pline only
+        if (vis) {
+            await pline(`${Monnam(mtmp)} admires itself in your ${mirror}.`);
+        } else {
+            await pline(`It steals your ${mirror}!`);
+        }
+    } else if (!is_unicorn(mtmp.data) && !humanoid(mtmp.data)
+        && !is_demon(mtmp.data)
+        && (!mtmp.minvis || perceives(mtmp.data)) && rn2(5)) {
+        let do_react = true;
+        if (mtmp.mfrozen) {
+            if (vis) {
+                await pline(`You discern no obvious reaction from ${mon_nam(mtmp)}.`);
+            } else {
+                await pline(
+                    'You feel a bit silly gesturing the mirror in that direction.',
+                );
+            }
+            do_react = false;
+        }
+        if (do_react) {
+            if (vis) {
+                await pline(`${Monnam(mtmp)} is frightened by its reflection.`);
+            }
+            await monflee(mtmp, d(2, 4), false, false);
+        }
+    } else if (!Blind()) {
+        if (mtmp.minvis && !See_invisible) {
+            // silent
+        } else if ((mtmp.minvis && !perceives(mtmp.data))
+            || !haseyes(mtmp.data) || game.notonhead || !mtmp.mcansee) {
+            await pline(
+                `${Monnam(mtmp)} doesn't seem to notice its reflection.`,
+            );
+        } else {
+            await pline(`${Monnam(mtmp)} ignores its reflection.`);
+        }
+    }
+    return ECMD_TIME;
+}
+
+/**
+ * C invent.c consume_obj_charge — spe--; unpaid/update_inventory deferred.
+ */
+function consume_obj_charge(obj, _maybe_unpaid) {
+    if (!obj) return;
+    obj.spe = (obj.spe | 0) - 1;
+}
+
+/** C mondata.c resists_blnd subset — already-blind / noeyes; arti deferred. */
+function resists_blnd_mon(mtmp) {
+    if (!mtmp) return true;
+    if (!haseyes(mtmp.data)) return true;
+    if (!mtmp.mcansee || (mtmp.mblinded | 0)) return true;
+    return false;
+}
+
+/**
+ * C zap.c bhit FLASHED_LIGHT — first non-minvis mon stops the beam.
+ * Named omissions: tmp_at flash glyph; transient_light; iron bars.
+ */
+function bhit_flashed_light(ddx, ddy, range) {
+    const bhitpos = game.bhitpos || (game.bhitpos = { x: 0, y: 0 });
+    bhitpos.x = game.u?.ux | 0;
+    bhitpos.y = game.u?.uy | 0;
+    game.notonhead = false;
+    let r = range | 0;
+    while (r-- > 0) {
+        bhitpos.x += ddx;
+        bhitpos.y += ddy;
+        const x = bhitpos.x | 0;
+        const y = bhitpos.y | 0;
+        if (!isok(x, y)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+        const typ = game.level?.at(x, y)?.typ;
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            game.notonhead = (x !== (mtmp.mx | 0) || y !== (mtmp.my | 0));
+            if (mtmp.minvis) {
+                // C continues after flash_hits_mon for minvis — call deferred
+                // (no RNG when flash deferred on continue path without call)
+            } else {
+                return mtmp;
+            }
+        }
+        if (!ZAP_POS(typ) || closed_door(x, y)) {
+            bhitpos.x -= ddx;
+            bhitpos.y -= ddy;
+            break;
+        }
+    }
+    return null;
+}
+
+/**
+ * C uhitm.c flash_hits_mon subset — blind + rn2(4) monflee + mblinded rnd.
+ * Named omissions: mimic wakeup/seemimic; gremlin light_hits; resists_blnd
+ * arti shieldeff; lit-message variants; display_nhwindow; see_monster_closeup.
+ */
+async function flash_hits_mon(mtmp, otmp) {
+    if (!mtmp || game.notonhead) return 0;
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    const useeit = canseemon(mtmp);
+    let res = 0;
+
+    // M_AP_* mimic reveal deferred
+
+    if (mtmp.msleeping && haseyes(mtmp.data)) {
+        mtmp.msleeping = 0;
+        if (useeit) {
+            await pline(`The flash awakens ${mon_nam(mtmp)}.`);
+            res = 1;
+        }
+    } else if (mtmp.data?.mlet !== 'S_LIGHT') {
+        if (!resists_blnd_mon(mtmp)) {
+            const tmp = dist2(otmp.ox | 0, otmp.oy | 0, mx, my);
+            if (useeit) {
+                await pline(`${Monnam(mtmp)} is blinded by the flash!`);
+                res = 1;
+            }
+            // gremlin deferred
+            if ((mtmp.mhp | 0) > 0) {
+                if (!game.context?.mon_moving) {
+                    setmangry(mtmp, true);
+                }
+                if (tmp < 9 && !mtmp.isshk && rn2(4)) {
+                    await monflee(mtmp, rn2(4) ? rnd(100) : 0, false, true);
+                }
+                mtmp.mcansee = 0;
+                mtmp.mblinded = tmp < 3 ? 0 : rnd(1 + ((50 / tmp) | 0));
+            }
+        } else if (useeit && game.flags?.verbose !== false) {
+            const lit = !!game.level?.at(mx, my)?.lit;
+            if (lit) {
+                await pline(`The flash of light shines on ${mon_nam(mtmp)}.`);
+            } else {
+                await pline(`${Monnam(mtmp)} is illuminated.`);
+            }
+        }
+    }
+    return res & 1;
+}
+
+/**
+ * C apply.c do_blinding_ray — FLASHED_LIGHT bhit + flash_hits_mon.
+ */
+async function do_blinding_ray(obj) {
+    const mtmp = bhit_flashed_light(game.u.dx | 0, game.u.dy | 0, COLNO);
+    obj.ox = game.u.ux | 0;
+    obj.oy = game.u.uy | 0;
+    if (mtmp) {
+        await flash_hits_mon(mtmp, obj);
+        // see_monster_closeup for camera deferred
+    }
+    // transient_light_cleanup deferred
+}
+
+/**
+ * C apply.c use_camera — getdir; charge; cursed/self zapyourself; ray.
+ * Named omissions: Underwater warranty; swallow/dz photos; full
+ * zapyourself CAMERA; see_monster_closeup; flash_hits_mon mimic/gremlin.
+ * @returns {number} ECMD_*
+ */
+async function use_camera(obj) {
+    if (game.u?.Underwater) {
+        await pline('Using your camera underwater would void the warranty.');
+        return ECMD_OK;
+    }
+    if (!(await getdir_self_ok(null))) return ECMD_CANCEL;
+
+    if ((obj.spe | 0) <= 0) {
+        await pline(nothing_happens);
+        return ECMD_TIME;
+    }
+    consume_obj_charge(obj, true);
+
+    const u = game.u || {};
+    if (obj.cursed && !rn2(2)) {
+        const { zapyourself } = await import('./zap.js');
+        await zapyourself(obj, true);
+    } else if (u.uswallow) {
+        await pline(`You take a picture of ${mon_nam(u.ustuck)}'s stomach.`);
+    } else if (u.dz) {
+        await pline(
+            `You take a picture of the ${u.dz > 0 ? 'floor' : 'ceiling'}.`,
+        );
+    } else if (!(u.dx | 0) && !(u.dy | 0)) {
+        const { zapyourself } = await import('./zap.js');
+        await zapyourself(obj, true);
+    } else {
+        await do_blinding_ray(obj);
+    }
+    return ECMD_TIME;
 }
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky). */
@@ -442,11 +929,12 @@ async function use_cream_pie(obj) {
 }
 
 /**
- * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE + sack/bag
- * use_container + musical instruments (do_play_instrument) + cream pie.
+ * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE + MIRROR/
+ * CAMERA + sack/bag use_container + musical instruments + cream pie.
  * Named omissions: nohands/capacity; retouch; do_break_wand; flip_through_book;
  * flip_coin; jelly; whip/grapple/blindfold/lenses; use_stone; use_pole/
- * use_pick_axe; traps; oil; BoT; most non-instrument tools.
+ * use_pick_axe; traps; oil; BoT; Medusa/nymph mirror arms; camera closeup;
+ * most non-instrument tools.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {
@@ -463,6 +951,18 @@ export async function doapply() {
     if (obj.otyp === STETHOSCOPE) {
         const res = await use_stethoscope(obj);
         return res > 0; // ECMD_TIME only
+    }
+
+    // C apply.c case MIRROR → use_mirror (D-0736)
+    if (obj.otyp === MIRROR) {
+        const res = await use_mirror(obj);
+        return res === ECMD_TIME;
+    }
+
+    // C apply.c case EXPENSIVE_CAMERA → use_camera (D-0736 partial)
+    if (obj.otyp === EXPENSIVE_CAMERA) {
+        const res = await use_camera(obj);
+        return res === ECMD_TIME;
     }
 
     // C: SACK / BAG_OF_HOLDING / OILSKIN_SACK → use_container(&obj, TRUE, FALSE)

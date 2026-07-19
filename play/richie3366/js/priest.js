@@ -1,5 +1,6 @@
 // priest.js — Temple entry + priest location helpers (partial).
-// C ref: priest.c temple_occupied / findpriest / has_shrine / intemple.
+// C ref: priest.c temple_occupied / findpriest / has_shrine / intemple /
+//   in_your_sanctuary.
 // Named omissions: mapseen_temple; SetVoice; forget_temple_entry callers;
 // priest_talk; inhistemple callers beyond findpriest; full poly body_part.
 
@@ -11,7 +12,7 @@ import {
 } from './const.js';
 import { pline, You_feel, canseemon, canspotmon, verbalize } from './display.js';
 import { makemon, set_malign } from './makemon.js';
-import { mons } from './monsters.js';
+import { mons, is_rider } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { in_rooms, nomul } from './hack.js';
 
@@ -90,9 +91,12 @@ function p_coaligned(priest) {
 
 /**
  * C ref: priest.c findpriest — living ispriest with matching shroom in temple.
+ * `roomno` may be a numeric shroom or a temple occupancy char (charCode).
  */
 export function findpriest(roomno) {
-    const want = roomno | 0;
+    const want = typeof roomno === 'string'
+        ? (roomno.charCodeAt(0) | 0)
+        : (roomno | 0);
     for (const mtmp of game.fmon || []) {
         if ((mtmp.mhp | 0) <= 0) continue;
         if (!mtmp.ispriest) continue;
@@ -100,6 +104,33 @@ export function findpriest(roomno) {
         if (histemple_at(mtmp, mtmp.mx | 0, mtmp.my | 0)) return mtmp;
     }
     return null;
+}
+
+/**
+ * C ref: priest.c in_your_sanctuary — hero's coaligned tended shrine temple.
+ * When `mon` is non-null, uses mon.mx/my (minion/rider never sanctuary).
+ * Named: Is_sanctum / astral Moloch arms live in intemple, not here.
+ */
+export function in_your_sanctuary(mon, x = 0, y = 0) {
+    if (mon) {
+        const ptr = mon.data;
+        // C: is_minion || is_rider
+        if (((ptr?.mflags2 ?? 0) & 0x00001000 /* M2_MINION */) || is_rider(ptr)) {
+            return false;
+        }
+        x = mon.mx | 0;
+        y = mon.my | 0;
+    }
+    const u = game.u;
+    if (!u) return false;
+    if ((u.ualign?.record | 0) <= ALGN_SINNED) return false;
+    const roomno = temple_occupied(u.urooms);
+    if (!roomno || roomno === '\0') return false;
+    const trooms = in_rooms(x, y, TEMPLE);
+    if (!trooms || trooms[0] !== roomno) return false;
+    const priest = findpriest(roomno);
+    if (!priest) return false;
+    return !!(has_shrine(priest) && p_coaligned(priest) && priest.mpeaceful);
 }
 
 /** Stub: C insight/achieve record_achievement ACH_TMPL. */
