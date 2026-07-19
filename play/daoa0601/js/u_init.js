@@ -9,8 +9,8 @@ import {
     D_ISOPEN, D_NODOOR,
 } from './const.js';
 import {
-    ARROW, YA, DART, DAGGER, SCALPEL, SPEAR, SHORT_SWORD, LONG_SWORD, KATANA, LANCE, MACE, CLUB, BOW, YUMI, SLING,
-    HELMET, SPLINT_MAIL, RING_MAIL, LEATHER_ARMOR, LEATHER_GLOVES, ROBE, SMALL_SHIELD, HAWAIIAN_SHIRT, CLOAK_OF_DISPLACEMENT,
+    ARROW, YA, DART, DAGGER, SCALPEL, SPEAR, SHORT_SWORD, LONG_SWORD, KATANA, LANCE, MACE, CLUB, QUARTERSTAFF, BOW, YUMI, SLING,
+    HELMET, SPLINT_MAIL, RING_MAIL, LEATHER_ARMOR, LEATHER_GLOVES, ROBE, SMALL_SHIELD, HAWAIIAN_SHIRT, CLOAK_OF_DISPLACEMENT, CLOAK_OF_MAGIC_RESISTANCE,
     SACK, LOCK_PICK, CREDIT_CARD, EXPENSIVE_CAMERA, TOWEL, SADDLE, LEASH, STETHOSCOPE, TIN_OPENER,
     MAGIC_MARKER, BLINDFOLD, OIL_LAMP,
     CRAM_RATION, FOOD_RATION, TIN, EUCALYPTUS_LEAF, APPLE, ORANGE, PEAR,
@@ -18,7 +18,7 @@ import {
     CREAM_PIE, CANDY_BAR, FORTUNE_COOKIE, PANCAKE, LEMBAS_WAFER,
     POT_HEALING, POT_EXTRA_HEALING, POT_SICKNESS, POT_WATER,
     SCR_MAGIC_MAPPING, SCR_PUNISHMENT,
-    SPE_DETECT_MONSTERS, SPE_HEALING, SPE_CONFUSE_MONSTER,
+    SPE_DETECT_MONSTERS, SPE_HEALING, SPE_FORCE_BOLT, SPE_CONFUSE_MONSTER,
     SPE_EXTRA_HEALING, SPE_STONE_TO_FLESH, SPE_PROTECTION,
     WAN_SLEEP, WAN_WISHING, GOLD_PIECE,
     FLINT, ROCK,
@@ -26,6 +26,7 @@ import {
 
 const WEAPON_CLASS = 2;
 const ARMOR_CLASS = 3;
+const RING_CLASS = 4;
 const TOOL_CLASS = 6;
 const FOOD_CLASS = 7;
 const POTION_CLASS = 8;
@@ -144,6 +145,27 @@ const MONK_INVENTORY = [
     { typ: 0, spe: 0, cls: 0, min: 0, max: 0, bless: 0 },
 ];
 
+const WIZARD_INVENTORY = [
+    { typ: QUARTERSTAFF, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: 1 },
+    { typ: CLOAK_OF_MAGIC_RESISTANCE, spe: 0, cls: ARMOR_CLASS,
+        min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: WAND_CLASS,
+        min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: RING_CLASS,
+        min: 2, max: 2, bless: UNDEF_BLESS },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: POTION_CLASS,
+        min: 3, max: 3, bless: UNDEF_BLESS },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: SCROLL_CLASS,
+        min: 3, max: 3, bless: UNDEF_BLESS },
+    { typ: SPE_FORCE_BOLT, spe: 0, cls: SPBOOK_CLASS,
+        min: 1, max: 1, bless: 1 },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: SPBOOK_CLASS,
+        min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: MAGIC_MARKER, spe: 19, cls: TOOL_CLASS,
+        min: 1, max: 1, bless: 0 },
+    { typ: 0, spe: 0, cls: 0, min: 0, max: 0, bless: 0 },
+];
+
 function oneItem(typ, spe = 0) {
     return [
         { typ, spe, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
@@ -172,6 +194,9 @@ const ITEM_PRESENTATION = new Map([
         omitUncursed: true,
     }],
     [CLUB, { class: 'Weapons', name: 'club', plural: 'clubs', enchanted: true, omitUncursed: true }],
+    [QUARTERSTAFF, {
+        class: 'Weapons', name: 'quarterstaff', plural: 'quarterstaffs', enchanted: true,
+    }],
     [SLING, { class: 'Weapons', name: 'sling', plural: 'slings', enchanted: true, omitUncursed: true }],
     [SHORT_SWORD, {
         class: 'Weapons', name: 'wakizashi', plural: 'wakizashi', enchanted: true,
@@ -218,6 +243,10 @@ const ITEM_PRESENTATION = new Map([
         class: 'Armor', name: 'cloak of displacement', plural: 'cloaks of displacement',
         enchanted: true,
     }],
+    [CLOAK_OF_MAGIC_RESISTANCE, {
+        class: 'Armor', name: 'cloak of magic resistance',
+        plural: 'cloaks of magic resistance', enchanted: true,
+    }],
     [264, { class: 'Comestibles', name: 'tripe ration', plural: 'tripe rations' }],
     [266, { class: 'Comestibles', name: 'egg', plural: 'eggs' }],
     [EUCALYPTUS_LEAF, { class: 'Comestibles', name: 'eucalyptus leaf', plural: 'eucalyptus leaves' }],
@@ -256,6 +285,11 @@ const ITEM_PRESENTATION = new Map([
     [SPE_HEALING, {
         class: 'Spellbooks', name: 'spellbook of healing', plural: 'spellbooks of healing',
         spellName: 'healing', spellLevel: 1, spellCategory: 'healing', appearance: 'purple',
+    }],
+    [SPE_FORCE_BOLT, {
+        class: 'Spellbooks', name: 'spellbook of force bolt',
+        plural: 'spellbooks of force bolt', spellName: 'force bolt',
+        spellLevel: 1, spellCategory: 'attack', appearance: 'red',
     }],
     [SPE_CONFUSE_MONSTER, {
         class: 'Spellbooks', name: 'spellbook of confuse monster',
@@ -386,9 +420,10 @@ export function makedog() {
     if (role !== 'caveman' && role !== 'ranger' && role !== 'rogue'
         && role !== 'samurai' && role !== 'tourist' && role !== 'valkyrie'
         && role !== 'priest' && role !== 'healer' && role !== 'knight'
-        && role !== 'monk') return null;
+        && role !== 'monk' && role !== 'wizard') return null;
 
-    let pettype = role === 'knight' ? 102 : 16; // PM_PONY or PM_LITTLE_DOG
+    let pettype = role === 'knight' ? 102
+        : role === 'wizard' ? 32 : 16; // PM_PONY, PM_KITTEN, or PM_LITTLE_DOG
     if (role === 'tourist' || role === 'rogue' || role === 'valkyrie'
         || role === 'priest' || role === 'healer' || role === 'monk') {
         if (g.preferred_pet === 'c') pettype = 32; // PM_KITTEN
@@ -406,10 +441,15 @@ export function makedog() {
     if (role !== 'knight' && hp === 1) hp++;
     const female = !!rn2(2);
     if (role === 'tourist' || role === 'caveman' || role === 'valkyrie'
-        || role === 'priest' || role === 'healer' || role === 'monk') {
+        || role === 'priest' || role === 'healer' || role === 'monk'
+        || role === 'wizard') {
         // peace_minded(); initedog() below ultimately makes the pet tame.
-        rn2(role === 'healer' || role === 'monk' ? 26 : 16);
-        rn2(2);
+        // A lawful Priest and a neutral little dog fail the alignment-sign
+        // test before peace_minded() reaches either random branch.
+        if (!(role === 'priest' && g.initAlignment?.value === 1)) {
+            rn2(role === 'healer' || role === 'monk' ? 26 : 16);
+            rn2(2);
+        }
     }
     const pet = {
         mnum: pettype,
@@ -512,7 +552,8 @@ function useStartingItem(item) {
             game.uquiver = item;
             item.ready = true;
         }
-    } else if (item.otyp === SPEAR || item.otyp === MACE || item.otyp === LONG_SWORD) {
+    } else if (item.otyp === SPEAR || item.otyp === MACE
+        || item.otyp === LONG_SWORD || item.otyp === QUARTERSTAFF) {
         game.uwep = item;
         item.wielded = true;
     } else if (item.otyp === DAGGER || item.otyp === SCALPEL
@@ -538,7 +579,8 @@ function useStartingItem(item) {
             game.uswapwep = item;
             item.alternate = true;
         }
-    } else if (item.otyp === CLOAK_OF_DISPLACEMENT || item.otyp === ROBE) {
+    } else if (item.otyp === CLOAK_OF_DISPLACEMENT || item.otyp === ROBE
+        || item.otyp === CLOAK_OF_MAGIC_RESISTANCE) {
         game.uarmc = item;
         item.worn = true;
     } else if (item.otyp === HAWAIIAN_SHIRT) {
@@ -579,11 +621,49 @@ function priestSpellbookAllowed(otyp) {
         item.oclass === SPBOOK_CLASS && item.spellLevel === 1);
     const levelOne = new Set([372, SPE_DETECT_MONSTERS, SPE_HEALING]);
     const throughLevelThree = new Set([
-        ...levelOne, 378, 382, 383, 385, 386,
+        ...levelOne, 378, 382, 383, 385, 386, 395,
     ]);
     const allowed = alreadyHasLevelOne ? throughLevelThree : levelOne;
     return allowed.has(otyp)
         && !game.inventory.some(item => item.otyp === otyp);
+}
+
+function wizardSpellbookAllowed(otyp) {
+    // Wizard begins with force bolt, so ini_inv_mkobj_filter() permits an
+    // additional book through level three, from any of Wizard's disciplines.
+    // Blank paper and a duplicate force bolt remain explicitly excluded.
+    return new Set([
+        367, 370, 372, SPE_DETECT_MONSTERS, SPE_HEALING, 375,
+        378, 379, 380, 381, 382, 383, 384, 385, 386, 388, 389,
+        SPE_EXTRA_HEALING, 395, 397, SPE_PROTECTION, 404,
+        SPE_STONE_TO_FLESH, 406,
+    ]).has(otyp);
+}
+
+function randomStartingItemAllowed(raw) {
+    // C ini_inv_mkobj_filter(): random starting rings must not be overly
+    // powerful or actively harmful, and repeated rings are rerolled.  The
+    // numeric ids are stable positions in objects.h's contiguous ring table.
+    const RIN_LEVITATION = 183;
+    const RIN_HUNGER = 184;
+    const RIN_AGGRAVATE_MONSTER = 185;
+    const POT_HALLUCINATION = 304;
+    const POT_ACID = 320;
+    const SCR_AMNESIA = 338;
+    const SCR_FIRE = 339;
+    const SCR_BLANK_PAPER = 365;
+    if (raw.otyp === WAN_WISHING
+        || raw.otyp === RIN_LEVITATION
+        || raw.otyp === RIN_HUNGER
+        || raw.otyp === RIN_AGGRAVATE_MONSTER
+        || raw.otyp === POT_HALLUCINATION
+        || raw.otyp === POT_ACID
+        || raw.otyp === SCR_AMNESIA
+        || raw.otyp === SCR_FIRE
+        || raw.otyp === SCR_BLANK_PAPER) return false;
+    if (raw.oclass === RING_CLASS
+        && game.inventory.some(item => item.otyp === raw.otyp)) return false;
+    return true;
 }
 
 // Direct port of ini_inv() for fixed and class-generated inventory entries.
@@ -595,8 +675,12 @@ function iniInv(table) {
         let raw;
         if (trobj.typ === UNDEF_TYP) {
             do raw = mkobj(trobj.cls, false);
-            while (game.urole?.key === 'priest' && trobj.cls === SPBOOK_CLASS
-                && !priestSpellbookAllowed(raw.otyp));
+            while (!randomStartingItemAllowed(raw)
+                || (trobj.cls === SPBOOK_CLASS
+                    && ((game.urole?.key === 'priest'
+                            && !priestSpellbookAllowed(raw.otyp))
+                        || (game.urole?.key === 'wizard'
+                            && !wizardSpellbookAllowed(raw.otyp)))));
         } else {
             raw = mksobj(trobj.typ, true, false);
         }
@@ -667,7 +751,7 @@ export function uInitInventoryAttrs() {
     if (role !== 'caveman' && role !== 'ranger' && role !== 'rogue'
         && role !== 'samurai' && role !== 'tourist' && role !== 'valkyrie'
         && role !== 'priest' && role !== 'healer' && role !== 'knight'
-        && role !== 'monk') return false;
+        && role !== 'monk' && role !== 'wizard') return false;
     game.inventory = [];
     game.uwep = game.uswapwep = game.uquiver = null;
     game.uarm = game.uarms = game.uarmc = game.uarmu = game.uarmg = game.uarmh = null;
@@ -744,6 +828,9 @@ export function uInitInventoryAttrs() {
         ]);
         if (!rn2(4)) iniInv(oneItem(MAGIC_MARKER, 19));
         else if (!rn2(10)) iniInv(oneItem(OIL_LAMP, 1));
+    } else if (role === 'wizard') {
+        iniInv(WIZARD_INVENTORY);
+        if (!rn2(5)) iniInv(oneItem(BLINDFOLD));
     } else {
         iniInv(RANGER_INVENTORY);
     }
@@ -815,6 +902,27 @@ export function uInitInventoryAttrs() {
         { class: 'Weapons', name: 'tsurugi', appearance: 'long samurai sword', preknown: true },
         { class: 'Weapons', name: 'runesword', appearance: 'runed broadsword', preknown: true },
         { class: 'Weapons', name: 'partisan', appearance: 'vulgar polearm', preknown: true },
+    ] : role === 'valkyrie' ? [
+        { class: 'Weapons', name: 'elven arrow', appearance: 'runed arrow', preknown: true },
+        { class: 'Weapons', name: 'orcish arrow', appearance: 'crude arrow', preknown: true },
+        { class: 'Weapons', name: 'ya', appearance: 'bamboo arrow', preknown: true },
+        { class: 'Weapons', name: 'shuriken', appearance: 'throwing star', preknown: true },
+        { class: 'Weapons', name: 'elven spear', appearance: 'runed spear', preknown: true },
+        { class: 'Weapons', name: 'orcish spear', appearance: 'crude spear', preknown: true },
+        { class: 'Weapons', name: 'dwarvish spear', appearance: 'stout spear', preknown: true },
+        { class: 'Weapons', name: 'javelin', appearance: 'throwing spear', preknown: true },
+        { class: 'Weapons', name: 'elven dagger', appearance: 'runed dagger', preknown: true },
+        { class: 'Weapons', name: 'orcish dagger', appearance: 'crude dagger', preknown: true },
+        { class: 'Weapons', name: 'battle-axe', appearance: 'double-headed axe', preknown: true },
+        { class: 'Weapons', name: 'elven short sword', appearance: 'runed short sword', preknown: true },
+        { class: 'Weapons', name: 'orcish short sword', appearance: 'crude short sword', preknown: true },
+        { class: 'Weapons', name: 'dwarvish short sword', appearance: 'broad short sword', preknown: true },
+        { class: 'Weapons', name: 'scimitar', appearance: 'curved sword', preknown: true },
+        { class: 'Weapons', name: 'elven broadsword', appearance: 'runed broadsword', preknown: true },
+        { class: 'Weapons', name: 'katana', appearance: 'samurai sword', preknown: true },
+        { class: 'Weapons', name: 'tsurugi', appearance: 'long samurai sword', preknown: true },
+        { class: 'Weapons', name: 'runesword', appearance: 'runed broadsword', preknown: true },
+        { class: 'Weapons', name: 'dwarvish mattock', appearance: 'broad pick', preknown: true },
     ] : role === 'monk' ? [
         { class: 'Weapons', name: 'shuriken', appearance: 'throwing star', preknown: true },
         { class: 'Armor', name: 'elven leather helm', appearance: 'leather hat', preknown: true },
@@ -883,4 +991,5 @@ export function setInitialArmorClass() {
     else if (game.urole?.key === 'healer') game.u.uac = 8;
     else if (game.urole?.key === 'knight') game.u.uac = 3;
     else if (game.urole?.key === 'monk') game.u.uac = 4;
+    else if (game.urole?.key === 'wizard') game.u.uac = 9;
 }

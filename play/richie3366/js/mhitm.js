@@ -25,6 +25,7 @@ import {
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, is_neuter, nonliving,
+    bigmonst, is_golem, is_mplayer, is_rider, monsterNames,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
@@ -32,6 +33,7 @@ import { Monnam, mon_nam } from './do_name.js';
 import { mon_explodes } from './explode.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 
 const NATTK = 6;
 // C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
@@ -245,9 +247,8 @@ export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
 }
 
 /**
- * C ref: mon.c corpse_chance() — AT_BOOM then ordinary !rn2(tmp).
- * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE;
- * bigmonst/lizard/golem/mplayer/rider/isshk always-TRUE arms.
+ * C ref: mon.c corpse_chance() — AT_BOOM then always-TRUE arms then !rn2(tmp).
+ * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE.
  */
 async function corpse_chance(mon) {
     const mdat = mon.data;
@@ -262,6 +263,10 @@ async function corpse_chance(mon) {
             await mon_explodes(mon, at);
             return false;
         }
+    }
+    if ((((bigmonst(mdat) || (mdat.mndx ?? -1) === PM_LIZARD) && !mon.mcloned)
+        || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)) {
+        return true;
     }
     let tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
         + (verysmall(mdat) ? 1 : 0);

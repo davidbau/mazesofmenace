@@ -102,3 +102,11 @@ export async function wiz_level_tele() {
     await level_tele();
     return ECMD_OK;
 }
+
+/**
+ * C ref: wizcmds.c wiz_polyself — #polyself
+ */
+export async function wiz_polyself() {
+    const { wiz_polyself: run } = await import('./polyself.js');
+    return run();
+}

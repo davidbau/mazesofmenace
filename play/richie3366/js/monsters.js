@@ -114,6 +114,8 @@ export const M2_DEMON = 0x00000100; /* monflag.h — is a demon */
 export const M2_ORC = 0x00000080; /* monflag.h — is an orc (≡ MH_ORC) */
 export const M2_HUMAN = 0x00000008; /* monflag.h — is a human */
 export const M2_ELF = 0x00000010; /* monflag.h — is an elf */
+export const M2_DWARF = 0x00000020; /* monflag.h — is a dwarf */
+export const M2_GNOME = 0x00000040; /* monflag.h — is a gnome */
 export const M2_GIANT = 0x00002000; /* monflag.h — is a giant */
 export const M2_SHAPESHIFTER = 0x00004000; /* monflag.h — shapeshifting species */
 
@@ -352,6 +354,16 @@ export function is_human(ptr) {
 /** C ref: mondata.h is_elf */
 export function is_elf(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_ELF);
+}
+
+/** C ref: mondata.h is_dwarf */
+export function is_dwarf(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_DWARF);
+}
+
+/** C ref: mondata.h is_gnome */
+export function is_gnome(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_GNOME);
 }
 
 /** C ref: mondata.h is_giant */

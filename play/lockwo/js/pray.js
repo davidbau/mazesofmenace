@@ -10,10 +10,9 @@
 // call order matches pray.c so the move stream stays in parity.
 
 import { game } from './gstate.js';
-import { rn2, rnz } from './rng.js';
-import { update_topl } from './display.js';
+import { rn2, rnz, rn1, rnl } from './rng.js';
+import { update_topl, y_n } from './display.js';
 import { align_gname } from './role.js';
-import { moveloop_turn } from './allmain.js';
 import { A_WIS } from './const.js';
 
 const A_NONE = -128;
@@ -79,7 +78,7 @@ function in_trouble() {
 
 // C ref: pray.c on_altar() — is the hero standing on an altar?
 function on_altar() {
-    const ALTAR = 25; // const.js terrain typ
+    const ALTAR = 32; // const.js terrain typ (ROOM==25 was the prior bug)
     const loc = game.level?.at(game.u.ux, game.u.uy);
     return loc?.typ === ALTAR;
 }
@@ -222,6 +221,83 @@ async function gods_upset(g_align) {
     await angrygods(g_align);
 }
 
+// C ref: pray.c align thresholds (pray.c:64-67).
+const PIOUS = 20, DEVOUT = 14;
+
+// C ref: align.c adjalign(n) — nudge the alignment record toward its bound.
+// Only the simple additive form is exercised (record stays well within
+// [ALGN_RECORD_MIN, ALGN_RECORD_MAX]).
+function adjalign(n) {
+    const u = game.u;
+    u.ualign.record = (u.ualign.record ?? 0) + n;
+}
+
+// C ref: pray.c pleased(g_align) — the god grants a favor.  Only the coaligned
+// off-altar path the wizard-forced knight exercises is modelled: announce the
+// mood ("You feel that <god> is <mood>."), roll the favor `action` (in_trouble
+// is 0 so the switch is RNG-inert), then reset the prayer timeout via rnz(350).
+// The heavier trouble-fixing / pat_on_head reward branches are stubs (not
+// reached with a healthy hero at STRIDENT<=record<DEVOUT and Luck 0).
+async function pleased(g_align) {
+    const u = game.u;
+    const trouble = in_trouble(); // 0 for the healthy hero
+    let pat_on_head = 0;
+
+    const record = u.ualign?.record ?? 0;
+    const mood = (record >= DEVOUT) ? (Hallucination() ? 'pleased as punch' : 'well-pleased')
+        : (record >= STRIDENT) ? (Hallucination() ? 'ticklish' : 'pleased')
+            : (Hallucination() ? 'full' : 'satisfied');
+    await update_topl(`You feel that ${align_gname(roleMnum(), g_align)} is ${mood}.`);
+
+    // "not your deity" (cross-aligned altar) and the record<2 nudge.
+    if (on_altar() && gp_aligntyp() !== (u.ualign?.type ?? 0)) {
+        adjalign(-1);
+        return;
+    } else if (record < 2 && trouble <= 0) {
+        adjalign(1);
+    }
+
+    if (!trouble && record >= DEVOUT) {
+        // if hero was in trouble but got better, no special favor.
+        if (praystate().trouble === 0) pat_on_head = 1;
+    } else {
+        // action = rn1(prayer_luck + (on_altar()? 3+shrine : 2), 1)
+        const prayer_luck = Math.max(Luck(), -1);
+        let action = rn1(prayer_luck + (on_altar() ? 3 : 2), 1);
+        if (!on_altar()) action = Math.min(action, 3);
+        if (record < STRIDENT)
+            action = ((record > 0) || !rnl(2)) ? 1 : 0;
+        switch (Math.min(action, 5)) {
+        case 5: pat_on_head = 1; /* FALLTHROUGH */
+        case 4:
+            /* fix all troubles — none for the healthy hero (RNG-inert) */
+            break;
+        case 3:
+        case 2:
+            /* up to N troubles — in_trouble() is 0, loop never runs */
+            break;
+        case 1:
+        case 0:
+            break;
+        }
+    }
+
+    // pat_on_head gratuitous favor (not reached here; record < DEVOUT).
+    if (pat_on_head) {
+        // C ref: pray.c:1167 switch (rn2((Luck+6)>>1)) — the reward table.
+        // Left as a stub: the forced knight lands in the record<DEVOUT branch
+        // so pat_on_head stays 0.
+    }
+
+    // reset prayer timeout (kick_on_butt is 0 for a non-demigod hero).
+    u.ublesscnt = rnz(350);
+}
+
+// C ref: pray.c gp.p_aligntyp accessor for pleased()'s cross-altar check.
+function gp_aligntyp() {
+    return praystate().aligntyp;
+}
+
 // C ref: pray.c prayer_done() — resolve the prayer after the nomul delay.
 async function prayer_done() {
     const gp = praystate();
@@ -239,18 +315,25 @@ async function prayer_done() {
     } else if (gp.type === 1) {
         await gods_upset(u.ualign?.type ?? 0); /* naughty */
         return 0;
+    } else if (gp.type === 2) {
+        // altar (non-coaligned water prayer omitted) -> pleased.
+        await pleased(alignment);
+    } else {
+        // coaligned (gp.p_type == 3): on_altar pray_revive/water_prayer omitted.
+        await pleased(alignment); /* nice */
     }
-    // gp.type 2/3 (pleased / altar) not yet ported for the contest sessions.
     return 1;
 }
 
-// C ref: pray.c dopray() — the #pray command.  ParanoidPray confirms, then the
-// prayer becomes a nomul(-3) occupation; after 3 turns of monster movement the
-// occupation completes (unmul prints "You finish your prayer.") and prayer_done
-// resolves the outcome.  Because the replay captures a screen only at each
-// nhgetch and an occupation reads no input, the begin/finish messages render on
-// the confirming key's screen.
+// C ref: pray.c dopray() — the #pray command.  ParanoidPray confirms, then (in
+// wizard mode) offers "Force the gods to be pleased?"; the prayer then becomes a
+// nomul(-3) occupation (gn.nomovemsg = "You finish your prayer.", ga.afternmv =
+// prayer_done).  The move loop drives the 3 countdown turns of monster movement;
+// when the count reaches 0, unmul() announces nomovemsg and fires afternmv, so
+// the begin / --More-- / force-prompt / shimmering-light / finish / result
+// messages each land on their own captured screen exactly as C records them.
 export async function dopray(paranoid_query) {
+    const gp = praystate();
     const ok = await paranoid_query('Are you sure you want to pray?');
     if (!ok) return 0; // ECMD_OK
 
@@ -258,33 +341,49 @@ export async function dopray(paranoid_query) {
     if (!u.uconduct) u.uconduct = {};
     u.uconduct.gnostic = (u.uconduct.gnostic || 0) + 1;
 
+    // set up gp.p_type and gp.p_aligntyp; prints "You begin praying to <god>."
     if (!(await can_pray(true)))
         return 0;
 
-    // nomul(-3): the prayer is a 3-turn occupation.  gn.nomovemsg = "You finish
-    // your prayer."; ga.afternmv = prayer_done.  Because the replay captures a
-    // screen only at each nhgetch and an occupation reads no input, we drive the
-    // three monster-movement turns inline (like hack.js runs), then unmul prints
-    // nomovemsg and fires afternmv.  C ref: allmain.c moveloop_core multi<0 loop.
-    u.uinvulnerable = false; // (gp.p_type==3 invulnerable branch not modelled)
+    // C ref: pray.c dopray() wizard block — in debug (playmode:debug) mode with
+    // a non-Moloch prayer (gp.p_type >= 0), offer to force success.  The "You
+    // begin praying" line is still unacknowledged, so the y_n prompt pages it
+    // with --More-- first (its own captured frame), then re-prompts on any key
+    // that isn't y/n.  Answering 'y' resets the prayer-timeout / luck / align /
+    // anger counters and upgrades gp.p_type to 3 (coaligned "pleased").
+    if (game.flags?.debug && gp.type >= 0) {
+        game._yn_need_more = true; // page the pending "begin praying" line first
+        const forced = (await y_n('Force the gods to be pleased?')) === 'y';
+        if (forced) {
+            u.ublesscnt = 0;
+            if ((u.uluck || 0) < 0) u.uluck = 0;
+            if ((u.ualign.record ?? 0) <= 0) u.ualign.record = 1;
+            u.ugangr = 0;
+            if (gp.type < 2) gp.type = 3;
+        }
+    }
 
-    // The occupation lasts 3 GAME TURNS (nomul(-3) -> ++gm.multi once per
-    // once-per-turn block until it reaches 0).  Because a fast hero can have
-    // umovement >= NORMAL_SPEED at the start of a turn (so a single
-    // moveloop_turn processes monster movement without advancing 'moves'), we
-    // loop until 'moves' has advanced by 3 rather than calling moveloop_turn a
-    // fixed number of times.  C ref: allmain.c moveloop_core multi<0 loop.
-    if (u.umovement == null) u.umovement = 12; // NORMAL_SPEED
-    const startMoves = game.moves || 1;
-    let guard = 0;
-    while ((game.moves || 1) - startMoves < 3 && guard++ < 20)
-        await moveloop_turn();
+    // nomul(-3): the prayer is a 3-turn occupation driven by the move loop.
+    game.multi = -3;
+    game.context = game.context || {};
+    game.context.travel = game.context.travel1 = game.context.mv = 0;
+    game.multi_reason = 'praying';
+    game.nomovemsg = 'You finish your prayer.';
+    game.afternmv = prayer_done;
 
-    // unmul(): print "You finish your prayer." then run afternmv (prayer_done).
-    await update_topl('You finish your prayer.');
-    await prayer_done();
+    // C ref: pray.c dopray() — a coaligned (gp.p_type == 3) prayer outside
+    // Gehennom grants prayer invulnerability; a sighted hero sees the shimmer.
+    u.uinvulnerable = false;
+    if (gp.type === 3 /* && !Inhell */) {
+        if (!Blind())
+            await update_topl('You are surrounded by a shimmering light.');
+        u.uinvulnerable = true;
+    }
 
-    // All elapsed turns were taken inline; tell the move loop no further per-turn
-    // work is owed (return ECMD_OK so doextcmd leaves context.move = 0).
-    return 0;
+    return 1; // ECMD_TIME: the move loop advances a turn and runs the occupation
+}
+
+// C ref: hack.h Blind — the praying starter heroes are never blind.
+function Blind() {
+    return false;
 }

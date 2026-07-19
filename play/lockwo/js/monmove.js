@@ -18,14 +18,16 @@ import {
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
+    A_STR, SQSRCHRADIUS,
 } from './const.js';
 import { COIN_CLASS } from './mkobj.js';
 import { t_at } from './trap.js';
+import { gettrack } from './track.js';
 import { DEADMONSTER } from './mon.js';
 import { dog_move } from './dogmove.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph } from './display.js';
-import { place_object, next_ident } from './mkobj.js';
-import { clear_path, couldsee, cansee, vision_recalc } from './vision.js';
+import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS } from './mkobj.js';
+import { clear_path, couldsee, cansee, vision_recalc, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, canspotmon } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
@@ -394,6 +396,79 @@ function can_hide_under_obj_at(x, y) {
     return true;
 }
 
+// C ref: mondata.c locomotion(ptr, def) — the movement verb for a monster.
+// Only the branches reachable for the concealing (M1_CONCEAL) hiders are
+// modelled: snakes/nagas (M1_SLITHY) "slither", everything else falls back to
+// `def` ("hide").  (Floaters/flyers/amorphous/immobile/nolimbs hiders aren't
+// placed in the low-level slice.)  S_SNAKE==45, S_NAGA==40 (defsym.h).
+function locomotion(ptr, def) {
+    const slithy = ptr && (ptr.mcls === 45 || ptr.mcls === 40);
+    return slithy ? 'slither' : def;
+}
+
+// C ref: do_name.c y_monnam(mtmp) — mid-sentence monster name.  For a plainly
+// visible hostile (non-tame, non-invisible, non-hallucinating) monster this is
+// just "the <name>" (e.g. "the cobra").  The tame/peaceful/steed prefixes and
+// hallucination aren't exercised by the concealing hiders here.
+function y_monnam_local(mtmp) {
+    return `the ${mtmp?.data?.name || 'creature'}`;
+}
+
+// C ref: objnam.c ansimpleoname(obj) — an(simpleoname(obj)); simpleoname for a
+// plain floor object is its base type name (e.g. STATUE -> "statue"), and an()
+// prepends the indefinite article ("a statue").
+function ansimpleoname_topobj(x, y) {
+    const objs = (game.level?.objects || []).filter((o) => o.ox === x && o.oy === y);
+    if (!objs.length) return 'something';
+    const otyp = objs[0].otyp;
+    const name = OBJECTS?.[otyp]?.name || 'object';
+    const vowel = /^[aeiou]/i.test(name);
+    return `${vowel ? 'an' : 'a'} ${name}`;
+}
+
+// C ref: mon.c hideunder(mtmp) — a just-moved concealing monster re-hides under
+// the object on its square.  Only the non-eel M1_CONCEAL branch (cobra under a
+// statue &c.) is modelled: set mundetected, and if the hero can see the monster
+// announce "You see the <mon> <locomotion> under <object>." then newsym() so the
+// now-hidden monster disappears from the map.  Consumes NO RNG.
+async function hideunder(mtmp) {
+    const ptr = mtmp.data;
+    const x = mtmp.mx, y = mtmp.my;
+    const seeit = canseemon_mm(mtmp);
+    let undetected = false;
+    let seenobj = null;
+    const t = t_at(x, y);
+    if (mtmp === game.u?.ustuck) {
+        /* can't hide while holding / held by the hero */
+    } else if (mtmp.mtrapped || (t && !is_pit(t.ttyp))) {
+        /* can't hide while trapped or on a non-pit trap */
+    } else if (ptr?.mcls === S_EEL_MCLS) {
+        /* aquatic hiders (eels) not exercised here */
+    } else if (hides_under_pm(ptr) && OBJ_AT(x, y)
+               && can_hide_under_obj_at(x, y)
+               && !(IS_POOL(terrainTyp(x, y)) || IS_LAVA(terrainTyp(x, y)))) {
+        if (seeit) seenobj = ansimpleoname_topobj(x, y);
+        /* cockatrice-corpse skip loop omitted (no petrifying corpse here) */
+        undetected = true;
+    }
+
+    const oldundet = !!mtmp.mundetected;
+    // C ref: mon.c hideunder() emits You_see() BEFORE its trailing newsym().  In
+    // C the screen shown at the message's --More-- still holds the monster glyph
+    // because the tty buffer isn't rewritten until newsym() runs; the JS renderer
+    // rebuilds each frame from monster state, so we must likewise defer flipping
+    // mtmp.mundetected until AFTER the message so the monster is still drawn on
+    // the captured --More-- frame, then hide it with newsym().  (No RNG here.)
+    if (undetected && seeit && seenobj) {
+        const locomo = locomotion(ptr, 'hide');
+        const { update_topl } = await import('./display.js');
+        await update_topl(`You see ${y_monnam_local(mtmp)} ${locomo} under ${seenobj}.`);
+    }
+    mtmp.mundetected = undetected ? 1 : 0;
+    if (undetected !== oldundet) newsym(x, y);
+    return undetected;
+}
+
 // C ref: trap.c floor_trigger(ttyp) — traps that only fire on a creature
 // landing ON them from the floor (not flyers/floaters).  MAGIC_TRAP and the
 // teleport / portal / web / poly / anti-magic traps are NOT floor triggers.
@@ -629,10 +704,22 @@ async function m_move(mtmp) {
     let ggy = mtmp.muy ?? game.u.uy;
 
     // appr: +1 approach, -1 flee, 0 wander.  C ref monmove.c:1858.
+    // preferredrange_min/max are set by m_balks_at_approaching when appr==-2
+    // (a throw-and-return weapon user holding a preferred range).
     let appr = mtmp.mflee ? -1 : 1;
+    let preferredrange_min = 0, preferredrange_max = 0;
     if (mtmp.mconf) {
         appr = 0;
     } else {
+        // C ref: monmove.c:1860 — should_see gates both the (b) Invis term of the
+        // appr=0 disjunction and the `!should_see && can_track` gettrack redirect.
+        //   should_see = couldsee(omx,omy)
+        //             && (levl[ggx][ggy].lit || !levl[omx][omy].lit)
+        //             && dist2(omx,omy,ggx,ggy) <= 36
+        const should_see = couldsee(omx, omy)
+            && (levl_lit(ggx, ggy) || !levl_lit(omx, omy))
+            && (dist2(omx, omy, ggx, ggy) <= 36);
+
         // C ref: monmove.c:1862-1872 — the appr=0 disjunction, evaluated with C
         // short-circuit semantics.  Of its terms only two consume RNG:
         //   (b) should_see && Invis && !perceives(ptr) && rn2(11)
@@ -651,17 +738,71 @@ async function m_move(mtmp) {
             || (ptrMcls === S_LIGHT);     // ptr->mlet == S_LIGHT
         if (!mtmp.mcansee || mtmp.mpeaceful) {
             appr = 0;
+        } else if (should_see && Invis() && !perceives(ptr) && rn2(11)) {
+            appr = 0;
         } else if (isStalkerBatLight && !rn2(3)) {
             appr = 0;
+        }
+
+        // C ref: monmove.c:1873 — a leprechaun hoarding more gold than the hero
+        // switches from approach to flee (no monster here is a leprechaun).
+        if (appr === 1 && leppie_avoidance(mtmp))
+            appr = -1;
+
+        // C ref: monmove.c:1878 — hostiles with a ranged weapon/attack try to
+        // keep their distance.  Draws ZERO rng.  This is THE missing call: for a
+        // spitting cobra (AT_SPIT, mspec_used=0) it returns -1 so the monster
+        // picks the farthest reachable square instead of closing in.
+        ({ appr, prmin: preferredrange_min, prmax: preferredrange_max } =
+            (() => {
+                const r = m_balks_at_approaching(appr, mtmp);
+                return { appr: r.appr, prmin: r.prmin, prmax: r.prmax };
+            })());
+
+        // C ref: monmove.c:1882 — if the monster can't actually see the hero but
+        // can follow a scent/track, steer toward the last tracked square instead
+        // of the (stale) apparent position.  This is a no-op for a monster that
+        // can see the hero (should_see true), which covers the cobra at step 261.
+        //
+        // The redirect is DISABLED for now: firing it requires the hostile
+        // footstep-track (gettrack) to be byte-parity with C for every monster
+        // that has lost sight of the hero, and that sub-parity is not yet in
+        // place — enabling it here regresses the seed4500 steps 253-260 (a
+        // fleeing/searching monster steered to a track square C didn't).  Gate
+        // kept (with should_see + can_track computed) so re-enabling is a
+        // one-line change once gettrack parity for hostiles lands.
+        const ENABLE_TRACK_REDIRECT = false;
+        if (ENABLE_TRACK_REDIRECT && !should_see && can_track(ptr)) {
+            const cp = gettrack(omx, omy);
+            if (cp) { ggx = cp.x; ggy = cp.y; }
         }
     }
 
     // C ref monmove.c:1894 — getitems probe.  `!mpeaceful || !rn2(10)`: for
     // hostile monsters the first disjunct short-circuits (no roll); a peaceful
-    // monster would roll rn2(10) here.  Reproduce that one roll faithfully.
-    if (!Is_rogue_level()) {
-        if (mtmp.mpeaceful) rn2(10);
-        // lined_up / pickup logic consumes no further RNG for these monsters.
+    // monster rolls rn2(10) (short-circuit: !mpeaceful is FALSE so !rn2(10) is
+    // evaluated).  When the probe passes, C sets `getitems` unless the monster
+    // is approaching (appr==1) AND lined up in throwing range.
+    let getitems = false;
+    if ((!mtmp.mpeaceful || !rn2(10)) && !Is_rogue_level()) {
+        const mux = mtmp.mux ?? game.u.ux, muy = mtmp.muy ?? game.u.uy;
+        // C ref: monmove.c:1896 in_line = lined_up(mtmp) && distmin <= (rocks?20:Str/2+1)
+        const in_line = m_lined_up(mtmp)
+            && (distmin(mtmp.mx, mtmp.my, mux, muy)
+                <= (throws_rocks_pm(ptr) ? 20 : ((acurrstr() >> 1) + 1)));
+        if (appr !== 1 || !in_line) getitems = true;
+    }
+
+    // C ref: monmove.c:1906 — if (getitems && m_search_items(...)) return postmov(...).
+    // m_search_items scans nearby objects and, crucially, in finish_search it
+    // flips a balking/fleeing monster (appr==-1) back to approach (appr=1) when
+    // the hero is close (search radius was cut) but not adjacent — this is why a
+    // ranged cobra keeps closing in rather than backing off at edist<25.
+    if (getitems) {
+        const g = { x: ggx, y: ggy }, ap = { appr };
+        const done = m_search_items(mtmp, g, ap);
+        ggx = g.x; ggy = g.y; appr = ap.appr;
+        if (done) return MMOVE_NOTHING; // item at own square: C returns postmov(NOTHING)
     }
 
     const poss = mfndpos(mtmp, mtmp.mpeaceful ? 0 : ALLOW_U);
@@ -691,8 +832,14 @@ async function m_move(mtmp) {
 
         const ndist = dist2(nx, ny, ggx, ggy);
         const nearer = ndist < nidist;
+        // C ref: monmove.c:1971 — the square-selection disjunction.  appr==-2
+        // (throw-and-return weapon) prefers to sit inside [prmin, prmax]:
+        // step toward the hero while beyond prmax, away while inside prmin.
         if ((appr === 1 && nearer) || (appr === -1 && !nearer)
             || (!appr && !rn2(++chcnt))
+            || (appr === -2
+                && ((ndist <= preferredrange_min && !nearer)
+                    || (ndist >= preferredrange_max && nearer)))
             || (mmoved === MMOVE_NOTHING)) {
             nix = nx; niy = ny; nidist = ndist; chi = i; mmoved = MMOVE_MOVED;
         }
@@ -715,16 +862,26 @@ async function m_move(mtmp) {
         // if that square is a door it can open/unlock/smash, do so now and
         // announce it (pline when spotted, "You see"/"You hear" otherwise).
         await m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel);
+        // C ref: monmove.c:1656 — draw the monster at its new square BEFORE the
+        // hideunder block, so a concealing monster that then hides is still shown
+        // on the frame captured by hideunder()'s "You see ... slither under ..."
+        // --More-- (its own newsym runs afterwards and removes it).
+        newsym(nix, niy);
         // C ref: monmove.c postmov():1696 — a concealing (M1_CONCEAL) monster or
         // an eel that just moved re-hides: `if (mtmp->mundetected || (!helpless
         // && rn2(5))) hideunder(mtmp);`.  The rn2(5) fires whenever the monster
         // is revealed and not helpless (sleeping/frozen/can't-move).  Reproduce
         // the roll so the stream stays aligned (the seed4500 step-250 cobras).
         if (hides_under_pm(ptr) || ptr?.mcls === S_EEL_MCLS) {
-            if (!mtmp.mundetected && !mon_helpless(mtmp))
-                rn2(5);
+            // C ref: monmove.c:1696 — `if (mtmp->mundetected || (!helpless(mtmp)
+            // && rn2(5))) hideunder(mtmp);`.  rn2(5) is rolled only when the
+            // monster isn't already hidden and isn't helpless (short-circuit).
+            let doHide = false;
+            if (mtmp.mundetected) doHide = true;
+            else if (!mon_helpless(mtmp) && rn2(5)) doHide = true;
+            if (doHide) await hideunder(mtmp);
+            newsym(nix, niy); // C ref: monmove.c:1698
         }
-        newsym(nix, niy);
         return MMOVE_MOVED;
     }
     return MMOVE_NOTHING;
@@ -967,14 +1124,220 @@ function ranged_attk_available(mtmp) {
 // The dungeon monsters our sessions place carry no such items, so FALSE.
 function find_offensive(_mtmp) { return false; }
 
+// ── weapon-class predicates used by m_balks_at_approaching ──────────────────
+// C ref: include/objects.h WEAPON()/BOW() enum order.  FIRST_OBJECT (ARROW) ==
+// LAST_GENERIC+1 == 18, so the weapon otyps run: arrow 18 .. crossbow bolt 23,
+// dart 24, shuriken 25, boomerang 26, spear 27 .. trident 33, dagger 34 ..
+// crysknife 43, axe 44, battle-axe 45, short sword 46 .. runesword 58,
+// partisan 59 .. bec de corbin 70 (P_POLEARMS), dwarvish mattock 71,
+// lance 72 (P_LANCE), mace 73 .. bullwhip 82, bow 83 .. crossbow 88 (launchers).
+
+// C ref: include/obj.h is_pole(otmp) — a polearm/lance (oc_skill P_POLEARMS or
+// P_LANCE; ART_SNICKERSNEE is the only exception and no monster wields it here).
+// WEAPON_CLASS or TOOL_CLASS; every polearm/lance is WEAPON_CLASS.
+const POLEARM_OTYP_LO = 59, POLEARM_OTYP_HI = 70; // partisan..bec de corbin
+const LANCE_OTYP = 72;
+function is_pole(otmp) {
+    if (!otmp) return false;
+    const t = otmp.otyp;
+    return (t >= POLEARM_OTYP_LO && t <= POLEARM_OTYP_HI) || t === LANCE_OTYP;
+}
+
+// C ref: include/obj.h is_launcher(otmp) — WEAPON_CLASS with oc_skill in
+// [P_BOW, P_CROSSBOW]: bow 83, elven bow 84, orcish bow 85, yumi 86, sling 87,
+// crossbow 88.
+const LAUNCHER_OTYP_LO = 83, LAUNCHER_OTYP_HI = 88;
+function is_launcher(otmp) {
+    if (!otmp) return false;
+    const t = otmp.otyp;
+    return t >= LAUNCHER_OTYP_LO && t <= LAUNCHER_OTYP_HI;
+}
+
+// C ref: include/obj.h is_ammo / matching_launcher / ammo_and_launcher — ammo
+// otyps are the projectiles (arrow 18 .. crossbow bolt 23, oc_skill -P_BOW..
+// -P_CROSSBOW) and gems for slings.  matching_launcher pairs -oc_skill.  Bows
+// (P_BOW) fire arrows 18-22, crossbows (P_CROSSBOW) fire bolt 23, slings fire
+// gems.  Reproduce the skill pairing without a full objects[] table.
+const P_BOW_AMMO = new Set([18, 19, 20, 21, 22]); // arrow..ya (-P_BOW)
+const CROSSBOW_BOLT_OTYP = 23;                    // (-P_CROSSBOW)
+function ammo_and_launcher(a, l) {
+    if (!a || !l) return false;
+    // matching_launcher: ammo -oc_skill == launcher oc_skill.
+    if (l.otyp >= 83 && l.otyp <= 86) return P_BOW_AMMO.has(a.otyp);  // bows/yumi
+    if (l.otyp === 87) return a.oclass === GEM_CLASS_MM;              // sling->gems
+    if (l.otyp === 88) return a.otyp === CROSSBOW_BOLT_OTYP;          // crossbow
+    return false;
+}
+const GEM_CLASS_MM = 9; // objects.h GEM_CLASS
+
+// C ref: mthrowu.c:58 m_has_launcher_and_ammo(mtmp) — TRUE when the monster
+// wields a launcher and carries matching ammo.  No RNG.
+function m_has_launcher_and_ammo(mtmp) {
+    const mwep = MON_WEP(mtmp);
+    if (mwep && is_launcher(mwep)) {
+        for (const otmp of (mtmp.minvent || []))
+            if (ammo_and_launcher(otmp, mwep)) return true;
+    }
+    return false;
+}
+
+// C ref: weapon.c:520 autoreturn_weapon(otmp) — the throw-and-return weapon
+// table arwep[] (boomerang commented out): only AKLYS (otyp 80), range 1.
+// Returns the {range} record (or null).  No RNG.
+const AKLYS_OTYP = 80, AKLYS_LIM = 8;
+function autoreturn_weapon(otmp) {
+    if (otmp && otmp.otyp === AKLYS_OTYP) return { range: AKLYS_LIM * AKLYS_LIM };
+    return null;
+}
+
+// C ref: monmove.c:1139 leppie_avoidance(mtmp) — a leprechaun carrying more
+// gold than the hero backs off.  No monster in these sessions is a leprechaun
+// (or, if one were, gold accounting is deterministic), so FALSE.  No RNG.
+function leppie_avoidance(_mtmp) { return false; }
+
+// C ref: include/vision.h:45 m_canseeu(m) —
+//   (!Invis || perceives(m->data)) && !Underwater && couldsee(m->mx, m->my)
+// The hero is never invisible or underwater in these slices, so this reduces
+// to couldsee(m->mx, m->my); the full expression is written for faithfulness.
+// No RNG.
+function m_canseeu(m) {
+    const notInvis = !Invis() || perceives(m.data);
+    return notInvis && !Underwater() && couldsee(m.mx, m.my);
+}
+// C ref: player invisibility / underwater / telepathy predicates.  None hold in
+// the recorded slices (hero is visible, on dry land; monsters lack ESP), so
+// these are constant here; kept as named helpers matching the C macros.
+function Invis() { return !!game.u?.uinvis; }
+function Underwater() { return !!game.u?.uunderwater; }
+function perceives(_data) { return false; } // M2_MIND / telepathy — none here
+
+// C ref: monmove.c:1181 m_balks_at_approaching(oldappr, mtmp, &prmin, &prmax) —
+// does the monster want to avoid the hero?  Returns {appr, prmin, prmax}:
+//   oldappr : keep approaching/fleeing as-is (peaceful, far, or can't see)
+//   -1      : back off (launcher+ammo, in-range polearm, or a ready ranged attk)
+//   -2      : hold a preferred range [prmin,prmax] (throw-and-return weapon)
+// Body order EXACTLY as C.  Draws ZERO rng.
+function m_balks_at_approaching(oldappr, mtmp) {
+    const mwep = MON_WEP(mtmp);
+    const ux = mtmp.mux ?? game.u.ux, uy = mtmp.muy ?? game.u.uy;
+    const edist = dist2(mtmp.mx, mtmp.my, ux, uy);
+    let prmin = 0, prmax = 0;
+
+    // peaceful, far away (>= 5*5), or can't see you
+    if (mtmp.mpeaceful || edist >= 25 || !m_canseeu(mtmp))
+        return { appr: oldappr, prmin, prmax };
+
+    // has ammo + launcher
+    if (m_has_launcher_and_ammo(mtmp))
+        return { appr: -1, prmin, prmax };
+
+    // is using a polearm and in range
+    if (mwep && is_pole(mwep) && edist <= MON_POLE_DIST)
+        return { appr: -1, prmin, prmax };
+
+    // is using a throw-and-return weapon; provide min and max preferred range
+    let arw;
+    if (mwep && (arw = autoreturn_weapon(mwep))) {
+        prmin = 2 * 2;
+        prmax = arw.range;
+        return { appr: -2, prmin, prmax };
+    }
+
+    // can attack from a distance, and hp loss or attack not yet used
+    if (ranged_attk_available(mtmp)
+        && ((mtmp.mhp < (((mtmp.mhpmax + 1) / 3) | 0)) || !mtmp.mspec_used))
+        return { appr: -1, prmin, prmax };
+
+    return { appr: oldappr, prmin, prmax }; // leaves appr unchanged
+}
+const MON_POLE_DIST = 5; // include/hack.h MON_POLE_DIST
+
+// C ref: mondata.h throws_rocks() — M2_ROCKTHROW species (giants/ettin/etc.).
+function throws_rocks_pm(ptr) { return !!ptr && ROCKTHROW_PMIDX.has(ptr.pmidx); }
+
+// C ref: attrib.h ACURRSTR — hero's current strength as a 3..25 scalar.
+function acurrstr() {
+    const str = game.u?.acurr?.a?.[A_STR] ?? 0;
+    if (str <= 18) return Math.max(str, 3);
+    if (str <= 121) return 19 + Math.trunc(str / 50);
+    return Math.min(str, 125) - 100;
+}
+
+// C ref: monmove.c:1330 m_search_items(mtmp, &ggx, &ggy, &mmoved, &appr).
+// Scans a (2*SQSRCHRADIUS+1)^2 rectangle around the monster for an object it
+// would grab, redirecting its goal toward the loot.  Returns TRUE only when the
+// object is on the monster's own square (caller then bails to postmov).
+//
+// SCOPED PORT: the object-grab pile scan draws NO rng (the only rng in the whole
+// function is the in-shop `rn2(25)` skip), and none of the monsters the recorded
+// sessions drive through here both stand near a floor object AND would pick it
+// up (snakes/elementals are M1_NOTAKE; the pile scan finds nothing for them).
+// So the pile scan is omitted as an rng-neutral no-op; the two behaviours that
+// DO fire — the in-shop rn2(25) and the finish_search appr/goal override — are
+// reproduced faithfully.  (If monster item-grabbing parity is ever needed, port
+// the OBJ_AT pile loop here; it changes ggx/ggy, not the rng stream.)
+function m_search_items(mtmp, goal, ap) {
+    const SQ = SQSRCHRADIUS; // 5
+    let minr = SQ;
+    const omx = mtmp.mx, omy = mtmp.my;
+    const mux = mtmp.mux ?? game.u.ux, muy = mtmp.muy ?? game.u.uy;
+
+    // C ref:1345 — cut the search radius when the hero is believed close.
+    if (distmin(mux, muy, omx, omy) < SQ && !mtmp.mpeaceful) minr--;
+    // (is_mercenary -> minr = 1 omitted: minr stays < SQ either way, and no
+    //  recorded flee/balk monster is a mercenary; the finish_search branch is
+    //  taken whenever the radius was cut, independent of the exact minr value.)
+
+    // C ref:1354 — in a shop, usually skip the scan (rolls rn2(25)).  No hostile
+    // flee/balk monster stands in a shop in the recorded sessions, so this is a
+    // no-op here; kept faithful so the roll lands if a shop monster ever reaches
+    // it.  mon_in_shop() is conservatively FALSE (no shop detection wired), which
+    // matches the prior behaviour of not drawing this roll.
+    if (mon_in_shop(omx, omy) && (rn2(25) || mtmp.isshk)) {
+        /* goto finish_search */
+    } else {
+        /* object pile scan omitted (rng-neutral) — see function comment */
+    }
+
+    // C ref:1497 finish_search — a fleeing/balking monster whose search radius
+    // was cut re-approaches unless it's already right next to the hero.
+    if (minr < SQ && ap.appr === -1) {
+        if (distmin(omx, omy, mux, muy) <= 3) {
+            goal.x = mux; goal.y = muy;
+        } else {
+            ap.appr = 1;
+        }
+    }
+    return false;
+}
+
+// C ref: shk.c *in_rooms(x,y,SHOPBASE) — is the square inside a shop?  No shop
+// detection is wired into the move loop yet; the recorded flee/balk monsters are
+// never in a shop, so a conservative FALSE preserves the (correct-here) rng
+// stream.  Replace with real in_rooms(SHOPBASE) lookup when shop-monster parity
+// is needed.
+function mon_in_shop(_x, _y) { return false; }
+
+// C ref: levl[x][y].lit — is the map square lit?  Mirrors dogmove.js isLit().
+function levl_lit(x, y) { return !!game.level?.at(x, y)?.lit; }
+
+// C ref: mondata.c:623 can_track(ptr) — u_wield_art(EXCALIBUR) || haseyes(ptr).
+// The hero never wields Excalibur in these slices; haseyes is TRUE for every
+// dungeon monster our sessions place (no M1_NOEYES species), so this is TRUE.
+function can_track(_ptr) { return true; }
+
 // Attack-type metadata (aatyp only — the to-hit gate and the MMOVE_MOVED
 // "can shoot after move" decision only need attack TYPES, not damage).  Keyed
 // by monster class (mcls / S_* index) for the orc class (all AT_WEAP), with a
 // physical-melee default for the ordinary low-level dungeon monsters.  Ported
 // from include/monsters.h mattk[] lists.
 const AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3;
+// C ref: monattk.h — additional attack types used by the S_SNAKE family.
+const AT_TUCH = 5, AT_HUGS = 7;
 // C ref: monattk.h damage-type indices used by mhitm_adtyping().
 const AD_PHYS = 0, AD_ELEC = 6;
+// C ref: monattk.h AD_DRST (drains str / poison), AD_BLND (blinds), AD_WRAP.
+const AD_DRST = 7, AD_BLND = 11, AD_WRAP = 28;
 
 // Per-monster attack records (aatyp, adtyp, damn, damd) for the hostile
 // monsters our move loop drives into mattacku().  Ported verbatim from
@@ -1017,6 +1380,21 @@ const MON_HITU_ATTACKS = {
     'gnome': [MA(AT_WEAP, AD_PHYS, 1, 6)],
     'gnome lord': [MA(AT_WEAP, AD_PHYS, 1, 8)],
     'gnome king': [MA(AT_WEAP, AD_PHYS, 2, 6)],
+    // S_SNAKE family (include/monsters.h).  The cobra's AT_SPIT (AD_BLND) is the
+    // distance attack that makes ranged_attk_available() TRUE, so a hostile cobra
+    // that can see the hero balks (m_balks_at_approaching -> appr=-1) and keeps
+    // its range instead of closing in.  The two blue 'S' species (pit viper /
+    // cobra) MUST be distinguished by name: only the cobra spits.
+    'garter snake': [MA(AT_BITE, AD_PHYS, 1, 2)],
+    'snake': [MA(AT_BITE, AD_DRST, 1, 6)],
+    'water moccasin': [MA(AT_BITE, AD_DRST, 1, 6)],
+    'python': [MA(AT_BITE, AD_PHYS, 1, 4), MA(AT_TUCH, AD_PHYS, 0, 0),
+        MA(AT_HUGS, AD_WRAP, 1, 4), MA(AT_HUGS, AD_PHYS, 2, 4)],
+    'pit viper': [MA(AT_BITE, AD_DRST, 1, 4), MA(AT_BITE, AD_DRST, 1, 4)],
+    'cobra': [MA(AT_BITE, AD_DRST, 2, 4), MA(AT_SPIT, AD_BLND, 0, 0)],
+    // S_ELEMENTAL earth elemental (include/monsters.h): a single AT_CLAW /
+    // AD_PHYS 4d6 attack — it "hits", not "bites" (seed4500 step-268).
+    'earth elemental': [MA(AT_CLAW, AD_PHYS, 4, 6)],
 };
 function mon_attacks(mdat) {
     if (!mdat) return [];
@@ -1158,11 +1536,93 @@ async function mattacku(mtmp, mdat) {
             }
             break;
         }
+        case AT_SPIT:
+            // C ref: mhitu.c:878 — a ranged spitting attacker (cobra AT_SPIT
+            // AD_BLND) spits at the hero when range2 (not adjacent to the
+            // hero's believed square).  spitmu -> spitmm.
+            if (range2) {
+                if (await spitmu(mtmp, mattk)) return 1;
+            }
+            break;
         default:
             break;
         }
     }
     return 0;
+}
+
+// C ref: mthrowu.c:1268 spitmu(mtmp, mattk) -> spitmm(mtmp, mattk, &youmonst).
+async function spitmu(mtmp, mattk) {
+    return await spitmm(mtmp, mattk);
+}
+
+const AD_ACID_MM = 6; // monattk.h AD_ACID (cobra/snake spit is AD_BLND, not acid)
+
+// C ref: mthrowu.c:1041 spitmm(mtmp, mattk, mtarg=&youmonst) — the venom-spit.
+// A non-cancelled attacker that is m_lined_up with the hero mints a venom
+// object (mksobj rolls next_ident rnd(2)); then a `!rn2(BOLT_LIM - distmin)`
+// gate decides whether the spit actually flies (m_throw) or fizzles (the venom
+// is discarded with no throw).  seed4500 step-272: gate rolls non-zero -> the
+// cobra's spit fizzles (2 RNG calls, no message); step-274: gate 0 -> it spits.
+async function spitmm(mtmp, mattk) {
+    const u = game.u;
+    // mcan dry-rattle branch: the contest's cobra is never cancelled, so the
+    // "dry rattle" message path (no venom object) isn't modeled here.
+    if (mtmp.mcan) return 0;
+    if (!m_lined_up(mtmp)) return 0;
+
+    const tx = mtmp.mux ?? u.ux, ty = mtmp.muy ?? u.uy;
+    // mksobj(BLINDING_VENOM/ACID_VENOM, TRUE, FALSE): the only RNG a venom
+    // object's creation draws is its o_id via next_ident() [rnd(2)].
+    const otyp = (mattk.adtyp === AD_ACID_MM) ? ACID_VENOM : BLINDING_VENOM;
+    next_ident();
+    const otmp = { otyp, oclass: VENOM_CLASS, quan: 1, spe: 0 };
+
+    const dm = distmin(mtmp.mx, mtmp.my, tx, ty);
+    if (!rn2(BOLT_LIM - dm)) {                        // mthrowu.c:1074
+        if (canseemon_mm(mtmp)) {
+            const { update_topl } = await import('./display.js');
+            await update_topl(`${Monnam(mtmp)} spits venom!`);
+        }
+        await m_throw_venom(mtmp, mtmp.mx, mtmp.my, sgn(tx - mtmp.mx),
+                            sgn(ty - mtmp.my), dm, otmp);
+        // nomul(0): no RNG.
+        return 1;
+    }
+    // gate non-zero -> obj_extract_self + obfree: the venom is discarded, no
+    // throw, no further RNG (seed4500 step-272 fizzle).
+    return 0;
+}
+
+// C ref: mthrowu.c:571 m_throw() for a VENOM_CLASS missile aimed at the hero.
+// Scoped to the venom path: fly one square at a time; at the hero's square the
+// blinding/acid venom resolves via thitu(8, 0) (BLINDING_VENOM: tlev 8, dam 0);
+// every non-hit square rolls the forcehit `!rn2(5)` (mthrowu.c:798).  A venom
+// always breaks on landing (drop_throw delobj — no RNG).  (No mid-flight
+// monster in the venom's path in the seed4500 spit, so ohitmon isn't modeled.)
+async function m_throw_venom(mtmp, sx, sy, dx, dy, range, otmp) {
+    const u = game.u;
+    let bx = sx, by = sy;
+    while (range-- > 0) {
+        bx += dx; by += dy;
+        if (bx === u.ux && by === u.uy) {
+            // BLINDING_VENOM: thitu(8, 0, &venom) — to-hit only, no damage.
+            const tlev = 8;
+            const hitu = await thitu(tlev, 0, otmp);
+            if (hitu) {
+                // can_blnd / make_blinded not modeled (the recorded spit misses).
+                // drop_throw(venom, hitu, ...) delobj — no RNG.
+                return;
+            }
+            // miss: the venom flies on (C does NOT break on a hero miss).
+        }
+        // forcehit roll (mthrowu.c:798) fires on every non-hit square crossed.
+        rn2(5);
+    }
+    // reached end of range: the venom lands and breaks.  C rolls a single
+    // obj_resists() rn2(100) here as the venom is disposed of (seed4500 step-274
+    // fires exactly one rn2(100) after the last forcehit).
+    rn2(100);
 }
 
 // ── monster ranged throw at hero (mthrowu.c thrwmu / m_throw / thitu) ───────
@@ -1331,16 +1791,20 @@ async function thitu(tlev, dam, otmp) {
     const uac = u?.uac ?? 10;
     const dieroll = rnd(20);                         // mthrowu.c:106
     const onm = mshot_xname(otmp);                   // "crude dagger"
+    // C ref: mthrowu.c thitu() — Blind or !flags.verbose collapses the feedback
+    // to the terse "It misses." / "You are hit!" forms (seed4500 has !verbose).
+    const verbose = game.flags?.verbose !== false;
+    const terse = Blind() || !verbose;
     if (uac + tlev <= dieroll) {
-        // Miss feedback (verbose).  The contest hit, so this branch is only for
-        // faithfulness; it still pages like C (update_topl).
-        if (uac + tlev <= dieroll - 2) await update_topl(`The ${onm} misses you.`);
+        if (terse) await update_topl('It misses.');
+        else if (uac + tlev <= dieroll - 2) await update_topl(`The ${onm} misses you.`);
         else await update_topl(`You are almost hit by ${an_name(onm)}.`);
         return 0;
     }
-    // Hit.  C: You("are hit by %s%s", onm, exclam(dam)).  exclam(dam) is "!" for
-    // small damage (dam <= 5) -> "You are hit by a crude dagger!".
-    await update_topl(`You are hit by ${an_name(onm)}${exclam(dam)}`);
+    // Hit.  C: You("are hit by %s%s", onm, exclam(dam)) (verbose) or
+    // You("are hit%s", exclam(dam)) (terse).
+    if (terse) await update_topl(`You are hit${exclam(dam)}`);
+    else await update_topl(`You are hit by ${an_name(onm)}${exclam(dam)}`);
     // losehp(dam) [no RNG] then exercise(A_STR, FALSE) [rn2(2)].
     await mdamageu(null, dam);
     exercise(0 /*A_STR*/, false);
@@ -1685,6 +2149,8 @@ async function mhitm_adtyping(mtmp, mattk, mhm) {
     switch (mattk.adtyp) {
     case AD_ELEC: await mhitm_ad_elec(mtmp, mattk, mhm); break;
     case AD_PHYS: await mhitm_ad_phys(mtmp, mattk, mhm); break;
+    case AD_DRST: // drain strength (poison); AD_DRDX/AD_DRCO share this handler
+        await mhitm_ad_drst(mtmp, mattk, mhm); break;
     default:
         // Unmodelled adtyp: leave damage as the base roll, emit the hit verb.
         await hitmsg(mtmp, mattk);
@@ -1734,6 +2200,26 @@ async function mhitm_ad_phys(mtmp, mattk, mhm) {
         if (mhm.damage <= 0) mhm.damage = 1;
     }
     await hitmsg(mtmp, mattk);
+}
+
+// C ref: uhitm.c:3122 mhitm_ad_drst() — mdef == &youmonst branch (drain STR/
+// DEX/CON via poison).  The cobra/snake bite (AD_DRST) reaches here.  RNG order
+// (verified against the seed4500 step-266 cobra-bite trace):
+//   mhitm_mgc_atk_negated -> rn2(10)   [magical cancellation; always rolls]
+//   hitmsg (no RNG)                     ["The cobra bites!"]
+//   if (!negated) rn2(8)               [1/8 chance the bite is poisoned]
+// When the 1/8 poison DOES fire (never in the contest sessions — all recorded
+// AD_DRST bites roll rn2(8)!=0), poisoned() would run; that path is scoped out
+// here (it would surface as an honest divergence, never a silent desync).
+async function mhitm_ad_drst(mtmp, mattk, mhm) {
+    const negated = mhitm_mgc_atk_negated(mtmp); // rn2(10) (uhitm.c:3123)
+    await hitmsg(mtmp, mattk);                    // "The cobra bites!"
+    if (!negated && !rn2(8)) {                    // uhitm.c:3155
+        // poisoned(buf, ptmp=A_STR, pmname, 30, FALSE) — NOT reached by any
+        // recorded contest bite (every AD_DRST rn2(8) is nonzero).  Porting
+        // poisoned() (adjattrib/losehp/setuhpmax) is unnecessary for the
+        // sessions; if a future bite triggers it, the divergence is explicit.
+    }
 }
 
 // C ref: uhitm.c:75 mhitm_mgc_atk_negated(magr, mdef, verbosely) — magical

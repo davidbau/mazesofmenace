@@ -30,6 +30,7 @@ import {
     amorphous, unsolid, is_whirly, breathless, MZ_SMALL, MZ_HUGE,
     likes_gems, mons, webmaker, throws_rocks,
     is_animal, mindless, haseyes,
+    bigmonst, is_golem, is_mplayer, is_rider,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
@@ -85,6 +86,7 @@ const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
 const PM_BUGBEAR = monsterNames.indexOf('PM_BUGBEAR');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const STATUE = objectNames.indexOf('STATUE');
 const AD_RUST = 24; /* monattk.h */
 
@@ -565,7 +567,8 @@ function wake_nearto(x, y, distance) {
     }
 }
 
-// C ref: mon.c corpse_chance — AT_BOOM then ordinary non-unique path
+// C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
+// Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE.
 async function corpse_chance(mon) {
     const mdat = mon.data;
     if (!mdat) return false;
@@ -579,6 +582,10 @@ async function corpse_chance(mon) {
             await mon_explodes(mon, at);
             return false;
         }
+    }
+    if ((((bigmonst(mdat) || (mdat.mndx ?? -1) === PM_LIZARD) && !mon.mcloned)
+        || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)) {
+        return true;
     }
     const tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
         + (verysmall(mdat) ? 1 : 0);

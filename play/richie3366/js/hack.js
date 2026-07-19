@@ -342,7 +342,7 @@ export function maybe_half_phys(dmg) {
 
 /**
  * C ref: hack.c nomul — start/replace multi-turn inactivity (negative = occupation).
- * end_running / cmdq_clear deferred.
+ * end_running deferred; cmdq_clear(CQ_CANNED) via game._cmdq_canned.
  */
 export function nomul(nval) {
     if ((game.multi || 0) < nval) return;
@@ -357,6 +357,8 @@ export function nomul(nval) {
         game.context.run = 0;
         game.context.mv = 0;
     }
+    // C: end_running(TRUE); cmdq_clear(CQ_CANNED)
+    if (game._cmdq_canned) game._cmdq_canned = [];
 }
 
 /**

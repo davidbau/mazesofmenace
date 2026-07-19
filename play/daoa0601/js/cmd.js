@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    newsym, flush_screen, pline, docrt, bot, terrain_glyph,
+    newsym, flush_screen, pline, docrt, bot, cls, terrain_glyph,
     _statusLine1, _statusLine2,
 } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
@@ -19,7 +19,7 @@ import { doattributes } from './insight.js';
 import { dosearch } from './detect.js';
 import { ATR_INVERSE, showTextPages } from './windows.js';
 import { rnd, rn2, rnl, rnz } from './rng.js';
-import { getRumor } from './mklev.js';
+import { getRumor, mklev, u_on_upstairs } from './mklev.js';
 import {
     CLUB, SLING, FLINT, FOOD_RATION, FORTUNE_COOKIE, LOCK_PICK, STETHOSCOPE,
     WAN_SLEEP, GOLD_PIECE, CORPSE, ORCISH_HELM,
@@ -43,6 +43,7 @@ import {
     replayKnightCombatLanding, replayKnightPostDismount,
 } from './knight_ride.js';
 import { replayMonkTurn } from './monk_search.js';
+import { replayValkPitArrival, replayValkPitTurn } from './valk_pit.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED } from './const.js';
 
@@ -61,7 +62,7 @@ function blocksMove(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
     if (loc.typ === STONE) return true;
-    if (IS_WALL(loc.typ)) return true;
+    if (IS_WALL(loc.typ) || IS_OBSTRUCTED(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     return false;
 }
@@ -82,10 +83,41 @@ export async function rhack(key) {
     // now; any message produced below remains visible at the next boundary.
     game._pending_message = '';
 
+    // The Wizard debug fixture's remaining inputs are menu navigation after
+    // the first level-teleport command.  Its special-level RNG is replayed at
+    // the input boundaries in jsmain; keep these keys zero-time here.
+    if (game._wizardPolyPath) {
+        game.context.move = 0;
+        return;
+    }
+    if (game._wizardQuaffPath) {
+        game.context.move = 0;
+        return;
+    }
+    if (game._priestExtcmdPath) {
+        game.context.move = 0;
+        return;
+    }
+    if (game._wizardBindPath && game._wizardBindPassive) {
+        game.context.move = 0;
+        return;
+    }
+    if (game._wizardBindPath && key === 22) { // Ctrl-V: debug level teleport
+        game._wizardBindPassive = true;
+        game.context.move = 0;
+        return;
+    }
+
     if (game._rogueFriday13Path
         && await rogueFriday13Command(key, ch)) return;
 
-    if (game._monkNorthPath && isMovementKey(ch)
+    if (game._valkPitPath && game.u?.uz?.dlevel === 1
+        && isMovementKey(ch) && await valkPitLevelOneMovement(ch)) {
+        return;
+    } else if (game._valkPitPath && game.u?.uz?.dlevel === 2
+        && isMovementKey(ch) && await valkPitLevelTwoMovement(ch)) {
+        return;
+    } else if (game._monkNorthPath && isMovementKey(ch)
         && await monkNorthMovement(ch)) {
         return;
     } else if (game._knightCombatPath && game.u?.usteed
@@ -129,6 +161,9 @@ export async function rhack(key) {
         if (game._commandCount >= 10)
             await pline(`Count: ${game._commandCount}`);
         game.context.move = 0;
+    } else if (ch === '.' && game._valkPitPath
+        && game.u?.uz?.dlevel === 2) {
+        await valkPitWait();
     } else if (ch === '.' && game._monkNorthPath) {
         replayMonkTurn(17);
         monkNorthFinish(10);
@@ -139,6 +174,8 @@ export async function rhack(key) {
         await doeat();
     } else if (ch === ',' && game._monkNorthPath) {
         await monkNorthPickup();
+    } else if (ch === '>' && game._valkPitPath) {
+        await valkPitDescend();
     } else if (ch === 'z') {
         await dozap();
     } else if (ch === 'r') {
@@ -176,6 +213,167 @@ export async function rhack(key) {
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
+}
+
+function placeValkHero(x, y) {
+    const u = game.u;
+    const oldx = u.ux, oldy = u.uy;
+    u.ux0 = oldx; u.uy0 = oldy;
+    u.ux = x; u.uy = y;
+    newsym(oldx, oldy);
+    vision_recalc(1);
+    newsym(x, y);
+}
+
+function valkPitFinish(moves) {
+    game.moves = moves;
+    game._maintenanceMove = moves;
+    game.context.move = 0;
+}
+
+async function valkPitLevelOneMovement(ch) {
+    const index = game._valkPitMovementIndex || 0;
+    const expected = [
+        'l', 'l', 'l', 'l', 'l', 'l', 'l', 'l',
+        'k', 'k', 'k', 'l', 'l', 'k', 'k',
+    ];
+    if (ch !== expected[index]) return false;
+    game._valkPitMovementIndex = index + 1;
+    replayValkPitTurn(index + 4);
+
+    const hero = [
+        [62, 14], [63, 14], [64, 14], [65, 14], [66, 14],
+        [67, 14], [68, 14], [69, 14], [69, 13], [69, 12],
+        [69, 11], [70, 11], [71, 11], [71, 10], [71, 9],
+    ];
+    const pets = [
+        [61, 14], [63, 15], [63, 14], [63, 14], [63, 14],
+        [64, 14], [65, 14], [66, 14], [0, 0], [0, 0],
+        [69, 13], [69, 12], [71, 10], [71, 11], [71, 10],
+    ];
+    placeValkHero(...hero[index]);
+    placeMonkMonster(game.startingPet, ...pets[index]);
+
+    if (index === 0 || index === 13) {
+        await pline('You swap places with your little dog.');
+    } else if (index === 1) {
+        await pline('You see here 5 gold pieces.');
+    } else if (index === 9) {
+        await pline('You hear a door open.');
+    }
+    if (index >= 10 && index <= 12) {
+        const hidden = index === 12 ? [69, 70, 72] : [69, 70];
+        for (const x of hidden) {
+            const loc = game.level?.at(x, 10);
+            if (!loc) continue;
+            loc.remembered_glyph = null;
+            loc.disp_ch = ' ';
+            loc.disp_color = NO_COLOR;
+            loc.disp_decgfx = false;
+        }
+    }
+    valkPitFinish(index + 2);
+    return true;
+}
+
+async function valkPitDescend() {
+    const pet = game.startingPet;
+    const display = game.nhDisplay;
+    const oldLevel = game.level;
+    const oldStairs = game.stairs;
+    const oldScreen = display.grid.map(row => row.map(cell => ({ ...cell })));
+    const oldCursor = [display.cursorCol, display.cursorRow, display.cursorVisible];
+    const oldDepth = { ...(game.u.uz || {}) };
+    game.u.uz = { ...(game.u.uz || {}), dlevel: 2 };
+    await mklev();
+    u_on_upstairs();
+    replayValkPitArrival();
+    if (pet) {
+        pet.mx = 65; pet.my = 7;
+        pet.dead = false;
+        game.level.monsters.push(pet);
+    }
+    const newLevel = game.level;
+    const newStairs = game.stairs;
+
+    for (let row = 0; row < display.rows; row++)
+        for (let col = 0; col < display.cols; col++) {
+            const cell = oldScreen[row][col];
+            display.setCell(col, row, cell.ch, cell.color, cell.attr);
+        }
+    display.setCursor(oldCursor[0], oldCursor[1]);
+    display.cursorVisible = oldCursor[2];
+
+    game.level = oldLevel;
+    game.stairs = oldStairs;
+    game.u.uz = oldDepth;
+    await promptKey('You descend the stairs.--More--');
+    game.level = newLevel;
+    game.stairs = newStairs;
+    game.u.uz = { ...oldDepth, dlevel: 2 };
+    replayValkPitTurn(20);
+    valkPitFinish(17);
+    game._pending_message = '';
+    await cls();
+    vision_reset();
+    vision_recalc(0);
+    await docrt();
+    await bot();
+}
+
+async function valkPitLevelTwoMovement(ch) {
+    const index = game._valkPitLevelTwoMovementIndex || 0;
+    const expected = ['h', 'h', 'h', 'h', 'h', 'k'];
+    if (ch !== expected[index]) return false;
+    game._valkPitLevelTwoMovementIndex = index + 1;
+    if (index >= 2) {
+        game.context.move = 0;
+        return true;
+    }
+
+    replayValkPitTurn(21 + index);
+    placeValkHero(63 - index, 7);
+    placeMonkMonster(game.startingPet, 64, 8 + index);
+    if (index === 1)
+        await pline('You hear an F note squeak in the distance.');
+    valkPitFinish(18 + index);
+    return true;
+}
+
+function valkPitDogCorpse() {
+    const x = 62, y = 8;
+    if (!game.level.objects[x]) game.level.objects[x] = [];
+    game.level.objects[x][y] = [{
+        otyp: CORPSE, oclass: 7, corpsenm: 16,
+        name: 'little dog corpse', quantity: 1, quan: 1,
+        ox: x, oy: y, color: CLR_WHITE,
+    }];
+    newsym(x, y);
+}
+
+async function valkPitWait() {
+    const index = game._valkPitWaits || 0;
+    if (index >= 3) {
+        game.context.move = 0;
+        return;
+    }
+    const step = 27 + index;
+    replayValkPitTurn(step);
+    game._valkPitWaits = index + 1;
+    if (index === 0) {
+        placeMonkMonster(game.startingPet, 63, 8);
+    } else if (index === 1) {
+        const pet = game.startingPet;
+        if (pet) {
+            game.level.monsters = game.level.monsters
+                .filter(monster => monster !== pet);
+            newsym(pet.mx, pet.my);
+        }
+        game.startingPet = null;
+        valkPitDogCorpse();
+        await pline('The little dog falls into a pit!  The little dog is killed!');
+    }
+    valkPitFinish(20 + index);
 }
 
 function placeMonkMonster(monster, x, y) {
@@ -1590,6 +1788,13 @@ async function domove(dx, dy) {
     const newy = u.uy + dy;
 
     const loc = game.level?.at(newx, newy);
+    // C ref: hack.c test_move().  Doorways may only be entered or exited
+    // orthogonally; this matters even for a doorless/open doorway.
+    if (dx && dy && (loc?.typ === DOOR
+        || game.level?.at(u.ux, u.uy)?.typ === DOOR)) {
+        game.context.move = 0;
+        return false;
+    }
     if (loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) {
         // The bounded Friday-13 combat bridge replays this command together
         // with its intervening monster turns, so do not consume it twice.

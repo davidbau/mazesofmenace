@@ -386,6 +386,57 @@ const EXT_CMDS = [
             return wiz_genesis();
         },
     },
+    {
+        // C: cmd.c "wizwish" IFBURIED|CMD_M_PREFIX|WIZMODECMD (no AUTOCOMPLETE)
+        name: 'wizwish',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_wish } = await import('./wizcmds.js');
+            return wiz_wish();
+        },
+    },
+    {
+        // C: cmd.c "invoke" IFBURIED|AUTOCOMPLETE → doinvoke (D-0715)
+        name: 'invoke',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { doinvoke } = await import('./artifact.js');
+            return doinvoke();
+        },
+    },
+    {
+        // C: cmd.c "rub" AUTOCOMPLETE → dorub
+        name: 'rub',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { dorub } = await import('./apply.js');
+            return dorub();
+        },
+    },
+
+    {
+        // C: cmd.c "wipe" AUTOCOMPLETE → dowipe (D-0712)
+        name: 'wipe',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { dowipe } = await import('./do.js');
+            return dowipe();
+        },
+    },
+    {
+        // C: cmd.c "polyself" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_polyself
+        name: 'polyself',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_polyself } = await import('./polyself.js');
+            return wiz_polyself();
+        },
+    },
 ];
 
 function wizardMode() {

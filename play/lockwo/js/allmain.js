@@ -785,34 +785,6 @@ export async function moveloop_turn() {
 
             g.moves = (g.moves || 1) + 1;
 
-            // C ref: allmain.c moveloop_core():380 — while the hero is immobile
-            // (multi < 0, e.g. "jumping around" after #jump), each elapsed turn
-            // counts down toward 0; when it reaches 0 the hero is freed (unmul).
-            // This sits inside the same once-per-turn block as the reallocation.
-            if ((g.multi ?? 0) < 0) {
-                if (++g.multi === 0) {
-                    // unmul: hero regains control next command.
-                    g.context.travel = g.context.travel1 = g.context.mv = 0;
-                    // C ref: hack.c unmul(NULL) — announce the pending nomovemsg
-                    // (e.g. "You survived that attempt on your life." after a
-                    // declined wizard-mode death) when the immobilizing count
-                    // reaches 0, then clear it.  C's pline() honours the topline
-                    // state: when a message from earlier this turn is still
-                    // unacknowledged (toplin == NEED_MORE — e.g. savelife's "OK,
-                    // so you don't die." plus the monster-move messages that
-                    // followed), pline first fires --More-- on that line before
-                    // the nomovemsg replaces it.  Route through update_topl so
-                    // that blocking --More-- (captured as its own frame, and
-                    // absorbing the recorded keystrokes) appears; when nothing is
-                    // pending (the prayer/takeoff cases) update_topl just sets the
-                    // line, matching the old pline behaviour.
-                    if (g.nomovemsg) {
-                        await update_topl(g.nomovemsg);
-                        g.nomovemsg = '';
-                    }
-                }
-            }
-
             // C ref: allmain.c moveloop_core() — once-per-turn "if (u.ublesscnt)
             // u.ublesscnt--;" (the prayer timeout countdown), between run_regions
             // and the regen_hp heal check.  No RNG; gates pray.c can_pray().
@@ -825,7 +797,11 @@ export async function moveloop_turn() {
             // rn2(100): heal = (u.ulevel + ACURR(A_CON)) > rn2(100).  An
             // uninjured hero (uhp == uhpmax, the usual case) skips the call
             // entirely, so this is RNG-inert for every full-health turn.
-            regen_hp();
+            // C ref: allmain.c:287 — while u.uinvulnerable (prayer invulnerability
+            // during a coaligned #pray occupation) the heal check is skipped
+            // entirely (wtcap forced to UNENCUMBERED), so NO rn2(100) is rolled
+            // for the injured hero on those turns.
+            if (!g.u.uinvulnerable) regen_hp();
 
             // C ref: allmain.c moveloop_core() — intrinsic autosearch.  Runs
             // every turn before dosounds when the hero has Searching (and the
@@ -859,12 +835,49 @@ export async function moveloop_turn() {
             if (g.context.seer_turn != null && g.moves >= g.context.seer_turn) {
                 g.context.seer_turn = g.moves + rn1(31, 15);
             }
+
+            // C ref: allmain.c moveloop_core():380 — the multi<0 countdown sits
+            // at the END of the once-per-turn block (after dosounds/gethungry/
+            // u_wipe_engr &c.).  While the hero is immobile (e.g. a nomul(-3)
+            // #pray occupation or "jumping around" after #jump), each elapsed
+            // turn counts toward 0; when it reaches 0 the hero is freed (unmul),
+            // which announces the pending nomovemsg and runs ga.afternmv.  Placing
+            // it here (not right after moves++) matters when afternmv clears
+            // u.uinvulnerable — the turn's dosounds/regen_hp/gethungry must have
+            // already run (skipped, under invulnerability) BEFORE prayer_done.
+            if ((g.multi ?? 0) < 0) {
+                if (++g.multi === 0) {
+                    // unmul: hero regains control next command.
+                    g.context.travel = g.context.travel1 = g.context.mv = 0;
+                    // C ref: hack.c unmul(NULL) — announce the pending nomovemsg,
+                    // then clear it.  Route through update_topl so a still-pending
+                    // top line (toplin == NEED_MORE — savelife's "OK, so you don't
+                    // die." plus following monster-move messages, or the prayer's
+                    // "cobra slither"/"finish your prayer") first fires its blocking
+                    // --More-- (captured as its own frame) before nomovemsg lands.
+                    if (g.nomovemsg) {
+                        await update_topl(g.nomovemsg);
+                        g.nomovemsg = '';
+                    }
+                    // C ref: hack.c unmul() — after announcing nomovemsg, run the
+                    // pending after-no-move callback (ga.afternmv), e.g. pray.c's
+                    // prayer_done() which resolves the prayer outcome.
+                    if (g.afternmv) {
+                        const fn = g.afternmv;
+                        g.afternmv = null;
+                        await fn();
+                    }
+                }
+            }
         }
     } while (g.u.umovement < NORMAL_SPEED);
 }
 
-// C ref: eat.c gethungry() — the rn2(20) "accessorytime" roll each turn.
+// C ref: eat.c gethungry() — the rn2(20) "accessorytime" roll each turn.  While
+// u.uinvulnerable (prayer invulnerability) C returns immediately ("you don't
+// feel hungrier"), so NO rn2(20) is rolled on those turns.
 function gethungry() {
+    if (game.u?.uinvulnerable) return;
     rn2(20);
 }
 

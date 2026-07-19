@@ -34,8 +34,20 @@ import {
     W_SWAPWEP,
     W_WEP,
     HALLUC_RES,
+    ECMD_OK,
+    ECMD_TIME,
+    ECMD_CANCEL,
+    GETOBJ_EXCLUDE,
+    GETOBJ_SUGGEST,
+    nothing_happens,
 } from './const.js';
 import { rn2, rnd } from './rng.js';
+import { nhgetch } from './input.js';
+import { flush_screen, flush_topl_more, pline } from './display.js';
+import { compactify_invlets } from './invent.js';
+
+const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 
 export { NROFARTIFACTS };
 import {
@@ -347,6 +359,100 @@ export function retouch_object(obj, _loseit) {
     }
     // remove_worn_item / dropx deferred
     return 0;
+}
+
+/**
+ * C ref: artifact.c invoke_ok — getobj callback for #invoke.
+ */
+function invoke_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    const ocl = game.objects?.[obj.otyp];
+    if (obj.oartifact || ocl?.oc_unique
+        || (obj.otyp === FAKE_AMULET_OF_YENDOR && !obj.known)) {
+        return GETOBJ_SUGGEST;
+    }
+    if (obj.otyp === CRYSTAL_BALL) return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+function invoke_suggest_lets() {
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (o?.invlet && invoke_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
+    }
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    return lets.join('');
+}
+
+/**
+ * C ref: invent.c getobj("invoke", invoke_ok, GETOBJ_PROMPT)
+ */
+async function getobj_invoke() {
+    const raw = invoke_suggest_lets();
+    if (!raw) {
+        await pline("You don't have anything to invoke.");
+        return null;
+    }
+    for (;;) {
+        await flush_topl_more();
+        const lets = raw.length > 5 ? compactify_invlets(raw) : raw;
+        const query = `What do you want to invoke? [${lets} or ?*]`;
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        if (key === 27) return null;
+        const ch = String.fromCharCode(key);
+        if (ch === '?' || ch === '*') continue;
+        for (const o of game.invent || []) {
+            if (o.invlet === ch && invoke_ok(o) === GETOBJ_SUGGEST) return o;
+        }
+        await pline(`You don't have that object.`);
+    }
+}
+
+/**
+ * C ref: artifact.c arti_invoke — special powers / property toggle.
+ * Envelope this iteration: !inv_prop → nothing_happens + ECMD_TIME
+ * (Mjollnir / most weapons). Crystal-ball apply and inv_prop>LAST_PROP
+ * powers (taming/healing/portal/…) deferred; artilist inv_prop not yet
+ * extracted into artifacts_data.
+ * @returns {number} ECMD_*
+ */
+export async function arti_invoke(obj) {
+    if (!obj) {
+        // C: impossible("arti_invoke without obj")
+        return ECMD_OK;
+    }
+    const list = artilist();
+    const oart = get_artifact(obj);
+    const invProp = oart?.inv_prop | 0;
+    if (oart === list[ART_NONARTIFACT] || !invProp) {
+        if (obj.otyp === CRYSTAL_BALL) {
+            // use_crystal_ball deferred
+            await pline(nothing_happens);
+        } else {
+            await pline(nothing_happens);
+        }
+        return ECMD_TIME;
+    }
+    // inv_prop specials / property toggle deferred
+    await pline(nothing_happens);
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: artifact.c doinvoke — #invoke command.
+ * @returns {number} ECMD_*
+ */
+export async function doinvoke() {
+    const obj = await getobj_invoke();
+    if (!obj) return ECMD_CANCEL;
+    if (!retouch_object(obj, false)) return ECMD_TIME;
+    return arti_invoke(obj);
 }
 
 /**

@@ -13,7 +13,7 @@ import {
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL,
-    MAGIC_PORTAL,
+    MAGIC_PORTAL, TIMEOUT,
 } from './const.js';
 import { seetrap } from './trap.js';
 import { COIN_CLASS } from './objects.js';
@@ -43,7 +43,7 @@ import { monster_nearby, losehp, maybe_half_phys, check_special_room } from './h
 import { place_object, stackobj } from './mkobj.js';
 import { doname } from './objnam.js';
 import { compactify_invlets, near_capacity } from './invent.js';
-import { can_reach_floor } from './engrave.js';
+import { can_reach_floor, set_occupation } from './engrave.js';
 import { pickup } from './pickup.js';
 import { Fumbling } from './attrib.js';
 import {
@@ -1063,5 +1063,94 @@ export async function doup() {
 
     await prev_level(true);
     game.at_ladder = false;
+    return ECMD_TIME;
+}
+
+/** C youprop.h BlindedTimeout. */
+function BlindedTimeout() {
+    return (game.u?.HBlinded | 0) & TIMEOUT;
+}
+
+/** C potion.c set_itimeout / incr_itimeout — TIMEOUT field only. */
+function set_itimeout_HBlinded(val) {
+    const u = game.u || (game.u = {});
+    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | ((val | 0) & TIMEOUT);
+}
+function incr_itimeout_HBlinded(incr) {
+    set_itimeout_HBlinded(BlindedTimeout() + (incr | 0));
+}
+
+/**
+ * C ref: potion.c make_blinded — talk subset for wipeoff clear.
+ * Eyes override / Punished / Hallucination talk / toggle_blindness body
+ * deferred (Blind sticky + botl only).
+ */
+async function make_blinded(xtime, talk) {
+    const u = game.u || (game.u = {});
+    const old = BlindedTimeout();
+    const u_could_see = !Blind();
+    set_itimeout_HBlinded(xtime ? 1 : 0);
+    const can_see_now = !Blind();
+    set_itimeout_HBlinded(old);
+
+    if (can_see_now && !u_could_see && talk) {
+        await pline('You can see again.');
+    } else if (u_could_see && !can_see_now && talk) {
+        await pline('A cloud of darkness falls upon you.');
+    }
+
+    set_itimeout_HBlinded(xtime);
+    if (u_could_see !== can_see_now) {
+        u.Blind = !can_see_now;
+        if (game.flags) game.flags.botl = true;
+    }
+}
+
+/** C mhitu.c gulp_blnd_check — swallowed AD_BLND re-apply deferred. */
+function gulp_blnd_check() {
+    return false;
+}
+
+/**
+ * C ref: do.c wipeoff — occupation tick; clear up to 4 cream/blind.
+ * @returns {number} 1 = still busy, 0 = done
+ */
+async function wipeoff() {
+    const u = game.u || (game.u = {});
+    let udelta = u.ucreamed | 0;
+    let ldelta = BlindedTimeout();
+    if (udelta > 4) udelta = 4;
+    u.ucreamed = (u.ucreamed | 0) - udelta;
+    if (ldelta > 4) ldelta = 4;
+    incr_itimeout_HBlinded(-ldelta);
+
+    if (!(u.HBlinded | 0)) {
+        await pline("You've got the glop off.");
+        u.ucreamed = 0;
+        if (!gulp_blnd_check()) {
+            set_itimeout_HBlinded(1);
+            await make_blinded(0, true);
+        }
+        return 0;
+    }
+    if (!(u.ucreamed | 0)) {
+        await pline('Your face feels clean now.');
+        return 0;
+    }
+    return 1;
+}
+
+/**
+ * C ref: do.c dowipe — #wipe face cream / BlindedTimeout.
+ * Named omissions: body_part poly face noun; gulp_blnd_check swallow arm.
+ * @returns {number} ECMD_TIME
+ */
+export async function dowipe() {
+    const u = game.u || {};
+    if (u.ucreamed | 0) {
+        set_occupation(wipeoff, 'wiping off your face', 0);
+        return ECMD_TIME;
+    }
+    await pline('Your face is already clean.');
     return ECMD_TIME;
 }

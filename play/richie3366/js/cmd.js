@@ -870,6 +870,11 @@ export async function rhack(key) {
         const tookTime = await dokick();
         game.context.move = tookTime ? 1 : 0;
         // C: do NOT clear kickedloc after dokick — pets avoid it this turn
+    } else if (ch === ' ' && game.flags?.rest_on_space) {
+        // C ref: cmd.c update_rest_on_space — <space> → donull when option On
+        const tookTime = await donull();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '.') {
         // C ref: do.c donull / cmd.c — wait; timed non-kick clears kickedloc
         const tookTime = await donull();

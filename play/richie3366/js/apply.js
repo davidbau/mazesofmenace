@@ -6,12 +6,21 @@ import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
-    COIN_CLASS, objectNames,
+    COIN_CLASS, GEM_CLASS, FOOD_CLASS, objectNames,
 } from './objects.js';
-import { P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE } from './const.js';
+import {
+    P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, nothing_happens,
+    FACE, TIMEOUT, OBJ_FREE,
+} from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline } from './insight.js';
-import { compactify_invlets } from './invent.js';
+import { compactify_invlets, makeknown } from './invent.js';
+import { rn2, rn1, rnd } from './rng.js';
+import { nohands, haseyes } from './monsters.js';
+import { wield_tool } from './wield.js';
+import { splitobj, delobj } from './mkobj.js';
+import { xname, the, makeplural } from './objnam.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -44,6 +53,9 @@ const MAGIC_HARP = objectNames.indexOf('MAGIC_HARP');
 const BUGLE = objectNames.indexOf('BUGLE');
 const LEATHER_DRUM = objectNames.indexOf('LEATHER_DRUM');
 const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
+const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
+const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
+const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
 
 /** C invent getobj callback ranks (hack.h). */
 const GETOBJ_EXCLUDE = -3;
@@ -288,11 +300,142 @@ async function use_stethoscope(_obj) {
     return 0; // ECMD_OK — match C isok-fail path rather than invent TIME
 }
 
+/** C youprop.h Blind — (H||E) && !B; also sticky u.Blind. */
+function Blind() {
+    const u = game.u || {};
+    if (u.Blind || u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h BlindedTimeout — HBlinded & TIMEOUT. */
+function BlindedTimeout() {
+    return (game.u?.HBlinded | 0) & TIMEOUT;
+}
+
+/**
+ * C ref: potion.c make_blinded — TIMEOUT set + Blind mirror.
+ * Eyes override / toggle_blindness / Punished / talk messages deferred.
+ */
+function make_blinded(xtime, _talk) {
+    const u = game.u || (game.u = {});
+    const wasBlind = Blind();
+    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (xtime ? (xtime & TIMEOUT) : 0);
+    const nowBlind = !!((u.HBlinded | 0) && !(u.BBlinded | 0))
+        || !!(u.EBlinded | 0);
+    if (wasBlind !== nowBlind) {
+        u.Blind = nowBlind;
+        if (game.flags) game.flags.botl = true;
+    }
+}
+
+/** C ref: mondata.c body_part — FACE → "face"; poly table deferred. */
+function body_part(part) {
+    if (part === FACE) return 'face';
+    return 'body part';
+}
+
+/**
+ * C ref: mondata.c can_blnd(NULL, &youmonst, AT_WEAP, cream_pie) subset.
+ * Named omissions: visored helmet; mon_perma_blind; raven-vs-raven.
+ */
+function can_blnd_cream_self(obj) {
+    const you = game.youmonst;
+    if (!haseyes(you?.data)) return false;
+    // C: Blindfolded ≡ EBlinded / ublindf blocks cream on hero
+    if (game.u?.ublindf || (game.u?.EBlinded | 0)) return false;
+    void obj;
+    return true;
+}
+
+/** C ref: worn.c setnotworn — clear hero worn slots pointing at obj. */
+function setnotworn(obj) {
+    if (!obj) return;
+    const u = game.u || {};
+    for (const slot of [
+        'uwep', 'uswapwep', 'uqwep',
+        'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
+        'uleft', 'uright', 'uamul', 'ublindf',
+    ]) {
+        if (u[slot] === obj) u[slot] = null;
+    }
+    obj.owornmask = 0;
+}
+
+/** Remove obj from invent array (C freeinv / obj_extract_self OBJ_INVENT). */
+function freeinv_pie(obj) {
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    obj.where = OBJ_FREE;
+}
+
+/**
+ * C ref: apply.c use_cream_pie — immerse face; blindinc rnd(25); splat+delobj.
+ * Named omissions: costly_alteration COST_SPLAT shop bill; invent-array
+ * wiring when splitobj child is not pushed (quan>1 rare for wish).
+ * @returns {number} ECMD_OK (C never spends a turn)
+ */
+async function use_cream_pie(obj) {
+    const u = game.u || (game.u = {});
+    const wasblind = Blind();
+    const wascreamed = !!(u.ucreamed | 0);
+    let several = false;
+    let pie = obj;
+
+    if ((pie.quan || 1) > 1) {
+        several = true;
+        const child = splitobj(pie, 1);
+        if (child) {
+            // C invent split leaves child free of parent stack; splice child in
+            const inv = game.invent || [];
+            const pidx = inv.indexOf(pie);
+            if (pidx >= 0) inv.splice(pidx + 1, 0, child);
+            else inv.push(child);
+            child.where = pie.where;
+            pie = child;
+        }
+    }
+
+    if (u.Hallucination) {
+        await pline('You give yourself a facial.');
+    } else {
+        const xn = xname(pie);
+        await pline(
+            `You immerse your ${body_part(FACE)} in ${
+                several ? 'one of ' : ''
+            }${several ? makeplural(the(xn)) : the(xn)}.`,
+        );
+    }
+
+    if (can_blnd_cream_self(pie)) {
+        const blindinc = rnd(25);
+        u.ucreamed = (u.ucreamed | 0) + blindinc;
+        make_blinded(BlindedTimeout() + blindinc, false);
+        if (!Blind() || (Blind() && wasblind)) {
+            await pline(
+                `There's ${wascreamed ? 'more ' : ''}sticky goop all over your ${
+                    body_part(FACE)}.`,
+            );
+        } else {
+            await pline(
+                `You can't see through all the sticky goop on your ${
+                    body_part(FACE)}.`,
+            );
+        }
+    }
+
+    setnotworn(pie);
+    // costly_alteration(COST_SPLAT) deferred — shop unpaid message only
+    freeinv_pie(pie);
+    delobj(pie); // obj_resists rn2(100) then extract+free
+    return ECMD_OK;
+}
+
 /**
  * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE + sack/bag
- * use_container + musical instruments (do_play_instrument). Named omissions:
- * nohands/capacity; retouch; do_break_wand; flip_through_book; flip_coin;
- * cream pie/jelly; whip/grapple/blindfold/lenses; use_stone; use_pole/
+ * use_container + musical instruments (do_play_instrument) + cream pie.
+ * Named omissions: nohands/capacity; retouch; do_break_wand; flip_through_book;
+ * flip_coin; jelly; whip/grapple/blindfold/lenses; use_stone; use_pole/
  * use_pick_axe; traps; oil; BoT; most non-instrument tools.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
@@ -339,7 +482,147 @@ export async function doapply() {
         return res === ECMD_TIME;
     }
 
+    // C apply.c case CREAM_PIE → use_cream_pie (D-0711)
+    if (obj.otyp === CREAM_PIE) {
+        const res = await use_cream_pie(obj);
+        return res === ECMD_TIME;
+    }
+
     // Other apply otyps deferred
     await pline("Sorry, I don't know how to use that.");
     return false;
+}
+
+/** C ref: apply.c rub_ok */
+function rub_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP
+        || obj.otyp === BRASS_LANTERN || is_graystone(obj)
+        || obj.otyp === LUMP_OF_ROYAL_JELLY) {
+        return GETOBJ_SUGGEST;
+    }
+    return GETOBJ_EXCLUDE;
+}
+
+function rub_suggest_lets() {
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (o?.invlet && rub_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
+    }
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    return lets.join('');
+}
+
+/**
+ * C ref: invent.c getobj("rub", rub_ok) — also consumes CMDQ_KEY from
+ * game._cmdq_canned when dorub re-queues after wield_tool.
+ */
+async function getobj_rub() {
+    // C getobj: cmdq_pop CMDQ_KEY before interactive prompt
+    const q = game._cmdq_canned;
+    if (q?.length) {
+        const head = q[0];
+        if (head && typeof head === 'object' && head.typ === 'key') {
+            q.shift();
+            const ch = String.fromCharCode(head.key);
+            for (const o of game.invent || []) {
+                if (o.invlet === ch && rub_ok(o) === GETOBJ_SUGGEST) return o;
+            }
+            game._cmdq_canned = [];
+            return null;
+        }
+    }
+
+    const raw = rub_suggest_lets();
+    if (!raw) {
+        await pline("You don't have anything to rub.");
+        return null;
+    }
+    for (;;) {
+        await flush_topl_more();
+        const lets = raw.length > 5 ? compactify_invlets(raw) : raw;
+        const query = `What do you want to rub? [${lets} or ?*]`;
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        if (key === 27) return null;
+        const ch = String.fromCharCode(key);
+        if (ch === '?' || ch === '*') {
+            // menu listing deferred — re-prompt
+            continue;
+        }
+        for (const o of game.invent || []) {
+            if (o.invlet === ch && rub_ok(o) === GETOBJ_SUGGEST) return o;
+        }
+        await pline(`You don't have that object.`);
+    }
+}
+
+/** C ref: cmd.c cmdq_add_ec / cmdq_add_key for dorub re-queue after wield. */
+function cmdq_add_ec(fn) {
+    if (!game._cmdq_canned) game._cmdq_canned = [];
+    game._cmdq_canned.push(fn);
+}
+function cmdq_add_key(ch) {
+    if (!game._cmdq_canned) game._cmdq_canned = [];
+    const key = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
+    game._cmdq_canned.push({ typ: 'key', key });
+}
+
+/**
+ * C ref: apply.c dorub — #rub lamp/stone/jelly.
+ * Named omissions: use_stone / use_royal_jelly; djinni_from_bottle / begin_burn
+ * full lamp transform; check_unpaid_usage; Blind smoke wording uses see/smell.
+ * @returns {number} ECMD_*
+ */
+export async function dorub() {
+    const youdata = game.youmonst?.data;
+    if (youdata && nohands(youdata)) {
+        await pline("You aren't able to rub anything without hands.");
+        return ECMD_OK;
+    }
+    const obj = await getobj_rub();
+    if (!obj) return ECMD_CANCEL;
+
+    if (obj.oclass === GEM_CLASS || obj.oclass === FOOD_CLASS) {
+        // use_stone / use_royal_jelly deferred
+        await pline("Sorry, I don't know how to use that.");
+        return ECMD_OK;
+    }
+
+    const u = game.u || {};
+    if (obj !== u.uwep) {
+        if (await wield_tool(obj, 'rub')) {
+            cmdq_add_ec(dorub);
+            cmdq_add_key(obj.invlet);
+            return ECMD_TIME;
+        }
+        return ECMD_OK;
+    }
+
+    // now uwep is obj
+    if (obj.otyp === MAGIC_LAMP) {
+        if ((obj.spe | 0) > 0 && !rn2(3)) {
+            // djinni_from_bottle / begin_burn / check_unpaid deferred
+            obj.otyp = OIL_LAMP;
+            obj.spe = 0;
+            obj.age = rn1(500, 1000);
+            makeknown(MAGIC_LAMP);
+        } else if (rn2(2)) {
+            const Blind = !!(u.Blind);
+            await pline(`You ${Blind ? 'smell' : 'see a puff of'} smoke.`);
+        } else {
+            await pline(nothing_happens);
+        }
+    } else if (obj.otyp === BRASS_LANTERN) {
+        await pline('Rubbing the electric lamp is not particularly rewarding.');
+        await pline('Anyway, nothing exciting happens.');
+    } else {
+        await pline(nothing_happens);
+    }
+    return ECMD_TIME;
 }

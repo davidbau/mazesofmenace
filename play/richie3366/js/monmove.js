@@ -1455,6 +1455,7 @@ export async function dochug(mtmp) {
     }
 
     // C: short-circuit OR — wanderer rn2(4) is evaluated before mpeaceful
+    // Named omission: S_LEPRECHAUN findgold arm (between minvis and wanderer).
     const want_move = (
         !nearby
         || mtmp.mflee

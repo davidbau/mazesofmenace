@@ -33,6 +33,7 @@ import {
 import {
     verysmall, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
+    is_golem, is_mplayer, is_rider,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
@@ -51,6 +52,7 @@ const MZ_HUMAN = MZ_MEDIUM;
 const AT_BOOM = 14; // monattk.h — explode on death
 const NATTK_CC = 6;
 const FIGURINE = objectNames.indexOf('FIGURINE');
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 
 // C ref: monattk.h damage types used by passive / passive_obj
 const AD_MAGM = 1;
@@ -216,9 +218,8 @@ function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
 }
 
 /**
- * C ref: mon.c corpse_chance — AT_BOOM then ordinary !rn2(tmp).
- * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE;
- * bigmonst/lizard/golem/mplayer/rider/isshk always-TRUE arms.
+ * C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
+ * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE.
  */
 async function corpse_chance(mon) {
     const mdat = mon.data;
@@ -236,6 +237,12 @@ async function corpse_chance(mon) {
             await mon_explodes(mon, at);
             return false;
         }
+    }
+    // C: LEVEL_SPECIFIC_NOCORPSE deferred
+    // C: ((bigmonst||lizard) && !mcloned) || golem || mplayer || rider || isshk
+    if ((((bigmonst(mdat) || (mdat.mndx ?? -1) === PM_LIZARD) && !mon.mcloned)
+        || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)) {
+        return true;
     }
     let tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
         + (verysmall(mdat) ? 1 : 0);

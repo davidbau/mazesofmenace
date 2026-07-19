@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, makeplural, vtense, an } from './objnam.js';
+import { xprname, xname, makeplural, vtense, an, doname } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj } from './weapon.js';
 import { humanoid, mons } from './monsters.js';
@@ -109,6 +109,54 @@ export function welded(obj) {
         return true;
     }
     return false;
+}
+
+/**
+ * C ref: wield.c wield_tool — #rub / apply pick/whip/polearm auto-wield.
+ * Named omissions: welded verbose hand/plural; cantwield; bimanual+shield;
+ * will_weld → ready_weapon; pushweapon swap; untwoweapon side effects beyond
+ * basic clear. Lamp #rub path uses the common doname wield message.
+ * @returns {Promise<boolean>} TRUE if ready to use as uwep
+ */
+export async function wield_tool(obj, verb) {
+    const u = game.u || {};
+    if (u.uwep && obj === u.uwep) return true;
+    if (!verb) verb = 'wield';
+
+    if ((obj.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) {
+        await pline(`You can't ${verb} ${xname(obj)} while wearing it.`);
+        return false;
+    }
+    if (u.uwep && welded(u.uwep)) {
+        await pline("You can't do that.");
+        return false;
+    }
+    // cantwield / bimanual+shield deferred
+
+    if (u.uquiver === obj) setuqwep(null);
+    if (u.uswapwep === obj) {
+        const swapRes = await doswapweapon();
+        if (u.uswapwep === obj) return false;
+        void swapRes;
+    } else {
+        const oldwep = u.uwep;
+        if (will_weld(obj)) {
+            await ready_weapon(obj);
+        } else {
+            await pline(`You now wield ${doname(obj)}.`);
+            setuwep(obj);
+        }
+        // flags.pushweapon → setuswapwep(oldwep) deferred
+        void oldwep;
+    }
+    if (u.uwep && u.uwep !== obj) return false;
+    if (u.twoweap) await untwoweapon();
+    if (obj.oclass !== WEAPON_CLASS) {
+        // C: gu.unweapon = TRUE
+        if (!game.u) game.u = u;
+        game.unweapon = true;
+    }
+    return true;
 }
 
 /**

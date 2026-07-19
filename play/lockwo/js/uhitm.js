@@ -488,9 +488,17 @@ async function hmon(mon, weapon, dieroll) {
         return false;
     }
 
-    // surviving hit: "You hit the <mon>." (verbose hand-to-hand weapon hit).
+    // C ref: uhitm.c:1644 hmon_hitmon_msg_hit() — the surviving hand-to-hand
+    // hit message.  When flags.verbose is OFF the terse "You hit it." is used
+    // UNCONDITIONALLY (regardless of whether the monster is spotted); only in
+    // verbose mode does it name the monster.  (seed4500 sets `!verbose` in its
+    // nethackrc, so an adjacent, fully-visible earth elemental still prints
+    // "You hit it.")
     const { update_topl } = await import('./display.js');
-    if (canspotmon(mon))
+    const verbose = game.flags?.verbose !== false;
+    if (!verbose)
+        await update_topl('You hit it.');
+    else if (canspotmon(mon))
         await update_topl(`You hit ${mon_nam(mon)}.`);
     else
         await update_topl('You hit it.');
@@ -648,6 +656,9 @@ const MON_ATTACKS = {
     'mountain nymph':[A(1, 21, 0, 0), A(1, 22, 0, 0)],
     // AT_BITE/AD_ELEC (grid bug) — BITE adds no attack bonus; AD_ELEC -> +2*m_lev.
     'grid bug':     [A(2 /*AT_BITE*/, 6 /*AD_ELEC*/, 1, 1)],
+    // earth elemental — AT_CLAW/AD_PHYS 4d6: no attack/damage-type bonus, but
+    // damd*damn=24>23 gives the heavy-damage +m_lev (seed4500 step-269 XP=78).
+    'earth elemental': [A(1 /*AT_CLAW*/, 0 /*AD_PHYS*/, 4, 6)],
 };
 
 // C ref: exper.c experience(mtmp, nk) — the XP value of a slain monster.  No
@@ -695,12 +706,22 @@ function experience(mtmp) {
     return tmp;
 }
 
-// C ref: mon.c corpse_chance() rn2 tail.  bigmonst/golem/rider/mplayer/shk all
-// guarantee a corpse with no roll; otherwise rn2(2 + (G_FREQ<2) + verysmall).
+// C ref: mon.c corpse_chance(mon).  bigmonst/lizard (uncloned), golem, mplayer,
+// rider, shk all GUARANTEE a corpse and return TRUE with NO rn2 roll (mon.c:
+// 3246); only the ordinary case rolls rn2(2 + (G_FREQ<2) + verysmall).  Missing
+// the guaranteed-corpse short-circuit made JS roll an extra rn2 when killing a
+// big monster (seed4500 step-269: the MZ_HUGE earth elemental).  (The lich/Vlad
+// crumble, gas-spore AT_BOOM explosion, and LEVEL_SPECIFIC_NOCORPSE special
+// cases that precede this in C are not exercised by the corpse_chance kills in
+// the sessions and are intentionally not modeled here.)
 function corpse_chance(mon) {
-    const geno = mon.data?.geno || 0;
+    const mdat = mon.data || {};
+    const bigOrLizard = (largemonst(mdat) || mdat.name === 'lizard') && !mon.mcloned;
+    const golem = /\bgolem$/.test(mdat.name || '');
+    if (bigOrLizard || golem || mon.isshk) return true; // guaranteed, no roll
+    const geno = mdat.geno || 0;
     const G_FREQ = geno & 7;
-    const verysmall = mon.data?.verysmall ? 1 : 0;
+    const verysmall = mdat.verysmall ? 1 : 0;
     const tmp = 2 + (G_FREQ < 2 ? 1 : 0) + verysmall;
     return !rn2(tmp);                          // mon.c:3248
 }
@@ -775,11 +796,15 @@ function mon_nam(mtmp) {
     return x_monnam(mtmp, /*ARTICLE_THE*/ 1, null, 0, false);
 }
 
-// C ref: mondata.h nonliving(ptr) — undead/golem/vortex/etc are "destroyed"
-// rather than "killed".  (A lichen/goblin is living -> "kill".)
+// C ref: mondata.h nonliving(ptr) = is_undead || PM_MANES || weirdnonliving
+// (golem or S_VORTEX).  These are "destroyed" rather than "killed".  NOTE:
+// elementals are LIVING in C (S_ELEMENTAL is not golem/vortex/undead), so an
+// earth elemental is "killed", not "destroyed" (seed4500 step-269).
 function nonliving(mtmp) {
     const name = mtmp?.data?.name || '';
-    return /\bzombie\b|\bmummy\b|\bskeleton\b|\bwraith\b|\bghost\b|\blich\b|golem\b|\bvortex\b|\belemental\b|\bshade\b/.test(name);
+    // is_undead (M2_UNDEAD): zombies, mummies, skeletons, wraiths, ghouls,
+    // ghosts, liches, vampires, shades + manes; weirdnonliving: golems, vortices.
+    return /\bzombie\b|\bmummy\b|\bskeleton\b|\bwraith\b|\bghoul\b|\bghost\b|\blich\b|\bvampire\b|golem\b|\bvortex\b|\bshade\b|\bmanes\b/.test(name);
 }
 
 // C ref: do_name.c Monnam()/x_monnam() — capitalized monster name.  Minimal

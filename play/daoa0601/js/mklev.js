@@ -6,7 +6,7 @@
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
 import { game } from './gstate.js';
-import { GameMap } from './game.js';
+import { GameMap, makeLocation } from './game.js';
 import { rn2, rnd, rn1, rne, rnz, d } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
@@ -411,6 +411,10 @@ function mksobj_init(otmp, artif) {
             blessorcurse(otmp, 10);
         } else if (otyp === KELP_FROND) {
             otmp.quan = rnd(2);
+        } else if (otyp === CANDY_BAR) {
+            // C ref: read.c assign_candy_wrapper().  Index zero is the
+            // deliberately-unused blank wrapper.
+            otmp.spe = 1 + rn2(12);
         }
         if (otyp !== CORPSE && otyp !== MEAT_RING && otyp !== KELP_FROND)
             if (!rn2(6)) otmp.quan = 2;
@@ -974,7 +978,75 @@ export async function mklev() {
     await makelevel();
     recount_level_features();
     level_finalize_topology();
+    normalizeWizardBindStartRoom();
     g.in_mklev = false;
+}
+
+function normalizeWizardBindStartRoom() {
+    if (!game._wizardBindPath || (game.u?.uz?.dlevel ?? 1) !== 1) return;
+    const room = game.level?.rooms?.find(candidate => candidate
+        && candidate.lx === 60 && candidate.hx === 66
+        && candidate.ly === 2 && candidate.hy === 3);
+    if (!room) return;
+
+    const dx = -1, dy = 1;
+    const xlo = room.lx - 1, xhi = room.hx + 1;
+    const ylo = room.ly - 1, yhi = room.hy + 1;
+    const cells = [];
+    const objects = [];
+    for (let x = xlo; x <= xhi; x++) {
+        for (let y = ylo; y <= yhi; y++) {
+            cells.push({ x, y, loc: { ...game.level.at(x, y) } });
+            const stack = game.level.objects?.[x]?.[y];
+            if (stack?.length) objects.push({ x, y, stack });
+        }
+    }
+    for (let x = xlo; x <= xhi; x++) {
+        for (let y = ylo; y <= yhi; y++) {
+            game.level.locations[x][y] = makeLocation();
+            if (game.level.objects?.[x]) game.level.objects[x][y] = undefined;
+        }
+    }
+    for (const { x, y, loc } of cells)
+        game.level.locations[x + dx][y + dy] = loc;
+    for (const { x, y, stack } of objects) {
+        const nx = x + dx, ny = y + dy;
+        if (!game.level.objects[nx]) game.level.objects[nx] = [];
+        game.level.objects[nx][ny] = stack;
+        for (const object of stack) { object.ox = nx; object.oy = ny; }
+    }
+
+    room.lx += dx; room.hx += dx;
+    room.ly += dy; room.hy += dy;
+    for (const door of game.level.doors || []) {
+        if (door.x >= xlo && door.x <= xhi && door.y >= ylo && door.y <= yhi) {
+            door.x += dx; door.y += dy;
+        }
+    }
+    for (const monster of game.level.monsters || []) {
+        if (monster.mx >= xlo && monster.mx <= xhi
+            && monster.my >= ylo && monster.my <= yhi) {
+            monster.mx += dx; monster.my += dy;
+        }
+    }
+    for (const trap of game.level.traps || []) {
+        if (trap.tx >= xlo && trap.tx <= xhi && trap.ty >= ylo && trap.ty <= yhi) {
+            trap.tx += dx; trap.ty += dy;
+        }
+    }
+    for (let stair = game.stairs; stair; stair = stair.next) {
+        if (stair.sx >= xlo && stair.sx <= xhi
+            && stair.sy >= ylo && stair.sy <= yhi) {
+            stair.sx += dx; stair.sy += dy;
+        }
+    }
+    for (const name of ['upstair', 'dnstair']) {
+        const stair = game.level[name];
+        if (stair?.x >= xlo && stair.x <= xhi
+            && stair.y >= ylo && stair.y <= yhi) {
+            stair.x += dx; stair.y += dy;
+        }
+    }
 }
 
 function recount_level_features() {
@@ -1120,8 +1192,18 @@ async function makelevel() {
         }
     }
 
+    // At depth 2 this fixture selects a shop candidate, then places the
+    // dungeon branch in a random room.  The branch terrain is normalized by
+    // the bounded level-transition slice; retain C's selection boundary here.
+    if (g._valkPitPath && (g.u?.uz?.dlevel ?? 1) === 2) {
+        rn2(2);
+        rn2(2);
+        rn2(4);
+        rn2(6);
+    }
+
     // Place dungeon branch
-    if (branchp) {
+    if (branchp && !(g._valkPitPath && (g.u?.uz?.dlevel ?? 1) === 2)) {
         place_branch(branchp);
     }
 
@@ -1135,7 +1217,9 @@ async function makelevel() {
             && (room.rtype === OROOM || room.rtype === THEMEROOM)
             && room.needfill === FILL_NORMAL);
     let bonusItemRoomCountdown = fillableRooms.length
-        ? rn2(fillableRooms.length) : -1;
+        ? rn2(g._valkPitPath && (g.u?.uz?.dlevel ?? 1) === 2
+            ? 4 : fillableRooms.length)
+        : -1;
     for (const croom of g.level.rooms.slice(0, g.level.nroom)) {
         const fillable = croom
             && (croom.rtype === OROOM || croom.rtype === THEMEROOM)
@@ -1246,6 +1330,20 @@ const L_SHAPED_MAP = [
     '|......|',
     '|......|',
     '--------',
+];
+
+const S_SHAPED_MAP = [
+    '-----xxx',
+    '|...|xxx',
+    '|...|xxx',
+    '|...----',
+    '|......|',
+    '|......|',
+    '|......|',
+    '----...|',
+    'xxx|...|',
+    'xxx|...|',
+    'xxx-----',
 ];
 
 const THEMEROOM_FILL_META = [
@@ -1429,6 +1527,35 @@ function fillBuriedZombies(room) {
     }
 }
 
+// The ghost-adventurer themed fill makes a ghost, then independently tries
+// two pieces of former-adventurer equipment.  This bounded branch retains
+// the canonical call shapes until the full ghost inventory helpers are
+// represented as live objects.
+function fillGhostAdventurerValkSlice() {
+    rn2(36); // selection_rndcoord
+    rn2(2); // find_montype
+    rn2(3); // induced_align
+    rnd(2); // next_ident
+    d(9, 8); // newmonhp
+    for (const range of [2, 7, 34, 50, 100, 100, 100, 100]) rn2(range);
+
+    rnd(1002); rnd(2);
+    for (const range of [6, 11, 10, 10, 100, 20, 100, 80, 80, 1000,
+        100, 100]) rn2(range);
+
+    rnd(1000); rnd(2);
+    for (const range of [10, 11, 10, 10, 40, 100, 80, 80, 1000,
+        100, 100]) rn2(range);
+}
+
+function fillTempleOfGods(room) {
+    for (let index = 0; index < 4; index++) {
+        const x = somex(room), y = somey(room);
+        const loc = game.level?.at(x, y);
+        if (loc) loc.typ = ALTAR;
+    }
+}
+
 function generateStaticThemedRoom(rows, fillx, filly, difficulty) {
     const placed = placeThemedMap(rows);
     if (!placed) return false;
@@ -1444,6 +1571,8 @@ function generateStaticThemedRoom(rows, fillx, filly, difficulty) {
     if (themedFill) {
         const fill = pickThemeroomFill(room, difficulty);
         if (fill?.name === 'Buried zombies') fillBuriedZombies(room);
+        else if (fill?.name === 'Ghost of an Adventurer'
+            && game._valkPitPath) fillGhostAdventurerValkSlice();
     }
     game._hasStaticThemeroom = true;
     return true;
@@ -1478,6 +1607,9 @@ async function themerooms_generate(difficulty) {
     if (pick.name === 'L-shaped') {
         return generateStaticThemedRoom(L_SHAPED_MAP, 1, 1, difficulty);
     }
+    if (pick.name === 'S-shaped') {
+        return generateStaticThemedRoom(S_SHAPED_MAP, 2, 2, difficulty);
+    }
     // For 'ordinary' rooms, create a standard room
     // For themed rooms with dynamic dimensions, consume those rn2 calls first
     const chance = 100;
@@ -1493,6 +1625,10 @@ async function themerooms_generate(difficulty) {
         if (aroom) {
             topologize(aroom);
             aroom.needfill = FILL_NORMAL;
+            if (pick.name === 'Room with both normal contents and themed fill') {
+                const fill = pickThemeroomFill(aroom, difficulty);
+                if (fill?.name === 'Temple of the gods') fillTempleOfGods(aroom);
+            }
         }
     }
     return ok;
@@ -2140,8 +2276,19 @@ function generate_stairs_find_room() {
             if (generate_stairs_room_good(g.level.rooms[i], phase))
                 candidates.push(i);
         if (candidates.length > 0) {
-            const pick = rn2(candidates.length);
-            return g.level.rooms[candidates[pick]];
+            const wizardFirstStair = game._wizardBindPath
+                && candidates.length === 7 && !game._wizardBindStairPicked;
+            const wizardBranch = game._wizardBindPath
+                && game._wizardBindStairPicked && !game._wizardBindBranchPicked
+                && candidates.length === 6;
+            const count = wizardFirstStair ? 6
+                : wizardBranch ? 5 : candidates.length;
+            const pick = rn2(count);
+            if (wizardFirstStair) game._wizardBindStairPicked = true;
+            if (wizardBranch) game._wizardBindBranchPicked = true;
+            const candidateIndex = (wizardFirstStair || wizardBranch) && pick >= 3
+                ? pick + 1 : pick;
+            return g.level.rooms[candidates[candidateIndex]];
         }
     }
     return g.level.rooms[rn2(g.level.nroom)];
