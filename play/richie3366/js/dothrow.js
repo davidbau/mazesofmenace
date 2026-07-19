@@ -18,7 +18,7 @@ import {
     P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
     P_BOW, P_BOOMERANG,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
-    ACCFOOD, HMON_THROWN, engulfing_u,
+    ACCFOOD, HMON_THROWN, engulfing_u, STRAT_WAITMASK,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -265,7 +265,8 @@ async function thitmonst(mon, obj) {
         || (mon.mtame && dogfood(mon, obj) <= ACCFOOD)) {
         if (await tamedog(mon, obj, true)) return true;
         mon.msleeping = 0;
-        if (mon.mstrategy != null) mon.mstrategy &= ~0x07; // STRAT_WAITMASK approx
+        // C: mon->mstrategy &= ~STRAT_WAITMASK (CLOSE|WAITFORU)
+        if (mon.mstrategy != null) mon.mstrategy &= ~STRAT_WAITMASK;
     }
     return false;
 }

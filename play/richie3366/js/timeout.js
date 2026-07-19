@@ -13,13 +13,15 @@ import { inv_weight } from './invent.js';
 import { doname, makeplural } from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { objectNames } from './objects.js';
+import { G_UNIQ } from './monsters.js';
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
 const WT_NOISY_INV = 500;
 const ROCK = objectNames.indexOf('ROCK');
 
 /**
- * C ref: mon.c wake_nearby — clear sleep/wait within ulevel*20.
+ * C ref: mon.c wake_nearby / wake_nearto_core — clear sleep/wait within
+ * ulevel*20. G_UNIQ keep STRAT_WAITMASK (quest leaders stay meditating).
  * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
  */
 function wake_nearby(_petcall) {
@@ -33,7 +35,10 @@ function wake_nearby(_petcall) {
         const dy = (mtmp.my | 0) - y;
         if (distance === 0 || dx * dx + dy * dy < distance) {
             mtmp.msleeping = 0;
-            if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+            const geno = mtmp.data?.geno | 0;
+            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
+                mtmp.mstrategy &= ~STRAT_WAITMASK;
+            }
         }
     }
     void _petcall;

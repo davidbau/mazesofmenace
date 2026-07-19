@@ -13,7 +13,7 @@ import {
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
-    ismnum, M_POISONGAS_OK, u_at, TEMPLE,
+    ismnum, M_POISONGAS_OK, u_at, TEMPLE, MON_FLOOR, MON_MIGRATING,
 } from './const.js';
 import { t_at } from './trap.js';
 import {
@@ -1017,8 +1017,25 @@ export function mfndpos(mon, data, flag) {
 }
 
 // C ref: mon.c movemon_singlemon()
+// Returns true to stop iter_mons_safe early (C: u.utotype).
 async function movemon_singlemon(mtmp) {
+    // C: end monster movement early if hero is flagged to leave the level
+    if (game.u?.utotype) {
+        game._somebody_can_move = false;
+        return true;
+    }
+
+    // C: parked vault guard at <0,0> — gd_move may discard; no NORMAL_SPEED spend.
+    // Named omission: full gd_move corridor teardown (D-0795); skip spend only.
+    if (mtmp?.isgd && !(mtmp.mx | 0)
+        && !((mtmp.mstate | 0) & MON_MIGRATING)) {
+        return false;
+    }
+
     if (!mtmp || mtmp.mhp <= 0) return false;
+
+    // C: mon_offmap before m_everyturn / movement spend
+    if (((mtmp.mstate | 0) !== MON_FLOOR)) return false;
 
     // C: m_everyturn_effect before movement gate (fog vapor even if idle)
     m_everyturn_effect(mtmp);
@@ -1062,10 +1079,11 @@ export async function movemon() {
     game._somebody_can_move = false;
     if (game.program_state?.gameover) return false;
     const list = game.fmon || [];
-    // Snapshot — dochug may mutate list later
+    // Snapshot — C iter_mons_safe; dochug may mutate list later
     for (const mtmp of list.slice()) {
         if (game.program_state?.gameover) break;
-        await movemon_singlemon(mtmp);
+        // C: movemon_singlemon true → break (utotype)
+        if (await movemon_singlemon(mtmp)) break;
     }
     // C: after last mon — if (u.utotype) deferred_goto(); somebody_can_move=FALSE
     // Lazy import avoids mon.js ↔ do.js cycle (do.js imports m_at/mnexto).

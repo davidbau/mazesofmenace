@@ -53,6 +53,7 @@ const AT_BOOM = 14; // monattk.h — explode on death
 const NATTK_CC = 6;
 const FIGURINE = objectNames.indexOf('FIGURINE');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 
 // C ref: monattk.h damage types used by passive / passive_obj
 const AD_MAGM = 1;
@@ -140,15 +141,29 @@ function hmon_hit_verb(obj) {
     return 'hit';
 }
 
-// C ref: display.h _is_safemon — tame/peaceful, spotted, not conf/hallu/stun
+// C ref: display.h _is_safemon — peaceful + canspotmon + !conf/hallu/stun
 export function is_safemon(mon) {
     if (!mon) return false;
     // flags.safe_dog defaults true
     if (game.flags?.safe_dog === false) return false;
-    if (!mon.mpeaceful && !mon.mtame) return false;
-    // canspotmon stub: adjacent pets are spotable
+    if (!mon.mpeaceful) return false;
+    if (!canspotmon(mon)) return false;
     if (game.u?.Confusion || game.u?.Hallucination || game.u?.Stunned) return false;
     return true;
+}
+
+/**
+ * C ref: monst.h mundisplaceable — priests/shks/guards/Oracle/quest leader
+ * refuse peaceful place-swaps.
+ */
+export function mundisplaceable(mon) {
+    if (!mon) return false;
+    if (mon.ispriest || mon.isshk || mon.isgd) return true;
+    const mndx = mon.mnum ?? mon.data?.mndx;
+    if (PM_ORACLE >= 0 && mndx === PM_ORACLE) return true;
+    const lid = game.quest_status?.leader_m_id;
+    if (lid != null && (mon.m_id | 0) === (lid | 0)) return true;
+    return false;
 }
 
 function m_at(x, y) {
@@ -1016,6 +1031,11 @@ async function stumble_onto_mimic(mtmp) {
  * Peaceful-confirm / Elbereth / warning-glyph arms deferred.
  */
 export async function attack_checks(mtmp) {
+    // C: if you're close enough to attack, alert any waiting monster
+    // (clears STRAT_CLOSE|WAITFORU even when the attack is later aborted —
+    // kick / cancelled peaceful confirm / Wait! all disturb meditation).
+    if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+
     // C: forcefight → return FALSE (allow real attack; skip Wait!)
     if (game.context?.forcefight) return false;
 

@@ -40,7 +40,7 @@ import { dokick } from './dokick.js';
 import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
-import { do_attack, mon_at, is_safemon } from './uhitm.js';
+import { do_attack, mon_at, is_safemon, mundisplaceable } from './uhitm.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch, doterrain } from './detect.js';
@@ -49,7 +49,7 @@ import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
-import { x_monnam_tame } from './do_name.js';
+import { x_monnam_tame, Monnam } from './do_name.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
@@ -1587,6 +1587,15 @@ async function domove(dx, dy) {
     // C: after test_move — safemon displace/swap (attack already tried above)
     mtmp = mon_at(newx, newy);
     if (mtmp && is_safemon(mtmp)) {
+        // C ref: hack.c domove_swap_with_pet — mundisplaceable (leader/
+        // Oracle/priest/shk/gd) refuse; goodpos/trap-on-dest deferred.
+        if (mundisplaceable(mtmp)) {
+            await pline(`You stop.  ${Monnam(mtmp)} doesn't want to swap places.`);
+            if (game.context?.run) end_running();
+            game.context.move = 0;
+            nomul(0);
+            return;
+        }
         mtmp.mx = oldx;
         mtmp.my = oldy;
         // C ref: hack.c domove_swap_with_pet — x_monnam ARTICLE_YOUR

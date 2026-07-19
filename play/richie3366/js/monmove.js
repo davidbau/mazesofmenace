@@ -40,12 +40,14 @@ import {
     count_traps,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
+import { mattackm } from './mhitm.js';
 import { castmu, AD_SPEL, AD_CLRC } from './mcastu.js';
 import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from './vision.js';
 import {
     isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
     D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level, NOTONL,
+    ALLOW_U, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
@@ -53,8 +55,8 @@ import {
     STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
     STAIRS, LADDER, IRONBARS, WEB,
-    M_ATTK_HIT,
-    MON_FLOOR,
+    M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
+    MON_FLOOR, NORMAL_SPEED,
 } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import {
@@ -113,7 +115,7 @@ const AT_GAZE = 15;
 const AT_MAGC = 255;
 
 /** C ref: monst.h mon_offmap — mstate != MON_FLOOR */
-function mon_offmap(mon) {
+export function mon_offmap(mon) {
     return ((mon?.mstate | 0) !== MON_FLOOR);
 }
 
@@ -1160,6 +1162,65 @@ function m_balks_at_approaching(oldappr, mtmp, pdist) {
     return oldappr;
 }
 
+/**
+ * C ref: mondata.c sticks — AD_STCK, non-engulf AD_WRAP, or AT_HUGS.
+ */
+function sticks(ptr) {
+    const atks = ptr?.mattk || [];
+    let hasWrap = false;
+    let hasEngl = false;
+    for (const a of atks) {
+        const ad = a?.adtyp | 0;
+        const aa = a?.aatyp | 0;
+        if (ad === 19 /* AD_STCK */) return true;
+        if (aa === 6 /* AT_HUGS */) return true;
+        if (ad === 28 /* AD_WRAP */) hasWrap = true;
+        if (aa === 7 /* AT_ENGL */) hasEngl = true;
+    }
+    return hasWrap && !hasEngl;
+}
+
+/**
+ * C ref: monmove.c itsstuck — stuck grabber cannot walk away.
+ */
+async function itsstuck(mtmp) {
+    const u = game.u;
+    if (sticks(game.youmonst?.data) && mtmp === u?.ustuck && !u?.uswallow) {
+        await pline(`${Monnam(mtmp)} cannot escape from you!`);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: monmove.c m_move_aggress — mon-vs-mon at (x,y); empty mux image → DONE.
+ * Named omissions: bhitpos/notonhead polish.
+ */
+async function m_move_aggress(mtmp, x, y) {
+    let mstatus = 0; // M_ATTK_MISS
+    const mtmp2 = m_at(x, y);
+    if (mtmp2) {
+        mstatus = await mattackm(mtmp, mtmp2);
+    }
+    if ((mstatus & M_ATTK_AGR_DIED) || (mtmp.mhp | 0) < 1) return MMOVE_DIED;
+    if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+        && rn2(4) && mtmp2 && (mtmp2.movement | 0) > rn2(NORMAL_SPEED)) {
+        if ((mtmp2.movement | 0) > NORMAL_SPEED) mtmp2.movement -= NORMAL_SPEED;
+        else mtmp2.movement = 0;
+        mstatus = await mattackm(mtmp2, mtmp);
+        if (mstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
+    }
+    return MMOVE_DONE;
+}
+
+/**
+ * C ref: region.c m_in_out_region — can_enter/leave callbacks.
+ * Named: always allow until region callbacks are ported (gas clouds have none).
+ */
+function m_in_out_region(_mon, _x, _y) {
+    return true;
+}
+
 // C ref: monmove.c m_move() — pets → postmov(dog_move); else approach / track path
 export async function m_move(mtmp, after) {
     // ptr / can_* set after mintrap (C: mintrap can change mtmp->data;
@@ -1350,6 +1411,9 @@ export async function m_move(mtmp, after) {
         }
     }
     let mmoved = MMOVE_NOTHING;
+    let chi = -1;
+    // C: should_displace — MDISP last-resort; omitted → never prefer displace
+    const better_with_displacing = false;
 
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x;
@@ -1361,7 +1425,12 @@ export async function m_move(mtmp, after) {
 
         // C ref: monmove.c m_move — skip kicked loc before chcnt rn2
         if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
-        // Named: ALLOW_MDISP displace gate still deferred
+
+        // C: skip MDISP-only squares unless should_displace prefers them
+        if (m_at(nx, ny) && (mfp.info[i] & ALLOW_MDISP)
+            && !(mfp.info[i] & ALLOW_M) && !better_with_displacing) {
+            continue;
+        }
 
         if (appr !== 0) {
             for (let j = 0; j < jcnt; j++) {
@@ -1392,6 +1461,7 @@ export async function m_move(mtmp, after) {
             nix = nx;
             niy = ny;
             nidist = ndist;
+            chi = i;
             mmoved = MMOVE_MOVED;
         }
     }
@@ -1405,14 +1475,48 @@ export async function m_move(mtmp, after) {
         return postmov(mtmp, omx, omy, MMOVE_NOTHING, can_tunnel, can_unlock, can_open);
     }
 
+    // C ref: monmove.c m_move post-select — early returns before place
+    if (mmoved === MMOVE_MOVED && !u_at(nix, niy) && (await itsstuck(mtmp))) {
+        return MMOVE_DONE;
+    }
+
     // C: m_digweapon_check before place — may spend turn wielding dig tool
     if (await m_digweapon_check(mtmp, nix, niy)) {
         return MMOVE_DONE;
     }
 
-    // Attack-you square: C returns MMOVE_NOTHING (dochug falls through).
-    if (nix === game.u.ux && niy === game.u.uy) {
+    const chiInfo = (chi >= 0 ? mfp.info[chi] : 0) | 0;
+
+    // C: ALLOW_U → prefer mux/muy (confused attack / found you)
+    if (chiInfo & ALLOW_U) {
+        nix = mtmp.mux;
+        niy = mtmp.muy;
+    }
+    if (u_at(nix, niy)) {
+        mtmp.mux = game.u.ux;
+        mtmp.muy = game.u.uy;
         return MMOVE_NOTHING;
+    }
+
+    // C: ALLOW_M or stepping onto apparent hero image → mon-vs-mon (or DONE)
+    if ((chiInfo & ALLOW_M) !== 0
+        || (nix === mtmp.mux && niy === mtmp.muy)) {
+        return m_move_aggress(mtmp, nix, niy);
+    }
+
+    // C: ALLOW_MDISP → mdisplacem; body deferred → treat as failed displace
+    if ((chiInfo & ALLOW_MDISP) !== 0) {
+        // Named: mdisplacem body still deferred
+        return MMOVE_DONE;
+    }
+
+    if (!m_in_out_region(mtmp, nix, niy)) {
+        return MMOVE_DONE;
+    }
+
+    // C: ALLOW_ROCK + m_can_break_boulder → break without place (deferred)
+    if ((chiInfo & ALLOW_ROCK) !== 0) {
+        // Named: m_can_break_boulder / m_break_boulder deferred
     }
 
     // C: m_postmove_effect before place (Hezrou/Steam at old cell)
@@ -1427,6 +1531,7 @@ export async function m_move(mtmp, after) {
     mon_track_add(mtmp, omx, omy);
     return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
 }
+
 
 // C ref: monmove.c dochug()
 export async function dochug(mtmp) {

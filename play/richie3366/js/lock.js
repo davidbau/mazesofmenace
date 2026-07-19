@@ -14,7 +14,7 @@ import {
 } from './const.js';
 import { rnl, rn2 } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
-import { verysmall, nohands, passes_walls } from './monsters.js';
+import { verysmall, nohands, passes_walls, G_UNIQ } from './monsters.js';
 import {
     objects_at, place_object, stackobj, obj_extract_self, delobj,
 } from './mkobj.js';
@@ -737,7 +737,8 @@ function useup_invent(otmp) {
 }
 
 /**
- * C ref: mon.c wake_nearby — clear sleep/wait within ulevel*20.
+ * C ref: mon.c wake_nearby / wake_nearto_core — clear sleep/wait within
+ * ulevel*20. G_UNIQ keep STRAT_WAITMASK (quest leaders stay meditating).
  * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
  */
 function wake_nearby(_petcall) {
@@ -751,7 +752,10 @@ function wake_nearby(_petcall) {
         const dy = (mtmp.my | 0) - y;
         if (distance === 0 || dx * dx + dy * dy < distance) {
             mtmp.msleeping = 0;
-            if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+            const geno = mtmp.data?.geno | 0;
+            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
+                mtmp.mstrategy &= ~STRAT_WAITMASK;
+            }
         }
     }
     void _petcall;

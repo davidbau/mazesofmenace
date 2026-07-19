@@ -30,6 +30,7 @@ import {
     ART_ORB_OF_DETECTION,
     ART_HEART_OF_AHRIMAN,
     ART_MITRE_OF_HOLINESS,
+    ART_EYE_OF_THE_AETHIOPICA,
 } from './generated/artifacts_data.js';
 import { game } from './gstate.js';
 import {
@@ -515,6 +516,12 @@ export const roles = [
         lgod: 'Ptah',
         ngod: 'Thoth',
         cgod: 'Anhur',
+        // C role.c Wizard: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Lonely Tower',
+        intermed: 'the Tower of Darkness',
+        ldrnum: pm('PM_NEFERET_THE_GREEN'),
+        guardnum: pm('PM_APPRENTICE'),
+        questarti: ART_EYE_OF_THE_AETHIOPICA,
         attrbase: [7, 10, 7, 7, 7, 7],
         attrdist: [10, 30, 10, 20, 20, 10],
         xlev: 12,

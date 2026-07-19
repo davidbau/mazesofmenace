@@ -1961,11 +1961,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
             && !goodpos(x, y, { data: ptr }, gpflags));
     }
 
+    // C: *mtmp = cg.zeromonst — mux/muy stay 0 until set_apparxy (not spawn xy)
     const mtmp = {
         mx: x,
         my: y,
-        mux: x,
-        muy: y,
+        mux: 0,
+        muy: 0,
         data: ptr,
         mnum: ptr.mndx,
         mhp: 1,
