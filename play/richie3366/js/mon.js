@@ -24,7 +24,7 @@ import {
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
-    is_undead,
+    is_undead, amphibious, can_teleport, MR_FIRE,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -34,7 +34,7 @@ import {
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
-import { enexto, rloc_to } from './teleport.js';
+import { enexto, rloc_to, rloc, tele_restrict } from './teleport.js';
 import { may_dig } from './dig.js';
 import { newsym, pline, sensemon, canseemon } from './display.js';
 import { online2 } from './hacklib.js';
@@ -47,7 +47,7 @@ import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
 import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
 import { in_your_sanctuary } from './priest.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, is_pool, is_lava } from './hack.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
@@ -433,11 +433,13 @@ function decide_to_shapeshift(mon) {
 
 /**
  * C ref: mon.c m_calcdistress — once-per-turn mon timeouts / regen.
- * Named omissions: mmove==0 minliquid.
  */
 function m_calcdistress(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) < 1) return;
-    // mmove==0 minliquid deferred
+    // C: mmove==0 must still check liquid once/turn
+    if ((mtmp.data?.mmove | 0) === 0) {
+        if (minliquid(mtmp)) return;
+    }
     mon_regen(mtmp, false);
     if (ismnum(mtmp.cham)) decide_to_shapeshift(mtmp);
     were_change(mtmp);
@@ -704,6 +706,101 @@ function m_in_air(mtmp) {
     return !!(is_clinger(ptr) && mtmp.mundetected);
 }
 
+/** C ref: mondata.h cant_drown */
+function cant_drown(ptr) {
+    return is_swimmer(ptr) || amphibious(ptr) || breathless(ptr);
+}
+
+/** C ref: monst.h resists_fire — mresists|mintrinsics|mextrinsics MR_FIRE. */
+function resists_fire(mtmp) {
+    const bits = (mtmp?.data?.mresists | 0)
+        | (mtmp?.mintrinsics | 0)
+        | (mtmp?.mextrinsics | 0);
+    return !!(bits & MR_FIRE);
+}
+
+/**
+ * C ref: mon.c mondead (lava/pool death subset) — no corpse; drop invent deferred.
+ * Named omissions: lifesave, sad_feeling, unmap_object glyph_is_invisible,
+ * full relobj_on_death chain.
+ */
+function mondead_liquid(mtmp) {
+    mtmp.mhp = 0;
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
+    if (game.fmon) {
+        const i = game.fmon.indexOf(mtmp);
+        if (i >= 0) game.fmon.splice(i, 1);
+    }
+    if (mx > 0) newsym(mx, my);
+}
+
+/**
+ * C ref: mon.c minliquid / minliquid_core — liquid compatibility; 1=died.
+ * Named omissions: gremlin split_mon/dryup; iron-golem rust d(2,6);
+ * steed Flying/Levitation gate; fire_damage_chain / water_damage_chain;
+ * deal_with_overcrowding; xkilled(!mon_moving); engulfing_u drown flush;
+ * fountain-only gremlin arm; pline death messages.
+ */
+export function minliquid(mtmp) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return 1;
+    const ptr = mtmp.data;
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    const waterwall = IS_WATERWALL(game.level?.at?.(mx, my)?.typ);
+    const inpool = is_pool(mx, my)
+        && (!(is_flyer(ptr) || is_floater(ptr)) || Is_waterlevel(game.u?.uz));
+    const inlava = is_lava(mx, my)
+        && !(is_flyer(ptr) || is_floater(ptr));
+
+    // steed Flying/Levitation deferred — usteed rare on this path
+    // gremlin split_mon / iron-golem rust / fountain arms deferred
+
+    if (inlava) {
+        if (!is_clinger(ptr) && !likes_lava(ptr)) {
+            if (can_teleport(ptr) && !tele_restrict(mtmp)) {
+                if (rloc(mtmp, 0)) return 0;
+            }
+            if (!resists_fire(mtmp)) {
+                // C: mon_moving → mondead (no corpse); else xkilled
+                mondead_liquid(mtmp);
+                return 1;
+            }
+            mtmp.mhp = (mtmp.mhp | 0) - 1;
+            if ((mtmp.mhp | 0) <= 0) {
+                mondead_liquid(mtmp);
+                return 1;
+            }
+            // fire_damage_chain deferred; try escape teleport
+            if (!m_in_air(mtmp) && !likes_lava(ptr)) {
+                if (!rloc(mtmp, 0)) {
+                    // deal_with_overcrowding deferred
+                }
+            }
+            return 0;
+        }
+    } else if (inpool || waterwall) {
+        if ((waterwall || !is_clinger(ptr)) && !cant_drown(ptr)) {
+            if (can_teleport(ptr) && !tele_restrict(mtmp)) {
+                if (rloc(mtmp, 0)) return 0;
+            }
+            // C: mon_moving → mondied (corpse ok); pool corpse deferred → mondead
+            mondead_liquid(mtmp);
+            return 1;
+        }
+    } else if (ptr?.mlet === 'S_EEL' && !Is_waterlevel(game.u?.uz)
+        && !breathless(ptr)) {
+        if ((mtmp.mhp | 0) > 1 && rn2(mtmp.mhp | 0) > rn2(8)) {
+            mtmp.mhp = (mtmp.mhp | 0) - 1;
+        }
+        // monflee(mtmp, 2, FALSE, FALSE) — import cycle; set flee bits
+        mtmp.mflee = 1;
+        if (!(mtmp.mfleetim | 0) || (mtmp.mfleetim | 0) < 2) mtmp.mfleetim = 2;
+    }
+    return 0;
+}
+
 // C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
 // Named omissions still: mm_aggression/MDISP;
 // eel nexttry; can_fog in cant_squeeze_thru;
@@ -931,8 +1028,13 @@ async function movemon_singlemon(mtmp) {
     mtmp.movement -= NORMAL_SPEED;
     if (mtmp.movement >= NORMAL_SPEED) game._somebody_can_move = true;
 
+    // C: vision_recalc / clear_bypasses / clear_splitobjs deferred
+    // C: minliquid before hider/Conflict/dochug — lava/pool may spend the turn
+    if (minliquid(mtmp)) return false;
+
+    // C: I_SPECIAL equip re-wear deferred
     // C: is_hider — restrap may hide again; disguised/undetected skip dochug
-    // (eel hideunder / minliquid / equip I_SPECIAL deferred)
+    // (eel hideunder rn2(4) deferred)
     if (is_hider(mtmp.data)) {
         if (restrap(mtmp)) return false;
         const ap = M_AP_TYPE(mtmp);

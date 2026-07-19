@@ -15,6 +15,7 @@ import {
     mfndpos,
     m_at,
     m_avoid_kicked_loc,
+    mnexto,
 } from './mon.js';
 import {
     is_wanderer, is_armed, passes_walls, nohands, verysmall,
@@ -85,6 +86,7 @@ const BOULDER = objectNames.indexOf('BOULDER');
 const CORPSE = objectNames.indexOf('CORPSE');
 const AKLYS = objectNames.indexOf('AKLYS');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_TENGU = monsterNames.indexOf('PM_TENGU');
 const PM_LEPRECHAUN = monsterNames.indexOf('PM_LEPRECHAUN');
 const PM_ETTIN = monsterNames.indexOf('PM_ETTIN');
 const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
@@ -1221,6 +1223,24 @@ export async function m_move(mtmp, after) {
             );
         }
         // xm === -1: fall through to normal AI (follow outside shop)
+    }
+
+    // C ref: monmove.c m_move — Tengu nature teleport before not_special.
+    // !rn2(5) is evaluated for every Tengu (short-circuit after mndx).
+    if ((ptr?.mndx ?? -1) === PM_TENGU && !rn2(5) && !mtmp.mcan
+        && !tele_restrict(mtmp)) {
+        // C: mhp < 7 || peaceful || rn2(2) → rloc; else mnexto
+        if ((mtmp.mhp | 0) < 7 || mtmp.mpeaceful || rn2(2)) {
+            rloc(mtmp, 0x02); // RLOC_MSG
+        } else {
+            mnexto(mtmp, 0x02);
+        }
+        return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
+    }
+
+    // C: not_special — other monsters keep moving while hero is swallowed
+    if (game.u?.uswallow && !mtmp.mflee && game.u?.ustuck !== mtmp) {
+        return MMOVE_MOVED;
     }
 
     let ggx = mtmp.mux;

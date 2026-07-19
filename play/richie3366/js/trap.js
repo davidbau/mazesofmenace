@@ -43,7 +43,8 @@ import {
     STONE_RES, FAILEDUNTRAP,
     NO_TRAP, TRAPNUM,
     is_hole, is_pit, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
-    IS_ROOM, IS_WALL, IS_AIR, SDOOR,
+    IS_ROOM, IS_WALL, IS_AIR, IS_FURNITURE, SDOOR, STAIRS, LADDER, DRAWBRIDGE_UP,
+    MAGIC_PORTAL, LEVEL_TELEP,
     D_CLOSED, D_LOCKED, D_BROKEN,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
@@ -309,6 +310,19 @@ function is_pool_or_lava(x, y) {
     return IS_POOL(typ) || IS_LAVA(typ);
 }
 
+/** C ref: trap.h undestroyable_trap — portal / vibrating square. */
+function undestroyable_trap(ttyp) {
+    return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+}
+
+/**
+ * C ref: rm.h CAN_OVERWRITE_TERRAIN — stairs/ladder unless debug override.
+ * Named omission: iflags.debug_overwrite_stairs (always false here).
+ */
+function CAN_OVERWRITE_TERRAIN(ttyp) {
+    return ttyp !== LADDER && ttyp !== STAIRS;
+}
+
 // C ref: monmove.c closed_door
 function closed_door(x, y) {
     const loc = game.level?.at?.(x, y);
@@ -441,13 +455,30 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
 // pool/lava in is_pool_or_lava, launch_obj trigger; mongone full body.
 // TELEP teledest may be set by caller after create (themerms make_a_trap).
 export function maketrap(x, y, typ) {
+    // C ref: trap.c maketrap — reject door/chest map traps; terrain gates.
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
+    if (!isok(x, y)) return null;
 
     let ttmp = t_at(x, y);
     let oldplace = false;
     if (ttmp) {
+        // C: undestroyable existing trap → refuse overwrite
+        if (undestroyable_trap(ttmp.ttyp)) return null;
         oldplace = true;
     } else {
+        const lev = game.level?.at?.(x, y);
+        const ltyp = lev?.typ;
+        // C: stairs/ladder, pool/lava, furniture (except PIT/HOLE),
+        // drawbridge+portal, air/cloud (except MAGIC_PORTAL).
+        // Named omission: LEVEL_TELEP && single_level_branch (Knox).
+        if (ltyp == null
+            || !CAN_OVERWRITE_TERRAIN(ltyp)
+            || is_pool_or_lava(x, y)
+            || (IS_FURNITURE(ltyp) && typ !== PIT && typ !== HOLE)
+            || (ltyp === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
+            || (IS_AIR(ltyp) && typ !== MAGIC_PORTAL)) {
+            return null;
+        }
         ttmp = {
             ttyp: typ,
             tx: x,
