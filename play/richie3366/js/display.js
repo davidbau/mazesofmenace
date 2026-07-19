@@ -28,6 +28,9 @@ import {
     In_quest,
     In_endgame,
     Is_knox_level,
+    Is_rogue_level,
+    PRIMARYSET,
+    ROGUESET,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
     M_AP_OBJECT, M_AP_TYPE,
@@ -847,9 +850,57 @@ const WALL_GLYPH_DEC = {
     [S_TRWALL]: { ch: 't', color: NO_COLOR, dec: true },
 };
 
-/** C: gs.symset[].handling == H_DEC after OPTIONS=symset:DECgraphics. */
+/**
+ * C: gs.symset[].handling == H_DEC after OPTIONS=symset:DECgraphics.
+ * Rogue graphics (assign_graphics ROGUESET) replace showsyms with the
+ * ASCII rogue set — DEC Primary is not active while currentgraphics is
+ * ROGUESET (symbols.c assign_graphics / do.c goto_level).
+ */
 function use_decgraphics() {
+    if ((game.currentgraphics | 0) === ROGUESET) return false;
     return !!game.iflags?.decgraphics;
+}
+
+/**
+ * C ref: symbols.c assign_graphics — swap showsyms between Primary and
+ * Rogue sets. JS keeps DEC/ASCII via use_decgraphics + goldsym; full
+ * showsyms table / RogueIBM color sets deferred.
+ */
+export function assign_graphics(whichset) {
+    const set = (whichset | 0) === ROGUESET ? ROGUESET : PRIMARYSET;
+    game.currentgraphics = set;
+    if (!game.iflags) game.iflags = {};
+    if (!game.gs) game.gs = {};
+    if (!game.gs.symset) {
+        game.gs.symset = [
+            { name: null, handling: 0, nocolor: 0 },
+            { name: null, handling: 0, nocolor: 0 },
+        ];
+    }
+    if (set === ROGUESET) {
+        // C init_rogue_symbols: default Rogue set nocolor=1; gold = GEM_SYM '*'
+        // (drawing.c def_r_oc_syms[COIN_CLASS]).
+        game.gs.symset[ROGUESET].nocolor = 1;
+        game._goldsym = '*';
+    } else {
+        game._goldsym = '$';
+    }
+}
+
+/**
+ * C ref: botl.c check_gold_symbol — invis_goldsym when gold showsym ≤ ' '.
+ */
+export function check_gold_symbol() {
+    if (!game.iflags) game.iflags = {};
+    const goldch = game._goldsym || '$';
+    const code = typeof goldch === 'string' ? goldch.charCodeAt(0) : (goldch | 0);
+    game.iflags.invis_goldsym = code <= 0x20;
+}
+
+/** C reset_glyphmap: Rogue level without RogueIBM color → strip all color. */
+function rogue_nocolor_active() {
+    return (game.currentgraphics | 0) === ROGUESET
+        && (game.gs?.symset?.[ROGUESET]?.nocolor | 0) !== 0;
 }
 
 function wall_glyph_table() {
@@ -1058,14 +1109,16 @@ function wall_glyph(loc) {
     const g = tab[idx] || tab[S_STONE];
     if (idx === S_STONE) return g;
     // C ref: display.h cmap_walls_to_glyph + display.c wallcolors[] /
-    // reset_glyphmap wall_color(...). Source wallcolors[] are all
-    // CLR_GRAY (tty → NO_COLOR). Recorder observably emits SGR 34
-    // (CLR_BLUE) for Sokoban walls under symset:DECgraphics (D-0567 /
-    // seed0373) but ASCII Sokoban (^V→soko1, seed0108) records
-    // NO_COLOR walls — keep blue only when DECgraphics is on.
+    // reset_glyphmap wall_color(...). Source wallcolors[] default
+    // CLR_GRAY; intended table (comment): main GRAY, mines BROWN,
+    // gehennom RED, knox GRAY, sokoban BRIGHT_BLUE. Recorder matches
+    // mines BROWN (D-0283), Gehennom RED (D-0801), Sokoban blue only
+    // under DECgraphics (D-0729).
     let color = CLR_GRAY;
-    if (In_mines(game.u?.uz)) color = CLR_BROWN;
-    else if (In_sokoban(game.u?.uz) && use_decgraphics()) color = CLR_BLUE;
+    const uz = game.u?.uz;
+    if (In_mines(uz)) color = CLR_BROWN;
+    else if (game.dungeons?.[uz?.dnum | 0]?.flags?.hellish) color = CLR_RED;
+    else if (In_sokoban(uz) && use_decgraphics()) color = CLR_BLUE;
     return { ch: g.ch, color, dec: g.dec };
 }
 
@@ -1220,6 +1273,11 @@ export function terrain_glyph(loc, x, y) {
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+    // C reset_glyphmap: (GMAP_ROGUELEVEL && !has_rogue_color) → NO_COLOR
+    if (rogue_nocolor_active()) {
+        color = NO_COLOR;
+        decgfx = false;
+    }
     loc.disp_ch = ch;
     loc.disp_color = tty_map_color(color);
     loc.disp_decgfx = !!decgfx;
@@ -2176,8 +2234,10 @@ function _statusLine2() {
     if (hp > 9999) hp = 9999;
     let hpmax = polyd ? (u.mhmax | 0) : (u.uhpmax | 0);
     if (hpmax > 9999) hpmax = 9999;
-    // C: describe_level(dloc, 1) includes trailing space; gold via eos
-    let s = `${describe_level(1)}$:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10}`;
+    // C: describe_level(dloc, 1) includes trailing space; gold via
+    // showsyms[COIN_CLASS] (Rogue set → '*', else '$'; invis → '$').
+    const goldch = game.iflags?.invis_goldsym ? '$' : (game._goldsym || '$');
+    let s = `${describe_level(1)}${goldch}:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10}`;
     if (polyd) {
         const mdat = mons(u.umonnum | 0);
         s += ` HD:${mdat?.mlevel | 0}`;

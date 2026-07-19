@@ -20,13 +20,13 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
-         WT_TOOMUCH_DIAGONAL } from './const.js';
+         } from './const.js';
 import { FOOD_CLASS } from './objects.js';
-import { dist2 } from './mon.js';
+import { dist2, bad_rock, cant_squeeze_thru } from './mon.js';
 import { vision_recalc, couldsee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
-    doprring, dopramulet, doprtool, inv_weight, weight_cap,
+    doprring, dopramulet, doprtool,
 } from './invent.js';
 import { dovspell, docast, num_spells } from './spell.js';
 import { doeat } from './eat.js';
@@ -379,19 +379,16 @@ function travel_avoids_cell(x, y) {
 
 /**
  * C ref: hack.c test_move — diagonal through bad_rock flanks needs
- * cant_squeeze_thru. Hero load: inv_weight()+weight_cap() > WT_TOOMUCH_DIAGONAL.
- * Named omissions: Passes_walls / amorphous / Sokoban case 3 / worm_cross.
+ * cant_squeeze_thru (load / bigmonst / Sokoban). worm_cross deferred.
  */
 function travel_blocks_tight_diag(ux, uy, nx, ny) {
     const dx = (nx - ux) | 0;
     const dy = (ny - uy) | 0;
     if (!dx || !dy) return false;
-    const flankA = game.level?.at(ux, ny);
-    const flankB = game.level?.at(nx, uy);
-    if (!flankA || !IS_OBSTRUCTED(flankA.typ)) return false;
-    if (!flankB || !IS_OBSTRUCTED(flankB.typ)) return false;
-    const load = inv_weight() + weight_cap();
-    return load > WT_TOOMUCH_DIAGONAL;
+    const ym = game.youmonst;
+    if (!ym?.data) return false;
+    if (!bad_rock(ym.data, ux, ny) || !bad_rock(ym.data, nx, uy)) return false;
+    return cant_squeeze_thru(ym) !== 0;
 }
 
 // C ref: hack.c doorless_door — only D_NODOOR / D_BROKEN (no intact door)
@@ -1561,6 +1558,31 @@ async function domove(dx, dy) {
         // out-of-bounds move_out_of_bounds mention_walls deferred
         game.context.move = 0;
         return;
+    }
+
+    // C ref: hack.c test_move — after dest obstacles, before boulder:
+    // dx&&dy && bad_rock flanks → cant_squeeze_thru. Case 3 = Sokoban
+    // "cannot pass that way." Must not run when dest is IS_OBSTRUCTED
+    // (C returns earlier in that arm — often silent without mention_walls).
+    if (u.dx && u.dy) {
+        const ym = game.youmonst;
+        if (ym?.data
+            && bad_rock(ym.data, u.ux, newy)
+            && bad_rock(ym.data, newx, u.uy)) {
+            const why = cant_squeeze_thru(ym);
+            if (why) {
+                if (why === 3) {
+                    await pline('You cannot pass that way.');
+                } else if (why === 2) {
+                    await pline('You are carrying too much to get through.');
+                } else if (why === 1) {
+                    await pline('Your body is too large to fit through.');
+                }
+                if (game.context?.run) end_running();
+                game.context.move = 0;
+                return;
+            }
+        }
     }
 
     // C ref: hack.c test_move — sobj_at(BOULDER) → moverock before advance

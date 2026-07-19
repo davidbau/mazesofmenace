@@ -48,6 +48,7 @@ import { were_change } from './were.js';
 import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
 import { in_your_sanctuary } from './priest.js';
 import { in_rooms, is_pool, is_lava } from './hack.js';
+import { inv_weight, weight_cap } from './invent.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
@@ -86,7 +87,7 @@ function may_passwall(x, y) {
  * C ref: hack.c bad_rock — obstructed (or Sokoban boulder) the form
  * cannot dig or pass through.
  */
-function bad_rock(mdat, x, y) {
+export function bad_rock(mdat, x, y) {
     const Sokoban = !!(game.level?.flags?.sokoban_rules
         || game.level?.flags?.sokoban
         || game.Sokoban);
@@ -106,25 +107,46 @@ function bad_rock(mdat, x, y) {
 
 /**
  * C ref: hack.c cant_squeeze_thru — nonzero = cannot fit a tight diagonal.
- * 1=too big, 2=load, 3=Sokoban (hero only). can_fog vampshifter deferred.
+ * 1=too big, 2=load, 3=Sokoban (hero only). Returns 0 if can squeeze.
+ * Named omission: can_fog (vampshifter) for bigmonst exemption.
  */
-function cant_squeeze_thru(mon) {
+export function cant_squeeze_thru(mon) {
     const ptr = mon?.data;
-    if (passes_walls(ptr)) return 0;
+    const is_u = mon === game.youmonst;
+    // C: (mon == &youmonst) ? Passes_walls : passes_walls(ptr)
+    if (is_u) {
+        const u = game.u;
+        if (u?.Passes_walls || u?.HPasses_walls || u?.EPasses_walls) return 0;
+    } else if (passes_walls(ptr)) {
+        return 0;
+    }
     const slithy = !!((ptr?.mflags1 ?? 0) & M1_SLITHY);
-    // Named omission: can_fog (vampshifter) — treat as false.
+    // Named omission: can_fog(mon) — treat as false until exported.
     if (bigmonst(ptr)
         && !(amorphous(ptr) || is_whirly(ptr) || noncorporeal(ptr)
             || slithy /* || can_fog(mon) */)) {
         return 1;
     }
-    let curload = 0;
-    for (let obj = mon.minvent; obj; obj = obj.nobj) {
-        if (obj.otyp !== BOULDER || !throws_rocks(ptr)) {
-            curload += obj.owt || 0;
+    // C: hero uses inv_weight()+weight_cap(); mon uses curr_mon_load
+    let amt;
+    if (is_u) {
+        amt = inv_weight() + weight_cap();
+    } else {
+        amt = 0;
+        for (let obj = mon.minvent; obj; obj = obj.nobj) {
+            if (obj.otyp !== BOULDER || !throws_rocks(ptr)) {
+                amt += obj.owt || 0;
+            }
         }
     }
-    if (curload > WT_TOOMUCH_DIAGONAL) return 2;
+    if (amt > WT_TOOMUCH_DIAGONAL) return 2;
+
+    // C: Sokoban restriction applies to hero only
+    const Sokoban = !!(game.level?.flags?.sokoban_rules
+        || game.level?.flags?.sokoban
+        || game.Sokoban);
+    if (is_u && Sokoban) return 3;
+
     return 0;
 }
 

@@ -207,6 +207,23 @@ async function is_pure(talk) {
 }
 
 /**
+ * C ref: quest.c ok_to_quest — external hook for do.c level-change check.
+ * Sync: is_pure(FALSE) (no wizard yn talk arm).
+ */
+export function ok_to_quest() {
+    const qs = game.quest_status || {};
+    if (qs.killed_leader) return true;
+    if (!(qs.got_quest || qs.got_thanks)) return false;
+    const u = game.u;
+    if (!u?.ualign) return false;
+    const original = u.ualignbase?.original ?? u.ualign.type ?? 0;
+    const currentBase = u.ualignbase?.current ?? u.ualign.type ?? 0;
+    return (u.ualign.record | 0) >= MIN_QUEST_ALIGN
+        && (u.ualign.type | 0) === (original | 0)
+        && (currentBase | 0) === (original | 0);
+}
+
+/**
  * C ref: quest.c expulsion — schedule_goto parent of Quest branch.
  * Named omissions: UTOTYPE_RMPORTAL seal path deltrap / remdun_mapseen;
  * livelog.

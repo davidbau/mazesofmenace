@@ -17,7 +17,7 @@ import {
 } from './const.js';
 import { seetrap } from './trap.js';
 import { COIN_CLASS } from './objects.js';
-import { pline, Norep, docrt, flush_screen, flush_topl_more, newsym, mark_topline_prompt } from './display.js';
+import { pline, Norep, docrt, flush_screen, flush_topl_more, newsym, mark_topline_prompt, assign_graphics, check_gold_symbol } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import { clear_light_sources, relight_monsters } from './light.js';
@@ -53,10 +53,11 @@ import { objectNames } from './objects.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { PM_TOURIST, PM_ROGUE } from './generated/monsters_data.js';
 import { dismount_steed } from './steed.js';
-import { onquest } from './quest.js';
-import { In_quest, In_endgame, In_mines, In_sokoban } from './const.js';
+import { onquest, ok_to_quest } from './quest.js';
+import { In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level, PRIMARYSET, ROGUESET } from './const.js';
 import { resurrect } from './wizard.js';
 import { bones_include_name } from './bones.js';
+import { olfaction } from './monsters.js';
 
 function Blind() {
     const u = game.u || {};
@@ -211,6 +212,16 @@ function on_level(a, b) {
     return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
 }
 
+/** C ref: dungeon.h In_hell — dungeon hellish flag. */
+function In_hell(lev) {
+    return !!(game.dungeons?.[lev?.dnum | 0]?.flags?.hellish);
+}
+
+/** C ref: dungeon.h Is_valley — Lcheck(&valley_level). */
+function Is_valley(lev) {
+    return on_level(lev, game.valley_level);
+}
+
 function assign_level(dest, src) {
     dest.dnum = src.dnum | 0;
     dest.dlevel = src.dlevel | 0;
@@ -316,14 +327,19 @@ async function selftouch_stair_fall(_arg) {
  * pickup(1).
  * Ported: portal MAGIC_PORTAL find / missing → u_on_rndspot (D-0594).
  * Ported: quest entrance `com_pager(quest_portal*)` (D-0650).
- * Deferred: binary NHFILE, mysterious force, quest gate seal RMPORTAL, endgame
- * astral `final_level` / migrating-Wizard resurrect arm, trap-door fall
- * damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE, Gehennom valley plines,
- * temperature_change_msg / hellish_smoke (D-0559 hot/cold); Flying/Punished
- * climb variants, Punished `drag_down`/`ballrelease`, full `selftouch`
- * petrify, u_collide_m full limbo. Ported: In_quest `onquest`; In_endgame
- * `newdungeon`+amulet `resurrect` new-Wizard makemon + appear Norep;
- * `familiar_level_msg` via `bones_include_name` (D-0577).
+ * Ported: quest-home gate — on qstart && !newdungeon && !ok_to_quest()
+ * → "mysterious force prevents you from descending" (D-0798).
+ * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
+ * RMPORTAL, endgame astral `final_level` / migrating-Wizard resurrect arm,
+ * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
+ * ACH_HELL / MICRO display_nhwindow after Valley odor;
+ * Flying/Punished climb variants, Punished `drag_down`/`ballrelease`, full
+ * `selftouch` petrify, u_collide_m full limbo. Ported: In_quest `onquest`;
+ * In_endgame `newdungeon`+amulet `resurrect` new-Wizard makemon + appear
+ * Norep; `familiar_level_msg` via `bones_include_name` (D-0577);
+ * Gehennom Valley arrival plines + `gehennom_entered` (D-0801);
+ * hellish_smoke smell/sense smoke + heat/smoke gone (D-0801);
+ * temperature_change_msg hot/cold (D-0559).
  */
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
@@ -337,8 +353,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const new_ledger = ledger_no(newlevel);
     if (new_ledger <= 0) return; // C: done(ESCAPED)
 
-    if (on_level(newlevel, u.uz)) return;
-
     // C: do.c — tutorial(TRUE/FALSE) via nhcore when crossing tutorial branch.
     if (newdungeon) {
         if (In_tutorial(newlevel)) {
@@ -350,6 +364,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             up = false; // C: re-enter level 1 as if starting new game
         }
     }
+
+    // C: prevent leaving quest Home deeper in-branch until ok_to_quest
+    // (leader assigned / thanks / killed_leader). Same-dungeon only.
+    // Named omission: Gehennom amulet mysteryforce arm above this gate.
+    if (on_level(u.uz, game.qstart_level) && !newdungeon && !ok_to_quest()) {
+        await pline('A mysterious force prevents you from descending.');
+        return;
+    }
+
+    if (on_level(newlevel, u.uz)) return;
 
     // C: if (!iflags.nofollowers) keepdogs(FALSE)
     if (!game.iflags?.nofollowers) keepdogs(false);
@@ -403,6 +427,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             dndest: snapDest(game.dndest),
         };
     }
+
+    // C: do.c goto_level — Rogue↔Primary showsyms before u.uz reassignment
+    if (Is_rogue_level(newlevel) || Is_rogue_level(u.uz)) {
+        assign_graphics(Is_rogue_level(newlevel) ? ROGUESET : PRIMARYSET);
+    }
+    check_gold_symbol();
 
     assign_level(u.uz0 || (u.uz0 = { dnum: 0, dlevel: 0 }), u.uz);
     assign_level(u.uz, newlevel);
@@ -627,7 +657,30 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
     // C: deliver_splev_message() before endgame/quest arrival arms
     await deliver_splev_message();
-    // C: Gehennom Valley plines deferred; familiar before endgame/quest
+    // C: do.c goto_level — first entry into hellish dungeon
+    // (!In_hell(uz0) && Inhell). Valley gets three arrival plines that
+    // force --More-- after dfr_post_msg materialize (D-0801).
+    {
+        const inHellNow = In_hell(u.uz);
+        const wasInHell = In_hell(u.uz0);
+        if (!wasInHell && inHellNow) {
+            if (Is_valley(u.uz)) {
+                await pline('You arrive at the Valley of the Dead...');
+                await pline('The odor of burnt flesh and decay pervades the air.');
+                // C: Soundeffect then You_hear; Deaf/Underwater deferred
+                if (!(u.Deaf || u.HDeaf || u.EDeaf)) {
+                    await pline('You hear groans and moans everywhere.');
+                }
+            }
+            // ACH_HELL deferred
+        }
+        // C: bypass Valley stair → mark gehennom_entered
+        if (inHellNow && !Is_valley(u.uz)) {
+            if (!u.uevent) u.uevent = {};
+            u.uevent.gehennom_entered = 1;
+        }
+    }
+    // C: familiar after Valley / before endgame/quest arms
     if (familiar) await familiar_level_msg();
     // C: if (In_endgame) { … else if (newdungeon && amulet) resurrect(); }
     //     else if (In_quest) onquest();
@@ -643,7 +696,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } else if (In_mines(u.uz) || In_sokoban(u.uz)) {
         // ACH_MINE / ACH_SOKO deferred (no RNG)
     } else {
-        // Is_knox alarm / Is_rogue_level / Is_bigroom ACH deferred
+        // C: new && Is_rogue_level → primitive-world pline (forces --More--
+        // after dfr_post_msg materialize). Is_knox alarm / Is_bigroom ACH
+        // deferred.
+        if (madeNew && Is_rogue_level(u.uz)) {
+            await pline('You enter what seems to be an older, more primitive world.');
+        }
         // C: main dungeon quest-entrance telepathy from leader
         if (!In_quest(u.uz0) && at_dgn_entrance('The Quest')
             && !(u.uevent?.qcompleted || u.uevent?.qexpelled
@@ -699,7 +757,12 @@ async function hellish_smoke_mesg() {
     if (temp) {
         await pline(`It is ${temp > 0 ? 'hot' : 'cold'} here.`);
     }
-    // C: In_hell && temperature > 0 → smell/sense smoke — deferred for endgame
+    // C: In_hell && temperature > 0 → You smell/sense smoke...
+    if (In_hell(game.u?.uz) && temp > 0) {
+        const data = game.youmonst?.data;
+        const verb = olfaction(data) ? 'smell' : 'sense';
+        await pline(`You ${verb} smoke...`);
+    }
 }
 
 /**
@@ -711,8 +774,9 @@ async function temperature_change_msg(prev_temperature) {
     if (temp) {
         await hellish_smoke_mesg();
     } else if (prev_temperature > 0) {
-        // C: In_hell(&u.uz0) ? "and smoke are" : "is" — endgame leaves use "is"
-        await pline('The heat is gone.');
+        // C: In_hell(&u.uz0) ? "and smoke are" : "is"
+        const smoke = In_hell(game.u?.uz0);
+        await pline(`The heat ${smoke ? 'and smoke are' : 'is'} gone.`);
     } else if (prev_temperature < 0) {
         await pline('You are out of the cold.');
     }

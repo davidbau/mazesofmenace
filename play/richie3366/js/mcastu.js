@@ -3,12 +3,13 @@
 //         spell_would_be_useless.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, d } from './rng.js';
 import { couldsee } from './vision.js';
 import {
     M_ATTK_MISS, M_ATTK_HIT, MFAST,
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
 } from './const.js';
+import { mon_adjust_speed } from './muse.js';
 
 // C ref: mcastu.h MONSPELL — unified spell ids
 export const MCAST_PSI_BOLT = 0;
@@ -156,10 +157,8 @@ function choose_monster_spell(mtmp, adtyp) {
 
 /**
  * C ref: mcastu.c castmu — spell selection + undirected early-out for
- * dochug non-attack cast. Successful undirected spell bodies (cure/haste/
- * disappear/insects/…) deferred → return MISS after choose when directed
- * or useless; if undirected+useful would cast, burn mspec_used + fumble
- * rn2 and return HIT without effect bodies (named omission).
+ * dochug non-attack cast. Burns mspec_used + fumble rn2; applies
+ * HASTE_SELF / CURE_SELF (D-0796). Other mcast_spell bodies deferred.
  *
  * @param {object} mtmp
  * @param {{ adtyp: number }} mattk
@@ -205,8 +204,31 @@ export function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         return M_ATTK_MISS;
     }
 
-    // Spell effect bodies deferred (CURE_SELF / HASTE_SELF / DISAPPEAR / …)
-    // Named omission: mcast_spell effects + directed attack spells.
+    // C ref: mcastu.c mcast_spell — undirected bodies used by peaceful
+    // quest guardians (dochug cast-before-move). Directed attack spells
+    // and remaining undirected (DISAPPEAR / INSECTS / AGGRAVATION / …)
+    // still deferred.
+    if (adtyp === AD_SPEL || adtyp === AD_CLRC) {
+        switch (spellnum) {
+        case MCAST_HASTE_SELF:
+            // C: mon_adjust_speed(mtmp, 1, NULL) — permspeed/mspeed MFAST
+            mon_adjust_speed(mtmp, 1, null);
+            break;
+        case MCAST_CURE_SELF:
+            // C: m_cure_self — healmon(mtmp, d(3,6), 0) when wounded
+            if ((mtmp.mhp | 0) < (mtmp.mhpmax | 0)) {
+                mtmp.mhp = Math.min(
+                    (mtmp.mhpmax | 0),
+                    (mtmp.mhp | 0) + d(3, 6),
+                );
+            }
+            break;
+        default:
+            // Named omission: other mcast_spell cases
+            break;
+        }
+    }
+
     return M_ATTK_HIT;
 }
 

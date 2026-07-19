@@ -12,6 +12,7 @@ import {
     INTRINSIC,
     MAXULEV,
     STR18,
+    STR19,
     Upolyd,
     POISON_RES,
     STEALTH,
@@ -28,6 +29,7 @@ import {
     TIMEOUT,
     OBJ_INVENT,
 } from './const.js';
+import { objectNames } from './objects.js';
 import { pline } from './display.js';
 import { cxname } from './objnam.js';
 import { what_gives, bare_artifactname } from './artifact.js';
@@ -70,17 +72,40 @@ function setAmax(i, v) {
     game.u.amax.a[i] = v;
 }
 
-// C ref: attrib.c acurr() — clamp non-STR to [3,25]; STR min 3 (encoding stub)
+const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
+const DUNCE_CAP = objectNames.indexOf('DUNCE_CAP');
+
+// C ref: attrib.c acurr() — clamp non-STR to [3,25]; STR 3..125 encoding
 export function acurr(i) {
-    const u = game.u;
+    const u = game.u || {};
     const tmp = (u.abon?.a?.[i] || 0) + (u.atemp?.a?.[i] || 0) + (u.acurr?.a?.[i] || 0);
+    let result = 0;
+    // C: for Strength: 3 <= result <= 125; others: 3 <= result <= 25
     if (i === A_STR) {
-        // Full 18/xx encoding omitted; early sessions only need floor of 3
-        return Math.max(tmp, 3);
+        // C: tmp >= STR19(25) || (uarmg && uarmg->otyp == GAUNTLETS_OF_POWER)
+        // → STR19(25) (125). Else max(tmp, 3) — 18/xx encoding preserved.
+        if (tmp >= STR19(25)
+            || (u.uarmg && (u.uarmg.otyp | 0) === GAUNTLETS_OF_POWER)) {
+            result = STR19(25);
+        } else {
+            result = Math.max(tmp, 3);
+        }
+    } else if (i === A_CHA) {
+        // C: nymph / incubus-succubus floor CHA to 18 — deferred (need youmonst)
+    } else if (i === A_CON) {
+        // C: ART_OGRESMASHER → 25 — deferred
+    } else if (i === A_INT || i === A_WIS) {
+        // C: DUNCE_CAP → 6
+        if (u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP) {
+            result = 6;
+        }
     }
-    if (tmp >= 25) return 25;
-    if (tmp <= 3) return 3;
-    return tmp;
+    if (result === 0) {
+        if (tmp >= 25) result = 25;
+        else if (tmp <= 3) result = 3;
+        else result = tmp;
+    }
+    return result;
 }
 
 // C ref: attrib.c acurrstr() — map encoded STR to 3..25 for formulas

@@ -23,6 +23,7 @@ import {
     can_track, likes_gold, likes_gems, likes_objs, likes_magic,
     throws_rocks, mindless, is_animal, strongmonst, is_mercenary,
     mon_knows_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
+    is_vampshifter,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -56,7 +57,7 @@ import {
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
     STAIRS, LADDER, IRONBARS, WEB,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
-    MON_FLOOR, NORMAL_SPEED,
+    MON_FLOOR, NORMAL_SPEED, G_GENOD,
 } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import {
@@ -581,12 +582,26 @@ function can_ooze(mtmp) {
     return !!((mtmp?.data?.mflags1 ?? 0) & M1_AMORPHOUS);
 }
 
+/** C ref: youprop.h Protection_from_shape_changers */
+function Protection_from_shape_changers() {
+    const u = game.u || {};
+    return !!(u.HProtection_from_shape_changers
+        || u.EProtection_from_shape_changers
+        || u.Protection_from_shape_changers);
+}
+
 /**
- * C ref: monmove.c can_fog — vampshifter fog form.
- * Named omission: full vampshifter / Protection_from_shape_changers.
+ * C ref: monmove.c can_fog — vampshifter may become fog under a door.
+ * Named omission: stuff_prevents_passage invent scan (empty invent ⇒ ok,
+ * same deferral as can_ooze).
  */
-function can_fog(_mtmp) {
-    return false;
+function can_fog(mtmp) {
+    const fogGone = !!((game.mvitals?.[PM_FOG_CLOUD]?.mvflags ?? 0) & G_GENOD);
+    if (fogGone || !is_vampshifter(mtmp) || Protection_from_shape_changers()) {
+        return false;
+    }
+    // stuff_prevents_passage deferred — treat as no blocking invent
+    return true;
 }
 
 /**
