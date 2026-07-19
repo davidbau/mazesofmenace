@@ -1,8 +1,8 @@
 // shknam.js — Shop types, shopkeeper init, and room stocking.
 // C ref: shknam.c shtypes[] / shkinit / stock_room / mkshobj_at / get_shop_item.
-// Named omissions: shkveg/mkveggy_at; Orcus mongone; wizard SHOPTYPE;
+// Named omissions: shkveg/mkveggy_at; wizard SHOPTYPE;
 // Izchak minetown light-shk; irregular-shop edge cases; platform ifdef
-// shktools names.
+// shktools names; full mongone/shkgone beyond Orcus invent+detach.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -29,11 +29,12 @@ import {
     IS_ROOM, isok, ESHK,
 } from './const.js';
 import { makemon, mkmonmoney, mongets, mkclass, neweshk } from './makemon.js';
-import { mksobj_at, mkobj_at } from './mkobj.js';
+import { mksobj_at, mkobj_at, obj_extract_self } from './mkobj.js';
 import { mons, monsterNames } from './monsters.js';
 import { make_engr_at } from './engrave.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { newsym } from './display.js';
+import { obj_resists } from './dogmove.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
@@ -556,6 +557,44 @@ export function stock_room(shp_indx, sroom) {
                 stockcount++;
                 mkshobj_at(shp, sx, sy,
                     !!(stockcount && stockcount === specialspot));
+            }
+        }
+    }
+
+    // C: Hack for Orcus's level — ghost town; mongone shopkeeper
+    {
+        const ol = game.orcus_level;
+        const uz = game.u?.uz;
+        if (ol && uz
+            && (uz.dnum | 0) === (ol.dnum | 0)
+            && (uz.dlevel | 0) === (ol.dlevel | 0)) {
+            const mtmp = sroom.resident;
+            if (mtmp) {
+                // mdrop_special_objs — always obj_resists(0,0) per invent
+                for (let obj = mtmp.minvent; obj; ) {
+                    const next = obj.nobj;
+                    obj_resists(obj, 0, 0);
+                    // ochance 0 → never drops ordinary; quest art deferred
+                    obj = next;
+                }
+                // discard_minvent(FALSE) — remove invent from game
+                while (mtmp.minvent) {
+                    const obj = mtmp.minvent;
+                    obj_extract_self(obj);
+                }
+                // m_detach lite: clear resident / map / fmon
+                sroom.resident = null;
+                mtmp.isshk = 0;
+                const ox = mtmp.mx | 0;
+                const oy = mtmp.my | 0;
+                if (game._level_monsters)
+                    game._level_monsters.delete(`${ox},${oy}`);
+                const list = game.fmon || [];
+                const i = list.indexOf(mtmp);
+                if (i >= 0) list.splice(i, 1);
+                mtmp.mx = 0;
+                mtmp.my = 0;
+                mtmp.mhp = 0;
             }
         }
     }

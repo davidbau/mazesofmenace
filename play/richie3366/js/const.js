@@ -2961,4 +2961,16 @@ export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (u
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_medusa_level(uz) { const g = game; return g?.medusa_level && (uz ?? g?.u?.uz)?.dnum === g.medusa_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.medusa_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
-export function Is_juiblex_level(uz) { return false; /* TODO */ }
+export function Is_juiblex_level(uz) {
+    const g = game;
+    return g?.juiblex_level
+        && (uz ?? g?.u?.uz)?.dnum === g.juiblex_level.dnum
+        && (uz ?? g?.u?.uz)?.dlevel === g.juiblex_level.dlevel;
+}
+/** C ref: dungeon.h Is_baal_level — on_level(&baalzebub_level). */
+export function Is_baal_level(uz) {
+    const g = game;
+    return g?.baalzebub_level
+        && (uz ?? g?.u?.uz)?.dnum === g.baalzebub_level.dnum
+        && (uz ?? g?.u?.uz)?.dlevel === g.baalzebub_level.dlevel;
+}

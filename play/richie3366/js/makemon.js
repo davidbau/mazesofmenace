@@ -82,7 +82,7 @@ import {
     STRAT_CLOSE, STRAT_WAITFORU, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
 } from './const.js';
-import { enexto_core, enexto_gpflags, goodpos } from './teleport.js';
+import { enexto_core, enexto_gpflags, goodpos, noteleport_level } from './teleport.js';
 import {
     mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless, is_crackable,
     set_corpsenm, stop_timer, add_to_container, rnd_class,
@@ -639,10 +639,14 @@ function newmonhp(mon, ptr) {
     mon.m_lev = adj_lev(ptr);
     let basehp = 0;
     const mndx = ptr.mndx | 0;
-    // Named omission: is_rider d(10,8); mlevel>49 fixed HP; is_home_elemental
+    // Named omission: is_rider d(10,8); is_home_elemental ×3
     if (is_golem(ptr)) {
         // C: golems have fixed HP via golemhp(mndx) — no d(m_lev,8)
         mon.mhpmax = mon.mhp = golemhp(mndx);
+    } else if ((ptr.mlevel | 0) > 49) {
+        // C: "special" fixed hp — encoded in mlevel (Asmodeus et al.)
+        mon.mhpmax = mon.mhp = 2 * ((ptr.mlevel | 0) - 6);
+        mon.m_lev = (mon.mhp / 4) | 0;
     } else if (ptr.mlet === 'S_DRAGON' && mndx >= pm('GRAY_DRAGON')) {
         // C: adult dragons — N*(4+rnd(4)) before endgame, N*8 once there
         basehp = mon.m_lev | 0;
@@ -1477,20 +1481,9 @@ function attacktype(ptr, aatyp) {
     return false;
 }
 
-// C ref: teleport.c noteleport_level — ordinary flags; hell court deferred
-function noteleport_level(mon) {
-    // In_hell demon-court m_blocks_teleporting deferred (ordinary mklev rare)
-    // C: noteleport && !is_covetous(mon->data) — covetous bypass tower flags
-    const M3_COVETOUS = 0x001f;
-    const covetous = !!((mon?.data?.mflags3 ?? 0) & M3_COVETOUS);
-    if (game.level?.flags?.noteleport && !covetous) return true;
-    if ((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0)) return true;
-    return false;
-}
-
 /**
  * C ref: muse.c rnd_defensive_item
- * Named omissions: hell-court noteleport_level body.
+ * Named omissions: none for hell-court (via noteleport_level D-0763).
  */
 function rnd_defensive_item(mtmp) {
     const pm_ = mtmp.data;
@@ -2107,29 +2100,15 @@ export function makemon(mdat, x, y, mmflags = 0) {
             mtmp.msleeping = 1;
     }
 
-    // C: set_malign after peaceful changes (orc/unicorn/emin deferred)
-    set_malign(mtmp);
-
-    // C: !in_mklev && byyou → newsym + set_apparxy before invent
-    // Named omission: set_apparxy here (circular monmove↔makemon; dochug
-    // calls it before combat — mux/muy init to spawn until then).
-    if (!game.in_mklev && byyou) {
-        newsym(mtmp.mx, mtmp.my);
+    // C: emits_light after mlet, before cham/mitem (makemon.c:1348)
+    {
+        const ct = emits_light(ptr);
+        if (ct > 0) new_light_source(mtmp.mx, mtmp.my, ct, LS_MONSTER, mtmp);
     }
 
-    // C: anymon && !(mmflags & MM_NOGRP) → small/large group (after mlet)
-    if (anymon && (mmflags & MM_NOGRP) === 0) {
-        if ((ptr.geno & G_SGROUP) && rn2(2)) {
-            m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
-        } else if (ptr.geno & G_LGROUP) {
-            if (rn2(3)) m_initlgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
-            else m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
-        }
-    }
-
-    // C ref: makemon.c — cham / Vlad candelabrum / Wizard iswiz / newcham /
-    // Croesus / MS_NEMESIS bell / Pestilence. Named omissions: first-Wizard
-    // SPE_DIG on earth; Protection_from_shape_changers.
+    // C ref: makemon.c — cham / Vlad / Wizard / Croesus / MS_NEMESIS /
+    // Pestilence + in_mklev ndemon sleep — BEFORE set_malign / G_SGROUP
+    // (D-0763: sleep rn2(5) must precede group rn2(2)).
     let allow_minvent_local = allow_minvent;
     let mitem = -1; // STRANGE_OBJECT
     const PM_VLAD = pm('VLAD_THE_IMPALER');
@@ -2163,7 +2142,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
     if (mitem >= 0 && allow_minvent_local) mongets(mtmp, mitem);
 
-    // C: in_mklev ndemon/wumpus/long worm/giant eel sleep — before invent
+    // C: in_mklev ndemon/wumpus/long worm/giant eel sleep — before G_SGROUP
     if (game.in_mklev) {
         if ((is_ndemon(ptr) || ptr.mndx === pm('WUMPUS')
             || ptr.mndx === pm('LONG_WORM') || ptr.mndx === pm('GIANT_EEL'))
@@ -2171,6 +2150,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
             && rn2(5)) {
             mtmp.msleeping = 1;
         }
+    } else if (byyou) {
+        // C: !in_mklev && byyou → newsym + set_apparxy before invent
+        newsym(mtmp.mx, mtmp.my);
     }
 
     // C: PM_LONG_WORM → get_wormno / initworm / place_worm_tail_randomly
@@ -2186,6 +2168,19 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
+    // C: set_malign after peaceful changes (orc/unicorn/emin deferred)
+    set_malign(mtmp);
+
+    // C: anymon && !(mmflags & MM_NOGRP) → small/large group (after sleep)
+    if (anymon && (mmflags & MM_NOGRP) === 0) {
+        if ((ptr.geno & G_SGROUP) && rn2(2)) {
+            m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+        } else if (ptr.geno & G_LGROUP) {
+            if (rn2(3)) m_initlgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+            else m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+        }
+    }
+
     // C: allow_minvent → is_armed? m_initweap; m_initinv; domestic saddle
     if (allow_minvent_local) {
         if (is_armed(ptr)) m_initweap(mtmp);
@@ -2193,13 +2188,6 @@ export function makemon(mdat, x, y, mmflags = 0) {
         if (!rn2(100) && is_domestic(ptr)) {
             put_saddle_on_mon(null, mtmp);
         }
-    }
-
-    // C: emits_light → new_light_source(LS_MONSTER) (before invent in C;
-    // after invent here — same for non-shapechanger fire emitters)
-    {
-        const ct = emits_light(ptr);
-        if (ct > 0) new_light_source(mtmp.mx, mtmp.my, ct, LS_MONSTER, mtmp);
     }
 
     // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)

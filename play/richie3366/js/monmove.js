@@ -833,6 +833,24 @@ function hideunder(mtmp) {
 }
 
 /**
+ * C ref: mon.c maybe_unhide_at — reveal hider when floor obj gone / eel
+ * left water. Called from m_move after place_monster (monmove.c:2060).
+ * Named omission: hero (youmonst / uundetected) path.
+ */
+function maybe_unhide_at(x, y) {
+    const mtmp = m_at(x, y);
+    if (!mtmp) return;
+    if (!mtmp.mundetected) return;
+    const trapped = !!mtmp.mtrapped;
+    const floorObj = objects_at(x, y);
+    if ((hides_under(mtmp.data)
+            && (!floorObj || trapped || !can_hide_under_obj(floorObj)))
+        || (mtmp.data?.mlet === 'S_EEL' && !is_pool(x, y))) {
+        hideunder(mtmp);
+    }
+}
+
+/**
  * C ref: monmove.c holds_up_web — obstructed / up-stairs / iron bars hold a web.
  */
 function holds_up_web(x, y) {
@@ -1371,9 +1389,12 @@ export async function m_move(mtmp, after) {
     // C: m_postmove_effect before place (Hezrou/Steam at old cell)
     m_postmove_effect(mtmp);
 
-    // C: place_monster + mon_track_add then postmov (mintrap on new cell)
+    // C: place_monster + maybe_unhide_at + mon_track_add then postmov
     mtmp.mx = nix;
     mtmp.my = niy;
+    // C ref: monmove.c m_move — maybe_unhide_at before mon_track_add/postmov
+    // so postmov hide rn2(5) sees cleared mundetected when dest has no cover.
+    maybe_unhide_at(mtmp.mx, mtmp.my);
     mon_track_add(mtmp, omx, omy);
     return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
 }

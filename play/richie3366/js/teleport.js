@@ -22,7 +22,7 @@ import { objects_at, mksobj } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
 import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
-    monsterNames, passes_walls,
+    monsterNames, passes_walls, is_dlord, is_dprince,
 } from './monsters.js';
 import { newsym, pline, You_feel, see_monsters } from './display.js';
 import { vision_recalc } from './vision.js';
@@ -292,10 +292,35 @@ export function rloc_to(mtmp, x, y) {
 }
 
 /**
- * C ref: teleport.c noteleport_level — ordinary flags; hell court deferred.
+ * C ref: teleport.c m_blocks_teleporting — demon lord/prince on level.
+ */
+function m_blocks_teleporting(mtmp) {
+    return !!(mtmp?.data && (is_dlord(mtmp.data) || is_dprince(mtmp.data)));
+}
+
+/**
+ * C ref: mon.c get_iter_mons — first living on-map mon where bfunc is true.
+ * Local copy to avoid sounds.js import cycle.
+ */
+function get_iter_mons_tele(bfunc) {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || mtmp.mx == null || mtmp.my == null) continue;
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (bfunc(mtmp)) return mtmp;
+    }
+    return null;
+}
+
+/**
+ * C ref: teleport.c noteleport_level — hell court + flags + stasis.
  * Covetous monsters bypass level.flags.noteleport (Vlad on tower1).
  */
-function noteleport_level(mon) {
+export function noteleport_level(mon) {
+    // demon court in Gehennom prevent others from teleporting
+    if (Inhell() && mon?.data
+        && !(is_dlord(mon.data) || is_dprince(mon.data))) {
+        if (get_iter_mons_tele(m_blocks_teleporting)) return true;
+    }
     const M3_COVETOUS = 0x001f;
     const covetous = !!((mon?.data?.mflags3 ?? 0) & M3_COVETOUS);
     if (game.level?.flags?.noteleport && !covetous) return true;

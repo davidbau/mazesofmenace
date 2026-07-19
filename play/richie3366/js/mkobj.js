@@ -42,6 +42,7 @@ import {
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
+    Is_rogue_level,
 } from './const.js';
 import { recalc_block_point } from './vision.js';
 
@@ -89,6 +90,30 @@ const MKOBJ_PROBS = [
     { iprob: 4, iclass: WAND_CLASS },
     { iprob: 3, iclass: RING_CLASS },
     { iprob: 1, iclass: AMULET_CLASS },
+];
+
+// C ref: mkobj.c rogueprobs / hellprobs
+const ROGUE_PROBS = [
+    { iprob: 12, iclass: WEAPON_CLASS },
+    { iprob: 12, iclass: ARMOR_CLASS },
+    { iprob: 22, iclass: FOOD_CLASS },
+    { iprob: 22, iclass: POTION_CLASS },
+    { iprob: 22, iclass: SCROLL_CLASS },
+    { iprob: 5, iclass: WAND_CLASS },
+    { iprob: 5, iclass: RING_CLASS },
+];
+
+const HELL_PROBS = [
+    { iprob: 20, iclass: WEAPON_CLASS },
+    { iprob: 20, iclass: ARMOR_CLASS },
+    { iprob: 16, iclass: FOOD_CLASS },
+    { iprob: 12, iclass: TOOL_CLASS },
+    { iprob: 10, iclass: GEM_CLASS },
+    { iprob: 1, iclass: POTION_CLASS },
+    { iprob: 1, iclass: SCROLL_CLASS },
+    { iprob: 8, iclass: WAND_CLASS },
+    { iprob: 8, iclass: RING_CLASS },
+    { iprob: 4, iclass: AMULET_CLASS },
 ];
 
 const BOX_PROBS = [
@@ -1070,10 +1095,15 @@ export function mkobj(oclass, artif) {
     let oclass_ = oclass;
     let i;
     if (oclass_ === RANDOM_CLASS) {
+        // C: Is_rogue_level → rogueprobs; Inhell → hellprobs; else mkobjprobs
+        const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
+        const iprobs = Is_rogue_level(game.u?.uz) ? ROGUE_PROBS
+            : inhell ? HELL_PROBS
+            : MKOBJ_PROBS;
         let tprob = rnd(100);
         let ip = 0;
-        for (; (tprob -= MKOBJ_PROBS[ip].iprob) > 0; ip++) /* advance */;
-        oclass_ = MKOBJ_PROBS[ip].iclass;
+        for (; (tprob -= iprobs[ip].iprob) > 0; ip++) /* advance */;
+        oclass_ = iprobs[ip].iclass;
     }
     if (oclass_ === SPBOOK_no_NOVEL) {
         // C: rnd_class(bases[SPBOOK], SPE_BLANK_PAPER) — excludes SPE_NOVEL

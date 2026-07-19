@@ -3,6 +3,7 @@
 
 import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
+import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, docrt, canspotmon } from './display.js';
 import { paint_corner_nhw_menu, discover_object } from './invent.js';
@@ -53,6 +54,16 @@ export function christen_monst(mtmp, name) {
     else delete mtmp.mextra.mgivenname;
     // C: leash → update_inventory deferred
     return mtmp;
+}
+
+/**
+ * C ref: do_name.c roguename — Rogue designer name for makerogueghost.
+ * ROGUEOPTS env deferred (no Node env in scored js/).
+ */
+export function roguename() {
+    return rn2(3)
+        ? (rn2(2) ? 'Michael Toy' : 'Kenneth Arnold')
+        : 'Glenn Wichman';
 }
 
 /** C ref: mondata.h type_is_pname — M2_PNAME proper-name monsters. */
