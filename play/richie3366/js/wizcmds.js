@@ -104,6 +104,55 @@ export async function wiz_level_tele() {
 }
 
 /**
+ * C ref: wizcmds.c wiz_map — #wizmap / ^F
+ * Reveal traps + engravings then do_mapping (exercise A_WIS). ECMD_OK.
+ * Named omissions: notice_mon_off/on; full engraving_to_glyph; unavailcmd
+ * ecname_from_fn wording (generic "You can't do that.").
+ */
+export async function wiz_map() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("You can't do that.");
+        return ECMD_OK;
+    }
+    const { map_trap, map_engraving } = await import('./display.js');
+    const { do_mapping } = await import('./detect.js');
+    const u = game.u || (game.u = {});
+    // C: notice_mon_off(); save/clear HConfusion + HHallucination
+    const save_Hconf = u.HConfusion | 0;
+    const save_Hhallu = u.HHallucination | 0;
+    const save_Confusion = u.Confusion;
+    const save_Hallucination = u.Hallucination;
+    u.HConfusion = 0;
+    u.HHallucination = 0;
+    u.Confusion = 0;
+    u.Hallucination = 0;
+
+    const ftrap = game.ftrap;
+    if (Array.isArray(ftrap)) {
+        for (const t of ftrap) {
+            if (!t) continue;
+            t.tseen = 1;
+            map_trap(t, true);
+        }
+    } else {
+        for (let t = ftrap; t; t = t.ntrap) {
+            t.tseen = 1;
+            map_trap(t, true);
+        }
+    }
+    for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
+        map_engraving(ep, true);
+    }
+    do_mapping();
+    // C: notice_mon_on(); restore conf/hallu
+    u.HConfusion = save_Hconf;
+    u.HHallucination = save_Hhallu;
+    u.Confusion = save_Confusion;
+    u.Hallucination = save_Hallucination;
+    return ECMD_OK;
+}
+
+/**
  * C ref: wizcmds.c wiz_polyself — #polyself
  */
 export async function wiz_polyself() {

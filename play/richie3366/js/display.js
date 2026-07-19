@@ -585,6 +585,23 @@ export function map_trap(trap, show) {
     if (show) show_glyph_cell(x, y, g.ch, g.color, g.decgfx);
 }
 
+/**
+ * C ref: display.c map_engraving(ep, show) — remember + optionally paint.
+ * Named omission: full engraving_to_glyph variants beyond room/corr glyphs.
+ */
+export function map_engraving(ep, show) {
+    if (!ep) return;
+    const x = ep.engr_x | 0;
+    const y = ep.engr_y | 0;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const eg = engraving_glyph(loc);
+    if (game.level?.flags?.hero_memory) {
+        loc.remembered_glyph = { ch: eg.ch, color: eg.color, decgfx: eg.dec };
+    }
+    if (show) show_glyph_cell(x, y, eg.ch, eg.color, eg.dec);
+}
+
 /** C ref: engrave.c engr_at — local walk (engrave.js imports display). */
 function engr_at(x, y) {
     for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {

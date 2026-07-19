@@ -327,7 +327,7 @@ async function thitu_named(tlev, dam, name) {
 
 // C ref: trap.c t_missile(otyp, trap) — mksobj(otyp, TRUE, FALSE) for the trap
 // missile; quan forced to 1, opoisoned cleared, position set to the trap.
-function t_missile(otyp, trap) {
+export function t_missile(otyp, trap) {
     const otmp = mksobj(otyp, true, false);
     otmp.quan = 1;
     otmp.owt = weight(otmp);

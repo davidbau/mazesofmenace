@@ -714,7 +714,7 @@ function experience(mtmp) {
 // crumble, gas-spore AT_BOOM explosion, and LEVEL_SPECIFIC_NOCORPSE special
 // cases that precede this in C are not exercised by the corpse_chance kills in
 // the sessions and are intentionally not modeled here.)
-function corpse_chance(mon) {
+export function corpse_chance(mon) {
     const mdat = mon.data || {};
     const bigOrLizard = (largemonst(mdat) || mdat.name === 'lizard') && !mon.mcloned;
     const golem = /\bgolem$/.test(mdat.name || '');

@@ -8,7 +8,7 @@ import { rn2, rnd, rnl } from './rng.js';
 import {
     acurr, acurrstr, A_DEX, A_STR, A_CON, exercise, Fumbling,
 } from './attrib.js';
-import { pline, newsym, canspotmon, map_invisible } from './display.js';
+import { pline, newsym, canspotmon, map_invisible, flush_topl_more } from './display.js';
 import { vision_recalc, recalc_block_point } from './vision.js';
 import { getdir } from './lock.js';
 import { near_capacity, inv_weight, weight_cap } from './invent.js';
@@ -18,6 +18,7 @@ import {
 } from './uhitm.js';
 import { AT_KICK } from './mhitm.js';
 import { overexertion, losehp, maybe_half_phys } from './hack.js';
+import { set_wounded_legs, legs_in_no_shape } from './trap.js';
 import { setmangry, seemimic } from './mon.js';
 import { mon_nam, Monnam } from './do_name.js';
 import { martial_bonus, use_skill } from './weapon.js';
@@ -33,6 +34,7 @@ import {
     D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED, LA_DOWN, SLT_ENCUMBER,
     IS_DOOR, IS_STWALL, IS_POOL, IS_THRONE, IS_FOUNTAIN, IS_SINK, IS_GRAVE,
     IS_TREE, KILLED_BY, Upolyd, M_AP_TYPE, M_AP_MONSTER, P_NONE, P_MARTIAL_ARTS,
+    RIGHT_SIDE, TIMEOUT,
 } from './const.js';
 
 const PM_SASQUATCH = monsterNames.indexOf('PM_SASQUATCH');
@@ -58,7 +60,7 @@ function martial() {
 /**
  * C ref: dokick.c kick_dumb — empty space / open doorway.
  * RNG: exercise(A_DEX, FALSE) always; low-DEX strain path adds rn2(3),
- * exercise(A_STR, FALSE), and rnd(5) for wounded legs.
+ * exercise(A_STR, FALSE), and set_wounded_legs(RIGHT_SIDE, 5+rnd(5)).
  */
 async function kick_dumb(x, y) {
     exercise(A_DEX, false);
@@ -68,9 +70,8 @@ async function kick_dumb(x, y) {
     } else {
         await pline('Dumb move!  You strain a muscle.');
         exercise(A_STR, false);
-        // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) — legs state deferred;
-        // still consume the rnd when the strain message fires.
-        rnd(5);
+        // C: set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) — ATEMP(DEX)-- (D-0785)
+        await set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
     }
     // Airlevel / Levitation hurtle deferred
     void x;
@@ -79,9 +80,9 @@ async function kick_dumb(x, y) {
 
 /**
  * C ref: dokick.c kick_ouch — solid terrain / failed impact (partial).
- * Blind feel_location / wake_nearto / drawbridge / set_wounded_legs body /
- * airlevel hurtle deferred. losehp applies the damage roll (regen_hp needs
- * uhp < uhpmax).
+ * Blind feel_location / wake_nearto / drawbridge / airlevel hurtle deferred.
+ * losehp applies the damage roll (regen_hp needs uhp < uhpmax).
+ * set_wounded_legs on !rn2(3) → ATEMP(DEX)-- (D-0785).
  */
 async function kick_ouch(x, y, kickobjnam = '') {
     await pline('Ouch!  That hurts!');
@@ -89,8 +90,8 @@ async function kick_ouch(x, y, kickobjnam = '') {
     exercise(A_STR, false);
     // Blind feel_location / wake_nearto / drawbridge deferred
     if (!rn2(3)) {
-        // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5))
-        rnd(5);
+        // C: set_wounded_legs(RIGHT_SIDE, 5 + rnd(5))
+        await set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
     }
     // C: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
     //     losehp(Maybe_Half_Phys(dmg), kickstr(...), KILLED_BY);
@@ -370,9 +371,16 @@ export async function dokick() {
     const u = game.u || (game.u = {});
     let no_kick = false;
 
-    // Poly / steed / trap / boulder no_kick branches deferred beyond
-    // encumbrance (common) and wounded-legs message-only path.
-    if ((u.utrap | 0) !== 0) {
+    // C order: poly/steed deferred; Wounded_legs before encumbrance/utrap.
+    // lizard / uinwater / boulder no_kick arms still deferred.
+    const wounded = !!(u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0));
+    if (wounded) {
+        // C: legs_in_no_shape("kicking", FALSE) then no_kick (D-0786)
+        await legs_in_no_shape('kicking', false);
+        no_kick = true;
+    } else if ((u.utrap | 0) !== 0) {
         no_kick = true;
         await pline("There's not enough room to kick down here.");
     } else if (near_capacity() > SLT_ENCUMBER) {
@@ -381,7 +389,8 @@ export async function dokick() {
     }
 
     if (no_kick) {
-        // C: display_nhwindow(WIN_MESSAGE, TRUE) — --More-- ownership deferred
+        // C: display_nhwindow(WIN_MESSAGE, TRUE) — --More-- owns next keys
+        await flush_topl_more();
         return false;
     }
 

@@ -45,7 +45,7 @@ import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
-import { wiz_wish, wiz_genesis, wiz_level_tele } from './wizcmds.js';
+import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
@@ -642,6 +642,8 @@ const DIRS_ORD = [
 /**
  * C-style BFS from (fromX,fromY) until (toX,toY)=hero is adjacent.
  * Sets u.dx/u.dy to step from hero onto the connecting neighbor.
+ * C ref: hack.c findtravelpath TRAVP_TRAVEL / noguess.
+ * @param {boolean} guessMode — TRAVP_GUESS expand: require couldsee(nx,ny)
  * @param {boolean} [couldseeOnly] — sighted: require couldsee (ignore seenv)
  */
 function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = false) {
@@ -654,7 +656,8 @@ function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = fa
     while (cur.length) {
         const next = [];
         for (const { x, y } of cur) {
-            // C: closed door / boulder on *current* cell → delay (skip expand)
+            // C: closed door / boulder on *current* cell → delay (full
+            // travel[x][y] > radius-3 re-queue deferred — skip expand).
             if (closed_door_at(x, y) || boulder_at(x, y)) continue;
 
             for (const dir of DIRS_ORD) {
@@ -663,7 +666,7 @@ function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = fa
                 if (!isok(nx, ny)) continue;
                 if (guessMode && !couldsee(nx, ny)) continue;
                 if (blocksMove(nx, ny)) continue;
-                // C TEST_TRAV: tourists never enter boulder as a path node
+                // C TEST_TRAV: never enter boulder as a path node (tourist)
                 if (boulder_at(nx, ny)) continue;
                 // C test_move TEST_TRAV + run==8: seen traps / known liquids
                 if (travel_avoids_cell(nx, ny)) continue;
@@ -740,9 +743,10 @@ function findtravelpath_travel(couldseeOnly = false) {
 }
 
 /**
- * C ref: hack.c findtravelpath(TRAVP_GUESS) — pick closest couldsee cell in
- * the travel matrix toward an unreachable target, then TRAVP_TRAVEL to it.
- * Full guess matrix / travelmap cycle-break deferred; one greedy guess step.
+ * C ref: hack.c findtravelpath(TRAVP_GUESS) — BFS from hero through
+ * couldsee cells, pick matrix cell closest to u.tx/u.ty, then
+ * TRAVP_TRAVEL from that pick back to hero.
+ * Named omissions: travelmap visited stop; full door/boulder delay re-queue.
  */
 function findtravelpath_guess() {
     const u = game.u;
@@ -751,36 +755,89 @@ function findtravelpath_guess() {
     if (!isok(destX, destY)) return false;
     if (destX === u.ux && destY === u.uy) return false;
 
-    let bestX = u.ux;
-    let bestY = u.uy;
-    let bestDist = Math.max(Math.abs(destX - u.ux), Math.abs(destY - u.uy));
-    let bestD2 = dist2(u.ux, u.uy, destX, destY);
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            if (!couldsee(x, y) || blocksMove(x, y) || boulder_at(x, y)) continue;
-            if (travel_avoids_cell(x, y)) continue;
-            const nd = Math.max(Math.abs(destX - x), Math.abs(destY - y));
-            const nd2 = dist2(x, y, destX, destY);
-            if (nd < bestDist || (nd === bestDist && nd2 < bestD2)) {
-                bestX = x;
-                bestY = y;
-                bestDist = nd;
-                bestD2 = nd2;
+    // C: start BFS at hero; travel[hero] stays 0 (not a guess candidate).
+    const travel = new Map();
+    let cur = [{ x: u.ux | 0, y: u.uy | 0 }];
+    let radius = 1;
+
+    while (cur.length) {
+        const next = [];
+        for (const { x, y } of cur) {
+            if (closed_door_at(x, y) || boulder_at(x, y)) continue;
+            for (const dir of DIRS_ORD) {
+                const nx = x + xdir[dir];
+                const ny = y + ydir[dir];
+                if (!isok(nx, ny)) continue;
+                // C GUESS: !couldsee → continue (before test_move)
+                if (!couldsee(nx, ny)) continue;
+                if (blocksMove(nx, ny)) continue;
+                if (boulder_at(nx, ny)) continue;
+                if (travel_avoids_cell(nx, ny)) continue;
+                if (travel_blocks_tight_diag(x, y, nx, ny)) continue;
+                // C: reaching dest under GUESS does not return / enqueue
+                if (nx === destX && ny === destY) continue;
+                const key = `${nx},${ny}`;
+                if (travel.has(key)) continue;
+                const loc = game.level?.at(nx, ny);
+                if (!loc) continue;
+                if (!(loc.seenv || (!u.Blind && couldsee(nx, ny)))) continue;
+                travel.set(key, radius);
+                next.push({ x: nx, y: ny });
+            }
+        }
+        cur = next;
+        radius++;
+        if (radius > COLNO * ROWNO) break;
+    }
+
+    // C: pick couldsee cell in travel[] with minimal distmin to dest.
+    // Raster x,y order matches C tie-breaks (last write wins on equal dist).
+    let px = u.ux | 0;
+    let py = u.uy | 0;
+    let dist = Math.max(Math.abs(destX - px), Math.abs(destY - py));
+    let d2 = dist2(px, py, destX, destY);
+    let ptrav = COLNO * ROWNO;
+
+    for (let tx = 1; tx < COLNO; tx++) {
+        for (let ty = 0; ty < ROWNO; ty++) {
+            const ctrav = travel.get(`${tx},${ty}`) | 0;
+            if (!couldsee(tx, ty) || ctrav <= 0) continue;
+            const nxtdist = Math.max(Math.abs(destX - tx), Math.abs(destY - ty));
+            if (nxtdist === dist && ctrav < ptrav) {
+                const nd2 = dist2(tx, ty, destX, destY);
+                if (nd2 < d2) {
+                    px = tx;
+                    py = ty;
+                    d2 = nd2;
+                    ptrav = ctrav;
+                }
+            } else if (nxtdist < dist) {
+                px = tx;
+                py = ty;
+                dist = nxtdist;
+                d2 = dist2(tx, ty, destX, destY);
+                ptrav = ctrav;
             }
         }
     }
-    if (bestX === u.ux && bestY === u.uy) {
+
+    if (px === (u.ux | 0) && py === (u.uy | 0)) {
+        // C: no guesses — sgn toward dest if TEST_MOVE allows
         const dx = Math.sign(destX - u.ux);
         const dy = Math.sign(destY - u.uy);
         if (!dx && !dy) return false;
-        const nx = u.ux + dx;
-        const ny = u.uy + dy;
+        const nx = (u.ux | 0) + dx;
+        const ny = (u.uy | 0) + dy;
         if (!isok(nx, ny) || blocksMove(nx, ny) || boulder_at(nx, ny)) return false;
+        if (travel_avoids_cell(nx, ny)) return false;
+        if (travel_blocks_tight_diag(u.ux, u.uy, nx, ny)) return false;
         u.dx = dx;
         u.dy = dy;
         return true;
     }
-    return findtravelpath_bfs(bestX, bestY, u.ux, u.uy, true);
+
+    // C: mode = TRAVP_TRAVEL; goto noguess from (px,py) toward hero
+    return findtravelpath_bfs(px, py, u.ux, u.uy, false);
 }
 
 /**
@@ -818,16 +875,13 @@ async function dotravel_target() {
     u.tx = tcc.x;
     u.ty = tcc.y;
 
-    // C: always domove(); findtravelpath inside may leave dx=dy=0 (rest).
-    // Prefer a couldsee-reachable path. If only a seenv-only detour exists
-    // (JS seenv overmark), quiet-rest like C when TEST_TRAV finds nothing
-    // (D-0702).
+    // C ref: hack.c findtravelpath — seenv || (!Blind && couldsee), then
+    // domove. D-0702: JS seenv can overmark and yield a Chebyshev-worsening
+    // detour where C has no TEST_TRAV path → quiet-rest (dx=dy=0).
+    // Do NOT prefer couldsee-only first: that skipped seenv CLOUD cells on
+    // Quest and stepped SE while C walked S (D-0784 / seed0360 @104904).
     let stepped = false;
-    if (findtravelpath_travel(true) || findtravelpath_guess()) {
-        await domove(u.dx || 0, u.dy || 0);
-        stepped = true;
-    } else if (findtravelpath_travel(false)) {
-        // seenv-only path — take it only if first step does not worsen dist
+    if (findtravelpath_travel(false) || findtravelpath_guess()) {
         const nx = (u.ux | 0) + (u.dx | 0);
         const ny = (u.uy | 0) + (u.dy | 0);
         const before = Math.max(
@@ -1308,6 +1362,10 @@ export async function rhack(key) {
     } else if (key === 7) { // ^G — C('g') wiz_genesis
         // C ref: wizcmds.c wiz_genesis / cmd.c wizgenesis
         await wiz_genesis();
+        game.context.move = 0;
+    } else if (key === 6) { // ^F — C('f') wiz_map
+        // C ref: wizcmds.c wiz_map / cmd.c wizmap — ECMD_OK, no turn
+        await wiz_map();
         game.context.move = 0;
     } else if (ch === ':') {
         // C ref: invent.c dolook / lookat

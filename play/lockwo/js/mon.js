@@ -46,22 +46,22 @@ const MFAST = 2;
 const MMOVE_BY_PMIDX = Object.freeze([
     /*   0 */ 18, 18, 18, 18, 6, 24, 3, 1, 6, 4, 6, 6, 12, 15, 12, 12,
     /*  16 */ 18, 16, 16, 15, 12, 12, 12, 12, 12, 12, 14, 3, 1, 13, 13, 13,
-    /*  32 */ 18, 16, 15, 15, 15, 15, 12, 12, 12, 10, 15, 9, 6, 9, 12, 12,
-    /*  48 */ 12, 12, 3, 12, 12, 3, 15, 13, 0, 0, 3, 6, 6, 12, 6, 15,
+    /*  32 */ 18, 16, 15, 15, 15, 15, 12, 12, 12, 10, 15, 9, 6, 9, 6, 6,
+    /*  48 */ 12, 12, 3, 12, 12, 3, 15, 13, 0, 0, 3, 6, 6, 6, 6, 15,
     /*  64 */ 3, 3, 3, 12, 12, 12, 6, 9, 9, 9, 5, 7, 9, 5, 1, 1,
     /*  80 */ 1, 9, 9, 18, 3, 12, 12, 12, 12, 10, 12, 12, 3, 3, 12, 4,
     /*  96 */ 15, 15, 3, 3, 16, 24, 24, 24, 20, 24, 1, 20, 20, 20, 22, 22,
     /* 112 */ 3, 3, 3, 9, 12, 18, 15, 15, 8, 10, 8, 10, 18, 16, 22, 22,
     /* 128 */ 20, 20, 18, 18, 20, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
     /* 144 */ 9, 9, 9, 9, 9, 9, 9, 9, 9, 12, 36, 12, 6, 5, 1, 0,
-    /* 160 */ 0, 0, 0, 1, 1, 6, 12, 10, 12, 6, 6, 10, 12, 12, 12, 12,
+    /* 160 */ 0, 0, 0, 1, 1, 6, 8, 10, 10, 6, 6, 10, 12, 12, 12, 12,
     /* 176 */ 18, 15, 12, 6, 8, 10, 12, 6, 9, 9, 9, 8, 10, 10, 10, 12,
-    /* 192 */ 12, 12, 14, 10, 10, 10, 10, 12, 14, 14, 16, 10, 12, 12, 1, 3,
+    /* 192 */ 12, 12, 14, 10, 10, 10, 10, 12, 14, 14, 16, 10, 12, 14, 1, 3,
     /* 208 */ 6, 6, 12, 12, 18, 12, 8, 15, 15, 3, 15, 18, 12, 10, 12, 14,
-    /* 224 */ 12, 6, 12, 12, 26, 12, 12, 12, 9, 12, 12, 12, 15, 12, 15, 6,
+    /* 224 */ 12, 6, 12, 14, 26, 12, 12, 12, 9, 12, 12, 12, 15, 12, 15, 6,
     /* 240 */ 6, 6, 6, 6, 6, 8, 6, 8, 8, 12, 12, 9, 9, 6, 3, 8,
     /* 256 */ 7, 6, 6, 6, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 16,
-    /* 272 */ 12, 12, 0, 12, 12, 10, 10, 6, 10, 10, 10, 10, 12, 12, 15, 3,
+    /* 272 */ 12, 12, 0, 12, 15, 10, 10, 6, 10, 10, 10, 10, 12, 12, 15, 3,
     /* 288 */ 10, 12, 12, 9, 12, 12, 12, 12, 6, 15, 6, 9, 6, 12, 5, 3,
     /* 304 */ 18, 9, 3, 15, 9, 12, 15, 12, 12, 12, 12, 3, 18, 12, 9, 10,
     /* 320 */ 3, 6, 6, 6, 6, 6, 5, 9, 12, 0, 12, 12, 12, 12, 12, 12,
@@ -347,8 +347,17 @@ async function movemon_pass() {
     // stores monsters in creation order, so iterate the snapshot reversed to
     // reproduce C's per-monster RNG ordering.
     const snapshot = fmonOrder();
-    for (const mtmp of snapshot)
+    for (const mtmp of snapshot) {
+        // C ref: mon.c movemon()/done() — when a monster's attack kills the
+        // hero, C's done()->really_done() longjmps out and never returns to
+        // iter_mons_safe(); the remaining monsters never move this turn.  With
+        // no longjmp here, detect the death (program_state.gameover, set by
+        // end.js done()) and stop the pass immediately so we don't fabricate
+        // the next monster's move rolls (seed0030 step-62 death blow: C's next
+        // RNG call is can_make_bones(), not another distfleeck()).
+        if (game.program_state?.gameover) break;
         await movemon_singlemon(mtmp);
+    }
     return !!game._somebody_can_move;
 }
 

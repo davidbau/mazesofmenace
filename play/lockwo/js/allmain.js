@@ -756,8 +756,16 @@ export async function moveloop_turn() {
         do {
             monscanmove = await movemon();
             if (g.u.umovement >= NORMAL_SPEED) break; // hero's turn again
+            if (g.program_state?.gameover) break;      // hero died mid-movemon
         } while (monscanmove);
         g.context.mon_moving = false;
+
+        // C ref: allmain.c moveloop_core()/done() — if a monster's move killed
+        // the hero, C longjmps out of moveloop_core() through really_done() and
+        // never runs the once-per-turn block (mcalcdistress/maybe_generate_
+        // rnd_mon/regen_hp/...).  Bail out here so those turn-tail RNG calls are
+        // not fabricated after the death (moveloop() sees gameover and stops).
+        if (g.program_state?.gameover) break;
 
         // C ref: allmain.c moveloop_core():220 — mvl_wtcap = near_capacity();
         // recomputed after the monster-movement loop (monster actions can change

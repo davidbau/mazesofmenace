@@ -83,6 +83,22 @@ async function done(how) {
     }
 
     if (!survive) {
+        // C ref: end.c really_done(how) — the hero really dies.  Before the
+        // disclosure/topten teardown, really_done computes
+        //   bones_ok = (how < GENOCIDED) && can_make_bones();
+        // (end.c:1201).  can_make_bones() draws a single rn2(1 + (depth>>2))
+        // ("fewer ghosts on low levels"); on the Gnomish-Mines death level
+        // (depth 3, depth>>2 == 0) that is rn2(1)=0, after which it returns
+        // FALSE (no bones written — !wizard, and the harness has no bones file
+        // anyway).  This one draw sits between the death blow and the next
+        // segment's o_init shuffle, so emitting it keeps the RNG stream aligned
+        // across the death boundary (seed0030 step-73).  savebones()/the actual
+        // bones-file write is never reached here (bones_ok is FALSE).
+        const GENOCIDED = 10; // end.h
+        if (how < GENOCIDED) {
+            const { can_make_bones } = await import('./bones.js');
+            can_make_bones(); // draws rn2(1 + (depth>>2)); result discarded (no bones)
+        }
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
     }

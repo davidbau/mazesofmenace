@@ -212,6 +212,14 @@ const MON_COMBAT = {
     // C ref: monsters.h S_MIMIC — "small mimic" LVL(7,3,7,0,0), geno (G_GENO|2)
     // so G_FREQ==2; MZ_MEDIUM; AT_CLAW AD_PHYS 3d4.
     'small mimic':{ ac: 7, mlevel: 7, msize: MZ_MEDIUM, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_PHYS, 3, 4)] },
+    // C ref: monsters.h S_FUNGUS "lichen" — LVL(0,1,9,0,0), geno (G_GENO|4) so
+    // G_FREQ==4; MZ_SMALL (not verysmall); attack AT_TUCH AD_STCK 0,0 (a sticky
+    // hold, no physical damage).  Needed so the lichen can be the *aggressor* in
+    // the pet's dog_move return-attack (seed0030 seg1 step-114: the kitten bites
+    // the lichen, which survives and touches back via mattackm -> rnd(20)).  The
+    // 0,0 dice mean a hit deals d(0,0)==0 (no damage roll); AD_STCK is modeled as
+    // AD_PHYS for the to-hit path (mhitm_adtyping only special-cases non-PHYS).
+    'lichen':     { ac: 9, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 4, attacks: [ATK(AT_TUCH, AD_PHYS, 0, 0)] },
 };
 
 // Resolve the combat record for a monster instance.  Prefers data.name; the

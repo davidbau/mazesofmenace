@@ -19,7 +19,8 @@ import {
     W_QUIVER, LEFT_RING, RIGHT_RING, W_ART,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
-    TIMEOUT, BLINDED, FAST, TELEPAT, WORN_BOOTS,
+    TIMEOUT, BLINDED, FAST, TELEPAT, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
+    DISPLACED, INVIS,
     DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
     BOLT_LIM, LEFT_HANDED, GLIB,
 } from './const.js';
@@ -38,6 +39,10 @@ import { vision_recalc } from './vision.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
+const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
+const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
+const CLOAK_OF_PROTECTION = objectNames.indexOf('CLOAK_OF_PROTECTION');
+const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
 const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
 const TOWEL = objectNames.indexOf('TOWEL');
 const LENSES = objectNames.indexOf('LENSES');
@@ -559,9 +564,61 @@ async function Helmet_on() {
     find_ac();
     return 0;
 }
+/**
+ * C ref: do_wear.c toggle_displacement — discover + You_feel when state
+ * changes and hero can see/sense self. Timed-displacement (obj null) and
+ * Blind_telepat-only sensing deferred when not needed for extrinsic cloak.
+ */
+async function toggle_displacement(obj, oldprop, on) {
+    if (on ? game._initial_don : game.context?.takeoff?.cancelled_don) return;
+    const u = game.u || {};
+    const prop = u.uprops?.[DISPLACED];
+    const intrinsic = (prop?.intrinsic | 0) || (u.HDisplaced | 0);
+    const blocked = prop?.blocked | 0;
+    const can_notice = (!Blind() && !u.uswallow && !hero_Invisible())
+        || !!(u.ETelepat || u.Unblind_telepat
+            || u.Detect_monsters || (u.HDetect_monsters | 0)
+            || (u.EDetect_monsters | 0));
+    if (!oldprop && !intrinsic && !blocked && can_notice) {
+        if (obj) makeknown(obj.otyp);
+        await You_feel(
+            `that monsters${on ? '' : ' no longer'} have difficulty pinpointing your location.`,
+        );
+    }
+}
+
+/** C youprop.h Invisible — Invis && !See_invisible. */
+function hero_Invisible() {
+    const u = game.u || {};
+    const invis = !!(u.Invis
+        || (((u.HInvis | 0) || (u.EInvis | 0) || (u.uprops?.[INVIS]?.extrinsic | 0)
+            || (u.uprops?.[INVIS]?.intrinsic | 0)) && !(u.BInvis | 0)));
+    const seeInv = !!(u.See_invisible
+        || (u.HSee_invisible | 0) || (u.ESee_invisible | 0));
+    return invis && !seeInv;
+}
+
+/**
+ * C ref: do_wear.c Cloak_on — PROTECTION makeknown; DISPLACEMENT
+ * toggle_displacement (D-0783). Named omissions: ELVEN stealth,
+ * MUMMY_WRAPPING / INVISIBILITY / OILSKIN / ALCHEMY_SMOCK bodies;
+ * Cloak_off; update_inventory.
+ */
 async function Cloak_on() {
     const o = game.u?.uarmc;
-    if (o && !o.known) o.known = 1;
+    if (!o) return 0;
+    const u = game.u || {};
+    const oprop = game.objects?.[o.otyp]?.oc_oprop | 0;
+    const extr = u.uprops?.[oprop]?.extrinsic | 0;
+    const oldprop = extr & ~WORN_CLOAK;
+
+    if (o.otyp === CLOAK_OF_PROTECTION) {
+        makeknown(o.otyp);
+    } else if (o.otyp === CLOAK_OF_DISPLACEMENT) {
+        await toggle_displacement(o, oldprop, true);
+    }
+    // ELVEN / MUMMY / INVIS / OILSKIN / ALCHEMY deferred
+    if (!o.known) o.known = 1;
     find_ac();
     return 0;
 }
@@ -571,9 +628,39 @@ async function Shield_on() {
     find_ac();
     return 0;
 }
+/**
+ * C ref: do_wear.c Gloves_on — POWER makeknown→exercise(A_WIS) (D-0783);
+ * FUMBLING incr_itimeout. Named omissions: DEX adj_abon; update_inventory;
+ * Gloves_off.
+ */
 async function Gloves_on() {
     const o = game.u?.uarmg;
-    if (o && !o.known) o.known = 1;
+    if (!o) return 0;
+    const u = game.u || {};
+    const oprop = game.objects?.[o.otyp]?.oc_oprop | 0;
+    const extr = u.uprops?.[oprop]?.extrinsic | 0;
+    const oldprop = extr & ~WORN_GLOVES;
+
+    if (o.otyp === GAUNTLETS_OF_FUMBLING) {
+        if (!u.uprops) u.uprops = {};
+        const prop = u.uprops[oprop] || (u.uprops[oprop] = {
+            intrinsic: 0, extrinsic: 0, blocked: 0,
+        });
+        const hCur = (u.HFumbling | 0) | (prop.intrinsic | 0);
+        if (!oldprop && !(hCur & ~TIMEOUT)) {
+            const next = (hCur & TIMEOUT) + rnd(20);
+            const hNext = (hCur & ~TIMEOUT) | (next & TIMEOUT);
+            u.HFumbling = hNext;
+            prop.intrinsic = hNext;
+        }
+    } else if (o.otyp === GAUNTLETS_OF_POWER) {
+        // C: makeknown(uarmg->otyp); botl = TRUE
+        makeknown(o.otyp);
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+    }
+    // GAUNTLETS_OF_DEXTERITY adj_abon deferred
+    if (!o.known) o.known = 1;
     find_ac();
     return 0;
 }

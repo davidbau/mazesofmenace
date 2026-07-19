@@ -40,6 +40,11 @@ const TRIPE_RATION = 264, EGG = 266, MEATBALL = 267, MEAT_STICK = 268,
       ENORMOUS_MEATBALL = 269, MEAT_RING = 270, APPLE = 277, BANANA = 281,
       CARROT = 282, CLOVE_OF_GARLIC = 284, SLIME_MOLD = 285;
 
+// C ref: mondata.h metallivorous(ptr) == (mflags1 & M1_METALLIVORE).  Only three
+// species carry the flag (include/monsters.h); none are tamable pets, so a TIN
+// fed to a contest pet always classifies MANFOOD.  Name-keyed for stability.
+const M1_METALLIVORE_NAMES = new Set(["rock mole", "rust monster", "xorn"]);
+
 // C ref: mondata.h haseyes(ptr) — monster has eyes (not NOEYES).  For the pets
 // our sessions drive (dog/cat/pony) this is always true; M1_NOEYES monsters
 // (e.g. blobs) never reach dogfood here, so a constant TRUE is faithful.
@@ -247,6 +252,10 @@ function dogfood(mon, obj) {
             return (herbi) ? ACCFOOD : MANFOOD;
         case CLOVE_OF_GARLIC:
             return herbi ? ACCFOOD : MANFOOD;
+        case TIN:
+            // C ref: dog.c dogfood() — metallivorous(mptr) ? ACCFOOD : MANFOOD.
+            // A pet won't pry a tin open to eat it (MANFOOD) unless it eats metal.
+            return M1_METALLIVORE_NAMES.has(mdat.name) ? ACCFOOD : MANFOOD;
         default:
             if (starving) return ACCFOOD;
             // C: otyp > SLIME_MOLD ? (carni?ACCFOOD:MANFOOD)
@@ -610,7 +619,7 @@ function cursed_object_at(x, y) {
 // toggle in allmain.js): the real line-of-sight only pays off once the pet's
 // repeat-move object scan runs (the C multi-pass).
 function couldsee(x, y) { return PET_REAL_VISION ? visCouldsee(x, y) : true; }
-function m_cansee(mtmp, x, y) {
+export function m_cansee(mtmp, x, y) {
     return PET_REAL_VISION ? clear_path(mtmp.mx, mtmp.my, x, y) : true;
 }
 function isLit(x, y) { return !!game.level?.at(x, y)?.lit; }
@@ -633,7 +642,7 @@ function objWeight(obj) {
 //     engulf/dragon "glomper" return 1 BEFORE the load check (mon.c:2026).
 //   - single items: 0 iff curr_mon_load + owt > max_mon_load.  A freshly
 //     created starting pet carries nothing, so curr_mon_load == 0.
-function can_carry(mtmp, obj) {
+export function can_carry(mtmp, obj) {
     const pmidx = mtmp.data?.pmidx;
     const maxload = PET_MAXLOAD[pmidx] ?? 51;
     const iquan = obj.quan || 1;

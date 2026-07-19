@@ -407,6 +407,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizmap" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) — ^F / #wizmap
+        name: 'wizmap',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_map } = await import('./wizcmds.js');
+            return wiz_map();
+        },
+    },
+    {
         // C: cmd.c "wizwish" IFBURIED|CMD_M_PREFIX|WIZMODECMD (no AUTOCOMPLETE)
         name: 'wizwish',
         wiz: true,

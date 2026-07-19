@@ -685,7 +685,9 @@ export async function safe_teleds(teleds_flags) {
  * Envelope: noteleport pline; wizard/Teleport_control getpos path;
  * uncontrolled → learnscroll + safe_teleds.
  * Named omissions: make_blinded clear; W-tower half of amulet gate;
- * unconscious controlled fail; steed whobuf; travelcc pre-suggest polish.
+ * unconscious controlled fail; steed whobuf.
+ * dotele clears travelcc before tele (D-0789); scrolltele clears when
+ * controlled dest equals travelcc.
  */
 export async function scrolltele(scroll) {
     const flags = game.flags || {};
@@ -720,6 +722,12 @@ export async function scrolltele(scroll) {
         if ((await getpos(cc, true, 'the desired position')) < 0) return;
         if (teleok(cc.x, cc.y, false)) {
             await teleds(cc.x, cc.y, TELEDS_TELEPORT);
+            // C: if (u_at(travelcc)) clear travelcc
+            const tcc = game.iflags?.travelcc;
+            if (tcc && (u.ux | 0) === (tcc.x | 0) && (u.uy | 0) === (tcc.y | 0)) {
+                tcc.x = 0;
+                tcc.y = 0;
+            }
             return;
         }
         await pline('Sorry...');
@@ -738,7 +746,7 @@ export async function tele() {
 
 /**
  * C ref: teleport.c dotele — #teleport / ^T body.
- * Ported: wizard break_the_rules → tele() + morehungry;
+ * Ported: wizard break_the_rules → clear travelcc + tele() + morehungry;
  * trap/vault/energy/spellcast arms deferred.
  */
 export async function dotele(break_the_rules) {
@@ -754,6 +762,12 @@ export async function dotele(break_the_rules) {
         }
     }
     // next_to_u leash gate — always true without leash wiring
+    // C: iflags.travelcc.x = iflags.travelcc.y = 0 before tele()
+    // so scrolltele getpos starts at hero, not a stale '_' destination.
+    if (!game.iflags) game.iflags = {};
+    if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+    game.iflags.travelcc.x = 0;
+    game.iflags.travelcc.y = 0;
     await tele();
     // C: if (!trap) morehungry(100)
     const { morehungry } = await import('./eat.js');
