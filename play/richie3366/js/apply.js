@@ -3,26 +3,29 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, canseemon } from './display.js';
+import {
+    flush_screen, flush_topl_more, pline, canseemon, canspotmon, newsym,
+} from './display.js';
 import { vision_recalc } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
-    COIN_CLASS, GEM_CLASS, FOOD_CLASS, objectNames,
+    COIN_CLASS, GEM_CLASS, FOOD_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, nothing_happens, nothing_seems_to_happen,
     FACE, TIMEOUT, OBJ_FREE, isok, SDOOR, SCORR,
     COLNO, DOOR, D_CLOSED, D_LOCKED, ZAP_POS, MAXULEV, WEAK,
+    M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
 } from './const.js';
 import { pick_lock } from './lock.js';
-import { ustatusline } from './insight.js';
-import { m_at, dist2, setmangry } from './mon.js';
+import { ustatusline, mstatusline } from './insight.js';
+import { m_at, dist2, setmangry, seemimic } from './mon.js';
 import { compactify_invlets, makeknown } from './invent.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import {
     nohands, haseyes, humanoid, is_demon, is_vampire, is_vampshifter,
-    likes_gems, M1_SEE_INVIS, monsterNames,
+    likes_gems, M1_SEE_INVIS, monsterNames, mons,
 } from './monsters.js';
 import { wield_tool } from './wield.js';
 import { splitobj, delobj } from './mkobj.js';
@@ -68,6 +71,8 @@ const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
 const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
+const LENSES = objectNames.indexOf('LENSES');
+const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_UMBER_HULK = monsterNames.indexOf('PM_UMBER_HULK');
@@ -296,9 +301,12 @@ async function getdir_self_ok(prompt) {
 
 /**
  * C ref: apply.c use_stethoscope — one free use per hero_seq; '.' → ustatusline.
- * Adjacent: isok / m_at / empty → "hear nothing special", return res (D-0735).
- * Deferred: swallow/steed/dz/cursed heartbeat rn2(2), full mstatusline,
- * SDOOR/SCORR reveal, its_dead, confdir, Deaf/nohands/freehand gates.
+ * Adjacent: isok / m_at (mundetected + mappearance seemimic + mstatusline) /
+ * empty → "hear nothing special", return res (D-0735 / D-0738).
+ * Deferred: swallow/steed/dz/cursed heartbeat rn2(2), confdir,
+ * Deaf/nohands/freehand gates, SDOOR/SCORR hollow reveal, its_dead,
+ * slime-mold fruit names, full defsyms furniture explanations,
+ * mstatusline ailment/wizard-tame arms.
  * @returns {number} 1 = ECMD_TIME, 0 = ECMD_OK, -1 = ECMD_CANCEL
  */
 async function use_stethoscope(_obj) {
@@ -306,7 +314,7 @@ async function use_stethoscope(_obj) {
 
     // C: first use this hero_seq is free; another use costs the turn
     if (!game.context) game.context = {};
-    if (game.hero_seq == null) game.hero_seq = (game.moves || 1) << 3;
+    if (game.hero_seq == null) game.hero_seq = ((game.moves || 1) | 0) << 3;
     const seq = game.hero_seq;
     // C: res = (hero_seq == stethoscope_seq) ? ECMD_TIME : ECMD_OK
     const res = seq === (game.context.stethoscope_seq ?? 0) ? ECMD_TIME : ECMD_OK;
@@ -325,20 +333,52 @@ async function use_stethoscope(_obj) {
     const ry = (game.u.uy | 0) + dy;
     if (!isok(rx, ry)) {
         // C: You_hear("a faint typing noise."); return ECMD_OK
-        await pline("You hear a faint typing noise.");
+        await pline('You hear a faint typing noise.');
         return ECMD_OK;
     }
 
-    // C: m_at(rx,ry) → mstatusline(mtmp); return res
-    // Named omission: full mstatusline body (tame/hungry/apport wizard info,
-    // worm segments, mimic reveal, ailment flags). Still spend `res` so
-    // hero_seq TIME matches C (D-0735: anh must movemon before mirror).
+    // C: m_at(rx,ry) → mundetected / mappearance seemimic / mstatusline
     const mtmp = m_at(rx, ry);
     if (mtmp) {
-        const nm = mtmp.data?.mname || 'monster';
-        const tame = mtmp.mtame ? ', tame' : (mtmp.mpeaceful ? ', peaceful' : '');
-        await pline(`Status of ${nm}${tame}:  Level ${mtmp.m_lev | 0}  `
-            + `HP ${mtmp.mhp | 0}(${mtmp.mhpmax | 0}).`);
+        const mnm = a_monnam_steth(mtmp);
+
+        if (mtmp.mundetected) {
+            if (!canspotmon(mtmp)) {
+                await pline(`There is ${mnm} hidden there.`);
+            }
+            mtmp.mundetected = 0;
+            if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
+        } else if (mtmp.mappearance || M_AP_TYPE(mtmp)) {
+            let what = 'thing';
+            let use_plural = false;
+            const ap = M_AP_TYPE(mtmp);
+            if (ap === M_AP_OBJECT) {
+                const otyp = mtmp.mappearance | 0;
+                what = simple_typename_steth(otyp);
+                const on = objectNames[otyp] || '';
+                use_plural = on.includes('BOOTS') || on.includes('GLOVES')
+                    || otyp === LENSES;
+            } else if (ap === M_AP_MONSTER) {
+                const ptr = mons(mtmp.mappearance | 0);
+                const raw = ptr?.name || 'monster';
+                what = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+            } else if (ap === M_AP_FURNITURE) {
+                // defsyms[].explanation deferred
+                what = 'thing';
+            }
+            seemimic(mtmp);
+            await pline(
+                `${use_plural ? 'Those' : 'That'} ${what} `
+                + `${use_plural ? 'are' : 'is'} really ${mnm}.`,
+            );
+        } else if (game.flags?.verbose !== false && !canspotmon(mtmp)) {
+            await pline(`There is ${mnm} there.`);
+        }
+
+        await mstatusline(mtmp);
+        if (!canspotmon(mtmp)) {
+            // map_invisible deferred — still return res
+        }
         return res;
     }
 
@@ -353,6 +393,23 @@ async function use_stethoscope(_obj) {
     // C: if (!its_dead(...)) You("hear nothing special."); return res
     await pline('You hear nothing special.');
     return res;
+}
+
+/** C ref: do_name.c a_monnam — ARTICLE_A for stethoscope reveal (hallu deferred). */
+function a_monnam_steth(mtmp) {
+    if (!mtmp) return 'a monster';
+    if (mtmp.mextra?.mgivenname) return mtmp.mextra.mgivenname;
+    const raw = mtmp?.data?.name || 'monster';
+    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+    const art = /^[aeiou]/i.test(plain) ? 'an' : 'a';
+    return `${art} ${plain}`;
+}
+
+/** C ref: objnam.c simple_typename — otyp → lowercase name. */
+function simple_typename_steth(otyp) {
+    const s = objectNameStrs[otyp]
+        || (objectNames[otyp] || 'object').toLowerCase().replace(/_/g, ' ');
+    return s;
 }
 
 /** C mondata.h perceives — M1_SEE_INVIS. */
@@ -930,7 +987,8 @@ async function use_cream_pie(obj) {
 
 /**
  * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE + MIRROR/
- * CAMERA + sack/bag use_container + musical instruments + cream pie.
+ * CAMERA + sack/bag use_container + musical instruments + cream pie +
+ * MAGIC_MARKER→dowrite.
  * Named omissions: nohands/capacity; retouch; do_break_wand; flip_through_book;
  * flip_coin; jelly; whip/grapple/blindfold/lenses; use_stone; use_pole/
  * use_pick_axe; traps; oil; BoT; Medusa/nymph mirror arms; camera closeup;
@@ -995,6 +1053,13 @@ export async function doapply() {
     // C apply.c case CREAM_PIE → use_cream_pie (D-0711)
     if (obj.otyp === CREAM_PIE) {
         const res = await use_cream_pie(obj);
+        return res === ECMD_TIME;
+    }
+
+    // C apply.c case MAGIC_MARKER → dowrite (D-0742)
+    if (obj.otyp === MAGIC_MARKER) {
+        const { dowrite } = await import('./write.js');
+        const res = await dowrite(obj);
         return res === ECMD_TIME;
     }
 

@@ -1,5 +1,5 @@
-// lock.js — Lock picking and door open.
-// C ref: lock.c pick_lock / picklock / doopen_indir (door + autounlock subset).
+// lock.js — Lock picking, door open/close.
+// C ref: lock.c pick_lock / picklock / doopen_indir / doclose (subset).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -9,11 +9,12 @@ import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
-    AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK,
+    AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
+    M_AP_FURNITURE, M_AP_OBJECT,
 } from './const.js';
 import { rnl, rn2 } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
-import { verysmall, nohands } from './monsters.js';
+import { verysmall, nohands, passes_walls } from './monsters.js';
 import {
     objects_at, place_object, stackobj, obj_extract_self, delobj,
 } from './mkobj.js';
@@ -25,6 +26,8 @@ import { doname, xname, cxname } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
 import { PM_ROGUE } from './generated/monsters_data.js';
+import { m_at } from './mon.js';
+import { getdir_cmdassist } from './dothrow.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -231,12 +234,18 @@ export async function getdir(prompt) {
     return true;
 }
 
-/** C ref: cmd.c get_adjacent_loc */
+/** C ref: cmd.c get_adjacent_loc — getdir (cmdassist) then adjacent cell. */
 async function get_adjacent_loc(prompt, emsg) {
-    if (!(await getdir(prompt))) {
+    // C: getdir(prompt) — invalid key → help_dir cmdassist then fail
+    const dir = await getdir_cmdassist(prompt);
+    if (!dir) {
         await pline('Never mind.');
         return null;
     }
+    if (!game.u) game.u = {};
+    game.u.dx = dir.dx | 0;
+    game.u.dy = dir.dy | 0;
+    game.u.dz = 0;
     const x = (game.u.ux || 0) + (game.u.dx || 0);
     const y = (game.u.uy || 0) + (game.u.dy || 0);
     if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) {
@@ -353,6 +362,113 @@ export async function doopen_indir(x, y) {
         await pline('The door resists!');
     }
     return true;
+}
+
+/**
+ * C ref: lock.c obstructed — mon/obj blocks closing a door.
+ * Named omissions: worm-tail phrasing; map_invisible; Something vs Some_Monnam.
+ */
+async function obstructed_close(x, y) {
+    const mtmp = m_at(x, y);
+    if (mtmp && M_AP_TYPE(mtmp) !== M_AP_FURNITURE) {
+        if (M_AP_TYPE(mtmp) === M_AP_OBJECT) {
+            await pline("Something's in the way.");
+            return true;
+        }
+        await pline('Something blocks the way!');
+        return true;
+    }
+    if ((objects_at(x, y) || []).length > 0) {
+        await pline("Something's in the way.");
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: lock.c doclose — #close / `c` command.
+ * Envelope: nohands/pit gates, getdir (cmdassist), door mask arms, close roll.
+ * Named omissions: stumble_on_door_mimic; Blind feel_location/mapseen;
+ * Confusion/Stunned always-TIME; portcullis/drawbridge; steed close path;
+ * feel_newsym mapseen gating; Some_Monnam obstructed polish.
+ * @returns {Promise<boolean>} true when C would return ECMD_TIME
+ */
+export async function doclose() {
+    if (nohands(game.youmonst?.data)) {
+        await pline("You can't close anything -- you have no hands!");
+        return false;
+    }
+    const u = game.u || {};
+    if (u.utrap && (u.utraptype | 0) === TT_PIT) {
+        await pline("You can't reach over the edge of the pit.");
+        return false;
+    }
+
+    // C: getdir(NULL) — cmdassist NHW_TEXT on invalid key, then cancel
+    const dir = await getdir_cmdassist(null);
+    if (!dir) return false;
+    u.dx = dir.dx;
+    u.dy = dir.dy;
+    u.dz = 0;
+
+    const x = (u.ux | 0) + (dir.dx | 0);
+    const y = (u.uy | 0) + (dir.dy | 0);
+    const Passes_walls = !!(u.Passes_walls
+        || passes_walls(game.youmonst?.data));
+    if (x === (u.ux | 0) && y === (u.uy | 0) && !Passes_walls) {
+        await pline('You are in the way!');
+        return true;
+    }
+
+    let res = false; // C: res starts ECMD_OK; Confusion→TIME deferred
+    if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) {
+        await pline('You see no door there.');
+        return res;
+    }
+
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) {
+        // C: portcullis/drawbridge arms deferred
+        await pline('You see no door there.');
+        return res;
+    }
+
+    const mask = loc.doormask || 0;
+    if (mask === D_NODOOR) {
+        await pline('This doorway has no door.');
+        return res;
+    }
+    if (await obstructed_close(x, y)) return res;
+    if (mask === D_BROKEN) {
+        await pline('This door is broken.');
+        return res;
+    }
+    if (mask & (D_CLOSED | D_LOCKED)) {
+        await pline('This door is already closed.');
+        return res;
+    }
+
+    if (mask === D_ISOPEN) {
+        if (verysmall(game.youmonst?.data) && !u.usteed) {
+            await pline("You're too small to push the door closed.");
+            return res;
+        }
+        // C: u.usteed || rn2(25) < (ACURRSTR + A_DEX + A_CON) / 3
+        const chance = Math.trunc(
+            (acurrstr() + acurr(A_DEX) + acurr(A_CON)) / 3,
+        );
+        if (u.usteed || rn2(25) < chance) {
+            await pline('The door closes.');
+            loc.doormask = D_CLOSED;
+            newsym(x, y);
+            recalc_block_point(x, y); // C: block_point
+            vision_recalc(1);
+        } else {
+            exercise(A_STR, true);
+            await pline('The door resists!');
+        }
+    }
+    return true; // C: return ECMD_TIME after open-door arm
 }
 
 /**

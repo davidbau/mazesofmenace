@@ -112,8 +112,24 @@ function throwable_lets() {
  * C ref: invent.c getobj("throw", throw_ok) — loop on missing letter;
  * re-prompt after more() when prior topline still needs acknowledgment.
  * `?`/`*` → display_pickinv_reply (DOWNPLAY food selectable via `*`).
+ * CMDQ_KEY from itemactions / fireassist consumed before interactive prompt.
  */
 async function getobj_throw() {
+    // C getobj: cmdq_pop CMDQ_KEY before interactive prompt
+    const q = game._cmdq_canned;
+    if (q?.length) {
+        const head = q[0];
+        if (head && typeof head === 'object' && head.typ === 'key') {
+            q.shift();
+            const ch = String.fromCharCode(head.key);
+            for (const o of game.invent || []) {
+                if (o.invlet === ch && throw_ok(o)) return o;
+            }
+            game._cmdq_canned = [];
+            return null;
+        }
+    }
+
     for (;;) {
         await flush_topl_more();
         const lets = throwable_lets();
@@ -671,7 +687,8 @@ export async function dothrow() {
     const obj = await getobj_throw();
     if (!obj) return 0;
 
-    const dir = await getdir('In what direction? ');
+    // C: getdir — cmdassist on invalid keys (same as dofire)
+    const dir = await getdir_cmdassist('In what direction?');
     if (!dir) return 0;
     game.u.dx = dir.dx;
     game.u.dy = dir.dy;

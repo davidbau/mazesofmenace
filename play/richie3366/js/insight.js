@@ -43,9 +43,13 @@ import { pline } from './display.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import {
     NUMMONS, mons, G_UNIQ, M2_PNAME, monsterNames,
+    MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
 import { align_str } from './roles.js';
+import { x_monnam_tame } from './do_name.js';
+import { find_mac } from './mhitm.js';
+import { A_NONE, A_LAWFUL, A_CHAOTIC } from './const.js';
 
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 
@@ -584,6 +588,58 @@ export function piousness(showneg, suffix) {
         buf += suffix;
     }
     return buf;
+}
+
+/**
+ * C ref: insight.c size_str — msize → adjective for mstatusline.
+ */
+function size_str(msize) {
+    switch (msize | 0) {
+    case MZ_TINY: return 'tiny';
+    case MZ_SMALL: return 'small';
+    case MZ_MEDIUM: return 'medium';
+    case MZ_LARGE: return 'large';
+    case MZ_HUGE: return 'huge';
+    default: return 'gigantic';
+    }
+}
+
+/**
+ * C ref: priest.c mon_aligntyp — priest/minion emin deferred → data.maligntyp.
+ */
+function mon_aligntyp(mon) {
+    const algn = mon?.data?.maligntyp ?? 0;
+    if (algn === A_NONE) return A_NONE;
+    if (algn > 0) return A_LAWFUL;
+    if (algn < 0) return A_CHAOTIC;
+    return 0; // A_NEUTRAL
+}
+
+/**
+ * C ref: insight.c mstatusline — stethoscope/probe one-line monster status.
+ * Branch envelope: tame/peaceful suffix; align + size; Level/HP/AC.
+ * Named omissions: wizard tame hungry/apport; worm segments; shapechanger/
+ * eating/mhidden_description; ailment flags (cancelled/confused/…);
+ * ustuck/usteed/leash arms.
+ */
+export async function mstatusline(mtmp) {
+    if (!mtmp) return;
+    let info = '';
+    if (mtmp.mtame) {
+        info = ', tame';
+        // wizard (%d; hungry; apport) deferred
+    } else if (mtmp.mpeaceful) {
+        info = ', peaceful';
+    }
+    // worm / cham / meating / mhidden / ailments deferred
+    const monnambuf = x_monnam_tame(mtmp);
+    const alignment = mon_aligntyp(mtmp);
+    const sz = size_str(mtmp.data?.msize ?? MZ_MEDIUM);
+    await pline(
+        `Status of ${monnambuf} (${align_str(alignment)}, ${sz}):  `
+        + `Level ${mtmp.m_lev | 0}  HP ${mtmp.mhp | 0}(${mtmp.mhpmax | 0})  `
+        + `AC ${find_mac(mtmp)}${info}.`,
+    );
 }
 
 /**

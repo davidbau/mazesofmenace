@@ -9,6 +9,7 @@ import { pline, newsym, canspotmon, map_invisible, unmap_object, glyph_is_invisi
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict } from './mondata.js';
+import { MON_WEP, mon_wield_item, hitval } from './weapon.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -22,6 +23,8 @@ import {
     TAINT_AGE,
     NORMAL_SPEED,
     engulfing_u,
+    NEED_WEAPON,
+    NEED_HTH_WEAPON,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, is_neuter, nonliving,
@@ -484,6 +487,9 @@ export async function mattackm(magr, mdef) {
     _mm_vis = ((cansee(magr.mx, magr.my) && canspotmon(magr))
         || (cansee(mdef.mx, mdef.my) && canspotmon(mdef)));
 
+    // C ref: mhitm.c mattackm — out-of-sequence attack still counts as move
+    magr.mlstmv = game.moves | 0;
+
     let struck = 0;
     const res = new Array(NATTK).fill(M_ATTK_MISS);
 
@@ -500,7 +506,26 @@ export async function mattackm(magr, mdef) {
         let strike = 0;
 
         switch (mattk.aatyp) {
-            case AT_WEAP:
+            case AT_WEAP: {
+                // C ref: mhitm.c mattackm AT_WEAP — ranged thrwmm deferred;
+                // mon_wield_item spends the attack (return M_ATTK_MISS).
+                if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
+                    // thrwmm deferred → treat as miss
+                    strike = 0;
+                    break;
+                }
+                if ((magr.weapon_check | 0) === NEED_WEAPON || !MON_WEP(magr)) {
+                    magr.weapon_check = NEED_HTH_WEAPON;
+                    if ((await mon_wield_item(magr)) !== 0) {
+                        return M_ATTK_MISS;
+                    }
+                }
+                // possibly_unwield / mswingsm deferred
+                mwep = MON_WEP(magr);
+                if (mwep) tmp += hitval(mwep, mdef);
+                // FALLTHROUGH to melee hit roll
+            }
+            // falls through
             case AT_CLAW:
             case AT_KICK:
             case AT_BITE:
@@ -510,6 +535,7 @@ export async function mattackm(magr, mdef) {
                 if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) continue;
                 const dieroll = rnd(20 + i);
                 strike = tmp > dieroll ? 1 : 0;
+                if (mwep) tmp -= hitval(mwep, mdef);
                 if (strike) {
                     res[i] = await hitmm(magr, mdef, mattk, mwep, dieroll);
                 } else {

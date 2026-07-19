@@ -41,7 +41,7 @@ import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
 import { do_attack, mon_at, is_safemon } from './uhitm.js';
-import { doopen, doopen_indir } from './lock.js';
+import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
@@ -1104,6 +1104,11 @@ export async function rhack(key) {
     } else if (ch === 'o') {
         // C ref: lock.c doopen / cmd.c `o` — getdir then open door
         const tookTime = await doopen();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'c') {
+        // C ref: lock.c doclose / cmd.c `c` — getdir then close door
+        const tookTime = await doclose();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (key === 4) { // Ctrl-D

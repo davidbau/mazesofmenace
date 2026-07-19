@@ -171,7 +171,7 @@ function m_poisongas_ok(mtmp) {
  * <0,0> only used from music; shopkeeper/priest own-shop temple resist;
  * sengr_at fuzzy match (exact "Elbereth"); Inhell (dungeon hellish).
  */
-function onscary(x, y, mtmp) {
+export function onscary(x, y, mtmp) {
     const auditory_scare = (x === 0 && y === 0);
     const magical_scare = !auditory_scare;
     const ptr = mtmp?.data;

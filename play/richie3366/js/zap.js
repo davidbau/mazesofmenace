@@ -23,11 +23,11 @@
 // silver-dragon arms beyond shield makeknown; create_polymon after
 // poly_zapped; do_osshock shop bill; invent/worn poly_obj arms;
 // boxlock on Is_box; other bhito otyps; defended(); resists_magm body;
-// ignite_items body; burnarmor erode_obj worn slots; acid_damage/
-// erode_armor; death-breath disintegrate_arm; potionbreathe;
-// inventory_resistance_check; destroy_items elec body; ugolemeffects;
-// burn_away_slime; spell_damage_bonus / Knight questart double;
-// Rider/Death specials.
+// ignite_items body; burnarmor worn erode ported (D-0741); acid_damage/
+// erode_armor; death-breath disintegrate_arm; potionbreathe invis flash
+// (D-0741); inventory_resistance_check; destroy_items elec body;
+// ugolemeffects; burn_away_slime; spell_damage_bonus / Knight questart
+// double; Rider/Death specials.
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -57,6 +57,9 @@ import { obj_resists } from './dogmove.js';
 import { zap_dig } from './dig.js';
 import { killed } from './uhitm.js';
 import { mon_nam } from './do_name.js';
+import { finish_losehp_done } from './end.js';
+import { burnarmor } from './trap.js';
+import { potionbreathe } from './potion.js';
 import {
     mkobj, delobj, objects_at, replace_object, rnd_class, weight, splitobj,
     oc_merge_of,
@@ -155,14 +158,8 @@ function Half_spell_damage() {
 }
 
 /**
- * C ref: trap.c burnarmor — naked/erode stub shared with trapeffect_fire.
- * Full worn-slot erode_obj arms deferred.
+ * C ref: trap.c burnarmor — used via import; local stub removed (D-0741).
  */
-function burnarmor_zhitu(_victim) {
-    for (;;) {
-        if (rn2(5) === 1) return true;
-    }
-}
 
 /**
  * C ref: youprop.h Reflecting — setworn EReflecting deferred; worn
@@ -426,10 +423,10 @@ const DESTROY_STRINGS = [
 
 /**
  * C ref: zap.c maybe_destroy_item — AD_COLD potions + AD_FIRE potion/scroll/
- * spbook. Named omissions: inventory_resistance_check; potionbreathe;
- * worn Ring_gone/setnotworn; Book-of-Dead glow; AD_ELEC body; chargeit.
+ * spbook. Named omissions: inventory_resistance_check; worn Ring_gone;
+ * Book-of-Dead glow; AD_ELEC body; chargeit; mult forms beyond 1-of-1.
  */
-function maybe_destroy_item(carrier, obj, dmgtyp) {
+async function maybe_destroy_item(carrier, obj, dmgtyp) {
     if (!obj) return 0;
     const u_carry = is_youmonst_carrier(carrier);
     // inventory_resistance_check deferred → never early-out
@@ -483,16 +480,31 @@ function maybe_destroy_item(carrier, obj, dmgtyp) {
     }
     if (!cnt) return 0;
 
-    // pline mult forms deferred — single-stack destroy message subset
-    if (u_carry || false) {
+    // C: pline("%s%s %s!", mult, Yname2/yname, destroy_strings[dindx][cnt>1])
+    const vis = !u_carry && canseemon(carrier);
+    if (u_carry || vis) {
+        const mult = (cnt === 1)
+            ? ((quan === 1) ? '' : 'One of ')
+            : ((cnt < quan) ? 'Some of '
+                : (quan === 2) ? 'Both of ' : 'All of ');
         const verb = DESTROY_STRINGS[dindx]?.[cnt > 1 ? 1 : 0] || 'destroyed';
-        // Yname2 deferred — use xname
-        void verb;
-        // Keep pline quiet-ish for cold path parity with prior port; fire
-        // still needs losehp RNG. Message polish deferred.
+        // Yname2 ≈ "Your " + xname for 1-of-1 carried
+        const nam = (cnt === 1 && quan === 1 && u_carry)
+            ? `Your ${xname(obj)}`
+            : (u_carry ? `your ${xname(obj)}` : xname(obj));
+        await pline(`${mult}${nam} ${verb}!`);
     }
 
-    // potionbreathe deferred (no RNG on this seed5002 path)
+    if (u_carry) {
+        // C: potionbreathe before useup (fire/elec potions, not cold)
+        if (osym === POTION_CLASS && dmgtyp !== AD_COLD) {
+            // breathless/haseyes deferred — wizard/human always qualifies
+            await potionbreathe(obj);
+        }
+        // Ring_gone / setnotworn deferred for worn rings
+        if (obj === game.current_wand) game.current_wand = null;
+    }
+
     for (let i = 0; i < cnt; i++) {
         if (u_carry) useup_invent(obj);
         else m_useup(carrier, obj);
@@ -500,15 +512,18 @@ function maybe_destroy_item(carrier, obj, dmgtyp) {
     if (dmg) {
         if (!u_carry) return xresist ? 0 : dmg;
         if (xresist) {
-            // You aren't hurt — deferred pline
+            await pline("You aren't hurt!");
         } else {
             const how = DESTROY_STRINGS[dindx]?.[2] || 'destroyed item';
             const one = cnt === 1;
             losehp(dmg, one ? how : `${how}s`, one ? KILLED_BY_AN : KILLED_BY);
             exercise(A_STR, false);
+            // C losehp → urgent_pline + done noreturn
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                await finish_losehp_done();
+            }
         }
     }
-    void osym;
     return dmg;
 }
 
@@ -517,7 +532,7 @@ function maybe_destroy_item(carrier, obj, dmgtyp) {
  * Hero uses game.invent array; monsters use minvent nobj chain.
  * Named omissions: bypass_objlist; defer levitation/were; elec body.
  */
-function destroy_items(mon, dmgtyp, dmg_in) {
+async function destroy_items(mon, dmgtyp, dmg_in) {
     let limit = Math.trunc((dmg_in | 0) / DMG_DESTROY_SCALE);
     if (((dmg_in | 0) % DMG_DESTROY_SCALE) > rn2(DMG_DESTROY_SCALE)) limit++;
     if (limit > MAX_ITEMS_DESTROYED) limit = MAX_ITEMS_DESTROYED;
@@ -545,7 +560,11 @@ function destroy_items(mon, dmgtyp, dmg_in) {
     let dmg_out = 0;
     for (let i = 0; i < elig_stacks; i++) {
         const obj = items[i];
-        if (obj) dmg_out += maybe_destroy_item(mon, obj, dmgtyp);
+        if (obj) {
+            dmg_out += await maybe_destroy_item(mon, obj, dmgtyp);
+            // C: losehp→done noreturn mid-loop
+            if (u_carry && game.program_state?.gameover) break;
+        }
     }
     return dmg_out;
 }
@@ -581,9 +600,9 @@ function resist(mtmp, oclass, damage, tell) {
  * + resist halve. Named omissions: defended(); resists_magm body;
  * spell_damage_bonus; burnarmor/ignite; acid_damage/erode; death-breath
  * armor strip; Rider/Death; Knight questart double; shieldeff.
- * @returns {number} damage applied (MAGIC_COOKIE = disintegrate)
+ * @returns {Promise<number>} damage applied (MAGIC_COOKIE = disintegrate)
  */
-function zhitm(mon, type, nd, ootmp) {
+async function zhitm(mon, type, nd, ootmp) {
     let tmp = 0;
     let orig_dmg = 0;
     const damgtype = zaptype(type) % 10;
@@ -620,7 +639,7 @@ function zhitm(mon, type, nd, ootmp) {
         tmp = d(nd, 6);
         orig_dmg = tmp;
         if (resists_fire(mon)) tmp += d(nd, 3);
-        if (!rn2(3)) tmp += destroy_items(mon, AD_COLD, orig_dmg);
+        if (!rn2(3)) tmp += await destroy_items(mon, AD_COLD, orig_dmg);
         break;
     case ZT_SLEEP:
         tmp = 0;
@@ -656,7 +675,7 @@ function zhitm(mon, type, nd, ootmp) {
             tmp = 0;
         }
         // blinding rnd(50) when nd>2 deferred (no RNG stub when skipped)
-        if (!rn2(3)) tmp += destroy_items(mon, AD_ELEC, orig_dmg);
+        if (!rn2(3)) tmp += await destroy_items(mon, AD_ELEC, orig_dmg);
         break;
     case ZT_POISON_GAS:
         if (resists_poison(mon) /* || defended(mon, AD_DRST) */) {
@@ -720,9 +739,9 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
             dam = orig_dam;
         }
         // burn_away_slime deferred
-        if (burnarmor_zhitu(game.youmonst || { _youmonst: true })) {
+        if (await burnarmor(game.youmonst || { _youmonst: true })) {
             if (!rn2(3)) {
-                destroy_items(
+                await destroy_items(
                     game.youmonst || { _youmonst: true },
                     AD_FIRE,
                     orig_dam,
@@ -739,7 +758,7 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
             dam = orig_dam;
         }
         if (!rn2(3)) {
-            destroy_items(
+            await destroy_items(
                 game.youmonst || { _youmonst: true },
                 AD_COLD,
                 orig_dam,
@@ -767,7 +786,11 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
             if (!game.killer) game.killer = { name: '', format: 0 };
             game.killer.format = KILLED_BY_AN;
             game.killer.name = fltxt || '';
+            // C: done(DIED) noreturn from zhitu death arm
             losehp((game.u?.uhp | 0) + 1, fltxt || 'death ray', KILLED_BY_AN);
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                await finish_losehp_done();
+            }
             return;
         }
     case ZT_LIGHTNING:
@@ -779,7 +802,7 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
             exercise(A_CON, false);
         }
         if (!rn2(3)) {
-            destroy_items(
+            await destroy_items(
                 game.youmonst || { _youmonst: true },
                 AD_ELEC,
                 orig_dam,
@@ -794,12 +817,20 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
         break;
     }
 
+    // C: destroy_items losehp→done noreturn skips bolt losehp
+    if (game.program_state?.gameover) return;
+
     if (dam && Half_spell_damage() && abstyp < 20) {
         dam = Math.trunc((dam + 1) / 2);
     }
     if (dam) {
         const kbuf = fltxt || 'ray';
+        // C hack.c losehp → done(DIED) noreturn — must not resume weffects
+        // learnwand (D-0737; same contract as thitu/mbhitm D-0255/D-0323).
         losehp(dam, kbuf, KILLED_BY_AN);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            await finish_losehp_done();
+        }
     }
 }
 
@@ -865,7 +896,7 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                         // mon_reflects deferred
                         const mon_could_move = !!mon.mcanmove;
                         const ootmp = { otmp: null };
-                        const tmp = zhitm(mon, type, nd, ootmp);
+                        const tmp = await zhitm(mon, type, nd, ootmp);
 
                         if (tmp === MAGIC_COOKIE) {
                             // disintegrate_mon deferred → kill
@@ -908,6 +939,8 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                             dy = -dy;
                         } else {
                             await zhitu(type, nd, flash_str(fltyp), sx, sy);
+                            // C: fatal losehp never returns into dobuzz
+                            if (game.program_state?.gameover) break;
                         }
                     } else if (!Blind()) {
                         await pline(`The ${flash_str(fltyp)} whizzes by you!`);
@@ -1576,6 +1609,8 @@ async function weffects(obj) {
         }
         // SPE_* ubuzz deferred
     }
+    // C: fatal zhitu→losehp→done never resumes here for learnwand
+    if (game.program_state?.gameover) return;
     if (disclose) {
         learnwand(obj);
         if (was_unkn) {

@@ -55,7 +55,7 @@ import {
     WATER, BURNING,
     TT_NONE, TT_BEARTRAP, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
     HEAD, ARM,
-    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMU, W_WEP, W_SWAPWEP,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP,
     CORPSTAT_NONE, MM_NOCOUNTBIRTH, MM_NOMSG,
     ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE,
@@ -1895,21 +1895,72 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
 }
 
 /**
- * C ref: trap.c burnarmor — armor-slot burn picker (monster naked path).
- * Envelope: skip wet-towel; loop rn2(5) until case 1 (cloak/body/shirt arm
- * always returns TRUE even with no armor). Named omission: erode_obj burn
- * on worn pieces; towel drying.
+ * C ref: trap.c burnarmor — armor-slot burn picker.
+ * Envelope: wet-towel dry deferred; rn2(5) slot loop; case 1 cloak/suit/
+ * shirt always returns TRUE after erode attempt; other cases erode then
+ * continue on ER_NOTHING. Named: grease_protect polish; materialnm helm.
  */
-/** C ref: trap.c burnarmor — armor-slot burn picker (naked/erode stub). */
-export function burnarmor(victim) {
+export async function burnarmor(victim) {
     if (!victim) return false;
-    // Towel dry_a_towel rn2 deferred (m_carrying TOWEL rare)
+    const hitting_u = is_youmonst(victim) || !!victim._youmonst;
+    const u = game.u || {};
+    // Towel dry_a_towel rn2 deferred
     for (;;) {
-        // case 1 → return TRUE (cloak/armor/shirt attempts, then TRUE)
-        if (rn2(5) === 1) return true;
-        // other cases: erode_obj(null) → ER_NOTHING → continue
-        // Full erode_obj worn-slot arms deferred (still named).
+        switch (rn2(5)) {
+        case 0: {
+            const item = hitting_u ? u.uarmh : which_armor(victim, W_ARMH);
+            if ((await erode_obj(
+                item, item ? helm_simple_name(item) : 'helmet',
+                ERODE_BURN, EF_GREASE,
+            )) === ER_NOTHING) continue;
+            break;
+        }
+        case 1: {
+            let item = hitting_u ? u.uarmc : which_armor(victim, W_ARMC);
+            if (item) {
+                await erode_obj(
+                    item, cloak_simple_name(item), ERODE_BURN, EF_GREASE,
+                );
+                return true;
+            }
+            item = hitting_u ? u.uarm : which_armor(victim, W_ARM);
+            if (item) {
+                await erode_obj(item, xname(item), ERODE_BURN, EF_GREASE);
+                return true;
+            }
+            item = hitting_u ? u.uarmu : which_armor(victim, W_ARMU);
+            if (item) {
+                await erode_obj(item, 'shirt', ERODE_BURN, EF_GREASE);
+            }
+            return true;
+        }
+        case 2: {
+            const item = hitting_u ? u.uarms : which_armor(victim, W_ARMS);
+            if ((await erode_obj(
+                item, 'wooden shield', ERODE_BURN, EF_GREASE,
+            )) === ER_NOTHING) continue;
+            break;
+        }
+        case 3: {
+            const item = hitting_u ? u.uarmg : which_armor(victim, W_ARMG);
+            if ((await erode_obj(
+                item, gloves_simple_name(item), ERODE_BURN, EF_GREASE,
+            )) === ER_NOTHING) continue;
+            break;
+        }
+        case 4: {
+            const item = hitting_u ? u.uarmf : which_armor(victim, W_ARMF);
+            if ((await erode_obj(
+                item, 'boots', ERODE_BURN, EF_GREASE,
+            )) === ER_NOTHING) continue;
+            break;
+        }
+        default:
+            break;
+        }
+        break;
     }
+    return false;
 }
 
 /**
@@ -1972,7 +2023,7 @@ async function trapeffect_fire_trap(mtmp, trap, _trflags) {
 
     // C: if (burnarmor(mtmp) || rn2(3)) { destroy_items; ignite; HP }
     // Naked burnarmor returns TRUE → short-circuit (no rn2(3)).
-    if (burnarmor(mtmp) || rn2(3)) {
+    if ((await burnarmor(mtmp)) || rn2(3)) {
         // destroy_items(AD_FIRE) / ignite_items deferred (no RNG stub)
         if ((mtmp.mhp | 0) <= 0) {
             await monkilled(mtmp, '', AD_FIRE);
@@ -2112,7 +2163,7 @@ async function dofiretrap(box) {
     if (!num) await pline('You are uninjured.');
     else losehp(num, TOWER_OF_FLAME, KILLED_BY_AN);
     const you = game.youmonst || { _youmonst: true };
-    if (burnarmor(you) || rn2(3)) {
+    if ((await burnarmor(you)) || rn2(3)) {
         // destroy_items / ignite_items deferred
     }
 }

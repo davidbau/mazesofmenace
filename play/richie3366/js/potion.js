@@ -41,6 +41,7 @@ const POT_BLINDNESS = objectNames.indexOf('POT_BLINDNESS');
 const POT_BOOZE = objectNames.indexOf('POT_BOOZE');
 const POT_FRUIT_JUICE = objectNames.indexOf('POT_FRUIT_JUICE');
 const POT_SEE_INVISIBLE = objectNames.indexOf('POT_SEE_INVISIBLE');
+const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 
@@ -727,52 +728,68 @@ function bottlename() {
 }
 
 /**
- * C ref: potion.c potionbreathe — vapor on hero (thrown-potion distance 0).
- * Envelope: paralysis / sleeping / confusion / blindness / acid exercise.
- * Other otyps and towel / Free_action resist msgs deferred partially.
+ * C ref: potion.c potionbreathe — vapor on hero (thrown/destroy distance 0).
+ * Envelope: invis flash / paralysis / sleeping / confusion / blindness /
+ * acid exercise. Other otyps and towel / Free_action resist msgs partial.
  */
-function potionbreathe(obj) {
+export async function potionbreathe(obj) {
     const u = game.u || {};
     const Free_action = !!(u.Free_action || u.HFree_action || u.EFree_action);
     const Sleep_resistance = !!(u.HSleep_resistance || u.ESleep_resistance);
+    const Blind = !!(u.Blind || u.ublind
+        || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+    const Invis = !!(u.Invis || (u.HInvis | 0) || (u.EInvis | 0));
+    const See_invisible = !!(u.See_invisible || (u.HSee_invisible | 0)
+        || (u.ESee_invisible | 0));
     let kn = 0;
 
     switch (obj.otyp) {
     case POT_CONFUSION:
     case POT_BOOZE:
-        pline('You feel somewhat dizzy.');
+        await pline('You feel somewhat dizzy.');
         // make_confused body deferred — set Confusion timeout stub
         u.Confusion = (u.Confusion | 0) + rnd(5);
+        break;
+    case POT_INVISIBILITY:
+        // C: if (!Blind && !Invis) pline For an instant...
+        if (!Blind && !Invis) {
+            kn++;
+            await pline(`For an instant you ${
+                See_invisible
+                    ? 'could see right through yourself'
+                    : "couldn't see yourself"
+            }!`);
+        }
         break;
     case POT_PARALYSIS:
         kn++;
         if (!Free_action) {
-            pline('Something seems to be holding you.');
+            await pline('Something seems to be holding you.');
             nomul(-rnd(5));
             game.multi_reason = 'frozen by a potion';
             game.nomovemsg = 'You can move again.';
             exercise(A_DEX, false);
         } else {
-            pline('You stiffen momentarily.');
+            await pline('You stiffen momentarily.');
         }
         break;
     case POT_SLEEPING:
         kn++;
         if (!Free_action && !Sleep_resistance) {
-            pline('You feel rather tired.');
+            await pline('You feel rather tired.');
             nomul(-rnd(5));
             game.multi_reason = 'sleeping off a magical draught';
             game.nomovemsg = 'You can move again.';
             exercise(A_DEX, false);
         } else {
-            pline('You yawn.');
+            await pline('You yawn.');
             // monstseesu(M_SEEN_SLEEP) deferred
         }
         break;
     case POT_BLINDNESS:
         kn++;
         // make_blinded deferred — brief Blind stub
-        if (!(u.Blind || u.ublind)) pline('It suddenly gets dark.');
+        if (!(u.Blind || u.ublind)) await pline('It suddenly gets dark.');
         u.Blinded = (u.Blinded | 0) + rnd(5);
         break;
     case POT_ACID:
@@ -834,7 +851,7 @@ export async function potionhit(mon, obj, how) {
     // distance == 0 for hero hit → always breathe if humanoid eyes/breath
     // breathless/haseyes deferred — human start always qualifies
     void mons(PM_HUMAN);
-    potionbreathe(obj);
+    await potionbreathe(obj);
 
     // C: obfree — no obj_resists (delobj would burn rn2(100))
     game._thrownobj = null;

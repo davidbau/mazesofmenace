@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, ALLOW_M,
+    dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, onscary, ALLOW_M,
     ALLOW_U, ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
 } from './mon.js';
 import {
@@ -854,9 +854,11 @@ export async function dog_move(mtmp, after) {
             let mstatus = await mattackm(mtmp, mtmp2);
             if (mstatus & M_ATTK_AGR_DIED) return MMOVE_DIED;
 
+            // C ref: dogmove.c — return attack after pet hit (mlstmv/onscary/monnear)
             if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
                 && rn2(4)
                 && mtmp2.mlstmv !== (game.moves ?? 0)
+                && !onscary(mtmp.mx, mtmp.my, mtmp2)
                 && monnear(mtmp2, mtmp.mx, mtmp.my)) {
                 mstatus = await mattackm(mtmp2, mtmp);
                 if (mstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;

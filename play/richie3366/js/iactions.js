@@ -1,10 +1,12 @@
 // iactions.js — inventory item-action menu (partial).
 // C ref: iactions.c itemactions / item_naming_classification /
-//        item_reading_classification; invent.c dispinv_with_action.
+//        item_reading_classification / itemactions_pushkeys; invent.c
+//        dispinv_with_action.
 //
 // Branch envelope: build + show "Do what with …?" PICK_ONE menu; ESC /
-// Return / Space cancel. itemactions_pushkeys (cmdq) deferred — cancel-
-// only peels advance screens; selecting an action is a named omission.
+// Return / Space cancel; itemactions_pushkeys for throw (and selected arms).
+// Named omissions: full pushkeys catalogue (dip/offer/tip/invoke/…);
+// shop pay; tip/invoke/two-weapon edge cases.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -26,6 +28,94 @@ import {
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 
+/** C ref: cmd.c cmdq_add_ec / cmdq_add_key for itemed canned follow-up. */
+function cmdq_add_ec(fn) {
+    if (!game._cmdq_canned) game._cmdq_canned = [];
+    game._cmdq_canned.push(fn);
+}
+function cmdq_add_key(ch) {
+    if (!game._cmdq_canned) game._cmdq_canned = [];
+    const key = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
+    game._cmdq_canned.push({ typ: 'key', key });
+}
+
+/**
+ * C ref: iactions.c itemactions_pushkeys — queue CQ_CANNED ec + invlet.
+ * Named omissions: most arms beyond throw/drop/apply/read/quaff/wield/
+ * wear/takeoff/zap/quiver/fire (enough for seed5002 itemed throw).
+ */
+async function itemactions_pushkeys(act, otmp) {
+    switch (act) {
+    case IA_THROW_OBJ: {
+        const { dothrow } = await import('./dothrow.js');
+        cmdq_add_ec(dothrow);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_DROP_OBJ: {
+        const { dodrop } = await import('./do.js');
+        cmdq_add_ec(dodrop);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_APPLY_OBJ: {
+        const { doapply } = await import('./apply.js');
+        cmdq_add_ec(doapply);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_READ_OBJ: {
+        const { doread } = await import('./read.js');
+        cmdq_add_ec(doread);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_QUAFF_OBJ: {
+        const { dodrink } = await import('./potion.js');
+        cmdq_add_ec(dodrink);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_WIELD_OBJ: {
+        const { dowield } = await import('./wield.js');
+        cmdq_add_ec(dowield);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_WEAR_OBJ: {
+        const { dowear } = await import('./do_wear.js');
+        cmdq_add_ec(dowear);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_TAKEOFF_OBJ: {
+        const { dotakeoff } = await import('./do_wear.js');
+        cmdq_add_ec(dotakeoff);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_ZAP_OBJ: {
+        const { dozap } = await import('./zap.js');
+        cmdq_add_ec(dozap);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_QUIVER_OBJ: {
+        const { dowieldquiver } = await import('./wield.js');
+        cmdq_add_ec(dowieldquiver);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_FIRE_OBJ: {
+        const { dofire } = await import('./dothrow.js');
+        cmdq_add_ec(dofire);
+        break;
+    }
+    default:
+        // remaining arms deferred
+        break;
+    }
+}
 const IA_NONE = 0;
 const IA_UNWIELD = 1;
 const IA_APPLY_OBJ = 2;
@@ -192,7 +282,7 @@ function is_graystone(obj) {
 /**
  * C ref: iactions.c itemactions — NHW_MENU PICK_ONE of context actions.
  * Named omissions: full apply-otyp catalogue polish; eat/is_edible; altar
- * offer; shop pay; tip/invoke/two-weapon edge cases; itemactions_pushkeys.
+ * offer; shop pay; tip/invoke/two-weapon edge cases; remaining pushkeys.
  */
 export async function itemactions(otmp) {
     if (!otmp) return ECMD_OK;
@@ -486,8 +576,7 @@ export async function itemactions(otmp) {
         }
         const ch = String.fromCharCode(key);
         if (byLet.has(ch)) {
-            // itemactions_pushkeys deferred
-            void byLet.get(ch).act;
+            await itemactions_pushkeys(byLet.get(ch).act, otmp);
             return ECMD_OK;
         }
         // invalid → re-prompt; keep status blank like C select_menu

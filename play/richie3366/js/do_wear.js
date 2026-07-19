@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline } from './display.js';
+import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
 import { yn_function } from './getline.js';
 import { an, doname, the, xname, xprname } from './objnam.js';
 import { find_ac } from './u_init.js';
@@ -12,6 +12,7 @@ import { change_luck, Fast, Very_fast } from './attrib.js';
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object } from './artifact.js';
 import { welded } from './wield.js';
+import { makeknown } from './invent.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
@@ -50,6 +51,7 @@ const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
 const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
 const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
 const FUMBLE_BOOTS = objectNames.indexOf('FUMBLE_BOOTS');
+const SPEED_BOOTS = objectNames.indexOf('SPEED_BOOTS');
 const BLACK_DRAGON_SCALES = objectNames.indexOf('BLACK_DRAGON_SCALES');
 const BLACK_DRAGON_SCALE_MAIL = objectNames.indexOf('BLACK_DRAGON_SCALE_MAIL');
 const BLUE_DRAGON_SCALES = objectNames.indexOf('BLUE_DRAGON_SCALES');
@@ -576,9 +578,10 @@ async function Gloves_on() {
     return 0;
 }
 /**
- * C ref: do_wear.c Boots_on — known + FUMBLE_BOOTS incr_itimeout(HFumbling,rnd(20)).
- * Named omissions: water-walking/speed/elven/levitation cases; makeknown;
- * update_inventory; float_up/spoteffects.
+ * C ref: do_wear.c Boots_on — FUMBLE_BOOTS incr_itimeout; SPEED_BOOTS
+ * makeknown→exercise(A_WIS) + You_feel speed up (D-0744).
+ * Named omissions: water-walking/elven/levitation cases; update_inventory;
+ * float_up/spoteffects; Boots_off SPEED slow-down.
  */
 async function Boots_on() {
     const o = game.u?.uarmf;
@@ -603,8 +606,16 @@ async function Boots_on() {
             u.HFumbling = hNext;
             prop.intrinsic = hNext;
         }
+    } else if (o.otyp === SPEED_BOOTS) {
+        // C: if (!oldprop && !(HFast & TIMEOUT)) makeknown + You_feel
+        const hFast = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
+        if (!oldprop && !(hFast & TIMEOUT)) {
+            makeknown(o.otyp);
+            const more = (oldprop || hFast) ? ' a bit more' : '';
+            await You_feel(`yourself speed up${more}.`);
+        }
     }
-    // SPEED/ELVEN/WATER_WALKING/LEVITATION cases deferred
+    // ELVEN/WATER_WALKING/LEVITATION cases deferred
     if (!o.known) o.known = 1;
     find_ac();
     return 0;

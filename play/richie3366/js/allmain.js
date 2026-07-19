@@ -77,8 +77,12 @@ export async function moveloop_preamble(resuming) {
         // C: (void) pickup(1) — autopickup at initial location deferred
         game.context.seer_turn = rnd(30);
         game.u.umovement = NORMAL_SPEED;
+        // C decl.c: hero_seq starts as 1<<3; moveloop resets on moves++
+        game.hero_seq = ((game.moves || 1) | 0) << 3;
         initrack();
     } else {
+        // C restore.c: hero_seq = moves << 3 (not saved)
+        game.hero_seq = ((game.moves || 1) | 0) << 3;
         // C: read_engr_at / fix_shop_damage deferred
     }
     // C: encumber_msg() — sync go.oldcap (auto-pickup / starting load)
@@ -624,6 +628,8 @@ export async function moveloop_core() {
                 // C: settrack() before svm.moves++
                 settrack();
                 g.moves = (g.moves || 1) + 1;
+                // C: hero_seq = moves << 3 — distinct every hero turn
+                g.hero_seq = (g.moves | 0) << 3;
 
                 // once-per-turn — C: nh_timeout then run_regions
                 await nh_timeout();
@@ -675,6 +681,10 @@ export async function moveloop_core() {
             }
             if (g.program_state?.gameover) return;
         } while ((g.u.umovement || 0) < NORMAL_SPEED);
+
+        // C: once-per-hero-took-time — hero_seq++ then seer_turn
+        // (allmain.c: moves*8 + n for n == 1..7)
+        g.hero_seq = (g.hero_seq | 0) + 1;
 
         // C: once-per-hero-took-time — seer_turn after umovement loop
         // (not inside once-per-turn EOT). Always rolls rn1 even without
