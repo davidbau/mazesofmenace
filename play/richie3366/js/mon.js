@@ -13,7 +13,7 @@ import {
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
-    ismnum, M_POISONGAS_OK, u_at, TEMPLE, MON_FLOOR, MON_MIGRATING, MON_DETACH,
+    ismnum, M_POISONGAS_OK, u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_MIGRATING, MON_DETACH,
 } from './const.js';
 import { t_at } from './trap.js';
 import {
@@ -24,7 +24,7 @@ import {
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
-    is_undead, amphibious, can_teleport, MR_FIRE,
+    is_undead, amphibious, can_teleport, MR_FIRE, mindless,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -81,7 +81,9 @@ function mfndpos_is_lava(x, y) {
 function may_passwall(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
-    return !(IS_STWALL(loc.typ) && (loc.wall_info & W_NONPASSWALL));
+    // C: wall_info aliases flags; OR JS split W_* fields (D-0865).
+    const wi = (loc.wall_info | 0) | (loc.flags | 0);
+    return !(IS_STWALL(loc.typ) && (wi & W_NONPASSWALL));
 }
 
 /**
@@ -900,9 +902,16 @@ export function mfndpos(mon, data, flag) {
                 && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny))) {
                 continue;
             }
+            // C ref: mon.c mfndpos — intelligent peacefuls avoid digging
+            // shop/temple walls (D-0865).
+            if (IS_OBSTRUCTED(ntyp) && rockok
+                && !mindless(mdat) && (mon.mpeaceful || mon.mtame)
+                && (in_rooms(nx, ny, TEMPLE) || in_rooms(nx, ny, SHOPBASE))
+                && !(in_rooms(x, y, TEMPLE) || in_rooms(x, y, SHOPBASE))) {
+                continue;
+            }
             // C: IS_WATERWALL && !is_swimmer
             if (IS_WATERWALL(ntyp) && !is_swimmer(mdat)) continue;
-            // peaceful shop/temple dig avoid deferred
             // C: IRONBARS — need ALLOW_BARS; nondiggable+rust/corr deferred
             if (ntyp === IRONBARS && !(flag & ALLOW_BARS)) continue;
             if (IS_DOOR(ntyp)) {

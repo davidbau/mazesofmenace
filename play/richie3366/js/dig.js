@@ -36,13 +36,22 @@ function dist2(x0, y0, x1, y1) {
     return dx * dx + dy * dy;
 }
 
+/**
+ * C: `#define wall_info flags` — one field. JS sometimes writes W_* bits to
+ * `flags` while WM_MASK orientation lives on `wall_info` (D-0865). OR both
+ * for dig/passwall checks so nondiggable maze walls are honored.
+ */
+function rm_wall_info(lev) {
+    return ((lev.wall_info | 0) | (lev.flags | 0));
+}
+
 /** C ref: hack.c may_dig — diggable unless STWALL/TREE + W_NONDIGGABLE. */
 export function may_dig(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev) return false;
     const typ = lev.typ;
     return !((IS_STWALL(typ) || IS_TREE(typ))
-        && ((lev.wall_info || 0) & W_NONDIGGABLE));
+        && (rm_wall_info(lev) & W_NONDIGGABLE));
 }
 
 function closed_door(x, y) {
@@ -164,7 +173,7 @@ export async function mdig_tunnel(mtmp) {
         return false;
     }
 
-    if (((here.wall_info || 0) & W_NONDIGGABLE) !== 0) {
+    if ((rm_wall_info(here) & W_NONDIGGABLE) !== 0) {
         return false;
     }
 
@@ -268,7 +277,7 @@ export async function zap_dig() {
                 if (maze_dig) break;
             } else if (maze_dig) {
                 if (IS_WALL(room.typ)) {
-                    if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                    if (!(rm_wall_info(room) & W_NONDIGGABLE)) {
                         if (in_rooms(zx, zy, SHOPBASE)) {
                             shopwall = true;
                         }
@@ -280,7 +289,7 @@ export async function zap_dig() {
                     }
                     break;
                 } else if (IS_TREE(room.typ)) {
-                    if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                    if (!(rm_wall_info(room) & W_NONDIGGABLE)) {
                         room.typ = ROOM;
                         room.flags = 0;
                         recalc_block_point(zx, zy);
@@ -289,7 +298,7 @@ export async function zap_dig() {
                     }
                     break;
                 } else if (room.typ === STONE || room.typ === SCORR) {
-                    if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                    if (!(rm_wall_info(room) & W_NONDIGGABLE)) {
                         room.typ = CORR;
                         room.flags = 0;
                         recalc_block_point(zx, zy);

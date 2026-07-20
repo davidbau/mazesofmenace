@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { depth } from './hacklib.js';
-import { pline, flush_topl_more, bot } from './display.js';
+import { pline, flush_topl_more, bot, You_feel } from './display.js';
 import { yn_function } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
@@ -24,6 +24,7 @@ import {
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
     Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
     PARANOID_DIE, PARANOID_BONES, TT_LAVA, Has_contents,
+    LIFESAVED, W_AMUL,
 } from './const.js';
 import { G_NOCORPSE, mons } from './monsters.js';
 import { oname, christen_monst } from './do_name.js';
@@ -38,20 +39,55 @@ import { monsterNames, pmnames, PM_TOURIST } from './generated/monsters_data.js'
 import { paybill, money2mon } from './shk.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
-    enlightenment, display_inventory, discover_object, sortloot,
+    enlightenment, display_inventory, discover_object, makeknown, sortloot,
 } from './invent.js';
 import {
     list_vanquished, list_genocided, show_conduct,
 } from './insight.js';
 import { show_overview } from './dungeon.js';
-import { A_CON, acurr } from './attrib.js';
+import { A_CON, acurr, adjattrib } from './attrib.js';
 import { init_uhunger } from './eat.js';
+import { setworn } from './do_wear.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
 const TIN = objectNames.indexOf('TIN');
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+
+/** C ref: youprop.h Lifesaved — uprops[LIFESAVED].extrinsic. */
+function Lifesaved(u = game.u || {}) {
+    return !!((u.uprops?.[LIFESAVED]?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Blind — H||E && !B (flat Blind/ublind mirrors). */
+function Blind(u = game.u || {}) {
+    if (u.Blind || u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C ref: invent.c useup / useupall for worn amulet — setnotworn + freeinv.
+ * Named omissions: update_inventory; obfree contents; shop unpaid.
+ */
+function useup_amulet(obj) {
+    if (!obj) return;
+    const u = game.u || {};
+    if (u.uamul === obj) setworn(null, W_AMUL);
+    else if ((obj.owornmask | 0) & W_AMUL) {
+        obj.owornmask = (obj.owornmask | 0) & ~W_AMUL;
+    }
+    if ((obj.quan || 1) > 1) {
+        obj.quan--;
+        return;
+    }
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    obj.quan = 0;
+    obj.where = OBJ_FREE;
+}
 
 /** C ref: decl.c disclosure_options */
 const DISCLOSURE_OPTIONS = 'iavgco';
@@ -956,10 +992,12 @@ function savelife(how) {
 }
 
 /**
- * C ref: end.c done — wizard·discover Die?; Lifesaved deferred.
+ * C ref: end.c done — Lifesaved amulet (D-0868) then wizard·discover Die?.
  * Ordinary deaths fall through to really_done.
  * bot() before HP zero so You die more() (no bot) keeps prior botl when
  * uhp was -1 at pline flush (D-0310/D-0314).
+ * Named omissions: livelog_printf; formatkiller; CHOKING vomit arm;
+ * GENOCIDED still-genocided pline polish.
  */
 export async function done(how) {
     const flags = game.flags || (game.flags = {});
@@ -997,7 +1035,26 @@ export async function done(how) {
     }
 
     let survive = false;
-    // Lifesaved amulet arm deferred
+    // C: Lifesaved && how <= GENOCIDED — makeknown→exercise(A_WIS) (D-0868)
+    if (Lifesaved(u) && how <= GENOCIDED) {
+        await pline('But wait...');
+        makeknown(AMULET_OF_LIFE_SAVING);
+        await pline(
+            `Your medallion ${!Blind(u) ? 'begins to glow' : 'feels warm'}!`,
+        );
+        if (how === CHOKING) await pline('You vomit ...');
+        await You_feel('much better!');
+        await pline('The medallion crumbles to dust!');
+        if (u.uamul) useup_amulet(u.uamul);
+        await adjattrib(A_CON, -1, true);
+        savelife(how);
+        if (how === GENOCIDED) {
+            await pline('Unfortunately you are still genocided...');
+        } else {
+            // livelog_printf deferred
+            survive = true;
+        }
+    }
     // C: explore and wizard modes offer player the option to keep playing
     const wizard = !!(flags.wizard || flags.debug);
     const discover = !!(flags.explore || flags.discover);

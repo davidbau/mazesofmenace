@@ -71,7 +71,7 @@ import {
 import { big_to_little } from './mondata.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
-    MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
+    MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT, MM_MALE, MM_FEMALE,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     In_mines, In_sokoban, In_endgame,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
@@ -2025,8 +2025,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
     newmonhp(mtmp, ptr);
 
     const femaleok = !is_male(ptr) && !is_neuter(ptr);
-    if (is_female(ptr)) mtmp.female = 1;
-    else if (is_male(ptr)) mtmp.female = 0;
+    const maleok = !is_female(ptr) && !is_neuter(ptr);
+    // C: makemon.c — is_female|MM_FEMALE / is_male|MM_MALE before rn2(2)
+    if (is_female(ptr) || ((mmflags & MM_FEMALE) !== 0 && femaleok))
+        mtmp.female = 1;
+    else if (is_male(ptr) || ((mmflags & MM_MALE) !== 0 && maleok))
+        mtmp.female = 0;
     // C: MS_LEADER/MS_NEMESIS gender from role_init (quest_status)
     else if (ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0))
         mtmp.female = game.quest_status?.ldrgend | 0;

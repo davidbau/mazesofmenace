@@ -165,7 +165,7 @@ function choose_monster_spell(mtmp, adtyp) {
  * @param {boolean} thinks_it_foundyou
  * @param {boolean} foundyou
  */
-export function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
+export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     const ml = mtmp.m_lev | 0;
     let spellnum = 0;
     const adtyp = mattk?.adtyp | 0;
@@ -212,7 +212,7 @@ export function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         switch (spellnum) {
         case MCAST_HASTE_SELF:
             // C: mon_adjust_speed(mtmp, 1, NULL) — permspeed/mspeed MFAST
-            mon_adjust_speed(mtmp, 1, null);
+            await mon_adjust_speed(mtmp, 1, null);
             break;
         case MCAST_CURE_SELF:
             // C: m_cure_self — healmon(mtmp, d(3,6), 0) when wounded

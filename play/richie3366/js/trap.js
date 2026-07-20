@@ -5,7 +5,8 @@
 // trapeffect_pit / trapeffect_rocktrap / trapeffect_rolling_boulder_trap /
 // launch_obj / trapeffect_sqky_board /
 // trapeffect_bear_trap / trapeffect_hole / trapeffect_magic_trap /
-// trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap,
+// trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap /
+// trapeffect_web / mu_maybe_destroy_web,
 // make_corpse ordinary path via thitm death.
 
 import { game } from './gstate.js';
@@ -31,7 +32,7 @@ import {
     likes_gems, mons, webmaker, throws_rocks,
     is_animal, mindless, haseyes,
     bigmonst, is_golem, is_mplayer, is_rider,
-    nohands,
+    nohands, extra_nasty, acidic,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE,
@@ -79,6 +80,7 @@ import { makemon, rndmonnum_adj, mpickobj } from './makemon.js';
 import { A_CHA, A_STR, A_DEX, adjattrib, exercise } from './attrib.js';
 import { tamedog } from './dog.js';
 import { welded } from './wield.js';
+import { count_wsegs } from './worm.js';
 
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
@@ -91,8 +93,32 @@ const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
 const PM_BUGBEAR = monsterNames.indexOf('PM_BUGBEAR');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
+const PM_FIRE_VORTEX = monsterNames.indexOf('PM_FIRE_VORTEX');
+const PM_FLAMING_SPHERE = monsterNames.indexOf('PM_FLAMING_SPHERE');
+const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
+const PM_SALAMANDER = monsterNames.indexOf('PM_SALAMANDER');
+const PM_TITANOTHERE = monsterNames.indexOf('PM_TITANOTHERE');
+const PM_BALUCHITHERIUM = monsterNames.indexOf('PM_BALUCHITHERIUM');
+const PM_PURPLE_WORM = monsterNames.indexOf('PM_PURPLE_WORM');
+const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
+const PM_BALROG = monsterNames.indexOf('PM_BALROG');
+const PM_KRAKEN = monsterNames.indexOf('PM_KRAKEN');
+const PM_MASTODON = monsterNames.indexOf('PM_MASTODON');
+const PM_ORION = monsterNames.indexOf('PM_ORION');
+const PM_NORN = monsterNames.indexOf('PM_NORN');
+const PM_CYCLOPS = monsterNames.indexOf('PM_CYCLOPS');
+const PM_LORD_SURTUR = monsterNames.indexOf('PM_LORD_SURTUR');
 const STATUE = objectNames.indexOf('STATUE');
 const AD_RUST = 24; /* monattk.h */
+
+/** C ref: mondata.h flaming — fire vortex / sphere / elemental / salamander. */
+function flaming(ptr) {
+    if (!ptr) return false;
+    const n = ptr.mndx ?? -1;
+    return n === PM_FIRE_VORTEX || n === PM_FLAMING_SPHERE
+        || n === PM_FIRE_ELEMENTAL || n === PM_SALAMANDER;
+}
 
 function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
@@ -2440,7 +2466,121 @@ async function trapeffect_telep_trap(mtmp, trap, _trflags) {
     return Trap_Moved_Mon;
 }
 
-// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep/bear/rust
+/**
+ * C ref: trap.c mu_maybe_destroy_web — amorphous/whirly/flaming/unsolid/cube
+ * destroy (flaming/acidic) or flow through; returns true if web does not catch.
+ */
+async function mu_maybe_destroy_web(mtmp, domsg, trap) {
+    const isyou = is_youmonst(mtmp);
+    const mptr = mtmp.data;
+    if (!(amorphous(mptr) || is_whirly(mptr) || flaming(mptr)
+        || unsolid(mptr) || (mptr?.mndx ?? -1) === PM_GELATINOUS_CUBE)) {
+        return false;
+    }
+    const a_your = ['a', 'your'];
+    if (flaming(mptr) || acidic(mptr)) {
+        if (domsg) {
+            if (isyou) {
+                await pline(
+                    `You ${flaming(mptr) ? 'burn' : 'dissolve'} ${a_your[trap.madeby_u ? 1 : 0]} spider web!`,
+                );
+            } else {
+                await pline(
+                    `${Monnam(mtmp)} ${flaming(mptr) ? 'burns' : 'dissolves'} ${a_your[trap.madeby_u ? 1 : 0]} spider web!`,
+                );
+            }
+        }
+        const x = trap.tx;
+        const y = trap.ty;
+        deltrap(trap);
+        newsym(x, y);
+        return true;
+    }
+    if (domsg) {
+        if (isyou) {
+            await pline(`You flow through ${a_your[trap.madeby_u ? 1 : 0]} spider web.`);
+        } else {
+            await pline(
+                `${Monnam(mtmp)} flows through ${a_your[trap.madeby_u ? 1 : 0]} spider web.`,
+            );
+            seetrap(trap);
+        }
+    }
+    return true;
+}
+
+/**
+ * C ref: trap.c trapeffect_web — monster branch; hero/steed/strength-tim deferred.
+ * Sets mtrapped for ordinary monsters; giants/extra_nasty dragons/long worms
+ * and listed huge species tear the web.
+ */
+async function trapeffect_web(mtmp, trap, trflags) {
+    if (is_youmonst(mtmp)) {
+        // Hero web / steed / ACURR(A_STR) stuck-time deferred
+        return Trap_Effect_Finished;
+    }
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    const forcetrap = (trflags & FORCETRAP) !== 0;
+    const mptr = mtmp.data;
+    const mndx = mptr?.mndx ?? -1;
+    const a_your = ['a', 'your'];
+
+    if (webmaker(mptr)) return Trap_Effect_Finished;
+    if (await mu_maybe_destroy_web(mtmp, in_sight, trap)) {
+        return Trap_Effect_Finished;
+    }
+
+    let tear_web = false;
+    // C: owlbear/bugbear out of sight → hear roar + trap; else fall through
+    if ((mndx === PM_OWLBEAR || mndx === PM_BUGBEAR) && !in_sight) {
+        await You_hear('the roaring of a confused bear!');
+        mtmp.mtrapped = 1;
+        return Trap_Caught_Mon;
+    }
+
+    // C: arbitrary huge tear list (excludes wumpus / giant zombies)
+    if (mndx === PM_TITANOTHERE || mndx === PM_BALUCHITHERIUM
+        || mndx === PM_PURPLE_WORM || mndx === PM_JABBERWOCK
+        || mndx === PM_IRON_GOLEM || mndx === PM_BALROG
+        || mndx === PM_KRAKEN || mndx === PM_MASTODON
+        || mndx === PM_ORION || mndx === PM_NORN
+        || mndx === PM_CYCLOPS || mndx === PM_LORD_SURTUR) {
+        tear_web = true;
+    } else {
+        // C default (+ owlbear/bugbear in sight fallthrough)
+        if (mptr?.mlet === 'S_GIANT'
+            || (mptr?.mlet === 'S_DRAGON' && extra_nasty(mptr))
+            || (mtmp.wormno && count_wsegs(mtmp) > 5)) {
+            tear_web = true;
+        } else if (in_sight) {
+            await pline(
+                `${Monnam(mtmp)} is caught in ${a_your[trap.madeby_u ? 1 : 0]} spider web.`,
+            );
+            seetrap(trap);
+        }
+        mtmp.mtrapped = tear_web ? 0 : 1;
+    }
+
+    if (tear_web) {
+        if (in_sight) {
+            await pline(
+                `${Monnam(mtmp)} tears through ${a_your[trap.madeby_u ? 1 : 0]} spider web!`,
+            );
+        }
+        deltrap(trap);
+        newsym(mtmp.mx, mtmp.my);
+    } else if (forcetrap && !mtmp.mtrapped) {
+        if (in_sight) {
+            await pline(
+                `${Monnam(mtmp)} avoids ${a_your[trap.madeby_u ? 1 : 0]} spider web!`,
+            );
+            seetrap(trap);
+        }
+    }
+    return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+}
+
+// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep/bear/rust/web
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
@@ -2473,8 +2613,10 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_telep_trap(mtmp, trap, trflags);
     case RUST_TRAP:
         return trapeffect_rust_trap(mtmp, trap, trflags);
+    case WEB:
+        return trapeffect_web(mtmp, trap, trflags);
     default:
-        // Named omission: arrow/anti-magic/web/landmine/… trap effects
+        // Named omission: arrow/anti-magic/landmine/… trap effects
         return Trap_Effect_Finished;
     }
 }

@@ -90,6 +90,9 @@ export async function moveloop_preamble(resuming) {
     // C: encumber_msg() — sync go.oldcap (auto-pickup / starting load)
     await encumber_msg();
     game.context.move = 0;
+    // C: program_state.in_moveloop = 1 — gates adjattrib STR/CON encumber_msg
+    if (!game.program_state) game.program_state = {};
+    game.program_state.in_moveloop = 1;
 }
 
 // C ref: allmain.c u_calc_moveamt()
@@ -288,8 +291,7 @@ const EXERTEXT = [
 
 /**
  * C ref: attrib.c exerchk — periodic exercise/abuse resolve.
- * Named omissions: Fixed_abil/Dunce via adjattrib; encumber_msg after
- * STR/CON change in adjattrib when in_moveloop.
+ * Named omissions: Fixed_abil/Dunce via adjattrib.
  */
 async function exerchk() {
     exerper();

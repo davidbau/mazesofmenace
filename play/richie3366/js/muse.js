@@ -27,6 +27,7 @@ import { enexto, migrate_to_level } from './teleport.js';
 import { makemon, mpickobj } from './makemon.js';
 import { place_object } from './mkobj.js';
 import { dropy } from './do.js';
+import { learnwand } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
     D_LOCKED, D_CLOSED, KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR,
@@ -988,13 +989,20 @@ async function mzapwand(mtmp, otmp, self) {
 
 /**
  * C ref: worn.c mon_adjust_speed — adjust/permspeed/mspeed + boots FAST.
- * learnwand / pline discovery deferred (give_msg path still sets speed).
+ * give_msg pline + learnwand when speed change is seen (D-0871).
+ * Named omit: worm see_wsegs polish on unrelated invis path.
  */
-export function mon_adjust_speed(mon, adjust, _obj) {
+export async function mon_adjust_speed(mon, adjust, obj) {
     if (!mon) return;
+    // C: give_msg = !gi.in_mklev; petrify = FALSE; oldspeed = mon->mspeed
+    let give_msg = !game.in_mklev;
+    let petrify = false;
+    const oldspeed = mon.mspeed | 0;
+
     switch (adjust) {
     case 2:
         mon.permspeed = MFAST;
+        give_msg = false; // special-case monster creation
         break;
     case 1:
         if (mon.permspeed === MSLOW) mon.permspeed = 0;
@@ -1008,10 +1016,15 @@ export function mon_adjust_speed(mon, adjust, _obj) {
         break;
     case -2:
         mon.permspeed = MSLOW;
+        give_msg = false;
         break;
-    case -3:
-    case -4:
+    case -3: // petrification
         if (mon.permspeed === MFAST) mon.permspeed = 0;
+        petrify = true;
+        break;
+    case -4: // green slime
+        if (mon.permspeed === MFAST) mon.permspeed = 0;
+        give_msg = false;
         break;
     default:
         break;
@@ -1026,6 +1039,28 @@ export function mon_adjust_speed(mon, adjust, _obj) {
         }
     }
     mon.mspeed = boots ? MFAST : (mon.permspeed | 0);
+
+    // C: no message if immobile (temp or perm) or unseen
+    if (give_msg && ((mon.mspeed | 0) !== oldspeed || petrify)
+        && (mon.data?.mmove | 0)
+        && !(mon.mfrozen || mon.msleeping) && canseemon(mon)) {
+        const howmuch = ((mon.mspeed | 0) + oldspeed === MFAST + MSLOW)
+            ? 'much ' : '';
+        if (petrify) {
+            if (game.flags?.verbose !== false) {
+                await pline(`${Monnam(mon)} is slowing down.`);
+            }
+        } else if (adjust > 0 || (mon.mspeed | 0) === MFAST) {
+            await pline(
+                `${Monnam(mon)} is suddenly moving ${howmuch}faster.`,
+            );
+        } else {
+            await pline(
+                `${Monnam(mon)} seems to be moving ${howmuch}slower.`,
+            );
+        }
+        if (obj) learnwand(obj);
+    }
 }
 
 /**
@@ -1181,23 +1216,13 @@ export async function use_misc(mtmp) {
     }
     case MUSE_WAN_SPEED_MONSTER:
         await mzapwand(mtmp, m.misc, true);
-        mon_adjust_speed(mtmp, 1, m.misc);
+        await mon_adjust_speed(mtmp, 1, m.misc);
         return 2;
     case MUSE_POT_SPEED:
-        mon_adjust_speed(mtmp, 1, m.misc);
-        {
-            const pot = m.misc;
-            if ((pot.quan | 0) > 1) pot.quan -= 1;
-            else if (mtmp.minvent === pot) mtmp.minvent = pot.nobj;
-            else {
-                for (let p = mtmp.minvent; p; p = p.nobj) {
-                    if (p.nobj === pot) {
-                        p.nobj = pot.nobj;
-                        break;
-                    }
-                }
-            }
-        }
+        // C muse.c use_misc MUSE_POT_SPEED: mquaffmsg → mon_adjust_speed → m_useup
+        await mquaffmsg(mtmp, otmp);
+        await mon_adjust_speed(mtmp, 1, otmp);
+        m_useup(mtmp, otmp);
         return 2;
     default:
         return 0;

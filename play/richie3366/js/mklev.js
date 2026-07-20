@@ -9194,8 +9194,13 @@ function splev_create_monster(id_or_class, peaceful) {
     }
     pos = splev_resolve_occupied(pos.x, pos.y, pm);
     const mtmp = makemon(pm, pos.x, pos.y, 0);
-    if (mtmp && typeof id_or_class === 'string' && id_or_class.length > 1) {
-        mtmp.female = female;
+    // C: sp_lev.c create_monster — always mtmp->female = m->female after
+    // makemon (overwrites makemon's rn2(2)). Named id → find_montype gender;
+    // des.monster() / class letter → tmpmons.female stays 0 (D-0873).
+    if (mtmp) {
+        mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
+            ? female
+            : 0;
     }
     if (mtmp && peaceful != null && peaceful > BOOL_RANDOM)
         mtmp.mpeaceful = peaceful;
@@ -9345,8 +9350,12 @@ function splev_room_monster(croom, id_or_class, peaceful) {
     pos = splev_resolve_occupied(pos.x, pos.y, pm);
     if (croom && !inside_room(croom, pos.x, pos.y)) return;
     const mtmp = makemon(pm, pos.x, pos.y, 0);
-    if (mtmp && typeof id_or_class === 'string' && id_or_class.length > 1)
-        mtmp.female = female;
+    // C: create_monster always mtmp->female = m->female (D-0873)
+    if (mtmp) {
+        mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
+            ? female
+            : 0;
+    }
     if (mtmp && peaceful != null && peaceful > BOOL_RANDOM)
         mtmp.mpeaceful = peaceful;
 }
@@ -9731,8 +9740,12 @@ function splev_room_monster_at(croom, id_or_class, rx, ry) {
     ({ x, y } = splev_resolve_occupied(x, y, pm));
     if (croom && !inside_room(croom, x, y)) return;
     const mtmp = makemon(pm, x, y, 0);
-    if (mtmp && typeof id_or_class === 'string' && id_or_class.length > 1)
-        mtmp.female = female;
+    // C: create_monster always mtmp->female = m->female (D-0873)
+    if (mtmp) {
+        mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
+            ? female
+            : 0;
+    }
     return mtmp;
 }
 

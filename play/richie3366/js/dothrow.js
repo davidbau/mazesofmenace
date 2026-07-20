@@ -5,9 +5,10 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
+    canseemon, canspotmon,
 } from './display.js';
 import { cansee } from './vision.js';
-import { rnd } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { place_object, splitobj, stackobj } from './mkobj.js';
 import {
     WEAPON_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS,
@@ -19,6 +20,7 @@ import {
     P_BOW, P_BOOMERANG,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
     ACCFOOD, HMON_THROWN, engulfing_u, STRAT_WAITMASK,
+    M_AP_TYPE, M_AP_MONSTER,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -32,8 +34,9 @@ import {
     PM_ELF, PM_ORC, PM_GNOME,
     monsterNames,
 } from './generated/monsters_data.js';
-import { xname, singular, an } from './objnam.js';
-import { m_at } from './mon.js';
+import { xname, singular, an, the, vtense } from './objnam.js';
+import { m_at, wakeup } from './mon.js';
+import { mon_nam } from './do_name.js';
 import { is_domestic } from './monsters.js';
 import { tamedog } from './dog.js';
 import { hmon } from './uhitm.js';
@@ -236,20 +239,61 @@ function befriend_with_obj(ptr, obj) {
     return true;
 }
 
+/** C ref: objnam.c otense — plural verb if xname(obj) would be plural. */
+function otense(obj, verb) {
+    if ((obj?.quan | 0) !== 1) return verb; // quan≠1 → plural form (C is_plural)
+    return vtense(null, verb);
+}
+
+function The(str) {
+    const t = the(str);
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
+/**
+ * C ref: zap.c miss — "The <missile> misses <mon>."
+ * Local copy for tmiss (mthrowu miss is not exported).
+ */
+async function miss_missile(str, mtmp) {
+    const bx = game.bhitpos?.x ?? mtmp.mx;
+    const by = game.bhitpos?.y ?? mtmp.my;
+    const whom = ((cansee(bx, by) || canspotmon(mtmp))
+        && game.flags?.verbose !== false)
+        ? mon_nam(mtmp) : 'it';
+    await pline(`${The(str)} ${vtense(str, 'miss')} ${whom}.`);
+}
+
+/**
+ * C ref: dothrow.c tmiss — miss message + maybe_wakeup `!rn2(3)` → wakeup.
+ * mshot_xname multi-shot "Nth" prefix deferred → xname.
+ */
+async function tmiss(obj, mon, maybe_wakeup) {
+    const missile = xname(obj); // C: mshot_xname(obj)
+    if (!canseemon(mon)
+        || (M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP_MONSTER)) {
+        await pline(`${The(missile)} ${otense(obj, 'miss')}.`);
+    } else {
+        await miss_missile(missile, mon);
+    }
+    if (maybe_wakeup && !rn2(3)) wakeup(mon, true);
+}
+
 /**
  * C ref: dothrow.c thitmonst — mon-hit after bhit.
- * Ported: dieroll; EGG/CREAM_PIE/VENOM DEX `rnd(25)` → hmon; food befriend.
- * Deferred: weapon/gem/ball/boulder hit, potionhit, unicorn gems, leader catch,
- * guaranteed_hit swallow arms, tmiss wakeup polish.
+ * Ported: dieroll; EGG/CREAM_PIE/VENOM DEX `rnd(25)` → hmon; food befriend;
+ * food-fail `tmiss(FALSE)`; non-weapon else `tmiss(TRUE)` (D-0867 armor).
+ * Deferred: weapon/gem/ball/boulder hit-vs-miss, potionhit, unicorn gems,
+ * leader catch, guaranteed_hit swallow body.
  * @returns {boolean} true if obj was consumed / taken care of
  */
 async function thitmonst(mon, obj) {
     const otyp = obj.otyp | 0;
     const guaranteed_hit = engulfing_u(mon);
-    // C: dieroll = rnd(20) before class branches
+    // C: dieroll = rnd(20) before class branches (unused on else/tmiss path)
     const dieroll = rnd(20);
 
     // weapon / weptool / gem / iron ball / boulder arms deferred
+    // (those would hit-or-tmiss here; until ported they fall through to else)
 
     // C dothrow.c:2256 — pie/egg/venom hit vs DEX (or swallow)
     if ((otyp === EGG || otyp === CREAM_PIE
@@ -264,10 +308,21 @@ async function thitmonst(mon, obj) {
     if (befriend_with_obj(mon.data, obj)
         || (mon.mtame && dogfood(mon, obj) <= ACCFOOD)) {
         if (await tamedog(mon, obj, true)) return true;
+        // C: tmiss(obj, mon, FALSE) then clear sleep / WAITMASK
+        await tmiss(obj, mon, false);
         mon.msleeping = 0;
-        // C: mon->mstrategy &= ~STRAT_WAITMASK (CLOSE|WAITFORU)
         if (mon.mstrategy != null) mon.mstrategy &= ~STRAT_WAITMASK;
+        return false;
     }
+
+    if (guaranteed_hit) {
+        // C swallow vanish arm deferred — still wake like C before body
+        wakeup(mon, true);
+        return false;
+    }
+
+    // C dothrow.c:2299 else — armor / non-special thrown at mon
+    await tmiss(obj, mon, true);
     return false;
 }
 

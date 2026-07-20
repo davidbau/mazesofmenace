@@ -1,9 +1,9 @@
 // attrib.js — Hero attributes.
 // C ref: attrib.c — rnd_attr, init_attr, vary_init_attr, adjattrib,
-//        adjabil / role_abil (partial).
+//        poisoned / poisontell, adjabil / role_abil (partial).
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d, rn1 } from './rng.js';
 import {
     FROMEXPER,
     FROMRACE,
@@ -29,9 +29,13 @@ import {
     TIMEOUT,
     OBJ_INVENT,
     W_ARMF,
+    KILLED_BY,
+    KILLED_BY_AN,
+    POISONING,
+    DIED,
 } from './const.js';
 import { objectNames } from './objects.js';
-import { pline } from './display.js';
+import { pline, You_feel } from './display.js';
 import { cxname } from './objnam.js';
 import { what_gives, bare_artifactname } from './artifact.js';
 import {
@@ -135,7 +139,6 @@ export function get_strength_str() {
 }
 
 // C ref: attrib.c exercise()
-// Named omissions: encumber_msg after STR/CON when moves>0.
 export function exercise(i, inc_or_dec) {
     if (i === A_INT || i === A_CHA) return;
     const u = game.u;
@@ -216,8 +219,163 @@ const PLUSATTR = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
 const MINUSATTR = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
 
 /**
+ * C ref: attrib.c poisontell — attribute-loss feedback after poisoned().
+ * Gauntlets-of-power / Ogresmasher phrasing via ACURR==max.
+ * @param {number} typ
+ * @param {boolean} exclaim
+ */
+export async function poisontell(typ, exclaim = true) {
+    // C: poiseff[] delivery + effect_msg
+    const punct = exclaim ? '!' : '.';
+    let msg = [
+        'weaker',                 // A_STR — You_feel
+        'brain is on fire',       // A_INT — Your
+        'judgement is impaired',  // A_WIS — Your
+        "muscles won't obey you", // A_DEX — Your
+        'very sick',              // A_CON — You_feel
+        'break out in hives',     // A_CHA — You
+    ][typ | 0];
+    if (msg == null) return;
+    if ((typ | 0) === A_STR && acurr(A_STR) === STR19(25)) {
+        msg = 'innately weaker';
+    } else if ((typ | 0) === A_CON && acurr(A_CON) === 25) {
+        msg = 'sick inside';
+    }
+    const body = `${msg}${punct}`;
+    if ((typ | 0) === A_STR || (typ | 0) === A_CON) {
+        await You_feel(body);
+    } else if ((typ | 0) === A_CHA) {
+        await pline(`You ${body}`);
+    } else {
+        await pline(`Your ${body}`);
+    }
+}
+
+/**
+ * C ref: attrib.c minuhpmax — max(ulevel, altmin).
+ * @param {number} altmin
+ */
+function minuhpmax(altmin) {
+    const u = game.u || {};
+    if ((altmin | 0) < 1) altmin = 1;
+    return Math.max(u.ulevel | 0, altmin | 0);
+}
+
+/**
+ * C ref: attrib.c adjuhploss — shrink pending loss if setuhpmax already cut HP.
+ * @param {number} loss
+ * @param {number} olduhp
+ */
+function adjuhploss(loss, olduhp) {
+    const u = game.u || {};
+    if (!Upolyd(u)) {
+        if ((u.uhp | 0) < (olduhp | 0)) loss -= (olduhp | 0) - (u.uhp | 0);
+    } else if ((u.mh | 0) < (olduhp | 0)) {
+        loss -= (olduhp | 0) - (u.mh | 0);
+    }
+    return Math.max(loss | 0, 1);
+}
+
+/** C hacklib.c strstri — case-insensitive substring (poison reason gate). */
+function strstri(hay, needle) {
+    if (!hay || !needle) return false;
+    return String(hay).toLowerCase().includes(String(needle).toLowerCase());
+}
+
+/**
+ * C ref: attrib.c poisoned() — attack/trap poison on hero.
+ * Arms: resist early-out; rn2(fatal) gate; instant-kill / HP / attrib-loss;
+ * done(POISONING|DIED) when uhp<1; encumber_msg.
+ * Named omissions: name_to_mon G_UNIQ / the() killer-prefix polish;
+ * Half_gas_damage towel; Fixed_abil via adjattrib.
+ * @param {string} reason
+ * @param {number} typ
+ * @param {string} pkiller
+ * @param {number} fatal
+ * @param {boolean} thrown_weapon
+ */
+export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
+    const u = game.u || (game.u = {});
+    const blast = reason === 'blast';
+    // C: inform unless reason already implies poison / blast
+    if (!blast && !strstri(reason, 'poison')) {
+        const r = String(reason || '');
+        const plural = r.length > 0 && r[r.length - 1] === 's';
+        const article = (r.charCodeAt(0) >= 65 && r.charCodeAt(0) <= 90)
+            ? '' : 'The ';
+        await pline(`${article}${r} ${plural ? 'were' : 'was'} poisoned!`);
+    }
+    const Poison_resistance = !!((u.HPoison_resistance | 0)
+        || (u.EPoison_resistance | 0) || u.Poison_resistance);
+    if (Poison_resistance) {
+        // shieldeff for blast deferred
+        await pline("The poison doesn't seem to affect you.");
+        return;
+    }
+
+    // Killer prefix: G_UNIQ / the()/an()/a() polish deferred — keep C default
+    let kprefix = KILLED_BY_AN;
+    let killer = pkiller || 'poison';
+    const kl = String(killer).toLowerCase();
+    if (kl.startsWith('the ') || kl.startsWith('an ') || kl.startsWith('a ')) {
+        kprefix = KILLED_BY;
+    }
+
+    // C: i = !fatal ? 1 : rn2(fatal + (thrown_weapon ? 20 : 0));
+    const i = !fatal ? 1 : rn2((fatal | 0) + (thrown_weapon ? 20 : 0));
+    if (i === 0 && (typ | 0) !== A_CHA) {
+        // sometimes survivable instant kill
+        let loss = 6 + d(4, 6); // 6 + 4d6 => 10..34
+        if ((u.uhp | 0) <= loss) {
+            u.uhp = -1;
+            if (game.flags) game.flags.botl = true;
+            if (game.disp) game.disp.botl = true;
+            await pline('The poison was deadly...');
+        } else {
+            const { setuhpmax } = await import('./exper.js');
+            const { losehp } = await import('./hack.js');
+            const olduhp = u.uhp | 0;
+            const newuhpmax = (u.uhpmax | 0) - Math.trunc(loss / 2);
+            setuhpmax(Math.max(newuhpmax, minuhpmax(3)), true);
+            loss = adjuhploss(loss, olduhp);
+            losehp(loss, killer, kprefix);
+            if (await adjattrib(A_CON, (typ | 0) !== A_CON ? -1 : -3, true)) {
+                await poisontell(A_CON, true);
+            }
+            if ((typ | 0) !== A_CON && await adjattrib(typ, -3, 1)) {
+                await poisontell(typ, true);
+            }
+        }
+    } else if (i > 5) {
+        const { losehp } = await import('./hack.js');
+        // HP damage; more likely—but less severe—with missiles
+        let loss = thrown_weapon ? rnd(6) : rn1(10, 6);
+        // Half_gas_damage (worn towel) for blast/cloud deferred
+        losehp(loss, killer, kprefix);
+    } else {
+        // attribute loss; STR drop to 3 may reduce HP later via adjattrib path
+        const loss = (thrown_weapon || !fatal) ? 1 : d(2, 2);
+        if (await adjattrib(typ, -loss, 1)) {
+            await poisontell(typ, true);
+        }
+    }
+
+    if ((u.uhp | 0) < 1) {
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.format = kprefix;
+        game.killer.name = killer;
+        const { done } = await import('./end.js');
+        // "Poisoned by a poisoned ___" is redundant
+        await done(strstri(killer, 'poison') ? DIED : POISONING);
+        return;
+    }
+    const { encumber_msg } = await import('./invent.js');
+    await encumber_msg();
+}
+
+/**
  * C ref: attrib.c adjattrib() — mutate ABASE/AMAX; You_feel when msgflg <= 0.
- * Fixed_abil / Dunce cap / verbose "already" messages / encumber deferred.
+ * Fixed_abil / Dunce cap / verbose "already" messages deferred.
  * @param {number} ndx
  * @param {number} incr
  * @param {number|boolean} [msgflg=1] positive => silent; <=0 => You_feel
@@ -252,10 +410,18 @@ export async function adjattrib(ndx, incr, msgflg = 1) {
     if (game.u.aexe?.a) game.u.aexe.a[ndx] = 0;
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
     if ((msgflg | 0) <= 0) {
         const { You_feel } = await import('./display.js');
         const very = (incr > 1 || incr < -1) ? 'very ' : '';
         await You_feel(`${very}${attrstr}!`);
+    }
+    // C: if (program_state.in_moveloop && (ndx == A_STR || ndx == A_CON))
+    //        encumber_msg();
+    if (game.program_state?.in_moveloop
+        && ((ndx | 0) === A_STR || (ndx | 0) === A_CON)) {
+        const { encumber_msg } = await import('./invent.js');
+        await encumber_msg();
     }
     return true;
 }

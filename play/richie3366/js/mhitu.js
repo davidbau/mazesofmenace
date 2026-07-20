@@ -21,7 +21,7 @@ import {
     swallowed, flush_topl_more,
 } from './display.js';
 import { cansee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, pmname } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
 import { is_pole } from './wield.js';
 import { xname } from './objnam.js';
@@ -31,16 +31,16 @@ import { rloc, tele_restrict } from './teleport.js';
 import { monflee } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
-    MZ_HUGE, M1_SEE_INVIS,
+    MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE,
 } from './monsters.js';
 import { done_in_by } from './end.js';
 import { msummon, Inhell } from './minion.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { A_STR, A_DEX, A_CON, acurr } from './attrib.js';
+import { A_STR, A_DEX, A_CON, acurr, poisoned } from './attrib.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
-    AT_ENGL,
+    AT_ENGL, AT_GAZE,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
     AD_SITM, AD_SEDU, AD_SSEX,
 } from './mhitm.js';
@@ -384,11 +384,36 @@ async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: mhitu.c mpoisons_subj — subject noun for poison pline.
+ */
+function mpoisons_subj(mtmp, mattk) {
+    const aatyp = mattk?.aatyp | 0;
+    if (aatyp === AT_WEAP) {
+        const mwep = MON_WEP(mtmp);
+        return (!mwep || !mwep.opoisoned) ? 'attack' : 'weapon';
+    }
+    if (aatyp === AT_TUCH) return 'contact';
+    if (aatyp === AT_GAZE) return 'gaze';
+    if (aatyp === AT_BITE) return 'bite';
+    return 'sting';
+}
+
+/** C hacklib.c s_suffix — possessive for poison reason. */
+function s_suffix_poison(s) {
+    if (!s) return 'the';
+    if (s === 'it') return 'its';
+    if (s === 'you') return 'your';
+    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
+        || s.endsWith('sh') || s.endsWith('ch')) {
+        return `${s}'`;
+    }
+    return `${s}'s`;
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_drst mhitu branch (AD_DRST/DRDX/DRCO).
  * Always rolls mhitm_mgc_atk_negated(FALSE) before hitmsg; poison via
  * poisoned() when !negated && !rn2(8).
- * Named omission: full attrib.c poisoned() body (messages, resistance,
- * fatal HP, adjattrib); burns rn2(30) fatal gate when poison applies.
  */
 async function mhitm_ad_drst_u(mtmp, mattk, mhm) {
     const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
@@ -400,18 +425,12 @@ async function mhitm_ad_drst_u(mtmp, mattk, mhm) {
     }
     await hitmsg(mtmp, mattk);
     if (!negated && !rn2(8)) {
-        // C: poisoned(buf, ptmp, pmname(pa), 30, FALSE)
-        const u = game.u || {};
-        const Poison_resistance = !!(u.Poison_resistance
-            || u.HPoison_resistance || u.EPoison_resistance);
-        if (Poison_resistance) {
-            await pline("The poison doesn't seem to affect you.");
-        } else {
-            // C attrib.c poisoned: i = rn2(fatal) with fatal=30
-            rn2(30);
-            // Named omission: losehp / adjattrib / done(POISONING) arms
-            void ptmp;
-        }
+        // C: Sprintf(buf, "%s %s", s_suffix(Monnam(magr)), mpoisons_subj(...));
+        //    poisoned(buf, ptmp, pmname(pa, Mgender(magr)), 30, FALSE);
+        const reason = `${s_suffix_poison(Monnam(mtmp))} ${mpoisons_subj(mtmp, mattk)}`;
+        const g = mtmp?.female ? FEMALE : MALE;
+        const killer = pmname(mtmp?.data || mtmp?.mnum, g);
+        await poisoned(reason, ptmp, killer, 30, false);
     }
     void mhm;
 }

@@ -1694,7 +1694,7 @@ export async function dochug(mtmp) {
                 if ((a?.aatyp | 0) === AT_MAGC
                     && ((a.adtyp | 0) === AD_SPEL
                         || (a.adtyp | 0) === AD_CLRC)) {
-                    if ((castmu(mtmp, a, false, false) & M_ATTK_HIT) !== 0) {
+                    if (((await castmu(mtmp, a, false, false)) & M_ATTK_HIT) !== 0) {
                         status = MMOVE_DONE;
                         break;
                     }

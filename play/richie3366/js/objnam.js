@@ -275,6 +275,8 @@ function is_charged_otyp(otyp) {
         || n === 'MAGIC_FLUTE' || n === 'FROST_HORN' || n === 'FIRE_HORN'
         || n === 'HORN_OF_PLENTY' || n === 'MAGIC_HARP'
         || n === 'DRUM_OF_EARTHQUAKE'
+        // C objects.h BELL_OF_OPENING BITS(..., chrg=1, uniq=1, ...)
+        || n === 'BELL_OF_OPENING'
         // C WEPTOOL BITS(..., chg=1, ...) — BUC/implicit_uncursed; doname
         // remaps to WEAPON_CLASS for +spe (not (recharged:spe))
         || n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN')
@@ -313,7 +315,27 @@ function uses_known_otyp(otyp) {
     // hidden until obj.known (open/eat / starter ini_inv).
     const n = objectNames[otyp];
     if (n === 'TIN' || n === 'EGG') return true;
+    // C objects.h unique/invocation TOOL/AMULET/SPBOOK BITS(..., uskn=1, ...)
+    // — generated table omits oc_uses_known (D-0872). Needed so xname can
+    // clear known before the_unique_obj picks "the "/"a ".
+    if (n === 'BELL_OF_OPENING' || n === 'CANDELABRUM_OF_INVOCATION'
+        || n === 'AMULET_OF_YENDOR' || n === 'FAKE_AMULET_OF_YENDOR'
+        || n === 'SPE_BOOK_OF_THE_DEAD')
+        return true;
     return false;
+}
+
+/**
+ * C ref: objnam.c xname_flags — when !oc_name_known && oc_uses_known &&
+ * oc_unique, clear obj->known so the_unique_obj / doname article cannot
+ * leak uniqueness ("the silver bell" vs "a silver bell").
+ */
+function clear_unique_known_leak(obj) {
+    if (!obj) return;
+    const ocl = game.objects?.[obj.otyp];
+    if (!ocl?.oc_name_known && otyp_uses_known(obj.otyp) && ocl?.oc_unique) {
+        obj.known = 0;
+    }
 }
 
 export function otyp_uses_known(otyp) {
@@ -635,6 +657,8 @@ function pretty_base(obj) {
  */
 export function xname(obj) {
     if (!obj) return 'something';
+    // C xname_flags: !nn && oc_uses_known && oc_unique → known=0 (article leak)
+    clear_unique_known_leak(obj);
     // C: Role_if(PM_CLERIC) → obj->bknown = 1 (bypass set_bknown / invent update)
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
     // C: if (!Blind && !gd.distantname) observe_object(obj);
@@ -1119,6 +1143,8 @@ export function obj_is_pname(obj) {
 export function doname(obj) {
     if (!obj) return 'something';
 
+    // C doname_base → xname_flags clears unique known leak before article
+    clear_unique_known_leak(obj);
     // C: xname Role_if(PM_CLERIC) obj->bknown=1 before doname_base reads it
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
     // C: doname_base → xname → observe_object when !Blind && !distantname
