@@ -1,0 +1,120 @@
+// options.js — Parse .nethackrc options.
+// C ref: options.c — handles OPTIONS=, BIND=, etc.
+
+import { game } from './gstate.js';
+
+export function parseNethackrc(rc) {
+    const result = {
+        name: '', role: -1, race: -1, gender: -1, align: -1,
+        flags: { pickup_thrown: true }, iflags: {}, bindings: {},
+    };
+    if (!rc) return result;
+
+    for (const rawLine of rc.split('\n')) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) continue;
+
+        const bindMatch = line.match(/^BIND(?:INGS)?=(.+)/i);
+        if (bindMatch) {
+            parseBindings(bindMatch[1], result.bindings);
+            continue;
+        }
+
+        const optMatch = line.match(/^OPTIONS=(.+)/i);
+        if (!optMatch) continue;
+
+        for (const opt of optMatch[1].split(',')) {
+            const trimmed = opt.trim();
+            if (!trimmed) continue;
+
+            const negated = trimmed.startsWith('!');
+            const stripped = negated ? trimmed.slice(1) : trimmed;
+
+            const colonIdx = stripped.indexOf(':');
+            if (colonIdx >= 0) {
+                const key = stripped.slice(0, colonIdx).trim().toLowerCase();
+                const val = stripped.slice(colonIdx + 1).trim();
+
+                if (key === 'name') result.name = val;
+                else if (key === 'role') result.role = val;
+                else if (key === 'race') result.race = val;
+                else if (key === 'gender') result.gender = val;
+                else if (key === 'align') result.align = val;
+                else if (key === 'catname') result.catname = val;
+                else if (key === 'dogname') result.dogname = val;
+                else if (key === 'horsename') result.horsename = val;
+                else if (key === 'playmode') {
+                    // C ref: options.c:optfn_playmode().
+                    const mode = val.toLowerCase();
+                    if (mode.startsWith('debug') || mode.startsWith('wizard')) {
+                        result.flags.debug = true;
+                        result.flags.explore = false;
+                    } else if (mode.startsWith('explore') || mode.startsWith('discovery')) {
+                        result.flags.debug = false;
+                        result.flags.explore = true;
+                    } else if (mode.startsWith('normal')) {
+                        result.flags.debug = false;
+                        result.flags.explore = false;
+                    }
+                }
+                else if (key === 'pettype' || key === 'pet') {
+                    result.flags.pettype = val;
+                    if (val === 'none' || val === 'n') result.preferred_pet = 'n';
+                    else if (val === 'dog' || val === 'd') result.preferred_pet = 'd';
+                    else if (val === 'cat' || val === 'c') result.preferred_pet = 'c';
+                    else if (val === 'horse' || val === 'pony' || val === 'h') result.preferred_pet = 'h';
+                }
+                else if (key === 'symset') result.symset = val;
+                else if (key === 'pickup_types') result.flags.pickup_types = val;
+                else if (key === 'suppress_alert') result.flags.suppress_alert = val;
+                else if (key === 'msg_window') result.iflags.prevmsg_window = val;
+                else result.flags[key] = val;
+            } else {
+                // Boolean flag
+                const lname = stripped.toLowerCase();
+                const value = !negated;
+
+                if (lname === 'autopickup') result.flags.pickup = value;
+                else if (lname === 'pickup_thrown') result.flags.pickup_thrown = value;
+                else if (lname === 'color') result.flags.color = value;
+                else if (lname === 'legacy') result.flags.legacy = value;
+                else if (lname === 'tutorial') { result.flags.tutorial = value; result.tutorial_set = true; }
+                else if (lname === 'splash_screen') result.iflags.wc_splash_screen = value;
+                else if (lname === 'pushweapon') result.flags.pushweapon = value;
+                else if (lname === 'showexp') result.flags.showexp = value;
+                else if (lname === 'time') result.flags.time = value;
+                else if (lname === 'verbose') result.flags.verbose = value;
+                else result.flags[lname] = value;
+            }
+        }
+    }
+    return result;
+}
+
+function parseBindings(text, bindings) {
+    for (const raw of String(text || '').split(',')) {
+        const colonIdx = raw.indexOf(':');
+        if (colonIdx < 0) continue;
+        const key = parseBindingKey(raw.slice(0, colonIdx).trim());
+        const command = raw.slice(colonIdx + 1).trim().toLowerCase();
+        if (key && command) bindings[key] = command;
+    }
+}
+
+function parseBindingKey(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const lower = text.toLowerCase();
+    if (lower === 'space') return ' ';
+    if (lower === 'esc' || lower === 'escape') return '\x1b';
+    if (lower === 'return' || lower === 'enter') return '\r';
+    if (lower === 'tab') return '\t';
+    if (/^\^[a-z]$/i.test(text)) return String.fromCharCode(text[1].toUpperCase().charCodeAt(0) - 64);
+    if (text.length >= 2 && text[0] === '\\') {
+        if (text[1] === 'n') return '\n';
+        if (text[1] === 'r') return '\r';
+        if (text[1] === 't') return '\t';
+        return text[1];
+    }
+    return text.length === 1 ? text : '';
+}
