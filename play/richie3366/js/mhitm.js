@@ -70,6 +70,7 @@ const AD_SEDU = 22; /* seduces & steals multiple items */
 const AD_DRDX = 30; /* drains dexterity (quasit) — monattk.h */
 const AD_DRCO = 31; /* drains constitution — monattk.h */
 const AD_SSEX = 35; /* Succubus seduction (extended) */
+const AD_POLY = 43; /* polymorph target (genetic engineer) — monattk.h */
 const AC_MAX = 99;
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
@@ -117,20 +118,53 @@ async function noises(magr, mattk) {
 }
 
 /**
- * C ref: mhitu.c getmattk — base mptr->mattk[indx] (substitutions deferred).
+ * C ref: mhitu.c getmattk — base mptr->mattk[indx] + live substitutions.
  * Uses extracted monsters_data mattks (mons().mattk), not a hand table.
+ * Named omissions: SEDUCE=0 SSEX→c_sa_no/DRLI; consecutive DISE/PEST/FAMN→STUN;
+ * AD_DREN energy scaling; cancelled/artifact AT_WEAP→PHYS; lich cold-resist
+ * touch→PHYS; home-elemental damn*2. prev_result / mdef args deferred until
+ * those arms are wired (callers pass magr,i only today).
  */
 export function get_mattk(magr, i) {
     if (i < 0 || i >= NATTK) return { ...NO_ATTK };
     const slots = magr?.data?.mattk;
     if (!slots || !slots[i]) return { ...NO_ATTK };
     const a = slots[i];
-    return {
+    const attk = {
         aatyp: a.aatyp | 0,
         adtyp: a.adtyp | 0,
         damn: a.damn | 0,
         damd: a.damd | 0,
+        // C getmattk returns &mptr->mattk[indx] when unsubstitued — hitmsg
+        // uses pointer+1 for "again" (D-0840).
+        _slot: a,
+        _indx: i,
     };
+
+    // C: holders/engulfers with mspec_used cannot re-hold; switch to simpler attack
+    if ((magr.mspec_used | 0)
+        && (attk.aatyp === AT_ENGL || attk.aatyp === AT_HUGS
+            || attk.adtyp === AD_STCK || attk.adtyp === AD_POLY)) {
+        const wimpy = attk.damd === 0; // lichen, violet fungus
+        if (attk.adtyp === AD_ACID || attk.adtyp === AD_ELEC
+            || attk.adtyp === AD_COLD || attk.adtyp === AD_FIRE) {
+            attk.aatyp = AT_TUCH;
+        } else {
+            attk.aatyp = AT_CLAW;
+            attk.adtyp = AD_PHYS;
+        }
+        attk.damn = 1;
+        attk.damd = 6;
+        if (wimpy && attk.aatyp === AT_CLAW) {
+            attk.aatyp = AT_TUCH;
+            attk.damn = 0;
+            attk.damd = 0;
+        }
+        // C: alt_attk_buf — not &mattk[indx]; "again" pointer+1 must fail
+        attk._slot = null;
+    }
+
+    return attk;
 }
 
 export {

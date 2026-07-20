@@ -407,8 +407,8 @@ export async function make_confused(xtime, talk) {
  * C ref: potion.c make_hallucinated(xtime, talk, mask)
  * Envelope: timed HHallucination set/clear + cosmic/boring pline.
  * Named omissions: EHalluc_resistance mask polish beyond |= / &=~;
- * Unaware talk suppress; eatmupdate; swallowed redraw; see_monsters/
- * see_objects/see_traps bodies; update_inventory; itch/flatten clear msgs.
+ * Unaware talk suppress; eatmupdate; update_inventory;
+ * itch/flatten clear msgs.
  */
 export async function make_hallucinated(xtime, talk, mask = 0) {
     const u = game.u || (game.u = {});
@@ -442,11 +442,16 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
 
     if (changed) {
         if (game.flags) game.flags.botl = true;
-        try {
-            const { see_monsters } = await import('./display.js');
-            if (typeof see_monsters === 'function') see_monsters();
-        } catch {
-            /* see_monsters optional */
+        // C: if uswallow → swallowed(0); else see_* *before* cosmic pline
+        const {
+            see_monsters, see_objects, see_traps, swallowed,
+        } = await import('./display.js');
+        if (u.uswallow) {
+            swallowed(0);
+        } else {
+            see_monsters();
+            see_objects();
+            see_traps();
         }
         if (talk) {
             await pline(message.replace('%s', verb));

@@ -7,6 +7,7 @@ import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active } from './cmd.js';
 import {
     docrt, cls, bot, flush_screen, pline, flush_topl_more, see_monsters,
+    see_objects, see_traps, swallowed,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
@@ -721,19 +722,26 @@ export async function moveloop_core() {
     // C: allmain.c once-per-player-input find_ac() before bot/flush/rhack
     find_ac();
     // C: if (!context.mv || Blind) { Hallu | Unblind_telepat|Warning|… }
-    // Refreshes Warning floats / ESP glyphs when hero steps change mdistu.
-    // Named omissions: Hallucination see_objects/see_traps/swallowed;
-    // Warn_of_mon; any_visible_region(); Blind forces the arm during run.
+    // Hallu: see_monsters/objects/traps + swallowed(0) redraw (display RNG).
+    // Named omissions: Warn_of_mon; any_visible_region(); Blind forces arm
+    // during run (Hallu path still runs when !mv).
     {
         const u = g.u || {};
         const Blind = !!(u.Blind || u.ublind
             || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
         if (!g.context.mv || Blind) {
-            const Unblind_telepat = !!(u.ETelepat | 0);
-            const Warning = !!((u.HWarning | 0) || (u.EWarning | 0)
-                || u.Warning);
-            if (Unblind_telepat || Warning) {
+            if (u.Hallucination || (u.HHallucination | 0)) {
                 see_monsters();
+                see_objects();
+                see_traps();
+                if (u.uswallow) swallowed(0);
+            } else {
+                const Unblind_telepat = !!(u.ETelepat | 0);
+                const Warning = !!((u.HWarning | 0) || (u.EWarning | 0)
+                    || u.Warning);
+                if (Unblind_telepat || Warning) {
+                    see_monsters();
+                }
             }
         }
     }

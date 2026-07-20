@@ -13,9 +13,13 @@ import {
 } from './const.js';
 import { thrwmu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
+import { destroy_items } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
-import { pline, mon_visible, canspotmon, map_invisible, canseemon, newsym } from './display.js';
+import {
+    pline, mon_visible, canspotmon, map_invisible, canseemon, newsym, docrt,
+    swallowed,
+} from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
@@ -172,7 +176,9 @@ async function mswings(mtmp, otemp, bash) {
 }
 
 /**
- * C ref: mhitu.c hitmsg — aatyp verb; seduce / again deferred.
+ * C ref: mhitu.c hitmsg — aatyp verb + consecutive-same-aatyp " again".
+ * Named omissions: could_seduce smile/talk arm; AT_TENT s_suffix; AT_EXPL/BOOM;
+ * thick_skinned kick punct ".".
  */
 async function hitmsg(mtmp, mattk) {
     let verb = 'hits';
@@ -184,15 +190,29 @@ async function hitmsg(mtmp, mattk) {
     case AT_TUCH: verb = 'touches you'; break;
     default: verb = 'hits'; break;
     }
-    await pline(`${Monnam(mtmp)} ${verb}!`);
+    // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again"
+    const prev = game.hitmsg_prev;
+    const again = (
+        (mtmp.m_id | 0) === (game.hitmsg_mid | 0)
+        && prev
+        && mattk._slot
+        && prev._slot
+        && (mattk._indx | 0) === ((prev._indx | 0) + 1)
+        && (mattk.aatyp | 0) === (prev.aatyp | 0)
+    ) ? ' again' : '';
+    await pline(`${Monnam(mtmp)} ${verb}${again}!`);
+    game.hitmsg_mid = mtmp.m_id | 0;
+    game.hitmsg_prev = mattk;
 }
 
 /**
  * C ref: mhitu.c missmu — map_invisible when unseen; "just " on near-miss
  * when flags.verbose. Named omission: could_seduce pretend-friendly arm;
- * stop_occupation; gh.hitmsg_mid / hitmsg_prev clear.
+ * stop_occupation.
  */
 async function missmu(mtmp, nearmiss, _mattk) {
+    game.hitmsg_mid = 0;
+    game.hitmsg_prev = null;
     if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
     // could_seduce pretend-friendly deferred
     const just = nearmiss && game.flags?.verbose !== false ? 'just ' : '';
@@ -338,6 +358,32 @@ async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_cold mhitu branch (mdef == youmonst).
+ * destroy_items when m_lev > rn2(20); monstseesu / monstunseesu deferred.
+ */
+async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
+    const orig_dmg = mhm.damage;
+    await hitmsg(mtmp, mattk);
+    if (!(await mhitm_mgc_atk_negated(mtmp, null, true))) {
+        await pline("You're covered in frost!");
+        const u = game.u || {};
+        const Cold_resistance = !!(u.Cold_resistance || u.HCold_resistance
+            || u.ECold_resistance);
+        if (Cold_resistance) {
+            await pline("The frost doesn't seem cold!");
+            mhm.damage = 0;
+        }
+        // C: if ((int) magr->m_lev > rn2(20)) destroy_items(&youmonst, AD_COLD, …)
+        if ((mtmp.m_lev | 0) > rn2(20)) {
+            const you = game.youmonst || { _youmonst: true };
+            mhm.damage += await destroy_items(you, AD_COLD, orig_dmg);
+        }
+    } else {
+        mhm.damage = 0;
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_drst mhitu branch (AD_DRST/DRDX/DRCO).
  * Always rolls mhitm_mgc_atk_negated(FALSE) before hitmsg; poison via
  * poisoned() when !negated && !rn2(8).
@@ -463,19 +509,22 @@ function set_ustuck(mtmp) {
 
 /**
  * C ref: mon.c unstuck — release grabber; set mspec_used rnd(2) for re-engulf.
- * Punished placebc / docrt deferred.
+ * Swallowed exit: vision_full_recalc + docrt (Hallu display RNG; D-0838).
+ * Named omissions: Punished placebc.
  */
-function unstuck(mtmp) {
+async function unstuck(mtmp) {
     const u = game.u || {};
     if (u.ustuck !== mtmp) return;
     const ptr = mtmp.data;
-    const swallowed = !!(u.uswallow | 0);
+    const was_swallowed = !!(u.uswallow | 0);
     set_ustuck(null);
-    if (swallowed) {
+    if (was_swallowed) {
         game.mswallower = null;
         u.ux = mtmp.mx;
         u.uy = mtmp.my;
-        vision_recalc(1);
+        // C: gv.vision_full_recalc = 1; docrt();
+        game.vision_full_recalc = 1;
+        await docrt();
     }
     if (!(mtmp.mspec_used | 0)
         && (dmgtype(ptr, 19 /* AD_STCK */)
@@ -508,7 +557,7 @@ async function expels(mtmp, mdat, message) {
             await pline(`You get expelled from ${mon_nam(mtmp)}${blast}!`);
         }
     }
-    unstuck(mtmp);
+    await unstuck(mtmp);
     mnexto(mtmp, 0);
     newsym(game.u.ux, game.u.uy);
 }
@@ -519,8 +568,10 @@ async function expels(mtmp, mdat, message) {
  * ACID arms; mdamageu; expel on timer.
  * Named omissions: Punished ball; steed DISMOUNT_ENGULFED; leashes; petrify;
  * snuff_lit invent; Slow_digestion; ugolemeffects/monstseesu; diseasemu;
- * drain_en; make_blinded; swallowed() map polish; Half_physical polish;
- * u_on_newpos when engulfer moves while digesting (D-0826 postmov).
+ * drain_en; make_blinded; Half_physical polish;
+ * display_nhwindow(WIN_MESSAGE) before swallowed (D-0841: flush_topl_more
+ * steals hjkl-reject keys — RNG @11524); swallowed cls/bot polish;
+ * DECgfx swallow glyphs; u_on_newpos while digesting (D-0826 postmov).
  */
 async function gulpmu(mtmp, mattk) {
     const u = game.u || (game.u = {});
@@ -557,6 +608,9 @@ async function gulpmu(mtmp, mattk) {
             u.utraptype = 0;
         }
 
+        // C: display_nhwindow(WIN_MESSAGE,FALSE) before vision_recalc deferred
+        // (D-0841: flush_topl_more matches toplines 141-174 but steals space
+        // where C more() first rejects hjkl — RNG @11524). See NOTES.
         vision_recalc(2);
         u.uswallow = 1;
         let tim_tmp;
@@ -570,6 +624,9 @@ async function gulpmu(mtmp, mattk) {
             tim_tmp = rnd((mtmp.m_lev | 0) + Math.trunc(10 / 2));
         }
         u.uswldtim = (tim_tmp < 2) ? 2 : tim_tmp;
+        // C: swallowed(1) — stomach map; Hallu burns what_mon per cell
+        // (C cls/bot inside swallowed; JS clears disp in swallowed(first))
+        swallowed(1);
         if (!flaming(mtmp.data)) {
             /* snuff_lit invent deferred */
         }
@@ -764,6 +821,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_ELEC:
         await mhitm_ad_elec_u(mtmp, mattk, mhm);
+        break;
+    case AD_COLD:
+        await mhitm_ad_cold_u(mtmp, mattk, mhm);
         break;
     case AD_DRST:
     case AD_DRDX:

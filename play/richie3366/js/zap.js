@@ -532,7 +532,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
  * Hero uses game.invent array; monsters use minvent nobj chain.
  * Named omissions: bypass_objlist; defer levitation/were; elec body.
  */
-async function destroy_items(mon, dmgtyp, dmg_in) {
+export async function destroy_items(mon, dmgtyp, dmg_in) {
     let limit = Math.trunc((dmg_in | 0) / DMG_DESTROY_SCALE);
     if (((dmg_in | 0) % DMG_DESTROY_SCALE) > rn2(DMG_DESTROY_SCALE)) limit++;
     if (limit > MAX_ITEMS_DESTROYED) limit = MAX_ITEMS_DESTROYED;

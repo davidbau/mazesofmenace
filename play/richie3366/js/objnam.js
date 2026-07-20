@@ -910,6 +910,7 @@ export function an(str) {
 export function vtense(subj, verb) {
     // C ref: objnam.c vtense — plural verb → 3rd-person present for subject.
     // Plural if ends in 's' (not *us/*ss); a/an prefix → singular; else singular.
+    // C: null subj → singular 3rd-person (special case; do not return raw verb).
     let plural = false;
     if (subj) {
         if (/^a /i.test(subj) || /^an /i.test(subj)) {
@@ -922,17 +923,16 @@ export function vtense(subj, verb) {
             plural = spot === 's' && len > 1 && prev !== 'u' && prev !== 's';
         }
         if (plural) return verb;
-        // singular
-        if (verb === 'are') return 'is';
-        if (verb === 'have') return 'has';
-        if (verb.endsWith('y') && verb.length > 1 && !'aeiou'.includes(verb[verb.length - 2]))
-            return verb.slice(0, -1) + 'ies';
-        if (verb.endsWith('s') || verb.endsWith('x') || verb.endsWith('ch') || verb.endsWith('sh')
-            || verb.endsWith('z') || verb.endsWith('o'))
-            return verb + 'es';
-        return verb + 's';
     }
-    return verb;
+    // singular (incl. null subj)
+    if (verb === 'are') return 'is';
+    if (verb === 'have') return 'has';
+    if (verb.endsWith('y') && verb.length > 1 && !'aeiou'.includes(verb[verb.length - 2]))
+        return verb.slice(0, -1) + 'ies';
+    if (verb.endsWith('s') || verb.endsWith('x') || verb.endsWith('ch') || verb.endsWith('sh')
+        || verb.endsWith('z') || verb.endsWith('o'))
+        return verb + 'es';
+    return verb + 's';
 }
 
 /** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */

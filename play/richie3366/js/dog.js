@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { makemon, set_malign } from './makemon.js';
-import { mons, NON_PM, is_human, regenerates, M2_STALK } from './monsters.js';
+import { mons, NON_PM, is_human, regenerates, M2_STALK, is_domestic } from './monsters.js';
 import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import {
@@ -20,6 +20,7 @@ import { monnear, m_at } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
 import { newsym } from './display.js';
+import { hero_conflict } from './mondata.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -44,8 +45,12 @@ function initedog(mtmp, everything) {
     if (!mtmp.edog) mtmp.edog = {};
     const edogp = mtmp.edog;
     const minhungry = (game.moves ?? 1) + 1000;
-    mtmp.mtame = Math.max(10, mtmp.mtame || 0);
+    // C: is_domestic → minimumtame 10 else 5
+    const minimumtame = is_domestic(mtmp.data) ? 10 : 5;
+    mtmp.mtame = Math.max(minimumtame, mtmp.mtame || 0);
     mtmp.mpeaceful = 1;
+    mtmp.mavenge = 0;
+    set_malign(mtmp); // C: recalc alignment now that it's tamed
     if (everything) {
         mtmp.mleashed = 0;
         mtmp.meating = 0;
@@ -362,4 +367,47 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
         mtmp.mhp = Math.min(max, (mtmp.mhp | 0) + heal);
     }
     mtmp.mlstmv = game.moves | 0;
+}
+
+/**
+ * C ref: dog.c abuse_dog — reduce tameness; yelp/growl when on-map.
+ * Called from hmon_hitmon_pet (and kick/zap/trap/hack callers deferred).
+ * Named omissions: m_unleash body when mtame hits 0 while leashed;
+ * worm redraw on untame; Aggravate/Conflict /=2 path unverified this peel.
+ */
+export async function abuse_dog(mtmp) {
+    if (!mtmp?.mtame) return;
+
+    const u = game.u || {};
+    const Aggravate = !!((u.HAggravate_monster | 0) || (u.EAggravate_monster | 0));
+    if (Aggravate || hero_conflict()) {
+        mtmp.mtame = Math.trunc((mtmp.mtame | 0) / 2);
+    } else {
+        mtmp.mtame = (mtmp.mtame | 0) - 1;
+    }
+
+    if (mtmp.mtame && !mtmp.isminion) {
+        if (!mtmp.edog) mtmp.edog = {};
+        mtmp.edog.abuse = (mtmp.edog.abuse | 0) + 1;
+    }
+
+    if (!mtmp.mtame && mtmp.mleashed) {
+        // m_unleash(mtmp, TRUE) deferred — clear flag only
+        mtmp.mleashed = 0;
+    }
+
+    // C: skip sound when pet mid-leaving (mx==0)
+    if ((mtmp.mx | 0) !== 0) {
+        // Dynamic import avoids sounds.js ↔ uhitm.js load cycle via dog.
+        const { yelp, growl } = await import('./sounds.js');
+        if (mtmp.mtame && rn2(mtmp.mtame | 0)) {
+            await yelp(mtmp);
+        } else {
+            await growl(mtmp);
+        }
+        if (!mtmp.mtame) {
+            newsym(mtmp.mx, mtmp.my);
+            // worm redraw deferred
+        }
+    }
 }

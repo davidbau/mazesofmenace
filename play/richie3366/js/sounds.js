@@ -1,8 +1,9 @@
 // sounds.js — Ambient sounds and #chat.
-// C ref: sounds.c — dosounds / dotalk / dochat / domonnoise (MS_BARK subset).
+// C ref: sounds.c — dosounds / dotalk / dochat / domonnoise (MS_BARK subset)
+//         + yelp / growl (pet abuse; D-0836).
 
 import { game } from './gstate.js';
-import { pline } from './display.js';
+import { pline, canseemon } from './display.js';
 import { getdir } from './lock.js';
 import { mon_at } from './uhitm.js';
 import { Monnam } from './do_name.js';
@@ -11,6 +12,8 @@ import { objectNames } from './generated/objects_data.js';
 import { COIN_CLASS } from './objects.js';
 import { rn2 } from './rng.js';
 import { dist2 } from './hacklib.js';
+import { vtense } from './objnam.js';
+import { nomul } from './hack.js';
 import {
     is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
     monsterNames,
@@ -337,8 +340,22 @@ const WALLTALK = [
     "doesn't seem to be interested.",
 ];
 
+/** C ref: monflag.h MS_SILENT. */
+const MS_SILENT = 0;
 /** C ref: monflag.h MS_BARK — dogs/canines (mlet S_DOG). */
 const MS_BARK = 1;
+/** C ref: monflag.h MS_MEW — felines (mlet S_FELINE). */
+const MS_MEW = 2;
+/** C ref: monflag.h MS_GROWL. */
+const MS_GROWL = 5;
+/** C ref: monflag.h MS_ROAR. */
+const MS_ROAR = 6;
+/** C ref: monflag.h MS_SQEEK. */
+const MS_SQEEK = 8;
+/** C ref: monflag.h MS_SQAWK. */
+const MS_SQAWK = 9;
+/** C ref: monflag.h MS_WAIL. */
+const MS_WAIL = 12;
 /** C ref: monflag.h MS_ANIMAL — animal noises ceiling. */
 const MS_ANIMAL = 17;
 /** C ref: monflag.h MS_SEDUCE — nymphs / incubus ("cajoles you"). */
@@ -347,16 +364,128 @@ const MS_SEDUCE = 31;
 const MS_LEADER = 36;
 
 /**
+ * C ref: sounds.c h_sounds[] — Hallucination verb pool (SIZE 35).
+ * Used by growl / yelp / whimper ROLL_FROM.
+ */
+const H_SOUNDS = [
+    'beep', 'boing', 'sing', 'belche', 'creak', 'cough',
+    'rattle', 'ululate', 'pop', 'jingle', 'sniffle', 'tinkle',
+    'eep', 'clatter', 'hum', 'sizzle', 'twitter', 'wheeze',
+    'rustle', 'honk', 'lisp', 'yodel', 'coo', 'burp',
+    'moo', 'boom', 'murmur', 'oink', 'quack', 'rumble',
+    'twang', 'toot', 'gargle', 'hoot', 'warble',
+];
+
+/**
  * Infer msound when generated tables omit it.
- * S_DOG → MS_BARK; S_NYMPH → MS_SEDUCE.
+ * S_DOG → MS_BARK; S_FELINE → MS_MEW; S_NYMPH → MS_SEDUCE.
  */
 function mon_msound(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr) return 0;
     if (ptr.msound != null) return ptr.msound | 0;
     if (ptr.mlet === 'S_DOG') return MS_BARK;
+    if (ptr.mlet === 'S_FELINE') return MS_MEW;
     if (ptr.mlet === 'S_NYMPH') return MS_SEDUCE;
     return 0; // MS_SILENT — other sounds deferred
+}
+
+/** C ref: mondata.h helpless — msleeping || !mcanmove. */
+function helpless(mtmp) {
+    return !!(mtmp?.msleeping || !mtmp?.mcanmove);
+}
+
+/**
+ * C ref: sounds.c growl_sound — non-Hallu growl verb from msound.
+ * Named omissions: MS_HISS/BELLOW/BUZZ/NEIGH/GROAN/MOO arms use defaults
+ * via mon_msound inference until those mlets are wired.
+ */
+function growl_sound(mtmp) {
+    switch (mon_msound(mtmp)) {
+    case MS_MEW:
+        return 'hiss';
+    case MS_BARK:
+    case MS_GROWL:
+        return 'growl';
+    case MS_ROAR:
+        return 'roar';
+    case MS_SQEEK:
+        return 'squeal';
+    case MS_SQAWK:
+        return 'screech';
+    case MS_WAIL:
+        return 'wail';
+    case MS_SILENT:
+        return 'commotion';
+    default:
+        return 'scream';
+    }
+}
+
+/**
+ * C ref: sounds.c growl — seriously abused pet (incl. hero attacking).
+ * Hallucination → ROLL_FROM(h_sounds) rn2(35). Named omissions:
+ * wake_nearto; iflags.last_msg PLNMSG_GROWL.
+ */
+export async function growl(mtmp) {
+    if (!mtmp || helpless(mtmp) || mon_msound(mtmp) === MS_SILENT) return;
+    let growl_verb = null;
+    if (game.u?.Hallucination) {
+        growl_verb = H_SOUNDS[rn2(H_SOUNDS.length)];
+    } else {
+        growl_verb = growl_sound(mtmp);
+    }
+    if (growl_verb) {
+        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf || game.u?.EDeaf);
+        if (canseemon(mtmp) || !Deaf) {
+            await pline(`${Monnam(mtmp)} ${vtense(null, growl_verb)}!`);
+            if (game.context?.run) nomul(0);
+        }
+        // wake_nearto deferred
+    }
+}
+
+/**
+ * C ref: sounds.c yelp — mistreated pet sound.
+ * Hallucination → ROLL_FROM(h_sounds) rn2(35). Named omissions:
+ * Soundeffect; wake_nearto; feline/canine se_* variants (pline only).
+ */
+export async function yelp(mtmp) {
+    if (!mtmp || helpless(mtmp) || !mon_msound(mtmp)) return;
+    let yelp_verb = null;
+    const Deaf = !!(game.u?.Deaf || game.u?.HDeaf || game.u?.EDeaf);
+    if (game.u?.Hallucination) {
+        yelp_verb = H_SOUNDS[rn2(H_SOUNDS.length)];
+    } else {
+        switch (mon_msound(mtmp)) {
+        case MS_MEW:
+            yelp_verb = !Deaf ? 'yowl' : 'arch';
+            break;
+        case MS_BARK:
+        case MS_GROWL:
+            yelp_verb = !Deaf ? 'yelp' : 'recoil';
+            break;
+        case MS_ROAR:
+            yelp_verb = !Deaf ? 'snarl' : 'bluff';
+            break;
+        case MS_SQEEK:
+            yelp_verb = !Deaf ? 'squeal' : 'quiver';
+            break;
+        case MS_SQAWK:
+            yelp_verb = !Deaf ? 'screak' : 'thrash';
+            break;
+        case MS_WAIL:
+            yelp_verb = !Deaf ? 'wail' : 'cringe';
+            break;
+        default:
+            break;
+        }
+    }
+    if (yelp_verb) {
+        await pline(`${Monnam(mtmp)} ${vtense(null, yelp_verb)}!`);
+        if (game.context?.run) nomul(0);
+        // wake_nearto deferred
+    }
 }
 
 /**

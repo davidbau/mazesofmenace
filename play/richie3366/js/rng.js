@@ -1,7 +1,8 @@
 // rng.js — PRNG wrappers around ISAAC64.
 // C ref: rnd.c — two ISAAC64 streams: core and display.
 // Lua nh.rn2/nh.random uses core; the recorder adds Lua caller provenance.
-// Display-stream wrappers still deferred.
+// Display stream (rn2_on_display_rng) is seeded with the same bytes as core
+// (options.c init_random(rn2) + init_random(rn2_on_display_rng)).
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
@@ -19,6 +20,8 @@ export function initRng(seed) {
         s >>= 8n;
     }
     game.coreCtx = isaac64_init(bytes);
+    // C: separate isaac64_ctx for DISP; same seed material
+    game.dispCtx = isaac64_init(bytes);
     _rngLog = [];
 }
 
@@ -28,6 +31,19 @@ export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry)
 
 function RND(x) {
     const val = isaac64_next_uint64(game.coreCtx);
+    return Number(val % BigInt(x));
+}
+
+/**
+ * C ref: rnd.c rn2_on_display_rng — 0..x-1 on the display ISAAC stream.
+ * Not logged into the core gameplay RNG log (contest ~drn2 is optional).
+ */
+export function rn2_on_display_rng(x) {
+    if (x <= 0) return 0;
+    if (!game.dispCtx) {
+        game.dispCtx = isaac64_init(new Uint8Array(8));
+    }
+    const val = isaac64_next_uint64(game.dispCtx);
     return Number(val % BigInt(x));
 }
 

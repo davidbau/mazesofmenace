@@ -6,8 +6,9 @@ import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { objects_at } from './mkobj.js';
 import {
-    mcolors, mons, pmnames, infravision, infravisible, mindless,
+    mcolors, mons, pmnames, infravision, infravisible, mindless, NUMMONS,
 } from './monsters.js';
+import { rn2_on_display_rng } from './rng.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, TREE, IRONBARS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -53,7 +54,7 @@ import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
     TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
     WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
-    VENOM_CLASS, objectNames,
+    VENOM_CLASS, objectNames, NUM_OBJECTS, FIRST_OBJECT,
 } from './objects.js';
 import {
     NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
@@ -333,12 +334,15 @@ export function warning_of(mon) {
 
 /**
  * C ref: display.c display_warning — float warnsym above map (not memory).
- * Named omissions: Hallucination rn2_on_display_rng; MATCH_WARN_OF_MON
- * mon_to_glyph arm; worm tails (caller must not invoke).
+ * Named omissions: MATCH_WARN_OF_MON mon_to_glyph arm; worm tails
+ * (caller must not invoke).
  */
 function display_warning(mon) {
     if (!mon) return;
-    const wl = warning_of(mon);
+    // C: Hallucination ? rn2_on_display_rng(WARNCOUNT-1)+1 : warning_of(mon)
+    const wl = game.u?.Hallucination
+        ? rn2_on_display_rng(WARNCOUNT - 1) + 1
+        : warning_of(mon);
     const sym = def_warnsyms[wl] || def_warnsyms[0];
     if (!sym) return;
     show_glyph_cell(mon.mx, mon.my, sym.ch, sym.color, false);
@@ -453,12 +457,16 @@ export function look_shown_at(x, y) {
 }
 
 // C ref: display.c map_glyph / mon_color / pet_color — per-species mcolor.
-// Newt is CLR_YELLOW; gecko/lizard are CLR_GREEN — mlet-only color is wrong.
-// Dogs/cats are HI_DOMESTIC (white) in mons[]; ponies are CLR_BROWN.
+// C ref: display.h mon_to_glyph / what_mon — Hallu → random_monster(display rng).
 export function mon_glyph(mtmp) {
-    const mlet = mtmp.data?.mlet || mtmp.mlet;
+    let mnum = mtmp.mnum ?? mtmp.data?.mndx;
+    // C: what_mon(monsndx(mon->data), rn2_on_display_rng)
+    if (game.u?.Hallucination) {
+        mnum = rn2_on_display_rng(NUMMONS);
+    }
+    const ptr = (mnum != null && mnum >= 0) ? mons(mnum) : mtmp.data;
+    const mlet = ptr?.mlet || mtmp.data?.mlet || mtmp.mlet;
     const ch = MLET_CH[mlet] || '?';
-    const mnum = mtmp.mnum ?? mtmp.data?.mndx;
     const color = (mnum != null && mnum >= 0)
         ? (mcolors[mnum] ?? CLR_GRAY)
         : CLR_GRAY;
@@ -701,16 +709,44 @@ function tty_map_color(color) {
 }
 
 // C ref: display.c map_object / display.h obj_to_glyph + mon_color for corpses
-// C ref: display.h statue_to_glyph — statues use mons[corpsenm].mlet + obj_color(STATUE)
+// C ref: display.h statue_to_glyph / Hallucination → random_obj_to_glyph
 export function obj_glyph(obj) {
+    // C display.h: obj_to_glyph Hallu → random_obj_to_glyph (statue separate)
+    if (game.u?.Hallucination && obj?.otyp !== STATUE_OTYP) {
+        // random_object: rn2(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT
+        const otyp = rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT;
+        // C: if CORPSE → second burn random_monster + body glyph
+        if (otyp === CORPSE_OTYP) {
+            const mnum = rn2_on_display_rng(NUMMONS);
+            const ptr = mons(mnum);
+            const ch = MLET_CH[ptr?.mlet] || '%';
+            const color = mcolors[mnum] ?? NO_COLOR;
+            return { ch, color, dec: false };
+        }
+        const def = game.objects?.[otyp];
+        const oclass = def?.oc_class ?? ILLOBJ_CLASS;
+        const ch = DEF_OC_SYM[oclass] || ']';
+        return { ch, color: def?.oc_color ?? NO_COLOR, dec: false };
+    }
     const def = game.objects?.[obj.otyp];
     const oclass = obj.oclass ?? def?.oc_class ?? ILLOBJ_CLASS;
     // C: STATUE → monster letter (not ROCK_CLASS '`'); color is statue white
-    if (obj.otyp === STATUE_OTYP && obj.corpsenm != null && obj.corpsenm >= 0) {
-        const ptr = mons(obj.corpsenm);
-        const ch = MLET_CH[ptr?.mlet] || '?';
-        const color = def?.oc_color ?? CLR_WHITE;
-        return { ch, color, dec: false };
+    // Hallu statue → random_monster + gender (display.h statue_to_glyph)
+    if (obj.otyp === STATUE_OTYP) {
+        if (game.u?.Hallucination) {
+            const mnum = rn2_on_display_rng(NUMMONS);
+            const ptr = mons(mnum);
+            const ch = MLET_CH[ptr?.mlet] || '?';
+            rn2_on_display_rng(2); // C: gender glyph pick (male/fem offset)
+            const color = def?.oc_color ?? CLR_WHITE;
+            return { ch, color, dec: false };
+        }
+        if (obj.corpsenm != null && obj.corpsenm >= 0) {
+            const ptr = mons(obj.corpsenm);
+            const ch = MLET_CH[ptr?.mlet] || '?';
+            const color = def?.oc_color ?? CLR_WHITE;
+            return { ch, color, dec: false };
+        }
     }
     const ch = DEF_OC_SYM[oclass] || ']';
     // C: body glyphs use mon_color(corpsenm), not objects[CORPSE].oc_color
@@ -1805,6 +1841,15 @@ export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
+    // C: only permit updating the hero when swallowed
+    if (game.u?.uswallow) {
+        if (game.u.ux === x && game.u.uy === y) {
+            const hg = hero_display_glyph();
+            show_glyph_cell(x, y, hg.ch, hg.color, false);
+        }
+        return;
+    }
+
     if (game.u?.ux === x && game.u?.uy === y) {
         // C display.c newsym u_at — canspotself gates display_self
         if (cansee(x, y)) {
@@ -1987,6 +2032,85 @@ export function newsym(x, y) {
 // rebuilds block maps and leaves stale IN_SIGHT, so newsym would paint/
 // remember terrain for the previous level's visible coordinates.
 /**
+ * C ref: display.c swallowed — stomach 3×3 around hero.
+ * Hallu: each swallow_to_glyph burns what_mon(display rng).
+ * Named omissions: first→cls/bot polish beyond caller; underwater precedence.
+ */
+let _swallow_lastx = 0;
+let _swallow_lasty = 0;
+
+/** C defsym.h S_sw_* characters (Primary). */
+const SWALLOW_CH = {
+    tl: '/', tc: '-', tr: '\\',
+    ml: '|', mr: '|',
+    bl: '\\', bc: '-', br: '/',
+};
+
+function swallow_cell(x, y, ch, swallowerMnum) {
+    // C: swallow_to_glyph → what_mon(mnum, rn2_on_display_rng) under Hallu
+    let mnum = swallowerMnum;
+    if (game.u?.Hallucination) {
+        mnum = rn2_on_display_rng(NUMMONS);
+    }
+    const color = (mnum != null && mnum >= 0)
+        ? (mcolors[mnum] ?? CLR_GREEN)
+        : CLR_GREEN;
+    show_glyph_cell(x, y, ch, color, false);
+}
+
+export function swallowed(first = 0) {
+    const u = game.u;
+    if (!u?.ux || !u.ustuck) return;
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const swallower = u.ustuck.mnum ?? u.ustuck.data?.mndx ?? 0;
+
+    if (first) {
+        // C: cls(); bot(); — caller docrt already cls; bot deferred
+        for (let y = 0; y < ROWNO; y++) {
+            for (let x = 1; x < COLNO; x++) {
+                const loc = game.level?.at(x, y);
+                if (loc) {
+                    loc.disp_ch = ' ';
+                    loc.disp_color = NO_COLOR;
+                    loc.disp_decgfx = false;
+                }
+            }
+        }
+    } else if (_swallow_lastx) {
+        for (let y = _swallow_lasty - 1; y <= _swallow_lasty + 1; y++) {
+            for (let x = _swallow_lastx - 1; x <= _swallow_lastx + 1; x++) {
+                if (isok(x, y)) {
+                    show_glyph_cell(x, y, ' ', NO_COLOR, false);
+                }
+            }
+        }
+    }
+
+    const left_ok = isok(ux - 1, uy);
+    const rght_ok = isok(ux + 1, uy);
+
+    if (isok(ux, uy - 1)) {
+        if (left_ok) swallow_cell(ux - 1, uy - 1, SWALLOW_CH.tl, swallower);
+        swallow_cell(ux, uy - 1, SWALLOW_CH.tc, swallower);
+        if (rght_ok) swallow_cell(ux + 1, uy - 1, SWALLOW_CH.tr, swallower);
+    }
+    if (left_ok) swallow_cell(ux - 1, uy, SWALLOW_CH.ml, swallower);
+    {
+        const hg = hero_display_glyph();
+        show_glyph_cell(ux, uy, hg.ch, hg.color, false);
+    }
+    if (rght_ok) swallow_cell(ux + 1, uy, SWALLOW_CH.mr, swallower);
+    if (isok(ux, uy + 1)) {
+        if (left_ok) swallow_cell(ux - 1, uy + 1, SWALLOW_CH.bl, swallower);
+        swallow_cell(ux, uy + 1, SWALLOW_CH.bc, swallower);
+        if (rght_ok) swallow_cell(ux + 1, uy + 1, SWALLOW_CH.br, swallower);
+    }
+    _swallow_lastx = ux;
+    _swallow_lasty = uy;
+}
+
+/**
  * C ref: display.c see_monsters — refresh every live mon cell (+ hero).
  * Clears stale Warning float glyphs when mon_warning no longer applies
  * (e.g. after teleds moves the hero out of range).
@@ -2006,20 +2130,76 @@ export function see_monsters() {
     if (!u?.usteed && u?.ux) newsym(u.ux, u.uy);
 }
 
+/**
+ * C ref: display.c see_objects — newsym each floor-top object (+ update_inventory).
+ * Hallu path burns display RNG via obj_to_glyph / mon_to_glyph in newsym.
+ */
+export function see_objects() {
+    for (let obj = game.fobj; obj; obj = obj.nobj) {
+        const top = objects_at(obj.ox | 0, obj.oy | 0);
+        if (top === obj) newsym(obj.ox | 0, obj.oy | 0);
+    }
+    // update_inventory deferred (no glyph invent UI)
+}
+
+/**
+ * C ref: display.c see_traps — newsym cells whose shown glyph is a trap.
+ * JS: redraw every tseen trap (same envelope when Hallu redraws).
+ */
+export function see_traps() {
+    const traps = game.level?.traps;
+    if (Array.isArray(traps)) {
+        for (const trap of traps) {
+            if (trap?.tseen) newsym(trap.tx | 0, trap.ty | 0);
+        }
+    }
+    for (let trap = game.ftrap; trap; trap = trap.ntrap) {
+        if (trap?.tseen) newsym(trap.tx | 0, trap.ty | 0);
+    }
+}
+
+/**
+ * C ref: display.c docrt — paint hero memory (lev->glyph) without live
+ * mon_to_glyph / obj_to_glyph. Using newsym here under Hallu would burn
+ * display RNG for sensed monsters while cansee is false (D-0838).
+ */
+function show_memory_glyph(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const mem = loc.remembered_glyph;
+    if (mem) {
+        const floorObj = objects_at(x, y);
+        const livePile = !!(floorObj && !covers_objects(x, y)
+            && obj_is_piletop(floorObj));
+        const attr = (livePile || mem.objpile)
+            ? obj_map_attr(floorObj, !livePile)
+            : 0;
+        show_glyph_cell(x, y, mem.ch, mem.color, !!mem.decgfx, attr);
+    } else {
+        show_glyph_cell(x, y, ' ', NO_COLOR, false);
+    }
+}
+
 export async function docrt() {
     if (!game.u?.ux || !game.level) return;
+    // C docrt_flags: if uswallow → swallowed(1); skip map vision path
+    if (game.u.uswallow) {
+        await cls();
+        swallowed(1);
+        return;
+    }
     // C: vision_recalc(2) — hero sees nothing during refresh
     vision_recalc(2);
     await cls();
-    // C: show_glyph(x,y, lev->glyph) for all cells (memory; cansee false)
+    // C: show_glyph(x,y, lev->glyph) for all cells (memory; no Hallu RNG)
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++)
-            newsym(x, y);
+            show_memory_glyph(x, y);
     // C: vision_recalc(0) — see what is to be seen (+ newsym updates)
     vision_recalc(0);
     // C docrt also see_monsters() after vision — floating warns / sensed mons
     see_monsters();
-    // Named omission: swallowed/underwater/buried;
+    // Named omission: underwater/buried;
     // docrt_flags maponly/redrawonly/nocls; disp.botlx + update_inventory.
 }
 

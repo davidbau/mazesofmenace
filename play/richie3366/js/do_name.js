@@ -3,24 +3,81 @@
 
 import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, docrt, canspotmon } from './display.js';
 import { paint_corner_nhw_menu, discover_object } from './invent.js';
 import {
     ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE, engulfing_u,
-    Upolyd,
+    Upolyd, MD_PAD_BOGONS,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames } from './monsters.js';
+import {
+    M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, mons,
+    LOW_PM, SPECIAL_PM,
+} from './monsters.js';
 import { getlin } from './getline.js';
 import { an, xname } from './objnam.js';
 import { POTION_CLASS } from './objects.js';
+import { get_rnd_text } from './rumors.js';
+import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 
 const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+const BOGUSMONSIZE = 100; // C: do_name.c rndmonnam
+const BOGON_CODES = '-_+|=';
+
+/** C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance. */
+function Hallucination() {
+    const u = game.u || {};
+    if (u.Hallucination) return true;
+    const resist = !!(
+        (u.Halluc_resistance | 0)
+        || (u.HHalluc_resistance | 0)
+        || (u.EHalluc_resistance | 0)
+    );
+    return !!((u.HHallucination | 0) && !resist);
+}
+
+/**
+ * C ref: do_name.c bogusmon — get_rnd_text(BOGUSMONFILE) + strip prefix.
+ * @param {{ c?: string }|null} codeOut
+ */
+export function bogusmon(codeOut = null) {
+    if (codeOut) codeOut.c = '';
+    let mnam = get_rnd_text(BOGUSMON_BUF, rn2_on_display_rng, MD_PAD_BOGONS) || '';
+    if (!mnam) mnam = 'bogon';
+    else if (BOGON_CODES.includes(mnam[0])) {
+        if (codeOut) codeOut.c = mnam[0];
+        mnam = mnam.slice(1);
+    }
+    return mnam;
+}
+
+/** C ref: do_name.c bogon_is_pname */
+function bogon_is_pname(code) {
+    return !!code && '-+='.includes(code);
+}
+
+/**
+ * C ref: do_name.c rndmonnam — display-rng hallu monster name.
+ * @param {{ c?: string }|null} codeOut
+ */
+export function rndmonnam(codeOut = null) {
+    if (codeOut) codeOut.c = '';
+    let name;
+    do {
+        name = rn2_on_display_rng(SPECIAL_PM + BOGUSMONSIZE - LOW_PM) + LOW_PM;
+    } while (
+        name < SPECIAL_PM
+        && (type_is_pname(mons(name)) || ((mons(name)?.geno | 0) & G_NOGEN))
+    );
+    if (name >= SPECIAL_PM) return bogusmon(codeOut);
+    const g = rn2_on_display_rng(2);
+    return pmname(name, g === 0 ? MALE : FEMALE);
+}
 
 /** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
 function s_suffix(s) {
@@ -133,7 +190,7 @@ const SUPPRESS_SADDLE = 0x08;
 function saddle_adj(mtmp, suppress = 0) {
     if (suppress & SUPPRESS_SADDLE) return '';
     if (game.u?.Blind || game.u?.ublind) return '';
-    if (game.u?.Hallucination) return '';
+    if (game.u?.Hallucination || Hallucination()) return '';
     if ((mtmp?.misc_worn_check || 0) & W_SADDLE) return 'saddled ';
     return '';
 }
@@ -187,11 +244,20 @@ export function distant_monnam_none(mtmp) {
 
 /**
  * C ref: do_name.c mon_nam — ARTICLE_THE; unseen → "it"; named → bare name.
- * Shopkeeper → shkname (D-0307). Hallu / invis adj / priest / AUGMENT_IT deferred.
+ * Shopkeeper → shkname (D-0307). Hallu → rndmonnam (D-0838).
+ * Invis adj / priest / AUGMENT_IT deferred.
  */
 export function mon_nam(mtmp) {
     if (!mtmp) return 'it';
     if (x_monnam_do_it(mtmp)) return 'it';
+    // C: do_hallu before isshk / given-name arms
+    if (Hallucination()) {
+        const codeOut = { c: '' };
+        const rname = rndmonnam(codeOut);
+        // C: name_at_start = bogon_is_pname → ARTICLE_NONE
+        if (bogon_is_pname(codeOut.c)) return rname;
+        return `the ${rname}`;
+    }
     // C x_monnam: isshk && !hallu && !mappear → shkname (ordinary PM_SHOPKEEPER)
     if (mtmp.isshk) {
         const nam = shkname(mtmp);

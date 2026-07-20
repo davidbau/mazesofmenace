@@ -67,7 +67,7 @@ import {
     objectNames,
 } from './objects.js';
 import { Monnam } from './do_name.js';
-import { doname } from './objnam.js';
+import { doname, distant_name } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { may_dig, mdig_tunnel } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep } from './weapon.js';
@@ -303,8 +303,7 @@ function could_reach_item(mon, nx, ny) {
 /**
  * C ref: mon.c mpickstuff — pick one wanted floor object underfoot.
  * Named omissions: shopkeeper inhishop; in_rooms shop rn2(25); is_mines_prize/
- * is_soko_prize; nymph/corpse specials; distant_name side-effects
- * (doname stand-in).
+ * is_soko_prize; nymph/corpse specials.
  */
 async function mpickstuff(mtmp) {
     if (mtmp.isshk) return false;
@@ -326,7 +325,9 @@ async function mpickstuff(mtmp) {
             otmp3 = splitobj(otmp, carryamt) || otmp;
         }
         if (cansee(mtmp.mx, mtmp.my)) {
-            const otmpname = doname(otmp3);
+            // C mon.c mpickstuff: distant_name(otmp, doname) before extract —
+            // far path suppresses observe so !dknown stays "a potion" (D-0840).
+            const otmpname = distant_name(otmp, doname);
             if (game.flags?.verbose !== false) {
                 await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
             }

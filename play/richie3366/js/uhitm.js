@@ -16,7 +16,7 @@ import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
     objectNameStrs, objectNames,
 } from './objects.js';
-import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign } from './attrib.js';
+import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign, change_luck } from './attrib.js';
 import { overexertion, nomul, losehp } from './hack.js';
 import { pline, newsym, canseemon, canspotmon, map_invisible, unmap_object, glyph_is_invisible } from './display.js';
 import {
@@ -46,6 +46,7 @@ import { mon_explodes } from './explode.js';
 import { mon_nam, x_monnam_tame } from './do_name.js';
 import { artifact_hit, youmonst } from './artifact.js';
 import { xname, vtense } from './objnam.js';
+import { abuse_dog } from './dog.js';
 
 // C monflag.h — MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MZ_MEDIUM;
@@ -329,11 +330,12 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
 
 /**
  * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance
- * → make_corpse. Named omissions: LEVEL_SPECIFIC_NOCORPSE,
- * accessible||is_pool gate, flooreffects non-floor arms, wasinside/
- * burycorpse/zombify, murder/luck rn2 (peaceful/tame change_luck),
- * quest leader/nemesis/guardian/priest/tame special adjalign arms,
- * artifact un-create on oversized.
+ * → make_corpse; cleanup luck/align before experience.
+ * Named omissions: LEVEL_SPECIFIC_NOCORPSE, accessible||is_pool gate,
+ * flooreffects non-floor arms, wasinside/burycorpse/zombify,
+ * human-murder Telepat/luck-2 arm, unicorn coaligned luck-5,
+ * quest leader/nemesis/guardian/priest special adjalign arms,
+ * artifact un-create on oversized; tame You_hear Soundeffect.
  */
 export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
@@ -371,15 +373,35 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     // C mon.c xkilled: newsym after treasure/corpse — mondead's early
     // newsym runs before drops, so treasure-only kills need this paint.
     if (x > 0) newsym(x, y);
-    // C ref: mon.c xkilled cleanup — experience after corpse; murder/
-    // peaceful luck rn2 deferred (would burn RNG on peaceful/tame)
+
+    // C cleanup: punish bad behavior — before experience
+    // (peaceful && !rn2(2)) || mtame → short-circuit burns rn2 when peaceful
+    if ((mtmp.mpeaceful && !rn2(2)) || mtmp.mtame) {
+        change_luck(-1);
+    }
+    // human-murder / unicorn arms deferred (no RNG when gates fail)
+
     const died = game.mvitals?.[mndx]?.died | 0;
     const tmp = experience(mtmp, died);
     more_experienced(tmp, 0);
     await newexplevel();
-    // C: special adjalign arms (quest/nemesis/guardian/priest/tame) deferred;
-    // peaceful-only -5 then always adjalign(mtmp->malign)
-    if (mtmp.mpeaceful && !mtmp.mtame && !mtmp.ispriest) adjalign(-5);
+
+    // C: special adjalign arms — tame before peaceful; then malign
+    if (mtmp.mtame) {
+        adjalign(-15);
+        // You_hear thunder/applause — no RNG; pline-only for Hallu/Deaf
+        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf || game.u?.EDeaf);
+        if (!Deaf) {
+            if (game.u?.Hallucination) {
+                await pline('You hear the studio audience applaud!');
+            } else {
+                await pline('You hear the rumble of distant thunder...');
+            }
+        }
+    } else if (mtmp.mpeaceful && !mtmp.ispriest) {
+        adjalign(-5);
+    }
+    // quest/nemesis/guardian/priest arms deferred
     adjalign(mtmp.malign | 0);
 }
 
@@ -561,6 +583,15 @@ async function hmon(mon, obj, thrown, _dieroll) {
     mon.mhp = (mon.mhp | 0) - dmg;
     const destroyed = (mon.mhp | 0) < 1;
     if (destroyed) mon.mhp = 0;
+
+    // C: hmon_hitmon_pet — after mhp damage, before msg_hit / killed
+    // (abuse_dog even when pet is dying; monflee only if still alive+tame)
+    if (mon.mtame && dmg > 0) {
+        await abuse_dog(mon);
+        if (mon.mtame && !destroyed) {
+            await monflee(mon, 10 * rnd(dmg), false, false);
+        }
+    }
 
     // C: hmon_hitmon_msg_hit — !hittxt && (!destroyed || thrown-multishot)
     if (thrown === HMON_MELEE && !destroyed && !hittxt) {
