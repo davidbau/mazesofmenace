@@ -610,6 +610,9 @@ export async function doextcmd() {
  * Esc → 'q' if in resp else 'n' if in resp else def.
  * Quitchars (space/return) → def. Invalid keys bell and retry.
  *
+ * Prompt paint uses show_topl/putsyms hard-wrap (SUPPRESS_HISTORY), not
+ * update_topl word-wrap — see topl_wrap_echo.
+ *
  * After a valid answer, leave the prompt on the message line
  * (C: TOPLINE_NON_EMPTY / gt.toplines). Silent follow-ups (e.g.
  * dipfountain case 16 curse with no pline) keep the yn text until
@@ -630,12 +633,18 @@ export async function yn_function(query, resp = 'yn', def = 'n') {
         prompt = `${query} `;
     }
     for (;;) {
-        // C: tty_yn_function leaves gt.toplin TOPLINE_NON_EMPTY so the
-        // next parse() clear_nhwindow(WIN_MESSAGE) blanks a silent follow-up.
-        mark_topline_prompt(prompt);
+        // C: custompline(SUPPRESS_HISTORY) → tty_putstr → show_topl →
+        // addtopl/putsyms — hard-wrap at CO-1 via topl_putsym (not
+        // update_topl's word-wrap). An 80-char prompt ends with the
+        // trailing space on row 1 and cursor at (1,1).
+        const { text, col, row } = topl_wrap_echo(prompt, prompt.length);
+        mark_topline_prompt(text);
         await flush_screen(1);
+        // Leftover gt.toplines after answer is the unwrapped prompt
+        // (tty_yn_function clean_up Sprintf); keep that for parse clear.
+        mark_topline_prompt(prompt);
         const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+        if (disp?.setCursor) disp.setCursor(col, row);
         const c = await nhgetch();
         let ch = String.fromCharCode(c);
         // Do not clear _pending_message here — C leaves the yn prompt.

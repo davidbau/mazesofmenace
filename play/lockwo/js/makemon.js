@@ -1350,8 +1350,22 @@ function set_mimic_sym(mtmp) {
     const dep = depth_of_level(game.u?.uz);
 
     let ap_type, appear, s_sym;
-    let assign = false; // emulate C goto assign_sym
-    if (rt >= SHOPBASE_RT) {
+    let assign = false;   // emulate C goto assign_sym
+    let resolved = false; // ap_type/appear resolved by an early branch (no assign)
+    // C ref: makemon.c:2416 — if there is already an object on the mimic's
+    // square, it mimics that object's type, consuming NO RNG.  This fires for a
+    // storeroom mimic (themerms.lua "Storeroom") whose random in-room spot lands
+    // on a chest dropped earlier in the same iterate loop.  The intervening C
+    // branches (door/wall, is_maze_lev STATUE, roomno<0 BOULDER, ZOO/VAULT,
+    // DELPHI, TEMPLE) are not reachable in this slice: mines storeroom mimics on
+    // bare ROOM floor go straight to ROLL_FROM(syms) below (empirically no
+    // rn2(2) precedes their rn2(SIZE(syms)) draw, i.e. is_maze_lev is off here).
+    const topobj = loc.objects || null;
+    if (topobj) {
+        ap_type = 'obj';
+        appear = topobj.otyp;
+        resolved = true;
+    } else if (rt >= SHOPBASE_RT) {
         if (rn2(10) >= dep) {
             s_sym = S_MIMIC_DEF; // -> STRANGE_OBJECT
             assign = true;

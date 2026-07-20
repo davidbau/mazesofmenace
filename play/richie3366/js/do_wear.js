@@ -806,6 +806,8 @@ async function armoroff(otmp) {
         return 1;
     }
     // No delay — immediate remove + off_msg (fedora/leather jacket)
+    // C armoroff: *_off + off_msg only — no find_ac (D-0883 / ≡D-0810
+    // stale-botl until allmain once-per-input find_ac).
     const u = game.u || {};
     if (otmp === u.uarm) await Armor_off();
     else if (otmp === u.uarmc) Cloak_off();
@@ -818,7 +820,7 @@ async function armoroff(otmp) {
         otmp.owornmask = (otmp.owornmask || 0) & ~W_ARMOR;
     }
     await off_msg(otmp);
-    find_ac();
+    // takeoff.mask clear deferred with full A-command path
     return 1;
 }
 

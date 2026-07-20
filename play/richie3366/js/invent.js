@@ -2970,7 +2970,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     }
 
     const oquan = obj.quan || 1;
-    const held = addinv(obj);
+    const held = await addinv(obj);
     if (hold_msg || drop_fmt) {
         // C: prinv(hold_msg, obj, oquan) — oquan before merge
         await prinv(hold_msg || null, held, oquan);

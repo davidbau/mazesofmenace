@@ -12,6 +12,7 @@ import {
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MIM_REVEAL, engulfing_u, OBJ_FREE, MON_DETACH,
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, SUPPRESS_SADDLE,
+    HAND,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
@@ -25,14 +26,14 @@ import {
     dbon, weapon_dam_bonus, use_skill, weapon_type,
 } from './weapon.js';
 import { ammo_and_launcher } from './wield.js';
-import { PM_BARBARIAN } from './generated/monsters_data.js';
+import { PM_BARBARIAN, PM_MONK } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, mhitm_knockback,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AD_PHYS,
 } from './mhitm.js';
 import {
-    verysmall, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
+    verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
     is_golem, is_mplayer, is_rider,
 } from './monsters.js';
@@ -46,7 +47,7 @@ import { experience, more_experienced, newexplevel } from './exper.js';
 import { mon_explodes } from './explode.js';
 import { mon_nam, x_monnam, x_monnam_tame, Hallucination } from './do_name.js';
 import { artifact_hit, youmonst } from './artifact.js';
-import { xname, vtense } from './objnam.js';
+import { xname, vtense, The, An, singular, makeplural, cxname } from './objnam.js';
 import { abuse_dog } from './dog.js';
 
 // C monflag.h — MZ_HUMAN is MZ_MEDIUM
@@ -516,9 +517,14 @@ async function hmon(mon, obj, thrown, _dieroll) {
                     `The venom blinds ${mon_nam(mon)}${mon.mcansee ? '' : ' further'}!`,
                 );
             } else {
+                // C ref: uhitm.c hmon_hitmon_misc_obj CREAM_PIE — The(xname);
+                // !thrown && quan>1 → An(singular). FACE via mbodypart deferred
+                // (hardcoded "face" matches ordinary mbodypart FACE).
                 let whom = mon_nam(mon);
-                let what = xname(obj);
-                if (what) what = what.charAt(0).toUpperCase() + what.slice(1);
+                let what = The(xname(obj));
+                if (!thrown && (obj.quan | 0) > 1) {
+                    what = An(singular(obj, xname));
+                }
                 if (haseyes(mon.data) && (mon.mnum | 0) !== PM_FLOATING_EYE) {
                     whom = `${s_suffix(whom)} face`;
                 }
@@ -1114,6 +1120,60 @@ export async function attack_checks(mtmp) {
 }
 
 /**
+ * C ref: mondata.h cantwield — nohands || verysmall.
+ * @param {object|null|undefined} ptr
+ */
+function cantwield(ptr) {
+    return nohands(ptr) || verysmall(ptr);
+}
+
+/** C ref: role.h Role_if — urole.mnum match. */
+function Role_if(pm) {
+    return (game.urole?.mnum ?? -1) === pm;
+}
+
+/** C ref: objnam.c yname — invent → "your ", else "the ". */
+function yname(obj) {
+    const carried = (game.invent || []).includes(obj);
+    return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
+}
+
+/**
+ * C ref: hacklib.c ing_suffix — gerund for bash/strike (full vowel rules).
+ * @param {string} s
+ */
+function ing_suffix(s) {
+    let buf = String(s);
+    const vowel = 'aeiouwy';
+    let onoff = '';
+    if (/\s+on$/i.test(buf) || /\s+off$/i.test(buf) || /\s+with$/i.test(buf)) {
+        const sp = buf.lastIndexOf(' ');
+        onoff = buf.slice(sp);
+        buf = buf.slice(0, sp);
+    }
+    const n = buf.length;
+    if (n >= 2 && buf.slice(-2).toLowerCase() === 'er') {
+        // slither + ing
+    } else if (n >= 3
+        && !vowel.includes(buf[n - 1].toLowerCase())
+        && vowel.includes(buf[n - 2].toLowerCase())
+        && !vowel.includes(buf[n - 3].toLowerCase())) {
+        buf += buf[n - 1];
+    } else if (n >= 2 && buf.slice(-2).toLowerCase() === 'ie') {
+        buf = `${buf.slice(0, -2)}y`;
+    } else if (n >= 1 && buf[n - 1].toLowerCase() === 'e') {
+        buf = buf.slice(0, -1);
+    }
+    return `${buf}ing${onoff}`;
+}
+
+/** C ref: mondata.c body_part(HAND) — poly table deferred → "hand". */
+function body_part(part) {
+    if (part === HAND) return 'hand';
+    return 'body';
+}
+
+/**
  * C ref: uhitm.c do_attack — safemon displace, else attack → hitum.
  * attack_checks: invis Wait + mimic stumble before overexertion.
  */
@@ -1168,6 +1228,25 @@ export async function do_attack(mtmp) {
     // check_capacity / overexertion
     if (overexertion()) {
         return true; // fainted
+    }
+
+    // C: u.twoweap && !can_twoweapon() → untwoweapon() deferred
+
+    // C: gu.unweapon → first-melee "begin bashing" reminder (D-0892)
+    if (game.gu?.unweapon) {
+        game.gu.unweapon = false;
+        if (game.flags?.verbose !== false) {
+            const uwep = game.u?.uwep || null;
+            if (uwep) {
+                await pline(`You begin bashing monsters with ${yname(uwep)}.`);
+            } else if (!cantwield(game.youmonst?.data)) {
+                const verb = Role_if(PM_MONK) ? 'strike' : 'bash';
+                const glove = game.u?.uarmg ? 'gloved' : 'bare';
+                await pline(
+                    `You begin ${ing_suffix(verb)} monsters with your ${glove} ${makeplural(body_part(HAND))}.`,
+                );
+            }
+        }
     }
 
     exercise(A_STR, true); // you're exercising muscles

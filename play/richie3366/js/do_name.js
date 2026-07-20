@@ -157,7 +157,7 @@ export function roguename() {
 }
 
 /** C ref: mondata.h type_is_pname — M2_PNAME proper-name monsters. */
-function type_is_pname(ptr) {
+export function type_is_pname(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_PNAME);
 }
 

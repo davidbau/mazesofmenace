@@ -22,7 +22,7 @@ import { can_reach_floor, set_occupation } from './engrave.js';
 import {
     WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, POTION_CLASS, objectNames,
 } from './objects.js';
-import { doname, xname, cxname } from './objnam.js';
+import { doname, xname, cxname, singular } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
 import { PM_ROGUE } from './generated/monsters_data.js';
@@ -115,6 +115,23 @@ export function autokey(opening) {
  * Full artifact Master Key body deferred (no oartifact check here).
  */
 function is_magic_key(_mon, _obj) {
+    return false;
+}
+
+/**
+ * C ref: lock.c picking_lock — occupation is picklock; fills door cell.
+ * @param {{ x: number, y: number }} out
+ * @returns {boolean}
+ */
+export function picking_lock(out) {
+    if (game.occupation === picklock) {
+        const u = game.u || {};
+        out.x = (u.ux | 0) + (u.dx | 0);
+        out.y = (u.uy | 0) + (u.dy | 0);
+        return true;
+    }
+    out.x = 0;
+    out.y = 0;
     return false;
 }
 
@@ -761,8 +778,17 @@ function wake_nearby(_petcall) {
     void _petcall;
 }
 
+/* C objclass.h enum obj_material_types — shatter disposition subset. */
+const MAT_WAX = 2;
+const MAT_VEGGY = 3;
+const MAT_FLESH = 4;
+const MAT_PAPER = 5;
+const MAT_WOOD = 8;
+const MAT_GLASS = 19;
+
 /**
  * C ref: lock.c chest_shatter_msg — destroy-path content messages.
+ * Temporarily Blind so xname does not observe_object (appearance leak).
  * potionbreathe / Blind hear-vs-see polish deferred (pline only).
  */
 async function chest_shatter_msg(otmp) {
@@ -770,16 +796,29 @@ async function chest_shatter_msg(otmp) {
         await pline(`You see ${an(xname(otmp))} shatter!`);
         return;
     }
+    // C: save Blind props; force Blind for singular(xname) only.
+    const u = game.u || (game.u = {});
+    const save_HBlinded = u.HBlinded | 0;
+    const save_BBlinded = u.BBlinded | 0;
+    const save_Blind = u.Blind;
+    u.HBlinded = 1;
+    u.BBlinded = 0;
+    u.Blind = true; // JS xname checks sticky Blind (not props)
+    const thing = singular(otmp, xname);
+    u.HBlinded = save_HBlinded;
+    u.BBlinded = save_BBlinded;
+    u.Blind = save_Blind;
     const mat = game.objects?.[otmp.otyp]?.oc_material | 0;
-    // C materials.h PAPER=1 WAX=2 VEGGY=3 FLESH=4 GLASS=11 WOOD=13 (subset)
     let disposition = 'is destroyed';
-    if (mat === 1) disposition = 'is torn to shreds';
-    else if (mat === 2) disposition = 'is crushed';
-    else if (mat === 3) disposition = 'is pulped';
-    else if (mat === 4) disposition = 'is mashed';
-    else if (mat === 11) disposition = 'shatters';
-    else if (mat === 13) disposition = 'splinters to fragments';
-    await pline(`${an(xname(otmp)).replace(/^./, (c) => c.toUpperCase())} ${disposition}!`);
+    if (mat === MAT_PAPER) disposition = 'is torn to shreds';
+    else if (mat === MAT_WAX) disposition = 'is crushed';
+    else if (mat === MAT_VEGGY) disposition = 'is pulped';
+    else if (mat === MAT_FLESH) disposition = 'is mashed';
+    else if (mat === MAT_GLASS) disposition = 'shatters';
+    else if (mat === MAT_WOOD) disposition = 'splinters to fragments';
+    // C: pline("%s %s!", An(thing), disposition);
+    const named = an(thing);
+    await pline(`${named.charAt(0).toUpperCase()}${named.slice(1)} ${disposition}!`);
 }
 
 /**

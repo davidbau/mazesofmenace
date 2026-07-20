@@ -23,7 +23,7 @@ import {
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, DELPHI,
     SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
     LEPREHALL, COCKNEST, ANTHOLE,
-    FOODSHOP, TOOLSHOP, CANDLESHOP, FODDERSHOP,
+    FOODSHOP, TOOLSHOP, CANDLESHOP, FODDERSHOP, WANDSHOP,
     W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM, D_SECRET,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
@@ -664,6 +664,18 @@ function fixup_special() {
     // C ref: mkmaze.c fixup_special on_level(baalzebub_level) → baalz_fixup
     if (Is_baal_level(game.u?.uz))
         baalz_fixup();
+
+    // C ref: mkmaze.c fixup_special — Is_special && sp->flags.town → has_town
+    {
+        const uz = game.u?.uz;
+        const sp = (game.sp_levchn || []).find(s0 =>
+            (s0.dlevel?.dnum | 0) === (uz?.dnum | 0)
+            && (s0.dlevel?.dlevel | 0) === (uz?.dlevel | 0));
+        if (sp && sp.flags?.town) {
+            if (!game.level.flags) game.level.flags = {};
+            game.level.flags.has_town = true;
+        }
+    }
 }
 
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
@@ -864,11 +876,11 @@ function reset_xystart_size() {
  * bigrm-4, bigrm-7, bigrm-8, bigrm-12, Bar-strt, Bar-loca, Bar-fila, Bar-filb, Arc-strt, Arc-loca,
  * Arc-fila, Arc-filb, Arc-goal, soko1-1, soko1-2, soko2-1, soko3-1, soko3-2,
  * soko4-1, soko4-2, tower1, tower2, tower3, fire, air, minend-1, minend-2, minetn-2,
- * minetn-5, medusa-1, medusa-3, oracle, castle, valley, sanctum, asmodeus,
+ * minetn-3, minetn-5, medusa-1, medusa-3, oracle, castle, valley, sanctum, asmodeus,
  * juiblex, baalz, orcus, wizard1–3, Wiz-strt, Wiz-loca, Wiz-fila,
  * Wiz-filb, Pri-fila, Pri-filb.
  * Named omissions: other bigrm-N / soko2-2 / quest
- * protos (Bar-goal; Wiz-goal); minetn-1/3/4/6/7; minend-3;
+ * protos (Bar-goal; Wiz-goal); minetn-1/4/6/7; minend-3;
  * medusa-2/4; water/astral; hellfill/fakewiz;
  * create_maze fallback; check_ransacked side effects beyond ransacked flag;
  * dmonsfree.
@@ -1103,6 +1115,10 @@ function load_special_proto(protofile) {
     }
     if (protofile === 'minetn-2') {
         load_minetn_2();
+        return true;
+    }
+    if (protofile === 'minetn-3') {
+        load_minetn_3();
         return true;
     }
     if (protofile === 'minetn-5') {
@@ -6819,9 +6835,140 @@ function load_minetn_2() {
 }
 
 /**
+ * C ref: dat/minetn-3.lua via load_special — Mines town "Alley Town".
+ * Nested des.room town + chance shops + temple align[1] + watch.
+ * Named omissions: minetn-1/4/6/7; link_doors_rooms extras; ensure_way_out.
+ */
+function load_minetn_3() {
+    const g = game;
+    nhlib_shuffle_align();
+    const align = g.splev_align || ['law', 'neutral', 'chaos'];
+
+    // Outer alley town: des.room x=3,y=3 center 31×15 lit
+    splev_des_room({
+        type: 'ordinary', lit: 1, x: 3, y: 3,
+        xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 31, h: 15,
+    }, null, (town) => {
+        splev_room_feature_fountain(town, 1, 6);
+        splev_room_feature_fountain(town, 29, 13);
+
+        splev_des_room({
+            type: 'ordinary', x: 2, y: 2, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'south'));
+
+        splev_des_room({
+            type: 'tool shop', chance: 30, lit: 1, x: 5, y: 3, w: 2, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'south'));
+
+        splev_des_room({
+            type: 'ordinary', x: 2, y: 10, w: 2, h: 3,
+        }, town, (r) => {
+            splev_room_door(r, 'locked', 'north');
+            splev_room_monster(r, 'G');
+        });
+
+        splev_des_room({
+            type: 'ordinary', x: 5, y: 9, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'north'));
+
+        splev_des_room({
+            type: 'temple', lit: 1, x: 10, y: 2, w: 3, h: 4,
+        }, town, (r) => {
+            splev_room_door(r, 'closed', 'east');
+            // Lua align[1] → JS align[0]
+            splev_room_altar_shrine(r, 1, 1, align[0]);
+            splev_room_monster(r, 'gnomish wizard');
+            splev_room_monster(r, 'gnomish wizard');
+        });
+
+        splev_des_room({
+            type: 'ordinary', x: 11, y: 7, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'west'));
+
+        splev_des_room({
+            type: 'shop', lit: 1, x: 10, y: 10, w: 3, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'west'));
+
+        // Lua bare `random` is nil array entry; lit defaults to -1
+        splev_des_room({
+            type: 'ordinary', x: 14, y: 8, w: 2, h: 2,
+        }, town, (r) => {
+            splev_room_door(r, 'locked', 'north');
+            splev_room_monster(r, 'G');
+        });
+
+        splev_des_room({
+            type: 'ordinary', x: 14, y: 11, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'south'));
+
+        splev_des_room({
+            type: 'tool shop', chance: 40, lit: 1, x: 17, y: 10, w: 3, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'north'));
+
+        splev_des_room({
+            type: 'ordinary', x: 21, y: 11, w: 2, h: 2,
+        }, town, (r) => {
+            splev_room_door(r, 'locked', 'east');
+            splev_room_monster(r, 'G');
+        });
+
+        splev_des_room({
+            type: monkfoodshop(), chance: 90, lit: 1, x: 26, y: 8, w: 3, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'west'));
+
+        splev_des_room({
+            type: 'ordinary', x: 16, y: 2, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'west'));
+
+        splev_des_room({
+            type: 'ordinary', x: 19, y: 2, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'north'));
+
+        splev_des_room({
+            type: 'wand shop', chance: 30, lit: 1, x: 19, y: 5, w: 3, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'west'));
+
+        splev_des_room({
+            type: 'candle shop', lit: 1, x: 25, y: 2, w: 3, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'south'));
+
+        // Town Watch
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watch captain', 1);
+    });
+
+    splev_ordinary_room((r) => {
+        splev_room_stair(r, true);
+    });
+    splev_ordinary_room((r) => {
+        splev_room_stair(r, false);
+        splev_room_trap(r);
+        splev_room_monster(r, 'gnome');
+        splev_room_monster(r, 'gnome');
+    });
+    splev_ordinary_room((r) => {
+        splev_room_monster(r, 'dwarf');
+    });
+    splev_ordinary_room((r) => {
+        splev_room_trap(r);
+        splev_room_monster(r, 'gnome');
+    });
+
+    makecorridors();
+
+    if (!g.level.flags?.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
+    fixup_special();
+}
+
+/**
  * C ref: dat/minetn-5.lua via load_special — Mines town "Grotto Town".
  * Solidfill + centered map + percent terrain + shops/temple/watch.
- * Named omissions: minetn-1/3/4/6/7; link_doors_rooms extras; ensure_way_out;
+ * Named omissions: minetn-1/4/6/7; link_doors_rooms extras; ensure_way_out;
  * hellfill/asmodeus/baalz/orcus/juiblex/wizard1-3/fakewiz.
  */
 function load_minetn_5() {
@@ -9413,6 +9560,7 @@ function splev_roomtype(name, defval = OROOM) {
         barracks: BARRACKS,
         shop: SHOPBASE,
         'tool shop': TOOLSHOP,
+        'wand shop': WANDSHOP,
         'food shop': FOODSHOP,
         'health food shop': FODDERSHOP,
         'candle shop': CANDLESHOP,

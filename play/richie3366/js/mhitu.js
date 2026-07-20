@@ -9,7 +9,7 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM,
-    DISPLACED, IS_WATERWALL,
+    DISPLACED, IS_WATERWALL, RLOC_MSG,
 } from './const.js';
 import { thrwmu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -39,6 +39,7 @@ import { monsterNames } from './generated/monsters_data.js';
 import { A_STR, A_DEX, A_CON, acurr, poisoned } from './attrib.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
+    could_seduce,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
@@ -176,53 +177,69 @@ async function mswings(mtmp, otemp, bash) {
 }
 
 /**
- * C ref: mhitu.c hitmsg — aatyp verb + consecutive-same-aatyp " again".
- * Named omissions: could_seduce smile/talk arm; AT_TENT s_suffix; AT_EXPL/BOOM;
- * thick_skinned kick punct ".".
+ * C ref: mhitu.c hitmsg — seduce smile/talk arm, else aatyp verb +
+ * consecutive-same-aatyp " again". Named omissions: AT_TENT s_suffix;
+ * AT_EXPL/BOOM; thick_skinned kick punct ".".
  */
 async function hitmsg(mtmp, mattk) {
-    let verb = 'hits';
-    switch (mattk.aatyp) {
-    case AT_BITE: verb = 'bites'; break;
-    case AT_KICK: verb = 'kicks'; break;
-    case AT_STNG: verb = 'stings'; break;
-    case AT_BUTT: verb = 'butts'; break;
-    case AT_TUCH: verb = 'touches you'; break;
-    default: verb = 'hits'; break;
+    const youmonst = game.youmonst;
+    const compat = could_seduce(mtmp, youmonst, mattk);
+    if (compat && !mtmp.mcan && !mtmp.mspec_used) {
+        const Blind = !!(game.u?.Blind || game.u?.ublind
+            || (((game.u?.HBlinded | 0) || (game.u?.EBlinded | 0))
+                && !(game.u?.BBlinded | 0)));
+        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
+        const how = Blind ? (Deaf ? 'touches' : 'talks to') : 'smiles at';
+        const adv = (compat === 2) ? 'engagingly' : 'seductively';
+        await pline(`${Monnam(mtmp)} ${how} you ${adv}.`);
+    } else {
+        let verb = 'hits';
+        switch (mattk.aatyp) {
+        case AT_BITE: verb = 'bites'; break;
+        case AT_KICK: verb = 'kicks'; break;
+        case AT_STNG: verb = 'stings'; break;
+        case AT_BUTT: verb = 'butts'; break;
+        case AT_TUCH: verb = 'touches you'; break;
+        default: verb = 'hits'; break;
+        }
+        // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again"
+        const prev = game.hitmsg_prev;
+        const again = (
+            (mtmp.m_id | 0) === (game.hitmsg_mid | 0)
+            && prev
+            && mattk._slot
+            && prev._slot
+            && (mattk._indx | 0) === ((prev._indx | 0) + 1)
+            && (mattk.aatyp | 0) === (prev.aatyp | 0)
+        ) ? ' again' : '';
+        await pline(`${Monnam(mtmp)} ${verb}${again}!`);
     }
-    // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again"
-    const prev = game.hitmsg_prev;
-    const again = (
-        (mtmp.m_id | 0) === (game.hitmsg_mid | 0)
-        && prev
-        && mattk._slot
-        && prev._slot
-        && (mattk._indx | 0) === ((prev._indx | 0) + 1)
-        && (mattk.aatyp | 0) === (prev.aatyp | 0)
-    ) ? ' again' : '';
-    await pline(`${Monnam(mtmp)} ${verb}${again}!`);
     game.hitmsg_mid = mtmp.m_id | 0;
     game.hitmsg_prev = mattk;
 }
 
 /**
- * C ref: mhitu.c missmu — map_invisible when unseen; "just " on near-miss
- * when flags.verbose. Named omission: could_seduce pretend-friendly arm;
- * stop_occupation.
+ * C ref: mhitu.c missmu — map_invisible when unseen; seduce pretend-friendly;
+ * "just " on near-miss when flags.verbose. Named omission: stop_occupation
+ * already called by some callers — also invoke here like C.
  */
-async function missmu(mtmp, nearmiss, _mattk) {
+async function missmu(mtmp, nearmiss, mattk) {
     game.hitmsg_mid = 0;
     game.hitmsg_prev = null;
     if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
-    // could_seduce pretend-friendly deferred
-    const just = nearmiss && game.flags?.verbose !== false ? 'just ' : '';
-    await pline(`${Monnam(mtmp)} ${just}misses!`);
+    if (could_seduce(mtmp, game.youmonst, mattk) && !mtmp.mcan) {
+        await pline(`${Monnam(mtmp)} pretends to be friendly.`);
+    } else {
+        const just = nearmiss && game.flags?.verbose !== false ? 'just ' : '';
+        await pline(`${Monnam(mtmp)} ${just}misses!`);
+    }
+    await stop_occupation();
 }
 
 /**
  * C ref: mhitu.c wildmiss — attack at wrong spot (Invis / Displaced /
- * Underwater). Named omissions: could_seduce compat arms; set_msg_xy;
- * Some_Monnam impossible; nolimbs lunge polish (uses swings fallback).
+ * Underwater). Named omissions: set_msg_xy; Some_Monnam impossible;
+ * nolimbs lunge polish (uses swings fallback).
  */
 async function wildmiss(mtmp, mattk) {
     const unotseen = !mtmp.mcansee || (Invis() && !perceives(mtmp.data));
@@ -236,8 +253,9 @@ async function wildmiss(mtmp, mattk) {
     if (game.flags?.verbose === false) return;
     if (!cansee(mtmp.mx, mtmp.my)) return;
 
-    // could_seduce deferred → compat 0 (physical miss messages only)
-    const compat = 0;
+    const compat = ((mattk?.adtyp | 0) === AD_SEDU || (mattk?.adtyp | 0) === AD_SSEX)
+        ? could_seduce(mtmp, game.youmonst, mattk)
+        : 0;
     const Monst_name = Monnam(mtmp);
     const inv = Invis() ? 'invisible ' : '';
 
@@ -273,9 +291,16 @@ async function wildmiss(mtmp, mattk) {
             }
         }
     } else if (unotthere) {
-        await pline(
-            `${Monst_name} strikes at your ${inv}displaced image and misses you!`,
-        );
+        if (compat) {
+            const how = (compat === 2) ? 'engagingly' : 'seductively';
+            await pline(
+                `${Monst_name} smiles ${how} at your ${inv}displaced image...`,
+            );
+        } else {
+            await pline(
+                `${Monst_name} strikes at your ${inv}displaced image and misses you!`,
+            );
+        }
     } else if (usubmerged) {
         if (compat) {
             await pline(`${Monst_name} reaches towards your distorted image.`);
@@ -793,7 +818,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
                         ? 'brags about the goods some dungeon explorer provided'
                         : 'makes some remarks about how difficult theft is lately'}.`,
             );
-            if (!(await tele_restrict(mtmp))) rloc(mtmp, 0);
+            if (!(await tele_restrict(mtmp))) await rloc(mtmp, RLOC_MSG);
             mhm.hitflags = M_ATTK_AGR_DONE;
             mhm.done = true;
             return;
@@ -808,7 +833,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
                 );
             }
             if (rn2(3)) {
-                if (!(await tele_restrict(mtmp))) rloc(mtmp, 0);
+                if (!(await tele_restrict(mtmp))) await rloc(mtmp, RLOC_MSG);
                 mhm.hitflags = M_ATTK_AGR_DONE;
                 mhm.done = true;
             }
@@ -826,7 +851,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
         return;
     default:
         if (!is_animal(mtmp.data) && !(await tele_restrict(mtmp))) {
-            rloc(mtmp, 0);
+            await rloc(mtmp, RLOC_MSG);
         }
         // animal flee-with-buf pline deferred
         await monflee(mtmp, 0, false, false);

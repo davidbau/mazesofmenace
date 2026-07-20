@@ -30,6 +30,7 @@ import {
 import {
     verysmall, G_FREQ, G_NOCORPSE, is_neuter, nonliving,
     bigmonst, is_golem, is_mplayer, is_rider, monsterNames,
+    is_animal, M1_SEE_INVIS,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
@@ -38,6 +39,7 @@ import { mon_explodes } from './explode.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 
 const NATTK = 6;
 // C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
@@ -172,10 +174,110 @@ export {
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_DRDX, AD_DRCO, AD_SITM, AD_SEDU, AD_SSEX,
+    could_seduce,
 };
 
 function deadmonster(m) {
     return !m || (m.mhp != null && m.mhp < 1);
+}
+
+/** C ref: mondata.h dmgtype — any mattk slot matches adtyp. */
+function dmgtype(ptr, adtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a.adtyp | 0) === (adtyp | 0)) return true;
+    }
+    return false;
+}
+
+/** C ref: mondata.h perceives — M1_SEE_INVIS. */
+function perceives(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_SEE_INVIS);
+}
+
+/** C ref: mondata.c gender — 0 male / 1 female / 2 none. */
+function gender(mtmp) {
+    if (is_neuter(mtmp?.data)) return 2;
+    return mtmp?.female ? 1 : 0;
+}
+
+/**
+ * C ref: polyself.c poly_gender — 0/1 ≡ flags.female, 2=none.
+ * Named omission: is_neuter non-humanoid → 2.
+ */
+function poly_gender() {
+    return game.flags?.female ? 1 : 0;
+}
+
+/** C ref: youprop.h See_invisible. */
+function See_invisible() {
+    const u = game.u || {};
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
+}
+
+/** C ref: sys.h SYSOPT_SEDUCE — runtime seduce option. */
+function SYSOPT_SEDUCE() {
+    return !!(game.sysopt?.seduce);
+}
+
+/**
+ * C ref: do_name.c mon_nam_too — mon_nam unless mon==other → him/her/itself.
+ * Named omission: Hallu pronoun_gender rn2(4) → themselves.
+ */
+function mon_nam_too(mon, other_mon) {
+    if (mon !== other_mon) return mon_nam(mon);
+    if (is_neuter(mon?.data)) return 'itself';
+    return mon?.female ? 'herself' : 'himself';
+}
+
+/**
+ * C ref: mhitu.c could_seduce — 0 refuse, 1 opposite gender,
+ * 2 same-gender nymph. Null mattk → capability from dmgtype.
+ */
+function could_seduce(magr, mdef, mattk) {
+    if (!magr?.data || is_animal(magr.data)) return 0;
+
+    const youmonst = game.youmonst;
+    let pagr;
+    let agrinvis;
+    let genagr;
+    if (magr === youmonst) {
+        pagr = youmonst?.data;
+        agrinvis = !!(game.u?.Invis);
+        genagr = poly_gender();
+    } else {
+        pagr = magr.data;
+        agrinvis = !!magr.minvis;
+        genagr = gender(magr);
+    }
+
+    let defperc;
+    let gendef;
+    if (mdef === youmonst) {
+        defperc = See_invisible();
+        gendef = poly_gender();
+    } else {
+        defperc = perceives(mdef?.data);
+        gendef = gender(mdef);
+    }
+
+    let adtyp = mattk
+        ? (mattk.adtyp | 0)
+        : dmgtype(pagr, AD_SSEX) ? AD_SSEX
+            : dmgtype(pagr, AD_SEDU) ? AD_SEDU
+                : AD_PHYS;
+    if (adtyp === AD_SSEX && !SYSOPT_SEDUCE()) adtyp = AD_SEDU;
+
+    if (agrinvis && !defperc && adtyp === AD_SEDU) return 0;
+
+    const mndx = pagr?.mndx ?? pagr?.mnum ?? -1;
+    if ((pagr?.mlet !== 'S_NYMPH' && mndx !== PM_AMOROUS_DEMON)
+        || (adtyp !== AD_SEDU && adtyp !== AD_SSEX && adtyp !== AD_SITM)) {
+        return 0;
+    }
+
+    return (genagr === 1 - gendef) ? 1 : (pagr.mlet === 'S_NYMPH') ? 2 : 0;
 }
 
 function helpless(m) {
@@ -450,11 +552,17 @@ function pre_mm_attack(magr, mdef) {
     if (!canspotmon(mdef)) map_invisible(mdef.mx, mdef.my);
 }
 
-// C ref: mhitm.c missmm() — pline when gv.vis; else noises()
+/**
+ * C ref: mhitm.c missmm — pline when gv.vis; else noises().
+ * Seduce: "pretends to be friendly to" when could_seduce && !mcan.
+ */
 async function missmm(magr, mdef, mattk) {
     pre_mm_attack(magr, mdef);
     if (_mm_vis) {
-        await pline(`${Monnam(magr)} misses ${mon_nam(mdef)}.`);
+        const verb = (magr.mcan || !could_seduce(magr, mdef, mattk))
+            ? 'misses'
+            : 'pretends to be friendly to';
+        await pline(`${Monnam(magr)} ${verb} ${mon_nam_too(mdef, magr)}.`);
     } else {
         await noises(magr, mattk);
     }
@@ -485,17 +593,35 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     return M_ATTK_HIT;
 }
 
-// C ref: mhitm.c hitmm() — hit pline when gv.vis; else noises()
-// Named omission: full hit verb/silver/seduce arms
+/**
+ * C ref: mhitm.c hitmm — hit pline when gv.vis; else noises().
+ * Seduce: smiles/talks + engagingly/seductively when could_seduce && !mcan.
+ * Named omissions: shade_miss; AT_TENT/HUGS verbs; silver sear; artifact wep.
+ */
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     pre_mm_attack(magr, mdef);
+
+    // C: compat = !magr->mcan ? could_seduce(...) : 0; shade_miss if !compat
+    const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
+    // shade_miss deferred
+
     if (_mm_vis) {
-        let verb = 'hits';
-        if (mattk.aatyp === AT_BITE) verb = 'bites';
-        else if (mattk.aatyp === AT_STNG) verb = 'stings';
-        else if (mattk.aatyp === AT_BUTT) verb = 'butts';
-        else if (mattk.aatyp === AT_TUCH) verb = 'touches';
-        await pline(`${Monnam(magr)} ${verb} ${mon_nam(mdef)}.`);
+        if (compat) {
+            const smile = mdef.mcansee ? 'smiles at' : 'talks to';
+            const how = (compat === 2) ? 'engagingly' : 'seductively';
+            await pline(
+                `${Monnam(magr)} ${smile} ${mon_nam(mdef)} ${how}.`,
+            );
+        } else {
+            let verb = 'hits';
+            if (mattk.aatyp === AT_BITE) verb = 'bites';
+            else if (mattk.aatyp === AT_STNG) verb = 'stings';
+            else if (mattk.aatyp === AT_BUTT) verb = 'butts';
+            else if (mattk.aatyp === AT_TUCH) verb = 'touches';
+            await pline(
+                `${Monnam(magr)} ${verb} ${mon_nam_too(mdef, magr)}.`,
+            );
+        }
     } else {
         await noises(magr, mattk);
     }

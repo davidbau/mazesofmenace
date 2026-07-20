@@ -14,9 +14,11 @@ import {
     TT_BEARTRAP, A_DEX, A_MAX, FOOT, SPINE, LEFT_SIDE, RIGHT_SIDE,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     MAX_ERODE,
+    ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
+    is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
 } from './const.js';
 import {
-    objects, mksobj, weight, place_object,
+    objects, mksobj, weight, place_object, BOULDER,
     WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, SPBOOK_CLASS,
 } from './mkobj.js';
 
@@ -124,6 +126,108 @@ export function choose_trapnote(ttmp) {
 // Contest port: keeps the lightweight trap record used by mklev/display but
 // faithfully emits the PRNG calls C makes in maketrap's type switch (notably
 // hole_destination's rn2(4) for holes/trapdoors).
+// C ref: trap.c xdir[]/ydir[] (decl.c) — the 8 compass directions, dir 0..7.
+const XDIR8 = [-1, -1, 0, 1, 1, 1, 0, -1];
+const YDIR8 = [0, -1, -1, -1, 0, 1, 1, 1];
+
+// C ref: monmove.c closed_door() — a DOOR whose doormask is closed or locked.
+function closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || loc.typ !== DOOR) return false;
+    return (loc.doormask & (D_CLOSED | D_LOCKED)) !== 0;
+}
+
+// C ref: dbridge.c is_pool_or_lava() — pool or lava terrain at <x,y>.
+function is_pool_or_lava(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return IS_POOL(loc.typ) || IS_LAVA(loc.typ);
+}
+
+// C ref: trap.c is_xport() — TELEP_TRAP..MAGIC_PORTAL.
+function is_xport(ttyp) { return ttyp >= TELEP_TRAP && ttyp <= MAGIC_PORTAL; }
+
+// C ref: trap.c isclearpath(cc, distance, dx, dy) — step `distance` cells in
+// (dx,dy); the path is clear iff every cell is in-bounds, ZAP_POS, not a closed
+// door, and free of pit/hole/xport traps.  On success cc is advanced to the far
+// end.  Consumes no RNG.
+function isclearpath(cc, distance, dx, dy) {
+    let x = cc.x, y = cc.y;
+    while (distance-- > 0) {
+        x += dx; y += dy;
+        if (!isok(x, y)) return false;
+        const typ = game.level?.at(x, y)?.typ;
+        if (typ == null || !ZAP_POS(typ) || closed_door(x, y)) return false;
+        const t = t_at(x, y);
+        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp) || is_xport(t.ttyp)))
+            return false;
+    }
+    cc.x = x; cc.y = y;
+    return true;
+}
+
+// C ref: trap.c find_random_launch_coord(ttmp, cc) — pick a clear coord 4..8
+// (2..8 for a rolling boulder trap) cells away from the trap for the launched
+// object.  The launchplace early-out uses gl.launchplace, which is (0,0) for a
+// randomly generated trap (reset in sp_lev.c:4467); with launchplace (0,0),
+// bcc == trap location and linedup(same point) is FALSE, so we always fall
+// through to the rn1(5,4)/rn2(N_DIRS) search.  The while loop consumes no RNG.
+function find_random_launch_coord(ttmp, cc) {
+    const x = ttmp.tx, y = ttmp.ty;
+    // launchplace (0,0): bcc == (x,y); linedup(x,y,x,y) returns FALSE (zero
+    // displacement), so the early return is skipped.
+    let mindist = 4;
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) mindist = 2;
+    let distance = rn1(5, 4); /* 4..8 away — rn2(5)+4 */
+    let tmp = rn2(N_DIRS);    /* randomly pick a direction to try first */
+    let trycount = 0;
+    let success = false;
+    while (distance >= mindist) {
+        const dx = XDIR8[tmp], dy = YDIR8[tmp];
+        cc.x = x; cc.y = y;
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP
+            && is_pool_or_lava(x + distance * dx, y + distance * dy))
+            success = false;
+        else
+            success = isclearpath(cc, distance, dx, dy);
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+            const bcc = { x, y };
+            const success_otherway = isclearpath(bcc, distance, -dx, -dy);
+            if (!success_otherway) success = false;
+        }
+        if (success) break;
+        if (++tmp > 7) tmp = 0;
+        if ((++trycount % 8) === 0) --distance;
+    }
+    return success;
+}
+
+// C ref: trap.c mkroll_launch(ttmp, x, y, otyp, ocount) — find a launch coord,
+// drop the launched object (a BOULDER for the rolling boulder trap) there, and
+// record launch / launch2 on the trap.  Returns 1.
+function mkroll_launch(ttmp, x, y, otyp, ocount) {
+    const cc = { x: -1, y: -1 };
+    const success = find_random_launch_coord(ttmp, cc);
+    if (!success) {
+        cc.x = x; cc.y = y;
+    } else {
+        const otmp = mksobj(otyp, true, false);
+        if (otmp) {
+            otmp.quan = ocount;
+            otmp.owt = weight(otmp);
+            place_object(otmp, cc.x, cc.y);
+        }
+    }
+    ttmp.launch = { x: cc.x, y: cc.y };
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+        ttmp.launch2 = { x: x - (cc.x - x), y: y - (cc.y - y) };
+    } else {
+        ttmp.launch_otyp = otyp;
+    }
+    newsym(ttmp.launch.x, ttmp.launch.y);
+    return 1;
+}
+
 export async function maketrap(x, y, typ) {
     const trap = {
         ttyp: typ, tx: x, ty: y, tseen: false, once: false,
@@ -132,10 +236,17 @@ export async function maketrap(x, y, typ) {
     };
     if (!game.level) return trap;
     if (!game.level.traps) game.level.traps = [];
+    // C ref: maketrap() pushes the trap onto the level list before running the
+    // per-type setup (mkroll_launch reads t_at, so the trap must be present).
+    game.level.traps.push(trap);
 
     switch (typ) {
     case SQKY_BOARD:
         trap.tnote = choose_trapnote(trap);
+        break;
+    case ROLLING_BOULDER_TRAP:
+        // C ref: maketrap():512 — boulder will roll towards the trigger.
+        mkroll_launch(trap, x, y, BOULDER, 1);
         break;
     case HOLE:
     case TRAPDOOR:
@@ -146,7 +257,6 @@ export async function maketrap(x, y, typ) {
         break;
     }
 
-    game.level.traps.push(trap);
     return trap;
 }
 

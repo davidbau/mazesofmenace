@@ -619,6 +619,23 @@ export function is_rider(ptr) {
     return mndx === PM_DEATH || mndx === PM_FAMINE || mndx === PM_PESTILENCE;
 }
 
+const PM_WATCHMAN = monsterNames.indexOf('PM_WATCHMAN');
+const PM_WATCH_CAPTAIN = monsterNames.indexOf('PM_WATCH_CAPTAIN');
+const PM_MIND_FLAYER = monsterNames.indexOf('PM_MIND_FLAYER');
+const PM_MASTER_MIND_FLAYER = monsterNames.indexOf('PM_MASTER_MIND_FLAYER');
+
+/** C ref: mondata.h is_watch — watchman or watch captain. */
+export function is_watch(ptr) {
+    const mndx = ptr?.mndx;
+    return mndx === PM_WATCHMAN || mndx === PM_WATCH_CAPTAIN;
+}
+
+/** C ref: mondata.h is_mind_flayer */
+export function is_mind_flayer(ptr) {
+    const mndx = ptr?.mndx;
+    return mndx === PM_MIND_FLAYER || mndx === PM_MASTER_MIND_FLAYER;
+}
+
 /** C ref: mondata.h noncorporeal */
 export function noncorporeal(ptr) {
     return ptr?.mlet === 'S_GHOST';

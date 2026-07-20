@@ -257,7 +257,7 @@ export async function pick_obj(otmp) {
         robshop = !!(otmp.unpaid && fakeshop && !saveushops.includes(fakeshop));
     }
 
-    const result = addinv(otmp);
+    const result = await addinv(otmp);
     if (robshop) {
         // remote_burglary(ox, oy) deferred
     }
@@ -712,7 +712,7 @@ async function out_container(obj) {
     obj_extract_self(obj);
     game._current_container.owt = weight(game._current_container);
 
-    const otmp = addinv(obj);
+    const otmp = await addinv(obj);
     // C: pickup_prinv(otmp, count, "removing")
     await pickup_prinv(otmp, count, 'removing');
     if (is_gold) {

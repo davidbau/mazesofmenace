@@ -1074,3 +1074,38 @@ function search_special_rtype(type) {
     }
     return false;
 }
+
+/**
+ * C ref: mkroom.c inside_room — bbox (incl. walls) or irregular roomno.
+ * Local copy for in_town (mklev keeps a private twin).
+ */
+function inside_room_town(croom, x, y) {
+    if (croom.irregular) {
+        const i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
+        const loc = game.level?.at(x, y);
+        return !!(loc && !loc.edge && (loc.roomno | 0) === i);
+    }
+    return x >= (croom.lx | 0) - 1 && x <= (croom.hx | 0) + 1
+        && y >= (croom.ly | 0) - 1 && y <= (croom.hy | 0) + 1;
+}
+
+/**
+ * C ref: hack.c in_town — Mine Town (or whole level if no subroom parent).
+ * Requires level.flags.has_town (set in fixup_special for town specials).
+ */
+export function in_town(x, y) {
+    if (!game.level?.flags?.has_town) return false;
+    const rooms = game.level.rooms;
+    if (!rooms) return false;
+    let has_subrooms = false;
+    const n = (game.level.nroom | 0) + (game.level.nsubroom | 0);
+    for (let i = 0; i < n; i++) {
+        const sroom = rooms[i];
+        if (!sroom || (sroom.hx | 0) <= 0) continue;
+        if ((sroom.nsubrooms | 0) > 0) {
+            has_subrooms = true;
+            if (inside_room_town(sroom, x, y)) return true;
+        }
+    }
+    return !has_subrooms;
+}

@@ -20,6 +20,8 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
+         ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
+         has_mgivenname,
          } from './const.js';
 import { FOOD_CLASS } from './objects.js';
 import { dist2, bad_rock, cant_squeeze_thru } from './mon.js';
@@ -49,7 +51,7 @@ import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
-import { x_monnam_tame, Monnam } from './do_name.js';
+import { x_monnam, type_is_pname, Monnam } from './do_name.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
@@ -1683,9 +1685,20 @@ async function domove(dx, dy) {
         }
         mtmp.mx = oldx;
         mtmp.my = oldy;
-        // C ref: hack.c domove_swap_with_pet — x_monnam ARTICLE_YOUR
-        // (named pet → bare MGIVENNAME, e.g. "Hachi")
-        await pline(`You swap places with ${x_monnam_tame(mtmp)}.`);
+        // C ref: hack.c domove_swap_with_pet — You("%s %s.", …, x_monnam)
+        // peaceful non-tame → adjective "peaceful"; tame → ARTICLE_YOUR;
+        // named / pname → ARTICLE_NONE; else ARTICLE_THE.
+        const swapArt = mtmp.mtame
+            ? ARTICLE_YOUR
+            : (!has_mgivenname(mtmp) && !type_is_pname(mtmp.data))
+                ? ARTICLE_THE
+                : ARTICLE_NONE;
+        const swapAdj = (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null;
+        const swapSupp = has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0;
+        const swapVerb = mtmp.mpeaceful ? 'swap places with' : 'frighten';
+        await pline(
+            `You ${swapVerb} ${x_monnam(mtmp, swapArt, swapAdj, swapSupp, false)}.`,
+        );
     }
 
     // Move the hero (C u_on_newpos also updates usteed mx/my)

@@ -8,7 +8,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne } from './rng.js';
-import { mksobj, mkobj, weight } from './mkobj.js';
+import { mksobj, mkobj, weight, mergable } from './mkobj.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -38,6 +38,7 @@ import {
     W_WEP, W_SWAPWEP, W_QUIVER,
     RIGHT_HANDED, LEFT_HANDED,
     A_NEUTRAL,
+    LOST_THROWN,
     Is_container,
     FROMOUTSIDE,
     OBJ_INVENT,
@@ -810,17 +811,6 @@ function ini_inv_adjust_obj(trop, obj) {
     return stop;
 }
 
-// C ref: invent.c mergable() — sufficient for Tourist starting kit merges.
-function mergable(a, b) {
-    if (!a || !b || a.otyp !== b.otyp) return false;
-    if ((a.spe | 0) !== (b.spe | 0)) return false;
-    if (!!a.blessed !== !!b.blessed || !!a.cursed !== !!b.cursed) return false;
-    if ((a.corpsenm ?? -1) !== (b.corpsenm ?? -1)) return false;
-    if (!!a.known !== !!b.known) return false;
-    if ((a.owornmask | 0) || (b.owornmask | 0)) return false;
-    return true;
-}
-
 // C ref: invent.c assigninvlet() — keep existing a-z/A-Z letter when free
 // (e.g. steal → freeinv → later addinv of the same obj). Named omissions:
 // display_used_invlets; NOINVSYM edge polish when pack full.
@@ -890,20 +880,60 @@ function reorder_invent() {
     }
 }
 
-// C ref: invent.c addinv()
-export function addinv(obj) {
+// C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
+// Named omissions: quiver-prefer merge; addinv_before; thrown autoquiver;
+// oname absorb; worn-slot merge; globby/pudding; lamplit timers.
+export async function addinv(obj) {
     if (!game.invent) game.invent = [];
     for (const otmp of game.invent) {
-        if (mergable(otmp, obj)) {
-            otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
-            otmp.owt = weight(otmp);
-            // C: addinv_core1 merge + added: → pickup_prev = 1
-            otmp.pickup_prev = 1;
-            if (otmp.oclass === COIN_CLASS || objectNames[otmp.otyp] === 'GOLD_PIECE') {
-                game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
-            }
-            return otmp;
+        if (!mergable(otmp, obj)) continue;
+        // C invent.c merged(): age/quan/weight (+ coin bknown wipe) BEFORE
+        // known/bknown/rknown reconcile — gold bknown=0 must precede the
+        // bknown discovery check or COIN merges spuriously pline.
+        if (!obj.lamplit && !obj.globby) {
+            const oq = otmp.quan || 1;
+            const nq = obj.quan || 1;
+            const oa = otmp.age ?? 0;
+            const na = obj.age ?? 0;
+            otmp.age = Math.trunc((oa * oq + na * nq) / (oq + nq));
         }
+        if (!otmp.globby) otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
+        if (otmp.oclass === COIN_CLASS) {
+            otmp.owt = weight(otmp);
+            otmp.bknown = 0;
+        } else {
+            otmp.owt = weight(otmp);
+        }
+        // C invent.c merged — identification dims reconcile when they differ
+        let discovered = false;
+        if ((obj.known | 0) !== (otmp.known | 0)) {
+            otmp.known = 1;
+            discovered = true;
+        }
+        if ((obj.rknown | 0) !== (otmp.rknown | 0)) {
+            otmp.rknown = 1;
+            if (otmp.oerodeproof) discovered = true;
+        }
+        if ((obj.bknown | 0) !== (otmp.bknown | 0)) {
+            otmp.bknown = 1;
+            if (game.urole?.mnum !== PM_CLERIC) discovered = true;
+        }
+        // C: addinv_core0 added: → pickup_prev = 1
+        otmp.pickup_prev = 1;
+        if (otmp.oclass === COIN_CLASS || objectNames[otmp.otyp] === 'GOLD_PIECE') {
+            game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
+        }
+        // C: discovered && OBJ_INVENT && neither how_lost LOST_THROWN
+        const objLost = obj.how_lost ?? 0;
+        const otmpLost = otmp.how_lost ?? 0;
+        if (discovered
+            && (otmp.where === OBJ_INVENT)
+            && objLost !== LOST_THROWN
+            && otmpLost !== LOST_THROWN) {
+            const { pline } = await import('./display.js');
+            await pline('You learn more about your items by comparing them.');
+        }
+        return otmp;
     }
     assigninvlet(obj);
     obj.where = OBJ_INVENT;
@@ -1191,7 +1221,7 @@ export function find_ac() {
 }
 
 // C ref: u_init.c ini_inv()
-function ini_inv(tropArr) {
+async function ini_inv(tropArr) {
     let ti = 0;
     let trop = tropArr[ti];
     let quan = trquan(trop);
@@ -1220,7 +1250,7 @@ function ini_inv(tropArr) {
         }
         ini_inv_obj_substitution(trop, obj);
         if (ini_inv_adjust_obj(trop, obj)) quan = 1;
-        addinv(obj);
+        await addinv(obj);
         if (obj.oclass === SPBOOK_CLASS
             && (game.objects?.[obj.otyp]?.oc_level ?? 0) === 1) {
             got_sp1 = true;
@@ -1233,7 +1263,7 @@ function ini_inv(tropArr) {
 }
 
 // C ref: u_init.c u_init_role() — Tourist + Rogue + Wizard + Priest + Knight + Samurai + Healer + Valkyrie + Ranger + Monk + Archeologist + Barbarian + Caveman
-function u_init_role() {
+async function u_init_role() {
     const role = game.urole;
     const mnum = role?.mnum;
 
@@ -1251,10 +1281,10 @@ function u_init_role() {
 
     if (mnum === PM_ARCHEOLOGIST) {
         game.u.umoney0 = 0;
-        ini_inv(Archeologist);
-        if (!rn2(10)) ini_inv(Tinopener);
-        else if (!rn2(4)) ini_inv(Lamp);
-        else if (!rn2(5)) ini_inv(Magicmarker);
+        await ini_inv(Archeologist);
+        if (!rn2(10)) await ini_inv(Tinopener);
+        else if (!rn2(4)) await ini_inv(Lamp);
+        else if (!rn2(5)) await ini_inv(Magicmarker);
         knows_object(otypByName('SACK'), false);
         knows_object(otypByName('TOUCHSTONE'), false);
         game.nocreate = strange;
@@ -1266,9 +1296,9 @@ function u_init_role() {
     if (mnum === PM_BARBARIAN) {
         // C: rn2(100) >= 50 → Barbarian_0 else Barbarian_1 (avoid rn2(2) skew)
         game.u.umoney0 = 0;
-        if (rn2(100) >= 50) ini_inv(Barbarian_0);
-        else ini_inv(Barbarian_1);
-        if (!rn2(6)) ini_inv(Lamp);
+        if (rn2(100) >= 50) await ini_inv(Barbarian_0);
+        else await ini_inv(Barbarian_1);
+        if (!rn2(6)) await ini_inv(Lamp);
         knows_class(WEAPON_CLASS); // excludes polearms
         knows_class(ARMOR_CLASS);
         game.nocreate = strange;
@@ -1280,7 +1310,7 @@ function u_init_role() {
     if (mnum === PM_CAVE_DWELLER) {
         // C: PM_CAVE_DWELLER → ini_inv(Cave_man) only (no knows_class / Lamp)
         game.u.umoney0 = 0;
-        ini_inv(Cave_man);
+        await ini_inv(Cave_man);
         game.nocreate = strange;
         game.nocreate2 = strange;
         game.nocreate3 = strange;
@@ -1289,11 +1319,11 @@ function u_init_role() {
     }
     if (mnum === PM_TOURIST) {
         game.u.umoney0 = rnd(1000);
-        ini_inv(Tourist);
-        if (!rn2(25)) ini_inv(Tinopener);
-        else if (!rn2(25)) ini_inv(Leash);
-        else if (!rn2(25)) ini_inv(Towel);
-        else if (!rn2(20)) ini_inv(Magicmarker);
+        await ini_inv(Tourist);
+        if (!rn2(25)) await ini_inv(Tinopener);
+        else if (!rn2(25)) await ini_inv(Leash);
+        else if (!rn2(25)) await ini_inv(Towel);
+        else if (!rn2(20)) await ini_inv(Magicmarker);
         // C resets nocreate after role switch
         game.nocreate = strange;
         game.nocreate2 = strange;
@@ -1304,8 +1334,8 @@ function u_init_role() {
     if (mnum === PM_ROGUE) {
         // C: u.umoney0 = 0; (already cleared in u_init_inventory_attrs)
         game.u.umoney0 = 0;
-        ini_inv(Rogue);
-        if (!rn2(5)) ini_inv(Blindfold);
+        await ini_inv(Rogue);
+        if (!rn2(5)) await ini_inv(Blindfold);
         knows_object(otypByName('SACK'), false);
         knows_class(WEAPON_CLASS); // daggers only
         game.nocreate = strange;
@@ -1316,8 +1346,8 @@ function u_init_role() {
     }
     if (mnum === PM_WIZARD) {
         game.u.umoney0 = 0;
-        ini_inv(Wizard);
-        if (!rn2(5)) ini_inv(Blindfold);
+        await ini_inv(Wizard);
+        if (!rn2(5)) await ini_inv(Blindfold);
         game.nocreate = strange;
         game.nocreate2 = strange;
         game.nocreate3 = strange;
@@ -1326,9 +1356,9 @@ function u_init_role() {
     }
     if (mnum === PM_CLERIC) {
         game.u.umoney0 = 0;
-        ini_inv(Priest);
-        if (!rn2(5)) ini_inv(Magicmarker);
-        else if (!rn2(10)) ini_inv(Lamp);
+        await ini_inv(Priest);
+        if (!rn2(5)) await ini_inv(Magicmarker);
+        else if (!rn2(10)) await ini_inv(Lamp);
         knows_object(otypByName('POT_WATER'), true);
         game.nocreate = strange;
         game.nocreate2 = strange;
@@ -1338,7 +1368,7 @@ function u_init_role() {
     }
     if (mnum === PM_KNIGHT) {
         game.u.umoney0 = 0;
-        ini_inv(Knight);
+        await ini_inv(Knight);
         knows_class(WEAPON_CLASS); // all weapons (incl. polearms)
         knows_class(ARMOR_CLASS);
         // C: HJumping |= FROMOUTSIDE — chess-like mobility
@@ -1351,8 +1381,8 @@ function u_init_role() {
     }
     if (mnum === PM_SAMURAI) {
         game.u.umoney0 = 0;
-        ini_inv(Samurai);
-        if (!rn2(5)) ini_inv(Blindfold);
+        await ini_inv(Samurai);
+        if (!rn2(5)) await ini_inv(Blindfold);
         knows_class(WEAPON_CLASS); // all weapons (incl. polearms)
         knows_class(ARMOR_CLASS);
         // C: pre-discover Japanese_item_name types (skip oc_magic)
@@ -1370,8 +1400,8 @@ function u_init_role() {
     if (mnum === PM_HEALER) {
         // C: u.umoney0 = rn1(1000, 1001);
         game.u.umoney0 = rn1(1000, 1001);
-        ini_inv(Healer);
-        if (!rn2(25)) ini_inv(Lamp);
+        await ini_inv(Healer);
+        if (!rn2(25)) await ini_inv(Lamp);
         knows_object(otypByName('POT_FULL_HEALING'), false);
         game.nocreate = strange;
         game.nocreate2 = strange;
@@ -1381,8 +1411,8 @@ function u_init_role() {
     }
     if (mnum === PM_VALKYRIE) {
         game.u.umoney0 = 0;
-        ini_inv(Valkyrie);
-        if (!rn2(6)) ini_inv(Lamp);
+        await ini_inv(Valkyrie);
+        if (!rn2(6)) await ini_inv(Lamp);
         knows_class(WEAPON_CLASS); // excludes polearms
         knows_class(ARMOR_CLASS);
         game.nocreate = strange;
@@ -1393,7 +1423,7 @@ function u_init_role() {
     }
     if (mnum === PM_RANGER) {
         game.u.umoney0 = 0;
-        ini_inv(Ranger);
+        await ini_inv(Ranger);
         knows_class(WEAPON_CLASS); // bows, arrows, spears only
         game.nocreate = strange;
         game.nocreate2 = strange;
@@ -1405,10 +1435,10 @@ function u_init_role() {
         // C: M_spell[rn2(90) / 30] — Healing / Protection / Confuse Monster
         const M_spell = [Healing_book, Protection_book, Confuse_monster_book];
         game.u.umoney0 = 0;
-        ini_inv(Monk);
-        ini_inv(M_spell[Math.floor(rn2(90) / 30)]);
-        if (!rn2(4)) ini_inv(Magicmarker);
-        else if (!rn2(10)) ini_inv(Lamp);
+        await ini_inv(Monk);
+        await ini_inv(M_spell[Math.floor(rn2(90) / 30)]);
+        if (!rn2(4)) await ini_inv(Magicmarker);
+        else if (!rn2(10)) await ini_inv(Lamp);
         knows_class(ARMOR_CLASS);
         knows_object(otypByName('SHURIKEN'), false);
         game.nocreate = strange;
@@ -1421,7 +1451,7 @@ function u_init_role() {
 }
 
 // C ref: u_init.c u_init_race()
-function u_init_race() {
+async function u_init_race() {
     const racePm = game.urace?.mnum;
     const rolePm = game.urole?.mnum;
 
@@ -1450,7 +1480,7 @@ function u_init_race() {
                 },
                 { trotyp: () => 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 },
             ];
-            ini_inv(Instrument);
+            await ini_inv(Instrument);
         }
         knows_object(otypByName('ELVEN_SHORT_SWORD'), false);
         knows_object(otypByName('ELVEN_ARROW'), false);
@@ -1481,7 +1511,7 @@ function u_init_race() {
 
     case PM_ORC:
         // Compensate for generally inferior equipment
-        if (rolePm !== PM_WIZARD) ini_inv(Xtra_food);
+        if (rolePm !== PM_WIZARD) await ini_inv(Xtra_food);
         knows_object(otypByName('ORCISH_SHORT_SWORD'), false);
         knows_object(otypByName('ORCISH_ARROW'), false);
         knows_object(otypByName('ORCISH_BOW'), false);
@@ -1755,13 +1785,13 @@ export async function u_init_inventory_attrs() {
     game.u.uwep = null;
     game.u.uswapwep = null;
 
-    u_init_role();
-    u_init_race();
+    await u_init_role();
+    await u_init_race();
 
     // C ref: u_init.c — if (discover) ini_inv(Wishing)
-    if (game.flags?.explore || game.flags?.discover) ini_inv(Wishing);
+    if (game.flags?.explore || game.flags?.discover) await ini_inv(Wishing);
 
-    if (game.u.umoney0) ini_inv(Money);
+    if (game.u.umoney0) await ini_inv(Money);
 
     init_attr(75);
     await vary_init_attr();

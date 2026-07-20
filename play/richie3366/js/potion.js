@@ -12,13 +12,14 @@ import { weight, obj_extract_self } from './mkobj.js';
 import { A_WIS, A_DEX, A_CON, A_MAX, adjattrib, exercise } from './attrib.js';
 import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
-import { doname, xname } from './objnam.js';
+import { doname, xname, short_oname, thesimpleoname } from './objnam.js';
 import { dipfountain, drinkfountain, drinksink } from './fountain.js';
 import {
     IS_FOUNTAIN, IS_SINK, IS_POOL,
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT, HALLUC_RES,
+    QBUFSZ,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
@@ -747,10 +748,20 @@ export async function dodip() {
     // inaccessible_equipment deferred
 
     const is_hands = obj === hands_obj;
+    // C: is_hands || is_plural || pair_of → "them" (pair_of deferred)
     const shortestname = (is_hands || (obj.quan | 0) !== 1) ? 'them' : 'it';
+    // C: short_oname(doname, thesimpleoname, QBUFSZ - sizeof getobj dip prompt)
+    // so fountain yn reuses the getobj-budgeted name (D-0881).
+    const DIP_GETOBJ_SUFFIX =
+        'What do you want to dip into? [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or ?*] ';
     const obuf = is_hands
         ? 'your hands'
-        : doname(obj);
+        : short_oname(
+            obj,
+            doname,
+            thesimpleoname,
+            QBUFSZ - (DIP_GETOBJ_SUFFIX.length + 1),
+        );
 
     if (!game.iflags?.menu_requested) {
         // can_reach_floor deferred — assume reachable when not levitating

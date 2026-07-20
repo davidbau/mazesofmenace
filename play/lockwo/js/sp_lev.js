@@ -22,7 +22,7 @@ import { mkgold, next_ident, mksobj, set_corpsenm, obj_resists_rng,
          CORPSE, CHEST, mkobj_at } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
          mkclass, mm_mon_at, enexto_spawn } from './makemon.js';
-import { somexy } from './mkroom.js';
+import { somexy, inside_room } from './mkroom.js';
 import { maketrap } from './trap.js';
 import { stock_room } from './shknam.js';
 
@@ -700,6 +700,19 @@ function create_storeroom(croom) {
                 const pm = mkclass(S_MIMIC_CLASS, G_NOGEN_FLAG);
                 const c = { x: -1, y: -1 };
                 if (!somexy(croom, c)) continue;
+                // C ref: sp_lev.c create_monster():1977 — "try to find a close
+                // place if someone else is already there": when the somexy spot
+                // is already occupied by a monster, relocate via enexto()
+                // (collect_coords ring shuffle) BEFORE makemon().  A prior mimic
+                // from this same iterate loop can land on the same room-relative
+                // cell (e.g. two somexy rolls both == (9,3)), triggering this.
+                if (mm_mon_at(c.x, c.y)) {
+                    const cc = enexto_spawn(c.x, c.y, pm);
+                    if (cc) { c.x = cc.x; c.y = cc.y; }
+                }
+                // C ref: create_monster:1981 — if the (possibly relocated) spot
+                // falls outside croom, skip this monster (C `return`).
+                if (croom && !inside_room(croom, c.x, c.y)) continue;
                 const mtmp = makemon(pm, c.x, c.y, 0);
                 // C create_monster overrides the mimic's appearance to a chest
                 // object (M_AP_OBJECT) — no further RNG.  Mark it so the renderer

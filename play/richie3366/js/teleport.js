@@ -18,7 +18,8 @@ import {
     UTOTYPE_NONE,
     is_hole, Is_stronghold, Is_botlevel, Is_knox_level,
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
-    MAGIC_PORTAL,
+    MAGIC_PORTAL, RLOC_MSG, RLOC_NOMSG,
+    BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A,
 } from './const.js';
 import { objects_at, mksobj } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
@@ -26,8 +27,10 @@ import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
     monsterNames, passes_walls, is_dlord, is_dprince,
 } from './monsters.js';
-import { newsym, pline, You_feel, see_monsters, canseemon } from './display.js';
-import { vision_recalc } from './vision.js';
+import {
+    newsym, pline, You_feel, see_monsters, canseemon, canspotmon, sensemon,
+} from './display.js';
+import { vision_recalc, couldsee } from './vision.js';
 import { nomul } from './hack.js';
 import { makeknown, prinv } from './invent.js';
 import { more_experienced } from './exper.js';
@@ -35,8 +38,22 @@ import { getlin } from './getline.js';
 import { get_level } from './dungeon.js';
 import { depth } from './hacklib.js';
 import { addinv } from './u_init.js';
-import { mon_nam } from './do_name.js';
+import { mon_nam, Monnam, x_monnam } from './do_name.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+
+/** C ref: do_name.c Amonnam — highc(a_monnam). */
+function Amonnam(mtmp) {
+    const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'A monster';
+}
+
+/** Squared distance from hero to (x,y). C ref: you.h distu. */
+function distu_xy(x, y) {
+    const u = game.u || {};
+    const dx = (x | 0) - (u.ux | 0);
+    const dy = (y | 0) - (u.uy | 0);
+    return dx * dx + dy * dy;
+}
 
 // trap.h return codes — avoid importing trap.js (cycle with trapeffect_hole)
 const Trap_Effect_Finished = 0;
@@ -279,8 +296,9 @@ export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
 /**
  * C ref: teleport.c rloc_to / rloc_to_core — place monster at (x,y).
  * RLOC_NOMSG path: remove from old cell + newsym(old), place, newsym(new).
- * Named omissions: worm tail; vanish/appear messages; u.ustuck swallow
- * docrt branch; shopkeeper home teleport; maybe_unhide_at polish.
+ * Named omissions: worm tail; u.ustuck swallow docrt branch; shopkeeper home
+ * teleport; maybe_unhide_at polish.
+ * RLOC_MSG vanish+appear live in async `rloc` (D-0885 / D-0886).
  */
 export function rloc_to(mtmp, x, y) {
     if (!mtmp) return;
@@ -491,11 +509,75 @@ function rloc_pos_ok(x, y, mtmp) {
 }
 
 /**
+ * C ref: teleport.c rloc_to_core message envelope — vanish before move,
+ * appear after place. Returns msg state for the post-place arm.
+ * Named omit: telemsg "vanishes and reappears" distance polish;
+ * ustuck-together; wand discovery; set_msg_xy.
+ */
+async function rloc_pre_move_msg(mtmp, x, y, rlocflags) {
+    const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
+    const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
+    let appearmsg = ((mtmp.mstrategy | 0) & STRAT_APPEARMSG) !== 0;
+    const domsg = !game.in_mklev && (vanishmsg || appearmsg) && !preventmsg;
+    let telemsg = false;
+    const oldx = mtmp.mx | 0;
+    const oldy = mtmp.my | 0;
+    if (domsg && oldx && canspotmon(mtmp)) {
+        if (couldsee(x, y) || sensemon(mtmp)) {
+            telemsg = true;
+        } else {
+            await pline(`${Monnam(mtmp)} vanishes!`);
+        }
+        // C: avoid "It suddenly appears!" after a spotted teleport-away
+        appearmsg = false;
+    }
+    return { domsg, telemsg, appearmsg, oldx, oldy };
+}
+
+/**
+ * C ref: teleport.c rloc_to_core post-place appear / reappear pline.
+ */
+async function rloc_post_move_msg(mtmp, x, y, state) {
+    const { domsg, telemsg } = state;
+    let appearmsg = state.appearmsg;
+    if (!domsg) return;
+    if (!(canspotmon(mtmp) || appearmsg || mtmp === game.u?.ustuck)) return;
+
+    // C: mtmp->mstrategy &= ~STRAT_APPEARMSG
+    if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_APPEARMSG;
+
+    // ustuck-together ("You and %s teleport together") deferred
+    if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
+        // telemsg "vanishes and reappears" + closer/farther deferred
+        return;
+    }
+
+    const du = distu_xy(x, y);
+    const near = du <= 2
+        ? ' next to you'
+        : (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
+    const Blind = !!(game.u?.Blind || game.u?.ublind);
+    const who = appearmsg ? Amonnam(mtmp) : Monnam(mtmp);
+    const sud = appearmsg ? 'suddenly ' : '';
+    const verb = Blind ? 'arrives' : 'appears';
+    await pline(`${who} ${sud}${verb}${near}!`);
+}
+
+/**
+ * Place mon at (x,y) with rloc_to_core message order.
+ */
+async function rloc_to_with_msg(mtmp, x, y, rlocflags) {
+    const state = await rloc_pre_move_msg(mtmp, x, y, rlocflags);
+    rloc_to(mtmp, x, y);
+    await rloc_post_move_msg(mtmp, x, y, state);
+}
+
+/**
  * C ref: teleport.c rloc — 50× rnd/rn2 then unshuffled candy shuffle.
  * Named omissions: Wizard stair preference; mon_telecontrol; steed→tele();
- * RLOC_MSG vanish; shop bill on leave.
+ * telemsg "vanishes and reappears"; ustuck-together; shop bill on leave.
  */
-export function rloc(mtmp, _rlocflags = 0) {
+export async function rloc(mtmp, rlocflags = 0) {
     if (!mtmp) return false;
     if (mtmp === game.u?.usteed) return false; // tele() deferred
 
@@ -505,7 +587,7 @@ export function rloc(mtmp, _rlocflags = 0) {
         const x = rnd(COLNO - 1); // 1..COLNO-1
         const y = rn2(ROWNO); // 0..ROWNO-1
         if (rloc_pos_ok(x, y, mtmp)) {
-            rloc_to(mtmp, x, y);
+            await rloc_to_with_msg(mtmp, x, y, rlocflags);
             return true;
         }
     }
@@ -528,7 +610,7 @@ export function rloc(mtmp, _rlocflags = 0) {
         const x = candy[i].x | 0;
         const y = candy[i].y | 0;
         if (rloc_pos_ok(x, y, mtmp)) {
-            rloc_to(mtmp, x, y);
+            await rloc_to_with_msg(mtmp, x, y, rlocflags);
             return true;
         }
         if (!backupx && goodpos(x, y, mtmp, 0)) {
@@ -537,7 +619,7 @@ export function rloc(mtmp, _rlocflags = 0) {
         }
     }
     if (!backupx) return false;
-    rloc_to(mtmp, backupx, backupy);
+    await rloc_to_with_msg(mtmp, backupx, backupy, rlocflags);
     return true;
 }
 
@@ -937,7 +1019,7 @@ export async function level_tele() {
                     if (!(u.uhave?.amulet || u.uhave_amulet)) {
                         const amu = mksobj(AMULET_OF_YENDOR, true, false);
                         if (amu) {
-                            const held = addinv(amu);
+                            const held = await addinv(amu);
                             if (!u.uhave) u.uhave = {};
                             u.uhave.amulet = 1;
                             u.uhave_amulet = 1;

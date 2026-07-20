@@ -89,9 +89,17 @@ export function dist2(x0, y0, x1, y1) {
 }
 
 // C ref: mon.c monnear(mon, x, y) — within one (king) step.
+//   int distance = dist2(mon->mx, mon->my, x, y);
+//   if (distance == 2 && NODIAG(mon->data - mons)) return 0;
+//   return (boolean) (distance < 3);
+// A NODIAG monster (grid bug) at a diagonal square (dist2 == 2) is NOT
+// "near" — it can neither move nor attack diagonally, so dochug sends it
+// through m_move rather than mattacku.
 function monnear(mon, x, y) {
     const distance = dist2(mon.mx, mon.my, x, y);
-    return distance < 3 && distance > -3;
+    if (distance === 2 && mon.data?.pmidx === PM_GRID_BUG)
+        return false;
+    return distance < 3;
 }
 
 // C ref: mon.c m_at(x, y).

@@ -2303,6 +2303,8 @@ export const TRAPNUM = 26;
 // Trap helpers (trap.h)
 export function is_pit(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
 export function is_hole(ttyp) { return ttyp === HOLE || ttyp === TRAPDOOR; }
+/** C ref: trap.h unhideable_trap — HOLE is always visible when created. */
+export function unhideable_trap(ttyp) { return ttyp === HOLE; }
 
 // Trap flags for mktrap
 export const MKTRAP_NOFLAGS = 0;

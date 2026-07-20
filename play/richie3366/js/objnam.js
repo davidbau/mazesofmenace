@@ -19,6 +19,7 @@ import {
     objectNames,
     objectNameStrs,
     objectDescrs,
+    objects,
 } from './objects.js';
 import { monsterNames, mons, vegetarian, is_rider } from './monsters.js';
 import {
@@ -30,8 +31,8 @@ import {
     P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
+    ONAME, has_oname,
 } from './const.js';
-
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 
 /**
@@ -814,6 +815,12 @@ export function the(str) {
     return str;
 }
 
+/** C ref: objnam.c The — the() with leading capital. */
+export function The(str) {
+    const t = the(str);
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
 /**
  * C ref: objnam.c singular — temporarily force quan=1 for naming.
  */
@@ -1046,6 +1053,12 @@ export function an(str) {
     return just_an(str) + str;
 }
 
+/** C ref: objnam.c An — an() with leading capital. */
+export function An(str) {
+    const t = an(str);
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
 /**
  * C ref: objnam.c vtense — plural verb → 3rd-person present for subject.
  * Enough for look_here "There is/are … here." (a/an → singular).
@@ -1133,6 +1146,94 @@ export function obj_is_pname(obj) {
         if (!obj.known || !obj.dknown || !obj.bknown) return false;
     }
     return true;
+}
+
+/**
+ * C ref: objnam.c simpleonames — type appearance without quan/BUC (minimal_xname
+ * subset). Named omissions: sack→bag family aliases; makeplural quan≠1 polish.
+ */
+export function simpleonames(obj) {
+    if (!obj) return 'object';
+    return pretty_base(obj);
+}
+
+/**
+ * C ref: objnam.c thesimpleoname — "the" + simpleonames.
+ */
+export function thesimpleoname(obj) {
+    return the(simpleonames(obj));
+}
+
+/**
+ * C ref: objnam.c short_oname — fit a doname-style format into lenlimit.
+ * Truncates long uname/oname, then temporarily clears bknown/rknown/greased/
+ * oeroded/oeroded2 for formatting only (object restored). Optional altfunc
+ * (usually thesimpleoname) if still too long.
+ */
+export function short_oname(obj, func, altfunc, lenlimit) {
+    if (!obj || typeof func !== 'function') return '';
+    let outbuf = func(obj);
+    if (outbuf.length <= lenlimit) return outbuf;
+
+    const ocl = objects()?.[obj.otyp];
+    const save_uname = ocl?.oc_uname ?? null;
+    // C: sizeof unamebuf == 12 → truncate when strlen >= 12
+    if (save_uname && save_uname.length >= 12) {
+        ocl.oc_uname = `${save_uname.slice(0, 8)}...`;
+        outbuf = func(obj);
+        ocl.oc_uname = save_uname;
+        if (outbuf.length <= lenlimit) return outbuf;
+    }
+
+    const save_oname = has_oname(obj) ? ONAME(obj) : null;
+    if (save_oname && save_oname.length >= 12) {
+        obj.oextra.oname = `${save_oname.slice(0, 8)}...`;
+        outbuf = func(obj);
+        obj.oextra.oname = save_oname;
+        if (outbuf.length <= lenlimit) return outbuf;
+    }
+
+    if (save_uname && save_uname.length >= 12 && save_oname
+        && save_oname.length >= 12) {
+        ocl.oc_uname = `${save_uname.slice(0, 8)}...`;
+        obj.oextra.oname = `${save_oname.slice(0, 8)}...`;
+        outbuf = func(obj);
+        if (outbuf.length <= lenlimit) {
+            ocl.oc_uname = save_uname;
+            obj.oextra.oname = save_oname;
+            return outbuf;
+        }
+    }
+
+    // C: strip name-lengthening attributes; uname/oname stay truncated
+    const save_bknown = obj.bknown;
+    const save_rknown = obj.rknown;
+    const save_greased = obj.greased;
+    const save_oeroded = obj.oeroded;
+    const save_oeroded2 = obj.oeroded2;
+    obj.bknown = 0;
+    obj.rknown = 0;
+    obj.greased = 0;
+    obj.oeroded = 0;
+    obj.oeroded2 = 0;
+    if (save_uname && save_uname.length >= 12) {
+        ocl.oc_uname = `${save_uname.slice(0, 8)}...`;
+    }
+    if (save_oname && save_oname.length >= 12) {
+        obj.oextra.oname = `${save_oname.slice(0, 8)}...`;
+    }
+    outbuf = func(obj);
+    if (typeof altfunc === 'function' && outbuf.length > lenlimit) {
+        outbuf = altfunc(obj);
+    }
+    obj.bknown = save_bknown;
+    obj.rknown = save_rknown;
+    obj.greased = save_greased;
+    obj.oeroded = save_oeroded;
+    obj.oeroded2 = save_oeroded2;
+    if (save_oname) obj.oextra.oname = save_oname;
+    if (save_uname && ocl) ocl.oc_uname = save_uname;
+    return outbuf;
 }
 
 /**

@@ -1,29 +1,13 @@
 // monmove.js — Monster AI movement (minimal RNG-faithful stubs).
 // C ref: monmove.c — distfleeck, dochug, m_move, postmov, set_apparxy, mon_track_add.
 
-import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
-import { dog_move, finish_meating } from './dogmove.js';
-import { shk_move, gd_move, pri_move } from './shk.js';
-import { newsym, pline } from './display.js';
-import { stop_occupation, noattacks } from './hack.js';
-import {
-    dist2,
-    distmin,
-    monnear,
-    mon_allowflags,
-    mfndpos,
-    m_at,
-    m_avoid_kicked_loc,
-    mnexto,
-} from './mon.js';
 import {
     is_wanderer, is_armed, passes_walls, nohands, verysmall,
     monsterNames, M1_SEE_INVIS, M1_AMORPHOUS, M1_NOTAKE, tunnels, needspick,
     can_track, likes_gold, likes_gems, likes_objs, likes_magic,
     throws_rocks, is_swimmer, likes_lava, mindless, is_animal, strongmonst, is_mercenary,
     mon_knows_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
-    is_vampshifter,
+    is_vampshifter, is_watch, is_mind_flayer,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -47,7 +31,7 @@ import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from '.
 import {
     isok, ACCESSIBLE, IS_DOOR, IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR,
-    D_BROKEN, D_TRAPPED, u_at, DISPLACED, Is_rogue_level, NOTONL,
+    D_BROKEN, D_TRAPPED, D_WARNED, u_at, DISPLACED, Is_rogue_level, NOTONL,
     ALLOW_U, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
@@ -57,9 +41,9 @@ import {
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
     STAIRS, LADDER, IRONBARS, WEB,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
-    MON_FLOOR, NORMAL_SPEED, G_GENOD,
+    MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG,
 } from './const.js';
-import { is_pool, is_lava } from './hack.js';
+import { is_pool, is_lava, in_town, stop_occupation, noattacks } from './hack.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -80,6 +64,22 @@ import { quest_talk, quest_stat_check } from './quest.js';
 import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
 import { check_gear_next_turn } from './worn.js';
+import { picking_lock } from './lock.js';
+import { newsym, pline } from './display.js';
+import { dog_move, finish_meating } from './dogmove.js';
+import { shk_move, gd_move, pri_move } from './shk.js';
+import { rn2, rnd, d } from './rng.js';
+import { game } from './gstate.js';
+import {
+    dist2,
+    distmin,
+    monnear,
+    mon_allowflags,
+    mfndpos,
+    m_at,
+    m_avoid_kicked_loc,
+    mnexto,
+} from './mon.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -761,6 +761,40 @@ export function distfleeck(mtmp) {
 }
 
 /**
+ * C ref: monmove.c watch_on_duty — peaceful watch that can see hero in town
+ * may notice lockpicking / digging (!rn2(3) gate).
+ * Named omissions: mon_yells / angry_guards; is_digging + watch_dig
+ * (dig occupation not wired).
+ */
+async function watch_on_duty(mtmp) {
+    const u = game.u || {};
+    if (!(mtmp.mpeaceful
+        && in_town((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))
+        && mtmp.mcansee && m_canseeu(mtmp) && !rn2(3))) {
+        return;
+    }
+    const pos = { x: 0, y: 0 };
+    if (picking_lock(pos)) {
+        const loc = game.level?.at(pos.x, pos.y);
+        if (loc && IS_DOOR(loc.typ)
+            && ((loc.doormask || loc.flags || 0) & D_LOCKED)) {
+            if (couldsee(mtmp.mx, mtmp.my)) {
+                if ((loc.looted | 0) & D_WARNED) {
+                    // mon_yells + angry_guards deferred
+                    await pline('Halt, thief!  You\'re under arrest!');
+                } else {
+                    // mon_yells deferred
+                    await pline('Hey, stop picking that lock!');
+                    loc.looted = (loc.looted | 0) | D_WARNED;
+                }
+                await stop_occupation();
+            }
+        }
+    }
+    // else if (is_digging()) watch_dig(...) — deferred
+}
+
+/**
  * C ref: monmove.c monhaskey — locking/unlocking tool in minvent.
  */
 function monhaskey(mon, for_unlocking) {
@@ -1352,9 +1386,9 @@ export async function m_move(mtmp, after) {
         && !(await tele_restrict(mtmp))) {
         // C: mhp < 7 || peaceful || rn2(2) → rloc; else mnexto
         if ((mtmp.mhp | 0) < 7 || mtmp.mpeaceful || rn2(2)) {
-            rloc(mtmp, 0x02); // RLOC_MSG
+            await rloc(mtmp, RLOC_MSG);
         } else {
-            mnexto(mtmp, 0x02);
+            mnexto(mtmp, RLOC_MSG);
         }
         return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
     }
@@ -1621,10 +1655,12 @@ export async function dochug(mtmp) {
 
     // C: mflee && !rn2(40) && can_teleport && !iswiz && !noteleport_level
     // — teleport costs a turn. rn2(40) always runs when mflee is set.
+    // C: rloc(mtmp, RLOC_MSG) — appear pline may --More-- pending topline
+    // (D-0886). Must await; flags 0 dropped the post-place message.
     if (mtmp.mflee && !rn2(40) && can_teleport(mtmp.data)
         && !mtmp.iswiz
         && !noteleport_level(mtmp)) {
-        if (rloc(mtmp, 0)) {
+        if (await rloc(mtmp, RLOC_MSG)) {
             // leppie_stash deferred
             return 0;
         }
@@ -1651,6 +1687,15 @@ export async function dochug(mtmp) {
     // C: youprop.h Conflict (HConflict||EConflict) — worn RIN_CONFLICT via
     // hero_conflict until setworn oc_oprop is ported (D-0406/D-0413).
     const Conflict = hero_conflict();
+
+    // C: MS_BRIBE demon_talk deferred (between muse and watch)
+    // C ref: monmove.c dochug — watch_on_duty / mind_blast before wield
+    if (is_watch(mdat)) {
+        await watch_on_duty(mtmp);
+    } else if (is_mind_flayer(mdat) && !rn2(20)) {
+        // mind_blast deferred — still burn rn2(20) gate only when watch N/A
+        // Named omission: mind_blast body + set_apparxy/distfleeck refresh
+    }
 
     // C ref: monmove.c dochug — nearby AT_WEAP may spend the turn wielding
     if ((!mtmp.mpeaceful || Conflict) && inrange

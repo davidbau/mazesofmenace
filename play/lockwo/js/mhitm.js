@@ -220,6 +220,14 @@ const MON_COMBAT = {
     // 0,0 dice mean a hit deals d(0,0)==0 (no damage roll); AD_STCK is modeled as
     // AD_PHYS for the to-hit path (mhitm_adtyping only special-cases non-PHYS).
     'lichen':     { ac: 9, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 4, attacks: [ATK(AT_TUCH, AD_PHYS, 0, 0)] },
+    // C ref: monsters.h S_XAN "grid bug" — LVL(0,12,9,0,0), geno
+    // (G_GENO|G_SGROUP|G_NOCORPSE|3) so G_FREQ==3; MZ_TINY (verysmall); attack
+    // AT_BITE AD_ELEC 1d1.  Needed as the *defender* when the kitten kills it
+    // (seed0030 seg1 step-134): corpse_chance rolls rn2(2 + (3<2?0) + 1)==rn2(3)
+    // (not the rn2(2) an unmodeled monster would default to).  AD_ELEC is modeled
+    // as AD_PHYS for the to-hit path (mhitm_adtyping only special-cases non-PHYS);
+    // the grid bug is G_NOCORPSE, so make_corpse() leaves no cadaver.
+    'grid bug':   { ac: 9, mlevel: 0, msize: MZ_TINY,  verysmall: true,  gfreq: 3, attacks: [ATK(AT_BITE, AD_PHYS, 1, 1)] },
 };
 
 // Resolve the combat record for a monster instance.  Prefers data.name; the

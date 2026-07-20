@@ -11,8 +11,8 @@
 // Deferred: enlightenment body, vomit cantvomit/Sick/acid poly arms,
 // town warn/angry_guards, wizard yn, FOUNTAIN_IS_WARNED force dryup,
 // Excalibur LONG_SWORD body, wash_hands, dipfountain cases 17–20/
-// 26–29; gush minliquid body; set_levltyp side effects beyond
-// typ/flags; Hallucination rndmonnam in snakes pline;
+// 29 (You see coins/mkgold); gush minliquid body; set_levltyp side
+// effects beyond typ/flags; Hallucination rndmonnam in snakes pline;
 // mongrantswish tmp_at glyph hide.
 //
 // Branch envelope (drinksink): Levitation floating_above; rn2(20)
@@ -30,14 +30,14 @@ import {
 } from './display.js';
 import {
     curse, mksobj_at, rnd_class, mkobj, mkobj_at, obj_extract_self,
-    objects_at,
+    objects_at, delobj,
 } from './mkobj.js';
 import {
     water_damage, water_damage_chain, t_at, deltrap, mintrap, NO_TRAP_FLAGS,
 } from './trap.js';
 import {
     COIN_CLASS, RING_CLASS, POTION_CLASS, POT_WATER,
-    objectNames, objectDescrs,
+    objectNames, objectDescrs, objects,
 } from './objects.js';
 import {
     ROOM, FOUNTAIN, IS_FOUNTAIN, IS_DOOR, SDOOR, POOL, u_at, isok,
@@ -65,6 +65,7 @@ import { del_engr_at } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { observe_object } from './invent.js';
 import { hliquid } from './do_name.js';
+import { somegold } from './steal.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
@@ -91,6 +92,21 @@ function FOUNTAIN_IS_LOOTED(x, y) {
 function SET_FOUNTAIN_LOOTED(x, y) {
     const loc = game.level?.at(x, y);
     if (loc) loc.looted = (loc.looted || 0) | F_LOOTED;
+}
+
+/** C ref: rm.h CLEAR_FOUNTAIN_LOOTED */
+function CLEAR_FOUNTAIN_LOOTED(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc) loc.looted = (loc.looted || 0) & ~F_LOOTED;
+}
+
+/** C ref: invent.c money_cnt — sum COIN_CLASS quan (invent is a JS array). */
+function money_cnt(invent) {
+    let sum = 0;
+    for (const o of invent || []) {
+        if (o.oclass === COIN_CLASS) sum += o.quan | 0;
+    }
+    return sum;
 }
 
 /**
@@ -781,11 +797,50 @@ export async function dipfountain(obj) {
     case 25: // Water gushes forth
         await dogushforth(false);
         break;
-    case 26:
-    case 27:
-    case 28:
+    case 26: // Strange feeling
+        // C: body_part(ARM) — humanoid default "arm" (poly forms deferred)
+        await pline('A strange tingling runs up your arm.');
+        break;
+    case 27: // Strange feeling
+        await You_feel('a sudden chill.');
+        break;
+    case 28: { // Urge to bathe — may lose gold + exercise(A_WIS,FALSE)
+        // C ref: fountain.c dipfountain case 28
+        await pline('An urge to take a bath overwhelms you.');
+        let money = money_cnt(game.invent);
+        if (money > 10) {
+            // Amount to lose (fountains don't pay change)
+            money = Math.floor(somegold(money) / 10);
+            const invent = game.invent || [];
+            // Snapshot: invent may shrink via delobj/splice
+            for (let i = 0; i < invent.length && money > 0; ) {
+                const otmp = invent[i];
+                if (otmp.oclass === COIN_CLASS) {
+                    const denomination = objects()?.[otmp.otyp]?.oc_cost || 1;
+                    let coin_loss = Math.floor(
+                        (money + denomination - 1) / denomination,
+                    );
+                    coin_loss = Math.min(coin_loss, otmp.quan | 0);
+                    otmp.quan = (otmp.quan | 0) - coin_loss;
+                    money -= coin_loss * denomination;
+                    if (!otmp.quan) {
+                        // C delobj: obj_resists rn2(100) then extract.
+                        // JS obj_extract_self omits invent — splice + delobj.
+                        invent.splice(i, 1);
+                        delobj(otmp);
+                        continue;
+                    }
+                }
+                i++;
+            }
+            await pline('You lost some of your gold in the fountain!');
+            CLEAR_FOUNTAIN_LOOTED(u.ux, u.uy);
+            exercise(A_WIS, false);
+        }
+        break;
+    }
     case 29:
-        // Strange feelings / bath / coins — deferred
+        // You see coins / mkgold — deferred
         break;
     default:
         if (er === ER_NOTHING) {

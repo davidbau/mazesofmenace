@@ -3110,6 +3110,11 @@ export async function Norep(msg) {
 export async function pline(msg) {
     if (msg == null || msg === '') return;
     const CO = game?.nhDisplay?.cols || 80;
+    // C pline.c vpline: vision_recalc before flush when dirty (boulder
+    // extract / door / light sets vision_full_recalc mid-turn).
+    if (game.vision_full_recalc) {
+        vision_recalc(0);
+    }
     // C: if (u.ux) flush_screen(...) before putmesg — botl update first
     if (game.u?.ux) await flush_screen(1);
 
