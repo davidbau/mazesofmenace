@@ -17,8 +17,8 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, You_feel } from './display.js';
-import { paint_corner_nhw_menu, discover_object } from './invent.js';
+import { flush_screen, pline, You_feel } from './display.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj } from './mkobj.js';
@@ -789,9 +789,10 @@ async function dospellmenu(prompt, splaction) {
         }
         await flush_screen(1);
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
+        // C: destroy_nhwindow → erase_menu_or_text (corner docorner /
+        // fullscreen docrt). Always-docrt desyncs Hallu once-per-input
+        // see_monsters after corner +/ESC (D-0857).
+        await dismiss_nhw_menu();
 
         if (key === 27) return { ok: false, splnum: -1 };
         if (howPickNone) {

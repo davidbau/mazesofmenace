@@ -51,6 +51,7 @@ const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 const ELVEN_SHIELD = objectNames.indexOf('ELVEN_SHIELD');
 const ORCISH_SHIELD = objectNames.indexOf('ORCISH_SHIELD');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
@@ -883,9 +884,12 @@ function mksobj_init(otmp, artif) {
         }
         break;
     }
-    case POTION_CLASS:
+    case POTION_CLASS: /* note: potions get some additional init below */
     case SCROLL_CLASS:
-        blessorcurse(otmp, 4);
+        // C: MAIL_STRUCTURES — SCR_MAIL skips blessorcurse (D-0848 / D-0862)
+        if (otmp.oclass !== SCROLL_CLASS || otmp.otyp !== SCR_MAIL) {
+            blessorcurse(otmp, 4);
+        }
         break;
     case SPBOOK_CLASS:
         blessorcurse(otmp, 17);

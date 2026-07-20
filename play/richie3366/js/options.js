@@ -26,7 +26,7 @@ import {
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, clear_committed_status } from './display.js';
-import { paint_corner_nhw_menu } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
@@ -632,8 +632,7 @@ export async function select_menu_pick_one(rawItems) {
         await flush_screen(1);
         const key = await nhgetch();
         const wasFullscreen = game._tty_menu_geom?.offx === 0;
-        game._menu_overlay = false;
-        await docrt();
+        await dismiss_nhw_menu();
         const ch = String.fromCharCode(key);
         const hit = (key !== 27 && key !== 13 && key !== 10 && key !== 32)
             ? page.find((it) => it.selectable && it.selector === ch)
@@ -643,7 +642,6 @@ export async function select_menu_pick_one(rawItems) {
             // Options → choose_classes submenu; restore on final dismiss.
             clear_committed_status();
         }
-        await flush_screen(1);
 
         if (key === 27 || key === 13 || key === 10) {
             return { kind: 'cancel' };

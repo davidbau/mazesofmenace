@@ -694,9 +694,14 @@ export async function drinkfountain() {
             await pline(`This ${hliquid('water')} gives you bad breath!`);
             for (const mtmp of game.fmon || []) {
                 if (mtmp.mhp <= 0) continue;
-                // monflee(mtmp, 0, FALSE, FALSE) — fleetime 0, no RNG
+                // C: monflee(mtmp, 0, FALSE, FALSE) — fleetime 0 + mon_track_clear
                 mtmp.mflee = 1;
                 mtmp.mfleetim = 0;
+                if (mtmp.mtrack) {
+                    for (let j = 0; j < mtmp.mtrack.length; j++) {
+                        mtmp.mtrack[j] = { x: 0, y: 0 };
+                    }
+                }
             }
             break;
         }

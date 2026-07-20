@@ -829,6 +829,125 @@ const ONE_OFF_PLURALS = [
     ['tooth', 'teeth'],
 ];
 
+// C ref: objnam.c as_is[] — makesingular/makeplural leave these plural.
+const AS_IS_PLURALS = [
+    'boots', 'shoes', 'gloves', 'lenses', 'scales',
+    'eyes', 'gauntlets', 'iron bars',
+];
+// C ref: objnam.c special_subjs[] — also kept as-is by makesingular.
+const SPECIAL_SUBJS = [
+    'erinys', 'manes', 'Cyclops', 'Hippocrates', 'Pelias', 'aklys',
+    'amnesia', 'detect monsters', 'paralysis', 'shape changers', 'nemesis',
+];
+
+/**
+ * C ref: objnam.c makesingular — wish/plural → canonical object name.
+ * Compound " of " singularizes the head only; as_is; one_off reverse;
+ * -ies/-ves/-es/-s. Named omissions: pronoun genders; craft/mongoose;
+ * badman men→man; full Strcasecpy case polish on every branch.
+ */
+export function makesingular(oldstr) {
+    if (oldstr == null) return '';
+    let s = String(oldstr);
+    while (s.startsWith(' ')) s = s.slice(1);
+    if (!s) return '';
+
+    // C: singplur_compound — singularize only the part before " of "
+    let excess = '';
+    const ofIdx = s.toLowerCase().indexOf(' of ');
+    let bp = s;
+    if (ofIdx > 0) {
+        excess = s.slice(ofIdx);
+        bp = s.slice(0, ofIdx);
+    }
+
+    const lower = bp.toLowerCase();
+
+    // C: singplur_lookup as_is — keep boots/gloves/gauntlets/scales/…
+    for (const as of AS_IS_PLURALS) {
+        if (lower === as || (lower.length > as.length && lower.endsWith(as)
+            && bp[bp.length - as.length - 1] === ' ')) {
+            return bp + excess;
+        }
+    }
+    // C: singplur_lookup special_subjs
+    for (const sp of SPECIAL_SUBJS) {
+        const sl = sp.toLowerCase();
+        if (lower === sl || (lower.length > sl.length && lower.endsWith(sl)
+            && bp[bp.length - sl.length - 1] === ' ')) {
+            return bp + excess;
+        }
+    }
+
+    // C: singplur_lookup one_off reverse (plur → sing)
+    for (const [sing, plur] of ONE_OFF_PLURALS) {
+        const pl = plur.toLowerCase();
+        if (lower === pl || (pl.length < lower.length && lower.endsWith(pl))) {
+            const stem = bp.slice(0, bp.length - plur.length);
+            const matched = bp.slice(bp.length - plur.length);
+            let sg = sing;
+            if (matched[0] >= 'A' && matched[0] <= 'Z') {
+                sg = sing[0].toUpperCase() + sing.slice(1);
+            }
+            return stem + sg + excess;
+        }
+    }
+
+    if (bp.length >= 1 && bp[bp.length - 1].toLowerCase() === 's') {
+        if (bp.length >= 2 && bp[bp.length - 2].toLowerCase() === 'e') {
+            if (bp.length >= 3 && bp[bp.length - 3].toLowerCase() === 'i') {
+                // C: cookies/pies/genies/zombies/valkyries → drop s only
+                const keepS = /cookies$/i.test(bp)
+                    || (/(^| )pies$/i.test(bp))
+                    || (/(^| )genies$/i.test(bp))
+                    || /mbies$/i.test(bp)
+                    || /yries$/i.test(bp);
+                if (!keepS) {
+                    // ies → y
+                    bp = bp.slice(0, -3) + (bp[bp.length - 3] === 'I' ? 'Y' : 'y');
+                    return bp + excess;
+                }
+                // fall through to drop s
+            } else if (bp.length >= 4 && /ves$/i.test(bp)
+                && /[lraeiuo]$/i.test(bp[bp.length - 4])) {
+                // C: wolves etc ves→f; cloves/nerves keep s-drop
+                if (!/cloves$/i.test(bp) && !/nerves$/i.test(bp)) {
+                    bp = bp.slice(0, -3) + (bp[bp.length - 3] === 'V' ? 'F' : 'f');
+                    return bp + excess;
+                }
+            } else if (/eses$/i.test(bp) || /oxes$/i.test(bp) || /nxes$/i.test(bp)
+                || /ches$/i.test(bp) || /uses$/i.test(bp) || /shes$/i.test(bp)
+                || /sses$/i.test(bp) || /atoes$/i.test(bp) || /dingoes$/i.test(bp)
+                || /Aleaxes$/i.test(bp)) {
+                bp = bp.slice(0, -2); // drop es
+                return bp + excess;
+            }
+            // else fall through to drop s (pieces, daggers via -es not special)
+        } else if (/us$/i.test(bp)) {
+            // C: lotus/fungus keep; tengus/hezrous fall through to drop s
+            if (!/tengus$/i.test(bp) && !/hezrous$/i.test(bp)) {
+                return bp + excess;
+            }
+        } else if (/ss$/i.test(bp) || / lens$/i.test(bp) || /^lens$/i.test(bp)) {
+            return bp + excess;
+        }
+        bp = bp.slice(0, -1); // drop s
+        return bp + excess;
+    }
+
+    // C: men → man (badman defer — leave men as-is when badman)
+    if (/men$/i.test(bp) && bp.length >= 3) {
+        bp = bp.slice(0, -2) + (bp[bp.length - 2] === 'E' ? 'AN' : 'an');
+        return bp + excess;
+    }
+    if (/matzot$/i.test(bp) || /ae$/i.test(bp) || /eaux$/i.test(bp)) {
+        bp = bp.slice(0, -1);
+        return bp + excess;
+    }
+
+    return bp + excess;
+}
+
 /**
  * C ref: objnam.c makeplural — irregular one_off + compound "of" + ya.
  * Named omissions: pronoun genders; already_plural ae/eaux; man→men;

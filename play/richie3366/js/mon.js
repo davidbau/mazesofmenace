@@ -34,7 +34,7 @@ import {
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
-import { enexto, rloc_to, rloc, tele_restrict } from './teleport.js';
+import { enexto, rloc_to, rloc, tele_restrict, noteleport_level } from './teleport.js';
 import { may_dig } from './dig.js';
 import { newsym, pline, sensemon, canseemon } from './display.js';
 import { online2 } from './hacklib.js';
@@ -706,10 +706,8 @@ export function mon_allowflags(mtmp) {
         allowflags |= ALLOW_SANCT;
     }
     // C: unicorn && !noteleport_level → NOTONL (mfndpos skips online cells).
-    // noteleport_level: level.flags.noteleport (covetous/hell-court deferred).
     if (mtmp.data?.mlet === 'S_UNICORN' && likes_gems(mtmp.data)
-        && !game.level?.flags?.noteleport
-        && !((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0))) {
+        && !noteleport_level(mtmp)) {
         allowflags |= NOTONL;
     }
     if (is_human(mtmp.data) || (mtmp.data?.mndx ?? -1) === PM_MINOTAUR) {

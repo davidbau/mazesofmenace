@@ -2,12 +2,13 @@
 // C ref: invent.c display_inventory / ddoinv / let_to_name / doorganize;
 //        o_init.c dodiscovered / discover_object;
 //        insight.c enlightenment (BASICENLIGHTENMENT subset).
+// D-0856: display_pickinv / invent_lines obj_to_glyph Hallu display RNG.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
-    endgamelevelname,
+    endgamelevelname, obj_glyph,
 } from './display.js';
 import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee } from './objnam.js';
 import { yn_function } from './getline.js';
@@ -92,7 +93,7 @@ import {
     TELEPORT_CONTROL,
     HALLUC_RES, SEARCHING, REFLECTING, LIFESAVED,
     FIRE_RES, SHOCK_RES, TELEPAT, WARNING,
-    DISPLACED,
+    DISPLACED, ANTIMAGIC,
 } from './const.js';
 import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
@@ -558,6 +559,25 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
 }
 
 /**
+ * C ref: wintty.c erase_menu_or_text / tty_dismiss_nhwindow(NHW_MENU).
+ * Fullscreen (offx==0): docrt()+flush (Hallu see_monsters burns inside
+ * docrt). Corner (offx!=0): docorner ≡ reprint gbuf only — no newsym /
+ * display-RNG burns; once-per-input Hallu see_monsters refreshes next.
+ */
+export async function dismiss_nhw_menu() {
+    const g = game._tty_menu_geom;
+    game._menu_overlay = false;
+    game._tty_menu_geom = null;
+    // Missing geom (paint_overlay fullscreen without geom) → treat as
+    // offx==0 (C fullscreen erase_menu_or_text → docrt).
+    if (!g || g.offx === 0) {
+        await docrt();
+    }
+    // Corner: skip docrt; flush_screen rebuilds the terminal from gbuf.
+    await flush_screen(1);
+}
+
+/**
  * C ref: wintty.c tty_end_menu + process_menu_window select_menu(PICK_NONE).
  * entries already include prompt/blank/items (as after tty_end_menu).
  * Pages at lmax = rows-1 (23); ESC/Return dismiss; Space next page or done.
@@ -858,6 +878,9 @@ export function invent_lines() {
         for (const otmp of items) {
             // C ref: invent.c sortloot_item — observe_object before naming
             if (!game.u?.Blind) observe_object(otmp);
+            // C: display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
+            // before add_menu (Hallu burns display RNG even on tty menus).
+            obj_glyph(otmp);
             lines.push({ text: xprname(otmp), attr: 0 });
         }
     }
@@ -930,6 +953,9 @@ export async function display_pickinv_reply(lets) {
         entries.push({ text: CLASS_NAMES[oclass] || 'Items', attr: ATR_INVERSE });
         for (const otmp of items) {
             if (!game.u?.Blind) observe_object(otmp);
+            // C: invent.c display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
+            // then map_glyphinfo + add_menu (Hallu display-RNG burn).
+            obj_glyph(otmp);
             const letch = otmp.invlet || '?';
             byLet.set(letch, otmp);
             entries.push({ text: xprname(otmp), attr: 0 });
@@ -967,6 +993,7 @@ export async function display_pickinv_reply(lets) {
                 withStatus: false,
                 cursor: [morestr.length + 1, page.length],
             });
+            game._tty_menu_geom = { offx: 0, endRow: page.length };
         } else {
             await paint_corner_nhw_menu(entries, morestr);
         }
@@ -974,9 +1001,7 @@ export async function display_pickinv_reply(lets) {
         const key = await nhgetch();
 
         if (key === 27) {
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
+            await dismiss_nhw_menu();
             return '\x1b';
         }
         // C: Space → next page, or finish (no pick) on last page
@@ -985,15 +1010,11 @@ export async function display_pickinv_reply(lets) {
                 curr_page++;
                 continue;
             }
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
+            await dismiss_nhw_menu();
             return null;
         }
         if (key === 13 || key === 10) {
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
+            await dismiss_nhw_menu();
             return null;
         }
         const ch = String.fromCharCode(key);
@@ -1004,15 +1025,11 @@ export async function display_pickinv_reply(lets) {
                 return t.length >= 3 && t[1] === ' ' && t[0] === ch;
             });
             if (onPage && byLet.has(ch)) {
-                game._menu_overlay = false;
-                await docrt();
-                await flush_screen(1);
+                await dismiss_nhw_menu();
                 return ch;
             }
         } else if (byLet.has(ch)) {
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
+            await dismiss_nhw_menu();
             return ch;
         }
         // invalid / other-page letter → re-prompt same page
@@ -1067,9 +1084,9 @@ export async function display_inventory() {
     }
     await flush_screen(1);
     await nhgetch(); // dismiss (Esc / space)
-    clear_overlay();
-    await docrt();
-    await flush_screen(1);
+    // Fullscreen invent sets no corner geom — dismiss → docrt (C).
+    if (fullscreen) game._tty_menu_geom = { offx: 0, endRow: menuItems.length };
+    await dismiss_nhw_menu();
 }
 
 /**
@@ -1586,6 +1603,22 @@ function hero_Halluc_resistance(u = game.u || {}) {
         || (u.HHalluc_resistance | 0) || (u.EHalluc_resistance | 0));
 }
 
+/**
+ * C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance
+ * (flat u.Hallucination mirror accepted). Local copy — do_name imports us.
+ */
+function hero_Hallucination(u = game.u || {}) {
+    if (u.Hallucination) return true;
+    return !!((u.HHallucination | 0) && !hero_Halluc_resistance(u));
+}
+
+/** C ref: youprop.h Antimagic — H || E via flat + uprops[ANTIMAGIC]. */
+function hero_Antimagic(u = game.u || {}) {
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
 /** C ref: youprop.h Reflecting — H || E via uprops[REFLECTING]. */
 function hero_Reflecting(u = game.u || {}) {
     const e = u.uprops?.[REFLECTING];
@@ -1721,8 +1754,8 @@ function item_resistance_message_lines(adtyp, prot_message, final, o) {
 }
 
 /**
- * C ref: insight.c status_enlightenment — Deaf + Sleepy + hunger +
- * encumbrance subset (poly/ride/other troubles/weapon deferred to callers).
+ * C ref: insight.c status_enlightenment — Hallucination + Deaf + Sleepy +
+ * hunger + encumbrance subset (poly/ride/other troubles/weapon deferred).
  * Overlay (^X) lines need one extra leading space vs enlght_line.
  * @param {number} final
  * @param {{ overlay?: boolean, magic?: boolean }} opts
@@ -1739,6 +1772,9 @@ function status_core_lines(final = 0, opts = {}) {
         return overlay ? ` ${line}` : line;
     };
     const out = [];
+    // C: after Confusion — if (Hallucination) you_are("hallucinating", "");
+    // Stoned/Slimed/Strangled/Sick/Vomiting/Stunned/Confusion/Blind/… deferred.
+    if (hero_Hallucination()) out.push(wrap('hallucinating'));
     // C: if (Deaf) you_are("deaf", from_what(DEAF)); from_what wizard-only
     if (hero_Deaf()) out.push(wrap('deaf'));
     // C: if (Sleepy) if (magic || cause_known(SLEEPY))
@@ -2377,8 +2413,14 @@ export async function doattributes() {
                 'Your alignment ', 'is', ` ${record}`, '',
             )));
         }
-        // C attributes_enlightenment Resistances — Fire before Cold/…/Shock
-        // before Poison. Cold/Sleep/Disint/Acid/Drain/Sick/Stone deferred.
+        // C attributes_enlightenment Resistances — Antimagic before Fire/
+        // Cold/…/Shock/Poison. Invulnerable + Cold/Sleep/Disint/Acid/
+        // Drain/Sick/Stone deferred.
+        if (hero_Antimagic(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'magic-protected', from_what(ANTIMAGIC),
+            )));
+        }
         if (hero_Fire_resistance(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', 'fire resistant', from_what(FIRE_RES),
@@ -2891,7 +2933,11 @@ export async function dolook() {
 
 /**
  * C ref: invent.c hold_another_object — wish/pickup into invent.
- * Fumbling / encumbrance-drop / autoquiver / fatal-corpse paths deferred.
+ * Branch envelope: Blind observe; artifact touch; addinv + prinv;
+ * encumber_msg after stay-in-invent (D-0863 — triggers --More-- via
+ * pline NEED_MORE before makewish ublesscnt).
+ * Named omissions: Fumbling/encumbrance-drop/autoquiver/fatal-corpse;
+ * update_inventory / perm_invent redraw.
  */
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     const { addinv } = await import('./u_init.js');
@@ -2929,6 +2975,9 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         // C: prinv(hold_msg, obj, oquan) — oquan before merge
         await prinv(hold_msg || null, held, oquan);
     }
+    // C: update_inventory(); encumber_msg(); — invent redraw deferred;
+    // encumber_msg pline flushes prior prinv --More-- (xwaitforspace).
+    await encumber_msg();
     return held;
 }
 

@@ -21,10 +21,11 @@ import {
     TOOL_CLASS,
     FOOD_CLASS,
 } from './objects.js';
-import { mksobj, mkobj, weight, curse } from './mkobj.js';
+import { mksobj, mkobj, weight, curse, oc_merge_of } from './mkobj.js';
 import { artifact_name, nartifact_exist } from './artifact.js';
 import { oname } from './do_name.js';
 import { name_to_monplus } from './mondata.js';
+import { makesingular } from './objnam.js';
 import { NON_PM, LOW_PM, monsterNames } from './monsters.js';
 import { ONAME_WISH, SPE_LIM } from './const.js';
 
@@ -36,6 +37,8 @@ const GRAY_DS = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const SCALE_MAIL = objectNames.indexOf('SCALE_MAIL');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const GOLD_SYM = '$';
 
 /** C ref: objnam.c wrp[] / wrpsym[] — class words for wishing. */
 const WRP = [
@@ -365,6 +368,37 @@ export function readobjnam(bp, no_wish) {
         d.mntmp = NON_PM;
     }
 
+    // C ref: objnam.c readobjnam — makesingular before alt spellings / wrp / srch.
+    // Exceptions: "tricks" (bag of tricks), "clothes" (avoid cloth false hit).
+    if (d.bp && !/^tricks$/i.test(d.bp) && !/^clothes$/i.test(d.bp)) {
+        const sng = makesingular(d.bp);
+        if (sng !== d.bp) {
+            if (d.cnt === 1) d.cnt = 2;
+            d.bp = sng;
+        }
+    }
+
+    // C ref: objnam.c readobjnam_postparse1 — gold/money → mksobj(GOLD_PIECE, FALSE)
+    // and return otmp (skips namedesc / typfnd). Case 3 in C.
+    {
+        const bp = d.bp || '';
+        const end = bp.length;
+        const isGold = (end >= 10 && bp.slice(end - 10).toLowerCase() === 'gold piece')
+            || (end >= 7 && bp.slice(end - 7).toLowerCase() === 'zorkmid')
+            || /^gold$/i.test(bp) || /^money$/i.test(bp) || /^coin$/i.test(bp)
+            || bp === GOLD_SYM;
+        if (isGold && GOLD_PIECE >= 0) {
+            let cnt = d.cnt | 0;
+            if (cnt > 5000 && !wizardMode()) cnt = 5000;
+            else if (cnt < 1) cnt = 1;
+            d.otmp = mksobj(GOLD_PIECE, false, false);
+            if (!d.otmp) return null;
+            d.otmp.quan = cnt;
+            d.otmp.owt = weight(d.otmp);
+            return d.otmp;
+        }
+    }
+
     // C: postparse1 wrp[] — "wand of polymorph" → WAND_CLASS + "polymorph"
     if (!d.typ && !d.oclass) {
         readobjnam_parse_class_words(d);
@@ -405,6 +439,13 @@ export function readobjnam(bp, no_wish) {
     d.otmp = mksobj(d.typ, true, false);
     d.typ = d.otmp.otyp;
     d.oclass = d.otmp.oclass;
+
+    // C ref: objnam.c typfnd — honor d.cnt when oc_merge (wizard unrestricted;
+    // non-wizard rnd(6)/candle/ammo arms deferred).
+    if ((d.cnt | 0) > 0 && oc_merge_of(d.otmp.otyp) && wizardMode()) {
+        d.otmp.quan = d.cnt | 0;
+        d.otmp.owt = weight(d.otmp);
+    }
 
     if (d.spesgn === 0) {
         d.spe = d.otmp.spe | 0;

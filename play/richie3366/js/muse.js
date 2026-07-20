@@ -33,6 +33,7 @@ import {
     OBJ_FLOOR, G_GONE, MM_NOMSG,
     W_ARMOR, W_ACCESSORY, W_SADDLE,
     MIGR_RANDOM, In_endgame, In_sokoban,
+    Is_container,
 } from './const.js';
 import { MON_WEP } from './weapon.js';
 import { welded, setuwep, setuswapwep } from './wield.js';
@@ -197,7 +198,8 @@ function attacktype(ptr, aatyp) {
 /**
  * C ref: muse.c searches_for_item — intelligent non-animals seek useful loot.
  * Named omissions: onscary underfoot floor gate; FOOD_CLASS corpse/tin/egg
- * bodies; Is_container/Is_mbag/can_blow polish; touch_petrifies paths.
+ * Named omissions: floor onscary protect; FOOD corpse/tin/egg
+ * bodies; can_blow polish on horns; touch_petrifies paths.
  */
 export function searches_for_item(mon, obj) {
     if (!mon || !obj) return false;
@@ -272,7 +274,15 @@ export function searches_for_item(mon, obj) {
             // can_blow deferred → allow when charged
             return (obj.spe | 0) > 0;
         }
-        // Is_container / camera deferred
+        // C ref: muse.c searches_for_item TOOL — Is_container && !cursed-mbag && !olocked
+        {
+            const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
+            const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+            const is_mbag = typ === BAG_OF_HOLDING || typ === BAG_OF_TRICKS;
+            if (Is_container(obj) && !(is_mbag && obj.cursed) && !obj.olocked) {
+                return true;
+            }
+        }
         if (typ === EXPENSIVE_CAMERA) return (obj.spe | 0) > 0;
         break;
     case FOOD_CLASS:

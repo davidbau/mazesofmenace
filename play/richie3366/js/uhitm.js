@@ -1136,16 +1136,8 @@ export async function do_attack(mtmp) {
             // clear context.move — turn still spends so moveloop runs
             // movemon/distfleeck (D-0442). Then stop pline + end_running.
             if (mtmp.mtame) {
-                let fleetime = rnd(6);
-                if (!fleetime) {
-                    mtmp.mfleetim = 0;
-                } else if (!mtmp.mflee || mtmp.mfleetim) {
-                    fleetime += (mtmp.mfleetim | 0);
-                    if (fleetime === 1) fleetime++;
-                    mtmp.mfleetim = Math.min(fleetime, 127);
-                }
-                mtmp.mflee = 1;
-                // mon_track_clear / fleemsg / Vrock gas deferred
+                // C: monflee(mtmp, rnd(6), FALSE, FALSE) — includes mon_track_clear
+                await monflee(mtmp, rnd(6), false, false);
             }
             // C: Strcpy(buf, y_monnam); buf[0]=highc; You("stop.  %s is in the way!", buf)
             let buf = x_monnam_tame(mtmp);

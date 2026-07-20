@@ -139,7 +139,12 @@ async function monflee(mtmp, fleetime, first, fleemsg) {
         }
         mtmp.mflee = 1;
     }
-    // mon_track_clear deferred
+    // C: monflee always mon_track_clear — local music copy
+    if (mtmp.mtrack) {
+        for (let j = 0; j < mtmp.mtrack.length; j++) {
+            mtmp.mtrack[j] = { x: 0, y: 0 };
+        }
+    }
 }
 
 /**

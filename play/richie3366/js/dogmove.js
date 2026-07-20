@@ -27,7 +27,7 @@ import {
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
-    is_swimmer, likes_lava, throws_rocks,
+    is_swimmer, likes_lava, throws_rocks, is_rider,
     PM_LICHEN, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
@@ -86,19 +86,36 @@ function IS_ROOM(typ) {
     return typ >= ROOM;
 }
 
-// C ref: zap.c obj_resists() — always consumes rn2(100) for normal objs
+// C ref: questpgr.c is_quest_artifact — oartifact == urole.questarti
+function is_quest_artifact(obj) {
+    const want = game.urole?.questarti | 0;
+    // C compares raw; guard want!==0 so incomplete urole cannot skip all rn2
+    return want !== 0 && (obj?.oartifact | 0) === want;
+}
+
+// C ref: zap.c obj_resists() — invocation/rider items return TRUE with no
+// rn2; ordinary objects always consume rn2(100) (D-0864).
 export function obj_resists(obj, ochance, achance) {
     if (!obj) return false;
-    // Quest/invocation items omitted for early dlvl
+    const n = objectNames[obj.otyp];
+    if (n === 'AMULET_OF_YENDOR'
+        || n === 'SPE_BOOK_OF_THE_DEAD'
+        || n === 'CANDELABRUM_OF_INVOCATION'
+        || n === 'BELL_OF_OPENING'
+        || (n === 'CORPSE' && is_rider(mons(obj.corpsenm)))) {
+        return true;
+    }
     const chance = rn2(100);
     return chance < (obj.oartifact ? achance : ochance);
 }
 
-// C ref: dog.c dogfood() — quality; always rolls obj_resists first.
+// C ref: dog.c dogfood() — quest arti short-circuit then obj_resists.
 export function dogfood(mon, obj) {
     if (!obj) return UNDEF;
     if (obj.opoisoned) return POISON;
-    if (obj_resists(obj, 0, 95)) return obj.cursed ? TABU : APPORT;
+    if (is_quest_artifact(obj) || obj_resists(obj, 0, 95)) {
+        return obj.cursed ? TABU : APPORT;
+    }
 
     const mptr = mon?.data ?? mons(mon?.mnum);
     const oclass = obj.oclass ?? 0;
