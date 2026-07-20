@@ -38,7 +38,7 @@ import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
     HATCH_EGG, MAX_EGG_HATCH_TIME,
-    OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -242,12 +242,19 @@ export function splitobj(obj, num) {
         child_oid: otmp.o_id,
     };
 
-    // Insert child just after parent on nobj (and nexthere when on floor)
+    // Insert child just after parent on nobj (and nexthere when on floor).
+    // C invent is the nobj list; JS also keeps game.invent[] — splice child
+    // in after parent so carried splits are visible to inv_cnt / steal weight.
     otmp.nobj = obj.nobj || null;
     obj.nobj = otmp;
     if (obj.where === OBJ_FLOOR) {
         otmp.nexthere = obj.nexthere || null;
         obj.nexthere = otmp;
+    } else if (obj.where === OBJ_INVENT || (game.invent || []).includes(obj)) {
+        const inv = game.invent || (game.invent = []);
+        const idx = inv.indexOf(obj);
+        if (idx >= 0 && !inv.includes(otmp)) inv.splice(idx + 1, 0, otmp);
+        otmp.where = OBJ_INVENT;
     }
     return otmp;
 }
@@ -1212,6 +1219,12 @@ export function mergable(otmp, obj) {
     if (ohl !== LOST_NONE && hl !== ohl) return false;
     if ((obj.spe | 0) !== (otmp.spe | 0)) return false;
     if ((obj.corpsenm ?? -1) !== (otmp.corpsenm ?? -1)) return false;
+    // C invent.c mergable — FOOD oeaten/orotten must match (partly eaten)
+    if (obj.oclass === FOOD_CLASS
+        && ((obj.oeaten | 0) !== (otmp.oeaten | 0)
+            || !!obj.orotten !== !!otmp.orotten)) {
+        return false;
+    }
     // C: dknown must match; known may differ and is reconciled in merged()
     if (!!obj.dknown !== !!otmp.dknown) return false;
     if ((obj.owornmask | 0) || (otmp.owornmask | 0)) return false;
@@ -1409,8 +1422,8 @@ export function obj_extract_self(obj) {
     obj.nobj = null;
     obj.nexthere = null;
     obj.where = OBJ_FREE;
-    obj.ox = 0;
-    obj.oy = 0;
+    // C remove_object / extract_nobj: do NOT clear ox/oy — drag_ball and
+    // move_bc read uball->ox after pickup (D-0911). place_object overwrites.
 }
 
 /**

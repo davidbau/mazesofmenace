@@ -18,7 +18,7 @@ import {
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
-    A_STR, SQSRCHRADIUS,
+    A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
 } from './const.js';
 import { COIN_CLASS, ROCK, GOLD_PIECE, GEM_CLASS, CORPSE } from './mkobj.js';
 import { t_at, t_missile } from './trap.js';
@@ -475,10 +475,50 @@ export function mfndpos(mon, flag) {
             // Reproducing this is required for the cnt that feeds m_move's
             // rn2(4*(cnt-j)) at monmove.c:1963.
             if (sobj_at_boulder(nx, ny) && !mon_allows_rock(mon)) continue;
-            poss.push({ x: nx, y: ny });
+            // C ref: mon.c:2353 — trap handling.  A harmful trap the monster is
+            // familiar with is avoided (dropped) UNLESS the caller allows traps
+            // (pets pass ALLOW_TRAPS via mon_allowflags); when kept, the square is
+            // flagged ALLOW_TRAPS so dog_move()/m_move() can roll the "step on it
+            // anyway" chance.  Harmless traps are neither avoided nor flagged.
+            let info = 0;
+            const ttmp = t_at(nx, ny);
+            if (ttmp && ttmp.ttyp > 0 && ttmp.ttyp < TRAPNUM) {
+                // fixed_tele_trap()+hastrack (a hero-used fixed teleport trap) is
+                // not reachable at the contest's diverging points; treat as absent.
+                if (!m_harmless_trap(mon, ttmp)) {
+                    if (!(flag & ALLOW_TRAPS) && mon_knows_traps(mon, ttmp.ttyp))
+                        continue;
+                    info |= ALLOW_TRAPS;
+                }
+            }
+            poss.push({ x: nx, y: ny, info });
         }
     }
     return poss;
+}
+
+// C ref: trap.c m_harmless_trap(mtmp, ttmp) — is trap `ttmp` harmless to `mtmp`?
+// A floor-trigger trap doesn't fire for an airborne monster; a bear trap can't
+// hold a small/amorphous/whirly/unsolid monster; statue/magic/vibrating-square
+// traps never harm a moving monster.  Everything else (arrow/dart/rock/pit/
+// teleport/&c.) is harmful to the grounded, solid monsters the sessions place.
+function m_harmless_trap(mtmp, ttmp) {
+    const ttyp = ttmp.ttyp;
+    if (FLOOR_TRIGGER.has(ttyp) && mon_check_in_air(mtmp)) return true;
+    switch (ttyp) {
+    case BEAR_TRAP: {
+        const msize = (mtmp.data?.msize != null) ? mtmp.data.msize : 2;
+        // amorphous / is_whirly / unsolid escapes aren't reachable for the
+        // grounded quadrupeds placed near bear traps here; only the size test.
+        return msize <= 1; /* MZ_SMALL */
+    }
+    case STATUE_TRAP:
+    case MAGIC_TRAP:
+    case VIBRATING_SQUARE:
+        return true;
+    default:
+        return false;
+    }
 }
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y) — is there a boulder lying on the
@@ -517,7 +557,7 @@ const ALLOW_U = 0x100000;
 // (the 8 M1_CONCEAL entries in include/monsters.h: cave spider, centipede,
 // scorpion, garter snake, snake, water moccasin, pit viper, cobra).
 const M1_CONCEAL_PMIDX = new Set([94, 95, 97, 214, 215, 216, 218, 219]);
-function hides_under_pm(ptr) {
+export function hides_under_pm(ptr) {
     return ptr != null && M1_CONCEAL_PMIDX.has(ptr.pmidx);
 }
 
@@ -582,7 +622,7 @@ function ansimpleoname_topobj(x, y) {
 // statue &c.) is modelled: set mundetected, and if the hero can see the monster
 // announce "You see the <mon> <locomotion> under <object>." then newsym() so the
 // now-hidden monster disappears from the map.  Consumes NO RNG.
-async function hideunder(mtmp) {
+export async function hideunder(mtmp) {
     const ptr = mtmp.data;
     const x = mtmp.mx, y = mtmp.my;
     const seeit = canseemon_mm(mtmp);
@@ -668,8 +708,8 @@ function mon_learns_traps(mtmp, ttyp) {
 // dispatched per type, each consuming exactly the RNG the C effect consumes.
 // Returns: 0 = Trap_Effect_Finished, 1 = Trap_Caught_Mon, 2 = Trap_Killed_Mon,
 // 3 = Trap_Moved_Mon (we never produce the latter two for the modeled types).
-const Trap_Effect_Finished = 0, Trap_Caught_Mon = 1, Trap_Killed_Mon = 2;
-async function mon_mintrap(mtmp) {
+export const Trap_Effect_Finished = 0, Trap_Caught_Mon = 1, Trap_Killed_Mon = 2;
+export async function mon_mintrap(mtmp) {
     const trap = t_at(mtmp.mx, mtmp.my);
     if (!trap) { mtmp.mtrapped = 0; return Trap_Effect_Finished; }
 
@@ -827,6 +867,36 @@ async function mon_trapeffect(mtmp, trap) {
         return trapkilled ? Trap_Killed_Mon
             : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
     }
+    case BEAR_TRAP: {
+        // C ref: trapeffect_bear_trap() else-branch (monster), trap.c:1525.  A
+        // solid, grounded monster larger than MZ_SMALL is caught: the "<Mon> is
+        // caught in a bear trap!" topline (routed through update_topl so it pages
+        // a still-pending message with --More--), seetrap, then a forced d(2,4)
+        // hit via thitm.  (amorphous / whirly / unsolid escapes aren't reachable
+        // for the quadruped pets/steeds that step onto bear traps here.)
+        const mptr = mtmp.data;
+        const msize = (mptr?.msize != null) ? mptr.msize : 2 /* MZ_MEDIUM */;
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        if (msize > 1 /* MZ_SMALL */ && !mon_check_in_air(mtmp)) {
+            mtmp.mtrapped = 1;
+            if (in_sight) {
+                const { update_topl } = await import('./display.js');
+                const a_your = trap.madeby_u ? 'your' : 'a';
+                await update_topl(`${Monnam(mtmp)} is caught in ${a_your} bear trap!`);
+                const { seetrap } = await import('./trap.js');
+                seetrap(trap);
+            }
+        }
+        // C ref: trap.c:1553 — mtmp->mtrapped && !wearing_iron_shoes -> thitm the
+        // d(2,4) bite.  The pets/steeds here wear no iron shoes.
+        if (mtmp.mtrapped) {
+            const dam = d(2, 4);                           // trap.c:1554
+            const trapkilled = await mon_thitm(0, mtmp, null, dam, false);
+            return trapkilled ? Trap_Killed_Mon
+                : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
+        }
+        return Trap_Effect_Finished;
+    }
     case MAGIC_TRAP:
         // C ref: trapeffect_magic_trap() else-branch — monsters are usually
         // immune; rn2(21)==0 redirects to the fire-trap effect.  The contest
@@ -924,6 +994,16 @@ const MMOVE_NOTHING = 0, MMOVE_NOMOVES = 1, MMOVE_MOVED = 2, MMOVE_DIED = 3;
 async function m_move(mtmp) {
     const ptr = mtmp.data;
     let omx = mtmp.mx, omy = mtmp.my;
+
+    // C ref: monmove.c:1733 — a trapped monster (e.g. a pet just caught in a
+    // bear trap) first tries to break loose via mintrap (rn2(40) escape roll for
+    // a bear trap).  Still caught -> it forfeits its move this turn (no further
+    // RNG); this runs BEFORE the meating gate and the tame-pet dog_move dispatch.
+    if (mtmp.mtrapped) {
+        const i = await mon_mintrap(mtmp);
+        if (i === Trap_Killed_Mon) { newsym(mtmp.mx, mtmp.my); return MMOVE_DIED; }
+        if (i === Trap_Caught_Mon) return MMOVE_NOTHING;
+    }
 
     // C ref: monmove.c:1764 — door-handling capability flags, consumed by
     // postmov() when the monster ends its move on a door square.

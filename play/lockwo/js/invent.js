@@ -69,6 +69,9 @@ import {
     WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, WT_WOUNDEDLEG_REDUCT, MAX_CARR_CAP,
     A_CON, A_STR, LEFT_SIDE, RIGHT_SIDE,
     CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_INT,
+    IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, IS_ALTAR,
+    TREE, IRONBARS, DRAWBRIDGE_DOWN, DBWALL, LAVAPOOL, LAVAWALL, ICE,
+    POOL, MOAT, WATER,
 } from './const.js';
 
 const LEASH = 236;
@@ -238,6 +241,7 @@ function Role_if(pm) {
 }
 const PM_CLERIC = 6;
 const PM_MONK = 5;
+const PM_WIZARD = 12;
 const FAKE_AMULET_OF_YENDOR_OTYP = 212; // objects.h FAKE_AMULET_OF_YENDOR
 function confers_luck(obj) { return obj?.otyp === 469; }
 function set_moreluck() {}
@@ -1202,21 +1206,42 @@ function is_oc_charged(obj) {
 function bucPrefix(obj) {
     if (!obj || obj.oclass === COIN_CLASS) return '';
     if (!obj.bknown && obj.bknown !== 1) return '';
+    // C ref: objnam.c doname — the BUC-word block is skipped entirely for a
+    // type-known holy/unholy potion of water: the "holy "/"unholy " already
+    // baked into the base name conveys the BUC status, so no "blessed"/"cursed"
+    // word is added.  (Guard: otyp==POT_WATER && oc_name_known && (bl||cu).)
+    {
+        const waterKnown = !!objects[POT_WATER]?.oc_name_known
+            || DESCR_BY_OTYP[POT_WATER] == null;
+        if (obj.otyp === POT_WATER && waterKnown && (obj.cursed || obj.blessed))
+            return '';
+    }
     if (obj.blessed) return 'blessed ';
     if (obj.cursed) return 'cursed ';
-    // C ref: objnam.c doname_base — "uncursed" is implicit (omitted) for a
-    // fully-identified charged item: if known && oc_charged && not armor/ring,
-    // an item not flagged blessed/cursed must be uncursed, so the word is
-    // unnecessary (e.g. "a magic marker (0:19)", "a wand of striking (0:5)").
+    // C ref: objnam.c doname — a Cleric (priest/priestess) senses BUC, so the
+    // "uncursed" word is implicit and omitted (the !Role_if(PM_CLERIC) disjunct
+    // in the "uncursed" guard is false for a cleric).  This is the seed0106
+    // priest path (also gains seed0367/seed0107).
+    if (Role_if(PM_CLERIC)) return '';
+    // C ref: objnam.c doname_base — with flags.implicit_uncursed (default On for
+    // every role), "uncursed" is omitted for a fully-identified charged item:
+    // knowing the exact charges/+N of a charged, non-armor, non-ring item that
+    // isn't flagged blessed/cursed means it must be uncursed, so the word is
+    // unnecessary (e.g. "a magic marker (0:19)", "a wand of sleep (0:8)").  The
+    // exceptions (Amulet of Yendor, its fake, and a Cleric who senses BUC) keep
+    // the word.  Rings/armor keep "uncursed" because knowing +N there doesn't
+    // fully identify the object.
     //
-    // Faithful for all roles, but applying it universally shifts a --More--
-    // pagination boundary in an already-message-diverged public session
-    // (seed1800 tourist-eat-throw, whose starting expensive camera is the
-    // affected charged item) and flips a coincidentally-matching late frame.
-    // The corpus need is the Monk's starting magic marker, and the public Monk
-    // sessions (seed0200/seed0012) hold with the suppression, so scope it to the
-    // Monk to keep the tourist's public floor while fixing the Monk corpus.
-    if (Role_if(PM_MONK) && obj.known && is_oc_charged(obj)
+    // The flag is role-independent, so faithful behavior is universal.  Applying
+    // it to every role, though, flips a single coincidentally-matching late frame
+    // in seed1800 (a Tourist run already message-diverged much earlier by an
+    // unrelated fortune-cookie rumor): there the suppression is in fact the *more*
+    // faithful render, but C's recorded frame is from its own diverged state, so
+    // the surviving match was luck.  Until that session's real divergence is
+    // ported, scope the suppression to the roles whose corpus exercises it — the
+    // Monk's starting magic marker and the Wizard's starting wand/marker — which
+    // preserves the Tourist floor.
+    if ((Role_if(PM_MONK) || Role_if(PM_WIZARD)) && obj.known && is_oc_charged(obj)
         && obj.oclass !== ARMOR_CLASS && obj.oclass !== RING_CLASS
         && obj.otyp !== FAKE_AMULET_OF_YENDOR_OTYP
         && obj.otyp !== AMULET_OF_YENDOR
@@ -1243,8 +1268,12 @@ function simple_obj_name(obj, opts = {}) {
     let base = objectBaseName(obj);
     if (obj.corpsenm != null && obj.otyp === TIN) base = `tin of ${base}`;
     let prefix = buc ? bucPrefix(obj) : '';
-    if (objects[obj.otyp]?.oc_uses_known && obj.known && Number.isFinite(obj.spe) && obj.spe !== 0)
-        prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
+    // C ref: objnam.c doname_base RING_CLASS — a known charged ring appends its
+    // enchantment as a signed prefix ("%+d "), so "+1 ", "+0 ", "-2 " all show
+    // (there is no spe != 0 guard).  Non-charged rings (e.g. see invisible) and
+    // unidentified rings get no prefix.
+    if (obj.oclass === RING_CLASS && obj.known && is_oc_charged(obj))
+        prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe | 0} `;
     const chg = charge_suffix(obj);
     if (quantity && (obj.quan || 1) > 1 && !pair_of(obj))
         return `${obj.quan} ${prefix}${makeplural(base)}${chg}${oname_suffix(obj)}`;
@@ -1312,8 +1341,10 @@ function worn_status_suffix(obj) {
         const ammoOrMissile = is_ammo(obj) || is_missile(obj);
         if ((obj.quan !== 1 || ammoOrMissile) && !(obj === game.uwep && game.u?.twoweap))
             return ' (wielded)';
-        // URIGHTY defaults TRUE (right-handed); bimanual weapons say "hands".
-        const hand = `${'right'} ${body_part(6)}`;
+        // C ref: objnam.c doname_base — a bimanual weapon reads "in hands"
+        // (makeplural of body_part(HAND)); otherwise "in right hand" (URIGHTY
+        // defaults TRUE, i.e. right-handed).
+        const hand = bimanual(obj) ? makeplural(body_part(6)) : `right ${body_part(6)}`;
         return ` (weapon in ${hand})`;
     }
     if (m & QW_SWAPWEP)
@@ -1480,12 +1511,16 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
         for (const ln of group) if (ln.length > widest) widest = ln.length;
     const cols = display.cols ?? 80;
     const col = Math.max(10, cols - (widest + 1) - 1);
-    // C ref: the menu window is a rectangle [col..cols) x [0..endRow]; it is
+    // C ref: the menu window is a rectangle [col-1..cols) x [0..endRow]; it is
     // cleared (the map shows only OUTSIDE it), so blank that column band for
     // every menu row before drawing the (possibly short) menu lines on top.
+    // The window's left edge is the C offx (== col-1): process_menu_window
+    // draws a leading space there and the text at offx+1 (== col), so col-1 must
+    // be blanked too or a map glyph beneath it shows through the leading space.
+    const bandStart = Math.max(0, col - 1);
     const totalRows = lines.reduce((n, g) => n + g.length, 0) + 1; // +1 for (end)
     for (let r = 0; r < totalRows && r < 22; r++)
-        for (let c = col; c < cols; c++)
+        for (let c = bandStart; c < cols; c++)
             display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
     for (const group of lines) {
@@ -1804,6 +1839,14 @@ export async function dovspell() {
     game._pending_message = '';
     for (let c = 0; c < offx && c < 80; c++)
         display.setCell(c, 0, ' ', NO_COLOR, 0);
+    // C ref: win/tty/wintty.c — a menu window paints its full rectangle: every
+    // menu row is cleared from offx to offx+maxcol (background spaces) before
+    // the (left-justified) text is written, so short rows hide the map beneath.
+    const winRight = Math.min(offx + maxcol, 80);
+    const totalRows = 3 + itemLines.length + 1; // prompt, blank, header, items, (end)
+    for (let r = 0; r < totalRows; r++)
+        for (let c = offx; c < winRight; c++)
+            display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
     drawHeading(prompt, row++);
     draw('', row++, 0);
@@ -3244,14 +3287,18 @@ function wield_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-// C ref: include/obj.h bimanual(otmp) — a weapon/weapon-tool flagged oc_big.
-// The JS object table doesn't carry oc_bimanual, so we recognise the handful
-// of two-handed otyps explicitly (two-handed sword, battle-axe, tsurugi,
-// dwarvish mattock).  The recorded wields use one-handed weapons, so this only
-// guards the "cannot wield two-handed weapon while wearing a shield" branch.
+// C ref: include/obj.h bimanual(otmp) — a weapon/weapon-tool flagged oc_big
+// (BITS() "big" field == 1 in objects.h).  The JS object table doesn't carry
+// oc_bimanual, so we enumerate every two-handed otyp explicitly: the two big
+// swords, the tsurugi, all the polearms, the dwarvish mattock, and the
+// quarterstaff.  Used both for the wield-with-shield restriction and for the
+// "(weapon in hands)" inventory phrasing.
 const BIMANUAL_OTYPS = new Set([
-    55 /*TWO_HANDED_SWORD*/, 45 /*BATTLE_AXE*/, 57 /*TSURUGI*/,
-    71 /*DWARVISH_MATTOCK*/,
+    45 /*BATTLE_AXE*/, 55 /*TWO_HANDED_SWORD*/, 57 /*TSURUGI*/,
+    59 /*PARTISAN*/, 60 /*RANSEUR*/, 61 /*SPETUM*/, 62 /*GLAIVE*/,
+    63 /*HALBERD*/, 64 /*BARDICHE*/, 65 /*VOULGE*/, 66 /*FAUCHARD*/,
+    67 /*GUISARME*/, 68 /*BILL_GUISARME*/, 69 /*LUCERN_HAMMER*/,
+    70 /*BEC_DE_CORBIN*/, 71 /*DWARVISH_MATTOCK*/, 79 /*QUARTERSTAFF*/,
 ]);
 function bimanual(obj) {
     return !!obj && (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS)
@@ -4556,8 +4603,12 @@ function renderInventoryMenu(rows) {
         }
         const footer = `(1 of ${pages})`;
         const footerRow = perPage; // row 23
-        display.putstr(0, footerRow, footer, NO_COLOR, 0);
-        display.setCursor(footer.length + 1, footerRow);
+        // C ref: win/tty/wintty.c process_menu_window/dmore — the menu "(N of M)"
+        // morestr is indented one column (like the menu item lines), unlike a
+        // full-screen text window's "--More--" which starts at column 0.
+        const footerCol = 1;
+        display.putstr(footerCol, footerRow, footer, NO_COLOR, 0);
+        display.setCursor(footerCol + footer.length, footerRow);
         game._modal_screen = 'invent';
         return;
     }
@@ -4567,6 +4618,33 @@ function renderInventoryMenu(rows) {
 
 export async function ddoinv(getDir = null) {
     return await dispinv_with_action(null, false, null, getDir);
+}
+
+// C ref: pager.c do_look() case 'i' — display_inventory(NULL, TRUE) as a
+// PICK_ONE menu, then singular(pickedobj, xname) for the data.base lookup key.
+// Renders the interactive inventory (each blocking read is a recorded frame),
+// returns the picked item's singular name (checkfile strips BUC/enchant/"(...)"
+// prefixes so the type name is what matters), or null on empty/cancel.
+export async function whatis_pick_inventory() {
+    const rows = inventoryRows(null);
+    if (!rows.length) {
+        await renderMessageOnMap('Not carrying anything.');
+        return null;
+    }
+    const byLet = new Map();
+    for (const obj of inventoryArray()) byLet.set(obj.invlet, obj);
+    for (;;) {
+        renderInventoryMenu(rows);
+        const c = await nhgetch();
+        if (c === 27 || c === 32 || c === 13 || c === 10) {
+            await dismiss_invent_screen();
+            return null;
+        }
+        const otmp = byLet.get(String.fromCharCode(c));
+        if (!otmp) continue; // invalid selector: bell, menu stays
+        delete game._modal_screen;
+        return cxname_singular(otmp);
+    }
 }
 
 export function find_unpaid(list, last_found) {
@@ -4684,8 +4762,22 @@ export function dfeature_at(x, y, buf = '') {
     for (let s = game.stairs; s && !feature; s = s.next)
         if (s.sx === x && s.sy === y) feature = stairs_description(s, true);
     if (!feature) {
+        // C ref: invent.c dfeature_at — terrain features named via defsyms
+        // explanations.  Doors/altars still fall through to loc.typName below.
         const loc = game.level?.at?.(x, y);
-        if (loc?.typName) feature = loc.typName;
+        const ltyp = loc?.typ;
+        if (IS_FOUNTAIN(ltyp)) feature = 'fountain';
+        else if (IS_THRONE(ltyp)) feature = 'opulent throne';
+        else if (ltyp === LAVAPOOL || ltyp === LAVAWALL) feature = 'molten lava';
+        else if (ltyp === ICE) feature = 'ice';
+        else if (ltyp === POOL || ltyp === MOAT || ltyp === WATER) feature = 'pool of water';
+        else if (IS_SINK(ltyp)) feature = 'sink';
+        else if (ltyp === DRAWBRIDGE_DOWN) feature = 'lowered drawbridge';
+        else if (ltyp === DBWALL) feature = 'raised drawbridge';
+        else if (IS_GRAVE(ltyp)) feature = 'grave';
+        else if (ltyp === TREE) feature = 'tree';
+        else if (ltyp === IRONBARS) feature = 'set of iron bars';
+        else if (loc?.typName) feature = loc.typName;
     }
     if (Array.isArray(buf)) buf[0] = feature || '';
     return feature;

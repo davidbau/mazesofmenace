@@ -478,6 +478,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "turn" AUTOCOMPLETE → doturn (D-0912)
+        name: 'turn',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { doturn } = await import('./pray.js');
+            return doturn();
+        },
+    },
+    {
         // C: cmd.c "polyself" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_polyself
         name: 'polyself',
         wiz: true,

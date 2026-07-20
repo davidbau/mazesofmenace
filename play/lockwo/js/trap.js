@@ -11,7 +11,7 @@ import { exercise } from './attrib.js';
 import {
     HOLE, TRAPDOOR, SQKY_BOARD, is_hole, In_quest,
     RUST_TRAP, BEAR_TRAP, DART_TRAP, MAGIC_TRAP, PIT, SPIKED_PIT,
-    TT_BEARTRAP, A_DEX, A_MAX, FOOT, SPINE, LEFT_SIDE, RIGHT_SIDE,
+    TT_BEARTRAP, A_DEX, A_MAX, FOOT, LEG, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     MAX_ERODE,
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
@@ -20,6 +20,7 @@ import {
 import {
     objects, mksobj, weight, place_object, BOULDER,
     WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, SPBOOK_CLASS,
+    POT_WATER,
 } from './mkobj.js';
 
 // C ref: include/onames.h — object type indices (mkobj.js OBJECT_DATA order).
@@ -305,9 +306,10 @@ function splash_lit(_obj) {
 }
 
 // C ref: trap.c water_damage(obj, ostr, force).  Faithful port covering the
-// branches reachable from the rust trap.  `force` (always TRUE from the rust
-// trap) skips the luck-based ER_NOTHING saving throw.  Returns an ER_* code.
-function water_damage(obj, ostr, force) {
+// branches reachable from the rust trap and from dipping into a fountain/pool.
+// `force` (TRUE from the rust trap and fountain dips) skips the luck-based
+// ER_NOTHING saving throw.  Returns an ER_* code.
+export function water_damage(obj, ostr, force) {
     if (!obj) return ER_NOTHING;
     if (splash_lit(obj)) return ER_DAMAGED;
 
@@ -327,11 +329,28 @@ function water_damage(obj, ostr, force) {
 
     switch (obj.oclass) {
     case SCROLL_CLASS:
+        // C blanks the scroll (SCR_BLANK_PAPER already returns 0/ER_NOTHING);
+        // the reached rust/dip sessions don't carry blank scrolls, so damage.
         return ER_DAMAGED;
     case SPBOOK_CLASS:
         return ER_DAMAGED;
     case POTION_CLASS:
-        return ER_DAMAGED;
+        // C ref: potion of acid is destroyed; a diluted potion becomes water;
+        // any non-water potion dilutes one step (ER_DAMAGED); an undiluted
+        // potion of (holy/plain) water is unaffected (ER_NOTHING).  None of
+        // these branches consume RNG.
+        if (obj.odiluted) {
+            obj.otyp = POT_WATER;
+            obj.dknown = 0;
+            obj.blessed = false;
+            obj.cursed = false;
+            obj.odiluted = 0;
+            return ER_DAMAGED;
+        } else if (obj.otyp !== POT_WATER) {
+            obj.odiluted = (obj.odiluted || 0) + 1;
+            return ER_DAMAGED;
+        }
+        return ER_NOTHING; // undiluted water: no effect
     default:
         return erode_obj_rust(obj, ostr);
     }
@@ -514,6 +533,36 @@ async function set_wounded_legs(side, timex) {
     u.EWounded_legs = (u.EWounded_legs || 0) | side;
     const { encumber_msg } = await import('./invent.js');
     await encumber_msg();
+}
+
+// C ref: do.c heal_legs(how) — cure wounded legs (called from nh_timeout when the
+// WOUNDED_LEGS timer expires, how==0).  Restores the -1 Dx (ATEMP(A_DEX)++),
+// announces "Your leg(s) feel(s) better." (skipped while mounted or petrifying),
+// clears the wound, and (how==0) re-checks encumbrance — a healed leg raises
+// weight_cap, so a Burdened hero is announced "now unencumbered".  No RNG.
+export async function heal_legs(how) {
+    const u = game.u;
+    if (!u) return;
+    if (!((u.HWounded_legs || 0) || (u.EWounded_legs || 0))) return; // !Wounded_legs
+    game.botl = true;
+    u.atemp = u.atemp || { a: Array(A_MAX).fill(0) };
+    if ((u.atemp.a[A_DEX] || 0) < 0) u.atemp.a[A_DEX]++;
+    if (!u.usteed && how !== 2) {
+        // body_part(LEG) == "leg"; both sides wounded -> makeplural -> "legs".
+        const both = ((u.EWounded_legs || 0) & BOTH_SIDES) === BOTH_SIDES;
+        const legs = both ? 'legs' : body_part(LEG);
+        // vtense((char*)0? no — vtense(legs,"feel")): plural subj -> "feel",
+        // singular -> "feels".
+        const feel = both ? 'feel' : 'feels';
+        const { update_topl } = await import('./display.js');
+        await update_topl(`Your ${legs} ${feel} better.`);
+    }
+    u.HWounded_legs = 0;
+    u.EWounded_legs = 0;
+    if (how === 0) {
+        const { encumber_msg } = await import('./invent.js');
+        await encumber_msg();
+    }
 }
 
 // C ref: trap.c trapeffect_bear_trap(&youmonst, trap, trflags) — the hero

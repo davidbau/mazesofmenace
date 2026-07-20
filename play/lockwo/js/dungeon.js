@@ -13,6 +13,10 @@ import {
     TOWN, HELLISH, MAZELIKE, ROGUELIKE, UNCONNECTED,
     D_ALIGN_NONE, D_ALIGN_CHAOTIC, D_ALIGN_NEUTRAL, D_ALIGN_LAWFUL,
     D_ALIGN_MASK,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
+    SDOOR, isok,
+    IS_AIR, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, IS_WALL, IS_DOOR, IS_ROOM,
+    Is_waterlevel, Is_earthlevel,
 } from './const.js';
 
 const X_START = 'x-strt';
@@ -941,4 +945,78 @@ export async function print_dungeon(bymenu, _rlev, _rdgn) {
         }
         // Any other key: ignore and redraw.
     }
+}
+
+// C ref: dbridge.c is_pool/is_lava/is_ice — terrain-class predicates.  The
+// DB_UNDER (drawbridge-up) variants aren't tracked on the contest levels
+// reached; the plain typ comparisons cover the ordinary cases.
+function is_pool(x, y) {
+    if (!isok(x, y)) return false;
+    const t = game.level?.at(x, y)?.typ;
+    return t === POOL || t === MOAT || t === WATER;
+}
+function is_lava(x, y) {
+    if (!isok(x, y)) return false;
+    const t = game.level?.at(x, y)?.typ;
+    return t === LAVAPOOL || t === LAVAWALL;
+}
+function is_ice(x, y) {
+    if (!isok(x, y)) return false;
+    return game.level?.at(x, y)?.typ === ICE;
+}
+// C ref: stairs.c On_stairs(x,y) — stairway_at(x,y) != NULL.  Stairs live on
+// game.stairs (mklev.js) with .sx/.sy coordinates.
+function On_stairs(x, y) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.sx === x && s.sy === y) return true;
+    return false;
+}
+
+// C ref: do_name.c hliquid(liquidpref) — returns liquidpref as-is unless the
+// hero is hallucinating (then a random name off the display RNG, which does
+// not touch the game RNG).  The contest heroes that reach these liquid
+// messages are not hallucinating, so return the preferred word.
+export function hliquid(liquidpref) {
+    return liquidpref;
+}
+
+// C ref: dungeon.c surface(x,y) — the noun for the terrain at (x,y) used in
+// "sit on the %s", "Having fun sitting on the %s?", etc.  SURFACE_AT resolves
+// a raised drawbridge to the terrain beneath it; the contest sessions never
+// sit on a raised drawbridge, so the plain typ is used.
+export function surface(x, y) {
+    const u = game.u || {};
+    const lev = game.level?.at(x, y) || {};
+    const levtyp = lev.typ; // SURFACE_AT(x,y): DRAWBRIDGE_UP resolves under-typ
+    const uz = u.uz;
+    if (x === u.ux && y === u.uy && u.uswallow && u.ustuck)
+        return 'maw'; /* swallowed: 'husk'/'maw' — not reached by contest hero */
+    else if (IS_AIR(levtyp))
+        return Is_waterlevel(uz) ? 'air bubble'
+                                 : (levtyp === CLOUD) ? 'cloud' : 'air';
+    else if (is_pool(x, y))
+        return (u.uprops?.Underwater && !Is_waterlevel(uz))
+            ? 'bottom' : hliquid('water');
+    else if (is_ice(x, y))
+        return 'ice';
+    else if (is_lava(x, y))
+        return hliquid('lava');
+    else if (levtyp === DRAWBRIDGE_DOWN)
+        return 'bridge';
+    else if (IS_ALTAR(levtyp))
+        return 'altar';
+    else if (IS_GRAVE(levtyp))
+        return 'headstone';
+    else if (IS_FOUNTAIN(levtyp))
+        return 'fountain';
+    else if (On_stairs(x, y))
+        return 'stairs';
+    else if (IS_WALL(levtyp) || levtyp === SDOOR)
+        return 'wall'; /* 'surface' during Passes_walls */
+    else if (IS_DOOR(levtyp))
+        return 'doorway'; /* even for closed door */
+    else if (IS_ROOM(levtyp) && !Is_earthlevel(uz))
+        return 'floor';
+    else
+        return 'ground';
 }

@@ -25,7 +25,7 @@ import { doread } from './read.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, hooked_tty_getlin, wiz_wish, wiz_genesis } from './extcmd-handlers.js';
 import { skill_window_advance } from './enhance.js';
-import { wiz_level_tele, dodown } from './do.js';
+import { wiz_level_tele, dodown, doup } from './do.js';
 import { spoteffects } from './trap.js';
 import { doset, dosetSimple } from './doset.js';
 import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard } from './hack.js';
@@ -538,6 +538,11 @@ export async function rhack(key) {
         // dodown returns ECMD_TIME (1) when the hero actually descends (a turn
         // elapses) or ECMD_OK (0) when blocked ("You can't go down here.").
         game.context.move = (await dodown()) === 1 ? 1 : 0;
+    } else if (ch === '<') {
+        // C ref: cmd.c { '<', "up", doup } — climb an up staircase.
+        // doup returns ECMD_TIME (1) when the hero actually climbs (a turn
+        // elapses) or ECMD_OK (0) when blocked ("You can't go up here.").
+        game.context.move = (await doup()) === 1 ? 1 : 0;
     } else if (ch === '.') {
         // C ref: cmd.c command table { '.', "wait", donull } -> do.c donull():
         // "rest one move while doing nothing".  donull() first runs
@@ -1260,9 +1265,13 @@ async function trapmove(x, y) {
         if ((dx && dy) || !rn2(5))
             u.utrap--;
         // Whether still stuck or just freed (wriggle_free), the hero does not
-        // relocate this turn.
-        if (!u.utrap)
-            await pline('You finally wriggle free.');
+        // relocate this turn.  C ref: hack.c wriggle_free -> pline() -> update_topl
+        // which APPENDS onto the still-pending "You are caught in a bear trap."
+        // predicament line ("... bear trap.  You finally wriggle free.").
+        if (!u.utrap) {
+            const { update_topl } = await import('./display.js');
+            await update_topl('You finally wriggle free.');
+        }
         return false;
     }
     case TT_PIT: {
@@ -1303,14 +1312,14 @@ async function trapmove(x, y) {
     }
 }
 
-// C ref: pline.c Norep(...) — like pline() but suppresses an immediately
-// repeated identical top-line (used by the verbose "You are caught ..." lines).
-// We track the last emitted struggle line and skip a same-text repeat so the
-// recorded screen (which shows the line once, persisting across struggles)
-// matches.
+// C ref: pline.c Norep(...) — like pline() but suppresses the message when it is
+// identical to the CURRENT top line (gt.toplines).  gt.toplines persists across
+// the command-prompt blank (it is not cleared with the displayed message), so a
+// struggle line stays deduped turn after turn, yet an intervening *different*
+// message (e.g. the pet's "caught in a bear trap!") lets the next struggle line
+// reprint.  We track that persistent text in game._toplines.
 async function Norep_topl(msg) {
-    if (game._lastNorep === msg) return;
-    game._lastNorep = msg;
+    if (game._toplines === msg) return;
     const { update_topl } = await import('./display.js');
     await update_topl(msg);
 }

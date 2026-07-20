@@ -23,7 +23,7 @@ import {
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, DELPHI,
     SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
     LEPREHALL, COCKNEST, ANTHOLE,
-    FOODSHOP, TOOLSHOP, CANDLESHOP, FODDERSHOP, WANDSHOP,
+    FOODSHOP, TOOLSHOP, CANDLESHOP, FODDERSHOP, WANDSHOP, BOOKSHOP,
     W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM, D_SECRET,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
@@ -107,7 +107,9 @@ import { name_to_monplus, name_to_mon } from './mondata.js';
 import { christen_monst, oname } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
-import { find_level } from './dungeon.js';
+import {
+    find_level, dungeon_branch, at_dgn_entrance, insert_branch,
+} from './dungeon.js';
 import { premap_detect } from './detect.js';
 import { create_gas_cloud, clear_regions } from './region.js';
 import { ndemon } from './minion.js';
@@ -882,9 +884,9 @@ function reset_xystart_size() {
  * tower3, fire, air, minend-1, minend-2, minetn-2, minetn-3, minetn-5,
  * medusa-1, medusa-3, oracle, castle, valley, sanctum, asmodeus, juiblex,
  * baalz, orcus, wizard1–3, Wiz-strt, Wiz-loca, Wiz-fila, Wiz-filb,
- * Pri-fila, Pri-filb, hellfill.
+ * Pri-fila, Pri-filb, hellfill, minetn-2/3/4/5.
  * Named omissions: other bigrm-N / soko2-2 / quest
- * protos (Bar-goal; Wiz-goal); minetn-1/4/6/7; minend-3;
+ * protos (Bar-goal; Wiz-goal); minetn-1/6/7; minend-3;
  * medusa-2/4; water/astral; fakewiz;
  * create_maze makemaz("") fallback; hellfill rnd_hell_prefab;
  * check_ransacked side effects beyond ransacked flag; dmonsfree.
@@ -1127,6 +1129,10 @@ function load_special_proto(protofile) {
     }
     if (protofile === 'minetn-3') {
         load_minetn_3();
+        return true;
+    }
+    if (protofile === 'minetn-4') {
+        load_minetn_4();
         return true;
     }
     if (protofile === 'minetn-5') {
@@ -6820,7 +6826,7 @@ function load_minend_2() {
 /**
  * C ref: dat/minetn-2.lua via load_special — Mines town "Town Square".
  * Nested des.room + create_subroom/create_door + shops/temple/watch.
- * Named omissions: minetn-1/3/4/6/7; link_doors_rooms extras; ensure_way_out.
+ * Named omissions: minetn-1/6/7; link_doors_rooms extras; ensure_way_out.
  */
 function load_minetn_2() {
     const g = game;
@@ -6921,7 +6927,7 @@ function load_minetn_2() {
 /**
  * C ref: dat/minetn-3.lua via load_special — Mines town "Alley Town".
  * Nested des.room town + chance shops + temple align[1] + watch.
- * Named omissions: minetn-1/4/6/7; link_doors_rooms extras; ensure_way_out.
+ * Named omissions: minetn-1/6/7; link_doors_rooms extras; ensure_way_out.
  */
 function load_minetn_3() {
     const g = game;
@@ -7050,9 +7056,130 @@ function load_minetn_3() {
 }
 
 /**
+ * C ref: dat/minetn-4.lua via load_special — Mines town "College Town".
+ * Nested des.room town + book/candle/tool/food shops + temple align[1]
+ * + watch. Named omissions: minetn-1/6/7; link_doors_rooms extras;
+ * ensure_way_out.
+ */
+function load_minetn_4() {
+    const g = game;
+    nhlib_shuffle_align();
+    const align = g.splev_align || ['law', 'neutral', 'chaos'];
+
+    // Outer college town: des.room x=3,y=3 center 30×15 lit
+    splev_des_room({
+        type: 'ordinary', lit: 1, x: 3, y: 3,
+        xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 30, h: 15,
+    }, null, (town) => {
+        splev_room_feature_fountain(town, 8, 7);
+        splev_room_feature_fountain(town, 18, 7);
+
+        splev_des_room({
+            type: 'book shop', lit: 1, x: 4, y: 2, w: 3, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'south'));
+
+        splev_des_room({
+            type: 'ordinary', x: 8, y: 2, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'south'));
+
+        splev_des_room({
+            type: 'temple', lit: 1, x: 11, y: 3, w: 5, h: 4,
+        }, town, (r) => {
+            splev_room_door(r, 'closed', 'south');
+            // Lua align[1] → JS align[0]
+            splev_room_altar_shrine(r, 2, 1, align[0]);
+            splev_room_monster(r, 'gnomish wizard');
+            splev_room_monster(r, 'gnomish wizard');
+        });
+
+        splev_des_room({
+            type: 'ordinary', x: 19, y: 2, w: 2, h: 2,
+        }, town, (r) => {
+            splev_room_door(r, 'closed', 'south');
+            splev_room_monster(r, 'G');
+        });
+
+        splev_des_room({
+            type: 'candle shop', lit: 1, x: 22, y: 2, w: 3, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'south'));
+
+        splev_des_room({
+            type: 'ordinary', x: 26, y: 2, w: 2, h: 2,
+        }, town, (r) => {
+            splev_room_door(r, 'locked', 'east');
+            splev_room_monster(r, 'G');
+        });
+
+        splev_des_room({
+            type: 'tool shop', chance: 90, lit: 1, x: 4, y: 10, w: 3, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'north'));
+
+        splev_des_room({
+            type: 'ordinary', x: 8, y: 11, w: 2, h: 2,
+        }, town, (r) => {
+            splev_room_door(r, 'locked', 'south');
+            splev_room_monster(r, 'kobold shaman');
+            splev_room_monster(r, 'kobold shaman');
+            splev_room_monster(r, 'kitten');
+            splev_room_monster(r, 'f');
+        });
+
+        splev_des_room({
+            type: monkfoodshop(), chance: 90, lit: 1, x: 11, y: 11, w: 3, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'east'));
+
+        splev_des_room({
+            type: 'ordinary', x: 17, y: 11, w: 2, h: 2,
+        }, town, (r) => splev_room_door(r, 'closed', 'west'));
+
+        splev_des_room({
+            type: 'ordinary', x: 20, y: 10, w: 2, h: 2,
+        }, town, (r) => {
+            splev_room_door(r, 'locked', 'north');
+            splev_room_monster(r, 'G');
+        });
+
+        splev_des_room({
+            type: 'shop', chance: 90, lit: 1, x: 23, y: 10, w: 3, h: 3,
+        }, town, (r) => splev_room_door(r, 'closed', 'north'));
+
+        // Town Watch
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watchman', 1);
+        splev_room_monster(town, 'watch captain', 1);
+    });
+
+    splev_ordinary_room((r) => {
+        splev_room_stair(r, true);
+    });
+    splev_ordinary_room((r) => {
+        splev_room_stair(r, false);
+        splev_room_trap(r);
+        splev_room_monster(r, 'gnome');
+        splev_room_monster(r, 'gnome');
+    });
+    splev_ordinary_room((r) => {
+        splev_room_monster(r, 'dwarf');
+    });
+    splev_ordinary_room((r) => {
+        splev_room_trap(r);
+        splev_room_monster(r, 'gnome');
+    });
+
+    makecorridors();
+
+    if (!g.level.flags?.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
+    fixup_special();
+}
+
+/**
  * C ref: dat/minetn-5.lua via load_special — Mines town "Grotto Town".
  * Solidfill + centered map + percent terrain + shops/temple/watch.
- * Named omissions: minetn-1/4/6/7; link_doors_rooms extras; ensure_way_out;
+ * Named omissions: minetn-1/6/7; link_doors_rooms extras; ensure_way_out;
  * hellfill/asmodeus/baalz/orcus/juiblex/wizard1-3/fakewiz.
  */
 function load_minetn_5() {
@@ -9817,6 +9944,7 @@ function splev_roomtype(name, defval = OROOM) {
         shop: SHOPBASE,
         'tool shop': TOOLSHOP,
         'wand shop': WANDSHOP,
+        'book shop': BOOKSHOP,
         'food shop': FOODSHOP,
         'health food shop': FODDERSHOP,
         'candle shop': CANDLESHOP,
@@ -9974,13 +10102,16 @@ const DOOR_STATE = {
 
 /**
  * C ref: sp_lev.c lspo_door wall-form → create_door.
+ * Random state burns rnddoor() for typ/secret only; mask stays -1 so
+ * create_door still rolls its mask branch (C tmpd.mask = msk).
  */
 function splev_room_door(croom, state, wall) {
-    const mask = DOOR_STATE[state] ?? -1;
-    const typ = (mask === -1) ? -1 : mask;
+    const msk = DOOR_STATE[state] ?? -1;
+    // C: typ = (msk == -1) ? rnddoor() : (coordxy) msk;
+    const typ = (msk === -1) ? rnddoor() : msk;
     create_door({
         secret: (typ === D_SECRET) ? 1 : 0,
-        mask,
+        mask: msk,
         pos: -1,
         wall: DOOR_WALL[wall] ?? W_ANY,
     }, croom);
@@ -14673,24 +14804,54 @@ function fill_zoo(sroom) {
 }
 
 /**
- * C ref: mklev.c mk_knox_portal() — usually defers; burns rn2(3).
+ * C ref: mklev.c mk_knox_portal — float Fort Ludios portal onto a vault
+ * level. Burns rn2(3) when not already placed and not Is_branchlev.
+ * With wizard/debug (`flags.debug`), the deferral roll does not early-return
+ * so depth-eligible levels assign end1 and place_branch (D-0914).
  */
-function mk_knox_portal(_x, _y) {
+function mk_knox_portal(x, y) {
     const g = game;
+    let br;
+    try {
+        br = dungeon_branch('Fort Ludios');
+    } catch {
+        return; // C panics; soft-skip if data missing
+    }
     const knox = g.knox_level;
-    const br = (g.branches || []).find(b =>
-        knox && b.end2
-        && b.end2.dnum === knox.dnum
-        && b.end2.dlevel === knox.dlevel);
-    if (!br) return; // C panics; soft-skip if data missing
-    // C: if (on_level(knox, end1)) source=end2; else source=end1
-    // end1 is sentinel (dnum==n_dgns), so source = end1
-    if (is_branchlev()) return;
-    const source = br.end1;
-    // Already set or 2/3 chance of deferring until a later level
-    if (source.dnum < g.n_dgns || (rn2(3) && !g.flags?.debug))
+    // C: wizard ≡ flags.debug (flag.h)
+    const wizard = !!(g.flags?.debug || g.flags?.wizard);
+
+    let source;
+    if (knox && br.end1
+        && (br.end1.dnum | 0) === (knox.dnum | 0)
+        && (br.end1.dlevel | 0) === (knox.dlevel | 0)) {
+        source = br.end2;
+    } else {
+        /* disallow Knox branch on a level with one branch already */
+        if (is_branchlev()) return;
+        source = br.end1;
+    }
+    if (!source) return;
+
+    /* Already set or 2/3 chance of deferring until a later level. */
+    if ((source.dnum | 0) < (g.n_dgns | 0) || (rn2(3) && !wizard))
         return;
-    // Placement only when deep in main dungeon — not reached on Tourist dlvl1
+
+    const uz = g.u?.uz;
+    const oracle = g.oracle_level;
+    const u_depth = depth_of_level(uz);
+    if (!(uz && oracle
+        && (uz.dnum | 0) === (oracle.dnum | 0)
+        && !at_dgn_entrance('The Quest')
+        && u_depth > 10
+        && u_depth < depth_of_level(g.medusa_level)))
+        return;
+
+    /* Adjust source to be current level and re-insert branch. */
+    source.dnum = uz.dnum | 0;
+    source.dlevel = uz.dlevel | 0;
+    insert_branch(br, true);
+    place_branch(br, x, y);
 }
 
 // C ref: mklev.c makerooms()
@@ -15528,6 +15689,42 @@ function create_mimic_as_chest(croom) {
 }
 
 /**
+ * C ref: themerms.lua "Nesting rooms" contents after outer des.room —
+ * mid create_subroom sized via math.random(floor(rm.w/2), rm.w-2) (nhlib
+ * → lo+rn2(hi-lo+1)); optional innermost ordinary + random doors.
+ */
+function themeroom_nesting_contents(croom) {
+    // C l_push_mkroom_table: width/height = 1+(hx-lx)/(hy-ly)
+    const rmWidth = 1 + (croom.hx - croom.lx);
+    const rmHeight = 1 + (croom.hy - croom.ly);
+    // math.random(math.floor(rm.width/2), rm.width-2)
+    const wid = lua_random2(Math.floor(rmWidth / 2), rmWidth - 2);
+    const hei = lua_random2(Math.floor(rmHeight / 2), rmHeight - 2);
+    const mid = splev_des_room(
+        { type: 'ordinary', w: wid, h: hei, filled: 1 },
+        croom,
+        (midRoom) => {
+            // C: if percent(90) then des.room({ ordinary, filled=1, ...doors })
+            if (percent(90)) {
+                splev_des_room(
+                    { type: 'ordinary', filled: 1 },
+                    midRoom,
+                    (inner) => {
+                        splev_room_door(inner, 'random', 'all');
+                        if (percent(15))
+                            splev_room_door(inner, 'random', 'all');
+                    },
+                );
+            }
+            splev_room_door(midRoom, 'random', 'all');
+            if (percent(15))
+                splev_room_door(midRoom, 'random', 'all');
+        },
+    );
+    if (!mid && game.in_mk_themerooms) game.themeroom_failed = true;
+}
+
+/**
  * C ref: themerms.lua "Pillars" contents + sp_lev.c lspo_terrain /
  * nhlib.lua shuffle — 7-char terr Fisher–Yates then 2×2 pillar blocks
  * at room-relative (x*4+2, y*4+2) for x,y in 0..(width/4)-1 (Lua float).
@@ -16172,10 +16369,10 @@ async function themerooms_generate(difficulty) {
             do_themed_fill = true;
         }
         // Named omission: Room-in-room nested create_subroom/door; Fake Delphi /
-        // Huge / Nesting / Mausoleum / Twin nested bodies; Random-feature
-        // center terrain. Pillars terrain done (D-0901). Water vault
-        // map+contents done (D-0690). Blocked center map+replace_terrain
-        // done (D-0243).
+        // Huge / Mausoleum / Twin nested bodies; Random-feature center
+        // terrain. Nesting nested body done (D-0916). Pillars terrain
+        // done (D-0901). Water vault map+contents done (D-0690). Blocked
+        // center map+replace_terrain done (D-0243).
 
         // C build_room: chance defaults to 100 → always burns rn2(100)
         // (after contents arg RNG such as Nesting rn2(4) size rolls)
@@ -16192,7 +16389,12 @@ async function themerooms_generate(difficulty) {
                 if (do_themed_fill) themeroom_fill(aroom);
                 // C themerms.lua Pillars contents after des.room/build_room
                 if (pick.name === 'Pillars') themeroom_pillars_contents(aroom);
-                // Nesting rooms nested contents deferred (create_subroom/door)
+                // C themerms.lua Nesting rooms nested create_subroom/door
+                if (pick.name === 'Nesting rooms') {
+                    themeroom_nesting_contents(aroom);
+                    // C lspo_room: add_doors_to_room after contents
+                    add_doors_to_room(aroom);
+                }
             }
         } else if (g.in_mk_themerooms) {
             g.themeroom_failed = true;
@@ -17475,7 +17677,14 @@ function mkgrave_room(croom) {
 
 async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
+    // C ref: mklev.c fill_ordinary_room — rtype gate, then subrooms before
+    // needfill (outer unfilled must not block filled nested rooms).
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
+    for (let xi = 0; xi < (croom.nsubrooms | 0); ++xi) {
+        const subroom = croom.sbrooms?.[xi];
+        if (!subroom) return; // C: impossible("…Null subroom")
+        await fill_ordinary_room(subroom, false);
+    }
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };

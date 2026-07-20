@@ -8,10 +8,10 @@
 // Named omissions: floorfood metallivore/pool-lava/cockatrice-feel; TIN;
 // full cprefx; cpostfx specials (wraith/were/nurse/stalker/…); corpse_intrinsic
 // / givit; hallu from AD_STUN/AD_HALU; tainted Sick; slime/stone; make_blinded
-// body / Hear_again afternmv / foodword poly; freeinv invent-full drop; ?/* menu;
-// multi-turn choke/newuhs messages; gethungry ring/amulet accessorytime + newuhs;
-// losestr setuhpmax / terminal-frailty full death path;
-// vomit cantvomit/Sick/FAINTING/acid-breath.
+// body / Hear_again afternmv / foodword poly; sellobj_state on invent-full
+// dropy; costly_alteration COST_BITE; ?/* menu; multi-turn choke/newuhs
+// messages; gethungry ring/amulet accessorytime + newuhs; losestr setuhpmax /
+// terminal-frailty full death path; vomit cantvomit/Sick/FAINTING/acid-breath.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -41,6 +41,11 @@ import { adjattrib, A_STR } from './attrib.js';
 import { nomul } from './hack.js';
 import { near_capacity } from './invent.js';
 import { make_confused } from './potion.js';
+import { addinv_nomerge } from './u_init.js';
+import { dropy } from './do.js';
+
+/** C hack.h invlet_basic — a-zA-Z slots before invent-full dropy. */
+const INVLET_BASIC = 52;
 
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
@@ -580,10 +585,28 @@ function useup(otmp) {
 }
 
 /**
- * C ref: eat.c touchfood — split stack (next_ident via splitobj), set oeaten.
- * freeinv + addinv_nomerge deferred for invent child path.
+ * C invent.c freeinv subset — splice from game.invent[]; clear nobj link.
  */
-function touchfood(otmp) {
+function freeinv_touchfood(obj) {
+    if (!obj) return;
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    for (const o of inv) {
+        if (o.nobj === obj) o.nobj = obj.nobj || null;
+    }
+    obj.nobj = null;
+    obj.pickup_prev = 0;
+    obj.where = OBJ_FREE;
+}
+
+/**
+ * C ref: eat.c touchfood — split stack, set oeaten, freeinv+addinv_nomerge
+ * so a bitten piece gets its own invent slot (steal weight / invlet).
+ * Named omit: costly_alteration COST_BITE; sellobj_state around invent-full
+ * dropy; OBJ_DELETED after drop.
+ */
+async function touchfood(otmp) {
     if ((otmp.quan || 1) > 1) {
         // C: floor → splitobj(otmp, quan-1); carried → otmp = splitobj(otmp, 1)
         const carried = otmp.where === OBJ_INVENT
@@ -598,6 +621,22 @@ function touchfood(otmp) {
     if (!otmp.oeaten) {
         // costly_alteration deferred
         otmp.oeaten = obj_nutrition(otmp);
+    }
+
+    // C: carried(otmp) ≡ where == OBJ_INVENT (split child copies where)
+    if (otmp.where === OBJ_INVENT || (game.invent || []).includes(otmp)) {
+        freeinv_touchfood(otmp);
+        // C: inv_cnt(FALSE) after freeinv — non-gold invent letters
+        let n = 0;
+        for (const o of game.invent || []) {
+            if (o.oclass !== COIN_CLASS) n++;
+        }
+        if (n >= INVLET_BASIC) {
+            dropy(otmp);
+            if (otmp.where === OBJ_FREE) return null; // deleted approx
+        } else {
+            otmp = await addinv_nomerge(otmp);
+        }
     }
     return otmp;
 }
@@ -844,6 +883,21 @@ async function start_eating(otmp, already_partly_eaten) {
 }
 
 /**
+ * C ref: eat.c Hear_again — afternmv after fainting/rotten-food knock-out.
+ * Chance of deafness clearing while out.
+ */
+function Hear_again() {
+    // C: if (!rn2(2)) { make_deaf(0L, FALSE); disp.botl = TRUE; }
+    if (!rn2(2)) {
+        const u = game.u || (game.u = {});
+        u.HDeaf = (u.HDeaf | 0) & ~TIMEOUT;
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+    }
+    return 0;
+}
+
+/**
  * C ref: eat.c rottenfood — first bite of rotten food.
  * @returns {number} 1 if fainted (dont_start), else 0
  */
@@ -872,7 +926,7 @@ async function rottenfood(obj) {
         nomul(-duration);
         game.multi_reason = 'unconscious from rotten food';
         game.nomovemsg = 'You are conscious again.';
-        // Hear_again afternmv deferred
+        game.afternmv = Hear_again;
         return 1;
     }
     return 0;
@@ -967,7 +1021,7 @@ async function eatcorpse(otmp) {
         // Non-faint still eats — only faint sets dont_start (D-0443).
         if (await rottenfood(otmp)) {
             otmp.orotten = true;
-            otmp = touchfood(otmp);
+            otmp = await touchfood(otmp);
             if (!otmp) return 1;
             if (game.context?.victual) game.context.victual.piece = otmp;
             retcode = 1;
@@ -1023,7 +1077,8 @@ async function eatcorpse(otmp) {
 
 /**
  * C ref: eat.c doeat() — food-class path for reqtime==1 and CORPSE.
- * TIN, multi-turn non-corpse occupation, rotten ordinary food still deferred.
+ * TIN / multi-turn non-corpse occupation still deferred; ordinary rotten
+ * food via rottenfood + Hear_again (D-0911).
  * @returns {number} 0 = no turn (ECMD_OK), 1 = took time
  */
 export async function doeat() {
@@ -1056,7 +1111,7 @@ export async function doeat() {
     game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
 
     const already_partly_eaten = !!otmp0.oeaten;
-    let otmp = touchfood(otmp0);
+    let otmp = await touchfood(otmp0);
     if (!otmp) return 1;
 
     if (!game.context) game.context = {};
@@ -1094,11 +1149,12 @@ export async function doeat() {
                 || (!nonrotting_food(otmp.otyp)
                     && (moves - age) > (otmp.blessed ? 50 : 30)
                     && (otmp.orotten || !rn2(7))))) {
-            await pline('That food is not implemented yet.');
-            game.context.victual = {};
-            return 0;
-        }
-        if (!already_partly_eaten) {
+            if (await rottenfood(otmp)) {
+                otmp.orotten = true;
+                dont_start = true;
+            }
+            consume_oeaten(otmp, 1); /* oeaten >>= 1 */
+        } else if (!already_partly_eaten) {
             if (!(await fprefx(otmp))) {
                 game.context.victual = {};
                 return 1;

@@ -24,7 +24,7 @@ import {
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
-    is_undead, amphibious, can_teleport, MR_FIRE, mindless,
+    is_undead, amphibious, can_teleport, MR_FIRE, mindless, G_UNIQ,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -592,12 +592,30 @@ export function setmangry(mtmp, via_attack) {
 }
 
 /**
+ * C ref: mon.c wake_nearto / wake_nearto_core — clear sleep/wait in radius.
+ * Named omissions: wake_msg pline; disturb_buried_zombies; petcall whistletime.
+ */
+function wake_nearto(x, y, distance) {
+    for (const m of game.fmon || []) {
+        if (!m || m.mx == null || (m.mhp | 0) <= 0) continue;
+        if (distance === 0 || dist2(m.mx, m.my, x, y) < distance) {
+            // wake_msg deferred
+            m.msleeping = 0;
+            if (!((m.data?.geno | 0) & G_UNIQ) && m.mstrategy != null) {
+                m.mstrategy &= ~STRAT_WAITMASK;
+            }
+        }
+    }
+}
+
+/**
  * C ref: mon.c wakeup — clear sleep / non-monster disguise; via_attack → setmangry.
- * Named omissions: wake_msg; finish_meating; growl-on-sleep; ghod_hitsu;
- * hot_pursuit when shk && !*u.ushops.
+ * Named omissions: wake_msg; finish_meating; growl pline (radius only);
+ * ghod_hitsu; hot_pursuit when shk && !*u.ushops.
  */
 export function wakeup(mtmp, via_attack) {
     if (!mtmp) return;
+    const was_sleeping = !!mtmp.msleeping;
     // wake_msg deferred (canseemon sleep pline)
     mtmp.msleeping = 0;
     if (M_AP_TYPE(mtmp) !== M_AP_NOTHING) {
@@ -610,7 +628,12 @@ export function wakeup(mtmp, via_attack) {
     // finish_meating deferred
     if (via_attack) {
         const was_peaceful = !!mtmp.mpeaceful;
-        // was_sleeping growl deferred
+        // C: was_sleeping → growl → wake_nearto(mx,my, mlevel*18).
+        // Growl verb pline deferred (mid-hit --More--); radius is required
+        // so nearby sleepers are not later disturb()'d with rn2(50).
+        if (was_sleeping && mtmp.mx) {
+            wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
+        }
         setmangry(mtmp, true);
         if (was_peaceful) {
             // ghod_hitsu / hot_pursuit deferred

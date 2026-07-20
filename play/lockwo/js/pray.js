@@ -387,3 +387,23 @@ export async function dopray(paranoid_query) {
 function Blind() {
     return false;
 }
+
+// C ref: pray.c dosacrifice() — the #offer command.  The full on-altar rite
+// (floorfood + offer_corpse/amulet) is not modeled; the reached sessions
+// (sitting/dipping at a fountain) offer while NOT on an altar, so the guard
+// path is what matters.  Returns ECMD_OK (0, no turn) for the guard cases.
+export async function dosacrifice() {
+    const u = game.u;
+    if (!on_altar() || u.uswallow) {
+        const over = (u.uprops?.Levitation || u.uprops?.Flying) ? 'over' : 'on';
+        await update_topl(`You are not ${over} an altar.`);
+        return 0;
+    }
+    if ((u.uprops?.Confusion || 0) > 0 || (u.uprops?.Stun || u.uprops?.Stunned || 0) > 0) {
+        await update_topl('You are too impaired to perform the rite.');
+        return 0;
+    }
+    // On-altar sacrifice (floorfood + offer_corpse/amulet/fake) is not modeled;
+    // unreached by the covered sessions.  Take no time.
+    return 0;
+}

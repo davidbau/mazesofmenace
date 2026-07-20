@@ -131,7 +131,7 @@ function branch_val(bp) {
 }
 
 // C ref: dungeon.c insert_branch()
-function insert_branch(new_branch, extract_first) {
+export function insert_branch(new_branch, extract_first) {
     const g = game;
     if (!g.branches) g.branches = [];
     if (extract_first) {

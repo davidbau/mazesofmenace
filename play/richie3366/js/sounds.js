@@ -16,13 +16,13 @@ import { vtense } from './objnam.js';
 import { nomul } from './hack.js';
 import {
     is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
-    monsterNames,
+    monsterNames, G_UNIQ,
 } from './monsters.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
-    ESHK, Is_astralevel, Is_oracle_level,
+    ESHK, Is_astralevel, Is_oracle_level, STRAT_WAITMASK,
 } from './const.js';
 import { vault_occupied, findgd } from './vault.js';
 
@@ -103,12 +103,19 @@ function tended_shop(sroom) {
     return !!(mtmp && inhishop(mtmp));
 }
 
-/** C ref: shk.c noisy_shop / mon.c wake_nearto (zombie strat deferred). */
+/**
+ * C ref: mon.c wake_nearto / wake_nearto_core (zombie/petcall deferred).
+ * Clears msleeping + non-G_UNIQ STRAT_WAITMASK inside dist2 < distance.
+ */
 function wake_nearto(x, y, distance) {
     for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null) continue;
+        if (!mtmp || mtmp.mx == null || (mtmp.mhp | 0) <= 0) continue;
         if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
+            // wake_msg deferred
             mtmp.msleeping = 0;
+            if (!((mtmp.data?.geno | 0) & G_UNIQ) && mtmp.mstrategy != null) {
+                mtmp.mstrategy &= ~STRAT_WAITMASK;
+            }
         }
     }
 }
@@ -425,7 +432,7 @@ function growl_sound(mtmp) {
 /**
  * C ref: sounds.c growl — seriously abused pet (incl. hero attacking).
  * Hallucination → ROLL_FROM(h_sounds) rn2(35). Named omissions:
- * wake_nearto; iflags.last_msg PLNMSG_GROWL.
+ * iflags.last_msg PLNMSG_GROWL; wake_msg inside wake_nearto.
  */
 export async function growl(mtmp) {
     if (!mtmp || helpless(mtmp) || mon_msound(mtmp) === MS_SILENT) return;
@@ -441,14 +448,17 @@ export async function growl(mtmp) {
             await pline(`${Monnam(mtmp)} ${vtense(null, growl_verb)}!`);
             if (game.context?.run) nomul(0);
         }
-        // wake_nearto deferred
+        // C: wake_nearto(mx, my, mlevel * 18) after growl pline
+        if (mtmp.mx) {
+            wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
+        }
     }
 }
 
 /**
  * C ref: sounds.c yelp — mistreated pet sound.
  * Hallucination → ROLL_FROM(h_sounds) rn2(35). Named omissions:
- * Soundeffect; wake_nearto; feline/canine se_* variants (pline only).
+ * Soundeffect; feline/canine se_* variants (pline only); wake_msg.
  */
 export async function yelp(mtmp) {
     if (!mtmp || helpless(mtmp) || !mon_msound(mtmp)) return;
@@ -484,7 +494,10 @@ export async function yelp(mtmp) {
     if (yelp_verb) {
         await pline(`${Monnam(mtmp)} ${vtense(null, yelp_verb)}!`);
         if (game.context?.run) nomul(0);
-        // wake_nearto deferred
+        // C: wake_nearto(mx, my, mlevel * 12)
+        if (mtmp.mx) {
+            wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 12);
+        }
     }
 }
 

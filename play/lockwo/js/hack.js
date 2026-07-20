@@ -16,14 +16,15 @@
 import { game } from './gstate.js';
 import { domove, blocksMove } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
-import { m_at, vobj_at, covers_objects, flush_screen, newsym, pline, update_topl, topl_more, y_n } from './display.js';
-import { obj_doname } from './invent.js';
+import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n } from './display.js';
+import { obj_doname, whatis_pick_inventory } from './invent.js';
 import { rnd } from './rng.js';
 import { vision_recalc } from './vision.js';
 import { nhgetch } from './input.js';
 import { is_safemon, canspotmon } from './uhitm.js';
 import { dist2 } from './hacklib.js';
 import { roles, races } from './role.js';
+import { DATABASE_ENTRIES } from './data_base_data.js';
 import { NO_COLOR, ATR_INVERSE, DEC_TO_UNICODE } from './terminal.js';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN,
@@ -1129,6 +1130,494 @@ async function checkfile_moreinfo(firstmatch) {
     return true;
 }
 
+// ── data.base lookup (pager.c checkfile) ──────────────────────────────────
+//
+// The typed ('?') and carried-item ('i') whatis picks look their target up in
+// dat/data.base and, when found, display the entry in a window.  Both pass
+// chkfilUsrTyped|chkfilDontAsk, so checkfile shows the entry directly (no
+// "More info about ...?" y/n gate).  The compiled 'data' index/text is bundled
+// in data_base_data.js.  (The '/' map-pick path keeps its own light-weight
+// checkfile_moreinfo above, which only offers the y/n query.)
+
+// C ref: strutil.c pmatch() — case-sensitive wildcard match: '*' matches zero
+// or more characters, '?' matches exactly one (non-empty) character.  data.base
+// keys are lowercase and checkfile lowercases the lookup string, so the
+// case-sensitive form suffices.
+function db_pmatch(patrn, strng) {
+    let pi = 0, si = 0, star = -1, ss = 0;
+    const pl = patrn.length, sl = strng.length;
+    while (si < sl) {
+        if (pi < pl && (patrn[pi] === '?' || patrn[pi] === strng[si])) {
+            pi++; si++;
+        } else if (pi < pl && patrn[pi] === '*') {
+            star = pi++; ss = si;
+        } else if (star !== -1) {
+            pi = star + 1; si = ++ss;
+        } else {
+            return false;
+        }
+    }
+    while (pi < pl && patrn[pi] === '*') pi++;
+    return pi === pl;
+}
+
+// C ref: hacklib.c tabexpand() — expand tabs to spaces on 8-column stops.
+function db_tabexpand(sbuf) {
+    let out = '', idx = 0;
+    for (let k = 0; k < sbuf.length; k++) {
+        const c = sbuf[k];
+        if (c === '\t') {
+            do { out += ' '; } while (++idx % 8);
+        } else {
+            out += c; ++idx;
+        }
+    }
+    return out;
+}
+
+// C ref: objnam.c makesingular() — de-pluralize a noun for the data.base
+// lookup's alternate key.  Partial faithful port: handles compound phrases
+// ("<foo> of <bar>" -> singularize <foo>), the -s/-es/-ies/-ves trailing rules
+// and -men -> -man; other words (incl. anything that isn't a recognizable
+// plural) are returned unchanged.  Used only by the new checkfile path.
+const DB_VOWELS = 'aeiou';
+function db_makesingular(oldstr) {
+    let s = String(oldstr || '');
+    s = s.replace(/^ +/, '');
+    if (!s) return '';
+    // compound "foo of bar": operate on the head, restore the tail afterwards.
+    const compounds = [' of ', ' labeled ', ' called ', ' named ', ' above',
+        ' versus ', ' from ', ' in ', ' on ', ' a la ', ' with', ' de ',
+        " d'", ' du ', ' au ', '-in-', '-at-'];
+    let head = s, excess = '';
+    {
+        const low = s.toLowerCase();
+        let cut = -1;
+        for (let p = 0; p < s.length; p++) {
+            if (s[p] !== ' ' && s[p] !== '-') continue;
+            for (const cmpd of compounds) {
+                if (low.startsWith(cmpd, p)) { cut = p; break; }
+            }
+            if (cut >= 0) break;
+        }
+        if (cut >= 0) { head = s.slice(0, cut); excess = s.slice(cut); }
+    }
+    const bp = head;
+    const low = bp.toLowerCase();
+    const n = bp.length;
+    const ends = (suf) => low.endsWith(suf);
+    let res = bp;
+    if (n >= 1 && low[n - 1] === 's') {
+        if (n >= 2 && low[n - 2] === 'e') {
+            if (n >= 3 && low[n - 3] === 'i') { /* "ies" */
+                if (ends('cookies') || (ends('pies') && (n === 4 || low[n - 5] === ' '))
+                    || (ends('genies') && (n === 6 || low[n - 7] === ' '))
+                    || ends('mbies') || ends('yries')) {
+                    res = bp.slice(0, n - 1); /* drop s */
+                } else {
+                    res = bp.slice(0, n - 3) + 'y'; /* ies -> y */
+                }
+            } else if (n >= 4 && (('lr'.includes(low[n - 4]) || DB_VOWELS.includes(low[n - 4]))
+                       && ends('ves'))) {
+                if (ends('cloves') || ends('nerves')) res = bp.slice(0, n - 1);
+                else res = bp.slice(0, n - 3) + 'f'; /* ves -> f */
+            } else if (ends('eses') || ends('oxes') || ends('nxes') || ends('ches')
+                       || ends('uses') || ends('shes') || ends('sses')
+                       || ends('atoes') || ends('dingoes') || ends('aleaxes')) {
+                res = bp.slice(0, n - 2); /* drop es */
+            } else {
+                res = bp.slice(0, n - 1); /* drop s */
+            }
+        } else if (ends('us')) { /* lotus, fungus... */
+            if (!ends('tengus') && !ends('hezrous')) res = bp.slice(0, n - 1);
+            /* else keep (tengus/hezrous) */
+            else res = bp;
+        } else if (ends('ss') || ends(' lens') || low === 'lens') {
+            res = bp; /* keep */
+        } else {
+            res = bp.slice(0, n - 1); /* drop s */
+        }
+    } else { /* doesn't end in 's' */
+        if (ends('men')) res = bp.slice(0, n - 2) + 'an';
+        else res = bp;
+    }
+    return res + excess;
+}
+
+// C ref: pager.c checkfile() index scan — walk the data.base entries in file
+// order.  Within an entry's key group a positive pmatch wins immediately; a
+// '~'-prefixed key that matches excludes the whole entry (skip to the next).
+// Returns { off, lines } of the first matching entry, or null.
+function db_find_entry(target) {
+    for (const [keys, off, lines] of DATABASE_ENTRIES) {
+        let matched = false, skip = false;
+        for (const key of keys) {
+            const chkSkip = key[0] === '~';
+            const k = chkSkip ? key.slice(1) : key;
+            if (db_pmatch(k, target)) {
+                if (chkSkip) { skip = true; break; }
+                matched = true; break;
+            }
+        }
+        if (skip) continue;
+        if (matched) return { off, lines };
+    }
+    return null;
+}
+
+// C ref: pager.c checkfile() — process an entry's raw lines for display: strip
+// one leading tab (or up to 8 leading spaces), then tabexpand any remaining
+// tabs (e.g. the "\t\t[ ... ]" attribution).
+function db_process_lines(rawLines) {
+    const out = [];
+    for (const raw of rawLines) {
+        let tp = raw;
+        if (tp[0] === '\t') {
+            tp = tp.slice(1);
+        } else if (tp[0] === ' ') {
+            let j = 0;
+            while (j < 8 && j < tp.length && tp[j] === ' ') j++;
+            tp = tp.slice(j);
+        }
+        if (tp.indexOf('\t') >= 0) tp = db_tabexpand(tp);
+        out.push(tp);
+    }
+    return out;
+}
+
+// C ref: win/tty/wintty.c tty_display_nhwindow + process_text_window for the
+// NHW_MENU data window (recorder build: H2344_BROKEN).  A menu window whose
+// line count fits (< rows) is an overlay: offx = min(min(82, cols/2),
+// cols - maxcol - 1) with maxcol = max(len)+1, each line drawn at offx+1 (a
+// leading space occupies offx), and a single "--More--" at offx+1 on the row
+// after the content.  A window with >= rows lines is forced full-screen
+// (offx 0) and paged every rows-1 lines.  Reads the dismiss key(s) via nhgetch
+// (each drawn state is a recorded frame), then redraws the map underneath.
+async function display_dbase_window(lines, forceFull = false) {
+    const disp = game.nhDisplay;
+    const cols = disp?.cols || 80;
+    const rows = disp?.rows || 24;
+
+    let maxcol = 0;
+    for (const l of lines) maxcol = Math.max(maxcol, l.length + 1);
+
+    const fullscreen = forceFull || lines.length >= rows;
+    let offx = fullscreen ? 0
+        : Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    const textCol = offx === 0 ? 0 : offx + 1;
+
+    const perPage = rows - 1; // content rows; the morestr sits on the last row
+    // Split into pages (only ever >1 in the forced full-screen case).
+    const pages = [];
+    for (let p = 0; p < lines.length; p += perPage) pages.push(lines.slice(p, p + perPage));
+
+    for (let pi = 0; pi < pages.length; pi++) {
+        const page = pages[pi];
+        if (offx === 0) {
+            // Full-screen: clear the whole grid, then the content at col 0.
+            for (let r = 0; r < rows; r++)
+                for (let c = 0; c < cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
+        } else {
+            // Overlay: only blank the window's column band on the content rows
+            // and the morestr row (the map shows through to the left of offx).
+            for (let c = 0; c < cols; c++) disp.setCell(c, 0, ' ', NO_COLOR, 0); // topl
+        }
+        for (let r = 0; r < page.length; r++) {
+            if (offx !== 0) for (let c = offx; c < cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
+            if (page[r]) disp.putstr(textCol, r, page[r], NO_COLOR, 0);
+        }
+        const moreRow = offx === 0 ? rows - 1 : page.length;
+        if (offx !== 0) for (let c = offx; c < cols; c++) disp.setCell(c, moreRow, ' ', NO_COLOR, 0);
+        disp.putstr(textCol, moreRow, '--More--', NO_COLOR, 0);
+        disp.setCursor(textCol + '--More--'.length, moreRow);
+        // xwaitforspace(quitchars): any of space/return/ESC dismisses the page;
+        // ESC cancels the rest (breaks out).  Each redraw is a recorded frame.
+        let dismissed = false;
+        while (!dismissed) {
+            const k = await nhgetch();
+            if (k === 27) { pi = pages.length; dismissed = true; } // ESC: cancel all
+            else if (k === 32 || k === 13 || k === 10) dismissed = true;
+            // other keys ring the bell in C; reloop without redraw.
+        }
+    }
+    // Restore the map/status underneath the dismissed window.
+    game._pending_message = '';
+    game._toplin = 0;
+    await flush_screen(1);
+}
+
+// C ref: pager.c checkfile() — look 'inp' up in data.base and, for the typed
+// ('?')/carried-item ('i') paths (chkfilUsrTyped|chkfilDontAsk), display the
+// matching entry directly.  Ports the input normalization (article/prefix
+// stripping, "named"/"called"/", " truncation, makesingular alternate key) and
+// the two-pass scan with the pass1offset dedup.  Returns TRUE if an entry was
+// found.  user_typed_name && no first-pass match -> the "no information"
+// message.
+async function checkfile(inp, chkflags) {
+    const user_typed_name = (chkflags & 1) !== 0;   // chkfilUsrTyped
+    // without_asking (chkfilDontAsk, bit 2) is always set on these paths.
+
+    if (inp == null) return false;
+    let dbase_str = String(inp).toLowerCase();
+
+    // strip a leading "interior of "
+    if (dbase_str.startsWith('interior of ')) dbase_str = dbase_str.slice(12);
+    // article / count prefix
+    if (dbase_str.startsWith('a ')) dbase_str = dbase_str.slice(2);
+    else if (dbase_str.startsWith('an ')) dbase_str = dbase_str.slice(3);
+    else if (dbase_str.startsWith('the ')) dbase_str = dbase_str.slice(4);
+    else if (dbase_str.startsWith('some ')) dbase_str = dbase_str.slice(5);
+    else if (/^\d/.test(dbase_str)) {
+        dbase_str = dbase_str.replace(/^\d+/, '');
+        if (dbase_str[0] === ' ') dbase_str = dbase_str.slice(1);
+    }
+    if (dbase_str.startsWith('pair of ')) dbase_str = dbase_str.slice(8);
+    if (dbase_str.startsWith('tame ')) dbase_str = dbase_str.slice(5);
+    else if (dbase_str.startsWith('peaceful ')) dbase_str = dbase_str.slice(9);
+    if (dbase_str.startsWith('invisible ')) dbase_str = dbase_str.slice(10);
+    if (dbase_str.startsWith('saddled ')) dbase_str = dbase_str.slice(8);
+    if (dbase_str.startsWith('blessed ')) dbase_str = dbase_str.slice(8);
+    else if (dbase_str.startsWith('uncursed ')) dbase_str = dbase_str.slice(9);
+    else if (dbase_str.startsWith('cursed ')) dbase_str = dbase_str.slice(7);
+    if (dbase_str.startsWith('empty ')) dbase_str = dbase_str.slice(6);
+    if (dbase_str.startsWith('partly used ')) dbase_str = dbase_str.slice(12);
+    else if (dbase_str.startsWith('partly eaten ')) dbase_str = dbase_str.slice(13);
+    if (dbase_str.startsWith('statue of ')) dbase_str = dbase_str.slice(0, 6);
+    else if (dbase_str.startsWith('figurine of ')) dbase_str = dbase_str.slice(0, 8);
+    // enchantment prefix "+0 "/"-1 "
+    if (dbase_str && '+-'.includes(dbase_str[0]) && /\d/.test(dbase_str[1] || '')) {
+        dbase_str = dbase_str.slice(1).replace(/^\d+/, '');
+        if (dbase_str[0] === ' ') dbase_str = dbase_str.slice(1);
+    }
+    if (dbase_str.startsWith('moist towel')) dbase_str = 'wet' + dbase_str.slice(5);
+
+    if (!dbase_str) return false;
+
+    // "named"/"called"/", " -> truncate to base name; the tail becomes 'alt'.
+    let alt = null;
+    let ep = dbase_str.indexOf(' named ');
+    if (ep >= 0) {
+        alt = dbase_str.slice(ep + 7);
+        const ap = dbase_str.indexOf(' called ');
+        if (ap >= 0 && ap < ep) ep = ap;
+        dbase_str = dbase_str.slice(0, ep);
+    } else if ((ep = dbase_str.indexOf(' called ')) >= 0) {
+        alt = dbase_str.slice(ep + 8);
+        dbase_str = dbase_str.slice(0, ep);
+    } else if ((ep = dbase_str.indexOf(', ')) >= 0) {
+        dbase_str = dbase_str.slice(0, ep);
+    }
+    // strip article from alt
+    if (alt) {
+        if (alt.startsWith('a ')) alt = alt.slice(2);
+        else if (alt.startsWith('an ')) alt = alt.slice(3);
+        else if (alt.startsWith('the ')) alt = alt.slice(4);
+    }
+    // remove " (...)" charge/quantity from base and alt
+    let par = dbase_str.indexOf(' (');
+    if (par > 0) dbase_str = dbase_str.slice(0, par);
+    if (alt) { par = alt.indexOf(' ('); if (par > 0) alt = alt.slice(0, par); }
+
+    if (!alt) alt = db_makesingular(dbase_str);
+    if (!dbase_str) return false;
+
+    let res = false;
+    let pass1offset = null;
+    let pass1found = false;
+    const startPass = (alt === dbase_str) ? 0 : 1;
+    for (let pass = startPass; pass >= 0; pass--) {
+        const target = (pass === 1) ? alt : dbase_str;
+        const hit = target ? db_find_entry(target) : null;
+        if (hit) {
+            const fseekoffset = hit.off;
+            if (pass === 1) { pass1offset = fseekoffset; pass1found = true; }
+            else if (fseekoffset === pass1offset) break; // same entry as pass 1
+            res = true;
+            const shown = db_process_lines(hit.lines);
+            await display_dbase_window(shown);
+        } else if (user_typed_name && pass === 0 && !pass1found) {
+            game._pending_message = 'You don\'t have any information on those things.';
+            game._toplin = 1;
+        }
+    }
+    return res;
+}
+
+// C ref: pager.c look_region_nearby() + look_traps() — count seen/remembered
+// traps inside the look region.  nearby => a BOLT_LIM (8) box clamped to the
+// map around the hero; otherwise the whole level.  Only the count is needed to
+// decide the "No traps seen or remembered[ nearby]." message.
+function count_seen_traps(nearby) {
+    const u = game.u;
+    const BOLT_LIM = 8;
+    const lo_y = nearby ? Math.max(u.uy - BOLT_LIM, 0) : 0;
+    const lo_x = nearby ? Math.max(u.ux - BOLT_LIM, 1) : 1;
+    const hi_y = nearby ? Math.min(u.uy + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
+    const hi_x = nearby ? Math.min(u.ux + BOLT_LIM, COLNO - 1) : COLNO - 1;
+    let count = 0;
+    for (const t of (game.level?.traps || [])) {
+        if (!t.tseen) continue;
+        if (t.tx >= lo_x && t.tx <= hi_x && t.ty >= lo_y && t.ty <= hi_y) count++;
+    }
+    return count;
+}
+
+// C ref: pager.c look_engrs() — list seen/remembered engravings in the look
+// region as a full-screen NHW_TEXT window (or the "No engravings..." message
+// when none).  Each line is: "%8s  <sym> <text>" where <sym> is the engraving
+// glyph ('`') and <text> comes from add_quoted_engraving() + the strsubst
+// cleanup.  When the engraving cell is covered (hero/monster/object on top) the
+// engraving isn't "shown", so ", obscured by <coverglyph>" is appended.
+async function do_look_engrs(nearby) {
+    const { engr_at } = await import('./engrave.js');
+    const u = game.u;
+    const BOLT_LIM = 8;
+    const lo_y = nearby ? Math.max(u.uy - BOLT_LIM, 0) : 0;
+    const lo_x = nearby ? Math.max(u.ux - BOLT_LIM, 1) : 1;
+    const hi_y = nearby ? Math.min(u.uy + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
+    const hi_x = nearby ? Math.min(u.ux + BOLT_LIM, COLNO - 1) : COLNO - 1;
+
+    const lines = [];
+    let count = 0;
+    const ENGR_SYM = '`'; // S_engroom cmap symbol
+    for (let y = lo_y; y <= hi_y; y++) {
+        for (let x = lo_x; x <= hi_x; x++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || !loc.seenv) continue;
+            const e = engr_at(x, y);
+            if (!e) continue;
+            // C builds " (engraving" + add_quoted_engraving(), then strsubst.
+            // Headstone/grave variants are not distinguished here (starter
+            // levels have no graves).
+            let full = ' (engraving';
+            if (e.eread)
+                full += ` with remembered text: "${e.rememberedText}"`;
+            else
+                full += ' that you haven\'t read';
+            full = full.replace('(engraving with ', '');
+            full = full.replace('(engraving ', 'engraving ');
+            // Determine whether the engraving glyph is what is actually shown,
+            // or something covers it.  The hero (drawn as an overlay, not in the
+            // map memory) covers when standing on the cell; otherwise the map
+            // memory's display char is the top glyph.
+            let coverChar;
+            if (x === u.ux && y === u.uy) {
+                coverChar = '@'; // player-monster symbol (non-polymorphed hero)
+            } else {
+                const dch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch)
+                                            : loc.disp_ch;
+                coverChar = dch;
+            }
+            const shown = (coverChar === ENGR_SYM);
+            if (!shown) full += `, obscured by ${coverChar}`;
+            count++;
+            if (count === 1) {
+                lines.push(nearby ? 'Nearby seen or remembered engravings:'
+                                  : 'Seen or remembered engravings on this level:');
+                lines.push('    '); // Qt fixed-width separator (renders blank)
+            }
+            const coord = `<${x},${y}>`;
+            lines.push(`${coord.padStart(8)}  ${ENGR_SYM} ${full}`);
+        }
+    }
+    if (count)
+        await display_dbase_window(lines, /*forceFull=*/true);
+    else
+        await pline(`No engravings seen or remembered${nearby ? ' nearby' : ''}.`);
+}
+
+// C ref: hacklib.c upstart() — capitalize the first letter of a string.
+function upstart(s) {
+    return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+// C ref: pager.c look_at_monster() — the health/tame/peaceful-prefixed monster
+// name.  monhealthdescr is disabled in C (#if 0), so only the tame/peaceful
+// adjective + distant_monnam (bare monster type name) matter for the sessions
+// modelled here; the ", holding you"/", asleep"/etc. suffixes aren't reached.
+function look_at_monster_desc(mtmp) {
+    // C: distant_monnam(mtmp, ARTICLE_NONE) — the bare monster type name (or a
+    // given name); mgivenname is used when present.
+    const given = mtmp.mgivenname || mtmp.mextra?.mgivenname;
+    const name = given || mtmp.data?.name || mtmp.data?.pmname || 'monster';
+    const adj = mtmp.mtame ? 'tame ' : (mtmp.mpeaceful ? 'peaceful ' : '');
+    return `${adj}${name}`;
+}
+
+// C ref: pager.c look_all() — list monsters (do_mons) or objects (!do_mons) in
+// the look region as a full-screen NHW_TEXT window.  The per-line prefix is
+// "%8s  <sym>  " where the coord is the look_all form (a trailing space is
+// appended for y<10 so the commas of <x,y> line up) and <sym> is the displayed
+// glyph symbol (the hero is '@'; other monsters/objects use the map's shown
+// character).  Empty region -> the "No monsters/objects..." message.
+async function do_look_all(nearby, do_mons) {
+    const u = game.u;
+    const BOLT_LIM = 8;
+    const lo_y = nearby ? Math.max(u.uy - BOLT_LIM, 0) : 0;
+    const lo_x = nearby ? Math.max(u.ux - BOLT_LIM, 1) : 1;
+    const hi_y = nearby ? Math.min(u.uy + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
+    const hi_x = nearby ? Math.min(u.ux + BOLT_LIM, COLNO - 1) : COLNO - 1;
+
+    const lines = [];
+    let count = 0;
+    const cellSym = (loc) => (loc && loc.disp_ch)
+        ? (loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch)
+        : ' ';
+    for (let y = lo_y; y <= hi_y; y++) {
+        for (let x = lo_x; x <= hi_x; x++) {
+            const loc = game.level?.at(x, y);
+            let lookbuf = '', sym = '';
+            if (do_mons) {
+                if (x === u.ux && y === u.uy) {
+                    // canspotself: hero visible on their own square.
+                    lookbuf = self_lookat();
+                    sym = '@';
+                } else {
+                    const mtmp = m_at(x, y);
+                    if (mtmp && canspotmon(mtmp)) {
+                        lookbuf = look_at_monster_desc(mtmp);
+                        sym = cellSym(loc);
+                    }
+                }
+            } else {
+                // objects: count only cells whose DISPLAYED glyph is an object
+                // (C: glyph_is_object(glyph_at)).  vobj_at finds any object on
+                // the cell, but an out-of-sight/unremembered one isn't shown, so
+                // require the cell's current symbol to equal the object glyph.
+                if (!(x === u.ux && y === u.uy) && !m_at(x, y)) {
+                    const otmp = vobj_at(x, y);
+                    if (otmp && !covers_objects(loc)) {
+                        const og = object_glyph(otmp);
+                        const ogch = og.dec ? (DEC_TO_UNICODE[og.ch] || og.ch) : og.ch;
+                        if (cellSym(loc) === ogch) {
+                            lookbuf = obj_doname(otmp);
+                            sym = cellSym(loc);
+                        }
+                    }
+                }
+            }
+            if (lookbuf) {
+                count++;
+                if (count === 1) {
+                    const which = do_mons ? 'monsters' : 'objects';
+                    lines.push(nearby
+                        ? `${upstart(which)} currently shown near <${u.ux},${u.uy}>:`
+                        : `All ${which} currently shown on the map:`);
+                    lines.push('    '); // Qt fixed-width separator (renders blank)
+                }
+                let coordbuf = `<${x},${y}>`;
+                if (y < 10) coordbuf += ' '; // look_all coordinate-alignment kitten
+                lines.push(`${coordbuf.padStart(8)}  ${sym}  ${lookbuf}`);
+            }
+        }
+    }
+    if (count)
+        await display_dbase_window(lines, /*forceFull=*/true);
+    else
+        await pline(`No ${do_mons ? 'monsters' : 'objects'} are currently shown ${nearby ? 'nearby' : 'on the map'}.`);
+}
+
 // C ref: pager.c do_look(mode=0) — the '/' whatis command.
 export async function do_look_full() {
     const u = game.u;
@@ -1150,9 +1639,80 @@ export async function do_look_full() {
     game._toplin = 0;
     await flush_screen(1);
 
+    if (i === '?') {
+        // C do_look case '?': getlin("Specify what? (type the word)"), then
+        // mungspaces; an empty/ESC reply cancels.  A multi-character reply is a
+        // "complete string" -> checkfile(out_str, chkfilUsrTyped|chkfilDontAsk)
+        // which shows the data.base entry directly (no y/n gate).  A single
+        // character would fall through to the by-symbol farlook, which the
+        // recorded session never does; treat it as a cancel for now.
+        const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+        let out_str = await hooked_tty_getlin('Specify what? (type the word)', null);
+        if (out_str !== ' ') out_str = out_str.replace(/\s+/g, ' ').replace(/^ | $/g, '');
+        if (out_str === '' || out_str[0] === '\x1b') { game.context.move = 0; return; }
+        if (out_str.length > 1) {
+            await checkfile(out_str, 1 | 2 /* chkfilUsrTyped|chkfilDontAsk */);
+            game.context.move = 0;
+            return;
+        }
+        // single-char symbol path not modelled; cancel.
+        game.context.move = 0;
+        return;
+    }
+
+    if (i === 'i') {
+        // C do_look case 'i': invlet = display_inventory(NULL, TRUE); if a real
+        // item was picked, checkfile(singular(obj, xname), UsrTyped|DontAsk).
+        const nm = await whatis_pick_inventory();
+        if (nm) {
+            // The picked-item menu is dismissed; redraw the map before the
+            // data.base overlay so it shows through to the left of the window.
+            await flush_screen(1);
+            await checkfile(nm, 1 | 2);
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    if (i === 't' || i === 'T') {
+        // C do_look case 't'/'T' -> look_traps(nearby).  Scan the look region
+        // (nearby => BOLT_LIM=8 box around the hero, else the whole map) for
+        // seen/remembered traps.  When none are found the command just prints
+        // "No traps seen or remembered[ nearby]." (no window).  The trap-listing
+        // window for count>0 is not modelled; that case falls through to the
+        // same no-time-passing cancel as before (no message), which is what the
+        // unimplemented sub-modes already did.
+        const nearby = (i === 't');
+        if (count_seen_traps(nearby) === 0)
+            await pline(`No traps seen or remembered${nearby ? ' nearby' : ''}.`);
+        game.context.move = 0;
+        return;
+    }
+
+    if (i === 'm' || i === 'M') {
+        // C do_look case 'm'/'M' -> look_all(nearby, do_mons=TRUE).
+        await do_look_all(i === 'm', true);
+        game.context.move = 0;
+        return;
+    }
+
+    if (i === 'o' || i === 'O') {
+        // C do_look case 'o'/'O' -> look_all(nearby, do_mons=FALSE).
+        await do_look_all(i === 'o', false);
+        game.context.move = 0;
+        return;
+    }
+
+    if (i === 'e' || i === 'E') {
+        // C do_look case 'e'/'E' -> look_engrs(nearby).
+        await do_look_engrs(i === 'e');
+        game.context.move = 0;
+        return;
+    }
+
     if (i !== '/') {
-        // Other sub-modes (inventory/symbol/monster/object/trap/engraving
-        // listings) are not modelled yet; cancel cleanly with no time passing.
+        // Other sub-modes (inventory/symbol/monster/object listings) are not
+        // modelled yet; cancel cleanly with no time passing.
         game.context.move = 0;
         return;
     }

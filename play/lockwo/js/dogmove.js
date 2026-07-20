@@ -13,11 +13,13 @@ import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok } from './const.js';
 import { obj_resists } from './zap.js';
-import { newsym } from './display.js';
+import { newsym, vobj_at, object_glyph } from './display.js';
 import { couldsee as visCouldsee, clear_path, cansee } from './vision.js';
 import { Monnam, x_monnam } from './uhitm.js';
 import { floor_object_name } from './invent.js';
-import { dist2, mfndpos } from './monmove.js';
+import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon } from './monmove.js';
+import { ALLOW_TRAPS as ALLOW_TRAPS_F } from './const.js';
+import { t_at } from './trap.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import {
@@ -795,11 +797,11 @@ export async function dog_move(mtmp, after) {
     if (appr === -2) return MMOVE_NOTHING;
 
     // mfndpos with pet allowflags.  ALLOW_M keeps monster-occupied adjacent
-    // squares in the candidate list so the pet can melee a hostile monster
-    // (dogmove.c mon_allowflags()).  Other allowflags (ALLOW_MDISP, traps, ...)
-    // aren't exercised by the contest sessions at the points they diverge.
+    // squares in the candidate list so the pet can melee a hostile monster;
+    // ALLOW_TRAPS keeps harmful-trap squares (flagged in poss[i].info) so the pet
+    // can roll the "step onto it anyway" chance below (dogmove.c mon_allowflags()).
     const ALLOW_M = 0x00080000;
-    const poss = mfndpos(mtmp, ALLOW_M);
+    const poss = mfndpos(mtmp, ALLOW_M | ALLOW_TRAPS_F);
     const cnt = poss.length;
 
     // Count uncursed-item squares (for the cursed-item avoidance roll).  C ref
@@ -822,6 +824,10 @@ export async function dog_move(mtmp, after) {
     // dog_eat(mtmp, obj, ...).  We must do the same: the eat consumes the corpse
     // and rolls its own RNG (dogfood reward-check + delobj obj_resists).
     let do_eat = false, eat_obj = null;
+    // C ref: dogmove.c:1090 — cursemsg[i] tracks whether candidate square i holds
+    // a cursed object; consulted at newdogpos to emit the "<pet> steps reluctantly
+    // onto <object>" topline for the square the pet actually moves onto (chi).
+    const cursemsg = new Array(cnt).fill(false);
 
     for (let i = 0; i < cnt; i++) {
         const nx = poss[i].x, ny = poss[i].y;
@@ -840,22 +846,33 @@ export async function dog_move(mtmp, after) {
             continue;                 // balked -> next candidate square
         }
 
+        // C ref: dogmove.c:1188 — the dog avoids a harmful trap it can see, but
+        // might have to cross one to follow the hero: a *seen* trap gives a 39/40
+        // chance to skip the square (rn2(40)); 1/40 it steps on anyway.  Only
+        // squares mfndpos flagged ALLOW_TRAPS (harmful) reach here.  (Leashed pets
+        // whimper instead — not exercised by these steeds/pets.)
+        if ((poss[i].info & ALLOW_TRAPS_F) && !mtmp.mleashed) {
+            const trap = t_at(nx, ny);
+            if (trap && trap.tseen && rn2(40)) continue;
+        }
+
         // dog eschews cursed objects, likes dog food: scan objects at <nx,ny>.
-        let cursemsg = false, ate = false;
+        let ate = false;
         for (const obj of objectsAt(nx, ny)) {
-            if (obj.cursed) { cursemsg = true; continue; }
+            if (obj.cursed) { cursemsg[i] = true; continue; }
             const otyp = dogfood(mtmp, obj); // -> obj_resists rn2(100)
             if (otyp < MANFOOD
                 && (otyp < ACCFOOD || edog.hungrytime <= (game.moves || 1))) {
                 nix = nx; niy = ny; chi = i; ate = true;
                 do_eat = true; eat_obj = obj;
+                cursemsg[i] = false; // C ref: dogmove.c:1230 — not reluctant
                 break;
             }
         }
         if (ate) break; // goto newdogpos (eating)
 
         // saw a cursed item and not forced onto it -> usually keep looking.
-        if (cursemsg && uncursedcnt > 0 && rn2(13 * uncursedcnt))
+        if (cursemsg[i] && uncursedcnt > 0 && rn2(13 * uncursedcnt))
             continue;
 
         // backtrack avoidance (only when far from the hero).
@@ -895,10 +912,31 @@ export async function dog_move(mtmp, after) {
 
     // newdogpos:
     if (nix !== omx || niy !== omy) {
+        // C ref: dogmove.c:1295 — wasseen captured before the move (old square),
+        // then re-checked at the new square, for the reluctant-step topline.
+        const wasseen = canseemon(mtmp);
         mtmp.mtrack = [{ x: omx, y: omy }, ...mtrack].slice(0, MTSZ);
         mtmp.mx = nix; mtmp.my = niy;
-        // Redraw the vacated and occupied squares (C: place_monster + newsym).
+        // C ref: dogmove.c:1298 — "<pet> steps reluctantly onto <object>." when
+        // the pet moves onto a square whose (topmost) object is cursed and it is
+        // (or was) in view.  In C the pline fires inside dog_move (before the tty
+        // redraw); it sets the topline NEED_MORE but does not block on its own.
+        // Skipped when the pet ate the food underfoot.
+        if (chi >= 0 && cursemsg[chi] && (wasseen || canseemon(mtmp))) {
+            const verb = vtense(locomotion(mtmp.data, 'step')); // "steps"
+            const over = is_flyer(mtmp.data) || is_floater(mtmp.data);
+            const what = reluctant_what(nix, niy);
+            await emit_pet_msg(`${noit_Monnam(mtmp)} ${verb} reluctantly ${over ? 'over' : 'onto'} ${what}.`);
+        }
+        // C ref: monmove.c postmov():1508 — the tty redraw is deferred here (m_move
+        // returns postmov(..., dog_move(...), ...)).  Clear the vacated square,
+        // then run mintrap on the new square: a trap message (e.g. "<pet> is caught
+        // in a bear trap!") pages the still-pending reluctant line with --More--,
+        // and the trap's own RNG only fires once the prompt is dismissed.  The new
+        // square is redrawn (pet painted over the object) only afterwards.
         newsym(omx, omy);
+        const trapret = await mon_mintrap(mtmp);
+        if (trapret === Trap_Killed_Mon) { newsym(nix, niy); return MMOVE_DIED; }
         newsym(nix, niy);
         // C ref: dogmove.c:1318 — after moving onto the food, the pet eats it.
         if (do_eat && eat_obj) {
@@ -1011,6 +1049,70 @@ async function emit_pet_msg(msg) {
     await update_topl(msg);
 }
 
+// C ref: display.c canseemon(mon) — the hero can see the monster (its square is
+// in view and it isn't invisible unless the hero sees invisible).  Used to gate
+// the pet's reluctant-step topline.
+function canseemon(mtmp) {
+    if (!mtmp) return false;
+    if (game.u?.uswallow) return true;
+    if (mtmp.minvis && !game.u?.see_invis) return false;
+    return !!cansee(mtmp.mx, mtmp.my);
+}
+
+// C ref: mondata.h is_flyer(ptr) = (mflags1 & M1_FLY).  makemon carries no
+// mflags1, so identify flyers by pmidx (the low-level M1_FLY set, mirroring
+// monmove.js); pets exercised by the sessions (dog/kitten/pony) are not flyers.
+const M1_FLY_PMIDX = new Set([49, 50, 98, 220]);
+function is_flyer(ptr) { return ptr != null && M1_FLY_PMIDX.has(ptr.pmidx); }
+// C ref: mondata.h is_floater(ptr) = (ptr->mlet == S_EYE).  S_EYE == 18.
+function is_floater(ptr) { return ptr != null && ptr.mcls === 18; }
+
+// C ref: mondata.c locomotion(ptr, def) — the movement verb.  Floaters/flyers/
+// slitherers use their own verb; a normal limbed walker (every contest pet) uses
+// `def` ("step").  Amorphous/immobile/nolimbs branches aren't reachable for the
+// pets that step onto cursed objects, so they fall through to def.
+function locomotion(ptr, def) {
+    if (is_floater(ptr)) return 'float';
+    if (is_flyer(ptr)) return 'fly';
+    if (ptr && (ptr.mcls === 45 /* S_SNAKE */ || ptr.mcls === 40 /* S_NAGA */))
+        return 'slither';
+    return def;
+}
+
+// C ref: objnam.c vtense(NULL, verb) — the singular 3rd-person present form of a
+// plural-shaped verb ("step" -> "steps", "fly" -> "flies").  Only the null-subject
+// (`sing:`) branch is needed here.
+function vtense(verb) {
+    const b = verb;
+    const last = b[b.length - 1]?.toLowerCase();
+    const prev = b.length >= 2 ? b[b.length - 2].toLowerCase() : '';
+    if (b.toLowerCase() === 'are') return 'is';
+    if (b.toLowerCase() === 'have') return b.slice(0, -2) + 's';
+    if (last === 'z' || last === 'x' || last === 's'
+        || (b.length >= 2 && last === 'h' && (prev === 'c' || prev === 's'))
+        || (b.length === 2 && last === 'o'))
+        return b + 'es';
+    if (last === 'y' && !'aeiou'.includes(prev))
+        return b.slice(0, -1) + 'ies';
+    return b + 's';
+}
+
+// C ref: dogmove.c:1302 — the object the pet is reluctantly stepping onto.  Names
+// the top object only when the hero *remembers* an object there (not hallucinating,
+// hero_memory on, the map cell's remembered glyph is that object); else "something".
+function reluctant_what(x, y) {
+    if (!game.u?.uhallu && game.level?.flags?.hero_memory) {
+        const o = vobj_at(x, y);
+        const loc = game.level?.at(x, y);
+        if (o && loc?.remembered_glyph) {
+            const og = object_glyph(o);
+            if (og && og.ch === loc.remembered_glyph.ch)
+                return floor_object_name(o);
+        }
+    }
+    return 'something';
+}
+
 function GDIST(x, y, g) { return dist2(x, y, g.gx, g.gy); }
 
 // C ref: dogmove.c:1102-1170 — the ALLOW_M branch of dog_move's choice loop.
@@ -1068,4 +1170,55 @@ function monnear(mon, x, y) {
     const distance = dist2(mon.mx, mon.my, x, y);
     if (distance === 2 && mon.data?.pmidx === PM_GRID_BUG) return false;
     return distance < 3;
+}
+
+// C ref: dog.c mon_catchup_elapsed_time(mtmp, nmv) — heal a monster and decay
+// its status timers for the game turns it spent inactive on a level the hero
+// had left, applied when restore.c getlev() reloads that level.  RNG is
+// consumed only by the conditional recovery rolls: rn2(nmv+1) for a trapped /
+// confused / stunned monster, and rn2(wilder) for a tame monster that has been
+// separated from the hero long enough to risk going wild.  For the small
+// elapsed times and hostile (non-tame, un-afflicted) monsters the recorded
+// sessions return to, none of these fire, so no RNG is used.  HP regeneration
+// (healmon) and the pet-starvation check are HP/tameness-only bookkeeping with
+// no RNG and no glyph effect, so they are not modelled.
+export function mon_catchup_elapsed_time(mtmp, nmv) {
+    const LARGEST_INT = 0x7fffffff;
+    let imv = (nmv >= LARGEST_INT) ? (LARGEST_INT - 1) : (nmv | 0);
+
+    // might stop being afraid, blind or frozen (set to 1; movemon does the
+    // final decrement)
+    if (mtmp.mblinded)
+        mtmp.mblinded = (imv >= mtmp.mblinded) ? 1 : (mtmp.mblinded - imv);
+    if (mtmp.mfrozen)
+        mtmp.mfrozen = (imv >= mtmp.mfrozen) ? 1 : (mtmp.mfrozen - imv);
+    if (mtmp.mfleetim)
+        mtmp.mfleetim = (imv >= mtmp.mfleetim) ? 1 : (mtmp.mfleetim - imv);
+
+    // might recover from temporary trouble
+    if (mtmp.mtrapped && rn2(imv + 1) > 40 / 2) mtmp.mtrapped = 0;
+    if (mtmp.mconf && rn2(imv + 1) > 50 / 2) mtmp.mconf = 0;
+    if (mtmp.mstun && rn2(imv + 1) > 10 / 2) mtmp.mstun = 0;
+
+    // might finish eating or be able to use special ability again
+    if (mtmp.meating) {
+        if (imv > mtmp.meating) mtmp.meating = 0; // finish_meating (no RNG)
+        else mtmp.meating -= imv;
+    }
+    if (imv > (mtmp.mspec_used || 0)) mtmp.mspec_used = 0;
+    else mtmp.mspec_used -= imv;
+
+    // reduce tameness for every 150 moves you are separated
+    if (mtmp.mtame) {
+        const wilder = Math.floor((imv + 75) / 150);
+        if (mtmp.mtame > wilder)
+            mtmp.mtame -= wilder;              // less tame
+        else if (mtmp.mtame > rn2(wilder))
+            mtmp.mtame = 0;                    // untame
+        else
+            mtmp.mtame = mtmp.mpeaceful = 0;   // hostile!
+    }
+
+    // set_mon_lastmove(mtmp)
+    mtmp.mlstmv = game.moves ?? 0;
 }

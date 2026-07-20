@@ -94,7 +94,10 @@ function boolStr(name, dflt) {
 
 function autopickupOn() {
     game.flags = game.flags || {};
-    return game.flags.pickup === undefined ? true : !!game.flags.pickup;
+    // C ref: optlist.h NHOPTB(autopickup, ..., Off, ...) — the autopickup
+    // boolean (&flags.pickup) defaults to Off.  Movement/pickup already treats
+    // an unset game.flags.pickup as falsy; match that in the menu display too.
+    return game.flags.pickup === undefined ? false : !!game.flags.pickup;
 }
 
 // The pickup_types value string: "all" when unrestricted, else the selected
@@ -327,14 +330,12 @@ function renderOptionsPage(entries, page, npages, selected) {
     return { row: r };
 }
 
-// Render the centered "Autopickup what?" object-class menu (offx > 0 overlay).
-// `clearAll` clears the whole screen first (when invoked from the full-screen
-// doset_simple "Options" menu); otherwise it overlays the map+status.
-function renderPickupMenu(offx, selected, clearAll) {
-    const d = disp();
-    if (!d) return;
-    // The overlay leaves the map/status beneath intact; only the menu columns
-    // are repainted.  Build the line list first, then paint rows 0..n.
+// Build the "Autopickup what?" object-class menu line list, in tty display
+// order (prompt, blank, class rows, blank, "All classes", note, toggle-hint).
+// C ref: windows.c choose_classes_menu() — the trailing hint line depends on
+// flags.pickup ("Toggle off ... to not pick up anything." when autopickup is
+// on, else "Toggle on ... to automatically pick these things up.").
+function buildPickupLines(selected) {
     const lines = [];
     lines.push({ text: 'Autopickup what?', inv: true });
     lines.push({ text: '' });
@@ -345,7 +346,38 @@ function renderPickupMenu(offx, selected, clearAll) {
     lines.push({ text: '' });
     lines.push({ text: `A ${selected.has('A') ? '+' : '-'}    All classes of objects` });
     lines.push({ text: 'Note: when no choices are selected, "all" is implied.' });
-    lines.push({ text: "Toggle off 'autopickup' to not pick up anything." });
+    lines.push({ text: autopickupOn()
+        ? "Toggle off 'autopickup' to not pick up anything."
+        : "Toggle on 'autopickup' to automatically pick these things up." });
+    return lines;
+}
+
+// C ref: wintty.c tty_end_menu() + tty_display_nhwindow() — a menu window's
+// overlay column is  offx = max(10, COLNO - maxcol - 1)  where maxcol is the
+// widest item (strlen+2, "extra space at beg & end") or the "(end) " morestr.
+// offx == 10, a full-height menu (maxrow >= rows), or !menu_overlay all force
+// full-screen (offx 0).  The pickup menu's width — and thus its column — grows
+// when the longer "Toggle on ..." hint is shown (autopickup off), shifting the
+// overlay left from col 25 (offx 24) to col 17 (offx 16).
+function pickupMenuOffx(lines) {
+    let maxcol = '(end) '.length;
+    for (const l of lines) { const len = l.text.length + 2; if (len > maxcol) maxcol = len; }
+    let offx = Math.max(10, 80 - maxcol - 1);
+    if (offx < 0) offx = 0;
+    if (offx === 10 || (lines.length + 1) >= 24) offx = 0;
+    return offx;
+}
+
+// Render the centered "Autopickup what?" object-class menu (offx > 0 overlay).
+// `clearAll` clears the whole screen first (when invoked from the full-screen
+// doset_simple "Options" menu); otherwise it overlays the map+status.
+function renderPickupMenu(selected, clearAll) {
+    const d = disp();
+    if (!d) return;
+    // The overlay leaves the map/status beneath intact; only the menu columns
+    // are repainted.  Build the line list first, then paint rows 0..n.
+    const lines = buildPickupLines(selected);
+    const offx = pickupMenuOffx(lines);
     const morestr = '(end) ';
     if (clearAll) {
         // When the pickup menu follows the full-screen "Options" (doset_simple)
@@ -372,14 +404,12 @@ function renderPickupMenu(offx, selected, clearAll) {
 // PICK_ANY object-class menu for pickup_types.  Returns the set of selected
 // class symbols (or 'all' when none / 'A' chosen), or null on ESC cancel.
 async function pickupTypesMenu(clearAll = false) {
-    // offx computed as in process_menu_window: the menu is centered toward the
-    // right; the recorded layout places item text at column 25 (offx 24).
-    const offx = 24;
+    // offx is computed per-render from the menu width (see pickupMenuOffx).
     const selected = new Set();
     const byAccel = new Map(PICKUP_CLASSES.map(c => [c.a, c]));
     const bySym = new Map(PICKUP_CLASSES.map(c => [c.sym, c]));
     for (;;) {
-        renderPickupMenu(offx, selected, clearAll);
+        renderPickupMenu(selected, clearAll);
         game._modal_screen = 'optmenu';
         const c = await nhgetch();
         delete game._modal_screen;
@@ -567,7 +597,9 @@ function toggleSimpleBool(name) {
     game.flags = game.flags || {};
     switch (name) {
     case 'autopickup': {
-        const cur = game.flags.pickup === undefined ? true : !!game.flags.pickup;
+        // C ref: optlist.h autopickup defaults Off; toggling an unset value
+        // turns it on.
+        const cur = game.flags.pickup === undefined ? false : !!game.flags.pickup;
         game.flags.pickup = !cur;
         break;
     }

@@ -952,6 +952,21 @@ export async function addinv(obj) {
     return obj;
 }
 
+/**
+ * C ref: invent.c addinv_nomerge — force a distinct invent slot (no merge).
+ * Used by eat.c touchfood after splitting a bitten food piece.
+ */
+export async function addinv_nomerge(obj) {
+    if (!obj) return null;
+    const save = obj.nomerge;
+    obj.nomerge = 1;
+    const result = await addinv(obj);
+    // C restores nomerge on the passed obj; merged survivor is `result`
+    obj.nomerge = save;
+    if (result && result !== obj) result.nomerge = save;
+    return result;
+}
+
 function is_shirt(obj) {
     return (game.objects?.[obj.otyp]?.oc_skill ?? -1) === ARM_SHIRT;
 }

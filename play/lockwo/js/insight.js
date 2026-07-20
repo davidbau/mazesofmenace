@@ -18,8 +18,10 @@ import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     ROLE_MALE, ROLE_FEMALE, ROLE_GENDMASK,
+    G_GONE, G_GENOD, G_EXTINCT,
 } from './const.js';
 import { objects as mkobjObjects } from './mkobj.js';
+import { update_topl } from './display.js';
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
 function attrval(attrindx, v) {
@@ -253,3 +255,29 @@ function currency(n) { return n === 1 ? 'zorkmid' : 'zorkmids'; }
 function elapsedTime() { return 'none'; }
 
 function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+// C ref: insight.c list_genocided(defquery, ask) — the #genocided command.
+// For a game with no genocided or extinct species, C's non-final branch just
+// prints "No creatures have been genocided." (the #genocided form passes
+// genoing == FALSE so there is no " yet" suffix).  The full genocided/extinct
+// species menu is only reachable after a genocide, which the covered sessions
+// never perform.
+function anyGenocidedOrExtinct() {
+    const mv = game.mvitals;
+    if (!mv) return false;
+    for (let i = 0; i < mv.length; i++) {
+        if (mv[i] && (mv[i].mvflags & G_GONE)) return true;
+    }
+    return false;
+}
+
+// C ref: insight.c dogenocided() — the M-g / #genocided command.
+export async function dogenocided() {
+    if (!anyGenocidedOrExtinct()) {
+        await update_topl('No creatures have been genocided.');
+        return 0; // ECMD_OK
+    }
+    // The genocided/extinct species menu is unreached by the covered sessions.
+    await update_topl('No creatures have been genocided.');
+    return 0;
+}

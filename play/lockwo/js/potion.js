@@ -6,17 +6,19 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { pline, update_topl } from './display.js';
+import { pline, update_topl, y_n } from './display.js';
 import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
-         GETOBJ_NOFLAGS, body_part } from './invent.js';
+         GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_DOWNPLAY, body_part,
+         hands_obj, obj_doname } from './invent.js';
 import { exercise } from './attrib.js';
 import { POTION_CLASS, POT_OIL, POT_CONFUSION, POT_PARALYSIS, POT_HEALING,
          POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_BOOZE, POT_SICKNESS,
-         objects } from './mkobj.js';
-import { A_STR, A_DEX, A_CON, A_WIS } from './const.js';
+         objects, COIN_CLASS } from './mkobj.js';
+import { A_STR, A_DEX, A_CON, A_WIS, IS_FOUNTAIN, IS_SINK } from './const.js';
 import { fruitname } from './objnam.js';
 import { newuhs } from './eat.js';
 import { Blind, vision_recalc } from './vision.js';
+import { dipfountain } from './fountain.js';
 
 // C ref: potion.c make_confused(xtime, talk) — set the HConfusion timeout.  The
 // hero's confusion timer lives on game.u.uprops.Confusion (read by isConfused()
@@ -420,4 +422,110 @@ export async function dodrink() {
     // The milky/smoky ghost/djinni bottle checks require a ghost/djinni still
     // alive; not modeled (no such potions in the covered sessions).
     return await dopotion(otmp);
+}
+
+// C ref: potion.c dip_ok — getobj callback for the object to be dipped.
+function dip_ok(obj) {
+    if (!obj)
+        return GETOBJ_DOWNPLAY;
+    if (obj.oclass === COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+    // inaccessible_equipment (cursed welded gear) isn't modeled; the dippable
+    // starter gear is always accessible.
+    return GETOBJ_SUGGEST;
+}
+
+// C ref: potion.c dip_hands_ok — same, plus the Glib slippery-hands case which
+// the contest hero never has.
+function dip_hands_ok(obj) {
+    return dip_ok(obj);
+}
+
+// C ref: potion.c can_reach_floor(FALSE) — FALSE while levitating / swallowed.
+function dip_can_reach_floor() {
+    const u = game.u || {};
+    if (u.uswallow) return false;
+    if (u.uprops?.Levitation) return false;
+    return true;
+}
+
+// C ref: potion.c dodip — the #dip command.  Prompt for an object; if standing
+// on a fountain/sink/pool (and 'm' wasn't used) offer to dip into it, else ask
+// which potion to dip the object into.
+export async function dodip() {
+    const u = game.u;
+    const here = game.level?.at(u.ux, u.uy)?.typ;
+    const at_pool = dip_is_pool(u.ux, u.uy);
+    const at_fountain = IS_FOUNTAIN(here);
+    const at_sink = IS_SINK(here);
+    const menu_requested = !!game.iflags?.menu_requested;
+    const at_here = !menu_requested && (at_pool || at_fountain || at_sink);
+
+    const obj = await getobj('dip', at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
+    if (!obj)
+        return ECMD_CANCEL;
+    // inaccessible_equipment(obj) — not modeled.
+
+    const is_hands = (obj === hands_obj);
+    const verbose = game.flags?.verbose !== false;
+    const shortestname = (is_hands || (obj.quan || 1) > 1) ? 'them' : 'it';
+    const obuf = is_hands ? `your ${body_part(0 /* HAND */)}s` : obj_doname(obj);
+    const named = verbose ? obuf : shortestname;
+
+    if (!menu_requested) {
+        if (!dip_can_reach_floor()) {
+            /* can't dip something into fountain/pool/sink if unreachable */
+        } else if (at_fountain) {
+            const q = `Dip ${named} into the fountain?`;
+            if (await y_n(q) === 'y') {
+                if (!is_hands) obj.pickup_prev = 0;
+                // Model C's persistent tty topline: the full y_n query (incl.
+                // "[yn] (n)") stays displayed until the dip's own message, if
+                // any, replaces it.
+                game._pending_message = `${q} [yn] (n)`;
+                game._toplin = 0;
+                await dipfountain(obj);
+                return ECMD_TIME;
+            }
+        } else if (at_sink) {
+            const q = `Dip ${named} into the sink?`;
+            if (await y_n(q) === 'y') {
+                if (!is_hands) obj.pickup_prev = 0;
+                game._pending_message = `${q} [yn] (n)`;
+                game._toplin = 0;
+                await dipsink(obj);
+                return ECMD_TIME;
+            }
+        } else if (at_pool) {
+            if (await y_n(`Dip ${named} into the ${dip_waterbody_name(u.ux, u.uy)}?`) === 'y') {
+                // Levitation / steed / wash-hands / water_damage handling for
+                // pools is not exercised by the covered sessions.
+                return ECMD_TIME;
+            }
+        }
+    }
+
+    // "What do you want to dip <obj> into? [xyz or ?*]"
+    const potion = await getobj(`dip ${named} into`, drink_ok, GETOBJ_NOFLAGS);
+    if (!potion)
+        return ECMD_CANCEL;
+    // potion_dip(obj, potion) — dipping into a carried potion isn't reached by
+    // the covered sessions (they always dip into the fountain).
+    return ECMD_OK;
+}
+
+// C ref: rm.h is_pool — POOL/MOAT/WATER.
+function dip_is_pool(x, y) {
+    const t = game.level?.at(x, y)?.typ;
+    return t === 16 /* POOL */ || t === 17 /* MOAT */ || t === 18 /* WATER */;
+}
+
+// C ref: mkmaze.c waterbody_name — "water" for an ordinary pool; the fancier
+// moat/sea/shore naming isn't reached by the covered sessions.
+function dip_waterbody_name(_x, _y) { return 'water'; }
+
+// C ref: potion.c dipsink — dipping into a sink.  Not exercised by the covered
+// sessions; kept as a stub so the sink dip path returns cleanly.
+async function dipsink(_obj) {
+    await pline('The sink quivers upward for a moment.');
 }

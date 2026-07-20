@@ -22,14 +22,16 @@
 // dog.c mon_arrive are not otherwise available in the JS engine).
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, rnd, rnl } from './rng.js';
 import { print_dungeon } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE } from './const.js';
-import { docrt, flush_screen, pline, update_topl, topl_more } from './display.js';
+import { docrt, flush_screen, pline, update_topl, topl_more, y_n } from './display.js';
 import { vision_reset, vision_recalc } from './vision.js';
+import { hide_monst } from './mon.js';
+import { mon_catchup_elapsed_time } from './dogmove.js';
 
 // ── small geometry / occupancy helpers (C ref: mklev.c occupied,
 //    mkmaze.c bad_location, teleport.c goodpos/collect_coords/enexto) ──
@@ -189,6 +191,12 @@ function enexto(xx, yy) {
 // is relocated next to the hero via mnexto()->enexto().
 function mon_arrive_with_you(mtmp) {
     const u = game.u;
+    // C ref: dog.c mon_arrive() — before placing the arriving monster, clear its
+    // movement track (mon_track_clear) and refresh the apparent-hero position
+    // (mtmp->mux = u.ux, mtmp->muy = u.uy) so the pet's dog_move backtrack
+    // avoidance and goal logic don't reuse coordinates from the level just left.
+    mtmp.mtrack = [];
+    mtmp.mux = u.ux; mtmp.muy = u.uy;
     if (!m_at(u.ux, u.uy) && !rn2(mtmp.mtame ? 10 : mtmp.mpeaceful ? 5 : 2)) {
         // rloc_to(mtmp, u.ux, u.uy) — lands on hero's square (no extra rng)
         mtmp.mx = u.ux; mtmp.my = u.uy;
@@ -316,8 +324,29 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // Move to the destination level.
     g._visited_levels = g._visited_levels || {};
+    g._level_store = g._level_store || {};
     const ledger = `${newlevel.dnum}:${newlevel.dlevel}`;
-    const firstVisit = !g._visited_levels[ledger];
+    // C ref: do.c goto_level() — "entering this level for first time" is gated on
+    // !(level_info[new_ledger].flags & LFILE_EXISTS): a level file exists once the
+    // level has been saved by a prior departure.  The per-ledger store is the JS
+    // analog of that saved file, so a stored copy means "reload it" (getlev),
+    // never "make it" (mklev) — this also covers the game-start level, which was
+    // built by chargen (not marked in _visited_levels) but is stored the first
+    // time the hero leaves it.
+    const firstVisit = !g._visited_levels[ledger] && !g._level_store[ledger];
+
+    // C ref: do.c goto_level() — savelev() writes out (and frees) the level we
+    // are leaving before the destination is made or reloaded.  The JS port keeps
+    // each visited level's live object graph in a per-ledger store; the
+    // reference-swap here plays the role of savelev()/getlev()'s serialize-free /
+    // read-back (the object state is identical either way, and no RNG is used).
+    // Stash AFTER keepdogs_capture() has pulled any accompanying pet off the
+    // level (C likewise runs keepdogs(FALSE) before savelev()) and BEFORE u.uz
+    // switches, keyed by the OLD ledger.
+    const oldLedger = `${u.uz.dnum}:${u.uz.dlevel}`;
+    g._level_store[oldLedger] = {
+        level: g.level, stairs: g.stairs, omoves: g.moves ?? 0,
+    };
 
     u.uz0 = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
     u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
@@ -329,6 +358,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // C does the room fill + mineralize inside makelevel(); the JS engine
         // factors it into fastforward_fill_mineralize().
         await fastforward_fill_mineralize();
+    } else {
+        // C ref: do.c goto_level() "returning to previously visited level;
+        // reload it" -> reseed_random() (a no-op in this build:
+        // has_strong_rngseed is FALSE) + getlev().  Swap the stored level graph
+        // back in and run getlev()'s monster catch-up + re-hide pass, the only
+        // RNG the reload consumes.
+        await getlev_restore(ledger);
     }
 
     // Hero placement.  C ref: do.c goto_level() arrival block.
@@ -377,6 +413,100 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // The on-foot transit message + its --More-- frame were already delivered
     // above (before the level switch) so that the captured frame shows the OLD
     // level, exactly as the deferred-docrt() tty does.
+}
+
+// ── getlev_restore (C ref: restore.c getlev(), goto_level() reload path) ──
+//
+// Runs when goto_level() returns to a previously-visited level: swap the stored
+// level graph (map / stairs / monster list) back into place, then walk the
+// monster chain applying each monster's elapsed-time catch-up
+// (dog.c mon_catchup_elapsed_time) and giving hiders a chance to re-hide.  The
+// only RNG the reload consumes is the per-monster re-hide guard (rnd(10) when
+// elapsed > 0) plus mon_catchup's conditional recovery rolls
+// (trapped/confused/stunned/going-wild), matching restore.c:1200-1220.
+async function getlev_restore(ledger) {
+    const g = game;
+    const store = g._level_store?.[ledger];
+    if (!store) return; // level was never actually left (shouldn't happen)
+    g.level = store.level;
+    g.stairs = store.stairs;
+    g.fmon = g.level.monsters;
+
+    // C ref: restore.c getlev() — elapsed = svm.moves - svo.omoves (turns spent
+    // away from this level).
+    const elapsed = (g.moves ?? 0) - (store.omoves ?? 0);
+
+    // C ref: restore.c:1181-1220 monster loop.  program_state.restoring is not
+    // REST_LEVELS (an ordinary in-game level change) and u.uz.dlevel != 0, so no
+    // monster is skipped by the "regenerate monsters while on another level"
+    // continue; ghostly is FALSE (this is not a bones file).
+    for (const mtmp of [...(g.level.monsters || [])]) {
+        if (mtmp === g.u?.usteed) continue; // steed kept on list but off map
+        if (elapsed > 0)
+            mon_catchup_elapsed_time(mtmp, elapsed);
+        // restore_cham(mtmp): shape-changer fixup — no RNG, not modelled.
+        // "give hiders a chance to hide before their next move"
+        if (elapsed > 0 && elapsed > rnd(10))
+            await hide_monst(mtmp);
+    }
+}
+
+// ── prev_level (C ref: dungeon.c prev_level) — climb toward the level above ──
+// When ascending an up staircase whose destination is a different dungeon
+// branch we cross that branch; otherwise we simply decrement dlevel within the
+// current branch.  goto_level() then reloads/makes the destination.
+export async function prev_level(at_stairs) {
+    const u = game.u;
+    const stway = stairway_at(u.ux, u.uy);
+    if (at_stairs && stway) stway.u_traversed = true;
+    if (at_stairs && stway && stway.tolev.dnum !== u.uz.dnum) {
+        // Taking an up dungeon branch (KMH: okay if not depth 1).
+        // C: if (!u.uz.dnum && u.uz.dlevel == 1 && !u.uhave.amulet) done(ESCAPED)
+        const newlevel = { dnum: stway.tolev.dnum, dlevel: stway.tolev.dlevel };
+        await goto_level(newlevel, at_stairs, false, false);
+    } else {
+        // Going up a staircase (or rising through the ceiling).
+        const newlevel = { dnum: u.uz.dnum, dlevel: u.uz.dlevel - 1 };
+        await goto_level(newlevel, at_stairs, false, false);
+    }
+}
+
+// ── doup (C ref: do.c doup) — climb an up staircase (the '<' command).
+// Models the on-foot ascent: the hero must be standing on a (non-ladder or
+// ladder) up staircase.  Pit-climb, being rooted, stuck-steed / held-in-place,
+// and over-encumbrance branches are not exercised by the recorded sessions.
+export async function doup() {
+    const u = game.u;
+    const stway = stairway_at(u.ux, u.uy);
+    // C ref: do.c doup -> set_move_cmd(DIR_UP, 0): u.dz = -1 (up), u.dx=u.dy=0.
+    u.dz = -1; u.dx = 0; u.dy = 0;
+
+    // C ref: do.c doup — must be standing on an up staircase.
+    if (!stway || !stway.up) {
+        await pline("You can't go up here.");
+        return 0; // ECMD_OK
+    }
+
+    // C ref: do.c doup — near_capacity() > SLT_ENCUMBER "load too heavy to climb"
+    // check; the light contest heroes never trigger it (not modelled).
+
+    // C ref: do.c doup — climbing up from ledger 1 (dnum 0, dlevel 1: the top of
+    // the Dungeons of Doom) leaves the dungeon, so confirm first.
+    if (u.uz.dnum === 0 && u.uz.dlevel === 1) {
+        const ans = await y_n('Beware, there will be no return!  Still climb?',
+                              'yn\x1b', 'n');
+        if (ans !== 'y') return 0; // ECMD_OK
+    }
+
+    // C ref: do.c doup — pet leash check before transit.
+    if (!next_to_u()) {
+        await pline('You are held back by your pet!');
+        return 0; // ECMD_OK
+    }
+
+    // C: ga.at_ladder = (levl[u.ux][u.uy].typ == LADDER); prev_level(TRUE).
+    await prev_level(true);
+    return 1; // ECMD_TIME
 }
 
 // ── next_level (C ref: dungeon.c next_level) ──
@@ -464,6 +594,210 @@ export async function wiz_level_tele(readLevel) {
         await pline('You materialize on a different level!');
     // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — no game turn elapses.
     return 0; // ECMD_OK
+}
+
+// ── level_tele (C ref: teleport.c level_tele) ──
+//
+// The controlled / random level teleport reached by reading a confused or
+// cursed scroll of teleportation (read.c seffect_teleportation).  With teleport
+// control (or in debug/wizard mode) the hero is prompted for a destination
+// level; a confused hero usually mispronounces and is sent to a random level
+// ("Oops...").  Without control the teleport is always random.  The exotic
+// destinations (heaven/clouds via a negative level, quest/endgame, the wizard
+// "?" menu, "Go to Nowhere") are not exercised by the recorded sessions and are
+// not modelled; the common in-dungeon random/controlled cases are.
+//
+// `readLevel(query)` reads the destination line via the top-line getlin; it is
+// injected so this module stays free of the input plumbing (read.js supplies
+// hooked_tty_getlin).  The confused-scroll caller has a still-pending topline
+// ("Being confused, ...") when this runs; getlin's own more() (C getline.c:53)
+// pages it before the prompt is drawn.
+export async function level_tele(readLevel) {
+    const u = game.u;
+    const wizard = !!game.flags?.debug;
+
+    // C ref: teleport.c level_tele — carrying the Amulet / being in the endgame
+    // or Sokoban blocks a (non-wizard) level teleport.  Not exercised on the
+    // covered starts, kept as a faithful guard.
+    if ((u.uhave_amulet || false) && !wizard) {
+        await pline('You feel very disoriented for a moment.');
+        return;
+    }
+
+    const confused = (u.uprops?.Confusion || 0) > 0;
+    const teleport_control = (u.uprops?.Teleport_control || 0) > 0
+        || !!u.Teleport_control;
+    const stunned = (u.uprops?.Stun || 0) > 0 || !!u.Stunned;
+    const cur_depth = depth_of_level(u.uz);
+
+    let newlev = 0;
+    let gotoRandom = false;
+
+    if ((teleport_control && !stunned) || wizard) {
+        // Controlled level teleport: prompt for a destination.
+        let trycnt = 0;
+        let cancelled = false;
+        for (;;) {
+            let qbuf = 'To what level do you want to teleport?';
+            // C: on the second and later passes the prompt gains a usage hint.
+            if (++trycnt === 2)
+                qbuf += wizard ? ' [type a number, name, or ? for a menu]'
+                               : ' [type a number or name]';
+            const buf = await readLevel(qbuf);
+            if (buf === '*') { gotoRandom = true; break; }
+            // C ref: teleport.c — a confused hero mispronounces the destination
+            // and (rnl(5) != 0) is teleported to a random level instead.  The
+            // "Oops..." message + its --More-- are shown over the OLD level
+            // (before goto_level switches), matching the deferred-docrt tty
+            // capture the recorder took (cf. the stair-transit handling below).
+            if (confused && rnl(5)) {
+                await pline('Oops...');
+                game._toplin = 1;
+                await topl_more();
+                game._pending_message = '';
+                game._toplin = 0;
+                gotoRandom = true;
+                break;
+            }
+            if (buf === '\x1b' || buf == null) { cancelled = true; break; }
+            // wizard "?" opens print_dungeon; not modelled for the scroll path.
+            newlev = lev_by_name(buf);
+            if (!newlev) newlev = parseInt(String(buf), 10) || 0;
+            // C do-while: repeat while newlev==0 and buf isn't a (leading-sign)
+            // digit and trycnt < 10.
+            const b0 = String(buf).charCodeAt(0);
+            const b1 = String(buf).charCodeAt(1);
+            const isDigit = (c) => c >= 48 && c <= 57;
+            if (newlev || isDigit(b0) || (String(buf)[0] === '-' && isDigit(b1))
+                || trycnt >= 10)
+                break;
+        }
+        if (cancelled) return;
+    } else {
+        // Involuntary level teleport (no control): straight to a random level.
+        gotoRandom = true;
+    }
+
+    if (gotoRandom) {
+        newlev = random_teleport_level();
+        if (newlev === cur_depth) { await pline('You shudder for a moment.'); return; }
+    }
+
+    // C ref: teleport.c — TT_BURIEDBALL / next_to_u / endgame / negative-level
+    // (heaven & clouds) handling is omitted (not exercised); the pet-adjacency
+    // check is the only one that applies and it is always TRUE here.
+    if (!next_to_u()) { await pline('You shudder for a moment.'); return; }
+
+    // Negative levels (heaven / clouds) and quest/hell adjustments are not
+    // modelled; the covered scroll teleport always yields an in-dungeon level.
+    if (newlev <= 0) return; // faithful no-op guard (unmodelled destinations)
+
+    const newlevel = get_level(newlev);
+    if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel
+        && newlev !== cur_depth) {
+        await pline("You can't get there from here.");
+        return;
+    }
+
+    // C ref: read.c seffect_teleportation — a completed level teleport marks the
+    // scroll type known (gk.known); doread() then discovers it via makeknown().
+    game.known = true;
+
+    // C ref: teleport.c schedule_goto(&newlevel, UTOTYPE_NONE, 0, "You
+    // materialize on a different level!").  C DEFERS the level change to
+    // deferred_goto(), called right after rhack() — i.e. AFTER doread()'s
+    // learnscroll()/makeknown() (which draws rn2(19) via exercise(A_WIS)).  So
+    // we must NOT run goto_level() here: mklev() must follow that exercise in
+    // the PRNG stream.  Record the pending destination; doread() runs
+    // run_deferred_lvltport() after makeknown() to fire it.  The scroll type is
+    // already known, so goto_level's mklev() then starts from the right state.
+    game._lvltport_dest = {
+        newlevel,
+        post_msg: (game.flags?.verbose !== false)
+            ? 'You materialize on a different level!' : null,
+    };
+}
+
+// C ref: do.c deferred_goto() for a level-teleport UTOTYPE_NONE — perform the
+// pending goto_level() scheduled by level_tele(), then deliver its arrival
+// message over the freshly drawn level (maybe_lvltport_feedback()).  Called
+// from doread() after the scroll has been discovered + used up, matching C's
+// "deferred_goto() right after rhack()" ordering (no RNG is drawn in between).
+export async function run_deferred_lvltport() {
+    const pend = game._lvltport_dest;
+    if (!pend) return;
+    game._lvltport_dest = null;
+    await goto_level(pend.newlevel, false, false, false);
+    if (pend.post_msg) await pline(pend.post_msg);
+}
+
+// C ref: dungeon.c Is_botlevel — is <lev> the bottom level of its dungeon?
+function is_botlevel(lev) {
+    const dng = game.dungeons?.[lev.dnum];
+    return !!dng && lev.dlevel === dng.num_dunlevs;
+}
+
+// C ref: dungeon.c get_level(newlevel, levnum) — translate a logical depth into
+// a (dnum, dlevel).  Only the same-dungeon and clamp-to-bottom cases are needed
+// (the covered teleport stays within the Dungeons of Doom); the branch-walk for
+// shallower parent dungeons is not exercised.
+function get_level(levnum) {
+    const u = game.u;
+    const dgn = u.uz.dnum;
+    const dng = game.dungeons[dgn];
+    if (levnum <= 0) {
+        levnum = u.uz.dlevel;
+    } else if (levnum > (dng.depth_start + dng.num_dunlevs - 1)) {
+        levnum = dng.num_dunlevs;
+    } else {
+        // within the same dungeon (levnum >= depth_start on the covered starts).
+        levnum = levnum - dng.depth_start + 1;
+    }
+    return { dnum: dgn, dlevel: levnum };
+}
+
+// C ref: dungeon.c lev_by_name — resolve a level *name* ("mines end", branch
+// names, annotations) to a logical depth.  Named-level lookup isn't exercised
+// by the recorded scroll teleports (the destination is a number or the confused
+// "Oops..." random path), so this returns 0 (not a name).
+function lev_by_name(_nam) {
+    return 0;
+}
+
+// C ref: teleport.c random_teleport_level() — pick a random destination depth
+// for an uncontrolled level teleport.  The Dungeons-of-Doom (non-quest,
+// non-endgame, non-hell) case is modelled; the RNG draws (the initial rn2(5),
+// the rn2(range) selection, and the rnd(3) botlevel/min-depth adjustments) are
+// reproduced left-to-right so the mklev() stream that follows stays in sync.
+function random_teleport_level() {
+    const u = game.u;
+    const cur_depth = depth_of_level(u.uz);
+    const dng = game.dungeons[u.uz.dnum];
+
+    // single_level_branch / In_endgame are false for the covered DoD teleport.
+    if (!rn2(5)) return cur_depth;
+
+    // In_quest not modelled (no quest teleport on the covered starts).
+    const min_depth = 1;
+    let max_depth = dng.num_dunlevs + (dng.depth_start - 1);
+    // Inhell && !invoked adjustment omitted (not in hell).
+
+    // Range is 1..current+3, current not counting.
+    let nlev = rn2(cur_depth + 3 - min_depth) + min_depth;
+    if (nlev >= cur_depth) nlev++;
+
+    if (nlev > max_depth) {
+        nlev = max_depth;
+        if (is_botlevel(u.uz)) nlev -= rnd(3);
+    }
+    if (nlev < min_depth) {
+        nlev = min_depth;
+        if (nlev === cur_depth) {
+            nlev += rnd(3);
+            if (nlev > max_depth) nlev = max_depth;
+        }
+    }
+    return nlev;
 }
 
 // C ref: stairs.c stairway_at — find the stairway node at <x,y>.

@@ -49,7 +49,7 @@ import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, dowear, doputon } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
-import { dowield, dowieldquiver } from './wield.js';
+import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
 import { x_monnam, type_is_pname, Monnam } from './do_name.js';
 import { an, doname } from './objnam.js';
@@ -64,6 +64,7 @@ import {
     impaired_movement, is_pool, is_lava,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
+import { drag_ball, move_bc } from './ball.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -1295,6 +1296,11 @@ export async function rhack(key) {
         const tookTime = await dowield();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'x') {
+        // C ref: wield.c doswapweapon / cmd.c 'x' "swap"
+        const swapRes = await doswapweapon();
+        game.context.move = swapRes ? 1 : 0;
+        if (swapRes) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'S') {
         // C ref: save.c dosave / cmd.c — #save (GENERALCMD, ECMD_OK)
         await dosave();
@@ -1693,6 +1699,34 @@ async function domove(dx, dy) {
         return;
     }
 
+    // C ref: hack.c domove — Punished → drag_ball before occupying cell;
+    // cause_delay → nomul(-2) after spoteffects.
+    let bc_control = 0;
+    let ballx = 0, bally = 0, chainx = 0, chainy = 0;
+    let cause_delay = false;
+    let bc_picked = false;
+    // C: Punished ≡ (uball != 0)
+    if (u.uball && !(u.uswallow | 0)) {
+        const drag = await drag_ball(newx, newy, true);
+        if (!drag.ok) {
+            if (game.context?.run) end_running();
+            // C: drag_ball failure returns without clearing move when jerked;
+            // encumber path also returns — leave context.move as-is for turn.
+            return;
+        }
+        bc_control = drag.bc_control;
+        ballx = drag.ballx;
+        bally = drag.bally;
+        chainx = drag.chainx;
+        chainy = drag.chainy;
+        cause_delay = !!drag.cause_delay;
+        bc_picked = true;
+    }
+    const put_bc = () => {
+        if (bc_picked) move_bc(0, bc_control, ballx, bally, chainx, chainy);
+        bc_picked = false;
+    };
+
     const oldx = u.ux, oldy = u.uy;
 
     // C: after test_move — safemon displace/swap (attack already tried above)
@@ -1705,6 +1739,7 @@ async function domove(dx, dy) {
             if (game.context?.run) end_running();
             game.context.move = 0;
             nomul(0);
+            put_bc();
             return;
         }
         mtmp.mx = oldx;
@@ -1761,9 +1796,19 @@ async function domove(dx, dy) {
     vision_recalc(1);
     newsym(newx, newy);
 
+    // C: Punished → move_bc(0, ...) put ball&chain back after move
+    put_bc();
+
     // C: if (u.umoved) spoteffects(TRUE) — autopickup / check_here look
     u.umoved = true;
     await spoteffects(true);
+
+    // C: delay next move because of ball dragging (after spoteffects)
+    if (cause_delay) {
+        nomul(-2);
+        game.multi_reason = 'dragging an iron ball';
+        game.nomovemsg = '';
+    }
     } finally {
         // C ref: hack.c domove — smudge only when RUSH|WALK succeeded this step;
         // continue_run steps have attempting cleared → no rnd(5) (D-0359)

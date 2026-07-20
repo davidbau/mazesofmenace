@@ -5,14 +5,15 @@
 
 import { game } from './gstate.js';
 import { rnd, rn2 } from './rng.js';
-import { pline, topl_more } from './display.js';
+import { pline, topl_more, update_topl } from './display.js';
 import { getobj, makeknown, useup, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack } from './invent.js';
 import { exercise } from './attrib.js';
 import { discover_object } from './o_init.js';
 import { do_mapping } from './detect.js';
 import { study_book } from './spell.js';
-import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, objects } from './mkobj.js';
+import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, SCR_TELEPORTATION,
+         objects } from './mkobj.js';
 import { A_WIS } from './const.js';
 
 const ECMD_CANCEL = 0;
@@ -44,6 +45,19 @@ async function pline_append(msg) {
 const NONMAGIC_SCROLLS = new Set([SCR_BLANK_PAPER]);
 function scroll_is_magic(otyp) { return !NONMAGIC_SCROLLS.has(otyp); }
 
+// C ref: youprop.h Confusion — the hero's confusion timer (uprops[CONFUSION]),
+// as read by the status line's "Conf" indicator (display.js).
+function Confused() { return (game.u?.uprops?.Confusion || 0) > 0; }
+
+// C ref: mondata.c can_chant(&youmonst) — whether the hero can speak the words
+// (for casting / reading aloud).  FALSE only when strangled, silent, headless,
+// or a buzzing/burbling form.  The recorded heroes are ordinary humanoids, so
+// only Strangled can make this FALSE ("misunderstand" instead of "mispronounce");
+// the polymorphed-into-a-silent-form cases aren't exercised.
+function can_chant() {
+    return !game.u?.Strangled;
+}
+
 // C ref: read.c read_ok — getobj callback: scrolls and spellbooks suggested;
 // anything else is downplayed (selectable but not listed).
 function read_ok(obj) {
@@ -72,6 +86,17 @@ async function seffects(sobj) {
     case SCR_IDENTIFY:
         await seffect_identify(sobj);
         return true; // seffect_identify uses up the scroll itself
+    case SCR_TELEPORTATION:
+        // C ref: read.c seffect_teleportation — a confused or cursed scroll does
+        // a level teleport (level_tele); an ordinary one does an in-level
+        // teleport (scrolltele, not exercised).  level_tele sets gk.known.
+        if (Confused() || sobj.cursed) {
+            const { level_tele } = await import('./do.js');
+            const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+            await level_tele((q) => hooked_tty_getlin(q, null));
+        }
+        // (uncursed, unconfused scrolltele is not exercised: no-op)
+        break;
     default:
         // Uncovered scroll effects: no-op (object still consumed by doread).
         break;
@@ -158,8 +183,21 @@ export async function doread() {
 
     scroll.in_use = true;
     if (otyp !== SCR_BLANK_PAPER) {
-        // Not blind / not confused on the covered starts.
+        // Not blind on the covered starts.
         await pline('As you read the scroll, it disappears.');
+        // C ref: read.c doread — a confused hero garbles the words.  This
+        // pline follows the "disappears" line on the same turn; when the two
+        // don't fit on one top line, "...disappears." is paged with --More--
+        // (its own captured frame) before the confused line replaces it.
+        // Route through update_topl (marking the prior line NEED_MORE) so that
+        // paging happens exactly as C's topl.c does.  Hallucination ("Being so
+        // trippy, you screw up...") is not exercised.
+        if (Confused()) {
+            const silently = !can_chant();
+            game._toplin = 1;
+            await update_topl(
+                `Being confused, you ${silently ? 'misunderstand' : 'mispronounce'} the magic words...`);
+        }
     }
 
     if (!(await seffects(scroll))) {
@@ -170,6 +208,16 @@ export async function doread() {
         scroll.in_use = false;
         if (otyp !== SCR_BLANK_PAPER)
             useup(scroll);
+    }
+
+    // C ref: allmain.c moveloop_core():538 — `if (u.utotype) deferred_goto();`
+    // runs right after rhack() returns, i.e. after the scroll is discovered
+    // (makeknown -> exercise(A_WIS) rn2(19)) and used up.  A confused/cursed
+    // teleport scroll scheduled a level change (level_tele); fire it now so
+    // mklev() follows the discovery exercise in the PRNG stream, exactly as C.
+    if (game._lvltport_dest) {
+        const { run_deferred_lvltport } = await import('./do.js');
+        await run_deferred_lvltport();
     }
     return ECMD_TIME;
 }

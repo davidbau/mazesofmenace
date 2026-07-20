@@ -1101,6 +1101,9 @@ export async function bot() {
 // ── pline ──
 export async function pline(msg) {
     game._pending_message = msg;
+    // C ref: pline -> vpline -> update_topl sets gt.toplines; mirror it so the
+    // Norep dedup reference tracks the actual last topline text.
+    game._toplines = msg;
 }
 
 // C ref: win/tty/topl.c update_topl():284-297 — word-wrap a topline that is
@@ -1194,6 +1197,10 @@ export async function update_topl(bp) {
         && !bp.startsWith('You die')) {
         game._pending_message = cur + '  ' + bp;
         game._toplin = TOPLIN_NEED_MORE;
+        // C ref: topl.c gt.toplines — the persistent last-topline text (used by
+        // Norep dedup), which is NOT blanked when the command prompt clears the
+        // displayed message line.
+        game._toplines = game._pending_message;
         return;
     }
     if (game._toplin === TOPLIN_NEED_MORE) {
@@ -1201,6 +1208,7 @@ export async function update_topl(bp) {
     }
     game._pending_message = bp;
     game._toplin = TOPLIN_NEED_MORE;
+    game._toplines = bp;
 }
 
 // C ref: topl.c tty_yn_function / hack.h y_n.  Render a yes/no prompt and read

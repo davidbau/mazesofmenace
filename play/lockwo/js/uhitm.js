@@ -13,7 +13,8 @@ import { rn2, rnd, d } from './rng.js';
 import { cansee } from './vision.js';
 import { m_at, newsym } from './display.js';
 import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE,
-         CORPSTAT_INIT, CORPSTAT_NONE } from './const.js';
+         CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE } from './const.js';
+import { Blind } from './vision.js';
 import { exercise } from './attrib.js';
 import { DEADMONSTER } from './mon.js';
 import { mkcorpstat, mkobj_at, CORPSE, place_object } from './mkobj.js';
@@ -840,11 +841,20 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
         return given;
     }
 
+    // C ref: do_name.c x_monnam — a saddled steed gets the "saddled " adjective
+    // (unless SUPPRESS_SADDLE, Blind, or Hallucinating), placed before the base
+    // name and after the article ("your saddled pony").
+    let adj = '';
+    if (!(_suppress & SUPPRESS_SADDLE) && (mtmp?.misc_worn_check & W_SADDLE)
+        && !Blind() && !game.u?.uhallu)
+        adj = 'saddled ';
+    const named = adj + base;
+
     switch (article) {
-    case 3: return 'your ' + base; // ARTICLE_YOUR
-    case 1: return 'the ' + base;  // ARTICLE_THE
-    case 2: return an(base);       // ARTICLE_A
-    default: return base;          // ARTICLE_NONE
+    case 3: return 'your ' + named; // ARTICLE_YOUR
+    case 1: return 'the ' + named;  // ARTICLE_THE
+    case 2: return an(named);       // ARTICLE_A
+    default: return named;          // ARTICLE_NONE
     }
 }
 

@@ -28,6 +28,7 @@ import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON,
 import { near_capacity } from './invent.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { settrack } from './track.js';
+import { nh_timeout } from './timeout.js';
 import { genTutorialLevel } from './tutorial.js';
 import { find_level } from './dungeon.js';
 
@@ -792,6 +793,13 @@ export async function moveloop_turn() {
             settrack();
 
             g.moves = (g.moves || 1) + 1;
+
+            // C ref: allmain.c moveloop_core():273 — nh_timeout() runs at the very
+            // top of the once-per-turn block (before run_regions / ublesscnt).  It
+            // expires timed properties; the contest hero's only case is the bear
+            // trap's WOUNDED_LEGS -> heal_legs(0), which restores the -1 Dx BEFORE
+            // the later u_wipe_engr rn2(40 + ACURR(A_DEX)*3) roll depends on it.
+            await nh_timeout();
 
             // C ref: allmain.c moveloop_core() — once-per-turn "if (u.ublesscnt)
             // u.ublesscnt--;" (the prayer timeout countdown), between run_regions

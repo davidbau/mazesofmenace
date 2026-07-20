@@ -1,5 +1,6 @@
 // do.js — miscellaneous hero actions from do.c.
-// C ref: do.c — donull, dodown, doup, goto_level (ordinary stairs subset),
+// C ref: do.c — donull, dodown, doup, goto_level (ordinary stairs subset;
+//         Punished unplacebc/placebc D-0915),
 //         cmd_safety_prevention, dodrop/drop/dropx/dropy/dropz,
 //         canletgo.
 
@@ -58,6 +59,7 @@ import { In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level, PRIMARYSET,
 import { resurrect } from './wizard.js';
 import { bones_include_name } from './bones.js';
 import { olfaction } from './monsters.js';
+import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
 
 function Blind() {
     const u = game.u || {};
@@ -333,8 +335,9 @@ async function selftouch_stair_fall(_arg) {
  * RMPORTAL, endgame astral `final_level` / migrating-Wizard resurrect arm,
  * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
  * ACH_HELL / MICRO display_nhwindow after Valley odor;
- * Flying/Punished climb variants, Punished `drag_down`/`ballrelease`, full
- * `selftouch` petrify, u_collide_m full limbo. Ported: In_quest `onquest`;
+ * Flying/Punished climb variants, full `selftouch` petrify,
+ * u_collide_m full limbo. Ported: Punished `drag_down`/`ballrelease`
+ * on stair fall (D-0918); In_quest `onquest`;
  * In_endgame `newdungeon`+amulet `resurrect` new-Wizard makemon + appear
  * Norep; `familiar_level_msg` via `bones_include_name` (D-0577);
  * Gehennom Valley arrival plines + `gehennom_entered` (D-0801);
@@ -380,6 +383,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: check_special_room(TRUE) on leave — move_update clears urooms so
     // arrival re-enters temple/shop messages (intemple).
     await check_special_room(true);
+    // C: do.c goto_level — Punished unplacebc before savelev so ball&chain
+    // are not left on the departing floor (D-0915).
+    // C: Punished ≡ (uball != 0)
+    if (u.uball || u.Punished) unplacebc();
     // Snapshot sight before vision_recalc(2) clears viz — getbones yn
     // needs prior IN_SIGHT to mon→memory newsym the leave-level gbuf.
     if (game.viz_array) {
@@ -600,16 +607,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 }
             } else if (
                 near_capacity() > UNENCUMBERED
-                || u.Punished
+                // C: youprop.h Punished ≡ (uball != 0) — not sticky u.Punished
+                || u.uball
                 // C: youprop.h Fumbling ≡ HFumbling || EFumbling (not sticky bool)
                 || Fumbling()
             ) {
                 await pline(atLadder
                     ? 'You fall down the ladder.'
                     : 'You fall down the stairs.');
-                if (u.Punished) {
+                if (u.uball) {
                     // C: drag_down(); if (!welded(uball)) ballrelease(FALSE);
-                    // ball.c not ported — named omission (no RNG when unbound).
+                    await drag_down();
+                    if (!welded(u.uball)) await ballrelease(false);
                 }
                 if (u.usteed) {
                     await dismount_steed(DISMOUNT_FELL);
@@ -639,6 +648,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     game.at_ladder = false;
     u.dz = 0;
+
+    // C: do.c goto_level — Punished placebc after hero arrival, before
+    // losedogs (D-0915). Without this, uchain.where stays non-FREE and
+    // placebc is a no-op → ball stranded → false drag_ball cause_delay.
+    if (u.uball || u.Punished) placebc();
 
     losedogs();
 

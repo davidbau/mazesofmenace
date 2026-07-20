@@ -20,9 +20,9 @@ import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_sk
 import { makedog } from './dog.js';
 import { makemon, reset_align_shift_cache } from './makemon.js';
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
-import { LOW_PM, NUMMONS, mons, G_NOCORPSE } from './monsters.js';
+import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD } from './monsters.js';
 import {
-    A_DEX, A_STR, A_CON, A_WIS, A_MAX, acurr, exercise, adjattrib,
+    A_DEX, A_STR, A_CON, A_WIS, A_INT, A_MAX, acurr, exercise, adjattrib,
     change_luck, Fast, Very_fast, Searching, Fumbling,
 } from './attrib.js';
 import { dosearch0 } from './detect.js';
@@ -48,6 +48,7 @@ import {
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     UTOTYPE_NONE, TIMEOUT, REGENERATION,
+    MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING,
 } from './const.js';
 
 // C ref: allmain.c moveloop_preamble() — moon/friday; new-game RNG only when !resuming
@@ -215,6 +216,49 @@ function regen_hp(wtcap) {
     }
 
     if (reached_full) interrupt_multi('You are in full health.');
+}
+
+/**
+ * C ref: allmain.c regen_pw(wtcap) — maybe recover Pw once/turn.
+ * Named omissions: Teleportation / Polymorph once-per-turn arms that
+ * follow regen_pw in moveloop (still deferred).
+ */
+function regen_pw(wtcap) {
+    const u = game.u || (game.u = {});
+    if ((u.uen | 0) >= (u.uenmax | 0)) return;
+
+    // C: Energy_regeneration ≡ H || E ENERGY_REGENERATION uprops
+    const energy_regen = !!(
+        (u.uprops?.[ENERGY_REGENERATION]?.intrinsic | 0)
+        || (u.uprops?.[ENERGY_REGENERATION]?.extrinsic | 0)
+        || u.HEnergy_regeneration
+        || u.EEnergy_regeneration
+    );
+    const period = Math.trunc(
+        ((MAXULEV + 8 - (u.ulevel | 0))
+            * (game.urole?.mnum === PM_WIZARD ? 3 : 4))
+            / 6,
+    );
+    const tick_ok = wtcap < MOD_ENCUMBER
+        && period > 0
+        && !((game.moves || 0) % period);
+    if (!tick_ok && !energy_regen) return;
+
+    // C: upper = (ACURR(WIS)+ACURR(INT))/15 + 1; EMagical_breathing += 2
+    let upper = Math.trunc((acurr(A_WIS) + acurr(A_INT)) / 15) + 1;
+    const e_mag_breath = !!(
+        (u.uprops?.[MAGICAL_BREATHING]?.extrinsic | 0)
+        || u.EMagical_breathing
+    );
+    if (e_mag_breath) upper += 2;
+
+    u.uen = (u.uen | 0) + rn1(upper, 1);
+    if (u.uen > (u.uenmax | 0)) u.uen = u.uenmax | 0;
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    if (u.uen === (u.uenmax | 0)) {
+        interrupt_multi('You feel full of energy.');
+    }
 }
 
 /**
@@ -659,7 +703,9 @@ export async function moveloop_core() {
                 ) {
                     regen_hp(mvl_wtcap);
                 }
-                // regen_pw / Teleportation / Polymorph deferred (no early RNG)
+                // C: regen_pw(mvl_wtcap) always; gates + rn1 inside
+                regen_pw(mvl_wtcap);
+                // Teleportation / Polymorph once-per-turn deferred
                 // C: Searching && !noautosearch && multi >= 0 → dosearch0(1)
                 if (
                     Searching()

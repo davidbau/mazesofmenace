@@ -26,7 +26,8 @@ import { makeknown, encumber_msg, compactify_invlets } from './invent.js';
 import { uncurse, weight } from './mkobj.js';
 import { trycall } from './do_name.js';
 
-/** C: can_no_longer_twoweap */
+/** C: are_no_longer_twoweap / can_no_longer_twoweap */
+const are_no_longer_twoweap = 'are no longer using two weapons at once';
 const can_no_longer_twoweap = 'can no longer wield two weapons at once';
 
 /**
@@ -168,6 +169,12 @@ export function setuwep(obj) {
     const olduwep = u.uwep || null;
     if (obj === olduwep) return;
 
+    // C worn.c setworn: clearing W_WEP while twoweap → set_twoweap(FALSE)
+    if (u.twoweap && olduwep
+        && ((olduwep.owornmask || 0) & (W_WEP | W_SWAPWEP))) {
+        set_twoweap(false);
+    }
+
     if (olduwep) {
         // C worn.c setworn: set_artifact_intrinsic(oobj, 0, mask) before clear
         if (olduwep.oartifact) set_artifact_intrinsic(olduwep, false, W_WEP);
@@ -207,6 +214,12 @@ export function setuswapwep(obj) {
     const u = game.u || (game.u = {});
     const old = u.uswapwep || null;
     if (obj === old) return;
+
+    // C worn.c setworn: clearing W_SWAPWEP while twoweap → set_twoweap(FALSE)
+    if (u.twoweap && old
+        && ((old.owornmask || 0) & (W_WEP | W_SWAPWEP))) {
+        set_twoweap(false);
+    }
 
     if (old) old.owornmask = (old.owornmask || 0) & ~W_SWAPWEP;
     if (obj) {
@@ -256,6 +269,7 @@ export function setuqwep(obj) {
 export async function doswapweapon() {
     game.multi = 0;
     const u = game.u || (game.u = {});
+    // C: cantwield → "Don't be ridiculous!" deferred (set_uasmon)
     if (welded(u.uwep)) {
         await pline('Your weapon is welded to your hand!');
         return 0;
@@ -263,6 +277,7 @@ export async function doswapweapon() {
 
     const oldwep = u.uwep || null;
     const oldswap = u.uswapwep || null;
+    // C: setuswapwep(0) via setworn clears twoweap before ready_weapon
     setuswapwep(null);
 
     const result = await ready_weapon(oldswap);
@@ -276,7 +291,8 @@ export async function doswapweapon() {
         else await pline('You have no secondary weapon readied.');
     }
 
-    if (u.twoweap) await untwoweapon();
+    // C: if (u.twoweap && !can_twoweapon()) untwoweapon();
+    if (u.twoweap && !(await can_twoweapon())) await untwoweapon();
     return result;
 }
 
@@ -288,6 +304,7 @@ export async function doswapweapon() {
 async function ready_weapon(wep) {
     const u = game.u || {};
     const had_wep = !!u.uwep;
+    const was_twoweap = !!u.twoweap;
 
     if (!wep) {
         if (u.uwep) {
@@ -317,6 +334,11 @@ async function ready_weapon(wep) {
     wep.owornmask = dummy;
 
     setuwep(wep);
+    // C: was_twoweap && !u.twoweap && verbose → are/can_no_longer message
+    if (was_twoweap && !u.twoweap && game.flags?.verbose !== false && u.uwep) {
+        const ok = TWOWEAPOK(u.uwep) && !bimanual(u.uwep);
+        await pline(`You ${ok ? are_no_longer_twoweap : can_no_longer_twoweap}.`);
+    }
     // arti_speak / artifact_light / unpaid shop / twoweap messages deferred
     if (had_wep !== !!game.u?.uwep && game.flags) game.flags.botl = true;
     return 1;

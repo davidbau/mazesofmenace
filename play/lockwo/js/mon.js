@@ -9,7 +9,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit } from './const.js';
-import { dochug, initMonMoveState, m_next2u } from './monmove.js';
+import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm } from './monmove.js';
 import { cansee } from './vision.js';
 import { t_at } from './trap.js';
 
@@ -293,6 +293,32 @@ function restrap(mtmp) {
 // C ref: dungeon.c has_ceiling(&u.uz) — TRUE everywhere except the endgame's
 // air/water planes, which these dungeon sessions never reach.
 function has_ceiling() { return true; }
+
+// C ref: monsym.h S_EEL=57.
+const S_EEL_MCLS = 57;
+
+// C ref: mon.c hide_monst(mon) — give a hider a chance to hide before its next
+// move.  Called from restore.c getlev() when the hero returns to a level that
+// was left, and from a couple of monster-placement paths.  A monster already
+// hidden (mundetected) or wearing an appearance is skipped.  is_hider species
+// (mimics, piercers, lurker above, trapper) re-hide via restrap() (which rolls
+// rn2(3) internally); M1_CONCEAL species (cave spiders, centipedes, scorpions,
+// snakes) and eels re-hide via hideunder() (no RNG).  The C code brackets the
+// restrap() call with a viz_array override so the hero can't "watch" the
+// monster hide; that override is display-only (no RNG) and is not modelled.
+export async function hide_monst(mon) {
+    const hider_under = hides_under_pm(mon.data) || mon.data?.mcls === S_EEL_MCLS;
+    if ((is_hider(mon.data) || hider_under)
+        && !(mon.mundetected || mon.m_ap_type)) {
+        if (is_hider(mon.data))
+            restrap(mon);
+        // try again if a mimic missed its 1/3 chance to hide
+        if (mon.data?.mcls === S_MIMIC && !mon.m_ap_type)
+            restrap(mon);
+        if (hider_under)
+            await hideunder(mon);
+    }
+}
 
 // C ref: mon.c movemon_singlemon(mtmp) — drive one monster's move, returning
 // true if it still has movement points left after this action.

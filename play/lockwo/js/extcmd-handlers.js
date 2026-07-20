@@ -33,7 +33,10 @@ import { dorub, dowipe, ECMD as APPLY_ECMD } from './apply.js';
 import { readobjnam } from './readobjnam.js';
 import { hold_another_object } from './invent.js';
 import { rn1 } from './rng.js';
-import { dopray as pray_dopray } from './pray.js';
+import { dopray as pray_dopray, dosacrifice } from './pray.js';
+import { dosit } from './sit.js';
+import { dodip } from './potion.js';
+import { dogenocided } from './insight.js';
 import { isok } from './hacklib.js';
 import { Monnam, canspotmon, x_monnam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
@@ -289,6 +292,18 @@ function draw_getlin(query, shown, cursorCol) {
 // prompt state).  Returns the typed string, or "\x1b" if escaped out of an
 // empty buffer.
 export async function hooked_tty_getlin(query, hook) {
+    // C ref: win/tty/getline.c hooked_tty_getlin():53-54 — if a top-line message
+    // is still awaiting acknowledgment (toplin == NEED_MORE), page it with
+    // --More-- (its own captured frame) before drawing the getlin prompt.  This
+    // fires for e.g. a confused scroll's "Being confused, ..." line preceding the
+    // level-teleport prompt; ordinary command-initiated getlins start with a
+    // cleared top line, so it is a no-op for them.
+    if (game._toplin === 1) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
+
     let typed = '';   // what the user actually typed (obufp/bufp content)
     let shown = '';   // what is displayed (typed, possibly autocompleted)
     const base = (query + ' ').length; // column of first input char
@@ -1213,6 +1228,10 @@ const HANDLERS = {
     enhance: doenhance,
     rub: dorub_extcmd,
     wipe: dowipe_extcmd,
+    sit: dosit,
+    dip: dodip,
+    offer: dosacrifice,
+    genocided: dogenocided,
 };
 
 // C ref: apply.c dorub()/do.c dowipe() return ECMD_* (OK=0/CANCEL=1/TIME=2).

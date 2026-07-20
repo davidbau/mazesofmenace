@@ -55,20 +55,10 @@ async function getdir() {
     return null;
 }
 
-// C ref: do_name.c mon_nam() == x_monnam(ARTICLE_THE).  The JS x_monnam does
-// not model the "saddled " adjective, but a mounted pony is described as
-// "the saddled pony"; add the adjective when the monster wears a saddle and
-// has no personal name (has_mgivenname would suppress it).
+// C ref: do_name.c mon_nam() == x_monnam(ARTICLE_THE).  x_monnam now models the
+// "saddled " adjective for a saddle-wearing steed, so this is a thin wrapper.
 function mon_nam(mtmp) {
-    const base = x_monnam(mtmp, /*ARTICLE_THE*/ 1, null, 0, false);
-    const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
-    if (!given && ((mtmp?.misc_worn_check || 0) & W_SADDLE)) {
-        // Insert "saddled " after the leading "the ".
-        if (base.startsWith('the '))
-            return 'the saddled ' + base.slice(4);
-        return 'saddled ' + base;
-    }
-    return base;
+    return x_monnam(mtmp, /*ARTICLE_THE*/ 1, null, 0, false);
 }
 
 // C ref: steed.c Monnam-style helper for "%s is not saddled." etc.  Not needed
