@@ -18,9 +18,9 @@ import { nomul, stop_occupation, maybe_half_phys } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
 import {
     pline, mon_visible, canspotmon, map_invisible, canseemon, newsym, docrt,
-    swallowed,
+    swallowed, flush_topl_more,
 } from './display.js';
-import { cansee, vision_recalc } from './vision.js';
+import { cansee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
 import { is_pole } from './wield.js';
@@ -569,8 +569,7 @@ async function expels(mtmp, mdat, message) {
  * Named omissions: Punished ball; steed DISMOUNT_ENGULFED; leashes; petrify;
  * snuff_lit invent; Slow_digestion; ugolemeffects/monstseesu; diseasemu;
  * drain_en; make_blinded; Half_physical polish;
- * display_nhwindow(WIN_MESSAGE) before swallowed (D-0841/D-0843: flush
- * OK thru ice-vortex Hallu; post-expel see_monsters Hallu map skew @172);
+ * display_nhwindow(WIN_MESSAGE) before vision_recalc (D-0852 #996);
  * swallowed cls/bot polish; u_on_newpos while digesting (D-0826 postmov).
  */
 async function gulpmu(mtmp, mattk) {
@@ -608,9 +607,17 @@ async function gulpmu(mtmp, mattk) {
             u.utraptype = 0;
         }
 
-        // C: display_nhwindow(WIN_MESSAGE,FALSE) before vision_recalc deferred
-        // (D-0841/D-0843/D-0846: flush OK thru ice-vortex Hallu; @173 mons
-        // match after rloc_to newsym; 4 Hallu objs still skew — keep parked).
+        // C: display_nhwindow(WIN_MESSAGE,FALSE) then vision_recalc(2).
+        // Flush alone (D-0841) or Hallu warn burns alone (#993/#994) each
+        // desync display-rng by ±8; together they match C (D-0852 #996):
+        // More consumes post-engulf keys so once-per-input swallowed(0)
+        // does not double-fire, and vision_off restores the 8×~drn2(5).
+        await flush_topl_more();
+        {
+            const Hallu = !!(u.Hallucination
+                || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0)));
+            if (Hallu) vision_off_newsym_gbuf({ useLiveViz: true });
+        }
         vision_recalc(2);
         u.uswallow = 1;
         let tim_tmp;

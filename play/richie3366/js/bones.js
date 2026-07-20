@@ -356,7 +356,11 @@ export async function try_load_bones(lev) {
         }
         game.level = game._leave_gbuf_level;
         game.fmon = leaveFmon;
-        vision_off_newsym_gbuf();
+        // D-0852: goto_level already ran vision_off_newsym_gbuf for RNG;
+        // only re-newsym when leave path skipped that burn.
+        if (!game._leave_viz_burned) {
+            vision_off_newsym_gbuf();
+        }
         paint_gbuf_level_to_terminal(game._leave_gbuf_level);
         game.level = savedLevel;
         game.fmon = savedFmon;
@@ -474,5 +478,6 @@ export async function try_load_bones(lev) {
         game._stale_map_flush = false;
         game._leave_gbuf_level = null;
         game._leave_viz_snapshot = null;
+        game._leave_viz_burned = false;
     }
 }

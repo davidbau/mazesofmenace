@@ -5,6 +5,7 @@
 //   artifact_light begin_burn/end_burn; full w_blocks Clairvoyance/Eyes;
 //   dragon-scale altprop beyond alchemy smock; find_mac;
 //   extract_from_minvent; youmonst which_armor slot table (hero uses uarm*).
+// D-0855: nambuf Monnam/mon_nam at m_dowear_type entry (Hallu display RNG).
 
 import { game } from './gstate.js';
 import {
@@ -27,6 +28,7 @@ import {
 import { curse } from './mkobj.js';
 import { canseemon, newsym } from './display.js';
 import { dist2 } from './hacklib.js';
+import { Monnam, mon_nam } from './do_name.js';
 
 const ARM_SUIT = 0;
 const ARM_SHIELD = 1;
@@ -348,10 +350,17 @@ function maybe_blocks(mon, obj, on, silently, unseen) {
 
 /**
  * C ref: worn.c m_dowear_type — pick best slot item and wear it.
- * Sync: wear plines when !creation deferred (named omission); mfrozen set.
+ * Sync: wear/invis plines when !creation still deferred (named omission);
+ * mfrozen set. Hallu: always take mon_nam/Monnam into nambuf before
+ * visibility changes (D-0855) — even when nothing is worn.
  */
 function m_dowear_type(mon, flag, creation, racialexception) {
     if (mon.mfrozen) return;
+
+    // C: worn.c m_dowear_type — name before altering visibility
+    // (See_invisible ? Monnam : mon_nam). Hallu burns rndmonnam here.
+    const nambuf = game.u?.See_invisible ? Monnam(mon) : mon_nam(mon);
+    void nambuf; // invis "cannot see" pline deferred
 
     let old = which_armor(mon, flag);
     if (old && old.cursed) return;

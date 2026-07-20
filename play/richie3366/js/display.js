@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rank_of } from './roles.js';
-import { cansee, couldsee, vision_recalc } from './vision.js';
+import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { objects_at } from './mkobj.js';
 import {
     mcolors, mons, pmnames, infravision, infravisible, mindless, NUMMONS,
@@ -2259,7 +2259,18 @@ export async function docrt() {
         swallowed(1);
         return;
     }
-    // C: vision_recalc(2) — hero sees nothing during refresh
+    // C vision_recalc(2) update loop newsyms prior sight while !cansee
+    // (Hallu mon_warning → rn2(5)). JS vision_recalc(2) skips that loop
+    // (D-0583 getbones/getpos paint). Under Hallu, burn-only newsyms on
+    // live viz before cls (D-0852). Non-Hallu skipped — incomplete
+    // !cansee memory/waslit arms regress PASS screens (#992 cohort).
+    {
+        const u = game.u || {};
+        if (u.Hallucination
+            || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))) {
+            vision_off_newsym_gbuf({ useLiveViz: true });
+        }
+    }
     vision_recalc(2);
     await cls();
     // C: show_glyph(x,y, lev->glyph) for all cells (memory; no Hallu RNG)

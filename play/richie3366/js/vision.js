@@ -671,8 +671,10 @@ export function vision_recalc(control = 0) {
     // C: control==2 falls through to the main update loop (clears live
     // mon glyphs in gbuf). JS gbuf is loc.disp_* and full flushes paint it
     // immediately — running that loop here regresses mid-goto / getpos
-    // screens that C still shows from an unflushed tty. Leave-level gbuf
-    // flush for Get bones? is handled in bones.js (D-0583).
+    // screens that C still shows from an unflushed tty (Scr 174 #992).
+    // Hallu display_warning burns for docrt / goto_level leave are done via
+    // vision_off_newsym_gbuf({ useLiveViz: true }) at those call sites (D-0852).
+    // Leave-level gbuf flush for Get bones? is handled in bones.js (D-0583).
     if (old_array && control !== 2 && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
@@ -762,16 +764,17 @@ export function init_vision_globals() {
 
 /**
  * C vision_recalc(2) main update loop only — newsym previously IN_SIGHT
- * cells while cansee is false (mon→memory in gbuf). Used by getbones yn
- * flush because JS cannot run that loop inside ordinary vision_recalc(2)
- * without painting cleared gbuf on later full flushes (D-0583).
- * Caller must set game.level (and fmon if mon_at matters) to the leave level.
- * Uses game._leave_viz_snapshot when present (pre-vision_recalc(2) sight).
+ * / COULD_SEE cells while cansee is false (mon→memory in gbuf; Hallu
+ * mon_warning → display_warning rn2(5)). Used by:
+ *   - getbones yn flush with `_leave_viz_snapshot` (D-0583)
+ *   - docrt / goto_level leave with `{ useLiveViz: true }` (D-0852)
+ * because JS cannot run that loop inside ordinary vision_recalc(2)
+ * without painting cleared gbuf on later full flushes.
  */
-export function vision_off_newsym_gbuf() {
+export function vision_off_newsym_gbuf(opts = {}) {
     const u = game.u;
     if (!u || !game.level) return;
-    const snap = game._leave_viz_snapshot;
+    const snap = opts.useLiveViz ? null : game._leave_viz_snapshot;
     const old_array = snap?.array || game.viz_array;
     const old_rmin = snap?.rmin || game._viz_rmin;
     const old_rmax = snap?.rmax || game._viz_rmax;
@@ -788,7 +791,12 @@ export function vision_off_newsym_gbuf() {
             if (start > stop) continue;
             for (let col = start; col <= stop; col++) {
                 if (col === 0) continue;
-                if (old_row[col] & IN_SIGHT) newsym(col, row);
+                // C not_in_sight when next is empty:
+                // old IN_SIGHT || (next COULD_SEE ^ old COULD_SEE)
+                // ≡ old IN_SIGHT || old COULD_SEE
+                const ov = old_row[col];
+                if ((ov & IN_SIGHT) || (ov & COULD_SEE))
+                    newsym(col, row);
             }
         }
     }

@@ -1694,6 +1694,15 @@ export async function dochug(mtmp) {
             ({ inrange, nearby, scared } = distfleeck(mtmp));
         }
         if (status === MMOVE_NOMOVES && scared) panicattk = true;
+        // C: monmove.c dochug switch — Hallu newsym after 2nd distfleeck
+        // for NOMOVES/NOTHING/DONE (appearance still changes when idle).
+        if (status === MMOVE_NOMOVES || status === MMOVE_NOTHING
+            || status === MMOVE_DONE) {
+            // C: vault guard vanished → behave as died (isgd deferred)
+            if (game.u?.Hallucination && mtmp.mx) {
+                newsym(mtmp.mx, mtmp.my);
+            }
+        }
         if (status === MMOVE_MOVED) {
             /* Monsters can move and then shoot on same turn;
                C: ranged_attk_available || AT_WEAP || find_offensive */
@@ -1710,8 +1719,6 @@ export async function dochug(mtmp) {
             // else fall through to PHASE FOUR
         }
         // NOTHING/DONE/NOMOVES also fall through to attacks
-        // Named omission: C Hallu newsym(mx,my) on NOTHING/DONE/NOMOVES
-        // (monmove.c ≈931) — see c-js-map/turns.md.
     }
 
     // PHASE FOUR: C monmove.c — peaceful under Conflict still rolls

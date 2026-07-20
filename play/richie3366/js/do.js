@@ -391,6 +391,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } else {
         game._leave_viz_snapshot = null;
     }
+    // C vision_recalc(2) burns Hallu display_warning on prior sight while
+    // !cansee before level tear-down (D-0852). JS skips that loop inside
+    // vision_recalc(2) (D-0583). Hallu-only: non-Hallu !cansee newsym
+    // memory/waslit incompleteness regresses PASS cohort (#992).
+    {
+        const u = game.u || {};
+        if (u.Hallucination
+            || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))) {
+            const { vision_off_newsym_gbuf } = await import('./vision.js');
+            vision_off_newsym_gbuf({ useLiveViz: true });
+            game._leave_viz_burned = true;
+        }
+    }
     vision_recalc(2);
 
     // C: do.c goto_level — discard level-local travel destination cache
@@ -646,6 +659,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: docrt → cls flushes NEED_MORE (--More-- on stale Dlvl:N map) then redraws
     await docrt();
     await flush_screen(-1); // un-postpone + flush new map/botl
+    // Leave-level gbuf / viz snapshot only needed through getbones yn
+    game._leave_gbuf_level = null;
+    game._leave_viz_snapshot = null;
+    game._leave_viz_burned = false;
     // C: vision_recalc is inside docrt only — do not call again here
     // (extra pass can re-newsym when seenv grows; Hallu display-RNG).
 
