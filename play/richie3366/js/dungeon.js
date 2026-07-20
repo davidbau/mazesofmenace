@@ -553,6 +553,15 @@ export function get_level(newlevel, levnum) {
     newlevel.dlevel = levnum;
 }
 
+/**
+ * C ref: dungeon.c find_hell — gateway to Gehennom (valley dlevel 1).
+ */
+export function find_hell(lev) {
+    const v = game.valley_level;
+    lev.dnum = v?.dnum | 0;
+    lev.dlevel = 1;
+}
+
 export function find_level(name) {
     const want = name.toLowerCase();
     for (const curr of game.sp_levchn || []) {

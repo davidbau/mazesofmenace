@@ -702,6 +702,9 @@ export async function mattackm(magr, mdef) {
                 }
                 break;
             }
+            // AT_SPIT/AT_BREA: spitmm/breamm live in mthrowu; mon-mon spit
+            // deferred to avoid mhitm↔mthrowu import cycle (hero spitmu wired
+            // in mhitu). Same point-blank skip as C when near.
             default:
                 strike = 0;
                 attk = 0;

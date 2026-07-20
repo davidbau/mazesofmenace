@@ -6,17 +6,18 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, canseemon, canspotmon, newsym,
 } from './display.js';
-import { vision_recalc } from './vision.js';
+import { vision_recalc, cansee } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
-    ECMD_OK, ECMD_TIME, ECMD_CANCEL, nothing_happens, nothing_seems_to_happen,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, nothing_happens, nothing_seems_to_happen,
     FACE, TIMEOUT, OBJ_FREE, isok, SDOOR, SCORR,
-    COLNO, DOOR, D_CLOSED, D_LOCKED, ZAP_POS, MAXULEV, WEAK,
+    COLNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
+    ACCESSIBLE, IS_STWALL, IS_DOOR, TELEDS_NO_FLAGS, INTRINSIC,
 } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
@@ -25,15 +26,19 @@ import { compactify_invlets, makeknown } from './invent.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import {
     nohands, haseyes, humanoid, is_demon, is_vampire, is_vampshifter,
-    likes_gems, M1_SEE_INVIS, monsterNames, mons,
+    likes_gems, M1_SEE_INVIS, monsterNames, mons, throws_rocks,
 } from './monsters.js';
 import { wield_tool } from './wield.js';
-import { splitobj, delobj } from './mkobj.js';
+import { splitobj, delobj, objects_at } from './mkobj.js';
 import { xname, the, makeplural } from './objnam.js';
-import { acurr, A_CHA } from './attrib.js';
+import { acurr, A_CHA, A_STR } from './attrib.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { monflee } from './monmove.js';
 import { nomul } from './hack.js';
+import { getpos, getpos_sethilite } from './getpos.js';
+import { walk_path } from './dothrow.js';
+import { teleds } from './teleport.js';
+import { morehungry } from './eat.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -1199,5 +1204,269 @@ export async function dorub() {
     } else {
         await pline(nothing_happens);
     }
+    return ECMD_TIME;
+}
+
+// --- #jump (apply.c dojump / jump) -----------------------------------------
+
+const BOULDER = objectNames.indexOf('BOULDER');
+
+/** C ref: apply.c enum jump_trajectory */
+const J_ANY = 0;
+const J_HORZ = 1;
+const J_VERT = 2;
+const J_DIAG = 3;
+
+/** C: Jumping (HJumping || EJumping). */
+function Jumping() {
+    const u = game.u || {};
+    return !!(u.HJumping || u.EJumping);
+}
+
+/** C: Passes_walls — not needed for knight physical jump; stub false. */
+function Passes_walls() {
+    const u = game.u || {};
+    return !!(u.HPasses_walls || u.EPasses_walls);
+}
+
+function closed_door_xy(x, y) {
+    const loc = game.level?.locations?.[x]?.[y];
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    const m = loc.doormask | 0;
+    return (m & (D_CLOSED | D_LOCKED)) !== 0;
+}
+
+function sobj_at_otyp(otyp, x, y) {
+    if (otyp < 0) return null;
+    for (const obj of objects_at(x, y) || []) {
+        if ((obj.otyp | 0) === otyp) return obj;
+    }
+    return null;
+}
+
+function distu_xy(x, y) {
+    const u = game.u || {};
+    return dist2(u.ux | 0, u.uy | 0, x, y);
+}
+
+/**
+ * C ref: apply.c check_jump — walk_path callback for jump clearance.
+ * @param {number} traj
+ */
+function check_jump(traj, x, y) {
+    if (Passes_walls()) return true;
+    const loc = game.level?.locations?.[x]?.[y];
+    if (!loc) return false;
+    if (IS_STWALL(loc.typ)) return false;
+    if (IS_DOOR(loc.typ)) {
+        if (closed_door_xy(x, y)) return false;
+        if ((loc.doormask & D_ISOPEN) !== 0 && traj !== J_ANY) {
+            if (traj === J_DIAG
+                || (((traj & J_HORZ) !== 0) === !!(loc.horizontal))) {
+                return false;
+            }
+        }
+    }
+    if (sobj_at_otyp(BOULDER, x, y)
+        && !throws_rocks(game.youmonst?.data)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: apply.c is_valid_jump_pos
+ * Named omissions: full doorway horizontal bit edge cases already mirrored.
+ */
+async function is_valid_jump_pos(x, y, magic, showmsg) {
+    const u = game.u || {};
+    const HJumping = u.HJumping | 0;
+    const EJumping = u.EJumping | 0;
+    // C: !magic && !(HJumping & ~INTRINSIC) && !EJumping && distu != 5
+    // Knight FROMOUTSIDE is inside INTRINSIC → chess-only unless extrinsic.
+    if (!magic && !(HJumping & ~INTRINSIC) && !EJumping && distu_xy(x, y) !== 5) {
+        if (showmsg) await pline('Illegal move!');
+        return false;
+    } else if (distu_xy(x, y) > (magic ? 6 + magic * 3 : 9)) {
+        if (showmsg) await pline('Too far!');
+        return false;
+    } else if (!isok(x, y)) {
+        if (showmsg) await pline('You cannot jump there!');
+        return false;
+    } else if (!cansee(x, y)) {
+        if (showmsg) await pline('You cannot see where to land!');
+        return false;
+    } else {
+        const lev = game.level?.locations?.[u.ux]?.[u.uy];
+        const dx = (x | 0) - (u.ux | 0);
+        const dy = (y | 0) - (u.uy | 0);
+        let ax = Math.abs(dx);
+        let ay = Math.abs(dy);
+        const diag = (magic || Passes_walls() || (!dx && !dy))
+            ? J_ANY
+            : !dy ? J_HORZ : !dx ? J_VERT : J_DIAG;
+        if (ax >= 2 * ay) ay = 0;
+        else if (ay >= 2 * ax) ax = 0;
+        const traj = (magic || Passes_walls() || (!ax && !ay))
+            ? J_ANY
+            : !ay ? J_HORZ : !ax ? J_VERT : J_DIAG;
+        if (diag === J_DIAG && lev && IS_DOOR(lev.typ)
+            && (lev.doormask & D_ISOPEN) !== 0
+            && (traj === J_DIAG
+                || (((traj & J_HORZ) !== 0) === !!(lev.horizontal)))) {
+            if (showmsg) await pline("You can't jump diagonally out of a doorway.");
+            return false;
+        }
+        const uc = { x: u.ux | 0, y: u.uy | 0 };
+        const tc = { x: x | 0, y: y | 0 };
+        if (!walk_path(uc, tc, (arg, nx, ny) => check_jump(arg, nx, ny), traj)) {
+            if (showmsg) {
+                await pline('There is an obstacle preventing that jump.');
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+/** C ref: apply.c get_valid_jump_position */
+function get_valid_jump_position(x, y) {
+    const loc = game.level?.locations?.[x]?.[y];
+    if (!isok(x, y)) return false;
+    if (!(ACCESSIBLE(loc?.typ) || Passes_walls())) return false;
+    // sync validation without messages — use a sync subset
+    return is_valid_jump_pos_sync(x, y, game.jumping_is_magic | 0);
+}
+
+/**
+ * Sync mirror of is_valid_jump_pos for getpos_getvalid (no pline).
+ */
+function is_valid_jump_pos_sync(x, y, magic) {
+    const u = game.u || {};
+    const HJumping = u.HJumping | 0;
+    const EJumping = u.EJumping | 0;
+    if (!magic && !(HJumping & ~INTRINSIC) && !EJumping && distu_xy(x, y) !== 5) {
+        return false;
+    }
+    if (distu_xy(x, y) > (magic ? 6 + magic * 3 : 9)) return false;
+    if (!isok(x, y)) return false;
+    if (!cansee(x, y)) return false;
+    const lev = game.level?.locations?.[u.ux]?.[u.uy];
+    const dx = (x | 0) - (u.ux | 0);
+    const dy = (y | 0) - (u.uy | 0);
+    let ax = Math.abs(dx);
+    let ay = Math.abs(dy);
+    const diag = (magic || Passes_walls() || (!dx && !dy))
+        ? J_ANY
+        : !dy ? J_HORZ : !dx ? J_VERT : J_DIAG;
+    if (ax >= 2 * ay) ay = 0;
+    else if (ay >= 2 * ax) ax = 0;
+    const traj = (magic || Passes_walls() || (!ax && !ay))
+        ? J_ANY
+        : !ay ? J_HORZ : !ax ? J_VERT : J_DIAG;
+    if (diag === J_DIAG && lev && IS_DOOR(lev.typ)
+        && (lev.doormask & D_ISOPEN) !== 0
+        && (traj === J_DIAG
+            || (((traj & J_HORZ) !== 0) === !!(lev.horizontal)))) {
+        return false;
+    }
+    const uc = { x: u.ux | 0, y: u.uy | 0 };
+    const tc = { x: x | 0, y: y | 0 };
+    return walk_path(uc, tc, (arg, nx, ny) => check_jump(arg, nx, ny), traj);
+}
+
+/**
+ * C ref: apply.c display_jump_positions — tmp_at goodpos hilite.
+ * Named omission: S_goodpos glyph paint (getvalid suffix is enough for
+ * autodescribe); no-op on/off keeps getpos_sethilite contract.
+ */
+function display_jump_positions(_on_off) {
+    // deferred: tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos))
+}
+
+/**
+ * C ref: apply.c dojump — physical jump.
+ */
+export async function dojump() {
+    return jump(0);
+}
+
+/**
+ * C ref: apply.c jump(magic)
+ * Named omissions: SPE_JUMPING fallback; steed stuck; swallow/water/ustuck/
+ * levitation/encumbrance/hunger/wounded-legs trap-escape arms; hurtle_step
+ * body (monster bump) — success path uses teleds after walk_path always-true
+ * hurtle stub.
+ */
+export async function jump(magic) {
+    const u = game.u || {};
+
+    // Spell fallback deferred — knights have Jumping.
+    if (!magic && !Jumping()) {
+        await pline("You can't jump very far.");
+        return ECMD_OK;
+    }
+    if (u.uswallow) {
+        if (magic) {
+            await pline('You bounce around a little.');
+            return ECMD_TIME;
+        }
+        await pline("You've got to be kidding!");
+        return ECMD_OK;
+    }
+    if (u.uinwater) {
+        if (magic) {
+            await pline('You swish around a little.');
+            return ECMD_TIME;
+        }
+        await pline('This calls for swimming, not jumping!');
+        return ECMD_OK;
+    }
+    if (u.ustuck) {
+        await pline(`You cannot escape from ${mon_nam(u.ustuck)}!`);
+        return ECMD_OK;
+    }
+    if (u.Levitation || u.HLevitation || u.ELevitation) {
+        if (magic) {
+            await pline('You flail around a little.');
+            return ECMD_TIME;
+        }
+        await pline("You don't have enough traction to jump.");
+        return ECMD_OK;
+    }
+
+    await pline('Where do you want to jump?');
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    game.jumping_is_magic = magic | 0;
+    getpos_sethilite(display_jump_positions, get_valid_jump_position);
+    if ((await getpos(cc, true, 'the desired position')) < 0) {
+        return ECMD_CANCEL;
+    }
+    if (!(await is_valid_jump_pos(cc.x, cc.y, magic, true))) {
+        return ECMD_FAIL;
+    }
+    if (u.usteed && (u.ux | 0) === (cc.x | 0) && (u.uy | 0) === (cc.y | 0)) {
+        await pline(`${Monnam(u.usteed)} isn't capable of jumping in place.`);
+        return ECMD_FAIL;
+    }
+
+    // Same-spot / trap-escape arms deferred — seed path jumps elsewhere.
+    if ((u.ux | 0) === (cc.x | 0) && (u.uy | 0) === (cc.y | 0)) {
+        await pline('You decide not to jump after all.');
+        return ECMD_OK;
+    }
+
+    const uc = { x: u.ux | 0, y: u.uy | 0 };
+    let range = Math.abs((cc.x | 0) - (uc.x | 0));
+    const temp = Math.abs((cc.y | 0) - (uc.y | 0));
+    if (range < temp) range = temp;
+    // C: walk_path(..., hurtle_jump, &range) — hurtle body deferred;
+    // always-true keeps dest so teleds lands on the chosen cell.
+    walk_path(uc, cc, () => true, range);
+    await teleds(cc.x, cc.y, TELEDS_NO_FLAGS);
+    nomul(-1);
+    if (!game.multi_reason) game.multi_reason = 'jumping around';
+    game.nomovemsg = '';
+    morehungry(rnd(25));
     return ECMD_TIME;
 }

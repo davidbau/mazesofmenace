@@ -618,7 +618,9 @@ function monster_nearby() {
 // hostile monster is refused: it prints `act` (+ the cmdassist "Use 'm' prefix"
 // hint) and returns true (the command does nothing and costs no turn).
 async function cmd_safety_prevention(ucverb, cmddesc, act) {
-    if (game.flags?.safe_wait !== false && !game._menu_requested && !game.multi) {
+    const menuRequested = !!game.iflags?.menu_requested;
+    if (menuRequested) game.iflags.menu_requested = false;
+    if (game.flags?.safe_wait !== false && !menuRequested && !game.multi) {
         // cmdassist defaults On, so the "Use 'm' prefix" suffix always shows.
         const buf = `  Use 'm' prefix to force ${cmddesc}.`;
         if (monster_nearby()) {

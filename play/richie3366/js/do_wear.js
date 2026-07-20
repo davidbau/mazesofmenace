@@ -16,7 +16,7 @@ import { makeknown } from './invent.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
-    W_QUIVER, LEFT_RING, RIGHT_RING, W_ART,
+    W_QUIVER, W_BALL, W_CHAIN, LEFT_RING, RIGHT_RING, W_ART,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
     TIMEOUT, BLINDED, FAST, TELEPAT, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
@@ -404,6 +404,8 @@ export function setworn(obj, mask, opts = null) {
         if (mask & W_RINGR) clearOne('uright', W_RINGR);
         clearOne('uamul', W_AMUL);
         clearOne('ublindf', W_TOOL);
+        clearOne('uball', W_BALL);
+        clearOne('uchain', W_CHAIN);
         // C worn.c setworn — no find_ac (D-0810 / D-0722)
         recalc_telepat_range();
         return;
@@ -466,6 +468,18 @@ export function setworn(obj, mask, opts = null) {
         slotBit = W_TOOL;
         obj.owornmask = (obj.owornmask || 0) | W_TOOL;
         u.ublindf = obj;
+    } else if (mask & W_BALL) {
+        // C worn[] W_BALL → uball (punish / ball.c)
+        clearOne('uball', W_BALL);
+        slotBit = W_BALL;
+        obj.owornmask = (obj.owornmask || 0) | W_BALL;
+        u.uball = obj;
+    } else if (mask & W_CHAIN) {
+        // C worn[] W_CHAIN → uchain
+        clearOne('uchain', W_CHAIN);
+        slotBit = W_CHAIN;
+        obj.owornmask = (obj.owornmask || 0) | W_CHAIN;
+        u.uchain = obj;
     }
     if (slotBit) confer_oc_oprop(obj, slotBit, true);
     // C worn.c setworn — no find_ac (D-0810); delay-0 Cloak_on More

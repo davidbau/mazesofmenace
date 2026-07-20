@@ -942,7 +942,9 @@ function race_hostile(ptr) {
 export function peace_minded(ptr) {
     if (always_peaceful(ptr)) return true;
     if (always_hostile(ptr)) return false;
-    // Named omissions: MS_LEADER/GUARDIAN/NEMESIS msound; ERINYS abuse.
+    // Named omissions: MS_LEADER/GUARDIAN/NEMESIS msound (tables omit msound).
+    // C: PM_ERINYS → !u.ualign.abuse (no co-aligned rn2) — D-0905
+    if (ptr.mndx === pm('ERINYS')) return !(game.u?.ualign?.abuse | 0);
     if (race_peaceful(ptr)) return true;
     if (race_hostile(ptr)) return false;
     const mal = ptr.maligntyp;

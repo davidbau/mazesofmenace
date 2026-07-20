@@ -35,7 +35,7 @@ import { nomul } from './hack.js';
 import { makeknown, prinv } from './invent.js';
 import { more_experienced } from './exper.js';
 import { getlin } from './getline.js';
-import { get_level } from './dungeon.js';
+import { get_level, find_hell } from './dungeon.js';
 import { depth } from './hacklib.js';
 import { addinv } from './u_init.js';
 import { mon_nam, Monnam, x_monnam } from './do_name.js';
@@ -971,10 +971,11 @@ export function random_teleport_level() {
  * menu_requested → print_dungeon(TRUE) force_dest; endgame dest
  * AMULET_OF_YENDOR grant via mksobj+addinv (D-0549); In_endgame
  * wizard negative dest → dlevel = dunlevs + newlev (D-0560);
- * Confusion/`*` / involuntary → random_teleport_level (D-0575). Named
- * omissions: lev_by_name; bymenu=FALSE print_dungeon; heaven/escape
- * outside endgame; Quest depth remap polish; find_hell; Nowhere
- * suicide yn; next_to_u leash body; buried ball; debug_fuzzer.
+ * Confusion/`*` / involuntary → random_teleport_level (D-0575);
+ * past-main-dungeon → find_hell (D-0904). Named omissions:
+ * lev_by_name; bymenu=FALSE print_dungeon; heaven/escape outside
+ * endgame; Quest/mines/sanctum deepest clamp + invoked gate;
+ * Nowhere suicide yn; next_to_u leash body; buried ball; debug_fuzzer.
  */
 export async function level_tele() {
     const u = game.u || {};
@@ -1125,12 +1126,23 @@ export async function level_tele() {
     }
 
     if (!force_dest) {
-        get_level(newlevel, newlev);
-        if ((newlevel.dnum | 0) === (u.uz?.dnum | 0)
-            && (newlevel.dlevel | 0) === (u.uz?.dlevel | 0)
-            && newlev !== depth(u.uz)) {
-            await pline("You can't get there from here.");
-            return;
+        // C: medusa's dungeon (main) && newlev past last main depth
+        // → find_hell (valley); else get_level (+ deepest clamps deferred)
+        const medusa = game.medusa_level;
+        const dun = game.dungeons?.[u.uz?.dnum | 0];
+        const pastMain = medusa
+            && (u.uz?.dnum | 0) === (medusa.dnum | 0)
+            && newlev >= ((dun?.depth_start | 0) + dunlevs_in_dungeon(u.uz));
+        if (pastMain) {
+            find_hell(newlevel);
+        } else {
+            get_level(newlevel, newlev);
+            if ((newlevel.dnum | 0) === (u.uz?.dnum | 0)
+                && (newlevel.dlevel | 0) === (u.uz?.dlevel | 0)
+                && newlev !== depth(u.uz)) {
+                await pline("You can't get there from here.");
+                return;
+            }
         }
     }
 

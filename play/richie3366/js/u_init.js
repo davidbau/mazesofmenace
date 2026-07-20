@@ -31,6 +31,7 @@ import { newpw } from './exper.js';
 import { getnow } from './calendar.js';
 import { roles, races, aligns, findRole, findRace, findAlign } from './roles.js';
 import { discover_object } from './invent.js';
+import { setworn } from './do_wear.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
 import { otyp_uses_known, Japanese_item_name } from './objnam.js';
 import {
@@ -1116,28 +1117,24 @@ function ini_inv_use_obj(obj) {
         discover_object(otypByName('POT_OIL'), true, true);
 
     if (obj.oclass === ARMOR_CLASS) {
-        // C ref: u_init.c ini_inv_use_obj armor wear order
+        // C ref: u_init.c ini_inv_use_obj — setworn confers oc_oprop
+        // (e.g. cloak of MR → Antimagic extrinsic for from_what).
         if (is_shield(obj) && !game.u.uarms) {
-            obj.owornmask = (obj.owornmask || 0) | W_ARMS;
-            game.u.uarms = obj;
+            // C also gates !(uwep && bimanual) + set_twoweap(FALSE); starters
+            // never begin two-weapon — named omit for non-start paths.
+            setworn(obj, W_ARMS);
         } else if (is_helmet(obj) && !game.u.uarmh) {
-            obj.owornmask = (obj.owornmask || 0) | W_ARMH;
-            game.u.uarmh = obj;
+            setworn(obj, W_ARMH);
         } else if (is_gloves(obj) && !game.u.uarmg) {
-            obj.owornmask = (obj.owornmask || 0) | W_ARMG;
-            game.u.uarmg = obj;
+            setworn(obj, W_ARMG);
         } else if (is_shirt(obj) && !game.u.uarmu) {
-            obj.owornmask = (obj.owornmask || 0) | W_ARMU;
-            game.u.uarmu = obj;
+            setworn(obj, W_ARMU);
         } else if (is_cloak(obj) && !game.u.uarmc) {
-            obj.owornmask = (obj.owornmask || 0) | W_ARMC;
-            game.u.uarmc = obj;
+            setworn(obj, W_ARMC);
         } else if (is_boots(obj) && !game.u.uarmf) {
-            obj.owornmask = (obj.owornmask || 0) | W_ARMF;
-            game.u.uarmf = obj;
+            setworn(obj, W_ARMF);
         } else if (is_suit(obj) && !game.u.uarm) {
-            obj.owornmask = (obj.owornmask || 0) | W_ARM;
-            game.u.uarm = obj;
+            setworn(obj, W_ARM);
         }
     }
     // C: WEAPON_CLASS || is_weptool || TIN_OPENER/FLINT/ROCK

@@ -33,6 +33,7 @@ import {
     FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS,
     COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
 } from './objects.js';
+import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 
 /** C ref: decl.c disclosure_options — invent/attribs/vanq/geno/conduct/overview */
 const DISCLOSURE_OPTIONS = 'iavgco';
@@ -242,16 +243,108 @@ export function set_playmode() {
     // C: if (discover && !authorize_explore_mode()) clear — deferred
 }
 
+/**
+ * C ref: options.c txt2key — key token in BIND=key:command.
+ * Covers single char, <enter>/<space>/<esc>, ^X/C-x, M-x, 3-digit
+ * decimal. Named omissions: escapes() \\b/\\7 paths; quoted chars.
+ */
+export function txt2key(txt) {
+    if (txt == null) return 0;
+    txt = String(txt).trim();
+    if (!txt) return 0;
+    if (txt.length === 1) return txt.charCodeAt(0) & 0xff;
+    const low = txt.toLowerCase();
+    if (low === '<enter>') return 10;
+    if (low === '<space>') return 32;
+    if (low === '<esc>') return 27;
+    // ^X or C-x / C-X
+    if (txt[0] === '^' || ((txt[0] === 'C' || txt[0] === 'c') && txt[1] === '-')) {
+        let rest = txt[0] === '^' ? txt.slice(1) : txt.slice(2);
+        if (rest.startsWith('-')) rest = rest.slice(1);
+        if (!rest) return txt[0] === '^' ? '^'.charCodeAt(0) : 'C'.charCodeAt(0);
+        if (rest === '?') return 0x7f;
+        return (rest.charCodeAt(0) & 0x1f);
+    }
+    // M-x / M-X
+    if ((txt[0] === 'M' || txt[0] === 'm') && (txt[1] === '-' || txt.length > 1)) {
+        let rest = txt.slice(1);
+        if (rest.startsWith('-')) rest = rest.slice(1);
+        if (!rest) return 'M'.charCodeAt(0);
+        if (rest.length === 1) return (0x80 | rest.charCodeAt(0)) & 0xff;
+    }
+    if (/^\d{3}$/.test(txt)) return parseInt(txt, 10) & 0xff;
+    return 0;
+}
+
+/**
+ * C ref: options.c parsebindings — after BIND=/BINDINGS= prefix stripped.
+ * Fills outMap: keyCode → command name (lowercase). "nothing" deletes.
+ * Named omissions: mouse1/mouse2; menu-cmd aliases; CMD_PARAM (...);
+ * escaped-comma key tokens (\,:cmd).
+ */
+export function parsebindings(bindings, outMap) {
+    if (!bindings || !outMap) return false;
+    let ok = true;
+    // C recurses right-to-left on list commas; for plain key:cmd lists,
+    // left-to-right split matches when no quoted commas.
+    for (const piece of String(bindings).split(',')) {
+        const part = piece.trim();
+        if (!part) continue;
+        const colon = part.indexOf(':');
+        if (colon < 0) {
+            ok = false;
+            continue;
+        }
+        const keyTok = part.slice(0, colon).trim();
+        const cmdTok = part.slice(colon + 1).trim();
+        const key = txt2key(keyTok);
+        if (!key) {
+            ok = false;
+            continue;
+        }
+        if (cmdTok.toLowerCase() === 'nothing') {
+            outMap.delete(key);
+            continue;
+        }
+        // Strip optional (param) — CMD_PARAM body deferred; name must match.
+        let cmdName = cmdTok;
+        const paren = cmdName.indexOf('(');
+        if (paren >= 0 && cmdName.endsWith(')')) {
+            cmdName = cmdName.slice(0, paren).trim();
+        }
+        // C bind_key: match extcmdlist ef_txt, skip INTERNALCMD
+        const want = cmdName.toLowerCase();
+        const ext = EXTCMDLIST.find(
+            (e) => e.txt.toLowerCase() === want && !(e.flags & INTERNALCMD),
+        );
+        if (!ext) {
+            ok = false;
+            continue;
+        }
+        outMap.set(key, ext.txt.toLowerCase());
+    }
+    return ok;
+}
+
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
         flags: {}, iflags: {},
+        // C: cfgfiles.c BINDINGS → parsebindings → Cmd.cmdbinds overlays
+        binds: new Map(),
     };
     if (!rc) return result;
 
     for (const rawLine of rc.split('\n')) {
         const line = rawLine.trim();
         if (!line || line.startsWith('#')) continue;
+
+        // C: cfgfiles.c match_varname BINDINGS len≥4 → BIND= / BINDINGS=
+        const bindMatch = line.match(/^BIND(?:INGS)?=(.+)/i);
+        if (bindMatch) {
+            parsebindings(bindMatch[1], result.binds);
+            continue;
+        }
 
         const optMatch = line.match(/^OPTIONS=(.+)/i);
         if (!optMatch) continue;

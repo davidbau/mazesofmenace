@@ -83,6 +83,27 @@ function cmdq_add_ec(fn) {
     game._cmdq_canned.push(fn);
 }
 
+/**
+ * C ref: cmd.c rhack → cmdbind_get — BIND=/BINDINGS= overlays from
+ * parsebindings. Dispatches known ported commands; returns true if handled.
+ * Named omissions: full Cmd.cmdbinds table (defaults still via if/else);
+ * CMD_PARAM; chronicle/history/… until ported.
+ */
+async function try_rc_keybind(key) {
+    const binds = game.Cmd?.binds;
+    if (!binds || !(binds instanceof Map)) return false;
+    const cmd = binds.get(key & 0xff);
+    if (!cmd) return false;
+    if (cmd === 'inventory') {
+        // C: extcmdlist "inventory" → ddoinv
+        await ddoinv();
+        game.context.move = 0;
+        return true;
+    }
+    // Unknown-to-JS bind target: leave for hardcoded path / unknown pline
+    return false;
+}
+
 /* C ref: cmd.c enum menucmd — [t]herecmdmenu action ids */
 const MCMD_NOTHING = 0;
 const MCMD_QUAFF = 15;
@@ -1124,6 +1145,9 @@ export async function rhack(key) {
         if (game.context) game.context.forcefight = 0;
         // domove sets context.move = 0 if blocked; else leave as 1 (allmain preset)
         if (game.context.move !== 0) game.context.move = 1;
+    } else if (await try_rc_keybind(key)) {
+        // C: cmdbind_get → extcmd — BIND= overlays (e.g. v:inventory)
+        // handled; move already set by try_rc_keybind
     } else if (isRunKey(ch) || rushDir) {
         // C ref: cmd.c do_run_* → run=1; do_rush_* (C(dir)) → run=3
         const low = rushDir || ch.toLowerCase();

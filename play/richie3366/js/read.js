@@ -1,19 +1,21 @@
 // read.js — Read command / scroll effects (partial).
 // C ref: read.c doread, seffects, seffect_magic_mapping, seffect_teleportation,
 // seffect_light / litroom / set_lit, seffect_remove_curse,
-// seffect_enchant_weapon, create_particular; invent.c getobj; detect.c
-// do_mapping; spell.c study_book (via spell.js); teleport.c
-// scrolltele/safe_teleds; zap.c lightdamage (non-gremlin stub); do_name.c
-// trycall; mkobj.c uncurse/blessorcurse; wield.c chwepon.
+// seffect_enchant_weapon, seffect_punishment / punish, create_particular;
+// invent.c getobj; detect.c do_mapping; spell.c study_book (via spell.js);
+// teleport.c scrolltele/safe_teleds; zap.c lightdamage (non-gremlin stub);
+// do_name.c trycall; mkobj.c uncurse/blessorcurse; wield.c chwepon;
+// ball.c placebc.
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
 // SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
-// SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR / SCR_IDENTIFY +
+// SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR / SCR_IDENTIFY /
+// SCR_PUNISHMENT +
 // SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
 // named-monster path for #wizgenesis.
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
-// Blind gates; study_book occupation/learn / novel / cursed_book; other
-// seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
+// Blind gates; study_book novel / dull sleep (occupation learn D-0907);
+// other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; nommap/Hallucination/
@@ -28,7 +30,9 @@
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
 // proof strip; create_particular class-letter / * random / cant_revive yn /
 // tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
-// makemon MM_NOMSG appear arm (caller emits next-to-you pline).
+// makemon MM_NOMSG appear arm (caller emits next-to-you pline);
+// punish Blind set_bc; flooreffects on placebc; HEAVY_IRON_BALL reuse
+// from angrygods.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -36,9 +40,9 @@ import { flush_screen, flush_topl_more, pline, newsym, You_feel } from './displa
 import { xname, an } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
-    ARMOR_CLASS, objectNames,
+    ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, objectNames,
 } from './objects.js';
-import { weight, uncurse, blessorcurse } from './mkobj.js';
+import { weight, uncurse, blessorcurse, mkobj } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
 import { makeknown, display_pickinv_reply, identify_pack } from './invent.js';
 import { more_experienced } from './exper.js';
@@ -47,17 +51,19 @@ import { study_book, can_chant } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
 import { trycall } from './do_name.js';
 import { chwepon } from './wield.js';
-import { destroy_arm, some_armor } from './do_wear.js';
+import { destroy_arm, some_armor, setworn } from './do_wear.js';
+import { dropy } from './do.js';
+import { placebc } from './ball.js';
 import { rn2, rnd } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
-    W_BALL, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM, NO_MM_FLAGS,
-    thats_enough_tries,
+    W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM,
+    NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries,
 } from './const.js';
 import { vision_recalc, do_clear_area } from './vision.js';
 import { getlin } from './getline.js';
 import { name_to_mon } from './mondata.js';
-import { mons, NON_PM } from './monsters.js';
+import { mons, NON_PM, amorphous, is_whirly, unsolid } from './monsters.js';
 import { makemon } from './makemon.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
@@ -67,7 +73,9 @@ const SCR_REMOVE_CURSE = objectNames.indexOf('SCR_REMOVE_CURSE');
 const SCR_ENCHANT_WEAPON = objectNames.indexOf('SCR_ENCHANT_WEAPON');
 const SCR_DESTROY_ARMOR = objectNames.indexOf('SCR_DESTROY_ARMOR');
 const SCR_IDENTIFY = objectNames.indexOf('SCR_IDENTIFY');
+const SCR_PUNISHMENT = objectNames.indexOf('SCR_PUNISHMENT');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
@@ -706,6 +714,66 @@ async function seffect_identify(sobj) {
 }
 
 /**
+ * C ref: read.c punish — attach ball & chain (or weight existing ball).
+ * Named omissions: Blind set_bc; flooreffects via placebc; angrygods
+ * HEAVY_IRON_BALL reuse when sobj is already the ball.
+ */
+export async function punish(sobj) {
+    const u = game.u || (game.u = {});
+    const reuse_ball = (sobj && sobj.otyp === HEAVY_IRON_BALL) ? sobj : null;
+    const cursed_levy = (sobj && sobj.cursed) ? 1 : 0;
+
+    // C: Punished ≡ (uball != 0)
+    if (u.uball) {
+        if (!reuse_ball) {
+            await pline('You are being punished for your misbehavior!');
+        }
+        await pline('Your iron ball gets heavier.');
+        u.uball.owt = (u.uball.owt | 0) + WT_IRON_BALL_INCR * (1 + cursed_levy);
+        return;
+    }
+
+    if (!reuse_ball) {
+        await pline('You are being punished for your misbehavior!');
+    }
+
+    const youdat = game.youmonst?.data;
+    if (amorphous(youdat) || is_whirly(youdat) || unsolid(youdat)) {
+        if (!reuse_ball) {
+            await pline('A ball and chain appears, then falls away.');
+            dropy(mkobj(BALL_CLASS, true));
+        } else {
+            dropy(reuse_ball);
+        }
+        return;
+    }
+
+    setworn(mkobj(CHAIN_CLASS, true), W_CHAIN);
+    if (!reuse_ball) setworn(mkobj(BALL_CLASS, true), W_BALL);
+    else setworn(reuse_ball, W_BALL);
+
+    if (!u.uswallow) {
+        placebc();
+        // Blind set_bc deferred
+        newsym(u.ux | 0, u.uy | 0);
+    }
+}
+
+/**
+ * C ref: read.c seffect_punishment
+ */
+async function seffect_punishment(sobj) {
+    const sblessed = !!sobj.blessed;
+    const confused = !!(game.u?.HConfusion || game.u?.Confusion);
+    known = true;
+    if (confused || sblessed) {
+        await You_feel('guilty.');
+        return;
+    }
+    await punish(sobj);
+}
+
+/**
  * C ref: read.c seffects — oc_magic exercise + otyp dispatch.
  * @returns {number} 0 = caller useup/learn; 1 = already used up;
  *   -1 = unimplemented (caller must not useup)
@@ -745,6 +813,9 @@ async function seffects(sobj) {
         if (!kept) return 1;
         break;
     }
+    case SCR_PUNISHMENT:
+        await seffect_punishment(sobj);
+        break;
     default:
         // Other seffect_* deferred — do not useup
         await pline('That scroll is not implemented yet.');
@@ -793,7 +864,8 @@ export async function doread() {
     if (otyp !== SCR_MAGIC_MAPPING && otyp !== SCR_BLANK_PAPER
         && otyp !== SCR_TELEPORTATION && otyp !== SCR_LIGHT
         && otyp !== SCR_REMOVE_CURSE && otyp !== SCR_ENCHANT_WEAPON
-        && otyp !== SCR_DESTROY_ARMOR && otyp !== SCR_IDENTIFY) {
+        && otyp !== SCR_DESTROY_ARMOR && otyp !== SCR_IDENTIFY
+        && otyp !== SCR_PUNISHMENT) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }

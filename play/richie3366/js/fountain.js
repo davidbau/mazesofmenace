@@ -9,11 +9,11 @@
 // !FOUNTAIN_IS_LOOTED else fallthrough; case 28 dowaternymph;
 // case 30 dogushforth(TRUE).
 // Deferred: enlightenment body, vomit cantvomit/Sick/acid poly arms,
-// town warn/angry_guards, wizard yn, FOUNTAIN_IS_WARNED force dryup,
+// angry_guards after real dryup, wizard yn, Deaf shake/wave warn arm,
 // Excalibur LONG_SWORD body, wash_hands, dipfountain cases 17–20/
 // 29 (You see coins/mkgold); gush minliquid body; set_levltyp side
 // effects beyond typ/flags; Hallucination rndmonnam in snakes pline;
-// mongrantswish tmp_at glyph hide.
+// mongrantswish tmp_at glyph hide; dryup cansee cloud-glyph skip.
 //
 // Branch envelope (drinksink): Levitation floating_above; rn2(20)
 // switch cases 0–13 + 19/default sip; case 4 faucet → mkobj+dopotion;
@@ -26,7 +26,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
-    pline, newsym, You_feel, flush_topl_more, canspotmon,
+    pline, newsym, You_feel, flush_topl_more, canspotmon, verbalize,
 } from './display.js';
 import {
     curse, mksobj_at, rnd_class, mkobj, mkobj_at, obj_extract_self,
@@ -47,24 +47,25 @@ import {
     KILLED_BY, G_GONE, M_SEEN_FIRE,
     SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP,
     TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP, ANTI_MAGIC,
-    is_pit, is_hole,
+    is_pit, is_hole, ARTICLE_A,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, adjattrib, exercise, acurr } from './attrib.js';
 import { lesshungry, morehungry, poison_strdmg, vomit } from './eat.js';
-import { losehp } from './hack.js';
+import { losehp, in_town } from './hack.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { makemon } from './makemon.js';
-import { mons } from './monsters.js';
+import { mons, is_watch } from './monsters.js';
 import { m_at } from './mon.js';
-import { cansee, do_clear_area } from './vision.js';
+import { mon_offmap } from './monmove.js';
+import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { observe_object } from './invent.js';
-import { hliquid } from './do_name.js';
+import { hliquid, x_monnam } from './do_name.js';
 import { somegold } from './steal.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
@@ -83,6 +84,12 @@ function FOUNTAIN_IS_WARNED(x, y) {
     return !!((loc?.looted || 0) & F_WARNED);
 }
 
+/** C ref: rm.h SET_FOUNTAIN_WARNED */
+function SET_FOUNTAIN_WARNED(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc) loc.looted = (loc.looted || 0) | F_WARNED;
+}
+
 /** C ref: rm.h FOUNTAIN_IS_LOOTED / SET_FOUNTAIN_LOOTED */
 function FOUNTAIN_IS_LOOTED(x, y) {
     const loc = game.level?.at(x, y);
@@ -98,6 +105,45 @@ function SET_FOUNTAIN_LOOTED(x, y) {
 function CLEAR_FOUNTAIN_LOOTED(x, y) {
     const loc = game.level?.at(x, y);
     if (loc) loc.looted = (loc.looted || 0) & ~F_LOOTED;
+}
+
+/** C ref: do_name.c Amonnam — highc(a_monnam). */
+function Amonnam(mtmp) {
+    const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'A monster';
+}
+
+/**
+ * C ref: fountain.c watchman_warn_fountain
+ * Named omit: Deaf shake/wave (nolimbs/mhis/mbodypart) — !Deaf verbalize only.
+ * @returns {Promise<boolean>}
+ */
+async function watchman_warn_fountain(mtmp) {
+    if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful) {
+        const u = game.u || {};
+        const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+            || u.uroleplay?.deaf || u.Deaf);
+        if (!Deaf) {
+            await pline(`${Amonnam(mtmp)} yells:`);
+            await verbalize('Hey, stop using that fountain!');
+        }
+        // else: Deaf shake/wave arm deferred
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mon.c get_iter_mons — first living on-map mon where bfunc is true.
+ * @param {(mtmp: object) => Promise<boolean>|boolean} bfunc
+ */
+async function get_iter_mons(bfunc) {
+    const list = game.fmon || [];
+    for (const mtmp of list) {
+        if ((mtmp.mhp | 0) <= 0 || mon_offmap(mtmp)) continue;
+        if (await bfunc(mtmp)) return mtmp;
+    }
+    return null;
 }
 
 /** C ref: invent.c money_cnt — sum COIN_CLASS quan (invent is a JS array). */
@@ -557,14 +603,29 @@ async function dogushforth(drinking) {
 
 /**
  * C ref: fountain.c dryup
- * Town warn / wizard yn / angry_guards deferred.
+ * Town first-use warn via watchman_warn_fountain (D-0894).
+ * Named omit: wizard yn; angry_guards after real dryup; cloud-glyph
+ * skip of dryup pline; Deaf shake/wave warn arm.
  */
 export async function dryup(x, y, isyou) {
     const loc = game.level?.at(x, y);
     if (!loc || !IS_FOUNTAIN(loc.typ)) return;
     if (!(!rn2(3) || FOUNTAIN_IS_WARNED(x, y))) return;
 
-    await pline('The fountain dries up!');
+    // C: first town use warns and returns without drying.
+    if (isyou && in_town(x, y) && !FOUNTAIN_IS_WARNED(x, y)) {
+        SET_FOUNTAIN_WARNED(x, y);
+        const mtmp = await get_iter_mons(watchman_warn_fountain);
+        if (!mtmp) {
+            await pline('The flow reduces to a trickle.');
+        }
+        return;
+    }
+    // wizard yn deferred
+    if (cansee(x, y)) {
+        // cloud-glyph skip deferred
+        await pline('The fountain dries up!');
+    }
     loc.typ = ROOM;
     loc.flags = 0;
     loc.blessedftn = 0;
@@ -572,6 +633,7 @@ export async function dryup(x, y, isyou) {
         game.level.flags.nfountains--;
     }
     newsym(x, y);
+    // angry_guards(FALSE) when isyou && in_town deferred
     void isyou;
 }
 

@@ -1,24 +1,25 @@
 // spell.js — Known spells / + menu / cast / initial inventory learning.
-// C ref: spell.c initialspell, study_book, cursed_book, dovspell,
+// C ref: spell.c initialspell, study_book, cursed_book, learn, dovspell,
 //        dospellmenu, percent_success, spellretention, spelltypemnemonic,
 //        spell_skilltype, skill_based_spellbook_id, docast, getspell,
 //        rejectcasting, spelleffects_check, spelleffects.
 //
 // Branch envelope: spl_book init; initialspell from ini_inv_use_obj;
-// study_book blank + already-known refresh yn + delay/too_hard +
-// cursed_book (D-0681) + begin-memorize; dovspell VIEW menu; Wizard
-// skill_based_spellbook_id; Z/#cast → getspell CAST → spelleffects_check
-// + SPE_HEALING self-zap.
-// Named omissions: study occupation/learn; novel/tribute; dull sleep;
-// confused_book body; swap/sort; other spelleffects otyps; directional
-// weffects; spell_backfire; amulet drain; CQ_REPEAT; cursed_book
-// rndcurse/shieldeff polish; In_W_tower in aggravate.
+// study_book blank + known-refresh yn + delay/too_hard + cursed_book
+// (D-0681) + begin-memorize + set_occupation(learn) (D-0907); dovspell
+// VIEW menu; Wizard skill_based_spellbook_id; Z/#cast → getspell CAST →
+// spelleffects_check + SPE_HEALING self-zap.
+// Named omissions: novel/tribute; dull sleep; confused_book body;
+// learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
+// swap/sort; other spelleffects otyps; directional weffects;
+// spell_backfire; amulet drain; CQ_REPEAT; cursed_book rndcurse/
+// shieldeff polish; In_W_tower in aggravate.
 // Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, You_feel } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj } from './mkobj.js';
@@ -33,6 +34,7 @@ import { make_confused } from './potion.js';
 import { trycall } from './do_name.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
 import { erode_obj } from './trap.js';
+import { set_occupation } from './engrave.js';
 import {
     P_NONE,
     P_ATTACK_SPELL,
@@ -78,6 +80,8 @@ export const MAXSPELL = LAST_SPELL_OTYP - FIRST_SPELL_OTYP + 1;
 
 /** C ref: spell.c KEEN */
 const KEEN = 20000;
+/** C ref: spell.h MAX_SPELL_STUDY */
+const MAX_SPELL_STUDY = 3;
 
 /** C ref: spell.c SPELLMENU_* */
 const SPELLMENU_CAST = -2;
@@ -400,14 +404,130 @@ async function cursed_book(bp) {
     return false;
 }
 
+/** C ref: spell.c incrnknow — set sp_know = KEEN + x. */
+function incrnknow(spell, x) {
+    if (!game.spl_book) init_spl_book();
+    game.spl_book[spell].sp_know = KEEN + (x | 0);
+}
+
+/**
+ * C ref: spell.c learn() — occupation while studying a spellbook.
+ * Branch envelope: delay++ while nonzero; finish → learn/relearn spell
+ * + makeknown; cursed_book on finish may destroy.
+ * Named omissions: lenses rn2(2) faster read; Confusion→confused_book
+ * + nomul remainder; SPE_BOOK_OF_THE_DEAD deadbook; faded-blank
+ * spestudied rn2 polish; check_unpaid.
+ * @returns {Promise<number>} 1 = still busy, 0 = done
+ */
+async function learn() {
+    if (!game.context) game.context = {};
+    if (!game.context.spbook) game.context.spbook = {};
+    const spbook = game.context.spbook;
+    const book = spbook.book;
+
+    // lenses faster-read deferred (ublindf LENSES && rn2(2) → delay++)
+    if (game.u?.Confusion) {
+        // confused_book deferred — clear study + nomul remainder
+        spbook.book = null;
+        spbook.o_id = 0;
+        nomul(spbook.delay | 0);
+        game.multi_reason = 'reading a book';
+        game.nomovemsg = null;
+        spbook.delay = 0;
+        return 0;
+    }
+    if (spbook.delay) {
+        // C: not if (delay++), so at end delay == 0 then one more call finishes
+        spbook.delay++;
+        return 1;
+    }
+    if (!book) return 0;
+
+    exercise(A_WIS, true);
+    let booktype = book.otyp | 0;
+    if (booktype === SPE_BOOK_OF_THE_DEAD) {
+        // deadbook deferred
+        spbook.book = null;
+        spbook.o_id = 0;
+        return 0;
+    }
+
+    const known = !!(game.objects?.[booktype]?.oc_name_known);
+    const spellnm = objectNameStrs[booktype] || 'spell';
+    const splname = known ? `"${spellnm}"` : `the "${spellnm}" spell`;
+
+    let i;
+    for (i = 0; i < MAXSPELL; i++) {
+        if (spellid(i) === booktype || spellid(i) === NO_SPELL) break;
+    }
+
+    let faded_to_blank = false;
+    if (i === MAXSPELL) {
+        // C: impossible("Too many spells memorized!");
+    } else if (spellid(i) === booktype) {
+        if ((book.spestudied | 0) > MAX_SPELL_STUDY) {
+            await pline('This spellbook is too faint to be read any more.');
+            book.otyp = booktype = SPE_BLANK_PAPER;
+            faded_to_blank = true;
+            book.spestudied = rn2(book.spestudied | 0);
+        } else {
+            await pline(`Your knowledge of ${splname} is ${
+                spellknow(i) ? 'keener' : 'restored'
+            }.`);
+            incrnknow(i, 1);
+            book.spestudied = (book.spestudied | 0) + 1;
+            exercise(A_WIS, true);
+        }
+    } else {
+        // spellid(i) === NO_SPELL — first learn
+        if ((book.spestudied | 0) >= MAX_SPELL_STUDY) {
+            await pline('This spellbook is too faint to read even once.');
+            book.otyp = booktype = SPE_BLANK_PAPER;
+            faded_to_blank = true;
+            book.spestudied = rn2(book.spestudied | 0);
+        } else {
+            if (!game.spl_book) init_spl_book();
+            game.spl_book[i].sp_id = booktype;
+            game.spl_book[i].sp_lev = game.objects?.[booktype]?.oc_level ?? 0;
+            incrnknow(i, 1);
+            book.spestudied = (book.spestudied | 0) + 1;
+            if (!i) {
+                await pline(`You learn ${splname}.`);
+            } else {
+                await pline(
+                    `You add ${splname} to your repertoire, as '${spellet(i)}'.`,
+                );
+            }
+        }
+    }
+    if (i < MAXSPELL) {
+        // C: makeknown(booktype) — credit_hero exercises WIS when newly named
+        makeknown(booktype);
+        // update_inventory on faded_to_blank deferred
+        void faded_to_blank;
+    }
+
+    if (book.cursed) {
+        if (await cursed_book(book)) {
+            useup(book);
+            spbook.book = null;
+            spbook.o_id = 0;
+            return 0;
+        }
+    }
+    // check_unpaid deferred
+    spbook.book = null;
+    spbook.o_id = 0;
+    return 0;
+}
+
 /**
  * C ref: spell.c study_book()
  * Branch envelope: blank paper; already-known refresh yn (KEEN/10);
  * delay by oc_level; uncursed rnd(20) fail gate; too_hard → cursed_book
- * + nomul + !rn2(3) crumble; begin-memorize return.
- * Named omissions: dull-book sleep; interrupted continue; novel/tribute;
- * confused_book body; set_occupation(learn) multi-turn study
- * (refresh/accept and first learn return TIME without occupation).
+ * + nomul + !rn2(3) crumble; begin-memorize + set_occupation(learn)
+ * (D-0907); interrupted continue same-book skips fail gate.
+ * Named omissions: dull-book sleep; novel/tribute; confused_book body.
  * @returns {Promise<number>} 1 = took time, 0 = cancel / no time
  */
 export async function study_book(spellbook) {
@@ -416,7 +536,22 @@ export async function study_book(spellbook) {
     const confused = !!(game.u?.Confusion);
 
     // dull descr sleep deferred (objdescr_is "dull")
-    // interrupted continue deferred
+
+    if (!game.context) game.context = {};
+    if (!game.context.spbook) game.context.spbook = {};
+
+    // C: continue interrupted study of the same book — skip fail gate
+    if (game.context.spbook.delay && !confused
+        && game.context.spbook.book === spellbook
+        && booktype !== SPE_BLANK_PAPER) {
+        await pline(`You continue your efforts to ${
+            booktype === SPE_NOVEL ? 'read the novel' : 'memorize the spell'
+        }.`);
+        game.context.spbook.book = spellbook;
+        game.context.spbook.o_id = spellbook.o_id ?? 0;
+        set_occupation(learn, 'studying', 0);
+        return 1;
+    }
 
     if (booktype === SPE_BLANK_PAPER) {
         await pline('This spellbook is all blank.');
@@ -452,8 +587,6 @@ export async function study_book(spellbook) {
     default:
         return 0;
     }
-    if (!game.context) game.context = {};
-    if (!game.context.spbook) game.context.spbook = {};
     game.context.spbook.delay = delay;
 
     let i;
@@ -477,7 +610,7 @@ export async function study_book(spellbook) {
             too_hard = true;
         } else {
             const ublindf = game.u?.ublindf;
-            let read_ability = acurr(A_INT) + 4
+            const read_ability = acurr(A_INT) + 4
                 + Math.trunc((game.u?.ulevel || 1) / 2)
                 - 2 * oc_level
                 + ((ublindf && ublindf.otyp === LENSES) ? 2 : 0);
@@ -523,7 +656,10 @@ export async function study_book(spellbook) {
     } the runes.`);
     game.context.spbook.book = spellbook;
     game.context.spbook.o_id = spellbook.o_id ?? 0;
-    // set_occupation(learn) deferred — still ECMD_TIME
+    // C: set_occupation(learn, "studying", 0) — consumes leftover
+    // umovement actions so Very_fast cannot start a second doread
+    // before EOT mcalcmove (D-0907).
+    set_occupation(learn, 'studying', 0);
     return 1;
 }
 

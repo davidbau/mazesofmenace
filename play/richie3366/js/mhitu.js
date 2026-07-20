@@ -11,7 +11,7 @@ import {
     Upolyd, DIED, P_WHIP, NON_PM,
     DISPLACED, IS_WATERWALL, RLOC_MSG,
 } from './const.js';
-import { thrwmu } from './mthrowu.js';
+import { thrwmu, spitmu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys } from './hack.js';
@@ -41,7 +41,7 @@ import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
     could_seduce,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
-    AT_ENGL, AT_GAZE,
+    AT_ENGL, AT_GAZE, AT_SPIT,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
     AD_SITM, AD_SEDU, AD_SSEX,
 } from './mhitm.js';
@@ -1108,6 +1108,12 @@ export async function mattacku(mtmp) {
                     skipnonmagc = true;
                 }
             }
+            break;
+
+        case AT_SPIT:
+            // C ref: mhitu.c AT_SPIT — spitmu when range2 (takes care of
+            // displacement via mux/muy lined_up).
+            if (range2) sum[i] = await spitmu(mtmp, mattk);
             break;
 
         default:

@@ -7,8 +7,9 @@
 // feature-char matching (stairs + furniture/traps subset; D-0779/D-0818),
 // `?` → getpos_help NHW_MENU + show_goal_msg (D-0819), autodescribe
 // topline, force unknown-direction pline, '.' → LOOK_TRADITIONAL,
-// ESC → -1. Menu/mMoOdDxX jump/hilite/valids/getloc_moveskip glyph-skip /
-// engraving/drawbridge/air full showsyms table deferred.
+// ESC → -1. Menu/mMoOdDxX jump/hilite glyphs/getloc_moveskip glyph-skip /
+// engraving/drawbridge/air full showsyms table deferred. getpos_getvalid
+// `(invalid target)` live (D-0899).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -44,6 +45,28 @@ export const LOOK_TRADITIONAL = 0;
 export const LOOK_QUICK = 1;
 export const LOOK_ONCE = 2;
 export const LOOK_VERBOSE = 3;
+
+/** @type {((on: boolean) => void) | null} */
+let getpos_hilitefunc = null;
+/** @type {((x: number, y: number) => boolean) | null} */
+let getpos_getvalid = null;
+
+/**
+ * C ref: getpos.c getpos_sethilite — install/clear getvalid + hilite callbacks.
+ * Hilite glyph painting deferred; getvalid drives "(invalid target)".
+ */
+export function getpos_sethilite(hilitef, getvalidf) {
+    getpos_hilitefunc = typeof hilitef === 'function' ? hilitef : null;
+    getpos_getvalid = typeof getvalidf === 'function' ? getvalidf : null;
+}
+
+/**
+ * C ref: getpos.c getpos_validate — true when no getvalid or cell allowed.
+ */
+export function getpos_validate(x, y) {
+    if (!getpos_getvalid) return true;
+    return !!getpos_getvalid(x, y);
+}
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -450,11 +473,11 @@ function cmap_defsym_explanation(x, y, loc) {
  * required for TER_DETECT after clear_glyph_buffer.
  *
  * Named omissions: full do_screen_description symbol table, coord_desc,
- * getpos_getvalid "(invalid target)" (no hilite callback yet), underwater
- * unreconnoitered, object / special cmap arms (altar; doors D-0815;
+ * underwater unreconnoitered, object / special cmap arms (altar; doors D-0815;
  * cloud typ D-0811). Trap: tseen `trapname` only (trapped_chest/door /
  * Hallucination deferred). Travel: " (no travel path)" via
- * is_valid_travelpt when getloc_travelmode (D-0809).
+ * is_valid_travelpt when getloc_travelmode (D-0809). getpos_getvalid
+ * "(invalid target)" live (D-0899); S_goodpos hilite glyphs deferred.
  */
 function auto_describe_text(cx, cy) {
     const u = game.u || {};
@@ -529,7 +552,10 @@ function auto_describe_text(cx, cy) {
  */
 function auto_describe_suffix(cx, cy) {
     let s = '';
-    // getpos_getvalid / "(invalid target)" deferred (no hilite callback)
+    // C ref: getpos.c auto_describe — getpos_getvalid → " (invalid target)"
+    if (getpos_getvalid && !getpos_getvalid(cx, cy)) {
+        s += ' (invalid target)';
+    }
     if (game.iflags?.getloc_travelmode && !is_valid_travelpt(cx, cy)) {
         s += ' (no travel path)';
     }
@@ -763,6 +789,9 @@ export async function getpos(ccp, force, goal, describeAt) {
         show_goal_msg = true;
     }
 
+    // C: getpos_hilitefunc(TRUE) after sethilite when HiliteGoodposSymbol —
+    // glyph highlight deferred; getvalid still active for auto_describe.
+
     if (g.flags.verbose !== false) {
         await pline("(For instructions type a '?')");
         msg_given = true;
@@ -806,12 +835,16 @@ export async function getpos(ccp, force, goal, describeAt) {
             ccp.x = -1;
             ccp.y = -1;
             g._pending_message = '';
+            if (getpos_hilitefunc) getpos_hilitefunc(false);
+            getpos_sethilite(null, null);
             return -1;
         }
 
         if (ch === '.' || ch === ',' || ch === ':' || ch === ';') {
             ccp.x = cx;
             ccp.y = cy;
+            if (getpos_hilitefunc) getpos_hilitefunc(false);
+            getpos_sethilite(null, null);
             // '.' → LOOK_TRADITIONAL (continue whatis loop); ',' often LOOK_ONCE
             return ch === ',' ? LOOK_ONCE : LOOK_TRADITIONAL;
         }
@@ -903,6 +936,8 @@ export async function getpos(ccp, force, goal, describeAt) {
         ccp.x = -1;
         ccp.y = -1;
         g._pending_message = '';
+        if (getpos_hilitefunc) getpos_hilitefunc(false);
+        getpos_sethilite(null, null);
         return -1;
     }
 }

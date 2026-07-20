@@ -1,11 +1,12 @@
 // mthrowu.js — Monster ranged throw/shoot (partial).
 // C ref: mthrowu.c thrwmu / monshoot / m_throw / ohitmon / thitu /
-//         lined_up / u_catch_thrown_obj / drop_throw.
+//         lined_up / m_lined_up / spitmm / spitmu /
+//         u_catch_thrown_obj / drop_throw.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    distmin, m_at, m_carrying, seemimic,
+    distmin, dist2, m_at, m_carrying, seemimic,
 } from './mon.js';
 import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
@@ -13,10 +14,12 @@ import {
     POTHIT_MONST_THROW, POTHIT_OTHER_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
     M_AP_NOTHING, M_AP_MONSTER, u_at, P_NONE,
     DISP_FLASH, DISP_END, XKILL_NOMSG,
+    M_ATTK_MISS, M_ATTK_HIT, EDOG,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import {
     place_object, splitobj, stackobj, obj_extract_self, delobj, objects_at,
+    mksobj,
 } from './mkobj.js';
 import { observe_object } from './invent.js';
 import {
@@ -49,6 +52,33 @@ import { potionhit } from './potion.js';
 const BOULDER = objectNames.indexOf('BOULDER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
+const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
+const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
+/** C ref: monattk.h — spit damage types used by spitmm. */
+const AD_BLND = 11;
+const AD_DRST = 7;
+const AD_ACID = 8;
+
+/** C ref: hacklib.c s_suffix — local for cancelled-spit dry rattle. */
+function s_suffix(s) {
+    if (!s) return "its";
+    if (s === 'it' || s === 'It') return `${s}s`;
+    if (s === 'you' || s === 'You') return `${s}r`;
+    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
+        || s.endsWith('ch') || s.endsWith('sh')) {
+        return `${s}'`;
+    }
+    return `${s}'s`;
+}
+
+/**
+ * C ref: pline.c You_hear — acoustics/Deaf gate; Unaware/Underwater deferred.
+ */
+async function You_hear(line) {
+    const u = game.u || {};
+    if (u.Deaf || game.flags?.acoustics === false) return;
+    await pline(`You hear ${line}`);
+}
 
 /**
  * C ref: mthrowu.c m_has_launcher_and_ammo — wielded launcher + matching ammo.
@@ -165,23 +195,108 @@ export function linedup(ax, ay, bx, by, boulderhandling = 0) {
 }
 
 /**
- * C ref: mthrowu.c m_lined_up / lined_up — vs hero (mux/muy target).
- * Upolyd concealment rn2(25); ignore_boulders via throws_rocks / WAN_STRIKING.
+ * C ref: mthrowu.c m_lined_up — line-of-fire vs mtarg (hero or monster).
+ * Hero: mux/muy + Upolyd concealment rn2(25) + boulderhandling 1|2.
+ * Mon-mon: mtarg mx/my + boulderhandling 0.
  */
-export function lined_up(mtmp) {
+export function m_lined_up(mtarg, mtmp) {
+    const you = game.youmonst;
+    const utarget = mtarg === you || mtarg === game.u;
     const u = game.u || {};
-    const tx = mtmp.mux ?? u.ux;
-    const ty = mtmp.muy ?? u.uy;
-    const ignore_boulders = throws_rocks(mtmp.data)
-        || !!m_carrying(mtmp, WAN_STRIKING);
+    const tx = utarget ? (mtmp.mux ?? u.ux) : mtarg.mx;
+    const ty = utarget ? (mtmp.muy ?? u.uy) : mtarg.my;
+    const ignore_boulders = utarget && (throws_rocks(mtmp.data)
+        || !!m_carrying(mtmp, WAN_STRIKING));
     // C: utarget && Upolyd && rn2(25) && (uundetected || unusual AP)
-    if (Upolyd(u) && rn2(25)) {
-        const ap = M_AP_TYPE(game.youmonst);
+    if (utarget && Upolyd(u) && rn2(25)) {
+        const ap = M_AP_TYPE(you);
         if (u.uundetected || (ap !== M_AP_NOTHING && ap !== M_AP_MONSTER)) {
             return false;
         }
     }
-    return linedup(tx, ty, mtmp.mx, mtmp.my, ignore_boulders ? 1 : 2);
+    return linedup(tx, ty, mtmp.mx, mtmp.my,
+        utarget ? (ignore_boulders ? 1 : 2) : 0);
+}
+
+/**
+ * C ref: mthrowu.c lined_up — m_lined_up vs hero.
+ */
+export function lined_up(mtmp) {
+    return m_lined_up(game.youmonst || game.u, mtmp);
+}
+
+/**
+ * C ref: mthrowu.c spitmm — monster spits venom at mtarg (hero or mon).
+ * mksobj always when lined up (next_ident); then rn2(BOLT_LIM-distmin)
+ * decides whether to throw or discard. Named omissions: Soundeffect;
+ * isminion pet-hunger skip already gated; breamm breath path.
+ */
+export async function spitmm(mtmp, mattk, mtarg) {
+    if (mtmp.mcan) {
+        const u = game.u || {};
+        const lim2 = BOLT_LIM * BOLT_LIM;
+        if (!(u.Deaf || game.flags?.acoustics === false)
+            && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < lim2) {
+            if (canspotmon(mtmp)) {
+                await pline(
+                    `A dry rattle comes from ${s_suffix(mon_nam(mtmp))} throat.`,
+                );
+            } else {
+                await You_hear('a dry rattle nearby.');
+            }
+        }
+        return M_ATTK_MISS;
+    }
+    if (m_lined_up(mtarg, mtmp)) {
+        const you = game.youmonst;
+        const utarg = mtarg === you || mtarg === game.u;
+        const u = game.u || {};
+        const tx = utarg ? (mtmp.mux ?? u.ux) : mtarg.mx;
+        const ty = utarg ? (mtmp.muy ?? u.uy) : mtarg.my;
+        const adtyp = mattk?.adtyp | 0;
+        let otmp;
+        if (adtyp === AD_BLND || adtyp === AD_DRST) {
+            otmp = mksobj(BLINDING_VENOM, true, false);
+        } else {
+            // C: default + AD_ACID → ACID_VENOM (impossible on bad type)
+            otmp = mksobj(ACID_VENOM, true, false);
+        }
+        if (!rn2(BOLT_LIM - distmin(mtmp.mx, mtmp.my, tx, ty))) {
+            if (canseemon(mtmp)) {
+                await pline(`${Monnam(mtmp)} spits venom!`);
+            }
+            if (!utarg) game.mtarget = mtarg;
+            try {
+                await m_throw(
+                    mtmp, mtmp.mx, mtmp.my,
+                    Math.sign(game._tbx || 0), Math.sign(game._tby || 0),
+                    distmin(mtmp.mx, mtmp.my, tx, ty), otmp,
+                );
+            } finally {
+                game.mtarget = null;
+            }
+            nomul(0);
+            // C: tame !isminion → EDOG hungrytime -= 5
+            if (mtmp.mtame && !mtmp.isminion) {
+                const dog = EDOG(mtmp);
+                if (dog && (dog.hungrytime | 0) > 1) {
+                    dog.hungrytime = (dog.hungrytime | 0) - 5;
+                }
+            }
+            return M_ATTK_HIT;
+        }
+        // C: discard unused venom — obj_extract_self + obfree
+        obj_extract_self(otmp);
+        otmp.where = 0;
+    }
+    return M_ATTK_MISS;
+}
+
+/**
+ * C ref: mthrowu.c spitmu — spitmm vs hero.
+ */
+export async function spitmu(mtmp, mattk) {
+    return spitmm(mtmp, mattk, game.youmonst || game.u);
 }
 
 /**

@@ -54,13 +54,39 @@ function copy_obj_descr(dst, src) {
     dst.oc_color = src.oc_color;
 }
 
-// C ref: o_init.c setgemprobs — RNG-free; keeps gem probs faithful for later mkobj.
+/**
+ * C ref: dungeon.c ledger_no — dlevel + dungeons[dnum].ledger_start.
+ * Local to avoid invent/do import cycles from o_init.
+ */
+function ledger_no(lev) {
+    const dnum = lev?.dnum | 0;
+    const dlevel = lev?.dlevel | 0;
+    const dun = game.dungeons?.[dnum];
+    return ((dun?.ledger_start | 0) + dlevel) | 0;
+}
+
+/**
+ * C ref: dungeon.c maxledgerno — last dungeon ledger_start + num_dunlevs.
+ */
+function maxledgerno() {
+    const n = game.n_dgns | 0;
+    const duns = game.dungeons || [];
+    if (n <= 0 || !duns.length) return 0;
+    const last = duns[n - 1] || duns[duns.length - 1];
+    return ((last?.ledger_start | 0) + (last?.num_dunlevs | 0)) | 0;
+}
+
+// C ref: o_init.c setgemprobs — level-dependent gem oc_prob (ledger_no).
 export function setgemprobs(dlev) {
     const objects = objs();
     const b = bases();
+    // C: if (dlev) lev = min(ledger_no(dlev), maxledgerno()); else lev = 0
     let lev = 0;
-    // ledger_no not wired yet; startup always passes null → lev 0
-    if (dlev) lev = 0;
+    if (dlev) {
+        const led = ledger_no(dlev);
+        const maxLed = maxledgerno();
+        lev = (maxLed > 0 && led > maxLed) ? maxLed : led;
+    }
     let first = b[GEM_CLASS];
     let j;
     for (j = 0; j < 9 - Math.trunc(lev / 3); j++) {

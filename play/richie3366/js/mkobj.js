@@ -1039,6 +1039,7 @@ export function mksobj(otyp, init, artif) {
         corpsenm: NON_PM,
         age: Math.max(game.moves ?? 0, 1),
         known: uskn ? 0 : 1,
+        where: OBJ_FREE, // C newobj → OBJ_FREE until place/addinv
         ox: 0,
         oy: 0,
     };

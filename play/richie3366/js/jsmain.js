@@ -144,6 +144,9 @@ export class NethackGame {
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
         g._parsed_rc = opts;
+        // C: cfgfiles BINDINGS → parsebindings → cmdbind_add overlays defaults
+        if (!g.Cmd) g.Cmd = {};
+        g.Cmd.binds = opts.binds instanceof Map ? opts.binds : new Map();
         if (opts.gender === 'female' || opts.gender === 'f') g.flags.female = true;
         else if (opts.gender === 'male' || opts.gender === 'm') g.flags.female = false;
 

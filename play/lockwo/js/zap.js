@@ -10,6 +10,7 @@ import { getobj, makeknown, useupall, useup, delobj, GETOBJ_SUGGEST, GETOBJ_EXCL
          GETOBJ_NOFLAGS } from './invent.js';
 import { exercise } from './attrib.js';
 import { findit } from './detect.js';
+import { cansee } from './vision.js';
 import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
          FOOD_CLASS, RING_CLASS, POT_OIL, POT_WATER, GLOB_OF_GREEN_SLIME,
          SPBOOK_CLASS, mkobj as _mkobj, place_object, objects } from './mkobj.js';
@@ -224,9 +225,15 @@ function poly_obj(obj) {
         break;
     }
 
-    // replace old object with new on the floor and refresh the map
-    delobj_freeonly(obj);
+    // replace old object with new in the same floor-chain position
+    const floorObjects = game.level?.objects;
+    const floorIndex = floorObjects?.indexOf(obj) ?? -1;
+    delobj(obj);
     place_object(otmp, ox, oy);
+    if (floorIndex >= 0) {
+        floorObjects.pop();
+        floorObjects.splice(floorIndex, 0, otmp);
+    }
     return otmp;
 }
 
@@ -245,9 +252,7 @@ function rnd_class_potion() { return rnd_class_range(297 /*POT_GAIN_ABILITY*/, 3
 function rnd_class_spbook() { return rnd_class_range(365, 406 /*SPE_BLANK_PAPER*/); }
 
 // Like delobj() but without the obj_resists() RNG / newsym (used to discard a
-// freshly mkobj'd candidate during poly_obj's magic-matching retry loop, and to
-// unlink the source object before placing its replacement — matches C delobj()'s
-// obj_extract_self + obfree for objects that aren't on the floor / are doomed).
+// freshly mkobj'd candidate during poly_obj's magic-matching retry loop.
 function delobj_freeonly(obj) {
     if (!obj) return;
     const arr = game.level?.objects;
@@ -271,7 +276,9 @@ function bhito(obj, otmp) {
         game.u.uconduct.polypiles = (game.u.uconduct.polypiles | 0) + 1;
         // Is_box boxlock not on covered piles.
         if (obj_shudders(obj)) {
+            const learnIt = cansee(obj.ox, obj.oy);
             do_osshock(obj);
+            if (learnIt && otmp.dknown) makeknown(otmp.otyp);
             break;
         }
         obj = poly_obj(obj);

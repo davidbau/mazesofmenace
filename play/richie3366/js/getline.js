@@ -458,6 +458,16 @@ const EXT_CMDS = [
     },
 
     {
+        // C: cmd.c "jump" AUTOCOMPLETE → dojump (D-0899)
+        name: 'jump',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { dojump } = await import('./apply.js');
+            return dojump();
+        },
+    },
+    {
         // C: cmd.c "wipe" AUTOCOMPLETE → dowipe (D-0712)
         name: 'wipe',
         wiz: false,

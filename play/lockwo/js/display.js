@@ -655,7 +655,7 @@ export function covers_objects(loc) {
 
 // The "background" glyph for a cell: the topmost non-monster thing the
 // hero would remember.  C ref: display.c _map_location —
-// priority object > trap > engraving > terrain.  (Traps/regions not modeled.)
+// priority object > trap > engraving > terrain.
 export function background_glyph(loc, x, y) {
     const obj = vobj_at(x, y);
     // C ref: display.h covers_objects(x,y) — a pool/moat/water (when not
@@ -666,7 +666,9 @@ export function background_glyph(loc, x, y) {
         const og = object_glyph(obj);
         if (og) return og;
     }
-    // (traps would go here, between objects and engravings)
+    const trap = game.level?.traps?.find((t) => t.tx === x && t.ty === y);
+    if (trap?.tseen && !covers_objects(loc))
+        return { ch: '^', color: CLR_BLUE, dec: false };
     // C ref: _map_location — a revealed engraving on engraving-showing terrain
     // is drawn above the bare terrain.
     if (spot_shows_engravings(loc)) {

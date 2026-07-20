@@ -752,3 +752,65 @@ export async function dothrow() {
 
     return await throw_obj(obj, 0);
 }
+
+/**
+ * C ref: dothrow.c walk_path — Bresenham walk from src to dest; call
+ * check_proc for each cell except the start. On FALSE, dest becomes the
+ * previous cell and return false.
+ * @param {{x:number,y:number}} src
+ * @param {{x:number,y:number}} dest  mutated on early exit
+ * @param {(arg:*, x:number, y:number) => boolean} check_proc
+ * @param {*} arg
+ */
+export function walk_path(src, dest, check_proc, arg) {
+    let dx = (dest.x | 0) - (src.x | 0);
+    let dy = (dest.y | 0) - (src.y | 0);
+    let prev_x = src.x | 0;
+    let prev_y = src.y | 0;
+    let x = prev_x;
+    let y = prev_y;
+    let x_change = 1;
+    let y_change = 1;
+    if (dx < 0) {
+        x_change = -1;
+        dx = -dx;
+    }
+    if (dy < 0) {
+        y_change = -1;
+        dy = -dy;
+    }
+    let err = 0;
+    let i = 0;
+    let keep_going = true;
+    if (dx < dy) {
+        while (i++ < dy) {
+            prev_x = x;
+            prev_y = y;
+            y += y_change;
+            err += dx << 1;
+            if (err > dy) {
+                x += x_change;
+                err -= dy << 1;
+            }
+            keep_going = !!check_proc(arg, x, y);
+            if (!keep_going) break;
+        }
+    } else {
+        while (i++ < dx) {
+            prev_x = x;
+            prev_y = y;
+            x += x_change;
+            err += dy << 1;
+            if (err > dx) {
+                y += y_change;
+                err -= dx << 1;
+            }
+            keep_going = !!check_proc(arg, x, y);
+            if (!keep_going) break;
+        }
+    }
+    if (keep_going) return true;
+    dest.x = prev_x;
+    dest.y = prev_y;
+    return false;
+}

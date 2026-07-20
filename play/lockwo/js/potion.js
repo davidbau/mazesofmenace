@@ -5,15 +5,18 @@
 // "peculiar feeling" path so the RNG / message sequence stays faithful.
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnd, d } from './rng.js';
-import { pline } from './display.js';
+import { rn2, rnd, rn1, d } from './rng.js';
+import { pline, update_topl } from './display.js';
 import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS, body_part } from './invent.js';
 import { exercise } from './attrib.js';
-import { POTION_CLASS, POT_OIL, POT_CONFUSION, POT_FRUIT_JUICE, objects } from './mkobj.js';
-import { A_WIS, A_DEX, A_CON } from './const.js';
+import { POTION_CLASS, POT_OIL, POT_CONFUSION, POT_PARALYSIS, POT_HEALING,
+         POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_BOOZE, POT_SICKNESS,
+         objects } from './mkobj.js';
+import { A_STR, A_DEX, A_CON, A_WIS } from './const.js';
 import { fruitname } from './objnam.js';
 import { newuhs } from './eat.js';
+import { Blind, vision_recalc } from './vision.js';
 
 // C ref: potion.c make_confused(xtime, talk) — set the HConfusion timeout.  The
 // hero's confusion timer lives on game.u.uprops.Confusion (read by isConfused()
@@ -150,6 +153,34 @@ async function potionbreathe_hero(obj) {
     }
 }
 
+// C ref: potion.c healup — restore HP, optionally raising the maximum when the
+// healing amount crosses it, and clear the covered temporary ailments.
+function healup(nhp, nxtra, curesick, cureblind) {
+    const u = game.u;
+    if (!u) return;
+    if (nhp) {
+        u.uhp = (u.uhp || 0) + nhp;
+        if (u.uhp > u.uhpmax) {
+            u.uhpmax = (u.uhpmax || 0) + nxtra;
+            u.uhp = u.uhpmax;
+            if (u.uhpmax > (u.uhppeak || 0)) u.uhppeak = u.uhpmax;
+        }
+    }
+    if (curesick) {
+        u.sick = false;
+        u.usick_type = 0;
+    }
+    if (cureblind) {
+        const wasBlind = Blind();
+        u.ucreamed = 0;
+        u.blinded = 0;
+        if (wasBlind && !Blind()) {
+            pline_append_sync('You can see again.');
+            vision_recalc(0);
+        }
+    }
+}
+
 const ECMD_CANCEL = 0;
 const ECMD_OK = 0;
 const ECMD_TIME = 1;
@@ -183,6 +214,33 @@ function peffect_oil(otmp) {
 // pline is async (sets the pending message); for the synchronous peffect bodies
 // we only need to stash the message, so call the setter directly.
 function pline_sync(msg) { game._pending_message = msg; }
+function pline_append_sync(msg) {
+    game._pending_message = game._pending_message
+        ? `${game._pending_message}  ${msg}`
+        : msg;
+}
+
+// C ref: potion.c peffect_booze — ordinary booze confuses, heals one point,
+// provides a little nutrition, and is deliberately not self-identifying.
+function peffect_booze(otmp) {
+    const u = game.u;
+    game.potion_unkn = (game.potion_unkn || 0) + 1;
+    pline_sync(`Ooph!  This tastes like ${otmp.odiluted ? 'watered down ' : ''}${Hallucination() ? 'dandelion wine' : 'liquid fire'}!`);
+    if (!otmp.blessed) {
+        make_confused(itimeout_incr(u?.uprops?.Confusion,
+                                    d(2 + (u?.uhs || 0), 8)), false);
+    }
+    if (!otmp.odiluted) healup(1, 0, false, false);
+    if (u) u.uhunger = (u.uhunger ?? 900) + 10 * (2 + bcsign(otmp));
+    newuhs(false);
+    exercise(A_WIS, false);
+    if (otmp.cursed) {
+        pline_append_sync('You pass out.');
+        game._toplin = 1;
+        game.multi = -rnd(15);
+        game.nomovemsg = 'You awake with a headache.';
+    }
+}
 
 // C ref: potion.c peffect_confusion(otmp) — drinking a potion of confusion.
 // When not already confused (and not hallucinating) prints "Huh, What?  Where
@@ -202,6 +260,65 @@ function peffect_confusion(otmp) {
     }
     make_confused(itimeout_incr(u?.uprops?.Confusion,
                                 rn1(7, 16 - 8 * bcsign(otmp))), false);
+}
+
+// C ref: potion.c peffect_paralysis().  The negative multi count makes the
+// move loop run each helpless turn without reading input; ordinary per-turn
+// monster, hunger, regeneration, and timeout work still runs in C order.
+function peffect_paralysis(otmp) {
+    if (game.Free_action) {
+        pline_sync('You stiffen momentarily.');
+        return;
+    }
+    if (game.Levitation)
+        pline_sync('You are motionlessly suspended.');
+    else if (game.u?.usteed)
+        pline_sync('You are frozen in place!');
+    else
+        pline_sync('Your feet are frozen to the floor!');
+    game._toplin = 1;
+    game.multi = -rn1(10, 25 - 12 * bcsign(otmp));
+    game.multi_reason = 'frozen by a potion';
+    game.nomovemsg = 'You can move again.';
+    game.context = game.context || {};
+    game.context.travel = game.context.travel1 = game.context.mv = 0;
+    exercise(A_DEX, false);
+}
+
+function peffect_healing(otmp) {
+    pline_sync('You feel better.');
+    healup(8 + d(4 + 2 * bcsign(otmp), 4), otmp.cursed ? 0 : 1,
+           !!otmp.blessed, !otmp.cursed);
+    exercise(A_CON, true);
+}
+
+function peffect_extra_healing(otmp) {
+    const u = game.u;
+    pline_sync('You feel much better.');
+    healup(16 + d(4 + 2 * bcsign(otmp), 8),
+           otmp.blessed ? 5 : otmp.cursed ? 0 : 2, !otmp.cursed, true);
+    const wasHallucinating = Hallucination();
+    if (u) {
+        u.uhallu = false;
+        u.HHallucination = 0;
+    }
+    if (wasHallucinating)
+        pline_append_sync(`Everything ${Blind() ? 'feels' : 'looks'} SO boring now.`);
+    exercise(A_CON, true);
+    exercise(A_STR, true);
+}
+
+// C ref: potion.c peffect_sickness — the covered blessed potion is only mildly
+// contaminated.  Its explanatory second pline is long enough to page the taste
+// message before damage and turn processing continue.
+async function peffect_sickness(otmp) {
+    await update_topl('Yecch!  This stuff tastes like poison.');
+    if (otmp.blessed) {
+        await update_topl(`(But in fact it was mildly stale ${fruitname(true)}.)`);
+        const roleName = game.u?.urole?.name?.m || game.urole?.name?.m;
+        if (game.initrole !== 3 && roleName !== 'Healer' && game.u)
+            game.u.uhp -= 1;
+    }
 }
 
 // C ref: potion.c peffect_see_invisible — POT_FRUIT_JUICE shares this handler.
@@ -225,8 +342,11 @@ function peffect_fruit_juice(otmp) {
 
 // C ref: potion.c peffects — dispatch by potion type; returns -1 to signal
 // "used up with possible discovery", >=0 to signal an already-handled result.
-function peffects(otmp) {
+async function peffects(otmp) {
     switch (otmp.otyp) {
+    case POT_BOOZE:
+        peffect_booze(otmp);
+        break;
     case POT_OIL:
         peffect_oil(otmp);
         break;
@@ -235,6 +355,18 @@ function peffects(otmp) {
         break;
     case POT_CONFUSION:
         peffect_confusion(otmp);
+        break;
+    case POT_PARALYSIS:
+        peffect_paralysis(otmp);
+        break;
+    case POT_HEALING:
+        peffect_healing(otmp);
+        break;
+    case POT_EXTRA_HEALING:
+        peffect_extra_healing(otmp);
+        break;
+    case POT_SICKNESS:
+        await peffect_sickness(otmp);
         break;
     default:
         // Uncovered potion type: treat as "nothing obvious happened" so the
@@ -250,7 +382,7 @@ async function dopotion(otmp) {
     otmp.in_use = true;
     game.potion_nothing = 0;
     game.potion_unkn = 0;
-    const retval = peffects(otmp);
+    const retval = await peffects(otmp);
     if (retval >= 0)
         return retval ? ECMD_TIME : ECMD_OK;
 

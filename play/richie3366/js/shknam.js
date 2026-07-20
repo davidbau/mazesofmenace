@@ -1,8 +1,9 @@
 // shknam.js — Shop types, shopkeeper init, and room stocking.
 // C ref: shknam.c shtypes[] / shkinit / stock_room / mkshobj_at / get_shop_item.
-// Named omissions: shkveg/mkveggy_at; wizard SHOPTYPE;
-// Izchak minetown light-shk; irregular-shop edge cases; platform ifdef
-// shktools names; full mongone/shkgone beyond Orcus invent+detach.
+// Named omissions: wizard SHOPTYPE; Izchak minetown light-shk;
+// irregular-shop edge cases; platform ifdef shktools names;
+// full mongone/shkgone beyond Orcus invent+detach;
+// veggy_item obj-path tin/corpse species (type-only used by shkveg).
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -21,26 +22,42 @@ import {
     GEM_CLASS,
     AMULET_CLASS,
     MAXOCLASSES,
+    NUM_OBJECTS,
     objectNames,
 } from './objects.js';
 import {
     SHOPBASE, ROOMOFFSET, MM_ESHK, CORR, SDOOR, ROOM,
     D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED, DUST,
     IS_ROOM, isok, ESHK,
+    HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN,
+    NON_PM, ismnum,
 } from './const.js';
 import { makemon, mkmonmoney, mongets, mkclass, neweshk } from './makemon.js';
 import { mksobj_at, mkobj_at, obj_extract_self } from './mkobj.js';
-import { mons, monsterNames } from './monsters.js';
+import {
+    mons, monsterNames, vegetarian, is_rider, PM_LICHEN, PM_ACID_BLOB,
+} from './monsters.js';
 import { make_engr_at } from './engrave.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { newsym } from './display.js';
 import { obj_resists } from './dogmove.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
+const VEGGY = 3; // objclass.h
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const TOUCHSTONE = objectNames.indexOf('TOUCHSTONE');
 const SCR_CHARGING = objectNames.indexOf('SCR_CHARGING');
+const EGG = objectNames.indexOf('EGG');
+const TIN = objectNames.indexOf('TIN');
+const CORPSE = objectNames.indexOf('CORPSE');
+
+/** C ref: eat.c tintxts[].fodder — health-food shop stockable tin varieties. */
+const TINTXT_FODDER = [
+    0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0,
+];
+const TTSZ = TINTXT_FODDER.length;
 
 function otypNeg(name) {
     return -objectNames.indexOf(name);
@@ -278,6 +295,112 @@ export function get_shop_item(type) {
     return probs[Math.min(i, probs.length - 1)]?.itype ?? RANDOM_CLASS;
 }
 
+/**
+ * C ref: eat.c nonrotting_corpse — local copy for HEALTHY_TIN tin_variety.
+ */
+function nonrotting_corpse_tin(mnum) {
+    if (mnum === PM_LIZARD || mnum === PM_LICHEN || mnum === PM_ACID_BLOB) {
+        return true;
+    }
+    return is_rider(mons(mnum));
+}
+
+/**
+ * C ref: shknam.c veggy_item — type-only path (obj null, corpsenm=PM_LICHEN).
+ * Obj-path tin/corpse species deferred (shkveg only needs types).
+ */
+function veggy_item_otyp(otyp) {
+    const oc = game.objects?.[otyp];
+    if (!oc || oc.oc_class !== FOOD_CLASS) return false;
+    if (oc.oc_material === VEGGY || otyp === EGG) return true;
+    if (otyp === TIN || otyp === CORPSE) {
+        return !!vegetarian(mons(PM_LICHEN));
+    }
+    return false;
+}
+
+/**
+ * C ref: eat.c tin_variety(obj, FALSE) — used by set_tin_variety HEALTHY_TIN.
+ */
+function tin_variety_gameplay(obj) {
+    let r;
+    const mnum = obj.corpsenm;
+    const spe = obj.spe | 0;
+    if (spe === 1) {
+        r = SPINACH_TIN;
+    } else if (obj.cursed) {
+        r = ROTTEN_TIN;
+    } else if (spe < 0) {
+        r = -spe;
+        --r;
+    } else {
+        r = rn2(TTSZ - 1);
+    }
+    if (!obj.blessed && r === HOMEMADE_TIN && !rn2(7)) {
+        r = ROTTEN_TIN;
+    }
+    if (r === ROTTEN_TIN && ismnum(mnum) && nonrotting_corpse_tin(mnum)) {
+        r = HOMEMADE_TIN;
+    }
+    return r;
+}
+
+/**
+ * C ref: eat.c set_tin_variety(obj, HEALTHY_TIN) — mkveggy_at tin follow-up.
+ */
+function set_tin_variety_healthy(obj) {
+    const mnum = obj.corpsenm;
+    if (mnum === NON_PM || !vegetarian(mons(mnum))) {
+        obj.corpsenm = NON_PM;
+        obj.spe = 1; // spinach
+        return;
+    }
+    let r = tin_variety_gameplay(obj);
+    if (r < 0 || r >= TTSZ) r = ROTTEN_TIN;
+    while ((r === ROTTEN_TIN && !obj.cursed) || !TINTXT_FODDER[r]) {
+        r = rn2(TTSZ - 1);
+    }
+    obj.spe = -(r + 1);
+}
+
+/**
+ * C ref: shknam.c shkveg — weighted pick among vegetarian food types.
+ * maxprob is sum of oc_prob for VEGGY/EGG/TIN/CORPSE (type stand-in lichen).
+ */
+function shkveg() {
+    const oclass = FOOD_CLASS;
+    const objs = game.objects;
+    const base = game.bases?.[oclass] | 0;
+    const ok = [];
+    let maxprob = 0;
+    for (let i = base; i < NUM_OBJECTS; ++i) {
+        if (objs[i].oc_class !== oclass) break;
+        if (veggy_item_otyp(i)) {
+            ok.push(i);
+            maxprob += objs[i].oc_prob | 0;
+        }
+    }
+    if (maxprob < 1) {
+        // C: panic("shkveg no veggy objects") — fall back to first food
+        return base;
+    }
+    let prob = rnd(maxprob);
+    let j = 0;
+    let i = ok[0];
+    while ((prob -= objs[i].oc_prob | 0) > 0) {
+        j++;
+        i = ok[j];
+    }
+    return i;
+}
+
+/** C ref: shknam.c mkveggy_at — health-food store square. */
+function mkveggy_at(sx, sy) {
+    const obj = mksobj_at(shkveg(), sx, sy, true, true);
+    if (obj && obj.otyp === TIN) set_tin_variety_healthy(obj);
+    return obj;
+}
+
 /** C ref: shknam.c neweshk — re-export from makemon (MM_ESHK allocator). */
 export { neweshk };
 
@@ -414,8 +537,8 @@ function mkshobj_at(shp, sx, sy, mkspecl) {
 
     const atype = get_shop_item(shtypes.indexOf(shp));
     if (atype === VEGETARIAN_CLASS) {
-        // Named omission: shkveg/mkveggy_at — food-class stand-in
-        mkobj_at(FOOD_CLASS, sx, sy, true);
+        // C: mkveggy_at → mksobj_at(shkveg(), …) + HEALTHY_TIN (D-0902)
+        mkveggy_at(sx, sy);
     } else if (atype < 0) {
         mksobj_at(-atype, sx, sy, true, true);
     } else {
