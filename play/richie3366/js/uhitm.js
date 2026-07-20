@@ -11,6 +11,7 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MIM_REVEAL, engulfing_u, OBJ_FREE, MON_DETACH,
+    has_mgivenname, ARTICLE_NONE, ARTICLE_THE, SUPPRESS_SADDLE,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
@@ -43,7 +44,7 @@ import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { mon_explodes } from './explode.js';
-import { mon_nam, x_monnam_tame } from './do_name.js';
+import { mon_nam, x_monnam, x_monnam_tame, Hallucination } from './do_name.js';
 import { artifact_hit, youmonst } from './artifact.js';
 import { xname, vtense } from './objnam.js';
 import { abuse_dog } from './dog.js';
@@ -354,11 +355,28 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         }
     }
     if (!nomsg) {
-        // C mon.c xkilled: nonliving(mtmp->data) ? "destroy" : "kill"
-        // Named omissions: wasinside/canspotmon "it"; tame poor/named pet
-        // x_monnam ARTICLE arms (still mon_nam for all seen kills).
+        // C mon.c xkilled: nonliving ? "destroy" : "kill";
+        // !(wasinside || canspotmon) → "it"; !mtame → mon_nam;
+        // mtame → x_monnam(..., "poor", ...).
         const verb = nonliving(mtmp.data) ? 'destroy' : 'kill';
-        await pline(`You ${verb} ${mon_nam(mtmp)}!`);
+        const wasinside = engulfing_u(mtmp);
+        let whom;
+        if (!(wasinside || canspotmon(mtmp))) {
+            whom = 'it';
+        } else if (!mtmp.mtame) {
+            whom = mon_nam(mtmp);
+        } else {
+            // C: namedpet = has_mgivenname(mtmp) && !Hallucination
+            const namedpet = has_mgivenname(mtmp) && !Hallucination();
+            whom = x_monnam(
+                mtmp,
+                namedpet ? ARTICLE_NONE : ARTICLE_THE,
+                'poor',
+                namedpet ? SUPPRESS_SADDLE : 0,
+                false,
+            );
+        }
+        await pline(`You ${verb} ${whom}!`);
     }
     mondead(mtmp);
     if ((mtmp.mhp | 0) >= 1) return; // lifesaved

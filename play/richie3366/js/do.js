@@ -646,7 +646,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: docrt → cls flushes NEED_MORE (--More-- on stale Dlvl:N map) then redraws
     await docrt();
     await flush_screen(-1); // un-postpone + flush new map/botl
-    vision_recalc(0);
+    // C: vision_recalc is inside docrt only — do not call again here
+    // (extra pass can re-newsym when seenv grows; Hallu display-RNG).
 
     // C: do.c goto_level — maybe_lvltport_feedback before onquest.
     // Short pline sets NEED_MORE without awaiting; qt_pager flushes it.

@@ -26,6 +26,7 @@ import { A_STR, exercise } from './attrib.js';
 import { rn2 } from './rng.js';
 import { midnight } from './calendar.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
+import { hliquid } from './do_name.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
 const DIRS_ORD = [
@@ -619,14 +620,9 @@ export function is_lava(x, y) {
     return typ === LAVAPOOL || typ === LAVAWALL;
 }
 
-/** C ref: hacklib.c / pline.h hliquid — Hallucination rename deferred. */
-function hliquid(waterish) {
-    return waterish;
-}
-
 /**
  * C ref: pager.c waterbody_name — pool/moat/lava/wall; medusa/juiblex/
- * samurai pond / Hallucination / SURFACE_AT drawbridge deferred.
+ * samurai pond / SURFACE_AT drawbridge deferred. Hallu via hliquid (D-0849).
  */
 export function waterbody_name(x, y) {
     if (!isok(x, y)) return 'drink';

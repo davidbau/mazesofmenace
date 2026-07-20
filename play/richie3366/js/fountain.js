@@ -20,7 +20,7 @@
 // case 5 S_LRING ring; case 6 breaksink; case 8 more_experienced;
 // case 9 sewage morehungry+vomit.
 // Deferred: case 10 polyself body; case 13 create_gas_cloud region;
-// dipsink; Hallucination hliquid/hcolor synonyms; monstseesu when
+// dipsink; Hallucination hcolor synonyms; monstseesu when
 // Fire_resistance already set.
 
 import { game } from './gstate.js';
@@ -64,6 +64,7 @@ import { cansee, do_clear_area } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { observe_object } from './invent.js';
+import { hliquid } from './do_name.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
@@ -113,11 +114,6 @@ async function dofindgem() {
     SET_FOUNTAIN_LOOTED(u.ux, u.uy);
     newsym(u.ux, u.uy);
     exercise(A_WIS, true);
-}
-
-/** C ref: hacklib / potion.hliquid — Hallucination synonym deferred. */
-function hliquid(waterword) {
-    return waterword || 'water';
 }
 
 /** C ref: fountain.c floating_above */

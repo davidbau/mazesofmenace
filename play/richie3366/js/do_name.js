@@ -10,12 +10,15 @@ import { paint_corner_nhw_menu, discover_object } from './invent.js';
 import {
     ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE, engulfing_u,
     Upolyd, MD_PAD_BOGONS,
+    ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
+    SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
+    SUPPRESS_SADDLE, SUPPRESS_NAME,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
-    M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, mons,
+    M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, G_UNIQ, mons,
     LOW_PM, SPECIAL_PM,
 } from './monsters.js';
 import { getlin } from './getline.js';
@@ -26,11 +29,13 @@ import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 
 const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
 const BOGUSMONSIZE = 100; // C: do_name.c rndmonnam
 const BOGON_CODES = '-_+|=';
 
 /** C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance. */
-function Hallucination() {
+export function Hallucination() {
     const u = game.u || {};
     if (u.Hallucination) return true;
     const resist = !!(
@@ -77,6 +82,34 @@ export function rndmonnam(codeOut = null) {
     if (name >= SPECIAL_PM) return bogusmon(codeOut);
     const g = rn2_on_display_rng(2);
     return pmname(name, g === 0 ? MALE : FEMALE);
+}
+
+// C ref: do_name.c hliquids[] — Hallu substitutes for hliquid().
+const HLIQUIDS = [
+    'yoghurt', 'oobleck', 'clotted blood', 'diluted water', 'purified water',
+    'instant coffee', 'tea', 'herbal infusion', 'liquid rainbow',
+    'creamy foam', 'mulled wine', 'bouillon', 'nectar', 'grog', 'flubber',
+    'ketchup', 'slow light', 'oil', 'vinaigrette', 'liquid crystal', 'honey',
+    'caramel sauce', 'ink', 'aqueous humour', 'milk substitute',
+    'fruit juice', 'glowing lava', 'gastric acid', 'mineral water',
+    'cough syrup', 'quicksilver', 'sweet vitriol', 'grey goo', 'pink slime',
+    'cosmic latte', 'bone oil', 'custard', 'lard', 'vinegar', 'creosote',
+];
+
+/**
+ * C ref: do_name.c hliquid — Hallu → rn2_on_display_rng over hliquids[]
+ * (+ liquidpref as last choice when non-empty). gameover skips Hallu arm.
+ */
+export function hliquid(liquidpref) {
+    const hallucinate = Hallucination() && !game.program_state?.gameover;
+    const pref = liquidpref == null ? '' : String(liquidpref);
+    if (hallucinate || !pref) {
+        let count = HLIQUIDS.length;
+        if (pref) count += 1;
+        const indx = rn2_on_display_rng(count);
+        if (indx >= 0 && indx < HLIQUIDS.length) return HLIQUIDS[indx];
+    }
+    return pref;
 }
 
 /** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
@@ -186,7 +219,6 @@ function article_the_prefix(mtmp, has_adjectives) {
  * C ref: do_name.c x_monnam — "saddled " when W_SADDLE && !Blind && !Hallu.
  * Hallu / Blind checked; SUPPRESS_SADDLE callers pass suppress (hack.h 0x08).
  */
-const SUPPRESS_SADDLE = 0x08;
 function saddle_adj(mtmp, suppress = 0) {
     if (suppress & SUPPRESS_SADDLE) return '';
     if (game.u?.Blind || game.u?.ublind) return '';
@@ -212,19 +244,6 @@ export function x_monnam_tame(mtmp) {
 }
 
 /**
- * C ref: do_name.c x_monnam do_it — !canspotmon → "it" before type/given name.
- * ARTICLE_THE callers (mon_nam/Monnam). ARTICLE_YOUR never takes this arm.
- */
-function x_monnam_do_it(mtmp) {
-    if (!mtmp) return true;
-    if (canspotmon(mtmp)) return false;
-    if (game.program_state?.gameover) return false;
-    if (mtmp === game.u?.usteed) return false;
-    if (engulfing_u(mtmp)) return false;
-    return true;
-}
-
-/**
  * C ref: do_name.c distant_monnam(ARTICLE_NONE) → x_monnam.
  * Shopkeeper → shkname (same arm as mon_nam / D-0307). Astral high-cleric
  * conceal deferred; hallu / mappear / invis+non-PM_SHOPKEEPER suffix deferred.
@@ -243,32 +262,133 @@ export function distant_monnam_none(mtmp) {
 }
 
 /**
- * C ref: do_name.c mon_nam — ARTICLE_THE; unseen → "it"; named → bare name.
- * Shopkeeper → shkname (D-0307). Hallu → rndmonnam (D-0838).
- * Invis adj / priest / AUGMENT_IT deferred.
+ * C ref: do_name.c x_monnam — generic monster naming.
+ * Covers: do_it, hallu/rndmonnam, isshk, given-name/ghost, adjective,
+ * saddle, ARTICLE_*, M2_PNAME / Wizard article. Named omissions:
+ * priest/minion priestname, M_AP_MONSTER mappear, invis adjective,
+ * is_mplayer rank_of / "the " split, AUGMENT_IT someone/something,
+ * youmonst.
+ *
+ * @param {object} mtmp
+ * @param {number} article ARTICLE_NONE|THE|A|YOUR
+ * @param {string|null|undefined} adjective e.g. "poor"
+ * @param {number} suppress bitmask
+ * @param {boolean} called
  */
-export function mon_nam(mtmp) {
+export function x_monnam(mtmp, article, adjective, suppress = 0, called = false) {
     if (!mtmp) return 'it';
-    if (x_monnam_do_it(mtmp)) return 'it';
-    // C: do_hallu before isshk / given-name arms
-    if (Hallucination()) {
+
+    let art = article | 0;
+    let supp = suppress | 0;
+    const adj = adjective || '';
+
+    if (game.program_state?.gameover) supp |= SUPPRESS_HALLUCINATION;
+    if (art === ARTICLE_YOUR && !mtmp.mtame) art = ARTICLE_THE;
+
+    // C: uswallow && mtmp == u.ustuck → ARTICLE_THE + SUPPRESS_INVISIBLE
+    if (game.u?.uswallow && mtmp === game.u?.ustuck) {
+        art = ARTICLE_THE;
+        supp |= SUPPRESS_INVISIBLE;
+    }
+
+    const do_hallu = Hallucination() && !(supp & SUPPRESS_HALLUCINATION);
+    const do_invis = !!(mtmp.minvis) && !(supp & SUPPRESS_INVISIBLE);
+    const do_it = !canspotmon(mtmp) && art !== ARTICLE_YOUR
+        && !game.program_state?.gameover
+        && mtmp !== game.u?.usteed
+        && !engulfing_u(mtmp)
+        && !(supp & SUPPRESS_IT);
+    const do_saddle = !(supp & SUPPRESS_SADDLE);
+    const do_name = !(supp & SUPPRESS_NAME) || type_is_pname(mtmp.data);
+    // priest/minion / mappear deferred — fall through to ordinary arms
+
+    if (do_it) {
+        // AUGMENT_IT someone/something deferred
+        return 'it';
+    }
+
+    // Shopkeepers: shkname (+ adjective ARTICLE_THE arm)
+    if (mtmp.isshk && !do_hallu /* && !do_mappear deferred */) {
+        const nam = shkname(mtmp) || '';
+        if (adj && art === ARTICLE_THE) {
+            return `the ${adj} ${nam}`;
+        }
+        const mndx = mtmp.mnum ?? mtmp.data?.mndx;
+        if (mndx !== PM_SHOPKEEPER || do_invis) {
+            let buf = nam;
+            buf += ' the ';
+            if (do_invis) buf += 'invisible ';
+            buf += mon_pmname(mtmp);
+            return buf;
+        }
+        return nam;
+    }
+
+    let buf = '';
+    if (adj) buf += `${adj} `;
+    // invis adjective deferred (do_invis) — prior mon_nam omitted it too
+    void do_invis;
+    if (do_saddle) buf += saddle_adj(mtmp, 0);
+    const has_adjectives = buf.length > 0;
+
+    let name_at_start = false;
+    if (do_hallu) {
         const codeOut = { c: '' };
         const rname = rndmonnam(codeOut);
-        // C: name_at_start = bogon_is_pname → ARTICLE_NONE
-        if (bogon_is_pname(codeOut.c)) return rname;
-        return `the ${rname}`;
+        buf += rname;
+        name_at_start = bogon_is_pname(codeOut.c);
+    } else if (do_name && has_mgivenname(mtmp)) {
+        const name = MGIVENNAME(mtmp);
+        if ((mtmp.mnum | 0) === PM_GHOST) {
+            buf += `${s_suffix(name)} ghost`;
+            name_at_start = true;
+        } else if (called) {
+            buf += `${mon_pmname(mtmp)} called ${name}`;
+            name_at_start = type_is_pname(mtmp.data);
+        } else {
+            // is_mplayer " the " split deferred
+            buf += name;
+            name_at_start = true;
+        }
+    } else {
+        // is_mplayer rank_of deferred — use type name
+        buf += mon_pmname(mtmp);
+        name_at_start = type_is_pname(mtmp.data);
     }
-    // C x_monnam: isshk && !hallu && !mappear → shkname (ordinary PM_SHOPKEEPER)
-    if (mtmp.isshk) {
-        const nam = shkname(mtmp);
-        if (nam) return nam;
+
+    if (name_at_start && (art === ARTICLE_YOUR || !has_adjectives)) {
+        if ((mtmp.mnum | 0) === PM_WIZARD_OF_YENDOR) art = ARTICLE_THE;
+        else art = ARTICLE_NONE;
+    } else if (((mtmp.data?.geno | 0) & G_UNIQ) !== 0 && art === ARTICLE_A) {
+        art = ARTICLE_THE;
     }
-    // C x_monnam: do_name && has_mgivenname && PM_GHOST → s_suffix(name)+" ghost"
-    const ghost = named_ghost_monnam(mtmp);
-    if (ghost) return ghost;
-    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
-    const sad = saddle_adj(mtmp);
-    return `${article_the_prefix(mtmp, !!sad)}${sad}${mon_plain_name(mtmp)}`;
+
+    switch (art) {
+    case ARTICLE_YOUR:
+        return `your ${buf}`;
+    case ARTICLE_THE:
+        return `the ${buf}`;
+    case ARTICLE_A:
+        return an(buf);
+    case ARTICLE_NONE:
+    default:
+        return buf;
+    }
+}
+
+/**
+ * C ref: do_name.c mon_nam — ARTICLE_THE; unseen → "it"; named → bare name.
+ * Shopkeeper → shkname (D-0307). Hallu → rndmonnam (D-0838).
+ * Invis adj / priest / AUGMENT_IT deferred (via x_monnam omissions).
+ */
+export function mon_nam(mtmp) {
+    return x_monnam(
+        mtmp,
+        ARTICLE_THE,
+        null,
+        has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+        false,
+    );
 }
 
 /**
