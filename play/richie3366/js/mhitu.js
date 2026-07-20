@@ -569,9 +569,9 @@ async function expels(mtmp, mdat, message) {
  * Named omissions: Punished ball; steed DISMOUNT_ENGULFED; leashes; petrify;
  * snuff_lit invent; Slow_digestion; ugolemeffects/monstseesu; diseasemu;
  * drain_en; make_blinded; Half_physical polish;
- * display_nhwindow(WIN_MESSAGE) before swallowed (D-0841: flush_topl_more
- * steals hjkl-reject keys — RNG @11524); swallowed cls/bot polish;
- * DECgfx swallow glyphs; u_on_newpos while digesting (D-0826 postmov).
+ * display_nhwindow(WIN_MESSAGE) before swallowed (D-0841/D-0843: flush
+ * OK thru ice-vortex Hallu; post-expel see_monsters Hallu map skew @172);
+ * swallowed cls/bot polish; u_on_newpos while digesting (D-0826 postmov).
  */
 async function gulpmu(mtmp, mattk) {
     const u = game.u || (game.u = {});
@@ -609,8 +609,8 @@ async function gulpmu(mtmp, mattk) {
         }
 
         // C: display_nhwindow(WIN_MESSAGE,FALSE) before vision_recalc deferred
-        // (D-0841: flush_topl_more matches toplines 141-174 but steals space
-        // where C more() first rejects hjkl — RNG @11524). See NOTES.
+        // (D-0841/D-0843/D-0846: flush OK thru ice-vortex Hallu; @173 mons
+        // match after rloc_to newsym; 4 Hallu objs still skew — keep parked).
         vision_recalc(2);
         u.uswallow = 1;
         let tim_tmp;

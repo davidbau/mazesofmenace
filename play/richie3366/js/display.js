@@ -14,6 +14,7 @@ import {
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     SDOOR, SCORR, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, AIR, CLOUD,
+    IS_POOL,
     FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     AM_MASK, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_SANCTUM,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
@@ -514,12 +515,15 @@ function hero_display_glyph() {
     return { ch, color };
 }
 
-// C ref: display.h covers_objects
+// C ref: display.h covers_objects — is_pool && !Underwater, or lava.
 function covers_objects(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
-    const t = loc.typ;
-    return t === POOL || t === MOAT || t === WATER || t === LAVAPOOL || t === LAVAWALL;
+    const t = loc.typ | 0;
+    if (t === LAVAPOOL || t === LAVAWALL) return true;
+    // C: is_pool ≡ IS_POOL (POOL..DRAWBRIDGE_UP)
+    if (IS_POOL(t) && !(game.u?.Underwater | 0)) return true;
+    return false;
 }
 
 // C ref: display.h covers_traps — same as covers_objects
@@ -667,7 +671,7 @@ function distu(x, y) {
 /**
  * C ref: display.c map_object — if glyph would be generic and hero cansee
  * within neardist, observe_object then recompute as specific (per-otyp color).
- * Named omissions: Hallucination statue random_obj; pile-top glyph flags.
+ * Named omissions: pile-top glyph flags.
  */
 function map_object_observe_near(obj, x, y) {
     if (!obj || game.u?.Hallucination) return;
@@ -675,6 +679,55 @@ function map_object_observe_near(obj, x, y) {
     if (!cansee(x, y)) return;
     const { neardist } = object_neardist();
     if (distu(x, y) <= neardist) observe_object(obj);
+}
+
+/**
+ * C ref: display.c map_object — obj_to_glyph then hero_memory store.
+ * Under Hallu, STATUE *display* is statue_to_glyph (mon+gender) but
+ * *memory* is a separate random_obj_to_glyph (extra display-RNG burns).
+ */
+function map_object(obj, show) {
+    if (!obj) return;
+    const x = obj.ox | 0;
+    const y = obj.oy | 0;
+    const loc = game.level?.at(x, y);
+    map_object_observe_near(obj, x, y);
+    const og = obj_glyph(obj);
+    const attr = obj_map_attr(obj);
+    const pile = obj_is_piletop(obj);
+    if (game.level?.flags?.hero_memory && loc) {
+        // C: Hallu+STATUE → levl glyph = random_obj_to_glyph (not display glyph)
+        if (game.u?.Hallucination && obj.otyp === STATUE_OTYP) {
+            const otyp = rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT)
+                + FIRST_OBJECT;
+            let mem;
+            if (otyp === CORPSE_OTYP) {
+                const mnum = rn2_on_display_rng(NUMMONS);
+                const ptr = mons(mnum);
+                mem = {
+                    ch: MLET_CH[ptr?.mlet] || '%',
+                    color: mcolors[mnum] ?? NO_COLOR,
+                    decgfx: false,
+                    objpile: pile,
+                };
+            } else {
+                const def = game.objects?.[otyp];
+                const oclass = def?.oc_class ?? ILLOBJ_CLASS;
+                mem = {
+                    ch: DEF_OC_SYM[oclass] || ']',
+                    color: def?.oc_color ?? NO_COLOR,
+                    decgfx: false,
+                    objpile: pile,
+                };
+            }
+            loc.remembered_glyph = mem;
+        } else {
+            loc.remembered_glyph = {
+                ch: og.ch, color: og.color, decgfx: !!og.dec, objpile: pile,
+            };
+        }
+    }
+    if (show) show_glyph_cell(x, y, og.ch, og.color, !!og.dec, attr);
 }
 
 /**
@@ -1794,18 +1847,8 @@ export function map_location(x, y, show) {
     let g = null;
     const obj = objects_at(x, y);
     if (obj && !covers_objects(x, y)) {
-        // C: map_object(obj, show) — may observe_object when near
-        map_object_observe_near(obj, x, y);
-        const og = obj_glyph(obj);
-        const attr = obj_map_attr(obj);
-        const pile = obj_is_piletop(obj);
-        g = { ch: og.ch, color: og.color, decgfx: !!og.dec, objpile: pile };
-        if (mem) {
-            loc.remembered_glyph = {
-                ch: g.ch, color: g.color, decgfx: g.decgfx, objpile: pile,
-            };
-        }
-        if (show) show_glyph_cell(x, y, g.ch, g.color, g.decgfx, attr);
+        // C: map_object(obj, show) — Hallu statue memory burns extra
+        map_object(obj, show);
         update_lastseentyp(x, y);
         return;
     }
@@ -1922,20 +1965,10 @@ export function newsym(x, y) {
             return;
         }
         // C ref: display.c _map_location — vobj_at before trap/engraving/bg
-        // C: map_object(obj, show) — nearby generic → observe_object
+        // C: map_object(obj, show) — Hallu statue memory burns extra
         const obj = objects_at(x, y);
         if (obj && !covers_objects(x, y)) {
-            map_object_observe_near(obj, x, y);
-            const og = obj_glyph(obj);
-            const attr = obj_map_attr(obj);
-            const pile = obj_is_piletop(obj);
-            show_glyph_cell(x, y, og.ch, og.color, og.dec, attr);
-            if (game.level?.flags?.hero_memory) {
-                loc.remembered_glyph = {
-                    ch: og.ch, color: og.color, decgfx: og.dec, objpile: pile,
-                };
-            }
-            // C _map_location always updates lastseentyp after mapping
+            map_object(obj, true);
             update_lastseentyp(x, y);
             return;
         }
@@ -2039,14 +2072,39 @@ export function newsym(x, y) {
 let _swallow_lastx = 0;
 let _swallow_lasty = 0;
 
-/** C defsym.h S_sw_* characters (Primary). */
-const SWALLOW_CH = {
-    tl: '/', tc: '-', tr: '\\',
-    ml: '|', mr: '|',
-    bl: '\\', bc: '-', br: '/',
-};
+/**
+ * C defsym.h S_sw_* Primary ASCII, plus dat/symbols DECgraphics overrides
+ * for S_sw_tc/ml/mr/bc only (meta-o / meta-x / meta-x / meta-s). Corners
+ * stay '/' '\\' (no DEC remap).
+ */
+function swallow_sym(part) {
+    // Primary (defsym.h): / - \ | | \ - /
+    const ascii = {
+        tl: { ch: '/', dec: false },
+        tc: { ch: '-', dec: false },
+        tr: { ch: '\\', dec: false },
+        ml: { ch: '|', dec: false },
+        mr: { ch: '|', dec: false },
+        bl: { ch: '\\', dec: false },
+        bc: { ch: '-', dec: false },
+        br: { ch: '/', dec: false },
+    };
+    if (!use_decgraphics()) return ascii[part];
+    // DECgraphics: only tc/ml/mr/bc (symbols start: DECgraphics)
+    const dec = {
+        tl: { ch: '/', dec: false },
+        tc: { ch: 'o', dec: true },
+        tr: { ch: '\\', dec: false },
+        ml: { ch: 'x', dec: true },
+        mr: { ch: 'x', dec: true },
+        bl: { ch: '\\', dec: false },
+        bc: { ch: 's', dec: true },
+        br: { ch: '/', dec: false },
+    };
+    return dec[part];
+}
 
-function swallow_cell(x, y, ch, swallowerMnum) {
+function swallow_cell(x, y, part, swallowerMnum) {
     // C: swallow_to_glyph → what_mon(mnum, rn2_on_display_rng) under Hallu
     let mnum = swallowerMnum;
     if (game.u?.Hallucination) {
@@ -2055,7 +2113,8 @@ function swallow_cell(x, y, ch, swallowerMnum) {
     const color = (mnum != null && mnum >= 0)
         ? (mcolors[mnum] ?? CLR_GREEN)
         : CLR_GREEN;
-    show_glyph_cell(x, y, ch, color, false);
+    const g = swallow_sym(part);
+    show_glyph_cell(x, y, g.ch, color, g.dec);
 }
 
 export function swallowed(first = 0) {
@@ -2091,20 +2150,20 @@ export function swallowed(first = 0) {
     const rght_ok = isok(ux + 1, uy);
 
     if (isok(ux, uy - 1)) {
-        if (left_ok) swallow_cell(ux - 1, uy - 1, SWALLOW_CH.tl, swallower);
-        swallow_cell(ux, uy - 1, SWALLOW_CH.tc, swallower);
-        if (rght_ok) swallow_cell(ux + 1, uy - 1, SWALLOW_CH.tr, swallower);
+        if (left_ok) swallow_cell(ux - 1, uy - 1, 'tl', swallower);
+        swallow_cell(ux, uy - 1, 'tc', swallower);
+        if (rght_ok) swallow_cell(ux + 1, uy - 1, 'tr', swallower);
     }
-    if (left_ok) swallow_cell(ux - 1, uy, SWALLOW_CH.ml, swallower);
+    if (left_ok) swallow_cell(ux - 1, uy, 'ml', swallower);
     {
         const hg = hero_display_glyph();
         show_glyph_cell(ux, uy, hg.ch, hg.color, false);
     }
-    if (rght_ok) swallow_cell(ux + 1, uy, SWALLOW_CH.mr, swallower);
+    if (rght_ok) swallow_cell(ux + 1, uy, 'mr', swallower);
     if (isok(ux, uy + 1)) {
-        if (left_ok) swallow_cell(ux - 1, uy + 1, SWALLOW_CH.bl, swallower);
-        swallow_cell(ux, uy + 1, SWALLOW_CH.bc, swallower);
-        if (rght_ok) swallow_cell(ux + 1, uy + 1, SWALLOW_CH.br, swallower);
+        if (left_ok) swallow_cell(ux - 1, uy + 1, 'bl', swallower);
+        swallow_cell(ux, uy + 1, 'bc', swallower);
+        if (rght_ok) swallow_cell(ux + 1, uy + 1, 'br', swallower);
     }
     _swallow_lastx = ux;
     _swallow_lasty = uy;
@@ -2143,19 +2202,31 @@ export function see_objects() {
 }
 
 /**
- * C ref: display.c see_traps — newsym cells whose shown glyph is a trap.
- * JS: redraw every tseen trap (same envelope when Hallu redraws).
+ * C ref: display.c see_traps — newsym only when gbuf glyph_is_trap.
+ * Under Hallu, mon/obj already redrawn by see_monsters/see_objects; C skips
+ * those cells so we must not re-newsym them (extra mon_to_glyph burns).
  */
 export function see_traps() {
+    const seen = new Set();
+    function maybe_redraw(trap) {
+        if (!trap?.tseen) return;
+        const x = trap.tx | 0;
+        const y = trap.ty | 0;
+        const key = `${x},${y}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const loc = game.level?.at(x, y);
+        if (!loc) return;
+        const tg = trap_glyph(trap);
+        // C: if (glyph_is_trap(_glyph_at(tx,ty))) newsym(...)
+        if (loc.disp_ch !== tg.ch) return;
+        newsym(x, y);
+    }
     const traps = game.level?.traps;
     if (Array.isArray(traps)) {
-        for (const trap of traps) {
-            if (trap?.tseen) newsym(trap.tx | 0, trap.ty | 0);
-        }
+        for (const trap of traps) maybe_redraw(trap);
     }
-    for (let trap = game.ftrap; trap; trap = trap.ntrap) {
-        if (trap?.tseen) newsym(trap.tx | 0, trap.ty | 0);
-    }
+    for (let trap = game.ftrap; trap; trap = trap.ntrap) maybe_redraw(trap);
 }
 
 /**
@@ -2656,10 +2727,9 @@ function _buildScreenOutput() {
         }
         // Map — write characters to grid (DEC → Unicode for browser display).
         // Only convert glyphs that frozen screen-decode DEC_MAP equates back
-        // (walls/doors/a/~). S_altar meta-{, S_pool/S_lava/S_water meta-`,
-        // S_tree meta-g, and S_bars meta-| are in DEC_TO_UNICODE but NOT in
-        // DEC_MAP — keep raw so serialize_for_scoring matches C (renderCell
-        // leaves them).
+        // (walls/doors/a/~). Leave SO-form letters that renderCell keeps raw:
+        // S_altar '{', S_pool/lava/water '`', S_tree 'g', S_bars '|',
+        // S_sw_tc 'o', S_sw_bc 's'.
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
@@ -2667,8 +2737,12 @@ function _buildScreenOutput() {
                 let ch = loc.disp_ch;
                 if (loc.disp_decgfx) {
                     const uni = DEC_TO_UNICODE[ch];
-                    // DEC_MAP: walls/doors/a/~ only — not '{', '`', 'g', or '|'
-                    if (uni && ch !== '{' && ch !== '`' && ch !== 'g' && ch !== '|')
+                    // DEC_MAP: walls/doors/a/~ only. Keep raw chars that
+                    // renderCell leaves unchanged so scoring matches C's
+                    // SO+letter form: '{','`','g','|' plus swallow S_sw_tc/bc
+                    // 'o'/'s' (dat/symbols DECgraphics; D-0842/D-0843).
+                    if (uni && ch !== '{' && ch !== '`' && ch !== 'g'
+                        && ch !== '|' && ch !== 'o' && ch !== 's')
                         ch = uni;
                 }
                 const sr = y + 1;
@@ -2777,7 +2851,8 @@ export function paint_gbuf_level_to_terminal(level) {
             const attr = loc.disp_attr ?? 0;
             if (loc.disp_decgfx && ch && ch !== ' ') {
                 const uni = DEC_TO_UNICODE[ch];
-                if (uni && ch !== '{' && ch !== '`' && ch !== 'g' && ch !== '|')
+                if (uni && ch !== '{' && ch !== '`' && ch !== 'g'
+                    && ch !== '|' && ch !== 'o' && ch !== 's')
                     ch = uni;
             }
             display.setCell(x - 1, sr, ch || ' ', color, attr);

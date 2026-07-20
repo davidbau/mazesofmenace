@@ -277,11 +277,25 @@ export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
 }
 
 /**
- * C ref: teleport.c rloc_to — place monster at (x,y); RLOC_NOMSG path.
- * Omits worm/shk/vision/message branches.
+ * C ref: teleport.c rloc_to / rloc_to_core — place monster at (x,y).
+ * RLOC_NOMSG path: remove from old cell + newsym(old), place, newsym(new).
+ * Named omissions: worm tail; vanish/appear messages; u.ustuck swallow
+ * docrt branch; shopkeeper home teleport; maybe_unhide_at polish.
  */
 export function rloc_to(mtmp, x, y) {
     if (!mtmp) return;
+    const oldx = mtmp.mx | 0;
+    const oldy = mtmp.my | 0;
+    // C: if (x == mx && y == my && m_at(x, y) == mtmp) return;
+    if (x === oldx && y === oldy && m_at(x, y) === mtmp) return;
+
+    if (oldx) {
+        // C: remove_monster(oldx,oldy); newsym(oldx,oldy);
+        // Clear coords so m_at(old) does not see this mon during newsym.
+        mtmp.mx = 0;
+        mtmp.my = 0;
+        newsym(oldx, oldy);
+    }
     // C ref: teleport.c rloc_to — mon_track_clear before place
     if (mtmp.mtrack) {
         for (let j = 0; j < mtmp.mtrack.length; j++) {
@@ -292,6 +306,8 @@ export function rloc_to(mtmp, x, y) {
     mtmp.my = y;
     mtmp.mux = game.u?.ux ?? x;
     mtmp.muy = game.u?.uy ?? y;
+    // C: newsym(x, y) after place_monster
+    newsym(x, y);
 }
 
 /**

@@ -1710,6 +1710,8 @@ export async function dochug(mtmp) {
             // else fall through to PHASE FOUR
         }
         // NOTHING/DONE/NOMOVES also fall through to attacks
+        // Named omission: C Hallu newsym(mx,my) on NOTHING/DONE/NOMOVES
+        // (monmove.c ≈931) — see c-js-map/turns.md.
     }
 
     // PHASE FOUR: C monmove.c — peaceful under Conflict still rolls
