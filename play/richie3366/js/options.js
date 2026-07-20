@@ -738,7 +738,7 @@ async function doset_simple_menu() {
  * the menu; space → next page or finish on last; Enter/CR finish; ESC cancel.
  * Returns selected selectable items (may be empty).
  */
-async function select_menu_pick_any(rawItems) {
+export async function select_menu_pick_any(rawItems) {
     const rows = 24;
     const lmax = Math.min(52, rows - 1);
     const items = rawItems.map((it) => ({ ...it, selected: !!it.selected }));

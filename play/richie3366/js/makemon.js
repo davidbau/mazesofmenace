@@ -5,7 +5,8 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { depth as depth_of_level, level_difficulty as level_difficulty_of } from './hacklib.js';
-import { put_saddle_on_mon } from './steed.js';
+import { put_saddle_on_mon, can_saddle } from './steed.js';
+import { m_dowear, which_armor } from './worn.js';
 import {
     LOW_PM,
     SPECIAL_PM,
@@ -78,7 +79,7 @@ import {
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET, LS_MONSTER,
     AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
-    In_quest, W_ARMH, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
+    In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
 } from './const.js';
@@ -2182,11 +2183,14 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
-    // C: allow_minvent → is_armed? m_initweap; m_initinv; domestic saddle
+    // C: allow_minvent → is_armed? m_initweap; m_initinv; m_dowear(TRUE);
+    //    domestic saddle when !which_armor(W_SADDLE)
     if (allow_minvent_local) {
         if (is_armed(ptr)) m_initweap(mtmp);
         m_initinv(mtmp);
-        if (!rn2(100) && is_domestic(ptr)) {
+        m_dowear(mtmp, true);
+        if (!rn2(100) && is_domestic(ptr)
+            && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
             put_saddle_on_mon(null, mtmp);
         }
     }

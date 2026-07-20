@@ -397,6 +397,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizintrinsic" IFBURIED|AUTOCOMPLETE|WIZMODECMD
+        name: 'wizintrinsic',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_intrinsic } = await import('./wizcmds.js');
+            return wiz_intrinsic();
+        },
+    },
+    {
         // C: flags IFBURIED|WIZMODECMD (no AUTOCOMPLETE) — full name required
         name: 'wizgenesis',
         wiz: true,

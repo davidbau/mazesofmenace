@@ -1034,6 +1034,9 @@ export async function attack_checks(mtmp) {
     // kick / cancelled peaceful confirm / Wait! all disturb meditation).
     if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
 
+    // C: engulfing_u(mtmp) → allow attack on engulfer (skip Wait!/mimic)
+    if (engulfing_u(mtmp)) return false;
+
     // C: forcefight → return FALSE (allow real attack; skip Wait!)
     if (game.context?.forcefight) return false;
 

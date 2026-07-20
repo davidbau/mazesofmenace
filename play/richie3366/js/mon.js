@@ -49,6 +49,7 @@ import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
 import { in_your_sanctuary } from './priest.js';
 import { in_rooms, is_pool, is_lava } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
+import { maybe_m_dowear_special } from './worn.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
@@ -1072,7 +1073,9 @@ async function movemon_singlemon(mtmp) {
     // C: minliquid before hider/Conflict/dochug — lava/pool may spend the turn
     if (await minliquid(mtmp)) return false;
 
-    // C: I_SPECIAL equip re-wear deferred
+    // C: mon.c movemon_singlemon — I_SPECIAL → m_dowear; may spend turn
+    if (maybe_m_dowear_special(mtmp)) return false;
+
     // C: is_hider — restrap may hide again; disguised/undetected skip dochug
     // (eel hideunder rn2(4) deferred)
     if (is_hider(mtmp.data)) {

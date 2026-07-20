@@ -18,7 +18,7 @@ import {
     IS_FOUNTAIN, IS_SINK, IS_POOL,
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
-    TIMEOUT,
+    TIMEOUT, HALLUC_RES,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
@@ -401,6 +401,58 @@ export async function make_confused(xtime, talk) {
     }
     u.HConfusion = ((u.HConfusion | 0) & ~TIMEOUT) | itimeout(xtime);
     u.Confusion = u.HConfusion;
+}
+
+/**
+ * C ref: potion.c make_hallucinated(xtime, talk, mask)
+ * Envelope: timed HHallucination set/clear + cosmic/boring pline.
+ * Named omissions: EHalluc_resistance mask polish beyond |= / &=~;
+ * Unaware talk suppress; eatmupdate; swallowed redraw; see_monsters/
+ * see_objects/see_traps bodies; update_inventory; itch/flatten clear msgs.
+ */
+export async function make_hallucinated(xtime, talk, mask = 0) {
+    const u = game.u || (game.u = {});
+    const old = u.HHallucination | 0;
+    let changed = false;
+    if (u.Unaware) talk = false;
+
+    const message = !xtime
+        ? 'Everything %s SO boring now.'
+        : 'Oh wow!  Everything %s so cosmic!';
+    const verb = (u.Blind || (u.HBlinded | 0)) ? 'feels' : 'looks';
+
+    if (mask) {
+        if (old) changed = true;
+        if (!u.EHalluc_resistance) u.EHalluc_resistance = 0;
+        if (!xtime) u.EHalluc_resistance |= mask;
+        else u.EHalluc_resistance &= ~mask;
+    } else {
+        const resist = !!(
+            (u.Halluc_resistance | 0)
+            || (u.HHalluc_resistance | 0)
+            || (u.EHalluc_resistance | 0)
+            || (u.uprops?.[HALLUC_RES]?.intrinsic | 0)
+            || (u.uprops?.[HALLUC_RES]?.extrinsic | 0)
+        );
+        if (!resist && (!!old !== !!xtime)) changed = true;
+        u.HHallucination = ((u.HHallucination | 0) & ~TIMEOUT) | itimeout(xtime);
+        // Mirror boolean gate used across the port
+        u.Hallucination = !!(u.HHallucination & TIMEOUT) && !resist;
+    }
+
+    if (changed) {
+        if (game.flags) game.flags.botl = true;
+        try {
+            const { see_monsters } = await import('./display.js');
+            if (typeof see_monsters === 'function') see_monsters();
+        } catch {
+            /* see_monsters optional */
+        }
+        if (talk) {
+            await pline(message.replace('%s', verb));
+        }
+    }
+    return changed;
 }
 
 /**

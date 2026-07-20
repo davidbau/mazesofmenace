@@ -257,10 +257,11 @@ function exerper() {
     // status checks every 5 moves
     if (!(moves % 5)) {
         // HClairvoyant / HRegeneration deferred
-        // C: Confusion ≡ HConfusion; Hallucination ≡ HHallucination
+        // C: Confusion ≡ HConfusion; Hallucination ≡ HHallucination && !res
         if (u.Sick || u.Vomiting) exercise(A_CON, false);
         if ((u.HConfusion | u.Confusion)
-            || (u.HHallucination | u.Hallucination)) {
+            || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))
+            || u.Hallucination) {
             exercise(A_WIS, false);
         }
         // C: (Wounded_legs && !usteed) || Fumbling || HStun

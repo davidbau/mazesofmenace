@@ -1,10 +1,12 @@
 // region.js — gas-cloud / NhRegion subset.
 // C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at /
-// clear_regions; read.c valid_cloud_pos.
-// Named omissions: inside_f damage callbacks; dissipation plines;
+// clear_regions / run_regions / m_in_out_region / inside_gas_cloud;
+// read.c valid_cloud_pos.
+// Named omissions: inside_f damage/pline (dam>0); dissipation plines;
 // numeric cmap glyph ints (JS tags 'S_poisoncloud'/'S_cloud'); hero
 // enveloped pline; create_gas_cloud_selection; binary save_regions
-// format; force fields; incremental fill_point (JS uses vision_reset).
+// format; force fields; incremental fill_point (JS uses vision_reset);
+// can_enter/leave/enter/leave callbacks (gas has none); attach_2_m/u.
 // Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
@@ -12,9 +14,11 @@ import { rn2, rn1 } from './rng.js';
 import { isok, ACCESSIBLE, u_at } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import { recalc_block_point } from './vision.js';
+import { monsterNames } from './monsters.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // callback index stand-in
+const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 
 /**
  * C ref: read.c valid_cloud_pos — ACCESSIBLE | pool | lava.
@@ -66,10 +70,65 @@ function is_hero_inside_gas_cloud() {
     return false;
 }
 
+/** Local m_at — avoid mon.js cycle (mon.js imports region.js). */
+function m_at_xy(x, y) {
+    const seg = game._level_monsters?.get(`${x},${y}`);
+    if (seg && (seg.mhp | 0) > 0) return seg;
+    const steed = game.u?.usteed;
+    for (const m of game.fmon || []) {
+        if (m === steed) continue;
+        if ((m.mhp | 0) <= 0) continue;
+        if (m.mx === x && m.my === y) return m;
+    }
+    return null;
+}
+
+function find_mid(mid) {
+    for (const m of game.fmon || []) {
+        if (m.m_id === mid) return m;
+    }
+    return null;
+}
+
+/** C ref: region.c add_mon_to_reg / mon_in_region / remove_mon_from_reg */
+function mon_in_region(reg, mon) {
+    return (reg.monsters || []).includes(mon.m_id);
+}
+
+function add_mon_to_reg(reg, mon) {
+    if (!mon || mon.m_id == null) return;
+    if (!reg.monsters) reg.monsters = [];
+    if (mon_in_region(reg, mon)) return;
+    reg.monsters.push(mon.m_id);
+}
+
+function remove_mon_from_reg(reg, mon) {
+    const list = reg.monsters || [];
+    const i = list.indexOf(mon.m_id);
+    if (i < 0) return;
+    list[i] = list[list.length - 1];
+    list.pop();
+}
+
+/**
+ * C ref: region.c inside_gas_cloud — fog maintains vapor TTL (+5 if <20).
+ * Damage/pline arms deferred when dam < 1 (fog/steam trails).
+ */
+function inside_gas_cloud(reg, mtmp) {
+    const mnum = mtmp?.mnum ?? mtmp?.data?.mndx ?? -1;
+    // C: fog clouds maintain gas clouds, even poisonous ones
+    if ((reg.ttl | 0) < 20 && mtmp && mnum === PM_FOG_CLOUD) {
+        reg.ttl = (reg.ttl | 0) + 5;
+    }
+    if ((reg.arg | 0) < 1) return false;
+    // dam>0 monster/hero effects deferred
+    return false;
+}
+
 /**
  * C ref: region.c make_gas_cloud — register region; hero message deferred.
- * C add_region calls block_point on each visible cell; JS rebuilds via
- * recalc_block_point (full vision_reset).
+ * C add_region scans m_at into reg->monsters and block_point; JS rebuilds
+ * vision via recalc_block_point (full vision_reset).
  */
 function make_gas_cloud(cloud, damage, _inside_cloud) {
     cloud.inside_f = INSIDE_GAS_CLOUD;
@@ -79,11 +138,21 @@ function make_gas_cloud(cloud, damage, _inside_cloud) {
     // avoids poisoncloud (damage>0). Numeric cmap deferred; tag suffices.
     cloud.glyph = damage ? 'S_poisoncloud' : 'S_cloud';
     cloud.visible = true;
+    if (!cloud.monsters) cloud.monsters = [];
     // set_heros_fault / enveloped pline deferred
     if (!game.regions) game.regions = [];
     game.regions.push(cloud);
-    // C add_region: if (reg->visible) block_point per inside cell
+    // C add_region: m_at scan + if (reg->visible) block_point per cell
     const rects = cloud.rects || [];
+    for (const r of rects) {
+        for (let x = r.lx | 0; x <= (r.hx | 0); x++) {
+            for (let y = r.ly | 0; y <= (r.hy | 0); y++) {
+                if (!isok(x, y) || !inside_region(cloud, x, y)) continue;
+                const mtmp = m_at_xy(x, y);
+                if (mtmp) add_mon_to_reg(cloud, mtmp);
+            }
+        }
+    }
     if (rects.length) {
         recalc_block_point(rects[0].lx | 0, rects[0].ly | 0);
     } else {
@@ -121,9 +190,25 @@ export function clear_regions() {
 }
 
 /**
- * C ref: region.c run_regions — ttl expiry then age remaining regions.
- * Envelope: gas-cloud ttl only. Named omissions: inside_f damage
- * callbacks on hero/monsters; dissipation plines; thick-cloud ttl reset.
+ * C ref: region.c m_in_out_region — maintain reg.monsters on move.
+ * Gas clouds have no can_enter/leave/enter/leave callbacks.
+ */
+export function m_in_out_region(mon, x, y) {
+    if (!mon) return true;
+    for (const reg of game.regions || []) {
+        if (inside_region(reg, x, y)) {
+            if (!mon_in_region(reg, mon)) add_mon_to_reg(reg, mon);
+        } else if (mon_in_region(reg, mon)) {
+            remove_mon_from_reg(reg, mon);
+        }
+    }
+    return true;
+}
+
+/**
+ * C ref: region.c run_regions — ttl expiry then age + inside_f callbacks.
+ * Envelope: gas-cloud ttl; fog-in-cloud TTL refresh (D-0834).
+ * Named omissions: inside_f damage on hero/monsters; dissipation plines.
  */
 export function run_regions() {
     const regs = game.regions || [];
@@ -141,9 +226,25 @@ export function run_regions() {
         }
         remove_region(reg);
     }
-    // Age remaining
+    // Age remaining + inside_f (fog maintains vapor)
     for (const reg of game.regions || []) {
         if ((reg.ttl | 0) > 0) reg.ttl = (reg.ttl | 0) - 1;
+        if (reg.inside_f !== INSIDE_GAS_CLOUD) continue;
+        const u = game.u || {};
+        if (inside_region(reg, u.ux | 0, u.uy | 0)) {
+            inside_gas_cloud(reg, null);
+        }
+        const mids = reg.monsters || [];
+        for (let j = 0; j < mids.length; j++) {
+            const mtmp = find_mid(mids[j]);
+            if (!mtmp || (mtmp.mhp | 0) <= 0) {
+                mids[j] = mids[mids.length - 1];
+                mids.pop();
+                j--;
+                continue;
+            }
+            inside_gas_cloud(reg, mtmp);
+        }
     }
 }
 

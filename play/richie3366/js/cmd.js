@@ -53,7 +53,7 @@ import { x_monnam_tame, Monnam } from './do_name.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
-import { stairway_at } from './mklev.js';
+import { stairway_at, u_on_newpos } from './mklev.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
 import { getpos } from './getpos.js';
@@ -1467,53 +1467,73 @@ async function domove(dx, dy) {
     u.ux0 = u.ux;
     u.uy0 = u.uy;
 
-    // C ref: hack.c domove_core — impaired_movement after ux+dx (Confusion/
-    // Stunned may rn2(5) then confdir). Named omissions ahead of this call:
-    // carrying_too_much, uswallow, air_turbulence, slippery_ice_fumbling.
-    if (impaired_movement()) {
-        if (game.context?.run) end_running();
-        return;
-    }
-    let newx = (u.ux | 0) + (u.dx | 0);
-    let newy = (u.uy | 0) + (u.dy | 0);
+    let newx;
+    let newy;
+    let mtmp;
 
-    // C ref: hack.c domove_core — m_at / run-stop / attackmon BEFORE test_move
-    // (closed_door / testdiag / rock). Diagonal intact-doorway bans must not
-    // suppress attacking a monster on an adjacent cell (seed0012 @12439).
-    // Named omissions: displacer swap; domove_bump_mon; mundetected Wait!;
-    // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
-    let mtmp = mon_at(newx, newy);
-    if (forcefight && !mtmp) {
-        // C: F with no monster → fight_empty, waste turn
-        await domove_fight_empty(newx, newy);
-        if (game.context?.run) end_running();
-        game.context.move = 1;
-        game.kickedloc = { x: 0, y: 0 };
-        return;
-    }
-    // C: don't attack if running and can see the non-safemon (pets ok).
-    // forcefight never reaches this arm. Confdir into a visible hostile
-    // must stop the run here — else JS burns a hit-roll rn2(20) while C
-    // returns for nhgetch (seed0002 @11309).
-    if (mtmp && !is_safemon(mtmp) && game.context?.run && !forcefight) {
-        const Blind = !!(u.Blind || u.ublind
-            || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
-        const ap = M_AP_TYPE(mtmp);
-        const seenAsMon = (ap !== M_AP_FURNITURE && ap !== M_AP_OBJECT)
-            || !!(u.Protection_from_shape_changers);
-        if ((!Blind && mon_visible(mtmp) && seenAsMon) || sensemon(mtmp)) {
-            nomul(0);
-            game.context.move = 0;
+    // C ref: hack.c domove_core — swallowed: zero dx/dy, u_on_newpos onto
+    // ustuck, attack engulfer; skip impaired_movement / m_at walk path.
+    // Named omissions still ahead of the non-swallow arm: carrying_too_much,
+    // air_turbulence, slippery_ice_fumbling, water_turbulence,
+    // escape_from_sticky_mon.
+    if ((u.uswallow | 0) && u.ustuck) {
+        u.dx = 0;
+        u.dy = 0;
+        newx = u.ustuck.mx | 0;
+        newy = u.ustuck.my | 0;
+        u_on_newpos(newx, newy);
+        mtmp = u.ustuck;
+    } else {
+        // C ref: hack.c domove_core — impaired_movement after ux+dx
+        // (Confusion/Stunned may rn2(5) then confdir).
+        if (impaired_movement()) {
+            if (game.context?.run) end_running();
             return;
         }
+        newx = (u.ux | 0) + (u.dx | 0);
+        newy = (u.uy | 0) + (u.dy | 0);
+
+        // C ref: hack.c domove_core — m_at / run-stop / attackmon BEFORE test_move
+        // (closed_door / testdiag / rock). Diagonal intact-doorway bans must not
+        // suppress attacking a monster on an adjacent cell (seed0012 @12439).
+        // Named omissions: displacer swap; domove_bump_mon; mundetected Wait!;
+        // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
+        mtmp = mon_at(newx, newy);
+        if (forcefight && !mtmp) {
+            // C: F with no monster → fight_empty, waste turn
+            await domove_fight_empty(newx, newy);
+            if (game.context?.run) end_running();
+            game.context.move = 1;
+            game.kickedloc = { x: 0, y: 0 };
+            return;
+        }
+        // C: don't attack if running and can see the non-safemon (pets ok).
+        // forcefight never reaches this arm. Confdir into a visible hostile
+        // must stop the run here — else JS burns a hit-roll rn2(20) while C
+        // returns for nhgetch (seed0002 @11309).
+        if (mtmp && !is_safemon(mtmp) && game.context?.run && !forcefight) {
+            const Blind = !!(u.Blind || u.ublind
+                || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+            const ap = M_AP_TYPE(mtmp);
+            const seenAsMon = (ap !== M_AP_FURNITURE && ap !== M_AP_OBJECT)
+                || !!(u.Protection_from_shape_changers);
+            if ((!Blind && mon_visible(mtmp) && seenAsMon) || sensemon(mtmp)) {
+                nomul(0);
+                game.context.move = 0;
+                return;
+            }
+        }
     }
+
     if (mtmp) {
         // C: domove_attackmon_at → do_attack (safemon may return false → swap)
+        // Swallowed path: mtmp is ustuck; still goes through do_attack.
         if (await do_attack(mtmp)) {
             if (game.context?.run) end_running();
             return;
         }
         // safemon displace: fall through; swap after test_move succeeds
+        // (not when swallowed — engulfer is never safemon displace)
     }
 
     // C ref: hack.c domove_core — u.utrap → trapmove before test_move
