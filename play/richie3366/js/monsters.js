@@ -358,6 +358,55 @@ export function likes_fire(ptr) {
     const mndx = ptr?.mndx ?? -1;
     return mndx === PM_FIRE_VORTEX || mndx === PM_FLAMING_SPHERE || likes_lava(ptr);
 }
+
+/** C ref: mondata.h flaming — fire vortex / sphere / elemental / salamander. */
+export function flaming(ptr) {
+    const mndx = ptr?.mndx ?? -1;
+    return mndx === PM_FIRE_VORTEX || mndx === PM_FLAMING_SPHERE
+        || mndx === PM_FIRE_ELEMENTAL || mndx === PM_SALAMANDER;
+}
+
+const PM_COCKATRICE = monsterNames.indexOf('PM_COCKATRICE');
+const PM_CHICKATRICE = monsterNames.indexOf('PM_CHICKATRICE');
+const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
+const PM_BABY_LONG_WORM = monsterNames.indexOf('PM_BABY_LONG_WORM');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
+
+/** C ref: mondata.h touch_petrifies — cockatrice / chickatrice only. */
+export function touch_petrifies(ptr) {
+    const mndx = ptr?.mndx ?? -1;
+    return mndx === PM_COCKATRICE || mndx === PM_CHICKATRICE;
+}
+
+/** C ref: mondata.h flesh_petrifies — touch_petrifies || Medusa. */
+export function flesh_petrifies(ptr) {
+    return touch_petrifies(ptr) || (ptr?.mndx ?? -1) === PM_MEDUSA;
+}
+
+/** C ref: mondata.h slimeproof — green slime / flaming / noncorporeal. */
+export function slimeproof(ptr) {
+    return (ptr?.mndx ?? -1) === PM_GREEN_SLIME || flaming(ptr) || noncorporeal(ptr);
+}
+
+/** C ref: mondata.h is_unicorn — S_UNICORN && likes_gems. */
+export function is_unicorn(ptr) {
+    return ptr?.mlet === 'S_UNICORN' && likes_gems(ptr);
+}
+
+/** C ref: mondata.h is_longworm — baby / adult / tail. */
+export function is_longworm(ptr) {
+    const mndx = ptr?.mndx ?? -1;
+    return mndx === PM_BABY_LONG_WORM || mndx === PM_LONG_WORM
+        || mndx === PM_LONG_WORM_TAIL;
+}
+
+/** C ref: mondata.h your_race — (ptr->mflags2 & urace.selfmask) != 0. */
+export function your_race(ptr) {
+    const mask = game.urace?.selfmask ?? 0;
+    return !!((ptr?.mflags2 ?? 0) & mask);
+}
 export function is_clinger(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_CLING);
 }

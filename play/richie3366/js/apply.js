@@ -39,7 +39,7 @@ import { nomul } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path } from './dothrow.js';
 import { teleds } from './teleport.js';
-import { morehungry } from './eat.js';
+import { morehungry, use_tin_opener } from './eat.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -78,6 +78,7 @@ const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
 const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
 const LENSES = objectNames.indexOf('LENSES');
+const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
@@ -1087,6 +1088,12 @@ export async function doapply() {
         const { dowrite } = await import('./write.js');
         const res = await dowrite(obj);
         return res === ECMD_TIME;
+    }
+
+    // C apply.c case TIN_OPENER → use_tin_opener (D-0940)
+    if (obj.otyp === TIN_OPENER) {
+        const res = await use_tin_opener(obj);
+        return (res & ECMD_TIME) !== 0;
     }
 
     // Other apply otyps deferred

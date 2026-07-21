@@ -11,12 +11,14 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok } from './const.js';
+import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok,
+    IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL } from './const.js';
 import { obj_resists } from './zap.js';
 import { newsym, vobj_at, object_glyph } from './display.js';
 import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision.js';
 import { Monnam, x_monnam } from './uhitm.js';
-import { floor_object_name } from './invent.js';
+import { floor_object_name, doname_invent, sobj_at } from './invent.js';
 import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon } from './monmove.js';
 import { ALLOW_TRAPS as ALLOW_TRAPS_F } from './const.js';
 import { t_at } from './trap.js';
@@ -24,8 +26,9 @@ import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import {
     FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, CORPSE, TIN, next_ident,
-    GOLD_PIECE, COIN_CLASS,
+    GOLD_PIECE, COIN_CLASS, BOULDER,
 } from './mkobj.js';
+import { may_dig } from './dig.js';
 import { gettrack } from './track.js';
 import { monster_by_pmidx, mon_msize, mon_cwt } from './makemon.js';
 
@@ -354,13 +357,15 @@ function droppables(mtmp) {
 // C ref: objnam.c doname(obj) for the items a starter pet carries (gold and
 // ordinary floor objects), used in the pet pickup/drop toplines.  For a single
 // gold piece doname() prefixes the article: "a gold piece"; a multi stack reads
-// "<n> gold pieces".  Other objects defer to floor_object_name (== doname).
+// "<n> gold pieces".  Other objects use the full doname (doname_invent) so a
+// known weapon/armor shows its enchantment ("a blessed +1 quarterstaff"); a
+// floor object has no worn mask, so doname_invent's worn-status suffix is empty.
 function pet_doname(obj) {
     if (obj && (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE)) {
         const q = obj.quan || 0;
         return q === 1 ? 'a gold piece' : `${q} gold pieces`;
     }
-    return floor_object_name(obj);
+    return doname_invent(obj);
 }
 
 // C ref: dogmove.c dog_invent(mtmp, edog, udist).  The pet either drops a
@@ -368,7 +373,7 @@ function pet_doname(obj) {
 // item (counts as its move), or picks one up (splitobj -> next_ident when the
 // stack is split).  Picking up sets minvent so later turns take the drop path
 // and dog_goal's `dog_has_minvent` rolls fire.  Returns 1 if the pet ate.
-function dog_invent(mtmp, edog, udist) {
+async function dog_invent(mtmp, edog, udist) {
     const omx = mtmp.mx, omy = mtmp.my;
     const apport = edogApport(edog);
 
@@ -380,7 +385,7 @@ function dog_invent(mtmp, edog, udist) {
             if (rn2(10) < apport) {
                 // relobj(mtmp, ..., TRUE): drop everything onto the floor.  No
                 // RNG.  Place each carried object back on the pet's tile.
-                relobj(mtmp, omx, omy);
+                await relobj(mtmp, omx, omy);
                 if (edog.apport > 1) edog.apport--;
                 edog.dropdist = udist;
                 edog.droptime = game.moves || 1;
@@ -413,12 +418,22 @@ function dog_invent(mtmp, edog, udist) {
                     if (carryamt !== (obj.quan || 1))
                         otmp = pet_splitobj(obj, carryamt);
                     // C ref: dogmove.c:451-462 — if the hero can see the pet's
-                    // tile, announce the pickup (verbose default).  doname() is
-                    // evaluated before the object is removed from the floor.  No
-                    // RNG (cansee is deterministic; gold/ordinary doname is too).
+                    // tile, announce the pickup (verbose default) via pline_xy
+                    // -> vpline -> update_topl.  doname() is evaluated before the
+                    // object is removed from the floor.  No RNG (cansee is
+                    // deterministic; gold/ordinary doname is too).  Routing through
+                    // update_topl (not a raw _pending_message assignment) is what
+                    // lets the pickup APPEND after an unacknowledged prior message
+                    // (e.g. a preceding "The <mon> is killed!") on the same top
+                    // line, exactly as C's topl buffer does.
                     if (cansee(omx, omy) && game.flags?.verbose !== false)
-                        game._pending_message = `${Monnam(mtmp)} picks up ${pet_doname(otmp)}.`;
+                        await emit_pet_msg(`${Monnam(mtmp)} picks up ${pet_doname(otmp)}.`);
+                    // C ref: dogmove.c:463-464 — obj_extract_self(otmp) then
+                    // newsym(omx, omy).  The pet is on the object's tile (omx,omy);
+                    // the newsym refreshes the remembered background so the picked-up
+                    // glyph doesn't linger once the tile leaves the hero's sight.
                     pet_extract_floor(otmp);
+                    newsym(omx, omy);
                     mpickobj(mtmp, otmp);
                 }
             }
@@ -430,17 +445,21 @@ function dog_invent(mtmp, edog, udist) {
 // C ref: steal.c relobj(mtmp,x,y,...) — drop the pet's carried objects onto its
 // tile.  Placement is deterministic (no RNG); we just move them from minvent
 // back into level.objects at (x,y).
-function relobj(mtmp, x, y) {
+async function relobj(mtmp, x, y) {
     const inv = mtmp.minvent || [];
     const arr = game.level?.objects;
     // C ref: steal.c relobj(is_pet=TRUE) -> mdrop_obj(mon,obj,is_pet&&verbose).
     // For each droppable, when verbose and the hero can see the pet's tile,
-    // announce "<Mon> drops <obj>." (doname evaluated before the floor drop).
+    // announce "<Mon> drops <obj>." (doname evaluated before the floor drop) via
+    // pline_mon -> vpline -> update_topl.  Routing through update_topl (not a raw
+    // _pending_message assignment) lets each drop APPEND after an unacknowledged
+    // prior message on the same top line (and page a --More-- when it won't fit),
+    // exactly as C's topl buffer does.
     const verbose = game.flags?.verbose !== false;
     const announce = verbose && cansee(x, y);
     for (const obj of inv) {
         if (announce)
-            game._pending_message = `${Monnam(mtmp)} drops ${pet_doname(obj)}.`;
+            await emit_pet_msg(`${Monnam(mtmp)} drops ${pet_doname(obj)}.`);
         obj.ox = x; obj.oy = y;
         // C ref: mdrop_obj -> place_object: the object goes back on the floor.
         // Use the same 'floor' marker place_object sets so vobj_at/the display
@@ -512,7 +531,15 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
             if (otyp > gtyp || otyp === UNDEF) continue;
             if (cursed_object_at(nx, ny)
                 && !(edog.mhpmax_penalty && otyp < MANFOOD)) continue;
-            // could_reach_item / can_reach_location: open room -> reachable.
+            // C ref: dogmove.c:539-542 — "skip completely unreachable goals".
+            // This guard runs for EVERY in-range object (after dogfood's
+            // obj_resists rn2(100) has already fired), BEFORE the MANFOOD split,
+            // so it gates the apport rn2(8) roll below.  Without it a pet that
+            // can SEE but cannot physically REACH an object (e.g. an item
+            // embedded in stone that a fresh zap_dig just opened line-of-sight
+            // to) would spuriously fire rn2(8), desyncing the whole RNG stream.
+            if (!could_reach_item(mtmp, nx, ny)
+                || !can_reach_location(mtmp, mtmp.mx, mtmp.my, nx, ny)) continue;
             if (otyp < MANFOOD) {
                 if (otyp < gtyp || DDIST(nx, ny, omx, omy) < DDIST(g.gx, g.gy, omx, omy)) {
                     g.gx = nx; g.gy = ny; gtyp = otyp;
@@ -623,6 +650,75 @@ function DDIST(x, y, ox, oy) { return dist2(x, y, ox, oy); }
 // C ref: dogmove.c cursed_object_at(x,y).
 function cursed_object_at(x, y) {
     return objectsAt(x, y).some((o) => o.cursed);
+}
+
+// --- monster capability predicates used by could_reach_item/can_reach_location.
+// C ref: mondata.h flag macros.  makemon's data records carry no mflags, so the
+// special species are identified by pmidx (same convention monmove.js uses).
+// The contest pets (little dog / kitten / pony) match none of these sets, so for
+// them could_reach_item reduces to the pool/lava/boulder terrain test and
+// can_reach_location's obstruction test reduces to plain IS_OBSTRUCTED.
+const CRI_WALLWALK_PMIDX = new Set([156, 232, 287, 288]); // earth elem, xorn, ghost, shade
+const CRI_TUNNELS_PMIDX = new Set([44, 46, 47, 92, 93, 225, 330, 343, 368]);
+const CRI_ROCKTHROW_PMIDX = new Set([169, 170, 171, 172, 173, 174, 175, 176, 177, 359]);
+function cri_passes_walls(d) { return !!d && CRI_WALLWALK_PMIDX.has(d.pmidx); }
+function cri_tunnels(d) { return !!d && CRI_TUNNELS_PMIDX.has(d.pmidx); }
+function cri_throws_rocks(d) { return !!d && CRI_ROCKTHROW_PMIDX.has(d.pmidx); }
+// C ref: mondata.h is_swimmer(M1_SWIM) / likes_lava (salamander/fire elemental).
+// No tameable/contest monster carries these flags at the points these sessions
+// reach, so a constant FALSE is faithful for every pet exercised; a swimmer or
+// lava-dweller pet would need the real M1_SWIM/M2 lookup.
+function cri_is_swimmer(_d) { return false; }
+function cri_likes_lava(_d) { return false; }
+function cri_is_pool(x, y) {
+    const t = game.level?.at(x, y)?.typ;
+    return t === POOL || t === MOAT || t === WATER;
+}
+function cri_is_lava(x, y) {
+    const t = game.level?.at(x, y)?.typ;
+    return t === LAVAPOOL || t === LAVAWALL;
+}
+function cri_Is_rogue_level() {
+    const uz = game.u?.uz, rl = game.rogue_level;
+    return !!uz && !!rl && uz.dnum === rl.dnum && uz.dlevel === rl.dlevel;
+}
+
+// C ref: dogmove.c could_reach_item(mon, nx, ny) — can a monster pick up an
+// object at (nx,ny)?  FALSE on water (unless swimmer), lava (unless lava-liker),
+// or under a boulder (unless rock-thrower).
+function could_reach_item(mon, nx, ny) {
+    const d = mon.data;
+    return (!cri_is_pool(nx, ny) || cri_is_swimmer(d))
+        && (!cri_is_lava(nx, ny) || cri_likes_lava(d))
+        && (!sobj_at(BOULDER, nx, ny) || cri_throws_rocks(d));
+}
+
+// C ref: dogmove.c can_reach_location(mon, mx, my, fx, fy) — recursive check
+// that a monotonically-closer path of reachable, non-obstructed squares connects
+// the monster at (mx,my) to the item at (fx,fy).  Max item distance is 5, so the
+// recursion is at most 5 deep.
+function can_reach_location(mon, mx, my, fx, fy) {
+    if (mx === fx && my === fy) return true;
+    if (!isok(mx, my)) return false;
+    const dist = dist2(mx, my, fx, fy);
+    const d = mon.data;
+    for (let i = mx - 1; i <= mx + 1; i++) {
+        for (let j = my - 1; j <= my + 1; j++) {
+            if (!isok(i, j)) continue;
+            if (dist2(i, j, fx, fy) >= dist) continue;
+            const typ = game.level?.at(i, j)?.typ;
+            if (IS_OBSTRUCTED(typ) && !cri_passes_walls(d)
+                && (!may_dig(i, j) || !cri_tunnels(d) || cri_Is_rogue_level()))
+                continue;
+            if (IS_DOOR(typ)) {
+                const dm = game.level?.at(i, j)?.doormask || 0;
+                if (dm & (D_CLOSED | D_LOCKED)) continue;
+            }
+            if (!could_reach_item(mon, i, j)) continue;
+            if (can_reach_location(mon, i, j, fx, fy)) return true;
+        }
+    }
+    return false;
 }
 
 // C ref: include/vision.h — m_cansee(mtmp,x,y) == clear_path(mx,my,x,y) and
@@ -801,7 +897,7 @@ export async function dog_move(mtmp, after) {
     let nix = omx, niy = omy;
 
     // dog_invent: object underfoot / carrying.  May consume the move (eat).
-    const j0 = dog_invent(mtmp, edog, udist);
+    const j0 = await dog_invent(mtmp, edog, udist);
     if (j0 === 1) return MMOVE_DONE; // ate something
 
     const whappr = ((game.moves || 1) - edog.whistletime) < 5;
@@ -959,7 +1055,23 @@ export async function dog_move(mtmp, after) {
         }
         return MMOVE_MOVED;
     }
-    return MMOVE_NOTHING;
+    // C ref: dogmove.c:1354 — dog_move() falls through to `return MMOVE_MOVED`
+    // even when the pet stays put (nix==omx && niy==omy).  m_move() routes that
+    // through postmov() (monmove.c:1471,1508-1509), which ALWAYS runs
+    // newsym(old-square) + mintrap() on the pet's CURRENT square when
+    // mmoved==MMOVE_MOVED.  So a pet that (e.g.) escaped its bear trap this turn
+    // (m_move mtrapped-escape) but then chose not to move is still standing on
+    // that trap, and mintrap re-checks it: a trap the pet now knows -> rn2(4)
+    // @ trap.c:3812 (walks over).  On a non-trap square mintrap is a no-op (no
+    // RNG).  Returning MMOVE_MOVED also matches C's dochug switch, which for a
+    // ranged-less pet returns 0 without reaching the attack step (phase_four).
+    // The previous `return MMOVE_NOTHING` skipped this mintrap, dropping an
+    // rn2(4) that C consumes and desyncing every later monster move that turn.
+    newsym(omx, omy);
+    const trapret = await mon_mintrap(mtmp);
+    if (trapret === Trap_Killed_Mon) { newsym(mtmp.mx, mtmp.my); return MMOVE_DIED; }
+    newsym(mtmp.mx, mtmp.my);
+    return MMOVE_MOVED;
 }
 
 // C ref: dogmove.c dog_eat(mtmp, obj, x, y, devour=FALSE) — the pet eats a floor
@@ -1002,10 +1114,18 @@ async function dog_eat(mtmp, edog, obj, x, y) {
     // but dogfood() is *called* unconditionally (obj_resists rn2(100) fires).
     dogfood(mtmp, obj); // -> obj_resists rn2(100)
 
-    // C ref: m_consume_obj -> delobj(obj): obj_resists(obj,0,0) rn2(100), then
-    // the object is removed from the floor.
+    // C ref: m_consume_obj -> delobj(obj) -> delobj_core: obj_resists(obj,0,0)
+    // rn2(100) guard, obj_extract_self() removes it from the floor, then (because
+    // it was a floor object) `newsym(obj->ox, obj->oy)` repaints the vacated tile.
+    // The final newsym is load-bearing: the pet is standing on the object's tile,
+    // so newsym re-runs _map_location(x,y,FALSE) to refresh the tile's REMEMBERED
+    // background glyph to the now-object-free terrain *under* the monster.  Without
+    // it the tile keeps its stale corpse memory and redraws the eaten '%' once the
+    // pet steps away and the square falls out of the hero's sight.
     obj_resists(obj, 0, 0); // rn2(100)
+    const ox = obj.ox, oy = obj.oy;
     pet_extract_floor(obj);
+    newsym(ox, oy);
 
     return 1;
 }

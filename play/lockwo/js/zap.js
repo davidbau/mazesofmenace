@@ -18,6 +18,14 @@ import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
 import { A_WIS, A_STR, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_ROOM, isok, ROOM, STONE,
          D_CLOSED, D_LOCKED } from './const.js';
 import { CLR_ORANGE } from './terminal.js';
+import { can_make_bones } from './bones.js';
+
+// Object-type numbers for the directional wands/spells that zapyourself() gives
+// a special self-inflicted effect.  C ref: include/objects.h (WAN_DEATH),
+// generated onames.h.  Match the JS objects table (mkobj.js): SPE_FINGER_OF_DEATH
+// = 370, WAN_DEATH = 432.
+const SPE_FINGER_OF_DEATH = 370;
+const WAN_DEATH = 432;
 
 // Object-type numbers that unconditionally resist (never rolled).
 // C ref: zap.c obj_resists().  AMULET_OF_YENDOR / SPE_BOOK_OF_THE_DEAD /
@@ -831,6 +839,88 @@ async function zap_getdir() {
     return true;
 }
 
+// C ref: zap.c zapyourself(obj, ordinary) — a directional wand/spell aimed at
+// self (getdir() returned dx=dy=dz=0).  Only the WAN_DEATH / SPE_FINGER_OF_DEATH
+// case is exercised by the covered sessions: a wizard-mode tourist zaps a wished
+// wand of death at himself with '.'.  Returns the physical damage for the caller
+// to feed to losehp(); WAN_DEATH runs done(DIED) directly and returns 0.
+async function zapyourself(obj, ordinary) {
+    let damage = 0;
+    switch (obj.otyp) {
+    case WAN_DEATH:
+    case SPE_FINGER_OF_DEATH:
+        // nonliving()/is_demon(): the human hero is living and not a demon, so
+        // the "apparently harmless beam" / "no deader than before" branch that
+        // spares such heroes is skipped.  learn_it (makeknown) would run only if
+        // done() returned to zapyourself(), but the contest player accepts death,
+        // so identification is never touched on this path.
+        // killer.name = "shot <him/her>self with a death ray" — used only by the
+        // (not-yet-ported) death disclosure, so it is left unset here.
+        // Two urgent_pline()s then done(DIED).  urgent_pline() -> putmesg() ->
+        // update_topl() (pline.c:315, topl.c:251).  getdir()'s
+        // clear_nhwindow(WIN_MESSAGE) left the topline empty, so the first message
+        // just arms NEED_MORE (no --More-- yet) and the second (a "You die"-prefixed
+        // line, which update_topl never combines) fires more() to page the first.
+        game._toplin = 0;
+        game._pending_message = '';
+        await update_topl('You irradiate yourself with pure energy!');
+        await update_topl('You die.');
+        await done_selfzap(0 /* DIED */);
+        break;
+    default:
+        break;
+    }
+    return damage;
+}
+
+// C ref: end.c done(DIED) / really_done(DIED), reached from zapyourself()'s
+// urgent_pline("You die.").  At entry the "You die." topline is pending
+// (NEED_MORE) and the hero's HP is still positive.  C's done() forces a status
+// update (bot(), end.c:1046) BEFORE zeroing HP (end.c:1077, with only a deferred
+// disp.botl refresh), so the "You die." --More-- frame keeps the old HP and only
+// the "Die?" prompt shows HP 0.  Our status line is rebuilt live from u.uhp each
+// frame, so we reproduce the same three frames by paging "You die." while HP is
+// still positive, THEN zeroing HP, THEN showing the "Die?" query.
+async function done_selfzap(how) {
+    const DIED_HOW = 0, GENOCIDED = 10; // end.h death codes
+    const u = game.u;
+
+    // Page the pending "You die." line (--More--) with HP still positive.
+    await topl_more();
+
+    // done(): how < PANICKED forces HP to zero (deferred status refresh).
+    u.uhp = 0;
+    if (u.mh != null) u.mh = 0;
+
+    // explore/wizard modes offer "keep playing?" — paranoid_query(ParanoidDie).
+    const wizard = !!game.flags?.debug;
+    const discover = !!(game.flags?.explore || game.flags?.discover
+                        || game.flags?.playmode === 'explore');
+    if (wizard || discover) {
+        const ans = await y_n('Die?', 'yn\x1b', 'n');
+        if (ans !== 'y') {
+            // "OK, so you don't die." + savelife() — not exercised (the contest
+            // player accepts death); leave the message pending for the next turn.
+            game._pending_message = "OK, so you don't die.";
+            game._toplin = 1;
+            return;
+        }
+    }
+
+    // really_done(how): bones_ok = (how < GENOCIDED) && can_make_bones()
+    // (end.c:1201).  can_make_bones() draws rn2(1 + (depth>>2)) and, in wizard
+    // mode, returns TRUE (bones.c:355).  savebones() then asks, in wizard mode,
+    //   if (!wizard || paranoid_query(ParanoidBones, "Save bones?"))   (end.c:1364)
+    if (how < GENOCIDED && can_make_bones()) {
+        await y_n('Save bones?', 'yn\x1b', 'n');
+        // The actual bones-file creation (drop_upon_death + the ghost makemon +
+        // the death disclosure screens) is not yet ported; the replay diverges at
+        // the next frame.
+    }
+    game.program_state = game.program_state || {};
+    game.program_state.gameover = true;
+}
+
 // C ref: zap.c dozap — the 'z' command.  Pick a wand, then apply it.  Directionless
 // wands go straight to weffects(); directional (IMMEDIATE) wands prompt getdir()
 // first, then weffects() runs bhit() along the chosen direction.
@@ -864,8 +954,15 @@ export async function dozap() {
         // C: "<wand> glows and fades." (Blind check omitted: hero not blind).
         // make him pay for knowing it's directional — no further effect.
     } else if (need_dir && !u.dx && !u.dy && !u.dz) {
-        // zapyourself(): self-zap.  Not exercised by the covered wizard sessions
-        // (they always zap a cardinal direction at the dropped pile).
+        // C ref: dozap() — getdir() returned self (dx=dy=dz=0), so the wand's
+        // effect lands on the hero.  zapyourself() returns the physical damage to
+        // charge via losehp(); WAN_DEATH runs done(DIED) itself and returns 0.
+        const damage = await zapyourself(obj, true);
+        if (damage) {
+            // C: losehp(Maybe_Half_Phys(damage), "zapped ...self with ...") — not
+            // reached for the ported WAN_DEATH case (done() ended the game first).
+            await losehp(damage, 'zapped himself with a wand');
+        }
     } else {
         game.current_wand = obj;
         await weffects(obj);

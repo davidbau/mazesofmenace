@@ -76,6 +76,7 @@ const WOOD = 8;
 const DRAGON_HIDE = 10;
 const IRON = 11;
 const COPPER = 13;
+const MITHRIL = 17;
 const GLASS = 19;
 const PLASTIC = 18;
 
@@ -1489,12 +1490,26 @@ export function delobj(obj) {
     obj.where = OBJ_FREE;
 }
 
-function g_at(x, y) {
-    // C ref: invent.c g_at — first COIN_CLASS on pile
+/** C ref: invent.c g_at — first COIN_CLASS on pile. */
+export function g_at(x, y) {
     for (let obj = objects_at(x, y); obj; obj = obj.nexthere) {
         if (obj.oclass === COIN_CLASS) return obj;
     }
     return null;
+}
+
+/** C ref: objclass.h is_metallic — IRON..MITHRIL inclusive. */
+export function is_metallic(otmp) {
+    if (!otmp) return false;
+    const mat = objs()[otmp.otyp]?.oc_material ?? 0;
+    return mat >= IRON && mat <= MITHRIL;
+}
+
+/** C ref: objclass.h is_organic — material <= WOOD. */
+export function is_organic(otmp) {
+    if (!otmp) return false;
+    const mat = objs()[otmp.otyp]?.oc_material ?? 0;
+    return mat <= WOOD;
 }
 
 // C ref: mkobj.c mkgold()

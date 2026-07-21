@@ -11,6 +11,9 @@ import {
     monsterNames, pmnames, NON_PM, LOW_PM,
     MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
     M1_SEE_INVIS,
+    is_human, is_elf, is_dwarf, is_gnome, is_orc, is_giant, is_golem,
+    is_mind_flayer, is_minion, is_demon, is_undead, is_rider,
+    is_unicorn, is_longworm,
 } from './monsters.js';
 import {
     M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
@@ -182,6 +185,84 @@ export function big_to_little(montype) {
         if (lo >= LOW_PM && montype === hi) return lo;
     }
     return montype;
+}
+
+const PM_KOBOLD_ZOMBIE = monsterNames.indexOf('PM_KOBOLD_ZOMBIE');
+const PM_KOBOLD_MUMMY = monsterNames.indexOf('PM_KOBOLD_MUMMY');
+const PM_TENGU = monsterNames.indexOf('PM_TENGU');
+const PM_GARGOYLE = monsterNames.indexOf('PM_GARGOYLE');
+const PM_WINGED_GARGOYLE = monsterNames.indexOf('PM_WINGED_GARGOYLE');
+const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
+const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
+
+/**
+ * C ref: mondata.c same_race — species kinship for cannibal / peace checks.
+ * Branch envelope: exact; player races; giant/golem/mind flayer; kobold/
+ * ogre/nymph/centaur/unicorn/dragon/naga; rider/minion; tengu/imp/demon;
+ * undead letter families; little↔big growth; gargoyle; bee; longworm.
+ */
+export function same_race(pm1, pm2) {
+    if (!pm1 || !pm2) return false;
+    if (pm1 === pm2 || (pm1.mndx != null && pm1.mndx === pm2.mndx)) return true;
+
+    if (is_human(pm1)) return is_human(pm2);
+    if (is_elf(pm1)) return is_elf(pm2);
+    if (is_dwarf(pm1)) return is_dwarf(pm2);
+    if (is_gnome(pm1)) return is_gnome(pm2);
+    if (is_orc(pm1)) return is_orc(pm2);
+    if (is_giant(pm1)) return is_giant(pm2);
+    if (is_golem(pm1)) return is_golem(pm2);
+    if (is_mind_flayer(pm1)) return is_mind_flayer(pm2);
+
+    const let1 = pm1.mlet;
+    const let2 = pm2.mlet;
+    const m1 = pm1.mndx | 0;
+    const m2 = pm2.mndx | 0;
+
+    if (let1 === 'S_KOBOLD' || m1 === PM_KOBOLD_ZOMBIE || m1 === PM_KOBOLD_MUMMY) {
+        return let2 === 'S_KOBOLD' || m2 === PM_KOBOLD_ZOMBIE || m2 === PM_KOBOLD_MUMMY;
+    }
+    if (let1 === 'S_OGRE') return let2 === 'S_OGRE';
+    if (let1 === 'S_NYMPH') return let2 === 'S_NYMPH';
+    if (let1 === 'S_CENTAUR') return let2 === 'S_CENTAUR';
+    if (is_unicorn(pm1)) return is_unicorn(pm2);
+    if (let1 === 'S_DRAGON') return let2 === 'S_DRAGON';
+    if (let1 === 'S_NAGA') return let2 === 'S_NAGA';
+    if (is_rider(pm1)) return is_rider(pm2);
+    if (is_minion(pm1)) return is_minion(pm2);
+    if (m1 === PM_TENGU || m2 === PM_TENGU) return false;
+    if (let1 === 'S_IMP') return let2 === 'S_IMP';
+    if (let2 === 'S_IMP') return false;
+    if (is_demon(pm1)) return is_demon(pm2);
+    if (is_undead(pm1)) {
+        if (let1 === 'S_ZOMBIE') return let2 === 'S_ZOMBIE';
+        if (let1 === 'S_MUMMY') return let2 === 'S_MUMMY';
+        if (let1 === 'S_VAMPIRE') return let2 === 'S_VAMPIRE';
+        if (let1 === 'S_LICH') return let2 === 'S_LICH';
+        if (let1 === 'S_WRAITH') return let2 === 'S_WRAITH';
+        if (let1 === 'S_GHOST') return let2 === 'S_GHOST';
+        return false;
+    }
+    if (is_undead(pm2)) return false;
+
+    if (let1 === let2) {
+        for (let prv = m1, nxt = big_to_little(m1); nxt !== prv;
+            prv = nxt, nxt = big_to_little(nxt)) {
+            if (nxt === m2) return true;
+        }
+        for (let prv = m1, nxt = little_to_big(m1); nxt !== prv;
+            prv = nxt, nxt = little_to_big(nxt)) {
+            if (nxt === m2) return true;
+        }
+    }
+    if (m1 === PM_GARGOYLE || m1 === PM_WINGED_GARGOYLE) {
+        return m2 === PM_GARGOYLE || m2 === PM_WINGED_GARGOYLE;
+    }
+    if (m1 === PM_KILLER_BEE || m1 === PM_QUEEN_BEE) {
+        return m2 === PM_KILLER_BEE || m2 === PM_QUEEN_BEE;
+    }
+    if (is_longworm(pm1)) return is_longworm(pm2);
+    return false;
 }
 
 const ALT_NAMES = [

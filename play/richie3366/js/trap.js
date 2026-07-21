@@ -1,5 +1,5 @@
 // trap.js — Trap creation + monster-step subset + hero dotrap dart /
-// rolling boulder.
+// rolling boulder + b_trapped (doors/tins).
 // C ref: trap.c — maketrap/choose_trapnote/hole_destination/trapnote,
 // t_at, t_missile, thitm, mintrap, dotrap, trapeffect_dart_trap /
 // trapeffect_pit / trapeffect_rocktrap / trapeffect_rolling_boulder_trap /
@@ -7,7 +7,7 @@
 // trapeffect_bear_trap / trapeffect_hole / trapeffect_magic_trap /
 // trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap /
 // trapeffect_web / trapeffect_landmine / blow_up_landmine /
-// mu_maybe_destroy_web,
+// mu_maybe_destroy_web, b_trapped,
 // make_corpse ordinary path via thitm death.
 
 import { game } from './gstate.js';
@@ -24,7 +24,7 @@ import {
     newsym, pline, mon_visible, see_with_infrared, You_feel, unmap_object,
     glyph_is_invisible, tmp_at, nh_delay_output, obj_glyph,
 } from './display.js';
-import { doname, an, the, xname, makeplural, vtense } from './objnam.js';
+import { doname, an, the, The, xname, makeplural, vtense } from './objnam.js';
 import { Monnam, mon_nam, x_monnam_tame } from './do_name.js';
 import { dist2, distmin, m_at } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point } from './vision.js';
@@ -58,7 +58,7 @@ import {
     MAX_ERODE,
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
-    KILLED_BY, KILLED_BY_AN,
+    KILLED_BY, KILLED_BY_AN, NO_PART,
     WATER, BURNING,
     TT_NONE, TT_BEARTRAP, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
     HEAD, ARM,
@@ -84,10 +84,12 @@ import { dmgval } from './weapon.js';
 import { maybe_half_phys, nomul, losehp, stop_occupation } from './hack.js';
 import { observe_object, encumber_msg, near_capacity } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj } from './makemon.js';
-import { A_CHA, A_STR, A_DEX, adjattrib, exercise } from './attrib.js';
+import { A_CHA, A_STR, A_DEX, A_CON, adjattrib, exercise } from './attrib.js';
 import { tamedog } from './dog.js';
 import { welded } from './wield.js';
 import { count_wsegs } from './worm.js';
+import { level_difficulty } from './hacklib.js';
+import { make_stunned } from './potion.js';
 
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
@@ -1288,8 +1290,51 @@ function set_utrap(tim, typ) {
 /**
  * C ref: trap.c reset_utrap — clear utrap; optional Lev/Fly restore msgs deferred.
  */
-function reset_utrap(_msg) {
+export function reset_utrap(_msg) {
     set_utrap(0, 0);
+}
+
+/**
+ * C ref: mon.c wake_nearby / wake_nearto_core — clear sleep/wait within
+ * ulevel*20. G_UNIQ keep STRAT_WAITMASK.
+ * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
+ */
+function wake_nearby(_petcall) {
+    const u = game.u || {};
+    const x = u.ux | 0;
+    const y = u.uy | 0;
+    const distance = ((u.ulevel | 0) * 20) | 0;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || mtmp.mx == null) continue;
+        const dx = (mtmp.mx | 0) - x;
+        const dy = (mtmp.my | 0) - y;
+        if (distance === 0 || dx * dx + dy * dy < distance) {
+            mtmp.msleeping = 0;
+            const geno = mtmp.data?.geno | 0;
+            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
+                mtmp.mstrategy &= ~STRAT_WAITMASK;
+            }
+        }
+    }
+    void _petcall;
+}
+
+/**
+ * C ref: trap.c b_trapped — booby-trap explosion (doors, tins, …).
+ * Branch envelope: level_difficulty dmg; KABOOM pline; wake_nearby;
+ * losehp(Maybe_Half_Phys); exercise STR (+ CON when bodypart != NO_PART);
+ * make_stunned(HStun+dmg). Named omission: Soundeffect.
+ */
+export async function b_trapped(item, bodypart = NO_PART) {
+    const lvl = level_difficulty(game.u?.uz) || 1;
+    const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
+    await pline(`KABOOM!!  ${The(item)} was booby-trapped!`);
+    wake_nearby(false);
+    await losehp(maybe_half_phys(dmg), 'explosion', KILLED_BY_AN);
+    exercise(A_STR, false);
+    if ((bodypart | 0) !== NO_PART) exercise(A_CON, false);
+    const u = game.u || (game.u = {});
+    await make_stunned(((u.HStun | 0) & TIMEOUT) + dmg, true);
 }
 
 /**

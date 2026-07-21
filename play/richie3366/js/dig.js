@@ -1,22 +1,25 @@
 // dig.js — Monster tunneling / terrain dig / wand dig.
-// C ref: dig.c mdig_tunnel / zap_dig / draft_message; hack.c may_dig.
+// C ref: dig.c mdig_tunnel / zap_dig / draft_message / watch_dig;
+//        hack.c may_dig. (D-0941 watch_dig + angry_guards wire)
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
-    newsym, pline, You_feel, tmp_at, nh_delay_output,
+    newsym, pline, You_feel, tmp_at, nh_delay_output, verbalize,
 } from './display.js';
 import { cansee, recalc_block_point } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { mksobj_at, objects_at } from './mkobj.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, in_town, stop_occupation } from './hack.js';
 import { objectNames } from './generated/objects_data.js';
 import { CLR_WHITE } from './terminal.js';
+import { is_watch } from './monsters.js';
+import { m_canseeu } from './mondata.js';
 import {
-    IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR,
+    IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FOUNTAIN,
     W_NONDIGGABLE, SDOOR, SCORR, CORR, ROOM, DOOR, TREE, STONE,
     D_NODOOR, D_BROKEN, D_TRAPPED, D_CLOSED, D_LOCKED,
-    SHOPBASE, TT_PIT, isok, Is_earthlevel,
+    SHOPBASE, SHOP_DOOR_COST, TT_PIT, isok, Is_earthlevel,
     DISP_BEAM, DISP_END,
 } from './const.js';
 
@@ -94,6 +97,77 @@ async function draft_message(unexpected) {
 }
 
 /**
+ * C ref: dig.c is_digging — occupation == dig.
+ * dig occupation body still absent → always false until pickaxe dig ports.
+ */
+export function is_digging() {
+    // C: go.occupation == dig — dig fn not yet an occupation export
+    return false;
+}
+
+/**
+ * C ref: dig.c watchman_canseeu — peaceful watch who can see the hero.
+ */
+function watchman_canseeu(mtmp) {
+    return !!(is_watch(mtmp?.data) && mtmp.mcansee && m_canseeu(mtmp)
+        && mtmp.mpeaceful);
+}
+
+/**
+ * C ref: mon.c get_iter_mons — first living on-map mon where bfunc is true.
+ */
+function get_iter_mons(bfunc) {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
+        if ((mtmp.mx | 0) <= 0) continue;
+        if (bfunc(mtmp)) return mtmp;
+    }
+    return null;
+}
+
+/**
+ * C ref: dig.c watch_dig — town watch warns / arrests on wall/door damage.
+ * Branch envelope: in_town + closed_door/SDOOR/WALL/FOUNTAIN/TREE;
+ * find peaceful watching watchman; warn once then angry_guards on zap
+ * or second offense; stop_occupation when digging.
+ * Named omit: SetVoice.
+ */
+export async function watch_dig(mtmp, x, y, zap) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return;
+    if (!in_town(x, y)) return;
+    if (!(closed_door(x, y) || lev.typ === SDOOR || IS_WALL(lev.typ)
+        || IS_FOUNTAIN(lev.typ) || IS_TREE(lev.typ))) {
+        return;
+    }
+    let watch = mtmp;
+    if (!watch) watch = get_iter_mons(watchman_canseeu);
+    if (!watch) return;
+
+    if (!game.context) game.context = {};
+    if (!game.context.digging) game.context.digging = {};
+    const digging = game.context.digging;
+
+    if (zap || digging.warned) {
+        await verbalize("Halt, vandal!  You're under arrest!");
+        // Lazy: mon.js imports dig.js statically.
+        const { angry_guards } = await import('./mon.js');
+        const Deaf = !!((game.u?.HDeaf | 0) || (game.u?.EDeaf | 0)
+            || game.u?.uroleplay?.deaf || game.u?.Deaf);
+        await angry_guards(!!Deaf);
+    } else {
+        let str;
+        if (IS_DOOR(lev.typ)) str = 'door';
+        else if (IS_TREE(lev.typ)) str = 'tree';
+        else if (IS_OBSTRUCTED(lev.typ)) str = 'wall';
+        else str = 'fountain';
+        await verbalize(`Hey, stop damaging that ${str}!`);
+        digging.warned = true;
+    }
+    if (is_digging()) await stop_occupation();
+}
+
+/**
  * C ref: mkobj.c rnd_treefruit_at — ROLL_FROM(treefruits) mksobj_at.
  */
 function rnd_treefruit_at(x, y) {
@@ -130,8 +204,8 @@ async function mb_trapped(mtmp, canseeit) {
  * Branch envelope: SDOOR convert; closed-door eat (+trap); SCORR open;
  * open-floor early return (still burns pile=rnd(12)); WALL/TREE/STONE dig;
  * maze→ROOM / cavernous→CORR / else DOOR; pile&lt;5 boulder/rock or fruit.
- * Named omissions: shop add_damage; Hallucination draft; in_town cavernous
- * gate; Soundeffect; full mondead on trap death.
+ * Named omissions: Hallucination draft; Soundeffect; full mondead on
+ * trap death; pay_for_damage.
  */
 export async function mdig_tunnel(mtmp) {
     const pile = rnd(12);
@@ -141,7 +215,10 @@ export async function mdig_tunnel(mtmp) {
     if (here.typ === SDOOR) cvt_sdoor_to_door(here);
 
     if (closed_door(mtmp.mx, mtmp.my)) {
-        // shop add_damage deferred
+        if (in_rooms(mtmp.mx, mtmp.my, SHOPBASE)) {
+            const { add_damage } = await import('./shk.js');
+            add_damage(mtmp.mx, mtmp.my, 0);
+        }
         const sawit = canseemon(mtmp);
         const trapped = !!((here.doormask || 0) & D_TRAPPED);
         here.doormask = trapped ? D_NODOOR : D_BROKEN;
@@ -182,11 +259,14 @@ export async function mdig_tunnel(mtmp) {
         if (game.flags?.verbose !== false && !rn2(5)) {
             if (!game.u?.Deaf) await pline('You hear crashing rock.');
         }
-        // shop add_damage deferred
+        if (in_rooms(mtmp.mx, mtmp.my, SHOPBASE)) {
+            const { add_damage } = await import('./shk.js');
+            add_damage(mtmp.mx, mtmp.my, 0);
+        }
         if (lf.is_maze_lev) {
             here.typ = ROOM;
             here.flags = 0;
-        } else if (lf.is_cavernous_lev /* in_town deferred */) {
+        } else if (lf.is_cavernous_lev && !in_town(mtmp.mx, mtmp.my)) {
             here.typ = CORR;
             here.flags = 0;
         } else {
@@ -220,9 +300,9 @@ export async function mdig_tunnel(mtmp) {
  * C ref: dig.c zap_dig — wand/spell dig beam across the level.
  * Branch envelope: horizontal digdepth=rn1(18,8) + door/SDOOR + maze_dig
  * wall/tree/stone + ordinary IS_OBSTRUCTED dig; DISP_BEAM trail.
+ * watch_dig + shop add_damage wired (D-0941); pay_for_damage (D-0942).
  * Named omissions: swallowed pierce; u.dz falling-rock / dighole;
- * pitdig conjoined / adj_pit_checks / pit_flow; watch_dig town arrest;
- * shop add_damage / pay_for_damage; in_town cavernous gate.
+ * pitdig conjoined / adj_pit_checks / pit_flow.
  */
 export async function zap_dig() {
     const u = game.u;
@@ -261,7 +341,8 @@ export async function zap_dig() {
                 break;
             } else if (closed_door(zx, zy) || room.typ === SDOOR) {
                 if (in_rooms(zx, zy, SHOPBASE)) {
-                    // add_damage(SHOP_DOOR_COST) deferred
+                    const { add_damage } = await import('./shk.js');
+                    add_damage(zx, zy, SHOP_DOOR_COST);
                     shopdoor = true;
                 }
                 if (room.typ === SDOOR) {
@@ -269,7 +350,7 @@ export async function zap_dig() {
                 } else if (cansee(zx, zy)) {
                     await pline('The door is razed!');
                 }
-                // watch_dig deferred
+                await watch_dig(null, zx, zy, true);
                 room.doormask = D_NODOOR;
                 if (room.flags !== undefined) room.flags = D_NODOOR;
                 recalc_block_point(zx, zy);
@@ -281,6 +362,7 @@ export async function zap_dig() {
                         if (in_rooms(zx, zy, SHOPBASE)) {
                             shopwall = true;
                         }
+                        await watch_dig(null, zx, zy, true);
                         room.typ = ROOM;
                         room.flags = 0;
                         recalc_block_point(zx, zy);
@@ -313,8 +395,9 @@ export async function zap_dig() {
                     if (in_rooms(zx, zy, SHOPBASE)) {
                         shopwall = true;
                     }
-                    // watch_dig deferred
-                    if (game.level?.flags?.is_cavernous_lev /* !in_town */) {
+                    await watch_dig(null, zx, zy, true);
+                    if (game.level?.flags?.is_cavernous_lev
+                        && !in_town(zx, zy)) {
                         room.typ = CORR;
                         room.flags = 0;
                     } else {
@@ -343,6 +426,7 @@ export async function zap_dig() {
 
     // pit_flow deferred
     if (shopdoor || shopwall) {
-        // pay_for_damage deferred
+        const { pay_for_damage } = await import('./shk.js');
+        await pay_for_damage(shopdoor ? 'destroy' : 'dig into', false);
     }
 }

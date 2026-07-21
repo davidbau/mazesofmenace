@@ -428,6 +428,28 @@ export async function adjattrib(ndx, incr, msgflg = 1) {
 }
 
 /**
+ * C ref: attrib.c gainstr — strength gain (spinach / corpse intrinsic).
+ * @param {object|null} otmp cursed → lose strength instead
+ * @param {number} incr 0 → roll amount from ABASE(A_STR)
+ * @param {boolean} givemsg true → adjattrib You_feel (msgflg -1)
+ */
+export async function gainstr(otmp, incr, givemsg) {
+    let num = incr | 0;
+    if (!num) {
+        const astr = abase(A_STR) | 0;
+        if (astr < 18) {
+            num = rn2(4) ? 1 : rnd(6);
+        } else if (astr < STR18(85)) {
+            num = rnd(10);
+        } else {
+            num = 1;
+        }
+    }
+    const delta = (otmp && otmp.cursed) ? -num : num;
+    await adjattrib(A_STR, delta, givemsg ? -1 : 1);
+}
+
+/**
  * C ref: attrib.c redist_attr — newman / poly attr shake.
  * Skips INT/WIS; each other attr gets AMAX += rn2(5)-2 clamped to
  * race ATTRMAX/ATTRMIN, then ABASE scaled by new/old max.

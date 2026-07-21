@@ -25,6 +25,7 @@ import {
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
     is_undead, amphibious, can_teleport, MR_FIRE, mindless, G_UNIQ,
+    is_watch,
 } from './monsters.js';
 import { m_harmless_trap } from './trap.js';
 import {
@@ -36,7 +37,7 @@ import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag } from './teleport.js';
 import { may_dig } from './dig.js';
-import { newsym, pline, sensemon, canseemon } from './display.js';
+import { newsym, pline, sensemon, canseemon, canspotmon } from './display.js';
 import { online2 } from './hacklib.js';
 import { worm_cross } from './worm.js';
 import { Monnam } from './do_name.js';
@@ -51,6 +52,7 @@ import { in_rooms, is_pool, is_lava } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special } from './worn.js';
 import { adjalign } from './attrib.js';
+import { vtense } from './objnam.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
@@ -624,7 +626,7 @@ export async function wake_msg(mtmp, interesting) {
 
 /**
  * C ref: mon.c wakeup — clear sleep / non-monster disguise; via_attack → setmangry.
- * Named omissions: finish_meating; ghod_hitsu; hot_pursuit when shk && !*u.ushops.
+ * Named omissions: finish_meating; ghod_hitsu.
  */
 export async function wakeup(mtmp, via_attack) {
     if (!mtmp) return;
@@ -650,9 +652,80 @@ export async function wakeup(mtmp, via_attack) {
         }
         setmangry(mtmp, true);
         if (was_peaceful) {
-            // ghod_hitsu / hot_pursuit deferred
+            // ghod_hitsu deferred (priest in temple)
+            if (mtmp.isshk && !(game.u?.ushops && String(game.u.ushops).length)) {
+                const { hot_pursuit } = await import('./shk.js');
+                hot_pursuit(mtmp);
+            }
         }
     }
+}
+
+/** C invent.c plur — "s" when n !== 1. */
+function plur(n) {
+    return (n | 0) !== 1 ? 's' : '';
+}
+
+/** C you.h m_next2u — squared dist ≤ 2. */
+function m_next2u_angry(mtmp) {
+    const u = game.u;
+    if (!u || !mtmp) return false;
+    const dx = (mtmp.mx | 0) - (u.ux | 0);
+    const dy = (mtmp.my | 0) - (u.uy | 0);
+    return (dx * dx + dy * dy) <= 2;
+}
+
+/**
+ * C ref: mon.c angry_guards — wake/hostile all peaceful watchmen.
+ * @param {boolean} silent skip pline/You_hear when true
+ * @returns {Promise<boolean>} true if any watch became angry
+ */
+export async function angry_guards(silent) {
+    let ct = 0;
+    let nct = 0;
+    let sct = 0;
+    let slct = 0;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
+        if (!is_watch(mtmp.data) || !mtmp.mpeaceful) continue;
+        ct++;
+        if (canspotmon(mtmp) && mtmp.mcanmove) {
+            if (m_next2u_angry(mtmp)) nct++;
+            else sct++;
+        }
+        if (mtmp.msleeping || (mtmp.mfrozen | 0)) {
+            slct++;
+            mtmp.msleeping = 0;
+            mtmp.mfrozen = 0;
+        }
+        mtmp.mpeaceful = 0;
+    }
+    if (!ct) return false;
+    if (!silent) {
+        if (slct) {
+            const buf = `guard${plur(slct)}`;
+            await pline(`The ${buf} ${vtense(buf, 'wake')} up.`);
+        }
+        if (nct) {
+            const buf = `guard${plur(nct)}`;
+            await pline(`The ${buf} ${vtense(buf, 'get')} angry!`);
+        } else if (sct) {
+            const buf = `guard${plur(sct)}`;
+            await pline(
+                `${sct === 1 ? 'An angry' : 'Angry'} ${buf} ${vtense(buf, 'are')} approaching!`,
+            );
+        } else {
+            const buf = ct === 1 ? "a guard's" : "guards'";
+            const Deaf = !!((game.u?.HDeaf | 0) || (game.u?.EDeaf | 0)
+                || game.u?.uroleplay?.deaf || game.u?.Deaf);
+            if (!Deaf) {
+                await pline(
+                    `You hear the shrill sound of ${buf} whistle${plur(ct)}.`,
+                );
+            }
+        }
+    }
+    return true;
 }
 
 export function m_at(x, y) {

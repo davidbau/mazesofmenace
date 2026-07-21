@@ -1388,7 +1388,7 @@ function worn_status_suffix(obj) {
 // prefix in C order: article, BUC, [poisoned], erosion words, +spe, base name,
 // then the worn-status suffix.  Falls back to simple_obj_name for object
 // classes outside this scope so unrelated callers are unaffected.
-function doname_invent(obj) {
+export function doname_invent(obj) {
     if (!obj) return 'nothing';
     observe_object(obj);
     const oc = obj.oclass;

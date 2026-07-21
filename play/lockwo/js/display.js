@@ -2,7 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-import { cansee, Blind } from './vision.js';
+import { cansee, couldsee, Blind, Infravision } from './vision.js';
 import { nhgetch } from './input.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -21,7 +21,7 @@ import {
     CLR_CYAN, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BLUE, CLR_RED,
     CLR_ORANGE, CLR_GREEN, DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
-import { monster_by_pmidx } from './makemon.js';
+import { monster_by_pmidx, infravisible } from './makemon.js';
 import { objects } from './mkobj.js';
 import { engr_at } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
@@ -252,6 +252,15 @@ function monster_glyph(mon) {
     const sym = d.mlet || 'x';
     const color = (d.mcolor != null) ? d.mcolor : NO_COLOR;
     return { ch: sym, color, dec: false };
+}
+
+// C ref: display.h see_with_infrared(mon) = (!Blind && Infravision &&
+// infravisible(mon->data) && couldsee(mon->mx, mon->my)).  TRUE when a
+// warm-blooded monster sits in the hero's line of sight but on a square too
+// dark to physically see; the hero's infravision reveals it.
+function see_with_infrared(mon) {
+    return !!mon && !Blind() && Infravision()
+        && infravisible(mon.data) && couldsee(mon.mx, mon.my);
 }
 
 // ── ANSI color codes ──
@@ -792,21 +801,43 @@ export function newsym(x, y) {
         } else {
             show_glyph_cell(x, y, bg.ch, bg.color, bg.dec);
         }
-    } else if (loc.remembered_glyph) {
-        // C ref: display.c newsym else-branch (~1087) — a cell out of sight that
-        // is remembered as a lit corridor (S_litcorr) re-darkens to S_corr when
-        // it is no longer waslit ("Darkened while out of the hero's sight").
-        // Our litcorr glyph is '#' with CLR_WHITE; the dark corridor is '#'
-        // with NO_COLOR.  Mutate the remembered glyph so subsequent redraws
-        // stay consistent (C overwrites lev->glyph likewise).
-        if (loc.typ === CORR && !loc.waslit
-            && loc.remembered_glyph.ch === '#'
-            && loc.remembered_glyph.color === CLR_WHITE) {
-            loc.remembered_glyph.color = NO_COLOR;
+    } else {
+        // Can't physically see <x,y>.  C ref: display.c newsym "Can't see the
+        // location" branch.
+        const mon = m_at(x, y);
+        if (mon && !mon.mundetected && see_with_infrared(mon)) {
+            // A warm monster within the hero's line of sight but on a square too
+            // dark to see is revealed by infravision (see_with_infrared &&
+            // mon_visible).  display_monster draws the normal monster glyph; it
+            // does NOT call _map_location or set waslit, so remembered
+            // background/lit memory is untouched (the glyph is erased later by
+            // the monster-move / vision redraw when it is no longer sensed).
+            const mg = monster_glyph(mon);
+            const petAttr = (mon.mtame && game.flags?.hilite_pet) ? ATR_INVERSE : 0;
+            show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, petAttr);
+        } else if (loc.remembered_glyph) {
+            // C ref: display.c newsym else-branch (~1087) — a cell out of sight
+            // remembered as a lit corridor (S_litcorr) re-darkens to S_corr when
+            // it is no longer waslit ("Darkened while out of the hero's sight").
+            // Our litcorr glyph is '#' with CLR_WHITE; the dark corridor is '#'
+            // with NO_COLOR.  Mutate the remembered glyph so subsequent redraws
+            // stay consistent (C overwrites lev->glyph likewise).
+            if (loc.typ === CORR && !loc.waslit
+                && loc.remembered_glyph.ch === '#'
+                && loc.remembered_glyph.color === CLR_WHITE) {
+                loc.remembered_glyph.color = NO_COLOR;
+            }
+            // Out of sight but remembered — show remembered background.
+            show_glyph_cell(x, y, loc.remembered_glyph.ch,
+                loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+        } else {
+            // C ref: display.c newsym show_mem — an out-of-sight cell with
+            // nothing remembered shows lev->glyph, which for an unmapped square
+            // is S_stone (blank).  This erases any stale live glyph, e.g. a warm
+            // monster shown here via infravision that has since moved away (its
+            // dark square was never mapped, so remembered_glyph is null).
+            show_glyph_cell(x, y, ' ', NO_COLOR, false);
         }
-        // Out of sight but remembered — show remembered background.
-        show_glyph_cell(x, y, loc.remembered_glyph.ch,
-            loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
     }
 }
 

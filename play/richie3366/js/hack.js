@@ -4,11 +4,13 @@
 import { game } from './gstate.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok,
-    IS_OBSTRUCTED, IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED,
+    IS_OBSTRUCTED, IRONBARS, IS_DOOR, IS_WALL, IS_TREE, IS_STWALL,
+    D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
     is_pit, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
     LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
-    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, ICE,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, CORR, DOOR, SDOOR, TREE, ICE,
+    W_NONDIGGABLE, SHOP_DOOR_COST,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     xdir, ydir, N_DIRS,
@@ -18,18 +20,18 @@ import {
     TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
     INTRINSIC, UNCHANGING,
-    In_mines, ACH_TOWN,
+    In_mines, ACH_TOWN, NO_PART,
 } from './const.js';
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
-import { gethungry } from './eat.js';
+import { gethungry, morehungry } from './eat.js';
 import { m_at } from './mon.js';
 import { recalc_block_point } from './vision.js';
-import { is_hider, throws_rocks, noncorporeal } from './monsters.js';
-import { objects_at, obj_extract_self, place_object } from './mkobj.js';
+import { is_hider, throws_rocks, noncorporeal, metallivorous, mons } from './monsters.js';
+import { objects_at, obj_extract_self, place_object, delobj } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { xname } from './objnam.js';
 import { A_STR, A_CON, exercise } from './attrib.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { midnight } from './calendar.js';
 import {
     PM_GRID_BUG, PM_WIZARD, PM_ELF, PM_VALKYRIE, PM_SAMURAI,
@@ -37,6 +39,7 @@ import {
 import { hliquid, Hallucination } from './do_name.js';
 import { near_capacity } from './invent.js';
 import { record_achievement } from './insight.js';
+import { b_trapped } from './trap.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
 const DIRS_ORD = [
@@ -44,6 +47,7 @@ const DIRS_ORD = [
 ];
 
 const BOULDER = objectNames.indexOf('BOULDER');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 
 function sobj_at(otyp, x, y) {
     for (let o = objects_at(x, y); o; o = o.nexthere) {
@@ -1242,4 +1246,235 @@ export function in_town(x, y) {
         }
     }
     return !has_subrooms;
+}
+
+/** C dungeon.c on_level — same dnum+dlevel. */
+function on_level_dig(a, b) {
+    return !!a && !!b
+        && (a.dnum | 0) === (b.dnum | 0)
+        && (a.dlevel | 0) === (b.dlevel | 0);
+}
+
+/** C dungeon.c assign_level — copy dnum/dlevel. */
+function assign_level_dig(dest, src) {
+    if (!dest || !src) return;
+    dest.dnum = src.dnum | 0;
+    dest.dlevel = src.dlevel | 0;
+}
+
+/**
+ * Local may_dig — avoid dig.js import cycle (dig.js imports in_rooms).
+ * C ref: hack.c may_dig — STWALL/TREE + W_NONDIGGABLE.
+ */
+function may_dig_local(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return false;
+    const typ = lev.typ;
+    const wi = (lev.wall_info | 0) | (lev.flags | 0);
+    return !((IS_STWALL(typ) || IS_TREE(typ)) && (wi & W_NONDIGGABLE));
+}
+
+/** C dungeon.c Is_special — match in sp_levchn (dissolve_bars). */
+function Is_special_local(lev) {
+    for (const s of game.sp_levchn || []) {
+        if (on_level_dig(lev, s.dlevel)) return s;
+    }
+    return null;
+}
+
+/**
+ * C ref: monmove.c dissolve_bars — replace IRONBARS with DOOR/ROOM/CORR.
+ * Named omission: switch_terrain when hero stands on the cell.
+ */
+export function dissolve_bars(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return;
+    const u = game.u || {};
+    if ((lev.edge | 0) === 1) {
+        lev.typ = DOOR;
+    } else if (Is_special_local(u.uz) || in_rooms(x, y, 0)) {
+        lev.typ = ROOM;
+    } else {
+        lev.typ = CORR;
+    }
+    lev.flags = 0;
+    lev.doormask = D_NODOOR;
+    newsym(x, y);
+    // switch_terrain deferred
+}
+
+/**
+ * C ref: hack.c still_chewing — chew wall/door/boulder/bars.
+ * Returns 1 if still eating, 0 when done (C int boolean).
+ * Branch envelope: nondiggable teeth; metallivore full bars; start/continue
+ * effort; finish boulder/wall/tree/IRONBARS/SDOOR/door/rock;
+ * watch_dig on start/continue; shop add_damage on wall/door (D-0941);
+ * pay_for_damage after chew (D-0942).
+ * Named omissions: livelog first-food; switch_terrain
+ * after bars.
+ */
+export async function still_chewing(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return 1;
+    const boulder = sobj_at(BOULDER, x, y);
+    const u = game.u || {};
+    const youData = game.youmonst?.data
+        || mons(u.umonnum ?? game.urole?.mnum);
+    let digtxt = null;
+    let dmgtxt = null;
+
+    if (!game.context) game.context = {};
+    let digging = game.context.digging;
+    if (!digging) digging = game.context.digging = {};
+
+    if (digging.down) {
+        game.context.digging = digging = {};
+    }
+
+    const wi = (lev.wall_info | 0) | (lev.flags | 0);
+    if (!boulder
+        && ((IS_OBSTRUCTED(lev.typ) && !may_dig_local(x, y))
+            || (lev.typ === IRONBARS && (wi & W_NONDIGGABLE)))) {
+        const what = lev.typ === IRONBARS
+            ? 'bars'
+            : IS_TREE(lev.typ) ? 'tree' : 'hard stone';
+        await pline(`You hurt your teeth on the ${what}.`);
+        nomul(0);
+        return 1;
+    }
+    if (lev.typ === IRONBARS
+        && metallivorous(youData)
+        && ((game.u?.uhunger | 0) > 1500)) {
+        await pline('You are too full to eat the bars.');
+        nomul(0);
+        return 1;
+    }
+
+    const sameSpot = digging.chew
+        && (digging.pos?.x | 0) === (x | 0)
+        && (digging.pos?.y | 0) === (y | 0)
+        && on_level_dig(digging.level, u.uz);
+    const udaminc = u.udaminc | 0;
+
+    // Lazy imports avoid hack → dig/shk static cycles.
+    const digMod = await import('./dig.js');
+    const shkMod = await import('./shk.js');
+
+    if (!sameSpot) {
+        digging.down = false;
+        digging.chew = true;
+        digging.warned = false;
+        digging.pos = { x: x | 0, y: y | 0 };
+        digging.level = { dnum: 0, dlevel: 0 };
+        assign_level_dig(digging.level, u.uz);
+        digging.effort = (IS_OBSTRUCTED(lev.typ) && !IS_TREE(lev.typ) ? 30 : 60)
+            + udaminc;
+        const onA = !!(boulder || IS_TREE(lev.typ) || lev.typ === IRONBARS);
+        const what = boulder
+            ? 'boulder'
+            : IS_TREE(lev.typ)
+                ? 'tree'
+                : IS_OBSTRUCTED(lev.typ)
+                    ? 'rock'
+                    : lev.typ === IRONBARS
+                        ? 'bar'
+                        : 'door';
+        await pline(`You start chewing ${onA ? 'on a' : 'a hole in the'} ${what}.`);
+        await digMod.watch_dig(null, x, y, false);
+        return 1;
+    }
+
+    digging.effort = (digging.effort | 0) + 30 + udaminc;
+    if ((digging.effort | 0) <= 100) {
+        if (game.flags?.verbose !== false) {
+            const what = boulder
+                ? 'boulder'
+                : IS_TREE(lev.typ)
+                    ? 'tree'
+                    : IS_OBSTRUCTED(lev.typ)
+                        ? 'rock'
+                        : lev.typ === IRONBARS
+                            ? 'bars'
+                            : 'door';
+            await pline(
+                `You ${digging.chew ? 'continue' : 'begin'} chewing on the ${what}.`,
+            );
+        }
+        digging.chew = true;
+        await digMod.watch_dig(null, x, y, false);
+        return 1;
+    }
+
+    // Okay, chewed through
+    if (!u.uconduct) u.uconduct = {};
+    u.uconduct.food = (u.uconduct.food | 0) + 1;
+    // livelog deferred
+    u.uhunger = (u.uhunger | 0) + rnd(20);
+
+    if (boulder) {
+        delobj(boulder);
+        await pline('You eat the boulder.');
+        if (IS_OBSTRUCTED(lev.typ) || closed_door(x, y) || sobj_at(BOULDER, x, y)) {
+            recalc_block_point(x, y);
+            game.context.digging = {};
+            return 1;
+        }
+    } else if (IS_WALL(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE)) {
+            shkMod.add_damage(x, y, shkMod.shop_wall_dmg());
+            dmgtxt = 'damage';
+        }
+        digtxt = 'chew a hole in the wall.';
+        if (game.level?.flags?.is_maze_lev) {
+            lev.typ = ROOM;
+        } else if (game.level?.flags?.is_cavernous_lev && !in_town(x, y)) {
+            lev.typ = CORR;
+        } else {
+            lev.typ = DOOR;
+            lev.doormask = D_NODOOR;
+        }
+    } else if (IS_TREE(lev.typ)) {
+        digtxt = 'chew through the tree.';
+        lev.typ = ROOM;
+    } else if (lev.typ === IRONBARS) {
+        if (metallivorous(youData)) {
+            const nut = (game.objects?.[HEAVY_IRON_BALL]?.oc_weight | 0);
+            morehungry(-nut);
+        }
+        digtxt = ((u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0))
+            ? 'devour the iron bars.'
+            : 'eat through the bars.';
+        dissolve_bars(x, y);
+    } else if (lev.typ === SDOOR) {
+        if ((lev.doormask | 0) & D_TRAPPED) {
+            lev.doormask = D_NODOOR;
+            await b_trapped('secret door', NO_PART);
+        } else {
+            digtxt = 'chew through the secret door.';
+            lev.doormask = D_BROKEN;
+        }
+        lev.typ = DOOR;
+    } else if (IS_DOOR(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE)) {
+            shkMod.add_damage(x, y, SHOP_DOOR_COST);
+            dmgtxt = 'break';
+        }
+        if ((lev.doormask | 0) & D_TRAPPED) {
+            lev.doormask = D_NODOOR;
+            await b_trapped('door', NO_PART);
+        } else {
+            digtxt = 'chew through the door.';
+            lev.doormask = D_BROKEN;
+        }
+    } else {
+        digtxt = 'chew a passage through the rock.';
+        lev.typ = CORR;
+    }
+
+    recalc_block_point(x, y);
+    newsym(x, y);
+    if (digtxt) await pline(`You ${digtxt}`);
+    if (dmgtxt) await shkMod.pay_for_damage(dmgtxt, false);
+    game.context.digging = {};
+    return 0;
 }

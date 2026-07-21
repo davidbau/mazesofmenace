@@ -18,6 +18,16 @@ const PM_WEREJACKAL = monsterNames.indexOf('PM_WEREJACKAL');
 const PM_HUMAN_WEREJACKAL = monsterNames.indexOf('PM_HUMAN_WEREJACKAL');
 const PM_WERERAT = monsterNames.indexOf('PM_WERERAT');
 const PM_HUMAN_WERERAT = monsterNames.indexOf('PM_HUMAN_WERERAT');
+const PM_SEWER_RAT = monsterNames.indexOf('PM_SEWER_RAT');
+const PM_GIANT_RAT = monsterNames.indexOf('PM_GIANT_RAT');
+const PM_RABID_RAT = monsterNames.indexOf('PM_RABID_RAT');
+const PM_JACKAL = monsterNames.indexOf('PM_JACKAL');
+const PM_FOX = monsterNames.indexOf('PM_FOX');
+const PM_COYOTE = monsterNames.indexOf('PM_COYOTE');
+const PM_WOLF = monsterNames.indexOf('PM_WOLF');
+const PM_WARG = monsterNames.indexOf('PM_WARG');
+const PM_WINTER_WOLF = monsterNames.indexOf('PM_WINTER_WOLF');
+const PM_WINTER_WOLF_CUB = monsterNames.indexOf('PM_WINTER_WOLF_CUB');
 
 /** C ref: youprop.h Protection_from_shape_changers */
 function Protection_from_shape_changers() {
@@ -25,6 +35,33 @@ function Protection_from_shape_changers() {
     return !!(u.HProtection_from_shape_changers
         || u.EProtection_from_shape_changers
         || u.Protection_from_shape_changers);
+}
+
+/**
+ * C ref: were.c were_beastie — map similar critters to were-index.
+ * Returns NON_PM when not a were-related species.
+ */
+export function were_beastie(pm) {
+    switch (pm | 0) {
+    case PM_WERERAT:
+    case PM_SEWER_RAT:
+    case PM_GIANT_RAT:
+    case PM_RABID_RAT:
+        return PM_WERERAT;
+    case PM_WEREJACKAL:
+    case PM_JACKAL:
+    case PM_FOX:
+    case PM_COYOTE:
+        return PM_WEREJACKAL;
+    case PM_WEREWOLF:
+    case PM_WOLF:
+    case PM_WARG:
+    case PM_WINTER_WOLF:
+    case PM_WINTER_WOLF_CUB:
+        return PM_WEREWOLF;
+    default:
+        return NON_PM;
+    }
 }
 
 /** C ref: were.c counter_were */

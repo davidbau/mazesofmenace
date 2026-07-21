@@ -1084,3 +1084,41 @@ export async function done(how) {
     }
     await really_done(how);
 }
+
+/**
+ * C ref: end.c delayed_killer — set/replace delayed killer by id; clear
+ * immediate killer name.
+ */
+export function delayed_killer(id, format, killername) {
+    if (!game.killer) game.killer = { name: '', format: 0, next: null };
+    let k = find_delayed_killer(id);
+    if (!k) {
+        k = { id: id | 0, format: 0, name: '', next: game.killer.next || null };
+        game.killer.next = k;
+    }
+    k.format = format | 0;
+    k.name = killername ? String(killername) : '';
+    game.killer.name = '';
+}
+
+/** C ref: end.c find_delayed_killer */
+export function find_delayed_killer(id) {
+    if (!game.killer) return null;
+    for (let k = game.killer.next; k; k = k.next) {
+        if ((k.id | 0) === (id | 0)) return k;
+    }
+    return null;
+}
+
+/** C ref: end.c dealloc_killer — unlink one delayed killer node. */
+export function dealloc_killer(kptr) {
+    if (!kptr || !game.killer) return;
+    let prev = game.killer;
+    for (let k = game.killer.next; k; k = k.next) {
+        if (k === kptr) {
+            prev.next = k.next || null;
+            return;
+        }
+        prev = k;
+    }
+}

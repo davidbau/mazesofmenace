@@ -18,7 +18,7 @@ import {
 } from './uhitm.js';
 import { AT_KICK } from './mhitm.js';
 import { overexertion, losehp, maybe_half_phys } from './hack.js';
-import { set_wounded_legs, legs_in_no_shape } from './trap.js';
+import { set_wounded_legs, legs_in_no_shape, b_trapped } from './trap.js';
 import { setmangry, seemimic } from './mon.js';
 import { mon_nam, Monnam } from './do_name.js';
 import { martial_bonus, use_skill } from './weapon.js';
@@ -34,7 +34,7 @@ import {
     D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED, LA_DOWN, SLT_ENCUMBER,
     IS_DOOR, IS_STWALL, IS_POOL, IS_THRONE, IS_FOUNTAIN, IS_SINK, IS_GRAVE,
     IS_TREE, KILLED_BY, Upolyd, M_AP_TYPE, M_AP_MONSTER, P_NONE, P_MARTIAL_ARTS,
-    RIGHT_SIDE, TIMEOUT,
+    RIGHT_SIDE, TIMEOUT, FOOT,
 } from './const.js';
 
 const PM_SASQUATCH = monsterNames.indexOf('PM_SASQUATCH');
@@ -142,7 +142,7 @@ async function kick_door(x, y, avrg_attrib) {
             exercise(A_STR, false);
             loc.doormask = D_NODOOR;
             if (loc.flags !== undefined) loc.flags = loc.doormask;
-            // b_trapped("door", FOOT) deferred
+            await b_trapped('door', FOOT);
             newsym(x, y);
             recalc_block_point(x, y);
             vision_recalc(1);

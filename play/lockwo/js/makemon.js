@@ -393,6 +393,40 @@ const MON_MSIZE = [
     2, 2,
 ];
 
+// C ref: include/monsters.h MON() mflags3 field (the third M-flag group),
+// indexed by pmidx.  Extracted from monsters.h by matching each MON()/MONS()
+// block's (neutral) name against MONS_NAMES and validated against the ported
+// mlevel/maligntyp/difficulty tuple for every entry.  Only the two infravision
+// bits (M3_INFRAVISION 0x100 / M3_INFRAVISIBLE 0x200) currently have consumers
+// (display.c see_with_infrared / newsym), but the whole field is kept so other
+// M3_* flags (COVETOUS, WAITMASK, DISPLACES, WANTS*) can be read later.
+const MFLAGS3 = [
+    0, 0, 0, 512, 0, 0, 0, 0, 0, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 0, 512, 0, 512, 512, 0, 512, 512, 512, 512, 768, 768, 768, 768, 768, 768, 768, 1792,
+    512, 0, 0, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 0, 0, 0, 768,
+    768, 768, 768, 512, 0, 0, 0, 512, 512, 512, 768, 768, 768, 768, 768, 768, 768, 768, 0, 0,
+    0, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 0, 0, 0, 0, 0, 0,
+    512, 512, 512, 512, 512, 512, 0, 0, 512, 0, 512, 512, 0, 0, 0, 0, 512, 512, 512, 0,
+    512, 768, 768, 768, 768, 768, 512, 512, 512, 512, 512, 512, 512, 0, 512, 0, 512, 0, 0, 0,
+    0, 0, 0, 0, 512, 0, 768, 0, 0, 0, 0, 0, 0, 256, 0, 512, 0, 0, 0, 0,
+    0, 0, 512, 0, 0, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 512, 512,
+    512, 512, 512, 256, 256, 260, 260, 256, 256, 256, 256, 256, 256, 256, 256, 512, 0, 0, 0, 512,
+    0, 0, 0, 768, 768, 768, 0, 0, 0, 0, 512, 512, 512, 512, 0, 0, 0, 256, 256, 0,
+    768, 768, 768, 768, 768, 512, 512, 512, 584, 0, 0, 0, 0, 512, 512, 512, 512, 512, 512, 256,
+    256, 256, 256, 256, 256, 256, 256, 256, 256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    512, 512, 512, 512, 768, 768, 768, 768, 768, 768, 512, 512, 512, 640, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 576, 607, 512, 256, 256, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768, 768,
+    768, 768, 768, 321, 769, 837, 769, 769, 833, 833, 769, 1792, 1792, 1792, 512, 0, 0, 0, 512, 512,
+    512, 0, 0, 0, 0, 0, 0, 0, 512, 0, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 640, 640, 640, 640, 640, 640, 640, 896, 640, 640, 640, 640, 640, 848, 592, 848, 848,
+    592, 592, 848, 80, 592, 592, 848, 592, 512, 512, 512, 512, 512, 512, 512, 768, 512, 512, 512, 512,
+    512, 512,
+];
+
+// C ref: include/monflag.h — the M3_* infravision bits.
+export const M3_INFRAVISION = 0x0100;  /* has infravision */
+export const M3_INFRAVISIBLE = 0x0200; /* visible by infravision */
+
 const MONS = MONS_RAW.map((t) => ({
     pmidx: t[0],
     name: MONS_NAMES[t[0]],
@@ -406,6 +440,7 @@ const MONS = MONS_RAW.map((t) => ({
     gender: GENDER_STR[t[6]],    // string form for external consumers
     difficulty: t[7],
     mcolor: t[8],
+    mflags3: MFLAGS3[t[0]] ?? 0, // C include/monsters.h MON() flg3 group
     ac: MON_AC[t[0]] ?? 10,      // C LVL() base armour class (find_mac)
     cwt: MON_CWT[t[0]],          // C SIZ() corpse weight (mkobj weight())
     msize: MON_MSIZE[t[0]],      // C SIZ() body size MZ_* (mkobj weight())
@@ -420,6 +455,20 @@ const ARMED_MCLS = new Set([11 /*S_KOBOLD*/, 15 /*S_ORC*/]);
 
 export function monster_by_pmidx(pmidx) {
     return MONS[pmidx] ?? null;
+}
+
+// C ref: include/mondata.h infravisible(ptr) = (mflags3 & M3_INFRAVISIBLE) —
+// TRUE when the creature is warm/visible to heat vision.  `ptr` is a MONS
+// record (mon.data).
+export function infravisible(ptr) {
+    return !!(ptr && (ptr.mflags3 & M3_INFRAVISIBLE));
+}
+
+// C ref: include/mondata.h infravision(ptr) = (mflags3 & M3_INFRAVISION) —
+// TRUE when the creature itself possesses infravision.  Used for the hero via
+// mons[urace.mnum] (polyself.c set_uasmon), and for monsters generally.
+export function infravision(ptr) {
+    return !!(ptr && (ptr.mflags3 & M3_INFRAVISION));
 }
 
 // C ref: sp_lev.c lspo_object montype scan — find a monster by its (neutral)

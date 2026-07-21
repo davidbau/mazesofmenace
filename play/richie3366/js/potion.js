@@ -19,7 +19,7 @@ import {
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT, HALLUC_RES,
-    QBUFSZ,
+    QBUFSZ, STONED, SLIMED,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
@@ -33,6 +33,9 @@ import { more_experienced } from './exper.js';
 import { trycall } from './do_name.js';
 import { newuhs } from './eat.js';
 import { heal_legs } from './trap.js';
+import {
+    delayed_killer, find_delayed_killer, dealloc_killer,
+} from './end.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const POT_ACID = objectNames.indexOf('POT_ACID');
@@ -391,6 +394,39 @@ function itimeout_incr(old, incr) {
 }
 
 /**
+ * C ref: potion.c make_vomiting(xtime, talk)
+ * Sync Vomiting TIMEOUT; clear-talk message only.
+ * Named omission: nh_timeout Vomiting body beyond allmain exercise flag.
+ */
+export async function make_vomiting(xtime, talk) {
+    const u = game.u || (game.u = {});
+    const old = u.Vomiting | 0;
+    if (u.Unaware) talk = false;
+    u.Vomiting = ((u.Vomiting | 0) & ~TIMEOUT) | itimeout(xtime);
+    if (game.disp) game.disp.botl = true;
+    if (game.flags) game.flags.botl = true;
+    if (!xtime && old && talk) {
+        await You_feel('much less nauseated now.');
+    }
+}
+
+/**
+ * C ref: potion.c make_glib(xtime)
+ * Set/clear Glib TIMEOUT; inventory polish deferred.
+ */
+export function make_glib(xtime) {
+    const u = game.u || (game.u = {});
+    const was = !!(u.Glib | 0);
+    const now = !!(xtime | 0);
+    if (was !== now) {
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+    }
+    u.Glib = ((u.Glib | 0) & ~TIMEOUT) | itimeout(xtime);
+    // C: if (uarmg) update_inventory() — deferred
+}
+
+/**
  * C ref: potion.c make_confused(xtime, talk)
  * Sync HConfusion TIMEOUT bits; mirror onto u.Confusion for JS gates
  * (C: Confusion ≡ HConfusion).
@@ -409,6 +445,73 @@ export async function make_confused(xtime, talk) {
     }
     u.HConfusion = ((u.HConfusion | 0) & ~TIMEOUT) | itimeout(xtime);
     u.Confusion = u.HConfusion;
+}
+
+/**
+ * C ref: potion.c make_stunned(xtime, talk)
+ * Sync HStun TIMEOUT; mirror onto u.Stunned for JS gates (C: Stun ≡ HStun).
+ * Named omissions: usteed saddle wobble; stagger(youmonst.data, …) poly verb.
+ */
+export async function make_stunned(xtime, talk) {
+    const u = game.u || (game.u = {});
+    const old = u.HStun | 0;
+    if (u.Unaware) talk = false;
+    if (!xtime && old && talk) {
+        const hallu = !!(u.Hallucination || u.HHallucination);
+        await You_feel(`${hallu ? 'less wobbly' : 'a bit steadier'} now.`);
+    }
+    if (xtime && !old && talk) {
+        if (u.usteed) {
+            await pline('You wobble in the saddle.');
+        } else {
+            // C: You("%s...", stagger(youmonst.data, "stagger"))
+            await pline('You stagger...');
+        }
+    }
+    if ((!xtime && old) || (xtime && !old)) {
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    }
+    u.HStun = ((u.HStun | 0) & ~TIMEOUT) | itimeout(xtime);
+    u.Stunned = u.HStun;
+}
+
+/**
+ * C ref: potion.c make_slimed — Slimed TIMEOUT; clear delayed SLIMED killer.
+ * Named omissions: U_AP_TYPE green-slime fake appearance clear.
+ */
+export async function make_slimed(xtime, msg) {
+    const u = game.u || (game.u = {});
+    const old = u.Slimed | 0;
+    u.Slimed = ((u.Slimed | 0) & ~TIMEOUT) | itimeout(xtime);
+    if ((!!xtime) !== (!!old)) {
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+        if (msg) await pline(msg);
+    }
+    if (!(u.Slimed & TIMEOUT)) {
+        dealloc_killer(find_delayed_killer(SLIMED));
+        // U_AP_TYPE green-slime appearance clear deferred
+    }
+}
+
+/**
+ * C ref: potion.c make_stoned — Stoned TIMEOUT; delayed STONED killer on start.
+ */
+export async function make_stoned(xtime, msg, killedby, killername) {
+    const u = game.u || (game.u = {});
+    const old = u.Stoned | 0;
+    u.Stoned = ((u.Stoned | 0) & ~TIMEOUT) | itimeout(xtime);
+    if ((!!xtime) !== (!!old)) {
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+        if (msg) await pline(msg);
+    }
+    if (!(u.Stoned & TIMEOUT)) {
+        dealloc_killer(find_delayed_killer(STONED));
+    } else if (!old) {
+        delayed_killer(STONED, killedby | 0, killername || '');
+    }
 }
 
 /**

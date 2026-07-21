@@ -22,6 +22,7 @@ import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { docast } from './spell.js';
 import { doread } from './read.js';
+import { dohelp } from './pager.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, hooked_tty_getlin, wiz_wish, wiz_genesis } from './extcmd-handlers.js';
 import { skill_window_advance } from './enhance.js';
@@ -453,6 +454,12 @@ export async function rhack(key) {
     } else if (ch === '#') {
         // C ref: cmd.c doextcmd — read and run an extended command.
         await doextcmd();
+    } else if (ch === '?') {
+        // C ref: cmd.c { '?', "help", dohelp, IFBURIED | GENERALCMD } ->
+        // pager.c dohelp(): the help-topic PICK_ONE menu ("Select one item:").
+        // Consumes no game time (ECMD_OK).
+        await dohelp();
+        game.context.move = 0;
     } else if (ch === 'q') {
         // C ref: cmd.c — 'q' quaff (drink) a potion.
         game.context.move = (await dodrink()) ? 1 : 0;

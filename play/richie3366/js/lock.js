@@ -10,7 +10,7 @@ import {
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
-    M_AP_FURNITURE, M_AP_OBJECT,
+    M_AP_FURNITURE, M_AP_OBJECT, FINGER,
 } from './const.js';
 import { rnl, rn2 } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
@@ -28,6 +28,7 @@ import { setuwep } from './wield.js';
 import { PM_ROGUE } from './generated/monsters_data.js';
 import { m_at } from './mon.js';
 import { getdir_cmdassist } from './dothrow.js';
+import { b_trapped } from './trap.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -204,8 +205,9 @@ async function picklock() {
         const ty = (u.uy | 0) + dy;
         const door = xl.door;
         if (door.doormask & D_TRAPPED) {
-            // C: b_trapped("door", FINGER) → D_NODOOR + unblock — deferred
+            // C: b_trapped("door", FINGER) → D_NODOOR + unblock
             door.doormask = D_NODOOR;
+            await b_trapped('door', FINGER);
             recalc_block_point(tx, ty);
             vision_recalc(1);
         } else if (door.doormask & D_LOCKED) {
@@ -373,8 +375,9 @@ export async function doopen_indir(x, y) {
     if (rnl(20) < chance) {
         await pline('The door opens.');
         if (mask & D_TRAPPED) {
-            // b_trapped("door", FINGER) deferred — clear to D_NODOOR like C
+            // C: b_trapped("door", FINGER) → D_NODOOR
             loc.doormask = D_NODOOR;
+            await b_trapped('door', FINGER);
         } else {
             loc.doormask = D_ISOPEN;
         }

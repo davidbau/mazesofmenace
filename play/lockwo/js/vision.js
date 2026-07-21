@@ -11,6 +11,8 @@ import {
     IS_WALL, CROSSWALL, TRWALL, TREE, CLOUD, WATER, LAVAWALL,
 } from './const.js';
 import { newsym } from './display.js';
+import { infravision, monster_by_pmidx } from './makemon.js';
+import { races } from './roles.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -738,6 +740,17 @@ export function vision_recalc(control = 0) {
 export function Blind() {
     const u = game.u;
     return !!u && ((u.blinded || 0) > 0 || !!game.ublindf);
+}
+
+// C ref: youprop.h Infravision (HInfravision || EInfravision).  polyself.c
+// set_uasmon() grants the hero the INFRAVISION intrinsic from
+// infravision(mons[urace.mnum]) (the racial base monster) when not polymorphed.
+// Our hero has no item/polyself infravision source, so Infravision is purely
+// racial: elf/dwarf/gnome/orc have it, human does not.
+export function Infravision() {
+    const race = races[game.initrace];
+    if (!race || race.basepm == null) return false;
+    return infravision(monster_by_pmidx(race.basepm));
 }
 
 // C ref: cansee(x, y)

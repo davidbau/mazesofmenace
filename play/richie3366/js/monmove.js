@@ -765,8 +765,8 @@ export function distfleeck(mtmp) {
 /**
  * C ref: monmove.c watch_on_duty — peaceful watch that can see hero in town
  * may notice lockpicking / digging (!rn2(3) gate).
- * Named omissions: mon_yells / angry_guards; is_digging + watch_dig
- * (dig occupation not wired).
+ * Named omissions: mon_yells polish (plain pline); pickaxe dig occupation
+ * still absent so is_digging() is false until dig ports.
  */
 async function watch_on_duty(mtmp) {
     const u = game.u || {};
@@ -782,8 +782,12 @@ async function watch_on_duty(mtmp) {
             && ((loc.doormask || loc.flags || 0) & D_LOCKED)) {
             if (couldsee(mtmp.mx, mtmp.my)) {
                 if ((loc.looted | 0) & D_WARNED) {
-                    // mon_yells + angry_guards deferred
+                    // mon_yells deferred — arrest pline + angry_guards
                     await pline('Halt, thief!  You\'re under arrest!');
+                    const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+                        || u.uroleplay?.deaf || u.Deaf);
+                    const { angry_guards } = await import('./mon.js');
+                    await angry_guards(!!Deaf);
                 } else {
                     // mon_yells deferred
                     await pline('Hey, stop picking that lock!');
@@ -792,8 +796,18 @@ async function watch_on_duty(mtmp) {
                 await stop_occupation();
             }
         }
+    } else {
+        const { is_digging, watch_dig } = await import('./dig.js');
+        if (is_digging()) {
+            const dig = game.context?.digging;
+            await watch_dig(
+                mtmp,
+                dig?.pos?.x | 0,
+                dig?.pos?.y | 0,
+                false,
+            );
+        }
     }
-    // else if (is_digging()) watch_dig(...) — deferred
 }
 
 /**

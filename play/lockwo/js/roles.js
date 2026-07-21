@@ -29,12 +29,17 @@ export const roles = [
     { name: { m: 'Wizard', f: 'Wizard' }, mnum: 12, xlev: 12, initrecord: 0 },
 ];
 
+// `basepm` is the pmidx of the race's base monster (C role.c races[].mnum =
+// PM_HUMAN/PM_ELF/PM_DWARF/PM_GNOME/PM_ORC).  set_uasmon (polyself.c) reads its
+// mflags3 to grant the hero racial Infravision; elf/dwarf/gnome/orc have it,
+// human does not.  Kept separate from `mnum` (a 0-4 race index) so existing
+// callers are unaffected.
 export const races = [
-    { name: 'human', adj: 'human', mnum: 0 },
-    { name: 'elf', adj: 'elven', mnum: 1 },
-    { name: 'dwarf', adj: 'dwarven', mnum: 2 },
-    { name: 'gnome', adj: 'gnomish', mnum: 3 },
-    { name: 'orc', adj: 'orcish', mnum: 4 },
+    { name: 'human', adj: 'human', mnum: 0, basepm: 260 },
+    { name: 'elf', adj: 'elven', mnum: 1, basepm: 264 },
+    { name: 'dwarf', adj: 'dwarven', mnum: 2, basepm: 44 },
+    { name: 'gnome', adj: 'gnomish', mnum: 3, basepm: 165 },
+    { name: 'orc', adj: 'orcish', mnum: 4, basepm: 72 },
 ];
 
 export const aligns = [
