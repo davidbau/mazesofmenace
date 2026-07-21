@@ -9,29 +9,31 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM, XKILL_NOMSG, NEW_MOON,
-    DISPLACED, IS_WATERWALL, RLOC_MSG, TIMEOUT,
+    DISPLACED, IS_WATERWALL, RLOC_MSG, TIMEOUT, ARTICLE_A,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items } from './zap.js';
-import { nomul, stop_occupation, maybe_half_phys } from './hack.js';
+import { nomul, stop_occupation, maybe_half_phys, is_pool } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
 import {
     pline, mon_visible, canspotmon, map_invisible, canseemon, newsym, docrt,
-    swallowed, flush_topl_more,
+    swallowed, flush_topl_more, tp_sensemon,
 } from './display.js';
 import { cansee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
-import { Monnam, mon_nam, pmname, hliquid } from './do_name.js';
+import { Monnam, mon_nam, pmname, hliquid, x_monnam } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
 import { is_pole } from './wield.js';
-import { xname } from './objnam.js';
+import { xname, doname } from './objnam.js';
 import { objectNames } from './objects.js';
+import { objects_at } from './mkobj.js';
 import { steal } from './steal.js';
 import { rloc, tele_restrict } from './teleport.js';
 import { monflee } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
+    hides_under,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import { done_in_by } from './end.js';
@@ -1232,6 +1234,16 @@ async function passiveum(olduasmon, mtmp, mattk) {
  * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu
  * + passiveum. Undead midnight extra, permdmg deferred.
  */
+/** C ref: do_name.c Amonnam — highc(a_monnam). */
+function Amonnam(mtmp) {
+    const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'It';
+}
+
+/**
+ * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu
+ * + passiveum. Undead midnight extra, permdmg deferred.
+ */
 async function hitmu(mtmp, mattk) {
     const mhm = {
         hitflags: M_ATTK_MISS,
@@ -1242,9 +1254,35 @@ async function hitmu(mtmp, mattk) {
     };
     // C: olduasmon = youmonst.data before adtyping may rehumanize
     const olduasmon = game.youmonst?.data;
+    const u = game.u || {};
 
     // C: if (!canspotmon(mtmp)) map_invisible — Blind / unseen attacker
     if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+
+    // C: mundetected hides_under / S_EEL — reveal under object before damage
+    const mdat = mtmp.data;
+    if (mtmp.mundetected && (hides_under(mdat) || mdat?.mlet === 'S_EEL')) {
+        mtmp.mundetected = 0;
+        const detect = !!(u.Detect_monsters
+            || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0));
+        if (!tp_sensemon(mtmp) && !detect) {
+            const obj = objects_at(mtmp.mx | 0, mtmp.my | 0);
+            if (obj) {
+                let what;
+                if (Blind() && !obj.dknown) what = 'something';
+                else if (is_pool(mtmp.mx, mtmp.my) && !u.Underwater) {
+                    what = 'the water';
+                } else {
+                    what = doname(obj);
+                }
+                let Amonbuf = Amonnam(mtmp);
+                // C: if (!strcmp(Amonbuf, "It")) → Something
+                if (Amonbuf === 'It') Amonbuf = 'Something';
+                await pline(`${Amonbuf} was hidden under ${what}!`);
+            }
+            newsym(mtmp.mx, mtmp.my);
+        }
+    }
 
     mhm.damage = d(mattk.damn | 0, mattk.damd | 0);
     // midnight undead extra d() deferred
@@ -1254,7 +1292,6 @@ async function hitmu(mtmp, mattk) {
 
     if (mhm.done) return mhm.hitflags;
 
-    const u = game.u || {};
     // C: (Upolyd ? u.mh : u.uhp) < 1
     if ((Upolyd(u) ? (u.mh | 0) : (u.uhp | 0)) < 1) {
         await mdamageu(mtmp, 1);

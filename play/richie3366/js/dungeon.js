@@ -1186,8 +1186,9 @@ function tport_menu(raw, entry, lchoices, lvl, cannotreach) {
 
 /**
  * C ref: dungeon.c print_branch — child branches in (lower, upper] for dnum.
+ * bymenu → tport_menu rows; else → putstr lines (wizwhere).
  */
-function print_branch(raw, dnum, lowerBound, upperBound, bymenu, lchoices) {
+function print_branch(out, dnum, lowerBound, upperBound, bymenu, lchoices) {
     for (const br of game.branches || []) {
         if ((br.end1?.dnum | 0) !== dnum) continue;
         const ed = br.end1.dlevel | 0;
@@ -1196,43 +1197,99 @@ function print_branch(raw, dnum, lowerBound, upperBound, bymenu, lchoices) {
         const buf = `${bymenu ? chr_u_on_lvl(br.end1) : ' '} ${br_string(br.type)} to ${destName}: ${depth_of(br.end1)}`;
         if (bymenu) {
             tport_menu(
-                raw,
+                out,
                 buf,
                 lchoices,
                 br.end1,
                 unreachable_level(br.end1, false),
             );
+        } else {
+            out.push(buf);
         }
-        // non-bymenu putstr deferred
     }
 }
 
 /**
- * C ref: dungeon.c print_dungeon — wizard ^V `?` level-teleport menu.
+ * C ref: dungeon.c print_dungeon — wizard ^V `?` menu + #wizwhere text.
  *
  * Ported: bymenu=TRUE PICK_ONE path (headings + specials + branches +
  * continuous selectors + unreachable Knox letter skip) + tty_end_menu
- * prompt/blank row (D-0563) + bot() after dismiss (D-0568). Sets dest.lev /
- * dest.dgn and returns
- * logical depth (playerlev), or 0 on cancel.
- * Named omissions: bymenu=FALSE putstr/display path (wizwhere); floating
- * branches listing; Invocation/portal debug lines; endgame amulet grant
- * after pick (level_tele).
+ * prompt/blank row (D-0563) + bot() after dismiss (D-0568); bymenu=FALSE
+ * putstr + display_nhwindow text pages (#wizwhere / D-0928 #1115).
+ * Sets dest.lev / dest.dgn and returns logical depth (playerlev), or 0
+ * on cancel.
+ * Named omissions: floating-branch detail beyond stub; Invocation/portal
+ * debug lines; endgame amulet grant after pick (level_tele).
  *
  * @param {boolean} bymenu
  * @param {{ lev?: number, dgn?: number } | null} dest
  * @returns {Promise<number>}
  */
 export async function print_dungeon(bymenu, dest = null) {
+    const { makeplural } = await import('./objnam.js');
+    const { Is_stronghold } = await import('./const.js');
+
+    const nDgns = game.n_dgns | 0;
+    const astral = game.astral_level;
+    const uz = game.u?.uz;
+    const inEndgame = !!(uz && astral && (uz.dnum | 0) === (astral.dnum | 0));
+
+    // --- bymenu=FALSE: #wizwhere text window (C putstr + display_nhwindow) ---
     if (!bymenu) {
-        // putstr overview deferred
+        const { show_text_pages } = await import('./pager.js');
+        const lines = [];
+        for (let i = 0; i < nDgns; i++) {
+            const dptr = game.dungeons[i];
+            if (!dptr) continue;
+            const unplaced = unplaced_floater(dptr, i);
+            const descr = unplaced ? 'depth' : 'level';
+            const nlev = dptr.num_dunlevs | 0;
+            const depthStart = dptr.depth_start | 0;
+            let buf;
+            if (nlev > 1) {
+                buf = `${dptr.dname}: ${makeplural(descr)} ${depthStart} to ${depthStart + nlev - 1}`;
+            } else {
+                buf = `${dptr.dname}: ${descr} ${depthStart}`;
+            }
+            const entryLev = dptr.entry_lev | 0;
+            if (entryLev !== 1) {
+                if (entryLev === nlev) buf += ', entrance from below';
+                else buf += `, entrance on ${depthStart + entryLev - 1}`;
+            }
+            lines.push(buf);
+
+            let lastLevel = 0;
+            for (const slev of game.sp_levchn || []) {
+                if ((slev.dlevel?.dnum | 0) !== i) continue;
+                print_branch(lines, i, lastLevel, slev.dlevel.dlevel | 0, false, null);
+                let line = `${chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${depth_of(slev.dlevel)}`;
+                if (Is_stronghold(slev.dlevel) && game.tune) {
+                    line += ` (tune ${game.tune})`;
+                }
+                lines.push(line);
+                lastLevel = slev.dlevel.dlevel | 0;
+            }
+            print_branch(lines, i, lastLevel, MAXLEVEL, false, null);
+        }
+        // C: floating branches (end1.dnum == n_dgns)
+        let firstFloat = true;
+        for (const br of game.branches || []) {
+            if ((br.end1?.dnum | 0) !== nDgns) continue;
+            if (firstFloat) {
+                lines.push('');
+                lines.push('Floating branches');
+                firstFloat = false;
+            }
+            const destName = game.dungeons?.[br.end2?.dnum | 0]?.dname || '?';
+            lines.push(`   ${br_string(br.type)} to ${destName}`);
+        }
+        // Invocation / portal debug lines deferred
+        await show_text_pages(lines, { moreAtEnd: true });
         return 0;
     }
 
     const { ATR_INVERSE } = await import('./terminal.js');
     const { select_menu_pick_one } = await import('./options.js');
-    const { makeplural } = await import('./objnam.js');
-    const { Is_stronghold } = await import('./const.js');
 
     // C tty_end_menu(prompt): prepends blank then prompt onto reversed
     // mlist → display order is prompt, "", items (wintty.c).
@@ -1247,11 +1304,6 @@ export async function print_dungeon(bymenu, dest = null) {
         dgn: [],
         menuletter: 'a',
     };
-
-    const nDgns = game.n_dgns | 0;
-    const astral = game.astral_level;
-    const uz = game.u?.uz;
-    const inEndgame = !!(uz && astral && (uz.dnum | 0) === (astral.dnum | 0));
 
     for (let i = 0; i < nDgns; i++) {
         const dptr = game.dungeons[i];

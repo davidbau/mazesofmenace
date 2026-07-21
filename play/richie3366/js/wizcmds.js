@@ -374,3 +374,17 @@ export async function wiz_polyself() {
     const { wiz_polyself: run } = await import('./polyself.js');
     return run();
 }
+
+/**
+ * C ref: wizcmds.c wiz_where — #wizwhere → print_dungeon(FALSE).
+ * Blocking text window so pager keys do not leak into rhack.
+ */
+export async function wiz_where() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline('Unavailable command \'wizwhere\'.');
+        return ECMD_OK;
+    }
+    const { print_dungeon } = await import('./dungeon.js');
+    await print_dungeon(false);
+    return ECMD_OK;
+}

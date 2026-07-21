@@ -17,9 +17,9 @@
 // **premap_detect** Sokoban premapped levels (D-0567);
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
 // Named omissions: feel_location / visible_region_at /
-// unmap_invisible / Blind feel; mfind0 body; Hallucination/cls
+// unmap_invisible / Blind feel; Hallucination/cls
 // map_trap wait; activate_statue_trap; artifact SPFX_SEARCH;
-// warnreveal; room_discovered;
+// warnreveal body (mfind0 via_warning wired); room_discovered;
 // map_trap/map_engraving restore after furniture; unconstrain
 // underwater-buried-swallow; notice_mon_off/on; findone
 // flash_glyph / mimic / hider / invis / chest-trap detect;
@@ -28,17 +28,24 @@
 // M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
 // TER_FULL explore-only map body; arboreal default tree;
 // monster_detect strange_feeling / cursed wake / blessed WIN_MAP /
-// worm segs / pet_to_glyph / TER_DETECT autodescribe.
+// worm segs / pet_to_glyph / TER_DETECT autodescribe;
+// mfind0 set_msg_xy / display_nhwindow flush.
 
 import { game } from './gstate.js';
 import { rnl, rn2 } from './rng.js';
-import { newsym, pline, magic_map_background, terrain_glyph, obj_glyph, show_glyph_cell, map_trap } from './display.js';
+import {
+    newsym, pline, magic_map_background, terrain_glyph, obj_glyph,
+    show_glyph_cell, map_trap, canspotmon, sensemon, map_invisible,
+    glyph_is_invisible, warning_of, You_feel,
+} from './display.js';
 import { vision_recalc, couldsee, recalc_block_point } from './vision.js';
 import { an } from './objnam.js';
 import { A_WIS, exercise } from './attrib.js';
 import { t_at } from './trap.js';
 import { cmd_safety_prevention } from './do.js';
-import { m_at } from './mon.js';
+import { m_at, seemimic } from './mon.js';
+import { is_hider, hides_under } from './monsters.js';
+import { x_monnam, x_monnam_tame } from './do_name.js';
 import { objectNames } from './objects.js';
 import { objects_at } from './mkobj.js';
 import {
@@ -46,7 +53,7 @@ import {
     STATUE_TRAP, NO_TRAP, TRAPNUM, Is_rogue_level, BOLT_LIM, COLNO, ROWNO,
     SVALL, IS_FURNITURE, STONE, W_NONDIGGABLE, W_NONPASSWALL,
     TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, ECMD_OK,
-    I_SPECIAL,
+    I_SPECIAL, M_AP_TYPE, ARTICLE_A,
 } from './const.js';
 import { CLR_WHITE } from './terminal.js';
 
@@ -146,10 +153,59 @@ async function find_trap(trap) {
 }
 
 /**
- * C ref: detect.c mfind0 — stub returns 0 (nothing found).
- * Mimic/hider/invisible reveal + messages deferred (named in C-JS-MAP).
+ * C ref: detect.c mfind0 — reveal mimic / hider / unseen mon on search.
+ * Returns -1 continue, 1 found (took time), 0 nothing.
+ * Named omissions: set_msg_xy; display_nhwindow flush on via_warning.
  */
-function mfind0(_mtmp, _via_warning) {
+async function mfind0(mtmp, via_warning) {
+    if (!mtmp) return 0;
+    const x = mtmp.mx | 0;
+    const y = mtmp.my | 0;
+    let found_something = false;
+
+    if (via_warning && !warning_of(mtmp)) return -1;
+
+    if (M_AP_TYPE(mtmp)) {
+        seemimic(mtmp);
+        found_something = true;
+    } else {
+        // C: found_something = !canspotmon; then clear mundetected hiders
+        found_something = !canspotmon(mtmp);
+        const ptr = mtmp.data;
+        if (mtmp.mundetected && (is_hider(ptr)
+            || hides_under(ptr)
+            || ptr?.mlet === 'S_EEL')) {
+            if (via_warning && found_something) {
+                const Blind = !!(game.u?.Blind || game.u?.ublind);
+                await pline(
+                    `Your danger sense causes you to take a second ${
+                        Blind ? 'to check nearby' : 'look close by'}.`,
+                );
+            }
+            mtmp.mundetected = 0;
+            found_something = true;
+        }
+        newsym(x, y);
+    }
+
+    if (found_something) {
+        const loc = game.level?.at(x, y);
+        if (!canspotmon(mtmp) && glyph_is_invisible(loc)) {
+            // C: already-mapped 'I' — do not re-find every turn
+            return -1;
+        }
+        exercise(A_WIS, true);
+        if (!canspotmon(mtmp)) {
+            map_invisible(x, y);
+            await You_feel('an unseen monster!');
+        } else if (!sensemon(mtmp)) {
+            const nam = mtmp.mtame
+                ? x_monnam_tame(mtmp)
+                : x_monnam(mtmp, ARTICLE_A, null, 0, false);
+            await pline(`You find ${nam}.`);
+        }
+        return 1;
+    }
     return 0;
 }
 
@@ -202,7 +258,7 @@ export async function dosearch0(aflag) {
                 if (!aflag) {
                     const mtmp = m_at(x, y);
                     if (mtmp) {
-                        const mfres = mfind0(mtmp, 0);
+                        const mfres = await mfind0(mtmp, 0);
                         if (mfres === -1) continue;
                         if (mfres > 0) return mfres;
                     }

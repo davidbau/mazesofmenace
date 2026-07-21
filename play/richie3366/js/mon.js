@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { dochugw, m_everyturn_effect } from './monmove.js';
+import { dochugw, m_everyturn_effect, monflee } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
@@ -839,9 +839,9 @@ export async function minliquid(mtmp) {
         if ((mtmp.mhp | 0) > 1 && rn2(mtmp.mhp | 0) > rn2(8)) {
             mtmp.mhp = (mtmp.mhp | 0) - 1;
         }
-        // monflee(mtmp, 2, FALSE, FALSE) — import cycle; set flee bits
-        mtmp.mflee = 1;
-        if (!(mtmp.mfleetim | 0) || (mtmp.mfleetim | 0) < 2) mtmp.mfleetim = 2;
+        // C: monflee(mtmp, 2, FALSE, FALSE) — includes mon_track_clear
+        // so land-crawl track avoid does not burn rn2 after out-of-water flee
+        await monflee(mtmp, 2, false, false);
     }
     return 0;
 }

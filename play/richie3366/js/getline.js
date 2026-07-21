@@ -498,6 +498,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizwhere" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_where
+        name: 'wizwhere',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_where } = await import('./wizcmds.js');
+            return wiz_where();
+        },
+    },
+    {
         name: 'monster',
         wiz: false,
         autocomplete: true,

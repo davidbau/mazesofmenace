@@ -525,7 +525,7 @@ async function Armor_off() {
 }
 
 /** C ref: do_wear.c Helmet_off — fedora luck; other magic helms deferred */
-function Helmet_off() {
+export function Helmet_off() {
     const u = game.u || {};
     const helm = u.uarmh;
     if (helm && helm.otyp === FEDORA && game.urole?.mnum === PM_ARCHEOLOGIST) {
@@ -535,19 +535,19 @@ function Helmet_off() {
     return 0;
 }
 
-function Cloak_off() {
+export function Cloak_off() {
     clear_worn(W_ARMC);
     return 0;
 }
-function Shield_off() {
+export function Shield_off() {
     clear_worn(W_ARMS);
     return 0;
 }
-function Gloves_off() {
+export function Gloves_off() {
     clear_worn(W_ARMG);
     return 0;
 }
-function Boots_off() {
+export function Boots_off() {
     clear_worn(W_ARMF);
     return 0;
 }

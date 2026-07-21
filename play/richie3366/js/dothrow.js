@@ -37,9 +37,38 @@ import {
 import { xname, singular, an, the, vtense } from './objnam.js';
 import { m_at, wakeup } from './mon.js';
 import { mon_nam } from './do_name.js';
-import { is_domestic } from './monsters.js';
+import { is_domestic, nohands, M1_NOTAKE } from './monsters.js';
 import { tamedog } from './dog.js';
 import { hmon } from './uhitm.js';
+
+/** C ref: mondata.h notake — M1_NOTAKE (cannot pick up / throw). */
+function notake(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_NOTAKE);
+}
+
+/**
+ * C ref: dothrow.c ok_to_throw — shared gate for #throw / #fire.
+ * Named omission: check_capacity((char *)0); command_count → shotlimit
+ * (caller still passes shotlimit separately).
+ * @returns {Promise<boolean>} false → ECMD_OK (no time)
+ */
+async function ok_to_throw() {
+    const youdata = game.youmonst?.data;
+    if (notake(youdata)) {
+        await pline('You are physically incapable of throwing or shooting anything.');
+        // C: ECMD_OK — no getobj; avoid More eating the next command key
+        mark_topline_seen();
+        return false;
+    }
+    if (nohands(youdata)) {
+        // C: You_cant("throw or shoot without hands.")
+        await pline("You can't throw or shoot without hands.");
+        mark_topline_seen();
+        return false;
+    }
+    // check_capacity deferred
+    return true;
+}
 
 const PM_MONKEY = monsterNames.indexOf('PM_MONKEY');
 const PM_APE = monsterNames.indexOf('PM_APE');
@@ -692,6 +721,9 @@ export async function getdir_cmdassist(prompt) {
  * @returns {number} 0 no turn (OK/cancel), 1 took time
  */
 export async function dofire() {
+    // C ref: dothrow.c dofire — ok_to_throw before quiver / fireassist
+    if (!(await ok_to_throw())) return 0;
+
     let obj = game.u?.uquiver || null;
 
     // C: iflags.fireassist default On — swap launcher from uswapwep then retry
@@ -740,6 +772,9 @@ export async function dofire() {
 }
 
 export async function dothrow() {
+    // C ref: dothrow.c dothrow — ok_to_throw before getobj
+    if (!(await ok_to_throw())) return 0;
+
     const obj = await getobj_throw();
     if (!obj) return 0;
 

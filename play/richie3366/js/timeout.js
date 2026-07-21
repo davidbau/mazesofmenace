@@ -2,7 +2,7 @@
 // C ref: timeout.c nh_timeout — once-per-turn intrinsic TIMEOUT decrement.
 
 import { game } from './gstate.js';
-import { TIMEOUT, FROMOUTSIDE, FUMBLING, FAST, FOOT, ICE, STRAT_WAITMASK } from './const.js';
+import { TIMEOUT, FROMOUTSIDE, FUMBLING, FAST, FOOT, ICE, STRAT_WAITMASK, UNCHANGING } from './const.js';
 import { heal_legs } from './trap.js';
 import { stop_occupation, nomul, is_pool } from './hack.js';
 import { run_timers, objects_at } from './mkobj.js';
@@ -14,11 +14,19 @@ import { inv_weight } from './invent.js';
 import { doname, makeplural } from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { objectNames } from './objects.js';
-import { G_UNIQ } from './monsters.js';
+import { G_UNIQ, is_were } from './monsters.js';
+import { rehumanize } from './polyself.js';
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
 const WT_NOISY_INV = 500;
 const ROCK = objectNames.indexOf('ROCK');
+
+/** C ref: youprop.h Unchanging — H || E via flat + uprops. */
+function hero_unchanging(u = game.u || {}) {
+    const e = u.uprops?.[UNCHANGING];
+    return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
 
 /**
  * C ref: mon.c wake_nearby / wake_nearto_core — clear sleep/wait within
@@ -167,11 +175,12 @@ function incr_itimeout_HFumbling(incr) {
  * FUMBLING → slip_or_trip + nomul(-2) + incr_itimeout rnd(20) (D-0692);
  * DEAF → make_deaf(0) on expiry (D-0911; talk if !Unaware deferred).
  * FAST → timeout decrement + slow-down You_feel when !Very_fast (D-0919).
+ * mtimedone → rehumanize / Unchanging rnd refresh (D-0928 #1112).
  * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues;
  * STUNNED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… cases;
- * Glib; ublesscnt (in allmain); mtimedone; usptime; ugallop; delayed
+ * Glib; ublesscnt (in allmain); usptime; ugallop; delayed
  * killers; uinvulnerable early return polish; defer_decor; full ice/
- * mount slip_or_trip arms.
+ * mount slip_or_trip arms; you_unwere (were → rehumanize).
  */
 export async function nh_timeout() {
     const u = game.u || (game.u = {});
@@ -284,6 +293,22 @@ export async function nh_timeout() {
             // C: if (!Very_fast) You_feel("yourself slow down%s.", Fast ? " a bit" : "");
             if (!Very_fast()) {
                 await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
+            }
+        }
+    }
+
+    // C: u.mtimedone && !--u.mtimedone → Unchanging refresh / were / rehumanize
+    if (u.mtimedone) {
+        u.mtimedone = (u.mtimedone | 0) - 1;
+        if (!(u.mtimedone | 0)) {
+            if (hero_unchanging(u)) {
+                const mlvl = game.youmonst?.data?.mlevel | 0;
+                u.mtimedone = rnd(100 * mlvl + 1);
+            } else if (is_were(game.youmonst?.data)) {
+                // you_unwere(FALSE) deferred — rehumanize like non-were
+                await rehumanize();
+            } else {
+                await rehumanize();
             }
         }
     }

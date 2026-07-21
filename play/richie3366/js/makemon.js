@@ -828,9 +828,28 @@ function validspecmon(mon, mndx) {
 }
 
 /**
+ * C: isupper(monsym(ptr)) — def_monsyms A–Z for S_ANGEL..S_ZOMBIE
+ * (display.js MLET_CH). Used by select_newcham_form rogue retry gate.
+ */
+function monsym_isupper(mdat) {
+    switch (mdat?.mlet) {
+    case 'S_ANGEL': case 'S_BAT': case 'S_CENTAUR': case 'S_DRAGON':
+    case 'S_ELEMENTAL': case 'S_FUNGUS': case 'S_GNOME': case 'S_GIANT':
+    case 'S_invisible': case 'S_JABBERWOCK': case 'S_KOP': case 'S_LICH':
+    case 'S_MUMMY': case 'S_NAGA': case 'S_OGRE': case 'S_PUDDING':
+    case 'S_QUANTMECH': case 'S_RUSTMONST': case 'S_SNAKE': case 'S_TROLL':
+    case 'S_UMBER': case 'S_VAMPIRE': case 'S_WRAITH': case 'S_XORN':
+    case 'S_YETI': case 'S_ZOMBIE':
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
  * C ref: mon.c select_newcham_form — sandestin/doppel/cham/vamp + random.
  * Named omissions: dragon-armor ordinary arm (which_armor); wizard
- * mon_polycontrol; rogue uppercase bias in random loop.
+ * mon_polycontrol; newcham outer rogue uppercase reject (tryct>15).
  */
 function select_newcham_form(mon) {
     let mndx = NON_PM;
@@ -867,11 +886,16 @@ function select_newcham_form(mon) {
     }
     // NON_PM ordinary / dragon armor — deferred (which_armor)
 
+    // C: random arm only retries when invalid AND rogue uppercase bias
+    // still applies; otherwise one rn1 and newcham's outer accept loop
+    // re-enters select_newcham_form (D-0928 #1111).
     if (mndx === NON_PM) {
         let tryct = 50;
         do {
             mndx = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
-        } while (--tryct > 0 && !validspecmon(mon, mndx));
+        } while (--tryct > 0 && !validspecmon(mon, mndx)
+            && (tryct > 40 && Is_rogue_level(game.u?.uz)
+                && !monsym_isupper(mons(mndx))));
     }
     return mndx;
 }
