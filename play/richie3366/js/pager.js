@@ -116,6 +116,10 @@ async function text_page_wait() {
  * C ref: wintty.c process_text_window NHW_TEXT + H2344 putstr page-at-a-time.
  * @returns {Promise<boolean>} true if ESC cancelled remaining pages
  */
+/**
+ * @param {Array<string|{text:string,attr?:number}>} lines
+ * @param {{ moreAtEnd?: boolean }} [opts]
+ */
 export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
     const disp = game.nhDisplay;
     if (!disp) {
@@ -133,9 +137,11 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
         disp.clearScreen();
         const chunk = lines.slice(offset, offset + pageRows);
         for (let r = 0; r < chunk.length; r++) {
-            const text = chunk[r] || '';
+            const entry = chunk[r];
+            const text = typeof entry === 'string' ? (entry || '') : (entry?.text || '');
+            const attr = typeof entry === 'string' ? 0 : (entry?.attr || 0);
             for (let i = 0; i < text.length && i < cols; i++)
-                disp.setCell(i, r, text[i], NO_COLOR, 0);
+                disp.setCell(i, r, text[i], NO_COLOR, attr);
         }
         // C H2344: tty_curs(1, cury+1); cl_eos(); then more on rows-1
         for (let r = chunk.length; r < rows - 1; r++) {

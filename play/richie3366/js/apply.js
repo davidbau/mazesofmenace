@@ -1377,8 +1377,8 @@ function is_valid_jump_pos_sync(x, y, magic) {
 
 /**
  * C ref: apply.c display_jump_positions — tmp_at goodpos hilite.
- * Named omission: S_goodpos glyph paint (getvalid suffix is enough for
- * autodescribe); no-op on/off keeps getpos_sethilite contract.
+ * Named omission: S_goodpos glyph paint (tmp_at DISP_BEAM); getpos_sethilite
+ * still force-newsyms valid cells so flush_screen(0) cursor matches C.
  */
 function display_jump_positions(_on_off) {
     // deferred: tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos))

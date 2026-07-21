@@ -206,7 +206,7 @@ export async function describe_decor() {
 
 /**
  * C ref: pickup.c check_here — count floor objects and look_here / engr.
- * Named omissions: uchain skip.
+ * Named omissions: none for count (uchain skipped ≡C).
  */
 export async function check_here(picked_some) {
     const u = game.u;
@@ -222,8 +222,8 @@ export async function check_here(picked_some) {
 
     let ct = 0;
     for (let obj = objects_at(u.ux, u.uy); obj; obj = obj.nexthere) {
-        // C: if (obj != uchain) ct++;
-        ct++;
+        // C: if (obj != uchain) ct++; — attached chain is not "here" for look
+        if (obj !== u.uchain) ct++;
     }
 
     if (ct) {

@@ -8,6 +8,7 @@ import {
     throws_rocks, is_swimmer, likes_lava, mindless, is_animal, strongmonst, is_mercenary,
     mon_knows_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
     is_vampshifter, is_watch, is_mind_flayer, is_covetous,
+    is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -50,8 +51,8 @@ import {
     WAND_CLASS, RING_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS,
     objectNames,
 } from './objects.js';
-import { Monnam } from './do_name.js';
-import { doname, distant_name } from './objnam.js';
+import { Monnam, y_monnam } from './do_name.js';
+import { doname, distant_name, ansimpleoname } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { may_dig, mdig_tunnel } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep } from './weapon.js';
@@ -65,7 +66,7 @@ import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
 import { check_gear_next_turn } from './worn.js';
 import { picking_lock } from './lock.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, canseemon as display_canseemon } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { tactics } from './wizard.js';
@@ -884,16 +885,44 @@ function can_hide_under_obj(obj) {
 }
 
 /**
- * C ref: mon.c hideunder — set mundetected under object / pool for eels.
- * Named omissions: You_see hide pline; in_mklev; pet cursed_object_at;
- * cockatrice corpse skip; youmonst path; non-pit trap when already trapped.
+ * C ref: mondata.c locomotion — verb for how a monster moves.
+ * Used by hideunder You_see ("slither" for snakes).
  */
-function hideunder(mtmp) {
+function locomotion(ptr, def) {
+    const cap = !!(def && def[0] === def[0].toUpperCase()
+        && def[0] !== def[0].toLowerCase());
+    const pick = (lo, hi) => (cap ? hi : lo);
+    if (is_floater(ptr)) return pick('float', 'Float');
+    if (is_flyer(ptr) && (ptr.msize ?? 2) <= MZ_SMALL) {
+        return pick('fly', 'Fly');
+    }
+    if (is_flyer(ptr)) return pick('fly', 'Fly');
+    if (((ptr?.mflags1 ?? 0) & M1_SLITHY) !== 0) {
+        return pick('slither', 'Slither');
+    }
+    if (amorphous(ptr)) return pick('ooze', 'Ooze');
+    if (!(ptr?.mmove | 0)) return pick('wiggle', 'Wiggle');
+    if (nolimbs(ptr)) return pick('crawl', 'Crawl');
+    return def;
+}
+
+/**
+ * C ref: mon.c hideunder — set mundetected under object / pool for eels.
+ * You_see "%s %s under %s" when canseemon before hide (forces --More--
+ * when prior topline cannot append). Named omissions: pet
+ * cursed_object_at; cockatrice corpse skip; youmonst path;
+ * set_msg_xy / PLNMSG_HIDE_UNDER / last_hider.
+ */
+async function hideunder(mtmp) {
     if (!mtmp?.mx) return false;
     const u = game.u || {};
     const x = mtmp.mx;
     const y = mtmp.my;
     let undetected = false;
+    let seenobj = null;
+    let locomo = null;
+    // C: seeit before mundetected mutation (canseemon fails once hidden)
+    const seeit = game.in_mklev ? 0 : (display_canseemon(mtmp) ? 1 : 0);
 
     if (mtmp === u.ustuck) {
         // holding / held — cannot hide
@@ -906,20 +935,31 @@ function hideunder(mtmp) {
         } else if (mtmp.data?.mlet === 'S_EEL') {
             undetected = !!(is_pool(x, y) && !Is_waterlevel(u.uz)
                 && (!(u.Underwater) || !couldsee(x, y)));
+            if (seeit) {
+                seenobj = 'the water';
+                locomo = 'dive';
+            }
         } else if (hides_under(mtmp.data)) {
             const otmp = objects_at(x, y);
             if (otmp && can_hide_under_obj(otmp)
                 && !is_pool(x, y) && !is_lava(x, y)
                 /* pet cursed_object_at deferred */) {
+                if (seeit) seenobj = ansimpleoname(otmp);
                 // cockatrice corpse skip deferred — any hideable obj counts
                 undetected = true;
             }
         }
     }
 
+    let seenmon = null;
+    if (seeit) seenmon = y_monnam(mtmp);
     const oldundetctd = !!mtmp.mundetected;
     mtmp.mundetected = undetected ? 1 : 0;
-    // You_see "%s hide under %s" deferred (can insert --More--)
+    // C: if (undetected && seenmon && seenobj) You_see("%s %s under %s."…)
+    if (undetected && seenmon && seenobj) {
+        if (!locomo) locomo = locomotion(mtmp.data, 'hide');
+        await pline(`You see ${seenmon} ${locomo} under ${seenobj}.`);
+    }
     if (undetected !== oldundetctd) newsym(x, y);
     return undetected;
 }
@@ -929,7 +969,7 @@ function hideunder(mtmp) {
  * left water. Called from m_move after place_monster (monmove.c:2060).
  * Named omission: hero (youmonst / uundetected) path.
  */
-function maybe_unhide_at(x, y) {
+async function maybe_unhide_at(x, y) {
     const mtmp = m_at(x, y);
     if (!mtmp) return;
     if (!mtmp.mundetected) return;
@@ -938,7 +978,7 @@ function maybe_unhide_at(x, y) {
     if ((hides_under(mtmp.data)
             && (!floorObj || trapped || !can_hide_under_obj(floorObj)))
         || (mtmp.data?.mlet === 'S_EEL' && !is_pool(x, y))) {
-        hideunder(mtmp);
+        await hideunder(mtmp);
     }
 }
 
@@ -1055,7 +1095,7 @@ export function m_postmove_effect(mtmp) {
  * hides_under / S_EEL rn2(5) → hideunder (D-0496); maybe_spin_web (D-0595).
  * Named omissions: vampshift fog; iron bars; shop add_damage;
  * has_magic_key disarm; metallivorous/cube/corpse_eater meat*;
- * hideunder You_see; check_gear_next_turn; swallowed() display polish.
+ * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish.
  * (shk/gd/priest via shk.js D-0205)
  */
 async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
@@ -1185,7 +1225,7 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
     // C: postmov hides_under / S_EEL — outside OBJ_AT (monmove.c ≈1692)
     if (hides_under(ptr) || ptr?.mlet === 'S_EEL') {
         if (mtmp.mundetected || (!helpless_mon(mtmp) && rn2(5))) {
-            hideunder(mtmp);
+            await hideunder(mtmp);
         }
         newsym(mtmp.mx, mtmp.my);
     }
@@ -1612,7 +1652,7 @@ export async function m_move(mtmp, after) {
     mtmp.my = niy;
     // C ref: monmove.c m_move — maybe_unhide_at before mon_track_add/postmov
     // so postmov hide rn2(5) sees cleared mundetected when dest has no cover.
-    maybe_unhide_at(mtmp.mx, mtmp.my);
+    await maybe_unhide_at(mtmp.mx, mtmp.my);
     mon_track_add(mtmp, omx, omy);
     return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
 }

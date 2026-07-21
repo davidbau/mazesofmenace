@@ -508,6 +508,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizidentify" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) → wiz_identify
+        name: 'wizidentify',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_identify } = await import('./wizcmds.js');
+            return wiz_identify();
+        },
+    },
+    {
         name: 'monster',
         wiz: false,
         autocomplete: true,

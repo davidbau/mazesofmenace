@@ -13,8 +13,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, terrain_glyph } from './display.js';
+import { flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph, look_shown_at, newsym_force } from './display.js';
 import { cansee } from './vision.js';
+import { distant_name, doname } from './objnam.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING,
@@ -52,12 +53,32 @@ let getpos_hilitefunc = null;
 let getpos_getvalid = null;
 
 /**
+ * C ref: getpos.c getpos_getvalids_selection + selection_force_newsyms —
+ * dirty every cell where validf is true so flush_screen(0) reprints them.
+ */
+function force_getvalid_newsyms(validf) {
+    if (typeof validf !== 'function') return;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            if (validf(x, y)) newsym_force(x, y);
+        }
+    }
+}
+
+/**
  * C ref: getpos.c getpos_sethilite — install/clear getvalid + hilite callbacks.
- * Hilite glyph painting deferred; getvalid drives "(invalid target)".
+ * When getvalid changes, force-newsym old∪new valid cells (selvar path).
+ * Hilite glyph painting (HiliteGoodposSymbol tmp_at) deferred; getvalid
+ * drives "(invalid target)" and the dirty-cell cursor side-effect.
  */
 export function getpos_sethilite(hilitef, getvalidf) {
+    const old_getvalid = getpos_getvalid;
     getpos_hilitefunc = typeof hilitef === 'function' ? hilitef : null;
     getpos_getvalid = typeof getvalidf === 'function' ? getvalidf : null;
+    if (getpos_getvalid !== old_getvalid) {
+        force_getvalid_newsyms(old_getvalid);
+        force_getvalid_newsyms(getpos_getvalid);
+    }
 }
 
 /**
@@ -142,6 +163,11 @@ function feature_match_tags(ch) {
     // Traps: '^' matches every trap cmap; '~' also VS special below
     if (ch === '^') tags.add('trap');
     if (ch === '~') tags.add('trap_vs');
+
+    // Zap/effect cmaps still enter matching[] (walls/room/corr/door skipped).
+    // S_ss1 defsym '0' — rarely on map → "Can't find dungeon feature '0'."
+    // (D-0928 #1135 seed4500 @136). Other ss/beam/expl glyphs still deferred.
+    if (ch === '0') tags.add('ss1');
 
     return tags;
 }
@@ -473,11 +499,14 @@ function cmap_defsym_explanation(x, y, loc) {
  * required for TER_DETECT after clear_glyph_buffer.
  *
  * Named omissions: full do_screen_description symbol table, coord_desc,
- * underwater unreconnoitered, object / special cmap arms (altar; doors D-0815;
- * cloud typ D-0811). Trap: tseen `trapname` only (trapped_chest/door /
- * Hallucination deferred). Travel: " (no travel path)" via
- * is_valid_travelpt when getloc_travelmode (D-0809). getpos_getvalid
- * "(invalid target)" live (D-0899); S_goodpos hilite glyphs deferred.
+ * underwater unreconnoitered, special cmap arms (altar; doors D-0815;
+ * cloud typ D-0811). Object: shown floor via look_shown_at + distant_name
+ * doname (D-0928 #1136); object_from_map fakeobj, doname_with_price /
+ * doname_vague_quan, buried/embedded suffixes deferred. Trap: tseen
+ * `trapname` only (trapped_chest/door / Hallucination deferred). Travel:
+ * " (no travel path)" via is_valid_travelpt when getloc_travelmode
+ * (D-0809). getpos_getvalid "(invalid target)" live (D-0899); S_goodpos
+ * hilite glyphs deferred.
  */
 function auto_describe_text(cx, cy) {
     const u = game.u || {};
@@ -497,6 +526,16 @@ function auto_describe_text(cx, cy) {
         // only describe when the mon glyph is actually shown (or no TER_DETECT).
         if (!(terrainmode & TER_DETECT) || (ch && ch !== ' ')) {
             return look_at_monster_brief(mtmp);
+        }
+    }
+
+    // C lookat glyph_is_object → look_at_object (before trap/cmap)
+    if (!terrainmode || (terrainmode & TER_OBJ) !== 0) {
+        const shown = look_shown_at(cx, cy);
+        if (shown?.kind === 'obj' && shown.obj) {
+            // C: distant_name(otmp, dknown ? doname_with_price : doname_vague_quan)
+            // Named: with_price / vague_quan / fakeobj / location suffixes
+            return distant_name(shown.obj, doname);
         }
     }
 
@@ -541,7 +580,7 @@ function auto_describe_text(cx, cy) {
     const cmap = cmap_defsym_explanation(cx, cy, loc);
     if (cmap) return cmap;
 
-    // Object / remaining special cmap under TER_* browse still deferred
+    // Remaining special cmap under TER_* browse still deferred
     return 'unexplored area';
 }
 
@@ -798,15 +837,29 @@ export async function getpos(ccp, force, goal, describeAt) {
     }
 
     const disp = g.nhDisplay;
+    // C getpos: curs(cx,cy); flush_screen(0) before the read loop.
+    // flush_screen(0) reprints dirty (getvalid) cells and leaves the
+    // tty cursor on the last glyph — not on the hero (D-0928 #1137).
+    if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+    flush_screen_getpos_dirty();
+    // First nhgetch uses the pre-loop dirty flush; later iterations need a
+    // full flush + curs like the prior port (topline / map sync).
+    let need_full_flush = false;
+
     for (;;) {
         // C getpos: show_goal_msg / auto_describe then curs then readchar.
         if (show_goal_msg) {
             await pline(`Move cursor to ${goal || 'desired location'}:`);
             show_goal_msg = false;
             msg_given = true;
+            // C: curs + flush_screen(0) after goal pline (gnew usually empty
+            // → cursor stays on cx,cy).
+            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+            flush_screen_getpos_dirty();
+            need_full_flush = false;
         } else if (g.iflags?.autodescribe && !msg_given) {
             // C auto_describe — firstmatch via lookat / do_screen_description
-            // + travel/invalid suffixes (getpos.c)
+            // + travel/invalid suffixes; ends with curs + flush_screen(0).
             let brief = '';
             if (typeof describeAt === 'function' && !(g.iflags.terrainmode | 0)) {
                 // Ordinary whatis: keep caller brief_at when not terrain browse
@@ -815,17 +868,18 @@ export async function getpos(ccp, force, goal, describeAt) {
             if (!brief) brief = auto_describe_text(cx, cy);
             if (brief) brief += auto_describe_suffix(cx, cy);
             g._pending_message = brief || '';
+            // Full rebuild keeps map/topline in sync for walk frames; then
+            // curs onto the target (gnew usually empty after prior flush).
+            await flush_screen(1);
+            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+            need_full_flush = false;
+        } else if (need_full_flush) {
+            await flush_screen(1);
+            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
         }
 
-        // flush_screen/_buildScreenOutput resets cursor to hero for ordinary
-        // topline messages — set getpos cursor *after* flush, like C curs().
-        if (disp?.setCursor) {
-            await flush_screen(1);
-            disp.setCursor(cx - 1, cy + 1);
-        } else {
-            await flush_screen(1);
-        }
         const key = await nhgetch();
+        need_full_flush = true;
         const ch = String.fromCharCode(key);
 
         // C: if (iflags.autodescribe) msg_given = FALSE;

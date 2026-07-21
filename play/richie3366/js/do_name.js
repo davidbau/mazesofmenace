@@ -399,6 +399,19 @@ export function Monnam(mtmp) {
 }
 
 /**
+ * C ref: do_name.c y_monnam — ARTICLE_YOUR for pets, ARTICLE_THE else.
+ * SUPPRESS_SADDLE when named or usteed.
+ */
+export function y_monnam(mtmp) {
+    if (!mtmp) return 'it';
+    const prefix = mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE;
+    const suppression = (has_mgivenname(mtmp) || mtmp === game.u?.usteed)
+        ? SUPPRESS_SADDLE
+        : 0;
+    return x_monnam(mtmp, prefix, null, suppression, false);
+}
+
+/**
  * C ref: do_name.c noit_mon_nam / noit_Monnam — ARTICLE_YOUR + SUPPRESS_IT.
  * Never "it"; named → bare; hallu deferred.
  */

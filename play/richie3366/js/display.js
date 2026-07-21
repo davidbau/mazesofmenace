@@ -1879,6 +1879,16 @@ function map_location_memory(x, y) {
     map_location(x, y, false);
 }
 
+/**
+ * C ref: display.c newsym_force — newsym then keep gbuf dirty so the next
+ * flush_screen(0) reprints the cell (getpos_sethilite selection path).
+ */
+export function newsym_force(x, y) {
+    newsym(x, y);
+    const loc = game.level?.at(x, y);
+    if (loc) loc.gnew = 1;
+}
+
 // ── newsym ──
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
@@ -2744,7 +2754,10 @@ function _buildScreenOutput() {
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
-                if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+                if (!loc?.disp_ch || loc.disp_ch === ' ') {
+                    if (loc) loc.gnew = 0;
+                    continue;
+                }
                 let ch = loc.disp_ch;
                 if (loc.disp_decgfx) {
                     const uni = DEC_TO_UNICODE[ch];
@@ -2760,6 +2773,8 @@ function _buildScreenOutput() {
                 // Don't clobber --More-- on row 1
                 if (sr === 1 && msgLines.length > 1) continue;
                 display.setCell(x - 1, sr, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                // C flush_screen clears gnew after print_glyph
+                loc.gnew = 0;
             }
         }
         // Status lines from last bot() (uhp==-1 skip keeps prior)
@@ -2848,10 +2863,12 @@ function _paintToplineAndStatus() {
  * After vision_recalc(2) leave-level newsyms, Get bones? yn flushes that
  * gbuf before flush_screen(-1) postpone. JS stores gbuf in loc.disp_* on
  * the stashed leave-level — paint only gnew cells to the Terminal.
+ * @returns {{ x: number, y: number } | null} last map cell painted, or null
  */
 export function paint_gbuf_level_to_terminal(level) {
     const display = game?.nhDisplay;
-    if (!display?.setCell || !level?.at) return;
+    if (!display?.setCell || !level?.at) return null;
+    let last = null;
     for (let y = 0; y < ROWNO; y++) {
         const sr = y + 1;
         for (let x = 1; x < COLNO; x++) {
@@ -2868,8 +2885,10 @@ export function paint_gbuf_level_to_terminal(level) {
             }
             display.setCell(x - 1, sr, ch || ' ', color, attr);
             loc.gnew = 0;
+            last = { x, y };
         }
     }
+    return last;
 }
 
 // ── flush_screen ──
@@ -2901,6 +2920,38 @@ export async function flush_screen(mode) {
         return;
     }
     _buildScreenOutput();
+}
+
+/**
+ * C ref: display.c flush_screen(0) after getpos curs() — reprint dirty
+ * gbuf cells and leave the tty cursor on the last glyph printed (do not
+ * curs(hero)). Full flush_screen(0) elsewhere still does a full rebuild;
+ * getpos needs this narrow path so the first targeting frame matches C.
+ */
+export function flush_screen_getpos_dirty() {
+    if (game._menu_overlay) return;
+    if (_delay_flushing) {
+        _paintToplineOnly();
+        return;
+    }
+    if (!game.level || game._stale_map_flush) {
+        _paintToplineAndStatus();
+        return;
+    }
+    const display = game?.nhDisplay;
+    // Caller (getpos) already curs()'d; _paintToplineOnly would steal the
+    // cursor onto the message line — remember and restore when no dirty glyphs.
+    const prevCol = display?.cursorCol;
+    const prevRow = display?.cursorRow;
+    _paintToplineOnly();
+    const last = paint_gbuf_level_to_terminal(game.level);
+    if (last && display?.setCursor) {
+        // C print_glyph → tty_curs(x,y) with --x then putchar advances
+        // curx by 1, so the tty cursor sits in column map_x (not map_x-1).
+        display.setCursor(last.x, last.y + 1);
+    } else if (display?.setCursor && prevCol != null && prevRow != null) {
+        display.setCursor(prevCol, prevRow);
+    }
 }
 
 // ── cls ──
@@ -3120,16 +3171,19 @@ export async function pline(msg) {
 
     // Capture skip before more(); C still paints the new line with the
     // pre-more skip flag even if ESC sets WIN_STOP during more().
-    // C update_topl: local `skip`; "You die" clears WIN_STOP then
-    // sets skip=FALSE so redotoplin still runs (D-0928 #1132).
+    // C update_topl: `notdied` starts TRUE; only assigned inside the
+    // short-circuiting append predicate. "You die" clears WIN_STOP iff
+    // that assignment ran (room check passed). Under WIN_STOP + no room,
+    // notdied stays 1 → WIN_STOP kept → yn skips more() (D-0928 #1133).
     let skip = _win_stop;
-    const notdied = !String(msg).startsWith('You die');
+    let notdied = 1;
     const line = String(msg);
 
-
+    const n0 = line.length;
+    // C: (NEED_MORE || skip) && cury==0 && room && (notdied=strncmp)!=0
     if ((_toplin === TOPLINE_NEED_MORE || skip)
-        && _toplines.length + 3 + line.length < CO - 8
-        && notdied) {
+        && n0 + _toplines.length + 3 < CO - 8
+        && ((notdied = line.startsWith('You die') ? 0 : 1) !== 0)) {
         _toplines = _toplines ? `${_toplines}  ${line}` : line;
         if (!skip) game._pending_message = _toplines;
         // C: gp.prevmsg = line (new text only, not the concatenated topline)
@@ -3143,9 +3197,9 @@ export async function pline(msg) {
     // C ref: topl.c update_topl — replace spaces with `\n` while n0 >= CO
     let formatted = line;
     {
-        let n0 = formatted.length;
+        let wrapN0 = formatted.length;
         let tl = 0;
-        while (n0 >= CO) {
+        while (wrapN0 >= CO) {
             const otl = tl;
             let i = tl + CO - 1;
             for (; i !== otl; --i) {
@@ -3157,7 +3211,7 @@ export async function pline(msg) {
             }
             formatted = `${formatted.slice(0, i)}\n${formatted.slice(i + 1)}`;
             tl = i + 1;
-            n0 = formatted.length - tl;
+            wrapN0 = formatted.length - tl;
         }
     }
 

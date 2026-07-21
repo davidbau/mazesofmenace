@@ -388,3 +388,23 @@ export async function wiz_where() {
     await print_dungeon(false);
     return ECMD_OK;
 }
+
+/**
+ * C ref: wizcmds.c wiz_identify — #wizidentify / ^I.
+ * Sets iflags.override_ID then display_inventory (wizid Debug Identify menu).
+ * Named omissions: unavailcmd ecname_from_fn wording (generic Unavailable).
+ */
+export async function wiz_identify() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("Unavailable command 'wizidentify'.");
+        return ECMD_OK;
+    }
+    if (!game.iflags) game.iflags = {};
+    // C: cmd_from_func(wiz_identify) → C('I'); NUL remapping → C('I')
+    const CTRL_I = 9;
+    game.iflags.override_ID = CTRL_I;
+    const { display_inventory } = await import('./invent.js');
+    await display_inventory();
+    game.iflags.override_ID = 0;
+    return ECMD_OK;
+}

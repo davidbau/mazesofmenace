@@ -16,6 +16,8 @@ import {
     AMULET_CLASS,
     GEM_CLASS,
     VENOM_CLASS,
+    BALL_CLASS,
+    CHAIN_CLASS,
     objectNames,
     objectNameStrs,
     objectDescrs,
@@ -27,6 +29,7 @@ import {
 } from './generated/monsters_data.js';
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
+    W_BALL, W_CHAIN,
     Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
     P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
@@ -639,6 +642,12 @@ function pretty_base(obj) {
         else buf += dn;
         return buf;
     }
+    // C ref: objnam.c xname_flags BALL_CLASS —
+    // "%sheavy iron ball" with "very " when owt > oc_weight (punish levy).
+    if (obj.oclass === BALL_CLASS) {
+        const ocw = game.objects?.[obj.otyp]?.oc_weight ?? 0;
+        return `${((obj.owt | 0) > ocw) ? 'very ' : ''}heavy iron ball`;
+    }
     let base = PRETTY[n] || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
     // C ref: objnam.c xname — Samurai Japanese_item_name overrides actualn
     if (Role_if_samurai()) {
@@ -871,11 +880,34 @@ const SPECIAL_SUBJS = [
     'amnesia', 'detect monsters', 'paralysis', 'shape changers', 'nemesis',
 ];
 
+// C ref: objnam.c singplur_compound — compounds[] (compound_start " -").
+const SINGPLUR_COMPOUNDS = [
+    ' of ', ' labeled ', ' called ',
+    ' named ', ' above', // lurkers above
+    ' versus ', ' from ', ' in ',
+    ' on ', ' a la ', ' with',
+    ' de ', " d'", ' du ',
+    ' au ', '-in-', '-at-',
+];
+
+/** @returns {number} index of first compound marker, or -1 */
+function singplur_compound(str) {
+    const lower = str.toLowerCase();
+    for (let i = 0; i < str.length; i++) {
+        const c = str[i];
+        if (c !== ' ' && c !== '-') continue;
+        for (const cmpd of SINGPLUR_COMPOUNDS) {
+            if (lower.startsWith(cmpd.toLowerCase(), i)) return i;
+        }
+    }
+    return -1;
+}
+
 /**
  * C ref: objnam.c makesingular — wish/plural → canonical object name.
- * Compound " of " singularizes the head only; as_is; one_off reverse;
- * -ies/-ves/-es/-s. Named omissions: pronoun genders; craft/mongoose;
- * badman men→man; full Strcasecpy case polish on every branch.
+ * Compound via singplur_compound singularizes the head only; as_is;
+ * one_off reverse; -ies/-ves/-es/-s. Named omissions: pronoun genders;
+ * craft/mongoose; badman men→man; full Strcasecpy case polish.
  */
 export function makesingular(oldstr) {
     if (oldstr == null) return '';
@@ -883,13 +915,13 @@ export function makesingular(oldstr) {
     while (s.startsWith(' ')) s = s.slice(1);
     if (!s) return '';
 
-    // C: singplur_compound — singularize only the part before " of "
+    // C: singplur_compound — singularize only the part before marker
     let excess = '';
-    const ofIdx = s.toLowerCase().indexOf(' of ');
     let bp = s;
-    if (ofIdx > 0) {
-        excess = s.slice(ofIdx);
-        bp = s.slice(0, ofIdx);
+    const cmpIdx = singplur_compound(s);
+    if (cmpIdx >= 0) {
+        excess = s.slice(cmpIdx);
+        bp = s.slice(0, cmpIdx);
     }
 
     const lower = bp.toLowerCase();
@@ -980,7 +1012,7 @@ export function makesingular(oldstr) {
 }
 
 /**
- * C ref: objnam.c makeplural — irregular one_off + compound "of" + ya.
+ * C ref: objnam.c makeplural — irregular one_off + singplur_compound + ya.
  * Named omissions: pronoun genders; already_plural ae/eaux; man→men;
  * as_is collective; singplur_lookup mongoose/slice edges;
  * full case-preserve polish beyond matched-suffix first letter.
@@ -990,9 +1022,10 @@ export function makeplural(s) {
     while (s.startsWith(' ')) s = s.slice(1);
     // C: skip "pair of " → keep as-is (objects use collective "pair")
     if (/^pair of /i.test(s)) return s;
-    const of = s.indexOf(' of ');
-    if (of > 0) {
-        return makeplural(s.slice(0, of)) + s.slice(of);
+    // C: singplur_compound — pluralize head only ("scrolls labeled KIRJE")
+    const cmpIdx = singplur_compound(s);
+    if (cmpIdx >= 0) {
+        return makeplural(s.slice(0, cmpIdx)) + s.slice(cmpIdx);
     }
     // C: "ya" stays "ya" (Samurai bamboo arrows)
     if (s.length === 2 && s.toLowerCase() === 'ya') return s;
@@ -1149,12 +1182,34 @@ export function obj_is_pname(obj) {
 }
 
 /**
- * C ref: objnam.c simpleonames — type appearance without quan/BUC (minimal_xname
- * subset). Named omissions: sack→bag family aliases; makeplural quan≠1 polish.
+ * C ref: objnam.c simpleonames ← minimal_xname — type appearance without
+ * quan/BUC. Statue/figurine corpsenm suppressed (C bareobj.corpsenm=NON_PM).
+ * Named omissions: sack→bag family aliases.
  */
 export function simpleonames(obj) {
     if (!obj) return 'object';
+    // C minimal_xname: if (otyp != BOULDER) bareobj.corpsenm = NON_PM
+    const n = objectNames[obj.otyp];
+    if (n === 'STATUE') return 'statue';
+    if (n === 'FIGURINE') return 'figurine';
     return pretty_base(obj);
+}
+
+/**
+ * C ref: objnam.c ansimpleoname — an()/the() + simpleonames.
+ * Unique named items → "the …"; quan==1 → an(); else bare plural.
+ * Named: FAKE_AMULET→AMULET unique remap deferred (uses otyp as-is).
+ */
+export function ansimpleoname(obj) {
+    if (!obj) return 'an object';
+    const name = simpleonames(obj);
+    const ocl = objects()?.[obj.otyp];
+    const actual = objectNameStrs[obj.otyp];
+    if (ocl?.oc_unique && actual && name === actual) {
+        return the(name);
+    }
+    if ((obj.quan | 0) === 1) return an(name);
+    return name;
 }
 
 /**
@@ -1332,7 +1387,8 @@ export function doname(obj) {
 
     // C ref: objnam.c doname_base — ARMOR falls through to WEAPON for
     // add_erosion_words + spe; BALL/CHAIN also call add_erosion_words.
-    if (donameClass === WEAPON_CLASS || donameClass === ARMOR_CLASS) {
+    if (donameClass === WEAPON_CLASS || donameClass === ARMOR_CLASS
+        || donameClass === BALL_CLASS || donameClass === CHAIN_CLASS) {
         prefix += add_erosion_words(obj);
     }
 
@@ -1373,6 +1429,11 @@ export function doname(obj) {
         bp += ' (on right hand)';
     if (obj.owornmask & W_RINGL)
         bp += ' (on left hand)';
+    // C ref: objnam.c doname_base BALL_CLASS/CHAIN_CLASS —
+    // W_BALL → "(chained to you)"; W_CHAIN → "(attached to you)".
+    if (obj.owornmask & (W_BALL | W_CHAIN)) {
+        bp += ` (${(obj.owornmask & W_BALL) ? 'chained' : 'attached'} to you)`;
+    }
     // C ref: objnam.c doname_base W_WEP — stack/ammo/missile/non-weptool →
     // "(wielded)"; else "weapon in"/"wielded in" hand(s). mrg_to_wielded,
     // AKLYS tethered, warn_obj/artifact_light paren rewrite deferred.

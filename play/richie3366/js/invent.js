@@ -30,6 +30,7 @@ import {
     ROCK_CLASS,
     BALL_CLASS,
     CHAIN_CLASS,
+    VENOM_CLASS,
     objectNames,
     objectNameStrs,
     objectDescrs,
@@ -320,12 +321,13 @@ const CLASS_NAMES = {
     [ROCK_CLASS]: 'Boulders/Statues',
     [BALL_CLASS]: 'Iron balls',
     [CHAIN_CLASS]: 'Chains',
+    [VENOM_CLASS]: 'Venoms',
 };
 
 /**
  * C ref: invent.c let_to_name — class heading for INVORDER_SORT menus.
  * Named omissions: unpaid prefix; showsym "  ('%c')" padding; CONTAINED_SYM;
- * Venom / Illegal objects.
+ * Illegal objects. Venoms via CLASS_NAMES[VENOM_CLASS] (D-0928 #1142).
  */
 export function let_to_name(letch, unpaid = false, _showsym = false) {
     const name = CLASS_NAMES[letch] || 'Items';
@@ -1061,13 +1063,52 @@ export async function display_pickinv_reply(lets) {
 }
 
 /**
+ * C ref: invent.c display_pickinv wizid branch (wizard && override_ID).
+ * Debug Identify title; unid_cnt==0 → "(all items are permanently identified
+ * already)" then select_menu PICK_ANY (no selectors → dismiss).
+ * Named omissions: unid_cnt>0 PICK_ANY ('_'/^I identify_pack, per-item
+ * identify, sortpack class headers, def_oc_syms group accel,
+ * MENU_ITEMFLAGS_SKIPINVERT); update_inventory nesting.
+ */
+async function display_pickinv_wizid() {
+    const unid_cnt = count_unidentified(game.invent);
+    let prompt = 'Debug Identify';
+    if (unid_cnt) {
+        prompt += ` -- unidentified or partially identified item${
+            unid_cnt === 1 ? '' : 's'
+        }`;
+    }
+    const entries = [{ text: prompt, attr: 0 }];
+    if (!unid_cnt) {
+        entries.push({
+            text: '(all items are permanently identified already)',
+            attr: 0,
+        });
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        await nhgetch();
+        await dismiss_nhw_menu();
+        return;
+    }
+    // Deferred: C PICK_ANY item menu ('_'/^I / letters). Do not invent.
+    if (game.iflags) game.iflags.override_ID = 0;
+}
+
+/**
  * C ref: invent.c display_inventory(NULL, FALSE) / display_pickinv PICK_NONE.
  * C ref: wintty.c tty_end_menu — lmax=rows-1; npages>1 → process_menu_window
  *        "(N of M)" paging (select_menu PICK_NONE). Single-page corner vs
  *        fullscreen still uses "(end) ".
  * Shows invent and waits for a dismiss key (Space advances pages).
+ * When wizard && iflags.override_ID → wizid Debug Identify path.
  */
 export async function display_inventory() {
+    const wizard = !!(game.flags?.debug || game.flags?.wizard);
+    if (wizard && (game.iflags?.override_ID | 0)) {
+        await display_pickinv_wizid();
+        return;
+    }
+
     const lines = invent_lines(); // includes trailing "(end)"
     const menuItems = lines.slice(0, -1);
     const rows = display()?.rows || 24;
@@ -1168,6 +1209,9 @@ export function makeknown(otyp) {
 
 /**
  * C ref: o_init.c dodiscovered() — discoveries by inv_order within each class.
+ * C: wintty tty_putstr(NHW_TEXT) pages at rows-1; display_nhwindow + dmore.
+ * Named omissions: discosort a/c/s; unique/relics + artifact pseudo-classes;
+ * menu_requested choose_disco_sort; flags.inv_order overrides (DEF_INV_ORDER).
  */
 export async function dodiscovered() {
     const lines = [
@@ -1176,10 +1220,13 @@ export async function dodiscovered() {
     ];
     const bases = game.bases || [];
     const disco = game.disco || [];
-    // C walks flags.inv_order; DEF_INV_ORDER matches options.c def_inv_order.
-    // Named omission: VENOM_CLASS append when absent from inv_order.
+    // C: Strcpy(classes, flags.inv_order); append VENOM_CLASS if absent.
+    const classes = DEF_INV_ORDER.includes(VENOM_CLASS)
+        ? [...DEF_INV_ORDER]
+        : [...DEF_INV_ORDER, VENOM_CLASS];
     const { append_price_quote } = await import('./shk.js');
-    for (const oclass of DEF_INV_ORDER) {
+    let ct = 0;
+    for (const oclass of classes) {
         const found = [];
         const start = bases[oclass] || 0;
         const end = bases[oclass + 1] || disco.length;
@@ -1188,8 +1235,12 @@ export async function dodiscovered() {
             if (dis && interesting_to_discover(dis)) found.push(dis);
         }
         if (!found.length) continue;
-        lines.push({ text: CLASS_NAMES[oclass], attr: ATR_INVERSE });
+        lines.push({
+            text: CLASS_NAMES[oclass] || 'Items',
+            attr: ATR_INVERSE,
+        });
         for (const otyp of found) {
+            ct++;
             const enc = !!game.objects?.[otyp]?.oc_encountered;
             const prefix = enc ? '  ' : '* ';
             // C: disco_append_typename → disco_typename + append_price_quote
@@ -1198,16 +1249,14 @@ export async function dodiscovered() {
             lines.push({ text: buf, attr: 0 });
         }
     }
-    // Pad so --More-- lands on row 23 like C tty text window.
-    while (lines.length < 24) lines.push({ text: '', attr: 0 });
-    lines[23] = { text: '--More--', attr: 0 };
-
-    paint_overlay(lines, { cursor: [8, 23] });
-    await flush_screen(1);
-    await nhgetch(); // Esc
-    clear_overlay();
-    await docrt();
-    await flush_screen(1);
+    if (ct === 0) {
+        // C: You("haven't discovered anything yet...");
+        await pline("You haven't discovered anything yet...");
+        return;
+    }
+    // C: display_nhwindow(NHW_TEXT) → process_text_window page-at-a-time
+    const { show_text_pages } = await import('./pager.js');
+    await show_text_pages(lines);
 }
 
 // C ref: attrib.c attrname[]

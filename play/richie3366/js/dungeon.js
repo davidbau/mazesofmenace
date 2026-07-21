@@ -42,6 +42,8 @@ import {
     ALTAR,
     ASCENDED,
     ESCAPED,
+    In_endgame,
+    In_sokoban,
 } from './const.js';
 
 const FLAG_MAP = {
@@ -781,6 +783,42 @@ function OF_INTEREST(feat) {
         || feat.ngrave || feat.ntree || feat.nshop || feat.ntemple);
 }
 
+/** C ref: dungeon.c on_level — same dnum/dlevel. */
+function on_level(a, b) {
+    return (a?.dnum | 0) === (b?.dnum | 0)
+        && (a?.dlevel | 0) === (b?.dlevel | 0);
+}
+
+/**
+ * C ref: dungeon.c interest_mapseen — which mapseen nodes appear in
+ * #overview (why==0). Named omissions: full auto-annotation flag set
+ * beyond the common ones; bones knownbones branch detail.
+ */
+function interest_mapseen(mptr) {
+    const u = game.u || {};
+    if (on_level(u.uz, mptr.lev)) return true;
+    const fl = mptr.flags || {};
+    if (fl.notreachable || fl.forgot) return false;
+    if (In_tutorial(u.uz)) return In_tutorial(mptr.lev);
+    if (In_tutorial(mptr.lev)) return false;
+    if (fl.oracle || fl.bigroom || fl.roguelevel || fl.castle || fl.valley
+        || fl.msanctum || fl.vibrating_square || fl.quest_summons
+        || fl.questing) {
+        return true;
+    }
+    if (In_sokoban(mptr.lev)
+        && (In_sokoban(u.uz) || !fl.sokosolved)) {
+        return true;
+    }
+    if (In_endgame(u.uz)) return In_endgame(mptr.lev);
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
+    const dun = game.dungeons?.[mptr.lev?.dnum | 0];
+    return !!(OF_INTEREST(mptr.feat || empty_feat())
+        || (mptr.final_resting_place && (fl.knownbones || wizard))
+        || mptr.custom || mptr.br
+        || ((mptr.lev?.dlevel | 0) === (dun?.dunlev_ureached | 0)));
+}
+
 /** Ensure lastseentyp[COLNO][ROWNO]; C svl.lastseentyp. */
 function ensure_lastseentyp() {
     if (!game.lastseentyp) {
@@ -990,14 +1028,15 @@ export async function donamelevel() {
 }
 
 /**
- * C ref: dungeon.c show_overview / print_mapseen (subset).
+ * C ref: dungeon.c show_overview / print_mapseen / traverse_mapseenchn
+ * (subset).
  * why: 0 #overview; 1/2 end disclosure (lived/died); -1 menu deferred.
  * End disclosure uses select_menu PICK_NONE → corner "(end)", not
  * display_nhwindow --More-- (unlike enlightenment putstr path).
- * Named omissions: interest_mapseen filter for why==0 beyond current;
- * endgame traverse; builds_up range headers; OF_INTEREST features;
- * branches; cemetery bones list beyond dead hero; wizard proto names;
- * PICK_ONE annotation menu (why==-1).
+ * Named omissions: builds_up range headers; shop_string / altar-god;
+ * branch lines; cemetery bones list beyond dead hero; wizard proto
+ * names; PICK_ONE annotation menu (why==-1); endgame-first traverse
+ * when In_endgame (Planes above DoD).
  * @param {number} why
  * @param {number} reason how-died when why>0
  */
@@ -1013,12 +1052,15 @@ export async function show_overview(why = 0, reason = 0) {
     const entries = [];
     let lastdun = -1;
 
+    // C traverse_mapseenchn(viewendgame=0) + interest_mapseen for why==0.
+    // Endgame-first pass (Planes above DoD) deferred when In_endgame.
     const chain = game.mapseenchn || [];
+    const heroInEnd = In_endgame(u.uz);
     for (const mptr of chain) {
         if (why === 0) {
-            const cur = (mptr.lev?.dnum | 0) === (u.uz?.dnum | 0)
-                && (mptr.lev?.dlevel | 0) === (u.uz?.dlevel | 0);
-            if (!cur) continue;
+            const mInEnd = In_endgame(mptr.lev);
+            if (mInEnd !== heroInEnd) continue;
+            if (!interest_mapseen(mptr)) continue;
         }
         const dnum = mptr.lev?.dnum | 0;
         const printdun = dnum !== lastdun;
@@ -1031,8 +1073,9 @@ export async function show_overview(why = 0, reason = 0) {
             const ureached = dun?.dunlev_ureached | 0;
             const entry = dun?.entry_lev | 0;
             let hdr = `${dname}:`;
-            if (ureached && entry && ureached !== entry) {
-                // builds_up deferred — ordinary descending DoD
+            if (ureached && entry && ureached !== entry
+                && !In_endgame(mptr.lev)) {
+                // builds_up deferred — ordinary descending DoD/Gehennom
                 hdr = `${dname}: levels ${depthstart} to ${depthstart + ureached - 1}`;
             }
             // C end disclosure: menu heading highlight suppressed (ATR_NONE);
@@ -1047,8 +1090,7 @@ export async function show_overview(why = 0, reason = 0) {
         const TAB = '   ';
         let levLine = `${why !== -1 ? TAB : ''}Level ${levnum}:`;
         if (mptr.custom) levLine += ` "${mptr.custom}"`;
-        const onHere = (mptr.lev?.dnum | 0) === (u.uz?.dnum | 0)
-            && (mptr.lev?.dlevel | 0) === (u.uz?.dlevel | 0);
+        const onHere = on_level(u.uz, mptr.lev);
         if (onHere) {
             const verb = (why <= 0 || (why === 1 && reason === ASCENDED))
                 ? 'are'
@@ -1089,10 +1131,9 @@ export async function show_overview(why = 0, reason = 0) {
 
 /**
  * C ref: dungeon.c dooverview / show_overview (#overview).
- * Branch envelope: why=0 PICK_NONE current-level line + feature sentence
- * (print_mapseen OF_INTEREST) + ESC/space dismiss.
- * Full traverse_mapseenchn / interest_mapseen / shop_string / altar-god /
- * auto-annotation flags deferred.
+ * Branch envelope: why=0 PICK_NONE via interest_mapseen + feature
+ * sentence (print_mapseen OF_INTEREST) + ESC/space dismiss.
+ * shop_string / altar-god / branch lines / endgame-first order deferred.
  */
 export async function dooverview() {
     await show_overview(0, 0);

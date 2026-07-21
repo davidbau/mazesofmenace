@@ -5,8 +5,10 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { flush_topl_more, pline, canseemon } from './display.js';
+import { flush_topl_more, pline, You_feel, canseemon, bot } from './display.js';
 import { select_menu_pick_none } from './invent.js';
+import { select_menu_pick_one } from './options.js';
+import { yn_function } from './getline.js';
 import { Monnam } from './do_name.js';
 import { doname } from './objnam.js';
 import {
@@ -27,13 +29,13 @@ import {
     P_ENCHANTMENT_SPELL, P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
     P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_RIDING,
     P_FIRST_WEAPON, P_LAST_WEAPON, P_FIRST_SPELL, P_LAST_SPELL,
-    P_FIRST_H_TO_H, P_LAST_H_TO_H, P_NUM_SKILLS,
+    P_FIRST_H_TO_H, P_LAST_H_TO_H, P_NUM_SKILLS, P_SKILL_LIMIT,
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     P_MASTER, P_GRAND_MASTER,
     NEED_WEAPON, NEED_RANGED_WEAPON, NEED_HTH_WEAPON,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
     NO_WEAPON_WANTED, W_WEP, W_ARMS, W_ARMG,
-    ECMD_OK, STR18, Upolyd,
+    ECMD_OK, STR18, Upolyd, MAXULEV,
 } from './const.js';
 import { acurr, A_STR } from './attrib.js';
 import { m_carrying, mon_has_shield } from './mon.js';
@@ -442,25 +444,168 @@ export async function mon_wield_item(mon) {
     return 0;
 }
 
+/** C ref: flag.h `#define wizard flags.debug` */
+function wizardMode() {
+    return !!(game.flags?.debug || game.flags?.wizard);
+}
+
+/** C ref: weapon.c slots_required */
+function slots_required(skill) {
+    const tmp = P_SKILL(skill);
+    if (skill <= P_LAST_WEAPON || skill === P_TWO_WEAPON_COMBAT) return tmp;
+    return Math.trunc((tmp + 1) / 2);
+}
+
+/**
+ * C ref: weapon.c can_advance.
+ * Exported for insight enhance tips (callers may still defer messaging).
+ */
+export function can_advance(skill, speedy) {
+    if (P_RESTRICTED(skill)
+        || P_SKILL(skill) >= P_MAX_SKILL(skill)
+        || (game.u?.skills_advanced | 0) >= P_SKILL_LIMIT) {
+        return false;
+    }
+    if (wizardMode() && speedy) return true;
+    return (P_ADVANCE(skill) | 0) >= practice_needed_to_advance(P_SKILL(skill))
+        && (game.u?.weapon_slots | 0) >= slots_required(skill);
+}
+
+/** C ref: weapon.c could_advance */
+function could_advance(skill) {
+    if (P_RESTRICTED(skill)
+        || P_SKILL(skill) >= P_MAX_SKILL(skill)
+        || (game.u?.skills_advanced | 0) >= P_SKILL_LIMIT) {
+        return false;
+    }
+    return (P_ADVANCE(skill) | 0) >= practice_needed_to_advance(P_SKILL(skill));
+}
+
+/** C ref: weapon.c peaked_skill */
+function peaked_skill(skill) {
+    if (P_RESTRICTED(skill)) return false;
+    return P_SKILL(skill) >= P_MAX_SKILL(skill)
+        && (P_ADVANCE(skill) | 0) >= practice_needed_to_advance(P_SKILL(skill));
+}
+
+/** C plur — singular empty / plural "s" */
+function plur(n) {
+    return (n | 0) === 1 ? '' : 's';
+}
+
+/**
+ * C ref: weapon.c skill_advance — spend slots, bump rank, You message,
+ * spell-school discover.
+ */
+async function skill_advance(skill) {
+    const u = game.u;
+    if (!u) return;
+    u.weapon_slots = (u.weapon_slots | 0) - slots_required(skill);
+    set_P_SKILL(skill, P_SKILL(skill) + 1);
+    if (!u.skill_record) u.skill_record = new Array(P_SKILL_LIMIT).fill(0);
+    u.skill_record[u.skills_advanced | 0] = skill;
+    u.skills_advanced = (u.skills_advanced | 0) + 1;
+    const most = P_SKILL(skill) >= P_MAX_SKILL(skill) ? 'most' : 'more';
+    await pline(`You are now ${most} skilled in ${P_NAME(skill)}.`);
+    if (skill >= P_FIRST_SPELL && skill <= P_LAST_SPELL) {
+        skill_based_spellbook_id();
+    }
+}
+
 /**
  * C ref: weapon.c enhance_weapon_skill (#enhance) + add_skills_to_menu.
- * Branch envelope: non-wizard, no advanceable/annotated skills → PICK_NONE
- * fullscreen paged menu. Wizard speedy y_n, skill_advance, can_advance /
- * could_advance / peaked_skill annotations deferred.
+ * Branch envelope: wizard y_n + speedy PICK_ONE loop + skill_advance;
+ * non-wizard / no-advance PICK_NONE; * / # legend. add_weapon_skill /
+ * lose_weapon_skill / use_skill may-advance msg still deferred.
  */
 export async function enhance_weapon_skill() {
     await flush_topl_more();
     // C: svc.context.tips |= (1 << TIP_ENHANCE); TIP_ENHANCE=0
     if (game.context) game.context.tips = (game.context.tips | 0) | (1 << 0);
-    // wizard y_n("Advance skills without practice?") deferred
 
-    const entries = [
-        // C tty_end_menu: prompt then blank prepended (reverse+prepend → prompt, blank, items)
-        { text: 'Current skills:', attr: ATR_INVERSE },
-        { text: '', attr: 0 },
-    ];
-    add_skills_to_menu(entries, false, false);
-    await select_menu_pick_none(entries);
+    let speedy = false;
+    // C: y_n(query) → yn_function(query, ynchars, 'n', TRUE)
+    if (wizardMode()
+        && (await yn_function('Advance skills without practice?', 'yn', 'n')) === 'y') {
+        speedy = true;
+    }
+
+    let n = 0;
+    do {
+        let to_advance = 0;
+        let eventually_advance = 0;
+        let maxxed_cnt = 0;
+        for (let i = 0; i < P_NUM_SKILLS; i++) {
+            if (P_RESTRICTED(i)) continue;
+            if (can_advance(i, speedy)) to_advance++;
+            else if (could_advance(i)) eventually_advance++;
+            else if (peaked_skill(i)) maxxed_cnt++;
+        }
+
+        const raw = [];
+        if (eventually_advance > 0 || maxxed_cnt > 0) {
+            if (eventually_advance > 0) {
+                const when = (game.u?.ulevel | 0) < MAXULEV
+                    ? "when you're more experienced"
+                    : 'if skill slots become available';
+                raw.push({
+                    text: `(Skill${plur(eventually_advance)} flagged by "*" may be enhanced ${when}.)`,
+                    attr: 0,
+                    selectable: false,
+                });
+            }
+            if (maxxed_cnt > 0) {
+                raw.push({
+                    text: `(Skill${plur(maxxed_cnt)} flagged by "#" cannot be enhanced any further.)`,
+                    attr: 0,
+                    selectable: false,
+                });
+            }
+            raw.push({ text: '', attr: 0, selectable: false });
+        }
+
+        const selectable = to_advance + eventually_advance + maxxed_cnt > 0;
+        add_skills_to_menu(raw, selectable, speedy);
+
+        let prompt = to_advance > 0
+            ? 'Pick a skill to advance:'
+            : 'Current skills:';
+        if (wizardMode() && !speedy) {
+            const slots = game.u?.weapon_slots | 0;
+            prompt += `  (${slots} slot${plur(slots)} available)`;
+        }
+        // C tty_end_menu: prepend prompt then blank
+        raw.unshift(
+            { text: prompt, attr: ATR_INVERSE, selectable: false },
+            { text: '', attr: 0, selectable: false },
+        );
+
+        n = 0;
+        if (to_advance > 0) {
+            const res = await select_menu_pick_one(raw);
+            // C fullscreen NHW_MENU dismiss → botlx/bot before You/--More--
+            // (select_menu_pick_one clear_committed_status for Options path)
+            await bot();
+            if (res.kind === 'pick' && res.item?.skill != null) {
+                await skill_advance(res.item.skill);
+                for (let i = 0; i < P_NUM_SKILLS; i++) {
+                    if (can_advance(i, speedy)) {
+                        if (!speedy) {
+                            await You_feel('you could be more dangerous!');
+                        }
+                        n = 1;
+                        break;
+                    }
+                }
+            }
+        } else {
+            await select_menu_pick_none(raw.map((it) => ({
+                text: it.text,
+                attr: it.attr || 0,
+            })));
+        }
+    } while (speedy && n > 0);
+
     return ECMD_OK;
 }
 
@@ -531,6 +676,9 @@ export function P_SKILL(type) {
 }
 function P_MAX_SKILL(type) {
     return game.u?.weapon_skills?.[type]?.max_skill ?? P_ISRESTRICTED;
+}
+function P_ADVANCE(type) {
+    return game.u?.weapon_skills?.[type]?.advance ?? 0;
 }
 function P_RESTRICTED(type) {
     return P_SKILL(type) === P_ISRESTRICTED;
@@ -754,28 +902,51 @@ const skill_ranges = [
 
 /**
  * C ref: weapon.c add_skills_to_menu — append skill lines into entries[].
- * selectable/speedy annotations (* # / letters) deferred when unused.
+ * selectable → lettered can_advance rows (+ * / # annotations); wizard
+ * shows practice counts.
  */
-function add_skills_to_menu(entries, selectable, _speedy) {
+function add_skills_to_menu(entries, selectable, speedy) {
     let longest = 0;
     for (let i = 0; i < P_NUM_SKILLS; i++) {
         if (P_RESTRICTED(i)) continue;
         const len = P_NAME(i).length;
         if (len > longest) longest = len;
     }
+    const wiz = wizardMode();
     for (const range of skill_ranges) {
         for (let i = range.first; i <= range.last; i++) {
             if (i === range.first) {
-                entries.push({ text: range.name, attr: ATR_INVERSE });
+                entries.push({
+                    text: range.name,
+                    attr: ATR_INVERSE,
+                    selectable: false,
+                });
             }
             if (P_RESTRICTED(i)) continue;
-            const prefix = selectable ? '    ' : '';
+            let prefix;
+            if (!selectable) prefix = '';
+            else if (can_advance(i, speedy)) prefix = '';
+            else if (could_advance(i)) prefix = '  * ';
+            else if (peaked_skill(i)) prefix = '  # ';
+            else prefix = '    ';
             const name = P_NAME(i).padEnd(longest);
-            const lvl = skill_level_name(i);
-            // C non-wizard: " %s %-*s [%s]" then paint putchar(' ')
+            const sklnam = skill_level_name(i).padEnd(12);
+            let text;
+            if (wiz) {
+                const adv = P_ADVANCE(i) | 0;
+                const need = practice_needed_to_advance(P_SKILL(i));
+                // C: " %s%-*s %-12s %5d(%4d)" — space before and after level field
+                text = ` ${prefix}${name} ${sklnam} ${String(adv).padStart(5)}(${String(need).padStart(4)})`;
+            } else {
+                // C non-wizard: " %s %-*s [%s]"
+                text = ` ${prefix} ${name} [${skill_level_name(i)}]`;
+            }
+            const canSel = selectable && can_advance(i, speedy);
             entries.push({
-                text: ` ${prefix} ${name} [${lvl}]`,
+                text,
                 attr: 0,
+                selectable: canSel,
+                skill: i,
             });
         }
     }
@@ -805,6 +976,10 @@ export function skill_init(class_skill) {
         max_skill: P_ISRESTRICTED,
         advance: 0,
     }));
+    // C you.h zero-init; pauper_reinit may set weapon_slots = 2 later
+    if (game.u.weapon_slots == null) game.u.weapon_slots = 0;
+    game.u.skills_advanced = 0;
+    game.u.skill_record = new Array(P_SKILL_LIMIT).fill(0);
 
     for (const obj of game.invent || []) {
         if (is_ammo(obj)) continue;

@@ -156,6 +156,7 @@ const CRAM_RATION = objectNames.indexOf('CRAM_RATION');
 const LEMBAS_WAFER = objectNames.indexOf('LEMBAS_WAFER');
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const HELM_OF_BRILLIANCE = objectNames.indexOf('HELM_OF_BRILLIANCE');
+const MIRROR = objectNames.indexOf('MIRROR');
 const ARROW = objectNames.indexOf('ARROW');
 const DART = objectNames.indexOf('DART');
 const DAGGER = objectNames.indexOf('DAGGER');
@@ -884,10 +885,10 @@ function reset_xystart_size() {
  * tower3, fire, air, minend-1, minend-2, minetn-2, minetn-3, minetn-5,
  * medusa-1, medusa-3, oracle, castle, valley, sanctum, asmodeus, juiblex,
  * baalz, orcus, wizard1–3, Wiz-strt, Wiz-loca, Wiz-fila, Wiz-filb,
- * Pri-fila, Pri-filb, hellfill, minetn-2/3/4/5.
+ * Pri-fila, Pri-filb, hellfill, minetn-2/3/4/5, Kni-goal.
  * Named omissions: other bigrm-N / soko2-2 / quest
- * protos (Bar-goal; Wiz-goal); minetn-1/6/7; minend-3;
- * medusa-2/4; water/astral; fakewiz;
+ * protos (Bar-goal; Wiz-goal; Kni-strt/loca/fila/filb);
+ * minetn-1/6/7; minend-3; medusa-2/4; water/astral; fakewiz;
  * create_maze makemaz("") fallback; hellfill rnd_hell_prefab;
  * check_ransacked side effects beyond ransacked flag; dmonsfree.
  */
@@ -1061,6 +1062,10 @@ function load_special_proto(protofile) {
     }
     if (protofile === 'Arc-goal') {
         load_arc_goal();
+        return true;
+    }
+    if (protofile === 'Kni-goal') {
+        load_kni_goal();
         return true;
     }
     if (protofile === 'tower1') {
@@ -4310,6 +4315,137 @@ function load_arc_goal() {
     for (let i = 0; i < 18; i++) splev_create_monster('S');
     for (let i = 0; i < 8; i++) splev_create_monster('human mummy');
     splev_create_monster('M');
+
+    // C load_special: wallification → flip_level_rnd → fixup_special
+    if (!g.level.flags.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
+    fixup_special();
+}
+
+/**
+ * C ref: dat/Kni-goal.lua via load_special — Knight quest goal (Ixoth).
+ * Named omissions: Kni-strt/loca/fila/filb; humidity get_location for
+ * water-likers; set_malign after peaceful override.
+ */
+function load_kni_goal() {
+    const g = game;
+    nhlib_shuffle_align();
+
+    // des.level_init({ style = "solidfill", fg = " " })
+    splev_initlev({
+        init_style: LVLINIT_SOLIDFILL,
+        filling: STONE,
+        lit: BOOL_RANDOM,
+        icedpools: false,
+    });
+    if (!g.level.flags) g.level.flags = {};
+    g.level.flags.is_maze_lev = true;
+
+    const KNI_GOAL_MAP = `
+....PPPP..PPP..                                                             
+.PPPPP...PP..     ..........     .................................          
+..PPPPP...P..    ...........    ...................................         
+..PPP.......   ...........    ......................................        
+...PPP.......    .........     ...............   .....................      
+...........    ............    ............     ......................      
+............   .............      .......     .....................         
+..............................            .........................         
+...............................   ..................................        
+.............................    ....................................       
+.........    ......................................................         
+.....PP...    .....................................................         
+.....PPP....    ....................................................        
+......PPP....   ..............   ....................................       
+.......PPP....  .............    .....................................      
+........PP...    ............    ......................................     
+...PPP........     ..........     ..................................        
+..PPPPP........     ..........     ..............................           
+....PPPPP......       .........     ..........................              
+.......PPPP...                                                              
+`.replace(/^\n/, '');
+    splev_apply_centered_map(KNI_GOAL_MAP);
+    const mx = g.splev_xstart ?? 1;
+    const my = g.splev_ystart ?? 0;
+
+    // des.region lit / unlit
+    for (let y = my; y <= my + 19 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 14 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = true;
+        }
+        for (let x = mx + 15; x <= mx + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.lit = false;
+        }
+    }
+
+    // des.stair("up", 03,08)
+    mkstairs(mx + 3, my + 8, 1, null);
+
+    // des.non_diggable — C sel_set_wall_property: STWALL/TREE/IRONBARS
+    for (let y = my; y <= my + 19 && y < ROWNO; y++) {
+        for (let x = mx; x <= mx + 75 && x < COLNO; x++) {
+            const loc = g.level.at(x, y);
+            if (!loc) continue;
+            if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS) {
+                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+            }
+        }
+    }
+
+    // des.object mirror → The Magic Mirror of Merlin
+    {
+        const otmp = mksobj_at(MIRROR, mx + 50, my + 6, true, false);
+        if (otmp) {
+            otmp.spe = 0;
+            bless(otmp);
+            otmp.oeroded = 0;
+            otmp.oeroded2 = 0;
+            otmp.oerodeproof = 0;
+            oname(otmp, 'The Magic Mirror of Merlin', ONAME_LEVEL_DEF);
+        }
+    }
+
+    // des.object({ coord = ... }) × 15 — RANDOM_CLASS at fixed cells
+    for (const [rx, ry] of [
+        [33, 1], [33, 2], [33, 3], [33, 4], [33, 5],
+        [34, 1], [34, 2], [34, 3], [34, 4], [34, 5],
+        [35, 1], [35, 2], [35, 3], [35, 4], [35, 5],
+    ]) {
+        const otmp = mkobj_at(RANDOM_CLASS, mx + rx, my + ry, true);
+        if (!otmp) continue;
+        otmp.oeroded = 0;
+        otmp.oeroded2 = 0;
+        otmp.oerodeproof = 0;
+    }
+
+    // des.object() × 6
+    for (let i = 0; i < 6; i++) splev_create_object(null);
+
+    // des.trap spiked pit (fixed) + five random
+    for (const [rx, ry] of [[13, 7], [12, 8], [12, 9]]) {
+        const ttmp = maketrap(mx + rx, my + ry, SPIKED_PIT);
+        mktrap_seen_victim(ttmp, {});
+    }
+    for (let i = 0; i < 5; i++) splev_create_trap();
+
+    // des.monster({ id = "Ixoth", x=50, y=06, peaceful=0 })
+    {
+        const r = find_montype_gender('Ixoth');
+        induced_align(80);
+        if (r.mndx >= 0 && r.mndx !== NON_PM) {
+            const mtmp = makemon(mons(r.mndx), mx + 50, my + 6, 0);
+            if (mtmp) {
+                mtmp.female = r.female;
+                mtmp.mpeaceful = 0;
+            }
+        }
+    }
+    for (let i = 0; i < 16; i++) splev_create_monster('quasit', 0);
+    for (let i = 0; i < 2; i++) splev_create_monster('i', 0);
+    for (let i = 0; i < 8; i++) splev_create_monster('ochre jelly', 0);
+    splev_create_monster('j', 0);
 
     // C load_special: wallification → flip_level_rnd → fixup_special
     if (!g.level.flags.corrmaze)
