@@ -115,8 +115,8 @@ export function welded(obj) {
 /**
  * C ref: wield.c wield_tool — #rub / apply pick/whip/polearm auto-wield.
  * Named omissions: welded verbose hand/plural; cantwield; bimanual+shield;
- * will_weld → ready_weapon; pushweapon swap; untwoweapon side effects beyond
- * basic clear. Lamp #rub path uses the common doname wield message.
+ * will_weld → ready_weapon; untwoweapon side effects beyond basic clear.
+ * Lamp #rub path uses the common doname wield message.
  * @returns {Promise<boolean>} TRUE if ready to use as uwep
  */
 export async function wield_tool(obj, verb) {
@@ -140,15 +140,17 @@ export async function wield_tool(obj, verb) {
         if (u.uswapwep === obj) return false;
         void swapRes;
     } else {
-        const oldwep = u.uwep;
+        // C wield.c wield_tool: oldwep = uwep; then pushweapon → setuswapwep
+        const oldwep = u.uwep || null;
         if (will_weld(obj)) {
             await ready_weapon(obj);
         } else {
             await pline(`You now wield ${doname(obj)}.`);
             setuwep(obj);
         }
-        // flags.pushweapon → setuswapwep(oldwep) deferred
-        void oldwep;
+        if (game.flags?.pushweapon && oldwep && game.u?.uwep !== oldwep) {
+            setuswapwep(oldwep);
+        }
     }
     if (u.uwep && u.uwep !== obj) return false;
     if (u.twoweap) await untwoweapon();
@@ -460,8 +462,12 @@ export async function dowield() {
         return 0;
     }
 
+    // C wield.c dowield wielding:: oldwep = uwep; ready_weapon; pushweapon
+    const oldwep = u.uwep || null;
     const result = await ready_weapon(wep);
-    // flags.pushweapon deferred
+    if (game.flags?.pushweapon && oldwep && game.u?.uwep !== oldwep) {
+        setuswapwep(oldwep);
+    }
     if (u.twoweap) await untwoweapon();
     return result;
 }
@@ -711,7 +717,7 @@ async function drop_uswapwep() {
         await pline(`Your ${left_hand} spasms and drops ${xname(obj)}!`);
     }
     const { dropx } = await import('./do.js');
-    dropx(obj);
+    await dropx(obj);
 }
 
 /**

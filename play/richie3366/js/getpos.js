@@ -5,11 +5,12 @@
 // (nhcore show_getpos_tip PICK_NONE loop), hjklyubn walk + HJKLYUBN/Ctrl-dir
 // rush (8×; '\n'==C('j') rushes — movecmd before quitchars), seenv-gated
 // feature-char matching (stairs + furniture/traps subset; D-0779/D-0818),
+// NHKF_GETPOS_SHOWVALID '$' before matching (D-0928 #1176),
 // `?` → getpos_help NHW_MENU + show_goal_msg (D-0819), autodescribe
 // topline, force unknown-direction pline, '.' → LOOK_TRADITIONAL,
-// ESC → -1. Menu/mMoOdDxX jump/hilite glyphs/getloc_moveskip glyph-skip /
-// engraving/drawbridge/air full showsyms table deferred. getpos_getvalid
-// `(invalid target)` live (D-0899).
+// ESC → -1. Menu/mMoOdDxX jump/S_goodpos tmp_at hilite/getloc_moveskip
+// glyph-skip / engraving/drawbridge/air full showsyms table deferred.
+// getpos_getvalid `(invalid target)` live (D-0899).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -19,7 +20,8 @@ import { distant_name, doname, ansimpleoname } from './objnam.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING,
-    NHKF_GETPOS_SELF, NHKF_GETPOS_PICK, NHKF_GETPOS_AUTODESC,
+    NHKF_GETPOS_SELF, NHKF_GETPOS_PICK, NHKF_GETPOS_SHOWVALID,
+    NHKF_GETPOS_AUTODESC,
     NHKF_GETPOS_MON_NEXT, NHKF_GETPOS_MON_PREV,
     NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV,
     NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV,
@@ -52,6 +54,12 @@ let getpos_hilitefunc = null;
 /** @type {((x: number, y: number) => boolean) | null} */
 let getpos_getvalid = null;
 
+// C ref: getpos.c enum getposHiliteState — bgcolors Off → 2 states.
+const HiliteNormalMap = 0;
+const HiliteGoodposSymbol = 1;
+/** @type {number} */
+let getpos_hilite_state = HiliteNormalMap;
+
 /**
  * C ref: getpos.c getpos_getvalids_selection + selection_force_newsyms —
  * dirty every cell where validf is true so flush_screen(0) reprints them.
@@ -66,6 +74,24 @@ function force_getvalid_newsyms(validf) {
 }
 
 /**
+ * C ref: getpos.c getpos_toggle_hilite_state — cycle Normal↔Goodpos
+ * (HiliteBackground deferred until iflags.bgcolors path is live).
+ */
+function getpos_toggle_hilite_state() {
+    if (!getpos_hilitefunc) return;
+    if (getpos_hilite_state === HiliteGoodposSymbol) {
+        getpos_hilitefunc(false);
+    }
+    const nstates = game.iflags?.bgcolors ? 3 : 2;
+    getpos_hilite_state = (getpos_hilite_state + 1) % nstates;
+    // C: getpos_sethilite(same callbacks) refreshes map_frame_color.
+    getpos_sethilite(getpos_hilitefunc, getpos_getvalid);
+    if (getpos_hilite_state === HiliteGoodposSymbol) {
+        getpos_hilitefunc(true);
+    }
+}
+
+/**
  * C ref: getpos.c getpos_sethilite — install/clear getvalid + hilite callbacks.
  * When getvalid changes, force-newsym old∪new valid cells (selvar path).
  * Hilite glyph painting (HiliteGoodposSymbol tmp_at) deferred; getvalid
@@ -73,6 +99,10 @@ function force_getvalid_newsyms(validf) {
  */
 export function getpos_sethilite(hilitef, getvalidf) {
     const old_getvalid = getpos_getvalid;
+    // C: getvalid change resets hilite_state to default (Normal without bgcolors)
+    if ((typeof getvalidf === 'function' ? getvalidf : null) !== old_getvalid) {
+        getpos_hilite_state = HiliteNormalMap;
+    }
     getpos_hilitefunc = typeof hilitef === 'function' ? hilitef : null;
     getpos_getvalid = typeof getvalidf === 'function' ? getvalidf : null;
     if (getpos_getvalid !== old_getvalid) {
@@ -467,10 +497,11 @@ function door_cmap_explanation(loc) {
  * C ref: pager.c lookat glyph_is_cmap → defsyms[].explanation (default
  * arm) + S_pool/S_water/S_lava/S_ice → waterbody_name. Used by getpos
  * auto_describe firstmatch after stairs/traps.
- * Named omissions: altar/engraving/iron bars/fountain special cases;
- * drawbridge portcullis; underwater unreconnoitered; object glyphs;
- * Hallucination waterbody; arboreal STONE→S_tree; gas-cloud
- * region glyph overlay on non-CLOUD typ (lookat uses glyph_at).
+ * Named omissions: S_altar special (`align_str` / AM_SANCTUM "high ");
+ * engraving; drawbridge portcullis; underwater unreconnoitered; object
+ * glyphs; Hallucination waterbody; arboreal STONE→S_tree; gas-cloud
+ * region glyph overlay on non-CLOUD typ (lookat uses glyph_at); AIR /
+ * drawbridge lowered/raised defsyms.
  */
 function cmap_defsym_explanation(x, y, loc) {
     if (!loc) return '';
@@ -492,6 +523,12 @@ function cmap_defsym_explanation(x, y, loc) {
     if (typ === CORR) {
         return loc.lit || game.flags?.lit_corridor ? 'lit corridor' : 'corridor';
     }
+    // C defsym.h PCHAR — furniture default arm (S_fountain..S_bars / tree)
+    if (typ === FOUNTAIN) return 'fountain';
+    if (typ === SINK) return 'sink';
+    if (typ === THRONE) return 'opulent throne'; // PCHAR2 explanation
+    if (typ === GRAVE) return 'grave';
+    if (typ === IRONBARS) return 'iron bars';
     // C defsym.h PCHAR S_tree → "tree" (lookat default arm)
     if (typ === TREE) return 'tree';
     // C lookat case S_stone: !seenv → "unexplored"; else if STONE|SCORR → "stone"
@@ -614,6 +651,8 @@ function auto_describe_suffix(cx, cy) {
 const GETPOS_SPKEY_DEFAULT = {
     [NHKF_GETPOS_SELF]: '@'.charCodeAt(0),
     [NHKF_GETPOS_PICK]: '.'.charCodeAt(0),
+    // cmd.c spkeys_binds: NHKF_GETPOS_SHOWVALID '$' (before matching[])
+    [NHKF_GETPOS_SHOWVALID]: '$'.charCodeAt(0),
     [NHKF_GETPOS_AUTODESC]: '#'.charCodeAt(0),
     [NHKF_GETPOS_MON_NEXT]: 'm'.charCodeAt(0),
     [NHKF_GETPOS_MON_PREV]: 'M'.charCodeAt(0),
@@ -964,6 +1003,17 @@ export async function getpos(ccp, force, goal, describeAt) {
             await getpos_help(!!force, goal || 'desired location');
             show_goal_msg = true;
             msg_given = true;
+            continue;
+        }
+
+        // C ref: getpos.c NHKF_GETPOS_SHOWVALID ('$') — before matching[].
+        // With default bind, '$' never reaches S_goodpos feature scan.
+        if (key === getpos_spkey(NHKF_GETPOS_SHOWVALID)) {
+            if (getpos_hilitefunc) {
+                getpos_toggle_hilite_state();
+                if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+            }
+            show_goal_msg = true; // still targeting
             continue;
         }
 

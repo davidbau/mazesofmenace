@@ -689,6 +689,12 @@ export async function moveloop_core() {
                 g.moves = (g.moves || 1) + 1;
                 // C: hero_seq = moves << 3 — distinct every hero turn
                 g.hero_seq = (g.moves | 0) << 3;
+                // C allmain.c: if (flags.time && !svc.context.run)
+                //   disp.time_botl = TRUE — pline→flush_screen→timebot
+                // before --More-- (seed4500 mold multi-EOT footsteps).
+                if (g.flags?.time && !g.context?.run) {
+                    g.flags.time_botl = true;
+                }
 
                 // once-per-turn — C: nh_timeout then run_regions
                 await nh_timeout();

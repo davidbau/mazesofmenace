@@ -14,7 +14,7 @@ import {
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, nothing_happens, nothing_seems_to_happen,
-    FACE, TIMEOUT, OBJ_FREE, isok, SDOOR, SCORR,
+    FACE, TIMEOUT, BLINDED, OBJ_FREE, isok, SDOOR, SCORR,
     COLNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     ACCESSIBLE, IS_STWALL, IS_DOOR, TELEDS_NO_FLAGS, INTRINSIC,
@@ -876,7 +876,16 @@ function make_blinded(xtime, _talk) {
     const can_see_now = !Blind();
     u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (old & TIMEOUT);
 
-    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (xtime ? (xtime & TIMEOUT) : 0);
+    const next = ((u.HBlinded | 0) & ~TIMEOUT)
+        | (xtime ? (xtime & TIMEOUT) : 0);
+    u.HBlinded = next;
+    // C: HBlinded ≡ uprops[BLINDED].intrinsic — keep in sync (D-0928 #1171)
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[BLINDED]) {
+        u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    u.uprops[BLINDED].intrinsic =
+        ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
     u.Blind = Blind();
     if (u_could_see !== can_see_now) {
         // C: toggle_blindness — botl + vision_full_recalc + vision_recalc(0)

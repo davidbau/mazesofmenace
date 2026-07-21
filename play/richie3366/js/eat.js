@@ -632,7 +632,7 @@ async function touchfood(otmp) {
             if (o.oclass !== COIN_CLASS) n++;
         }
         if (n >= INVLET_BASIC) {
-            dropy(otmp);
+            await dropy(otmp);
             if (otmp.where === OBJ_FREE) return null; // deleted approx
         } else {
             otmp = await addinv_nomerge(otmp);

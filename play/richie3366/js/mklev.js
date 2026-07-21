@@ -13240,6 +13240,23 @@ function load_sanctum() {
 ----------------------------------------------------------------------------
 `.replace(/^\n/, '');
     const { xstart: mx, ystart: my } = splev_apply_centered_map(SANCTUM_MAP);
+    // C lspo_map defaults lit=FALSE → set_levltyp_lit clears solidfill
+    // BOOL_RANDOM lit on every map cell (sel_set_ter(...,false) is still
+    // nochange). Without this, Gehennom sanctum stays fully lit and
+    // look_here after ^V over-reveals vs C dark 3×3 (D-0928 #1173).
+    {
+        const sp = g.SpLev_Map;
+        if (sp) {
+            for (const key of sp) {
+                const comma = key.indexOf(',');
+                const x = Number(key.slice(0, comma));
+                const y = Number(key.slice(comma + 1));
+                const loc = g.level.at(x, y);
+                if (!loc) continue;
+                loc.lit = IS_LAVA(loc.typ) ? true : false;
+            }
+        }
+    }
 
     // des.region temple filled=2 + secret door on random wall
     let templeRoom = null;
@@ -15292,8 +15309,9 @@ function light_region(x1, y1, x2, y2, lit) {
  * C set_levltyp: IS_LAVA(newtyp) → lit=1 always (even before lit arg).
  * set_levltyp_lit: lit!=NOCHANGE then IS_LAVA forces lit=1 again.
  * tlit truthy → lit; SET_LIT_NOCHANGE → leave (except lava); falsey
- * (legacy map callers) → leave. Fire plane forces unlit after map via
- * load_fire epilogue (D-0569).
+ * still nochange for legacy map callers (tut-1 wall display relies on
+ * solidfill BOOL_RANDOM until vision wall-hack matches C; D-0928 #1173
+ * clears lit explicitly in load_sanctum / Pri-loca / fire after map).
  */
 function sel_set_ter(x, y, ter, tlit) {
     const loc = game.level.at(x, y);

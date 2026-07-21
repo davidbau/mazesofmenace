@@ -199,9 +199,13 @@ export function put_saddle_on_mon(saddle, mtmp) {
 /**
  * C ref: polyself.c steed_vs_stealth — riding blocks stealth unless flying.
  */
-function steed_vs_stealth() {
+export function steed_vs_stealth() {
     const u = game.u || (game.u = {});
-    if (u.usteed && !u.Flying && !u.Levitation) {
+    // C: Flying / Levitation macros (H|E && !B), not raw H* alone.
+    const flying = !!(((u.HFlying | 0) || (u.EFlying | 0)) && !(u.BFlying | 0));
+    const levitating = !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+    if (u.usteed && !flying && !levitating) {
         u.BStealth = (u.BStealth || 0) | FROMOUTSIDE;
     } else {
         u.BStealth = (u.BStealth || 0) & ~FROMOUTSIDE;

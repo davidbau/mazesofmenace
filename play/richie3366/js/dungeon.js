@@ -1232,8 +1232,8 @@ export async function show_overview(why = 0, reason = 0) {
     const { formatkiller } = await import('./end.js');
     const { ATR_INVERSE } = await import('./terminal.js');
     const { nhgetch } = await import('./input.js');
-    const { flush_screen, flush_topl_more, docrt } = await import('./display.js');
-    const { paint_corner_nhw_menu } = await import('./invent.js');
+    const { flush_topl_more } = await import('./display.js');
+    const { paint_corner_nhw_menu, dismiss_nhw_menu } = await import('./invent.js');
 
     recalc_mapseen();
     const u = game.u || {};
@@ -1320,13 +1320,13 @@ export async function show_overview(why = 0, reason = 0) {
     }
 
     await flush_topl_more();
-    // C select_menu PICK_NONE (why != -1) → "(end)"
+    // C select_menu PICK_NONE + destroy_nhwindow → erase_menu_or_text:
+    // corner (offx!=0) docorner/gbuf only; fullscreen docrt. Never force
+    // docrt on corner dismiss (seed4500 @1252 gbuf `"` vs see_monsters `s`).
     for (;;) {
         await paint_corner_nhw_menu(entries, '(end) ');
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
+        await dismiss_nhw_menu();
         if (key === 27 || key === 32 || key === 13 || key === 10) break;
     }
     if (game.iflags) game.iflags.menu_requested = false;

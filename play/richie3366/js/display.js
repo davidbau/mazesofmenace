@@ -19,6 +19,10 @@ import {
     AM_MASK, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_SANCTUM,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     LA_DOWN,
+    BC_BALL, BC_CHAIN,
+    ENGRAVE, BURN, HEADSTONE,
+    IS_OBSTRUCTED, IS_DOOR, IS_ROOM,
+    Is_waterlevel, Is_airlevel,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR,
@@ -376,18 +380,59 @@ export function glyph_is_invisible(loc) {
 }
 
 /**
+ * C ref: display.c map_background(x, y, show) — remember/show real terrain
+ * via back_to_glyph. Does not map floor objects (unlike map_location).
+ */
+export function map_background(x, y, show) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const tg = terrain_glyph(loc, x, y);
+    if (game.level?.flags?.hero_memory) {
+        loc.remembered_glyph = {
+            ch: tg.ch, color: tg.color, decgfx: !!tg.dec,
+        };
+    }
+    if (show) show_glyph_cell(x, y, tg.ch, tg.color, !!tg.dec);
+}
+
+/**
  * C ref: display.c unmap_object — replace remembered glyph with trap /
- * engraving / background (no show). Clears invisible-monster memory.
- * Named omissions: dark-room S_room→S_stone waslit tweak when !waslit.
+ * engraving / background (no show). Clears invisible-monster / object
+ * memory without remapping a live floor object (map_location would).
+ * Named omissions: dark-room S_room→S_stone waslit when !waslit.
  */
 export function unmap_object(x, y) {
     if (!game.level?.flags?.hero_memory) return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
-    // C: tseen trap → map_trap(,0); else seenv → engraving/background;
-    // else default S_stone. map_location(show=false) covers the seenv path.
+    const trap = t_at_display(x, y);
+    if (trap && trap.tseen && !covers_traps(x, y)) {
+        map_trap(trap, 0);
+        return;
+    }
     if (loc.seenv) {
-        map_location(x, y, false);
+        // C: engraving if spot_shows && !covers_traps; else map_background
+        if (spot_shows_engravings(loc) && !covers_traps(x, y)) {
+            const ep = engr_at(x, y);
+            if (ep) {
+                if (cansee(x, y)) ep.erevealed = 1;
+                map_engraving(ep, 0);
+                return;
+            }
+        }
+        map_background(x, y, 0);
+        // C: !waslit && S_room glyph && ROOM → S_stone (dark-room tweak)
+        if (!loc.waslit && loc.typ === ROOM) {
+            const mem = loc.remembered_glyph;
+            const roomFloor = mem
+                && ((mem.ch === '~' && mem.decgfx)
+                    || (mem.ch === '.' && !mem.decgfx));
+            if (roomFloor) {
+                loc.remembered_glyph = {
+                    ch: ' ', color: NO_COLOR, decgfx: false,
+                };
+            }
+        }
     } else {
         loc.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false };
     }
@@ -686,7 +731,8 @@ function map_object_observe_near(obj, x, y) {
  * Under Hallu, STATUE *display* is statue_to_glyph (mon+gender) but
  * *memory* is a separate random_obj_to_glyph (extra display-RNG burns).
  */
-function map_object(obj, show) {
+/** C ref: display.c map_object — export for fight_empty boulder/statue remap. */
+export function map_object(obj, show) {
     if (!obj) return;
     const x = obj.ox | 0;
     const y = obj.oy | 0;
@@ -1819,6 +1865,25 @@ function canspotself() {
 }
 
 /**
+ * C ref: display.c set_seenv — OR seenv bit as if seen from (x0,y0) to (x,y).
+ * feel_location uses this before mapping Blind memory.
+ */
+function set_seenv(lev, x0, y0, x, y) {
+    if (!lev) return;
+    const sign = (z) => (z < 0 ? -1 : (z !== 0 ? 1 : 0));
+    const dx = (x | 0) - (x0 | 0);
+    const dy = (y0 | 0) - (y | 0);
+    // C display.c seenv_matrix (SVALL at center, unlike vision.js copy)
+    const seenv_matrix = [
+        [SV2, SV1, SV0],
+        [SV3, SVALL, SV7],
+        [SV4, SV5, SV6],
+    ];
+    const bit = seenv_matrix[sign(dy) + 1]?.[sign(dx) + 1];
+    if (bit != null) lev.seenv = (lev.seenv | 0) | bit;
+}
+
+/**
  * C ref: display.c unset_seenv — clear the seenv bit for direction
  * from (x0,y0) toward adjacent (x1,y1). Used by vault blackout.
  */
@@ -1834,6 +1899,136 @@ export function unset_seenv(lev, x0, y0, x1, y1) {
     ];
     const bit = seenv_matrix[dy + 1]?.[dx + 1];
     if (bit != null) lev.seenv = (lev.seenv | 0) & ~bit;
+}
+
+/**
+ * Inline can_reach_floor(FALSE) for feel_location — avoid engrave↔display
+ * import cycle (engrave.js imports newsym from display).
+ * Named omission: usteed P_RIDING < P_BASIC; ustuck hugs; ceiling hider.
+ */
+function feel_can_reach_floor() {
+    const u = game.u || {};
+    if (u.uswallow) return false;
+    if (u.Levitation && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
+        return false;
+    }
+    if (u.Flying) return true;
+    return true;
+}
+
+/**
+ * C ref: display.c feel_location — Blind map update for hero cell or
+ * adjacent (boulder-push). Reachable arm: engr_can_be_felt →
+ * _map_location(show) → Punished bc_felt → ROOM/CORR dark adjust;
+ * sensed mon overlay when !u_at.
+ * Named omissions: full levitate-arm boulder/do_room_glyph litcorr
+ * polish; MATCH_WARN_OF_MON in sensemon overlay; _suppress_map_output.
+ */
+export function feel_location(x, y) {
+    if (!isok(x, y)) return;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    // C: keep accurate I memory when mon still present
+    if (glyph_is_invisible(loc) && mon_at_display(x, y)) return;
+
+    const u = game.u || {};
+    // C: Underwater — only pool/lava/ice (waterlevel exempt)
+    if ((u.Underwater | 0) && !Is_waterlevel(u.uz)) {
+        const t = loc.typ | 0;
+        if (!IS_POOL(t) && t !== LAVAPOOL && t !== LAVAWALL && t !== ICE) {
+            return;
+        }
+    }
+
+    set_seenv(loc, u.ux | 0, u.uy | 0, x, y);
+
+    if (!feel_can_reach_floor()) {
+        // Levitate arm (partial) — walls/closed doors via map_background;
+        // boulder via map_object; else map_background. Full do_room_glyph
+        // / litcorr remembered-boulder arms deferred.
+        const typ = loc.typ | 0;
+        if (IS_OBSTRUCTED(typ)
+            || (IS_DOOR(typ) && (loc.doormask & (D_LOCKED | D_CLOSED)))) {
+            map_background(x, y, 1);
+        } else {
+            const obj = objects_at(x, y);
+            if (obj && (obj.otyp | 0) === BOULDER_OTYP) {
+                map_object(obj, 1);
+            } else {
+                map_background(x, y, 1);
+            }
+        }
+    } else {
+        // C: engr_can_be_felt → erevealed (ENGRAVE/HEADSTONE/BURN)
+        const ep = engr_at(x, y);
+        if (ep) {
+            const et = ep.engr_type | 0;
+            if (et === ENGRAVE || et === HEADSTONE || et === BURN) {
+                ep.erevealed = 1;
+            }
+        }
+        map_location(x, y, true);
+
+        // C: Punished bc_felt — only when ball/chain is first on floor pile
+        if (u.uball) {
+            const uchain = u.uchain;
+            const uball = u.uball;
+            const top = objects_at(x, y);
+            if (uchain && (uchain.where | 0) === OBJ_FLOOR
+                && (uchain.ox | 0) === (x | 0) && (uchain.oy | 0) === (y | 0)
+                && top === uchain) {
+                u.bc_felt = (u.bc_felt | 0) | BC_CHAIN;
+            } else {
+                u.bc_felt = (u.bc_felt | 0) & ~BC_CHAIN;
+            }
+            if (uball && (uball.where | 0) === OBJ_FLOOR
+                && (uball.ox | 0) === (x | 0) && (uball.oy | 0) === (y | 0)
+                && top === uball) {
+                u.bc_felt = (u.bc_felt | 0) | BC_BALL;
+            } else {
+                u.bc_felt = (u.bc_felt | 0) & ~BC_BALL;
+            }
+        }
+
+        // C: unlit ROOM/CORR memory darken after map_location
+        const mem = loc.remembered_glyph;
+        const darkRoomColor = game.flags?.dark_room !== false
+            && game.iflags?.use_color !== false;
+        if (mem && (loc.typ | 0) === ROOM
+            && (mem.ch === '~' || mem.ch === '.')
+            && (!loc.waslit || darkRoomColor)) {
+            // C: S_darkroom / S_stone — JS darkroom paints as S_room
+            const dark = {
+                ch: mem.ch === '~' ? '~' : '.',
+                color: NO_COLOR,
+                decgfx: !!mem.decgfx,
+            };
+            loc.remembered_glyph = dark;
+            show_glyph_cell(x, y, dark.ch, dark.color, !!dark.decgfx);
+        } else if (mem && (loc.typ | 0) === CORR
+            && mem.ch === '#' && mem.color === CLR_WHITE && !loc.waslit) {
+            const dark = { ch: '#', color: NO_COLOR, decgfx: false };
+            loc.remembered_glyph = dark;
+            show_glyph_cell(x, y, dark.ch, dark.color, false);
+        }
+    }
+
+    // C: sensed monster on top when !u_at
+    if ((u.ux | 0) !== (x | 0) || (u.uy | 0) !== (y | 0)) {
+        const mon = mon_at_display(x, y);
+        if (mon && sensemon(mon)) {
+            const mg = mon_glyph(mon);
+            show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mon));
+        }
+    }
+}
+
+/**
+ * C ref: display.c feel_newsym — Blind → feel_location, else newsym.
+ */
+export function feel_newsym(x, y) {
+    if (hero_Blind()) feel_location(x, y);
+    else newsym(x, y);
 }
 
 // C ref: display.c _map_location(x,y,show) — remember non-living contents
@@ -1919,7 +2114,7 @@ export function newsym(x, y) {
             }
         } else {
             // C: feel_location then display_self if canspotself
-            // Named omission: feel_location body deferred
+            feel_location(x, y);
             if (canspotself()) {
                 const hg = hero_display_glyph();
                 show_glyph_cell(x, y, hg.ch, hg.color, false);
@@ -2909,11 +3104,9 @@ export async function flush_screen(mode) {
         return;
     }
     const flags = game.flags || {};
+    // C display.c flush_screen: bot() else timebot() before map glyphs
     if (flags.botl || flags.botlx) await bot();
-    else if (flags.time_botl) {
-        // timebot deferred — clear flag so it does not stick
-        flags.time_botl = false;
-    }
+    else if (flags.time_botl) await timebot();
     // Mid goto_level / getbones: keep stale map cells like C gbuf.
     if (!game.level || game._stale_map_flush) {
         _paintToplineAndStatus();
@@ -3003,6 +3196,22 @@ export async function bot() {
     if (game.flags) {
         game.flags.botl = false;
         game.flags.botlx = false;
+        game.flags.time_botl = false;
+    }
+}
+
+/**
+ * C ref: botl.c timebot — status update when only svm.moves changed.
+ * VIA_WINDOWPORT → stat_update_time deferred; tty path → full bot().
+ * Named omissions: gb.bot_disabled; suppress_map_output hangup/restore.
+ */
+export async function timebot() {
+    const flags = game.flags || {};
+    const iflags = game.iflags || {};
+    // C: status_updates defaults TRUE; treat undefined as enabled
+    if (flags.time && iflags.status_updates !== false) {
+        await bot();
+    } else if (game.flags) {
         game.flags.time_botl = false;
     }
 }

@@ -2,7 +2,12 @@
 // C ref: timeout.c nh_timeout — once-per-turn intrinsic TIMEOUT decrement.
 
 import { game } from './gstate.js';
-import { TIMEOUT, FROMOUTSIDE, FUMBLING, FAST, FOOT, ICE, STRAT_WAITMASK, UNCHANGING } from './const.js';
+import {
+    TIMEOUT, FROMOUTSIDE, FUMBLING, FAST, FOOT, ICE, STRAT_WAITMASK,
+    UNCHANGING, LAST_PROP, WOUNDED_LEGS, CONFUSION, BLINDED, DEAF,
+    STUNNED, HALLUC, LEVITATION, INVIS, SEE_INVIS, CLAIRVOYANT,
+    TELEPORT, REGENERATION,
+} from './const.js';
 import { heal_legs } from './trap.js';
 import { stop_occupation, nomul, is_pool } from './hack.js';
 import { run_timers, objects_at } from './mkobj.js';
@@ -16,6 +21,33 @@ import { rn2, rnd } from './rng.js';
 import { objectNames } from './objects.js';
 import { G_UNIQ, is_were } from './monsters.js';
 import { rehumanize } from './polyself.js';
+
+/**
+ * Props whose TIMEOUT is already decremented by the dedicated arms below
+ * (flat + uprops sync). C does one loop over all uprops; JS keeps those
+ * arms and skips them here to avoid double --.
+ */
+const TIMEOUT_DEDICATED = new Set([
+    WOUNDED_LEGS, CONFUSION, BLINDED, DEAF, FUMBLING, FAST,
+]);
+
+/** Flat H* mirrors that wiz_intrinsic / make_* keep beside uprops. */
+const TIMEOUT_FLAT = {
+    [STUNNED]: 'HStun',
+    [CONFUSION]: 'HConfusion',
+    [HALLUC]: 'HHallucination',
+    [BLINDED]: 'HBlinded',
+    [DEAF]: 'HDeaf',
+    [WOUNDED_LEGS]: 'HWounded_legs',
+    [FUMBLING]: 'HFumbling',
+    [LEVITATION]: 'HLevitation',
+    [INVIS]: 'HInvis',
+    [SEE_INVIS]: 'HSee_invisible',
+    [CLAIRVOYANT]: 'HClairvoyant',
+    [TELEPORT]: 'HTeleportation',
+    [REGENERATION]: 'HRegeneration',
+    [FAST]: 'HFast',
+};
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
 const WT_NOISY_INV = 500;
@@ -176,15 +208,20 @@ function incr_itimeout_HFumbling(incr) {
  * DEAF → make_deaf(0) on expiry (D-0911; talk if !Unaware deferred).
  * FAST → timeout decrement + slow-down You_feel when !Very_fast (D-0919).
  * mtimedone → rehumanize / Unchanging rnd refresh (D-0928 #1112).
+ * Remaining uprops TIMEOUT (incl. INVULNERABLE from #wizintrinsic) —
+ * generic -- like C's for (upp = u.uprops; …) (D-0928 #1168); expiry
+ * switch cases for those props still deferred (silent clear).
  * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues;
- * STUNNED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… cases;
+ * STUNNED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… expiry messages;
  * Glib; ublesscnt (in allmain); usptime; ugallop; delayed
- * killers; uinvulnerable early return polish; defer_decor; full ice/
- * mount slip_or_trip arms; you_unwere (were → rehumanize).
+ * killers; defer_decor; full ice/mount slip_or_trip arms;
+ * you_unwere (were → rehumanize).
+ * u.uinvulnerable early-return freezes all TIMEOUT (D-0928 #1171).
  */
 export async function nh_timeout() {
     const u = game.u || (game.u = {});
-    // C: if (u.uinvulnerable) return; — deferred until invuln props exist
+    // C: if (u.uinvulnerable) return; — freezes ALL TIMEOUT decrement (D-0928 #1171)
+    if (u.uinvulnerable) return;
     // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
 
     const hw = u.HWounded_legs | 0;
@@ -221,6 +258,13 @@ export async function nh_timeout() {
     if (hb & TIMEOUT) {
         const next = hb - 1;
         u.HBlinded = next;
+        // Keep uprops[BLINDED] ≡ HBlinded (C single storage; D-0928 #1171)
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[BLINDED]) {
+            u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        u.uprops[BLINDED].intrinsic =
+            ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
         if (!(next & TIMEOUT)) {
             // C: after --, was_blind = !!Blind (props, not sticky);
             // set_itimeout(&HBlinded, 1L); make_blinded(0L, TRUE);
@@ -229,6 +273,8 @@ export async function nh_timeout() {
                 && !(u.BBlinded | 0)))
                 || !!u.uroleplay?.blind;
             u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | 1;
+            u.uprops[BLINDED].intrinsic =
+                ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | 1;
             await make_blinded(0, true);
             const still_blind = (!!(((u.HBlinded | 0) || (u.EBlinded | 0))
                 && !(u.BBlinded | 0)))
@@ -295,6 +341,31 @@ export async function nh_timeout() {
                 await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
             }
         }
+    }
+
+    // C: for (upp = u.uprops; upp < u.uprops + SIZE(u.uprops); upp++)
+    //    if ((upp->intrinsic & TIMEOUT) && !(--upp->intrinsic & TIMEOUT))
+    // Dedicated arms above already -- those props; remaining (INVULNERABLE,
+    // resistances, …) only live in uprops and were never decremented — so
+    // #wizintrinsic leftovers like invulnerable [30] never cleared (D-0928).
+    if (!u.uprops) u.uprops = {};
+    for (let p = 1; p <= LAST_PROP; p++) {
+        if (TIMEOUT_DEDICATED.has(p)) continue;
+        const prop = u.uprops[p];
+        if (!prop) continue;
+        const intr = prop.intrinsic | 0;
+        if (!(intr & TIMEOUT)) continue;
+        const next = intr - 1;
+        prop.intrinsic = next;
+        const flat = TIMEOUT_FLAT[p];
+        if (flat) {
+            u[flat] = ((u[flat] | 0) & ~TIMEOUT) | (next & TIMEOUT);
+            if (p === HALLUC) {
+                u.Hallucination = !!(u.HHallucination & TIMEOUT);
+            }
+            if (p === STUNNED) u.Stunned = u.HStun;
+        }
+        // Expiry switch (STONED/HALLUC/INVIS/…) deferred — silent clear.
     }
 
     // C: u.mtimedone && !--u.mtimedone → Unchanging refresh / were / rehumanize

@@ -275,7 +275,7 @@ export async function dowrite(pen) {
     if (game.u?.Glib) {
         // Tobjnam / fingers_or_gloves polish deferred
         await pline(`${doname(pen)} slips from your fingers.`);
-        dropx(pen);
+        await dropx(pen);
         return ECMD_TIME;
     }
 

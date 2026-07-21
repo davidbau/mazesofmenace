@@ -14,7 +14,7 @@ import {
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL,
-    MAGIC_PORTAL, TIMEOUT, RLOC_NOMSG,
+    MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
 } from './const.js';
 import { seetrap } from './trap.js';
 import { COIN_CLASS } from './objects.js';
@@ -49,7 +49,9 @@ import {
 } from './hack.js';
 import { place_object, stackobj } from './mkobj.js';
 import { doname } from './objnam.js';
-import { compactify_invlets, near_capacity, learn_unseen_invent } from './invent.js';
+import {
+    compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
+} from './invent.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
 import { pickup } from './pickup.js';
 import { Fumbling } from './attrib.js';
@@ -1012,10 +1014,11 @@ function freeinv_drop(obj) {
 }
 
 /**
- * C ref: do.c dropz — place at hero feet (engulf/flooreffects/shop/altar/
- * ball/encumber deferred).
+ * C ref: do.c dropz — place at hero feet; always encumber_msg (polyself
+ * break_armor armor-drop More packs load before gloves).
+ * Named omissions: engulf digest; flooreffects; shop sell; altar; ball.
  */
-export function dropz(obj, _with_impact) {
+export async function dropz(obj, _with_impact) {
     if (!obj) return;
     const u = game.u || {};
     if (obj === u.uwep) setuwep(null);
@@ -1030,24 +1033,26 @@ export function dropz(obj, _with_impact) {
     place_object(obj, u.ux, u.uy);
     stackobj(obj);
     newsym(u.ux, u.uy);
+    // C dropz → encumber_msg() after place (capacity may cross on poly form)
+    await encumber_msg();
 }
 
 /** C ref: do.c dropy */
-export function dropy(obj) {
-    dropz(obj, false);
+export async function dropy(obj) {
+    await dropz(obj, false);
 }
 
 /**
  * C ref: do.c dropx — freeinv then dropy (ship_object/altar deferred).
  */
-export function dropx(obj) {
+export async function dropx(obj) {
     if (!obj) return;
     freeinv_drop(obj);
     const u = game.u || {};
     if (!u.uswallow) {
         // ship_object / doaltarobj deferred
     }
-    dropy(obj);
+    await dropy(obj);
 }
 
 /**
@@ -1078,7 +1083,7 @@ async function drop(obj) {
                 await pline(`You drop ${doname(obj)}.`);
             }
             obj.how_lost = LOST_DROPPED;
-            dropx(obj);
+            await dropx(obj);
             return ECMD_TIME;
         }
         // altar skip verbose deferred
@@ -1087,7 +1092,7 @@ async function drop(obj) {
         }
     }
     obj.how_lost = LOST_DROPPED;
-    dropx(obj);
+    await dropx(obj);
     return ECMD_TIME;
 }
 
@@ -1240,10 +1245,18 @@ function BlindedTimeout() {
     return (game.u?.HBlinded | 0) & TIMEOUT;
 }
 
-/** C potion.c set_itimeout / incr_itimeout — TIMEOUT field only. */
+/** C potion.c set_itimeout / incr_itimeout — TIMEOUT field only.
+ * Sync uprops[BLINDED] with HBlinded (C: same storage via macro). */
 function set_itimeout_HBlinded(val) {
     const u = game.u || (game.u = {});
-    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | ((val | 0) & TIMEOUT);
+    const next = ((u.HBlinded | 0) & ~TIMEOUT) | ((val | 0) & TIMEOUT);
+    u.HBlinded = next;
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[BLINDED]) {
+        u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    u.uprops[BLINDED].intrinsic =
+        ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
 }
 function incr_itimeout_HBlinded(incr) {
     set_itimeout_HBlinded(BlindedTimeout() + (incr | 0));

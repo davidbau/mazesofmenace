@@ -29,14 +29,15 @@
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
 // proof strip; create_particular class-letter / * random / cant_revive yn /
 // tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
-// makemon MM_NOMSG appear arm (caller emits next-to-you pline);
+// create_particular → makemon_appear_msg (makemon in-body still deferred;
+// mimic mhidden_description / set_msg_xy / dochugw omit);
 // punish Blind set_bc; flooreffects on placebc; HEAVY_IRON_BALL reuse
 // from angrygods.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, newsym, You_feel } from './display.js';
-import { xname, an } from './objnam.js';
+import { xname } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, objectNames,
@@ -65,7 +66,7 @@ import { vision_recalc, do_clear_area } from './vision.js';
 import { getlin } from './getline.js';
 import { name_to_mon } from './mondata.js';
 import { mons, NON_PM, amorphous, is_whirly, unsolid } from './monsters.js';
-import { makemon } from './makemon.js';
+import { makemon, makemon_appear_msg } from './makemon.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
@@ -742,9 +743,9 @@ export async function punish(sobj) {
     if (amorphous(youdat) || is_whirly(youdat) || unsolid(youdat)) {
         if (!reuse_ball) {
             await pline('A ball and chain appears, then falls away.');
-            dropy(mkobj(BALL_CLASS, true));
+            await dropy(mkobj(BALL_CLASS, true));
         } else {
-            dropy(reuse_ball);
+            await dropy(reuse_ball);
         }
         return;
     }
@@ -955,27 +956,21 @@ function create_particular_parse(str) {
 
 /**
  * C ref: read.c create_particular_creation — named MM_NOEXCLAM path.
- * Appear pline is caller-side (makemon MM_NOMSG arm still deferred).
+ * C has no caller pline; appear is makemon.c !MM_NOMSG Norep. Sync
+ * makemon + await makemon_appear_msg (async pline boundary).
  */
 async function create_particular_creation(d) {
     if (!d || d.randmonst) return false;
     const whichpm = mons(d.which);
     if (!whichpm) return false;
     let madeany = false;
+    const ux = game.u.ux | 0;
+    const uy = game.u.uy | 0;
     for (let i = 0; i < d.quan; i++) {
-        let mmflags = NO_MM_FLAGS | MM_NOEXCLAM;
-        const mtmp = makemon(whichpm, game.u.ux | 0, game.u.uy | 0, mmflags);
+        const mmflags = NO_MM_FLAGS | MM_NOEXCLAM;
+        const mtmp = makemon(whichpm, ux, uy, mmflags);
         if (!mtmp) break;
-        // C Norep appear: Amonnam + " appears next to you." when next2u
-        const plain = String(whichpm.name || 'monster')
-            .replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-        const what = an(plain);
-        const What = what.charAt(0).toUpperCase() + what.slice(1);
-        const dx = Math.abs((mtmp.mx | 0) - (game.u.ux | 0));
-        const dy = Math.abs((mtmp.my | 0) - (game.u.uy | 0));
-        const next2u = dx <= 1 && dy <= 1 && (dx || dy);
-        const where = next2u ? ' next to you' : ' close by';
-        await pline(`${What} appears${where}.`);
+        await makemon_appear_msg(mtmp, ux, uy, mmflags);
         madeany = true;
     }
     return madeany;

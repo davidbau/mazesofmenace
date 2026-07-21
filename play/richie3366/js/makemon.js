@@ -73,10 +73,13 @@ import { big_to_little } from './mondata.js';
 import {
     NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
     MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT, MM_MALE, MM_FEMALE,
+    MM_NOMSG, MM_NOEXCLAM,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     In_mines, In_sokoban, In_endgame,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
-    M_AP_OBJECT, M_AP_FURNITURE, IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
+    M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
+    ARTICLE_A, BOLT_LIM,
+    IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET, LS_MONSTER,
     AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
@@ -117,9 +120,10 @@ import {
     RANDOM_CLASS, objects,
 } from './objects.js';
 import { cansee } from './vision.js';
-import { newsym } from './display.js';
+import { newsym, Norep, canseemon, sensemon } from './display.js';
 import { emits_light, new_light_source } from './light.js';
-import { christen_monst, oname } from './do_name.js';
+import { christen_monst, oname, x_monnam } from './do_name.js';
+import { vtense } from './objnam.js';
 import { get_shop_item } from './shknam.js';
 import {
     get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
@@ -2244,11 +2248,49 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
 
     // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)
+    // Appear Norep is async (pline→more); callers await makemon_appear_msg
+    // after sync makemon (D-0559 / D-0928 #1164). Mimic mhidden_description
+    // + set_msg_xy + dochugw occupation still deferred.
     if (!game.in_mklev) {
         newsym(mtmp.mx, mtmp.my);
     }
 
     return mtmp;
+}
+
+/**
+ * C ref: makemon.c makemon post-place appear Norep (!in_mklev, !MM_NOMSG).
+ * Uses requested (x,y) for next2u/distu — wizgenesis passes u.ux,u.uy so
+ * distance 0 → always " next to you" when visible.
+ * Named omit: mimic furniture/object mhidden_description; set_msg_xy;
+ * occupation dochugw.
+ */
+export async function makemon_appear_msg(mtmp, x, y, mmflags = 0) {
+    if (!mtmp || game.in_mklev) return;
+    if ((mmflags & MM_NOMSG) !== 0) return;
+
+    let exclaim = (mmflags & MM_NOEXCLAM) === 0;
+    let what = null;
+    const ap = M_AP_TYPE(mtmp);
+    if ((canseemon(mtmp) && (ap === M_AP_NOTHING || ap === M_AP_MONSTER))
+        || sensemon(mtmp)) {
+        const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
+        what = s ? s.charAt(0).toUpperCase() + s.slice(1) : null;
+        if (ap === M_AP_MONSTER) exclaim = true;
+    }
+    // else if (canseemon) mimic mhidden_description — deferred
+    if (!what) return;
+
+    const u = game.u || {};
+    const dx = (x | 0) - (u.ux | 0);
+    const dy = (y | 0) - (u.uy | 0);
+    const du = dx * dx + dy * dy;
+    const near = du <= 2
+        ? ' next to you'
+        : (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
+    await Norep(
+        `${what}${exclaim ? ' suddenly' : ''} ${vtense(what, 'appear')}${near}${exclaim ? '!' : '.'}`,
+    );
 }
 
 /**

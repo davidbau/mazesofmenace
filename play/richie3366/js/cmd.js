@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     newsym, flush_screen, pline, see_nearby_objects, clear_nhwindow_message,
-    mon_visible, sensemon, glyph_is_invisible, unmap_object,
+    mon_visible, sensemon, glyph_is_invisible, unmap_object, map_object,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
@@ -23,7 +23,10 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
          has_mgivenname,
          } from './const.js';
-import { FOOD_CLASS } from './objects.js';
+import { FOOD_CLASS, objectNames } from './objects.js';
+
+const STATUE_OTYP = objectNames.indexOf('STATUE');
+const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 import { dist2, bad_rock, cant_squeeze_thru } from './mon.js';
 import { vision_recalc, couldsee } from './vision.js';
 import {
@@ -470,15 +473,32 @@ async function mention_walls_obstructed(x, y) {
 
 /**
  * C ref: hack.c domove_fight_empty — F into empty/solid, or remembered 'I'
- * with no monster and !nopick, wastes a turn. Clears the I-glyph.
- * Named omissions: boulder/statue dig; Underwater; explode poly; pick axe.
+ * with no monster and !nopick, wastes a turn.
+ * Always unmap_object (not only for 'I') so stale object memory becomes
+ * background — matching C before the thin-air / obstacle message.
+ * Named omissions: boulder/statue dig with pick; Underwater; explode poly;
+ * Hallu monster-as-statue; ansimpleoname boulder wording polish.
  */
 async function domove_fight_empty(x, y) {
     const offEdge = !isok(x, y);
     const loc = (!offEdge && game.level?.at(x, y)) || null;
-    // C: about to become known empty — remove 'I' if present
-    if (loc && glyph_is_invisible(loc)) {
+    let boulder = null;
+    if (!offEdge && loc) {
+        const mem = loc.remembered_glyph;
+        // C: glyph_is_statue(glyph) → sobj_at(STATUE); also live BOULDER
+        const looksStatue = !!(mem && mem.ch === '`');
+        if (looksStatue) {
+            const top = objects_at(x, y);
+            if (top && (top.otyp | 0) === STATUE_OTYP) boulder = top;
+        }
+        if (!boulder) {
+            for (let p = objects_at(x, y); p; p = p.nexthere) {
+                if ((p.otyp | 0) === BOULDER_OTYP) { boulder = p; break; }
+            }
+        }
+        // C: unmap_object then map_object(boulder,TRUE) then newsym
         unmap_object(x, y);
+        if (boulder) map_object(boulder, true);
         newsym(x, y);
     }
     const solid = offEdge
@@ -488,6 +508,8 @@ async function domove_fight_empty(x, y) {
     let target;
     if (offEdge) {
         target = 'an unknown obstacle';
+    } else if (boulder) {
+        target = 'a boulder'; // ansimpleoname deferred
     } else if (solid) {
         if (loc && (loc.seenv || IS_STWALL(loc.typ))) {
             target = IS_STWALL(loc.typ) || loc.typ === STONE
@@ -498,7 +520,7 @@ async function domove_fight_empty(x, y) {
     } else {
         target = 'thin air';
     }
-    const harmlessly = (solid && !offEdge) ? 'harmlessly ' : '';
+    const harmlessly = (boulder || (solid && !offEdge)) ? 'harmlessly ' : '';
     await pline(`You ${harmlessly}attack ${target}.`);
     return true;
 }

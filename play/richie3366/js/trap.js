@@ -67,7 +67,7 @@ import {
     ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at,
     DISP_FLASH, DISP_END,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE,
-    HVY_ENCUMBER, ECMD_OK, MON_DETACH,
+    HVY_ENCUMBER, ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container,
 } from './const.js';
 import {
@@ -3144,7 +3144,7 @@ export async function lava_effects() {
 /**
  * C ref: trap.c could_untrap — preliminary #untrap / autounlock gates.
  * Named omissions: sticks/ustuck busy-hands wording; check_floor reach
- * surface; full untrap() arms.
+ * surface; untrap floor/box/door disarm arms (see untrap()).
  * @param {boolean} verbosely
  * @param {boolean} [check_floor=false]
  * @returns {Promise<boolean>} true when allowed (C returns 1)
@@ -3181,13 +3181,60 @@ export async function could_untrap(verbosely, check_floor = false) {
 }
 
 /**
+ * C ref: trap.c untrap — hero able to attempt disarm, so do so.
+ * Branch envelope: usual #untrap `getdir(NULL)`; cancel → 0; !isok;
+ * non-door with no tseen trap → "You know of no traps there."
+ * Named omissions: has_magic_key force; floor-trap disarm_* switch;
+ * boxcnt/ynq/untrap_box; door trap find/disarm RNG; autounlock;
+ * can_reach_floor / mimic stumble messaging.
+ * @param {boolean} [force=false]
+ * @param {number} [rx=0]
+ * @param {number} [ry=0]
+ * @param {object|null} [container=null]
+ * @returns {Promise<number>} 1 spent time, 0 otherwise (C boolean)
+ */
+export async function untrap(force = false, rx = 0, ry = 0, container = null) {
+    void force; // has_magic_key → force deferred
+    let x;
+    let y;
+    if (!rx && !container) {
+        // C: usual case — getdir((char *)0) → "In what direction?"
+        const { getdir } = await import('./lock.js');
+        if (!(await getdir(null))) return 0;
+        x = (game.u.ux | 0) + (game.u.dx | 0);
+        y = (game.u.uy | 0) + (game.u.dy | 0);
+    } else if (container) {
+        // Named omission: untrap_box(container, force, confused)
+        return 1;
+    } else {
+        // autounlock door coords — disarm body deferred
+        x = rx | 0;
+        y = ry | 0;
+    }
+    if (!isok(x, y)) {
+        await pline('The perils lurking there are beyond your grasp.');
+        return 0;
+    }
+    const ttmp0 = t_at(x, y);
+    const ttmp = ttmp0 && ttmp0.tseen ? ttmp0 : null;
+    const loc = game.level?.at?.(x, y);
+    // Floor-trap / box arms deferred. Match C empty exit when no door
+    // and no seen floor trap (trap_skipped stays false).
+    if (!loc || !IS_DOOR(loc.typ | 0)) {
+        if (!ttmp) await pline('You know of no traps there.');
+        // else: disarm_holdingtrap / landmine / … deferred
+        return 0;
+    }
+    // Door D_TRAPPED find/disarm (rn2/rnd) deferred — no invented RNG.
+    return 0;
+}
+
+/**
  * C ref: trap.c dountrap — #untrap disarm.
- * Branch envelope: could_untrap(TRUE,FALSE) gate only.
- * Named omissions: full untrap() trap/box/door arms.
+ * Branch envelope: could_untrap then untrap(FALSE,0,0,NULL).
  * @returns {Promise<number>} ECMD_*
  */
 export async function dountrap() {
     if (!(await could_untrap(true, false))) return ECMD_OK;
-    // Full untrap() deferred — C untrap() returns 0 → ECMD_OK
-    return ECMD_OK;
+    return (await untrap(false, 0, 0, null)) ? ECMD_TIME : ECMD_OK;
 }

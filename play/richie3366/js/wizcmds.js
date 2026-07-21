@@ -25,6 +25,7 @@ import {
     LIFESAVED,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
+import { make_blinded } from './do.js';
 
 /** C timeout.c propertynames[] — wizard #wizintrinsic menu order. */
 const PROPERTYNAMES = [
@@ -148,12 +149,13 @@ function incr_prop_timeout(p, amt) {
 /**
  * C ref: wizcmds.c wiz_intrinsic — #wizintrinsic
  * Envelope: propertynames menu + HALLUC → make_hallucinated;
- * BLINDED → make_blinded (no Timeout pline; silent if already Blind)
- * (D-0928); default incr_itimeout mirrors. Named omissions: deaf/sick/
- * slimed/stoned/stunned/vomiting/glib special arms; count-prefix menu
- * digits; float_vs_flight / rescham / pooleffects; WARN_OF_MON species;
- * SICK rn2 vomit-type; unavailcmd ecname wording; make_blinded talk
- * gain/lose-sight messages.
+ * BLINDED → make_blinded(newtimeout, TRUE) — not incr_prop_timeout
+ * (D-0928 #1171; HBlinded from raven/cream must not be overwritten via
+ * stale uprops[BLINDED]).
+ * Named omissions: deaf/sick/slimed/stoned/stunned/vomiting/glib
+ * special arms; count-prefix menu digits; float_vs_flight / rescham /
+ * pooleffects; WARN_OF_MON species; SICK rn2 vomit-type; unavailcmd
+ * ecname wording; make_blinded Blindfolded/Eyes talk variants.
  */
 export async function wiz_intrinsic() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
@@ -203,13 +205,11 @@ export async function wiz_intrinsic() {
         } else if (p === CONFUSION) {
             await make_confused(newtimeout, true);
         } else if (p === BLINDED) {
-            // C: make_blinded(newtimeout, TRUE) — not generic Timeout pline.
-            // Already Blind + increasing → silent (no --More--).
-            incr_prop_timeout(p, amt);
-            if (game.flags) game.flags.botl = true;
-            const u = game.u || {};
-            u.Blind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
-                && !(u.BBlinded | 0));
+            // C wizcmds.c:1020 — make_blinded(newtimeout, TRUE).
+            // Must use BlindedTimeout (HBlinded), not stale uprops[BLINDED]
+            // (cream pie / AD_BLND set HBlinded only). Already Blind +
+            // increasing → silent (no generic Timeout pline).
+            await make_blinded(newtimeout, true);
         } else {
             incr_prop_timeout(p, amt);
             if (game.flags) game.flags.botl = true;

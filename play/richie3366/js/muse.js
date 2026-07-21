@@ -1203,7 +1203,7 @@ export async function use_misc(mtmp) {
             await pline(
                 `${Monnam(mtmp)} yanks ${the_weapon} to the floor!`,
             );
-            dropy(obj);
+            await dropy(obj);
             break;
         case 3:
             await pline(`${Monnam(mtmp)} snatches ${the_weapon}!`);
