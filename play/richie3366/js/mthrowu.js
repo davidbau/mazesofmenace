@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    distmin, dist2, m_at, m_carrying, seemimic,
+    distmin, dist2, m_at, m_carrying, seemimic, setmangry,
 } from './mon.js';
 import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
@@ -562,7 +562,7 @@ async function hit(str, mtmp, force) {
  *
  * Named omissions: shade_miss (caller); distant_name/mshot_xname;
  * spec_abon; stone_missile/passes_rocks; poison/silver/acid/egg
- * petrify; can_blnd; setmangry; vampshifter destroy verb;
+ * petrify; can_blnd; vampshifter destroy verb;
  * mon_notices unfreeze in omon_adj.
  * Rolling boulder (range==-1): after drop_throw, re-extract and return
  * false so launch_obj keeps rolling (D-0700 / mthrowu.c ohitmon).
@@ -656,7 +656,10 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         }
     }
 
-    // setmangry when !mon_moving deferred
+    // C: if (!DEADMONSTER(mtmp) && !mon_moving) setmangry(mtmp, TRUE)
+    if ((mtmp.mhp | 0) > 0 && !game.context?.mon_moving) {
+        setmangry(mtmp, true);
+    }
     // C: objgone = drop_throw(...); if (!objgone && range == -1) {
     //    obj_extract_self(otmp); return FALSE; } — rolling boulder keeps going
     const objgone = drop_throw(otmp, true, bx, by);

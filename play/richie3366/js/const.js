@@ -2924,6 +2924,12 @@ export function Is_box(obj) {
     const t = obj?.otyp;
     return t === 214 || t === 215; // LARGE_BOX, CHEST
 }
+// C ref: obj.h Waterproof_container — OILSKIN_SACK / ICE_BOX / Is_box
+export function Waterproof_container(obj) {
+    const t = obj?.otyp;
+    // OILSKIN_SACK=218, ICE_BOX=216 (objects.h order LARGE_BOX..BAG_OF_TRICKS)
+    return t === 218 || t === 216 || Is_box(obj);
+}
 export function M_AP_TYPE(mon) { return mon?.m_ap_type ?? 0; }
 export function engulfing_u(mon) { const g = (typeof game !== 'undefined' ? game : null); return g?.u?.uswallow && g?.u?.ustuck === mon; }
 // C ref: permonst.h — ismnum(x) means x is a valid monster index.

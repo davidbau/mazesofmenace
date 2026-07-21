@@ -504,9 +504,10 @@ export async function mondied(mdef) {
 
 /**
  * C ref: mon.c monkilled — pline then mondied (or mondead if disintegested).
- * Named omissions: worm_known; AD_DGST/RBRE/FIRE disintegested; pet roast.
+ * Named omissions: worm_known; AD_DGST/-AD_RBRE/FIRE completelyburns
+ * disintegested → mondead; pet roast pline.
  */
-async function monkilled(mdef, fltxt, _how) {
+export async function monkilled(mdef, fltxt, _how) {
     const txt = fltxt || '';
     if (cansee(mdef.mx, mdef.my)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';

@@ -924,6 +924,30 @@ function mapseen_feat_line(mptr) {
 }
 
 /**
+ * C ref: dungeon.c get_annotation — mapseen.custom for lev, or null.
+ */
+function get_annotation(lev) {
+    const uz = lev || game.u?.uz || { dnum: 0, dlevel: 1 };
+    const dnum = uz.dnum | 0;
+    const dlevel = uz.dlevel | 0;
+    const mptr = (game.mapseenchn || []).find(
+        (m) => (m.lev?.dnum | 0) === dnum && (m.lev?.dlevel | 0) === dlevel,
+    );
+    return mptr?.custom || null;
+}
+
+/**
+ * C ref: dungeon.c print_level_annotation — You("remember this level as %s.").
+ * Called from goto_level after arrival; forces --More-- before Blind feel
+ * check_here when the level was #annotate'd (D-0928).
+ */
+export async function print_level_annotation() {
+    const { pline } = await import('./display.js');
+    const annotation = get_annotation(game.u?.uz);
+    if (annotation) await pline(`You remember this level as ${annotation}.`);
+}
+
+/**
  * C ref: dungeon.c query_annotation — getlin level name into mapseen.custom.
  * Branch envelope: current-level annotate (no prior custom / no EDIT_GETLIN).
  * Replace-annotation prompt and other-level describe_level deferred.

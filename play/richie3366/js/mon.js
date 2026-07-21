@@ -46,10 +46,11 @@ import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
 import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
-import { in_your_sanctuary } from './priest.js';
+import { in_your_sanctuary, p_coaligned } from './priest.js';
 import { in_rooms, is_pool, is_lava } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special } from './worn.js';
+import { adjalign } from './attrib.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
@@ -564,9 +565,10 @@ export function seemimic(mtmp) {
 
 /**
  * C ref: mon.c setmangry — peaceful → hostile on attack.
- * Branch envelope: core mpeaceful clear + humanoid/shk/gd pline + adjalign(-1).
- * Named omissions: Elbereth hypocrite/rnd(5)/del_engr; priest adjalign
- * coalign; growl; quest guardian / peacefuls_respond bodies.
+ * Branch envelope: core mpeaceful clear + humanoid/shk/gd pline +
+ * adjalign (priest coalign / -1) so ualign.abuse→adj_erinys runs.
+ * Named omissions: Elbereth hypocrite/rnd(5)/del_engr; growl;
+ * quest guardian / peacefuls_respond bodies.
  */
 export function setmangry(mtmp, via_attack) {
     if (!mtmp) return;
@@ -576,13 +578,10 @@ export function setmangry(mtmp, via_attack) {
     if (!mtmp.mpeaceful) return;
     if (mtmp.mtame) return;
     mtmp.mpeaceful = 0;
-    const u = game.u || (game.u = {});
-    if (!u.ualign) u.ualign = { record: 0, type: 0 };
     if (mtmp.ispriest) {
-        // p_coaligned adjalign ± deferred → -1 like non-priest
-        u.ualign.record = (u.ualign.record | 0) - 1;
+        adjalign(p_coaligned(mtmp) ? -5 : 2);
     } else {
-        u.ualign.record = (u.ualign.record | 0) - 1;
+        adjalign(-1); /* attacking peaceful monsters is bad */
     }
     if (humanoid(mtmp.data) || mtmp.isshk || mtmp.isgd) {
         // couldsee gate: still pline when visible-ish (canspot deferred)
@@ -849,7 +848,7 @@ export async function minliquid(mtmp) {
 
 // C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
 // Named omissions still: mm_aggression/MDISP;
-// eel nexttry; can_fog in cant_squeeze_thru;
+// can_fog in cant_squeeze_thru;
 // peaceful shop/temple dig avoid; Inhell Elbereth;
 // passes_bars full (rust/corr/metallivorous/slithy); m_can_break_boulder.
 export function mfndpos(mon, data, flag) {
@@ -866,8 +865,9 @@ export function mfndpos(mon, data, flag) {
     const nodiag = NODIAG(mon.mnum ?? mon.data?.mndx);
     const mdat = mon.data;
 
-    // C: wantpool / poolok / lavaok — land monsters skip pool/lava neighbours
-    const wantpool = mdat?.mlet === 'S_EEL';
+    // C: wantpool / poolok / lavaok — land monsters skip pool/lava neighbours.
+    // poolok is computed once; eel nexttry only clears wantpool (mon.c).
+    let wantpool = mdat?.mlet === 'S_EEL';
     const poolok = ((!Is_waterlevel(game.u?.uz) && m_in_air(mon))
         || (is_swimmer(mdat) && !wantpool));
     let lavaok = m_in_air(mon) || likes_lava(mdat);
@@ -913,157 +913,168 @@ export function mfndpos(mon, data, flag) {
     const DisplacedHero = !!(u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic
         || u.uprops?.[DISPLACED]?.extrinsic);
 
-    for (let nx = Math.max(1, x - 1); nx <= maxx; nx++) {
-        for (let ny = Math.max(0, y - 1); ny <= maxy; ny++) {
-            if (nx === x && ny === y) continue;
-            const loc = game.level?.at(nx, ny);
-            if (!loc) continue;
-            const ntyp = loc.typ;
-            // C: obstructed unless ALLOW_WALL passwall or diggable rock/tree
-            if (IS_OBSTRUCTED(ntyp)
-                && !((flag & ALLOW_WALL) && may_passwall(nx, ny))
-                && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny))) {
-                continue;
-            }
-            // C ref: mon.c mfndpos — intelligent peacefuls avoid digging
-            // shop/temple walls (D-0865).
-            if (IS_OBSTRUCTED(ntyp) && rockok
-                && !mindless(mdat) && (mon.mpeaceful || mon.mtame)
-                && (in_rooms(nx, ny, TEMPLE) || in_rooms(nx, ny, SHOPBASE))
-                && !(in_rooms(x, y, TEMPLE) || in_rooms(x, y, SHOPBASE))) {
-                continue;
-            }
-            // C: IS_WATERWALL && !is_swimmer
-            if (IS_WATERWALL(ntyp) && !is_swimmer(mdat)) continue;
-            // C: IRONBARS — need ALLOW_BARS; nondiggable+rust/corr deferred
-            if (ntyp === IRONBARS && !(flag & ALLOW_BARS)) continue;
-            if (IS_DOOR(ntyp)) {
-                const dm = loc.doormask || 0;
-                if (((dm & D_CLOSED) && !(flag & OPENDOOR))
-                    || ((dm & D_LOCKED) && !(flag & UNLOCKDOOR))) {
-                    if (!thrudoor) continue;
-                }
-            }
-            // C: avoid poison gas when not already in it (glyph == S_poisoncloud)
-            {
-                const gas_reg = visible_region_at(nx, ny);
-                if (!poisongas_ok && !in_poisongas && is_poisoncloud_region(gas_reg)) {
+    // C: nexttry — eels prefer water; if none nearby and not already in
+    // pool, retry with wantpool cleared so they crawl over land.
+    for (;;) {
+        cnt = 0;
+        for (let nx = Math.max(1, x - 1); nx <= maxx; nx++) {
+            for (let ny = Math.max(0, y - 1); ny <= maxy; ny++) {
+                if (nx === x && ny === y) continue;
+                const loc = game.level?.at(nx, ny);
+                if (!loc) continue;
+                const ntyp = loc.typ;
+                // C: obstructed unless ALLOW_WALL passwall or diggable rock/tree
+                if (IS_OBSTRUCTED(ntyp)
+                    && !((flag & ALLOW_WALL) && may_passwall(nx, ny))
+                    && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny))) {
                     continue;
                 }
-            }
-            // C: first diagonal checks — NODIAG + non-broken doors + rogue
-            // door-cut + worm_cross consecutive segs (mon.c mfndpos)
-            if (nx !== x && ny !== y) {
-                const ndm = loc.doormask || 0;
-                if (nodiag
-                    || (IS_DOOR(nowtyp) && (nowdm & ~D_BROKEN))
-                    || (IS_DOOR(ntyp) && (ndm & ~D_BROKEN))
-                    || ((IS_DOOR(nowtyp) || IS_DOOR(ntyp))
-                        && Is_rogue_level(game.u?.uz))
-                    || (m_at(x, ny) && m_at(nx, y)
-                        && worm_cross(x, y, nx, ny)
-                        && !m_at(nx, ny)
-                        && (nx !== game.u?.ux || ny !== game.u?.uy))) {
+                // C ref: mon.c mfndpos — intelligent peacefuls avoid digging
+                // shop/temple walls (D-0865).
+                if (IS_OBSTRUCTED(ntyp) && rockok
+                    && !mindless(mdat) && (mon.mpeaceful || mon.mtame)
+                    && (in_rooms(nx, ny, TEMPLE) || in_rooms(nx, ny, SHOPBASE))
+                    && !(in_rooms(x, y, TEMPLE) || in_rooms(x, y, SHOPBASE))) {
                     continue;
                 }
-            }
-            // C: LAVAWALL — needs lavaok and ALLOW_WALL
-            if ((!lavaok || !(flag & ALLOW_WALL)) && ntyp === LAVAWALL) {
-                continue;
-            }
-            // C: poolok/lavaok outer gate
-            if (!((poolok || mfndpos_is_pool(nx, ny) === wantpool)
-                && (lavaok || !mfndpos_is_lava(nx, ny)))) {
-                continue;
-            }
-
-            // C: Displacement remaps onscary check to hero cell
-            let dispx = nx;
-            let dispy = ny;
-            if (DisplacedHero && monseeu && mon.mux === nx && mon.muy === ny) {
-                dispx = u.ux;
-                dispy = u.uy;
-            }
-
-            let info = 0;
-            if (onscary(dispx, dispy, mon)) {
-                if (!(flag & ALLOW_SSM)) continue;
-                info |= ALLOW_SSM;
-            }
-            if ((nx === game.u.ux && ny === game.u.uy)
-                || (nx === mon.mux && ny === mon.muy)) {
-                if (nx === game.u.ux && ny === game.u.uy) {
-                    mon.mux = game.u.ux;
-                    mon.muy = game.u.uy;
-                }
-                if (!(flag & ALLOW_U)) continue;
-                info |= ALLOW_U;
-            } else if (m_at(nx, ny)) {
-                // hostiles lack ALLOW_M — cannot displace/attack other mons
-                // mm_aggression / ALLOW_MDISP deferred
-                if (!(flag & ALLOW_M)) continue;
-                info |= ALLOW_M;
-            } else {
-                // C: ALLOW_SANCT only prevents movement (not attack) into temple
-                if (game.level?.flags?.has_temple
-                    && in_rooms(nx, ny, TEMPLE)
-                    && !in_rooms(x, y, TEMPLE)
-                    && in_your_sanctuary(null, nx, ny)) {
-                    if (!(flag & ALLOW_SANCT)) continue;
-                    info |= ALLOW_SANCT;
-                }
-            }
-
-            // C: sobj_at garlic / boulder
-            const obj = objects_at(nx, ny);
-            if (obj) {
-                let hasBoulder = false;
-                let hasGarlic = false;
-                for (let o = obj; o; o = o.nexthere) {
-                    if (o.otyp === BOULDER) hasBoulder = true;
-                    if (o.otyp === CLOVE_OF_GARLIC) hasGarlic = true;
-                }
-                if (hasGarlic) {
-                    if (flag & NOGARLIC) continue;
-                    info |= NOGARLIC;
-                }
-                if (hasBoulder) {
-                    if (!(flag & ALLOW_ROCK)) continue;
-                    info |= ALLOW_ROCK;
-                }
-            }
-
-            // C: monseeu && monlineu → NOTONL (unicorn flag skips; else mark)
-            if (monseeu && monlineu(mon, nx, ny)) {
-                if (flag & NOTONL) continue;
-                info |= NOTONL;
-            }
-
-            // C: diagonal tight squeeze — bad_rock flanks + cant_squeeze_thru
-            // (mon.c mfndpos; D-0612). Giant spider through wall corner.
-            if (nx !== x && ny !== y
-                && bad_rock(mdat, x, ny)
-                && bad_rock(mdat, nx, y)
-                && cant_squeeze_thru(mon)) {
-                continue;
-            }
-
-            // C: harmful traps → ALLOW_TRAPS; hostiles skip known types
-            // (mon.c mfndpos). Pets get ALLOW_TRAPS and check in dogmove.
-            const ttmp = t_at(nx, ny);
-            if (ttmp) {
-                if (!m_harmless_trap(mon, ttmp)) {
-                    if (!(flag & ALLOW_TRAPS)) {
-                        if (mon_knows_traps(mon, ttmp.ttyp)) continue;
+                // C: IS_WATERWALL && !is_swimmer
+                if (IS_WATERWALL(ntyp) && !is_swimmer(mdat)) continue;
+                // C: IRONBARS — need ALLOW_BARS; nondiggable+rust/corr deferred
+                if (ntyp === IRONBARS && !(flag & ALLOW_BARS)) continue;
+                if (IS_DOOR(ntyp)) {
+                    const dm = loc.doormask || 0;
+                    if (((dm & D_CLOSED) && !(flag & OPENDOOR))
+                        || ((dm & D_LOCKED) && !(flag & UNLOCKDOOR))) {
+                        if (!thrudoor) continue;
                     }
-                    info |= ALLOW_TRAPS;
                 }
-            }
+                // C: avoid poison gas when not already in it (glyph == S_poisoncloud)
+                {
+                    const gas_reg = visible_region_at(nx, ny);
+                    if (!poisongas_ok && !in_poisongas && is_poisoncloud_region(gas_reg)) {
+                        continue;
+                    }
+                }
+                // C: first diagonal checks — NODIAG + non-broken doors + rogue
+                // door-cut + worm_cross consecutive segs (mon.c mfndpos)
+                if (nx !== x && ny !== y) {
+                    const ndm = loc.doormask || 0;
+                    if (nodiag
+                        || (IS_DOOR(nowtyp) && (nowdm & ~D_BROKEN))
+                        || (IS_DOOR(ntyp) && (ndm & ~D_BROKEN))
+                        || ((IS_DOOR(nowtyp) || IS_DOOR(ntyp))
+                            && Is_rogue_level(game.u?.uz))
+                        || (m_at(x, ny) && m_at(nx, y)
+                            && worm_cross(x, y, nx, ny)
+                            && !m_at(nx, ny)
+                            && (nx !== game.u?.ux || ny !== game.u?.uy))) {
+                        continue;
+                    }
+                }
+                // C: LAVAWALL — needs lavaok and ALLOW_WALL
+                if ((!lavaok || !(flag & ALLOW_WALL)) && ntyp === LAVAWALL) {
+                    continue;
+                }
+                // C: poolok/lavaok outer gate
+                if (!((poolok || mfndpos_is_pool(nx, ny) === wantpool)
+                    && (lavaok || !mfndpos_is_lava(nx, ny)))) {
+                    continue;
+                }
 
-            data.poss[cnt] = { x: nx, y: ny };
-            data.info[cnt] = info;
-            cnt++;
+                // C: Displacement remaps onscary check to hero cell
+                let dispx = nx;
+                let dispy = ny;
+                if (DisplacedHero && monseeu && mon.mux === nx && mon.muy === ny) {
+                    dispx = u.ux;
+                    dispy = u.uy;
+                }
+
+                let info = 0;
+                if (onscary(dispx, dispy, mon)) {
+                    if (!(flag & ALLOW_SSM)) continue;
+                    info |= ALLOW_SSM;
+                }
+                if ((nx === game.u.ux && ny === game.u.uy)
+                    || (nx === mon.mux && ny === mon.muy)) {
+                    if (nx === game.u.ux && ny === game.u.uy) {
+                        mon.mux = game.u.ux;
+                        mon.muy = game.u.uy;
+                    }
+                    if (!(flag & ALLOW_U)) continue;
+                    info |= ALLOW_U;
+                } else if (m_at(nx, ny)) {
+                    // hostiles lack ALLOW_M — cannot displace/attack other mons
+                    // mm_aggression / ALLOW_MDISP deferred
+                    if (!(flag & ALLOW_M)) continue;
+                    info |= ALLOW_M;
+                } else {
+                    // C: ALLOW_SANCT only prevents movement (not attack) into temple
+                    if (game.level?.flags?.has_temple
+                        && in_rooms(nx, ny, TEMPLE)
+                        && !in_rooms(x, y, TEMPLE)
+                        && in_your_sanctuary(null, nx, ny)) {
+                        if (!(flag & ALLOW_SANCT)) continue;
+                        info |= ALLOW_SANCT;
+                    }
+                }
+
+                // C: sobj_at garlic / boulder
+                const obj = objects_at(nx, ny);
+                if (obj) {
+                    let hasBoulder = false;
+                    let hasGarlic = false;
+                    for (let o = obj; o; o = o.nexthere) {
+                        if (o.otyp === BOULDER) hasBoulder = true;
+                        if (o.otyp === CLOVE_OF_GARLIC) hasGarlic = true;
+                    }
+                    if (hasGarlic) {
+                        if (flag & NOGARLIC) continue;
+                        info |= NOGARLIC;
+                    }
+                    if (hasBoulder) {
+                        if (!(flag & ALLOW_ROCK)) continue;
+                        info |= ALLOW_ROCK;
+                    }
+                }
+
+                // C: monseeu && monlineu → NOTONL (unicorn flag skips; else mark)
+                if (monseeu && monlineu(mon, nx, ny)) {
+                    if (flag & NOTONL) continue;
+                    info |= NOTONL;
+                }
+
+                // C: diagonal tight squeeze — bad_rock flanks + cant_squeeze_thru
+                // (mon.c mfndpos; D-0612). Giant spider through wall corner.
+                if (nx !== x && ny !== y
+                    && bad_rock(mdat, x, ny)
+                    && bad_rock(mdat, nx, y)
+                    && cant_squeeze_thru(mon)) {
+                    continue;
+                }
+
+                // C: harmful traps → ALLOW_TRAPS; hostiles skip known types
+                // (mon.c mfndpos). Pets get ALLOW_TRAPS and check in dogmove.
+                const ttmp = t_at(nx, ny);
+                if (ttmp) {
+                    if (!m_harmless_trap(mon, ttmp)) {
+                        if (!(flag & ALLOW_TRAPS)) {
+                            if (mon_knows_traps(mon, ttmp.ttyp)) continue;
+                        }
+                        info |= ALLOW_TRAPS;
+                    }
+                }
+
+                data.poss[cnt] = { x: nx, y: ny };
+                data.info[cnt] = info;
+                cnt++;
+            }
         }
+        // C mon.c:2376 — eel nexttry when stranded on land with no water nbr
+        if (!cnt && wantpool && !mfndpos_is_pool(x, y)) {
+            wantpool = false;
+            continue;
+        }
+        break;
     }
     data.cnt = cnt;
     return cnt;
@@ -1106,13 +1117,18 @@ async function movemon_singlemon(mtmp) {
     // C: mon.c movemon_singlemon — I_SPECIAL → m_dowear; may spend turn
     if (maybe_m_dowear_special(mtmp)) return false;
 
-    // C: is_hider — restrap may hide again; disguised/undetected skip dochug
-    // (eel hideunder rn2(4) deferred)
+    // C: is_hider — restrap may hide again; disguised/undetected skip dochug.
+    // Else eels may re-hide in isolated pools before dochug (rn2(4) gated).
     if (is_hider(mtmp.data)) {
         if (restrap(mtmp)) return false;
         const ap = M_AP_TYPE(mtmp);
         if (ap === M_AP_FURNITURE || ap === M_AP_OBJECT) return false;
         if (mtmp.mundetected) return false;
+    } else if (mtmp.data?.mlet === 'S_EEL' && !mtmp.mundetected
+        && (mtmp.mflee || !m_next2u(mtmp))
+        && !canseemon(mtmp) && !rn2(4)) {
+        // C mon.c:1295 — hideunder may spend turn; fail continues to Conflict
+        if (hideunder(mtmp)) return false;
     }
 
     // C: Conflict → fightm before dochugw (always rolls resist_conflict).

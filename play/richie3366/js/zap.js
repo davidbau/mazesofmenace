@@ -18,7 +18,7 @@
 // zap_over_floor beyond fire-pool steam + poison-gas 1x1 trail
 // (ice melt/fountain/WEB/cold/acid bars/POOL→PIT deferred); shopdamage;
 // map_invisible/unmap during buzz; backfire body; other NODIR; wrest
-// pline; check_capacity/nohands; check_unpaid; update_inventory;
+// pline; check_capacity; check_unpaid; update_inventory;
 // shieldeff/monstunseesu; setworn EReflecting bits (worn
 // SHIELD_OF_REFLECTION stands in); ureflects W_WEP/W_AMUL/W_ARM/
 // silver-dragon arms beyond shield makeknown; create_polymon after
@@ -28,8 +28,8 @@
 // erode_armor; death-breath disintegrate_arm; potionbreathe invis flash
 // (D-0741); inventory_resistance_check; destroy_items elec body;
 // ugolemeffects; burn_away_slime; spell_damage_bonus / Knight questart
-// double; Rider/Death specials; type<0 mon death → monkilled (uses
-// killed for now).
+// double; Rider/Death specials; disintegrate_mon; fire completelyburns
+// XKILL_NOCORPSE; mon_reflects.
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -49,11 +49,11 @@ import {
     confdir, fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
 } from './hack.js';
 import {
-    nonliving, is_demon, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
+    nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
     MR_POISON, MR_ACID,
 } from './monsters.js';
 import { m_at, wakeup } from './mon.js';
-import { find_mac } from './mhitm.js';
+import { find_mac, monkilled } from './mhitm.js';
 import { more_experienced } from './exper.js';
 import { obj_resists } from './dogmove.js';
 import { zap_dig } from './dig.js';
@@ -77,7 +77,7 @@ import {
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, DISP_BEAM, DISP_CHANGE, DISP_END,
     OBJ_FLOOR, Has_contents, ZAPPED_WAND, NOTELL, STRAT_WAITMASK,
-    POOL, Is_waterlevel,
+    POOL, Is_waterlevel, AD_RBRE, UNCHANGING,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -891,9 +891,10 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
 /**
  * C ref: zap.c dobuzz — wand/spell/breath ray + DISP_BEAM + zhitm/zhitu.
  * Envelope: type<0 newsym; rn1(7,7) range; zap_over_floor trail (gas
- * deferred until after hit/reflect); mon/hero zap_hit. Named omit:
- * fireball; mon_reflects; shopdamage; map_invisible; Hallu hdmgtype;
- * type<0 monkilled (uses killed); steed redirect.
+ * deferred until after hit/reflect); mon/hero zap_hit; type<0 dead →
+ * monkilled(…, AD_RBRE) else xkilled/killed. Named omit: fireball;
+ * mon_reflects; shopdamage; map_invisible; Hallu hdmgtype;
+ * disintegrate_mon; fire completelyburns XKILL_NOCORPSE; steed redirect.
  */
 export async function dobuzz(
     type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss,
@@ -973,11 +974,19 @@ export async function dobuzz(
                         const tmp = await zhitm(mon, type, nd, ootmp);
 
                         if (tmp === MAGIC_COOKIE) {
-                            // disintegrate_mon deferred → kill
+                            // C disintegrate_mon: type<0 monkilled(-AD_RBRE)
+                            // else xkilled(NOMSG|NOCORPSE) — deferred → kill
                             await killed(mon);
                         } else if ((mon.mhp | 0) < 1) {
-                            // C type<0 → monkilled; killed stands in
-                            await killed(mon);
+                            // C: type < 0 → monkilled(mon, flash, AD_RBRE);
+                            // else xkilled (hero credit + treasure rn2(6)).
+                            if ((type | 0) < 0) {
+                                await monkilled(
+                                    mon, flash_str(fltyp), AD_RBRE,
+                                );
+                            } else {
+                                await killed(mon);
+                            }
                         } else {
                             if (!ootmp.otmp) {
                                 if (sayhit || canseemon(mon)) {
@@ -1272,10 +1281,10 @@ async function zapnodir(obj) {
 /**
  * C ref: zap.c zapyourself — self-directed wand/spell effects.
  * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / WAN_SLEEP /
- * SPE_SLEEP / WAN_DEATH / SPE_FINGER_OF_DEATH; other otyps named in
- * C-JS-MAP.
+ * SPE_SLEEP / WAN_DEATH / SPE_FINGER_OF_DEATH / WAN_POLYMORPH /
+ * SPE_POLYMORPH; other otyps named in C-JS-MAP.
  * @param {boolean} ordinary wand zap (TRUE) vs broken/spell (FALSE)
- * @returns {number} damage (0 for healing/sleep/death)
+ * @returns {number} damage (0 for healing/sleep/death/poly)
  */
 export async function zapyourself(obj, ordinary) {
     if (!obj) return 0;
@@ -1330,6 +1339,21 @@ export async function zapyourself(obj, ordinary) {
         await pline('You die.');
         const { done } = await import('./end.js');
         await done(DIED);
+        break;
+    }
+
+    case WAN_POLYMORPH:
+    case SPE_POLYMORPH: {
+        // C: zap.c zapyourself — !Unchanging → learn + polyself(POLY_NOFLAGS)
+        const u = game.u || {};
+        const up = u.uprops?.[UNCHANGING];
+        const unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging
+            || (up?.intrinsic | 0) || (up?.extrinsic | 0));
+        if (!unchanging) {
+            learn_it = true;
+            const { polyself } = await import('./polyself.js');
+            await polyself(0);
+        }
         break;
     }
 
@@ -1707,7 +1731,12 @@ async function weffects(obj) {
  * @returns {Promise<number>} 0 = cancel/no turn, 1 = took time
  */
 export async function dozap() {
-    // nohands / check_capacity deferred (humanoid start always ok)
+    // C: nohands(youmonst.data) before getobj (brown-mold poly etc.)
+    if (nohands(game.youmonst?.data)) {
+        await pline("You aren't able to zap anything in your current form.");
+        return 0;
+    }
+    // check_capacity deferred
     const obj = await getobj_zap();
     if (!obj) return 0;
 

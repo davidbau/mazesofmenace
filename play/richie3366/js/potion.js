@@ -1,7 +1,7 @@
 // potion.js — Quaff / #dip commands (dodrink / dodip subset).
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil,
 //         peffect_confusion, peffect_booze, peffect_healing,
-//         make_confused, dodip; invent.c getobj;
+//         peffect_extra_healing, make_confused, dodip; invent.c getobj;
 //         fountain.c drinkfountain / dipfountain.
 
 import { game } from './gstate.js';
@@ -9,7 +9,7 @@ import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight, obj_extract_self } from './mkobj.js';
-import { A_WIS, A_DEX, A_CON, A_MAX, adjattrib, exercise } from './attrib.js';
+import { A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise } from './attrib.js';
 import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
 import { doname, xname, short_oname, thesimpleoname } from './objnam.js';
@@ -32,6 +32,7 @@ import { bcsign } from './rumors.js';
 import { more_experienced } from './exper.js';
 import { trycall } from './do_name.js';
 import { newuhs } from './eat.js';
+import { heal_legs } from './trap.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const POT_ACID = objectNames.indexOf('POT_ACID');
@@ -44,6 +45,7 @@ const POT_FRUIT_JUICE = objectNames.indexOf('POT_FRUIT_JUICE');
 const POT_SEE_INVISIBLE = objectNames.indexOf('POT_SEE_INVISIBLE');
 const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
+const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 
 /** C: gp.potion_nothing / gp.potion_unkn for dopotion trycall gate. */
@@ -127,15 +129,20 @@ function dippable_lets() {
  * C ref: invent.c getobj("drink", drink_ok, GETOBJ_NOFLAGS)
  * Called after fountain/sink prompts (or when menu_requested).
  * `?`/`*` → display_pickinv_reply (D-0430); missing letter → continue.
+ * Empty suggest + !GETOBJ_PROMPT → no key read (C invent.c suggested==0).
  */
 async function getobj_drink() {
     const { display_pickinv_reply } = await import('./invent.js');
+    // C: suggested == 0 && !forceprompt && !allownone → You don't have…
+    // (drink_ok_extra / EXCLUDE_INACCESS "else " deferred)
+    if (!drinkable_lets()) {
+        await pline("You don't have anything to drink.");
+        return null;
+    }
     for (;;) {
         const rawLets = drinkable_lets();
         const lets = drink_prompt_lets(rawLets);
-        const query = lets
-            ? `What do you want to drink? [${lets} or ?*]`
-            : 'What do you want to drink? [*]';
+        const query = `What do you want to drink? [${lets} or ?*]`;
         const prompt = `${query} `;
 
         game._pending_message = prompt;
@@ -488,17 +495,45 @@ async function peffect_confusion(otmp) {
 /**
  * C ref: potion.c peffect_healing
  * You_feel better; healup(8+d(4+2*bcsign,4), !cursed?1:0, !!blessed, !cursed);
- * exercise CON. peffect_extra_healing / peffect_full_healing deferred.
+ * exercise CON. peffect_full_healing deferred.
  */
 async function peffect_healing(otmp) {
     await You_feel('better.');
-    healup(
+    await healup(
         8 + d(4 + 2 * bcsign(otmp), 4),
         !otmp.cursed ? 1 : 0,
         !!otmp.blessed,
         !otmp.cursed,
     );
     exercise(A_CON, true);
+}
+
+/**
+ * C ref: potion.c peffect_extra_healing
+ * You_feel much better; healup(16+d(4+2*bcsign,8), blessed?5:!cursed?2:0,
+ * !cursed, TRUE); clear hallu; exercise CON+STR; blessed+!steed → heal_legs.
+ */
+async function peffect_extra_healing(otmp) {
+    await You_feel('much better.');
+    await healup(
+        16 + d(4 + 2 * bcsign(otmp), 8),
+        otmp.blessed ? 5 : !otmp.cursed ? 2 : 0,
+        !otmp.cursed,
+        true,
+    );
+    await make_hallucinated(0, true, 0);
+    exercise(A_CON, true);
+    exercise(A_STR, true);
+    // C: Wounded_legs ≡ HWounded_legs || EWounded_legs
+    const u = game.u || {};
+    const wounded = !!(
+        u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0)
+    );
+    if (wounded && otmp.blessed && !u.usteed) {
+        await heal_legs(0);
+    }
 }
 
 /**
@@ -521,7 +556,7 @@ async function peffect_booze(otmp) {
             false,
         );
     }
-    if (!otmp.odiluted) healup(1, 0, false, false);
+    if (!otmp.odiluted) await healup(1, 0, false, false);
     u.uhunger = (u.uhunger ?? 900) + 10 * (2 + bcsign(otmp));
     newuhs(false);
     exercise(A_WIS, false);
@@ -535,7 +570,8 @@ async function peffect_booze(otmp) {
 
 /**
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
- * paralysis / confusion / booze / healing / sickness; other otyps in map.
+ * paralysis / confusion / booze / healing / extra healing / sickness;
+ * other otyps in map.
  */
 async function peffects(otmp) {
     switch (otmp.otyp) {
@@ -557,6 +593,9 @@ async function peffects(otmp) {
         return -1;
     case POT_HEALING:
         await peffect_healing(otmp);
+        return -1;
+    case POT_EXTRA_HEALING:
+        await peffect_extra_healing(otmp);
         return -1;
     case POT_SICKNESS:
         await peffect_sickness(otmp);
@@ -602,10 +641,11 @@ export async function dopotion(otmp) {
 
 /**
  * C ref: potion.c healup — add HP; optional sick/blind cure.
- * Upolyd / make_blinded / make_deaf / make_sick bodies deferred when flags set.
+ * cureblind → make_blinded(0,TRUE) (learn_unseen_invent via toggle).
+ * make_deaf / make_sick bodies deferred (TIMEOUT clear only for deaf).
  * Also available via zap.js for SPE_HEALING zapyourself (avoids import cycle).
  */
-export function healup(nhp, nxtra, curesick, cureblind) {
+export async function healup(nhp, nxtra, curesick, cureblind) {
     const u = game.u;
     if (!u) return;
     if (nhp) {
@@ -626,8 +666,11 @@ export function healup(nhp, nxtra, curesick, cureblind) {
     }
     if (cureblind) {
         u.ucreamed = 0;
-        // make_blinded / make_deaf deferred
-        u.Blinded = 0;
+        // C: make_blinded(0L, TRUE) → toggle_blindness → learn_unseen_invent
+        const { make_blinded } = await import('./do.js');
+        await make_blinded(0, true);
+        // C: make_deaf(0L, TRUE) — talk deferred
+        u.HDeaf = (u.HDeaf | 0) & ~TIMEOUT;
     }
     if (curesick) {
         // make_vomiting / make_sick deferred

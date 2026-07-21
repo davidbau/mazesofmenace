@@ -88,6 +88,7 @@ import {
     Upolyd,
     MAGICENLIGHTENMENT,
     Is_airlevel,
+    Is_waterlevel,
     LEFT_SIDE,
     RIGHT_SIDE,
     TELEPORT_CONTROL,
@@ -109,6 +110,13 @@ import { humanoid, strongmonst } from './monsters.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
 const MZ_HUMAN = 2;
+
+/** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (+ roleplay). */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
 
 // C ref: hack.c weight_cap() — STR+CON base; Upolyd msize/cwt scale;
 // Air/Lev/steed → MAX; wounded-leg reduct when !Flying (non-MAX branch).
@@ -660,6 +668,22 @@ export function observe_object(obj) {
     // FIRST_OBJECT / generic skip deferred
     obj.dknown = 1;
     discover_object(obj.otyp, false, true);
+}
+
+/**
+ * C ref: invent.c learn_unseen_invent — on regaining sight, mark invent
+ * picked up while Blind as seen (xname/observe). addinv_core2 /
+ * update_inventory / cleric bknown / archeologist scroll polish deferred.
+ */
+export function learn_unseen_invent() {
+    if (Blind()) return;
+    for (const otmp of game.invent || []) {
+        if (!otmp) continue;
+        // C: skip when already dknown (+ role bknown/scroll gates deferred)
+        if (otmp.dknown) continue;
+        // C: xname(otmp) → observe_object when !Blind
+        observe_object(otmp);
+    }
 }
 
 const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
@@ -2818,21 +2842,22 @@ export function dfeature_at(x, y) {
 
 /**
  * C ref: invent.c look_here — feature + objects at hero feet.
- * Ported envelope: non-swallow, non-blind; dfeature pline; single
- * `You see here`; multi NHW_MENU "Things that are here:" via
- * display_nhwindow(WIN_MESSAGE)+putstr (D-0220); **observe_object
- * before doname** (D-0399; C xname_flags). **doname_with_price**
- * (D-0460). Named omissions: pile_limit skip_objects, Blind feel,
- * trap+region, cockatrice feel, engulfer stomach; blanket xname
- * observe / distant_name. Furniture with ct==0 uses
- * pickup.describe_decor (D-0356), not this path.
+ * Ported envelope: non-swallow; Blind feel pline + verb (D-0928 #1096);
+ * dfeature pline; single `You see/feel here`; multi NHW_MENU
+ * "Things that are/you feel here:" via display_nhwindow(WIN_MESSAGE)+putstr
+ * (D-0220); **observe_object before doname** (D-0399; C xname_flags).
+ * **doname_with_price** (D-0460). Named omissions: pile_limit skip_objects
+ * full arm, altar/ice Blind variants beyond floor, trap+region,
+ * cockatrice feel, engulfer stomach; blanket xname observe / distant_name.
+ * Furniture with ct==0 uses pickup.describe_decor (D-0356), not this path.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     // Dynamic import avoids invent↔shk cycle (shk imports paint_corner).
     const { doname_with_price } = await import('./shk.js');
     const u = game.u;
-    const verb = 'see'; // Blind feel path deferred
-    const skip_dfeature = !!(lookhere_flags & 0x2); // LOOKHERE_SKIP_DFEATURE
+    const blind = Blind();
+    const verb = blind ? 'feel' : 'see';
+    let skip_dfeature = !!(lookhere_flags & 0x2); // LOOKHERE_SKIP_DFEATURE
     const picked_some = !!(lookhere_flags & 0x1); // LOOKHERE_PICKED_SOME
     // C: skip_objects = (flags.pile_limit > 0 && obj_cnt >= flags.pile_limit)
     // Default pile_limit 5; obj_cnt===0 (dolook) never skips. Full skip
@@ -2844,6 +2869,34 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const otmp = objects_at(u?.ux, u?.uy);
     let dfeature = dfeature_at(u?.ux, u?.uy);
     let fbuf = null;
+
+    // C invent.c Blind arm — feel-floor pline before object list (forces
+    // --More-- after goto_level familiar msg; key sync for Count:N .).
+    if (blind) {
+        // Dynamic import: invent↔engrave↔trap cycle if static.
+        const { can_reach_floor } = await import('./engrave.js');
+        const drift = Is_airlevel(u?.uz) || Is_waterlevel(u?.uz);
+        if (dfeature && dfeature.startsWith('altar ')) {
+            await pline('You try to feel what is here.');
+        } else {
+            // ICE / force_decor Blind arm deferred — ordinary floor path
+            const cant_reach = !can_reach_floor(true);
+            const surf = 'floor'; // C surface() room/corr envelope
+            const where = cant_reach ? 'lying beneath you' : 'lying here on the ';
+            const onwhat = cant_reach ? '' : surf;
+            if (drift) {
+                await pline('You try to feel what is floating here.');
+            } else {
+                await pline(`You try to feel what is ${where}${onwhat}.`);
+            }
+            if (dfeature && !drift && dfeature === surf) skip_dfeature = true;
+        }
+        // C: !can_reach_floor(pit) → "But you can't reach it!" (pit trap deferred)
+        if (!can_reach_floor(false)) {
+            await pline("But you can't reach it!");
+            return;
+        }
+    }
 
     if (dfeature && !skip_dfeature) {
         // C: special no-article cases (lava/bars/ice) — iron bars only here
@@ -2862,7 +2915,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         const { read_engr_at } = await import('./engrave.js');
         await read_engr_at(u?.ux, u?.uy);
         // C: (!skip_objects && (Blind || !dfeature))
-        if (!skip_objects && !dfeature)
+        if (!skip_objects && (blind || !dfeature))
             await pline(`You ${verb} no objects here.`);
         return;
     }
@@ -2897,7 +2950,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         // C: doname → xname_flags observe_object when !Blind && !distantname
         // (JS xname/doname omit blanket observe; look_here must set dknown
         // for buried pile items see_nearby_objects never touches).
-        if (!game.u?.Blind) observe_object(otmp);
+        if (!blind) observe_object(otmp);
         // C: You("%s here %s.", verb, doname_with_price(otmp))
         await pline(`You ${verb} here ${doname_with_price(otmp)}.`);
         return;
@@ -2910,12 +2963,15 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         lines.push(fbuf);
         lines.push('');
     }
+    // C: "Things that you feel here:" / "Things that are here:"
     lines.push(
-        `${picked_some ? 'Other things' : 'Things'} that are here:`,
+        `${picked_some ? 'Other things' : 'Things'} that ${
+            blind ? 'you feel' : 'are'
+        } here:`,
     );
     for (let o = otmp; o; o = o.nexthere) {
         // C: doname_with_price → xname observe_object (dknown for gem color)
-        if (!game.u?.Blind) observe_object(o);
+        if (!blind) observe_object(o);
         lines.push(doname_with_price(o));
     }
     const { show_nhw_menu_text } = await import('./pager.js');
@@ -2949,8 +3005,8 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     } = await import('./artifact.js');
 
     if (!obj) return obj;
-    // C: if (!Blind) observe_object(obj)
-    if (!game.u?.Blind) obj.dknown = true;
+    // C invent.c hold_another_object: if (!Blind) observe_object(obj)
+    if (!Blind()) observe_object(obj);
 
     if (obj.oartifact) {
         const u = game.u || {};

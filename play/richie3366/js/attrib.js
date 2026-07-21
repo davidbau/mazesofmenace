@@ -55,6 +55,7 @@ import {
     PM_ELF,
     PM_ORC,
 } from './generated/monsters_data.js';
+import { adj_erinys } from './monsters.js';
 
 export const A_STR = 0;
 export const A_INT = 1;
@@ -519,7 +520,6 @@ export function ALIGNLIM() {
 
 /**
  * C ref: attrib.c adjalign — clamp record; abuse/erinys on loss.
- * Named omission: adj_erinys body (abuse counter still updated).
  */
 export function adjalign(n) {
     const u = game.u || (game.u = {});
@@ -531,7 +531,7 @@ export function adjalign(n) {
         if (newalign < cur) u.ualign.record = newalign;
         if (newabuse > (u.ualign.abuse | 0)) {
             u.ualign.abuse = newabuse;
-            // adj_erinys(newabuse) deferred
+            adj_erinys(newabuse);
         }
     } else if (newalign > cur) {
         u.ualign.record = newalign;

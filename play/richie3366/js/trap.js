@@ -68,6 +68,7 @@ import {
     DISP_FLASH, DISP_END,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE,
     HVY_ENCUMBER, ECMD_OK, MON_DETACH,
+    Is_container, Waterproof_container,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
@@ -2871,17 +2872,64 @@ const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
+const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
+const TOWEL = objectNames.indexOf('TOWEL');
+
+/**
+ * C ref: weapon.c wet_a_towel — amt≤0 increments by -amt; else set.
+ * Named omit: invent/mcarried pline; uwep unweapon via finish_towel_change.
+ */
+function wet_a_towel(obj, amt, _verbose) {
+    const cur = obj.spe | 0;
+    const newspe = (amt <= 0) ? cur - amt : amt;
+    if (newspe !== cur) {
+        obj.spe = Math.max(0, Math.min(7, newspe | 0));
+    }
+}
 
 /**
  * C ref: trap.c water_damage
- * Branch envelope: null → ER_NOTHING; force skips luck rn2(20);
- * potion dilute / scroll fade / spellbook fade; else
- * `erode_obj(..., ERODE_RUST, EF_NONE)` (D-0683).
- * Grease / towel / container / acid explosion / splash_lit named omitted.
+ * Branch envelope: null → ER_NOTHING; splash_lit; CAN_OF_GREASE;
+ * TOWEL wet; greased wash rn2(2); Is_container / Waterproof_container
+ * before luck rn2(20); potion dilute / scroll fade / spellbook fade;
+ * else `erode_obj(..., ERODE_RUST, EF_NONE)` (D-0683 / D-0928 #1101).
+ * Named omit: invent plines; pot_acid_damage boom; waterproof makeknown;
+ * brass-lantern dunk in splash_lit; SPE_NOVEL blank_novel.
  */
 export async function water_damage(obj, _ostr, force) {
     if (!obj) return ER_NOTHING;
-    // splash_lit / CAN_OF_GREASE / TOWEL / greased / container deferred
+
+    // C: splash_lit before ostr / luck — extinguish skips further damage RNG
+    if (splash_lit(obj)) return ER_DAMAGED;
+
+    if (obj.otyp === CAN_OF_GREASE && (obj.spe | 0) > 0) {
+        return ER_NOTHING;
+    }
+    if (obj.otyp === TOWEL && (obj.spe | 0) < 7) {
+        wet_a_towel(obj, -rnd(7 - (obj.spe | 0)), true);
+        return ER_NOTHING;
+    }
+    if (obj.greased) {
+        if (!rn2(2)) {
+            obj.greased = 0;
+            // invent pline / update_inventory deferred
+            if (obj.otyp === POT_ACID) {
+                // pot_acid_damage deferred
+                return ER_DESTROYED;
+            }
+        }
+        return ER_GREASED;
+    }
+    if (Is_container(obj)
+        && (!Waterproof_container(obj) || (obj.cursed && !rn2(3)))) {
+        // invent hliquid pline deferred
+        await water_damage_chain(obj.cobj, false);
+        return ER_DAMAGED;
+    }
+    if (Waterproof_container(obj)) {
+        // invent "cannot get into" / makeknown deferred
+        return ER_DAMAGED;
+    }
 
     if (!force && ((game.u?.Luck | 0) + 5) > rn2(20)) {
         return ER_NOTHING;

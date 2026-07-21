@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     newsym, flush_screen, pline, see_nearby_objects, clear_nhwindow_message,
-    mon_visible, sensemon,
+    mon_visible, sensemon, glyph_is_invisible, unmap_object,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
@@ -469,13 +469,18 @@ async function mention_walls_obstructed(x, y) {
 }
 
 /**
- * C ref: hack.c domove_fight_empty — F into empty/solid wastes a turn.
- * Branch envelope: thin air + simple solid; boulder/pick/explode/I-glyph
- * deferred (C-JS-MAP).
+ * C ref: hack.c domove_fight_empty — F into empty/solid, or remembered 'I'
+ * with no monster and !nopick, wastes a turn. Clears the I-glyph.
+ * Named omissions: boulder/statue dig; Underwater; explode poly; pick axe.
  */
 async function domove_fight_empty(x, y) {
     const offEdge = !isok(x, y);
     const loc = (!offEdge && game.level?.at(x, y)) || null;
+    // C: about to become known empty — remove 'I' if present
+    if (loc && glyph_is_invisible(loc)) {
+        unmap_object(x, y);
+        newsym(x, y);
+    }
     const solid = offEdge
         || !loc
         || !ACCESSIBLE(loc.typ)
@@ -1105,6 +1110,11 @@ export async function rhack(key) {
             game.context.move = 0;
             return;
         }
+        // C: gm.multi = gc.command_count; if (gm.multi) gm.multi--;
+        // Counted `.` / `s` use this with set_occupation (f_text).
+        game.multi = game.context.command_count | 0;
+        if (game.multi) game.multi--;
+        game.cmd_key = key;
     }
 
     // C ref: cmd.c rhack — clear nopick each command; menu_requested kept
@@ -1257,11 +1267,20 @@ export async function rhack(key) {
         // C: do NOT clear kickedloc after dokick — pets avoid it this turn
     } else if (ch === ' ' && game.flags?.rest_on_space) {
         // C ref: cmd.c update_rest_on_space — <space> → donull when option On
+        // C: f_text "waiting" + multi → timed_occupation(donull)
+        if ((game.multi | 0) > 0 && !game.occupation) {
+            set_occupation(donull, 'waiting', game.multi);
+        }
         const tookTime = await donull();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '.') {
         // C ref: do.c donull / cmd.c — wait; timed non-kick clears kickedloc
+        // C rhack: f_text "waiting" && multi → set_occupation(donull,…)
+        // so Count:N . runs N turns via timed_occupation (D-0928 #1096).
+        if ((game.multi | 0) > 0 && !game.occupation) {
+            set_occupation(donull, 'waiting', game.multi);
+        }
         const tookTime = await donull();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
@@ -1288,10 +1307,8 @@ export async function rhack(key) {
     } else if (ch === 's') {
         // C ref: detect.c dosearch + cmd.c set_occupation(f_text "searching")
         // parse already set multi = count-1; counted Ns → timed occupation.
-        const n = game.context?.command_count || 0;
         if (game.context) game.context.command_count = 0;
-        if (n > 1) {
-            game.multi = n - 1;
+        if ((game.multi | 0) > 0) {
             if (game.context) game.context.mv = 0;
             // C: if (f_text && !occupation && multi) set_occupation(dosearch,…)
             if (!game.occupation) set_occupation(dosearch, 'searching', game.multi);
@@ -1496,6 +1513,21 @@ export async function rhack(key) {
 }
 
 // C ref: hack.c domove — execute a movement
+/**
+ * C ref: hack.c u_rooted — youmonst.data->mmove == 0 (brown mold, etc.).
+ * Spends the turn (leave context.move); does not step. Named omissions:
+ * Is_airlevel / Is_waterlevel "in place" (Levitation alone covers flight).
+ */
+async function u_rooted() {
+    const data = game.youmonst?.data;
+    if (!data || (data.mmove | 0)) return false;
+    const u = game.u || {};
+    const lev = !!(u.Levitation || u.HLevitation || u.ELevitation);
+    await pline(`You are rooted ${lev ? 'in place' : 'to the ground'}.`);
+    nomul(0);
+    return true;
+}
+
 async function domove(dx, dy) {
     const u = game.u;
     const forcefight = !!game.context?.forcefight;
@@ -1549,8 +1581,11 @@ async function domove(dx, dy) {
         // Named omissions: displacer swap; domove_bump_mon; mundetected Wait!;
         // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
         mtmp = mon_at(newx, newy);
-        if (forcefight && !mtmp) {
-            // C: F with no monster → fight_empty, waste turn
+        // C: forcefight with no mon, OR remembered 'I' && !m_at && !nopick
+        // → fight_empty (hack.c). Blind rush onto I must waste the turn.
+        const destLoc = game.level?.at?.(newx, newy);
+        if ((forcefight && !mtmp)
+            || (glyph_is_invisible(destLoc) && !mtmp && !game.context?.nopick)) {
             await domove_fight_empty(newx, newy);
             if (game.context?.run) end_running();
             game.context.move = 1;
@@ -1584,6 +1619,13 @@ async function domove(dx, dy) {
         }
         // safemon displace: fall through; swap after test_move succeeds
         // (not when swallowed — engulfer is never safemon displace)
+    }
+
+    // C ref: hack.c domove_core — after attack path, before trapmove:
+    // u_rooted (mmove==0) spends the turn without stepping (D-0928 #1106).
+    if (await u_rooted()) {
+        if (game.context?.run) end_running();
+        return;
     }
 
     // C ref: hack.c domove_core — u.utrap → trapmove before test_move

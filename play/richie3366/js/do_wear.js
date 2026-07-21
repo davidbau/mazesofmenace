@@ -28,7 +28,7 @@ import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs,
 } from './objects.js';
-import { PM_ARCHEOLOGIST } from './monsters.js';
+import { PM_ARCHEOLOGIST, nolimbs } from './monsters.js';
 import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, is_damageable,
@@ -1260,7 +1260,7 @@ async function Amulet_on(amul) {
  * Ask Right/Left for a ring when both hands free.
  * C ref: do_wear.c accessory_or_armor_on —
  *   yn_function(qbuf, rightleftchars, '\0', TRUE).
- * Deferred: poly/non-humanoid body_part(FINGER) / nolimbs; query_menu.
+ * Deferred: poly/non-humanoid body_part(FINGER) wording; query_menu.
  */
 async function choose_ring_hand() {
     // C: Sprintf(qbuf, "Which %s%s, Right or Left?", "ring-", finger)
@@ -1314,6 +1314,11 @@ async function accessory_or_armor_on(obj) {
         if (!(await canwearobj(obj, maskBox, true))) return 0;
         mask = maskBox.mask;
     } else if (ring) {
+        // C: nolimbs before hand choice — ECMD_OK, no Right/Left yn
+        if (nolimbs(game.youmonst?.data)) {
+            await pline('You cannot make the ring stick to your body.');
+            return 0;
+        }
         if (u.uleft && u.uright) {
             await pline('There are no more ring-fingers to fill.');
             return 0;

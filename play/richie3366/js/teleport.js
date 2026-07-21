@@ -138,7 +138,16 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
     const ignorelava = (gpflags & MM_IGNORELAVA) !== 0;
     const checkscary = (gpflags & GP_CHECKSCARY) !== 0;
 
-    if (!allow_u && u_at(x, y)) return false;
+    // C: u_at rejected unless mtmp is youmonst / swallowed ustuck / usteed
+    // (teleok(self) for wizard ^T getpos — D-0928 #1102).
+    if (!allow_u && u_at(x, y)) {
+        const u = game.u || {};
+        if (mtmp !== game.youmonst
+            && (mtmp !== u.ustuck || !u.uswallow)
+            && (!u.usteed || mtmp !== u.usteed)) {
+            return false;
+        }
+    }
     if (avoid_monpos && m_at(x, y)) return false;
 
     const loc = game.level?.at(x, y);

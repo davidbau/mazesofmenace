@@ -33,7 +33,7 @@ import {
     fumaroles,
     movebubbles,
 } from './mklev.js';
-import { In_tutorial, at_dgn_entrance } from './dungeon.js';
+import { In_tutorial, at_dgn_entrance, print_level_annotation } from './dungeon.js';
 import { Is_waterlevel, Is_airlevel } from './const.js';
 import { com_pager } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
@@ -43,7 +43,7 @@ import { enexto } from './teleport.js';
 import { monster_nearby, losehp, maybe_half_phys, check_special_room } from './hack.js';
 import { place_object, stackobj } from './mkobj.js';
 import { doname } from './objnam.js';
-import { compactify_invlets, near_capacity } from './invent.js';
+import { compactify_invlets, near_capacity, learn_unseen_invent } from './invent.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
 import { pickup } from './pickup.js';
 import { Fumbling } from './attrib.js';
@@ -762,6 +762,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await newexplevel();
     }
 
+    // C: print_level_annotation() before check_special_room / pickup
+    // (dungeon.c — #annotate custom → "You remember this level as …")
+    await print_level_annotation();
+
     // C: goto_level — room entrance messages before pickup
     await check_special_room(false);
 
@@ -1181,9 +1185,11 @@ function incr_itimeout_HBlinded(incr) {
 /**
  * C ref: potion.c make_blinded — talk + toggle_blindness subset for wipeoff.
  * Named omissions: Eyes override probe detail; Punished set_bc; Hallucination
- * talk variants; Blindfolded itch/twitch; Sting_effects / learn_unseen_invent.
+ * talk variants; Blindfolded itch/twitch; Sting_effects.
+ * learn_unseen_invent on regain-sight (D-0928 #1098).
+ * Exported for timeout.c nh_timeout BLINDED expiry.
  */
-async function make_blinded(xtime, talk) {
+export async function make_blinded(xtime, talk) {
     const u = game.u || (game.u = {});
     const old = BlindedTimeout();
     // C probes Blind via props (H/E/BBlinded), not a sticky mirror.
@@ -1207,6 +1213,8 @@ async function make_blinded(xtime, talk) {
         if (game.flags) game.flags.botl = true;
         game.vision_full_recalc = 1;
         vision_recalc(0);
+        // C: if (!Blind) learn_unseen_invent()
+        if (!Blind()) learn_unseen_invent();
     }
 }
 

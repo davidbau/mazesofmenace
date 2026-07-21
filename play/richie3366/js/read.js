@@ -20,8 +20,7 @@
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; nommap/Hallucination/
 // blessed-SDOOR convert body; notice_mon_off/on; can_chant poly silent/
-// headless/buzz/burble; check_capacity; SPE_MAGIC_MAPPING /
-// SPE_REMOVE_CURSE cast;
+// headless/buzz/burble; SPE_MAGIC_MAPPING / SPE_REMOVE_CURSE cast;
 // Teleport_control getpos; confused light yellow/black-light pets;
 // snuff_lit / impact_arti_light / Punished ball; gremlin light-hit list;
 // Rogue whole-room light; Sunsword radius-0; remove-curse shop water
@@ -44,7 +43,9 @@ import {
 } from './objects.js';
 import { weight, uncurse, blessorcurse, mkobj } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
-import { makeknown, display_pickinv_reply, identify_pack } from './invent.js';
+import {
+    makeknown, display_pickinv_reply, identify_pack, near_capacity,
+} from './invent.js';
 import { more_experienced } from './exper.js';
 import { do_mapping, cvt_sdoor_to_door } from './detect.js';
 import { study_book, can_chant } from './spell.js';
@@ -58,7 +59,7 @@ import { rn2, rnd } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
     W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM,
-    NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries,
+    NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
 } from './const.js';
 import { vision_recalc, do_clear_area } from './vision.js';
 import { getlin } from './getline.js';
@@ -831,7 +832,11 @@ async function seffects(sobj) {
  */
 export async function doread() {
     known = false;
-    // check_capacity deferred
+    // C ref: hack.c check_capacity — near_capacity >= EXT_ENCUMBER → ECMD_OK
+    if (near_capacity() >= EXT_ENCUMBER) {
+        await pline("You can't do that while carrying so much stuff.");
+        return 0;
+    }
 
     const scroll = await getobj_read();
     if (!scroll) return 0;

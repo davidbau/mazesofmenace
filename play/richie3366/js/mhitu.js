@@ -8,7 +8,7 @@ import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
-    Upolyd, DIED, P_WHIP, NON_PM,
+    Upolyd, DIED, P_WHIP, NON_PM, XKILL_NOMSG, NEW_MOON,
     DISPLACED, IS_WATERWALL, RLOC_MSG, TIMEOUT,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
@@ -21,7 +21,7 @@ import {
     swallowed, flush_topl_more,
 } from './display.js';
 import { cansee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
-import { Monnam, mon_nam, pmname } from './do_name.js';
+import { Monnam, mon_nam, pmname, hliquid } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval } from './weapon.js';
 import { is_pole } from './wield.js';
 import { xname } from './objnam.js';
@@ -31,20 +31,39 @@ import { rloc, tele_restrict } from './teleport.js';
 import { monflee } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
-    MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes,
+    MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
+    MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import { done_in_by } from './end.js';
 import { msummon, Inhell } from './minion.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { A_STR, A_DEX, A_CON, acurr, poisoned } from './attrib.js';
+import { xkilled } from './uhitm.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
     could_seduce,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
-    AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA,
+    AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_BOOM,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
     AD_SITM, AD_SEDU, AD_SSEX,
 } from './mhitm.js';
+
+/** C ref: monattk.h — passiveum damage types beyond mhitm export set. */
+const AD_STUN = 12;
+const AD_PLYS = 14;
+const AD_STON = 18;
+const AD_ENCH = 41;
+
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+
+/** C ref: monst.h resists_* — mresists|mextrinsics|mintrinsics bit. */
+function resists_mr(mon, mrBit) {
+    if (!mon) return false;
+    const bits = (mon.data?.mresists | 0)
+        | (mon.mextrinsics | 0)
+        | (mon.mintrinsics | 0);
+    return !!(bits & mrBit);
+}
 
 const PM_BALROG = monsterNames.indexOf('PM_BALROG');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
@@ -938,8 +957,74 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: pline.c You_hear — acoustics/Deaf gate (local for mhitu).
+ */
+async function You_hear(line) {
+    const u = game.u || {};
+    if (u.Deaf || u.HDeaf || game.flags?.acoustics === false) return;
+    await pline(`You hear ${line}`);
+}
+
+/**
+ * C ref: uhitm.c do_stone_u — start delayed stoning unless resisted/poly.
+ * Named omissions: make_stoned body / polymon stone-golem; sets Stoned stub.
+ * Returns 1 if stoning started (caller may mark done).
+ */
+function do_stone_u(mtmp) {
+    const u = game.u || {};
+    const Stoned = !!(u.Stoned || u.HStoned);
+    const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
+        || u.EStone_resistance);
+    if (!Stoned && !Stone_resistance) {
+        // poly_when_stoned → polymon(PM_STONE_GOLEM) deferred
+        u.Stoned = 5;
+        void mtmp;
+        return 1;
+    }
+    return 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_ston — mhitu (monster→you) arm only.
+ * hitmsg + !rn2(3) hiss/cough; !rn2(10)||NEW_MOON → do_stone_u.
+ * Named omissions: Soundeffect; full make_stoned killer string.
+ */
+async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
+    if (!rn2(3)) {
+        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
+        if (mtmp.mcan) {
+            if (!Deaf) await You_hear(`a cough from ${mon_nam(mtmp)}!`);
+        } else {
+            const Hallu = !!(game.u?.Hallucination
+                || ((game.u?.HHallucination | 0)
+                    && !(game.u?.Halluc_resistance | 0)));
+            if (Hallu && !Blind()) {
+                await You_hear('hissing.');
+                await pline(
+                    `${Monnam(mtmp)} appears to be blowing you a kiss...`,
+                );
+            } else if (!Deaf) {
+                await You_hear(`${s_suffix_poison(mon_nam(mtmp))} hissing!`);
+            } else if (!Blind()) {
+                await pline(`${Monnam(mtmp)} seems to grimace.`);
+            }
+            if (!rn2(10) || (game.flags?.moonphase | 0) === NEW_MOON) {
+                if (do_stone_u(mtmp)) {
+                    mhm.hitflags = M_ATTK_HIT;
+                    mhm.done = true;
+                    return;
+                }
+            }
+        }
+    }
+    // C mhitu arm leaves mhm.damage from hitmu base d() (often 0d0)
+    void mhm;
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
- * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + BLND ported;
+ * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + BLND + STON ported;
  * other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
@@ -965,6 +1050,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_BLND:
         await mhitm_ad_blnd_u(mtmp, mattk, mhm);
         break;
+    case AD_STON:
+        await mhitm_ad_ston_u(mtmp, mattk, mhm);
+        break;
     default:
         mhm.damage = 0;
         break;
@@ -972,8 +1060,177 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
 }
 
 /**
- * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu.
- * Undead midnight extra, passiveum, permdmg deferred.
+ * C ref: mhitu.c assess_dmg — subtract tmp from mtmp; lethal → xkilled NOMSG.
+ */
+async function assess_dmg(mtmp, tmp) {
+    mtmp.mhp = (mtmp.mhp | 0) - (tmp | 0);
+    if ((mtmp.mhp | 0) <= 0) {
+        await pline(`${Monnam(mtmp)} dies!`);
+        await xkilled(mtmp, XKILL_NOMSG);
+        if ((mtmp.mhp | 0) > 0) return M_ATTK_HIT; // !DEADMONSTER
+        return M_ATTK_AGR_DIED;
+    }
+    return M_ATTK_HIT;
+}
+
+/**
+ * C ref: mhitu.c passiveum — hero AT_NONE/AT_BOOM counterattack after hitmu.
+ * Uses olduasmon (form at hit start) even if rehumanized mid-hit.
+ * Named omissions: attk_protection/poly_when_stoned detail; drain_item body;
+ * erode_armor/acid_damage bodies; golemeffects; mon_reflects; paralyze_monst
+ * full; rehumanize AT_BOOM; split_mon body (mh heal still applied).
+ */
+async function passiveum(olduasmon, mtmp, mattk) {
+    if (!olduasmon || !mtmp) return M_ATTK_HIT;
+    let oldu_mattk = null;
+    for (let i = 0; !oldu_mattk; i++) {
+        if (i >= NATTK) return M_ATTK_HIT;
+        const slot = olduasmon.mattk?.[i];
+        if (!slot) continue;
+        if ((slot.aatyp | 0) === AT_NONE || (slot.aatyp | 0) === AT_BOOM) {
+            oldu_mattk = slot;
+        }
+    }
+    let tmp;
+    if (oldu_mattk.damn) {
+        tmp = d(oldu_mattk.damn | 0, oldu_mattk.damd | 0);
+    } else if (oldu_mattk.damd) {
+        tmp = d((olduasmon.mlevel | 0) + 1, oldu_mattk.damd | 0);
+    } else {
+        tmp = 0;
+    }
+
+    const u = game.u || {};
+    // Even-if-rehumanized arms
+    switch (oldu_mattk.adtyp | 0) {
+    case AD_ACID:
+        if (!rn2(2)) {
+            const acid = hliquid('acid');
+            await pline(
+                `${Monnam(mtmp)} is splashed by ${!Upolyd(u) ? '' : 'your '}${acid}!`,
+            );
+            if (resists_mr(mtmp, MR_ACID)) {
+                await pline(`${Monnam(mtmp)} is not affected.`);
+                tmp = 0;
+            }
+        } else {
+            tmp = 0;
+        }
+        if (!rn2(30)) {
+            // erode_armor(mtmp, ERODE_CORRODE) deferred
+        }
+        if (!rn2(6)) {
+            // acid_damage(MON_WEP(mtmp)) deferred
+        }
+        return assess_dmg(mtmp, tmp);
+    case AD_STON: {
+        // attk_protection / wornitems / poly_when_stoned deferred — resists only
+        if (!resists_ston(mtmp)) {
+            await pline(`${Monnam(mtmp)} turns to stone!`);
+            if (!game.context) game.context = {};
+            game.context.stoned = 1;
+            await xkilled(mtmp, XKILL_NOMSG);
+            if ((mtmp.mhp | 0) > 0) return M_ATTK_HIT;
+            return M_ATTK_AGR_DIED;
+        }
+        return M_ATTK_HIT;
+    }
+    case AD_ENCH:
+        // drain_item(mon_currwep, TRUE) deferred — no RNG in C when wep null
+        void mattk;
+        return M_ATTK_HIT;
+    default:
+        break;
+    }
+    if (!Upolyd(u)) return M_ATTK_HIT;
+
+    // Live-only passives — C always burns rn2(3)
+    if (rn2(3)) {
+        switch (oldu_mattk.adtyp | 0) {
+        case AD_PHYS:
+            if ((oldu_mattk.aatyp | 0) === AT_BOOM) {
+                await pline('You explode!');
+                // rehumanize deferred
+                return assess_dmg(mtmp, tmp);
+            }
+            break;
+        case AD_PLYS:
+            if (tmp > 127) tmp = 127;
+            if ((u.umonnum | 0) === PM_FLOATING_EYE) {
+                if (!rn2(4)) tmp = 127;
+                if (mtmp.mcansee && haseyes(mtmp.data) && rn2(3)
+                    && (perceives(mtmp.data) || !u.Invis)) {
+                    if (Blind()) {
+                        const sex = game.flags?.female ? FEMALE : MALE;
+                        await pline(
+                            `As a blind ${pmname(game.youmonst?.data, sex)}, you cannot defend yourself.`,
+                        );
+                    } else {
+                        // mon_reflects deferred — treat as no reflect
+                        await pline(`${Monnam(mtmp)} is frozen by your gaze!`);
+                        // paralyze_monst deferred — still mark done
+                        mtmp.mcanmove = 0;
+                        mtmp.mfrozen = tmp | 0;
+                        return M_ATTK_AGR_DONE;
+                    }
+                }
+            } else {
+                await pline(`${Monnam(mtmp)} is frozen by you.`);
+                mtmp.mcanmove = 0;
+                mtmp.mfrozen = tmp | 0;
+                return M_ATTK_AGR_DONE;
+            }
+            return M_ATTK_HIT;
+        case AD_COLD:
+            if (resists_mr(mtmp, MR_COLD)) {
+                // shieldeff / golemeffects deferred
+                await pline(`${Monnam(mtmp)} is mildly chilly.`);
+                tmp = 0;
+                break;
+            }
+            await pline(`${Monnam(mtmp)} is suddenly very cold!`);
+            u.mh = (u.mh | 0) + Math.trunc((tmp + rn2(2)) / 2);
+            if ((u.mhmax | 0) < (u.mh | 0)) u.mhmax = u.mh | 0;
+            if ((u.mhmax | 0) > (((game.youmonst?.data?.mlevel | 0) + 1) * 8)) {
+                // split_mon(&youmonst, mtmp) deferred
+            }
+            break;
+        case AD_STUN:
+            if (!mtmp.mstun) {
+                mtmp.mstun = 1;
+                await pline(`${Monnam(mtmp)} staggers.`);
+            }
+            tmp = 0;
+            break;
+        case AD_FIRE:
+            if (resists_mr(mtmp, MR_FIRE)) {
+                await pline(`${Monnam(mtmp)} is mildly warm.`);
+                tmp = 0;
+                break;
+            }
+            await pline(`${Monnam(mtmp)} is suddenly very hot!`);
+            break;
+        case AD_ELEC:
+            if (resists_mr(mtmp, MR_ELEC)) {
+                await pline(`${Monnam(mtmp)} is slightly tingled.`);
+                tmp = 0;
+                break;
+            }
+            await pline(`${Monnam(mtmp)} is jolted with your electricity!`);
+            break;
+        default:
+            tmp = 0;
+            break;
+        }
+    } else {
+        tmp = 0;
+    }
+    return assess_dmg(mtmp, tmp);
+}
+
+/**
+ * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu
+ * + passiveum. Undead midnight extra, permdmg deferred.
  */
 async function hitmu(mtmp, mattk) {
     const mhm = {
@@ -983,6 +1240,8 @@ async function hitmu(mtmp, mattk) {
         done: false,
         damage: 0,
     };
+    // C: olduasmon = youmonst.data before adtyping may rehumanize
+    const olduasmon = game.youmonst?.data;
 
     // C: if (!canspotmon(mtmp)) map_invisible — Blind / unseen attacker
     if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
@@ -996,7 +1255,8 @@ async function hitmu(mtmp, mattk) {
     if (mhm.done) return mhm.hitflags;
 
     const u = game.u || {};
-    if ((u.uhp | 0) < 1) {
+    // C: (Upolyd ? u.mh : u.uhp) < 1
+    if ((Upolyd(u) ? (u.mh | 0) : (u.uhp | 0)) < 1) {
         await mdamageu(mtmp, 1);
         mhm.damage = 0;
     }
@@ -1011,8 +1271,13 @@ async function hitmu(mtmp, mattk) {
         await mdamageu(mtmp, mhm.damage);
     }
 
-    // passiveum deferred — human L1 has no passive
-    return M_ATTK_HIT;
+    // C: if (mhm.damage) passiveum else M_ATTK_HIT; always stop_occupation
+    let res = M_ATTK_HIT;
+    if (mhm.damage) {
+        res = await passiveum(olduasmon, mtmp, mattk);
+    }
+    await stop_occupation();
+    return res;
 }
 
 /**

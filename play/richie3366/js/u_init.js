@@ -1757,7 +1757,7 @@ export async function u_init_misc() {
     // C: u.ualignbase[...] = u.ualign.type = aligns[flags.initalign].value
     const alignEnt = aligns[g.flags.initalign] || aligns[1];
     const atype = alignEnt?.value ?? A_NEUTRAL;
-    g.u.ualign = { type: atype, record: g.urole?.initrecord ?? 0 };
+    g.u.ualign = { type: atype, record: g.urole?.initrecord ?? 0, abuse: 0 };
     g.u.ualignbase = { current: atype, original: atype };
 
     // C ref: u_init.c ubirthday = getnow() (contest patch 001)

@@ -12,7 +12,7 @@ import {
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MIM_REVEAL, engulfing_u, OBJ_FREE, MON_DETACH,
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, SUPPRESS_SADDLE,
-    HAND,
+    HAND, A_LAWFUL,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
@@ -26,7 +26,7 @@ import {
     dbon, weapon_dam_bonus, use_skill, weapon_type,
 } from './weapon.js';
 import { ammo_and_launcher } from './wield.js';
-import { PM_BARBARIAN, PM_MONK } from './generated/monsters_data.js';
+import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, mhitm_knockback,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT,
@@ -35,7 +35,7 @@ import {
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
-    is_golem, is_mplayer, is_rider,
+    is_golem, is_mplayer, is_rider, is_undead,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
@@ -205,10 +205,35 @@ function Luck() {
     return (u.uluck | 0) + (u.moreluck | 0);
 }
 
+/** C ref: you.h helpless — msleeping || !mcanmove */
+function helpless(mtmp) {
+    return !!(mtmp?.msleeping || mtmp?.mcanmove === 0);
+}
+
+/**
+ * C ref: uhitm.c check_caitiff — knight chivalry / samurai giri.
+ * Called once per multi-attack from find_roll_to_hit (!attk_count++).
+ * Named omissions: dokick/apply callers (wired separately when needed).
+ */
+export function check_caitiff(mtmp) {
+    if (!mtmp) return;
+    const u = game.u || {};
+    if ((u.ualign?.record | 0) <= -10) return;
+    if (Role_if(PM_KNIGHT) && (u.ualign?.type | 0) === A_LAWFUL
+        && !is_undead(mtmp.data)
+        && (helpless(mtmp) || (mtmp.mflee && !mtmp.mavenge))) {
+        pline('You caitiff!');
+        adjalign(-1);
+    } else if (Role_if(PM_SAMURAI) && mtmp.mpeaceful) {
+        pline('You dishonorably attack the innocent!');
+        adjalign(-1);
+    }
+}
+
 /**
  * C ref: uhitm.c find_roll_to_hit — to-hit threshold before rnd(20).
- * check_caitiff / monk armor / encumbrance / trap penalties deferred when
- * they do not change RNG order for ordinary L1 melee.
+ * monk armor / encumbrance / trap penalties deferred when they do not
+ * change RNG order for ordinary L1 melee.
  * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1).
  */
 function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
@@ -222,7 +247,8 @@ function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
         + luckbon
         + (u.ulevel | 0); // maybe_polyd → ulevel when not poly
     if (!attk_count.v++) {
-        // check_caitiff deferred — no RNG for hostile kobold
+        // C: knight's chivalry or samurai's giri — once per multi-attack
+        check_caitiff(mtmp);
     }
     if (mtmp.mstun) tmp += 2;
     if (mtmp.mflee) tmp += 2;

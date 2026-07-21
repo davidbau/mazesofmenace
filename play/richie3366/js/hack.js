@@ -17,7 +17,7 @@ import {
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
 import { m_at } from './mon.js';
-import { cansee, recalc_block_point } from './vision.js';
+import { recalc_block_point } from './vision.js';
 import { is_hider, throws_rocks, noncorporeal } from './monsters.js';
 import { objects_at, obj_extract_self, place_object } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
@@ -312,8 +312,8 @@ export function monster_nearby() {
             if (is_hider(mtmp.data) && mtmp.mundetected) continue;
             if (mtmp.msleeping || mtmp.mcanmove === 0) continue; // helpless
             // onscary(u.ux, u.uy, mtmp) deferred
-            // canspotmon ≈ canseemon stub
-            if (!cansee(mtmp.mx, mtmp.my) || mtmp.minvis) continue;
+            // C: canspotmon(mtmp) — Blind still sensemon adjacent (D-0928)
+            if (!canspotmon(mtmp)) continue;
             return true;
         }
     }

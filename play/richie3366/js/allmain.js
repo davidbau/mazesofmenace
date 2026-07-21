@@ -20,7 +20,7 @@ import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_sk
 import { makedog } from './dog.js';
 import { makemon, reset_align_shift_cache } from './makemon.js';
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
-import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD } from './monsters.js';
+import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD, reset_erinys } from './monsters.js';
 import {
     A_DEX, A_STR, A_CON, A_WIS, A_INT, A_MAX, acurr, exercise, adjattrib,
     change_luck, Fast, Very_fast, Searching, Fumbling,
@@ -441,6 +441,9 @@ export async function newgame() {
     // C: moves starts 0 until u_init_role; reset align_shift statics
     g.moves = 0;
     reset_align_shift_cache();
+    // C: mons[PM_ERINYS] starts at monsters.h baseline each process;
+    // JS reuses the module — undo prior adj_erinys mutations.
+    reset_erinys();
 
     // C ref: allmain.c newgame — context.ident / tribute before init_objects
     if (!g.context) g.context = {};

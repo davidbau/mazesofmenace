@@ -18,6 +18,17 @@ import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { setStorageForTesting } from './storage.js';
 import { objects_globals_init } from './objects.js';
+import { monst_globals_init } from './monsters.js';
+import { ttyPlayerSelection } from './player_selection_tty.js';
+import {
+    renderTtyStartupBanner,
+    ttyPlayerNameAndSuffix,
+} from './tty_startup.js';
+import {
+    maybe_do_tutorial,
+    TutorialTransitionNotImplementedError,
+} from './tutorial_startup.js';
+import { moveloop_preamble } from './moveloop_preamble.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -25,6 +36,10 @@ export class NethackGame {
     constructor(opts = {}) {
         this._seed = opts.seed || 0;
         this._datetime = opts.datetime || null;
+        // Recorder patch 001 leaks tm_isdst into fixed-time parsing. Official
+        // sessions were recorded while New York daylight time was active;
+        // fresh recorder output can carry the explicit bit for local diffs.
+        this._recorderIsDst = opts.recorderIsDst ?? true;
         this._nethackrc = opts.nethackrc || '';
         // Cross-segment persistence handle. The judge sandbox passes a
         // shared Web-Storage-shaped object here so save / record /
@@ -86,47 +101,79 @@ export class NethackGame {
 
     async start() {
         const g = resetGame();
-        // C ref: allmain.c early_init() — mutable object names must exist
-        // before options can customize them; init_objects() runs later.
+        // C ref: allmain.c early_init() — clone both mutable source catalogs
+        // before options and role initialization; per-game resets run later.
         objects_globals_init(g);
+        monst_globals_init(g);
         setStorageForTesting(this._storage);
         // Recorder patch 001 routes calendar.c:getnow() through this fixed
-        // YYYYMMDDHHMMSS value. A future calendar.js should read this field.
+        // YYYYMMDDHHMMSS value and leaks its current tm_isdst bit.
         g.fixedDatetime = this._datetime;
+        g.recorderIsDst = this._recorderIsDst;
 
-        // Parse nethackrc
-        const opts = parseNethackrc(this._nethackrc);
-        g.plname = opts.name || 'Hero';
-        g.flags = { verbose: true, ...opts.flags };
-        g.iflags = { ...opts.iflags };
-        if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
-        if (opts.tutorial_set) g.tutorial_set_in_config = true;
-
-        // Initialize hero struct
-        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
-        g.context = { move: 0 };
-        g.program_state = {};
-        g.moves = 1;
-
-        // TODO: Map role/race/gender/align from opts to role data
-        g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
-        g.urace = { adj: 'human' };
-
-        // Initialize PRNG
+        // C initializes the game RNG before reading the configuration file.
         initRng(this._seed);
         enableRngLog();
 
-        // Install display
+        // Parse nethackrc
+        const opts = parseNethackrc(this._nethackrc);
+        g.plname = opts.name ?? '';
+        g.flags = { ...opts.flags };
+        g.iflags = { ...opts.iflags };
+        g.roleFilter = {
+            roles: [...(opts.roleFilter?.roles ?? [])],
+            mask: opts.roleFilter?.mask ?? 0,
+        };
+        // role.c calls this global gr.rfilter; selection code accepts the
+        // descriptive JS name while legacy ports can use the source name.
+        g.rfilter = g.roleFilter;
+        g.catname = opts.catname ?? '';
+        g.dogname = opts.dogname ?? '';
+        g.horsename = opts.horsename ?? '';
+        g.wizard = Boolean(g.flags.debug);
+        g.discover = Boolean(g.flags.explore);
+        if (opts.tutorial_set) g.tutorial_set_in_config = true;
+
+        // The rc parser owns roleplay options until u_init_misc() preserves
+        // them across its source memset boundary.
+        g.u = { uroleplay: { ...(opts.uroleplay ?? {}) } };
+        g.context = { move: 0 };
+        g.program_state = {};
+        g.moves = 0;
+        g.gp = {
+            plnamelen: 0,
+            // C ref: decl.h instance_globals_p; dog.c:pet_type().
+            preferred_pet: opts.preferred_pet ?? '',
+        };
+
+        // tty_init_nhwindows() precedes plnamesuffix() and any role menus.
+        // Install the capture surface before reproducing that visible input
+        // boundary; explicit configurations proceed without reading a key.
         if (this._pendingDisplay) {
             g.nhDisplay = this._pendingDisplay;
             this._pendingDisplay = null;
         }
-
-        // Install capture hook
         this._installCaptureHook();
+        renderTtyStartupBanner(g);
+
+        // C filters generic Unix usernames, prompts when necessary, then
+        // strips any role/race/gender/alignment suffix before selection.
+        await ttyPlayerNameAndSuffix(g);
+        if (!await ttyPlayerSelection(g)) {
+            g.program_state.gameover = true;
+            return false;
+        }
 
         // Run game startup
         await newgame();
+        // C ref: allmain.c moveloop(FALSE).  The preamble's messages and RNG
+        // effects precede the optional tutorial query.
+        await moveloop_preamble(false, g);
+        const tutorial = await maybe_do_tutorial(g);
+        if (tutorial.action === 'enter') {
+            throw new TutorialTransitionNotImplementedError(tutorial);
+        }
+        return true;
     }
 
     _installCaptureHook() {
@@ -199,10 +246,16 @@ export class NethackGame {
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
 export async function runSegment(input) {
-    const { seed, datetime, nethackrc, storage } = input;
+    const { seed, datetime, nethackrc, recorderIsDst, storage } = input;
     const moves = input.moves || '';
 
-    const nhGame = new NethackGame({ seed, datetime, nethackrc, storage });
+    const nhGame = new NethackGame({
+        seed,
+        datetime,
+        nethackrc,
+        recorderIsDst,
+        storage,
+    });
 
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
@@ -210,7 +263,18 @@ export async function runSegment(input) {
 
     for (const ch of moves) display.pushKey(ch.charCodeAt(0));
 
-    await nhGame.start();
+    let started;
+    try {
+        started = await nhGame.start();
+    } catch (error) {
+        // A recording may deliberately end at any startup input boundary.
+        // nhgetch() has already captured that boundary before discovering
+        // that the replay recipe has no next key.
+        if (String(error?.message || '').includes('Input queue empty'))
+            return nhGame;
+        throw error;
+    }
+    if (!started) return nhGame;
 
     // Drive the game loop until input is exhausted. The judge looks
     // at game.getScreens() afterwards; whatever the contestant

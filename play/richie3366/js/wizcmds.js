@@ -147,11 +147,13 @@ function incr_prop_timeout(p, amt) {
 
 /**
  * C ref: wizcmds.c wiz_intrinsic — #wizintrinsic
- * Envelope: propertynames menu + HALLUC → make_hallucinated; default
- * incr_itimeout mirrors. Named omissions: make_blinded/deaf/sick/slimed/
- * stoned/stunned/vomiting/glib special arms; count-prefix menu digits;
- * float_vs_flight / rescham / pooleffects; WARN_OF_MON species; SICK
- * rn2 vomit-type; unavailcmd ecname wording.
+ * Envelope: propertynames menu + HALLUC → make_hallucinated;
+ * BLINDED → make_blinded (no Timeout pline; silent if already Blind)
+ * (D-0928); default incr_itimeout mirrors. Named omissions: deaf/sick/
+ * slimed/stoned/stunned/vomiting/glib special arms; count-prefix menu
+ * digits; float_vs_flight / rescham / pooleffects; WARN_OF_MON species;
+ * SICK rn2 vomit-type; unavailcmd ecname wording; make_blinded talk
+ * gain/lose-sight messages.
  */
 export async function wiz_intrinsic() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
@@ -200,6 +202,14 @@ export async function wiz_intrinsic() {
             await make_hallucinated(newtimeout, true, 0);
         } else if (p === CONFUSION) {
             await make_confused(newtimeout, true);
+        } else if (p === BLINDED) {
+            // C: make_blinded(newtimeout, TRUE) — not generic Timeout pline.
+            // Already Blind + increasing → silent (no --More--).
+            incr_prop_timeout(p, amt);
+            if (game.flags) game.flags.botl = true;
+            const u = game.u || {};
+            u.Blind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
+                && !(u.BBlinded | 0));
         } else {
             incr_prop_timeout(p, amt);
             if (game.flags) game.flags.botl = true;

@@ -81,7 +81,7 @@ export function has_shrine(pri) {
 }
 
 /** C ref: priest.c p_coaligned — shrine align matches hero. */
-function p_coaligned(priest) {
+export function p_coaligned(priest) {
     const shralign = EPRI(priest)?.shralign;
     const algn = shralign != null
         ? (shralign | 0)

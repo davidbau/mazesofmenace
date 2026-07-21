@@ -9,7 +9,7 @@ import { an } from './objnam.js';
 import { pmname } from './do_name.js';
 import { name_to_mon, set_mon_data } from './mondata.js';
 import {
-    exercise, A_STR, A_CON, A_WIS, adjabil, redist_attr, newhp,
+    exercise, acurr, A_STR, A_CON, A_WIS, adjabil, redist_attr, newhp,
 } from './attrib.js';
 import { newpw, rndexp, setuhpmax } from './exper.js';
 import { find_ac } from './u_init.js';
@@ -18,6 +18,8 @@ import { dropx, canletgo } from './do.js';
 import { setuwep, setuswapwep } from './wield.js';
 import { races } from './roles.js';
 import { encumber_msg } from './invent.js';
+import { losehp } from './hack.js';
+import { finish_losehp_done } from './end.js';
 import {
     mons,
     polyok,
@@ -39,6 +41,8 @@ import {
     verysmall,
     is_flyer,
     is_floater,
+    is_vampire,
+    is_vampshifter,
     MZ_SMALL,
 } from './monsters.js';
 import {
@@ -60,6 +64,10 @@ import {
     MAXULEV,
     FROMFORM,
     FLYING,
+    KILLED_BY_AN,
+    ismnum,
+    POLYMORPH_CONTROL,
+    UNCHANGING,
 } from './const.js';
 import {
     PM_HUMAN,
@@ -67,9 +75,15 @@ import {
     PM_ELF,
     PM_DWARF,
     PM_GNOME,
+    SPECIAL_PM,
     monsterNames,
 } from './generated/monsters_data.js';
-import { TOOL_CLASS, objects } from './objects.js';
+import { TOOL_CLASS, objects, objectNames } from './objects.js';
+
+const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
+const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
 
 const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
 const PM_URUK_HAI = monsterNames.indexOf('PM_URUK_HAI');
@@ -98,6 +112,28 @@ function attacktype(ptr, aatyp) {
 /** C ref: mondata.h can_breathe — attacktype(ptr, AT_BREA) */
 function can_breathe(ptr) {
     return attacktype(ptr, AT_BREA);
+}
+
+/** C ref: obj.h Is_dragon_armor — scales or scale mail. */
+function Is_dragon_armor(obj) {
+    if (!obj) return false;
+    const t = obj.otyp | 0;
+    return (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES)
+        || (t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL);
+}
+
+/** C ref: youprop.h Polymorph_control — H || E via flat + uprops. */
+function Polymorph_control(u = game.u || {}) {
+    const e = u.uprops?.[POLYMORPH_CONTROL];
+    return !!((u.Polymorph_control || u.HPolymorph_control || u.EPolymorph_control)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Unchanging — H || E via flat + uprops. */
+function Unchanging(u = game.u || {}) {
+    const e = u.uprops?.[UNCHANGING];
+    return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /** C ref: mondata.c sliparm — whirly / small / noncorporeal */
@@ -609,10 +645,12 @@ export async function polymon(mntmp) {
 }
 
 /**
- * C ref: polyself.c polyself — POLY_CONTROLLED getlin → polymon/newman.
- * Named omissions: Unchanging (handled); system-shock !Poly_control path;
- * random rn1(SPECIAL_PM) pick; were/vamp/dragon-merge; placeholder orc/elf/
- * giant substitutes; mkclass_poly; wizard rehumanize own-role; light sources.
+ * C ref: polyself.c polyself — system-shock, POLY_CONTROLLED getlin,
+ * random ordinary pick, then polymon/newman.
+ * Named omissions: were/vamp/dragon-merge/POLY_MONSTER/POLY_REVERT;
+ * placeholder orc/elf/giant substitutes; mkclass_poly; controllable_poly
+ * getlin (non-force); wizard rehumanize own-role; light-source bookkeeping;
+ * POLY_LOW_CTRL forcecontrol downgrade.
  * @param {number} [psflags=POLY_NOFLAGS]
  */
 export async function polyself(psflags = 0) {
@@ -623,12 +661,29 @@ export async function polyself(psflags = 0) {
     void (psflags & POLY_MONSTER);
     void (psflags & POLY_REVERT);
 
-    if (u.Unchanging) {
+    if (Unchanging(u)) {
         await pline('You fail to transform!');
         return;
     }
 
-    // system-shock / Poly_control natural path deferred (!forcecontrol)
+    // C: !Polymorph_control && !forcecontrol && !draconian && !iswere && !isvamp
+    const draconian = !!(u.uarm && Is_dragon_armor(u.uarm));
+    const iswere = ismnum(u.ulycn);
+    const youdata = game.youmonst?.data;
+    const isvamp = !!(is_vampire(youdata) || is_vampshifter(game.youmonst));
+    if (!Polymorph_control(u) && !forcecontrol && !draconian && !iswere
+        && !isvamp) {
+        // C: if (rn2(20) > ACURR(A_CON)) system shock
+        if (rn2(20) > acurr(A_CON)) {
+            await pline('You shudder for a moment.');
+            losehp(rnd(30), 'system shock', KILLED_BY_AN);
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                await finish_losehp_done();
+            }
+            exercise(A_CON, false);
+            return;
+        }
+    }
 
     let mntmp = NON_PM;
     if (forcecontrol) {
@@ -669,9 +724,15 @@ export async function polyself(psflags = 0) {
         }
     }
 
+    // C: mntmp < LOW_PM → tryct=200; rn1(SPECIAL_PM-LOW_PM, LOW_PM)
     if (mntmp < LOW_PM) {
-        // random ordinary monster pick deferred
-        return;
+        let tryct = 200;
+        do {
+            mntmp = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+            if (polyok(mons(mntmp)) && !is_placeholder(mons(mntmp))) {
+                break;
+            }
+        } while (--tryct > 0);
     }
 
     game.sex_change_ok = (game.sex_change_ok | 0) + 1;

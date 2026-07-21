@@ -14,7 +14,7 @@ import { getdir } from './lock.js';
 import { near_capacity, inv_weight, weight_cap } from './invent.js';
 import { objects_at } from './mkobj.js';
 import {
-    mon_at, attack_checks, passive, killed,
+    mon_at, attack_checks, passive, killed, check_caitiff,
 } from './uhitm.js';
 import { AT_KICK } from './mhitm.js';
 import { overexertion, losehp, maybe_half_phys } from './hack.js';
@@ -235,7 +235,7 @@ async function maybe_kick_monster(mon, x, y) {
 
 /**
  * C ref: dokick.c kickdmg — non-poly kick damage + passive.
- * special_dmgval / check_caitiff / abuse_dog / monflee / hurtle deferred.
+ * special_dmgval / abuse_dog / monflee / hurtle deferred.
  */
 async function kickdmg(mon, clumsy) {
     let dmg = Math.trunc((acurrstr() + acurr(A_DEX) + acurr(A_CON)) / 15);
@@ -256,7 +256,8 @@ async function kickdmg(mon, clumsy) {
     }
 
     if (M_AP_TYPE(mon)) seemimic(mon);
-    // check_caitiff deferred
+    // C: check_caitiff(mon) before tame abuse
+    check_caitiff(mon);
 
     if (mon.mtame) {
         // abuse_dog / monflee deferred — still need damage path RNG

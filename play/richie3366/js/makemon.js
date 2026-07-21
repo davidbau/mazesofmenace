@@ -590,14 +590,18 @@ function adj_lev(ptr) {
         if (tmp > 49) tmp = 49;
         return tmp;
     }
-    let tmp = ptr.mlevel;
+    // C: ptr->mlevel is live mons[]; JS mons() snapshots — re-read table
+    // so adj_erinys mutations are visible (mon.c adj_erinys).
+    const live = mons(ptr?.mndx | 0);
+    const mlevel = (live?.mlevel ?? ptr.mlevel) | 0;
+    let tmp = mlevel;
     if (tmp > 49) return 50;
     let tmp2 = level_difficulty() - tmp;
     if (tmp2 < 0) tmp--;
     else tmp += Math.trunc(tmp2 / 5);
-    tmp2 = (game.u?.ulevel ?? 1) - ptr.mlevel;
+    tmp2 = (game.u?.ulevel ?? 1) - mlevel;
     if (tmp2 > 0) tmp += Math.trunc(tmp2 / 4);
-    tmp2 = Math.trunc((3 * ptr.mlevel) / 2);
+    tmp2 = Math.trunc((3 * mlevel) / 2);
     if (tmp2 > 49) tmp2 = 49;
     if (tmp > tmp2) return tmp2;
     return tmp > 0 ? tmp : 0;

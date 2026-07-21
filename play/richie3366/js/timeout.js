@@ -7,6 +7,7 @@ import { heal_legs } from './trap.js';
 import { stop_occupation, nomul, is_pool } from './hack.js';
 import { run_timers, objects_at } from './mkobj.js';
 import { make_confused } from './potion.js';
+import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast } from './attrib.js';
 import { pline, You_feel } from './display.js';
 import { inv_weight } from './invent.js';
@@ -162,11 +163,12 @@ function incr_itimeout_HFumbling(incr) {
  * expiry run property-specific handlers.
  * Envelope: WOUNDED_LEGS → heal_legs(0) + stop_occupation;
  * CONFUSION → set_itimeout(1) + make_confused(0,TRUE) + stop_occupation;
+ * BLINDED → set_itimeout(1) + make_blinded(0,TRUE) + stop_occupation (D-0928);
  * FUMBLING → slip_or_trip + nomul(-2) + incr_itimeout rnd(20) (D-0692);
  * DEAF → make_deaf(0) on expiry (D-0911; talk if !Unaware deferred).
  * FAST → timeout decrement + slow-down You_feel when !Very_fast (D-0919).
  * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues;
- * STUNNED/BLINDED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… cases;
+ * STUNNED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… cases;
  * Glib; ublesscnt (in allmain); mtimedone; usptime; ugallop; delayed
  * killers; uinvulnerable early return polish; defer_decor; full ice/
  * mount slip_or_trip arms.
@@ -202,6 +204,27 @@ export async function nh_timeout() {
             if (!(u.HConfusion | 0) && !(u.Confusion | 0)) {
                 await stop_occupation();
             }
+        }
+    }
+
+    // C case BLINDED — timeout.c:743; make_blinded(0,TRUE) + stop if cured
+    const hb = u.HBlinded | 0;
+    if (hb & TIMEOUT) {
+        const next = hb - 1;
+        u.HBlinded = next;
+        if (!(next & TIMEOUT)) {
+            // C: after --, was_blind = !!Blind (props, not sticky);
+            // set_itimeout(&HBlinded, 1L); make_blinded(0L, TRUE);
+            // if (was_blind && !Blind) stop_occupation();
+            const was_blind = (!!(((u.HBlinded | 0) || (u.EBlinded | 0))
+                && !(u.BBlinded | 0)))
+                || !!u.uroleplay?.blind;
+            u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | 1;
+            await make_blinded(0, true);
+            const still_blind = (!!(((u.HBlinded | 0) || (u.EBlinded | 0))
+                && !(u.BBlinded | 0)))
+                || !!u.uroleplay?.blind;
+            if (was_blind && !still_blind) await stop_occupation();
         }
     }
 

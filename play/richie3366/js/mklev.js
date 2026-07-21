@@ -7960,10 +7960,11 @@ function flip_level_rnd(flp, extras) {
  * rooms / doors / stairs / engravings in the extends bbox.
  * Ported: ox/oy + buried coords; swap `_objects_at` with terrain cells
  * (D-0804; preserves nexthere — never rebuild from fobj); mgoal / priest
- * shrpos / shk shk|shd; ungated door Flip_coord; `_level_monsters` swap
- * (C level.monsters[][]). Named omissions: drawbridge flip helpers,
- * vault-guard extras, worm-seg helpers beyond grid swap, exclusion zones,
- * ball/chain, flip_visuals(extras).
+ * shrpos / shk shk|shd via Flip_coord (inFlipArea+x gate); ungated stairs;
+ * `_level_monsters` swap (C level.monsters[][]). Named omissions:
+ * SpLev_Map flip (C leaves unflipped); drawbridge helpers; vault-guard
+ * extras; worm-seg helpers beyond grid swap; exclusion zones; ball/chain;
+ * flip_visuals(extras).
  */
 function flip_level(flp, _extras) {
     if ((flp & 3) === 0) return;
@@ -7976,27 +7977,16 @@ function flip_level(flp, _extras) {
     const FlipY = (y) => (maxy - y) + miny;
     const inFlipArea = (x, y) =>
         x >= minx && x <= maxx && y >= miny && y <= maxy;
-    // C ref: sp_lev.c Flip_coord
+    // C ref: sp_lev.c Flip_coord — gated on nonzero x + inFlipArea
+    // (doors/mgoal/EPRI/ESHK). Stairs/lregions use ungated FlipX/Y below.
     const Flip_coord = (cc) => {
-        if (!cc) return;
+        if (!cc || !cc.x || !inFlipArea(cc.x, cc.y)) return;
         if (flp & 1) cc.y = FlipY(cc.y);
         if (flp & 2) cc.x = FlipX(cc.x);
     };
 
-    // C: flip SpLev_Map bits with the terrain (needed for solidify_map)
-    if (game.SpLev_Map && game.SpLev_Map.size) {
-        const next = new Set();
-        for (const key of game.SpLev_Map) {
-            const [xs, ys] = key.split(',');
-            let x = Number(xs), y = Number(ys);
-            if (inFlipArea(x, y)) {
-                if (flp & 1) y = FlipY(y);
-                if (flp & 2) x = FlipX(x);
-            }
-            next.add(`${x},${y}`);
-        }
-        game.SpLev_Map = next;
-    }
+    // C does not flip SpLev_Map[] during flip_level (solidify uses the
+    // pre-flip bitmap; medusa has solidify off). Named omit: keep bits.
 
     // stairs — C flip_level does not gate on inFlipArea (unlike traps/objs)
     for (let stway = game.stairs; stway; stway = stway.next) {
