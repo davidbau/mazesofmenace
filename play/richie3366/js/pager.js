@@ -34,7 +34,8 @@ import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import { t_at, trapname } from './trap.js';
 import {
-    BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, TREE, CLOUD,
+    BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE,
+    CLOUD,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
     STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel,
 } from './const.js';
@@ -578,6 +579,20 @@ function brief_at(x, y) {
     if (e?.engr_txt) return 'engraving';
     const loc = game.level?.at?.(x, y);
     if (!loc) return 'dark part of a room';
+    // C lookat glyph_at before typ: blank showsym may be S_stone even when
+    // levl.typ is CORR (memory lastseentyp STONE). case S_stone + seenv →
+    // "stone" (STONE|SCORR or fallthrough defsyms[S_stone].explanation).
+    const ch = loc.disp_ch;
+    if (!ch || ch === ' ') {
+        if (!loc.seenv) return 'unexplored';
+        const last = game.lastseentyp?.[x]?.[y] | 0;
+        if (
+            last === STONE || last === SCORR
+            || loc.typ === STONE || loc.typ === SCORR
+        ) {
+            return 'stone';
+        }
+    }
     // C lookat glyph_is_cmap → defsyms[].explanation
     if (IS_WALL(loc.typ)) return 'wall';
     // C lookat case S_cloud — Is_airlevel ? "cloudy area" : "fog/vapor cloud"
@@ -690,6 +705,24 @@ function describe_looked(x, y) {
     // C ref: pager.c do_screen_description — walls before room/corr
     // (cmap order); DECgraphics S_vwall↔swallow mid (D-0425).
     if (loc && IS_WALL(loc.typ)) return describe_wall_looked(loc, x, y);
+    // C lookat glyph_at S_stone before typ CORR/ROOM: blank + stone memory
+    // → lookat "stone" (even when typ was updated to CORR).
+    if (loc && (!loc.disp_ch || loc.disp_ch === ' ')) {
+        if (!loc.seenv) {
+            return { out: '        unexplored area', first: 'unexplored area', found: 1 };
+        }
+        const last = game.lastseentyp?.[x]?.[y] | 0;
+        if (
+            last === STONE || last === SCORR
+            || loc.typ === STONE || loc.typ === SCORR
+        ) {
+            // C: space matches many cmap entries (found>4) → "can be many
+            // things"; lookat parenthetical still "(stone)".
+            const look = 'stone';
+            const out = `         can be many things (${look})`;
+            return { out, first: look, found: 1 };
+        }
+    }
     // C ref: pager.c do_screen_description — DECgraphics shares showsym
     // \xfe among S_ndoor/S_room/S_darkroom/S_ice; lookat parenthetical.
     // Full showsyms-driven cmap scan deferred (ASCII ladders/rooms differ).

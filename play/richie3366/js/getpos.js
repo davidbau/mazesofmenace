@@ -6,20 +6,27 @@
 // rush (8×; '\n'==C('j') rushes — movecmd before quitchars), seenv-gated
 // feature-char matching (stairs + furniture/traps subset; D-0779/D-0818),
 // NHKF_GETPOS_SHOWVALID '$' before matching (D-0928 #1176),
-// `?` → getpos_help NHW_MENU + show_goal_msg (D-0819), autodescribe
-// topline, force unknown-direction pline, '.' → LOOK_TRADITIONAL,
-// ESC → -1. Menu/mMoOdDxX jump/S_goodpos tmp_at hilite/getloc_moveskip
-// glyph-skip / engraving/drawbridge/air full showsyms table deferred.
-// getpos_getvalid `(invalid target)` live (D-0899).
+// `?` / redraw_cmd(^R) → getpos_help? + getpos_refresh + show_goal_msg
+// (D-0928 #1187; D-0819 help), mMoOdDxX gather_locs cycle (D-0928 #1189),
+// autodescribe topline, force unknown-direction pline, '.' →
+// LOOK_TRADITIONAL, ESC → -1.
+// getpos_menu / GFILTER_VIEW|AREA / aA interesting / S_goodpos tmp_at
+// hilite / getloc_moveskip glyph-skip / engraving full showsyms /
+// docrtRefresh redraw_map-only deferred. getpos_getvalid `(invalid
+// target)` live (D-0899).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph, look_shown_at, newsym_force } from './display.js';
+import {
+    flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph,
+    look_shown_at, newsym_force, glyph_is_invisible,
+} from './display.js';
 import { cansee } from './vision.js';
 import { distant_name, doname, ansimpleoname } from './objnam.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING,
+    GFILTER_VIEW,
     NHKF_GETPOS_SELF, NHKF_GETPOS_PICK, NHKF_GETPOS_SHOWVALID,
     NHKF_GETPOS_AUTODESC,
     NHKF_GETPOS_MON_NEXT, NHKF_GETPOS_MON_PREV,
@@ -30,7 +37,7 @@ import {
     NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_MENU, NHKF_GETPOS_LIMITVIEW,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, STRAT_WAITMASK,
     STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE, CLOUD, IS_WALL,
-    DOOR, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN,
+    DOOR, IS_DOOR, IS_DRAWBRIDGE, D_NODOOR, D_ISOPEN, D_BROKEN,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS,
     FOUNTAIN, SINK, THRONE, GRAVE, ALTAR, VIBRATING_SQUARE,
     ROGUESET, Upolyd, Is_airlevel, Is_rogue_level,
@@ -43,6 +50,9 @@ import { waterbody_name } from './hack.js';
 import { is_valid_travelpt } from './cmd.js';
 import { ok_to_quest } from './quest.js';
 import { visctrl } from './dokeylist.js';
+import { distmin } from './hacklib.js';
+import { objectNames } from './objects.js';
+import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
 
 export const LOOK_TRADITIONAL = 0;
 export const LOOK_QUICK = 1;
@@ -71,6 +81,29 @@ function force_getvalid_newsyms(validf) {
             if (validf(x, y)) newsym_force(x, y);
         }
     }
+}
+
+/**
+ * C ref: cmd.c redraw_cmd — key bound to doredraw.
+ * Default: extcmdlist C('r'); commands_init also binds C('l').
+ * (C('l') is handled earlier as MV_RUSH via CTRL_DIR when num_pad off.)
+ */
+function redraw_cmd(key) {
+    return key === 0x12 || key === 0x0c; // C('r'), C('l')
+}
+
+/**
+ * C ref: getpos.c getpos_refresh — clear GoodposSymbol hilite, then
+ * docrt_flags(docrtRefresh) → redraw_map (resend gbuf; no vision_recalc/
+ * cls). HiliteBackground re-paint deferred. JS uses flush_screen(1) —
+ * full docrt() under Blind regressed farlook describe (stone/corridor).
+ */
+async function getpos_refresh() {
+    if (getpos_hilitefunc && getpos_hilite_state === HiliteGoodposSymbol) {
+        getpos_hilitefunc(false); // tmp_at(DISP_END)
+        getpos_hilite_state = HiliteNormalMap; // defaultHiliteState
+    }
+    await flush_screen(1);
 }
 
 /**
@@ -600,13 +633,18 @@ function auto_describe_text(cx, cy) {
             return 'unexplored area';
         }
         const last = game.lastseentyp?.[cx]?.[cy] | 0;
+        // C lookat case S_stone: seenv → "stone" for STONE|SCORR, else
+        // fallthrough defsyms[S_stone] ("stone") even when typ is CORR but
+        // glyph memory is stone (lastseentyp STONE|SCORR). Bare blank→stone
+        // without last/typ gate breaks seed0012 (D-0813/D-0817).
         if (
             loc
-            && (loc.typ === STONE || loc.typ === SCORR)
             && loc.seenv
-            && (last === STONE || last === SCORR)
+            && (
+                last === STONE || last === SCORR
+                || loc.typ === STONE || loc.typ === SCORR
+            )
         ) {
-            // C lookat case S_stone + seenv + STONE|SCORR → "stone"
             return 'stone';
         }
         // C lookat glyph_is_unexplored → "unexplored area"
@@ -645,6 +683,132 @@ function auto_describe_suffix(cx, cy) {
         s += ' (no travel path)';
     }
     return s;
+}
+
+/**
+ * C ref: getpos.c cmp_coord_distu — Chebyshev dist to hero; tie-break y then x.
+ * Contest stable sort (Constitution §4).
+ */
+function cmp_coord_distu(a, b) {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const d1 = distmin(ux, uy, a.x, a.y);
+    const d2 = distmin(ux, uy, b.x, b.y);
+    if (d1 === d2) {
+        return (a.y !== b.y) ? (a.y - b.y) : (a.x - b.x);
+    }
+    return d1 - d2;
+}
+
+const BOULDER_OTYP = objectNames.indexOf('BOULDER');
+const ROCK_OTYP = objectNames.indexOf('ROCK');
+
+/**
+ * C ref: getpos.c — glyph_at is a door/ndoor/drawbridge cmap (not mon/obj).
+ * JS has no integer glyphs; approximate via look_shown_at + typ + disp_ch.
+ */
+function shown_door_cmap(x, y) {
+    const cover = look_shown_at(x, y);
+    if (cover) return false; // hero / mon / obj cover → not cmap
+    const loc = game.level?.at?.(x, y);
+    if (!loc || glyph_is_invisible(loc)) return false;
+    const typ = loc.typ | 0;
+    const ch = loc.disp_ch;
+    if (!ch || ch === ' ' || ch === '') return false;
+    if (IS_DOOR(typ) || typ === DOOR) {
+        const g = terrain_glyph(loc, x, y);
+        // Shown door cmap: display matches back_to_glyph door/ndoor
+        if (ch === g.ch) return true;
+        const rg = loc.remembered_glyph;
+        if (rg && rg.ch === g.ch && rg.ch === ch) return true;
+        return false;
+    }
+    if (IS_DRAWBRIDGE(typ)) {
+        const g = terrain_glyph(loc, x, y);
+        return ch === g.ch;
+    }
+    return false;
+}
+
+/** C ref: getpos.c IS_UNEXPLORED_LOC — blank unexplored neighbor. */
+function is_unexplored_loc(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    if (loc.seenv | 0) return false;
+    const ch = loc.disp_ch;
+    return !ch || ch === ' ' || ch === '';
+}
+
+/**
+ * C ref: getpos.c gather_locs_interesting — GLOC_MONS/OBJS/DOOR/EXPLORE.
+ * GFILTER_AREA (needs gloc_filter_map) and GLOC_INTERESTING/VALID deferred.
+ */
+function gather_locs_interesting(x, y, gloc) {
+    const filter = game.iflags?.getloc_filter | 0;
+    if (filter === GFILTER_VIEW && !cansee(x, y)) return false;
+
+    switch (gloc) {
+    case GLOC_MONS: {
+        const shown = look_shown_at(x, y);
+        if (shown?.kind !== 'mon' || !shown.mtmp) return false;
+        const mnum = shown.mtmp.mnum ?? shown.mtmp.data?.mndx;
+        return mnum !== PM_LONG_WORM_TAIL;
+    }
+    case GLOC_OBJS: {
+        const shown = look_shown_at(x, y);
+        if (shown?.kind !== 'obj' || !shown.obj) return false;
+        const otyp = shown.obj.otyp | 0;
+        if (BOULDER_OTYP >= 0 && otyp === BOULDER_OTYP) return false;
+        if (ROCK_OTYP >= 0 && otyp === ROCK_OTYP) return false;
+        return true;
+    }
+    case GLOC_DOOR:
+        return shown_door_cmap(x, y);
+    case GLOC_EXPLORE: {
+        // Door/ndoor/drawbridge/room/corr adjacent to unexplored
+        if (!shown_door_cmap(x, y)) {
+            const loc = game.level?.at?.(x, y);
+            if (!loc) return false;
+            if (look_shown_at(x, y)) return false;
+            const typ = loc.typ | 0;
+            const ch = loc.disp_ch;
+            if (!ch || ch === ' ') return false;
+            if (typ !== ROOM && typ !== CORR) return false;
+            const g = terrain_glyph(loc, x, y);
+            if (ch !== g.ch) return false;
+        }
+        return (
+            is_unexplored_loc(x + 1, y)
+            || is_unexplored_loc(x - 1, y)
+            || is_unexplored_loc(x, y + 1)
+            || is_unexplored_loc(x, y - 1)
+        );
+    }
+    default:
+        return false;
+    }
+}
+
+/**
+ * C ref: getpos.c gather_locs — always include hero; qsort by distu.
+ * Returns { arr, count } with arr[0] === hero after sort.
+ */
+function gather_locs(gloc) {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const arr = [];
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            if ((x === ux && y === uy) || gather_locs_interesting(x, y, gloc)) {
+                arr.push({ x, y });
+            }
+        }
+    }
+    arr.sort(cmp_coord_distu);
+    return { arr, count: arr.length };
 }
 
 // C ref: cmd.c spkeys_binds defaults (!num_pad) for getpos help text.
@@ -879,6 +1043,12 @@ export async function getpos(ccp, force, goal, describeAt) {
     // C: getpos_hilitefunc(TRUE) after sethilite when HiliteGoodposSymbol —
     // glyph highlight deferred; getvalid still active for auto_describe.
 
+    // C getpos: garr[NUM_GLOCS] / gidx / gcount for mMoOdDxX cycling
+    /** @type {(Array<{x:number,y:number}>|null)[]} */
+    const garr = [null, null, null, null]; // MONS..EXPLORE
+    const gcount = [0, 0, 0, 0];
+    const gidx = [0, 0, 0, 0];
+
     if (g.flags.verbose !== false) {
         await pline("(For instructions type a '?')");
         msg_given = true;
@@ -998,11 +1168,15 @@ export async function getpos(ccp, force, goal, describeAt) {
             return 0; // C: result = 0 (not -1)
         }
 
-        if (ch === '?') {
-            // C: NHKF_GETPOS_HELP → getpos_help; getpos_refresh; show_goal_msg
-            await getpos_help(!!force, goal || 'desired location');
+        // C: NHKF_GETPOS_HELP || redraw_cmd(c) → help?; getpos_refresh;
+        // curs; show_goal_msg (falls to nxtc — no unknown-direction).
+        if (ch === '?' || redraw_cmd(key)) {
+            if (ch === '?') {
+                await getpos_help(!!force, goal || 'desired location');
+            }
+            await getpos_refresh();
+            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
             show_goal_msg = true;
-            msg_given = true;
             continue;
         }
 
@@ -1015,6 +1189,45 @@ export async function getpos(ccp, force, goal, describeAt) {
             }
             show_goal_msg = true; // still targeting
             continue;
+        }
+
+        // C ref: getpos.c NHKF_GETPOS_SELF ('@') — reset cycle indices to hero
+        if (key === getpos_spkey(NHKF_GETPOS_SELF)) {
+            for (let i = 0; i < garr.length; i++) gidx[i] = 0;
+            cx = g.u?.ux | 0;
+            cy = g.u?.uy | 0;
+            continue;
+        }
+
+        // C ref: getpos.c mMoOdDxX — gather_locs + next/prev cycle (gloc 0..3).
+        // getloc_usemenu → getpos_menu deferred (use cycle path).
+        {
+            const mMoOdDxX = 'mMoOdDxX';
+            const cp = mMoOdDxX.indexOf(ch);
+            if (cp >= 0) {
+                const gtmp = cp; // 0..7
+                const gloc = gtmp >> 1; // 0..3 MONS/OBJS/DOOR/EXPLORE
+                if (!garr[gloc]) {
+                    const gathered = gather_locs(gloc);
+                    garr[gloc] = gathered.arr;
+                    gcount[gloc] = gathered.count;
+                    gidx[gloc] = 0; // arr[0] is hero
+                }
+                if (gcount[gloc] > 0) {
+                    if (!(gtmp & 1)) {
+                        // next: m o d x
+                        gidx[gloc] = (gidx[gloc] + 1) % gcount[gloc];
+                    } else {
+                        // prev: M O D X
+                        gidx[gloc] -= 1;
+                        if (gidx[gloc] < 0) gidx[gloc] = gcount[gloc] - 1;
+                    }
+                    const spot = garr[gloc][gidx[gloc]];
+                    cx = spot.x;
+                    cy = spot.y;
+                }
+                continue;
+            }
         }
 
         // C ref: getpos.c — non-dir key may match dungeon-feature symbols

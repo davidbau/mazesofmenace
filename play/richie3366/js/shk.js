@@ -28,7 +28,7 @@ import {
     ESHK, EPRI, IS_ROOM, NOTONL, u_at, isok, ROOMOFFSET, SHOPBASE, ACH_SHOP,
     OBJ_MINVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, NO_ROOM, TEMPLE,
     DISPLACED, LOW_PM, Has_contents, MAXULEV, ECMD_OK, ECMD_TIME,
-    COST_CONTENTS, COST_SINGLEOBJ,
+    COST_CONTENTS, COST_SINGLEOBJ, TELEPAT,
 } from './const.js';
 import { hero_conflict, resist_conflict, m_canseeu } from './mondata.js';
 import { mon_nam } from './do_name.js';
@@ -36,7 +36,9 @@ import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, objects, POT_WATER,
 } from './objects.js';
-import { newsym, pline, verbalize, docrt, flush_screen } from './display.js';
+import {
+    newsym, pline, verbalize, docrt, flush_screen, canspotmon,
+} from './display.js';
 import { cansee } from './vision.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
@@ -102,10 +104,7 @@ function pacify_shk(shkp, clear_surcharge) {
     }
 }
 
-/** C ref: insight/achieve record_achievement — ACH_SHOP stub (mapseen deferred). */
-function record_achievement(_ach) {
-    // full uachieved / livelog deferred
-}
+import { record_achievement } from './insight.js';
 
 /**
  * C ref: shk.c shop_keeper — rooms[rmno-ROOMOFFSET].resident with eshk.
@@ -1605,9 +1604,25 @@ async function pay_billed_items(shkp, ibill, paidRef) {
     return true;
 }
 
+/** C youprop.h Blind — (H||E) && !B; no sticky u.Blind (D-0716). */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h Blind_telepat — HTelepat || ETelepat. */
+function Blind_telepat() {
+    const u = game.u || {};
+    const e = u.uprops?.[TELEPAT];
+    return !!((u.HTelepat | 0) || (u.ETelepat | 0)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
 /**
  * C ref: shk.c dopay — #pay / `p`.
- * Covered: single resident shk; bill menu → money2mon/splitobj next_ident;
+ * Covered: nexttosk; Blind/`canspotmon` seensk + You_cant("see...");
+ * single resident / single-seen nearness; bill menu → money2mon/splitobj;
  * thank-you verbalize; ECMD_TIME when paid.
  * Deferred: multi-shk getpos; debit; robbed/angry appease; used-up/containers;
  * traditional itemize; mute/Deaf thank-you nod; hidden_gold stashed msgs.
@@ -1625,13 +1640,13 @@ export async function dopay() {
         const m = walk.shkp;
         sk++;
         if (m_next2u(m)) {
+            // C: if (nxtm && ANGRY(nxtm)) continue — keep irate priority
             if (!(nxtm && ANGRY(nxtm))) {
                 nexttosk++;
                 nxtm = m;
             }
         }
-        // canspotmon stub: live isshk on map counts as seen
-        if ((m.mhp | 0) > 0 && (m.mx | 0) > 0) seensk++;
+        if (canspotmon(m)) seensk++;
         const eshk = ESHK(m);
         const ushops0 = (game.u?.ushops || '').charCodeAt(0) || 0;
         if (inhishop(m) && ushops0 === (eshk?.shoproom | 0)) {
@@ -1643,15 +1658,20 @@ export async function dopay() {
     let shkp = null;
     if (nxtm && nexttosk === 1) {
         shkp = nxtm;
-    } else if ((!sk && !seensk) || (!seensk && sk)) {
+    } else if ((!sk && (!Blind() || Blind_telepat())) || (!Blind() && !seensk)) {
+        // C: There("appears to be no shopkeeper here...")
         await pline('There appears to be no shopkeeper here to receive your payment.');
+        return ECMD_OK;
+    } else if (!seensk) {
+        // C: You_cant("see...") — Blind and no canspotmon shk
+        await pline("You can't see...");
         return ECMD_OK;
     } else if (sk === 1 && resident) {
         shkp = resident;
     } else if (seensk === 1) {
         walk = next_shkp(0, false);
         while (walk.shkp) {
-            if ((walk.shkp.mhp | 0) > 0 && (walk.shkp.mx | 0) > 0) {
+            if (canspotmon(walk.shkp)) {
                 shkp = walk.shkp;
                 break;
             }

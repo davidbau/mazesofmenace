@@ -691,6 +691,12 @@ export function xlev_to_rank(xlev) {
     return (lev <= 2) ? 0 : (lev <= 30) ? Math.trunc((lev + 2) / 4) : 8;
 }
 
+/** C ref: botl.c rank_to_xlev — rank index (0..8) → low end of xlev range. */
+export function rank_to_xlev(rank) {
+    const r = rank | 0;
+    return (r < 1) ? 1 : (r < 2) ? 3 : (r < 8) ? ((r * 4) - 2) : 30;
+}
+
 /**
  * C ref: botl.c rank_of(lev, monnum, female)
  * Title for experience level from roles[].title / gu.urole.title.

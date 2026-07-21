@@ -447,12 +447,35 @@ export function depth(level, state = game) {
     return state.dungeons[level.dnum].depth_start + level.dlevel - 1;
 }
 
+// C ref: dungeon.c Invocation_lev(), Can_dig_down(), and Can_fall_thru().
+// Falling retains the Castle exception even when digging is blocked there.
+export function Invocation_lev(level, state = game) {
+    const dungeon = state.dungeons[level.dnum];
+    return Boolean(
+        dungeon.flags.hellish
+        && level.dlevel === dungeon.num_dunlevs - 1
+    );
+}
+
+export function Can_dig_down(level, state = game) {
+    const dungeon = state.dungeons[level.dnum];
+    return !state.level?.flags?.hardfloor
+        && level.dlevel !== dungeon.num_dunlevs
+        && !Invocation_lev(level, state);
+}
+
+export function Can_fall_thru(level, state = game) {
+    return Can_dig_down(level, state)
+        || Boolean(state.stronghold_level
+            && on_level(level, state.stronghold_level));
+}
+
 function builds_up(level, state) {
     const dungeon = state.dungeons[level.dnum];
     if (dungeon.num_dunlevs > 1)
         return dungeon.entry_lev === dungeon.num_dunlevs;
     const branch = state.branches.find(
-        (candidate) => same_level(candidate.end2, level),
+        (candidate) => on_level(candidate.end2, level),
     );
     if (!branch)
         throw new Error(`builds_up: no branch for dungeon ${level.dnum}`);
@@ -634,8 +657,12 @@ function dname_to_dnum(name, state) {
     return index;
 }
 
-function same_level(left, right) {
-    return left.dnum === right.dnum && left.dlevel === right.dlevel;
+// C ref: dungeon.c on_level(). Optional topology locations compare false when
+// either operand is absent.
+export function on_level(left, right) {
+    return Boolean(left && right
+        && left.dnum === right.dnum
+        && left.dlevel === right.dlevel);
 }
 
 function fixup_level_locations(state, roleFilecode) {
@@ -660,7 +687,7 @@ function fixup_level_locations(state, roleFilecode) {
             special.proto = `${roleFilecode}${name.slice(1)}`;
         } else if (target === 'knox_level') {
             const branch = state.branches.find(
-                (candidate) => same_level(candidate.end2, location),
+                (candidate) => on_level(candidate.end2, location),
             );
             if (branch) {
                 branch.end1.dnum = state.n_dgns;

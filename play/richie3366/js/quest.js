@@ -1,12 +1,12 @@
 // quest.js — quest branch arrival hooks + leader talk.
 // C ref: quest.c onquest / on_start / on_locate / on_goal /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
-// Named omissions: locate_next beyond Bar/Arc; chat_with_nemesis/guardian;
+// Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian;
 // prisoner_speaks; finish_quest; got_thanks/questart arms; banished
 // com_pager; livelog; exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
-// nexttime/othertime: Arc+Bar (+Pri locate/firsttime/goal via questpgr).
-// Other-role goal_* bodies still burn nhl only when text missing.
+// nexttime/othertime: Arc+Bar+Pri; goal_first/next: Arc+Bar+Pri+Kni
+// (other-role goal_* still burn nhl shuffle only when text missing).
 
 import { game } from './gstate.js';
 import {

@@ -10,7 +10,9 @@ import {
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
 } from './const.js';
 import { mon_adjust_speed } from './muse.js';
-import { pline, verbalize } from './display.js';
+import { pline, verbalize, canspotmon } from './display.js';
+import { Monnam } from './do_name.js';
+import { nomul } from './hack.js';
 import { nasty } from './wizard.js';
 import { M1_SEE_INVIS } from './monsters.js';
 
@@ -164,24 +166,51 @@ function choose_monster_spell(mtmp, adtyp) {
 }
 
 /**
- * C ref: mcastu.c mcast_psi_bolt — Antimagic halves dmg; pline deferred.
- * monstunseesu / monstseesu deferred.
+ * C ref: polyself.c body_part / mbodypart — HEAD noun for psi-bolt msgs.
+ * Fungus → "cap area"; jelly/blob/pudding → "cerebral area"; else "head".
  */
-function mcast_psi_bolt(dmg) {
-    const u = game.u || {};
-    const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
-    if (Antimagic) dmg = Math.trunc((dmg + 1) / 2);
-    return dmg | 0;
+function body_part_head() {
+    const mlet = game.youmonst?.data?.mlet;
+    if (mlet === 'S_FUNGUS') return 'cap area';
+    if (mlet === 'S_JELLY' || mlet === 'S_BLOB' || mlet === 'S_PUDDING') {
+        return 'cerebral area';
+    }
+    return 'head';
 }
 
 /**
- * C ref: mcastu.c mcast_open_wounds — Antimagic halves dmg; pline deferred.
+ * C ref: mcastu.c mcast_psi_bolt — Antimagic halves dmg; severity pline;
+ * then caller mdamageu. monstunseesu / monstseesu / shieldeff deferred.
  */
-function mcast_open_wounds(dmg) {
+async function mcast_psi_bolt(dmg) {
     const u = game.u || {};
     const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
     if (Antimagic) dmg = Math.trunc((dmg + 1) / 2);
-    return dmg | 0;
+    dmg = dmg | 0;
+    const head = body_part_head();
+    if (dmg <= 5) await pline(`You get a slight ${head}ache.`);
+    else if (dmg <= 10) await pline('Your brain is on fire!');
+    else if (dmg <= 20) {
+        await pline(`Your ${head} suddenly aches painfully!`);
+    } else {
+        await pline(`Your ${head} suddenly aches very painfully!`);
+    }
+    return dmg;
+}
+
+/**
+ * C ref: mcastu.c mcast_open_wounds — Antimagic halves; severity pline.
+ */
+async function mcast_open_wounds(dmg) {
+    const u = game.u || {};
+    const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    if (Antimagic) dmg = Math.trunc((dmg + 1) / 2);
+    dmg = dmg | 0;
+    if (dmg <= 5) await pline('Your skin itches badly for a moment.');
+    else if (dmg <= 10) await pline('Wounds appear on your body!');
+    else if (dmg <= 20) await pline('Severe wounds appear on your body!');
+    else await pline('Your body is covered with painful wounds!');
+    return dmg;
 }
 
 /**
@@ -215,9 +244,9 @@ async function mcast_summon_mons(mtmp) {
 
 /**
  * C ref: mcastu.c castmu — spell selection + undirected early-out for
- * dochug non-attack cast. Burns mspec_used + fumble rn2; applies
- * HASTE_SELF / CURE_SELF / PSI_BOLT / OPEN_WOUNDS / SUMMON_MONS (D-0928).
- * Other mcast_spell bodies deferred.
+ * dochug non-attack cast. Burns mspec_used + fumble rn2; pline cast
+ * before mcast_spell (D-0928 #1191); applies HASTE_SELF / CURE_SELF /
+ * PSI_BOLT / OPEN_WOUNDS / SUMMON_MONS. Other mcast_spell bodies deferred.
  *
  * @param {object} mtmp
  * @param {{ adtyp: number }} mattk
@@ -254,13 +283,39 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         mtmp.mspec_used = (ml < 8) ? (10 - ml) : 2;
     }
 
+    // C: mis-aimed directed spell pline then miss (waterwall wording deferred)
     if (!foundyou && thinks_it_foundyou && !is_undirected_spell(spellnum)) {
+        const who = canspotmon(mtmp) ? Monnam(mtmp) : 'Something';
+        await pline(`${who} casts a spell at thin air!`);
         return M_ATTK_MISS;
     }
 
-    // Fumble — must burn rn2(ml*10) when continuing to cast
+    // C: nomul(0) then fumble rn2(ml*10); air-crackles pline deferred
+    nomul(0);
     if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) {
         return M_ATTK_MISS;
+    }
+
+    // C: canspotmon || !undirected → "%s casts a spell%s!" before effects
+    // (More may fire here so PSI_BOLT/mdamageu/rehumanize wait for key)
+    if (canspotmon(mtmp) || !is_undirected_spell(spellnum)) {
+        const who = canspotmon(mtmp) ? Monnam(mtmp) : 'Something';
+        let where = '';
+        if (!is_undirected_spell(spellnum)) {
+            const u = game.u || {};
+            const Invis = !!(u.Invis || u.HInvis || u.EInvis);
+            const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
+            const atHero = ((mtmp.mux | 0) === (u.ux | 0)
+                && (mtmp.muy | 0) === (u.uy | 0));
+            if (Invis && !perceives(mtmp.data) && !atHero) {
+                where = ' at a spot near you';
+            } else if (Displaced && !atHero) {
+                where = ' at your displaced image';
+            } else {
+                where = ' at you';
+            }
+        }
+        await pline(`${who} casts a spell${where}!`);
     }
 
     // C ref: mcastu.c castmu — damage dice before mcast_spell (even when
@@ -275,7 +330,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     }
 
     // C ref: mcastu.c mcast_spell — undirected HASTE/CURE/SUMMON + directed
-    // PSI_BOLT (mdamageu). Other spell bodies still deferred.
+    // PSI_BOLT/OPEN_WOUNDS (pline then mdamageu). Other spell bodies deferred.
     if (adtyp === AD_SPEL || adtyp === AD_CLRC) {
         switch (spellnum) {
         case MCAST_HASTE_SELF:
@@ -299,12 +354,12 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
             dmg = 0;
             break;
         case MCAST_PSI_BOLT:
-            // C: mcast_psi_bolt — Antimagic halves; then mdamageu
-            dmg = mcast_psi_bolt(dmg);
+            // C: mcast_psi_bolt — Antimagic halves + severity pline; mdamageu
+            dmg = await mcast_psi_bolt(dmg);
             break;
         case MCAST_OPEN_WOUNDS:
-            // C: mcast_open_wounds — Antimagic halves; then mdamageu
-            dmg = mcast_open_wounds(dmg);
+            // C: mcast_open_wounds — Antimagic halves + severity pline
+            dmg = await mcast_open_wounds(dmg);
             break;
         default:
             // Named omission: other mcast_spell cases (dmg zeroed in C)

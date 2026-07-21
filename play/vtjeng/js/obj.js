@@ -6,6 +6,7 @@ import {
     CORPSTAT_FEMALE,
     CORPSTAT_MALE,
     CORPSTAT_NEUTER,
+    COST_DEGRD,
     FIRE_RES,
     G_GONE,
     HATCH_EGG,
@@ -30,7 +31,7 @@ import {
 } from './const.js';
 import { ART_SUNSWORD } from './artifacts.js';
 import { noveltitle } from './do_name.js';
-import { depth, level_difficulty } from './dungeon.js';
+import { depth, level_difficulty, on_level } from './dungeon.js';
 import { set_tin_variety } from './eat.js';
 import { game } from './gstate.js';
 import { rndmonnum } from './makemon.js';
@@ -78,6 +79,7 @@ import {
     CHEST,
     COIN_CLASS,
     CORPSE,
+    CRYSKNIFE,
     CRYSTAL_BALL,
     COPPER,
     DRAGON_HIDE,
@@ -240,6 +242,8 @@ export class UnsupportedObjectOperationError extends Error {
 //   isPermanentlyPoisoned(obj, env) -> boolean
 //   stopObjectTimers(obj, env) -> must clear obj.timed and its timer queue
 //   deleteObjectLightSource(obj, env) -> removes the remaining light source
+//   costlyAlteration(obj, COST_DEGRD, env) -> applies shop billing before
+//     an irreversible object degradation
 
 function defineObjAliases(obj) {
     const aliases = {
@@ -643,11 +647,23 @@ function curse(obj) {
     return obj;
 }
 
-// Narrow cross-module helper for free startup objects such as a loadstone
-// just removed from inventory. General gameplay BUC changes need the full
-// luck, equipment, timer, light, and weight side effects from mkobj.c.
-export function curseFreeObject(obj) {
-    return curse(obj);
+// Narrow cross-module helper for free objects. This covers startup loadstones
+// and objects generated for level features before they acquire an owner.
+// Carried, worn, lit, or otherwise owned objects still need curse()'s full
+// luck, equipment, timer, light, occupation, and display side effects.
+export function curseFreeObject(obj, env = {}) {
+    if (obj.oclass === COIN_CLASS) return obj;
+    if (obj.where !== OBJ_FREE || obj.lamplit) {
+        throw new UnsupportedObjectOperationError(
+            'curse outside free-object generation',
+            obj,
+        );
+    }
+    obj.blessed = false;
+    obj.cursed = true;
+    if (obj.otyp === BAG_OF_HOLDING)
+        obj.owt = weight(obj, env);
+    return obj;
 }
 
 export function bcsign(obj) {
@@ -764,19 +780,13 @@ function isInitialInventoryPhase(state) {
     return Math.trunc(state.moves ?? 0) <= 1 && !state.in_mklev;
 }
 
-function sameLevel(left, right) {
-    return Boolean(left && right
-        && left.dnum === right.dnum
-        && left.dlevel === right.dlevel);
-}
-
 function inQuest(state) {
     const dnum = state.u?.uz?.dnum;
     return Number.isInteger(dnum) && dnum === state.quest_dnum;
 }
 
 function isRogueLevel(state) {
-    return sameLevel(state.u?.uz, state.rogue_level);
+    return on_level(state.u?.uz, state.rogue_level);
 }
 
 function inHell(state) {
@@ -1411,6 +1421,44 @@ function floorObjectGrid(state) {
     return grid;
 }
 
+// C ref: mkobj.c costly_alteration(). The full shop-location calculation is
+// not ported here. Its source fast path proves that an unbilled free or
+// inventory object has no shop consequence; every other case needs the hook
+// so a potentially owed side effect cannot be silently discarded.
+function costlyAlteration(obj, alterType, env) {
+    if ((obj.where === OBJ_FREE || obj.where === OBJ_INVENT) && !obj.unpaid)
+        return;
+    requiredHook(env, 'costlyAlteration', obj)(obj, alterType, env);
+}
+
+// C ref: do.c obj_no_longer_held(). Contents are released before their
+// container, and erosion-proof crysknives alone consume the rn2(10) draw.
+export function obj_no_longer_held(obj, env = {}) {
+    const normalized = lifecycleEnv(env);
+    const { state } = normalized;
+    let random;
+
+    const release = (current) => {
+        if (!current) return;
+
+        for (let contents = current.cobj; contents; contents = contents.nobj)
+            release(contents);
+
+        if (current.otyp !== CRYSKNIFE) return;
+        if (current.oerodeproof) {
+            random ??= sourceRandom(normalized);
+            if (random.rn2(10)) return;
+        }
+
+        if (!state.context?.mon_moving && !state.program_state?.gameover)
+            costlyAlteration(current, COST_DEGRD, normalized);
+        current.otyp = WORM_TOOTH;
+        current.oerodeproof = false;
+    };
+
+    release(obj);
+}
+
 // C ref: mkobj.c place_object(). This owns the two source floor indexes: the
 // per-square nexthere pile and the level-wide nobj chain. New non-boulders go
 // below consecutive boulders so the pile head remains the displayed boulder.
@@ -1426,6 +1474,7 @@ export function place_object(obj, x, y, env = {}) {
 
     const grid = floorObjectGrid(state);
     let pile = grid[x][y];
+    obj_no_longer_held(obj, normalized);
     if (pile?.otyp === BOULDER && obj.otyp !== BOULDER) {
         while (pile.nexthere?.otyp === BOULDER) pile = pile.nexthere;
         obj.nexthere = pile.nexthere;

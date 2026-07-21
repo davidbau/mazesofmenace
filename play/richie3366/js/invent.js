@@ -10,7 +10,7 @@ import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
     endgamelevelname, obj_glyph,
 } from './display.js';
-import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee } from './objnam.js';
+import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname } from './objnam.js';
 import { yn_function } from './getline.js';
 import { mergable, is_damageable } from './mkobj.js';
 import { cansee } from './vision.js';
@@ -92,7 +92,9 @@ import {
     Is_waterlevel,
     LEFT_SIDE,
     RIGHT_SIDE,
+    BOTH_SIDES,
     TELEPORT_CONTROL,
+    JUMPING,
     HALLUC_RES, SEARCHING, REFLECTING, LIFESAVED,
     FIRE_RES, SHOCK_RES, TELEPAT, WARNING,
     DISPLACED, ANTIMAGIC,
@@ -903,7 +905,8 @@ export function invent_lines() {
         lines.push({ text: CLASS_NAMES[oclass] || 'Items', attr: headingAttr });
         for (const otmp of items) {
             // C ref: invent.c sortloot_item — observe_object before naming
-            if (!game.u?.Blind) observe_object(otmp);
+            // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
+            if (!Blind()) observe_object(otmp);
             // C: display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
             // before add_menu (Hallu burns display RNG even on tty menus).
             obj_glyph(otmp);
@@ -978,7 +981,8 @@ export async function display_pickinv_reply(lets) {
         if (!items.length) continue;
         entries.push({ text: CLASS_NAMES[oclass] || 'Items', attr: ATR_INVERSE });
         for (const otmp of items) {
-            if (!game.u?.Blind) observe_object(otmp);
+            // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
+            if (!Blind()) observe_object(otmp);
             // C: invent.c display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
             // then map_glyphinfo + add_menu (Hallu display-RNG burn).
             obj_glyph(otmp);
@@ -1546,6 +1550,20 @@ function background_dungeon_clause(uz = game.u?.uz) {
     return `in ${dgnbuf}, on ${tmpbuf}`;
 }
 
+/**
+ * C ref: insight.c background_enlightenment role/rank clause (you_are body).
+ * !strcmpi(rank_titl, role_titl) → omit role, urace.noun, no "a " before level;
+ * else → "a level N … adj role". Upolyd "actually " prefix deferred to callers.
+ */
+function background_role_level_clause(rank, role, ulevel, genderPart, urace) {
+    const raceNoun = urace?.noun || urace?.name || 'human';
+    const raceAdj = urace?.adj || urace?.name || 'human';
+    if (String(rank).toLowerCase() === String(role).toLowerCase()) {
+        return `${an(rank)}, level ${ulevel} ${genderPart}${raceNoun}`;
+    }
+    return `${an(rank)}, a level ${ulevel} ${genderPart}${raceAdj} ${role}`;
+}
+
 /** C youprop.h Deaf ≡ HDeaf || EDeaf || uroleplay.deaf */
 function hero_Deaf(u = game.u || {}) {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
@@ -1827,8 +1845,9 @@ function item_resistance_message_lines(adtyp, prot_message, final, o) {
 }
 
 /**
- * C ref: insight.c status_enlightenment — Hallucination + Deaf + Sleepy +
- * hunger + encumbrance subset (poly/ride/other troubles/weapon deferred).
+ * C ref: insight.c status_enlightenment — Hallucination + Deaf + Punished +
+ * Wounded_legs + Sleepy + hunger + encumbrance subset (poly/ride/utrap/
+ * Glib/Fumbling deferred).
  * Overlay (^X) lines need one extra leading space vs enlght_line.
  * @param {number} final
  * @param {{ overlay?: boolean, magic?: boolean }} opts
@@ -1836,12 +1855,19 @@ function item_resistance_message_lines(adtyp, prot_message, final, o) {
 function status_core_lines(final = 0, opts = {}) {
     const overlay = !!opts.overlay;
     const magic = !!opts.magic;
+    const u = game.u || {};
     const You_ = 'You ';
     const are = 'are ';
     const were = 'were ';
+    const have = 'have ';
+    const had = 'had ';
     const mid = final ? were : are;
     const wrap = (attr) => {
         const line = enlght_line_txt(You_, mid, attr, '');
+        return overlay ? ` ${line}` : line;
+    };
+    const wrap_have = (attr) => {
+        const line = enlght_line_txt(You_, final ? had : have, attr, '');
         return overlay ? ` ${line}` : line;
     };
     const out = [];
@@ -1850,6 +1876,27 @@ function status_core_lines(final = 0, opts = {}) {
     if (hero_Hallucination()) out.push(wrap('hallucinating'));
     // C: if (Deaf) you_are("deaf", from_what(DEAF)); from_what wizard-only
     if (hero_Deaf()) out.push(wrap('deaf'));
+    // C: if (Punished) you_are("chained to %s", ansimpleoname(uball))
+    // Punished ≡ (uball != 0)
+    if (u.uball) {
+        out.push(wrap(`chained to ${ansimpleoname(u.uball)}`));
+    }
+    // C: if (Wounded_legs) you_have("%swounded %s%s", …) when !usteed
+    // (steed report wizard-only deferred)
+    const hw = (u.HWounded_legs | 0) || (u.EWounded_legs | 0) || u.Wounded_legs;
+    if (hw && !u.usteed) {
+        const whichleg = (u.EWounded_legs | 0) & BOTH_SIDES;
+        let bp = 'leg';
+        let article = 'a ';
+        let leftright = '';
+        if (whichleg === BOTH_SIDES) {
+            bp = 'legs';
+            article = '';
+        } else {
+            leftright = whichleg === LEFT_SIDE ? 'left ' : 'right ';
+        }
+        out.push(wrap_have(`${article}wounded ${leftright}${bp}`));
+    }
     // C: if (Sleepy) if (magic || cause_known(SLEEPY))
     //    enl_msg("You ", "fall", "fell", " asleep uncontrollably", …)
     if (hero_Sleepy() && (magic || cause_known_sleepy())) {
@@ -1902,7 +1949,6 @@ export async function enlightenment(mode, final = 0) {
     // C insight.c enlightenment — rank_of(u.ulevel, Role_switch, innategend)
     const rank = rank_of(u.ulevel | 0, game.urole?.mnum, female);
     const gender = female ? 'female' : 'male';
-    const raceAdj = game.urace?.adj || game.urace?.name || 'human';
     const atype = u.ualign?.type ?? A_NEUTRAL;
     const align = align_str(atype);
     const turns = game.moves | 0;
@@ -1929,8 +1975,11 @@ export async function enlightenment(mode, final = 0) {
 
     if (mode & BASICENLIGHTENMENT) {
         lines.push('Background:');
+        // C: !strcmpi(rank, role) → noun + omit role (D-0928 #1194)
         lines.push(you_are(
-            `${an(rank)}, a level ${u.ulevel || 1} ${genderPart}${raceAdj} ${role}`,
+            background_role_level_clause(
+                rank, role, u.ulevel || 1, genderPart, game.urace,
+            ),
         ));
         // mission line has no period; pantheon continuation finishes it
         lines.push(
@@ -2228,7 +2277,6 @@ export async function doattributes() {
         : (game.urole?.name?.m || 'Tourist');
     const rank = rank_of(u.ulevel | 0, game.urole?.mnum, female);
     const gender = female ? 'female' : 'male';
-    const race = game.urace?.adj || game.urace?.name || 'human';
     const atype = u.ualign?.type ?? A_NEUTRAL;
     const align = align_str(atype);
     const turns = game.moves | 0;
@@ -2304,11 +2352,15 @@ export async function doattributes() {
     // C ref: insight.c background_enlightenment — continuous stream; tty
     // pages at 23 content rows then "(k of n)". Moon/friday13 sit between
     // "entered" and experience. night()/midnight deferred.
+    // C: !strcmpi(rank, role) → noun + omit role (D-0928 #1194)
+    const roleLevel = background_role_level_clause(
+        rank, role, u.ulevel || 1, genderPart, game.urace,
+    );
     const lines = [
         ` ${name} the ${role}'s attributes:`,
         '',
         ' Background:',
-        `  You are ${an(rank)}, a level ${u.ulevel || 1} ${genderPart}${race} ${role}.`,
+        `  You are ${roleLevel}.`,
         `  You are ${align}, on a mission for ${u_gname(game.urole, atype)}`,
         opposed,
         `  You are ${hand}-handed.`,
@@ -2550,8 +2602,14 @@ export async function doattributes() {
                 'You ', 'are ', 'stealthy', from_what(STEALTH),
             )));
         }
-        // C attributes_enlightenment Transportation — Teleport_control
-        // after Stealth / before magic_negation + Fast (Jumping/Teleportation deferred).
+        // C attributes_enlightenment Transportation — Jumping then
+        // Teleport_control after Stealth / before magic_negation + Fast
+        // (Teleportation / Lev/Fly blocked arms deferred).
+        if ((u.HJumping | 0) || (u.EJumping | 0)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'can ', 'jump', from_what(JUMPING),
+            )));
+        }
         if (hero_Teleport_control(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'have ', 'teleport control', from_what(TELEPORT_CONTROL),
@@ -2595,6 +2653,17 @@ export async function doattributes() {
         let prayAttr = `${(await can_pray(false)) ? '' : 'not '}safely pray`;
         if (wizard) prayAttr += ` (${u.ublesscnt | 0})`;
         lines.push(o(enlght_line_txt('You ', 'can ', prayAttr, '')));
+        // C: umortality — "You have been killed thrice." (final < 2)
+        const umort = u.umortality | 0;
+        if (umort > 0) {
+            const times = umort === 1 ? 'once'
+                : umort === 2 ? 'twice'
+                    : umort === 3 ? 'thrice'
+                        : `${umort} times`;
+            lines.push(o(enlght_line_txt(
+                'You ', 'have been killed ', times, '',
+            )));
+        }
         lines.push(''); // separator before Miscellaneous
     }
     // C: Miscellaneous — debug/explore + bones when wizard|discover

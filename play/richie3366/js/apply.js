@@ -18,11 +18,12 @@ import {
     COLNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     ACCESSIBLE, IS_STWALL, IS_DOOR, TELEDS_NO_FLAGS, INTRINSIC,
+    EXT_ENCUMBER,
 } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
 import { m_at, dist2, setmangry, seemimic } from './mon.js';
-import { compactify_invlets, makeknown } from './invent.js';
+import { compactify_invlets, makeknown, near_capacity } from './invent.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import {
     nohands, haseyes, humanoid, is_demon, is_vampire, is_vampshifter,
@@ -1000,16 +1001,27 @@ async function use_cream_pie(obj) {
 }
 
 /**
- * C ref: apply.c doapply() — getobj + LOCK_PICK/key/STETHOSCOPE + MIRROR/
- * CAMERA + sack/bag use_container + musical instruments + cream pie +
- * MAGIC_MARKER→dowrite.
- * Named omissions: nohands/capacity; retouch; do_break_wand; flip_through_book;
+ * C ref: apply.c doapply() — nohands + check_capacity before getobj;
+ * LOCK_PICK/key/STETHOSCOPE + MIRROR/CAMERA + sack/bag use_container +
+ * musical instruments + cream pie + MAGIC_MARKER→dowrite.
+ * Named omissions: retouch_object; do_break_wand; flip_through_book;
  * flip_coin; jelly; whip/grapple/blindfold/lenses; use_stone; use_pole/
  * use_pick_axe; traps; oil; BoT; Medusa/nymph mirror arms; camera closeup;
  * most non-instrument tools.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {
+    // C ref: apply.c doapply — nohands + check_capacity((char *)0) before getobj
+    if (nohands(game.youmonst?.data)) {
+        await pline("You aren't able to use or apply tools in your current form.");
+        return false; // ECMD_OK
+    }
+    // C ref: hack.c check_capacity — near_capacity >= EXT_ENCUMBER
+    if (near_capacity() >= EXT_ENCUMBER) {
+        await pline("You can't do that while carrying so much stuff.");
+        return false; // ECMD_OK
+    }
+
     const obj = await getobj_apply();
     if (!obj) return false;
 

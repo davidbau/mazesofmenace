@@ -18,6 +18,7 @@ import {
     TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
     INTRINSIC, UNCHANGING,
+    In_mines, ACH_TOWN,
 } from './const.js';
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
@@ -35,6 +36,7 @@ import {
 } from './generated/monsters_data.js';
 import { hliquid, Hallucination } from './do_name.js';
 import { near_capacity } from './invent.js';
+import { record_achievement } from './insight.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
 const DIRS_ORD = [
@@ -1061,7 +1063,7 @@ export function impaired_movement() {
  * Ported: ZOO/SWAMP/COURT/LEPREHALL/MORGUE/BEEHIVE/COCKNEST/ANTHOLE plines;
  * TEMPLE→intemple; rtype→OROOM + has_* clear; COURT/SWAMP/MORGUE/ZOO
  * wake `!Stealth && !rn2(3)` (wake_msg pline deferred).
- * Named omissions: Mine Town ACH_TOWN; furniture_present throne detail;
+ * Named omissions: furniture_present throne detail;
  * BARRACKS monstinroom occupied vs abandoned; DELPHI oracle verbalize;
  * wake_msg canseemon text.
  */
@@ -1077,7 +1079,16 @@ export async function check_special_room(newlev) {
         await u_left_shop(u.ushops_left || '', !!newlev);
     }
 
-    // C: ACH_TOWN before early return — deferred
+    // C: ACH_TOWN before early return (minetn_reached latch)
+    if (game.level?.flags?.has_town
+        && !game.context?.achieveo?.minetn_reached
+        && In_mines(u.uz)
+        && in_town(u.ux | 0, u.uy | 0)) {
+        record_achievement(ACH_TOWN);
+        if (!game.context) game.context = {};
+        if (!game.context.achieveo) game.context.achieveo = {};
+        game.context.achieveo.minetn_reached = true;
+    }
 
     if (!u.uentered && !u.ushops_entered) return;
 

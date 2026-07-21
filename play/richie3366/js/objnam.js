@@ -36,6 +36,14 @@ import {
     ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
     ONAME, has_oname,
 } from './const.js';
+
+/** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky u.Blind). */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 
 /**
@@ -672,7 +680,8 @@ export function xname(obj) {
     // C: Role_if(PM_CLERIC) → obj->bknown = 1 (bypass set_bknown / invent update)
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
     // C: if (!Blind && !gd.distantname) observe_object(obj);
-    if (!game.u?.Blind && !(game.distantname | 0) && _xname_observe) {
+    // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1180).
+    if (!Blind() && !(game.distantname | 0) && _xname_observe) {
         _xname_observe(obj);
     }
     const n = objectNames[obj.otyp];
@@ -1308,7 +1317,8 @@ export function doname(obj) {
     // C: xname Role_if(PM_CLERIC) obj->bknown=1 before doname_base reads it
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
     // C: doname_base → xname → observe_object when !Blind && !distantname
-    if (!game.u?.Blind && !(game.distantname | 0) && _xname_observe) {
+    // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1180).
+    if (!Blind() && !(game.distantname | 0) && _xname_observe) {
         _xname_observe(obj);
     }
     const otyp = obj.otyp;

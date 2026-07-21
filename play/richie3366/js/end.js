@@ -5,7 +5,9 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { depth } from './hacklib.js';
-import { pline, flush_topl_more, bot, You_feel } from './display.js';
+import {
+    pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
+} from './display.js';
 import { yn_function } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
@@ -912,7 +914,8 @@ export async function finish_losehp_done() {
  * C ref: end.c done2 — `#quit` (GENERALCMD, ECMD_OK; no turn).
  * Named omissions: In_tutorial abandon / schedule_goto; ParanoidQuit
  * getlin "yes" (uses yn when !ParanoidQuit, matching default bits);
- * Dump-core 'y' → NH_abort / sound_exit (treated as stopprint quit).
+ * Dump-core 'y' → NH_abort / sound_exit (treated as stopprint quit);
+ * curs_on_u / wait_synch / multi nomul on cancel (topline clear only).
  */
 export async function done2() {
     // C: paranoid_query(ParanoidQuit, …). Default paranoia_bits omit
@@ -920,7 +923,12 @@ export async function done2() {
     const ok = (await yn_function(
         'Really quit without saving?', 'yn', 'n',
     )) === 'y';
-    if (!ok) return ECMD_OK;
+    if (!ok) {
+        // C end.c done2 cancel arm: clear_nhwindow(WIN_MESSAGE) so the
+        // yn prompt does not linger into the next nhgetch capture.
+        clear_nhwindow_message();
+        return ECMD_OK;
+    }
 
     // C: wizard → ynq("Dump core?") — wizard ≡ flags.debug
     if (game.flags?.debug || game.flags?.wizard) {

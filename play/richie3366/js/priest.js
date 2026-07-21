@@ -133,8 +133,7 @@ export function in_your_sanctuary(mon, x = 0, y = 0) {
     return !!(has_shrine(priest) && p_coaligned(priest) && priest.mpeaceful);
 }
 
-/** Stub: C insight/achieve record_achievement ACH_TMPL. */
-function record_achievement(_ach) {}
+import { record_achievement } from './insight.js';
 
 /**
  * C ref: priest.c intemple — enter TEMPLE room (from check_special_room).

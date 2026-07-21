@@ -1,18 +1,22 @@
-// Random monster selection.
+// Monster selection, birth limits, hit points, and attitude.
 // C refs: makemon.c rndmonst_adj(), mkclass(), and elemental filtering;
 // mkobj.c rndmonnum_adj(); questpgr.c qt_montype().
 
 import {
+    A_NONE,
+    A_NEUTRAL,
     ALIGNWEIGHT,
     AM_CHAOTIC,
     AM_LAWFUL,
     AM_NEUTRAL,
+    G_EXTINCT,
     G_GENOD,
     G_GONE,
+    MAXMONNO,
 } from './const.js';
-import { level_difficulty } from './dungeon.js';
+import { level_difficulty, on_level } from './dungeon.js';
 import { game } from './gstate.js';
-import { rn1, rn2, rnd } from './rng.js';
+import { d, rn1, rn2, rnd } from './rng.js';
 import {
     G_FREQ,
     G_HELL,
@@ -21,23 +25,52 @@ import {
     G_UNIQ,
     G_IGNORE,
     LOW_PM,
+    M1_AMORPHOUS,
+    M1_FLY,
+    M1_SWIM,
+    M2_HOSTILE,
+    M2_MINION,
+    M2_PEACEFUL,
     MR_COLD,
     MR_FIRE,
+    MS_GUARDIAN,
+    MS_LEADER,
+    MS_NEMESIS,
     NON_PM,
     NUMMONS,
     PM_AIR_ELEMENTAL,
+    PM_CLAY_GOLEM,
+    PM_DEATH,
     PM_EARTH_ELEMENTAL,
     PM_ELF,
+    PM_ERINYS,
+    PM_FAMINE,
+    PM_FLESH_GOLEM,
     PM_FIRE_ELEMENTAL,
+    PM_GLASS_GOLEM,
+    PM_GOLD_GOLEM,
+    PM_GRAY_DRAGON,
     PM_GIANT,
+    PM_HIGH_CLERIC,
     PM_HUMAN,
+    PM_IRON_GOLEM,
+    PM_LEATHER_GOLEM,
     PM_MAIL_DAEMON,
+    PM_NAZGUL,
     PM_ORC,
+    PM_PAPER_GOLEM,
+    PM_PESTILENCE,
+    PM_ROPE_GOLEM,
+    PM_STONE_GOLEM,
+    PM_STRAW_GOLEM,
     PM_WATER_ELEMENTAL,
+    PM_WOOD_GOLEM,
     PM_WIZARD_OF_YENDOR,
+    S_DRAGON,
     S_ELEMENTAL,
     S_EYE,
     S_GHOST,
+    S_GOLEM,
     S_LICH,
     S_LIGHT,
     S_MIMIC_DEF,
@@ -47,27 +80,32 @@ import {
     monsterClassSymbol,
 } from './monsters.js';
 
-// C ref: monflag.h flags used by makemon.c wrong_elem_type().
-const M1_FLY = 0x00000001;
-const M1_SWIM = 0x00000002;
-const M1_AMORPHOUS = 0x00000004;
 // C ref: mondata.h is_placeholder(). These records only back corpse forms.
 const PLACEHOLDER_MONSTERS = new Set([PM_ORC, PM_GIANT, PM_ELF, PM_HUMAN]);
 
 function generationEnv(env = {}) {
     const state = env.state ?? game;
-    const random = env.random ?? { rn1, rn2, rnd };
+    const random = env.random ?? { d, rn1, rn2, rnd };
     // Every selection path needs rn2. rndmonnum's fallback can synthesize rn1
     // from it; a missing rnd is tolerated unless a path reaches mkclass(),
     // which requires it (including a rejected fixed Quest enemy's fallback).
     if (typeof random.rn2 !== 'function')
         throw new TypeError('monster random injection requires rn2');
+    const randomOneBased = typeof random.rnd === 'function' ? random.rnd : null;
     const sourceRandom = {
         rn2: random.rn2,
         rn1: typeof random.rn1 === 'function'
             ? random.rn1
             : (range, base) => random.rn2(range) + base,
-        rnd: typeof random.rnd === 'function' ? random.rnd : null,
+        rnd: randomOneBased,
+        d: typeof random.d === 'function'
+            ? random.d
+            : randomOneBased && ((number, sides) => {
+                let total = 0;
+                for (let die = 0; die < number; ++die)
+                    total += randomOneBased(sides);
+                return total;
+            }),
     };
     if (!Array.isArray(state.mons) || state.mons.length <= SPECIAL_PM)
         throw new Error('monster generation requires monst_globals_init()');
@@ -76,15 +114,9 @@ function generationEnv(env = {}) {
     return { ...env, state, random: sourceRandom };
 }
 
-function sameLevel(left, right) {
-    return Boolean(left && right
-        && left.dnum === right.dnum
-        && left.dlevel === right.dlevel);
-}
-
 function currentSpecialLevel(state) {
     return state.specialLevels?.find(
-        (candidate) => sameLevel(candidate.dlevel, state.u?.uz),
+        (candidate) => on_level(candidate.dlevel, state.u?.uz),
     ) ?? null;
 }
 
@@ -102,11 +134,11 @@ function inEndgame(state) {
 }
 
 function isAstralLevel(state) {
-    return sameLevel(state.u?.uz, state.astral_level);
+    return on_level(state.u?.uz, state.astral_level);
 }
 
 function isRogueLevel(state) {
-    return sameLevel(state.u?.uz, state.rogue_level);
+    return on_level(state.u?.uz, state.rogue_level);
 }
 
 function uncommon(index, state) {
@@ -145,13 +177,13 @@ export function is_home_elemental(monster, state = game) {
     if (monster?.mlet !== S_ELEMENTAL) return false;
     switch (monster.pmidx) {
     case PM_AIR_ELEMENTAL:
-        return sameLevel(state.u?.uz, state.air_level);
+        return on_level(state.u?.uz, state.air_level);
     case PM_FIRE_ELEMENTAL:
-        return sameLevel(state.u?.uz, state.fire_level);
+        return on_level(state.u?.uz, state.fire_level);
     case PM_EARTH_ELEMENTAL:
-        return sameLevel(state.u?.uz, state.earth_level);
+        return on_level(state.u?.uz, state.earth_level);
     case PM_WATER_ELEMENTAL:
-        return sameLevel(state.u?.uz, state.water_level);
+        return on_level(state.u?.uz, state.water_level);
     default:
         return false;
     }
@@ -161,12 +193,12 @@ export function is_home_elemental(monster, state = game) {
 function wrongElementType(monster, state) {
     if (monster.mlet === S_ELEMENTAL)
         return !is_home_elemental(monster, state);
-    if (sameLevel(state.u?.uz, state.earth_level)) return false;
-    if (sameLevel(state.u?.uz, state.water_level))
+    if (on_level(state.u?.uz, state.earth_level)) return false;
+    if (on_level(state.u?.uz, state.water_level))
         return !(monster.mflags1 & M1_SWIM);
-    if (sameLevel(state.u?.uz, state.fire_level))
+    if (on_level(state.u?.uz, state.fire_level))
         return !(monster.mresists & MR_FIRE);
-    if (sameLevel(state.u?.uz, state.air_level)) {
+    if (on_level(state.u?.uz, state.air_level)) {
         const flyer = Boolean(monster.mflags1 & M1_FLY)
             && monster.mlet !== S_TRAPPER;
         const floater = monster.mlet === S_EYE || monster.mlet === S_LIGHT;
@@ -179,7 +211,8 @@ function wrongElementType(monster, state) {
     return false;
 }
 
-function adjustedMonsterLevel(monster, state) {
+// C ref: makemon.c adj_lev().
+export function adj_lev(monster, state = game) {
     if (monster.pmidx === PM_WIZARD_OF_YENDOR) {
         return Math.min(
             monster.mlevel + Math.trunc(state.mvitals[monster.pmidx].died ?? 0),
@@ -198,6 +231,192 @@ function adjustedMonsterLevel(monster, state) {
 
     const upperLimit = Math.min(Math.trunc(3 * monster.mlevel / 2), 49);
     return Math.min(Math.max(adjusted, 0), upperLimit);
+}
+
+// C ref: makemon.c mbirth_limit().
+export function mbirth_limit(mndx) {
+    if (mndx === PM_NAZGUL) return 9;
+    if (mndx === PM_ERINYS) return 3;
+    return MAXMONNO;
+}
+
+// C ref: makemon.c propagate(). Births can still be tallied after a species
+// is gone; ghostly restoration alone suppresses a tally which cannot live.
+export function propagate(mndx, tally, ghostly, env = {}) {
+    const { state } = generationEnv(env);
+    if (!Number.isInteger(mndx) || mndx < LOW_PM || mndx >= NUMMONS)
+        throw new RangeError(`propagate: invalid monster index ${mndx}`);
+
+    const monster = state.mons[mndx];
+    const vital = state.mvitals[mndx];
+    const limit = mbirth_limit(mndx);
+    const gone = Boolean(vital.mvflags & G_GONE);
+    const result = vital.born < limit && !gone;
+
+    if ((monster.geno & G_UNIQ) && mndx !== PM_HIGH_CLERIC)
+        vital.mvflags |= G_EXTINCT;
+    if (vital.born < 255 && tally && (!ghostly || result)) ++vital.born;
+    if (vital.born >= limit
+        && !(monster.geno & G_NOGEN)
+        && !(vital.mvflags & G_EXTINCT)) {
+        vital.mvflags |= G_EXTINCT;
+    }
+    return result;
+}
+
+// C ref: makemon.c golemhp().
+export function golemhp(mndx) {
+    switch (mndx) {
+    case PM_STRAW_GOLEM:
+    case PM_PAPER_GOLEM:
+        return 20;
+    case PM_ROPE_GOLEM:
+        return 30;
+    case PM_LEATHER_GOLEM:
+        return 40;
+    case PM_GOLD_GOLEM:
+        return 60;
+    case PM_WOOD_GOLEM:
+        return 50;
+    case PM_FLESH_GOLEM:
+        return 40;
+    case PM_CLAY_GOLEM:
+        return 70;
+    case PM_STONE_GOLEM:
+        return 100;
+    case PM_GLASS_GOLEM:
+        return 80;
+    case PM_IRON_GOLEM:
+        return 120;
+    default:
+        return 0;
+    }
+}
+
+function isRider(mndx) {
+    return mndx === PM_DEATH || mndx === PM_PESTILENCE || mndx === PM_FAMINE;
+}
+
+// C ref: makemon.c newmonhp().
+export function newmonhp(mon, mndx, env = {}) {
+    const { random, state } = generationEnv(env);
+    if (!mon || typeof mon !== 'object')
+        throw new TypeError('newmonhp requires a monster instance');
+    if (!Number.isInteger(mndx) || mndx < LOW_PM || mndx >= NUMMONS)
+        throw new RangeError(`newmonhp: invalid monster index ${mndx}`);
+
+    const ptr = state.mons[mndx];
+    let basehp = 0;
+    mon.m_lev = adj_lev(ptr, state);
+    if (ptr.mlet === S_GOLEM) {
+        mon.mhpmax = mon.mhp = golemhp(mndx);
+    } else if (isRider(mndx)) {
+        basehp = 10;
+        if (typeof random.d !== 'function')
+            throw new TypeError('newmonhp requires d for Rider hit points');
+        mon.mhpmax = mon.mhp = random.d(basehp, 8);
+    } else if (ptr.mlevel > 49) {
+        mon.mhpmax = mon.mhp = 2 * (ptr.mlevel - 6);
+        mon.m_lev = Math.trunc(mon.mhp / 4);
+    } else if (ptr.mlet === S_DRAGON && mndx >= PM_GRAY_DRAGON) {
+        basehp = mon.m_lev;
+        if (inEndgame(state)) {
+            mon.mhpmax = mon.mhp = 8 * basehp;
+        } else {
+            if (typeof random.d !== 'function')
+                throw new TypeError('newmonhp requires d for dragon hit points');
+            mon.mhpmax = mon.mhp = 4 * basehp + random.d(basehp, 4);
+        }
+    } else if (!mon.m_lev) {
+        basehp = 1;
+        if (typeof random.rnd !== 'function')
+            throw new TypeError('newmonhp requires rnd for level-zero hit points');
+        mon.mhpmax = mon.mhp = random.rnd(4);
+    } else {
+        basehp = mon.m_lev;
+        if (typeof random.d !== 'function')
+            throw new TypeError('newmonhp requires d for ordinary hit points');
+        mon.mhpmax = mon.mhp = random.d(basehp, 8);
+        if (is_home_elemental(ptr, state))
+            mon.mhpmax = (mon.mhp *= 3);
+    }
+
+    // If the roll equals basehp (all d8s rolled 1, or level-zero rnd(4)
+    // rolled 1), raise both HP fields so levels zero and one start at 2.
+    if (mon.mhpmax === basehp)
+        mon.mhp = ++mon.mhpmax;
+    return mon;
+}
+
+// C ref: makemon.c peace_minded().
+export function peace_minded(monster, env = {}) {
+    const { random, state } = generationEnv(env);
+    const mal = monster.maligntyp;
+    const heroAlignment = state.u.ualign.type;
+
+    if (alwaysPeaceful(monster)) return true;
+    if (alwaysHostile(monster)) return false;
+    if (monster.msound === MS_LEADER || monster.msound === MS_GUARDIAN)
+        return true;
+    if (monster.msound === MS_NEMESIS) return false;
+    if (monster.pmidx === PM_ERINYS) return !state.u.ualign.abuse;
+    if (monster.mflags2 & (state.urace?.lovemask ?? 0)) return true;
+    if (monster.mflags2 & (state.urace?.hatemask ?? 0)) return false;
+    if (Math.sign(mal) !== Math.sign(heroAlignment)) return false;
+    if (mal < A_NEUTRAL && state.u.uhave.amulet) return false;
+    if (monster.mflags2 & M2_MINION)
+        return state.u.ualign.record >= 0;
+
+    const record = state.u.ualign.record;
+    // Co-aligned monsters are more likely to be hostile when the hero has
+    // strayed or the monster is weakly aligned.
+    const alignmentRecordBound = 16 + (record < -15 ? -15 : record);
+    return Boolean(random.rn2(alignmentRecordBound)
+        && random.rn2(2 + Math.abs(mal)));
+}
+
+function alwaysPeaceful(monster) {
+    return Boolean(monster.mflags2 & M2_PEACEFUL);
+}
+
+function alwaysHostile(monster) {
+    return Boolean(monster.mflags2 & M2_HOSTILE);
+}
+
+// C ref: makemon.c set_malign().
+export function set_malign(mon, state = game) {
+    if (!mon?.data)
+        throw new TypeError('set_malign requires initialized monster data');
+    // mon.malign is the base hero-alignment adjustment when this monster is
+    // killed: positive is favorable and negative unfavorable. Kill handling
+    // applies its other adjustments separately.
+    let mal = mon.data.maligntyp;
+    if (mon.ispriest || mon.isminion) {
+        if (mon.ispriest && mon.mextra?.epri)
+            mal = mon.mextra.epri.shralign;
+        else if (mon.isminion && mon.mextra?.emin)
+            mal = mon.mextra.emin.min_align;
+        if (mal !== A_NONE) mal *= 5;
+    }
+
+    const coaligned = Math.sign(mal) === Math.sign(state.u.ualign.type);
+    const absolute = Math.abs(mal);
+    if (mon.data.msound === MS_LEADER) {
+        mon.malign = -20;
+    } else if (mal === A_NONE) {
+        mon.malign = mon.mpeaceful ? 0 : 20;
+    } else if (alwaysPeaceful(mon.data)) {
+        mon.malign = (mon.mpeaceful ? -3 : 3) * Math.max(5, absolute);
+    } else if (alwaysHostile(mon.data)) {
+        mon.malign = coaligned ? 0 : Math.max(5, absolute);
+    } else if (coaligned) {
+        mon.malign = mon.mpeaceful
+            ? -3 * Math.max(3, absolute)
+            : Math.max(3, absolute);
+    } else {
+        mon.malign = absolute;
+    }
+    return mon.malign;
 }
 
 function monsterClassOrder(classSymbol, state) {
@@ -276,7 +495,7 @@ export function mkclass(classSymbol, special = 0, env = {}) {
         if (!weight && zeroFrequencyForEntireClass) weight = 1;
         if (weight) {
             weight += 1 - Number(
-                adjustedMonsterLevel(monster, state) > state.u.ulevel * 2,
+                adj_lev(monster, state) > state.u.ulevel * 2,
             );
             weights[index] = weight;
             total += weight;

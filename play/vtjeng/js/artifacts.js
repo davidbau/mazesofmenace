@@ -12,8 +12,43 @@ import {
     LAST_PROP,
     LEVITATION,
     NON_PM,
+    ONAME_BONES,
+    ONAME_GIFT,
+    ONAME_KNOW_ARTI,
+    ONAME_LEVEL_DEF,
+    ONAME_NO_FLAGS,
+    ONAME_RANDOM,
+    ONAME_VIA_DIP,
+    ONAME_VIA_NAMING,
+    ONAME_WISH,
 } from './const.js';
 import { game } from './gstate.js';
+import {
+    M2_DEMON,
+    M2_ELF,
+    M2_GIANT,
+    M2_ORC,
+    M2_UNDEAD,
+    M2_WERE,
+    PM_ARCHEOLOGIST,
+    PM_BARBARIAN,
+    PM_CAVE_DWELLER,
+    PM_CLERIC,
+    PM_ELF,
+    PM_HEALER,
+    PM_KNIGHT,
+    PM_MONK,
+    PM_ORC,
+    PM_RANGER,
+    PM_ROGUE,
+    PM_SAMURAI,
+    PM_TOURIST,
+    PM_VALKYRIE,
+    PM_WIZARD,
+    S_DRAGON,
+    S_OGRE,
+    S_TROLL,
+} from './monsters.js';
 import {
     AMULET_OF_ESP,
     ATHAME,
@@ -34,6 +69,7 @@ import {
     MORNING_STAR,
     ORCISH_DAGGER,
     QUARTERSTAFF,
+    RIN_INCREASE_DAMAGE,
     RUNESWORD,
     SILVER_MACE,
     SILVER_SABER,
@@ -42,7 +78,8 @@ import {
     TSURUGI,
     WAR_HAMMER,
 } from './objects.js';
-import { aligns, races, roles } from './roles.js';
+import { aligns } from './roles.js';
+import { rn2 } from './rng.js';
 import { CLR_BRIGHT_BLUE, CLR_RED, NO_COLOR } from './terminal.js';
 
 export const SPFX_NONE = 0x00000000;
@@ -138,46 +175,6 @@ const AD_BLND = 11;
 const AD_STUN = 12;
 const AD_DRLI = 15;
 const AD_WERE = 29;
-
-const M2_UNDEAD = 0x00000002;
-const M2_WERE = 0x00000004;
-const M2_ELF = 0x00000010;
-const M2_ORC = 0x00000080;
-const M2_DEMON = 0x00000100;
-const M2_GIANT = 0x00002000;
-
-// defsym.h MONSYM indices; artifact mtype stores the monster class index.
-const S_DRAGON = 30;
-const S_OGRE = 41;
-const S_TROLL = 46;
-
-function roleMnum(filecode) {
-    const role = roles.find((candidate) => candidate.filecode === filecode);
-    if (!role) throw new Error(`missing pinned role ${filecode}`);
-    return role.mnum;
-}
-
-function raceMnum(noun) {
-    const race = races.find((candidate) => candidate.noun === noun);
-    if (!race) throw new Error(`missing pinned race ${noun}`);
-    return race.mnum;
-}
-
-const PM_ARCHEOLOGIST = roleMnum('Arc');
-const PM_BARBARIAN = roleMnum('Bar');
-const PM_CAVE_DWELLER = roleMnum('Cav');
-const PM_HEALER = roleMnum('Hea');
-const PM_KNIGHT = roleMnum('Kni');
-const PM_MONK = roleMnum('Mon');
-const PM_CLERIC = roleMnum('Pri');
-const PM_ROGUE = roleMnum('Rog');
-const PM_RANGER = roleMnum('Ran');
-const PM_SAMURAI = roleMnum('Sam');
-const PM_TOURIST = roleMnum('Tou');
-const PM_VALKYRIE = roleMnum('Val');
-const PM_WIZARD = roleMnum('Wiz');
-const PM_ELF = raceMnum('elf');
-const PM_ORC = raceMnum('orc');
 
 const NO_ATTK = Object.freeze({ aatyp: 0, adtyp: 0, damn: 0, damd: 0 });
 
@@ -427,4 +424,226 @@ export function init_artifacts(state = game) {
     state.artilist = createArtifactTable();
     hack_artifacts(state);
     return state.artilist;
+}
+
+const ORIGIN_FLAGS = Object.freeze([
+    [ONAME_WISH, 'wish'],
+    [ONAME_GIFT, 'gift'],
+    [ONAME_VIA_DIP, 'viadip'],
+    [ONAME_VIA_NAMING, 'named'],
+    [ONAME_LEVEL_DEF, 'lvldef'],
+    [ONAME_BONES, 'bones'],
+    [ONAME_RANDOM, 'rndm'],
+]);
+
+const ORIGIN_MASK = ORIGIN_FLAGS.reduce(
+    (mask, [flag]) => mask | flag,
+    0,
+);
+
+function stateFromEnv(value) {
+    if (value == null) return game;
+    return value.state ?? value;
+}
+
+function artifactTables(value) {
+    const state = stateFromEnv(value);
+    if (!Array.isArray(state.artilist)
+        || state.artilist.length <= NROFARTIFACTS
+        || !Array.isArray(state.artiexist)
+        || state.artiexist.length <= NROFARTIFACTS) {
+        throw new Error('artifact operation requires init_artifacts()');
+    }
+    return state;
+}
+
+/** Port of artifact.c:artiname(). */
+export function artiname(artinum, state = game) {
+    const normalized = artifactTables(state);
+    if (artinum <= ART_NONARTIFACT || artinum > NROFARTIFACTS)
+        return '';
+    return normalized.artilist[artinum].name;
+}
+
+/** Port of artifact.c:exist_artifact(). Artifact names compare exactly. */
+export function exist_artifact(otyp, name, state = game) {
+    const normalized = artifactTables(state);
+    if (!otyp || !name) return false;
+    for (let index = 1; normalized.artilist[index].otyp; ++index) {
+        const art = normalized.artilist[index];
+        if (art.otyp === otyp && art.name === name)
+            return Boolean(normalized.artiexist[index].exists);
+    }
+    return false;
+}
+
+/** Port of artifact.c:artifact_origin(). */
+export function artifact_origin(obj, flags, state = game) {
+    const normalized = artifactTables(state);
+    const index = Math.trunc(obj?.oartifact ?? 0);
+    if (!index) return;
+    if (index < 1 || index > NROFARTIFACTS
+        || !normalized.artilist[index].otyp) {
+        throw new RangeError(`invalid artifact index ${index}`);
+    }
+
+    const info = normalized.artiexist[index] = zeroArtiInfo();
+    info.exists = 1;
+    if (flags & ONAME_KNOW_ARTI) info.found = 1;
+
+    let origins = 0;
+    for (const [flag, field] of ORIGIN_FLAGS) {
+        if (flags & flag) {
+            info[field] = 1;
+            ++origins;
+        }
+    }
+    // Other oname() control bits, such as ONAME_SKIP_INVUPD, do not describe
+    // provenance and are ignored here by the source.
+    if (origins !== 1) {
+        throw new RangeError(`invalid artifact origin flags ${flags}`);
+    }
+}
+
+/** Port of artifact.c:artifact_exists() for object-name ownership. */
+export function artifact_exists(
+    obj,
+    name,
+    exists,
+    flags = ONAME_NO_FLAGS,
+    state = game,
+) {
+    const normalized = artifactTables(state);
+    if (!obj || !name) return obj;
+
+    for (let index = 1; normalized.artilist[index].otyp; ++index) {
+        const art = normalized.artilist[index];
+        if (art.otyp !== obj.otyp || art.name !== name) continue;
+
+        obj.oartifact = exists ? index : ART_NONARTIFACT;
+        obj.age = 0;
+        if (obj.otyp === RIN_INCREASE_DAMAGE) obj.spe = 0;
+        if (exists) {
+            let originFlags = flags;
+            if (!(originFlags & ORIGIN_MASK)) originFlags |= ONAME_RANDOM;
+            artifact_origin(obj, originFlags, normalized);
+        } else {
+            normalized.artiexist[index] = zeroArtiInfo();
+        }
+        break;
+    }
+    return obj;
+}
+
+/** Port of artifact.c:nartifact_exist(). */
+export function nartifact_exist(state = game) {
+    const normalized = artifactTables(state);
+    let count = 0;
+    for (let index = 1; index <= NROFARTIFACTS; ++index) {
+        if (normalized.artiexist[index].exists) ++count;
+    }
+    return count;
+}
+
+function onameArtifact(obj, name, state) {
+    // C oname() retains an existing artifact's name and rejects a duplicate.
+    if (obj.oartifact || exist_artifact(obj.otyp, name, state)) return obj;
+    obj.oextra ??= {};
+    obj.oextra.oname = name;
+    artifact_exists(obj, name, true, ONAME_NO_FLAGS, state);
+    return obj;
+}
+
+function randomFromEnv(env) {
+    const random = env?.random?.rn2 ?? rn2;
+    if (typeof random !== 'function')
+        throw new TypeError('artifact random injection requires rn2');
+    return random;
+}
+
+/**
+ * Port the existing-object/A_NONE branch of artifact.c:mk_artifact().
+ *
+ * This is the complete branch used by obj.js during random object creation.
+ * Alignment-specific divine gifts create a new object and use role skills;
+ * that distinct branch is outside the initial-level object path.
+ */
+export function mk_artifact(
+    obj,
+    alignment = A_NONE,
+    maxGiftValue = 99,
+    adjustSpe = false,
+    env = null,
+) {
+    if (alignment !== A_NONE) {
+        throw new RangeError(
+            'aligned mk_artifact gifts are not implemented by the object hook',
+        );
+    }
+    const state = artifactTables(env);
+    if (!obj) return obj;
+    const objectType = state.objects?.[obj.otyp];
+    if (!objectType)
+        throw new RangeError(`invalid artifact base object type ${obj.otyp}`);
+
+    const unique = Boolean(objectType.oc_unique);
+    const eligible = [];
+    for (let index = 1; state.artilist[index].otyp; ++index) {
+        const art = state.artilist[index];
+        if (state.artiexist[index].exists) continue;
+        if ((art.spfx & SPFX_NOGEN) || unique) continue;
+        if (art.gift_value > maxGiftValue
+            && art.role !== state.urole?.mnum) {
+            continue;
+        }
+        // Role, race, alignment, SPFX_RESTR, and weapon skill only constrain
+        // the source's by-alignment gift branch, not existing-object conversion.
+        if (art.otyp === obj.otyp) eligible.push(index);
+    }
+
+    if (eligible.length) {
+        const selected = eligible[randomFromEnv(env)(eligible.length)];
+        if (!Number.isInteger(selected))
+            throw new RangeError('artifact rn2 result was outside its bound');
+        const art = state.artilist[selected];
+        obj.oeroded = 0;
+        obj.oeroded2 = 0;
+        obj = onameArtifact(obj, art.name, state);
+        // oname() normally set both fields already. The source deliberately
+        // repeats them here so preserve that ownership boundary.
+        obj.oartifact = selected;
+        artifact_origin(obj, ONAME_RANDOM, state);
+        if (adjustSpe) {
+            const newSpe = Math.trunc(obj.spe) + art.gen_spe;
+            if (newSpe >= -10 && newSpe < 10) obj.spe = newSpe;
+        }
+    }
+    if (permapoisoned(obj)) obj.opoisoned = true;
+    return obj;
+}
+
+/** Hook adapter for obj.js makeArtifact(). */
+export function makeArtifact(obj, options = {}) {
+    return mk_artifact(
+        obj,
+        options.alignment ?? A_NONE,
+        options.maxGiftValue ?? 99,
+        Boolean(options.adjustSpe),
+        options.env ?? null,
+    );
+}
+
+/** Hook adapter for obj.js artifactCount(). */
+export function artifactCount(env = game) {
+    return nartifact_exist(env);
+}
+
+/** Port of artifact.c:permapoisoned(); currently only Grimtooth qualifies. */
+export function permapoisoned(obj) {
+    return Boolean(obj && obj.oartifact === ART_GRIMTOOTH);
+}
+
+/** Hook adapter for obj.js isPermanentlyPoisoned(). */
+export function isPermanentlyPoisoned(obj) {
+    return permapoisoned(obj);
 }

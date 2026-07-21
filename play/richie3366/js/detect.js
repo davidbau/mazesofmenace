@@ -16,8 +16,7 @@
 // browse_map(TER_DETECT|TER_MON) (D-0370);
 // **premap_detect** Sokoban premapped levels (D-0567);
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
-// Named omissions: feel_location / visible_region_at /
-// unmap_invisible / Blind feel; Hallucination/cls
+// Named omissions: Hallucination/cls
 // map_trap wait; activate_statue_trap; artifact SPFX_SEARCH;
 // warnreveal body (mfind0 via_warning wired);
 // map_trap + map_engraving after furniture (D-0928 #1158); oldglyph
@@ -38,8 +37,10 @@ import {
     newsym, pline, magic_map_background, terrain_glyph, obj_glyph,
     show_glyph_cell, map_trap, map_engraving, canspotmon, sensemon,
     map_invisible, glyph_is_invisible, warning_of, You_feel,
+    feel_location, feel_newsym, unmap_invisible,
 } from './display.js';
 import { vision_recalc, couldsee, recalc_block_point } from './vision.js';
+import { visible_region_at } from './region.js';
 import { an } from './objnam.js';
 import { A_WIS, exercise } from './attrib.js';
 import { t_at } from './trap.js';
@@ -59,6 +60,14 @@ import {
 } from './const.js';
 import { CLR_WHITE } from './terminal.js';
 import { room_discovered } from './dungeon.js';
+
+/** C youprop.h Blind — (H||E) && !B; no sticky u.Blind (D-0716). */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    if (u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
 
 const BOULDER = objectNames.indexOf('BOULDER');
 
@@ -179,10 +188,9 @@ async function mfind0(mtmp, via_warning) {
             || hides_under(ptr)
             || ptr?.mlet === 'S_EEL')) {
             if (via_warning && found_something) {
-                const Blind = !!(game.u?.Blind || game.u?.ublind);
                 await pline(
                     `Your danger sense causes you to take a second ${
-                        Blind ? 'to check nearby' : 'look close by'}.`,
+                        Blind() ? 'to check nearby' : 'look close by'}.`,
                 );
             }
             mtmp.mundetected = 0;
@@ -227,8 +235,8 @@ export async function dosearch0(aflag) {
     // Artifact SPFX_SEARCH fund deferred (no artifact table wired yet) → 0.
     let fund = 0;
     const ublindf = u.ublindf;
-    const Blind = !!(u.Blind || u.ublind);
-    if (ublindf && ublindf.otyp === LENSES && !Blind) fund += 2;
+    const isBlind = Blind();
+    if (ublindf && ublindf.otyp === LENSES && !isBlind) fund += 2;
     if (fund > 5) fund = 5;
 
     for (let x = u.ux - 1; x < u.ux + 2; x++) {
@@ -239,7 +247,10 @@ export async function dosearch0(aflag) {
             const loc = game.level?.at(x, y);
             if (!loc) continue;
 
-            // feel_location / Blind / visible_region_at deferred
+            // C: !aflag && (Blind || visible_region_at) → feel_location
+            if (!aflag && (isBlind || visible_region_at(x, y))) {
+                feel_location(x, y);
+            }
 
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund)) continue;
@@ -247,7 +258,8 @@ export async function dosearch0(aflag) {
                 recalc_block_point(x, y); // C: recalc_block_point
                 exercise(A_WIS, true);
                 nomul_clear();
-                newsym(x, y);
+                // C: feel_location — make sure door shows up
+                feel_location(x, y);
                 await pline('You find a hidden door.');
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
@@ -255,17 +267,20 @@ export async function dosearch0(aflag) {
                 recalc_block_point(x, y); // C: unblock_point
                 exercise(A_WIS, true);
                 nomul_clear();
-                newsym(x, y);
+                // C: feel_newsym — make sure passage shows up
+                feel_newsym(x, y);
                 await pline('You find a hidden passage.');
             } else {
+                let mtmp = null;
                 if (!aflag) {
-                    const mtmp = m_at(x, y);
+                    mtmp = m_at(x, y);
                     if (mtmp) {
                         const mfres = await mfind0(mtmp, 0);
                         if (mfres === -1) continue;
                         if (mfres > 0) return mfres;
                     }
-                    // unmap_invisible deferred
+                    // C: !Blind → unmap_invisible (Blind feel_location already)
+                    if (!mtmp && !isBlind) unmap_invisible(x, y);
                 }
 
                 const trap = t_at(x, y);

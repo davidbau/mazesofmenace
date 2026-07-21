@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline, newsym, see_monsters } from './display.js';
+import { pline, urgent_pline, newsym, see_monsters } from './display.js';
 import { getlin } from './getline.js';
 import { an } from './objnam.js';
 import { pmname } from './do_name.js';
@@ -16,7 +16,7 @@ import { find_ac } from './u_init.js';
 import {
     setworn, Helmet_off, Gloves_off, Boots_off, Shield_off,
 } from './do_wear.js';
-import { dropx, canletgo } from './do.js';
+import { dropx, canletgo, make_blinded } from './do.js';
 import { setuwep, setuswapwep } from './wield.js';
 import { races } from './roles.js';
 import { encumber_msg } from './invent.js';
@@ -81,6 +81,7 @@ import {
     In_endgame,
     MAXULEV,
     FROMFORM,
+    TIMEOUT,
     FLYING,
     BLINDED,
     FIRE_RES,
@@ -351,13 +352,16 @@ function change_sex() {
 /**
  * C ref: polyself.c polyman — revert to original race form after newman.
  * Envelope: restore macurr/mamax; clear mh/mtimedone; set_uasmon; find_ac;
- * newsym; pline; see_monsters.
- * Named omissions: skinback; ugenocided; stick/mimic/twoweapon; Blind
- * restore; strangling; pool spoteffects; retouch_equipment/selftouch.
+ * newsym; pline; was_blind→make_blinded; see_monsters.
+ * Named omissions: skinback; ugenocided; stick/mimic/twoweapon;
+ * strangling; pool spoteffects; retouch_equipment/selftouch.
  */
 async function polyman(fmt, arg) {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
+    // C: was_blind = !!Blind before set_uasmon clears FROMFORM Blind
+    const wasBlind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
+        && !(u.BBlinded | 0)) || !!u.uroleplay?.blind;
     if (Upolyd(u)) {
         u.acurr = copyAttrBundle(u.macurr);
         u.amax = copyAttrBundle(u.mamax);
@@ -372,8 +376,21 @@ async function polyman(fmt, arg) {
     u.uundetected = 0;
     find_ac();
     newsym(u.ux, u.uy);
-    // C urgent_pline(fmt, arg) — fmt has one %s
-    await pline(String(fmt).replace('%s', arg));
+    // C urgent_pline(fmt, arg) — fmt has one %s; overrides WIN_STOP
+    await urgent_pline(String(fmt).replace('%s', arg));
+    // C: was_blind && !Blind → set_itimeout(HBlinded,1); make_blinded(0,TRUE)
+    const nowBlind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
+        && !(u.BBlinded | 0)) || !!u.uroleplay?.blind;
+    if (wasBlind && !nowBlind) {
+        u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (1 & TIMEOUT);
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[BLINDED]) {
+            u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        u.uprops[BLINDED].intrinsic =
+            ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (1 & TIMEOUT);
+        await make_blinded(0, true);
+    }
     see_monsters();
 }
 

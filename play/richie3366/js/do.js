@@ -15,6 +15,7 @@ import {
     VISITED, LFILE_EXISTS,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
+    ACH_HELL, ACH_MINE, ACH_SOKO,
 } from './const.js';
 import { seetrap } from './trap.js';
 import { COIN_CLASS } from './objects.js';
@@ -38,6 +39,7 @@ import {
     recalc_mapseen, recbranch_mapseen,
 } from './dungeon.js';
 import { Is_waterlevel, Is_airlevel } from './const.js';
+import { record_achievement } from './insight.js';
 import { com_pager } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { save_track, rest_track } from './track.js';
@@ -197,7 +199,11 @@ export async function cmd_safety_prevention(ucverb, cmddesc, act, flagKey) {
         && !(game.multi | 0)) {
         let assist = '';
         // C: iflags.cmdassist || !(*flagcounter)++
-        const cmdassist = flags.cmdassist !== false;
+        // C optlist.h cmdassist → &iflags.cmdassist, default On.
+        // (Was wrongly reading flags.cmdassist; Options `O` toggles iflags.)
+        const cmdassist = iflags.cmdassist !== undefined
+            ? !!iflags.cmdassist
+            : true;
         if (cmdassist) {
             assist = `  Use 'm' prefix to force ${cmddesc}.`;
         } else {
@@ -365,7 +371,7 @@ async function selftouch_stair_fall(_arg) {
  * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
  * RMPORTAL, endgame astral `final_level` / migrating-Wizard resurrect arm,
  * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
- * ACH_HELL / MICRO display_nhwindow after Valley odor;
+ * MICRO display_nhwindow after Valley odor; ACH_ENDG/ASTR/BGRM;
  * poly `locomotion()` climb verb / steed-flyer Flying; full `selftouch`
  * petrify; u_collide_m full limbo. Ported: Punished climb
  * `great_effort` + Flying ladder "along" (D-0928 #1159);
@@ -374,6 +380,7 @@ async function selftouch_stair_fall(_arg) {
  * In_endgame `newdungeon`+amulet `resurrect` new-Wizard makemon + appear
  * Norep; `familiar_level_msg` via `bones_include_name` (D-0577);
  * Gehennom Valley arrival plines + `gehennom_entered` (D-0801);
+ * ACH_HELL/MINE/SOKO `record_achievement` (D-0928 #1181);
  * hellish_smoke smell/sense smoke + heat/smoke gone (D-0801);
  * temperature_change_msg hot/cold (D-0559).
  */
@@ -772,7 +779,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                     await pline('You hear groans and moans everywhere.');
                 }
             }
-            // ACH_HELL deferred
+            // C: record_achievement(ACH_HELL) even for non-Valley entry
+            record_achievement(ACH_HELL);
         }
         // C: bypass Valley stair → mark gehennom_entered
         if (inHellNow && !Is_valley(u.uz)) {
@@ -793,8 +801,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     } else if (In_quest(u.uz)) {
         await onquest();
-    } else if (In_mines(u.uz) || In_sokoban(u.uz)) {
-        // ACH_MINE / ACH_SOKO deferred (no RNG)
+    } else if (In_mines(u.uz)) {
+        if (newdungeon) record_achievement(ACH_MINE);
+    } else if (In_sokoban(u.uz)) {
+        if (newdungeon) record_achievement(ACH_SOKO);
     } else {
         // C: new && Is_rogue_level → primitive-world pline (forces --More--
         // after dfr_post_msg materialize). Is_knox alarm / Is_bigroom ACH

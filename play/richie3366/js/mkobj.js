@@ -195,12 +195,55 @@ export function weight(obj) {
         const cwt = mons(obj.corpsenm)?.cwt ?? 0;
         let longWt = quan * cwt;
         if (longWt > LARGEST_INT) longWt = LARGEST_INT;
-        // oeaten/eaten_stat deferred
+        if (obj.oeaten) return eaten_stat(longWt | 0, obj);
         return longWt | 0;
     }
+    // C: FOOD_CLASS && oeaten → eaten_stat(quan * oc_weight)
+    if (obj.oclass === FOOD_CLASS && obj.oeaten) {
+        return eaten_stat((quan * wt) | 0, obj);
+    }
+    // HEAVY_IRON_BALL punish-levy owt preserve deferred (C owt!=0 short-circuit);
+    // callers that must keep levy must not assign owt=weight(ball) after incr.
     if (!wt) return Math.trunc((quan + 1) / 2);
     return wt * quan;
 }
+
+/**
+ * C ref: eat.c eaten_stat — scale base by oeaten/obj_nutrition (min 1).
+ * Nutrition: CORPSE → mons.cnutrit; else objects.oc_nutrition / food table.
+ */
+function eaten_stat(base, obj) {
+    let full_amount;
+    if (obj.otyp === CORPSE) {
+        full_amount = mons(obj.corpsenm)?.cnutrit ?? 0;
+    } else if (obj.globby) {
+        full_amount = obj.owt | 0;
+    } else {
+        const oc = objs()?.[obj.otyp];
+        full_amount = oc?.oc_nutrition | 0;
+        if (!full_amount) {
+            // objects table may omit oc_nutrition; match eat.js FOOD_NUTRITION
+            const name = objectNames[obj.otyp];
+            full_amount = FOOD_NUTRITION_WT[name] ?? 0;
+        }
+    }
+    let uneaten_amt = obj.oeaten | 0;
+    if (uneaten_amt > full_amount) uneaten_amt = full_amount;
+    base = full_amount
+        ? Math.trunc((base * uneaten_amt) / full_amount)
+        : 0;
+    return base < 1 ? 1 : base;
+}
+
+// Subset of eat.c FOOD_NUTRITION for weight() when oc_nutrition absent.
+const FOOD_NUTRITION_WT = {
+    FORTUNE_COOKIE: 40, APPLE: 50, PEAR: 50, ORANGE: 80, MELON: 100,
+    BANANA: 80, CARROT: 50, FOOD_RATION: 800, TRIPE_RATION: 200,
+    LEMBAS_WAFER: 800, CRAM_RATION: 600, K_RATION: 400, C_RATION: 300,
+    EGG: 80, CLOVE_OF_GARLIC: 40, SPRIG_OF_WOLFSBANE: 40,
+    EUCALYPTUS_LEAF: 1, CANDY_BAR: 100, CREAM_PIE: 100, PANCAKE: 200,
+    SLIME_MOLD: 250, LUMP_OF_ROYAL_JELLY: 200,
+};
 
 // C ref: mkobj.c next_ident()
 export function next_ident() {

@@ -18,6 +18,8 @@ import {
     PM_BARBARIAN,
     PM_VALKYRIE,
 } from './generated/monsters_data.js';
+import { xlev_to_rank } from './roles.js';
+import { achieve_rank, record_achievement } from './insight.js';
 
 // C ref: monattk.h — experience() compares against these exact values
 const AT_BUTT = 4;
@@ -163,6 +165,7 @@ export async function pluslvl(incr) {
 
     if ((u.ulevel | 0) < MAXULEV) {
         const oldlevel = u.ulevel | 0;
+        const oldrank = xlev_to_rank(oldlevel);
         // C: increase experience points to reflect new level BEFORE ++ulevel
         if (incr) {
             const tmp = newuexp(oldlevel + 1);
@@ -175,6 +178,10 @@ export async function pluslvl(incr) {
         await pline(`Welcome ${back}to experience level ${u.ulevel}.`);
         if ((u.ulevelmax | 0) < (u.ulevel | 0)) u.ulevelmax = u.ulevel;
         await adjabil(oldlevel, u.ulevel);
+        // C: SoundAchievement xplevelup deferred
+        const newrank = xlev_to_rank(u.ulevel | 0);
+        if (newrank > oldrank) record_achievement(achieve_rank(newrank));
+        // livelog when no new rank achievement deferred
         if ((u.ulevel | 0) > (u.ulevelpeak | 0)) u.ulevelpeak = u.ulevel;
     }
     if (!game.flags) game.flags = {};

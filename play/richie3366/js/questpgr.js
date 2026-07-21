@@ -300,7 +300,7 @@ You have an odd feeling this may be the last time you ever come here.`,
 the final time you come here.`,
 };
 
-/** C ref: dat/quest.lua goal_first (Arc + Bar + Pri; output=text). */
+/** C ref: dat/quest.lua goal_first (Arc + Bar + Pri + Kni; output=text). */
 const QUEST_GOAL_FIRST = {
     Arc: `A strange feeling washes over you, and you think back to things you
 learned during the many lectures of %l.
@@ -314,13 +314,21 @@ make you turn and run.  This is surely the lair of %n.`,
 of tortured souls assault your psyche.
 
 Ahead, there is a small clearing amidst the bubbling pits of lava...`,
+    // C ref: dat/quest.lua Kni goal_first (output=text) — seed4500 @1799
+    Kni: `As you exit the swamps, you %x before you a huge, gaping hole in the
+side of a hill.  From within, you smell the foul stench of carrion.
+
+The pools on either side of the entrance are fouled with blood, and
+pieces of rusted metal and broken weapons show above the surface.`,
 };
 
-/** C ref: dat/quest.lua goal_next (Arc + Bar + Pri). */
+/** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni). */
 const QUEST_GOAL_NEXT = {
     Arc: `The familiar presence of %o is in the ether.`,
     Bar: `Yet again you feel the air around you heavy with malevolent magical energy.`,
     Pri: `Again, you have invaded %ns domain.`,
+    // C ref: dat/quest.lua Kni goal_next
+    Kni: `Again, you stand at the entrance to %ns lair.`,
 };
 
 /** C ref: dat/quest.lua goal_alt (Arc; Bar falls back to goal_next in C). */
@@ -548,7 +556,7 @@ export async function com_pager(msgid) {
  * Named omissions: common fallback; explicit single-line output=text;
  * menu output; array rn2 picks; convert_line pronoun/%cC arms;
  * synopsis putmsghistory; other-role goal/nexttime/locate (non-Arc/Bar/Pri/Wiz
- * firsttime+locate) bodies.
+ * firsttime+locate; non-Arc/Bar/Pri/Kni goal) bodies.
  */
 export async function qt_pager(msgid) {
     // C: com_pager_core → nhl_init → nhlib.lua top-level shuffle(align)

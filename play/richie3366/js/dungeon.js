@@ -1460,7 +1460,8 @@ function print_branch(out, dnum, lowerBound, upperBound, bymenu, lchoices) {
  * Ported: bymenu=TRUE PICK_ONE path (headings + specials + branches +
  * continuous selectors + unreachable Knox letter skip) + tty_end_menu
  * prompt/blank row (D-0563) + bot() after dismiss (D-0568); bymenu=FALSE
- * putstr + display_nhwindow text pages (#wizwhere / D-0928 #1115).
+ * NHW_MENU putstr + display_nhwindow → process_text_window/dmore
+ * (#wizwhere / D-0928 #1115/#1183 — not NHW_TEXT show_text_pages).
  * Sets dest.lev / dest.dgn and returns logical depth (playerlev), or 0
  * on cancel.
  * Named omissions: floating-branch detail beyond stub; Invocation/portal
@@ -1479,9 +1480,11 @@ export async function print_dungeon(bymenu, dest = null) {
     const uz = game.u?.uz;
     const inEndgame = !!(uz && astral && (uz.dnum | 0) === (astral.dnum | 0));
 
-    // --- bymenu=FALSE: #wizwhere text window (C putstr + display_nhwindow) ---
+    // --- bymenu=FALSE: #wizwhere — C create_nhwindow(NHW_MENU)+putstr ---
     if (!bymenu) {
-        const { show_text_pages } = await import('./pager.js');
+        // C dungeon.c print_dungeon: always NHW_MENU (even when !bymenu);
+        // dmore offset 2 → leading blank + `--More--` cursor col9 (#1183).
+        const { show_nhw_menu_text } = await import('./pager.js');
         const lines = [];
         for (let i = 0; i < nDgns; i++) {
             const dptr = game.dungeons[i];
@@ -1529,7 +1532,7 @@ export async function print_dungeon(bymenu, dest = null) {
             lines.push(`   ${br_string(br.type)} to ${destName}`);
         }
         // Invocation / portal debug lines deferred
-        await show_text_pages(lines, { moreAtEnd: true });
+        await show_nhw_menu_text(lines);
         return 0;
     }
 

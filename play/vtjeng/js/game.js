@@ -21,35 +21,43 @@ export function makeLocation() {
         disp_color: NO_COLOR,
         disp_decgfx: false,
         disp_attr: 0,
+        // UTF-8 and IBM symbol sets have distinct recorder-wire and browser
+        // representations under recorder patch 006.
+        disp_browser_ch: null,
+        disp_browser_color: null,
         gnew: 0,           // dirty flag for flush_glyph_buf
         glyph_symidx: -1,  // S_* symbol index
         remembered_glyph: undefined,  // { ch, color, decgfx, symidx }
     };
 }
 
+function makeCoordinateGrid(makeCell) {
+    const grid = [];
+    for (let x = 0; x < COLNO; x++) {
+        grid[x] = [];
+        for (let y = 0; y < ROWNO; y++)
+            grid[x][y] = makeCell();
+    }
+    return grid;
+}
+
 // The dungeon level map. C ref: struct level.
 export class GameMap {
     constructor() {
-        this.locations = [];
-        for (let x = 0; x < COLNO; x++) {
-            this.locations[x] = [];
-            for (let y = 0; y < ROWNO; y++) {
-                this.locations[x][y] = makeLocation();
-            }
-        }
+        this.locations = makeCoordinateGrid(makeLocation);
         this.rooms = [];
         this.nroom = 0;
         this.doors = [];
         this.doorindex = 0;
         // C ref: rm.h struct level. Floor objects have both a per-square pile
         // chain (`objects[x][y]`) and a level-wide `objlist` chain.
-        this.objects = Array.from(
-            { length: COLNO },
-            () => new Array(ROWNO).fill(null),
-        );
+        this.objects = makeCoordinateGrid(() => null);
         this.objlist = null;
         this.buriedobjlist = null;
-        this.monsters = [];
+        // C ref: rm.h struct level. Monsters are indexed by coordinate;
+        // their nmon links separately form the level-wide monlist chain.
+        this.monsters = makeCoordinateGrid(() => null);
+        this.monlist = null;
         this.traps = [];
         this.flags = {
             nfountains: 0,

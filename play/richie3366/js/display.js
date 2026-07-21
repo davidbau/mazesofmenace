@@ -869,6 +869,8 @@ const TOPLINE_NON_EMPTY = 2;
 let _toplines = '';
 let _toplin = TOPLINE_EMPTY;
 let _win_stop = false;
+// C ref: wintty.h WIN_NOSTOP — urgent message; one-shot, blocks WIN_STOP
+let _win_nostop = false;
 // C ref: pline.c gp.prevmsg — last message that actually reached putmesg
 let _prevmsg = '';
 // C ref: wintty.h ttyDisplay->dismiss_more / getline.c morc — extra key
@@ -882,6 +884,7 @@ export function reset_display_messages() {
     _toplines = '';
     _toplin = TOPLINE_EMPTY;
     _win_stop = false;
+    _win_nostop = false;
     _delay_flushing = false;
     _lastStatus1 = '';
     _lastStatus2 = '';
@@ -3268,8 +3271,8 @@ export async function more() {
     for (;;) {
         const c = await nhgetch();
         // C ref: getline.c xwaitforspace("\033 ") + dismiss_more
-        if (c === 27) { // ESC → WIN_STOP
-            _win_stop = true;
+        if (c === 27) { // ESC → WIN_STOP unless WIN_NOSTOP (urgent)
+            if (!_win_nostop) _win_stop = true;
             _morc = 27;
             break;
         }
@@ -3380,11 +3383,12 @@ export async function pline(msg) {
 
     // Capture skip before more(); C still paints the new line with the
     // pre-more skip flag even if ESC sets WIN_STOP during more().
+    // C: skip = (WIN_STOP | WIN_NOSTOP) == WIN_STOP
     // C update_topl: `notdied` starts TRUE; only assigned inside the
     // short-circuiting append predicate. "You die" clears WIN_STOP iff
     // that assignment ran (room check passed). Under WIN_STOP + no room,
     // notdied stays 1 → WIN_STOP kept → yn skips more() (D-0928 #1133).
-    let skip = _win_stop;
+    let skip = _win_stop && !_win_nostop;
     let notdied = 1;
     const line = String(msg);
 
@@ -3439,5 +3443,27 @@ export async function pline(msg) {
         if (formatted.includes('\n')) {
             await more();
         }
+    }
+}
+
+/**
+ * C ref: pline.c urgent_pline — URGENT_MESSAGE / WIN_NOSTOP so ESC'd
+ * --More-- (WIN_STOP) cannot suppress this line; clears STOP first.
+ */
+export async function urgent_pline(msg) {
+    if (msg == null || msg === '') return;
+    // C tty_putstr ATR_URGENT: if WIN_STOP, clear_nhwindow + clear STOP
+    if (_win_stop) {
+        _win_stop = false;
+        _toplines = '';
+        _toplin = TOPLINE_EMPTY;
+        game._pending_message = '';
+    }
+    _win_nostop = true;
+    try {
+        await pline(msg);
+    } finally {
+        // C: NOSTOP is one-shot after putstr returns
+        _win_nostop = false;
     }
 }

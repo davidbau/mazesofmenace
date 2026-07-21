@@ -9,8 +9,9 @@
 //            uroleplay reroll/blind/deaf/pauper/nudist; food/vegan/veg;
 //            gnostic/weaphit/killer/literate/pets; num_genocides;
 //            polypiles/polyselfs/wishes(+wisharti); sokoban_in_play;
-//            wizard count detail lines. show_achievements only when
-//            final||wizard (deferred body). Final disclosure path deferred.
+//            wizard count detail lines; show_achievements when
+//            final||wizard (record_achievement / uachieved). SoundAchievement
+//            + livelog_printf deferred. Final disclosure path deferred.
 //   vanquished: in-progress #vanquished with defquery 'y' (not ask);
 //               mvitals.died census; traditional VANQ_MLVL_MNDX sort;
 //               ordinary an()/makeplural lines + total when ntypes>1;
@@ -24,7 +25,32 @@
 import { game } from './gstate.js';
 import { yn_function } from './getline.js';
 import {
+    ACH_BELL,
+    ACH_HELL,
+    ACH_CNDL,
+    ACH_BOOK,
+    ACH_INVK,
+    ACH_AMUL,
+    ACH_ENDG,
+    ACH_ASTR,
+    ACH_UWIN,
+    ACH_MINE_PRIZE,
+    ACH_SOKO_PRIZE,
+    ACH_MEDU,
+    ACH_BLND,
+    ACH_NUDE,
+    ACH_MINE,
+    ACH_TOWN,
+    ACH_SHOP,
+    ACH_TMPL,
+    ACH_ORCL,
+    ACH_NOVL,
     ACH_SOKO,
+    ACH_BGRM,
+    ACH_RNK1,
+    ACH_RNK8,
+    ACH_TUNE,
+    N_ACH,
     ECMD_OK,
     ENL_GAMEINPROGRESS,
     G_GENOD,
@@ -46,7 +72,7 @@ import {
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
-import { align_str } from './roles.js';
+import { align_str, rank_of, rank_to_xlev } from './roles.js';
 import { x_monnam_tame } from './do_name.js';
 import { find_mac } from './mhitm.js';
 import { A_NONE, A_LAWFUL, A_CHAOTIC } from './const.js';
@@ -147,6 +173,13 @@ function num_genocides() {
     return n;
 }
 
+/** Ensure u.uachieved is a 0-terminated sparse list (C N_ACH slots). */
+function ensure_uachieved() {
+    const u = game.u || (game.u = {});
+    if (!Array.isArray(u.uachieved)) u.uachieved = [];
+    return u.uachieved;
+}
+
 /** C ref: insight.c sokoban_in_play — ACH_SOKO in u.uachieved */
 function sokoban_in_play() {
     const ach = game.u?.uachieved;
@@ -157,14 +190,205 @@ function sokoban_in_play() {
     return false;
 }
 
+/** C ref: insight.c count_achievements */
+export function count_achievements() {
+    const ach = game.u?.uachieved;
+    if (!ach) return 0;
+    let acnt = 0;
+    for (let i = 0; ach[i]; i++) acnt++;
+    return acnt;
+}
+
 /**
- * C ref: insight.c show_achievements — empty unless final||wizard.
- * Achievement list body deferred.
+ * C ref: insight.c achieve_rank — rank 1..8 → ACH_RNK*; negate if female.
+ */
+export function achieve_rank(rank) {
+    let achidx = ((rank | 0) - 1) + ACH_RNK1;
+    if (game.flags?.female) achidx = -achidx;
+    return achidx;
+}
+
+/**
+ * C ref: insight.c remove_achievement — return true if removed.
+ */
+export function remove_achievement(achidx) {
+    const ach = ensure_uachieved();
+    const want = Math.abs(achidx | 0);
+    let i = 0;
+    for (; ach[i]; i++) {
+        if (Math.abs(ach[i] | 0) === want) break;
+    }
+    if (!ach[i]) return false;
+    do {
+        ach[i] = ach[i + 1] | 0;
+    } while (ach[++i]);
+    return true;
+}
+
+/**
+ * C ref: insight.c record_achievement — append unless duplicate abs.
+ * SoundAchievement + livelog_printf deferred (no screen for #conduct).
+ */
+export function record_achievement(achidx) {
+    const absidx = Math.abs(achidx | 0);
+    if (((achidx | 0) < 1 && (absidx < ACH_RNK1 || absidx > ACH_RNK8))
+        || (achidx | 0) >= N_ACH) {
+        return;
+    }
+    const ach = ensure_uachieved();
+    let i = 0;
+    let repeat = false;
+    for (; ach[i]; i++) {
+        if (Math.abs(ach[i] | 0) === absidx) {
+            repeat = true;
+            break;
+        }
+    }
+    // SoundAchievement deferred
+    if (repeat) return;
+    ach[i] = achidx | 0;
+    ach[i + 1] = 0;
+    // livelog_printf deferred (program_state.gameover skip too)
+}
+
+/**
+ * C ref: insight.c show_achievements — lines appended into conduct menu.
+ * Empty unless final||wizard; blank + "Achievement(s):" + ordered list.
  */
 function show_achievements_lines(final) {
     if (!final && !wizardMode()) return [];
-    // count_achievements / ordered disclosure deferred
-    return [];
+    let acnt = count_achievements();
+    if (acnt === 0) return [];
+
+    // Ascension reorder: force UWIN last, AMUL next-to-last
+    if (remove_achievement(ACH_UWIN)) {
+        if (remove_achievement(ACH_AMUL)) record_achievement(ACH_AMUL);
+        record_achievement(ACH_UWIN);
+        acnt = count_achievements();
+    }
+
+    const lines = [];
+    lines.push('');
+    lines.push(`Achievement${plur(acnt)}:`);
+
+    const ach = ensure_uachieved();
+    const u = game.u || {};
+    const uhave = u.uhave || {};
+    const roleMnum = game.urole?.mnum;
+
+    for (let i = 0; i < acnt; i++) {
+        const achidx = ach[i] | 0;
+        const absidx = Math.abs(achidx);
+        switch (absidx) {
+        case ACH_BLND:
+            lines.push(enl_msg(final, You_, 'are exploring', 'explored',
+                ' without being able to see', ''));
+            break;
+        case ACH_NUDE:
+            lines.push(enl_msg(final, You_, 'have gone', 'went',
+                ' without any armor', ''));
+            break;
+        case ACH_MINE:
+            lines.push(you_have_X(final, 'entered the Gnomish Mines'));
+            break;
+        case ACH_TOWN:
+            lines.push(you_have_X(final, 'entered Minetown'));
+            break;
+        case ACH_SHOP:
+            lines.push(you_have_X(final, 'entered a shop'));
+            break;
+        case ACH_TMPL:
+            lines.push(you_have_X(final, 'entered a temple'));
+            break;
+        case ACH_ORCL:
+            lines.push(you_have_X(final, 'consulted the Oracle of Delphi'));
+            break;
+        case ACH_NOVL:
+            lines.push(you_have_X(final, 'read from a Discworld novel'));
+            break;
+        case ACH_SOKO:
+            lines.push(you_have_X(final, 'entered Sokoban'));
+            break;
+        case ACH_SOKO_PRIZE:
+            lines.push(you_have_X(final, 'completed Sokoban'));
+            break;
+        case ACH_MINE_PRIZE:
+            lines.push(you_have_X(final, 'completed the Gnomish Mines'));
+            break;
+        case ACH_BGRM:
+            lines.push(you_have_X(final, 'entered the Big Room'));
+            break;
+        case ACH_MEDU:
+            lines.push(you_have_X(final, 'defeated Medusa'));
+            break;
+        case ACH_TUNE:
+            lines.push(you_have_X(final,
+                "learned the tune to open and close the Castle's drawbridge"));
+            break;
+        case ACH_BELL:
+            lines.push(enl_msg(
+                final, You_,
+                uhave.bell ? 'have' : 'have handled',
+                uhave.bell ? 'had' : 'handled',
+                ' the Bell of Opening', '',
+            ));
+            break;
+        case ACH_HELL:
+            lines.push(enl_msg(final, You_, 'have ', '', 'entered Gehennom', ''));
+            break;
+        case ACH_CNDL:
+            lines.push(enl_msg(
+                final, You_,
+                uhave.menorah ? 'have' : 'have handled',
+                uhave.menorah ? 'had' : 'handled',
+                ' the Candelabrum of Invocation', '',
+            ));
+            break;
+        case ACH_BOOK:
+            lines.push(enl_msg(
+                final, You_,
+                uhave.book ? 'have' : 'have handled',
+                uhave.book ? 'had' : 'handled',
+                ' the Book of the Dead', '',
+            ));
+            break;
+        case ACH_INVK:
+            lines.push(you_have_X(final, "gained access to Moloch's Sanctum"));
+            break;
+        case ACH_AMUL:
+            lines.push(enl_msg(
+                final, You_,
+                (uhave.amulet || u.uhave_amulet) ? 'have' : 'have obtained',
+                u.uevent?.ascended ? 'delivered'
+                    : (uhave.amulet || u.uhave_amulet) ? 'had' : 'had obtained',
+                ' the Amulet of Yendor', '',
+            ));
+            break;
+        case ACH_ENDG:
+            lines.push(you_have_X(final, 'reached the Elemental Planes'));
+            break;
+        case ACH_ASTR:
+            lines.push(you_have_X(final, 'reached the Astral Plane'));
+            break;
+        case ACH_UWIN:
+            lines.push(' You ascended!');
+            break;
+        case ACH_RNK1: case ACH_RNK1 + 1: case ACH_RNK1 + 2: case ACH_RNK1 + 3:
+        case ACH_RNK1 + 4: case ACH_RNK1 + 5: case ACH_RNK1 + 6: case ACH_RNK8: {
+            const rankTitle = rank_of(
+                rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                roleMnum,
+                achidx < 0,
+            );
+            lines.push(you_have_X(final, `attained the rank of ${rankTitle}`));
+            break;
+        }
+        default:
+            lines.push(`  [Unexpected achievement #${achidx}.]`);
+            break;
+        }
+    }
+    return lines;
 }
 
 /**

@@ -16,6 +16,7 @@ import { parseNethackrc } from './options.js';
 import { initoptions_finish } from './fruit.js';
 import { GameDisplay } from './game_display.js';
 import { setStorageForTesting } from './storage.js';
+import { light_globals_init } from './light.js';
 import { objects_globals_init } from './objects.js';
 import { monst_globals_init } from './monsters.js';
 import { timeout_globals_init } from './timeout.js';
@@ -29,6 +30,7 @@ import {
     TutorialTransitionNotImplementedError,
 } from './tutorial_startup.js';
 import { moveloop_preamble } from './moveloop_preamble.js';
+import { initialize_symbols_from_options } from './symbols.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -105,6 +107,7 @@ export class NethackGame {
         objects_globals_init(g);
         monst_globals_init(g);
         timeout_globals_init(g);
+        light_globals_init(g);
         setStorageForTesting(this._storage);
         // Recorder patch 001 routes calendar.c:getnow() through this fixed
         // YYYYMMDDHHMMSS value and leaks its current tm_isdst bit.
@@ -145,6 +148,10 @@ export class NethackGame {
             // C ref: decl.h instance_globals_p; dog.c:pet_type().
             preferred_pet: opts.preferred_pet ?? '',
         };
+
+        // C ref: options.c:initoptions() and symbols.c. Initialize the
+        // default cmap, then layer the configured symset and S_* overrides.
+        initialize_symbols_from_options(opts, g);
 
         // C ref: options.c:initoptions_finish() runs after the complete
         // configuration has been parsed and before player selection.

@@ -32,7 +32,7 @@ import { dist2 } from './mon.js';
 import { set_occupation, can_reach_floor } from './engrave.js';
 import {
     OBJ_FLOOR, OBJ_FREE, OBJ_INVENT,
-    SLT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
+    SLT_ENCUMBER, EXT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING,
     TIMEOUT,
@@ -1085,6 +1085,13 @@ export async function doeat() {
     // C: floorfood("eat", 0) — floor yn then invent getobj
     const otmp0 = await floorfood_eat();
     if (!otmp0) return 0;
+
+    // C ref: eat.c doeat — check_capacity((char *)0) before is_edible
+    // (hack.c: near_capacity >= EXT_ENCUMBER → You_cant carry stuff).
+    if (near_capacity() >= EXT_ENCUMBER) {
+        await pline("You can't do that while carrying so much stuff.");
+        return 0;
+    }
 
     if (otmp0.oclass === COIN_CLASS && !is_edible(otmp0)) {
         await pline('You cannot eat gold.');
